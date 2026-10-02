@@ -1,0 +1,32 @@
+{
+  "name": "snagdeals",
+  "version": "1.0.0",
+  "description": "SnagDeals: one wishlist across game stores with price-target email alerts.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply snagdeals --remote",
+    "db:migrate:local": "wrangler d1 migrations apply snagdeals --local",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sugarhappy8/snag.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sugarhappy8/snag/issues"
+  },
+  "homepage": "https://github.com/sugarhappy8/snag#readme",
+  "dependencies": {
+    "hono": "^4.13.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261002.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.146.0"
+  },
+  "private": true,
+  "type": "module"
+}

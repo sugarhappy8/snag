@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local development. Never commit .dev.vars.
+AUTH_SECRET=change-me-to-a-long-random-string
+# Leave RESEND_API_KEY unset locally to print emails to the console instead of sending them.
+# RESEND_API_KEY=re_xxx
+APP_URL=http://localhost:8787

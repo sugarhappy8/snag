@@ -1,11 +1,11 @@
-SNAGWHEN — PRODUCT PLAN
+SNAGDEALS — PRODUCT PLAN
 Unified Wishlist + Price Tracking + Smart Buy Automation
 
 ==================================================
 1. PRODUCT SUMMARY
 ==================================================
 
-SnagWhen is a consumer SaaS platform that lets users track products they want across multiple stores and platforms, define the price they are willing to pay, and get notified—or eventually have the product purchased automatically—when that price condition is met.
+SnagDeals is a consumer SaaS platform that lets users track products they want across multiple stores and platforms, define the price they are willing to pay, and get notified—or eventually have the product purchased automatically—when that price condition is met.
 
 The first version should focus on gaming.
 
@@ -33,7 +33,7 @@ The long-term concept is similar to a limit order in financial markets:
 
 "I want this product, but only if it reaches this price."
 
-Instead of repeatedly checking stores, the user sets a buy condition once and SnagWhen monitors the market for them.
+Instead of repeatedly checking stores, the user sets a buy condition once and SnagDeals monitors the market for them.
 
 ==================================================
 2. THE PROBLEM
@@ -61,13 +61,13 @@ The problems are:
 9. Existing trackers usually stop at alerts.
 10. There is no simple consumer system for setting automated purchasing rules across stores.
 
-SnagWhen solves these problems with one unified purchasing dashboard.
+SnagDeals solves these problems with one unified purchasing dashboard.
 
 ==================================================
 3. CORE VALUE PROPOSITION
 ==================================================
 
-SnagWhen tells the user:
+SnagDeals tells the user:
 
 - what they want
 - where it is cheapest
@@ -82,7 +82,7 @@ SnagWhen tells the user:
 
 The user should feel like:
 
-"I tell SnagWhen what I want once, and I never have to monitor it again."
+"I tell SnagDeals what I want once, and I never have to monitor it again."
 
 ==================================================
 4. TARGET USERS
@@ -118,7 +118,7 @@ Future audiences:
 5. PRODUCT POSITIONING
 ==================================================
 
-Do not position SnagWhen as:
+Do not position SnagDeals as:
 
 "another discount website"
 
@@ -148,7 +148,7 @@ Example:
 
 User pastes a Steam product URL.
 
-SnagWhen detects:
+SnagDeals detects:
 - product name
 - platform
 - edition
@@ -157,7 +157,7 @@ SnagWhen detects:
 - normal sale price range
 - previous discounts
 
-Then SnagWhen asks:
+Then SnagDeals asks:
 
 "When should we alert you?"
 
@@ -184,7 +184,7 @@ $19.99
 User target:
 $20
 
-SnagWhen now monitors that product automatically.
+SnagDeals now monitors that product automatically.
 
 When it reaches $20 or less:
 
@@ -215,7 +215,7 @@ Instead of maintaining separate lists on:
 - GOG
 - Epic
 
-SnagWhen stores everything in one place.
+SnagDeals stores everything in one place.
 
 Each wishlist item should contain:
 
@@ -253,7 +253,7 @@ Status: WAIT
 8. MAIN FEATURE: PRICE TARGETS
 ==================================================
 
-The user chooses exactly when SnagWhen should notify them.
+The user chooses exactly when SnagDeals should notify them.
 
 Available rules:
 
@@ -293,7 +293,7 @@ Rules:
 - Maximum monthly auto-buy spending: $100
 - Ask before any purchase above $50
 
-This makes SnagWhen a purchasing automation engine rather than only a tracker.
+This makes SnagDeals a purchasing automation engine rather than only a tracker.
 
 ==================================================
 10. AUTO-BUY
@@ -306,13 +306,13 @@ However, it should NOT be included universally in the first version.
 The system should have three levels:
 
 LEVEL 1 — ALERT
-SnagWhen detects the target price and notifies the user.
+SnagDeals detects the target price and notifies the user.
 
 LEVEL 2 — ONE-CLICK BUY
-SnagWhen opens the correct store/product page so the user can complete checkout.
+SnagDeals opens the correct store/product page so the user can complete checkout.
 
 LEVEL 3 — AUTO-BUY
-SnagWhen completes the purchase automatically only where official merchant integrations, checkout APIs, approved payment flows, or partnerships make this safe and allowed.
+SnagDeals completes the purchase automatically only where official merchant integrations, checkout APIs, approved payment flows, or partnerships make this safe and allowed.
 
 Important rule:
 
@@ -365,7 +365,7 @@ A 50% discount from a fake or inflated MSRP may still be a bad deal.
 12. DEAL QUALITY SCORE
 ==================================================
 
-SnagWhen can create an internal deal-quality system.
+SnagDeals can create an internal deal-quality system.
 
 Possible inputs:
 - historical low
@@ -387,7 +387,7 @@ It should instead answer:
 13. OWNERSHIP DETECTION
 ==================================================
 
-SnagWhen should let users mark products as owned.
+SnagDeals should let users mark products as owned.
 
 Later, where supported, users can connect gaming accounts.
 
@@ -398,7 +398,7 @@ Possible connected platforms:
 - GOG
 - Epic
 
-SnagWhen can then detect:
+SnagDeals can then detect:
 
 "You already own this."
 
@@ -410,13 +410,13 @@ Potential states:
 - Previously owned
 - Refunded
 - Ignored
-- Purchased through SnagWhen
+- Purchased through SnagDeals
 
 ==================================================
 14. SUBSCRIPTION DETECTION
 ==================================================
 
-Before recommending a purchase, SnagWhen should check whether the product is already available through a subscription the user has.
+Before recommending a purchase, SnagDeals should check whether the product is already available through a subscription the user has.
 
 Examples:
 - Xbox Game Pass
@@ -437,7 +437,7 @@ This is a major consumer-value feature because it can directly prevent unnecessa
 15. CROSS-PLATFORM COMPARISON
 ==================================================
 
-If the same game is available on multiple platforms, SnagWhen should compare them.
+If the same game is available on multiple platforms, SnagDeals should compare them.
 
 Example:
 
@@ -448,7 +448,7 @@ GOG: $24.99
 Xbox: $34.99
 PlayStation: $39.99
 
-SnagWhen should show:
+SnagDeals should show:
 - cheapest current option
 - cheapest historical option
 - user's preferred platform
@@ -471,7 +471,7 @@ This can later become part of Buy Rules.
 
 Users should not have to rebuild their entire wishlist manually.
 
-SnagWhen should support:
+SnagDeals should support:
 
 - Steam wishlist import
 - PlayStation wishlist import where technically possible
@@ -491,7 +491,7 @@ At launch, start with whichever official/public methods are most reliable.
 Users should be able to add products through:
 
 1. Paste product URL
-2. Search inside SnagWhen
+2. Search inside SnagDeals
 3. Browser extension
 4. Share sheet on mobile
 5. Wishlist sync
@@ -501,7 +501,7 @@ Best first interaction:
 
 User pastes a store URL.
 
-SnagWhen immediately extracts the product and displays:
+SnagDeals immediately extracts the product and displays:
 
 Current: $59.99
 Historical low: $29.99
@@ -587,7 +587,7 @@ Users should control frequency to prevent notification fatigue.
 20. SAVINGS TRACKER
 ==================================================
 
-SnagWhen should track how much money the user saved.
+SnagDeals should track how much money the user saved.
 
 Possible calculation:
 
@@ -671,9 +671,9 @@ Potential revenue sources:
 
 Affiliate model example:
 
-SnagWhen notifies a user that a game reached their target.
-The user clicks through SnagWhen and buys it.
-SnagWhen earns a small commission from the retailer.
+SnagDeals notifies a user that a game reached their target.
+The user clicks through SnagDeals and buys it.
+SnagDeals earns a small commission from the retailer.
 
 This can subsidize a low consumer subscription price.
 
@@ -759,7 +759,7 @@ Possible flow:
 User:
 "Auto-buy this if price <= $20."
 
-SnagWhen:
+SnagDeals:
 - monitors price
 - verifies trusted store
 - checks ownership
@@ -800,7 +800,7 @@ Auto-buy rules:
 
 Long-term:
 
-SnagWhen becomes a universal purchase automation platform.
+SnagDeals becomes a universal purchase automation platform.
 
 ==================================================
 29. TRUSTED STORE SYSTEM
@@ -813,7 +813,7 @@ Examples:
 Only:
 - official stores
 - authorized retailers
-- stores approved by SnagWhen
+- stores approved by SnagDeals
 
 Optional:
 - third-party key sellers
@@ -832,7 +832,7 @@ Pricing varies by:
 - tax
 - platform
 
-SnagWhen should store a user region.
+SnagDeals should store a user region.
 
 For each listing:
 - local currency
@@ -847,7 +847,7 @@ Do not recommend a deal that cannot be purchased in the user's region.
 31. SECURITY
 ==================================================
 
-Security is critical if SnagWhen later handles payments.
+Security is critical if SnagDeals later handles payments.
 
 Principles:
 
@@ -857,7 +857,7 @@ Principles:
 - use tokenized payment providers
 - never directly store card numbers
 - use trusted payment processors
-- support 2FA on SnagWhen accounts
+- support 2FA on SnagDeals accounts
 - show login history
 - allow immediate account/session revocation
 - send purchase confirmations
@@ -1057,7 +1057,7 @@ Notifications:
 - mobile push later
 
 Payments:
-- Stripe for SnagWhen subscription billing
+- Stripe for SnagDeals subscription billing
 - official merchant payment integrations for future auto-buy
 
 ==================================================
@@ -1131,16 +1131,16 @@ STEP 1:
 User pastes a game URL.
 
 STEP 2:
-SnagWhen identifies the product.
+SnagDeals identifies the product.
 
 STEP 3:
-SnagWhen shows:
+SnagDeals shows:
 - current price
 - historical low
 - typical sale price
 
 STEP 4:
-SnagWhen asks:
+SnagDeals asks:
 "When should we alert you?"
 
 STEP 5:
@@ -1154,7 +1154,7 @@ STEP 7:
 Product appears on dashboard.
 
 STEP 8:
-SnagWhen monitors automatically.
+SnagDeals monitors automatically.
 
 STEP 9:
 Target price is reached.
@@ -1167,7 +1167,7 @@ STEP 11:
 User buys.
 
 STEP 12:
-SnagWhen marks:
+SnagDeals marks:
 "Purchased — you saved $30."
 
 ==================================================
@@ -1194,7 +1194,7 @@ STOP CHECKING SALES.
 
 Add something once.
 Set your target price.
-SnagWhen watches it for you.
+SnagDeals watches it for you.
 
 Third section:
 
@@ -1212,21 +1212,18 @@ See:
 
 Brand name:
 
-SNAGWHEN
+SNAGDEALS
 
 Domain:
 
-snagwhen.com
+snagdeals.store
 
 Why it works:
 
-The name reads like the buy rule itself:
-
-"Snag [this] when [it hits my price]."
+"Snag" is what users do when a price hits:
+they grab the deal they were waiting for.
 
 "Snag Elden Ring when it's $25 or less."
-
-This is the limit-order idea in plain words.
 
 Price conditions inside the product can still be
 called triggers:
@@ -1244,19 +1241,12 @@ Language:
 
 This naturally fits the product.
 
-Other possible names (.com unregistered as of 2026-10-02):
-- SnagTime
-- SnagRules
-- SnagOrder
-- WishTrigger
-- HoldForIt
-
-Originally considered (.com already taken):
+Other names considered:
+- SnagWhen (snagwhen.com)
 - Trigger
 - BuyWhen
 - WaitForIt
 - PricePilot
-- Snag
 - Drop
 
 ==================================================
@@ -1265,7 +1255,7 @@ Originally considered (.com already taken):
 
 Existing services already cover parts of the problem.
 
-SnagWhen should NOT try to win only on:
+SnagDeals should NOT try to win only on:
 
 "we track prices"
 
@@ -1377,7 +1367,7 @@ Shareable card:
 
 or
 
-"SnagWhen saved me $286 this year."
+"SnagDeals saved me $286 this year."
 
 ==================================================
 47. CONTENT MARKETING
@@ -1416,7 +1406,7 @@ Your target:
 $30
 
 Button:
-"Add to SnagWhen"
+"Add to SnagDeals"
 
 This reduces friction dramatically.
 
@@ -1430,7 +1420,7 @@ Start with responsive web.
 
 Later mobile app features:
 - push notifications
-- share-to-SnagWhen
+- share-to-SnagDeals
 - wishlist management
 - purchase approvals
 - auto-buy confirmation
@@ -1454,7 +1444,7 @@ Example:
 
 "Notify me if anything on Sarah's wishlist drops more than 30%."
 
-This can expand SnagWhen beyond gaming.
+This can expand SnagDeals beyond gaming.
 
 ==================================================
 51. LONG-TERM VISION
@@ -1489,20 +1479,20 @@ Handle the rest."
 52. ONE-SENTENCE PRODUCT DEFINITION
 ==================================================
 
-SnagWhen is a unified consumer wishlist that tracks prices across stores, tells users when a deal is genuinely good, and lets them set rules for when a product should be purchased.
+SnagDeals is a unified consumer wishlist that tracks prices across stores, tells users when a deal is genuinely good, and lets them set rules for when a product should be purchased.
 
 ==================================================
 53. SHORTEST POSSIBLE PITCH
 ==================================================
 
 Set the price.
-SnagWhen waits for it.
+SnagDeals waits for it.
 
 ==================================================
 54. CORE PRINCIPLE
 ==================================================
 
-SnagWhen should never encourage the user to buy more.
+SnagDeals should never encourage the user to buy more.
 
 Its purpose is to help users buy what they already want:
 
