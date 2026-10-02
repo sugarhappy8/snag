@@ -1,0 +1,1515 @@
+SNAGWHEN — PRODUCT PLAN
+Unified Wishlist + Price Tracking + Smart Buy Automation
+
+==================================================
+1. PRODUCT SUMMARY
+==================================================
+
+SnagWhen is a consumer SaaS platform that lets users track products they want across multiple stores and platforms, define the price they are willing to pay, and get notified—or eventually have the product purchased automatically—when that price condition is met.
+
+The first version should focus on gaming.
+
+Initial supported ecosystems:
+- Steam
+- GOG
+- Epic Games Store
+- PlayStation Store
+- Xbox Store
+
+Later expansion:
+- Amazon
+- Best Buy
+- Walmart
+- Newegg
+- eBay
+- Manufacturer stores
+- Other online retailers
+
+Core idea:
+
+"One wishlist for everything you want, with price targets and smart purchase rules."
+
+The long-term concept is similar to a limit order in financial markets:
+
+"I want this product, but only if it reaches this price."
+
+Instead of repeatedly checking stores, the user sets a buy condition once and SnagWhen monitors the market for them.
+
+==================================================
+2. THE PROBLEM
+==================================================
+
+Consumers currently have to deal with separate wishlists across many platforms.
+
+A gamer may have:
+- 20 games on Steam
+- 10 games on PlayStation
+- 5 games on Xbox
+- 6 games on GOG
+- subscriptions such as Game Pass or PlayStation Plus
+
+The problems are:
+
+1. Wishlists are fragmented.
+2. Users miss good discounts.
+3. Users often buy too early.
+4. Discount percentages can be misleading.
+5. Users do not know whether a current price is actually good.
+6. People may accidentally buy something already included in a subscription.
+7. People may buy the same product twice on different platforms.
+8. Users have to manually keep checking different stores.
+9. Existing trackers usually stop at alerts.
+10. There is no simple consumer system for setting automated purchasing rules across stores.
+
+SnagWhen solves these problems with one unified purchasing dashboard.
+
+==================================================
+3. CORE VALUE PROPOSITION
+==================================================
+
+SnagWhen tells the user:
+
+- what they want
+- where it is cheapest
+- whether the current price is actually good
+- what the historical low is
+- what price they previously said they would pay
+- whether they already own it
+- whether it is included in a subscription
+- whether a buy condition has been reached
+- where to buy it
+- and eventually, where supported, buys it automatically
+
+The user should feel like:
+
+"I tell SnagWhen what I want once, and I never have to monitor it again."
+
+==================================================
+4. TARGET USERS
+==================================================
+
+Primary launch audience:
+
+PC and console gamers who:
+- use multiple gaming platforms
+- wait for sales
+- maintain large wishlists
+- care about getting good prices
+- buy digital games regularly
+- use Game Pass, PS Plus, or similar subscriptions
+
+Ideal early adopter:
+- owns a gaming PC and/or console
+- has 20+ wishlist items
+- checks sales manually
+- uses deal websites, Reddit, Discord, or price trackers
+- is price-sensitive but still spends regularly on games
+
+Future audiences:
+- electronics shoppers
+- hobbyists
+- sneaker buyers
+- computer hardware buyers
+- home appliance shoppers
+- gift shoppers
+- families managing shared wishlists
+
+==================================================
+5. PRODUCT POSITIONING
+==================================================
+
+Do not position SnagWhen as:
+
+"another discount website"
+
+Do not position it as:
+
+"an AI shopping assistant"
+
+Position it as:
+
+"One wishlist. Every store. You choose the price."
+
+Alternative positioning:
+
+"Set your price. We watch everything else."
+
+Long-term positioning:
+
+"Limit orders for things you want to buy."
+
+==================================================
+6. CORE PRODUCT EXPERIENCE
+==================================================
+
+A user should be able to add a product in seconds.
+
+Example:
+
+User pastes a Steam product URL.
+
+SnagWhen detects:
+- product name
+- platform
+- edition
+- current price
+- historical low
+- normal sale price range
+- previous discounts
+
+Then SnagWhen asks:
+
+"When should we alert you?"
+
+Options:
+- Any discount
+- 10% off
+- 25% off
+- 50% off
+- Historical low
+- New historical low
+- Custom target price
+
+Example:
+
+Game:
+Cyberpunk 2077
+
+Current price:
+$59.99
+
+Historical low:
+$19.99
+
+User target:
+$20
+
+SnagWhen now monitors that product automatically.
+
+When it reaches $20 or less:
+
+"Cyberpunk 2077 reached your target price.
+Current price: $19.99
+Store: Steam
+Your target: $20
+This is near its historical low."
+
+Then the user can:
+- open the store
+- buy it
+- dismiss the alert
+- change the price target
+- remove it from the wishlist
+- mark it as owned
+
+==================================================
+7. MAIN FEATURE: UNIFIED WISHLIST
+==================================================
+
+The user gets one central wishlist across stores.
+
+Instead of maintaining separate lists on:
+- Steam
+- PlayStation
+- Xbox
+- GOG
+- Epic
+
+SnagWhen stores everything in one place.
+
+Each wishlist item should contain:
+
+- product name
+- image
+- platform
+- supported stores
+- edition
+- current lowest price
+- current store
+- historical low
+- historical low date
+- typical sale price
+- full price / MSRP
+- user target price
+- discount percentage
+- ownership status
+- subscription availability
+- current status
+- last checked
+- alert status
+
+Example:
+
+--------------------------------------------------
+Baldur's Gate 3
+Platform: PC
+Current lowest price: $47.99
+Historical low: $35.99
+Target price: $39.00
+Status: WAIT
+--------------------------------------------------
+
+==================================================
+8. MAIN FEATURE: PRICE TARGETS
+==================================================
+
+The user chooses exactly when SnagWhen should notify them.
+
+Available rules:
+
+1. Notify on any discount
+2. Notify at X% discount
+3. Notify below a specific price
+4. Notify at historical low
+5. Notify only at a new historical low
+6. Notify when a trusted store is cheapest
+7. Notify when the price is lower than all other platforms
+
+Example:
+
+"Buy/alert me when Elden Ring is $25 or less."
+
+The price target is one of the most important features because it removes decision fatigue.
+
+==================================================
+9. MAIN FEATURE: BUY RULES
+==================================================
+
+Users should eventually be able to create advanced buying conditions.
+
+Example:
+
+Product:
+Elden Ring
+
+Rules:
+- Buy if price <= $25
+- Store must be Steam or GOG
+- Must be available in my region
+- Must be Standard Edition or better
+- Must not already be owned
+- Must not be included in Game Pass or PS Plus
+- Seller must be approved/trusted
+- Maximum monthly auto-buy spending: $100
+- Ask before any purchase above $50
+
+This makes SnagWhen a purchasing automation engine rather than only a tracker.
+
+==================================================
+10. AUTO-BUY
+==================================================
+
+Auto-buy is the most differentiated long-term feature.
+
+However, it should NOT be included universally in the first version.
+
+The system should have three levels:
+
+LEVEL 1 — ALERT
+SnagWhen detects the target price and notifies the user.
+
+LEVEL 2 — ONE-CLICK BUY
+SnagWhen opens the correct store/product page so the user can complete checkout.
+
+LEVEL 3 — AUTO-BUY
+SnagWhen completes the purchase automatically only where official merchant integrations, checkout APIs, approved payment flows, or partnerships make this safe and allowed.
+
+Important rule:
+
+Do not build the business around storing users' Steam, PlayStation, Xbox, Amazon, or other retailer passwords.
+
+Avoid:
+- browser bots
+- credential storage
+- scraping private accounts
+- bypassing 2FA
+- bypassing CAPTCHAs
+- violating merchant terms
+
+Auto-buy should be introduced store by store only where technically and legally supported.
+
+==================================================
+11. HISTORICAL PRICE INTELLIGENCE
+==================================================
+
+Every product should display price history.
+
+The system should answer:
+
+"Is this deal actually good?"
+
+Data shown:
+- current price
+- full price
+- current discount
+- historical low
+- historical low date
+- typical discounted price
+- average sale price
+- frequency of discounts
+- price trend
+
+Possible labels:
+- Poor deal
+- Normal price
+- Good deal
+- Excellent deal
+- Near historical low
+- New historical low
+
+Avoid relying only on advertised percentage-off values.
+
+A 50% discount from a fake or inflated MSRP may still be a bad deal.
+
+==================================================
+12. DEAL QUALITY SCORE
+==================================================
+
+SnagWhen can create an internal deal-quality system.
+
+Possible inputs:
+- historical low
+- current price
+- average sale price
+- sale frequency
+- time since last lower price
+- historical discount depth
+- whether a new version is expected
+- whether the product is frequently bundled
+
+The product should not make users feel pressured.
+
+It should instead answer:
+
+"If you were already waiting for this item, is now a good time based on its price history?"
+
+==================================================
+13. OWNERSHIP DETECTION
+==================================================
+
+SnagWhen should let users mark products as owned.
+
+Later, where supported, users can connect gaming accounts.
+
+Possible connected platforms:
+- Steam
+- Xbox
+- PlayStation
+- GOG
+- Epic
+
+SnagWhen can then detect:
+
+"You already own this."
+
+This prevents duplicate purchases.
+
+Potential states:
+- Wishlist
+- Owned
+- Previously owned
+- Refunded
+- Ignored
+- Purchased through SnagWhen
+
+==================================================
+14. SUBSCRIPTION DETECTION
+==================================================
+
+Before recommending a purchase, SnagWhen should check whether the product is already available through a subscription the user has.
+
+Examples:
+- Xbox Game Pass
+- PC Game Pass
+- PlayStation Plus
+- EA Play
+- Ubisoft+
+- other game subscriptions
+
+Example alert:
+
+"Do not buy yet.
+This game is currently included with Game Pass, which you already use."
+
+This is a major consumer-value feature because it can directly prevent unnecessary spending.
+
+==================================================
+15. CROSS-PLATFORM COMPARISON
+==================================================
+
+If the same game is available on multiple platforms, SnagWhen should compare them.
+
+Example:
+
+Cyberpunk 2077
+
+Steam: $29.99
+GOG: $24.99
+Xbox: $34.99
+PlayStation: $39.99
+
+SnagWhen should show:
+- cheapest current option
+- cheapest historical option
+- user's preferred platform
+- ownership conflicts
+- subscription access
+
+The user may choose:
+
+"Only show PC prices."
+
+or:
+
+"I prefer PlayStation unless PC is at least $15 cheaper."
+
+This can later become part of Buy Rules.
+
+==================================================
+16. WISHLIST IMPORT
+==================================================
+
+Users should not have to rebuild their entire wishlist manually.
+
+SnagWhen should support:
+
+- Steam wishlist import
+- PlayStation wishlist import where technically possible
+- Xbox wishlist import where technically possible
+- GOG import
+- Epic import
+- CSV import
+- browser extension import
+- manual link paste
+
+At launch, start with whichever official/public methods are most reliable.
+
+==================================================
+17. PRODUCT ADD METHODS
+==================================================
+
+Users should be able to add products through:
+
+1. Paste product URL
+2. Search inside SnagWhen
+3. Browser extension
+4. Share sheet on mobile
+5. Wishlist sync
+6. Manual product entry
+
+Best first interaction:
+
+User pastes a store URL.
+
+SnagWhen immediately extracts the product and displays:
+
+Current: $59.99
+Historical low: $29.99
+Typical sale price: $35.99
+
+"When should we alert you?"
+
+==================================================
+18. DASHBOARD
+==================================================
+
+The main dashboard should be simple.
+
+Top section:
+
+TOTAL SAVINGS
+"You saved $283 this year by waiting."
+
+This number is useful because it reminds users why the service has value.
+
+Main wishlist table:
+
+Product
+Current Price
+Historical Low
+Target Price
+Store
+Status
+
+Statuses:
+- WAIT
+- CLOSE
+- TARGET HIT
+- HISTORICAL LOW
+- OWNED
+- INCLUDED IN SUBSCRIPTION
+- PURCHASED
+
+Filters:
+- platform
+- store
+- status
+- target reached
+- price drop
+- owned
+- subscription
+- genre/category
+
+==================================================
+19. ALERT SYSTEM
+==================================================
+
+Supported notifications:
+
+Initial:
+- Email
+- Browser push
+- Mobile push
+
+Later:
+- Telegram
+- Discord
+- SMS
+- WhatsApp where appropriate and supported
+
+Alert types:
+
+- target price reached
+- price dropped
+- historical low reached
+- new historical low
+- sale ending soon
+- price increased
+- product entered subscription
+- product leaving subscription
+- product back in stock
+- target condition satisfied
+- auto-buy completed
+
+Users should control frequency to prevent notification fatigue.
+
+==================================================
+20. SAVINGS TRACKER
+==================================================
+
+SnagWhen should track how much money the user saved.
+
+Possible calculation:
+
+Original price: $60
+Purchased at: $30
+Savings: $30
+
+Dashboard:
+
+"You saved $283 this year."
+
+Other metrics:
+- purchases delayed
+- average discount
+- average savings per purchase
+- historical lows purchased
+- money saved through subscriptions
+- duplicate purchases prevented
+
+This helps justify a paid subscription.
+
+==================================================
+21. FREE PLAN
+==================================================
+
+Suggested free tier:
+
+- up to 20 tracked products
+- basic price-drop notifications
+- current price
+- historical low
+- one target price per product
+- basic cross-store comparison
+- email notifications
+
+The free plan must be useful enough to attract users.
+
+==================================================
+22. PRO PLAN
+==================================================
+
+Possible price:
+
+$3.99/month
+
+or
+
+$29/year
+
+Suggested Pro features:
+
+- unlimited wishlist items
+- advanced buy rules
+- automatic wishlist syncing
+- full historical price charts
+- ownership detection
+- subscription detection
+- advanced cross-platform comparison
+- premium notifications
+- family/shared wishlist
+- faster price checks
+- auto-buy where supported
+- purchase history
+- advanced savings analytics
+
+==================================================
+23. OTHER REVENUE
+==================================================
+
+Do not depend only on subscriptions.
+
+Potential revenue sources:
+
+1. Pro subscriptions
+2. Affiliate commissions
+3. Merchant referral revenue
+4. Sponsored placements, clearly labeled
+5. Merchant partnerships
+6. API/data licensing later
+7. Premium family plans
+
+Affiliate model example:
+
+SnagWhen notifies a user that a game reached their target.
+The user clicks through SnagWhen and buys it.
+SnagWhen earns a small commission from the retailer.
+
+This can subsidize a low consumer subscription price.
+
+==================================================
+24. MVP — EXACT SCOPE
+==================================================
+
+Do NOT launch with every store.
+
+Launch as a gaming product.
+
+Recommended MVP:
+
+Platforms:
+- Steam
+- GOG
+- Epic Games Store
+- PlayStation Store
+- Xbox Store
+
+If some stores are technically difficult, start with fewer.
+
+Absolute MVP features:
+
+1. User accounts
+2. Product search
+3. Add product by URL
+4. Unified wishlist
+5. Current price tracking
+6. Historical low
+7. User-defined target price
+8. Email alert when target is reached
+9. Cross-store comparison where possible
+10. Mark as owned
+11. Basic dashboard
+12. Savings tracker
+
+Do not build auto-buy first.
+
+==================================================
+25. VERSION 1.5
+==================================================
+
+After the MVP works:
+
+- wishlist imports
+- price history charts
+- browser push notifications
+- mobile-friendly dashboard
+- more stores
+- ownership sync
+- subscription detection
+- advanced deal quality
+- sale-ending alerts
+
+==================================================
+26. VERSION 2
+==================================================
+
+Add:
+
+- advanced Buy Rules
+- family/shared wishlists
+- browser extension
+- mobile app
+- smarter recommendations
+- regional price comparison
+- currency normalization
+- duplicate ownership warnings
+- purchase history
+- subscription catalog monitoring
+
+==================================================
+27. VERSION 3
+==================================================
+
+Begin real purchase automation.
+
+Only add auto-buy where supported safely.
+
+Possible flow:
+
+User:
+"Auto-buy this if price <= $20."
+
+SnagWhen:
+- monitors price
+- verifies trusted store
+- checks ownership
+- checks subscription availability
+- checks monthly spending limit
+- checks region
+- checks edition
+- checks payment rules
+- executes supported merchant checkout
+- sends confirmation
+
+==================================================
+28. FUTURE RETAIL EXPANSION
+==================================================
+
+Once gaming proves the model, expand into physical products.
+
+Possible categories:
+- electronics
+- PC hardware
+- headphones
+- monitors
+- phones
+- laptops
+- gaming accessories
+- home appliances
+
+Example:
+
+Sony WH-1000XM6
+
+Auto-buy rules:
+- price <= $299
+- condition = new
+- seller = Amazon or Sony
+- delivery <= 5 days
+- return policy >= 30 days
+
+Long-term:
+
+SnagWhen becomes a universal purchase automation platform.
+
+==================================================
+29. TRUSTED STORE SYSTEM
+==================================================
+
+The user should be able to select store trust preferences.
+
+Examples:
+
+Only:
+- official stores
+- authorized retailers
+- stores approved by SnagWhen
+
+Optional:
+- third-party key sellers
+- marketplaces
+
+Users should be able to turn risky sources off completely.
+
+==================================================
+30. REGIONAL SUPPORT
+==================================================
+
+Pricing varies by:
+- country
+- region
+- currency
+- tax
+- platform
+
+SnagWhen should store a user region.
+
+For each listing:
+- local currency
+- regional availability
+- local price
+- normalized comparison price
+- tax inclusion
+
+Do not recommend a deal that cannot be purchased in the user's region.
+
+==================================================
+31. SECURITY
+==================================================
+
+Security is critical if SnagWhen later handles payments.
+
+Principles:
+
+- never store retailer passwords if avoidable
+- use OAuth where available
+- encrypt sensitive data
+- use tokenized payment providers
+- never directly store card numbers
+- use trusted payment processors
+- support 2FA on SnagWhen accounts
+- show login history
+- allow immediate account/session revocation
+- send purchase confirmations
+- support configurable purchase limits
+
+==================================================
+32. AUTO-BUY SAFETY CONTROLS
+==================================================
+
+Users should set global safety rules.
+
+Examples:
+
+Maximum purchase:
+$50
+
+Maximum monthly auto-spend:
+$100
+
+Require confirmation above:
+$25
+
+Only auto-buy from:
+- Steam
+- GOG
+- Amazon
+
+Disable auto-buy between:
+12 AM and 7 AM
+
+Require approval for:
+- DLC
+- deluxe editions
+- subscriptions
+- preorders
+
+Users must remain in control.
+
+==================================================
+33. FAILURE CASES
+==================================================
+
+The product needs to handle:
+
+- price changes during checkout
+- store outages
+- product removed
+- region unavailable
+- incorrect edition
+- duplicate listings
+- subscription already active
+- product already owned
+- payment failure
+- expired card
+- incorrect price data
+- sale ending early
+- currency changes
+- merchant blocks
+
+The system should fail safely.
+
+Never buy if confidence is low.
+
+==================================================
+34. LEGAL / PLATFORM RISKS
+==================================================
+
+Potential issues:
+
+- scraping restrictions
+- store API limits
+- affiliate terms
+- regional pricing restrictions
+- automated purchasing restrictions
+- merchant terms of service
+- taxes
+- payment compliance
+- chargebacks
+- refunds
+- age restrictions
+- digital goods refund policies
+
+The initial product should avoid high-risk automation and focus on tracking + alerts.
+
+==================================================
+35. DATA MODEL
+==================================================
+
+Possible simplified database:
+
+USER
+- id
+- email
+- region
+- currency
+- subscription tier
+- notification settings
+
+PRODUCT
+- id
+- canonical name
+- category
+- image
+- publisher/brand
+
+LISTING
+- id
+- product id
+- store
+- platform
+- edition
+- region
+- current price
+- normal price
+- currency
+- URL
+- availability
+
+PRICE_HISTORY
+- listing id
+- price
+- timestamp
+
+WISHLIST_ITEM
+- user id
+- product id
+- target price
+- preferred platform
+- preferred store
+- status
+- added date
+
+OWNERSHIP
+- user id
+- product id
+- platform
+- owned status
+
+SUBSCRIPTION
+- user id
+- service
+- active
+
+BUY_RULE
+- user id
+- product id
+- max price
+- allowed stores
+- allowed platforms
+- monthly limit
+- approval threshold
+- enabled
+
+PURCHASE
+- user id
+- product id
+- listing id
+- final price
+- timestamp
+- purchase method
+
+==================================================
+36. TECHNICAL ARCHITECTURE
+==================================================
+
+Possible stack:
+
+Frontend:
+- Next.js
+- React
+- Tailwind
+
+Backend:
+- Node.js / TypeScript
+- Supabase or PostgreSQL
+
+Authentication:
+- Supabase Auth
+- Clerk
+- Auth0
+
+Price collection:
+- official APIs when available
+- affiliate APIs
+- authorized data partners
+- careful scraping only where permitted
+
+Background jobs:
+- scheduled price checks
+- price normalization
+- duplicate matching
+- alert processing
+
+Notifications:
+- email provider
+- web push
+- mobile push later
+
+Payments:
+- Stripe for SnagWhen subscription billing
+- official merchant payment integrations for future auto-buy
+
+==================================================
+37. PRICE CHECKING SYSTEM
+==================================================
+
+Do not check every product every second.
+
+Possible system:
+
+Popular products:
+check more frequently
+
+Low-interest products:
+check less frequently
+
+During major sales:
+increase checking frequency
+
+When target price is close:
+increase frequency
+
+When sale ends soon:
+increase frequency
+
+Use queues and caching to reduce infrastructure cost.
+
+==================================================
+38. PRODUCT MATCHING
+==================================================
+
+One hard problem will be determining when listings represent the same product.
+
+Example:
+
+"Cyberpunk 2077"
+
+vs
+
+"Cyberpunk 2077 Ultimate Edition"
+
+vs
+
+"Cyberpunk 2077 + Phantom Liberty"
+
+The system needs canonical product IDs.
+
+Each listing maps to:
+- canonical product
+- platform
+- edition
+- region
+
+Incorrect matching can lead to bad recommendations or purchases.
+
+==================================================
+39. USER FLOW
+==================================================
+
+FIRST VISIT
+
+Landing page:
+
+"One wishlist. Every store.
+Set your price. We watch everything else."
+
+CTA:
+"Track your first item"
+
+STEP 1:
+User pastes a game URL.
+
+STEP 2:
+SnagWhen identifies the product.
+
+STEP 3:
+SnagWhen shows:
+- current price
+- historical low
+- typical sale price
+
+STEP 4:
+SnagWhen asks:
+"When should we alert you?"
+
+STEP 5:
+User selects:
+"$30 or less"
+
+STEP 6:
+User creates account.
+
+STEP 7:
+Product appears on dashboard.
+
+STEP 8:
+SnagWhen monitors automatically.
+
+STEP 9:
+Target price is reached.
+
+STEP 10:
+User receives:
+"Your target was hit."
+
+STEP 11:
+User buys.
+
+STEP 12:
+SnagWhen marks:
+"Purchased — you saved $30."
+
+==================================================
+40. LANDING PAGE COPY
+==================================================
+
+Headline:
+
+ONE WISHLIST. EVERY STORE.
+
+Subheadline:
+
+Track games across Steam, PlayStation, Xbox, GOG, and more.
+Choose the price you want to pay.
+We'll tell you when it gets there.
+
+CTA:
+
+Track a Game
+
+Secondary section:
+
+STOP CHECKING SALES.
+
+Add something once.
+Set your target price.
+SnagWhen watches it for you.
+
+Third section:
+
+KNOW WHETHER A DEAL IS ACTUALLY GOOD.
+
+See:
+- historical lows
+- typical sale prices
+- current discounts
+- cross-platform prices
+
+==================================================
+41. BRANDING
+==================================================
+
+Brand name:
+
+SNAGWHEN
+
+Domain:
+
+snagwhen.com
+
+Why it works:
+
+The name reads like the buy rule itself:
+
+"Snag [this] when [it hits my price]."
+
+"Snag Elden Ring when it's $25 or less."
+
+This is the limit-order idea in plain words.
+
+Price conditions inside the product can still be
+called triggers:
+- price triggers
+- buy triggers
+- notification triggers
+
+Language:
+
+"Set a trigger at $30."
+
+"Your trigger hit. Snag it."
+
+"You snagged 3 games this month and saved $41."
+
+This naturally fits the product.
+
+Other possible names (.com unregistered as of 2026-10-02):
+- SnagTime
+- SnagRules
+- SnagOrder
+- WishTrigger
+- HoldForIt
+
+Originally considered (.com already taken):
+- Trigger
+- BuyWhen
+- WaitForIt
+- PricePilot
+- Snag
+- Drop
+
+==================================================
+42. COMPETITIVE DIFFERENTIATION
+==================================================
+
+Existing services already cover parts of the problem.
+
+SnagWhen should NOT try to win only on:
+
+"we track prices"
+
+Instead win on:
+
+1. unified cross-platform wishlist
+2. user-defined price targets
+3. ownership detection
+4. subscription detection
+5. cross-platform comparison
+6. smart deal quality
+7. advanced Buy Rules
+8. safe auto-buy where supported
+
+The moat is the user's purchasing preferences and automation rules.
+
+==================================================
+43. WHAT NOT TO BUILD
+==================================================
+
+Do not add:
+
+- social feed
+- game reviews
+- forums
+- generic AI chatbot
+- gaming news
+- achievements
+- streaming
+- inventory marketplace
+- random coupons
+- cashback system immediately
+
+Stay focused.
+
+The job is:
+
+"Help me buy things I already want at the right price."
+
+==================================================
+44. VALIDATION PLAN
+==================================================
+
+Before building the full product:
+
+1. Create landing page.
+2. Show mock dashboard.
+3. Explain target-price concept.
+4. Collect emails.
+5. Let users submit wishlist items manually.
+6. Manually send alerts for early testers if necessary.
+7. Ask how many products they want tracked.
+8. Ask whether they would pay $29/year.
+9. Ask whether they would trust auto-buy.
+10. Measure actual usage, not survey answers.
+
+Best validation question:
+
+"Would you trust this service to automatically purchase a game when it hits a price you chose?"
+
+Second-best:
+
+"How many items would you add today?"
+
+==================================================
+45. EARLY METRICS
+==================================================
+
+Important metrics:
+
+- signup conversion
+- items added per user
+- users with 5+ tracked items
+- users with 20+ tracked items
+- percentage setting custom target prices
+- alert open rate
+- alert-to-purchase conversion
+- affiliate revenue per active user
+- free-to-paid conversion
+- 30-day retention
+- 90-day retention
+- yearly savings per user
+
+A strong signal:
+
+Users keep adding products without being reminded.
+
+==================================================
+46. GO-TO-MARKET
+==================================================
+
+Early channels:
+
+- Reddit gaming communities
+- PC gaming forums
+- Discord communities
+- deal communities
+- YouTube sponsorships
+- gaming TikTok creators
+- Steam-focused communities
+- PlayStation communities
+- Xbox communities
+
+Possible viral hook:
+
+Shareable card:
+
+"I waited 43 days and saved $31."
+
+or
+
+"SnagWhen saved me $286 this year."
+
+==================================================
+47. CONTENT MARKETING
+==================================================
+
+Useful SEO pages:
+
+- Steam price history
+- PlayStation price history
+- Xbox price history
+- game historical low pages
+- cheapest place to buy [game]
+- [game] price history
+- [game] lowest price ever
+- Steam vs GOG price comparison
+
+Each product can potentially have a public price-history page.
+
+This creates organic search traffic.
+
+==================================================
+48. BROWSER EXTENSION
+==================================================
+
+Later, build a browser extension.
+
+On supported store pages it shows:
+
+Current price:
+$49.99
+
+Historical low:
+$24.99
+
+Your target:
+$30
+
+Button:
+"Add to SnagWhen"
+
+This reduces friction dramatically.
+
+==================================================
+49. MOBILE APP
+==================================================
+
+Do not build native mobile first.
+
+Start with responsive web.
+
+Later mobile app features:
+- push notifications
+- share-to-SnagWhen
+- wishlist management
+- purchase approvals
+- auto-buy confirmation
+- savings dashboard
+
+==================================================
+50. FAMILY / SHARED WISHLISTS
+==================================================
+
+Possible later feature:
+
+Family members can create shared wishlists.
+
+Uses:
+- birthdays
+- Christmas
+- household electronics
+- gifts
+
+Example:
+
+"Notify me if anything on Sarah's wishlist drops more than 30%."
+
+This can expand SnagWhen beyond gaming.
+
+==================================================
+51. LONG-TERM VISION
+==================================================
+
+Phase 1:
+Gaming price tracker.
+
+Phase 2:
+Unified gaming wishlist.
+
+Phase 3:
+Smart purchasing assistant.
+
+Phase 4:
+Auto-buy with rules.
+
+Phase 5:
+Consumer product expansion.
+
+Phase 6:
+Universal purchase automation.
+
+The eventual product becomes:
+
+"I want X.
+I am willing to pay Y.
+These are the conditions.
+Handle the rest."
+
+==================================================
+52. ONE-SENTENCE PRODUCT DEFINITION
+==================================================
+
+SnagWhen is a unified consumer wishlist that tracks prices across stores, tells users when a deal is genuinely good, and lets them set rules for when a product should be purchased.
+
+==================================================
+53. SHORTEST POSSIBLE PITCH
+==================================================
+
+Set the price.
+SnagWhen waits for it.
+
+==================================================
+54. CORE PRINCIPLE
+==================================================
+
+SnagWhen should never encourage the user to buy more.
+
+Its purpose is to help users buy what they already want:
+
+- cheaper
+- at the right time
+- without duplicate purchases
+- without repeatedly checking stores
+- without missing major discounts
+
+If the product consistently saves users more money than the subscription costs, it has a strong reason to exist.
