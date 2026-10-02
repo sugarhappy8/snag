@@ -3,13 +3,13 @@
   "name": "snagdeals",
   "main": "src/index.tsx",
   "compatibility_date": "2026-09-01",
+  "workers_dev": true,
   "assets": { "directory": "./public" },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "snagdeals",
-      // Replace with the id printed by `npx wrangler d1 create snagdeals`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "7fd251c7-134e-4533-a596-27a98400188a",
       "migrations_dir": "migrations"
     }
   ],
@@ -19,6 +19,5 @@
     "APP_URL": "https://snagdeals.store",
     "FROM_EMAIL": "SnagDeals <alerts@snagdeals.store>"
   }
-  // After snagdeals.store is on Cloudflare DNS, uncomment to serve the site there:
-  // ,"routes": [{ "pattern": "snagdeals.store", "custom_domain": true }]
+  ,"routes": [{ "pattern": "snagdeals.store", "custom_domain": true }]
 }
