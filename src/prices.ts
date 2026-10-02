@@ -116,3 +116,10 @@ export async function getStores(env: Env): Promise<{ id: string; name: string }[
 export function dealUrl(dealId: string): string {
   return `https://www.cheapshark.com/redirect?dealID=${encodeURIComponent(dealId)}`;
 }
+
+/** CheapShark game id for a Steam app id, or null if CheapShark doesn't list it. */
+export async function gameIdForSteamApp(env: Env, appId: string): Promise<string | null> {
+  const rows = await get<any[]>(env, `/games?steamAppID=${encodeURIComponent(appId)}`);
+  const hit = (Array.isArray(rows) ? rows : []).find((r) => String(r.steamAppID) === appId) ?? null;
+  return hit ? String(hit.gameID) : null;
+}

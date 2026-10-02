@@ -139,3 +139,12 @@ a.trow:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
   .item-head { flex-direction: column; align-items: flex-start; }
   .search { flex-direction: column; }
 }
+
+.account { padding: 14px 0; border-top: 1px solid var(--border); }
+.account:first-of-type { border-top: 0; padding-top: 0; }
+.account-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.account-name { font-weight: 700; }
+.account-off .account-name { color: var(--muted); }
+.account-stats { margin: 10px 0 0; padding-left: 18px; color: var(--muted); }
+.account .flash { margin: 10px 0 0; }
+.owned-note { margin-left: 8px; color: var(--hit); font-weight: 600; }

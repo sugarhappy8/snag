@@ -6,6 +6,10 @@ export interface Env {
   RESEND_API_KEY?: string;
   /** Override for tests/local mocks. Defaults to the public CheapShark API. */
   CHEAPSHARK_API?: string;
+  /** Steam Web API key (steamcommunity.com/dev/apikey). Needed to read owned games. */
+  STEAM_API_KEY?: string;
+  /** Override for tests/local mocks. */
+  STEAM_API?: string;
 }
 
 export interface User {
@@ -45,6 +49,7 @@ export interface WishlistItem {
   last_alert_price: number | null;
   last_alert_at: number | null;
   created_at: number;
+  source: string | null;
 }
 
 export type AppEnv = { Bindings: Env; Variables: { user: User | null } };

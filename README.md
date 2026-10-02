@@ -24,10 +24,16 @@ section 24 of that plan.
   alerts once per drop, again only if the price falls further, and re-arms if the price
   goes back up.
 - Mark games as owned or purchased, and a "saved this year" total.
+- **Connect Steam** (Settings → Connected accounts). You sign in on Steam's own site through
+  OpenID, so we never see a password. SnagDeals then imports your Steam wishlist, marks games
+  you own as Owned so they never alert, and shows "You own this on Steam" in search. It
+  re-syncs daily, and games you remove aren't re-added.
 - One-click unsubscribe in alert emails, an alerts toggle, and account deletion.
 
 PlayStation and Xbox aren't included yet, because neither has a public price API.
-CheapShark covers PC stores only.
+CheapShark covers PC stores only. GOG, Epic, PlayStation and Xbox also have no official API
+for reading a user's library or wishlist, so only Steam can be connected for now. The
+Settings page says so.
 
 ## Stack
 
@@ -52,6 +58,8 @@ Code layout:
 ```
 src/index.tsx     routes (Hono) + scheduled() entry
 src/auth.ts       email codes, sessions, rate limits, unsubscribe tokens
+src/steam.ts      Sign in through Steam (OpenID) + Steam Web API reads
+src/imports.ts    Steam library/wishlist sync and import queue
 src/cron.ts       hourly price refresh + alert emails
 src/prices.ts     CheapShark client
 src/email.ts      Resend client + email templates
@@ -91,7 +99,9 @@ You need a free [Cloudflare](https://dash.cloudflare.com/sign-up) account and a 
    ```sh
    openssl rand -hex 32 | npx wrangler secret put AUTH_SECRET
    npx wrangler secret put RESEND_API_KEY      # paste the re_... key
+   npx wrangler secret put STEAM_API_KEY       # from steamcommunity.com/dev/apikey (domain: snagdeals.store)
    ```
+   Without `STEAM_API_KEY`, Steam wishlist import still works, but owned-game detection is off.
 
 6. **Deploy.** In `wrangler.jsonc`, uncomment the `routes` line so the site serves on
    `snagdeals.store`, then:
@@ -128,8 +138,9 @@ npm run typecheck
   batched into one digest per user per hour to save quota. Upgrade Resend before a launch
   spike.
 - **Workers free tier: 50 outbound requests per run.** Each hourly run refreshes up to the
-  200 least-recently-checked games. With more than about 4,800 tracked games, some prices
-  will be older than a day.
+  150 least-recently-checked games, re-syncs up to 3 Steam accounts, and matches up to 20
+  Steam wishlist games. With more than about 3,600 tracked games, some prices will be older
+  than a day. Large Steam wishlists finish importing over a few hours.
 - **Sign-in rate limits:** 10 code emails per IP per hour, and one per email address per
   minute. Each code allows 5 tries and expires after 15 minutes.
 - Prices are in USD (CheapShark's US data). Regional pricing comes later (plan section 30).

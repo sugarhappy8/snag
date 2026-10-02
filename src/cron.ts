@@ -3,10 +3,15 @@ import { getGames, getStores, dealUrl, MAX_IDS_PER_REQUEST, PriceApiError, type 
 import { dealLabel, describeTarget, isRule, shouldAlert, targetMet, type PriceState } from './rules';
 import { unsubscribeUrl } from './auth';
 import type { Env, Game } from './types';
+import { processImportQueue, syncSteam } from './imports';
 
-// Workers Free allows 50 subrequests per invocation. Spend at most 8 on prices
-// (8 x 25 = 200 games/hour) and leave room for Resend batches and the store list.
-const PRICE_BATCHES_PER_RUN = 8;
+// Workers Free allows 50 subrequests per invocation. Spend at most 6 on prices
+// (6 x 25 = 150 games/hour), up to 6 on Steam re-syncs, 20 on Steam wishlist imports,
+// and leave room for Resend batches and the store list.
+const PRICE_BATCHES_PER_RUN = 6;
+const STEAM_SYNCS_PER_RUN = 3;
+const IMPORT_BUDGET_PER_RUN = 20;
+const STEAM_RESYNC_AFTER = 24 * 3600 * 1000;
 const MAX_ALERT_EMAILS_PER_RUN = 300;
 
 export async function refreshPrices(env: Env, now = Date.now()): Promise<number> {
@@ -161,12 +166,23 @@ export async function cleanup(env: Env, now = Date.now()): Promise<void> {
   ]);
 }
 
+/** Re-reads Steam libraries and wishlists once a day, a few accounts per run. */
+export async function resyncSteamAccounts(env: Env, now = Date.now()): Promise<number> {
+  const { results } = await env.DB.prepare(
+    `SELECT user_id FROM linked_accounts WHERE provider = 'steam' AND COALESCE(last_synced_at, 0) < ? ORDER BY COALESCE(last_synced_at, 0) LIMIT ?`,
+  ).bind(now - STEAM_RESYNC_AFTER, STEAM_SYNCS_PER_RUN).all<{ user_id: string }>();
+  for (const r of results) await syncSteam(env, r.user_id, now).catch((e) => console.error('steam resync failed', e));
+  return results.length;
+}
+
 export async function runScheduled(env: Env, now = Date.now()): Promise<void> {
+  const synced = await resyncSteamAccounts(env, now);
+  const imported = await processImportQueue(env, IMPORT_BUDGET_PER_RUN, now);
   const updated = await refreshPrices(env, now);
   const sent = await sendAlerts(env, now);
   if (new Date(now).getUTCHours() === 4) {
     await refreshStores(env).catch((e) => console.error('store refresh failed', e));
     await cleanup(env, now);
   }
-  console.log(`cron: refreshed ${updated} games, sent ${sent} alert emails`);
+  console.log(`cron: synced ${synced} steam accounts, imported ${imported} games, refreshed ${updated} games, sent ${sent} alert emails`);
 }

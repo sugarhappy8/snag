@@ -1,6 +1,7 @@
 import { Layout, Flash } from './layout';
 import type { User, WishlistItem } from '../types';
 import type { SearchResult } from '../prices';
+import type { LinkedAccount } from '../imports';
 import { dealUrl } from '../prices';
 import {
   RULE_LABELS, dealLabel, describeTarget, discountPct, itemStatus, money, targetPrice,
@@ -89,7 +90,7 @@ export function LandingPage(props: { user: User | null }) {
         </div>
         <div>
           <h2>Never pay twice.</h2>
-          <p>Mark games as owned or purchased and see how much you saved by waiting.</p>
+          <p>Connect Steam to import your wishlist and skip games you already own. See how much you saved by waiting.</p>
         </div>
       </section>
     </Layout>
@@ -148,7 +149,7 @@ export function VerifyPage(props: { email: string; next: string; code?: string; 
   );
 }
 
-export function SearchPage(props: { user: User | null; q: string; results: SearchResult[] | null; tracked: Set<string>; error?: string }) {
+export function SearchPage(props: { user: User | null; q: string; results: SearchResult[] | null; tracked: Set<string>; owned: Set<string>; error?: string }) {
   const next = `/search?q=${encodeURIComponent(props.q)}`;
   return (
     <Layout user={props.user} title={props.q ? `Search: ${props.q}` : 'Search'}>
@@ -162,7 +163,10 @@ export function SearchPage(props: { user: User | null; q: string; results: Searc
               {r.thumb ? <img src={r.thumb} alt="" loading="lazy" /> : <div class="thumb-fallback" />}
               <div class="result-body">
                 <div class="result-title">{r.title}</div>
-                <div class="muted small">Cheapest now: {money(r.cheapest)}</div>
+                <div class="muted small">
+                  Cheapest now: {money(r.cheapest)}
+                  {r.steamAppId && props.owned.has(r.steamAppId) && <span class="owned-note">You own this on Steam</span>}
+                </div>
               </div>
               {props.tracked.has(r.gameId) ? (
                 <span class="muted small">On your wishlist</span>
@@ -228,6 +232,7 @@ export function DashboardPage(props: { user: User; rows: DashRow[]; savedThisYea
           <h2>Your wishlist is empty</h2>
           <p class="muted">Search for a game or paste a Steam link to start tracking it.</p>
           <SearchBox autofocus />
+          <p class="muted small">Or <a href="/settings#accounts">connect Steam</a> to import your wishlist and skip games you already own.</p>
         </section>
       ) : rows.length === 0 ? (
         <p class="muted">Nothing here.</p>
@@ -246,7 +251,7 @@ export function DashboardPage(props: { user: User; rows: DashRow[]; savedThisYea
                   {r.thumb ? <img src={r.thumb} alt="" loading="lazy" /> : <span class="thumb-fallback" />}
                   <span>
                     <span class="game-title">{r.title}</span>
-                    <span class="muted small">{r.store_name ?? '—'}</span>
+                    <span class="muted small">{r.store_name ?? '—'}{r.source === 'steam' ? ' · from Steam wishlist' : ''}</span>
                   </span>
                 </span>
                 <span data-label="Now">{money(r.current_price)}{off ? <span class="off">-{off}%</span> : null}</span>
@@ -395,11 +400,79 @@ export function ItemPage(props: {
   );
 }
 
-export function SettingsPage(props: { user: User; flash?: string }) {
+function SteamCard(props: { steam: LinkedAccount | null; queued: number; imported: number; steamKeySet: boolean }) {
+  const s = props.steam;
+  return (
+    <div class="account">
+      <div class="account-head">
+        <div>
+          <div class="account-name">Steam</div>
+          {s ? (
+            <div class="muted small">
+              Connected{s.display_name ? ` as ${s.display_name}` : ''} · last synced {s.last_synced_at ? new Date(s.last_synced_at).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'never'}
+            </div>
+          ) : (
+            <div class="muted small">Import your wishlist and see which games you already own.</div>
+          )}
+        </div>
+        {s ? (
+          <div class="actions">
+            <form method="post" action="/connect/steam/sync"><button class="btn btn-small" type="submit">Sync now</button></form>
+            <form method="post" action="/connect/steam/disconnect"><button class="btn btn-small btn-ghost" type="submit">Disconnect</button></form>
+          </div>
+        ) : (
+          <a class="btn btn-small" href="/connect/steam">Connect Steam</a>
+        )}
+      </div>
+      {s && (
+        <ul class="account-stats small">
+          <li><b>{s.wishlist_count ?? 0}</b> on your Steam wishlist{props.imported > 0 ? ` · ${props.imported} just added here` : ''}</li>
+          <li>{props.steamKeySet ? <><b>{s.owned_count ?? 0}</b> games owned (we won't alert you about these)</> : 'Owned-game detection turns on once the site has a Steam API key.'}</li>
+          {props.queued > 0 && <li>{props.queued} more wishlist games are being matched and will appear within a few hours.</li>}
+        </ul>
+      )}
+      {s?.sync_error && <Flash kind="error">{s.sync_error}</Flash>}
+      {!s && <p class="muted small">You'll sign in on Steam's own site. We never see your Steam password. Your profile's Game details must be public.</p>}
+    </div>
+  );
+}
+
+const OTHER_STORES = [
+  { name: 'GOG', why: 'GOG has no public API for reading your library.' },
+  { name: 'Epic Games Store', why: 'Epic has no public API for reading your library.' },
+  { name: 'PlayStation', why: "Sony doesn't offer a public API for your games or wishlist." },
+  { name: 'Xbox', why: "Microsoft doesn't offer a public API for your wishlist." },
+];
+
+export function SettingsPage(props: {
+  user: User;
+  steam: LinkedAccount | null;
+  queued: number;
+  imported: number;
+  steamKeySet: boolean;
+  flash?: string;
+  error?: string;
+}) {
   return (
     <Layout user={props.user} title="Settings">
       {props.flash && <Flash>{props.flash}</Flash>}
+      {props.error && <Flash kind="error">{props.error}</Flash>}
       <h1>Settings</h1>
+      <section class="card" id="accounts">
+        <h2>Connected accounts</h2>
+        <SteamCard steam={props.steam} queued={props.queued} imported={props.imported} steamKeySet={props.steamKeySet} />
+        {OTHER_STORES.map((o) => (
+          <div class="account account-off">
+            <div class="account-head">
+              <div>
+                <div class="account-name">{o.name}</div>
+                <div class="muted small">{o.why} For now, mark games you own from their page.</div>
+              </div>
+              <span class="muted small">Not available yet</span>
+            </div>
+          </div>
+        ))}
+      </section>
       <section class="card">
         <h2>Email alerts</h2>
         <p class="muted">Signed in as <b>{props.user.email}</b>.</p>

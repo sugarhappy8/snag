@@ -5,12 +5,15 @@ import { secureHeaders } from 'hono/secure-headers';
 import type { AppEnv, Env, Game, User } from './types';
 import {
   CODE_RESEND_COOLDOWN, CODE_TTL, MAX_CODE_ATTEMPTS, codeHash, createSession, destroySession, loadUser,
-  normalizeEmail, randomCode, rateLimit, safeEqual, safeNext, unsubscribeToken,
+  normalizeEmail, randomCode, randomToken, rateLimit, safeEqual, safeNext, unsubscribeToken,
 } from './auth';
 import { loginEmail, sendEmails } from './email';
 import { getGames, searchGames, type SearchResult } from './prices';
 import { gameUpdateStatements, runScheduled } from './cron';
 import { STATUS_ORDER, isRule } from './rules';
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { steamLoginUrl, steamReturnTo, verifySteamLogin } from './steam';
+import { ownedSteamApps, processImportQueue, queuedCount, syncSteam, type LinkedAccount } from './imports';
 import {
   DashboardPage, ItemPage, LandingPage, LoginPage, MessagePage, SearchPage, SettingsPage, VerifyPage, statusOf, type DashRow,
 } from './views/pages';
@@ -53,7 +56,8 @@ app.get('/search', async (c) => {
     const { results: rows } = await c.env.DB.prepare('SELECT game_id FROM wishlist_items WHERE user_id = ?').bind(user.id).all<{ game_id: string }>();
     rows.forEach((r) => tracked.add(r.game_id));
   }
-  return c.html(<SearchPage user={user} q={q} results={results} tracked={tracked} error={error} />);
+  const owned = user && results?.length ? await ownedSteamApps(c.env, user.id) : new Set<string>();
+  return c.html(<SearchPage user={user} q={q} results={results} tracked={tracked} owned={owned} error={error} />);
 });
 
 // ---------- Email sign-in (verification code via Resend) ----------
@@ -286,16 +290,108 @@ app.post('/app/item/:id/state', async (c) => {
 app.post('/app/item/:id/delete', async (c) => {
   const user = requireUser(c);
   if (!user) return loginRedirect(c);
-  await c.env.DB.prepare('DELETE FROM wishlist_items WHERE id = ? AND user_id = ?').bind(c.req.param('id'), user.id).run();
+  await c.env.DB.batch([
+    // Remember the removal so a Steam re-sync doesn't add it back.
+    c.env.DB.prepare('INSERT OR IGNORE INTO import_ignored (user_id, game_id) SELECT user_id, game_id FROM wishlist_items WHERE id = ? AND user_id = ?').bind(c.req.param('id'), user.id),
+    c.env.DB.prepare('DELETE FROM wishlist_items WHERE id = ? AND user_id = ?').bind(c.req.param('id'), user.id),
+  ]);
   return c.redirect('/app?msg=removed');
 });
 
 // ---------- Settings ----------
 
-app.get('/settings', (c) => {
+const SETTINGS_MSGS: Record<string, string> = {
+  saved: 'Saved.',
+  'steam-connected': 'Steam connected.',
+  'steam-synced': 'Synced with Steam.',
+  'steam-disconnected': 'Steam disconnected. Games already on your wishlist stay there.',
+};
+const SETTINGS_ERRORS: Record<string, string> = {
+  'steam-failed': "Steam sign-in didn't complete. Try again.",
+  'steam-taken': 'That Steam account is already connected to a different SnagDeals account.',
+};
+
+app.get('/settings', async (c) => {
   const user = requireUser(c);
   if (!user) return loginRedirect(c);
-  return c.html(<SettingsPage user={user} flash={c.req.query('msg') === 'saved' ? 'Saved.' : undefined} />);
+  const steam = await c.env.DB.prepare(`SELECT * FROM linked_accounts WHERE user_id = ? AND provider = 'steam'`).bind(user.id).first<LinkedAccount>();
+  const msg = c.req.query('msg') ?? '';
+  return c.html(
+    <SettingsPage
+      user={user}
+      steam={steam}
+      queued={steam ? await queuedCount(c.env, user.id) : 0}
+      imported={Number(c.req.query('added') ?? '') || 0}
+      steamKeySet={!!c.env.STEAM_API_KEY}
+      flash={SETTINGS_MSGS[msg]}
+      error={SETTINGS_ERRORS[msg]}
+    />,
+  );
+});
+
+// ---------- Connected accounts: Steam ----------
+
+const STEAM_STATE_COOKIE = 'sd_steam_state';
+// Budget for matching wishlist games during a request (Workers Free: 50 subrequests).
+const IMPORT_BUDGET_PER_REQUEST = 35;
+
+async function syncAndImport(c: Context<AppEnv>, userId: string): Promise<number> {
+  await syncSteam(c.env, userId);
+  return processImportQueue(c.env, IMPORT_BUDGET_PER_REQUEST, now(), userId);
+}
+
+app.get('/connect/steam', (c) => {
+  const user = requireUser(c);
+  if (!user) return loginRedirect(c);
+  const state = randomToken(16);
+  const origin = new URL(c.req.url).origin;
+  setCookie(c, STEAM_STATE_COOKIE, state, { httpOnly: true, secure: origin.startsWith('https:'), sameSite: 'Lax', path: '/connect/steam', maxAge: 600 });
+  return c.redirect(steamLoginUrl(origin, state));
+});
+
+app.get('/connect/steam/callback', async (c) => {
+  const user = requireUser(c);
+  if (!user) return loginRedirect(c);
+  const url = new URL(c.req.url);
+  const state = url.searchParams.get('state') ?? '';
+  const expected = getCookie(c, STEAM_STATE_COOKIE);
+  deleteCookie(c, STEAM_STATE_COOKIE, { path: '/connect/steam' });
+  let steamId: string | null = null;
+  if (state && expected && safeEqual(state, expected)) {
+    try {
+      steamId = await verifySteamLogin(url.searchParams, steamReturnTo(url.origin, state));
+    } catch (e) {
+      console.error('steam openid verify failed', e);
+    }
+  }
+  if (!steamId) return c.redirect('/settings?msg=steam-failed');
+
+  const other = await c.env.DB.prepare(`SELECT user_id FROM linked_accounts WHERE provider = 'steam' AND external_id = ? AND user_id != ?`).bind(steamId, user.id).first();
+  if (other) return c.redirect('/settings?msg=steam-taken');
+  await c.env.DB.prepare(
+    `INSERT INTO linked_accounts (user_id, provider, external_id, created_at) VALUES (?, 'steam', ?, ?)
+     ON CONFLICT(user_id, provider) DO UPDATE SET external_id = excluded.external_id, display_name = NULL`,
+  ).bind(user.id, steamId, now()).run();
+  const added = await syncAndImport(c, user.id);
+  return c.redirect(`/settings?msg=steam-connected&added=${added}`);
+});
+
+app.post('/connect/steam/sync', async (c) => {
+  const user = requireUser(c);
+  if (!user) return loginRedirect(c);
+  const added = await syncAndImport(c, user.id);
+  return c.redirect(`/settings?msg=steam-synced&added=${added}`);
+});
+
+app.post('/connect/steam/disconnect', async (c) => {
+  const user = requireUser(c);
+  if (!user) return loginRedirect(c);
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM linked_accounts WHERE user_id = ? AND provider = 'steam'`).bind(user.id),
+    c.env.DB.prepare(`DELETE FROM owned_apps WHERE user_id = ? AND provider = 'steam'`).bind(user.id),
+    c.env.DB.prepare(`DELETE FROM import_queue WHERE user_id = ? AND provider = 'steam'`).bind(user.id),
+  ]);
+  return c.redirect('/settings?msg=steam-disconnected');
 });
 
 app.post('/settings/alerts', async (c) => {
@@ -312,6 +408,10 @@ app.post('/settings/delete', async (c) => {
   if ((await c.req.parseBody()).confirm !== 'delete') return c.redirect('/settings');
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM wishlist_items WHERE user_id = ?').bind(user.id),
+    c.env.DB.prepare('DELETE FROM linked_accounts WHERE user_id = ?').bind(user.id),
+    c.env.DB.prepare('DELETE FROM owned_apps WHERE user_id = ?').bind(user.id),
+    c.env.DB.prepare('DELETE FROM import_queue WHERE user_id = ?').bind(user.id),
+    c.env.DB.prepare('DELETE FROM import_ignored WHERE user_id = ?').bind(user.id),
     c.env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
     c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
   ]);
