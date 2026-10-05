@@ -32,7 +32,7 @@ import {
   useYearAction,
 } from './core'
 import { createPerson, notePerson, pickDistinct, randomOccupation, randomWealth, TRAITS } from './people'
-import { bell, chance, pick, randFloat, randInt, shuffle } from './rng'
+import { bell, chance, pick, randFloat, randInt, uid } from './rng'
 import { defineScript } from './scripts'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
 import type { ChoiceOption, GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
@@ -322,7 +322,7 @@ export function askOut(g: GameState, p: Person): void {
   if (p.data.married === true) odds -= 0.25
   odds = clamp(odds, 0.05, 0.92)
   if (chance(g, odds)) {
-    startDating(g, p, `asked out (${relationLabel({ ...p, relation: (p.data.formerRelation as RelationKind | undefined) ?? p.relation }).toLowerCase()})`)
+    startDating(g, p, `asked out (was ${article2(labelOf(p))})`)
     addStat(g, 'happiness', randInt(g, 5, 10))
     notice(g, 'Ask Out', `You asked ${p.firstName} out. ${fillPronouns(pick(g, ASK_OUT_YES), p.gender)}\n\nYou are now dating ${fullName(p)}!`, {
       emoji: '\u{1F496}',
@@ -680,7 +680,7 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
     const std = pick(g, STDS)
     if (!c.conditions.some((x) => x.name === std.name)) {
       c.conditions.push({
-        id: `c${g.nextId + 1}`,
+        id: uid(g, 'c'),
         name: std.name,
         kind: 'std',
         severity: randInt(g, std.severity[0], std.severity[1]),
@@ -689,7 +689,6 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
         diagnosed: false,
         age: c.age,
       })
-      g.nextId += 1
       count(g, 'stds')
       lines.push('', 'A few days later, things started to feel a little... itchy. You might want to see a doctor.')
     }
@@ -1499,7 +1498,6 @@ const BABY_LINES_THEM = ['{label} gave birth to a healthy baby {kid}!', 'Congrat
 
 /** Births at age-up: partners/flings who were pregnant and the player's own pregnancy. Asks to name each baby. */
 export function processPregnancies(g: GameState): void {
-  const c = g.character
   for (const p of [...g.people]) {
     if (!p.pregnant) continue
     const babies = Math.max(1, Math.min(3, pNum(p, 'babies', 1)))
@@ -1526,11 +1524,10 @@ export function processPregnancies(g: GameState): void {
     }
     if (preg.via === 'surrogate' && chance(g, 0.06)) {
       addStat(g, 'happiness', -randInt(g, 10, 18))
-      log(g, `My surrogate ${preg.surrogateName ?? ''} decided to keep the baby.`.replace('  ', ' '), 'bad')
+      log(g, preg.surrogateName ? `My surrogate ${preg.surrogateName} decided to keep the baby.` : 'My surrogate decided to keep the baby.', 'bad')
       notice(g, 'Surrogate', `Your surrogate${preg.surrogateName ? `, ${preg.surrogateName},` : ''} decided to keep the baby and broke the contract. You could sue, but the baby isn't coming back.`, { emoji: '\u{1F494}', tone: 'bad' })
       return
     }
-    void c
     deliver(g, other, preg.babies, preg.via === 'surrogate' ? 'surrogate' : 'player', preg.surrogateName)
   }
 }
@@ -1656,12 +1653,12 @@ function fertilityNodes(): MenuNode[] {
   const sterilize: MenuAction = {
     type: 'action',
     id: 'sterilize',
-    label: 'Vasectomy',
+    label: 'Sterilization',
     emoji: '\u{2702}\u{FE0F}',
-    subtitle: (g) => (g.character.gender === 'male' ? `Never worry about it again (${money(900)})` : `Never worry about it again (${money(3500)})`),
+    subtitle: (g) => (g.character.gender === 'male' ? `Vasectomy (${money(900)})` : `Tubal ligation (${money(3500)})`),
     visible: (g) => g.flags.sterile !== true,
     disabledReason: (g) => tooYoungReason(g, 18),
-    confirm: (g) => `Are you sure? This is meant to be permanent${g.character.gender === 'male' ? '' : ' (tubal ligation)'}.`,
+    confirm: () => 'Are you sure? This is meant to be permanent.',
     run: (g) => {
       const cost = g.character.gender === 'male' ? 900 : 3500
       if (!spend(g, cost)) {
@@ -1826,21 +1823,7 @@ function fertilityNodes(): MenuNode[] {
       )
     },
   }
-  return [bc, ivf, insemination, surrogate, donate, sterilize, reverse].map((n) => {
-    if (n.id === 'sterilize') {
-      return { ...n, label: 'Vasectomy / Tubal Ligation' }
-    }
-    return n
-  }).map((n) => fixSterilizeLabel(n))
-}
-
-function fixSterilizeLabel(n: MenuAction): MenuAction {
-  if (n.id !== 'sterilize') return n
-  return {
-    ...n,
-    label: 'Sterilization',
-    subtitle: (g) => (g.character.gender === 'male' ? `Vasectomy (${money(900)})` : `Tubal ligation (${money(3500)})`),
-  }
+  return [bc, ivf, insemination, surrogate, donate, sterilize, reverse]
 }
 
 defineScript('love.fertility.surrogate', (g, choice, data) => {
@@ -2448,7 +2431,6 @@ function petStoreAction(store: PetStore): MenuAction {
     label: s.label,
     emoji: s.emoji,
     subtitle: s.subtitle,
-    visible: (g) => g.character.age >= Math.min(s.minAge, 18) || s.minAge <= 6,
     disabledReason: (g) => {
       const blocked = blockedReason(g)
       if (blocked) return blocked
@@ -2599,14 +2581,3 @@ export const petsMenu: MenuGroup = {
   },
   children: () => (Object.keys(STORES) as PetStore[]).map((s) => petStoreAction(s)),
 }
-
-// Re-exported for tests / other helpers.
-export function removeFromLife(g: GameState, p: Person): void {
-  removePerson(g, p.id)
-}
-
-export function addPetStat(p: Person, key: 'health' | 'happiness', delta: number): void {
-  addPersonStat(p, key, delta)
-}
-
-export { shuffle as shuffleList }
