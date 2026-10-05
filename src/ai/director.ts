@@ -434,10 +434,14 @@ function applyCustomAction(draft: GameState, r: AiCustomAction): void {
   const cost = -r.effects.money
   const cash = Math.max(0, c.money)
   if (cost > 50 && cost > cash) {
-    notice(draft, "Can't Afford It", `You can't afford that. It would cost about ${formatMoney(cost)}, and you only have ${formatMoney(cash)}.`, {
-      emoji: '\u{1F4B8}',
-      tone: 'bad',
-    })
+    const price = formatMoney(cost)
+    const have = formatMoney(cash)
+    const lines = [
+      `You can't afford that. It would cost about ${price}, and you only have ${have}.`,
+      `Your bank account laughed at you. That would cost around ${price}; you have ${have}.`,
+      `Dream big, spend small: that runs about ${price} and you're sitting on ${have}.`,
+    ]
+    notice(draft, "Can't Afford It", pick(draft, lines), { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   count(draft, 'customActions')

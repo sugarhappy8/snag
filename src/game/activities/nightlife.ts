@@ -35,7 +35,6 @@ import {
   result,
   rollAddiction,
   say,
-  stableInt,
   stablePick,
   strangerAge,
   strangerGender,
@@ -128,7 +127,7 @@ const DRINKS = ['Beer', 'Wine', 'Vodka Soda', 'Margarita', 'Mojito', 'Tequila Sh
 
 const BLACKOUT_PLACES = ['in a bathtub', 'on a stranger’s couch', 'at a 24-hour diner holding a waffle', 'in the back of a taxi', 'in your neighbor’s yard', 'wearing someone else’s jacket']
 
-/** Drink alcohol: fun now, consequences later. Returns false if it killed the player. */
+/** Drink alcohol: fun now, consequences later (may kill a very unhealthy drinker). */
 function drinkAlcohol(g: GameState, drink: string, venue: string): void {
   const c = g.character
   count(g, 'drinks')
@@ -306,7 +305,7 @@ const CONFRONT = defineScript('act.night.confront', (g, choice, data) => {
       result(g, 'Argument', `You stood your ground and told ${name} off. ${capitalizeWord(he)} muttered something and stomped away.`, '\u{1F5E3}\u{FE0F}')
       return
     }
-    hurtPlayer(g, venue, name, he, him, true)
+    hurtPlayer(g, venue, name, him, true)
     return
   }
   // Assault them.
@@ -321,7 +320,7 @@ const CONFRONT = defineScript('act.night.confront', (g, choice, data) => {
   }
   if (roll <= 78) {
     log(g, `I got into a fistfight with ${name} at ${venue}.`, 'bad')
-    hurtPlayer(g, venue, name, he, him, false)
+    hurtPlayer(g, venue, name, him, false)
     return
   }
   log(g, `I assaulted ${name} at ${venue}, and the police were called.`, 'bad')
@@ -333,7 +332,7 @@ function capitalizeWord(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-function hurtPlayer(g: GameState, venue: string, name: string, he: string, him: string, provokedByThem: boolean): void {
+function hurtPlayer(g: GameState, venue: string, name: string, him: string, provokedByThem: boolean): void {
   const dmg = randInt(g, 5, 15)
   addStat(g, 'health', -dmg)
   addStat(g, 'happiness', -randInt(g, 2, 6))
@@ -350,7 +349,6 @@ function hurtPlayer(g: GameState, venue: string, name: string, he: string, him: 
   result(g, 'Beat Up', provokedByThem
     ? `You argued back, and ${name} punched you in the face. You could sue ${him} for that.`
     : `${name} fought back hard. You both got bloodied before security pulled you apart.`, '\u{1F915}', 'bad')
-  void he
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +385,7 @@ const FLIRT = defineScript('act.night.flirt', (g, choice, data) => {
   const choices = partner
     ? [
         { id: 'home', label: `Go home with ${him} (cheat on ${partner.firstName})`, emoji: '\u{1F525}' },
-        { id: 'number', label: `Get ${him} number as a friend`.replace(`${him} number`, `${d.gender === 'male' ? 'his' : 'her'} number`), emoji: '\u{1F4F1}' },
+        { id: 'number', label: `Get ${d.gender === 'male' ? 'his' : 'her'} number as a friend`, emoji: '\u{1F4F1}' },
         { id: 'bye', label: 'Say goodnight', emoji: '\u{1F44B}' },
       ]
     : [
@@ -687,7 +685,7 @@ const BAR_ORDER = defineScript('act.night.barOrder', (g, choice, data) => {
   }
   const intro = choice === 'soda' ? 'You ordered a soda and people-watched.' : `You ordered ${choice === 'shots' ? 'a round of shots' : choice === 'cocktail' ? 'a fancy cocktail' : choice === 'wine' ? 'a glass of wine' : 'a cold beer'}.`
   if (choice !== 'soda') {
-    addMoney(g, -localPrice(g, choice === 'shots' ? 20 : choice === 'cocktail' ? 14 : 8))
+    addMoney(g, -price)
     const drink = choice === 'shots' ? 'Tequila Shot' : choice === 'cocktail' ? pick(g, ['Margarita', 'Mojito', 'Cosmopolitan', 'Whiskey Sour']) : choice === 'wine' ? 'Wine' : 'Beer'
     count(g, 'drinks')
     addStat(g, 'happiness', randInt(g, 1, 4))
@@ -765,7 +763,7 @@ export const nightlifeMenu: MenuGroup = {
       id: 'night.bar',
       label: 'Go to a Bar',
       emoji: '\u{1F37B}',
-      subtitle: `Tonight: ${BAR_NAMES[stableInt(g, 'bar', 0, BAR_NAMES.length - 1)]}`.replace(/^Tonight: .*$/, 'Grab a drink at a local bar'),
+      subtitle: 'Grab a drink at a local bar',
       run: goToBar,
     })
     nodes.push({
@@ -780,4 +778,3 @@ export const nightlifeMenu: MenuGroup = {
   },
 }
 
-export { DRUGS as NIGHTLIFE_DRUGS }

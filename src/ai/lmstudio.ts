@@ -331,8 +331,8 @@ async function complete<T>(settings: Settings, model: string, messages: ChatMess
   const useSchema = settings.structuredOutput && !session.noStructured.has(key)
   const payload: Record<string, unknown> = {
     messages,
-    temperature,
-    max_tokens: Math.max(64, Math.round(settings.maxTokens)),
+    temperature: Number.isFinite(temperature) ? Math.max(0, Math.min(2, temperature)) : 0.8,
+    max_tokens: Number.isFinite(settings.maxTokens) ? Math.max(64, Math.round(settings.maxTokens)) : 900,
     stream: false,
   }
   if (model) payload.model = model
