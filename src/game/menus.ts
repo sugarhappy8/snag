@@ -4,6 +4,8 @@ import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, n
 import { ASSET_KIND_VIEWS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
 import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
 import { occupationMenu } from './careers'
+import { computerMenu } from './computer'
+import { ventureAssetSubtitle, ventureAssetView } from './computer/dev'
 import { inPrison, queueAi } from './core'
 import { investmentAssetSubtitle, investmentAssetView, investmentsMenu } from './investments'
 import { crimeMenu } from './crime'
@@ -21,6 +23,7 @@ export { occupationMenu }
 ASSET_KIND_VIEWS.business = { subtitle: businessAssetSubtitle, children: businessAssetView }
 ASSET_KIND_VIEWS.investment = { subtitle: investmentAssetSubtitle, children: investmentAssetView }
 ASSET_KIND_VIEWS.membership = { subtitle: membershipAssetSubtitle, children: membershipAssetView }
+ASSET_KIND_VIEWS.venture = { subtitle: ventureAssetSubtitle, children: ventureAssetView }
 
 /** Insert `extra` right before the node with id `beforeId` (or at the end if it is missing). */
 function insertBefore(nodes: MenuNode[], beforeId: string, extra: MenuNode[]): MenuNode[] {
@@ -86,6 +89,7 @@ export const activitiesMenu: MenuGroup = {
     const all: MenuNode[] = [
       adoptionMenu,
       casinoMenu,
+      computerMenu,
       crimeMenu,
       doctorMenu,
       emigrateMenu,

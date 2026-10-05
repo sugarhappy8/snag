@@ -4,6 +4,7 @@
 import { yearlyAssets } from './assets'
 import { yearlyBusiness } from './business'
 import { yearlyCareer } from './careers'
+import { yearlyComputer } from './computer'
 import { currentLogYear, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
@@ -26,6 +27,7 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['business', yearlyBusiness],
   ['investments', yearlyInvestments],
   ['shops', yearlyShops],
+  ['computer', yearlyComputer],
   ['finance', yearlyFinance],
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],

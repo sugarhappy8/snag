@@ -403,6 +403,8 @@ export type AssetKind =
   | 'investment'
   /** A recurring membership or subscription: value 0, upkeep = the yearly fee. */
   | 'membership'
+  /** An online venture run from the home computer (a SaaS, an app, an online store...). value = owner's stake. */
+  | 'venture'
   | 'other'
 
 export interface Mortgage {

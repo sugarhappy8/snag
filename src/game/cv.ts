@@ -17,6 +17,7 @@
 //
 // This module must not import education.ts or careers.ts (they import it).
 import { cycleLabel, cycleOf } from './business/economy'
+import { devCvEntries } from './computer/dev-cv'
 import { addHidden, addStat, clamp, count, earnIncome, formatMoney, log, notice, parents, remember, spend, useYearAction, yearActionsUsed } from './core'
 import { ALL_JOBS, INDUSTRY_MARKET, INDUSTRY_TAGS, MAJOR_TAGS, PROGRAM_TAGS, type GradKey, type Industry as JobIndustry, type JobDef } from './data/jobs'
 import { fillLocal, localeOf, localTerm } from './data/locales'
@@ -719,6 +720,8 @@ function derivedEntries(g: GameState): CvEntry[] {
   if (c.talent && c.talent !== 'Crime') {
     out.push({ id: 'd:talent', kind: 'skill', title: `Natural talent: ${c.talent}`, org: '', startAge: c.age, detail: 'Discovered as a kid', strength: 3, embellished: false, tags: TALENT_TAGS[c.talent] ?? [] })
   }
+  // The home computer: coding skill, shipped projects, ventures, freelance work, contests.
+  out.push(...devCvEntries(g))
   return out
 }
 
