@@ -1672,12 +1672,6 @@ label {
   margin-top: 6px;
 }
 
-.person-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .person-facts {
   display: flex;
   flex-direction: column;
