@@ -6,6 +6,7 @@ import { loadGame, loadGraveyard, loadRibbons } from '../../game/save'
 import type { GameState } from '../../game/types'
 import { getCountry } from '../../game/world'
 import { checkAi, getApp, goTo, hasSavedGame, resumeSavedGame, updateSettings, useApp } from '../store'
+import { HAS_DEV_PROXY } from '../../settings'
 import '../styles/screens.css'
 import { Flash, useFlash } from './SettingsScreen'
 
@@ -101,9 +102,16 @@ export function AiStatusCard() {
             <li>
               Go to <b>Developer</b> → <b>Start Server</b> (port 1234).
             </li>
-            <li>
-              Keep <span className="al-kbd">npm run dev</span> running, then tap Retry.
-            </li>
+            {HAS_DEV_PROXY ? (
+              <li>
+                Keep <span className="al-kbd">npm run dev</span> running, then tap Retry.
+              </li>
+            ) : (
+              <li>
+                In LM Studio's <b>Server Settings</b>, turn on <b>Enable CORS</b>. If your browser asks to let this site access devices
+                on your local network, choose <b>Allow</b>. Then tap Retry.
+              </li>
+            )}
           </ol>
         </>
       )}

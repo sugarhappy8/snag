@@ -3,12 +3,10 @@
 import { useMemo, useState } from 'react'
 import { formatMoney, shortMoney } from '../../game/core'
 import { getRibbon } from '../../game/ribbons'
-import { loadGraveyard, type GraveyardEntry } from '../../game/save'
+import { loadGraveyard, removeFromGraveyard, type GraveyardEntry } from '../../game/save'
 import { goBack, goTo } from '../store'
 import '../styles/screens.css'
 import { ConfirmDialog, Flash, ScreenHeader, useFlash } from './SettingsScreen'
-
-const GRAVEYARD_KEY = 'anotherlife.graveyard.v1'
 
 export type GraveSort = 'recent' | 'netWorth' | 'age' | 'name'
 
@@ -78,13 +76,8 @@ export function readGraves(): GraveyardEntry[] {
 
 /** Remove one grave from storage. Returns the remaining list. */
 export function bulldozeGrave(lifeId: string): GraveyardEntry[] {
-  const rest = readGraves().filter((e) => e.lifeId !== lifeId)
-  try {
-    localStorage.setItem(GRAVEYARD_KEY, JSON.stringify(rest))
-  } catch {
-    // storage blocked: the grave reappears next visit
-  }
-  return rest
+  removeFromGraveyard(lifeId)
+  return readGraves().filter((e) => e.lifeId !== lifeId)
 }
 
 export function GraveyardScreen() {

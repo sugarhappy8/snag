@@ -3,8 +3,8 @@
 // pieces the other out-of-game screens share.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { testConnection } from '../../ai/director'
-import { loadGame } from '../../game/save'
-import { DEFAULT_SETTINGS, type AiLevel, type ContentRating, type Settings } from '../../settings'
+import { clearRibbonsAndGraveyard, loadGame } from '../../game/save'
+import { DEFAULT_SETTINGS, HAS_DEV_PROXY, type AiLevel, type ContentRating, type Settings } from '../../settings'
 import { abandonLife, checkAi, getApp, goBack, hasSavedGame, updateSettings, useApp } from '../store'
 import '../styles/screens.css'
 
@@ -326,13 +326,8 @@ export function SettingsScreen() {
 
   const doReset = () => {
     setConfirm(null)
-    try {
-      localStorage.removeItem('anotherlife.ribbons.v1')
-      localStorage.removeItem('anotherlife.graveyard.v1')
-      showFlash('Ribbons and graveyard wiped clean. 🧹')
-    } catch {
-      showFlash('Couldn’t clear storage in this browser.')
-    }
+    clearRibbonsAndGraveyard()
+    showFlash('Ribbons and graveyard wiped clean. 🧹')
   }
 
   const statusLabel =
@@ -420,7 +415,8 @@ export function SettingsScreen() {
             isAbsoluteUrl(settings.baseUrl) ? (
               <>
                 You’re calling LM Studio directly. Turn on <b>Enable CORS</b> in LM Studio’s server settings, or the browser will block
-                the requests.
+                the requests. Chrome and Edge also ask once to let this site <b>access devices on your local network</b>: choose Allow
+                (or set it under the 🔒 icon → Site settings → Local network access).
               </>
             ) : (
               <>
@@ -593,9 +589,17 @@ export function SettingsScreen() {
             Open the <b>Developer</b> tab, load the model and switch <b>Start Server</b> on. It listens on port{' '}
             <span className="al-kbd">1234</span> by default.
           </li>
-          <li>
-            Keep <span className="al-kbd">npm run dev</span> running for this game, then press <b>Test connection</b> above.
-          </li>
+          {HAS_DEV_PROXY ? (
+            <li>
+              Keep <span className="al-kbd">npm run dev</span> running for this game, then press <b>Test connection</b> above.
+            </li>
+          ) : (
+            <li>
+              In LM Studio’s <b>Server Settings</b>, turn on <b>Enable CORS</b> (or start it with{' '}
+              <span className="al-kbd">lms server start --cors</span>). Press <b>Test connection</b> above and, if your browser asks to
+              access devices on your local network, choose <b>Allow</b>.
+            </li>
+          )}
           <li>Pick a narration level and start a new life. If a year takes too long, tap Skip and the built-in stories take over.</li>
         </ol>
       </section>

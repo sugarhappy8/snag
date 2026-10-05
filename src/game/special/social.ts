@@ -6,7 +6,7 @@ import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPe
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, SocialMedia } from '../types'
-import { CELEBS, FAMOUS, addFame, blocked, cleanName, compact, fameOf, money, peek, prof, say, tell } from './common'
+import { CELEBS, FAMOUS, addFame, blocked, compact, fameOf, money, peek, prof, say, tell } from './common'
 
 // ---------------------------------------------------------------------------
 // Data
