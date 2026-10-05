@@ -10,7 +10,11 @@ export interface Settings {
    * full: also rewrites every activity result in its own words (slower).
    */
   aiLevel: AiLevel
-  /** OpenAI-compatible base URL. '/lmstudio/v1' goes through the Vite dev-server proxy. */
+  /**
+   * OpenAI-compatible base URL. On the hosted site this is LM Studio on the player's own
+   * computer (http://localhost:1234/v1, needs LM Studio's "Enable CORS"). Under `npm run dev`
+   * it is '/lmstudio/v1', which the Vite dev server proxies to LM Studio (no CORS needed).
+   */
   baseUrl: string
   /** Model id from /v1/models; '' lets LM Studio use whatever model is loaded. */
   model: string
@@ -28,9 +32,17 @@ export interface Settings {
   showAiBadges: boolean
 }
 
+/** Direct address of a default LM Studio server. */
+export const LMSTUDIO_DIRECT_URL = 'http://localhost:1234/v1'
+/** Address through the Vite dev/preview server proxy. */
+export const LMSTUDIO_PROXY_URL = '/lmstudio/v1'
+
+/** True when the page is served by the Vite dev server, which has the /lmstudio proxy. */
+export const HAS_DEV_PROXY = import.meta.env.DEV
+
 export const DEFAULT_SETTINGS: Settings = {
   aiLevel: 'balanced',
-  baseUrl: '/lmstudio/v1',
+  baseUrl: HAS_DEV_PROXY ? LMSTUDIO_PROXY_URL : LMSTUDIO_DIRECT_URL,
   model: '',
   apiKey: '',
   temperature: 0.9,

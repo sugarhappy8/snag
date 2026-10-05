@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
     },
   }
   return {
+    // Relative asset paths so the build works at any URL (Cloudflare root or a sub-path).
+    base: './',
     plugins: [react()],
     server: { port: 5173, proxy },
     preview: { port: 4173, proxy },

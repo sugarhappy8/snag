@@ -27,37 +27,76 @@ isn't running, or you skip a slow answer, the game uses its built-in offline eve
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or
 > endorsed by Candywriter, and it uses no BitLife names, art or assets.
 
-## Quick start
+## Play it
 
-You need [Node.js](https://nodejs.org) 20 or newer and [LM Studio](https://lmstudio.ai).
+AnotherLife is a static website hosted on Cloudflare. The AI runs on **your** computer: the page
+in your browser talks straight to LM Studio on `localhost`, so your games and prompts never touch
+a server.
 
-1. **Set up LM Studio**
-   1. Install LM Studio and download a chat/instruct model. Good choices are a 7–14B instruct
-      model such as Qwen 3, Llama 3.x, Gemma 3 or Mistral at Q4/Q5. Smaller models work but write
-      blander stories.
-   2. Open the **Developer** tab, load the model and switch **Start Server** on. It listens on
-      `http://localhost:1234` by default. You can also run `lms server start` from the command line.
-2. **Run the game**
-   ```bash
-   npm install
-   npm run dev
-   ```
-   Then open <http://localhost:5173>.
-3. Press **New Life**. The status dot in the header turns green once the game reaches LM Studio.
+1. **Set up LM Studio** (one time)
+   1. Install [LM Studio](https://lmstudio.ai) and download a chat/instruct model. A 7–14B instruct
+      model such as Qwen 3, Llama 3.x, Gemma 3 or Mistral at Q4/Q5 works well. Smaller models work
+      but write blander stories.
+   2. Open the **Developer** tab, load the model, open **Server Settings** and turn on
+      **Enable CORS**. This lets the website talk to LM Studio.
+   3. Switch the server on. It listens on `http://localhost:1234` by default. From a terminal you
+      can instead run `lms server start --cors`.
+2. **Open the game** at your Cloudflare URL (see [Deploying](#deploying-to-cloudflare)), for
+   example `https://anotherlife.<your-account>.workers.dev`, and press **New Life**.
+3. When Chrome or Edge asks to let the site **access devices on your local network**, click
+   **Allow**. That permission is how the page reaches LM Studio on your computer. The status dot in
+   the header turns green once it's connected.
 
-The dev server forwards `/lmstudio/*` to LM Studio, so you **don't** need to enable CORS in LM
-Studio. If LM Studio runs on a different machine or port, start the game with:
+No LM Studio? The game still plays, using its built-in offline event library.
+
+**Playing on another device (phone, tablet):** the AI address in ⚙️ Settings must point at a
+computer running LM Studio. A secure (https) page can't call a plain `http://192.168…` address on
+every browser. The reliable way is an https tunnel to LM Studio, for example
+`cloudflared tunnel --url http://localhost:1234`. Paste the `https://….trycloudflare.com/v1`
+address it prints into Settings.
+
+## Deploying to Cloudflare
+
+The repo is set up as a Cloudflare Worker named `anotherlife` that only serves the built site
+(`wrangler.jsonc`). It is separate from any other Worker on your account.
+
+**Automatic deploys (recommended):** in the Cloudflare dashboard go to **Workers & Pages →
+Create → Import a repository**, pick this GitHub repo, and use:
+
+| Setting | Value |
+|---|---|
+| Build command | `npm run build` |
+| Deploy command | `npx wrangler deploy` |
+| Production branch | `main` |
+
+After that, every push to `main` redeploys the site. You'll get a `*.workers.dev` URL, and you
+can attach a custom domain under the Worker's **Settings → Domains & Routes**.
+
+**One-off deploy from your computer:**
 
 ```bash
-LMSTUDIO_URL=http://192.168.1.50:1234 npm run dev
+npm install
+npx wrangler login
+npm run deploy
 ```
+
+## Run it locally instead
+
+```bash
+npm install
+npm run dev
+```
+
+Open <http://localhost:5173>. The dev server forwards `/lmstudio/*` to LM Studio, so CORS doesn't
+need to be on. If LM Studio is on another machine or port, use
+`LMSTUDIO_URL=http://192.168.1.50:1234 npm run dev`.
 
 ## Settings (⚙️)
 
 | Setting | What it does |
 |---|---|
 | **AI narration** | *Off*: fully offline. *Balanced* (default): the AI writes events, outcomes, conversations, interviews, "Do Anything" and obituaries. *Full*: the AI also rewrites every activity result (slower). |
-| **Server URL** | `/lmstudio/v1` (through the dev-server proxy) or an absolute URL such as `http://localhost:1234/v1`. An absolute URL needs **Enable CORS** turned on in LM Studio's server settings. |
+| **Server URL** | Where LM Studio is. The hosted site uses `http://localhost:1234/v1`, which needs **Enable CORS** in LM Studio. `npm run dev` uses `/lmstudio/v1` through its proxy. A tunnel URL works too. |
 | **Model** | *Auto* uses whatever model LM Studio has loaded. You can also pick a specific one; LM Studio loads it on demand. |
 | **API token** | Only needed if you turned on authentication in LM Studio. |
 | **Structured output** | Sends a JSON schema so the model must answer in valid JSON. Turn it off if your model or backend rejects `response_format`. |
@@ -68,7 +107,12 @@ LMSTUDIO_URL=http://192.168.1.50:1234 npm run dev
 ## Troubleshooting
 
 - **Red status dot / "Can't reach LM Studio"**: check that LM Studio's server is running on port
-  1234 and that a model is loaded. Then press **Test connection** in Settings.
+  1234, that a model is loaded, and (on the hosted site) that **Enable CORS** is on and you
+  allowed local network access in the browser. In Chrome, open the 🔒 icon in the address bar
+  → *Site settings* → *Local network access* → *Allow*. Then press **Test connection** in
+  Settings.
+- **Safari**: Safari may block a secure website from calling `http://localhost`. Use Chrome, Edge
+  or Firefox, or run the game locally with `npm run dev`.
 - **Very slow years**: use a smaller or more quantized model, enable *Skip thinking*, or lower *max
   tokens*. You can always press **Skip** on the thinking card to use the offline outcome for that
   step.
@@ -82,6 +126,7 @@ npm run dev          # dev server with the LM Studio proxy
 npm test             # unit tests (Vitest)
 npm run typecheck    # TypeScript
 npm run build        # production build into dist/ (serve with `npm run preview`, which keeps the proxy)
+npm run deploy       # build and deploy to Cloudflare (needs `npx wrangler login` once)
 node scripts/mock-lmstudio.mjs   # a fake LM Studio on :1234 that returns schema-shaped JSON (no model needed)
 ```
 
