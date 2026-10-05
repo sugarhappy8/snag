@@ -421,8 +421,8 @@ function sicknessChance(g: GameState): number {
 }
 
 function ageWeight(def: DiseaseDef, age: number): number {
-  if (def.cancer) return age < 18 ? 0.08 : age < 40 ? 0.25 : age < 60 ? 0.7 : 1.1
-  if (def.name === 'Heart Disease' || def.name === 'High Blood Pressure') return age < 50 ? 0.6 : age < 70 ? 1.3 : 1.8
+  if (def.cancer) return age < 18 ? 0.04 : age < 40 ? 0.12 : age < 60 ? 0.5 : 1.1
+  if (def.name === 'Heart Disease' || def.name === 'High Blood Pressure') return age < 50 ? 0.35 : age < 70 ? 1.3 : 1.8
   if (def.name === 'Pneumonia') return age >= 70 ? 2 : 1
   return 1
 }
@@ -443,7 +443,13 @@ function diseaseWeight(g: GameState, d: DiseaseDef): number {
   let w = d.weight * ageWeight(d, c.age)
   const idle = c.age > 25 && Object.values(g.counters).reduce((s, n) => s + n, 0) < 10
   if (d.odd && idle) w *= 3
-  if ((d.name === 'Malaria' || d.name === 'Tuberculosis') && getCountry(c.countryId).wealth < 0.5) w *= 2
+  if (d.name === 'Malaria' || d.name === 'Tuberculosis') {
+    // Tropical and poverty-linked illnesses are rare in rich countries.
+    const wealth = getCountry(c.countryId).wealth
+    if (wealth < 0.3) w *= 2
+    else if (wealth >= 0.6) w *= d.name === 'Malaria' ? 0 : 0.3
+    else if (d.name === 'Malaria') w *= 0.5
+  }
   if ((d.name === 'Anorexia' || d.name === 'Bulimia') && c.gender === 'female') w *= 3
   if (d.name === 'Diabetes' && c.stats.health < 50) w *= 1.8
   if (d.name === 'Depression' && c.stats.happiness < 40) w *= 3
@@ -471,6 +477,11 @@ function maybeContract(g: GameState): void {
   contractCondition(g, def.name)
 }
 
+/** Incurable, lifelong illnesses that can only be managed (not cancers). */
+function isChronic(def: DiseaseDef): boolean {
+  return !def.cancer && def.self === 0 && def.cure < 0.2
+}
+
 const RESOLVED_LINES = ['My {name} cleared up on its own.', 'I finally got over my {name}.', 'My {name} went away by itself.', 'I beat my {name} without seeing a doctor.']
 const RESOLVED_HIDDEN = ["I've been feeling a lot better lately.", 'Whatever was making me sick went away on its own.', 'I finally shook off whatever bug I had.']
 
@@ -490,11 +501,14 @@ function progressConditions(g: GameState): void {
       continue
     }
     const jitter = randFloat(g, 0.7, 1.3)
+    // Lifelong illnesses (diabetes, lupus, HIV...) wear you down slowly instead of
+    // killing within a few years like an untreated cancer.
+    const chronic = isChronic(def)
     if (cond.kind === 'mental') {
       addStat(g, 'health', -Math.round(cond.severity * 0.12 * jitter))
       addStat(g, 'happiness', -Math.round((cond.severity * 0.4 + (def.mood ?? 3)) * jitter))
     } else {
-      addStat(g, 'health', -Math.round(cond.severity * (def.deadly ? 0.38 : 0.22) * jitter))
+      addStat(g, 'health', -Math.round(cond.severity * (def.deadly && !chronic ? 0.38 : 0.22) * jitter))
       if (cond.diagnosed && def.deadly) addStat(g, 'happiness', -randInt(g, 2, 6))
       if (def.mood) addStat(g, 'happiness', -def.mood)
     }
@@ -502,7 +516,8 @@ function progressConditions(g: GameState): void {
     if (def.smarts) addStat(g, 'smarts', -randInt(g, 1, def.smarts))
     if (def.progress) {
       const p = def.progress
-      cond.severity = Math.min(100, cond.severity + randInt(g, Math.max(1, Math.round(p * 0.5)), Math.round(p * 1.5)))
+      const ceiling = chronic ? Math.max(cond.severity, def.sev[1] + 15) : 100
+      cond.severity = Math.min(ceiling, cond.severity + randInt(g, Math.max(1, Math.round(p * 0.5)), Math.round(p * 1.5)))
     }
   }
 }
@@ -1266,7 +1281,8 @@ function attemptCure(g: GameState, cond: Condition, p: number, who: string, emoj
   const label = conditionLabel(cond.name)
   if (def.cure <= 0 && !def.cancer && cond.kind !== 'injury') {
     addStat(g, 'health', randInt(g, 4, 9))
-    cond.severity = Math.max(1, cond.severity - randInt(g, 1, 4))
+    const floor = Math.min(cond.severity, Math.max(1, Math.ceil(def.sev[0] / 2)))
+    cond.severity = Math.max(floor, cond.severity - randInt(g, 3, 8))
     notice(g, cap(who), `There's no cure for ${label}, but ${who} prescribed something to keep the symptoms in check. You feel a bit better.`, { emoji })
     log(g, `I got treatment to manage my ${label}.`)
     return false

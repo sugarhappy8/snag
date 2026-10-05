@@ -6,7 +6,6 @@ import {
   addPersonStat,
   addRelationship,
   addStat,
-  article,
   canAfford,
   clamp,
   count,
@@ -20,7 +19,6 @@ import {
   minigame,
   notice,
   parents,
-  peopleBy,
   pronouns,
   relationLabel,
   remember,
@@ -38,7 +36,6 @@ import { defineScript } from './scripts'
 import { COUNTRIES, getCountry, NAME_POOLS, randomCity, randomFirstName, randomLastName, type NameRegion } from './world'
 import type {
   ChoiceOption,
-  CrimeRecord,
   GameState,
   Gender,
   Json,
@@ -339,13 +336,20 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
 
   // Already behind bars: charged inside, time added, no trial.
   if (c.prison) {
-    const idx = markCaught(g, name, opts.recordIndex)
-    c.criminalRecord[idx].convicted = true
     count(g, 'arrests')
+    const rec = c.criminalRecord
+    let idx = opts.recordIndex !== undefined && rec[opts.recordIndex] ? opts.recordIndex : -1
+    if (idx < 0) {
+      for (let i = rec.length - 1; i >= 0; i--) {
+        if (rec[i].crime === name && !rec[i].caught) {
+          idx = i
+          break
+        }
+      }
+    }
     const add = Math.max(1, Math.round(sev * (1 + rand(g))))
-    c.criminalRecord.pop() // addPrisonTime records the conviction itself
-    if (idx < c.criminalRecord.length) c.criminalRecord[idx].convicted = true
-    addPrisonTime(g, add, name)
+    // addPrisonTime records the conviction (on the existing record entry when there is one).
+    addPrisonTime(g, add, name, idx >= 0 ? idx : undefined)
     const extra = c.prison.life || c.prison.deathRow ? 'Not that it changes much for you.' : `${years(add)} were added to your sentence.`
     notice(g, 'Charged', `You were convicted of ${name.toLowerCase()} while already in prison. ${extra}`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
     return
@@ -818,7 +822,6 @@ export interface PickpocketData {
 }
 
 const PICKPOCKET_RESULT = defineScript('crime.pickpocket.result', (g, result, data) => {
-  const c = g.character
   if (!canAct(g) || !isRecord(data)) return
   const t = PICKPOCKET_TARGETS.find((x) => x.id === str(data.targetId)) ?? PICKPOCKET_TARGETS[0]
   const who = t.label.charAt(0).toLowerCase() + t.label.slice(1)
@@ -1376,7 +1379,6 @@ function generateHouse(g: GameState, tier: number): BurglaryData {
 }
 
 const BURGLARY_RESULT = defineScript('crime.burglary.result', (g, result, data) => {
-  const c = g.character
   if (!canAct(g) || !isRecord(data)) return
   const house = data as unknown as BurglaryData
   if (!Array.isArray(house.rooms)) return
@@ -1448,7 +1450,6 @@ const BURGLARY_RESULT = defineScript('crime.burglary.result', (g, result, data) 
   }
   log(g, 'I fled a burglary empty-handed.', 'bad')
   outcome(g, by === 'alarm' ? 'Alarm!' : 'Spotted', by === 'alarm' ? `The alarm blared and you sprinted out of ${house.house} before the cops arrived.${lost}` : `${house.owner} screamed and chased you out of the house.${lost}`, '\u{1F6A8}', 'bad')
-  void c
 })
 
 const BURGLARY_PICK = defineScript('crime.burglary.pick', (g, choice, data) => {
@@ -1976,7 +1977,6 @@ function killPerson(g: GameState, p: Person, cause: string): void {
 }
 
 const MURDER_SCRIPT = defineScript('crime.murder.method', (g, choice, data) => {
-  const c = g.character
   if (!canAct(g) || !isRecord(data) || choice === 'cancel') return
   const method = MURDER_METHODS.find((m) => m.id === choice)
   const vRaw = data.victim
@@ -2127,7 +2127,6 @@ interface Hitman {
 }
 
 const HITMAN_DEMAND = defineScript('crime.hitman.demand', (g, choice, data) => {
-  const c = g.character
   if (!canAct(g) || !isRecord(data)) return
   const name = str(data.name, 'The hitman')
   const extra = num(data.extra)
@@ -2163,11 +2162,9 @@ const HITMAN_DEMAND = defineScript('crime.hitman.demand', (g, choice, data) => {
   const dmg = hurt(g, randInt(g, 20, 45))
   log(g, `${name} attacked me.`, 'bad')
   outcome(g, 'Hitman', `${name} attacked you and left you bleeding in an alley. (-${dmg} health)`, '\u{1F915}', 'bad')
-  void c
 })
 
 const HITMAN_SCRIPT = defineScript('crime.hitman.pick', (g, choice, data) => {
-  const c = g.character
   if (!canAct(g) || !isRecord(data) || choice === 'cancel') return
   const hitmen = Array.isArray(data.hitmen) ? data.hitmen : []
   const raw = hitmen.find((h) => isRecord(h) && h.id === choice)
@@ -2214,7 +2211,6 @@ const HITMAN_SCRIPT = defineScript('crime.hitman.pick', (g, choice, data) => {
     return
   }
   outcome(g, 'Contract Killing', done, '\u{1F3A9}', 'bad')
-  void c
 })
 
 function hitmanOffer(g: GameState, victim: Victim): void {
@@ -2669,7 +2665,6 @@ function extortPaid(g: GameState, business: string, amount: number, how: string)
 }
 
 function extortViolence(g: GameState, d: { [key: string]: Json }, choice: string): void {
-  const c = g.character
   const business = str(d.business, 'shop')
   const owner = str(d.owner, 'The owner')
   const demand = num(d.demand)
@@ -2700,7 +2695,6 @@ function extortViolence(g: GameState, d: { [key: string]: Json }, choice: string
   }
   log(g, `I beat up the owner of a ${business}, but they still refused to pay.`, 'bad')
   outcome(g, 'Stubborn', `You put ${owner} in the hospital, but they still wouldn't pay. Respect, honestly.`, '\u{1F915}', 'bad')
-  void c
 }
 
 defineScript(EXTORT_OFFER, (g, choice, data) => {
@@ -2797,7 +2791,6 @@ const extortAction: MenuAction = {
 // --- Family actions ----------------------------------------------------------
 
 const ORDER_SCRIPT = defineScript('crime.mafia.order', (g, choice, data) => {
-  const c = g.character
   const fam = crimeFamily(g)
   if (!canAct(g) || !fam || !isRecord(data)) return
   const task = str(data.task, 'scare')

@@ -107,6 +107,36 @@ describe('yearlyHealth', () => {
     expect(g.character.conditions.find((c) => c.name === 'Lung Cancer')!.severity).toBeGreaterThan(60)
   })
 
+  it('lets chronic illnesses wear you down slowly instead of killing fast', () => {
+    let survivors = 0
+    for (let s = 1; s <= 40; s++) {
+      const g = makeTestGame(s, { age: 20 })
+      contractCondition(g, 'Diabetes', { quiet: true, severity: 14 })
+      for (let y = 0; y < 15 && g.character.alive; y++) {
+        g.character.age++
+        g.queue = []
+        yearlyHealth(g)
+        checkDeath(g)
+        const d = g.character.conditions.find((c) => c.name === 'Diabetes')
+        if (d) expect(d.severity).toBeLessThanOrEqual(31)
+      }
+      if (g.character.alive) survivors++
+    }
+    expect(survivors).toBeGreaterThanOrEqual(32)
+  })
+
+  it('keeps malaria out of rich countries', () => {
+    for (let s = 1; s <= 60; s++) {
+      const g = makeTestGame(s, { age: 5 })
+      for (let y = 0; y < 60 && g.character.alive; y++) {
+        g.character.age++
+        g.queue = []
+        yearlyHealth(g)
+        expect(g.character.conditions.some((c) => c.name === 'Malaria')).toBe(false)
+      }
+    }
+  })
+
   it('announces hidden illnesses with a symptoms popup', () => {
     const g = makeTestGame(3, { age: 40 })
     const cond = contractCondition(g, 'Lung Cancer')!

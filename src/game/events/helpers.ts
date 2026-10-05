@@ -148,7 +148,7 @@ export interface Fx {
   grades?: number
   /** Prison respect change. */
   respect?: number
-  /** Prison behavior change (g.flags.prisonBehavior, 0-100, read by parole). */
+  /** Prison behavior change (g.flags.prisonLife.behavior, 0-100, read by parole). */
   behavior?: number
   /** Counter keys to bump by one. */
   count?: string | string[]
@@ -247,8 +247,11 @@ export function applyFx(g: GameState, ctx: Ctx | null, fx: Fx): void {
   }
   if (fx.respect && c.prison) c.prison.respect = Math.round(clamp(c.prison.respect + fx.respect))
   if (fx.behavior && c.prison) {
-    const cur = typeof g.flags.prisonBehavior === 'number' ? g.flags.prisonBehavior : 50
-    g.flags.prisonBehavior = Math.round(clamp(cur + fx.behavior))
+    // prison.ts keeps per-sentence data (behavior drives parole) in g.flags.prisonLife.
+    const pl = g.flags.prisonLife
+    if (pl && typeof pl === 'object' && !Array.isArray(pl) && typeof pl.behavior === 'number') {
+      pl.behavior = Math.round(clamp(pl.behavior + fx.behavior))
+    }
   }
   for (const key of typeof fx.count === 'string' ? [fx.count] : (fx.count ?? [])) count(g, key)
   for (const [key, by] of fx.countBy ?? []) count(g, key, by)

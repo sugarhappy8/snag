@@ -1117,8 +1117,83 @@ export function performWedding(g: GameState, p: Person, o: { venue: string; pren
     text += `\n\nYou honeymooned in ${o.honeymoon}. ${pick(g, ['It was magical.', 'You got the worst sunburn of your life.', 'You barely left the hotel room. The minibar bill was astonishing.', 'You lost your luggage but found each other. Aww.'])}`
     log(g, `We honeymooned in ${o.honeymoon}.`)
   }
+  const steps = addStepchildren(g, p)
+  if (steps.length) {
+    text += `\n\n${p.firstName} has ${steps.length === 1 ? 'a child' : 'children'} from a previous relationship: ${steps.join(', ')}. You're a stepparent now!`
+    log(g, `I became a stepparent to ${steps.length === 1 ? steps[0] : `${steps.length} kids`}.`)
+  }
   notice(g, 'Just Married!', text, { emoji: '\u{1F492}', tone: 'good' })
+  if (p.lastName && p.lastName !== c.lastName) {
+    const hyphen = `${c.lastName}-${p.lastName}`
+    scriptChoice(
+      g,
+      'love.wedding.surname',
+      'Surname',
+      `Now that you're married, what will you do about your last names?`,
+      [
+        { id: 'keep', label: `Keep ${c.lastName}`, emoji: '\u{1F3F7}\u{FE0F}' },
+        { id: 'take', label: `Take ${p.firstName}'s name (${p.lastName})`, emoji: '\u{270D}\u{FE0F}' },
+        ...(hyphen.length <= 30 ? [{ id: 'hyphen', label: `Hyphenate (${hyphen})`, emoji: '\u{2796}' }] : []),
+        { id: 'theirs', label: `Ask ${p.firstName} to take ${c.lastName}`, emoji: '\u{1F64F}' },
+      ],
+      { emoji: '\u{1F48D}', data: asJson({ pid: p.id }), personId: p.id },
+    )
+  }
 }
+
+/** A spouse's kids from a previous relationship become your stepchildren at the wedding. Returns "Name (age)" labels. */
+function addStepchildren(g: GameState, p: Person): string[] {
+  const c = g.character
+  if (p.data.priorKidsRolled !== true) {
+    p.data.priorKidsRolled = true
+    const odds = p.age < 24 ? 0 : clamp(0.1 + (p.age - 24) * 0.012, 0, 0.4)
+    p.data.priorKids = chance(g, odds) ? randInt(g, 1, p.age >= 32 ? 3 : 2) : 0
+  }
+  const n = pNum(p, 'priorKids')
+  p.data.priorKids = 0
+  const out: string[] = []
+  for (let i = 0; i < n; i++) {
+    const age = randInt(g, 0, Math.max(0, Math.min(30, p.age - 18)))
+    const kid = createPerson(g, {
+      relation: 'stepchild',
+      age,
+      lastName: p.lastName,
+      relationship: randInt(g, 25, 60),
+      occupation: age < 18 ? npcOccupationLabel(age) : randomOccupation(g, age),
+      otherParentId: p.id,
+      biological: false,
+      livesWithPlayer: age < 18 && !inPrison(g),
+      data: { viaSpouseId: p.id, lastInteractionAge: c.age },
+    })
+    out.push(`${kid.firstName} (${kid.age})`)
+  }
+  return out
+}
+
+defineScript('love.wedding.surname', (g, choice, data) => {
+  const p = getPerson(g, dStr(data, 'pid'))
+  if (!p || !p.alive || p.relation !== 'spouse') return
+  const c = g.character
+  const original = c.lastName
+  if (choice === 'take' || choice === 'hyphen') {
+    if (typeof g.flags.birthSurname !== 'string') g.flags.birthSurname = original
+    c.lastName = choice === 'take' ? p.lastName : `${original}-${p.lastName}`
+    p.data.tookSurname = true
+    addRelationship(p, randInt(g, 2, 6))
+    log(g, `I changed my name to ${fullName(c)}.`)
+    notice(g, 'Surname', `You're officially ${fullName(c)} now. The paperwork took longer than the wedding.`, { emoji: '\u{270D}\u{FE0F}' })
+  } else if (choice === 'theirs') {
+    if (chance(g, clamp(0.35 + p.relationship / 200 - (hasTrait(p, 'arrogant', 'jealous') ? 0.2 : 0), 0.1, 0.9))) {
+      p.lastName = original
+      addRelationship(p, randInt(g, 1, 3))
+      log(g, `${p.firstName} took my last name.`)
+      notice(g, 'Surname', `${p.firstName} agreed to take your last name. Welcome to the ${original} family!`, { emoji: '\u{1F91D}', tone: 'good' })
+    } else {
+      addRelationship(p, -randInt(g, 2, 6))
+      notice(g, 'Surname', `${p.firstName} refused. "${pick(g, ["I've had this name for my whole life.", 'Absolutely not. Have you met your family?', 'How about you take mine instead?'])}"`, { emoji: '\u{1F645}' })
+    }
+  }
+})
 
 export function elope(g: GameState, p: Person): void {
   const problem = weddingProblem(g, p)
@@ -1271,7 +1346,31 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
   remember(g, `Divorced ${fullName(p)}.`)
   notePerson(p, `Divorced the player at age ${c.age}.`)
   notice(g, 'Divorce', lines.join('\n\n'), { emoji: '\u{1F4C4}', tone: 'bad' })
+  const birth = g.flags.birthSurname
+  if (p.data.tookSurname === true && typeof birth === 'string' && birth && birth !== c.lastName) {
+    delete p.data.tookSurname
+    scriptChoice(
+      g,
+      'love.divorce.surname',
+      'Surname',
+      `You're still going by ${c.lastName}. Do you want your old name back?`,
+      [
+        { id: 'revert', label: `Go back to ${birth}`, emoji: '\u{21A9}\u{FE0F}' },
+        { id: 'keep', label: `Keep ${c.lastName}`, emoji: '\u{1F3F7}\u{FE0F}' },
+      ],
+      { emoji: '\u{270D}\u{FE0F}', data: asJson({ birth }) },
+    )
+  }
 }
+
+defineScript('love.divorce.surname', (g, choice, data) => {
+  const birth = dStr(data, 'birth')
+  if (choice !== 'revert' || !birth) return
+  g.character.lastName = birth
+  delete g.flags.birthSurname
+  log(g, `I went back to my old name, ${fullName(g.character)}.`)
+  notice(g, 'Surname', `You're ${fullName(g.character)} again. It feels like coming home.`, { emoji: '\u{21A9}\u{FE0F}' })
+})
 
 // ---------------------------------------------------------------------------
 // Pregnancy & babies

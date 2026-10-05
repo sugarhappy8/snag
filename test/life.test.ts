@@ -230,6 +230,29 @@ describe('continueAsChild', () => {
     expect(n.character.education.current?.level).toBe('high')
   })
 
+  it("brings along the heir's spouse, their kids and a known sexuality", () => {
+    const g = oldPlayer()
+    const heir = createPerson(g, { relation: 'child', age: 42, gender: 'female', lastName: 'Stone', data: { married: true, spouseName: 'Marco Rossi', sexuality: 'straight' } })
+    const gk = createPerson(g, { relation: 'grandchild', age: 10, data: { parentId: heir.id } })
+    const out = createPerson(g, { relation: 'child', age: 25, data: { sexuality: 'gay', cameOutChecked: true } })
+    killCharacter(g, 'Old Age')
+    const n = continueAsChild(g, heir.id)
+    const sp = n.people.find((p) => p.relation === 'spouse')
+    expect(sp).toMatchObject({ firstName: 'Marco', lastName: 'Rossi', gender: 'male', livesWithPlayer: true, alive: true })
+    expect(n.people.filter((p) => p.relation === 'spouse')).toHaveLength(1)
+    expect(n.people.find((p) => p.id === gk.id)).toMatchObject({ relation: 'child', otherParentId: sp?.id })
+    expect(n.character.sexuality).toBe('straight')
+    expect(n.flags.sexualityRealized).toBe(true)
+    expect(n.log[0].entries.some((e) => e.text.includes('married to Marco Rossi'))).toBe(true)
+    // Ids stay unique after creating the spouse.
+    expect(new Set(n.people.map((p) => p.id)).size).toBe(n.people.length)
+
+    const m = continueAsChild(g, out.id)
+    expect(m.character.sexuality).toBe('gay')
+    expect(m.flags.out).toBe(true)
+    expect(m.people.some((p) => p.relation === 'spouse')).toBe(false)
+  })
+
   it('works on a full random life through several generations', () => {
     let g = createNewLife({ seed: 31 })
     for (let gen = 1; gen <= 3; gen++) {

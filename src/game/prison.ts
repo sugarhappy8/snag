@@ -90,6 +90,8 @@ export interface FugitiveInfo {
   security: Security
   escapedAge: number
   deathRow: boolean
+  /** Country the player escaped in (fleeing abroad makes recapture unlikely). */
+  countryId?: string
 }
 
 function isRecord(v: Json | undefined): v is { [key: string]: Json } {
@@ -435,12 +437,19 @@ function partnerReacts(g: GameState, sentence: number): void {
 }
 
 /** Add years to the current sentence (attempted escape, assault inside, riots...). */
-export function addPrisonTime(g: GameState, add: number, charge: string): void {
+export function addPrisonTime(g: GameState, add: number, charge: string, recordIndex?: number): void {
   const c = g.character
   const p = c.prison
   if (!p || !c.alive) return
   const n = Math.max(1, Math.round(add))
-  c.criminalRecord.push({ crime: charge, age: c.age, caught: true, convicted: true, sentenceYears: n })
+  const existing = recordIndex !== undefined ? c.criminalRecord[recordIndex] : undefined
+  if (existing) {
+    existing.caught = true
+    existing.convicted = true
+    existing.sentenceYears = n
+  } else {
+    c.criminalRecord.push({ crime: charge, age: c.age, caught: true, convicted: true, sentenceYears: n })
+  }
   count(g, 'convictions')
   if (p.life || p.deathRow) {
     log(g, `I was convicted of ${charge.toLowerCase()} inside prison.`, 'bad')
@@ -527,6 +536,7 @@ export function releaseFromPrison(g: GameState, reason: string): void {
       security: p.security,
       escapedAge: c.age,
       deathRow: !!p.deathRow,
+      countryId: c.countryId,
     }
     g.flags[FUGITIVE_FLAG] = info as unknown as Json
     c.wantedLevel = 5

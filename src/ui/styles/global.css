@@ -840,8 +840,11 @@ label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.hdr-who:hover .hdr-name {
   text-decoration: underline;
-  text-decoration-color: rgba(255, 255, 255, 0.45);
+  text-decoration-color: rgba(255, 255, 255, 0.5);
   text-underline-offset: 3px;
 }
 

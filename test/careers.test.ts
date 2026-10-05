@@ -282,3 +282,104 @@ describe('occupation menu', () => {
     expect(tooYoung.disabledReason?.(g)).toMatch(/18/)
   })
 })
+
+describe('job activities', () => {
+  function jobNode(g: GameState, id: string): MenuNode | undefined {
+    return findNode(occupationMenu.children(g), id, g)
+  }
+
+  it('adjusts weekly hours within limits and respects a boss-imposed schedule', () => {
+    const g = adult(21)
+    hireForJob(g, ACCOUNTANT)
+    const hours = jobNode(g, 'job.hours') as MenuAction
+    expect(hours.input?.kind).toBe('number')
+    expect(hours.input?.defaultValue?.(g)).toBe('40')
+    hours.run(g, '60')
+    expect(g.character.job!.data.weeklyHours).toBe(60)
+    hours.run(g, '500')
+    expect(g.character.job!.data.weeklyHours).toBe(70)
+    hours.run(g, '1')
+    expect(g.character.job!.data.weeklyHours).toBe(38)
+    g.character.job!.data.hoursLocked = g.character.age
+    expect(hours.disabledReason?.(g)).toMatch(/boss/)
+    hours.run(g, '50')
+    expect(g.character.job!.data.weeklyHours).toBe(38)
+  })
+
+  it('long hours raise performance but wear you down', () => {
+    const run = (weekly: number) => {
+      const g = adult(22)
+      hireForJob(g, ACCOUNTANT)
+      const job = g.character.job!
+      job.data.weeklyHours = weekly
+      job.performance = 50
+      g.character.job!.yearsInRole = 0
+      const before = { ...g.character.stats }
+      g.character.age += 1
+      yearlyCareer(g)
+      return { perf: g.character.job?.performance ?? 0, happy: g.character.stats.happiness - before.happiness }
+    }
+    const long = run(70)
+    const normal = run(40)
+    expect(long.perf).toBeGreaterThan(normal.perf)
+    expect(long.happy).toBeLessThan(normal.happy)
+  })
+
+  it('reports coworkers to HR with varied outcomes and a yearly limit', () => {
+    const outcomes = new Set<string>()
+    for (let seed = 1; seed <= 200 && !(outcomes.has('fired') && outcomes.size >= 4); seed++) {
+      const g = adult(1000 + seed * 7)
+      hireForJob(g, ACCOUNTANT)
+      const target = g.people.find((p) => p.relation === 'coworker')!
+      target.relationship = 10
+      const hr = jobNode(g, 'job.hr') as MenuGroup
+      const action = hr.children(g).find((n) => n.id === `job.hr.${target.id}`) as MenuAction
+      expect(action.confirm?.(g)).toMatch(/Report/)
+      action.run(g)
+      const last = g.queue[g.queue.length - 1]
+      expect(last.kind).toBe('notice')
+      if (!g.people.some((p) => p.id === target.id)) outcomes.add('fired')
+      else outcomes.add(last.kind === 'notice' ? last.title + (last.tone ?? '') : '?')
+      if (!g.character.job || seed > 10) continue
+      for (let i = 0; i < 5; i++) {
+        const any = hr.children(g).find((n): n is MenuAction => n.type === 'action')
+        any?.run(g)
+      }
+      expect(g.yearActions.hr).toBe(3)
+    }
+    expect(outcomes.has('fired')).toBe(true)
+    expect(outcomes.size).toBeGreaterThanOrEqual(3)
+  })
+
+  it('replaces the boss when HR fires them', () => {
+    let replaced = false
+    for (let seed = 1; seed <= 80 && !replaced; seed++) {
+      const g = adult(300 + seed)
+      const job = hireForJob(g, ACCOUNTANT)
+      const oldBoss = job.bossId!
+      g.people.find((p) => p.id === oldBoss)!.relationship = 5
+      const hr = jobNode(g, 'job.hr') as MenuGroup
+      ;(hr.children(g).find((n) => n.id === `job.hr.${oldBoss}`) as MenuAction).run(g)
+      if (!g.people.some((p) => p.id === oldBoss)) {
+        const fresh = g.people.find((p) => p.id === g.character.job!.bossId)
+        expect(fresh?.relation).toBe('boss')
+        expect(fresh?.contextId).toBe('Apex Holdings')
+        replaced = true
+      }
+    }
+    expect(replaced).toBe(true)
+  })
+
+  it('sends a job recruiter interview once a year', () => {
+    const g = adult(30)
+    const rec = jobNode(g, 'occupation.recruiter') as MenuAction
+    expect(rec.label).toBe('Job Recruiter')
+    rec.run(g)
+    expect(g.queue.some((m) => m.kind === 'aiTask' && m.task.type === 'interview')).toBe(true)
+    const n = g.queue.length
+    rec.run(g)
+    expect(g.queue.length).toBe(n + 1)
+    expect(g.queue[g.queue.length - 1].kind).toBe('notice')
+  })
+})
+

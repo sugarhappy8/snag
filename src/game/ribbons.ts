@@ -104,7 +104,7 @@ function cause(g: GameState): string {
 function unluckyCause(g: GameState): boolean {
   const c = cause(g)
   if (!c) return false
-  if (/suicide|surrender|execution|executed|overdose|witch doctor|murder|assault|plastic surgery|hitman|mafia|shot by police/.test(c)) return false
+  if (/suicide|surrender|execution|executed|overdose|alcohol poisoning|witch doctor|murder|assault|plastic surgery|hitman|mafia|\bmob\b|rival family|bar fight|shot by police/.test(c)) return false
   return true
 }
 

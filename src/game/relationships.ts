@@ -86,6 +86,23 @@ function isFamily(p: Person): boolean {
   return FAMILY.includes(p.relation)
 }
 
+/** Parents who split up: divorced here (data.divorced) or born into a divorced family (life.ts sets exSpouseId). */
+function splitUp(p: Person): boolean {
+  return p.data.divorced === true || typeof p.data.exSpouseId === 'string'
+}
+
+/** The living stepparent married to this parent, if any. */
+function stepFor(g: GameState, parent: Person): Person | undefined {
+  return g.people.find((x) => x.alive && x.relation === 'stepparent' && (x.data.viaParentId === parent.id || x.data.spouseId === parent.id))
+}
+
+/** Pets the player's parents own (born into the family or bought for a kid). */
+function isFamilyPet(g: GameState, p: Person): boolean {
+  if (p.relation !== 'pet') return false
+  if (p.data.familyPet === true || typeof p.data.boughtByParent === 'string') return true
+  return p.data.petSource === undefined && g.character.age > 0 && p.yearsKnown >= g.character.age
+}
+
 function has(p: Person, ...traits: string[]): boolean {
   return p.traits.some((t) => traits.includes(t))
 }
@@ -136,7 +153,7 @@ function atLimit(g: GameState, p: Person, key: string, max: number, title: strin
   return true
 }
 
-/** Per-year, per-person limit with a BitLife-style notice. */
+/** Per-year, per-person limit with a classic "give it a rest" notice. */
 function limit(g: GameState, p: Person, key: string, max: number, title: string): boolean {
   if (useYearAction(g, `rel.${key}.${p.id}`, max)) return true
   notice(g, title, fill(pick(g, TIRED_LINES), p), { emoji: '\u{23F3}' })
@@ -154,7 +171,7 @@ function aiFacts(g: GameState, p: Person, what: string, outcome: string): Notice
 }
 
 // ---------------------------------------------------------------------------
-// Content lists (original, BitLife-flavored)
+// Content lists (original jokes in the classic life-sim style)
 
 const TOPICS_KID = [
   'why the sky is blue',
@@ -538,6 +555,7 @@ export function yearlyRelationships(g: GameState): void {
     p.age += 1
     p.yearsKnown += 1
   }
+  normalizePeople(g)
   npcDeaths(g)
   processPregnancies(g)
   familyLifeCycle(g)
@@ -545,6 +563,17 @@ export function yearlyRelationships(g: GameState): void {
   partnerDrama(g)
   yearlyFamilyEvent(g)
   cleanupPeople(g)
+}
+
+/** Fill in bookkeeping for people other modules (or the AI) added without it. */
+function normalizePeople(g: GameState): void {
+  const c = g.character
+  for (const p of g.people) {
+    if (!p.alive) continue
+    if (isRomantic(p) && typeof p.data.datingSince !== 'number') p.data.datingSince = Math.max(0, c.age - 1)
+    if (p.relation === 'fiance' && typeof p.data.engagedAge !== 'number') p.data.engagedAge = Math.max(0, c.age - 1)
+    if (p.relation === 'spouse' && typeof p.data.marriedAge !== 'number') p.data.marriedAge = Math.max(0, c.age - 1)
+  }
 }
 
 interface DeathCause {
@@ -557,7 +586,7 @@ const OLD_AGE: DeathCause[] = [
   { cause: 'Old Age', text: 'died peacefully of old age', sudden: false },
   { cause: 'Old Age', text: 'passed away in {his} sleep from old age', sudden: false },
 ]
-const DISEASES: (DeathCause & { minAge?: number })[] = [
+const DISEASES: (DeathCause & { minAge?: number; gender?: Gender })[] = [
   { cause: 'Heart Attack', text: 'died from a heart attack', sudden: false },
   { cause: 'Stroke', text: 'died from a stroke', sudden: false },
   { cause: 'Lung Cancer', text: 'died from lung cancer', sudden: false },
@@ -571,6 +600,12 @@ const DISEASES: (DeathCause & { minAge?: number })[] = [
   { cause: 'The Flu', text: 'died from the flu', sudden: false },
   { cause: 'Colon Cancer', text: 'died from colon cancer', sudden: false },
   { cause: 'Heart Failure', text: 'died from heart failure', sudden: false, minAge: 50 },
+  { cause: 'Malaria', text: 'died from malaria', sudden: false },
+  { cause: 'Typhoid Fever', text: 'died from typhoid fever', sudden: false },
+  { cause: 'Brain Tumor', text: 'died from a brain tumor', sudden: false },
+  { cause: 'Breast Cancer', text: 'died from breast cancer', sudden: false, minAge: 35 },
+  { cause: 'Prostate Cancer', text: 'died from prostate cancer', sudden: false, minAge: 55, gender: 'male' },
+  { cause: 'Emphysema', text: 'died from emphysema', sudden: false, minAge: 55 },
 ]
 const SUDDEN: DeathCause[] = [
   { cause: 'Car Accident', text: 'died in a car crash', sudden: true },
@@ -589,6 +624,24 @@ const SUDDEN: DeathCause[] = [
   { cause: 'Hippo Attack', text: 'was charged by a hippo on safari', sudden: true },
   { cause: 'House Fire', text: 'died in a house fire', sudden: true },
   { cause: 'Spider Bite', text: 'was bitten by a venomous spider', sudden: true },
+  { cause: 'Foul Ball', text: 'was hit in the head by a foul ball at a baseball game', sudden: true },
+  { cause: 'Landslide', text: 'was buried in a landslide', sudden: true },
+  { cause: 'Fall', text: 'fell into an abandoned well', sudden: true },
+  { cause: 'Fireworks Accident', text: 'was killed in a fireworks mishap', sudden: true },
+  { cause: 'Dog Attack', text: 'was mauled by a Doberman Pinscher', sudden: true },
+  { cause: 'Tornado', text: 'was swept away by a tornado', sudden: true },
+  { cause: 'Skiing Accident', text: 'hit a tree while skiing', sudden: true },
+  { cause: 'Jellyfish Sting', text: 'was stung by a box jellyfish', sudden: true },
+  { cause: 'Fall', text: 'fell down a flight of stairs', sudden: true },
+  { cause: 'Bull Stampede', text: 'was trampled at the Running of the Bulls', sudden: true },
+  { cause: 'Surgical Complications', text: 'died from complications after a minor surgery', sudden: true },
+  { cause: 'Hoverboard Accident', text: 'was hit by a car while riding a hoverboard', sudden: true },
+  { cause: 'Falling Tree', text: 'was crushed when a tree fell on the house', sudden: true },
+  { cause: 'Carbon Monoxide Poisoning', text: 'left the car running in the garage', sudden: true },
+  { cause: 'Bungee Jumping Accident', text: 'was killed when the bungee cord snapped', sudden: true },
+  { cause: 'Earthquake', text: 'was killed in an earthquake', sudden: true },
+  { cause: 'Snake Bite', text: 'was bitten by a venomous snake', sudden: true },
+  { cause: 'Avalanche', text: 'was caught in an avalanche while snowboarding', sudden: true },
 ]
 
 /** Annual chance an NPC dies, by age and health. */
@@ -616,7 +669,7 @@ function deathCause(g: GameState, p: Person): DeathCause {
   if (p.age >= 80 && chance(g, 0.5)) return pick(g, OLD_AGE)
   if (p.age >= 65 && chance(g, 0.2)) return pick(g, OLD_AGE)
   if (p.age < 40 ? chance(g, 0.7) : chance(g, 0.12)) return pick(g, SUDDEN)
-  return pick(g, DISEASES.filter((d) => !d.minAge || p.age >= d.minAge))
+  return pick(g, DISEASES.filter((d) => (!d.minAge || p.age >= d.minAge) && (!d.gender || d.gender === p.gender)))
 }
 
 const PET_DEATHS_OLD = [
@@ -679,7 +732,7 @@ function inheritance(g: GameState, p: Person): number {
       if (r < 20 && chance(g, 0.7)) return 0
       if (r < 40 && chance(g, 0.3)) return 0
       if (p.relation === 'stepparent' && chance(g, 0.5)) return 0
-      const spouseAlive = p.data.divorced !== true && g.people.some((x) => x.alive && x.id !== p.id && x.relation === 'parent' && x.data.divorced !== true)
+      const spouseAlive = !splitUp(p) && g.people.some((x) => x.alive && x.id !== p.id && x.relation === 'parent' && !splitUp(x))
       const sibs = g.people.filter((x) => x.alive && (x.relation === 'sibling' || x.relation === 'halfSibling')).length
       share = spouseAlive ? p.money * randFloat(g, 0.1, 0.3) : p.money / (sibs + 1)
       break
@@ -725,7 +778,7 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
   const label = labelOf(p)
 
   if (p.relation === 'pet') {
-    const familyPet = p.data.familyPet === true
+    const familyPet = isFamilyPet(g, p) && c.age < 18
     count(g, 'petsDied')
     addStat(g, 'happiness', -randInt(g, 4, 10))
     log(g, `${familyPet ? 'Our family' : 'My'} ${label} ${p.firstName} died at age ${p.age}.`, 'bad')
@@ -758,8 +811,8 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
       count(g, 'inheritedMoney', inherited)
     }
     if (p.relation === 'parent') {
-      const other = g.people.find((x) => x.alive && x.relation === 'parent' && x.id !== p.id && x.data.divorced !== true)
-      if (other && p.data.divorced !== true) other.money += Math.max(0, p.money - inherited)
+      const other = g.people.find((x) => x.alive && x.relation === 'parent' && x.id !== p.id && !splitUp(x))
+      if (other && !splitUp(p)) other.money += Math.max(0, p.money - inherited)
     }
     p.money = Math.max(0, p.money - inherited)
   }
@@ -777,17 +830,20 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
   const lastParent = p.relation === 'parent' && !g.people.some((x) => x.alive && x.relation === 'parent')
   const planner = c.age >= 18 && !inPrison(g) && (p.relation === 'spouse' || KIDS.includes(p.relation) || lastParent)
   if (planner) {
-    const burial = randInt(g, 70, 120) * 100
-    const cremation = randInt(g, 20, 40) * 100
+    const costs = { burial: randInt(g, 70, 120) * 100, cremation: randInt(g, 20, 40) * 100, taxidermy: randInt(g, 30, 60) * 100 }
+    const wish = chance(g, 0.4) ? weightedPick(g, RESTING_WISHES, (w) => w.weight).id : ''
+    const wishText = RESTING_WISHES.find((w) => w.id === wish)?.text
     const opts = [
-      ...(canAfford(g, burial) ? [{ id: 'burial', label: `Traditional burial (${money(burial)})`, emoji: '\u{26B0}\u{FE0F}' }] : []),
-      ...(canAfford(g, cremation) ? [{ id: 'cremation', label: `Cremation (${money(cremation)})`, emoji: '\u{1F3FA}' }] : []),
+      ...(canAfford(g, costs.burial) ? [{ id: 'burial', label: `Traditional burial (${money(costs.burial)})`, emoji: '\u{26B0}\u{FE0F}' }] : []),
+      ...(canAfford(g, costs.cremation) ? [{ id: 'cremation', label: `Cremation (${money(costs.cremation)})`, emoji: '\u{1F3FA}' }] : []),
+      ...(canAfford(g, costs.taxidermy) ? [{ id: 'taxidermy', label: `Taxidermy (${money(costs.taxidermy)})`, emoji: '\u{1F98C}' }] : []),
       { id: 'science', label: 'Donate the body to science (free)', emoji: '\u{1F52C}' },
       { id: 'skip', label: 'Skip the funeral', emoji: '\u{1F6B6}' },
     ]
-    scriptChoice(g, 'rel.funeral', 'Rest in Peace', `${text}\n\nHow would you like to lay ${pr(p).him} to rest?`, opts, {
+    const wishLine = wishText ? `\n\n${p.firstName} always said ${pr(p).he} wanted to be ${wishText}.` : ''
+    scriptChoice(g, 'rel.funeral', 'Rest in Peace', `${text}${wishLine}\n\nHow would you like to lay ${pr(p).him} to rest?`, opts, {
       emoji: '\u{1FAA6}',
-      data: asJson({ pid: p.id, burial, cremation }),
+      data: asJson({ pid: p.id, ...costs, wish }),
       personId: p.id,
     })
     return
@@ -801,49 +857,129 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
   notice(g, 'Rest in Peace', text, { emoji: '\u{1FAA6}', tone: 'bad' })
 }
 
+const RESTING_WISHES: { id: string; text: string; weight: number }[] = [
+  { id: 'burial', text: 'buried next to the family', weight: 5 },
+  { id: 'cremation', text: 'cremated', weight: 4 },
+  { id: 'science', text: 'donated to science', weight: 1 },
+  { id: 'taxidermy', text: 'stuffed and displayed in the living room', weight: 0.3 },
+]
+
 const ASH_SPOTS = [
   'over a waterfall',
   'into the ocean at sunrise',
   'at their favorite fishing spot',
-  'in a rose garden',
-  'out of a hot air balloon',
+  'in a rose bed',
+  'out of a hot air balloon over a farm',
   'at their favorite golf course',
   'across a national park',
   'over Christmas dinner (by accident)',
-  'at their favorite restaurant (the staff were not thrilled)',
+  'inside their favorite restaurant (the staff were not thrilled)',
+  'at a busy intersection downtown',
+  'at the dollar store they loved so much',
+  'at a farmers\' market',
+  'in a tide pool',
+  'out of a helicopter',
+  'along their favorite hiking trail',
+  'at the local opera house',
+  'at the zoo, near the penguins',
+  'at a bus station (it was on the way)',
+  'at city hall',
+  'in a scattering garden',
 ]
+
+/** Did the planner honor the deceased's wish? Returns a sentence to append (or ''). */
+function honorWish(g: GameState, p: Person, choice: string, wish: string, family: Person[]): string {
+  if (!wish || choice === 'skip') return ''
+  if (choice === wish) {
+    addHidden(g, 'karma', 3)
+    for (const f of family) addRelationship(f, randInt(g, 2, 5))
+    return ` It's exactly what ${p.firstName} wanted.`
+  }
+  for (const f of family) addRelationship(f, -randInt(g, 1, 4))
+  return ` It's not what ${p.firstName} wanted, and a few relatives made sure you knew it.`
+}
 
 defineScript('rel.funeral', (g, choice, data) => {
   const p = getPerson(g, dStr(data, 'pid'))
   if (!p) return
   const family = g.people.filter((x) => x.alive && isFamily(x))
   const name = p.firstName
-  if (choice === 'burial' || choice === 'cremation') {
+  const wish = dStr(data, 'wish')
+  if (choice === 'burial' || choice === 'cremation' || choice === 'taxidermy') {
     const cost = dNum(data, choice)
     if (!spend(g, cost)) {
+      count(g, 'funerals')
+      log(g, `My family helped pay to cremate ${myRel(p)}.`)
       notice(g, 'Funeral', `You couldn't afford it, so ${name} was cremated with help from the rest of the family.`, { emoji: '\u{1F3FA}' })
       return
     }
     count(g, 'funerals')
-    addHidden(g, 'karma', 2)
-    for (const f of family) addRelationship(f, randInt(g, 1, 4))
+    const wishNote = honorWish(g, p, choice, wish, family)
     if (choice === 'burial') {
+      addHidden(g, 'karma', 2)
+      for (const f of family) addRelationship(f, randInt(g, 1, 4))
       log(g, `I buried ${myRel(p)}.`)
-      notice(g, 'Funeral', `You held a beautiful funeral and buried ${name} for ${money(cost)}. ${pick(g, ['Everyone shared their favorite stories.', 'Half the town showed up.', 'Even the priest cried.', 'It was exactly what they would have wanted.'])}`, { emoji: '\u{26B0}\u{FE0F}' })
+      notice(g, 'Funeral', `You held a beautiful funeral and buried ${name} for ${money(cost)}. ${pick(g, ['Everyone shared their favorite stories.', 'Half the town showed up.', 'Even the priest cried.', 'The eulogy got a standing ovation, which was confusing.'])}${wishNote}`, { emoji: '\u{26B0}\u{FE0F}' })
+    } else if (choice === 'taxidermy') {
+      if (wish !== 'taxidermy') {
+        addHidden(g, 'karma', -2)
+        for (const f of family) addRelationship(f, -randInt(g, 3, 8))
+      }
+      log(g, `I had ${myRel(p)} taxidermied.`)
+      notice(g, 'Funeral', `You paid ${money(cost)} to have ${name} stuffed and mounted in the living room. ${pick(g, ['Visitors have stopped coming over.', 'The likeness is... unsettling.', `${pr(p).He} has never looked more relaxed.`, 'The dog barks at the corner of the room now.'])}${wishNote}`, { emoji: '\u{1F98C}' })
     } else {
-      const spot = pick(g, ASH_SPOTS)
-      log(g, `I had ${myRel(p)} cremated and scattered the ashes ${spot}.`)
-      notice(g, 'Funeral', `You had ${name} cremated for ${money(cost)} and scattered the ashes ${spot}.`, { emoji: '\u{1F3FA}' })
+      const spots = [...ASH_SPOTS]
+      const picks: string[] = []
+      while (picks.length < 2 && spots.length) picks.push(spots.splice(randInt(g, 0, spots.length - 1), 1)[0])
+      scriptChoice(
+        g,
+        'rel.funeral.ashes',
+        'Ashes',
+        `You had ${name} cremated for ${money(cost)}.${wishNote}\n\nWhat would you like to do with the ashes?`,
+        [
+          { id: 'urn', label: 'Keep them in an urn', emoji: '\u{1F3FA}' },
+          ...picks.map((spot, i) => ({ id: `spot${i}`, label: `Scatter them ${spot.replace(/ \(.*\)$/, '')}`, emoji: '\u{1F343}' })),
+          { id: 'bury', label: 'Bury the urn at the cemetery', emoji: '\u{1FAA6}' },
+          { id: 'trash', label: 'Throw them away', emoji: '\u{1F5D1}\u{FE0F}' },
+        ],
+        { emoji: '\u{1F3FA}', data: asJson({ pid: p.id, spots: picks }), personId: p.id },
+      )
     }
   } else if (choice === 'science') {
     count(g, 'funerals')
+    const wishNote = honorWish(g, p, choice, wish, family)
     log(g, `I donated ${myRel(p)}'s body to science.`)
-    notice(g, 'Funeral', `You donated ${name}'s body to science. Somewhere, a medical student is very grateful.`, { emoji: '\u{1F52C}' })
+    notice(g, 'Funeral', `You donated ${name}'s body to science. Somewhere, a medical student is very grateful.${wishNote}`, { emoji: '\u{1F52C}' })
   } else {
     addHidden(g, 'karma', -5)
     for (const f of family) addRelationship(f, -randInt(g, 4, 10))
     log(g, `I skipped ${myRel(p)}'s funeral.`, 'bad')
     notice(g, 'Funeral', `You skipped ${name}'s funeral. The rest of the family will be talking about this for years.`, { emoji: '\u{1F6B6}', tone: 'bad' })
+  }
+})
+
+defineScript('rel.funeral.ashes', (g, choice, data) => {
+  const p = getPerson(g, dStr(data, 'pid'))
+  if (!p) return
+  const name = p.firstName
+  const spots = rec(data).spots
+  const spotList = Array.isArray(spots) ? spots.filter((x): x is string => typeof x === 'string') : []
+  if (choice === 'urn') {
+    log(g, `I keep ${myRel(p)}'s ashes in an urn.`)
+    notice(g, 'Ashes', `You put ${name}'s ashes in an urn on the mantel. ${pick(g, ['You say good morning to it every day.', 'Guests keep mistaking it for a cookie jar.', 'It is the nicest thing in the house.'])}`, { emoji: '\u{1F3FA}' })
+  } else if (choice.startsWith('spot')) {
+    const spot = spotList[Number(choice.slice(4))] ?? pick(g, ASH_SPOTS)
+    addStat(g, 'happiness', randInt(g, 1, 3))
+    log(g, `I scattered ${myRel(p)}'s ashes ${spot}.`)
+    notice(g, 'Ashes', `You scattered ${name}'s ashes ${spot}. ${pick(g, ['It felt right.', 'A gust of wind blew some of them back at you.', 'You said a few words. Nobody else heard them, but that was the point.'])}`, { emoji: '\u{1F343}' })
+  } else if (choice === 'bury') {
+    log(g, `I buried ${myRel(p)}'s urn at the cemetery.`)
+    notice(g, 'Ashes', `You buried ${name}'s urn in a quiet corner of the cemetery. Now you have somewhere to visit.`, { emoji: '\u{1FAA6}' })
+  } else {
+    addHidden(g, 'karma', -8)
+    for (const f of g.people.filter((x) => x.alive && isFamily(x))) addRelationship(f, -randInt(g, 8, 15))
+    log(g, `I threw ${myRel(p)}'s ashes in the trash.`, 'bad')
+    notice(g, 'Ashes', `You threw ${name}'s ashes in the trash. The garbage truck came the next morning. The family will never forgive you.`, { emoji: '\u{1F5D1}\u{FE0F}', tone: 'bad' })
   }
 })
 
@@ -960,9 +1096,10 @@ function newSiblings(g: GameState): void {
   const c = g.character
   if (c.age >= 18) return
   const mother = g.people.find((p) => p.alive && p.relation === 'parent' && p.gender === 'female')
-  if (!mother || mother.age > 42 || mother.age < 18 || mother.data.divorced === true) return
-  const father = g.people.find((p) => p.alive && p.relation === 'parent' && p.gender === 'male' && p.data.divorced !== true)
-  const step = g.people.find((p) => p.alive && p.relation === 'stepparent' && p.gender === 'male' && p.data.viaParentId === mother.id)
+  if (!mother || mother.age > 42 || mother.age < 18) return
+  const father = splitUp(mother) ? undefined : g.people.find((p) => p.alive && p.relation === 'parent' && p.gender === 'male' && !splitUp(p))
+  const stepDad = stepFor(g, mother)
+  const step = stepDad && stepDad.gender === 'male' ? stepDad : undefined
   if (!father && !step) return
   const sibs = g.people.filter((p) => p.alive && SIBLINGS.includes(p.relation)).length
   if (!chance(g, Math.max(0.01, 0.09 - sibs * 0.02))) return
@@ -992,9 +1129,14 @@ function newSiblings(g: GameState): void {
 function parentsSplit(g: GameState): void {
   const c = g.character
   if (c.age >= 18) return
-  const ps = g.people.filter((p) => p.alive && p.relation === 'parent' && p.data.divorced !== true)
+  const ps = g.people.filter((p) => p.alive && p.relation === 'parent' && !splitUp(p))
   if (ps.length !== 2 || !chance(g, 0.012)) return
   for (const p of ps) p.data.divorced = true
+  ps[0].data.exSpouseId = ps[1].id
+  ps[1].data.exSpouseId = ps[0].id
+  delete ps[0].data.spouseId
+  delete ps[1].data.spouseId
+  g.flags.parentsStatus = 'divorced'
   const leaver = ps.find((p) => p.gender === 'male') ?? ps[1]
   leaver.livesWithPlayer = false
   addStat(g, 'happiness', -randInt(g, 8, 15))
@@ -1006,8 +1148,8 @@ function parentsSplit(g: GameState): void {
 function parentRemarries(g: GameState): void {
   const c = g.character
   for (const parent of g.people.filter((p) => p.alive && p.relation === 'parent')) {
-    if (parent.data.remarried === true || parent.age < 25 || parent.age > 65) continue
-    const otherAlive = g.people.some((x) => x.alive && x.relation === 'parent' && x.id !== parent.id && x.data.divorced !== true && parent.data.divorced !== true)
+    if (parent.data.remarried === true || parent.age < 25 || parent.age > 65 || stepFor(g, parent)) continue
+    const otherAlive = g.people.some((x) => x.alive && x.relation === 'parent' && x.id !== parent.id && !splitUp(x) && !splitUp(parent))
     if (otherAlive || !chance(g, 0.04)) continue
     parent.data.remarried = true
     const gender: Gender = chance(g, 0.9) ? (parent.gender === 'male' ? 'female' : 'male') : parent.gender
@@ -1017,8 +1159,9 @@ function parentRemarries(g: GameState): void {
       gender,
       relationship: randInt(g, 30, 60),
       livesWithPlayer: parent.livesWithPlayer && c.age < 18,
-      data: { viaParentId: parent.id },
+      data: { viaParentId: parent.id, spouseId: parent.id },
     })
+    parent.data.spouseId = step.id
     const stepWord = gender === 'male' ? 'stepfather' : 'stepmother'
     let text = `${the(parent)} got remarried to ${fullName(step)}. Meet your new ${stepWord}!`
     if (chance(g, 0.3)) {
@@ -1081,7 +1224,9 @@ function driftRelationships(g: GameState): void {
     if (pNum(p, 'bornAge', -1) === c.age) continue
     const [lo, hi] = DRIFT[p.relation] ?? [2, 5]
     let d = randInt(g, lo, hi)
-    const last = pNum(p, 'lastInteractionAge', -100)
+    let last = pNum(p, 'lastInteractionAge', -100)
+    // A previous generation's interactions don't count for the heir.
+    if (last > c.age) last = -100
     if (last >= c.age - 1) d *= 0.35
     else if (c.age - last > 3 && p.yearsKnown > 3) d *= 1.4
     if (p.livesWithPlayer) d *= 0.7
@@ -1323,6 +1468,8 @@ function yearlyFamilyEvent(g: GameState): void {
     k.data.cameOutChecked = true
     if (chance(g, 0.12)) {
       const identity = chance(g, 0.6) ? 'gay' : 'bisexual'
+      // Remembered so the child keeps this sexuality if you continue as them.
+      k.data.sexuality = identity
       events.push({
         w: 2,
         run: () =>
@@ -1657,10 +1804,12 @@ export function relationshipGroups(g: GameState): { title: string; people: Perso
   const rank = (rels: RelationKind[]) => (a: Person, b: Person) => rels.indexOf(a.relation) - rels.indexOf(b.relation)
   const partner = of(['spouse', 'fiance', 'partner'])
   const partnerTitle = partner.some((p) => p.relation === 'spouse') ? 'Spouse' : partner.some((p) => p.relation === 'fiance') ? 'Fiancé(e)' : 'Partner'
-  const deadExes = g.people.filter((p) => !p.alive && (p.relation === 'ex' || p.relation === 'exSpouse'))
-  const deceased = g.people
-    .filter((p) => !p.alive && p.relation !== 'ex' && p.relation !== 'exSpouse')
-    .sort((a, b) => pNum(b, 'diedAge') - pNum(a, 'diedAge'))
+  const byDeath = (a: Person, b: Person) => pNum(b, 'diedAge') - pNum(a, 'diedAge')
+  // Late spouses and partners are listed with the exes, like the original.
+  const lateRomance: RelationKind[] = ['ex', 'exSpouse', 'spouse', 'partner', 'fiance', 'lover']
+  const deadExes = g.people.filter((p) => !p.alive && lateRomance.includes(p.relation)).sort(byDeath)
+  const deceased = g.people.filter((p) => !p.alive && p.relation !== 'pet' && !lateRomance.includes(p.relation)).sort(byDeath)
+  const deadPets = g.people.filter((p) => !p.alive && p.relation === 'pet').sort(byDeath)
   const groups: { title: string; people: Person[] }[] = [
     { title: 'Parents', people: of(PARENTS).sort(rank(['parent', 'stepparent'])) },
     { title: 'Siblings', people: of(SIBLINGS).sort(byAgeDesc) },
@@ -1677,7 +1826,8 @@ export function relationshipGroups(g: GameState): { title: string; people: Perso
     { title: 'Lovers', people: of(['lover']) },
     { title: 'Cellmates', people: of(['cellmate']) },
     { title: 'Enemies', people: of(['enemy']) },
-    { title: 'Deceased', people: deceased },
+    { title: 'Late Relatives', people: deceased },
+    { title: 'Late Pets', people: deadPets },
   ]
   return groups.filter((x) => x.people.length > 0)
 }
@@ -2444,6 +2594,90 @@ function dateNight(g: GameState, p: Person): void {
   }
 }
 
+const PICKUP_LINES = [
+  "Are you a parking ticket? Because you've got FINE written all over you.",
+  'Do you have a map? I keep getting lost in your eyes.',
+  "Are you made of copper and tellurium? Because you're Cu-Te.",
+  "Is your name Wi-Fi? Because I'm feeling a connection.",
+  'Do you believe in love at first sight, or should I walk by again?',
+  "If you were a vegetable, you'd be a cute-cumber.",
+  "Are you a bank loan? Because you've got my interest.",
+  "Are you a campfire? Because you're hot and I want s'more.",
+  "Is it hot in here, or is it just you? (It's the broken AC. But also you.)",
+  'Are you a magician? Because whenever I look at you, everyone else disappears.',
+]
+
+function flirt(g: GameState, p: Person): void {
+  if (!limit(g, p, 'flirt', 2, 'Flirt')) return
+  const c = g.character
+  touch(g, p)
+  count(g, 'flirts')
+  const x = pr(p)
+  const line = pick(g, PICKUP_LINES)
+  if (isRomantic(p) || p.relation === 'lover') {
+    if (chance(g, mood(p) + 0.15)) {
+      const d = randInt(g, 3, 8)
+      addRelationship(p, d)
+      addStat(g, 'happiness', randInt(g, 1, 4))
+      notice(g, 'Flirt', `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} blushed and kissed you.', '{He} giggled like it was your first date.', '{He} flirted right back.', '{He} groaned at the line, but {he} was smiling.']), p)}`, { emoji: '\u{1F60F}', tone: 'good' })
+    } else {
+      addRelationship(p, randInt(g, -1, 1))
+      notice(g, 'Flirt', `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} rolled {his} eyes.', '{He} said "Not now, I\'m watching my show."', '{He} patted you on the head like a puppy.']), p)}`, { emoji: '\u{1F644}' })
+    }
+    return
+  }
+  let odds = 0.2 + p.relationship / 200 + (c.stats.looks - p.stats.looks) / 250
+  if (has(p, 'flirty', 'romantic', 'outgoing')) odds += 0.12
+  if (has(p, 'shy', 'serious')) odds -= 0.08
+  if (p.data.married === true) odds -= 0.2
+  const partner = currentPartner(g)
+  if (chance(g, clamp(odds, 0.05, 0.9))) {
+    addRelationship(p, randInt(g, 4, 9))
+    addStat(g, 'happiness', randInt(g, 2, 5))
+    let text = `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} flirted back!', '{He} laughed and touched your arm.', '{He} said "Smooth." and meant it.', '{He} turned bright red.']), p)}`
+    if (partner && chance(g, 0.15)) {
+      addRelationship(partner, -randInt(g, 5, 12))
+      text += `\n\n${partner.firstName} saw the whole thing and is not happy.`
+    }
+    notice(g, 'Flirt', text, { emoji: '\u{1F60F}', tone: 'good' })
+    if (!partner && !datingProblem(g, p) && chance(g, 0.25)) {
+      scriptChoice(g, 'rel.flirt.askedOut', 'Asked Out', `${p.firstName} asked you out on a date!`, [
+        { id: 'yes', label: 'Say yes', emoji: '\u{1F496}' },
+        { id: 'no', label: 'Turn them down', emoji: '\u{1F645}' },
+      ], { emoji: '\u{1F498}', data: asJson({ pid: p.id }), personId: p.id })
+    }
+    return
+  }
+  addRelationship(p, -randInt(g, 3, 8))
+  addStat(g, 'happiness', -randInt(g, 1, 3))
+  let text = `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} looked at you like you had two heads.', '{He} said "Please never say that to me again."', '{He} pretended not to hear you.', '{He} laughed. At you, not with you.']), p)}`
+  const job = c.job?.company === p.contextId ? c.job : c.partTimeJob?.company === p.contextId ? c.partTimeJob : null
+  if ((p.relation === 'coworker' || p.relation === 'boss') && job && chance(g, 0.2)) {
+    job.performance = clamp(job.performance - randInt(g, 5, 12))
+    text += `\n\n${x.He} reported you to HR. You had to sit through a two-hour seminar on workplace conduct.`
+  }
+  notice(g, 'Flirt', text, { emoji: '\u{1F62C}' })
+}
+
+defineScript('rel.flirt.askedOut', (g, choice, data) => {
+  const p = getPerson(g, dStr(data, 'pid'))
+  if (!p || !p.alive) return
+  touch(g, p)
+  if (choice === 'yes') {
+    const problem = datingProblem(g, p)
+    if (problem) {
+      notice(g, 'Asked Out', problem, { emoji: '\u{1F6AB}' })
+      return
+    }
+    startDating(g, p, `flirted (was ${labelOf(p)})`)
+    addStat(g, 'happiness', randInt(g, 5, 10))
+    notice(g, 'Asked Out', `You said yes! You and ${p.firstName} are dating now.`, { emoji: '\u{1F496}', tone: 'good' })
+  } else {
+    addRelationship(p, -randInt(g, 5, 12))
+    notice(g, 'Asked Out', `You turned ${p.firstName} down. ${pr(p).He} said "${pick(g, ['Your loss.', 'Cool. Cool cool cool.', 'I was joking anyway.'])}"`, { emoji: '\u{1F645}' })
+  }
+})
+
 function getBackTogether(g: GameState, p: Person): void {
   const problem = datingProblem(g, p)
   if (problem) {
@@ -2690,6 +2924,15 @@ const D = {
       hookUpWith(g, p)
     },
   }),
+  flirt: (): Def => ({
+    id: 'flirt',
+    label: 'Flirt',
+    emoji: '\u{1F60F}',
+    minAge: 13,
+    targetMinAge: 13,
+    show: (g, p) => isRomantic(p) || p.relation === 'lover' || (g.character.age < 18 === p.age < 18 && attractedTo(g.character, p.gender)),
+    run: flirt,
+  }),
   dateNight: (): Def => ({ id: 'dateNight', label: 'Date Night', emoji: '\u{1F377}', minAge: 13, subtitle: 'Go out on a date', run: dateNight }),
   makeLove: (): Def => ({
     id: 'makeLove',
@@ -2856,7 +3099,7 @@ const D = {
     label: 'Rename',
     emoji: '\u{270F}\u{FE0F}',
     minAge: 6,
-    check: (_g, p) => (p.data.familyPet === true || (typeof p.data.boughtByParent === 'string' && p.data.boughtByParent) ? 'Your parents named this pet. It stays.' : null),
+    check: (g, p) => (g.character.age < 18 && isFamilyPet(g, p) ? 'Your parents named this pet. It stays.' : null),
     input: { kind: 'text', label: 'New name', placeholder: 'Sir Barksalot' },
     run: (g, p, input) => {
       const name = sanitizeName(input ?? '', p.firstName)
@@ -2871,7 +3114,7 @@ const D = {
     label: 'Return to Shelter',
     emoji: '\u{1F3DA}\u{FE0F}',
     minAge: 6,
-    check: (g, p) => (g.character.age < 18 && (p.data.familyPet === true || typeof p.data.boughtByParent === 'string') ? "It's the family pet. Your parents would never allow it." : null),
+    check: (g, p) => (g.character.age < 18 && isFamilyPet(g, p) ? "It's the family pet. Your parents would never allow it." : null),
     confirm: (_g, p) => `Give ${p.firstName} up to a shelter? Shelters may refuse to give you another pet.`,
     run: (g, p) => {
       removePerson(g, p.id)
@@ -2887,7 +3130,7 @@ const D = {
     label: 'Release into the Wild',
     emoji: '\u{1F332}',
     minAge: 10,
-    check: (g, p) => (g.character.age < 18 && (p.data.familyPet === true || typeof p.data.boughtByParent === 'string') ? "It's the family pet. Your parents would never allow it." : null),
+    check: (g, p) => (g.character.age < 18 && isFamilyPet(g, p) ? "It's the family pet. Your parents would never allow it." : null),
     confirm: (_g, p) => `Release ${p.firstName} into the wild?`,
     run: (g, p) => {
       const exotic = p.data.exotic === true
@@ -2970,6 +3213,7 @@ function defsFor(g: GameState, p: Person): Def[] {
         D.dateNight(),
         D.conversation(),
         D.compliment(),
+        D.flirt(),
         D.gift(),
         D.giveMoney(),
         D.makeLove(),
@@ -3002,6 +3246,7 @@ function defsFor(g: GameState, p: Person): Def[] {
         D.videos(),
         D.prank(),
         D.rumor(),
+        D.flirt(),
         D.askOut(),
         D.hookUp(),
         ...(p.relation === 'friend' ? [D.bestFriend()] : []),
@@ -3010,18 +3255,18 @@ function defsFor(g: GameState, p: Person): Def[] {
         D.unfriend(),
       ]
     case 'classmate':
-      return [D.befriend(), D.compliment(), D.conversation(), D.spendTime(), D.gift(), D.prank(), D.rumor(), D.askOut(), D.insult(), D.assault()]
+      return [D.befriend(), D.compliment(), D.conversation(), D.spendTime(), D.gift(), D.prank(), D.rumor(), D.flirt(), D.askOut(), D.insult(), D.assault()]
     case 'teacher':
       return [D.befriend(), D.compliment(), D.conversation(), D.gift(), D.prank(), D.insult(), D.assault()]
     case 'coworker':
-      return [D.befriend(), D.compliment(), D.conversation(), D.spendTime(), D.gift(), D.prank(), D.askOut(), D.insult(), D.assault()]
+      return [D.befriend(), D.compliment(), D.conversation(), D.spendTime(), D.gift(), D.prank(), D.flirt(), D.askOut(), D.insult(), D.assault()]
     case 'boss':
       return [{ ...D.compliment(), label: 'Suck Up', emoji: '\u{1F445}' }, D.conversation(), D.befriend(), D.gift(), D.prank(), D.askOut(), D.insult(), D.assault()]
     case 'ex':
     case 'exSpouse':
       return [D.conversation(), D.compliment(), D.gift(), D.getBack(), ...(p.data.fling === true && c.age >= 18 ? [D.hookUp()] : []), D.insult(), D.deleteContact()]
     case 'lover':
-      return [D.spendTime(), D.conversation(), D.compliment(), D.gift(), D.makeLove(), D.leaveFor(), D.endAffair()]
+      return [D.spendTime(), D.conversation(), D.compliment(), D.flirt(), D.gift(), D.makeLove(), D.leaveFor(), D.endAffair()]
     case 'cellmate':
       return [D.befriend(), D.conversation(), D.compliment(), D.insult(), D.assault()]
     case 'enemy':

@@ -462,7 +462,7 @@ function yearlyLoans(g: GameState): void {
       const missed = num(misses[loan.id]) + 1
       misses[loan.id] = missed
       recordMissedPayment(g)
-      if (loan.kind === 'car' && missed >= 2 && repossessFinancedAsset(g, loan)) continue
+      if (missed >= 2 && repossessFinancedAsset(g, loan)) continue
       notice(
         g,
         'Missed Payment',
@@ -490,14 +490,22 @@ function yearlyLoans(g: GameState): void {
 function repossessFinancedAsset(g: GameState, loan: Loan): boolean {
   const c = g.character
   const asset = g.assets.find((a) => a.details.loanId === loan.id)
+  // Nothing left to take back (sold, stolen, wrecked): the debt stays with you.
+  if (!asset) return false
   c.loans = c.loans.filter((l) => l.id !== loan.id)
   clearLoanMisses(g, loan.id)
-  if (!asset) return false
   g.assets = g.assets.filter((a) => a.id !== asset.id)
-  notice(g, 'Repossessed!', `You stopped paying ${loan.lender}, so a tow truck showed up at 3 AM and repossessed your ${asset.name}. Your neighbors watched from their windows.`, { emoji: '🚛', tone: 'bad' })
-  log(g, `My ${asset.name} was repossessed.`, 'bad')
+  const how =
+    asset.kind === 'boat'
+      ? `a repo crew showed up at the marina and towed your ${asset.name.toLowerCase()} away. The seagulls seemed pleased.`
+      : asset.kind === 'aircraft'
+        ? `the lender's pilot flew your ${asset.name.toLowerCase()} out of the hangar while you watched. They didn't even wave.`
+        : `a tow truck showed up at 3 AM and repossessed your ${asset.name}. Your neighbors watched from their windows.`
+  notice(g, 'Repossessed!', `You stopped paying ${loan.lender}, so ${how}`, { emoji: asset.kind === 'car' ? '🚛' : asset.emoji, tone: 'bad' })
+  const nm = asset.kind === 'car' ? asset.name : asset.name.toLowerCase()
+  log(g, `My ${nm} was repossessed.`, 'bad')
   addStat(g, 'happiness', -10)
-  remember(g, `Had my ${asset.name} repossessed.`)
+  remember(g, `Had my ${nm} repossessed.`)
   return true
 }
 

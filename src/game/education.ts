@@ -1234,6 +1234,7 @@ function postSecondaryBlocker(g: GameState): string | null {
   if (c.prison) return "You can't apply to school from prison."
   if (c.education.current) return `You're already enrolled at ${c.education.current.school}.`
   if (!hasHighSchool(g)) return 'You need a high school diploma or GED first.'
+  if (c.job && c.job.category === 'military') return "You can't go back to school while you're serving in the military."
   return null
 }
 
@@ -2122,7 +2123,6 @@ const GREEK_QUIZ_SCRIPT = defineScript('school.greekQuiz', (g, choice, data) => 
   if (choice === data.right) {
     cur.data.greek = house
     g.flags.greek = house
-    g.flags.greekActive = true
     addPopularity(cur, 15)
     addStat(g, 'happiness', 10)
     remember(g, `Joined ${house} at ${cur.school}.`)

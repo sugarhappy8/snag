@@ -25,6 +25,7 @@ import {
   shortMoney,
   spend,
   useYearAction,
+  yearActionsUsed,
 } from './core'
 import { killCharacter } from './death'
 import {
@@ -44,7 +45,7 @@ import {
   yearlyIncome,
 } from './finance'
 import { createPerson } from './people'
-import { bell, chance, nextRandom, pick, randInt, uid } from './rng'
+import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import type { Asset, AssetKind, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Mortgage, Person, RelationKind, StatKey } from './types'
 import { getCountry, randomFirstName, randomLastName } from './world'
@@ -1664,6 +1665,255 @@ export const collectiblesMenu: MenuGroup = {
 }
 
 // ---------------------------------------------------------------------------
+// Family heirlooms: found by searching the attic (from age 11), kept across generations
+// (life.ts carries every asset with details.heirloom === true to the next generation).
+
+export type HeirloomRarity = 'Common' | 'Rare' | 'Very Rare' | 'Super Rare'
+
+export interface HeirloomDef {
+  id: string
+  name: string
+  emoji: string
+  desc: string
+  /** Estimated value in US dollars in mint condition. */
+  value: number
+  /** Refurbishment cost, or null when it can't be refurbished. */
+  refurb: number | null
+  rarity: HeirloomRarity
+  play?: boolean
+  /** Improves luck at the casino, the track and the lottery. */
+  lucky?: boolean
+}
+
+const hl = (id: string, name: string, emoji: string, desc: string, value: number, refurb: number | null, rarity: HeirloomRarity, extra: { play?: boolean; lucky?: boolean } = {}): HeirloomDef => ({ id, name, emoji, desc, value, refurb, rarity, ...extra })
+
+export const HEIRLOOMS: HeirloomDef[] = [
+  // Common
+  hl('dice', 'Pair of Lucky Dice', '🎲', 'Worn smooth by generations of nervous hands. Grandpa swore they never lost.', 1, null, 'Common', { play: true, lucky: true }),
+  hl('paint', 'Acrylic Paint Set', '🎨', 'Half the tubes are dried out. The other half are beige.', 38, null, 'Common', { play: true }),
+  hl('alarm', 'Alarm Clock', '⏰', 'It still rings, at random, whenever it feels like it.', 7, null, 'Common'),
+  hl('console', 'Retro Game Console', '🕹️', 'Comes with one controller and a cartridge you have to blow into.', 35, null, 'Common', { play: true }),
+  hl('ballet', 'Ballet Shoes', '🩰', "Your grandmother's first pair. Still pink, mostly.", 98, 100, 'Common', { play: true }),
+  hl('chopsticks', 'Bamboo Chopsticks', '🥢', 'From a restaurant that closed in 1987.', 5, null, 'Common'),
+  hl('laundry', 'Basket of Dirty Laundry', '🧺', 'Nobody knows whose it is. Nobody wants to find out.', 11, null, 'Common'),
+  hl('basketball', 'Basketball', '🏀', 'Slightly deflated. Signed by "Uncle Rick."', 6, null, 'Common', { play: true }),
+  hl('tent', 'Camping Tent', '⛺', 'Smells like the summer of 1979.', 75, 105, 'Common', { play: true }),
+  hl('candle', 'Candle', '🕯️', 'Scented "Ocean Breeze." Smells like a basement.', 10, null, 'Common'),
+  hl('compass', 'Compass', '🧭', 'Always points slightly to the left of north.', 30, null, 'Common'),
+  hl('crystalBall', 'Crystal Ball', '🔮', 'Your great-aunt used it to predict the weather. She was usually wrong.', 1_400, 100, 'Common', { play: true }),
+  hl('cards', 'Deck of Cards', '🃏', 'Missing the queen of hearts. Long story.', 6, null, 'Common', { play: true }),
+  hl('chair', 'Desk Chair', '🪑', 'It squeaks in the key of B flat.', 113, 60, 'Common'),
+  hl('dolls', 'Porcelain Dolls', '🎎', 'Their eyes follow you around the room.', 125, 110, 'Common'),
+  hl('china', 'Fine China Set', '🍽️', 'Used exactly twice, both times at funerals.', 1_200, 90, 'Common'),
+  hl('pen', 'Fountain Pen', '🖋️', 'Leaks on anything important.', 30, null, 'Common'),
+  hl('clover', 'Four-Leaf Clover', '🍀', 'Pressed between the pages of a dictionary.', 7, null, 'Common'),
+  hl('urn', 'Funeral Urn', '⚱️', "Empty. You hope. You didn't check.", 1_300, null, 'Common'),
+  hl('kimono', 'Silk Kimono', '👘', 'Hand-embroidered with cranes.', 570, 90, 'Common'),
+  hl('kite', 'Kite', '🪁', 'Shaped like a dragon. Missing its tail.', 14, null, 'Common', { play: true }),
+  hl('briefcase', 'Leather Briefcase', '💼', 'Contains a calculator and a very old sandwich.', 100, 100, 'Common'),
+  hl('microscope', 'Brass Microscope', '🔬', 'Used for science fairs in three different decades.', 3_000, 280, 'Common', { play: true }),
+  hl('sailboat', 'Miniature Sailboat', '⛵', 'A ship in a bottle, minus the bottle.', 89, 100, 'Common'),
+  hl('rocketModel', 'Model Rocket', '🚀', 'Launched once. Landed on the neighbor\'s roof.', 210, 100, 'Common', { play: true }),
+  hl('nesting', 'Nesting Dolls', '🪆', 'There are supposed to be seven. There are five.', 202, 100, 'Common'),
+  hl('piano', 'Toy Piano', '🎹', 'Only plays in one key: annoying.', 125, 90, 'Common', { play: true }),
+  hl('beads', 'Prayer Beads', '📿', 'Worn smooth by decades of worry.', 8, null, 'Common'),
+  hl('phone', 'Rotary Telephone', '☎️', "Dialing a number takes about a week.", 15, null, 'Common'),
+  hl('seashell', 'Seashell', '🐚', 'If you hold it to your ear you can hear your grandfather complaining.', 1, null, 'Common'),
+  hl('skateboard', 'Skateboard', '🛹', 'Covered in stickers from bands nobody remembers.', 145, null, 'Common', { play: true }),
+  hl('sled', 'Wooden Sled', '🛷', 'Has a name carved into it: "Rosebud." Weird.', 60, null, 'Common', { play: true }),
+  hl('letters', 'Stack of Love Letters', '💌', 'Your grandparents were... very descriptive.', 17, null, 'Common'),
+  hl('teddy', 'Teddy Bear', '🧸', 'Missing one eye. Still the best listener in the family.', 6, null, 'Common', { play: true }),
+  hl('toolbox', 'Toolbox', '🧰', 'Every tool is slightly the wrong size.', 75, null, 'Common'),
+  hl('tophat', 'Top Hat', '🎩', 'There might be a rabbit in it. Do not check.', 40, null, 'Common'),
+  hl('umbrella', 'Umbrella', '🌂', 'Opens on its own, indoors, at the worst moments.', 15, null, 'Common'),
+  hl('vhs', 'Family Reunion VHS Tape', '📼', 'Six hours of your uncle explaining his grill.', 1, null, 'Common'),
+  hl('chimes', 'Wind Chime', '🎐', 'The neighbors have filed complaints since 1992.', 28, null, 'Common'),
+  hl('yoyo', 'Yo-Yo', '🪀', 'Does exactly one trick: going down.', 52, null, 'Common', { play: true }),
+  // Rare
+  hl('bicycle', '1987 BMX Bicycle', '🚲', 'Chrome frame, banana seat, zero brakes.', 400, 90, 'Rare', { play: true }),
+  hl('tradingCards', 'Binder of First-Edition Trading Cards', '📒', 'Mint condition, in plastic sleeves. Someone loved these.', 10_600, null, 'Rare'),
+  hl('soap', 'Bar of Movie-Prop Soap', '🧼', 'From a famous movie nobody is supposed to talk about.', 252, null, 'Rare'),
+  hl('flag', 'Checkered Racing Flag', '🏁', 'Waved at a famous 500-mile race.', 543, 100, 'Rare'),
+  hl('gasPump', '1960s Highway Gas Pump', '⛽', 'Gas was 31 cents a gallon. It says so right there.', 2_800, 180, 'Rare'),
+  hl('dagger', 'Medieval Dagger', '🗡️', 'Engraved with a family crest nobody can identify.', 97_703, 9_890, 'Rare'),
+  hl('mahjong', 'Mahjong Tile', '🀄', 'Just the one tile. The rest of the set is a mystery.', 3, null, 'Rare'),
+  hl('map', 'Old Road Map', '🗺️', 'It has never once been folded correctly.', 5, null, 'Rare'),
+  hl('horn', '19th Century Postal Horn', '📯', 'The mail used to arrive with fanfare.', 43_562, 3_020, 'Rare', { play: true }),
+  hl('pager', '1993 Pager', '📟', 'Still waiting for a callback.', 10, null, 'Rare'),
+  hl('plasma', 'Plasma Ball', '🔮', 'Touch it and lightning follows your finger.', 45, null, 'Rare', { play: true }),
+  hl('watch', 'Gold Swiss Watch', '⌚', "Great-grandpa's. It has been ticking since the 1940s.", 77_606, 5_150, 'Rare'),
+  hl('scooter', '1962 Italian Scooter', '🛵', 'Seafoam green. Starts on the third kick.', 9_000, 410, 'Rare', { play: true }),
+  hl('bags', 'Vintage Department Store Shopping Bags', '🛍️', 'Robin-egg blue. Someone kept them for 60 years.', 400, 60, 'Rare'),
+  hl('balloon', 'Single Red Balloon', '🎈', 'It has not deflated in 30 years. That is concerning.', 1, null, 'Rare'),
+  hl('proSkateboard', "Skating Legend's Skateboard", '🛹', 'Ridden in the first-ever 900 attempt.', 13_950, 1_430, 'Rare', { play: true }),
+  hl('slotMachine', 'Antique Slot Machine', '🎰', 'Still eats quarters. Never pays out.', 5_200, 400, 'Rare', { play: true }),
+  hl('snare', 'Revolutionary War Snare Drum', '🥁', 'It has marched into more battles than you have.', 5_161, 320, 'Rare', { play: true }),
+  hl('soccer', 'World Cup Game Ball', '⚽', 'From the 2010 final. Still smells like grass and victory.', 2_331, 150, 'Rare', { play: true }),
+  hl('tarot', 'Deck of Tarot Cards', '🔮', 'Every reading somehow ends with "Death."', 24, null, 'Rare', { play: true }),
+  hl('tinfoil', 'Tinfoil Hat', '🎩', 'Protects against mind control. Allegedly.', 2, null, 'Rare'),
+  hl('trophy', 'Elementary School Spelling Bee Trophy', '🏆', 'Engraved "2007 Spelling Be Champion."', 1, null, 'Rare'),
+  // Very rare
+  hl('amphora', 'Ancient Greek Amphora', '🏺', 'Painted with athletes who would definitely be disqualified today.', 500_000, 46_870, 'Very Rare'),
+  hl('sextant', 'Antique Sextant', '🧭', 'Navigated a ship across the Atlantic in 1820.', 1_500, 110, 'Very Rare'),
+  hl('astrolabe', 'Antique Astrolabe', '🔭', 'Medieval astronomers used it to tell time by the stars.', 5_099, 520, 'Very Rare'),
+  hl('baseball', '1969 Championship Game Ball', '⚾', 'Caught in the stands by a great-uncle who never shut up about it.', 700, 90, 'Very Rare', { play: true }),
+  hl('wine', 'Bottle of 1961 Bordeaux', '🍾', 'Too valuable to drink. Too tempting to keep.', 7_247, null, 'Very Rare'),
+  hl('rookieCard', 'Basketball Legend Rookie Card', '⛹️', 'The most famous rookie card of all time, in a slightly bent sleeve.', 80_895, 7_620, 'Very Rare'),
+  hl('brain', "Frankenstein's Brain", '🧠', 'In a jar. Labeled "ABBY NORMAL." It twitches.', 1_410_000, null, 'Very Rare'),
+  hl('canoe', 'Birchbark Canoe', '🛶', 'Hand-built a century ago. Surprisingly watertight.', 1_850, 150, 'Very Rare', { play: true }),
+  hl('diamond', '10-Carat Diamond', '💎', 'Loose, flawless and found in a sock drawer.', 1_990_000, 187_110, 'Very Rare'),
+  hl('ring', '2-Carat Diamond Ring', '💍', "Your great-grandmother's engagement ring.", 15_000, 630, 'Very Rare'),
+  hl('telescope', 'Digital Telescope', '🔭', 'Can see the rings of Saturn and your neighbors\' business.', 6_683, 640, 'Very Rare', { play: true }),
+  hl('disco', 'Famous Nightclub Disco Ball', '🪩', 'It saw things in the 1970s it will never discuss.', 184_322, 18_990, 'Very Rare'),
+  hl('dung', 'T-Rex Dung Fossil', '💩', 'Sixty-six million years old. Still kind of gross.', 4_000, 340, 'Very Rare'),
+  hl('stratocaster', '1968 Electric Guitar', '🎸', 'Played at a muddy music festival. The mud is still on it.', 8_600, 780, 'Very Rare', { play: true }),
+  hl('filmReel', 'Original Fantasy Film Reel', '🎞️', 'The first print of a famous movie about a girl, a dog and a yellow road.', 909_099, null, 'Very Rare'),
+  hl('medal', 'Olympic Bronze Medal', '🥉', 'Third place in the world is still pretty great.', 28_000, 2_530, 'Very Rare'),
+  hl('lock', "Famous Escape Artist's Padlock", '🔒', 'Nobody in the family has ever managed to open it.', 9_674, null, 'Very Rare'),
+  hl('painting', 'Original Desert Flower Painting', '🖼️', 'A masterpiece by a famous American modernist.', 884_254, 60_240, 'Very Rare'),
+  hl('doodle', 'Cubist Master Doodle', '🖼️', 'Drawn on a restaurant napkin to pay for lunch.', 6_500, 230, 'Very Rare'),
+  hl('radio', '1951 Radio', '📻', 'Still picks up a station that went off the air in 1960.', 280, null, 'Very Rare', { play: true }),
+  hl('newspaper', 'Newspaper from December 31, 1999', '🗞️', 'Front page: "Y2K: THE END?"', 2, null, 'Very Rare'),
+  hl('sword', 'Fantasy TV Show Sword', '⚔️', 'A prop sword from the most-watched fantasy series ever.', 36_712, 2_350, 'Very Rare'),
+  hl('whip', "Archaeologist Adventurer's Whip", '🪢', 'Belongs in a museum.', 5_690, 412, 'Very Rare', { play: true }),
+  // Super rare
+  hl('ark', 'Ark of the Covenant', '📦', 'A golden chest. Do NOT open it.', 130_000_000, null, 'Super Rare'),
+  hl('bell', 'Haunted Motel Service Bell', '🛎️', 'From a motel with a very bad shower.', 1_700, 150, 'Super Rare', { play: true }),
+  hl('crown', "Charlemagne's Crown", '👑', 'The crown of the first Holy Roman Emperor. Heavy is the head.', 30_000_000, 2_019_600, 'Super Rare'),
+  hl('excalibur', 'Excalibur', '🗡️', 'You pulled it out of a box marked "Misc." Does that make you king?', 715_000_000, null, 'Super Rare'),
+  hl('egg', 'Imperial Jeweled Egg', '🥚', 'Made for a Russian tsar. Definitely not for breakfast.', 20_155_604, 1_842_400, 'Super Rare'),
+  hl('grail', 'Holy Grail', '🏆', 'A plain wooden cup. It glows faintly.', 1_264_999_936, null, 'Super Rare', { play: true }),
+  hl('hammer', 'Hammer of Thor', '🔨', 'You can lift it. You are clearly worthy.', 35_816_000, null, 'Super Rare'),
+  hl('bulb', "Thomas Edison's Light Bulb", '💡', 'One of the first that actually worked.', 275_000, 16_530, 'Super Rare'),
+  hl('meteorite', 'Meteorite', '☄️', 'It fell into the backyard in 1938 and nobody thought to mention it.', 9_514_331, null, 'Super Rare'),
+  hl('notebook', "Leonardo da Vinci's Notebook", '📓', 'Written backwards, in a mirror. Includes a doodle of a helicopter.', 323_916, null, 'Super Rare'),
+  hl('rosetta', 'Rosetta Stone', '🪨', 'How did THIS end up in your attic?', 607_500_032, null, 'Super Rare'),
+  hl('shield', 'Shield from the Crusades', '🛡️', 'Dented in all the right places.', 450_000, 42_760, 'Super Rare'),
+  hl('bootSpace', "First Moonwalker's Space Boot", '🥾', 'One small step for man. One huge payday for you.', 2_901_780, 301_740, 'Super Rare'),
+  hl('testTube', "Marie Curie's Test Tube", '🧪', 'It glows slightly. Please wash your hands.', 27_500, 2_320, 'Super Rare'),
+  hl('anchor', 'Titanic Anchor', '⚓', 'How it got into the attic is a family mystery.', 525_000, 36_920, 'Super Rare'),
+  hl('trumpet', "Jazz Legend's Trumpet", '🎺', 'What a wonderful find.', 2_500_000, 170_280, 'Super Rare', { play: true }),
+  hl('violin', '1702 Stradivarius Violin', '🎻', 'Three centuries old and it still sounds like heaven.', 9_800_000, 903_370, 'Super Rare', { play: true }),
+  hl('galileo', "Galileo's Telescope", '🔭', 'And yet it moves.', 5_019_683, 483_790, 'Super Rare', { play: true }),
+]
+
+const RARITY_WEIGHT: Record<HeirloomRarity, number> = { Common: 72, Rare: 20, 'Very Rare': 7.6, 'Super Rare': 0.4 }
+
+export function isHeirloom(a: Asset): boolean {
+  return a.details.heirloom === true
+}
+
+/** True when you own a lucky charm (the family's Lucky Dice) — gambling.ts uses it. */
+export function hasLuckyCharm(g: GameState): boolean {
+  return g.assets.some((a) => a.details.lucky === true)
+}
+
+/** Heirloom value from its mint value and condition. */
+function heirloomValue(base: number, condition: number): number {
+  return Math.max(1, nicePrice(base * (0.45 + 0.55 * (Math.max(0, Math.min(100, condition)) / 100))))
+}
+
+/** Where you could go rummaging, or null. */
+function atticAccess(g: GameState): 'family' | 'own' | null {
+  const c = g.character
+  if (c.residence.status === 'parents') return 'family'
+  if (c.residence.status === 'owned' && g.assets.some((a) => a.id === c.residence.assetId && a.kind === 'house')) return 'own'
+  return null
+}
+
+const ATTIC_NOTHING = [
+  'You searched the attic with a flashlight and found nothing but dust bunnies, a dead moth and a box of tax returns from 1994.',
+  'You spent an hour in the attic. You found cobwebs, a broken lamp and a strong suspicion that something lives up there.',
+  'The attic was empty except for a mannequin that you are 90% sure moved.',
+  'You searched every corner of the attic and found exactly nothing worth keeping. A spider watched you the whole time.',
+  'You found a box labeled "IMPORTANT." It contained more boxes. All empty.',
+]
+
+/** Search the attic for a family heirloom. Returns the heirloom found, if any. */
+export function searchAttic(g: GameState): Asset | null {
+  const c = g.character
+  const where = atticAccess(g)
+  if (!where) {
+    notice(g, 'Attic', "You don't have an attic to search. You need to live at home or own a house.", { emoji: '🔦' })
+    return null
+  }
+  if (!useYearAction(g, 'attic', 1)) {
+    notice(g, 'Attic', pick(g, ['You already searched the attic this year. The spiders need time to rebuild.', 'You already turned the attic upside down this year. Nothing new has appeared. Yet.']), { emoji: '🕸️' })
+    return null
+  }
+  const roll = rand(g)
+  if (roll < 0.04) {
+    addStat(g, 'health', -randInt(g, 4, 10))
+    addStat(g, 'happiness', -3)
+    notice(g, 'Ouch!', pick(g, ['You stepped between the beams and put your foot through the ceiling. Someone downstairs screamed.', 'A box of old encyclopedias fell on your head. You learned nothing.', 'You disturbed a family of bats. They did not appreciate it.']), { emoji: '🤕', tone: 'bad' })
+    log(g, 'I hurt myself rummaging in the attic.', 'bad')
+    return null
+  }
+  if (roll < 0.47) {
+    notice(g, 'Attic', pick(g, ATTIC_NOTHING), { emoji: '🔦' })
+    log(g, pick(g, ['I searched the attic but found nothing.', 'I rummaged through the attic. Nothing but dust.']))
+    return null
+  }
+  const owned = new Set(g.assets.filter(isHeirloom).map((a) => str(a.details.heirloomId)))
+  const pool = HEIRLOOMS.filter((x) => !owned.has(x.id))
+  if (pool.length === 0) {
+    notice(g, 'Attic', "You've already found every treasure this attic has to offer.", { emoji: '🔦' })
+    return null
+  }
+  const perRarity: Record<string, number> = {}
+  for (const x of pool) perRarity[x.rarity] = (perRarity[x.rarity] ?? 0) + 1
+  const def = weightedPick(g, pool, (x) => RARITY_WEIGHT[x.rarity] / perRarity[x.rarity])
+  const base = Math.max(1, nicePrice(def.value * goodsMult(g) * (0.85 + rand(g) * 0.3)))
+  const condition = randInt(g, def.rarity === 'Common' ? 25 : 15, 100)
+  const asset: Asset = {
+    id: uid(g, 'a'),
+    kind: 'collectible',
+    name: def.name,
+    emoji: def.emoji,
+    purchasePrice: 0,
+    value: heirloomValue(base, condition),
+    condition,
+    purchasedAge: c.age,
+    upkeep: 0,
+    details: {
+      heirloom: true,
+      heirloomId: def.id,
+      category: 'heirloom',
+      rarity: def.rarity,
+      desc: def.desc,
+      baseValue: base,
+      refurbCost: def.refurb === null ? null : nicePrice(def.refurb * goodsMult(g)),
+      playable: def.play === true,
+      lucky: def.lucky === true,
+      foundYear: g.year,
+    },
+  }
+  g.assets.push(asset)
+  count(g, 'heirlooms')
+  const title = def.rarity === 'Super Rare' ? 'Incredible Find!' : def.rarity === 'Very Rare' ? 'Treasure!' : def.rarity === 'Rare' ? 'Nice Find!' : 'Attic Find'
+  let text = `You searched the ${where === 'family' ? 'family' : 'dusty'} attic with a flashlight and found ${withArticle(def.name)}! ${def.desc}\n\nRarity: ${def.rarity} · Condition: ${condition}% · Estimated value: ${formatMoney(asset.value)}`
+  if (def.lucky) text += '\n\nSomething tells you these will bring you luck at the casino and the lottery.'
+  notice(g, title, text, { emoji: def.emoji, tone: def.rarity === 'Common' ? 'neutral' : 'good' })
+  log(g, `I found ${withArticle(def.name)} in the attic.`, def.rarity === 'Common' ? 'neutral' : 'good')
+  if (def.rarity !== 'Common') addStat(g, 'happiness', def.rarity === 'Super Rare' ? 20 : def.rarity === 'Very Rare' ? 8 : 4)
+  if (def.rarity === 'Super Rare' || def.rarity === 'Very Rare') remember(g, `Found ${withArticle(def.name)} in the attic.`)
+  return asset
+}
+
+export const searchAtticAction: MenuAction = {
+  type: 'action',
+  id: 'searchAttic',
+  label: 'Search the Attic',
+  emoji: '🔦',
+  subtitle: (g) => (yearActionsUsed(g, 'attic') > 0 ? 'Already searched this year' : 'Look for family heirlooms (once a year)'),
+  visible: (g) => g.character.age >= 11 && atticAccess(g) !== null,
+  disabledReason: blockReason,
+  run: (g) => {
+    searchAttic(g)
+  },
+}
+
+// ---------------------------------------------------------------------------
 // Owned assets: actions
 
 const GIFT_RELATIONS: RelationKind[] = ['parent', 'stepparent', 'sibling', 'halfSibling', 'stepsibling', 'grandparent', 'child', 'stepchild', 'grandchild', 'friend', 'bestFriend', 'partner', 'fiance', 'spouse', 'lover']
@@ -1703,6 +1953,19 @@ function makeOffers(g: GameState, a: Asset): Offer[] {
   const v = Math.max(1, a.value)
   const person = () => `${randomFirstName(g, c.countryId, chance(g, 0.5) ? 'male' : 'female')} ${randomLastName(g, c.countryId)}`
   const f = (lo: number, hi: number) => nicePrice(v * (lo + (hi - lo) * (randInt(g, 0, 1000) / 1000)))
+  if (isHeirloom(a)) {
+    if (v < 500) {
+      return [
+        { buyer: 'Garage sale shopper', amount: f(0.5, 1.2) },
+        { buyer: `${person()} (online buyer)`, amount: f(0.8, 1.1) },
+      ]
+    }
+    return [
+      { buyer: 'Pawn shop', amount: f(0.3, 0.5) },
+      { buyer: 'Antique dealer', amount: f(0.7, 0.95) },
+      { buyer: 'Auction house', amount: f(0.85, 1.25) },
+    ]
+  }
   switch (a.kind) {
     case 'house': {
       const offers = [
@@ -2709,6 +2972,84 @@ function useItemAction(a: Asset): MenuAction {
   }
 }
 
+// --- Heirlooms
+
+const HEIRLOOM_PLAY: Record<string, string[]> = {
+  dice: ['You rolled the lucky dice. Seven. Again. And again. This is getting spooky.', 'You rolled the lucky dice and they came up double sixes. You feel lucky.'],
+  grail: ['You drank water from the Holy Grail. A warm light filled you from head to toe.'],
+  violin: ['You played the Stradivarius. Even your sloppy scales sounded like a symphony.'],
+  crystalBall: ['You gazed into the crystal ball. It showed you... your own reflection, looking confused.'],
+  tarot: ['You did a tarot reading for yourself. The Tower. Then Death. Then the Fool. Accurate.'],
+  slotMachine: ['You fed the antique slot machine a quarter. It ate it. Tradition.'],
+  telescope: ['You looked at Saturn through the telescope. It really does have rings!'],
+  galileo: ["You looked through Galileo's telescope. The moons of Jupiter, just like he saw them."],
+}
+
+function heirloomPlayAction(a: Asset): MenuAction {
+  return {
+    type: 'action',
+    id: `playHeirloom-${a.id}`,
+    label: 'Play',
+    emoji: '🎈',
+    disabledReason: (g) => blockReason(g) ?? (live(g, a).condition <= 0 ? "It's too broken to play with." : null),
+    run: (g) => {
+      const asset = findAsset(g, a.id)
+      if (!asset) return
+      if (!useYearAction(g, `play:${asset.id}`, 2)) {
+        notice(g, 'Play', `You've played with the ${asset.name.toLowerCase()} enough this year. Let it rest.`, { emoji: asset.emoji })
+        return
+      }
+      const id = str(asset.details.heirloomId)
+      const nm = asset.name.toLowerCase()
+      if (id === 'grail') {
+        for (const k of ['happiness', 'health', 'smarts', 'looks'] as StatKey[]) addStat(g, k, 100)
+        count(g, 'grailUses')
+        log(g, 'I drank from the Holy Grail and felt incredible.', 'good')
+        notice(g, 'Divine', pick(g, HEIRLOOM_PLAY.grail), { emoji: '✨', tone: 'good' })
+        return
+      }
+      addStat(g, 'happiness', randInt(g, 2, 6))
+      let text = pick(g, HEIRLOOM_PLAY[id] ?? [`You played with the ${nm} for hours. It brought back memories you never had.`, `You took the ${nm} for a spin. The family would be proud. Or horrified.`, `You had a blast with the ${nm}. Some heirlooms are meant to be used.`])
+      if (chance(g, 0.12)) {
+        const dmg = randInt(g, 10, 25)
+        asset.condition = Math.max(0, asset.condition - dmg)
+        asset.value = heirloomValue(num(asset.details.baseValue, asset.value), asset.condition)
+        text += ` Unfortunately, you damaged it a little (condition -${dmg}%).`
+      }
+      log(g, `I played with the ${nm}.`)
+      notice(g, 'Play Time', text, { emoji: asset.emoji, tone: 'good' })
+    },
+  }
+}
+
+function refurbishAction(a: Asset): MenuAction {
+  return {
+    type: 'action',
+    id: `refurb-${a.id}`,
+    label: 'Refurbish',
+    emoji: '🧽',
+    subtitle: (g) => `${formatMoney(num(live(g, a).details.refurbCost))} · restores it to mint condition`,
+    visible: (g) => live(g, a).details.refurbCost !== null && num(live(g, a).details.refurbCost) > 0 && live(g, a).condition < 100,
+    disabledReason: blockReason,
+    confirm: (g) => `Have a restorer refurbish your ${a.name.toLowerCase()} for ${formatMoney(num(live(g, a).details.refurbCost))}?`,
+    run: (g) => {
+      const asset = findAsset(g, a.id)
+      if (!asset) return
+      const cost = num(asset.details.refurbCost)
+      if (cost <= 0 || asset.condition >= 100) return
+      if (!spend(g, cost)) {
+        cantAfford(g, cost, 'the refurbishment')
+        return
+      }
+      const before = asset.value
+      asset.condition = 100
+      asset.value = heirloomValue(num(asset.details.baseValue, asset.value), 100)
+      log(g, `I had my ${asset.name.toLowerCase()} refurbished.`)
+      notice(g, 'Good as New', `A restorer spent weeks on your ${asset.name.toLowerCase()}. It's in mint condition, and its estimated value went from ${formatMoney(before)} to ${formatMoney(asset.value)}.`, { emoji: '🧽', tone: 'good' })
+    },
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Owned asset node
 
@@ -2720,13 +3061,14 @@ function assetSubtitle(g: GameState, a: Asset): string {
   if (a.mortgage) bits.push('Mortgaged')
   else if (assetLoan(g, a)) bits.push('Financed')
   if (a.details.fake === true) bits.push('Costume')
+  if (isHeirloom(a)) bits.push(str(a.details.rarity, 'Heirloom'))
   if (haunted(a) > 0) bits.push('👻')
   return bits.join(' · ')
 }
 
 function assetInfo(g: GameState, a: Asset): MenuNode[] {
   const rows: string[] = []
-  rows.push(`💰 Value: ${formatMoney(a.value)} (paid ${formatMoney(a.purchasePrice)} at age ${a.purchasedAge})`)
+  rows.push(isHeirloom(a) ? `💰 Estimated value: ${formatMoney(a.value)} (found at age ${a.purchasedAge})` : `💰 Value: ${formatMoney(a.value)} (paid ${formatMoney(a.purchasePrice)} at age ${a.purchasedAge})`)
   rows.push(`🔧 Condition: ${a.condition}% (${conditionLabel(a.condition)})`)
   const d = a.details
   if (a.kind === 'house') {
@@ -2739,6 +3081,10 @@ function assetInfo(g: GameState, a: Asset): MenuNode[] {
   if (a.kind === 'car') rows.push(`🚘 ${str(d.color, 'Unknown color')} · ${num(d.mileage).toLocaleString('en-US')} miles`)
   if (a.kind === 'jewelry') rows.push(`💎 ${num(d.carats) ? `${num(d.carats)} carats · ` : ''}Quality ${num(d.quality, 50)}%${d.fake === true ? ' · Costume jewelry' : ''}`)
   if (str(d.category) === 'art') rows.push(`🎨 ${str(d.medium, 'Artwork')} by ${str(d.artist, 'an unknown artist')}`)
+  if (isHeirloom(a)) {
+    rows.push(`📜 ${str(d.desc, 'A family heirloom.')}`)
+    rows.push(`🏷️ Rarity: ${str(d.rarity, 'Common')}${d.lucky === true ? ' · 🍀 Brings luck at the casino and the lottery' : ''}`)
+  }
   if (a.mortgage) rows.push(`🏦 Mortgage: ${formatMoney(a.mortgage.balance)} left with ${a.mortgage.lender} · ${formatMoney(a.mortgage.yearlyPayment)}/yr · ${a.mortgage.yearsLeft} yrs · ${(a.mortgage.rate * 100).toFixed(2)}%`)
   const loan = assetLoan(g, a)
   if (loan) rows.push(`🏦 ${loanLabel(loan.kind)}: ${formatMoney(loan.balance)} left with ${loan.lender} · ${formatMoney(loan.yearlyPayment)}/yr`)
@@ -2765,6 +3111,15 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
       const nodes: MenuNode[] = [...assetInfo(gg, cur), { type: 'heading', id: `actions-${cur.id}`, label: 'Actions' }]
       const push = (n: MenuNode | null) => {
         if (n) nodes.push(n)
+      }
+      if (isHeirloom(cur)) {
+        push(cur.details.playable === true ? heirloomPlayAction(cur) : useItemAction(cur))
+        push(refurbishAction(cur))
+        push(giftMenu(cur))
+        push(sellAction(cur))
+        push(donateAction(cur))
+        push(discardAction(cur))
+        return nodes
       }
       switch (cur.kind) {
         case 'house':
@@ -2846,13 +3201,18 @@ const KIND_SECTIONS: [string, AssetKind[]][] = [
 function ownedAssetNodes(g: GameState): MenuNode[] {
   if (g.assets.length === 0) return [{ type: 'info', id: 'noAssets', text: "You don't own anything yet.", emoji: '📭' }]
   const nodes: MenuNode[] = []
+  const heirlooms = g.assets.filter(isHeirloom)
+  if (heirlooms.length) {
+    nodes.push({ type: 'heading', id: 'sec-heirlooms', label: `Family Heirlooms (${heirlooms.length})` })
+    for (const a of heirlooms) nodes.push(assetNode(g, a))
+  }
   for (const [title, kinds] of KIND_SECTIONS) {
-    const list = g.assets.filter((a) => kinds.includes(a.kind))
+    const list = g.assets.filter((a) => kinds.includes(a.kind) && !isHeirloom(a))
     if (list.length === 0) continue
     nodes.push({ type: 'heading', id: `sec-${title}`, label: `${title} (${list.length})` })
     for (const a of list) nodes.push(assetNode(g, a))
   }
-  const other = g.assets.filter((a) => !KIND_SECTIONS.some(([, kinds]) => kinds.includes(a.kind)))
+  const other = g.assets.filter((a) => !isHeirloom(a) && !KIND_SECTIONS.some(([, kinds]) => kinds.includes(a.kind)))
   for (const a of other) nodes.push(assetNode(g, a))
   return nodes
 }
@@ -2913,6 +3273,8 @@ export const assetsMenu: MenuGroup = {
   children: (g) => [
     ...ownedAssetNodes(g),
     ...loanNodes(g),
+    { type: 'heading', id: 'atticHeading', label: 'Heirlooms', visible: (gg) => searchAtticAction.visible?.(gg) ?? true },
+    searchAtticAction,
     { type: 'heading', id: 'housingHeading', label: 'Housing' },
     realEstateMenu,
     rentalsMenu,
@@ -2988,6 +3350,13 @@ const CAR_BREAKDOWN = defineScript('assets.carBreakdown', (g, choice, data) => {
 
 function ageAsset(g: GameState, a: Asset, market: number): void {
   const d = a.details
+  if (isHeirloom(a)) {
+    // Heirlooms slowly gain value the longer they stay in the family.
+    a.condition = Math.max(0, a.condition - randInt(g, 0, 1))
+    d.baseValue = Math.max(1, Math.round(num(d.baseValue, a.value) * (1 + bell(g, -10, 40) / 1000)))
+    a.value = heirloomValue(num(d.baseValue), a.condition)
+    return
+  }
   switch (a.kind) {
     case 'house': {
       const mv = marketValue(a) * (1 + market + bell(g, -30, 30) / 1000)

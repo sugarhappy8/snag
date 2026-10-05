@@ -44,6 +44,7 @@ describe('income tax', () => {
 describe('yearlyFinance', () => {
   it('taxes this year’s income and logs it', () => {
     const g = adult(100_000)
+    createPerson(g, { relation: 'parent', age: 60, relationship: 80 }) // lives at home: no living costs
     g.flags.taxableIncome = 80_000
     const tax = incomeTax('us', 80_000)
     yearlyFinance(g)
@@ -82,6 +83,7 @@ describe('yearlyFinance', () => {
 
   it('defers student loans while still in school', () => {
     const g = adult(5_000, 20)
+    g.character.residence = { status: 'dorm' }
     g.character.education.current = { level: 'university', school: 'U', year: 2, totalYears: 4, grades: 70, data: {} }
     addLoan(g, { kind: 'student', lender: 'Federal Student Aid', principal: 20_000, rate: 0.05, years: 10 })
     yearlyFinance(g)

@@ -3,7 +3,7 @@
 // the minigame UIs only animate them. Blackjack is the exception: the hand is played for real
 // in the UI and its result string is settled here.
 import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, inPrison, log, minigame, notice, relationLabel, remember, spouse, useYearAction, yearActionsUsed } from './core'
-import { seeded, yearKey } from './assets'
+import { hasLuckyCharm, seeded, yearKey } from './assets'
 import { chance, pick, rand, randInt, uid } from './rng'
 import { defineScript } from './scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from './types'
@@ -12,7 +12,7 @@ import { getCountry } from './world'
 // ---------------------------------------------------------------------------
 // Rules & helpers
 
-/** Minimum age for casinos, the racetrack and the lottery. */
+/** Minimum age for the lottery, and for casinos where the drinking age is lower. */
 export const GAMBLING_AGE = 18
 export const MIN_BET = 5
 const ADMISSION = 10
@@ -36,12 +36,19 @@ function countryName(g: GameState): string {
   return getCountry(g.character.countryId).name
 }
 
+/** Casino & racetrack age: the country's drinking age, but never under 18. */
+export function casinoAge(g: GameState): number {
+  const drinking = getCountry(g.character.countryId).drinkingAge
+  return Math.max(GAMBLING_AGE, typeof drinking === 'number' && Number.isFinite(drinking) ? drinking : GAMBLING_AGE)
+}
+
 /** Why you can't gamble here right now, or null. */
 export function casinoBlock(g: GameState, place: 'casino' | 'track' = 'casino'): string | null {
   const c = g.character
   if (!c.alive) return "You're dead."
   if (c.prison) return "You can't gamble from prison. Well, not legally."
-  if (c.age < GAMBLING_AGE) return place === 'casino' ? `You must be ${GAMBLING_AGE} to enter a casino. The bouncer laughed at your fake ID.` : `You must be ${GAMBLING_AGE} to bet on horse races.`
+  const age = casinoAge(g)
+  if (c.age < age) return place === 'casino' ? `You must be ${age} to enter a casino. The bouncer laughed at your fake ID.` : `You must be ${age} to bet on horse races.`
   if (GAMBLING_ILLEGAL.has(c.countryId)) {
     return place === 'casino' ? `What? There are no casinos in ${countryName(g)} because gambling is illegal.` : `Seriously? There are no horse races in ${countryName(g)} because gambling is illegal.`
   }
@@ -267,22 +274,31 @@ export interface SlotSymbol {
   name: string
   weight: number
   precious: boolean
+  fruit: boolean
   three: number
   two: number
 }
 
-/** Reel symbols (weights are per reel stop). Returns are multiples of the bet, stake included. */
+/**
+ * Reel symbols (weights are per reel stop). Pays on the center line, as multiples of the bet
+ * (stake included): three of a kind, two of a precious symbol, any three precious symbols,
+ * or any three fruits.
+ */
 export const SLOT_SYMBOLS: SlotSymbol[] = [
-  { id: 'star', emoji: '⭐', name: 'Lucky Star', weight: 1, precious: true, three: 80, two: 5 },
-  { id: 'diamond', emoji: '💎', name: 'Diamond', weight: 2, precious: true, three: 40, two: 3 },
-  { id: 'coin', emoji: '🪙', name: 'Gold Coin', weight: 3, precious: true, three: 20, two: 2 },
-  { id: 'grape', emoji: '🍇', name: 'Grapes', weight: 3, precious: false, three: 15, two: 0 },
-  { id: 'melon', emoji: '🍉', name: 'Melon', weight: 4, precious: false, three: 10, two: 0 },
-  { id: 'lemon', emoji: '🍋', name: 'Lemon', weight: 5, precious: false, three: 8, two: 0 },
+  { id: 'star', emoji: '⭐', name: 'Lucky Star', weight: 2, precious: true, fruit: false, three: 20, two: 5 },
+  { id: 'diamond', emoji: '💎', name: 'Diamond', weight: 3, precious: true, fruit: false, three: 18, two: 4 },
+  { id: 'coin', emoji: '🪙', name: 'Gold Coin', weight: 4, precious: true, fruit: false, three: 15, two: 3 },
+  { id: 'grape', emoji: '🍇', name: 'Grapes', weight: 9, precious: false, fruit: true, three: 12, two: 0 },
+  { id: 'melon', emoji: '🍉', name: 'Melon', weight: 10, precious: false, fruit: true, three: 10, two: 0 },
+  { id: 'lemon', emoji: '🍋', name: 'Lemon', weight: 12, precious: false, fruit: true, three: 8, two: 0 },
+  // The house's best friend: pays nothing and breaks up every line it lands on.
+  { id: 'skull', emoji: '💀', name: 'Skull', weight: 12, precious: false, fruit: false, three: 0, two: 0 },
 ]
 
 /** Any three precious symbols (mixed) pay this. */
 export const SLOT_MIXED_PRECIOUS = 6
+/** Any three fruits (mixed) pay this. */
+export const SLOT_MIXED_FRUIT = 3
 
 /** Payout multiplier (total return / bet) for three reel symbol ids. */
 export function slotPayout(reels: string[]): number {
@@ -295,6 +311,7 @@ export function slotPayout(reels: string[]): number {
     if (s.two > 0 && reels.filter((r) => r === s.id).length === 2) best = Math.max(best, s.two)
   }
   if (a.precious && b.precious && c.precious) best = Math.max(best, SLOT_MIXED_PRECIOUS)
+  if (a.fruit && b.fruit && c.fruit) best = Math.max(best, SLOT_MIXED_FRUIT)
   return best
 }
 
@@ -330,7 +347,7 @@ export function settleSlots(g: GameState, data: Json | undefined): void {
   addMoney(g, net)
   recordGamble(g, bet, net, before)
   const emojis = reelIds.map((id) => SLOT_SYMBOLS.find((s) => s.id === id)?.emoji ?? '❔').join(' ')
-  if (mult >= 20) {
+  if (mult >= 15) {
     log(g, `I hit a ${formatMoney(net)} jackpot on the slots at ${casino}!`, 'good')
     notice(g, 'JACKPOT!', `${emojis}\nBells! Lights! Sirens! You hit the big one and won ${formatMoney(net)} on the slot machine!`, { emoji: '🎰', tone: 'good' })
   } else if (net > 0) {
@@ -358,7 +375,9 @@ export function startSlots(g: GameState, casino: string, input: string | undefin
     tooMuchGambling(g, 'casino')
     return
   }
-  const reels = [spinReel(g), spinReel(g), spinReel(g)]
+  let reels = [spinReel(g), spinReel(g), spinReel(g)]
+  // The family's lucky dice give a losing spin one more chance.
+  if (slotPayout(reels.map((s) => s.id)) < 1 && hasLuckyCharm(g) && chance(g, 0.2)) reels = [spinReel(g), spinReel(g), spinReel(g)]
   const reelIds = reels.map((s) => s.id)
   minigame(g, 'slots', `Slots · ${casino}`, SLOTS, {
     bet,
@@ -367,8 +386,11 @@ export function startSlots(g: GameState, casino: string, input: string | undefin
     reels: reels.map((s) => s.emoji),
     payout: slotPayout(reelIds),
     symbols: SLOT_SYMBOLS.map((s) => s.emoji),
-    paytable: SLOT_SYMBOLS.map((s) => ({ emoji: s.emoji, three: s.three, two: s.two })),
+    paytable: SLOT_SYMBOLS.filter((s) => s.three > 0).map((s) => ({ emoji: s.emoji, three: s.three, two: s.two })),
     mixedPrecious: SLOT_MIXED_PRECIOUS,
+    mixedFruit: SLOT_MIXED_FRUIT,
+    precious: SLOT_SYMBOLS.filter((s) => s.precious).map((s) => s.emoji),
+    fruits: SLOT_SYMBOLS.filter((s) => s.fruit).map((s) => s.emoji),
   })
 }
 
@@ -395,7 +417,7 @@ function casinoGroup(name: string, idx: number): MenuGroup {
         id: `slots-${idx}`,
         label: 'Slot Machines',
         emoji: '🎰',
-        subtitle: 'Three stars pays 80x',
+        subtitle: 'Three stars pays 20x',
         input: { kind: 'number', label: 'How much do you want to bet on this spin?', min: MIN_BET, defaultValue: suggestedBet },
         run: (g, input) => startSlots(g, name, input),
       },
@@ -558,7 +580,13 @@ export function startRace(g: GameState, idx: number, input: string | undefined):
     return
   }
   addMoney(g, -ADMISSION)
-  const { order, winner, dnf } = runRace(g, card)
+  const race = runRace(g, card)
+  // Lucky dice in your pocket: a runner-up pick sometimes finds an extra gear.
+  if (idx >= 0 && race.order[1] === idx && idx !== race.dnf && hasLuckyCharm(g) && chance(g, 0.25)) {
+    race.order = [idx, race.order[0], ...race.order.slice(2)]
+    race.winner = idx
+  }
+  const { order, winner, dnf } = race
   minigame(g, 'horseRace', `${card.race} · ${card.track}`, RACE, {
     horses: card.horses.map((h) => ({ name: h.name, color: h.color, dot: h.dot, odds: h.odds, oddsNum: h.oddsNum, oddsDen: h.oddsDen })),
     pick: idx,
@@ -742,8 +770,8 @@ export function lotteryJackpot(g: GameState, game: LotteryGame): number {
 }
 
 /** Draw one ticket. Returns the prize (0 if nothing) and the tier label. */
-export function drawTicket(g: GameState, game: LotteryGame, jackpot: number): { prize: number; label: string; jackpot: boolean } {
-  const roll = rand(g)
+export function drawTicket(g: GameState, game: LotteryGame, jackpot: number, luck = 1): { prize: number; label: string; jackpot: boolean } {
+  const roll = rand(g) / Math.max(1, luck)
   let cum = 0
   for (const t of game.tiers) {
     cum += 1 / t.odds
@@ -789,12 +817,13 @@ export function buyLottery(g: GameState, gameId: string, n: number): LotteryOutc
   count(g, 'lotteryTickets', n)
   count(g, 'moneyGambled', cost)
   const jackpot = lotteryJackpot(g, game)
+  const luck = hasLuckyCharm(g) ? 1.5 : 1
   let won = 0
   let biggest = 0
   let biggestLabel = ''
   let hitJackpot = false
   for (let i = 0; i < n; i++) {
-    const t = drawTicket(g, game, jackpot)
+    const t = drawTicket(g, game, jackpot, luck)
     if (t.jackpot && hitJackpot) continue // one jackpot per batch is plenty
     if (t.prize > 0) {
       won += t.prize

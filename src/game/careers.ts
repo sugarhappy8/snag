@@ -16,8 +16,9 @@ import {
   getPerson,
   log,
   notice,
-  relationLabel,
+  pronouns,
   queueAi,
+  relationLabel,
   remember,
   scriptChoice,
   shortMoney,
@@ -26,12 +27,12 @@ import {
 } from './core'
 import { COMPANY_WORDS, FULLTIME_JOBS, GIGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
 import { educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation } from './education'
-import { createPerson } from './people'
+import { createPerson, notePerson } from './people'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
 import { militaryMenu, specialCareersMenu, specialJobNodes } from './special'
 import { getCountry, NAME_POOLS, randomFirstName, randomLastName } from './world'
-import type { GameState, InterviewJob, InterviewQuestion, Job, Json, MenuAction, MenuGroup, MenuNode } from './types'
+import type { GameState, InterviewJob, InterviewQuestion, Job, Json, MenuAction, MenuGroup, MenuNode, Person } from './types'
 
 type Slot = 'job' | 'partTimeJob'
 
@@ -382,7 +383,8 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
 // ---------------------------------------------------------------------------
 // Hiring
 
-function staffJob(g: GameState, job: Job): void {
+/** Give the job a (new) boss: the person you report to, filed under the company. */
+function hireBoss(g: GameState, job: Job): void {
   const c = g.character
   const def = getJobDef(job.defId)
   const pt = job.category === 'parttime'
@@ -399,6 +401,13 @@ function staffJob(g: GameState, job: Job): void {
     relationship: randInt(g, 40, 70),
   })
   job.bossId = boss.id
+}
+
+function staffJob(g: GameState, job: Job): void {
+  const c = g.character
+  const def = getJobDef(job.defId)
+  const pt = job.category === 'parttime'
+  hireBoss(g, job)
   const coworkers = pt ? randInt(g, 1, 3) : randInt(g, 2, 4)
   for (let i = 0; i < coworkers; i++) {
     const title = def ? def.ladder[Math.min(def.ladder.length - 1, randInt(g, 0, job.level + 1))].title : job.title
@@ -449,8 +458,11 @@ export function hireForJob(g: GameState, job: InterviewJob): Job {
   return j
 }
 
-/** Why a full-time job is off the table right now (school), or null. */
+/** Why a full-time job is off the table right now (school, a special career or the military), or null. */
 function fullTimeSchoolBlocker(g: GameState): string | null {
+  const held = g.character.job
+  if (held && held.category === 'military') return `You need to be discharged from the military before taking a civilian job.`
+  if (held && held.category === 'special') return `You need to leave your career as ${held.title} before taking a regular full-time job.`
   const cur = g.character.education.current
   if (!cur || cur.level === 'preschool') return null
   return ['elementary', 'middle', 'high'].includes(cur.level)
@@ -500,29 +512,29 @@ function applyForListing(g: GameState, listing: JobListing): void {
   queueAi(g, { type: 'interview', job })
 }
 
-function headhunter(g: GameState): void {
+function jobRecruiter(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   const schoolBlock = fullTimeSchoolBlocker(g)
   if (schoolBlock) {
-    notice(g, 'Headhunter', schoolBlock, { emoji: '\u{1F3EB}' })
+    notice(g, 'Job Recruiter', schoolBlock, { emoji: '\u{1F3EB}' })
     return
   }
-  if (!useYearAction(g, 'headhunter', 1)) {
-    notice(g, 'Headhunter', 'Your headhunter is "still working on it." Check back next year.', { emoji: '\u{1F575}\u{FE0F}' })
+  if (!useYearAction(g, 'recruiter', 1)) {
+    notice(g, 'Job Recruiter', 'Your recruiter is "still working on it." Check back next year.', { emoji: '\u{1F575}\u{FE0F}' })
     return
   }
   const fired = stringList(g.flags.firedJobs)
   const options = FULLTIME_JOBS.filter((d) => !jobRequirementProblem(g, d) && !fired.includes(d.id) && d.id !== c.job?.defId)
   if (options.length === 0) {
-    notice(g, 'Headhunter', "The headhunter looked at your resume, sighed, and said they couldn't find anything you qualify for.", { emoji: '\u{1F575}\u{FE0F}' })
+    notice(g, 'Job Recruiter', "The recruiter looked at your resume, sighed, and said they couldn't find anything you qualify for.", { emoji: '\u{1F575}\u{FE0F}' })
     return
   }
   const top = [...options].sort((a, b) => b.ladder[0].salary - a.ladder[0].salary).slice(0, 6)
   const def = pick(g, top)
   const company = companyName(g, def.industry, () => rand(g))
   const salary = round100(def.ladder[0].salary * wealth(g) * (1.05 + rand(g) * 0.1))
-  notice(g, 'Headhunter', `A headhunter set you up with an interview for ${article(def.ladder[0].title)} ${def.ladder[0].title} position at ${company} paying ${formatMoney(salary)} a year.`, { emoji: '\u{1F575}\u{FE0F}' })
+  notice(g, 'Job Recruiter', `A recruiter set you up with an interview for ${article(def.ladder[0].title)} ${def.ladder[0].title} position at ${company} paying ${formatMoney(salary)} a year.`, { emoji: '\u{1F575}\u{FE0F}' })
   queueAi(g, { type: 'interview', job: { defId: def.id, title: def.ladder[0].title, company, salary, category: 'fulltime' } })
 }
 
@@ -726,6 +738,18 @@ function yearForJob(g: GameState, slot: Slot): void {
   let target = 28 + c.stats.smarts * 0.25 + c.stats.happiness * 0.15 + c.stats.health * 0.1 + effort * 8
   if (c.conditions.some((x) => x.kind === 'addiction')) target -= 12
   if (job.category === 'fulltime' && c.partTimeJob && slot === 'job') target -= 4
+  // Your schedule: long weeks impress the boss and wear you down; short ones do the opposite.
+  if (slot === 'job') {
+    const weekly = weeklyHours(job)
+    target += (weekly - STANDARD_HOURS) * 0.6
+    if (weekly >= 50) {
+      addStat(g, 'happiness', -Math.round((weekly - 45) / 5))
+      if (chance(g, (weekly - 45) / 40)) addStat(g, 'health', -randInt(g, 1, 3))
+      if (weekly >= 60 && chance(g, 0.3)) log(g, pick(g, ['I basically lived at the office this year.', 'I forgot what my own bed looked like.', 'My coworkers started forwarding my mail to my desk.']), 'neutral')
+    } else if (weekly < STANDARD_HOURS) {
+      addStat(g, 'happiness', 1)
+    }
+  }
   job.performance = Math.round(clamp(job.performance + (clamp(target) - job.performance) * 0.35 + randInt(g, -8, 8)))
 
   if (def?.stress && chance(g, 0.25 * def.stress)) {
@@ -744,7 +768,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   }
 
   // Rare layoffs.
-  if (slot === 'job' && chance(g, 0.012)) {
+  if (slot === 'job' && chance(g, 0.006)) {
     const severance = round100(job.salary * randInt(g, 5, 20) / 100)
     endJob(g, slot, 'laid off')
     earnIncome(g, severance)
@@ -766,8 +790,8 @@ function yearForJob(g: GameState, slot: Slot): void {
         promoted = true
       }
     }
-    if (!promoted && job.performance >= 60 && chance(g, top ? 0.45 : 0.3)) {
-      const pct = randInt(g, 2, top ? 7 : 5)
+    if (!promoted && job.performance >= 60 && chance(g, top ? 0.35 : 0.3)) {
+      const pct = randInt(g, 2, top ? 6 : 5)
       job.salary = round100(job.salary * (1 + pct / 100))
       log(g, `I got a ${pct}% raise at ${job.company}.`, 'good')
     }
@@ -840,11 +864,14 @@ const JOB_EVENT = defineScript('career.event', (g, choice, data) => {
     return
   }
   if (choice === 'yes') {
+    const hours = Math.max(weeklyHours(job), randInt(g, 5, 12) * 5)
+    job.data.weeklyHours = hours
+    job.data.hoursLocked = c.age
     job.performance = Math.round(clamp(job.performance + randInt(g, 4, 8)))
     addStat(g, 'happiness', -4)
     addStat(g, 'health', -1)
-    log(g, 'I worked overtime at my job.', 'neutral')
-    notice(g, 'Overtime', 'You worked the extra hours. Your boss is pleased; your couch misses you.', { emoji: '\u{23F0}' })
+    log(g, `I agreed to work ${hours} hours a week at my job.`, 'neutral')
+    notice(g, 'Overtime', `You agreed to work ${hours} hours a week for the rest of the year. Your boss is pleased; your couch misses you.`, { emoji: '\u{23F0}' })
   } else {
     job.performance = Math.round(clamp(job.performance - randInt(g, 2, 5)))
     log(g, "I declined my boss's request to work overtime.", 'neutral')
@@ -980,6 +1007,180 @@ function quitJob(g: GameState, slot: Slot): void {
   notice(g, 'Quit', pick(g, [`You quit your job as ${job.title} at ${job.company}.`, `You handed in your resignation at ${job.company}. Your stapler is coming with you.`, `You walked out of ${job.company} for the last time as ${job.title}. Freedom smells like a parking lot.`]), { emoji: '\u{1F6AA}' })
 }
 
+// Schedule ---------------------------------------------------------------------
+
+const STANDARD_HOURS = 40
+const MIN_HOURS = 38
+const MAX_HOURS = 70
+
+function weeklyHours(job: Job): number {
+  return clamp(num(job.data.weeklyHours, STANDARD_HOURS), MIN_HOURS, MAX_HOURS)
+}
+
+function setHours(g: GameState, input?: string): void {
+  const c = g.character
+  const job = c.job
+  if (!c.alive || c.prison || !job || job.category !== 'fulltime') return
+  const parsed = Math.round(Number(input))
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    notice(g, 'Hours', `Enter how many hours a week you want to work (${MIN_HOURS}-${MAX_HOURS}).`, { emoji: '\u{23F0}' })
+    return
+  }
+  const hours = clamp(parsed, MIN_HOURS, MAX_HOURS)
+  const old = weeklyHours(job)
+  if (num(job.data.hoursLocked, -1) === c.age) {
+    notice(g, 'Hours', `${bossName(g, job)} expects you to keep working ${old} hours a week this year. Take it up with them next year.`, { emoji: '\u{23F0}' })
+    return
+  }
+  if (hours === old) {
+    notice(g, 'Hours', `You're already working ${old} hours a week.`, { emoji: '\u{23F0}' })
+    return
+  }
+  job.data.weeklyHours = hours
+  if (hours > old) {
+    log(g, `I increased my hours at ${job.company} to ${hours} a week.`, 'neutral')
+    notice(
+      g,
+      'Hours',
+      pick(g, [
+        `You're now working ${hours} hours a week at ${job.company}. Your boss is impressed; your friends have filed a missing person report.`,
+        `You bumped your schedule up to ${hours} hours a week. Sleep is for people without ambition, apparently.`,
+      ]),
+      { emoji: '\u{23F0}' },
+    )
+  } else {
+    log(g, `I cut my hours at ${job.company} to ${hours} a week.`, 'neutral')
+    notice(
+      g,
+      'Hours',
+      pick(g, [
+        `You cut back to ${hours} hours a week at ${job.company}. Work-life balance: achieved. Promotion odds: shrinking.`,
+        `You're down to ${hours} hours a week. Your boss pretended not to notice. Your boss noticed.`,
+      ]),
+      { emoji: '\u{23F0}' },
+    )
+  }
+}
+
+// Human Resources ----------------------------------------------------------------
+
+const HR_GRIPES = [
+  'stealing your lunch from the fridge',
+  'taking credit for your work',
+  'microwaving fish in the break room',
+  'yelling at you in front of everyone',
+  'spreading rumors about you',
+  'constantly showing up late and leaving you to cover',
+  'hogging the printer for personal projects',
+  'replying-all to every single email',
+]
+
+function hrTargets(g: GameState, job: Job): Person[] {
+  return g.people.filter((p) => p.alive && p.contextId === job.company && (p.relation === 'coworker' || p.relation === 'boss'))
+}
+
+function reportToHR(g: GameState, personId: string): void {
+  const c = g.character
+  const job = c.job
+  const target = getPerson(g, personId)
+  if (!c.alive || c.prison || !job || !target || !target.alive || target.contextId !== job.company) return
+  if (!useYearAction(g, 'hr', 3)) {
+    notice(g, 'Human Resources', "HR has stopped answering your emails for the rest of the year. Their out-of-office reply is just a picture of a shrug.", { emoji: '\u{1F4C1}' })
+    return
+  }
+  const name = `${target.firstName} ${target.lastName}`
+  const isBoss = target.relation === 'boss'
+  const complaints = num(job.data.hrComplaints, 0) + 1
+  job.data.hrComplaints = complaints
+  // Too many complaints and HR turns around and investigates you.
+  if (complaints >= 4 && chance(g, 0.15 * (complaints - 2))) {
+    job.performance = Math.round(clamp(job.performance - randInt(g, 8, 15)))
+    addStat(g, 'happiness', -6)
+    log(g, `HR opened an investigation into me for filing too many complaints.`, 'bad')
+    notice(g, 'Human Resources', `HR reviewed your ${complaints} complaints and decided the common denominator was you. They've launched an investigation into your conduct. Performance: ${job.performance}%.`, { emoji: '\u{1F50E}', tone: 'bad' })
+    if (job.performance < 25 && chance(g, 0.4)) fire(g, 'job', 'They say HR found you "impossible to work with."')
+    return
+  }
+  // You need an actual reason to report someone.
+  if (target.relationship >= 55 && chance(g, 0.6)) {
+    log(g, `I tried to report ${name} to HR for no real reason.`, 'neutral')
+    notice(g, 'Human Resources', `HR asked what exactly ${name} did wrong. You stared at the ceiling for a while and couldn't come up with anything. They told you to get back to work.`, { emoji: '\u{1F4C1}' })
+    return
+  }
+  const gripe = pick(g, HR_GRIPES)
+  notePerson(target, 'Was reported to HR by the player.')
+  const roll = rand(g)
+  if (roll < 0.35) {
+    log(g, `I reported ${name} to HR. Nothing happened.`, 'neutral')
+    notice(g, 'Human Resources', pick(g, [`You reported ${name} for ${gripe}. HR thanked you for your feedback and filed it directly into the shredder.`, `You reported ${name} for ${gripe}. HR said they'd "look into it." They did not look into it.`]), { emoji: '\u{1F4C1}' })
+    if (chance(g, 0.4)) addRelationship(target, -10)
+    return
+  }
+  if (roll < 0.65) {
+    addRelationship(target, -randInt(g, 10, 20))
+    log(g, `I reported ${name} to HR and they got a warning.`, 'neutral')
+    notice(g, 'Human Resources', `You reported ${name} for ${gripe}. HR gave ${pronouns(target.gender).him} a formal warning. ${pronouns(target.gender).He} has been glaring at you over the cubicle wall ever since.`, { emoji: '\u{26A0}\u{FE0F}' })
+    return
+  }
+  if (roll < 0.85) {
+    addRelationship(target, -randInt(g, 15, 25))
+    target.money = Math.max(0, Math.round(target.money - randInt(g, 200, 1500)))
+    log(g, `I reported ${name} to HR and they had their wages docked.`, 'neutral')
+    notice(g, 'Human Resources', `You reported ${name} for ${gripe}. HR docked ${pronouns(target.gender).his} wages. Justice is served, lukewarm, like the office coffee.`, { emoji: '\u{1F4B8}' })
+    return
+  }
+  if (roll < 0.95) {
+    g.people = g.people.filter((p) => p.id !== target.id)
+    addStat(g, 'happiness', 3)
+    log(g, `I reported ${name} to HR and ${pronouns(target.gender).he} got fired.`, 'neutral')
+    remember(g, `Got ${isBoss ? 'my boss' : 'a coworker'} ${name} fired by reporting them to HR.`)
+    if (isBoss) {
+      hireBoss(g, job)
+      const fresh = getPerson(g, job.bossId)
+      notice(g, 'Human Resources', `You reported your boss, ${name}, for ${gripe}. HR fired ${pronouns(target.gender).him} on the spot!${fresh ? ` Your new boss is ${fresh.firstName} ${fresh.lastName}.` : ''}`, { emoji: '\u{1F525}', tone: 'good' })
+    } else {
+      notice(g, 'Human Resources', `You reported ${name} for ${gripe}. HR fired ${pronouns(target.gender).him}! Security escorted ${pronouns(target.gender).him} out with a sad little box of desk plants.`, { emoji: '\u{1F525}', tone: 'good' })
+    }
+    return
+  }
+  // Backfire: HR sides with them.
+  addRelationship(target, -25)
+  job.performance = Math.round(clamp(job.performance - randInt(g, 4, 8)))
+  addStat(g, 'happiness', -4)
+  log(g, `I reported ${name} to HR and it backfired.`, 'bad')
+  notice(g, 'Human Resources', `You reported ${name} for ${gripe}. HR "investigated" by asking ${name}, who said you were the problem. HR agreed. You got a reprimand instead.`, { emoji: '\u{1F62C}', tone: 'bad' })
+}
+
+function hrMenu(job: Job): MenuGroup {
+  return {
+    type: 'menu',
+    id: 'job.hr',
+    label: 'Human Resources',
+    emoji: '\u{1F4C1}',
+    subtitle: 'Report someone to HR',
+    disabledReason: blocked,
+    header: () => `File a complaint with HR at ${job.company}. File too many and they may start looking at you instead.`,
+    children: (gg) => {
+      const j = gg.character.job
+      if (!j) return []
+      const people = hrTargets(gg, j)
+      if (!people.length) return [{ type: 'info', id: 'job.hr.none', text: 'There is nobody at work to report.', emoji: '\u{1F937}' }]
+      return people.map(
+        (p): MenuAction => ({
+          type: 'action',
+          id: `job.hr.${p.id}`,
+          label: `${p.firstName} ${p.lastName}`,
+          emoji: p.relation === 'boss' ? '\u{1F9D1}\u{200D}\u{1F4BC}' : '\u{1F9D1}\u{200D}\u{1F4BB}',
+          subtitle: `${relationLabel(p)} • ${p.occupation} • Relationship ${p.relationship}%`,
+          disabledReason: blocked,
+          confirm: () => `Report ${p.firstName} to HR?`,
+          run: (x) => reportToHR(x, p.id),
+        }),
+      )
+    },
+  }
+}
+
 function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
   const job = g.character[slot]
   if (!job) return null
@@ -1004,11 +1205,25 @@ function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
         { type: 'info', id: `${slot}.years`, text: `${j.yearsAtCompany} year${j.yearsAtCompany === 1 ? '' : 's'} at ${j.company}${pt ? '' : ` • ${j.yearsInRole} in this role`}`, emoji: '\u{1F4C5}' },
       ]
       if (!pt && d && j.level < d.ladder.length - 1) nodes.push({ type: 'info', id: `${slot}.next`, text: `Next rung: ${d.ladder[j.level + 1].title}`, emoji: '\u{1FA9C}' })
+      if (!pt) nodes.push({ type: 'info', id: `${slot}.schedule`, text: `Schedule: ${weeklyHours(j)} hours/week`, emoji: '\u{1F5D3}\u{FE0F}' })
       const boss = getPerson(gg, j.bossId)
       if (boss) nodes.push({ type: 'info', id: `${slot}.boss`, text: `Boss: ${boss.firstName} ${boss.lastName} (${boss.relationship}%) • find coworkers in Relationships`, emoji: '\u{1F9D1}\u{200D}\u{1F4BC}' })
       nodes.push({ type: 'action', id: `${slot}.harder`, label: 'Work Harder', emoji: '\u{1F4AA}', subtitle: 'Put in some extra effort', disabledReason: blocked, run: (x) => workHarder(x, slot) })
+      if (!pt) {
+        nodes.push({
+          type: 'action',
+          id: `${slot}.hours`,
+          label: 'Hours',
+          emoji: '\u{23F0}',
+          subtitle: `Adjust your hours (${MIN_HOURS}-${MAX_HOURS} a week)`,
+          disabledReason: (x) => blocked(x) ?? (x.character.job && num(x.character.job.data.hoursLocked, -1) === x.character.age ? 'Your boss set your hours for this year.' : null),
+          input: { kind: 'number', label: 'Hours per week', min: MIN_HOURS, max: MAX_HOURS, defaultValue: (x) => String(x.character.job ? weeklyHours(x.character.job) : STANDARD_HOURS) },
+          run: (x, input) => setHours(x, input),
+        })
+      }
       nodes.push({ type: 'action', id: `${slot}.raise`, label: 'Ask for a Raise', emoji: '\u{1F4B0}', disabledReason: blocked, run: (x) => askRaise(x, slot) })
       if (!pt) {
+        nodes.push(hrMenu(j))
         nodes.push({
           type: 'action',
           id: `${slot}.promotion`,
@@ -1060,7 +1275,11 @@ function listingAction(listing: JobListing): MenuAction {
       return `${pay} • ${listing.company}${problem ? ' • Not qualified' : ''}`
     },
     disabledReason: blocked,
-    confirm: () => `${listing.title}\n${listing.company}\n\nPay: ${pt ? pay : formatMoney(listing.salary) + ' a year'}\n${requirementSummary(def)}\n\nApply for this job?`,
+    confirm: (g) => {
+      const held = pt ? g.character.partTimeJob : g.character.job
+      const quit = held && (held.category === 'fulltime' || held.category === 'parttime') ? `\n\nIf you're hired, you'll quit your job as ${held.title} at ${held.company}.` : ''
+      return `${listing.title}\n${listing.company}\n\nPay: ${pt ? pay : formatMoney(listing.salary) + ' a year'}\n${requirementSummary(def)}${quit}\n\nApply for this job?`
+    },
     run: (g) => applyForListing(g, listing),
   }
 }
@@ -1076,13 +1295,21 @@ const jobsMenu: MenuGroup = {
   header: () => 'New listings are posted every year. Tap a job to see its requirements.',
   children: (g) => {
     const nodes: MenuNode[] = []
-    if (g.character.age >= 18) {
-      nodes.push({ type: 'action', id: 'occupation.headhunter', label: 'Headhunter', emoji: '\u{1F575}\u{FE0F}', subtitle: 'Get set up with a high-paying interview (once a year)', disabledReason: blocked, run: headhunter })
-    }
     nodes.push({ type: 'heading', id: 'jobs.h', label: `Listings for ${g.year}` })
     for (const l of fullTimeListings(g)) nodes.push(listingAction(l))
     return nodes
   },
+}
+
+const recruiterAction: MenuAction = {
+  type: 'action',
+  id: 'occupation.recruiter',
+  label: 'Job Recruiter',
+  emoji: '\u{1F575}\u{FE0F}',
+  subtitle: 'Get an interview for a random high-paying job',
+  visible: (g) => g.character.age >= 18,
+  disabledReason: blocked,
+  run: jobRecruiter,
 }
 
 const partTimeMenu: MenuGroup = {
@@ -1218,7 +1445,7 @@ export const occupationMenu: MenuGroup = {
     }
     if (c.age >= 13) {
       nodes.push({ type: 'heading', id: 'occupation.h.find', label: 'Find Work' })
-      nodes.push(freelanceMenu, jobsMenu, militaryMenu, partTimeMenu, specialCareersMenu)
+      nodes.push(freelanceMenu, recruiterAction, jobsMenu, militaryMenu, partTimeMenu, specialCareersMenu)
     } else {
       nodes.push(specialCareersMenu)
     }

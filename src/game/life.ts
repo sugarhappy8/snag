@@ -762,7 +762,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const age = heirP.age
   const heirTone = typeof heirP.data.skinTone === 'number' ? heirP.data.skinTone : old.avatar.skinTone
   const sexualityData = heirP.data.sexuality
-  const sexuality: Sexuality = sexualityData === 'straight' || sexualityData === 'gay' || sexualityData === 'bisexual' ? sexualityData : randomSexuality(n)
+  const knownSexuality = sexualityData === 'straight' || sexualityData === 'gay' || sexualityData === 'bisexual'
+  // A child who was already old enough to come out (and didn't) is straight.
+  const sexuality: Sexuality = knownSexuality ? sexualityData : heirP.data.cameOutChecked === true ? 'straight' : randomSexuality(n)
   const bd = heirP.data.birthday
   const birthday =
     bd && typeof bd === 'object' && !Array.isArray(bd) && typeof bd.month === 'number' && typeof bd.day === 'number' ? { month: bd.month, day: bd.day } : randomBirthday(n)
@@ -914,11 +916,35 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     people.push(p)
     guardian = guardian ?? p
   }
+  // The heir's own husband or wife (NPC marriages only store a name).
+  let heirSpouse: Person | undefined
+  const spouseName = typeof heirP.data.spouseName === 'string' ? heirP.data.spouseName.trim() : ''
+  if (heirP.data.married === true && spouseName && age >= 18) {
+    const [first, ...rest] = spouseName.split(' ')
+    const spouseGender: Gender = sexuality === 'gay' ? heir.gender : sexuality === 'straight' ? (heir.gender === 'male' ? 'female' : 'male') : chance(n, 0.5) ? 'male' : 'female'
+    const before = n.people.length
+    heirSpouse = createPerson(n, {
+      relation: 'spouse',
+      age: Math.max(18, age + randInt(n, -4, 4)),
+      gender: spouseGender,
+      firstName: first,
+      lastName: rest.join(' ') || heir.lastName,
+      relationship: randInt(n, 55, 90),
+      livesWithPlayer: true,
+      skinTone: randomSkinTone(n, country),
+    })
+    // createPerson appends to the old list; move them into the rebuilt one.
+    n.people.splice(before)
+    heirSpouse.yearsKnown = randInt(n, 2, Math.max(2, age - 18))
+    people.push(heirSpouse)
+  }
   // Grandchildren through the heir become the heir's children.
   for (const gc of n.people.filter((p) => p.relation === 'grandchild')) {
     const ids = [gc.data.parentId, gc.data.childOf, gc.otherParentId, ...strList(gc.data.parentIds)]
     if (!ids.includes(childId)) continue
-    people.push(reset(gc, 'child', randInt(n, 60, 95), gc.alive && gc.age < 18))
+    const kid = reset(gc, 'child', randInt(n, 60, 95), gc.alive && gc.age < 18)
+    if (heirSpouse) kid.otherParentId = heirSpouse.id
+    people.push(kid)
   }
   for (const pet of n.people.filter((p) => p.alive && p.relation === 'pet')) {
     people.push(reset(pet, 'pet', randInt(n, 40, 80), true))
@@ -951,7 +977,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   n.ribbon = null
   n.obituary = null
   n.flags = {
-    sexualityRealized: age >= 16,
+    sexualityRealized: age >= 16 || knownSexuality,
+    ...(knownSexuality && sexuality !== 'straight' ? { out: true, closeted: false } : {}),
     puberty: age >= 14,
     adultNotice: age >= 18,
     midlifeCrisis: age > 55,
@@ -994,6 +1021,10 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   }
   if (education.current) log(n, `I'm in my ${ordinal(education.current.year)} year at ${education.current.school}.`)
   else if (careerHistory.length > 0 && careerHistory[0].reason === 'quit') log(n, `After the funeral, I quit my job as ${/^[aeiou]/i.test(npcOccupation) ? 'an' : 'a'} ${npcOccupation} to make a fresh start.`)
+  if (heirSpouse) {
+    const kids = people.filter((p) => p.relation === 'child' && p.alive).length
+    log(n, `I'm married to ${fullName(heirSpouse)}${kids > 0 ? ` and we have ${kids === 1 ? 'a child' : `${kids} children`}` : ''}.`)
+  }
   if (guardian && age < 18) log(n, `I live with my ${guardian.relation === 'grandparent' ? (guardian.gender === 'male' ? 'grandfather' : 'grandmother') : guardian.relation === 'stepparent' ? (guardian.gender === 'male' ? 'stepfather' : 'stepmother') : parentNoun(guardian.gender)}.`)
 
   heir.memories.push(`Age ${age}: My ${oldNoun} ${oldName} died from ${cause.toLowerCase()} at ${old.age}. I took over as generation ${n.generation} of the ${heir.lastName} family.`)
@@ -1216,13 +1247,23 @@ function grandparenthood(g: GameState): void {
   const grandkids = peopleBy(g, ['grandchild'], true)
   const fresh = grandkids.filter((p) => !seen.includes(p.id))
   if (fresh.length === 0) return
+  // The relationships module usually announces births itself; only fill the gaps
+  // (grandchildren added by events, the AI or other modules).
+  const entries = currentLogYear(g).entries
+  let first = seen.length === 0 && g.flags.hadGrandchild !== true
   for (const kid of fresh) {
-    if (kid.age <= 1) {
-      const word = c.gender === 'male' ? 'grandfather' : 'grandmother'
-      log(g, seen.length === 0 && kid === fresh[0] ? `I became a ${word}! My ${kid.gender === 'male' ? 'grandson' : 'granddaughter'} ${kid.firstName} was born.` : `My ${kid.gender === 'male' ? 'grandson' : 'granddaughter'} ${kid.firstName} was born.`, 'good')
+    if (kid.age > 1 || entries.some((e) => e.text.includes(kid.firstName))) continue
+    const word = c.gender === 'male' ? 'grandfather' : 'grandmother'
+    const rel = kid.gender === 'male' ? 'grandson' : 'granddaughter'
+    if (first) {
+      log(g, `I became a ${word}! My ${rel} ${kid.firstName} was born.`, 'good')
+      addStat(g, 'happiness', randInt(g, 5, 12))
+      g.flags.hadGrandchild = true
+      first = false
+    } else {
+      log(g, `My ${rel} ${kid.firstName} was born.`, 'good')
     }
   }
-  if (seen.length === 0 && fresh.some((k) => k.age <= 1)) addStat(g, 'happiness', randInt(g, 5, 12))
   g.flags.grandkidsSeen = [...seen, ...fresh.map((p) => p.id)]
 }
 

@@ -11,6 +11,9 @@ interface SlotData {
   symbols: string[]
   paytable: { emoji: string; three: number; two: number }[]
   mixedPrecious: number
+  mixedFruit: number
+  precious: string[]
+  fruits: string[]
 }
 
 function readData(data: Json): SlotData {
@@ -26,9 +29,12 @@ function readData(data: Json): SlotData {
     bet: typeof d.bet === 'number' ? d.bet : 0,
     reels: reels.length === 3 ? reels : ['🍋', '🍉', '🍇'],
     payout: typeof d.payout === 'number' ? d.payout : 0,
-    symbols: symbols.length ? symbols : ['⭐', '💎', '🪙', '🍇', '🍉', '🍋'],
+    symbols: symbols.length ? symbols : ['⭐', '💎', '🪙', '🍇', '🍉', '🍋', '💀'],
     paytable,
     mixedPrecious: typeof d.mixedPrecious === 'number' ? d.mixedPrecious : 0,
+    mixedFruit: typeof d.mixedFruit === 'number' ? d.mixedFruit : 0,
+    precious: strs(d.precious),
+    fruits: strs(d.fruits),
   }
 }
 
@@ -101,7 +107,7 @@ export function Slots({ modal, onDone }: MinigameProps) {
         }}
       >
         <div style={{ textAlign: 'center', color: '#ffe082', fontWeight: 900, letterSpacing: 2, fontSize: 14, marginBottom: 8, textShadow: '0 2px 0 rgba(0,0,0,0.3)' }}>
-          {done && data.payout >= 20 ? '★ JACKPOT ★' : '★ LUCKY STARS ★'}
+          {done && data.payout >= 15 ? '★ JACKPOT ★' : '★ LUCKY STARS ★'}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, background: '#2b0d0d', padding: 8, borderRadius: 12, position: 'relative' }}>
           {display.map((col, i) => (
@@ -163,7 +169,16 @@ export function Slots({ modal, onDone }: MinigameProps) {
                 {p.two ? ` · ${p.emoji}${p.emoji} ×${p.two}` : ''}
               </div>
             ))}
-            {data.mixedPrecious ? <div>Any 3 of ⭐💎🪙 ×{data.mixedPrecious}</div> : null}
+            {data.mixedPrecious && data.precious.length ? (
+              <div>
+                Any 3 of {data.precious.join('')} ×{data.mixedPrecious}
+              </div>
+            ) : null}
+            {data.mixedFruit && data.fruits.length ? (
+              <div>
+                Any 3 of {data.fruits.join('')} ×{data.mixedFruit}
+              </div>
+            ) : null}
           </div>
         </details>
       ) : null}
