@@ -10,7 +10,9 @@ import {
   roleLabel,
   shortMoney,
 } from '../../game/core'
+import { businessSummary } from '../../game/business'
 import { highestEducationLabel } from '../../game/education'
+import { investmentsSummary } from '../../game/investments'
 import { getRibbon } from '../../game/ribbons'
 import { getCountry } from '../../game/world'
 import type {
@@ -209,6 +211,16 @@ function safeEducationLabel(g: GameState): string | null {
   }
 }
 
+/** A one-line summary from a feature module; '' when there's nothing to say (or it fails). */
+function summaryLine(fn: (g: GameState) => string, g: GameState): string {
+  try {
+    const s = fn(g)
+    return typeof s === 'string' ? s.trim() : ''
+  } catch {
+    return ''
+  }
+}
+
 function ribbonLabel(id: string | null): string | null {
   if (!id) return null
   try {
@@ -298,6 +310,10 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
         (home ? `${home.emoji} ${home.name}` : res.status === 'renting' && res.rent ? `Renting (${formatMoney(res.rent)}/yr)` : HOME_LABEL[res.status]),
     ],
   ]
+
+  // --- business & investments
+  const businessLine = summaryLine(businessSummary, g)
+  const investmentsLine = summaryLine(investmentsSummary, g)
 
   // --- health
   const conditions = c.conditions.filter((x) => x.diagnosed)
@@ -425,6 +441,15 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
           </ul>
         ) : null}
       </Section>
+
+      {businessLine || investmentsLine ? (
+        <Section title="Business & Investments">
+          <ul className="list-plain">
+            {businessLine ? <li>💼 {businessLine}</li> : null}
+            {investmentsLine ? <li>📈 {investmentsLine}</li> : null}
+          </ul>
+        </Section>
+      ) : null}
 
       <Section title="Health">
         {conditions.length === 0 ? (
