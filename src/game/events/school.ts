@@ -12,6 +12,7 @@ import {
   canDrink,
   ch,
   conservativeSchooling,
+  hangout,
   isUS,
   loc,
   peClass,
@@ -616,10 +617,12 @@ export const SCHOOL_EVENTS = defineEvents([
     when: (g) => inGradeSchool(g) || inUniversity(g),
     setup: (g) => {
       const f = anyOf(g, friends(g))
+      const place = isUS(g) ? `the ${pick(g, ['mall', 'beach', 'arcade', 'skate park', 'movies'])}` : hangout(g)
       return {
-        text: `${f ? `Your friend ${f.firstName}` : 'A group of your friends'} wants you to ditch class and go to the ${pick(g, ['mall', 'beach', 'arcade', 'skate park', 'movies'])}. What will you do?`,
+        text: `${f ? `Your friend ${f.firstName}` : 'A group of your friends'} wants you to ditch class and go to ${place}. What will you do?`,
         choices: [ch('go', "Let's go!"), ch('no', "No, I'm going to class"), ch('report', 'Report them')],
         person: f,
+        data: { place },
       }
     },
     resolve: {
@@ -627,7 +630,7 @@ export const SCHOOL_EVENTS = defineEvents([
         const caught = chance(g, 0.3)
         say(g, x, caught ? 'Caught' : 'Freedom', caught ? 'The school called your house. You were grounded for two weeks.' : 'You had an amazing day and nobody ever found out.', caught ? 'I ditched class with my friends and got caught.' : 'I ditched class with my friends.', caught ? { happiness: 2, grades: -6, rel: 6, count: 'skippedSchool', rels: [{ p: aParent(g), d: -6 }] } : { happiness: 10, grades: -3, rel: 8, count: 'skippedSchool' }, caught ? 'bad' : 'good')
       },
-      no: (g, x) => say(g, x, 'Responsible', 'You went to class. You heard the beach was nice.', 'I turned down an offer to ditch class.', { grades: 2, rel: -4 }),
+      no: (g, x) => say(g, x, 'Responsible', `You went to class. You heard ${x.s('place') || 'the beach'} was nice.`, 'I turned down an offer to ditch class.', { grades: 2, rel: -4 }),
       report: (g, x) => say(g, x, 'Snitch', 'You reported your friends for planning to ditch. They were waiting in the principal\'s office when they returned.', 'I reported my friends for ditching class.', { rel: -25, karma: 2, happiness: -4 }, 'bad'),
     },
   },

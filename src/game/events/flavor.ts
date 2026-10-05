@@ -3,9 +3,9 @@
 // age and situation, with real family names filled in and no repeats for a long while.
 import { children as childrenOf, currentPartner, inPrison, log, peopleBy } from '../core'
 import { chance, pick, randInt, shuffle } from '../rng'
-import { localPick } from '../data/locales'
+import { locale, localPick, localSoftDrink } from '../data/locales'
 import type { GameState, Json, Person, Tone } from '../types'
-import { country, friends, grandkids, inUniversity, mother, father, pets, siblings } from './helpers'
+import { country, friends, grandkids, inUniversity, mother, father, pets, playSport, siblings } from './helpers'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
 
@@ -99,8 +99,8 @@ const CHILD = [
   'I went on a family road trip and asked "are we there yet?" every five minutes.',
   'I watched {show} way too much.',
   'I tried {food} for the first time and loved it.',
-  'I hit a home run at a neighborhood baseball game.',
-  'I set up a lemonade stand and made three dollars.',
+  'I {ballWin} at a neighborhood {ballgame} game.',
+  'I set up a {stand} and made {standMoney}.',
 ]
 
 const TEEN = [
@@ -118,7 +118,7 @@ const TEEN = [
   'I slammed my bedroom door at least once a week.',
   'I told my father, {dad}, that he just doesn’t understand me.',
   'I borrowed my {sibRel} {sib}’s clothes without asking.',
-  'I went to the mall with {friend} and bought nothing.',
+  'I went to {shopping} with {friend} and bought nothing.',
   'I stayed up all night texting {friend}.',
   'I binge-watched {show}.',
   'I tried to grow a mustache. It was a disappointing mustache.',
@@ -282,7 +282,7 @@ const ELDER = [
   'I got my flu shot early.',
   'I organized my old photo albums.',
   'I couldn’t find my glasses. They were on my head.',
-  'I joined a mall-walking group.',
+  'I joined a {walkGroup}.',
   'I watched the evening news every night and disagreed with it.',
   'My grandchild, {grandkid}, taught me how to use emojis.',
   'I baked cookies with my grandchild, {grandkid}.',
@@ -412,6 +412,16 @@ function tokens(g: GameState): Record<string, string | undefined> {
   // Half the time something universal, half the time a local dish ('nasi goreng', 'injera', 'mac and cheese' in the US).
   t.food = chance(g, 0.5) ? pick(g, FOODS) : localPick(g, 'food') || pick(g, FOODS)
   t.show = pick(g, SHOWS)
+  // Kid stuff that changes by country: the neighborhood ball game and the summer drink stand.
+  const ball = c.countryId === 'us' ? 'baseball' : playSport(g)
+  t.ballgame = ball
+  t.ballWin = /baseball|softball/.test(ball) ? 'hit a home run' : /cricket/.test(ball) ? 'hit a six' : /basketball/.test(ball) ? 'scored the winning basket' : /volleyball|takraw/.test(ball) ? 'served the winning point' : 'scored the winning goal'
+  const usStand = c.countryId === 'us' || c.countryId === 'ca'
+  t.stand = usStand ? 'lemonade stand' : `${localSoftDrink(g)} stand`
+  t.standMoney = usStand ? 'three dollars' : 'a little pocket money'
+  const shops = locale(g).hangouts.filter((h) => /mall|market|bazaar|souk|shopping|plaza|arcade/i.test(h))
+  t.shopping = c.countryId === 'us' ? 'the mall' : shops.length ? pick(g, shops) : 'the market'
+  t.walkGroup = c.countryId === 'us' ? 'mall-walking group' : 'morning walking group'
   t.hobby = pick(g, HOBBIES)
   return t
 }
