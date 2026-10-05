@@ -261,17 +261,17 @@ function cellmates(g: GameState): Person[] {
 
 function createCellmate(g: GameState, prisonNameStr: string, juvenile: boolean): Person {
   const c = g.character
-  const age = juvenile ? randInt(13, 17) : Math.max(18, c.age + randInt(-12, 15))
+  const age = juvenile ? randInt(g, 13, 17) : Math.max(18, c.age + randInt(g, -12, 15))
   const crime = pick(g, juvenile ? JUVIE_CRIMES : INMATE_CRIMES)
   const person = createPerson(g, {
     relation: 'cellmate',
     age,
     gender: c.gender,
     occupation: 'Prisoner',
-    relationship: randInt(20, 55),
+    relationship: randInt(g, 20, 55),
     contextId: prisonNameStr,
-    money: randInt(0, 400),
-    data: { crime, sentence: crime === 'Murder' ? randInt(25, 99) : randInt(2, 20) },
+    money: randInt(g, 0, 400),
+    data: { crime, sentence: crime === 'Murder' ? randInt(g, 25, 99) : randInt(g, 2, 20) },
   })
   notePerson(person, `Met in ${prisonNameStr}; doing time for ${crime.toLowerCase()}.`)
   return person
@@ -316,7 +316,7 @@ export function sendToPrison(g: GameState, crime: string, yearsIn: number, opts:
       c.prison.life = true
       c.prison.security = 'maximum'
       const pl = prisonLife(g)
-      pl.autoAppeals = randInt(2, 5)
+      pl.autoAppeals = randInt(g, 2, 5)
       log(g, `I was sentenced to death for ${crime.toLowerCase()}.`, 'bad')
       return
     }
@@ -348,7 +348,7 @@ export function sendToPrison(g: GameState, crime: string, yearsIn: number, opts:
     crime,
     sentenceYears: life ? Math.max(sentence, 0) : Math.max(1, sentence),
     yearsServed: 0,
-    respect: randInt(15, 35),
+    respect: randInt(g, 15, 35),
     appealed: false,
     escapeAttempts: 0,
   }
@@ -367,19 +367,19 @@ export function sendToPrison(g: GameState, crime: string, yearsIn: number, opts:
   pl.originalSentence = c.prison.sentenceYears
   pl.admittedAge = c.age
   pl.gangs = security === 'minimum' ? [] : shuffle(g, GANG_NAMES).slice(0, 3)
-  pl.autoAppeals = deathRow ? randInt(2, 5) : 0
+  pl.autoAppeals = deathRow ? randInt(g, 2, 5) : 0
   pl.behavior = 50
 
   // Cellmates.
   const mates: Person[] = []
-  const n = juvenile ? 1 : randInt(1, 2)
+  const n = juvenile ? 1 : randInt(g, 1, 2)
   for (let i = 0; i < n; i++) mates.push(createCellmate(g, name, juvenile))
 
   count(g, 'imprisonments')
   const sentenceText = deathRow ? 'on death row' : life ? 'a life sentence' : years(c.prison.sentenceYears)
   log(g, `I was sent to ${name} for ${crime.toLowerCase()} (${sentenceText}).`, 'bad')
   remember(g, `Imprisoned in ${name} for ${crime.toLowerCase()} (${sentenceText}).`)
-  addStat(g, 'happiness', -randInt(10, 25))
+  addStat(g, 'happiness', -randInt(g, 10, 25))
 
   if (!opts.quiet) {
     const mateText = mates.length
@@ -405,7 +405,7 @@ function partnerReacts(g: GameState, sentence: number): void {
   const base = partner.relation === 'spouse' ? 0.2 : partner.relation === 'fiance' ? 0.35 : 0.5
   const leaveChance = clamp(base + (sentence >= 10 ? 0.25 : sentence >= 4 ? 0.1 : 0) - (partner.relationship - 50) / 200, 0.05, 0.95)
   if (!chance(g, leaveChance)) {
-    addRelationship(partner, -randInt(5, 15))
+    addRelationship(partner, -randInt(g, 5, 15))
     notePerson(partner, 'Stood by me when I went to prison.')
     return
   }
@@ -419,9 +419,9 @@ function partnerReacts(g: GameState, sentence: number): void {
     log(g, `My ${label} ${partner.firstName} broke up with me after I went to prison.`, 'bad')
   }
   partner.livesWithPlayer = false
-  partner.relationship = Math.min(partner.relationship, randInt(5, 30))
+  partner.relationship = Math.min(partner.relationship, randInt(g, 5, 30))
   notePerson(partner, 'Left me when I went to prison.')
-  addStat(g, 'happiness', -randInt(8, 15))
+  addStat(g, 'happiness', -randInt(g, 8, 15))
   notice(
     g,
     'Heartbreak Behind Bars',
@@ -547,7 +547,7 @@ export function releaseFromPrison(g: GameState, reason: string): void {
     }
     log(g, line[reason] ?? `I was released from ${p.name}.`, 'good')
     remember(g, `Released from ${p.name} after ${years(servedYears)} (${reason}).`)
-    addStat(g, 'happiness', randInt(10, 25))
+    addStat(g, 'happiness', randInt(g, 10, 25))
   }
   for (const k of keep) log(g, `My former cellmate ${k.firstName} and I stayed friends.`, 'neutral')
 }
@@ -581,9 +581,9 @@ export function yearlyPrison(g: GameState): boolean {
 
   // Prison wears you down.
   const comfort = (p.gang ? 3 : 0) + (p.respect >= 60 ? 2 : 0) + (pl.job ? 2 : 0)
-  addStat(g, 'happiness', -Math.max(1, randInt(4, 12) - comfort))
-  addStat(g, 'health', -randInt(0, 4))
-  addStat(g, 'looks', -randInt(0, 2))
+  addStat(g, 'happiness', -Math.max(1, randInt(g, 4, 12) - comfort))
+  addStat(g, 'health', -randInt(g, 0, 4))
+  addStat(g, 'looks', -randInt(g, 0, 2))
   pl.behavior = clamp(pl.behavior + 3)
   if (p.gang) p.respect = clamp(p.respect + 3)
   for (const m of cellmates(g)) {
@@ -760,7 +760,7 @@ const PAROLE_SCRIPT = defineScript('prison.parole', (g, choice, data) => {
     return
   }
   log(g, 'The parole board denied my parole.', 'bad')
-  addStat(g, 'happiness', -randInt(3, 8))
+  addStat(g, 'happiness', -randInt(g, 3, 8))
   notice(
     g,
     'Parole Denied',
@@ -804,15 +804,15 @@ const EVENT_DESSERT = defineScript('prison.event.dessert', (g, choice, data) => 
   const bully = String(data.name ?? 'The inmate')
   const dessert = String(data.dessert ?? 'dessert')
   if (choice === 'give') {
-    p.respect = clamp(p.respect - randInt(3, 6))
+    p.respect = clamp(p.respect - randInt(g, 3, 6))
     log(g, `I gave ${bully} my ${dessert}.`, 'neutral')
     notice(g, 'Lunch Money', `You slid your ${dessert} across the table. ${bully} grunted. Word travels fast in here, and the word is "pushover."`, {
       emoji: '\u{1F36E}',
     })
   } else if (choice === 'fight') {
-    const power = c.hidden.athleticism * 0.5 + c.stats.health * 0.3 + p.respect * 0.2 + randInt(0, 30)
-    if (power > randInt(40, 100)) {
-      p.respect = clamp(p.respect + randInt(8, 14))
+    const power = c.hidden.athleticism * 0.5 + c.stats.health * 0.3 + p.respect * 0.2 + randInt(g, 0, 30)
+    if (power > randInt(g, 40, 100)) {
+      p.respect = clamp(p.respect + randInt(g, 8, 14))
       prisonLife(g).behavior = clamp(prisonLife(g).behavior - 8)
       log(g, `I stood up to ${bully} in the cafeteria and won.`, 'good')
       notice(g, 'Cafeteria Showdown', `You told ${bully} to back off. ${bully} took a swing and missed, and you made sure ${bully.split(' ')[0]} regretted it. The whole cafeteria saw.`, {
@@ -820,7 +820,7 @@ const EVENT_DESSERT = defineScript('prison.event.dessert', (g, choice, data) => 
         tone: 'good',
       })
     } else {
-      const dmg = hurt(g, randInt(8, 18))
+      const dmg = hurt(g, randInt(g, 8, 18))
       p.respect = clamp(p.respect - 3)
       log(g, `${bully} beat me up over a ${dessert}.`, 'bad')
       notice(g, 'Cafeteria Showdown', `You refused. ${bully} flipped the table and beat you senseless. You lost the fight and the ${dessert}. (-${dmg} health)`, {
@@ -829,7 +829,7 @@ const EVENT_DESSERT = defineScript('prison.event.dessert', (g, choice, data) => 
       })
     }
   } else {
-    p.respect = clamp(p.respect - randInt(6, 10))
+    p.respect = clamp(p.respect - randInt(g, 6, 10))
     const pl = prisonLife(g)
     pl.behavior = clamp(pl.behavior + 5)
     log(g, `I told a guard that ${bully} was bullying me.`, 'neutral')
@@ -845,7 +845,7 @@ const EVENT_PACKAGE = defineScript('prison.event.package', (g, choice, data) => 
   const item = String(data.item ?? 'a care package')
   if (choice !== 'return' && chance(g, 0.15)) {
     const beaten = chance(g, 0.3)
-    const dmg = beaten ? hurt(g, randInt(5, 12)) : 0
+    const dmg = beaten ? hurt(g, randInt(g, 5, 12)) : 0
     log(g, 'The guards confiscated my care package.', 'bad')
     notice(g, 'Confiscated', `The guards confiscated your package before you could touch it${beaten ? `, then roughed you up for good measure. (-${dmg} health)` : '. They seemed to enjoy it.'}`, {
       emoji: '\u{1F46E}',
@@ -854,18 +854,18 @@ const EVENT_PACKAGE = defineScript('prison.event.package', (g, choice, data) => 
     return
   }
   if (choice === 'keep') {
-    addStat(g, 'happiness', randInt(5, 10))
-    if (sender) addRelationship(sender, randInt(3, 8))
+    addStat(g, 'happiness', randInt(g, 5, 10))
+    if (sender) addRelationship(sender, randInt(g, 3, 8))
     log(g, `I got a care package with ${item} from ${sender ? sender.firstName : 'home'}.`, 'good')
   } else if (choice === 'share') {
-    addStat(g, 'happiness', randInt(2, 5))
-    p.respect = clamp(p.respect + randInt(4, 8))
-    for (const m of cellmates(g)) addRelationship(m, randInt(5, 12))
-    if (sender) addRelationship(sender, randInt(2, 5))
+    addStat(g, 'happiness', randInt(g, 2, 5))
+    p.respect = clamp(p.respect + randInt(g, 4, 8))
+    for (const m of cellmates(g)) addRelationship(m, randInt(g, 5, 12))
+    if (sender) addRelationship(sender, randInt(g, 2, 5))
     log(g, `I shared my care package with my cellmates.`, 'good')
   } else {
     if (sender) {
-      addRelationship(sender, -randInt(8, 15))
+      addRelationship(sender, -randInt(g, 8, 15))
       notePerson(sender, 'I returned their care package while I was in prison.')
     }
     log(g, `I returned the care package ${sender ? `${sender.firstName} sent me` : 'from home'}.`, 'neutral')
@@ -879,7 +879,7 @@ const EVENT_GANG_INVITE = defineScript('prison.event.gangInvite', (g, choice, da
   const gang = String(data.gang ?? 'a gang')
   if (choice === 'join') {
     p.gang = gang
-    p.respect = clamp(p.respect + randInt(5, 10))
+    p.respect = clamp(p.respect + randInt(g, 5, 10))
     log(g, `I joined the ${gang}.`, 'event')
     notice(g, 'Jumped In', `The ${gang} welcomed you with a handshake you need three weeks to learn. You're one of them now.`, { emoji: '\u{1F91D}' })
   } else {
@@ -896,7 +896,7 @@ function prisonEvent(g: GameState): void {
   const mates = cellmates(g)
   if (mates.length > 0 && chance(g, 0.5)) {
     const m = pick(g, mates)
-    addRelationship(m, randInt(1, 5))
+    addRelationship(m, randInt(g, 1, 5))
     m.yearsKnown += 1
     const story = pick(g, [
       `My cellmate ${m.firstName} told me the whole story of how ${pronouns(m.gender).he} got caught. Twice.`,
@@ -911,7 +911,7 @@ function prisonEvent(g: GameState): void {
   const parentsList = peopleBy(g, ['parent', 'stepparent', 'sibling', 'spouse', 'partner', 'child', 'grandparent'])
   if (p.respect < 30 && !p.gang && roll < 0.3) {
     const attacker = inmateName(g, c.gender)
-    const dmg = hurt(g, randInt(6, 20))
+    const dmg = hurt(g, randInt(g, 6, 20))
     log(g, `An inmate named ${attacker} jumped me in the shower.`, 'bad')
     notice(g, 'Jumped', `${attacker} cornered you in the showers and beat you up just for looking soft. (-${dmg} health) Earning some respect in here might help.`, {
       emoji: '\u{1F915}',
@@ -1206,8 +1206,8 @@ const ESCAPE_SCRIPT = defineScript('prison.escape.result', (g, result) => {
   const pl = prisonLife(g)
   if (result === 'escaped') {
     count(g, 'escapes')
-    addStat(g, 'happiness', randInt(15, 25))
-    addHidden(g, 'notoriety', randInt(5, 10))
+    addStat(g, 'happiness', randInt(g, 15, 25))
+    addHidden(g, 'notoriety', randInt(g, 5, 10))
     const name = p.name
     const juvenile = pl.juvenile
     releaseFromPrison(g, 'escaped')
@@ -1239,9 +1239,9 @@ const ESCAPE_SCRIPT = defineScript('prison.escape.result', (g, result) => {
   if (result === 'caught') {
     p.escapeAttempts += 1
     pl.behavior = clamp(pl.behavior - 25)
-    p.respect = clamp(p.respect + randInt(2, 6))
-    const dmg = chance(g, 0.4) ? hurt(g, randInt(4, 12)) : 0
-    const add = p.security === 'maximum' ? randInt(2, 5) : randInt(1, 3)
+    p.respect = clamp(p.respect + randInt(g, 2, 6))
+    const dmg = chance(g, 0.4) ? hurt(g, randInt(g, 4, 12)) : 0
+    const add = p.security === 'maximum' ? randInt(g, 2, 5) : randInt(g, 1, 3)
     addPrisonTime(g, add, 'Attempted Escape')
     const moved = p.escapeAttempts >= 2 || chance(g, 0.35) ? raiseSecurity(g) : null
     const extra = p.life || p.deathRow ? '' : ` ${years(add)} were added to your sentence for attempted escape.`
@@ -1411,7 +1411,7 @@ function appealAction(firm: AppealFirm): MenuAction {
         return
       }
       log(g, 'My appeal was denied.', 'bad')
-      addStat(g, 'happiness', -randInt(3, 8))
+      addStat(g, 'happiness', -randInt(g, 3, 8))
       notice(g, 'Appeal Denied', pick(g, [`The appeals court upheld your conviction. ${f.name} kept the money.`, `Denied. The judge didn't even look up from her coffee.`]), {
         emoji: '\u{1F6AB}',
         tone: 'bad',
@@ -1481,12 +1481,12 @@ const RIOT_SCRIPT = defineScript('prison.riot', (g, choice) => {
   }
   pl.riots += 1
   const lines: string[] = [opener[choice]]
-  if (choice === 'mattress' && chance(g, 0.4)) lines.push(`You singed your eyebrows off. (-${hurt(g, randInt(3, 8))} health)`)
+  if (choice === 'mattress' && chance(g, 0.4)) lines.push(`You singed your eyebrows off. (-${hurt(g, randInt(g, 3, 8))} health)`)
   if (success) {
     count(g, 'riots')
-    p.respect = clamp(p.respect + randInt(12, 25))
+    p.respect = clamp(p.respect + randInt(g, 12, 25))
     pl.behavior = clamp(pl.behavior - 30)
-    addStat(g, 'happiness', randInt(5, 10))
+    addStat(g, 'happiness', randInt(g, 5, 10))
     lines.push(
       pick(g, [
         `${recruits} inmates joined in. Cell block D descended into glorious chaos for six hours.`,
@@ -1504,17 +1504,17 @@ const RIOT_SCRIPT = defineScript('prison.riot', (g, choice) => {
       return
     }
   } else {
-    p.respect = clamp(p.respect - randInt(3, 8))
+    p.respect = clamp(p.respect - randInt(g, 3, 8))
     pl.behavior = clamp(pl.behavior - 15)
     lines.push(pick(g, ['Nobody joined in. A guard calmly walked over and wrote you up.', 'Two inmates joined you, then immediately got bored and left.', 'The other inmates just stared at you. Awkward.']))
     log(g, 'I tried to start a prison riot, but nobody joined in.', 'bad')
   }
-  if (chance(g, success ? 0.5 : 0.35)) lines.push(`The guards beat you with batons. (-${hurt(g, randInt(5, 20))} health)`)
+  if (chance(g, success ? 0.5 : 0.35)) lines.push(`The guards beat you with batons. (-${hurt(g, randInt(g, 5, 20))} health)`)
   if (chance(g, success ? 0.4 : 0.3)) {
     if (p.life || p.deathRow) {
       lines.push('The warden screamed at you for ten minutes, but there is not much more he can do to you.')
     } else {
-      const add = randInt(1, 2)
+      const add = randInt(g, 1, 2)
       addPrisonTime(g, add, 'Inciting a Riot')
       lines.push(`You were charged with inciting a riot: ${years(add)} added to your sentence.`)
     }
@@ -1560,13 +1560,13 @@ const workoutAction: MenuAction = {
       return
     }
     count(g, 'gym')
-    const hp = randInt(2, 6)
-    const lk = randInt(0, 3)
+    const hp = randInt(g, 2, 6)
+    const lk = randInt(g, 0, 3)
     addStat(g, 'health', hp)
     addStat(g, 'looks', lk)
-    addHidden(g, 'athleticism', randInt(1, 4))
-    p.respect = clamp(p.respect + randInt(1, 4))
-    addStat(g, 'happiness', randInt(1, 3))
+    addHidden(g, 'athleticism', randInt(g, 1, 4))
+    p.respect = clamp(p.respect + randInt(g, 1, 4))
+    addStat(g, 'happiness', randInt(g, 1, 3))
     log(g, pick(g, ['I worked out in the prison yard.', 'I lifted weights in the yard.', 'I did a thousand push-ups in my cell.']), 'good')
     notice(
       g,
@@ -1597,9 +1597,9 @@ const libraryAction: MenuAction = {
       return
     }
     count(g, 'library')
-    const sm = randInt(1, 4)
+    const sm = randInt(g, 1, 4)
     addStat(g, 'smarts', sm)
-    addStat(g, 'happiness', randInt(1, 3))
+    addStat(g, 'happiness', randInt(g, 1, 3))
     prisonLife(g).behavior = clamp(prisonLife(g).behavior + 2)
     const book = pick(g, [
       'a dog-eared law textbook',
@@ -1629,18 +1629,18 @@ const GANG_INIT_SCRIPT = defineScript('prison.gang.initiation', (g, choice, data
     return
   }
   const pl = prisonLife(g)
-  const power = c.hidden.athleticism * 0.5 + c.stats.health * 0.3 + p.respect * 0.2 + randInt(0, 30)
-  const win = power > randInt(35, 95)
+  const power = c.hidden.athleticism * 0.5 + c.stats.health * 0.3 + p.respect * 0.2 + randInt(g, 0, 30)
+  const win = power > randInt(g, 35, 95)
   pl.behavior = clamp(pl.behavior - 15)
   const caught = chance(g, 0.25)
   const lines: string[] = []
   if (win) {
     p.gang = gang
-    p.respect = clamp(p.respect + randInt(10, 18))
+    p.respect = clamp(p.respect + randInt(g, 10, 18))
     lines.push(`You jumped ${target} in the yard and left no doubt. The ${gang} welcomed you in.`)
     log(g, `I joined the ${gang} after beating up ${target}.`, 'event')
   } else {
-    lines.push(`You jumped ${target}, but ${target.split(' ')[0]} turned out to be tougher than you. (-${hurt(g, randInt(8, 20))} health) The ${gang} want nothing to do with you.`)
+    lines.push(`You jumped ${target}, but ${target.split(' ')[0]} turned out to be tougher than you. (-${hurt(g, randInt(g, 8, 20))} health) The ${gang} want nothing to do with you.`)
     p.respect = clamp(p.respect - 4)
     log(g, `I failed my initiation into the ${gang}.`, 'bad')
   }
@@ -1678,20 +1678,20 @@ function gangNodes(g: GameState): MenuNode[] {
             plx.behavior = clamp(plx.behavior - 20)
             const lines = ['The guards found the contraband stuffed in your mattress.']
             if (!pp.life && !pp.deathRow && chance(gg, 0.6)) {
-              const add = randInt(1, 2)
+              const add = randInt(gg, 1, 2)
               addPrisonTime(gg, add, 'Smuggling Contraband')
               lines.push(`${years(add)} added to your sentence.`)
             } else {
               lines.push('You spent a month in solitary.')
-              addStat(gg, 'happiness', -randInt(5, 10))
+              addStat(gg, 'happiness', -randInt(gg, 5, 10))
             }
             log(gg, 'I got caught smuggling contraband for my gang.', 'bad')
             notice(gg, 'Busted', lines.join(' '), { emoji: '\u{1F6A8}', tone: 'bad' })
             return
           }
-          const cut = Math.round(randInt(100, 900) * moneyScale(gg))
+          const cut = Math.round(randInt(gg, 100, 900) * moneyScale(gg))
           addMoney(gg, cut)
-          pp.respect = clamp(pp.respect + randInt(3, 7))
+          pp.respect = clamp(pp.respect + randInt(gg, 3, 7))
           const goods = pick(gg, ['cigarettes', 'instant coffee', 'contraband phones', 'hot sauce', 'smuggled snacks', 'romance novels'])
           log(gg, `I smuggled ${goods} for the ${gang} and made ${formatMoney(cut)}.`, 'event')
           notice(gg, 'Smuggling Run', `You moved a shipment of ${goods} through the laundry for the ${gang}. Your cut: ${formatMoney(cut)}.`, { emoji: '\u{1F4E6}' })
@@ -1729,9 +1729,9 @@ function gangNodes(g: GameState): MenuNode[] {
           if (!pp || !c.alive) return
           pp.gang = undefined
           delete pp.gang
-          pp.respect = clamp(pp.respect - randInt(5, 15))
+          pp.respect = clamp(pp.respect - randInt(gg, 5, 15))
           const beaten = chance(gg, 0.5)
-          const dmg = beaten ? hurt(gg, randInt(8, 25)) : 0
+          const dmg = beaten ? hurt(gg, randInt(gg, 8, 25)) : 0
           log(gg, `I left the ${gang}.`, 'neutral')
           notice(gg, 'Out of the Gang', beaten ? `The ${gang} gave you a going-away party. It involved fists. (-${dmg} health)` : `You told the ${gang} you were out. They let you walk away... for now.`, {
             emoji: '\u{1F6AA}',
@@ -1794,14 +1794,14 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
   const p = c.prison
   if (!p) return
   const pl = prisonLife(g)
-  const power = c.hidden.athleticism * 0.45 + c.stats.health * 0.3 + p.respect * 0.25 + randInt(0, 35)
-  const toughness = person ? person.stats.health * 0.6 + randInt(10, 50) : randInt(30, 100)
+  const power = c.hidden.athleticism * 0.45 + c.stats.health * 0.3 + p.respect * 0.25 + randInt(g, 0, 35)
+  const toughness = person ? person.stats.health * 0.6 + randInt(g, 10, 50) : randInt(g, 30, 100)
   const win = power > toughness
   pl.behavior = clamp(pl.behavior - 15)
   const lines: string[] = []
   const first = name.split(' ')[0]
   if (win) {
-    p.respect = clamp(p.respect + randInt(8, 15))
+    p.respect = clamp(p.respect + randInt(g, 8, 15))
     lines.push(
       pick(g, [
         `You attacked ${name}, ${desc}. You landed a jab, a hook and an uppercut before ${first} hit the floor.`,
@@ -1810,14 +1810,14 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
       ]),
     )
     if (person) {
-      addPersonStat(person, 'health', -randInt(10, 30))
-      person.relationship = Math.min(person.relationship, randInt(0, 10))
+      addPersonStat(person, 'health', -randInt(g, 10, 30))
+      person.relationship = Math.min(person.relationship, randInt(g, 0, 10))
       notePerson(person, 'I beat them up in prison.')
     }
     log(g, `I beat up ${person ? `my cellmate ${person.firstName}` : `an inmate named ${first}`}.`, 'event')
   } else {
-    const dmg = hurt(g, randInt(8, 22))
-    p.respect = clamp(p.respect - randInt(2, 6))
+    const dmg = hurt(g, randInt(g, 8, 22))
+    p.respect = clamp(p.respect - randInt(g, 2, 6))
     lines.push(
       pick(g, [
         `You swung at ${name}, ${desc}, and missed. ${first} did not miss. (-${dmg} health)`,
@@ -1825,19 +1825,19 @@ function fightInmate(g: GameState, name: string, desc: string, person: Person | 
       ]),
     )
     if (person) {
-      addRelationship(person, -randInt(20, 40))
+      addRelationship(person, -randInt(g, 20, 40))
       notePerson(person, 'I tried to fight them in prison and lost.')
     }
     log(g, `I lost a fight to ${person ? `my cellmate ${person.firstName}` : `an inmate named ${first}`}.`, 'bad')
   }
   if (chance(g, 0.3)) {
     if (!p.life && !p.deathRow && chance(g, 0.6)) {
-      const add = randInt(1, 2)
+      const add = randInt(g, 1, 2)
       addPrisonTime(g, add, 'Assault')
       lines.push(`The guards broke it up and charged you with assault: ${years(add)} added to your sentence.`)
     } else {
       lines.push('The guards threw you in solitary for a month.')
-      addStat(g, 'happiness', -randInt(5, 12))
+      addStat(g, 'happiness', -randInt(g, 5, 12))
     }
   }
   count(g, 'fights')
@@ -1908,8 +1908,8 @@ const SNITCH_SCRIPT = defineScript('prison.snitch', (g, choice) => {
     guard: 'a guard who takes bribes',
   }
   if (!(choice in what)) return
-  pl.behavior = clamp(pl.behavior + randInt(15, 25))
-  p.respect = clamp(p.respect - randInt(15, 25))
+  pl.behavior = clamp(pl.behavior + randInt(g, 15, 25))
+  p.respect = clamp(p.respect - randInt(g, 15, 25))
   const lines = [`You quietly told the warden about ${what[choice]}.`]
   if (!p.life && !p.deathRow && p.sentenceYears - p.yearsServed > 1 && chance(g, choice === 'escape' ? 0.4 : 0.25)) {
     p.sentenceYears -= 1
@@ -1919,7 +1919,7 @@ const SNITCH_SCRIPT = defineScript('prison.snitch', (g, choice) => {
   }
   const retaliation = chance(g, clamp(0.25 + (p.gang ? 0.3 : 0) + (40 - p.respect) / 150, 0.1, 0.75))
   if (retaliation) {
-    const dmg = hurt(g, randInt(10, 30))
+    const dmg = hurt(g, randInt(g, 10, 30))
     lines.push(`Word got out. Snitches get stitches, and you got a lot of them. (-${dmg} health)`)
     if (p.gang) {
       lines.push(`The ${p.gang} kicked you out.`)
@@ -1965,9 +1965,9 @@ const behaveAction: MenuAction = {
       return
     }
     const pl = prisonLife(g)
-    pl.behavior = clamp(pl.behavior + randInt(8, 15))
-    p.respect = clamp(p.respect - randInt(0, 3))
-    addHidden(g, 'karma', randInt(1, 3))
+    pl.behavior = clamp(pl.behavior + randInt(g, 8, 15))
+    p.respect = clamp(p.respect - randInt(g, 0, 3))
+    addHidden(g, 'karma', randInt(g, 1, 3))
     const what = pick(g, [
       'You made your bunk with hospital corners, mopped the cell block, and said "yes sir" to every guard.',
       'You volunteered in the prison kitchen and served the warden an extra-large slice of pie.',
@@ -1994,9 +1994,9 @@ const cryAction: MenuAction = {
       tired(g, 'All Cried Out', "You've cried so much this year that you're out of tears.")
       return
     }
-    addStat(g, 'happiness', randInt(2, 6))
+    addStat(g, 'happiness', randInt(g, 2, 6))
     const seen = chance(g, 0.3)
-    if (seen) p.respect = clamp(p.respect - randInt(2, 5))
+    if (seen) p.respect = clamp(p.respect - randInt(g, 2, 5))
     log(g, 'I cried myself to sleep in my cell.', 'neutral')
     notice(
       g,
@@ -2118,12 +2118,12 @@ const BRIBE_SCRIPT = defineScript('prison.bribe', (g, choice) => {
   }
   spend(g, price)
   if (choice === 'snacks') {
-    addStat(g, 'happiness', randInt(4, 8))
+    addStat(g, 'happiness', randInt(g, 4, 8))
     log(g, 'I bribed a guard to smuggle in snacks.', 'neutral')
     notice(g, 'Contraband Snacks', 'The guard slipped you a bag of real chips and a comic book. Luxury!', { emoji: '\u{1F35F}' })
   } else if (choice === 'cell') {
-    addStat(g, 'happiness', randInt(6, 12))
-    addStat(g, 'health', randInt(1, 4))
+    addStat(g, 'happiness', randInt(g, 6, 12))
+    addStat(g, 'health', randInt(g, 1, 4))
     log(g, 'I bribed a guard for a better cell.', 'neutral')
     notice(g, 'Upgrade', 'You got moved to a cell with a window and a mattress thicker than a pancake.', { emoji: '\u{1F6CF}\u{FE0F}' })
   } else {
@@ -2178,8 +2178,8 @@ function letterNodes(g: GameState): MenuNode[] {
         const p = pronouns(target.gender)
         const reply = target.relationship >= 30 || chance(gg, 0.5)
         if (reply) {
-          addRelationship(target, randInt(4, 10))
-          addStat(gg, 'happiness', randInt(2, 5))
+          addRelationship(target, randInt(gg, 4, 10))
+          addStat(gg, 'happiness', randInt(gg, 2, 5))
           notePerson(target, 'Wrote to me from prison.')
           log(gg, `I wrote a letter to my ${relationLabel(target).toLowerCase()} ${target.firstName} from prison.`, 'good')
           notice(gg, 'Letter Home', pick(gg, [`${target.firstName} wrote back! ${p.He} said ${p.he} misses you.`, `${target.firstName} replied with a long letter and a drawing of your old neighborhood.`]), {
@@ -2220,7 +2220,7 @@ const infirmaryAction: MenuAction = {
       notice(g, 'Infirmary', 'The prison nurse gave you two aspirin and told you to walk it off.', { emoji: '\u{1F48A}' })
       return
     }
-    const heal = randInt(5, 15)
+    const heal = randInt(g, 5, 15)
     addStat(g, 'health', heal)
     const injury = c.conditions.find((x) => x.kind === 'injury')
     let extra = ''

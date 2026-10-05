@@ -11,14 +11,15 @@ import {
   canDrink,
   ch,
   defineEvents,
+  dollars,
   friends,
   inGradeSchool,
   inHighSchool,
   inUniversity,
+  money,
   partner,
   pr,
   say,
-  schoolName,
   siblings,
   strangerName,
   type Ctx,
@@ -692,7 +693,7 @@ export const SCHOOL_EVENTS = defineEvents([
     title: 'Roommate',
     minAge: 17,
     maxAge: 30,
-    when: (g) => inUniversity(g) && (g.character.residence.status === 'dorm' || chance(g, 0.5)),
+    when: inUniversity,
     setup: (g) => {
       const s = strangerName(g)
       const habit = pick(g, ['plays the tuba at 3 AM', 'never washes their dishes', 'keeps eating your food', 'has a pet snake that keeps escaping', 'talks loudly in their sleep about tax law', 'keeps borrowing your clothes'])
@@ -767,27 +768,29 @@ export const SCHOOL_EVENTS = defineEvents([
     minAge: 17,
     maxAge: 40,
     when: inUniversity,
-    setup: (g) => ({
-      text: `Your required textbook costs $${Math.round(280 * Math.max(0.5, Math.min(1.3, g.character.money > 0 ? 1 : 1)))} and the professor wrote it. What will you do?`,
-      choices: [ch('buy', 'Buy it new'), ch('used', 'Find a used copy'), ch('share', 'Share with a classmate'), ch('none', 'Go without')],
-    }),
+    setup: (g) => {
+      const price = dollars(g, 220, 340)
+      return {
+        text: `Your required textbook costs ${money(price)}, and the professor wrote it. What will you do?`,
+        choices: [ch('buy', 'Buy it new'), ch('used', 'Find a used copy'), ch('share', 'Share with a classmate'), ch('none', 'Go without')],
+        data: { price },
+      }
+    },
     resolve: {
-      buy: (g) => {
-        if (g.character.money < 280) {
-          say(g, null, 'Declined', "Your card was declined at the bookstore. You're going without.", "I couldn't afford my textbook.", { grades: -3, happiness: -4 }, 'bad', '💳')
+      buy: (g, x) => {
+        const price = x.n('price')
+        if (g.character.money < price) {
+          say(g, x, 'Declined', "Your card was declined at the bookstore. You're going without.", "I couldn't afford my textbook.", { grades: -3, happiness: -4 }, 'bad', '💳')
         } else {
-          say(g, null, 'Highway robbery', 'You paid full price. The professor thanks you for funding their boat.', 'I bought a brand new textbook for $280.', { money: -280, grades: 3 })
+          say(g, x, 'Highway robbery', 'You paid full price. The professor thanks you for funding their boat.', `I bought a brand new textbook for ${money(price)}.`, { money: -price, grades: 3 })
         }
       },
-      used: (g) => {
-        const cost = Math.min(Math.max(0, g.character.money), 60)
-        say(g, null, 'Smart shopper', 'You found a used copy for $60. Someone highlighted every single sentence.', 'I found a used copy of my textbook.', { money: -cost, grades: 2, smarts: 2 }, 'good')
+      used: (g, x) => {
+        const cost = Math.min(Math.max(0, g.character.money), Math.round(x.n('price') / 4))
+        say(g, x, 'Smart shopper', cost > 0 ? `You found a used copy for ${money(cost)}. Someone highlighted every single sentence.` : 'You found a used copy someone left in the library. Every single sentence is highlighted.', 'I found a used copy of my textbook.', { money: -cost, grades: 2, smarts: 2 }, 'good')
       },
-      share: (g) => say(g, null, 'Teamwork', 'You shared a classmate\'s copy. You now know their entire schedule.', "I shared a classmate's textbook.", { grades: 1, happiness: 2 }),
+      share: (g) => say(g, null, 'Teamwork', "You shared a classmate's copy. You now know their entire schedule.", "I shared a classmate's textbook.", { grades: 1, happiness: 2 }),
       none: (g) => say(g, null, 'Living dangerously', 'You went without the textbook. The first quiz did not go well.', 'I went the whole semester without a textbook.', { grades: -5 }, 'bad'),
     },
   },
 ])
-
-export type { Ctx }
-export const SCHOOL_HELPERS = { randInt }

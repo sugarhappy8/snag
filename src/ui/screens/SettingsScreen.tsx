@@ -307,7 +307,8 @@ export function SettingsScreen() {
     try {
       const res = await testConnection(s, ctrl.signal)
       if (!mounted.current || controller.current !== ctrl) return
-      setTest({ status: 'done', ok: res.ok, message: res.message, models: res.models ?? [] })
+      const message = !res.ok && ctrl.signal.aborted ? 'LM Studio didn’t answer in time. Is the server running?' : res.message
+      setTest({ status: 'done', ok: res.ok, message, models: res.models ?? [] })
       if (getApp().settings.aiLevel !== 'off') void checkAi()
     } catch (err) {
       if (!mounted.current || controller.current !== ctrl) return

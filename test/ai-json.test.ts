@@ -108,6 +108,17 @@ describe('repairJson / parseJsonLoose', () => {
     expect(() => parseJsonLoose('I cannot do that.')).toThrow()
     expect(() => parseJsonLoose('<think>only thoughts</think>')).toThrow()
   })
+  it('always produces valid JSON for any truncation of a reply', () => {
+    const full =
+      'Sure!\n```json\n{"title": "Stray Dog \u{1F415}", "text": "You said \\"hi\\" to a dog, then it bit you.", "log": \'I met a dog.\', "effects": {"happiness": -5, "money": -1,250, "relationships": [{"name": "Mom", "delta": 3},], "death": "", ok: True}}\n```'
+    for (let cut = full.indexOf('{') + 1; cut <= full.length; cut++) {
+      const out = repairJson(full.slice(0, cut))
+      expect(() => JSON.parse(out), out).not.toThrow()
+    }
+    const done = parseJsonLoose(full) as Record<string, unknown>
+    expect(done.title).toBe('Stray Dog \u{1F415}')
+    expect((done.effects as Record<string, unknown>).money).toBe(-1250)
+  })
   it('does not treat prototype names as literals', () => {
     expect(parse('{"a": constructor}')).toEqual({ a: 'constructor' })
   })
