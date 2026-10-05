@@ -41,8 +41,8 @@ a server.
       **Enable CORS**. This lets the website talk to LM Studio.
    3. Switch the server on. It listens on `http://localhost:1234` by default. From a terminal you
       can instead run `lms server start --cors`.
-2. **Open the game** at your Cloudflare URL (see [Deploying](#deploying-to-cloudflare)), for
-   example `https://anotherlife.<your-account>.workers.dev`, and press **New Life**.
+2. **Open the game** at its Cloudflare URL (see [Deploying](#deploying-to-cloudflare)), e.g.
+   `https://snag.<your-account>.workers.dev`, and press **New Life**.
 3. When Chrome or Edge asks to let the site **access devices on your local network**, click
    **Allow**. That permission is how the page reaches LM Studio on your computer. The status dot in
    the header turns green once it's connected.
@@ -57,22 +57,14 @@ address it prints into Settings.
 
 ## Deploying to Cloudflare
 
-The repo is set up as a Cloudflare Worker named `anotherlife` that only serves the built site
-(`wrangler.jsonc`). It is separate from any other Worker on your account.
+This repo is connected to a Cloudflare Worker named **`snag`** through Workers Builds. Every push
+to the Worker's production branch rebuilds and redeploys the site. `wrangler.jsonc` declares a
+static-assets Worker: `wrangler deploy` runs `npm run build` (typecheck + Vite) and uploads
+`dist/`, so a build that doesn't compile is never deployed. The site is served at
+`https://snag.<your-account>.workers.dev` plus any custom domain attached to the Worker under
+**Settings → Domains & Routes**.
 
-**Automatic deploys (recommended):** in the Cloudflare dashboard go to **Workers & Pages →
-Create → Import a repository**, pick this GitHub repo, and use:
-
-| Setting | Value |
-|---|---|
-| Build command | `npm run build` |
-| Deploy command | `npx wrangler deploy` |
-| Production branch | `main` |
-
-After that, every push to `main` redeploys the site. You'll get a `*.workers.dev` URL, and you
-can attach a custom domain under the Worker's **Settings → Domains & Routes**.
-
-**One-off deploy from your computer:**
+To deploy by hand from your computer:
 
 ```bash
 npm install

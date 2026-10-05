@@ -1,10 +1,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // Static site on Cloudflare Workers: `npm run build` writes dist/, `wrangler deploy` uploads it.
-  // The game talks to LM Studio straight from the player's browser, so there is no server code.
-  "name": "anotherlife",
+  // Static site on Cloudflare Workers. `wrangler deploy` runs the build below (typecheck + Vite)
+  // and uploads dist/, so a broken build never deploys. The game talks to LM Studio straight
+  // from the player's browser, so there is no server code.
+  // The name must match the Worker this repo is connected to in Cloudflare (Workers Builds).
+  "name": "snag",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
+  "build": { "command": "npm run build" },
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"

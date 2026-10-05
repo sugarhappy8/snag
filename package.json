@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "react": "^19.3.0",

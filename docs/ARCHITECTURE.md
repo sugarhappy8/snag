@@ -9,7 +9,8 @@ offline from a built-in event library.
 
 Stack: Vite + React 19 + TypeScript (strict), Vitest. No other runtime deps.
 
-Hosting: a static site on Cloudflare Workers (`wrangler.jsonc`, assets from `dist/`). The browser
+Hosting: a static site on the Cloudflare Worker `snag` (Workers Builds deploys every push to its
+production branch; `wrangler.jsonc` runs `npm run build` and serves `dist/`). The browser
 talks directly to LM Studio on the player's machine (`http://localhost:1234/v1` by default, which needs
 LM Studio's "Enable CORS" and the browser's local-network-access permission). Under `npm run dev`
 the default is `/lmstudio/v1`, proxied by Vite to LM Studio. UI copy and error messages must explain
