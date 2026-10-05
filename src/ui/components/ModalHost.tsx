@@ -113,6 +113,19 @@ function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
   const showBadges = useApp((s) => s.settings.showAiBadges)
   const person = getPerson(g, modal.personId)
   const fromAi = modal.source === 'ai'
+
+  // Desktop shortcut: number keys pick a choice (1 = first).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return
+      const n = Number(e.key)
+      if (!Number.isInteger(n) || n < 1 || n > modal.choices.length) return
+      e.preventDefault()
+      chooseOption(modal.id, modal.choices[n - 1].id)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [modal.id, modal.choices])
   return (
     <PopupFrame label={modal.title}>
       {modal.emoji ? (

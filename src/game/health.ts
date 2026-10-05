@@ -419,7 +419,7 @@ function sicknessChance(g: GameState): number {
 }
 
 function ageWeight(def: DiseaseDef, age: number): number {
-  if (def.cancer) return age < 18 ? 0.1 : age < 40 ? 0.3 : age < 60 ? 0.8 : 1.2
+  if (def.cancer) return age < 18 ? 0.08 : age < 40 ? 0.25 : age < 60 ? 0.7 : 1.1
   if (def.name === 'Heart Disease' || def.name === 'High Blood Pressure') return age < 50 ? 0.6 : age < 70 ? 1.3 : 1.8
   if (def.name === 'Pneumonia') return age >= 70 ? 2 : 1
   return 1
@@ -441,7 +441,7 @@ function diseaseWeight(g: GameState, d: DiseaseDef): number {
   let w = d.weight * ageWeight(d, c.age)
   const idle = c.age > 25 && Object.values(g.counters).reduce((s, n) => s + n, 0) < 10
   if (d.odd && idle) w *= 3
-  if ((d.name === 'Malaria' || d.name === 'Tuberculosis') && getCountry(c.countryId).wealth < 0.5) w *= 4
+  if ((d.name === 'Malaria' || d.name === 'Tuberculosis') && getCountry(c.countryId).wealth < 0.5) w *= 2
   if ((d.name === 'Anorexia' || d.name === 'Bulimia') && c.gender === 'female') w *= 3
   if (d.name === 'Diabetes' && c.stats.health < 50) w *= 1.8
   if (d.name === 'Depression' && c.stats.happiness < 40) w *= 3
@@ -976,8 +976,8 @@ function statDrift(g: GameState): void {
   // Smarts grow through childhood, plateau, then fade a little in old age.
   let smarts: number
   if (a <= 18) smarts = randInt(g, -1, 3)
-  else if (a < 70) smarts = randInt(g, -1, 1)
-  else smarts = randInt(g, -2, 0)
+  else if (a < 75) smarts = randInt(g, -1, 1)
+  else smarts = randInt(g, -1, 0)
   addStat(g, 'smarts', smarts)
 
   // Looks: random in childhood, then gravity wins.
@@ -1073,7 +1073,7 @@ export function checkDeath(g: GameState): void {
   for (const cond of deadly) {
     const def = defFor(cond)
     let p = (cond.severity / 100) * (c.stats.health < 15 ? 0.45 : c.stats.health < 30 ? 0.2 : 0.02)
-    if (def.name === 'High Blood Pressure') p += 0.005 + cond.severity / 2000
+    if (def.name === 'High Blood Pressure') p += 0.003 + cond.severity / 3000
     if (def.name === 'Heart Disease') p += 0.02 + cond.severity / 1500
     if (chance(g, p)) {
       killCharacter(g, def.deadly ?? cond.name)
@@ -1099,9 +1099,9 @@ export function checkDeath(g: GameState): void {
   }
   // Rare freak accidents.
   if (c.age <= 12) {
-    if (chance(g, 0.0005)) killCharacter(g, pick(g, CHILD_ACCIDENTS))
+    if (chance(g, 0.00015)) killCharacter(g, pick(g, CHILD_ACCIDENTS))
   } else if (c.age < 70 && !inPrison(g)) {
-    if (chance(g, 0.0006)) killCharacter(g, pick(g, ADULT_ACCIDENTS))
+    if (chance(g, 0.00025)) killCharacter(g, pick(g, ADULT_ACCIDENTS))
   }
 }
 

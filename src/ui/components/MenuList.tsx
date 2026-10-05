@@ -209,7 +209,12 @@ function isMultiline(action: MenuAction): boolean {
 
 export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
   const [pending, setPending] = useState<Pending | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [toast, setToastState] = useState<{ message: string; n: number } | null>(null)
+  const toastCount = useRef(0)
+  const setToast = (message: string | null) => {
+    toastCount.current += 1
+    setToastState(message ? { message, n: toastCount.current } : null)
+  }
   const optsRef = useRef(opts)
   useEffect(() => {
     optsRef.current = opts
@@ -304,7 +309,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
     overlay: (
       <>
         {dialog}
-        {toast ? <Toast key={toast} message={toast} onDone={() => setToast(null)} /> : null}
+        {toast ? <Toast key={toast.n} message={toast.message} onDone={() => setToastState(null)} /> : null}
       </>
     ),
   }

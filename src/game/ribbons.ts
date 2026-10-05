@@ -232,7 +232,7 @@ export function computeRibbon(g: GameState): string | null {
   if (/lightning/.test(death)) return 'unlucky'
   if (worth >= 250_000 && age >= 65 && !everJailed && addictionCount(g) === 0 && c.hidden.karma >= 50 && hadJob) return 'successful'
   if (age >= 50 && !hadJob && c.stats.smarts > 10) return 'lazy'
-  if (c.stats.smarts <= 10) return 'stupid'
+  if (c.stats.smarts <= 10 && !c.conditions.some((x) => /dementia|alzheimer/i.test(x.name))) return 'stupid'
   if (worth < 0 && (c.stats.smarts + c.stats.looks) / 2 > 50) return 'wasteful'
   if (/execut/.test(death) && age < 40) return 'wasteful'
   return 'mediocre'
