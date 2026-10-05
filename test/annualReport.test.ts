@@ -155,6 +155,14 @@ describe('readReportData', () => {
     }
   })
 
+  it('falls back to a sensible price range around the suggested price', () => {
+    const r = readReportData(MALFORMED[7])
+    expect([r.minPrice, r.maxPrice, r.price, r.suggestedPrice]).toEqual([2.5, 40, 10, 10])
+    expect([r.production, r.maxProduction]).toEqual([0, 0])
+    const c = readReportData({ unitCost: 6, minPrice: 0 })
+    expect([c.minPrice, c.maxPrice, c.price]).toEqual([0, 48, 12])
+  })
+
   it('swaps reversed price bounds and formats numeric line values', () => {
     const r = readReportData(MALFORMED[8])
     expect([r.minPrice, r.maxPrice]).toEqual([5, 50])
@@ -230,7 +238,7 @@ describe('AnnualReport', () => {
     for (const s of [
       'Ramen Rocket',
       'Restaurant · Osaka, Japan',
-      'FY 2031',
+      'Fiscal year 2031',
       '2031 results',
       'Plan for 2032',
       'Net profit',

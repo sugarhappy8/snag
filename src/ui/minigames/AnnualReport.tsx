@@ -111,11 +111,12 @@ export function readReportData(data: Json): ReportView {
   const rawSuggested = positive(d.suggestedPrice)
   const base = rawSuggested ?? rawPrice ?? (unitCost > 0 ? unitCost * 2 : 10)
 
-  let minPrice = Math.max(0, num(d.minPrice) ?? cents(base * 0.25))
-  let maxPrice = Math.max(0, num(d.maxPrice) ?? cents(base * 4))
+  const rawMin = num(d.minPrice)
+  let minPrice = rawMin !== null && rawMin >= 0 ? rawMin : cents(base * 0.25)
+  let maxPrice = positive(d.maxPrice) ?? cents(base * 4)
   if (minPrice > maxPrice) [minPrice, maxPrice] = [maxPrice, minPrice]
   if (maxPrice - minPrice < 0.01) maxPrice = cents(Math.max(minPrice * 2, minPrice + 1))
-  const suggestedPrice = clamp(rawSuggested ?? rawPrice ?? (minPrice + maxPrice) / 2, minPrice, maxPrice)
+  const suggestedPrice = clamp(rawSuggested ?? rawPrice ?? base, minPrice, maxPrice)
   const price = clamp(rawPrice ?? suggestedPrice, minPrice, maxPrice)
 
   const whole = (v: Json | undefined) => Math.max(0, Math.round(num(v) ?? 0))
@@ -419,10 +420,10 @@ export function AnnualReport({ modal, onDone }: MinigameProps) {
           {r.emoji}
         </span>
         <div className="ar-id">
+          {r.year !== null ? <div className="ar-year">Fiscal year {r.year}</div> : null}
           <div className="ar-name">{r.businessName}</div>
           {subtitle ? <div className="ar-sub">{subtitle}</div> : null}
         </div>
-        {r.year !== null ? <span className="ar-year">FY {r.year}</span> : null}
       </header>
 
       <section className="ar-section" aria-labelledby={ids.results}>
