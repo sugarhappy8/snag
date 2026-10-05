@@ -309,7 +309,7 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
     g.obituary?.trim() ||
     stablePick(g.lifeId + 'obit', [
       `${c.firstName} lived ${c.age} years and then, rather abruptly, didn't.`,
-      `${c.firstName} ${c.lastName} is survived by ${his} browser history.`,
+      `${c.firstName} ${c.lastName} is survived by ${his} houseplants and a fridge full of leftovers.`,
       `Nobody got around to writing ${c.firstName}'s obituary. Somehow that sums it up.`,
     ])
 

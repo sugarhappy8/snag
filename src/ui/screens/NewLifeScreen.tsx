@@ -4,9 +4,10 @@
 import { useMemo, useState } from 'react'
 import { avatarEmoji } from '../../game/core'
 import type { NewLifeOptions } from '../../game/life'
+import { loadGame } from '../../game/save'
 import type { Gender, Sexuality } from '../../game/types'
 import { COUNTRIES, NAME_POOLS, getCountry } from '../../game/world'
-import { goTo, startNewLife, useApp } from '../store'
+import { goTo, hasSavedGame, startNewLife, useApp } from '../store'
 import '../styles/screens.css'
 import { ConfirmDialog, ScreenHeader } from './SettingsScreen'
 
@@ -75,7 +76,11 @@ export function NewLifeScreen() {
   const [pending, setPending] = useState<NewLifeOptions | null>(null)
 
   const country = getCountry(countryId)
-  const livingLife = game && game.character.alive ? `${game.character.firstName} ${game.character.lastName}` : null
+  // A life still in progress (in memory or only in the save) gets a warning before it's replaced.
+  const livingLife = useMemo(() => {
+    const g = game ?? (hasSavedGame() ? loadGame() : null)
+    return g && g.character.alive ? `${g.character.firstName} ${g.character.lastName}` : null
+  }, [game])
 
   const preview = useMemo(() => {
     const name = `${cleanName(firstName) || '???'} ${cleanName(lastName, false) || '???'}`

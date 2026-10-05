@@ -670,6 +670,7 @@
 
 .death-screen {
   position: relative;
+  padding-top: 0;
 }
 
 .death-drip {
@@ -721,6 +722,7 @@
   background: linear-gradient(180deg, #c7ccd4 0%, #a9b0ba 100%);
   color: #26303d;
   text-align: center;
+  isolation: isolate;
   box-shadow:
     inset 0 -6px 0 rgba(0, 0, 0, 0.12),
     0 8px 20px rgba(0, 0, 0, 0.18);
