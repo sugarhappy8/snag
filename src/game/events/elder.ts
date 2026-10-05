@@ -356,11 +356,11 @@ export const ELDER_EVENTS = defineEvents([
     resolve: {
       meet: (g, x) => {
         const sp = partner(g)
-        if (sp) return say(g, x, 'Just coffee', `You met ${x.s('first')} for coffee and laughed about the old days. You told ${sp.firstName} all about it.`, `I had coffee with ${x.s('first')}, an old high school crush.`, { happiness: 5, rels: [{ p: sp, d: -2 }] })
-        say(g, x, ['Rekindled', 'Second chances'], `You met ${x.s('first')} for coffee. It turned into dinner, then a long walk. You've become close friends again.`, `I reconnected with ${x.s('first')}, my high school crush.`, { happiness: 8 }, 'good', '💞')
+        if (sp) return say(g, x, 'Just coffee', `You met ${x.s('first')} for coffee and laughed about the old days. You told ${sp.firstName} all about it.`, `I had coffee with ${x.s('first')}, an old ${localTerm(g, 'high')} crush.`, { happiness: 5, rels: [{ p: sp, d: -2 }] })
+        say(g, x, ['Rekindled', 'Second chances'], `You met ${x.s('first')} for coffee. It turned into dinner, then a long walk. You've become close friends again.`, `I reconnected with ${x.s('first')}, my ${localTerm(g, 'high')} crush.`, { happiness: 8 }, 'good', '💞')
         addOldFriend(g, x)
       },
-      reply: (g, x) => say(g, x, 'Nostalgia', `You exchanged a few messages with ${x.s('first')} about old teachers who are definitely dead now.`, `I reconnected online with ${x.s('first')} from high school.`, { happiness: 3 }),
+      reply: (g, x) => say(g, x, 'Nostalgia', `You exchanged a few messages with ${x.s('first')} about old teachers who are definitely dead now.`, `I reconnected online with ${x.s('first')} from ${localTerm(g, 'high')}.`, { happiness: 3 }),
       ignore: (g, x) => say(g, x, 'Left on read', `You left ${x.s('first')} on read. Some doors are better left closed.`, null, {}),
     },
   },
@@ -564,7 +564,7 @@ function addOldFriend(g: GameState, x: Ctx): void {
   const gender = x.s('gender') === 'female' ? 'female' : 'male'
   const age = Math.max(18, g.character.age + randInt(g, -2, 2))
   const p: Person = createFriend(g, x.s('first'), x.s('last'), gender, age)
-  p.notes.push('My high school crush; we reconnected late in life.')
+  p.notes.push(`My ${localTerm(g, 'high')} crush; we reconnected late in life.`)
 }
 
 function createFriend(g: GameState, first: string, last: string, gender: 'male' | 'female', age: number): Person {
