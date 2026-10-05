@@ -19,6 +19,8 @@ export default defineConfig(({ mode }) => {
     // Relative asset paths so the build works at any URL (Cloudflare root or a sub-path).
     base: './',
     plugins: [react()],
+    // One ~2 MB bundle (mostly event/job text); fine for a game, so don't warn about it.
+    build: { chunkSizeWarningLimit: 3000 },
     server: { port: 5173, proxy },
     preview: { port: 4173, proxy },
     test: { environment: 'node', include: ['test/**/*.test.ts'] },

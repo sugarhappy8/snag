@@ -57,6 +57,8 @@ function fake(schema, key = 'text') {
       return Array.from({ length: n }, () => fake(schema.items, key))
     }
     case 'string': {
+      // Like a sensible model: nobody dies, gets arrested or catches anything by default.
+      if (/death|crime|condition|arrest|disease|species|newPerson/i.test(key)) return ''
       if (/log|line/i.test(key)) return word('log')
       if (/name/i.test(key)) return 'Alex'
       return word(key)
