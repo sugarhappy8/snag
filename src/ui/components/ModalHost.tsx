@@ -263,12 +263,18 @@ function ThinkingCard({ modal }: { modal: ModalItem }) {
   // Count from when this card appeared if the task hasn't started yet.
   const [mountedAt] = useState(() => Date.now())
   const seconds = useSecondsSince(active ? ai.startedAt : mountedAt)
-  const label = active
-    ? ai.label
-    : modal.kind === 'aiTask'
-      ? (FALLBACK_LABELS[modal.task.type] ?? 'Thinking…')
-      : 'Thinking…'
-  const [sub] = useState(() => SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)])
+  // A notice being rewritten shows its own title ("Small talk…"); AI tasks show what's happening.
+  const label =
+    modal.kind === 'notice'
+      ? `${modal.title}…`
+      : active
+        ? ai.label
+        : modal.kind === 'aiTask'
+          ? (FALLBACK_LABELS[modal.task.type] ?? 'Thinking…')
+          : 'Thinking…'
+  const [randomSub] = useState(() => SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)])
+  const sub = modal.kind === 'notice' ? 'Your local AI is telling it in its own words' : randomSub
+  const orb = modal.kind === 'notice' && modal.emoji ? modal.emoji : '✨'
 
   const skip = () => {
     if (getApp().ai?.modalId === modal.id) skipAi()
@@ -279,7 +285,7 @@ function ThinkingCard({ modal }: { modal: ModalItem }) {
     <PopupFrame label={label}>
       <div className="thinking" aria-live="polite">
         <div className="thinking-orb" aria-hidden>
-          ✨
+          {orb}
         </div>
         <div className="thinking-label">{label}</div>
         <div className="thinking-sub">
