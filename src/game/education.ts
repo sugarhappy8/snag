@@ -2188,7 +2188,7 @@ function studyAction(): MenuAction {
   }
 }
 
-function clubsMenu(g: GameState, cur: Enrollment): MenuGroup {
+function clubsMenu(cur: Enrollment): MenuGroup {
   const joined = clubsOf(cur)
   return {
     type: 'menu',
@@ -2278,7 +2278,7 @@ function cliquesMenu(cur: Enrollment): MenuGroup {
   }
 }
 
-function facultyMenu(g: GameState, cur: Enrollment): MenuGroup {
+function facultyMenu(cur: Enrollment): MenuGroup {
   const k12 = isK12(cur.level)
   return {
     type: 'menu',
@@ -2332,7 +2332,7 @@ function facultyMenu(g: GameState, cur: Enrollment): MenuGroup {
   }
 }
 
-function classmatesMenu(cur: Enrollment): MenuGroup {
+function classmatesMenu(): MenuGroup {
   return {
     type: 'menu',
     id: 'school.classmates',
@@ -2383,7 +2383,7 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
       if (cu.level === 'preschool') {
         return [
           { type: 'info', id: 'preschool.info', text: `You attend ${cu.school}. Big kid school starts at age ${sys.startAge}.`, emoji: '\u{1F9F8}' },
-          classmatesMenu(cu),
+          classmatesMenu(),
         ]
       }
       const nodes: MenuNode[] = [
@@ -2399,12 +2399,12 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
         if (!isK12(cu.level)) nodes.push({ type: 'info', id: 'school.funding', text: `Tuition: ${label[cu.funding]}`, emoji: '\u{1F4B0}' })
       }
       nodes.push(studyAction())
-      nodes.push(classmatesMenu(cu))
+      nodes.push(classmatesMenu())
       if (canHaveActivities(cu)) {
         nodes.push(cliquesMenu(cu))
-        nodes.push(clubsMenu(gg, cu))
+        nodes.push(clubsMenu(cu))
       }
-      nodes.push(facultyMenu(gg, cu))
+      nodes.push(facultyMenu(cu))
       if (cu.level === 'high' && sys.prom && cu.year >= cu.totalYears - 1) {
         nodes.push({ type: 'action', id: 'school.prom', label: 'Prom', emoji: '\u{1FA69}', subtitle: 'The big dance', disabledReason: aliveFree, run: goToProm })
       }
@@ -2497,7 +2497,7 @@ function graduateMenu(): MenuGroup {
   }
 }
 
-function educationGroup(g: GameState): MenuGroup {
+function educationGroup(): MenuGroup {
   return {
     type: 'menu',
     id: 'edu.menu',
@@ -2554,7 +2554,7 @@ export function educationMenuNodes(g: GameState): MenuNode[] {
   if (!done) {
     return [{ type: 'info', id: 'edu.notEnrolled', text: "You're not enrolled in school right now. You'll be back in class next year.", emoji: '\u{1F3EB}' }]
   }
-  return [educationGroup(g)]
+  return [educationGroup()]
 }
 
 /** Exposed for tests and other modules. */
