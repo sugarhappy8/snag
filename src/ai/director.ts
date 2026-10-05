@@ -1,5 +1,6 @@
-// The AI "director": turns AI tasks from the modal queue into LM Studio calls and
-// returns mutators that apply the results to a fresh draft of the game state.
+// The AI "director": turns AI tasks from the modal queue into calls to the player's chosen
+// AI provider (a local server such as LM Studio/Ollama, or a cloud API such as Claude/OpenAI —
+// see providers.ts) and returns mutators that apply the results to a fresh draft of the game state.
 //
 // The GameState passed to runAiTask / narrateNotice / chatReply is the store's current
 // snapshot and is never mutated here. Randomness the engine needs while planning (e.g.
@@ -15,8 +16,12 @@ import { applyEffects } from '../game/effects'
 import { fallbackChoiceOutcome, fallbackCustomAction, fallbackObituary, queueFallbackYearEvents } from '../game/events'
 import { nextRandom, pick, rand, shuffle, uid } from '../game/rng'
 import type { AiTask, ChoiceModal, ChoiceOption, GameEffects, GameState, NoticeModal, Person, RelationKind, Tone } from '../game/types'
-import type { Settings } from '../settings'
-import { AiFormatError, chatJson, findLoadedModel, listModels, normalizeBaseUrl, resetLmStudioSession } from './lmstudio'
+import { aiConfigProblem, type Settings } from '../settings'
+import { anthropicModel, normalizeAnthropicBaseUrl } from './anthropic'
+import { chatJson, listModels, resetAiSession } from './client'
+import { AiFormatError } from './errors'
+import { findLoadedModel, normalizeBaseUrl, rememberModel } from './openai-compat'
+import { pickModel, providerFor, sameModel } from './providers'
 import {
   EVENT_THEMES,
   chatSystemPrompt,
@@ -534,7 +539,7 @@ async function runObituary(g: GameState, settings: Settings, signal: AbortSignal
 }
 
 /**
- * Run an AI task against LM Studio. Resolves to a mutator for a fresh draft of the
+ * Run an AI task against the active AI provider. Resolves to a mutator for a fresh draft of the
  * state. Unusable model output resolves to the offline fallback; connection/server
  * errors and aborts reject (the store then applies the fallback itself).
  */
@@ -691,31 +696,64 @@ function escapeRe(s: string): string {
 // ---------------------------------------------------------------------------
 // Connection test
 
+function modelCount(n: number): string {
+  return `${n} model${n === 1 ? '' : 's'}`
+}
+
+function listPreview(models: string[]): string {
+  return `${models.slice(0, 6).join(', ')}${models.length > 6 ? '…' : ''}`
+}
+
+/**
+ * Check the active provider: list its models, confirm the configured one exists (or pick one
+ * automatically) and describe the result, e.g. "Connected to Groq · 14 models — using
+ * llama-3.3-70b-versatile." Never throws: failures come back as { ok: false, message }.
+ */
 export async function testConnection(settings: Settings, signal?: AbortSignal): Promise<{ ok: boolean; message: string; models: string[] }> {
-  resetLmStudioSession()
-  const base = normalizeBaseUrl(settings.baseUrl)
+  resetAiSession()
+  const def = providerFor(settings)
+  const problem = aiConfigProblem(settings)
+  if (problem) return { ok: false, message: problem, models: [] }
+  const base = def.api === 'anthropic' ? normalizeAnthropicBaseUrl(settings.baseUrl) : normalizeBaseUrl(settings.baseUrl, def)
   try {
     const models = await listModels(settings, signal)
     if (models.length === 0) {
-      return { ok: false, message: `LM Studio is running at ${base}, but no model is loaded. Load one in LM Studio (Developer tab or My Models).`, models }
+      const message =
+        def.id === 'lmstudio'
+          ? `LM Studio is running at ${base}, but no model is loaded. Load one in LM Studio (Developer tab or My Models).`
+          : def.id === 'ollama'
+            ? `Ollama is running at ${base}, but has no models yet — download one, e.g. \`ollama pull llama3.2\`.`
+            : def.kind === 'local'
+              ? `${def.name} is running at ${base}, but no model is loaded. Load one and test again.`
+              : `Connected to ${def.name}, but it listed no chat models — type a model id in Settings.`
+      return { ok: false, message, models }
     }
     const wanted = settings.model.trim()
-    if (wanted && !models.includes(wanted)) {
+    if (wanted && !models.some((m) => sameModel(m, wanted))) {
       return {
         ok: false,
-        message: `Connected, but LM Studio has no model called "${wanted}". Available: ${models.slice(0, 6).join(', ')}${models.length > 6 ? '…' : ''}`,
+        message: `Connected, but ${def.name} has no model called "${wanted}". Available: ${listPreview(models)}`,
         models,
       }
     }
-    let loaded: string | null = null
-    try {
-      loaded = await findLoadedModel(settings, signal)
-    } catch (err) {
-      if (signal?.aborted) throw err
+    let using = wanted
+    let note = ''
+    if (!using && def.api === 'anthropic') using = anthropicModel(settings)
+    if (!using && def.id === 'lmstudio') {
+      let loaded: string | null = null
+      try {
+        loaded = await findLoadedModel(settings, signal)
+      } catch (err) {
+        if (signal?.aborted) throw err
+      }
+      using = loaded || ''
+      if (loaded === '') note = ' (not loaded yet — LM Studio will load it on first use, which can take a moment)'
     }
-    const using = wanted || loaded || models[0]
-    const note = !wanted && loaded === '' ? ' (not loaded yet — LM Studio will load it on first use, which can take a moment)' : ''
-    return { ok: true, message: `Connected to LM Studio — using ${using}${note}.`, models }
+    if (!using) {
+      using = pickModel(def, models) || models[0]
+      if (def.api === 'openai') rememberModel(settings, using)
+    }
+    return { ok: true, message: `Connected to ${def.name} · ${modelCount(models.length)} — using ${using}${note}.`, models }
   } catch (err) {
     if (signal?.aborted) return { ok: false, message: 'Connection test cancelled.', models: [] }
     return { ok: false, message: err instanceof Error ? err.message : String(err), models: [] }

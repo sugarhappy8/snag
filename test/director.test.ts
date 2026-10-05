@@ -553,7 +553,7 @@ describe('testConnection', () => {
     const r = await testConnection(settings)
     expect(r.ok).toBe(true)
     expect(r.models).toEqual(['test-model'])
-    expect(r.message).toMatch(/Connected to LM Studio — using test-model/)
+    expect(r.message).toMatch(/Connected to LM Studio · 1 model — using test-model/)
   })
   it('flags a missing configured model', async () => {
     const r = await testConnection({ ...settings, model: 'gone-model' })

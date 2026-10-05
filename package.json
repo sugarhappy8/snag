@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "An AI-narrated life simulator powered by your local LLM in LM Studio.",
+  "description": "An AI-narrated life simulator powered by your own AI: a local model (LM Studio, Ollama, llama.cpp...) or a cloud API key (Claude, OpenAI, Gemini...).",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

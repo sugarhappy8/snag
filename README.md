@@ -29,31 +29,52 @@ isn't running, or you skip a slow answer, the game uses its built-in offline eve
 
 ## Play it
 
-AnotherLife is a static website hosted on Cloudflare. The AI runs on **your** computer: the page
-in your browser talks straight to LM Studio on `localhost`, so your games and prompts never touch
-a server.
+AnotherLife is a static website hosted on Cloudflare. You bring the AI: either a model running
+on **your own computer** (LM Studio, Ollama, llama.cpp, KoboldCpp, Jan or any OpenAI-compatible
+server), or a **cloud AI with your own API key** (Claude, OpenAI, Google Gemini, OpenRouter, Groq,
+Mistral, DeepSeek, xAI Grok, Together AI or any OpenAI-compatible API). The page in your browser
+talks straight to the AI you pick; there is no AnotherLife server in between. An API key is
+stored only in your browser (localStorage) and is sent only to the provider it belongs to.
 
-1. **Set up LM Studio** (one time)
-   1. Install [LM Studio](https://lmstudio.ai) and download a chat/instruct model. A 7–14B instruct
-      model such as Qwen 3, Llama 3.x, Gemma 3 or Mistral at Q4/Q5 works well. Smaller models work
-      but write blander stories.
-   2. Open the **Developer** tab, load the model, open **Server Settings** and turn on
-      **Enable CORS**. This lets the website talk to LM Studio.
-   3. Switch the server on. It listens on `http://localhost:1234` by default. From a terminal you
-      can instead run `lms server start --cors`.
-2. **Open the game** at its Cloudflare URL (see [Deploying](#deploying-to-cloudflare)), e.g.
-   `https://snag.<your-account>.workers.dev`, and press **New Life**.
-3. When Chrome or Edge asks to let the site **access devices on your local network**, click
-   **Allow**. That permission is how the page reaches LM Studio on your computer. The status dot in
-   the header turns green once it's connected.
+1. **Open the game** at its Cloudflare URL (see [Deploying](#deploying-to-cloudflare)), e.g.
+   `https://snag.<your-account>.workers.dev`.
+2. **Choose your AI** on the first-run screen (you can change it any time in ⚙️ Settings), then
+   press **Test connection**. The status dot in the header turns green once it's connected.
+3. Press **New Life**.
 
-No LM Studio? The game still plays, using its built-in offline event library.
+**Option A: an AI on your own computer** (free, private, needs a decent GPU or Apple Silicon)
 
-**Playing on another device (phone, tablet):** the AI address in ⚙️ Settings must point at a
-computer running LM Studio. A secure (https) page can't call a plain `http://192.168…` address on
-every browser. The reliable way is an https tunnel to LM Studio, for example
-`cloudflared tunnel --url http://localhost:1234`. Paste the `https://….trycloudflare.com/v1`
-address it prints into Settings.
+| Server | Setup |
+|---|---|
+| [LM Studio](https://lmstudio.ai) | Download a 7–14B chat model (Qwen 3, Llama 3.x, Gemma 3, Mistral at Q4/Q5). In the **Developer** tab load it, open **Server Settings**, turn on **Enable CORS**, and start the server (or run `lms server start --cors`). URL: `http://localhost:1234/v1`. |
+| [Ollama](https://ollama.com) | `ollama pull llama3.2`, then let the website call it: start Ollama with `OLLAMA_ORIGINS="*" ollama serve`. With the Windows/macOS app, set the `OLLAMA_ORIGINS` environment variable to `*` and restart Ollama. URL: `http://localhost:11434/v1`. |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) | `llama-server -m model.gguf --port 8080` (accepts browser requests by default). URL: `http://localhost:8080/v1`. |
+| [KoboldCpp](https://github.com/LostRuins/koboldcpp) | Start it with a model loaded. URL: `http://localhost:5001/v1`. |
+| [Jan](https://jan.ai) | Settings → **Local API Server**: turn on CORS and start the server. URL: `http://localhost:1337/v1`. |
+| Anything else | vLLM, LocalAI, text-generation-webui…: start its OpenAI-compatible API, allow cross-origin (CORS) requests, and paste its `/v1` URL. |
+
+When Chrome or Edge asks to let the site **access devices on your local network**, click
+**Allow**. That permission is how the hosted page reaches a server on your computer.
+
+**Option B: a cloud AI with your own API key** (works on any device, the provider bills you)
+
+Pick the provider, paste your key and leave **Model** on *Auto* (or choose one from the list):
+[Claude](https://console.anthropic.com/settings/keys) (default model Claude Opus 5.5),
+[OpenAI](https://platform.openai.com/api-keys), [Google Gemini](https://aistudio.google.com/apikey)
+(free tier), [OpenRouter](https://openrouter.ai/keys) (hundreds of models, some free),
+[Groq](https://console.groq.com/keys) (free tier), [Mistral](https://console.mistral.ai/api-keys),
+[DeepSeek](https://platform.deepseek.com/api_keys), [xAI](https://console.x.ai),
+[Together AI](https://api.together.ai/settings/api-keys), or any OpenAI-compatible URL + key.
+If a provider refuses requests made directly from a browser (CORS), use OpenRouter instead or
+[run the game locally](#run-it-locally-instead).
+
+No AI at all? Choose **Off** and the game plays with its built-in offline event library.
+
+**Playing on another device (phone, tablet):** a cloud provider is the easiest. For a local
+server, the AI address in ⚙️ Settings must point at the computer running it, and a secure
+(https) page can't call a plain `http://192.168…` address on every browser. The reliable way is
+an https tunnel, for example `cloudflared tunnel --url http://localhost:1234`; paste the
+`https://….trycloudflare.com/v1` address it prints into Settings.
 
 ## Deploying to Cloudflare
 
@@ -88,13 +109,14 @@ need to be on. If LM Studio is on another machine or port, use
 | Setting | What it does |
 |---|---|
 | **AI narration** | *Off*: fully offline. *Balanced* (default): the AI writes events, outcomes, conversations, interviews, "Do Anything" and obituaries. *Full*: the AI also rewrites every activity result (slower). |
-| **Server URL** | Where LM Studio is. The hosted site uses `http://localhost:1234/v1`, which needs **Enable CORS** in LM Studio. `npm run dev` uses `/lmstudio/v1` through its proxy. A tunnel URL works too. |
-| **Model** | *Auto* uses whatever model LM Studio has loaded. You can also pick a specific one; LM Studio loads it on demand. |
-| **API token** | Only needed if you turned on authentication in LM Studio. |
-| **Structured output** | Sends a JSON schema so the model must answer in valid JSON. Turn it off if your model or backend rejects `response_format`. |
-| **Skip thinking** | Asks reasoning models (Qwen 3, DeepSeek-R1, gpt-oss, …) to answer without a long think step. |
+| **AI provider** | Where the story comes from: a local server (LM Studio, Ollama, llama.cpp, KoboldCpp, Jan, other) or a cloud API (Claude, OpenAI, Gemini, OpenRouter, Groq, Mistral, DeepSeek, xAI, Together, other). Each provider remembers its own URL, key and model, so you can switch back and forth. |
+| **Server URL** | The provider's API address, pre-filled for each provider. LM Studio on the hosted site uses `http://localhost:1234/v1` (needs **Enable CORS**); `npm run dev` uses `/lmstudio/v1` through its proxy. A tunnel URL works too. |
+| **API key** | Required for cloud providers; optional token for local servers that have authentication on. Stored only in this browser and sent only to that provider. |
+| **Model** | *Auto* uses the model loaded in your local server, or a good default for a cloud provider (Claude Opus 5.5 for Claude). You can also pick one from the provider's list. |
+| **Structured output** | Asks for JSON that matches a schema. The game steps down automatically (JSON schema → JSON mode → plain prompt) if a model rejects it; turn it off to always use the plain prompt. |
+| **Skip thinking** | Asks reasoning models (Qwen 3, DeepSeek-R1, gpt-oss, OpenAI o-series/GPT-5, Gemini 2.5 Flash, …) to answer without a long think step. |
 | **Content rating** | Family / Teen / Mature. The default is Teen: dark humor, nothing explicit. |
-| **Temperature, max tokens, timeout** | Tuning for your model and hardware. |
+| **Temperature, max tokens, timeout** | Tuning for your model and hardware. Temperature is not sent to models that don't accept it (e.g. Claude, OpenAI reasoning models). Claude always gets at least 4,000 max tokens. |
 
 ## Troubleshooting
 
