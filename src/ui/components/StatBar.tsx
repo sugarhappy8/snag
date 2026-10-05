@@ -6,11 +6,10 @@ export interface StatBarProps {
   small?: boolean
 }
 
-/** Colored progress bar: red when low, orange/yellow mid, green high. */
+/** Colored progress bar like the original: green 31-100, orange 13-30, red 0-12. */
 export function statColor(value: number): string {
-  if (value < 20) return 'var(--stat-red)'
-  if (value < 40) return 'var(--stat-orange)'
-  if (value < 60) return 'var(--stat-yellow)'
+  if (value <= 12) return 'var(--stat-red)'
+  if (value <= 30) return 'var(--stat-orange)'
   return 'var(--stat-green)'
 }
 
