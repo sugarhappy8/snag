@@ -1,6 +1,6 @@
 // Mind & Body: gym, walks, meditation, library, gardening, instruments, lessons, space camp.
 // Books, diet, martial arts and the memory test live in their own files.
-import { addHidden, addRelationship, addStat, count, log, remember, scriptChoice, useYearAction } from '../core'
+import { addHidden, addRelationship, addStat, count, log, relationLabel, remember, scriptChoice, useYearAction } from '../core'
 import { createPerson, notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
@@ -47,6 +47,8 @@ interface Workout {
   happiness: [number, number]
   athleticism: [number, number]
   injury: number
+  /** Past tense for the life log: "lifted weights". */
+  past: string
   lines: string[]
   prison?: boolean
 }
@@ -54,6 +56,7 @@ interface Workout {
 const WORKOUTS: Workout[] = [
   {
     id: 'weights',
+    past: 'lifted weights',
     label: 'Lift Weights',
     emoji: '\u{1F3CB}\u{FE0F}',
     health: [1, 4],
@@ -71,6 +74,7 @@ const WORKOUTS: Workout[] = [
   },
   {
     id: 'cardio',
+    past: 'ran on the treadmill',
     label: 'Run on the Treadmill',
     emoji: '\u{1F3C3}',
     health: [2, 5],
@@ -87,6 +91,7 @@ const WORKOUTS: Workout[] = [
   },
   {
     id: 'yoga',
+    past: 'took a yoga class',
     label: 'Take a Yoga Class',
     emoji: '\u{1F9D8}',
     health: [1, 4],
@@ -102,6 +107,7 @@ const WORKOUTS: Workout[] = [
   },
   {
     id: 'spin',
+    past: 'took a spin class',
     label: 'Take a Spin Class',
     emoji: '\u{1F6B4}',
     health: [2, 5],
@@ -116,6 +122,7 @@ const WORKOUTS: Workout[] = [
   },
   {
     id: 'swim',
+    past: 'swam laps',
     label: 'Swim Laps',
     emoji: '\u{1F3CA}',
     health: [2, 5],
@@ -130,6 +137,7 @@ const WORKOUTS: Workout[] = [
   },
   {
     id: 'bootcamp',
+    past: 'did a boot camp class',
     label: 'Boot Camp Class',
     emoji: '\u{1F4AA}',
     health: [2, 6],
@@ -194,7 +202,7 @@ function gymVisit(g: GameState, w: Workout): void {
       return
     }
   }
-  log(g, c.prison ? 'I worked out in the prison yard.' : `I went to the gym and ${w.label.toLowerCase().replace(/^take a /, 'took a ')}.`, 'good')
+  log(g, c.prison ? `I ${w.past} in the prison yard.` : `I went to the gym and ${w.past}.`, 'good')
   const flavor = used >= 3 ? `${pick(g, w.lines)}\n\nYou've worked out a lot this year. The gains are slowing down.` : pick(g, w.lines)
   result(g, c.prison ? 'Prison Gym' : 'Gym', flavor, w.emoji, 'good')
   if (!c.prison) maybeAskedOut(g, 'gym', 0.05)
@@ -410,12 +418,10 @@ function takeWalk(g: GameState, w: WalkType): void {
   addStat(g, 'health', randInt(g, w.health[0], w.health[1]))
   addStat(g, 'happiness', randInt(g, w.happiness[0], w.happiness[1]))
   addHidden(g, 'athleticism', randInt(g, 0, 1))
-  if (walkEvent(g, w)) {
-    if (g.character.alive) log(g, `I went for a ${w.id === 'hike' ? 'hike' : 'walk'}.`, 'neutral')
-    return
-  }
   const prison = !!g.character.prison
-  log(g, prison ? 'I walked laps around the prison yard.' : `I went for a ${w.id === 'hike' ? 'hike' : w.id === 'stroll' ? 'stroll' : `${w.id} walk`}.`, 'good')
+  const kind = w.id === 'hike' ? 'hike' : w.id === 'stroll' ? 'stroll' : `${w.id} walk`
+  log(g, prison ? 'I walked laps around the prison yard.' : `I went for a ${kind}.`, 'good')
+  if (walkEvent(g, w)) return
   result(g, prison ? 'Yard Time' : 'Walk', prison ? pick(g, ['You walked laps around the yard. A guard counted them with you, out loud, to annoy you.', 'You walked the yard and soaked up the only sunlight you get all day.']) : pick(g, w.lines), w.emoji, 'good')
 }
 
@@ -476,7 +482,7 @@ export const walkMenu: MenuGroup = {
           id: `mb.walk.p.${p.id}`,
           label: `${p.firstName} ${p.lastName}`.trim(),
           emoji: '\u{1F46B}',
-          subtitle: p.relation === 'bestFriend' ? 'Best Friend' : p.relation.charAt(0).toUpperCase() + p.relation.slice(1),
+          subtitle: relationLabel(p),
           run: (d) => {
             const person = d.people.find((x) => x.id === p.id)
             if (person && person.alive) walkWith(d, person)
@@ -903,7 +909,7 @@ function takeLesson(g: GameState, l: LessonDef): void {
   addStat(g, 'happiness', randInt(g, 1, 4))
   if (l.id === 'modeling') addStat(g, 'looks', randInt(g, 0, 2))
   if (l.id === 'acting') addStat(g, 'smarts', randInt(g, 0, 1))
-  log(g, `I took ${l.label.toLowerCase().replace('lessons', 'lessons')}.`, 'good')
+  log(g, `I took ${l.label.toLowerCase()}.`, 'good')
   const paidBy = paid.by === 'parent' && paid.parent ? `\n\nYour ${paid.parent.gender === 'male' ? 'dad' : 'mom'} paid for it.` : ''
   result(g, l.label, `${pick(g, l.lines)}\n\nSkill: ${after}%${paidBy}`, l.emoji, 'good')
 }

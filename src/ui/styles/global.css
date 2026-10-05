@@ -969,7 +969,7 @@ label {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr 1fr 92px 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 92px minmax(0, 1.25fr) minmax(0, 1fr);
   align-items: end;
   gap: 2px;
   padding: 6px 6px 6px;
@@ -1037,6 +1037,7 @@ label {
   max-width: 100%;
   font-size: 11px;
   font-weight: 700;
+  letter-spacing: -0.15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1947,7 +1948,7 @@ label {
   }
 
   .bottombar {
-    grid-template-columns: 1fr 1fr 80px 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 80px minmax(0, 1.3fr) minmax(0, 1fr);
     padding-left: 2px;
     padding-right: 2px;
   }

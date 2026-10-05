@@ -428,18 +428,11 @@ function ageWeight(def: DiseaseDef, age: number): number {
 function eligibleDiseases(g: GameState): DiseaseDef[] {
   const c = g.character
   const hadPartners = (g.counters.hookups ?? 0) + (g.counters.partners ?? 0) + (g.counters.marriages ?? 0) > 0
-  const idle = c.age > 25 && Object.values(g.counters).reduce((s, n) => s + n, 0) < 10
-  const poorCountry = getCountry(c.countryId).wealth < 0.5
   return DISEASES.filter((d) => {
     if (c.age < d.ages[0] || c.age > d.ages[1]) return false
     if (d.gender && d.gender !== c.gender) return false
     if (d.sti && (!hadPartners || c.age < 16)) return false
-    if (d.name === 'Hair Loss' && c.gender === 'female') return false
-    if (c.conditions.some((x) => x.name === d.name)) return false
-    if (c.education.completed.length > 0 && d.name === 'Lactose Intolerance' && c.age > 12) return false
-    void idle
-    void poorCountry
-    return true
+    return !c.conditions.some((x) => x.name === d.name)
   })
 }
 
@@ -869,7 +862,6 @@ const EYE_EXAM = defineScript('health.eyeExam', (g, choice) => {
 })
 
 const GLASSES = defineScript('health.glasses', (g, choice, data) => {
-  const c = g.character
   const d = (data ?? {}) as { lasikCost?: number; contactsCost?: number; glassesCost?: number }
   if (choice === 'none') {
     log(g, 'I decided I could live with blurry vision.')
@@ -918,7 +910,6 @@ const GLASSES = defineScript('health.glasses', (g, choice, data) => {
     { emoji: '\u{1F453}', tone: 'good' },
   )
   log(g, `I got ${frame.id.toLowerCase()}.`, 'good')
-  void c
 })
 
 // ---------------------------------------------------------------------------
@@ -1563,7 +1554,6 @@ function witchDoctor(g: GameState): void {
 // Optometrist
 
 function optometrist(g: GameState): void {
-  const c = g.character
   const examCost = patientCost(g, Math.round(randInt(g, 60, 150) * priceFactor(g)))
   if (!canAfford(g, examCost)) return tooBroke(g, 'an eye exam', examCost)
   if (!useYearAction(g, 'optometrist', 2)) {
@@ -1596,7 +1586,6 @@ function optometrist(g: GameState): void {
     ],
     { emoji: '\u{1F453}', data: { glassesCost, contactsCost, lasikCost } },
   )
-  void c
 }
 
 // ---------------------------------------------------------------------------
