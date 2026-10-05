@@ -12,17 +12,28 @@ export const FAMOUS = 25
 // ---------------------------------------------------------------------------
 // Persistent profiles
 
+/**
+ * Identifies the current character, so profiles left in g.flags by a previous generation
+ * (if flags carry over to a child's life) are never mistaken for the child's own.
+ */
+export function ownerKey(g: GameState): string {
+  const c = g.character
+  return `${c.id}:${c.firstName}:${c.lastName}:${g.year - c.age}`
+}
+
 /** Read-only profile lookup. Safe in menu render code (never writes). */
 export function peek<T>(g: GameState, key: string): T | null {
   const v = g.flags[`special.${key}`]
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as unknown as T) : null
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+  if (v.owner !== ownerKey(g)) return null
+  return v as unknown as T
 }
 
 /** Mutable profile, created from `init` on first use. Only call from actions and hooks. */
 export function prof<T extends object>(g: GameState, key: string, init: (g: GameState) => T): T {
   const existing = peek<T>(g, key)
   if (existing) return existing
-  const created = init(g)
+  const created = { ...init(g), owner: ownerKey(g) }
   g.flags[`special.${key}`] = created as unknown as Json
   return created
 }
@@ -38,10 +49,10 @@ export function view<T>(rec: Record<string, Json>): T {
  */
 export function yearlyList<T>(g: GameState, key: string, gen: () => T[]): T[] {
   const k = `special.list.${key}`
-  const v = g.flags[k] as unknown as { age: number; items: T[] } | undefined
-  if (v && typeof v === 'object' && v.age === g.character.age && Array.isArray(v.items)) return v.items
+  const v = g.flags[k] as unknown as { age: number; owner: string; items: T[] } | undefined
+  if (v && typeof v === 'object' && v.age === g.character.age && v.owner === ownerKey(g) && Array.isArray(v.items)) return v.items
   const items = gen()
-  g.flags[k] = { age: g.character.age, items } as unknown as Json
+  g.flags[k] = { age: g.character.age, owner: ownerKey(g), items } as unknown as Json
   return items
 }
 

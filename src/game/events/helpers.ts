@@ -144,6 +144,8 @@ export interface Fx {
   rels?: { p: Person | undefined; d: number }[]
   /** Job performance change (main job, else part-time job). */
   perf?: number
+  /** School grades change for the current enrollment. */
+  grades?: number
   /** Prison respect change. */
   respect?: number
   /** Prison behavior change (g.flags.prisonBehavior, 0-100, read by parole). */
@@ -238,6 +240,10 @@ export function applyFx(g: GameState, ctx: Ctx | null, fx: Fx): void {
   if (fx.perf) {
     const job = c.job ?? c.partTimeJob
     if (job) job.performance = Math.round(clamp(job.performance + fx.perf))
+  }
+  if (fx.grades && c.education.current) {
+    const cur = c.education.current
+    cur.grades = Math.round(clamp(cur.grades + fx.grades))
   }
   if (fx.respect && c.prison) c.prison.respect = Math.round(clamp(c.prison.respect + fx.respect))
   if (fx.behavior && c.prison) {

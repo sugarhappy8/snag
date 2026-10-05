@@ -17,7 +17,6 @@ import {
   say,
   siblings,
   strangerName,
-  type Ctx,
 } from './helpers'
 
 const BROKEN_ITEMS = ['favorite vase', 'flat-screen TV', 'antique clock', 'reading glasses', 'wedding photo frame', 'coffee maker', 'laptop', 'porcelain cat statue']
@@ -27,10 +26,6 @@ const PETS = [
   { species: 'Hamster', names: ['Nibbles', 'Peanut', 'Hammy', 'Squeaky'] },
   { species: 'Rabbit', names: ['Thumper', 'Clover', 'Cinnabun', 'Hopscotch'] },
 ]
-
-function olderSibling(g: GameState): Person | undefined {
-  return siblings(g).find((s) => s.age > g.character.age && s.age < 40)
-}
 
 function addPet(g: GameState, species: string, name: string): Person {
   const pet = createPerson(g, { relation: 'pet', age: randInt(g, 0, 3), firstName: name, species, relationship: 75, livesWithPlayer: true })
@@ -753,7 +748,7 @@ function ordinal(n: number): string {
 }
 
 function yourSib(p: Person): string {
-  return `your ${p.gender === 'male' ? 'brother' : 'sister'}, ${p.firstName},`.replace(/,$/, '')
+  return `your ${p.gender === 'male' ? 'brother' : 'sister'} ${p.firstName}`
 }
 
 function yourParent(p: Person): string {
@@ -765,4 +760,3 @@ function yourAny(p: Person): string {
   return `your ${p.gender === 'male' ? 'brother' : 'sister'}, ${p.firstName}`
 }
 
-export type { Ctx }

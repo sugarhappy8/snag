@@ -1,7 +1,7 @@
 // Main menu: continue / new life / ribbons / graveyard / settings, plus the LM Studio status card.
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { characterAvatar } from '../../game/core'
-import { RIBBONS } from '../../game/ribbons'
+import { RIBBONS, type RibbonDef } from '../../game/ribbons'
 import { loadGame, loadGraveyard, loadRibbons } from '../../game/save'
 import type { GameState } from '../../game/types'
 import { getCountry } from '../../game/world'
@@ -123,11 +123,6 @@ export function HomeScreen() {
   const game = useApp((s) => s.game)
   const [flash, showFlash] = useFlash()
 
-  // Check LM Studio once when the app opens.
-  useEffect(() => {
-    if (getApp().aiStatus === 'unknown') void checkAi()
-  }, [])
-
   const saved = useMemo<SavedLifeSummary | null>(() => {
     if (game) return summarizeLife(game)
     if (!hasSavedGame()) return null
@@ -137,7 +132,7 @@ export function HomeScreen() {
 
   const ribbonInfo = useMemo(() => {
     const earned = loadRibbons()
-    const got = RIBBONS.filter((r) => (earned[r.id] ?? 0) > 0).length
+    const got = RIBBONS.filter((r: RibbonDef) => (earned[r.id] ?? 0) > 0).length
     return `${got} of ${RIBBONS.length} collected`
   }, [])
 

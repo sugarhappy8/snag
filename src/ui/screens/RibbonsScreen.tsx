@@ -9,9 +9,9 @@ import { ScreenHeader } from './SettingsScreen'
 
 type Filter = 'all' | 'earned' | 'missing'
 
-/** True for ribbons whose name is hidden until earned (if the ribbon data marks any as secret). */
+/** Secret ribbons keep their name and requirement hidden until earned. */
 export function isSecretRibbon(r: RibbonDef): boolean {
-  return 'secret' in r && (r as RibbonDef & { secret?: unknown }).secret === true
+  return r.secret === true
 }
 
 export interface RibbonTile {
