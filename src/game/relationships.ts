@@ -1336,6 +1336,17 @@ function driftRelationships(g: GameState): void {
 
 const CHEAT_WITH = ['a coworker', 'their personal trainer', 'your neighbor', 'their ex', 'a barista', 'someone from the gym', 'a dentist', 'their yoga instructor']
 
+/** True (and stamped) when this person hasn't been in this kind of drama for `years` years. */
+function dramaReady(g: GameState, p: Person, key: string, years: number): boolean {
+  const raw = p.data[`drama.${key}`]
+  const last = Array.isArray(raw) && raw[0] === g.generation && typeof raw[1] === 'number' ? raw[1] : null
+  return last === null || last > g.character.age || g.character.age - last >= years
+}
+
+function stampDrama(g: GameState, p: Person, key: string): void {
+  p.data[`drama.${key}`] = [g.generation, g.character.age]
+}
+
 function partnerDrama(g: GameState): void {
   const c = g.character
   const p = currentPartner(g)
@@ -1351,7 +1362,8 @@ function partnerDrama(g: GameState): void {
   }
   if (c.age < 18 || p.age < 18) return
   const cheat = 0.012 + (r < 40 ? 0.05 : 0) + (has(p, 'flirty', 'manipulative', 'sneaky') ? 0.03 : 0) - (has(p, 'loyal', 'honest') ? 0.01 : 0)
-  if (chance(g, cheat)) {
+  if (dramaReady(g, p, 'cheat', 6) && chance(g, cheat)) {
+    stampDrama(g, p, 'cheat')
     const gender: Gender = chance(g, 0.85) ? (p.gender === 'male' ? 'female' : 'male') : p.gender
     const name = randomFirstName(g, c.countryId, gender)
     count(g, 'cheatedOn')
@@ -1374,7 +1386,8 @@ function partnerDrama(g: GameState): void {
     partnerProposes(g, p)
     return
   }
-  if (p.relation === 'fiance' && c.age - pNum(p, 'engagedAge', c.age) >= 3 && chance(g, 0.35)) {
+  if (p.relation === 'fiance' && c.age - pNum(p, 'engagedAge', c.age) >= 3 && dramaReady(g, p, 'pressure', 2) && chance(g, 0.35)) {
+    stampDrama(g, p, 'pressure')
     scriptChoice(
       g,
       'rel.fiance.pressure',
@@ -1389,7 +1402,8 @@ function partnerDrama(g: GameState): void {
     )
     return
   }
-  if (p.relation === 'spouse' && c.money > 2000 && chance(g, 0.04)) {
+  if (p.relation === 'spouse' && c.money > 2000 && dramaReady(g, p, 'money', 6) && chance(g, 0.04)) {
+    stampDrama(g, p, 'money')
     const amount = Math.round(Math.min(c.money * randFloat(g, 0.05, 0.15), 25_000))
     spend(g, amount)
     p.money += amount

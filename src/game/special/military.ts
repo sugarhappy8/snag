@@ -428,7 +428,10 @@ const deployScript = defineScript('special.mil.deploy', (g, choice, raw) => {
 function offerDeployment(g: GameState, job: Job): void {
   const b = branchOf(data(job).branch)
   const sea = b.sea && chance(g, 0.75)
-  const place = sea ? pick(g, SEA_PLACES) : pick(g, LAND_PLACES)
+  // Not the same spot as last time ("a remote mountain pass" two years running reads like a bug).
+  const last = g.flags['special.mil.lastPlace']
+  const place = pick(g, (sea ? SEA_PLACES : LAND_PLACES).filter((x) => x !== last))
+  g.flags['special.mil.lastPlace'] = place
   scriptChoice(
     g,
     deployScript,
