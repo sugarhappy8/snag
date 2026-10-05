@@ -69,6 +69,10 @@ src/
     business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
+    cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
+                         cvScore for admissions/jobs, national school rankings, the job market, and
+                         the "Your CV" menu. Applications go through the 'screenApplication' AI task
+                         (AI reads the CV + market and decides on an interview; offline fallback)
   ai/                    Provider clients + "director"                    [ai agent]
     providers.ts         Provider registry (local servers + cloud APIs), defaults, setup steps
     client.ts            Routes requests to openai-compat.ts or anthropic.ts; JSON parse/validate/retry

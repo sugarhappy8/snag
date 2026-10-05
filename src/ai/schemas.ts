@@ -75,6 +75,15 @@ export const SCHEMAS = {
     question: STR,
     answers: { type: 'array', minItems: 3, maxItems: 4, items: object({ label: STR, score: INT }) },
   }),
+  /** CV screening for a job: interview or not, and why. */
+  screen: object({ invite: { type: 'boolean' }, reason: STR }),
+  /** CV screening for a university / graduate school, plus the admissions interview question. */
+  screenAdmission: object({
+    invite: { type: 'boolean' },
+    reason: STR,
+    question: STR,
+    answers: { type: 'array', maxItems: 4, items: object({ label: STR, score: INT }) },
+  }),
   obituary: object({ text: STR }),
   narrate: object({ text: STR }),
   chat: object({ reply: STR, relationshipDelta: INT, mood: STR }),
@@ -145,6 +154,14 @@ export interface AiCustomAction extends AiOutcome {
 export interface AiInterview {
   question: string
   answers: { label: string; score: number }[]
+}
+
+export interface AiScreening {
+  invite: boolean
+  /** One short sentence for the applicant ('' if the model gave none). */
+  reason: string
+  /** Admissions interview question (schools, when invited and usable). */
+  question?: AiInterview
 }
 
 export interface AiText {
@@ -493,6 +510,36 @@ export function validateInterview(v: unknown): AiInterview {
     throw new SchemaError('answer scores must differ: one great answer (75-95), one terrible (0-25), the rest in between')
   }
   return { question, answers }
+}
+
+const INVITE_WORDS = /^(yes|true|invite|invited|interview|shortlist|accept|accepted|advance)/
+const DECLINE_WORDS = /^(no|false|reject|rejected|decline|declined|pass)/
+
+/** A CV screening decision. Only "invite" is essential; a bad question is simply dropped. */
+export function validateScreening(v: unknown): AiScreening {
+  const o = requireObj(v, 'The reply')
+  const raw = field(o, 'invite', 'interview', 'invited', 'decision', 'shortlist')
+  let invite: boolean
+  if (typeof raw === 'string') {
+    const t = raw.trim().toLowerCase()
+    if (INVITE_WORDS.test(t)) invite = true
+    else if (DECLINE_WORDS.test(t)) invite = false
+    else throw new SchemaError('"invite" must be true or false')
+  } else if (typeof raw === 'boolean' || typeof raw === 'number') {
+    invite = bool(raw, false)
+  } else {
+    throw new SchemaError('"invite" must be true or false')
+  }
+  const reason = str(field(o, 'reason', 'why', 'note', 'message', 'text'), 220)
+  let question: AiInterview | undefined
+  if (invite && field(o, 'question') !== undefined) {
+    try {
+      question = validateInterview(o)
+    } catch {
+      question = undefined
+    }
+  }
+  return question ? { invite, reason, question } : { invite, reason }
 }
 
 function textOnly(v: unknown, min: number, max: number, what: string): AiText {

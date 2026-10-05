@@ -6,6 +6,8 @@ import { arrestPlayer } from '../crime'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import { localeOf } from '../data/locales'
+import { getCountry } from '../world'
 import { addFame, attendedUniversity, blocked, clamp100, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
 
 // ---------------------------------------------------------------------------
@@ -27,6 +29,7 @@ const SPORTS: Sport[] = [
   { id: 'hockey', name: 'Hockey', emoji: '\u{1F3D2}', skills: ['Celebrations', 'Defending', 'Passing', 'Shooting', 'Skating', 'Stick Handling', 'Tricks'], positions: ['Center', 'Winger', 'Defenseman', 'Goaltender'], needsUniversity: false },
   { id: 'soccer', name: 'Soccer', emoji: '\u{26BD}', skills: ['Celebrations', 'Defending', 'Dribbling', 'Headers', 'Passing', 'Shooting', 'Tricks'], positions: ['Striker', 'Winger', 'Midfielder', 'Defender', 'Goalkeeper'], needsUniversity: false },
   { id: 'rugby', name: 'Rugby', emoji: '\u{1F3C9}', skills: ['Celebrations', 'Kicking', 'Passing', 'Running', 'Scrummaging', 'Tackling'], positions: ['Hooker', 'Fly-half', 'Prop', 'Winger', 'Fullback'], needsUniversity: false },
+  { id: 'cricket', name: 'Cricket', emoji: '\u{1F3CF}', skills: ['Batting', 'Bowling', 'Celebrations', 'Fielding', 'Running Between Wickets', 'Wicketkeeping'], positions: ['Opening Batter', 'Fast Bowler', 'Spin Bowler', 'All-Rounder', 'Wicketkeeper'], needsUniversity: false },
   { id: 'volleyball', name: 'Volleyball', emoji: '\u{1F3D0}', skills: ['Blocking', 'Bumping', 'Celebrations', 'Digging', 'Serving', 'Setting', 'Spiking'], positions: ['Outside Hitter', 'Setter', 'Libero', 'Middle Blocker', 'Opposite'], needsUniversity: false },
 ]
 
@@ -41,7 +44,7 @@ interface League {
   teams: string[]
 }
 
-const UK_SOCCER = ['Riverside United', 'Kingsbridge City', 'Northgate Athletic', 'Ashford Wanderers', 'Westcliff Albion', 'Hartley Town', 'Blackmoor Rovers', 'Port Ellis FC', "St. Edmund's FC", 'Castleton Forest']
+const UK_SOCCER = ['Riverside United', 'Kingsbridge City', 'Northbridge Athletic', 'Ashford Wanderers', 'Westcliff Albion', 'Hartley Town', 'Blackmoor Rovers', 'Port Ellis FC', "St. Edmund's FC", 'Castleton Forest']
 
 const LEAGUES: League[] = [
   { id: 'gridiron', name: 'Pro Gridiron League', sport: 'football', gender: 'male', country: 'United States', minPay: 750_000, maxPay: 45_000_000, teams: ['Arizona Scorpions', 'Atlanta Firebirds', 'Boston Lobsters', 'Chicago Gusts', 'Dallas Stampede', 'Denver Peaks', 'Green Bay Curds', 'Houston Wildcatters', 'Miami Riptide', 'Seattle Drizzle'] },
@@ -59,14 +62,121 @@ const LEAGUES: League[] = [
   { id: 'srl', name: 'Southern Rugby League', sport: 'rugby', gender: 'male', country: 'Australia', minPay: 100_000, maxPay: 1_300_000, teams: ['Brisbane Kookaburras', 'Canberra Magpies', 'Gold Coast Surfers', 'Melbourne Trams', 'Newcastle Coalminers', 'Parramatta Platypuses', 'Penrith Wombats', 'Sydney Harbourmasters', 'Perth Black Swans', 'Darwin Crocs'] },
   { id: 'nsrl', name: 'Northern Super Rugby League', sport: 'rugby', gender: 'male', country: 'United Kingdom', minPay: 60_000, maxPay: 700_000, teams: ['Ironbridge Rams', 'Moorside Miners', 'Harbourside Gulls', 'Pennine Peaks', 'Lancashire Longbows', 'Yorkshire Puddings', 'Teesside Titans', 'Mersey Marauders', 'Hull Trawlers', 'Wigan Pie Eaters'] },
   { id: 'pvl', name: 'Pro Volleyball League', sport: 'volleyball', gender: 'female', country: 'United States', minPay: 30_000, maxPay: 200_000, teams: ['Austin Sunsets', 'Boston Spikers', 'Chicago Diggers', 'Denver Altitudes', 'Honolulu Waves', 'Miami Heatwave', 'Nashville Harmony', 'Omaha Setters', 'Orlando Swirl', 'San Diego Sandcastles'] },
+  { id: 'pt20', name: 'Premier T20 League', sport: 'cricket', gender: 'male', country: 'India', minPay: 60_000, maxPay: 2_500_000, teams: ['Mumbai Mariners', 'Chennai Cyclones', 'Kolkata Tigers', 'Bangalore Blasters', 'Hyderabad Hawks', 'Jaipur Jewels', 'Delhi Dynamos', 'Ahmedabad Arrows', 'Lucknow Lancers', 'Punjab Panthers'] },
+  { id: 'pt20w', name: "Women's Premier T20 League", sport: 'cricket', gender: 'female', country: 'India', minPay: 15_000, maxPay: 400_000, teams: ['Mumbai Mariners', 'Chennai Cyclones', 'Kolkata Tigers', 'Bangalore Blasters', 'Delhi Dynamos', 'Jaipur Jewels'] },
 ]
+
+// ---------------------------------------------------------------------------
+// Home leagues: every country gets a league in its own big sports, with clubs from its own
+// cities ('PS Medan', 'Al-Ittihad Jeddah', 'Trabzonspor'-style, 'Busan Tigers'), next to the
+// famous international leagues above. Built from the id alone (home:<country>:<sport>:<gender>),
+// so saves only store the id.
+
+const LOCAL_SPORT: [RegExp, string][] = [
+  [/^(?:soccer|football)$/i, 'soccer'],
+  [/^basketball$/i, 'basketball'],
+  [/^baseball$/i, 'baseball'],
+  [/^(?:ice )?hockey$/i, 'hockey'],
+  [/^rugby(?: league| union| sevens)?$/i, 'rugby'],
+  [/^volleyball$/i, 'volleyball'],
+  [/^cricket$/i, 'cricket'],
+]
+
+const SOCCER_CLUBS: [string[], string[]][] = [
+  [['es', 'mx', 'ar', 'uy', 'cl', 'co', 'pe', 'ec', 've', 'bo', 'py', 'cr', 'sv', 'gt', 'ni', 'pa', 'cu', 'do', 'pr'], ['Club Atlético {c}', 'Deportivo {c}', 'Real {c}', 'CD {c}', 'Racing {c}', 'Unión {c}']],
+  [['br', 'pt', 'ao'], ['EC {c}', '{c} FC', 'Clube Atlético {c}', 'Sport {c}', 'União {c}', 'Esporte Clube {c}']],
+  [['de', 'at', 'ch'], ['FC {c}', 'SV {c}', 'VfB {c}', 'TSV {c}', 'Eintracht {c}', 'SC {c}']],
+  [['it'], ['AC {c}', 'US {c}', 'Calcio {c}', 'SS {c}', 'Virtus {c}']],
+  [['fr', 'be', 'mc', 'ht', 'cd', 'dj', 'dz', 'ma', 'tn'], ['FC {c}', 'Olympique {c}', 'AS {c}', 'Stade {c}', 'Racing Club {c}', 'Union Sportive {c}']],
+  [['nl', 'aw'], ['FC {c}', 'SC {c}', 'Sparta {c}', 'VV {c}', 'Go Ahead {c}']],
+  [['id'], ['PS {c}', 'Persatuan {c}', '{c} FC', 'Arema {c}', 'Bhayangkara {c}']],
+  [['eg', 'sa', 'ae', 'kw', 'qa', 'jo', 'lb', 'sy', 'iq'], ['Al-Ittihad {c}', 'Al-Nasr {c}', 'Al-Shabab {c}', 'Al-Ahli {c}', '{c} SC', 'Al-Wehda {c}']],
+  [['tr'], ['{c}spor', '{c} Belediyespor', '{c} Gençlerbirliği', '{c} FK']],
+  [['ru', 'ua', 'kz', 'ge', 'rs', 'hr', 'pl', 'cz', 'sk', 'ro', 'hu'], ['FC {c}', 'Dynamo {c}', 'Spartak {c}', 'Lokomotiv {c}', 'Torpedo {c}', 'Sporting {c}']],
+]
+const ENGLISH_CLUBS = ['{c} United', '{c} City', '{c} FC', '{c} Rovers', '{c} Wanderers', '{c} Athletic']
+const MASCOTS = ['Tigers', 'Eagles', 'Lions', 'Sharks', 'Warriors', 'Falcons', 'Thunder', 'Kings', 'Stars', 'Comets', 'Dragons', 'Rhinos', 'Hawks', 'Storm', 'Phoenix']
+
+const LEAGUE_PAY: Record<string, [number, number]> = {
+  soccer: [60_000, 8_000_000],
+  basketball: [50_000, 3_000_000],
+  baseball: [50_000, 4_000_000],
+  hockey: [50_000, 3_000_000],
+  rugby: [40_000, 1_000_000],
+  volleyball: [20_000, 400_000],
+  cricket: [40_000, 1_500_000],
+  football: [60_000, 2_000_000],
+}
+
+const HOME_LEAGUE_NAME: Record<string, string> = {
+  soccer: 'Premier League',
+  basketball: 'Basketball League',
+  baseball: 'Baseball League',
+  hockey: 'Hockey League',
+  rugby: 'Rugby Championship',
+  volleyball: 'Volleyball League',
+  cricket: 'Premier Cricket League',
+  football: 'Football League',
+}
+
+/** The sports (from SPORTS) that are big in a country, most popular first. */
+function localSports(countryId: string): string[] {
+  const out: string[] = []
+  for (const name of localeOf(countryId).sports.slice(0, 4)) {
+    const id = countryId === 'us' && /^football$/i.test(name) ? 'football' : LOCAL_SPORT.find(([re]) => re.test(name))?.[1]
+    if (id && !out.includes(id)) out.push(id)
+  }
+  return out
+}
+
+function clubName(countryId: string, sport: string, city: string, i: number): string {
+  if (sport === 'soccer') {
+    const english = ['gb', 'ie', 'au', 'nz', 'za', 'ng', 'ke', 'ug', 'zw', 'jm', 'bs', 'bz', 'gy', 'gh', 'sg', 'in', 'pk', 'bd', 'np', 'ph', 'my', 'pg', 'ws', 'us', 'ca']
+    const list = SOCCER_CLUBS.find(([ids]) => ids.includes(countryId))?.[1] ?? (english.includes(countryId) ? ENGLISH_CLUBS : ['{c} FC', 'FC {c}', '{c} United', 'Sporting {c}'])
+    return list[i % list.length].replace('{c}', city)
+  }
+  return `${city} ${MASCOTS[(i * 7 + city.length) % MASCOTS.length]}`
+}
+
+function homeLeagueId(countryId: string, sport: string, gender: 'male' | 'female'): string {
+  return `home:${countryId}:${sport}:${gender}`
+}
+
+function homeLeague(id: string): League | null {
+  const m = /^home:([a-z]{2}):(\w+):(male|female)$/.exec(id)
+  if (!m) return null
+  const [, countryId, sport, gender] = m
+  const country = getCountry(countryId)
+  const women = gender === 'female'
+  const pay = LEAGUE_PAY[sport] ?? [30_000, 500_000]
+  const w = Math.max(0.15, Math.min(1.5, country.wealth || 1)) * (women ? 0.12 : 1)
+  const cities = [...new Set(country.cities)]
+  return {
+    id,
+    name: `${women ? "Women's " : ''}${country.demonym} ${HOME_LEAGUE_NAME[sport] ?? 'League'}`,
+    sport,
+    gender: women ? 'female' : 'male',
+    country: country.name,
+    minPay: Math.round((pay[0] * w) / 1000) * 1000,
+    maxPay: Math.round((pay[1] * w) / 10_000) * 10_000,
+    teams: cities.map((city, i) => `${clubName(countryId, sport, city, i)}${women ? ' Women' : ''}`),
+  }
+}
+
+/** Leagues for a sport: the home league first (unless a famous one already plays here), then the rest. */
+function leaguesFor(g: GameState, sport: string, gender: 'male' | 'female'): League[] {
+  const country = getCountry(g.character.countryId)
+  const famous = LEAGUES.filter((l) => l.sport === sport && l.gender === gender)
+  const home = localSports(country.id).includes(sport) && !famous.some((l) => l.country === country.name) ? homeLeague(homeLeagueId(country.id, sport, gender)) : null
+  return home ? [home, ...famous] : famous
+}
 
 function sportOf(id: string | null | undefined): Sport {
   return SPORTS.find((s) => s.id === id) ?? SPORTS[4]
 }
 
 function leagueOf(id: string): League {
-  return LEAGUES.find((l) => l.id === id) ?? LEAGUES[0]
+  return LEAGUES.find((l) => l.id === id) ?? homeLeague(id) ?? LEAGUES[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -263,7 +373,7 @@ const tryoutScript = defineScript('special.athlete.tryout', (g, choice, data) =>
 
 const leagueScript = defineScript('special.athlete.league', (g, choice) => {
   if (choice === 'cancel') return
-  const league = LEAGUES.find((l) => l.id === choice)
+  const league = LEAGUES.find((l) => l.id === choice) ?? homeLeague(choice)
   if (!league) return
   const teams = shuffle(g, league.teams).slice(0, 5)
   const options: TeamOption[] = teams.map((team) => ({ league: league.id, team, strength: randInt(g, 35, 95) }))
@@ -284,7 +394,7 @@ const sportScript = defineScript('special.athlete.sport', (g, choice) => {
   if (sport.needsUniversity && !attendedUniversity(g)) {
     return say(g, sport.name, `Pro ${sport.name.toLowerCase()} teams only scout players who played at university. Go to college first.`, sport.emoji, 'bad')
   }
-  const leagues = LEAGUES.filter((l) => l.sport === sport.id && l.gender === g.character.gender)
+  const leagues = leaguesFor(g, sport.id, g.character.gender === 'female' ? 'female' : 'male')
   if (leagues.length === 0) return say(g, sport.name, `There are no professional ${sport.name.toLowerCase()} leagues for ${g.character.gender === 'male' ? 'men' : 'women'} right now.`, sport.emoji, 'bad')
   scriptChoice(
     g,
@@ -735,8 +845,10 @@ export function yearlyAthlete(g: GameState): void {
   if (!c.prison && !c.job && c.age >= 18 && c.age <= 19 && !g.flags['special.athlete.scouted'] && (c.hidden.athleticism >= 80 || (sportsTalent(g) && c.hidden.athleticism >= 65)) && chance(g, 0.5)) {
     g.flags['special.athlete.scouted'] = true
     const leagues = LEAGUES.filter((l) => l.gender === c.gender && l.sport !== 'football')
-    if (leagues.length) {
-      const league = pick(g, leagues)
+    // Scouts from the home league come first; the big foreign leagues now and then.
+    const home = localSports(c.countryId).flatMap((sp) => leaguesFor(g, sp, c.gender === 'female' ? 'female' : 'male').filter((l) => l.id.startsWith('home:')))
+    if (leagues.length || home.length) {
+      const league = home.length && (chance(g, 0.7) || !leagues.length) ? pick(g, home) : pick(g, leagues)
       const sport = sportOf(league.sport)
       ensureSport(g, sport)
       const strength = randInt(g, 35, 80)

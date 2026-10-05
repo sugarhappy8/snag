@@ -10,8 +10,9 @@
 // AI output is never trusted: names are mapped to existing people (unknown ones are
 // dropped), effects go through applyEffects (which caps every swing), age-inappropriate
 // consequences are filtered out, and unusable replies fall back to the offline library.
-import { fallbackInterviewQuestion, presentInterview } from '../game/careers'
+import { applyScreening, fallbackInterviewQuestion, presentInterview } from '../game/careers'
 import { count, formatMoney, fullName, getPerson, log, notice, useYearAction, yearActionsUsed } from '../game/core'
+import { offlineScreen } from '../game/cv'
 import { applyEffects } from '../game/effects'
 import { fallbackChoiceOutcome, fallbackCustomAction, fallbackObituary, foreignToLocale, queueFallbackYearEvents } from '../game/events'
 import { nextRandom, pick, rand, shuffle, uid } from '../game/rng'
@@ -36,6 +37,7 @@ import {
   narratorSystem,
   obituaryPrompt,
   resolveChoicePrompt,
+  screenApplicationPrompt,
   situationalThemes,
   stageOf,
   yearEventsPrompt,
@@ -50,6 +52,7 @@ import {
   validateNarration,
   validateObituary,
   validateOutcome,
+  validateScreening,
   validateYearEvents,
   type AiCustomAction,
   type AiEffects,
@@ -793,6 +796,27 @@ async function runInterview(g: GameState, task: Extract<AiTask, { type: 'intervi
   }
 }
 
+async function runScreening(g: GameState, task: Extract<AiTask, { type: 'screenApplication' }>, settings: Settings, signal: AbortSignal): Promise<Mutator> {
+  const app = task.app
+  const school = app.kind !== 'job'
+  const r = await chatJson(
+    settings,
+    {
+      system: narratorSystem(settings),
+      messages: [{ role: 'user', content: screenApplicationPrompt(g, app) }],
+      schemaName: school ? 'screen_admission' : 'screen_application',
+      schema: school ? SCHEMAS.screenAdmission : SCHEMAS.screen,
+      validate: validateScreening,
+    },
+    signal,
+  )
+  return (draft) => {
+    if (!draft.character.alive) return
+    const question = r.question ? { question: r.question.question, answers: shuffle(draft, r.question.answers) } : undefined
+    applyScreening(draft, app, { invite: r.invite, reason: r.reason, ...(question ? { question } : {}) })
+  }
+}
+
 async function runObituary(g: GameState, settings: Settings, signal: AbortSignal): Promise<Mutator> {
   const r = await chatJson(
     settings,
@@ -828,6 +852,8 @@ export async function runAiTask(g: GameState, task: AiTask, settings: Settings, 
         return await runCustomAction(g, task.text, settings, signal)
       case 'interview':
         return await runInterview(g, task, settings, signal)
+      case 'screenApplication':
+        return await runScreening(g, task, settings, signal)
       case 'obituary':
         return await runObituary(g, settings, signal)
     }
@@ -857,6 +883,9 @@ export function applyFallback(g: GameState, task: AiTask): void {
       return
     case 'interview':
       if (g.character.alive) presentInterview(g, task.job, fallbackInterviewQuestion(g, task.job))
+      return
+    case 'screenApplication':
+      if (g.character.alive) applyScreening(g, task.app, offlineScreen(g, task.app))
       return
     case 'obituary':
       g.obituary = fallbackObituary(g)

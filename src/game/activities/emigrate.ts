@@ -7,6 +7,7 @@ import { addStat, count, currentPartner, endJob, log, notice, remember, scriptCh
 import { notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { localTerm } from '../data/locales'
 import { COUNTRIES, getCountry, randomCity, type Country } from '../world'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { brokeNotice, firstReason, gate, isAbroad, money, niceRound, pushFlagString, result, stablePick } from './common'
@@ -17,7 +18,7 @@ function schoolBlock(g: GameState): string | null {
   const cur = g.character.education.current
   if (!cur) return null
   if (cur.level === 'high' || cur.level === 'middle' || cur.level === 'elementary' || cur.level === 'preschool') {
-    return "You need to graduate (or drop out of) high school before you can emigrate."
+    return `You need to finish (or drop out of) ${localTerm(g, 'high')} before you can emigrate.`
   }
   return 'You need to finish (or drop out of) school before you can emigrate.'
 }

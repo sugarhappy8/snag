@@ -6,6 +6,7 @@ import { addHidden, addMoney, addStat, count, log, remember, scriptChoice, spend
 import { arrestPlayer } from '../crime'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
+import { localeOf } from '../data/locales'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addFame, blocked, clamp100, hire, instrumentSkill, knownInstruments, leave, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
 
@@ -100,8 +101,16 @@ function stars(n: number): string {
   return '\u{2B50}'.repeat(Math.max(1, Math.min(5, n)))
 }
 
+/** Generic spots everywhere, plus local hangouts and landmarks instead of Broadway and Chinatown abroad. */
+function streetSpots(g: GameState): string[] {
+  if (g.character.countryId === 'us') return STREET_NAMES
+  const loc = localeOf(g.character.countryId)
+  const generic = STREET_NAMES.filter((s) => s !== 'Broadway' && s !== 'Chinatown Gate' && s !== 'the Stadium Parking Lot')
+  return [...new Set([...generic, ...loc.hangouts.slice(0, 4), ...loc.landmarks.slice(0, 2)])]
+}
+
 function genStreets(g: GameState): Street[] {
-  return shuffle(g, STREET_NAMES)
+  return shuffle(g, streetSpots(g))
     .slice(0, 4)
     .map((name) => ({ name, traffic: randInt(g, 1, 5), police: randInt(g, 1, 5), rivals: randInt(g, 1, 5) }))
 }
@@ -296,6 +305,12 @@ const PERFORM_WIN: Record<string, string[]> = {
   statue: ['You stood perfectly still for four hours. A kid poked you and you winked. They screamed and their dad tipped.', 'Pigeons mistook you for a real statue. Tourists loved it.'],
   breakdance: ['You landed a windmill into a headspin and the crowd went wild.', 'Your crew battled another crew. You won by a backflip.'],
 }
+const BEG_WIN_LOCAL = [
+  'A kind old lady gave you a sandwich and a little cash.',
+  'Most people avoided eye contact, but a few dropped coins.',
+  'A street vendor gave you a plate of leftovers and some change.',
+  'A student gave you the last coins in their pocket and a motivational speech.',
+]
 const BEG_WIN = [
   'A kind old lady gave you a sandwich and a little cash.',
   'Most people avoided eye contact, but a few dropped coins.',
@@ -552,7 +567,7 @@ function workStreet(g: GameState): void {
   if (act.kind === 'scam') line = act.id === 'counterfeit' ? `You sold a pile of "${pick(g, FAKE_BRANDS)}" handbags to tourists who swore they were real.` : pick(g, SCAM_WIN)
   else if (act.kind === 'busk') line = d.instrument === 'Bucket Drums' ? pick(g, ['You banged on upside-down buckets like a rock god.', 'Your bucket drum solo stopped traffic. Literally, a driver stopped to watch.']) : `You played ${d.instrument === 'Voice' ? 'your heart out' : `the ${d.instrument.toLowerCase()}`} on ${d.street}. ${pick(g, BUSK_WIN)}`
   else if (act.kind === 'perform') line = pick(g, PERFORM_WIN[act.id] ?? PERFORM_WIN.mime)
-  else line = pick(g, BEG_WIN)
+  else line = pick(g, g.character.countryId === 'us' ? BEG_WIN : BEG_WIN_LOCAL)
   const verdict = take < 20 ? 'You barely made enough for a bus ticket.' : take < 150 ? `You made ${money(take)}.` : `You raked in ${money(take)}!`
   log(g, `I hustled on ${d.street} and made ${money(take)}.`, take >= 100 ? 'good' : 'neutral')
   say(g, actLabel(d), `${line} ${take < 20 ? `You made ${money(take)}. ${verdict}` : verdict}${bonusText}`, act.emoji, take >= 100 ? 'good' : 'neutral')

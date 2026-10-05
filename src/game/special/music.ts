@@ -520,6 +520,12 @@ const VENUES: { name: string; capacity: number; minPop: number }[] = [
   { name: 'a sold-out stadium', capacity: 60_000, minPop: 75 },
 ]
 
+/** Hoedowns and county fairs are American; elsewhere it's a village wedding or a town festival. */
+function venueLabel(g: GameState, name: string): string {
+  if (g.character.countryId === 'us') return name
+  return name === 'a hoedown' ? 'a village wedding' : name === 'a county fair' ? 'a town festival' : name
+}
+
 const concertScript = defineScript('special.music.concert', (g, choice) => {
   if (choice === 'cancel') return
   const job = musicJob(g)
@@ -542,11 +548,11 @@ const concertScript = defineScript('special.music.concert', (g, choice) => {
   d.popularity = clamp100(d.popularity + (good ? randInt(g, 1, 3) : -1))
   addStat(g, 'happiness', good ? 6 : -3)
   if (good) addFame(g, 1)
-  log(g, `I played a concert at ${venue.name} for ${attendance.toLocaleString('en-US')} people.`, good ? 'good' : 'neutral')
+  log(g, `I played a concert at ${venueLabel(g, venue.name)} for ${attendance.toLocaleString('en-US')} people.`, good ? 'good' : 'neutral')
   const vibe = good
     ? pick(g, ['The crowd sang every word back to you.', 'Someone threw flowers on stage. You hope they were flowers.', 'The encore went on for twenty minutes.'])
     : pick(g, ['The sound system kept squealing.', 'You forgot the words to your own song.', 'Half the crowd left during the slow songs.'])
-  say(g, 'Concert', `You played ${venue.name} in front of ${attendance.toLocaleString('en-US')} fans. ${vibe} You earned ${money(share)}.`, '\u{1F3A4}', good ? 'good' : 'neutral')
+  say(g, 'Concert', `You played ${venueLabel(g, venue.name)} in front of ${attendance.toLocaleString('en-US')} fans. ${vibe} You earned ${money(share)}.`, '\u{1F3A4}', good ? 'good' : 'neutral')
 })
 
 const tourAction: MenuAction = {
@@ -787,7 +793,7 @@ export function musicJobNodes(g: GameState): MenuNode[] {
         if (!j) return
         const pop = md(j).popularity
         const options = shuffle(gg, VENUES.filter((v) => v.minPop <= pop + 10)).slice(0, 3)
-        scriptChoice(gg, concertScript, 'Concert', 'Your booking agent found these gigs. Where do you want to play?', [...options.map((v) => ({ id: v.name, label: `${v.name[0].toUpperCase()}${v.name.slice(1)} (${v.capacity.toLocaleString('en-US')} capacity)`, emoji: '\u{1F3DF}\u{FE0F}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
+        scriptChoice(gg, concertScript, 'Concert', 'Your booking agent found these gigs. Where do you want to play?', [...options.map((v) => ({ id: v.name, label: `${venueLabel(gg, v.name)[0].toUpperCase()}${venueLabel(gg, v.name).slice(1)} (${v.capacity.toLocaleString('en-US')} capacity)`, emoji: '\u{1F3DF}\u{FE0F}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
           emoji: '\u{1F3A4}',
         })
       },

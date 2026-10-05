@@ -229,3 +229,24 @@ export function localStreetName(g: GameState, countryId = g.character.countryId)
 export function hasSnow(g: GameState, countryId = g.character.countryId): boolean {
   return localeOf(countryId).snow
 }
+
+const ALCOHOLIC = /beer|wine|tequila|mezcal|\brum\b|vodka|soju|sake|whisk|\bgin\b|ouzo|rak[iı]|cacha[cç]a|pisco|chicha|arak|baijiu|makgeolli|brandy|cider|schnapps|aquavit|akvavit|grappa|p[aá]linka|rakija|\btej\b|lager|stout|michelada|caipirinha|aperol|spritz|cerveza|cava|prosecco|champagne|toddy|tuak|arrack|feni|chang\b|tuba|lambanog|absinthe|jenever|pastis|sangria|liqueur|bourbon|moonshine|kvass|horilka|sambuca|limoncello|retsina|tsipouro|slivovitz|vermouth|punch|\bmead\b|chacha|kumis|airag|tongba|raksi/i
+
+/** True when a drink name is (or usually is) alcoholic. */
+export function isAlcoholic(drink: string): boolean {
+  return ALCOHOLIC.test(drink)
+}
+
+/** A non-alcoholic local drink (tea, coffee, mate, juice...) for scenes that shouldn't involve booze. */
+export function localSoftDrink(g: GameState, countryId = g.character.countryId): string {
+  const soft = localeOf(countryId).drinks.filter((d) => !isAlcoholic(d))
+  return soft.length ? pick(g, soft) : pick(g, ['tea', 'coffee'])
+}
+
+/** A local drink for adults: alcohol only where people of drinking age commonly drink it. */
+export function localAdultDrink(g: GameState, countryId = g.character.countryId): string {
+  const c = getCountry(countryId)
+  const muslim = c.religions.filter((r) => r === 'Islam').length * 2 > c.religions.length
+  const ok = muslim || g.character.age < c.drinkingAge ? localeOf(countryId).drinks.filter((d) => !isAlcoholic(d)) : localeOf(countryId).drinks
+  return ok.length ? pick(g, ok) : pick(g, ['tea', 'coffee'])
+}

@@ -11,11 +11,14 @@ import {
   shortMoney,
 } from '../../game/core'
 import { businessSummary } from '../../game/business'
+import { agesLabel, cvEntries, cvScore, KIND_META, rankLabel, rankOf, rankShort, strengthStars, universityTarget } from '../../game/cv'
 import { highestEducationLabel } from '../../game/education'
 import { investmentsSummary } from '../../game/investments'
 import { getRibbon } from '../../game/ribbons'
 import { getCountry } from '../../game/world'
 import type {
+  CvEntry,
+  DegreeKind,
   Enrollment,
   GameState,
   GradProgram,
@@ -198,6 +201,48 @@ function schoolName(e: Enrollment): string {
   return LEVEL_LABEL[e.level]
 }
 
+const DEGREE_LEVEL: Partial<Record<DegreeKind, SchoolLevel>> = {
+  highschool: 'high',
+  associate: 'community',
+  bachelor: 'university',
+  master: 'graduate',
+  doctorate: 'graduate',
+  jd: 'graduate',
+  md: 'graduate',
+  mba: 'graduate',
+  dds: 'graduate',
+  pharmd: 'graduate',
+  dvm: 'graduate',
+  nursing: 'graduate',
+}
+
+/** '#37 • Top' for a school, or '' (never breaks the profile). */
+function safeRank(g: GameState, level: SchoolLevel | undefined, school: string, long = false): string {
+  if (!level) return ''
+  try {
+    const r = rankOf(g, level, school)
+    return long ? `${rankLabel(r)} • ${r.tier}` : rankShort(r)
+  } catch {
+    return ''
+  }
+}
+
+interface CvView {
+  entries: CvEntry[]
+  total: number
+  job: number
+  uni: number
+}
+
+function safeCv(g: GameState): CvView | null {
+  try {
+    const all = cvEntries(g)
+    return { entries: all.slice(0, 8), total: all.length, job: cvScore(g, { kind: 'job', edu: 'bachelor' }).score, uni: cvScore(g, universityTarget()).score }
+  } catch {
+    return null
+  }
+}
+
 function sexualityKnown(g: GameState): boolean {
   const f = g.flags
   return Boolean(f.sexualityRevealed || f.sexualityKnown || f.cameOut) || g.character.age >= 13
@@ -268,10 +313,15 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
   if (cur) {
     eduRows.push(['Currently', `${schoolName(cur)} — year ${cur.year} of ${cur.totalYears}`])
     eduRows.push(['School', cur.school])
+    const rank = safeRank(g, cur.level, cur.school, true)
+    if (rank) eduRows.push(['National rank', rank])
     if (cur.major) eduRows.push(['Major', cur.major])
   }
   if (edu.droppedOut.length > 0) eduRows.push(['Dropped out of', edu.droppedOut.map((l) => LEVEL_LABEL[l]).join(', ')])
   if (edu.expelled > 0) eduRows.push(['Expelled', edu.expelled === 1 ? 'Once' : `${edu.expelled} times`])
+
+  // --- CV
+  const cv = safeCv(g)
 
   // --- career
   const job = c.job
@@ -378,13 +428,42 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
                 🎓 <strong>{d.name}</strong>
                 {d.honors ? ' (honors)' : ''}
                 <span className="li-sub">
-                  {d.school} · age {d.age}
+                  {d.school}
+                  {safeRank(g, DEGREE_LEVEL[d.kind], d.school) ? ` (${safeRank(g, DEGREE_LEVEL[d.kind], d.school)})` : ''} · age {d.age}
                 </span>
               </li>
             ))}
           </ul>
         ) : null}
       </Section>
+
+      {cv && c.age >= 12 ? (
+        <Section title="CV">
+          <KV
+            rows={[
+              ['Entries', String(cv.total)],
+              ['Strength (office job)', `${cv.job}/100`],
+              ['Strength (university)', `${cv.uni}/100`],
+            ]}
+          />
+          {cv.entries.length > 0 ? (
+            <ul className="list-plain" style={{ marginTop: 6 }}>
+              {cv.entries.map((e) => (
+                <li key={e.id}>
+                  {KIND_META[e.kind].emoji} <strong>{e.title}</strong>
+                  {e.embellished ? ' 🤥' : ''}
+                  <span className="li-sub">
+                    {e.org ? `${e.org} · ` : ''}
+                    {agesLabel(e)} · {strengthStars(e.strength)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">Nothing on it yet. Occupation → Your CV has ideas.</p>
+          )}
+        </Section>
+      ) : null}
 
       <Section title="Career">
         <KV rows={careerRows} />

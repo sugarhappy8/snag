@@ -15,6 +15,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Santa Coloma', 'La Margineda', 'Sispony', 'Bixessarri', 'Juberri', 'Pal', 'Ransol', 'Llorts', 'La Cortinada', 'Meritxell', 'Fontaneda', 'Nagol'],
     honorees: ['Meritxell', 'Carlemany', 'Sant Ermengol', 'Fiter i Rossell', 'Príncep Benlloch', 'Doctor Vilanova', 'Sant Julià'],
     schoolNames: {
+      preschool: ['Escola Bressol {place}', 'Escola Maternal {place}', "Llar d'Infants {place}"],
       primary: ['Escola Andorrana de {place}', 'Col·legi {honoree}', 'École Française de {place}'],
       middle: ['Escola Andorrana de Segona Ensenyança de {place}', 'Col·legi {honoree}'],
       high: ['Escola Andorrana de Batxillerat', 'Lycée Comte de Foix', 'Col·legi Sant Ermengol'],
@@ -50,6 +51,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Leopoldstadt', 'Ottakring', 'Favoriten', 'Hietzing', 'Döbling', 'Neubau', 'Josefstadt', 'Mariahilf', 'Floridsdorf', 'Donaustadt', 'Lend', 'Urfahr', 'Wilten', 'Maxglan'],
     honorees: ['Mozart', 'Haydn', 'Schubert', 'Strauss', 'Grillparzer', 'Stifter', 'Rosegger', 'Kepler'],
     schoolNames: {
+      preschool: ['Kindergarten {place}', 'Pfarrkindergarten {place}', 'Kinderkrippe {place}', 'Kindergarten Regenbogen'],
       primary: ['Volksschule {place}', 'Volksschule {honoree}gasse'],
       middle: ['Mittelschule {place}', 'Mittelschule {honoree}gasse'],
       high: ['BRG {place}', 'Gymnasium {honoree}gasse', '{honoree}gymnasium'],
@@ -85,6 +87,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Schaerbeek', 'Molenbeek', 'Saint-Gilles', 'Laeken', 'Jette', 'Forest', 'Woluwe', 'Koekelberg', 'Berchem', 'Borgerhout', 'Zurenborg', 'Patershol', 'Ledeberg', 'Marcinelle', 'Jambes', 'Heverlee'],
     honorees: ['Rubens', 'Bruegel', 'Magritte', 'Mercator', 'Vesalius', 'Sax', 'Conscience', 'Simenon', 'Van Eyck'],
     schoolNames: {
+      preschool: ['Kleuterschool {place}', 'École maternelle {place}', 'Kinderdagverblijf {place}', 'École maternelle {honoree}'],
       primary: ['Basisschool {place}', 'École communale de {place}', 'Gemeentelijke Basisschool {place}'],
       middle: ['Koninklijk Atheneum {place}', 'Athénée Royal de {place}', 'Collège {honoree}'],
       high: ['Koninklijk Lyceum {city}', 'Athénée Royal {honoree}', 'Sint-Jozefscollege {city}'],
@@ -120,6 +123,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Trešnjevka', 'Maksimir', 'Dubrava', 'Trnje', 'Sesvete', 'Jarun', 'Pantovčak', 'Špinut', 'Bačvice', 'Lapad', 'Gruž', 'Trsat', 'Donji Grad', 'Gornji Grad'],
     honorees: ['Ivan Gundulić', 'Marko Marulić', 'August Šenoa', 'Ruđer Bošković', 'Petar Zrinski', 'Matija Gubec', 'Ivan Goran Kovačić', 'Antun Gustav Matoš', 'Nikola Tesla', 'Faust Vrančić'],
     schoolNames: {
+      preschool: ['Dječji vrtić {place}', 'Dječji vrtić Maslačak', 'Dječji vrtić Sunce', 'Dječji vrtić Trnoružica'],
       primary: ['OŠ {honoree}', 'OŠ {place}', 'Osnovna škola {honoree}'],
       middle: ['OŠ {honoree}', 'OŠ {place}'],
       high: ['{n}. gimnazija {city}', 'Gimnazija {honoree}', 'Tehnička škola {city}'],
@@ -155,6 +159,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Vinohrady', 'Žižkov', 'Smíchov', 'Karlín', 'Holešovice', 'Dejvice', 'Vršovice', 'Nusle', 'Letná', 'Petřiny', 'Královo Pole', 'Židenice', 'Lesná', 'Poruba', 'Slovany', 'Bory'],
     honorees: ['Jan Amos Komenský', 'T. G. Masaryk', 'Karel Čapek', 'Božena Němcová', 'Jan Neruda', 'Karel Havlíček Borovský', 'Jan Hus', 'Antonín Dvořák', 'Charles IV'],
     schoolNames: {
+      preschool: ['Mateřská škola {place}', 'Mateřská škola Sluníčko', 'MŠ {place}'],
       primary: ['Základní škola {place}', '{honoree} Basic School'],
       middle: ['ZŠ {place}', '{honoree} Basic School'],
       high: ['Gymnázium {place}', '{honoree} Grammar School', 'Střední průmyslová škola {city}'],
@@ -190,6 +195,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Nørrebro', 'Vesterbro', 'Østerbro', 'Amager', 'Frederiksberg', 'Valby', 'Christianshavn', 'Brønshøj', 'Hellerup', 'Bellahøj', 'Trøjborg', 'Frederiksbjerg', 'Vollsmose', 'Hasseris'],
     honorees: ['H.C. Andersen', 'Søren Kierkegaard', 'N.F.S. Grundtvig', 'Niels Bohr', 'Karen Blixen', 'Tycho Brahe', 'Ole Rømer', 'Steen Blicher'],
     schoolNames: {
+      preschool: ['Børnehaven {place}', 'Børnehaven Mælkebøtten', '{place} Børnehus'],
       primary: ['{place} Skole', '{honoree} Skolen', '{place} Friskole'],
       middle: ['{place} Skole', '{honoree} Skolen', '{place} Efterskole'],
       high: ['{place} Gymnasium', '{city} Katedralskole', '{honoree} Gymnasium'],
@@ -225,6 +231,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Kalamaja', 'Kadriorg', 'Pirita', 'Lasnamäe', 'Mustamäe', 'Nõmme', 'Kristiine', 'Haabersti', 'Õismäe', 'Pelgulinn', 'Annelinn', 'Supilinn', 'Karlova', 'Toome', 'Tähtvere'],
     honorees: ['Lydia Koidula', 'Jakob Hurt', 'C. R. Jakobson', 'A. H. Tammsaare', 'Kristjan Jaak Peterson', 'F. R. Kreutzwald', 'Jaan Poska', 'Hugo Treffner'],
     schoolNames: {
+      preschool: ['Lasteaed {place}', 'Lasteaed Pääsupesa', 'Lasteaed Mõmmik', 'Lasteaed Päikesejänku'],
       primary: ['{place} Basic School', '{city} School No. {n}', '{place} Põhikool'],
       middle: ['{place} Basic School', '{city} School No. {n}'],
       high: ['{honoree} Gymnasium', '{place} Gymnasium', '{city} Secondary School No. {n}'],
@@ -260,6 +267,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Kallio', 'Punavuori', 'Töölö', 'Kamppi', 'Vallila', 'Kruununhaka', 'Herttoniemi', 'Tapiola', 'Leppävaara', 'Tikkurila', 'Myyrmäki', 'Hervanta', 'Kaleva', 'Pyynikki', 'Raksila', 'Port Arthur'],
     honorees: ['Jean Sibelius', 'Aleksis Kivi', 'J. L. Runeberg', 'Elias Lönnrot', 'Minna Canth', 'Tove Jansson', 'Alvar Aalto', 'J. V. Snellman', 'Mikael Agricola'],
     schoolNames: {
+      preschool: ['Päiväkoti {place}', 'Päiväkoti Satakieli', 'Päiväkoti Vekara'],
       primary: ['{place} Primary School', '{place} School'],
       middle: ['{place} Comprehensive School', '{place} Lower Secondary School'],
       high: ['{place} Upper Secondary School', '{city} Lyceum', '{honoree} School'],
@@ -295,6 +303,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Montmartre', 'Belleville', 'Ménilmontant', 'Croix-Rousse', 'Fourvière', 'Saint-Cyprien', 'Chartrons', 'Cimiez', 'Wazemmes', 'Bellecour', 'Saint-Michel', 'Antigone', 'Les Tilleuls', 'Les Coquelicots', 'Les Capucins'],
     honorees: ['Victor Hugo', 'Jules Ferry', 'Jean Jaurès', 'Jean Moulin', 'Marie Curie', 'Louis Pasteur', 'Simone Veil', 'Jules Verne', 'Jean de La Fontaine', 'Molière'],
     schoolNames: {
+      preschool: ['École maternelle {honoree}', 'École maternelle {place}', 'Crèche Les Petits Loups', 'École maternelle Jules Ferry'],
       primary: ['École primaire {honoree}', 'École élémentaire {place}', 'Groupe scolaire {honoree}'],
       middle: ['Collège {honoree}', 'Collège {place}'],
       high: ['Lycée {honoree}', 'Lycée {place}', 'Lycée général {honoree}'],
@@ -330,6 +339,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Kreuzberg', 'Prenzlauer Berg', 'Neukölln', 'Schwabing', 'Altona', 'Eimsbüttel', 'Ehrenfeld', 'Bornheim', 'Plagwitz', 'Linden', 'Gostenhof', 'Bilk', 'Neustadt', 'Altstadt', 'Sternschanze'],
     honorees: ['Goethe', 'Schiller', 'Humboldt', 'Lessing', 'Heine', 'Einstein', 'Kant', 'Beethoven', 'Bach', 'Röntgen'],
     schoolNames: {
+      preschool: ['Kita {place}', 'Kindergarten Sonnenschein', 'Kita Regenbogen', 'Evangelischer Kindergarten {place}', 'Kita Pusteblume'],
       primary: ['{honoree}-Grundschule', 'Grundschule {place}'],
       middle: ['{honoree}-Realschule', '{honoree}-Gesamtschule', 'Gesamtschule {place}'],
       high: ['{honoree}-Gymnasium', 'Gymnasium {place}'],
@@ -365,6 +375,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Plaka', 'Kolonaki', 'Exarchia', 'Pangrati', 'Kifisia', 'Glyfada', 'Peristeri', 'Marousi', 'Halandri', 'Nea Smyrni', 'Psyrri', 'Kalamaria', 'Ano Poli', 'Toumba', 'Neos Kosmos'],
     honorees: ['Aristotle', 'Socrates', 'Kolokotronis', 'Bouboulina', 'Rigas Feraios', 'Kapodistrias', 'Solomos', 'Kazantzakis', 'Lord Byron'],
     schoolNames: {
+      preschool: ['Kindergarten No. {n} of {city}', 'Nipiagogeio {place}', 'Paidikos Stathmos {place}'],
       primary: ['Primary School No. {n} of {place}', '{place} Primary School'],
       middle: ['Gymnasium No. {n} of {place}', '{place} Gymnasium'],
       high: ['Lyceum No. {n} of {city}', 'General Lyceum of {place}', 'Experimental School of {city}'],
@@ -401,6 +412,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Józsefváros', 'Erzsébetváros', 'Ferencváros', 'Újpest', 'Kőbánya', 'Óbuda', 'Zugló', 'Csepel', 'Kispest', 'Angyalföld', 'Rózsadomb', 'Pasarét', 'Kelenföld', 'Lágymányos', 'Avas', 'Tarján'],
     honorees: ['Petőfi Sándor', 'Arany János', 'Kossuth Lajos', 'Széchenyi István', 'József Attila', 'Ady Endre', 'Bolyai János', 'Kodály Zoltán', 'Semmelweis Ignác', 'Szent István'],
     schoolNames: {
+      preschool: ['{place} Óvoda', 'Napsugár Óvoda', 'Katica Óvoda', 'Napraforgó Óvoda'],
       primary: ['{honoree} Általános Iskola', '{place}i Általános Iskola'],
       middle: ['{honoree} Általános Iskola', '{place}i Általános Iskola', '{honoree} Gimnázium'],
       high: ['{honoree} Gimnázium', '{place}i Gimnázium', '{honoree} Technikum'],
@@ -436,6 +448,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Rathmines', 'Ranelagh', 'Drumcondra', 'Clontarf', 'Blackrock', 'Tallaght', 'Ballymun', 'Phibsborough', 'Douglas', 'Ballincollig', 'Salthill', 'Knocknacarra', 'Castletroy', 'Shandon', 'Glenageary'],
     honorees: ["O'Connell", 'Pearse', 'Parnell', 'Grattan', 'Wolfe Tone', 'Davitt', 'Yeats', 'Joyce', 'Connolly'],
     schoolNames: {
+      preschool: ['{place} Montessori', '{place} Naíonra', '{place} Community Crèche', 'Little Acorns Crèche'],
       primary: ['Scoil Mhuire, {place}', "St Brigid's National School, {place}", '{place} Educate Together National School', 'Gaelscoil {place}'],
       middle: ['{place} Community College', "St Joseph's Secondary School, {place}", 'Presentation College, {city}'],
       high: ['{city} CBS', 'Coláiste Mhuire, {place}', '{place} Community School', "St Mary's Secondary School, {city}"],
@@ -471,6 +484,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Trastevere', 'Testaccio', 'Monti', 'Prati', 'Navigli', 'Brera', 'Isola', 'Vomero', 'Posillipo', 'San Salvario', 'Crocetta', 'Bolognina', 'Oltrarno', 'Cannaregio', 'Kalsa', 'Mondello'],
     honorees: ['Dante Alighieri', 'Giuseppe Garibaldi', 'Giuseppe Mazzini', 'Alessandro Manzoni', 'Galileo Galilei', 'Enrico Fermi', 'Maria Montessori', 'Leonardo da Vinci', 'Giuseppe Verdi', 'Giovanni Pascoli'],
     schoolNames: {
+      preschool: ["Scuola dell'infanzia {honoree}", 'Asilo nido {place}', 'Scuola materna {place}'],
       primary: ['Scuola Primaria {honoree}', 'Istituto Comprensivo {place}', 'Scuola Elementare {honoree}'],
       middle: ['Scuola Media {honoree}', 'Istituto Comprensivo {city} {n}'],
       high: ['Liceo Scientifico {honoree}', 'Liceo Classico {honoree}', 'Istituto Tecnico {honoree}', 'Liceo Artistico {place}'],
@@ -506,6 +520,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Monte Carlo', 'La Condamine', 'Fontvieille', 'Larvotto', 'Moneghetti', 'Saint-Roman', 'Saint-Michel', 'La Rousse', 'Port Hercule', 'Sainte-Dévote', 'Spélugues', 'Monaco-Ville'],
     honorees: ['Albert Ier', 'Princesse Grace', 'Rainier III', 'Louis II', 'Princesse Charlotte', 'Charles III', 'Sainte-Dévote'],
     schoolNames: {
+      preschool: ['École maternelle {place}', 'Crèche {place}', 'École maternelle de {place}'],
       primary: ['École de {place}', 'École Saint-Charles', 'International School of Monaco'],
       middle: ['Collège Charles III', "Collège François d'Assise Nicolas Barré", 'International School of Monaco'],
       high: ['Lycée Albert Ier', 'Lycée Technique et Hôtelier de Monte-Carlo', 'International School of Monaco'],
@@ -542,6 +557,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     // Written the Dutch way so '{honoree}straat' comes out right ('Vincent van Goghstraat').
     honorees: ['Erasmus', 'Spinoza', 'Rembrandt', 'Vincent van Gogh', 'Anne Frank', 'Christiaan Huygens', 'Hugo de Groot', 'Vondel', 'Johan de Witt'],
     schoolNames: {
+      preschool: ['Kinderdagverblijf {place}', 'Peuterspeelzaal {place}', 'Peuterspeelzaal De Kleine Wereld', 'Kinderopvang Het Vlindertje'],
       primary: ['Basisschool {place}', 'OBS {place}', 'Basisschool De Regenboog', 'Montessorischool {place}'],
       middle: ['{honoree} College', 'Scholengemeenschap {place}'],
       high: ['{honoree} Lyceum', 'Stedelijk Gymnasium {city}', '{honoree} College'],
@@ -577,6 +593,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Grünerløkka', 'Frogner', 'Majorstuen', 'Grønland', 'Tøyen', 'Sagene', 'Bislett', 'Holmenkollen', 'Ullevål', 'Nordnes', 'Sandviken', 'Fana', 'Bakklandet', 'Møllenberg', 'Storhaug'],
     honorees: ['Henrik Ibsen', 'Edvard Grieg', 'Edvard Munch', 'Fridtjof Nansen', 'Roald Amundsen', 'Bjørnstjerne Bjørnson', 'Henrik Wergeland', 'Sigrid Undset', 'Thor Heyerdahl'],
     schoolNames: {
+      preschool: ['{place} barnehage', 'Solsikken barnehage', 'Trollskogen barnehage'],
       primary: ['{place} skole', '{place} barneskole'],
       middle: ['{place} ungdomsskole', '{place} skole'],
       high: ['{place} videregående skole', '{city} katedralskole', '{honoree} videregående skole'],
@@ -612,6 +629,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Mokotów', 'Praga', 'Żoliborz', 'Wola', 'Ursynów', 'Bielany', 'Śródmieście', 'Kazimierz', 'Nowa Huta', 'Podgórze', 'Wrzeszcz', 'Oliwa', 'Jeżyce', 'Bałuty', 'Nadodrze'],
     honorees: ['Mikołaj Kopernik', 'Maria Skłodowska-Curie', 'Adam Mickiewicz', 'Fryderyk Chopin', 'Juliusz Słowacki', 'Maria Konopnicka', 'Tadeusz Kościuszko', 'Henryk Sienkiewicz', 'Jan Paweł II', 'Janusz Korczak'],
     schoolNames: {
+      preschool: ['Przedszkole nr {n} im. {honoree}', 'Przedszkole Publiczne nr {n}', 'Przedszkole Słoneczko', 'Przedszkole {place}'],
       primary: ['Szkoła Podstawowa nr {n}', 'Primary School No. {n} named after {honoree}'],
       middle: ['Szkoła Podstawowa nr {n}', 'Gimnazjum nr {n}'],
       high: ['Liceum Ogólnokształcące nr {n}', '{honoree} High School', 'Technikum nr {n}'],
@@ -648,6 +666,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Alvalade', 'Benfica', 'Belém', 'Arroios', 'Campo de Ourique', 'Marvila', 'Carnide', 'Telheiras', 'Odivelas', 'Cedofeita', 'Paranhos', 'Massarelos', 'Ramalde', 'Campanhã', 'Matosinhos'],
     honorees: ['Luís de Camões', 'Fernando Pessoa', 'Vasco da Gama', 'Infante D. Henrique', 'Eça de Queirós', 'D. Dinis', 'Almeida Garrett', 'Sophia de Mello Breyner', 'Marquês de Pombal'],
     schoolNames: {
+      preschool: ['Jardim de Infância {place}', 'Jardim de Infância {honoree}', 'Infantário {place}'],
       primary: ['Escola Básica de {place}', 'Escola Básica n.º {n} de {place}'],
       middle: ['Escola Básica {honoree}', 'EB 2,3 de {place}'],
       high: ['Escola Secundária {honoree}', 'Escola Secundária de {place}'],
@@ -683,6 +702,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Drumul Taberei', 'Titan', 'Berceni', 'Militari', 'Pantelimon', 'Floreasca', 'Dorobanți', 'Cotroceni', 'Herăstrău', 'Rahova', 'Mănăștur', 'Gheorgheni', 'Copou', 'Tătărași', 'Schei'],
     honorees: ['Mihai Eminescu', 'Ion Creangă', 'George Coșbuc', 'Mihai Viteazul', 'Ștefan cel Mare', 'Nicolae Bălcescu', 'Ion Luca Caragiale', 'George Enescu', 'Avram Iancu', 'Vasile Alecsandri'],
     schoolNames: {
+      preschool: ['Grădinița nr. {n}', 'Grădinița {place}', 'Grădinița Căsuța Piticilor'],
       primary: ['Școala Primară nr. {n}', 'Școala Gimnazială {honoree}'],
       middle: ['Școala Gimnazială nr. {n}', 'Școala Gimnazială {honoree}'],
       high: ['Colegiul Național {honoree}', 'Liceul Teoretic {honoree}', 'Liceul Tehnologic nr. {n}'],
@@ -719,6 +739,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     // Surnames, as Russians name streets and schools after them in English ('Pushkin Street').
     honorees: ['Pushkin', 'Tolstoy', 'Chekhov', 'Gagarin', 'Lomonosov', 'Dostoevsky', 'Mendeleev', 'Tchaikovsky', 'Gogol', 'Korolev'],
     schoolNames: {
+      preschool: ['Kindergarten No. {n} Solnyshko', 'Detsky Sad No. {n}', 'Kindergarten No. {n} Teremok', 'Kindergarten No. {n} Rodnichok'],
       primary: ['School No. {n}', '{city} School No. {n}'],
       middle: ['School No. {n}', 'Gymnasium No. {n}'],
       high: ['Lyceum No. {n}', 'Gymnasium No. {n}', '{honoree} Lyceum'],
@@ -754,6 +775,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Dorćol', 'Vračar', 'Zemun', 'Novi Beograd', 'Savski Venac', 'Zvezdara', 'Karaburma', 'Voždovac', 'Banovo Brdo', 'Kalemegdan', 'Avala', 'Liman', 'Petrovaradin', 'Grbavica', 'Pantelej', 'Medijana'],
     honorees: ['Vuk Karadžić', 'Nikola Tesla', 'Desanka Maksimović', 'Branko Radičević', 'Jovan Jovanović Zmaj', 'Sveti Sava', 'Mihajlo Pupin', 'Milutin Milanković', 'Dositej Obradović', 'Ivo Andrić'],
     schoolNames: {
+      preschool: ['Vrtić {place}', 'Predškolska ustanova {place}', 'Vrtić Pčelica', 'Vrtić Bambi'],
       primary: ['OŠ {honoree}', 'Osnovna škola {honoree}'],
       middle: ['OŠ {honoree}', 'Osnovna škola {honoree}'],
       high: ['Gimnazija {honoree}', 'Tehnička škola {honoree}', 'Matematička gimnazija'],
@@ -789,6 +811,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Petržalka', 'Ružinov', 'Staré Mesto', 'Dúbravka', 'Karlova Ves', 'Nové Mesto', 'Rača', 'Dlhé diely', 'Terasa', 'Sídlisko KVP', 'Vlčince', 'Sekčov', 'Klokočina', 'Fončorda', 'Sásová'],
     honorees: ['Ľudovít Štúr', 'Milan Rastislav Štefánik', 'Pavol Országh Hviezdoslav', 'Andrej Kmeť', 'Janko Kráľ', 'Juraj Jánošík', 'Anton Bernolák', 'Martin Rázus', 'Saints Cyril and Methodius'],
     schoolNames: {
+      preschool: ['Materská škola {place}', 'Materská škola Slniečko', 'MŠ {place}'],
       primary: ['Základná škola {place}', '{honoree} Basic School'],
       middle: ['ZŠ {place}', '{honoree} Basic School'],
       high: ['Gymnázium {place}', '{honoree} Grammar School', 'Stredná priemyselná škola {city}'],
@@ -824,6 +847,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Malasaña', 'Lavapiés', 'Chamberí', 'Vallecas', 'Carabanchel', 'Usera', 'Gràcia', 'Poblenou', 'Sants', 'Triana', 'Nervión', 'Ruzafa', 'El Cabanyal', 'Albaicín', 'Deusto'],
     honorees: ['Miguel de Cervantes', 'Federico García Lorca', 'Antonio Machado', 'Ramón y Cajal', 'Rosalía de Castro', 'Gloria Fuertes', 'Clara Campoamor', 'Juan Ramón Jiménez', 'Benito Pérez Galdós', 'Severo Ochoa'],
     schoolNames: {
+      preschool: ['Escuela Infantil {place}', 'CEIP {honoree}', 'Escuela Infantil El Principito', 'Guardería {place}'],
       primary: ['CEIP {honoree}', 'Colegio Público {place}', 'CEIP {place}'],
       middle: ['IES {honoree}', 'IES {place}'],
       high: ['IES {honoree}', 'IES {place}', 'Colegio {honoree}'],
@@ -860,6 +884,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     // Written so '{honoree}skolan' and '{honoree}s väg' come out right ('Astrid Lindgrenskolan').
     honorees: ['Astrid Lindgren', 'Selma Lagerlöf', 'Carl von Linné', 'Alfred Nobel', 'August Strindberg', 'Evert Taube', 'Viktor Rydberg', 'Carl Larsson', 'Dag Hammarskjöld'],
     schoolNames: {
+      preschool: ['Förskolan {place}', 'Förskolan Solrosen', 'Förskolan Myrstacken', 'Förskolan Nyckelpigan'],
       primary: ['{honoree}skolan', '{place} skola'],
       middle: ['{place} skola', '{honoree}skolan'],
       high: ['{honoree}s gymnasium', '{place} gymnasium', 'Katedralskolan i {city}'],
@@ -895,6 +920,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Wiedikon', 'Oerlikon', 'Seefeld', 'Altstetten', 'Enge', 'Wipkingen', 'Kleinbasel', 'Gundeldingen', 'Länggasse', 'Breitenrain', 'Matte', 'Tribschen', 'Riehen', 'Wollishofen'],
     honorees: ['Pestalozzi', 'Dufour', 'Gotthelf', 'Keller', 'Einstein', 'Rousseau', 'Dunant', 'Tell'],
     schoolNames: {
+      preschool: ['Kindergarten {place}', 'Kita {place}', 'École enfantine {place}'],
       primary: ['Schulhaus {place}', 'Primarschule {place}', 'Schulhaus {honoree}'],
       middle: ['Sekundarschule {place}', 'Sekundarschule {honoree}'],
       high: ['Kantonsschule {place}', 'Gymnasium {place}', 'Kantonsschule {city}'],
@@ -930,6 +956,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Podil', 'Pechersk', 'Obolon', 'Troieshchyna', 'Darnytsia', 'Lukianivka', 'Holosiiv', 'Vynohradar', 'Pozniaky', 'Saltivka', 'Arkadia', 'Moldavanka', 'Sykhiv', 'Desna', 'Khortytsia'],
     honorees: ['Taras Shevchenko', 'Lesya Ukrainka', 'Ivan Franko', 'Hryhorii Skovoroda', 'Mykhailo Hrushevskyi', 'Yaroslav the Wise', 'Ivan Kotliarevskyi', 'Olha Kobylianska', 'Vasyl Stus', 'Mykola Lysenko'],
     schoolNames: {
+      preschool: ['Kindergarten No. {n} Sonechko', 'Dytsadok No. {n}', 'Kindergarten No. {n} Kalynka'],
       primary: ['School No. {n}', '{city} School No. {n}'],
       middle: ['School No. {n}', 'Gymnasium No. {n}', '{honoree} Gymnasium'],
       high: ['Lyceum No. {n}', '{honoree} Lyceum', '{city} Lyceum No. {n}'],
@@ -965,6 +992,7 @@ export const EUROPE_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Hackney', 'Brixton', 'Islington', 'Peckham', 'Didsbury', 'Moseley', 'Headingley', 'Clifton', 'Leith', 'Partick', 'Jesmond', 'Roath', 'Anfield', 'Ancoats', 'Woodside', 'Oakfield'],
     honorees: ['Isaac Newton', 'Florence Nightingale', 'Charles Darwin', 'William Shakespeare', 'Robert Burns', 'Emmeline Pankhurst', 'Charles Dickens', 'Jane Austen', 'Alan Turing', 'Mary Seacole'],
     schoolNames: {
+      preschool: ['{place} Nursery', '{place} Pre-School', 'Little Acorns Nursery', 'Ladybird Nursery', '{place} Primary School Nursery'],
       primary: ['{place} Primary School', '{place} C of E Primary School', '{honoree} Primary School'],
       middle: ['{place} Academy', '{place} High School', '{honoree} Academy'],
       high: ['{place} Sixth Form College', '{city} Sixth Form College', '{place} Grammar School'],

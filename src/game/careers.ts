@@ -25,14 +25,15 @@ import {
   useYearAction,
   yearActionsUsed,
 } from './core'
+import { catchEmbellishment, caughtLine, caughtLying, cvMenu, cvScore, embellishedEntries, jobMarket, jobScreenChance, jobTarget, screeningReason, screeningThoroughness } from './cv'
 import { COMPANY_WORDS, FULLTIME_JOBS, GIGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
-import { educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation } from './education'
+import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation, presentAdmissionsInterview, screenedOut } from './education'
 import { createPerson, notePerson } from './people'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
 import { militaryMenu, specialCareersMenu, specialJobNodes } from './special'
 import { getCountry, NAME_POOLS, randomFirstName, randomLastName } from './world'
-import type { GameState, InterviewJob, InterviewQuestion, Job, Json, MenuAction, MenuGroup, MenuNode, Person } from './types'
+import type { GameState, InterviewJob, InterviewQuestion, Job, Json, MenuAction, MenuGroup, MenuNode, Person, ScreeningApp, ScreeningDecision } from './types'
 
 type Slot = 'job' | 'partTimeJob'
 
@@ -348,6 +349,15 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
     notice(g, 'Job Interview', `${interviewer} liked you, but ${schoolBlock.charAt(0).toLowerCase()}${schoolBlock.slice(1)}`, { emoji: '\u{1F3EB}' })
     return
   }
+  // A sharp interviewer can tell when a CV line is made up.
+  const fake = catchEmbellishment(g, 0.08)
+  if (fake) {
+    caughtLying(g, fake)
+    rejectFor(g, job)
+    log(g, `I was caught lying on my CV at ${job.company}.`, 'bad')
+    notice(g, 'Caught!', `${interviewer} asked you to tell them more about "${fake.title}". You described it in such vivid, contradictory detail that they ended the interview early.`, { emoji: '\u{1F925}', tone: 'bad' })
+    return
+  }
   if (chance(g, hireChance(g, job, score))) {
     const j = hireForJob(g, job)
     notice(
@@ -362,9 +372,7 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
     )
     return
   }
-  const rejected = stringList(g.flags.jobsRejected)
-  rejected.push(`${job.defId}@${job.company}`)
-  g.flags.jobsRejected = rejected
+  rejectFor(g, job)
   addStat(g, 'happiness', -randInt(g, 2, 6))
   log(g, `I was rejected for the ${job.title} job at ${job.company}.`, 'bad')
   notice(
@@ -379,6 +387,60 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
     { emoji: '\u{1F4E8}', tone: 'bad' },
   )
 })
+
+/** Remember a rejection so the same listing can't be spammed this year. */
+function rejectFor(g: GameState, job: InterviewJob): void {
+  const rejected = stringList(g.flags.jobsRejected)
+  rejected.push(`${job.defId}@${job.company}`)
+  g.flags.jobsRejected = rejected
+}
+
+// ---------------------------------------------------------------------------
+// CV screening (before the interview)
+//
+// Full-time applications go to the AI director (task 'screenApplication'), which reads the CV
+// against the job and the job market and decides on an interview; offline, cvScore + the market
+// decide. Part-time jobs are screened on the spot. University and graduate school screenings
+// (education.ts) come back through here too.
+
+/** The screener's decision is in: background check, then an interview or a polite no. */
+export function applyScreening(g: GameState, app: ScreeningApp, decision: ScreeningDecision): void {
+  const c = g.character
+  if (!c.alive || c.prison) return
+  const reason = typeof decision.reason === 'string' ? decision.reason.trim().slice(0, 240) : ''
+  if (app.kind !== 'job') {
+    if (admissionsBackgroundCheck(g, app)) return
+    if (decision.invite) presentAdmissionsInterview(g, app, decision.question)
+    else screenedOut(g, app, reason)
+    return
+  }
+  const job = app.job
+  if (!job) return
+  const fake = catchEmbellishment(g, screeningThoroughness(app))
+  if (fake) {
+    caughtLying(g, fake)
+    rejectFor(g, job)
+    log(g, `${job.company} caught a lie on my CV.`, 'bad')
+    notice(g, 'Background Check', `${job.company} won't be interviewing you. ${caughtLine(g, fake)}`, { emoji: '\u{1F575}\u{FE0F}', tone: 'bad' })
+    return
+  }
+  if (!decision.invite) {
+    rejectFor(g, job)
+    addStat(g, 'happiness', -randInt(g, 1, 3))
+    log(g, `${job.company} didn't invite me to interview for ${job.title}.`, 'bad')
+    notice(g, 'No Interview', `${job.company} passed on your application for ${job.title}. ${reason || screeningReason(g, app, false)}`, { emoji: '\u{1F4ED}', tone: 'bad' })
+    return
+  }
+  log(g, `My CV landed me an interview at ${job.company}.`, 'good')
+  queueAi(g, { type: 'interview', job })
+}
+
+/** Build the screening request for a listing. */
+function screeningFor(g: GameState, def: JobDef, job: InterviewJob): ScreeningApp {
+  const market = jobMarket(g, def.industry)
+  const fit = cvScore(g, jobTarget(def)).score
+  return { kind: 'job', job, org: job.company, fit, chance: jobScreenChance(def, fit, market), market: market.line }
+}
 
 // ---------------------------------------------------------------------------
 // Hiring
@@ -509,7 +571,14 @@ function applyForListing(g: GameState, listing: JobListing): void {
     notice(g, 'Hired!', `Your interviewer at ${company} noticed your ${house} ring and recognized a fellow member. You were hired on the spot as ${j.title}, no questions asked!`, { emoji: '\u{1F91D}', tone: 'good' })
     return
   }
-  queueAi(g, { type: 'interview', job })
+  const app = screeningFor(g, def, job)
+  if (def.category === 'parttime') {
+    // Hourly jobs skim your CV on the spot.
+    const invite = chance(g, app.chance)
+    applyScreening(g, app, { invite, reason: screeningReason(g, app, invite) })
+    return
+  }
+  queueAi(g, { type: 'screenApplication', app })
 }
 
 function jobRecruiter(g: GameState): void {
@@ -761,6 +830,14 @@ function yearForJob(g: GameState, slot: Slot): void {
   // Fired for poor performance.
   if (job.performance < 25 && chance(g, job.performance < 15 ? 0.6 : 0.3)) {
     fire(g, slot, pick(g, FIRE_REASONS))
+    return
+  }
+  // Lies on your CV can surface years later.
+  const fakes = embellishedEntries(g)
+  if (fakes.length && (job.category === 'fulltime' || job.category === 'parttime') && chance(g, 0.03 * fakes.length)) {
+    const fake = pick(g, fakes)
+    caughtLying(g, fake)
+    fire(g, slot, `HR re-ran your background check and found that "${fake.title}" never happened. Lying on your CV is a firing offense at ${job.company}.`)
     return
   }
   if (job.performance < 35 && chance(g, 0.4)) {
@@ -1292,9 +1369,12 @@ const jobsMenu: MenuGroup = {
   subtitle: 'Full-time job listings',
   visible: (g) => g.character.age >= 14,
   disabledReason: (g) => blocked(g) ?? (g.character.age < 18 ? 'You must be 18 to apply for full-time jobs.' : null),
-  header: () => 'New listings are posted every year. Tap a job to see its requirements.',
+  header: (g) => `New listings are posted every year. Tap a job to see its requirements. Recruiters read your CV before deciding who to interview.\n${jobMarket(g).line}.`,
   children: (g) => {
     const nodes: MenuNode[] = []
+    const market = jobMarket(g)
+    const mood = market.score >= 58 ? '\u{1F525}' : market.score >= 43 ? '\u{1F4CA}' : '\u{1F9CA}'
+    nodes.push({ type: 'info', id: 'jobs.market', text: `${market.line}. Your CV strength for a typical office job: ${cvScore(g, { kind: 'job', edu: 'bachelor' }).score}/100.`, emoji: mood })
     nodes.push({ type: 'heading', id: 'jobs.h', label: `Listings for ${g.year}` })
     for (const l of fullTimeListings(g)) nodes.push(listingAction(l))
     return nodes
@@ -1320,7 +1400,7 @@ const partTimeMenu: MenuGroup = {
   subtitle: 'Hourly jobs, from age 14',
   visible: (g) => g.character.age >= 13,
   disabledReason: (g) => blocked(g) ?? (g.character.age < 14 ? 'You must be 14 to get a part-time job.' : null),
-  header: () => 'You can hold one part-time job alongside school or a full-time job.',
+  header: (g) => `You can hold one part-time job alongside school or a full-time job.\n${jobMarket(g).line}.`,
   children: (g) => partTimeListings(g).map(listingAction),
 }
 
@@ -1416,7 +1496,9 @@ export const occupationMenu: MenuGroup = {
     const c = g.character
     if (!c.alive) return [{ type: 'info', id: 'occupation.dead', text: "You're dead. Your career is over.", emoji: '\u{1FAA6}' }]
     if (c.prison) {
-      return [{ type: 'info', id: 'occupation.prison', text: `You're in prison. Your career will have to wait until you're released${c.prison.life ? '... if that ever happens' : ''}.`, emoji: '\u{1F512}' }]
+      const jail: MenuNode[] = [{ type: 'info', id: 'occupation.prison', text: `You're in prison. Your career will have to wait until you're released${c.prison.life ? '... if that ever happens' : ''}.`, emoji: '\u{1F512}' }]
+      if (c.age >= 12) jail.push(cvMenu)
+      return jail
     }
     if (c.age < 5 && !c.education.current) {
       return [{ type: 'info', id: 'occupation.young', text: "You're too young to go to school or work. Enjoy nap time while it lasts!", emoji: '\u{1F37C}' }]
@@ -1442,6 +1524,10 @@ export const occupationMenu: MenuGroup = {
     if (working.length) {
       nodes.push({ type: 'heading', id: 'occupation.h.work', label: 'My Work' })
       nodes.push(...working)
+    }
+    if (c.age >= 12) {
+      nodes.push({ type: 'heading', id: 'occupation.h.cv', label: 'Your CV' })
+      nodes.push(cvMenu)
     }
     if (c.age >= 13) {
       nodes.push({ type: 'heading', id: 'occupation.h.find', label: 'Find Work' })

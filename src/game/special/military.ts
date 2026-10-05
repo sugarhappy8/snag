@@ -7,7 +7,7 @@ import { killCharacter } from '../death'
 import { chance, pick, rand, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, MenuAction, MenuGroup, MenuNode } from '../types'
-import { getCountry } from '../world'
+import { countryLabel, getCountry } from '../world'
 import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
 
 // ---------------------------------------------------------------------------
@@ -89,8 +89,70 @@ function data(job: Job): MilData {
   return view<MilData>(job.data)
 }
 
+// ---------------------------------------------------------------------------
+// Local forces: which branches a country has and what they're called.
+
+/** No navy (landlocked) or no armed forces at all (Andorra and Monaco rely on their neighbors). */
+const NO_NAVY = new Set(['at', 'ch', 'hu', 'cz', 'sk', 'rs', 'et', 'ug', 'zw', 'af', 'mn', 'np'])
+const NO_MILITARY = new Set(['ad', 'mc'])
+const HAS_MARINES = new Set(['us', 'gb', 'kr', 'id', 'ph', 'br', 'ar', 'th', 'tw', 'nl', 'es', 'co', 'mx', 've', 'pe', 'cl', 'ec', 'ru', 'ua', 'cn', 'pt', 'it', 'fr'])
+const HAS_COAST_GUARD = new Set(['us', 'ca', 'jp', 'in', 'pk', 'bd', 'kr', 'ph', 'id', 'my', 'it', 'gr', 'tr', 'se', 'no', 'cn', 'tw', 'vn', 'sa', 'ae'])
+/** Commonwealth realms and kingdoms whose navies and air forces are "Royal". */
+const ROYAL_FORCES = new Set(['ca', 'au', 'nz', 'nl', 'no', 'dk', 'my', 'th', 'sa', 'jo', 'ma', 'be', 'bs'])
+
+const FORCE_NAMES: Record<string, Partial<Record<string, string>>> = {
+  gb: { army: 'British Army', navy: 'Royal Navy', airforce: 'Royal Air Force', marines: 'Royal Marines' },
+  jp: { army: 'Japan Ground Self-Defense Force', navy: 'Japan Maritime Self-Defense Force', airforce: 'Japan Air Self-Defense Force', coastguard: 'Japan Coast Guard' },
+  il: { army: 'IDF Ground Forces', navy: 'Israeli Navy', airforce: 'Israeli Air Force' },
+  de: { army: 'German Army', navy: 'German Navy', airforce: 'Luftwaffe' },
+  cn: { army: 'PLA Ground Force', navy: 'PLA Navy', airforce: 'PLA Air Force', marines: 'PLA Marine Corps', coastguard: 'China Coast Guard' },
+  ru: { army: 'Russian Ground Forces', navy: 'Russian Navy', airforce: 'Russian Aerospace Forces', marines: 'Russian Naval Infantry' },
+  fr: { army: 'French Army', navy: 'French Navy', airforce: 'French Air and Space Force', marines: 'French Marine Troops' },
+  nl: { marines: 'Netherlands Marine Corps' },
+  es: { marines: 'Spanish Marine Infantry' },
+  id: { marines: 'Indonesian Marine Corps' },
+  ie: { army: 'Irish Army', navy: 'Irish Naval Service', airforce: 'Irish Air Corps' },
+  ch: { army: 'Swiss Army', airforce: 'Swiss Air Force' },
+}
+
+function branchesFor(g: GameState): Branch[] {
+  const id = g.character.countryId
+  if (NO_MILITARY.has(id)) return []
+  return BRANCHES.filter((b) => {
+    if (b.id === 'navy') return !NO_NAVY.has(id)
+    if (b.id === 'marines') return HAS_MARINES.has(id)
+    if (b.id === 'coastguard') return HAS_COAST_GUARD.has(id)
+    return true
+  })
+}
+
+/** "Indonesian Army", "Royal Navy", "Japan Ground Self-Defense Force", "U.S. Marine Corps". */
 function unitName(g: GameState, b: Branch): string {
-  return `${getCountry(g.character.countryId).demonym} ${b.name}`
+  const id = g.character.countryId
+  const named = FORCE_NAMES[id]?.[b.id]
+  if (named) return named
+  const country = getCountry(id)
+  if (id === 'us') return `U.S. ${b.name}`
+  if (ROYAL_FORCES.has(id) && (b.id === 'navy' || b.id === 'airforce')) return `Royal ${country.demonym} ${b.name}`
+  return `${country.demonym} ${b.name}`
+}
+
+/** US medals for Americans; generic decorations everywhere else. */
+const LOCAL_MEDALS: Record<string, string> = {
+  'Achievement Medal': 'Service Medal',
+  'Commendation Medal': 'Commendation Medal',
+  'Bronze Star': 'Medal for Bravery',
+  'Silver Star': 'Gallantry Cross',
+  'Distinguished Service Cross': 'Distinguished Service Order',
+  'Medal of Honor': 'Cross of Valor',
+}
+
+function medalName(g: GameState, base: string): string {
+  return g.character.countryId === 'us' ? base : (LOCAL_MEDALS[base] ?? base)
+}
+
+function woundMedal(g: GameState): string {
+  return g.character.countryId === 'us' ? 'Purple Heart' : 'Wound Badge'
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +163,7 @@ function rejectReason(g: GameState, track: Track): string | null {
   const p = peek<MilProfile>(g, 'military')
   if (ownFlag(g, 'deserter') === true) return 'deserter'
   if (p?.discharge === 'Dishonorable') return 'The recruiter looked up your record and saw your dishonorable discharge. They told you never to come back.'
-  if (track === 'enlisted' && !hasHighSchool(g)) return 'The recruiter told you to come back once you have a high school diploma or GED.'
+  if (track === 'enlisted' && !hasHighSchool(g)) return c.countryId === 'us' ? 'The recruiter told you to come back once you have a high school diploma or GED.' : 'The recruiter told you to come back once you have finished school.'
   if (track === 'officer' && !hasCollegeDegree(g)) return 'Officer candidates need a university degree.'
   if (c.age > (track === 'officer' ? 42 : 39)) return 'The recruiter politely explained that you are too old to join up.'
   if (c.stats.health < 30) return 'You failed the military physical. The doctor suggested you try walking up some stairs first.'
@@ -121,7 +183,7 @@ function enlist(g: GameState, b: Branch, track: Track, conscript = false): void 
     arrestPlayer(g, 'Desertion', 3)
     return
   }
-  if (reason) return tell(g, b.name, reason, b.emoji)
+  if (reason) return tell(g, unitName(g, b), reason, b.emoji)
   const rankList = ranks(b, track)
   const company = unitName(g, b)
   const { job, quit } = hire(g, {
@@ -150,7 +212,7 @@ function enlist(g: GameState, b: Branch, track: Track, conscript = false): void 
   const what = conscript ? `You reported for mandatory service in the ${company}.` : track === 'officer' ? `You were commissioned as a ${rankList[0]} in the ${company}.` : `You enlisted in the ${company} as a ${rankList[0]}.`
   log(g, conscript ? `I was drafted into the ${company}.` : track === 'officer' ? `I became an officer in the ${company}.` : `I enlisted in the ${company}.`, 'event')
   remember(g, conscript ? `Drafted into the ${company}.` : `Joined the ${company} (${track}).`)
-  say(g, b.name, `${what}${quitNote(quit)} ${training}`, b.emoji, 'good')
+  say(g, unitName(g, b), `${what}${quitNote(quit)} ${training}`, b.emoji, 'good')
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +314,8 @@ const MEDALS: { name: string; weight: number; value: number }[] = [
 ]
 
 const medalScript = defineScript('special.mil.medal', (g, choice, raw) => {
-  const medal = MEDALS.find((m) => m.name === (raw as { medal?: string } | undefined)?.medal) ?? MEDALS[0]
+  const found = MEDALS.find((m) => m.name === (raw as { medal?: string } | undefined)?.medal) ?? MEDALS[0]
+  const medal = { ...found, name: medalName(g, found.name) }
   const p = milProfile(g)
   if (choice === 'keep') {
     p.medals.push(medal.name)
@@ -299,7 +362,7 @@ const mineScript = defineScript('special.mil.mine', (g, choice, raw) => {
       g,
       medalScript,
       'Mission Accomplished',
-      `${d.sea ? 'Your ship made it through the mines' : 'You made it across the minefield'} and completed your mission at ${d.place}. You've been awarded the ${medal.name} for bravery!`,
+      `${d.sea ? 'Your ship made it through the mines' : 'You made it across the minefield'} and completed your mission at ${d.place}. You've been awarded the ${medalName(g, medal.name)} for bravery!`,
       [
         { id: 'keep', label: 'Accept it proudly', emoji: '\u{1F396}\u{FE0F}' },
         { id: 'pawn', label: `Pawn it (${money(medal.value)})`, emoji: '\u{1F4B0}' },
@@ -324,11 +387,11 @@ const mineScript = defineScript('special.mil.mine', (g, choice, raw) => {
   }
   addStat(g, 'health', -randInt(g, 20, 35))
   addStat(g, 'happiness', -15)
-  milProfile(g).medals.push('Purple Heart')
+  milProfile(g).medals.push(woundMedal(g))
   count(g, 'medals')
   log(g, `I was badly wounded by a ${d.sea ? 'naval mine' : 'landmine'} at ${d.place}.`, 'bad')
   remember(g, `Wounded in action at ${d.place} (${injury.toLowerCase()}).`)
-  let text = `A ${d.sea ? 'naval mine exploded beside your ship' : 'landmine exploded beneath you'} at ${d.place}. You survived, but suffered ${injury.toLowerCase()}. You were awarded the Purple Heart.`
+  let text = `A ${d.sea ? 'naval mine exploded beside your ship' : 'landmine exploded beneath you'} at ${d.place}. You survived, but suffered ${injury.toLowerCase()}. You were awarded the ${woundMedal(g)}.`
   if (job && chance(g, 0.5)) {
     discharge(g, 'Medical')
     text += ' Your injuries were serious enough that you received a medical discharge.'
@@ -530,11 +593,11 @@ function militaryReason(g: GameState): string | null {
   return blocked(g, 18)
 }
 
-function branchMenu(b: Branch): MenuGroup {
+function branchMenu(g: GameState, b: Branch): MenuGroup {
   return {
     type: 'menu',
     id: `military.${b.id}`,
-    label: b.name,
+    label: unitName(g, b),
     emoji: b.emoji,
     subtitle: 'Enlist or become an officer',
     children: (): MenuNode[] => [
@@ -543,9 +606,9 @@ function branchMenu(b: Branch): MenuGroup {
         id: `military.${b.id}.enlist`,
         label: 'Enlist',
         emoji: '\u{1FA96}',
-        subtitle: `Start as a ${b.enlisted[0]} · ${money(ENLISTED_PAY[0])}/yr · High school diploma`,
+        subtitle: `Start as a ${b.enlisted[0]} · ${money(ENLISTED_PAY[0])}/yr · ${g.character.countryId === 'us' ? 'High school diploma' : 'School-leaving certificate'}`,
         disabledReason: militaryReason,
-        confirm: (g) => (g.character.job ? `Joining the ${b.name} means quitting your job as ${g.character.job.title}. Continue?` : null),
+        confirm: (g) => (g.character.job ? `Joining the ${unitName(g, b)} means quitting your job as ${g.character.job.title}. Continue?` : null),
         run: (g) => enlist(g, b, 'enlisted'),
       },
       {
@@ -555,7 +618,7 @@ function branchMenu(b: Branch): MenuGroup {
         emoji: '\u{2B50}',
         subtitle: `Start as a ${b.officer[0]} · ${money(OFFICER_PAY[0])}/yr · University degree`,
         disabledReason: militaryReason,
-        confirm: (g) => (g.character.job ? `Joining the ${b.name} means quitting your job as ${g.character.job.title}. Continue?` : null),
+        confirm: (g) => (g.character.job ? `Joining the ${unitName(g, b)} means quitting your job as ${g.character.job.title}. Continue?` : null),
         run: (g) => enlist(g, b, 'officer'),
       },
     ],
@@ -572,11 +635,13 @@ export const militaryMenu: MenuGroup = {
   header: (g) => {
     const job = militaryJob(g)
     if (job) return `You are a ${job.title} in the ${job.company}. Your service options are in your job section.`
-    return 'Enlist with a high school diploma, or join as an officer with a university degree. You must be 18 or older.'
+    return g.character.countryId === 'us' ? 'Enlist with a high school diploma, or join as an officer with a university degree. You must be 18 or older.' : 'Enlist once you have finished school, or join as an officer with a university degree. You must be 18 or older.'
   },
   children: (g): MenuNode[] => {
     if (militaryJob(g)) return [{ type: 'info', id: 'military.serving', text: 'You are already serving.', emoji: '\u{1FA96}' }]
-    return BRANCHES.map(branchMenu)
+    const list = branchesFor(g)
+    if (!list.length) return [{ type: 'info', id: 'military.none', text: `${countryLabel(getCountry(g.character.countryId))} has no armed forces of its own. Its neighbors handle the defending.`, emoji: '\u{1F54A}\u{FE0F}' }]
+    return list.map((b) => branchMenu(g, b))
   },
 }
 

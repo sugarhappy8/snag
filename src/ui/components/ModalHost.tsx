@@ -260,6 +260,7 @@ const FALLBACK_LABELS: Record<string, string> = {
   resolveChoice: 'Seeing what happens…',
   customAction: 'Seeing what happens…',
   interview: 'Preparing your interview…',
+  screenApplication: 'Reading your CV…',
   obituary: 'Writing your obituary…',
 }
 

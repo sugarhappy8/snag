@@ -22,6 +22,8 @@ import {
   strangerName,
   type Ctx,
 } from './helpers'
+import { fillLocal } from '../data/locales'
+import { feastHoliday } from './adult'
 
 function nm(x: Ctx, fallback = 'them'): string {
   return x.p?.firstName ?? fallback
@@ -33,6 +35,33 @@ function loseUpTo(g: GameState, amt: number): number {
 }
 
 const SCAM_PLACES = ['Cancún', 'a Las Vegas casino', 'a jail in Tijuana', 'a hostel in Prague', 'an airport in Lisbon']
+/** Where a fake grandchild claims to be stuck, outside the US: local getaways and faraway airports. */
+const LOCAL_SCAM_PLACES = ['a police station in {getaway}', 'a hospital in {getaway}', 'a hostel in Prague', 'an airport in Dubai', 'a jail across the border']
+
+/** How the fake grandchild wants the money: gift cards in the English-speaking world, mobile money in East Africa, a bank transfer elsewhere. */
+function scamWay(g: GameState): { pay: string; send: string; bought: string } {
+  const id = g.character.countryId
+  if (['us', 'ca', 'gb', 'ie', 'au', 'nz', 'pr'].includes(id)) return { pay: 'in gift cards', send: 'Send the gift cards', bought: 'You bought {amt} in gift cards and read the numbers over the phone.' }
+  if (['ke', 'ug', 'zw', 'cd', 'ng', 'et'].includes(id)) return { pay: 'by mobile money', send: 'Send the money', bought: 'You sent {amt} by mobile money to a number you had never seen before.' }
+  return { pay: 'by bank transfer', send: 'Send the money', bought: 'You wired {amt} to an account number the caller read out twice, very slowly.' }
+}
+
+/** What retirees play here: pickleball in the US, pétanque in France, gateball in Japan, lawn bowls in the Commonwealth. */
+function elderSport(g: GameState): string {
+  const id = g.character.countryId
+  if (id === 'us' || id === 'ca' || id === 'vn') return 'pickleball'
+  if (['fr', 'be', 'mc', 'ma', 'tn', 'dz', 'ad'].includes(id)) return 'pétanque'
+  if (['it', 'ar', 'uy'].includes(id)) return 'bocce'
+  if (['jp', 'kr', 'tw'].includes(id)) return 'gateball'
+  if (['gb', 'au', 'nz', 'za', 'ie', 'zw'].includes(id)) return 'lawn bowls'
+  if (['cn', 'hk', 'sg', 'my'].includes(id)) return 'tai chi'
+  if (['de', 'at', 'ch', 'nl', 'dk', 'se', 'no', 'fi'].includes(id)) return 'table tennis'
+  return 'walking football'
+}
+
+function uc(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
 
 export const ELDER_EVENTS = defineEvents([
   {
@@ -46,10 +75,11 @@ export const ELDER_EVENTS = defineEvents([
       const gk = anyOf(g, grandkids(g, 14))
       const who = gk ? gk.firstName : 'your grandson'
       const amt = Math.round(dollars(g, 900, 4500) / 100) * 100
-      const place = pick(g, SCAM_PLACES)
+      const place = g.character.countryId === 'us' ? pick(g, SCAM_PLACES) : fillLocal(g, pick(g, LOCAL_SCAM_PLACES))
+      const way = scamWay(g)
       return {
-        text: `Your phone rings. A muffled voice says, "${gk ? `Hi, it's ${who}` : "Grandma? Grandpa? It's me"}! I'm stuck in ${place} and I need ${money(amt)} in gift cards for bail. Please don't tell Mom!" What will you do?`,
-        choices: [ch('pay', 'Send the gift cards', '🎁'), ch('quiz', 'Ask a question only they would know', '🕵️'), ch('hang', 'Hang up', '📵'), ch('call', 'Call the family to check', '📲')],
+        text: `Your phone rings. A muffled voice says, "${gk ? `Hi, it's ${who}` : "Grandma? Grandpa? It's me"}! I'm stuck in ${place} and I need ${money(amt)} ${way.pay} for bail. Please don't tell Mom!" What will you do?`,
+        choices: [ch('pay', way.send, '🎁'), ch('quiz', 'Ask a question only they would know', '🕵️'), ch('hang', 'Hang up', '📵'), ch('call', 'Call the family to check', '📲')],
         person: gk,
         data: { amt, place, who },
       }
@@ -57,8 +87,8 @@ export const ELDER_EVENTS = defineEvents([
     resolve: {
       pay: (g, x) => {
         const lost = loseUpTo(g, x.n('amt'))
-        if (lost === 0) return say(g, x, 'Saved by poverty', "You went to buy the gift cards but didn't have enough money. The caller hung up in disgust. That should have been your first clue.", 'A scammer pretending to be my grandchild tried to get money from me.', { happiness: -2 })
-        say(g, x, ['Scammed!', 'Gone'], `You bought ${money(lost)} in gift cards and read the numbers over the phone. ${x.p ? `${x.p.firstName} later called from home, completely confused.` : 'You do not have a grandson in trouble.'} You'd been scammed.`, `I lost ${money(lost)} to a phone scammer pretending to be my grandchild.`, { money: -lost, happiness: -12, memory: 'Fell for a grandparent phone scam.' }, 'bad', '💸')
+        if (lost === 0) return say(g, x, 'Saved by poverty', "You went to get the money but didn't have enough. The caller hung up in disgust. That should have been your first clue.", 'A scammer pretending to be my grandchild tried to get money from me.', { happiness: -2 })
+        say(g, x, ['Scammed!', 'Gone'], `${scamWay(g).bought.replace('{amt}', money(lost))} ${x.p ? `${x.p.firstName} later called from home, completely confused.` : 'You do not have a grandson in trouble.'} You'd been scammed.`, `I lost ${money(lost)} to a phone scammer pretending to be my grandchild.`, { money: -lost, happiness: -12, memory: 'Fell for a grandparent phone scam.' }, 'bad', '💸')
       },
       quiz: (g, x) => say(g, x, 'Sharp as a tack', `You asked "What did I get you for your 7th birthday?" The caller stammered and hung up. Nice try, crook.`, 'I outsmarted a phone scammer pretending to be my grandchild.', { smarts: 3, happiness: 4 }, 'good', '🕵️'),
       hang: (g) => say(g, null, 'Click', "You hung up. If it was really them, they'll call back. (They didn't.)", 'I hung up on a suspicious phone call.', {}),
@@ -444,7 +474,7 @@ export const ELDER_EVENTS = defineEvents([
         const cost = Math.min(Math.max(0, g.character.money), dollars(g, 300, 2500))
         say(g, null, 'Crystal clear', `You got a hearing aid${cost ? ` for ${money(cost)}` : ''}. You can hear birds again. Also your neighbors arguing. Mostly that.`, 'I got a hearing aid.', { money: -cost, happiness: 5, count: 'doctorVisits' }, 'good', '🦻')
       },
-      pretend: (g) => say(g, null, 'Smile and nod', 'You decided to smile and nod at everything. You accidentally agreed to host Thanksgiving.', 'I pretended to hear everything people said to me.', { happiness: -2 }),
+      pretend: (g) => say(g, null, 'Smile and nod', `You decided to smile and nod at everything. You accidentally agreed to host ${feastHoliday(g)}.`, 'I pretended to hear everything people said to me.', { happiness: -2 }),
       louder: (g) => say(g, null, 'SPEAK UP', 'You told everyone to speak up. Now every family dinner sounds like a rock concert.', 'I made everyone talk louder around me.', { happiness: 2 }),
     },
   },
@@ -455,16 +485,17 @@ export const ELDER_EVENTS = defineEvents([
     minAge: 55,
     maxAge: 90,
     cooldown: 12,
-    setup: () => ({
-      text: 'The local pickleball league is recruiting, and the competition is reportedly vicious. Will you join?',
+    setup: (g) => ({
+      title: uc(elderSport(g)),
+      text: `The local ${elderSport(g)} ${elderSport(g) === 'tai chi' ? 'group' : 'league'} is recruiting, and the competition is reportedly vicious. Will you join?`,
       choices: [ch('join', 'Join the league', '🏓'), ch('trash', 'Join and talk trash', '😤'), ch('no', 'Pass', '🙅')],
     }),
     resolve: {
       join: (g) => {
-        if (chance(g, 0.2)) return say(g, null, 'Pulled hamstring', 'You lunged for a drop shot and something in your leg went "ping." You are now on the injured reserve.', 'I pulled a hamstring playing pickleball.', { health: -6, happiness: -3, condition: { name: 'Pulled Hamstring', kind: 'injury', severity: 10 } }, 'bad', '🤕')
-        say(g, null, ['Dink master', 'New hobby'], 'You joined the league and turned out to be pretty good. You made a few friends and enemies.', 'I joined a pickleball league.', { health: 5, happiness: 6, athleticism: 2 }, 'good', '🏓')
+        if (chance(g, 0.2)) return say(g, null, 'Pulled hamstring', 'You lunged for a tricky shot and something in your leg went "ping." You are now on the injured reserve.', `I pulled a hamstring playing ${elderSport(g)}.`, { health: -6, happiness: -3, condition: { name: 'Pulled Hamstring', kind: 'injury', severity: 10 } }, 'bad', '🤕')
+        say(g, null, ['Dink master', 'New hobby'], 'You joined the league and turned out to be pretty good. You made a few friends and enemies.', `I joined a ${elderSport(g)} league.`, { health: 5, happiness: 6, athleticism: 2 }, 'good', '🏓')
       },
-      trash: (g) => say(g, null, 'Villain arc', 'You joined the league and trash-talked everyone. You are now the most hated player in the retirement community, and you love it.', 'I became the villain of my local pickleball league.', { health: 4, happiness: 7, karma: -3 }),
+      trash: (g) => say(g, null, 'Villain arc', 'You joined the league and trash-talked everyone. You are now the most hated player in the retirement community, and you love it.', `I became the villain of my local ${elderSport(g)} league.`, { health: 4, happiness: 7, karma: -3 }),
       no: (g) => say(g, null, 'Spectator', 'You passed. You still go to watch the drama, though.', null, {}),
     },
   },

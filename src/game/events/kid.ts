@@ -18,6 +18,7 @@ import {
   siblings,
   strangerName,
 } from './helpers'
+import { hasSnow, locale, localSoftDrink } from '../data/locales'
 
 const BROKEN_ITEMS = ['favorite vase', 'flat-screen TV', 'antique clock', 'reading glasses', 'wedding photo frame', 'coffee maker', 'laptop', 'porcelain cat statue']
 const PETS = [
@@ -478,21 +479,31 @@ export const KID_EVENTS = defineEvents([
     title: 'Lemonade Stand',
     minAge: 6,
     maxAge: 12,
-    setup: () => ({
-      text: "It's a scorching summer day and you have an idea: a lemonade stand! How will you run it?",
-      choices: [ch('cheap', 'Charge a fair price'), ch('gouge', 'Charge $5 a cup'), ch('free', 'Give it away free'), ch('skip', "Nah, it's too hot")],
-    }),
+    // Lemonade stands are a North American thing; elsewhere kids sell a cold local drink.
+    setup: (g) => {
+      const us = g.character.countryId === 'us' || g.character.countryId === 'ca'
+      const drink = us ? 'lemonade' : `iced ${localSoftDrink(g).replace(/^iced /i, '')}`
+      const price = us ? 5 : dollars(g, 3, 5)
+      return {
+        title: us ? 'Lemonade Stand' : 'Drink Stand',
+        text: us ? "It's a scorching summer day and you have an idea: a lemonade stand! How will you run it?" : `It's a scorching day and you have an idea: a stand selling ${drink} outside your house! How will you run it?`,
+        choices: [ch('cheap', 'Charge a fair price'), ch('gouge', `Charge ${money(price)} a cup`), ch('free', 'Give it away free'), ch('skip', "Nah, it's too hot")],
+        data: { drink, price, stand: us ? 'lemonade stand' : `${drink} stand` },
+      }
+    },
     resolve: {
-      cheap: (g) => {
+      cheap: (g, x) => {
         const amt = dollars(g, 8, 35)
-        say(g, null, 'Small business', `Your lemonade stand was a hit! You made ${money(amt)}.`, `I ran a lemonade stand and made ${money(amt)}.`, { money: amt, happiness: 8, smarts: 2 }, 'good', '💵')
+        say(g, x, 'Small business', `Your ${x.s('stand') || 'lemonade stand'} was a hit! You made ${money(amt)}.`, `I ran a ${x.s('stand') || 'lemonade stand'} and made ${money(amt)}.`, { money: amt, happiness: 8, smarts: 2 }, 'good', '💵')
       },
-      gouge: (g) => {
+      gouge: (g, x) => {
         const sold = randInt(g, 0, 4)
-        say(g, null, sold ? 'Supply and demand' : 'Market correction', sold ? `You sold ${sold} cup${sold === 1 ? '' : 's'} at $5 each to very thirsty, very annoyed neighbors.` : 'Nobody paid $5 for lemonade. You drank the whole pitcher yourself.', sold ? `I sold lemonade for $5 a cup and made ${money(sold * 5)}.` : 'I tried to sell lemonade for $5 a cup. Nobody bought any.', { money: sold * 5, happiness: sold ? 4 : -4 })
+        const price = x.n('price') || 5
+        const drink = x.s('drink') || 'lemonade'
+        say(g, x, sold ? 'Supply and demand' : 'Market correction', sold ? `You sold ${sold} cup${sold === 1 ? '' : 's'} at ${money(price)} each to very thirsty, very annoyed neighbors.` : `Nobody paid ${money(price)} for ${drink}. You drank the whole pitcher yourself.`, sold ? `I sold ${drink} for ${money(price)} a cup and made ${money(sold * price)}.` : `I tried to sell ${drink} for ${money(price)} a cup. Nobody bought any.`, { money: sold * price, happiness: sold ? 4 : -4 })
       },
-      free: (g) => say(g, null, ['Generous', 'Neighborhood hero'], 'You gave lemonade away for free. The mail carrier said you were the best thing that happened to them all week.', 'I gave away free lemonade on a hot day.', { karma: 8, happiness: 6 }, 'good'),
-      skip: (g) => say(g, null, 'Too hot', 'You stayed inside in front of a fan instead.', 'I decided it was too hot to run a lemonade stand.', {}),
+      free: (g, x) => say(g, x, ['Generous', 'Neighborhood hero'], `You gave ${x.s('drink') || 'lemonade'} away for free. The mail carrier said you were the best thing that happened to them all week.`, `I gave away free ${x.s('drink') || 'lemonade'} on a hot day.`, { karma: 8, happiness: 6 }, 'good'),
+      skip: (g, x) => say(g, x, 'Too hot', 'You stayed inside in front of a fan instead.', `I decided it was too hot to run a ${x.s('stand') || 'lemonade stand'}.`, {}),
     },
   },
   {
@@ -502,10 +513,39 @@ export const KID_EVENTS = defineEvents([
     minAge: 5,
     maxAge: 17,
     when: (g) => g.character.education.current !== null,
-    setup: () => ({
-      text: "School's canceled! It's a snow day. How will you spend it?",
-      choices: [ch('snowman', 'Build a snowman', '⛄'), ch('fight', 'Have a snowball fight', '❄️'), ch('sled', 'Go sledding', '🛷'), ch('games', 'Play video games', '🎮')],
-    }),
+    // A snow day where it snows; a flood day in the tropics, a sandstorm in the desert and a
+    // teachers' strike everywhere else.
+    setup: (g) => {
+      if (hasSnow(g)) {
+        return {
+          text: "School's canceled! It's a snow day. How will you spend it?",
+          choices: [ch('snowman', 'Build a snowman', '⛄'), ch('fight', 'Have a snowball fight', '❄️'), ch('sled', 'Go sledding', '🛷'), ch('games', 'Play video games', '🎮')],
+        }
+      }
+      const climate = locale(g).climate
+      if (climate === 'tropical') {
+        return {
+          title: 'Flood Day',
+          text: "School's canceled! The streets flooded after a huge downpour. How will you spend the day?",
+          choices: [ch('puddles', 'Splash in the puddles', '💦'), ch('boats', 'Race paper boats', '⛵'), ch('help', 'Help the neighbors clear the drains', '🧹'), ch('games', 'Play video games', '🎮')],
+          data: { day: 'flood day' },
+        }
+      }
+      if (climate === 'arid') {
+        return {
+          title: 'Sandstorm Day',
+          text: "School's canceled! A sandstorm turned the sky orange. How will you spend the day?",
+          choices: [ch('fort', 'Build a blanket fort', '🏰'), ch('watch', 'Watch the storm from the window', '🌪️'), ch('sneak', 'Sneak outside to look', '😷'), ch('games', 'Play video games', '🎮')],
+          data: { day: 'sandstorm day' },
+        }
+      }
+      return {
+        title: 'Day Off',
+        text: "School's canceled! The teachers are on strike. How will you spend the day?",
+        choices: [ch('park', 'Play outside all day', '⚽'), ch('help', 'Help out at home', '🧹'), ch('picket', "Join the teachers' picket line", '🪧'), ch('games', 'Play video games', '🎮')],
+        data: { day: 'day off' },
+      }
+    },
     resolve: {
       snowman: (g) => say(g, null, 'Frosty', 'You built a magnificent snowman. The neighbor kid knocked its head off by dinner.', 'I built a snowman on a snow day.', { happiness: 8 }, 'good'),
       fight: (g) => {
@@ -516,7 +556,18 @@ export const KID_EVENTS = defineEvents([
         const tree = chance(g, 0.15)
         say(g, null, tree ? 'Tree 1, You 0' : 'Wheee!', tree ? 'You sledded straight into a tree. Your sled did not survive. You barely did.' : 'You flew down the biggest hill in town. Pure joy.', 'I went sledding on a snow day.', tree ? { health: -8, happiness: -2, condition: { name: 'Concussion', kind: 'injury', severity: 15 } } : { happiness: 12, health: 2 }, tree ? 'bad' : 'good')
       },
-      games: (g) => say(g, null, 'Cozy', 'You stayed in your pajamas and gamed for 11 hours straight.', 'I played video games all day on a snow day.', { happiness: 6, health: -2 }),
+      puddles: (g) => {
+        const sick = chance(g, 0.2)
+        say(g, null, sick ? 'Achoo' : 'Splash!', sick ? 'You splashed in every puddle on the street and came down with a cold by dinner.' : 'You stomped through every puddle on the street. Your mom gave up on your clothes.', 'I splashed in the floodwater when school was canceled.', sick ? { happiness: 4, health: -4 } : { happiness: 10 }, sick ? 'neutral' : 'good')
+      },
+      boats: (g) => say(g, null, 'Admiral', 'You folded a fleet of paper boats and raced them down the gutter. Yours won. Obviously.', 'I raced paper boats down the flooded street.', { happiness: 8, smarts: 1 }, 'good'),
+      help: (g) => say(g, null, ['Good kid', 'Helping hand'], 'You spent the day helping the neighbors clean up. Somebody gave you a snack and called you a hero.', 'I helped the neighbors on a day off from school.', { karma: 6, happiness: 4 }, 'good'),
+      fort: (g) => say(g, null, 'Fortress', 'You built a blanket fort so big it had a guest room. The storm never stood a chance.', 'I built a blanket fort during a sandstorm.', { happiness: 8 }, 'good'),
+      watch: (g) => say(g, null, 'Apocalypse view', 'You watched the sky turn orange and pretended you were on Mars. Best day ever.', 'I watched a sandstorm from the window.', { happiness: 5, smarts: 1 }, 'good'),
+      sneak: (g) => say(g, null, 'Sandblasted', 'You stepped outside for ten seconds and came back with sand in places sand should never be.', 'I snuck out into a sandstorm. Bad idea.', { happiness: -2, health: -3 }, 'bad'),
+      park: (g) => say(g, null, 'Freedom', 'You played outside from breakfast until the streetlights came on.', 'I played outside all day when the teachers went on strike.', { happiness: 10, health: 2 }, 'good'),
+      picket: (g) => say(g, null, 'Solidarity', 'You made your own sign and marched with the teachers. Your favorite teacher teared up.', "I joined my teachers' picket line.", { happiness: 6, karma: 4 }, 'good'),
+      games: (g, x) => say(g, x, 'Cozy', 'You stayed in your pajamas and gamed for 11 hours straight.', `I played video games all day on a ${x.s('day') || 'snow day'}.`, { happiness: 6, health: -2 }),
     },
   },
   {

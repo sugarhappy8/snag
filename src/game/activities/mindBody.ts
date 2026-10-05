@@ -398,8 +398,9 @@ function walkEvent(g: GameState, w: WalkType): boolean {
     return true
   }
   if (w.id === 'hike' && roll <= 21) {
-    const injury = pick(g, ['Sprained Ankle', 'Twisted Knee', 'Poison Ivy Rash'])
-    addCondition(g, injury, injury === 'Poison Ivy Rash' ? 'disease' : 'injury', randInt(g, 4, 12))
+    const rash = g.character.countryId === 'us' || g.character.countryId === 'ca' ? 'Poison Ivy Rash' : 'Nettle Rash'
+    const injury = pick(g, ['Sprained Ankle', 'Twisted Knee', rash])
+    addCondition(g, injury, injury === rash ? 'disease' : 'injury', randInt(g, 4, 12))
     addStat(g, 'health', -randInt(g, 2, 6))
     log(g, `I got a ${injury.toLowerCase()} on a hike.`, 'bad')
     result(g, 'Trail Trouble', `You were admiring the view and ended up with a ${injury.toLowerCase()}. Nature fights back.`, '\u{1FA79}', 'bad')

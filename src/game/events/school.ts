@@ -10,6 +10,12 @@ import {
   anyOf,
   canDrink,
   ch,
+  conservativeSchooling,
+  isUS,
+  loc,
+  peClass,
+  term,
+  titleOf,
   defineEvents,
   dollars,
   friends,
@@ -494,17 +500,21 @@ export const SCHOOL_EVENTS = defineEvents([
     setup: (g) => {
       const t = teacher(g)
       return {
-        text: `Your friends are going to toilet paper the house of ${t}, a teacher at your school. What will you do?`,
+        text: isUS(g) ? `Your friends are going to toilet paper the house of ${t}, a teacher at your school. What will you do?` : `Your friends are going to cover the car of ${t}, a teacher at your school, in sticky notes. What will you do?`,
         choices: [ch('watch', 'Go and watch only'), ch('no', "I'm not interested"), ch('in', "I'm in!")],
-        data: { teacher: t },
+        data: { teacher: t, us: isUS(g) ? 1 : 0 },
       }
     },
     resolve: {
-      watch: (g, x) => say(g, x, 'Lookout', `You watched your friends wrap ${x.s('teacher')}'s house like a mummy. You didn't touch a single roll.`, "I watched my friends toilet paper a teacher's house, but didn't join in.", { happiness: 4 }),
-      no: (g) => say(g, null, 'Early night', 'You stayed home. Your friends sent you pictures.', "I decided not to join my friends as they toilet papered a teacher's house.", {}),
+      watch: (g, x) =>
+        x.n('us') === 1
+          ? say(g, x, 'Lookout', `You watched your friends wrap ${x.s('teacher')}'s house like a mummy. You didn't touch a single roll.`, "I watched my friends toilet paper a teacher's house, but didn't join in.", { happiness: 4 })
+          : say(g, x, 'Lookout', `You watched your friends turn ${x.s('teacher')}'s car into a giant yellow sticky note. You didn't stick a single one.`, "I watched my friends cover a teacher's car in sticky notes, but didn't join in.", { happiness: 4 }),
+      no: (g, x) => say(g, x, 'Early night', 'You stayed home. Your friends sent you pictures.', x.n('us') === 1 ? "I decided not to join my friends as they toilet papered a teacher's house." : "I decided not to join my friends' sticky-note prank on a teacher.", {}),
       in: (g, x) => {
         const caught = chance(g, 0.25)
-        say(g, x, caught ? 'Caught by the porch light' : ['Mummified', 'Legendary prank'], caught ? `${x.s('teacher')} flipped on the porch light and recognized you. Detention for a month.` : `You helped cover ${x.s('teacher')}'s house with 50 rolls of toilet paper. A work of art.`, "I helped my friends cover a teacher's house in toilet paper.", caught ? { smarts: -4, grades: -6, happiness: -6, count: 'pranks' } : { smarts: -4, happiness: 10, count: 'pranks' }, caught ? 'bad' : 'good')
+        const us = x.n('us') === 1
+        say(g, x, caught ? (us ? 'Caught by the porch light' : 'Caught red-handed') : ['Mummified', 'Legendary prank'], caught ? (us ? `${x.s('teacher')} flipped on the porch light and recognized you. Detention for a month.` : `${x.s('teacher')} walked out mid-prank and recognized you. Detention for a month.`) : us ? `You helped cover ${x.s('teacher')}'s house with 50 rolls of toilet paper. A work of art.` : `You helped cover ${x.s('teacher')}'s car with 3,000 sticky notes. A work of art.`, us ? "I helped my friends cover a teacher's house in toilet paper." : "I helped my friends cover a teacher's car in sticky notes.", caught ? { smarts: -4, grades: -6, happiness: -6, count: 'pranks' } : { smarts: -4, happiness: 10, count: 'pranks' }, caught ? 'bad' : 'good')
       },
     },
   },
@@ -515,17 +525,23 @@ export const SCHOOL_EVENTS = defineEvents([
     minAge: 14,
     maxAge: 18,
     when: inHighSchool,
-    setup: () => ({
-      text: "During gym class, you notice an upperclassman bullying a freshman by the bleachers. It's escalating quickly. What will you do?",
-      choices: [ch('nothing', 'Do nothing'), ch('intervene', 'Intervene'), ch('teacher', 'Get the gym teacher')],
-    }),
+    // Freshmen and upperclassmen in the US; first-years and older students everywhere else.
+    setup: (g) => {
+      const us = isUS(g)
+      const pe = peClass(g)
+      return {
+        text: us ? "During gym class, you notice an upperclassman bullying a freshman by the bleachers. It's escalating quickly. What will you do?" : `During ${pe}, you notice an older student bullying a first-year behind the sports hall. It's escalating quickly. What will you do?`,
+        choices: [ch('nothing', 'Do nothing'), ch('intervene', 'Intervene'), ch('teacher', us ? 'Get the gym teacher' : 'Get the PE teacher')],
+        data: { kid: us ? 'freshman' : 'first-year', big: us ? 'upperclassman' : 'older student', pe: us ? 'gym class' : pe, coach: us ? 'gym teacher' : 'PE teacher' },
+      }
+    },
     resolve: {
-      nothing: (g) => say(g, null, 'Bystander', 'You looked the other way. You thought about it for days afterwards.', 'I witnessed a freshman getting hazed in gym class but did nothing.', { karma: -4 }),
-      intervene: (g) => {
+      nothing: (g, x) => say(g, x, 'Bystander', 'You looked the other way. You thought about it for days afterwards.', `I witnessed a ${x.s('kid')} getting hazed in ${x.s('pe')} but did nothing.`, { karma: -4 }),
+      intervene: (g, x) => {
         const ok = chance(g, 0.6)
-        say(g, null, ok ? 'Hero of the gym' : 'Took a hit', ok ? 'You stepped in and the bully backed off. The freshman will never forget you.' : 'You stepped in and took a fist to the eye, but the freshman got away.', 'I stopped an upperclassman from bullying a freshman in gym class.', ok ? { karma: 10, happiness: 8 } : { karma: 10, health: -8, count: 'fights' }, ok ? 'good' : 'neutral')
+        say(g, x, ok ? 'Hero of the gym' : 'Took a hit', ok ? `You stepped in and the bully backed off. The ${x.s('kid')} will never forget you.` : `You stepped in and took a fist to the eye, but the ${x.s('kid')} got away.`, `I stopped an ${x.s('big')} from bullying a ${x.s('kid')} in ${x.s('pe')}.`.replace('an older', 'an older').replace(/^I stopped an u/, 'I stopped an u').replace('an older student', 'an older student'), ok ? { karma: 10, happiness: 8 } : { karma: 10, health: -8, count: 'fights' }, ok ? 'good' : 'neutral')
       },
-      teacher: (g) => say(g, null, 'Responsible', 'You got the gym teacher, who blew the whistle and broke it up.', 'I got the gym teacher to stop a bully in gym class.', { karma: 6 }, 'good'),
+      teacher: (g, x) => say(g, x, 'Responsible', `You got the ${x.s('coach')}, who blew the whistle and broke it up.`, `I got the ${x.s('coach')} to stop a bully in ${x.s('pe')}.`, { karma: 6 }, 'good'),
     },
   },
   {

@@ -3,6 +3,7 @@ import {
   fillLocal,
   hasLocaleData,
   localeOf,
+  localPreschoolName,
   localSchoolName,
   localStreetName,
   localUniversityName,
@@ -106,6 +107,10 @@ describe('Africa and Middle East locale data', () => {
           for (const t of tokensOf(pattern)) expect(SCHOOL_TOKENS.has(t), `${id} ${level}: ${pattern}`).toBe(true)
         }
       }
+      expect(p.schoolNames.preschool?.length ?? 0, `${id} preschool`).toBeGreaterThanOrEqual(2)
+      for (const pattern of p.schoolNames.preschool ?? []) {
+        for (const t of tokensOf(pattern)) expect(SCHOOL_TOKENS.has(t), `${id} preschool: ${pattern}`).toBe(true)
+      }
       for (const pattern of p.universityNames) {
         for (const t of tokensOf(pattern)) expect(UNIVERSITY_TOKENS.has(t), `${id}: ${pattern}`).toBe(true)
       }
@@ -122,6 +127,7 @@ describe('Africa and Middle East locale data', () => {
         const g = gameIn(id, seed)
         const names = [
           ...LEVELS.map((level) => localSchoolName(g, level)),
+          localPreschoolName(g),
           localUniversityName(g),
           localStreetName(g),
         ]

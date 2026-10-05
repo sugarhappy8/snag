@@ -23,25 +23,50 @@ import {
   notice,
   parents,
   pronouns,
+  queueAi,
   remember,
   scriptChoice,
   spend,
   useYearAction,
   yearActionsUsed,
 } from './core'
+import {
+  TIER_EMOJI,
+  TIER_GRADE_EDGE,
+  appToJson,
+  archiveSchoolCv,
+  catchEmbellishment,
+  caughtLine,
+  caughtLying,
+  cvEntries,
+  cvScore,
+  graduateTarget,
+  rankLabel,
+  rankOf,
+  rankShort,
+  readApp,
+  schoolCount,
+  schoolRank,
+  seededStream,
+  universityTarget,
+  type SchoolRank,
+  type SchoolTier,
+} from './cv'
 import { GRAD_ELIGIBILITY, MAJOR_EMOJI, MAJORS, type EduReq, type GradKey } from './data/jobs'
 import {
   fillLocal,
   hasLocaleData,
   hasSnow,
   locale,
+  localeOf,
+  localPreschoolName,
   localSchoolName,
   localTerm,
   localUniversityName,
   type SchoolLevel as LocaleLevel,
 } from './data/locales'
 import { createPerson, notePerson } from './people'
-import { chance, pick, randInt, shuffle, uid } from './rng'
+import { bell, chance, pick, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
 import { getCountry, randomLastName } from './world'
 import type {
@@ -53,12 +78,14 @@ import type {
   GameState,
   Gender,
   GradProgram,
+  InterviewQuestion,
   Json,
   MenuAction,
   MenuGroup,
   MenuNode,
   Person,
   SchoolLevel,
+  ScreeningApp,
 } from './types'
 
 // ---------------------------------------------------------------------------
@@ -224,8 +251,6 @@ function finalExam(g: GameState): string {
 const VALEDICTORIAN_COUNTRIES = new Set(['us', 'ca', 'ph'])
 /** Where parents joke about still paying off their own student loans. */
 const STUDENT_LOAN_COUNTRIES = new Set(['us', 'ca', 'gb', 'au', 'nz'])
-/** Where cute English preschool names ("Little Sprouts Preschool") are the norm. */
-const ENGLISH_PRESCHOOLS = new Set(['us', 'ca', 'gb', 'ie', 'au', 'nz', 'jm', 'bs', 'bz', 'gy', 'tt', 'sg', 'ph', 'ng', 'gh', 'ke', 'za', 'ug', 'zw'])
 
 /** Community college in the US, vocational college / polytechnic everywhere else. */
 function college(g: GameState): { label: string; term: string; degree: string; degreeText: string; name: () => string } {
@@ -326,7 +351,8 @@ function roundMoney(n: number): number {
 // ---------------------------------------------------------------------------
 // Enrollment data helpers (Enrollment.data is free-form JSON)
 
-type ClubRec = { id: string; perf: number; years: number; role: string }
+/** A club membership. `name`/`kind` are stored too so the CV (cv.ts) can read them. */
+type ClubRec = { id: string; perf: number; years: number; role: string; name?: string; kind?: string }
 
 function num(v: Json | undefined, dflt: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : dflt
@@ -358,7 +384,10 @@ function clubsOf(cur: Enrollment): ClubRec[] {
   const out: ClubRec[] = []
   for (const r of raw) {
     if (r && typeof r === 'object' && !Array.isArray(r) && typeof r.id === 'string') {
-      out.push({ id: r.id, perf: num(r.perf, 50), years: num(r.years, 0), role: str(r.role) })
+      const rec: ClubRec = { id: r.id, perf: num(r.perf, 50), years: num(r.years, 0), role: str(r.role) }
+      if (typeof r.name === 'string') rec.name = r.name
+      if (typeof r.kind === 'string') rec.kind = r.kind
+      out.push(rec)
     }
   }
   return out
@@ -544,19 +573,52 @@ function addDegree(g: GameState, kind: DegreeKind, name: string, school: string,
 // New schools are named the local way (data/locales.ts): "Lincoln Elementary School" in the US,
 // "SD Negeri 3 Menteng" in Indonesia, "Escuela Primaria Benito Juárez" in Mexico. Names already
 // stored in a save (Enrollment.school, Degree.school) are kept as they are.
+//
+// Every school has a national rank (cv.ts schoolRank: deterministic from country + name). Which
+// school a kid ends up at depends on the family: richer families and the capital get better
+// schools, so a few candidate names are drawn and the one whose rank fits the family is kept.
 const PRESCHOOLS = ['Little Sprouts Preschool', 'Tiny Tots Preschool', 'Sunshine Preschool', 'Rainbow Kids Preschool', 'Busy Bees Preschool', 'Happy Hearts Preschool', 'Giggles & Wiggles Preschool', 'Little Acorns Nursery']
-const LOCAL_PRESCHOOLS = ['{place} Kindergarten', '{place} Preschool', '{city} Kindergarten No. {n}', 'Little Stars Kindergarten {place}']
 
+/** How well-off and well-placed the family is: 0 (struggling) .. 1 (rich, in the capital). */
+export function familyStanding(g: GameState): number {
+  const c = g.character
+  const ps = parents(g)
+  const money = ps.length ? ps.reduce((s, p) => s + Math.max(0, p.money), 0) : Math.max(0, c.money)
+  const ratio = money / (150_000 * wealthScale(g))
+  let standing = ps.length || c.money > 0 ? ratio / (ratio + 1) : 0.3
+  if (getCountry(c.countryId).cities[0] === c.city) standing += 0.08
+  return Math.min(1, Math.max(0, standing))
+}
+
+/** The rank percentile (0 = best) a family like this usually lands. */
+function targetPct(g: GameState): number {
+  return Math.min(0.99, Math.max(0.01, 0.85 - 0.75 * familyStanding(g) + bell(g, -20, 20) / 100))
+}
+
+/** Draw a few names and keep the one whose national rank is closest to `target`. */
+function rankedName(g: GameState, level: SchoolLevel, gen: () => string, target: number, avoid?: string, tries = 5): string {
+  let best = ''
+  let bestD = Infinity
+  for (let i = 0; i < tries || !best; i++) {
+    const name = gen()
+    if (name === avoid && i < tries + 6) continue
+    const d = Math.abs(rankOf(g, level, name).pct - target)
+    if (d < bestD) {
+      best = name
+      bestD = d
+    }
+  }
+  return best
+}
+
+/** Preschool: cute English names in the US, the local style everywhere else (data/locales). */
 function preschoolName(g: GameState): string {
-  if (ENGLISH_PRESCHOOLS.has(g.character.countryId) && (isUS(g) || chance(g, 0.6))) return pick(g, PRESCHOOLS)
-  return fillLocal(g, pick(g, LOCAL_PRESCHOOLS))
+  return rankedName(g, 'preschool', () => (isUS(g) ? pick(g, PRESCHOOLS) : localPreschoolName(g)), targetPct(g))
 }
 
 function k12SchoolName(g: GameState, level: K12Level, avoid?: string): string {
   const stage = localeLevel(systemFor(g), level)
-  let name = localSchoolName(g, stage)
-  for (let i = 0; i < 6 && name === avoid; i++) name = localSchoolName(g, stage)
-  return name
+  return rankedName(g, level, () => localSchoolName(g, stage), targetPct(g), avoid)
 }
 
 function universityName(g: GameState): string {
@@ -661,7 +723,7 @@ function enrollIn(g: GameState, level: SchoolLevel, opts: EnrollOpts = {}): Enro
   if (!school) {
     if (level === 'preschool') school = preschoolName(g)
     else if (isK12(level)) school = k12SchoolName(g, level as K12Level, opts.avoidName)
-    else if (level === 'community') school = college(g).name()
+    else if (level === 'community') school = rankedName(g, 'community', college(g).name, targetPct(g))
     else if (level === 'university') school = universityName(g)
     else {
       const base = lastUniversity(g) ?? universityName(g)
@@ -720,6 +782,8 @@ function leaveSchool(g: GameState, why: 'graduated' | 'dropped' | 'expelled' | '
   const cur = c.education.current
   if (!cur) return
   finalizeStudentLoan(g, cur)
+  // Clubs, roles and honor roll stay on your CV after you leave.
+  archiveSchoolCv(g, cur)
   removeSchoolPeople(g, schoolId(cur))
   c.education.current = null
   // Remember how well you did (university admissions and scholarships look at it).
@@ -1210,10 +1274,14 @@ function updateGrades(g: GameState, cur: Enrollment): void {
   if (clique === 'troublemakers' || clique === 'popular') target -= 5
   if (c.partTimeJob) target -= 4
   if (c.stats.happiness < 25) target -= 6
+  // Better schools push you harder (and the kids next to you study more).
+  const tier = rankOf(g, cur.level, cur.school).tier
+  target += TIER_GRADE_EDGE[tier]
   target = clamp(target)
   addGrades(cur, (target - cur.grades) * 0.35 + randInt(g, -6, 6))
   // Studying keeps your brain in shape.
   if (cur.grades >= 85 && chance(g, 0.35)) addStat(g, 'smarts', 1)
+  if ((tier === 'Elite' && chance(g, 0.35)) || (tier === 'Top' && chance(g, 0.2))) addStat(g, 'smarts', 1)
 }
 
 function updateSocial(g: GameState, cur: Enrollment): void {
@@ -1233,6 +1301,8 @@ function updateSocial(g: GameState, cur: Enrollment): void {
     const def = clubDef(m.id, g)
     if (!def) continue
     m.years += 1
+    m.name = def.name
+    m.kind = def.kind
     const athletic = def.kind === 'sport' ? (c.hidden.athleticism - 50) / 10 : (c.stats.smarts - 50) / 15
     m.perf = Math.round(clamp(m.perf + athletic + randInt(g, -7, 7)))
     if (def.kind === 'sport') {
@@ -1472,6 +1542,8 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     const next = enrollIn(g, nextSpec.level, { totalYears: nextSpec.years, grades, quiet: true })
     log(g, `I finished ${old} and started ${next.school}.`, 'good')
     maybeClubInvite(g, next)
+    // Strong students in countries with selective schools get to try for one.
+    if (next.level === 'high' && grades >= 65 && selectiveExamOpen(g)) offerSelectiveExam(g)
     return
   }
 
@@ -1480,6 +1552,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     const honors = grades >= 90
     const valedictorian = grades >= 96 && chance(g, 0.5)
     const valedictorianWord = VALEDICTORIAN_COUNTRIES.has(c.countryId)
+    if (valedictorian) g.flags.valedictorian = cur.school
     sitFinalExam(g, cur)
     addDegree(g, 'highschool', `${stageTitle(g, 'high')} Diploma`, cur.school, { honors })
     const school = cur.school
@@ -1652,6 +1725,111 @@ function maybeClubInvite(g: GameState, cur: Enrollment): void {
 }
 
 // ---------------------------------------------------------------------------
+// Selective secondary schools (entrance exams)
+
+/** Countries known for selective secondary schools, and what the entrance exam is called. */
+const SELECTIVE_EXAMS: Record<string, string> = {
+  gb: 'the 11-plus',
+  sg: 'the PSLE',
+  jp: 'the high school entrance exams',
+  kr: 'the special-purpose high school exam',
+  cn: 'the zhongkao',
+  tw: 'the high school entrance exam',
+  hk: 'the secondary school entrance test',
+  in: 'the Navodaya entrance exam',
+  ru: 'the lyceum entrance exam',
+  ua: 'the lyceum entrance exam',
+  fr: 'the lycée entrance test',
+  de: 'the Gymnasium entrance test',
+  nl: 'the Cito test',
+  pl: 'the high school entrance exam',
+  hu: 'the secondary school entrance exam',
+  cz: 'the entrance exam',
+  ro: 'the national evaluation exam',
+  tr: 'the LGS',
+  vn: 'the 10th-grade entrance exam',
+  id: 'the selection test for a top SMA',
+  th: 'the high school entrance exam',
+  ph: 'the science high school entrance exam',
+  my: 'the boarding school entrance exam',
+  au: 'the selective schools test',
+  us: 'the magnet school exam',
+  mx: 'the COMIPEMS exam',
+  br: 'the vestibulinho',
+  ng: 'the Unity Schools entrance exam',
+  ke: 'the national school selection',
+  eg: 'the entrance exam',
+  ir: 'the gifted schools exam',
+  il: 'the entrance exam',
+}
+
+function selectiveExamName(g: GameState): string {
+  return SELECTIVE_EXAMS[g.character.countryId] ?? 'the entrance exam'
+}
+
+/** The "Sit the entrance exam" action: first year of secondary school, once, not already at a top school. */
+function selectiveExamOpen(g: GameState): boolean {
+  const cur = current(g)
+  if (!cur || cur.level !== 'high' || cur.year !== 1 || !(g.character.countryId in SELECTIVE_EXAMS)) return false
+  if (g.flags.selectiveExamTaken === true) return false
+  const tier = rankOf(g, 'high', cur.school).tier
+  return tier !== 'Elite' && tier !== 'Top'
+}
+
+/** Offer the selective school's entrance exam (popup). */
+function offerSelectiveExam(g: GameState): void {
+  const cur = current(g)
+  if (!cur || !selectiveExamOpen(g)) return
+  const stage = localeLevel(systemFor(g), 'high')
+  const name = rankedName(g, 'high', () => localSchoolName(g, stage), 0, cur.school, 30)
+  const r = rankOf(g, 'high', name)
+  const exam = selectiveExamName(g)
+  scriptChoice(
+    g,
+    SELECTIVE_EXAM,
+    'Selective School',
+    `Your teachers think you could get into ${name} (${rankLabel(r)}). You'd have to pass ${exam} first. Will you sit it?`,
+    [
+      { id: 'sit', label: `Sit ${exam}`, emoji: '\u{1F4DD}' },
+      { id: 'stay', label: `Stay at ${cur.school}`, emoji: '\u{1F3EB}' },
+    ],
+    { emoji: TIER_EMOJI[r.tier], data: { school: name } },
+  )
+}
+
+const SELECTIVE_EXAM = defineScript('school.selectiveExam', (g, choice, data) => {
+  const c = g.character
+  const cur = current(g)
+  if (!c.alive || !cur || cur.level !== 'high') return
+  const school = data && typeof data === 'object' && !Array.isArray(data) && typeof data.school === 'string' ? data.school : ''
+  if (!school || choice !== 'sit') {
+    log(g, `I decided to stay at ${cur.school}.`, 'neutral')
+    return
+  }
+  if (g.flags.selectiveExamTaken === true) return
+  g.flags.selectiveExamTaken = true
+  const r = rankOf(g, 'high', school)
+  const exam = selectiveExamName(g)
+  const prep = Math.min(6, num(cur.data.examPrep, 0)) * 1.5
+  const score = c.stats.smarts * 0.55 + cur.grades * 0.35 + prep + randInt(g, -12, 12)
+  const bar = r.tier === 'Elite' ? 74 : r.tier === 'Top' ? 66 : 58
+  if (score < bar) {
+    addStat(g, 'happiness', -randInt(g, 3, 7))
+    log(g, `I didn't pass ${exam}.`, 'bad')
+    notice(g, 'Not This Time', pick(g, [`You didn't make the cut for ${school}. ${cur.school} is fine. Probably.`, `You froze on the logic puzzles in ${exam}. ${school} will have to manage without you.`]), { emoji: '\u{1F4DD}', tone: 'bad' })
+    return
+  }
+  const { level, year, totalYears, grades } = cur
+  leaveSchool(g, 'transfer')
+  enrollIn(g, level, { school, year, totalYears, grades: Math.max(0, grades - 3), quiet: true })
+  addStat(g, 'happiness', randInt(g, 5, 10))
+  for (const p of parents(g)) addRelationship(p, 5)
+  remember(g, `Passed ${exam} and got into ${school}.`)
+  log(g, `I passed ${exam} and moved to ${school}.`, 'good')
+  notice(g, 'You Got In!', `You passed ${exam} and earned a place at ${school} — ${rankLabel(r)}. Your parents told everyone, including the mail carrier.`, { emoji: TIER_EMOJI[r.tier], tone: 'good' })
+})
+
+// ---------------------------------------------------------------------------
 // Applying to schools
 
 function inFullTimeWork(g: GameState): boolean {
@@ -1694,8 +1872,157 @@ function enrollCommunityCollege(g: GameState): void {
   })
 }
 
-/** Apply to university with a chosen major (acceptance roll, then the tuition popup). */
-export function applyToUniversity(g: GameState, major: string, opts: { athletic?: boolean } = {}): void {
+// ---------------------------------------------------------------------------
+// Universities: national rankings, selectivity and admissions
+//
+// The player picks from 5-8 real-feeling universities in their country (the famous fixed names in
+// the locale data first, then local-style names), each with a national rank, a tier, an admit rate
+// and tuition. Acceptance depends on smarts, grades, the final exam, the high school's rank and
+// the CV (clubs, leadership, volunteering, projects and awards really matter). Selective schools
+// (Elite / Top) screen the CV first — the AI director decides when it's on — and then hold an
+// admissions interview.
+
+export interface UniversityOption {
+  name: string
+  rank: SchoolRank
+  /** Yearly tuition in dollars (0 = free). */
+  tuition: number
+  /** Share of applicants admitted (display). */
+  admitRate: number
+  /** Selective schools screen your CV and interview you. */
+  selective: boolean
+}
+
+const TIER_TUITION: Record<SchoolTier, number> = { Elite: 1.8, Top: 1.4, Good: 1.0, Average: 0.85, Struggling: 0.7 }
+const TIER_ADMIT_RATE: Record<SchoolTier, number> = { Elite: 0.07, Top: 0.22, Good: 0.5, Average: 0.75, Struggling: 0.92 }
+/** The applicant merit a school of this tier is looking for. */
+const TIER_BAR: Record<SchoolTier, number> = { Elite: 80, Top: 68, Good: 50, Average: 38, Struggling: 24 }
+
+function seededPick<T>(r: () => number, list: readonly T[]): T {
+  return list[Math.floor(r() * list.length) % list.length]
+}
+
+/** Fill a university name pattern with a deterministic stream (menus must not touch g.rng). */
+function fillSeeded(template: string, r: () => number, countryId: string): string {
+  const loc = localeOf(countryId)
+  const country = getCountry(countryId)
+  return template.replace(/\{(\w+)\}/g, (whole, key: string) => {
+    if (key === 'city') return seededPick(r, country.cities.slice(0, 8))
+    if (key === 'place') return loc.placeWords.length ? seededPick(r, loc.placeWords) : whole
+    if (key === 'honoree') return loc.honorees.length ? seededPick(r, loc.honorees) : whole
+    if (key === 'country') return country.name
+    if (key === 'n') return String(1 + Math.floor(r() * 12))
+    return whole
+  })
+}
+
+function universityTuition(g: GameState, tier: SchoolTier): number {
+  if (getCountry(g.character.countryId).freeUniversity) return 0
+  return roundMoney(UNIVERSITY_TUITION * wealthScale(g) * TIER_TUITION[tier])
+}
+
+/** The universities you can apply to in your country, best first (stable for a life + country). */
+export function universityOptions(g: GameState): UniversityOption[] {
+  const cid = g.character.countryId
+  const r = seededStream(`unis|${g.lifeId}|${cid}`)
+  const total = schoolCount(cid, 'university')
+  const want = Math.min(total, 6 + Math.floor(r() * 3))
+  const patterns = localeOf(cid).universityNames
+  const fixed = patterns.filter((p) => !p.includes('{'))
+  const templates = patterns.filter((p) => p.includes('{'))
+  if (templates.length < 2) {
+    // Only famous names in the data: make more like them in other cities ("Universidade de {city}").
+    const cities = getCountry(cid).cities
+    for (const f of fixed) for (const city of cities) if (f.includes(city)) templates.push(f.replace(city, '{city}'))
+    if (templates.length < 2) templates.push('University of {city}', '{city} State University')
+  }
+  const names = fixed.slice(0, Math.min(4, want))
+  // Local-style names, spread across the national ranking.
+  const pool: string[] = []
+  for (let i = 0; i < 40 && templates.length; i++) {
+    const name = fillSeeded(seededPick(r, templates), r, cid)
+    if (!name.includes('{') && !names.includes(name) && !pool.includes(name)) pool.push(name)
+  }
+  pool.sort((a, b) => schoolRank(cid, 'university', a).rank - schoolRank(cid, 'university', b).rank)
+  // No famous names: the best local one is the flagship.
+  if (!names.length && pool.length) names.push(pool.shift()!)
+  const need = want - names.length
+  if (need > 0 && pool.length) {
+    // The rest spread over the ranking (quantiles), so there's a reach, a target and a safety.
+    for (let k = 0; k < need && k < pool.length; k++) {
+      const name = pool[Math.min(pool.length - 1, Math.floor(((k + 0.5) * pool.length) / need))]
+      if (!names.includes(name)) names.push(name)
+    }
+    for (const name of pool) if (names.length < want && !names.includes(name)) names.push(name)
+  }
+  for (let i = 0; names.length < want && fixed.length > names.length && i < fixed.length; i++) if (!names.includes(fixed[i])) names.push(fixed[i])
+  if (!names.length) names.push(fillSeeded('University of {city}', r, cid))
+  return names
+    .map((name) => {
+      const rank = schoolRank(cid, 'university', name)
+      return { name, rank, tuition: universityTuition(g, rank.tier), admitRate: TIER_ADMIT_RATE[rank.tier], selective: rank.tier === 'Elite' || rank.tier === 'Top' }
+    })
+    .sort((a, b) => a.rank.rank - b.rank.rank)
+}
+
+/** Where you went to (or go to) high school, and its tier. */
+function highSchoolTier(g: GameState): SchoolTier | null {
+  const cur = current(g)
+  if (cur && cur.level === 'high') return rankOf(g, 'high', cur.school).tier
+  const hs = g.character.education.degrees.find((d) => d.kind === 'highschool')
+  return hs ? rankOf(g, 'high', hs.school).tier : null
+}
+
+function lastGradesOf(g: GameState): number {
+  const cur = current(g)
+  if (cur && cur.level === 'high') return cur.grades
+  return num(g.flags.lastGrades as Json, 70)
+}
+
+/** How strong an undergraduate applicant you are (roughly 0-100), and your CV fit. */
+export function applicantMerit(g: GameState, major?: string): { merit: number; fit: number } {
+  const c = g.character
+  const grades = lastGradesOf(g)
+  const exam = g.flags.examScore
+  const examPart = typeof exam === 'number' ? exam : grades * 0.9
+  const fit = cvScore(g, universityTarget(major)).score
+  const hs = highSchoolTier(g)
+  const merit = c.stats.smarts * 0.3 + grades * 0.25 + examPart * 0.15 + fit * 0.3 + (hs ? TIER_GRADE_EDGE[hs] * 0.8 : 0)
+  return { merit, fit }
+}
+
+/** Your odds of getting into a university (pure: safe for menus). */
+export function admissionChance(g: GameState, opt: UniversityOption, major?: string): number {
+  const { merit } = applicantMerit(g, major)
+  return clamp(1 / (1 + Math.exp(-(merit - TIER_BAR[opt.rank.tier]) / 6)), 0.02, 0.97)
+}
+
+function oddsLabel(p: number): string {
+  return p >= 0.85 ? 'Safety' : p >= 0.6 ? 'Likely' : p >= 0.35 ? 'Target' : p >= 0.12 ? 'Reach' : 'Long shot'
+}
+
+function percent(p: number): string {
+  return `${Math.max(1, Math.round(p * 100))}%`
+}
+
+function tuitionLabel(tuition: number): string {
+  return tuition > 0 ? `${formatMoney(tuition)}/yr` : 'Tuition-free'
+}
+
+/** A middle-of-the-road school (when no particular university was chosen). */
+function defaultUniversity(g: GameState): UniversityOption {
+  const options = universityOptions(g)
+  return options.find((o) => o.rank.tier === 'Good') ?? [...options].sort((a, b) => Math.abs(a.rank.pct - 0.25) - Math.abs(b.rank.pct - 0.25))[0]
+}
+
+/** The program that recruits a star athlete: a good, not elite, school. */
+function recruitingUniversity(g: GameState): UniversityOption {
+  const options = universityOptions(g)
+  return options.find((o) => o.rank.tier === 'Top') ?? options.find((o) => o.rank.tier === 'Good') ?? options[0]
+}
+
+/** Apply to university with a chosen major (and, optionally, a chosen university). */
+export function applyToUniversity(g: GameState, major: string, opts: { athletic?: boolean; school?: string } = {}): void {
   const c = g.character
   const block = postSecondaryBlocker(g)
   if (block) {
@@ -1706,9 +2033,11 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
     notice(g, 'University', `You already have a bachelor's degree in ${major}.`, { emoji: '\u{1F3DB}\u{FE0F}' })
     return
   }
-  const school = universityName(g)
   const free = getCountry(c.countryId).freeUniversity
+  const options = universityOptions(g)
+  const picked = opts.school ? options.find((o) => o.name === opts.school) : undefined
   if (opts.athletic) {
+    const school = (picked ?? recruitingUniversity(g)).name
     quitJobForSchool(g)
     if (free) {
       enrollIn(g, 'university', { school, major, funding: 'free' })
@@ -1722,32 +2051,203 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
     remember(g, `Went to ${school} on ${kind} scholarship.`)
     return
   }
-  if (!useYearAction(g, 'applyUniversity', 2)) {
+  if (!useYearAction(g, 'applyUniversity', 3)) {
     notice(g, 'University', "You've already sent out all your applications this year. Try again next year.", { emoji: '\u{1F4EE}' })
     return
   }
-  const lastGrades = num(g.flags.lastGrades as Json, 70)
-  // Your final exam (the SATs, the gaokao, the Abitur...) counts too, if you took one.
-  const exam = g.flags.examScore
-  const score = typeof exam === 'number' ? c.stats.smarts * 0.55 + lastGrades * 0.25 + exam * 0.2 : c.stats.smarts * 0.65 + lastGrades * 0.35
-  const p = clamp((score - 18) / 50, 0.05, 0.97)
+  const opt = picked ?? defaultUniversity(g)
+  const p = admissionChance(g, opt, major)
+  const { fit } = applicantMerit(g, major)
+  const tuition = picked ? opt.tuition : free ? 0 : roundMoney(UNIVERSITY_TUITION * wealthScale(g) * TIER_TUITION[opt.rank.tier])
+  const app: ScreeningApp = { kind: 'university', org: opt.name, major, rankLabel: rankLabel(opt.rank), tier: opt.rank.tier, tuition, years: UNIVERSITY_YEARS, fit, chance: p, admit: 1 }
+  if (picked && opt.selective) {
+    // Selective schools read the CV first (the AI director when it's on), then interview.
+    const invite = clamp(p * 1.6 + 0.05, 0.03, 0.95)
+    app.chance = invite
+    app.admit = clamp(p / invite, 0.05, 0.95)
+    log(g, `I applied to ${opt.name} to study ${major}.`, 'neutral')
+    queueAi(g, { type: 'screenApplication', app })
+    return
+  }
   if (!chance(g, p)) {
-    log(g, `I was rejected by ${school}.`, 'bad')
-    addStat(g, 'happiness', -8)
-    notice(g, 'Rejected', pick(g, [`${school} rejected your application. Their letter was very polite about it, which somehow made it worse.`, `"We regret to inform you..." ${school} has rejected your application.`, `${school} turned you down. Maybe try ${college(g).term} first and apply again later.`]), {
-      emoji: '\u{1F4E8}',
-      tone: 'bad',
-    })
+    rejectAdmission(g, app, offlineRejection(g, app))
     return
   }
-  if (free) {
+  acceptAdmission(g, app)
+}
+
+function offlineRejection(g: GameState, app: ScreeningApp): string {
+  if (app.fit < 30 && chance(g, 0.6)) return pick(g, ['The committee wanted to see more clubs, leadership, volunteering or projects on your CV.', 'Your grades were fine, but your CV said "spent four years on the couch."'])
+  if (app.kind === 'university') return pick(g, [`They admit about ${percent(TIER_ADMIT_RATE[(app.tier as SchoolTier) ?? 'Good'] ?? 0.5)} of applicants, and this year you weren't one of them.`, `Maybe try ${college(g).term} first and apply again later.`, 'Your essay about your goldfish did not land.'])
+  return pick(g, ['They said they had "an unusually competitive applicant pool this year." Translation: no.', 'Hitting the books (and filling out your CV) might help next time.'])
+}
+
+/** A rejection letter (with the screener's reason when there is one). */
+export function rejectAdmission(g: GameState, app: ScreeningApp, reason: string): void {
+  addStat(g, 'happiness', -8)
+  log(g, `I was rejected by ${app.org}.`, 'bad')
+  const opener = pick(g, [`${app.org} rejected your application.`, `"We regret to inform you..." ${app.org} has rejected your application.`, `${app.org} turned you down. Their letter was very polite about it, which somehow made it worse.`])
+  notice(g, 'Rejected', `${opener}${reason ? ` ${reason}` : ''}`, { emoji: '\u{1F4E8}', tone: 'bad' })
+}
+
+/** Accepted: enroll (free) or ask how to pay. */
+export function acceptAdmission(g: GameState, app: ScreeningApp): void {
+  const c = g.character
+  if (!c.alive || c.prison) return
+  if (c.education.current) {
+    notice(g, 'Accepted!', `${app.org} accepted you too, but you're already enrolled at ${c.education.current.school}. You framed the letter anyway.`, { emoji: '\u{1F389}', tone: 'good' })
+    return
+  }
+  const where = app.rankLabel ? ` (${app.rankLabel})` : ''
+  if (app.kind === 'graduate') {
+    const key = (app.program && app.program in PROGRAMS ? app.program : 'master') as GradKey
+    const info = PROGRAMS[key]
+    const major = app.major ?? 'General Studies'
+    if (gradSchoolFree(g, key)) {
+      quitJobForSchool(g)
+      enrollIn(g, 'graduate', { school: app.org, major, funding: 'free', track: key, program: info.program, totalYears: info.years })
+      notice(g, 'Accepted!', `You were accepted to ${app.org}${where}! Tuition is free in ${getCountry(c.countryId).name}, so the only thing you'll be paying with is your sleep.`, { emoji: '\u{1F389}', tone: 'good' })
+      return
+    }
+    askTuition(g, { level: 'graduate', school: app.org, major, tuition: app.tuition ?? roundMoney(info.tuition * wealthScale(g)), years: info.years, tried: [], track: key })
+    return
+  }
+  const major = app.major ?? 'General Studies'
+  if (getCountry(c.countryId).freeUniversity || (app.tuition ?? 0) <= 0) {
     quitJobForSchool(g)
-    enrollIn(g, 'university', { school, major, funding: 'free' })
-    notice(g, 'Accepted!', `You were accepted to ${school} to study ${major}. University is free in ${getCountry(c.countryId).name}, so your wallet can relax.`, { emoji: '\u{1F389}', tone: 'good' })
+    enrollIn(g, 'university', { school: app.org, major, funding: 'free' })
+    remember(g, `Got into ${app.org}.`)
+    notice(g, 'Accepted!', `You were accepted to ${app.org}${where} to study ${major}. University is free in ${getCountry(c.countryId).name}, so your wallet can relax.`, { emoji: '\u{1F389}', tone: 'good' })
     return
   }
-  const tuition = roundMoney(UNIVERSITY_TUITION * wealthScale(g))
-  askTuition(g, { level: 'university', school, major, tuition, years: UNIVERSITY_YEARS, tried: [] })
+  remember(g, `Got into ${app.org}.`)
+  askTuition(g, { level: 'university', school: app.org, major, tuition: app.tuition ?? roundMoney(UNIVERSITY_TUITION * wealthScale(g)), years: app.years ?? UNIVERSITY_YEARS, tried: [] })
+}
+
+// Admissions interviews -----------------------------------------------------
+
+const ADMISSIONS_QUESTIONS: { q: string; a: [string, number][] }[] = [
+  { q: 'Why do you want to study {major} here?', a: [["Your professors' research genuinely excites me", 90], ["I've wanted to since I was a kid, and this is the best place for it", 85], ['It seemed like the logical next step', 50], ['The campus looked nice on the website', 30], ['My parents said so', 15], ['I heard the parties are legendary', 5]] },
+  { q: 'Tell us about a time you failed.', a: [['I failed a test, changed how I studied and aced the next one', 85], ["I didn't make a team, so I trained all year and made it the next", 80], ['I once failed to set an alarm. For a whole week', 30], ['Can I get back to you on that?', 15], ["I don't really fail", 10]] },
+  { q: 'What would your teachers say about you?', a: [["That I'm the first to help a classmate", 85], ['That I ask a lot of good questions', 80], ['That I always turn things in on time', 65], ["That I'm \"a lot\"", 30], ['Probably nothing printable', 5]] },
+  { q: "What's the last book you read?", a: [["A novel I couldn't put down, and here's why...", 85], ['A history of the printing press. It was riveting', 75], ["I'm more of an audiobook person", 50], ['The terms and conditions. All of them', 30], ['Does the cafeteria menu count?', 10]] },
+  { q: 'Where do you see yourself in ten years?', a: [['Using what I learn here to solve real problems', 85], ['Back here, as a professor', 70], ['Running my own company', 65], ['Rich', 15], ['On a beach, ideally', 10]] },
+  { q: 'What do you do in your free time?', a: [['I volunteer and work on my own projects', 85], ['I read and go to museums', 75], ['I train with my team', 75], ['Sleep, competitively', 15], ['Scroll. Mostly scroll', 10]] },
+  { q: 'Why should we pick you over thousands of other applicants?', a: [["I'll make the most of every opportunity here", 85], ["I bring a perspective your campus doesn't have yet", 85], ['Because I really, really want it', 35], ["You shouldn't, but you will", 20], ['My uncle donated a bench', 10]] },
+]
+
+const PROFESSIONS: Record<string, string> = { law: 'lawyer', medical: 'doctor', business: 'business leader', dental: 'dentist', veterinary: 'vet', nursing: 'nurse', pharmacy: 'pharmacist' }
+
+/** Offline admissions question (sometimes about your own CV). */
+function fallbackAdmissionsQuestion(g: GameState, app: ScreeningApp): InterviewQuestion {
+  const top = cvEntries(g).find((e) => e.kind !== 'education' && e.kind !== 'experience' && e.strength >= 3)
+  if (top && chance(g, 0.4)) {
+    return {
+      question: `I see "${top.title}" on your application. Tell me about it.`,
+      answers: shuffle(g, [
+        { label: 'Talk about what it taught me about working with people', score: 85 },
+        { label: "Admit it was mostly my friend's idea", score: 35 },
+        { label: "Call it the best thing anyone's ever done, probably", score: 25 },
+        { label: 'Explain it for nine straight minutes', score: 15 },
+      ]),
+    }
+  }
+  const profession = app.program ? PROFESSIONS[app.program] : undefined
+  if (profession && chance(g, 0.5)) {
+    return {
+      question: `Why do you want to be a ${profession}?`,
+      answers: shuffle(g, [
+        { label: `I've seen how much good a great ${profession} can do`, score: 85 },
+        { label: 'My research and volunteer work convinced me', score: 85 },
+        { label: 'My family expects it', score: 35 },
+        { label: 'I watched a lot of TV dramas about it', score: 20 },
+        { label: 'The salary, mostly', score: 15 },
+      ]).slice(0, 4),
+    }
+  }
+  const last = num(g.flags.lastAdmissionsQ as Json, -1)
+  let idx = randInt(g, 0, ADMISSIONS_QUESTIONS.length - 1)
+  if (idx === last) idx = (idx + 1) % ADMISSIONS_QUESTIONS.length
+  g.flags.lastAdmissionsQ = idx
+  const def = ADMISSIONS_QUESTIONS[idx]
+  let answers = shuffle(g, def.a).slice(0, 4)
+  if (!answers.some(([, s]) => s >= 70)) {
+    answers[0] = [...def.a].sort((x, y) => y[1] - x[1])[0]
+    answers = shuffle(g, answers)
+  }
+  const field = app.major ?? (app.program && app.program in PROGRAMS ? PROGRAMS[app.program as GradKey].label.toLowerCase() : 'this')
+  return { question: def.q.replace('{major}', field), answers: answers.map(([label, score]) => ({ label, score })) }
+}
+
+function cleanQuestion(q: InterviewQuestion | undefined): InterviewQuestion | null {
+  if (!q || typeof q.question !== 'string' || q.question.trim().length < 8 || !Array.isArray(q.answers)) return null
+  const answers = q.answers
+    .filter((a) => a && typeof a.label === 'string' && a.label.trim())
+    .slice(0, 4)
+    .map((a) => ({ label: a.label.trim().slice(0, 120), score: Math.round(clamp(typeof a.score === 'number' && Number.isFinite(a.score) ? a.score : 50)) }))
+  return answers.length >= 2 ? { question: q.question.trim().slice(0, 300), answers } : null
+}
+
+/** The admissions interview after a CV screening invite (question from the AI or the offline pool). */
+export function presentAdmissionsInterview(g: GameState, app: ScreeningApp, q?: InterviewQuestion): void {
+  const c = g.character
+  if (!c.alive || c.prison) return
+  const safe = cleanQuestion(q) ?? fallbackAdmissionsQuestion(g, app)
+  const who = `${pick(g, ['Professor', 'Dr.', 'Dean'])} ${randomLastName(g, c.countryId)}`
+  const intro = pick(g, [
+    `${app.org} liked your application and invited you to an admissions interview. ${who} peered at you over a pair of reading glasses.`,
+    `You made the shortlist at ${app.org}! ${who} from the admissions committee shook your hand and got straight to it.`,
+    `Your CV got you an interview at ${app.org}. ${who} opened your file, read for a long, terrifying moment, and looked up.`,
+  ])
+  scriptChoice(
+    g,
+    ADMISSIONS_INTERVIEW,
+    'Admissions Interview',
+    `${intro}\n\n"${safe.question}"`,
+    safe.answers.map((a, i) => ({ id: String(i), label: a.label })),
+    { emoji: '\u{1F393}', data: { app: appToJson(app), scores: safe.answers.map((a) => a.score), interviewer: who } },
+  )
+}
+
+const ADMISSIONS_INTERVIEW = defineScript('school.admissionsInterview', (g, choice, data) => {
+  const c = g.character
+  if (!c.alive || c.prison || !data || typeof data !== 'object' || Array.isArray(data)) return
+  const app = readApp(data.app)
+  if (!app) return
+  const scores = Array.isArray(data.scores) ? data.scores : []
+  const raw = scores[Number(choice)]
+  const score = typeof raw === 'number' ? raw : 50
+  const who = str(data.interviewer, 'The interviewer')
+  // A sharp interviewer can tell when a CV line is made up.
+  const fake = catchEmbellishment(g, 0.1)
+  if (fake) {
+    caughtLying(g, fake)
+    rejectAdmission(g, app, `${who} asked a few follow-up questions about "${fake.title}". You had no answers.`)
+    return
+  }
+  const p = clamp((app.admit ?? 0.5) + (score - 60) / 120, 0.03, 0.97)
+  if (chance(g, p)) {
+    log(g, `I aced my admissions interview at ${app.org}.`, 'good')
+    acceptAdmission(g, app)
+    return
+  }
+  const why = score >= 70 ? `${who} said it was "a very close call."` : score >= 40 ? `${who} wrote something short in your file and closed it.` : `${who} is still telling colleagues about your answer.`
+  rejectAdmission(g, app, why)
+})
+
+/** Called by the screener (careers.applyScreening) when a school passes on your application. */
+export function screenedOut(g: GameState, app: ScreeningApp, reason: string): void {
+  rejectAdmission(g, app, reason || offlineRejection(g, app))
+}
+
+/** Background checks at selective schools catch padded CVs before any interview. */
+export function admissionsBackgroundCheck(g: GameState, app: ScreeningApp): boolean {
+  const rate = app.tier === 'Elite' ? 0.22 : app.tier === 'Top' ? 0.16 : 0.1
+  const fake = catchEmbellishment(g, rate)
+  if (!fake) return false
+  caughtLying(g, fake)
+  rejectAdmission(g, app, caughtLine(g, fake))
+  return true
 }
 
 function bachelorFor(g: GameState, key: GradKey): string | null {
@@ -1756,9 +2256,25 @@ function bachelorFor(g: GameState, key: GradKey): string | null {
   return majors.find((m) => eligible.includes(m)) ?? null
 }
 
+/** Graduate programs that read your CV and interview you. */
+const INTERVIEW_PROGRAMS = new Set<GradKey>(['medical', 'law', 'business', 'dental', 'veterinary'])
+
+/** Your odds of getting into a graduate program (pure). */
+export function graduateChance(g: GameState, key: GradKey, school?: string): number {
+  const c = g.character
+  const info = PROGRAMS[key]
+  const grades = num(g.flags.lastGrades as Json, 70)
+  const fit = cvScore(g, graduateTarget(key)).score
+  const honors = c.education.degrees.some((d) => d.kind === 'bachelor' && d.honors) ? 8 : 0
+  const uni = lastUniversity(g)
+  const tierEdge = uni ? TIER_GRADE_EDGE[rankOf(g, 'university', uni).tier] * 0.8 : 0
+  const merit = c.stats.smarts * 0.45 + grades * 0.25 + fit * 0.3 + honors + tierEdge
+  const bar = 30 + info.minSmarts * 0.55 + (school ? TIER_GRADE_EDGE[rankOf(g, 'graduate', school).tier] * 0.6 : 0)
+  return clamp(1 / (1 + Math.exp(-(merit - bar) / 6)), 0.04, 0.95)
+}
+
 /** Apply to a graduate / professional program. */
 export function applyToGraduateSchool(g: GameState, key: GradKey): void {
-  const c = g.character
   const info = PROGRAMS[key]
   const block = postSecondaryBlocker(g)
   if (block) {
@@ -1786,25 +2302,34 @@ export function applyToGraduateSchool(g: GameState, key: GradKey): void {
     notice(g, 'Rejected', `${school} rejected you because your major doesn't qualify you for ${info.label.toLowerCase()}. Accepted majors: ${GRAD_ELIGIBILITY[key].join(', ')}.`, { emoji: '\u{1F4E8}', tone: 'bad' })
     return
   }
-  const honorsBonus = c.education.degrees.some((d) => d.kind === 'bachelor' && d.honors) ? 0.12 : 0
-  const p = clamp((c.stats.smarts - info.minSmarts) / 35 + 0.45 + honorsBonus, 0.04, 0.95)
+  const p = graduateChance(g, key, school)
+  const rank = rankOf(g, 'graduate', school)
+  const app: ScreeningApp = {
+    kind: 'graduate',
+    org: school,
+    major,
+    program: key,
+    rankLabel: rankLabel(rank),
+    tier: rank.tier,
+    tuition: gradSchoolFree(g, key) ? 0 : roundMoney(info.tuition * wealthScale(g)),
+    years: info.years,
+    fit: cvScore(g, graduateTarget(key)).score,
+    chance: p,
+    admit: 1,
+  }
+  if (INTERVIEW_PROGRAMS.has(key)) {
+    const invite = clamp(p * 1.5 + 0.05, 0.03, 0.95)
+    app.chance = invite
+    app.admit = clamp(p / invite, 0.05, 0.95)
+    log(g, `I applied to ${school}.`, 'neutral')
+    queueAi(g, { type: 'screenApplication', app })
+    return
+  }
   if (!chance(g, p)) {
-    addStat(g, 'happiness', -8)
-    log(g, `I was rejected by ${school}.`, 'bad')
-    notice(g, 'Rejected', pick(g, [`${school} rejected your application.`, `${school} said they had "an unusually competitive applicant pool this year." Translation: no.`, `Your application to ${school} was rejected. Hitting the books might help next time.`]), {
-      emoji: '\u{1F4E8}',
-      tone: 'bad',
-    })
+    rejectAdmission(g, app, offlineRejection(g, app))
     return
   }
-  if (gradSchoolFree(g, key)) {
-    quitJobForSchool(g)
-    enrollIn(g, 'graduate', { school, major, funding: 'free', track: key, program: info.program, totalYears: info.years })
-    notice(g, 'Accepted!', `You were accepted to ${school}! Tuition is free in ${getCountry(c.countryId).name}, so the only thing you'll be paying with is your sleep.`, { emoji: '\u{1F389}', tone: 'good' })
-    return
-  }
-  const tuition = roundMoney(info.tuition * wealthScale(g))
-  askTuition(g, { level: 'graduate', school, major, tuition, years: info.years, tried: [], track: key })
+  acceptAdmission(g, app)
 }
 
 /** Where university is free, so is graduate and professional school (MBAs still cost a fortune). */
@@ -2016,7 +2541,41 @@ const PICK_MAJOR = defineScript('school.pickMajor', (g, choice, data) => {
   }
   if (!(MAJORS as readonly string[]).includes(choice)) return
   const athletic = !!data && typeof data === 'object' && !Array.isArray(data) && data.athletic === true
-  applyToUniversity(g, choice, { athletic })
+  if (athletic) {
+    applyToUniversity(g, choice, { athletic })
+    return
+  }
+  askUniversity(g, choice)
+})
+
+/** Which university to apply to (rank, your odds and tuition on each button). */
+function askUniversity(g: GameState, major: string): void {
+  const options = universityOptions(g)
+  const choices: ChoiceOption[] = options.map((o) => ({
+    id: o.name,
+    label: `${o.name} — ${rankShort(o.rank)} • ${oddsLabel(admissionChance(g, o, major))} • ${tuitionLabel(o.tuition)}`,
+    emoji: TIER_EMOJI[o.rank.tier],
+  }))
+  choices.push({ id: '__cancel', label: 'Never mind', emoji: '\u{274C}' })
+  const cv = cvScore(g, universityTarget(major)).score
+  scriptChoice(
+    g,
+    PICK_UNIVERSITY,
+    'Choose a University',
+    `Where will you apply to study ${major}? Elite and Top universities read your CV first and may invite you to an admissions interview. Your CV strength for admissions: ${cv}/100.`,
+    choices,
+    { emoji: '\u{1F3DB}\u{FE0F}', data: { major } },
+  )
+}
+
+const PICK_UNIVERSITY = defineScript('school.pickUniversity', (g, choice, data) => {
+  if (!g.character.alive) return
+  const major = data && typeof data === 'object' && !Array.isArray(data) && typeof data.major === 'string' ? data.major : ''
+  if (!major || choice === '__cancel') {
+    log(g, `I decided not to apply to ${localTerm(g, 'university') || 'university'} this year.`, 'neutral')
+    return
+  }
+  applyToUniversity(g, major, { school: choice })
 })
 
 const AFTER_COMMUNITY = defineScript('school.afterCommunity', (g, choice) => {
@@ -2191,7 +2750,7 @@ function joinClubNow(g: GameState, cur: Enrollment, def: ClubDef): void {
     notice(g, def.name, `You don't have time for more than ${MAX_CLUBS} activities. Quit one first.`, { emoji: def.emoji })
     return
   }
-  clubs.push({ id: def.id, perf: randInt(g, 35, 60), years: 0, role: '' })
+  clubs.push({ id: def.id, perf: randInt(g, 35, 60), years: 0, role: '', name: def.name, kind: def.kind })
   setClubs(cur, clubs)
   addStat(g, 'happiness', 3)
   addPopularity(cur, def.kind === 'sport' ? 4 : 1)
@@ -2315,6 +2874,7 @@ function tryJoinClique(g: GameState, def: CliqueDef): void {
   const old = cliqueDef(cliqueOf(cur), g)
   if (old) adjustCliqueMates(g, cur, old.id, -5)
   cur.data.clique = def.id
+  cur.data.cliqueName = def.name
   addPopularity(cur, def.boost)
   addStat(g, 'happiness', 6)
   adjustCliqueMates(g, cur, def.id, 10)
@@ -2850,7 +3410,8 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
   const level = cur.level
   const k12 = isK12(level)
   const emoji = level === 'preschool' ? '\u{1F9F8}' : k12 ? '\u{1F3EB}' : '\u{1F393}'
-  const sub = level === 'preschool' ? 'Preschool' : `${gradeLevelLabel(g, cur)} • Grades: ${gradeLetter(cur.grades)}`
+  const rank = rankOf(g, level, cur.school)
+  const sub = level === 'preschool' ? `Preschool • ${rankShort(rank)}` : `${gradeLevelLabel(g, cur)} • Grades: ${gradeLetter(cur.grades)} • ${rankShort(rank)}`
   return {
     type: 'menu',
     id: 'school.current',
@@ -2860,9 +3421,10 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
     header: (gg) => {
       const cu = current(gg)
       if (!cu) return ''
-      if (cu.level === 'preschool') return `${cu.school}\nFinger painting, snack time and naps. Life is good.`
+      const r = rankOf(gg, cu.level, cu.school)
+      if (cu.level === 'preschool') return `${cu.school}\n${rankLabel(r)} • ${r.tier}\nFinger painting, snack time and naps. Life is good.`
       const left = cu.totalYears - cu.year
-      const lines = [`${gradeLevelLabel(gg, cu)} • Year ${cu.year} of ${cu.totalYears} (${left === 0 ? 'final year' : `${left} to go`})`]
+      const lines = [`${rankLabel(r)} • ${r.tier}`, `${gradeLevelLabel(gg, cu)} • Year ${cu.year} of ${cu.totalYears} (${left === 0 ? 'final year' : `${left} to go`})`]
       if (cu.major) lines.push(`Major: ${cu.major}`)
       const track = str(cu.data.track)
       if (track && track in PROGRAMS) lines.push(`Program: ${PROGRAMS[track as GradKey].label}`)
@@ -2877,7 +3439,9 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
           classmatesMenu(),
         ]
       }
+      const r = rankOf(gg, cu.level, cu.school)
       const nodes: MenuNode[] = [
+        { type: 'info', id: 'school.rank', text: `${rankLabel(r)} • ${r.tier}${TIER_GRADE_EDGE[r.tier] > 0 ? ' (good teachers lift your grades)' : TIER_GRADE_EDGE[r.tier] < 0 ? ' (you\'ll have to push yourself)' : ''}`, emoji: TIER_EMOJI[r.tier] },
         { type: 'info', id: 'school.grades', text: `Grades: ${gradeLetter(cu.grades)} (${cu.grades}%)`, emoji: '\u{1F4DD}' },
         { type: 'info', id: 'school.popularity', text: `Popularity: ${popularity(cu)}%`, emoji: '\u{2B50}' },
       ]
@@ -2890,6 +3454,9 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
         if (!isK12(cu.level)) nodes.push({ type: 'info', id: 'school.funding', text: `Tuition: ${label[cu.funding]}`, emoji: '\u{1F4B0}' })
       }
       nodes.push(studyAction())
+      if (selectiveExamOpen(gg)) {
+        nodes.push({ type: 'action', id: 'school.selective', label: `Sit ${selectiveExamName(gg)}`, emoji: '\u{1F4DD}', subtitle: 'Try for a place at a selective school', disabledReason: aliveFree, run: offerSelectiveExam })
+      }
       nodes.push(classmatesMenu())
       if (canHaveActivities(cu)) {
         nodes.push(cliquesMenu(cu))
@@ -2933,28 +3500,55 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
   }
 }
 
+function universityGroup(o: UniversityOption, i: number): MenuGroup {
+  return {
+    type: 'menu',
+    id: `edu.uni.${i}`,
+    label: o.name,
+    emoji: TIER_EMOJI[o.rank.tier],
+    subtitle: (g) => `${rankShort(o.rank)} • admits ~${percent(o.admitRate)} • ${tuitionLabel(o.tuition)} • You: ${oddsLabel(admissionChance(g, o))}`,
+    disabledReason: (g) => postSecondaryBlocker(g),
+    header: (g) => {
+      const { fit } = applicantMerit(g)
+      return [
+        `${o.name}\n${rankLabel(o.rank)} • ${o.rank.tier}`,
+        o.selective ? 'Selective: your CV is screened first, then an admissions interview.' : 'Admission is based on your grades, exam results and CV.',
+        `Tuition: ${tuitionLabel(o.tuition)} • Admits ~${percent(o.admitRate)} of applicants`,
+        `Your odds: ${oddsLabel(admissionChance(g, o))} (CV strength ${fit}/100) • Pick a major to apply.`,
+      ].join('\n')
+    },
+    children: () =>
+      MAJORS.map(
+        (m): MenuAction => ({
+          type: 'action',
+          id: `edu.uni.${i}.${m}`,
+          label: m,
+          emoji: MAJOR_EMOJI[m] ?? '\u{1F4D8}',
+          subtitle: (g) => (hasDegree(g, 'bachelor', m) ? 'Already earned' : gradPathsFor(m)),
+          disabledReason: (g) => postSecondaryBlocker(g) ?? (hasDegree(g, 'bachelor', m) ? `You already have a degree in ${m}.` : null),
+          confirm: quitJobConfirm,
+          run: (g) => applyToUniversity(g, m, { school: o.name }),
+        }),
+      ),
+  }
+}
+
 function universityMenu(): MenuGroup {
   return {
     type: 'menu',
     id: 'edu.university',
     label: 'University',
     emoji: '\u{1F3DB}\u{FE0F}',
-    subtitle: (g) => (getCountry(g.character.countryId).freeUniversity ? 'Four years • Tuition-free' : `Four years • ${formatMoney(roundMoney(UNIVERSITY_TUITION * wealthScale(g)))}/yr`),
+    subtitle: (g) => {
+      const opts = universityOptions(g)
+      if (getCountry(g.character.countryId).freeUniversity) return `${opts.length} universities • Four years • Tuition-free`
+      const cheapest = Math.min(...opts.map((o) => o.tuition))
+      return `${opts.length} universities • Four years • from ${formatMoney(cheapest)}/yr`
+    },
     disabledReason: (g) => postSecondaryBlocker(g),
-    header: () => 'Pick a major. Your major decides which graduate schools and careers you qualify for.',
-    children: () =>
-      MAJORS.map(
-        (m): MenuAction => ({
-          type: 'action',
-          id: `edu.university.${m}`,
-          label: m,
-          emoji: MAJOR_EMOJI[m] ?? '\u{1F4D8}',
-          subtitle: (g) => (hasDegree(g, 'bachelor', m) ? 'Already earned' : gradPathsFor(m)),
-          disabledReason: (g) => postSecondaryBlocker(g) ?? (hasDegree(g, 'bachelor', m) ? `You already have a degree in ${m}.` : null),
-          confirm: quitJobConfirm,
-          run: (g) => applyToUniversity(g, m),
-        }),
-      ),
+    header: (g) =>
+      `Pick a university, then a major. Better-ranked universities are harder to get into: grades, ${finalExam(g)}, your ${stageTerm(g, 'high')}'s rank and your CV (clubs, leadership, volunteering, projects, awards) all count.\nYour CV strength for admissions: ${cvScore(g, universityTarget()).score}/100 • Applications this year: ${yearActionsUsed(g, 'applyUniversity')}/3`,
+    children: (g) => universityOptions(g).map((o, i) => universityGroup(o, i)),
   }
 }
 
@@ -2971,7 +3565,11 @@ function graduateMenu(): MenuGroup {
     emoji: '\u{1F393}',
     subtitle: 'Law, medicine, business and more',
     disabledReason: (g) => postSecondaryBlocker(g) ?? (hasDegree(g, 'bachelor') ? null : "You need a bachelor's degree first."),
-    header: () => 'Programs only accept certain majors. Medical school is the hardest to get into.',
+    header: (g) => {
+      const uni = lastUniversity(g)
+      const where = uni ? `\nYou'd apply to ${uni}'s programs (${rankShort(rankOf(g, 'university', uni))}).` : ''
+      return `Programs only accept certain majors. Medical school is the hardest to get into; medicine, law, business, dentistry and veterinary schools read your CV and interview you.${where}`
+    },
     children: () =>
       GRAD_ORDER.map((key): MenuAction => {
         const info = PROGRAMS[key]
@@ -3026,7 +3624,9 @@ function educationGroup(): MenuGroup {
       if (gg.character.education.degrees.length) {
         nodes.push({ type: 'heading', id: 'edu.h.degrees', label: 'My Degrees' })
         gg.character.education.degrees.forEach((d, i) => {
-          nodes.push({ type: 'info', id: `edu.degree.${i}`, text: `${d.name} • ${d.school}${d.honors ? ' • Honors' : ''}`, emoji: '\u{1F4DC}' })
+          const lvl: SchoolLevel | null = d.kind === 'ged' ? null : d.kind === 'highschool' ? 'high' : d.kind === 'associate' ? 'community' : d.kind === 'bachelor' ? 'university' : 'graduate'
+          const r = lvl ? ` • ${rankShort(rankOf(gg, lvl, d.school))}` : ''
+          nodes.push({ type: 'info', id: `edu.degree.${i}`, text: `${d.name} • ${d.school}${r}${d.honors ? ' • Honors' : ''}`, emoji: '\u{1F4DC}' })
         })
       }
       return nodes

@@ -21,6 +21,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       "Lalla Fatma N'Soumer", 'Mohamed Dib', 'Kateb Yacine', 'Moufdi Zakaria', 'Mouloud Mammeri',
     ],
     schoolNames: {
+      preschool: ['Rawdat {place}', 'Crèche {place}', 'École préparatoire {honoree}'],
       primary: ['École primaire {honoree}', 'École primaire {place} {n}'],
       middle: ['CEM {honoree}', 'CEM {place}'],
       high: ['Lycée {honoree}', 'Lycée {place}'],
@@ -68,6 +69,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Hoji ya Henda', 'António Jacinto', 'Viriato da Cruz',
     ],
     schoolNames: {
+      preschool: ['Jardim de Infância {place}', 'Creche {honoree}', 'Centro Infantil {place}'],
       primary: ['Escola Primária {honoree}', 'Escola Primária {place} nº {n}'],
       middle: ['Escola do I Ciclo {honoree}', 'Complexo Escolar {place}'],
       high: ['Liceu {honoree}', 'Escola do II Ciclo {place}', 'Instituto Médio {honoree}'],
@@ -112,6 +114,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
     ],
     honorees: ['Mahmoud Harbi', 'Ahmed Dini', 'Elmi Boodhari', 'Abdi Sinimo', 'Ras Makonnen', 'Ibn Khaldoun', 'Ibn Sina'],
     schoolNames: {
+      preschool: ['École maternelle {place}', "Jardin d'enfants {honoree}", "Jardin d'enfants {place}"],
       primary: ['École {place} {n}', 'École primaire {place}'],
       middle: ['Collège {place}', 'CEM {place} {n}'],
       high: ['Lycée {place}', 'Lycée {honoree}', "Lycée d'État de Djibouti"],
@@ -158,6 +161,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Bienheureuse Anuarite', 'Isidore Bakanja', 'Monseigneur Munzihirwa',
     ],
     schoolNames: {
+      preschool: ['École maternelle {place}', "Jardin d'enfants {honoree}", 'École maternelle {honoree}'],
       primary: ['École Primaire {place} {n}', 'École Primaire {honoree}', 'Complexe Scolaire {place}'],
       middle: ['Collège {honoree}', 'Complexe Scolaire {honoree}'],
       high: ['Institut {place}', 'Lycée {honoree}', 'Institut Technique {place}'],
@@ -207,6 +211,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Saad Zaghloul', 'Mohamed Farid', 'Huda Shaarawi',
     ],
     schoolNames: {
+      preschool: ['{place} Kindergarten', 'Rawdat {place}', '{place} Language School KG'],
       primary: ['{honoree} Primary School', '{place} Experimental Language School', '{place} Official Language School'],
       middle: ['{honoree} Preparatory School', '{place} Preparatory School'],
       high: ['{honoree} Secondary School', '{place} Secondary School'],
@@ -254,6 +259,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Tsegaye Gabre-Medhin', 'Zera Yacob',
     ],
     schoolNames: {
+      preschool: ['{place} Kindergarten', '{honoree} Kindergarten', 'Andinet Kindergarten', 'Kidane Mehret Kindergarten'],
       primary: ['{place} Primary School', '{honoree} Primary School'],
       middle: ['{place} Middle School', '{honoree} Middle School'],
       high: ['{honoree} Secondary School', '{place} Secondary and Preparatory School', '{place} Preparatory School'],
@@ -301,6 +307,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Pio Gama Pinto',
     ],
     schoolNames: {
+      preschool: ['{place} ECDE Centre', '{place} Nursery School', '{honoree} Kindergarten'],
       primary: ['{place} Primary School', '{place} Academy', '{honoree} Primary School'],
       middle: ['{place} Junior School', '{place} Comprehensive School'],
       high: ['{place} High School', '{place} Secondary School', '{honoree} High School'],
@@ -348,6 +355,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Allal El Fassi', 'Fatima al-Fihri', 'Youssef Ibn Tachfine',
     ],
     schoolNames: {
+      preschool: ["Jardin d'enfants {place}", 'École maternelle {honoree}', 'Msid {place}', 'Rawdat {place}'],
       primary: ['École {honoree}', 'École primaire {place}', 'Groupe Scolaire {place}'],
       middle: ['Collège {honoree}', 'Collège {place}'],
       high: ['Lycée {honoree}', 'Lycée Qualifiant {honoree}', 'Lycée {place}'],
@@ -395,6 +403,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Funmilayo Ransome-Kuti', 'Queen Amina', 'Moremi', 'Chinua Achebe', 'Margaret Ekpo',
     ],
     schoolNames: {
+      preschool: ['{place} Nursery School', 'Little Angels Nursery School', 'Kiddies Kingdom Nursery', '{honoree} Nursery School'],
       primary: ['{place} Primary School', '{honoree} Nursery and Primary School', 'LGEA Primary School, {place}'],
       middle: ['Government Junior Secondary School, {place}', '{place} Junior Grammar School'],
       high: [
@@ -445,6 +454,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Lilian Ngoyi', 'Charlotte Maxeke', 'Robert Sobukwe', 'Helen Joseph',
     ],
     schoolNames: {
+      preschool: ['{place} Crèche', '{place} Pre-Primary', '{place} Educare Centre', 'Little Rainbows Crèche'],
       primary: ['{place} Primary School', 'Laerskool {place}'],
       middle: ['{place} Prep', '{place} Senior Primary School'],
       high: ['{place} High School', 'Hoërskool {place}', '{honoree} Secondary School'],
@@ -492,6 +502,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Ali Belhouane', 'Hédi Chaker', 'Tahar Ben Achour', 'Elissa',
     ],
     schoolNames: {
+      preschool: ["Jardin d'enfants {place}", 'Kouttab {place}', 'Rawdat {honoree}'],
       primary: ['École Primaire {honoree}', 'École Primaire {place}'],
       middle: ['Collège {honoree}', 'Collège {place}'],
       high: ['Lycée {honoree}', 'Lycée Secondaire {place}', 'Lycée Pilote {city}'],
@@ -539,6 +550,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Philly Lutaaya',
     ],
     schoolNames: {
+      preschool: ['{place} Nursery School', '{place} Day Care and Nursery', '{honoree} Nursery School'],
       primary: ['{place} Primary School', '{honoree} Primary School', '{place} Junior School'],
       middle: ['{place} Secondary School', '{honoree} Secondary School'],
       high: ['{place} High School', '{place} College', '{honoree} College'],
@@ -586,6 +598,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Jason Moyo', 'Lookout Masuku', 'Samora Machel', 'Julius Nyerere',
     ],
     schoolNames: {
+      preschool: ['{place} ECD Centre', '{place} Pre-School', '{place} Crèche'],
       primary: ['{place} Primary School', '{honoree} Primary School'],
       middle: ['{place} Secondary School', '{place} High School'],
       high: ['{place} High School', '{honoree} High School', '{place} College'],
@@ -635,6 +648,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Vazha-Pshavela', 'Niko Pirosmani', 'Galaktion Tabidze', 'Ivane Javakhishvili', 'Iakob Gogebashvili',
     ],
     schoolNames: {
+      preschool: ['Kindergarten No. {n}', 'Sabavshvo Baghi No. {n}', '{place} Kindergarten'],
       primary: ['{city} Public School No. {n}', '{honoree} School'],
       middle: ['{city} Public School No. {n}', '{honoree} School'],
       high: ['{city} Public School No. {n}', '{honoree} Lyceum', '{city} Physics and Mathematics School'],
@@ -684,6 +698,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Ferdowsi', 'Hafez', 'Saadi', 'Khayyam', 'Ibn Sina', 'Rumi', 'Amir Kabir', 'Parvin Etesami', 'Razi', 'Kharazmi',
     ],
     schoolNames: {
+      preschool: ['Kudakestan {place}', 'Mahd-e Kudak {place}', 'Pish-Dabestani {honoree}'],
       primary: ['Dabestan-e {honoree}', '{honoree} Primary School'],
       middle: ['{honoree} Middle School', '{place} Middle School'],
       high: ['Dabirestan-e {honoree}', '{honoree} High School', '{city} NODET High School'],
@@ -733,6 +748,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Al-Jawahiri', 'Nazik al-Malaika', 'Hammurabi', 'Ibn Sina',
     ],
     schoolNames: {
+      preschool: ['Rawdat {place}', 'Rawdat {honoree}', '{place} Kindergarten'],
       primary: ['{honoree} Primary School', '{place} Primary School'],
       middle: ['{honoree} Intermediate School', '{place} Intermediate School'],
       high: ['{honoree} Preparatory School', '{place} Preparatory School', "{city} Distinguished Students' School"],
@@ -783,6 +799,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Hannah Szenes', 'Yehuda Halevi',
     ],
     schoolNames: {
+      preschool: ['Gan {place}', 'Gan Rakefet', 'Gan Hadas', 'Gan Shaked', 'Gan Kalanit'],
       primary: ['{honoree} Elementary School', '{place} Elementary School'],
       middle: ['{honoree} Middle School', '{place} Middle School'],
       high: ['{honoree} High School', '{place} High School', '{city} Comprehensive High School'],
@@ -830,6 +847,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Abu Ubaidah', 'Ibn Sina', 'Ibn Khaldun',
     ],
     schoolNames: {
+      preschool: ['Rawdat {place}', '{place} Kindergarten', 'Rawdat Al-Amal'],
       primary: ['{honoree} Basic School', '{place} Basic School'],
       middle: ['{honoree} Basic School', '{place} Model School'],
       high: ['{honoree} Secondary School', '{place} Comprehensive Secondary School', '{place} International School'],
@@ -877,6 +895,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Khalid ibn al-Walid', 'Ibn Khaldun', 'Al-Khansaa',
     ],
     schoolNames: {
+      preschool: ['Rawdat {place}', '{place} Kindergarten', 'Rawdat Al-Zuhoor'],
       primary: ['{honoree} Primary School', '{place} Primary School', '{place} Bilingual School'],
       middle: ['{honoree} Intermediate School', '{place} Intermediate School'],
       high: ['{honoree} Secondary School', '{place} Secondary School'],
@@ -927,6 +946,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Bechara El Khoury', 'Abdel Kader', 'Imam Al-Ouzai', 'Saint Maroun',
     ],
     schoolNames: {
+      preschool: ["Jardin d'enfants {place}", '{place} Nursery', 'Garderie {place}'],
       primary: ['{place} Public School', 'Collège des Frères {place}', '{place} Evangelical School'],
       middle: ['{place} Intermediate Public School', 'Collège des Frères {place}'],
       high: ['{place} Official Secondary School', 'Lycée {honoree}', '{honoree} High School'],
@@ -976,6 +996,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Aisha bint Abi Bakr', 'Al Khansaa', 'Ibn Khaldoun',
     ],
     schoolNames: {
+      preschool: ['Rawdat {place}', '{place} Kindergarten', 'Rawdat Al-Bara'],
       primary: ['{honoree} Primary School', '{place} Primary School'],
       middle: ['{honoree} Preparatory School', '{place} Preparatory School'],
       high: ['{honoree} Secondary School', '{place} Secondary School', '{place} International School'],
@@ -1022,6 +1043,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Aisha bint Abi Bakr', 'Ibn Sina', 'Al-Farabi', 'Ibn Khaldun',
     ],
     schoolNames: {
+      preschool: ['Rawdat {place}', 'Kindergarten No. {n}, {city}', '{place} Kindergarten'],
       primary: ['{honoree} Primary School', 'Primary School No. {n} in {city}'],
       middle: ['{honoree} Intermediate School', 'Intermediate School No. {n} in {city}'],
       high: ['{honoree} Secondary School', 'Secondary School No. {n} in {city}', '{place} International School'],
@@ -1072,6 +1094,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Ibn al-Nafis', 'Khalid ibn al-Walid', 'Al-Mutanabbi', 'Jawdat al-Hashimi',
     ],
     schoolNames: {
+      preschool: ['Rawdat {place}', 'Rawdat {honoree}', '{place} Kindergarten'],
       primary: ['{honoree} Primary School', '{place} Primary School'],
       middle: ['{honoree} Preparatory School', '{place} Preparatory School'],
       high: ['{honoree} Secondary School', '{place} Secondary School'],
@@ -1122,6 +1145,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Nazım Hikmet', 'Barbaros Hayrettin Paşa', 'Piri Reis',
     ],
     schoolNames: {
+      preschool: ['{place} Anaokulu', '{honoree} Anaokulu', 'Minik Adımlar Anaokulu', 'Papatya Anaokulu'],
       primary: ['{honoree} İlkokulu', '{place} İlkokulu'],
       middle: ['{honoree} Ortaokulu', '{place} Ortaokulu'],
       high: ['{honoree} Anadolu Lisesi', '{place} Anadolu Lisesi', '{city} Fen Lisesi'],
@@ -1169,6 +1193,7 @@ export const AFRICA_MIDDLE_EAST_LOCALES: Record<string, LocaleProfile> = {
       'Omar bin Al Khattab', 'Khalid bin Al Waleed', 'Ibn Khaldoun',
     ],
     schoolNames: {
+      preschool: ['{place} Nursery', 'Rawdat {place}', '{place} Kindergarten'],
       primary: ['{honoree} Primary School', '{place} Private School', '{place} British School'],
       middle: ['{honoree} School for Basic Education', '{place} Private School'],
       high: ['{honoree} Secondary School', '{place} Private School', '{honoree} Educational Complex'],

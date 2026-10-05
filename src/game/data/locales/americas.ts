@@ -18,6 +18,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Riverside', 'Oak Hill', 'Maple Grove', 'Lakeview', 'Hillcrest', 'Westwood', 'Fairview', 'Cedar Ridge', 'Echo Park', 'Wicker Park', 'Buckhead', 'Coconut Grove', 'Capitol Hill', 'Beacon Hill', 'Highland Park', 'Silver Lake'],
     honorees: ['Lincoln', 'Washington', 'Jefferson', 'Roosevelt', 'Franklin', 'Kennedy', 'Martin Luther King Jr.', 'Harriet Tubman', 'Frederick Douglass', 'Susan B. Anthony'],
     schoolNames: {
+      preschool: ['Little Sprouts Preschool', 'Tiny Tots Preschool', 'Busy Bees Learning Center', '{place} Montessori', 'Sunshine Kids Preschool', 'Little Acorns Preschool', 'Bright Beginnings Preschool', '{place} Community Preschool'],
       primary: ['{place} Elementary School', '{honoree} Elementary School'],
       middle: ['{place} Middle School', '{honoree} Middle School', '{place} Junior High'],
       high: ['{place} High School', '{honoree} High School', '{city} Central High School'],
@@ -47,6 +48,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Noord', 'Paradera', 'Savaneta', 'Tanki Leendert', 'Tanki Flip', 'Dakota', 'Madiki', 'Kudawecha', 'Ponton', 'Pos Chikito', 'Seroe Colorado', 'Malmok', 'Shiribana', 'Bubali', 'Hooiberg'],
     honorees: ['Betico Croes', 'Frans Figaroa', 'J.E. Irausquin', 'L.G. Smith', 'Padu Lampe', 'Rufo Wever', 'Juliana', 'Wilhelmina', 'Abraham de Veer'],
     schoolNames: {
+      preschool: ['Kleuterschool {place}', 'Scol Preparatorio {place}', 'Kleuterschool Mon Plaisir', 'Scol Preparatorio {honoree}'],
       primary: ['Scol Basico {place}', 'Scol Basico {honoree}', '{honoree} School'],
       middle: ['{place} MAVO', '{honoree} College', 'Colegio {honoree}'],
       high: ['Colegio Arubano', '{place} College', 'Colegio {honoree}'],
@@ -76,6 +78,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Fox Hill', 'Bain Town', 'Grants Town', 'Cable Beach', 'Carmichael', 'Yamacraw', 'Montagu', 'Englerston', 'Pinewood', 'Golden Gates', 'Elizabeth Estates', 'Coconut Grove', 'Centreville', 'Lucaya', 'Eight Mile Rock'],
     honorees: ['Sir Lynden Pindling', 'Sir Milo Butler', 'Dame Doris Johnson', 'Sir Randol Fawkes', 'Sir Sidney Poitier', 'Sir Cecil Wallace-Whitfield', 'Sir Clifford Darling', 'C.V. Bethel', 'C.R. Walker'],
     schoolNames: {
+      preschool: ['{place} Preschool', 'Little Angels Preschool', '{honoree} Preschool', 'Sunshine Kindergarten'],
       primary: ['{place} Primary School', '{honoree} Primary School'],
       middle: ['{honoree} Junior High School', '{place} Junior High School'],
       high: ['{honoree} Senior High School', '{place} Senior High School'],
@@ -106,6 +109,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Lake Independence', 'Yarborough', 'Fort George', 'Kings Park', 'Belama', 'Port Loyola', 'Collet', 'Caribbean Shores', 'Pickstock', 'Mesopotamia', 'Queen Square', 'Freetown', 'Ladyville', 'Hattieville', 'Santa Elena'],
     honorees: ['George Price', 'Philip Goldson', 'Thomas Vincent Ramos', 'Samuel Haynes', 'Antonio Soberanis', 'Gwen Lizarraga', 'Edward P. Yorke', 'Cleopatra White'],
     schoolNames: {
+      preschool: ['{place} Preschool', '{place} Methodist Preschool', '{place} Community Preschool', 'Little Stars Preschool'],
       primary: ['{place} Government School', '{place} Methodist School', '{place} RC School', '{place} Anglican School'],
       middle: ['{place} High School', '{honoree} High School', '{place} Community High School'],
       high: ['{place} High School Sixth Form', '{honoree} Junior College', '{city} Junior College'],
@@ -136,6 +140,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Scarborough', 'Etobicoke', 'Rosedale', 'Leslieville', 'Riverdale', 'Kitsilano', 'Kerrisdale', 'Strathcona', 'Westmount', 'Mile End', 'Glebe', 'Crescent Heights', 'Kildonan', 'Bowness', 'Lakeview', 'Maple Ridge'],
     honorees: ['Terry Fox', 'Laura Secord', 'Lester B. Pearson', 'Sir Wilfrid Laurier', 'Emily Carr', 'Tommy Douglas', 'Nellie McClung', 'Frederick Banting', 'Viola Desmond', 'Lucy Maud Montgomery'],
     schoolNames: {
+      preschool: ['{place} Child Care Centre', 'Little Explorers Daycare', '{place} Montessori School', 'Little Maples Early Learning'],
       primary: ['{place} Public School', '{honoree} Elementary School', 'École {honoree}'],
       middle: ['{place} Junior High School', '{honoree} Middle School', '{place} Senior Public School'],
       high: ['{place} Collegiate Institute', '{honoree} Secondary School', '{place} Secondary School', '{honoree} High School'],
@@ -166,6 +171,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Escazú', 'Santa Ana', 'Curridabat', 'Moravia', 'Desamparados', 'Tibás', 'Barrio Amón', 'Barrio Escalante', 'Los Yoses', 'San Pedro', 'Guadalupe', 'Coronado', 'Paraíso', 'Barva', 'Grecia', 'Atenas'],
     honorees: ['Juan Santamaría', 'Juan Mora Fernández', 'Mauro Fernández', 'Carmen Lyra', 'Omar Dengo', 'Joaquín García Monge', 'Pancha Carrasco', 'Clodomiro Picado', 'José Figueres Ferrer'],
     schoolNames: {
+      preschool: ['Jardín de Niños {honoree}', 'Kínder {place}', 'CEN-CINAI {place}', 'Escuela Maternal {place}'],
       primary: ['Escuela {honoree}', 'Escuela {place}'],
       middle: ['Liceo de {place}', 'Liceo {honoree}', 'Colegio Técnico Profesional de {place}'],
       high: ['Liceo de {city}', 'Colegio {honoree}', 'Colegio Técnico Profesional de {city}'],
@@ -196,6 +202,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Vedado', 'Miramar', 'Centro Habana', 'Habana Vieja', 'Marianao', 'Cerro', 'Playa', 'Regla', 'Guanabacoa', 'Alamar', 'Lawton', 'Luyanó', 'Santos Suárez', 'Nuevo Vedado', 'Vista Alegre', 'Sierra Maestra'],
     honorees: ['José Martí', 'Antonio Maceo', 'Máximo Gómez', 'Carlos Manuel de Céspedes', 'Mariana Grajales', 'Ignacio Agramonte', 'Félix Varela', 'Calixto García', 'Juan Gualberto Gómez'],
     schoolNames: {
+      preschool: ['Círculo Infantil {honoree}', 'Círculo Infantil {place}', 'Círculo Infantil Los Camilitos'],
       primary: ['Escuela Primaria {honoree}', 'Escuela Primaria {place}'],
       middle: ['ESBU {honoree}', 'Secundaria Básica {honoree}'],
       high: ['IPU {honoree}', 'IPVCE {honoree}', 'Preuniversitario {honoree}'],
@@ -226,6 +233,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Piantini', 'Naco', 'Gazcue', 'Los Mina', 'Villa Mella', 'Ensanche Ozama', 'Los Alcarrizos', 'Bella Vista', 'Arroyo Hondo', 'Villa Consuelo', 'Cristo Rey', 'Ciudad Nueva', 'Los Jardines', 'Gurabo', 'Cienfuegos'],
     honorees: ['Juan Pablo Duarte', 'Francisco del Rosario Sánchez', 'Matías Ramón Mella', 'Gregorio Luperón', 'Hermanas Mirabal', 'Salomé Ureña', 'Eugenio María de Hostos', 'Pedro Henríquez Ureña', 'Máximo Gómez'],
     schoolNames: {
+      preschool: ['Estancia Infantil {place}', 'CAIPI {place}', 'Kínder Colegio {honoree}'],
       primary: ['Escuela {honoree}', 'Escuela Básica {place}'],
       middle: ['Liceo {honoree}', 'Liceo {place}'],
       high: ['Liceo {honoree}', 'Politécnico {honoree}', 'Politécnico {place}'],
@@ -255,6 +263,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Escalón', 'San Benito', 'Merliot', 'Zacamil', 'Ilopango', 'Cuscatancingo', 'Antiguo Cuscatlán', 'Colonia Médica', 'San Jacinto', 'Lourdes', 'Ayutuxtepeque', 'Los Planes de Renderos', 'El Boquerón', 'Lempa'],
     honorees: ['José Matías Delgado', 'Manuel José Arce', 'Gerardo Barrios', 'Francisco Morazán', 'Alberto Masferrer', 'Salarrué', 'Claudia Lars', 'Óscar Romero', 'Prudencia Ayala'],
     schoolNames: {
+      preschool: ['Centro Escolar de Parvularia {place}', 'Parvularia {honoree}', 'Kínder {place}'],
       primary: ['Centro Escolar {honoree}', 'Centro Escolar {place}'],
       middle: ['Centro Escolar {honoree}', 'Complejo Educativo {place}'],
       high: ['Instituto Nacional de {city}', 'Instituto Nacional {honoree}', 'Complejo Educativo {honoree}'],
@@ -285,6 +294,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Vista Hermosa', 'La Florida', 'El Mezquital', 'San Cristóbal', 'Santa Catarina Pinula', 'Jocotenango', 'Ciudad Vieja', 'Xela', 'Atitlán', 'Petén', 'Motagua', 'Chimaltenango', 'Lo de Bran', 'San Lucas'],
     honorees: ['Rafael Landívar', 'Miguel Ángel Asturias', 'Tecún Umán', 'José Milla y Vidaurre', 'Juan José Arévalo', 'Atanasio Tzul', 'Hermano Pedro', 'Francisco Marroquín', 'Dolores Bedoya'],
     schoolNames: {
+      preschool: ['Escuela Oficial de Párvulos No. {n}', 'Jardín Infantil {place}', 'Párvulos {honoree}'],
       primary: ['Escuela Oficial Rural Mixta No. {n} {place}', 'Escuela Oficial Urbana Mixta {honoree}'],
       middle: ['INEB {place}', 'Instituto Nacional de Educación Básica {honoree}'],
       high: ['Instituto Nacional de Educación Diversificada {city}', 'Instituto {honoree}', 'Colegio {honoree}'],
@@ -315,6 +325,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Bel-Air', 'Turgeau', 'Bois Verna', 'Canapé-Vert', 'Pacot', 'Lalue', 'Martissant', 'Bourdon', 'Kenscoff', 'Tabarre', 'Croix-des-Bouquets', 'Fort National', 'Morne Lazarre', 'Thomassin', 'Champ de Mars'],
     honorees: ['Toussaint Louverture', 'Jean-Jacques Dessalines', 'Alexandre Pétion', 'Henri Christophe', 'Catherine Flon', 'Sanité Bélair', 'Charlemagne Péralte', 'Anténor Firmin', 'Jacques Roumain'],
     schoolNames: {
+      preschool: ["Jardin d'Enfants {place}", 'École Préscolaire {honoree}', "Jardin d'Enfants Les Petits Anges"],
       primary: ['École Nationale de {place}', 'École Nationale {honoree}', 'École Communautaire de {place}'],
       middle: ['Collège {honoree}', 'Institution {honoree}'],
       high: ['Lycée {honoree}', 'Lycée National de {city}'],
@@ -345,6 +356,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Half Way Tree', 'Cross Roads', 'Papine', 'Liguanea', 'Constant Spring', 'Mona', 'Barbican', 'Red Hills', 'Trench Town', 'August Town', 'Rose Hall', 'Ironshore', 'Linstead', 'Bog Walk', 'Old Harbour'],
     honorees: ['Marcus Garvey', 'Paul Bogle', 'Sam Sharpe', 'George William Gordon', 'Norman Manley', 'Alexander Bustamante', 'Louise Bennett', 'Mary Seacole', 'Bob Marley'],
     schoolNames: {
+      preschool: ['{place} Basic School', '{place} Infant School', '{honoree} Basic School'],
       primary: ['{place} Primary School', '{place} All-Age School', '{place} Prep School'],
       middle: ['{place} High School', '{honoree} High School', '{city} College'],
       high: ['{place} High School', '{honoree} Technical High School', '{city} College'],
@@ -375,6 +387,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Coyoacán', 'Tlalpan', 'Iztapalapa', 'Condesa', 'Polanco', 'Xochimilco', 'Azcapotzalco', 'Tlaquepaque', 'Zapopan', 'San Ángel', 'Santa Fe', 'Chapultepec', 'Tlatelolco', 'Narvarte', 'Lindavista'],
     honorees: ['Benito Juárez', 'Miguel Hidalgo', 'José María Morelos', 'Sor Juana Inés de la Cruz', 'Emiliano Zapata', 'Josefa Ortiz de Domínguez', 'Ignacio Allende', 'Vicente Guerrero', 'Leona Vicario', 'Cuauhtémoc'],
     schoolNames: {
+      preschool: ['Jardín de Niños {honoree}', 'Jardín de Niños {place}', 'CENDI No. {n}', 'Kínder {honoree}'],
       primary: ['Escuela Primaria {honoree}', 'Escuela Primaria Federal {honoree}'],
       middle: ['Escuela Secundaria Técnica No. {n}', 'Escuela Secundaria Diurna No. {n} {honoree}', 'Secundaria General No. {n}'],
       high: ['Preparatoria {honoree}', 'CBTIS No. {n}', 'CONALEP {place}', 'Colegio de Bachilleres Plantel {n}'],
@@ -404,6 +417,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Altamira', 'Bolonia', 'Los Robles', 'Villa Fontana', 'Batahola', 'Linda Vista', 'Las Colinas', 'Subtiava', 'Xalteva', 'Monimbó', 'Tiscapa', 'Momotombo', 'Mombacho', 'San Judas'],
     honorees: ['Rubén Darío', 'Andrés Castro', 'José Dolores Estrada', 'Miguel Larreynaga', 'Rafaela Herrera', 'Salomón de la Selva', 'Diriangén', 'Pablo Antonio Cuadra', 'Josefa Toledo de Aguerri'],
     schoolNames: {
+      preschool: ['Preescolar {honoree}', 'Preescolar Comunitario {place}', 'CDI {place}'],
       primary: ['Escuela {honoree}', 'Escuela Pública {place}'],
       middle: ['Colegio Público {honoree}', 'Instituto Nacional {honoree}'],
       high: ['Instituto Nacional de {city}', 'Instituto {honoree}', 'Colegio {honoree}'],
@@ -434,6 +448,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Bella Vista', 'El Cangrejo', 'San Francisco', 'Punta Paitilla', 'Costa del Este', 'Betania', 'Río Abajo', 'Juan Díaz', 'Pueblo Nuevo', 'Calidonia', 'El Chorrillo', 'Albrook', 'Clayton', 'Brisas del Golf', 'Chiriquí', 'Azuero'],
     honorees: ['Justo Arosemena', 'Belisario Porras', 'Manuel Amador Guerrero', 'Victoriano Lorenzo', 'Octavio Méndez Pereira', 'Ricardo Miró', 'Urracá', 'Rufina Alfaro', 'Manuel F. Zárate'],
     schoolNames: {
+      preschool: ['COIF {place}', 'Parvulario {honoree}', 'Kínder {place}'],
       primary: ['Escuela {honoree}', 'Escuela {place}'],
       middle: ['Centro de Educación Básica General {place}', 'Colegio {honoree}'],
       high: ['Colegio {honoree}', 'Instituto Profesional y Técnico de {city}', 'Instituto Nacional'],
@@ -464,6 +479,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Santurce', 'Río Piedras', 'Condado', 'Hato Rey', 'Ocean Park', 'Isla Verde', 'Puerta de Tierra', 'Cupey', 'Levittown', 'Caimito', 'Barrio Obrero', 'Miramar', 'Piñones', 'Loíza'],
     honorees: ['Ramón Emeterio Betances', 'Eugenio María de Hostos', 'José de Diego', 'Luis Muñoz Rivera', 'Lola Rodríguez de Tió', 'Julia de Burgos', 'Roberto Clemente', 'José Celso Barbosa', 'Rafael Hernández'],
     schoolNames: {
+      preschool: ['Centro Head Start {place}', 'Pre-escolar {place}', 'Colegio {honoree} (Pre-Kínder)'],
       primary: ['Escuela Elemental {honoree}', 'Escuela Elemental {place}'],
       middle: ['Escuela Intermedia {honoree}', 'Escuela Segunda Unidad {place}'],
       high: ['Escuela Superior {honoree}', 'Escuela Superior Vocacional de {city}', 'Colegio {honoree}'],
@@ -496,6 +512,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Palermo', 'San Telmo', 'La Boca', 'Recoleta', 'Belgrano', 'Caballito', 'Flores', 'Almagro', 'Villa Crespo', 'Boedo', 'Barracas', 'Mataderos', 'Núñez', 'Nueva Córdoba', 'Fisherton', 'Godoy Cruz'],
     honorees: ['José de San Martín', 'Manuel Belgrano', 'Domingo Faustino Sarmiento', 'Mariano Moreno', 'Juana Azurduy', 'Martín Miguel de Güemes', 'Juan Bautista Alberdi', 'Alfonsina Storni', 'Bernardino Rivadavia'],
     schoolNames: {
+      preschool: ['Jardín de Infantes N° {n} {honoree}', 'Jardín Maternal {place}', 'Jardín de Infantes {place}'],
       primary: ['Escuela Nº {n} {honoree}', 'Escuela Primaria Nº {n} {honoree}'],
       middle: ['Escuela de Educación Secundaria Nº {n}', 'Escuela Técnica Nº {n} {honoree}'],
       high: ['Colegio Nacional de {city}', 'Escuela Normal {honoree}', 'Escuela de Comercio Nº {n} {honoree}'],
@@ -526,6 +543,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Sopocachi', 'Miraflores', 'Calacoto', 'Obrajes', 'Achumani', 'Villa Fátima', 'Ciudad Satélite', 'Equipetrol', 'Plan 3000', 'Cala Cala', 'Queru Queru', 'Illimani', 'Choqueyapu', 'San Pedro'],
     honorees: ['Simón Bolívar', 'Antonio José de Sucre', 'Juana Azurduy de Padilla', 'Pedro Domingo Murillo', 'Túpac Katari', 'Bartolina Sisa', 'Eduardo Abaroa', 'Franz Tamayo', 'Adela Zamudio'],
     schoolNames: {
+      preschool: ['Kínder {honoree}', 'Unidad Educativa Inicial {place}', 'Centro Infantil {place}'],
       primary: ['Unidad Educativa {honoree}', 'Unidad Educativa {place}'],
       middle: ['Unidad Educativa {honoree}', 'Colegio {honoree}'],
       high: ['Colegio Nacional {honoree}', 'Unidad Educativa {honoree}', 'Liceo {honoree}'],
@@ -556,6 +574,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Copacabana', 'Ipanema', 'Tijuca', 'Botafogo', 'Méier', 'Pinheiros', 'Mooca', 'Vila Madalena', 'Itaquera', 'Santana', 'Barra', 'Pelourinho', 'Boa Viagem', 'Savassi', 'Moinhos de Vento', 'Pampulha'],
     honorees: ['Tiradentes', 'Machado de Assis', 'Rui Barbosa', 'Santos Dumont', 'Monteiro Lobato', 'Princesa Isabel', 'Dom Pedro II', 'Zumbi dos Palmares', 'Cecília Meireles', 'Castro Alves', 'Paulo Freire'],
     schoolNames: {
+      preschool: ['EMEI {honoree}', 'Escola Municipal de Educação Infantil {place}', 'Creche {place}', 'Escolinha Pequeno Príncipe'],
       primary: ['Escola Municipal {honoree}', 'Escola Municipal {place}', 'EMEF {honoree}'],
       middle: ['Escola Estadual {honoree}', 'Escola Municipal {honoree}'],
       high: ['Escola Estadual {honoree}', 'Colégio Estadual {honoree}', 'ETEC {honoree}'],
@@ -586,6 +605,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Providencia', 'Ñuñoa', 'Las Condes', 'Maipú', 'La Florida', 'Puente Alto', 'Vitacura', 'Recoleta', 'Bellavista', 'Lastarria', 'Estación Central', 'San Miguel', 'La Reina', 'Cerro Alegre', 'Mapocho', 'Biobío'],
     honorees: ["Bernardo O'Higgins", 'José Miguel Carrera', 'Manuel Rodríguez', 'Arturo Prat', 'Gabriela Mistral', 'Pablo Neruda', 'Andrés Bello', 'Lautaro', 'Violeta Parra'],
     schoolNames: {
+      preschool: ['Jardín Infantil {place}', 'Sala Cuna y Jardín Infantil {honoree}', 'Jardín Infantil Los Copihues'],
       primary: ['Escuela Básica {honoree}', 'Escuela {place}', 'Colegio {honoree}'],
       middle: ['Escuela Básica {honoree}', 'Colegio {honoree}'],
       high: ['Liceo {honoree}', 'Liceo Bicentenario {place}', 'Liceo Industrial de {city}'],
@@ -616,6 +636,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Chapinero', 'Usaquén', 'Teusaquillo', 'Suba', 'Chicó', 'La Candelaria', 'El Poblado', 'Laureles', 'Envigado', 'Belén', 'San Antonio', 'Granada', 'Getsemaní', 'Bocagrande', 'El Prado', 'Magdalena'],
     honorees: ['Simón Bolívar', 'Francisco de Paula Santander', 'Antonio Nariño', 'Policarpa Salavarrieta', 'Francisco José de Caldas', 'José Celestino Mutis', 'Gabriel García Márquez', 'Rafael Pombo', 'Jorge Isaacs'],
     schoolNames: {
+      preschool: ['Hogar Infantil {place}', 'Jardín Infantil {honoree}', 'Jardín Social {place}', 'CDI {place}'],
       primary: ['Escuela {honoree}', 'Institución Educativa {place}', 'Escuela Rural {place}'],
       middle: ['Institución Educativa {honoree}', 'Colegio Distrital {honoree}'],
       high: ['Colegio {honoree}', 'INEM {honoree}', 'Colegio Nacional {honoree}'],
@@ -646,6 +667,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['La Floresta', 'La Mariscal', 'Cumbayá', 'Tumbaco', 'Carcelén', 'Chillogallo', 'Cotocollao', 'Guápulo', 'Urdesa', 'Samborondón', 'Las Peñas', 'Machángara', 'Pichincha', 'El Ejido'],
     honorees: ['Eugenio Espejo', 'Juan Montalvo', 'Manuela Sáenz', 'Vicente Rocafuerte', 'José Joaquín de Olmedo', 'Juan León Mera', 'Abdón Calderón', 'Dolores Cacuango', 'Eloy Alfaro'],
     schoolNames: {
+      preschool: ['Centro de Educación Inicial {honoree}', 'CDI {place}', 'Jardín de Infantes {place}'],
       primary: ['Escuela Fiscal Mixta Nº {n} {honoree}', 'Unidad Educativa {place}'],
       middle: ['Unidad Educativa {honoree}', 'Colegio Fiscal {honoree}'],
       high: ['Colegio Nacional {honoree}', 'Unidad Educativa {honoree}', 'Colegio Técnico {place}'],
@@ -676,6 +698,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Kitty', 'Campbellville', 'Albouystown', 'Bourda', 'Lacytown', 'Stabroek', 'Alberttown', 'Queenstown', 'Bel Air', 'Sophia', 'Diamond', 'Providence', 'Vreed-en-Hoop', 'Mackenzie', 'Berbice', 'Demerara'],
     honorees: ['Cuffy', 'Accabre', 'Damon', 'Hubert Critchlow', 'Martin Carter', 'Edgar Mittelholzer', 'A.J. Seymour', 'Wordsworth McAndrew'],
     schoolNames: {
+      preschool: ['{place} Nursery School', '{honoree} Nursery', '{place} Nursery'],
       primary: ['{place} Primary School', '{place} Nursery and Primary School'],
       middle: ['{place} Secondary School', '{place} Community High School', '{place} Multilateral School'],
       high: ['{place} Secondary School', '{place} Multilateral School', "Queen's College", "Bishops' High School"],
@@ -706,6 +729,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Villa Morra', 'Recoleta', 'Sajonia', 'Barrio Obrero', 'Las Mercedes', 'Carmelitas', 'Trinidad', 'San Vicente', 'Mburucuyá', 'Ycuá Satí', 'Loma Pytã', 'Ñemby', 'Itauguá', 'Ypacaraí', 'Areguá'],
     honorees: ['Fulgencio Yegros', 'Pedro Juan Caballero', 'Juana María de Lara', 'Eusebio Ayala', 'José Félix Estigarribia', 'Augusto Roa Bastos', 'Agustín Pío Barrios', 'José Asunción Flores', 'Juan de Salazar'],
     schoolNames: {
+      preschool: ['Jardín de Infantes {honoree}', 'Escuela Inicial {place}', 'Jardín Infantil {place}'],
       primary: ['Escuela Básica Nº {n} {honoree}', 'Escuela Graduada Nº {n} {honoree}'],
       middle: ['Escuela Básica Nº {n} {honoree}', 'Colegio Nacional {honoree}'],
       high: ['Colegio Nacional de {city}', 'Colegio Nacional {honoree}', 'Colegio Técnico Nacional de {city}'],
@@ -736,6 +760,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Miraflores', 'Barranco', 'San Isidro', 'Surco', 'La Molina', 'Comas', 'San Juan de Lurigancho', 'Los Olivos', 'Pueblo Libre', 'Jesús María', 'Lince', 'Magdalena', 'Chorrillos', 'Rímac', 'San Blas', 'Yanahuara'],
     honorees: ['Túpac Amaru II', 'Micaela Bastidas', 'Miguel Grau', 'Francisco Bolognesi', 'José Olaya', 'Santa Rosa de Lima', 'César Vallejo', 'Ricardo Palma', 'Inca Garcilaso de la Vega', 'María Parado de Bellido'],
     schoolNames: {
+      preschool: ['I.E.I. N° {n} {place}', 'PRONOEI {place}', 'Cuna Jardín {honoree}'],
       primary: ['I.E. Nº {n}0{n}', 'I.E. Nº {n}0{n} {honoree}', 'Institución Educativa {place}'],
       middle: ['I.E. {honoree}', 'Colegio Nacional {honoree}'],
       high: ['Colegio Nacional {honoree}', 'Gran Unidad Escolar {honoree}', 'I.E. Emblemática {honoree}'],
@@ -766,6 +791,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Pocitos', 'Ciudad Vieja', 'Cordón', 'Malvín', 'Carrasco', 'Buceo', 'Parque Rodó', 'Palermo', 'Prado', 'La Teja', 'Cerro', 'Punta Carretas', 'Tres Cruces', 'Sayago', 'Colón'],
     honorees: ['José Gervasio Artigas', 'Juan Antonio Lavalleja', 'José Pedro Varela', 'Juana de Ibarbourou', 'Delmira Agustini', 'Mario Benedetti', 'Horacio Quiroga', 'José Enrique Rodó', 'Juan Zorrilla de San Martín'],
     schoolNames: {
+      preschool: ['Jardín de Infantes N° {n}', 'CAIF {place}', 'Jardín {place}'],
       primary: ['Escuela Nº {n} {honoree}', 'Escuela Pública Nº {n}'],
       middle: ['Liceo Nº {n} {honoree}', 'UTU {place}'],
       high: ['Liceo Nº {n} {honoree}', 'Instituto Alfredo Vásquez Acevedo', 'UTU {place}'],
@@ -796,6 +822,7 @@ export const AMERICAS_LOCALES: Record<string, LocaleProfile> = {
     placeWords: ['Chacao', 'Altamira', 'Los Palos Grandes', 'Petare', 'Catia', 'El Paraíso', 'La Candelaria', 'Sabana Grande', 'Las Mercedes', 'El Hatillo', 'Baruta', 'La Florida', 'Bella Vista', 'Prebo', 'El Ávila'],
     honorees: ['Simón Bolívar', 'Francisco de Miranda', 'Antonio José de Sucre', 'Andrés Bello', 'Simón Rodríguez', 'Luisa Cáceres de Arismendi', 'José Gregorio Hernández', 'Rafael Urdaneta', 'Teresa de la Parra', 'Guaicaipuro'],
     schoolNames: {
+      preschool: ['Preescolar {honoree}', 'Simoncito {place}', 'C.E.I. {place}'],
       primary: ['Escuela Básica Nacional {honoree}', 'Unidad Educativa {place}'],
       middle: ['Unidad Educativa {honoree}', 'Liceo {honoree}'],
       high: ['Liceo {honoree}', 'Unidad Educativa Nacional {honoree}', 'Escuela Técnica Industrial {honoree}'],

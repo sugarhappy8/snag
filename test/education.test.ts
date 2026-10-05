@@ -12,6 +12,7 @@ import {
   schoolWarning,
   yearlyEducation,
 } from '../src/game/education'
+import { applyFallback } from '../src/ai/director'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -45,6 +46,26 @@ function findNode(nodes: MenuNode[], id: string, g: GameState): MenuNode | undef
     }
   }
   return undefined
+}
+
+/** Run CV screenings offline and answer admissions interviews with the best answer. */
+function settleAdmissions(g: GameState): void {
+  for (let guard = 0; guard < 10; guard++) {
+    const task = g.queue.find((m) => m.kind === 'aiTask')
+    if (task && task.kind === 'aiTask') {
+      g.queue = g.queue.filter((m) => m.id !== task.id)
+      applyFallback(g, task.task)
+      continue
+    }
+    const iv = g.queue.find((m) => m.kind === 'choice' && m.scriptId === 'school.admissionsInterview')
+    if (iv && iv.kind === 'choice') {
+      g.queue = g.queue.filter((m) => m.id !== iv.id)
+      const scores = (iv.data as { scores: number[] }).scores
+      runScript(g, 'school.admissionsInterview', String(scores.indexOf(Math.max(...scores))), iv.data, iv)
+      continue
+    }
+    return
+  }
 }
 
 function graduate(g: GameState, major = 'Biology'): void {
@@ -270,6 +291,8 @@ describe('university and graduate school', () => {
       const g = adult(seed, { age: 22, money: 1_000_000 })
       graduate(g, 'Biology')
       applyToGraduateSchool(g, 'medical')
+      // Medical schools screen the CV (offline here) and interview before admitting.
+      settleAdmissions(g)
       if (!g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'school.tuition')) continue
       resolve(g, 'school.tuition', 'cash')
       const cur = g.character.education.current!

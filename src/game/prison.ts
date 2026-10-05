@@ -32,6 +32,7 @@ import { killCharacter } from './death'
 import { createPerson, notePerson } from './people'
 import { chance, pick, rand, randInt, shuffle } from './rng'
 import { defineScript } from './scripts'
+import { fillLocal } from './data/locales'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import type {
   ChoiceOption,
@@ -189,7 +190,93 @@ const PRISON_PREFIX = [
   'Crow Point',
 ]
 
-function prisonName(g: GameState, security: Security, juvenile: boolean): string {
+/**
+ * How prisons are named around the world. Patterns use {city} (where the player lives),
+ * {place} (a local district) and {n}. `max` is for maximum security when the country has a
+ * distinctive name for it.
+ */
+interface PrisonStyle {
+  adult: string[]
+  juvenile: string[]
+  max?: string[]
+}
+
+const PRISON_STYLES: Record<string, PrisonStyle> = {
+  german: { adult: ['JVA {city}', 'Justizvollzugsanstalt {city}'], juvenile: ['Jugendstrafanstalt {city}', 'Jugendarrestanstalt {city}'] },
+  french: { adult: ["Maison d'arrêt de {city}", 'Centre pénitentiaire de {city}'], juvenile: ['Centre éducatif fermé de {city}'], max: ['Maison centrale de {city}'] },
+  francophoneAfrica: { adult: ['Prison centrale de {city}', "Maison d'arrêt de {city}"], juvenile: ['Centre de rééducation de {city}'] },
+  maghreb: { adult: ['Prison locale de {city}', 'Établissement pénitentiaire de {city}', 'Prison civile de {city}'], juvenile: ['Centre de rééducation de {city}'] },
+  spain: { adult: ['Centro Penitenciario {city}', 'Centro Penitenciario {place}'], juvenile: ['Centro de Menores {place}'] },
+  mexico: { adult: ['CERESO {city}', 'Reclusorio {place}', 'Penal de {place}'], juvenile: ['Centro de Internamiento para Adolescentes {city}'], max: ['CEFERESO No. {n}'] },
+  plata: { adult: ['Unidad Penal N° {n}', 'Complejo Penitenciario {city}', 'Cárcel de {place}'], juvenile: ['Instituto de Menores {place}'] },
+  latam: { adult: ['Cárcel de {city}', 'Centro Penitenciario {place}', 'Penal de {place}'], juvenile: ['Centro de Menores {city}'] },
+  brazil: { adult: ['Presídio {place}', 'Penitenciária de {city}', 'Centro de Detenção Provisória {place}'], juvenile: ['Centro Socioeducativo {place}'], max: ['Penitenciária Federal de {city}'] },
+  lusophone: { adult: ['Estabelecimento Prisional de {city}', 'Cadeia de {place}'], juvenile: ['Centro Educativo {place}'] },
+  italy: { adult: ['Casa Circondariale di {city}', 'Casa di Reclusione di {city}'], juvenile: ['Istituto Penale per i Minorenni di {city}'] },
+  dutch: { adult: ['Penitentiaire Inrichting {city}', 'Huis van Bewaring {city}'], juvenile: ['Justitiële Jeugdinrichting {place}'] },
+  aruba: { adult: ['Korrektie Instituut Aruba', 'KIA Sabana Basora'], juvenile: ['Youth Detention Center {place}'] },
+  norway: { adult: ['{city} fengsel', '{place} fengsel'], juvenile: ['{city} youth unit'] },
+  sweden: { adult: ['Anstalten {city}', 'Häktet {city}'], juvenile: ['Ungdomshemmet {place}'] },
+  denmark: { adult: ['Fængslet {city}', 'Statsfængslet {place}'], juvenile: ['Sikrede institution {place}'] },
+  britain: { adult: ['HMP {city}', 'HMP {place}'], juvenile: ['HMYOI {place}', '{city} Young Offender Institution'] },
+  commonwealth: { adult: ['{city} Prison', '{city} Correctional Centre', '{place} Prison'], juvenile: ['{city} Youth Justice Centre', '{place} Youth Detention Centre'] },
+  eastAfrica: { adult: ['{city} Prison', '{place} Prison', '{city} Remand Prison'], juvenile: ['{place} Borstal Institution'], max: ['{city} Maximum Security Prison'] },
+  southAsia: { adult: ['{city} Central Jail', '{city} District Jail'], juvenile: ['{city} Observation Home', '{place} Borstal School'] },
+  indonesia: { adult: ['Lapas {city}', 'Rutan {city}', 'Lapas Kelas I {city}'], juvenile: ['LPKA {city}'], max: ['Lapas Nusakambangan'] },
+  malaysia: { adult: ['Penjara {city}', 'Penjara {place}'], juvenile: ['Sekolah Tunas Bakti {place}'] },
+  philippines: { adult: ['{city} City Jail', '{place} Provincial Jail'], juvenile: ['Bahay Pag-asa {place}'], max: ['New Bilibid Prison'] },
+  postSoviet: { adult: ['Penal Colony No. {n}', 'SIZO No. {n}, {city}'], juvenile: ['Juvenile Colony No. {n}'] },
+  arab: { adult: ['{city} Central Prison', '{city} Reform and Rehabilitation Center'], juvenile: ['{city} Juvenile Care Center'] },
+  japan: { adult: ['{city} Prison', '{city} Detention House'], juvenile: ['{city} Juvenile Training School'] },
+  korea: { adult: ['{city} Correctional Institution', '{city} Detention Center'], juvenile: ['{city} Juvenile Reformatory'] },
+  china: { adult: ['{city} Prison No. {n}', '{city} Municipal Prison'], juvenile: ['{city} Juvenile Offender Institution'] },
+  hongKong: { adult: ['{place} Correctional Institution', '{place} Prison'], juvenile: ['{place} Training Centre'], max: ['Stanley Prison'] },
+  turkey: { adult: ['{city} Closed Prison', '{place} T-Type Prison'], juvenile: ['{city} Juvenile Closed Prison'], max: ['{city} High Security Prison'] },
+  poland: { adult: ['Zakład Karny {city}', 'Areszt Śledczy {city}'], juvenile: ['Zakład Poprawczy {place}'] },
+  czech: { adult: ['Věznice {city}', 'Věznice {place}'], juvenile: ['Věznice pro mladistvé {place}'] },
+  slovakia: { adult: ['Ústav na výkon trestu {city}', 'Ústav na výkon väzby {city}'], juvenile: ['Ústav pre mladistvých {place}'] },
+  hungary: { adult: ['{city} Fegyház és Börtön'], juvenile: ['{city} Fiatalkorúak Börtöne'] },
+  romania: { adult: ['Penitenciarul {city}', 'Penitenciarul {place}'], juvenile: ['Centrul de Detenție {place}'] },
+  croatia: { adult: ['Kaznionica {place}', 'Zatvor {place}'], juvenile: ['Odgojni zavod {place}'] },
+  serbia: { adult: ['KPZ {place}', 'Okružni zatvor {place}'], juvenile: ['Vaspitno-popravni dom {place}'] },
+  andorra: { adult: ['Centre Penitenciari de La Comella'], juvenile: ['Centre de Menors de La Comella'] },
+  monaco: { adult: ["Maison d'arrêt de Monaco"], juvenile: ["Maison d'arrêt de Monaco (juvenile wing)"] },
+  neutral: { adult: ['{city} Central Prison', '{place} Prison', '{city} Remand Prison'], juvenile: ['{city} Juvenile Rehabilitation Center'] },
+}
+
+const PRISON_STYLE_OF: Record<string, string> = {
+  de: 'german', at: 'german', ch: 'german',
+  fr: 'french', be: 'french', ht: 'francophoneAfrica', cd: 'francophoneAfrica', dj: 'francophoneAfrica',
+  dz: 'maghreb', ma: 'maghreb', tn: 'maghreb',
+  es: 'spain', mx: 'mexico', ar: 'plata', uy: 'plata',
+  cr: 'latam', cu: 'latam', do: 'latam', sv: 'latam', gt: 'latam', ni: 'latam', pa: 'latam', pr: 'latam', bo: 'latam', cl: 'latam', co: 'latam', ec: 'latam', py: 'latam', pe: 'latam', ve: 'latam',
+  br: 'brazil', pt: 'lusophone', ao: 'lusophone', it: 'italy', nl: 'dutch', aw: 'aruba',
+  no: 'norway', se: 'sweden', dk: 'denmark', gb: 'britain',
+  ie: 'commonwealth', au: 'commonwealth', nz: 'commonwealth', za: 'commonwealth', ng: 'commonwealth', jm: 'commonwealth', bs: 'commonwealth', bz: 'commonwealth', gy: 'commonwealth', sg: 'commonwealth', pg: 'commonwealth', ws: 'commonwealth', ca: 'commonwealth', fi: 'commonwealth', ee: 'commonwealth', gr: 'commonwealth', il: 'commonwealth',
+  ke: 'eastAfrica', ug: 'eastAfrica', zw: 'eastAfrica', et: 'eastAfrica',
+  in: 'southAsia', pk: 'southAsia', bd: 'southAsia', np: 'southAsia',
+  id: 'indonesia', my: 'malaysia', ph: 'philippines',
+  ru: 'postSoviet', ua: 'postSoviet', kz: 'postSoviet', ge: 'postSoviet', mn: 'postSoviet',
+  eg: 'arab', sa: 'arab', ae: 'arab', kw: 'arab', qa: 'arab', jo: 'arab', lb: 'arab', sy: 'arab', iq: 'arab', ir: 'arab', af: 'arab',
+  jp: 'japan', kr: 'korea', cn: 'china', tw: 'china', hk: 'hongKong', tr: 'turkey',
+  pl: 'poland', cz: 'czech', sk: 'slovakia', hu: 'hungary', ro: 'romania', hr: 'croatia', rs: 'serbia',
+  ad: 'andorra', mc: 'monaco',
+}
+
+/** A prison's name in the local style ('Lapas Cipinang', 'JVA Tegel', 'HMP Leeds'); American names in the US. */
+function prisonName(g: GameState, security: Security, juvenile: boolean, avoid?: string): string {
+  let name = ''
+  for (let i = 0; i < 4 && (!name || name === avoid); i++) name = rollPrisonName(g, security, juvenile)
+  return name
+}
+
+function rollPrisonName(g: GameState, security: Security, juvenile: boolean): string {
+  const cid = g.character.countryId
+  if (cid !== 'us') {
+    const style = PRISON_STYLES[PRISON_STYLE_OF[cid] ?? 'neutral'] ?? PRISON_STYLES.neutral
+    const list = juvenile ? style.juvenile : security === 'maximum' && style.max && chance(g, 0.6) ? style.max : style.adult
+    return fillLocal(g, pick(g, list))
+  }
   const prefix = pick(g, PRISON_PREFIX)
   if (juvenile) return chance(g, 0.5) ? `${g.character.city} Juvenile Detention Center` : `${prefix} Youth Correctional Center`
   if (security === 'minimum') return pick(g, [`${prefix} Correctional Camp`, `${prefix} County Jail`])
@@ -211,6 +298,22 @@ const GANG_NAMES = [
   'Commissary Cartel',
   'Tier Three Titans',
 ]
+
+/** Local crews named after the neighborhoods they run ('The Tanah Abang Crew'). */
+const LOCAL_GANGS = ['The {place} Crew', 'The {place} Syndicate', 'The {city} Clique', 'The {place} Mob', 'The {place} Brotherhood']
+
+/** Three gangs for a cell block: the classics plus, outside the US, crews from local neighborhoods. */
+function gangNames(g: GameState): string[] {
+  const out = shuffle(g, GANG_NAMES).slice(0, 3)
+  if (g.character.countryId !== 'us') {
+    for (let i = 0; i < out.length; i++) {
+      if (!chance(g, 0.5)) continue
+      const name = fillLocal(g, pick(g, LOCAL_GANGS))
+      if (!out.includes(name)) out[i] = name
+    }
+  }
+  return out
+}
 
 const INMATE_CRIMES = [
   'Armed Robbery',
@@ -368,7 +471,7 @@ export function sendToPrison(g: GameState, crime: string, yearsIn: number, opts:
   pl.severity = clamp(Math.round(opts.severity ?? (life ? 5 : sentence > 15 ? 4 : sentence > 5 ? 3 : 2)), 1, 5)
   pl.originalSentence = c.prison.sentenceYears
   pl.admittedAge = c.age
-  pl.gangs = security === 'minimum' ? [] : shuffle(g, GANG_NAMES).slice(0, 3)
+  pl.gangs = security === 'minimum' ? [] : gangNames(g)
   pl.autoAppeals = deathRow ? randInt(g, 2, 5) : 0
   pl.behavior = 50
 
@@ -467,11 +570,11 @@ function raiseSecurity(g: GameState): string | null {
   if (pl.juvenile && c.age < 18) return null
   p.security = p.security === 'minimum' ? 'medium' : 'maximum'
   const old = p.name
-  p.name = prisonName(g, p.security, false)
+  p.name = prisonName(g, p.security, false, old)
   // Cellmates stay behind; new ones arrive.
   g.people = g.people.filter((x) => !(x.relation === 'cellmate' && x.contextId === old))
   createCellmate(g, p.name, false)
-  if (pl.gangs.length === 0) pl.gangs = shuffle(g, GANG_NAMES).slice(0, 3)
+  if (pl.gangs.length === 0) pl.gangs = gangNames(g)
   delete p.gang
   c.residence = { status: 'prison', description: p.name }
   log(g, `I was transferred to ${p.name}.`, 'bad')
@@ -605,10 +708,10 @@ export function yearlyPrison(g: GameState): boolean {
     pl.juvenile = false
     const old = p.name
     p.security = p.life ? 'maximum' : 'medium'
-    p.name = prisonName(g, p.security, false)
+    p.name = prisonName(g, p.security, false, old)
     g.people = g.people.filter((x) => !(x.relation === 'cellmate' && x.contextId === old))
     createCellmate(g, p.name, false)
-    pl.gangs = shuffle(g, GANG_NAMES).slice(0, 3)
+    pl.gangs = gangNames(g)
     c.residence = { status: 'prison', description: p.name }
     log(g, `I turned 18 and was transferred to ${p.name}.`, 'bad')
     notice(g, 'Transferred', `You aged out of juvenile detention. The rest of your sentence will be served at ${p.name}, with the grown-ups.`, {
@@ -676,8 +779,10 @@ function yearlyDeathRow(g: GameState): boolean {
     g,
     'Execution',
     pick(g, [
-      `Your appeals ran out. After ${years(pl.deathRowYears)} on death row, the state carried out your execution at ${p.name}.`,
-      `The governor never called. You ate your last meal, said your last words, and the state carried out your sentence.`,
+      `Your appeals ran out. After ${years(pl.deathRowYears)} on death row, ${g.character.countryId === 'us' ? 'the state' : 'the authorities'} carried out your execution at ${p.name}.`,
+      g.character.countryId === 'us'
+        ? `The governor never called. You ate your last meal, said your last words, and the state carried out your sentence.`
+        : `The pardon never came. You ate your last meal, said your last words, and the sentence was carried out.`,
     ]),
     { emoji: '\u{26B0}\u{FE0F}', tone: 'bad' },
   )

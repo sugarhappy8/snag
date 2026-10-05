@@ -3,6 +3,7 @@ import {
   fillLocal,
   hasLocaleData,
   localeOf,
+  localPreschoolName,
   localSchoolName,
   localStreetName,
   localUniversityName,
@@ -23,7 +24,7 @@ const WORD_LISTS = ['placeWords', 'honorees', 'getaways', 'holidays', 'foods', '
 const CLIMATES = ['tropical', 'arid', 'mediterranean', 'temperate', 'continental', 'cold']
 
 function patternsOf(p: LocaleProfile): string[] {
-  return [...p.schoolNames.primary, ...p.schoolNames.middle, ...p.schoolNames.high, ...p.universityNames, ...p.streetNames]
+  return [...p.schoolNames.primary, ...p.schoolNames.middle, ...p.schoolNames.high, ...(p.schoolNames.preschool ?? []), ...p.universityNames, ...p.streetNames]
 }
 
 /** A game whose player lives in the first city of the country. */
@@ -98,6 +99,7 @@ describe('Americas locale data', () => {
         expect(p.schoolNames[level].length, `${id}.${level}`).toBeGreaterThanOrEqual(2)
         expect(p.schoolNames[level].length, `${id}.${level}`).toBeLessThanOrEqual(4)
       }
+      expect(p.schoolNames.preschool?.length ?? 0, `${id}.preschool`).toBeGreaterThanOrEqual(2)
       expect(p.universityNames.length, `${id}.universityNames`).toBeGreaterThanOrEqual(2)
       expect(p.universityNames.length, `${id}.universityNames`).toBeLessThanOrEqual(5)
       expect(p.streetNames.length, `${id}.streetNames`).toBeGreaterThanOrEqual(2)
@@ -120,6 +122,7 @@ describe('Americas locale data', () => {
           localSchoolName(g, 'primary'),
           localSchoolName(g, 'middle'),
           localSchoolName(g, 'high'),
+          localPreschoolName(g),
           localUniversityName(g),
           localStreetName(g),
         ]

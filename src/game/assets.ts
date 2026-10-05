@@ -50,7 +50,7 @@ import { createPerson } from './people'
 import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import type { Asset, AssetKind, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Mortgage, Person, RelationKind, StatKey } from './types'
-import { getCountry, randomFirstName, randomLastName } from './world'
+import { getCountry, namePoolOf, randomFirstName, randomLastName } from './world'
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -914,6 +914,7 @@ const RENTAL_TYPES: RentalType[] = [
   { id: 'penthouse', label: 'Luxury Penthouse', emoji: '🌆', min: 6_000, max: 15_000 },
 ]
 
+const NEUTRAL_NEIGHBORHOODS = ['Downtown', 'the city center', 'the Old Town', 'the suburbs', 'the university quarter', 'the harbor district']
 const NEIGHBORHOODS = ['Downtown', 'Midtown', 'Riverside', 'Old Town', 'the Suburbs', 'Uptown', 'the East Side', 'the West End', 'the Arts District', 'Harbor View', 'Maple Heights', 'University Park', 'Little Italy', 'the Financial District']
 const RENTAL_PERKS = ['Pet friendly', 'In-unit laundry', 'Rooftop deck', 'Thin walls', 'Free parking', 'No AC', 'Gym in the building', 'Upstairs neighbor plays the drums', 'Doorman', 'Near the subway', 'Great natural light', 'Mysterious smell', 'Landlord lives downstairs', 'Brand-new kitchen', 'Balcony with a view']
 
@@ -925,6 +926,12 @@ export interface RentalListing {
   monthly: number
   condition: number
   perk: string
+}
+
+/** A neighborhood where the player lives: US-style districts in the US, the local districts elsewhere. */
+function neighborhood(r: SRng, g: GameState): string {
+  const local = g.character.countryId === 'us' ? [] : localeOf(g.character.countryId).placeWords
+  return local.length && r.next() < 0.85 ? r.pick(local) : r.pick(g.character.countryId === 'us' ? NEIGHBORHOODS : NEUTRAL_NEIGHBORHOODS)
 }
 
 export function rentalListings(g: GameState): RentalListing[] {
@@ -939,7 +946,7 @@ export function rentalListings(g: GameState): RentalListing[] {
       id: `${g.year}:rent-${i}`,
       label: t.label,
       emoji: t.emoji,
-      neighborhood: r.pick(NEIGHBORHOODS),
+      neighborhood: neighborhood(r, g),
       monthly: Math.max(60, Math.round((r.int(t.min, t.max) * mult * (0.85 + 0.15 * (condition / 100))) / 5) * 5),
       condition,
       perk: r.pick(RENTAL_PERKS),
@@ -1767,13 +1774,20 @@ const COLLECTIBLES: [string, string, number, number][] = [
   ['Moon Rock (Certified)', '🌑', 20_000, 900_000],
 ]
 
+/** Half the galleries' artists are local names, the rest the usual international set. */
+function artistName(r: SRng, g: GameState): string {
+  if (r.next() < 0.5) return r.pick(ARTISTS)
+  const pool = namePoolOf(g.character.countryId)
+  return `${r.pick(r.next() < 0.5 ? pool.male : pool.female)} ${r.pick(pool.last)}`
+}
+
 export function collectibleListings(g: GameState, store: 'art' | 'collectibles'): ItemListing[] {
   const r = seeded(yearKey(g, `collect:${store}`))
   const mult = globalGoodsMult(g)
   const out: ItemListing[] = []
   for (let i = 0; i < 6; i++) {
     if (store === 'art') {
-      const artist = r.pick(ARTISTS)
+      const artist = artistName(r, g)
       const title = r.pick(ART_TITLES)
       const fame = r.int(1, 100)
       const price = nicePrice((2_000 + 2_000_000 * Math.pow(r.next(), 4) * (fame / 100)) * mult)
@@ -2547,6 +2561,14 @@ const RENOVATIONS = [
   { id: 'gut', label: 'Full Gut Renovation', emoji: '🏗️', cost: 0.12, cond: [100, 100], value: 0.08 },
 ]
 
+const CONTRACTOR_SUFFIXES = ['Construction', 'Builders', '& Sons Renovations', 'Home Repair', 'Bros. Building', 'Renovations']
+
+/** A builder named after a local family ('Pratama & Sons Renovations'); the US keeps its classics. */
+function contractorName(g: GameState): string {
+  if (g.character.countryId === 'us') return pick(g, CONTRACTORS)
+  return `${randomLastName(g, g.character.countryId)} ${pick(g, CONTRACTOR_SUFFIXES)}`
+}
+
 const CONTRACTORS = ['Bob\'s Builders', 'Nail It Construction', 'Hammer Time Renovations', 'Discount Dave\'s Home Repair', 'Precision Craftsmen', 'Two Guys and a Truck', 'Sledgehammer Bros.']
 
 function renovationCost(g: GameState, a: Asset, rate: number): number {
@@ -2584,7 +2606,7 @@ function renovateMenu(a: Asset): MenuGroup {
               cantAfford(gg, estimate, 'the renovation')
               return
             }
-            const contractor = pick(gg, CONTRACTORS)
+            const contractor = contractorName(gg)
             const roll = randInt(gg, 1, 100)
             let costNote = 'They finished on time and on budget. A miracle.'
             let paid = estimate
@@ -2685,7 +2707,7 @@ function amenitiesMenu(a: Asset): MenuGroup {
               cantAfford(gg, price, `a ${am.label.toLowerCase()}`)
               return
             }
-            const contractor = pick(gg, CONTRACTORS)
+            const contractor = contractorName(gg)
             const roll = randInt(gg, 1, 100)
             let note = 'It came out great.'
             let paid = price

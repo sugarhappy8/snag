@@ -250,6 +250,75 @@ export interface Character {
   /** Person ids named in the will; empty = split among children. */
   willBeneficiaries: string[]
   religion: string | null
+  /**
+   * Explicit CV / résumé entries: projects, volunteering, courses, awards, internships, embellished
+   * lines and school activities archived when leaving a school (see cv.ts). Optional: old saves
+   * have none; entries derived from degrees, jobs and businesses are computed on the fly.
+   */
+  cv?: CvEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// CV / résumé (cv.ts)
+
+export type CvKind = 'education' | 'experience' | 'activity' | 'volunteering' | 'project' | 'award' | 'certification' | 'skill' | 'leadership'
+
+export interface CvEntry {
+  id: string
+  kind: CvKind
+  /** e.g. 'Built a budgeting app', 'Captain, Basketball Team', 'Volunteer'. */
+  title: string
+  /** Organization / school / place, '' when none. */
+  org: string
+  startAge: number
+  /** Age it ended; absent while ongoing. */
+  endAge?: number
+  /** Short detail line ('#37 of 4,100 secondary schools in Indonesia', '2,000 downloads'...). */
+  detail: string
+  /** 1-10: how impressive it reads. */
+  strength: number
+  /** A made-up or inflated line. Background checks and interviews can catch it. */
+  embellished: boolean
+  /** Topic tags for relevance: 'tech', 'science', 'arts', 'business', 'health', 'service', 'sports'... */
+  tags?: string[]
+  /** 'built' (CV menu), 'school' (archived school activity), 'fake' (embellished)... */
+  source?: string
+}
+
+/** What a CV is screened for. Plain JSON: it travels inside AI tasks and script data. */
+export interface ScreeningApp {
+  kind: 'job' | 'university' | 'graduate'
+  /** The job (kind 'job'); the regular interview flow continues with it. */
+  job?: InterviewJob
+  /** University / graduate school / company name. */
+  org: string
+  /** University major. */
+  major?: string
+  /** Graduate program key ('law', 'medical', 'business'...). */
+  program?: string
+  /** e.g. '#12 of 340 universities in Kenya'. */
+  rankLabel?: string
+  /** 'Elite' | 'Top' | 'Good' | 'Average' | 'Struggling'. */
+  tier?: string
+  /** Yearly tuition in dollars (0 = free). */
+  tuition?: number
+  years?: number
+  /** CV fit for this target, 0-100 (cvScore). */
+  fit: number
+  /** Offline odds of being invited to interview, 0-1. */
+  chance: number
+  /** Odds of acceptance once interviewed (schools), 0-1. */
+  admit?: number
+  /** One-line job market read (jobs). */
+  market?: string
+}
+
+/** The screener's call: interview or not, and why (shown on rejection). */
+export interface ScreeningDecision {
+  invite: boolean
+  reason: string
+  /** Admissions interview question (schools; AI-written, optional). */
+  question?: InterviewQuestion
 }
 
 // ---------------------------------------------------------------------------
@@ -528,6 +597,8 @@ export type AiTask =
   | { type: 'interview'; job: InterviewJob }
   /** Write the obituary shown on the death screen. */
   | { type: 'obituary' }
+  /** Read the CV for a job / university / graduate school and decide on an interview. */
+  | { type: 'screenApplication'; app: ScreeningApp }
 
 // ---------------------------------------------------------------------------
 // Whole-game state

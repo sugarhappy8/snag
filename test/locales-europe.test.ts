@@ -4,6 +4,7 @@ import {
   fillLocal,
   hasLocaleData,
   localeOf,
+  localPreschoolName,
   localSchoolName,
   localStreetName,
   localUniversityName,
@@ -35,7 +36,7 @@ function tokensOf(pattern: string): string[] {
 }
 
 function patternsOf(p: LocaleProfile): string[] {
-  return [...LEVELS.flatMap((l) => p.schoolNames[l]), ...p.universityNames, ...p.streetNames]
+  return [...LEVELS.flatMap((l) => p.schoolNames[l]), ...(p.schoolNames.preschool ?? []), ...p.universityNames, ...p.streetNames]
 }
 
 describe('European locale data', () => {
@@ -79,6 +80,7 @@ describe('European locale data', () => {
         expect(p.schoolNames[level].length, `${id} ${level}`).toBeGreaterThanOrEqual(2)
         expect(p.schoolNames[level].length, `${id} ${level}`).toBeLessThanOrEqual(4)
       }
+      expect(p.schoolNames.preschool?.length ?? 0, `${id} preschool`).toBeGreaterThanOrEqual(2)
       for (const list of [p.universityNames, p.streetNames]) {
         expect(list.length, id).toBeGreaterThanOrEqual(2)
         expect(list.length, id).toBeLessThanOrEqual(4)
@@ -122,6 +124,7 @@ describe('European locale data', () => {
         for (let k = 0; k < 6; k++) {
           const names = [
             ...LEVELS.map((level) => localSchoolName(g, level)),
+            localPreschoolName(g),
             localUniversityName(g),
             localStreetName(g),
           ]

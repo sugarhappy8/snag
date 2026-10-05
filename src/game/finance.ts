@@ -8,7 +8,7 @@ import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log,
 import { hasMarketData, marketOf } from './data/markets'
 import { chance, pick, randInt, uid } from './rng'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
-import { getCountry } from './world'
+import { getCountry, randomFirstName } from './world'
 
 // ---------------------------------------------------------------------------
 // Income tax
@@ -393,7 +393,10 @@ const COLLECTOR_TEXTS = [
   'Your mailbox is stuffed with FINAL NOTICE letters about the {debt} you owe.',
 ]
 
-const COLLECTOR_NAMES = ['Gary', 'Doreen', 'Vince', 'Brenda', 'Marcus', 'Trish', 'Duane', 'Carla']
+/** A debt collector's first name from the player's country (no Garys in Jakarta). */
+function collectorName(g: GameState): string {
+  return randomFirstName(g, g.character.countryId, chance(g, 0.5) ? 'male' : 'female')
+}
 
 /**
  * Cost of everyday living relative to the US (1): 40% bills and services, which track wealth,
@@ -469,7 +472,12 @@ export function yearlyFinance(g: GameState): void {
   if (baseLiving > 0) {
     const living = Math.round(baseLiving * (0.9 + randInt(g, 0, 20) / 100))
     addMoney(g, -living)
-    if (living >= 500 && chance(g, 0.35)) log(g, pick(g, LIVING_LINES)(formatMoney(living)))
+    // Mentioned now and then, not as a yearly receipt.
+    const lastLiving = num(g.flags.livingLineAge, -99)
+    if (living >= 500 && (c.age - lastLiving >= 5 || lastLiving > c.age) && chance(g, 0.35)) {
+      g.flags.livingLineAge = c.age
+      log(g, pick(g, LIVING_LINES)(formatMoney(living)))
+    }
   }
 
   // 4. Loans: interest, payments, missed payments, payoff.
@@ -525,13 +533,16 @@ function yearlyLoans(g: GameState): void {
       misses[loan.id] = missed
       recordMissedPayment(g)
       if (missed >= 2 && repossessFinancedAsset(g, loan)) continue
-      notice(
-        g,
-        'Missed Payment',
-        `You couldn't make the ${formatMoney(due)} payment on your ${loanLabel(loan.kind).toLowerCase()} from ${loan.lender}. A ${formatMoney(fee)} late fee was added and your credit score took a beating.`,
-        { emoji: '📉', tone: 'bad' },
-      )
-      log(g, `I missed a payment on my ${loanLabel(loan.kind).toLowerCase()}.`, 'bad')
+      // First missed payment: a popup. After that a reminder every few years, not a yearly nag.
+      if (missed === 1 || missed % 4 === 0) {
+        notice(
+          g,
+          'Missed Payment',
+          `You couldn't make the ${formatMoney(due)} payment on your ${loanLabel(loan.kind).toLowerCase()} from ${loan.lender}. A ${formatMoney(fee)} late fee was added and your credit score took a beating.`,
+          { emoji: '📉', tone: 'bad' },
+        )
+        log(g, missed === 1 ? `I missed a payment on my ${loanLabel(loan.kind).toLowerCase()}.` : `I'm still behind on my ${loanLabel(loan.kind).toLowerCase()}.`, 'bad')
+      }
     } else {
       delete misses[loan.id]
     }
@@ -545,7 +556,7 @@ function yearlyLoans(g: GameState): void {
       remember(g, `Paid off my ${what}.`)
     }
   }
-  if (paidTotal >= 100) log(g, `I paid ${formatMoney(paidTotal)} toward my loans.`)
+  if (paidTotal >= 100 && changedALot(g, 'lastLoanLogged', paidTotal)) log(g, `I paid ${formatMoney(paidTotal)} toward my loans.`)
 }
 
 /** Repossess whatever a defaulted loan financed (car, boat, plane). Returns true if something was taken. */
@@ -598,9 +609,9 @@ function handleDebt(g: GameState): void {
   // Being broke stings every year, but the collectors only make the story every few years
   // (the same popup and line year after year reads like a bug).
   const lastCalled = num(g.flags.collectorsAge, -99)
-  if (c.age - lastCalled >= 3 || lastCalled > c.age) {
+  if (c.age - lastCalled >= 5 || lastCalled > c.age) {
     g.flags.collectorsAge = c.age
-    const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', pick(g, COLLECTOR_NAMES))
+    const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', collectorName(g))
     notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
     log(
       g,

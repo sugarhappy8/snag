@@ -5,12 +5,14 @@
 // mutates the game state — it only reads the frozen snapshot from the store.
 import { businessSummary } from '../game/business'
 import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, shortMoney } from '../game/core'
+import { cvPromptLines, cvSummary, graduateTarget, jobTarget, rankLabel, rankOf, universityTarget, type CvTarget } from '../game/cv'
+import { getJobDef, type GradKey } from '../game/data/jobs'
 import { localeOf, type LocaleProfile } from '../game/data/locales'
 import { marketOf } from '../game/data/markets'
 import { investmentsSummary } from '../game/investments'
 import { luxurySummary } from '../game/shops/luxury'
 import { getCountry } from '../game/world'
-import type { ChoiceModal, GameState, InterviewJob, LifeStage, NoticeModal, Person, RelationKind, SchoolLevel } from '../game/types'
+import type { ChoiceModal, GameState, InterviewJob, LifeStage, NoticeModal, Person, RelationKind, SchoolLevel, ScreeningApp } from '../game/types'
 import type { ContentRating, Settings } from '../settings'
 import { truncate } from './schemas'
 
@@ -315,6 +317,10 @@ export function describeCharacter(g: GameState): string {
   if (c.licenses.length) lines.push(`LICENSES: ${c.licenses.join(', ')}`)
   else if (c.age >= 15) lines.push('LICENSES: none (no driver\'s license)')
   if (c.talent) lines.push(`TALENT: ${c.talent}`)
+  if (c.age >= 12) {
+    const cv = cvSummary(g, 5)
+    if (cv) lines.push(`CV HIGHLIGHTS: ${cv}`)
+  }
   if (c.social) lines.push(`SOCIAL MEDIA: @${c.social.handle} on ${c.social.platform}, ${c.social.followers.toLocaleString('en-US')} followers${c.social.verified ? ', verified' : ''}`)
   if (g.assets.length) {
     const assets = [...g.assets].sort((a, b) => b.value - a.value).slice(0, 5)
@@ -621,6 +627,59 @@ export function interviewPrompt(g: GameState, job: InterviewJob): string {
     `Then 3-4 answers ${c.firstName} could give (first person, max 14 words each) with a "score" 0-100 for how well each one would land with this interviewer: exactly one great answer (75-95), one terrible or weird one (0-25), the rest in between. Mix up the order.`,
     'Reply with JSON like: {"question":"...","answers":[{"label":"...","score":40},{"label":"...","score":90},{"label":"...","score":10}]}',
   ].join('\n')
+}
+
+function screeningTarget(app: ScreeningApp): CvTarget {
+  if (app.kind === 'university') return universityTarget(app.major)
+  if (app.kind === 'graduate') return graduateTarget((app.program ?? 'master') as GradKey)
+  const def = app.job ? getJobDef(app.job.defId) : undefined
+  return def ? jobTarget(def) : { kind: 'job' }
+}
+
+/** CV screening: the AI decides whether the applicant gets an interview (and, for schools, asks the first question). */
+export function screenApplicationPrompt(g: GameState, app: ScreeningApp): string {
+  const c = g.character
+  const country = getCountry(c.countryId)
+  const school = app.kind !== 'job'
+  const lines: string[] = [`APPLICANT: ${fullName(c)}, ${c.gender}, age ${c.age}, ${country.name}; smarts ${c.stats.smarts}/100.`]
+  if (school) {
+    const cur = c.education.current
+    const grades = cur && cur.level === 'high' ? cur.grades : typeof g.flags.lastGrades === 'number' ? g.flags.lastGrades : null
+    const exam = typeof g.flags.examScore === 'number' ? g.flags.examScore : null
+    const hs = cur && cur.level === 'high' ? cur.school : c.education.degrees.find((d) => d.kind === 'highschool')?.school
+    const parts = [grades !== null ? `grades ${Math.round(grades)}%` : '', exam !== null && app.kind === 'university' ? `${localeOf(c.countryId).terms.finalExam || 'final exam'} ${Math.round(exam)}/100` : '', hs ? `${schoolLabels(c.countryId).high} ${hs} (${rankLabel(rankOf(g, 'high', hs))})` : '']
+    lines.push(`RECORD: ${parts.filter(Boolean).join('; ') || 'nothing notable'}`)
+    if (app.kind === 'graduate') lines.push(`DEGREES: ${c.education.degrees.map((d) => `${d.name}${d.honors ? ' (honors)' : ''}`).join('; ') || 'none'}`)
+  } else {
+    lines.push(`EDUCATION: ${c.education.degrees.map((d) => d.name).join('; ') || 'no degree'}; criminal record: ${c.criminalRecord.some((r) => r.convicted) ? 'yes' : 'none'}`)
+  }
+  const cv = cvPromptLines(g, screeningTarget(app), 8)
+  lines.push('CV (most relevant first; [n/10] = how impressive):', ...(cv.length ? cv : ['- (empty)']))
+  if (app.kind === 'job' && app.job) {
+    const def = getJobDef(app.job.defId)
+    lines.push(`JOB: ${app.job.title} at ${app.job.company} (${app.job.category}, ${formatMoney(app.job.salary)}/yr${def ? `, needs ${def.edu === 'none' ? 'no particular education' : def.edu}` : ''}).`)
+    if (app.market) lines.push(`MARKET: ${app.market}.`)
+  } else {
+    const what = app.kind === 'graduate' ? `the ${app.program ?? 'graduate'} program` : `a degree in ${app.major ?? 'an undecided major'}`
+    lines.push(`APPLYING TO: ${app.org}${app.rankLabel ? ` (${app.rankLabel}${app.tier ? `, ${app.tier}` : ''})` : ''} for ${what}.`)
+  }
+  lines.push(`GAME ESTIMATE: CV fit ${app.fit}/100; about ${Math.round(app.chance * 100)}% of applicants like this get an interview.`)
+  lines.push(
+    '',
+    `TASK: You are ${school ? `the admissions committee at ${app.org}` : `the recruiter at ${app.job?.company ?? app.org}`}. Decide whether ${c.firstName} gets an interview.`,
+    '- Be realistic and fair. Judge only the facts and CV above; never invent CV items, schools, jobs or awards that are not listed.',
+    '- Use the game estimate as a guide: above ~65% usually invite, below ~25% usually not. A tough market or a very selective school turns most people away; strong, relevant entries (clubs, leadership, volunteering, projects, awards, experience) count, irrelevant ones count little.',
+    `- "reason": ONE short sentence (max 20 words) to ${c.firstName} in second person, naming a real CV item${app.kind === 'job' ? ' or the job market' : ''}; witty but kind.`,
+  )
+  if (school) {
+    lines.push(
+      `- If "invite" is true, also write ONE admissions interview question (specific to ${app.org}, the field, or an item on the CV) and 3-4 answers ${c.firstName} could give (first person, max 14 words each) with "score" 0-100: exactly one great answer (75-95), one terrible or weird one (0-25). If "invite" is false: "question" is "" and "answers" is [].`,
+      'Reply with JSON like: {"invite":true,"reason":"Your robotics captaincy stood out.","question":"...","answers":[{"label":"...","score":85},{"label":"...","score":40},{"label":"...","score":10}]}',
+    )
+  } else {
+    lines.push('Reply with JSON like: {"invite":false,"reason":"With 300 applicants per opening, we needed more hands-on experience."}')
+  }
+  return lines.join('\n')
 }
 
 /** Life summary for the obituary. */

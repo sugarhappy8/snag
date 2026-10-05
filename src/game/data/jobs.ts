@@ -3,6 +3,7 @@
 // Salaries are US dollars per year for an American character; careers.ts scales them by
 // the country's wealth.
 import type { Gender } from '../types'
+import type { Industry as MarketIndustry } from './markets'
 
 /** Education a job asks for. Graduate programs map to the DegreeKind of that program. */
 export type EduReq =
@@ -462,6 +463,147 @@ export const PARTTIME_JOBS: JobDef[] = [
   pt('pt_campus_tour', '\u{1F6B6}', 'Campus Tour Guide', 'university', 10, 9, { studentOnly: true }),
   pt('pt_grader', '\u{1F4AF}', 'Grader', 'university', 10, 13, { studentOnly: true, minSmarts: 55 }),
 ]
+
+// ---------------------------------------------------------------------------
+// CV relevance and the job market (cv.ts)
+
+/**
+ * Topic tags a recruiter in each industry looks for on a CV (shared vocabulary with CvEntry.tags:
+ * tech, science, academic, arts, music, media, writing, business, finance, law, health, service,
+ * sports, education, trades, hospitality, beauty, animals, government, language).
+ */
+export const INDUSTRY_TAGS: Record<Industry, string[]> = {
+  corporate: ['business', 'finance'],
+  tech: ['tech', 'science'],
+  finance: ['finance', 'business'],
+  bank: ['finance', 'business'],
+  hospital: ['health', 'science', 'service'],
+  medical: ['health', 'science'],
+  dental: ['health', 'science'],
+  vet: ['health', 'animals', 'science'],
+  law: ['law', 'writing', 'government'],
+  municipal: ['government', 'service'],
+  police: ['law', 'service', 'sports'],
+  fire: ['service', 'sports', 'health'],
+  school: ['education', 'service', 'academic'],
+  university: ['academic', 'science', 'education'],
+  airline: ['hospitality', 'language', 'trades'],
+  newspaper: ['media', 'writing'],
+  publisher: ['writing', 'media', 'arts'],
+  film: ['arts', 'media'],
+  record: ['music', 'arts', 'media'],
+  restaurant: ['hospitality'],
+  fastfood: ['hospitality'],
+  retail: ['business', 'hospitality'],
+  grocery: ['hospitality'],
+  salon: ['beauty', 'arts'],
+  trades: ['trades'],
+  smallbiz: ['business'],
+  circus: ['arts', 'sports'],
+  museum: ['arts', 'academic'],
+  realestate: ['business', 'finance'],
+  travel: ['hospitality', 'language'],
+  fishery: ['trades', 'animals'],
+  rideshare: ['trades'],
+  trucking: ['trades'],
+  mortuary: ['health', 'service'],
+  church: ['service'],
+  farm: ['trades', 'animals'],
+  casino: ['hospitality', 'finance'],
+  gym: ['sports', 'health'],
+  hotel: ['hospitality', 'language'],
+  mall: ['business', 'hospitality'],
+  pool: ['sports', 'service'],
+  cafe: ['hospitality'],
+  nightclub: ['hospitality', 'music'],
+  library: ['academic', 'writing', 'education'],
+  science: ['science', 'academic', 'tech'],
+  design: ['arts', 'tech'],
+  factory: ['trades'],
+}
+
+/** The business-sim industry whose local demand (data/markets.ts) drives hiring in a job industry. */
+export const INDUSTRY_MARKET: Partial<Record<Industry, MarketIndustry>> = {
+  corporate: 'marketing',
+  tech: 'software',
+  hospital: 'clinic',
+  medical: 'clinic',
+  dental: 'clinic',
+  vet: 'clinic',
+  film: 'entertainment',
+  record: 'entertainment',
+  circus: 'entertainment',
+  casino: 'entertainment',
+  restaurant: 'restaurant',
+  fastfood: 'restaurant',
+  retail: 'fashion',
+  mall: 'fashion',
+  grocery: 'grocery',
+  salon: 'salon',
+  trades: 'construction',
+  realestate: 'realEstate',
+  travel: 'hotel',
+  hotel: 'hotel',
+  airline: 'hotel',
+  fishery: 'farm',
+  farm: 'farm',
+  rideshare: 'logistics',
+  trucking: 'logistics',
+  gym: 'gym',
+  cafe: 'cafe',
+  nightclub: 'bar',
+  design: 'marketing',
+  factory: 'manufacturing',
+  newspaper: 'marketing',
+  publisher: 'marketing',
+  science: 'energy',
+}
+
+/** CV tags for each major (what a degree in it is relevant to). */
+export const MAJOR_TAGS: Record<string, string[]> = {
+  Accounting: ['finance', 'business'],
+  Anthropology: ['academic', 'science'],
+  Archaeology: ['academic', 'science'],
+  Architecture: ['arts', 'trades', 'tech'],
+  'Art History': ['arts', 'academic'],
+  Biology: ['science', 'health', 'animals'],
+  Chemistry: ['science', 'health'],
+  Communications: ['media', 'writing', 'business'],
+  'Computer Science': ['tech', 'science'],
+  'Criminal Justice': ['law', 'government'],
+  Dance: ['arts', 'sports', 'music'],
+  Economics: ['finance', 'business', 'academic'],
+  Education: ['education', 'service'],
+  Engineering: ['tech', 'science', 'trades'],
+  English: ['writing', 'media', 'education'],
+  Finance: ['finance', 'business'],
+  'Graphic Design': ['arts', 'tech', 'media'],
+  History: ['academic', 'writing'],
+  'Information Systems': ['tech', 'business'],
+  Journalism: ['media', 'writing'],
+  Marketing: ['business', 'media'],
+  Mathematics: ['science', 'tech', 'finance', 'academic'],
+  Music: ['music', 'arts'],
+  Nursing: ['health', 'service'],
+  Philosophy: ['academic', 'writing', 'law'],
+  Physics: ['science', 'tech', 'academic'],
+  'Political Science': ['government', 'law', 'academic'],
+  Psychology: ['health', 'science', 'service'],
+  'Religious Studies': ['academic', 'service'],
+}
+
+/** CV tags a graduate program cares about. */
+export const PROGRAM_TAGS: Record<GradKey, string[]> = {
+  master: ['academic'],
+  phd: ['academic', 'science'],
+  business: ['business', 'finance'],
+  law: ['law', 'writing', 'government'],
+  medical: ['health', 'science', 'service'],
+  dental: ['health', 'science'],
+  nursing: ['health', 'service'],
+  pharmacy: ['health', 'science'],
+  veterinary: ['animals', 'health', 'science'],
+}
 
 export const ALL_JOBS: JobDef[] = [...FULLTIME_JOBS, ...PARTTIME_JOBS]
 

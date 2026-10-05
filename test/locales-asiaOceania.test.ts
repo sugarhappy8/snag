@@ -4,6 +4,7 @@ import {
   fillLocal,
   hasLocaleData,
   localeOf,
+  localPreschoolName,
   localSchoolName,
   localStreetName,
   localUniversityName,
@@ -66,8 +67,9 @@ describe('Asia & Oceania locale data', () => {
       })
 
       it('uses only known placeholders in name patterns', () => {
-        const patterns = [...LEVELS.flatMap((l) => p.schoolNames[l]), ...p.universityNames, ...p.streetNames]
+        const patterns = [...LEVELS.flatMap((l) => p.schoolNames[l]), ...(p.schoolNames.preschool ?? []), ...p.universityNames, ...p.streetNames]
         for (const l of LEVELS) expect(p.schoolNames[l].length, `${id}.schoolNames.${l}`).toBeGreaterThan(0)
+        expect(p.schoolNames.preschool?.length ?? 0, `${id}.schoolNames.preschool`).toBeGreaterThan(0)
         expect(p.universityNames.length).toBeGreaterThan(0)
         expect(p.streetNames.length).toBeGreaterThan(0)
         for (const pattern of patterns) {
@@ -92,6 +94,7 @@ describe('Asia & Oceania locale data', () => {
           const g = makeTestGame(seed, { countryId: id, birthCountryId: id, city: country.cities[seed % country.cities.length] })
           const names = [
             ...LEVELS.map((l) => localSchoolName(g, l)),
+            localPreschoolName(g),
             localUniversityName(g),
             localStreetName(g),
             fillLocal(g, 'A trip to {getaway} for {holiday}, {food} and {drink} at {hangout}, then {sport}, {transport}, {landmark} and {dateSpot}.'),

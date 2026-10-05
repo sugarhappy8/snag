@@ -69,6 +69,15 @@ function grown(countryId: string, age: number, seed = 11): GameState {
   return g
 }
 
+/** grown(), skipping seeds whose life ends early (a tornado at 8 is not what these tests are about). */
+function grownAlive(countryId: string, age: number, seed = 11): GameState {
+  for (let s = seed; s < seed + 25; s++) {
+    const g = grown(countryId, age, s)
+    if (g.character.alive && !g.character.prison) return g
+  }
+  throw new Error(`no living ${countryId} character reached ${age}`)
+}
+
 function minigameResult(m: Extract<ModalItem, { kind: 'minigame' }>): string {
   if (m.game === 'annualReport') return 'skip'
   if (m.game === 'burglary') return JSON.stringify({ loot: 0, caught: false })
@@ -381,7 +390,8 @@ describe('locale guard', () => {
 
   it('offline years outside the US skip American events and flavor lines', () => {
     for (const id of COUNTRIES.filter((c) => c !== 'us')) {
-      for (const seed of [1, 2]) {
+      let lives = 0
+      for (let seed = 1; seed <= 12 && lives < 2; seed++) {
         const g = grown(id, 4, seed)
         const seen: string[] = []
         for (let age = 5; age <= 45 && g.character.alive; age++) {
@@ -395,15 +405,19 @@ describe('locale guard', () => {
           g.queue = []
           g.character.stats.health = 90
         }
-        expect(seen.length, `${id}/${seed}`).toBeGreaterThan(40)
         for (const t of seen) for (const re of americanismsFor(id)) expect(t, `${id}/${seed}`).not.toMatch(re)
         for (const t of seen) expect(foreignToLocale(g, t), `${id}/${seed}: ${t}`).toBe(false)
+        // A freak early death (tornado, accident...) says nothing about the event library.
+        if (!g.character.alive && g.character.age < 30) continue
+        lives++
+        expect(seen.length, `${id}/${seed}`).toBeGreaterThan(40)
       }
+      expect(lives, id).toBe(2)
     }
   })
 
   it('drops American AI lines and events outside the US', async () => {
-    const g = grown('et', 15)
+    const g = grownAlive('et', 15)
     reply = () => ({
       log: ['I asked someone to prom and got turned down.', 'I helped my mother roast coffee beans.'],
       event: { title: 'Prom Night', emoji: '💃', text: 'Prom is next week and nobody has asked you. What will you do?', person: '', choices: [{ label: 'Ask someone', emoji: '' }, { label: 'Stay home', emoji: '' }] },

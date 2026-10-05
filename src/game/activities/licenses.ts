@@ -6,6 +6,11 @@ import { chance, pick, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
 import { brokeNotice, countryOf, flagNumber, gate, localPrice, money, payingParents, result } from './common'
+import { localTerm } from '../data/locales'
+
+function uc(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
 
 interface Question {
   q: string
@@ -83,6 +88,35 @@ const FIREARMS: Question[] = [
 
 type LicenseKind = 'driver' | 'boating' | 'pilot' | 'firearm'
 
+/** Signs and rules that only exist on American roads (yellow diamonds, school bus arms, 55 mph...). */
+const US_ROADS = /yellow diamond|yellow pentagon|orange diamond|SPEED LIMIT 55|"RR"|school bus|solid yellow|four-way stop|20 mph/
+
+const INTL_SIGNS: Question[] = [
+  { emoji: '\u{26A0}\u{FE0F}', q: 'What does a red-bordered triangle with an exclamation mark mean?', a: 'Other danger ahead', wrong: ['Road ends', 'Free parking'] },
+  { emoji: '\u{1F6B8}', q: 'What does a red-bordered triangle showing two children mean?', a: 'Children crossing or a school nearby', wrong: ['Playground for sale', 'Family parking'] },
+  { emoji: '\u{1F98C}', q: 'What does a red-bordered triangle with a leaping deer mean?', a: 'Wild animals may cross', wrong: ['Petting zoo ahead', 'Hunting season'] },
+  { emoji: '\u{1F522}', q: 'What does a round sign with a red border and the number 50 mean?', a: 'The speed limit is 50 km/h', wrong: ['The minimum speed is 50 km/h', 'Route 50'] },
+  { emoji: '\u{1F682}', q: 'What does a red-bordered triangle showing a steam train mean?', a: 'Railway crossing without barriers', wrong: ['Train museum', 'Steam bath ahead'] },
+  { emoji: '\u{1F6A7}', q: 'What does a red-bordered triangle with a person digging mean?', a: 'Road works ahead', wrong: ['Community garden', 'Buried treasure'] },
+]
+
+const INTL_RULES: Question[] = [
+  { emoji: '\u{2B1C}', q: 'When may you cross a solid white line in the middle of the road?', a: 'Never', wrong: ["When nobody's coming", "When you're running late"] },
+  { emoji: '\u{1F6E3}\u{FE0F}', q: "You're merging onto a motorway. You should:", a: 'Match the speed of traffic and merge into a gap', wrong: ['Stop at the end of the slip road', 'Merge at 30 km/h'] },
+]
+
+const BANKS_LOCAL: Record<'us' | 'intl', Question[][]> = {
+  us: [ROAD_SIGNS, ROAD_RULES],
+  intl: [[...ROAD_SIGNS.filter((x) => !US_ROADS.test(x.q)), ...INTL_SIGNS], [...ROAD_RULES.filter((x) => !US_ROADS.test(x.q)), ...INTL_RULES]],
+}
+
+/** The question banks for a test where the player lives (American road signs only in the US). */
+function banksFor(g: GameState, kind: LicenseKind): Question[][] {
+  if (kind !== 'driver') return BANKS[kind]
+  return BANKS_LOCAL[g.character.countryId === 'us' ? 'us' : 'intl']
+}
+
+
 const BANKS: Record<LicenseKind, Question[][]> = {
   driver: [ROAD_SIGNS, ROAD_RULES],
   boating: [BOATING, BOATING],
@@ -111,7 +145,7 @@ function attemptsLeft(g: GameState, kind: LicenseKind): number {
 }
 
 function pickQuestions(g: GameState, kind: LicenseKind): number[] {
-  const banks = BANKS[kind]
+  const banks = banksFor(g, kind)
   const picked: number[] = []
   banks.forEach((bank, i) => {
     let idx = randInt(g, 0, bank.length - 1)
@@ -123,7 +157,7 @@ function pickQuestions(g: GameState, kind: LicenseKind): number[] {
 }
 
 function ask(g: GameState, kind: LicenseKind, qs: number[], step: number): void {
-  const bank = BANKS[kind][step]
+  const bank = banksFor(g, kind)[step]
   const q = bank[qs[step]]
   const options = shuffle(g, [q.a, ...q.wrong])
   const correct = options.indexOf(q.a)
@@ -147,7 +181,7 @@ const ANSWER = defineScript('act.license.answer', (g, choice, data) => {
     failTest(g, kind)
     return
   }
-  if (step + 1 < qs.length && step + 1 < BANKS[kind].length) {
+  if (step + 1 < qs.length && step + 1 < banksFor(g, kind).length) {
     ask(g, kind, qs, step + 1)
     return
   }
@@ -178,7 +212,7 @@ function passTest(g: GameState, kind: LicenseKind): void {
   remember(g, `Got a ${NAMES[kind]}.`)
   log(g, `I got my ${NAMES[kind]}!`, 'good')
   const passLines: Record<LicenseKind, string> = {
-    driver: pick(g, ['You passed your driving test! The open road is yours.', 'You passed! The examiner even cracked a smile. Your DMV photo, however, is a crime.']),
+    driver: pick(g, ['You passed your driving test! The open road is yours.', `You passed! The examiner even cracked a smile. Your license photo from ${localTerm(g, 'licenseOffice')}, however, is a crime.`]),
     boating: 'You passed your boating test! You are now legally allowed to captain a boat. Ahoy!',
     pilot: "You passed your pilot's test! You are now a licensed pilot. The sky is no longer the limit.",
     firearm: 'You passed the safety test and your background check came back clean. Your firearm license arrived in the mail.',
@@ -223,7 +257,7 @@ function startTest(g: GameState, kind: LicenseKind, fee: number): void {
   }
   if (attemptsLeft(g, kind) <= 0) {
     result(g, 'Come Back Later', kind === 'driver'
-      ? "The DMV won't let you take the test again until next year."
+      ? `${uc(localTerm(g, 'licenseOffice'))} won't let you take the test again until next year.`
       : `You've used up your test attempts for this year. Try again next year.`, '\u{1F4C5}')
     return
   }

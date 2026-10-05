@@ -18,6 +18,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Ghazi Amanullah Khan', 'Sayed Jamaluddin Afghani', 'Khwaja Abdullah Ansari', 'Abdul Rahman Jami',
     ],
     schoolNames: {
+      preschool: ['Kudakistan {place}', '{place} Kindergarten', 'Kudakistan No. {n}'],
       primary: ['{place} Primary School', '{honoree} Primary School', '{city} Primary School No. {n}'],
       middle: ['{place} Middle School', '{honoree} Middle School'],
       high: ['{honoree} High School', '{place} High School', 'Lycée {honoree}'],
@@ -65,6 +66,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Jagadish Chandra Bose', 'Jibanananda Das', 'Pritilata Waddedar', 'Lalon Shah', 'Shaheed Suhrawardy',
     ],
     schoolNames: {
+      preschool: ['{place} Kindergarten', '{place} Shishu Niketan', '{honoree} Kindergarten'],
       primary: ['{place} Government Primary School', '{place} Model School', '{place} Ideal School'],
       middle: ['{place} High School', '{place} Pilot High School', '{honoree} High School'],
       high: ['{city} College', 'Government {honoree} College', '{place} Model College'],
@@ -114,6 +116,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Lin Zexu', 'Zheng He', 'Hua Luogeng',
     ],
     schoolNames: {
+      preschool: ['{city} No. {n} Kindergarten', '{place} Kindergarten', '{city} Sunshine Kindergarten', '{place} Experimental Kindergarten'],
       primary: ['{place} Experimental Primary School', '{place} No. {n} Primary School', '{place} Road Primary School'],
       middle: ['{city} No. {n} Middle School', '{place} Foreign Languages School', '{honoree} Middle School'],
       high: ['{city} No. {n} High School', '{city} Experimental High School', 'High School Affiliated to {city} Normal University'],
@@ -167,6 +170,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Lady Ho Tung', 'Ho Fung', 'Kwok Tak Seng',
     ],
     schoolNames: {
+      preschool: ['{place} Kindergarten', '{place} Baptist Church Kindergarten', '{place} Anglican Kindergarten'],
       primary: ['{place} Government Primary School', 'TWGHs {honoree} Primary School', '{place} Catholic Primary School'],
       middle: ['{place} Government Secondary School', 'TWGHs {honoree} College', '{place} Methodist College'],
       high: ['Po Leung Kuk {honoree} College', '{place} Catholic Secondary School', '{honoree} Memorial College'],
@@ -220,6 +224,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Sardar Patel', 'Rani Lakshmibai', 'Dr. A.P.J. Abdul Kalam', 'Dr. B.R. Ambedkar', 'Savitribai Phule',
     ],
     schoolNames: {
+      preschool: ['{place} Play School', '{place} Montessori', 'Little Angels Play School', '{place} Anganwadi'],
       primary: ['Government Primary School, {place}', '{place} Public School', 'Kendriya Vidyalaya No. {n}, {city}'],
       middle: ['{place} Public School', 'Kendriya Vidyalaya No. {n}, {city}', '{honoree} Vidyalaya', "St. Xavier's School, {city}"],
       high: ['{honoree} Senior Secondary School', 'Government Senior Secondary School, {place}', '{city} Public School', "St. Xavier's High School, {city}"],
@@ -267,6 +272,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Pattimura', 'Imam Bonjol', 'Gajah Mada', 'Ahmad Yani',
     ],
     schoolNames: {
+      preschool: ['TK Negeri Pembina {city}', 'TK Aisyiyah {n} {place}', 'TK Islam {place}', 'PAUD {place}', 'TK Kristen {place}'],
       primary: ['SD Negeri {n} {place}', 'SD Muhammadiyah {n} {city}', 'SD Negeri {n} {city}'],
       middle: ['SMP Negeri {n} {city}', 'SMP Islam {honoree}', 'MTs Negeri {n} {city}'],
       high: ['SMA Negeri {n} {city}', 'SMK Negeri {n} {city}', 'MA Negeri {n} {city}'],
@@ -311,6 +317,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Miyazawa Kenji', 'Higuchi Ichiyo', 'Okuma Shigenobu',
     ],
     schoolNames: {
+      preschool: ['{place} Yochien', '{place} Hoikuen', 'Hikari Yochien', '{place} Kodomoen'],
       primary: ['{city} Municipal {place} Elementary School', '{place} Elementary School', '{place} Daiichi Elementary School'],
       middle: ['{city} Municipal {place} Junior High School', '{place} Junior High School', '{place} Daini Junior High School'],
       high: ['Prefectural {place} High School', '{place} Gakuen High School', '{place} Technical High School'],
@@ -360,6 +367,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Abylai Khan', 'Zhambyl', 'Magzhan Zhumabayev',
     ],
     schoolNames: {
+      preschool: ['Balabaqsha No. {n}', 'Kindergarten No. {n}, {city}', 'Kindergarten {place}'],
       primary: ['School No. {n}', 'School No. {n} named after {honoree}', '{city} School No. {n}'],
       middle: ['School-Gymnasium No. {n}', 'School No. {n} named after {honoree}'],
       high: ['Lyceum No. {n}', 'School-Gymnasium No. {n} named after {honoree}', '{city} Kazakh-Turkish Lyceum'],
@@ -404,6 +412,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'P. Ramlee', "Za'ba", 'Sultan Idris',
     ],
     schoolNames: {
+      preschool: ['Tadika {place}', 'Tabika KEMAS {place}', 'Tadika Sri {place}'],
       primary: ['SK {place}', 'SJK(C) {place}', 'SJK(T) {place}', 'SK {place} {n}'],
       middle: ['SMK {place}', 'SMK {place} {n}', 'SMK {honoree}'],
       high: ['SMK {honoree}', 'SMK {place}', 'MRSM {city}'],
@@ -450,6 +459,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
     ],
     honorees: ['Chinggis Khaan', 'Sükhbaatar', 'Zanabazar', 'Natsagdorj', 'Mandukhai Khatan', 'Khubilai Khaan'],
     schoolNames: {
+      preschool: ['Kindergarten No. {n}', 'Tsetserleg No. {n}', '{place} Kindergarten'],
       primary: ['{city} School No. {n}', '{place} Primary School'],
       middle: ['{city} Secondary School No. {n}', '{place} Complex School'],
       high: ['{city} Secondary School No. {n}', '{honoree} Lyceum', '{place} High School'],
@@ -496,6 +506,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Gautam Buddha', 'Prithvi Narayan', 'Motiram Bhatta',
     ],
     schoolNames: {
+      preschool: ['{place} Montessori', '{place} Child Care Centre', '{place} Pre-Primary School'],
       primary: ['Shree {place} Primary School', '{place} English Boarding School'],
       middle: ['Shree {honoree} Secondary School', '{place} English Boarding School', 'Shree {place} Secondary School'],
       high: ['{honoree} Higher Secondary School', 'Shree {place} Secondary School', '{place} Model College'],
@@ -540,6 +551,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Faiz Ahmed Faiz', 'Shah Abdul Latif', 'Khushal Khan Khattak',
     ],
     schoolNames: {
+      preschool: ['{place} Montessori', '{place} Kids Campus', 'Little Stars Montessori'],
       primary: ['Government Primary School No. {n}, {place}', '{place} Grammar School', '{honoree} Public School'],
       middle: ['Government Middle School, {place}', '{place} Grammar School', '{honoree} Public School'],
       high: ['Government High School No. {n}, {city}', '{honoree} Public School', 'Cadet College {city}'],
@@ -587,6 +599,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Lapu-Lapu', 'Juan Luna', 'Marcelo H. del Pilar', 'Francisco Balagtas', 'Emilio Jacinto',
     ],
     schoolNames: {
+      preschool: ['Barangay {place} Day Care Center', '{place} Learning Center', '{place} Child Development Center'],
       primary: ['{honoree} Elementary School', '{place} Elementary School', '{place} Central School'],
       middle: ['{place} National High School', '{honoree} High School'],
       high: ['{place} National High School', '{city} Science High School', '{honoree} Senior High School'],
@@ -634,6 +647,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Eu Tong Sen', 'Sang Nila Utama',
     ],
     schoolNames: {
+      preschool: ['MOE Kindergarten @ {place}', '{place} Kindergarten', '{place} Child Care Centre'],
       primary: ['{place} Primary School', '{place} North Primary School', '{place} West Primary School'],
       middle: ['{place} Secondary School', '{place} View Secondary School'],
       high: ['{place} Junior College', '{place} Secondary School', '{honoree} Institution'],
@@ -683,6 +697,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
     ],
     honorees: ['Sejong', 'Chungmu', 'Toegye', 'Yulgok', 'Dosan', 'Eulji', 'Baekbeom'],
     schoolNames: {
+      preschool: ['{place} Kindergarten', '{place} Yuchiwon', '{place} Eorinijip'],
       primary: ['{place} Elementary School', '{city} Elementary School'],
       middle: ['{place} Middle School', '{honoree} Middle School'],
       high: ['{place} High School', '{city} Science High School', '{place} Foreign Language High School', '{city} Arts High School'],
@@ -727,6 +742,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
     ],
     honorees: ['Sun Yat-sen', 'Koxinga', 'Confucius', 'Lai Ho', 'Chiang Wei-shui', 'George Leslie Mackay', 'Lin Hsien-tang'],
     schoolNames: {
+      preschool: ['{place} Kindergarten', '{place} Preschool', '{place} Public Kindergarten'],
       primary: ['{place} Elementary School', '{city} Municipal {place} Elementary School'],
       middle: ['{place} Junior High School', '{city} Municipal {place} Junior High School'],
       high: ['{place} Senior High School', 'National {city} Senior High School', '{place} Vocational High School'],
@@ -776,6 +792,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Chulalongkorn', 'Mahidol', 'Naresuan', 'Ramkhamhaeng', 'King Taksin', 'Suriyothai', 'Thao Suranari', 'Sunthorn Phu',
     ],
     schoolNames: {
+      preschool: ['Anuban {place}', 'Anuban {city}', '{place} Child Development Center'],
       primary: ['Anuban {city} School', 'Wat {place} School', '{place} Municipal School {n}'],
       middle: ['{place} Wittaya School', '{honoree} School'],
       high: ['{place} Wittayalai School', '{city} Wittayakhom School', '{honoree} Wittayalai School'],
@@ -823,6 +840,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Ly Thuong Kiet', 'Ba Trieu', 'Quang Trung',
     ],
     schoolNames: {
+      preschool: ['Trường Mầm non {place}', 'Mầm non Hoa Sen', 'Mầm non {honoree}'],
       primary: ['{honoree} Primary School', '{place} Primary School'],
       middle: ['{honoree} Secondary School', '{place} Secondary School'],
       high: ['{honoree} High School', '{honoree} High School for the Gifted', '{place} High School'],
@@ -873,6 +891,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Henry Lawson', 'Caroline Chisholm',
     ],
     schoolNames: {
+      preschool: ['{place} Kindergarten', '{place} Early Learning Centre', '{place} Preschool', 'Gumnut Early Learning Centre'],
       primary: ['{place} Public School', '{place} Primary School', '{place} State School'],
       middle: ['{place} High School', '{place} Secondary College'],
       high: ['{place} High School', '{place} Secondary College', '{place} State High School', '{honoree} College'],
@@ -920,6 +939,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Te Puea Hērangi', 'Whina Cooper', 'Janet Frame',
     ],
     schoolNames: {
+      preschool: ['{place} Kindergarten', 'Te Kōhanga Reo o {place}', '{place} Playcentre', 'Little Kiwis Early Learning'],
       primary: ['{place} School', '{place} Primary School', '{place} Normal School', 'Te Kura Kaupapa Māori o {place}'],
       middle: ['{place} Intermediate', '{place} Intermediate School'],
       high: ['{place} College', '{place} Grammar School', '{place} High School'],
@@ -967,6 +987,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       'Don Bosco', 'De La Salle',
     ],
     schoolNames: {
+      preschool: ['{place} Early Childhood Centre', '{place} Tok Ples Pre-School', '{place} Elementary Prep'],
       primary: ['{place} Primary School', '{honoree} Primary School', '{place} Elementary School'],
       middle: ['{place} High School', '{honoree} Secondary School'],
       high: ['{place} Secondary School', '{city} National High School', '{honoree} Secondary School'],
@@ -1016,6 +1037,7 @@ export const ASIA_OCEANIA_LOCALES: Record<string, LocaleProfile> = {
       "Lauaki Namulau'ulu", 'Olaf Nelson',
     ],
     schoolNames: {
+      preschool: ['Aoga Amata {place}', 'Aoga Amata o {place}', '{place} Preschool'],
       primary: ['{place} Primary School', '{place} District School'],
       middle: ['{place} College', '{place} Secondary School'],
       high: ['{place} College', '{honoree} College', 'Samoa College'],

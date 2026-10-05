@@ -4,6 +4,7 @@
 import { addHidden, addRelationship, addStat, count, earnIncome, log, parents, remember, scriptChoice, spend, spouse, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { localStreetName } from '../data/locales'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
 
@@ -616,7 +617,7 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
       break
     }
     default:
-      text = win ? 'You rode a llama down Main Street. It became the most-shared video of the week.' : 'The llama spat on you, then a news crew, then the mayor.'
+      text = win ? `You rode a llama down ${g.character.countryId === 'us' ? 'Main Street' : localStreetName(g)}. It became the most-shared video of the week.` : 'The llama spat on you, then a news crew, then the mayor.'
   }
   addFame(g, win ? randInt(g, 3, 6) : -randInt(g, 1, 3))
   addStat(g, 'happiness', win ? 6 : -5)
@@ -633,7 +634,7 @@ const stuntAction: MenuAction = {
   disabledReason: needFame(FAMOUS),
   run: (g) => {
     if (!useYearAction(g, 'fame.stunt', 1)) return tooBusy(g, 'pulled a publicity stunt')
-    scriptChoice(g, stuntScript, 'Publicity Stunt', 'How will you get the world talking about you?', STUNTS, { emoji: '\u{1F4E2}' })
+    scriptChoice(g, stuntScript, 'Publicity Stunt', 'How will you get the world talking about you?', STUNTS.map((s) => (s.id === 'llama' && g.character.countryId !== 'us' ? { ...s, label: 'Ride a llama through the city center' } : s)), { emoji: '\u{1F4E2}' })
   },
 }
 

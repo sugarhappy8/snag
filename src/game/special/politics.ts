@@ -6,10 +6,11 @@
 import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, spend, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
+import { localPick, localSoftDrink } from '../data/locales'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { getCountry, randomFirstName, randomLastName } from '../world'
+import { countryLabel, getCountry, randomFirstName, randomLastName } from '../world'
 import {
   CELEBS,
   addFame,
@@ -69,12 +70,108 @@ function officeOf(id: string): OfficeDef {
   return OFFICES.find((o) => o.id === id) ?? OFFICES[0]
 }
 
-const PM_COUNTRIES = ['gb', 'jp', 'in', 'ca', 'au', 'nz', 'de', 'it', 'es', 'nl', 'se', 'no', 'dk', 'be', 'ie', 'il', 'gr', 'pt', 'pl']
+// ---------------------------------------------------------------------------
+// Political systems: who runs things here.
+//
+// The ladder is the same everywhere (four rungs), but the rungs follow the country: a school
+// board, Governor and President in the US; a city council, Member of Parliament and Prime
+// Minister in Britain; a Minister-President and a Chancellor in Germany; a Chief Minister in
+// India; a Taoiseach in Ireland. Monarchies elect prime ministers, never kings.
+
+const PM_COUNTRIES = [
+  'gb', 'jp', 'in', 'ca', 'au', 'nz', 'it', 'es', 'nl', 'se', 'no', 'dk', 'be', 'il', 'gr', 'pt', 'pl',
+  'hu', 'cz', 'sk', 'hr', 'ee', 'fi', 'ro', 'bd', 'np', 'pk', 'iq', 'lb', 'sg', 'my', 'th', 'jm', 'bs', 'bz',
+  'pg', 'ws', 'aw', 'ge', 'mn', 'rs',
+]
+
+const LEADER_TITLES: Record<string, string> = {
+  de: 'Chancellor',
+  at: 'Chancellor',
+  ie: 'Taoiseach',
+  ad: 'Head of Government',
+  mc: 'Minister of State',
+  ch: 'President of the Confederation',
+}
 
 function leaderTitle(g: GameState): string {
   const id = g.character.countryId
+  if (LEADER_TITLES[id]) return LEADER_TITLES[id]
   if (PM_COUNTRIES.includes(id)) return 'Prime Minister'
   return getCountry(id).monarchy ? 'Prime Minister' : 'President'
+}
+
+/** Heads of government who answer to parliament (no-confidence votes instead of impeachment). */
+function parliamentary(g: GameState): boolean {
+  const t = leaderTitle(g)
+  return t !== 'President'
+}
+
+/** Countries with an elected head of each state/province, and what that office is called. */
+const REGIONAL_HEADS: Record<string, { title: string; unit: string }> = {
+  us: { title: 'Governor', unit: 'state' },
+  mx: { title: 'Governor', unit: 'state' },
+  br: { title: 'Governor', unit: 'state' },
+  ar: { title: 'Governor', unit: 'province' },
+  ng: { title: 'Governor', unit: 'state' },
+  id: { title: 'Governor', unit: 'province' },
+  jp: { title: 'Governor', unit: 'prefecture' },
+  co: { title: 'Governor', unit: 'department' },
+  ve: { title: 'Governor', unit: 'state' },
+  pe: { title: 'Regional Governor', unit: 'region' },
+  bo: { title: 'Governor', unit: 'department' },
+  py: { title: 'Governor', unit: 'department' },
+  cl: { title: 'Regional Governor', unit: 'region' },
+  ke: { title: 'Governor', unit: 'county' },
+  ru: { title: 'Governor', unit: 'region' },
+  ca: { title: 'Premier', unit: 'province' },
+  au: { title: 'Premier', unit: 'state' },
+  de: { title: 'Minister-President', unit: 'state' },
+  at: { title: 'Governor', unit: 'state' },
+  in: { title: 'Chief Minister', unit: 'state' },
+  pk: { title: 'Chief Minister', unit: 'province' },
+}
+
+/** Elsewhere the middle rung is a seat in the national legislature. */
+const LEGISLATORS: Record<string, { title: string; house: string }> = {
+  gb: { title: 'Member of Parliament', house: 'the House of Commons' },
+  fr: { title: 'Member of the National Assembly', house: 'the National Assembly' },
+  it: { title: 'Member of the Chamber of Deputies', house: 'the Chamber of Deputies' },
+  es: { title: 'Member of the Congress of Deputies', house: 'the Congress of Deputies' },
+  nl: { title: 'Member of the House of Representatives', house: 'the House of Representatives' },
+  be: { title: 'Member of the Chamber of Representatives', house: 'the Chamber of Representatives' },
+  se: { title: 'Member of the Riksdag', house: 'the Riksdag' },
+  no: { title: 'Member of the Storting', house: 'the Storting' },
+  dk: { title: 'Member of the Folketing', house: 'the Folketing' },
+  fi: { title: 'Member of the Eduskunta', house: 'the Eduskunta' },
+  ie: { title: 'Member of the Dáil', house: 'Dáil Éireann' },
+  il: { title: 'Member of the Knesset', house: 'the Knesset' },
+  pl: { title: 'Member of the Sejm', house: 'the Sejm' },
+  pt: { title: 'Member of the Assembly of the Republic', house: 'the Assembly of the Republic' },
+  gr: { title: 'Member of the Hellenic Parliament', house: 'the Hellenic Parliament' },
+  ch: { title: 'National Councillor', house: 'the National Council' },
+  kr: { title: 'Member of the National Assembly', house: 'the National Assembly' },
+  ph: { title: 'Representative', house: 'the House of Representatives' },
+  tw: { title: 'Legislator', house: 'the Legislative Yuan' },
+  tr: { title: 'Member of the Grand National Assembly', house: 'the Grand National Assembly' },
+  ua: { title: 'Member of the Verkhovna Rada', house: 'the Verkhovna Rada' },
+  eg: { title: 'Member of the House of Representatives', house: 'the House of Representatives' },
+  za: { title: 'Member of Parliament', house: 'the National Assembly' },
+  hu: { title: 'Member of the National Assembly', house: 'the National Assembly' },
+  cz: { title: 'Member of the Chamber of Deputies', house: 'the Chamber of Deputies' },
+  ro: { title: 'Member of the Chamber of Deputies', house: 'the Chamber of Deputies' },
+}
+
+function regional(g: GameState): { title: string; unit: string } | null {
+  return REGIONAL_HEADS[g.character.countryId] ?? null
+}
+
+function legislator(g: GameState): { title: string; house: string } {
+  return LEGISLATORS[g.character.countryId] ?? { title: 'Member of Parliament', house: 'Parliament' }
+}
+
+/** The first rung: an elected school board in the US, the city council elsewhere. */
+function localTitle(g: GameState): string {
+  return g.character.countryId === 'us' ? 'School Board Director' : 'City Councillor'
 }
 
 function leaderMinAge(g: GameState): number {
@@ -82,9 +179,9 @@ function leaderMinAge(g: GameState): number {
 }
 
 function officeTitle(g: GameState, id: OfficeId): string {
-  if (id === 'school') return 'School Board Director'
+  if (id === 'school') return localTitle(g)
   if (id === 'mayor') return 'Mayor'
-  if (id === 'governor') return 'Governor'
+  if (id === 'governor') return regional(g)?.title ?? legislator(g).title
   return leaderTitle(g)
 }
 
@@ -118,32 +215,56 @@ const US_STATES: Record<string, string> = {
 const REGIONS: Record<string, Record<string, string>> = {
   gb: { London: 'Greater London', Manchester: 'Greater Manchester', Birmingham: 'the West Midlands', Liverpool: 'Merseyside', Leeds: 'West Yorkshire', Glasgow: 'Scotland', Edinburgh: 'Scotland', Bristol: 'the West of England', Cardiff: 'Wales', Belfast: 'Northern Ireland', Newcastle: 'Tyne and Wear', Brighton: 'East Sussex' },
   fr: { Paris: 'Île-de-France', Marseille: "Provence-Alpes-Côte d'Azur", Nice: "Provence-Alpes-Côte d'Azur", Lyon: 'Auvergne-Rhône-Alpes', Toulouse: 'Occitanie', Montpellier: 'Occitanie', Nantes: 'Pays de la Loire', Strasbourg: 'Grand Est', Bordeaux: 'Nouvelle-Aquitaine', Lille: 'Hauts-de-France' },
-  jp: { Tokyo: 'Tokyo Prefecture', Osaka: 'Osaka Prefecture', Yokohama: 'Kanagawa Prefecture', Nagoya: 'Aichi Prefecture', Sapporo: 'Hokkaido', Kobe: 'Hyogo Prefecture', Kyoto: 'Kyoto Prefecture', Fukuoka: 'Fukuoka Prefecture', Hiroshima: 'Hiroshima Prefecture', Sendai: 'Miyagi Prefecture' },
-  mx: { 'Mexico City': 'Mexico City', Guadalajara: 'Jalisco', Monterrey: 'Nuevo León', Puebla: 'Puebla', Tijuana: 'Baja California', 'Cancún': 'Quintana Roo', 'Mérida': 'Yucatán', 'León': 'Guanajuato', Oaxaca: 'Oaxaca' },
-  in: { Mumbai: 'Maharashtra', Pune: 'Maharashtra', Delhi: 'Delhi', Bangalore: 'Karnataka', Hyderabad: 'Telangana', Chennai: 'Tamil Nadu', Kolkata: 'West Bengal', Jaipur: 'Rajasthan', Ahmedabad: 'Gujarat', Lucknow: 'Uttar Pradesh' },
+  jp: { Tokyo: 'Tokyo', Osaka: 'Osaka Prefecture', Yokohama: 'Kanagawa Prefecture', Nagoya: 'Aichi Prefecture', Sapporo: 'Hokkaido', Kobe: 'Hyogo Prefecture', Kyoto: 'Kyoto Prefecture', Fukuoka: 'Fukuoka Prefecture', Hiroshima: 'Hiroshima Prefecture', Sendai: 'Miyagi Prefecture', Kawasaki: 'Kanagawa Prefecture', Nara: 'Nara Prefecture', Naha: 'Okinawa Prefecture', Kanazawa: 'Ishikawa Prefecture' },
+  mx: { 'Mexico City': 'Mexico City', Guadalajara: 'Jalisco', Monterrey: 'Nuevo León', Puebla: 'Puebla', Tijuana: 'Baja California', 'Cancún': 'Quintana Roo', 'Mérida': 'Yucatán', 'León': 'Guanajuato', Oaxaca: 'Oaxaca', 'Juárez': 'Chihuahua', 'Mazatlán': 'Sinaloa', 'Puerto Vallarta': 'Jalisco', 'Cabo San Lucas': 'Baja California Sur', Nogales: 'Sonora', Acapulco: 'Guerrero' },
+  br: { 'São Paulo': 'São Paulo', 'Rio de Janeiro': 'Rio de Janeiro', 'Brasília': 'the Federal District', Salvador: 'Bahia', Fortaleza: 'Ceará', 'Belo Horizonte': 'Minas Gerais', Manaus: 'Amazonas', Curitiba: 'Paraná', Recife: 'Pernambuco', 'Porto Alegre': 'Rio Grande do Sul', 'Goiânia': 'Goiás', Santos: 'São Paulo', 'Florianópolis': 'Santa Catarina', Natal: 'Rio Grande do Norte' },
+  ar: { 'Buenos Aires': 'Buenos Aires', 'Córdoba': 'Córdoba', Rosario: 'Santa Fe', Mendoza: 'Mendoza', 'La Plata': 'Buenos Aires Province', 'Mar del Plata': 'Buenos Aires Province', 'San Miguel de Tucumán': 'Tucumán', Salta: 'Salta', 'Santa Fe': 'Santa Fe', Bariloche: 'Río Negro', Ushuaia: 'Tierra del Fuego', 'Neuquén': 'Neuquén' },
+  ng: { Lagos: 'Lagos State', Abuja: 'the Federal Capital Territory', Kano: 'Kano State', Ibadan: 'Oyo State', 'Port Harcourt': 'Rivers State', 'Benin City': 'Edo State', Kaduna: 'Kaduna State', Enugu: 'Enugu State', Jos: 'Plateau State', Abeokuta: 'Ogun State', Onitsha: 'Anambra State', Calabar: 'Cross River State', Owerri: 'Imo State', Maiduguri: 'Borno State' },
+  id: { Jakarta: 'Jakarta', Denpasar: 'Bali', Surabaya: 'East Java', Bandung: 'West Java', Medan: 'North Sumatra', Semarang: 'Central Java', Makassar: 'South Sulawesi', Palembang: 'South Sumatra', Yogyakarta: 'Yogyakarta', Malang: 'East Java', Batam: 'the Riau Islands', Manado: 'North Sulawesi', Balikpapan: 'East Kalimantan' },
+  co: { 'Bogotá': 'Cundinamarca', 'Medellín': 'Antioquia', Cali: 'Valle del Cauca', Barranquilla: 'Atlántico', Cartagena: 'Bolívar', Bucaramanga: 'Santander', 'Santa Marta': 'Magdalena', Pereira: 'Risaralda', Manizales: 'Caldas', 'Cúcuta': 'Norte de Santander', 'Ibagué': 'Tolima', Pasto: 'Nariño' },
+  ve: { Caracas: 'Miranda', Maracaibo: 'Zulia', Valencia: 'Carabobo', Barquisimeto: 'Lara', Maracay: 'Aragua', 'Ciudad Guayana': 'Bolívar', Barcelona: 'Anzoátegui', 'Maturín': 'Monagas', 'Mérida': 'Mérida', 'San Cristóbal': 'Táchira', 'Puerto La Cruz': 'Anzoátegui', 'Cumaná': 'Sucre' },
+  pe: { Lima: 'Lima', Cusco: 'Cusco', 'Machu Picchu': 'Cusco', Arequipa: 'Arequipa', Trujillo: 'La Libertad', Chiclayo: 'Lambayeque', Piura: 'Piura', Iquitos: 'Loreto', Huancayo: 'Junín', Puno: 'Puno', Callao: 'Callao', Tacna: 'Tacna' },
+  bo: { 'La Paz': 'La Paz', Sucre: 'Chuquisaca', 'Santa Cruz de la Sierra': 'Santa Cruz', Cochabamba: 'Cochabamba', 'El Alto': 'La Paz', Oruro: 'Oruro', 'Potosí': 'Potosí', Tarija: 'Tarija', Trinidad: 'Beni', Uyuni: 'Potosí' },
+  py: { 'Asunción': 'Central', 'Ciudad del Este': 'Alto Paraná', 'San Ignacio': 'Misiones', 'San Pedro': 'San Pedro', 'Encarnación': 'Itapúa', Luque: 'Central', 'San Lorenzo': 'Central', 'Capiatá': 'Central', 'Lambaré': 'Central', 'Fernando de la Mora': 'Central', 'Pedro Juan Caballero': 'Amambay', 'Concepción': 'Concepción' },
+  cl: { Santiago: 'the Santiago Metropolitan Region', Valdivia: 'Los Ríos', 'Valparaíso': 'Valparaíso', 'Viña del Mar': 'Valparaíso', 'Concepción': 'Biobío', Antofagasta: 'Antofagasta', 'La Serena': 'Coquimbo', Temuco: 'La Araucanía', 'Puerto Montt': 'Los Lagos', 'Punta Arenas': 'Magallanes', Iquique: 'Tarapacá', Arica: 'Arica y Parinacota' },
+  ke: { Nairobi: 'Nairobi County', Mombasa: 'Mombasa County', Kisumu: 'Kisumu County', Nakuru: 'Nakuru County', Eldoret: 'Uasin Gishu County', Thika: 'Kiambu County', Malindi: 'Kilifi County', Kitale: 'Trans-Nzoia County', Garissa: 'Garissa County', Nyeri: 'Nyeri County', Machakos: 'Machakos County', Lamu: 'Lamu County', Naivasha: 'Nakuru County' },
+  ru: { Moscow: 'Moscow Oblast', 'St. Petersburg': 'St. Petersburg', Novosibirsk: 'Novosibirsk Oblast', Yekaterinburg: 'Sverdlovsk Oblast', Kazan: 'Tatarstan', 'Nizhny Novgorod': 'Nizhny Novgorod Oblast', Chelyabinsk: 'Chelyabinsk Oblast', Samara: 'Samara Oblast', Omsk: 'Omsk Oblast', 'Rostov-on-Don': 'Rostov Oblast', Ufa: 'Bashkortostan', Krasnoyarsk: 'Krasnoyarsk Krai', Vladivostok: 'Primorsky Krai', Sochi: 'Krasnodar Krai', Murmansk: 'Murmansk Oblast' },
+  ca: { Toronto: 'Ontario', Montreal: 'Quebec', Vancouver: 'British Columbia', Calgary: 'Alberta', Edmonton: 'Alberta', Ottawa: 'Ontario', Winnipeg: 'Manitoba', 'Quebec City': 'Quebec', Halifax: 'Nova Scotia', Regina: 'Saskatchewan', Saskatoon: 'Saskatchewan', Victoria: 'British Columbia', Hamilton: 'Ontario', Kelowna: 'British Columbia' },
+  au: { Sydney: 'New South Wales', Melbourne: 'Victoria', Brisbane: 'Queensland', Perth: 'Western Australia', Adelaide: 'South Australia', 'Gold Coast': 'Queensland', Canberra: 'the Australian Capital Territory', Newcastle: 'New South Wales', Hobart: 'Tasmania', Townsville: 'Queensland', Wollongong: 'New South Wales', Darwin: 'the Northern Territory', Cairns: 'Queensland', Geelong: 'Victoria' },
+  de: { Berlin: 'Berlin', Hamburg: 'Hamburg', Munich: 'Bavaria', Cologne: 'North Rhine-Westphalia', Frankfurt: 'Hesse', Stuttgart: 'Baden-Württemberg', 'Düsseldorf': 'North Rhine-Westphalia', Dortmund: 'North Rhine-Westphalia', Leipzig: 'Saxony', Bremen: 'Bremen', Dresden: 'Saxony', Hanover: 'Lower Saxony', Nuremberg: 'Bavaria' },
+  at: { Vienna: 'Vienna', Salzburg: 'Salzburg', Graz: 'Styria', Linz: 'Upper Austria', Innsbruck: 'Tyrol', Klagenfurt: 'Carinthia', Villach: 'Carinthia', Wels: 'Upper Austria', 'St. Pölten': 'Lower Austria', Dornbirn: 'Vorarlberg', Bregenz: 'Vorarlberg', Hallstatt: 'Upper Austria' },
+  pk: { Karachi: 'Sindh', Lahore: 'Punjab', Islamabad: 'Punjab', Peshawar: 'Khyber Pakhtunkhwa', Abbottabad: 'Khyber Pakhtunkhwa', Rawalpindi: 'Punjab', Faisalabad: 'Punjab', Multan: 'Punjab', Hyderabad: 'Sindh', Quetta: 'Balochistan', Gujranwala: 'Punjab', Sialkot: 'Punjab', Sukkur: 'Sindh' },
+  in: { Mumbai: 'Maharashtra', Pune: 'Maharashtra', Delhi: 'Delhi', Bangalore: 'Karnataka', Hyderabad: 'Telangana', Chennai: 'Tamil Nadu', Kolkata: 'West Bengal', Jaipur: 'Rajasthan', Ahmedabad: 'Gujarat', Lucknow: 'Uttar Pradesh', Srinagar: 'Jammu and Kashmir', Surat: 'Gujarat', Kochi: 'Kerala', Varanasi: 'Uttar Pradesh', Chandigarh: 'Punjab' },
 }
 
 function regionName(g: GameState): string {
   const c = g.character
   if (c.countryId === 'us') return US_STATES[c.city] ?? 'the State'
-  return REGIONS[c.countryId]?.[c.city] ?? `the ${c.city} Region`
+  return REGIONS[c.countryId]?.[c.city] ?? `the ${c.city} ${regional(g)?.unit ?? 'region'}`
 }
 
 function jurisdiction(g: GameState, id: OfficeId): string {
   const c = g.character
-  if (id === 'school') return `${c.city} School District`
+  if (id === 'school') return c.countryId === 'us' ? `${c.city} School District` : `${c.city} City Council`
   if (id === 'mayor') return `City of ${c.city}`
-  if (id === 'governor') return `${c.countryId === 'us' ? 'State of ' : ''}${regionName(g).replace(/^the /, '')}`
+  if (id === 'governor') {
+    if (!regional(g)) return uc(legislator(g).house)
+    return `${c.countryId === 'us' ? 'State of ' : ''}${regionName(g).replace(/^the /, '')}`
+  }
   return getCountry(c.countryId).name
 }
 
-/** "Mayor of Chicago", "Governor of Texas", "President of France". */
+/** "Mayor of Chicago", "Governor of Texas", "Premier of Ontario", "Member of Parliament for Leeds". */
 function styled(g: GameState, id: OfficeId): string {
   const c = g.character
-  if (id === 'school') return `School Board Director for ${c.city}`
+  if (id === 'school') return c.countryId === 'us' ? `School Board Director for ${c.city}` : `City Councillor in ${c.city}`
   if (id === 'mayor') return `Mayor of ${c.city}`
-  if (id === 'governor') return `Governor of ${regionName(g)}`
-  return `${leaderTitle(g)} of ${getCountry(c.countryId).name}`
+  if (id === 'governor') return regional(g) ? `${regional(g)!.title} of ${regionName(g)}` : `${legislator(g).title} for ${c.city}`
+  return `${leaderTitle(g)} of ${countryLabel(getCountry(c.countryId))}`
+}
+
+function uc(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
 function salaryFor(g: GameState, o: OfficeDef): number {
@@ -259,6 +380,40 @@ const BILLS: Record<OfficeId, BillDef[]> = {
   ],
 }
 
+/** City council business outside the US (councils don't run the schools everywhere). */
+const COUNCIL_BILLS: BillDef[] = [
+  { name: 'More street lights on dark side streets', emoji: '\u{1F4A1}', issue: 'crime' },
+  { name: 'A weekend farmers\' market in the city center', emoji: '\u{1F955}', issue: 'economy' },
+  { name: 'Plant a thousand new trees', emoji: '\u{1F333}', issue: 'environment' },
+  { name: 'More public toilets downtown', emoji: '\u{1F6BB}', issue: 'infrastructure' },
+  { name: 'Free swimming lessons for kids', emoji: '\u{1F3CA}', issue: 'education' },
+  { name: 'Rename a street after a local hero', emoji: '\u{1FAA7}', issue: 'civil' },
+  { name: 'A noise curfew after midnight', emoji: '\u{1F507}', issue: 'crime' },
+  { name: 'Fix the potholes on the main road', emoji: '\u{1F6A7}', issue: 'infrastructure' },
+  { name: 'More buses on the night routes', emoji: '\u{1F68C}', issue: 'transit' },
+  { name: 'Raise the councillors\' allowance', emoji: '\u{1F4B0}', issue: 'taxes', effect: 'payRaise' },
+]
+
+/** Bill wording for the country: no "state" taxes abroad, no student loans where university is free. */
+function localBillName(g: GameState, office: OfficeId, name: string): string {
+  const c = g.character
+  if (c.countryId === 'us') return name
+  const country = getCountry(c.countryId)
+  const scope = office === 'governor' && regional(g) ? 'regional' : 'national'
+  const swaps: Record<string, string> = {
+    'Cut the state income tax': `Cut the ${scope} income tax`,
+    'Name an official state snack': `Name an official ${scope} snack`,
+    'A pay raise for state officials': office === 'governor' && !regional(g) ? 'A pay raise for lawmakers' : `A pay raise for ${scope} officials`,
+    'Free community college': country.freeUniversity ? 'Free school lunches for every child' : 'Free vocational college',
+    'Student loan forgiveness': country.freeUniversity ? 'Free school lunches nationwide' : 'Student loan forgiveness',
+    'Universal healthcare': country.universalHealthcare ? 'Cut hospital waiting lists in half' : 'Universal healthcare',
+    'A trillion-dollar infrastructure plan': 'A massive infrastructure plan',
+    'Legalize sports betting': country.religions.filter((r) => r === 'Islam').length * 2 > country.religions.length ? 'Build a giant new mosque downtown' : 'Legalize sports betting',
+    'Replace the football field with solar panels': 'Put solar panels on the school roofs',
+  }
+  return swaps[name] ?? name
+}
+
 interface Bill {
   name: string
   emoji: string
@@ -363,11 +518,11 @@ function addApproval(job: Job, delta: number): void {
 // ---------------------------------------------------------------------------
 // Eligibility
 
-function prereqText(o: OfficeDef): string {
-  if (o.id === 'school') return 'High school diploma'
-  if (o.id === 'mayor') return 'University degree or school board experience'
+function prereqText(g: GameState, o: OfficeDef): string {
+  if (o.id === 'school') return g.character.countryId === 'us' ? 'High school diploma' : 'School-leaving certificate'
+  if (o.id === 'mayor') return `University degree or ${g.character.countryId === 'us' ? 'school board' : 'city council'} experience`
   if (o.id === 'governor') return 'Must have served as Mayor'
-  return 'Must have served as Governor'
+  return `Must have served as ${officeTitle(g, 'governor')}`
 }
 
 /** Why you can't run for this office (null = eligible). */
@@ -379,11 +534,12 @@ function runReason(g: GameState, o: OfficeDef, fromOffice = false): string | nul
   const min = minAgeFor(g, o)
   if (c.age < min) return `You must be at least ${min} years old to run for ${officeTitle(g, o.id)}.`
   if (c.criminalRecord.some((r) => r.convicted && (r.sentenceYears ?? 0) >= 2)) return 'Voters will not elect someone with a felony conviction on their record.'
-  if (o.id === 'school' && !hasHighSchool(g)) return 'You need at least a high school diploma to run for the school board.'
-  if (o.id === 'mayor' && !hasCollegeDegree(g) && !heldBefore(g, 'school')) return 'You need a university degree or experience on the school board to run for Mayor.'
-  if (o.id === 'governor' && !heldBefore(g, 'mayor') && !(fromOffice && politicianJob(g) && pdata(politicianJob(g)!).office === 'mayor')) return 'You need to serve as Mayor before running for Governor.'
+  const board = c.countryId === 'us' ? 'the school board' : 'the city council'
+  if (o.id === 'school' && !hasHighSchool(g)) return c.countryId === 'us' ? 'You need at least a high school diploma to run for the school board.' : `You need to have finished school to run for ${board}.`
+  if (o.id === 'mayor' && !hasCollegeDegree(g) && !heldBefore(g, 'school')) return `You need a university degree or experience on ${board} to run for Mayor.`
+  if (o.id === 'governor' && !heldBefore(g, 'mayor') && !(fromOffice && politicianJob(g) && pdata(politicianJob(g)!).office === 'mayor')) return `You need to serve as Mayor before running for ${officeTitle(g, 'governor')}.`
   if (o.id === 'leader' && !heldBefore(g, 'governor') && !(fromOffice && politicianJob(g) && pdata(politicianJob(g)!).office === 'governor')) {
-    return `You need to serve as Governor before running for ${leaderTitle(g)}.`
+    return `You need to serve as ${officeTitle(g, 'governor')} before running for ${leaderTitle(g)}.`
   }
   if (o.termLimit > 0 && termsServed(g, o.id) >= o.termLimit) return `You've already served the maximum ${o.termLimit} terms as ${officeTitle(g, o.id)}.`
   if (c.age > 85) return 'Your party chairman gently suggested you enjoy retirement instead.'
@@ -533,6 +689,14 @@ const TRAIL: { id: string; label: string; emoji: string }[] = [
   { id: 'diner', label: 'Shake hands at a diner', emoji: '\u{1F95E}' },
 ]
 
+/** US campaign stops stay American (corn dogs, diners); elsewhere it's the market and the café. */
+function trailLabel(g: GameState, id: string, label: string): string {
+  if (g.character.countryId === 'us') return label
+  if (id === 'fair') return 'Eat street food at the market'
+  if (id === 'diner') return 'Shake hands at a local café'
+  return label
+}
+
 function pollLine(c: Campaign): string {
   return `Polls: You ${c.poll}% · ${c.opponent} ${100 - c.poll}%`
 }
@@ -544,7 +708,7 @@ function trailChoice(g: GameState, camp: Campaign, prefix: string): void {
     TRAIL_SCRIPT,
     `Campaign Trail (${camp.round}/3)`,
     `${prefix}\n\n${pollLine(camp)}\n\nWhat's your next campaign stop?`,
-    opts.map((x) => ({ id: x.id, label: x.label, emoji: x.emoji })),
+    opts.map((x) => ({ id: x.id, label: trailLabel(g, x.id, x.label), emoji: x.emoji })),
     { emoji: '\u{1F5F3}\u{FE0F}', data: camp as unknown as Json },
   )
 }
@@ -593,6 +757,10 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
     }
     case 'fair': {
       const d = randInt(g, -4, 6)
+      if (c.countryId !== 'us') {
+        const food = localPick(g, 'food') || 'street food'
+        return { delta: d, text: d >= 1 ? pick(g, [`You ate ${food} like a true local. A photo of it ran on every front page.`, 'You haggled with every stall owner and bought one of everything. Brilliant.']) : pick(g, [`You ate ${food} with a knife and fork. Voters were disgusted.`, 'You got sauce on your shirt and then stepped in something at the livestock market.']) }
+      }
       return { delta: d, text: d >= 1 ? pick(g, ['You ate a corn dog like a true local. A photo of it ran on every front page.', 'You judged the pie contest and gave everyone first place. Brilliant.']) : pick(g, ['You ate the corn dog with a knife and fork. Voters were disgusted.', 'You got mustard on your shirt and then stepped in something at the livestock barn.']) }
     }
     case 'townhall': {
@@ -606,6 +774,10 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
     }
     default: {
       const d = randInt(g, -1, 4)
+      if (c.countryId !== 'us') {
+        const drink = localSoftDrink(g)
+        return { delta: d, text: pick(g, [`You shook hands with everyone in the café and paid for their ${drink}.`, `You charmed the regulars, then accidentally drank someone else's ${drink}.`, 'The café owner loved you. The cook asked for a selfie.']) }
+      }
       return { delta: d, text: pick(g, ['You shook hands with everyone in the diner and paid for their coffee.', 'You charmed the diner regulars, then accidentally ate someone else’s pancakes.', 'The diner staff loved you. The cook asked for a selfie.']) }
     }
   }
@@ -716,7 +888,7 @@ function runAction(g: GameState, o: OfficeDef): MenuAction {
     id: `pol.run.${o.id}`,
     label: `Run for ${officeTitle(g, o.id)}`,
     emoji: o.emoji,
-    subtitle: (g) => `${officeTitle(g, o.id)} · ${money(salaryFor(g, o))}/yr · ${o.term}-year term · ${prereqText(o)}, age ${minAgeFor(g, o)}+`,
+    subtitle: (g) => `${officeTitle(g, o.id)} · ${money(salaryFor(g, o))}/yr · ${o.term}-year term · ${prereqText(g, o)}, age ${minAgeFor(g, o)}+`,
     disabledReason: (g) => runReason(g, o),
     confirm: (g) => (g.character.job ? `If you win, you'll quit your job as ${g.character.job.title}. Start a campaign?` : null),
     run: (g) => {
@@ -760,7 +932,7 @@ export const politicsCareerMenu: MenuGroup = {
   emoji: '\u{1F5F3}\u{FE0F}',
   subtitle: 'Run for office',
   header: (g) =>
-    `Work your way up from School Board Director to ${leaderTitle(g)}. Smarts help in debates, looks help on TV, and fame and money win elections. Elections can only be contested once a year.`,
+    `Work your way up from ${localTitle(g)} to ${leaderTitle(g)}. Smarts help in debates, looks help on TV, and fame and money win elections. Elections can only be contested once a year.`,
   children: (g): MenuNode[] => {
     const job = politicianJob(g)
     if (job) return [{ type: 'info', id: 'pol.already', text: `You are the ${job.title} (${job.company}). Govern from your job.`, emoji: '\u{1F3DB}\u{FE0F}' }, careerInfo()]
@@ -778,9 +950,10 @@ function hotIssues(g: GameState): string[] {
 }
 
 function newBills(g: GameState, office: OfficeId): Bill[] {
-  return shuffle(g, BILLS[office])
+  const pool = office === 'school' && g.character.countryId !== 'us' ? COUNCIL_BILLS : BILLS[office]
+  return shuffle(g, pool)
     .slice(0, randInt(g, 2, 3))
-    .map((b) => ({ name: b.name, emoji: b.emoji, issue: b.issue, support: b.effect === 'payRaise' ? randInt(g, 5, 30) : randInt(g, 15, 88), effect: b.effect ?? '' }))
+    .map((b) => ({ name: localBillName(g, office, b.name), emoji: b.emoji, issue: b.issue, support: b.effect === 'payRaise' ? randInt(g, 5, 30) : randInt(g, 15, 88), effect: b.effect ?? '' }))
 }
 
 function informed(g: GameState, job: Job): boolean {
@@ -909,6 +1082,46 @@ const rallyAction: MenuAction = {
   },
 }
 
+/**
+ * How a bill passes or dies from this seat: governors, mayors and presidents sign and veto;
+ * councillors and members of parliament vote; a prime minister pushes bills through parliament.
+ */
+function lawWords(g: GameState, office: OfficeId) {
+  const us = g.character.countryId === 'us'
+  const votes = !us && (office === 'school' || (office === 'governor' && !regional(g)))
+  if (votes) {
+    return {
+      ask: 'How will you vote?',
+      pass: 'Vote for it', block: 'Vote against it',
+      passTitle: 'Bill Passed', blockTitle: 'Bill Defeated',
+      passed: (n: string) => `You voted for "${n}" and it passed.`,
+      blocked: (n: string) => `You voted against "${n}" and it failed.`,
+      logPass: (n: string) => `I voted for "${n}" and it passed.`,
+      logBlock: (n: string) => `I voted down "${n}".`,
+    }
+  }
+  if (office === 'leader' && parliamentary(g)) {
+    return {
+      ask: 'Will you push it through parliament or shelve it?',
+      pass: 'Push it through parliament', block: 'Shelve it',
+      passTitle: 'Bill Passed', blockTitle: 'Shelved',
+      passed: (n: string) => `Your government pushed "${n}" through parliament.`,
+      blocked: (n: string) => `You shelved "${n}".`,
+      logPass: (n: string) => `My government passed "${n}".`,
+      logBlock: (n: string) => `I shelved "${n}".`,
+    }
+  }
+  return {
+    ask: 'Will you sign it or veto it?',
+    pass: 'Sign it into law', block: 'Veto it',
+    passTitle: 'Bill Signed', blockTitle: 'Vetoed',
+    passed: (n: string) => `You signed "${n}" into law.`,
+    blocked: (n: string) => `You vetoed "${n}".`,
+    logPass: (n: string) => `I signed "${n}" into law.`,
+    logBlock: (n: string) => `I vetoed "${n}".`,
+  }
+}
+
 const BILL_SCRIPT = 'special.pol.bill'
 
 defineScript(BILL_SCRIPT, (g, choice, data) => {
@@ -939,11 +1152,12 @@ defineScript(BILL_SCRIPT, (g, choice, data) => {
       extra = ' The space agencies are hiring.'
     }
     addApproval(job, delta)
-    log(g, `I signed "${bill.name}" into law.`, delta >= 0 ? 'good' : 'bad')
+    const w = lawWords(g, d.office)
+    log(g, w.logPass(bill.name), delta >= 0 ? 'good' : 'bad')
     return say(
       g,
-      'Bill Signed',
-      `You signed "${bill.name}" into law. ${s >= 60 ? pick(g, ['The public cheered.', 'It was wildly popular.']) : s >= 40 ? 'Reactions were mixed.' : pick(g, ['People were furious.', 'Angry letters piled up on your desk.'])}${extra} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
+      w.passTitle,
+      `${w.passed(bill.name)} ${s >= 60 ? pick(g, ['The public cheered.', 'It was wildly popular.']) : s >= 40 ? 'Reactions were mixed.' : pick(g, ['People were furious.', 'Angry letters piled up on your desk.'])}${extra} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
       bill.emoji,
       delta >= 0 ? 'good' : 'bad',
     )
@@ -952,11 +1166,12 @@ defineScript(BILL_SCRIPT, (g, choice, data) => {
   count(g, 'vetoes')
   const delta = Math.round((50 - s) / 8 + randInt(g, -2, 2))
   addApproval(job, delta)
-  log(g, `I vetoed "${bill.name}".`)
+  const w = lawWords(g, d.office)
+  log(g, w.logBlock(bill.name))
   say(
     g,
-    'Vetoed',
-    `You vetoed "${bill.name}". ${s >= 60 ? pick(g, ['Supporters of the bill marched outside your office.', 'The bill was popular, and now you are slightly less so.']) : pick(g, ['Most people were relieved.', 'Nobody wanted that bill anyway. Good call.'])} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
+    w.blockTitle,
+    `${w.blocked(bill.name)} ${s >= 60 ? pick(g, ['Supporters of the bill marched outside your office.', 'The bill was popular, and now you are slightly less so.']) : pick(g, ['Most people were relieved.', 'Nobody wanted that bill anyway. Good call.'])} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`,
     '\u{1F6AB}',
     delta >= 0 ? 'good' : 'bad',
   )
@@ -977,7 +1192,7 @@ function billsMenu(): MenuGroup {
       const job = politicianJob(g)
       if (!job) return []
       const d = pdata(job)
-      if (!d.bills.length) return [{ type: 'info', id: 'pol.bills.none', text: 'No bills are waiting for your signature. New ones arrive every year.', emoji: '\u{1F4DD}' }]
+      if (!d.bills.length) return [{ type: 'info', id: 'pol.bills.none', text: 'No bills are waiting on you. New ones arrive every year.', emoji: '\u{1F4DD}' }]
       return d.bills.map((b, i) => ({
         type: 'action' as const,
         id: `pol.bill.${i}`,
@@ -990,10 +1205,10 @@ function billsMenu(): MenuGroup {
             gg,
             BILL_SCRIPT,
             'Legislation',
-            `A bill to "${b.name}" is on your desk. Public support is ${b.support}%. Will you sign it or veto it?`,
+            `A bill to "${b.name}" is on your desk. Public support is ${b.support}%. ${lawWords(gg, d.office).ask}`,
             [
-              { id: 'pass', label: 'Sign it into law', emoji: '\u{270D}\u{FE0F}' },
-              { id: 'veto', label: 'Veto it', emoji: '\u{1F6AB}' },
+              { id: 'pass', label: lawWords(gg, d.office).pass, emoji: '\u{270D}\u{FE0F}' },
+              { id: 'veto', label: lawWords(gg, d.office).block, emoji: '\u{1F6AB}' },
               { id: 'later', label: 'Decide later', emoji: '\u{23F3}' },
             ],
             { emoji: b.emoji, data: { name: b.name } },
@@ -1198,6 +1413,20 @@ defineScript(SCANDAL_SCRIPT, (g, choice, data) => {
   say(g, 'Scandal', `${text} Approval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`, '\u{1F4F8}', delta >= 0 ? 'neutral' : 'bad')
 })
 
+/** How a deeply unpopular official gets thrown out here. */
+function removalWords(g: GameState, office: OfficeId): { title: string; vote: string; survived: string; removed: string } {
+  if (office === 'leader' && parliamentary(g)) {
+    return { title: 'No-Confidence Vote', vote: 'Parliament has called a vote of no confidence in you', survived: 'a vote of no confidence', removed: 'voted out in a no-confidence vote' }
+  }
+  if (office === 'governor' && !regional(g) && g.character.countryId !== 'us') {
+    return { title: 'Deselection', vote: 'your own party has moved to deselect you', survived: 'a deselection vote', removed: 'deselected by your own party' }
+  }
+  if (office === 'mayor' || office === 'school') {
+    return { title: 'Recall Election', vote: 'voters have forced a recall election', survived: 'a recall vote', removed: 'recalled by voters' }
+  }
+  return { title: 'Impeachment', vote: 'lawmakers have begun proceedings to remove you', survived: 'an impeachment vote', removed: 'impeached and removed' }
+}
+
 defineScript(IMPEACH_SCRIPT, (g, choice) => {
   const job = politicianJob(g)
   if (!job) return
@@ -1214,8 +1443,9 @@ defineScript(IMPEACH_SCRIPT, (g, choice) => {
   const survive = Math.min(0.85, 0.2 + d.approval / 40 + (g.character.stats.smarts - 50) / 200)
   if (chance(g, survive)) {
     addApproval(job, randInt(g, 3, 8))
-    log(g, `I survived an impeachment vote as ${title}.`, 'good')
-    return say(g, 'Impeachment', `You fought the charges and survived the vote by a hair. ${pick(g, ['Your allies held the line.', 'Two lawmakers missed the vote because of a flat tire. Lucky you.'])} Approval: ${d.approval}%.`, '\u{1F605}', 'good')
+    const w = removalWords(g, d.office)
+    log(g, `I survived ${w.survived} as ${title}.`, 'good')
+    return say(g, w.title, `You fought back and survived the vote by a hair. ${pick(g, ['Your allies held the line.', 'Two lawmakers missed the vote because of a flat tire. Lucky you.'])} Approval: ${d.approval}%.`, '\u{1F605}', 'good')
   }
   p.impeached += 1
   count(g, 'impeached')
@@ -1223,9 +1453,10 @@ defineScript(IMPEACH_SCRIPT, (g, choice) => {
   leave(g, 'fired')
   addFame(g, -8)
   addStat(g, 'happiness', -20)
-  log(g, `I was impeached and removed as ${title}.`, 'bad')
-  remember(g, `Impeached and removed as ${title}.`)
-  say(g, 'Removed from Office', `The vote was overwhelming. You were impeached and removed from office as ${title}. History will not be kind.`, '\u{1F528}', 'bad')
+  const w = removalWords(g, d.office)
+  log(g, `I was ${w.removed} as ${title}.`, 'bad')
+  remember(g, `${w.removed[0].toUpperCase()}${w.removed.slice(1)} as ${title}.`)
+  say(g, 'Removed from Office', `The vote was overwhelming. You were ${w.removed} as ${title}. History will not be kind.`, '\u{1F528}', 'bad')
 })
 
 defineScript(TERM_SCRIPT, (g, choice) => {
@@ -1385,10 +1616,10 @@ export function yearlyPolitics(g: GameState): void {
     scriptChoice(
       g,
       IMPEACH_SCRIPT,
-      o.rank >= 2 ? 'Impeachment' : 'Recall Election',
-      `With an approval rating of just ${d.approval}%, lawmakers have begun proceedings to remove you as ${job.title}. What will you do?`,
+      removalWords(g, o.id).title,
+      `With an approval rating of just ${d.approval}%, ${removalWords(g, o.id).vote} as ${job.title}. What will you do?`,
       [
-        { id: 'fight', label: 'Fight the charges', emoji: '\u{1F4AA}' },
+        { id: 'fight', label: 'Fight it', emoji: '\u{1F4AA}' },
         { id: 'resign', label: 'Resign', emoji: '\u{1F6AA}' },
       ],
       { emoji: '\u{1F528}' },

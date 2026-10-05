@@ -71,7 +71,7 @@ function surrender(g: GameState): void {
     const from = typeof fu.prison === 'string' ? fu.prison : 'prison'
     log(g, 'I turned myself in to the police.', 'neutral')
     remember(g, `Turned myself in after escaping from ${from}.`)
-    arrestPlayer(g, 'Felony Escape', 3, {
+    arrestPlayer(g, c.countryId === 'us' ? 'Felony Escape' : 'Prison Escape', 3, {
       evidence: 1,
       noResist: true,
       context: pick(g, [
