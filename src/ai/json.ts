@@ -316,8 +316,10 @@ export function repairJson(input: string): string {
       }
       i++
       if (idx < 0) continue
-      while (stack.length > idx) finishCtx(stack.pop() as Ctx)
-      afterToken(false)
+      while (stack.length > idx) {
+        finishCtx(stack.pop() as Ctx)
+        afterToken(false)
+      }
       continue
     }
     if (!started) {
@@ -335,7 +337,10 @@ export function repairJson(input: string): string {
     afterToken(isKey)
   }
 
-  while (stack.length > 0) finishCtx(stack.pop() as Ctx)
+  while (stack.length > 0) {
+    finishCtx(stack.pop() as Ctx)
+    afterToken(false)
+  }
   return out.join('')
 }
 
