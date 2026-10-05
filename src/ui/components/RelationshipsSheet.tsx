@@ -15,7 +15,7 @@ export interface RelationshipsSheetProps {
 
 function safeGroups(g: GameState): { title: string; people: Person[] }[] {
   try {
-    return relationshipGroups(g).filter((grp) => grp.people.length > 0)
+    return relationshipGroups(g).filter((grp: { title: string; people: Person[] }) => grp.people.length > 0)
   } catch (err) {
     console.error('[relationships] relationshipGroups failed:', err)
     return []
