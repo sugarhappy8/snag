@@ -1513,7 +1513,7 @@ const SIBLING_ANNOYANCES = ['stole your favorite hoodie', 'read your diary out l
 const PET_MESS = ['chewed up your favorite shoes', 'peed on the couch', 'knocked a vase off the shelf', 'ate an entire birthday cake', 'escaped into the neighbor\'s yard', 'dug up the garden', 'threw up in your bed']
 
 /** Years before the same automatic family/friend popup can feature the same person again. */
-const REL_EVENT_COOLDOWN = 4
+const REL_EVENT_COOLDOWN = 5
 
 function yearlyFamilyEvent(g: GameState): void {
   const c = g.character

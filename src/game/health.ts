@@ -512,7 +512,7 @@ function isChronic(def: DiseaseDef): boolean {
 }
 
 const RESOLVED_LINES = ['My {name} cleared up on its own.', 'I finally got over my {name}.', 'My {name} went away by itself.', 'I beat my {name} without seeing a doctor.']
-const RESOLVED_HIDDEN = ["I've been feeling a lot better lately.", 'Whatever was making me sick went away on its own.', 'I finally shook off whatever bug I had.']
+const RESOLVED_HIDDEN = ["I've been feeling a lot better lately.", 'Whatever was making me sick went away on its own.', 'I finally shook off whatever bug I had.', 'My body sorted itself out without any help from me.', 'I woke up one day and felt like myself again.', 'Whatever I had packed its bags and left.']
 
 function progressConditions(g: GameState): void {
   const c = g.character
@@ -565,8 +565,9 @@ function addictionKind(name: string): AddictionKind {
 }
 
 function addictionSubject(name: string): string {
-  const s = name.replace(/\s*addiction\s*/i, ' ').trim()
-  return s ? s.toLowerCase() : 'it'
+  const s = name.replace(/\s*addiction\s*/i, ' ').trim().toLowerCase()
+  if (s === 'drug') return 'drugs'
+  return s || 'it'
 }
 
 function strList(v: Json | undefined): string[] {
@@ -725,7 +726,7 @@ function giveInEffects(g: GameState, cond: Condition): string {
     case 'drug':
       count(g, 'drugs')
       addStat(g, 'health', -randInt(g, 5, 12))
-      log(g, `I relapsed and used ${subject} again.`, 'bad')
+      log(g, freshLine(g, 'relapse', [`I relapsed and used ${subject} again.`, `I fell off the wagon with ${subject}.`, `I swore it was the last time I'd use ${subject}. It wasn't.`]), 'bad')
       return pick(g, [`You used ${subject} again. It felt great for about an hour.`, `You gave in to ${subject}. Your body is not thanking you.`])
     default:
       log(g, `I gave in to my ${subject} habit again.`, 'bad')
@@ -756,10 +757,10 @@ const SYMPTOMS = defineScript('health.symptoms', (g, choice, data) => {
       ]),
       { emoji: '\u{1F4BB}' },
     )
-    log(g, 'I searched my symptoms online and scared myself half to death.')
+    log(g, freshLine(g, 'searchedSymptoms', ['I searched my symptoms online and scared myself half to death.', 'I diagnosed myself on the internet. It did not go well.', 'I spent a night reading medical forums and regretted it.']))
     return
   }
-  log(g, pick(g, ['I ignored my symptoms and hoped for the best.', 'I decided whatever I had would sort itself out.', 'I walked it off. Or tried to.']))
+  log(g, freshLine(g, 'ignoredSymptoms', ['I ignored my symptoms and hoped for the best.', 'I decided whatever I had would sort itself out.', 'I walked it off. Or tried to.', 'I told my body to toughen up.']))
 })
 
 const CRAVING = defineScript('health.addiction.craving', (g, choice, data) => {
@@ -800,7 +801,7 @@ const CRAVING = defineScript('health.addiction.craving', (g, choice, data) => {
         : pick(g, [`You white-knuckled it and the craving passed. You're winning, one day at a time.`, `You went for a long walk instead. The urge for ${subject} faded.`]),
       { emoji: '\u{1F4AA}', tone: 'good' },
     )
-    log(g, group ? `I went to a support group meeting for my ${subject} problem.` : `I resisted the urge to give in to ${subject}.`, 'good')
+    log(g, group ? freshLine(g, 'groupLine', [`I went to a support group meeting for my ${subject} problem.`, `I shared my story about ${subject} at a support group.`, 'I picked up another sobriety chip at my support group.']) : freshLine(g, 'resistLine', [`I resisted the urge to give in to ${subject}.`, `I fought off a craving for ${subject}.`, `I stayed strong against ${subject} this year.`]), 'good')
     return
   }
   cond.severity = Math.min(100, cond.severity + 3)

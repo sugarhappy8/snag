@@ -435,6 +435,18 @@ function changedALot(g: GameState, key: string, amount: number): boolean {
   return true
 }
 
+/** Pick a line that wasn't used the last few times (so the journal doesn't repeat itself). */
+function freshPick<T>(g: GameState, key: string, lines: readonly T[]): T {
+  const flag = `line.fin.${key}`
+  const raw = g.flags[flag]
+  const recent = Array.isArray(raw) ? raw.filter((x): x is number => typeof x === 'number') : []
+  const keep = Math.max(0, Math.min(lines.length - 1, 3))
+  const options = lines.map((_, i) => i).filter((i) => !recent.slice(-keep).includes(i))
+  const i = pick(g, options.length ? options : lines.map((_, j) => j))
+  g.flags[flag] = [...recent, i].slice(-Math.max(1, keep))
+  return lines[i]
+}
+
 /** Taxes, rent, living costs, loans and the consequences of going broke. Runs after career & special. */
 export function yearlyFinance(g: GameState): void {
   const c = g.character
@@ -476,7 +488,7 @@ export function yearlyFinance(g: GameState): void {
     const lastLiving = num(g.flags.livingLineAge, -99)
     if (living >= 500 && (c.age - lastLiving >= 5 || lastLiving > c.age) && chance(g, 0.35)) {
       g.flags.livingLineAge = c.age
-      log(g, pick(g, LIVING_LINES)(formatMoney(living)))
+      log(g, freshPick(g, 'living', LIVING_LINES)(formatMoney(living)))
     }
   }
 
@@ -493,7 +505,7 @@ export function yearlyFinance(g: GameState): void {
       g.flags.homelessLineAge = c.age
       log(
         g,
-        pick(g, ['I spent another year sleeping on park benches.', 'I lived on the streets this year.', 'I spent the year couch-surfing and sleeping in my car... without a car.', 'I was homeless all year.', 'I knew every shelter in town by name.', 'I spent the year carrying everything I owned in two bags.']),
+        freshPick(g, 'homeless', ['I spent another year sleeping on park benches.', 'I lived on the streets this year.', 'I spent the year couch-surfing and sleeping in my car... without a car.', 'I was homeless all year.', 'I knew every shelter in town by name.', 'I spent the year carrying everything I owned in two bags.']),
         'bad',
       )
     }
@@ -615,7 +627,7 @@ function handleDebt(g: GameState): void {
     notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
     log(
       g,
-      pick(g, [
+      freshPick(g, 'collectors', [
         'Debt collectors kept calling me.',
         `I'm ${debt} in debt.`,
         'I dodged calls from debt collectors all year.',

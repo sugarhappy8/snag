@@ -759,8 +759,31 @@ const fanScript = defineScript('special.fame.fan', (g, choice) => {
   say(g, 'Fan Encounter', text, '\u{1F929}')
 })
 
+/** Which celebrity scene this year: the same kind (paparazzi again?) waits at least 3 years. */
+function scenarioRoll(g: GameState): number {
+  const bands: [string, number, number][] = [['paparazzi', 0, 0.35], ['stalker', 0.35, 0.55], ['feud', 0.55, 0.8], ['fan', 0.8, 1]]
+  const age = g.character.age
+  const fresh = bands.filter(([k]) => {
+    const last = g.flags[`fame.scene.${k}`]
+    return !(typeof last === 'number' && last <= age && age - last < 3)
+  })
+  const pool = fresh.length ? fresh : bands
+  const total = pool.reduce((sum, b) => sum + (b[2] - b[1]), 0)
+  let r = rand(g) * total
+  for (const [k, lo, hi] of pool) {
+    if (r < hi - lo) {
+      g.flags[`fame.scene.${k}`] = age
+      return lo + r
+    }
+    r -= hi - lo
+  }
+  const [k, lo] = pool[pool.length - 1]
+  g.flags[`fame.scene.${k}`] = age
+  return lo
+}
+
 function celebrityScenario(g: GameState): void {
-  const roll = rand(g)
+  const roll = scenarioRoll(g)
   if (roll < 0.35) {
     scriptChoice(
       g,

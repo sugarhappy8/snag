@@ -1598,7 +1598,7 @@ const GTA_KEEP = defineScript('crime.gta.keep', (g, choice, data) => {
   const got = pocket(g, price)
   log(g, `I sold a stolen ${car.name} to a chop shop for ${formatMoney(got)}.`, 'good')
   outcome(g, 'Chop Shop', pick(g, [
-    `A guy named ${pick(g, ['Sal', 'Big Mike', 'Dmitri', 'Lou', 'Toad', 'Rosa'])} at the chop shop handed you ${formatMoney(price)} in an envelope. The ${car.name} was in eleven pieces before you reached the door.`,
+    `A guy named ${g.character.countryId === 'us' ? pick(g, ['Sal', 'Big Mike', 'Dmitri', 'Lou', 'Toad', 'Rosa']) : randomFirstName(g, g.character.countryId, 'male')} at the chop shop handed you ${formatMoney(price)} in an envelope. The ${car.name} was in eleven pieces before you reached the door.`,
     `The chop shop paid ${formatMoney(price)} for the ${car.name}. No paperwork, no questions.`,
   ]), '\u{1F527}', 'good')
 })

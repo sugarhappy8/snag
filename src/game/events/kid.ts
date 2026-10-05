@@ -201,7 +201,7 @@ export const KID_EVENTS = defineEvents([
       choices: [ch('dino', 'Dinosaurs', '🦖'), ch('hero', 'Superheroes', '🦸'), ch('unicorn', 'Unicorns', '🦄'), ch('baby', 'A toddler TV show', '📺')],
     }),
     resolve: {
-      dino: (g) => say(g, null, 'Rawr', 'You had a dinosaur party. A kid named Gary cried when the piñata T. rex lost its head.', 'I had a dinosaur-themed birthday party.', { happiness: 10 }, 'good'),
+      dino: (g) => say(g, null, 'Rawr', `You had a dinosaur party. A kid named ${strangerName(g, 'male').first} cried when the piñata T. rex lost its head.`, 'I had a dinosaur-themed birthday party.', { happiness: 10 }, 'good'),
       hero: (g) => say(g, null, 'Super party', 'You had a superhero party. Everyone fought over who got to be the strongest one.', 'I had a superhero-themed birthday party.', { happiness: 10 }, 'good'),
       unicorn: (g) => say(g, null, 'Magical', 'You had a unicorn party with a rainbow cake. Glitter will be found in the carpet for years.', 'I had a unicorn-themed birthday party.', { happiness: 10 }, 'good'),
       baby: (g) => say(g, null, ['Awkward', 'Too old for this'], 'You had a party themed after a show for toddlers. You were the only one who dressed up.', "I had a toddler-show-themed birthday party, but I was the only one who dressed up.", { happiness: -4, smarts: -8 }, 'bad'),
@@ -790,7 +790,7 @@ export const KID_EVENTS = defineEvents([
       read: (g) => say(g, null, 'Bookworm', 'You read under a tree in peace. Bliss.', 'I read a book under a tree at recess.', { smarts: 6 }, 'good'),
       rule: (g) => {
         const ok = chance(g, 0.35)
-        say(g, null, ok ? 'All hail' : 'Overthrown', ok ? 'You were crowned ruler of the jungle gym. Your reign will be remembered.' : 'Your coup failed. A third-grader named Brenda pushed you off the slide.', ok ? 'I was crowned ruler of the playground at recess.' : 'I tried to take over the playground at recess and failed.', ok ? { happiness: 10 } : { happiness: -4, health: -2 }, ok ? 'good' : 'bad', '👑')
+        say(g, null, ok ? 'All hail' : 'Overthrown', ok ? 'You were crowned ruler of the jungle gym. Your reign will be remembered.' : `Your coup failed. A third-grader named ${strangerName(g, 'female').first} pushed you off the slide.`, ok ? 'I was crowned ruler of the playground at recess.' : 'I tried to take over the playground at recess and failed.', ok ? { happiness: 10 } : { happiness: -4, health: -2 }, ok ? 'good' : 'bad', '👑')
       },
     },
   },

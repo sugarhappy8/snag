@@ -1212,7 +1212,7 @@ export const ADULT_EVENTS = defineEvents([
         say(g, x, ['Happily ever after', 'Open bar'], `You danced all night at ${x.p?.firstName ?? 'your friend'}'s wedding. Your gift was a hit.`, `I went to my friend ${x.p?.firstName ?? ''}'s wedding.`, { money: -gift, happiness: 10, rel: 15 }, 'good', '🥂')
       },
       attend: (g, x) => say(g, x, 'Free dinner', 'You went without a gift. You hoped nobody noticed. Someone noticed.', `I went to my friend ${x.p?.firstName ?? ''}'s wedding without a gift.`, { happiness: 6, rel: 2 }),
-      skip: (g, x) => say(g, x, 'No-show', `You told ${x.p?.firstName ?? 'your friend'} you had food poisoning. They saw you at the mall that day.`, `I skipped my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -15 }, 'bad'),
+      skip: (g, x) => say(g, x, 'No-show', `You told ${x.p?.firstName ?? 'your friend'} you had food poisoning. They saw you at ${isUS(g) ? 'the mall' : lp(g, 'hangout', 'the market')} that day.`, `I skipped my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -15 }, 'bad'),
       object: (g, x) => say(g, x, ['Speak now...', 'Chaos'], `When the officiant asked if anyone objected, you stood up and said "the cake is dry." You were escorted out.`, `I objected at my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -40, craziness: 6, happiness: 4 }, 'bad', '😱'),
     },
   },

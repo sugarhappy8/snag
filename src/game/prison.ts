@@ -1002,8 +1002,11 @@ function prisonEvent(g: GameState): void {
   if (!p) return
   const pl = prisonLife(g)
   const mates = cellmates(g)
-  if (mates.length > 0 && chance(g, 0.5)) {
-    const m = pick(g, mates)
+  // A cellmate story now and then, not every year about the same person.
+  const quietMates = mates.filter((x) => typeof x.data.storyAge !== 'number' || (x.data.storyAge as number) > c.age || c.age - (x.data.storyAge as number) >= 3)
+  if (quietMates.length > 0 && chance(g, 0.5)) {
+    const m = pick(g, quietMates)
+    m.data.storyAge = c.age
     addRelationship(m, randInt(g, 1, 5))
     m.yearsKnown += 1
     const story = pick(g, [
