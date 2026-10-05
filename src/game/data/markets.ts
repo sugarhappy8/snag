@@ -81,7 +81,10 @@ export interface MarketProfile {
   salesTaxName: string
   /** Legal minimum wage for a full-time year, in dollars (0 if none). */
   minWage: number
-  /** Typical cost of an employee relative to the US (1). */
+  /**
+   * Typical cost of an employee relative to the US (1). Keep it close to world.ts `wealth`
+   * (the game pays salaries as US salary x wealth), e.g. within about ±35% of it.
+   */
   laborCost: number
   /** Commercial rent relative to the US average (1). Big expensive cities push it up. */
   rentCost: number
@@ -106,7 +109,13 @@ export interface MarketProfile {
   demand: Partial<Record<Industry, number>>
   /** Industries that are illegal or effectively impossible to run here (e.g. alcohol). */
   banned: Industry[]
-  /** Local shop price relative to the global baseline (1) for each category; missing = 1. */
+  /**
+   * What the same item really costs here in US dollars, relative to its US price (1), with local
+   * taxes and import duties included; missing = 1. Absolute, NOT relative to wealth: an iPhone
+   * that costs $1,500 in Brazil vs $1,000 in the US → electronics 1.5; Singapore's COE makes a
+   * car cost ~2.5-3x → car 2.8; Venezuelan petrol is nearly free → fuel 0.05. For food and
+   * alcohol it is a typical grocery basket / a beer vs the US.
+   */
   priceMult: Partial<Record<PriceCategory, number>>
   /** One short sentence about doing business here, shown in business menus and AI context. */
   businessNote: string
