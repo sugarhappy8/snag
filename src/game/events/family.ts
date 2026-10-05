@@ -549,7 +549,7 @@ export const FAMILY_EVENTS = defineEvents([
       },
       wait: (g: GameState, x: Ctx) => {
         const ok = chance(g, 0.6)
-        say(g, x, ok ? 'Homecoming' : 'Gone', ok ? `${nm(x)} wandered back home two days later like nothing happened.` : `${nm(x)} never came back. You leave the porch light on, just in case.`, ok ? `My pet, ${nm(x)}, came home on its own.` : `My pet, ${nm(x)}, ran away and never came back.`, ok ? { happiness: 4 } : { happiness: -12 }, ok ? 'good' : 'bad')
+        say(g, x, ok ? 'Welcome Home' : 'Gone', ok ? `${nm(x)} wandered back home two days later like nothing happened.` : `${nm(x)} never came back. You leave the porch light on, just in case.`, ok ? `My pet, ${nm(x)}, came home on its own.` : `My pet, ${nm(x)}, ran away and never came back.`, ok ? { happiness: 4 } : { happiness: -12 }, ok ? 'good' : 'bad')
         if (!ok && x.p) g.people = g.people.filter((p) => p.id !== x.p?.id)
       },
     },

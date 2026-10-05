@@ -16,6 +16,7 @@ import {
   anyOf,
   ask,
   ch,
+  country,
   defineEvents,
   dollars,
   friends,
@@ -1123,7 +1124,7 @@ export const ADULT_EVENTS = defineEvents([
     cooldown: 10,
     when: (g) => g.character.education.completed.includes('high'),
     setup: (g) => ({
-      text: `You've been invited to your ${Math.max(10, Math.round((g.character.age - 18) / 5) * 5)}-year high school reunion. What will you do?`,
+      text: `You've been invited to your ${Math.max(10, Math.round((g.character.age - 18) / 5) * 5)}-year ${lt(g, 'high', 'high school')} reunion. What will you do?`,
       choices: [ch('go', 'Go and catch up'), ch('brag', 'Go and brag'), ch('skip', 'Skip it')],
     }),
     resolve: {
@@ -1131,13 +1132,13 @@ export const ADULT_EVENTS = defineEvents([
         const s = strangerName(g)
         const f = chance(g, 0.4)
         if (f) createPerson(g, { relation: 'friend', age: g.character.age, firstName: s.first, lastName: s.last, gender: s.gender, relationship: 60 })
-        say(g, null, 'Nostalgia', f ? `You reconnected with your old classmate ${s.first} and promised to stay in touch. You actually meant it.` : 'You caught up with old classmates. The class clown is now a tax attorney.', 'I went to my high school reunion.', { happiness: 8 }, 'good')
+        say(g, null, 'Nostalgia', f ? `You reconnected with your old classmate ${s.first} and promised to stay in touch. You actually meant it.` : 'You caught up with old classmates. The class clown is now a tax attorney.', `I went to my ${lt(g, 'high', 'high school')} reunion.`, { happiness: 8 }, 'good')
       },
       brag: (g) => {
         const rich = g.character.money > 100000 || g.character.job !== null
-        say(g, null, rich ? 'Main character' : 'Exposed', rich ? 'You casually mentioned your success roughly 40 times. Your old bully looked miserable.' : 'You bragged about your "investments." Someone asked what you do for work. Silence.', 'I went to my high school reunion and bragged.', rich ? { happiness: 10, karma: -2 } : { happiness: -8 }, rich ? 'good' : 'bad')
+        say(g, null, rich ? 'Main character' : 'Exposed', rich ? 'You casually mentioned your success roughly 40 times. Your old bully looked miserable.' : 'You bragged about your "investments." Someone asked what you do for work. Silence.', `I went to my ${lt(g, 'high', 'high school')} reunion and bragged.`, rich ? { happiness: 10, karma: -2 } : { happiness: -8 }, rich ? 'good' : 'bad')
       },
-      skip: (g) => say(g, null, 'Moving on', 'You skipped it. You saw the photos online. Everyone looks old.', 'I skipped my high school reunion.', {}),
+      skip: (g) => say(g, null, 'Moving on', 'You skipped it. You saw the photos online. Everyone looks old.', `I skipped my ${lt(g, 'high', 'high school')} reunion.`, {}),
     },
   },
   {
@@ -1254,7 +1255,7 @@ export const ADULT_EVENTS = defineEvents([
     once: true,
     weight: 2,
     setup: (g) => ({
-      text: `You've been randomly selected to be a contestant on the TV game show "${pick(g, ['Spin That Wheel!', 'Know-It-All', 'Price Is Close Enough', 'Million Dollar Toss'])}". What will you do?`,
+      text: `You've been randomly selected to be a contestant on the TV game show "${pick(g, ['Spin That Wheel!', 'Know-It-All', 'Price Is Close Enough', country(g).currency === '$' ? 'Million Dollar Toss' : 'The Million Toss'])}". What will you do?`,
       choices: [ch('go', "Let's play!"), ch('no', 'I get stage fright')],
     }),
     resolve: {

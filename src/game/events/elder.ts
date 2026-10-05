@@ -21,8 +21,9 @@ import {
   say,
   strangerName,
   type Ctx,
+  majorityFaith,
 } from './helpers'
-import { fillLocal } from '../data/locales'
+import { fillLocal, localTerm } from '../data/locales'
 import { feastHoliday } from './adult'
 
 function nm(x: Ctx, fallback = 'them'): string {
@@ -57,6 +58,17 @@ function elderSport(g: GameState): string {
   if (['cn', 'hk', 'sg', 'my'].includes(id)) return 'tai chi'
   if (['de', 'at', 'ch', 'nl', 'dk', 'se', 'no', 'fi'].includes(id)) return 'table tennis'
   return 'walking football'
+}
+
+/** Where the player's community worships: church, the mosque, the temple... */
+function worshipPlace(g: GameState): string {
+  const faith = g.character.religion ?? majorityFaith(g)
+  if (faith === 'Islam') return 'the mosque'
+  if (faith === 'Judaism') return 'synagogue'
+  if (faith === 'Hinduism' || faith === 'Buddhism' || faith === 'Shinto' || faith === 'Taoism' || faith === 'Jainism') return 'the temple'
+  if (faith === 'Sikhism') return 'the gurdwara'
+  if (faith === 'Christianity' || faith === 'Catholicism') return 'church'
+  return 'the community center'
 }
 
 function uc(s: string): string {
@@ -336,7 +348,7 @@ export const ELDER_EVENTS = defineEvents([
     setup: (g) => {
       const s = strangerName(g, preferredGender(g))
       return {
-        text: `${s.first} ${s.last}, someone you had a crush on in high school, found you online and sent you a message: "Do you remember me?" What will you do?`,
+        text: `${s.first} ${s.last}, someone you had a crush on in ${localTerm(g, 'high')}, found you online and sent you a message: "Do you remember me?" What will you do?`,
         choices: [ch('meet', 'Meet up for coffee', '☕'), ch('reply', 'Reply politely', '💬'), ch('ignore', 'Leave them on read', '👻')],
         data: { first: s.first, last: s.last, gender: s.gender },
       }
@@ -515,7 +527,7 @@ export const ELDER_EVENTS = defineEvents([
       volunteer: (g) => say(g, null, 'Giving back', 'You started volunteering at the animal shelter. The dogs think you are the best person alive.', 'I started volunteering in retirement.', { happiness: 6, karma: 8 }, 'good', '🤝'),
       class: (g) => {
         const topic = pick(g, ['watercolor painting', 'Italian', 'pottery', 'salsa dancing', 'computer basics', 'astronomy'])
-        say(g, null, 'Lifelong learner', `You signed up for a ${topic} class at the community college. You're the teacher's favorite.`, `I took a ${topic} class in retirement.`, { smarts: 4, happiness: 5 }, 'good', '🎨')
+        say(g, null, 'Lifelong learner', `You signed up for a ${topic} class at ${g.character.countryId === 'us' ? 'the community college' : 'the community center'}. You're the teacher's favorite.`, `I took a ${topic} class in retirement.`, { smarts: 4, happiness: 5 }, 'good', '🎨')
       },
       garden: (g) => say(g, null, 'Green thumb', 'You planted a vegetable garden. You grew 40 zucchinis and gave them to neighbors who did not want them.', 'I started a vegetable garden.', { health: 3, happiness: 5 }, 'good', '🌱'),
       nap: (g) => say(g, null, 'Professional napper', 'You perfected the art of the 2 PM nap. You have never felt more rested.', 'I took a lot of naps in retirement.', { happiness: 4, health: 2 }),
@@ -530,7 +542,7 @@ export const ELDER_EVENTS = defineEvents([
     cooldown: 10,
     setup: (g) => {
       const s = strangerName(g)
-      const from = pick(g, ['the bowling league', 'your old job', 'the neighborhood', 'church', 'your book club'])
+      const from = pick(g, ['your old job', 'the neighborhood', worshipPlace(g), g.character.countryId === 'us' ? 'the bowling league' : 'the market', 'your book club'])
       return {
         text: `Your old friend ${s.first} ${s.last} from ${from} passed away. Their family asked if you'd say a few words at the funeral. What will you do?`,
         choices: [ch('eulogy', 'Give a heartfelt eulogy', '🎙️'), ch('funny', 'Tell funny stories', '😂'), ch('attend', 'Just attend quietly', '🕯️'), ch('skip', "Skip it", '🚪')],
@@ -541,7 +553,7 @@ export const ELDER_EVENTS = defineEvents([
       eulogy: (g, x) => say(g, x, 'Beautiful words', `You gave a eulogy for ${x.s('first')} that left the whole room in tears.`, `I gave a eulogy at my old friend ${x.s('first')}'s funeral.`, { happiness: -3, karma: 5 }, 'neutral', '🎙️'),
       funny: (g, x) => say(g, x, 'Celebration of life', `You told the story about ${x.s('first')} and the stolen goat. The room laughed through the tears. ${x.s('first')} would have loved it.`, `I made everyone laugh at my old friend ${x.s('first')}'s funeral.`, { happiness: 2, karma: 4 }, 'good', '😂'),
       attend: (g, x) => say(g, x, 'Paying respects', `You sat in the back and said goodbye to ${x.s('first')} in your own way.`, `I attended my old friend ${x.s('first')}'s funeral.`, { happiness: -4 }),
-      skip: (g, x) => say(g, x, 'Too many funerals', `You couldn't face another funeral. You raised a glass to ${x.s('first')} at home instead.`, `I skipped my old friend ${x.s('first')}'s funeral.`, { happiness: -5, karma: -2 }),
+      skip: (g, x) => say(g, x, 'Too many funerals', `You couldn't face another funeral. You lit a candle for ${x.s('first')} at home instead.`, `I skipped my old friend ${x.s('first')}'s funeral.`, { happiness: -5, karma: -2 }),
     },
   },
 ])

@@ -10,6 +10,7 @@ import {
   country,
   defineEvents,
   dollars,
+  englishSchooling,
   friends,
   mother,
   money,
@@ -170,19 +171,19 @@ export const KID_EVENTS = defineEvents([
     title: 'Talent Show',
     minAge: 5,
     maxAge: 11,
-    setup: () => ({
-      text: "You've been invited to perform at a children's talent show at the mall. What will you do?",
-      choices: [ch('joke', 'Tell a joke'), ch('sing', 'Sing the ABCs'), ch('dance', 'Break dance'), ch('decline', 'Decline')],
+    setup: (g) => ({
+      text: `You've been invited to perform at a children's talent show at ${g.character.countryId === 'us' ? 'the mall' : 'the community hall'}. What will you do?`,
+      choices: [ch('joke', 'Tell a joke'), ch('sing', englishSchooling(g) ? 'Sing the ABCs' : 'Sing a nursery rhyme'), ch('dance', 'Break dance'), ch('decline', 'Decline')],
     }),
     resolve: {
       joke: (g) => {
         const hit = chance(g, 0.4 + g.character.stats.smarts / 250)
-        say(g, null, hit ? 'Comedy gold' : 'Crickets', hit ? 'You told your best knock-knock joke and the crowd roared. A mall cop wiped away a tear.' : 'You told a knock-knock joke. Somebody coughed. You walked off stage very slowly.', 'I told my favorite knock-knock joke at a talent show at the mall.', hit ? { happiness: 10, smarts: 2 } : { happiness: -6 }, hit ? 'good' : 'bad', '🎤')
+        say(g, null, hit ? 'Comedy gold' : 'Crickets', hit ? 'You told your best knock-knock joke and the crowd roared. A security guard wiped away a tear.' : 'You told a knock-knock joke. Somebody coughed. You walked off stage very slowly.', 'I told my favorite knock-knock joke at a talent show.', hit ? { happiness: 10, smarts: 2 } : { happiness: -6 }, hit ? 'good' : 'bad', '🎤')
       },
-      sing: (g) => say(g, null, 'Next big star?', 'You sang the ABCs with heartfelt emotion. You forgot the letters between K and P.', 'I sang the ABCs at a kiddie talent show at the mall.', { happiness: 6, looks: 2 }),
+      sing: (g) => say(g, null, 'Next big star?', englishSchooling(g) ? 'You sang the ABCs with heartfelt emotion. You forgot the letters between K and P.' : 'You sang a nursery rhyme with heartfelt emotion. You forgot the second verse and hummed it.', englishSchooling(g) ? 'I sang the ABCs at a kiddie talent show.' : 'I sang a nursery rhyme at a kiddie talent show.', { happiness: 6, looks: 2 }),
       dance: (g) => {
         const hit = chance(g, 0.5)
-        say(g, null, hit ? 'Crowd favorite' : 'Wipeout', hit ? 'You spun on your head like a pro. You won a $10 food court gift card!' : 'You attempted a headspin and landed on a judge.', 'I break danced at a talent show at the mall.', hit ? { happiness: 12, health: 2, money: 10 } : { happiness: -4, health: -4 }, hit ? 'good' : 'bad', '🕺')
+        say(g, null, hit ? 'Crowd favorite' : 'Wipeout', hit ? `You spun on your head like a pro. You won a ${money(dollars(g, 10, 10))} ${g.character.countryId === 'us' ? 'food court gift card' : 'toy store voucher'}!` : 'You attempted a headspin and landed on a judge.', 'I break danced at a talent show.', hit ? { happiness: 12, health: 2, money: 10 } : { happiness: -4, health: -4 }, hit ? 'good' : 'bad', '🕺')
       },
       decline: (g) => say(g, null, 'Stage fright', 'You politely declined. The spotlight can wait.', 'I declined an invitation to perform at a talent show.', { happiness: -2 }),
     },
@@ -237,24 +238,26 @@ export const KID_EVENTS = defineEvents([
     setup: (g) => {
       const f = anyOf(g, friends(g))
       const name = f?.firstName ?? strangerName(g).first
+      // Curbside mailboxes are American; elsewhere the street's trash bins take the beating.
+      const us = g.character.countryId === 'us' || g.character.countryId === 'ca'
       return {
-        text: `Your delinquent friend ${name} invites you to go bash in mailboxes with a baseball bat. What will you do?`,
+        text: us ? `Your delinquent friend ${name} invites you to go bash in mailboxes with a baseball bat. What will you do?` : `Your delinquent friend ${name} invites you to go kick over every trash bin on the street. What will you do?`,
         choices: [ch('watch', "I'll go, but just watch"), ch('busy', "No way, I'm busy"), ch('go', "Let's get into some mischief!")],
         person: f,
-        data: { name },
+        data: { name, thing: us ? 'mailboxes' : 'trash bins', verb: us ? 'bash in' : 'kick over' },
       }
     },
     resolve: {
-      watch: (g, x) => say(g, x, 'Lookout', `You tagged along and watched ${x.s('name')} flatten six mailboxes. You kept your hands clean... technically.`, `I watched my friend ${x.s('name')} bash in mailboxes.`, { karma: -2, rel: 4 }),
-      busy: (g, x) => say(g, x, 'Good call', `You told ${x.s('name')} you were busy. You later heard the police were looking for "a bat-wielding youth."`, 'I turned down an opportunity to bash in mailboxes with a delinquent friend.', { karma: 2, rel: -4 }),
+      watch: (g, x) => say(g, x, 'Lookout', `You tagged along and watched ${x.s('name')} flatten six ${x.s('thing') || 'mailboxes'}. You kept your hands clean... technically.`, `I watched my friend ${x.s('name')} ${x.s('verb') || 'bash in'} ${x.s('thing') || 'mailboxes'}.`, { karma: -2, rel: 4 }),
+      busy: (g, x) => say(g, x, 'Good call', `You told ${x.s('name')} you were busy. You later heard the police were looking for "a bat-wielding youth."`, `I turned down an opportunity to ${x.s('verb') || 'bash in'} ${x.s('thing') || 'mailboxes'} with a delinquent friend.`, { karma: 2, rel: -4 }),
       go: (g, x) => {
         const caught = chance(g, 0.18)
         if (caught && g.character.age >= 12) {
-          say(g, x, 'Busted', 'A neighbor caught you mid-swing and called the police.', `I got caught bashing in mailboxes with my friend ${x.s('name')}.`, { karma: -8, rel: 6, count: 'crimes', arrest: { crime: 'Vandalism', severity: 1 } }, 'bad', '🚓')
+          say(g, x, 'Busted', 'A neighbor caught you mid-swing and called the police.', `I got caught vandalizing ${x.s('thing') || 'mailboxes'} with my friend ${x.s('name')}.`, { karma: -8, rel: 6, count: 'crimes', arrest: { crime: 'Vandalism', severity: 1 } }, 'bad', '🚓')
         } else if (caught) {
-          say(g, x, 'Grounded', 'A neighbor caught you mid-swing and marched you home. Your parents grounded you for a month.', `I got caught bashing in mailboxes with my friend ${x.s('name')} and was grounded.`, { karma: -8, happiness: -10, rels: parentMad(g, -10) }, 'bad')
+          say(g, x, 'Grounded', 'A neighbor caught you mid-swing and marched you home. Your parents grounded you for a month.', `I got caught vandalizing ${x.s('thing') || 'mailboxes'} with my friend ${x.s('name')} and was grounded.`, { karma: -8, happiness: -10, rels: parentMad(g, -10) }, 'bad')
         } else {
-          say(g, x, ['Mailbox menace', 'Chaos'], `You and ${x.s('name')} destroyed an entire street's worth of mailboxes and got away clean.`, `I bashed in mailboxes with my friend ${x.s('name')}.`, { karma: -8, happiness: 8, rel: 8, count: 'crimes' })
+          say(g, x, ['Street menace', 'Chaos'], `You and ${x.s('name')} destroyed an entire street's worth of ${x.s('thing') || 'mailboxes'} and got away clean.`, `I vandalized ${x.s('thing') || 'mailboxes'} with my friend ${x.s('name')}.`, { karma: -8, happiness: 8, rel: 8, count: 'crimes' })
         }
       },
     },
@@ -641,7 +644,7 @@ export const KID_EVENTS = defineEvents([
     resolve: {
       beg: (g) => {
         const yes = chance(g, 0.6)
-        say(g, null, yes ? 'Brain freeze' : 'No dice', yes ? 'Your parents caved and gave you a few bucks. You got a rocket pop.' : 'Your parents said you already had dessert. The jingle faded into the distance.', yes ? 'I begged my parents for ice cream money and got a rocket pop.' : "My parents wouldn't give me money for the ice cream truck.", yes ? { happiness: 8 } : { happiness: -4 })
+        say(g, null, yes ? 'Brain freeze' : 'No dice', yes ? g.character.countryId === 'us' ? 'Your parents caved and gave you a few bucks. You got a rocket pop.' : 'Your parents caved and gave you some coins. You got a rainbow ice pop.' : 'Your parents said you already had dessert. The jingle faded into the distance.', yes ? 'I begged my parents for ice cream money and got a rocket pop.' : "My parents wouldn't give me money for the ice cream truck.", yes ? { happiness: 8 } : { happiness: -4 })
       },
       chase: (g) => {
         const fell = chance(g, 0.2)

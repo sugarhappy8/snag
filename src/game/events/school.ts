@@ -5,6 +5,7 @@ import { applyEffects } from '../effects'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
+import { locale } from '../data/locales'
 import {
   aParent,
   anyOf,
@@ -83,6 +84,39 @@ const CLOWN_ACTS = [
   'released a frog in the classroom',
   'is doing an impression of the teacher behind their back',
 ]
+
+/** School plays: the Anglo-American classics, Christmas ones only where Christmas is big, plus local favorites. */
+const LOCAL_PLAYS: Record<string, string[]> = {
+  jp: ['Momotaro', 'The Tale of the Bamboo Cutter'],
+  kr: ['The Tale of Chunhyang', 'Heungbu and Nolbu'],
+  cn: ['Journey to the West', 'Mulan'],
+  tw: ['Journey to the West', 'The Butterfly Lovers'],
+  hk: ['Journey to the West', 'The Butterfly Lovers'],
+  in: ['the Ramayana', 'Shakuntala'],
+  id: ['Malin Kundang', 'Timun Mas'],
+  my: ['Hang Tuah', 'Sang Kancil'],
+  ph: ['Ibong Adarna', 'Noli Me Tángere'],
+  tr: ['Nasreddin Hodja', 'Karagöz and Hacivat'],
+  ir: ['Rostam and Sohrab', 'Layla and Majnun'],
+  eg: ['Aladdin', 'Ali Baba and the Forty Thieves'],
+  sa: ['Aladdin', 'Sinbad the Sailor'],
+  ng: ['Things Fall Apart', 'The Lion and the Jewel'],
+  ru: ['The Snow Maiden', 'The Twelve Months'],
+  de: ['Hansel and Gretel', 'The Bremen Town Musicians'],
+  fr: ['The Little Prince', 'Cyrano de Bergerac'],
+  mx: ['La Pastorela', 'The Legend of the Volcanoes'],
+  br: ['The Little Prince', 'Saci-Pererê'],
+  gr: ['The Odyssey', 'Antigone'],
+  it: ['Pinocchio', 'Romeo and Juliet'],
+  es: ['Don Quixote', 'Platero and I'],
+}
+
+function schoolPlays(g: GameState): string[] {
+  const base = ['Peter Pan', 'The Wizard of Oz', 'Romeo and Juliet', 'Annie', 'Into the Woods']
+  const christmas = locale(g).holidays.some((h) => /Christmas/i.test(h)) ? ['The Nutcracker Prince', 'A Christmas Carol'] : []
+  const local = LOCAL_PLAYS[g.character.countryId] ?? []
+  return [...base, ...christmas, ...local, ...local]
+}
 
 export const SCHOOL_EVENTS = defineEvents([
   {
@@ -256,7 +290,7 @@ export const SCHOOL_EVENTS = defineEvents([
     maxAge: 17,
     when: inGradeSchool,
     setup: (g) => {
-      const play = pick(g, ['The Nutcracker Prince', 'Peter Pan', 'The Wizard of Oz', 'Romeo and Juliet', 'Annie', 'A Christmas Carol', 'Into the Woods'])
+      const play = pick(g, schoolPlays(g))
       return {
         text: `Your school is putting on a production of "${play}" and there's an open casting call. What will you do?`,
         choices: [ch('lead', 'Audition for the lead role'), ch('support', 'Audition for a supporting role'), ch('crew', 'Join the stage crew'), ch('no', "I'm not interested")],
@@ -786,8 +820,9 @@ export const SCHOOL_EVENTS = defineEvents([
     minAge: 17,
     maxAge: 26,
     when: inUniversity,
-    setup: () => ({
-      text: "There's a huge party on Greek Row tonight and everyone on your floor is going. What will you do?",
+    setup: (g) => ({
+      title: isUS(g) ? 'Frat Party' : 'Student Party',
+      text: isUS(g) ? "There's a huge party on Greek Row tonight and everyone on your floor is going. What will you do?" : "There's a huge student party tonight and everyone in your halls is going. What will you do?",
       choices: [ch('go', 'Go all out'), ch('chill', 'Go but take it easy'), ch('study', 'Stay in and study')],
     }),
     resolve: {
