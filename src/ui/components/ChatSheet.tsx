@@ -347,7 +347,7 @@ export function ChatSheet({ personId, onClose }: ChatSheetProps) {
             Turn on AI narration and connect LM Studio to talk freely with {person.firstName}. You can still use the regular
             interactions in the meantime.
           </p>
-          <div className="ai-actions" style={{ justifyContent: 'center' }}>
+          <div className="al-ai-actions" style={{ justifyContent: 'center' }}>
             <button
               type="button"
               className="al-btn green"

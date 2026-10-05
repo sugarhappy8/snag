@@ -57,13 +57,13 @@ export function AiStatusCard() {
 
   if (aiLevel === 'off') {
     return (
-      <section className="al-card ai-card" aria-live="polite">
-        <div className="ai-card-head">
-          <span className="ai-dot" />
+      <section className="al-card al-ai-card" aria-live="polite">
+        <div className="al-ai-card-head">
+          <span className="al-status-dot" />
           <strong>AI narration is off</strong>
         </div>
-        <p className="ai-message">Lives use the built-in story library. Turn the AI on to have your local model write your life.</p>
-        <div className="ai-actions">
+        <p className="al-ai-message">Lives use the built-in story library. Turn the AI on to have your local model write your life.</p>
+        <div className="al-ai-actions">
           <button
             type="button"
             className="al-btn small green"
@@ -85,18 +85,18 @@ export function AiStatusCard() {
   const online = aiStatus === 'online'
   const checking = aiStatus === 'checking' || aiStatus === 'unknown'
   return (
-    <section className="al-card ai-card" aria-live="polite">
-      <div className="ai-card-head">
-        <span className={`ai-dot ${online ? 'online' : checking ? 'checking' : 'offline'}`} />
+    <section className="al-card al-ai-card" aria-live="polite">
+      <div className="al-ai-card-head">
+        <span className={`al-status-dot ${online ? 'online' : checking ? 'checking' : 'offline'}`} />
         <strong>{online ? 'AI narrator is ready ✨' : checking ? 'Looking for LM Studio…' : 'LM Studio is offline'}</strong>
       </div>
-      {aiMessage ? <p className="ai-message">{aiMessage}</p> : null}
+      {aiMessage ? <p className="al-ai-message">{aiMessage}</p> : null}
       {online ? (
-        <p className="ai-message">Your local model will write your random events, conversations and obituary.</p>
+        <p className="al-ai-message">Your local model will write your random events, conversations and obituary.</p>
       ) : checking ? null : (
         <>
-          <p className="ai-message">You can still play: the built-in stories fill in until your AI is reachable. To connect:</p>
-          <ol className="ai-steps">
+          <p className="al-ai-message">You can still play: the built-in stories fill in until your AI is reachable. To connect:</p>
+          <ol className="al-ai-steps">
             <li>Open LM Studio and load a model.</li>
             <li>
               Go to <b>Developer</b> → <b>Start Server</b> (port 1234).
@@ -107,7 +107,7 @@ export function AiStatusCard() {
           </ol>
         </>
       )}
-      <div className="ai-actions">
+      <div className="al-ai-actions">
         <button type="button" className="al-btn small" onClick={() => void checkAi()} disabled={aiStatus === 'checking'}>
           {aiStatus === 'checking' ? '⏳ Checking…' : '↻ Retry'}
         </button>

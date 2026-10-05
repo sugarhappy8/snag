@@ -131,7 +131,7 @@
   font-weight: 700;
   font-size: 0.92rem;
   text-align: center;
-  animation: al-pop-in 0.25s ease-out;
+  animation: scr-pop-in 0.25s ease-out;
 }
 
 /* Form controls */
@@ -393,7 +393,7 @@
   place-items: center;
   padding: 20px;
   background: rgba(8, 16, 30, 0.55);
-  animation: al-fade 0.15s ease-out;
+  animation: scr-fade 0.15s ease-out;
 }
 
 .al-dialog {
@@ -405,7 +405,7 @@
   color: var(--text, #1b2330);
   text-align: center;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
-  animation: al-pop-in 0.2s ease-out;
+  animation: scr-pop-in 0.2s ease-out;
 }
 
 .al-dialog-emoji {
@@ -430,13 +430,13 @@
   gap: 8px;
 }
 
-@keyframes al-fade {
+@keyframes scr-fade {
   from {
     opacity: 0;
   }
 }
 
-@keyframes al-pop-in {
+@keyframes scr-pop-in {
   from {
     opacity: 0;
     transform: translateY(8px) scale(0.96);
@@ -518,23 +518,23 @@
 
 /* AI status card (home + settings) */
 
-.ai-card {
+.al-ai-card {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.ai-card-head {
+.al-ai-card-head {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.ai-card-head strong {
+.al-ai-card-head strong {
   font-size: 1.02rem;
 }
 
-.ai-dot {
+.al-status-dot {
   flex: none;
   width: 12px;
   height: 12px;
@@ -542,46 +542,46 @@
   background: var(--muted, #9aa4b2);
 }
 
-.ai-dot.online {
+.al-status-dot.online {
   background: var(--green, #2bb24c);
   box-shadow: 0 0 0 4px rgba(43, 178, 76, 0.2);
 }
 
-.ai-dot.offline {
+.al-status-dot.offline {
   background: var(--red, #e5484d);
   box-shadow: 0 0 0 4px rgba(229, 72, 77, 0.18);
 }
 
-.ai-dot.checking {
+.al-status-dot.checking {
   background: var(--orange, #ff9f1a);
-  animation: ai-pulse 1s ease-in-out infinite;
+  animation: al-ai-pulse 1s ease-in-out infinite;
 }
 
-@keyframes ai-pulse {
+@keyframes al-ai-pulse {
   50% {
     opacity: 0.35;
   }
 }
 
-.ai-message {
+.al-ai-message {
   margin: 0;
   font-size: 0.88rem;
   color: var(--muted, #6b7685);
   word-break: break-word;
 }
 
-.ai-steps {
+.al-ai-steps {
   margin: 0;
   padding-left: 22px;
   font-size: 0.9rem;
   line-height: 1.5;
 }
 
-.ai-steps li + li {
+.al-ai-steps li + li {
   margin-top: 2px;
 }
 
-.ai-actions {
+.al-ai-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1486,7 +1486,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  animation: al-fade 0.2s ease-out;
+  animation: scr-fade 0.2s ease-out;
 }
 
 .grave-obit {
@@ -1577,7 +1577,7 @@
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
-  animation: al-pop-in 0.18s ease-out;
+  animation: scr-pop-in 0.18s ease-out;
 }
 
 .chat-row.them .chat-bubble {

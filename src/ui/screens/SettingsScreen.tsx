@@ -392,11 +392,11 @@ export function SettingsScreen() {
         <h2>
           <span aria-hidden="true">🔌</span> LM Studio Connection
         </h2>
-        <div className="ai-card-head">
-          <span className={`ai-dot ${dotClass}`} />
+        <div className="al-ai-card-head">
+          <span className={`al-status-dot ${dotClass}`} />
           <div>
             <strong>{statusLabel}</strong>
-            {aiMessage && settings.aiLevel !== 'off' ? <p className="ai-message">{aiMessage}</p> : null}
+            {aiMessage && settings.aiLevel !== 'off' ? <p className="al-ai-message">{aiMessage}</p> : null}
           </div>
         </div>
 
