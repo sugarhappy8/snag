@@ -1,7 +1,8 @@
 name: Release
 
 # Publishes a GitHub Release with generated notes, either when a version tag (e.g. v1.0.0)
-# is pushed, or manually from the Actions tab ("Run workflow"), which also creates the tag.
+# is pushed, or manually from the Actions tab ("Run workflow"), which also creates the tag
+# (optionally with hand-written notes).
 on:
   push:
     tags: ['v*']
@@ -14,6 +15,10 @@ on:
         description: Branch or commit SHA to tag
         required: true
         default: main
+      notes:
+        description: Release notes (Markdown). Leave empty to generate them from merged PRs and commits.
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -30,8 +35,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - name: Create tag and release
         if: github.event_name == 'workflow_dispatch'
-        run: gh release create "$TAG" --target "$TARGET" --generate-notes --title "AnotherLife $TAG"
+        run: |
+          if [ -n "$NOTES" ]; then
+            printf '%s\n' "$NOTES" > notes.md
+            gh release create "$TAG" --target "$TARGET" --notes-file notes.md --title "AnotherLife $TAG"
+          else
+            gh release create "$TAG" --target "$TARGET" --generate-notes --title "AnotherLife $TAG"
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
           TARGET: ${{ inputs.target }}
+          NOTES: ${{ inputs.notes }}
