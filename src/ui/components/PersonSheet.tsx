@@ -6,7 +6,7 @@ import { personActions } from '../../game/relationships'
 import type { GameState, MenuNode, Person } from '../../game/types'
 import { useApp } from '../store'
 import { ChatSheet } from './ChatSheet'
-import { groupChildren, groupHeader, MenuRows, resolveTrail, useMenuNav, useMenuRunner } from './MenuList'
+import { groupChildren, groupHeader, MenuRows, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape } from './MenuList'
 import { Sheet } from './Sheet'
 import { StatBar } from './StatBar'
 
@@ -173,6 +173,7 @@ export function PersonSheet({ personId, onClose, onBack }: PersonSheetProps) {
   const rootNodes = g && person ? safeActions(g, person) : []
   const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []))
   const runner = useMenuRunner({ onOpenGroup: nav.push, onClose })
+  useSheetEscape(nav.anchorRef, () => (nav.trail.length > 0 ? nav.pop() : (onBack ?? onClose)()))
 
   if (!g) return null
 
@@ -180,7 +181,7 @@ export function PersonSheet({ personId, onClose, onBack }: PersonSheetProps) {
     // They left your life (broke up, moved away, removed) while the sheet was open.
     return (
       <Sheet title="Relationships" emoji="❤️" onClose={onClose} onBack={onBack}>
-        <div className="menu-empty">
+        <div className="menu-empty" ref={nav.anchorRef}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>👋</div>
           They're no longer part of your life.
           <div style={{ marginTop: 14 }}>

@@ -156,6 +156,30 @@ export function useMenuNav(resolve: (path: string[]) => MenuGroup[]): MenuNav {
   }
 }
 
+/**
+ * Escape key for sheets: goes back (or closes) the topmost sheet only, and never while a
+ * popup or dialog is on screen. `anchorRef` must point inside the sheet's body.
+ */
+export function useSheetEscape(anchorRef: React.RefObject<HTMLElement | null>, onEscape: () => void): void {
+  const handler = useRef(onEscape)
+  useEffect(() => {
+    handler.current = onEscape
+  })
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      if (document.querySelector('.popup-backdrop')) return
+      const mine = anchorRef.current?.closest('.sheet-backdrop')
+      const all = document.querySelectorAll('.sheet-backdrop')
+      if (!mine || all[all.length - 1] !== mine) return
+      e.preventDefault()
+      handler.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [anchorRef])
+}
+
 // ---------------------------------------------------------------------------
 // Running actions
 
@@ -210,6 +234,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
   const tap = (node: MenuAction | MenuGroup) => {
     const g = getApp().game
     if (!g) return
+    setToast(null)
     if (!g.character.alive) {
       setToast("You're dead. There's not much left to do.")
       return

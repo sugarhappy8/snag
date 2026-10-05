@@ -3,7 +3,7 @@
 // every action.
 import type { MenuGroup } from '../../game/types'
 import { useApp } from '../store'
-import { groupChildren, groupHeader, MenuRows, nodeDisabled, resolveTrail, useMenuNav, useMenuRunner } from './MenuList'
+import { groupChildren, groupHeader, MenuRows, nodeDisabled, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape } from './MenuList'
 import { Sheet } from './Sheet'
 
 export interface MenuSheetProps {
@@ -17,6 +17,7 @@ export function MenuSheet({ root, onClose }: MenuSheetProps) {
   const rootNodes = g && !rootReason ? groupChildren(root, g) : []
   const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []))
   const runner = useMenuRunner({ onOpenGroup: nav.push, onClose })
+  useSheetEscape(nav.anchorRef, () => (nav.trail.length > 0 ? nav.pop() : onClose()))
 
   if (!g) return null
 

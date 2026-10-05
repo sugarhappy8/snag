@@ -536,7 +536,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
       return
     }
     case 'accident': {
-      const options = ACCIDENTS[dest.type === 'beach' ? 'beach' : dest.type]
+      const options = ACCIDENTS[dest.type]
       const acc = pick(g, options)
       const fatal = chance(g, 0.25)
       if (fatal) {

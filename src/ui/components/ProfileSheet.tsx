@@ -1,6 +1,6 @@
 // Everything about your character, like the original's profile page: identity, stats and
 // hidden attributes, school, career, money, health, legal trouble, family tree and more.
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import {
   characterAvatar,
   formatMoney,
@@ -24,6 +24,7 @@ import type {
   SchoolLevel,
 } from '../../game/types'
 import { useApp } from '../store'
+import { useSheetEscape } from './MenuList'
 import { Sheet } from './Sheet'
 import { StatBar } from './StatBar'
 import { LOW_STAT, STAT_META } from './StatPanel'
@@ -220,6 +221,8 @@ function ribbonLabel(id: string | null): string | null {
 
 export function ProfileSheet({ onClose }: ProfileSheetProps) {
   const g = useApp((s) => s.game)
+  const anchorRef = useRef<HTMLDivElement | null>(null)
+  useSheetEscape(anchorRef, onClose)
   if (!g) return null
   const c = g.character
   const country = getCountry(c.countryId)
@@ -308,7 +311,7 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
 
   return (
     <Sheet title="Profile" emoji="🪪" onClose={onClose}>
-      <div className="card">
+      <div className="card" ref={anchorRef}>
         <div className="profile-hero">
           <div className="person-avatar" aria-hidden>
             {characterAvatar(c)}

@@ -891,7 +891,7 @@ label {
   overflow-x: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 12px 14px 18px;
+  padding: 12px 14px 40px; /* room for the "+ Age" button that bulges into the feed */
   background: var(--card);
 }
 

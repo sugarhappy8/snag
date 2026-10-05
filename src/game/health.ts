@@ -95,14 +95,14 @@ export const DISEASES: DiseaseDef[] = [
   // Childhood
   { name: 'Croup', kind: 'disease', sev: [8, 15], tier: 1, cure: 0.85, self: 0.7, ages: [0, 6], weight: 4, symptoms: ["You've had a barking cough that sounds like a seal with a grudge."] },
   { name: 'Chicken Pox', kind: 'disease', sev: [8, 14], tier: 1, cure: 0.9, self: 0.85, ages: [1, 12], weight: 5, obvious: true, symptoms: ["You've broken out in itchy red spots from head to toe."] },
-  { name: 'Measles', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.85, self: 0.1, ages: [0, 12], weight: 1, deadly: 'Measles', progress: 12, symptoms: ['You noticed white spots inside your mouth and a rash spreading across your face.'] },
+  { name: 'Measles', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.85, self: 0.1, ages: [0, 12], weight: 0.5, deadly: 'Measles', progress: 12, symptoms: ['You noticed white spots inside your mouth and a rash spreading across your face.'] },
   { name: 'Mumps', kind: 'disease', sev: [10, 18], tier: 1, cure: 0.8, self: 0.5, ages: [1, 12], weight: 1.5, symptoms: ['Your cheeks are so swollen you look like a hamster hoarding snacks.'] },
-  { name: 'Whooping Cough', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.85, self: 0.15, ages: [0, 15], weight: 1, deadly: 'Whooping Cough', progress: 12, symptoms: ["You've been coughing so hard you make a whooping sound every time you breathe in."] },
-  { name: 'Scarlet Fever', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.8, self: 0.15, ages: [3, 15], weight: 1, deadly: 'Scarlet Fever', progress: 12, symptoms: ["You've got a sandpaper-like rash and a raging fever."] },
+  { name: 'Whooping Cough', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.85, self: 0.15, ages: [0, 15], weight: 0.5, deadly: 'Whooping Cough', progress: 12, symptoms: ["You've been coughing so hard you make a whooping sound every time you breathe in."] },
+  { name: 'Scarlet Fever', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.8, self: 0.15, ages: [3, 15], weight: 0.5, deadly: 'Scarlet Fever', progress: 12, symptoms: ["You've got a sandpaper-like rash and a raging fever."] },
   { name: 'Middle Ear Infection', kind: 'disease', sev: [6, 12], tier: 1, cure: 0.9, self: 0.6, ages: [0, 10], weight: 4, symptoms: ['Your ear has been throbbing for days.'] },
   { name: 'Lice', kind: 'disease', sev: [2, 4], tier: 1, cure: 0.95, self: 0.4, ages: [4, 14], weight: 3, obvious: true, symptoms: ['Your scalp has been unbelievably itchy lately.'] },
   { name: 'Lactose Intolerance', kind: 'disease', sev: [2, 4], tier: 1, cure: 0, self: 0, ages: [1, 12], weight: 1.5, symptoms: ['Every time you drink milk, your stomach stages a full-scale revolt.'] },
-  { name: 'Sickle Cell Disease', kind: 'disease', sev: [15, 30], tier: 3, cure: 0.1, self: 0, ages: [0, 12], weight: 0.3, deadly: 'Sickle Cell Disease', progress: 3, symptoms: ["You've had sudden episodes of intense pain all over your body."] },
+  { name: 'Sickle Cell Disease', kind: 'disease', sev: [15, 30], tier: 3, cure: 0.1, self: 0, ages: [0, 12], weight: 0.15, deadly: 'Sickle Cell Disease', progress: 3, symptoms: ["You've had sudden episodes of intense pain all over your body."] },
   { name: 'Epilepsy', kind: 'disease', sev: [10, 20], tier: 2, cure: 0.2, self: 0.02, ages: [0, 30], weight: 0.4, symptoms: ['You blanked out for a minute and woke up on the floor with everyone staring at you.'] },
   { name: 'Asthma', kind: 'disease', sev: [6, 12], tier: 2, cure: 0.3, self: 0.05, ages: [0, 40], weight: 1.5, alt: ['acupuncture'], symptoms: ["You've been wheezing and struggling to catch your breath after climbing stairs."] },
   { name: 'Acne', kind: 'disease', sev: [2, 5], tier: 1, cure: 0.5, self: 0.35, ages: [11, 25], weight: 3, obvious: true, looks: 3, symptoms: ['Your face has erupted like a volcano of pimples.'] },
@@ -120,7 +120,7 @@ export const DISEASES: DiseaseDef[] = [
   { name: "Athlete's Foot", kind: 'disease', sev: [2, 4], tier: 1, cure: 0.95, self: 0.6, ages: [8, 130], weight: 2, obvious: true, symptoms: ["Your feet have been terribly itchy and you can't stop scratching them."] },
   { name: 'Ringworm', kind: 'disease', sev: [3, 5], tier: 1, cure: 0.95, self: 0.5, ages: [3, 130], weight: 1.5, symptoms: ['You noticed some red, ring-shaped spots on your skin.'] },
   { name: 'Kidney Stones', kind: 'disease', sev: [10, 18], tier: 2, cure: 0.8, self: 0.3, ages: [20, 130], weight: 1.5, alt: ['acupuncture'], symptoms: ['Peeing has started to feel like passing a gravel driveway.'] },
-  { name: 'Appendicitis', kind: 'disease', sev: [25, 40], tier: 3, cure: 0.9, self: 0, ages: [5, 70], weight: 1, deadly: 'Appendicitis', progress: 25, symptoms: ["You've had sharp, stabbing pains in the lower right side of your stomach."] },
+  { name: 'Appendicitis', kind: 'disease', sev: [25, 40], tier: 3, cure: 0.9, self: 0, ages: [5, 70], weight: 0.5, deadly: 'Appendicitis', progress: 25, symptoms: ["You've had sharp, stabbing pains in the lower right side of your stomach."] },
   { name: 'Ulcers', kind: 'disease', sev: [8, 14], tier: 2, cure: 0.8, self: 0.2, ages: [20, 130], weight: 1.5, symptoms: ['Your stomach has been burning after every meal.'] },
   { name: 'Gout', kind: 'disease', sev: [6, 12], tier: 1, cure: 0.5, self: 0.1, ages: [35, 130], weight: 1.5, alt: ['chiropractic', 'acupuncture'], symptoms: ['Your big toe is so swollen and painful even a bedsheet hurts.'] },
   { name: 'Bunions', kind: 'disease', sev: [2, 5], tier: 1, cure: 0.6, self: 0, ages: [30, 130], weight: 1.5, alt: ['chiropractic', 'acupuncture'], symptoms: ["There's a big bulging bump on your toe that seems to grow by the day."] },
@@ -138,8 +138,8 @@ export const DISEASES: DiseaseDef[] = [
   { name: 'Bubonic Plague', kind: 'disease', sev: [30, 45], tier: 3, cure: 0.8, self: 0.02, ages: [0, 130], weight: 0.04, deadly: 'Bubonic Plague', progress: 20, symptoms: ['Your lymph nodes are painfully swollen and you feel positively medieval.'] },
   { name: 'Lupus', kind: 'disease', sev: [15, 25], tier: 3, cure: 0.15, self: 0, ages: [15, 50], weight: 0.4, deadly: 'Lupus', progress: 4, symptoms: ['A butterfly-shaped rash appeared across your cheeks and your joints ache.'] },
   { name: 'Multiple Sclerosis', kind: 'disease', sev: [10, 20], tier: 3, cure: 0.05, self: 0, ages: [20, 50], weight: 0.4, progress: 3, symptoms: ['Your hands have been tingling and you keep losing your balance.'] },
-  { name: 'Diabetes', kind: 'disease', sev: [8, 16], tier: 2, cure: 0, self: 0, ages: [10, 130], weight: 1.2, deadly: 'Diabetes', progress: 2, symptoms: ["You're constantly thirsty and you've been peeing every fifteen minutes."] },
-  { name: 'Sleep Apnea', kind: 'disease', sev: [6, 12], tier: 2, cure: 0.7, self: 0.05, ages: [30, 130], weight: 1, deadly: 'Sleep Apnea', progress: 2, symptoms: ["You've been told you stop breathing several times a night while you sleep."] },
+  { name: 'Diabetes', kind: 'disease', sev: [8, 16], tier: 2, cure: 0, self: 0, ages: [10, 130], weight: 0.7, deadly: 'Diabetes', progress: 1, symptoms: ["You're constantly thirsty and you've been peeing every fifteen minutes."] },
+  { name: 'Sleep Apnea', kind: 'disease', sev: [6, 12], tier: 2, cure: 0.7, self: 0.05, ages: [30, 130], weight: 1, symptoms: ["You've been told you stop breathing several times a night while you sleep."] },
   { name: 'Heart Disease', kind: 'disease', sev: [20, 35], tier: 3, cure: 0.4, self: 0, ages: [35, 130], weight: 1.2, deadly: 'Heart Attack', progress: 6, symptoms: ['You felt a stabbing pain in your chest while walking up a hill.', 'Your hands and feet have gone numb a few times this week.'] },
   { name: 'High Blood Pressure', kind: 'disease', sev: [8, 15], tier: 2, cure: 0.35, self: 0.05, ages: [30, 130], weight: 2.5, alt: ['acupuncture'], deadly: 'Stroke', progress: 3, symptoms: ["You've had blurry vision and a pounding headache whenever you get stressed."] },
   // Cancers
@@ -419,7 +419,7 @@ function sicknessChance(g: GameState): number {
 }
 
 function ageWeight(def: DiseaseDef, age: number): number {
-  if (def.cancer) return age < 18 ? 0.15 : age < 40 ? 0.4 : age < 60 ? 1.1 : 1.6
+  if (def.cancer) return age < 18 ? 0.1 : age < 40 ? 0.3 : age < 60 ? 0.8 : 1.2
   if (def.name === 'Heart Disease' || def.name === 'High Blood Pressure') return age < 50 ? 0.6 : age < 70 ? 1.3 : 1.8
   if (def.name === 'Pneumonia') return age >= 70 ? 2 : 1
   return 1
@@ -917,21 +917,34 @@ const GLASSES = defineScript('health.glasses', (g, choice, data) => {
 
 function babyCare(g: GameState): void {
   const c = g.character
-  if (c.age >= 4) return
+  if (c.age >= 18) return
   const parent = aliveParent(g)
-  if (!parent) return
+  if (!parent || inPrison(g)) return
+  const who = parentWord(parent)
   for (const cond of treatableNonAddiction(g)) {
-    if (cond.yearsHad < 1 && cond.severity < 15) continue
     const def = defFor(cond)
-    cond.diagnosed = true
+    if (c.age >= 4) {
+      // Older kids see the doctor themselves, but parents step in when it gets serious.
+      if (!def.deadly || cond.yearsHad < 1 || !chance(g, 0.6)) continue
+    } else if (cond.yearsHad < 1 && cond.severity < 15) continue
     const label = conditionLabel(cond.name)
-    const who = parentWord(parent)
+    const wasKnown = cond.diagnosed
+    cond.diagnosed = true
+    count(g, 'doctorVisits')
     if (def.cure > 0 && chance(g, Math.min(0.95, def.cure + 0.05))) {
       removeCondition(g, cond.id)
       addStat(g, 'health', randInt(g, 2, 6))
-      log(g, pick(g, [`My ${who} took me to the doctor, where I was treated for ${label}.`, `My ${who} rushed me to the pediatrician and I was cured of ${label}.`]), 'good')
+      log(
+        g,
+        c.age < 4
+          ? pick(g, [`My ${who} took me to the doctor, where I was treated for ${label}.`, `My ${who} rushed me to the pediatrician and I was cured of ${label}.`])
+          : `My ${who} noticed how sick I was and dragged me to the doctor. I was treated for ${label}.`,
+        'good',
+      )
     } else {
+      if (def.deadly) cond.severity = Math.max(1, cond.severity - randInt(g, 5, 12))
       log(g, `My ${who} took me to the doctor for ${label}, but the treatment didn't work.`, 'bad')
+      if (!wasKnown && c.age >= 4) notice(g, 'Diagnosis', `Your ${who} took you to the doctor, who diagnosed you with ${label}. The treatment didn't work this time.`, { emoji: '\u{1FA7A}', tone: 'bad' })
     }
   }
 }
@@ -1013,19 +1026,18 @@ export function yearlyHealth(g: GameState): void {
 
 function deathCauseForHealth(g: GameState): string {
   const c = g.character
-  const worst = [...c.conditions].sort((a, b) => b.severity - a.severity)[0]
-  if (worst) {
-    if (worst.kind === 'addiction') {
-      const k = addictionKind(worst.name)
-      if (k === 'alcohol') return 'Alcohol Poisoning'
-      if (k === 'drug') return 'Drug Overdose'
-      if (k === 'nicotine') return 'Lung Failure'
-    } else if (worst.severity >= 10) {
-      return defFor(worst).deadly ?? (worst.kind === 'injury' ? 'Complications From Injuries' : `Complications From ${worst.name}`)
-    }
+  const bySeverity = [...c.conditions].sort((a, b) => b.severity - a.severity)
+  const deadly = bySeverity.find((x) => x.kind !== 'addiction' && x.kind !== 'mental' && defFor(x).deadly)
+  if (deadly) return defFor(deadly).deadly as string
+  const addiction = bySeverity.find((x) => x.kind === 'addiction' && addictionKind(x.name) !== 'gambling' && addictionKind(x.name) !== 'other')
+  if (addiction) {
+    const k = addictionKind(addiction.name)
+    return k === 'alcohol' ? 'Alcohol Poisoning' : k === 'drug' ? 'Drug Overdose' : 'Lung Failure'
   }
+  const physical = bySeverity.find((x) => x.kind !== 'mental' && x.kind !== 'addiction' && x.severity >= 10)
+  if (physical) return physical.kind === 'injury' ? 'Complications From Injuries' : `Complications From ${physical.name}`
   if (c.age >= 70) return 'Old Age'
-  return c.age < 5 ? 'Illness' : 'Organ Failure'
+  return c.age < 5 ? 'Illness' : 'Heart Failure'
 }
 
 /** Yearly chance of dying of old age (BitLife lives usually end between 70 and 100). */

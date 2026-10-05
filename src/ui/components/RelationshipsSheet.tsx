@@ -1,10 +1,11 @@
 // Relationships: everyone in your life grouped like the original (Parents, Siblings,
 // Partner, Children, Friends...). Tapping someone slides their PersonSheet over the list.
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { personAvatar } from '../../game/core'
 import { relationshipGroups } from '../../game/relationships'
 import type { GameState, Person } from '../../game/types'
 import { useApp } from '../store'
+import { useSheetEscape } from './MenuList'
 import { personName, personSubtitle, PersonSheet } from './PersonSheet'
 import { Sheet } from './Sheet'
 import { statColor } from './StatBar'
@@ -25,12 +26,15 @@ function safeGroups(g: GameState): { title: string; people: Person[] }[] {
 export function RelationshipsSheet({ onClose }: RelationshipsSheetProps) {
   const g = useApp((s) => s.game)
   const [selected, setSelected] = useState<string | null>(null)
+  const anchorRef = useRef<HTMLDivElement | null>(null)
+  useSheetEscape(anchorRef, onClose)
   if (!g) return null
   const groups = safeGroups(g)
 
   return (
     <>
       <Sheet title="Relationships" emoji="❤️" onClose={onClose}>
+        <div ref={anchorRef} />
         {groups.length === 0 ? (
           <div className="menu-empty">
             <div style={{ fontSize: 40, marginBottom: 8 }}>🦗</div>
