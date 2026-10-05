@@ -71,6 +71,21 @@ function installStorage(): Map<string, string> {
   return data
 }
 
+const grave = (lifeId: string, name: string, age: number, netWorth: number): GraveyardEntry => ({
+  lifeId,
+  name,
+  age,
+  netWorth,
+  generation: 1,
+  gender: 'male',
+  bornYear: 2000,
+  diedYear: 2000 + age,
+  causeOfDeath: 'Old Age',
+  occupation: 'Chef',
+  ribbon: null,
+  obituary: null,
+})
+
 function adult(seed = 3): GameState {
   return makeTestGame(seed, { age: 30 })
 }
@@ -270,21 +285,6 @@ describe('ribbons, graveyard, new life helpers', () => {
       expect(tiles.find((t) => t.def.id === secret.id)?.name).toBe('???')
       expect(ribbonTiles({ [secret.id]: 1 }).find((t) => t.def.id === secret.id)?.name).toBe(secret.name)
     }
-  })
-
-  const grave = (lifeId: string, name: string, age: number, netWorth: number): GraveyardEntry => ({
-    lifeId,
-    name,
-    age,
-    netWorth,
-    generation: 1,
-    gender: 'male',
-    bornYear: 2000,
-    diedYear: 2000 + age,
-    causeOfDeath: 'Old Age',
-    occupation: 'Chef',
-    ribbon: null,
-    obituary: null,
   })
 
   it('sorts graves and summarizes them', () => {
