@@ -1,7 +1,7 @@
 {
   "name": "anotherlife",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "An AI-narrated life simulator powered by your own AI: a local model (LM Studio, Ollama, llama.cpp...) or a cloud API key (Claude, OpenAI, Gemini...).",
   "scripts": {
