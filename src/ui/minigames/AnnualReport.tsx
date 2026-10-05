@@ -238,9 +238,10 @@ function compactCount(n: number): string {
   return plainCount(n)
 }
 
-/** Dollars, with cents when the price grid works in cents or the amount has some. */
+/** Unit prices: $3.50 below $100 (or when the price grid works in cents), $1,200 above. */
 export function formatPrice(n: number, step: number): string {
-  if (Math.abs(n) >= 10000 || (step >= 1 && Number.isInteger(cents(n)))) return formatMoney(n)
+  const a = Math.abs(n)
+  if (a >= 10000 || (a >= 100 && step >= 1)) return formatMoney(n)
   const sign = n < 0 ? '-' : ''
   return `${sign}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -324,6 +325,9 @@ interface PlanSliderProps {
 function PlanSlider(props: PlanSliderProps) {
   const { id, label, valueText, min, max, step, value, disabled, marker } = props
   const pct = sliderPct(value, min, max)
+  // At a limit the nudge stays focusable (aria-disabled) so keyboard focus isn't dropped.
+  const atMin = value <= min
+  const atMax = value >= max
   return (
     <div className={disabled ? 'ar-control is-disabled' : 'ar-control'}>
       <div className="ar-control-head">
@@ -340,8 +344,11 @@ function PlanSlider(props: PlanSliderProps) {
           className="ar-nudge"
           aria-label={props.decLabel}
           aria-controls={id}
-          disabled={disabled || value <= min}
-          onClick={props.onDec}
+          aria-disabled={atMin || undefined}
+          disabled={disabled}
+          onClick={() => {
+            if (!atMin) props.onDec()
+          }}
         >
           −
         </button>
@@ -369,8 +376,11 @@ function PlanSlider(props: PlanSliderProps) {
           className="ar-nudge"
           aria-label={props.incLabel}
           aria-controls={id}
-          disabled={disabled || value >= max}
-          onClick={props.onInc}
+          aria-disabled={atMax || undefined}
+          disabled={disabled}
+          onClick={() => {
+            if (!atMax) props.onInc()
+          }}
         >
           +
         </button>
@@ -479,9 +489,8 @@ export function AnnualReport({ modal, onDone }: MinigameProps) {
           <div className="ar-chips">
             <button
               type="button"
-              className="ar-chip is-marker"
+              className={price === r.suggestedPrice ? 'ar-chip is-on' : 'ar-chip'}
               onClick={() => setPrice(r.suggestedPrice)}
-              disabled={price === r.suggestedPrice}
               title="Use the suggested price for this market"
             >
               <span className="ar-chip-dot" aria-hidden />
@@ -519,9 +528,8 @@ export function AnnualReport({ modal, onDone }: MinigameProps) {
             {canProduce && r.expectedDemand > 0 ? (
               <button
                 type="button"
-                className="ar-chip is-marker"
+                className={production === target ? 'ar-chip is-on' : 'ar-chip'}
                 onClick={() => setProduction(target)}
-                disabled={production === target}
                 title={`Make ${unitsText(target, r.unitLabel)}: stock on hand plus production covers expected demand`}
               >
                 <span className="ar-chip-dot" aria-hidden />

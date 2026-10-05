@@ -520,6 +520,18 @@ function hauntFactor(h: number): number {
   return 1 - 0.3 * (Math.max(0, Math.min(100, h)) / 100)
 }
 
+/**
+ * Yearly upkeep of a home: property tax and insurance as a share of its value (0.5-0.9%) plus
+ * repairs priced like a US home of the same size (0.7-1.1% of the US-equivalent value) at local
+ * labor rates. About 1.2-2% of the price in an average US city, nearer 1% in Zurich or Hong
+ * Kong, where homes cost far more than the work to keep them up.
+ */
+function houseUpkeep(g: GameState, price: number, r: SRng): number {
+  const tax = price * r.float(0.005, 0.009)
+  const repairs = (price / Math.max(0.1, housingMult(g))) * r.float(0.007, 0.011) * goodsMult(g)
+  return nicePrice(Math.max(50, tax + repairs))
+}
+
 /** This year's listings at a real estate broker. */
 export function houseListings(g: GameState, broker: Broker): HouseListing[] {
   const r = seeded(yearKey(g, `realestate:${broker}`))
@@ -550,7 +562,7 @@ export function houseListings(g: GameState, broker: Broker): HouseListing[] {
       age: r.int(t.age[0], t.age[1]),
       condition,
       haunted,
-      upkeep: nicePrice(price * r.float(0.012, 0.02)),
+      upkeep: houseUpkeep(g, price, r),
     }
     if (!isBought(g, listing.id)) out.push(listing)
   }
@@ -3621,7 +3633,7 @@ function ageAsset(g: GameState, a: Asset, market: number): void {
       a.condition = Math.max(0, a.condition - randInt(g, 2, 6))
       d.mileage = num(d.mileage) + randInt(g, 6_000, 15_000)
       // Running costs follow wherever the car lives now (fuel prices, mechanics).
-      if (type in CAR_UPKEEP) a.upkeep = carUpkeep(g, type as CarType)
+      if (Object.prototype.hasOwnProperty.call(CAR_UPKEEP, type)) a.upkeep = carUpkeep(g, type as CarType)
       a.value = Math.max(200, Math.round(a.value * (1 + change) * (a.condition < 30 ? 0.92 : 1)))
       return
     }

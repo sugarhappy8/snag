@@ -21,6 +21,9 @@ import {
   spend,
   zodiacFor,
 } from './core'
+import { fillLocal, hasLocaleData, hasSnow, locale, localeOf, localSchoolName, localTerm, localUniversityName, type SchoolLevel as LocaleSchoolLevel } from './data/locales'
+import { isIndustryLegal } from './data/markets'
+import { graduationAge, schoolSystem } from './education'
 import { contractCondition } from './health'
 import { createPerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
@@ -68,6 +71,7 @@ export interface TalentDef {
   weight: number
   /** Journal hints in early childhood, before the talent is discovered. */
   hints: string[]
+  /** Second-person reveal; may use locale tokens ({sport}, {hangout}, {food}...) filled by fillLocal. */
   discovery: string
   apply: (g: GameState) => void
 }
@@ -86,7 +90,7 @@ export const TALENTS: TalentDef[] = [
     emoji: '\u{1F3C3}',
     weight: 18,
     hints: ['I outran every kid on the playground.', 'I climbed to the top of the jungle gym faster than anyone.', "I can't sit still. Running around is my favorite thing in the world."],
-    discovery: "Your gym teacher can't stop raving about you. You're a natural athlete! You have a special talent for sports.",
+    discovery: "Your PE teacher can't stop raving about you, and the {sport} coach already wants you on the team. You're a natural athlete! You have a special talent for sports.",
     apply: (g) => {
       addHidden(g, 'athleticism', 15)
       addStat(g, 'health', 3)
@@ -137,7 +141,7 @@ export const TALENTS: TalentDef[] = [
     emoji: '\u{1F4F8}',
     weight: 8,
     hints: ['Strangers keep telling my parents I should be in commercials.', 'I struck a pose for every camera I saw.'],
-    discovery: 'A talent scout stopped your family at the mall and handed over a business card. You have a special talent for modeling!',
+    discovery: 'A talent scout stopped your family at {hangout} and handed over a business card. You have a special talent for modeling!',
     apply: (g) => addStat(g, 'looks', 10),
   },
   {
@@ -145,7 +149,7 @@ export const TALENTS: TalentDef[] = [
     emoji: '\u{1F373}',
     weight: 6,
     hints: ['I made my first omelet. It was mostly shell, but still.', "I keep 'improving' the family recipes."],
-    discovery: 'You cooked dinner for the whole family and it was actually delicious. You have a special talent for cooking!',
+    discovery: 'You made {food} for the whole family and it was actually delicious. Even the neighbors asked for the recipe. You have a special talent for cooking!',
     apply: (g) => addStat(g, 'happiness', 4),
   },
   {
@@ -198,6 +202,12 @@ const MAJORS = [
 ]
 
 const RICH_OCCUPATIONS = ['Surgeon', 'Lawyer', 'CEO', 'Investment Banker', 'Dentist', 'Real Estate Developer', 'Plastic Surgeon', 'Business Owner', 'Orthodontist', 'Hedge Fund Manager']
+/** Where most people are poor, old money looks different. */
+const RICH_OCCUPATIONS_DEVELOPING = ['Surgeon', 'Lawyer', 'CEO', 'Business Owner', 'Real Estate Developer', 'Politician', 'Factory Owner', 'Diplomat', 'Import-Export Tycoon', 'Bank Director']
+
+function richOccupations(country: Country): string[] {
+  return country.wealth < 0.45 ? RICH_OCCUPATIONS_DEVELOPING : RICH_OCCUPATIONS
+}
 
 const PET_NAMES = [
   'Max',
@@ -242,25 +252,77 @@ const PET_SPECIES: { species: string; weight: number; breeds?: string[]; maxAge:
 
 const PET_TRAITS = ['playful', 'lazy', 'loyal', 'mischievous', 'cuddly', 'skittish', 'grumpy', 'curious', 'needy', 'aloof']
 
+/** Share of newborns raised in a religion here (world.ts religions are weighted by repetition). */
+function religionShare(country: Country, religion: string): number {
+  return country.religions.length ? country.religions.filter((r) => r === religion).length / country.religions.length : 0
+}
+
+/** Family pets by local custom: in Muslim-majority countries cats and birds are the usual house pets. */
+function petWeight(country: Country, species: string, weight: number): number {
+  if (religionShare(country, 'Islam') < 0.5) return weight
+  return species === 'Dog' ? 8 : species === 'Cat' ? 60 : species === 'Parrot' ? 8 : weight
+}
+
+// Birth backstories. {tokens} are filled from the family's country (data/locales.ts), so an
+// Indonesian baby's parents run off to Bali and an American one's to Las Vegas.
 const CONCEPTION = [
   'I was a planned pregnancy.',
   'I was a happy accident.',
   'I was a test tube baby.',
-  'I was conceived on my parents’ honeymoon.',
-  'I was conceived on a cruise somewhere in the Caribbean.',
+  'I was conceived on my parents’ honeymoon in {getaway}.',
+  'I was conceived on a weekend trip to {getaway}.',
   'I was conceived after my parents’ anniversary dinner at an all-you-can-eat buffet.',
-  'I was conceived during a blizzard that snowed my parents in for a week.',
-  'I was conceived after my parents won a weekend getaway in a radio contest.',
+  '{weather}',
+  'I was conceived after my parents won a weekend in {getaway} in a radio contest.',
   'I was conceived after my mother’s birth control failed.',
-  'I was conceived after my parents eloped in Las Vegas.',
+  'I was conceived after my parents eloped to {getaway}.',
   'I was conceived during a power outage. My parents blame the lack of TV.',
   'I was conceived at a music festival. My parents still argue about which band was playing.',
   'I was the result of a long-distance relationship and one very expensive plane ticket.',
   'I was conceived on a camping trip.',
   'I was conceived after my father’s vasectomy failed.',
   'I was conceived after a New Year’s Eve party got a little out of hand.',
+  'I was conceived after my parents’ date at {dateSpot}. They still go back every anniversary.',
 ]
-const SINGLE_MOTHER_CONCEPTION = ['I was the product of a summer fling.', 'I was the result of a one-night stand.', 'I was conceived after a blind date that went a little too well.', 'I was a surprise to everyone, especially my mother.']
+const SINGLE_MOTHER_CONCEPTION = [
+  'I was the product of a {season} fling.',
+  'I was the result of a one-night stand.',
+  'I was conceived after a blind date that went a little too well.',
+  'I was a surprise to everyone, especially my mother.',
+  'I was the souvenir from my mother’s trip to {getaway}.',
+]
+
+/** How my parents met (married couples only). */
+const PARENTS_MET = [
+  'My parents met at {dateSpot}.',
+  'My parents met cheering for rival {sport} teams.',
+  'My parents met on a school trip to {landmark}.',
+  'My parents met at {hangout} and never looked back.',
+]
+
+/** Weather that keeps a couple indoors, by climate. */
+function conceptionWeather(g: GameState, countryId: string): string {
+  if (hasSnow(g, countryId)) return 'I was conceived during a blizzard that snowed my parents in for a week.'
+  switch (localeOf(countryId).climate) {
+    case 'tropical':
+      return 'I was conceived during a tropical storm that kept my parents indoors for a week.'
+    case 'arid':
+      return 'I was conceived during a sandstorm that kept my parents indoors for a week.'
+    case 'mediterranean':
+      return 'I was conceived during a heat wave that knocked out the air conditioning.'
+    default:
+      return 'I was conceived during a week of nonstop rain.'
+  }
+}
+
+/** Fill a birth backstory line with words from the family's country. */
+function localLine(g: GameState, line: string, countryId: string): string {
+  const climate = localeOf(countryId).climate
+  const filled = line
+    .replace('{weather}', conceptionWeather(g, countryId))
+    .replace('{season}', climate === 'tropical' || climate === 'arid' ? 'whirlwind' : 'summer')
+  return fillLocal(g, filled, countryId)
+}
 
 function numArticle(n: number): string {
   const s = String(n)

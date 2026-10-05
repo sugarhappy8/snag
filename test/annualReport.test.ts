@@ -217,7 +217,9 @@ describe('plan math', () => {
   it('formats prices and unit names', () => {
     expect(formatPrice(4.5, 0.1)).toBe('$4.50')
     expect(formatPrice(4.5, 1)).toBe('$4.50')
-    expect(formatPrice(45, 1)).toBe('$45')
+    expect(formatPrice(45, 1)).toBe('$45.00')
+    expect(formatPrice(450, 5)).toBe('$450')
+    expect(formatPrice(120.5, 0.5)).toBe('$120.50')
     expect(formatPrice(125000, 1000)).toBe('$125,000')
     expect(singularUnit('meals')).toBe('meal')
     expect(singularUnit('batteries')).toBe('battery')

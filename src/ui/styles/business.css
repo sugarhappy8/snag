@@ -250,16 +250,17 @@
   transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
 }
 
-.ar-nudge:hover:not(:disabled) {
+.ar-nudge:hover:not(:disabled):not([aria-disabled='true']) {
   background: color-mix(in srgb, var(--blue) 8%, var(--card));
 }
 
-.ar-nudge:active:not(:disabled) {
+.ar-nudge:active:not(:disabled):not([aria-disabled='true']) {
   transform: translateY(2px);
   box-shadow: none;
 }
 
-.ar-nudge:disabled {
+.ar-nudge:disabled,
+.ar-nudge[aria-disabled='true'] {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -405,17 +406,18 @@ button.ar-chip {
   transition: transform 0.08s ease, background 0.15s ease;
 }
 
-button.ar-chip:hover:not(:disabled) {
+button.ar-chip:hover {
   background: color-mix(in srgb, var(--orange) 22%, var(--card));
 }
 
-button.ar-chip:active:not(:disabled) {
+button.ar-chip:active {
   transform: translateY(1px);
 }
 
-button.ar-chip:disabled {
-  cursor: default;
-  opacity: 0.6;
+/* The plan already sits on the marker. */
+button.ar-chip.is-on {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 26%, var(--card));
 }
 
 .ar-chip-dot {
