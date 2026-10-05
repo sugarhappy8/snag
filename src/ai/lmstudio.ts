@@ -131,7 +131,7 @@ const CONTEXT_RE = /context (?:length|window|overflow|size)|tokens to keep|excee
 
 function httpError(status: number, body: unknown, text: string, base: string, settings: Settings): LmStudioError {
   const msg = errorText(body) || (looksLikeHtml(text) ? '' : text.trim().slice(0, 240))
-  if (isRelative(base) && status >= 500 && status <= 504 && (!msg || /proxy|ECONNREFUSED|ECONNRESET|socket hang up|connect/i.test(msg))) {
+  if (isRelative(base) && status >= 500 && status <= 504 && (!msg || /proxy error|ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up/i.test(msg))) {
     return unreachable(base)
   }
   if (status === 401 || status === 403) {
