@@ -128,7 +128,7 @@ function capitalize(s: string): string {
 // ---------------------------------------------------------------------------
 // Seeded listings: stable within a year, no g.rng consumption.
 
-interface SRng {
+export interface SRng {
   next(): number
   int(min: number, max: number): number
   float(min: number, max: number): number
@@ -146,7 +146,7 @@ function hashString(s: string): number {
   return h | 0
 }
 
-function seeded(key: string): SRng {
+export function seeded(key: string): SRng {
   let state = hashString(key)
   const next = (): number => {
     const [v, s] = nextRandom(state)
@@ -171,7 +171,7 @@ function seeded(key: string): SRng {
   }
 }
 
-function yearKey(g: GameState, what: string): string {
+export function yearKey(g: GameState, what: string): string {
   const c = g.character
   return `${g.lifeId}|${c.id}|${c.firstName}${c.lastName}|${g.year}|${c.countryId}|${c.city}|${what}`
 }

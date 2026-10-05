@@ -1,9 +1,10 @@
 // Life-or-death situations: SOS rescues of strangers (you may die trying), choking
 // relatives, natural disasters and pet kidnappings.
-import { addHidden, count, notePerson, peopleBy, remember } from '../core'
+import { addHidden, count, peopleBy, remember } from '../core'
+import { notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
-import { anyOf, ch, country, defineEvents, dollars, money, ownsHome, pets, relWord, say, type Ctx } from './helpers'
+import { anyOf, ch, defineEvents, dollars, money, ownsHome, pets, relWord, say, type Ctx } from './helpers'
 
 interface Sos {
   id: string
@@ -179,11 +180,11 @@ function sosEvent(s: Sos) {
 }
 
 const DISASTERS = [
-  { kind: 'earthquake', emoji: '🌋', text: 'A magnitude {n} earthquake is shaking your city! Buildings are swaying.', n: () => (6 + Math.random()).toFixed(1) },
-  { kind: 'flood', emoji: '🌊', text: 'Torrential rain has flooded your neighborhood and the water is rising fast!', n: () => '' },
-  { kind: 'tornado', emoji: '🌪️', text: 'Tornado sirens are blaring and a massive funnel cloud is heading straight for your town!', n: () => '' },
-  { kind: 'hurricane', emoji: '🌀', text: 'A Category {n} hurricane is making landfall near your city!', n: () => '' },
-  { kind: 'wildfire', emoji: '🔥', text: 'A wildfire is raging out of control in the hills near your home!', n: () => '' },
+  { kind: 'earthquake', emoji: '🌋', text: 'A magnitude {n} earthquake is shaking your city! Buildings are swaying.' },
+  { kind: 'flood', emoji: '🌊', text: 'Torrential rain has flooded your neighborhood and the water is rising fast!' },
+  { kind: 'tornado', emoji: '🌪️', text: 'Tornado sirens are blaring and a massive funnel cloud is heading straight for your town!' },
+  { kind: 'hurricane', emoji: '🌀', text: 'A Category {n} hurricane is making landfall near your city!' },
+  { kind: 'wildfire', emoji: '🔥', text: 'A wildfire is raging out of control in the hills near your home!' },
 ]
 
 function damageHome(g: GameState): string {
@@ -304,10 +305,7 @@ export const SOS_EVENTS = defineEvents([
         const ransom = x.n('ransom')
         if (g.character.money < ransom) return lostPet(g, x, "You couldn't come up with the cash in time.")
         if (chance(g, 0.7)) say(g, x, 'Reunited', `You exchanged a briefcase containing ${money(ransom)} for ${x.p?.firstName ?? 'your pet'}'s safe return.`, `I paid a ${money(ransom)} ransom to get my pet, ${x.p?.firstName ?? ''}, back.`, { money: -ransom, happiness: 8, rel: 10 }, 'good', '🥹')
-        else {
-          g.character.money -= ransom
-          lostPet(g, x, `You paid ${money(ransom)}, but the kidnappers never returned ${x.p?.firstName ?? 'your pet'}.`)
-        }
+        else lostPet(g, x, `You paid ${money(ransom)}, but the kidnappers never returned ${x.p?.firstName ?? 'your pet'}.`, ransom)
       },
       police: (g, x) => {
         if (chance(g, 0.55)) say(g, x, ['Arrest them, officers!', 'Law enforcement FTW'], `The cops managed to rescue ${x.p?.firstName ?? 'your pet'} and arrest its kidnappers.`, `The police rescued my pet, ${x.p?.firstName ?? ''}, from kidnappers.`, { happiness: 10, rel: 10 }, 'good', '🚓')
@@ -318,13 +316,13 @@ export const SOS_EVENTS = defineEvents([
   },
 ])
 
-function lostPet(g: GameState, x: Ctx, why: string): void {
+function lostPet(g: GameState, x: Ctx, why: string, paid = 0): void {
   const pet = x.p
   if (pet) {
     pet.alive = false
     pet.causeOfDeath = 'Kidnapped'
   }
-  say(g, x, ['A tragedy', 'Gone'], `${why} ${pet?.firstName ?? 'Your pet'} is presumed dead.`, `My pet, ${pet?.firstName ?? ''}, was kidnapped and never returned.`, { happiness: -20 }, 'bad', '🕯️')
+  say(g, x, ['A tragedy', 'Gone'], `${why} ${pet?.firstName ?? 'Your pet'} is presumed dead.`, `My pet, ${pet?.firstName ?? ''}, was kidnapped and never returned.`, { happiness: -20, money: -paid }, 'bad', '🕯️')
 }
 
 function family(g: GameState): Person[] {
@@ -332,11 +330,10 @@ function family(g: GameState): Person[] {
 }
 
 function relName(p: Person | undefined): string {
-  return p ? `my ${relWord(p)}, ${p.firstName},` .replace(/,$/, '') : 'a family member'
+  return p ? `my ${relWord(p)}, ${p.firstName}` : 'a family member'
 }
 
 function uc(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
-export const SOS_COUNTRY = country

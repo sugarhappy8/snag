@@ -411,7 +411,7 @@ function treatableNonAddiction(g: GameState): Condition[] {
 function sicknessChance(g: GameState): number {
   const c = g.character
   const a = c.age
-  let p = a < 5 ? 0.22 : a < 18 ? 0.16 : a < 50 ? 0.14 : a < 70 ? 0.2 : 0.26
+  let p = a < 5 ? 0.2 : a < 18 ? 0.14 : a < 50 ? 0.11 : a < 70 ? 0.16 : 0.22
   if (c.stats.health < 50) p += (50 - c.stats.health) * 0.004
   if (c.hidden.karma < 25) p += 0.03
   if (inPrison(g)) p += 0.04
