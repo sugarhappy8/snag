@@ -279,7 +279,7 @@ export interface DeathScreenProps {
   game?: GameState
 }
 
-export function DeathScreen({ game: gameProp }: DeathScreenProps = {}) {
+export function DeathScreen({ game: gameProp }: DeathScreenProps) {
   const storeGame = useApp((s) => s.game)
   const aiLevel = useApp((s) => s.settings.aiLevel)
   const showAiBadges = useApp((s) => s.settings.showAiBadges)
