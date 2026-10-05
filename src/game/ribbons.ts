@@ -161,7 +161,9 @@ export function computeRibbon(g: GameState): string | null {
   ) {
     return 'teammate'
   }
-  if (yearsWithTitle(g, CEO_TITLE) > 0 && worth >= 20_000_000) return 'bigBoss'
+  // Finish a business career on top: ran a company (or built one and took it public / sold it) and died rich.
+  const builtCompany = counter(g, 'businessIpos') > 0 || counter(g, 'businessesSold') > 0
+  if ((yearsWithTitle(g, CEO_TITLE) > 0 || builtCompany) && worth >= 20_000_000) return 'bigBoss'
   if (
     c.hidden.karma >= 85 &&
     worth >= 50_000 &&

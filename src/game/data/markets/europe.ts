@@ -21,7 +21,7 @@ export const EUROPE_MARKETS: Record<string, MarketProfile> = {
     demand: { hotel: 2, restaurant: 1.4, bar: 1.3, fashion: 1.3, realEstate: 1.4, manufacturing: 0.4, farm: 0.4, software: 0.6, gameStudio: 0.5, logistics: 0.6 },
     banned: [],
     priceMult: { car: 0.9, luxury: 0.85, alcohol: 0.6, food: 0.8, fuel: 1.9 },
-    businessNote: 'Ten percent corporate tax and a stream of bargain-hunting skiers sound perfect, until you meet the residency rules, the foreign-investment permit and the one road in from Spain.',
+    businessNote: 'Ten percent corporate tax and bargain-hunting skiers sound perfect, until you meet the residency rules, the foreign-investment permit and the single road in from Spain.',
     nameWords: ['Pirineu', 'Valira', 'Comapedrosa', 'Casamanya', 'Estany', 'Madriu', 'Coll', 'Vall'],
   },
 
@@ -91,7 +91,7 @@ export const EUROPE_MARKETS: Record<string, MarketProfile> = {
     demand: { bakery: 1.4, cafe: 1.2, software: 1.3, gameStudio: 1.2, energy: 1.4, logistics: 1.3, farm: 1.2, autoShop: 0.7 },
     banned: [],
     priceMult: { car: 1.6, electronics: 1.25, luxury: 1.1, fuel: 2.4 },
-    businessNote: 'Registering a company takes an afternoon online; paying a Danish salary plus 25% moms takes the rest of your life.',
+    businessNote: 'Registering a company online takes an afternoon; affording Danish salaries, 25% moms and a company car taxed like a yacht takes rather longer.',
     nameWords: ['Nord', 'Hygge', 'Øresund', 'Jylland', 'Fyn', 'Bølge', 'Dannebrog', 'Viking', 'Limfjord'],
   },
 
@@ -134,7 +134,7 @@ export const EUROPE_MARKETS: Record<string, MarketProfile> = {
     demand: { bakery: 2, restaurant: 1.5, cafe: 1.4, fashion: 1.8, beauty: 1.6, hotel: 1.5, farm: 1.2, entertainment: 1.2, brewery: 0.8 },
     banned: [],
     priceMult: { car: 1.15, electronics: 1.2, luxury: 0.9, alcohol: 0.9, food: 0.85, fuel: 2.4 },
-    businessNote: 'The tax office is ruthlessly efficient, the labour code is thicker than a baguette is long, and the whole country closes for August.',
+    businessNote: 'The tax office is ruthlessly efficient, the labour code runs past three thousand pages, and the whole country goes on holiday in August.',
     nameWords: ['Seine', 'Loire', 'Provence', 'Lumière', 'Rivage', 'Gironde', 'Coquelicot', 'Montmartre', 'Fleur'],
   },
 
@@ -176,7 +176,7 @@ export const EUROPE_MARKETS: Record<string, MarketProfile> = {
     demand: { manufacturing: 1.5, autoShop: 1.1, bar: 1.3, hotel: 1.2, clinic: 1.4, farm: 1.1, software: 0.9 },
     banned: [],
     priceMult: { car: 1.1, electronics: 1.3, luxury: 1.1, alcohol: 0.55, food: 0.6, fuel: 2 },
-    businessNote: 'Corporate tax is the lowest in Europe at 9%, ÁFA is the highest on Earth at 27%, and the rules change faster than the forint.',
+    businessNote: 'Corporate tax is the lowest in the EU at 9%, ÁFA is the highest on Earth at 27%, and the rules change faster than the forint.',
     nameWords: ['Duna', 'Tisza', 'Balaton', 'Puszta', 'Turul', 'Mátra', 'Tokaj', 'Paprika', 'Bakony'],
   },
 
@@ -204,7 +204,7 @@ export const EUROPE_MARKETS: Record<string, MarketProfile> = {
     demand: { restaurant: 1.5, cafe: 1.6, bakery: 1.3, fashion: 2, beauty: 1.3, hotel: 1.5, farm: 1.2, manufacturing: 1.2, autoShop: 1.1, software: 0.8, gameStudio: 0.7 },
     banned: [],
     priceMult: { car: 1.1, electronics: 1.2, luxury: 0.9, alcohol: 0.8, food: 0.8, fuel: 2.4 },
-    businessNote: 'Opening a café takes a notary, three licences, a commercialista and a saint\'s patience; at least the espresso while you wait costs about a euro.',
+    businessNote: 'Opening a café takes a notary, three licences, a commercialista and a saint\'s patience; at least the espresso while you wait costs barely more than a euro.',
     nameWords: ['Tevere', 'Vesuvio', 'Dolomiti', 'Toscana', 'Etna', 'Riviera', 'Sole', 'Arno', 'Stella'],
   },
 
@@ -218,7 +218,7 @@ export const EUROPE_MARKETS: Record<string, MarketProfile> = {
     demand: { hotel: 2, restaurant: 1.6, bar: 1.4, entertainment: 2.2, fashion: 2, beauty: 1.8, realEstate: 2.5, construction: 1.3, autoShop: 1.4, manufacturing: 0.3, logistics: 0.4 },
     banned: ['farm'],
     priceMult: { car: 1.1, electronics: 1.2, alcohol: 1.6, food: 1.2, fuel: 2.4 },
-    businessNote: 'No income tax and customers with superyachts, but every new business needs the government\'s blessing, the rent is astronomical, and the last farmland was built over long ago.',
+    businessNote: 'No personal income tax and customers with superyachts, but every business needs the government\'s blessing, the rent is astronomical and the last farmland was paved long ago.',
     nameWords: ['Riviera', 'Azur', 'Rocher', 'Hercule', 'Larvotto', 'Corniche', 'Fontvieille', 'Prestige', 'Belle Époque'],
   },
 
@@ -246,7 +246,7 @@ export const EUROPE_MARKETS: Record<string, MarketProfile> = {
     demand: { energy: 2.5, farm: 1.3, logistics: 1.3, hotel: 1.3, construction: 1.2, software: 1.1, restaurant: 0.9, bar: 0.7, brewery: 0.8 },
     banned: [],
     priceMult: { car: 1.3, electronics: 1.25, luxury: 1.15, alcohol: 1.8, food: 1.15, fuel: 2.4 },
-    businessNote: 'Oil money keeps wages and prices sky-high, so a pint at your own bar will cost the customer more than the burger that came with it.',
+    businessNote: 'Oil money keeps wages sky-high, and the alcohol tax turns every pint at your bar into a small investment decision for the customer.',
     nameWords: ['Fjord', 'Nordlys', 'Troll', 'Fjell', 'Lofoten', 'Havbris', 'Fossen', 'Viking', 'Midnattsol'],
   },
 

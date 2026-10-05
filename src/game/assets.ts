@@ -208,7 +208,9 @@ function markBought(g: GameState, id: string): void {
 //   softened purchasing-power factor: in poorer markets the "economy car" or "smartphone" on
 //   the lot is a cheaper local trim or brand, and dealer margins and labor cost less, but only
 //   partly, because these are global goods. It is 1 in rich countries and falls linearly to a
-//   floor for the poorest: cars 0.5, electronics 0.65, luxury 0.85.
+//   floor for the poorest: cars 0.35, electronics 0.6, luxury 0.85. India (wealth 0.25, car
+//   priceMult 1.5) thus prices an economy car at about 0.77× the US sticker, Singapore (COE,
+//   2.8) at 2.8×, Japan (0.85) at about 0.77×.
 // - Car running costs follow the local fuel price plus local labor (mechanics, parts).
 // - Boats, aircraft, art and collectibles trade on global markets: globalGoodsMult only
 //   shaves a little off in poorer countries.
@@ -222,7 +224,7 @@ function wealthOf(g: GameState): number {
 }
 
 /** How much of the US price is left in the poorest markets for each category (see above). */
-const REACH_FLOOR: Record<PriceCategory, number> = { car: 0.5, electronics: 0.65, luxury: 0.85, alcohol: 1, food: 1, fuel: 1 }
+const REACH_FLOOR: Record<PriceCategory, number> = { car: 0.35, electronics: 0.6, luxury: 0.85, alcohol: 1, food: 1, fuel: 1 }
 
 /**
  * Local price multiplier for a shop category vs the US price:
@@ -1180,7 +1182,7 @@ function vehicleFinance(g: GameState, price: number, plan: VehicleFinancePlan, k
   const c = g.character
   const down = Math.round(price * plan.down)
   const principal = price - down
-  const rate = offeredRate(g, kind) + (plan.years <= 3 ? -0.005 : 0)
+  const rate = Math.round(Math.max(0.005, offeredRate(g, kind) + (plan.years <= 3 ? -0.005 : 0)) * 10000) / 10000
   const payment = annualPayment(principal, rate, plan.years)
   const base = { down, principal, rate, payment }
   if (c.age < 18) return { ok: false, reason: 'Lenders need you to be 18 to sign for a loan.', ...base }

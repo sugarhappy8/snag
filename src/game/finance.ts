@@ -5,6 +5,7 @@
 // Also home to the small money helpers the assets / gambling code shares: loan maths,
 // a credit score, marginal tax on extra income and "where do I live now" logic.
 import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember } from './core'
+import { hasMarketData, marketOf } from './data/markets'
 import { chance, pick, randInt, uid } from './rng'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry } from './world'
@@ -208,12 +209,41 @@ export function creditLabel(score: number): string {
   return 'Very Poor'
 }
 
-/** Interest rate a lender offers for this kind of loan given the borrower's credit. */
+/**
+ * How lenders price each kind of loan off the central bank's policy rate p (data/markets.ts):
+ *   rate = pass(p) × mult + spread, clamped to [min, max]
+ * pass(p) is p up to 6% and only 60% of anything above it: in high-rate economies (Brazil,
+ * Turkey, Argentina) subsidized, indexed and short-term lending keeps street rates below the
+ * headline rate, and the clamp keeps hyperinflation economies playable (brutal, not absurd).
+ * With p = 4.5% (US) this gives a 6.4% mortgage, 7.8% auto loan and 11% personal loan; Japan
+ * (0.5%) about 2% / 3.2% / 6.1%; the eurozone (2%) about 3.6% / 4.9% / 8%; Brazil (15%) about
+ * 14% / 15.5% / 19.5%. Good credit then shaves a little off, bad credit adds a lot.
+ */
+const LOAN_PRICING: Record<'mortgage' | LoanKind, { mult: number; spread: number; min: number; max: number }> = {
+  mortgage: { mult: 1.12, spread: 0.014, min: 0.008, max: 0.24 },
+  car: { mult: 1.15, spread: 0.026, min: 0.015, max: 0.28 },
+  student: { mult: 1, spread: 0.01, min: 0.005, max: 0.2 },
+  personal: { mult: 1.25, spread: 0.055, min: 0.03, max: 0.34 },
+  business: { mult: 1.2, spread: 0.045, min: 0.025, max: 0.32 },
+}
+
+/** A lender's base rate for this kind of loan in a country, before the borrower's credit. */
+export function baseLoanRate(countryId: string, kind: 'mortgage' | LoanKind): number {
+  const p0 = marketOf(countryId).interestRate
+  const p = Number.isFinite(p0) ? Math.max(0, p0) : 0.05
+  const pass = p <= 0.06 ? p : 0.06 + 0.6 * (p - 0.06)
+  const t = LOAN_PRICING[kind] ?? LOAN_PRICING.personal
+  return Math.min(t.max, Math.max(t.min, pass * t.mult + t.spread))
+}
+
+/** Interest rate a lender offers for this kind of loan given the local market and the borrower's credit. */
 export function offeredRate(g: GameState, kind: 'mortgage' | LoanKind): number {
   const score = creditScore(g)
-  const base = kind === 'mortgage' ? 0.062 : kind === 'car' ? 0.072 : kind === 'student' ? 0.055 : 0.105
+  const base = baseLoanRate(g.character.countryId, kind)
   const credit = score >= 760 ? -0.012 : score >= 700 ? -0.004 : score >= 640 ? 0.008 : score >= 580 ? 0.02 : 0.035
-  return Math.round((base + credit) * 10000) / 10000
+  // Prime borrowers can't get much below the bank's own funding cost.
+  const floor = Math.min(base, Math.max(0.004, base * 0.6))
+  return Math.round(Math.max(floor, base + credit) * 10000) / 10000
 }
 
 export interface NewLoan {
@@ -365,16 +395,28 @@ const COLLECTOR_TEXTS = [
 
 const COLLECTOR_NAMES = ['Gary', 'Doreen', 'Vince', 'Brenda', 'Marcus', 'Trish', 'Duane', 'Carla']
 
-/** Yearly living costs for an independent adult (scaled by country wealth). */
+/**
+ * Cost of everyday living relative to the US (1): 40% bills and services, which track wealth,
+ * and 60% groceries, which follow the market's food prices (data/markets.ts priceMult.food).
+ * Switzerland and Norway come out around 1.3-1.4, India and Egypt around 0.25-0.3.
+ */
+export function costOfLiving(countryId: string): number {
+  const wealth = Math.max(0.2, getCountry(countryId).wealth ?? 1)
+  const raw = marketOf(countryId).priceMult.food
+  // Countries without hand-written market data: assume groceries track wealth.
+  const food = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : hasMarketData(countryId) ? 1 : wealth
+  return Math.min(2.2, Math.max(0.15, 0.4 * Math.min(1.4, wealth) + 0.6 * Math.min(2.5, Math.max(0.12, food))))
+}
+
+/** Yearly living costs for an independent adult (scaled by the local cost of living). */
 export function livingCost(g: GameState): number {
   const c = g.character
   if (c.age < 18 || c.prison) return 0
   const status = c.residence.status
   const independent = status === 'owned' || status === 'renting' || (status === 'parents' && parents(g).length === 0)
   if (!independent) return 0
-  const wealth = Math.max(0.1, getCountry(c.countryId).wealth ?? 1)
   const kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild') && p.age < 18 && p.livesWithPlayer).length
-  return Math.round((3_000 + 1_500 * kids) * Math.max(0.2, wealth))
+  return Math.round((3_000 + 1_500 * kids) * costOfLiving(c.countryId))
 }
 
 /** True (and remembered) when a recurring bill is new or at least 25% off the last amount logged. */
