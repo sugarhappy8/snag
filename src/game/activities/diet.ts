@@ -20,7 +20,7 @@ interface DietDef {
 }
 
 export const DIETS: DietDef[] = [
-  { id: 'atkins', name: 'Atkins', emoji: '\u{1F969}', monthly: 120, health: [-3, 0], looks: [0, 2], happiness: [0, 2], blurb: 'Low carb, lots of bacon' },
+  { id: 'atkins', name: 'Atkins', emoji: '\u{1F969}', monthly: 120, health: [-3, 0], looks: [0, 2], happiness: [0, 2], blurb: 'Low carb, lots of meat and eggs' },
   { id: 'highCalorie', name: 'High Calorie', emoji: '\u{1F354}', monthly: 160, health: [-17, -10], looks: [-5, -2], happiness: [3, 7], blurb: 'Eat everything. Always.' },
   { id: 'hotChips', name: 'Spicy Cheese Puff', emoji: '\u{1F336}\u{FE0F}', monthly: 45, health: [-25, -15], looks: [-3, 0], happiness: [2, 6], blurb: 'Nothing but spicy cheese puffs' },
   { id: 'jennyCraig', name: 'Portion Coach', emoji: '\u{1F957}', monthly: 400, health: [2, 4], looks: [1, 2], happiness: [1, 3], blurb: 'Prepackaged meals and a coach' },

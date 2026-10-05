@@ -4,7 +4,14 @@ import { peopleBy } from '../core'
 import { releaseFromPrison } from '../prison'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
-import { anyOf, ch, defineEvents, relWord, say, strangerName, type Ctx } from './helpers'
+import { anyOf, ch, defineEvents, isUS, relWord, say, strangerName, term, type Ctx } from './helpers'
+
+/** The GED in the US; a school-leaving equivalency elsewhere. */
+function equivalency(g: GameState): { classes: string; exam: string; name: string; line: string } {
+  if (isUS(g)) return { classes: 'GED classes', exam: 'GED exam', name: 'GED', line: 'my GED' }
+  const high = term(g, 'high')
+  return { classes: `${high} equivalency classes`, exam: 'equivalency exam', name: `${high[0].toUpperCase()}${high.slice(1)} Equivalency Diploma`, line: `a ${high} equivalency diploma` }
+}
 
 function cellmates(g: GameState): Person[] {
   return peopleBy(g, ['cellmate'])
@@ -438,8 +445,8 @@ export const PRISON_EVENTS = defineEvents([
     weight: 6,
     cooldown: 4,
     when: (g) => g.character.education.degrees.length === 0,
-    setup: () => ({
-      text: 'The prison is offering GED classes taught by a volunteer who seems genuinely excited to be here. Do you want to enroll?',
+    setup: (g) => ({
+      text: `The prison is offering ${equivalency(g).classes} taught by a volunteer who seems genuinely excited to be here. Do you want to enroll?`,
       choices: [ch('enroll', 'Enroll', '📚'), ch('skip', 'Not interested', '🙅')],
     }),
     resolve: {
@@ -447,12 +454,13 @@ export const PRISON_EVENTS = defineEvents([
         const c = g.character
         const passed = chance(g, 0.25 + c.stats.smarts / 200)
         if (passed && c.education.degrees.length === 0) {
-          c.education.degrees.push({ kind: 'ged', name: 'GED', school: prisonName(g), age: c.age })
-          return say(g, null, ['Graduate!', 'Cap and jumpsuit'], 'You studied every night and passed your GED exam! The volunteer cried. The guards clapped. One of them, anyway.', 'I earned my GED in prison.', { smarts: 6, happiness: 10, behavior: 8, count: 'degrees', memory: 'Earned a GED while in prison.' }, 'good', '🎓')
+          const eq = equivalency(g)
+          c.education.degrees.push({ kind: 'ged', name: eq.name, school: prisonName(g), age: c.age })
+          return say(g, null, ['Graduate!', 'Cap and jumpsuit'], `You studied every night and passed your ${eq.exam}! The volunteer cried. The guards clapped. One of them, anyway.`, `I earned ${eq.line} in prison.`, { smarts: 6, happiness: 10, behavior: 8, count: 'degrees', memory: `Earned ${eq.line} while in prison.` }, 'good', '🎓')
         }
-        say(g, null, 'Almost', "You took the classes seriously but didn't pass the exam this time. There's always next year.", 'I took GED classes in prison but failed the exam.', { smarts: 3, behavior: 5, happiness: -2 })
+        say(g, null, 'Almost', "You took the classes seriously but didn't pass the exam this time. There's always next year.", `I took ${equivalency(g).classes} in prison but failed the exam.`, { smarts: 3, behavior: 5, happiness: -2 })
       },
-      skip: (g) => say(g, null, 'Dropout', 'You passed on the GED classes. The volunteer looked heartbroken.', null, { behavior: -1 }),
+      skip: (g) => say(g, null, 'Dropout', `You passed on the ${equivalency(g).classes}. The volunteer looked heartbroken.`, null, { behavior: -1 }),
     },
   },
   {

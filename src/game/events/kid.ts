@@ -10,6 +10,7 @@ import {
   country,
   defineEvents,
   dollars,
+  englishSchooling,
   friends,
   mother,
   money,
@@ -18,6 +19,7 @@ import {
   siblings,
   strangerName,
 } from './helpers'
+import { hasSnow, locale, localSoftDrink } from '../data/locales'
 
 const BROKEN_ITEMS = ['favorite vase', 'flat-screen TV', 'antique clock', 'reading glasses', 'wedding photo frame', 'coffee maker', 'laptop', 'porcelain cat statue']
 const PETS = [
@@ -169,19 +171,19 @@ export const KID_EVENTS = defineEvents([
     title: 'Talent Show',
     minAge: 5,
     maxAge: 11,
-    setup: () => ({
-      text: "You've been invited to perform at a children's talent show at the mall. What will you do?",
-      choices: [ch('joke', 'Tell a joke'), ch('sing', 'Sing the ABCs'), ch('dance', 'Break dance'), ch('decline', 'Decline')],
+    setup: (g) => ({
+      text: `You've been invited to perform at a children's talent show at ${g.character.countryId === 'us' ? 'the mall' : 'the community hall'}. What will you do?`,
+      choices: [ch('joke', 'Tell a joke'), ch('sing', englishSchooling(g) ? 'Sing the ABCs' : 'Sing a nursery rhyme'), ch('dance', 'Break dance'), ch('decline', 'Decline')],
     }),
     resolve: {
       joke: (g) => {
         const hit = chance(g, 0.4 + g.character.stats.smarts / 250)
-        say(g, null, hit ? 'Comedy gold' : 'Crickets', hit ? 'You told your best knock-knock joke and the crowd roared. A mall cop wiped away a tear.' : 'You told a knock-knock joke. Somebody coughed. You walked off stage very slowly.', 'I told my favorite knock-knock joke at a talent show at the mall.', hit ? { happiness: 10, smarts: 2 } : { happiness: -6 }, hit ? 'good' : 'bad', '🎤')
+        say(g, null, hit ? 'Comedy gold' : 'Crickets', hit ? 'You told your best knock-knock joke and the crowd roared. A security guard wiped away a tear.' : 'You told a knock-knock joke. Somebody coughed. You walked off stage very slowly.', 'I told my favorite knock-knock joke at a talent show.', hit ? { happiness: 10, smarts: 2 } : { happiness: -6 }, hit ? 'good' : 'bad', '🎤')
       },
-      sing: (g) => say(g, null, 'Next big star?', 'You sang the ABCs with heartfelt emotion. You forgot the letters between K and P.', 'I sang the ABCs at a kiddie talent show at the mall.', { happiness: 6, looks: 2 }),
+      sing: (g) => say(g, null, 'Next big star?', englishSchooling(g) ? 'You sang the ABCs with heartfelt emotion. You forgot the letters between K and P.' : 'You sang a nursery rhyme with heartfelt emotion. You forgot the second verse and hummed it.', englishSchooling(g) ? 'I sang the ABCs at a kiddie talent show.' : 'I sang a nursery rhyme at a kiddie talent show.', { happiness: 6, looks: 2 }),
       dance: (g) => {
         const hit = chance(g, 0.5)
-        say(g, null, hit ? 'Crowd favorite' : 'Wipeout', hit ? 'You spun on your head like a pro. You won a $10 food court gift card!' : 'You attempted a headspin and landed on a judge.', 'I break danced at a talent show at the mall.', hit ? { happiness: 12, health: 2, money: 10 } : { happiness: -4, health: -4 }, hit ? 'good' : 'bad', '🕺')
+        say(g, null, hit ? 'Crowd favorite' : 'Wipeout', hit ? `You spun on your head like a pro. You won a ${money(dollars(g, 10, 10))} ${g.character.countryId === 'us' ? 'food court gift card' : 'toy store voucher'}!` : 'You attempted a headspin and landed on a judge.', 'I break danced at a talent show.', hit ? { happiness: 12, health: 2, money: 10 } : { happiness: -4, health: -4 }, hit ? 'good' : 'bad', '🕺')
       },
       decline: (g) => say(g, null, 'Stage fright', 'You politely declined. The spotlight can wait.', 'I declined an invitation to perform at a talent show.', { happiness: -2 }),
     },
@@ -199,7 +201,7 @@ export const KID_EVENTS = defineEvents([
       choices: [ch('dino', 'Dinosaurs', '🦖'), ch('hero', 'Superheroes', '🦸'), ch('unicorn', 'Unicorns', '🦄'), ch('baby', 'A toddler TV show', '📺')],
     }),
     resolve: {
-      dino: (g) => say(g, null, 'Rawr', 'You had a dinosaur party. A kid named Gary cried when the piñata T. rex lost its head.', 'I had a dinosaur-themed birthday party.', { happiness: 10 }, 'good'),
+      dino: (g) => say(g, null, 'Rawr', `You had a dinosaur party. A kid named ${strangerName(g, 'male').first} cried when the piñata T. rex lost its head.`, 'I had a dinosaur-themed birthday party.', { happiness: 10 }, 'good'),
       hero: (g) => say(g, null, 'Super party', 'You had a superhero party. Everyone fought over who got to be the strongest one.', 'I had a superhero-themed birthday party.', { happiness: 10 }, 'good'),
       unicorn: (g) => say(g, null, 'Magical', 'You had a unicorn party with a rainbow cake. Glitter will be found in the carpet for years.', 'I had a unicorn-themed birthday party.', { happiness: 10 }, 'good'),
       baby: (g) => say(g, null, ['Awkward', 'Too old for this'], 'You had a party themed after a show for toddlers. You were the only one who dressed up.', "I had a toddler-show-themed birthday party, but I was the only one who dressed up.", { happiness: -4, smarts: -8 }, 'bad'),
@@ -236,24 +238,26 @@ export const KID_EVENTS = defineEvents([
     setup: (g) => {
       const f = anyOf(g, friends(g))
       const name = f?.firstName ?? strangerName(g).first
+      // Curbside mailboxes are American; elsewhere the street's trash bins take the beating.
+      const us = g.character.countryId === 'us' || g.character.countryId === 'ca'
       return {
-        text: `Your delinquent friend ${name} invites you to go bash in mailboxes with a baseball bat. What will you do?`,
+        text: us ? `Your delinquent friend ${name} invites you to go bash in mailboxes with a baseball bat. What will you do?` : `Your delinquent friend ${name} invites you to go kick over every trash bin on the street. What will you do?`,
         choices: [ch('watch', "I'll go, but just watch"), ch('busy', "No way, I'm busy"), ch('go', "Let's get into some mischief!")],
         person: f,
-        data: { name },
+        data: { name, thing: us ? 'mailboxes' : 'trash bins', verb: us ? 'bash in' : 'kick over' },
       }
     },
     resolve: {
-      watch: (g, x) => say(g, x, 'Lookout', `You tagged along and watched ${x.s('name')} flatten six mailboxes. You kept your hands clean... technically.`, `I watched my friend ${x.s('name')} bash in mailboxes.`, { karma: -2, rel: 4 }),
-      busy: (g, x) => say(g, x, 'Good call', `You told ${x.s('name')} you were busy. You later heard the police were looking for "a bat-wielding youth."`, 'I turned down an opportunity to bash in mailboxes with a delinquent friend.', { karma: 2, rel: -4 }),
+      watch: (g, x) => say(g, x, 'Lookout', `You tagged along and watched ${x.s('name')} flatten six ${x.s('thing') || 'mailboxes'}. You kept your hands clean... technically.`, `I watched my friend ${x.s('name')} ${x.s('verb') || 'bash in'} ${x.s('thing') || 'mailboxes'}.`, { karma: -2, rel: 4 }),
+      busy: (g, x) => say(g, x, 'Good call', `You told ${x.s('name')} you were busy. You later heard the police were looking for "a bat-wielding youth."`, `I turned down an opportunity to ${x.s('verb') || 'bash in'} ${x.s('thing') || 'mailboxes'} with a delinquent friend.`, { karma: 2, rel: -4 }),
       go: (g, x) => {
         const caught = chance(g, 0.18)
         if (caught && g.character.age >= 12) {
-          say(g, x, 'Busted', 'A neighbor caught you mid-swing and called the police.', `I got caught bashing in mailboxes with my friend ${x.s('name')}.`, { karma: -8, rel: 6, count: 'crimes', arrest: { crime: 'Vandalism', severity: 1 } }, 'bad', '🚓')
+          say(g, x, 'Busted', 'A neighbor caught you mid-swing and called the police.', `I got caught vandalizing ${x.s('thing') || 'mailboxes'} with my friend ${x.s('name')}.`, { karma: -8, rel: 6, count: 'crimes', arrest: { crime: 'Vandalism', severity: 1 } }, 'bad', '🚓')
         } else if (caught) {
-          say(g, x, 'Grounded', 'A neighbor caught you mid-swing and marched you home. Your parents grounded you for a month.', `I got caught bashing in mailboxes with my friend ${x.s('name')} and was grounded.`, { karma: -8, happiness: -10, rels: parentMad(g, -10) }, 'bad')
+          say(g, x, 'Grounded', 'A neighbor caught you mid-swing and marched you home. Your parents grounded you for a month.', `I got caught vandalizing ${x.s('thing') || 'mailboxes'} with my friend ${x.s('name')} and was grounded.`, { karma: -8, happiness: -10, rels: parentMad(g, -10) }, 'bad')
         } else {
-          say(g, x, ['Mailbox menace', 'Chaos'], `You and ${x.s('name')} destroyed an entire street's worth of mailboxes and got away clean.`, `I bashed in mailboxes with my friend ${x.s('name')}.`, { karma: -8, happiness: 8, rel: 8, count: 'crimes' })
+          say(g, x, ['Street menace', 'Chaos'], `You and ${x.s('name')} destroyed an entire street's worth of ${x.s('thing') || 'mailboxes'} and got away clean.`, `I vandalized ${x.s('thing') || 'mailboxes'} with my friend ${x.s('name')}.`, { karma: -8, happiness: 8, rel: 8, count: 'crimes' })
         }
       },
     },
@@ -478,21 +482,31 @@ export const KID_EVENTS = defineEvents([
     title: 'Lemonade Stand',
     minAge: 6,
     maxAge: 12,
-    setup: () => ({
-      text: "It's a scorching summer day and you have an idea: a lemonade stand! How will you run it?",
-      choices: [ch('cheap', 'Charge a fair price'), ch('gouge', 'Charge $5 a cup'), ch('free', 'Give it away free'), ch('skip', "Nah, it's too hot")],
-    }),
+    // Lemonade stands are a North American thing; elsewhere kids sell a cold local drink.
+    setup: (g) => {
+      const us = g.character.countryId === 'us' || g.character.countryId === 'ca'
+      const drink = us ? 'lemonade' : `iced ${localSoftDrink(g).replace(/^iced /i, '')}`
+      const price = us ? 5 : dollars(g, 3, 5)
+      return {
+        title: us ? 'Lemonade Stand' : 'Drink Stand',
+        text: us ? "It's a scorching summer day and you have an idea: a lemonade stand! How will you run it?" : `It's a scorching day and you have an idea: a stand selling ${drink} outside your house! How will you run it?`,
+        choices: [ch('cheap', 'Charge a fair price'), ch('gouge', `Charge ${money(price)} a cup`), ch('free', 'Give it away free'), ch('skip', "Nah, it's too hot")],
+        data: { drink, price, stand: us ? 'lemonade stand' : `${drink} stand` },
+      }
+    },
     resolve: {
-      cheap: (g) => {
+      cheap: (g, x) => {
         const amt = dollars(g, 8, 35)
-        say(g, null, 'Small business', `Your lemonade stand was a hit! You made ${money(amt)}.`, `I ran a lemonade stand and made ${money(amt)}.`, { money: amt, happiness: 8, smarts: 2 }, 'good', '💵')
+        say(g, x, 'Small business', `Your ${x.s('stand') || 'lemonade stand'} was a hit! You made ${money(amt)}.`, `I ran a ${x.s('stand') || 'lemonade stand'} and made ${money(amt)}.`, { money: amt, happiness: 8, smarts: 2 }, 'good', '💵')
       },
-      gouge: (g) => {
+      gouge: (g, x) => {
         const sold = randInt(g, 0, 4)
-        say(g, null, sold ? 'Supply and demand' : 'Market correction', sold ? `You sold ${sold} cup${sold === 1 ? '' : 's'} at $5 each to very thirsty, very annoyed neighbors.` : 'Nobody paid $5 for lemonade. You drank the whole pitcher yourself.', sold ? `I sold lemonade for $5 a cup and made ${money(sold * 5)}.` : 'I tried to sell lemonade for $5 a cup. Nobody bought any.', { money: sold * 5, happiness: sold ? 4 : -4 })
+        const price = x.n('price') || 5
+        const drink = x.s('drink') || 'lemonade'
+        say(g, x, sold ? 'Supply and demand' : 'Market correction', sold ? `You sold ${sold} cup${sold === 1 ? '' : 's'} at ${money(price)} each to very thirsty, very annoyed neighbors.` : `Nobody paid ${money(price)} for ${drink}. You drank the whole pitcher yourself.`, sold ? `I sold ${drink} for ${money(price)} a cup and made ${money(sold * price)}.` : `I tried to sell ${drink} for ${money(price)} a cup. Nobody bought any.`, { money: sold * price, happiness: sold ? 4 : -4 })
       },
-      free: (g) => say(g, null, ['Generous', 'Neighborhood hero'], 'You gave lemonade away for free. The mail carrier said you were the best thing that happened to them all week.', 'I gave away free lemonade on a hot day.', { karma: 8, happiness: 6 }, 'good'),
-      skip: (g) => say(g, null, 'Too hot', 'You stayed inside in front of a fan instead.', 'I decided it was too hot to run a lemonade stand.', {}),
+      free: (g, x) => say(g, x, ['Generous', 'Neighborhood hero'], `You gave ${x.s('drink') || 'lemonade'} away for free. The mail carrier said you were the best thing that happened to them all week.`, `I gave away free ${x.s('drink') || 'lemonade'} on a hot day.`, { karma: 8, happiness: 6 }, 'good'),
+      skip: (g, x) => say(g, x, 'Too hot', 'You stayed inside in front of a fan instead.', `I decided it was too hot to run a ${x.s('stand') || 'lemonade stand'}.`, {}),
     },
   },
   {
@@ -502,10 +516,39 @@ export const KID_EVENTS = defineEvents([
     minAge: 5,
     maxAge: 17,
     when: (g) => g.character.education.current !== null,
-    setup: () => ({
-      text: "School's canceled! It's a snow day. How will you spend it?",
-      choices: [ch('snowman', 'Build a snowman', '⛄'), ch('fight', 'Have a snowball fight', '❄️'), ch('sled', 'Go sledding', '🛷'), ch('games', 'Play video games', '🎮')],
-    }),
+    // A snow day where it snows; a flood day in the tropics, a sandstorm in the desert and a
+    // teachers' strike everywhere else.
+    setup: (g) => {
+      if (hasSnow(g)) {
+        return {
+          text: "School's canceled! It's a snow day. How will you spend it?",
+          choices: [ch('snowman', 'Build a snowman', '⛄'), ch('fight', 'Have a snowball fight', '❄️'), ch('sled', 'Go sledding', '🛷'), ch('games', 'Play video games', '🎮')],
+        }
+      }
+      const climate = locale(g).climate
+      if (climate === 'tropical') {
+        return {
+          title: 'Flood Day',
+          text: "School's canceled! The streets flooded after a huge downpour. How will you spend the day?",
+          choices: [ch('puddles', 'Splash in the puddles', '💦'), ch('boats', 'Race paper boats', '⛵'), ch('help', 'Help the neighbors clear the drains', '🧹'), ch('games', 'Play video games', '🎮')],
+          data: { day: 'flood day' },
+        }
+      }
+      if (climate === 'arid') {
+        return {
+          title: 'Sandstorm Day',
+          text: "School's canceled! A sandstorm turned the sky orange. How will you spend the day?",
+          choices: [ch('fort', 'Build a blanket fort', '🏰'), ch('watch', 'Watch the storm from the window', '🌪️'), ch('sneak', 'Sneak outside to look', '😷'), ch('games', 'Play video games', '🎮')],
+          data: { day: 'sandstorm day' },
+        }
+      }
+      return {
+        title: 'Day Off',
+        text: "School's canceled! The teachers are on strike. How will you spend the day?",
+        choices: [ch('park', 'Play outside all day', '⚽'), ch('help', 'Help out at home', '🧹'), ch('picket', "Join the teachers' picket line", '🪧'), ch('games', 'Play video games', '🎮')],
+        data: { day: 'day off' },
+      }
+    },
     resolve: {
       snowman: (g) => say(g, null, 'Frosty', 'You built a magnificent snowman. The neighbor kid knocked its head off by dinner.', 'I built a snowman on a snow day.', { happiness: 8 }, 'good'),
       fight: (g) => {
@@ -516,7 +559,18 @@ export const KID_EVENTS = defineEvents([
         const tree = chance(g, 0.15)
         say(g, null, tree ? 'Tree 1, You 0' : 'Wheee!', tree ? 'You sledded straight into a tree. Your sled did not survive. You barely did.' : 'You flew down the biggest hill in town. Pure joy.', 'I went sledding on a snow day.', tree ? { health: -8, happiness: -2, condition: { name: 'Concussion', kind: 'injury', severity: 15 } } : { happiness: 12, health: 2 }, tree ? 'bad' : 'good')
       },
-      games: (g) => say(g, null, 'Cozy', 'You stayed in your pajamas and gamed for 11 hours straight.', 'I played video games all day on a snow day.', { happiness: 6, health: -2 }),
+      puddles: (g) => {
+        const sick = chance(g, 0.2)
+        say(g, null, sick ? 'Achoo' : 'Splash!', sick ? 'You splashed in every puddle on the street and came down with a cold by dinner.' : 'You stomped through every puddle on the street. Your mom gave up on your clothes.', 'I splashed in the floodwater when school was canceled.', sick ? { happiness: 4, health: -4 } : { happiness: 10 }, sick ? 'neutral' : 'good')
+      },
+      boats: (g) => say(g, null, 'Admiral', 'You folded a fleet of paper boats and raced them down the gutter. Yours won. Obviously.', 'I raced paper boats down the flooded street.', { happiness: 8, smarts: 1 }, 'good'),
+      help: (g) => say(g, null, ['Good kid', 'Helping hand'], 'You spent the day helping the neighbors clean up. Somebody gave you a snack and called you a hero.', 'I helped the neighbors on a day off from school.', { karma: 6, happiness: 4 }, 'good'),
+      fort: (g) => say(g, null, 'Fortress', 'You built a blanket fort so big it had a guest room. The storm never stood a chance.', 'I built a blanket fort during a sandstorm.', { happiness: 8 }, 'good'),
+      watch: (g) => say(g, null, 'Apocalypse view', 'You watched the sky turn orange and pretended you were on Mars. Best day ever.', 'I watched a sandstorm from the window.', { happiness: 5, smarts: 1 }, 'good'),
+      sneak: (g) => say(g, null, 'Sandblasted', 'You stepped outside for ten seconds and came back with sand in places sand should never be.', 'I snuck out into a sandstorm. Bad idea.', { happiness: -2, health: -3 }, 'bad'),
+      park: (g) => say(g, null, 'Freedom', 'You played outside from breakfast until the streetlights came on.', 'I played outside all day when the teachers went on strike.', { happiness: 10, health: 2 }, 'good'),
+      picket: (g) => say(g, null, 'Solidarity', 'You made your own sign and marched with the teachers. Your favorite teacher teared up.', "I joined my teachers' picket line.", { happiness: 6, karma: 4 }, 'good'),
+      games: (g, x) => say(g, x, 'Cozy', 'You stayed in your pajamas and gamed for 11 hours straight.', `I played video games all day on a ${x.s('day') || 'snow day'}.`, { happiness: 6, health: -2 }),
     },
   },
   {
@@ -590,7 +644,7 @@ export const KID_EVENTS = defineEvents([
     resolve: {
       beg: (g) => {
         const yes = chance(g, 0.6)
-        say(g, null, yes ? 'Brain freeze' : 'No dice', yes ? 'Your parents caved and gave you a few bucks. You got a rocket pop.' : 'Your parents said you already had dessert. The jingle faded into the distance.', yes ? 'I begged my parents for ice cream money and got a rocket pop.' : "My parents wouldn't give me money for the ice cream truck.", yes ? { happiness: 8 } : { happiness: -4 })
+        say(g, null, yes ? 'Brain freeze' : 'No dice', yes ? g.character.countryId === 'us' ? 'Your parents caved and gave you a few bucks. You got a rocket pop.' : 'Your parents caved and gave you some coins. You got a rainbow ice pop.' : 'Your parents said you already had dessert. The jingle faded into the distance.', yes ? 'I begged my parents for ice cream money and got a rocket pop.' : "My parents wouldn't give me money for the ice cream truck.", yes ? { happiness: 8 } : { happiness: -4 })
       },
       chase: (g) => {
         const fell = chance(g, 0.2)
@@ -736,7 +790,7 @@ export const KID_EVENTS = defineEvents([
       read: (g) => say(g, null, 'Bookworm', 'You read under a tree in peace. Bliss.', 'I read a book under a tree at recess.', { smarts: 6 }, 'good'),
       rule: (g) => {
         const ok = chance(g, 0.35)
-        say(g, null, ok ? 'All hail' : 'Overthrown', ok ? 'You were crowned ruler of the jungle gym. Your reign will be remembered.' : 'Your coup failed. A third-grader named Brenda pushed you off the slide.', ok ? 'I was crowned ruler of the playground at recess.' : 'I tried to take over the playground at recess and failed.', ok ? { happiness: 10 } : { happiness: -4, health: -2 }, ok ? 'good' : 'bad', '👑')
+        say(g, null, ok ? 'All hail' : 'Overthrown', ok ? 'You were crowned ruler of the jungle gym. Your reign will be remembered.' : `Your coup failed. A third-grader named ${strangerName(g, 'female').first} pushed you off the slide.`, ok ? 'I was crowned ruler of the playground at recess.' : 'I tried to take over the playground at recess and failed.', ok ? { happiness: 10 } : { happiness: -4, health: -2 }, ok ? 'good' : 'bad', '👑')
       },
     },
   },

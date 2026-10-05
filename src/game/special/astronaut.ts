@@ -55,8 +55,44 @@ const AGENCIES: Agency[] = [
   { id: 'rocketeer', name: 'Rocketeer Aerospace', emoji: '\u{1F680}', smarts: 50, pay: 1.35, risk: 2.2, blurb: 'Private rocket company that moves fast and breaks things' },
 ]
 
-function agencyOf(id: string): Agency {
-  return AGENCIES.find((a) => a.id === id) ?? AGENCIES[0]
+/** The player's own government space agency, where one exists (NASA, ISRO, JAXA, ESA...). */
+const SPACE_AGENCIES: Record<string, string> = {
+  us: 'NASA', ru: 'Roscosmos', cn: 'CNSA', jp: 'JAXA', in: 'ISRO', fr: 'CNES', de: 'DLR', it: 'Italian Space Agency',
+  gb: 'UK Space Agency', ca: 'Canadian Space Agency', kr: 'Korea AeroSpace Administration', ae: 'UAE Space Agency',
+  br: 'Brazilian Space Agency', il: 'Israel Space Agency', ir: 'Iranian Space Agency', ua: 'State Space Agency of Ukraine',
+  au: 'Australian Space Agency', nz: 'New Zealand Space Agency', sa: 'Saudi Space Agency', mx: 'Mexican Space Agency',
+  ar: 'CONAE', tr: 'Turkish Space Agency', pk: 'SUPARCO', id: 'BRIN', th: 'GISTDA', ph: 'Philippine Space Agency',
+  ng: 'NASRDA', eg: 'Egyptian Space Agency', kz: 'Kazcosmos', es: 'Spanish Space Agency', pl: 'Polish Space Agency',
+  be: 'European Space Agency', nl: 'European Space Agency', at: 'European Space Agency', ch: 'European Space Agency',
+  dk: 'European Space Agency', se: 'European Space Agency', no: 'European Space Agency', fi: 'European Space Agency',
+  pt: 'European Space Agency', gr: 'European Space Agency', ie: 'European Space Agency', cz: 'European Space Agency',
+  hu: 'European Space Agency', ro: 'European Space Agency', ee: 'European Space Agency', sk: 'European Space Agency',
+}
+
+/** The agency as the player's country knows it: the government agency gets its local name. */
+function localAgency(g: GameState, a: Agency): Agency {
+  if (a.id !== 'oea') return a
+  const name = SPACE_AGENCIES[g.character.countryId]
+  return name ? { ...a, name, blurb: name === 'European Space Agency' ? 'Europe\'s space agency' : 'Your country\'s space agency' } : a
+}
+
+function agencyOf(id: string, g?: GameState): Agency {
+  const a = AGENCIES.find((x) => x.id === id) ?? AGENCIES[0]
+  return g ? localAgency(g, a) : a
+}
+
+function agenciesFor(g: GameState): Agency[] {
+  return AGENCIES.map((a) => localAgency(g, a))
+}
+
+/** "NASA" and "Roscosmos" go without "the"; "the European Space Agency" takes it. */
+function theAgency(a: Agency): string {
+  return /^[A-Z]{3,}$/.test(a.name) || /cosmos$/.test(a.name) ? a.name : `${theAgency(a)}`
+}
+
+function TheAgency(a: Agency): string {
+  const t = theAgency(a)
+  return t[0].toUpperCase() + t.slice(1)
 }
 
 const ACADEMY = 'Orion Space Academy'
@@ -255,7 +291,7 @@ function agencyReason(g: GameState, a: Agency): string | null {
   if (b) return b
   if (!viewAstro(g).graduated) return 'You need to graduate from the Space Academy first.'
   if (astronautJob(g)) return 'You already work for a space agency.'
-  if (c.age > 50) return `${a.name} isn't hiring candidates over 50.`
+  if (c.age > 50) return `${TheAgency(a)} isn't hiring candidates over 50.`
   if (c.stats.health < 45) return 'You would fail the flight physical in your current health.'
   if (hasAddiction(g)) return 'You would never pass the drug screening.'
   return null
@@ -265,8 +301,8 @@ function hireAstronaut(g: GameState, a: Agency): string {
   const { quit } = hire(g, { defId: 'astronaut', title: RANKS[0], company: a.name, salary: payFor(a, 0), level: 0, performance: 60, data: { agency: a.id, lastMissionAge: -1 } })
   addStat(g, 'happiness', 12)
   addFame(g, 1)
-  log(g, `I joined the ${a.name} as an Astronaut Candidate.`, 'good')
-  remember(g, `Joined the ${a.name} as an astronaut.`)
+  log(g, `I joined ${theAgency(a)} as an Astronaut Candidate.`, 'good')
+  remember(g, `Joined ${theAgency(a)} as an astronaut.`)
   return quitNote(quit)
 }
 
@@ -282,15 +318,15 @@ function applyAgency(a: Agency): MenuAction {
     run: (g) => {
       const why = agencyReason(g, a)
       if (why) return tell(g, a.name, why, a.emoji)
-      if (!useYearAction(g, `astro.apply.${a.id}`, 1)) return tell(g, a.name, `You already applied to the ${a.name} this year.`, '\u{1F4EC}')
+      if (!useYearAction(g, `astro.apply.${a.id}`, 1)) return tell(g, a.name, `You already applied to ${theAgency(a)} this year.`, '\u{1F4EC}')
       const c = g.character
       const odds = Math.max(0.1, Math.min(0.92, 0.55 + (c.stats.smarts - a.smarts) / 50 + (c.stats.health - 70) / 200))
       if (!chance(g, odds)) {
-        log(g, `The ${a.name} turned me down.`, 'bad')
-        return say(g, a.name, pick(g, [`The ${a.name} said they had "more qualified candidates". You suspect nepotism.`, `You flubbed the panel interview at the ${a.name} by calling Pluto a planet. Twice.`, `The ${a.name} has a hiring freeze. Try again next year.`]), '\u{1F4ED}', 'bad')
+        log(g, `${TheAgency(a)} turned me down.`, 'bad')
+        return say(g, a.name, pick(g, [`${TheAgency(a)} said they had "more qualified candidates". You suspect nepotism.`, `You flubbed the panel interview at ${theAgency(a)} by calling Pluto a planet. Twice.`, `${TheAgency(a)} has a hiring freeze. Try again next year.`]), '\u{1F4ED}', 'bad')
       }
       const note = hireAstronaut(g, a)
-      say(g, a.name, `The ${a.name} hired you as an Astronaut Candidate! Your salary is ${money(payFor(a, 0))}. Train hard and you'll be on a launch pad soon.${note}`, '\u{1F468}\u{200D}\u{1F680}', 'good')
+      say(g, a.name, `${TheAgency(a)} hired you as an Astronaut Candidate! Your salary is ${money(payFor(a, 0))}. Train hard and you'll be on a launch pad soon.${note}`, '\u{1F468}\u{200D}\u{1F680}', 'good')
     },
   }
 }
@@ -299,10 +335,10 @@ const OFFER_SCRIPT = 'special.astro.offer'
 
 defineScript(OFFER_SCRIPT, (g, choice) => {
   if (choice === 'decline') return say(g, 'Job Offers', 'You turned down every space agency. You can apply again later under Special Careers.', '\u{1F30D}')
-  const a = AGENCIES.find((x) => x.id === choice)
+  const a = agenciesFor(g).find((x) => x.id === choice)
   if (!a || agencyReason(g, a)) return
   const note = hireAstronaut(g, a)
-  say(g, a.name, `You accepted the ${a.name}'s offer and became an Astronaut Candidate earning ${money(payFor(a, 0))}.${note}`, a.emoji, 'good')
+  say(g, a.name, `You accepted ${theAgency(a)}'s offer and became an Astronaut Candidate earning ${money(payFor(a, 0))}.${note}`, a.emoji, 'good')
 })
 
 // ---------------------------------------------------------------------------
@@ -499,7 +535,7 @@ defineScript(DEST_SCRIPT, (g, choice) => {
   const dest = DESTINATIONS.find((d) => d.id === choice)
   if (!dest || job.level < minLevelFor(g, dest)) return
   if (!useYearAction(g, 'astro.mission', 1)) return tell(g, 'Mission', 'You already flew a mission this year. The next launch window is next year.', '\u{1F4C5}')
-  const agency = agencyOf(adata(job).agency)
+  const agency = agencyOf(adata(job).agency, g)
   adata(job).lastMissionAge = g.character.age
   // Launch.
   if (chance(g, 0.004 * agency.risk)) {
@@ -525,7 +561,7 @@ defineScript(ASTEROID_SCRIPT, (g, choice, data) => {
   const f: Flight = { dest: str(raw.dest as Json, 'station'), round: num(raw.round as Json, 1), hull: num(raw.hull as Json, 100), safe: Array.isArray(raw.safe) ? raw.safe.map(String) : [] }
   if (!g.character.alive) return
   const job = astronautJob(g)
-  const risk = job ? agencyOf(adata(job).agency).risk : 1
+  const risk = job ? agencyOf(adata(job).agency, g).risk : 1
   let text: string
   if (f.safe.includes(choice)) {
     text = pick(g, ['You threaded the needle between two asteroids. Mission control exhaled.', 'A clean maneuver! The asteroids tumbled harmlessly past your window.', 'Perfect piloting. Somewhere, your flight instructor felt a disturbance in the force.'])
@@ -829,7 +865,7 @@ export const astronautCareerMenu: MenuGroup = {
     const nodes: MenuNode[] = [academyAction]
     if (viewAstro(g).graduated) {
       nodes.push({ type: 'heading', id: 'astro.h.agencies', label: 'Space Agencies' })
-      nodes.push(...AGENCIES.map(applyAgency))
+      nodes.push(...agenciesFor(g).map(applyAgency))
     }
     if (viewAstro(g).missions > 0) nodes.push(spaceLogMenu())
     return nodes
@@ -855,8 +891,8 @@ function yearlyCadet(g: GameState, job: Job): void {
     count(g, 'spaceAcademy')
     log(g, `I graduated from ${ACADEMY}!`, 'good')
     remember(g, `Graduated from ${ACADEMY}.`)
-    const offers = AGENCIES.filter(() => chance(g, 0.75))
-    if (!offers.length) offers.push(pick(g, AGENCIES))
+    const offers = agenciesFor(g).filter(() => chance(g, 0.75))
+    if (!offers.length) offers.push(pick(g, agenciesFor(g)))
     scriptChoice(
       g,
       OFFER_SCRIPT,
@@ -882,7 +918,7 @@ export function yearlyAstronaut(g: GameState): void {
   if (!job) return
   syncTenure(g, job)
   const d = adata(job)
-  const agency = agencyOf(d.agency)
+  const agency = agencyOf(d.agency, g)
   const p = astroProfile(g)
   earnIncome(g, job.salary)
   const flew = d.lastMissionAge === c.age - 1
@@ -893,7 +929,7 @@ export function yearlyAstronaut(g: GameState): void {
   if (c.age >= 60 || c.stats.health < 20) {
     const title = job.title
     leave(g, 'retired')
-    log(g, `I retired from the ${agency.name}.`, 'good')
+    log(g, `I retired from ${theAgency(agency)}.`, 'good')
     remember(g, `Retired as ${title} after ${p.missions} space missions.`)
     say(g, 'Retired', c.age >= 60 ? `You reached the astronaut corps' retirement age and retired as ${title} after ${p.missions} mission${p.missions === 1 ? '' : 's'}. They gave you a cake shaped like a rocket.` : `The flight surgeon permanently grounded you for health reasons. You retired as ${title}.`, '\u{1F3D6}\u{FE0F}', c.age >= 60 ? 'good' : 'bad')
     return
@@ -901,8 +937,8 @@ export function yearlyAstronaut(g: GameState): void {
 
   if (job.performance < 20 && chance(g, 0.5)) {
     leave(g, 'fired')
-    log(g, `The ${agency.name} let me go.`, 'bad')
-    say(g, 'Fired', `The ${agency.name} cut you from the astronaut corps. ${pick(g, ['Your locker was emptied before you got back from lunch.', 'They said you were "a risk to the mission". And the snacks.'])}`, '\u{1F4C9}', 'bad')
+    log(g, `${TheAgency(agency)} let me go.`, 'bad')
+    say(g, 'Fired', `${TheAgency(agency)} cut you from the astronaut corps. ${pick(g, ['Your locker was emptied before you got back from lunch.', 'They said you were "a risk to the mission". And the snacks.'])}`, '\u{1F4C9}', 'bad')
     return
   }
 
@@ -912,8 +948,8 @@ export function yearlyAstronaut(g: GameState): void {
     promote(g, job, RANKS[next], payFor(agency, next), next)
     addStat(g, 'happiness', 8)
     log(g, `I was promoted to ${RANKS[next]}.`, 'good')
-    remember(g, `Promoted to ${RANKS[next]} at the ${agency.name}.`)
-    say(g, 'Promotion', next === 1 ? `You earned your astronaut wings! You are now a full Astronaut at the ${agency.name}, cleared for spaceflight, earning ${money(job.salary)}.` : `The ${agency.name} promoted you to ${RANKS[next]}! Your salary is now ${money(job.salary)}.`, '\u{1F396}\u{FE0F}', 'good')
+    remember(g, `Promoted to ${RANKS[next]} at ${theAgency(agency)}.`)
+    say(g, 'Promotion', next === 1 ? `You earned your astronaut wings! You are now a full Astronaut at ${theAgency(agency)}, cleared for spaceflight, earning ${money(job.salary)}.` : `${TheAgency(agency)} promoted you to ${RANKS[next]}! Your salary is now ${money(job.salary)}.`, '\u{1F396}\u{FE0F}', 'good')
     return
   }
 

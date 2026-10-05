@@ -120,7 +120,7 @@ function charityAction(ch: Charity): MenuAction {
     input: {
       kind: 'number',
       label: 'How much do you want to donate?',
-      placeholder: 'Amount in dollars',
+      placeholder: 'Amount',
       min: 1,
       defaultValue: (g) => String(Math.max(1, Math.min(Math.floor(g.character.money), Math.round(Math.max(10, g.character.money * 0.01) / 10) * 10))),
     },

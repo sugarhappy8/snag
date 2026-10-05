@@ -4,7 +4,7 @@ import { removePerson } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
-import { anyOf, canDrink, ch, defineEvents, dollars, friends, money, say, strangerName, type Ctx } from './helpers'
+import { anyOf, canDrink, ch, defineEvents, dollars, friends, money, muslimMajority, say, strangerName, type Ctx } from './helpers'
 
 function nm(x: Ctx): string {
   return x.p?.firstName ?? 'your friend'
@@ -405,7 +405,7 @@ export const FRIEND_EVENTS = defineEvents([
     title: 'Free Booze',
     minAge: 18,
     maxAge: 90,
-    when: (g) => canDrink(g) && friends(g).length > 0,
+    when: (g) => canDrink(g) && !muslimMajority(g) && friends(g).length > 0,
     setup: (g) => {
       const f = anyOf(g, friends(g))
       if (!f) return null

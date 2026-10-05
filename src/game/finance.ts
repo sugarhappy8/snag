@@ -5,9 +5,10 @@
 // Also home to the small money helpers the assets / gambling code shares: loan maths,
 // a credit score, marginal tax on extra income and "where do I live now" logic.
 import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember } from './core'
+import { hasMarketData, marketOf } from './data/markets'
 import { chance, pick, randInt, uid } from './rng'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
-import { getCountry } from './world'
+import { getCountry, randomFirstName } from './world'
 
 // ---------------------------------------------------------------------------
 // Income tax
@@ -208,12 +209,41 @@ export function creditLabel(score: number): string {
   return 'Very Poor'
 }
 
-/** Interest rate a lender offers for this kind of loan given the borrower's credit. */
+/**
+ * How lenders price each kind of loan off the central bank's policy rate p (data/markets.ts):
+ *   rate = pass(p) × mult + spread, clamped to [min, max]
+ * pass(p) is p up to 6% and only 60% of anything above it: in high-rate economies (Brazil,
+ * Turkey, Argentina) subsidized, indexed and short-term lending keeps street rates below the
+ * headline rate, and the clamp keeps hyperinflation economies playable (brutal, not absurd).
+ * With p = 4.5% (US) this gives a 6.4% mortgage, 7.8% auto loan and 11% personal loan; Japan
+ * (0.5%) about 2% / 3.2% / 6.1%; the eurozone (2%) about 3.6% / 4.9% / 8%; Brazil (15%) about
+ * 14% / 15.5% / 19.5%. Good credit then shaves a little off, bad credit adds a lot.
+ */
+const LOAN_PRICING: Record<'mortgage' | LoanKind, { mult: number; spread: number; min: number; max: number }> = {
+  mortgage: { mult: 1.12, spread: 0.014, min: 0.008, max: 0.24 },
+  car: { mult: 1.15, spread: 0.026, min: 0.015, max: 0.28 },
+  student: { mult: 1, spread: 0.01, min: 0.005, max: 0.2 },
+  personal: { mult: 1.25, spread: 0.055, min: 0.03, max: 0.34 },
+  business: { mult: 1.2, spread: 0.045, min: 0.025, max: 0.32 },
+}
+
+/** A lender's base rate for this kind of loan in a country, before the borrower's credit. */
+export function baseLoanRate(countryId: string, kind: 'mortgage' | LoanKind): number {
+  const p0 = marketOf(countryId).interestRate
+  const p = Number.isFinite(p0) ? Math.max(0, p0) : 0.05
+  const pass = p <= 0.06 ? p : 0.06 + 0.6 * (p - 0.06)
+  const t = LOAN_PRICING[kind] ?? LOAN_PRICING.personal
+  return Math.min(t.max, Math.max(t.min, pass * t.mult + t.spread))
+}
+
+/** Interest rate a lender offers for this kind of loan given the local market and the borrower's credit. */
 export function offeredRate(g: GameState, kind: 'mortgage' | LoanKind): number {
   const score = creditScore(g)
-  const base = kind === 'mortgage' ? 0.062 : kind === 'car' ? 0.072 : kind === 'student' ? 0.055 : 0.105
+  const base = baseLoanRate(g.character.countryId, kind)
   const credit = score >= 760 ? -0.012 : score >= 700 ? -0.004 : score >= 640 ? 0.008 : score >= 580 ? 0.02 : 0.035
-  return Math.round((base + credit) * 10000) / 10000
+  // Prime borrowers can't get much below the bank's own funding cost.
+  const floor = Math.min(base, Math.max(0.004, base * 0.6))
+  return Math.round(Math.max(floor, base + credit) * 10000) / 10000
 }
 
 export interface NewLoan {
@@ -363,18 +393,38 @@ const COLLECTOR_TEXTS = [
   'Your mailbox is stuffed with FINAL NOTICE letters about the {debt} you owe.',
 ]
 
-const COLLECTOR_NAMES = ['Gary', 'Doreen', 'Vince', 'Brenda', 'Marcus', 'Trish', 'Duane', 'Carla']
+/** A debt collector's first name from the player's country (no Garys in Jakarta). */
+function collectorName(g: GameState): string {
+  return randomFirstName(g, g.character.countryId, chance(g, 0.5) ? 'male' : 'female')
+}
 
-/** Yearly living costs for an independent adult (scaled by country wealth). */
+/**
+ * Cost of everyday living relative to the US (1): 40% bills and services, which track wealth,
+ * and 60% groceries, which follow the market's food prices (data/markets.ts priceMult.food).
+ * Switzerland comes out around 1.3, India and Egypt around 0.3. Groceries priced in dollars
+ * eat a bigger share of pay in poor countries (true to life), but never more than 1.8× the
+ * US share: salaries scale with max(0.25, wealth) (careers.ts), so that is the cap's yardstick
+ * (Venezuela's dollar-priced supermarkets would otherwise cost a quarter of a typical wage).
+ */
+export function costOfLiving(countryId: string): number {
+  const wealth = Math.max(0.2, getCountry(countryId).wealth ?? 1)
+  const raw = marketOf(countryId).priceMult.food
+  // Countries without hand-written market data: assume groceries track wealth.
+  const food = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : hasMarketData(countryId) ? 1 : wealth
+  const cost = 0.4 * Math.min(1.4, wealth) + 0.6 * Math.min(2.5, Math.max(0.12, food))
+  const cap = 1.8 * Math.max(0.25, wealth)
+  return Math.min(2.2, cap, Math.max(0.15, cost))
+}
+
+/** Yearly living costs for an independent adult (scaled by the local cost of living). */
 export function livingCost(g: GameState): number {
   const c = g.character
   if (c.age < 18 || c.prison) return 0
   const status = c.residence.status
   const independent = status === 'owned' || status === 'renting' || (status === 'parents' && parents(g).length === 0)
   if (!independent) return 0
-  const wealth = Math.max(0.1, getCountry(c.countryId).wealth ?? 1)
   const kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild') && p.age < 18 && p.livesWithPlayer).length
-  return Math.round((3_000 + 1_500 * kids) * Math.max(0.2, wealth))
+  return Math.round((3_000 + 1_500 * kids) * costOfLiving(c.countryId))
 }
 
 /** True (and remembered) when a recurring bill is new or at least 25% off the last amount logged. */
@@ -383,6 +433,18 @@ function changedALot(g: GameState, key: string, amount: number): boolean {
   if (last > 0 && Math.abs(amount - last) < last * 0.25) return false
   g.flags[key] = amount
   return true
+}
+
+/** Pick a line that wasn't used the last few times (so the journal doesn't repeat itself). */
+function freshPick<T>(g: GameState, key: string, lines: readonly T[]): T {
+  const flag = `line.fin.${key}`
+  const raw = g.flags[flag]
+  const recent = Array.isArray(raw) ? raw.filter((x): x is number => typeof x === 'number') : []
+  const keep = Math.max(0, Math.min(lines.length - 1, 3))
+  const options = lines.map((_, i) => i).filter((i) => !recent.slice(-keep).includes(i))
+  const i = pick(g, options.length ? options : lines.map((_, j) => j))
+  g.flags[flag] = [...recent, i].slice(-Math.max(1, keep))
+  return lines[i]
 }
 
 /** Taxes, rent, living costs, loans and the consequences of going broke. Runs after career & special. */
@@ -422,7 +484,12 @@ export function yearlyFinance(g: GameState): void {
   if (baseLiving > 0) {
     const living = Math.round(baseLiving * (0.9 + randInt(g, 0, 20) / 100))
     addMoney(g, -living)
-    if (living >= 500 && chance(g, 0.35)) log(g, pick(g, LIVING_LINES)(formatMoney(living)))
+    // Mentioned now and then, not as a yearly receipt.
+    const lastLiving = num(g.flags.livingLineAge, -99)
+    if (living >= 500 && (c.age - lastLiving >= 5 || lastLiving > c.age) && chance(g, 0.35)) {
+      g.flags.livingLineAge = c.age
+      log(g, freshPick(g, 'living', LIVING_LINES)(formatMoney(living)))
+    }
   }
 
   // 4. Loans: interest, payments, missed payments, payoff.
@@ -432,11 +499,16 @@ export function yearlyFinance(g: GameState): void {
   if (c.residence.status === 'homeless' && !c.prison && c.age >= 18) {
     addStat(g, 'happiness', -randInt(g, 5, 10))
     addStat(g, 'health', -randInt(g, 2, 5))
-    log(
-      g,
-      pick(g, ['I spent another year sleeping on park benches.', 'I lived on the streets this year.', 'I spent the year couch-surfing and sleeping in my car... without a car.', 'I was homeless all year.']),
-      'bad',
-    )
+    // A hard stretch, not a line to repeat every single year.
+    const lastLine = num(g.flags.homelessLineAge, -99)
+    if (c.age - lastLine >= 3 || lastLine > c.age) {
+      g.flags.homelessLineAge = c.age
+      log(
+        g,
+        freshPick(g, 'homeless', ['I spent another year sleeping on park benches.', 'I lived on the streets this year.', 'I spent the year couch-surfing and sleeping in my car... without a car.', 'I was homeless all year.', 'I knew every shelter in town by name.', 'I spent the year carrying everything I owned in two bags.']),
+        'bad',
+      )
+    }
   }
 
   // 6. Debt: collectors, a bail-out from mom, eviction, repossession.
@@ -473,13 +545,16 @@ function yearlyLoans(g: GameState): void {
       misses[loan.id] = missed
       recordMissedPayment(g)
       if (missed >= 2 && repossessFinancedAsset(g, loan)) continue
-      notice(
-        g,
-        'Missed Payment',
-        `You couldn't make the ${formatMoney(due)} payment on your ${loanLabel(loan.kind).toLowerCase()} from ${loan.lender}. A ${formatMoney(fee)} late fee was added and your credit score took a beating.`,
-        { emoji: '📉', tone: 'bad' },
-      )
-      log(g, `I missed a payment on my ${loanLabel(loan.kind).toLowerCase()}.`, 'bad')
+      // First missed payment: a popup. After that a reminder every few years, not a yearly nag.
+      if (missed === 1 || missed % 4 === 0) {
+        notice(
+          g,
+          'Missed Payment',
+          `You couldn't make the ${formatMoney(due)} payment on your ${loanLabel(loan.kind).toLowerCase()} from ${loan.lender}. A ${formatMoney(fee)} late fee was added and your credit score took a beating.`,
+          { emoji: '📉', tone: 'bad' },
+        )
+        log(g, missed === 1 ? `I missed a payment on my ${loanLabel(loan.kind).toLowerCase()}.` : `I'm still behind on my ${loanLabel(loan.kind).toLowerCase()}.`, 'bad')
+      }
     } else {
       delete misses[loan.id]
     }
@@ -493,7 +568,7 @@ function yearlyLoans(g: GameState): void {
       remember(g, `Paid off my ${what}.`)
     }
   }
-  if (paidTotal >= 100) log(g, `I paid ${formatMoney(paidTotal)} toward my loans.`)
+  if (paidTotal >= 100 && changedALot(g, 'lastLoanLogged', paidTotal)) log(g, `I paid ${formatMoney(paidTotal)} toward my loans.`)
 }
 
 /** Repossess whatever a defaulted loan financed (car, boat, plane). Returns true if something was taken. */
@@ -543,9 +618,26 @@ function handleDebt(g: GameState): void {
     return
   }
 
-  const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', pick(g, COLLECTOR_NAMES))
-  notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
-  log(g, pick(g, ['Debt collectors kept calling me.', `I'm ${debt} in debt.`, 'I dodged calls from debt collectors all year.']), 'bad')
+  // Being broke stings every year, but the collectors only make the story every few years
+  // (the same popup and line year after year reads like a bug).
+  const lastCalled = num(g.flags.collectorsAge, -99)
+  if (c.age - lastCalled >= 5 || lastCalled > c.age) {
+    g.flags.collectorsAge = c.age
+    const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', collectorName(g))
+    notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
+    log(
+      g,
+      freshPick(g, 'collectors', [
+        'Debt collectors kept calling me.',
+        `I'm ${debt} in debt.`,
+        'I dodged calls from debt collectors all year.',
+        'I let another unknown number go to voicemail. It was the collectors again.',
+        `My ${debt} of debt followed me around like a cloud.`,
+        'I learned the first names of every debt collector in town.',
+      ]),
+      'bad',
+    )
+  }
   addStat(g, 'happiness', -5)
   addHidden(g, 'willpower', -1)
 

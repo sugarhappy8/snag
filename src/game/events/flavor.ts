@@ -3,13 +3,14 @@
 // age and situation, with real family names filled in and no repeats for a long while.
 import { children as childrenOf, currentPartner, inPrison, log, peopleBy } from '../core'
 import { chance, pick, randInt, shuffle } from '../rng'
+import { locale, localPick, localSoftDrink } from '../data/locales'
 import type { GameState, Json, Person, Tone } from '../types'
-import { country, friends, grandkids, inUniversity, mother, father, pets, siblings } from './helpers'
+import { country, friends, grandkids, inUniversity, mother, father, pets, playSport, siblings } from './helpers'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
 
 const FIRST_WORDS = ['potato', 'no', 'cookie', 'dada', 'mama', 'uh-oh', 'doggy', 'ball', 'nope', 'banana', 'taxes', 'meow', 'more', 'why', 'pizza', 'bye-bye']
-const FOODS = ['chicken nuggets', 'mac and cheese', 'tacos', 'pizza', 'pancakes', 'sushi', 'grilled cheese', 'spaghetti', 'dumplings', 'ramen', 'burritos', 'waffles']
+const FOODS = ['chicken nuggets', 'pizza', 'pancakes', 'spaghetti', 'dumplings', 'noodles', 'fried rice', 'soup']
 const SHOWS = ['a cooking competition show', 'a true-crime documentary', 'a reality dating show', 'a cartoon about talking vegetables', 'a nature documentary about otters', 'a soap opera', 'a show about people buying houses', 'an anime about volleyball']
 const HOBBIES = ['knitting', 'birdwatching', 'chess', 'baking sourdough', 'woodworking', 'gardening', 'crossword puzzles', 'jigsaw puzzles', 'photography', 'model trains', 'pottery', 'astronomy']
 
@@ -408,10 +409,32 @@ function tokens(g: GameState): Record<string, string | undefined> {
   if (job) t.company = job.company
   t.city = c.city
   t.country = country(g).name
-  t.food = pick(g, FOODS)
+  // Half the time something universal, half the time a local dish ('nasi goreng', 'injera', 'mac and cheese' in the US).
+  t.food = chance(g, 0.5) ? pick(g, FOODS) : localPick(g, 'food') || pick(g, FOODS)
   t.show = pick(g, SHOWS)
   t.hobby = pick(g, HOBBIES)
   return t
+}
+
+/**
+ * The pools were written with an American childhood in mind; a few lines get the player's own
+ * country instead: the neighborhood ball game, the summer drink stand, the shopping trip.
+ */
+function localizeLine(g: GameState, line: string): string {
+  const c = g.character
+  if (c.countryId === 'us') return line
+  if (line.includes('neighborhood baseball game')) {
+    const ball = playSport(g)
+    const win = /baseball|softball/.test(ball) ? 'hit a home run' : /cricket/.test(ball) ? 'hit a six' : /basketball/.test(ball) ? 'scored the winning basket' : /volleyball|takraw/.test(ball) ? 'served the winning point' : 'scored the winning goal'
+    return `I ${win} at a neighborhood ${ball} game.`
+  }
+  if (line.includes('lemonade stand') && c.countryId !== 'ca') return `I set up a stand selling iced ${localSoftDrink(g).replace(/^iced /i, '')} and made a little pocket money.`
+  if (line.includes('the mall with')) {
+    const shops = locale(g).hangouts.filter((h) => /mall|market|bazaar|souk|shopping|plaza|arcade/i.test(h))
+    return line.replace('the mall', shops.length ? pick(g, shops) : 'the market')
+  }
+  if (line.includes('mall-walking group')) return line.replace('mall-walking group', 'morning walking group')
+  return line
 }
 
 /** Fill {tokens}; null if any token is missing. */
@@ -513,7 +536,8 @@ export function addFlavorLines(g: GameState): void {
     ).filter((o) => !recent.includes(o.key))
     let chosen: { text: string; key: string } | null = null
     for (const o of options) {
-      const text = fill(o.line, t)
+      const filled = fill(o.line, t)
+      const text = filled ? localizeLine(g, filled) : null
       if (text) {
         chosen = { text, key: o.key }
         break

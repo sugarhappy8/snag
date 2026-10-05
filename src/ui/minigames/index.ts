@@ -1,6 +1,7 @@
 // Minigame kind -> component. Each component reports a result string to its script.
 import type { ComponentType } from 'react'
 import type { MinigameKind } from '../../game/types'
+import { AnnualReport } from './AnnualReport'
 import { Blackjack } from './Blackjack'
 import { Burglary } from './Burglary'
 import { HorseRace } from './HorseRace'
@@ -16,4 +17,5 @@ export const MINIGAMES: Record<MinigameKind, ComponentType<MinigameProps>> = {
   burglary: Burglary,
   prisonEscape: PrisonEscape,
   pickpocket: Pickpocket,
+  annualReport: AnnualReport,
 }

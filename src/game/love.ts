@@ -29,6 +29,7 @@ import {
   spend,
   useYearAction,
 } from './core'
+import { locale, localPick, localTerm } from './data/locales'
 import { createPerson, notePerson, pickDistinct, randomOccupation, randomWealth, TRAITS } from './people'
 import { bell, chance, pick, randFloat, randInt, uid } from './rng'
 import { defineScript } from './scripts'
@@ -129,6 +130,110 @@ function kidWord(gender: Gender): string {
 
 function childWord(gender: Gender): string {
   return gender === 'male' ? 'son' : 'daughter'
+}
+
+// ---------------------------------------------------------------------------
+// Local flavor (also used by relationships.ts)
+//
+// Where the player lives decides the wedding venues, the getaways, the family holidays, the
+// food and the sports in love and family life (data/locales.ts). The US keeps its Las Vegas
+// chapels, Thanksgivings and football games; everyone else gets their own.
+
+/** Share (0-1) of a country's people who follow a faith (world.ts weights religions by repetition). */
+export function faithShare(countryId: string, faith: string): number {
+  const list = getCountry(countryId).religions
+  return list.length ? list.filter((r) => r === faith).length / list.length : 0
+}
+
+/** The faith that shapes weddings and funerals: the player's own, else the country's main one (null = mostly secular). */
+export function ceremonyFaith(g: GameState): string | null {
+  const own = g.character.religion
+  if (own && own !== 'None') return own
+  const list = getCountry(g.character.countryId).religions
+  const counts = new Map<string, number>()
+  for (const r of list) if (r !== 'None') counts.set(r, (counts.get(r) ?? 0) + 1)
+  let best: string | null = null
+  let n = 0
+  for (const [r, k] of counts) {
+    if (k > n) [best, n] = [r, k]
+  }
+  return best && list.length && n / list.length >= 0.2 ? best : null
+}
+
+/** Booze is a fine default here (not for Muslim players or Muslim-majority countries). */
+export function drinkingCulture(g: GameState): boolean {
+  return g.character.religion !== 'Islam' && faithShare(g.character.countryId, 'Islam') < 0.5
+}
+
+/** Steak is a fine default gift here (not for Hindu players or Hindu-majority countries). */
+export function beefCulture(g: GameState): boolean {
+  return g.character.religion !== 'Hinduism' && faithShare(g.character.countryId, 'Hinduism') < 0.5
+}
+
+/** Who leads a funeral or blesses a wedding here. */
+export function clergy(g: GameState): string {
+  switch (ceremonyFaith(g)) {
+    case 'Christianity':
+      return 'the priest'
+    case 'Islam':
+      return 'the imam'
+    case 'Judaism':
+      return 'the rabbi'
+    case 'Hinduism':
+      return 'the pandit'
+    case 'Buddhism':
+      return 'the monk'
+    case 'Sikhism':
+      return 'the granthi'
+    case 'Shinto':
+      return 'the Shinto priest'
+    default:
+      return 'the officiant'
+  }
+}
+
+const TEAM_SPORTS = [
+  'football', 'soccer', 'basketball', 'baseball', 'hockey', 'ice hockey', 'cricket', 'rugby', 'rugby league', 'rugby sevens',
+  'aussie rules football', 'gaelic football', 'hurling', 'volleyball', 'handball', 'futsal', 'netball', 'field hockey',
+  'water polo', 'kabaddi', 'pesäpallo', 'ecuavolley', 'softball',
+]
+
+/** One of the country's favorite team sports ('football' in the US means American football). */
+export function teamSport(g: GameState): string {
+  const local = locale(g).sports.filter((s) => TEAM_SPORTS.includes(s.toLowerCase())).slice(0, 3)
+  return local.length ? pick(g, local) : 'football'
+}
+
+/** "a baseball game" in the US, "a cricket match" in India. */
+export function sportEvent(g: GameState): string {
+  const s = teamSport(g)
+  const game = ['baseball', 'basketball', 'hockey', 'ice hockey', 'softball'].includes(s.toLowerCase()) || g.character.countryId === 'us' ? 'game' : 'match'
+  return `${/^[aeiou]/i.test(s) ? 'an' : 'a'} ${s} ${game}`
+}
+
+/** A big family holiday here (the most widely celebrated ones come first in the locale data). */
+export function familyHoliday(g: GameState): string {
+  const list = locale(g).holidays.slice(0, 3)
+  return list.length ? pick(g, list) : 'the holidays'
+}
+
+/** A romantic getaway (honeymoons, elopements, weekend trips) people here actually go to. */
+export function localGetaway(g: GameState): string {
+  return localPick(g, 'getaway') || pick(g, getCountry(g.character.countryId).cities)
+}
+
+/** A local dish for the table ('mac and cheese', 'nasi goreng', 'jollof rice'). */
+export function localFood(g: GameState): string {
+  return localPick(g, 'food') || 'a home-cooked stew'
+}
+
+/** "Primary School Student", "Junior High Student", "Gymnasium Student" from a locale term. */
+function studentLabel(term: string): string {
+  const words = term
+    .replace(/^the /i, '')
+    .split(' ')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+  return `${words.join(' ')} Student`
 }
 
 // ---------------------------------------------------------------------------
@@ -594,7 +699,7 @@ const HOOKUP_AFTER = [
   '{He} fell asleep halfway through.',
   '{He} asked if this makes you a couple.',
   "{He} said {he}'ll call you. {He} won't.",
-  '{He} talked about {his} fantasy football team the entire time.',
+  '{He} talked about {his} fantasy {sport} team the entire time.',
   "{His} roommate walked in on you. Everyone's still recovering.",
   "{His} dog watched the whole thing and judged you.",
   'You broke the bed. Somebody owes somebody a bed frame.',
@@ -671,7 +776,7 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
   notePerson(p, `Hooked up with the player at age ${c.age}.`)
   count(g, 'hookups')
   addStat(g, 'happiness', randInt(g, 3, 10))
-  const lines = [`You hooked up with ${name}. \u{1F525}`, '', `Your enjoyment: ${yours}%`, `${name}'s enjoyment: ${theirs}%`, '', fillPronouns(pick(g, HOOKUP_AFTER), p.gender)]
+  const lines = [`You hooked up with ${name}. \u{1F525}`, '', `Your enjoyment: ${yours}%`, `${name}'s enjoyment: ${theirs}%`, '', fillPronouns(pick(g, HOOKUP_AFTER), p.gender).replace('{sport}', teamSport(g))]
   log(g, `I hooked up with ${fullName(p)}.`)
 
   // STDs
@@ -939,6 +1044,7 @@ interface Venue {
   place: string
 }
 
+/** The American lineup (also the fallback for old saves that were mid-wedding). */
 const VENUES: Venue[] = [
   { id: 'courthouse', label: 'Courthouse', cost: 250, place: 'the courthouse' },
   { id: 'vegas', label: 'Las Vegas chapel', cost: 900, place: 'a 24-hour Las Vegas chapel' },
@@ -949,14 +1055,97 @@ const VENUES: Venue[] = [
   { id: 'castle', label: 'Castle', cost: 125000, place: 'an actual castle' },
 ]
 
-const HONEYMOONS: { id: string; label: string; cost: number }[] = [
-  { id: 'none', label: 'No honeymoon', cost: 0 },
-  { id: 'roadtrip', label: 'Road trip', cost: 1200 },
-  { id: 'paris', label: 'Paris', cost: 6500 },
-  { id: 'bali', label: 'Bali', cost: 9000 },
-  { id: 'maldives', label: 'The Maldives', cost: 16000 },
-  { id: 'antarctica', label: 'Antarctica cruise', cost: 28000 },
+/** The house-of-worship wedding for the local faith (a banquet hall where most people aren't religious). */
+function faithVenue(g: GameState): Pick<Venue, 'label' | 'place'> {
+  switch (ceremonyFaith(g)) {
+    case 'Christianity':
+      return { label: 'Church wedding', place: 'a beautiful old church' }
+    case 'Islam':
+      return { label: 'Mosque nikah and banquet', place: 'a beautiful mosque, followed by a banquet for five hundred relatives' }
+    case 'Hinduism':
+      return { label: 'Temple wedding', place: 'a temple, circling the sacred fire seven times' }
+    case 'Buddhism':
+      return { label: 'Temple wedding', place: 'a Buddhist temple, blessed by a row of chanting monks' }
+    case 'Judaism':
+      return { label: 'Synagogue wedding', place: 'a synagogue, under the chuppah' }
+    case 'Sikhism':
+      return { label: 'Gurdwara wedding', place: 'a gurdwara, circling the holy book four times' }
+    case 'Shinto':
+      return { label: 'Shrine wedding', place: 'a Shinto shrine' }
+    default:
+      return { label: 'Banquet hall wedding', place: 'a banquet hall with ten courses and a karaoke machine' }
+  }
+}
+
+/** Wedding venues where the player lives. The US keeps its courthouse and its Las Vegas chapel. */
+export function weddingVenues(g: GameState): Venue[] {
+  const us = g.character.countryId === 'us'
+  const getaway = us ? '' : localGetaway(g)
+  return VENUES.map((v): Venue => {
+    switch (v.id) {
+      case 'courthouse':
+        return us ? { ...v } : { ...v, label: 'Civil registry office', place: 'the civil registry office' }
+      case 'vegas':
+        return us ? { ...v } : { ...v, label: `Quick wedding in ${getaway}`, cost: 1500, place: `a quick little ceremony in ${getaway}` }
+      case 'church':
+        return { ...v, ...faithVenue(g) }
+      case 'vineyard':
+        return drinkingCulture(g) ? { ...v } : { ...v, label: 'Garden estate', place: 'a garden estate strung with lanterns' }
+      default:
+        return { ...v }
+    }
+  })
+}
+
+/** Venues stored in a wedding popup's data (so the labels you saw are the ones you get). */
+function venuesFromData(data: Json | undefined): Venue[] | null {
+  const list = rec(data).venues
+  if (!Array.isArray(list)) return null
+  const out = list
+    .map((x) => rec(x))
+    .filter((x) => typeof x.id === 'string' && typeof x.label === 'string' && typeof x.place === 'string' && typeof x.cost === 'number')
+    .map((x) => ({ id: x.id as string, label: x.label as string, place: x.place as string, cost: x.cost as number }))
+  return out.length ? out : null
+}
+
+interface Honeymoon {
+  id: string
+  label: string
+  cost: number
+  /** "in Paris", "on a road trip". */
+  phrase: string
+  /** Not offered to people who live there (it's not exotic if it's home). */
+  country?: string
+}
+
+const HONEYMOONS: Honeymoon[] = [
+  { id: 'none', label: 'No honeymoon', cost: 0, phrase: '' },
+  { id: 'roadtrip', label: 'Road trip', cost: 1200, phrase: 'on a road trip' },
+  { id: 'paris', label: 'Paris', cost: 6500, phrase: 'in Paris', country: 'fr' },
+  { id: 'bali', label: 'Bali', cost: 9000, phrase: 'in Bali', country: 'id' },
+  { id: 'maldives', label: 'The Maldives', cost: 16000, phrase: 'in the Maldives', country: 'mv' },
+  { id: 'antarctica', label: 'Antarctica cruise', cost: 28000, phrase: 'on an Antarctica cruise' },
 ]
+
+/** Honeymoons: the classics abroad plus a getaway people here actually go to. */
+export function honeymoonOptions(g: GameState): Honeymoon[] {
+  const home = g.character.countryId
+  const getaway = localGetaway(g)
+  const near = `in ${getaway}`.toLowerCase()
+  const abroad = HONEYMOONS.filter((h) => h.country !== home && h.phrase.toLowerCase() !== near)
+  const local: Honeymoon = { id: 'local', label: cap(getaway), cost: 3000, phrase: `in ${getaway}` }
+  return [...abroad.slice(0, 2), local, ...abroad.slice(2)]
+}
+
+function honeymoonsFromData(data: Json | undefined): Honeymoon[] | null {
+  const list = rec(data).honeymoons
+  if (!Array.isArray(list)) return null
+  const out = list
+    .map((x) => rec(x))
+    .filter((x) => typeof x.id === 'string' && typeof x.label === 'string' && typeof x.cost === 'number')
+    .map((x) => ({ id: x.id as string, label: x.label as string, cost: x.cost as number, phrase: typeof x.phrase === 'string' ? x.phrase : `in ${x.label as string}` }))
+  return out.length ? out : null
+}
 
 const WEDDING_FLAVOR = [
   'Your uncle gave a 40-minute toast that nobody asked for.',
@@ -967,7 +1156,20 @@ const WEDDING_FLAVOR = [
   'Someone objected. It was a joke. Mostly.',
   'The cake was taller than the groomsmen.',
   'Everybody said it was the best wedding they had ever been to.',
+  'The officiant mispronounced both of your names. Twice.',
+  'Three uninvited cousins showed up. Nobody knows who invited them. They took leftovers.',
 ]
+
+/** "the nasi goreng", "the meat pie" (strips a/an so the sentence reads right). */
+function theDish(food: string): string {
+  return `the ${food.replace(/^(a|an|the) /i, '')}`
+}
+
+function weddingFlavor(g: GameState): string {
+  const lines = [...WEDDING_FLAVOR, `${cap(theDish(localFood(g)))} ran out before the second cousins even sat down.`, `Half the guests only came for ${theDish(localFood(g))}. They said so.`]
+  if (drinkingCulture(g)) lines.push('The open bar ran dry in an hour. Your uncle took it personally.')
+  return pick(g, lines)
+}
 
 export function weddingProblem(g: GameState, p: Person): string | null {
   const c = g.character
@@ -987,22 +1189,28 @@ export function planWedding(g: GameState, p: Person): void {
 }
 
 function askVenue(g: GameState, p: Person): void {
+  const venues = weddingVenues(g)
   scriptChoice(
     g,
     'love.wedding.venue',
     'Plan the Wedding',
     `Where will you and ${p.firstName} tie the knot? You have ${money(g.character.money)}.`,
-    [...VENUES.map((v) => ({ id: v.id, label: `${v.label} (${money(v.cost)})`, emoji: '\u{1F492}' })), { id: 'cancel', label: 'Not yet', emoji: '\u{1F6B6}' }],
-    { emoji: '\u{1F492}', data: asJson({ pid: p.id }), personId: p.id },
+    [...venues.map((v) => ({ id: v.id, label: `${v.label} (${money(v.cost)})`, emoji: '\u{1F492}' })), { id: 'cancel', label: 'Not yet', emoji: '\u{1F6B6}' }],
+    { emoji: '\u{1F492}', data: asJson({ pid: p.id, venues }), personId: p.id },
   )
+}
+
+/** The venue details carried from popup to popup (venue id + what it was called). */
+function venueData(data: Json | undefined): { venue: string; venueLabel: string; venuePlace: string } {
+  return { venue: dStr(data, 'venue'), venueLabel: dStr(data, 'venueLabel'), venuePlace: dStr(data, 'venuePlace') }
 }
 
 defineScript('love.wedding.venue', (g, choice, data) => {
   const p = getPerson(g, dStr(data, 'pid'))
-  const venue = VENUES.find((v) => v.id === choice)
+  const venue = (venuesFromData(data) ?? VENUES).find((v) => v.id === choice)
   if (!p || !p.alive || p.relation !== 'fiance' || !venue) return
   if (!spend(g, venue.cost)) {
-    notice(g, 'Plan the Wedding', `You can't afford a ${venue.label.toLowerCase()} wedding (${money(venue.cost)}).`, { emoji: '\u{1F4B8}' })
+    notice(g, 'Plan the Wedding', `You can't afford that venue (${venue.label}: ${money(venue.cost)}).`, { emoji: '\u{1F4B8}' })
     askVenue(g, p)
     return
   }
@@ -1015,24 +1223,25 @@ defineScript('love.wedding.venue', (g, choice, data) => {
       { id: 'ask', label: 'Ask for a prenup', emoji: '\u{1F4DC}' },
       { id: 'none', label: 'No prenup', emoji: '\u{1F91D}' },
     ],
-    { emoji: '\u{1F4DC}', data: asJson({ pid: p.id, venue: venue.id }), personId: p.id },
+    { emoji: '\u{1F4DC}', data: asJson({ pid: p.id, venue: venue.id, venueLabel: venue.label, venuePlace: venue.place }), personId: p.id },
   )
 })
 
-function askHoneymoon(g: GameState, p: Person, venue: string, prenup: boolean): void {
+function askHoneymoon(g: GameState, p: Person, venue: ReturnType<typeof venueData>, prenup: boolean): void {
+  const honeymoons = honeymoonOptions(g)
   scriptChoice(
     g,
     'love.wedding.honeymoon',
     'Honeymoon',
     `Where will you go on your honeymoon? You have ${money(g.character.money)} left.`,
-    HONEYMOONS.map((h) => ({ id: h.id, label: h.cost ? `${h.label} (${money(h.cost)})` : h.label, emoji: h.cost ? '\u{2708}\u{FE0F}' : '\u{1F3E0}' })),
-    { emoji: '\u{1F334}', data: asJson({ pid: p.id, venue, prenup }), personId: p.id },
+    honeymoons.map((h) => ({ id: h.id, label: h.cost ? `${h.label} (${money(h.cost)})` : h.label, emoji: h.cost ? '\u{2708}\u{FE0F}' : '\u{1F3E0}' })),
+    { emoji: '\u{1F334}', data: asJson({ pid: p.id, ...venue, prenup, honeymoons }), personId: p.id },
   )
 }
 
 defineScript('love.wedding.prenup', (g, choice, data) => {
   const p = getPerson(g, dStr(data, 'pid'))
-  const venue = dStr(data, 'venue')
+  const venue = venueData(data)
   if (!p || !p.alive || p.relation !== 'fiance') return
   if (choice !== 'ask') {
     askHoneymoon(g, p, venue, false)
@@ -1062,7 +1271,7 @@ defineScript('love.wedding.prenup', (g, choice, data) => {
       { id: 'marry', label: 'Marry without a prenup', emoji: '\u{1F492}' },
       { id: 'cancel', label: 'Call off the wedding', emoji: '\u{1F6AB}' },
     ],
-    { emoji: '\u{1F4DC}', data: asJson({ pid: p.id, venue }), personId: p.id },
+    { emoji: '\u{1F4DC}', data: asJson({ pid: p.id, ...venue }), personId: p.id },
   )
 })
 
@@ -1073,31 +1282,45 @@ defineScript('love.wedding.prenupRefused', (g, choice, data) => {
     cancelEngagement(g, p, 'player')
     return
   }
-  askHoneymoon(g, p, dStr(data, 'venue'), false)
+  askHoneymoon(g, p, venueData(data), false)
 })
 
 defineScript('love.wedding.honeymoon', (g, choice, data) => {
   const p = getPerson(g, dStr(data, 'pid'))
   if (!p || !p.alive || p.relation !== 'fiance') return
-  const venue = dStr(data, 'venue')
+  const venue = venueData(data)
   const prenup = rec(data).prenup === true
-  const h = HONEYMOONS.find((x) => x.id === choice) ?? HONEYMOONS[0]
+  const list = honeymoonsFromData(data) ?? HONEYMOONS
+  const h = list.find((x) => x.id === choice) ?? HONEYMOONS[0]
   if (!spend(g, h.cost)) {
-    notice(g, 'Honeymoon', `You can't afford ${h.label} (${money(h.cost)}).`, { emoji: '\u{1F4B8}' })
+    notice(g, 'Honeymoon', `You can't afford that honeymoon (${h.label}: ${money(h.cost)}).`, { emoji: '\u{1F4B8}' })
     askHoneymoon(g, p, venue, prenup)
     return
   }
-  performWedding(g, p, { venue, prenup, honeymoon: h.id === 'none' ? null : h.label })
+  performWedding(g, p, { venue: venue.venue, label: venue.venueLabel || undefined, place: venue.venuePlace || undefined, prenup, honeymoon: h.id === 'none' ? null : h.phrase || h.label })
 })
 
-/** Make it official. */
-export function performWedding(g: GameState, p: Person, o: { venue: string; prenup: boolean; honeymoon: string | null }): void {
+const HONEYMOON_LINES = [
+  'It was magical.',
+  'You got the worst sunburn of your life.',
+  'You barely left the hotel room. The minibar bill was astonishing.',
+  'You lost your luggage but found each other. Aww.',
+  'You took 600 photos. You will look at four of them again.',
+  'You had your first married argument, about directions. You both still think you were right.',
+]
+
+/**
+ * Make it official. `venue` is a venue id ('courthouse', 'church'... or 'eloped'); `place` and
+ * `label` say what it was called where you live (filled from the local venue list when missing).
+ * `honeymoon` is where you went: "in Paris", "on a road trip" (a bare place gets "in").
+ */
+export function performWedding(g: GameState, p: Person, o: { venue: string; prenup: boolean; honeymoon: string | null; place?: string; label?: string }): void {
   const c = g.character
-  const v = VENUES.find((x) => x.id === o.venue)
+  const v = o.venue === 'eloped' ? undefined : weddingVenues(g).find((x) => x.id === o.venue)
   p.relation = 'spouse'
   p.data.marriedAge = c.age
   p.data.prenup = o.prenup
-  p.data.venue = v ? v.label : 'Eloped'
+  p.data.venue = o.label ?? (v ? v.label : 'Eloped')
   delete p.data.engagedAge
   delete p.data.waitForMarriage
   p.livesWithPlayer = true
@@ -1105,17 +1328,18 @@ export function performWedding(g: GameState, p: Person, o: { venue: string; pren
   count(g, 'marriages')
   addRelationship(p, randInt(g, 10, 16))
   addStat(g, 'happiness', randInt(g, 12, 20))
-  const where = v ? v.place : 'a secret ceremony'
+  const where = o.place ?? (v ? v.place : 'a secret ceremony')
   log(g, `I married ${fullName(p)} at ${where}.`, 'good')
   remember(g, `Married ${fullName(p)}${o.prenup ? ' (with a prenup)' : ''}.`)
   notePerson(p, `Married the player at age ${c.age}.`)
-  let text = `You married ${p.firstName} at ${where}! \u{1F492}\n\n${pick(g, WEDDING_FLAVOR)}`
+  let text = `You married ${p.firstName} at ${where}! \u{1F492}\n\n${weddingFlavor(g)}`
   if (o.prenup) text += '\n\nThe prenup is signed and filed.'
   if (o.honeymoon) {
+    const trip = /^(in|on|at|to) /i.test(o.honeymoon) ? o.honeymoon : `in ${o.honeymoon}`
     addStat(g, 'happiness', randInt(g, 4, 8))
     addStat(g, 'health', randInt(g, 1, 4))
-    text += `\n\nYou honeymooned in ${o.honeymoon}. ${pick(g, ['It was magical.', 'You got the worst sunburn of your life.', 'You barely left the hotel room. The minibar bill was astonishing.', 'You lost your luggage but found each other. Aww.'])}`
-    log(g, `We honeymooned in ${o.honeymoon}.`)
+    text += `\n\nYou honeymooned ${trip}. ${pick(g, HONEYMOON_LINES)}`
+    log(g, `We honeymooned ${trip}.`)
   }
   const steps = addStepchildren(g, p)
   if (steps.length) {
@@ -1159,7 +1383,7 @@ function addStepchildren(g: GameState, p: Person): string[] {
       age,
       lastName: p.lastName,
       relationship: randInt(g, 25, 60),
-      occupation: age < 18 ? npcOccupationLabel(age) : randomOccupation(g, age),
+      occupation: age < 18 ? npcOccupationLabel(age, g) : randomOccupation(g, age),
       otherParentId: p.id,
       biological: false,
       livesWithPlayer: age < 18 && !inPrison(g),
@@ -1206,8 +1430,9 @@ export function elope(g: GameState, p: Person): void {
   if (hasTrait(p, 'romantic', 'rebellious', 'flirty')) odds += 0.2
   if (hasTrait(p, 'serious', 'religious', 'anxious')) odds -= 0.12
   if (chance(g, clamp(odds, 0.05, 0.85))) {
-    performWedding(g, p, { venue: 'eloped', prenup: false, honeymoon: null })
-    log(g, 'We eloped!')
+    const where = localGetaway(g)
+    performWedding(g, p, { venue: 'eloped', prenup: false, honeymoon: null, place: `a secret ceremony in ${where}` })
+    log(g, pick(g, ['We eloped!', 'We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
   } else {
     addRelationship(p, -randInt(g, 5, 12))
     notice(g, 'Elope', `${p.firstName} refused to elope. "${pick(g, ['My mother would never forgive me.', 'I want a real wedding with a cake taller than me.', 'Are you trying to avoid paying for a wedding?'])}"`, { emoji: '\u{1F645}' })
@@ -1727,7 +1952,6 @@ defineScript('love.baby.name', (g, value, data) => {
 // ---------------------------------------------------------------------------
 // Fertility clinic
 
-const SURROGATE_NAMES_F = ['Brianna', 'Keisha', 'Monica', 'Rosa', 'Tamsin', 'Delia', 'Ingrid', 'Paloma', 'Yuki', 'Amara']
 
 function fertilityNodes(): MenuNode[] {
   const bc: MenuAction = {
@@ -1909,7 +2133,7 @@ function fertilityNodes(): MenuNode[] {
     disabledReason: (g) => tooYoungReason(g, 18) ?? (playerPregnancy(g) ? 'You already have a baby on the way.' : null),
     run: (g) => {
       const options = Array.from({ length: 3 }, () => ({
-        name: pick(g, SURROGATE_NAMES_F),
+        name: randomFirstName(g, g.character.countryId, 'female'),
         age: randInt(g, 22, 38),
         health: bell(g, 50, 100),
         fee: randInt(g, 45, 140) * 1000,
@@ -2311,7 +2535,7 @@ defineScript('love.adopt.pick', (g, choice, data) => {
     livesWithPlayer: true,
     data: { adopted: true, adoptedAge: c.age, behavior: k.behavior, originCountry: k.countryId, adoptionReason: k.reason, lastInteractionAge: c.age },
   })
-  kid.occupation = npcOccupationLabel(kid.age)
+  kid.occupation = npcOccupationLabel(kid.age, g)
   count(g, 'adoptions')
   addStat(g, 'happiness', randInt(g, 8, 14))
   if (partner) addRelationship(partner, partner.relationship >= 50 ? randInt(g, 3, 8) : -randInt(g, 3, 8))
@@ -2360,14 +2584,15 @@ export const adoptionMenu: MenuGroup = {
 }
 
 /** Occupation label for a family NPC of this age (school stage). */
-export function npcOccupationLabel(age: number): string {
+export function npcOccupationLabel(age: number, g?: GameState): string {
   if (age < 2) return 'Baby'
   if (age < 4) return 'Toddler'
   if (age < 5) return 'Preschooler'
-  if (age < 11) return 'Elementary School Student'
-  if (age < 14) return 'Middle School Student'
-  if (age < 18) return 'High School Student'
-  return 'Unemployed'
+  if (age >= 18) return 'Unemployed'
+  const level = age < 11 ? 'primary' : age < 14 ? 'middle' : 'high'
+  // What school is called where the player lives ("Junior High Student", "Gymnasium Student").
+  if (g) return studentLabel(localTerm(g, level))
+  return level === 'primary' ? 'Elementary School Student' : level === 'middle' ? 'Middle School Student' : 'High School Student'
 }
 
 // ---------------------------------------------------------------------------

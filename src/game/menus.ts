@@ -1,18 +1,57 @@
 // Top-level menus for the bottom bar. Each feature module exports its own MenuGroup;
 // this file only arranges them.
 import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, nightlifeMenu, surrenderLifeAction, vacationMenu } from './activities'
-import { assetsMenu, shoppingMenu } from './assets'
+import { ASSET_KIND_VIEWS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
+import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
 import { occupationMenu } from './careers'
 import { inPrison, queueAi } from './core'
+import { investmentAssetSubtitle, investmentAssetView, investmentsMenu } from './investments'
 import { crimeMenu } from './crime'
 import { casinoMenu, lotteryMenu } from './gambling'
 import { doctorMenu } from './health'
 import { adoptionMenu, loveMenu, petsMenu } from './love'
 import { prisonMenu } from './prison'
+import { everydayStoreMenus, luxuryLifestyleMenu, membershipAssetSubtitle, membershipAssetView, membershipsMenu, ticketsMenu } from './shops'
 import { fameMenu, socialMediaMenu } from './special'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from './types'
 
-export { assetsMenu, occupationMenu }
+export { occupationMenu }
+
+// Owned-asset screens that other modules build (see ASSET_KIND_VIEWS in assets.ts).
+ASSET_KIND_VIEWS.business = { subtitle: businessAssetSubtitle, children: businessAssetView }
+ASSET_KIND_VIEWS.investment = { subtitle: investmentAssetSubtitle, children: investmentAssetView }
+ASSET_KIND_VIEWS.membership = { subtitle: membershipAssetSubtitle, children: membershipAssetView }
+
+/** Insert `extra` right before the node with id `beforeId` (or at the end if it is missing). */
+function insertBefore(nodes: MenuNode[], beforeId: string, extra: MenuNode[]): MenuNode[] {
+  const i = nodes.findIndex((n) => n.id === beforeId)
+  return i < 0 ? [...nodes, ...extra] : [...nodes.slice(0, i), ...extra, ...nodes.slice(i)]
+}
+
+/** The Assets tab: assets.ts's menu plus businesses, investments and the newer stores. */
+export const assetsMenu: MenuGroup = {
+  ...baseAssetsMenu,
+  children: (g) => {
+    const base = insertBefore(baseAssetsMenu.children(g), 'housingHeading', [
+      { type: 'heading', id: 'moneyHeading', label: 'Business & Investments' },
+      businessesMenu,
+      investmentsMenu,
+    ])
+    return [...base, ...everydayStoreMenus, membershipsMenu, ticketsMenu, luxuryLifestyleMenu]
+  },
+}
+
+/** Activities › Shopping: every store, the big purchases and lifestyle spending. */
+export const shoppingMenu: MenuGroup = {
+  ...baseShoppingMenu,
+  children: (g) => [
+    ...insertBefore(baseShoppingMenu.children(g), 'shopBig', everydayStoreMenus),
+    { type: 'heading', id: 'shopLifestyle', label: 'Lifestyle' },
+    membershipsMenu,
+    ticketsMenu,
+    luxuryLifestyleMenu,
+  ],
+}
 
 /** The AI-native activity: type anything and the local model decides what happens. */
 export const doAnythingAction: MenuAction = {

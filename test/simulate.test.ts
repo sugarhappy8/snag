@@ -10,7 +10,7 @@ import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
 import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
-import { STAT_KEYS, type GameState, type MenuAction, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
+import { STAT_KEYS, type AnnualReportData, type GameState, type MenuAction, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
 
 /** Tiny driver RNG, separate from the game's so the driver doesn't depend on engine rolls. */
 function driver(seed: number) {
@@ -44,6 +44,11 @@ function minigameResult(m: MinigameModal, d: Driver): string {
       return d.pick(['escaped', 'caught'])
     case 'pickpocket':
       return d.pick(['success', 'fail'])
+    case 'annualReport': {
+      if (d.next() < 0.2) return 'skip'
+      const r = m.data as unknown as AnnualReportData
+      return JSON.stringify({ price: d.int(r.minPrice, r.maxPrice), production: d.int(0, r.maxProduction) })
+    }
   }
 }
 

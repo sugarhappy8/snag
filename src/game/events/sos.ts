@@ -5,6 +5,12 @@ import { notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
 import { anyOf, ch, defineEvents, dollars, money, ownsHome, pets, relWord, say, type Ctx } from './helpers'
+import { locale, localPick, localTerm } from '../data/locales'
+
+/** "a flood", "an earthquake". */
+function aKind(kind: string): string {
+  return `${/^[aeiou]/i.test(kind) ? 'an' : 'a'} ${kind}`
+}
 
 interface Sos {
   id: string
@@ -119,7 +125,7 @@ const SOS: Sos[] = [
     cause: 'Explosion',
     death: 'You almost had him out when the car exploded.',
     saved: 'You smashed the window and pulled him out seconds before the car burst into flames!',
-    service: 'Call 911',
+    service: 'Call an ambulance',
   },
   {
     id: 'sos.tracks',
@@ -144,9 +150,9 @@ function sosEvent(s: Sos) {
     maxAge: 85,
     weight: 2,
     cooldown: 12,
-    setup: () => ({
+    setup: (g: GameState) => ({
       text: `${s.text} What will you do?`,
-      choices: [ch('rescue', s.rescue), ch('call', s.service), ch('ignore', 'Look the other way')],
+      choices: [ch('rescue', s.rescue), ch('call', s.service === 'Call an ambulance' ? `Call ${localTerm(g, 'emergencyNumber')} for an ambulance` : s.service), ch('ignore', 'Look the other way')],
     }),
     resolve: {
       rescue: (g: GameState, x: Ctx) => {
@@ -187,6 +193,30 @@ const DISASTERS = [
   { kind: 'wildfire', emoji: '🔥', text: 'A wildfire is raging out of control in the hills near your home!' },
 ]
 
+const QUAKE_ZONES = new Set(['jp', 'id', 'tr', 'ir', 'mx', 'cl', 'pe', 'it', 'gr', 'nz', 'ph', 'cn', 'tw', 'np', 'pk', 'af', 'ec', 'gt', 'sv', 'cr', 'ni', 'us', 'co', 've', 'ro', 'in', 'kz', 'mn', 'pg', 'ws', 'al', 'ge', 'dz', 'ma', 'bo', 'ar', 'pa', 'ht', 'do', 'pr', 'jm', 'hr', 'rs'])
+const TORNADO_ZONES = new Set(['us', 'ca', 'bd', 'ar'])
+const HURRICANE_ZONES = new Set(['us', 'mx', 'cu', 'do', 'ht', 'jm', 'bs', 'bz', 'pr', 'aw', 'ni', 'gt', 'sv', 'pa', 'cr'])
+const TYPHOON_ZONES = new Set(['ph', 'jp', 'cn', 'tw', 'hk', 'vn', 'kr'])
+const CYCLONE_ZONES = new Set(['in', 'bd', 'au', 'pg', 'ws', 'pk', 'mg'])
+const WILDFIRE_ZONES = new Set(['us', 'ca', 'au', 'gr', 'pt', 'es', 'fr', 'it', 'tr', 'cl', 'ru', 'ar', 'za', 'il', 'mx', 'br', 'bo', 'id', 'kz', 'mn', 'hr', 'dz', 'ma', 'tn', 'ad', 'mc', 'nz'])
+
+/** The disasters that actually happen where the player lives (typhoons in Manila, sandstorms in Riyadh). */
+function localDisasters(g: GameState): { kind: string; emoji: string; text: string }[] {
+  const id = g.character.countryId
+  const out = DISASTERS.filter((d) => {
+    if (d.kind === 'earthquake') return QUAKE_ZONES.has(id)
+    if (d.kind === 'tornado') return TORNADO_ZONES.has(id)
+    if (d.kind === 'hurricane') return HURRICANE_ZONES.has(id)
+    if (d.kind === 'wildfire') return WILDFIRE_ZONES.has(id)
+    return true
+  })
+  if (TYPHOON_ZONES.has(id)) out.push({ kind: 'typhoon', emoji: '🌀', text: 'A super typhoon is barreling toward your city with winds over {n}0 km/h!' })
+  if (CYCLONE_ZONES.has(id)) out.push({ kind: 'cyclone', emoji: '🌀', text: 'A severe cyclone is making landfall near your city!' })
+  if (locale(g).climate === 'arid') out.push({ kind: 'sandstorm', emoji: '🏜️', text: 'A towering wall of sand is rolling toward your city! The sky has gone orange.' })
+  if (locale(g).snow) out.push({ kind: 'blizzard', emoji: '🌨️', text: 'A blizzard has buried your city in snow and knocked out the power!' })
+  return out
+}
+
 function damageHome(g: GameState): string {
   if (!ownsHome(g)) return ''
   const house = g.assets.find((a) => a.kind === 'house' && a.id === g.character.residence.assetId) ?? g.assets.find((a) => a.kind === 'house')
@@ -208,8 +238,8 @@ export const SOS_EVENTS = defineEvents([
     weight: 2,
     cooldown: 12,
     setup: (g) => {
-      const d = pick(g, DISASTERS)
-      const mag = d.kind === 'earthquake' ? `${randInt(g, 6, 8)}.${randInt(g, 0, 9)}` : String(randInt(g, 3, 5))
+      const d = pick(g, localDisasters(g))
+      const mag = d.kind === 'earthquake' ? `${randInt(g, 6, 8)}.${randInt(g, 0, 9)}` : d.kind === 'typhoon' ? String(randInt(g, 18, 25)) : String(randInt(g, 3, 5))
       return {
         text: `${d.text.replace('{n}', mag)} What will you do?`,
         choices: [ch('shelter', 'Take shelter'), ch('evacuate', 'Evacuate'), ch('help', 'Help my neighbors'), ch('film', 'Film it for social media')],
@@ -221,22 +251,22 @@ export const SOS_EVENTS = defineEvents([
       shelter: (g, x) => {
         const hurt = chance(g, 0.12)
         const dmg = damageHome(g)
-        say(g, x, hurt ? 'Shaken up' : 'Survived', `${hurt ? `You took shelter, but debris struck you during the ${x.s('kind')}.` : `You took shelter and rode out the ${x.s('kind')} safely.`}${dmg}`, `I survived a ${x.s('kind')} by taking shelter.`, hurt ? { health: -12, happiness: -8, condition: { name: 'Concussion', kind: 'injury', severity: 15 } } : { happiness: -4 }, hurt ? 'bad' : 'neutral')
+        say(g, x, hurt ? 'Shaken up' : 'Survived', `${hurt ? `You took shelter, but debris struck you during the ${x.s('kind')}.` : `You took shelter and rode out the ${x.s('kind')} safely.`}${dmg}`, `I survived ${aKind(x.s('kind'))} by taking shelter.`, hurt ? { health: -12, happiness: -8, condition: { name: 'Concussion', kind: 'injury', severity: 15 } } : { happiness: -4 }, hurt ? 'bad' : 'neutral')
       },
       evacuate: (g, x) => {
         const cost = g.character.age >= 18 ? Math.min(Math.max(0, g.character.money), dollars(g, 100, 600)) : 0
         const dmg = damageHome(g)
-        say(g, x, 'Evacuated', `You evacuated in time and stayed somewhere safe until the ${x.s('kind')} passed.${cost ? ` It cost you ${money(cost)}.` : ''}${dmg}`, `I evacuated during a ${x.s('kind')}.`, { money: -cost, happiness: -4 })
+        say(g, x, 'Evacuated', `You evacuated in time and stayed somewhere safe until the ${x.s('kind')} passed.${cost ? ` It cost you ${money(cost)}.` : ''}${dmg}`, `I evacuated during ${aKind(x.s('kind'))}.`, { money: -cost, happiness: -4 })
       },
       help: (g, x) => {
         const hurt = chance(g, 0.3)
-        say(g, x, hurt ? 'Wounded hero' : ['Community hero', 'Neighborly'], hurt ? `You helped pull neighbors to safety during the ${x.s('kind')}, but were injured in the process.` : `You helped evacuate the elderly couple next door and a family of five during the ${x.s('kind')}. The local news called you a hero.`, `I helped my neighbors during a ${x.s('kind')}.`, hurt ? { karma: 15, health: -15, condition: { name: 'Broken Wrist', kind: 'injury', severity: 15 } } : { karma: 15, happiness: 10, fame: 2 }, hurt ? 'bad' : 'good', '🦸')
+        say(g, x, hurt ? 'Wounded hero' : ['Community hero', 'Neighborly'], hurt ? `You helped pull neighbors to safety during the ${x.s('kind')}, but were injured in the process.` : `You helped evacuate the elderly couple next door and a family of five during the ${x.s('kind')}. The local news called you a hero.`, `I helped my neighbors during ${aKind(x.s('kind'))}.`, hurt ? { karma: 15, health: -15, condition: { name: 'Broken Wrist', kind: 'injury', severity: 15 } } : { karma: 15, happiness: 10, fame: 2 }, hurt ? 'bad' : 'good', '🦸')
       },
       film: (g, x) => {
         const r = randInt(g, 1, 100)
-        if (r <= 3) return say(g, x, 'Final upload', `You got the shot of a lifetime. It was also your last.`, `I died filming a ${x.s('kind')}.`, { death: `${uc(x.s('kind'))}` }, 'bad', '🪦')
-        if (r <= 25) return say(g, x, 'Bad idea', `You got too close filming the ${x.s('kind')} and were hit by flying debris.`, `I got hurt filming a ${x.s('kind')}.`, { health: -15, condition: { name: 'Concussion', kind: 'injury', severity: 15 } }, 'bad')
-        say(g, x, ['Gone viral', 'Storm chaser'], `Your footage of the ${x.s('kind')} went viral and was picked up by the national news!`, `My footage of a ${x.s('kind')} went viral.`, { fame: 4, happiness: 8, karma: -2 }, 'good', '📹')
+        if (r <= 3) return say(g, x, 'Final upload', `You got the shot of a lifetime. It was also your last.`, `I died filming ${aKind(x.s('kind'))}.`, { death: `${uc(x.s('kind'))}` }, 'bad', '🪦')
+        if (r <= 25) return say(g, x, 'Bad idea', `You got too close filming the ${x.s('kind')} and were hit by flying debris.`, `I got hurt filming ${aKind(x.s('kind'))}.`, { health: -15, condition: { name: 'Concussion', kind: 'injury', severity: 15 } }, 'bad')
+        say(g, x, ['Gone viral', 'Storm chaser'], `Your footage of the ${x.s('kind')} went viral and was picked up by the national news!`, `My footage of ${aKind(x.s('kind'))} went viral.`, { fame: 4, happiness: 8, karma: -2 }, 'good', '📹')
       },
     },
   },
@@ -252,10 +282,10 @@ export const SOS_EVENTS = defineEvents([
     setup: (g) => {
       const p = anyOf(g, family(g))
       if (!p) return null
-      const food = pick(g, ['a chunk of steak', 'a grape', 'a piece of hard candy', 'a hot dog', 'a meatball', 'a pretzel'])
+      const food = pick(g, g.character.countryId === 'us' ? ['a chunk of steak', 'a grape', 'a piece of hard candy', 'a hot dog', 'a meatball', 'a pretzel'] : ['a chunk of meat', 'a grape', 'a piece of hard candy', 'a fish bone', 'a meatball', `a mouthful of ${localPick(g, 'food') || 'rice'}`])
       return {
         text: `Your ${relWord(p)}, ${p.firstName}, is choking on ${food} and turning blue! What will you do?`,
-        choices: [ch('heimlich', 'Perform the Heimlich maneuver'), ch('ambulance', 'Call an ambulance'), ch('nothing', 'Do nothing')],
+        choices: [ch('heimlich', 'Perform the Heimlich maneuver'), ch('ambulance', `Call ${localTerm(g, 'emergencyNumber')} for an ambulance`), ch('nothing', 'Do nothing')],
         person: p,
         data: { food },
       }

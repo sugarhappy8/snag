@@ -2,10 +2,11 @@
 // The features live in src/game/special/*.ts; this file wires them into the menus and the
 // yearly loop:
 //   Occupation › Special Careers: Actor, Astronaut, Influencer, Model, Musician, Politician,
-//                                 Professional Athlete, Street Hustler
+//                                 Professional Athlete, Street Hustler, Business (business.ts)
 //   Occupation › Military:        enlist / commission, ranks, deployments, discharges, draft
 //   Activities › Fame:            celebrity actions (books, commercials, talk shows...)
 //   Activities › Social Media:    accounts on every platform, posting, going viral, verification
+import { businessCareerMenu, businessJobNodes } from './business'
 import { endJob, log, notice } from './core'
 import { actorCareerMenu, actorJobNodes, yearlyActor } from './special/actor'
 import { astronautCareerMenu, astronautJobNodes, yearlyAstronaut } from './special/astronaut'
@@ -82,6 +83,7 @@ export const specialCareersMenu: MenuGroup = {
     politicsCareerMenu,
     athleteCareerMenu,
     hustlerCareerMenu,
+    businessCareerMenu,
   ],
 }
 
@@ -98,6 +100,7 @@ export function specialJobNodes(g: GameState): MenuNode[] {
     ...politicsJobNodes(g),
     ...astronautJobNodes(g),
     ...hustlerJobNodes(g),
+    ...businessJobNodes(g),
   ]
   if (nodes.length || (c.job.category !== 'special' && c.job.category !== 'military')) return nodes
   // A special job no module recognizes (e.g. from an old save): still let the player leave it.

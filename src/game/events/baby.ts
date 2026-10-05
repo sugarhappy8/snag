@@ -1,6 +1,7 @@
 // Baby & toddler events (ages 0-7): first words, mashed vegetables, vaccinations,
 // tantrums at the grocery store... Mostly harmless, a little bit of smarts/looks.
-import { pick } from '../rng'
+import { locale, localPick } from '../data/locales'
+import { chance, pick } from '../rng'
 import type { GameState, Person } from '../types'
 import { aParent, ch, defineEvents, mother, say, siblings } from './helpers'
 
@@ -13,6 +14,8 @@ function carer(g: GameState): { p: Person | undefined; word: string } {
 
 const FOODS = ['mashed avocado', 'puréed peas', 'strained spinach', 'mushy carrots', 'beet purée', 'pumpkin mush']
 const SNACKS = ['candy bar', 'bag of chips', 'lollipop', 'giant cookie', 'box of gummy bears', 'chocolate egg']
+/** Free samples anyone might hand out at a supermarket (no pork by default). */
+const SAMPLES = ['mini pizza bites', 'cheese cubes', 'chocolate brownies', 'cookies', 'fruit slices']
 const COLORS = ['red', 'purple', 'green', 'blue', 'orange', 'pink']
 
 export const BABY_EVENTS = defineEvents([
@@ -183,12 +186,20 @@ export const BABY_EVENTS = defineEvents([
     title: 'Jump Around',
     minAge: 2,
     maxAge: 6,
-    setup: () => ({
-      text: 'While at the park, you see many awesome things you want to jump in. Which will you choose?',
-      choices: [ch('leaves', 'A pile of leaves'), ch('puddle', 'A huge puddle'), ch('lake', 'The lake'), ch('poop', 'A pile of horse droppings')],
-    }),
+    setup: (g) => {
+      // Autumn leaf piles are a temperate thing; tropical and desert parks have sand piles.
+      const pile = locale(g).climate === 'tropical' || locale(g).climate === 'arid' ? 'sand' : 'leaves'
+      return {
+        text: 'While at the park, you see many awesome things you want to jump in. Which will you choose?',
+        choices: [ch('leaves', `A pile of ${pile}`), ch('puddle', 'A huge puddle'), ch('lake', 'The lake'), ch('poop', 'A pile of horse droppings')],
+        data: { pile },
+      }
+    },
     resolve: {
-      leaves: (g) => say(g, null, 'Crunch', 'You cannonballed into a giant pile of leaves. Best day ever.', 'I had a great time jumping into a big pile of leaves at the park.', { happiness: 8 }, 'good'),
+      leaves: (g, x) =>
+        x.s('pile') === 'sand'
+          ? say(g, x, 'Crunch', 'You cannonballed into a giant pile of sand. You were finding it in your ears for a week. Best day ever.', 'I had a great time jumping into a big pile of sand at the park.', { happiness: 8 }, 'good')
+          : say(g, x, 'Crunch', 'You cannonballed into a giant pile of leaves. Best day ever.', 'I had a great time jumping into a big pile of leaves at the park.', { happiness: 8 }, 'good'),
       puddle: (g) => say(g, null, 'Splash zone', 'You stomped through an enormous puddle and soaked everyone within ten feet.', 'I had a great time splashing in an enormous puddle at the park.', { happiness: 6, looks: 4 }),
       lake: (g) => say(g, null, ['Fully clothed', 'Swim team'], 'You ran straight into the lake with all your clothes on. A very wet adult fished you out.', 'I ran and jumped into a lake with all of my clothes on.', { happiness: 8, smarts: -4, looks: 4 }),
       poop: (g) => say(g, null, ['Why?!', 'Regret'], 'You leapt into a pile of horse droppings. You were hosed off in the parking lot.', 'I jumped into a pile of horse droppings at the park.', { happiness: -6, looks: -8, health: -2 }, 'bad', '💩'),
@@ -332,7 +343,8 @@ export const BABY_EVENTS = defineEvents([
     setup: (g) => {
       const p = aParent(g)
       if (!p) return null
-      const food = pick(g, ['mini pizza bites', 'cheese cubes', 'chocolate brownies', 'sausage slices', 'cookies'])
+      const local = localPick(g, 'food')
+      const food = local && chance(g, 0.5) ? local : pick(g, SAMPLES)
       return {
         text: `You're riding in the cart at the supermarket when you pass a lady handing out free samples of ${food}. You want some, but your parent says no and keeps walking. How will you react?`,
         choices: [ch('kick', 'Kick and scream'), ch('again', 'Ask again, and again'), ch('cry', 'Cry'), ch('nothing', 'Say nothing')],

@@ -8,6 +8,8 @@ import {
   anyOf,
   canDrink,
   ch,
+  conservativeSchooling,
+  muslimMajority,
   country,
   defineEvents,
   dollars,
@@ -30,6 +32,8 @@ export const TEEN_EVENTS = defineEvents([
     minAge: 14,
     maxAge: 19,
     cooldown: 3,
+    // Not a default part of growing up where schooling is conservative (Saudi Arabia, Pakistan...).
+    when: (g) => !conservativeSchooling(g),
     setup: (g) => {
       const f = anyOf(g, friends(g))
       const host = f?.firstName ?? strangerName(g).first
@@ -233,12 +237,12 @@ export const TEEN_EVENTS = defineEvents([
     title: 'Fake ID',
     minAge: 15,
     maxAge: 20,
-    when: (g) => !canDrink(g),
+    when: (g) => !canDrink(g) && !muslimMajority(g),
     setup: (g) => {
       const f = anyOf(g, friends(g))
       const price = dollars(g, 40, 120)
       return {
-        text: `${f ? `Your friend ${f.firstName}` : 'A kid at school'} can get you a fake ID for ${money(price)}. It says your name is "McLovin." What will you do?`,
+        text: `${f ? `Your friend ${f.firstName}` : 'A kid at school'} can get you a fake ID for ${money(price)}. ${g.character.countryId === 'us' ? 'It says your name is "McLovin."' : 'The photo looks nothing like you.'} What will you do?`,
         choices: [ch('buy', 'Buy it'), ch('no', 'Pass'), ch('report', 'Report them')],
         person: f,
         data: { price },

@@ -10,10 +10,11 @@
 // AI output is never trusted: names are mapped to existing people (unknown ones are
 // dropped), effects go through applyEffects (which caps every swing), age-inappropriate
 // consequences are filtered out, and unusable replies fall back to the offline library.
-import { fallbackInterviewQuestion, presentInterview } from '../game/careers'
+import { applyScreening, fallbackInterviewQuestion, presentInterview } from '../game/careers'
 import { count, formatMoney, fullName, getPerson, log, notice, useYearAction, yearActionsUsed } from '../game/core'
+import { offlineScreen } from '../game/cv'
 import { applyEffects } from '../game/effects'
-import { fallbackChoiceOutcome, fallbackCustomAction, fallbackObituary, queueFallbackYearEvents } from '../game/events'
+import { fallbackChoiceOutcome, fallbackCustomAction, fallbackObituary, foreignToLocale, queueFallbackYearEvents } from '../game/events'
 import { nextRandom, pick, rand, shuffle, uid } from '../game/rng'
 import type { AiTask, ChoiceModal, ChoiceOption, GameEffects, GameState, NoticeModal, Person, RelationKind, Tone } from '../game/types'
 import { aiConfigProblem, type Settings } from '../settings'
@@ -23,18 +24,24 @@ import { AiFormatError } from './errors'
 import { findLoadedModel, normalizeBaseUrl, rememberModel } from './openai-compat'
 import { pickModel, providerFor, sameModel } from './providers'
 import {
+  EVENT_MEMORY_FLAG,
+  EVENT_MEMORY_MAX,
   EVENT_THEMES,
   chatSystemPrompt,
   chatUserPrompt,
   customActionPrompt,
+  eventMemory,
   interviewPrompt,
+  localizeTheme,
   narratePrompt,
   narratorSystem,
   obituaryPrompt,
   resolveChoicePrompt,
+  screenApplicationPrompt,
   situationalThemes,
   stageOf,
   yearEventsPrompt,
+  type EventMemo,
 } from './prompts'
 import {
   SCHEMAS,
@@ -45,6 +52,7 @@ import {
   validateNarration,
   validateObituary,
   validateOutcome,
+  validateScreening,
   validateYearEvents,
   type AiCustomAction,
   type AiEffects,
@@ -91,18 +99,24 @@ function consumeRolls(draft: GameState, n: number): void {
 export interface YearPlan {
   /** Ask the model for an interactive event this year. */
   wantEvent: boolean
-  /** Theme suggestion for variety. */
+  /** Theme suggestion for variety, in local words ("studying for the gaokao"). */
   theme: string
+  /** The theme as listed in EVENT_THEMES (remembered so it doesn't come back for a few years). */
+  themeKey: string
   /** How many flavor lines to ask for, as prompt text ("1-2"). */
   logLines: string
   /** RNG draws to consume when applying. */
   rolls: number
 }
 
+/** Years before an AI event theme can be suggested again. */
+const THEME_COOLDOWN = 4
+
 /**
  * Decide (deterministically from the seed) whether this year gets an AI event:
  * none in the birth year, ~30% for ages 1-2, ~70% from age 3, 60% in prison, and fewer
- * when other popups are still waiting in the queue.
+ * when other popups are still waiting in the queue. The theme skips the ones used in the
+ * last few years and is filled with the player's local words.
  */
 export function planYear(g: GameState): YearPlan {
   const [r1, r2, r3] = peekRolls(g, 3)
@@ -115,9 +129,12 @@ export function planYear(g: GameState): YearPlan {
   const stage = stageOf(g)
   const situational = situationalThemes(g)
   const pool = [...EVENT_THEMES[stage], ...situational, ...situational]
-  const theme = pool[Math.min(pool.length - 1, Math.floor(r2 * pool.length))]
+  const used = new Set(eventMemory(g).filter((m) => m.source === 'ai' && m.age <= c.age && c.age - m.age < THEME_COOLDOWN).map((m) => m.kind))
+  let index = Math.min(pool.length - 1, Math.floor(r2 * pool.length))
+  for (let i = 0; i < pool.length && used.has(pool[index]); i++) index = (index + 1) % pool.length
+  const themeKey = pool[index]
   const logLines = c.age === 0 ? '0-1' : c.age <= 2 ? '1' : r3 < 0.5 ? '1-2' : '2-3'
-  return { wantEvent: c.alive && r1 < p, theme, logLines, rolls: 3 }
+  return { wantEvent: c.alive && r1 < p, theme: localizeTheme(themeKey, c.countryId, r3), themeKey, logLines, rolls: 3 }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,8 +247,12 @@ function splitName(name: string): { firstName?: string; lastName?: string } {
   return { firstName: cap(parts[0]), lastName: parts.length > 1 ? cap(parts.slice(1).join(' ')) : undefined }
 }
 
-/** Convert validated AI effects into engine effects for the current draft. */
-export function toGameEffects(g: GameState, e: AiEffects, logLine = ''): GameEffects {
+/**
+ * Convert validated AI effects into engine effects for the current draft. The log line is kept
+ * unless it repeats (or nearly repeats) a line from this year or the `lookbackYears` before it;
+ * the memory unless it repeats one already remembered.
+ */
+export function toGameEffects(g: GameState, e: AiEffects, logLine = '', lookbackYears = 0): GameEffects {
   const c = g.character
   const age = c.age
   const out: GameEffects = {}
@@ -295,10 +316,16 @@ export function toGameEffects(g: GameState, e: AiEffects, logLine = ''): GameEff
     else out.karma = (out.karma ?? 0) - 3
   }
   if (e.death && age >= 6) out.death = e.death
-  if (e.memory) out.memory = e.memory
-  if (logLine && !recentLineKeys(g, 0).has(lineKey(logLine))) out.log = logLine
+  if (e.memory && !isRepeatMemory(g, e.memory)) out.memory = e.memory
+  if (logLine && !isRepeatLine(g, logLine, lookbackYears)) out.log = logLine
   return out
 }
+
+// ---------------------------------------------------------------------------
+// Repeats: small models love to reuse a line from the recent log ("I attacked my brother
+// Hendra." two years running). Lines are compared by meaning, not spelling: names and
+// relation words map to the person they mean, numbers and filler words drop out, words are
+// stemmed and violent/thieving/mean verbs fold into one action each.
 
 /** Letters and digits only, lowercased: two log lines with the same key read as a repeat. */
 export function lineKey(text: string): string {
@@ -308,14 +335,221 @@ export function lineKey(text: string): string {
     .trim()
 }
 
-/** Keys of the log lines written this year and in the `previousYears` years before it. */
-function recentLineKeys(g: GameState, previousYears: number): Set<string> {
-  const keys = new Set<string>()
-  const minAge = g.character.age - previousYears
-  for (let i = g.log.length - 1; i >= 0 && g.log[i].age >= minAge; i--) {
-    for (const e of g.log[i].entries) keys.add(lineKey(e.text))
+const STOPWORDS = new Set(
+  (
+    'i me my mine myself we us our you your he him his she her they them their it its ' +
+    'a an the this that these those some any one ' +
+    'and or but so then than too also again once more still even just really very finally almost ' +
+    'to of in on at for with from by about into onto over under up down out off around after before during while ' +
+    'was were is are be been being am had has have having do did does done got get gets getting went go goes gone ' +
+    'not no never ever all every each another other own same anymore ' +
+    'today year years time times day days week weeks month months'
+  ).split(' '),
+)
+
+/** Strong things you do *to* someone: the same one against the same person reads as a repeat. */
+const ACTION_WORDS: Record<string, string> = {
+  attack: 'attack', assault: 'attack', punch: 'attack', slap: 'attack', kick: 'attack', fight: 'attack', fought: 'attack',
+  fistfight: 'attack', brawl: 'attack', rumbl: 'attack', tackl: 'attack', smack: 'attack', strangl: 'attack', headbut: 'attack',
+  scuffl: 'attack', shov: 'attack',
+  steal: 'steal', stol: 'steal', stolen: 'steal', shoplift: 'steal', rob: 'steal', pickpocket: 'steal',
+  insult: 'insult', ridicul: 'insult', belittl: 'insult', humiliat: 'insult',
+  prank: 'prank',
+  argu: 'argue', argument: 'argue', quarrel: 'argue', bicker: 'argue', squabbl: 'argue', yel: 'argue',
+}
+/** Actions that, done to the same person again, read as a repeat (arguments happen; they fold into 'argue' for the word overlap only). */
+const STRONG_ACTIONS = new Set(['attack', 'steal', 'insult', 'prank'])
+
+function stem(word: string): string {
+  let w = word
+  if (w.length > 5 && w.endsWith('ing')) w = w.slice(0, -3)
+  else if (w.length > 4 && (w.endsWith('ied') || w.endsWith('ies'))) w = `${w.slice(0, -3)}y`
+  else if (w.length > 4 && w.endsWith('ed')) w = w.slice(0, -2)
+  else if (w.length > 4 && /(?:ss|sh|ch|x|z)es$/.test(w)) w = w.slice(0, -2)
+  else if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) w = w.slice(0, -1)
+  if (w.length > 3 && w.endsWith('e')) w = w.slice(0, -1)
+  if (w.length > 3 && /([^aeiou])\1$/.test(w)) w = w.slice(0, -1)
+  return w
+}
+
+/** Names and relation words → a token for the person they mean. */
+interface PersonIndex {
+  names: Map<string, string>
+  relations: Map<string, string>
+  ignore: Set<string>
+}
+
+const GENERIC_RELATION_WORDS = new Set(['kid', 'child', 'parent', 'partner', 'ex', 'enemy', 'lover'])
+
+function personIndex(g: GameState): PersonIndex {
+  const names = new Map<string, string>()
+  const clash = new Set<string>()
+  const ignore = new Set<string>()
+  for (const p of g.people) {
+    const first = normalizeName(p.firstName)
+    if (!first || first.includes(' ')) continue
+    if (names.has(first) && names.get(first) !== `p:${p.id}`) clash.add(first)
+    names.set(first, `p:${p.id}`)
+    if (p.lastName) ignore.add(normalizeName(p.lastName))
   }
+  for (const n of clash) names.set(n, `n:${n}`)
+  ignore.add(normalizeName(g.character.firstName))
+  ignore.add(normalizeName(g.character.lastName))
+  for (const n of names.keys()) ignore.delete(n)
+  const relations = new Map<string, string>()
+  for (const [word, spec] of Object.entries(RELATION_WORDS)) {
+    if (word.includes(' ') || GENERIC_RELATION_WORDS.has(word)) continue
+    const hits = g.people.filter((p) => p.alive && spec.rel.includes(p.relation) && (!spec.gender || p.gender === spec.gender))
+    relations.set(word, hits.length === 1 ? `p:${hits[0].id}` : `r:${spec.rel[0]}${spec.gender ? `:${spec.gender}` : ''}`)
+  }
+  return { names, relations, ignore }
+}
+
+export interface LineSignature {
+  key: string
+  tokens: Set<string>
+}
+
+/** The meaning of a log line as a set of tokens (see the section comment). */
+export function lineSignature(text: string, idx: PersonIndex | GameState): LineSignature {
+  const index = 'names' in idx ? idx : personIndex(idx)
+  const key = lineKey(text)
+  const words = normalizeName(
+    text
+      .replace(/\bbeat (?:up|the \w+ out of)\b/gi, 'attack')
+      .replace(/\b(?:fist|food|pillow|snowball|water balloon)\s+fight\b/gi, (m) => (/^fist/i.test(m) ? 'attack' : m.replace(/\s+fight$/i, ' play')))
+      .replace(/['’]s\b/g, '')
+      .replace(/(\p{L})['’](\p{L})/gu, '$1$2'),
+  )
+    .replace(/-/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+  const tokens = new Set<string>()
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    if (index.names.has(w)) {
+      tokens.add(index.names.get(w)!)
+      continue
+    }
+    const rel = index.relations.get(w) ?? index.relations.get(w.replace(/s$/, ''))
+    if (rel) {
+      // "my brother Hendra": the name already says who.
+      if (!index.names.has(words[i + 1] ?? '')) tokens.add(rel)
+      continue
+    }
+    if (STOPWORDS.has(w) || index.ignore.has(w) || /^\d/.test(w) || w.length < 2) continue
+    const st = stem(w)
+    tokens.add(ACTION_WORDS[w] ?? ACTION_WORDS[st] ?? st)
+  }
+  return { key, tokens }
+}
+
+function isPersonToken(t: string): boolean {
+  return t.startsWith('p:') || t.startsWith('r:') || t.startsWith('n:')
+}
+
+/**
+ * Do two lines say the same thing? Same text; or most of the same meaningful words (Jaccard
+ * ≥ 0.7); or (with `actionRule`) the same strong action against the same person.
+ */
+export function sameMoment(a: LineSignature, b: LineSignature, actionRule = true): boolean {
+  if (a.key && a.key === b.key) return true
+  let shared = 0
+  for (const t of a.tokens) if (b.tokens.has(t)) shared++
+  const union = a.tokens.size + b.tokens.size - shared
+  if (union > 0 && shared / union >= 0.7) return true
+  if (!actionRule) return false
+  for (const act of STRONG_ACTIONS) {
+    if (!a.tokens.has(act) || !b.tokens.has(act)) continue
+    for (const t of a.tokens) if (isPersonToken(t) && b.tokens.has(t)) return true
+  }
+  return false
+}
+
+/** True when two life-log lines say the same thing for this game's cast. */
+export function similarLines(g: GameState, a: string, b: string): boolean {
+  const idx = personIndex(g)
+  return sameMoment(lineSignature(a, idx), lineSignature(b, idx))
+}
+
+/** Years of life-log the narrator's flavor lines are checked against. */
+export const REPEAT_WINDOW_YEARS = 10
+
+function stripAge(memory: string): string {
+  return memory.replace(/^age\s*\d+\s*:\s*/i, '')
+}
+
+/** Signatures of the log lines of this year and the `years` before it (plus memories when asked). */
+function recentSignatures(g: GameState, years: number, idx: PersonIndex, withMemories = false): LineSignature[] {
+  const out: LineSignature[] = []
+  const age = g.character.age
+  for (let i = g.log.length - 1; i >= 0; i--) {
+    const year = g.log[i]
+    if (year.age > age) continue
+    if (year.age < age - years) break
+    for (const e of year.entries) out.push(lineSignature(e.text, idx))
+  }
+  if (withMemories) for (const m of g.character.memories.slice(-20)) out.push(lineSignature(stripAge(m), idx))
+  return out
+}
+
+/** Exact keys of every line ever logged in this life (cheap whole-life check). */
+function lifetimeKeys(g: GameState): Set<string> {
+  const keys = new Set<string>()
+  for (const year of g.log) for (const e of year.entries) keys.add(lineKey(e.text))
   return keys
+}
+
+/**
+ * Does an outcome's log line repeat the log? It nearly repeats a line from this year, or is
+ * word for word a line from the `years` before it. (Outcomes come from the player's choices,
+ * so doing the same thing again in a later year is news, not a repeat.)
+ */
+export function isRepeatLine(g: GameState, text: string, years = 0): boolean {
+  const idx = personIndex(g)
+  const sig = lineSignature(text, idx)
+  const age = g.character.age
+  for (let i = g.log.length - 1; i >= 0; i--) {
+    const year = g.log[i]
+    if (year.age > age) continue
+    if (year.age < age - years) break
+    for (const e of year.entries) {
+      if (year.age === age ? sameMoment(sig, lineSignature(e.text, idx), false) : lineKey(e.text) === sig.key) return true
+    }
+  }
+  return false
+}
+
+/** Does this memory repeat one the character already has? */
+export function isRepeatMemory(g: GameState, text: string): boolean {
+  const idx = personIndex(g)
+  const sig = lineSignature(stripAge(text), idx)
+  return g.character.memories.some((m) => sameMoment(sig, lineSignature(stripAge(m), idx)))
+}
+
+/**
+ * Flavor lines are small moments that happen *to* or around the character. Anything that
+ * changes their life (hurting someone, a crime, quitting, a breakup, a purchase, moving,
+ * a new job/partner/pet) only comes from the player's choices, so such lines are dropped.
+ */
+const BIG_ACTION_RE = new RegExp(
+  [
+    String.raw`\bI\s+(?:\w+\s+)?(?:attacked|assaulted|punched|slapped|kicked (?:my|him|her|them)|stabbed|strangled|beat up|mugged|robbed|burgled|shoplifted|stole(?! the show)|vandali[sz]ed|murdered|killed (?:my|him|her|a man|a woman|someone)|set fire)`,
+    String.raw`\bI\s+(?:\w+\s+)?(?:quit (?:my|the|school|college|university|work)|dropped out|broke up with|dumped (?:my (?:boyfriend|girlfriend|partner|husband|wife)|him|her)|divorced|proposed to|eloped|married|cheated on|started dating|asked \w+ out|moved (?:out|away|abroad|in with|into (?:a|an|my|our) (?:new )?(?:house|home|apartment|flat|place))|emigrated|ran away from home)`,
+    String.raw`\bI\s+(?:\w+\s+)?(?:bought|purchased|adopted|leased)\s+(?:a |an |my |our )?(?:(?:new|first|own|brand-new|used|second-hand|dream|little|tiny|fancy)\s+)*(?:house|home|car|apartment|flat|condo|mansion|villa|boat|yacht|motorcycle|scooter|business|company|shop|restaurant|land|farm|puppy|kitten|dog|cat|pet|baby|child|kid|parrot|rabbit|hamster|horse)\b(?!\s+(?:toy|food|bed|treat|collar|leash|tree|costume|sweater|calendar|mug))`,
+    String.raw`\bI\s+(?:\w+\s+)?(?:got|was|became) (?:married|engaged|divorced|arrested|expelled|suspended|hired|promoted|pregnant|someone pregnant|fired(?! up))`,
+    String.raw`\bI\s+(?:\w+\s+)?(?:got|started|landed|found) (?:a |my )?(?:new |first |part-time |summer )?job\b`,
+    String.raw`\bI\s+(?:\w+\s+)?(?:had|welcomed) (?:a|my first|another) (?:baby|child|son|daughter)\b`,
+    String.raw`\b(?:I|we)\b[^.!?]*\b(?:got|get) (?:into|in) (?:a |another |huge |big )?(?:fist ?)?fight\b`,
+  ].join('|'),
+  'i',
+)
+/** "I moved to Bandung." (a capitalized place: case matters, so it's separate). */
+const MOVED_TO_PLACE_RE = /\bI\s+(?:\w+\s+)?moved to (?:[A-Z]|a new (?:city|town|country|house|home|apartment))/
+
+/** True for a flavor line that claims a big, player-only action or a change of the game's state. */
+export function claimsBigAction(line: string): boolean {
+  return BIG_ACTION_RE.test(line) || MOVED_TO_PLACE_RE.test(line)
 }
 
 function toneOf(e: GameEffects): Tone {
@@ -327,6 +561,8 @@ function toneOf(e: GameEffects): Tone {
 interface OutcomeContext {
   title: string
   emoji?: string
+  /** How many past years the outcome's log line must not repeat (this year is always checked). */
+  lookbackYears?: number
 }
 
 /**
@@ -336,7 +572,7 @@ interface OutcomeContext {
  */
 function applyOutcome(draft: GameState, o: AiOutcome, ctx: OutcomeContext): void {
   if (!draft.character.alive) return
-  const eff = toGameEffects(draft, o.effects, o.log)
+  const eff = toGameEffects(draft, o.effects, o.log, ctx.lookbackYears ?? 0)
   const before = draft.queue.length
   notice(draft, o.title || ctx.title, o.text, { emoji: o.emoji || ctx.emoji || '✨', tone: toneOf(eff) })
   const popup = draft.queue[before]
@@ -347,9 +583,40 @@ function applyOutcome(draft: GameState, o: AiOutcome, ctx: OutcomeContext): void
 // ---------------------------------------------------------------------------
 // Year events
 
-function rememberEventTitle(draft: GameState, title: string): void {
+/** Remember an event shown this year (both the legacy title list and g.flags.eventMemory). */
+function rememberEvent(draft: GameState, memo: EventMemo): void {
   const prev = Array.isArray(draft.flags.aiRecentEvents) ? draft.flags.aiRecentEvents.filter((x): x is string => typeof x === 'string') : []
-  draft.flags.aiRecentEvents = [...prev, title].slice(-12)
+  draft.flags.aiRecentEvents = [...prev, memo.title].slice(-12)
+  const kept = eventMemory(draft).filter((m) => m.age <= draft.character.age)
+  draft.flags[EVENT_MEMORY_FLAG] = [...kept, memo].slice(-EVENT_MEMORY_MAX).map((m) => ({ ...m }))
+}
+
+/** Years an event title can't come back, and the same kind of event about the same person. */
+const EVENT_REPEAT_YEARS = 6
+const PERSON_REPEAT_YEARS = 5
+
+/**
+ * Would this AI event repeat a recent one? Same (or nearly the same) title within six years,
+ * or the same person within five years for the same theme or a title about the same thing.
+ */
+export function isRepeatEvent(g: GameState, title: string, person: Person | undefined, themeKey: string): boolean {
+  const age = g.character.age
+  const idx = personIndex(g)
+  const sig = lineSignature(title, idx)
+  const memo = eventMemory(g).filter((m) => m.age <= age && age - m.age < EVENT_REPEAT_YEARS)
+  for (const m of memo) {
+    const other = lineSignature(m.title, idx)
+    if (sameMoment(sig, other)) return true
+    if (!person || m.personId !== person.id || age - m.age >= PERSON_REPEAT_YEARS) continue
+    if (m.source === 'ai' && m.kind === themeKey) return true
+    for (const t of sig.tokens) if (!isPersonToken(t) && other.tokens.has(t)) return true
+  }
+  if (!Array.isArray(g.flags[EVENT_MEMORY_FLAG])) {
+    // Old saves only kept titles: check the last few.
+    const titles = Array.isArray(g.flags.aiRecentEvents) ? g.flags.aiRecentEvents.filter((x): x is string => typeof x === 'string').slice(-3) : []
+    if (titles.some((t) => sameMoment(sig, lineSignature(t, idx)))) return true
+  }
+  return false
 }
 
 const STAGE_EMOJI: Record<string, string> = {
@@ -365,26 +632,35 @@ const STAGE_EMOJI: Record<string, string> = {
 function applyYearEvents(draft: GameState, plan: YearPlan, result: AiYearEvents): void {
   consumeRolls(draft, plan.rolls)
   if (!draft.character.alive) return
-  // Small models often repeat themselves: skip lines already in this year's or last year's log.
-  const seen = recentLineKeys(draft, 1)
+  // Small models often repeat themselves (or copy the recent log): skip lines that say the
+  // same thing as anything logged in the last ten years, or exactly repeat any line of this
+  // life, lines where the character does something big the player never chose, and American
+  // scenes outside the US.
+  const idx = personIndex(draft)
+  const seen = recentSignatures(draft, REPEAT_WINDOW_YEARS, idx, true)
+  const lifetime = lifetimeKeys(draft)
   let logged = 0
   for (const line of result.log) {
-    const key = lineKey(line)
-    if (!key || seen.has(key)) continue
-    seen.add(key)
+    const sig = lineSignature(line, idx)
+    if (!sig.key || lifetime.has(sig.key) || claimsBigAction(line) || foreignToLocale(draft, line) || seen.some((s) => sameMoment(sig, s))) continue
+    seen.push(sig)
     log(draft, line, 'ai')
     count(draft, 'aiEvents')
     logged++
   }
   const ev = result.event
-  if (!ev) {
-    // Nothing new at all (every line was a repeat): use the offline library instead.
-    if (!logged && result.log.length) queueFallbackYearEvents(draft)
+  // Events happen with living people only (the model sometimes brings back the dead).
+  const found = ev ? resolvePerson(draft, ev.person) : undefined
+  const person = found?.alive ? found : undefined
+  const foreign = ev ? foreignToLocale(draft, [ev.title, ev.text, ...ev.choices.map((ch) => ch.label)].join(' \n ')) : false
+  if (!ev || foreign || isRepeatEvent(draft, ev.title, person, plan.themeKey)) {
+    // A rerun of a recent event (or prom night in a country without one): show one from the
+    // offline library instead. Nothing new at all (every line was a repeat): the offline
+    // library writes the year.
+    if (ev) queueFallbackYearEvents(draft, logged ? { flavor: false, event: 'always' } : { event: 'always' })
+    else if (!logged && result.log.length) queueFallbackYearEvents(draft)
     return
   }
-  // Events happen with living people only (the model sometimes brings back the dead).
-  const found = resolvePerson(draft, ev.person)
-  const person = found?.alive ? found : undefined
   const choices: ChoiceOption[] = ev.choices.slice(0, 4).map((ch, i) => ({ id: CHOICE_IDS[i], label: ch.label, ...(ch.emoji ? { emoji: ch.emoji } : {}) }))
   const stage = stageOf(draft)
   const modal: ChoiceModal = {
@@ -400,7 +676,7 @@ function applyYearEvents(draft: GameState, plan: YearPlan, result: AiYearEvents)
   }
   draft.queue.push(modal)
   count(draft, 'aiEvents')
-  rememberEventTitle(draft, ev.title)
+  rememberEvent(draft, { title: ev.title, age: draft.character.age, personId: person?.id ?? '', person: person?.firstName ?? '', kind: plan.themeKey, source: 'ai', gen: draft.generation })
 }
 
 async function runYearEvents(g: GameState, settings: Settings, signal: AbortSignal): Promise<Mutator> {
@@ -442,7 +718,7 @@ async function runResolveChoice(g: GameState, task: Extract<AiTask, { type: 'res
     },
     signal,
   )
-  return (draft) => applyOutcome(draft, outcome, { title: task.event.title, emoji: task.event.emoji })
+  return (draft) => applyOutcome(draft, outcome, { title: task.event.title, emoji: task.event.emoji, lookbackYears: 2 })
 }
 
 const TOO_TIRED = [
@@ -520,6 +796,27 @@ async function runInterview(g: GameState, task: Extract<AiTask, { type: 'intervi
   }
 }
 
+async function runScreening(g: GameState, task: Extract<AiTask, { type: 'screenApplication' }>, settings: Settings, signal: AbortSignal): Promise<Mutator> {
+  const app = task.app
+  const school = app.kind !== 'job'
+  const r = await chatJson(
+    settings,
+    {
+      system: narratorSystem(settings),
+      messages: [{ role: 'user', content: screenApplicationPrompt(g, app) }],
+      schemaName: school ? 'screen_admission' : 'screen_application',
+      schema: school ? SCHEMAS.screenAdmission : SCHEMAS.screen,
+      validate: validateScreening,
+    },
+    signal,
+  )
+  return (draft) => {
+    if (!draft.character.alive) return
+    const question = r.question ? { question: r.question.question, answers: shuffle(draft, r.question.answers) } : undefined
+    applyScreening(draft, app, { invite: r.invite, reason: r.reason, ...(question ? { question } : {}) })
+  }
+}
+
 async function runObituary(g: GameState, settings: Settings, signal: AbortSignal): Promise<Mutator> {
   const r = await chatJson(
     settings,
@@ -555,6 +852,8 @@ export async function runAiTask(g: GameState, task: AiTask, settings: Settings, 
         return await runCustomAction(g, task.text, settings, signal)
       case 'interview':
         return await runInterview(g, task, settings, signal)
+      case 'screenApplication':
+        return await runScreening(g, task, settings, signal)
       case 'obituary':
         return await runObituary(g, settings, signal)
     }
@@ -584,6 +883,9 @@ export function applyFallback(g: GameState, task: AiTask): void {
       return
     case 'interview':
       if (g.character.alive) presentInterview(g, task.job, fallbackInterviewQuestion(g, task.job))
+      return
+    case 'screenApplication':
+      if (g.character.alive) applyScreening(g, task.app, offlineScreen(g, task.app))
       return
     case 'obituary':
       g.obituary = fallbackObituary(g)

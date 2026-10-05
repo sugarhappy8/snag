@@ -1,7 +1,7 @@
 // Generating NPCs. Every module that adds someone to the player's life uses createPerson.
 import { clamp } from './core'
 import { bell, chance, pick, rand, randInt, uid } from './rng'
-import { randomFirstName, randomLastName } from './world'
+import { getCountry, randomFirstName, randomLastName } from './world'
 import type { GameState, Gender, Json, Person, RelationKind, StatKey } from './types'
 
 export const TRAITS = [
@@ -80,12 +80,34 @@ const ADULT_OCCUPATIONS = [
   'Unemployed',
 ]
 
-/** A plausible occupation label for an NPC of this age. */
-export function randomOccupation(g: GameState, age: number): string {
+/**
+ * Everyday work where most people earn a living in markets, workshops, fields and on the road
+ * rather than in offices (lower-income countries): the neighbors are tailors and moto-taxi
+ * drivers, not baristas and marketing managers.
+ */
+const LOCAL_TRADES = [
+  'Farmer',
+  'Market Vendor',
+  'Street Food Vendor',
+  'Tailor',
+  'Shopkeeper',
+  'Factory Worker',
+  'Motorcycle Taxi Driver',
+  'Civil Servant',
+  'Fisherman',
+  'Mechanic',
+  'Construction Worker',
+  'Teacher',
+]
+
+/** A plausible occupation label for an NPC of this age in a country (default: where the player lives). */
+export function randomOccupation(g: GameState, age: number, countryId: string = g.character.countryId): string {
   if (age < 5) return 'None'
   if (age < 18) return 'Student'
   if (age < 23 && chance(g, 0.5)) return 'University Student'
   if (age >= 67) return 'Retired'
+  const wealth = getCountry(countryId).wealth
+  if (wealth < 0.45 && chance(g, 0.6 - wealth)) return pick(g, LOCAL_TRADES)
   return pick(g, ADULT_OCCUPATIONS)
 }
 
@@ -125,7 +147,7 @@ export interface PersonOptions {
 export function createPerson(g: GameState, opts: PersonOptions): Person {
   const gender: Gender = opts.gender ?? (chance(g, 0.5) ? 'male' : 'female')
   const countryId = opts.countryId ?? g.character.countryId
-  const occupation = opts.occupation ?? (opts.relation === 'pet' ? 'Pet' : randomOccupation(g, opts.age))
+  const occupation = opts.occupation ?? (opts.relation === 'pet' ? 'Pet' : randomOccupation(g, opts.age, countryId))
   const traitCount = opts.relation === 'pet' ? 1 : 2
   const traits = opts.traits ?? pickDistinct(g, TRAITS, traitCount)
   const stat = (key: StatKey, lo: number, hi: number) => clamp(Math.round(opts.stats?.[key] ?? bell(g, lo, hi)))

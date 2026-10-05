@@ -1,0 +1,700 @@
+// Starting a company (industry → name → city → funding → registration) and buying one that is
+// for sale. Everything is priced in the player's local market: capital, fees, permits,
+// registration days, loan rates, and in some countries an official's "facilitation fee".
+import { seeded, yearKey } from '../assets'
+import { addHidden, addStat, count, formatMoney, fullName, log, notice, remember, scriptChoice, scriptInput, spend } from '../core'
+import { arrestPlayer } from '../crime'
+import { INDUSTRY_IDS, industryDemand, isIndustryLegal, localMarket, marketOf, type Industry } from '../data/markets'
+import { addLoan, baseLoanRate, creditScore, offeredRate } from '../finance'
+import { chance, rand, randInt, uid } from '../rng'
+import { defineScript } from '../scripts'
+import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import { getCountry, randomFirstName, randomLastName } from '../world'
+import { becomeCeo, installManager, managerCandidate } from './career'
+import { localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
+import { investorFirm } from './flavor'
+import { foundBlock } from './gate'
+import { industryDef, isIndustry, INDUSTRIES } from './industries'
+import { BIZ_VERSION, ceoJob, type BizState } from './state'
+import { clampN, cleanName, money, num, pct, rec, stars, str, toJson } from './util'
+
+// ---------------------------------------------------------------------------
+// Requirements
+
+/** Why the player can't run this industry here (not counting money), or null. */
+export function industryProblem(g: GameState, industry: Industry): string | null {
+  const c = g.character
+  const country = getCountry(c.countryId)
+  const def = industryDef(industry)
+  if (!isIndustryLegal(c.countryId, industry)) return `Not allowed in ${country.name}. ${marketOf(c.countryId).businessNote}`
+  if (def.needs === 'drinking' && c.age < country.drinkingAge) return `You must be ${country.drinkingAge} to hold a liquor license in ${country.name}.`
+  if (def.needs === 'driver' && !c.licenses.includes('driver')) return `You need a driver's license to run a ${def.label.toLowerCase()}.`
+  return null
+}
+
+/** Personal money needed with the cheapest funding route (investors cover 90% of the capital). */
+export function minimumOutlay(industry: Industry, countryId: string, city: string): number {
+  const cost = startupCost(industry, countryId, city)
+  return Math.round(cost.fee + cost.permits + cost.capital * 0.1)
+}
+
+export function demandStars(countryId: string, industry: Industry): number {
+  const d = industryDemand(countryId, industry)
+  return d >= 1.8 ? 5 : d >= 1.3 ? 4 : d >= 0.9 ? 3 : d >= 0.6 ? 2 : 1
+}
+
+function defaultName(g: GameState, industry: Industry): string {
+  const def = industryDef(industry)
+  const words = localMarket(g).nameWords
+  const s = seeded(yearKey(g, `biz.name.${industry}`))
+  const first = words.length && s.chance(0.7) ? s.pick(words) : g.character.lastName
+  return cleanName(`${first} ${s.pick(def.suffixes)}`, `${g.character.lastName} ${def.label}`)
+}
+
+function bankName(countryId: string, roll: number): string {
+  const words = marketOf(countryId).nameWords
+  const w = words.length ? words[Math.floor(clampN(roll, 0, 0.9999) * words.length)] : getCountry(countryId).demonym
+  return `${w} ${roll < 0.5 ? 'Bank' : 'Commercial Bank'}`
+}
+
+// ---------------------------------------------------------------------------
+// The founding flow
+
+type Funding = 'savings' | 'loan' | 'investors'
+
+interface Plan {
+  mode: 'found' | 'buy'
+  industry: Industry
+  name: string
+  city: string
+  countryId: string
+  funding: Funding
+  loan: number
+  rate: number
+  lender: string
+  investor: number
+  equity: number
+  investorName: string
+  extraFees: number
+  days: number
+  listingId: string
+  noLoan: boolean
+}
+
+function readPlan(data: Json | undefined): Plan | null {
+  const d = rec(data)
+  if (!d || !isIndustry(d.industry)) return null
+  const f = str(d.funding)
+  return {
+    mode: d.mode === 'buy' ? 'buy' : 'found',
+    industry: d.industry as Industry,
+    name: str(d.name),
+    city: str(d.city),
+    countryId: str(d.countryId),
+    funding: f === 'loan' || f === 'investors' ? f : 'savings',
+    loan: Math.max(0, num(d.loan)),
+    rate: Math.max(0, num(d.rate)),
+    lender: str(d.lender, 'the bank'),
+    investor: Math.max(0, num(d.investor)),
+    equity: clampN(num(d.equity), 0, 0.9),
+    investorName: str(d.investorName, 'investors'),
+    extraFees: Math.max(0, num(d.extraFees)),
+    days: Math.max(1, num(d.days, 7)),
+    listingId: str(d.listingId),
+    noLoan: d.noLoan === true,
+  }
+}
+
+function planJson(p: Plan): Json {
+  return toJson(p)
+}
+
+const NAME = defineScript('business.found.name', (g, choice, data) => {
+  const p = readPlan(data)
+  if (!p || foundBlock(g)) return
+  p.name = cleanName(choice, defaultName(g, p.industry))
+  askCity(g, p)
+})
+
+function askCity(g: GameState, p: Plan): void {
+  const country = getCountry(p.countryId)
+  const cities = country.cities.slice(0, 10)
+  const choices: ChoiceOption[] = cities.map((city, i) => ({
+    id: `city${i}`,
+    label: `${city} · ${money(startupCost(p.industry, p.countryId, city).total)}${i === 0 ? ' (big city: pricier, busier)' : ''}`,
+    emoji: '\u{1F3D9}\u{FE0F}',
+  }))
+  choices.push({ id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' })
+  scriptChoice(g, CITY, `Where Will ${p.name} Be?`, `Pick a city in ${country.name} for your first ${industryDef(p.industry).site}. Big cities charge more rent but bring more customers.`, choices, {
+    emoji: '\u{1F4CD}',
+    data: planJson(p),
+  })
+}
+
+const CITY = defineScript('business.found.city', (g, choice, data) => {
+  const p = readPlan(data)
+  if (!p || choice === 'cancel' || foundBlock(g)) return
+  const city = getCountry(p.countryId).cities[Number(choice.replace('city', ''))]
+  if (!city) return
+  p.city = city
+  askFunding(g, p)
+})
+
+function loanTerms(g: GameState, p: Plan, capital: number): { amount: number; rate: number } {
+  const m = marketOf(p.countryId)
+  const ltv = m.easeOfBusiness >= 60 ? 0.75 : 0.6
+  return { amount: Math.round(capital * ltv), rate: offeredRate(g, 'business') }
+}
+
+function investorTerms(g: GameState, p: Plan, capital: number): { amount: number; equity: number } {
+  const def = industryDef(p.industry)
+  const amount = Math.round(capital * 0.9)
+  const smarts = g.character.stats.smarts
+  const track = Math.min(0.1, num(g.counters.businessesSold) * 0.04)
+  const equity = clampN(0.2 + 0.9 * 0.45 * (1.3 - def.growth * 0.5) - (smarts - 50) / 400 - track, 0.15, 0.75)
+  return { amount, equity: Math.round(equity * 100) / 100 }
+}
+
+function askFunding(g: GameState, p: Plan): void {
+  const cost = startupCost(p.industry, p.countryId, p.city)
+  const fees = cost.fee + cost.permits
+  const m = marketOf(p.countryId)
+  const loan = loanTerms(g, p, cost.capital)
+  const inv = investorTerms(g, p, cost.capital)
+  const money0 = g.character.money
+  const choices: ChoiceOption[] = []
+  if (money0 >= cost.capital + fees) choices.push({ id: 'savings', label: `Pay it all myself (${money(cost.capital + fees)})`, emoji: '\u{1F4B0}' })
+  if (!p.noLoan && money0 >= cost.capital - loan.amount + fees)
+    choices.push({ id: 'loan', label: `Bank loan: ${money(loan.amount)} at ${pct(loan.rate, 1)} (you put in ${money(cost.capital - loan.amount + fees)})`, emoji: '\u{1F3E6}' })
+  if (money0 >= cost.capital - inv.amount + fees)
+    choices.push({ id: 'investors', label: `Investors: ${money(inv.amount)} for ${pct(inv.equity)} of the company`, emoji: '\u{1F4BC}' })
+  choices.push({ id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' })
+  const permits = cost.permits > 0 ? ` plus ${formatMoney(cost.permits)} in licences and permits` : ''
+  const days = cost.days > 30 ? ` Registration takes about ${cost.days} days, so you'll lose part of your first year.` : ` Registration takes about ${cost.days} ${cost.days === 1 ? 'day' : 'days'}.`
+  const text = `Opening ${p.name} in ${p.city} takes about ${formatMoney(cost.capital)} for the fit-out, equipment and opening stock, a ${formatMoney(cost.fee)} registration fee${permits}.${days} ${choices.length === 1 ? `You can't cover even a small share of that right now.` : 'How will you pay for it?'}`
+  scriptChoice(g, FUND, 'Funding', text + (m.interestRate >= 0.15 ? ` (Interest rates here are brutal: the central bank sits at ${pct(m.interestRate)}.)` : ''), choices, {
+    emoji: '\u{1F4B5}',
+    data: planJson({ ...p, days: cost.days }),
+  })
+}
+
+const FUND = defineScript('business.found.funding', (g, choice, data) => {
+  const p = readPlan(data)
+  if (!p || choice === 'cancel' || foundBlock(g)) return
+  const cost = startupCost(p.industry, p.countryId, p.city)
+  p.funding = choice === 'loan' || choice === 'investors' ? choice : 'savings'
+  if (p.funding === 'loan') {
+    const m = marketOf(p.countryId)
+    const score = creditScore(g)
+    const approve = clampN((score - 540) / 220 + (m.easeOfBusiness - 60) / 150 + (g.character.stats.smarts - 50) / 500, 0.05, 0.95)
+    const terms = loanTerms(g, p, cost.capital)
+    p.lender = bankName(p.countryId, rand(g))
+    if (!chance(g, approve)) {
+      notice(g, 'Loan Denied', `${p.lender} looked at your credit score (${score}) and your business plan and said no. ${score < 640 ? 'Your credit needs work.' : 'Banks here are cautious with new businesses.'}`, { emoji: '\u{1F3E6}', tone: 'bad' })
+      askFunding(g, { ...p, noLoan: true })
+      return
+    }
+    p.loan = terms.amount
+    p.rate = terms.rate
+  } else if (p.funding === 'investors') {
+    const terms = investorTerms(g, p, cost.capital)
+    p.investor = terms.amount
+    p.equity = terms.equity
+    p.investorName = investorFirm(p.countryId, rand(g), rand(g))
+  }
+  maybeAskBribe(g, p)
+})
+
+// In corrupt markets an official may hint at a "facilitation fee".
+function maybeAskBribe(g: GameState, p: Plan): void {
+  const m = marketOf(p.countryId)
+  if (m.corruption < 55 || !chance(g, ((m.corruption - 45) / 100) * 0.9)) {
+    askRunner(g, p)
+    return
+  }
+  const fee = niceAmount(Math.max(150, m.startupFee * (0.6 + rand(g)) * localEcon(p.industry, p.countryId, p.city).level * 2))
+  const clerk = `${randomFirstName(g, p.countryId, chance(g, 0.5) ? 'male' : 'female')} ${randomLastName(g, p.countryId)}`
+  scriptChoice(
+    g,
+    BRIBE,
+    'Paperwork Problems',
+    `At the registry office, ${clerk} studies your forms for a long time, sighs, and explains that ${p.name}'s permits "could take many months". Unless, of course, you'd like to pay a ${formatMoney(fee)} "facilitation fee". In cash.`,
+    [
+      { id: 'pay', label: `Pay the "fee" (${money(fee)})`, emoji: '\u{2709}\u{FE0F}' },
+      { id: 'refuse', label: 'Refuse and wait', emoji: '\u{23F3}' },
+      { id: 'report', label: 'Report them', emoji: '\u{1F46E}' },
+    ],
+    { emoji: '\u{1F5C3}\u{FE0F}', data: { ...(planJson(p) as Record<string, Json>), bribe: fee, clerk } },
+  )
+}
+
+const BRIBE = defineScript('business.found.bribe', (g, choice, data) => {
+  const p = readPlan(data)
+  const d = rec(data)
+  if (!p || !d || foundBlock(g)) return
+  const fee = num(d.bribe)
+  const clerk = str(d.clerk, 'the clerk')
+  if (choice === 'pay') {
+    p.extraFees += fee
+    p.days = Math.max(1, Math.round(p.days * 0.3))
+    addHidden(g, 'karma', -6)
+    if (chance(g, 0.04 + (100 - marketOf(p.countryId).corruption) / 600)) {
+      notice(g, 'Sting Operation', `${clerk} was wearing a wire. Anti-corruption investigators were very interested in your envelope.`, { emoji: '\u{1F575}\u{FE0F}', tone: 'bad' })
+      arrestPlayer(g, 'Bribery', 2, { evidence: 0.75, noResist: true, context: `You were caught bribing ${clerk} at the company registry.` })
+      return
+    }
+    notice(g, 'Fast-Tracked', `The envelope disappeared and your permits appeared, stamped, within the week. Funny how that works.`, { emoji: '\u{1F4DD}' })
+  } else if (choice === 'report') {
+    addHidden(g, 'karma', 6)
+    if (chance(g, 0.5)) {
+      notice(g, 'Reported', `You reported ${clerk}. To your surprise, they were suspended and your paperwork went through on schedule.`, { emoji: '\u{1F46E}', tone: 'good' })
+    } else {
+      p.days += randInt(g, 30, 90)
+      p.extraFees += Math.round(marketOf(p.countryId).startupFee * 0.5)
+      notice(g, 'Reported', `You reported ${clerk}. Nothing happened to them, but your file was "misplaced" and had to be resubmitted, with new fees.`, { emoji: '\u{1F5C3}\u{FE0F}', tone: 'bad' })
+    }
+  } else {
+    p.days += randInt(g, 45, 120)
+    p.extraFees += Math.round(marketOf(p.countryId).startupFee * 0.5)
+    notice(g, 'The Slow Lane', `You politely declined. Your application went to the bottom of a very tall pile, and a few "missing stamps" later cost extra fees.`, { emoji: '\u{23F3}' })
+  }
+  askRunner(g, p)
+})
+
+function askRunner(g: GameState, p: Plan): void {
+  const job = g.character.job
+  if (!job) {
+    finalize(g, p, true)
+    return
+  }
+  const other = ceoJob(g)
+  const text = other
+    ? `You already run ${other.company}. Who will run ${p.name} day to day?`
+    : `You work as ${job.title}${job.company ? ` at ${job.company}` : ''}. Who will run ${p.name} day to day?`
+  scriptChoice(
+    g,
+    RUNNER,
+    'Who Runs It?',
+    text,
+    [
+      { id: 'me', label: other ? `Me (${other.company} gets a manager)` : `Me (quit my job as ${job.title})`, emoji: '\u{1F454}' },
+      { id: 'manager', label: 'Hire a general manager', emoji: '\u{1F9D1}\u{200D}\u{1F4BC}' },
+    ],
+    { emoji: '\u{1F4BC}', data: planJson(p) },
+  )
+}
+
+const RUNNER = defineScript('business.found.runner', (g, choice, data) => {
+  const p = readPlan(data)
+  if (!p || foundBlock(g)) return
+  finalize(g, p, choice === 'me')
+})
+
+/** A fresh BizState for a new company. */
+export function newBiz(g: GameState, industry: Industry, countryId: string, city: string, opts: Partial<BizState> = {}): BizState {
+  const e = localEcon(industry, countryId, city)
+  const c = g.character
+  const b: BizState = {
+    v: BIZ_VERSION,
+    industry,
+    countryId,
+    city,
+    founded: g.year,
+    founderName: fullName(c),
+    acquired: false,
+    share: 1,
+    invested: 0,
+    cash: 0,
+    debt: 0,
+    debtRate: baseLoanRate(countryId, 'business'),
+    employees: industryDef(industry).staff,
+    wageLevel: 1,
+    morale: 70,
+    staff: [],
+    quality: 50,
+    brand: Math.round(clampN(15 + c.hidden.fame / 4, 0, 60)),
+    price: e.goingPrice,
+    production: 0,
+    inventory: 0,
+    marketingLevel: 1,
+    campaignBoost: 0,
+    products: [],
+    outlets: [{ countryId, city, count: 1, opened: g.year }],
+    history: [],
+    last: null,
+    valuation: 0,
+    public: false,
+    sharesOut: 0,
+    sharePrice: 0,
+    exchange: '',
+    ipoYear: 0,
+    ceo: 'owner',
+    manager: null,
+    ownerSalary: 0,
+    supplier: 'standard',
+    insured: false,
+    cooked: 0,
+    pressure: 0,
+    costShock: 1,
+    demandShock: 1,
+    capacityLoss: 0,
+    openFraction: 1,
+    yearCosts: 0,
+    yearIncome: 0,
+    raiseYear: 0,
+    lastEvent: 0,
+    loanId: '',
+    slump: 0,
+    ...opts,
+  }
+  return b
+}
+
+/** Plan production for the coming year at the current price. */
+export function initialProduction(g: GameState, b: BizState): number {
+  const plan = planFor(g, b, g.year, { cycle: () => 1 })
+  return Math.round(clampN(plan.demand, 0, maxProduction(g, b)))
+}
+
+function businessAsset(g: GameState, name: string, b: BizState, purchasePrice: number): Asset {
+  const def = industryDef(b.industry)
+  const a: Asset = {
+    id: uid(g, 'biz'),
+    kind: 'business',
+    name,
+    emoji: def.emoji,
+    purchasePrice: Math.max(0, Math.round(purchasePrice)),
+    value: 0,
+    condition: 100,
+    purchasedAge: g.character.age,
+    upkeep: 0,
+    details: b as unknown as Record<string, Json>,
+  }
+  return a
+}
+
+function finalize(g: GameState, p: Plan, runIt: boolean): void {
+  if (p.mode === 'buy') {
+    finalizePurchase(g, p, runIt)
+    return
+  }
+  const c = g.character
+  const def = industryDef(p.industry)
+  const cost = startupCost(p.industry, p.countryId, p.city)
+  const fees = cost.fee + cost.permits + p.extraFees
+  const outside = p.funding === 'loan' ? p.loan : p.funding === 'investors' ? p.investor : 0
+  const personal = Math.max(0, cost.capital - outside) + fees
+  if (!spend(g, personal)) {
+    notice(g, "Can't Afford It", `You need ${formatMoney(personal)} of your own money to open ${p.name}, and you have ${formatMoney(c.money)}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
+  let loanId = ''
+  if (p.funding === 'loan' && p.loan > 0) {
+    loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 7 }).id
+  }
+  const b = newBiz(g, p.industry, p.countryId, p.city, {
+    share: p.funding === 'investors' ? Math.round((1 - p.equity) * 100) / 100 : 1,
+    invested: personal,
+    cash: Math.round(cost.capital * 0.2),
+    openFraction: openFractionFor(p.days),
+    loanId,
+    quality: Math.round(clampN(45 + (c.stats.smarts - 50) / 8, 30, 65)),
+  })
+  b.production = initialProduction(g, b)
+  b.valuation = Math.max(valuationOf(b), Math.round(cost.capital * 0.8))
+  const a = businessAsset(g, p.name, b, personal)
+  g.assets.push(a)
+  refreshValue(a, b)
+  count(g, 'businessesFounded')
+  let quit: string | null = null
+  if (runIt) quit = becomeCeo(g, a, b, 'Founder & CEO')
+  else installManager(g, b, managerCandidate(g, b))
+  addStat(g, 'happiness', 8)
+  const country = getCountry(p.countryId)
+  const funding =
+    p.funding === 'loan'
+      ? ` ${p.lender} lent you ${formatMoney(p.loan)} at ${pct(p.rate, 1)} over 7 years (you're personally on the hook).`
+      : p.funding === 'investors'
+        ? ` ${p.investorName} put in ${formatMoney(p.investor)} for ${pct(p.equity)} of the company.`
+        : ''
+  const open = b.openFraction < 0.95 ? ` Paperwork in ${country.name} took about ${p.days} days, so you'll only trade for part of this first year.` : ''
+  const run = runIt
+    ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.`
+    : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`
+  const text = `${p.name} is officially registered in ${country.name}! Your first ${def.site} is opening in ${p.city}. You put in ${formatMoney(personal)} of your own money, including ${formatMoney(fees)} in fees and permits.${funding}${open}${run} Every year you'll get an Annual Report to set prices and production.`
+  log(g, `I founded ${p.name}, a ${def.label.toLowerCase()} in ${p.city}.`, 'good')
+  remember(g, `Founded ${p.name} (${def.label.toLowerCase()}) in ${p.city}, ${country.name}.`)
+  notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good', ai: { when: 'full', facts: text } })
+}
+
+// ---------------------------------------------------------------------------
+// Start a Business menu
+
+function industryRow(industry: Industry): MenuAction {
+  const def = INDUSTRIES[industry]
+  return {
+    type: 'action',
+    id: `biz.start.${industry}`,
+    label: def.label,
+    emoji: def.emoji,
+    subtitle: (g) => {
+      const c = g.character
+      const city = getCountry(c.countryId).cities.includes(c.city) ? c.city : getCountry(c.countryId).cities[0]
+      if (!isIndustryLegal(c.countryId, industry)) return 'Not allowed here'
+      const cost = startupCost(industry, c.countryId, city)
+      const md = def.needs === 'medical' && !c.education.degrees.some((d) => d.kind === 'md') ? ' · no MD: doctors cost extra' : ''
+      return `${stars(demandStars(c.countryId, industry))} local demand · from ${money(cost.total)}${md}`
+    },
+    disabledReason: (g) => {
+      const block = foundBlock(g)
+      if (block) return block
+      const problem = industryProblem(g, industry)
+      if (problem) return problem
+      const c = g.character
+      const need = minimumOutlay(industry, c.countryId, c.city)
+      if (c.money < need) return `You need at least ${formatMoney(need)} of your own (10% of the startup cost plus fees) before investors will even take a meeting.`
+      return null
+    },
+    run: (g) => {
+      const c = g.character
+      const p: Plan = {
+        mode: 'found',
+        industry,
+        name: '',
+        city: '',
+        countryId: c.countryId,
+        funding: 'savings',
+        loan: 0,
+        rate: 0,
+        lender: '',
+        investor: 0,
+        equity: 0,
+        investorName: '',
+        extraFees: 0,
+        days: 7,
+        listingId: '',
+        noLoan: false,
+      }
+      scriptInput(g, {
+        title: `Name Your ${def.label}`,
+        emoji: def.emoji,
+        text: `${def.blurb} What will you call it?`,
+        input: 'text',
+        placeholder: defaultName(g, industry),
+        defaultValue: defaultName(g, industry),
+        scriptId: NAME,
+        data: planJson(p),
+      })
+    },
+  }
+}
+
+export const startBusinessMenu: MenuGroup = {
+  type: 'menu',
+  id: 'biz.start',
+  label: 'Start a Business',
+  emoji: '\u{1F680}',
+  subtitle: (g) => `Register a company in ${getCountry(g.character.countryId).name}`,
+  visible: (g) => g.character.alive && !g.character.prison,
+  disabledReason: (g) => foundBlock(g),
+  header: (g) => {
+    const m = localMarket(g)
+    const country = getCountry(g.character.countryId)
+    return [
+      `Doing business in ${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, registration in about ${m.startupDays} ${m.startupDays === 1 ? 'day' : 'days'} for ${formatMoney(m.startupFee)}, business loans from ${pct(offeredRate(g, 'business'), 1)}.`,
+      m.businessNote,
+      `You have ${formatMoney(g.character.money)}.`,
+    ].join('\n')
+  },
+  children: (): MenuNode[] => INDUSTRY_IDS.map(industryRow),
+}
+
+// ---------------------------------------------------------------------------
+// Buying a business that is for sale
+
+interface ForSale {
+  id: string
+  name: string
+  biz: BizState
+  price: number
+  profit: number
+  revenue: number
+  years: number
+}
+
+/** This year's businesses for sale in the player's country (stable within a year, no RNG use). */
+export function listingsForSale(g: GameState): ForSale[] {
+  const c = g.character
+  const country = getCountry(c.countryId)
+  const s = seeded(yearKey(g, 'biz.forSale'))
+  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i))
+  const out: ForSale[] = []
+  const bought = Array.isArray(g.flags['biz.bought']) ? (g.flags['biz.bought'] as Json[]) : []
+  const words = marketOf(c.countryId).nameWords
+  for (let i = 0; i < 3 && legal.length; i++) {
+    const industry = s.weighted(legal, (x) => industryDemand(c.countryId, x) / Math.sqrt(Math.max(1, INDUSTRIES[x].capital / 100_000)))
+    const def = industryDef(industry)
+    const city = s.pick(country.cities)
+    const years = s.int(2, 18)
+    const outlets = 1 + (s.chance(0.35) ? s.int(1, 3) : 0)
+    const b = newBiz(g, industry, c.countryId, city, {
+      founded: g.year - years,
+      founderName: `${s.pick(['The', 'A'])} previous owner`,
+      acquired: true,
+      quality: s.int(35, 80),
+      brand: s.int(15, 65),
+      morale: s.int(35, 85),
+      outlets: [{ countryId: c.countryId, city, count: outlets, opened: g.year - years }],
+      ceo: 'manager',
+      manager: { firstName: 'Interim', lastName: 'Manager', gender: 'female', skill: s.int(40, 70), salary: 0, since: g.year },
+    })
+    b.production = Math.round(planFor(g, b, g.year - 1, { calm: true }).demand)
+    const clone = JSON.parse(JSON.stringify(b)) as BizState
+    const stmt = simulateYear(g, clone, g.year - 1, 0, 1).stmt
+    clone.history = [{ year: stmt.year, revenue: stmt.revenue, profit: stmt.net, tax: stmt.corpTax, units: stmt.sold, price: stmt.price, staff: stmt.employees, valuation: 0, outlets }]
+    clone.cash = Math.max(0, Math.round(stmt.revenue * 0.05))
+    const value = Math.max(valuationOf(clone), 10_000)
+    const id = `${g.year}:${i}:${industry}`
+    if (bought.includes(id)) continue
+    const name = `${words.length && s.chance(0.6) ? s.pick(words) : randomLastNameSeeded(s.next())} ${s.pick(def.suffixes)}`
+    out.push({ id, name: cleanName(name, def.label), biz: clone, price: niceAmount(value * s.float(1, 1.25)), profit: stmt.net, revenue: stmt.revenue, years })
+  }
+  return out
+}
+
+const SURNAMES = ['Grant', 'Novak', 'Silva', 'Okafor', 'Tanaka', 'Moreau', 'Rossi', 'Khan', 'Larsen', 'Haddad', 'Kowalski', 'Mendez']
+function randomLastNameSeeded(roll: number): string {
+  return SURNAMES[Math.floor(clampN(roll, 0, 0.9999) * SURNAMES.length)]
+}
+
+const BUY = defineScript('business.buy.funding', (g, choice, data) => {
+  const p = readPlan(data)
+  if (!p || choice === 'cancel' || foundBlock(g)) return
+  const listing = listingsForSale(g).find((l) => l.id === p.listingId)
+  if (!listing) {
+    notice(g, 'Already Sold', 'Someone else bought that business first.', { emoji: '\u{1F937}' })
+    return
+  }
+  p.funding = choice === 'loan' ? 'loan' : 'savings'
+  if (p.funding === 'loan') {
+    const score = creditScore(g)
+    const m = marketOf(p.countryId)
+    const approve = clampN((score - 540) / 220 + (m.easeOfBusiness - 60) / 150 + 0.1, 0.05, 0.95)
+    p.lender = bankName(p.countryId, rand(g))
+    if (!chance(g, approve)) {
+      notice(g, 'Loan Denied', `${p.lender} turned down the acquisition loan. Your credit score is ${score}.`, { emoji: '\u{1F3E6}', tone: 'bad' })
+      return
+    }
+    p.loan = Math.round(listing.price * 0.65)
+    p.rate = offeredRate(g, 'business')
+  }
+  askRunner(g, p)
+})
+
+function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
+  const listing = listingsForSale(g).find((l) => l.id === p.listingId)
+  if (!listing) return
+  const fee = Math.round(marketOf(p.countryId).startupFee * 0.5)
+  const personal = listing.price - (p.funding === 'loan' ? p.loan : 0) + fee
+  if (!spend(g, personal)) {
+    notice(g, "Can't Afford It", `You need ${formatMoney(personal)} to close the deal.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
+  let loanId = ''
+  if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 8 }).id
+  const b = listing.biz
+  b.invested = personal
+  b.loanId = loanId
+  b.founderName = b.founderName || 'a previous owner'
+  b.manager = null
+  b.ceo = 'owner'
+  b.ownerSalary = 0
+  b.valuation = valuationOf(b)
+  const a = businessAsset(g, listing.name, b, personal)
+  g.assets.push(a)
+  refreshValue(a, b)
+  g.flags['biz.bought'] = [...(Array.isArray(g.flags['biz.bought']) ? (g.flags['biz.bought'] as Json[]).filter((x) => typeof x === 'string' && x.startsWith(`${g.year}:`)) : []), listing.id]
+  count(g, 'businessesAcquired')
+  let quit: string | null = null
+  if (runIt) quit = becomeCeo(g, a, b, 'Owner & CEO')
+  else installManager(g, b, managerCandidate(g, b))
+  addStat(g, 'happiness', 6)
+  const def = industryDef(b.industry)
+  const text = `You bought ${listing.name}, a ${listing.years}-year-old ${def.label.toLowerCase()} in ${b.city}, for ${formatMoney(listing.price)}${p.funding === 'loan' ? ` (${p.lender} financed ${formatMoney(p.loan)})` : ''}. ${runIt ? `You're the new Owner & CEO${quit ? `; you quit your job as ${quit}` : ''}.` : 'A general manager runs it for you.'}`
+  log(g, `I bought ${listing.name}.`, 'good')
+  remember(g, `Bought ${listing.name} (${def.label.toLowerCase()}) in ${b.city}.`)
+  notice(g, 'Deal Closed!', text, { emoji: def.emoji, tone: 'good' })
+}
+
+function listingRow(l: ForSale): MenuAction {
+  const def = industryDef(l.biz.industry)
+  return {
+    type: 'action',
+    id: `biz.buy.${l.id}`,
+    label: l.name,
+    emoji: def.emoji,
+    subtitle: `${def.label} · ${l.biz.city} · ${l.years} yrs old · ${money(l.price)} · ${l.profit >= 0 ? `${money(l.profit)} profit` : `${money(-l.profit)} loss`} last year`,
+    disabledReason: (g) => {
+      const block = foundBlock(g)
+      if (block) return block
+      const problem = industryProblem(g, l.biz.industry)
+      if (problem) return problem
+      const need = Math.round(l.price * 0.35)
+      if (g.character.money < need) return `You need at least ${formatMoney(need)} (a 35% down payment) to make an offer.`
+      return null
+    },
+    run: (g) => {
+      const c = g.character
+      const listing = listingsForSale(g).find((x) => x.id === l.id)
+      if (!listing) return
+      const p: Plan = {
+        mode: 'buy',
+        industry: listing.biz.industry,
+        name: listing.name,
+        city: listing.biz.city,
+        countryId: c.countryId,
+        funding: 'savings',
+        loan: 0,
+        rate: 0,
+        lender: '',
+        investor: 0,
+        equity: 0,
+        investorName: '',
+        extraFees: 0,
+        days: 1,
+        listingId: listing.id,
+        noLoan: false,
+      }
+      const choices: ChoiceOption[] = []
+      if (c.money >= listing.price) choices.push({ id: 'savings', label: `Pay cash (${money(listing.price)})`, emoji: '\u{1F4B0}' })
+      if (c.money >= listing.price * 0.35) choices.push({ id: 'loan', label: `Acquisition loan for 65% at ~${pct(offeredRate(g, 'business'), 1)}`, emoji: '\u{1F3E6}' })
+      choices.push({ id: 'cancel', label: 'Walk away', emoji: '\u{2716}\u{FE0F}' })
+      const s = listing.biz
+      scriptChoice(
+        g,
+        BUY,
+        `Buy ${listing.name}?`,
+        `${listing.name} is a ${def.label.toLowerCase()} in ${s.city} with ${s.outlets[0]?.count ?? 1} ${(s.outlets[0]?.count ?? 1) === 1 ? def.site : def.sitePlural}. Last year: ${money(listing.revenue)} in sales and ${listing.profit >= 0 ? `${money(listing.profit)} profit` : `a ${money(-listing.profit)} loss`}. Quality ${s.quality}%, brand ${s.brand}%, staff morale ${s.morale}%. Asking price: ${formatMoney(listing.price)}.`,
+        choices,
+        { emoji: def.emoji, data: planJson(p) },
+      )
+    },
+  }
+}
+
+export const buyBusinessMenu: MenuGroup = {
+  type: 'menu',
+  id: 'biz.buy',
+  label: 'Buy a Business',
+  emoji: '\u{1F3F7}\u{FE0F}',
+  subtitle: 'Companies for sale near you',
+  visible: (g) => g.character.alive && !g.character.prison,
+  disabledReason: (g) => foundBlock(g),
+  header: (g) => `Established businesses for sale in ${getCountry(g.character.countryId).name} this year. Buying one skips the startup risk, but you pay for the goodwill.`,
+  children: (g) => {
+    const list = listingsForSale(g)
+    if (list.length === 0) return [{ type: 'info', id: 'biz.buy.none', text: 'Nothing for sale right now. Check back next year.', emoji: '\u{1F937}' }]
+    return list.map(listingRow)
+  },
+}
+

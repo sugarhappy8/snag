@@ -167,7 +167,7 @@ const BUDGET_TAG = ['(they advertise on bus benches)', '(the office is above a l
 
 export function lawFirms(g: GameState, kind: GrievanceKind): Firm[] {
   const big = kind === 'police' || kind === 'surgeon' || kind === 'employer'
-  const fees = big ? [2_500, 12_000, 45_000] : [750, 4_000, 15_000]
+  const fees = (big ? [2_500, 12_000, 45_000] : [750, 4_000, 15_000]).map((f) => (g.character.countryId === 'us' ? f : Math.round(f * 0.4)))
   const suffixes = stablePick(g, 'lawFirmSuffix', FIRM_SUFFIX, 3)
   return ([0, 1, 2] as const).map((tier) => {
     const a = stableName(g, `lawyer.${tier}.a`)
@@ -179,7 +179,9 @@ export function lawFirms(g: GameState, kind: GrievanceKind): Firm[] {
 
 function damageOptions(g: GameState, kind: GrievanceKind): number[] {
   const scale = priceLevel(g)
-  return DAMAGES[kind].map((d) => niceRound(d * scale))
+  // Only American courts hand out jackpot verdicts; elsewhere judges award modest damages.
+  const court = g.character.countryId === 'us' ? 1 : 0.2
+  return DAMAGES[kind].map((d) => niceRound(d * scale * court))
 }
 
 export function winChance(g: GameState, d: Defendant, firm: Firm, amountIndex: number): number {
@@ -282,7 +284,7 @@ const AMOUNT = defineScript('act.lawsuit.amount', (g, choice, data) => {
     log(g, `I sued ${d.name} and won ${money(amount)}!`, 'good')
     const opener = pick(g, [
       `${firm.name} delivered a closing argument so good the stenographer cried.`,
-      `The jury deliberated for under an hour.`,
+      g.character.countryId === 'us' ? `The jury deliberated for under an hour.` : `The judge ruled in your favor before lunch.`,
       `${firm.name} buried the other side in paperwork.`,
       `The judge looked at the evidence and sighed loudly at the defense.`,
     ])
@@ -294,8 +296,8 @@ const AMOUNT = defineScript('act.lawsuit.amount', (g, choice, data) => {
   log(g, `I sued ${d.name} and lost.`, 'bad')
   const why =
     idx >= 3
-      ? pick(g, ['The jury thought you were being greedy.', 'Asking for that much made the jury roll their eyes.'])
-      : pick(g, ["The jury didn't buy it.", 'The judge ruled there was not enough evidence.', `${firm.name} forgot to file a key document. Twice.`])
+      ? pick(g, g.character.countryId === 'us' ? ['The jury thought you were being greedy.', 'Asking for that much made the jury roll their eyes.'] : ['The judge thought you were being greedy.', 'Asking for that much made the judge laugh out loud.'])
+      : pick(g, [g.character.countryId === 'us' ? "The jury didn't buy it." : "The judge didn't buy it.", 'The judge ruled there was not enough evidence.', `${firm.name} forgot to file a key document. Twice.`])
   result(g, 'You Lost', `You sued ${vs}. ${why} You're out the ${money(firm.fee)} you paid ${firm.name}.\n\n${reaction(g, d, false)}`, '\u{1F928}', 'bad')
 })
 

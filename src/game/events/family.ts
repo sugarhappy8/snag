@@ -5,6 +5,7 @@ import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
 import {
+  country,
   anyOf,
   ch,
   defineEvents,
@@ -21,6 +22,8 @@ import {
   yourRel,
   type Ctx,
 } from './helpers'
+import { hasSnow, locale } from '../data/locales'
+import { feastHoliday } from './adult'
 
 const PET_ACTS = [
   { act: 'chewed up your favorite shoes', species: ['Dog'] },
@@ -283,7 +286,7 @@ export const FAMILY_EVENTS = defineEvents([
       const k = anyOf(g, kids(g, 18, 70))
       if (!k) return null
       const amt = Math.round(dollars(g, 500, 8000) / 100) * 100
-      const why = pick(g, ['a down payment on a house', 'their student loans', 'a new car', 'their wedding', 'a business idea involving artisanal ice', 'rent this month'])
+      const why = pick(g, ['a down payment on a house', country(g).freeUniversity ? 'their university books' : 'their student loans', 'a new car', 'their wedding', 'a business idea involving artisanal ice', 'rent this month'])
       return {
         text: `Your ${relWord(k)}, ${k.firstName}, is asking for ${money(amt)} to help with ${why}. What will you do?`,
         choices: [ch('give', 'Give it to them'), ch('loan', 'Make it a loan'), ch('no', 'Tell them to figure it out')],
@@ -303,7 +306,7 @@ export const FAMILY_EVENTS = defineEvents([
         if (g.character.money < amt) return say(g, x, "Can't swing it", `You don't have ${money(amt)} to lend.`, null, {})
         const back = chance(g, 0.5)
         if (x.p && !back) x.p.money += amt
-        say(g, x, back ? 'Paid back' : 'Family discount', back ? `${nm(x)} paid back every cent, with interest! You raised them right.` : `${nm(x)} "forgot" about the loan. You'll bring it up at Thanksgiving.`, `I lent my child, ${nm(x)}, ${money(amt)}.`, back ? { rel: 10 } : { money: -amt, rel: 4 }, back ? 'good' : 'neutral')
+        say(g, x, back ? 'Paid back' : 'Family discount', back ? `${nm(x)} paid back every cent, with interest! You raised them right.` : `${nm(x)} "forgot" about the loan. You'll bring it up at ${feastHoliday(g)}.`, `I lent my child, ${nm(x)}, ${money(amt)}.`, back ? { rel: 10 } : { money: -amt, rel: 4 }, back ? 'good' : 'neutral')
       },
       no: (g: GameState, x: Ctx) => say(g, x, 'Tough love', `You told ${nm(x)} to figure it out. They said "fine" in a tone that was not fine.`, `I refused to give my child, ${nm(x)}, money.`, { rel: -10 }),
     },
@@ -459,7 +462,7 @@ export const FAMILY_EVENTS = defineEvents([
       const p = anyOf(g, peopleBy(g, ['grandparent']))
       if (!p) return null
       return {
-        text: `${uc(yourRel(p))}, is telling you the story about walking uphill both ways to school in the snow. For the ninth time. What will you do?`,
+        text: `${uc(yourRel(p))}, is telling you the story about walking uphill both ways to school ${hasSnow(g) ? 'in the snow' : locale(g).climate === 'tropical' ? 'in the monsoon rain' : 'in the blazing sun'}. For the ninth time. What will you do?`,
         choices: [ch('listen', 'Listen like it\'s the first time'), ch('sleep', 'Fall asleep'), ch('money', 'Ask for money'), ch('correct', 'Point out the plot holes')],
         person: p,
       }
@@ -546,7 +549,7 @@ export const FAMILY_EVENTS = defineEvents([
       },
       wait: (g: GameState, x: Ctx) => {
         const ok = chance(g, 0.6)
-        say(g, x, ok ? 'Homecoming' : 'Gone', ok ? `${nm(x)} wandered back home two days later like nothing happened.` : `${nm(x)} never came back. You leave the porch light on, just in case.`, ok ? `My pet, ${nm(x)}, came home on its own.` : `My pet, ${nm(x)}, ran away and never came back.`, ok ? { happiness: 4 } : { happiness: -12 }, ok ? 'good' : 'bad')
+        say(g, x, ok ? 'Welcome Home' : 'Gone', ok ? `${nm(x)} wandered back home two days later like nothing happened.` : `${nm(x)} never came back. You leave the porch light on, just in case.`, ok ? `My pet, ${nm(x)}, came home on its own.` : `My pet, ${nm(x)}, ran away and never came back.`, ok ? { happiness: 4 } : { happiness: -12 }, ok ? 'good' : 'bad')
         if (!ok && x.p) g.people = g.people.filter((p) => p.id !== x.p?.id)
       },
     },

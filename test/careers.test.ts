@@ -239,7 +239,8 @@ describe('occupation menu', () => {
     const con = adult(1)
     con.character.prison = { name: 'State Pen', security: 'medium', crime: 'Fraud', sentenceYears: 3, yearsServed: 0, respect: 20, appealed: false, escapeAttempts: 0 }
     const conNodes = occupationMenu.children(con)
-    expect(conNodes).toHaveLength(1)
+    // Prisoners only see the prison notice and their CV (read-only).
+    expect(conNodes.map((n) => n.id)).toEqual(['occupation.prison', 'cv.menu'])
     expect(conNodes[0].type).toBe('info')
 
     const g = adult(1)

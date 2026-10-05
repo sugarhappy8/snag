@@ -6,7 +6,8 @@ import { addHidden, addMoney, addRelationship, addStat, count, currentPartner, l
 import { notePerson } from '../people'
 import { chance, pick, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
-import { COUNTRIES } from '../world'
+import { COUNTRIES, countryLabel, getCountry } from '../world'
+import { localeOf } from '../data/locales'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import {
   addCondition,
@@ -33,6 +34,8 @@ interface Destination {
   type: DestType
   tier: 1 | 2 | 3
   cruise?: boolean
+  /** A trip inside the player's own country (from the local getaways and landmarks). */
+  domestic?: boolean
 }
 
 const D = (name: string, country: string, emoji: string, type: DestType, tier: 1 | 2 | 3): Destination => ({
@@ -174,7 +177,7 @@ const CABINS: TravelClass[] = [
 const TRIPS_PER_YEAR = 3
 
 function basePrice(g: GameState, dest: Destination): number {
-  const usd = dest.cruise ? 1800 : dest.tier === 1 ? 600 : dest.tier === 2 ? 1500 : 3200
+  const usd = dest.cruise ? 1800 : dest.domestic ? 350 : dest.tier === 1 ? 600 : dest.tier === 2 ? 1500 : 3200
   return localPrice(g, usd)
 }
 
@@ -186,8 +189,32 @@ function classesFor(dest: Destination): TravelClass[] {
   return dest.cruise ? CABINS : FLIGHT_CLASSES
 }
 
-function findDest(id: unknown): Destination | undefined {
-  return [...DESTINATIONS, ...CRUISES].find((d) => d.id === id)
+// Trips at home: the getaways and landmarks people in the player's country actually go to
+// (Bali and Lake Toba from Jakarta, the Black Forest from Berlin, Ooty and Goa from Mumbai).
+
+const BEACHY = /beach|island|isla|ilha|coast|bay|lagoon|riviera|shore|playa|praia|bali|lombok|gili|boracay|phuket|zanzibar|cove|keys|sea\b/i
+const SNOWY = /\bski|snow|glacier/i
+const WILD = /lake|mountain|mount|national park|valley|forest|falls|canyon|desert|safari|hills?\b|volcano|gorge|reserve|jungle|river|fjord|highlands|plateau/i
+
+function slug(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function domesticDestinations(g: GameState): Destination[] {
+  const c = g.character
+  if (c.countryId === 'us') return []
+  const country = getCountry(c.countryId)
+  const loc = localeOf(c.countryId)
+  const names = [...new Set([...loc.getaways, ...loc.landmarks.slice(0, 4)])].filter((n) => n !== c.city && !n.includes('{'))
+  return names.map((name) => {
+    const type: DestType = BEACHY.test(name) ? 'beach' : SNOWY.test(name) ? 'snow' : WILD.test(name) ? 'nature' : 'city'
+    const emoji = type === 'beach' ? '\u{1F3D6}\u{FE0F}' : type === 'snow' ? '\u{1F3BF}' : type === 'nature' ? '\u{1F3DE}\u{FE0F}' : '\u{1F3D9}\u{FE0F}'
+    return { id: `home-${c.countryId}-${slug(name)}`, name, country: country.name, emoji, type, tier: 1, domestic: true }
+  })
+}
+
+function findDest(id: unknown, g?: GameState): Destination | undefined {
+  return [...DESTINATIONS, ...CRUISES, ...(g ? domesticDestinations(g) : [])].find((d) => d.id === id)
 }
 
 /** Minor children who live with the player (they come on family trips). */
@@ -237,7 +264,7 @@ function chooseClass(g: GameState, dest: Destination, cls: TravelClass): void {
 const WHO = defineScript('act.vacation.who', (g, choice, data) => {
   if (choice === 'cancel') return
   const d = (data ?? {}) as Record<string, Json>
-  const dest = findDest(d.dest)
+  const dest = findDest(d.dest, g)
   if (!dest) return
   const cls = classesFor(dest).find((c) => c.id === d.cls) ?? classesFor(dest)[0]
   if (noTripsLeft(g)) return
@@ -403,7 +430,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
   const c = g.character
   count(g, 'vacations')
   pushFlagString(g, 'placesVisited', dest.name)
-  if (!dest.cruise) pushFlagString(g, 'countriesVisited', dest.country)
+  if (!dest.cruise && !dest.domestic) pushFlagString(g, 'countriesVisited', dest.country)
   if (dest.id === 'winnipeg-canada') g.flags.visitedWinnipeg = true
 
   const who = companions.length === 0 ? '' : companions.length === 1 ? ` with ${companions[0].firstName}` : ' with my family'
@@ -581,10 +608,10 @@ function destinationMenu(dest: Destination): MenuGroup {
   return {
     type: 'menu',
     id: `vacation.${dest.id}`,
-    label: dest.name,
+    label: dest.name[0].toUpperCase() + dest.name.slice(1),
     emoji: dest.emoji,
     subtitle: (g) => `From ${money(perPerson(g, dest, classesFor(dest)[0]))} per person`,
-    header: () => (dest.cruise ? 'Pick a cabin.' : 'How do you want to fly?'),
+    header: () => (dest.cruise ? 'Pick a cabin.' : dest.domestic ? 'How do you want to get there?' : 'How do you want to fly?'),
     children: (g): MenuNode[] =>
       classesFor(dest).map(
         (cls): MenuAction => ({
@@ -607,10 +634,16 @@ export const vacationMenu: MenuGroup = {
   subtitle: 'Go on a vacation',
   disabledReason: (g) => gate(g, { minAge: 18 }),
   header: (g) => `You have ${usesLeft(g, 'act.vacation', TRIPS_PER_YEAR)} trips left this year. Destinations change every year.`,
-  children: (g): MenuNode[] => [
-    { type: 'heading', id: 'vacation.trips', label: 'Vacations' },
-    ...stablePick(g, 'vacations', DESTINATIONS, 8).map(destinationMenu),
+  children: (g): MenuNode[] => {
+    const home = domesticDestinations(g)
+    const country = getCountry(g.character.countryId)
+    const abroad = DESTINATIONS.filter((d) => !home.length || d.country !== country.name)
+    return [
+    ...(home.length ? [{ type: 'heading' as const, id: 'vacation.home', label: `Around ${countryLabel(country)}` }, ...stablePick(g, 'vacations.home', home, 4).map(destinationMenu)] : []),
+    { type: 'heading', id: 'vacation.trips', label: home.length ? 'Abroad' : 'Vacations' },
+    ...stablePick(g, 'vacations', abroad, 8).map(destinationMenu),
     { type: 'heading', id: 'vacation.cruises', label: 'Cruises' },
     ...stablePick(g, 'cruises', CRUISES, 4).map(destinationMenu),
-  ],
+    ]
+  },
 }

@@ -4,6 +4,7 @@
 import { addHidden, addRelationship, addStat, count, earnIncome, log, parents, remember, scriptChoice, spend, spouse, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { localStreetName } from '../data/locales'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
 
@@ -616,7 +617,7 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
       break
     }
     default:
-      text = win ? 'You rode a llama down Main Street. It became the most-shared video of the week.' : 'The llama spat on you, then a news crew, then the mayor.'
+      text = win ? `You rode a llama down ${g.character.countryId === 'us' ? 'Main Street' : localStreetName(g)}. It became the most-shared video of the week.` : 'The llama spat on you, then a news crew, then the mayor.'
   }
   addFame(g, win ? randInt(g, 3, 6) : -randInt(g, 1, 3))
   addStat(g, 'happiness', win ? 6 : -5)
@@ -633,7 +634,7 @@ const stuntAction: MenuAction = {
   disabledReason: needFame(FAMOUS),
   run: (g) => {
     if (!useYearAction(g, 'fame.stunt', 1)) return tooBusy(g, 'pulled a publicity stunt')
-    scriptChoice(g, stuntScript, 'Publicity Stunt', 'How will you get the world talking about you?', STUNTS, { emoji: '\u{1F4E2}' })
+    scriptChoice(g, stuntScript, 'Publicity Stunt', 'How will you get the world talking about you?', STUNTS.map((s) => (s.id === 'llama' && g.character.countryId !== 'us' ? { ...s, label: 'Ride a llama through the city center' } : s)), { emoji: '\u{1F4E2}' })
   },
 }
 
@@ -758,8 +759,31 @@ const fanScript = defineScript('special.fame.fan', (g, choice) => {
   say(g, 'Fan Encounter', text, '\u{1F929}')
 })
 
+/** Which celebrity scene this year: the same kind (paparazzi again?) waits at least 3 years. */
+function scenarioRoll(g: GameState): number {
+  const bands: [string, number, number][] = [['paparazzi', 0, 0.35], ['stalker', 0.35, 0.55], ['feud', 0.55, 0.8], ['fan', 0.8, 1]]
+  const age = g.character.age
+  const fresh = bands.filter(([k]) => {
+    const last = g.flags[`fame.scene.${k}`]
+    return !(typeof last === 'number' && last <= age && age - last < 5)
+  })
+  const pool = fresh.length ? fresh : bands
+  const total = pool.reduce((sum, b) => sum + (b[2] - b[1]), 0)
+  let r = rand(g) * total
+  for (const [k, lo, hi] of pool) {
+    if (r < hi - lo) {
+      g.flags[`fame.scene.${k}`] = age
+      return lo + r
+    }
+    r -= hi - lo
+  }
+  const [k, lo] = pool[pool.length - 1]
+  g.flags[`fame.scene.${k}`] = age
+  return lo
+}
+
 function celebrityScenario(g: GameState): void {
-  const roll = rand(g)
+  const roll = scenarioRoll(g)
   if (roll < 0.35) {
     scriptChoice(
       g,

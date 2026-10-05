@@ -19,6 +19,7 @@ import {
 import { notePerson } from '../people'
 import { chance, pick, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
+import { isAlcoholic, locale } from '../data/locales'
 import { randomFirstName, randomLastName } from '../world'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import {
@@ -42,13 +43,21 @@ import {
 
 const NIGHT_MAX = 4
 
+/** Where alcohol is banned or off-limits to most people: nights out happen in cafés and shisha lounges. */
+const DRY = new Set(['sa', 'kw', 'ir', 'af', 'pk', 'bd'])
+
+export function dryCountry(g: GameState): boolean {
+  return DRY.has(g.character.countryId)
+}
+
 export function nightlifeAge(g: GameState): number {
+  if (dryCountry(g)) return 18
   return Math.max(18, countryOf(g).drinkingAge ?? 18)
 }
 
 function nightGate(g: GameState): string | null {
   const age = nightlifeAge(g)
-  return gate(g, { minAge: age, minAgeText: `You must be at least ${age} to go out drinking in ${countryOf(g).name}.` })
+  return gate(g, { minAge: age, minAgeText: dryCountry(g) ? `You must be at least ${age} to go out at night in ${countryOf(g).name}.` : `You must be at least ${age} to go out drinking in ${countryOf(g).name}.` })
 }
 
 function tooHungover(g: GameState): boolean {
@@ -148,7 +157,7 @@ function drinkAlcohol(g: GameState, drink: string, venue: string): void {
   }
   const addicted = rollAddiction(g, 'Alcoholism', 0.06)
   if (chance(g, 0.07)) {
-    const place = pick(g, BLACKOUT_PLACES)
+    const place = pick(g, g.character.countryId === 'us' ? BLACKOUT_PLACES : BLACKOUT_PLACES.map((p) => (p.includes('diner') ? 'at a 24-hour food stall holding a skewer' : p)))
     addStat(g, 'health', -2)
     log(g, `I blacked out at ${venue} and woke up ${place}.`, 'bad')
     result(g, 'Blackout', `You had one ${drink.toLowerCase()} too many and blacked out. You woke up ${place} with no memory of how you got there.${addicted ? '\n\nYou realize you may be drinking a little too often.' : ''}`, '\u{1F635}\u{200D}\u{1F4AB}', 'bad')
@@ -497,7 +506,7 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
     (e) => {
       switch (e) {
         case 'drink':
-          return kind === 'bar' ? 0 : 22
+          return kind === 'bar' || dryCountry(g) ? 0 : 22
         case 'drugs':
           return kind === 'bar' ? 5 : kind === 'party' ? 16 : 14
         case 'confront':
@@ -525,7 +534,8 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
   const his = s.gender === 'male' ? 'his' : 'her'
   switch (event) {
     case 'drink': {
-      const drink = pick(g, DRINKS)
+      const local = locale(g).drinks.filter(isAlcoholic)
+      const drink = local.length && chance(g, 0.5) ? pick(g, local) : pick(g, DRINKS)
       scriptChoice(g, DRINK_OFFER, 'Free Drink', `${intro}\n\n${s.name}, a friendly stranger, offered to buy you a ${drink.toLowerCase()}.`, [
         { id: 'accept', label: 'Accept the drink', emoji: '\u{1F378}' },
         { id: 'decline', label: 'Decline', emoji: '\u{1F645}' },
@@ -699,10 +709,50 @@ const BAR_ORDER = defineScript('act.night.barOrder', (g, choice, data) => {
   nightEvent(g, 'bar', venue, intro)
 })
 
-function goToBar(g: GameState): void {
+/** A local grown-up venue (an izakaya, a boteco, a kafana) or a classic bar name. */
+function barName(g: GameState): string {
+  if (g.character.countryId === 'us') return pick(g, BAR_NAMES)
+  const local = locale(g).hangouts.filter((h) => /\b(?:bars?|pubs?|cantina|boteco|kneipe|kafana|izakaya|tavern|beer garden|heuriger|brewery|shebeen|rumshop|bodega|taberna|wine)\b/i.test(h))
+  return local.length && chance(g, 0.6) ? pick(g, local) : pick(g, BAR_NAMES)
+}
+
+const CAFE_ORDER = defineScript('act.night.cafeOrder', (g, choice, data) => {
+  const d = (data ?? {}) as Record<string, Json>
+  const venue = typeof d.venue === 'string' ? d.venue : 'the café'
+  const what = choice === 'shisha' ? 'a shisha pipe' : typeof d[choice] === 'string' ? String(d[choice]) : 'a cup of tea'
+  const price = localPrice(g, choice === 'shisha' ? 12 : 4)
+  if (g.character.money < price) {
+    result(g, 'Short on Cash', "You checked your wallet and ordered a glass of water instead. The waiter was very understanding.", '\u{1F4B3}', 'bad')
+    return
+  }
+  addMoney(g, -price)
+  addStat(g, 'happiness', randInt(g, 1, 4))
+  if (choice === 'shisha') addStat(g, 'health', -1)
+  nightEvent(g, 'bar', venue, `You ordered ${what} and settled in to people-watch.`)
+})
+
+function goToCafe(g: GameState): void {
   if (tooHungover(g)) return
   count(g, 'nightlife')
-  const venue = pick(g, BAR_NAMES)
+  const venue = pick(g, ['a late-night café', 'a shisha lounge', 'a rooftop café', 'a dessert café'])
+  const soft = [...new Set(locale(g).drinks.filter((x) => !isAlcoholic(x)))].slice(0, 2)
+  const drinks = soft.length ? soft : ['tea', 'coffee']
+  scriptChoice(g, CAFE_ORDER, uc(venue.replace(/^a /, '')), `You found a table at ${venue}. The waiter asks what you're having.`, [
+    ...drinks.map((dr, i) => ({ id: `d${i}`, label: `${uc(dr)} (${money(localPrice(g, 4))})`, emoji: '\u{2615}' })),
+    { id: 'juice', label: `Fresh juice (${money(localPrice(g, 4))})`, emoji: '\u{1F379}' },
+    { id: 'shisha', label: `Shisha (${money(localPrice(g, 12))})`, emoji: '\u{1F4A8}' },
+  ], { emoji: '\u{2615}', data: { venue, d0: drinks[0] ?? 'tea', d1: drinks[1] ?? 'coffee', juice: 'a fresh juice' } })
+}
+
+function uc(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
+
+function goToBar(g: GameState): void {
+  if (dryCountry(g)) return goToCafe(g)
+  if (tooHungover(g)) return
+  count(g, 'nightlife')
+  const venue = barName(g)
   scriptChoice(g, BAR_ORDER, venue, `You grabbed a stool at ${venue}. The bartender asks what you're having.`, [
     { id: 'beer', label: `Beer (${money(localPrice(g, 8))})`, emoji: '\u{1F37A}' },
     { id: 'wine', label: `Wine (${money(localPrice(g, 8))})`, emoji: '\u{1F377}' },
@@ -761,9 +811,9 @@ export const nightlifeMenu: MenuGroup = {
     nodes.push({
       type: 'action',
       id: 'night.bar',
-      label: 'Go to a Bar',
-      emoji: '\u{1F37B}',
-      subtitle: 'Grab a drink at a local bar',
+      label: dryCountry(g) ? 'Go to a Café' : 'Go to a Bar',
+      emoji: dryCountry(g) ? '\u{2615}' : '\u{1F37B}',
+      subtitle: dryCountry(g) ? 'Tea, juice and shisha until late' : 'Grab a drink at a local bar',
       run: goToBar,
     })
     nodes.push({

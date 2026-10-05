@@ -20,6 +20,7 @@ import {
 import { chance, pick, randInt, uid } from '../rng'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, gate, localPrice, money, result, usesLeft } from './common'
+import { randomFirstName } from '../world'
 
 // ---------------------------------------------------------------------------
 // Surrender
@@ -71,7 +72,7 @@ function surrender(g: GameState): void {
     const from = typeof fu.prison === 'string' ? fu.prison : 'prison'
     log(g, 'I turned myself in to the police.', 'neutral')
     remember(g, `Turned myself in after escaping from ${from}.`)
-    arrestPlayer(g, 'Felony Escape', 3, {
+    arrestPlayer(g, c.countryId === 'us' ? 'Felony Escape' : 'Prison Escape', 3, {
       evidence: 1,
       noResist: true,
       context: pick(g, [
@@ -334,10 +335,11 @@ function enterSweepstakes(g: GameState): void {
     return
   }
   log(g, 'I entered a sweepstakes and lost.', 'neutral')
+  const winner = g.character.countryId === 'us' ? 'Gary' : randomFirstName(g, g.character.countryId, 'male')
   result(g, 'Sweepstakes', pick(g, [
     'You entered the sweepstakes. A few weeks later you got an email: "Unfortunately..." You stopped reading there.',
     'You did not win the sweepstakes. You did, however, get signed up for 14 newsletters.',
-    'Your sweepstakes entry lost. The winner was someone named Gary. You hate Gary now.',
+    `Your sweepstakes entry lost. The winner was someone named ${winner}. You hate ${winner} now.`,
     'No luck this time. The odds were roughly the same as getting struck by lightning while being bitten by a shark.',
   ]), '\u{1F39F}\u{FE0F}')
 }

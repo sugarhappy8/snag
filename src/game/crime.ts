@@ -33,7 +33,8 @@ import { notePerson } from './people'
 import { addPrisonTime, fugitiveInfo, FUGITIVE_FLAG, moneyScale, releaseFromPrison, sendToPrison, yearlyPrison } from './prison'
 import { chance, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
-import { COUNTRIES, getCountry, NAME_POOLS, randomCity, randomFirstName, randomLastName, type NameRegion } from './world'
+import { localStreetName } from './data/locales'
+import { COUNTRIES, getCountry, NAME_POOLS, randomCity, randomFirstName, randomLastName, trialBy, type NameRegion, type TrialBy } from './world'
 import type {
   ChoiceOption,
   GameState,
@@ -485,6 +486,53 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
   toLawyer(g, t)
 })
 
+// ---------------------------------------------------------------------------
+// Local justice: juries where juries decide, judges where judges do, the feds only in the US.
+
+/** The free lawyer the court gives you: a public defender in the US, legal aid elsewhere. */
+function defenderTitle(g: GameState): string {
+  return g.character.countryId === 'us' ? 'Public Defender' : 'Court-Appointed Lawyer'
+}
+
+/** Who leans on a mob associate to flip: the feds in the US, organized-crime detectives elsewhere. */
+function feds(g: GameState): { agents: string; title: string; informant: string; them: string } {
+  return g.character.countryId === 'us'
+    ? { agents: 'Federal agents', title: 'Agent', informant: 'federal informant', them: 'the feds' }
+    : { agents: 'Organized-crime detectives', title: 'Inspector', informant: 'police informant', them: 'the police' }
+}
+
+/** "Felony Escape" is American legalese; elsewhere you just escaped. */
+function escapeCharge(g: GameState): string {
+  return g.character.countryId === 'us' ? 'Felony Escape' : 'Prison Escape'
+}
+
+/** Who reads the verdict: 'The jury', 'The court' (judges with lay judges) or 'The judge'. */
+function deciders(by: TrialBy): string {
+  return by === 'jury' ? 'The jury' : by === 'lay' ? 'The court' : 'The judge'
+}
+
+function guiltyLines(by: TrialBy, charges: string, term: string, where: string): string[] {
+  if (by === 'jury') {
+    return [
+      `The jury found you GUILTY of ${charges}. The judge sentenced you to ${term} at ${where}.`,
+      `GUILTY. The judge banged the gavel and sentenced you to ${term} at ${where}.`,
+      `After two hours of deliberation, the jury came back: guilty on all counts. You've been sentenced to ${term} at ${where}.`,
+    ]
+  }
+  if (by === 'lay') {
+    return [
+      `The court found you GUILTY of ${charges}. The presiding judge sentenced you to ${term} at ${where}.`,
+      `After two hours of deliberation, the judges and lay judges came back: guilty on all counts. You've been sentenced to ${term} at ${where}.`,
+      `GUILTY. Even the lay judge who kept smiling at you voted to convict. You've been sentenced to ${term} at ${where}.`,
+    ]
+  }
+  return [
+    `The judge found you GUILTY of ${charges} and sentenced you to ${term} at ${where}.`,
+    `GUILTY. The judge didn't even look up from the case file before sentencing you to ${term} at ${where}.`,
+    `After a trial that lasted all of one afternoon, the judge found you guilty on all counts. You've been sentenced to ${term} at ${where}.`,
+  ]
+}
+
 function makeLawyers(g: GameState, sev: number): LawyerOption[] {
   const c = g.character
   const mult = [0.5, 0.8, 1.2, 2, 3][sev - 1] ?? 1
@@ -493,7 +541,7 @@ function makeLawyers(g: GameState, sev: number): LawyerOption[] {
     return `${randomFirstName(g, c.countryId, gender)} ${randomLastName(g, c.countryId)}`
   }
   return [
-    { id: 'pd', name: 'Public Defender', fee: 0, quality: 0.1, blurb: 'overworked and has 80 other cases' },
+    { id: 'pd', name: defenderTitle(g), fee: 0, quality: 0.1, blurb: 'overworked and has 80 other cases' },
     { id: 'cheap', name: lawyerName(), fee: cash(g, randInt(g, 1500, 4000) * mult), quality: 0.28, blurb: 'cheap, eager, and advertises on bus benches' },
     { id: 'mid', name: lawyerName(), fee: cash(g, randInt(g, 8000, 20000) * mult), quality: 0.45, blurb: 'a solid track record' },
     { id: 'top', name: lawyerName(), fee: cash(g, randInt(g, 40000, 90000) * mult), quality: 0.65, blurb: 'the best money can buy' },
@@ -506,17 +554,18 @@ function toLawyer(g: GameState, t: TrialData): void {
   if (fam && !fam.informant && !t.fedsAsked && c.age >= 18 && t.severity < 5) {
     t.fedsAsked = true
     const agent = strangerName(g, chance(g, 0.5) ? 'male' : 'female')
-    scriptChoice(g, FEDS_SCRIPT, 'A Deal', `Federal agents pulled you into an interrogation room. They know you're with the ${fam.name}. Agent ${agent} slides a deal across the table: wear a wire and gather evidence on the family, and these charges disappear.`, [
+    const f = feds(g)
+    scriptChoice(g, FEDS_SCRIPT, 'A Deal', `${f.agents} pulled you into an interrogation room. They know you're with the ${fam.name}. ${f.title} ${agent} slides a deal across the table: wear a wire and gather evidence on the family, and these charges disappear.`, [
       { id: 'rat', label: 'Become an informant', emoji: '\u{1F400}' },
       { id: 'refuse', label: '"I don\'t know any family."', emoji: '\u{1F910}' },
     ], { emoji: '\u{1F575}\u{FE0F}', data: trialJson(t) })
     return
   }
   t.lawyers = makeLawyers(g, t.severity)
-  const lines = t.lawyers.map((l) => (l.fee > 0 ? `${l.name}: ${l.blurb}.` : `A public defender: ${l.blurb}.`))
+  const lines = t.lawyers.map((l) => (l.fee > 0 ? `${l.name}: ${l.blurb}.` : `A ${defenderTitle(g).toLowerCase()}: ${l.blurb}.`))
   const choices: ChoiceOption[] = t.lawyers.map((l) => ({
     id: l.id,
-    label: l.fee > 0 ? `${l.name} (${formatMoney(l.fee)})` : 'Public Defender (free)',
+    label: l.fee > 0 ? `${l.name} (${formatMoney(l.fee)})` : `${defenderTitle(g)} (free)`,
     emoji: l.id === 'top' ? '\u{1F48E}' : l.id === 'mid' ? '\u{1F4BC}' : l.id === 'cheap' ? '\u{1F4C4}' : '\u{1F9D1}\u{200D}\u{2696}\u{FE0F}',
   }))
   const juvie = c.age < 18 ? ' Since you are a minor, your case will go to juvenile court.' : ''
@@ -537,9 +586,10 @@ defineScript(FEDS_SCRIPT, (g, choice, data) => {
       const r = c.criminalRecord[i]
       if (r) r.convicted = false
     }
-    log(g, 'I agreed to become a federal informant.', 'event')
-    remember(g, `Secretly became a federal informant against the ${fam.name}.`)
-    outcome(g, 'Wired', `The charges quietly vanished. You now work for the feds. Gather enough evidence on the ${fam.name} within 5 years, and don't get caught. Rats don't retire in this business.`, '\u{1F400}', 'event')
+    const f = feds(g)
+    log(g, `I agreed to become a ${f.informant}.`, 'event')
+    remember(g, `Secretly became a ${f.informant} against the ${fam.name}.`)
+    outcome(g, 'Wired', `The charges quietly vanished. You now work for ${f.them}. Gather enough evidence on the ${fam.name} within 5 years, and don't get caught. Rats don't retire in this business.`, '\u{1F400}', 'event')
     return
   }
   toLawyer(g, t)
@@ -549,11 +599,11 @@ defineScript(LAWYER_SCRIPT, (g, choice, data) => {
   const t = asTrial(data)
   const c = g.character
   if (!t || !c.alive || c.prison) return
-  const pd = t.lawyers.find((l) => l.id === 'pd') ?? { id: 'pd', name: 'Public Defender', fee: 0, quality: 0.1, blurb: '' }
+  const pd = t.lawyers.find((l) => l.id === 'pd') ?? { id: 'pd', name: defenderTitle(g), fee: 0, quality: 0.1, blurb: '' }
   let lawyer = t.lawyers.find((l) => l.id === choice) ?? pd
   if (lawyer.fee > 0) {
     if (!spend(g, lawyer.fee)) {
-      notice(g, "Can't Afford It", `You can't afford ${lawyer.name}'s ${formatMoney(lawyer.fee)} retainer. The court appointed a public defender instead.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+      notice(g, "Can't Afford It", `You can't afford ${lawyer.name}'s ${formatMoney(lawyer.fee)} retainer. The court appointed a ${defenderTitle(g).toLowerCase()} instead.`, { emoji: '\u{1F4B8}', tone: 'bad' })
       lawyer = pd
     } else {
       log(g, `I hired ${lawyer.name} as my lawyer for ${formatMoney(lawyer.fee)}.`, 'neutral')
@@ -565,7 +615,7 @@ defineScript(LAWYER_SCRIPT, (g, choice, data) => {
     const expected = expectedSentence(g, t)
     t.plea = Math.max(1, Math.round(expected * (0.35 + rand(g) * 0.2) * (1 - lawyer.quality * 0.3)))
     const where = c.age < 18 ? ' in juvenile detention' : ''
-    const who = lawyer.id === 'pd' ? 'Your public defender' : lawyer.name
+    const who = lawyer.id === 'pd' ? `Your ${defenderTitle(g).toLowerCase()}` : lawyer.name
     const advice = t.evidence >= 0.7 ? `${who} whispers that you should take it.` : `${who} thinks you can win at trial.`
     scriptChoice(g, PLEA_SCRIPT, 'Plea Deal', `The prosecutor offered you a plea deal: plead guilty to ${t.crime.toLowerCase()} and serve ${years(t.plea)}${where}. ${advice}`, [
       { id: 'accept', label: 'Take the plea deal', emoji: '\u{1F91D}' },
@@ -677,15 +727,15 @@ function acquit(g: GameState, t: TrialData): void {
   const fu = fugitiveInfo(g)
   if (fu) {
     const add = randInt(g, 2, 4)
-    c.criminalRecord.push({ crime: 'Felony Escape', age: c.age, caught: true, convicted: true, sentenceYears: add })
+    c.criminalRecord.push({ crime: escapeCharge(g), age: c.age, caught: true, convicted: true, sentenceYears: add })
     count(g, 'convictions')
     const at = g.queue.length
     sendToPrison(g, fu.crime, fu.yearsLeft >= 99 ? 0 : fu.yearsLeft + add, { security: 'maximum', life: fu.yearsLeft >= 99 && !fu.deathRow, deathRow: fu.deathRow, quiet: true, severity: 4 })
     const where = c.prison?.name ?? 'prison'
-    insertNoticeAt(g, at, 'Not Guilty... But', `${who}The jury found you NOT GUILTY! Unfortunately, the bailiff recognized you as an escaped convict from ${fu.prison}. You were sent straight to ${where}.`, '\u{2696}\u{FE0F}', 'bad')
+    insertNoticeAt(g, at, 'Not Guilty... But', `${who}${deciders(trialBy(c.countryId, t.severity))} found you NOT GUILTY! Unfortunately, the bailiff recognized you as an escaped convict from ${fu.prison}. You were sent straight to ${where}.`, '\u{2696}\u{FE0F}', 'bad')
     return
   }
-  outcome(g, 'Not Guilty!', `${who}The jury found you NOT GUILTY of ${chargeList(t)}! You walked out of the courthouse a free ${c.age < 18 ? 'kid' : 'person'}.${sue}`, '\u{1F389}', 'good')
+  outcome(g, 'Not Guilty!', `${who}${deciders(trialBy(c.countryId, t.severity))} found you NOT GUILTY of ${chargeList(t)}! You walked out of the courthouse a free ${c.age < 18 ? 'kid' : 'person'}.${sue}`, '\u{1F389}', 'good')
 }
 
 function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
@@ -700,7 +750,7 @@ function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
     const add = randInt(g, 2, 4)
     if (fu.yearsLeft >= 99) life = true
     else total += fu.yearsLeft + add
-    c.criminalRecord.push({ crime: 'Felony Escape', age: c.age, caught: true, convicted: true, sentenceYears: add })
+    c.criminalRecord.push({ crime: escapeCharge(g), age: c.age, caught: true, convicted: true, sentenceYears: add })
     notes.push(`Your escape from ${fu.prison} caught up with you too.`)
   }
   const fam = crimeFamily(g)
@@ -747,11 +797,7 @@ function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
       : `${years(total)} in ${s.juvenile ? 'juvenile detention' : 'prison'}`
   const head = plea
     ? `You pleaded guilty to ${t.crime.toLowerCase()}. The judge accepted the deal and sentenced you to ${term} at ${where}.`
-    : pick(g, [
-        `The jury found you GUILTY of ${chargeList(t)}. The judge sentenced you to ${term} at ${where}.`,
-        `GUILTY. The judge banged the gavel and sentenced you to ${term} at ${where}.`,
-        `After two hours of deliberation, the jury came back: guilty on all counts. You've been sentenced to ${term} at ${where}.`,
-      ])
+    : pick(g, guiltyLines(trialBy(c.countryId, t.severity), chargeList(t), term, where))
   const adult = s.triedAsAdult ? ' You were tried as an adult.' : ''
   log(g, plea ? `I took a plea deal: ${term.split('.')[0]}.` : `I was found guilty of ${chargeList(t)}.`, 'bad')
   insertNoticeAt(g, at, plea ? 'Plea Accepted' : 'Guilty', `${head}${adult}${notes.length ? ` ${notes.join(' ')}` : ''}`, deathRow ? '\u{26B0}\u{FE0F}' : '\u{2696}\u{FE0F}', 'bad')
@@ -1011,6 +1057,11 @@ const STORES: Store[] = [
   { id: 'pharmacy', name: 'Pharmacy', emoji: '\u{1F48A}', security: 0.15, items: [['a tube of lipstick', 12], ['a bottle of vitamins', 20], ['an electric toothbrush', 90], ['a box of bandages', 6], ['a hair straightener', 70]] },
 ]
 
+/** Store security: a mall cop in North America, a security guard everywhere else. */
+function mallCop(g: GameState): string {
+  return g.character.countryId === 'us' || g.character.countryId === 'ca' ? 'mall cop' : 'security guard'
+}
+
 const SHOPLIFT_COP = defineScript('crime.shoplift.cop', (g, choice, data) => {
   const c = g.character
   if (!canAct(g) || !isRecord(data)) return
@@ -1019,8 +1070,8 @@ const SHOPLIFT_COP = defineScript('crime.shoplift.cop', (g, choice, data) => {
   const recordIndex = idx >= 0 ? idx : undefined
   if (choice === 'cooperate') {
     if (chance(g, c.age < 18 ? 0.6 : 0.45)) {
-      log(g, `A mall cop caught me shoplifting ${item} and banned me from the store.`, 'bad')
-      outcome(g, 'Banned', `The mall cop took ${item} back, snapped your photo for the Wall of Shame, and banned you from the store for life. No police, though.`, '\u{1F4F8}', 'bad')
+      log(g, `A ${mallCop(g)} caught me shoplifting ${item} and banned me from the store.`, 'bad')
+      outcome(g, 'Banned', `The ${mallCop(g)} took ${item} back, snapped your photo for the Wall of Shame, and banned you from the store for life. No police, though.`, '\u{1F4F8}', 'bad')
       return
     }
     arrestPlayer(g, 'Shoplifting', 1, { recordIndex, evidence: 0.9, noResist: true })
@@ -1030,20 +1081,20 @@ const SHOPLIFT_COP = defineScript('crime.shoplift.cop', (g, choice, data) => {
     count(g, 'fights')
     if (chance(g, clamp(0.25 + (c.hidden.athleticism - 50) / 200, 0.1, 0.6))) {
       addHidden(g, 'karma', -5)
-      log(g, `I knocked over a mall cop and escaped with ${item}.`, 'event')
-      outcome(g, 'Takedown', `You shoulder-checked the mall cop into a display of throw pillows and ran out with ${item}.`, '\u{1F4A5}', 'good')
+      log(g, `I knocked over a ${mallCop(g)} and escaped with ${item}.`, 'event')
+      outcome(g, 'Takedown', `You shoulder-checked the ${mallCop(g)} into a display of throw pillows and ran out with ${item}.`, '\u{1F4A5}', 'good')
       return
     }
     const dmg = hurt(g, randInt(g, 5, 15))
-    log(g, 'A mall cop body-slammed me after I attacked him.', 'bad')
-    notice(g, 'Bad Idea', `The mall cop had been waiting his whole career for this. He body-slammed you onto the food court tile. (-${dmg} health)`, { emoji: '\u{1F93C}', tone: 'bad' })
+    log(g, `A ${mallCop(g)} body-slammed me after I attacked him.`, 'bad')
+    notice(g, 'Bad Idea', `The ${mallCop(g)} had been waiting his whole career for this. He body-slammed you onto the ${g.character.countryId === 'us' ? 'food court tile' : 'shop floor'}. (-${dmg} health)`, { emoji: '\u{1F93C}', tone: 'bad' })
     arrestPlayer(g, 'Assault', 2, { evidence: 0.9, noResist: true, extraCharges: ['Shoplifting'], recordIndex })
     return
   }
   if (chance(g, clamp(0.4 + (c.hidden.athleticism - 50) / 300, 0.2, 0.65))) {
-    log(g, `I outran a mall cop with ${item}.`, 'event')
+    log(g, `I outran a ${mallCop(g)} with ${item}.`, 'event')
     c.wantedLevel = clamp(c.wantedLevel + 1, 0, 5)
-    outcome(g, 'Escaped', pick(g, [`You bolted past the mall cop's Segway and disappeared into the parking lot with ${item}.`, `The mall cop wheezed to a stop at the escalator. You got away with ${item}.`]), '\u{1F3C3}', 'good')
+    outcome(g, 'Escaped', pick(g, [`You bolted past the ${mallCop(g)}${g.character.countryId === 'us' ? "'s Segway" : ''} and disappeared into the ${g.character.countryId === 'us' ? 'parking lot' : 'crowd'} with ${item}.`, `The ${mallCop(g)} wheezed to a stop at the escalator. You got away with ${item}.`]), '\u{1F3C3}', 'good')
     return
   }
   arrestPlayer(g, 'Shoplifting', 1, { recordIndex, evidence: 0.9, noResist: true, extraCharges: ['Resisting Arrest'] })
@@ -1061,9 +1112,9 @@ const SHOPLIFT_ITEM = defineScript('crime.shoplift.item', (g, choice, data) => {
   const risk = clamp(store.security + Math.log10(Math.max(1, value)) / 15 - (c.stats.smarts - 50) / 400, 0.05, 0.8)
   const idx = commitCrime(g, 'Shoplifting', { karma: 2, notoriety: 1, heat: 0.05 })
   if (chance(g, risk)) {
-    scriptChoice(g, SHOPLIFT_COP, 'Mall Cop!', `You stuffed ${item} under your shirt and headed for the exit. A mall cop stepped in front of the door. "Not so fast."`, [
+    scriptChoice(g, SHOPLIFT_COP, g.character.countryId === 'us' ? 'Mall Cop!' : 'Security!', `You stuffed ${item} under your shirt and headed for the exit. A ${mallCop(g)} stepped in front of the door. "Not so fast."`, [
       { id: 'cooperate', label: 'Cooperate', emoji: '\u{1F64C}' },
-      { id: 'assault', label: 'Assault the mall cop', emoji: '\u{1F44A}' },
+      { id: 'assault', label: `Assault the ${mallCop(g)}`, emoji: '\u{1F44A}' },
       { id: 'run', label: 'Run for it', emoji: '\u{1F3C3}' },
     ], { emoji: '\u{1F46E}', data: { item, recordIndex: idx } })
     return
@@ -1101,7 +1152,7 @@ const shopliftMenu: MenuGroup = {
   emoji: '\u{1F6CD}\u{FE0F}',
   subtitle: 'Five-finger discount',
   disabledReason: ageGate(8),
-  header: () => 'Pick a store. Pricier loot draws more attention, and beware of the mall cop.',
+  header: (g) => `Pick a store. Pricier loot draws more attention, and beware of the ${mallCop(g)}.`,
   children: () => STORES.map(shopliftStore),
 }
 
@@ -1335,12 +1386,13 @@ const DOG_NAMES = ['Rex', 'Bella', 'Max', 'Tank', 'Princess', 'Brutus', 'Cupcake
 
 function generateHouse(g: GameState, tier: number): BurglaryData {
   const tpl = HOUSE_TEMPLATES[tier - 1]
-  const street = pick(g, STREETS)
+  const us = g.character.countryId === 'us'
+  const street = us ? pick(g, STREETS) : localStreetName(g)
   const house =
     tier === 1
-      ? pick(g, [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a mobile home on ${street}`])
+      ? pick(g, us ? [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a mobile home on ${street}`] : [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a cramped ground-floor flat on ${street}`])
       : tier === 2
-        ? pick(g, [`a two-story house on ${street}`, `a suburban split-level on ${street}`, `a brick colonial on ${street}`])
+        ? pick(g, us ? [`a two-story house on ${street}`, `a suburban split-level on ${street}`, `a brick colonial on ${street}`] : [`a two-story house on ${street}`, `a family house on ${street}`, `a big townhouse on ${street}`])
         : pick(g, [`a gated mansion on ${street}`, `a hilltop estate on ${street}`, `a modern glass mansion on ${street}`])
   const ownerGender: Gender = chance(g, 0.5) ? 'male' : 'female'
   const owner = strangerName(g, ownerGender)
@@ -1548,7 +1600,7 @@ const GTA_KEEP = defineScript('crime.gta.keep', (g, choice, data) => {
   const got = pocket(g, price)
   log(g, `I sold a stolen ${car.name} to a chop shop for ${formatMoney(got)}.`, 'good')
   outcome(g, 'Chop Shop', pick(g, [
-    `A guy named ${pick(g, ['Sal', 'Big Mike', 'Dmitri', 'Lou', 'Toad', 'Rosa'])} at the chop shop handed you ${formatMoney(price)} in an envelope. The ${car.name} was in eleven pieces before you reached the door.`,
+    `A guy named ${g.character.countryId === 'us' ? pick(g, ['Sal', 'Big Mike', 'Dmitri', 'Lou', 'Toad', 'Rosa']) : randomFirstName(g, g.character.countryId, 'male')} at the chop shop handed you ${formatMoney(price)} in an envelope. The ${car.name} was in eleven pieces before you reached the door.`,
     `The chop shop paid ${formatMoney(price)} for the ${car.name}. No paperwork, no questions.`,
   ]), '\u{1F527}', 'good')
 })
@@ -1748,9 +1800,10 @@ const bankAction: MenuAction = {
   run: (g) => {
     if (!canAct(g) || !lieLow(g, 'crime.bank', 1)) return
     const city = g.character.city
+    const us = g.character.countryId === 'us'
     const banks: (Bank & { id: string })[] = [
-      { id: 'b1', tier: 1, name: `${city} Community Credit Union`, lo: 5000, hi: 40000, difficulty: 0 },
-      { id: 'b2', tier: 2, name: `${pick(g, ['First National', 'Citizens Savings', 'Union Federal', 'Harbor Trust'])} Bank of ${city}`, lo: 20000, hi: 150000, difficulty: 0.12 },
+      { id: 'b1', tier: 1, name: us ? `${city} Community Credit Union` : `${city} Savings Bank`, lo: 5000, hi: 40000, difficulty: 0 },
+      { id: 'b2', tier: 2, name: `${pick(g, us ? ['First National', 'Citizens Savings', 'Union Federal', 'Harbor Trust'] : ['National', 'Commercial', 'Merchants', 'Cooperative'])} Bank of ${city}`, lo: 20000, hi: 150000, difficulty: 0.12 },
       { id: 'b3', tier: 3, name: `${pick(g, ['Royal', 'Imperial', 'Sovereign', 'Golden Eagle'])} Reserve Vault`, lo: 150000, hi: 1000000, difficulty: 0.3 },
     ]
     scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'Which bank will you hit? Bigger vaults, bigger guards.', [
@@ -1836,7 +1889,7 @@ const trainAction: MenuAction = {
       return { id: `t${i}`, train, slot, rumor: TRAIN_TIMES[rumor], cargo: pick(g, TRAIN_CARGO) }
     })
     const rumors = trains.map((t) => `${titleCase(t.train)} hauls ${t.cargo} and passes through around ${t.rumor.toLowerCase()}.`).join('\n')
-    scriptChoice(g, TRAIN_PICK_SCRIPT, 'Train Robbery', `Word around the saloon:\n${rumors}\n\nRumors aren't always right. Which train will you rob?`, [
+    scriptChoice(g, TRAIN_PICK_SCRIPT, 'Train Robbery', `${g.character.countryId === 'us' ? 'Word around the saloon' : 'Word on the street'}:\n${rumors}\n\nRumors aren't always right. Which train will you rob?`, [
       ...trains.map((t) => ({ id: t.id, label: titleCase(t.train), emoji: '\u{1F682}' })),
       { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
     ], { emoji: '\u{1F920}', data: { trains } })
@@ -3142,7 +3195,7 @@ function familyNodes(g: GameState, fam: CrimeFamily): MenuNode[] {
     id: 'crime.mafia.rat',
     label: 'Expose a Rat',
     emoji: '\u{1F400}',
-    subtitle: "Accuse someone of talking to the feds",
+    subtitle: (sg) => `Accuse someone of talking to ${feds(sg).them}`,
     header: () => 'Pick right and the family rewards you. Pick wrong and they punish you.',
     children: (gg) => {
       const f = crimeFamily(gg)
@@ -3184,15 +3237,15 @@ function familyNodes(g: GameState, fam: CrimeFamily): MenuNode[] {
       id: 'crime.mafia.inform',
       label: 'Become an Informant',
       emoji: '\u{1F399}\u{FE0F}',
-      subtitle: 'Secretly work with the feds',
+      subtitle: (sg) => `Secretly work with ${feds(sg).them}`,
       confirm: () => 'If the family finds out, they will kill you. Wear the wire?',
       run: (gg) => {
         const f = crimeFamily(gg)
         if (!canAct(gg) || !f || f.informant) return
         f.informant = { years: 0, evidence: 0 }
-        log(gg, 'I secretly became a federal informant.', 'event')
-        remember(gg, `Became a federal informant against ${f.name}.`)
-        notice(gg, 'Wired', `You met an FBI agent in a parking garage and agreed to wear a wire. Gather enough evidence on ${f.name} within 5 years and you walk away clean.`, { emoji: '\u{1F399}\u{FE0F}', tone: 'event' })
+        log(gg, `I secretly became a ${feds(gg).informant}.`, 'event')
+        remember(gg, `Became a ${feds(gg).informant} against ${f.name}.`)
+        notice(gg, 'Wired', `You met ${gg.character.countryId === 'us' ? 'an FBI agent' : 'a detective'} in a parking garage and agreed to wear a wire. Gather enough evidence on ${f.name} within 5 years and you walk away clean.`, { emoji: '\u{1F399}\u{FE0F}', tone: 'event' })
       },
     })
   }
@@ -3276,9 +3329,9 @@ function yearlyFamily(g: GameState, fam: CrimeFamily): void {
       c.wantedLevel = 0
       count(g, 'informant')
       log(g, `My evidence brought down ${name}.`, 'event')
-      remember(g, `Brought down ${name} as a federal informant.`)
+      remember(g, `Brought down ${name} as a ${feds(g).informant}.`)
       const options = shuffle(g, COUNTRIES.filter((k) => k.id !== c.countryId)).slice(0, 2)
-      scriptChoice(g, WITNESS_SCRIPT, 'Witness Protection', `Your evidence brought down ${name}. Dozens of arrests, and the feds have wiped your slate clean. They offer you witness protection: a new name in a new country.`, [
+      scriptChoice(g, WITNESS_SCRIPT, 'Witness Protection', `Your evidence brought down ${name}. Dozens of arrests, and ${feds(g).them} have wiped your slate clean. They offer you witness protection: a new name in a new country.`, [
         ...options.map((k) => ({ id: k.id, label: `Move to ${k.name}`, emoji: k.flag })),
         { id: 'cancel', label: 'Take my chances here', emoji: '\u{1F3E0}' },
       ], { emoji: '\u{1F575}\u{FE0F}', data: { family: name, card } })
@@ -3419,11 +3472,13 @@ function recapture(g: GameState): boolean {
   const add = randInt(g, 2, 5)
   count(g, 'arrests')
   count(g, 'convictions')
-  c.criminalRecord.push({ crime: 'Felony Escape', age: c.age, caught: true, convicted: true, sentenceYears: add })
+  c.criminalRecord.push({ crime: escapeCharge(g), age: c.age, caught: true, convicted: true, sentenceYears: add })
   const life = fu.yearsLeft >= 99
   notice(g, 'Recaptured', pick(g, [
-    `The police finally tracked you down. You're going back to prison with ${years(add)} added for felony escape.`,
-    `A U.S. Marshal-looking guy tapped you on the shoulder at the grocery store. Your time on the run is over. ${years(add)} were added for felony escape.`,
+    `The police finally tracked you down. You're going back to prison with ${years(add)} added for ${escapeCharge(g).toLowerCase()}.`,
+    c.countryId === 'us'
+      ? `A U.S. Marshal-looking guy tapped you on the shoulder at the grocery store. Your time on the run is over. ${years(add)} were added for felony escape.`
+      : `A plainclothes detective tapped you on the shoulder at the market. Your time on the run is over. ${years(add)} were added for escaping.`,
     `Someone recognized you from a wanted poster and called it in. Back to prison you go, with ${years(add)} more for escaping.`,
   ]), { emoji: '\u{1F6A8}', tone: 'bad' })
   log(g, 'The police recaptured me.', 'bad')

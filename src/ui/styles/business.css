@@ -1,0 +1,535 @@
+/* Business screens: the yearly Annual Report minigame (src/ui/minigames/AnnualReport.tsx).
+   Built on the global tokens (global.css), so it follows light/dark mode automatically.
+   Mobile first: the popup content is ~290px wide on a 360px phone; nothing has a fixed width. */
+
+.annual-report {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  text-align: left;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Header: emoji, name, industry · location, fiscal year                     */
+
+.ar-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--blue) 14%, var(--card-2)), var(--card-2));
+  border: 1px solid var(--border);
+}
+
+.ar-emoji {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.ar-id {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ar-name {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.ar-sub {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ar-year {
+  margin-bottom: 2px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Sections + the statement                                                  */
+
+.ar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ar-heading {
+  margin: 0 2px;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ar-statement {
+  margin: 0;
+  padding: 2px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  border: 1px solid var(--border);
+}
+
+.ar-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 14px;
+}
+
+.ar-line + .ar-line {
+  border-top: 1px solid var(--hairline);
+}
+
+.ar-line dt {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ar-line dt small {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.ar-line dd {
+  flex: none;
+  max-width: 55%;
+  margin: 0;
+  font-weight: 800;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.ar-line.is-good dd {
+  color: var(--tone-good);
+}
+
+.ar-line.is-bad dd {
+  color: var(--tone-bad);
+}
+
+.ar-line.is-total {
+  margin-top: 2px;
+  border-top: 2px solid var(--border);
+}
+
+.ar-line.is-total dt {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.ar-line.is-total dd {
+  font-size: 15.5px;
+}
+
+.ar-empty {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.ar-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--teal) 12%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--teal) 30%, var(--border));
+  font-size: 13.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ar-note-icon {
+  flex: none;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Plan controls: label + value, [-] slider [+], scale, chips, tip           */
+
+.ar-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius);
+  background: var(--card-2);
+  border: 1px solid var(--border);
+}
+
+.ar-control-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ar-control-label {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.ar-control-value {
+  flex: none;
+  max-width: 60%;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--blue);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.ar-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ar-nudge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 0 2px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  color: var(--blue);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 0 var(--border);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
+}
+
+.ar-nudge:hover:not(:disabled):not([aria-disabled='true']) {
+  background: color-mix(in srgb, var(--blue) 8%, var(--card));
+}
+
+.ar-nudge:active:not(:disabled):not([aria-disabled='true']) {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.ar-nudge:disabled,
+.ar-nudge[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The track: a custom range input with a filled part and a marker underneath. The thumb is
+   24px wide, so a value at fraction p sits at 12px + (100% - 24px) * p. */
+.ar-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-bottom: 8px;
+}
+
+.ar-range {
+  --pct: 0;
+  --fill-to: calc(12px + (100% - 24px) * var(--pct));
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.ar-range:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.ar-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ar-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--blue) 0 var(--fill-to), var(--stat-track) var(--fill-to) 100%);
+}
+
+.ar-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--blue);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  transition: box-shadow 0.15s ease;
+}
+
+.ar-range::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--stat-track);
+}
+
+.ar-range::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.ar-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--blue);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+
+.ar-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--blue) 35%, transparent);
+}
+
+.ar-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--blue) 35%, transparent);
+}
+
+/* Suggested price / meets-demand marker: a small orange caret under the track. */
+.ar-marker {
+  --at: 0;
+  position: absolute;
+  top: 25px;
+  left: calc(12px + (100% - 24px) * var(--at));
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 8px solid var(--orange);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.ar-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px 48px 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--chip-bg);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+button.ar-chip {
+  cursor: pointer;
+  border-color: color-mix(in srgb, var(--orange) 45%, transparent);
+  background: color-mix(in srgb, var(--orange) 14%, var(--card));
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+button.ar-chip:hover {
+  background: color-mix(in srgb, var(--orange) 22%, var(--card));
+}
+
+button.ar-chip:active {
+  transform: translateY(1px);
+}
+
+/* The plan already sits on the marker. */
+button.ar-chip.is-on {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 26%, var(--card));
+}
+
+.ar-chip-dot {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid var(--orange);
+}
+
+.ar-tip {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.ar-tip.is-good {
+  color: var(--tone-good);
+}
+
+.ar-tip.is-bad {
+  color: var(--tone-bad);
+}
+
+.ar-control.is-disabled .ar-control-value {
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Projection + actions                                                      */
+
+.ar-projection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius);
+  border: 1.5px dashed color-mix(in srgb, var(--blue) 40%, var(--border));
+  background: color-mix(in srgb, var(--blue) 5%, var(--card));
+}
+
+.ar-projection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ar-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--yellow) 28%, var(--card));
+  color: var(--text);
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+
+.ar-statement.is-compact {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.ar-fineprint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.ar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.ar-actions .btn {
+  min-height: 46px;
+}
+
+@media (max-width: 370px) {
+  .ar-head {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .ar-emoji {
+    width: 44px;
+    height: 44px;
+    font-size: 26px;
+  }
+
+  .ar-control,
+  .ar-projection {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .ar-nudge {
+    width: 36px;
+    height: 36px;
+  }
+
+  .ar-scale {
+    margin-left: 44px;
+    margin-right: 44px;
+  }
+}

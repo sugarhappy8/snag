@@ -250,6 +250,75 @@ export interface Character {
   /** Person ids named in the will; empty = split among children. */
   willBeneficiaries: string[]
   religion: string | null
+  /**
+   * Explicit CV / résumé entries: projects, volunteering, courses, awards, internships, embellished
+   * lines and school activities archived when leaving a school (see cv.ts). Optional: old saves
+   * have none; entries derived from degrees, jobs and businesses are computed on the fly.
+   */
+  cv?: CvEntry[]
+}
+
+// ---------------------------------------------------------------------------
+// CV / résumé (cv.ts)
+
+export type CvKind = 'education' | 'experience' | 'activity' | 'volunteering' | 'project' | 'award' | 'certification' | 'skill' | 'leadership'
+
+export interface CvEntry {
+  id: string
+  kind: CvKind
+  /** e.g. 'Built a budgeting app', 'Captain, Basketball Team', 'Volunteer'. */
+  title: string
+  /** Organization / school / place, '' when none. */
+  org: string
+  startAge: number
+  /** Age it ended; absent while ongoing. */
+  endAge?: number
+  /** Short detail line ('#37 of 4,100 secondary schools in Indonesia', '2,000 downloads'...). */
+  detail: string
+  /** 1-10: how impressive it reads. */
+  strength: number
+  /** A made-up or inflated line. Background checks and interviews can catch it. */
+  embellished: boolean
+  /** Topic tags for relevance: 'tech', 'science', 'arts', 'business', 'health', 'service', 'sports'... */
+  tags?: string[]
+  /** 'built' (CV menu), 'school' (archived school activity), 'fake' (embellished)... */
+  source?: string
+}
+
+/** What a CV is screened for. Plain JSON: it travels inside AI tasks and script data. */
+export interface ScreeningApp {
+  kind: 'job' | 'university' | 'graduate'
+  /** The job (kind 'job'); the regular interview flow continues with it. */
+  job?: InterviewJob
+  /** University / graduate school / company name. */
+  org: string
+  /** University major. */
+  major?: string
+  /** Graduate program key ('law', 'medical', 'business'...). */
+  program?: string
+  /** e.g. '#12 of 340 universities in Kenya'. */
+  rankLabel?: string
+  /** 'Elite' | 'Top' | 'Good' | 'Average' | 'Struggling'. */
+  tier?: string
+  /** Yearly tuition in dollars (0 = free). */
+  tuition?: number
+  years?: number
+  /** CV fit for this target, 0-100 (cvScore). */
+  fit: number
+  /** Offline odds of being invited to interview, 0-1. */
+  chance: number
+  /** Odds of acceptance once interviewed (schools), 0-1. */
+  admit?: number
+  /** One-line job market read (jobs). */
+  market?: string
+}
+
+/** The screener's call: interview or not, and why (shown on rejection). */
+export interface ScreeningDecision {
+  invite: boolean
+  reason: string
+  /** Admissions interview question (schools; AI-written, optional). */
+  question?: InterviewQuestion
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +390,20 @@ export interface Person {
 // ---------------------------------------------------------------------------
 // Assets
 
-export type AssetKind = 'house' | 'car' | 'boat' | 'aircraft' | 'jewelry' | 'instrument' | 'collectible' | 'business' | 'other'
+export type AssetKind =
+  | 'house'
+  | 'car'
+  | 'boat'
+  | 'aircraft'
+  | 'jewelry'
+  | 'instrument'
+  | 'collectible'
+  | 'business'
+  /** A holding in the Investments menu (stock, bond, fund, crypto...). value = current market value. */
+  | 'investment'
+  /** A recurring membership or subscription: value 0, upkeep = the yearly fee. */
+  | 'membership'
+  | 'other'
 
 export interface Mortgage {
   lender: string
@@ -413,7 +495,46 @@ export interface ChoiceModal {
   personId?: string
 }
 
-export type MinigameKind = 'blackjack' | 'horseRace' | 'burglary' | 'prisonEscape' | 'slots' | 'pickpocket'
+export type MinigameKind = 'blackjack' | 'horseRace' | 'burglary' | 'prisonEscape' | 'slots' | 'pickpocket' | 'annualReport'
+
+/**
+ * Data for the 'annualReport' minigame (business.ts → ui/minigames/AnnualReport.tsx): the yearly
+ * report where the owner sets next year's price and production. The component reports
+ * JSON.stringify({ price, production } satisfies AnnualReportResult), or 'skip' to keep last year's.
+ */
+export interface AnnualReportData {
+  assetId: string
+  businessName: string
+  emoji: string
+  industryLabel: string
+  /** e.g. 'Tokyo, Japan'. */
+  location: string
+  /** Fiscal year this report covers (calendar year). */
+  year: number
+  /** Plural unit name: 'meals', 'cups', 'subscriptions', 'barrels'... */
+  unitLabel: string
+  unitCost: number
+  price: number
+  minPrice: number
+  maxPrice: number
+  /** A sensible price for this market (shown as a hint/marker). */
+  suggestedPrice: number
+  production: number
+  maxProduction: number
+  /** Units in stock carried over. */
+  inventory: number
+  /** Expected units the market wants next year at the suggested price (shown as a hint). */
+  expectedDemand: number
+  /** One-line market read, e.g. 'Coffee culture is booming in Seoul; rents are steep.' */
+  marketNote: string
+  /** Summary of the year just finished (revenue, costs, taxes, profit...). */
+  lines: { label: string; value: string; tone?: 'good' | 'bad' | 'neutral' }[]
+}
+
+export interface AnnualReportResult {
+  price: number
+  production: number
+}
 
 export interface MinigameModal {
   kind: 'minigame'
@@ -476,6 +597,8 @@ export type AiTask =
   | { type: 'interview'; job: InterviewJob }
   /** Write the obituary shown on the death screen. */
   | { type: 'obituary' }
+  /** Read the CV for a job / university / graduate school and decide on an interview. */
+  | { type: 'screenApplication'; app: ScreeningApp }
 
 // ---------------------------------------------------------------------------
 // Whole-game state

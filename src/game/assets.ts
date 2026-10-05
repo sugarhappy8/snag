@@ -27,6 +27,8 @@ import {
   useYearAction,
   yearActionsUsed,
 } from './core'
+import { localeOf } from './data/locales'
+import { localMarket, localPriceMult, type PriceCategory } from './data/markets'
 import { killCharacter } from './death'
 import {
   addLoan,
@@ -48,7 +50,7 @@ import { createPerson } from './people'
 import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import type { Asset, AssetKind, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Mortgage, Person, RelationKind, StatKey } from './types'
-import { getCountry, randomFirstName, randomLastName } from './world'
+import { getCountry, namePoolOf, randomFirstName, randomLastName } from './world'
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -193,9 +195,169 @@ function markBought(g: GameState, id: string): void {
 
 // ---------------------------------------------------------------------------
 // Prices by country & city
+//
+// Every price starts from a US-dollar base (what it costs in an average US city) and is scaled
+// for where the player lives:
+//
+// - Homes and rent: housingMult = country × city. The country factor blends purchasing power
+//   (world.ts wealth) with the market's rent level (data/markets.ts rentCost), so Hong Kong,
+//   Singapore and Monaco are dear and Addis Ababa or Cairo cheap; the city factor adds the
+//   premium of a big expensive city inside its country.
+// - Cars, electronics and luxury goods: localGoodsMult = priceMult × reach (see below).
+//   priceMult is the absolute local price of the same item (taxes and import duties included:
+//   Singapore's COE, Denmark's registration tax, Brazil's import duties...). `reach` is a
+//   softened purchasing-power factor: in poorer markets the "economy car" or "smartphone" on
+//   the lot is a cheaper local trim or brand, and dealer margins and labor cost less, but only
+//   partly, because these are global goods. It is 1 in rich countries and falls linearly to a
+//   floor for the poorest: cars 0.35, electronics 0.6, luxury 0.85. India (wealth 0.25, car
+//   priceMult 1.5) thus prices an economy car at about 0.77× the US sticker, Singapore (COE,
+//   2.8) at 2.8×, Japan (0.85) at about 0.77×. Premium cars have no cheap local trim, so their
+//   floor is higher (carPriceMult): an Indian supercar costs about 1.4× the US price, like
+//   the real thing.
+// - Car running costs follow the local fuel price plus local labor (mechanics, parts).
+// - Boats, aircraft, art and collectibles trade on global markets: globalGoodsMult only
+//   shaves a little off in poorer countries.
+// - Everything else (instruments, repairs, fines, contractors) keeps the older wealth-only
+//   goodsMult.
+// Shelf prices always include the local consumption tax (VAT/GST/sales tax); purchase notices
+// say how much of the price it was (salesTaxNote).
 
 function wealthOf(g: GameState): number {
   return Math.max(0.08, getCountry(g.character.countryId).wealth ?? 1)
+}
+
+/** How much of the US price is left in the poorest markets for each category (see above). */
+const REACH_FLOOR: Record<PriceCategory, number> = { car: 0.35, electronics: 0.6, luxury: 0.85, alcohol: 1, food: 1, fuel: 1 }
+
+/**
+ * Local price multiplier for a shop category vs the US price:
+ * `clamp(priceMult[category] × (floor + (1 − floor) × min(1, wealth)), 0.2, 4.5)`.
+ * Food, alcohol and fuel priceMults are already local price levels, so their floor is 1.
+ */
+export function localGoodsMult(g: GameState, category: PriceCategory): number {
+  const floor = REACH_FLOOR[category]
+  const reach = floor + (1 - floor) * Math.min(1, wealthOf(g))
+  const local = localPriceMult(g, category)
+  const mult = (Number.isFinite(local) && local > 0 ? local : 1) * reach
+  return Math.min(4.5, Math.max(0.2, mult))
+}
+
+/**
+ * How much of the car's US price survives in the poorest markets, by type: mass-market cars
+ * come in cheaper local trims and brands, luxury and exotic cars are the same car everywhere.
+ */
+const CAR_REACH_FLOOR: Record<string, number> = { economy: 0.35, suv: 0.4, truck: 0.4, electric: 0.5, luxury: 0.8, sports: 0.8, supercar: 0.9, classic: 0.75 }
+
+/** Local price multiplier for a car of this type (localGoodsMult 'car' with a per-type floor). */
+export function carPriceMult(g: GameState, type: string): number {
+  const floor = CAR_REACH_FLOOR[type] ?? REACH_FLOOR.car
+  const reach = floor + (1 - floor) * Math.min(1, wealthOf(g))
+  const local = localPriceMult(g, 'car')
+  const mult = (Number.isFinite(local) && local > 0 ? local : 1) * reach
+  return Math.min(4.5, Math.max(0.2, mult))
+}
+
+/** Boats, aircraft, art and collectibles: priced on global markets, a little cheaper in poor countries. */
+export function globalGoodsMult(g: GameState): number {
+  return 0.85 + 0.15 * Math.min(1, wealthOf(g))
+}
+
+/** Yearly running costs of a car (fuel, servicing, registration) relative to the US. */
+function carRunningMult(g: GameState, type: string): number {
+  const fuel = Math.min(3, Math.max(0.03, localPriceMult(g, 'fuel')))
+  const labor = 0.4 + 0.6 * Math.min(1.2, wealthOf(g))
+  const fuelShare = type === 'electric' ? 0.15 : 0.45
+  return Math.max(0.15, fuelShare * fuel + (1 - fuelShare) * labor)
+}
+
+/** "VAT", "GST", "sales tax", "consumption tax", "MwSt": the local tax name as used mid-sentence. */
+function taxName(name: string): string {
+  const n = name.trim() || 'Sales tax'
+  return /^[A-Z][a-z]+( |$)/.test(n) ? n.charAt(0).toLowerCase() + n.slice(1) : n
+}
+
+function taxPercent(rate: number): string {
+  return `${Math.round(rate * 1000) / 10}%`
+}
+
+/** "20% VAT", "8.1% MwSt", or '' where there is no consumption tax. */
+export function salesTaxLabel(g: GameState): string {
+  const m = localMarket(g)
+  return m.salesTax > 0 ? `${taxPercent(m.salesTax)} ${taxName(m.salesTaxName)}` : ''
+}
+
+/**
+ * One sentence for a purchase notice: "Price includes 20% VAT ($150)." Prices are always
+ * tax-inclusive (in the US too: the sticker is what you pay at the register). '' when untaxed.
+ */
+export function salesTaxNote(g: GameState, price: number): string {
+  const m = localMarket(g)
+  if (!(m.salesTax > 0) || !(price > 0)) return ''
+  const tax = Math.round(price - price / (1 + m.salesTax))
+  if (tax < 1) return ''
+  return `Price includes ${salesTaxLabel(g)} (${formatMoney(tax)}).`
+}
+
+/**
+ * Store header line: "Prices include 20% VAT." ('' when untaxed). Local names that an English
+ * reader may not know get a gloss once here: "Prices include 25% moms (VAT)."
+ */
+export function pricesIncludeTax(g: GameState): string {
+  const label = salesTaxLabel(g)
+  if (!label) return ''
+  const name = localMarket(g).salesTaxName
+  const known = /VAT|GST|tax/i.test(name)
+  const gloss = known ? '' : /^(SST|IVU)$/.test(name.trim()) ? ' (sales tax)' : ' (VAT)'
+  return `Prices include ${label}${gloss}.`
+}
+
+/** A store/dealer name that sounds local ("Fuji Motors"), stable per country; `fallback` without name words. */
+function localStoreName(g: GameState, key: string, pattern: string, fallback: string): string {
+  const words = localMarket(g).nameWords.filter((w) => typeof w === 'string' && w.trim() !== '')
+  if (words.length === 0) return fallback
+  const word = words[Math.abs(hashString(`${g.character.countryId}|${key}`)) % words.length].trim()
+  return pattern.replace('{w}', word)
+}
+
+function times(mult: number): string {
+  return `${mult >= 10 ? Math.round(mult) : Math.round(mult * 10) / 10}×`
+}
+
+/** What a steep car priceMult means for the player: "about 2.8× US prices", or a luxury when wages are low. */
+function carDutyText(g: GameState): string | null {
+  if (localPriceMult(g, 'car') < 1.6) return null
+  const eff = localGoodsMult(g, 'car')
+  return eff >= 1.4 ? `cost about ${times(eff)} what they do in the US` : 'are a luxury few locals can afford'
+}
+
+/** One short line about what's notably cheap or dear here, for the car dealer header. */
+function carMarketNote(g: GameState): string {
+  const fuel = localPriceMult(g, 'fuel')
+  const duty = carDutyText(g)
+  const bits: string[] = []
+  if (duty) bits.push(`Thanks to duties, registration taxes and permits, cars here ${duty}.`)
+  else if (localGoodsMult(g, 'car') <= 0.85 && localPriceMult(g, 'car') <= 0.9) bits.push('Cars are cheap here by world standards.')
+  if (fuel <= 0.35) bits.push('Gas is practically free.')
+  else if (fuel >= 1.8) bits.push(`Gas costs about ${times(fuel)} US prices.`)
+  return bits.join(' ')
+}
+
+/** The single most notable fact about shopping here, or '' (Shopping header). */
+export function marketShoppingNote(g: GameState): string {
+  const facts: [number, string][] = []
+  const car = localPriceMult(g, 'car')
+  const elec = localGoodsMult(g, 'electronics')
+  const lux = localPriceMult(g, 'luxury')
+  const fuel = localPriceMult(g, 'fuel')
+  const country = getCountry(g.character.countryId).name
+  const duty = carDutyText(g)
+  if (duty) facts.push([car * 1.6, `Thanks to duties, registration taxes and permits, cars in ${country} ${duty}.`])
+  if (elec >= 1.2) facts.push([elec * 1.2, `Gadgets cost about ${times(elec)} US prices here after import duties.`])
+  if (lux >= 1.3) facts.push([lux * 1.1, `Designer goods carry steep import duties in ${country}.`])
+  if (fuel <= 0.35) facts.push([3 - fuel, `Gas in ${country} is practically free.`])
+  if (fuel >= 1.8) facts.push([fuel, `Gas costs about ${times(fuel)} US prices here.`])
+  facts.sort((a, b) => b[0] - a[0])
+  return facts[0]?.[1] ?? ''
 }
 
 const CITY_PRICE: Record<string, number> = {
@@ -241,6 +403,55 @@ const CITY_PRICE: Record<string, number> = {
   Stockholm: 1.4,
   Copenhagen: 1.4,
   Dublin: 1.5,
+  // Big-city premiums elsewhere (relative to the rest of the same country).
+  Milan: 1.45,
+  Rome: 1.3,
+  Barcelona: 1.4,
+  Madrid: 1.4,
+  Lisbon: 1.4,
+  Vienna: 1.3,
+  Helsinki: 1.3,
+  Prague: 1.35,
+  Warsaw: 1.3,
+  Budapest: 1.25,
+  Athens: 1.2,
+  Istanbul: 1.45,
+  'Abu Dhabi': 1.25,
+  Doha: 1.2,
+  Riyadh: 1.2,
+  Jerusalem: 1.4,
+  Delhi: 1.35,
+  Bangalore: 1.35,
+  'São Paulo': 1.4,
+  'Rio de Janeiro': 1.4,
+  'Buenos Aires': 1.35,
+  Santiago: 1.3,
+  Bogotá: 1.25,
+  Lima: 1.25,
+  'Panama City': 1.3,
+  'Punta del Este': 1.5,
+  Nassau: 1.35,
+  Lagos: 1.5,
+  Nairobi: 1.3,
+  'Cape Town': 1.4,
+  Johannesburg: 1.2,
+  Cairo: 1.2,
+  Casablanca: 1.25,
+  Jakarta: 1.3,
+  Manila: 1.3,
+  Makati: 1.6,
+  Bangkok: 1.4,
+  'Kuala Lumpur': 1.3,
+  'Ho Chi Minh City': 1.3,
+  Hanoi: 1.25,
+  Taipei: 1.6,
+  Shenzhen: 1.6,
+  Guangzhou: 1.3,
+  Gangnam: 1.9,
+  Osaka: 1.2,
+  Auckland: 1.4,
+  'St. Petersburg': 1.2,
+  Almaty: 1.2,
 }
 
 function cityMult(city: string): number {
@@ -249,13 +460,23 @@ function cityMult(city: string): number {
   return 0.85 + (Math.abs(hashString(city)) % 31) / 100
 }
 
-/** Real estate & rent multiplier (country wealth and city). */
+/**
+ * Real estate & rent multiplier vs an average US city: country × city, where the country
+ * factor is wealth^0.66 × rentCost^0.4 (about wealth^1.1 when rents track wealth) and the
+ * city factor is the big-city premium above.
+ */
 export function housingMult(g: GameState): number {
-  return Math.max(0.1, Math.pow(wealthOf(g), 1.1)) * cityMult(g.character.city)
+  const rent = localMarket(g).rentCost
+  const country = Math.pow(wealthOf(g), 0.66) * Math.pow(Number.isFinite(rent) && rent > 0 ? Math.max(0.08, Math.min(5, rent)) : wealthOf(g), 0.4)
+  return Math.max(0.08, Math.min(4, country)) * cityMult(g.character.city)
 }
 
-/** Goods are priced more globally than houses. */
-export function goodsMult(g: GameState): number {
+/**
+ * Generic goods priced by country wealth only (instruments, repairs, contractors, fines).
+ * With a category, the local market price for it instead (see localGoodsMult).
+ */
+export function goodsMult(g: GameState, category?: PriceCategory): number {
+  if (category) return localGoodsMult(g, category)
   return Math.min(1.5, Math.max(0.45, 0.4 + 0.6 * wealthOf(g)))
 }
 
@@ -299,6 +520,19 @@ const HOUSE_TYPES: HouseType[] = [
 const STREETS = ['Maple', 'Oak', 'Elm', 'Pine', 'Cedar', 'Willow', 'Birch', 'Lakeview', 'Sunset', 'Highland', 'Park', 'Hillcrest', 'Meadow', 'River', 'Spring', 'Chestnut', 'Magnolia', 'Orchard', 'Harbor', 'Ridge', 'Valley', 'Forest', 'Main', 'Church', 'Mill', 'Bay', 'Mockingbird', 'Primrose', 'Juniper', 'Sycamore', 'Aspen', 'Bluebell', 'Foxglove', 'Kingfisher', 'Lighthouse', 'Copper']
 const STREET_SUFFIX = ['Street', 'Avenue', 'Road', 'Lane', 'Drive', 'Court', 'Way', 'Boulevard', 'Place', 'Terrace', 'Circle']
 
+/** A local street name ('Jalan Sudirman', 'Calle Hidalgo') from the listing's own seeded RNG. */
+function seededStreet(r: SRng, g: GameState): string {
+  const loc = localeOf(g.character.countryId)
+  if (!loc.streetNames.length) return `${r.pick(STREETS)} ${r.pick(STREET_SUFFIX)}`
+  return r.pick(loc.streetNames).replace(/\{(\w+)\}/g, (whole: string, key: string) => {
+    if (key === 'place' && loc.placeWords.length) return r.pick(loc.placeWords)
+    if (key === 'honoree' && loc.honorees.length) return r.pick(loc.honorees)
+    if (key === 'n') return String(r.int(1, 12))
+    if (key === 'city') return g.character.city
+    return whole
+  })
+}
+
 export interface HouseListing {
   id: string
   typeId: string
@@ -324,6 +558,18 @@ function hauntFactor(h: number): number {
   return 1 - 0.3 * (Math.max(0, Math.min(100, h)) / 100)
 }
 
+/**
+ * Yearly upkeep of a home: property tax and insurance as a share of its value (0.5-0.9%) plus
+ * repairs priced like a US home of the same size (0.7-1.1% of the US-equivalent value) at local
+ * labor rates. About 1.2-2% of the price in an average US city, nearer 1% in Zurich or Hong
+ * Kong, where homes cost far more than the work to keep them up.
+ */
+function houseUpkeep(g: GameState, price: number, r: SRng): number {
+  const tax = price * r.float(0.005, 0.009)
+  const repairs = (price / Math.max(0.1, housingMult(g))) * r.float(0.007, 0.011) * goodsMult(g)
+  return nicePrice(Math.max(50, tax + repairs))
+}
+
 /** This year's listings at a real estate broker. */
 export function houseListings(g: GameState, broker: Broker): HouseListing[] {
   const r = seeded(yearKey(g, `realestate:${broker}`))
@@ -338,7 +584,7 @@ export function houseListings(g: GameState, broker: Broker): HouseListing[] {
     const base = t.min + (t.max - t.min) * Math.pow(r.next(), 1.4)
     const price = nicePrice(base * mult * (0.8 + 0.2 * (condition / 100)) * hauntFactor(haunted))
     const num1 = r.int(1, 9_899)
-    const street = `${r.pick(STREETS)} ${r.pick(STREET_SUFFIX)}`
+    const street = g.character.countryId === 'us' ? `${r.pick(STREETS)} ${r.pick(STREET_SUFFIX)}` : seededStreet(r, g)
     const address = t.id === 'condo' || t.id === 'penthouse' ? `Unit ${t.id === 'penthouse' ? 'PH' : ''}${r.int(1, 40)}${t.id === 'penthouse' ? '' : r.pick(['A', 'B', 'C', 'D'])}, ${num1} ${street}` : `${num1} ${street}`
     const listing: HouseListing = {
       id: `${g.year}:re-${broker}-${i}`,
@@ -354,7 +600,7 @@ export function houseListings(g: GameState, broker: Broker): HouseListing[] {
       age: r.int(t.age[0], t.age[1]),
       condition,
       haunted,
-      upkeep: nicePrice(price * r.float(0.012, 0.02)),
+      upkeep: houseUpkeep(g, price, r),
     }
     if (!isBought(g, listing.id)) out.push(listing)
   }
@@ -392,6 +638,18 @@ export const MORTGAGE_PLANS: MortgagePlan[] = [
 
 const MORTGAGE_LENDERS = ['First National Bank', 'Liberty Home Loans', 'Keystone Mortgage', 'Summit Savings & Loan', 'Blue Harbor Bank', 'Evergreen Credit Union', 'Cornerstone Lending']
 
+/** Lenders that sound local where the market has name words ("Sakura Savings Bank"), else the defaults. */
+function localLenders(g: GameState, patterns: string[], neutral: string[], fallback: string[]): string[] {
+  const words = localMarket(g).nameWords.filter((w) => typeof w === 'string' && w.trim() !== '')
+  if (words.length === 0) return fallback
+  const r = seeded(`${g.character.countryId}|lenders|${patterns.join()}`)
+  return [...patterns.map((p) => p.replace('{w}', r.pick(words).trim())), ...neutral]
+}
+
+function mortgageLender(g: GameState): string {
+  return pick(g, localLenders(g, ['{w} Savings Bank', '{w} Home Finance', 'Bank of {w}'], ['Blue Harbor Bank', 'Cornerstone Lending'], MORTGAGE_LENDERS))
+}
+
 export interface MortgageDecision {
   ok: boolean
   reason: string
@@ -406,7 +664,8 @@ export function mortgageDecision(g: GameState, price: number, plan: MortgagePlan
   const c = g.character
   const down = Math.round(price * plan.down)
   const principal = price - down
-  const rate = Math.max(0.025, offeredRate(g, 'mortgage') + (plan.down < 0.2 ? 0.005 : 0) - (plan.years <= 15 ? 0.006 : 0) - (plan.down >= 0.5 ? 0.003 : 0))
+  // Local base rate (finance.offeredRate follows the central bank) plus plan tweaks.
+  const rate = Math.round(Math.max(0.004, offeredRate(g, 'mortgage') + (plan.down < 0.2 ? 0.005 : 0) - (plan.years <= 15 ? 0.006 : 0) - (plan.down >= 0.5 ? 0.003 : 0)) * 10000) / 10000
   const payment = annualPayment(principal, rate, plan.years)
   const base = { down, principal, rate, payment }
   if (c.age < 18) return { ok: false, reason: 'Banks don\'t give mortgages to minors. Not even cute ones.', ...base }
@@ -502,7 +761,7 @@ export function buyHouse(g: GameState, listing: HouseListing, plan: MortgagePlan
       return false
     }
     spend(g, d.down)
-    mortgage = { lender: pick(g, MORTGAGE_LENDERS), balance: d.principal, yearlyPayment: d.payment, yearsLeft: plan.years, rate: d.rate }
+    mortgage = { lender: mortgageLender(g), balance: d.principal, yearlyPayment: d.payment, yearsLeft: plan.years, rate: d.rate }
   }
   const name = houseName(listing)
   const asset: Asset = {
@@ -596,6 +855,13 @@ function houseListingAction(l: HouseListing): MenuAction {
   }
 }
 
+/** "Banks here are writing 30-year mortgages at about 1.7%." for the real estate headers. */
+function mortgageRateNote(g: GameState): string {
+  const plan = MORTGAGE_PLANS.find((p) => p.id === 'm20_30') ?? MORTGAGE_PLANS[0]
+  const rate = mortgageDecision(g, 100_000, plan).rate
+  return `Banks here are writing 30-year mortgages at about ${(rate * 100).toFixed(1)}% for someone with your credit.`
+}
+
 function brokerMenu(broker: Broker, label: string, emoji: string, blurb: string): MenuGroup {
   return {
     type: 'menu',
@@ -620,9 +886,9 @@ export const realEstateMenu: MenuGroup = {
   emoji: '🏡',
   subtitle: 'Buy a home or an investment property',
   disabledReason: (g) => adultReason(g, 'buy property'),
-  header: () => 'Pick a broker. Listings change every year.',
-  children: () => [
-    brokerMenu('residential', 'Hometown Realty', '🏠', 'Condos, townhouses, houses and fixer-uppers'),
+  header: (g) => `Pick a broker. Listings change every year. ${g.character.age >= 18 ? mortgageRateNote(g) : ''}`.trim(),
+  children: (g) => [
+    brokerMenu('residential', localStoreName(g, 'realty', '{w} Realty', 'Hometown Realty'), '🏠', 'Condos, townhouses, houses and fixer-uppers'),
     brokerMenu('luxury', 'Prestige Estates', '🏛️', 'Mansions, penthouses, farms, ranches and castles'),
   ],
 }
@@ -648,6 +914,7 @@ const RENTAL_TYPES: RentalType[] = [
   { id: 'penthouse', label: 'Luxury Penthouse', emoji: '🌆', min: 6_000, max: 15_000 },
 ]
 
+const NEUTRAL_NEIGHBORHOODS = ['Downtown', 'the city center', 'the Old Town', 'the suburbs', 'the university quarter', 'the harbor district']
 const NEIGHBORHOODS = ['Downtown', 'Midtown', 'Riverside', 'Old Town', 'the Suburbs', 'Uptown', 'the East Side', 'the West End', 'the Arts District', 'Harbor View', 'Maple Heights', 'University Park', 'Little Italy', 'the Financial District']
 const RENTAL_PERKS = ['Pet friendly', 'In-unit laundry', 'Rooftop deck', 'Thin walls', 'Free parking', 'No AC', 'Gym in the building', 'Upstairs neighbor plays the drums', 'Doorman', 'Near the subway', 'Great natural light', 'Mysterious smell', 'Landlord lives downstairs', 'Brand-new kitchen', 'Balcony with a view']
 
@@ -659,6 +926,12 @@ export interface RentalListing {
   monthly: number
   condition: number
   perk: string
+}
+
+/** A neighborhood where the player lives: US-style districts in the US, the local districts elsewhere. */
+function neighborhood(r: SRng, g: GameState): string {
+  const local = g.character.countryId === 'us' ? [] : localeOf(g.character.countryId).placeWords
+  return local.length && r.next() < 0.85 ? r.pick(local) : r.pick(g.character.countryId === 'us' ? NEIGHBORHOODS : NEUTRAL_NEIGHBORHOODS)
 }
 
 export function rentalListings(g: GameState): RentalListing[] {
@@ -673,7 +946,7 @@ export function rentalListings(g: GameState): RentalListing[] {
       id: `${g.year}:rent-${i}`,
       label: t.label,
       emoji: t.emoji,
-      neighborhood: r.pick(NEIGHBORHOODS),
+      neighborhood: neighborhood(r, g),
       monthly: Math.max(60, Math.round((r.int(t.min, t.max) * mult * (0.85 + 0.15 * (condition / 100))) / 5) * 5),
       condition,
       perk: r.pick(RENTAL_PERKS),
@@ -862,6 +1135,8 @@ const CAR_COLORS = ['Black', 'White', 'Silver', 'Red', 'Blue', 'Gray', 'Green', 
 interface Dealer {
   id: string
   name: string
+  /** Localized name pattern ('{w} Motors'), filled with the market's name words. */
+  localName?: string
   emoji: string
   blurb: string
   types: CarType[]
@@ -871,7 +1146,7 @@ interface Dealer {
 
 const DEALERS: Dealer[] = [
   { id: 'used', name: 'Second Chance Auto Sales', emoji: '🚗', blurb: 'Used cars. Some of them even run.', types: ['economy', 'suv', 'truck', 'luxury', 'sports'], used: true, count: 7 },
-  { id: 'main', name: 'Main Street Motors', emoji: '🚙', blurb: 'New economy cars, SUVs, trucks and EVs', types: ['economy', 'suv', 'truck', 'electric'], used: false, count: 7 },
+  { id: 'main', name: 'Main Street Motors', localName: '{w} Motors', emoji: '🚙', blurb: 'New economy cars, SUVs, trucks and EVs', types: ['economy', 'suv', 'truck', 'electric'], used: false, count: 7 },
   { id: 'prestige', name: 'Prestige Auto Group', emoji: '🚘', blurb: 'New luxury sedans and SUVs', types: ['luxury', 'electric'], used: false, count: 6 },
   { id: 'exotic', name: 'Velocity Exotics', emoji: '🏎️', blurb: 'Sports cars, supercars and classics', types: ['sports', 'supercar', 'classic'], used: false, count: 6 },
 ]
@@ -893,7 +1168,6 @@ export function carListings(g: GameState, dealerId: string): CarListing[] {
   const dealer = DEALERS.find((d) => d.id === dealerId) ?? DEALERS[0]
   const r = seeded(yearKey(g, `cars:${dealer.id}`))
   const pool = CAR_MODELS.filter((m) => dealer.types.includes(m.type))
-  const mult = goodsMult(g)
   const out: CarListing[] = []
   for (let i = 0; i < dealer.count; i++) {
     const m = r.weighted(pool, (x) => (x.rare ? 0.15 : 1))
@@ -923,7 +1197,7 @@ export function carListings(g: GameState, dealerId: string): CarListing[] {
       modelYear,
       isNew: !dealer.used && !m.year,
       condition,
-      price: nicePrice(Math.max(800, price * mult)),
+      price: nicePrice(Math.max(800, price * carPriceMult(g, m.type))),
       color: r.pick(CAR_COLORS),
       mileage,
     }
@@ -937,6 +1211,16 @@ function carName(l: { modelYear: number; make: string; model: string }): string 
 }
 
 const AUTO_LENDERS = ['Speedy Auto Finance', 'First Federal Auto Loans', 'Dealer Financing', 'Open Road Credit']
+
+/** Yearly running costs of a car of this type here (fuel, servicing, registration). */
+function carUpkeep(g: GameState, type: CarType): number {
+  return nicePrice(CAR_UPKEEP[type] * carRunningMult(g, type))
+}
+
+/** A dealer's name where the player lives ("Fuji Motors" in Japan, "Main Street Motors" without local words). */
+function dealerName(g: GameState, d: Dealer): string {
+  return d.localName ? localStoreName(g, `dealer-${d.id}`, d.localName, d.name) : d.name
+}
 
 export interface VehicleFinancePlan {
   id: string
@@ -962,7 +1246,7 @@ function vehicleFinance(g: GameState, price: number, plan: VehicleFinancePlan, k
   const c = g.character
   const down = Math.round(price * plan.down)
   const principal = price - down
-  const rate = offeredRate(g, kind) + (plan.years <= 3 ? -0.005 : 0)
+  const rate = Math.round(Math.max(0.005, offeredRate(g, kind) + (plan.years <= 3 ? -0.005 : 0)) * 10000) / 10000
   const payment = annualPayment(principal, rate, plan.years)
   const base = { down, principal, rate, payment }
   if (c.age < 18) return { ok: false, reason: 'Lenders need you to be 18 to sign for a loan.', ...base }
@@ -1002,9 +1286,8 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
       return false
     }
     spend(g, f.down)
-    loanId = addLoan(g, { kind: 'car', lender: pick(g, AUTO_LENDERS), principal: f.principal, rate: f.rate, years: plan.years }).id
+    loanId = addLoan(g, { kind: 'car', lender: pick(g, localLenders(g, ['{w} Auto Finance', '{w} Motor Credit'], ['Dealer Financing', 'Open Road Credit'], AUTO_LENDERS)), principal: f.principal, rate: f.rate, years: plan.years }).id
   }
-  const mult = goodsMult(g)
   const asset: Asset = {
     id: uid(g, 'a'),
     kind: 'car',
@@ -1015,7 +1298,7 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
     value: l.isNew ? nicePrice(l.price * 0.9) : l.price,
     condition: l.condition,
     purchasedAge: c.age,
-    upkeep: nicePrice(CAR_UPKEEP[l.carType] * mult),
+    upkeep: carUpkeep(g, l.carType),
     details: { make: l.make, model: l.model, modelYear: l.modelYear, carType: l.carType, color: l.color, isNew: l.isNew, mileage: l.mileage, insured: false, ...(loanId ? { loanId } : {}) },
   }
   g.assets.push(asset)
@@ -1025,6 +1308,9 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
   addStat(g, 'happiness', randInt(g, 5, 12))
   log(g, `I bought a ${l.color.toLowerCase()} ${name}${loanId ? ' with an auto loan' : ''}.`, 'good')
   let text = `You drove a ${l.color.toLowerCase()} ${name} off the lot${loanId ? ' with a car loan' : ` for ${formatMoney(l.price)}`}. ${pick(g, ['That new car smell is intoxicating.', 'You honked at nobody, just because you could.', 'You took 40 selfies with it in the parking lot.'])}`
+  const tax = salesTaxNote(g, l.price)
+  if (tax) text += ` ${tax}`
+  if (localPriceMult(g, 'car') >= 1.6) text += ` ${pick(g, ['A big chunk of the sticker price was duties and registration tax.', 'The government made more on this car than the dealer did.'])}`
   if (!hasLicense(g, 'driver')) text += " Heads up: you don't have a driver's license, so for now it's a very expensive lawn ornament."
   notice(g, 'New Wheels!', text, { emoji: CAR_EMOJI[l.carType], tone: 'good' })
   return true
@@ -1053,7 +1339,7 @@ function carListingAction(l: CarListing): MenuAction {
         notice(g, 'Car Dealership', reason, { emoji: '🚗' })
         return
       }
-      const lines = [`${l.color} ${carName(l)}`, l.isNew ? 'Brand new' : `${l.mileage.toLocaleString('en-US')} miles · Condition ${conditionLabel(l.condition)} (${l.condition}%)`, `Price: ${formatMoney(l.price)}`]
+      const lines = [`${l.color} ${carName(l)}`, l.isNew ? 'Brand new' : `${l.mileage.toLocaleString('en-US')} miles · Condition ${conditionLabel(l.condition)} (${l.condition}%)`, `Price: ${formatMoney(l.price)}${salesTaxLabel(g) ? ` (incl. ${salesTaxLabel(g)})` : ''}`, `Running costs: about ${formatMoney(carUpkeep(g, l.carType))}/year`]
       if (!hasLicense(g, 'driver')) lines.push("Note: you don't have a driver's license yet.")
       const choices: ChoiceOption[] = [{ id: 'cash', label: `Pay cash (${formatMoney(l.price)})`, emoji: '💵' }]
       for (const plan of CAR_PLANS) {
@@ -1073,16 +1359,16 @@ export const carDealersMenu: MenuGroup = {
   emoji: '🚗',
   subtitle: 'New, used, luxury and exotic cars',
   disabledReason: (g) => adultReason(g, 'buy a car'),
-  header: (g) => (hasLicense(g, 'driver') ? `You have ${formatMoney(g.character.money)}.` : `You have ${formatMoney(g.character.money)}. You don't have a driver's license, but nobody checks at the dealership.`),
-  children: () =>
+  header: (g) => [`You have ${formatMoney(g.character.money)}.`, hasLicense(g, 'driver') ? '' : "You don't have a driver's license, but nobody checks at the dealership.", carMarketNote(g)].filter(Boolean).join(' '),
+  children: (g) =>
     DEALERS.map(
       (d): MenuGroup => ({
         type: 'menu',
         id: `dealer-${d.id}`,
-        label: d.name,
+        label: dealerName(g, d),
         emoji: d.emoji,
         subtitle: d.blurb,
-        header: () => 'Inventory changes every year.',
+        header: (gg) => `Inventory changes every year. ${pricesIncludeTax(gg)}`.trim(),
         children: (g) => {
           const list = carListings(g, d.id)
           return list.length ? list.map(carListingAction) : [{ type: 'info', id: 'sold', text: 'The lot is empty. Come back next year.', emoji: '🪧' }]
@@ -1147,7 +1433,7 @@ export interface VehicleListing {
 export function vehicleListings(g: GameState, kind: 'boat' | 'aircraft'): VehicleListing[] {
   const r = seeded(yearKey(g, `vehicles:${kind}`))
   const pool = kind === 'boat' ? BOATS : AIRCRAFT
-  const mult = goodsMult(g)
+  const mult = globalGoodsMult(g)
   const out: VehicleListing[] = []
   const n = kind === 'boat' ? 7 : 6
   for (let i = 0; i < n; i++) {
@@ -1195,7 +1481,8 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
       return false
     }
     spend(g, f.down)
-    loanId = addLoan(g, { kind: 'personal', lender: pick(g, ['Harborview Marine Credit', 'Skyward Aviation Finance', 'First National Bank']), principal: f.principal, rate: f.rate, years: plan.years }).id
+    const lenders = l.kind === 'boat' ? ['Harborview Marine Credit', 'First National Bank'] : ['Skyward Aviation Finance', 'First National Bank']
+    loanId = addLoan(g, { kind: 'personal', lender: pick(g, localLenders(g, ['{w} Savings Bank'], [lenders[0]], lenders)), principal: f.principal, rate: f.rate, years: plan.years }).id
   }
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -1217,7 +1504,7 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
   notice(
     g,
     l.kind === 'boat' ? 'Anchors Aweigh!' : 'Cleared for Takeoff!',
-    `You bought a ${l.isNew ? 'brand-new' : 'used'} ${l.label.toLowerCase()} for ${formatMoney(l.price)}${loanId ? ' (financed)' : ''}. ${l.kind === 'boat' ? pick(g, ['You named it after your ex. Out of spite.', 'You already bought a captain\'s hat.', 'A boat: a hole in the water you throw money into.']) : pick(g, ['The salesperson saluted you on the way out.', 'You practiced your "this is your captain speaking" voice all the way home.', 'Upkeep is going to be brutal, but look at it!'])}`,
+    `You bought a ${l.isNew ? 'brand-new' : 'used'} ${l.label.toLowerCase()} for ${formatMoney(l.price)}${loanId ? ' (financed)' : ''}. ${l.kind === 'boat' ? pick(g, ['You named it after your ex. Out of spite.', 'You already bought a captain\'s hat.', 'A boat: a hole in the water you throw money into.']) : pick(g, ['The salesperson saluted you on the way out.', 'You practiced your "this is your captain speaking" voice all the way home.', 'Upkeep is going to be brutal, but look at it!'])}${salesTaxNote(g, l.price) ? ` ${salesTaxNote(g, l.price)}` : ''}`,
     { emoji: l.emoji, tone: 'good' },
   )
   return true
@@ -1250,26 +1537,28 @@ function vehicleListingAction(l: VehicleListing): MenuAction {
         }
       }
       choices.push({ id: 'cancel', label: 'Never mind', emoji: '✖️' })
-      const text = `${l.isNew ? 'Brand new' : `Used, condition ${conditionLabel(l.condition)} (${l.condition}%)`}\nPrice: ${formatMoney(l.price)}\nEstimated upkeep: ${formatMoney(nicePrice(l.price * l.upkeepRate))}/year`
+      const text = `${l.isNew ? 'Brand new' : `Used, condition ${conditionLabel(l.condition)} (${l.condition}%)`}\nPrice: ${formatMoney(l.price)}${salesTaxLabel(g) ? ` (incl. ${salesTaxLabel(g)})` : ''}\nEstimated upkeep: ${formatMoney(nicePrice(l.price * l.upkeepRate))}/year`
       scriptChoice(g, BUY_VEHICLE, `${l.emoji} ${l.label}`, text, choices, { emoji: l.emoji, data: { listing: toJson(l) } })
     },
   }
 }
 
-function vehicleDealerMenu(kind: 'boat' | 'aircraft'): MenuGroup {
+function vehicleDealerMenu(g: GameState, kind: 'boat' | 'aircraft'): MenuGroup {
   return {
     type: 'menu',
     id: kind === 'boat' ? 'boatDealer' : 'aircraftDealer',
-    label: kind === 'boat' ? 'Harborside Marine' : 'Skyline Aviation',
+    label: kind === 'boat' ? localStoreName(g, 'marine', '{w} Marine', 'Harborside Marine') : localStoreName(g, 'aviation', '{w} Aviation', 'Skyline Aviation'),
     emoji: kind === 'boat' ? '⛵' : '✈️',
     subtitle: kind === 'boat' ? 'Boats, from kayaks to yachts' : 'Planes, helicopters and jets',
-    disabledReason: (g) => adultReason(g, kind === 'boat' ? 'buy a boat' : 'buy an aircraft'),
-    header: (g) =>
-      kind === 'boat'
-        ? `Motorboats need a boating license${hasLicense(g, 'boating') ? ' (you have one)' : ''}. You have ${formatMoney(g.character.money)}.`
-        : `Every aircraft needs a pilot's license${hasLicense(g, 'pilot') ? ' (you have one)' : ''}. You have ${formatMoney(g.character.money)}.`,
-    children: (g) => {
-      const list = vehicleListings(g, kind)
+    disabledReason: (gg) => adultReason(gg, kind === 'boat' ? 'buy a boat' : 'buy an aircraft'),
+    header: (gg) =>
+      `${
+        kind === 'boat'
+          ? `Motorboats need a boating license${hasLicense(gg, 'boating') ? ' (you have one)' : ''}. You have ${formatMoney(gg.character.money)}.`
+          : `Every aircraft needs a pilot's license${hasLicense(gg, 'pilot') ? ' (you have one)' : ''}. You have ${formatMoney(gg.character.money)}.`
+      } ${pricesIncludeTax(gg)}`.trim(),
+    children: (gg) => {
+      const list = vehicleListings(gg, kind)
       return list.length ? list.map(vehicleListingAction) : [{ type: 'info', id: 'sold', text: 'Nothing left in stock this year.', emoji: '🪧' }]
     },
   }
@@ -1282,7 +1571,7 @@ export const specialtyVehiclesMenu: MenuGroup = {
   emoji: '🛥️',
   subtitle: 'Boats and aircraft',
   disabledReason: (g) => adultReason(g, 'buy boats or aircraft'),
-  children: () => [vehicleDealerMenu('boat'), vehicleDealerMenu('aircraft')],
+  children: (g) => [vehicleDealerMenu(g, 'boat'), vehicleDealerMenu(g, 'aircraft')],
 }
 
 // ---------------------------------------------------------------------------
@@ -1337,7 +1626,7 @@ const ENGAGEMENT_TYPES: JewelType[] = [
 ]
 
 function jewelItem(g: GameState, r: SRng, t: JewelType, id: string, fake: boolean): ItemListing {
-  const mult = goodsMult(g)
+  const mult = localGoodsMult(g, 'luxury')
   const quality = r.int(20, 100)
   let carats = 0
   let price: number
@@ -1432,7 +1721,7 @@ const ELECTRONICS: [string, string, number][] = [
 
 export function electronicsListings(g: GameState): ItemListing[] {
   const r = seeded(yearKey(g, 'electronics'))
-  const mult = goodsMult(g)
+  const mult = localGoodsMult(g, 'electronics')
   return ELECTRONICS.map(([label, emoji, base], i): ItemListing => {
     const price = nicePrice(base * mult * r.float(0.85, 1.1))
     return { id: `${g.year}:elec-${i}`, kind: 'other', category: 'electronics', name: label, emoji, price, value: nicePrice(price * 0.7), condition: 100, isNew: true, details: { category: 'electronics' } }
@@ -1454,7 +1743,7 @@ const LUXURY: [string, string, number, number, string][] = [
 
 export function luxuryListings(g: GameState): ItemListing[] {
   const r = seeded(yearKey(g, 'luxury'))
-  const mult = goodsMult(g)
+  const mult = localGoodsMult(g, 'luxury')
   return LUXURY.map(([label, emoji, lo, hi, sub], i): ItemListing => {
     const price = nicePrice((lo + (hi - lo) * Math.pow(r.next(), 1.5)) * mult)
     const keep = sub === 'watch' ? 0.85 : sub === 'handbag' ? 0.7 : sub === 'sneakers' ? 0.8 : 0.35
@@ -1485,13 +1774,20 @@ const COLLECTIBLES: [string, string, number, number][] = [
   ['Moon Rock (Certified)', '🌑', 20_000, 900_000],
 ]
 
+/** Half the galleries' artists are local names, the rest the usual international set. */
+function artistName(r: SRng, g: GameState): string {
+  if (r.next() < 0.5) return r.pick(ARTISTS)
+  const pool = namePoolOf(g.character.countryId)
+  return `${r.pick(r.next() < 0.5 ? pool.male : pool.female)} ${r.pick(pool.last)}`
+}
+
 export function collectibleListings(g: GameState, store: 'art' | 'collectibles'): ItemListing[] {
   const r = seeded(yearKey(g, `collect:${store}`))
-  const mult = goodsMult(g)
+  const mult = globalGoodsMult(g)
   const out: ItemListing[] = []
   for (let i = 0; i < 6; i++) {
     if (store === 'art') {
-      const artist = r.pick(ARTISTS)
+      const artist = artistName(r, g)
       const title = r.pick(ART_TITLES)
       const fame = r.int(1, 100)
       const price = nicePrice((2_000 + 2_000_000 * Math.pow(r.next(), 4) * (fame / 100)) * mult)
@@ -1561,7 +1857,8 @@ export function buyItem(g: GameState, item: ItemListing, minAge = 18): Asset | n
           : item.category === 'art'
             ? ['Your friends will pretend to understand it.', 'You hung it slightly crooked. It works.', 'The gallery owner called it "a bold investment."']
             : ['Retail therapy: it works!', 'You admired it for a solid hour.', 'Worth every penny. Probably.']
-  notice(g, 'Purchased!', `You bought ${withArticle(item.name)} for ${formatMoney(item.price)}. ${pick(g, quips)}`, { emoji: item.emoji, tone: 'good' })
+  const tax = item.kind === 'investment' || item.kind === 'business' ? '' : salesTaxNote(g, item.price)
+  notice(g, 'Purchased!', `You bought ${withArticle(item.name)} for ${formatMoney(item.price)}. ${pick(g, quips)}${tax ? ` ${tax}` : ''}`, { emoji: item.emoji, tone: 'good' })
   return asset
 }
 
@@ -1594,7 +1891,7 @@ function storeMenu(id: string, label: string, emoji: string, subtitle: string, m
     emoji,
     subtitle,
     disabledReason: (g) => ageReason(g, minAge, `shop at ${label}`),
-    header: (g) => `${header ? `${header} ` : ''}You have ${formatMoney(g.character.money)}.`,
+    header: (g) => [header ?? '', `You have ${formatMoney(g.character.money)}.`, pricesIncludeTax(g)].filter(Boolean).join(' '),
     children: (g) => {
       const items = list(g)
       return items.length ? items.map((i) => itemAction(i, minAge)) : [{ type: 'info', id: 'soldout', text: 'Sold out! New stock arrives next year.', emoji: '🪧' }]
@@ -1616,7 +1913,7 @@ export const jewelersMenu: MenuGroup = {
       label: 'Glitterwell Fine Jewelers',
       emoji: '💎',
       subtitle: 'Certified real gems',
-      header: (g) => `Every stone comes with a certificate. You have ${formatMoney(g.character.money)}.`,
+      header: (g) => `Every stone comes with a certificate. You have ${formatMoney(g.character.money)}. ${pricesIncludeTax(g)}`.trim(),
       children: (g) => {
         const items = jewelryListings(g, 'real')
         return [
@@ -1633,7 +1930,7 @@ export const jewelersMenu: MenuGroup = {
       label: 'Bling Bros. Discount Jewelry',
       emoji: '✨',
       subtitle: 'Prices so low they must be... genuine?',
-      header: (g) => `Everything here is cubic zirconia and gold paint. Don't tell anyone. You have ${formatMoney(g.character.money)}.`,
+      header: (g) => `Everything here is cubic zirconia and gold paint. Don't tell anyone. You have ${formatMoney(g.character.money)}. ${pricesIncludeTax(g)}`.trim(),
       children: (g) => {
         const items = jewelryListings(g, 'fake')
         return [
@@ -1863,7 +2160,7 @@ export function searchAttic(g: GameState): Asset | null {
   const perRarity: Record<string, number> = {}
   for (const x of pool) perRarity[x.rarity] = (perRarity[x.rarity] ?? 0) + 1
   const def = weightedPick(g, pool, (x) => RARITY_WEIGHT[x.rarity] / perRarity[x.rarity])
-  const base = Math.max(1, nicePrice(def.value * goodsMult(g) * (0.85 + rand(g) * 0.3)))
+  const base = Math.max(1, nicePrice(def.value * globalGoodsMult(g) * (0.85 + rand(g) * 0.3)))
   const condition = randInt(g, def.rarity === 'Common' ? 25 : 15, 100)
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -1918,7 +2215,7 @@ export const searchAtticAction: MenuAction = {
 
 const GIFT_RELATIONS: RelationKind[] = ['parent', 'stepparent', 'sibling', 'halfSibling', 'stepsibling', 'grandparent', 'child', 'stepchild', 'grandchild', 'friend', 'bestFriend', 'partner', 'fiance', 'spouse', 'lover']
 
-function findAsset(g: GameState, id: string): Asset | undefined {
+export function findAsset(g: GameState, id: string): Asset | undefined {
   return g.assets.find((a) => a.id === id)
 }
 
@@ -2264,6 +2561,14 @@ const RENOVATIONS = [
   { id: 'gut', label: 'Full Gut Renovation', emoji: '🏗️', cost: 0.12, cond: [100, 100], value: 0.08 },
 ]
 
+const CONTRACTOR_SUFFIXES = ['Construction', 'Builders', '& Sons Renovations', 'Home Repair', 'Bros. Building', 'Renovations']
+
+/** A builder named after a local family ('Pratama & Sons Renovations'); the US keeps its classics. */
+function contractorName(g: GameState): string {
+  if (g.character.countryId === 'us') return pick(g, CONTRACTORS)
+  return `${randomLastName(g, g.character.countryId)} ${pick(g, CONTRACTOR_SUFFIXES)}`
+}
+
 const CONTRACTORS = ['Bob\'s Builders', 'Nail It Construction', 'Hammer Time Renovations', 'Discount Dave\'s Home Repair', 'Precision Craftsmen', 'Two Guys and a Truck', 'Sledgehammer Bros.']
 
 function renovationCost(g: GameState, a: Asset, rate: number): number {
@@ -2301,7 +2606,7 @@ function renovateMenu(a: Asset): MenuGroup {
               cantAfford(gg, estimate, 'the renovation')
               return
             }
-            const contractor = pick(gg, CONTRACTORS)
+            const contractor = contractorName(gg)
             const roll = randInt(gg, 1, 100)
             let costNote = 'They finished on time and on budget. A miracle.'
             let paid = estimate
@@ -2402,7 +2707,7 @@ function amenitiesMenu(a: Asset): MenuGroup {
               cantAfford(gg, price, `a ${am.label.toLowerCase()}`)
               return
             }
-            const contractor = pick(gg, CONTRACTORS)
+            const contractor = contractorName(gg)
             const roll = randInt(gg, 1, 100)
             let note = 'It came out great.'
             let paid = price
@@ -3094,13 +3399,22 @@ function assetInfo(g: GameState, a: Asset): MenuNode[] {
   return rows.map((text, i): MenuNode => ({ type: 'info', id: `info-${a.id}-${i}`, text }))
 }
 
+/**
+ * Asset kinds whose owned-asset screen is built by another module (business.ts,
+ * investments.ts, shops/memberships.ts). menus.ts fills this in at load, which keeps
+ * assets.ts free of imports from those modules. `subtitle` replaces the generic
+ * "value · condition" line; `children` replaces the whole screen (info rows and actions).
+ */
+export const ASSET_KIND_VIEWS: Partial<Record<AssetKind, { subtitle?: (g: GameState, a: Asset) => string; children: (g: GameState, a: Asset) => MenuNode[] }>> = {}
+
 function assetNode(g: GameState, a: Asset): MenuGroup {
+  const view = isHeirloom(a) ? undefined : ASSET_KIND_VIEWS[a.kind]
   return {
     type: 'menu',
     id: `asset-${a.id}`,
     label: a.name,
     emoji: a.emoji,
-    subtitle: assetSubtitle(g, a),
+    subtitle: view?.subtitle ? view.subtitle(g, a) : assetSubtitle(g, a),
     header: (gg) => {
       const cur = findAsset(gg, a.id)
       return cur ? `${cur.emoji} ${cur.name}${cur.kind === 'house' && cur.details.typeLabel ? ` (${str(cur.details.typeLabel)})` : ''}` : 'This asset is gone.'
@@ -3108,6 +3422,7 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
     children: (gg) => {
       const cur = findAsset(gg, a.id)
       if (!cur) return [{ type: 'info', id: 'gone', text: 'You no longer own this.' }]
+      if (view) return view.children(gg, cur)
       const nodes: MenuNode[] = [...assetInfo(gg, cur), { type: 'heading', id: `actions-${cur.id}`, label: 'Actions' }]
       const push = (n: MenuNode | null) => {
         if (n) nodes.push(n)
@@ -3195,6 +3510,8 @@ const KIND_SECTIONS: [string, AssetKind[]][] = [
   ['Instruments', ['instrument']],
   ['Art & Collectibles', ['collectible']],
   ['Businesses', ['business']],
+  ['Investments', ['investment']],
+  ['Memberships & Subscriptions', ['membership']],
   ['Belongings', ['other']],
 ]
 
@@ -3297,7 +3614,7 @@ export const shoppingMenu: MenuGroup = {
   subtitle: 'Cars, homes, jewelry, gadgets and more',
   visible: (g) => !inPrison(g),
   disabledReason: (g) => ageReason(g, 10, 'go shopping on your own'),
-  header: (g) => `You have ${formatMoney(g.character.money)} to spend.`,
+  header: (g) => [`You have ${formatMoney(g.character.money)} to spend.`, pricesIncludeTax(g), marketShoppingNote(g)].filter(Boolean).join(' '),
   children: () => [
     { type: 'heading', id: 'shopStores', label: 'Stores' },
     electronicsStoreMenu,
@@ -3374,6 +3691,8 @@ function ageAsset(g: GameState, a: Asset, market: number): void {
       const change = classic ? bell(g, 0, 90) / 1000 : -(age <= 1 ? bell(g, 150, 220) : age <= 4 ? bell(g, 100, 160) : age <= 10 ? bell(g, 70, 120) : bell(g, 30, 80)) / 1000
       a.condition = Math.max(0, a.condition - randInt(g, 2, 6))
       d.mileage = num(d.mileage) + randInt(g, 6_000, 15_000)
+      // Running costs follow wherever the car lives now (fuel prices, mechanics).
+      if (Object.prototype.hasOwnProperty.call(CAR_UPKEEP, type)) a.upkeep = carUpkeep(g, type as CarType)
       a.value = Math.max(200, Math.round(a.value * (1 + change) * (a.condition < 30 ? 0.92 : 1)))
       return
     }

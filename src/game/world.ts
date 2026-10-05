@@ -5,7 +5,7 @@
 // pool that sounds right for the place, and the laws and customs other modules
 // read (driving/drinking ages, free university, healthcare, death penalty,
 // royalty, conscription). All data here is static and plain JSON-friendly.
-import { pick, weightedPick } from './rng'
+import { pick, rand, weightedPick } from './rng'
 import type { GameState, Gender } from './types'
 
 export type NameRegion =
@@ -1289,6 +1289,208 @@ export const NAME_POOLS: Record<NameRegion, NamePool> = {
 }
 
 // ---------------------------------------------------------------------------
+// Per-country name pools
+//
+// Several countries share a regional pool above. Where neighbors really name their kids
+// differently (Brazil vs Portugal, Buenos Aires vs Mexico City vs Havana, Oslo vs Stockholm,
+// Nairobi vs Kampala, Beirut vs Baghdad, Riyadh vs Dubai, Algiers vs Casablanca), these
+// compact pools are used first. A country without one falls back to its regional pool.
+
+const RIOPLATENSE: NamePool = {
+  male: ['Santiago', 'Mateo', 'Benjamín', 'Joaquín', 'Thiago', 'Bautista', 'Felipe', 'Tomás', 'Valentino', 'Facundo', 'Nicolás', 'Agustín', 'Lautaro', 'Matías', 'Franco', 'Gonzalo', 'Martín', 'Ignacio', 'Federico', 'Diego', 'Sebastián', 'Juan Cruz'],
+  female: ['Sofía', 'Martina', 'Valentina', 'Catalina', 'Emilia', 'Isabella', 'Olivia', 'Mía', 'Camila', 'Lucía', 'Julieta', 'Agustina', 'Florencia', 'Micaela', 'Milagros', 'Paula', 'Rocío', 'Antonella', 'Delfina', 'Constanza', 'Belén', 'Guadalupe'],
+  last: ['González', 'Rodríguez', 'Gómez', 'Fernández', 'López', 'Díaz', 'Martínez', 'Pérez', 'García', 'Sánchez', 'Romero', 'Sosa', 'Álvarez', 'Torres', 'Ruiz', 'Benítez', 'Acosta', 'Medina', 'Herrera', 'Suárez', 'Rossi', 'Ferrari', 'Russo', 'Bianchi', 'Romano', 'Gallo', 'Ricci', 'Greco', 'Marino', 'Lombardi', 'Fontana', 'Moretti'],
+}
+
+const CARIBBEAN_SPANISH_LAST = ['Rodríguez', 'Pérez', 'González', 'Hernández', 'López', 'Martínez', 'García', 'Díaz', 'Sánchez', 'Ramírez', 'Rivera', 'Torres', 'Ortiz', 'Reyes', 'Cruz', 'Morales', 'Colón', 'Vázquez', 'Medina', 'Peña', 'Batista', 'Castillo', 'Fernández', 'Álvarez', 'Herrera', 'Cabrera', 'Guzmán', 'Polanco', 'Figueroa', 'Matos', 'Quiñones', 'Santana']
+
+const ARABIC_LAST = NAME_POOLS.arabic.last
+
+export const COUNTRY_NAME_POOLS: Record<string, NamePool> = {
+  // Brazil and Portugal: same language, different baby-name charts.
+  br: {
+    male: ['Miguel', 'Arthur', 'Gael', 'Heitor', 'Theo', 'Davi', 'Gabriel', 'Bernardo', 'Samuel', 'João Pedro', 'Pedro', 'Lucas', 'Matheus', 'Guilherme', 'Enzo', 'Rafael', 'Gustavo', 'Felipe', 'Caio', 'Vinícius', 'Thiago', 'Bruno', 'Leonardo', 'Kauã', 'Luiz', 'Paulo', 'Wesley', 'Anderson'],
+    female: ['Helena', 'Alice', 'Laura', 'Maria Alice', 'Valentina', 'Heloísa', 'Manuela', 'Júlia', 'Sophia', 'Isabella', 'Maria Clara', 'Lívia', 'Beatriz', 'Ana Clara', 'Larissa', 'Letícia', 'Camila', 'Fernanda', 'Amanda', 'Bianca', 'Luana', 'Yasmin', 'Gabriela', 'Bruna', 'Daniela', 'Jéssica'],
+    last: ['Silva', 'Santos', 'Oliveira', 'Souza', 'Lima', 'Pereira', 'Ferreira', 'Costa', 'Rodrigues', 'Almeida', 'Nascimento', 'Alves', 'Carvalho', 'Araújo', 'Ribeiro', 'Gomes', 'Barbosa', 'Rocha', 'Cavalcanti', 'Moura', 'Melo', 'Barros', 'Freitas', 'Cardoso', 'Dias', 'Batista', 'Teixeira', 'Vieira', 'Monteiro', 'Andrade'],
+  },
+  pt: {
+    male: ['João', 'Francisco', 'Afonso', 'Duarte', 'Tomás', 'Rodrigo', 'Martim', 'Santiago', 'Gonçalo', 'Diogo', 'Tiago', 'Miguel', 'Pedro', 'Rui', 'Nuno', 'Bernardo', 'Vasco', 'Simão', 'Lourenço', 'Guilherme', 'António', 'Manuel', 'José', 'Ricardo'],
+    female: ['Maria', 'Leonor', 'Matilde', 'Beatriz', 'Carolina', 'Mariana', 'Inês', 'Margarida', 'Ana', 'Francisca', 'Joana', 'Rita', 'Sofia', 'Catarina', 'Teresa', 'Benedita', 'Constança', 'Madalena', 'Filipa', 'Marta', 'Raquel', 'Patrícia'],
+    last: ['Silva', 'Santos', 'Ferreira', 'Pereira', 'Oliveira', 'Costa', 'Rodrigues', 'Martins', 'Jesus', 'Sousa', 'Fernandes', 'Gonçalves', 'Gomes', 'Lopes', 'Marques', 'Alves', 'Almeida', 'Ribeiro', 'Pinto', 'Carvalho', 'Teixeira', 'Moreira', 'Correia', 'Mendes', 'Nunes', 'Soares', 'Vieira', 'Monteiro', 'Cardoso', 'Rocha'],
+  },
+  // The River Plate: Spanish and Italian surnames side by side.
+  ar: RIOPLATENSE,
+  uy: { ...RIOPLATENSE, last: [...RIOPLATENSE.last, 'Silva', 'Pereira', 'Olivera', 'Núñez', 'Cabrera', 'Techera'] },
+  mx: {
+    male: ['Santiago', 'Mateo', 'Sebastián', 'Leonardo', 'Emiliano', 'Diego', 'Miguel Ángel', 'Daniel', 'José Luis', 'Juan Pablo', 'Luis Fernando', 'Jesús', 'Francisco', 'Alejandro', 'Ricardo', 'Eduardo', 'Fernando', 'Iker', 'Rodrigo', 'Javier', 'Carlos', 'Jorge', 'Héctor', 'Arturo'],
+    female: ['Sofía', 'María José', 'Valentina', 'Ximena', 'Regina', 'Camila', 'Renata', 'Guadalupe', 'Fernanda', 'Daniela', 'Mariana', 'Itzel', 'Andrea', 'Montserrat', 'Alejandra', 'Paola', 'Brenda', 'Karla', 'Diana', 'Natalia', 'Victoria', 'Valeria', 'Rosa', 'Verónica'],
+    last: ['Hernández', 'García', 'Martínez', 'López', 'González', 'Pérez', 'Rodríguez', 'Sánchez', 'Ramírez', 'Cruz', 'Flores', 'Gómez', 'Morales', 'Vázquez', 'Reyes', 'Jiménez', 'Torres', 'Díaz', 'Gutiérrez', 'Ruiz', 'Mendoza', 'Aguilar', 'Ortiz', 'Moreno', 'Castillo', 'Romero', 'Álvarez', 'Chávez', 'Rivera', 'Juárez', 'Domínguez', 'Salazar', 'Guzmán'],
+  },
+  cu: {
+    male: ['Yoel', 'Yasiel', 'Yunior', 'Osmany', 'Yoandry', 'Reinier', 'Alexei', 'Dayron', 'Lázaro', 'Raúl', 'Ernesto', 'Alejandro', 'Carlos', 'Jorge', 'Yusniel', 'Ariel', 'Orlando', 'Rolando', 'Pedro', 'Manuel'],
+    female: ['Yanelis', 'Yamilé', 'Dayana', 'Yudith', 'Mayelín', 'Yaimara', 'Arianna', 'Lisandra', 'Odalys', 'Marisleydis', 'Yuliet', 'Daimí', 'Mileydis', 'Elena', 'Camila', 'Yanet', 'Ileana', 'Niurka', 'Beatriz', 'Liset'],
+    last: CARIBBEAN_SPANISH_LAST,
+  },
+  do: {
+    male: ['José', 'Juan Carlos', 'Ramón', 'Rafael', 'Franklin', 'Starlin', 'Wilkin', 'Manuel', 'Luis Miguel', 'Pedro', 'Frank', 'Yunior', 'Edwin', 'Víctor', 'Ángel', 'Johan', 'Ezequiel', 'Jeison', 'Moisés', 'Darío'],
+    female: ['María', 'Yokasta', 'Yudelka', 'Yanely', 'Rosanna', 'Carolina', 'Altagracia', 'Yesenia', 'Miguelina', 'Nicole', 'Esmeralda', 'Paola', 'Wanda', 'Ana Mercedes', 'Juana', 'Yaritza', 'Dayana', 'Mildred', 'Leidy', 'Arisleyda'],
+    last: CARIBBEAN_SPANISH_LAST,
+  },
+  pr: {
+    male: ['José', 'Luis', 'Carlos', 'Ángel', 'Jorge', 'Juan', 'Xavier', 'Jan Carlos', 'Jayden', 'Kevin', 'Edwin', 'Héctor', 'Gabriel', 'Adrián', 'Yadiel', 'Javier', 'Ricardo', 'Alexis', 'Sebastián', 'Jean Paul'],
+    female: ['María', 'Yaritza', 'Keishla', 'Nilda', 'Gloria', 'Carmen', 'Zoraida', 'Wanda', 'Ivelisse', 'Mariela', 'Nayeli', 'Kiara', 'Génesis', 'Yamilet', 'Coral', 'Brenda', 'Lourdes', 'Ana', 'Gisselle', 'Yesenia'],
+    last: [...CARIBBEAN_SPANISH_LAST, 'Santiago', 'Rosario', 'Acevedo', 'Maldonado'],
+  },
+  // Andorra: Catalan first and last names (Meritxell is the patron saint).
+  ad: {
+    male: ['Jordi', 'Pau', 'Marc', 'Joan', 'Arnau', 'Pol', 'Oriol', 'Albert', 'Xavier', 'Jaume', 'Gerard', 'Martí', 'Biel', 'Èric', 'Àlex', 'Josep', 'Ramon', 'David', 'Sergi', 'Toni'],
+    female: ['Núria', 'Montserrat', 'Laia', 'Júlia', 'Anna', 'Mireia', 'Marta', 'Clara', 'Aina', 'Martina', 'Berta', 'Carla', 'Mercè', 'Meritxell', 'Roser', 'Gemma', 'Laura', 'Ariadna', 'Sílvia', 'Neus'],
+    last: ['Martí', 'Rossell', 'Cerqueda', 'Naudi', 'Riba', 'Font', 'Casal', 'Marsal', 'Pallarès', 'Duró', 'Moles', 'Areny', 'Pujal', 'Ribó', 'Pons', 'Puig', 'Vila', 'Serra', 'Mas', 'Coma', 'Bonell', 'Camp', 'Fernández', 'García', 'Lopes'],
+  },
+  // Aruba: Papiamento island names, Dutch and Spanish roots.
+  aw: {
+    male: ['Jair', 'Ryan', 'Giovanni', 'Gregory', 'Rudy', 'Edwin', 'Jurgen', 'Ruben', 'Ricardo', 'Daniel', 'Luis', 'Juan', 'Rignald', 'Dwight', 'Glenn', 'Mike', 'Kevin', 'Jeffrey', 'Raymond', 'Shurendy'],
+    female: ['Ingrid', 'Jacqueline', 'Melissa', 'Shirley', 'Evelyn', 'Michelle', 'Monique', 'Natasha', 'Nathaly', 'Yolanda', 'Rosalinda', 'Vanessa', 'Desiree', 'Gisella', 'Kimberly', 'Daisy', 'Sharon', 'Maria', 'Jennifer', 'Esther'],
+    last: ['Croes', 'Arends', 'Kock', 'Tromp', 'Werleman', 'Geerman', 'Maduro', 'Wever', 'Oduber', 'Thijsen', 'Lacle', 'Dirksz', 'Henriquez', 'Eman', 'Ponson', 'Figaroa', 'Boekhoudt', 'Lampe', 'Rasmijn', 'Kelly', 'Vrolijk', 'de Cuba'],
+  },
+  au: {
+    male: ['Oliver', 'Noah', 'Jack', 'William', 'Leo', 'Lucas', 'Thomas', 'Henry', 'Charlie', 'James', 'Hudson', 'Lachlan', 'Harrison', 'Cooper', 'Mitchell', 'Riley', 'Bailey', 'Jayden', 'Liam', 'Ethan', 'Josh', 'Hamish', 'Angus', 'Darcy'],
+    female: ['Charlotte', 'Olivia', 'Amelia', 'Isla', 'Mia', 'Ava', 'Grace', 'Chloe', 'Matilda', 'Ruby', 'Zoe', 'Sienna', 'Jessica', 'Emily', 'Sophie', 'Georgia', 'Hannah', 'Lily', 'Tahlia', 'Isabella', 'Brooke', 'Kayla'],
+    last: ['Smith', 'Jones', 'Williams', 'Brown', 'Wilson', 'Taylor', 'Johnson', 'White', 'Martin', 'Anderson', 'Thompson', 'Nguyen', 'Thomas', 'Walker', 'Harris', 'Lee', 'Ryan', 'Robinson', 'Kelly', 'King', 'Campbell', 'Mitchell', "O'Brien", 'Murphy', 'Clarke', 'Young', 'Hall', 'Wright', 'Edwards', 'Collins'],
+  },
+  // New Zealand: Kiwi and Māori names.
+  nz: {
+    male: ['Oliver', 'Jack', 'Noah', 'Leo', 'George', 'Charlie', 'Lucas', 'William', 'Thomas', 'James', 'Hunter', 'Mason', 'Liam', 'Nikau', 'Ari', 'Tama', 'Wiremu', 'Rawiri', 'Hemi', 'Manaia', 'Tāne', 'Kauri'],
+    female: ['Isla', 'Charlotte', 'Olivia', 'Amelia', 'Mia', 'Ava', 'Lily', 'Sophie', 'Harper', 'Ruby', 'Grace', 'Aria', 'Mila', 'Aroha', 'Anahera', 'Mere', 'Kaia', 'Hine', 'Ngaio', 'Maia', 'Kahurangi', 'Mereana'],
+    last: ['Smith', 'Williams', 'Brown', 'Wilson', 'Taylor', 'Jones', 'Singh', 'Thompson', 'Walker', 'Anderson', 'Campbell', 'Harris', 'Martin', 'Kelly', 'Robinson', 'Clark', 'Ngata', 'Parata', 'Tamihana', 'Te Rangi', 'Pōmare', 'Tipene', 'Rewiti', 'Paewai', 'Kingi', 'Wihongi'],
+  },
+  at: {
+    male: ['Lukas', 'Tobias', 'David', 'Maximilian', 'Elias', 'Jakob', 'Felix', 'Paul', 'Florian', 'Fabian', 'Simon', 'Sebastian', 'Stefan', 'Johannes', 'Matthias', 'Alexander', 'Leon', 'Moritz', 'Valentin', 'Raphael', 'Gerhard', 'Franz', 'Josef', 'Markus'],
+    female: ['Anna', 'Hannah', 'Lena', 'Sophie', 'Marie', 'Laura', 'Lea', 'Emilia', 'Valentina', 'Katharina', 'Magdalena', 'Johanna', 'Theresa', 'Julia', 'Sarah', 'Elena', 'Lisa', 'Viktoria', 'Christina', 'Barbara', 'Elisabeth', 'Sabine'],
+    last: ['Gruber', 'Huber', 'Bauer', 'Wagner', 'Müller', 'Pichler', 'Steiner', 'Moser', 'Mayer', 'Hofer', 'Leitner', 'Berger', 'Fuchs', 'Eder', 'Fischer', 'Schmid', 'Winkler', 'Weber', 'Schwarz', 'Maier', 'Reiter', 'Mayr', 'Wimmer', 'Egger', 'Brunner', 'Lang', 'Baumgartner', 'Auer'],
+  },
+  // Switzerland: German, French and Italian Switzerland in one pool.
+  ch: {
+    male: ['Noah', 'Liam', 'Luca', 'Matteo', 'Leon', 'Elias', 'Gabriel', 'Nico', 'Samuel', 'Lukas', 'Jonas', 'Andrin', 'Reto', 'Urs', 'Beat', 'Thomas', 'Daniel', 'Marco', 'Nicolas', 'Julien', 'Loïc', 'Mathis', 'Lorenzo'],
+    female: ['Mia', 'Emma', 'Lina', 'Mila', 'Elena', 'Lara', 'Lea', 'Sofia', 'Laura', 'Anna', 'Nina', 'Seraina', 'Ursula', 'Ruth', 'Chloé', 'Léa', 'Camille', 'Giulia', 'Alessia', 'Martina', 'Corinne', 'Céline'],
+    last: ['Müller', 'Meier', 'Schmid', 'Keller', 'Weber', 'Huber', 'Meyer', 'Schneider', 'Steiner', 'Fischer', 'Gerber', 'Brunner', 'Baumann', 'Frei', 'Zimmermann', 'Moser', 'Widmer', 'Wyss', 'Graf', 'Roth', 'Favre', 'Rochat', 'Bonvin', 'Rossi', 'Bernasconi', 'Fontana', 'Gasser', 'Lüthi'],
+  },
+  dk: {
+    male: ['William', 'Noah', 'Oscar', 'Lucas', 'Carl', 'Victor', 'Malthe', 'Alfred', 'Emil', 'Aksel', 'Valdemar', 'Magnus', 'Frederik', 'Mikkel', 'Rasmus', 'Kasper', 'Mads', 'Søren', 'Jens', 'Anders', 'Christian', 'Henrik', 'Morten', 'Niels'],
+    female: ['Ida', 'Emma', 'Alma', 'Clara', 'Freja', 'Agnes', 'Karla', 'Ella', 'Olivia', 'Josefine', 'Sofie', 'Mathilde', 'Laura', 'Signe', 'Cecilie', 'Mette', 'Anne', 'Camilla', 'Line', 'Maja', 'Astrid', 'Karen'],
+    last: ['Nielsen', 'Jensen', 'Hansen', 'Pedersen', 'Andersen', 'Christensen', 'Larsen', 'Sørensen', 'Rasmussen', 'Jørgensen', 'Petersen', 'Madsen', 'Kristensen', 'Olsen', 'Thomsen', 'Christiansen', 'Poulsen', 'Johansen', 'Møller', 'Mortensen', 'Knudsen', 'Jakobsen', 'Mikkelsen', 'Frederiksen', 'Lund', 'Holm', 'Eriksen', 'Kjær', 'Dam'],
+  },
+  no: {
+    male: ['Jakob', 'Emil', 'Noah', 'Oliver', 'Filip', 'William', 'Lucas', 'Liam', 'Henrik', 'Aksel', 'Ola', 'Kristian', 'Sindre', 'Eirik', 'Magnus', 'Håkon', 'Even', 'Sander', 'Martin', 'Lars', 'Knut', 'Bjørn', 'Tor', 'Olav'],
+    female: ['Nora', 'Emma', 'Ella', 'Maja', 'Olivia', 'Sofie', 'Ingrid', 'Leah', 'Frida', 'Astrid', 'Sara', 'Tiril', 'Ingeborg', 'Silje', 'Kari', 'Hanne', 'Ragnhild', 'Solveig', 'Marit', 'Hedda', 'Tuva', 'Thea', 'Synnøve'],
+    last: ['Hansen', 'Johansen', 'Olsen', 'Larsen', 'Andersen', 'Pedersen', 'Nilsen', 'Kristiansen', 'Jensen', 'Karlsen', 'Johnsen', 'Pettersen', 'Eriksen', 'Berg', 'Haugen', 'Hagen', 'Johannessen', 'Andreassen', 'Jacobsen', 'Dahl', 'Halvorsen', 'Lund', 'Solberg', 'Strand', 'Bakken', 'Moen', 'Lie', 'Aas', 'Nygård'],
+  },
+  se: {
+    male: ['William', 'Liam', 'Noah', 'Hugo', 'Lucas', 'Oliver', 'Elias', 'Alexander', 'Adam', 'Charlie', 'Isak', 'Ludvig', 'Axel', 'Nils', 'Erik', 'Johan', 'Anders', 'Lars', 'Karl', 'Per', 'Mats', 'Gustav', 'Viktor', 'Oskar'],
+    female: ['Alice', 'Maja', 'Vera', 'Elsa', 'Astrid', 'Selma', 'Ella', 'Alma', 'Wilma', 'Saga', 'Ebba', 'Agnes', 'Linnea', 'Klara', 'Ingrid', 'Karin', 'Anna', 'Eva', 'Kristina', 'Birgitta', 'Malin', 'Sofia', 'Lena', 'Frida'],
+    last: ['Andersson', 'Johansson', 'Karlsson', 'Nilsson', 'Eriksson', 'Larsson', 'Olsson', 'Persson', 'Svensson', 'Gustafsson', 'Pettersson', 'Jonsson', 'Jansson', 'Hansson', 'Bengtsson', 'Jönsson', 'Lindberg', 'Jakobsson', 'Magnusson', 'Lindström', 'Olofsson', 'Lindqvist', 'Lindgren', 'Berg', 'Axelsson', 'Bergström', 'Lundberg', 'Lind', 'Lundgren', 'Mattsson'],
+  },
+  hr: {
+    male: ['Luka', 'Ivan', 'David', 'Jakov', 'Petar', 'Marko', 'Josip', 'Matej', 'Mateo', 'Ante', 'Tomislav', 'Krešimir', 'Dario', 'Filip', 'Fran', 'Leon', 'Roko', 'Toma', 'Stjepan', 'Zvonimir', 'Hrvoje', 'Damir'],
+    female: ['Mia', 'Lucija', 'Ema', 'Nika', 'Sara', 'Petra', 'Ana', 'Marta', 'Lana', 'Iva', 'Ivana', 'Marija', 'Katarina', 'Nikolina', 'Martina', 'Mirela', 'Gordana', 'Vesna', 'Lea', 'Rita', 'Dora', 'Klara'],
+    last: ['Horvat', 'Kovačević', 'Babić', 'Marić', 'Jurić', 'Novak', 'Kovačić', 'Knežević', 'Vuković', 'Marković', 'Petrović', 'Matić', 'Tomić', 'Pavlović', 'Perić', 'Božić', 'Blažević', 'Grgić', 'Pavić', 'Radić', 'Šarić', 'Lovrić', 'Vidović', 'Jukić', 'Galić', 'Brkić', 'Mandić', 'Barišić', 'Šimić'],
+  },
+  rs: {
+    male: ['Stefan', 'Luka', 'Lazar', 'Nikola', 'Marko', 'Filip', 'Aleksa', 'Vuk', 'Uroš', 'Miloš', 'Đorđe', 'Mihajlo', 'Dušan', 'Nemanja', 'Petar', 'Jovan', 'Dragan', 'Zoran', 'Goran', 'Dejan', 'Nenad', 'Milan', 'Vladimir', 'Bojan'],
+    female: ['Milica', 'Jelena', 'Ana', 'Marija', 'Teodora', 'Sara', 'Jovana', 'Dunja', 'Tijana', 'Katarina', 'Anđela', 'Nevena', 'Sofija', 'Mina', 'Snežana', 'Dragana', 'Mirjana', 'Gordana', 'Ljiljana', 'Biljana', 'Vesna', 'Ivana'],
+    last: ['Jovanović', 'Petrović', 'Nikolić', 'Marković', 'Đorđević', 'Stojanović', 'Ilić', 'Stanković', 'Pavlović', 'Milošević', 'Popović', 'Živković', 'Janković', 'Todorović', 'Kostić', 'Ristić', 'Lazić', 'Mitrović', 'Obradović', 'Savić', 'Vasić', 'Simić', 'Milenković', 'Stevanović', 'Radovanović', 'Lukić', 'Marinković'],
+  },
+  cz: {
+    male: ['Jakub', 'Jan', 'Tomáš', 'Petr', 'Martin', 'Lukáš', 'Ondřej', 'Matěj', 'Vojtěch', 'Adam', 'Filip', 'David', 'Josef', 'Jiří', 'Pavel', 'Michal', 'Václav', 'Karel', 'Zdeněk', 'Jaroslav', 'Miroslav', 'Antonín'],
+    female: ['Eliška', 'Tereza', 'Anna', 'Adéla', 'Natálie', 'Karolína', 'Kristýna', 'Barbora', 'Lucie', 'Kateřina', 'Markéta', 'Petra', 'Jana', 'Hana', 'Lenka', 'Veronika', 'Klára', 'Zuzana', 'Jitka', 'Alžběta', 'Věra', 'Marie'],
+    last: ['Novák', 'Svoboda', 'Novotný', 'Dvořák', 'Černý', 'Procházka', 'Kučera', 'Veselý', 'Horák', 'Němec', 'Marek', 'Pospíšil', 'Pokorný', 'Hájek', 'Král', 'Jelínek', 'Růžička', 'Beneš', 'Fiala', 'Sedláček', 'Doležal', 'Zeman', 'Kolář', 'Navrátil', 'Čermák', 'Urban', 'Vaněk', 'Blažek', 'Kříž'],
+  },
+  sk: {
+    male: ['Ján', 'Peter', 'Jozef', 'Martin', 'Michal', 'Tomáš', 'Matúš', 'Jakub', 'Samuel', 'Lukáš', 'Marek', 'Juraj', 'Milan', 'Dominik', 'Šimon', 'Adam', 'Filip', 'Pavol', 'Štefan', 'Miroslav'],
+    female: ['Sofia', 'Ema', 'Viktória', 'Natália', 'Nina', 'Lucia', 'Zuzana', 'Katarína', 'Mária', 'Eva', 'Jana', 'Martina', 'Veronika', 'Simona', 'Michaela', 'Petra', 'Monika', 'Lenka', 'Alžbeta', 'Kristína'],
+    last: ['Horváth', 'Kováč', 'Varga', 'Tóth', 'Nagy', 'Baláž', 'Szabó', 'Molnár', 'Balog', 'Lukáč', 'Novák', 'Kollár', 'Németh', 'Oravec', 'Polák', 'Hudák', 'Gajdoš', 'Krajčí', 'Šimko', 'Hrivnák', 'Bartoš', 'Kráľ'],
+  },
+  ke: {
+    male: ['Brian', 'Kevin', 'Dennis', 'Collins', 'Victor', 'Ian', 'Emmanuel', 'Otieno', 'Ochieng', 'Omondi', 'Kamau', 'Njoroge', 'Kipchoge', 'Kibet', 'Kiprop', 'Kiptoo', 'Mwangi', 'Wekesa', 'Mutua', 'Baraka', 'Juma', 'Wafula', 'Kimani', 'Mohamed'],
+    female: ['Wanjiru', 'Wanjiku', 'Njeri', 'Wambui', 'Nyambura', 'Achieng', 'Akinyi', 'Atieno', 'Auma', 'Chebet', 'Jepkosgei', 'Cherono', 'Mumbua', 'Makena', 'Faith', 'Mercy', 'Sharon', 'Esther', 'Neema', 'Zawadi', 'Nafula', 'Halima'],
+    last: ['Mwangi', 'Otieno', 'Kamau', 'Odhiambo', 'Ochieng', 'Kariuki', 'Njoroge', 'Wafula', 'Mutua', 'Kiprotich', 'Cheruiyot', 'Kipchumba', 'Onyango', 'Owino', 'Wanjala', 'Kimani', 'Macharia', 'Ndungu', 'Omondi', 'Barasa', 'Maina', 'Kiplagat', 'Rotich', 'Mutiso', 'Musyoka', 'Wambua', 'Korir', 'Keter', 'Njenga', 'Gitau'],
+  },
+  ug: {
+    male: ['Mugisha', 'Okello', 'Kato', 'Opio', 'Ssemakula', 'Ssali', 'Mukasa', 'Kizza', 'Tumusiime', 'Byaruhanga', 'Musoke', 'Ochen', 'Odongo', 'Wasswa', 'Kigozi', 'Joseph', 'Moses', 'Isaac', 'Samuel', 'Ronald', 'Brian', 'Emmanuel', 'Godfrey', 'Patrick'],
+    female: ['Nakato', 'Babirye', 'Namubiru', 'Nansubuga', 'Nalwoga', 'Nabukenya', 'Akello', 'Atim', 'Auma', 'Kyomuhendo', 'Ainembabazi', 'Kemigisha', 'Nakimuli', 'Achola', 'Grace', 'Esther', 'Prossy', 'Sylvia', 'Harriet', 'Juliet', 'Brenda', 'Doreen'],
+    last: ['Okello', 'Mugisha', 'Ssempala', 'Byaruhanga', 'Tumusiime', 'Nsubuga', 'Kato', 'Lubega', 'Mukasa', 'Ssemwogerere', 'Musoke', 'Kiggundu', 'Kasozi', 'Wasswa', 'Opio', 'Odongo', 'Akena', 'Otim', 'Nuwagaba', 'Kabuye', 'Kizito', 'Atwine', 'Asiimwe', 'Byamukama', 'Ssekandi', 'Mutebi'],
+  },
+  // The Levant and Iraq: Christian and Muslim names in Beirut, Aleppo dialect names, Iraqi tribes.
+  lb: {
+    male: ['Elie', 'Georges', 'Charbel', 'Joseph', 'Rami', 'Ziad', 'Fadi', 'Karim', 'Hadi', 'Ali', 'Hassan', 'Mohammad', 'Omar', 'Wassim', 'Nadim', 'Tarek', 'Marwan', 'Walid', 'Antoine', 'Pierre', 'Jad', 'Rabih', 'Samir', 'Ralph'],
+    female: ['Maya', 'Rita', 'Nour', 'Lara', 'Joelle', 'Christelle', 'Nadine', 'Rania', 'Hiba', 'Lina', 'Zeina', 'Rima', 'Mira', 'Yara', 'Carla', 'Tala', 'Sara', 'Layal', 'Nathalie', 'Fatima', 'Zahraa', 'Ghina'],
+    last: ['Khoury', 'Haddad', 'Saab', 'Hayek', 'Nasr', 'Frem', 'Karam', 'Daher', 'Salameh', 'Rizk', 'Mansour', 'Khalil', 'Hamdan', 'Moussa', 'Fakhoury', 'Abi Nader', 'Azar', 'Bitar', 'Abou Jaoude', 'Atallah', 'Chidiac', 'Fares', 'Makdessi', 'Sfeir', 'Tannous', 'Zein', 'Hamadeh', 'Khalife', 'Najjar'],
+  },
+  sy: {
+    male: ['Mohammad', 'Ahmad', 'Omar', 'Abdulrahman', 'Khaled', 'Mahmoud', 'Hussam', 'Bassel', 'Ammar', 'Majd', 'Ghaith', 'Rami', 'Fares', 'Yazan', 'Tamer', 'Wael', 'Mazen', 'Nizar', 'Firas', 'Hazem', 'Samer', 'Louay'],
+    female: ['Fatima', 'Rahaf', 'Hala', 'Lama', 'Ghina', 'Rasha', 'Raghad', 'Bayan', 'Dima', 'Reem', 'Sham', 'Nour', 'Amal', 'Hanan', 'Sawsan', 'Lubna', 'Rana', 'Mais', 'Yara', 'Joud', 'Aya', 'Ruba'],
+    last: ['Halabi', 'Shami', 'Hamwi', 'Homsi', 'Kurdi', 'Darwish', 'Haddad', 'Khatib', 'Sabbagh', 'Attar', 'Jabri', 'Kayyali', 'Mardini', 'Qabbani', 'Zaher', 'Idlibi', 'Al-Ali', 'Hamdan', 'Ibrahim', 'Mustafa', 'Sheikh', 'Aziz', 'Najjar', 'Tarabishi', 'Saleh'],
+  },
+  iq: {
+    male: ['Mohammed', 'Ali', 'Hussein', 'Hassan', 'Ahmed', 'Mustafa', 'Abbas', 'Haider', 'Mahdi', 'Karrar', 'Murtadha', 'Sajjad', 'Ammar', 'Omar', 'Zaid', 'Yasir', 'Qasim', 'Saif', 'Kadhim', 'Jasim', 'Falah', 'Laith'],
+    female: ['Zainab', 'Fatima', 'Maryam', 'Noor', 'Zahraa', 'Ruqaya', 'Shahad', 'Rusul', 'Huda', 'Sara', 'Ban', 'Dina', 'Hiba', 'Tabarak', 'Aya', 'Rana', 'Iman', 'Sana', 'Mayada', 'Layla', 'Israa', 'Asmaa'],
+    last: ['Al-Jabouri', 'Al-Obaidi', 'Al-Tamimi', 'Al-Rubaie', 'Al-Dulaimi', 'Al-Saadi', 'Al-Musawi', 'Al-Hashimi', 'Al-Khafaji', 'Al-Zubaidi', 'Al-Shammari', 'Al-Ani', 'Al-Bayati', 'Al-Hilli', 'Al-Baghdadi', 'Al-Kaabi', 'Al-Janabi', 'Al-Saedi', 'Al-Lami', 'Al-Azzawi', 'Al-Rawi'],
+  },
+  jo: {
+    male: ['Mohammad', 'Ahmad', 'Omar', 'Yazan', 'Zaid', 'Hamza', 'Abdullah', 'Khaled', 'Laith', 'Odai', 'Tamer', 'Fadi', 'Mahmoud', 'Ibrahim', 'Mohannad', 'Rakan', 'Ayman', 'Bashar', 'Suhaib', 'Anas', 'Hashem'],
+    female: ['Sara', 'Lana', 'Dana', 'Rawan', 'Rahaf', 'Haya', 'Tala', 'Leen', 'Jana', 'Ruba', 'Shatha', 'Reem', 'Lubna', 'Aseel', 'Bayan', 'Noor', 'Hala', 'Dima', 'Abeer', 'Areej', 'Maram', 'Yara'],
+    last: ['Al-Majali', 'Al-Zoubi', 'Haddad', 'Al-Khatib', 'Al-Masri', 'Al-Nsour', 'Al-Fayez', 'Obeidat', 'Batayneh', 'Khasawneh', 'Hijazi', 'Rawashdeh', 'Tarawneh', 'Al-Momani', 'Qudah', 'Shdeifat', 'Bani Hani', 'Al-Smadi', 'Hamdan', 'Saleh', 'Nasser', 'Halasa', 'Twal', ...ARABIC_LAST.slice(0, 4)],
+  },
+  // The Gulf: each emirate and kingdom has its own families.
+  sa: {
+    male: ['Mohammed', 'Abdullah', 'Fahad', 'Faisal', 'Khalid', 'Saud', 'Sultan', 'Turki', 'Nasser', 'Abdulaziz', 'Abdulrahman', 'Bandar', 'Nawaf', 'Mishal', 'Majed', 'Saad', 'Yazeed', 'Rayan', 'Hamad', 'Ahmed', 'Omar', 'Rakan'],
+    female: ['Noura', 'Sara', 'Reem', 'Lama', 'Haya', 'Jawaher', 'Nouf', 'Abeer', 'Deema', 'Raghad', 'Lujain', 'Shahad', 'Ghada', 'Asma', 'Amal', 'Hind', 'Al Anoud', 'Maha', 'Wejdan', 'Hessa', 'Joud', 'Ruba'],
+    last: ['Al-Qahtani', 'Al-Otaibi', 'Al-Ghamdi', 'Al-Zahrani', 'Al-Harbi', 'Al-Mutairi', 'Al-Dosari', 'Al-Shehri', 'Al-Anazi', 'Al-Shammari', 'Al-Subaie', 'Al-Rashidi', 'Al-Enezi', 'Al-Juhani', 'Al-Malki', 'Al-Yami', 'Al-Amri', 'Al-Asmari', 'Al-Saleh', 'Al-Hazmi'],
+  },
+  ae: {
+    male: ['Mohammed', 'Rashid', 'Hamdan', 'Saif', 'Khalifa', 'Zayed', 'Sultan', 'Hamad', 'Mansour', 'Ahmed', 'Obaid', 'Saeed', 'Majid', 'Juma', 'Khalid', 'Abdulla', 'Humaid', 'Ali', 'Omar', 'Theyab', 'Mubarak'],
+    female: ['Fatima', 'Mariam', 'Shamma', 'Mouza', 'Hessa', 'Latifa', 'Shaikha', 'Alia', 'Maitha', 'Ghaya', 'Afra', 'Wadha', 'Amna', 'Hind', 'Salama', 'Aisha', 'Noora', 'Reem', 'Meera', 'Hamda'],
+    last: ['Al Mansoori', 'Al Dhaheri', 'Al Ketbi', 'Al Suwaidi', 'Al Hammadi', 'Al Falasi', 'Al Mazrouei', 'Al Nuaimi', 'Al Kaabi', 'Al Shamsi', 'Al Zaabi', 'Al Marzouqi', 'Al Muhairi', 'Al Romaithi', 'Al Qubaisi', 'Al Hosani', 'Al Ameri', 'Al Blooshi', 'Al Matrooshi', 'Al Awadhi'],
+  },
+  kw: {
+    male: ['Abdullah', 'Mohammad', 'Fahad', 'Ahmad', 'Khaled', 'Yousef', 'Bader', 'Nawaf', 'Mishari', 'Talal', 'Saad', 'Hamad', 'Jaber', 'Abdulaziz', 'Faisal', 'Bandar', 'Mubarak', 'Ali', 'Hasan', 'Salem'],
+    female: ['Fatma', 'Dana', 'Noura', 'Shaikha', 'Hessa', 'Lulwa', 'Dalal', 'Sara', 'Fajer', 'Rawan', 'Haya', 'Abrar', 'Mariam', 'Ghadeer', 'Shahad', 'Latifa', 'Bodour', 'Nouf', 'Aseel', 'Manal'],
+    last: ['Al-Ajmi', 'Al-Mutairi', 'Al-Enezi', 'Al-Rashidi', 'Al-Azmi', 'Al-Kandari', 'Al-Awadhi', 'Al-Shammari', 'Al-Hajri', 'Al-Fadhli', 'Al-Otaibi', 'Al-Dosari', 'Al-Kharafi', 'Al-Ghanim', 'Al-Saqer', 'Behbehani', 'Al-Bahar', 'Al-Roumi', 'Al-Mulla', 'Al-Qattan'],
+  },
+  qa: {
+    male: ['Mohammed', 'Hamad', 'Jassim', 'Khalifa', 'Tamim', 'Abdulla', 'Ali', 'Ahmed', 'Khalid', 'Nasser', 'Saad', 'Fahad', 'Mubarak', 'Salem', 'Rashid', 'Saoud', 'Hassan', 'Mansoor', 'Ghanim', 'Faisal'],
+    female: ['Al Anoud', 'Maryam', 'Noora', 'Fatima', 'Hessa', 'Latifa', 'Moza', 'Sheikha', 'Aisha', 'Lulwa', 'Amna', 'Dana', 'Reem', 'Haya', 'Asma', 'Jawaher', 'Nouf', 'Ghalia', 'Maha', 'Sara'],
+    last: ['Al-Kuwari', 'Al-Marri', 'Al-Sulaiti', 'Al-Mohannadi', 'Al-Hajri', 'Al-Naimi', 'Al-Kubaisi', 'Al-Ansari', 'Al-Emadi', 'Al-Mannai', 'Al-Khulaifi', 'Al-Attiyah', 'Al-Misnad', 'Al-Jaber', 'Al-Baker', 'Al-Mahmoud', 'Al-Obaidly', 'Al-Malki', 'Al-Sada'],
+  },
+  // The Maghreb: Algerian, Moroccan and Tunisian families.
+  dz: {
+    male: ['Mohamed', 'Amine', 'Yacine', 'Karim', 'Mehdi', 'Rachid', 'Sofiane', 'Bilal', 'Abdelkader', 'Riyad', 'Nassim', 'Walid', 'Ilyes', 'Islam', 'Abderrahmane', 'Fares', 'Djamel', 'Mourad', 'Lyes', 'Hocine', 'Kamel', 'Smail'],
+    female: ['Amina', 'Meriem', 'Yasmine', 'Sarah', 'Lina', 'Imane', 'Nour el Houda', 'Rania', 'Khadidja', 'Djamila', 'Nadia', 'Samia', 'Souad', 'Houria', 'Feriel', 'Lynda', 'Kahina', 'Wissam', 'Assia', 'Dounia', 'Chaima', 'Aya'],
+    last: ['Benali', 'Bouzid', 'Belkacem', 'Saidi', 'Brahimi', 'Boudiaf', 'Benaissa', 'Hamidi', 'Mebarki', 'Bensalem', 'Cherif', 'Haddad', 'Mansouri', 'Rahmani', 'Boukhari', 'Zerrouki', 'Khelifi', 'Djebbar', 'Ait Ahmed', 'Amrouche', 'Belaid', 'Hadjadj', 'Mokrani', 'Ouali', 'Slimani', 'Ziani'],
+  },
+  ma: {
+    male: ['Mohamed', 'Youssef', 'Hamza', 'Ayoub', 'Anas', 'Othmane', 'Adam', 'Amine', 'Mehdi', 'Hicham', 'Khalid', 'Said', 'Mustapha', 'Rachid', 'Abdelilah', 'Zakaria', 'Ismail', 'Soufiane', 'Hassan', 'Driss', 'Ilyas', 'Badr'],
+    female: ['Fatima Zahra', 'Khadija', 'Salma', 'Hajar', 'Imane', 'Zineb', 'Kenza', 'Malak', 'Aya', 'Hiba', 'Ghizlane', 'Siham', 'Nadia', 'Latifa', 'Meryem', 'Chaimae', 'Ikram', 'Oumaima', 'Soukaina', 'Asmae', 'Najat', 'Loubna'],
+    last: ['Alaoui', 'Idrissi', 'El Fassi', 'Bennani', 'Tazi', 'Berrada', 'Chraibi', 'Amrani', 'Benjelloun', 'Lahlou', 'Sqalli', 'Bennis', 'Belkadi', 'El Mansouri', 'Ouazzani', 'Kettani', 'Saadi', 'Bouazza', 'Lamrani', 'Zaki', 'Hajji', 'Naciri', 'Ait Brahim', 'Ouahbi'],
+  },
+  tn: {
+    male: ['Mohamed', 'Ahmed', 'Youssef', 'Aziz', 'Amine', 'Skander', 'Rayen', 'Yassine', 'Hamza', 'Wassim', 'Mehdi', 'Oussama', 'Anis', 'Bilel', 'Karim', 'Sami', 'Slim', 'Hatem', 'Mourad', 'Hichem', 'Fethi', 'Ali'],
+    female: ['Mariem', 'Yasmine', 'Ines', 'Rim', 'Amira', 'Nour', 'Eya', 'Chaima', 'Sarra', 'Asma', 'Salma', 'Rania', 'Hela', 'Olfa', 'Leila', 'Sonia', 'Najla', 'Wafa', 'Imen', 'Khaoula', 'Sirine', 'Emna'],
+    last: ['Trabelsi', 'Jebali', 'Gharbi', 'Ben Youssef', 'Mejri', 'Ayari', 'Ben Ammar', 'Hamdi', 'Chaabane', 'Dridi', 'Hammami', 'Jlassi', 'Khelifi', 'Mabrouk', 'Riahi', 'Saidi', 'Sassi', 'Zouari', 'Ben Salah', 'Ben Hassine', 'Masmoudi', 'Bouslama', 'Baccouche', 'Karoui', 'Chebbi', 'Mrad', 'Ferchichi'],
+  },
+}
+
+/** Québécois names for babies born in Montreal and Quebec City (Canada is otherwise the anglo pool). */
+const QUEBEC: NamePool = {
+  male: ['Félix', 'William', 'Liam', 'Thomas', 'Noah', 'Jacob', 'Léo', 'Nathan', 'Samuel', 'Logan', 'Olivier', 'Gabriel', 'Alexis', 'Mathis', 'Raphaël', 'Charles', 'Émile', 'Zachary', 'Jean-François', 'Marc-André', 'Sébastien', 'Mathieu', 'Simon', 'Luc', 'Gilles', 'Réjean'],
+  female: ['Olivia', 'Emma', 'Charlotte', 'Alice', 'Florence', 'Léa', 'Livia', 'Rosalie', 'Juliette', 'Zoé', 'Béatrice', 'Camille', 'Laurence', 'Gabrielle', 'Marie-Ève', 'Catherine', 'Mélanie', 'Isabelle', 'Geneviève', 'Nathalie', 'Chantal', 'Sylvie', 'Josée', 'Ginette'],
+  last: ['Tremblay', 'Gagnon', 'Roy', 'Côté', 'Bouchard', 'Gauthier', 'Morin', 'Lavoie', 'Fortin', 'Gagné', 'Ouellet', 'Pelletier', 'Bélanger', 'Lévesque', 'Bergeron', 'Leblanc', 'Paquette', 'Girard', 'Simard', 'Boucher', 'Caron', 'Beaulieu', 'Cloutier', 'Dubé', 'Poirier', 'Fournier', 'Lapointe', 'Leclerc', 'Lefebvre', 'Poulin'],
+}
+
+/** How francophone each Quebec city is (chance a local has a Québécois name). */
+const QUEBEC_CITIES: Record<string, number> = { 'Quebec City': 0.9, Montreal: 0.65, Laval: 0.7, Gatineau: 0.75, Sherbrooke: 0.85, 'Trois-Rivières': 0.9 }
+
+// ---------------------------------------------------------------------------
 // Lookups
 
 const BY_ID: Record<string, Country> = Object.fromEntries(COUNTRIES.map((c) => [c.id, c]))
@@ -1305,17 +1507,30 @@ export function randomCity(g: GameState, country: Country): string {
   return pick(g, country.cities)
 }
 
-function poolFor(countryId: string): NamePool {
-  return NAME_POOLS[getCountry(countryId).names] ?? NAME_POOLS.anglo
+/** The name pool a country uses: its own pool if it has one, else its region's. */
+export function namePoolOf(countryId: string): NamePool {
+  return COUNTRY_NAME_POOLS[countryId] ?? NAME_POOLS[getCountry(countryId).names] ?? NAME_POOLS.anglo
 }
 
-export function randomFirstName(g: GameState, countryId: string, gender: Gender): string {
-  const pool = poolFor(countryId)
+/**
+ * Pool for someone from this country. `city` (default: the player's city when they live in
+ * that country) picks a regional pool where one city really differs, e.g. Québécois names in
+ * Montreal and Quebec City.
+ */
+function poolFor(g: GameState, countryId: string, city?: string): NamePool {
+  const where = city ?? (g.character?.countryId === countryId ? g.character.city : undefined)
+  const quebec = countryId === 'ca' && where ? QUEBEC_CITIES[where] : undefined
+  if (quebec !== undefined && rand(g) < quebec) return QUEBEC
+  return namePoolOf(countryId)
+}
+
+export function randomFirstName(g: GameState, countryId: string, gender: Gender, city?: string): string {
+  const pool = poolFor(g, countryId, city)
   return pick(g, gender === 'male' ? pool.male : pool.female)
 }
 
-export function randomLastName(g: GameState, countryId: string): string {
-  return pick(g, poolFor(countryId).last)
+export function randomLastName(g: GameState, countryId: string, city?: string): string {
+  return pick(g, poolFor(g, countryId, city).last)
 }
 
 export function randomSkinTone(g: GameState, country: Country): number {
@@ -1332,4 +1547,34 @@ const NEEDS_ARTICLE = /^(United |Czech Republic|Dominican Republic|DR Congo|Neth
 /** Country name as it reads mid-sentence: "the United States", "France". */
 export function countryLabel(country: Country): string {
   return NEEDS_ARTICLE.test(country.name) ? `the ${country.name}` : country.name
+}
+
+// ---------------------------------------------------------------------------
+// Courts
+
+/** Common-law countries where a jury of ordinary citizens decides criminal trials. */
+const JURY_TRIALS = new Set(['us', 'ca', 'gb', 'ie', 'au', 'nz', 'jm', 'bs', 'bz', 'gy', 'pr'])
+/** Juries only for the gravest crimes (cour d'assises, Brazil's tribunal do júri for killings...). */
+const JURY_FOR_SERIOUS = new Set(['fr', 'be', 'at', 'es', 'br', 'ru', 'dk', 'ar'])
+/** Lay judges sit next to professional judges (Schöffen, saiban-in, nämndemän...). */
+const LAY_JUDGE_TRIALS = new Set(['de', 'se', 'fi', 'no', 'it', 'jp', 'kr', 'pl', 'cz', 'hr'])
+
+export type TrialBy = 'jury' | 'lay' | 'judge'
+
+/**
+ * Who decides a criminal case here: a jury, a panel of judges with lay judges, or a judge alone.
+ * `severity` (1-5) matters where juries only hear the gravest cases (4+).
+ */
+export function trialBy(countryId: string, severity = 3): TrialBy {
+  if (JURY_TRIALS.has(countryId)) return 'jury'
+  if (JURY_FOR_SERIOUS.has(countryId)) return severity >= 4 ? 'jury' : LAY_JUDGE_TRIALS.has(countryId) ? 'lay' : 'judge'
+  if (LAY_JUDGE_TRIALS.has(countryId)) return 'lay'
+  return 'judge'
+}
+
+/** Where ordinary citizens can be summoned to judge a trial (as jurors or lay judges). */
+export function citizensJudge(countryId: string): TrialBy | null {
+  if (JURY_TRIALS.has(countryId) || JURY_FOR_SERIOUS.has(countryId)) return 'jury'
+  if (LAY_JUDGE_TRIALS.has(countryId)) return 'lay'
+  return null
 }

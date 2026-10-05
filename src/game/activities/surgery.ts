@@ -45,7 +45,7 @@ export const PROCEDURES: Procedure[] = [
   { id: 'gender', name: 'Gender Reassignment', emoji: '⚧\u{FE0F}', price: 35000, gain: [0, 4], limit: 1, result: 'Your transition surgery was a success. You finally feel at home in your own body.' },
   { id: 'lipo', name: 'Liposuction', emoji: '\u{1FA92}', price: 6000, gain: [3, 9], limit: 3, result: 'Your stubborn fat is gone. You look leaner and more toned.' },
   { id: 'nose', name: 'Nose Job', emoji: '\u{1F443}', price: 7000, gain: [3, 10], limit: 3, result: 'Your new nose is perfectly proportioned. You keep admiring it in the mirror.' },
-  { id: 'tummy', name: 'Tummy Tuck', emoji: '\u{1FAC4}', price: 8500, gain: [3, 9], limit: 3, result: 'Your stomach is flatter than it has been since high school.' },
+  { id: 'tummy', name: 'Tummy Tuck', emoji: '\u{1FAC4}', price: 8500, gain: [3, 9], limit: 3, result: 'Your stomach is flatter than it has been since you were a teenager.' },
 ]
 
 interface Surgeon {

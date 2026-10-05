@@ -1,11 +1,17 @@
 // The offline event library: what the player sees when the AI narrator is off,
 // unreachable or skipped. Every year gets one or two first-person flavor lines and,
 // most years, one classic random-event popup chosen by weighted, condition-aware
-// selection (age, school, job, family, prison, money) that never repeats too soon.
+// selection (age, school, job, family, prison, money) that never repeats too soon:
+// each event has a cooldown, related events share one (EVENT_KINDS), the same person
+// can't star in the same kind of event for a few years. Events play out in the player's own
+// country (a flood day in Jakarta, the leavers' ball in Leeds, a drink stand in Mumbai);
+// foreignToLocale stays as a backstop that skips any American-only scene that slips through
+// (it also screens the AI narrator's lines).
 //
 // Contract exports: queueFallbackYearEvents, fallbackChoiceOutcome, fallbackCustomAction,
 // fallbackObituary. The event data lives in src/game/events/*.ts.
 import { fullName, inPrison, notice } from './core'
+import { localeOf, type LocaleProfile } from './data/locales'
 import { ADULT_EVENTS } from './events/adult'
 import { BABY_EVENTS } from './events/baby'
 import { resolveGenericChoice } from './events/choice'
@@ -55,13 +61,114 @@ export const EVENT_HISTORY_FLAG = 'offlineEventHistory'
 const DEFAULT_COOLDOWN = 10
 const DEFAULT_WEIGHT = 10
 
+/**
+ * Events that are different popups about the same kind of thing. After one fires, the others
+ * in its kind wait KIND_COOLDOWN years (no neighbor drama two years running), and the same
+ * person can't star in the same kind of event (or the same event) for PERSON_COOLDOWN years.
+ */
+const EVENT_KINDS: Record<string, string[]> = {
+  siblingFriction: ['kid.siblingSpat', 'family.siblingJealous'],
+  neighbors: ['adult.neighborNoise', 'adult.neighborTree', 'adult.neighborBbq', 'adult.upstairs'],
+  scam: ['adult.phoneScam', 'adult.emailScam', 'adult.fraudAlert', 'elder.grandparentScam', 'elder.techSupport'],
+  salesPitch: ['adult.mlm', 'adult.timeshare', 'adult.doorToDoor', 'elder.salesman'],
+  moneyAsk: ['family.borrowMoney', 'family.adultChildMoney', 'elder.grandkidMoney'],
+  traffic: ['adult.parkingTicket', 'adult.trafficStop'],
+  carTrouble: ['adult.carTrouble', 'friend.flatTire', 'adult.strandedDriver'],
+  bully: ['school.bully', 'school.bleacherBully', 'juvie.breakfastBully'],
+  cheating: ['school.cheatRequest', 'school.answerKey'],
+  shadyFavor: ['friend.insuranceFraud', 'friend.alibi', 'friend.hideout', 'friend.distillery'],
+  coworker: ['work.rumor', 'work.prank', 'work.annoying', 'work.lunchThief', 'work.credit'],
+  petTrouble: ['family.petBehavior', 'family.petEscape'],
+  healthScare: ['elder.fall', 'elder.healthScare'],
+  oldFlame: ['adult.exText', 'elder.oldFlame'],
+  prisonFight: ['prison.brawl', 'prison.guardAttack'],
+}
+const KIND_OF: Record<string, string> = {}
+for (const [kind, ids] of Object.entries(EVENT_KINDS)) for (const id of ids) KIND_OF[id] = kind
+const KIND_COOLDOWN = 3
+const PERSON_COOLDOWN = 5
+
+/** The kind an event belongs to (its own id when it has no group). */
+export function eventKind(id: string): string {
+  return KIND_OF[id] ?? id
+}
+
+/**
+ * g.flags.eventMemory: the last popups shown (AI and offline), newest last. The AI director
+ * (src/ai/prompts.ts EventMemo) reads and writes the same shape, so the narrator knows which
+ * offline events just happened and neither side repeats the other.
+ */
+export const EVENT_MEMORY_FLAG = 'eventMemory'
+const EVENT_MEMORY_MAX = 16
+
+interface EventMemo {
+  [key: string]: Json
+  title: string
+  age: number
+  personId: string
+  person: string
+  kind: string
+  source: 'ai' | 'offline'
+  /** g.generation when it fired (memories of a parent's life don't count for the child). */
+  gen: number
+}
+
+function eventMemory(g: GameState): EventMemo[] {
+  const raw = g.flags[EVENT_MEMORY_FLAG]
+  if (!Array.isArray(raw)) return []
+  const out: EventMemo[] = []
+  for (const v of raw) {
+    if (!isRecord(v) || typeof v.title !== 'string' || typeof v.age !== 'number') continue
+    if (typeof v.gen === 'number' && v.gen !== g.generation) continue
+    out.push({
+      title: v.title,
+      age: v.age,
+      personId: typeof v.personId === 'string' ? v.personId : '',
+      person: typeof v.person === 'string' ? v.person : '',
+      kind: typeof v.kind === 'string' ? v.kind : '',
+      source: v.source === 'ai' ? 'ai' : 'offline',
+      gen: g.generation,
+    })
+  }
+  return out
+}
+
+function rememberEvent(g: GameState, memo: EventMemo): void {
+  const kept = eventMemory(g).filter((m) => m.age <= g.character.age)
+  g.flags[EVENT_MEMORY_FLAG] = [...kept, memo].slice(-EVENT_MEMORY_MAX)
+  // The narrator's title list (shown to the AI as "recent events").
+  const titles = Array.isArray(g.flags.aiRecentEvents) ? g.flags.aiRecentEvents.filter((x): x is string => typeof x === 'string') : []
+  g.flags.aiRecentEvents = [...titles, memo.title].slice(-12)
+}
+
+/** Was this person the subject of the same kind of event within PERSON_COOLDOWN years? */
+function personRecentlyFeatured(g: GameState, personId: string, kind: string): boolean {
+  const age = g.character.age
+  return eventMemory(g).some((m) => m.personId === personId && m.kind === kind && m.age <= age && age - m.age < PERSON_COOLDOWN)
+}
+
 function isRecord(v: Json | undefined): v is { [key: string]: Json } {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function history(g: GameState): { [key: string]: Json } {
+/**
+ * g.flags key: the generation the history belongs to. Flags carry over when the player
+ * continues as their child, and the parent's "age 15" is not the child's.
+ */
+const HISTORY_GEN_FLAG = 'offlineEventGeneration'
+
+/** The history of this generation's life (undefined when it belongs to a previous one). */
+function currentHistory(g: GameState): { [key: string]: Json } | undefined {
   const raw = g.flags[EVENT_HISTORY_FLAG]
-  if (isRecord(raw)) return raw
+  if (!isRecord(raw)) return undefined
+  const gen = g.flags[HISTORY_GEN_FLAG]
+  return typeof gen === 'number' && gen !== g.generation ? undefined : raw
+}
+
+function history(g: GameState): { [key: string]: Json } {
+  const raw = currentHistory(g)
+  g.flags[HISTORY_GEN_FLAG] = g.generation
+  if (raw) return raw
   const fresh: { [key: string]: Json } = {}
   g.flags[EVENT_HISTORY_FLAG] = fresh
   return fresh
@@ -69,10 +176,55 @@ function history(g: GameState): { [key: string]: Json } {
 
 /** Age at which an event last fired in this life, if ever. */
 export function lastFired(g: GameState, id: string): number | undefined {
-  const raw = g.flags[EVENT_HISTORY_FLAG]
-  if (!isRecord(raw)) return undefined
-  const v = raw[id]
+  const v = currentHistory(g)?.[id]
   return typeof v === 'number' ? v : undefined
+}
+
+// ---------------------------------------------------------------------------
+// Locale guard: the library and the narrator were written with an American childhood in mind.
+// A scene that only makes sense in the US (prom, the SATs, the DMV, a lemonade stand,
+// Thanksgiving, a snow day in the tropics) is skipped for players elsewhere, unless their
+// country's locale says it fits (Indonesia has prom night, Canada has Thanksgiving, Mexico
+// dials 911). The US keeps everything.
+
+interface Marker {
+  re: RegExp
+  /** The scene still fits this country. */
+  fits?: (loc: LocaleProfile, countryId: string) => boolean
+}
+
+function listed(list: readonly string[] | undefined, re: RegExp): boolean {
+  return Array.isArray(list) && list.some((x) => typeof x === 'string' && re.test(x))
+}
+
+const AMERICAN_MARKERS: Marker[] = [
+  { re: /\bprom\b|homecoming (?:dance|game|king|queen|court|parade)|pep rally/i, fits: (l) => /\bprom\b|homecoming/i.test(l.terms.schoolDance) },
+  { re: /\bSATs?\b/, fits: (l) => /\bSAT/.test(l.terms.finalExam) },
+  { re: /\bDMV\b/, fits: (l) => /DMV/.test(l.terms.licenseOffice) },
+  { re: /(?<![\d$.,])\b911\b(?![\d,])/, fits: (l) => l.terms.emergencyNumber.includes('911') },
+  { re: /Thanksgiving/i, fits: (l) => listed(l.holidays, /Thanksgiving/i) },
+  { re: /Fourth of July|4th of July|July 4th/i },
+  { re: /Halloween|trick-or-treat/i, fits: (l) => listed(l.holidays, /Halloween/i) },
+  { re: /Super Bowl/i },
+  { re: /Little League/i, fits: (l) => listed(l.sports, /baseball/i) },
+  { re: /Las Vegas/i, fits: (l) => listed(l.getaways, /Vegas/i) },
+  { re: /lemonade stand/i, fits: (_l, id) => id === 'ca' },
+  { re: /\bfreshman\b|\bsophomore\b|\bGPA\b/i },
+  { re: /\bHOA\b|homeowners'? association/i },
+  { re: /Medicaid|Obamacare/i },
+  { re: /state trooper|county sheriff/i },
+  { re: /snow day|sledding|\bsled\b|blizzard|snowman|snowball fight|snowed in|shovel(?:ed|ing)? (?:the )?snow/i, fits: (l) => l.snow },
+]
+
+/**
+ * True when a text paints an American scene that doesn't belong in the player's country
+ * (always false for US players). Used for offline events and flavor lines here and for the AI
+ * narrator's lines and events in the director.
+ */
+export function foreignToLocale(g: GameState, text: string, countryId = g.character.countryId): boolean {
+  if (countryId === 'us' || !text) return false
+  const loc = localeOf(countryId)
+  return AMERICAN_MARKERS.some((m) => m.re.test(text) && !(m.fits?.(loc, countryId) ?? false))
 }
 
 function safe<T>(fn: () => T, fallback: T): T {
@@ -103,6 +255,14 @@ export function eventEligible(g: GameState, ev: EventDef): boolean {
     if (ev.once) return false
     if (c.age - last < (ev.cooldown ?? DEFAULT_COOLDOWN) && last <= c.age) return false
   }
+  const kind = KIND_OF[ev.id]
+  if (kind) {
+    for (const other of EVENT_KINDS[kind]) {
+      if (other === ev.id) continue
+      const at = lastFired(g, other)
+      if (at !== undefined && at <= c.age && c.age - at < KIND_COOLDOWN) return false
+    }
+  }
   if (ev.when && !safe(() => ev.when!(g), false)) return false
   return weightOf(g, ev) > 0
 }
@@ -117,7 +277,7 @@ export function eligibleEvents(g: GameState): EventDef[] {
  */
 export function queueRandomEvent(g: GameState): string | null {
   const pool = eligibleEvents(g)
-  for (let attempt = 0; attempt < 10 && pool.length > 0; attempt++) {
+  for (let attempt = 0; attempt < 20 && pool.length > 0; attempt++) {
     const total = pool.reduce((sum, ev) => sum + weightOf(g, ev), 0)
     if (total <= 0) return null
     let roll = randInt(g, 1, Math.max(1, Math.round(total * 100))) / 100
@@ -131,12 +291,29 @@ export function queueRandomEvent(g: GameState): string | null {
     }
     const ev = pool[index]
     const setup = safe(() => ev.setup(g), null)
-    if (!setup || setup.choices.length < 2) {
+    const kind = eventKind(ev.id)
+    // Same kind of thing about the same person too soon (Hendra again?), or a scene from
+    // somebody else's country: pick something else.
+    if (
+      !setup ||
+      setup.choices.length < 2 ||
+      (setup.person && personRecentlyFeatured(g, setup.person.id, kind)) ||
+      foreignToLocale(g, [setup.title ?? ev.title, setup.text, ...setup.choices.map((c) => c.label)].join(' \n '))
+    ) {
       pool.splice(index, 1)
       continue
     }
     present(g, ev, setup)
     history(g)[ev.id] = g.character.age
+    rememberEvent(g, {
+      title: setup.title ?? ev.title,
+      age: g.character.age,
+      personId: setup.person?.id ?? '',
+      person: setup.person?.firstName ?? '',
+      kind,
+      source: 'offline',
+      gen: g.generation,
+    })
     bumpEventCounter(g)
     return ev.id
   }
@@ -215,11 +392,28 @@ defineScript(EVENT_SCRIPT, handleEvent)
 // ---------------------------------------------------------------------------
 // Contract exports
 
+export interface FallbackYearOptions {
+  /** Write the year's flavor lines (default true; false when the AI already wrote them). */
+  flavor?: boolean
+  /** 'roll' (default): most years bring a popup. 'always': queue one now (replacing an AI event). */
+  event?: 'roll' | 'always'
+}
+
 /** Offline year: 1-2 flavor log lines and, most years, one random event popup. */
-export function queueFallbackYearEvents(g: GameState): void {
+export function queueFallbackYearEvents(g: GameState, opts: FallbackYearOptions = {}): void {
   if (!g.character.alive) return
-  safe(() => addFlavorLines(g), undefined)
-  if (chance(g, eventChance(g))) queueRandomEvent(g)
+  if (opts.flavor !== false) {
+    const last = g.log[g.log.length - 1]
+    const before = last && last.age === g.character.age ? last.entries.length : 0
+    safe(() => addFlavorLines(g), undefined)
+    // Drop flavor lines from somebody else's country (a snow day in Jakarta).
+    const year = g.log[g.log.length - 1]
+    if (year && year.age === g.character.age && year.entries.length > before) {
+      const fresh = year.entries.slice(before).filter((e) => !foreignToLocale(g, e.text))
+      year.entries.splice(before, year.entries.length - before, ...fresh)
+    }
+  }
+  if (opts.event === 'always' || chance(g, eventChance(g))) queueRandomEvent(g)
 }
 
 /** Resolve an AI-sourced choice popup when the AI fails before narrating the outcome. */

@@ -21,7 +21,10 @@ import {
   say,
   strangerName,
   type Ctx,
+  majorityFaith,
 } from './helpers'
+import { fillLocal, localTerm } from '../data/locales'
+import { feastHoliday } from './adult'
 
 function nm(x: Ctx, fallback = 'them'): string {
   return x.p?.firstName ?? fallback
@@ -33,6 +36,44 @@ function loseUpTo(g: GameState, amt: number): number {
 }
 
 const SCAM_PLACES = ['Cancún', 'a Las Vegas casino', 'a jail in Tijuana', 'a hostel in Prague', 'an airport in Lisbon']
+/** Where a fake grandchild claims to be stuck, outside the US: local getaways and faraway airports. */
+const LOCAL_SCAM_PLACES = ['a police station in {getaway}', 'a hospital in {getaway}', 'a hostel in Prague', 'an airport in Dubai', 'a jail across the border']
+
+/** How the fake grandchild wants the money: gift cards in the English-speaking world, mobile money in East Africa, a bank transfer elsewhere. */
+function scamWay(g: GameState): { pay: string; send: string; bought: string } {
+  const id = g.character.countryId
+  if (['us', 'ca', 'gb', 'ie', 'au', 'nz', 'pr'].includes(id)) return { pay: 'in gift cards', send: 'Send the gift cards', bought: 'You bought {amt} in gift cards and read the numbers over the phone.' }
+  if (['ke', 'ug', 'zw', 'cd', 'ng', 'et'].includes(id)) return { pay: 'by mobile money', send: 'Send the money', bought: 'You sent {amt} by mobile money to a number you had never seen before.' }
+  return { pay: 'by bank transfer', send: 'Send the money', bought: 'You wired {amt} to an account number the caller read out twice, very slowly.' }
+}
+
+/** What retirees play here: pickleball in the US, pétanque in France, gateball in Japan, lawn bowls in the Commonwealth. */
+function elderSport(g: GameState): string {
+  const id = g.character.countryId
+  if (id === 'us' || id === 'ca' || id === 'vn') return 'pickleball'
+  if (['fr', 'be', 'mc', 'ma', 'tn', 'dz', 'ad'].includes(id)) return 'pétanque'
+  if (['it', 'ar', 'uy'].includes(id)) return 'bocce'
+  if (['jp', 'kr', 'tw'].includes(id)) return 'gateball'
+  if (['gb', 'au', 'nz', 'za', 'ie', 'zw'].includes(id)) return 'lawn bowls'
+  if (['cn', 'hk', 'sg', 'my'].includes(id)) return 'tai chi'
+  if (['de', 'at', 'ch', 'nl', 'dk', 'se', 'no', 'fi'].includes(id)) return 'table tennis'
+  return 'walking football'
+}
+
+/** Where the player's community worships: church, the mosque, the temple... */
+function worshipPlace(g: GameState): string {
+  const faith = g.character.religion ?? majorityFaith(g)
+  if (faith === 'Islam') return 'the mosque'
+  if (faith === 'Judaism') return 'synagogue'
+  if (faith === 'Hinduism' || faith === 'Buddhism' || faith === 'Shinto' || faith === 'Taoism' || faith === 'Jainism') return 'the temple'
+  if (faith === 'Sikhism') return 'the gurdwara'
+  if (faith === 'Christianity' || faith === 'Catholicism') return 'church'
+  return 'the community center'
+}
+
+function uc(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
 
 export const ELDER_EVENTS = defineEvents([
   {
@@ -46,10 +87,11 @@ export const ELDER_EVENTS = defineEvents([
       const gk = anyOf(g, grandkids(g, 14))
       const who = gk ? gk.firstName : 'your grandson'
       const amt = Math.round(dollars(g, 900, 4500) / 100) * 100
-      const place = pick(g, SCAM_PLACES)
+      const place = g.character.countryId === 'us' ? pick(g, SCAM_PLACES) : fillLocal(g, pick(g, LOCAL_SCAM_PLACES))
+      const way = scamWay(g)
       return {
-        text: `Your phone rings. A muffled voice says, "${gk ? `Hi, it's ${who}` : "Grandma? Grandpa? It's me"}! I'm stuck in ${place} and I need ${money(amt)} in gift cards for bail. Please don't tell Mom!" What will you do?`,
-        choices: [ch('pay', 'Send the gift cards', '🎁'), ch('quiz', 'Ask a question only they would know', '🕵️'), ch('hang', 'Hang up', '📵'), ch('call', 'Call the family to check', '📲')],
+        text: `Your phone rings. A muffled voice says, "${gk ? `Hi, it's ${who}` : "Grandma? Grandpa? It's me"}! I'm stuck in ${place} and I need ${money(amt)} ${way.pay} for bail. Please don't tell Mom!" What will you do?`,
+        choices: [ch('pay', way.send, '🎁'), ch('quiz', 'Ask a question only they would know', '🕵️'), ch('hang', 'Hang up', '📵'), ch('call', 'Call the family to check', '📲')],
         person: gk,
         data: { amt, place, who },
       }
@@ -57,8 +99,8 @@ export const ELDER_EVENTS = defineEvents([
     resolve: {
       pay: (g, x) => {
         const lost = loseUpTo(g, x.n('amt'))
-        if (lost === 0) return say(g, x, 'Saved by poverty', "You went to buy the gift cards but didn't have enough money. The caller hung up in disgust. That should have been your first clue.", 'A scammer pretending to be my grandchild tried to get money from me.', { happiness: -2 })
-        say(g, x, ['Scammed!', 'Gone'], `You bought ${money(lost)} in gift cards and read the numbers over the phone. ${x.p ? `${x.p.firstName} later called from home, completely confused.` : 'You do not have a grandson in trouble.'} You'd been scammed.`, `I lost ${money(lost)} to a phone scammer pretending to be my grandchild.`, { money: -lost, happiness: -12, memory: 'Fell for a grandparent phone scam.' }, 'bad', '💸')
+        if (lost === 0) return say(g, x, 'Saved by poverty', "You went to get the money but didn't have enough. The caller hung up in disgust. That should have been your first clue.", 'A scammer pretending to be my grandchild tried to get money from me.', { happiness: -2 })
+        say(g, x, ['Scammed!', 'Gone'], `${scamWay(g).bought.replace('{amt}', money(lost))} ${x.p ? `${x.p.firstName} later called from home, completely confused.` : 'You do not have a grandson in trouble.'} You'd been scammed.`, `I lost ${money(lost)} to a phone scammer pretending to be my grandchild.`, { money: -lost, happiness: -12, memory: 'Fell for a grandparent phone scam.' }, 'bad', '💸')
       },
       quiz: (g, x) => say(g, x, 'Sharp as a tack', `You asked "What did I get you for your 7th birthday?" The caller stammered and hung up. Nice try, crook.`, 'I outsmarted a phone scammer pretending to be my grandchild.', { smarts: 3, happiness: 4 }, 'good', '🕵️'),
       hang: (g) => say(g, null, 'Click', "You hung up. If it was really them, they'll call back. (They didn't.)", 'I hung up on a suspicious phone call.', {}),
@@ -306,7 +348,7 @@ export const ELDER_EVENTS = defineEvents([
     setup: (g) => {
       const s = strangerName(g, preferredGender(g))
       return {
-        text: `${s.first} ${s.last}, someone you had a crush on in high school, found you online and sent you a message: "Do you remember me?" What will you do?`,
+        text: `${s.first} ${s.last}, someone you had a crush on in ${localTerm(g, 'high')}, found you online and sent you a message: "Do you remember me?" What will you do?`,
         choices: [ch('meet', 'Meet up for coffee', '☕'), ch('reply', 'Reply politely', '💬'), ch('ignore', 'Leave them on read', '👻')],
         data: { first: s.first, last: s.last, gender: s.gender },
       }
@@ -314,11 +356,11 @@ export const ELDER_EVENTS = defineEvents([
     resolve: {
       meet: (g, x) => {
         const sp = partner(g)
-        if (sp) return say(g, x, 'Just coffee', `You met ${x.s('first')} for coffee and laughed about the old days. You told ${sp.firstName} all about it.`, `I had coffee with ${x.s('first')}, an old high school crush.`, { happiness: 5, rels: [{ p: sp, d: -2 }] })
-        say(g, x, ['Rekindled', 'Second chances'], `You met ${x.s('first')} for coffee. It turned into dinner, then a long walk. You've become close friends again.`, `I reconnected with ${x.s('first')}, my high school crush.`, { happiness: 8 }, 'good', '💞')
+        if (sp) return say(g, x, 'Just coffee', `You met ${x.s('first')} for coffee and laughed about the old days. You told ${sp.firstName} all about it.`, `I had coffee with ${x.s('first')}, an old ${localTerm(g, 'high')} crush.`, { happiness: 5, rels: [{ p: sp, d: -2 }] })
+        say(g, x, ['Rekindled', 'Second chances'], `You met ${x.s('first')} for coffee. It turned into dinner, then a long walk. You've become close friends again.`, `I reconnected with ${x.s('first')}, my ${localTerm(g, 'high')} crush.`, { happiness: 8 }, 'good', '💞')
         addOldFriend(g, x)
       },
-      reply: (g, x) => say(g, x, 'Nostalgia', `You exchanged a few messages with ${x.s('first')} about old teachers who are definitely dead now.`, `I reconnected online with ${x.s('first')} from high school.`, { happiness: 3 }),
+      reply: (g, x) => say(g, x, 'Nostalgia', `You exchanged a few messages with ${x.s('first')} about old teachers who are definitely dead now.`, `I reconnected online with ${x.s('first')} from ${localTerm(g, 'high')}.`, { happiness: 3 }),
       ignore: (g, x) => say(g, x, 'Left on read', `You left ${x.s('first')} on read. Some doors are better left closed.`, null, {}),
     },
   },
@@ -444,7 +486,7 @@ export const ELDER_EVENTS = defineEvents([
         const cost = Math.min(Math.max(0, g.character.money), dollars(g, 300, 2500))
         say(g, null, 'Crystal clear', `You got a hearing aid${cost ? ` for ${money(cost)}` : ''}. You can hear birds again. Also your neighbors arguing. Mostly that.`, 'I got a hearing aid.', { money: -cost, happiness: 5, count: 'doctorVisits' }, 'good', '🦻')
       },
-      pretend: (g) => say(g, null, 'Smile and nod', 'You decided to smile and nod at everything. You accidentally agreed to host Thanksgiving.', 'I pretended to hear everything people said to me.', { happiness: -2 }),
+      pretend: (g) => say(g, null, 'Smile and nod', `You decided to smile and nod at everything. You accidentally agreed to host ${feastHoliday(g)}.`, 'I pretended to hear everything people said to me.', { happiness: -2 }),
       louder: (g) => say(g, null, 'SPEAK UP', 'You told everyone to speak up. Now every family dinner sounds like a rock concert.', 'I made everyone talk louder around me.', { happiness: 2 }),
     },
   },
@@ -455,16 +497,17 @@ export const ELDER_EVENTS = defineEvents([
     minAge: 55,
     maxAge: 90,
     cooldown: 12,
-    setup: () => ({
-      text: 'The local pickleball league is recruiting, and the competition is reportedly vicious. Will you join?',
+    setup: (g) => ({
+      title: uc(elderSport(g)),
+      text: `The local ${elderSport(g)} ${elderSport(g) === 'tai chi' ? 'group' : 'league'} is recruiting, and the competition is reportedly vicious. Will you join?`,
       choices: [ch('join', 'Join the league', '🏓'), ch('trash', 'Join and talk trash', '😤'), ch('no', 'Pass', '🙅')],
     }),
     resolve: {
       join: (g) => {
-        if (chance(g, 0.2)) return say(g, null, 'Pulled hamstring', 'You lunged for a drop shot and something in your leg went "ping." You are now on the injured reserve.', 'I pulled a hamstring playing pickleball.', { health: -6, happiness: -3, condition: { name: 'Pulled Hamstring', kind: 'injury', severity: 10 } }, 'bad', '🤕')
-        say(g, null, ['Dink master', 'New hobby'], 'You joined the league and turned out to be pretty good. You made a few friends and enemies.', 'I joined a pickleball league.', { health: 5, happiness: 6, athleticism: 2 }, 'good', '🏓')
+        if (chance(g, 0.2)) return say(g, null, 'Pulled hamstring', 'You lunged for a tricky shot and something in your leg went "ping." You are now on the injured reserve.', `I pulled a hamstring playing ${elderSport(g)}.`, { health: -6, happiness: -3, condition: { name: 'Pulled Hamstring', kind: 'injury', severity: 10 } }, 'bad', '🤕')
+        say(g, null, ['Dink master', 'New hobby'], 'You joined the league and turned out to be pretty good. You made a few friends and enemies.', `I joined a ${elderSport(g)} league.`, { health: 5, happiness: 6, athleticism: 2 }, 'good', '🏓')
       },
-      trash: (g) => say(g, null, 'Villain arc', 'You joined the league and trash-talked everyone. You are now the most hated player in the retirement community, and you love it.', 'I became the villain of my local pickleball league.', { health: 4, happiness: 7, karma: -3 }),
+      trash: (g) => say(g, null, 'Villain arc', 'You joined the league and trash-talked everyone. You are now the most hated player in the retirement community, and you love it.', `I became the villain of my local ${elderSport(g)} league.`, { health: 4, happiness: 7, karma: -3 }),
       no: (g) => say(g, null, 'Spectator', 'You passed. You still go to watch the drama, though.', null, {}),
     },
   },
@@ -484,7 +527,7 @@ export const ELDER_EVENTS = defineEvents([
       volunteer: (g) => say(g, null, 'Giving back', 'You started volunteering at the animal shelter. The dogs think you are the best person alive.', 'I started volunteering in retirement.', { happiness: 6, karma: 8 }, 'good', '🤝'),
       class: (g) => {
         const topic = pick(g, ['watercolor painting', 'Italian', 'pottery', 'salsa dancing', 'computer basics', 'astronomy'])
-        say(g, null, 'Lifelong learner', `You signed up for a ${topic} class at the community college. You're the teacher's favorite.`, `I took a ${topic} class in retirement.`, { smarts: 4, happiness: 5 }, 'good', '🎨')
+        say(g, null, 'Lifelong learner', `You signed up for a ${topic} class at ${g.character.countryId === 'us' ? 'the community college' : 'the community center'}. You're the teacher's favorite.`, `I took a ${topic} class in retirement.`, { smarts: 4, happiness: 5 }, 'good', '🎨')
       },
       garden: (g) => say(g, null, 'Green thumb', 'You planted a vegetable garden. You grew 40 zucchinis and gave them to neighbors who did not want them.', 'I started a vegetable garden.', { health: 3, happiness: 5 }, 'good', '🌱'),
       nap: (g) => say(g, null, 'Professional napper', 'You perfected the art of the 2 PM nap. You have never felt more rested.', 'I took a lot of naps in retirement.', { happiness: 4, health: 2 }),
@@ -499,7 +542,7 @@ export const ELDER_EVENTS = defineEvents([
     cooldown: 10,
     setup: (g) => {
       const s = strangerName(g)
-      const from = pick(g, ['the bowling league', 'your old job', 'the neighborhood', 'church', 'your book club'])
+      const from = pick(g, ['your old job', 'the neighborhood', worshipPlace(g), g.character.countryId === 'us' ? 'the bowling league' : 'the market', 'your book club'])
       return {
         text: `Your old friend ${s.first} ${s.last} from ${from} passed away. Their family asked if you'd say a few words at the funeral. What will you do?`,
         choices: [ch('eulogy', 'Give a heartfelt eulogy', '🎙️'), ch('funny', 'Tell funny stories', '😂'), ch('attend', 'Just attend quietly', '🕯️'), ch('skip', "Skip it", '🚪')],
@@ -510,7 +553,7 @@ export const ELDER_EVENTS = defineEvents([
       eulogy: (g, x) => say(g, x, 'Beautiful words', `You gave a eulogy for ${x.s('first')} that left the whole room in tears.`, `I gave a eulogy at my old friend ${x.s('first')}'s funeral.`, { happiness: -3, karma: 5 }, 'neutral', '🎙️'),
       funny: (g, x) => say(g, x, 'Celebration of life', `You told the story about ${x.s('first')} and the stolen goat. The room laughed through the tears. ${x.s('first')} would have loved it.`, `I made everyone laugh at my old friend ${x.s('first')}'s funeral.`, { happiness: 2, karma: 4 }, 'good', '😂'),
       attend: (g, x) => say(g, x, 'Paying respects', `You sat in the back and said goodbye to ${x.s('first')} in your own way.`, `I attended my old friend ${x.s('first')}'s funeral.`, { happiness: -4 }),
-      skip: (g, x) => say(g, x, 'Too many funerals', `You couldn't face another funeral. You raised a glass to ${x.s('first')} at home instead.`, `I skipped my old friend ${x.s('first')}'s funeral.`, { happiness: -5, karma: -2 }),
+      skip: (g, x) => say(g, x, 'Too many funerals', `You couldn't face another funeral. You lit a candle for ${x.s('first')} at home instead.`, `I skipped my old friend ${x.s('first')}'s funeral.`, { happiness: -5, karma: -2 }),
     },
   },
 ])
@@ -521,7 +564,7 @@ function addOldFriend(g: GameState, x: Ctx): void {
   const gender = x.s('gender') === 'female' ? 'female' : 'male'
   const age = Math.max(18, g.character.age + randInt(g, -2, 2))
   const p: Person = createFriend(g, x.s('first'), x.s('last'), gender, age)
-  p.notes.push('My high school crush; we reconnected late in life.')
+  p.notes.push(`My ${localTerm(g, 'high')} crush; we reconnected late in life.`)
 }
 
 function createFriend(g: GameState, first: string, last: string, gender: 'male' | 'female', age: number): Person {
