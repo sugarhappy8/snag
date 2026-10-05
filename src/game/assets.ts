@@ -298,13 +298,20 @@ function times(mult: number): string {
   return `${mult >= 10 ? Math.round(mult) : Math.round(mult * 10) / 10}×`
 }
 
+/** What a steep car priceMult means for the player: "about 2.8× US prices", or a luxury when wages are low. */
+function carDutyText(g: GameState): string | null {
+  if (localPriceMult(g, 'car') < 1.6) return null
+  const eff = localGoodsMult(g, 'car')
+  return eff >= 1.4 ? `cost about ${times(eff)} what they do in the US` : 'are a luxury few locals can afford'
+}
+
 /** One short line about what's notably cheap or dear here, for the car dealer header. */
 function carMarketNote(g: GameState): string {
-  const car = localPriceMult(g, 'car')
   const fuel = localPriceMult(g, 'fuel')
+  const duty = carDutyText(g)
   const bits: string[] = []
-  if (car >= 1.6) bits.push(`Duties, registration taxes and permits make cars cost about ${times(car)} what they do in the US.`)
-  else if (car <= 0.85) bits.push('Cars are cheaper here than almost anywhere.')
+  if (duty) bits.push(`Thanks to duties, registration taxes and permits, cars here ${duty}.`)
+  else if (localGoodsMult(g, 'car') <= 0.85 && localPriceMult(g, 'car') <= 0.9) bits.push('Cars are cheap here by world standards.')
   if (fuel <= 0.35) bits.push('Gas is practically free.')
   else if (fuel >= 1.8) bits.push(`Gas costs about ${times(fuel)} US prices.`)
   return bits.join(' ')
@@ -314,13 +321,14 @@ function carMarketNote(g: GameState): string {
 export function marketShoppingNote(g: GameState): string {
   const facts: [number, string][] = []
   const car = localPriceMult(g, 'car')
-  const elec = localPriceMult(g, 'electronics')
+  const elec = localGoodsMult(g, 'electronics')
   const lux = localPriceMult(g, 'luxury')
   const fuel = localPriceMult(g, 'fuel')
   const country = getCountry(g.character.countryId).name
-  if (car >= 1.6) facts.push([car, `Cars in ${country} cost about ${times(car)} US prices, thanks to duties, registration taxes and permits.`])
-  if (elec >= 1.25) facts.push([elec * 1.2, `Gadgets cost about ${times(elec)} US prices here after import duties.`])
-  if (lux >= 1.3) facts.push([lux * 1.1, `Designer goods carry steep luxury taxes in ${country}.`])
+  const duty = carDutyText(g)
+  if (duty) facts.push([car * 1.6, `Thanks to duties, registration taxes and permits, cars in ${country} ${duty}.`])
+  if (elec >= 1.2) facts.push([elec * 1.2, `Gadgets cost about ${times(elec)} US prices here after import duties.`])
+  if (lux >= 1.3) facts.push([lux * 1.1, `Designer goods carry steep import duties in ${country}.`])
   if (fuel <= 0.35) facts.push([3 - fuel, `Gas in ${country} is practically free.`])
   if (fuel >= 1.8) facts.push([fuel, `Gas costs about ${times(fuel)} US prices here.`])
   facts.sort((a, b) => b[0] - a[0])
@@ -1246,7 +1254,7 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
   let text = `You drove a ${l.color.toLowerCase()} ${name} off the lot${loanId ? ' with a car loan' : ` for ${formatMoney(l.price)}`}. ${pick(g, ['That new car smell is intoxicating.', 'You honked at nobody, just because you could.', 'You took 40 selfies with it in the parking lot.'])}`
   const tax = salesTaxNote(g, l.price)
   if (tax) text += ` ${tax}`
-  if (localPriceMult(g, 'car') >= 1.6) text += ` ${pick(g, ['Most of the sticker price was import duty and registration tax.', 'The government made more on this car than the dealer did.'])}`
+  if (localPriceMult(g, 'car') >= 1.6) text += ` ${pick(g, ['A big chunk of the sticker price was duties and registration tax.', 'The government made more on this car than the dealer did.'])}`
   if (!hasLicense(g, 'driver')) text += " Heads up: you don't have a driver's license, so for now it's a very expensive lawn ornament."
   notice(g, 'New Wheels!', text, { emoji: CAR_EMOJI[l.carType], tone: 'good' })
   return true

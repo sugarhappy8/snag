@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs'
 import { it } from 'vitest'
 import { applyFallback, planYear } from '../src/ai/director'
 import { narratorSystem, yearEventsPrompt, resolveChoicePrompt, customActionPrompt, gameContext } from '../src/ai/prompts'
@@ -26,7 +27,8 @@ it('measure', () => {
     while (g.character.alive && g.character.age < age) { ageUp(g); drain(g) }
     const sys = narratorSystem(DEFAULT_SETTINGS)
     const p = yearEventsPrompt(g, { ...planYear(g), wantEvent: true })
+    if (country === 'id') writeFileSync('/tmp/claude-0/-home-user-snag/10662b3d-d68a-59c1-a541-a28cb41ae61d/scratchpad/id-prompt.txt', sys + '\n---\n' + p)
     rows.push(`${country} age ${g.character.age}: system ${sys.length} chars, year ${p.length} chars, total ~${Math.ceil((sys.length + p.length) / 4)} tok; ctx ${gameContext(g).length}`)
   }
-  console.log(rows.join('\n'))
+  writeFileSync('/tmp/claude-0/-home-user-snag/10662b3d-d68a-59c1-a541-a28cb41ae61d/scratchpad/measure.txt', rows.join('\n'))
 })
