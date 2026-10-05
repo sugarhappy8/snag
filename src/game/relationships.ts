@@ -71,7 +71,7 @@ import { createPerson, notePerson, randomOccupation } from './people'
 import { chance, pick, rand, randFloat, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import { getCountry, randomFirstName, randomLastName } from './world'
-import { fillLocal, locale, localeOf } from './data/locales'
+import { locale, localeOf } from './data/locales'
 import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, NoticeAi, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
@@ -501,10 +501,17 @@ function localActs(g: GameState, list: string[]): string[] {
   })
 }
 
+/** "a Diwali party", "an Eid party", "a Carnival party" (no month-long fasts). */
+function holidayParty(g: GameState): string {
+  const list = locale(g).holidays.filter((h) => !/Ramadan|Lent|Advent|Holy Week|Week\b|Yom Kippur|Ashura/i.test(h))
+  const h = (list.length ? pick(g, list) : 'New Year').replace(/^the /i, '')
+  return `${/^[AEIOU]/i.test(h) ? 'an' : 'a'} ${h} party`
+}
+
 function localParties(g: GameState, adult: boolean): string[] {
   if (g.character.countryId === 'us') return adult ? PARTIES_ADULT : PARTIES_TEEN
   const swap: Record<string, string> = {
-    'a tailgate party': fillLocal(g, 'a {holiday} party'),
+    'a tailgate party': holidayParty(g),
     'a toga party': 'a house party',
     'a backyard barbecue': 'a garden party',
     'a pool party': localeOf(g.character.countryId).climate === 'tropical' || localeOf(g.character.countryId).climate === 'mediterranean' ? 'a pool party' : 'a picnic in the park',

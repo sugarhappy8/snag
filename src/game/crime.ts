@@ -3193,7 +3193,7 @@ function familyNodes(g: GameState, fam: CrimeFamily): MenuNode[] {
     id: 'crime.mafia.rat',
     label: 'Expose a Rat',
     emoji: '\u{1F400}',
-    subtitle: "Accuse someone of talking to the feds",
+    subtitle: (sg) => `Accuse someone of talking to ${feds(sg).them}`,
     header: () => 'Pick right and the family rewards you. Pick wrong and they punish you.',
     children: (gg) => {
       const f = crimeFamily(gg)
@@ -3235,15 +3235,15 @@ function familyNodes(g: GameState, fam: CrimeFamily): MenuNode[] {
       id: 'crime.mafia.inform',
       label: 'Become an Informant',
       emoji: '\u{1F399}\u{FE0F}',
-      subtitle: 'Secretly work with the feds',
+      subtitle: (sg) => `Secretly work with ${feds(sg).them}`,
       confirm: () => 'If the family finds out, they will kill you. Wear the wire?',
       run: (gg) => {
         const f = crimeFamily(gg)
         if (!canAct(gg) || !f || f.informant) return
         f.informant = { years: 0, evidence: 0 }
-        log(gg, 'I secretly became a federal informant.', 'event')
-        remember(gg, `Became a federal informant against ${f.name}.`)
-        notice(gg, 'Wired', `You met an FBI agent in a parking garage and agreed to wear a wire. Gather enough evidence on ${f.name} within 5 years and you walk away clean.`, { emoji: '\u{1F399}\u{FE0F}', tone: 'event' })
+        log(gg, `I secretly became a ${feds(gg).informant}.`, 'event')
+        remember(gg, `Became a ${feds(gg).informant} against ${f.name}.`)
+        notice(gg, 'Wired', `You met ${gg.character.countryId === 'us' ? 'an FBI agent' : 'a detective'} in a parking garage and agreed to wear a wire. Gather enough evidence on ${f.name} within 5 years and you walk away clean.`, { emoji: '\u{1F399}\u{FE0F}', tone: 'event' })
       },
     })
   }
@@ -3327,9 +3327,9 @@ function yearlyFamily(g: GameState, fam: CrimeFamily): void {
       c.wantedLevel = 0
       count(g, 'informant')
       log(g, `My evidence brought down ${name}.`, 'event')
-      remember(g, `Brought down ${name} as a federal informant.`)
+      remember(g, `Brought down ${name} as a ${feds(g).informant}.`)
       const options = shuffle(g, COUNTRIES.filter((k) => k.id !== c.countryId)).slice(0, 2)
-      scriptChoice(g, WITNESS_SCRIPT, 'Witness Protection', `Your evidence brought down ${name}. Dozens of arrests, and the feds have wiped your slate clean. They offer you witness protection: a new name in a new country.`, [
+      scriptChoice(g, WITNESS_SCRIPT, 'Witness Protection', `Your evidence brought down ${name}. Dozens of arrests, and ${feds(g).them} have wiped your slate clean. They offer you witness protection: a new name in a new country.`, [
         ...options.map((k) => ({ id: k.id, label: `Move to ${k.name}`, emoji: k.flag })),
         { id: 'cancel', label: 'Take my chances here', emoji: '\u{1F3E0}' },
       ], { emoji: '\u{1F575}\u{FE0F}', data: { family: name, card } })
