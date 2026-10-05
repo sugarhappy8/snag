@@ -1,0 +1,56 @@
+// The home computer: once you own a computer (a laptop or gaming PC from the Electronics Store,
+// or one your parents buy you), Activities › Computer opens at-home ways to learn and earn,
+// even before 18: learn to code, build a SaaS, freelance (computer/dev.ts), and the riskier side,
+// crypto pump-and-dumps, options trading and online scams (computer/money.ts).
+import { devNodes, devSummary, yearlyDev } from './computer/dev'
+import { moneyNodes, moneySummary, yearlyMoney } from './computer/money'
+import { codingSkill } from './computer/skills'
+import type { Asset, GameState, MenuGroup } from './types'
+
+const COMPUTER_NAME = /\b(laptop|gaming pc|computer|desktop|pc|macbook|workstation|chromebook)\b/i
+
+/** Assets that count as a computer (the Electronics Store's Laptop and Gaming PC, and similar). */
+export function isComputer(a: Asset): boolean {
+  return (a.kind === 'other' || a.kind === 'collectible') && COMPUTER_NAME.test(a.name) && a.condition > 0
+}
+
+export function computerAsset(g: GameState): Asset | undefined {
+  return g.assets.find(isComputer)
+}
+
+export function ownsComputer(g: GameState): boolean {
+  return !!computerAsset(g)
+}
+
+/** Activities › Computer. */
+export const computerMenu: MenuGroup = {
+  type: 'menu',
+  id: 'computer',
+  label: 'Computer',
+  emoji: '\u{1F4BB}',
+  subtitle: (g) => {
+    const a = computerAsset(g)
+    if (!a) return 'Buy a laptop or gaming PC to unlock'
+    const skill = codingSkill(g)
+    return `${a.name}${skill > 0 ? ` · coding ${skill}/100` : ''}`
+  },
+  visible: (g) => g.character.alive && g.character.age >= 8 && !g.character.prison,
+  disabledReason: (g) => (ownsComputer(g) ? null : "You don't have a computer. Buy a laptop or gaming PC at the Electronics Store (Shopping), or ask your parents for one."),
+  header: (g) => {
+    const a = computerAsset(g)
+    return a ? `${a.emoji} Your ${a.name.toLowerCase()} hums to life. What will you do?` : ''
+  },
+  children: (g) => [...devNodes(g), ...moneyNodes(g)],
+}
+
+/** Yearly hook (aging.ts, after shops, before finance). */
+export function yearlyComputer(g: GameState): void {
+  yearlyDev(g)
+  if (!g.character.alive) return
+  yearlyMoney(g)
+}
+
+/** One line for the AI context ('' when nothing to say). */
+export function computerSummary(g: GameState): string {
+  return [devSummary(g), moneySummary(g)].filter(Boolean).join('; ')
+}

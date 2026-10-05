@@ -4,6 +4,7 @@ import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, n
 import { ASSET_KIND_VIEWS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
 import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
 import { occupationMenu } from './careers'
+import { computerMenu } from './computer'
 import { inPrison, queueAi } from './core'
 import { investmentAssetSubtitle, investmentAssetView, investmentsMenu } from './investments'
 import { crimeMenu } from './crime'
@@ -86,6 +87,7 @@ export const activitiesMenu: MenuGroup = {
     const all: MenuNode[] = [
       adoptionMenu,
       casinoMenu,
+      computerMenu,
       crimeMenu,
       doctorMenu,
       emigrateMenu,

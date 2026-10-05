@@ -4,6 +4,7 @@
 // prompt (system + context + task) stays well under ~2,500 tokens. Nothing in this file
 // mutates the game state — it only reads the frozen snapshot from the store.
 import { businessSummary } from '../game/business'
+import { computerSummary } from '../game/computer'
 import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, shortMoney } from '../game/core'
 import { cvPromptLines, cvSummary, graduateTarget, jobTarget, rankLabel, rankOf, universityTarget, type CvTarget } from '../game/cv'
 import { getJobDef, type GradKey } from '../game/data/jobs'
@@ -330,6 +331,8 @@ export function describeCharacter(g: GameState): string {
   if (business) lines.push(`BUSINESS: ${business}`)
   const portfolio = investmentsSummary(g)
   if (portfolio) lines.push(`INVESTMENTS: ${portfolio}`)
+  const computer = computerSummary(g)
+  if (computer) lines.push(`AT THE COMPUTER: ${computer}`)
   const luxury = luxurySummary(g)
   if (luxury) lines.push(`LUXURY LIFESTYLE: ${luxury}`)
   if (c.age >= 16 && !c.prison) {
