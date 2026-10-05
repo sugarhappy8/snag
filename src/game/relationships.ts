@@ -70,7 +70,8 @@ import {
 import { createPerson, notePerson, randomOccupation } from './people'
 import { chance, pick, rand, randFloat, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
-import { randomFirstName, randomLastName } from './world'
+import { getCountry, randomFirstName, randomLastName } from './world'
+import { fillLocal, locale, localeOf } from './data/locales'
 import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, NoticeAi, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
@@ -456,6 +457,69 @@ const VACATIONS = [
   { place: 'an all-inclusive cruise', cost: 3500 },
 ]
 
+// ---------------------------------------------------------------------------
+// Local flavor for time together: no snowball fights in the tropics, a cricket match in
+// Mumbai instead of a baseball game, a café instead of a wine bar where most people don't drink.
+
+/** Watching the big local sport: "a baseball game" in the US, "a football match" in Lagos. */
+function localGame(g: GameState): string {
+  if (g.character.countryId === 'us') return 'a baseball game'
+  const sport = locale(g).sports.find((x) => !/running|athletics|track|swimming|skiing|surfing|cycling|sailing|biking/i.test(x)) ?? 'football'
+  const word = /football|soccer|cricket|rugby|hockey|hurling|handball|polo|futsal|netball|kabaddi/i.test(sport) ? 'match' : /boxing|wrestling|sumo|muay|lucha|judo|taekwondo|silat/i.test(sport) ? 'bout' : 'game'
+  return `a ${sport} ${word}`
+}
+
+function noDrinking(g: GameState): boolean {
+  const r = getCountry(g.character.countryId).religions
+  return r.filter((x) => x === 'Islam').length * 2 > r.length
+}
+
+/** A grown-up date spot or hangout, or a kid-safe one for teens. */
+function localSpot(g: GameState, kind: 'dateSpots' | 'hangouts', teen: boolean): string {
+  const all = locale(g)[kind]
+  const ok = teen || noDrinking(g) ? all.filter((x) => !/\b(?:bars?|pubs?|club|wine|beer|izakaya|tavern|cantina|boteco|kneipe|kafana|brewery|cocktail|lounge|casino)\b/i.test(x)) : all
+  return ok.length ? pick(g, ok) : 'the park'
+}
+
+function localize(g: GameState, line: string): string {
+  if (g.character.countryId === 'us') return line
+  return line
+    .replace('went to a baseball game', `went to ${localGame(g)}`)
+    .replace('go to a baseball game', `go to ${localGame(g)}`)
+    .replace('went people watching at the mall', `went people watching at ${localSpot(g, 'hangouts', true)}`)
+    .replace('shared a milkshake at the diner', `shared a snack at ${localSpot(g, 'dateSpots', true)}`)
+    .replace('went to the mall food court', `went to ${localSpot(g, 'hangouts', true)}`)
+}
+
+function localActs(g: GameState, list: string[]): string[] {
+  const loc = locale(g)
+  return list.filter((a) => {
+    if (/snowball|ice skating|sledding/.test(a)) return loc.snow
+    if (/pile of leaves/.test(a)) return loc.climate !== 'tropical' && loc.climate !== 'arid'
+    if (/wine|jazz bar|beer/.test(a)) return !noDrinking(g)
+    return true
+  })
+}
+
+function localParties(g: GameState, adult: boolean): string[] {
+  if (g.character.countryId === 'us') return adult ? PARTIES_ADULT : PARTIES_TEEN
+  const swap: Record<string, string> = {
+    'a tailgate party': fillLocal(g, 'a {holiday} party'),
+    'a toga party': 'a house party',
+    'a backyard barbecue': 'a garden party',
+    'a pool party': localeOf(g.character.countryId).climate === 'tropical' || localeOf(g.character.countryId).climate === 'mediterranean' ? 'a pool party' : 'a picnic in the park',
+  }
+  return (adult ? PARTIES_ADULT : PARTIES_TEEN).map((x) => swap[x] ?? x)
+}
+
+/** Getaways for two: the classics plus the domestic spots couples here actually go to. */
+function localVacations(g: GameState): typeof VACATIONS {
+  if (g.character.countryId === 'us') return VACATIONS
+  const home = locale(g).getaways.filter((x) => x !== g.character.city).slice(0, 5).map((place) => ({ place, cost: 900 }))
+  const abroad = VACATIONS.filter((v) => !/Hawaii/.test(v.place))
+  return [...home, ...abroad]
+}
+
 const SQUABBLES = ['who gets the front seat', 'the TV remote', 'whose turn it is to feed the dog', 'who Mom loves more', 'the last slice of pizza', 'who broke the lamp', 'who used all the hot water']
 
 const STORIES = ['The Very Hungry Platypus', 'Where the Mild Things Are', 'Goodnight Spoon', 'The Little Engine That Could Not Be Bothered', 'Green Eggs and Spam', 'The Cat in the Hoodie', 'Llama Llama Overdue Library Book']
@@ -645,6 +709,20 @@ const SUDDEN: DeathCause[] = [
   { cause: 'Avalanche', text: 'was caught in an avalanche while snowboarding', sudden: true },
 ]
 
+/** Freak accidents that fit where the family lives (no foul balls where nobody plays baseball). */
+function suddenFits(g: GameState, d: DeathCause): boolean {
+  const loc = localeOf(g.character.countryId)
+  if (d.cause === 'Foul Ball') return loc.sports.some((x) => /baseball/i.test(x))
+  if (d.cause === 'Falling Icicle' || d.cause === 'Avalanche' || d.cause === 'Skiing Accident') return loc.snow
+  if (d.cause === 'Tornado') return ['us', 'ca', 'bd', 'ar'].includes(g.character.countryId)
+  return true
+}
+
+function localSudden(g: GameState, d: DeathCause): DeathCause {
+  if (g.character.countryId === 'us' || d.cause !== 'Food Poisoning') return d
+  return { ...d, text: 'got food poisoning from some very questionable street-stall seafood' }
+}
+
 /** Annual chance an NPC dies, by age and health. */
 export function npcMortality(age: number, health: number): number {
   let base: number
@@ -670,7 +748,7 @@ export function npcMortality(age: number, health: number): number {
 function deathCause(g: GameState, p: Person): DeathCause {
   if (p.age >= 80 && chance(g, 0.5)) return pick(g, OLD_AGE)
   if (p.age >= 65 && chance(g, 0.2)) return pick(g, OLD_AGE)
-  if (p.age < 40 ? chance(g, 0.7) : chance(g, 0.12)) return pick(g, SUDDEN)
+  if (p.age < 40 ? chance(g, 0.7) : chance(g, 0.12)) return localSudden(g, pick(g, SUDDEN.filter((d) => suddenFits(g, d))))
   return pick(g, DISEASES.filter((d) => (!d.minAge || p.age >= d.minAge) && (!d.gender || d.gender === p.gender)))
 }
 
@@ -866,6 +944,22 @@ const RESTING_WISHES: { id: string; text: string; weight: number }[] = [
   { id: 'taxidermy', text: 'stuffed and displayed in the living room', weight: 0.3 },
 ]
 
+/** Who leads the funeral: a priest, an imam, a monk, a rabbi, a pandit. */
+function clergy(g: GameState, p: Person): string {
+  const own = typeof p.data.religion === 'string' ? p.data.religion : null
+  const r = getCountry(g.character.countryId).religions
+  const counts: Record<string, number> = {}
+  for (const x of r) counts[x] = (counts[x] ?? 0) + 1
+  const faith = own ?? Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'None'
+  return faith === 'Islam' ? 'imam' : faith === 'Buddhism' ? 'monk' : faith === 'Judaism' ? 'rabbi' : faith === 'Hinduism' ? 'pandit' : faith === 'Christianity' ? 'priest' : 'officiant'
+}
+
+function localAshSpot(g: GameState, spot: string): string {
+  if (g.character.countryId === 'us') return spot
+  const feast = locale(g).holidays.find((h) => !/Ramadan|Lent|Advent|Holy Week|Week\b/i.test(h)) ?? 'New Year'
+  return spot.replace('over Christmas dinner', `over ${feast.replace(/^the /, '')} dinner`).replace('the dollar store', 'the discount store')
+}
+
 const ASH_SPOTS = [
   'over a waterfall',
   'into the ocean at sunrise',
@@ -921,7 +1015,7 @@ defineScript('rel.funeral', (g, choice, data) => {
       addHidden(g, 'karma', 2)
       for (const f of family) addRelationship(f, randInt(g, 1, 4))
       log(g, `I buried ${myRel(p)}.`)
-      notice(g, 'Funeral', `You held a beautiful funeral and buried ${name} for ${money(cost)}. ${pick(g, ['Everyone shared their favorite stories.', 'Half the town showed up.', 'Even the priest cried.', 'The eulogy got a standing ovation, which was confusing.'])}${wishNote}`, { emoji: '\u{26B0}\u{FE0F}' })
+      notice(g, 'Funeral', `You held a beautiful funeral and buried ${name} for ${money(cost)}. ${pick(g, ['Everyone shared their favorite stories.', 'Half the town showed up.', `Even the ${clergy(g, p)} cried.`, 'The eulogy got a standing ovation, which was confusing.'])}${wishNote}`, { emoji: '\u{26B0}\u{FE0F}' })
     } else if (choice === 'taxidermy') {
       if (wish !== 'taxidermy') {
         addHidden(g, 'karma', -2)
@@ -930,7 +1024,7 @@ defineScript('rel.funeral', (g, choice, data) => {
       log(g, `I had ${myRel(p)} taxidermied.`)
       notice(g, 'Funeral', `You paid ${money(cost)} to have ${name} stuffed and mounted in the living room. ${pick(g, ['Visitors have stopped coming over.', 'The likeness is... unsettling.', `${pr(p).He} has never looked more relaxed.`, 'The dog barks at the corner of the room now.'])}${wishNote}`, { emoji: '\u{1F98C}' })
     } else {
-      const spots = [...ASH_SPOTS]
+      const spots = ASH_SPOTS.map((x) => localAshSpot(g, x))
       const picks: string[] = []
       while (picks.length < 2 && spots.length) picks.push(spots.splice(randInt(g, 0, spots.length - 1), 1)[0])
       scriptChoice(
@@ -1444,7 +1538,8 @@ function yearlyFamilyEvent(g: GameState): void {
   const ps = alive.filter((p) => PARENTS.includes(p.relation))
   if (c.age >= 6 && c.age < 18 && ps.length) {
     const par = pick(g, ps)
-    const inv = pick(g, c.age < 12 ? INVITES_KID : INVITES_TEEN)
+    const inv0 = pick(g, c.age < 12 ? INVITES_KID : INVITES_TEEN)
+    const inv: [string, string] = [localize(g, inv0[0]), localize(g, inv0[1])]
     events.push({ key: 'rel.parent.invite:' + par.id,
       w: 2,
       run: () =>
@@ -1457,12 +1552,14 @@ function yearlyFamilyEvent(g: GameState): void {
   const newAdults = alive.filter((p) => KIDS.includes(p.relation) && p.age === 18 && p.data.tuitionAsked !== true)
   if (newAdults.length && c.money > 20_000) {
     const k = newAdults[0]
-    const tuition = randInt(g, 30, 90) * 1000
+    // Where university is free, the ask is rent and living costs instead of tuition.
+    const free = getCountry(c.countryId).freeUniversity
+    const tuition = (free ? randInt(g, 5, 15) : randInt(g, 30, 90)) * 1000
     events.push({ key: 'rel.child.tuition:' + k.id,
       w: 5,
       run: () => {
         k.data.tuitionAsked = true
-        scriptChoice(g, 'rel.child.tuition', 'College Tuition', `${the(k)} got into university and asked if you will pay the tuition (${money(tuition)}).`, [
+        scriptChoice(g, 'rel.child.tuition', tuitionTitle(g), free ? `${the(k)} got into university. Tuition is free, but ${pr(k).he} asked if you will cover rent and living costs (${money(tuition)}).` : `${the(k)} got into university and asked if you will pay the tuition (${money(tuition)}).`, [
           { id: 'pay', label: `Pay ${money(tuition)}`, emoji: '\u{1F393}' },
           { id: 'refuse', label: 'Refuse', emoji: '\u{1F645}' },
         ], { emoji: '\u{1F393}', data: asJson({ pid: k.id, tuition }), personId: k.id })
@@ -1670,6 +1767,11 @@ defineScript('rel.parent.invite', (g, choice, data) => {
   }
 })
 
+function tuitionTitle(g: GameState): string {
+  if (g.character.countryId === 'us') return 'College Tuition'
+  return getCountry(g.character.countryId).freeUniversity ? 'University Costs' : 'University Fees'
+}
+
 defineScript('rel.child.tuition', (g, choice, data) => {
   const k = getPerson(g, dStr(data, 'pid'))
   if (!k || !k.alive) return
@@ -1679,13 +1781,14 @@ defineScript('rel.child.tuition', (g, choice, data) => {
     k.occupation = 'University Student'
     k.data.collegePaid = true
     addRelationship(k, randInt(g, 15, 25))
-    log(g, `I paid ${money(tuition)} for ${myRel(k)}'s college tuition.`, 'good')
-    notice(g, 'College Tuition', `You paid ${k.firstName}'s tuition. ${pr(k).He} promised to study hard (and to only party a medium amount).`, { emoji: '\u{1F393}', tone: 'good' })
+    log(g, `I paid ${money(tuition)} for ${myRel(k)}'s ${g.character.countryId === 'us' ? 'college tuition' : 'university costs'}.`, 'good')
+    notice(g, tuitionTitle(g), `You paid ${k.firstName}'s ${getCountry(g.character.countryId).freeUniversity ? 'living costs' : 'tuition'}. ${pr(k).He} promised to study hard (and to only party a medium amount).`, { emoji: '\u{1F393}', tone: 'good' })
     return
   }
   addRelationship(k, -randInt(g, 10, 20))
-  log(g, `I refused to pay for ${myRel(k)}'s college.`, 'bad')
-  notice(g, 'College Tuition', choice === 'pay' ? `You couldn't afford the tuition. ${k.firstName} will be taking out student loans.` : `You told ${k.firstName} to take out student loans like everyone else. ${pr(k).He} will remember this.`, { emoji: '\u{1F393}' })
+  const free = getCountry(g.character.countryId).freeUniversity
+  log(g, `I refused to pay for ${myRel(k)}'s ${g.character.countryId === 'us' ? 'college' : 'university'}.`, 'bad')
+  notice(g, tuitionTitle(g), choice === 'pay' ? (free ? `You couldn't afford it. ${k.firstName} will be working nights at a café.` : `You couldn't afford the tuition. ${k.firstName} will be taking out student loans.`) : free ? `You told ${k.firstName} to get a part-time job like everyone else.` : `You told ${k.firstName} to take out student loans like everyone else. ${pr(k).He} will remember this.`, { emoji: '\u{1F393}' })
 })
 
 defineScript('rel.child.comingOut', (g, choice, data) => {
@@ -1924,10 +2027,10 @@ function build(def: Def, pid: string): MenuAction {
 function activityFor(g: GameState, p: Person): string {
   const youngest = Math.min(g.character.age, p.age)
   if (youngest < 5) return pick(g, ACT_TODDLER)
-  if (youngest < 13) return pick(g, ACT_KID)
+  if (youngest < 13) return localize(g, pick(g, localActs(g, ACT_KID)))
   if (p.age >= 70 && chance(g, 0.5)) return pick(g, ACT_ELDER)
-  if (youngest >= 21 && chance(g, 0.35)) return pick(g, ACT_ADULT)
-  return pick(g, ACT_TEEN)
+  if (youngest >= 21 && chance(g, 0.35)) return localize(g, pick(g, localActs(g, ACT_ADULT)))
+  return localize(g, pick(g, localActs(g, ACT_TEEN)))
 }
 
 function spendTime(g: GameState, p: Person): void {
@@ -2358,7 +2461,7 @@ function movie(g: GameState, p: Person): void {
 
 function vacationWith(g: GameState, p: Person): void {
   if (atLimit(g, p, 'vacation', 1, 'Vacation')) return
-  const opts = [...VACATIONS]
+  const opts = [...localVacations(g)]
   const picks: typeof VACATIONS = []
   while (picks.length < 3 && opts.length) picks.push(opts.splice(randInt(g, 0, opts.length - 1), 1)[0])
   scriptChoice(
@@ -2541,7 +2644,7 @@ function party(g: GameState, p: Person): void {
     notice(g, 'Party', `${p.firstName} didn't want to party with you.`, { emoji: '\u{1F645}' })
     return
   }
-  const where = pick(g, c.age >= 18 && p.age >= 18 && chance(g, 0.6) ? PARTIES_ADULT : PARTIES_TEEN)
+  const where = pick(g, localParties(g, c.age >= 18 && p.age >= 18 && chance(g, 0.6)))
   addRelationship(p, randInt(g, 5, 10))
   addStat(g, 'happiness', randInt(g, 5, 10))
   count(g, 'parties')
@@ -2591,9 +2694,9 @@ function dateNight(g: GameState, p: Person): void {
   const c = g.character
   let text: string
   let cost = 0
-  if (c.age < 18) text = pick(g, DATE_VENUES_TEEN)
+  if (c.age < 18) text = localize(g, pick(g, localActs(g, DATE_VENUES_TEEN)))
   else {
-    const v = pick(g, DATE_VENUES_ADULT)
+    const v = pick(g, DATE_VENUES_ADULT.filter((d) => !noDrinking(g) || !/wine/.test(d.text)))
     cost = v.cost
     text = v.text
   }
