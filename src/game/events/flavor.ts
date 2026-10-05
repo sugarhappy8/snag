@@ -3,13 +3,14 @@
 // age and situation, with real family names filled in and no repeats for a long while.
 import { children as childrenOf, currentPartner, inPrison, log, peopleBy } from '../core'
 import { chance, pick, randInt, shuffle } from '../rng'
+import { localPick } from '../data/locales'
 import type { GameState, Json, Person, Tone } from '../types'
 import { country, friends, grandkids, inUniversity, mother, father, pets, siblings } from './helpers'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
 
 const FIRST_WORDS = ['potato', 'no', 'cookie', 'dada', 'mama', 'uh-oh', 'doggy', 'ball', 'nope', 'banana', 'taxes', 'meow', 'more', 'why', 'pizza', 'bye-bye']
-const FOODS = ['chicken nuggets', 'mac and cheese', 'tacos', 'pizza', 'pancakes', 'sushi', 'grilled cheese', 'spaghetti', 'dumplings', 'ramen', 'burritos', 'waffles']
+const FOODS = ['chicken nuggets', 'pizza', 'pancakes', 'spaghetti', 'dumplings', 'noodles', 'fried rice', 'soup']
 const SHOWS = ['a cooking competition show', 'a true-crime documentary', 'a reality dating show', 'a cartoon about talking vegetables', 'a nature documentary about otters', 'a soap opera', 'a show about people buying houses', 'an anime about volleyball']
 const HOBBIES = ['knitting', 'birdwatching', 'chess', 'baking sourdough', 'woodworking', 'gardening', 'crossword puzzles', 'jigsaw puzzles', 'photography', 'model trains', 'pottery', 'astronomy']
 
@@ -408,7 +409,8 @@ function tokens(g: GameState): Record<string, string | undefined> {
   if (job) t.company = job.company
   t.city = c.city
   t.country = country(g).name
-  t.food = pick(g, FOODS)
+  // Half the time something universal, half the time a local dish ('nasi goreng', 'injera', 'mac and cheese' in the US).
+  t.food = chance(g, 0.5) ? pick(g, FOODS) : localPick(g, 'food') || pick(g, FOODS)
   t.show = pick(g, SHOWS)
   t.hobby = pick(g, HOBBIES)
   return t

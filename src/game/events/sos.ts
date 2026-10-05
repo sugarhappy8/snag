@@ -119,7 +119,7 @@ const SOS: Sos[] = [
     cause: 'Explosion',
     death: 'You almost had him out when the car exploded.',
     saved: 'You smashed the window and pulled him out seconds before the car burst into flames!',
-    service: 'Call 911',
+    service: 'Call an ambulance',
   },
   {
     id: 'sos.tracks',

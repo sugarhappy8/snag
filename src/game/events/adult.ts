@@ -910,14 +910,20 @@ export const ADULT_EVENTS = defineEvents([
     minAge: 18,
     maxAge: 99,
     when: (g) => !livesWithParents(g) && g.character.residence.status !== 'homeless',
-    setup: () => ({
-      text: 'You hear a loud crash downstairs at 3 AM. What will you do?',
-      choices: [ch('investigate', 'Investigate with a baseball bat'), ch('police', 'Call the police'), ch('hide', 'Hide under the covers')],
-    }),
+    setup: (g) => {
+      const weapon = homeWeapon(g)
+      const critter = nightCritter(g)
+      return {
+        text: 'You hear a loud crash downstairs at 3 AM. What will you do?',
+        choices: [ch('investigate', `Investigate with ${weapon}`), ch('police', 'Call the police'), ch('hide', 'Hide under the covers')],
+        data: { weapon, critter: critter.what, critterEmoji: critter.emoji },
+      }
+    },
     resolve: {
-      investigate: (g) => {
+      investigate: (g, x) => {
         const r = randInt(g, 1, 10)
-        if (r <= 6) say(g, null, 'False alarm', 'You crept downstairs, bat raised... and found a raccoon eating your bread. It hissed at you.', 'I investigated a noise at night. It was a raccoon.', { happiness: 2 }, 'neutral', '🦝')
+        const critter = x.s('critter') || 'a stray cat'
+        if (r <= 6) say(g, x, 'False alarm', `You crept downstairs, ${(x.s('weapon') || 'a broom').replace(/^an? /, '')} raised... and found ${critter} eating your bread. It hissed at you.`, `I investigated a noise at night. It was ${critter}.`, { happiness: 2 }, 'neutral', x.s('critterEmoji') || '🐈')
         else if (r <= 9) say(g, null, ['Home defender', 'Burglar busted'], 'You surprised a burglar, who dropped your TV and fled out the window!', 'I scared off a burglar in the middle of the night.', { happiness: 8, karma: 2 }, 'good', '🦹')
         else say(g, null, 'Ambushed', 'A burglar knocked you down and escaped with your laptop.', 'A burglar knocked me down and stole my laptop.', { health: -12, happiness: -10, condition: { name: 'Bruised Ribs', kind: 'injury', severity: 12 } }, 'bad', '🦹')
       },

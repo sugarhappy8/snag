@@ -1404,15 +1404,18 @@ const MISBEHAVIOR = [
 const SIBLING_ANNOYANCES = ['stole your favorite hoodie', 'read your diary out loud', 'broke your favorite toy', 'ate your leftovers', 'told on you for something you did not do', 'hogged the bathroom for an hour']
 const PET_MESS = ['chewed up your favorite shoes', 'peed on the couch', 'knocked a vase off the shelf', 'ate an entire birthday cake', 'escaped into the neighbor\'s yard', 'dug up the garden', 'threw up in your bed']
 
+/** Years before the same automatic family/friend popup can feature the same person again. */
+const REL_EVENT_COOLDOWN = 4
+
 function yearlyFamilyEvent(g: GameState): void {
   const c = g.character
   if (inPrison(g) || !chance(g, 0.4)) return
   const alive = g.people.filter((p) => p.alive)
-  const events: { w: number; run: () => void }[] = []
+  const events: { w: number; key: string; run: () => void }[] = []
   const kidsHome = alive.filter((p) => KIDS.includes(p.relation) && p.age >= 3 && p.age <= 12 && p.livesWithPlayer)
   if (c.age >= 18 && kidsHome.length) {
     const k = pick(g, kidsHome)
-    events.push({
+    events.push({ key: 'rel.child.misbehave:' + k.id,
       w: 3,
       run: () =>
         scriptChoice(g, 'rel.child.misbehave', 'Misbehaving', `${the(k)} ${pick(g, MISBEHAVIOR)}. What will you do?`, [
@@ -1427,7 +1430,7 @@ function yearlyFamilyEvent(g: GameState): void {
   if (c.age >= 5 && c.age < 18 && sibs.length) {
     const s = pick(g, sibs)
     const momOrDad = alive.some((p) => PARENTS.includes(p.relation))
-    events.push({
+    events.push({ key: 'rel.sibling.fight:' + s.id,
       w: 3,
       run: () =>
         scriptChoice(g, 'rel.sibling.fight', 'Sibling Rivalry', `${the(s)} ${pick(g, SIBLING_ANNOYANCES)}. What will you do?`, [
@@ -1442,7 +1445,7 @@ function yearlyFamilyEvent(g: GameState): void {
   if (c.age >= 6 && c.age < 18 && ps.length) {
     const par = pick(g, ps)
     const inv = pick(g, c.age < 12 ? INVITES_KID : INVITES_TEEN)
-    events.push({
+    events.push({ key: 'rel.parent.invite:' + par.id,
       w: 2,
       run: () =>
         scriptChoice(g, 'rel.parent.invite', 'Family Time', `${the(par)} wants to spend time with you. ${pr(par).He} suggested you ${inv[0]} together.`, [
@@ -1455,7 +1458,7 @@ function yearlyFamilyEvent(g: GameState): void {
   if (newAdults.length && c.money > 20_000) {
     const k = newAdults[0]
     const tuition = randInt(g, 30, 90) * 1000
-    events.push({
+    events.push({ key: 'rel.child.tuition:' + k.id,
       w: 5,
       run: () => {
         k.data.tuitionAsked = true
@@ -1474,7 +1477,7 @@ function yearlyFamilyEvent(g: GameState): void {
       const identity = chance(g, 0.6) ? 'gay' : 'bisexual'
       // Remembered so the child keeps this sexuality if you continue as them.
       k.data.sexuality = identity
-      events.push({
+      events.push({ key: 'rel.child.comingOut:' + k.id,
         w: 2,
         run: () =>
           scriptChoice(g, 'rel.child.comingOut', 'Coming Out', `${the(k)} sat you down and came out to you as ${identity}.`, [
@@ -1488,7 +1491,7 @@ function yearlyFamilyEvent(g: GameState): void {
   const friends = alive.filter((p) => p.relation === 'friend' && p.relationship >= 70)
   if (c.age >= 6 && friends.length) {
     const f = pick(g, friends)
-    events.push({
+    events.push({ key: 'rel.friend.bff:' + f.id,
       w: 2,
       run: () =>
         scriptChoice(g, 'rel.friend.bff', 'Best Friends?', `${the(f)} asked if you want to be best friends!`, [
@@ -1496,7 +1499,7 @@ function yearlyFamilyEvent(g: GameState): void {
           { id: 'no', label: 'No thanks', emoji: '\u{1F645}' },
         ], { emoji: '\u{1F46F}', data: asJson({ pid: f.id }), personId: f.id }),
     })
-    events.push({
+    events.push({ key: 'rel.friend.pranked:' + f.id,
       w: 1,
       run: () =>
         scriptChoice(g, 'rel.friend.pranked', 'Pranked!', `${the(f)} pranked you! ${pr(f).He} ${pick(g, PRANKS).replaceAll('{his}', 'your').replaceAll('{him}', 'you')}.`, [
@@ -1509,7 +1512,7 @@ function yearlyFamilyEvent(g: GameState): void {
   const gps = alive.filter((p) => p.relation === 'grandparent' && p.relationship >= 55 && p.money > 200)
   if (c.age >= 5 && c.age <= 15 && gps.length) {
     const gp = pick(g, gps)
-    events.push({
+    events.push({ key: 'rel.grandparent:' + gp.id,
       w: 1,
       run: () => {
         const amt = randInt(g, 2, 10) * 10
@@ -1524,7 +1527,7 @@ function yearlyFamilyEvent(g: GameState): void {
   const partner = currentPartner(g)
   if (partner && c.age >= 13 && c.age <= 21 && ps.length && c.residence.status === 'parents') {
     const par = pick(g, ps)
-    events.push({
+    events.push({ key: 'rel.parent.disapproves:' + par.id,
       w: 2,
       run: () =>
         scriptChoice(g, 'rel.parent.disapproves', 'Disapproval', `${the(par)} doesn't approve of ${yourRel(partner)}. "${pick(g, [`I don't trust ${pr(partner).him}.`, `${pr(partner).He} has shifty eyebrows.`, 'You can do better.', `What does ${pr(partner).he} even do all day?`])}"`, [
@@ -1537,7 +1540,7 @@ function yearlyFamilyEvent(g: GameState): void {
   const pets = alive.filter((p) => p.relation === 'pet' && p.livesWithPlayer)
   if (pets.length) {
     const pet = pick(g, pets)
-    events.push({
+    events.push({ key: 'rel.pet.misbehave:' + pet.id,
       w: 2,
       run: () =>
         scriptChoice(g, 'rel.pet.misbehave', 'Bad Pet!', `${the(pet)} ${pick(g, PET_MESS)}!`, [
@@ -1550,7 +1553,7 @@ function yearlyFamilyEvent(g: GameState): void {
     const runner = pets.filter((p) => p.species !== 'Fish')
     if (runner.length && chance(g, 0.12)) {
       const r = pick(g, runner)
-      events.push({
+      events.push({ key: 'rel.pet.escape:' + r.id,
         w: 1,
         run: () =>
           scriptChoice(g, 'rel.pet.escape', 'Missing Pet', `${the(r)} escaped from home!`, [
@@ -1562,11 +1565,22 @@ function yearlyFamilyEvent(g: GameState): void {
     const wild = pets.filter((p) => p.data.exotic === true && pNum(p, 'craziness') >= 60)
     if (wild.length && chance(g, 0.4)) {
       const w = pick(g, wild)
-      events.push({ w: 2, run: () => exoticAttack(g, w) })
+      events.push({ key: 'rel.exotic:' + w.id, w: 2, run: () => exoticAttack(g, w) })
     }
   }
-  if (!events.length) return
-  weightedPick(g, events, (e) => e.w).run()
+  // The same kind of popup about the same person (sibling rivalry with Hendra...) can't come
+  // back for a few years, and nobody stars in family popups two years running.
+  const fresh = events.filter((e) => {
+    const last = g.flags[`relEventAt.${e.key}`]
+    const pid = e.key.split(':')[1]
+    const lastPerson = g.flags[`relEventPerson.${pid}`]
+    return !(typeof last === 'number' && c.age - last < REL_EVENT_COOLDOWN && last <= c.age) && !(typeof lastPerson === 'number' && c.age - lastPerson < 2 && lastPerson <= c.age)
+  })
+  if (!fresh.length) return
+  const ev = weightedPick(g, fresh, (e) => e.w)
+  g.flags[`relEventAt.${ev.key}`] = c.age
+  g.flags[`relEventPerson.${ev.key.split(':')[1]}`] = c.age
+  ev.run()
 }
 
 function exoticAttack(g: GameState, pet: Person): void {

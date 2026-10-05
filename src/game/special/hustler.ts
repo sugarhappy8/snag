@@ -80,7 +80,6 @@ interface Street {
 }
 
 const STREET_NAMES = [
-  'Main Street',
   'Market Square',
   'the Harbor Boardwalk',
   'Broadway',

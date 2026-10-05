@@ -2496,8 +2496,9 @@ function promCandidates(g: GameState, cur: Enrollment): Person[] {
 function goToProm(g: GameState): void {
   const cur = current(g)
   if (!cur) return
+  const dance = schoolDance(g)
   if (!useYearAction(g, 'prom', 1)) {
-    notice(g, 'Prom', 'Prom only happens once a year. You already had your night.', { emoji: '\u{1FA69}' })
+    notice(g, dance.title, `${cap(dance.the)} only happens once a year. You already had your night.`, { emoji: '\u{1FA69}' })
     return
   }
   const choices: ChoiceOption[] = []
@@ -2509,15 +2510,16 @@ function goToProm(g: GameState): void {
   }
   choices.push({ id: 'solo', label: 'Go by myself', emoji: '\u{1F57A}' })
   choices.push({ id: 'skip', label: 'School dances are not for me', emoji: '\u{1F6CB}\u{FE0F}' })
-  scriptChoice(g, PROM, 'Prom', `It's prom season at ${cur.school}! Who will you go with?`, choices, { emoji: '\u{1FA69}' })
+  scriptChoice(g, PROM, dance.title, `It's time for ${dance.the} at ${cur.school}! Who will you go with?`, choices, { emoji: '\u{1FA69}' })
 }
 
 const PROM = defineScript('school.prom', (g, choice) => {
   const c = g.character
   const cur = current(g)
   if (!cur || !c.alive) return
+  const dance = schoolDance(g)
   if (choice === 'skip') {
-    log(g, 'I decided not to go to prom.', 'neutral')
+    log(g, `I decided not to go to ${dance.the}.`, 'neutral')
     return
   }
   let date: Person | undefined
@@ -2529,31 +2531,31 @@ const PROM = defineScript('school.prom', (g, choice) => {
       if (chance(g, odds)) {
         date = p
         addRelationship(p, randInt(g, 5, 12))
-        notePerson(p, 'Went to prom with the player.')
+        notePerson(p, `Went to ${dance.the} with the player.`)
       } else {
         addRelationship(p, -5)
         addStat(g, 'happiness', -8)
-        log(g, `${fullName(p)} turned down my prom invitation.`, 'bad')
-        notice(g, 'Prom', pick(g, [`${p.firstName} said no. Ouch. You went to prom by yourself.`, `${p.firstName} already had a date. You went stag and danced like nobody was watching (nobody was).`]), { emoji: '\u{1F494}', tone: 'bad' })
+        log(g, `${fullName(p)} turned down my invitation to ${dance.the}.`, 'bad')
+        notice(g, dance.title, pick(g, [`${p.firstName} said no. Ouch. You went to ${dance.the} by yourself.`, `${p.firstName} already had a date. You went alone and danced like nobody was watching (nobody was).`]), { emoji: '\u{1F494}', tone: 'bad' })
       }
     }
   }
   addStat(g, 'happiness', randInt(g, 5, 12))
   const pop = popularity(cur)
   const crowned = chance(g, clamp((pop - 55) / 80 + (c.stats.looks - 60) / 200, 0, 0.6))
-  const title = c.gender === 'male' ? 'Prom King' : 'Prom Queen'
-  if (date) log(g, `I went to prom with ${fullName(date)}.`, 'good')
-  else if (choice === 'solo') log(g, 'I went to prom by myself.', 'neutral')
-  if (crowned) {
+  const title = `${dance.prom ? 'Prom' : dance.title} ${c.gender === 'male' ? 'King' : 'Queen'}`
+  if (date) log(g, `I went to ${dance.the} with ${fullName(date)}.`, 'good')
+  else if (choice === 'solo') log(g, `I went to ${dance.the} by myself.`, 'neutral')
+  if (crowned && dance.prom) {
     addPopularity(cur, 8)
     addStat(g, 'happiness', 8)
     remember(g, `Was crowned ${title} at ${cur.school}.`)
     log(g, `I was crowned ${title}!`, 'good')
     notice(g, title, `You were crowned ${title} at ${cur.school}! The plastic crown is going straight on your mantel.`, { emoji: '\u{1F451}', tone: 'good' })
   } else if (date) {
-    notice(g, 'Prom', pick(g, [`You went to prom with ${date.firstName} and danced the night away.`, `You and ${date.firstName} took awkward photos, ate tiny sandwiches and had a great night.`]), { emoji: '\u{1FA69}', tone: 'good' })
+    notice(g, dance.title, pick(g, [`You went to ${dance.the} with ${date.firstName} and danced the night away.`, `You and ${date.firstName} took awkward photos, ate tiny sandwiches and had a great night.`]), { emoji: '\u{1FA69}', tone: 'good' })
   } else if (choice === 'solo') {
-    notice(g, 'Prom', pick(g, ['You went to prom by yourself and had more fun than most of the couples.', 'You went to prom solo and owned the dance floor.']), { emoji: '\u{1F57A}' })
+    notice(g, dance.title, pick(g, [`You went to ${dance.the} by yourself and had more fun than most of the couples.`, `You went to ${dance.the} solo and owned the dance floor.`]), { emoji: '\u{1F57A}' })
   }
 })
 
@@ -2894,8 +2896,9 @@ function schoolGroup(g: GameState, cur: Enrollment): MenuGroup {
         nodes.push(clubsMenu(cu))
       }
       nodes.push(facultyMenu(cu))
-      if (cu.level === 'high' && sys.prom && cu.year >= cu.totalYears - 1) {
-        nodes.push({ type: 'action', id: 'school.prom', label: 'Prom', emoji: '\u{1FA69}', subtitle: 'The big dance', disabledReason: aliveFree, run: goToProm })
+      const dance = schoolDance(gg)
+      if (cu.level === 'high' && (sys.prom || dance.datable) && cu.year >= cu.totalYears - 1) {
+        nodes.push({ type: 'action', id: 'school.prom', label: dance.title, emoji: '\u{1FA69}', subtitle: 'The big end-of-school night', disabledReason: aliveFree, run: goToProm })
       }
       if (cu.level === 'university' && sys.greek && !str(cu.data.greek)) {
         const kind = gg.character.gender === 'male' ? 'Fraternity' : 'Sorority'

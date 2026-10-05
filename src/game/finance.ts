@@ -479,11 +479,16 @@ export function yearlyFinance(g: GameState): void {
   if (c.residence.status === 'homeless' && !c.prison && c.age >= 18) {
     addStat(g, 'happiness', -randInt(g, 5, 10))
     addStat(g, 'health', -randInt(g, 2, 5))
-    log(
-      g,
-      pick(g, ['I spent another year sleeping on park benches.', 'I lived on the streets this year.', 'I spent the year couch-surfing and sleeping in my car... without a car.', 'I was homeless all year.']),
-      'bad',
-    )
+    // A hard stretch, not a line to repeat every single year.
+    const lastLine = num(g.flags.homelessLineAge, -99)
+    if (c.age - lastLine >= 3 || lastLine > c.age) {
+      g.flags.homelessLineAge = c.age
+      log(
+        g,
+        pick(g, ['I spent another year sleeping on park benches.', 'I lived on the streets this year.', 'I spent the year couch-surfing and sleeping in my car... without a car.', 'I was homeless all year.', 'I knew every shelter in town by name.', 'I spent the year carrying everything I owned in two bags.']),
+        'bad',
+      )
+    }
   }
 
   // 6. Debt: collectors, a bail-out from mom, eviction, repossession.
@@ -590,9 +595,26 @@ function handleDebt(g: GameState): void {
     return
   }
 
-  const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', pick(g, COLLECTOR_NAMES))
-  notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
-  log(g, pick(g, ['Debt collectors kept calling me.', `I'm ${debt} in debt.`, 'I dodged calls from debt collectors all year.']), 'bad')
+  // Being broke stings every year, but the collectors only make the story every few years
+  // (the same popup and line year after year reads like a bug).
+  const lastCalled = num(g.flags.collectorsAge, -99)
+  if (c.age - lastCalled >= 3 || lastCalled > c.age) {
+    g.flags.collectorsAge = c.age
+    const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', pick(g, COLLECTOR_NAMES))
+    notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
+    log(
+      g,
+      pick(g, [
+        'Debt collectors kept calling me.',
+        `I'm ${debt} in debt.`,
+        'I dodged calls from debt collectors all year.',
+        'I let another unknown number go to voicemail. It was the collectors again.',
+        `My ${debt} of debt followed me around like a cloud.`,
+        'I learned the first names of every debt collector in town.',
+      ]),
+      'bad',
+    )
+  }
   addStat(g, 'happiness', -5)
   addHidden(g, 'willpower', -1)
 

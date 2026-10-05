@@ -27,6 +27,7 @@ import {
   useYearAction,
   yearActionsUsed,
 } from './core'
+import { localeOf } from './data/locales'
 import { localMarket, localPriceMult, type PriceCategory } from './data/markets'
 import { killCharacter } from './death'
 import {
@@ -519,6 +520,19 @@ const HOUSE_TYPES: HouseType[] = [
 const STREETS = ['Maple', 'Oak', 'Elm', 'Pine', 'Cedar', 'Willow', 'Birch', 'Lakeview', 'Sunset', 'Highland', 'Park', 'Hillcrest', 'Meadow', 'River', 'Spring', 'Chestnut', 'Magnolia', 'Orchard', 'Harbor', 'Ridge', 'Valley', 'Forest', 'Main', 'Church', 'Mill', 'Bay', 'Mockingbird', 'Primrose', 'Juniper', 'Sycamore', 'Aspen', 'Bluebell', 'Foxglove', 'Kingfisher', 'Lighthouse', 'Copper']
 const STREET_SUFFIX = ['Street', 'Avenue', 'Road', 'Lane', 'Drive', 'Court', 'Way', 'Boulevard', 'Place', 'Terrace', 'Circle']
 
+/** A local street name ('Jalan Sudirman', 'Calle Hidalgo') from the listing's own seeded RNG. */
+function seededStreet(r: SRng, g: GameState): string {
+  const loc = localeOf(g.character.countryId)
+  if (!loc.streetNames.length) return `${r.pick(STREETS)} ${r.pick(STREET_SUFFIX)}`
+  return r.pick(loc.streetNames).replace(/\{(\w+)\}/g, (whole: string, key: string) => {
+    if (key === 'place' && loc.placeWords.length) return r.pick(loc.placeWords)
+    if (key === 'honoree' && loc.honorees.length) return r.pick(loc.honorees)
+    if (key === 'n') return String(r.int(1, 12))
+    if (key === 'city') return g.character.city
+    return whole
+  })
+}
+
 export interface HouseListing {
   id: string
   typeId: string
@@ -570,7 +584,7 @@ export function houseListings(g: GameState, broker: Broker): HouseListing[] {
     const base = t.min + (t.max - t.min) * Math.pow(r.next(), 1.4)
     const price = nicePrice(base * mult * (0.8 + 0.2 * (condition / 100)) * hauntFactor(haunted))
     const num1 = r.int(1, 9_899)
-    const street = `${r.pick(STREETS)} ${r.pick(STREET_SUFFIX)}`
+    const street = g.character.countryId === 'us' ? `${r.pick(STREETS)} ${r.pick(STREET_SUFFIX)}` : seededStreet(r, g)
     const address = t.id === 'condo' || t.id === 'penthouse' ? `Unit ${t.id === 'penthouse' ? 'PH' : ''}${r.int(1, 40)}${t.id === 'penthouse' ? '' : r.pick(['A', 'B', 'C', 'D'])}, ${num1} ${street}` : `${num1} ${street}`
     const listing: HouseListing = {
       id: `${g.year}:re-${broker}-${i}`,

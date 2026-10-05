@@ -8,6 +8,7 @@ import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, s
 import { localeOf, type LocaleProfile } from '../game/data/locales'
 import { marketOf } from '../game/data/markets'
 import { investmentsSummary } from '../game/investments'
+import { luxurySummary } from '../game/shops/luxury'
 import { getCountry } from '../game/world'
 import type { ChoiceModal, GameState, InterviewJob, LifeStage, NoticeModal, Person, RelationKind, SchoolLevel } from '../game/types'
 import type { ContentRating, Settings } from '../settings'
@@ -323,6 +324,8 @@ export function describeCharacter(g: GameState): string {
   if (business) lines.push(`BUSINESS: ${business}`)
   const portfolio = investmentsSummary(g)
   if (portfolio) lines.push(`INVESTMENTS: ${portfolio}`)
+  const luxury = luxurySummary(g)
+  if (luxury) lines.push(`LUXURY LIFESTYLE: ${luxury}`)
   if (c.age >= 16 && !c.prison) {
     const m = marketOf(c.countryId)
     lines.push(`LOCAL ECONOMY: ${m.currencyName}, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, inflation ${Math.round(m.inflation * 100)}%. ${m.businessNote}`)
