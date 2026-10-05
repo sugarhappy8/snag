@@ -1560,7 +1560,7 @@ const ENGAGEMENT_TYPES: JewelType[] = [
 ]
 
 function jewelItem(g: GameState, r: SRng, t: JewelType, id: string, fake: boolean): ItemListing {
-  const mult = goodsMult(g)
+  const mult = localGoodsMult(g, 'luxury')
   const quality = r.int(20, 100)
   let carats = 0
   let price: number
@@ -1655,7 +1655,7 @@ const ELECTRONICS: [string, string, number][] = [
 
 export function electronicsListings(g: GameState): ItemListing[] {
   const r = seeded(yearKey(g, 'electronics'))
-  const mult = goodsMult(g)
+  const mult = localGoodsMult(g, 'electronics')
   return ELECTRONICS.map(([label, emoji, base], i): ItemListing => {
     const price = nicePrice(base * mult * r.float(0.85, 1.1))
     return { id: `${g.year}:elec-${i}`, kind: 'other', category: 'electronics', name: label, emoji, price, value: nicePrice(price * 0.7), condition: 100, isNew: true, details: { category: 'electronics' } }
@@ -1677,7 +1677,7 @@ const LUXURY: [string, string, number, number, string][] = [
 
 export function luxuryListings(g: GameState): ItemListing[] {
   const r = seeded(yearKey(g, 'luxury'))
-  const mult = goodsMult(g)
+  const mult = localGoodsMult(g, 'luxury')
   return LUXURY.map(([label, emoji, lo, hi, sub], i): ItemListing => {
     const price = nicePrice((lo + (hi - lo) * Math.pow(r.next(), 1.5)) * mult)
     const keep = sub === 'watch' ? 0.85 : sub === 'handbag' ? 0.7 : sub === 'sneakers' ? 0.8 : 0.35
@@ -1710,7 +1710,7 @@ const COLLECTIBLES: [string, string, number, number][] = [
 
 export function collectibleListings(g: GameState, store: 'art' | 'collectibles'): ItemListing[] {
   const r = seeded(yearKey(g, `collect:${store}`))
-  const mult = goodsMult(g)
+  const mult = globalGoodsMult(g)
   const out: ItemListing[] = []
   for (let i = 0; i < 6; i++) {
     if (store === 'art') {
@@ -1784,7 +1784,8 @@ export function buyItem(g: GameState, item: ItemListing, minAge = 18): Asset | n
           : item.category === 'art'
             ? ['Your friends will pretend to understand it.', 'You hung it slightly crooked. It works.', 'The gallery owner called it "a bold investment."']
             : ['Retail therapy: it works!', 'You admired it for a solid hour.', 'Worth every penny. Probably.']
-  notice(g, 'Purchased!', `You bought ${withArticle(item.name)} for ${formatMoney(item.price)}. ${pick(g, quips)}`, { emoji: item.emoji, tone: 'good' })
+  const tax = item.kind === 'investment' || item.kind === 'business' ? '' : salesTaxNote(g, item.price)
+  notice(g, 'Purchased!', `You bought ${withArticle(item.name)} for ${formatMoney(item.price)}. ${pick(g, quips)}${tax ? ` ${tax}` : ''}`, { emoji: item.emoji, tone: 'good' })
   return asset
 }
 
@@ -1817,7 +1818,7 @@ function storeMenu(id: string, label: string, emoji: string, subtitle: string, m
     emoji,
     subtitle,
     disabledReason: (g) => ageReason(g, minAge, `shop at ${label}`),
-    header: (g) => `${header ? `${header} ` : ''}You have ${formatMoney(g.character.money)}.`,
+    header: (g) => [header ?? '', `You have ${formatMoney(g.character.money)}.`, pricesIncludeTax(g)].filter(Boolean).join(' '),
     children: (g) => {
       const items = list(g)
       return items.length ? items.map((i) => itemAction(i, minAge)) : [{ type: 'info', id: 'soldout', text: 'Sold out! New stock arrives next year.', emoji: '🪧' }]
@@ -1839,7 +1840,7 @@ export const jewelersMenu: MenuGroup = {
       label: 'Glitterwell Fine Jewelers',
       emoji: '💎',
       subtitle: 'Certified real gems',
-      header: (g) => `Every stone comes with a certificate. You have ${formatMoney(g.character.money)}.`,
+      header: (g) => `Every stone comes with a certificate. You have ${formatMoney(g.character.money)}. ${pricesIncludeTax(g)}`.trim(),
       children: (g) => {
         const items = jewelryListings(g, 'real')
         return [
@@ -1856,7 +1857,7 @@ export const jewelersMenu: MenuGroup = {
       label: 'Bling Bros. Discount Jewelry',
       emoji: '✨',
       subtitle: 'Prices so low they must be... genuine?',
-      header: (g) => `Everything here is cubic zirconia and gold paint. Don't tell anyone. You have ${formatMoney(g.character.money)}.`,
+      header: (g) => `Everything here is cubic zirconia and gold paint. Don't tell anyone. You have ${formatMoney(g.character.money)}. ${pricesIncludeTax(g)}`.trim(),
       children: (g) => {
         const items = jewelryListings(g, 'fake')
         return [
@@ -2086,7 +2087,7 @@ export function searchAttic(g: GameState): Asset | null {
   const perRarity: Record<string, number> = {}
   for (const x of pool) perRarity[x.rarity] = (perRarity[x.rarity] ?? 0) + 1
   const def = weightedPick(g, pool, (x) => RARITY_WEIGHT[x.rarity] / perRarity[x.rarity])
-  const base = Math.max(1, nicePrice(def.value * goodsMult(g) * (0.85 + rand(g) * 0.3)))
+  const base = Math.max(1, nicePrice(def.value * globalGoodsMult(g) * (0.85 + rand(g) * 0.3)))
   const condition = randInt(g, def.rarity === 'Common' ? 25 : 15, 100)
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -2141,7 +2142,7 @@ export const searchAtticAction: MenuAction = {
 
 const GIFT_RELATIONS: RelationKind[] = ['parent', 'stepparent', 'sibling', 'halfSibling', 'stepsibling', 'grandparent', 'child', 'stepchild', 'grandchild', 'friend', 'bestFriend', 'partner', 'fiance', 'spouse', 'lover']
 
-function findAsset(g: GameState, id: string): Asset | undefined {
+export function findAsset(g: GameState, id: string): Asset | undefined {
   return g.assets.find((a) => a.id === id)
 }
 
@@ -3532,7 +3533,7 @@ export const shoppingMenu: MenuGroup = {
   subtitle: 'Cars, homes, jewelry, gadgets and more',
   visible: (g) => !inPrison(g),
   disabledReason: (g) => ageReason(g, 10, 'go shopping on your own'),
-  header: (g) => `You have ${formatMoney(g.character.money)} to spend.`,
+  header: (g) => [`You have ${formatMoney(g.character.money)} to spend.`, pricesIncludeTax(g), marketShoppingNote(g)].filter(Boolean).join(' '),
   children: () => [
     { type: 'heading', id: 'shopStores', label: 'Stores' },
     electronicsStoreMenu,
@@ -3609,6 +3610,8 @@ function ageAsset(g: GameState, a: Asset, market: number): void {
       const change = classic ? bell(g, 0, 90) / 1000 : -(age <= 1 ? bell(g, 150, 220) : age <= 4 ? bell(g, 100, 160) : age <= 10 ? bell(g, 70, 120) : bell(g, 30, 80)) / 1000
       a.condition = Math.max(0, a.condition - randInt(g, 2, 6))
       d.mileage = num(d.mileage) + randInt(g, 6_000, 15_000)
+      // Running costs follow wherever the car lives now (fuel prices, mechanics).
+      if (type in CAR_UPKEEP) a.upkeep = carUpkeep(g, type as CarType)
       a.value = Math.max(200, Math.round(a.value * (1 + change) * (a.condition < 30 ? 0.92 : 1)))
       return
     }
