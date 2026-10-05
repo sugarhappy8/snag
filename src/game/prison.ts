@@ -463,8 +463,7 @@ function raiseSecurity(g: GameState): string | null {
   g.people = g.people.filter((x) => !(x.relation === 'cellmate' && x.contextId === old))
   createCellmate(g, p.name, false)
   if (pl.gangs.length === 0) pl.gangs = shuffle(g, GANG_NAMES).slice(0, 3)
-  c.prison.gang = undefined
-  delete c.prison.gang
+  delete p.gang
   c.residence = { status: 'prison', description: p.name }
   log(g, `I was transferred to ${p.name}.`, 'bad')
   return p.name
@@ -506,7 +505,6 @@ export function releaseFromPrison(g: GameState, reason: string): void {
     if (x.relation !== 'cellmate') return true
     if (x.alive && x.relationship >= 75 && !escaped) {
       x.relation = 'friend'
-      x.contextId = undefined
       delete x.contextId
       notePerson(x, `We were cellmates in ${p.name}.`)
       keep.push(x)
@@ -586,10 +584,6 @@ export function yearlyPrison(g: GameState): boolean {
   addStat(g, 'looks', -randInt(g, 0, 2))
   pl.behavior = clamp(pl.behavior + 3)
   if (p.gang) p.respect = clamp(p.respect + 3)
-  for (const m of cellmates(g)) {
-    m.age += 0
-    m.yearsKnown += 0
-  }
 
   if (pl.job && pl.jobWage > 0) {
     addMoney(g, pl.jobWage)
@@ -650,7 +644,6 @@ function yearlyDeathRow(g: GameState): boolean {
   if (pl.autoAppeals > 0) {
     pl.autoAppeals -= 1
     if (chance(g, 0.08)) {
-      p.deathRow = undefined
       delete p.deathRow
       p.life = true
       log(g, 'My death sentence was commuted to life in prison.', 'good')
@@ -1378,7 +1371,6 @@ function appealAction(firm: AppealFirm): MenuAction {
           return
         }
         if (roll < odds * 0.6) {
-          p.deathRow = undefined
           delete p.deathRow
           p.life = true
           log(g, 'My death sentence was commuted to life in prison on appeal.', 'good')
@@ -1727,7 +1719,6 @@ function gangNodes(g: GameState): MenuNode[] {
           const c = gg.character
           const pp = c.prison
           if (!pp || !c.alive) return
-          pp.gang = undefined
           delete pp.gang
           pp.respect = clamp(pp.respect - randInt(gg, 5, 15))
           const beaten = chance(gg, 0.5)
@@ -1923,7 +1914,6 @@ const SNITCH_SCRIPT = defineScript('prison.snitch', (g, choice) => {
     lines.push(`Word got out. Snitches get stitches, and you got a lot of them. (-${dmg} health)`)
     if (p.gang) {
       lines.push(`The ${p.gang} kicked you out.`)
-      p.gang = undefined
       delete p.gang
     }
   }

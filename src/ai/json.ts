@@ -364,20 +364,17 @@ export function parseJsonLoose(text: string, depth = 0): unknown {
     // not strict JSON; keep trying
   }
 
-  let from = 0
-  for (let tries = 0; tries < 8; tries++) {
-    const idx = cleaned.indexOf('{', from)
-    if (idx < 0) break
-    const sub = balancedFrom(cleaned, idx)
-    if (sub) {
-      try {
-        const v: unknown = JSON.parse(sub)
-        if (isObjectLike(v)) return v
-      } catch {
-        // try the next candidate
-      }
+  // The first plausible object, if it is already valid JSON (inner objects are never
+  // tried on their own: a nested {"name": ...} must not win over the broken outer one).
+  const start = findJsonStart(cleaned)
+  const sub = start >= 0 ? balancedFrom(cleaned, start) : null
+  if (sub) {
+    try {
+      const v: unknown = JSON.parse(sub)
+      if (isObjectLike(v)) return v
+    } catch {
+      // sloppy JSON; repair below
     }
-    from = idx + 1
   }
 
   try {

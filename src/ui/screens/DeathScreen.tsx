@@ -46,7 +46,7 @@ const DEGREE_RANK: Record<DegreeKind, number> = {
   doctorate: 6,
 }
 
-/** Highest education reached, as BitLife's tombstone shows it. */
+/** Highest education reached, as the tombstone shows it. */
 export function highestEducation(g: GameState): string {
   const ed = g.character.education
   const best = ed.degrees.reduce<Degree | null>((top, d) => (!top || (DEGREE_RANK[d.kind] ?? 0) > (DEGREE_RANK[top.kind] ?? 0) ? d : top), null)
