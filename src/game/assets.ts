@@ -1367,7 +1367,7 @@ export interface VehicleListing {
 export function vehicleListings(g: GameState, kind: 'boat' | 'aircraft'): VehicleListing[] {
   const r = seeded(yearKey(g, `vehicles:${kind}`))
   const pool = kind === 'boat' ? BOATS : AIRCRAFT
-  const mult = goodsMult(g)
+  const mult = globalGoodsMult(g)
   const out: VehicleListing[] = []
   const n = kind === 'boat' ? 7 : 6
   for (let i = 0; i < n; i++) {
@@ -1415,7 +1415,8 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
       return false
     }
     spend(g, f.down)
-    loanId = addLoan(g, { kind: 'personal', lender: pick(g, ['Harborview Marine Credit', 'Skyward Aviation Finance', 'First National Bank']), principal: f.principal, rate: f.rate, years: plan.years }).id
+    const lenders = l.kind === 'boat' ? ['Harborview Marine Credit', 'First National Bank'] : ['Skyward Aviation Finance', 'First National Bank']
+    loanId = addLoan(g, { kind: 'personal', lender: pick(g, localLenders(g, ['{w} Savings Bank'], [lenders[0]], lenders)), principal: f.principal, rate: f.rate, years: plan.years }).id
   }
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -1437,7 +1438,7 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
   notice(
     g,
     l.kind === 'boat' ? 'Anchors Aweigh!' : 'Cleared for Takeoff!',
-    `You bought a ${l.isNew ? 'brand-new' : 'used'} ${l.label.toLowerCase()} for ${formatMoney(l.price)}${loanId ? ' (financed)' : ''}. ${l.kind === 'boat' ? pick(g, ['You named it after your ex. Out of spite.', 'You already bought a captain\'s hat.', 'A boat: a hole in the water you throw money into.']) : pick(g, ['The salesperson saluted you on the way out.', 'You practiced your "this is your captain speaking" voice all the way home.', 'Upkeep is going to be brutal, but look at it!'])}`,
+    `You bought a ${l.isNew ? 'brand-new' : 'used'} ${l.label.toLowerCase()} for ${formatMoney(l.price)}${loanId ? ' (financed)' : ''}. ${l.kind === 'boat' ? pick(g, ['You named it after your ex. Out of spite.', 'You already bought a captain\'s hat.', 'A boat: a hole in the water you throw money into.']) : pick(g, ['The salesperson saluted you on the way out.', 'You practiced your "this is your captain speaking" voice all the way home.', 'Upkeep is going to be brutal, but look at it!'])}${salesTaxNote(g, l.price) ? ` ${salesTaxNote(g, l.price)}` : ''}`,
     { emoji: l.emoji, tone: 'good' },
   )
   return true
@@ -1470,26 +1471,28 @@ function vehicleListingAction(l: VehicleListing): MenuAction {
         }
       }
       choices.push({ id: 'cancel', label: 'Never mind', emoji: '✖️' })
-      const text = `${l.isNew ? 'Brand new' : `Used, condition ${conditionLabel(l.condition)} (${l.condition}%)`}\nPrice: ${formatMoney(l.price)}\nEstimated upkeep: ${formatMoney(nicePrice(l.price * l.upkeepRate))}/year`
+      const text = `${l.isNew ? 'Brand new' : `Used, condition ${conditionLabel(l.condition)} (${l.condition}%)`}\nPrice: ${formatMoney(l.price)}${salesTaxLabel(g) ? ` (incl. ${salesTaxLabel(g)})` : ''}\nEstimated upkeep: ${formatMoney(nicePrice(l.price * l.upkeepRate))}/year`
       scriptChoice(g, BUY_VEHICLE, `${l.emoji} ${l.label}`, text, choices, { emoji: l.emoji, data: { listing: toJson(l) } })
     },
   }
 }
 
-function vehicleDealerMenu(kind: 'boat' | 'aircraft'): MenuGroup {
+function vehicleDealerMenu(g: GameState, kind: 'boat' | 'aircraft'): MenuGroup {
   return {
     type: 'menu',
     id: kind === 'boat' ? 'boatDealer' : 'aircraftDealer',
-    label: kind === 'boat' ? 'Harborside Marine' : 'Skyline Aviation',
+    label: kind === 'boat' ? localStoreName(g, 'marine', '{w} Marine', 'Harborside Marine') : localStoreName(g, 'aviation', '{w} Aviation', 'Skyline Aviation'),
     emoji: kind === 'boat' ? '⛵' : '✈️',
     subtitle: kind === 'boat' ? 'Boats, from kayaks to yachts' : 'Planes, helicopters and jets',
-    disabledReason: (g) => adultReason(g, kind === 'boat' ? 'buy a boat' : 'buy an aircraft'),
-    header: (g) =>
-      kind === 'boat'
-        ? `Motorboats need a boating license${hasLicense(g, 'boating') ? ' (you have one)' : ''}. You have ${formatMoney(g.character.money)}.`
-        : `Every aircraft needs a pilot's license${hasLicense(g, 'pilot') ? ' (you have one)' : ''}. You have ${formatMoney(g.character.money)}.`,
-    children: (g) => {
-      const list = vehicleListings(g, kind)
+    disabledReason: (gg) => adultReason(gg, kind === 'boat' ? 'buy a boat' : 'buy an aircraft'),
+    header: (gg) =>
+      `${
+        kind === 'boat'
+          ? `Motorboats need a boating license${hasLicense(gg, 'boating') ? ' (you have one)' : ''}. You have ${formatMoney(gg.character.money)}.`
+          : `Every aircraft needs a pilot's license${hasLicense(gg, 'pilot') ? ' (you have one)' : ''}. You have ${formatMoney(gg.character.money)}.`
+      } ${pricesIncludeTax(gg)}`.trim(),
+    children: (gg) => {
+      const list = vehicleListings(gg, kind)
       return list.length ? list.map(vehicleListingAction) : [{ type: 'info', id: 'sold', text: 'Nothing left in stock this year.', emoji: '🪧' }]
     },
   }
@@ -1502,7 +1505,7 @@ export const specialtyVehiclesMenu: MenuGroup = {
   emoji: '🛥️',
   subtitle: 'Boats and aircraft',
   disabledReason: (g) => adultReason(g, 'buy boats or aircraft'),
-  children: () => [vehicleDealerMenu('boat'), vehicleDealerMenu('aircraft')],
+  children: (g) => [vehicleDealerMenu(g, 'boat'), vehicleDealerMenu(g, 'aircraft')],
 }
 
 // ---------------------------------------------------------------------------
