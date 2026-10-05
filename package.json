@@ -1,32 +1,30 @@
 {
-  "name": "snagdeals",
+  "name": "anotherlife",
+  "private": true,
   "version": "1.0.0",
-  "description": "SnagDeals: one wishlist across game stores with price-target email alerts.",
+  "type": "module",
+  "description": "An AI-narrated life simulator powered by your own AI: a local model (LM Studio, Ollama, llama.cpp...) or a cloud API key (Claude, OpenAI, Gemini...).",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:migrate": "wrangler d1 migrations apply snagdeals --remote",
-    "db:migrate:local": "wrangler d1 migrations apply snagdeals --local",
-    "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy": "wrangler deploy"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sugarhappy8/snag.git"
-  },
-  "bugs": {
-    "url": "https://github.com/sugarhappy8/snag/issues"
-  },
-  "homepage": "https://github.com/sugarhappy8/snag#readme",
   "dependencies": {
-    "hono": "^4.13.12"
+    "@anthropic-ai/sdk": "^0.131.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261002.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
+    "vite": "^8.3.2",
     "vitest": "^5.0.3",
-    "wrangler": "^4.146.0"
-  },
-  "private": true,
-  "type": "module"
+    "wrangler": "^4.147.0"
+  }
 }
