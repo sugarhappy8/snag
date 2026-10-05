@@ -321,7 +321,20 @@ export interface Person {
 // ---------------------------------------------------------------------------
 // Assets
 
-export type AssetKind = 'house' | 'car' | 'boat' | 'aircraft' | 'jewelry' | 'instrument' | 'collectible' | 'business' | 'other'
+export type AssetKind =
+  | 'house'
+  | 'car'
+  | 'boat'
+  | 'aircraft'
+  | 'jewelry'
+  | 'instrument'
+  | 'collectible'
+  | 'business'
+  /** A holding in the Investments menu (stock, bond, fund, crypto...). value = current market value. */
+  | 'investment'
+  /** A recurring membership or subscription: value 0, upkeep = the yearly fee. */
+  | 'membership'
+  | 'other'
 
 export interface Mortgage {
   lender: string
@@ -413,7 +426,46 @@ export interface ChoiceModal {
   personId?: string
 }
 
-export type MinigameKind = 'blackjack' | 'horseRace' | 'burglary' | 'prisonEscape' | 'slots' | 'pickpocket'
+export type MinigameKind = 'blackjack' | 'horseRace' | 'burglary' | 'prisonEscape' | 'slots' | 'pickpocket' | 'annualReport'
+
+/**
+ * Data for the 'annualReport' minigame (business.ts → ui/minigames/AnnualReport.tsx): the yearly
+ * report where the owner sets next year's price and production. The component reports
+ * JSON.stringify({ price, production } satisfies AnnualReportResult), or 'skip' to keep last year's.
+ */
+export interface AnnualReportData {
+  assetId: string
+  businessName: string
+  emoji: string
+  industryLabel: string
+  /** e.g. 'Tokyo, Japan'. */
+  location: string
+  /** Fiscal year this report covers (calendar year). */
+  year: number
+  /** Plural unit name: 'meals', 'cups', 'subscriptions', 'barrels'... */
+  unitLabel: string
+  unitCost: number
+  price: number
+  minPrice: number
+  maxPrice: number
+  /** A sensible price for this market (shown as a hint/marker). */
+  suggestedPrice: number
+  production: number
+  maxProduction: number
+  /** Units in stock carried over. */
+  inventory: number
+  /** Expected units the market wants next year at the suggested price (shown as a hint). */
+  expectedDemand: number
+  /** One-line market read, e.g. 'Coffee culture is booming in Seoul; rents are steep.' */
+  marketNote: string
+  /** Summary of the year just finished (revenue, costs, taxes, profit...). */
+  lines: { label: string; value: string; tone?: 'good' | 'bad' | 'neutral' }[]
+}
+
+export interface AnnualReportResult {
+  price: number
+  production: number
+}
 
 export interface MinigameModal {
   kind: 'minigame'

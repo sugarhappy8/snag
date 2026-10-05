@@ -3,7 +3,10 @@
 // Local models have small context windows, so everything here is terse: the whole
 // prompt (system + context + task) stays well under ~2,500 tokens. Nothing in this file
 // mutates the game state — it only reads the frozen snapshot from the store.
+import { businessSummary } from '../game/business'
 import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, shortMoney } from '../game/core'
+import { marketOf } from '../game/data/markets'
+import { investmentsSummary } from '../game/investments'
 import { getCountry } from '../game/world'
 import type { ChoiceModal, GameState, InterviewJob, LifeStage, NoticeModal, Person, RelationKind, SchoolLevel } from '../game/types'
 import type { ContentRating, Settings } from '../settings'
@@ -204,6 +207,14 @@ export function describeCharacter(g: GameState): string {
   if (g.assets.length) {
     const assets = [...g.assets].sort((a, b) => b.value - a.value).slice(0, 5)
     lines.push(`ASSETS: ${assets.map((a) => `${a.name} (${shortMoney(a.value)})`).join(', ')}`)
+  }
+  const business = businessSummary(g)
+  if (business) lines.push(`BUSINESS: ${business}`)
+  const portfolio = investmentsSummary(g)
+  if (portfolio) lines.push(`INVESTMENTS: ${portfolio}`)
+  if (c.age >= 16 && !c.prison) {
+    const m = marketOf(c.countryId)
+    lines.push(`LOCAL ECONOMY: ${m.currencyName}, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, inflation ${Math.round(m.inflation * 100)}%. ${m.businessNote}`)
   }
   if (c.criminalRecord.length) {
     const crimes = c.criminalRecord.slice(-3).map((r) => `${r.crime}${r.convicted ? ' (convicted)' : r.caught ? ' (arrested)' : ''}`)

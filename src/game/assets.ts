@@ -3094,13 +3094,22 @@ function assetInfo(g: GameState, a: Asset): MenuNode[] {
   return rows.map((text, i): MenuNode => ({ type: 'info', id: `info-${a.id}-${i}`, text }))
 }
 
+/**
+ * Asset kinds whose owned-asset screen is built by another module (business.ts,
+ * investments.ts, shops/memberships.ts). menus.ts fills this in at load, which keeps
+ * assets.ts free of imports from those modules. `subtitle` replaces the generic
+ * "value · condition" line; `children` replaces the whole screen (info rows and actions).
+ */
+export const ASSET_KIND_VIEWS: Partial<Record<AssetKind, { subtitle?: (g: GameState, a: Asset) => string; children: (g: GameState, a: Asset) => MenuNode[] }>> = {}
+
 function assetNode(g: GameState, a: Asset): MenuGroup {
+  const view = isHeirloom(a) ? undefined : ASSET_KIND_VIEWS[a.kind]
   return {
     type: 'menu',
     id: `asset-${a.id}`,
     label: a.name,
     emoji: a.emoji,
-    subtitle: assetSubtitle(g, a),
+    subtitle: view?.subtitle ? view.subtitle(g, a) : assetSubtitle(g, a),
     header: (gg) => {
       const cur = findAsset(gg, a.id)
       return cur ? `${cur.emoji} ${cur.name}${cur.kind === 'house' && cur.details.typeLabel ? ` (${str(cur.details.typeLabel)})` : ''}` : 'This asset is gone.'
@@ -3108,6 +3117,7 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
     children: (gg) => {
       const cur = findAsset(gg, a.id)
       if (!cur) return [{ type: 'info', id: 'gone', text: 'You no longer own this.' }]
+      if (view) return view.children(gg, cur)
       const nodes: MenuNode[] = [...assetInfo(gg, cur), { type: 'heading', id: `actions-${cur.id}`, label: 'Actions' }]
       const push = (n: MenuNode | null) => {
         if (n) nodes.push(n)
@@ -3195,6 +3205,8 @@ const KIND_SECTIONS: [string, AssetKind[]][] = [
   ['Instruments', ['instrument']],
   ['Art & Collectibles', ['collectible']],
   ['Businesses', ['business']],
+  ['Investments', ['investment']],
+  ['Memberships & Subscriptions', ['membership']],
   ['Belongings', ['other']],
 ]
 

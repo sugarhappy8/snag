@@ -2,14 +2,17 @@
 // a fixed order, then asks the AI director (or the offline library) for this
 // year's flavor lines and random event.
 import { yearlyAssets } from './assets'
+import { yearlyBusiness } from './business'
 import { yearlyCareer } from './careers'
 import { currentLogYear, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
 import { yearlyFinance } from './finance'
 import { checkDeath, yearlyHealth } from './health'
+import { yearlyInvestments } from './investments'
 import { yearlyMilestones } from './life'
 import { yearlyRelationships } from './relationships'
+import { yearlyShops } from './shops'
 import { yearlySpecial } from './special'
 import type { GameState } from './types'
 
@@ -20,6 +23,9 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['education', yearlyEducation],
   ['career', yearlyCareer],
   ['special', yearlySpecial],
+  ['business', yearlyBusiness],
+  ['investments', yearlyInvestments],
+  ['shops', yearlyShops],
   ['finance', yearlyFinance],
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],
