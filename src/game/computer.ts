@@ -2,7 +2,7 @@
 // or one your parents buy you), Activities › Computer opens at-home ways to learn and earn,
 // even before 18: learn to code, build a SaaS, freelance (computer/dev.ts), and the riskier side,
 // crypto pump-and-dumps, options trading and online scams (computer/money.ts).
-import { devNodes, devSummary, yearlyDev } from './computer/dev'
+import { devNodes, devSummary, noComputerNodes, yearlyDev } from './computer/dev'
 import { moneyNodes, moneySummary, yearlyMoney } from './computer/money'
 import { codingSkill } from './computer/skills'
 import type { Asset, GameState, MenuGroup } from './types'
@@ -22,6 +22,22 @@ export function ownsComputer(g: GameState): boolean {
   return !!computerAsset(g)
 }
 
+/**
+ * Parents (or a court) can take the computer away: g.flags.computerLockedUntil = the age it comes
+ * back. Returns a reason while it's locked, else null.
+ */
+export function computerLocked(g: GameState): string | null {
+  const until = g.flags.computerLockedUntil
+  if (typeof until !== 'number' || g.character.age >= until) return null
+  const who = typeof g.flags.computerLockedBy === 'string' ? g.flags.computerLockedBy : 'Your parents'
+  return `${who} took your computer away until you're ${until}.`
+}
+
+/** True when the player has a computer they can actually use right now. */
+export function canUseComputer(g: GameState): boolean {
+  return ownsComputer(g) && !computerLocked(g)
+}
+
 /** Activities › Computer. */
 export const computerMenu: MenuGroup = {
   type: 'menu',
@@ -30,17 +46,28 @@ export const computerMenu: MenuGroup = {
   emoji: '\u{1F4BB}',
   subtitle: (g) => {
     const a = computerAsset(g)
-    if (!a) return 'Buy a laptop or gaming PC to unlock'
+    if (!a) return 'Get a laptop or gaming PC to unlock'
+    if (computerLocked(g)) return 'Confiscated'
     const skill = codingSkill(g)
     return `${a.name}${skill > 0 ? ` · coding ${skill}/100` : ''}`
   },
   visible: (g) => g.character.alive && g.character.age >= 8 && !g.character.prison,
-  disabledReason: (g) => (ownsComputer(g) ? null : "You don't have a computer. Buy a laptop or gaming PC at the Electronics Store (Shopping), or ask your parents for one."),
+
   header: (g) => {
     const a = computerAsset(g)
     return a ? `${a.emoji} Your ${a.name.toLowerCase()} hums to life. What will you do?` : ''
   },
-  children: (g) => [...devNodes(g), ...moneyNodes(g)],
+  children: (g) => {
+    const locked = computerLocked(g)
+    if (locked && ownsComputer(g)) return [{ type: 'info', id: 'computer.locked', emoji: '\u{1F512}', text: locked }]
+    if (!ownsComputer(g)) {
+      return [
+        { type: 'info', id: 'computer.none', emoji: '\u{1F50C}', text: "You don't have a computer. Buy a laptop or gaming PC at the Electronics Store (Activities › Shopping)." },
+        ...noComputerNodes(g),
+      ]
+    }
+    return [...devNodes(g), ...moneyNodes(g)]
+  },
 }
 
 /** Yearly hook (aging.ts, after shops, before finance). */

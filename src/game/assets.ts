@@ -3512,6 +3512,7 @@ const KIND_SECTIONS: [string, AssetKind[]][] = [
   ['Businesses', ['business']],
   ['Investments', ['investment']],
   ['Memberships & Subscriptions', ['membership']],
+  ['Online Ventures', ['venture']],
   ['Belongings', ['other']],
 ]
 
