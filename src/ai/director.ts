@@ -553,7 +553,7 @@ export function applyFallback(g: GameState, task: AiTask): void {
 // ---------------------------------------------------------------------------
 // Narration of scripted popups
 
-const MONEY_RE = /-?\$\s?\d[\d,]*(?:\.\d+)?\s?[KMB]?/g
+const MONEY_RE = /-?\$\s?\d[\d,]*(?:\.\d+)?(?:\s?[KMB]\b)?/g
 
 function digitsOf(s: string): string {
   return s.replace(/[^\d.KMB-]/g, '')

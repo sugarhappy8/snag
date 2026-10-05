@@ -38,7 +38,7 @@ export function RelationshipsSheet({ onClose }: RelationshipsSheetProps) {
           </div>
         ) : (
           groups.map((grp) => (
-            <section key={grp.title}>
+            <section className="menu-section" key={grp.title}>
               <div className="menu-heading">
                 {grp.title} <span style={{ opacity: 0.7 }}>({grp.people.length})</span>
               </div>

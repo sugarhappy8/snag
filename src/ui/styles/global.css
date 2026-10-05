@@ -1109,9 +1109,6 @@ label {
 
 .statpanel {
   flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   padding: 10px 16px calc(12px + var(--safe-bottom));
   background: var(--card);
   border-top: 1px solid var(--hairline);
@@ -1121,8 +1118,36 @@ label {
   height: 15px;
 }
 
-.statpanel.is-low-warn .statbar-label {
-  color: var(--tone-bad);
+/* Stacks of stat bars share one grid so labels and tracks line up, and long labels
+   ("Relationship", "Religiousness") get the room they need. */
+.statpanel,
+.person-bars {
+  display: grid;
+  grid-template-columns: fit-content(52%) minmax(48px, 1fr) auto;
+  column-gap: 10px;
+  row-gap: 7px;
+  align-items: center;
+}
+
+.statpanel > .statbar,
+.person-bars > .statbar {
+  display: contents;
+}
+
+.statpanel > :not(.statbar),
+.person-bars > :not(.statbar) {
+  grid-column: 1 / -1;
+}
+
+.statpanel .statbar-value,
+.person-bars .statbar-value {
+  min-width: 36px;
+}
+
+.person-bars > .statbar:not(.statbar-small) .statbar-label,
+.person-bars > .statbar:not(.statbar-small) .statbar-track,
+.person-bars > .statbar:not(.statbar-small) .statbar-value {
+  margin-bottom: 3px;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -1419,6 +1444,14 @@ label {
 
 .menu-heading:first-child {
   margin-top: 2px;
+}
+
+.menu-section + .menu-section {
+  margin-top: 18px;
+}
+
+.menu-section > .menu-heading {
+  margin-top: 0;
 }
 
 .menu-list {

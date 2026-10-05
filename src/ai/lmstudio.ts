@@ -201,6 +201,10 @@ async function requestJson(settings: Settings, url: string, method: 'GET' | 'POS
     parsed = undefined
   }
   if (!res.ok) throw httpError(res.status, parsed, text, base, settings)
+  // Some servers report failures with a 200 and an {"error": ...} body.
+  if (parsed && typeof parsed === 'object' && 'error' in parsed && !('choices' in parsed) && !('data' in parsed) && !('models' in parsed)) {
+    throw httpError(500, parsed, text, base, settings)
+  }
   if (parsed === undefined) {
     if (looksLikeHtml(text)) {
       throw new LmStudioError(

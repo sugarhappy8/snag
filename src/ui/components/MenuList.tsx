@@ -338,7 +338,7 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
   return (
     <>
       {visible.map((s) => (
-        <section key={s.key}>
+        <section className="menu-section" key={s.key}>
           {s.heading ? <div className="menu-heading">{s.heading}</div> : null}
           <div className="menu-list">{s.rows}</div>
         </section>
@@ -367,7 +367,7 @@ export function MenuRow({ node, g, onTap }: { node: MenuAction | MenuGroup; g: G
       </span>
       <span className="menu-row-end" aria-hidden>
         {reason ? <span className="menu-row-lock">🔒</span> : null}
-        {node.type === 'menu' ? <span className="menu-row-chevron">›</span> : null}
+        {node.type === 'menu' && !reason ? <span className="menu-row-chevron">›</span> : null}
       </span>
     </button>
   )

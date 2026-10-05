@@ -587,8 +587,8 @@ function leaveSchool(g: GameState, why: 'graduated' | 'dropped' | 'expelled' | '
   finalizeStudentLoan(g, cur)
   removeSchoolPeople(g, schoolId(cur))
   c.education.current = null
-  const greek = str(cur.data.greek)
-  if (greek && why !== 'graduated') g.flags.greekActive = false
+  // Remember how well you did (university admissions and scholarships look at it).
+  if (cur.level !== 'preschool') g.flags.lastGrades = cur.grades
   // Campus jobs end with your student status.
   const pt = c.partTimeJob
   if (pt && pt.data.studentOnly === true && POST_SECONDARY.includes(cur.level)) {
@@ -998,7 +998,6 @@ const REPORT_COMMENTS: Record<'great' | 'good' | 'ok' | 'bad', string[]> = {
 }
 
 function yearlySchoolEvents(g: GameState, cur: Enrollment): void {
-  const c = g.character
   if (cur.level === 'preschool') return
   if (isK12(cur.level) && chance(g, 0.3)) {
     const band = cur.grades >= 88 ? 'great' : cur.grades >= 75 ? 'good' : cur.grades >= 60 ? 'ok' : 'bad'
@@ -1043,7 +1042,6 @@ function yearlySchoolEvents(g: GameState, cur: Enrollment): void {
   const pop = popularity(cur)
   if (pop >= 80) addStat(g, 'happiness', 2)
   else if (pop <= 15) addStat(g, 'happiness', -2)
-  void c
 }
 
 // ---------------------------------------------------------------------------
@@ -1066,8 +1064,8 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
 
   if (cur.level === 'elementary' || cur.level === 'middle') {
     ed.completed.push(cur.level)
-    const idx = sys.levels.findIndex((l) => l.level === cur.level)
-    const nextSpec = sys.levels[idx + 1]
+    const order = K12.indexOf(cur.level)
+    const nextSpec = sys.levels.find((l) => K12.indexOf(l.level) > order)
     const old = cur.school
     leaveSchool(g, 'graduated')
     if (!nextSpec) return
@@ -1678,7 +1676,6 @@ function dropOut(g: GameState): void {
   const c = g.character
   const cur = current(g)
   if (!cur) return
-  const sys = systemFor(g)
   if (isK12(cur.level) && c.age < 18 && parents(g).length > 0 && chance(g, 0.35)) {
     const p = pick(g, parents(g))
     addRelationship(p, -5)
@@ -1698,7 +1695,6 @@ function dropOut(g: GameState): void {
     emoji: '\u{1F6AA}',
     tone: 'bad',
   })
-  void sys
 }
 
 function joinClubNow(g: GameState, cur: Enrollment, def: ClubDef): void {
@@ -1802,7 +1798,6 @@ function quitClub(g: GameState, id: string): void {
 }
 
 function tryJoinClique(g: GameState, def: CliqueDef): void {
-  const c = g.character
   const cur = current(g)
   if (!cur) return
   if (cliqueOf(cur) === def.id) return
@@ -1839,7 +1834,6 @@ function tryJoinClique(g: GameState, def: CliqueDef): void {
   count(g, 'cliques')
   log(g, `I joined the ${def.name} at ${cur.school}.`, 'good')
   notice(g, def.name, `You're now one of the ${def.name}!${old ? ` The ${old.name} will have to carry on without you.` : ''}`, { emoji: def.emoji, tone: 'good' })
-  void c
 }
 
 function randomLastNameSafe(g: GameState): string {
@@ -1864,7 +1858,6 @@ function leaveClique(g: GameState): void {
 // Faculty -----------------------------------------------------------------
 
 function teacherAction(g: GameState, personId: string, kind: 'help' | 'compliment' | 'gift' | 'insult' | 'report'): void {
-  const c = g.character
   const cur = current(g)
   const t = getPerson(g, personId)
   if (!cur || !t || !t.alive || t.relation !== 'teacher') return
@@ -1937,7 +1930,6 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       return
     }
   }
-  void c
 }
 
 function principalAction(g: GameState, kind: 'complain' | 'compliment' | 'insult'): void {
@@ -1972,7 +1964,7 @@ function principalAction(g: GameState, kind: 'complain' | 'compliment' | 'insult
       addHidden(g, 'karma', -3)
       count(g, 'insults')
       addPopularity(cur, chance(g, 0.5) ? 4 : -2)
-      log(g, `I insulted ${who} to ${cur.level === 'university' ? 'their' : 'their'} face.`, 'bad')
+      log(g, `I insulted ${who} to their face.`, 'bad')
       schoolWarning(g, `insulting ${who}`)
       return
     }
@@ -2012,7 +2004,6 @@ function promCandidates(g: GameState, cur: Enrollment): Person[] {
 }
 
 function goToProm(g: GameState): void {
-  const c = g.character
   const cur = current(g)
   if (!cur) return
   if (!useYearAction(g, 'prom', 1)) {
@@ -2029,7 +2020,6 @@ function goToProm(g: GameState): void {
   choices.push({ id: 'solo', label: 'Go by myself', emoji: '\u{1F57A}' })
   choices.push({ id: 'skip', label: 'School dances are not for me', emoji: '\u{1F6CB}\u{FE0F}' })
   scriptChoice(g, PROM, 'Prom', `It's prom season at ${cur.school}! Who will you go with?`, choices, { emoji: '\u{1FA69}' })
-  void c
 }
 
 const PROM = defineScript('school.prom', (g, choice) => {
@@ -2513,7 +2503,7 @@ function educationGroup(g: GameState): MenuGroup {
     id: 'edu.menu',
     label: 'Education',
     emoji: '\u{1F393}',
-    subtitle: () => `Highest: ${highestEducationLabel(g)}`,
+    subtitle: (x) => `Highest: ${highestEducationLabel(x)}`,
     children: (gg) => {
       const nodes: MenuNode[] = [{ type: 'info', id: 'edu.highest', text: `Highest education: ${highestEducationLabel(gg)}`, emoji: '\u{1F4DC}' }]
       const sys = systemFor(gg)
@@ -2566,11 +2556,6 @@ export function educationMenuNodes(g: GameState): MenuNode[] {
   }
   return [educationGroup(g)]
 }
-
-// Keep the last school grades around for university / scholarship decisions.
-// (Called from finishLevel via leaveSchool's caller; tracked here so the flag is always set.)
-const _origLeave = leaveSchool
-void _origLeave
 
 /** Exposed for tests and other modules. */
 export const educationInternals = {
