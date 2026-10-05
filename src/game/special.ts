@@ -2,7 +2,7 @@
 // The features live in src/game/special/*.ts; this file wires them into the menus and the
 // yearly loop:
 //   Occupation › Special Careers: Actor, Astronaut, Influencer, Model, Musician, Politician,
-//                                 Professional Athlete, Street Hustler, Business (business.ts)
+//                                 Sports, Game Industry, Street Hustler, Business (business.ts)
 //   Occupation › Military:        enlist / commission, ranks, deployments, discharges, draft
 //   Activities › Fame:            celebrity actions (books, commercials, talk shows...)
 //   Activities › Social Media:    accounts on every platform, posting, going viral, verification
@@ -10,7 +10,7 @@ import { businessCareerMenu, businessJobNodes } from './business'
 import { endJob, log, notice } from './core'
 import { actorCareerMenu, actorJobNodes, yearlyActor } from './special/actor'
 import { astronautCareerMenu, astronautJobNodes, yearlyAstronaut } from './special/astronaut'
-import { athleteCareerMenu, athleteJobNodes, yearlyAthlete } from './special/athlete'
+import { gameDevJobNodes, gameIndustryMenu, yearlyGameDev } from './special/gamedev'
 import { fameMenu, yearlyFame } from './special/fame'
 import { hustlerCareerMenu, hustlerJobNodes, yearlyHustler } from './special/hustler'
 import { militaryJobNodes, militaryMenu, yearlyMilitary } from './special/military'
@@ -18,6 +18,7 @@ import { modelCareerMenu, modelJobNodes, yearlyModel } from './special/model'
 import { musicCareerMenu, musicJobNodes, yearlyMusic } from './special/music'
 import { politicsCareerMenu, politicsJobNodes, yearlyPolitics } from './special/politics'
 import { socialMediaMenu, totalFollowers, yearlySocial } from './special/social'
+import { sportsCareerMenu, sportsJobNodes, yearlySports } from './special/sports'
 import type { GameState, MenuGroup, MenuNode } from './types'
 
 export { fameMenu, militaryMenu, socialMediaMenu }
@@ -27,7 +28,8 @@ const YEARLY: [string, (g: GameState) => void][] = [
   ['military', yearlyMilitary],
   ['actor', yearlyActor],
   ['music', yearlyMusic],
-  ['athlete', yearlyAthlete],
+  ['sports', yearlySports],
+  ['gamedev', yearlyGameDev],
   ['model', yearlyModel],
   ['politics', yearlyPolitics],
   ['astronaut', yearlyAstronaut],
@@ -68,7 +70,7 @@ export const specialCareersMenu: MenuGroup = {
   id: 'specialCareers',
   label: 'Special Careers',
   emoji: '\u{2B50}',
-  subtitle: 'Actor, astronaut, athlete, musician, politician and more',
+  subtitle: 'Actor, athlete, game developer, musician, politician and more',
   visible: (g) => g.character.alive && !g.character.prison,
   header: (g) =>
     g.character.age < 16
@@ -81,7 +83,8 @@ export const specialCareersMenu: MenuGroup = {
     modelCareerMenu,
     musicCareerMenu,
     politicsCareerMenu,
-    athleteCareerMenu,
+    sportsCareerMenu,
+    gameIndustryMenu,
     hustlerCareerMenu,
     businessCareerMenu,
   ],
@@ -95,7 +98,8 @@ export function specialJobNodes(g: GameState): MenuNode[] {
     ...militaryJobNodes(g),
     ...actorJobNodes(g),
     ...musicJobNodes(g),
-    ...athleteJobNodes(g),
+    ...sportsJobNodes(g),
+    ...gameDevJobNodes(g),
     ...modelJobNodes(g),
     ...politicsJobNodes(g),
     ...astronautJobNodes(g),

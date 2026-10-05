@@ -5,6 +5,7 @@
 // mutates the game state — it only reads the frozen snapshot from the store.
 import { businessSummary } from '../game/business'
 import { computerSummary } from '../game/computer'
+import { gameDevSummary } from '../game/special/gamedev'
 import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, shortMoney } from '../game/core'
 import { cvPromptLines, cvSummary, graduateTarget, jobTarget, rankLabel, rankOf, universityTarget, type CvTarget } from '../game/cv'
 import { getJobDef, type GradKey } from '../game/data/jobs'
@@ -331,6 +332,8 @@ export function describeCharacter(g: GameState): string {
   if (business) lines.push(`BUSINESS: ${business}`)
   const portfolio = investmentsSummary(g)
   if (portfolio) lines.push(`INVESTMENTS: ${portfolio}`)
+  const gamedev = gameDevSummary(g)
+  if (gamedev) lines.push(`GAME INDUSTRY: ${gamedev}`)
   const computer = computerSummary(g)
   if (computer) lines.push(`AT THE COMPUTER: ${computer}`)
   const luxury = luxurySummary(g)
