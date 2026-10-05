@@ -632,6 +632,7 @@ const RULES: Rule[] = [
     run: (g, a) => {
       const c = g.character
       if (c.age >= 13 && !inPrison(g) && chance(g, 0.05)) return out(g, 'Viral!', `Someone filmed you as you decided to ${you(a.phrase)} and it went viral!`, 'A video of me went viral.', { happiness: 8, fame: 3 }, 'good', '🌟')
+      if (has(a, /danc/)) return out(g, ['Dancing queen', 'Moves'], pick(g, [`You decided to ${you(a.phrase)}. You danced like nobody was watching. Several people were watching.`, `You decided to ${you(a.phrase)} and busted out moves you didn't know you had.`]), `I decided to ${a.phrase}.`, { happiness: randInt(g, 3, 6), health: 1 }, 'good', '💃')
       out(g, ['Music to my ears', 'Encore'], pick(g, [`You decided to ${you(a.phrase)}. It sounded ${pick(g, ['incredible', 'mostly in tune', 'like a cat in a dryer, but you had fun'])}.`, `You decided to ${you(a.phrase)} and lost track of time.`]), `I decided to ${a.phrase}.`, { happiness: randInt(g, 3, 6) }, 'good', '🎵')
     },
   },

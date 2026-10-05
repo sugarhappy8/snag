@@ -11,7 +11,9 @@ function plural(n: number, one: string, many = `${one}s`): string {
 
 function listJoin(items: string[]): string {
   if (items.length <= 1) return items.join('')
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`
+  // Appositives ("his wife, Maria") need the serial comma to stay readable.
+  const serial = items.some((i) => i.includes(','))
+  return `${items.slice(0, -1).join(', ')}${serial ? ',' : ''} and ${items[items.length - 1]}`
 }
 
 function article(word: string): string {
@@ -37,13 +39,13 @@ export function writeObituary(g: GameState): string {
   if (c.prison || occupation === 'Prisoner') {
     sentences.push(pick(g, [`${name} died behind bars${c.prison ? ` at ${c.prison.name}` : ''} at the age of ${age} from ${cause}.`, `Inmate ${name}, ${age}, died of ${cause} while serving time${c.prison ? ` at ${c.prison.name}` : ''}.`]))
   } else if (age < 1) {
-    sentences.push(`${name} of ${place} lived only a few short months before dying from ${cause}.`)
+    sentences.push(`${name} lived only a few short months in ${place} before dying from ${cause}.`)
   } else if (age < 18) {
-    sentences.push(pick(g, [`${name} was taken far too soon, dying from ${cause} at just ${age} years old in ${place}.`, `${name} of ${place} died from ${cause} at the age of ${age}, with a whole life still ahead.`]))
+    sentences.push(pick(g, [`${name} was taken far too soon, dying from ${cause} at just ${age} years old in ${place}.`, `${name} died from ${cause} at the age of ${age} in ${place}, with a whole life still ahead.`]))
   } else if (age >= 90) {
-    sentences.push(pick(g, [`After ${age} remarkable years, ${name} of ${place} has passed away from ${cause}.`, `${name} died peacefully at the ripe old age of ${age} from ${cause} in ${place}.`]))
+    sentences.push(pick(g, [`After ${age} remarkable years, ${name} has passed away from ${cause} in ${place}.`, `${name} died peacefully at the ripe old age of ${age} from ${cause} in ${place}.`]))
   } else {
-    sentences.push(pick(g, [`${name}, ${age}, of ${place}, passed away from ${cause}.`, `${name} died from ${cause} in ${place} at the age of ${age}.`, `${name} of ${place} has died of ${cause}. ${P.He} was ${age}.`]))
+    sentences.push(pick(g, [`${name}, ${age}, of ${place}, passed away from ${cause}.`, `${name} died from ${cause} at the age of ${age} in ${place}.`, `${name} has died of ${cause} in ${place}. ${P.He} was ${age}.`]))
   }
 
   // Career and education.

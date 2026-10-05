@@ -13,7 +13,7 @@ const PATTERNS: [Kind, RegExp][] = [
   ['illegal', /\b(steal|rob|shoplift|vandali[sz]e|graffiti|break in|break into|hack|forge|smuggle|bribe|sell (the )?drugs|pickpocket|arson|loot|blackmail|embezzle|poach)\b/],
   ['aggressive', /\b(fight|punch|hit (them|him|her)|slap|attack|yell|scream|insult|threaten|confront|argue|mock|roast|kick|shove|beat|sue|curse|tell (them|him|her) off|get revenge|retaliate|stand up to)\b/],
   ['romantic', /\b(kiss|flirt|ask (them|him|her) out|go on a date|propose|romance|confess my feelings|hold hands)\b/],
-  ['kind', /\b(help|give|donate|share|comfort|hug|forgive|apologi[sz]e|thank|compliment|support|listen|rescue|save|return|adopt|feed|visit|volunteer|pay|tip|encourage|console|invite|cheer|congratulat\w*|tell the truth|be honest|call (an ambulance|911|the police|for help)|report|offer|lend|teach|babysit|take care)\b/],
+  ['kind', /\b(help|give|donate|share|comfort|hug|forgive|apologi[sz]e|thank|compliment|support|listen|rescue|save|return|adopt|feed|visit|volunteer|pay|tip|encourage|console|invite|cheer|congratulat\w*|tell the truth|truth|honest\w*|call (an ambulance|911|the police|for help)|report|offer|lend|teach|babysit|take care)\b/],
   ['avoidant', /\b(ignore|walk away|leave|nothing|hide|avoid|decline|refuse|no thanks|pass|stay home|pretend|say no|not interested|mind my own|let it go|walk off|go home|skip it|stay out|keep quiet|stay quiet|look away|turn down|ghost)\b|^no\b|^nope\b|^nah\b/],
   ['diligent', /\b(study|work|practice|train|read|learn|research|prepare|focus|revise|review|plan)\b/],
   ['spend', /\b(buy|purchase|spend|splurge|treat (myself|them|everyone)|order|book (a|the)|upgrade|invest)\b/],
@@ -122,7 +122,7 @@ export function resolveGenericChoice(g: GameState, event: ChoiceModal, choiceId:
   const phrase = toPhrase(label)
   const lead = quoted ? `You said, "${shown}"${/[.?!]$/.test(shown) ? '' : '.'}` : `You decided to ${you(phrase)}.`
   const text = `${lead} ${pick(g, o.x)}`
-  const logLine = quoted ? `I said "${label}"${o.l ? ` ${o.l}` : ''}.` : `I decided to ${phrase}${o.l ? ` ${o.l}` : ''}.`
+  const logLine = quoted ? (o.l ? `I said "${label}" ${o.l}.` : `I said "${/[.?!]$/.test(shown) ? shown : `${shown}.`}"`) : `I decided to ${phrase}${o.l ? ` ${o.l}` : ''}.`
   const fx: Fx = { ...o.fx }
   if (person && fx.rel) fx.rels = [{ p: person, d: fx.rel }]
   delete fx.rel
