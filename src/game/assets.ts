@@ -281,7 +281,7 @@ export function salesTaxNote(g: GameState, price: number): string {
 }
 
 /** Store header line: "Prices include 20% VAT." ('' when untaxed). */
-function pricesIncludeTax(g: GameState): string {
+export function pricesIncludeTax(g: GameState): string {
   const label = salesTaxLabel(g)
   return label ? `Prices include ${label}.` : ''
 }
@@ -303,7 +303,7 @@ function carMarketNote(g: GameState): string {
   const car = localPriceMult(g, 'car')
   const fuel = localPriceMult(g, 'fuel')
   const bits: string[] = []
-  if (car >= 1.6) bits.push(`Import duties and registration taxes make cars cost about ${times(car)} what they do in the US.`)
+  if (car >= 1.6) bits.push(`Duties, registration taxes and permits make cars cost about ${times(car)} what they do in the US.`)
   else if (car <= 0.85) bits.push('Cars are cheaper here than almost anywhere.')
   if (fuel <= 0.35) bits.push('Gas is practically free.')
   else if (fuel >= 1.8) bits.push(`Gas costs about ${times(fuel)} US prices.`)
@@ -318,7 +318,7 @@ export function marketShoppingNote(g: GameState): string {
   const lux = localPriceMult(g, 'luxury')
   const fuel = localPriceMult(g, 'fuel')
   const country = getCountry(g.character.countryId).name
-  if (car >= 1.6) facts.push([car, `Cars in ${country} cost about ${times(car)} US prices, thanks to import duties and registration taxes.`])
+  if (car >= 1.6) facts.push([car, `Cars in ${country} cost about ${times(car)} US prices, thanks to duties, registration taxes and permits.`])
   if (elec >= 1.25) facts.push([elec * 1.2, `Gadgets cost about ${times(elec)} US prices here after import duties.`])
   if (lux >= 1.3) facts.push([lux * 1.1, `Designer goods carry steep luxury taxes in ${country}.`])
   if (fuel <= 0.35) facts.push([3 - fuel, `Gas in ${country} is practically free.`])
@@ -812,7 +812,7 @@ function brokerMenu(broker: Broker, label: string, emoji: string, blurb: string)
     emoji,
     subtitle: blurb,
     disabledReason: (g) => adultReason(g, 'buy property'),
-    header: (g) => `Listings in ${g.character.city} this year. You have ${formatMoney(g.character.money)}. Credit score: ${creditScore(g)}. ${mortgageRateNote(g)}`,
+    header: (g) => `Listings in ${g.character.city} this year. You have ${formatMoney(g.character.money)}. Credit score: ${creditScore(g)}.`,
     children: (g) => {
       const list = houseListings(g, broker)
       if (list.length === 0) return [{ type: 'info', id: 'none', text: 'Everything on the market sold this year. Check back next year!', emoji: '🪧' }]
