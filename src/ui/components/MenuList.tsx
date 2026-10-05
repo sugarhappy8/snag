@@ -104,27 +104,28 @@ export function resolveTrail(g: GameState, rootNodes: MenuNode[], path: string[]
 // Navigation stack (group ids) with scroll restoration.
 
 export interface MenuNav {
-  /** Group ids from the root; only the first `depth` entries that still resolve are used. */
-  path: string[]
-  /** Open a group from the list currently shown at `depth`. */
-  push: (group: MenuGroup, depth: number) => void
-  /** Go back one level from `depth`. */
-  pop: (depth: number) => void
+  /** Groups currently opened, root first (re-resolved from the latest state). */
+  trail: MenuGroup[]
+  /** Open a group from the list currently shown. */
+  push: (group: MenuGroup) => void
+  /** Go back one level. */
+  pop: () => void
   /** Attach to an element inside the scrolling sheet body (scroll restoration). */
   anchorRef: React.RefObject<HTMLDivElement | null>
 }
 
 /**
- * Navigation stack for nested menus. Callers resolve `path` against the latest state
- * with resolveTrail() and pass the resolved depth back (groups that vanished, e.g. a
- * job you just quit, are dropped automatically).
+ * Navigation stack for nested menus. `resolve` turns the stored id path into groups
+ * using the latest state (see resolveTrail); groups that vanished, e.g. a job you just
+ * quit, are dropped automatically.
  */
-export function useMenuNav(resolvedDepth: (path: string[]) => number): MenuNav {
+export function useMenuNav(resolve: (path: string[]) => MenuGroup[]): MenuNav {
   const [path, setPath] = useState<string[]>([])
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const scrolls = useRef<number[]>([])
   const pendingScroll = useRef<number | null>(null)
-  const depth = resolvedDepth(path)
+  const trail = resolve(path)
+  const depth = trail.length
 
   const scroller = () => (anchorRef.current?.closest('.sheet-body') as HTMLElement | null) ?? null
 
@@ -137,19 +138,20 @@ export function useMenuNav(resolvedDepth: (path: string[]) => number): MenuNav {
     if (!el || pendingScroll.current === null) return
     el.scrollTop = pendingScroll.current
     pendingScroll.current = null
-  }, [path.length])
+  }, [depth])
 
   return {
-    path,
+    trail,
     anchorRef,
-    push: (group, at) => {
-      scrolls.current[at] = scroller()?.scrollTop ?? 0
+    push: (group) => {
+      scrolls.current[depth] = scroller()?.scrollTop ?? 0
       pendingScroll.current = 0
-      setPath((p) => [...p.slice(0, at), group.id])
+      setPath([...path.slice(0, depth), group.id])
     },
-    pop: (at) => {
-      pendingScroll.current = scrolls.current[at - 1] ?? 0
-      setPath((p) => p.slice(0, Math.max(0, at - 1)))
+    pop: () => {
+      if (depth === 0) return
+      pendingScroll.current = scrolls.current[depth - 1] ?? 0
+      setPath(path.slice(0, depth - 1))
     },
   }
 }

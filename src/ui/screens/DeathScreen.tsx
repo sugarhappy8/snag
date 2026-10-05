@@ -95,7 +95,7 @@ export function deathFacts(g: GameState): DeathFact[] {
     ['Years in prison', n('prisonYears'), '⛓️'],
     ['Prison escapes', n('escapes'), '🏃'],
     ['Pets', n('pets'), '🐾'],
-    ['Countries visited', n('vacations'), '✈️'],
+    ['Vacations', n('vacations'), '✈️'],
   ]
   for (const [label, value, emoji] of optional) {
     if (value > 0) facts.push({ label, value: value.toLocaleString('en-US'), emoji })
@@ -134,22 +134,22 @@ export function mournersLine(g: GameState): string {
   const c = g.character
   const his = pronouns(c.gender).his
   const came = g.people.filter((p) => p.alive && MOURNER_RELATIONS.includes(p.relation) && p.relationship >= 50)
-  const pets = g.people.filter((p) => p.alive && p.relation === 'pet' && p.livesWithPlayer !== false)
+  const pets = g.people.filter((p) => p.alive && p.relation === 'pet')
   const parts: string[] = []
-  const named = (rels: RelationKind[]) =>
-    came.filter((p) => rels.includes(p.relation)).forEach((p) => parts.push(`${his} ${relationLabel(p).toLowerCase()} ${p.firstName}`))
-  const grouped = (rels: RelationKind[], one: string, many: string) => {
+  const label = (p: Person) => `${his} ${relationLabel(p).toLowerCase()} ${p.firstName}`
+  const named = (rels: RelationKind[]) => came.filter((p) => rels.includes(p.relation)).forEach((p) => parts.push(label(p)))
+  const grouped = (rels: RelationKind[], many: string) => {
     const list = came.filter((p) => rels.includes(p.relation))
-    if (list.length === 1) parts.push(`${his} ${one} ${list[0].firstName}`)
+    if (list.length === 1) parts.push(label(list[0]))
     else if (list.length > 1) parts.push(`${list.length} ${many}`)
   }
   named(['spouse', 'fiance', 'partner'])
   named(['parent', 'stepparent'])
-  grouped(['child', 'stepchild'], c.gender === 'male' ? 'kid' : 'kid', 'children')
-  grouped(['grandchild'], 'grandchild', 'grandchildren')
-  grouped(['sibling', 'halfSibling', 'stepsibling'], 'sibling', 'siblings')
-  grouped(['grandparent'], 'grandparent', 'grandparents')
-  grouped(['bestFriend', 'friend'], 'friend', 'friends')
+  grouped(['child', 'stepchild'], 'children')
+  grouped(['grandchild'], 'grandchildren')
+  grouped(['sibling', 'halfSibling', 'stepsibling'], 'siblings')
+  grouped(['grandparent'], 'grandparents')
+  grouped(['bestFriend', 'friend'], 'friends')
   for (const pet of pets.slice(0, 2)) parts.push(`${his} loyal ${(pet.species ?? 'pet').toLowerCase()} ${pet.firstName}`)
 
   if (parts.length === 0) {

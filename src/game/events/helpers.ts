@@ -180,8 +180,25 @@ export function v<T>(g: GameState, items: T | readonly T[]): T {
   return items as T
 }
 
+/**
+ * The context of the event being resolved right now. Resolvers run synchronously, so
+ * outcome helpers called with `x = null` still get the event's emoji and people.
+ */
+let active: Ctx | null = null
+
+export function withCtx(x: Ctx, fn: () => void): void {
+  const prev = active
+  active = x
+  try {
+    fn()
+  } finally {
+    active = prev
+  }
+}
+
 /** Report an outcome like the classic game does: popup + journal line + stat changes. */
-export function res(g: GameState, x: Ctx | null, r: Res): void {
+export function res(g: GameState, ctx: Ctx | null, r: Res): void {
+  const x = ctx ?? active
   const c = g.character
   if (!c.alive) return
   const tone: Tone = r.tone ?? 'neutral'
@@ -191,7 +208,8 @@ export function res(g: GameState, x: Ctx | null, r: Res): void {
 }
 
 /** Apply an effect bundle (stats are capped by applyEffects). */
-export function applyFx(g: GameState, x: Ctx | null, fx: Fx): void {
+export function applyFx(g: GameState, ctx: Ctx | null, fx: Fx): void {
+  const x = ctx ?? active
   const c = g.character
   if (!c.alive) return
   const eff: GameEffects = {}
