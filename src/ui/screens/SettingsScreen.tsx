@@ -160,15 +160,17 @@ function TextSetting(props: {
   type?: 'text' | 'password'
   help?: ReactNode
   onCommit: (v: string) => void
+  /** Clean up the typed value before saving (e.g. fall back to a default when empty). */
+  normalize?: (v: string) => string
   extra?: ReactNode
 }) {
-  const { label, value, placeholder, type = 'text', help, onCommit, extra } = props
+  const { label, value, placeholder, type = 'text', help, onCommit, normalize, extra } = props
   const [draft, setDraft] = useState(value)
   useEffect(() => setDraft(value), [value])
   const commit = () => {
-    const v = draft.trim()
+    const v = normalize ? normalize(draft.trim()) : draft.trim()
+    setDraft(v)
     if (v !== value) onCommit(v)
-    else if (draft !== v) setDraft(v)
   }
   return (
     <label className="al-field">
@@ -404,7 +406,8 @@ export function SettingsScreen() {
           label="Server URL"
           value={settings.baseUrl}
           placeholder={DEFAULT_SETTINGS.baseUrl}
-          onCommit={(baseUrl) => updateSettings({ baseUrl: baseUrl || DEFAULT_SETTINGS.baseUrl })}
+          normalize={(v) => v.replace(/\/+$/, '') || DEFAULT_SETTINGS.baseUrl}
+          onCommit={(baseUrl) => updateSettings({ baseUrl })}
           extra={
             settings.baseUrl !== DEFAULT_SETTINGS.baseUrl ? (
               <button type="button" className="al-btn ghost small" onClick={() => updateSettings({ baseUrl: DEFAULT_SETTINGS.baseUrl })}>

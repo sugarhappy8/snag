@@ -24,7 +24,7 @@ export function sortGraves(entries: readonly GraveyardEntry[], sort: GraveSort):
   const list = [...entries]
   switch (sort) {
     case 'netWorth':
-      return list.sort((a, b) => (b.netWorth ?? 0) - (a.netWorth ?? 0))
+      return list.sort((a, b) => b.netWorth - a.netWorth)
     case 'age':
       return list.sort((a, b) => b.age - a.age)
     case 'name':
@@ -50,9 +50,35 @@ export function graveStats(entries: readonly GraveyardEntry[]): GraveStats {
   return { lives: entries.length, oldest, richest }
 }
 
+/** Load the graveyard, dropping malformed entries and filling missing fields. */
+export function readGraves(): GraveyardEntry[] {
+  const raw: unknown = loadGraveyard()
+  if (!Array.isArray(raw)) return []
+  const out: GraveyardEntry[] = []
+  raw.forEach((e: Partial<GraveyardEntry> | null, i) => {
+    if (!e || typeof e !== 'object' || typeof e.name !== 'string') return
+    const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+    out.push({
+      lifeId: typeof e.lifeId === 'string' && e.lifeId ? e.lifeId : `grave-${i}`,
+      generation: num(e.generation, 1),
+      name: e.name,
+      gender: e.gender === 'female' ? 'female' : 'male',
+      bornYear: num(e.bornYear),
+      diedYear: num(e.diedYear),
+      age: num(e.age),
+      causeOfDeath: typeof e.causeOfDeath === 'string' && e.causeOfDeath ? e.causeOfDeath : 'Unknown causes',
+      netWorth: num(e.netWorth),
+      occupation: typeof e.occupation === 'string' ? e.occupation : '',
+      ribbon: typeof e.ribbon === 'string' ? e.ribbon : null,
+      obituary: typeof e.obituary === 'string' ? e.obituary : null,
+    })
+  })
+  return out
+}
+
 /** Remove one grave from storage. Returns the remaining list. */
 export function bulldozeGrave(lifeId: string): GraveyardEntry[] {
-  const rest = loadGraveyard().filter((e) => e.lifeId !== lifeId)
+  const rest = readGraves().filter((e) => e.lifeId !== lifeId)
   try {
     localStorage.setItem(GRAVEYARD_KEY, JSON.stringify(rest))
   } catch {
@@ -62,7 +88,7 @@ export function bulldozeGrave(lifeId: string): GraveyardEntry[] {
 }
 
 export function GraveyardScreen() {
-  const [entries, setEntries] = useState<GraveyardEntry[]>(() => loadGraveyard())
+  const [entries, setEntries] = useState<GraveyardEntry[]>(() => readGraves())
   const [sort, setSort] = useState<GraveSort>('recent')
   const [open, setOpen] = useState<string | null>(null)
   const [doomed, setDoomed] = useState<GraveyardEntry | null>(null)
