@@ -162,7 +162,10 @@ describe('readReportData', () => {
     const s = readReportData(MALFORMED[9])
     expect(s.maxProduction).toBe(0)
     expect(s.production).toBe(0)
-    expect(s.lines).toEqual([{ label: 'Tax', value: '-$1,200', tone: 'neutral' }])
+    expect(s.lines).toEqual([
+      { label: 'Revenue', value: '—', tone: 'neutral' },
+      { label: 'Tax', value: '-$1,200', tone: 'neutral' },
+    ])
   })
 })
 
