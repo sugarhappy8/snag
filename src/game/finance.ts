@@ -398,14 +398,19 @@ const COLLECTOR_NAMES = ['Gary', 'Doreen', 'Vince', 'Brenda', 'Marcus', 'Trish',
 /**
  * Cost of everyday living relative to the US (1): 40% bills and services, which track wealth,
  * and 60% groceries, which follow the market's food prices (data/markets.ts priceMult.food).
- * Switzerland and Norway come out around 1.3-1.4, India and Egypt around 0.25-0.3.
+ * Switzerland comes out around 1.3, India and Egypt around 0.3. Groceries priced in dollars
+ * eat a bigger share of pay in poor countries (true to life), but never more than 1.8× the
+ * US share: salaries scale with max(0.25, wealth) (careers.ts), so that is the cap's yardstick
+ * (Venezuela's dollar-priced supermarkets would otherwise cost a quarter of a typical wage).
  */
 export function costOfLiving(countryId: string): number {
   const wealth = Math.max(0.2, getCountry(countryId).wealth ?? 1)
   const raw = marketOf(countryId).priceMult.food
   // Countries without hand-written market data: assume groceries track wealth.
   const food = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : hasMarketData(countryId) ? 1 : wealth
-  return Math.min(2.2, Math.max(0.15, 0.4 * Math.min(1.4, wealth) + 0.6 * Math.min(2.5, Math.max(0.12, food))))
+  const cost = 0.4 * Math.min(1.4, wealth) + 0.6 * Math.min(2.5, Math.max(0.12, food))
+  const cap = 1.8 * Math.max(0.25, wealth)
+  return Math.min(2.2, cap, Math.max(0.15, cost))
 }
 
 /** Yearly living costs for an independent adult (scaled by the local cost of living). */

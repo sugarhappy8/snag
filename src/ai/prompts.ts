@@ -5,6 +5,7 @@
 // mutates the game state — it only reads the frozen snapshot from the store.
 import { businessSummary } from '../game/business'
 import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, shortMoney } from '../game/core'
+import { localeOf, type LocaleProfile } from '../game/data/locales'
 import { marketOf } from '../game/data/markets'
 import { investmentsSummary } from '../game/investments'
 import { getCountry } from '../game/world'
@@ -34,35 +35,76 @@ export function narratorSystem(settings: Settings): string {
     'You are the narrator of AnotherLife, a darkly funny text life simulator where one person lives from birth to death a year at a time.',
     'VOICE:',
     '- Popups talk to the player in second person ("You..."): witty, punchy, specific, 1-3 short sentences.',
-    '- Life-log lines are first person, past tense, max 15 words: "I adopted a cat named Waffles." "I got food poisoning from a gas station burrito."',
+    '- Life-log lines are first person, past tense, max 15 words: "I got my head stuck in the stair railing." "I got food poisoning from week-old leftovers."',
     '- Choices are 2-4 short imperative labels, max 6 words ("Ignore them", "Call the cops", "Lick it"), an emoji only sometimes.',
-    '- Use real names from the context; invent believable new names when needed. Match the setting (country, city, year, money).',
+    '- Use real names from the context; invent believable new names that fit their country.',
+    '- SETTING: their country (PLACE; the new one after emigrating) and its culture (LOCAL LIFE) for places, schools, institutions, holidays, food, weather, faith and money. Nothing American unless they live in the US.',
     '- Never contradict the facts in the context. Keep it plausible for the character\'s age and situation.',
     `- ${ratingRule(settings.contentRating)}`,
     'OUTPUT: reply with ONE JSON object only. No markdown, no code fences, no commentary.',
   ].join('\n')
 }
 
-/** What kind of events suit each stage of life (keeps toddlers away from tax fraud). */
+/** What kind of events suit each stage of life (keeps toddlers away from tax fraud). {high} is the local name of high school. */
 export const STAGE_RULES: Record<LifeStage | 'prison', string> = {
   baby: 'They are a baby: only baby things (feeding, crying, toys, bath time, pets, visitors, first words). Choices are baby actions like "Cry", "Giggle", "Bite it".',
   toddler: 'They are a toddler: simple kid things (playground, tantrums, pets, siblings, preschool, food, bedtime). Choices are toddler actions.',
   child: 'They are a child: school, playground, siblings, pets, classmates, bullies, field trips, hobbies. No romance, alcohol, drugs or jobs.',
-  teen: 'They are a teenager: high school drama, crushes, parties, peer pressure, part-time jobs, driving, social media, family fights.',
+  teen: 'They are a teenager: {high} drama, crushes, parties, peer pressure, part-time jobs, driving, social media, family fights.',
   adult: 'They are an adult: work, money, dating, family, neighbors, strangers, health, opportunities and temptations.',
   elder: 'They are elderly: grandkids, retirement, health, scams, old friends, nostalgia, legacy.',
   prison: 'They are IN PRISON: everything happens inside prison (cellmates, guards, gangs, riots, contraband, the yard, visitors, prison jobs).',
 }
 
-/** Theme suggestions for random events, by stage. The director picks one per year. */
+/** The stage rule with the local school words filled in. */
+export function stageRule(g: GameState, stage: LifeStage | 'prison' = stageOf(g)): string {
+  return STAGE_RULES[stage].replace('{high}', localeOf(g.character.countryId).terms.high || 'school')
+}
+
+/**
+ * Theme suggestions for random events, by stage. The director picks one per year and fills
+ * the {tokens} from the player's locale with localizeTheme (deterministically, no RNG).
+ */
 export const EVENT_THEMES: Record<LifeStage | 'prison', string[]> = {
-  baby: ['mealtime', 'a new toy', 'bath time', 'a doctor visit', 'the family pet', 'a stranger at the park', 'first words', 'bedtime', 'a car ride', 'a visiting relative'],
-  toddler: ['the playground', 'a pet', 'a sibling squabble', 'a tantrum at the store', 'preschool', 'a family trip', 'a scary noise at night', 'vegetables', 'drawing on the walls', 'a birthday party', 'a bug in the yard'],
-  child: ['a classmate', 'a bully', 'a field trip', 'a pet', 'a sibling', 'a lost wallet', 'a dare', 'a sports tryout', 'a school play', 'a neighbor', 'a family vacation', 'an animal encounter', 'a talent show', 'breaking something at home', 'a lemonade stand', 'a substitute teacher'],
-  teen: ['a crush', 'a house party', 'peer pressure', 'a part-time job', 'a driving lesson', 'social media drama', 'a sibling', 'a teacher', 'the school dance', 'a big exam', 'a stranger', 'a sports team', 'a school club', 'a rebellious idea', 'a family argument', 'a viral video', 'a cheating scandal'],
-  adult: ['a coworker', 'the boss', 'a neighbor', 'a stranger encounter', 'an animal encounter', 'a money opportunity', 'a scam', 'a friend in trouble', 'romance', 'a family member', 'a health scare', 'witnessing a crime', 'a lucky find', 'a celebrity sighting', 'a road-rage incident', 'a wedding invitation', 'a mysterious package', 'someone in danger', 'a home repair disaster', 'a protest', 'a pyramid scheme pitch'],
-  elder: ['grandchildren', 'retirement life', 'a health scare', 'a scam phone call', 'an old friend', 'a reunion', 'a hobby', 'a neighbor', 'a stranger', 'technology trouble', 'a long-lost relative', 'a doctor visit'],
+  baby: ['mealtime', 'a new toy', 'bath time', 'a doctor visit', 'the family pet', 'a stranger at the park', 'first words', 'bedtime', 'a car ride', 'a visiting relative', 'the noise of {holiday}'],
+  toddler: ['the playground', 'a pet', 'a sibling squabble', 'a tantrum at the store', 'preschool', 'a family trip', 'a scary noise at night', 'vegetables', 'drawing on the walls', 'a birthday party', 'a bug in the yard', 'a ride on {transport}'],
+  child: ['a classmate', 'a bully', 'a field trip to {landmark}', 'a pet', 'a sibling', 'a lost wallet', 'a dare', 'a {sport} tryout', 'a school play', 'a neighbor', 'a family trip to {getaway}', 'an animal encounter', 'a talent show', 'breaking something at home', '{kidStand}', 'a substitute teacher', '{holiday} with the family', '{weather}'],
+  teen: ['a crush', 'a house party', 'peer pressure', 'a part-time job', 'a driving lesson', 'social media drama', 'a sibling', 'a teacher', '{schoolDance}', 'studying for {finalExam}', 'a stranger', 'the {sport} team', 'a school club', 'a rebellious idea', 'a family argument', 'a viral video', 'a cheating scandal', 'hanging out at {hangout}'],
+  adult: ['a coworker', 'the boss', 'a neighbor', 'a stranger encounter', 'an animal encounter', 'a money opportunity', 'a scam', 'a friend in trouble', 'romance', 'a family member', 'a health scare', 'witnessing a crime', 'a lucky find', 'a celebrity sighting', 'a road-rage incident', 'a wedding invitation', 'a mysterious package', 'someone in danger', 'a home repair disaster', 'a protest', 'a pyramid scheme pitch', 'plans for {holiday}', 'a big {sport} match', 'a commute on {transport}'],
+  elder: ['grandchildren', 'retirement life', 'a health scare', 'a scam phone call', 'an old friend', 'a reunion', 'a hobby', 'a neighbor', 'a stranger', 'technology trouble', 'a long-lost relative', 'a doctor visit', '{holiday} with the family'],
   prison: ['a cellmate', 'a guard', 'gang recruitment', 'contraband', 'a riot brewing', 'the prison yard', 'cafeteria food', 'a visitor', 'a snitch', 'a prison job', 'a fight', 'a parole rumor', 'the prison library'],
+}
+
+/** Theme token → locale list, and the word used when a country has no data for it. */
+const THEME_FIELDS: Record<string, [keyof LocaleProfile, string]> = {
+  holiday: ['holidays', 'the holidays'],
+  sport: ['sports', 'sports'],
+  getaway: ['getaways', 'the countryside'],
+  landmark: ['landmarks', 'a museum'],
+  hangout: ['hangouts', 'the park'],
+  transport: ['transport', 'the bus'],
+  food: ['foods', 'dinner'],
+}
+
+/**
+ * Fill a theme's {tokens} with the player's local words. Pure: `r` (0-1) picks the word, so the
+ * same roll always gives the same theme.
+ */
+export function localizeTheme(theme: string, countryId: string, r = 0): string {
+  const loc = localeOf(countryId)
+  return theme
+    .replace(/\{(\w+)\}/g, (whole, key: string) => {
+      if (key === 'schoolDance') return loc.terms.schoolDance || 'the end-of-year party'
+      if (key === 'finalExam') return loc.terms.finalExam || 'the final exams'
+      if (key === 'kidStand') return countryId === 'us' ? 'a lemonade stand' : 'selling snacks to the neighbors'
+      if (key === 'weather') return loc.snow ? 'a snow day' : loc.climate === 'tropical' ? 'a rainy-season downpour' : loc.climate === 'arid' ? 'a scorching heatwave' : 'a wild storm'
+      const spec = THEME_FIELDS[key]
+      if (!spec) return whole
+      const raw = loc[spec[0]]
+      const list = Array.isArray(raw) ? raw.filter((w): w is string => typeof w === 'string' && w.length > 0) : []
+      return list.length ? list[Math.floor(r * 7919) % list.length] : spec[1]
+    })
+    .replace(/\s*\{\w+\}/g, '')
 }
 
 export function stageOf(g: GameState): LifeStage | 'prison' {
@@ -99,7 +141,7 @@ export function effectsGuide(g: GameState): string {
     '- condition.kind "none" unless they get hurt, sick, addicted or traumatized (severity 5-60).',
     '- arrest.crime "" unless they are caught committing a crime (severity 1 petty ... 5 murder).',
     '- death "" unless the choice was truly lethal; then a short cause like "Shark Attack". Very rare.',
-    '- memory: one short line worth remembering for years, or "".',
+    '- memory: one short NEW line worth remembering for years (not already in MEMORIES), or "".',
   ].join('\n')
 }
 
@@ -109,14 +151,22 @@ const EFFECTS_EXAMPLE =
 // ---------------------------------------------------------------------------
 // Context serializer
 
-const SCHOOL_LABELS: Record<SchoolLevel, string> = {
-  preschool: 'Preschool',
-  elementary: 'Elementary School',
-  middle: 'Middle School',
-  high: 'High School',
-  community: 'Community College',
-  university: 'University',
-  graduate: 'Graduate School',
+function titleCase(s: string): string {
+  return s.replace(/(^|[\s-])(\p{Ll})/gu, (_m, pre: string, ch: string) => pre + ch.toUpperCase())
+}
+
+/** What each school level is called where the player lives ("Elementary School" in the US, "Primary School" elsewhere...). */
+export function schoolLabels(countryId: string): Record<SchoolLevel, string> {
+  const t = localeOf(countryId).terms
+  return {
+    preschool: 'Preschool',
+    elementary: titleCase(t.primary || 'primary school'),
+    middle: titleCase(t.middle || 'middle school'),
+    high: titleCase(t.high || 'secondary school'),
+    community: countryId === 'us' ? 'Community College' : 'Vocational College',
+    university: titleCase(t.university || 'university'),
+    graduate: 'Graduate School',
+  }
 }
 
 const PROGRAM_LABELS: Record<string, string> = {
@@ -135,7 +185,7 @@ const HOME_LABELS: Record<string, string> = {
   owned: 'owns their home',
   renting: 'rents a place',
   homeless: 'HOMELESS',
-  dorm: 'lives in a college dorm',
+  dorm: 'lives in a student dorm',
   prison: 'lives in a prison cell',
   military: 'lives on a military base',
   partner: "lives at their partner's place",
@@ -148,9 +198,68 @@ function cap(s: string): string {
 function schoolLine(g: GameState): string | null {
   const e = g.character.education.current
   if (!e) return null
-  const level = e.level === 'graduate' && e.program ? (PROGRAM_LABELS[e.program] ?? SCHOOL_LABELS.graduate) : SCHOOL_LABELS[e.level]
+  const labels = schoolLabels(g.character.countryId)
+  const level = e.level === 'graduate' && e.program ? (PROGRAM_LABELS[e.program] ?? labels.graduate) : (labels[e.level] ?? e.level)
   const major = e.major ? `, major ${e.major}` : ''
   return `SCHOOL: ${level} year ${e.year}/${e.totalYears} at ${e.school}${major}, grades ${Math.round(e.grades)}%`
+}
+
+/** The faith most people here share ("mostly Islam", "Christianity/Islam", "mostly not religious"). */
+function mainFaith(religions: readonly string[]): string {
+  const counts = new Map<string, number>()
+  for (const r of religions) counts.set(r, (counts.get(r) ?? 0) + 1)
+  const ranked = [...counts].sort((a, b) => b[1] - a[1])
+  if (!ranked.length) return ''
+  const [top, n] = ranked[0]
+  const second = ranked.find(([name]) => name !== top && name !== 'None')
+  if (top === 'None') return second && second[1] >= n * 0.6 ? `mixed: not religious/${second[0]}` : 'mostly not religious'
+  return second && second[1] >= n * 0.6 ? `${top}/${second[0]}` : `mostly ${top}`
+}
+
+function firstFew(list: readonly string[] | undefined, n: number): string {
+  return Array.isArray(list) ? list.filter(Boolean).slice(0, n).join(', ') : ''
+}
+
+/**
+ * One compact line about everyday life in the player's country (from data/locales.ts), so the
+ * narrator writes an Indonesian childhood with SD and Eid, not an American one with prom and
+ * Thanksgiving. School words only while school matters to them.
+ */
+export function localLifeLine(g: GameState): string {
+  const c = g.character
+  const country = getCountry(c.countryId)
+  const loc = localeOf(c.countryId)
+  const t = loc.terms
+  const parts: string[] = []
+  const add = (label: string, list: readonly string[] | undefined, n: number) => {
+    const words = firstFew(list, n)
+    if (words) parts.push(`${label} ${words}`)
+  }
+  const faith = mainFaith(country.religions)
+  if (c.prison) {
+    // Inside, only the calendar and the food from home still matter.
+    add('holidays', loc.holidays, 2)
+    add('food from home', loc.foods, 2)
+    if (faith) parts.push(faith)
+    return `LOCAL LIFE (${country.name}): ${parts.join('; ')}`
+  }
+  const kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild' || p.relation === 'grandchild'))
+  if (c.age < 26 || kids.some((k) => k.age >= 4 && k.age <= 18)) {
+    const stages = [t.primary, t.middle, t.high, t.university].filter(Boolean).join(' > ')
+    // The exam and the dance only while someone is about to face them.
+    const teen = (c.age >= 11 && c.age <= 20) || kids.some((k) => k.age >= 13 && k.age <= 18)
+    const school = [stages && `school ${stages}`, teen && t.finalExam && `big exam ${t.finalExam}`, teen && t.schoolDance].filter(Boolean)
+    if (school.length) parts.push(school.join(', '))
+  }
+  add('holidays', loc.holidays, 3)
+  add('food', loc.foods, 3)
+  add('sports', loc.sports, 2)
+  add('transport', loc.transport, 2)
+  add('hangouts', loc.hangouts, 2)
+  parts.push(`${loc.climate}, ${loc.snow ? 'snowy winters' : 'no snow'}`)
+  if (faith) parts.push(faith)
+  parts.push(`${country.universalHealthcare ? 'public healthcare' : 'healthcare costs money'}; uni ${country.freeUniversity ? 'free' : 'tuition'}${t.emergencyNumber ? `; emergency ${t.emergencyNumber}` : ''}`)
+  return `LOCAL LIFE (${country.name}): ${parts.join('; ')}`
 }
 
 /** The character sheet: who they are and their situation right now. */
@@ -161,7 +270,9 @@ export function describeCharacter(g: GameState): string {
   const stage = lifeStage(c.age)
   const sexuality = c.age >= 13 ? `, ${c.sexuality}` : ''
   lines.push(`NAME: ${fullName(c)} (${c.gender}, age ${c.age}, ${stage}${sexuality})${c.alive ? '' : ' — DECEASED'}`)
-  lines.push(`PLACE: ${c.city}, ${country.name} · year ${g.year} · ${c.zodiac}${c.religion ? ` · ${c.religion}` : ''}`)
+  const born = c.birthCountryId && c.birthCountryId !== c.countryId ? ` (born in ${getCountry(c.birthCountryId).name})` : ''
+  lines.push(`PLACE: ${c.city}, ${country.name}${born} · year ${g.year} · ${c.zodiac}${c.religion ? ` · ${c.religion}` : ''}`)
+  lines.push(localLifeLine(g))
   const s = c.stats
   lines.push(`STATS: Happiness ${s.happiness}, Health ${s.health}, Smarts ${s.smarts}, Looks ${s.looks}`)
   const h = c.hidden
@@ -190,7 +301,7 @@ export function describeCharacter(g: GameState): string {
   }
   const degrees = c.education.degrees.map((d) => d.name)
   if (degrees.length) lines.push(`EDUCATION: ${degrees.slice(-3).join('; ')}`)
-  else if (c.education.droppedOut.length && c.age >= 16) lines.push(`EDUCATION: dropped out of ${c.education.droppedOut.map((l) => SCHOOL_LABELS[l]).join(', ')}`)
+  else if (c.education.droppedOut.length && c.age >= 16) lines.push(`EDUCATION: dropped out of ${c.education.droppedOut.map((l) => schoolLabels(c.countryId)[l] ?? l).join(', ')}`)
 
   let home = HOME_LABELS[c.residence.status] ?? c.residence.status
   if (c.residence.status === 'renting' && c.residence.rent) home += ` (${formatMoney(c.residence.rent)}/yr)`
@@ -342,8 +453,57 @@ export function recentLogLines(g: GameState, max = 15): string[] {
   return out.reverse()
 }
 
-/** Titles of recent AI events (stored by the director) to avoid repeats. */
+/**
+ * g.flags.eventMemory: the last popups the game threw at the player (AI and offline), newest
+ * last, so neither source repeats an event (or the same kind of event about the same person)
+ * within a few years. game/events.ts appends offline events in the same shape.
+ */
+export const EVENT_MEMORY_FLAG = 'eventMemory'
+export const EVENT_MEMORY_MAX = 16
+
+export interface EventMemo {
+  title: string
+  /** Age when it fired. */
+  age: number
+  /** Person it was about ('' if nobody) and their first name for the prompt. */
+  personId: string
+  person: string
+  /** AI: the suggested theme; offline: the event kind or id. */
+  kind: string
+  source: 'ai' | 'offline'
+  /** g.generation when it fired: a parent's events don't count for the child who carries on. */
+  gen: number
+}
+
+/** This generation's remembered events, oldest first. */
+export function eventMemory(g: GameState): EventMemo[] {
+  const raw = g.flags[EVENT_MEMORY_FLAG]
+  if (!Array.isArray(raw)) return []
+  const out: EventMemo[] = []
+  for (const v of raw) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) continue
+    const o = v as Record<string, unknown>
+    if (typeof o.title !== 'string' || typeof o.age !== 'number') continue
+    if (typeof o.gen === 'number' && o.gen !== g.generation) continue
+    out.push({
+      title: o.title,
+      age: o.age,
+      personId: typeof o.personId === 'string' ? o.personId : '',
+      person: typeof o.person === 'string' ? o.person : '',
+      kind: typeof o.kind === 'string' ? o.kind : '',
+      source: o.source === 'offline' ? 'offline' : 'ai',
+      gen: g.generation,
+    })
+  }
+  return out
+}
+
+/** Titles of recent events (AI and offline, "Title (Name)") to avoid repeats. Old saves: the AI titles. */
 export function recentAiEvents(g: GameState): string[] {
+  if (Array.isArray(g.flags[EVENT_MEMORY_FLAG])) {
+    const memo = eventMemory(g).filter((m) => m.age <= g.character.age && m.age >= g.character.age - 8)
+    return memo.slice(-8).map((m) => (m.person ? `${m.title} (${m.person})` : m.title))
+  }
   const v = g.flags.aiRecentEvents
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(-12) : []
 }
@@ -361,7 +521,7 @@ export function gameContext(g: GameState, opts: ContextOptions = {}): string {
   const mems = g.character.memories.slice(-(opts.memories ?? 10)).map((m) => `- ${truncate(m, 100)}`)
   if (mems.length) parts.push(`MEMORIES:\n${mems.join('\n')}`)
   const logLines = recentLogLines(g, opts.log ?? 15).map((l) => `- ${l}`)
-  if (logLines.length) parts.push(`RECENT LOG:\n${logLines.join('\n')}`)
+  if (logLines.length) parts.push(`RECENT LOG (already happened):\n${logLines.join('\n')}`)
   let text = parts.join('\n\n')
   // Hard cap (~2,000 tokens) in case of very long names/notes.
   if (text.length > 8000) text = `${text.slice(0, 8000)}\n…`
@@ -385,15 +545,16 @@ export function yearEventsPrompt(g: GameState, o: YearEventsPromptOptions): stri
     gameContext(g),
     '',
     `TASK: Write ${c.firstName}'s year at age ${c.age}.`,
-    STAGE_RULES[stage],
-    `- "log": ${o.logLines} first-person, past-tense life-log lines (max 15 words each) about small things that happened this year. Fresh details, not repeats of the recent log.`,
+    stageRule(g, stage),
+    `- "log": ${o.logLines} NEW small moments from this year (first person, past tense, max 15 words each).`,
+    `- Never repeat or reword RECENT LOG or MEMORIES. Log lines never have ${c.firstName} do anything big the player didn't choose (attack someone, a crime, quit, break up, date, buy something big, move).`,
   ]
   if (o.wantEvent) {
     lines.push(
       '- "event": one random situation that needs a decision NOW. "text" is second person, 1-3 sentences, ending with a question like "What will you do?". "title" max 4 words, "emoji" one emoji.',
       '- "choices": 2-4 different options, short imperative labels (max 6 words), at least one risky or funny option; "emoji" is "" or one emoji.',
       '- "person": the name of someone from PEOPLE involved in the event, or "".',
-      `- Suggested theme: ${o.theme}.${recent.length ? ` Must not resemble these recent events: ${recent.join('; ')}.` : ''}`,
+      `- Suggested theme: ${o.theme}.${recent.length ? ` Must differ from recent events: ${recent.join('; ')}.` : ''}`,
       'Reply with JSON like: {"log":["I ..."],"event":{"title":"...","emoji":"<one emoji>","text":"You ... What will you do?","person":"","choices":[{"label":"...","emoji":""},{"label":"...","emoji":""},{"label":"...","emoji":""}]}}',
     )
   } else {
@@ -418,7 +579,7 @@ export function resolveChoicePrompt(g: GameState, event: ChoiceModal, choiceLabe
     `TASK: Decide what happens because of that choice. Realistic for a ${c.age}-year-old in this situation; it can go well, badly or absurdly (risky choices often backfire, kind ones usually pay off a little).`,
     '- "title": 1-4 word outcome title. "emoji": one emoji.',
     '- "text": second person, 1-3 punchy sentences describing the result.',
-    '- "log": first person, past tense, max 15 words, e.g. "I bit the doctor during my vaccination."',
+    '- "log": first person, past tense, max 15 words, about this outcome (not a line from RECENT LOG), e.g. "I bit the doctor during my vaccination."',
     effectsGuide(g),
     `Reply with JSON like: {"title":"...","emoji":"<one emoji>","text":"You ...","log":"I ...","effects":${EFFECTS_EXAMPLE}}`,
   ].join('\n')
@@ -438,7 +599,7 @@ export function customActionPrompt(g: GameState, action: string): string {
     `- possible=false if it's impossible for them now: too young (age ${c.age}), ${c.prison ? 'they are locked in prison, ' : ''}can't afford it (${formatMoney(c.money)} cash), physically impossible, or it needs a license/degree they don't have. Then "text" says why, wittily, and all effects are 0.`,
     '- If possible: describe the attempt and its immediate result. Not always a success: luck, stats and karma matter. Crimes may get them arrested (arrest). Purchases cost money (negative money).',
     '- The game can only change stats, money, relationships, add one new person, add a condition, arrest them or (rarely) kill them. Never claim other permanent changes (a new job, marriage, a degree, moving home, escaping prison); those happen through the game menus.',
-    STAGE_RULES[stage],
+    stageRule(g, stage),
     '- "title": 1-4 words. "text": second person, 1-3 sentences. "log": first person, past tense, max 15 words ("" if impossible).',
     effectsGuide(g),
     `Reply with JSON like: {"possible":true,"title":"...","emoji":"<one emoji>","text":"You ...","log":"I ...","effects":${EFFECTS_EXAMPLE}}`,
@@ -495,7 +656,7 @@ export function obituaryPrompt(g: GameState): string {
 
 export function narratePrompt(g: GameState, n: NoticeModal, person: Person | undefined): string {
   const c = g.character
-  const lines = [`PLAYER: ${fullName(c)}, ${c.gender}, age ${c.age}, ${roleLabel(g)}, ${c.city}.`]
+  const lines = [`PLAYER: ${fullName(c)}, ${c.gender}, age ${c.age}, ${roleLabel(g)}. PLACE: ${c.city}, ${getCountry(c.countryId).name}.`]
   if (person) lines.push(`OTHER PERSON: ${describePerson(person, [person]).slice(2)}`)
   lines.push(
     `POPUP TITLE: ${n.title}`,
@@ -532,12 +693,15 @@ export function chatSystemPrompt(g: GameState, p: Person, settings: Settings): s
   const traits = p.traits.length ? `Personality: ${p.traits.join(', ')}.` : ''
   return [
     `${speakerStyle(p)} You are ${c.firstName}'s ${rel.toLowerCase()} in the life simulator AnotherLife. ${traits}`,
+    p.relation === 'pet' || p.age < 6 ? '' : `You live in ${getCountry(c.countryId).name}: your references (places, food, holidays, money talk) are local, never American unless that is where you live.`,
     `How you feel about ${c.firstName}: relationship ${p.relationship}% (${moodWord(p.relationship)}). Stay in character: warm if close, cold or snippy if not; your traits color everything you say.`,
     `Reply to ${c.firstName}'s latest message in 1-3 short sentences, speaking directly to them. No narration about yourself in third person.`,
     'Also rate how their message landed with you: relationshipDelta from -5 (insulting, creepy, cruel) to +5 (kind, funny, thoughtful); 0 for small talk. mood is one word for how you feel now.',
     ratingRule(settings.contentRating),
     'OUTPUT: one JSON object only: {"reply":"...","relationshipDelta":0,"mood":"..."}',
-  ].join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 export function chatUserPrompt(g: GameState, p: Person, history: ChatLine[], message: string): string {
@@ -553,7 +717,7 @@ export function chatUserPrompt(g: GameState, p: Person, history: ChatLine[], mes
   if (p.notes.length) facts.push(`shared history: ${p.notes.slice(-3).map((n) => truncate(n, 70)).join('; ')}`)
   const lines = [
     `ABOUT YOU: ${facts.join(', ')}`,
-    `ABOUT ${c.firstName.toUpperCase()}: ${fullName(c)}, ${c.gender}, age ${c.age}, ${roleLabel(g)}, ${c.city}; happiness ${c.stats.happiness}, looks ${c.stats.looks}, money ${shortMoney(c.money)}${c.prison ? ', currently in prison' : ''}.`,
+    `ABOUT ${c.firstName.toUpperCase()}: ${fullName(c)}, ${c.gender}, age ${c.age}, ${roleLabel(g)}, ${c.city}, ${getCountry(c.countryId).name}; happiness ${c.stats.happiness}, looks ${c.stats.looks}, money ${shortMoney(c.money)}${c.prison ? ', currently in prison' : ''}.`,
   ]
   const recent = recentLogLines(g, 5)
   if (recent.length) lines.push(`${c.firstName.toUpperCase()}'S RECENT LIFE: ${recent.join(' | ')}`)

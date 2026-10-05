@@ -12,6 +12,7 @@ vi.mock('../src/game/events', () => ({
     g.flags.fallbackCustom = true
   }),
   fallbackObituary: vi.fn(() => 'They lived. They died. The end.'),
+  foreignToLocale: vi.fn(() => false),
 }))
 vi.mock('../src/game/careers', () => ({
   fallbackInterviewQuestion: vi.fn(() => ({ question: 'Fallback question?', answers: [{ label: 'Yes', score: 80 }, { label: 'No', score: 10 }, { label: 'Maybe', score: 40 }] })),

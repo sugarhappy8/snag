@@ -18,6 +18,8 @@ import {
   useYearAction,
   yearActionsUsed,
 } from './core'
+import { localeOf, localTerm } from './data/locales'
+import { isIndustryLegal } from './data/markets'
 import { killCharacter } from './death'
 import { chance, pick, randFloat, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
@@ -258,6 +260,25 @@ function fill(text: string, vars: Record<string, string>): string {
   return text.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? '')
 }
 
+/**
+ * Pick a line for something that recurs year after year, never the same one twice in a row.
+ * Remembers the last index in g.flags under `line.<key>`.
+ */
+function freshLine(g: GameState, key: string, lines: string[]): string {
+  const flag = `line.${key}`
+  const last = g.flags[flag]
+  const options = lines.map((_, i) => i).filter((i) => lines.length < 2 || i !== last)
+  const i = pick(g, options)
+  g.flags[flag] = i
+  return lines[i]
+}
+
+/** Years since an unprompted event last fired (large when never). */
+function yearsSince(g: GameState, flag: string): number {
+  const last = g.flags[flag]
+  return typeof last === 'number' ? g.character.age - last : 99
+}
+
 /** Deterministic hash, used to keep menu contents stable while browsing (no RNG in menus). */
 function hash(s: string): number {
   let h = 2166136261
@@ -372,7 +393,7 @@ function announceCondition(g: GameState, cond: Condition): void {
   const symptom = pick(g, def.symptoms)
   if (cond.diagnosed) {
     if (cond.severity < 15) {
-      log(g, pick(g, [`I came down with ${label}.`, `I caught ${label}.`, `I've been dealing with ${label}.`]), 'bad')
+      log(g, fill(freshLine(g, 'caught', ['I came down with {name}.', 'I caught {name}.', "I've been dealing with {name}.", 'I spent a miserable week with {name}.']), { name: label }), 'bad')
     } else {
       notice(g, cap(label), `${symptom} You've come down with ${label}.`, { emoji: '\u{1F912}', tone: 'bad' })
       log(g, `I came down with ${label}.`, 'bad')
@@ -380,7 +401,7 @@ function announceCondition(g: GameState, cond: Condition): void {
     return
   }
   if (cond.severity < 15 || g.character.age < 4) {
-    log(g, pick(g, ["I've been feeling a bit under the weather.", "I haven't been feeling like myself lately.", "Something's been off with my health."]), 'bad')
+    log(g, freshLine(g, 'underWeather', ["I've been feeling a bit under the weather.", "I haven't been feeling like myself lately.", "Something's been off with my health.", "I've been dragging myself through the days.", "My body has been sending me strongly worded complaints."]), 'bad')
     return
   }
   const choices: ChoiceOption[] =
@@ -443,6 +464,10 @@ function diseaseWeight(g: GameState, d: DiseaseDef): number {
   let w = d.weight * ageWeight(d, c.age)
   const idle = c.age > 25 && Object.values(g.counters).reduce((s, n) => s + n, 0) < 10
   if (d.odd && idle) w *= 3
+  // Mosquito- and tick-borne illnesses follow the climate: no malaria in Norway, no Lyme in the Sahara.
+  const climate = localeOf(c.countryId).climate
+  if (d.name === 'Malaria' && climate !== 'tropical' && !(climate === 'arid' && getCountry(c.countryId).wealth < 0.3)) return 0
+  if (d.name === 'Lyme Disease' && (climate === 'tropical' || climate === 'arid')) return 0
   if (d.name === 'Malaria' || d.name === 'Tuberculosis') {
     // Tropical and poverty-linked illnesses are rare in rich countries.
     const wealth = getCountry(c.countryId).wealth
@@ -497,7 +522,7 @@ function progressConditions(g: GameState): void {
     if (cond.kind === 'injury') selfChance = Math.max(selfChance, cond.severity < 30 ? 0.6 : 0.3)
     if (selfChance > 0 && chance(g, selfChance)) {
       removeCondition(g, cond.id)
-      log(g, cond.diagnosed ? fill(pick(g, RESOLVED_LINES), { name: conditionLabel(cond.name) }) : pick(g, RESOLVED_HIDDEN), 'good')
+      log(g, cond.diagnosed ? fill(freshLine(g, 'resolved', RESOLVED_LINES), { name: conditionLabel(cond.name) }) : freshLine(g, 'resolvedHidden', RESOLVED_HIDDEN), 'good')
       continue
     }
     const jitter = randFloat(g, 0.7, 1.3)
@@ -588,32 +613,42 @@ function processAddictions(g: GameState): void {
     }
   }
   if (addictions.length === 0 || inPrison(g) || c.age < 12) return
-  if (!chance(g, 0.5)) return
+  // Cravings nag, but not every single birthday: at most every other year.
+  if (yearsSince(g, 'cravingAge') < 2 || !chance(g, 0.5)) return
+  g.flags.cravingAge = c.age
   const worst = [...addictions].sort((a, b) => b.severity - a.severity)[0]
   const kind = addictionKind(worst.name)
   const subject = addictionSubject(worst.name)
-  const text = {
-    alcohol: pick(g, [
-      "You've been thinking about a cold drink all week. Your hands are a little shaky.",
-      "It's been a long day and the bar on the corner is calling your name.",
-      'Your friends are going out for drinks. "Just one," you tell yourself.',
-    ]),
-    drug: pick(g, [
+  // Where alcohol is banned there is no bar on the corner, only a guy who knows a guy.
+  const barsLegal = isIndustryLegal(c.countryId, 'bar')
+  const lines: Record<AddictionKind, string[]> = {
+    alcohol: barsLegal
+      ? [
+          "You've been thinking about a cold drink all week. Your hands are a little shaky.",
+          "It's been a long day and the bar on the corner is calling your name.",
+          'Your friends are going out for drinks. "Just one," you tell yourself.',
+        ]
+      : [
+          "You've been thinking about a drink all week. Your hands are a little shaky.",
+          'You know a guy who knows a guy who can get you a bottle, strictly off the books. He just texted.',
+          'Someone at a private party whispered that there is "something stronger" in the back room.',
+        ],
+    drug: [
       `Your body is screaming for ${subject}. Your old supplier just texted "u up?"`,
       `You can't stop thinking about ${subject}. Everything feels gray without it.`,
       `Someone at a party slipped you their number and said they can get ${subject}.`,
-    ]),
-    gambling: pick(g, [
-      "There's a high-stakes poker night downtown and you have a really good feeling about tonight.",
-      'You walked past a casino and heard the slot machines whispering sweet nothings.',
+    ],
+    gambling: [
+      barsLegal
+        ? "There's a high-stakes poker night downtown and you have a really good feeling about tonight."
+        : "There's an underground card game across town and you have a really good feeling about tonight.",
+      barsLegal ? 'You walked past a casino and heard the slot machines whispering sweet nothings.' : 'You keep refreshing a betting app you swore you deleted.',
       'Your gut says this is the year you win big. Your gut has said that every year.',
-    ]),
-    nicotine: pick(g, [
-      "You're fidgety and irritable. You'd trade a kidney for a smoke right now.",
-      'Everyone on your break is lighting up and the smell is driving you crazy.',
-    ]),
-    other: pick(g, [`The urge for ${subject} is back and it's stronger than ever.`, `You can't stop thinking about ${subject}.`]),
-  }[kind]
+    ],
+    nicotine: ["You're fidgety and irritable. You'd trade a kidney for a smoke right now.", 'Everyone on your break is lighting up and the smell is driving you crazy.'],
+    other: [`The urge for ${subject} is back and it's stronger than ever.`, `You can't stop thinking about ${subject}.`],
+  }
+  const text = freshLine(g, `craving.${kind}`, lines[kind])
   scriptChoice(
     g,
     CRAVING,
@@ -632,7 +667,9 @@ function relapseCheck(g: GameState): void {
   const c = g.character
   if (inPrison(g) || c.age < 14) return
   const recovered = strList(g.flags.recoveredAddictions)
-  if (recovered.length === 0 || !chance(g, 0.05)) return
+  // Old habits come knocking now and then, not every year.
+  if (recovered.length === 0 || yearsSince(g, 'relapseAge') < 4 || !chance(g, 0.05)) return
+  g.flags.relapseAge = c.age
   const name = pick(g, recovered)
   const subject = addictionSubject(name)
   scriptChoice(
@@ -1023,8 +1060,9 @@ export function yearlyHealth(g: GameState): void {
   eyesight(g)
   relapseCheck(g)
   trackRecovery(g)
-  if (c.stats.health <= 20 && c.stats.health > 0 && c.age >= 4 && !g.flags.lowHealthWarned) {
+  if (c.stats.health <= 20 && c.stats.health > 0 && c.age >= 4 && !g.flags.lowHealthWarned && yearsSince(g, 'lowHealthWarnedAge') >= 3) {
     g.flags.lowHealthWarned = true
+    g.flags.lowHealthWarnedAge = c.age
     notice(
       g,
       'Feeling Weak',
@@ -1347,14 +1385,19 @@ function emergencyRoom(g: GameState): void {
   count(g, 'doctorVisits')
   const parts: string[] = []
   const parent = c.age < 18 ? aliveParent(g) : undefined
+  const dial = localTerm(g, 'emergencyNumber')
   parts.push(
     parent
-      ? `Your ${parentWord(parent)} rushed you to the emergency room.`
-      : pick(g, ['You waited four hours in the emergency room next to a guy with a fork in his hand.', 'You checked into the emergency room and were seen surprisingly quickly.']),
+      ? pick(g, [`Your ${parentWord(parent)} rushed you to the emergency room.`, `Your ${parentWord(parent)} panicked, called ${dial}, and an ambulance raced you to the emergency room.`])
+      : pick(g, [
+          'You waited four hours in the emergency room next to a guy with a fork in his hand.',
+          'You checked into the emergency room and were seen surprisingly quickly.',
+          `You called ${dial} and an ambulance took you to the emergency room. The paramedics seemed underwhelmed.`,
+        ]),
   )
   const newly = c.conditions.filter((x) => x.kind !== 'addiction' && !x.diagnosed)
   for (const x of newly) x.diagnosed = true
-  if (newly.length > 0) parts.push(`The ER doctor diagnosed you with ${listJoin(newly.map((x) => conditionLabel(x.name)))}.`)
+  if (newly.length > 0) parts.push(`${c.countryId === 'us' ? 'The ER doctor' : 'The doctor on duty'} diagnosed you with ${listJoin(newly.map((x) => conditionLabel(x.name)))}.`)
   const cured: string[] = []
   for (const x of c.conditions.filter((y) => y.kind === 'injury')) {
     if (chance(g, 0.85)) {
@@ -1597,7 +1640,8 @@ function optometrist(g: GameState): void {
   count(g, 'doctorVisits')
   if (g.flags.eyesight !== 'poor') {
     addStat(g, 'happiness', 4)
-    notice(g, 'Optometrist', pick(g, ['Your vision is a perfect 20/20. The optometrist tried to sell you designer frames anyway.', 'You read the bottom line of the chart with ease. Eagle eyes!']), { emoji: '\u{1F441}\u{FE0F}', tone: 'good' })
+    const perfect = g.character.countryId === 'us' ? 'Your vision is a perfect 20/20.' : 'Your vision is perfect.'
+    notice(g, 'Optometrist', pick(g, [`${perfect} The optometrist tried to sell you designer frames anyway.`, 'You read the bottom line of the chart with ease. Eagle eyes!']), { emoji: '\u{1F441}\u{FE0F}', tone: 'good' })
     log(g, 'I aced my eye exam.', 'good')
     return
   }
@@ -1624,6 +1668,11 @@ function optometrist(g: GameState): void {
 // ---------------------------------------------------------------------------
 // Blood & plasma
 
+/** Countries that measure blood donations in pints. */
+const PINT_COUNTRIES = new Set(['us', 'gb', 'ie'])
+/** Countries where plasma centers pay donors; elsewhere donating is unpaid. */
+const PAID_PLASMA = new Set(['us', 'de', 'at', 'cz', 'hu'])
+
 function donateBlood(g: GameState): void {
   const c = g.character
   if (!useYearAction(g, 'bloodDonation', 1)) {
@@ -1642,7 +1691,7 @@ function donateBlood(g: GameState): void {
     g,
     'Blood Donation',
     pick(g, [
-      'You donated a pint of blood. They gave you a cookie and a sticker that says "Be nice to me, I gave blood today."',
+      `You donated ${PINT_COUNTRIES.has(c.countryId) ? 'a pint' : 'half a liter'} of blood. They gave you a cookie and a sticker that says "Be nice to me, I gave blood today."`,
       'You donated blood and potentially saved a life. The free orange juice was a nice bonus.',
       'You donated blood. You felt woozy for a minute but heroic for the rest of the day.',
     ]),
@@ -1659,6 +1708,24 @@ function donatePlasma(g: GameState): void {
   }
   if (c.stats.health < 30 || c.conditions.some((x) => x.kind === 'std' || defFor(x).deadly)) {
     notice(g, 'Plasma Donation', 'The plasma center turned you away after reading your medical history.', { emoji: '\u{1F489}' })
+    return
+  }
+  if (!PAID_PLASMA.has(c.countryId)) {
+    // Most countries don't pay for plasma: it's a good deed, not a side hustle.
+    count(g, 'plasmaDonations')
+    addHidden(g, 'karma', randInt(g, 2, 5))
+    addStat(g, 'happiness', randInt(g, 2, 5))
+    addStat(g, 'health', -randInt(g, 1, 3))
+    notice(
+      g,
+      'Plasma Donation',
+      pick(g, [
+        "You donated plasma. Nobody gets paid for it here, so all you walked away with was a juice box and a warm, slightly lightheaded feeling.",
+        'You hoped to sell your plasma, but here donations are strictly voluntary. You donated anyway. Look at you, being a good person.',
+      ]),
+      { emoji: '\u{1F489}', tone: 'good' },
+    )
+    log(g, 'I donated plasma.', 'good')
     return
   }
   const pay = Math.max(10, Math.round(randInt(g, 35, 60) * priceFactor(g)))

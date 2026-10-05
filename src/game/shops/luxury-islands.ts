@@ -7,7 +7,7 @@ import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember
 import { creditLabel, creditScore } from '../finance'
 import { chance, pick, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
-import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Mortgage } from '../types'
+import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, Mortgage } from '../types'
 import { getCountry, type Continent } from '../world'
 import {
   befriendCeleb,
@@ -719,7 +719,7 @@ export function islandEventCandidates(g: GameState): Candidate[] {
     const name = islandName(a)
     const region = regionById(str(a.details.regionId))
     const storm = str(a.details.storm, region?.storm ?? 'storm')
-    const stormChance = region?.climate === 'tropical' ? 0.08 : 0.05
+    const stormChance = region?.climate === 'tropical' ? 0.07 : 0.04
     if (chance(g, stormChance)) {
       out.push({
         weight: 3,
@@ -735,7 +735,7 @@ export function islandEventCandidates(g: GameState): Candidate[] {
             refreshValue(a)
             addStat(g, 'happiness', -6)
             log(g, `A ${storm} wrecked part of my island, ${name}.`, 'bad')
-            notice(g, `${storm.charAt(0).toUpperCase()}${storm.slice(1)}!`, `A ${storm} slammed into ${name}. Without insurance the damage is all yours: condition down ${dmg}%, and it's now worth about ${formatMoney(a.value)}. Renovate from the Assets tab.`, { emoji: '\u{1F300}', tone: 'bad' })
+            notice(g, `${storm.charAt(0).toUpperCase()}${storm.slice(1)}!`, `A ${storm} slammed into ${name}. Without insurance the damage is all yours: condition down ${dmg}%, and it's now worth about ${shortMoney(a.value)}. Renovate from the Assets tab.`, { emoji: '\u{1F300}', tone: 'bad' })
           }
         },
       })
@@ -830,7 +830,7 @@ export function yearlyIslands(g: GameState, budget: PopupBudget, extra: Candidat
 
 export type { Candidate as LuxuryEventCandidate }
 
-/** Unused-data guard: an island asset's details are plain JSON. */
-export function islandSummary(a: Asset): Json {
+/** A short plain-JSON description of an owned island (name, acres, place). */
+export function islandSummary(a: Asset): { name: string; acres: number; place: string } {
   return { name: islandName(a), acres: num(a.details.acres), place: str(a.details.city) }
 }

@@ -210,7 +210,9 @@ function markBought(g: GameState, id: string): void {
 //   partly, because these are global goods. It is 1 in rich countries and falls linearly to a
 //   floor for the poorest: cars 0.35, electronics 0.6, luxury 0.85. India (wealth 0.25, car
 //   priceMult 1.5) thus prices an economy car at about 0.77× the US sticker, Singapore (COE,
-//   2.8) at 2.8×, Japan (0.85) at about 0.77×.
+//   2.8) at 2.8×, Japan (0.85) at about 0.77×. Premium cars have no cheap local trim, so their
+//   floor is higher (carPriceMult): an Indian supercar costs about 1.4× the US price, like
+//   the real thing.
 // - Car running costs follow the local fuel price plus local labor (mechanics, parts).
 // - Boats, aircraft, art and collectibles trade on global markets: globalGoodsMult only
 //   shaves a little off in poorer countries.
@@ -235,6 +237,21 @@ export function localGoodsMult(g: GameState, category: PriceCategory): number {
   const floor = REACH_FLOOR[category]
   const reach = floor + (1 - floor) * Math.min(1, wealthOf(g))
   const local = localPriceMult(g, category)
+  const mult = (Number.isFinite(local) && local > 0 ? local : 1) * reach
+  return Math.min(4.5, Math.max(0.2, mult))
+}
+
+/**
+ * How much of the car's US price survives in the poorest markets, by type: mass-market cars
+ * come in cheaper local trims and brands, luxury and exotic cars are the same car everywhere.
+ */
+const CAR_REACH_FLOOR: Record<string, number> = { economy: 0.35, suv: 0.4, truck: 0.4, electric: 0.5, luxury: 0.8, sports: 0.8, supercar: 0.9, classic: 0.75 }
+
+/** Local price multiplier for a car of this type (localGoodsMult 'car' with a per-type floor). */
+export function carPriceMult(g: GameState, type: string): number {
+  const floor = CAR_REACH_FLOOR[type] ?? REACH_FLOOR.car
+  const reach = floor + (1 - floor) * Math.min(1, wealthOf(g))
+  const local = localPriceMult(g, 'car')
   const mult = (Number.isFinite(local) && local > 0 ? local : 1) * reach
   return Math.min(4.5, Math.max(0.2, mult))
 }
@@ -280,10 +297,17 @@ export function salesTaxNote(g: GameState, price: number): string {
   return `Price includes ${salesTaxLabel(g)} (${formatMoney(tax)}).`
 }
 
-/** Store header line: "Prices include 20% VAT." ('' when untaxed). */
+/**
+ * Store header line: "Prices include 20% VAT." ('' when untaxed). Local names that an English
+ * reader may not know get a gloss once here: "Prices include 25% moms (VAT)."
+ */
 export function pricesIncludeTax(g: GameState): string {
   const label = salesTaxLabel(g)
-  return label ? `Prices include ${label}.` : ''
+  if (!label) return ''
+  const name = localMarket(g).salesTaxName
+  const known = /VAT|GST|tax/i.test(name)
+  const gloss = known ? '' : /^(SST|IVU)$/.test(name.trim()) ? ' (sales tax)' : ' (VAT)'
+  return `Prices include ${label}${gloss}.`
 }
 
 /** A store/dealer name that sounds local ("Fuji Motors"), stable per country; `fallback` without name words. */
@@ -1123,7 +1147,6 @@ export function carListings(g: GameState, dealerId: string): CarListing[] {
   const dealer = DEALERS.find((d) => d.id === dealerId) ?? DEALERS[0]
   const r = seeded(yearKey(g, `cars:${dealer.id}`))
   const pool = CAR_MODELS.filter((m) => dealer.types.includes(m.type))
-  const mult = localGoodsMult(g, 'car')
   const out: CarListing[] = []
   for (let i = 0; i < dealer.count; i++) {
     const m = r.weighted(pool, (x) => (x.rare ? 0.15 : 1))
@@ -1153,7 +1176,7 @@ export function carListings(g: GameState, dealerId: string): CarListing[] {
       modelYear,
       isNew: !dealer.used && !m.year,
       condition,
-      price: nicePrice(Math.max(800, price * mult)),
+      price: nicePrice(Math.max(800, price * carPriceMult(g, m.type))),
       color: r.pick(CAR_COLORS),
       mileage,
     }

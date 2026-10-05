@@ -21,9 +21,9 @@ import {
   spend,
   zodiacFor,
 } from './core'
-import { fillLocal, hasLocaleData, hasSnow, locale, localeOf, localSchoolName, localTerm, localUniversityName, type SchoolLevel as LocaleSchoolLevel } from './data/locales'
+import { fillLocal, hasSnow, localeOf, localSchoolName, localTerm, localUniversityName, type SchoolLevel as LocaleSchoolLevel } from './data/locales'
 import { isIndustryLegal } from './data/markets'
-import { graduationAge, schoolSystem } from './education'
+import { schoolSystem } from './education'
 import { contractCondition } from './health'
 import { createPerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
@@ -71,7 +71,7 @@ export interface TalentDef {
   weight: number
   /** Journal hints in early childhood, before the talent is discovered. */
   hints: string[]
-  /** Second-person reveal; may use locale tokens ({sport}, {hangout}, {food}...) filled by fillLocal. */
+  /** Second-person reveal; may use locale tokens ({food}, {teamSport}, {scoutSpot}...) filled by lifeLocal. */
   discovery: string
   apply: (g: GameState) => void
 }
@@ -90,7 +90,7 @@ export const TALENTS: TalentDef[] = [
     emoji: '\u{1F3C3}',
     weight: 18,
     hints: ['I outran every kid on the playground.', 'I climbed to the top of the jungle gym faster than anyone.', "I can't sit still. Running around is my favorite thing in the world."],
-    discovery: "Your PE teacher can't stop raving about you, and the {sport} coach already wants you on the team. You're a natural athlete! You have a special talent for sports.",
+    discovery: "Your {peTeacher} can't stop raving about you, and the {teamSport} coach already wants you on the team. You're a natural athlete! You have a special talent for sports.",
     apply: (g) => {
       addHidden(g, 'athleticism', 15)
       addStat(g, 'health', 3)
@@ -141,7 +141,7 @@ export const TALENTS: TalentDef[] = [
     emoji: '\u{1F4F8}',
     weight: 8,
     hints: ['Strangers keep telling my parents I should be in commercials.', 'I struck a pose for every camera I saw.'],
-    discovery: 'A talent scout stopped your family at {hangout} and handed over a business card. You have a special talent for modeling!',
+    discovery: 'A talent scout stopped your family {scoutSpot} and handed over a business card. You have a special talent for modeling!',
     apply: (g) => addStat(g, 'looks', 10),
   },
   {
@@ -264,7 +264,8 @@ function petWeight(country: Country, species: string, weight: number): number {
 }
 
 // Birth backstories. {tokens} are filled from the family's country (data/locales.ts), so an
-// Indonesian baby's parents run off to Bali and an American one's to Las Vegas.
+// Indonesian baby's parents run off to Bali and an American one's to Las Vegas. {elope} is the
+// country's signature getaway (the first one listed), {weather} and {season} follow the climate.
 const CONCEPTION = [
   'I was a planned pregnancy.',
   'I was a happy accident.',
@@ -275,7 +276,7 @@ const CONCEPTION = [
   '{weather}',
   'I was conceived after my parents won a weekend in {getaway} in a radio contest.',
   'I was conceived after my mother’s birth control failed.',
-  'I was conceived after my parents eloped to {getaway}.',
+  'I was conceived after my parents eloped to {elope}.',
   'I was conceived during a power outage. My parents blame the lack of TV.',
   'I was conceived at a music festival. My parents still argue about which band was playing.',
   'I was the result of a long-distance relationship and one very expensive plane ticket.',
@@ -295,7 +296,7 @@ const SINGLE_MOTHER_CONCEPTION = [
 /** How my parents met (married couples only). */
 const PARENTS_MET = [
   'My parents met at {dateSpot}.',
-  'My parents met cheering for rival {sport} teams.',
+  'My parents met cheering for rival {teamSport} teams.',
   'My parents met on a school trip to {landmark}.',
   'My parents met at {hangout} and never looked back.',
 ]
@@ -315,13 +316,28 @@ function conceptionWeather(g: GameState, countryId: string): string {
   }
 }
 
+/**
+ * fillLocal plus this file's own tokens: {teamSport} (the country's favorite sport, so nobody
+ * gets scouted by the rodeo coach) and {scoutSpot} (where a talent scout spots a kid: the mall
+ * where there is one, a busy street elsewhere) and {peTeacher}.
+ */
+function lifeLocal(g: GameState, text: string, countryId = g.character.countryId): string {
+  const loc = localeOf(countryId)
+  let out = text
+  if (out.includes('{teamSport}')) out = out.replace(/\{teamSport\}/g, loc.sports[0] ?? 'soccer')
+  if (out.includes('{peTeacher}')) out = out.replace(/\{peTeacher\}/g, countryId === 'us' || countryId === 'ca' ? 'gym teacher' : 'PE teacher')
+  if (out.includes('{scoutSpot}')) out = out.replace(/\{scoutSpot\}/g, loc.hangouts.includes('the mall') ? 'at the mall' : 'on a busy street in {city}')
+  return fillLocal(g, out, countryId)
+}
+
 /** Fill a birth backstory line with words from the family's country. */
 function localLine(g: GameState, line: string, countryId: string): string {
-  const climate = localeOf(countryId).climate
-  const filled = line
-    .replace('{weather}', conceptionWeather(g, countryId))
-    .replace('{season}', climate === 'tropical' || climate === 'arid' ? 'whirlwind' : 'summer')
-  return fillLocal(g, filled, countryId)
+  const loc = localeOf(countryId)
+  let filled = line
+  if (filled.includes('{weather}')) filled = filled.replace('{weather}', conceptionWeather(g, countryId))
+  if (filled.includes('{season}')) filled = filled.replace('{season}', loc.climate === 'tropical' || loc.climate === 'arid' ? 'whirlwind' : 'summer')
+  if (filled.includes('{elope}')) filled = filled.replace('{elope}', loc.getaways[0] ?? '{getaway}')
+  return lifeLocal(g, filled, countryId)
 }
 
 function numArticle(n: number): string {
@@ -396,7 +412,7 @@ interface ParentSpec {
 }
 
 function makeParent(g: GameState, spec: ParentSpec, rich: boolean, wealth: number): Person {
-  const occupation = rich ? pick(g, RICH_OCCUPATIONS) : randomOccupation(g, spec.age)
+  const occupation = rich ? pick(g, richOccupations(getCountry(g.character.countryId))) : randomOccupation(g, spec.age)
   const p = createPerson(g, {
     relation: spec.relation,
     age: spec.age,
@@ -581,8 +597,8 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
       step.data.spouseId = custodial.id
       custodial.data.spouseId = step.id
     }
-    if (family === 'singleMother') lines.push(pick(g, SINGLE_MOTHER_CONCEPTION))
-    else if (chance(g, 0.75)) lines.push(pick(g, CONCEPTION))
+    if (family === 'singleMother') lines.push(localLine(g, pick(g, SINGLE_MOTHER_CONCEPTION), country.id))
+    else if (chance(g, 0.75)) lines.push(localLine(g, pick(g, CONCEPTION), country.id))
     if (mother) lines.push(`My mother is ${describe(mother)}.`)
     else lines.push(pick(g, ["My mother isn't in the picture.", 'My mother left shortly after I was born.', "I don't know much about my mother."]))
     if (father) lines.push(`My father is ${describe(father)}.`)
@@ -591,6 +607,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
       lines.push(`My parents are divorced. I live with my ${custodial.gender === 'male' ? 'father' : 'mother'}.`)
     }
     if (step) lines.push(`My ${step.gender === 'male' ? 'stepfather' : 'stepmother'} is ${describe(step)}.`)
+    if (together && mother && father && chance(g, 0.3)) lines.push(localLine(g, pick(g, PARENTS_MET), country.id))
   }
 
   // Looks and smarts are partly inherited.
@@ -640,7 +657,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
 
   // --- Family pet -------------------------------------------------------------
   if (chance(g, 0.3)) {
-    const kind = weightedPick(g, PET_SPECIES, (s) => s.weight)
+    const kind = weightedPick(g, PET_SPECIES, (s) => petWeight(country, s.species, s.weight))
     const pet = createPerson(g, {
       relation: 'pet',
       age: randInt(g, 0, kind.maxAge),
@@ -679,23 +696,23 @@ function isHeirloom(a: Asset): boolean {
   return a.details.heirloom === true || a.details.heirloom === 'true'
 }
 
-const SCHOOL_PLAN: { level: SchoolLevel; from: number; years: number; name: (city: string) => string }[] = [
-  { level: 'elementary', from: 5, years: 6, name: (city) => `${city} Elementary School` },
-  { level: 'middle', from: 11, years: 3, name: (city) => `${city} Middle School` },
-  { level: 'high', from: 14, years: 4, name: (city) => `${city} High School` },
-]
+/** K-12 levels (types.ts) to the locale's school-name levels. */
+const LOCALE_LEVEL: Partial<Record<SchoolLevel, LocaleSchoolLevel>> = { elementary: 'primary', middle: 'middle', high: 'high' }
 
-/** Put a minor in the school (and year) that fits their age. */
-function schoolForAge(age: number, city: string, smarts: number): { current: Enrollment | null; completed: SchoolLevel[] } {
+/** Put a minor in the school (and year) that fits their age in their country's school system. */
+function schoolForAge(g: GameState, age: number, countryId: string, smarts: number): { current: Enrollment | null; completed: SchoolLevel[] } {
   const completed: SchoolLevel[] = []
-  for (const s of SCHOOL_PLAN) {
-    if (age >= s.from + s.years) {
-      completed.push(s.level)
+  let from = schoolSystem(countryId).startAge
+  for (const spec of schoolSystem(countryId).levels) {
+    if (age >= from + spec.years) {
+      completed.push(spec.level)
+      from += spec.years
       continue
     }
-    if (age >= s.from) {
+    if (age >= from) {
+      const school = localSchoolName(g, LOCALE_LEVEL[spec.level] ?? 'high', countryId)
       return {
-        current: { level: s.level, school: s.name(city), year: age - s.from + 1, totalYears: s.years, grades: clampStat(smarts * 0.6 + 30), data: {} },
+        current: { level: spec.level, school, year: age - from + 1, totalYears: spec.years, grades: clampStat(smarts * 0.6 + 30), data: {} },
         completed,
       }
     }
@@ -730,17 +747,31 @@ const OCCUPATION_DEGREES: Record<string, { major: string; extra?: [DegreeKind, s
   Librarian: { major: 'English' },
 }
 
-function adultEducation(age: number, city: string, occupation: string): Education {
+/** Where each professional degree is earned, appended to the university's name. */
+const GRAD_SCHOOL_SUFFIX: Partial<Record<DegreeKind, string>> = {
+  md: 'School of Medicine',
+  jd: 'School of Law',
+  dds: 'School of Dentistry',
+  pharmd: 'School of Pharmacy',
+  dvm: 'School of Veterinary Medicine',
+  mba: 'School of Business',
+}
+
+function adultEducation(g: GameState, age: number, countryId: string, occupation: string): Education {
   const edu = emptyEducation()
-  edu.completed = ['elementary', 'middle', 'high']
-  edu.degrees.push({ kind: 'highschool', name: 'High School Diploma', school: `${city} High School`, age: Math.min(age, 18) })
+  const levels = schoolSystem(countryId).levels
+  edu.completed = levels.map((l) => l.level)
+  const finalLevel = levels.find((l) => l.level === 'high') ?? levels[levels.length - 1]
+  edu.degrees.push({ kind: 'highschool', name: `${finalLevel?.name ?? 'High School'} Diploma`, school: localSchoolName(g, 'high', countryId), age: Math.min(age, 18) })
   const plan = OCCUPATION_DEGREES[occupation]
   if (plan && age >= 22) {
+    const university = localUniversityName(g, countryId)
     edu.completed.push('university')
-    edu.degrees.push({ kind: 'bachelor', name: `Bachelor's in ${plan.major}`, major: plan.major, school: `University of ${city}`, age: 22 })
+    edu.degrees.push({ kind: 'bachelor', name: `Bachelor's in ${plan.major}`, major: plan.major, school: university, age: 22 })
     if (plan.extra && age >= 25) {
       edu.completed.push('graduate')
-      edu.degrees.push({ kind: plan.extra[0], name: plan.extra[1], major: plan.major, school: `${city} Graduate School`, age: Math.min(age, 26) } satisfies Degree)
+      const school = `${university} ${GRAD_SCHOOL_SUFFIX[plan.extra[0]] ?? 'Graduate School'}`
+      edu.degrees.push({ kind: plan.extra[0], name: plan.extra[1], major: plan.major, school, age: Math.min(age, 26) } satisfies Degree)
     }
   }
   return edu
@@ -839,14 +870,14 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   let retired = false
   let pension = 0
   if (age < 18) {
-    const school = schoolForAge(age, old.city, heirP.stats.smarts)
+    const school = schoolForAge(n, age, old.countryId, heirP.stats.smarts)
     education = { ...emptyEducation(), completed: school.completed, current: school.current }
   } else {
-    education = adultEducation(age, old.city, npcOccupation)
+    education = adultEducation(n, age, old.countryId, npcOccupation)
     if (npcOccupation === 'University Student' && age <= 22) {
       education.current = {
         level: 'university',
-        school: `University of ${old.city}`,
+        school: localUniversityName(n, old.countryId),
         year: Math.max(1, Math.min(4, age - 17)),
         totalYears: 4,
         grades: clampStat(heirP.stats.smarts * 0.6 + 30),
@@ -1069,7 +1100,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   } else if (cashInherited > 0) {
     const split = shareCount > 1 ? ` The estate was split ${shareCount} ways.` : ''
     const auction = !adult && property.length > 0 ? ` Because you're a minor, the houses and cars were auctioned off.` : ''
-    const tax = estateTax > 0 ? ` The government took ${formatMoney(estateTax)} in estate taxes.` : ''
+    const tax = estateTax > 0 ? ` The government took ${formatMoney(estateTax)} in ${old.countryId === 'us' ? 'estate taxes' : 'inheritance tax'}.` : ''
     inheritanceLines.push(`You inherited ${formatMoney(cashInherited)}.${split}${auction}${tax}`)
     log(n, `I inherited ${formatMoney(cashInherited)} from my late ${oldNoun}.`, 'good')
     if (!adult && property.length > 0) log(n, `My ${oldNoun}'s houses and cars were auctioned off because I'm a minor.`)
@@ -1121,10 +1152,29 @@ const DECADE_LINES: Record<number, string[]> = {
   40: ["I'm forty. Over the hill, but the view is nice.", 'I turned 40 and found my first gray hair.'],
   50: ['I turned 50. Half a century!', "I'm 50 now. I've started enjoying gardening shows."],
   60: ['I turned 60. My knees can predict the weather.', "I'm in my sixties now."],
-  65: ["I'm officially a senior citizen. Bring on the discounts.", 'I turned 65. I now qualify for the early-bird special.'],
+  65: ["I'm officially a senior citizen. Bring on the discounts.", 'I turned 65. I now qualify for the early-bird special.', 'I turned 65. Strangers have started offering me their seat on the bus.'],
   70: ['I turned 70. I still feel 69.', "I'm seventy years young."],
   80: ['I turned 80 and blew out all the candles. Eventually.', "I'm 80. I've outlived most of my enemies."],
   90: ['I turned 90. The doctors are impressed.', "I'm ninety and still kicking. Gently."],
+}
+
+/** Countries where people measure height in inches. */
+const IMPERIAL = new Set(['us', 'gb', 'lr', 'mm'])
+
+/** Growth spurts in local units and seasons: no "summer" where there isn't one. */
+function localPuberty(g: GameState, text: string): string {
+  const c = g.character
+  let out = text
+  if (!IMPERIAL.has(c.countryId)) out = out.replace('four inches', 'ten centimeters').replace('three inches', 'eight centimeters')
+  const climate = localeOf(c.countryId).climate
+  if (climate === 'tropical' || climate === 'arid') out = out.replace('over the summer', 'over the school holidays')
+  return out
+}
+
+/** "your high school prom", "your Abiball", "your matric dance"... */
+function schoolDanceMemory(g: GameState): string {
+  const dance = localTerm(g, 'schoolDance')
+  return /^the /i.test(dance) ? `your ${dance.slice(4)}` : `your ${localTerm(g, 'high')} ${dance}`
 }
 
 const HOBBIES = ['skydiving', 'the electric guitar', 'pottery', 'marathon running', 'salsa dancing', 'rock climbing', 'surfing', 'karate']
@@ -1137,15 +1187,22 @@ function talentMilestones(g: GameState): void {
   if (c.age >= talentAge) {
     c.talent = latent.id
     latent.apply(g)
-    notice(g, 'Special Talent', latent.discovery, { emoji: latent.emoji, tone: 'good' })
+    notice(g, 'Special Talent', lifeLocal(g, latent.discovery), { emoji: latent.emoji, tone: 'good' })
     log(g, `I discovered I have a special talent for ${latent.id.toLowerCase()}.`, 'good')
     remember(g, `Discovered a special talent for ${latent.id.toLowerCase()}.`)
     return
   }
   const hints = typeof g.flags.talentHints === 'number' ? g.flags.talentHints : 0
-  if (c.age >= 2 && hints < 3 && chance(g, 0.4)) {
-    log(g, pick(g, latent.hints))
+  // Each hint is used once, and never two years running.
+  const used = strList(g.flags.talentHintsUsed)
+  const fresh = latent.hints.filter((h) => !used.includes(h))
+  const lastAge = typeof g.flags.talentHintAge === 'number' ? g.flags.talentHintAge : -9
+  if (c.age >= 2 && hints < 3 && fresh.length > 0 && c.age - lastAge >= 2 && chance(g, 0.4)) {
+    const hint = pick(g, fresh)
+    log(g, hint)
     g.flags.talentHints = hints + 1
+    g.flags.talentHintsUsed = [...used, hint]
+    g.flags.talentHintAge = c.age
   }
 }
 
@@ -1243,7 +1300,7 @@ function midlifeCrisis(g: GameState): void {
     'Mid-Life Crisis',
     pick(g, [
       "You've been staring at your reflection a lot lately and wondering where the time went. What will you do?",
-      'You just realized you are closer to retirement than to your high school prom. Panic is setting in. What will you do?',
+      `You just realized you are closer to retirement than to ${schoolDanceMemory(g)}. Panic is setting in. What will you do?`,
     ]),
     [
       { id: 'splurge', label: 'Blow money on a wild trip', emoji: '\u{1F334}' },
@@ -1270,8 +1327,9 @@ const MIDLIFE = defineScript('life.midlife', (g, choice) => {
     }
     spend(g, cost)
     addStat(g, 'happiness', randInt(g, 10, 16))
-    notice(g, 'Mid-Life Crisis', `You blew ${formatMoney(cost)} on a spontaneous trip and came back with a tan, a tattoo and some regrets.`, { emoji: '\u{1F334}', tone: 'good' })
-    log(g, `I spent ${formatMoney(cost)} on a wild mid-life crisis getaway.`)
+    const where = lifeLocal(g, '{getaway}')
+    notice(g, 'Mid-Life Crisis', `You blew ${formatMoney(cost)} on a spontaneous trip to ${where} and came back with a tan, a tattoo and some regrets.`, { emoji: '\u{1F334}', tone: 'good' })
+    log(g, `I spent ${formatMoney(cost)} on a wild mid-life crisis getaway to ${where}.`)
     return
   }
   if (choice === 'makeover') {
@@ -1347,7 +1405,7 @@ export function yearlyMilestones(g: GameState): void {
       const looks = randInt(g, -6, 8)
       addStat(g, 'looks', looks)
       addStat(g, 'happiness', -randInt(g, 0, 4))
-      let text = pick(g, c.gender === 'male' ? PUBERTY_MALE : PUBERTY_FEMALE)
+      let text = localPuberty(g, pick(g, c.gender === 'male' ? PUBERTY_MALE : PUBERTY_FEMALE))
       if (chance(g, 0.35) && contractCondition(g, 'Acne', { quiet: true, diagnosed: true })) text += ' To top it off, your face has broken out in acne.'
       notice(g, 'Puberty', text, { emoji: '\u{1F331}' })
       log(g, 'I hit puberty.')
@@ -1359,7 +1417,7 @@ export function yearlyMilestones(g: GameState): void {
   if (c.age === 18 && !g.flags.adultNotice) {
     g.flags.adultNotice = true
     const country = getCountry(c.countryId)
-    const drink = country.drinkingAge <= 18 ? ' You can legally drink now, too.' : ''
+    const drink = isIndustryLegal(c.countryId, 'bar') && country.drinkingAge <= 18 ? ' You can legally drink now, too.' : ''
     const text = inPrison(g)
       ? "Happy 18th birthday! You're officially an adult. Spending it behind bars isn't ideal, but the cake in the cafeteria was... edible."
       : `Happy 18th birthday! You're officially an adult. You can now get a full-time job, move out, sign contracts and make your own questionable decisions.${drink}`
@@ -1367,14 +1425,16 @@ export function yearlyMilestones(g: GameState): void {
     log(g, 'I became an adult.', 'event')
   }
   const drinkingAge = getCountry(c.countryId).drinkingAge
-  if (c.age === drinkingAge && drinkingAge !== 18 && !inPrison(g)) log(g, "I'm finally old enough to drink legally.")
+  if (c.age === drinkingAge && drinkingAge !== 18 && !inPrison(g) && isIndustryLegal(c.countryId, 'bar')) log(g, "I'm finally old enough to drink legally.")
 
-  const decade = DECADE_LINES[c.age]
-  if (decade) log(g, pick(g, decade))
+  // The early-bird special is an American diner tradition.
+  const decade = DECADE_LINES[c.age]?.filter((l) => c.countryId === 'us' || !l.includes('early-bird'))
+  if (decade && decade.length > 0) log(g, pick(g, decade))
 
   if (c.age === 100) {
     addStat(g, 'happiness', randInt(g, 8, 15))
-    notice(g, 'Centenarian', "Happy 100th birthday! You've lived a full century. The mayor sent you a card, and the local news wants an interview about your secret to a long life.", { emoji: '\u{1F389}', tone: 'good' })
+    const card = getCountry(c.countryId).monarchy ? 'A card of congratulations arrived from the palace' : 'The mayor sent you a card'
+    notice(g, 'Centenarian', `Happy 100th birthday! You've lived a full century. ${card}, and the local news wants an interview about your secret to a long life.`, { emoji: '\u{1F389}', tone: 'good' })
     log(g, 'I turned 100 years old!', 'good')
     remember(g, 'Turned 100.')
   }

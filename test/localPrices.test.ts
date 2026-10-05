@@ -31,6 +31,7 @@ import {
   buyVehicle,
   carDealersMenu,
   carListings,
+  carPriceMult,
   collectibleListings,
   electronicsListings,
   findAsset,
@@ -133,6 +134,18 @@ describe('local goods prices', () => {
     expect(goodsMult(adult('in'))).toBeCloseTo(0.55, 5)
   })
 
+  it('keeps premium cars close to the world price where economy cars get cheaper local trims', () => {
+    profile('in', { priceMult: { car: 1.5 } })
+    const g = adult('in')
+    expect(carPriceMult(g, 'economy')).toBeCloseTo(localGoodsMult(g, 'car'), 5)
+    expect(carPriceMult(g, 'supercar')).toBeCloseTo(1.5 * (0.9 + 0.1 * 0.25), 5)
+    expect(carPriceMult(g, 'luxury')).toBeGreaterThan(1.2)
+    expect(carPriceMult(g, 'mystery-van')).toBeCloseTo(localGoodsMult(g, 'car'), 5)
+    // Rich countries: every type follows priceMult exactly.
+    profile('us', { priceMult: { car: 2 } })
+    for (const t of ['economy', 'suv', 'luxury', 'supercar', 'classic']) expect(carPriceMult(adult('us'), t)).toBeCloseTo(2, 5)
+  })
+
   it('clamps absurd multipliers and survives missing or broken data', () => {
     profile('us', { priceMult: { car: 50, electronics: 0, luxury: Number.NaN } })
     const g = adult('us')
@@ -229,7 +242,11 @@ describe('consumption tax', () => {
     profile('fr', { salesTax: 0.2, salesTaxName: 'TVA' })
     const g = adult('fr')
     const all = texts(g, shoppingMenu.children(g)).join('\n')
-    expect(all).toContain('Prices include 20% TVA.')
+    expect(all).toContain('Prices include 20% TVA (VAT).')
+    profile('gb', { salesTax: 0.2, salesTaxName: 'VAT' })
+    expect(shoppingMenu.header?.(adult('gb'))).toContain('Prices include 20% VAT.')
+    profile('jp', { salesTax: 0.1, salesTaxName: 'Consumption tax' })
+    expect(shoppingMenu.header?.(adult('jp'))).toContain('Prices include 10% consumption tax.')
   })
 })
 
@@ -338,6 +355,17 @@ describe('housing and living costs', () => {
     const g = adult('ch')
     g.character.residence = { status: 'renting', rent: 20_000 }
     expect(livingCost(g)).toBe(Math.round(3_000 * costOfLiving('ch')))
+  })
+
+  it('never lets dollar-priced groceries eat more than 1.8× the US share of a local wage', () => {
+    // Venezuela-style: poor country, supermarket prices in dollars.
+    profile('ve', { priceMult: { food: 1.4 } })
+    expect(costOfLiving('ve')).toBeCloseTo(1.8 * 0.25, 5)
+    for (const c of COUNTRIES) {
+      const ratio = costOfLiving(c.id) / Math.max(0.25, c.wealth)
+      expect(ratio, c.id).toBeLessThanOrEqual(1.8 + 1e-9)
+      expect(ratio, c.id).toBeGreaterThan(0.4)
+    }
   })
 })
 

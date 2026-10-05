@@ -128,7 +128,7 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   bar: {
     id: 'bar', label: 'Bar', emoji: '\u{1F378}', unit: 'drinks', unitOne: 'drink', site: 'bar', sitePlural: 'bars',
     blurb: 'Pour drinks, listen to problems, mop the floor at 3 AM.',
-    price: 9, unitCost: 2.4, localShare: 0.3, costCat: 'alcohol', priceCat: 'alcohol', tradable: 0, demand: 70_000, elasticity: 1.3, incomeSens: 0.5,
+    price: 9, unitCost: 2.4, localShare: 0.3, costCat: 'alcohol', tradable: 0, demand: 70_000, elasticity: 1.3, incomeSens: 0.5,
     capital: 350_000, capitalLocal: 0.6, staff: 7, wage: 29_000, staffScale: 0.85, rent: 72_000, maint: 0.07, capMult: 1.6,
     multiple: 4, growth: 0.35, perMillion: 8, taxShare: 1, perishable: 0.15, food: true, needs: 'drinking', marketingShare: 0.03,
     roles: [r('Head Bartender', 'quality', 40_000), r('Mixologist', 'quality', 44_000), r('Bar Manager', 'ops', 50_000), r('Events Promoter', 'sales', 40_000), r('Bookkeeper', 'finance', 42_000)],
@@ -148,7 +148,7 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   grocery: {
     id: 'grocery', label: 'Grocery Store', emoji: '\u{1F6D2}', unit: 'shopping baskets', unitOne: 'shopping basket', site: 'store', sitePlural: 'stores',
     blurb: 'Everybody eats. Margins thinner than the plastic bags.',
-    price: 48, unitCost: 34.5, localShare: 0.45, costCat: 'food', priceCat: 'food', tradable: 0.2, demand: 68_000, elasticity: 2.2, incomeSens: 0.2,
+    price: 49, unitCost: 34.5, localShare: 0.15, costCat: 'food', tradable: 0, demand: 68_000, elasticity: 2.2, incomeSens: 0.2,
     capital: 900_000, capitalLocal: 0.55, staff: 16, wage: 29_000, staffScale: 0.8, rent: 150_000, maint: 0.06, capMult: 1.6,
     multiple: 6, growth: 0.3, perMillion: 10, taxShare: 0.4, perishable: 0.6, food: true, marketingShare: 0.015,
     roles: [r('Store Manager', 'ops', 60_000), r('Produce Manager', 'quality', 42_000), r('Butcher', 'quality', 45_000), r('Merchandiser', 'sales', 40_000), r('Bookkeeper', 'finance', 44_000)],
@@ -248,7 +248,7 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   ecommerce: {
     id: 'ecommerce', label: 'E-Commerce Store', emoji: '\u{1F4E6}', unit: 'orders', unitOne: 'order', site: 'warehouse', sitePlural: 'warehouses',
     blurb: 'Sell online, ship fast, pray the returns are rare.',
-    price: 48, unitCost: 30, localShare: 0.3, tradable: 0.5, demand: 52_000, elasticity: 1.6, incomeSens: 0.7,
+    price: 48, unitCost: 30, localShare: 0.3, tradable: 0.3, demand: 52_000, elasticity: 1.6, incomeSens: 0.7,
     capital: 120_000, capitalLocal: 0.5, staff: 8, wage: 44_000, staffScale: 0.6, rent: 96_000, maint: 0.12, capMult: 5,
     multiple: 9, growth: 0.9, perMillion: 2, taxShare: 1, perishable: 0.2, marketingShare: 0.08,
     roles: [r('Head of Merchandising', 'quality', 75_000), r('Performance Marketer', 'sales', 85_000), r('Warehouse Manager', 'ops', 58_000), r('Customer Service Lead', 'quality', 48_000), r('Controller', 'finance', 75_000)],
@@ -258,7 +258,7 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   marketing: {
     id: 'marketing', label: 'Marketing Agency', emoji: '\u{1F4E3}', unit: 'client accounts', unitOne: 'client account', site: 'office', sitePlural: 'offices',
     blurb: 'Make other people’s products go viral. Bill hourly.',
-    price: 62_000, unitCost: 9_000, localShare: 0.6, tradable: 0.3, demand: 24, elasticity: 1.1, incomeSens: 0.6,
+    price: 62_000, unitCost: 9_000, localShare: 0.6, tradable: 0.15, demand: 24, elasticity: 1.1, incomeSens: 0.6,
     capital: 100_000, capitalLocal: 0.7, staff: 14, wage: 66_000, staffScale: 0.8, rent: 96_000, maint: 0.12, capMult: 2,
     multiple: 6, growth: 0.6, perMillion: 3, taxShare: 0, perishable: 1, marketingShare: 0.02,
     roles: [r('Creative Director', 'quality', 120_000), r('Account Director', 'sales', 110_000), r('Head of Strategy', 'quality', 115_000), r('Operations Manager', 'ops', 85_000), r('Finance Director', 'finance', 105_000)],
@@ -288,7 +288,7 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   logistics: {
     id: 'logistics', label: 'Logistics Company', emoji: '\u{1F69B}', unit: 'shipments', unitOne: 'shipment', site: 'depot', sitePlural: 'depots',
     blurb: 'Move other people’s stuff from A to B, mostly on time.',
-    price: 360, unitCost: 175, localShare: 0.3, costCat: 'fuel', tradable: 0.3, demand: 6_200, elasticity: 1.5, incomeSens: 0.4,
+    price: 360, unitCost: 175, localShare: 0.3, costCat: 'fuel', tradable: 0.1, demand: 6_200, elasticity: 1.5, incomeSens: 0.4,
     capital: 1_100_000, capitalLocal: 0.3, staff: 13, wage: 52_000, staffScale: 0.85, rent: 90_000, maint: 0.1, capMult: 1.7,
     multiple: 7, growth: 0.5, perMillion: 3, taxShare: 0, perishable: 1, needs: 'driver', marketingShare: 0.01,
     roles: [r('Fleet Manager', 'ops', 72_000), r('Dispatch Lead', 'ops', 58_000), r('Safety Manager', 'quality', 65_000), r('Key Account Manager', 'sales', 75_000), r('Controller', 'finance', 78_000)],

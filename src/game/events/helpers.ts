@@ -21,6 +21,7 @@ import {
 import { killCharacter } from '../death'
 import { applyEffects } from '../effects'
 import { notePerson } from '../people'
+import { fillLocal, locale, localTerm, type LocaleProfile } from '../data/locales'
 import { pick, randInt, rand } from '../rng'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import type { ChoiceOption, GameEffects, GameState, Gender, Json, Person, Tone } from '../types'
@@ -419,4 +420,150 @@ export function lc(s: string): string {
 /** Uppercase the first letter. */
 export function uc(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
+}
+
+// ---------------------------------------------------------------------------
+// Local life: the library was written with an American childhood in mind. These helpers let
+// an event keep its US version word for word while players elsewhere get their own country
+// (data/locales.ts): their holidays, food, sports, hangouts, exam names and school customs.
+
+/** True when the player lives in the United States (the library's home turf). */
+export function isUS(g: GameState): boolean {
+  return g.character.countryId === 'us'
+}
+
+/** The American version for US players, the local one everywhere else. */
+export function usOr<T>(g: GameState, us: T, other: T): T {
+  return isUS(g) ? us : other
+}
+
+/** Fill locale tokens ({holiday} {food} {sport} {landmark} {transport} {city}...) for the player's country. */
+export function loc(g: GameState, template: string): string {
+  return fillLocal(g, template)
+}
+
+/** A local term ('the SATs' / 'the Abitur', 'prom' / 'the leavers' ball', '911' / '112'...). */
+export function term(g: GameState, key: keyof LocaleProfile['terms']): string {
+  return localTerm(g, key)
+}
+
+/** "the leavers' ball" → "Leavers' ball", "prom" → "Prom" (for popup titles and line starts). */
+export function titleOf(phrase: string): string {
+  return uc(phrase.replace(/^the\s+/i, ''))
+}
+
+/** Countries where school is taught mostly in English (spelling bees, the ABC song...). */
+const ENGLISH_SCHOOLING = new Set(['us', 'ca', 'gb', 'ie', 'au', 'nz', 'jm', 'bs', 'bz', 'gy', 'ng', 'ke', 'ug', 'za', 'zw', 'ph', 'in', 'sg', 'pg', 'ws', 'pk'])
+
+export function englishSchooling(g: GameState): boolean {
+  return ENGLISH_SCHOOLING.has(g.character.countryId)
+}
+
+/** Countries with no coastline (no beach days by default). */
+const LANDLOCKED = new Set(['ad', 'at', 'ch', 'cz', 'hu', 'sk', 'rs', 'et', 'ug', 'zw', 'af', 'kz', 'mn', 'np', 'bo', 'py'])
+
+export function coastal(g: GameState): boolean {
+  return !LANDLOCKED.has(g.character.countryId)
+}
+
+/** The faith most people in the player's country follow ('Christianity', 'Islam', 'None'...). */
+export function majorityFaith(g: GameState): string {
+  const counts: Record<string, number> = {}
+  for (const r of country(g).religions ?? []) counts[r] = (counts[r] ?? 0) + 1
+  let best = 'None'
+  let n = 0
+  for (const [r, k] of Object.entries(counts)) {
+    if (k > n) {
+      best = r
+      n = k
+    }
+  }
+  return best
+}
+
+export function muslimMajority(g: GameState): boolean {
+  return majorityFaith(g) === 'Islam'
+}
+
+/**
+ * Muslim-majority countries where coed school dances, dates to the dance and "there will be
+ * alcohol" teen parties aren't a default part of growing up. (Indonesia, Malaysia, Turkey,
+ * Kazakhstan, Lebanon and Bangladesh have their prom nights, balls and Rag Days.)
+ */
+const DANCE_FRIENDLY_MUSLIM = new Set(['id', 'my', 'tr', 'kz', 'lb', 'bd', 'al'])
+
+export function conservativeSchooling(g: GameState): boolean {
+  return muslimMajority(g) && !DANCE_FRIENDLY_MUSLIM.has(g.character.countryId)
+}
+
+/** Grown-up places (bars, pubs, clubs, hookah lounges...) a kid shouldn't be sent to by default. */
+const GROWN_UP_VENUE = /\b(?:bars?|pubs?|cantina|boteco|pagode|rumshop|heuriger|beer|kneipe|bodega|kafana|shebeen|izakaya|hookah|shisha|lounge|tavern|casino|sauna|baths|hammam|pool hall|karaoke|videoke|dohori|clubs?|kizomba|joint|wine|cocktails?|brewery|après-ski)\b/i
+const KID_FRIENDLY_VENUE = /snack ?bar|milk bar|juice bar|youth club|karaoke box/i
+
+export function kidSafeVenue(place: string): boolean {
+  return KID_FRIENDLY_VENUE.test(place) || !GROWN_UP_VENUE.test(place)
+}
+
+/** A local hangout ('the night market', 'the plaza', 'the mall'); no bars before drinking age. */
+export function hangout(g: GameState): string {
+  const all = locale(g).hangouts
+  const ok = canDrink(g) ? all : all.filter(kidSafeVenue)
+  return ok.length ? pick(g, ok) : 'the park'
+}
+
+/** A local spot for a cheap date ('the boardwalk', 'a bubble tea shop'); no bars before drinking age. */
+export function dateSpot(g: GameState): string {
+  const all = locale(g).dateSpots
+  const ok = canDrink(g) ? all : all.filter(kidSafeVenue)
+  return ok.length ? pick(g, ok) : 'the cinema'
+}
+
+const ALCOHOL = /beer|wine|tequila|mezcal|\brum\b|vodka|soju|sake|whisk|\bgin\b|ouzo|rak[iı]|cacha[cç]a|pisco|chicha|arak|baijiu|makgeolli|brandy|cider|schnapps|aquavit|akvavit|grappa|p[aá]linka|rakija|\btej\b|lager|stout|michelada|caipirinha|aperol|spritz|cerveza|cava|prosecco|champagne|toddy|tuak|arrack|feni|chang|tuba|lambanog|absinthe|jenever|pastis|sangria|liqueur|bourbon|moonshine|kvass|horilka|sambuca|limoncello|retsina|tsipouro|slivovitz|vermouth|punch/i
+
+/** A drink people bond over here; tea, coffee or juice before drinking age. */
+export function localDrink(g: GameState): string {
+  const all = locale(g).drinks
+  const ok = canDrink(g) && !muslimMajority(g) ? all : all.filter((d) => !ALCOHOL.test(d))
+  return ok.length ? pick(g, ok) : pick(g, ['tea', 'juice'])
+}
+
+/** A ball game kids play at recess or in the street (soccer, cricket, basketball...). */
+export function playSport(g: GameState): string {
+  const ball = /soccer|football|cricket|basketball|volleyball|futsal|handball|baseball|softball|badminton|kabaddi|sepak takraw|netball|rugby|hurling|floorball|pesäpallo|field hockey|ecuavolley|table tennis|kho kho/i
+  const ok = locale(g).sports.filter((s) => ball.test(s) && !/ice|water|beach|wheelchair/i.test(s))
+  return ok.length ? ok[0] : 'soccer'
+}
+
+/** What PE is called: 'gym class' in North America, 'PE' elsewhere. */
+export function peClass(g: GameState): string {
+  return g.character.countryId === 'us' || g.character.countryId === 'ca' ? 'gym class' : 'PE'
+}
+
+// ---------------------------------------------------------------------------
+// Per-person cooldowns: the game shouldn't keep doing the same thing to the same person.
+
+function stampKey(key: string): string {
+  return `ev.${key}`
+}
+
+/** Age (this life) when the person last starred in `key`, if ever. */
+export function lastWith(g: GameState, p: Person | undefined, key: string): number | undefined {
+  const raw = p?.data?.[stampKey(key)]
+  if (!Array.isArray(raw) || raw.length !== 2) return undefined
+  const [gen, age] = raw
+  if (gen !== g.generation || typeof age !== 'number' || age > g.character.age) return undefined
+  return age
+}
+
+/** True when the person hasn't starred in `key` within the last `years` years. */
+export function freshFor(g: GameState, p: Person | undefined, key: string, years: number): boolean {
+  const last = lastWith(g, p, key)
+  return last === undefined || g.character.age - last >= years
+}
+
+/** Remember that the person starred in `key` this year. */
+export function stamp(g: GameState, p: Person | undefined, key: string): void {
+  if (!p) return
+  if (!p.data || typeof p.data !== 'object') p.data = {}
+  p.data[stampKey(key)] = [g.generation, g.character.age]
 }

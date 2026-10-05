@@ -2,7 +2,6 @@
 // g.flags, local price levels, celebrity encounters and the yearly popup budget.
 import { localGoodsMult, nicePrice, salesTaxLabel } from '../assets'
 import {
-  addRelationship,
   attractedTo,
   count,
   currentPartner,
@@ -12,10 +11,10 @@ import {
   netWorth,
   notice,
   pronouns,
-  remember,
   scriptChoice,
 } from '../core'
 import { localMarket } from '../data/markets'
+import { startDating } from '../love'
 import { createPerson, notePerson } from '../people'
 import { bell, chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
@@ -309,15 +308,11 @@ const ROMANCE = defineScript('luxury.celebRomance', (g, choice, data) => {
     countryId: spec.countryId,
     occupation: spec.occupation,
     money: randInt(g, 5, 400) * 1_000_000,
-    relationship: randInt(g, 60, 80),
+    relationship: randInt(g, 55, 70),
     stats: { looks: bell(g, 65, 100) },
-    data: { celebrity: true, metAt, datingSince: c.age },
+    data: { celebrity: true },
   })
-  addRelationship(p, 0)
-  notePerson(p, `Started dating the player at age ${c.age} after meeting at ${metAt}.`)
-  count(g, 'partners')
-  log(g, `I started dating the ${spec.occupation.toLowerCase()} ${name}.`, 'good')
-  remember(g, `Started dating the celebrity ${name} (${spec.occupation}) after meeting at ${metAt}.`)
+  startDating(g, p, metAt)
   notice(g, 'Power Couple', `You asked ${name} out and ${he} said yes! The tabloids already have a couple name for you two. Paparazzi followed ${him} home and now they follow you too.`, { emoji: '\u{1F496}', tone: 'good' })
 })
 

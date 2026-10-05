@@ -2,6 +2,11 @@
 // middle -> high school), dropping out / expulsion / GED, community college,
 // university (majors, tuition, Greek life), graduate & professional schools, plus the
 // school section of the Occupation menu (study, skip, clubs, cliques, faculty, prom).
+//
+// Everything the player reads is local (data/locales.ts): an Indonesian kid starts at
+// "SD Negeri 3 Menteng", sits the UTBK and goes to prom night; an American one starts at
+// "Lincoln Elementary School", takes the SATs and goes to prom. Internal level ids
+// ('elementary' | 'middle' | 'high' ...) never change.
 import {
   addHidden,
   addRelationship,
@@ -25,6 +30,16 @@ import {
   yearActionsUsed,
 } from './core'
 import { GRAD_ELIGIBILITY, MAJOR_EMOJI, MAJORS, type EduReq, type GradKey } from './data/jobs'
+import {
+  fillLocal,
+  hasLocaleData,
+  hasSnow,
+  locale,
+  localSchoolName,
+  localTerm,
+  localUniversityName,
+  type SchoolLevel as LocaleLevel,
+} from './data/locales'
 import { createPerson, notePerson } from './people'
 import { chance, pick, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
@@ -146,6 +161,124 @@ const POST_SECONDARY: SchoolLevel[] = ['community', 'university', 'graduate']
 
 function isK12(level: SchoolLevel): boolean {
   return K12.includes(level)
+}
+
+// ---------------------------------------------------------------------------
+// Local words: what school is called where the player lives
+
+function isUS(g: GameState): boolean {
+  return g.character.countryId === 'us'
+}
+
+/** "senior high" → "Senior High", "collège" → "Collège" (leaves "MAVO" and "Gymnasium" alone). */
+function titleCase(s: string): string {
+  return s.replace(/(^|[\s-])(\p{Ll})/gu, (_m, pre: string, ch: string) => pre + ch.toUpperCase())
+}
+
+function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
+
+/** Which locale stage a K-12 level is in this country's system. */
+function localeLevel(sys: SchoolSystem, level: K12Level): LocaleLevel {
+  if (level === 'elementary') return 'primary'
+  if (level === 'middle') return 'middle'
+  // One long secondary stage (UK, Ireland, Australia): it's the locale's first secondary school,
+  // not its sixth form / senior cycle.
+  const high = levelSpec(sys, 'high')
+  if (!levelSpec(sys, 'middle') && high && high.years >= 6) return 'middle'
+  return 'high'
+}
+
+/** What a stage is called here, for sentences: 'high school', 'senior high', 'sixth form', 'college'... */
+export function stageTerm(g: GameState, level: SchoolLevel): string {
+  const cid = g.character.countryId
+  switch (level) {
+    case 'preschool':
+      return 'preschool'
+    case 'university':
+      return localTerm(g, 'university')
+    case 'graduate':
+      return 'graduate school'
+    case 'community':
+      return college(g).term
+    default: {
+      const sys = systemFor(g)
+      if (!hasLocaleData(cid) && SYSTEMS[cid]) return (levelSpec(sys, level)?.name ?? 'school').toLowerCase()
+      return localTerm(g, localeLevel(sys, level as K12Level)) || 'school'
+    }
+  }
+}
+
+/** The same, for titles and labels: 'High School', 'Senior High', 'Sixth Form'. */
+export function stageTitle(g: GameState, level: SchoolLevel): string {
+  return titleCase(stageTerm(g, level))
+}
+
+/** The school-leaving / entrance exam: 'the SATs', 'the gaokao', 'A-levels'. */
+function finalExam(g: GameState): string {
+  return localTerm(g, 'finalExam') || 'the final exams'
+}
+
+/** Where 'valedictorian' and 'summa cum laude' are things people say. */
+const VALEDICTORIAN_COUNTRIES = new Set(['us', 'ca', 'ph'])
+/** Where parents joke about still paying off their own student loans. */
+const STUDENT_LOAN_COUNTRIES = new Set(['us', 'ca', 'gb', 'au', 'nz'])
+/** Where cute English preschool names ("Little Sprouts Preschool") are the norm. */
+const ENGLISH_PRESCHOOLS = new Set(['us', 'ca', 'gb', 'ie', 'au', 'nz', 'jm', 'bs', 'bz', 'gy', 'tt', 'sg', 'ph', 'ng', 'gh', 'ke', 'za', 'ug', 'zw'])
+
+/** Community college in the US, vocational college / polytechnic everywhere else. */
+function college(g: GameState): { label: string; term: string; degree: string; degreeText: string; name: () => string } {
+  if (isUS(g)) {
+    return {
+      label: 'Community College',
+      term: 'community college',
+      degree: "Associate's Degree",
+      degreeText: "an associate's degree",
+      name: () => `${g.character.city} Community College`,
+    }
+  }
+  return {
+    label: 'Vocational College',
+    term: 'vocational college',
+    degree: 'Vocational Diploma',
+    degreeText: 'a vocational diploma',
+    name: () => fillLocal(g, pick(g, ['{city} Vocational College', '{city} Polytechnic', '{place} Technical College'])),
+  }
+}
+
+/** The GED in the US and Canada; a school-leaving equivalency exam elsewhere. */
+function equivalency(g: GameState): { title: string; exam: string; short: string; degree: string; center: string; menu: string } {
+  if (g.character.countryId === 'us' || g.character.countryId === 'ca') {
+    return { title: 'GED', exam: 'the GED exam', short: 'GED', degree: 'GED', center: 'GED Testing Center', menu: 'Get Your GED' }
+  }
+  return {
+    title: 'Equivalency Exam',
+    exam: 'the school equivalency exam',
+    short: 'equivalency certificate',
+    degree: 'School Equivalency Certificate',
+    center: 'National Examinations Board',
+    menu: 'Take the Equivalency Exam',
+  }
+}
+
+/** The end-of-school dance (or party, ball, gala...) and whether you take a date to it. */
+function schoolDance(g: GameState): { the: string; title: string; prom: boolean; datable: boolean } {
+  const term = localTerm(g, 'schoolDance') || 'the graduation party'
+  const prom = /\bprom\b/i.test(term)
+  // Ceremonies, festivals, trips and prize-givings aren't something you ask a date to.
+  const datable = prom || !/ceremony|festival|trip|prize|program|graduation$|rag day/i.test(term)
+  return { the: term, title: titleCase(term.replace(/^the /i, '')), prom, datable }
+}
+
+/** Pick a line, avoiding the last `memory` picks remembered under g.flags[key] (so lines don't repeat). */
+function pickFresh(g: GameState, key: string, list: string[], memory = 2): string {
+  const raw = g.flags[key]
+  const recent = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []
+  const fresh = list.filter((x) => !recent.includes(x))
+  const choice = pick(g, fresh.length ? fresh : list)
+  g.flags[key] = [...recent.filter((x) => x !== choice), choice].slice(-memory)
+  return choice
 }
 
 // ---------------------------------------------------------------------------
@@ -278,9 +411,10 @@ const CLASS_YEARS = ['Freshman', 'Sophomore', 'Junior', 'Senior']
 export function gradeLevelLabel(g: GameState, cur: Enrollment = current(g)!): string {
   if (!cur) return ''
   if (cur.level === 'preschool') return 'Preschool'
-  if (cur.level === 'university') return cur.totalYears === 4 && cur.year <= 4 ? CLASS_YEARS[cur.year - 1] : `Year ${cur.year}`
-  if (cur.level === 'community' || cur.level === 'graduate') return `Year ${cur.year} of ${cur.totalYears}`
   const sys = systemFor(g)
+  // Freshman/Sophomore/Junior/Senior is American; everyone else is just in Year 2.
+  if (cur.level === 'university') return sys.gradeStyle === 'us' && cur.totalYears === 4 && cur.year <= 4 ? CLASS_YEARS[cur.year - 1] : `Year ${cur.year}`
+  if (cur.level === 'community' || cur.level === 'graduate') return `Year ${cur.year} of ${cur.totalYears}`
   let before = 0
   for (const spec of sys.levels) {
     if (spec.level === cur.level) break
@@ -360,16 +494,19 @@ export function meetsEducation(g: GameState, req: EduReq, majors?: string[]): bo
   }
 }
 
-/** Human description of an education requirement, e.g. "University (Accounting or Finance)". */
-export function educationRequirementLabel(req: EduReq, majors?: string[]): string {
+/**
+ * Human description of an education requirement, e.g. "University (Accounting or Finance)".
+ * Pass `g` to use the player's local names ("Senior High / equivalency certificate", "Vocational College").
+ */
+export function educationRequirementLabel(req: EduReq, majors?: string[], g?: GameState): string {
   const m = majors && majors.length ? ` (${majors.length > 3 ? `${majors.slice(0, 3).join(', ')}...` : majors.join(' or ')})` : ''
   switch (req) {
     case 'none':
       return 'None'
     case 'highschool':
-      return 'High School / GED'
+      return g ? `${stageTitle(g, 'high')} / ${equivalency(g).short}` : 'High School / GED'
     case 'community':
-      return 'Community College'
+      return g ? college(g).label : 'Community College'
     case 'bachelor':
       return `University${m}`
     case 'graduate':
@@ -386,10 +523,9 @@ export function highestEducationLabel(g: GameState): string {
     if (!best || DEGREE_RANK[d.kind] >= DEGREE_RANK[best.kind]) best = d
   }
   if (best) return best.name
-  const sys = systemFor(g)
-  if (ed.completed.includes('middle')) return levelSpec(sys, 'middle')?.name ?? 'Middle School'
-  if (ed.completed.includes('elementary')) return levelSpec(sys, 'elementary')?.name ?? 'Elementary School'
-  if (ed.current && ed.current.level !== 'preschool') return `Some ${levelSpec(sys, ed.current.level)?.name ?? 'School'}`
+  if (ed.completed.includes('middle')) return stageTitle(g, 'middle')
+  if (ed.completed.includes('elementary')) return stageTitle(g, 'elementary')
+  if (ed.current && ed.current.level !== 'preschool') return `Some ${stageTitle(g, ed.current.level)}`
   return 'None'
 }
 
@@ -405,29 +541,26 @@ function addDegree(g: GameState, kind: DegreeKind, name: string, school: string,
 // ---------------------------------------------------------------------------
 // School names
 
-const PLACE_WORDS = ['Riverside', 'Oak Hill', 'Maple Grove', 'Pine Valley', 'Lakeview', 'Hillcrest', 'Westwood', 'Sunnydale', 'Cedar Ridge', 'Fairview', 'Brookside', 'Willow Creek', 'Eastside', 'Northgate', 'Silver Lake', 'Meadowbrook']
+// New schools are named the local way (data/locales.ts): "Lincoln Elementary School" in the US,
+// "SD Negeri 3 Menteng" in Indonesia, "Escuela Primaria Benito Juárez" in Mexico. Names already
+// stored in a save (Enrollment.school, Degree.school) are kept as they are.
 const PRESCHOOLS = ['Little Sprouts Preschool', 'Tiny Tots Preschool', 'Sunshine Preschool', 'Rainbow Kids Preschool', 'Busy Bees Preschool', 'Happy Hearts Preschool', 'Giggles & Wiggles Preschool', 'Little Acorns Nursery']
-const UNIVERSITY_FORMATS = ['University of {city}', '{city} State University', '{last} University', '{last} College', '{place} University', '{city} Institute of Technology', 'University of {place}', '{last} & {last2} University']
+const LOCAL_PRESCHOOLS = ['{place} Kindergarten', '{place} Preschool', '{city} Kindergarten No. {n}', 'Little Stars Kindergarten {place}']
 
-function placeName(g: GameState): string {
-  return chance(g, 0.5) ? randomLastName(g, g.character.countryId) : pick(g, PLACE_WORDS)
+function preschoolName(g: GameState): string {
+  if (ENGLISH_PRESCHOOLS.has(g.character.countryId) && (isUS(g) || chance(g, 0.6))) return pick(g, PRESCHOOLS)
+  return fillLocal(g, pick(g, LOCAL_PRESCHOOLS))
 }
 
-function k12SchoolName(g: GameState, spec: LevelSpec): string {
-  const city = g.character.city
-  const roll = randInt(g, 1, 10)
-  if (roll <= 2 && spec.level === 'high') return `${city} ${spec.name}`
-  if (roll === 3 && spec.level === 'high' && g.character.countryId === 'gb') return `${placeName(g)} Academy`
-  return `${placeName(g)} ${spec.name}`
+function k12SchoolName(g: GameState, level: K12Level, avoid?: string): string {
+  const stage = localeLevel(systemFor(g), level)
+  let name = localSchoolName(g, stage)
+  for (let i = 0; i < 6 && name === avoid; i++) name = localSchoolName(g, stage)
+  return name
 }
 
 function universityName(g: GameState): string {
-  const fmt = pick(g, UNIVERSITY_FORMATS)
-  return fmt
-    .replace('{city}', g.character.city)
-    .replace('{place}', pick(g, PLACE_WORDS))
-    .replace('{last2}', randomLastName(g, g.character.countryId))
-    .replace('{last}', randomLastName(g, g.character.countryId))
+  return localUniversityName(g)
 }
 
 function lastUniversity(g: GameState): string | null {
@@ -516,6 +649,8 @@ interface EnrollOpts {
   funding?: Funding
   loanId?: string
   quiet?: boolean
+  /** Don't reuse this school name (expelled kids get a different school). */
+  avoidName?: string
 }
 
 function enrollIn(g: GameState, level: SchoolLevel, opts: EnrollOpts = {}): Enrollment {
@@ -524,9 +659,9 @@ function enrollIn(g: GameState, level: SchoolLevel, opts: EnrollOpts = {}): Enro
   let school = opts.school
   let totalYears = opts.totalYears ?? 1
   if (!school) {
-    if (level === 'preschool') school = pick(g, PRESCHOOLS)
-    else if (isK12(level)) school = k12SchoolName(g, levelSpec(sys, level) ?? L(level as K12Level, 3, 'School'))
-    else if (level === 'community') school = `${c.city} Community College`
+    if (level === 'preschool') school = preschoolName(g)
+    else if (isK12(level)) school = k12SchoolName(g, level as K12Level, opts.avoidName)
+    else if (level === 'community') school = college(g).name()
     else if (level === 'university') school = universityName(g)
     else {
       const base = lastUniversity(g) ?? universityName(g)
@@ -608,6 +743,10 @@ function quitJobForSchool(g: GameState): void {
 // ---------------------------------------------------------------------------
 // Warnings, the principal's office and expulsion
 
+function officeTitle(g: GameState, cur: Enrollment): string {
+  return isK12(cur.level) ? `${systemFor(g).principal}'s Office` : "Dean's Office"
+}
+
 function principalTitle(g: GameState, cur: Enrollment): string {
   if (!isK12(cur.level)) return 'the dean'
   return `${systemFor(g).principal} ${str(cur.data.principal, 'Smith').replace(/^(Mr\.|Ms\.) /, '')}`
@@ -625,7 +764,7 @@ export function schoolWarning(g: GameState, reason: string): void {
     return
   }
   const last = warnings === 2 ? ' This is your final warning.' : ''
-  notice(g, isK12(cur.level) ? "Principal's Office" : "Dean's Office", `You were sent to ${who}'s office for ${reason}.${last}`, { emoji: '\u{1F6A8}', tone: 'bad' })
+  notice(g, officeTitle(g, cur), `You were sent to ${who}'s office for ${reason}.${last}`, { emoji: '\u{1F6A8}', tone: 'bad' })
   log(g, `I was sent to ${who}'s office for ${reason}.`, 'bad')
 }
 
@@ -644,7 +783,7 @@ function expel(g: GameState, reason: string): void {
     const old = cur.school
     const { level, year, totalYears, grades } = cur
     leaveSchool(g, 'expelled')
-    const fresh = enrollIn(g, level, { year, totalYears, grades: Math.max(0, grades - 5), quiet: true })
+    const fresh = enrollIn(g, level, { year, totalYears, grades: Math.max(0, grades - 5), quiet: true, avoidName: old })
     notice(g, 'Expelled!', `You were expelled from ${old} for ${reason}. Your parents grumbled the whole drive to your new school, ${fresh.school}.`, { emoji: '\u{1F6AB}', tone: 'bad' })
     log(g, `I was expelled from ${old} and transferred to ${fresh.school}.`, 'bad')
     return
@@ -652,7 +791,7 @@ function expel(g: GameState, reason: string): void {
   const old = cur.school
   c.education.droppedOut.push(cur.level)
   leaveSchool(g, 'expelled')
-  const tail = isK12(cur.level) ? ' You can still get your GED from the Education menu.' : ''
+  const tail = isK12(cur.level) ? ` You can still get your ${equivalency(g).short} from the Education menu.` : ''
   notice(g, 'Expelled!', `You were expelled from ${old} for ${reason}.${tail}`, { emoji: '\u{1F6AB}', tone: 'bad' })
   log(g, `I was expelled from ${old}.`, 'bad')
 }
@@ -780,8 +919,154 @@ export const CLUBS: ClubDef[] = [
 
 const CLUB_INDEX: Record<string, ClubDef> = Object.fromEntries(CLUBS.map((c) => [c.id, c]))
 
-function clubDef(id: string): ClubDef | undefined {
-  return CLUB_INDEX[id]
+// Local sports ------------------------------------------------------------------
+// The sports a country actually plays (locale.sports) come first in the Sports list, under their
+// local names ("Football Team" in Britain means soccer). Local sports with no club of their own
+// (sepak takraw, kabaddi, hurling, handball...) get one: id 'local:<sport>', stored like any club.
+
+const LOCAL_CLUB = 'local:'
+
+/** Locale sport word → existing club id. 'football' and 'hockey' depend on the country (see sportClubId). */
+const SPORT_CLUBS: Record<string, string> = {
+  soccer: 'soccer',
+  basketball: 'basketball',
+  volleyball: 'volleyball',
+  tennis: 'tennis',
+  cricket: 'cricket',
+  boxing: 'boxing',
+  rugby: 'rugby',
+  'rugby league': 'rugby',
+  'rugby sevens': 'rugby',
+  baseball: 'baseball',
+  badminton: 'badminton',
+  'ice hockey': 'ice_hockey',
+  'field hockey': 'field_hockey',
+  wrestling: 'wrestling',
+  'lucha libre': 'wrestling',
+  athletics: 'track',
+  track: 'track',
+  'long-distance running': 'cross_country',
+  'table tennis': 'table_tennis',
+  'water polo': 'water_polo',
+  swimming: 'swim',
+  weightlifting: 'weightlifting',
+  softball: 'softball',
+  golf: 'golf',
+  gymnastics: 'gymnastics',
+  fencing: 'fencing',
+  archery: 'archery',
+  curling: 'curling',
+  lacrosse: 'lacrosse',
+  buzkashi: 'goat_grabbing',
+  kokpar: 'goat_grabbing',
+}
+
+/** Popular, but not something a school has a team for. */
+const NOT_SCHOOL_SPORTS = new Set(['horse racing', 'speedway', 'rodeo', 'darts', 'billiards'])
+
+const MARTIAL_ARTS = /judo|taekwondo|karate|kendo|muay thai|jiu-jitsu|pencak silat|sumo|kung fu|wushu/i
+
+const LOCAL_SPORT_EMOJI: [RegExp, string][] = [
+  [/handball/, '\u{1F93E}'],
+  [/futsal|gaelic/, '\u{26BD}'],
+  [/aussie rules/, '\u{1F3C9}'],
+  [/hurling|floorball|bandy|roller hockey/, '\u{1F3D1}'],
+  [/cycling/, '\u{1F6B4}'],
+  [/mountain biking/, '\u{1F6B5}'],
+  [/surf/, '\u{1F3C4}'],
+  [/ski|biathlon/, '\u{26F7}\u{FE0F}'],
+  [/skating/, '\u{26F8}\u{FE0F}'],
+  [/sailing/, '\u{26F5}'],
+  [/kayak/, '\u{1F6F6}'],
+  [/dragon boat/, '\u{1F6A3}'],
+  [/kabaddi|sumo/, '\u{1F93C}'],
+  [MARTIAL_ARTS, '\u{1F94B}'],
+  [/takraw|ecuavolley|netball/, '\u{1F3D0}'],
+  [/korfball/, '\u{1F3C0}'],
+  [/pesäpallo/, '\u{26BE}'],
+  [/kirikiti/, '\u{1F3CF}'],
+  [/padel|squash|beach tennis/, '\u{1F3BE}'],
+  [/matkot|pickleball/, '\u{1F3D3}'],
+  [/shuttlecock/, '\u{1F3F8}'],
+]
+
+function localSportClub(sport: string): ClubDef {
+  const emoji = LOCAL_SPORT_EMOJI.find(([re]) => re.test(sport.toLowerCase()))?.[1] ?? '\u{1F3C5}'
+  const martial = MARTIAL_ARTS.test(sport)
+  return { id: LOCAL_CLUB + sport, name: `${titleCase(sport)} ${martial ? 'Club' : 'Team'}`, emoji, kind: 'sport', tryout: !martial }
+}
+
+/** The club for a locale sport word, or null if it needs a local club. */
+function sportClubId(g: GameState, sport: string): string | null {
+  const s = sport.toLowerCase()
+  // 'football' is American football in the US and soccer everywhere else; 'hockey' is ice hockey
+  // where the locale doesn't say (the US and Canada).
+  if (s === 'football') return isUS(g) || g.character.countryId === 'ca' ? 'football' : 'soccer'
+  if (s === 'hockey') return 'ice_hockey'
+  return SPORT_CLUBS[s] ?? null
+}
+
+/** Club ids for the sports this country plays, most popular first. */
+function localSportClubIds(g: GameState): string[] {
+  const out: string[] = []
+  for (const sport of locale(g).sports) {
+    if (NOT_SCHOOL_SPORTS.has(sport.toLowerCase())) continue
+    const id = sportClubId(g, sport) ?? LOCAL_CLUB + sport
+    if (!out.includes(id)) out.push(id)
+  }
+  return out
+}
+
+/** Clubs that only make sense in a few countries. */
+const CLUB_ONLY: Record<string, string[]> = {
+  key_club: ['us', 'ca'],
+  lacrosse: ['us', 'ca'],
+}
+
+/** The club's name where the player lives ("Football Team" for soccer in most of the world). */
+function localClubName(g: GameState, def: ClubDef): string {
+  const cid = g.character.countryId
+  const usStyle = cid === 'us' || cid === 'ca'
+  switch (def.id) {
+    case 'soccer':
+      return !usStyle && locale(g).sports.some((s) => s.toLowerCase() === 'football') ? 'Football Team' : def.name
+    case 'football':
+      return usStyle ? def.name : 'American Football Team'
+    case 'decathlon':
+      return usStyle ? def.name : 'Academic Olympiad Team'
+    case 'honor_society':
+      return usStyle || cid === 'ph' ? def.name : 'Top Students Society'
+    default:
+      return def.name
+  }
+}
+
+/** A club by id, with its local name when `g` is given. Handles 'local:<sport>' clubs. */
+function clubDef(id: string, g?: GameState): ClubDef | undefined {
+  const base = id.startsWith(LOCAL_CLUB) ? localSportClub(id.slice(LOCAL_CLUB.length)) : CLUB_INDEX[id]
+  if (!base || !g) return base
+  return { ...base, name: localClubName(g, base) }
+}
+
+/** Every club a student here can join: local sports first, then everything that fits the country. */
+function localClubs(g: GameState): ClubDef[] {
+  const cid = g.character.countryId
+  const local = localSportClubIds(g)
+  const snow = hasSnow(g)
+  const out: ClubDef[] = []
+  for (const id of local) {
+    const def = clubDef(id, g)
+    if (def) out.push(def)
+  }
+  for (const base of CLUBS) {
+    if (local.includes(base.id)) continue
+    const only = CLUB_ONLY[base.id]
+    if (only && !only.includes(cid)) continue
+    // No curling or ice hockey team in the tropics.
+    if ((base.id === 'curling' || base.id === 'ice_hockey') && !snow) continue
+    out.push(clubDef(base.id, g) ?? base)
+  }
+  return out
 }
 
 const MAX_CLUBS = 3
@@ -830,8 +1115,13 @@ export const CLIQUES: CliqueDef[] = [
   { id: 'weebs', name: 'Weebs', emoji: '\u{1F38E}', blurb: 'You must be obsessed with Japanese culture to join this strange clique.', boost: 0, fits: (x) => hasClub(x, ['anime', 'cosplay', 'dnd']) },
 ]
 
-function cliqueDef(id: string | null): CliqueDef | undefined {
-  return id ? CLIQUES.find((c) => c.id === id) : undefined
+function cliqueDef(id: string | null, g?: GameState): CliqueDef | undefined {
+  const def = id ? CLIQUES.find((c) => c.id === id) : undefined
+  if (!def || !g || isUS(g)) return def
+  if (def.id === 'drama') return { ...def, blurb: 'You must be obsessed with musicals and aspire to a life on the stage to join this clique.' }
+  // Being into Japanese culture isn't a clique in Japan.
+  if (def.id === 'weebs' && g.character.countryId === 'jp') return { ...def, name: 'Otaku', blurb: 'You must be obsessed with anime, manga and idol groups to join this clique.' }
+  return def
 }
 
 function cliqueCtx(g: GameState, cur: Enrollment): CliqueCtx {
@@ -940,7 +1230,7 @@ function updateSocial(g: GameState, cur: Enrollment): void {
   // Clubs: performance drifts, members can be cut, standouts get leadership roles.
   const kept: ClubRec[] = []
   for (const m of memberships) {
-    const def = clubDef(m.id)
+    const def = clubDef(m.id, g)
     if (!def) continue
     m.years += 1
     const athletic = def.kind === 'sport' ? (c.hidden.athleticism - 50) / 10 : (c.stats.smarts - 50) / 15
@@ -998,6 +1288,106 @@ const REPORT_COMMENTS: Record<'great' | 'good' | 'ok' | 'bad', string[]> = {
   bad: ['Please schedule a parent-teacher conference.', 'Has turned in more excuses than assignments.', 'I have run out of red ink.', 'Was physically present. Mostly.'],
 }
 
+const TROUBLE_REASONS = ['setting off a stink bomb', 'starting a food fight', 'graffiti in the bathroom', 'pulling the fire alarm', 'releasing a frog in the staff room', 'selling the answers to a test']
+
+/** Club leadership offers you turned down don't come back for a few years. */
+const ROLE_OFFER_COOLDOWN = 3
+
+// School moments --------------------------------------------------------------
+// One-line memories of school life, in the player's own country: snow days only where it snows,
+// school trips to local landmarks, the local lunch. Each line waits years before it can come back.
+
+interface SchoolMoment {
+  id: string
+  when: (g: GameState, cur: Enrollment) => boolean
+  lines: (g: GameState, cur: Enrollment) => string[]
+  tone?: 'good' | 'bad' | 'neutral'
+}
+
+const MOMENT_COOLDOWN = 5
+const isPost = (cur: Enrollment) => cur.level === 'university' || cur.level === 'community' || cur.level === 'graduate'
+
+const SCHOOL_MOMENTS: SchoolMoment[] = [
+  {
+    id: 'snowDay',
+    when: (g, cur) => isK12(cur.level) && hasSnow(g),
+    lines: () => [
+      'School was canceled for a snow day. I built a snowman that looked suspiciously like my teacher.',
+      'We got two snow days in a row. I spent both of them sledding and neither of them doing homework.',
+      'A blizzard shut the school down for a day. I celebrated by doing absolutely nothing.',
+    ],
+    tone: 'good',
+  },
+  {
+    id: 'rainDay',
+    when: (g, cur) => isK12(cur.level) && !hasSnow(g) && locale(g).climate === 'tropical',
+    lines: () => [
+      'A tropical downpour flooded the road to school and class was canceled. Best. Day. Ever.',
+      'The rainy season turned our schoolyard into a lake. Recess was a swimming lesson.',
+    ],
+    tone: 'good',
+  },
+  {
+    id: 'heatDay',
+    when: (g, cur) => isK12(cur.level) && locale(g).climate === 'arid',
+    lines: () => ['It got so hot that school let out early. I spent the afternoon lying in front of a fan.', 'A heatwave melted the crayons in our classroom. And my will to learn.'],
+  },
+  {
+    id: 'trip',
+    when: (_g, cur) => isK12(cur.level),
+    lines: (g) => {
+      const trip = isUS(g) ? 'field trip' : 'school trip'
+      return [`My class went on a ${trip} to {landmark}. Somebody threw up on the bus.`, `Our ${trip} to {landmark} was the best day of the year, mostly because there was no math.`, `I got separated from my class on a ${trip} to {landmark} and had the best hour of my life.`]
+    },
+    tone: 'good',
+  },
+  {
+    id: 'lunch',
+    when: (_g, cur) => isK12(cur.level),
+    lines: (g) => {
+      const where = isUS(g) ? 'cafeteria' : 'school canteen'
+      return [`The ${where} served {food} every Friday. I have opinions.`, "I traded my lunch for a classmate's {food}. Best deal I ever made.", `I got caught sneaking {food} into class. The smell gave me away.`]
+    },
+  },
+  {
+    id: 'team',
+    when: (_g, cur) => cur.level === 'middle' || cur.level === 'high',
+    lines: () => ["Our school's {sport} team made it to the regional finals. I cheered until I lost my voice.", "Our school's {sport} team lost every single game this year. We were famous for it."],
+  },
+  {
+    id: 'examTalk',
+    when: (_g, cur) => cur.level === 'high' && cur.year >= cur.totalYears - 1,
+    lines: (g) => [`Everyone at school talked about nothing but ${finalExam(g)}. I started having nightmares about it.`, `My parents brought up ${finalExam(g)} at every single meal.`],
+  },
+  {
+    id: 'campusFood',
+    when: (_g, cur) => isPost(cur),
+    lines: () => ['I survived a whole semester on instant noodles and stubbornness.', 'I learned to cook exactly one dish. I ate it every day for a year.'],
+  },
+  {
+    id: 'campusLife',
+    when: (_g, cur) => isPost(cur),
+    lines: (g) => [`I fell asleep in a lecture and woke up to the whole class staring at me.`, `My roommate and I stayed up all night arguing about ${g.character.education.current?.major ?? 'the meaning of life'}.`],
+  },
+]
+
+function schoolMoment(g: GameState, cur: Enrollment): void {
+  if (!chance(g, 0.4)) return
+  const raw = g.flags['edu.moments']
+  const seen: Record<string, Json> = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const age = g.character.age
+  const ready = SCHOOL_MOMENTS.filter((m) => {
+    const last = seen[m.id]
+    return m.when(g, cur) && !(typeof last === 'number' && age - last < MOMENT_COOLDOWN && age >= last)
+  })
+  if (!ready.length) return
+  const m = pick(g, ready)
+  const text = fillLocal(g, pickFresh(g, `edu.moment.${m.id}`, m.lines(g, cur)))
+  if (/\{\w+\}/.test(text)) return // a locale without that kind of word: skip it rather than show a {token}
+  g.flags['edu.moments'] = { ...seen, [m.id]: age }
+  log(g, text, m.tone ?? 'neutral')
+}
+
 function yearlySchoolEvents(g: GameState, cur: Enrollment): void {
   if (cur.level === 'preschool') return
   if (isK12(cur.level) && chance(g, 0.3)) {
@@ -1007,24 +1397,32 @@ function yearlySchoolEvents(g: GameState, cur: Enrollment): void {
     notice(
       g,
       'Report Card',
-      `Your report card from ${cur.school} came in. Overall grade: ${gradeLetter(cur.grades)}.\n\n${signer} wrote: "${pick(g, REPORT_COMMENTS[band])}"`,
+      `Your report card from ${cur.school} came in. Overall grade: ${gradeLetter(cur.grades)}.\n\n${signer} wrote: "${pickFresh(g, 'edu.reportComments', REPORT_COMMENTS[band], 3)}"`,
       { emoji: band === 'bad' ? '\u{1F4C9}' : '\u{1F4DD}', tone: band === 'bad' ? 'bad' : band === 'great' ? 'good' : 'neutral' },
     )
     const ps = parents(g)
     if (band === 'great') for (const p of ps) addRelationship(p, 3)
     if (band === 'bad') for (const p of ps) addRelationship(p, -4)
   }
-  // Troublemakers get into trouble.
+  // Troublemakers get into trouble (a different kind each time).
   if (cliqueOf(cur) === 'troublemakers' && chance(g, 0.25)) {
-    schoolWarning(g, pick(g, ['setting off a stink bomb', 'starting a food fight', 'graffiti in the bathroom', 'pulling the fire alarm']))
+    schoolWarning(g, pickFresh(g, 'edu.troubleReasons', TROUBLE_REASONS, 3))
   }
   // Leadership offers for standout members (unless you just got expelled).
   if (current(g) !== cur) return
+  schoolMoment(g, cur)
   const clubs = clubsOf(cur)
-  const star = clubs.find((m) => !m.role && m.perf >= 80 && m.years >= 1)
+  const offersRaw = cur.data.roleOffers
+  const offers: Record<string, Json> = offersRaw && typeof offersRaw === 'object' && !Array.isArray(offersRaw) ? offersRaw : {}
+  const age = g.character.age
+  const star = clubs.find((m) => {
+    const last = offers[m.id]
+    return !m.role && m.perf >= 80 && m.years >= 1 && !(typeof last === 'number' && age - last < ROLE_OFFER_COOLDOWN && age >= last)
+  })
   if (star && chance(g, 0.35)) {
-    const def = clubDef(star.id)
+    const def = clubDef(star.id, g)
     if (def) {
+      cur.data.roleOffers = { ...offers, [star.id]: age }
       const role = def.kind === 'sport' ? 'team captain' : 'club president'
       scriptChoice(
         g,
@@ -1079,18 +1477,21 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
 
   if (cur.level === 'high') {
     ed.completed.push('high')
-    const spec = levelSpec(sys, 'high')
     const honors = grades >= 90
     const valedictorian = grades >= 96 && chance(g, 0.5)
-    addDegree(g, 'highschool', `${spec?.name ?? 'High School'} Diploma`, cur.school, { honors })
+    const valedictorianWord = VALEDICTORIAN_COUNTRIES.has(c.countryId)
+    sitFinalExam(g, cur)
+    addDegree(g, 'highschool', `${stageTitle(g, 'high')} Diploma`, cur.school, { honors })
     const school = cur.school
     leaveSchool(g, 'graduated')
     addStat(g, 'happiness', 8)
     for (const p of parents(g)) addRelationship(p, 5)
-    remember(g, `Graduated from ${school}${valedictorian ? ' as valedictorian' : honors ? ' with honors' : ''}.`)
+    remember(g, `Graduated from ${school}${valedictorian ? (valedictorianWord ? ' as valedictorian' : ' at the top of the class') : honors ? ' with honors' : ''}.`)
     log(g, `I graduated from ${school}${honors ? ' with honors' : ''}.`, 'good')
     const extra = valedictorian
-      ? ' You were named valedictorian and gave a speech that only made two people cry (in a good way).'
+      ? valedictorianWord
+        ? ' You were named valedictorian and gave a speech that only made two people cry (in a good way).'
+        : ' You finished top of your class and gave a speech that only made two people cry (in a good way).'
       : honors
         ? ' You graduated with honors!'
         : grades < 60
@@ -1101,26 +1502,27 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
       tone: 'good',
       ai: { when: 'full', facts: `The player graduated from ${school}${honors ? ' with honors' : ''}.` },
     })
-    // Athletic scholarship for star athletes.
+    // Athletic scholarship for star athletes (a big American thing; rarer elsewhere).
     const athlete = prevClubs.find((m) => clubDef(m.id)?.kind === 'sport' && clubDef(m.id)?.tryout && m.perf >= 70)
-    const athletic = athlete && c.hidden.athleticism >= 50 && chance(g, 0.65) ? clubDef(athlete.id)?.name ?? null : null
+    const athletic = athlete && c.hidden.athleticism >= 50 && chance(g, isUS(g) ? 0.65 : 0.35) ? clubDef(athlete.id, g)?.name ?? null : null
     offerAfterHighSchool(g, athletic)
     return
   }
 
   if (cur.level === 'community') {
     ed.completed.push('community')
-    addDegree(g, 'associate', "Associate's Degree", cur.school, { honors: grades >= 90 })
+    const cc = college(g)
+    addDegree(g, 'associate', cc.degree, cur.school, { honors: grades >= 90 })
     const school = cur.school
     leaveSchool(g, 'graduated')
     addStat(g, 'happiness', 5)
-    log(g, `I graduated from ${school} with an associate's degree.`, 'good')
-    remember(g, `Earned an associate's degree from ${school}.`)
+    log(g, `I graduated from ${school} with ${cc.degreeText}.`, 'good')
+    remember(g, `Earned ${cc.degreeText} from ${school}.`)
     scriptChoice(
       g,
       AFTER_COMMUNITY,
       'Graduation',
-      `You graduated from ${school} with an associate's degree! What's next?`,
+      `You graduated from ${school} with ${cc.degreeText}! What's next?`,
       [
         { id: 'university', label: 'Transfer to a university', emoji: '\u{1F3DB}\u{FE0F}' },
         { id: 'work', label: 'Get a job', emoji: '\u{1F4BC}' },
@@ -1143,7 +1545,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     addStat(g, 'smarts', randInt(g, 2, 5))
     for (const p of parents(g)) addRelationship(p, 6)
     remember(g, `Earned a bachelor's degree in ${major} from ${school}${honors ? ' with honors' : ''}.`)
-    log(g, `I graduated from ${school} with a degree in ${major}${honors ? ' (summa cum laude)' : ''}.`, 'good')
+    log(g, `I graduated from ${school} with a degree in ${major}${honors ? (VALEDICTORIAN_COUNTRIES.has(c.countryId) ? ' (summa cum laude)' : ' (with distinction)') : ''}.`, 'good')
     const greekLine = greek ? ` Your ${greek} brothers and sisters threw a party you will never remember.` : ''
     notice(g, 'Graduation', `${pick(g, [`You graduated from ${school} with a bachelor's degree in ${major}!`, `Congratulations! You earned your bachelor's degree in ${major} from ${school}.`])}${honors ? ' You graduated with honors!' : ''}${greekLine}`, {
       emoji: '\u{1F393}',
@@ -1184,23 +1586,57 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
   }
 }
 
+/**
+ * The school-leaving / entrance exam at the end of high school: the SATs in the US, the gaokao in
+ * China, the Abitur in Germany... The score (0-100) helps university admissions.
+ */
+function sitFinalExam(g: GameState, cur: Enrollment): void {
+  const c = g.character
+  const prepped = Math.min(6, num(cur.data.examPrep, 0)) * 1.5
+  const score = Math.round(clamp(c.stats.smarts * 0.55 + cur.grades * 0.35 + prepped + randInt(g, -12, 12)))
+  g.flags.examScore = score
+  const exam = finalExam(g)
+  const tone = score >= 65 ? 'good' : score >= 45 ? 'neutral' : 'bad'
+  if (isUS(g)) {
+    const sat = Math.max(400, Math.min(1600, Math.round((400 + score * 12) / 10) * 10))
+    log(g, `I took ${exam} and scored ${sat}.${sat >= 1500 ? ' My parents framed the printout.' : sat < 800 ? ' I blame the pencil.' : ''}`, tone)
+    return
+  }
+  const line =
+    score >= 85
+      ? pick(g, [`I aced ${exam}. My parents told every relative we have.`, `I aced ${exam}.`])
+      : score >= 65
+        ? `I did well on ${exam}.`
+        : score >= 45
+          ? pick(g, [`I scraped through ${exam}.`, `I passed ${exam}. Barely, but a pass is a pass.`])
+          : pick(g, [`I bombed ${exam}.`, `I froze during ${exam} and bombed it.`])
+  log(g, line, tone)
+}
+
 function offerAfterHighSchool(g: GameState, athletic: string | null): void {
-  const free = getCountry(g.character.countryId).freeUniversity
+  const c = g.character
+  const free = getCountry(c.countryId).freeUniversity
+  const uni = localTerm(g, 'university') || 'university'
   const choices: ChoiceOption[] = []
-  if (athletic) choices.push({ id: 'athletic', label: 'Accept the athletic scholarship', emoji: '\u{1F3C5}' })
+  if (athletic) choices.push({ id: 'athletic', label: free ? 'Join the university team' : isUS(g) ? 'Accept the athletic scholarship' : 'Accept the sports scholarship', emoji: '\u{1F3C5}' })
   choices.push({ id: 'university', label: free ? 'Go to university (free!)' : 'Go to university', emoji: '\u{1F3DB}\u{FE0F}' })
-  choices.push({ id: 'community', label: 'Go to community college', emoji: '\u{1F3EB}' })
+  choices.push({ id: 'community', label: `Go to ${college(g).term}`, emoji: '\u{1F3EB}' })
   choices.push({ id: 'work', label: 'Get a job', emoji: '\u{1F4BC}' })
   choices.push({ id: 'gap', label: 'Take a gap year', emoji: '\u{1F392}' })
-  const intro = athletic
-    ? `A university recruiter saw you play for the ${athletic} and is offering you a full athletic scholarship! What will you do after high school?`
-    : 'What will you do now that you have your diploma?'
+  const after = stageTerm(g, 'high')
+  const intro = !athletic
+    ? 'What will you do now that you have your diploma?'
+    : isUS(g)
+      ? `A ${uni} recruiter saw you play for the ${athletic} and is offering you a full athletic scholarship! What will you do after ${after}?`
+      : free
+        ? `A university coach saw you play for the ${athletic} and wants you on the team. Tuition is free in ${getCountry(c.countryId).name} anyway, so it's mostly about the free tracksuit. What will you do after ${after}?`
+        : `A university sports scout saw you play for the ${athletic} and is offering you a sports scholarship! What will you do after ${after}?`
   scriptChoice(g, AFTER_HIGH_SCHOOL, 'The Future', intro, choices, { emoji: '\u{1F914}', data: { athletic } })
 }
 
 function maybeClubInvite(g: GameState, cur: Enrollment): void {
   if (!canHaveActivities(cur) || !chance(g, 0.4)) return
-  const options = CLUBS.filter((c) => !c.tryout && !c.minGrades && !c.minPopularity)
+  const options = localClubs(g).filter((c) => !c.tryout && !c.minGrades && !c.minPopularity)
   const club = pick(g, options)
   scriptChoice(
     g,
@@ -1234,24 +1670,25 @@ function postSecondaryBlocker(g: GameState): string | null {
   if (!c.alive) return 'You are dead.'
   if (c.prison) return "You can't apply to school from prison."
   if (c.education.current) return `You're already enrolled at ${c.education.current.school}.`
-  if (!hasHighSchool(g)) return 'You need a high school diploma or GED first.'
+  if (!hasHighSchool(g)) return `You need ${isUS(g) ? 'a high school diploma or GED' : `to finish ${stageTerm(g, 'high')} (or pass ${equivalency(g).exam})`} first.`
   if (c.job && c.job.category === 'military') return "You can't go back to school while you're serving in the military."
   return null
 }
 
 function enrollCommunityCollege(g: GameState): void {
+  const cc = college(g)
   const block = postSecondaryBlocker(g)
   if (block) {
-    notice(g, 'Community College', block, { emoji: '\u{1F3EB}' })
+    notice(g, cc.label, block, { emoji: '\u{1F3EB}' })
     return
   }
   if (hasDegree(g, 'associate')) {
-    notice(g, 'Community College', "You've already graduated from community college.", { emoji: '\u{1F3EB}' })
+    notice(g, cc.label, `You've already graduated from ${cc.term}.`, { emoji: '\u{1F3EB}' })
     return
   }
   quitJobForSchool(g)
   const cur = enrollIn(g, 'community', { funding: 'free' })
-  notice(g, 'Community College', pick(g, [`You enrolled at ${cur.school}. It's free, and the parking lot is huge.`, `${cur.school} accepted you, because ${cur.school} accepts everybody. Welcome!`]), {
+  notice(g, cc.label, pick(g, [`You enrolled at ${cur.school}. It's free, and the parking lot is huge.`, `${cur.school} accepted you, because ${cur.school} accepts everybody. Welcome!`]), {
     emoji: '\u{1F3EB}',
     tone: 'good',
   })
@@ -1270,11 +1707,19 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
     return
   }
   const school = universityName(g)
+  const free = getCountry(c.countryId).freeUniversity
   if (opts.athletic) {
     quitJobForSchool(g)
+    if (free) {
+      enrollIn(g, 'university', { school, major, funding: 'free' })
+      notice(g, 'Recruited!', `You joined ${school}'s team and will major in ${major}. Tuition is free anyway, so your reward is a team tracksuit and 6 a.m. practices.`, { emoji: '\u{1F3C5}', tone: 'good' })
+      remember(g, `Was recruited onto the sports team at ${school}.`)
+      return
+    }
     enrollIn(g, 'university', { school, major, funding: 'scholarship' })
-    notice(g, 'Full Ride!', `You accepted an athletic scholarship to ${school} and will major in ${major}. Free tuition, as long as you keep showing up to practice.`, { emoji: '\u{1F3C5}', tone: 'good' })
-    remember(g, `Went to ${school} on an athletic scholarship.`)
+    const kind = isUS(g) ? 'an athletic' : 'a sports'
+    notice(g, 'Full Ride!', `You accepted ${kind} scholarship to ${school} and will major in ${major}. Free tuition, as long as you keep showing up to practice.`, { emoji: '\u{1F3C5}', tone: 'good' })
+    remember(g, `Went to ${school} on ${kind} scholarship.`)
     return
   }
   if (!useYearAction(g, 'applyUniversity', 2)) {
@@ -1282,18 +1727,19 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
     return
   }
   const lastGrades = num(g.flags.lastGrades as Json, 70)
-  const score = c.stats.smarts * 0.65 + lastGrades * 0.35
+  // Your final exam (the SATs, the gaokao, the Abitur...) counts too, if you took one.
+  const exam = g.flags.examScore
+  const score = typeof exam === 'number' ? c.stats.smarts * 0.55 + lastGrades * 0.25 + exam * 0.2 : c.stats.smarts * 0.65 + lastGrades * 0.35
   const p = clamp((score - 18) / 50, 0.05, 0.97)
   if (!chance(g, p)) {
     log(g, `I was rejected by ${school}.`, 'bad')
     addStat(g, 'happiness', -8)
-    notice(g, 'Rejected', pick(g, [`${school} rejected your application. Their letter was very polite about it, which somehow made it worse.`, `"We regret to inform you..." ${school} has rejected your application.`, `${school} turned you down. Maybe try community college first and apply again later.`]), {
+    notice(g, 'Rejected', pick(g, [`${school} rejected your application. Their letter was very polite about it, which somehow made it worse.`, `"We regret to inform you..." ${school} has rejected your application.`, `${school} turned you down. Maybe try ${college(g).term} first and apply again later.`]), {
       emoji: '\u{1F4E8}',
       tone: 'bad',
     })
     return
   }
-  const free = getCountry(c.countryId).freeUniversity
   if (free) {
     quitJobForSchool(g)
     enrollIn(g, 'university', { school, major, funding: 'free' })
@@ -1351,8 +1797,19 @@ export function applyToGraduateSchool(g: GameState, key: GradKey): void {
     })
     return
   }
+  if (gradSchoolFree(g, key)) {
+    quitJobForSchool(g)
+    enrollIn(g, 'graduate', { school, major, funding: 'free', track: key, program: info.program, totalYears: info.years })
+    notice(g, 'Accepted!', `You were accepted to ${school}! Tuition is free in ${getCountry(c.countryId).name}, so the only thing you'll be paying with is your sleep.`, { emoji: '\u{1F389}', tone: 'good' })
+    return
+  }
   const tuition = roundMoney(info.tuition * wealthScale(g))
   askTuition(g, { level: 'graduate', school, major, tuition, years: info.years, tried: [], track: key })
+}
+
+/** Where university is free, so is graduate and professional school (MBAs still cost a fortune). */
+function gradSchoolFree(g: GameState, key: GradKey): boolean {
+  return key !== 'business' && getCountry(g.character.countryId).freeUniversity
 }
 
 // ---------------------------------------------------------------------------
@@ -1403,7 +1860,7 @@ function createStudentLoan(g: GameState, cur: Enrollment, amount: number): void 
   g.character.loans.push({
     id,
     kind: 'student',
-    lender: pick(g, ['National Student Loan Fund', 'Scholar Credit Union', 'EduLend Financial', 'Campus Federal Loans']),
+    lender: pick(g, isUS(g) ? ['National Student Loan Fund', 'Scholar Credit Union', 'EduLend Financial', 'Campus Federal Loans'] : ['National Student Loan Fund', 'Scholar Credit Union', 'EduLend Financial', `${getCountry(g.character.countryId).name} Education Bank`]),
     balance: Math.round(amount),
     yearlyPayment: 0,
     rate: 0.05,
@@ -1463,7 +1920,9 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
         return
       }
       if (parent) addRelationship(parent, -2)
-      notice(g, 'Tuition', pick(g, [`Your ${word} laughed and said they're still paying off their own student loans.`, `Your ${word} said they can't afford to pay for ${a.school}.`, `Your ${word} told you it's time to learn about "financial independence."`]), { emoji: '\u{1F62C}', tone: 'bad' })
+      const refusals = [`Your ${word} said they can't afford to pay for ${a.school}.`, `Your ${word} told you it's time to learn about "financial independence."`]
+      refusals.push(STUDENT_LOAN_COUNTRIES.has(c.countryId) ? `Your ${word} laughed and said they're still paying off their own student loans.` : `Your ${word} laughed and asked if you think money grows on trees.`)
+      notice(g, 'Tuition', pick(g, refusals), { emoji: '\u{1F62C}', tone: 'bad' })
       askTuition(g, { ...a, tried: [...a.tried, 'parents'] })
       return
     }
@@ -1518,7 +1977,10 @@ function majorChoices(g: GameState, n: number): ChoiceOption[] {
 function askMajor(g: GameState, athletic: boolean): void {
   const choices = majorChoices(g, 8)
   choices.push({ id: '__later', label: 'Decide later (Occupation → Education)', emoji: '\u{23F3}' })
-  scriptChoice(g, PICK_MAJOR, 'Choose a Major', athletic ? 'What will you major in on your athletic scholarship?' : 'Which major will you apply for? (These majors are being offered this year.)', choices, {
+  const sportsText = getCountry(g.character.countryId).freeUniversity
+    ? 'What will you major in between practices?'
+    : `What will you major in on your ${isUS(g) ? 'athletic' : 'sports'} scholarship?`
+  scriptChoice(g, PICK_MAJOR, 'Choose a Major', athletic ? sportsText : 'Which major will you apply for? (These majors are being offered this year.)', choices, {
     emoji: '\u{1F4DA}',
     data: { athletic },
   })
@@ -1538,7 +2000,7 @@ const AFTER_HIGH_SCHOOL = defineScript('school.afterHighSchool', (g, choice, dat
       enrollCommunityCollege(g)
       return
     case 'work':
-      log(g, 'I decided to skip college and start working.', 'neutral')
+      log(g, `I decided to skip ${localTerm(g, 'university') || 'university'} and start working.`, 'neutral')
       notice(g, 'The Real World', 'Welcome to the workforce! Check Occupation → Jobs for openings.', { emoji: '\u{1F4BC}' })
       return
     default:
@@ -1549,7 +2011,7 @@ const AFTER_HIGH_SCHOOL = defineScript('school.afterHighSchool', (g, choice, dat
 
 const PICK_MAJOR = defineScript('school.pickMajor', (g, choice, data) => {
   if (!g.character.alive || choice === '__later') {
-    if (choice === '__later') log(g, 'I put off choosing a college major.', 'neutral')
+    if (choice === '__later') log(g, `I put off choosing a ${localTerm(g, 'university') || 'university'} major.`, 'neutral')
     return
   }
   if (!(MAJORS as readonly string[]).includes(choice)) return
@@ -1559,9 +2021,10 @@ const PICK_MAJOR = defineScript('school.pickMajor', (g, choice, data) => {
 
 const AFTER_COMMUNITY = defineScript('school.afterCommunity', (g, choice) => {
   if (!g.character.alive) return
+  const cc = college(g)
   if (choice === 'university') askMajor(g, false)
-  else if (choice === 'work') notice(g, 'The Real World', 'Time to put that associate’s degree to work! Check Occupation → Jobs.', { emoji: '\u{1F4BC}' })
-  else log(g, 'I took some time off after community college.', 'neutral')
+  else if (choice === 'work') notice(g, 'The Real World', `Time to put that ${cc.degree.toLowerCase().replace("associate's", 'associate’s')} to work! Check Occupation → Jobs.`, { emoji: '\u{1F4BC}' })
+  else log(g, `I took some time off after ${cc.term}.`, 'neutral')
 })
 
 const AFTER_UNIVERSITY = defineScript('school.afterUniversity', (g, choice) => {
@@ -1570,14 +2033,14 @@ const AFTER_UNIVERSITY = defineScript('school.afterUniversity', (g, choice) => {
     applyToGraduateSchool(g, choice as GradKey)
     return
   }
-  log(g, 'I decided to enter the workforce after university.', 'neutral')
+  log(g, `I decided to enter the workforce after ${localTerm(g, 'university') || 'university'}.`, 'neutral')
 })
 
 const CLUB_INVITE = defineScript('school.clubInvite', (g, choice, data) => {
   const cur = current(g)
   if (!cur || !g.character.alive) return
   const id = data && typeof data === 'object' && !Array.isArray(data) && typeof data.club === 'string' ? data.club : ''
-  const def = clubDef(id)
+  const def = clubDef(id, g)
   if (!def) return
   if (choice === 'join') {
     joinClubNow(g, cur, def)
@@ -1591,7 +2054,7 @@ const CLUB_ROLE = defineScript('school.clubRole', (g, choice, data) => {
   if (!cur || !g.character.alive || !data || typeof data !== 'object' || Array.isArray(data)) return
   const id = typeof data.club === 'string' ? data.club : ''
   const role = typeof data.role === 'string' ? data.role : 'leader'
-  const def = clubDef(id)
+  const def = clubDef(id, g)
   const clubs = clubsOf(cur)
   const m = clubs.find((x) => x.id === id)
   if (!def || !m) return
@@ -1625,6 +2088,19 @@ function studyHarder(g: GameState): void {
   if (chance(g, 0.4)) addStat(g, 'smarts', randInt(g, 1, 2))
   addStat(g, 'happiness', -1)
   count(g, 'studied')
+  // The last two years of high school are all about the big exam.
+  if (cur.level === 'high' && cur.year >= cur.totalYears - 1) {
+    cur.data.examPrep = num(cur.data.examPrep, 0) + 1
+    const exam = finalExam(g)
+    log(g, pick(g, [`I crammed for ${exam}.`, `I spent the weekend doing practice tests for ${exam}.`, `I studied for ${exam} until my eyes crossed.`]), 'neutral')
+    notice(
+      g,
+      'Study Harder',
+      pick(g, [`You crammed for ${exam} and buried your nose in your textbooks. Your grades are now a ${gradeLetter(cur.grades)}.`, `You did practice tests for ${exam} until you dreamed in multiple choice. Current grade: ${gradeLetter(cur.grades)}.`]),
+      { emoji: '\u{1F4DA}', tone: 'good' },
+    )
+    return
+  }
   log(g, pick(g, ['I studied harder at school.', 'I hit the books hard.', 'I spent the weekend studying.', 'I pulled an all-nighter studying.']), 'neutral')
   notice(
     g,
@@ -1640,6 +2116,14 @@ function studyHarder(g: GameState): void {
 }
 
 const SKIP_ACTIVITIES = ['went to the arcade', 'watched cartoons all day', 'hung out at the mall', 'slept until noon', 'went to the beach', 'played video games for nine hours straight', 'went to the movies', 'wandered around downtown']
+/** Everywhere else: the local hangouts and date spots instead of the American mall. */
+const LOCAL_SKIP_ACTIVITIES = ['went to the arcade', 'watched cartoons all day', 'hung out at {hangout}', 'slept until noon', 'went to {dateSpot}', 'played video games for nine hours straight', 'went to the cinema', 'wandered around {city}']
+
+function skipActivity(g: GameState): string {
+  if (isUS(g)) return pick(g, SKIP_ACTIVITIES)
+  const text = fillLocal(g, pick(g, LOCAL_SKIP_ACTIVITIES))
+  return /\{\w+\}/.test(text) ? 'slept until noon' : text
+}
 
 function skipSchool(g: GameState): void {
   const cur = current(g)
@@ -1651,7 +2135,7 @@ function skipSchool(g: GameState): void {
   }
   count(g, 'skippedSchool')
   addGrades(cur, -randInt(g, 2, 6))
-  const activity = pick(g, SKIP_ACTIVITIES)
+  const activity = skipActivity(g)
   const strict = num(cur.data.strictness, 50) / 100
   const caughtChance = isK12(cur.level) ? 0.15 + strict * 0.35 : 0.05
   if (chance(g, caughtChance)) {
@@ -1694,7 +2178,7 @@ function dropOut(g: GameState): void {
   addStat(g, 'happiness', k12 ? 4 : -2)
   remember(g, `Dropped out of ${school}.`)
   log(g, `I dropped out of ${school}.`, 'bad')
-  notice(g, 'Dropped Out', k12 ? `You dropped out of ${school}. You can always get your GED later from the Education menu.` : `You dropped out of ${school}. Plenty of billionaires did that too. Plenty of non-billionaires as well.`, {
+  notice(g, 'Dropped Out', k12 ? `You dropped out of ${school}. You can always get your ${equivalency(g).short} later from the Education menu.` : `You dropped out of ${school}. Plenty of billionaires did that too. Plenty of non-billionaires as well.`, {
     emoji: '\u{1F6AA}',
     tone: 'bad',
   })
@@ -1766,7 +2250,7 @@ function tryJoinClub(g: GameState, def: ClubDef): void {
 
 function practiceClub(g: GameState, id: string): void {
   const cur = current(g)
-  const def = clubDef(id)
+  const def = clubDef(id, g)
   if (!cur || !def) return
   const clubs = clubsOf(cur)
   const m = clubs.find((x) => x.id === id)
@@ -1790,7 +2274,7 @@ function practiceClub(g: GameState, id: string): void {
 
 function quitClub(g: GameState, id: string): void {
   const cur = current(g)
-  const def = clubDef(id)
+  const def = clubDef(id, g)
   if (!cur || !def) return
   setClubs(
     cur,
@@ -1828,7 +2312,7 @@ function tryJoinClique(g: GameState, def: CliqueDef): void {
     )
     return
   }
-  const old = cliqueDef(cliqueOf(cur))
+  const old = cliqueDef(cliqueOf(cur), g)
   if (old) adjustCliqueMates(g, cur, old.id, -5)
   cur.data.clique = def.id
   addPopularity(cur, def.boost)
@@ -1849,7 +2333,7 @@ function adjustCliqueMates(g: GameState, cur: Enrollment, cliqueId: string, delt
 
 function leaveClique(g: GameState): void {
   const cur = current(g)
-  const def = cliqueDef(cur ? cliqueOf(cur) : null)
+  const def = cliqueDef(cur ? cliqueOf(cur) : null, g)
   if (!cur || !def) return
   adjustCliqueMates(g, cur, def.id, -5)
   cur.data.clique = null
@@ -1898,16 +2382,19 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       return
     }
     case 'gift': {
+      // An apple for the teacher is an American thing; elsewhere it's chocolates, flowers or a card.
+      const apple = isUS(g) && isK12(cur.level)
+      const gift = apple ? 'an apple' : pick(g, ['a box of chocolates', 'a bunch of flowers', 'a handmade card'])
       if (chance(g, 0.15)) {
         addRelationship(t, -5)
-        notice(g, name, `You left an apple on ${name}'s desk. ${pr.He} returned it, explaining that ${pr.he} can't accept gifts from students.`, { emoji: '\u{1F34E}' })
+        notice(g, name, `You left ${gift} on ${name}'s desk. ${pr.He} returned it, explaining that ${pr.he} can't accept gifts from students.`, { emoji: apple ? '\u{1F34E}' : '\u{1F381}' })
         if (num(cur.data.strictness, 50) > 70) schoolWarning(g, 'trying to bribe a teacher')
         return
       }
       addRelationship(t, randInt(g, 6, 12))
       if (chance(g, 0.3)) addGrades(cur, 2)
-      log(g, `I gave ${name} a shiny apple.`, 'good')
-      notice(g, name, pick(g, [`You gave ${name} a shiny red apple. Classic. ${pr.He} loved it.`, `You gave ${name} a coffee mug that says "World's Okayest Teacher." ${pr.He} laughed for a full minute.`]), { emoji: '\u{1F34E}', tone: 'good' })
+      log(g, apple ? `I gave ${name} a shiny apple.` : `I gave ${name} ${gift}.`, 'good')
+      notice(g, name, pick(g, [apple ? `You gave ${name} a shiny red apple. Classic. ${pr.He} loved it.` : `You gave ${name} ${gift}. ${pr.He} pretended it wasn't necessary and kept it anyway.`, `You gave ${name} a coffee mug that says "World's Okayest Teacher." ${pr.He} laughed for a full minute.`]), { emoji: apple ? '\u{1F34E}' : '\u{1F381}', tone: 'good' })
       return
     }
     case 'insult': {
@@ -1915,7 +2402,7 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       addHidden(g, 'karma', -2)
       count(g, 'insults')
       log(g, `I insulted ${name}.`, 'bad')
-      notice(g, name, pick(g, [`You told ${name} that ${pr.his} lectures are a cure for insomnia.`, `You called ${name} a dinosaur in front of the whole class.`, `You told ${name} you'd learn more from a fortune cookie.`]), { emoji: '\u{1F620}', tone: 'bad' })
+      notice(g, name, pick(g, [`You told ${name} that ${pr.his} lectures are a cure for insomnia.`, `You called ${name} a dinosaur in front of the whole class.`, `You told ${name} you'd learn more from ${isUS(g) ? 'a fortune cookie' : 'a horoscope'}.`]), { emoji: '\u{1F620}', tone: 'bad' })
       if (chance(g, 0.4 + num(cur.data.strictness, 50) / 200)) schoolWarning(g, 'disrespecting a teacher')
       return
     }
@@ -1923,12 +2410,12 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       const who = principalTitle(g, cur)
       if (chance(g, 0.4)) {
         addRelationship(t, -25)
-        notePerson(t, 'Was reported to the principal by the player.')
+        notePerson(t, `Was reported to the ${isK12(cur.level) ? systemFor(g).principal.toLowerCase() : 'dean'} by the player.`)
         log(g, `I complained to ${who} about ${name}, who got reprimanded.`, 'neutral')
-        notice(g, "Principal's Office", `You complained to ${who} about ${name}. ${pr.He} got a stern talking-to. ${pr.His} glare at you the next day could melt steel.`, { emoji: '\u{1F4CB}' })
+        notice(g, officeTitle(g, cur), `You complained to ${who} about ${name}. ${pr.He} got a stern talking-to. ${pr.His} glare at you the next day could melt steel.`, { emoji: '\u{1F4CB}' })
       } else {
         addRelationship(t, -10)
-        notice(g, "Principal's Office", `You complained to ${who} about ${name}. ${who} nodded politely and did absolutely nothing.`, { emoji: '\u{1F4CB}' })
+        notice(g, officeTitle(g, cur), `You complained to ${who} about ${name}. ${who} nodded politely and did absolutely nothing.`, { emoji: '\u{1F4CB}' })
       }
       return
     }
@@ -1945,7 +2432,7 @@ function principalAction(g: GameState, kind: 'complain' | 'compliment' | 'insult
   }
   switch (kind) {
     case 'complain': {
-      const topic = pick(g, ['the cafeteria food', 'the broken vending machine', 'the dress code', 'the amount of homework', 'the bathrooms', 'the lack of air conditioning'])
+      const topic = pick(g, [isUS(g) ? 'the cafeteria food' : 'the canteen food', 'the broken vending machine', 'the dress code', 'the amount of homework', 'the bathrooms', hasSnow(g) && !isUS(g) ? 'the broken heating' : 'the lack of air conditioning'])
       if (chance(g, 0.25)) {
         addStat(g, 'happiness', 5)
         addPopularity(cur, 3)
@@ -2348,7 +2835,7 @@ function classmatesMenu(): MenuGroup {
       const nodes: MenuNode[] = [{ type: 'info', id: 'classmates.hint', text: 'Interact with classmates from the Relationships tab: befriend them, ask them out, or mess with them.', emoji: '\u{1F4A1}' }]
       if (!list.length) nodes.push({ type: 'info', id: 'classmates.none', text: "You don't know anyone in your class yet." })
       for (const p of list) {
-        const clique = cliqueDef(typeof p.data.clique === 'string' ? p.data.clique : null)
+        const clique = cliqueDef(typeof p.data.clique === 'string' ? p.data.clique : null, g)
         nodes.push({ type: 'info', id: `classmates.${p.id}`, text: `${fullName(p)} (${p.age})${clique ? ` • ${clique.name}` : ''} • Relationship ${p.relationship}%`, emoji: p.gender === 'male' ? '\u{1F466}' : '\u{1F467}' })
       }
       return nodes
