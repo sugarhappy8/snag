@@ -492,7 +492,7 @@ function progressConditions(g: GameState): void {
       addStat(g, 'health', -Math.round(cond.severity * 0.12 * jitter))
       addStat(g, 'happiness', -Math.round((cond.severity * 0.4 + (def.mood ?? 3)) * jitter))
     } else {
-      addStat(g, 'health', -Math.round(cond.severity * 0.38 * jitter))
+      addStat(g, 'health', -Math.round(cond.severity * (def.deadly ? 0.38 : 0.22) * jitter))
       if (cond.diagnosed && def.deadly) addStat(g, 'happiness', -randInt(g, 2, 6))
       if (def.mood) addStat(g, 'happiness', -def.mood)
     }
@@ -939,6 +939,14 @@ function babyCare(g: GameState): void {
 // ---------------------------------------------------------------------------
 // Yearly stat drift
 
+/** Typical health for an age with no illness or exercise. */
+export function healthTarget(age: number): number {
+  if (age < 40) return 85
+  if (age < 60) return 85 - (age - 40) * 0.5
+  if (age < 80) return 75 - (age - 60) * 1.25
+  return Math.max(5, 50 - (age - 80) * 2.5)
+}
+
 function statDrift(g: GameState): void {
   const c = g.character
   const a = c.age
@@ -947,15 +955,10 @@ function statDrift(g: GameState): void {
   if (a <= 2) dh += randInt(g, 0, 3)
   addStat(g, 'happiness', dh)
 
-  // Health: steady when young, then the slow decline.
-  let health: number
-  if (a < 30) health = randInt(g, -2, 3) + Math.round((85 - c.stats.health) * 0.04)
-  else if (a < 50) health = randInt(g, -3, 2)
-  else if (a < 70) health = randInt(g, -4, 1)
-  else if (a < 80) health = randInt(g, -5, 0)
-  else if (a < 90) health = randInt(g, -7, -2)
-  else health = randInt(g, -10, -3)
-  addStat(g, 'health', health)
+  // Health drifts toward what's normal for your age: steady when young, a slow
+  // decline after 40, faster after 60 and steep after 80. Illness pushes it below the
+  // curve; the body slowly recovers once you're cured.
+  addStat(g, 'health', Math.round((healthTarget(a) - c.stats.health) * 0.15) + randInt(g, -2, 2))
 
   // Smarts grow through childhood, plateau, then fade a little in old age.
   let smarts: number

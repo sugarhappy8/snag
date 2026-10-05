@@ -1,7 +1,7 @@
 // Special career: Actor. Take acting classes, hire a talent agent, audition for film and TV
 // roles (extra -> supporting -> lead), develop your character, deal with co-stars, stage
 // publicity stunts, win awards and collect residuals for the rest of your life.
-import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, spend, useYearAction } from '../core'
+import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -70,24 +70,21 @@ interface Listing {
   budget: string
 }
 
-const initActor = (g: GameState): ActorProfile => {
-  const c = g.character
-  return {
-    reputation: 50,
-    credits: [],
-    awards: [],
-    nominations: 0,
-    agent: null,
-    dryYears: 0,
-  }
-}
+const initActor = (): ActorProfile => ({
+  reputation: 50,
+  credits: [],
+  awards: [],
+  nominations: 0,
+  agent: null,
+  dryYears: 0,
+})
 
 function actorProfile(g: GameState): ActorProfile {
   return prof(g, 'actor', initActor)
 }
 
 function viewActor(g: GameState): ActorProfile {
-  return peek<ActorProfile>(g, 'actor') ?? initActor(g)
+  return peek<ActorProfile>(g, 'actor') ?? initActor()
 }
 
 export function actorJob(g: GameState): Job | null {
@@ -392,7 +389,6 @@ const practiceAction: MenuAction = {
   disabledReason: (g) => blocked(g, 0),
   run: (g) => {
     if (!useYearAction(g, 'actor.practice', 2)) return tell(g, 'Practice', "You've rehearsed so much this year that you're starting to talk in monologues. Take a break.", '\u{1F971}')
-    const p = actorProfile(g)
     const gain = randInt(g, 2, 6) + (talentMatches(g, /act|drama|theat/i) ? 2 : 0)
     setFlagSkill(g, 'acting', actingSkill(g) + gain)
     log(g, 'I practiced my acting.')
@@ -757,7 +753,7 @@ export function yearlyActor(g: GameState): void {
     return
   }
   const budgetBase = proj.budget === 'blockbuster' ? 15 : proj.budget === 'indie' || proj.budget === 'cable' ? -5 : 5
-  const quality = clamp100(aactingSkill(g) * 0.5 + (talentMatches(g, /act/i) ? 15 : 0) + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
+  const quality = clamp100(actingSkill(g) * 0.5 + (talentMatches(g, /act/i) ? 15 : 0) + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
   const popularity = clamp100(quality * 0.6 + fameOf(g) * 0.2 + proj.buzz + randInt(g, -15, 25))
   const cut = ap.agent?.cut ?? 0
   const pay = Math.round(proj.pay * (1 - cut))

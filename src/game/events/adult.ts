@@ -1,6 +1,6 @@
 // Grown-up life events: found wallets, jury duty, neighbors, car trouble, traffic stops,
 // scams, scratch-off tickets, strangers, landlords, audits, weddings and midlife crises.
-import { addMoney, children, count, currentPartner, peopleBy } from '../core'
+import { addMoney, count, currentPartner, peopleBy } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { Asset, GameState } from '../types'
@@ -8,7 +8,6 @@ import {
   anyOf,
   ask,
   ch,
-  country,
   defineEvents,
   dollars,
   friends,
@@ -17,8 +16,6 @@ import {
   livesWithParents,
   money,
   ownsHome,
-  partner,
-  pets,
   say,
   strangerName,
 } from './helpers'
@@ -60,10 +57,6 @@ const CRIMES_WITNESSED = [
 ]
 
 const JURY_CRIMES = ['grand theft auto', 'tax fraud', 'burglary', 'stealing 400 garden gnomes', 'arson', 'running an illegal pet casino', 'identity theft', 'assault with a deadly baguette']
-
-function jobless(g: GameState): boolean {
-  return !hasJob(g)
-}
 
 export const ADULT_EVENTS = defineEvents([
   {
@@ -1030,7 +1023,6 @@ export const ADULT_EVENTS = defineEvents([
         if (r <= 10 + smart / 10) {
           const prize = dollars(g, 25000, 100000)
           addMoney(g, prize)
-          count(g, 'lotteryWins', 0)
           say(g, null, ['Grand prize!', 'Winner!'], `You answered the final question correctly and won ${money(prize)}! Confetti everywhere.`, `I won ${money(prize)} on a TV game show.`, { happiness: 20, fame: 4, memory: `Won ${money(prize)} on a game show.` }, 'good', '🏆')
         } else if (r <= 55) {
           const prize = dollars(g, 500, 5000)
@@ -1134,7 +1126,7 @@ export const ADULT_EVENTS = defineEvents([
       intervene: (g, x) => {
         const r = randInt(g, 1, 10)
         if (r <= 5) say(g, x, ['Vigilante', 'Hero of the street'], `You stopped ${x.s('who')} from ${x.s('act')}. A small crowd applauded.`, `I stopped ${x.s('who')} from ${x.s('act')}.`, { karma: 10, happiness: 8 }, 'good', '🦸')
-        else if (r <= 8) say(g, x, 'Ignored', `You told ${x.s('who')} to stop. They laughed and kept ${x.s('act').split(' ')[0]}.`, `I tried to stop ${x.s('who')} from committing ${x.s('crime')}.`, { karma: 4, happiness: -2 })
+        else if (r <= 8) say(g, x, 'Ignored', `You told ${x.s('who')} to stop. They laughed and carried on.`, `I tried to stop ${x.s('who')} from committing ${x.s('crime')}.`, { karma: 4, happiness: -2 })
         else say(g, x, 'Assaulted', `${uc(x.s('who'))} punched you in the face and ran off.`, `I was assaulted when I tried to stop ${x.s('who')} from committing ${x.s('crime')}.`, { karma: 6, health: -10, happiness: -8 }, 'bad', '🤕')
       },
       police: (g, x) => {
@@ -1210,4 +1202,3 @@ function uc(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
-export const ADULT_UTIL = { jobless, children, partner, pets, country }
