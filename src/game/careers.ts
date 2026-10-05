@@ -25,6 +25,8 @@ import {
   useYearAction,
   yearActionsUsed,
 } from './core'
+import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
+import { codeFreelanceMenu } from './computer/dev-freelance'
 import { catchEmbellishment, caughtLine, caughtLying, cvMenu, cvScore, embellishedEntries, jobMarket, jobScreenChance, jobTarget, screeningReason, screeningThoroughness } from './cv'
 import { COMPANY_WORDS, FULLTIME_JOBS, GIGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
 import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation, presentAdmissionsInterview, screenedOut } from './education'
@@ -141,7 +143,8 @@ export function jobRequirementProblem(g: GameState, def: JobDef): string | null 
   }
   if (def.gender && c.gender !== def.gender) return `This position is only open to ${def.gender === 'male' ? 'men' : 'women'}.`
   if (def.studentOnly && !isStudent(g, [...STUDENT_LEVELS])) return 'This job is only for university students.'
-  if (!meetsEducation(g, def.edu, def.majors)) return `This position requires: ${educationRequirementLabel(def.edu, def.majors)}.`
+  // Self-taught developers: strong coding skill + a portfolio stand in for the degree on software/IT jobs.
+  if (!meetsEducation(g, def.edu, def.majors) && !selfTaughtDev(g, def)) return `This position requires: ${educationRequirementLabel(def.edu, def.majors)}.`
   if (def.experience && totalWorkExperience(g) < def.experience) return `This position requires ${def.experience} years of work experience.`
   if (def.license && !c.licenses.includes(def.license)) return `You need ${LICENSE_NAMES[def.license] ?? `a ${def.license} license`}.`
   if (def.car && !g.assets.some((a) => a.kind === 'car')) return 'You need to own a car.'
@@ -154,6 +157,7 @@ export function jobRequirementProblem(g: GameState, def: JobDef): string | null 
 
 function requirementSummary(def: JobDef): string {
   const parts = [`Education: ${educationRequirementLabel(def.edu, def.majors)}`]
+  if (def.industry === 'tech' && def.edu !== 'none') parts.push(SELF_TAUGHT_NOTE)
   if (def.experience) parts.push(`Experience: ${def.experience} years`)
   if (def.license) parts.push(`License: ${def.license === 'driver' ? "Driver's" : def.license[0].toUpperCase() + def.license.slice(1)}`)
   if (def.car) parts.push('Must own a car')
@@ -1468,8 +1472,8 @@ const freelanceMenu: MenuGroup = {
   visible: (g) => g.character.age >= 13,
   disabledReason: blocked,
   header: (g) => `Post an ad with your hourly rate. Charge too much and nobody calls. Gigs worked this year: ${yearActionsUsed(g, 'gigs')}/10.`,
-  children: () =>
-    GIGS.map(
+  children: () => [
+    ...GIGS.map(
       (gig): MenuAction => ({
         type: 'action',
         id: `gig.${gig.id}`,
@@ -1482,6 +1486,9 @@ const freelanceMenu: MenuGroup = {
         run: (g, input) => doGig(g, gig, input),
       }),
     ),
+    // Coding, design and web jobs from the home computer (Activities › Computer).
+    codeFreelanceMenu,
+  ],
 }
 
 // ---------------------------------------------------------------------------
