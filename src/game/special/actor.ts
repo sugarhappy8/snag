@@ -6,7 +6,7 @@ import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { randomFirstName, randomLastName } from '../world'
-import { addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, money, myJob, peek, prof, quitNote, say, setRole, short, syncTenure, talentMatches, tell, view, yearlyList } from './common'
+import { addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, setRole, short, syncTenure, talentMatches, tell, view, yearlyList } from './common'
 
 type Role = 'Extra' | 'Supporting' | 'Lead'
 type Kind = 'film' | 'tv'
@@ -260,7 +260,6 @@ function openAuditions(g: GameState): void {
 }
 
 function landRole(g: GameState, l: Listing): void {
-  const c = g.character
   const title = roleTitle(g, l.role, l.kind)
   const proj: Project = { title: l.title, kind: l.kind, genre: l.genre, role: l.role, studio: l.studio, pay: l.pay, budget: l.budget, developed: 0, buzz: 0, season: 1, costars: [] }
   let job = actorJob(g)
@@ -574,18 +573,12 @@ const quitAction: MenuAction = {
       p.reputation = clamp100(p.reputation - 15)
       addFame(g, -3)
     }
-    endActing(g, job)
-    g.character.job = null
+    if (proj) removeCostars(g, proj)
+    if (job.title === 'Extra') job.title = actorWord(g)
+    leave(g, 'quit')
     log(g, 'I quit acting.')
     say(g, 'Retired from Acting', proj ? `You walked off the set of "${proj.title}" and quit acting. The tabloids are calling it a meltdown.` : 'You hung up your headshots and quit acting.', '\u{1F6AA}')
   },
-}
-
-function endActing(g: GameState, job: Job): void {
-  const proj = project(job)
-  if (proj) removeCostars(g, proj)
-  const c = g.character
-  c.careerHistory.push({ title: job.title === 'Extra' ? actorWord(g) : job.title, company: job.company, startAge: c.age - job.yearsAtCompany, endAge: c.age, reason: 'quit', salary: job.salary })
 }
 
 function removeCostars(g: GameState, proj: Project): void {
@@ -782,34 +775,34 @@ export function yearlyActor(g: GameState): void {
   const job = actorJob(g)
   if (!job || c.prison) return
   syncTenure(g, job)
-  const prof2 = actorProfile(g)
+  const ap = actorProfile(g)
   const proj = project(job)
   if (!proj) {
-    prof2.dryYears += 1
+    ap.dryYears += 1
     if (fameOf(g) > 10) addHidden(g, 'fame', -randInt(g, 1, 3))
-    if (prof2.agent && prof2.dryYears >= 2 && chance(g, 0.5)) {
-      const name = prof2.agent.name
-      prof2.agent = null
+    if (ap.agent && ap.dryYears >= 2 && chance(g, 0.5)) {
+      const name = ap.agent.name
+      ap.agent = null
       g.flags['special.actor.dropped'] = true
       log(g, `My agent ${name} dropped me.`, 'bad')
-      say(g, "That's Showbiz", `Your agent, ${name}, dropped you after ${prof2.dryYears} years without landing a role.`, '\u{1F4C9}', 'bad')
+      say(g, "That's Showbiz", `Your agent, ${name}, dropped you after ${ap.dryYears} years without landing a role.`, '\u{1F4C9}', 'bad')
     }
     return
   }
   const budgetBase = proj.budget === 'blockbuster' ? 15 : proj.budget === 'indie' || proj.budget === 'cable' ? -5 : 5
-  const quality = clamp100(prof2.skill * 0.5 + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
+  const quality = clamp100(ap.skill * 0.5 + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
   const popularity = clamp100(quality * 0.6 + fameOf(g) * 0.2 + proj.buzz + randInt(g, -15, 25))
-  const cut = prof2.agent?.cut ?? 0
+  const cut = ap.agent?.cut ?? 0
   const pay = Math.round(proj.pay * (1 - cut))
   earnIncome(g, pay)
   const verdict = verdictFor(g, popularity, proj.kind)
   const fameGain = proj.role === 'Extra' ? (chance(g, 0.3) ? 1 : 0) : proj.role === 'Supporting' ? 1 + Math.round(popularity / 30) : 3 + Math.round(popularity / 14)
   addFame(g, fameGain)
-  prof2.reputation = clamp100(prof2.reputation + (quality - 50) / 8)
+  ap.reputation = clamp100(ap.reputation + (quality - 50) / 8)
   if (proj.role === 'Lead' && fameOf(g) >= 70) fameToward(g, 90, 2)
   count(g, 'movies')
   const residual = proj.role === 'Extra' ? 0 : Math.round(proj.pay * 0.03 * (popularity / 50))
-  const existing = proj.season > 1 ? prof2.credits.find((x) => x.title === proj.title && x.kind === 'tv') : undefined
+  const existing = proj.season > 1 ? ap.credits.find((x) => x.title === proj.title && x.kind === 'tv') : undefined
   let credit: Credit
   if (existing) {
     existing.seasons = proj.season
@@ -821,7 +814,7 @@ export function yearlyActor(g: GameState): void {
     credit = existing
   } else {
     credit = { title: proj.title, kind: proj.kind, role: proj.role, genre: proj.genre, age: c.age, pay: proj.pay, quality, popularity, seasons: 1, verdict, residual }
-    prof2.credits.push(credit)
+    ap.credits.push(credit)
   }
   if (proj.genre === 'Bollywood' && proj.role === 'Lead') g.flags['special.actor.bollywood'] = true
   if (proj.genre === 'Telenovela' && proj.season >= 3) g.flags['special.actor.telenovela'] = true

@@ -6,6 +6,7 @@
 // an AI task, processQueue() runs it against LM Studio (or the offline fallback).
 import { useSyncExternalStore } from 'react'
 import { applyFallback, narrateNotice, runAiTask, testConnection } from '../ai/director'
+import { resetLmStudioSession } from '../ai/lmstudio'
 import { ageUp } from '../game/aging'
 import { netWorth } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
@@ -83,9 +84,14 @@ export function goBack(): void {
 }
 
 export function updateSettings(patch: Partial<Settings>): void {
-  const settings = { ...state.settings, ...patch }
+  const prev = state.settings
+  const settings = { ...prev, ...patch }
   saveSettings(settings)
   setState({ settings })
+  // A different server or model invalidates the auto-picked model and structured-output fallback.
+  if (settings.baseUrl !== prev.baseUrl || settings.model !== prev.model || settings.apiKey !== prev.apiKey) {
+    resetLmStudioSession()
+  }
 }
 
 export async function checkAi(): Promise<void> {
@@ -191,10 +197,14 @@ function handleModal(id: string, handler: (g: GameState, modal: ModalItem) => vo
     const idx = g.queue.findIndex((m) => m.id === id)
     if (idx < 0) return
     const [modal] = g.queue.splice(idx, 1)
-    const before = g.queue.length
+    const existing = new Set(g.queue.map((m) => m.id))
     handler(g, modal)
-    const added = g.queue.splice(before)
-    g.queue.splice(idx, 0, ...added)
+    // The handler may also rebuild the queue (e.g. dying drops pending choices), so find
+    // the new items by id rather than by position.
+    const added = g.queue.filter((m) => !existing.has(m.id))
+    if (!added.length) return
+    const rest = g.queue.filter((m) => existing.has(m.id))
+    g.queue = [...rest.slice(0, idx), ...added, ...rest.slice(idx)]
   })
 }
 

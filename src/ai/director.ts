@@ -498,6 +498,7 @@ async function runObituary(g: GameState, settings: Settings, signal: AbortSignal
   )
   return (draft) => {
     draft.obituary = r.text
+    draft.flags.obituarySource = 'ai'
   }
 }
 
@@ -550,6 +551,7 @@ export function applyFallback(g: GameState, task: AiTask): void {
       return
     case 'obituary':
       g.obituary = fallbackObituary(g)
+      g.flags.obituarySource = 'fallback'
       return
   }
 }

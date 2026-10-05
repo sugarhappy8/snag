@@ -73,7 +73,9 @@ export function applyEffects(g: GameState, eff: GameEffects): string[] {
     const romantic = relation === 'partner' || relation === 'lover'
     if (romantic) {
       const gender = np.gender ?? (c.gender === 'male' ? 'female' : 'male')
-      const ok = c.age >= 14 && age >= 14 && Math.abs(age - c.age) <= 25 && attractedTo(c, gender)
+      // Minors only date people within a couple of years of their own age.
+      const maxGap = c.age < 18 || age < 18 ? 2 : 25
+      const ok = c.age >= 14 && age >= 14 && Math.abs(age - c.age) <= maxGap && attractedTo(c, gender)
       if (!ok || (relation === 'partner' && currentPartner(g))) relation = ok ? 'lover' : 'friend'
       if (relation === 'lover' && c.age < 18) relation = 'friend'
     }
