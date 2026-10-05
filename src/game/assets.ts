@@ -1,4 +1,4 @@
-// Assets: everything you can own. BitLife's Assets tab (your belongings, real estate brokers,
+// Assets: everything you can own. The classic life-sim Assets tab (your belongings, real estate brokers,
 // car dealers, specialty vehicles, rentals) and Activities → Shopping (jewelers, instruments,
 // electronics, luxury boutique, art & collectibles). The yearly hook handles values,
 // condition, upkeep, mortgages, tenants and the odd burst pipe.

@@ -212,7 +212,7 @@ export function bump(job: Job, delta: number): void {
 
 export function addFame(g: GameState, delta: number): void {
   addHidden(g, 'fame', Math.round(delta))
-  if (delta > 0) g.flags['special.fameActiveAge'] = g.character.age
+  if (delta > 0) setOwnFlag(g, 'fameActiveAge', g.character.age)
 }
 
 export function fameOf(g: GameState): number {
@@ -368,4 +368,25 @@ export function instrumentSkill(g: GameState, name: string): number {
 export function setInstrumentSkill(g: GameState, name: string, value: number): void {
   if (name === 'Voice') return setFlagSkill(g, 'voice', value)
   g.flags.instruments = { ...instrumentRecord(g), [name]: clamp100(value) }
+}
+
+/** Instruments the character has any skill in ('Voice' first when they've had voice lessons). */
+export function knownInstruments(g: GameState): string[] {
+  const rec = instrumentRecord(g)
+  const list = Object.keys(rec).filter((k) => typeof rec[k] === 'number' && (rec[k] as number) > 0)
+  if (flagSkill(g, 'voice') > 0) list.unshift('Voice')
+  return list
+}
+
+// ---------------------------------------------------------------------------
+// Per-character flags (g.flags survives into the next generation, so tag the owner)
+
+export function ownFlag(g: GameState, key: string): Json | undefined {
+  const v = g.flags[`special.own.${key}`]
+  if (!v || typeof v !== 'object' || Array.isArray(v) || v.owner !== ownerKey(g)) return undefined
+  return v.value
+}
+
+export function setOwnFlag(g: GameState, key: string, value: Json): void {
+  g.flags[`special.own.${key}`] = { owner: ownerKey(g), value }
 }

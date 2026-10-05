@@ -5,7 +5,7 @@ import { addHidden, addRelationship, addStat, count, earnIncome, log, parents, r
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
-import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, peek, prof, say, tell, vary } from './common'
+import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
 
 interface Book {
   title: string
@@ -841,7 +841,8 @@ export function yearlyFame(g: GameState): void {
     }
   }
   // Fame fades when you stop feeding it.
-  const lastActive = typeof g.flags['special.fameActiveAge'] === 'number' ? g.flags['special.fameActiveAge'] : -99
+  const active = ownFlag(g, 'fameActiveAge')
+  const lastActive = typeof active === 'number' ? active : -99
   if (c.hidden.fame > 0 && !hasFameCareer(g) && lastActive < c.age - 1) {
     const decay = c.hidden.fame > 60 ? randInt(g, 2, 5) : randInt(g, 1, 3)
     addHidden(g, 'fame', -decay)

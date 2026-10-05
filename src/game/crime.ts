@@ -87,7 +87,7 @@ function canAct(g: GameState): boolean {
   return g.character.alive && !g.character.prison
 }
 
-/** Per-year limit with a BitLife-style "lie low" popup. */
+/** Per-year limit with a "lie low" popup. */
 function lieLow(g: GameState, key: string, max: number): boolean {
   if (useYearAction(g, key, max)) return true
   notice(

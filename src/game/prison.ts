@@ -78,7 +78,7 @@ export interface PrisonLife {
   bribedGuard: boolean
   severity: number
   originalSentence: number
-  /** Crime-family membership survives prison (BitLife rule). */
+  /** Age when the player was admitted (crime-family membership survives prison). */
   admittedAge: number
 }
 

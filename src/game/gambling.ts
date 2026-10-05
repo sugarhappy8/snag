@@ -184,7 +184,7 @@ export function parseBlackjackResult(result: string): BlackjackResult | null {
   return { outcome, doubled: parts.includes('double') && outcome !== 'blackjack', charlie: parts.includes('charlie'), bust: parts.includes('bust') }
 }
 
-/** Net money change for a blackjack hand (BitLife pays 2x on a win and 3x on a blackjack, i.e. +bet / +2×bet). */
+/** Net money change for a blackjack hand (the original game pays 2x on a win and 3x on a blackjack, i.e. +bet / +2×bet). */
 export function blackjackNet(bet: number, r: BlackjackResult): number {
   const stake = bet * (r.doubled ? 2 : 1)
   switch (r.outcome) {
@@ -686,12 +686,13 @@ export const LOTTERY_GAMES: LotteryGame[] = [
     scratch: false,
     jackpot: [1_000_000, 20_000_000],
     blurb: 'Pick six numbers. Match them all for the jackpot.',
+    // Six from 49: real-world odds.
     tiers: [
-      { odds: 2_000_000, prize: 'jackpot', label: 'all six numbers' },
-      { odds: 150_000, prize: 25_000, label: 'five numbers' },
-      { odds: 6_000, prize: 500, label: 'four numbers' },
-      { odds: 120, prize: 20, label: 'three numbers' },
-      { odds: 15, prize: 2, label: 'two numbers' },
+      { odds: 13_983_816, prize: 'jackpot', label: 'all six numbers' },
+      { odds: 55_492, prize: 2_500, label: 'five numbers' },
+      { odds: 1_033, prize: 75, label: 'four numbers' },
+      { odds: 57, prize: 10, label: 'three numbers' },
+      { odds: 8, prize: 2, label: 'two numbers' },
     ],
   },
   {
@@ -703,8 +704,8 @@ export const LOTTERY_GAMES: LotteryGame[] = [
     jackpot: [40_000_000, 800_000_000],
     blurb: 'The giant multi-state jackpot. Astronomical odds.',
     tiers: [
-      { odds: 30_000_000, prize: 'jackpot', label: 'every number plus the MegaBall' },
-      { odds: 5_000_000, prize: 1_000_000, label: 'five numbers' },
+      { odds: 302_575_350, prize: 'jackpot', label: 'every number plus the MegaBall' },
+      { odds: 12_607_306, prize: 1_000_000, label: 'five numbers' },
       { odds: 200_000, prize: 10_000, label: 'four numbers plus the MegaBall' },
       { odds: 12_000, prize: 500, label: 'four numbers' },
       { odds: 700, prize: 50, label: 'three numbers' },

@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { counter } from '../src/game/core'
 import { arrestPlayer, crimeMenu, crimeSeverity, yearlyCrime, type BurglaryData } from '../src/game/crime'
 import { createPerson } from '../src/game/people'
-import { fugitiveInfo, sendToPrison } from '../src/game/prison'
+import { fugitiveInfo, prisonMenu, sendToPrison } from '../src/game/prison'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, MenuAction, MenuNode, MinigameModal, ModalItem } from '../src/game/types'
 import { Burglary, readBurglaryHouse } from '../src/ui/minigames/Burglary'
@@ -196,7 +196,9 @@ describe('crime menu', () => {
     expect(crimeMenu.visible?.(g)).toBe(false)
     const teen = adult(1, 12)
     expect(action(teen, 'crime.pickpocket').disabledReason?.(teen)).toBeNull()
-    expect(findNode(teen, crimeMenu.children(teen), 'crime.murder')?.disabledReason?.(teen)).toBeTruthy()
+    const murder = findNode(teen, crimeMenu.children(teen), 'crime.murder')
+    expect(murder?.type).toBe('menu')
+    if (murder?.type === 'menu') expect(murder.disabledReason?.(teen)).toBeTruthy()
   })
 
   it('burglary: pick a house, search rooms, pocket the loot', () => {
@@ -312,6 +314,100 @@ describe('crime menu', () => {
     answer(g, methods, 'cancel')
     expect(counter(g, 'crimes')).toBe(0)
     expect(g.people.length).toBe(0)
+  })
+})
+
+describe('crime life simulation', () => {
+  function driver(seed: number) {
+    let s = seed >>> 0 || 1
+    return () => {
+      s ^= s << 13
+      s ^= s >>> 17
+      s ^= s << 5
+      return (s >>> 0) / 4294967296
+    }
+  }
+
+  function minigameResult(m: MinigameModal, next: () => number): string {
+    if (m.game === 'burglary') {
+      const d = m.data as unknown as BurglaryData
+      const rooms = d.rooms.filter(() => next() < 0.5).map((r) => r.id)
+      return JSON.stringify({ loot: 0, caught: next() < 0.3, rooms })
+    }
+    if (m.game === 'pickpocket') return next() < 0.5 ? 'success' : 'fail'
+    if (m.game === 'prisonEscape') return next() < 0.5 ? 'escaped' : 'caught'
+    return 'done'
+  }
+
+  function drain(g: GameState, next: () => number): void {
+    for (let guard = 0; g.queue.length > 0; guard++) {
+      if (guard > 300) throw new Error(`queue never drains: ${JSON.stringify(g.queue[0]).slice(0, 300)}`)
+      const m = g.queue.shift() as ModalItem
+      const before = g.queue.length
+      if (m.kind === 'choice' && m.source === 'script' && m.scriptId) {
+        expect(m.choices.length).toBeGreaterThan(0)
+        runScript(g, m.scriptId, m.choices[Math.floor(next() * m.choices.length)].id, m.data, m)
+      } else if (m.kind === 'minigame') {
+        runScript(g, m.scriptId, minigameResult(m, next), m.data, m)
+      } else if (m.kind === 'input') {
+        runScript(g, m.scriptId, String(m.min ?? 1), m.data, m)
+      }
+      const added = g.queue.splice(before)
+      g.queue.unshift(...added)
+    }
+  }
+
+  function actions(g: GameState, nodes: MenuNode[], out: MenuAction[] = []): MenuAction[] {
+    for (const n of nodes) {
+      if (n.type === 'info' || n.type === 'heading') continue
+      if (n.visible && !n.visible(g)) continue
+      if (n.disabledReason && n.disabledReason(g)) continue
+      if (n.type === 'action') out.push(n)
+      else actions(g, n.children(g), out)
+    }
+    return out
+  }
+
+  it('commits random crimes for decades without breaking state', () => {
+    for (let seed = 1; seed <= 16; seed++) {
+      const g = makeTestGame(seed, { age: 10 + (seed % 8), money: seed % 2 ? 0 : 200_000 })
+      g.character.job = seed % 3 === 0 ? { defId: 'teller', title: 'Bank Teller', company: 'First Bank', category: 'fulltime', salary: 40000, level: 0, performance: 60, yearsInRole: 1, yearsAtCompany: 1, data: {} } : null
+      createPerson(g, { relation: 'parent', age: 45 })
+      createPerson(g, { relation: 'sibling', age: 14 })
+      createPerson(g, { relation: 'friend', age: 20 })
+      const next = driver(seed * 104729)
+      for (let year = 0; year < 30 && g.character.alive; year++) {
+        g.yearActions = {}
+        for (let k = 0; k < 5 && g.character.alive; k++) {
+          const menu = g.character.prison ? prisonMenu : crimeMenu
+          const acts = actions(g, menu.children(g))
+          if (acts.length === 0) break
+          acts[Math.floor(next() * acts.length)].run(g)
+          drain(g, next)
+        }
+        if (!g.character.alive) break
+        yearlyCrime(g)
+        drain(g, next)
+        g.character.age += 1
+        const c = g.character
+        for (const v of Object.values(c.stats)) {
+          expect(v).toBeGreaterThanOrEqual(0)
+          expect(v).toBeLessThanOrEqual(100)
+        }
+        expect(Number.isFinite(c.money)).toBe(true)
+        expect(c.wantedLevel).toBeGreaterThanOrEqual(0)
+        expect(c.wantedLevel).toBeLessThanOrEqual(5)
+        expect(c.residence.status === 'prison').toBe(!!c.prison)
+        const ids = g.people.map((p) => p.id)
+        expect(new Set(ids).size).toBe(ids.length)
+        for (const p of g.people) {
+          expect(p.relationship).toBeGreaterThanOrEqual(0)
+          expect(p.relationship).toBeLessThanOrEqual(100)
+        }
+        expect(JSON.parse(JSON.stringify(g))).toEqual(g)
+      }
+      expect(counter(g, 'crimes')).toBeGreaterThan(0)
+    }
   })
 })
 

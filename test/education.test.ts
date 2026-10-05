@@ -225,6 +225,15 @@ describe('university and graduate school', () => {
     expect(lastChoice(g, 'school.afterUniversity').choices.map((x) => x.id)).toContain('medical')
   })
 
+  it('blocks enrollment while serving in the military', () => {
+    const g = adult(7)
+    g.character.job = { defId: 'army', title: 'Private', company: 'Army', category: 'military', salary: 30000, level: 0, performance: 60, yearsInRole: 0, yearsAtCompany: 0, data: {} }
+    applyToUniversity(g, 'Biology')
+    expect(g.character.education.current).toBeNull()
+    const last = g.queue[g.queue.length - 1]
+    expect(last.kind === 'notice' && last.text).toMatch(/military/)
+  })
+
   it('is tuition-free in countries with free university', () => {
     for (let seed = 1; seed < 40; seed++) {
       const g = adult(seed, { countryId: 'fr' })

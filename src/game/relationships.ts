@@ -43,6 +43,7 @@ import {
   dNum,
   dStr,
   elope,
+  fertilityFactor,
   hookUpWith,
   intimacyProblem,
   isRomantic,
@@ -650,18 +651,19 @@ export function npcMortality(age: number, health: number): number {
   if (age < 1) base = 0.002
   else if (age < 18) base = 0.0006
   else if (age < 40) base = 0.0012
-  else if (age < 50) base = 0.003
-  else if (age < 60) base = 0.008
-  else if (age < 65) base = 0.015
-  else if (age < 70) base = 0.025
-  else if (age < 75) base = 0.04
-  else if (age < 80) base = 0.07
-  else if (age < 85) base = 0.11
-  else if (age < 90) base = 0.18
-  else if (age < 95) base = 0.28
-  else if (age < 100) base = 0.4
-  else base = 0.6
-  const mult = health < 20 ? 3 : health < 40 ? 1.8 : health > 80 ? 0.7 : 1
+  else if (age < 50) base = 0.0025
+  else if (age < 60) base = 0.006
+  else if (age < 65) base = 0.012
+  else if (age < 70) base = 0.02
+  else if (age < 75) base = 0.032
+  else if (age < 80) base = 0.05
+  else if (age < 85) base = 0.085
+  else if (age < 90) base = 0.14
+  else if (age < 95) base = 0.24
+  else if (age < 100) base = 0.36
+  else base = 0.55
+  // Median NPC lifespan lands around 79 (p90 ~88), like the original's grandparents and parents.
+  const mult = health < 20 ? 2.5 : health < 40 ? 1.5 : health > 80 ? 0.7 : 1
   return Math.min(0.95, base * mult)
 }
 
@@ -689,7 +691,7 @@ function npcDeaths(g: GameState): void {
       petYear(g, p, deaths)
       continue
     }
-    if (p.age >= 50) addPersonStat(p, 'health', -randInt(g, 0, p.age >= 75 ? 5 : 3))
+    if (p.age >= 50) addPersonStat(p, 'health', -randInt(g, 0, p.age >= 75 ? 4 : 2))
     else addPersonStat(p, 'health', randInt(g, -2, 2))
     if (chance(g, npcMortality(p.age, p.stats.health))) deaths.push({ p, cause: deathCause(g, p) })
   }
@@ -1313,9 +1315,11 @@ function partnerDrama(g: GameState): void {
     return
   }
   // Surprise pregnancies for couples who live together.
-  if ((p.relation === 'spouse' || p.livesWithPlayer) && !conceptionBlocker(g, p)) {
+  const justHadBaby = pNum(p, 'lastBirthAge', -1) === c.age || g.flags.lastBirthAge === c.age
+  if ((p.relation === 'spouse' || p.livesWithPlayer) && !justHadBaby && !conceptionBlocker(g, p)) {
     const onBc = c.gender === 'female' ? g.flags.birthControl === true : p.data.birthControl === true
-    if (!onBc && chance(g, 0.06)) {
+    const kids = g.people.filter((x) => x.alive && x.relation === 'child' && x.otherParentId === p.id).length
+    if (!onBc && chance(g, 0.04 * fertilityFactor(g, p) * (kids >= 3 ? 0.4 : 1))) {
       conceive(g, p, 1, 'natural')
       announcePregnancy(g, p, 1)
     }

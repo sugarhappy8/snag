@@ -104,6 +104,17 @@ describe('yearlyFinance', () => {
     expect(g.queue.some((m) => m.kind === 'notice' && m.title === 'Repossessed!')).toBe(true)
   })
 
+  it('repossesses a financed boat, but a loan on a stolen car stays with you', () => {
+    const g = adult(0)
+    const boatLoan = addLoan(g, { kind: 'personal', lender: 'Marine Credit', principal: 50_000, rate: 0.08, years: 5 })
+    const carLoan = addLoan(g, { kind: 'car', lender: 'Auto Finance', principal: 20_000, rate: 0.07, years: 5 })
+    g.assets.push({ id: 'boat1', kind: 'boat', name: 'Speedboat', emoji: '🚤', purchasePrice: 60_000, value: 55_000, condition: 100, purchasedAge: 30, upkeep: 0, details: { loanId: boatLoan.id } })
+    yearlyFinance(g)
+    yearlyFinance(g)
+    expect(g.assets).toHaveLength(0)
+    expect(g.character.loans.map((l) => l.id)).toEqual([carLoan.id])
+  })
+
   it('evicts broke renters to homelessness after two years of debt', () => {
     const g = adult(0)
     g.character.residence = { status: 'renting', rent: 15_000, description: 'a 1-bedroom apartment in Midtown' }

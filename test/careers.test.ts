@@ -370,6 +370,17 @@ describe('job activities', () => {
     expect(replaced).toBe(true)
   })
 
+  it('blocks civilian full-time jobs while serving in the military', () => {
+    const g = adult(31)
+    g.character.job = { defId: 'army', title: 'Private', company: 'Army', category: 'military', salary: 30000, level: 0, performance: 60, yearsInRole: 0, yearsAtCompany: 0, data: {} }
+    const jobs = occupationMenu.children(g).find((n) => n.id === 'occupation.jobs') as MenuGroup
+    const listing = jobs.children(g).find((n): n is MenuAction => n.type === 'action' && n.id.startsWith('listing.'))!
+    listing.run(g)
+    const last = g.queue[g.queue.length - 1]
+    expect(last.kind === 'notice' && last.text).toMatch(/discharged/)
+    expect(g.character.job.category).toBe('military')
+  })
+
   it('sends a job recruiter interview once a year', () => {
     const g = adult(30)
     const rec = jobNode(g, 'occupation.recruiter') as MenuAction

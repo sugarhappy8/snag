@@ -43,14 +43,14 @@ const LIMITATION: Record<GrievanceKind, number> = {
 
 /** US-dollar damage options by kind of case (scaled to the local price level). */
 const DAMAGES: Record<GrievanceKind, number[]> = {
-  assailant: [5_000, 25_000, 100_000, 250_000, 1_000_000],
+  assailant: [10_000, 50_000, 100_000, 500_000, 1_000_000],
   surgeon: [25_000, 100_000, 500_000, 1_000_000, 5_000_000],
   employer: [25_000, 100_000, 250_000, 1_000_000, 5_000_000],
   police: [50_000, 250_000, 1_000_000, 5_000_000, 10_000_000],
   coworker: [10_000, 50_000, 100_000, 500_000, 1_000_000],
   boss: [10_000, 50_000, 250_000, 500_000, 2_000_000],
   spouse: [10_000, 50_000, 100_000, 500_000, 1_000_000],
-  other: [5_000, 25_000, 100_000, 250_000, 1_000_000],
+  other: [10_000, 25_000, 100_000, 250_000, 1_000_000],
 }
 
 /** How much asking for more hurts your odds (index = damage option). */
@@ -167,7 +167,7 @@ const BUDGET_TAG = ['(they advertise on bus benches)', '(the office is above a l
 
 export function lawFirms(g: GameState, kind: GrievanceKind): Firm[] {
   const big = kind === 'police' || kind === 'surgeon' || kind === 'employer'
-  const fees = big ? [3_000, 20_000, 75_000] : [1_500, 10_000, 40_000]
+  const fees = big ? [2_500, 12_000, 45_000] : [750, 4_000, 15_000]
   const suffixes = stablePick(g, 'lawFirmSuffix', FIRM_SUFFIX, 3)
   return ([0, 1, 2] as const).map((tier) => {
     const a = stableName(g, `lawyer.${tier}.a`)

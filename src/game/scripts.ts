@@ -10,7 +10,8 @@ import type { GameState, Json, ModalItem, ScriptHandler } from './types'
 const handlers = new Map<string, ScriptHandler>()
 
 export function defineScript(id: string, handler: ScriptHandler): string {
-  if (handlers.has(id)) throw new Error(`Duplicate script id: ${id}`)
+  // A module re-evaluated by Vite hot reload registers its scripts again; let that replace them.
+  if (handlers.has(id) && !import.meta.hot) throw new Error(`Duplicate script id: ${id}`)
   handlers.set(id, handler)
   return id
 }

@@ -1413,7 +1413,8 @@ export function conceptionBlocker(g: GameState, p: Person): string | null {
   return null
 }
 
-function fertilityFactor(g: GameState, p: Person): number {
+/** 0-1 multiplier on conception odds from the mother's age and the player's fertility. */
+export function fertilityFactor(g: GameState, p: Person): number {
   const c = g.character
   const motherAge = c.gender === 'female' ? c.age : p.age
   const ageFactor = motherAge <= 30 ? 1 : motherAge <= 35 ? 0.85 : motherAge <= 40 ? 0.6 : motherAge <= 45 ? 0.3 : 0.08
@@ -1644,6 +1645,8 @@ function deliver(g: GameState, other: Person | null, babies: number, carrier: 't
   const livesWithPlayer = !inPrison(g) && (carrier !== 'them' || togetherWithOther)
   addStat(g, 'happiness', randInt(g, 8, 15))
   if (other && other.relation === 'ex') other.data.babyParent = true
+  if (carrier === 'them' && other) other.data.lastBirthAge = c.age
+  if (carrier === 'player') g.flags.lastBirthAge = c.age
   for (let i = 0; i < babies; i++) {
     const gender: Gender = chance(g, 0.5) ? 'male' : 'female'
     const avg = (k: 'smarts' | 'looks') => Math.round(((c.stats[k] + (other?.stats[k] ?? 50)) / 2) + randInt(g, -15, 15))
@@ -2212,8 +2215,10 @@ export function adoptionRejection(g: GameState): string | null {
   if (['parents', 'homeless', 'dorm', 'prison', 'military'].includes(c.residence.status)) return 'Housing'
   if (!c.job && !c.partTimeJob && !c.retired && c.money < 100_000) return 'Unemployed'
   if (c.money < 1000) return 'Finances'
-  const kids = g.people.filter((p) => (p.relation === 'child' || p.relation === 'stepchild') && p.alive).length
-  if (kids >= 5) return 'Unspecified'
+  // Agencies look at how many kids you've ever had, not just the ones still around.
+  const living = g.people.filter((p) => (p.relation === 'child' || p.relation === 'stepchild') && p.alive).length
+  const everHad = (g.counters.children ?? 0) + (g.counters.adoptions ?? 0)
+  if (Math.max(living, everHad) >= 5) return 'Unspecified'
   return null
 }
 

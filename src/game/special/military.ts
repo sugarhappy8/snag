@@ -8,7 +8,7 @@ import { chance, pick, rand, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, peek, prof, promote, quitNote, say, syncTenure, tell, view } from './common'
+import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
 
 // ---------------------------------------------------------------------------
 // Branches & ranks
@@ -99,7 +99,7 @@ function unitName(g: GameState, b: Branch): string {
 function rejectReason(g: GameState, track: Track): string | null {
   const c = g.character
   const p = peek<MilProfile>(g, 'military')
-  if (g.flags['special.deserter'] === true) return 'deserter'
+  if (ownFlag(g, 'deserter') === true) return 'deserter'
   if (p?.discharge === 'Dishonorable') return 'The recruiter looked up your record and saw your dishonorable discharge. They told you never to come back.'
   if (track === 'enlisted' && !hasHighSchool(g)) return 'The recruiter told you to come back once you have a high school diploma or GED.'
   if (track === 'officer' && !hasCollegeDegree(g)) return 'Officer candidates need a university degree.'
@@ -115,7 +115,7 @@ function rejectReason(g: GameState, track: Track): string | null {
 function enlist(g: GameState, b: Branch, track: Track, conscript = false): void {
   const reason = conscript ? null : rejectReason(g, track)
   if (reason === 'deserter') {
-    g.flags['special.deserter'] = false
+    setOwnFlag(g, 'deserter', false)
     log(g, 'I was arrested when I tried to re-enlist as a wanted deserter.', 'bad')
     tell(g, 'Busted', 'The recruiter ran your name and discovered you are a wanted deserter. Military police arrived before you finished filling out the form.', '\u{1F6A8}')
     arrestPlayer(g, 'Desertion', 3)
@@ -383,7 +383,7 @@ function offerDeployment(g: GameState, job: Job): void {
 // Conscription
 
 const draftScript = defineScript('special.mil.draft', (g, choice) => {
-  g.flags['special.drafted'] = true
+  setOwnFlag(g, 'drafted', true)
   if (choice === 'serve') {
     enlist(g, branchOf('army'), 'enlisted', true)
     return
@@ -413,10 +413,10 @@ const draftScript = defineScript('special.mil.draft', (g, choice) => {
 
 function maybeDraft(g: GameState): void {
   const c = g.character
-  if (c.age < 18 || c.age > 20 || c.prison || g.flags['special.drafted'] === true) return
+  if (c.age < 18 || c.age > 20 || c.prison || ownFlag(g, 'drafted') === true) return
   if (!getCountry(c.countryId).conscription) return
   if (militaryJob(g)) {
-    g.flags['special.drafted'] = true
+    setOwnFlag(g, 'drafted', true)
     return
   }
   const country = getCountry(c.countryId)
@@ -459,8 +459,8 @@ const serviceDoneScript = defineScript('special.mil.serviceDone', (g, choice) =>
 export function yearlyMilitary(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  if (g.flags['special.deserter'] === true && !c.prison && chance(g, 0.12)) {
-    g.flags['special.deserter'] = false
+  if (ownFlag(g, 'deserter') === true && !c.prison && chance(g, 0.12)) {
+    setOwnFlag(g, 'deserter', false)
     log(g, 'Military police finally caught up with me for deserting.', 'bad')
     tell(g, 'Busted', 'Military police tracked you down and arrested you for desertion.', '\u{1F6A8}')
     arrestPlayer(g, 'Desertion', 3)
@@ -654,7 +654,7 @@ const desert: MenuAction = {
       arrestPlayer(g, 'Desertion', 3)
       return
     }
-    g.flags['special.deserter'] = true
+    setOwnFlag(g, 'deserter', true)
     addHidden(g, 'notoriety', 5)
     discharge(g, 'Dishonorable')
     log(g, 'I deserted the military.', 'bad')
