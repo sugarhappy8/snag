@@ -6,7 +6,7 @@ import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { randomFirstName, randomLastName } from '../world'
-import { addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, setRole, short, syncTenure, talentMatches, tell, view, yearlyList } from './common'
+import { actingSkill, addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, talentMatches, tell, view, yearlyList } from './common'
 
 type Role = 'Extra' | 'Supporting' | 'Lead'
 type Kind = 'film' | 'tv'
@@ -34,7 +34,6 @@ interface Agent {
 }
 
 interface ActorProfile {
-  skill: number
   reputation: number
   credits: Credit[]
   awards: string[]
@@ -74,7 +73,6 @@ interface Listing {
 const initActor = (g: GameState): ActorProfile => {
   const c = g.character
   return {
-    skill: clamp100(8 + (talentMatches(g, /act|drama|theat/i) ? 30 : 0) + c.stats.looks / 12 + c.stats.smarts / 15),
     reputation: 50,
     credits: [],
     awards: [],
@@ -142,7 +140,7 @@ function genListings(g: GameState): Listing[] {
     let role: Role = 'Extra'
     const r = rand(g) + agentQ / 250
     if ((hadSupporting || f >= 40) && r > 0.7) role = 'Lead'
-    else if ((p.credits.length > 0 || p.skill >= 45 || f >= 25) && r > 0.35) role = 'Supporting'
+    else if ((p.credits.length > 0 || actingSkill(g) >= 45 || f >= 25) && r > 0.35) role = 'Supporting'
     if (role === 'Lead' && !hadSupporting && !hadLead && f < 40) role = 'Supporting'
     const kind: Kind = chance(g, 0.6) ? 'film' : 'tv'
     let genre = kind === 'film' ? pick(g, FILM_GENRES) : pick(g, TV_GENRES)
@@ -198,7 +196,7 @@ const auditionScript = defineScript('special.actor.audition', (g, choice, data) 
   if (choice === FIT[l.genre]) fit = 20
   else if (choice === 'overTop') fit = randInt(g, -15, 25)
   const score =
-    p.skill * 0.5 + c.stats.looks * (l.role === 'Lead' ? 0.25 : 0.1) + p.reputation * 0.1 + (p.agent?.quality ?? 0) * 0.1 + fameOf(g) * 0.15 + fit + randInt(g, -15, 15) - difficulty
+    actingSkill(g) * 0.5 + (talentMatches(g, /act/i) ? 15 : 0) + c.stats.looks * (l.role === 'Lead' ? 0.25 : 0.1) + p.reputation * 0.1 + (p.agent?.quality ?? 0) * 0.1 + fameOf(g) * 0.15 + fit + randInt(g, -15, 15) - difficulty
   if (score < 30) {
     p.reputation = clamp100(p.reputation - 1)
     log(g, `I auditioned for ${l.title} but didn't get the part.`, 'bad')
@@ -319,7 +317,7 @@ const agentScript = defineScript('special.actor.agent', (g, choice, data) => {
   const a = offers[Number(choice)]
   if (!a) return
   const p = actorProfile(g)
-  const pull = p.skill * 0.4 + fameOf(g) * 0.6 + p.credits.length * 5 + randInt(g, 0, 30)
+  const pull = actingSkill(g) * 0.4 + fameOf(g) * 0.6 + p.credits.length * 5 + randInt(g, 0, 30)
   if (pull < a.quality * 0.8) {
     return say(g, 'Talent Agent', `${a.name} from ${a.firm} looked at your résumé and said, "Call me when you've done something." Then hung up.`, '\u{1F574}\u{FE0F}', 'bad')
   }
@@ -385,50 +383,20 @@ const fireAgentAction: MenuAction = {
 // ---------------------------------------------------------------------------
 // Practice, classes, set life
 
-const actingClass: MenuAction = {
-  type: 'action',
-  id: 'actor.classes',
-  label: 'Acting Classes',
-  emoji: '\u{1F3AD}',
-  subtitle: 'Take acting lessons ($300)',
-  disabledReason: (g) => blocked(g, 6),
-  run: (g) => {
-    if (!useYearAction(g, 'actor.classes', 1)) return tell(g, 'Acting Classes', "You've already taken a class this year. Your teacher needs a break from your Shakespeare.", '\u{1F3AD}')
-    const c = g.character
-    const free = c.age < 18
-    if (!free && !spend(g, 300)) {
-      g.yearActions['actor.classes'] = 0
-      return tell(g, 'Acting Classes', "You can't afford acting classes right now.", '\u{1F4B8}')
-    }
-    const p = actorProfile(g)
-    const gain = randInt(g, 3, 7) + (talentMatches(g, /act|drama|theat/i) ? 3 : 0)
-    p.skill = clamp100(p.skill + gain)
-    addStat(g, 'happiness', 3)
-    log(g, 'I took acting classes.')
-    say(
-      g,
-      'Acting Classes',
-      `${free ? 'Your parents paid for acting classes. ' : ''}${pick(g, ['You spent the class pretending to be a tree. Your teacher called it "brave".', 'You practiced crying on command. You nailed it.', 'You learned that every line is an opportunity for a dramatic pause.'])} Your acting skill is now ${p.skill}%.`,
-      '\u{1F3AD}',
-      'good',
-    )
-  },
-}
-
 const practiceAction: MenuAction = {
   type: 'action',
   id: 'actor.practice',
   label: 'Practice',
   emoji: '\u{1F4D6}',
-  subtitle: (g) => `Hone your craft · Acting skill ${viewActor(g).skill}%`,
+  subtitle: (g) => `Hone your craft · Acting skill ${actingSkill(g)}%`,
   disabledReason: (g) => blocked(g, 0),
   run: (g) => {
     if (!useYearAction(g, 'actor.practice', 2)) return tell(g, 'Practice', "You've rehearsed so much this year that you're starting to talk in monologues. Take a break.", '\u{1F971}')
     const p = actorProfile(g)
     const gain = randInt(g, 2, 6) + (talentMatches(g, /act|drama|theat/i) ? 2 : 0)
-    p.skill = clamp100(p.skill + gain)
+    setFlagSkill(g, 'acting', actingSkill(g) + gain)
     log(g, 'I practiced my acting.')
-    say(g, 'Practice', `${pick(g, ['You ran lines in front of the bathroom mirror for hours.', 'You studied old movies and copied every facial expression.', 'You practiced accents until your neighbors complained.'])} Your acting skill rose to ${p.skill}%.`, '\u{1F4D6}', 'good')
+    say(g, 'Practice', `${pick(g, ['You ran lines in front of the bathroom mirror for hours.', 'You studied old movies and copied every facial expression.', 'You practiced accents until your neighbors complained.'])} Your acting skill rose to ${actingSkill(g)}%.`, '\u{1F4D6}', 'good')
   },
 }
 
@@ -599,7 +567,7 @@ function filmographyMenu(): MenuGroup {
     children: (g): MenuNode[] => {
       const p = viewActor(g)
       const nodes: MenuNode[] = [
-        { type: 'info', id: 'actor.f.stats', emoji: '\u{1F3AD}', text: `Acting skill ${p.skill}% · Reputation ${p.reputation}%${p.agent ? ` · Agent: ${p.agent.name}` : ''}` },
+        { type: 'info', id: 'actor.f.stats', emoji: '\u{1F3AD}', text: `Acting skill ${actingSkill(g)}% · Reputation ${p.reputation}%${p.agent ? ` · Agent: ${p.agent.name}` : ''}` },
       ]
       if (p.credits.length === 0) nodes.push({ type: 'info', id: 'actor.f.none', text: 'No credits yet.' })
       p.credits
@@ -646,11 +614,11 @@ export const actorCareerMenu: MenuGroup = {
   subtitle: 'Become a movie or TV star',
   header: (g) => {
     const p = viewActor(g)
-    return `Acting skill: ${p.skill}% · Reputation: ${p.reputation}%. Start as an extra and work your way up to leading roles. Auditions open at 18.`
+    return `Acting skill: ${actingSkill(g)}% · Reputation: ${p.reputation}%. Start as an extra and work your way up to leading roles. Auditions open at 18.`
   },
   children: (g): MenuNode[] => {
     if (actorJob(g)) return [{ type: 'info', id: 'actor.already', text: 'You are already an actor. Manage your career from your job.', emoji: '\u{1F3AC}' }]
-    return [auditionAction, actingClass, practiceAction, hireAgentAction, fireAgentAction, filmographyMenu()]
+    return [auditionAction, practiceAction, hireAgentAction, fireAgentAction, filmographyMenu()]
   },
 }
 
@@ -674,7 +642,6 @@ export function actorJobNodes(g: GameState): MenuNode[] {
     stuntAction,
     hireAgentAction,
     fireAgentAction,
-    actingClass,
     filmographyMenu(),
     quitAction,
   ]
@@ -790,7 +757,7 @@ export function yearlyActor(g: GameState): void {
     return
   }
   const budgetBase = proj.budget === 'blockbuster' ? 15 : proj.budget === 'indie' || proj.budget === 'cable' ? -5 : 5
-  const quality = clamp100(ap.skill * 0.5 + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
+  const quality = clamp100(aactingSkill(g) * 0.5 + (talentMatches(g, /act/i) ? 15 : 0) + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
   const popularity = clamp100(quality * 0.6 + fameOf(g) * 0.2 + proj.buzz + randInt(g, -15, 25))
   const cut = ap.agent?.cut ?? 0
   const pay = Math.round(proj.pay * (1 - cut))

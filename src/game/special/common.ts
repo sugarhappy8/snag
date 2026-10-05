@@ -335,3 +335,37 @@ export const CELEBS = [
   'Bianca Moonbeam',
   'Lil Tadpole',
 ]
+
+// ---------------------------------------------------------------------------
+// Skills shared with Activities > Mind & Body (lessons write the same flags)
+
+/** Lesson skills stored by the activities module: 'acting', 'voice', 'modeling' (0-100). */
+export function flagSkill(g: GameState, id: string): number {
+  const v = g.flags[`skill.${id}`]
+  return typeof v === 'number' && Number.isFinite(v) ? clamp100(v) : 0
+}
+
+export function actingSkill(g: GameState): number {
+  return flagSkill(g, 'acting')
+}
+
+export function setFlagSkill(g: GameState, id: string, value: number): void {
+  g.flags[`skill.${id}`] = clamp100(value)
+}
+
+function instrumentRecord(g: GameState): Record<string, Json> {
+  const rec = g.flags.instruments
+  return rec && typeof rec === 'object' && !Array.isArray(rec) ? rec : {}
+}
+
+/** Instrument skill (0-100) from Mind & Body > Instruments; 'Voice' maps to voice lessons. */
+export function instrumentSkill(g: GameState, name: string): number {
+  if (name === 'Voice') return flagSkill(g, 'voice')
+  const v = instrumentRecord(g)[name]
+  return typeof v === 'number' && Number.isFinite(v) ? clamp100(v) : 0
+}
+
+export function setInstrumentSkill(g: GameState, name: string, value: number): void {
+  if (name === 'Voice') return setFlagSkill(g, 'voice', value)
+  g.flags.instruments = { ...instrumentRecord(g), [name]: clamp100(value) }
+}
