@@ -33,7 +33,10 @@ export interface LocaleProfile {
    * Placeholders: {place} {honoree} {city} {n} (a small number). e.g. Indonesia primary:
    * 'SD Negeri {n} {place}'; Mexico: 'Escuela Primaria {honoree}'; UK: '{place} Primary School'.
    */
-  schoolNames: Record<SchoolLevel, string[]>
+  schoolNames: Record<SchoolLevel, string[]> & {
+    /** Kindergarten / preschool names in the local style, e.g. 'TK Aisyiyah {n} {place}', 'Kita {place}', 'Jardín de Niños {honoree}'. */
+    preschool?: string[]
+  }
   /** University name patterns ({city} {place} {honoree}), e.g. 'University of {city}', 'Universitas {honoree}'. */
   universityNames: string[]
   /** Street name patterns ({place} {honoree} {n}), e.g. 'Jalan {honoree}', 'Calle {place}', '{place} Road'. */
@@ -86,6 +89,8 @@ const ALL: Record<string, LocaleProfile> = {
   ...AFRICA_MIDDLE_EAST_LOCALES,
   ...ASIA_OCEANIA_LOCALES,
 }
+
+const NEUTRAL_PRESCHOOLS = ['{place} Kindergarten', '{city} Kindergarten No. {n}', '{place} Preschool']
 
 /** Neutral profile for a country with no data: nothing American-specific. */
 function neutralProfile(countryId: string): LocaleProfile {
@@ -200,6 +205,12 @@ export function fillLocal(g: GameState, template: string, countryId = g.characte
 export function localSchoolName(g: GameState, level: SchoolLevel, countryId = g.character.countryId): string {
   const patterns = localeOf(countryId).schoolNames[level]
   return fillLocal(g, pick(g, patterns.length ? patterns : neutralProfile(countryId).schoolNames[level]), countryId)
+}
+
+/** A kindergarten / preschool name in the local style ('TK Aisyiyah 2 Menteng', 'Kita Sonnenschein'). */
+export function localPreschoolName(g: GameState, countryId = g.character.countryId): string {
+  const patterns = localeOf(countryId).schoolNames.preschool ?? []
+  return fillLocal(g, pick(g, patterns.length ? patterns : NEUTRAL_PRESCHOOLS), countryId)
 }
 
 /** A university name in the player's country. */
