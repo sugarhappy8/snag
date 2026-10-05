@@ -621,7 +621,7 @@ export const KID_EVENTS = defineEvents([
       const f = anyOf(g, friends(g))
       return {
         text: 'You just got your first period. What will you do?',
-        choices: [...(mom ? [ch('mom', 'Tell my mother')] : []), ...(f ? [ch('friend', `Tell ${f.firstName}`)] : []), ...(sis ? [ch('sister', `Tell my sister, ${sis.firstName}`)] : []), ch('secret', 'Keep it a secret')],
+        choices: [...(mom ? [ch('mom', 'Tell my mother')] : []), ...(f ? [ch('friend', `Tell ${f.firstName}`)] : []), ...(sis ? [ch('sister', `Tell my sister, ${sis.firstName}`)] : []), ...(!mom && !f ? [ch('nurse', 'Visit the school nurse')] : []), ch('secret', 'Keep it a secret')],
         data: { momId: mom?.id ?? '', friendId: f?.id ?? '', sisId: sis?.id ?? '' },
       }
     },
@@ -634,6 +634,7 @@ export const KID_EVENTS = defineEvents([
         const p = g.people.find((q) => q.id === x.s('friendId'))
         say(g, x, 'Solidarity', `You told ${p?.firstName ?? 'your friend'}, who shared every tip she knew.`, 'I got my first period and told my friend.', { happiness: 4, rels: [{ p, d: 8 }] }, 'good')
       },
+      nurse: (g, x) => say(g, x, 'Nurse to the rescue', 'The school nurse handed you supplies, a pamphlet and a granola bar, then sent you back to class like a pro.', 'I got my first period and the school nurse helped me out.', { happiness: 3 }, 'good'),
       sister: (g, x) => {
         const p = g.people.find((q) => q.id === x.s('sisId'))
         say(g, x, 'Big sister knows', `You told ${p?.firstName ?? 'your sister'}, who was surprisingly sweet about it.`, 'I got my first period and told my sister.', { happiness: 4, rels: [{ p, d: 10 }] }, 'good')

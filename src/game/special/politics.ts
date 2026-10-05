@@ -294,6 +294,7 @@ interface HeldOffice {
   place: string
   startAge: number
   endAge: number | null
+  terms?: number
 }
 
 interface PolProfile {
@@ -333,12 +334,20 @@ function heldBefore(g: GameState, id: OfficeId): boolean {
 function termsServed(g: GameState, id: OfficeId): number {
   const job = politicianJob(g)
   const current = job && pdata(job).office === id ? pdata(job).terms : 0
-  return viewPol(g).held.filter((h) => h.office === id && h.endAge !== null).length + current
+  const past = viewPol(g)
+    .held.filter((h) => h.office === id && h.endAge !== null)
+    .reduce((sum, h) => sum + Math.max(1, h.terms ?? 1), 0)
+  return past + current
 }
 
 function closeHeld(g: GameState): void {
   const p = polProfile(g)
-  for (const h of p.held) if (h.endAge === null) h.endAge = g.character.age
+  const job = politicianJob(g)
+  for (const h of p.held) {
+    if (h.endAge !== null) continue
+    h.endAge = g.character.age
+    if (job && pdata(job).office === h.office) h.terms = Math.max(1, pdata(job).terms)
+  }
 }
 
 function setApproval(job: Job, value: number): void {
@@ -411,7 +420,7 @@ function opponentName(g: GameState): string {
 function startCampaign(g: GameState, office: OfficeId, incumbentRun: boolean): void {
   const o = officeOf(office)
   const prevParty = viewPol(g).party
-  const text = `You're running for ${officeTitle(g, office)} of ${jurisdiction(g, office).replace(/^City of |^State of /, '')}. Which party will you run with?`
+  const text = `You're running to become ${styled(g, office)}. Which party will you run with?`
   scriptChoice(
     g,
     PARTY_SCRIPT,
@@ -701,11 +710,11 @@ function election(g: GameState, camp: Campaign, lastText: string): void {
 // ---------------------------------------------------------------------------
 // Run for office (Special Careers > Politician)
 
-function runAction(o: OfficeDef): MenuAction {
+function runAction(g: GameState, o: OfficeDef): MenuAction {
   return {
     type: 'action',
     id: `pol.run.${o.id}`,
-    label: `Run for ${o.id === 'leader' ? 'National Leader' : o.id === 'school' ? 'School Board Director' : o.id === 'mayor' ? 'Mayor' : 'Governor'}`,
+    label: `Run for ${officeTitle(g, o.id)}`,
     emoji: o.emoji,
     subtitle: (g) => `${officeTitle(g, o.id)} · ${money(salaryFor(g, o))}/yr · ${o.term}-year term · ${prereqText(o)}, age ${minAgeFor(g, o)}+`,
     disabledReason: (g) => runReason(g, o),
@@ -755,7 +764,7 @@ export const politicsCareerMenu: MenuGroup = {
   children: (g): MenuNode[] => {
     const job = politicianJob(g)
     if (job) return [{ type: 'info', id: 'pol.already', text: `You are the ${job.title} (${job.company}). Govern from your job.`, emoji: '\u{1F3DB}\u{FE0F}' }, careerInfo()]
-    return [...OFFICES.map(runAction), careerInfo()]
+    return [...OFFICES.map((o) => runAction(g, o)), careerInfo()]
   },
 }
 

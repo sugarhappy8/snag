@@ -32,7 +32,7 @@ function fameProfile(g: GameState): FameProfile {
 /** Careers that keep you in the public eye (their own hooks manage fame). */
 export function hasFameCareer(g: GameState): boolean {
   const j = g.character.job
-  return !!j && j.category === 'special' && j.defId !== 'hustler'
+  return !!j && j.category === 'special' && j.defId !== 'hustler' && j.defId !== 'astronaut.cadet'
 }
 
 function fameMenuVisible(g: GameState): boolean {

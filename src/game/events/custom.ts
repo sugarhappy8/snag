@@ -25,6 +25,10 @@ interface Rule {
   minAge?: number
   /** Allowed while incarcerated. */
   prison?: boolean
+  /** Text that looks like a match but isn't ("kill time", "drink water"). */
+  not?: RegExp
+  /** Extra condition for the rule to apply (e.g. a person is mentioned). */
+  test?: (g: GameState, a: Act) => boolean
   run: (g: GameState, a: Act) => void
 }
 
@@ -41,7 +45,7 @@ interface Act {
 // ---------------------------------------------------------------------------
 // Text helpers
 
-function clean(text: string): string {
+export function clean(text: string): string {
   return text
     .replace(/[\u0000-\u001f]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -52,14 +56,15 @@ function clean(text: string): string {
 }
 
 /** Turn "I want to go for a run" into "go for a run". */
-function toPhrase(raw: string): string {
+export function toPhrase(raw: string): string {
   let s = raw.replace(/^(i\s+(want|wanna|would like|am going|'m going|will|shall|try|am trying|decide|decided)\s+(to\s+)?|i'll\s+|i'm\s+gonna\s+|i\s+gonna\s+|let's\s+|lets\s+|try\s+to\s+|to\s+|i\s+)/i, '')
   s = s.replace(/\byour\b/gi, 'my').replace(/\byourself\b/gi, 'myself')
   if (!s) s = raw
   return s[0].toLowerCase() + s.slice(1)
 }
 
-function you(phrase: string): string {
+/** Second person: "call my mom" -> "call your mom". */
+export function you(phrase: string): string {
   return phrase.replace(/\bmyself\b/gi, 'yourself').replace(/\bmy\b/gi, 'your').replace(/\bme\b/gi, 'you').replace(/\bI\b/g, 'you')
 }
 
@@ -148,7 +153,8 @@ const RULES: Rule[] = [
   },
   {
     id: 'murder',
-    re: /\b(murder|kill|assassinate|stab|shoot)\b/,
+    re: /\b(murder|assassinate)\b|\b(kill|stab|shoot|strangle|poison)\s+(him|her|them|someone|somebody|my|a|an|the|everyone|people|myself)\b/,
+    not: /\b(spider|bug|fly|flies|mosquito|roach|cockroach|time|zombies?|boss level|game|hoops|baskets|photos?|movie|film|video|the breeze|the messenger)\b/,
     prison: true,
     run: (g) =>
       out(
@@ -201,7 +207,7 @@ const RULES: Rule[] = [
   },
   {
     id: 'quit',
-    re: /\b(quit|resign|leave)\b.*\b(job|work|career)\b|\bquit\b$/,
+    re: /\b(quit|resign)\b.*\b(job|work|career|position)\b|\bresign\b|^quit( my job)?$/,
     minAge: 14,
     run: (g) => {
       const c = g.character
@@ -217,7 +223,7 @@ const RULES: Rule[] = [
   },
   {
     id: 'raise',
-    re: /\b(raise|promotion|promote)\b/,
+    re: /\b(ask|beg|demand|request|negotiate)\b.*\b(raise|promotion|pay rise)\b|\b(get|want)\s+(a\s+)?(raise|promotion|promoted)\b/,
     minAge: 14,
     run: (g) => {
       const job = g.character.job ?? g.character.partTimeJob
@@ -245,7 +251,8 @@ const RULES: Rule[] = [
   },
   {
     id: 'steal',
-    re: /\b(steal|shoplift|rob|pickpocket|swipe|loot|pinch)\b/,
+    re: /\b(steal|shoplift|rob|pickpocket|loot)\b/,
+    not: /steal (a |the )?(kiss|show|heart|base|spotlight)/,
     minAge: 8,
     run: (g, a) => {
       const age = g.character.age
@@ -263,6 +270,7 @@ const RULES: Rule[] = [
   {
     id: 'fight',
     re: /\b(fight|punch|beat up|attack|slap|kick|brawl|assault|headbutt)\b/,
+    not: /\bkick\s+(a|the)\s+(ball|habit|bucket|can)|\bkick (back|off)\b|fight (for|against) (justice|climate|my fears?|addiction|cancer|poverty|crime)|fight (fire|the urge)|pillow fight|food fight|snowball fight|water fight/,
     minAge: 6,
     prison: true,
     run: (g, a) => {
@@ -285,7 +293,8 @@ const RULES: Rule[] = [
   },
   {
     id: 'drugs',
-    re: /\b(drugs?|weed|marijuana|cocaine|coke|meth|heroin|lsd|acid|shrooms|mushrooms|ecstasy|molly|get high|smoke a joint|pills)\b/,
+    re: /\b(drugs?|weed|marijuana|cocaine|meth|heroin|lsd|shrooms|ecstasy|molly|get high|smoke a joint|crack)\b/,
+    not: /\b(drugstore|drug store|crack (a|the) (joke|egg|code|safe|case|window)|crack (jokes|eggs|open))\b/,
     minAge: 13,
     prison: true,
     run: (g) => {
@@ -301,6 +310,7 @@ const RULES: Rule[] = [
   {
     id: 'drink',
     re: /\b(drink|drunk|beer|wine|vodka|whiskey|booze|alcohol|shots|tequila|cocktail|hammered|wasted)\b/,
+    not: /drink (some |a |more |lots of |a glass of |a cup of )?(water|tea|coffee|milk|juice|soda|smoothie|lemonade|hot chocolate)|flu shots?|vaccine|wasted time/,
     minAge: 12,
     prison: true,
     run: (g) => {
@@ -351,7 +361,8 @@ const RULES: Rule[] = [
   },
   {
     id: 'travel',
-    re: /\b(travel|vacation|holiday|trip|fly to|visit (paris|london|tokyo|rome|new york|europe|asia|africa|mexico|japan|italy|spain|france)|road trip|cruise|backpack)\b/,
+    re: /\b(travel|vacation|holiday|trip|fly to|flight|visit (paris|london|tokyo|rome|new york|europe|asia|africa|mexico|japan|italy|spain|france)|road trip|cruise|backpacking)\b/,
+    not: /\btrip (over|someone|him|her|them|on)\b/,
     minAge: 4,
     run: (g, a) => {
       const c = g.character
@@ -387,6 +398,7 @@ const RULES: Rule[] = [
   {
     id: 'adoptPet',
     re: /\b(adopt|get|buy)\b.*\b(dog|puppy|cat|kitten|pet|hamster|rabbit|bunny|parrot|fish|snake|lizard|turtle)\b/,
+    not: /\b(food|and chips|sticks|toys?|treats|tacos?|bowl|leash|collar|cage|tank|hot ?dogs?|catfish|fishing)\b/,
     minAge: 5,
     run: (g, a) => {
       const c = g.character
@@ -420,6 +432,25 @@ const RULES: Rule[] = [
     },
   },
   {
+    id: 'breakup',
+    re: /\b(break up|breakup|dump|divorce|leave my (wife|husband|partner|girlfriend|boyfriend|fianc[eé]e?))\b/,
+    minAge: 13,
+    run: (g) => {
+      const p = currentPartner(g)
+      if (!p) return out(g, 'Single', "You're not seeing anyone, so you broke up with your bad habits instead. You'll be back together by Friday.", null, {}, 'neutral', '💔')
+      if (p.relation === 'spouse' || g.character.residence.status === 'partner') {
+        addRelationship(p, -randInt(g, 8, 15))
+        return out(g, 'Serious talk', `You sat ${p.firstName} down for a serious talk about your future together. It got heated. (Ending things for good is done from the Relationships menu.)`, `I had a serious fight about our future with my ${relTo(p)}, ${p.firstName}.`, { happiness: -5 }, 'bad', '💔')
+      }
+      const name = `${p.firstName} ${p.lastName}`
+      p.relation = 'ex'
+      p.livesWithPlayer = false
+      addRelationship(p, -randInt(g, 15, 30))
+      remember(g, `Broke up with ${name}.`)
+      out(g, pick(g, ['Broken up', "It's over"]), pick(g, [`You broke up with ${p.firstName}. ${p.gender === 'male' ? 'He' : 'She'} threw your hoodie out the window.`, `You told ${p.firstName} it's not them, it's you. ${p.firstName} agreed it was you.`]), `I broke up with ${name}.`, { happiness: -4 }, 'neutral', '💔')
+    },
+  },
+  {
     id: 'date',
     re: /\b(date|flirt|ask (someone|her|him|them) out|kiss|romance|romantic|hook up|find love|girlfriend|boyfriend)\b/,
     minAge: 13,
@@ -445,10 +476,28 @@ const RULES: Rule[] = [
     },
   },
   {
+    id: 'insult',
+    re: /\b(insult|yell at|argue|roast|mock|scream at|curse at|prank|troll)\b/,
+    minAge: 4,
+    prison: true,
+    run: (g, a) => {
+      const p = namedPerson(g, a) ?? roleTarget(g, a)
+      const prank = has(a, /prank|troll/)
+      if (prank) count(g, 'pranks')
+      else count(g, 'insults')
+      if (p && p.relation !== 'pet') {
+        addRelationship(p, -randInt(g, prank ? 2 : 6, prank ? 8 : 14))
+        return out(g, prank ? 'Gotcha!' : 'Ouch', prank ? `You pranked your ${relTo(p)}, ${p.firstName}, with ${pick(g, ['a whoopee cushion', 'plastic wrap on the toilet', 'salt in the sugar bowl', 'a fake spider'])}. ${p.firstName} was not amused.` : `You told your ${relTo(p)}, ${p.firstName}, exactly what you think of ${p.gender === 'male' ? 'him' : 'her'}. It did not go well.`, prank ? `I pranked my ${relTo(p)}, ${p.firstName}.` : `I insulted my ${relTo(p)}, ${p.firstName}.`, { happiness: prank ? 4 : 1, karma: -2 }, 'neutral', prank ? '😜' : '😤')
+      }
+      out(g, prank ? 'Prankster' : 'Hothead', prank ? 'You pulled a prank on a stranger. They chased you for two blocks.' : 'You yelled at a stranger for walking too slowly. They walked even slower.', prank ? 'I pranked a stranger.' : 'I yelled at a stranger.', { happiness: 2, karma: -2 }, 'neutral', prank ? '😜' : '😤')
+    },
+  },
+  {
     id: 'family',
-    re: /\b(call|visit|hug|thank|apologi[sz]e|hang out|spend time|talk|text|forgive|bond|play)\b/,
+    re: /\b(call|visit|hug|thank|apologi[sz]e|hang out|spend time|talk|text|forgive|bond|play|go|have|watch|cook|eat|bake|walk|help)\b/,
     minAge: 3,
     prison: true,
+    test: (g, a) => !!(namedPerson(g, a) ?? roleTarget(g, a)),
     run: (g, a) => {
       const p = namedPerson(g, a) ?? roleTarget(g, a)
       if (!p) return generic(g, a)
@@ -474,23 +523,6 @@ const RULES: Rule[] = [
     },
   },
   {
-    id: 'insult',
-    re: /\b(insult|yell at|argue|roast|mock|scream at|curse at|prank|troll)\b/,
-    minAge: 4,
-    prison: true,
-    run: (g, a) => {
-      const p = namedPerson(g, a) ?? roleTarget(g, a)
-      const prank = has(a, /prank|troll/)
-      if (prank) count(g, 'pranks')
-      else count(g, 'insults')
-      if (p && p.relation !== 'pet') {
-        addRelationship(p, -randInt(g, prank ? 2 : 6, prank ? 8 : 14))
-        return out(g, prank ? 'Gotcha!' : 'Ouch', prank ? `You pranked your ${relTo(p)}, ${p.firstName}, with ${pick(g, ['a whoopee cushion', 'plastic wrap on the toilet', 'salt in the sugar bowl', 'a fake spider'])}. ${p.firstName} was not amused.` : `You told your ${relTo(p)}, ${p.firstName}, exactly what you think of ${p.gender === 'male' ? 'him' : 'her'}. It did not go well.`, prank ? `I pranked my ${relTo(p)}, ${p.firstName}.` : `I insulted my ${relTo(p)}, ${p.firstName}.`, { happiness: prank ? 4 : 1, karma: -2 }, 'neutral', prank ? '😜' : '😤')
-      }
-      out(g, prank ? 'Prankster' : 'Hothead', prank ? 'You pulled a prank on a stranger. They chased you for two blocks.' : 'You yelled at a stranger for walking too slowly. They walked even slower.', prank ? 'I pranked a stranger.' : 'I yelled at a stranger.', { happiness: 2, karma: -2 }, 'neutral', prank ? '😜' : '😤')
-    },
-  },
-  {
     id: 'skipSchool',
     re: /\b(skip|ditch|cut|play hooky)\b.*\b(school|class|classes|lecture)\b|\bplay hooky\b/,
     minAge: 6,
@@ -504,6 +536,7 @@ const RULES: Rule[] = [
   {
     id: 'cheat',
     re: /\b(cheat|plagiari[sz]e|copy homework|lie|fake|forge)\b/,
+    not: /\blie (down|in|on|back|low)\b|fake (tan|plant|flowers|nails)/,
     minAge: 6,
     prison: true,
     run: (g) => {
@@ -524,7 +557,8 @@ const RULES: Rule[] = [
   },
   {
     id: 'study',
-    re: /\b(study|homework|learn|read|book|library|practice|research|revise|take a class|course|code|program)\b/,
+    re: /\b(study|homework|learn|read|books?|library|practice|research|revise|take a class|course|code|program)\b/,
+    not: /\bbook (a|an|the|my)\b/,
     minAge: 4,
     prison: true,
     run: (g, a) => {
@@ -541,6 +575,7 @@ const RULES: Rule[] = [
   {
     id: 'exercise',
     re: /\b(exercise|work ?out|gym|run|jog|lift|weights|push-?ups|sit-?ups|swim|yoga|pilates|hike|bike|cycle|sports?|basketball|soccer|football|tennis|train|cardio|marathon|walk|stretch|martial arts|karate|boxing)\b/,
+    not: /\brun (a|an|the|my|for)\s+(business|company|shop|store|restaurant|errands?|president|office|campaign|scam)|\bcatch (a|the) train|\btrain (station|ride)\b/,
     minAge: 3,
     prison: true,
     run: (g, a) => {
@@ -701,6 +736,10 @@ function tooYoung(g: GameState, a: Act, minAge: number): void {
   out(g, 'Too young', pick(g, [`You're only ${age}. You can ${you(a.phrase)} when you're ${minAge}. For now, you ${pick(g, ['played with blocks', 'colored outside the lines', 'watched cartoons', 'built a pillow fort'])} instead.`, `Your parents laughed when you announced you'd ${you(a.phrase)}. Maybe when you're older.`]), null, { happiness: 1 }, 'neutral', '🧸')
 }
 
+function matchRule(g: GameState, a: Act): Rule | undefined {
+  return RULES.find((r) => r.re.test(a.low) && !(r.not && r.not.test(a.low)) && (!r.test || r.test(g, a)))
+}
+
 /** Resolve a free-form "Do Anything" action offline. Counts 'customActions'. */
 export function resolveCustomAction(g: GameState, text: string): void {
   const c = g.character
@@ -711,9 +750,9 @@ export function resolveCustomAction(g: GameState, text: string): void {
     return out(g, 'Indecisive', "You thought long and hard about doing something, then didn't. A bold choice.", null, {}, 'neutral', '🤷')
   }
   const a: Act = { raw, low: raw.toLowerCase(), phrase: toPhrase(raw) }
-  const rule = RULES.find((r) => r.re.test(a.low))
+  const rule = matchRule(g, a)
   if (c.age < 3 && rule?.id !== 'rest') return tooYoung(g, a, rule?.minAge ?? 5)
-  if (inPrison(g) && !(rule?.prison ?? false)) {
+  if (rule && inPrison(g) && !rule.prison) {
     return out(g, pick(g, ['Behind bars', 'Not in here']), pick(g, [`You'd love to ${you(a.phrase)}, but you're in prison. You stared at the wall instead.`, `You can't ${you(a.phrase)} from a prison cell. A guard told you to keep dreaming.`]), null, { happiness: -1 }, 'neutral', '🔒')
   }
   if (!rule) return generic(g, a)
