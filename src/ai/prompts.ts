@@ -198,6 +198,7 @@ export function describeCharacter(g: GameState): string {
   const hidden = c.conditions.filter((x) => !x.diagnosed).length
   if (conditions.length || hidden) lines.push(`HEALTH ISSUES: ${[...conditions, hidden ? 'feels unwell lately' : ''].filter(Boolean).join(', ')}`)
   if (c.licenses.length) lines.push(`LICENSES: ${c.licenses.join(', ')}`)
+  else if (c.age >= 15) lines.push('LICENSES: none (no driver\'s license)')
   if (c.talent) lines.push(`TALENT: ${c.talent}`)
   if (c.social) lines.push(`SOCIAL MEDIA: @${c.social.handle} on ${c.social.platform}, ${c.social.followers.toLocaleString('en-US')} followers${c.social.verified ? ', verified' : ''}`)
   if (g.assets.length) {
@@ -239,6 +240,9 @@ const RELATION_WEIGHT: Partial<Record<RelationKind, number>> = {
   exSpouse: 30,
 }
 
+const GROUP_OF: Partial<Record<RelationKind, string>> = { classmate: 'school', teacher: 'school', coworker: 'work', boss: 'work', friend: 'friends', cellmate: 'prison', ex: 'exes', exSpouse: 'exes' }
+const GROUP_CAP: Record<string, number> = { school: 3, work: 3, friends: 4, prison: 3, exes: 2 }
+
 function personScore(g: GameState, p: Person, recentText: string): number {
   let score = RELATION_WEIGHT[p.relation] ?? 20
   if (!p.alive) score = 6
@@ -258,12 +262,19 @@ export function selectPeople(g: GameState, max = 12, focusId?: string): Person[]
     .map((p) => ({ p, s: p.id === focusId ? 1000 : personScore(g, p, recent) }))
     .sort((a, b) => b.s - a.s)
   const out: Person[] = []
+  const perGroup = new Map<string, number>()
   let dead = 0
   for (const { p } of ranked) {
+    const focus = p.id === focusId
     if (!p.alive) {
-      if (dead >= 2 && p.id !== focusId) continue
+      if (dead >= 2 && !focus) continue
       dead++
     }
+    // Don't let a class of 25 crowd out the family.
+    const group = GROUP_OF[p.relation] ?? p.relation
+    const used = perGroup.get(group) ?? 0
+    if (!focus && p.alive && used >= (GROUP_CAP[group] ?? 99)) continue
+    perGroup.set(group, used + 1)
     out.push(p)
     if (out.length >= max) break
   }
@@ -372,7 +383,7 @@ export function yearEventsPrompt(g: GameState, o: YearEventsPromptOptions): stri
       '- "choices": 2-4 different options, short imperative labels (max 6 words), at least one risky or funny option; "emoji" is "" or one emoji.',
       '- "person": the name of someone from PEOPLE involved in the event, or "".',
       `- Suggested theme: ${o.theme}.${recent.length ? ` Must not resemble these recent events: ${recent.join('; ')}.` : ''}`,
-      'Reply with JSON like: {"log":["I ..."],"event":{"title":"...","emoji":"🐕","text":"You ... What will you do?","person":"","choices":[{"label":"...","emoji":""},{"label":"...","emoji":""},{"label":"...","emoji":""}]}}',
+      'Reply with JSON like: {"log":["I ..."],"event":{"title":"...","emoji":"<one emoji>","text":"You ... What will you do?","person":"","choices":[{"label":"...","emoji":""},{"label":"...","emoji":""},{"label":"...","emoji":""}]}}',
     )
   } else {
     lines.push('Reply with JSON like: {"log":["I ..."]}')
@@ -398,26 +409,28 @@ export function resolveChoicePrompt(g: GameState, event: ChoiceModal, choiceLabe
     '- "text": second person, 1-3 punchy sentences describing the result.',
     '- "log": first person, past tense, max 15 words, e.g. "I bit the doctor during my vaccination."',
     effectsGuide(g),
-    `Reply with JSON like: {"title":"...","emoji":"😬","text":"You ...","log":"I ...","effects":${EFFECTS_EXAMPLE}}`,
+    `Reply with JSON like: {"title":"...","emoji":"<one emoji>","text":"You ...","log":"I ...","effects":${EFFECTS_EXAMPLE}}`,
   ].join('\n')
 }
 
 export function customActionPrompt(g: GameState, action: string): string {
   const c = g.character
   const stage = stageOf(g)
+  const country = getCountry(c.countryId)
   return [
     gameContext(g),
     '',
     `${c.firstName.toUpperCase()} WANTS TO: "${action}"`,
     '',
     'TASK: You are the game master. Decide whether they can do this right now, and what happens.',
+    `- Legal ages in ${country.name}: driving ${country.drivingAge}, drinking ${country.drinkingAge}, adult 18.`,
     `- possible=false if it's impossible for them now: too young (age ${c.age}), ${c.prison ? 'they are locked in prison, ' : ''}can't afford it (${formatMoney(c.money)} cash), physically impossible, or it needs a license/degree they don't have. Then "text" says why, wittily, and all effects are 0.`,
     '- If possible: describe the attempt and its immediate result. Not always a success: luck, stats and karma matter. Crimes may get them arrested (arrest). Purchases cost money (negative money).',
     '- The game can only change stats, money, relationships, add one new person, add a condition, arrest them or (rarely) kill them. Never claim other permanent changes (a new job, marriage, a degree, moving home, escaping prison); those happen through the game menus.',
     STAGE_RULES[stage],
     '- "title": 1-4 words. "text": second person, 1-3 sentences. "log": first person, past tense, max 15 words ("" if impossible).',
     effectsGuide(g),
-    `Reply with JSON like: {"possible":true,"title":"...","emoji":"✨","text":"You ...","log":"I ...","effects":${EFFECTS_EXAMPLE}}`,
+    `Reply with JSON like: {"possible":true,"title":"...","emoji":"<one emoji>","text":"You ...","log":"I ...","effects":${EFFECTS_EXAMPLE}}`,
   ].join('\n')
 }
 
@@ -518,9 +531,17 @@ export function chatSystemPrompt(g: GameState, p: Person, settings: Settings): s
 
 export function chatUserPrompt(g: GameState, p: Person, history: ChatLine[], message: string): string {
   const c = g.character
-  const about = describePerson(p, [p]).slice(2)
+  const facts = [
+    p.relation === 'pet' ? `${p.firstName}, ${[p.breed, p.species].filter(Boolean).join(' ') || 'pet'}, age ${p.age}` : `${fullName(p)}, ${p.gender}, age ${p.age}`,
+    `${c.firstName}'s ${relationLabel(p).toLowerCase()}`,
+    `relationship with ${c.firstName}: ${p.relationship}%`,
+  ]
+  if (p.relation !== 'pet' && p.occupation && p.occupation !== 'None') facts.push(p.occupation)
+  if (p.traits.length) facts.push(p.traits.join('/'))
+  if (p.livesWithPlayer) facts.push(`lives with ${c.firstName}`)
+  if (p.notes.length) facts.push(`shared history: ${p.notes.slice(-3).map((n) => truncate(n, 70)).join('; ')}`)
   const lines = [
-    `ABOUT YOU: ${about}`,
+    `ABOUT YOU: ${facts.join(', ')}`,
     `ABOUT ${c.firstName.toUpperCase()}: ${fullName(c)}, ${c.gender}, age ${c.age}, ${roleLabel(g)}, ${c.city}; happiness ${c.stats.happiness}, looks ${c.stats.looks}, money ${shortMoney(c.money)}${c.prison ? ', currently in prison' : ''}.`,
   ]
   const recent = recentLogLines(g, 5)

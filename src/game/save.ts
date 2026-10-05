@@ -66,3 +66,17 @@ export function addToGraveyard(entry: GraveyardEntry): void {
   all.unshift(entry)
   write(GRAVEYARD_KEY, all.slice(0, 100))
 }
+
+export function removeFromGraveyard(lifeId: string): void {
+  write(GRAVEYARD_KEY, loadGraveyard().filter((e) => e.lifeId !== lifeId))
+}
+
+/** Forget every earned ribbon and past life (Settings → Danger zone). */
+export function clearRibbonsAndGraveyard(): void {
+  try {
+    localStorage.removeItem(RIBBONS_KEY)
+    localStorage.removeItem(GRAVEYARD_KEY)
+  } catch {
+    // storage disabled
+  }
+}

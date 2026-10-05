@@ -1,14 +1,14 @@
 // The military: enlist or commission as an officer in one of five branches, climb the ranks,
 // survive deployments (a choose-your-path minefield), earn medals, retire with a pension or
 // leave with a discharge. Conscription countries draft 18 year olds.
-import { addHidden, addRelationship, addStat, count, earnIncome, getPerson, log, remember, scriptChoice, useYearAction } from '../core'
+import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, getPerson, log, remember, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
 import { chance, pick, rand, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ordinal, peek, prof, promote, quitNote, say, syncTenure, tell, view } from './common'
+import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, peek, prof, promote, quitNote, say, syncTenure, tell, view } from './common'
 
 // ---------------------------------------------------------------------------
 // Branches & ranks
@@ -113,7 +113,6 @@ function rejectReason(g: GameState, track: Track): string | null {
 }
 
 function enlist(g: GameState, b: Branch, track: Track, conscript = false): void {
-  const c = g.character
   const reason = conscript ? null : rejectReason(g, track)
   if (reason === 'deserter') {
     g.flags['special.deserter'] = false
@@ -262,7 +261,7 @@ const medalScript = defineScript('special.mil.medal', (g, choice, raw) => {
     remember(g, `Awarded the ${medal.name}.`)
     say(g, medal.name, `You proudly pinned the ${medal.name} to your uniform.`, '\u{1F396}\u{FE0F}', 'good')
   } else if (choice === 'pawn') {
-    g.character.money += medal.value
+    addMoney(g, medal.value)
     addHidden(g, 'karma', -2)
     log(g, `I pawned my ${medal.name} for ${money(medal.value)}.`)
     say(g, medal.name, `You pawned your ${medal.name} for ${money(medal.value)}. The pawn shop owner saluted you sarcastically.`, '\u{1F4B0}')
@@ -721,8 +720,7 @@ const retireAction: MenuAction = {
   },
 }
 
-function medalsInfo(g: GameState): MenuGroup {
-  return {
+const medalsInfo: MenuGroup = {
     type: 'menu',
     id: 'mil.medals',
     label: 'Service Record',
@@ -743,10 +741,8 @@ function medalsInfo(g: GameState): MenuGroup {
       const medals = p?.medals ?? []
       if (medals.length === 0) nodes.push({ type: 'info', id: 'mil.rec.none', text: 'No medals yet.', emoji: '\u{1F3C5}' })
       medals.forEach((m, i) => nodes.push({ type: 'info', id: `mil.rec.m${i}`, text: m, emoji: '\u{1F396}\u{FE0F}' }))
-      void g
       return nodes
     },
-  }
 }
 
 /** Actions while serving (shown in the Occupation menu). */
@@ -757,16 +753,11 @@ export function militaryJobNodes(g: GameState): MenuNode[] {
   const nodes: MenuNode[] = [
     { type: 'info', id: 'mil.status', emoji: branchOf(md.branch).emoji, text: `${job.title} · ${job.company} · ${money(job.salary)}/yr${md.conscript ? ` · ${md.serviceLeft} year${md.serviceLeft === 1 ? '' : 's'} of service left` : ''}` },
     workHarder,
-    medalsInfo(g),
+    medalsInfo,
     reportMisconduct,
     requestDischarge,
     desert,
   ]
   if (!md.conscript) nodes.push(retireAction)
   return nodes
-}
-
-/** For tests and other modules: the ordinal of the player's current rank. */
-export function rankLabel(job: Job): string {
-  return `${ordinal(job.level + 1)} rank: ${job.title}`
 }
