@@ -26,7 +26,8 @@ vi.mock('../src/game/crime', () => ({
 }))
 vi.mock('../src/game/ribbons', () => ({ computeRibbon: vi.fn(() => null) }))
 
-import { applyFallback, chatReply, narrateNotice, planYear, resolvePerson, runAiTask, testConnection, MAX_CUSTOM_ACTIONS_PER_YEAR } from '../src/ai/director'
+import { applyFallback, chatReply, narrateNotice, planYear, resolvePerson, runAiTask, testConnection, toGameEffects, MAX_CUSTOM_ACTIONS_PER_YEAR } from '../src/ai/director'
+import { NEUTRAL_EFFECTS } from '../src/ai/schemas'
 import { normalizeBaseUrl, resetLmStudioSession } from '../src/ai/lmstudio'
 import { createPerson } from '../src/game/people'
 import type { ChoiceModal, GameState, NoticeModal } from '../src/game/types'
@@ -175,6 +176,28 @@ describe('planYear', () => {
   })
 })
 
+describe('toGameEffects safety', () => {
+  it('keeps teen romance age-appropriate and drops toddler arrests', () => {
+    const teen = familyGame(15)
+    const eff = toGameEffects(teen, { ...NEUTRAL_EFFECTS, newPerson: { relation: 'partner', name: 'Ava Stone', gender: 'female', age: 30 } })
+    expect(eff.newPerson).toMatchObject({ relation: 'partner', firstName: 'Ava', lastName: 'Stone', age: 17 })
+    const kid = familyGame(9)
+    expect(toGameEffects(kid, { ...NEUTRAL_EFFECTS, newPerson: { relation: 'lover', name: 'Zed' } }).newPerson?.relation).toBe('friend')
+    const tot = familyGame(4)
+    const t = toGameEffects(tot, { ...NEUTRAL_EFFECTS, arrest: { crime: 'Theft', severity: 2 }, death: 'Falling', money: 5000, condition: { name: 'Alcoholism', kind: 'addiction', severity: 40 } })
+    expect(t.arrest).toBeUndefined()
+    expect(t.death).toBeUndefined()
+    expect(t.condition).toBeUndefined()
+    expect(t.money).toBe(25)
+  })
+  it('skips people who already exist and unknown relationship names', () => {
+    const g = familyGame(30)
+    const eff = toGameEffects(g, { ...NEUTRAL_EFFECTS, relationships: [{ name: 'Ghost', delta: 5 }, { name: 'Mom', delta: 3 }, { name: 'Susan', delta: 4 }], newPerson: { relation: 'friend', name: 'Susan' } })
+    expect(eff.relationships).toEqual([{ personId: g.people[0].id, delta: 7 }])
+    expect(eff.newPerson).toBeUndefined()
+  })
+})
+
 describe('resolvePerson', () => {
   it('maps names, relation words and pets', () => {
     const g = familyGame()
@@ -189,6 +212,16 @@ describe('resolvePerson', () => {
 })
 
 describe('yearEvents', () => {
+  it('asks for prison-only events when locked up', async () => {
+    const g = familyGame(30)
+    g.character.prison = { name: 'Rock Bay', security: 'maximum', crime: 'Burglary', sentenceYears: 6, yearsServed: 1, respect: 40, appealed: false, escapeAttempts: 0 }
+    chatQueue.push(chatJsonReply({ log: ['I traded noodles for stamps.'], event: goodYear.event }))
+    await run(g, { type: 'yearEvents' })
+    const prompt = (chatBodies()[0].messages as { content: string }[])[1].content
+    expect(prompt).toMatch(/IN PRISON/)
+    expect(prompt).toMatch(/PRISON: serving 6 yrs \(1 served\) for Burglary/)
+  })
+
   it('logs AI lines and queues an AI choice popup', async () => {
     const g = seedWith(10, true)
     chatQueue.push(chatJsonReply(goodYear))
@@ -442,6 +475,25 @@ describe('errors', () => {
     const out = await run(seedWith(10, true), { type: 'yearEvents' })
     expect(out.flags.fallbackYear).toBe(true)
     expect(chatBodies()).toHaveLength(1)
+  })
+
+  it('explains a dead dev-server proxy (502, empty body)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 502 })))
+    await expect(runAiTask(seedWith(10, false), { type: 'yearEvents' }, { ...settings, baseUrl: '/lmstudio/v1' }, signal())).rejects.toThrow(
+      /Can't reach LM Studio at \/lmstudio\/v1/,
+    )
+  })
+
+  it('explains authentication failures', async () => {
+    chatQueue.push(json({ error: 'Unauthorized' }, 401))
+    await expect(runAiTask(seedWith(10, false), { type: 'yearEvents' }, settings, signal())).rejects.toThrow(/requires an API token/)
+    chatQueue.push(json({ error: 'Unauthorized' }, 401))
+    await expect(runAiTask(seedWith(10, false), { type: 'yearEvents' }, { ...settings, apiKey: 'bad' }, signal())).rejects.toThrow(/rejected the API token/)
+  })
+
+  it('explains a page served instead of the API', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<!doctype html><html></html>', { status: 200, headers: { 'Content-Type': 'text/html' } })))
+    await expect(runAiTask(seedWith(10, false), { type: 'yearEvents' }, settings, signal())).rejects.toThrow(/web page instead of LM Studio/)
   })
 
   it('propagates aborts', async () => {
