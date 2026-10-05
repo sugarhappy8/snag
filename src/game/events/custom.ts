@@ -65,7 +65,13 @@ export function toPhrase(raw: string): string {
 
 /** Second person: "call my mom" -> "call your mom". */
 export function you(phrase: string): string {
-  return phrase.replace(/\bmyself\b/gi, 'yourself').replace(/\bmy\b/gi, 'your').replace(/\bme\b/gi, 'you').replace(/\bI\b/g, 'you')
+  return phrase
+    .replace(/\bI'm\b/g, "you're")
+    .replace(/\bI've\b/g, "you've")
+    .replace(/\bI'll\b/g, "you'll")
+    .replace(/\bI'd\b/g, "you'd")
+    .replace(/\bmine\b/gi, 'yours')
+    .replace(/\bmyself\b/gi, 'yourself').replace(/\bmy\b/gi, 'your').replace(/\bme\b/gi, 'you').replace(/\bI\b/g, 'you')
 }
 
 function has(a: Act, re: RegExp): boolean {
@@ -81,10 +87,19 @@ function out(g: GameState, title: string | readonly string[], text: string | rea
   say(g, null, title, text, logLine, fx, tone, emoji)
 }
 
+/** First names that are also everyday words: only matched when typed with a capital letter. */
+const WORD_NAMES = new Set(['will', 'may', 'june', 'april', 'august', 'bill', 'rose', 'grace', 'hope', 'joy', 'mark', 'faith', 'summer', 'autumn', 'dawn', 'sky', 'rich', 'art', 'chase', 'hunter', 'page', 'ray', 'sunny', 'star', 'max', 'jack', 'sage', 'river', 'angel', 'crystal', 'ivy', 'holly', 'pat', 'sue', 'rob', 'bob', 'don', 'guy', 'gene', 'frank', 'earl', 'miles', 'al', 'ed', 'drew', 'penny', 'amber', 'ruby', 'olive', 'lily', 'iris', 'daisy', 'cash', 'king', 'bishop', 'dean', 'chance', 'destiny', 'harmony', 'melody', 'stone', 'storm', 'bear', 'fox', 'reed', 'wade', 'lane', 'cliff', 'glen', 'heath', 'ash', 'rock', 'young', 'long', 'man', 'son'])
+
 /** A person named in the text ("go bowling with Linda"), if they're in your life. */
 function namedPerson(g: GameState, a: Act): Person | undefined {
-  const words = new Set(a.low.split(/[^a-zÀ-ɏ'-]+/).filter(Boolean))
-  return g.people.find((p) => p.alive && p.firstName.length > 1 && words.has(p.firstName.toLowerCase()))
+  const words = new Set(a.low.split(/[^a-z\u00c0-\u024f'-]+/).filter(Boolean))
+  const rawWords = new Set(a.raw.split(/[^A-Za-z\u00c0-\u024f'-]+/).filter(Boolean))
+  return g.people.find((p) => {
+    if (!p.alive || p.firstName.length < 2) return false
+    const low = p.firstName.toLowerCase()
+    if (!words.has(low)) return false
+    return !WORD_NAMES.has(low) || rawWords.has(p.firstName)
+  })
 }
 
 /** A relative/friend referred to by role ("call my mom"). */

@@ -137,13 +137,13 @@ export function queueRandomEvent(g: GameState): string | null {
     }
     present(g, ev, setup)
     history(g)[ev.id] = g.character.age
-    count(g)
+    bumpEventCounter(g)
     return ev.id
   }
   return null
 }
 
-function count(g: GameState): void {
+function bumpEventCounter(g: GameState): void {
   g.counters.randomEvents = (g.counters.randomEvents ?? 0) + 1
 }
 
