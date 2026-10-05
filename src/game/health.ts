@@ -266,10 +266,14 @@ function fill(text: string, vars: Record<string, string>): string {
  */
 function freshLine(g: GameState, key: string, lines: string[]): string {
   const flag = `line.${key}`
-  const last = g.flags[flag]
-  const options = lines.map((_, i) => i).filter((i) => lines.length < 2 || i !== last)
-  const i = pick(g, options)
-  g.flags[flag] = i
+  // Remember the last few picks (not just the last one) so the same line doesn't come back
+  // two or three years later.
+  const raw = g.flags[flag]
+  const recent = Array.isArray(raw) ? raw.filter((x): x is number => typeof x === 'number') : typeof raw === 'number' ? [raw] : []
+  const keep = Math.max(0, Math.min(lines.length - 1, 3))
+  const options = lines.map((_, i) => i).filter((i) => !recent.slice(-keep).includes(i))
+  const i = pick(g, options.length ? options : lines.map((_, j) => j))
+  g.flags[flag] = [...recent, i].slice(-Math.max(1, keep))
   return lines[i]
 }
 
