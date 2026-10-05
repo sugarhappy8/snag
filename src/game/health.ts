@@ -192,7 +192,9 @@ export const DISEASES: DiseaseDef[] = [
   // Intimate infections (only when the character has had partners)
   { name: 'Chlamydia', kind: 'std', sev: [5, 10], tier: 1, cure: 0.9, self: 0.1, ages: [16, 130], weight: 1, sti: true, symptoms: ["You've noticed a burning sensation when you pee."] },
   { name: 'Gonorrhea', kind: 'std', sev: [6, 12], tier: 1, cure: 0.85, self: 0.05, ages: [16, 130], weight: 0.8, sti: true, symptoms: ['It burns when you pee and you feel feverish.'] },
-  { name: 'Genital Herpes', kind: 'std', sev: [4, 8], tier: 2, cure: 0.1, self: 0, ages: [16, 130], weight: 0.6, sti: true, symptoms: ['You discovered some painful blisters in a very private place.'] },
+  { name: 'Herpes', kind: 'std', sev: [4, 8], tier: 2, cure: 0.1, self: 0, ages: [16, 130], weight: 0.6, sti: true, symptoms: ['You discovered some painful blisters in a very private place.'] },
+  { name: 'HPV', kind: 'std', sev: [4, 10], tier: 2, cure: 0.3, self: 0.25, ages: [16, 130], weight: 0.5, sti: true, symptoms: ['You noticed some strange bumps in a place you would rather not discuss.'] },
+  { name: 'Crabs', kind: 'std', sev: [2, 5], tier: 1, cure: 0.95, self: 0.2, ages: [16, 130], weight: 0.4, sti: true, symptoms: ["You've been itching like crazy somewhere very private."] },
   { name: 'Syphilis', kind: 'std', sev: [10, 18], tier: 2, cure: 0.85, self: 0, ages: [16, 130], weight: 0.4, sti: true, progress: 4, symptoms: ['A painless sore appeared, followed by a rash on your palms.'] },
   { name: 'HIV', kind: 'std', sev: [15, 25], tier: 4, cure: 0.02, self: 0, ages: [16, 130], weight: 0.15, sti: true, deadly: 'HIV', progress: 3, symptoms: ["You've had a fever and swollen glands that just won't quit."] },
   { name: 'Hepatitis B', kind: 'std', sev: [10, 20], tier: 3, cure: 0.3, self: 0.05, ages: [16, 130], weight: 0.3, sti: true, deadly: 'Hepatitis B', progress: 3, symptoms: ["Your skin has taken on a yellowish tint and you're always tired."] },

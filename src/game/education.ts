@@ -1,4 +1,4 @@
-// School and university: the BitLife-style school system (preschool -> elementary ->
+// School and university: the life-sim school system (preschool -> elementary ->
 // middle -> high school), dropping out / expulsion / GED, community college,
 // university (majors, tuition, Greek life), graduate & professional schools, plus the
 // school section of the Occupation menu (study, skip, clubs, cliques, faculty, prom).
@@ -599,7 +599,7 @@ function leaveSchool(g: GameState, why: 'graduated' | 'dropped' | 'expelled' | '
 
 function quitJobForSchool(g: GameState): void {
   const job = g.character.job
-  if (job && (job.category === 'fulltime' || job.category === 'special')) {
+  if (job && job.category === 'fulltime') {
     endJob(g, 'job', 'quit')
     log(g, `I quit my job as ${job.title} to go back to school.`, 'neutral')
   }
@@ -1017,7 +1017,8 @@ function yearlySchoolEvents(g: GameState, cur: Enrollment): void {
   if (cliqueOf(cur) === 'troublemakers' && chance(g, 0.25)) {
     schoolWarning(g, pick(g, ['setting off a stink bomb', 'starting a food fight', 'graffiti in the bathroom', 'pulling the fire alarm']))
   }
-  // Leadership offers for standout members.
+  // Leadership offers for standout members (unless you just got expelled).
+  if (current(g) !== cur) return
   const clubs = clubsOf(cur)
   const star = clubs.find((m) => !m.role && m.perf >= 80 && m.years >= 1)
   if (star && chance(g, 0.35)) {
@@ -1218,7 +1219,7 @@ function maybeClubInvite(g: GameState, cur: Enrollment): void {
 
 function inFullTimeWork(g: GameState): boolean {
   const job = g.character.job
-  return !!job && (job.category === 'fulltime' || job.category === 'special')
+  return !!job && job.category === 'fulltime'
 }
 
 function quitJobConfirm(g: GameState): string | null {

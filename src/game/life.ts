@@ -466,8 +466,8 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
     lines.push(`My ${sameSex ? 'other ' : ''}${g2 === 'male' ? 'father' : 'mother'} is ${describe(b)}.`)
     if (g1 === 'female') mother = a
     else father = a
-    if (g2 === 'male' && !father) father = b
-    else if (!mother) mother = b
+    if (g2 === 'female' && !mother) mother = b
+    else if (g2 === 'male' && !father) father = b
     custodial = a
     g.flags.parentsStatus = 'married'
   } else {
@@ -476,7 +476,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
     if (family !== 'singleFather') {
       mother = makeParent(
         g,
-        { gender: 'female', age: motherAge, lastName: motherHasName ? lastName : randomLastName(g, country.id), livesWithPlayer: family !== 'divorced' || chance(g, 0.75), relation: 'parent', skinTone: avatar.skinTone },
+        { gender: 'female', age: motherAge, lastName: motherHasName ? lastName : randomLastName(g, country.id), livesWithPlayer: together || family === 'singleMother' || chance(g, 0.75), relation: 'parent', skinTone: avatar.skinTone },
         rich,
         wealth,
       )
@@ -587,6 +587,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
       breed: kind.breeds ? pick(g, kind.breeds) : undefined,
       relationship: randInt(g, 60, 95),
       livesWithPlayer: true,
+      money: 0,
       traits: [pick(g, PET_TRAITS)],
     })
     lines.push(`We have a family ${kind.species.toLowerCase()} named ${pet.firstName}.`)
@@ -855,17 +856,21 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const otherParent = n.people.find((p) => p.id === heirP.otherParentId) ?? (heirP.relation === 'stepchild' ? n.people.find((p) => p.relation === 'spouse') : undefined)
   const people: Person[] = []
   const knownYears = (p: Person) => Math.min(age, p.age)
-  const reset = (p: Person, relation: RelationKind, relationship: number, livesWith: boolean): Person => ({
-    ...p,
-    relation,
-    relationship: clampStat(relationship),
-    livesWithPlayer: livesWith && p.alive,
-    yearsKnown: knownYears(p),
-    otherParentId: undefined,
-    contextId: undefined,
-    pregnant: undefined,
-    notes: p.alive ? [] : p.notes,
-  })
+  const reset = (p: Person, relation: RelationKind, relationship: number, livesWith: boolean): Person => {
+    const out: Person = {
+      ...p,
+      relation,
+      relationship: clampStat(relationship),
+      livesWithPlayer: livesWith && p.alive,
+      yearsKnown: knownYears(p),
+      notes: p.alive ? [] : p.notes,
+    }
+    // Links that only made sense from the late player's point of view.
+    delete out.otherParentId
+    delete out.contextId
+    delete out.pregnant
+    return out
+  }
 
   // The late player.
   people.push({
@@ -923,14 +928,13 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // --- Home --------------------------------------------------------------------
   let residence: Residence
   const oldHome = old.residence.status === 'owned' ? keptAssets.find((a) => a.id === old.residence.assetId) : undefined
-  if (age < 18) residence = { status: 'parents', description: guardian ? undefined : 'Living with relatives' }
+  if (age < 18) residence = guardian ? { status: 'parents' } : { status: 'parents', description: 'Living with relatives' }
   else if (oldHome) residence = { status: 'owned', assetId: oldHome.id }
   else if (heirP.livesWithPlayer && age < 26 && guardian && guardian.relation === 'parent') residence = { status: 'parents' }
   else residence = { status: 'renting', rent: Math.round(randInt(n, 9_000, 16_000) * pf), description: 'Apartment' }
   heir.residence = residence
   for (const a of keptAssets) {
     a.purchasedAge = Math.min(a.purchasedAge, age)
-    delete a.rentedOutFor
     if (isHeirloom(a)) a.details.yearsInFamily = (typeof a.details.yearsInFamily === 'number' ? a.details.yearsInFamily : 0) + old.age
   }
 
@@ -1005,7 +1009,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
 // ---------------------------------------------------------------------------
 // Yearly milestones
 
-const FIRST_STEPS = ['I took my first wobbly steps.', 'I said my first word. It was "no."', 'I learned how to clap. I clapped at everything.', 'I discovered my feet and tried to eat them.']
+const FIRST_STEPS = ['I took my first wobbly steps.', 'I learned to wave bye-bye at everyone, including the dog.', 'I learned how to clap. I clapped at everything.', 'I discovered my feet and tried to eat them.']
 const TODDLER = ['I learned to say "mine" about everything.', 'I threw a tantrum in the middle of the grocery store.', 'I drew on the wall with a crayon. It was a masterpiece.', 'I figured out how to climb out of my crib.']
 
 const PUBERTY_MALE = [
@@ -1132,7 +1136,13 @@ const SEXUALITY = defineScript('life.sexuality', (g, choice) => {
 
 function midlifeCrisis(g: GameState): void {
   const c = g.character
-  if (g.flags.midlifeCrisis || c.age < 40 || c.age > 55 || inPrison(g) || !chance(g, 0.05)) return
+  if (g.flags.midlifeCrisis || c.age < 40 || c.age > 55 || inPrison(g)) return
+  // One per life: skip if the event library or the AI already gave us one.
+  if (g.log.some((y) => y.entries.some((e) => /mid-?life crisis/i.test(e.text)))) {
+    g.flags.midlifeCrisis = true
+    return
+  }
+  if (!chance(g, 0.05)) return
   g.flags.midlifeCrisis = true
   scriptChoice(
     g,

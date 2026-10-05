@@ -138,17 +138,20 @@ export function computeRibbon(g: GameState): string | null {
   const gradDegree = c.education.degrees.some((d) => GRAD_DEGREES.has(d.kind))
   const militaryYears = yearsWithTitle(g, MILITARY_TITLE)
   // Burglaries and car thefts count double, like the real game.
-  const thefts =
+  const theftCounters =
     counter(g, 'thefts') +
-    c.criminalRecord.reduce((total, r) => {
-      if (/burgl|car theft|steal.*car|grand theft/i.test(r.crime)) return total + 2
-      if (/pickpocket|shoplift|porch pirat|theft|robbery|steal/i.test(r.crime)) return total + 1
-      return total
-    }, 0)
+    2 * sum(g, 'burglaries', 'carsStolen') +
+    sum(g, 'pickpockets', 'shoplifts', 'porchPirate', 'bankRobberies')
+  const theftRecord = c.criminalRecord.reduce((total, r) => {
+    if (/burgl|car theft|steal.*car|grand theft/i.test(r.crime)) return total + 2
+    if (/pickpocket|shoplift|porch pirat|theft|robbery|steal/i.test(r.crime)) return total + 1
+    return total
+  }, 0)
+  const thefts = Math.max(theftCounters, theftRecord)
 
   // 1. Choices that define a life no matter what else happened.
   if (/suicide|surrender/.test(death) || flag(g, 'surrendered')) return 'wasteful'
-  if (flag(g, 'heroicDeath') || sum(g, 'rescues', 'heroics', 'livesSaved') > 0) return 'hero'
+  if (flag(g, 'heroicDeath') || flag(g, 'hero') || sum(g, 'rescues', 'rescueAttempts', 'heroics', 'livesSaved') > 0) return 'hero'
 
   // 2. Secret ribbons.
   if (sum(g, 'trainRobberies') > 0 && worth < 50_000_000) return 'bandit'
@@ -179,11 +182,11 @@ export function computeRibbon(g: GameState): string | null {
   // 4. Extraordinary lives.
   if (age >= 120) return 'geriatric'
   if (worth >= 20_000_000) return 'loaded'
-  if (militaryYears >= 20 || (counter(g, 'deployments') >= 3 && yearsWithTitle(g, TOP_MILITARY_TITLE) > 0)) return 'veteran'
+  if (militaryYears >= 20 || (Math.max(counter(g, 'minefieldsCleared'), counter(g, 'deployments')) >= 3 && yearsWithTitle(g, TOP_MILITARY_TITLE) > 0)) return 'veteran'
   if (c.social && c.social.verified && c.social.followers >= 1_000_000) return 'influencer'
   if (c.hidden.fame >= 50) return 'famous'
   if (!hadJob && counter(g, 'marriages') >= 1 && worth >= 1_500_000) return 'goldDigger'
-  const gamblingProfit = counter(g, 'gamblingProfit')
+  const gamblingProfit = sum(g, 'gamblingProfit', 'casinoWinnings')
   if (gamblingProfit >= 1_000_000 || (counter(g, 'moneyGambled') >= 1_000_000 && counter(g, 'casinoWins') > counter(g, 'casinoLosses'))) {
     return 'highroller'
   }
@@ -193,9 +196,9 @@ export function computeRibbon(g: GameState): string | null {
   if (/overdose/.test(death)) return 'stupid'
   if (thefts >= 10) return 'thief'
   if (prisonYears >= 5) return 'scandalous'
-  if (convictions >= 2 || (escapes >= 2 && convictions >= 1) || counter(g, 'riots') >= 3) return 'jailbird'
+  if (convictions >= 2 || counter(g, 'imprisonments') >= 2 || (escapes >= 2 && convictions >= 1) || counter(g, 'riots') >= 3) return 'jailbird'
   if ((escapes >= 1 && !c.prison) || (murders >= 1 && convictions === 0)) return 'cunning'
-  if (sum(g, 'stdsSpread', 'abandoned') >= 5 || counter(g, 'cheated') >= 5) return 'wicked'
+  if (sum(g, 'stdsSpread', 'abandoned') >= 5 || counter(g, 'cheated') >= 5 || counter(g, 'stds') >= 5) return 'wicked'
   if (counter(g, 'hookups') + counter(g, 'partners') >= 20) return 'lustful'
 
   // 6. Family, hobbies and lifestyle.
@@ -215,12 +218,12 @@ export function computeRibbon(g: GameState): string | null {
   }
   if (female && cats >= 20 && otherPets < 5) return 'catLady'
   if (male && exoticPets >= 20) return 'wildOne'
-  if (female && counter(g, 'surgeries') >= 6) return 'dollface'
+  if (female && counter(g, 'surgeries') >= 6 && counter(g, 'botchedSurgeries') === 0) return 'dollface'
   if (counter(g, 'housesSold') >= 10 || counter(g, 'realEstateProfit') >= 2_000_000) return 'flipper'
   if (sum(g, 'movies', 'moviesWatched') >= 20) return 'movieBuff'
   if (counter(g, 'vacations') + counter(g, 'emigrations') >= 20) return 'globetrotter'
   if (counter(g, 'nightlife') >= 10) return 'rowdy'
-  if (sum(g, 'gifts', 'giftsGiven') >= 30) return 'generous'
+  if (sum(g, 'gifts', 'giftsGiven', 'donated') >= 30) return 'generous'
   if (counter(g, 'askedForMoney') >= 10 && counter(g, 'gaveMoney') === 0) return 'mooch'
 
   // 7. Education and money.

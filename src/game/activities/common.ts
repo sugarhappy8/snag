@@ -169,6 +169,13 @@ export function capitalize(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
 
+/** Sanitize a typed name: letters, spaces, apostrophes, dots and hyphens; capitalized; max 24 chars. */
+export function cleanName(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const s = value.replace(/[^\p{L}\p{M}' .-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 24)
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
+}
+
 /** Fill {placeholders} in a template. */
 export function fill(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m))

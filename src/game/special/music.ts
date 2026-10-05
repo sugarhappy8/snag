@@ -1,0 +1,1002 @@
+// Special career: Musician. Master an instrument (Mind & Body lessons), then go solo with a
+// record label or join a band. Record albums and singles (one release per year), play concerts,
+// go on world tours, earn certifications and awards, and collect royalties forever.
+import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
+import { chance, pick, rand, randInt, shuffle } from '../rng'
+import { defineScript } from '../scripts'
+import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import {
+  addColleague,
+  addFame,
+  blocked,
+  clamp100,
+  cleanName,
+  compact,
+  fameOf,
+  fameToward,
+  hire,
+  instrumentSkill,
+  leave,
+  money,
+  myJob,
+  peek,
+  prof,
+  quitNote,
+  say,
+  setInstrumentSkill,
+  setRole,
+  short,
+  syncTenure,
+  talentMatches,
+  tell,
+  view,
+} from './common'
+
+// ---------------------------------------------------------------------------
+// Data
+
+const SOLO_INSTRUMENTS = ['Voice', 'Guitar', 'Bass Guitar', 'Keyboard', 'Piano', 'Saxophone', 'Violin', 'Cello']
+const BAND_INSTRUMENTS = ['Voice', 'Guitar', 'Bass Guitar', 'Keyboard', 'Drums']
+const BAND_ROLE: Record<string, string> = { Voice: 'Lead Singer', Guitar: 'Guitarist', 'Bass Guitar': 'Bassist', Keyboard: 'Keyboardist', Drums: 'Drummer' }
+const INSTRUMENT_EMOJI: Record<string, string> = {
+  Voice: '\u{1F3A4}',
+  Guitar: '\u{1F3B8}',
+  'Bass Guitar': '\u{1F3B8}',
+  Keyboard: '\u{1F3B9}',
+  Piano: '\u{1F3B9}',
+  Saxophone: '\u{1F3B7}',
+  Violin: '\u{1F3BB}',
+  Cello: '\u{1F3BB}',
+  Drums: '\u{1F941}',
+}
+
+const GENRES: Record<string, string[]> = {
+  Pop: ['Bubblegum', 'Dance', 'Disco', 'Electro', 'Synth', 'Psychedelic Pop', 'Sing-Along'],
+  Rock: ['Classic Rock', 'Hard Rock', 'Punk', 'Rockabilly', 'Southern Rock', 'Screamo', 'Ska'],
+  Rap: ['Trap', 'Old School Rap', 'Conscious Rap', 'Mumble Rap', 'West Coast', 'Crunk', 'Emo Rap'],
+  'R&B': ['Soul', 'Funk', 'Motown', 'Smooth Jazz', 'Contemporary R&B', 'Doo Wop', 'Blues'],
+  Country: ['Bluegrass', 'Honky-Tonk', 'Outlaw', 'Country Rock', 'Hillbilly', 'Urban Cowboy', 'Dirt Road'],
+  Alternative: ['Grunge', 'Emo', 'Indie Folk', 'New Wave', 'Garage', 'Art Punk', 'Steampunk'],
+  Reggae: ['Dancehall', 'Dub', 'Afro-Beat', 'Reggae Fusion', 'Reggaeton', 'Rasta', 'Caribbean'],
+  Folk: ['Fable', 'Folk Punk', 'Neofolk', 'Progressive Folk', 'Myth', 'Legend', 'Psychedelic'],
+  Worship: ['Gospel', 'Hymn', 'Praise', 'Spiritual', 'Worship Pop', 'Worship Rock', 'Worship Hip Hop'],
+}
+const GENRE_NAMES = Object.keys(GENRES)
+
+interface Label {
+  name: string
+  tier: number
+}
+
+const LABELS: Label[] = [
+  { name: 'Garage Door Records', tier: 0 },
+  { name: 'Indigo Basement Music', tier: 0 },
+  { name: 'Echo Chamber Records', tier: 1 },
+  { name: 'Big Noise Music', tier: 1 },
+  { name: 'Velvet Records', tier: 2 },
+  { name: 'Platinum Peak Entertainment', tier: 2 },
+]
+
+const RELEASE_TYPES = [
+  { id: 'studio', label: 'Studio Album', emoji: '\u{1F4BF}', mult: 1, pay: 1 },
+  { id: 'single', label: 'Single', emoji: '\u{1F3B5}', mult: 0.45, pay: 0.45 },
+  { id: 'live', label: 'Live Album', emoji: '\u{1F3DF}\u{FE0F}', mult: 0.5, pay: 0.8 },
+  { id: 'compilation', label: 'Compilation', emoji: '\u{1F4C0}', mult: 0.6, pay: 0.8 },
+]
+
+const CERTS: [number, string][] = [
+  [10_000_000, 'Diamond'],
+  [2_000_000, 'Double Platinum'],
+  [1_000_000, 'Platinum'],
+  [500_000, 'Gold'],
+]
+
+interface Release {
+  title: string
+  type: string
+  genre: string
+  subgenre: string
+  age: number
+  sold: number
+  earned: number
+  cert: string | null
+  quality: number
+  royalty: number
+}
+
+interface MusicProfile {
+  stageName: string | null
+  discography: Release[]
+  burnedLabels: string[]
+  awards: string[]
+  tours: number
+  concerts: number
+}
+
+interface MusicJob {
+  mode: 'solo' | 'band'
+  instrument: string
+  genre: string
+  label: string | null
+  contractYears: number
+  advancePerYear: number
+  popularity: number
+  bandName: string | null
+  bandmates: string[]
+  members: number
+  recordedAge: number
+  lastRelease: number
+}
+
+const initMusic = (): MusicProfile => ({ stageName: null, discography: [], burnedLabels: [], awards: [], tours: 0, concerts: 0 })
+
+function musicProfile(g: GameState): MusicProfile {
+  return prof(g, 'music', initMusic)
+}
+
+function viewMusic(g: GameState): MusicProfile {
+  return peek<MusicProfile>(g, 'music') ?? initMusic()
+}
+
+export function musicJob(g: GameState): Job | null {
+  return myJob(g, 'musician')
+}
+
+function md(job: Job): MusicJob {
+  return view<MusicJob>(job.data)
+}
+
+function artistName(g: GameState): string {
+  const p = viewMusic(g)
+  return p.stageName ?? `${g.character.firstName} ${g.character.lastName}`
+}
+
+function musicTalent(g: GameState): boolean {
+  return talentMatches(g, /music|sing|instrument/i)
+}
+
+function effectiveSkill(g: GameState, instrument: string): number {
+  return clamp100(instrumentSkill(g, instrument) + (musicTalent(g) ? 8 : 0))
+}
+
+// ---------------------------------------------------------------------------
+// Joining: solo
+
+interface SoloStart {
+  instrument: string
+}
+
+interface ContractOffer {
+  instrument: string
+  label: string
+  tier: number
+  genre: string
+  advance: number
+  years: number
+}
+
+const contractScript = defineScript('special.music.contract', (g, choice, data) => {
+  const o = data as unknown as ContractOffer
+  const p = musicProfile(g)
+  if (choice !== 'accept') {
+    p.burnedLabels.push(o.label)
+    return say(g, o.label, `You turned down ${o.label}. They won't be taking your calls again.`, '\u{1F4BF}')
+  }
+  const existing = musicJob(g)
+  const perYear = Math.round(o.advance / o.years)
+  if (existing) {
+    // Going solo from a band.
+    const d = md(existing)
+    removeBand(g, existing)
+    d.mode = 'solo'
+    d.label = o.label
+    d.contractYears = o.years
+    d.advancePerYear = perYear
+    d.genre = o.genre
+    d.instrument = o.instrument
+    d.bandName = null
+    d.members = 1
+    existing.company = o.label
+    setRole(g, existing, 'Solo Artist', perYear, 1)
+    log(g, `I left my band and signed a solo deal with ${o.label}.`, 'good')
+    remember(g, `Went solo with ${o.label}.`)
+    return say(g, 'Solo Career', `You signed a ${o.years}-year solo deal with ${o.label} worth ${money(o.advance)}. Your former bandmates are writing a diss track about you.`, '\u{1F3A4}', 'good')
+  }
+  const { quit } = hire(g, {
+    defId: 'musician',
+    title: 'Solo Artist',
+    company: o.label,
+    salary: perYear,
+    data: {
+      mode: 'solo',
+      instrument: o.instrument,
+      genre: o.genre,
+      label: o.label,
+      contractYears: o.years,
+      advancePerYear: perYear,
+      popularity: 10 + o.tier * 5,
+      bandName: null,
+      bandmates: [],
+      members: 1,
+      recordedAge: -1,
+      lastRelease: -1,
+    },
+  })
+  addFame(g, 5 + o.tier * 3)
+  addStat(g, 'happiness', 15)
+  log(g, `I signed a record deal with ${o.label}.`, 'good')
+  remember(g, `Signed a ${o.genre} record deal with ${o.label}.`)
+  say(g, 'Record Deal', `You signed a ${o.years}-year contract with ${o.label}! You'll receive ${money(o.advance)} paid over ${o.years} years, and you'll be making ${o.genre} music.${quitNote(quit)}`, '\u{1F4BF}', 'good')
+})
+
+function auditionForLabel(g: GameState, instrument: string, label: Label, goingSolo: boolean): void {
+  const skill = effectiveSkill(g, instrument)
+  const job = musicJob(g)
+  const pop = job ? md(job).popularity : 0
+  const score = skill + fameOf(g) * 0.3 + pop * 0.3 + randInt(g, -20, 20)
+  const need = 60 + label.tier * 10
+  if (score < need) {
+    log(g, `I auditioned for ${label.name} but they passed.`, 'bad')
+    return say(
+      g,
+      label.name,
+      pick(g, [
+        `You played your heart out for ${label.name}. They said they'd "keep your number on file".`,
+        `The executives at ${label.name} took one listen and asked if you'd considered accounting.`,
+        `${label.name} said your sound "isn't quite there yet". Practice more and try again.`,
+      ]),
+      INSTRUMENT_EMOJI[instrument] ?? '\u{1F3B5}',
+      'bad',
+    )
+  }
+  const genre = job && goingSolo ? md(job).genre : pick(g, GENRE_NAMES)
+  const years = randInt(g, 2, 4)
+  const advance = Math.round(([25_000, 80_000, 250_000][label.tier] ?? 25_000) * (1 + fameOf(g) / 30 + pop / 50) * (0.7 + rand(g) * 0.6) / 1_000) * 1_000
+  const offer: ContractOffer = { instrument, label: label.name, tier: label.tier, genre, advance, years }
+  scriptChoice(
+    g,
+    contractScript,
+    label.name,
+    `${label.name} loved your audition! They're offering a ${years}-year contract with a ${money(advance)} advance paid over ${years} years. You'll be producing ${genre} music.`,
+    [
+      { id: 'accept', label: 'Sign the contract', emoji: '\u{270D}\u{FE0F}' },
+      { id: 'decline', label: 'Decline', emoji: '\u{274C}' },
+    ],
+    { emoji: '\u{1F4BF}', data: offer as unknown as Json },
+  )
+}
+
+const labelScript = defineScript('special.music.label', (g, choice, data) => {
+  if (choice === 'cancel') return
+  const d = data as unknown as SoloStart & { goingSolo?: boolean }
+  const label = LABELS.find((l) => l.name === choice)
+  if (!label) return
+  if (!useYearAction(g, 'music.audition', 3)) return tell(g, 'Auditions', "You've auditioned for enough labels this year. Your voice needs a rest.", '\u{1F971}')
+  auditionForLabel(g, d.instrument, label, !!d.goingSolo)
+})
+
+function chooseLabel(g: GameState, instrument: string, goingSolo: boolean): void {
+  const burned = musicProfile(g).burnedLabels
+  const labels = LABELS.filter((l) => !burned.includes(l.name))
+  if (labels.length === 0) return tell(g, 'Record Labels', 'Every record label in town has blacklisted you. Maybe stop turning down contracts.', '\u{1F6AB}')
+  scriptChoice(
+    g,
+    labelScript,
+    'Record Labels',
+    `Which record label do you want to audition for? (${instrument} skill: ${effectiveSkill(g, instrument)}%)`,
+    [...labels.map((l) => ({ id: l.name, label: `${l.name} ${'\u{2B50}'.repeat(l.tier + 1)}`, emoji: '\u{1F4BF}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+    { emoji: '\u{1F4BF}', data: { instrument, goingSolo } },
+  )
+}
+
+const soloInstrumentScript = defineScript('special.music.soloInstrument', (g, choice) => {
+  if (choice === 'cancel') return
+  chooseLabel(g, choice, false)
+})
+
+// ---------------------------------------------------------------------------
+// Joining: band
+
+const BAND_A = ['Kittycat', 'Velvet', 'Midnight', 'Electric', 'Rusty', 'Neon', 'Toxic', 'Silver', 'Broken', 'Holy', 'Lazy', 'Crimson', 'Atomic', 'Lonesome']
+const BAND_B = ['Dolls', 'Wolves', 'Pirates', 'Saints', 'Machines', 'Tigers', 'Ghosts', 'Cowboys', 'Prophets', 'Lemons', 'Satellites', 'Riot', 'Mixtape', 'Bandits']
+
+interface BandOffer {
+  instrument: string
+  name: string
+  genre: string
+  popularity: number
+  members: number
+  earned: number
+}
+
+function genBand(g: GameState, instrument: string): BandOffer {
+  const skill = effectiveSkill(g, instrument)
+  const popularity = clamp100(randInt(g, 5, 25) + skill * 0.4 + randInt(g, -10, 10))
+  const members = randInt(g, 2, 5)
+  return {
+    instrument,
+    name: `${chance(g, 0.5) ? 'The ' : ''}${pick(g, BAND_A)} ${pick(g, BAND_B)}`,
+    genre: pick(g, GENRE_NAMES),
+    popularity,
+    members,
+    earned: Math.round((popularity * popularity * randInt(g, 15, 40)) / 100) * 100,
+  }
+}
+
+const bandJoinScript = defineScript('special.music.bandJoin', (g, choice, data) => {
+  const b = data as unknown as BandOffer & { looked?: number }
+  if (choice === 'look') {
+    const looked = (b.looked ?? 0) + 1
+    const next = genBand(g, b.instrument)
+    return offerBand(g, next, looked)
+  }
+  if (choice !== 'join') return say(g, 'Band', 'You decided to keep your independence. For now.', '\u{1F3B8}')
+  const role = BAND_ROLE[b.instrument] ?? 'Band Member'
+  const { job, quit } = hire(g, {
+    defId: 'musician',
+    title: role,
+    company: b.name,
+    salary: Math.round(b.earned / b.members),
+    data: {
+      mode: 'band',
+      instrument: b.instrument,
+      genre: b.genre,
+      label: null,
+      contractYears: 0,
+      advancePerYear: 0,
+      popularity: b.popularity,
+      bandName: b.name,
+      bandmates: [],
+      members: b.members,
+      recordedAge: -1,
+      lastRelease: -1,
+    },
+  })
+  const d = md(job)
+  const roles = Object.values(BAND_ROLE).filter((r) => r !== role)
+  for (let i = 0; i < b.members - 1; i++) {
+    const mate = addColleague(g, b.name, roles[i % roles.length], { ageOffset: [-6, 8], relationship: randInt(g, 40, 70) })
+    mate.occupation = `${roles[i % roles.length]} (${b.name})`
+    d.bandmates.push(mate.id)
+  }
+  addFame(g, 3 + Math.round(b.popularity / 15))
+  addStat(g, 'happiness', 12)
+  log(g, `I joined the band ${b.name} as their ${role.toLowerCase()}.`, 'good')
+  remember(g, `Joined the ${b.genre} band ${b.name}.`)
+  say(g, b.name, `You joined ${b.name} as their new ${role.toLowerCase()}! Time to make some ${b.genre} music.${quitNote(quit)}`, '\u{1F3B8}', 'good')
+})
+
+function offerBand(g: GameState, b: BandOffer, looked: number): void {
+  const choices = [
+    { id: 'join', label: 'Join the band', emoji: '\u{1F91D}' },
+    ...(looked < 2 ? [{ id: 'look', label: 'Keep looking', emoji: '\u{1F50D}' }] : []),
+    { id: 'decline', label: 'Decline', emoji: '\u{274C}' },
+  ]
+  scriptChoice(
+    g,
+    bandJoinScript,
+    'Band Found',
+    `${b.name}, a ${b.genre} band, is looking for a ${(BAND_ROLE[b.instrument] ?? 'musician').toLowerCase()}. They have ${b.members - 1} other member${b.members === 2 ? '' : 's'}, ${b.popularity}% popularity, and earned ${money(b.earned)} last year.`,
+    choices,
+    { emoji: '\u{1F3B8}', data: { ...b, looked } as unknown as Json },
+  )
+}
+
+const bandInstrumentScript = defineScript('special.music.bandInstrument', (g, choice) => {
+  if (choice === 'cancel') return
+  if (!useYearAction(g, 'music.bandSearch', 2)) return tell(g, 'Find a Band', "You've posted on every band noticeboard in town. Try again next year.", '\u{1F971}')
+  const skill = effectiveSkill(g, choice)
+  const role = (BAND_ROLE[choice] ?? 'musician').toLowerCase()
+  if (skill + randInt(g, -10, 10) < 50) {
+    return say(g, 'Find a Band', `You looked for a band in need of a ${role}, but couldn't find one that would take you. Keep practicing.`, '\u{1F50D}', 'bad')
+  }
+  offerBand(g, genBand(g, choice), 0)
+})
+
+function instrumentChoices(g: GameState, list: string[]) {
+  return [
+    ...list.map((i) => ({ id: i, label: `${i} (${effectiveSkill(g, i)}%)`, emoji: INSTRUMENT_EMOJI[i] ?? '\u{1F3B5}' })),
+    { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' },
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// Releases
+
+interface ReleaseDraft {
+  type: string
+  subgenre?: string
+}
+
+const titleScript = defineScript('special.music.title', (g, value, data) => {
+  const job = musicJob(g)
+  const d = data as unknown as ReleaseDraft
+  if (!job || !d.subgenre) return
+  release(g, job, d.type, d.subgenre, cleanName(value, defaultTitle(g), 50))
+})
+
+const subgenreScript = defineScript('special.music.subgenre', (g, choice, data) => {
+  if (choice === 'cancel') return
+  const d = data as unknown as ReleaseDraft
+  const type = RELEASE_TYPES.find((t) => t.id === d.type) ?? RELEASE_TYPES[0]
+  scriptInput(g, {
+    title: type.label,
+    emoji: type.emoji,
+    text: `What do you want to call your new ${type.label.toLowerCase()}?`,
+    input: 'text',
+    placeholder: 'Title',
+    defaultValue: defaultTitle(g),
+    scriptId: titleScript,
+    data: { type: d.type, subgenre: choice },
+  })
+})
+
+const releaseTypeScript = defineScript('special.music.type', (g, choice) => {
+  if (choice === 'cancel') return
+  const job = musicJob(g)
+  if (!job) return
+  const genre = md(job).genre
+  const subs = shuffle(g, GENRES[genre] ?? GENRES.Pop).slice(0, 4)
+  scriptChoice(g, subgenreScript, 'Subgenre', `What kind of ${genre} sound are you going for?`, [...subs.map((s) => ({ id: s, label: s, emoji: '\u{1F3B6}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
+    emoji: '\u{1F3B6}',
+    data: { type: choice },
+  })
+})
+
+const WORDS_A = ['Midnight', 'Neon', 'Broken', 'Sweet', 'Lonely', 'Golden', 'Electric', 'Wild', 'Paper', 'Velvet', 'Summer', 'Heavy']
+const WORDS_B = ['Hearts', 'Highway', 'Dreams', 'Fire', 'Echoes', 'Thunder', 'Kisses', 'Rain', 'Ghosts', 'Gold', 'Lies', 'Roses']
+
+function defaultTitle(g: GameState): string {
+  const c = g.character
+  const n = viewMusic(g).discography.length
+  return `${WORDS_A[(c.age + n) % WORDS_A.length]} ${WORDS_B[(c.age * 7 + n * 3) % WORDS_B.length]}`
+}
+
+function release(g: GameState, job: Job, typeId: string, subgenre: string, title: string): void {
+  const c = g.character
+  const d = md(job)
+  const p = musicProfile(g)
+  if (d.recordedAge === c.age) return tell(g, 'Recording', 'You already released music this year.', '\u{1F4BF}')
+  const type = RELEASE_TYPES.find((t) => t.id === typeId) ?? RELEASE_TYPES[0]
+  const skill = effectiveSkill(g, d.instrument)
+  const synergy = d.mode === 'band' ? avgBandRelationship(g, job) / 10 : 0
+  const quality = clamp100(skill * 0.5 + randInt(g, 0, 40) + synergy + (musicTalent(g) ? 5 : 0))
+  const pop = d.popularity
+  const sold = Math.max(50, Math.round(((pop ** 3) * 3 + quality * 800 + 200) * type.mult * (0.3 + rand(g) * 1.7) * (quality / 60)))
+  const perUnit = 1 * type.pay
+  const gross = Math.round(sold * perUnit)
+  const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
+  const cert = CERTS.find(([min]) => sold >= min)?.[1] ?? null
+  earnIncome(g, share)
+  d.recordedAge = c.age
+  d.lastRelease = c.age
+  const popDelta = Math.round((quality - 50) / 5 + (cert ? 4 : 0) + (type.id === 'studio' ? 2 : 0))
+  d.popularity = clamp100(d.popularity + popDelta)
+  const r: Release = { title, type: type.label, genre: d.genre, subgenre, age: c.age, sold, earned: share, cert, quality, royalty: Math.round(share * 0.15) }
+  p.discography.push(r)
+  if (type.id === 'studio' || type.id === 'single') count(g, 'albums')
+  if (cert === 'Diamond') g.flags['special.music.diamond'] = true
+  fameToward(g, d.popularity * 0.95, 5)
+  addStat(g, 'happiness', cert ? 12 : quality >= 50 ? 5 : -5)
+  for (const id of d.bandmates) {
+    const mate = getPerson(g, id)
+    if (mate) addRelationship(mate, cert ? 8 : quality >= 50 ? 3 : -4)
+  }
+  const verdict =
+    quality >= 85
+      ? pick(g, ['Critics are calling it a masterpiece.', 'Music blogs crowned it album of the year.', 'Even your haters have it on repeat.'])
+      : quality >= 60
+        ? pick(g, ['Reviews were warm.', 'Fans seem to love it.', 'It got decent radio play.'])
+        : quality >= 40
+          ? pick(g, ['Reviews were mixed.', 'It got lost in the shuffle.', 'A few tracks are growing on people.'])
+          : pick(g, ['Critics savaged it.', 'One reviewer called it "a crime against ears".', 'It was mostly bought by your relatives.'])
+  log(g, `I released the ${type.label.toLowerCase()} "${title}". It sold ${compact(sold)} copies${cert ? ` and went ${cert}` : ''}.`, cert || quality >= 60 ? 'good' : quality < 40 ? 'bad' : 'neutral')
+  if (cert) remember(g, `"${title}" went ${cert}.`)
+  say(
+    g,
+    title,
+    `Your ${subgenre.toLowerCase()} ${type.label.toLowerCase()} "${title}" sold ${sold.toLocaleString('en-US')} copies${cert ? ` and was certified ${cert}!` : '.'} ${verdict} You earned ${money(share)}${d.mode === 'band' ? ' as your share' : ''}. ${d.mode === 'band' ? 'Band' : 'Your'} popularity is now ${d.popularity}%.`,
+    type.emoji,
+    cert || quality >= 60 ? 'good' : quality < 40 ? 'bad' : 'neutral',
+  )
+}
+
+function avgBandRelationship(g: GameState, job: Job): number {
+  const mates = md(job).bandmates.map((id) => getPerson(g, id)).filter((p) => !!p)
+  if (mates.length === 0) return 50
+  return mates.reduce((s, p) => s + (p?.relationship ?? 50), 0) / mates.length
+}
+
+// ---------------------------------------------------------------------------
+// Concerts & tours
+
+const VENUES: { name: string; capacity: number; minPop: number }[] = [
+  { name: 'a dive bar', capacity: 80, minPop: 0 },
+  { name: 'a hoedown', capacity: 300, minPop: 0 },
+  { name: 'a county fair', capacity: 800, minPop: 10 },
+  { name: 'a music festival side stage', capacity: 3_000, minPop: 25 },
+  { name: 'a historic theater', capacity: 2_500, minPop: 30 },
+  { name: 'an arena', capacity: 18_000, minPop: 55 },
+  { name: 'a sold-out stadium', capacity: 60_000, minPop: 75 },
+]
+
+const concertScript = defineScript('special.music.concert', (g, choice) => {
+  if (choice === 'cancel') return
+  const job = musicJob(g)
+  if (!job) return
+  const venue = VENUES.find((v) => v.name === choice)
+  if (!venue) return
+  if (!useYearAction(g, 'music.concert', 2)) return tell(g, 'Concert', "Your voice is shot from all the shows this year. Rest up.", '\u{1F971}')
+  const d = md(job)
+  const skill = effectiveSkill(g, d.instrument)
+  const performance = clamp100(skill * 0.6 + randInt(g, 0, 40))
+  const fill = Math.min(1, Math.max(0.05, (d.popularity + 20 - venue.minPop) / 60 + rand(g) * 0.2))
+  const attendance = Math.max(3, Math.round(venue.capacity * fill))
+  const ticket = 10 + Math.round(d.popularity * 1.2)
+  const gross = Math.round(attendance * ticket * 0.35 * (0.6 + performance / 200))
+  const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
+  earnIncome(g, share)
+  musicProfile(g).concerts += 1
+  if (venue.name === 'a hoedown') g.flags['special.music.hoedown'] = true
+  const good = performance >= 55
+  d.popularity = clamp100(d.popularity + (good ? randInt(g, 1, 3) : -1))
+  addStat(g, 'happiness', good ? 6 : -3)
+  if (good) addFame(g, 1)
+  log(g, `I played a concert at ${venue.name} for ${attendance.toLocaleString('en-US')} people.`, good ? 'good' : 'neutral')
+  const vibe = good
+    ? pick(g, ['The crowd sang every word back to you.', 'Someone threw flowers on stage. You hope they were flowers.', 'The encore went on for twenty minutes.'])
+    : pick(g, ['The sound system kept squealing.', 'You forgot the words to your own song.', 'Half the crowd left during the slow songs.'])
+  say(g, 'Concert', `You played ${venue.name} in front of ${attendance.toLocaleString('en-US')} fans. ${vibe} You earned ${money(share)}.`, '\u{1F3A4}', good ? 'good' : 'neutral')
+})
+
+const tourAction: MenuAction = {
+  type: 'action',
+  id: 'music.tour',
+  label: 'Tour',
+  emoji: '\u{1F30D}',
+  subtitle: 'Go on a world tour',
+  disabledReason: (g) => blocked(g, 0),
+  run: (g) => {
+    const job = musicJob(g)
+    if (!job) return
+    const d = md(job)
+    if (d.popularity < 15) return say(g, 'Tour', `${d.mode === 'band' ? 'Promoters' : `${d.label ?? 'Your label'}`} said nobody would buy tickets yet. Build your popularity first.`, '\u{1F30D}', 'bad')
+    if (!useYearAction(g, 'music.tour', 1)) return tell(g, 'Tour', "You're already exhausted from this year's tour.", '\u{1F971}')
+    const c = g.character
+    const cities = Math.max(5, Math.round(d.popularity / 2 + randInt(g, 0, 20)))
+    const gross = Math.round(d.popularity ** 2 * cities * (20 + rand(g) * 40))
+    const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
+    earnIncome(g, share)
+    musicProfile(g).tours += 1
+    d.popularity = clamp100(d.popularity + randInt(g, 2, 5))
+    addFame(g, 2)
+    addStat(g, 'health', -randInt(g, 3, 8))
+    addStat(g, 'happiness', 8)
+    if (c.age >= 75) g.flags['special.music.tour75'] = true
+    log(g, `I went on a ${cities}-city world tour.`, 'good')
+    const chaos = pick(g, [
+      'Your tour bus broke down in the middle of nowhere twice.',
+      'A fan proposed to you on stage. You said "maybe".',
+      'You crowd-surfed in four countries.',
+      'You lost your voice in the middle of the tour and lip-synced three shows.',
+    ])
+    say(g, 'World Tour', `You played ${cities} cities on your world tour and earned ${money(share)}${d.mode === 'band' ? ' as your share' : ''}. ${chaos}`, '\u{1F30D}', 'good')
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Band management
+
+function removeBand(g: GameState, job: Job): void {
+  const d = md(job)
+  g.people = g.people.filter((p) => !(d.bandmates.includes(p.id) && p.relation === 'coworker'))
+  d.bandmates = []
+}
+
+const kickScript = defineScript('special.music.kick', (g, choice) => {
+  if (choice === 'cancel') return
+  const job = musicJob(g)
+  const mate = getPerson(g, choice)
+  if (!job || !mate) return
+  const d = md(job)
+  if (chance(g, 0.3)) {
+    addRelationship(mate, -15)
+    return say(g, 'Band Vote', `You tried to kick ${mate.firstName} out of ${d.bandName}, but the rest of the band voted against you. Awkward rehearsal tomorrow.`, '\u{1F5F3}\u{FE0F}', 'bad')
+  }
+  d.bandmates = d.bandmates.filter((id) => id !== mate.id)
+  d.members = Math.max(1, d.members - 1)
+  d.popularity = clamp100(d.popularity - randInt(g, 1, 4))
+  if (mate.relation === 'coworker') g.people = g.people.filter((p) => p.id !== mate.id)
+  else addRelationship(mate, -30)
+  log(g, `I kicked ${fullName(mate)} out of the band.`, 'bad')
+  say(g, d.bandName ?? 'Band', `You kicked ${fullName(mate)} out of the band. They took the van keys with them.`, '\u{1F462}')
+})
+
+const bandNameScript = defineScript('special.music.bandName', (g, value) => {
+  const job = musicJob(g)
+  if (!job) return
+  const d = md(job)
+  const name = cleanName(value, d.bandName ?? 'The Band', 40)
+  if (chance(g, 0.5)) {
+    return say(g, 'Band Name', `You suggested renaming the band to "${name}". Your bandmates laughed you out of the room.`, '\u{1F3B8}', 'bad')
+  }
+  const old = d.bandName ?? job.company
+  for (const id of d.bandmates) {
+    const mate = getPerson(g, id)
+    if (mate) {
+      mate.contextId = name
+      mate.occupation = mate.occupation.replace(old, name)
+    }
+  }
+  d.bandName = name
+  job.company = name
+  log(g, `Our band changed its name from ${old} to ${name}.`)
+  say(g, 'Band Name', `Your band is now called "${name}". The old merch is officially a collector's item.`, '\u{1F3B8}', 'good')
+})
+
+function bandNodes(g: GameState, job: Job): MenuNode[] {
+  const d = md(job)
+  const mates = d.bandmates.map((id) => getPerson(g, id)).filter((p) => !!p)
+  return [
+    {
+      type: 'menu',
+      id: 'music.band',
+      label: 'Band',
+      emoji: '\u{1F465}',
+      subtitle: `${d.bandName} · ${d.members} member${d.members === 1 ? '' : 's'}`,
+      header: () => `${d.bandName} plays ${d.genre}. Your bandmates also appear under Relationships.`,
+      children: (): MenuNode[] => [
+        ...mates.map((m) => ({ type: 'info' as const, id: `music.mate.${m!.id}`, emoji: '\u{1F3B8}', text: `${fullName(m!)} · ${m!.occupation.replace(/ \(.*\)$/, '')} · Relationship ${m!.relationship}%` })),
+        {
+          type: 'action',
+          id: 'music.kick',
+          label: 'Kick Out a Member',
+          emoji: '\u{1F462}',
+          visible: () => mates.length > 0,
+          disabledReason: (gg) => blocked(gg, 0),
+          run: (gg) => {
+            const job2 = musicJob(gg)
+            if (!job2) return
+            const list = md(job2).bandmates.map((id) => getPerson(gg, id)).filter((p) => !!p)
+            scriptChoice(gg, kickScript, 'Kick Out a Member', 'Who do you want to kick out of the band?', [...list.map((p) => ({ id: p!.id, label: fullName(p!), emoji: '\u{1F464}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
+              emoji: '\u{1F462}',
+            })
+          },
+        },
+        {
+          type: 'action',
+          id: 'music.bandName',
+          label: 'Change Band Name',
+          emoji: '\u{1F3F7}\u{FE0F}',
+          disabledReason: (gg) => blocked(gg, 0),
+          run: (gg) => {
+            if (!useYearAction(gg, 'music.bandName', 1)) return tell(gg, 'Band Name', 'Your bandmates refuse to discuss names again this year.', '\u{1F3F7}\u{FE0F}')
+            scriptInput(gg, { title: 'Band Name', emoji: '\u{1F3F7}\u{FE0F}', text: 'What should the band be called?', input: 'text', placeholder: 'Band name', defaultValue: d.bandName ?? '', scriptId: bandNameScript })
+          },
+        },
+      ],
+    },
+    {
+      type: 'action',
+      id: 'music.goSolo',
+      label: 'Solo Artist',
+      emoji: '\u{1F3A4}',
+      subtitle: 'Leave the band and sign a solo deal',
+      visible: () => d.instrument !== 'Drums',
+      disabledReason: (gg) => blocked(gg, 0),
+      run: (gg) => {
+        const job2 = musicJob(gg)
+        if (!job2) return
+        chooseLabel(gg, md(job2).instrument, true)
+      },
+    },
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// Menus
+
+function discographyMenu(): MenuGroup {
+  return {
+    type: 'menu',
+    id: 'music.discography',
+    label: 'Discography',
+    emoji: '\u{1F4BF}',
+    subtitle: (g) => `${viewMusic(g).discography.length} release${viewMusic(g).discography.length === 1 ? '' : 's'}`,
+    children: (g): MenuNode[] => {
+      const p = viewMusic(g)
+      const nodes: MenuNode[] = []
+      if (p.discography.length === 0) nodes.push({ type: 'info', id: 'music.d.none', text: 'No releases yet.' })
+      p.discography
+        .slice()
+        .reverse()
+        .forEach((r, i) =>
+          nodes.push({
+            type: 'info',
+            id: `music.d.${i}`,
+            emoji: r.cert === 'Diamond' ? '\u{1F48E}' : r.cert ? '\u{1F4C0}' : '\u{1F4BF}',
+            text: `"${r.title}" · ${r.type} (${r.subgenre}) · age ${r.age} · ${compact(r.sold)} sold${r.cert ? ` · ${r.cert}` : ''} · ${short(r.earned)}`,
+          }),
+        )
+      p.awards.forEach((a, i) => nodes.push({ type: 'info', id: `music.a.${i}`, emoji: '\u{1F3C6}', text: a }))
+      return nodes
+    },
+  }
+}
+
+const quitMusic: MenuAction = {
+  type: 'action',
+  id: 'music.quit',
+  label: 'Quit',
+  emoji: '\u{1F6AA}',
+  subtitle: 'Walk away from the music business',
+  confirm: () => 'Quit your music career?',
+  run: (g) => {
+    const job = musicJob(g)
+    if (!job) return
+    const d = md(job)
+    const where = d.mode === 'band' ? d.bandName : d.label
+    removeBand(g, job)
+    leave(g, 'quit')
+    log(g, 'I quit the music business.')
+    say(g, 'Quit Music', `You walked away from ${where ?? 'the music business'}. ${pick(g, ['The fans will always have your records.', 'Your guitar now gathers dust in the corner.', 'You swear you will make a comeback album someday.'])}`, '\u{1F6AA}')
+  },
+}
+
+export function musicJobNodes(g: GameState): MenuNode[] {
+  const job = musicJob(g)
+  if (!job) return []
+  const d = md(job)
+  const nodes: MenuNode[] = [
+    {
+      type: 'info',
+      id: 'music.status',
+      emoji: INSTRUMENT_EMOJI[d.instrument] ?? '\u{1F3B5}',
+      text: `${artistName(g)} · ${d.genre} · Popularity ${d.popularity}%${d.mode === 'solo' && d.label ? ` · ${d.label} (${d.contractYears} year${d.contractYears === 1 ? '' : 's'} left)` : ''}`,
+    },
+    {
+      type: 'action',
+      id: 'music.album',
+      label: 'Album',
+      emoji: '\u{1F4BF}',
+      subtitle: 'Record a new album or single',
+      disabledReason: (gg) => blocked(gg, 0) ?? (musicJob(gg) && md(musicJob(gg)!).recordedAge === gg.character.age ? 'You can only release one album or single a year.' : null),
+      run: (gg) => {
+        const j = musicJob(gg)
+        if (!j) return
+        const hasAlbums = musicProfile(gg).discography.filter((r) => r.type === 'Studio Album').length >= 2
+        scriptChoice(
+          gg,
+          releaseTypeScript,
+          'Record',
+          'What do you want to record?',
+          [...RELEASE_TYPES.filter((t) => t.id !== 'compilation' || hasAlbums).map((t) => ({ id: t.id, label: t.label, emoji: t.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+          { emoji: '\u{1F4BF}' },
+        )
+      },
+    },
+    {
+      type: 'action',
+      id: 'music.concert',
+      label: 'Concert',
+      emoji: '\u{1F3A4}',
+      subtitle: 'Play a live show',
+      disabledReason: (gg) => blocked(gg, 0),
+      run: (gg) => {
+        const j = musicJob(gg)
+        if (!j) return
+        const pop = md(j).popularity
+        const options = shuffle(gg, VENUES.filter((v) => v.minPop <= pop + 10)).slice(0, 3)
+        scriptChoice(gg, concertScript, 'Concert', 'Your booking agent found these gigs. Where do you want to play?', [...options.map((v) => ({ id: v.name, label: `${v.name[0].toUpperCase()}${v.name.slice(1)} (${v.capacity.toLocaleString('en-US')} capacity)`, emoji: '\u{1F3DF}\u{FE0F}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
+          emoji: '\u{1F3A4}',
+        })
+      },
+    },
+    tourAction,
+    {
+      type: 'action',
+      id: 'music.practice',
+      label: 'Practice',
+      emoji: INSTRUMENT_EMOJI[d.instrument] ?? '\u{1F3B5}',
+      subtitle: `${d.instrument} skill ${effectiveSkill(g, d.instrument)}%`,
+      disabledReason: (gg) => blocked(gg, 0),
+      run: (gg) => {
+        const j = musicJob(gg)
+        if (!j) return
+        if (!useYearAction(gg, 'music.practice', 2)) return tell(gg, 'Practice', 'Your fingers are blistered. No more practice this year.', '\u{1F971}')
+        const inst = md(j).instrument
+        const gain = randInt(gg, 2, 6) + (musicTalent(gg) ? 2 : 0)
+        setInstrumentSkill(gg, inst, instrumentSkill(gg, inst) + gain)
+        log(gg, `I practiced my ${inst.toLowerCase()}.`)
+        say(gg, 'Practice', `${pick(gg, ['You rehearsed for eight hours straight.', 'You wrote three new riffs and deleted two.', 'You practiced until the neighbors started requesting songs.'])} Your ${inst.toLowerCase()} skill is now ${instrumentSkill(gg, inst)}%.`, '\u{1F3B6}', 'good')
+      },
+    },
+    {
+      type: 'action',
+      id: 'music.stageName',
+      label: 'Stage Name',
+      emoji: '\u{1F31F}',
+      subtitle: (gg) => viewMusic(gg).stageName ?? 'Adopt a stage name',
+      input: { kind: 'text', label: 'Your stage name (leave blank to use your real name)', placeholder: 'e.g. Lil Tadpole', defaultValue: (gg) => viewMusic(gg).stageName ?? '' },
+      run: (gg, value) => runStageName(gg, value),
+    },
+    discographyMenu(),
+  ]
+  if (d.mode === 'band') nodes.push(...bandNodes(g, job))
+  nodes.push(quitMusic)
+  return nodes
+}
+
+function runStageName(g: GameState, value: string | undefined): void {
+  const p = musicProfile(g)
+  const name = cleanName(value, '', 30)
+  if (!name) {
+    p.stageName = null
+    return say(g, 'Stage Name', 'You went back to performing under your real name.', '\u{1F3A4}')
+  }
+  p.stageName = name
+  log(g, `I started performing as "${name}".`)
+  say(g, 'Stage Name', `From now on, the world will know you as "${name}".`, '\u{1F3A4}', 'good')
+}
+
+export const musicCareerMenu: MenuGroup = {
+  type: 'menu',
+  id: 'special.music',
+  label: 'Musician',
+  emoji: '\u{1F3B8}',
+  subtitle: 'Go solo or join a band',
+  header: (g) => {
+    const skills = SOLO_INSTRUMENTS.concat(['Drums'])
+      .map((i) => [i, effectiveSkill(g, i)] as const)
+      .filter(([, s]) => s > 0)
+      .map(([i, s]) => `${i} ${s}%`)
+    return `${skills.length ? `Your skills: ${skills.join(', ')}.` : 'You haven\'t learned any instruments yet.'} Learn instruments and take voice lessons under Activities → Mind & Body. Labels want 60%+ skill.`
+  },
+  children: (g): MenuNode[] => {
+    if (musicJob(g)) return [{ type: 'info', id: 'music.already', text: 'You are already a musician. Manage your career from your job.', emoji: '\u{1F3B8}' }]
+    const confirm = (gg: GameState) => (gg.character.job ? `If you're signed, you'll quit your job as ${gg.character.job.title}. Continue?` : null)
+    return [
+      {
+        type: 'action',
+        id: 'music.solo',
+        label: 'Solo Artist',
+        emoji: '\u{1F3A4}',
+        subtitle: 'Audition for a record label',
+        disabledReason: (gg) => blocked(gg, 18),
+        confirm,
+        run: (gg) => scriptChoice(gg, soloInstrumentScript, 'Solo Artist', 'Which instrument will you audition with?', instrumentChoices(gg, SOLO_INSTRUMENTS), { emoji: '\u{1F3A4}' }),
+      },
+      {
+        type: 'action',
+        id: 'music.bandSearch',
+        label: 'Find a Band',
+        emoji: '\u{1F3B8}',
+        subtitle: 'Join a band that needs you',
+        disabledReason: (gg) => blocked(gg, 18),
+        confirm,
+        run: (gg) => scriptChoice(gg, bandInstrumentScript, 'Find a Band', 'What will you play in the band?', instrumentChoices(gg, BAND_INSTRUMENTS), { emoji: '\u{1F3B8}' }),
+      },
+      discographyMenu(),
+    ]
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Yearly
+
+const AWARD = 'Golden Record Award'
+
+const contractRenewScript = defineScript('special.music.renew', (g, choice, data) => {
+  const job = musicJob(g)
+  if (!job) return
+  const o = data as unknown as { advance: number; years: number }
+  const d = md(job)
+  if (choice === 'accept') {
+    d.contractYears = o.years
+    d.advancePerYear = Math.round(o.advance / o.years)
+    job.salary = d.advancePerYear
+    log(g, `I re-signed with ${d.label}.`, 'good')
+    return say(g, 'Contract Renewed', `You re-signed with ${d.label} for ${o.years} more years and ${money(o.advance)}.`, '\u{270D}\u{FE0F}', 'good')
+  }
+  const label = d.label
+  leave(g, 'quit')
+  log(g, `I walked away from ${label}.`)
+  say(g, 'Free Agent', `You turned down ${label}'s new contract and left the label. You can audition for other labels any time.`, '\u{1F4BF}')
+})
+
+export function yearlyMusic(g: GameState): void {
+  const c = g.character
+  if (!c.alive) return
+  const p = peek<MusicProfile>(g, 'music')
+  if (p) {
+    let royalties = 0
+    for (const r of p.discography) {
+      if (r.royalty >= 25) {
+        royalties += r.royalty
+        r.royalty = Math.round(r.royalty / 2)
+      } else r.royalty = 0
+    }
+    if (royalties > 0) {
+      earnIncome(g, royalties)
+      log(g, `My records earned ${money(royalties)} in royalties.`)
+    }
+  }
+  const job = musicJob(g)
+  if (!job || c.prison) return
+  syncTenure(g, job)
+  const d = md(job)
+  const released = d.lastRelease >= c.age - 1
+  d.popularity = clamp100(d.popularity + (released ? randInt(g, 0, 3) : -randInt(g, 3, 8)) - (c.age > 50 ? 1 : 0))
+  fameToward(g, d.popularity * 0.9, 4)
+  if (!released && c.hidden.fame > d.popularity) addHidden(g, 'fame', -1)
+
+  if (d.mode === 'solo') {
+    if (d.contractYears > 0) {
+      earnIncome(g, d.advancePerYear)
+      d.contractYears -= 1
+      if (d.contractYears === 0) {
+        if (d.popularity >= 35) {
+          const years = randInt(g, 2, 4)
+          const advance = Math.round((d.popularity ** 2 * 60 * years * (0.7 + rand(g) * 0.6)) / 1_000) * 1_000
+          scriptChoice(
+            g,
+            contractRenewScript,
+            'Contract Expiring',
+            `Your contract with ${d.label} is up. They're offering a new ${years}-year deal worth ${money(advance)}.`,
+            [
+              { id: 'accept', label: 'Re-sign', emoji: '\u{270D}\u{FE0F}' },
+              { id: 'decline', label: 'Leave the label', emoji: '\u{1F44B}' },
+            ],
+            { emoji: '\u{1F4BF}', data: { advance, years } },
+          )
+        } else {
+          const label = d.label
+          leave(g, 'fired')
+          log(g, `${label} dropped me.`, 'bad')
+          say(g, 'Dropped', `${label} decided not to renew your contract. You're a free agent. Audition for another label if you want back in.`, '\u{1F4C9}', 'bad')
+          return
+        }
+      }
+    }
+  } else {
+    const gross = Math.round(d.popularity ** 2 * randInt(g, 15, 40))
+    const share = Math.round(gross / Math.max(1, d.members))
+    if (share > 0) earnIncome(g, share)
+    job.salary = share
+    if (chance(g, 0.04) && avgBandRelationship(g, job) < 45) {
+      const name = d.bandName
+      removeBand(g, job)
+      leave(g, 'fired')
+      log(g, `${name} kicked me out of the band.`, 'bad')
+      say(g, 'Kicked Out', `${name} held a band meeting without you and voted you out. You can go solo or find another band from Special Careers.`, '\u{1F462}', 'bad')
+      return
+    }
+    if (chance(g, 0.025)) {
+      const name = d.bandName
+      removeBand(g, job)
+      leave(g, 'laid off')
+      log(g, `${name} broke up.`, 'bad')
+      say(g, 'Breakup', `${name} broke up over "creative differences" (someone ate someone else's sandwich). You can go solo or find another band from Special Careers.`, '\u{1F494}', 'bad')
+      return
+    }
+  }
+
+  const latest = p?.discography[p.discography.length - 1]
+  if (latest && latest.age === c.age - 1 && latest.quality >= 70 && d.popularity >= 55 && chance(g, 0.35)) {
+    const category = latest.type === 'Single' ? 'Record of the Year' : 'Album of the Year'
+    if (chance(g, 0.25 + (latest.quality - 70) / 60)) {
+      musicProfile(g).awards.push(`${AWARD} for ${category} — "${latest.title}" (age ${c.age})`)
+      count(g, 'awards')
+      addFame(g, 6)
+      addStat(g, 'happiness', 15)
+      d.popularity = clamp100(d.popularity + 5)
+      log(g, `"${latest.title}" won the ${AWARD} for ${category}.`, 'good')
+      remember(g, `Won the ${AWARD} for ${category} ("${latest.title}").`)
+      say(g, AWARD, `"${latest.title}" won the ${AWARD} for ${category}! You thanked ${pick(g, ['your mom', 'your fans', 'your producer', 'nobody in particular'])} and nearly tripped on the way off stage.`, '\u{1F3C6}', 'good')
+    } else {
+      addFame(g, 2)
+      log(g, `"${latest.title}" was nominated for the ${AWARD} for ${category}.`, 'good')
+      say(g, 'Nominated', `"${latest.title}" was nominated for the ${AWARD} for ${category}, but lost to ${pick(g, ['a song about a tractor', 'a boy band reunion album', 'an AI-generated lullaby', 'your biggest rival'])}.`, '\u{1F3C6}')
+    }
+  }
+}

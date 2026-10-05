@@ -1339,7 +1339,7 @@ function rollMultiples(g: GameState, twinOdds: number): number {
   return chance(g, twinOdds) ? 2 : 1
 }
 
-function announcePregnancy(g: GameState, p: Person, babies: number): void {
+export function announcePregnancy(g: GameState, p: Person, babies: number): void {
   const c = g.character
   const multi = babies === 3 ? ' Triplets!' : babies === 2 ? ' Twins!' : ''
   if (c.gender === 'female') {
