@@ -47,10 +47,16 @@ export function guessCountryId(language: string | undefined): string {
   return fallback
 }
 
-/** Clean up a typed name: trim, collapse spaces, cap length, capitalize the first letter. */
-export function cleanName(raw: string): string {
+/** Clean up a typed name: trim, collapse spaces, cap length; optionally capitalize the first letter. */
+export function cleanName(raw: string, capitalize = true): string {
   const t = raw.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX)
-  return t ? t.charAt(0).toUpperCase() + t.slice(1) : ''
+  if (!t || !capitalize) return t
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+/** "the United States", "France". */
+export function countryPhrase(name: string): string {
+  return /^(United|Republic|Netherlands|Philippines|Czech|Dominican|Bahamas|Maldives|Gambia)\b/.test(name) ? `the ${name}` : name
 }
 
 const SORTED_COUNTRIES = [...COUNTRIES].sort((a, b) => a.name.localeCompare(b.name))
@@ -72,8 +78,8 @@ export function NewLifeScreen() {
   const livingLife = game && game.character.alive ? `${game.character.firstName} ${game.character.lastName}` : null
 
   const preview = useMemo(() => {
-    const name = `${cleanName(firstName) || '???'} ${cleanName(lastName) || '???'}`
-    const place = city ? `${city}, ${country.name}` : `somewhere in ${country.name}`
+    const name = `${cleanName(firstName) || '???'} ${cleanName(lastName, false) || '???'}`
+    const place = city ? `in ${city}, ${country.name}` : `somewhere in ${countryPhrase(country.name)}`
     return { name, place }
   }, [firstName, lastName, city, country.name])
 
@@ -99,7 +105,7 @@ export function NewLifeScreen() {
 
   const customLife = () => {
     const first = cleanName(firstName) || rollFirstName(countryId, gender)
-    const last = cleanName(lastName) || rollLastName(countryId)
+    const last = cleanName(lastName, false) || rollLastName(countryId)
     const opts: NewLifeOptions = { firstName: first, lastName: last, gender, countryId, year: new Date().getFullYear() }
     if (city) opts.city = city
     if (sexuality) opts.sexuality = sexuality
