@@ -1,5 +1,8 @@
-// App shell: routes between screens and checks the LM Studio connection once at startup.
+// App shell: routes between screens and checks the AI connection once at startup. Until the
+// player has finished (or skipped) the first-run "Choose your AI" screen, that screen is all
+// they see: no life can be started or continued before it.
 import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
+import { AiSetupScreen } from './ui/screens/AiSetupScreen'
 import { GameScreen } from './ui/screens/GameScreen'
 import { GraveyardScreen } from './ui/screens/GraveyardScreen'
 import { HomeScreen } from './ui/screens/HomeScreen'
@@ -14,14 +17,24 @@ let started = false
 function startup(): void {
   if (started) return
   started = true
+  const app = getApp()
+  // First run (or settings saved before providers existed): choose an AI before anything else.
+  // Don't contact any server yet; on the hosted site that could pop up the browser's
+  // local-network permission prompt before the player has picked anything.
+  if (!app.settings.setupDone) {
+    goTo('aiSetup')
+    return
+  }
   // A saved life is offered as "Continue" on the home screen rather than auto-resumed.
-  if (hasSavedGame() && getApp().screen !== 'home') goTo('home')
+  if (hasSavedGame() && app.screen !== 'home') goTo('home')
   void checkAi()
 }
 
 export function App() {
-  const screen = useApp((s) => s.screen)
+  const setupDone = useApp((s) => s.settings.setupDone)
+  const current = useApp((s) => s.screen)
   const hasGame = useApp((s) => s.game !== null)
+  const screen: Screen = setupDone ? current : 'aiSetup'
 
   useEffect(() => {
     startup()
@@ -53,6 +66,8 @@ function renderScreen(screen: Screen, hasGame: boolean): ReactNode {
       return <RibbonsScreen />
     case 'graveyard':
       return <GraveyardScreen />
+    case 'aiSetup':
+      return <AiSetupScreen />
   }
 }
 

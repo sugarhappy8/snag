@@ -2,6 +2,7 @@
 import { characterAvatar, formatMoney, fullName, roleLabel, shortMoney } from '../../game/core'
 import { getCountry } from '../../game/world'
 import type { GameState } from '../../game/types'
+import { providerFor } from '../../ai/providers'
 import { checkAi, goTo, useApp } from '../store'
 
 export interface HeaderProps {
@@ -16,11 +17,17 @@ function useAiBadge(): { dot: DotState; label: string; title: string } {
   const level = useApp((s) => s.settings.aiLevel)
   const message = useApp((s) => s.aiMessage)
   const busy = useApp((s) => s.ai !== null)
-  if (level === 'off') return { dot: 'off', label: 'AI off', title: 'AI narration is turned off in Settings.' }
-  if (busy) return { dot: 'busy', label: 'Writing', title: 'Your local model is writing…' }
-  if (status === 'online') return { dot: 'online', label: 'AI', title: message || 'Connected to LM Studio.' }
-  if (status === 'checking' || status === 'unknown') return { dot: 'checking', label: 'AI', title: 'Connecting to LM Studio…' }
-  return { dot: 'offline', label: 'Offline', title: (message || 'LM Studio is unreachable.') + ' Tap to retry. The built-in story library is used meanwhile.' }
+  const def = providerFor({ provider: useApp((s) => s.settings.provider) })
+  const model = useApp((s) => s.settings.model)
+  if (level === 'off') return { dot: 'off', label: 'AI off', title: 'AI narration is off. Tap to choose an AI.' }
+  if (busy) return { dot: 'busy', label: 'Writing', title: `${def.name}${model ? ` (${model})` : ''} is writing…` }
+  if (status === 'online') return { dot: 'online', label: 'AI', title: message || `Connected to ${def.name}${model ? ` · ${model}` : ''}.` }
+  if (status === 'checking' || status === 'unknown') return { dot: 'checking', label: 'AI', title: `Connecting to ${def.name}…` }
+  return {
+    dot: 'offline',
+    label: 'Offline',
+    title: (message || `Can't reach ${def.name}.`) + ' Tap to retry. The built-in story library is used meanwhile.',
+  }
 }
 
 /** A small badge on the avatar: prison, fame, royalty-like status. */
@@ -55,7 +62,7 @@ export function Header({ g, onProfile }: HeaderProps) {
           className="hdr-ai"
           title={ai.title}
           aria-label={`AI status: ${ai.title}`}
-          onClick={() => (ai.dot === 'off' ? goTo('settings') : ai.dot === 'busy' ? undefined : void checkAi())}
+          onClick={() => (ai.dot === 'off' ? goTo('aiSetup') : ai.dot === 'busy' ? undefined : void checkAi())}
         >
           <span className={`ai-dot is-${ai.dot}`} aria-hidden />
           {ai.label}

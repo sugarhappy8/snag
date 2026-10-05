@@ -1,11 +1,12 @@
-// Settings: AI narration level, the LM Studio connection, advanced model options, a setup
-// guide and the danger zone. Also exports the small screen header / confirm dialog / toast
-// pieces the other out-of-game screens share.
+// Settings: AI narration level, the AI connection (provider picker + connection form shared
+// with the first-run setup screen), advanced model options and the danger zone. Also exports
+// the small screen header / confirm dialog / toast pieces the other out-of-game screens share.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { testConnection } from '../../ai/director'
+import { providerFor } from '../../ai/providers'
 import { clearRibbonsAndGraveyard, loadGame } from '../../game/save'
-import { DEFAULT_SETTINGS, HAS_DEV_PROXY, type AiLevel, type ContentRating, type Settings } from '../../settings'
-import { abandonLife, checkAi, getApp, goBack, hasSavedGame, updateSettings, useApp } from '../store'
+import { DEFAULT_SETTINGS, type AiLevel, type ContentRating, type ProviderId, type Settings } from '../../settings'
+import { connectionFor, ProviderConfigForm, ProviderPicker, sameConnection, useConnectionTest } from '../components/AiProviderForm'
+import { abandonLife, checkAi, getApp, goBack, goTo, hasSavedGame, saveAiConnection, updateSettings, useApp, type AiConnection } from '../store'
 import '../styles/screens.css'
 
 // ---------------------------------------------------------------------------
@@ -117,7 +118,7 @@ const AI_LEVELS: { id: AiLevel; emoji: string; title: string; desc: string; tag?
     id: 'off',
     emoji: '📴',
     title: 'Off',
-    desc: 'Classic offline mode. Every event comes from the built-in story library. Instant, and you don’t need LM Studio.',
+    desc: 'Classic offline mode. Every event comes from the built-in story library. Instant, and you don’t need any AI.',
   },
   {
     id: 'balanced',
@@ -149,50 +150,6 @@ function Toggle({ title, desc, value, onChange }: { title: string; desc: string;
       </div>
       <button type="button" role="switch" aria-checked={value} aria-label={title} className="set-switch" onClick={() => onChange(!value)} />
     </div>
-  )
-}
-
-/** Text input that keeps a local draft and saves on blur / Enter. */
-function TextSetting(props: {
-  label: string
-  value: string
-  placeholder?: string
-  type?: 'text' | 'password'
-  help?: ReactNode
-  onCommit: (v: string) => void
-  /** Clean up the typed value before saving (e.g. fall back to a default when empty). */
-  normalize?: (v: string) => string
-  extra?: ReactNode
-}) {
-  const { label, value, placeholder, type = 'text', help, onCommit, normalize, extra } = props
-  const [draft, setDraft] = useState(value)
-  useEffect(() => setDraft(value), [value])
-  const commit = () => {
-    const v = normalize ? normalize(draft.trim()) : draft.trim()
-    setDraft(v)
-    if (v !== value) onCommit(v)
-  }
-  return (
-    <label className="al-field">
-      <span className="al-label">{label}</span>
-      <div className="al-input-row">
-        <input
-          className="al-input"
-          type={type}
-          value={draft}
-          placeholder={placeholder}
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commit()
-          }}
-        />
-        {extra}
-      </div>
-      {help ? <span className="al-muted al-small">{help}</span> : null}
-    </label>
   )
 }
 
@@ -236,23 +193,12 @@ function NumberSetting(props: { label: string; value: number; min: number; max: 
   )
 }
 
-interface TestState {
-  status: 'idle' | 'testing' | 'done'
-  ok: boolean
-  message: string
-  models: string[]
-}
-
 const ADVANCED_KEYS = ['temperature', 'maxTokens', 'timeoutSec', 'structuredOutput', 'disableThinking', 'contentRating', 'showAiBadges'] as const
 
 function advancedDefaults(): Partial<Settings> {
   const out: Partial<Settings> = {}
   for (const k of ADVANCED_KEYS) Object.assign(out, { [k]: DEFAULT_SETTINGS[k] })
   return out
-}
-
-function isAbsoluteUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url)
 }
 
 // ---------------------------------------------------------------------------
@@ -263,20 +209,29 @@ export function SettingsScreen() {
   const aiStatus = useApp((s) => s.aiStatus)
   const aiMessage = useApp((s) => s.aiMessage)
   const game = useApp((s) => s.game)
-  const [test, setTest] = useState<TestState>({ status: 'idle', ok: false, message: '', models: [] })
-  const [showKey, setShowKey] = useState(false)
+  const [test, runTest, resetTest] = useConnectionTest()
   const [confirm, setConfirm] = useState<'abandon' | 'reset' | null>(null)
+  const [picking, setPicking] = useState(false)
   const [flash, showFlash] = useFlash()
-  const controller = useRef<AbortController | null>(null)
-  const mounted = useRef(true)
+  const def = providerFor(settings)
 
+  // The connection being edited: follows the saved settings, and is saved on every commit.
+  const [conn, setConn] = useState<AiConnection>(() => connectionFor(settings))
+  const latest = useRef(conn)
+  const { provider, baseUrl, apiKey, model } = settings
   useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-      controller.current?.abort()
-    }
-  }, [])
+    const saved: AiConnection = { provider, baseUrl, apiKey, model }
+    latest.current = saved
+    setConn(saved)
+  }, [provider, baseUrl, apiKey, model])
+  const edit = (next: AiConnection) => {
+    latest.current = next
+    setConn(next)
+  }
+  const commit = (next: AiConnection) => {
+    edit(next)
+    if (!sameConnection(next, connectionFor(getApp().settings))) saveAiConnection(next)
+  }
 
   // The life that "Abandon" would end: the one in memory, else the saved one.
   const currentLife = useMemo(() => {
@@ -285,38 +240,25 @@ export function SettingsScreen() {
     return { name: `${g.character.firstName} ${g.character.lastName}`, alive: g.character.alive, age: g.character.age }
   }, [game])
 
-  const modelOptions = useMemo(() => {
-    const list = [...test.models]
-    if (settings.model && !list.includes(settings.model)) list.unshift(settings.model)
-    return list
-  }, [test.models, settings.model])
-
   const setLevel = (aiLevel: AiLevel) => {
     if (aiLevel === settings.aiLevel) return
     updateSettings({ aiLevel })
     void checkAi()
   }
 
-  const runTest = async () => {
-    controller.current?.abort()
-    const ctrl = new AbortController()
-    controller.current = ctrl
-    const s = getApp().settings
-    const timer = setTimeout(() => ctrl.abort(), Math.min(Math.max(s.timeoutSec, 5), 30) * 1000)
-    setTest((t) => ({ ...t, status: 'testing', message: '' }))
-    try {
-      const res = await testConnection(s, ctrl.signal)
-      if (!mounted.current || controller.current !== ctrl) return
-      const message = !res.ok && ctrl.signal.aborted ? 'LM Studio didn’t answer in time. Is the server running?' : res.message
-      setTest({ status: 'done', ok: res.ok, message, models: res.models ?? [] })
-      if (getApp().settings.aiLevel !== 'off') void checkAi()
-    } catch (err) {
-      if (!mounted.current || controller.current !== ctrl) return
-      const message = ctrl.signal.aborted ? 'LM Studio didn’t answer in time. Is the server running?' : errorText(err)
-      setTest({ status: 'done', ok: false, message, models: [] })
-    } finally {
-      clearTimeout(timer)
-    }
+  const onTest = async () => {
+    // Save whatever was typed but not committed yet, then test what's saved.
+    commit(latest.current)
+    const res = await runTest(getApp().settings)
+    if (res.status === 'done' && getApp().settings.aiLevel !== 'off') void checkAi()
+  }
+
+  const pickProvider = (id: ProviderId) => {
+    setPicking(false)
+    if (id === getApp().settings.provider) return
+    resetTest()
+    commit(connectionFor(getApp().settings, id))
+    if (getApp().settings.aiLevel !== 'off') void checkAi()
   }
 
   const doAbandon = () => {
@@ -334,11 +276,11 @@ export function SettingsScreen() {
     settings.aiLevel === 'off'
       ? 'AI narration is off'
       : aiStatus === 'online'
-        ? 'Connected to LM Studio'
+        ? `Connected to ${def.name}`
         : aiStatus === 'checking'
-          ? 'Checking LM Studio…'
+          ? `Checking ${def.name}…`
           : aiStatus === 'offline'
-            ? 'Can’t reach LM Studio'
+            ? `Can’t reach ${def.name}`
             : 'Not checked yet'
   const dotClass = settings.aiLevel === 'off' ? '' : aiStatus === 'online' ? 'online' : aiStatus === 'checking' ? 'checking' : aiStatus === 'offline' ? 'offline' : ''
 
@@ -352,8 +294,8 @@ export function SettingsScreen() {
           <span aria-hidden="true">🤖</span> AI Narration
         </h2>
         <p className="set-help">
-          A model running in LM Studio on your own computer writes your life as you live it. If it’s slow or offline, the game
-          quietly falls back to the built-in stories.
+          The AI you chose ({def.name}) writes your life as you live it. If it’s slow or offline, the game quietly falls back to the
+          built-in stories.
         </p>
         <div className="al-field" role="radiogroup" aria-label="AI narration level">
           {AI_LEVELS.map((lvl) => (
@@ -388,7 +330,7 @@ export function SettingsScreen() {
       {/* Connection */}
       <section className="al-card set-section">
         <h2>
-          <span aria-hidden="true">🔌</span> LM Studio Connection
+          <span aria-hidden="true">🔌</span> AI Connection
         </h2>
         <div className="al-ai-card-head">
           <span className={`al-status-dot ${dotClass}`} />
@@ -398,80 +340,32 @@ export function SettingsScreen() {
           </div>
         </div>
 
-        <TextSetting
-          label="Server URL"
-          value={settings.baseUrl}
-          placeholder={DEFAULT_SETTINGS.baseUrl}
-          normalize={(v) => v.replace(/\/+$/, '') || DEFAULT_SETTINGS.baseUrl}
-          onCommit={(baseUrl) => updateSettings({ baseUrl })}
-          extra={
-            settings.baseUrl !== DEFAULT_SETTINGS.baseUrl ? (
-              <button type="button" className="al-btn ghost small" onClick={() => updateSettings({ baseUrl: DEFAULT_SETTINGS.baseUrl })}>
-                Reset
-              </button>
-            ) : null
-          }
-          help={
-            isAbsoluteUrl(settings.baseUrl) ? (
-              <>
-                You’re calling LM Studio directly. Turn on <b>Enable CORS</b> in LM Studio’s server settings, or the browser will block
-                the requests. Chrome and Edge also ask once to let this site <b>access devices on your local network</b>: choose Allow
-                (or set it under the 🔒 icon → Site settings → Local network access).
-              </>
-            ) : (
-              <>
-                The default <span className="al-kbd">/lmstudio/v1</span> goes through the game’s dev-server proxy to{' '}
-                <span className="al-kbd">http://localhost:1234</span>, so you don’t need to set up CORS. To use another machine, enter its
-                full address (e.g. <span className="al-kbd">http://192.168.1.20:1234/v1</span>) and enable CORS in LM Studio.
-              </>
-            )
-          }
-        />
+        <div className="al-field">
+          <span className="al-label">AI provider</span>
+          <button
+            type="button"
+            className="aip-card active aip-current"
+            aria-expanded={picking}
+            onClick={() => setPicking((v) => !v)}
+          >
+            <span className="aip-card-emoji" aria-hidden="true">
+              {def.emoji}
+            </span>
+            <span className="aip-card-text">
+              <span className="aip-card-name">{def.name}</span>
+              <span className="aip-card-blurb">{def.kind === 'local' ? 'On your computer' : 'Cloud AI with your API key'}</span>
+            </span>
+            <span className="aip-card-change">{picking ? 'Close' : 'Change'}</span>
+          </button>
+          {picking ? <ProviderPicker selected={settings.provider} onPick={pickProvider} /> : null}
+          <span className="al-muted al-small">Each provider remembers its own URL, key and model, so you can switch back and forth.</span>
+        </div>
 
-        <TextSetting
-          label="API token (optional)"
-          type={showKey ? 'text' : 'password'}
-          value={settings.apiKey}
-          placeholder="Only if you turned on authentication"
-          onCommit={(apiKey) => updateSettings({ apiKey })}
-          extra={
-            <button type="button" className="al-btn ghost small" onClick={() => setShowKey((v) => !v)} aria-label={showKey ? 'Hide token' : 'Show token'}>
-              {showKey ? '🙈' : '👁️'}
-            </button>
-          }
-        />
+        <ProviderConfigForm conn={conn} onChange={edit} onCommit={commit} test={test} onTest={() => void onTest()} />
 
-        <button type="button" className="al-btn block" onClick={() => void runTest()} disabled={test.status === 'testing'}>
-          {test.status === 'testing' ? '⏳ Testing…' : '🔎 Test connection'}
+        <button type="button" className="al-btn ghost block" onClick={() => goTo('aiSetup')}>
+          🧭 Change AI provider / run setup again
         </button>
-        {test.status === 'done' ? (
-          <div className={`set-test-result ${test.ok ? 'ok' : 'fail'}`} role="status">
-            {test.ok ? '✅ ' : '⚠️ '}
-            {test.message || (test.ok ? 'LM Studio is answering.' : 'Couldn’t connect.')}
-            {test.ok && test.models.length > 0 ? (
-              <div className="al-small" style={{ marginTop: 4 }}>
-                {test.models.length === 1 ? '1 model available.' : `${test.models.length} models available.`}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        <label className="al-field">
-          <span className="al-label">Model</span>
-          <select className="al-select" value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
-            <option value="">Auto: use the loaded model</option>
-            {modelOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <span className="al-muted al-small">
-            {test.models.length > 0
-              ? 'Pick a specific model, or leave it on Auto to use whatever LM Studio has loaded.'
-              : 'Test the connection to list the models LM Studio has. Auto works fine with one model loaded.'}
-          </span>
-        </label>
       </section>
 
       {/* Advanced */}
@@ -522,7 +416,7 @@ export function SettingsScreen() {
 
             <Toggle
               title="Structured output"
-              desc="Asks LM Studio for strict JSON that matches the game’s schema. Turn this off if your model or LM Studio version errors on it."
+              desc="Asks the AI for strict JSON that matches the game’s schema (the game steps down automatically if it’s refused). Turn this off if your model or server errors on it."
               value={settings.structuredOutput}
               onChange={(structuredOutput) => updateSettings({ structuredOutput })}
             />
@@ -570,39 +464,6 @@ export function SettingsScreen() {
             </button>
           </div>
         </details>
-      </section>
-
-      {/* Setup guide */}
-      <section className="al-card set-section">
-        <h2>
-          <span aria-hidden="true">📘</span> How to set up LM Studio
-        </h2>
-        <ol className="set-steps">
-          <li>
-            Install <b>LM Studio</b> from lmstudio.ai (free, Windows / Mac / Linux).
-          </li>
-          <li>
-            In the <b>Discover</b> tab, download a small instruct model. Anything from 7B to 12B works well, for example a Qwen, Llama,
-            Gemma or Mistral instruct model. Pick a quantization that fits your GPU memory (Q4_K_M is a safe bet).
-          </li>
-          <li>
-            Open the <b>Developer</b> tab, load the model and switch <b>Start Server</b> on. It listens on port{' '}
-            <span className="al-kbd">1234</span> by default.
-          </li>
-          {HAS_DEV_PROXY ? (
-            <li>
-              Keep <span className="al-kbd">npm run dev</span> running for this game, then press <b>Test connection</b> above.
-            </li>
-          ) : (
-            <li>
-              In LM Studio’s <b>Server Settings</b>, turn on <b>Enable CORS</b> (or start it with{' '}
-              <span className="al-kbd">lms server start --cors</span>). Press <b>Test connection</b> above and, if your browser asks to
-              access devices on your local network, choose <b>Allow</b>. Safari may refuse to let a secure (https) page reach{' '}
-              <span className="al-kbd">http://localhost</span>; if the test keeps failing there, try Chrome, Edge or Firefox.
-            </li>
-          )}
-          <li>Pick a narration level and start a new life. If a year takes too long, tap Skip and the built-in stories take over.</li>
-        </ol>
       </section>
 
       {/* Danger zone */}

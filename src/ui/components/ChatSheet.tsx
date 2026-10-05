@@ -1,4 +1,4 @@
-// Free-form AI chat with someone in your life. The local model plays the person (using their
+// Free-form AI chat with someone in your life. The AI plays the person (using their
 // traits, history and relationship); each exchange nudges the relationship bar. Limited to
 // CHAT_LIMIT messages per person per year so it stays game-like.
 import { useEffect, useRef, useState } from 'react'
@@ -344,7 +344,7 @@ export function ChatSheet({ personId, onClose }: ChatSheetProps) {
             <b>Live chat needs the AI narrator.</b>
           </p>
           <p className="al-muted al-small">
-            Turn on AI narration and connect LM Studio to talk freely with {person.firstName}. You can still use the regular
+            Turn on AI narration and connect an AI (⚙️ Settings) to talk freely with {person.firstName}. You can still use the regular
             interactions in the meantime.
           </p>
           <div className="al-ai-actions" style={{ justifyContent: 'center' }}>

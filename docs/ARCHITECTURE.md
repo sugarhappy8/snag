@@ -2,25 +2,44 @@
 
 AnotherLife is a browser life simulator that mirrors BitLife's gameplay (stat bars, yearly
 "+ Age" loop, Occupation / Assets / Relationships / Activities menus, popups with choices,
-crime & prison, ribbons, generations) with an original name and emoji art. A **local LLM in
-LM Studio** writes the year-by-year story: random events with choices, outcomes, conversations,
-interview questions, free-form "Do Anything" actions and obituaries. Everything also works
-offline from a built-in event library.
+crime & prison, ribbons, generations) with an original name and emoji art. An **LLM the
+player brings** writes the year-by-year story: random events with choices, outcomes,
+conversations, interview questions, free-form "Do Anything" actions and obituaries. It can be a
+local server (LM Studio, Ollama, llama.cpp, KoboldCpp, Jan, any OpenAI-compatible server) or a
+cloud API with the player's own key (Claude, OpenAI, Gemini, OpenRouter, Groq, Mistral,
+DeepSeek, xAI, Together, any OpenAI-compatible API). Everything also works offline from a
+built-in event library.
 
 Stack: Vite + React 19 + TypeScript (strict), Vitest. No other runtime deps.
 
 Hosting: a static site on the Cloudflare Worker `snag` (Workers Builds deploys every push to its
-production branch; `wrangler.jsonc` runs `npm run build` and serves `dist/`). The browser
-talks directly to LM Studio on the player's machine (`http://localhost:1234/v1` by default, which needs
-LM Studio's "Enable CORS" and the browser's local-network-access permission). Under `npm run dev`
-the default is `/lmstudio/v1`, proxied by Vite to LM Studio. UI copy and error messages must explain
-both cases.
+production branch; `wrangler.jsonc` runs `npm run build` and serves `dist/`). There is no
+backend: the browser talks **directly** to the provider the player chose.
+
+- **Local servers** (`kind: 'local'`) are reached at their own address, e.g. LM Studio at
+  `http://localhost:1234/v1`. From the hosted https page that needs the server's CORS setting
+  ("Enable CORS", `OLLAMA_ORIGINS`, ...) and the browser's local-network-access permission;
+  Safari may refuse https → `http://localhost` altogether.
+- **Cloud APIs** (`kind: 'cloud'`) are called with the player's API key. The key lives only in
+  this browser's localStorage (`settings.ts`) and is sent only to that provider.
+- **Dev convenience only:** under `npm run dev`, LM Studio's default URL is `/lmstudio/v1`,
+  which the Vite server proxies to LM Studio (no CORS needed; `vite preview` has the same proxy
+  if you type that URL). Every other provider, and the hosted site, uses direct URLs.
+
+UI copy and error messages must name the active provider (`providerFor(settings).name`), never
+assume LM Studio, and explain both the local and the cloud case.
+
+**First run:** until `settings.setupDone` is true, `App.tsx` shows only the "Choose your AI"
+screen (`ui/screens/AiSetupScreen.tsx`): local server / cloud API with own key / play without AI
+→ pick a provider → URL, key, setup steps, Test connection, model → Start playing (or Save
+anyway). No AI server is contacted before the player chooses one. The same provider picker and
+connection form (`ui/components/AiProviderForm.tsx`) power Settings → AI Connection.
 
 ## Layout
 
 ```
 src/
-  settings.ts            Settings (LM Studio URL, model, AI level...) in localStorage   [foundation]
+  settings.ts            Settings (provider, per-provider URL/key/model, AI level, setupDone...) in localStorage [foundation]
   game/                  Pure TypeScript engine — no React, no fetch
     types.ts             ALL shared types (GameState, Character, Person, Job, Asset, ModalItem, MenuNode...) [foundation]
     rng.ts               Seeded RNG: rand, randInt, chance, pick, weightedPick, shuffle, bell, uid    [foundation]
@@ -42,14 +61,18 @@ src/
     crime.ts prison.ts                                                    [crime agent]
     activities.ts                                                         [activities agent]
     events.ts (+ events/*.ts if split)                                    [events agent]
-  ai/                    LM Studio client + "director"                    [ai agent]
-    lmstudio.ts json.ts prompts.ts schemas.ts director.ts
+  ai/                    Provider clients + "director"                    [ai agent]
+    providers.ts         Provider registry (local servers + cloud APIs), defaults, setup steps
+    client.ts            Routes requests to openai-compat.ts or anthropic.ts; JSON parse/validate/retry
+    openai-compat.ts anthropic.ts errors.ts lmstudio.ts (compat re-exports)
+    json.ts prompts.ts schemas.ts director.ts
   ui/
     store.ts             App store + modal-queue game loop + AI task runner                         [foundation]
     components/Sheet.tsx components/StatBar.tsx                                                      [foundation]
     minigames/index.ts minigames/types.ts                                                            [foundation]
     minigames/Blackjack.tsx HorseRace.tsx Slots.tsx                       [money agent]
     minigames/Burglary.tsx PrisonEscape.tsx Pickpocket.tsx                [crime agent]
+    screens/AiSetupScreen.tsx components/AiProviderForm.tsx   first-run "Choose your AI" + shared provider form
     everything else in ui/ + main.tsx, App.tsx, styles                    [ui agents]
 ```
 

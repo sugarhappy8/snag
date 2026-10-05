@@ -2,9 +2,12 @@ import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
-// The game talks to LM Studio through this proxy (/lmstudio -> LM Studio server),
-// so the browser never makes a cross-origin request and LM Studio's CORS setting
-// doesn't matter. Point it elsewhere with LMSTUDIO_URL=http://host:port.
+// The game calls the player's chosen AI provider directly from the browser: a local server
+// (LM Studio, Ollama, llama.cpp, ...) at its own URL, or a cloud API with the player's key.
+// This proxy is only a dev convenience for LM Studio: under `npm run dev` its default URL is
+// /lmstudio/v1, forwarded here to the LM Studio server, so LM Studio's CORS setting doesn't
+// matter while developing. Point it elsewhere with LMSTUDIO_URL=http://host:port. The hosted
+// (static) site has no proxy.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const target = env.LMSTUDIO_URL || 'http://localhost:1234'

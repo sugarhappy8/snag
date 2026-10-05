@@ -264,8 +264,8 @@ const FALLBACK_LABELS: Record<string, string> = {
 }
 
 const SUBTITLES = [
-  'Your local AI is writing what happens next',
-  'LM Studio is dreaming up your life',
+  'Your AI is writing what happens next',
+  'The AI is dreaming up your life',
   'Consulting the narrator',
 ]
 
@@ -286,7 +286,7 @@ function ThinkingCard({ modal }: { modal: ModalItem }) {
           ? (FALLBACK_LABELS[modal.task.type] ?? 'Thinking…')
           : 'Thinking…'
   const [randomSub] = useState(() => SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)])
-  const sub = modal.kind === 'notice' ? 'Your local AI is telling it in its own words' : randomSub
+  const sub = modal.kind === 'notice' ? 'Your AI is telling it in its own words' : randomSub
   const orb = modal.kind === 'notice' && modal.emoji ? modal.emoji : '✨'
 
   const skip = () => {

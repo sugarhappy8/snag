@@ -31,7 +31,7 @@ const YearBlock = memo(
           <p key={e.id} className={`lifelog-entry tone-${e.tone}${i >= freshFrom ? ' is-new' : ''}`}>
             {e.text}
             {e.tone === 'ai' && showBadges ? (
-              <span className="ai-spark" title="Written by your local AI" aria-label="AI">
+              <span className="ai-spark" title="Written by your AI" aria-label="AI">
                 ✨
               </span>
             ) : null}

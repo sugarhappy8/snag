@@ -1,6 +1,6 @@
 # AnotherLife
 
-**A life simulator where your own local AI tells the story.**
+**A life simulator where the AI of your choice tells the story.**
 
 AnotherLife is a browser game that plays like BitLife. You're born, you press **+ Age**,
 and you live a whole life one year at a time. Along the way you go to school, get jobs and get
@@ -8,8 +8,9 @@ promoted, date, marry, have kids and adopt pets, buy houses and cars, gamble, co
 go to prison and try to escape, get famous, and finally die and earn a ribbon. Then you can
 carry on as one of your children.
 
-The difference: the story is written by **a large language model running on your own computer
-in [LM Studio](https://lmstudio.ai)**. The model writes:
+The difference: the story is written by **a large language model you bring**: one running on
+your own computer (LM Studio, Ollama, llama.cpp, …) or a cloud AI with your own API key (Claude,
+OpenAI, Gemini, OpenRouter, …). The model writes:
 
 - each year's life-log lines and random events with choices,
 - what happens after you pick a choice, including stat, money and relationship changes and arrests,
@@ -21,8 +22,8 @@ in [LM Studio](https://lmstudio.ai)**. The model writes:
 - your obituary.
 
 The game engine keeps the rules (stats, money, ages, jail time, death). It checks and caps
-everything the model proposes, so a confused model can't hand you a billion dollars. If LM Studio
-isn't running, or you skip a slow answer, the game uses its built-in offline event library.
+everything the model proposes, so a confused model can't hand you a billion dollars. If your AI
+isn't reachable, or you skip a slow answer, the game uses its built-in offline event library.
 
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or
 > endorsed by Candywriter, and it uses no BitLife names, art or assets.
@@ -38,9 +39,20 @@ stored only in your browser (localStorage) and is sent only to the provider it b
 
 1. **Open the game** at its Cloudflare URL (see [Deploying](#deploying-to-cloudflare)), e.g.
    `https://snag.<your-account>.workers.dev`.
-2. **Choose your AI** on the first-run screen (you can change it any time in ⚙️ Settings), then
-   press **Test connection**. The status dot in the header turns green once it's connected.
-3. Press **New Life**.
+2. **Choose your AI.** Before you can start a life, the first-run **Choose your AI** screen asks
+   how the story should be written:
+   - **🖥️ AI on my computer** → pick your server (Option A below),
+   - **🔑 AI service with my own API key** → pick a provider (Option B below),
+   - **🎲 Play without AI** → the built-in stories only (you can add an AI later).
+
+   Then check the **Server URL / API URL** (pre-filled), paste your **API key** if the provider
+   needs one (🔒 it stays in this browser and is sent only to that provider; *Get a key* links to
+   the provider's key page), follow the setup steps shown, and press **Test connection**. Pick a
+   **Model** from the list it returns, or leave it on *Auto*, and press **Start playing**. If the
+   test fails you can still **Save anyway** and fix it later, or go back and choose a different AI.
+3. Press **New Life**. The AI dot in the header turns green once your AI is connected. To switch
+   later, use **Change AI** on the main menu or ⚙️ Settings → **Change AI provider / run setup
+   again**.
 
 **Option A: an AI on your own computer** (free, private, needs a decent GPU or Apple Silicon)
 
@@ -68,7 +80,8 @@ Pick the provider, paste your key and leave **Model** on *Auto* (or choose one f
 If a provider refuses requests made directly from a browser (CORS), use OpenRouter instead or
 [run the game locally](#run-it-locally-instead).
 
-No AI at all? Choose **Off** and the game plays with its built-in offline event library.
+No AI at all? Choose **Play without AI** (or set *AI narration* to **Off** in Settings) and the
+game plays with its built-in offline event library.
 
 **Playing on another device (phone, tablet):** a cloud provider is the easiest. For a local
 server, the AI address in ⚙️ Settings must point at the computer running it, and a secure
@@ -109,10 +122,10 @@ need to be on. If LM Studio is on another machine or port, use
 | Setting | What it does |
 |---|---|
 | **AI narration** | *Off*: fully offline. *Balanced* (default): the AI writes events, outcomes, conversations, interviews, "Do Anything" and obituaries. *Full*: the AI also rewrites every activity result (slower). |
-| **AI provider** | Where the story comes from: a local server (LM Studio, Ollama, llama.cpp, KoboldCpp, Jan, other) or a cloud API (Claude, OpenAI, Gemini, OpenRouter, Groq, Mistral, DeepSeek, xAI, Together, other). Each provider remembers its own URL, key and model, so you can switch back and forth. |
+| **AI provider** | Where the story comes from: a local server (LM Studio, Ollama, llama.cpp, KoboldCpp, Jan, other) or a cloud API (Claude, OpenAI, Gemini, OpenRouter, Groq, Mistral, DeepSeek, xAI, Together, other). Tap **Change** to pick another; each provider remembers its own URL, key and model, so you can switch back and forth. **Change AI provider / run setup again** reopens the first-run screen. |
 | **Server URL** | The provider's API address, pre-filled for each provider. LM Studio on the hosted site uses `http://localhost:1234/v1` (needs **Enable CORS**); `npm run dev` uses `/lmstudio/v1` through its proxy. A tunnel URL works too. |
 | **API key** | Required for cloud providers; optional token for local servers that have authentication on. Stored only in this browser and sent only to that provider. |
-| **Model** | *Auto* uses the model loaded in your local server, or a good default for a cloud provider (Claude Opus 5.5 for Claude). You can also pick one from the provider's list. |
+| **Model** | *Auto* uses the model loaded in your local server, or a good default for a cloud provider (Claude Opus 5.5 for Claude). **Test connection** fills the list with the provider's models; *Type a model id* lets you enter one by hand. |
 | **Structured output** | Asks for JSON that matches a schema. The game steps down automatically (JSON schema → JSON mode → plain prompt) if a model rejects it; turn it off to always use the plain prompt. |
 | **Skip thinking** | Asks reasoning models (Qwen 3, DeepSeek-R1, gpt-oss, OpenAI o-series/GPT-5, Gemini 2.5 Flash, …) to answer without a long think step. |
 | **Content rating** | Family / Teen / Mature. The default is Teen: dark humor, nothing explicit. |
@@ -120,11 +133,14 @@ need to be on. If LM Studio is on another machine or port, use
 
 ## Troubleshooting
 
-- **Red status dot / "Can't reach LM Studio"**: check that LM Studio's server is running on port
-  1234, that a model is loaded, and (on the hosted site) that **Enable CORS** is on and you
+- **Red status dot / "Can't reach <your server>"** (local AI): check that the server is running
+  on the port in the URL, that a model is loaded, and (on the hosted site) that it allows
+  cross-origin requests (LM Studio: **Enable CORS**; Ollama: `OLLAMA_ORIGINS="*"`) and that you
   allowed local network access in the browser. In Chrome, open the 🔒 icon in the address bar
   → *Site settings* → *Local network access* → *Allow*. Then press **Test connection** in
-  Settings.
+  Settings. The setup steps for each server are shown under *How to set up …*.
+- **Cloud AI errors**: "needs an API key" / "rejected the key" means the key is missing or wrong
+  (paste it again in Settings); a quota or billing message comes from the provider's account.
 - **Safari**: Safari may block a secure website from calling `http://localhost`. Use Chrome, Edge
   or Firefox, or run the game locally with `npm run dev`.
 - **Very slow years**: use a smaller or more quantized model, enable *Skip thinking*, or lower *max
@@ -141,7 +157,8 @@ npm test             # unit tests (Vitest)
 npm run typecheck    # TypeScript
 npm run build        # production build into dist/ (serve with `npm run preview`, which keeps the proxy)
 npm run deploy       # build and deploy to Cloudflare (needs `npx wrangler login` once)
-node scripts/mock-lmstudio.mjs   # a fake LM Studio on :1234 that returns schema-shaped JSON (no model needed)
+node scripts/mock-lmstudio.mjs   # a fake OpenAI-compatible AI on :1234 that returns schema-shaped JSON (no model needed);
+                                 # pick LM Studio, "Other local server" or OpenAI (any key) and point the URL at it
 ```
 
 The engine (`src/game`) is plain TypeScript with a seeded RNG and no React. The AI layer is in

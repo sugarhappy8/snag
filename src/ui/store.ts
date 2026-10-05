@@ -3,10 +3,12 @@
 // The game state is immutable from React's point of view: every change goes through
 // act(), which clones the state, mutates the clone, saves it and notifies subscribers.
 // Popups live in g.queue and are shown one at a time. When the head of the queue is
-// an AI task, processQueue() runs it against LM Studio (or the offline fallback).
+// an AI task, processQueue() runs it against the player's chosen AI provider (or the offline
+// fallback).
 import { useSyncExternalStore } from 'react'
 import { applyFallback, narrateNotice, runAiTask, testConnection } from '../ai/director'
-import { resetLmStudioSession } from '../ai/lmstudio'
+import { resetAiSession } from '../ai/lmstudio'
+import { providerFor } from '../ai/providers'
 import { ageUp } from '../game/aging'
 import { netWorth } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
@@ -14,9 +16,14 @@ import { uid } from '../game/rng'
 import { addToGraveyard, clearSave, loadGame, recordRibbon, saveGame } from '../game/save'
 import { runScript } from '../game/scripts'
 import type { GameState, MenuAction, ModalItem } from '../game/types'
-import { loadSettings, saveSettings, type Settings } from '../settings'
+import { loadSettings, saveSettings, switchProvider, type ProviderConfig, type ProviderId, type Settings } from '../settings'
 
-export type Screen = 'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'
+export type Screen = 'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard' | 'aiSetup'
+
+/** A provider plus the URL/key/model to use with it (what the setup screen and Settings edit). */
+export interface AiConnection extends ProviderConfig {
+  provider: ProviderId
+}
 
 export interface AiActivity {
   /** Modal being worked on (aiTask, or a notice being rewritten). */
@@ -29,6 +36,8 @@ export interface AppState {
   screen: Screen
   /** Screen to return to from settings/ribbons/graveyard. */
   previousScreen: Screen
+  /** Screen the "Choose your AI" setup was opened from (where it returns when finished). */
+  setupReturn: Screen
   game: GameState | null
   settings: Settings
   ai: AiActivity | null
@@ -39,6 +48,7 @@ export interface AppState {
 let state: AppState = {
   screen: 'home',
   previousScreen: 'home',
+  setupReturn: 'home',
   game: null,
   settings: loadSettings(),
   ai: null,
@@ -71,6 +81,12 @@ export function useApp<T>(selector: (s: AppState) => T): T {
 // Navigation & settings
 
 export function goTo(screen: Screen): void {
+  // The AI setup screen remembers where it was opened from and leaves previousScreen alone,
+  // so Settings → setup → Settings → Back still returns to the game.
+  if (screen === 'aiSetup') {
+    if (state.screen !== 'aiSetup') setState({ screen, setupReturn: state.screen })
+    return
+  }
   const overlay = screen === 'settings' || screen === 'ribbons' || screen === 'graveyard'
   setState({ screen, previousScreen: overlay ? (isOverlay(state.screen) ? state.previousScreen : state.screen) : screen })
 }
@@ -88,13 +104,53 @@ export function updateSettings(patch: Partial<Settings>): void {
   const settings = { ...prev, ...patch }
   saveSettings(settings)
   setState({ settings })
-  // A different server or model invalidates the auto-picked model and structured-output fallback.
-  if (settings.baseUrl !== prev.baseUrl || settings.model !== prev.model || settings.apiKey !== prev.apiKey) {
-    resetLmStudioSession()
+  // A different provider, server or model invalidates the auto-picked model and the
+  // structured-output fallbacks learned so far.
+  if (
+    settings.provider !== prev.provider ||
+    settings.baseUrl !== prev.baseUrl ||
+    settings.model !== prev.model ||
+    settings.apiKey !== prev.apiKey
+  ) {
+    resetAiSession()
   }
 }
 
-/** How long the Settings / startup connection check waits for LM Studio. */
+/** `settings` with `conn` as the active AI (the previous provider's URL/key/model are remembered). Pure. */
+export function settingsWithConnection(settings: Settings, conn: AiConnection): Settings {
+  return { ...switchProvider(settings, conn.provider), baseUrl: conn.baseUrl, apiKey: conn.apiKey, model: conn.model }
+}
+
+/** Make `conn` the active AI connection and save it, plus any `extra` settings. */
+export function saveAiConnection(conn: AiConnection, extra: Partial<Settings> = {}): void {
+  updateSettings({ ...settingsWithConnection(state.settings, conn), ...extra })
+}
+
+/**
+ * Finish the "Choose your AI" screen. With `conn`: use that AI (turning narration on if it was
+ * off) and check the connection. Without: play with the built-in stories only (AI off).
+ * A first run continues to a new life (or the main menu when a life is saved); a later run
+ * returns where setup was opened from.
+ */
+export function finishAiSetup(conn: AiConnection | null): void {
+  const firstRun = !state.settings.setupDone
+  if (conn) {
+    saveAiConnection(conn, { aiLevel: state.settings.aiLevel === 'off' ? 'balanced' : state.settings.aiLevel, setupDone: true })
+  } else {
+    updateSettings({ aiLevel: 'off', setupDone: true })
+  }
+  void checkAi()
+  if (firstRun) setState({ screen: conn && !hasSavedGame() ? 'newLife' : 'home', previousScreen: 'home' })
+  else closeAiSetup()
+}
+
+/** Leave the setup screen without changing anything (only offered once setup was done before). */
+export function closeAiSetup(): void {
+  const back = state.setupReturn === 'aiSetup' ? 'home' : state.setupReturn
+  setState({ screen: back === 'game' && !state.game ? 'home' : back })
+}
+
+/** How long the Settings / startup connection check waits for the AI provider. */
 const CHECK_TIMEOUT_MS = 20_000
 
 export async function checkAi(): Promise<void> {
@@ -102,7 +158,8 @@ export async function checkAi(): Promise<void> {
     setState({ aiStatus: 'offline', aiMessage: 'AI is turned off in settings.' })
     return
   }
-  setState({ aiStatus: 'checking', aiMessage: 'Connecting to LM Studio…' })
+  const def = providerFor(state.settings)
+  setState({ aiStatus: 'checking', aiMessage: `Connecting to ${def.name}…` })
   // A fetch can hang (e.g. while the browser's local-network permission prompt is open):
   // never leave the status stuck on "Connecting…".
   const ctrl = new AbortController()
@@ -112,7 +169,10 @@ export async function checkAi(): Promise<void> {
     if (ctrl.signal.aborted) {
       setState({
         aiStatus: 'offline',
-        aiMessage: `LM Studio didn't answer within ${CHECK_TIMEOUT_MS / 1000} s — make sure its server is running, and if your browser is asking whether this site may access your local network, choose Allow and test again.`,
+        aiMessage:
+          def.kind === 'local'
+            ? `${def.name} didn't answer within ${CHECK_TIMEOUT_MS / 1000} s — make sure its server is running, and if your browser is asking whether this site may access your local network, choose Allow and test again.`
+            : `${def.name} didn't answer within ${CHECK_TIMEOUT_MS / 1000} s — check your internet connection and try again.`,
       })
     } else setState({ aiStatus: res.ok ? 'online' : 'offline', aiMessage: res.message })
   } catch (err) {
@@ -318,7 +378,7 @@ const TASK_LABELS: Record<string, string> = {
   obituary: 'Writing your obituary…',
 }
 
-/** Seconds to wait for LM Studio before falling back (guards against a blank/garbled setting). */
+/** Seconds to wait for the AI before falling back (guards against a blank/garbled setting). */
 function timeoutMs(settings: Settings): number {
   const sec = Number(settings.timeoutSec)
   return (Number.isFinite(sec) && sec > 0 ? Math.min(Math.max(sec, 5), 900) : 120) * 1000
@@ -348,13 +408,19 @@ export function processQueue(): void {
     }, timeoutMs(settings))
     runAiTask(g, head.task, settings, controller.signal)
       .then((apply) => {
-        if (!controller.signal.aborted && state.aiStatus !== 'online') setState({ aiStatus: 'online', aiMessage: 'Connected to LM Studio.' })
+        if (!controller.signal.aborted && state.aiStatus !== 'online') {
+          setState({ aiStatus: 'online', aiMessage: `Connected to ${providerFor(settings).name}.` })
+        }
         // No-op if Skip (or a new life) already finished this task.
         finishAi(head.id, apply, fallback)
       })
       .catch((err) => {
         if (timedOut) {
-          setState({ aiMessage: `LM Studio took longer than ${Math.round(timeoutMs(settings) / 1000)} s, so the built-in story was used — try a smaller model or raise the timeout in Settings.` })
+          const def = providerFor(settings)
+          const faster = def.kind === 'local' ? 'try a smaller model' : 'try a faster model'
+          setState({
+            aiMessage: `${def.name} took longer than ${Math.round(timeoutMs(settings) / 1000)} s, so the built-in story was used — ${faster} or raise the timeout in Settings.`,
+          })
         } else if (!controller.signal.aborted) setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
         finishAi(head.id, fallback)
       })

@@ -35,6 +35,10 @@ vi.mock('../src/ui/store', () => ({
   continueAs: (id: string) => mock.calls.push(`continueAs:${id}`),
   abandonLife: () => mock.calls.push('abandonLife'),
   updateSettings: () => mock.calls.push('updateSettings'),
+  saveAiConnection: (c: { provider: string }) => mock.calls.push(`saveAiConnection:${c.provider}`),
+  settingsWithConnection: (s: Record<string, unknown>, c: Record<string, unknown>) => ({ ...s, ...c }),
+  finishAiSetup: (c: { provider: string } | null) => mock.calls.push(`finishAiSetup:${c ? c.provider : 'none'}`),
+  closeAiSetup: () => mock.calls.push('closeAiSetup'),
   checkAi: async () => {
     mock.calls.push('checkAi')
   },
@@ -53,6 +57,9 @@ const { sortGraves, graveStats, bulldozeGrave, GraveyardScreen } = await import(
 const { guessCountryId, cleanName, rollFirstName, rollLastName, NewLifeScreen } = await import('../src/ui/screens/NewLifeScreen')
 const { HomeScreen, summarizeLife } = await import('../src/ui/screens/HomeScreen')
 const { SettingsScreen } = await import('../src/ui/screens/SettingsScreen')
+const { AiSetupScreen } = await import('../src/ui/screens/AiSetupScreen')
+const aiForm = await import('../src/ui/components/AiProviderForm')
+const { getProvider } = await import('../src/ai/providers')
 
 // Minimal in-memory localStorage for node.
 function installStorage(): Map<string, string> {
@@ -95,6 +102,7 @@ beforeEach(() => {
   mock.state.settings = { ...DEFAULT_SETTINGS }
   mock.state.game = null
   mock.state.aiStatus = 'online'
+  mock.state.aiMessage = 'Connected to LM Studio.'
   installStorage()
 })
 
@@ -274,6 +282,72 @@ describe('death screen helpers', () => {
 
 // ---------------------------------------------------------------------------
 
+describe('AI provider form helpers', () => {
+  it('offers listed models, else cloud suggestions, keeping the current pick', () => {
+    const openai = getProvider('openai')
+    const lm = getProvider('lmstudio')
+    expect(aiForm.modelChoices(lm, [], '')).toEqual([])
+    expect(aiForm.modelChoices(lm, ['a', 'b'], 'c')).toEqual(['c', 'a', 'b'])
+    expect(aiForm.modelChoices(openai, [], '')).toEqual(openai.suggestedModels)
+    expect(aiForm.modelChoices(openai, ['x'], 'x')).toEqual(['x'])
+    expect(aiForm.autoModelLabel(lm)).toBe('Auto: use the loaded model')
+    expect(aiForm.autoModelLabel(getProvider('anthropic'))).toBe(`Auto: ${getProvider('anthropic').defaultModel}`)
+  })
+
+  it('cleans URLs and reads per-provider connections', () => {
+    const ollama = getProvider('ollama')
+    expect(aiForm.cleanBaseUrl(ollama, ' http://pc:11434/v1/ ')).toBe('http://pc:11434/v1')
+    expect(aiForm.cleanBaseUrl(ollama, '   ')).toBe('http://localhost:11434/v1')
+    const s = { ...DEFAULT_SETTINGS, providerConfigs: { groq: { baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gsk', model: 'm' } } }
+    expect(aiForm.connectionFor(s)).toMatchObject({ provider: 'lmstudio', baseUrl: DEFAULT_SETTINGS.baseUrl })
+    expect(aiForm.connectionFor(s, 'groq')).toEqual({ provider: 'groq', baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gsk', model: 'm' })
+    expect(aiForm.connectionFor(s, 'openai')).toMatchObject({ provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1' })
+    expect(aiForm.keyPrivacyNote(getProvider('groq'))).toContain('sent only to Groq')
+    expect(aiForm.keyPrivacyNote(getProvider('customCloud'))).toContain('the API URL above')
+  })
+})
+
+describe('AI provider form', () => {
+  const form = (provider: string, baseUrl: string, models: string[] = []) =>
+    renderToStaticMarkup(
+      createElement(aiForm.ProviderConfigForm, {
+        conn: { provider: provider as never, baseUrl, apiKey: '', model: '' },
+        onChange: () => {},
+        test: { status: models.length ? 'done' : 'idle', ok: models.length > 0, message: models.length ? 'Connected' : '', models },
+        onTest: () => {},
+        stepsOpen: true,
+      }),
+    )
+
+  it('local servers on the hosted site mention local-network access and Safari', () => {
+    const html = form('lmstudio', 'http://localhost:1234/v1')
+    expect(html).toContain('Server URL')
+    expect(html).toContain('API token (optional)')
+    expect(html).toContain('Enable CORS')
+    expect(html).toContain('local network')
+    expect(html).toContain('Safari')
+    // The dev proxy needs neither.
+    expect(form('lmstudio', '/lmstudio/v1')).not.toContain('Safari')
+  })
+
+  it('cloud providers ask for a key, link to it and say where it goes', () => {
+    const html = form('groq', 'https://api.groq.com/openai/v1', ['llama-3.3-70b-versatile', 'gemma2-9b-it'])
+    expect(html).toContain('Groq API key')
+    expect(html).toContain('type="password"')
+    expect(html).toContain('Get a key from Groq')
+    expect(html).toContain('stored only in this browser and is sent only to Groq')
+    expect(html).toContain('<option value="llama-3.3-70b-versatile">')
+    expect(html).not.toContain('Safari')
+  })
+
+  it('the provider picker lists local and cloud providers', () => {
+    const html = renderToStaticMarkup(createElement(aiForm.ProviderPicker, { selected: 'openai', onPick: () => {} }))
+    expect(html).toContain('On my computer')
+    expect(html).toContain('Claude (Anthropic)')
+    expect(html).toContain('aria-pressed="true"')
+  })
+})
+
 describe('ribbons, graveyard, new life helpers', () => {
   it('hides secret ribbons until earned', () => {
     const secret = RIBBONS.find((r) => r.secret)
@@ -355,9 +429,58 @@ describe('screens render', () => {
 
   it('settings shows every section', () => {
     const html = render(createElement(SettingsScreen))
-    for (const text of ['AI Narration', 'Balanced', 'LM Studio Connection', 'Test connection', 'Auto: use the loaded model', 'How to set up LM Studio', 'Danger Zone']) {
+    for (const text of [
+      'AI Narration',
+      'Balanced',
+      'AI Connection',
+      'AI provider',
+      'Server URL',
+      'Test connection',
+      'Auto: use the loaded model',
+      'How to set up LM Studio',
+      'Change AI provider / run setup again',
+      'Advanced',
+      'Danger Zone',
+    ]) {
       expect(html).toContain(text)
     }
+    expect(html).not.toContain('LM Studio Connection')
+  })
+
+  it('settings and the home card name the active provider', () => {
+    mock.state.settings = { ...DEFAULT_SETTINGS, provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test', model: 'gpt-4.1-mini' }
+    mock.state.aiMessage = 'Connected to OpenAI · 3 models — using gpt-4.1-mini.'
+    const settingsHtml = render(createElement(SettingsScreen))
+    expect(settingsHtml).toContain('Connected to OpenAI')
+    expect(settingsHtml).toContain('OpenAI API key')
+    expect(settingsHtml).toContain('sent only to OpenAI')
+    expect(settingsHtml).toContain('https://platform.openai.com/api-keys')
+    expect(settingsHtml).not.toContain('LM Studio')
+
+    mock.state.aiStatus = 'offline'
+    mock.state.aiMessage = "Can't reach it."
+    const home = render(createElement(HomeScreen))
+    expect(home).toContain('Can’t reach OpenAI')
+    expect(home).toContain('gpt-4.1-mini')
+    expect(home).toContain('Change AI')
+    expect(home).not.toContain('LM Studio')
+
+    mock.state.settings = { ...DEFAULT_SETTINGS, provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '' }
+    expect(render(createElement(HomeScreen))).toContain('OpenAI isn’t set up yet')
+    mock.state.settings = { ...DEFAULT_SETTINGS, aiLevel: 'off' }
+    expect(render(createElement(HomeScreen))).toContain('Choose an AI')
+  })
+
+  it('AI setup welcome offers local, cloud and no AI', () => {
+    mock.state.settings = { ...DEFAULT_SETTINGS }
+    const html = render(createElement(AiSetupScreen))
+    for (const text of ['Choose your AI', 'AI on my computer', 'AI service with my own API key', 'Play without AI', 'obituary']) {
+      expect(html).toContain(text)
+    }
+    // First run: no way back past the setup.
+    expect(html).not.toContain('aria-label="Back"')
+    mock.state.settings = { ...DEFAULT_SETTINGS, setupDone: true }
+    expect(render(createElement(AiSetupScreen))).toContain('aria-label="Back"')
   })
 
   it('ribbons and graveyard render (empty and full)', () => {

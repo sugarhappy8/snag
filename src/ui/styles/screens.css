@@ -1746,6 +1746,298 @@
 }
 
 /* ------------------------------------------------------------------------ */
+/* AI provider picker + connection form (setup screen and Settings)          */
+
+.aip-form,
+.aip-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.aip-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aip-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 2px solid var(--border, #e3e8ef);
+  border-radius: 16px;
+  background: var(--card, #fff);
+  color: var(--text, #1b2330);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--border, #d7dee8);
+  transition:
+    border-color 0.15s,
+    transform 0.08s,
+    box-shadow 0.08s;
+}
+
+.aip-card:hover {
+  border-color: var(--blue, #1d6fd8);
+}
+
+.aip-card:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--border, #d7dee8);
+}
+
+.aip-card.active {
+  border-color: var(--blue, #1d6fd8);
+  background: rgba(29, 111, 216, 0.07);
+}
+
+.aip-card-emoji {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--bg, #f3f6fb);
+  font-size: 1.5rem;
+}
+
+.aip-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.aip-card-name {
+  font-weight: 800;
+  font-size: 1.02rem;
+}
+
+.aip-card-blurb {
+  font-size: 0.84rem;
+  line-height: 1.35;
+  color: var(--muted, #6b7685);
+}
+
+.aip-card-end {
+  flex: none;
+  margin-left: auto;
+  font-size: 1.4rem;
+  color: var(--blue, #1d6fd8);
+  font-weight: 800;
+}
+
+.aip-card-change {
+  flex: none;
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--blue, #1d6fd8);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.aip-current {
+  box-shadow: none;
+}
+
+.aip-link {
+  align-self: flex-start;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--blue, #1d6fd8);
+  text-decoration: none;
+}
+
+.aip-link:hover {
+  text-decoration: underline;
+}
+
+.aip-privacy {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(43, 178, 76, 0.1);
+  color: var(--text, #1b2330);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.aip-eye {
+  flex: none;
+  white-space: nowrap;
+}
+
+.aip-steps {
+  border: 1px solid var(--border, #e3e8ef);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--bg, #f3f6fb);
+}
+
+.aip-steps summary {
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.aip-steps[open] summary {
+  margin-bottom: 8px;
+}
+
+.aip-steps .set-steps,
+.aip-steps .al-ai-steps {
+  font-size: 0.88rem;
+  word-break: break-word;
+}
+
+.aip-note {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 159, 26, 0.14);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.aip-steps .aip-link {
+  display: inline-block;
+  margin-top: 8px;
+}
+
+.aip-linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue, #1d6fd8);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.al-ai-provider {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------------ */
+/* First-run "Choose your AI"                                                */
+
+.al-screen.aisetup {
+  padding-top: 0;
+}
+
+.al-screen.aisetup > .al-topbar {
+  margin-top: 0;
+}
+
+.aisetup-hero {
+  position: relative;
+  margin: 0 -16px;
+  padding: calc(28px + env(safe-area-inset-top, 0px)) 22px 24px;
+  border-radius: 0 0 32px 32px;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(255, 255, 255, 0.2) 0 16%, transparent 17%),
+    linear-gradient(160deg, #2f8cff 0%, var(--blue, #1d6fd8) 55%, var(--blue-dark, #1556aa) 100%);
+  color: #fff;
+  text-align: center;
+}
+
+.aisetup-close {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 12px;
+}
+
+.aisetup-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 22px;
+  background: #fff;
+  font-size: 2.4rem;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.aisetup-title {
+  margin: 12px 0 6px;
+  font-size: clamp(1.9rem, 8vw, 2.4rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.15);
+}
+
+.aisetup-tagline {
+  margin: 0 auto 12px;
+  max-width: 360px;
+  line-height: 1.4;
+  opacity: 0.95;
+}
+
+.aisetup-writes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.aisetup-writes li {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.aisetup-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aisetup .al-bigbtn-sub {
+  white-space: normal;
+}
+
+.aisetup-intro {
+  margin: 0 2px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--muted, #6b7685);
+}
+
+.aisetup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.aisetup-warn {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 159, 26, 0.14);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------------ */
 /* Dark mode: only the colors that aren't driven by shared variables.        */
 
 @media (prefers-color-scheme: dark) {
@@ -1753,8 +2045,21 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   }
 
-  .home-logo {
+  .home-logo,
+  .aisetup-logo {
     background: #1d2633;
+  }
+
+  .aip-card.active {
+    background: rgba(59, 140, 242, 0.14);
+  }
+
+  .set-test-result.ok {
+    color: #6fdc8c;
+  }
+
+  .set-test-result.fail {
+    color: #ff8a8e;
   }
 
   .death-tomb {

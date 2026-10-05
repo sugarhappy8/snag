@@ -1,12 +1,13 @@
-// Main menu: continue / new life / ribbons / graveyard / settings, plus the LM Studio status card.
+// Main menu: continue / new life / ribbons / graveyard / settings, plus the AI status card.
 import { useMemo } from 'react'
+import { providerFor } from '../../ai/providers'
 import { characterAvatar } from '../../game/core'
 import { RIBBONS, type RibbonDef } from '../../game/ribbons'
 import { loadGame, loadGraveyard, loadRibbons } from '../../game/save'
 import type { GameState } from '../../game/types'
 import { getCountry } from '../../game/world'
-import { checkAi, getApp, goTo, hasSavedGame, resumeSavedGame, updateSettings, useApp } from '../store'
-import { HAS_DEV_PROXY } from '../../settings'
+import { checkAi, getApp, goTo, hasSavedGame, resumeSavedGame, useApp } from '../store'
+import { aiConfigProblem, HAS_DEV_PROXY } from '../../settings'
 import '../styles/screens.css'
 import { Flash, useFlash } from './SettingsScreen'
 
@@ -50,30 +51,27 @@ function MenuButton(props: { emoji: string; label: string; sub?: string; tone?: 
   )
 }
 
-/** LM Studio connection status with a short how-to when it's offline. Used on the home screen. */
+/** The AI provider's connection status with a short how-to when it's offline. Used on the home screen. */
 export function AiStatusCard() {
   const aiStatus = useApp((s) => s.aiStatus)
   const aiMessage = useApp((s) => s.aiMessage)
-  const aiLevel = useApp((s) => s.settings.aiLevel)
+  const settings = useApp((s) => s.settings)
+  const def = providerFor(settings)
 
-  if (aiLevel === 'off') {
+  if (settings.aiLevel === 'off') {
     return (
       <section className="al-card al-ai-card" aria-live="polite">
         <div className="al-ai-card-head">
           <span className="al-status-dot" />
           <strong>AI narration is off</strong>
         </div>
-        <p className="al-ai-message">Lives use the built-in story library. Turn the AI on to have your local model write your life.</p>
+        <p className="al-ai-message">
+          Lives use the built-in story library. Choose an AI (on your computer, or a cloud service with your own key) to have it write
+          your life.
+        </p>
         <div className="al-ai-actions">
-          <button
-            type="button"
-            className="al-btn small green"
-            onClick={() => {
-              updateSettings({ aiLevel: 'balanced' })
-              void checkAi()
-            }}
-          >
-            ✨ Turn on AI
+          <button type="button" className="al-btn small green" onClick={() => goTo('aiSetup')}>
+            ✨ Choose an AI
           </button>
           <button type="button" className="al-btn small ghost" onClick={() => goTo('settings')}>
             Settings
@@ -85,39 +83,61 @@ export function AiStatusCard() {
 
   const online = aiStatus === 'online'
   const checking = aiStatus === 'checking' || aiStatus === 'unknown'
+  const problem = aiConfigProblem(settings)
+  const title = online
+    ? 'AI narrator is ready ✨'
+    : checking
+      ? `Looking for ${def.name}…`
+      : problem
+        ? `${def.name} isn’t set up yet`
+        : `Can’t reach ${def.name}`
   return (
     <section className="al-card al-ai-card" aria-live="polite">
       <div className="al-ai-card-head">
         <span className={`al-status-dot ${online ? 'online' : checking ? 'checking' : 'offline'}`} />
-        <strong>{online ? 'AI narrator is ready ✨' : checking ? 'Looking for LM Studio…' : 'LM Studio is offline'}</strong>
+        <strong>{title}</strong>
       </div>
+      <p className="al-ai-provider">
+        <span aria-hidden="true">{def.emoji}</span> {def.name}
+        {settings.model ? <span className="al-muted"> · {settings.model}</span> : null}
+        <span className="al-muted"> · {def.kind === 'local' ? 'on your computer' : 'cloud, your API key'}</span>
+      </p>
       {aiMessage ? <p className="al-ai-message">{aiMessage}</p> : null}
       {online ? (
-        <p className="al-ai-message">Your local model will write your random events, conversations and obituary.</p>
+        <p className="al-ai-message">It will write your random events, what happens after your choices, conversations and obituary.</p>
       ) : checking ? null : (
         <>
-          <p className="al-ai-message">You can still play: the built-in stories fill in until your AI is reachable. To connect:</p>
-          <ol className="al-ai-steps">
-            <li>Open LM Studio and load a model.</li>
-            <li>
-              Go to <b>Developer</b> → <b>Start Server</b> (port 1234).
-            </li>
-            {HAS_DEV_PROXY ? (
+          <p className="al-ai-message">You can still play: the built-in stories fill in until your AI is reachable.</p>
+          {def.id === 'lmstudio' && HAS_DEV_PROXY && settings.baseUrl.startsWith('/') ? (
+            <ol className="al-ai-steps">
+              <li>Open LM Studio and load a model.</li>
+              <li>
+                Go to <b>Developer</b> → <b>Start Server</b> (port 1234).
+              </li>
               <li>
                 Keep <span className="al-kbd">npm run dev</span> running, then tap Retry.
               </li>
-            ) : (
-              <li>
-                In LM Studio's <b>Server Settings</b>, turn on <b>Enable CORS</b>. If your browser asks to let this site access devices
-                on your local network, choose <b>Allow</b>. Then tap Retry.
-              </li>
-            )}
-          </ol>
+            </ol>
+          ) : (
+            <details className="aip-steps">
+              <summary>
+                <span aria-hidden="true">📘</span> How to set up {def.name}
+              </summary>
+              <ol className="al-ai-steps">
+                {def.setupSteps.map((step) => (
+                  <li key={step}>{step.replace(/`/g, '')}</li>
+                ))}
+              </ol>
+            </details>
+          )}
         </>
       )}
       <div className="al-ai-actions">
         <button type="button" className="al-btn small" onClick={() => void checkAi()} disabled={aiStatus === 'checking'}>
           {aiStatus === 'checking' ? '⏳ Checking…' : '↻ Retry'}
+        </button>
+        <button type="button" className="al-btn small ghost" onClick={() => goTo('aiSetup')}>
+          🔁 Change AI
         </button>
         <button type="button" className="al-btn small ghost" onClick={() => goTo('settings')}>
           AI settings
@@ -162,7 +182,7 @@ export function HomeScreen() {
           🧬
         </div>
         <h1 className="home-title">AnotherLife</h1>
-        <p className="home-tagline">Live a whole life, one year at a time, with an AI on your own computer telling the story.</p>
+        <p className="home-tagline">Live a whole life, one year at a time, with the AI of your choice telling the story.</p>
       </header>
 
       <nav className="home-menu" aria-label="Main menu">
@@ -182,12 +202,12 @@ export function HomeScreen() {
         <MenuButton emoji="👶" label="New Life" sub="Random or custom" onClick={() => goTo('newLife')} />
         <MenuButton emoji="🎗️" label="Ribbons" sub={ribbonInfo} tone="light" onClick={() => goTo('ribbons')} />
         <MenuButton emoji="🪦" label="Graveyard" sub={graveInfo} tone="light" onClick={() => goTo('graveyard')} />
-        <MenuButton emoji="⚙️" label="Settings" sub="AI narration & LM Studio" tone="light" onClick={() => goTo('settings')} />
+        <MenuButton emoji="⚙️" label="Settings" sub="AI narration & your AI provider" tone="light" onClick={() => goTo('settings')} />
       </nav>
 
       <AiStatusCard />
 
-      <p className="home-footer">Private by design: your lives stay in this browser and your AI stays on your machine.</p>
+      <p className="home-footer">Private by design: your lives, settings and API keys stay in this browser.</p>
       <Flash message={flash} />
     </div>
   )

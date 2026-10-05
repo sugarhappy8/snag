@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-// A tiny fake LM Studio server for development and tests: it speaks the OpenAI-compatible
-// /v1/models and /v1/chat/completions endpoints and answers structured-output requests
-// with made-up data that matches the requested JSON schema. No model needed.
+// A tiny fake OpenAI-compatible AI server for development and tests (named after LM Studio,
+// the first provider it stood in for): it speaks /v1/models and /v1/chat/completions with
+// CORS, and answers structured-output requests with made-up data that matches the requested
+// JSON schema. No model needed. It ignores API keys, so any provider that uses the OpenAI
+// wire format can be pointed at it: in the "Choose your AI" screen or Settings pick e.g.
+// LM Studio, "Other local server" or OpenAI (any fake key) and set the URL to
+// http://localhost:<port>/v1.
 //
 //   node scripts/mock-lmstudio.mjs [--port 1234] [--think] [--delay 300]
 //

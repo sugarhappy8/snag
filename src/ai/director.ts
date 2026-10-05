@@ -704,6 +704,13 @@ function listPreview(models: string[]): string {
   return `${models.slice(0, 6).join(', ')}${models.length > 6 ? '…' : ''}`
 }
 
+/** "Connected to …" wording: the generic entries read better as "your …". */
+function connectedName(def: { id: string; name: string }): string {
+  if (def.id === 'customLocal') return 'your local server'
+  if (def.id === 'customCloud') return 'your API'
+  return def.name
+}
+
 /**
  * Check the active provider: list its models, confirm the configured one exists (or pick one
  * automatically) and describe the result, e.g. "Connected to Groq · 14 models — using
@@ -725,7 +732,7 @@ export async function testConnection(settings: Settings, signal?: AbortSignal): 
             ? `Ollama is running at ${base}, but has no models yet — download one, e.g. \`ollama pull llama3.2\`.`
             : def.kind === 'local'
               ? `${def.name} is running at ${base}, but no model is loaded. Load one and test again.`
-              : `Connected to ${def.name}, but it listed no chat models — type a model id in Settings.`
+              : `Connected to ${connectedName(def)}, but it listed no chat models — type a model id in Settings.`
       return { ok: false, message, models }
     }
     const wanted = settings.model.trim()
@@ -753,7 +760,7 @@ export async function testConnection(settings: Settings, signal?: AbortSignal): 
       using = pickModel(def, models) || models[0]
       if (def.api === 'openai') rememberModel(settings, using)
     }
-    return { ok: true, message: `Connected to ${def.name} · ${modelCount(models.length)} — using ${using}${note}.`, models }
+    return { ok: true, message: `Connected to ${connectedName(def)} · ${modelCount(models.length)} — using ${using}${note}.`, models }
   } catch (err) {
     if (signal?.aborted) return { ok: false, message: 'Connection test cancelled.', models: [] }
     return { ok: false, message: err instanceof Error ? err.message : String(err), models: [] }
