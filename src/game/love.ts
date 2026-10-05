@@ -4,7 +4,6 @@
 import {
   addHidden,
   addMoney,
-  addPersonStat,
   addRelationship,
   addStat,
   attractedTo,
@@ -25,7 +24,6 @@ import {
   pronouns,
   relationLabel,
   remember,
-  removePerson,
   scriptChoice,
   scriptInput,
   spend,
@@ -35,7 +33,7 @@ import { createPerson, notePerson, pickDistinct, randomOccupation, randomWealth,
 import { bell, chance, pick, randFloat, randInt, uid } from './rng'
 import { defineScript } from './scripts'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
-import type { ChoiceOption, GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
+import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
 // Small shared helpers (also used by relationships.ts)
@@ -653,18 +651,19 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
     return
   }
   const existing = 'id' in target ? target : null
+  const cand = 'id' in target ? null : target
   const partner = currentPartner(g)
   const cheating = !!partner && partner.id !== existing?.id
   const yours = bell(g, 15, 100)
   const theirs = bell(g, 15, 100)
-  const carriesStd = existing ? existing.data.std === true || chance(g, 0.04) : target.std
+  const carriesStd = existing ? existing.data.std === true || chance(g, 0.04) : !!cand?.std
   const name = target.firstName
   let p: Person
-  if (existing) {
-    p = existing
+  if (existing || !cand) {
+    p = target as Person
     addRelationship(p, Math.round((theirs - 50) / 5))
   } else {
-    p = personFromCandidate(g, target as Candidate, 'ex', theirs)
+    p = personFromCandidate(g, cand, 'ex', theirs)
     p.data.fling = true
     p.data.flingAge = c.age
   }
@@ -696,7 +695,7 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
   if (!existing && p.data.std !== true && chance(g, 0.15)) p.data.std = true
 
   // Pregnancy
-  const babyOdds = existing ? 0.05 : target.onBirthControl ? 0.015 : 0.06
+  const babyOdds = cand ? (cand.onBirthControl ? 0.015 : 0.06) : 0.05
   if (!conceptionBlocker(g, p) && chance(g, babyOdds)) {
     conceive(g, p, 1, 'natural')
     lines.push('', c.gender === 'female' ? 'A few weeks later, you took a pregnancy test. It was positive. \u{1F633}' : `A few weeks later, ${name} called. ${pronouns(p.gender).He}'s pregnant, and you're the father. \u{1F633}`)
