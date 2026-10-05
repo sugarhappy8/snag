@@ -765,7 +765,7 @@ function scenarioRoll(g: GameState): number {
   const age = g.character.age
   const fresh = bands.filter(([k]) => {
     const last = g.flags[`fame.scene.${k}`]
-    return !(typeof last === 'number' && last <= age && age - last < 3)
+    return !(typeof last === 'number' && last <= age && age - last < 5)
   })
   const pool = fresh.length ? fresh : bands
   const total = pool.reduce((sum, b) => sum + (b[2] - b[1]), 0)

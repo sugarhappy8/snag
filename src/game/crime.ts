@@ -33,6 +33,7 @@ import { notePerson } from './people'
 import { addPrisonTime, fugitiveInfo, FUGITIVE_FLAG, moneyScale, releaseFromPrison, sendToPrison, yearlyPrison } from './prison'
 import { chance, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
+import { localStreetName } from './data/locales'
 import { COUNTRIES, getCountry, NAME_POOLS, randomCity, randomFirstName, randomLastName, trialBy, type NameRegion, type TrialBy } from './world'
 import type {
   ChoiceOption,
@@ -1385,12 +1386,13 @@ const DOG_NAMES = ['Rex', 'Bella', 'Max', 'Tank', 'Princess', 'Brutus', 'Cupcake
 
 function generateHouse(g: GameState, tier: number): BurglaryData {
   const tpl = HOUSE_TEMPLATES[tier - 1]
-  const street = pick(g, STREETS)
+  const us = g.character.countryId === 'us'
+  const street = us ? pick(g, STREETS) : localStreetName(g)
   const house =
     tier === 1
-      ? pick(g, [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a mobile home on ${street}`])
+      ? pick(g, us ? [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a mobile home on ${street}`] : [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a cramped ground-floor flat on ${street}`])
       : tier === 2
-        ? pick(g, [`a two-story house on ${street}`, `a suburban split-level on ${street}`, `a brick colonial on ${street}`])
+        ? pick(g, us ? [`a two-story house on ${street}`, `a suburban split-level on ${street}`, `a brick colonial on ${street}`] : [`a two-story house on ${street}`, `a family house on ${street}`, `a big townhouse on ${street}`])
         : pick(g, [`a gated mansion on ${street}`, `a hilltop estate on ${street}`, `a modern glass mansion on ${street}`])
   const ownerGender: Gender = chance(g, 0.5) ? 'male' : 'female'
   const owner = strangerName(g, ownerGender)

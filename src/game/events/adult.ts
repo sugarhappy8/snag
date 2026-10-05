@@ -11,7 +11,7 @@ import { locale, localPick, localTerm, type LocaleToken } from '../data/locales'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { Asset, GameState, Json, Person } from '../types'
-import { getCountry } from '../world'
+import { citizensJudge, getCountry } from '../world'
 import {
   anyOf,
   ask,
@@ -209,11 +209,6 @@ function crimesWitnessed(g: GameState) {
 
 const JURY_CRIMES = ['tax fraud', 'burglary', 'stealing 400 garden gnomes', 'arson', 'running an illegal pet casino', 'identity theft', 'assault with a deadly baguette']
 
-/** Countries that put ordinary citizens on juries. */
-const JURY_COUNTRIES = new Set(['us', 'ca', 'gb', 'ie', 'au', 'nz', 'jm', 'bs', 'bz', 'gy', 'pr', 'fr', 'be', 'at', 'es', 'br', 'ru', 'dk', 'ar'])
-/** Countries where citizens sit next to professional judges as lay judges instead. */
-const LAY_JUDGE_COUNTRIES = new Set(['de', 'se', 'fi', 'no', 'it', 'jp', 'kr', 'pl', 'cz', 'hr'])
-
 /** What a night-time intruder turns out to be, by country. */
 function nightCritter(g: GameState): { what: string; emoji: string } {
   const id = g.character.countryId
@@ -320,10 +315,10 @@ export const ADULT_EVENTS = defineEvents([
     cooldown: 15,
     // Only where ordinary citizens sit in judgment: juries (US, UK, France, Brazil...) or
     // lay judges (Germany, Japan, Sweden...). Elsewhere judges decide alone.
-    when: (g) => JURY_COUNTRIES.has(g.character.countryId) || LAY_JUDGE_COUNTRIES.has(g.character.countryId),
+    when: (g) => citizensJudge(g.character.countryId) !== null,
     setup: (g) => {
       const days = randInt(g, 3, 14)
-      const lay = LAY_JUDGE_COUNTRIES.has(g.character.countryId)
+      const lay = citizensJudge(g.character.countryId) === 'lay'
       return {
         title: lay ? 'Lay Judge' : 'Jury Duty',
         text: lay

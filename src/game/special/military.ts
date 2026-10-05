@@ -586,7 +586,12 @@ export function yearlyMilitary(g: GameState): void {
     return
   }
 
-  if (chance(g, b.deployChance)) offerDeployment(g, job)
+  // A deployment order every year or two at most (not the same popup every single year).
+  const lastOrder = g.flags['special.mil.lastOrder']
+  if ((typeof lastOrder !== 'number' || lastOrder > c.age || c.age - lastOrder >= 2) && chance(g, b.deployChance)) {
+    g.flags['special.mil.lastOrder'] = c.age
+    offerDeployment(g, job)
+  }
 }
 
 // ---------------------------------------------------------------------------

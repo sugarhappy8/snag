@@ -602,7 +602,9 @@ const LUXURY_GIFTS: Gift[] = [
 
 function giftOptions(g: GameState, p: Person): Gift[] {
   const c = g.character
-  const ok = (x: Gift) => !x.adult || (c.age >= 18 && p.age >= 21)
+  // Booze gifts only for adults, and not as a default where most people don't drink.
+  const hindu = (() => { const r = getCountry(c.countryId).religions; return r.filter((x) => x === 'Hinduism').length * 2 > r.length })()
+  const ok = (x: Gift) => (!x.adult || (c.age >= 18 && p.age >= 21 && !noDrinking(g))) && !(hindu && /steak/.test(x.name))
   const take = (list: Gift[], n: number) => {
     const pool = list.filter(ok)
     const out: Gift[] = []

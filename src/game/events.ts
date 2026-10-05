@@ -3,8 +3,10 @@
 // most years, one classic random-event popup chosen by weighted, condition-aware
 // selection (age, school, job, family, prison, money) that never repeats too soon:
 // each event has a cooldown, related events share one (EVENT_KINDS), the same person
-// can't star in the same kind of event for a few years, and scenes that only make sense
-// in the US (prom, the SATs, a snow day...) are skipped elsewhere (foreignToLocale).
+// can't star in the same kind of event for a few years. Events play out in the player's own
+// country (a flood day in Jakarta, the leavers' ball in Leeds, a drink stand in Mumbai);
+// foreignToLocale stays as a backstop that skips any American-only scene that slips through
+// (it also screens the AI narrator's lines).
 //
 // Contract exports: queueFallbackYearEvents, fallbackChoiceOutcome, fallbackCustomAction,
 // fallbackObituary. The event data lives in src/game/events/*.ts.

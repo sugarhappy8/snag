@@ -903,7 +903,10 @@ export function yearlyAthlete(g: GameState): void {
     addFame(g, 5)
     addStat(g, 'happiness', 20)
     if (doping) g.flags['special.athlete.lance'] = true
-    log(g, `The ${d.team} won the ${league.name} championship!`, 'good')
+    // Back-to-back titles read as a dynasty, not as the same line twice.
+    const repeat = g.flags['special.athlete.lastTitle'] === c.age - 1
+    g.flags['special.athlete.lastTitle'] = c.age
+    log(g, repeat ? `The ${d.team} won the ${league.name} championship again! Back-to-back!` : `The ${d.team} won the ${league.name} championship!`, 'good')
     remember(g, `Won the ${league.name} championship with the ${d.team}.`)
     say(g, 'Champions!', `The ${d.team} won the ${league.name} championship! ${statLine} You were doused in a cooler of sports drink.`, '\u{1F3C6}', 'good')
   } else {
