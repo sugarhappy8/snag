@@ -202,6 +202,16 @@ describe('validators', () => {
     expect(validateEffects('garbage').happiness).toBe(0)
   })
 
+  it('reads "nobody died" / "not arrested" as nothing happening', () => {
+    for (const death of ['No one died.', 'None (survived)', 'nobody', 'The player survives', 'N/A', 'not applicable']) {
+      expect(validateEffects({ death }).death, death).toBe('')
+    }
+    for (const arrest of ['Not arrested', 'no arrest', 'None']) expect(validateEffects({ arrest }).arrest, arrest).toBeNull()
+    expect(validateEffects({ condition: { name: 'No injury', kind: 'injury' } }).condition).toBeNull()
+    expect(validateEffects({ death: 'Heart attack', arrest: 'Shoplifting' })).toMatchObject({ death: 'Heart attack', arrest: { crime: 'Shoplifting' } })
+    expect(validateEffects({ death: 'Nosedived off a cliff' }).death).toBe('Nosedived off a cliff')
+  })
+
   it('validates outcomes', () => {
     const o = validateOutcome({ title: 'Ouch', emoji: '🤕', text: 'You fell off the slide.', log: 'i fell off the slide', effects: { health: -5 } })
     expect(o).toMatchObject({ title: 'Ouch', text: 'You fell off the slide.', log: 'I fell off the slide.' })

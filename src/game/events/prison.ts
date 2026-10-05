@@ -123,7 +123,7 @@ export const PRISON_EVENTS = defineEvents([
     },
     resolve: {
       congrats: (g, x) => say(g, x, 'Fan club', `You slow-clapped. ${cm(x)} took a bow and told you the parts the news left out.`, `I congratulated my cellmate ${cm(x)} after seeing them on the news.`, { rel: 8, behavior: -2 }, 'neutral', '👏'),
-      dumb: (g, x) => say(g, x, 'Poker face', `You pretended not to recognize ${cm(x)} on TV. ${x.p ? pr(x.p) : 'They'} looked relieved.`, `While watching the news with my cellmate, I pretended not to notice they were the subject of the story.`, { rel: 3 }),
+      dumb: (g, x) => say(g, x, 'Poker face', `You pretended not to recognize ${cm(x)} on TV. ${x.p ? pr(x.p).He : 'They'} looked relieved.`, `While watching the news with my cellmate, I pretended not to notice they were the subject of the story.`, { rel: 3 }),
       channel: (g, x) => say(g, x, 'Channel surfing', `You changed the channel to a cooking show. ${cm(x)} seemed a little disappointed nobody was impressed.`, 'I changed the channel when my cellmate showed up on the news.', { rel: -2 }),
     },
   },

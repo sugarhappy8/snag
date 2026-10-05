@@ -1,6 +1,8 @@
-// Smaller Activities entries: Surrender (turn yourself in when the police are after you),
+// Smaller Activities entries: Turn Yourself In (when the police are after you), Surrender
+// (give up on this life, like the white-flag button at the bottom of the real game's list),
 // Pray, and the Sweepstakes.
 import { arrestPlayer } from '../crime'
+import { killCharacter } from '../death'
 import {
   addHidden,
   addMoney,
@@ -8,6 +10,8 @@ import {
   addStat,
   count,
   currentPartner,
+  currentLogYear,
+  fullName,
   log,
   remember,
   spend,
@@ -56,7 +60,7 @@ export function canSurrender(g: GameState): boolean {
 function surrender(g: GameState): void {
   const c = g.character
   if (!canSurrender(g)) {
-    result(g, 'Surrender', "Nobody is looking for you. The desk sergeant told you to go home.", '\u{1F46E}')
+    result(g, 'Turn Yourself In', "Nobody is looking for you. The desk sergeant told you to go home.", '\u{1F46E}')
     return
   }
   count(g, 'surrendered')
@@ -97,13 +101,36 @@ function surrender(g: GameState): void {
 export const surrenderAction: MenuAction = {
   type: 'action',
   id: 'surrender',
-  label: 'Surrender',
-  emoji: '\u{1F3F3}\u{FE0F}',
+  label: 'Turn Yourself In',
+  emoji: '\u{1F46E}',
   subtitle: (g) => (fugitive(g) ? 'Turn yourself in (escaped convict)' : `Turn yourself in · Wanted ${'★'.repeat(Math.max(0, Math.min(5, g.character.wantedLevel)))}`),
   visible: canSurrender,
   disabledReason: (g) => gate(g, { minAge: 10 }),
   confirm: () => 'Turn yourself in to the police? You will be arrested and stand trial.',
   run: surrender,
+}
+
+/** Give up on this life: it ends right away, with the death screen and the Wasteful ribbon. */
+export function surrenderLife(g: GameState): void {
+  const c = g.character
+  if (!c.alive) return
+  g.flags.surrendered = true
+  killCharacter(g, 'Surrender')
+  // killCharacter writes "I died from surrender."; the journal should just say it plainly.
+  const entries = currentLogYear(g).entries
+  const last = entries[entries.length - 1]
+  if (last && /^I died from surrender\.$/.test(last.text)) last.text = 'I surrendered.'
+}
+
+export const surrenderLifeAction: MenuAction = {
+  type: 'action',
+  id: 'surrenderLife',
+  label: 'Surrender',
+  emoji: '\u{1F3F3}\u{FE0F}',
+  subtitle: 'Give up on this life',
+  visible: (g) => g.character.alive,
+  confirm: (g) => `Don't end the life of ${fullName(g.character)}! Surrender now and this life is over for good.`,
+  run: surrenderLife,
 }
 
 // ---------------------------------------------------------------------------

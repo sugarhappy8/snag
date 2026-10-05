@@ -1,6 +1,6 @@
 // Top-level menus for the bottom bar. Each feature module exports its own MenuGroup;
 // this file only arranges them.
-import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, nightlifeMenu, vacationMenu } from './activities'
+import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, nightlifeMenu, surrenderLifeAction, vacationMenu } from './activities'
 import { assetsMenu, shoppingMenu } from './assets'
 import { occupationMenu } from './careers'
 import { inPrison, queueAi } from './core'
@@ -42,7 +42,7 @@ export const activitiesMenu: MenuGroup = {
   emoji: '\u{1F3AF}',
   children: (g: GameState): MenuNode[] => {
     if (inPrison(g)) {
-      return [doAnythingAction, ...prisonMenu.children(g), mindBodyMenu, doctorMenu]
+      return [doAnythingAction, ...prisonMenu.children(g), mindBodyMenu, doctorMenu, surrenderLifeAction]
     }
     const all: MenuNode[] = [
       adoptionMenu,
@@ -63,6 +63,7 @@ export const activitiesMenu: MenuGroup = {
       vacationMenu,
       ...miscActivities,
     ]
-    return [doAnythingAction, ...sortByLabel(all)]
+    // Like the real game, Surrender sits on its own at the very bottom of the list.
+    return [doAnythingAction, ...sortByLabel(all), surrenderLifeAction]
   },
 }

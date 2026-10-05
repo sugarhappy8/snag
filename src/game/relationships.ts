@@ -1574,6 +1574,7 @@ function exoticAttack(g: GameState, pet: Person): void {
   if (victims.length && chance(g, 0.4)) {
     const v = pick(g, victims)
     v.alive = false
+    v.livesWithPlayer = false
     v.causeOfDeath = `Killed by ${pet.firstName}`
     v.data.diedAge = g.character.age
     addStat(g, 'happiness', -randInt(g, 5, 10))
@@ -1769,6 +1770,7 @@ defineScript('rel.pet.escape', (g, choice, data) => {
     notice(g, 'Missing Pet', choice === 'search' ? `You found ${pet.firstName} ${pick(g, ['hiding under a neighbor\'s porch', 'at the park, eating a sandwich that was not theirs', 'two streets away, living their best life'])}!` : `A kind stranger brought ${pet.firstName} home!`, { emoji: '\u{1F43E}', tone: 'good' })
   } else if (dead) {
     pet.alive = false
+    pet.livesWithPlayer = false
     pet.causeOfDeath = 'Escaped From Home'
     pet.data.diedAge = g.character.age
     addStat(g, 'happiness', -randInt(g, 5, 10))
@@ -2829,6 +2831,7 @@ defineScript('rel.pet.rabies', (g, choice, data) => {
   if (!p || !p.alive) return
   if (choice === 'euthanize') {
     p.alive = false
+    p.livesWithPlayer = false
     p.causeOfDeath = 'Euthanasia'
     p.data.diedAge = g.character.age
     addStat(g, 'happiness', -randInt(g, 5, 10))
@@ -3299,7 +3302,7 @@ function statusInfo(g: GameState, p: Person): MenuInfo | null {
   if (p.data.disowned === true) parts.push('Disowned')
   if (p.data.adopted === true) parts.push('Adopted')
   if (p.data.married === true && typeof p.data.spouseName === 'string' && !isRomantic(p)) parts.push(`Married to ${p.data.spouseName}`)
-  if (p.livesWithPlayer) parts.push('Lives with you')
+  // "Lives with you" is shown as a chip in the person sheet header, so it isn't repeated here.
   if (!parts.length) return null
   return { type: 'info', id, emoji: '\u{2139}\u{FE0F}', text: parts.join(' · ') }
 }

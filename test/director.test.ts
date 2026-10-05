@@ -254,6 +254,15 @@ describe('yearEvents', () => {
     expect((chatBodies()[0].response_format as { json_schema: { name: string } }).json_schema.name).toBe('year_log')
   })
 
+  it("skips repeated log lines (within the reply, this year's and last year's log)", async () => {
+    const g = seedWith(10, false)
+    g.log.push({ age: 9, year: g.year - 1, entries: [{ id: 'l1', text: 'I collected 40 rocks.', tone: 'ai' }] })
+    g.log.push({ age: 10, year: g.year, entries: [{ id: 'l2', text: 'I lost a tooth!', tone: 'ai' }] })
+    chatQueue.push(chatJsonReply({ log: ['I built a fort.', 'i built a FORT!', 'I collected 40 rocks'] }))
+    const out = await run(g, { type: 'yearEvents' })
+    expect(out.log[out.log.length - 1].entries.map((e) => e.text)).toEqual(['I lost a tooth!', 'I built a fort.'])
+  })
+
   it('strips <think> blocks and code fences', async () => {
     const g = seedWith(10, true)
     chatQueue.push(chat(`<think>Let me plan a fun event for a kid. {"draft": true}</think>\n\`\`\`json\n${JSON.stringify(goodYear)}\n\`\`\``, 'stop', { reasoning_content: 'ignored' }))
@@ -458,6 +467,7 @@ describe('errors', () => {
       }),
     )
     await expect(runAiTask(familyGame(10), { type: 'yearEvents' }, settings, signal())).rejects.toThrow(/Can't reach LM Studio at http:\/\/lm\.test\/v1.*Start Server/)
+    await expect(runAiTask(familyGame(10), { type: 'yearEvents' }, settings, signal())).rejects.toThrow(/Enable CORS.*local network.*Allow/)
   })
 
   it('explains when no model is loaded', async () => {

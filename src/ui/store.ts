@@ -94,17 +94,31 @@ export function updateSettings(patch: Partial<Settings>): void {
   }
 }
 
+/** How long the Settings / startup connection check waits for LM Studio. */
+const CHECK_TIMEOUT_MS = 20_000
+
 export async function checkAi(): Promise<void> {
   if (state.settings.aiLevel === 'off') {
     setState({ aiStatus: 'offline', aiMessage: 'AI is turned off in settings.' })
     return
   }
   setState({ aiStatus: 'checking', aiMessage: 'Connecting to LM Studio…' })
+  // A fetch can hang (e.g. while the browser's local-network permission prompt is open):
+  // never leave the status stuck on "Connecting…".
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), CHECK_TIMEOUT_MS)
   try {
-    const res = await testConnection(state.settings)
-    setState({ aiStatus: res.ok ? 'online' : 'offline', aiMessage: res.message })
+    const res = await testConnection(state.settings, ctrl.signal)
+    if (ctrl.signal.aborted) {
+      setState({
+        aiStatus: 'offline',
+        aiMessage: `LM Studio didn't answer within ${CHECK_TIMEOUT_MS / 1000} s — make sure its server is running, and if your browser is asking whether this site may access your local network, choose Allow and test again.`,
+      })
+    } else setState({ aiStatus: res.ok ? 'online' : 'offline', aiMessage: res.message })
   } catch (err) {
     setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -187,25 +201,43 @@ export function act(mutator: (g: GameState) => void): void {
   processQueue()
 }
 
+type ModalHandler = (g: GameState, modal: ModalItem) => void
+
 /**
  * Run something that may push modals while handling the modal `id`: the modal is
  * removed and anything the handler queues jumps to the front, so follow-ups appear
  * right away instead of after the rest of the queue.
+ *
+ * A handler that throws must never leave a popup that can't be closed: the state is
+ * left untouched and `fallback` (if any) runs instead; if that fails too, the modal is
+ * simply dropped.
  */
-function handleModal(id: string, handler: (g: GameState, modal: ModalItem) => void): void {
+function handleModal(id: string, handler: ModalHandler, fallback?: ModalHandler): void {
+  for (const h of fallback ? [handler, fallback] : [handler]) {
+    try {
+      act((g) => resolveModal(g, id, h))
+      return
+    } catch (err) {
+      console.error(`Popup ${id} failed:`, err)
+    }
+  }
   act((g) => {
-    const idx = g.queue.findIndex((m) => m.id === id)
-    if (idx < 0) return
-    const [modal] = g.queue.splice(idx, 1)
-    const existing = new Set(g.queue.map((m) => m.id))
-    handler(g, modal)
-    // The handler may also rebuild the queue (e.g. dying drops pending choices), so find
-    // the new items by id rather than by position.
-    const added = g.queue.filter((m) => !existing.has(m.id))
-    if (!added.length) return
-    const rest = g.queue.filter((m) => existing.has(m.id))
-    g.queue = [...rest.slice(0, idx), ...added, ...rest.slice(idx)]
+    g.queue = g.queue.filter((m) => m.id !== id)
   })
+}
+
+function resolveModal(g: GameState, id: string, handler: ModalHandler): void {
+  const idx = g.queue.findIndex((m) => m.id === id)
+  if (idx < 0) return
+  const [modal] = g.queue.splice(idx, 1)
+  const existing = new Set(g.queue.map((m) => m.id))
+  handler(g, modal)
+  // The handler may also rebuild the queue (e.g. dying drops pending choices), so find
+  // the new items by id rather than by position.
+  const added = g.queue.filter((m) => !existing.has(m.id))
+  if (!added.length) return
+  const rest = g.queue.filter((m) => existing.has(m.id))
+  g.queue = [...rest.slice(0, idx), ...added, ...rest.slice(idx)]
 }
 
 export function ageUpAction(): void {
@@ -216,8 +248,10 @@ export function ageUpAction(): void {
 
 export function runMenuAction(action: MenuAction, input?: string): void {
   act((g) => {
-    const reason = action.disabledReason?.(g)
-    if (reason) return
+    // Re-check against the latest state: the menu may be stale (died, jailed, aged out).
+    if (!g.character.alive || g.queue.length > 0) return
+    if (action.visible && !action.visible(g)) return
+    if (action.disabledReason?.(g)) return
     action.run(g, input)
   })
 }
@@ -252,7 +286,7 @@ export function finishMinigame(id: string, result: string): void {
 // ---------------------------------------------------------------------------
 // AI processing
 
-let running: { modalId: string; controller: AbortController } | null = null
+let running: { modalId: string; controller: AbortController; skip: () => void } | null = null
 
 function abortRunning(): void {
   running?.controller.abort()
@@ -260,9 +294,15 @@ function abortRunning(): void {
   if (state.ai) setState({ ai: null })
 }
 
-/** Skip the AI work in progress and use the offline fallback instead. */
+/**
+ * Skip the AI work in progress and use the offline fallback instead. Finishes right away
+ * rather than waiting for the request to notice the abort, so Skip always works.
+ */
 export function skipAi(): void {
-  running?.controller.abort()
+  const r = running
+  if (!r) return
+  r.controller.abort()
+  r.skip()
 }
 
 function errorMessage(err: unknown): string {
@@ -278,6 +318,12 @@ const TASK_LABELS: Record<string, string> = {
   obituary: 'Writing your obituary…',
 }
 
+/** Seconds to wait for LM Studio before falling back (guards against a blank/garbled setting). */
+function timeoutMs(settings: Settings): number {
+  const sec = Number(settings.timeoutSec)
+  return (Number.isFinite(sec) && sec > 0 ? Math.min(Math.max(sec, 5), 900) : 120) * 1000
+}
+
 /** Start AI work for the head of the queue if needed. Safe to call any time. */
 export function processQueue(): void {
   const g = state.game
@@ -287,22 +333,30 @@ export function processQueue(): void {
   const settings = state.settings
 
   if (head.kind === 'aiTask') {
+    const fallback = (draft: GameState) => applyFallback(draft, head.task)
     if (settings.aiLevel === 'off') {
-      handleModal(head.id, (draft) => applyFallback(draft, head.task))
+      handleModal(head.id, fallback)
       return
     }
     const controller = new AbortController()
-    running = { modalId: head.id, controller }
+    let timedOut = false
+    running = { modalId: head.id, controller, skip: () => finishAi(head.id, fallback) }
     setState({ ai: { modalId: head.id, label: TASK_LABELS[head.task.type] ?? 'Thinking…', startedAt: Date.now() } })
-    const timer = setTimeout(() => controller.abort(), settings.timeoutSec * 1000)
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, timeoutMs(settings))
     runAiTask(g, head.task, settings, controller.signal)
       .then((apply) => {
-        if (state.aiStatus !== 'online') setState({ aiStatus: 'online', aiMessage: 'Connected to LM Studio.' })
-        finishAi(head.id, apply)
+        if (!controller.signal.aborted && state.aiStatus !== 'online') setState({ aiStatus: 'online', aiMessage: 'Connected to LM Studio.' })
+        // No-op if Skip (or a new life) already finished this task.
+        finishAi(head.id, apply, fallback)
       })
       .catch((err) => {
-        if (!controller.signal.aborted) setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
-        finishAi(head.id, (draft) => applyFallback(draft, head.task))
+        if (timedOut) {
+          setState({ aiMessage: `LM Studio took longer than ${Math.round(timeoutMs(settings) / 1000)} s, so the built-in story was used — try a smaller model or raise the timeout in Settings.` })
+        } else if (!controller.signal.aborted) setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
+        finishAi(head.id, fallback)
       })
       .finally(() => clearTimeout(timer))
     return
@@ -312,11 +366,11 @@ export function processQueue(): void {
     const wanted = settings.aiLevel === 'full' || (settings.aiLevel === 'balanced' && head.ai.when === 'balanced')
     if (!wanted) return
     const controller = new AbortController()
-    running = { modalId: head.id, controller }
+    running = { modalId: head.id, controller, skip: () => finishNarration(head.id, null) }
     setState({ ai: { modalId: head.id, label: 'Thinking…', startedAt: Date.now() } })
-    const timer = setTimeout(() => controller.abort(), settings.timeoutSec * 1000)
+    const timer = setTimeout(() => controller.abort(), timeoutMs(settings))
     narrateNotice(g, head, settings, controller.signal)
-      .then((text) => finishNarration(head.id, text))
+      .then((text) => finishNarration(head.id, controller.signal.aborted ? null : text))
       .catch((err) => {
         if (!controller.signal.aborted) setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
         finishNarration(head.id, null)
@@ -325,11 +379,11 @@ export function processQueue(): void {
   }
 }
 
-function finishAi(modalId: string, apply: (g: GameState) => void): void {
+function finishAi(modalId: string, apply: (g: GameState) => void, fallback?: (g: GameState) => void): void {
   if (running?.modalId !== modalId) return
   running = null
   setState({ ai: null })
-  handleModal(modalId, (draft) => apply(draft))
+  handleModal(modalId, (draft) => apply(draft), fallback && ((draft) => fallback(draft)))
 }
 
 function finishNarration(modalId: string, text: string | null): void {

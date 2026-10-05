@@ -597,7 +597,8 @@ export function SettingsScreen() {
             <li>
               In LM Studio’s <b>Server Settings</b>, turn on <b>Enable CORS</b> (or start it with{' '}
               <span className="al-kbd">lms server start --cors</span>). Press <b>Test connection</b> above and, if your browser asks to
-              access devices on your local network, choose <b>Allow</b>.
+              access devices on your local network, choose <b>Allow</b>. Safari may refuse to let a secure (https) page reach{' '}
+              <span className="al-kbd">http://localhost</span>; if the test keeps failing there, try Chrome, Edge or Firefox.
             </li>
           )}
           <li>Pick a narration level and start a new life. If a year takes too long, tap Skip and the built-in stories take over.</li>

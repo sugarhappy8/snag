@@ -291,8 +291,26 @@ export function toGameEffects(g: GameState, e: AiEffects, logLine = ''): GameEff
   }
   if (e.death && age >= 6) out.death = e.death
   if (e.memory) out.memory = e.memory
-  if (logLine) out.log = logLine
+  if (logLine && !recentLineKeys(g, 0).has(lineKey(logLine))) out.log = logLine
   return out
+}
+
+/** Letters and digits only, lowercased: two log lines with the same key read as a repeat. */
+export function lineKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+/** Keys of the log lines written this year and in the `previousYears` years before it. */
+function recentLineKeys(g: GameState, previousYears: number): Set<string> {
+  const keys = new Set<string>()
+  const minAge = g.character.age - previousYears
+  for (let i = g.log.length - 1; i >= 0 && g.log[i].age >= minAge; i--) {
+    for (const e of g.log[i].entries) keys.add(lineKey(e.text))
+  }
+  return keys
 }
 
 function toneOf(e: GameEffects): Tone {
@@ -342,13 +360,26 @@ const STAGE_EMOJI: Record<string, string> = {
 function applyYearEvents(draft: GameState, plan: YearPlan, result: AiYearEvents): void {
   consumeRolls(draft, plan.rolls)
   if (!draft.character.alive) return
+  // Small models often repeat themselves: skip lines already in this year's or last year's log.
+  const seen = recentLineKeys(draft, 1)
+  let logged = 0
   for (const line of result.log) {
+    const key = lineKey(line)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
     log(draft, line, 'ai')
     count(draft, 'aiEvents')
+    logged++
   }
   const ev = result.event
-  if (!ev) return
-  const person = resolvePerson(draft, ev.person)
+  if (!ev) {
+    // Nothing new at all (every line was a repeat): use the offline library instead.
+    if (!logged && result.log.length) queueFallbackYearEvents(draft)
+    return
+  }
+  // Events happen with living people only (the model sometimes brings back the dead).
+  const found = resolvePerson(draft, ev.person)
+  const person = found?.alive ? found : undefined
   const choices: ChoiceOption[] = ev.choices.slice(0, 4).map((ch, i) => ({ id: CHOICE_IDS[i], label: ch.label, ...(ch.emoji ? { emoji: ch.emoji } : {}) }))
   const stage = stageOf(draft)
   const modal: ChoiceModal = {

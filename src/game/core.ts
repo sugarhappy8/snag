@@ -272,7 +272,7 @@ export function roleLabel(g: GameState): string {
   }
   if (c.partTimeJob) return c.partTimeJob.title
   if (c.retired) return 'Retired'
-  if (c.age < 5) return lifeStage(c.age) === 'baby' ? 'Baby' : 'Toddler'
+  if (c.age < 5) return lifeStage(c.age) === 'baby' ? 'Infant' : 'Toddler'
   if (c.age < 18) return 'Kid'
   return 'Unemployed'
 }

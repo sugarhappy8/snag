@@ -1237,7 +1237,7 @@ function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
           id: `${slot}.retire`,
           label: 'Retire',
           emoji: '\u{1F3D6}\u{FE0F}',
-          subtitle: 'Collect a pension',
+          subtitle: 'Consider retirement',
           disabledReason: (x) => {
             const r = blocked(x)
             if (r) return r
@@ -1252,7 +1252,7 @@ function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
           run: (x) => retire(x),
         })
       }
-      nodes.push({ type: 'action', id: `${slot}.quit`, label: 'Quit', emoji: '\u{1F6AA}', subtitle: 'Tender your resignation', disabledReason: blocked, confirm: () => `Are you sure you want to quit your job as ${j.title}?`, run: (x) => quitJob(x, slot) })
+      nodes.push({ type: 'action', id: `${slot}.quit`, label: 'Resign', emoji: '\u{1F6AA}', subtitle: 'Tender your resignation', disabledReason: blocked, confirm: () => `Are you sure you want to quit your job as ${j.title}?`, run: (x) => quitJob(x, slot) })
       return nodes
     },
   }

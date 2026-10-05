@@ -534,6 +534,7 @@ export const FAMILY_EVENTS = defineEvents([
         } else {
           if (x.p) {
             x.p.alive = false
+            x.p.livesWithPlayer = false
             x.p.causeOfDeath = 'Hit by a Car'
           }
           say(g, x, ['A tragedy', 'Not my pet!'], `You found ${nm(x)} on the side of the road. It had been hit by a car.`, `My pet, ${nm(x)}, escaped and was hit by a car.`, { happiness: -20 }, 'bad', '🕯️')

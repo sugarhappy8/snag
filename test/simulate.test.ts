@@ -98,6 +98,8 @@ function collectActions(g: GameState, nodes: MenuNode[], depth = 0, out: MenuAct
     if (n.type === 'info' || n.type === 'heading') continue
     if (n.visible && !n.visible(g)) continue
     if (n.disabledReason && n.disabledReason(g)) continue
+    // A random player shouldn't simply give up: Surrender ends the life on the spot.
+    if (n.type === 'action' && n.id === 'surrenderLife') continue
     if (n.type === 'action') out.push(n)
     else collectActions(g, n.children(g), depth + 1, out)
   }

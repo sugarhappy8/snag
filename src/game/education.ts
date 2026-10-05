@@ -539,7 +539,7 @@ function enrollIn(g: GameState, level: SchoolLevel, opts: EnrollOpts = {}): Enro
     else if (level === 'university') totalYears = UNIVERSITY_YEARS
     else if (level === 'graduate' && opts.track) totalYears = PROGRAMS[opts.track].years
   }
-  const startGrades = opts.grades ?? clamp(Math.round(c.stats.smarts * 0.7 + randInt(g, 5, 25)))
+  const startGrades = opts.grades ?? clamp(Math.round(c.stats.smarts * 0.5 + randInt(g, 35, 55)))
   const cur: Enrollment = {
     level,
     school,
@@ -913,7 +913,8 @@ function advanceSchoolYear(g: GameState, sys: SchoolSystem): void {
 function updateGrades(g: GameState, cur: Enrollment): void {
   if (cur.level === 'preschool') return
   const c = g.character
-  let target = c.stats.smarts * 0.75 + 15
+  // Smarts 30 → D-, 50 → C-, 70 → B-, 90 → A-. (0.75x+15 left most average kids with an F.)
+  let target = c.stats.smarts * 0.5 + 45
   const clique = cliqueOf(cur)
   if (clique === 'brainy' || clique === 'nerds') target += 6
   if (clique === 'troublemakers' || clique === 'popular') target -= 5

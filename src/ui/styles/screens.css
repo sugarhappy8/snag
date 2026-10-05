@@ -809,7 +809,9 @@
   position: relative;
   display: inline-block;
   margin: 8px 0 24px;
-  animation: ribbon-pop 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) 0.4s both;
+  /* No delay and no fade from 0: the badge is visible from the first frame (screenshots,
+     slow devices, a tab opened in the background) and only the pop is animated. */
+  animation: ribbon-pop 0.8s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
 .ribbon-tail {
@@ -855,14 +857,12 @@
 
 @keyframes ribbon-pop {
   0% {
-    opacity: 0;
-    transform: scale(0.2) rotate(-40deg);
+    transform: scale(0.6) rotate(-25deg);
   }
   70% {
     transform: scale(1.12) rotate(6deg);
   }
   100% {
-    opacity: 1;
     transform: scale(1) rotate(0);
   }
 }

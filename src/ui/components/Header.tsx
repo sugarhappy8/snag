@@ -44,6 +44,10 @@ export function Header({ g, onProfile }: HeaderProps) {
   return (
     <header className="hdr">
       <div className="hdr-top">
+        {/* Main menu (New Life, Ribbons, Graveyard): the life is saved and waits under "Continue Life". */}
+        <button className="hdr-icon hdr-menu" aria-label="Main menu" title="Main menu" onClick={() => goTo('home')}>
+          ☰
+        </button>
         <div className="hdr-brand">
           AnotherLife<span className="hdr-brand-year">{g.year}</span>
         </div>

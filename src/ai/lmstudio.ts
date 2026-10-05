@@ -4,10 +4,10 @@
 // which model is loaded when the player left "Model" blank — LM Studio's native
 // GET /api/v1/models (0.4+) or /api/v0/models (0.3.x).
 //
-// The default base URL is '/lmstudio/v1' (the Vite dev/preview proxy → localhost:1234),
-// so no CORS setup is needed; absolute URLs such as http://localhost:1234/v1 also work
-// when "Enable CORS" is on in LM Studio's server settings.
-import type { Settings } from '../settings'
+// Under "npm run dev" the default base URL is '/lmstudio/v1' (the Vite proxy → localhost:1234),
+// so no CORS setup is needed. The hosted build calls http://localhost:1234/v1 directly, which
+// needs "Enable CORS" in LM Studio and the browser's local-network-access permission.
+import { HAS_DEV_PROXY, LMSTUDIO_DIRECT_URL, LMSTUDIO_PROXY_URL, type Settings } from '../settings'
 import { JsonParseError, parseJsonLoose, stripThinking } from './json'
 import { correctionPrompt } from './prompts'
 import { SchemaError, type JsonSchema } from './schemas'
@@ -78,7 +78,7 @@ export function structuredOutputDisabled(settings: Settings): boolean {
 /** Clean up what the player typed: add http:// and /v1 when missing, drop trailing slashes. */
 export function normalizeBaseUrl(raw: string): string {
   let url = (raw ?? '').trim()
-  if (!url) return '/lmstudio/v1'
+  if (!url) return HAS_DEV_PROXY ? LMSTUDIO_PROXY_URL : LMSTUDIO_DIRECT_URL
   if (!url.startsWith('/') && !/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) url = `http://${url}`
   url = url.replace(/\/+$/, '')
   if (/^[a-z][a-z0-9+.-]*:\/\/[^/]+$/i.test(url)) url += '/v1'
@@ -104,9 +104,20 @@ function headers(settings: Settings, json: boolean): Record<string, string> {
 }
 
 function unreachable(base: string): LmStudioError {
-  const where = isRelative(base) ? `${base} (the dev-server proxy to http://localhost:1234)` : base
-  const cors = isRelative(base) ? '' : ' and turn on "Enable CORS" in Server Settings'
-  return new LmStudioError(`Can't reach LM Studio at ${where} — open LM Studio → Developer → Start Server${cors}.`, 'unreachable')
+  if (isRelative(base)) {
+    const hint = HAS_DEV_PROXY
+      ? 'open LM Studio → Developer → Start Server.'
+      : `that address only works under "npm run dev" — set the server URL in Settings to ${LMSTUDIO_DIRECT_URL}.`
+    return new LmStudioError(`Can't reach LM Studio at ${base} (the dev-server proxy to http://localhost:1234) — ${hint}`, 'unreachable')
+  }
+  // From the hosted site a failed fetch means: server not running, CORS off, or the browser
+  // blocked the request to a local address (Chrome asks "access other apps and services on this device").
+  return new LmStudioError(
+    `Can't reach LM Studio at ${base} — open LM Studio → Developer → Start Server, turn on "Enable CORS" in Server Settings, ` +
+      `and when your browser asks to let this site access apps or devices on your local network, choose Allow ` +
+      `(if you blocked it earlier, re-allow it from the site settings next to the address bar).`,
+    'unreachable',
+  )
 }
 
 function errorText(body: unknown): string {
@@ -163,6 +174,7 @@ function httpError(status: number, body: unknown, text: string, base: string, se
       status,
     )
   }
+  if (isRelative(base) && !HAS_DEV_PROXY && (status === 404 || status === 405)) return unreachable(base)
   if (status === 404 && !msg) {
     return new LmStudioError(`No LM Studio API at ${base} (HTTP 404) — check the server URL in Settings (it usually ends in /v1).`, 'http', status)
   }

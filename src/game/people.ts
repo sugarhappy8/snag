@@ -157,8 +157,21 @@ export function createPerson(g: GameState, opts: PersonOptions): Person {
     notes: [],
     data: { ...(opts.data ?? {}), ...(opts.skinTone !== undefined ? { skinTone: opts.skinTone } : {}) },
   }
+  // A randomly rolled name must not clash with the player or someone already in their life
+  // (two "Carmen Medina" classmates, a sibling named exactly like you).
+  if (opts.relation !== 'pet' && (opts.firstName === undefined || opts.lastName === undefined)) {
+    for (let i = 0; i < 5 && nameTaken(g, person); i++) {
+      if (opts.firstName === undefined) person.firstName = randomFirstName(g, countryId, gender)
+      else person.lastName = randomLastName(g, countryId)
+    }
+  }
   g.people.push(person)
   return person
+}
+
+function nameTaken(g: GameState, person: Person): boolean {
+  const same = (x: { firstName: string; lastName: string }) => x.firstName === person.firstName && x.lastName === person.lastName
+  return same(g.character) || g.people.some((p) => p.alive && p.relation !== 'pet' && same(p))
 }
 
 export function pickDistinct<T>(g: GameState, items: readonly T[], n: number): T[] {

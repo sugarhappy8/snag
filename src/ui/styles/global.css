@@ -765,6 +765,13 @@ label {
   -webkit-tap-highlight-color: transparent;
 }
 
+.hdr-menu {
+  color: var(--header-text, #fff);
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .hdr-icon:hover {
   background: rgba(255, 255, 255, 0.26);
 }

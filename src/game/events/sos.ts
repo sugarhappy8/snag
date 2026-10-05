@@ -320,6 +320,7 @@ function lostPet(g: GameState, x: Ctx, why: string, paid = 0): void {
   const pet = x.p
   if (pet) {
     pet.alive = false
+    pet.livesWithPlayer = false
     pet.causeOfDeath = 'Kidnapped'
   }
   say(g, x, ['A tragedy', 'Gone'], `${why} ${pet?.firstName ?? 'Your pet'} is presumed dead.`, `My pet, ${pet?.firstName ?? ''}, was kidnapped and never returned.`, { happiness: -20, money: -paid }, 'bad', '🕯️')

@@ -36,7 +36,9 @@ export function writeObituary(g: GameState): string {
   const sentences: string[] = []
 
   // Opening.
-  if (c.prison || occupation === 'Prisoner') {
+  if (g.flags.surrendered === true && cause === 'surrender') {
+    sentences.push(pick(g, [`${name} gave up on life at the age of ${age} in ${place}.`, `${name} surrendered at the age of ${age} in ${place}, leaving a lot of potential on the table.`]))
+  } else if (c.prison || occupation === 'Prisoner') {
     sentences.push(pick(g, [`${name} died behind bars${c.prison ? ` at ${c.prison.name}` : ''} at the age of ${age} from ${cause}.`, `Inmate ${name}, ${age}, died of ${cause} while serving time${c.prison ? ` at ${c.prison.name}` : ''}.`]))
   } else if (age < 1) {
     sentences.push(`${name} lived only a few short months in ${place} before dying from ${cause}.`)
@@ -51,7 +53,7 @@ export function writeObituary(g: GameState): string {
   // Career and education.
   const history = c.careerHistory.filter((r) => r.reason !== 'graduated')
   const lastJob = history.length ? history[history.length - 1] : undefined
-  const job = occupation && !['Unemployed', 'Deceased', 'Prisoner', 'Kid', 'Baby', 'Toddler', 'Student', 'Preschooler', 'Retired', 'University Student', 'Graduate Student'].includes(occupation) ? occupation : c.retired && lastJob ? lastJob.title : ''
+  const job = occupation && !['Unemployed', 'Deceased', 'Prisoner', 'Kid', 'Baby', 'Infant', 'Toddler', 'Student', 'Preschooler', 'Retired', 'University Student', 'Graduate Student'].includes(occupation) ? occupation : c.retired && lastJob ? lastJob.title : ''
   if (age >= 16) {
     if (c.retired && job) sentences.push(pick(g, [`${P.He} retired after a career as ${article(job)} ${job}.`, `${P.He} spent ${P.his} working years as ${article(job)} ${job} before a well-earned retirement.`]))
     else if (job) {

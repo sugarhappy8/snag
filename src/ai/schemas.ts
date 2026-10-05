@@ -274,6 +274,13 @@ function isNone(s: string): boolean {
   return NONE_WORDS.has(s.trim().toLowerCase())
 }
 
+/** "No one died", "not arrested", "None (survived)": small models' ways of saying "nothing happened". */
+const NEGATIVE_RE = /^\s*(?:no|none|nobody|nothing|not|never|n\/a)\b|\b(?:survived?|survives|alive|unharmed|didn'?t die|did not die|doesn'?t die|does not die|no death|not (?:dead|arrested|charged|injured|sick|applicable))\b/i
+
+function isNegative(s: string): boolean {
+  return isNone(s) || NEGATIVE_RE.test(s)
+}
+
 /** A first-person life-log line: one line, no bullets / "Age 5:" prefixes, ends with punctuation. */
 export function logLine(v: unknown, max = 140): string {
   let s = str(v, max * 2).split('\n')[0]
@@ -412,17 +419,17 @@ export function validateEffects(v: unknown): AiEffects {
   if (isObj(v.condition)) {
     const name = str(v.condition.name, 40)
     const kind = own(KIND_ALIASES, str(v.condition.kind, 20).toLowerCase())
-    if (name && !isNone(name) && kind) condition = { name: name[0].toUpperCase() + name.slice(1), kind, severity: int(v.condition.severity, 1, 100, 25) }
+    if (name && !isNegative(name) && kind) condition = { name: name[0].toUpperCase() + name.slice(1), kind, severity: int(v.condition.severity, 1, 100, 25) }
   }
 
   let arrest: AiEffects['arrest'] = null
   const a = v.arrest
   const crime = isObj(a) ? str(field(a, 'crime', 'charge', 'reason'), 40) : typeof a === 'string' ? str(a, 40) : a === true ? 'Disorderly Conduct' : ''
-  if (crime && !isNone(crime)) arrest = { crime: crime[0].toUpperCase() + crime.slice(1), severity: isObj(a) ? int(a.severity, 1, 5, 2) : 2 }
+  if (crime && !isNegative(crime)) arrest = { crime: crime[0].toUpperCase() + crime.slice(1), severity: isObj(a) ? int(a.severity, 1, 5, 2) : 2 }
 
   const d = v.death
   let death = typeof d === 'string' ? str(d, 40).replace(/[.!]+$/, '') : d === true ? 'Misadventure' : ''
-  if (isNone(death)) death = ''
+  if (isNegative(death)) death = ''
 
   const memory = str(v.memory, 120)
   return {

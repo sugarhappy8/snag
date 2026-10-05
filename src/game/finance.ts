@@ -377,6 +377,14 @@ export function livingCost(g: GameState): number {
   return Math.round((3_000 + 1_500 * kids) * Math.max(0.2, wealth))
 }
 
+/** True (and remembered) when a recurring bill is new or at least 25% off the last amount logged. */
+function changedALot(g: GameState, key: string, amount: number): boolean {
+  const last = num(g.flags[key])
+  if (last > 0 && Math.abs(amount - last) < last * 0.25) return false
+  g.flags[key] = amount
+  return true
+}
+
 /** Taxes, rent, living costs, loans and the consequences of going broke. Runs after career & special. */
 export function yearlyFinance(g: GameState): void {
   const c = g.character
@@ -390,7 +398,9 @@ export function yearlyFinance(g: GameState): void {
   if (tax > 0) {
     addMoney(g, -tax)
     count(g, 'taxesPaid', tax)
-    if (tax >= 50) log(g, pick(g, TAX_LINES)(formatMoney(tax)))
+    // The journal is for the story, not a bank statement: mention taxes the first time and
+    // when the bill changes a lot, not every single year.
+    if (tax >= 50 && changedALot(g, 'lastTaxLogged', tax)) log(g, pick(g, TAX_LINES)(formatMoney(tax)))
   }
 
   // 2. Rent. Landlords don't hold apartments for inmates.
@@ -402,7 +412,7 @@ export function yearlyFinance(g: GameState): void {
       const rent = Math.max(0, Math.round(c.residence.rent ?? 0))
       if (rent > 0) {
         addMoney(g, -rent)
-        log(g, pick(g, RENT_LINES)(formatMoney(rent)))
+        if (changedALot(g, 'lastRentLogged', rent)) log(g, pick(g, RENT_LINES)(formatMoney(rent)))
       }
     }
   }

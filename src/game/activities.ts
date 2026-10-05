@@ -7,7 +7,7 @@ import { identityMenu } from './activities/identity'
 import { lawsuitMenu } from './activities/lawsuit'
 import { licensesMenu } from './activities/licenses'
 import { mindBodyMenu } from './activities/mindBody'
-import { prayMenu, surrenderAction, sweepstakesAction } from './activities/misc'
+import { prayMenu, surrenderAction, surrenderLifeAction, sweepstakesAction } from './activities/misc'
 import { moviesMenu, zooMenu } from './activities/movies'
 import { nightlifeMenu } from './activities/nightlife'
 import { rehabMenu } from './activities/rehab'
@@ -19,10 +19,13 @@ import type { MenuNode } from './types'
 
 export { emigrateMenu, licensesMenu, mindBodyMenu, moviesMenu, nightlifeMenu, vacationMenu }
 
+/** "Surrender": end this life. menus.ts pins it to the very bottom of Activities. */
+export { surrenderLifeAction }
+
 /**
  * The remaining top-level Activities entries (menus.ts sorts everything by label):
- * Charity, Identity, Lawsuit, Plastic Surgery, Pray, Rehab, Salon & Spa, Surrender
- * (only while wanted), Sweepstakes, Will & Testament and the Zoo.
+ * Charity, Identity, Lawsuit, Plastic Surgery, Pray, Rehab, Salon & Spa, Sweepstakes,
+ * Turn Yourself In (only while wanted), Will & Testament and the Zoo.
  */
 export const miscActivities: MenuNode[] = [
   charityMenu,
