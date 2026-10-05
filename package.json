@@ -1,32 +1,27 @@
 {
-  "name": "snagdeals",
-  "version": "1.0.0",
-  "description": "SnagDeals: one wishlist across game stores with price-target email alerts.",
+  "name": "anotherlife",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "An AI-narrated life simulator powered by your local LLM in LM Studio.",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:migrate": "wrangler d1 migrations apply snagdeals --remote",
-    "db:migrate:local": "wrangler d1 migrations apply snagdeals --local",
-    "typecheck": "tsc -p .",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/sugarhappy8/snag.git"
-  },
-  "bugs": {
-    "url": "https://github.com/sugarhappy8/snag/issues"
-  },
-  "homepage": "https://github.com/sugarhappy8/snag#readme",
   "dependencies": {
-    "hono": "^4.13.12"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261002.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3",
-    "wrangler": "^4.146.0"
-  },
-  "private": true,
-  "type": "module"
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  }
 }
