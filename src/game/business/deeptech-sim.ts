@@ -116,7 +116,10 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const costs = cogs + overhead + keyStaff + marketing + interest + insurance + rd + compute
   const delta = netRevenue + credit - costs
   const pbt0 = delta - b.yearCosts - spent + b.yearIncome + grants
-  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + t.venture + delta)))
+  // Investors pay a founder a normal engineer's salary at most; anything above that has to come
+  // out of the company's own cash.
+  const fromInvestors = Math.min(t.venture, localEcon(ind, b.countryId, b.city).wage)
+  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, Math.max(0, b.cash + delta) + fromInvestors)))
   const pbt = pbt0 - ownerPay
   const corpTax = pbt > 0 ? corporateTax(b.countryId, pbt) : 0
   const net = pbt - corpTax

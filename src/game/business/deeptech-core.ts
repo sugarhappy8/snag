@@ -45,7 +45,7 @@ export function techOf(b: BizState): TechState {
 export function rdScale(countryId: string, capex = false): number {
   const labor = clampN(marketOf(countryId).laborCost, 0.05, 2)
   const local = Math.pow(Math.min(1.6, labor), 0.8)
-  return capex ? 0.75 + 0.25 * local : 0.4 + 0.6 * local
+  return capex ? 0.75 + 0.25 * local : 0.3 + 0.7 * local
 }
 
 /** Revenue of one "market unit" at home: going price times what one strong product line sells. */
@@ -152,7 +152,7 @@ export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number)
   return {
     demand: clampN(1 + amp * z, 0.6, 1.5),
     price: ind === 'semiconductor' ? clampN(1 + 0.6 * amp * z, 0.8, 1.2) : 1,
-    value: clampN(1 + 1.5 * amp * z, 0.5, 1.9),
+    value: clampN(1 + 1.5 * amp * z, 0.6, 1.6),
     z,
     label: z > 0.8 ? c.up : z < -0.8 ? c.down : 'steady',
   }
@@ -372,7 +372,7 @@ export function sideRevenue(b: BizState, t: TechState, year: number): { total: n
 export function headCount(b: BizState, t: TechState, produced: number): number {
   const def = industryDef(b.industry)
   const sites = totalOutlets(b)
-  const rd = sites * def.staff * (0.3 + 0.12 * t.stage) * paceOf(t.pace).team
+  const rd = sites * def.staff * (0.15 + 0.12 * t.stage) * paceOf(t.pace).team
   const prod = produced > 0 ? def.staff * 0.6 * Math.pow(produced / Math.max(1, def.demand), def.staffScale) : 0
   const plant = t.plant * def.staff * 0.4
   return Math.max(2, Math.round(rd + prod + plant))
@@ -428,7 +428,7 @@ export function refreshTechValue(g: GameState, b: BizState, t: TechState): void 
   const def = industryDef(ind)
   const d = DEEP_TECH[ind]
   const cyc = industryCycle(g, ind, g.year).value
-  const hypeMult = (0.6 + t.hype / 110) * cyc
+  const hypeMult = (0.6 + t.hype / 150) * cyc
   const h = b.history
   const revenue = b.last ? b.last.revenue : 0
   const prev = h.length >= 1 ? h[h.length - 1].revenue : 0
@@ -441,7 +441,7 @@ export function refreshTechValue(g: GameState, b: BizState, t: TechState): void 
     for (const x of t.drugs) {
       if (x.failed || x.phase >= 4) continue
       const odds = APPROVAL_ODDS[Math.max(0, Math.min(4, x.phase))] * (0.75 + x.quality / 200)
-      pipeline += x.peak * unit * odds * 1.6 * x.royalty
+      pipeline += x.peak * unit * odds * x.royalty
     }
     pipeline *= hypeMult
   }

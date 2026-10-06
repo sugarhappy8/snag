@@ -235,8 +235,8 @@ export function bestProgram(g: GameState, a: Asset, b: BizState, t: TechState): 
   for (const def of PROGRAMS[ind]) {
     if (programBlock(b, t, def)) continue
     const yearly = programCost(b, t, def)
-    // Don't bet the company: the program must fit in the money on hand with a year to spare.
-    if (yearly > funds * (runway >= 2 ? 0.6 : 0.35)) continue
+    // Don't bet the company: the first year of the program must fit in the money on hand.
+    if (yearly > funds * (runway >= 1 ? 0.9 : 0.5)) continue
     const sc = programScore(b, t, def)
     if (sc > score) {
       score = sc
@@ -253,7 +253,7 @@ export function bestTrial(b: BizState, t: TechState, funds: number): Drug | null
   for (const d of t.drugs) {
     if (trialBlock(b, t, d)) continue
     const cost = trialCost(b, d)
-    if (cost > funds * 0.5) continue
+    if (cost > funds * 0.9) continue
     const sc = (trialOdds(d) * d.peak * (1 + d.phase)) / Math.max(1, cost)
     if (sc > score) {
       score = sc

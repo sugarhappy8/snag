@@ -48,7 +48,7 @@ export function seedOffer(g: GameState, ind: DeepTechIndustry, countryId: string
   const skill = founderSkill(g, ind)
   const track = Math.min(0.06, (g.counters.businessesSold ?? 0) * 0.02 + (g.counters.businessIpos ?? 0) * 0.03)
   const fit = clampN(0.8 + skill / 250 + (background ? 0.1 : 0) + g.character.hidden.fame / 500, 0.7, 1.35)
-  const amount = Math.round((DEEP_TECH[ind].rounds[1] * (0.3 + 0.7 * depth) * rdScale(countryId) * fit * (0.9 + rand(g) * 0.2)) / 10_000) * 10_000
+  const amount = Math.round((DEEP_TECH[ind].rounds[1] * (0.5 + 0.5 * depth) * Math.pow(rdScale(countryId), 0.7) * fit * (0.9 + rand(g) * 0.2)) / 10_000) * 10_000
   const equity = clampN(0.24 - (fit - 1) * 0.15 - track + (1 - depth) * 0.04, 0.12, 0.32)
   return { amount: Math.max(50_000, amount), equity: Math.round(equity * 100) / 100, investor }
 }

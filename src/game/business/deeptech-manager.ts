@@ -5,7 +5,7 @@ import { log } from '../core'
 import { chance } from '../rng'
 import type { Asset, GameState } from '../types'
 import { PROGRAMS, programDef } from './deeptech-data'
-import { dtInd, revalue, runwayYears, techFunds, techOf } from './deeptech-core'
+import { burnRate, dtInd, revalue, runwayYears, techFunds, techOf } from './deeptech-core'
 import { bestGrant, bridgeBlock, closeRound, grantAmount, grantKey, grantOdds, makeTermSheet, roundBlock } from './deeptech-funding'
 import { bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialCost } from './deeptech-rd'
 import { SERIES } from './deeptech-state'
@@ -38,12 +38,13 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
   // 2) The pace follows the money.
   t.pace = runway < 1 ? 'lean' : 'steady'
 
-  // 3) Keep the lab busy, but never bet the company.
+  // 3) Keep the lab busy, but never bet the company: a full year of everything must be covered.
   for (let i = 0; i < 3 && t.programs.length < maxPrograms(b, t); i++) {
     const funds = techFunds(b, t)
+    const burn = burnRate(g, a, b, t)
     if (ind === 'biotech') {
       const d = bestTrial(b, t, funds)
-      if (d && trialCost(b, d) * 1.5 <= funds) {
+      if (d && burn + trialCost(b, d) <= funds) {
         const p = startTrial(g, b, t, d)
         if (p) {
           log(g, `${a.name}'s manager started ${p.name}.`)
@@ -53,9 +54,7 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
     }
     const def = bestProgram(g, a, b, t)
     if (!def) break
-    const yearly = programCost(b, t, def)
-    const committed = t.programs.reduce((s, p) => s + p.cost, 0)
-    if ((committed + yearly) * 1.5 > funds && runway < 3) break
+    if (burn + programCost(b, t, def) > funds) break
     const p = startProgram(g, b, t, def)
     if (!p) break
     log(g, `${a.name}'s manager started an R&D program: ${p.name}.`)

@@ -46,8 +46,19 @@ export function nextRoundNeed(b: BizState, t: TechState): { series: number; met:
   const sales = Math.round(SALES_FOR[k] * rdScale(b.countryId))
   const revenue = b.last ? b.last.revenue : 0
   const stageName = DEEP_TECH[ind].stages[stage].name
-  const met = t.stage >= stage || (sales > 0 && revenue >= sales)
-  const text = k <= 1 ? 'a pitch deck and a founder investors believe in' : sales > 0 ? `"${stageName}" or ${money(sales)} of yearly sales` : `"${stageName}"`
+  // A first R&D win is enough for a Series A; a Series B also takes a breakthrough-level lab.
+  const alt = k === 2 ? t.done.length > 0 || t.drugs.some((d) => d.phase >= 1) : k === 3 ? t.stage >= stage - 1 && t.level >= 50 : false
+  const met = t.stage >= stage || (sales > 0 && revenue >= sales) || alt
+  const text =
+    k <= 1
+      ? 'a pitch deck and a founder investors believe in'
+      : k === 2
+        ? `a first R&D breakthrough or "${stageName}"`
+        : k === 3
+          ? `"${stageName}" (or the stage before it with tech level 50+)`
+          : sales > 0
+            ? `"${stageName}" or ${money(sales)} of yearly sales`
+            : `"${stageName}"`
   return { series: k, met, text }
 }
 
@@ -98,7 +109,7 @@ export function makeTermSheet(g: GameState, a: Asset, b: BizState, t: TechState,
   }
   const k = Math.min(MAX_SERIES, t.series + 1)
   const base = DEEP_TECH[ind].rounds[k]
-  const amount = Math.round(base * (0.3 + 0.7 * depth) * rdScale(b.countryId) * p * roll)
+  const amount = Math.round(base * (0.5 + 0.5 * depth) * Math.pow(rdScale(b.countryId), 0.7) * p * roll)
   const d = clampN(DILUTION[k] / (0.75 + 0.25 * heat) / (0.8 + 0.2 * p), 0.08, 0.4)
   let pre = Math.round((amount * (1 - d)) / d)
   // Investors never price far below what the company is already worth.

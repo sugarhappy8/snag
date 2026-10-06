@@ -52,7 +52,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 3,
     plant: ['fab', 'fabs'],
     salesMult: 6,
-    rounds: [0, 3_000_000, 15_000_000, 45_000_000, 120_000_000, 300_000_000, 600_000_000],
+    rounds: [0, 6_000_000, 20_000_000, 60_000_000, 150_000_000, 350_000_000, 700_000_000],
     req: { majors: ['Engineering', 'Physics', 'Computer Science', 'Chemistry'], smarts: 82, text: 'an engineering, physics, chemistry or CS degree (or smarts 82+)' },
     expert: 'Chief Process Engineer',
     screen: { label: 'Chips & Fabs', emoji: '\u{1F4BE}', header: 'Process node, yields and factories. Smaller nodes sell for more; better yields cost less.' },
@@ -68,8 +68,8 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     ],
     plantCap: 4,
     plant: ['GPU cluster', 'GPU clusters'],
-    salesMult: 14,
-    rounds: [0, 4_000_000, 20_000_000, 80_000_000, 250_000_000, 800_000_000, 2_000_000_000],
+    salesMult: 10,
+    rounds: [0, 6_000_000, 25_000_000, 100_000_000, 300_000_000, 900_000_000, 2_000_000_000],
     req: { majors: ['Computer Science', 'Mathematics', 'Physics', 'Engineering', 'Information Systems'], coding: 45, smarts: 85, text: 'a CS, math or physics degree, coding skill 45+ (or smarts 85+)' },
     expert: 'Chief Scientist',
     screen: { label: 'Compute & Models', emoji: '\u{1F5A5}\u{FE0F}', header: 'Models are only as good as the compute behind them, and the frontier moves every year.' },
@@ -85,7 +85,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 2.5,
     plant: ['production line', 'production lines'],
     salesMult: 6,
-    rounds: [0, 2_500_000, 12_000_000, 40_000_000, 100_000_000, 250_000_000, 500_000_000],
+    rounds: [0, 5_000_000, 15_000_000, 50_000_000, 120_000_000, 300_000_000, 600_000_000],
     req: { majors: ['Engineering', 'Computer Science', 'Physics'], coding: 35, smarts: 78, text: 'an engineering, CS or physics degree, coding skill 35+ (or smarts 78+)' },
     expert: 'Head of Robotics',
     screen: { label: 'Robot Lab', emoji: '\u{1F9BE}', header: 'Prototypes, pilots and production. And the occasional live demo.' },
@@ -102,7 +102,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 4,
     plant: ['biologics plant', 'biologics plants'],
     salesMult: 6,
-    rounds: [0, 3_000_000, 20_000_000, 60_000_000, 120_000_000, 200_000_000, 400_000_000],
+    rounds: [0, 7_000_000, 25_000_000, 70_000_000, 150_000_000, 250_000_000, 400_000_000],
     req: { majors: ['Biology', 'Chemistry'], kinds: ['md', 'pharmd'], smarts: 85, text: 'a biology or chemistry degree, an MD or PharmD (or smarts 85+)' },
     expert: 'Chief Medical Officer',
     screen: { label: 'Drug Pipeline', emoji: '\u{1F48A}', header: 'Most drugs fail in trials. The ones that make it pay for all the others.' },
@@ -119,7 +119,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 0,
     plant: ['satellite batch', 'satellite batches'],
     salesMult: 8,
-    rounds: [0, 4_000_000, 20_000_000, 70_000_000, 180_000_000, 400_000_000, 800_000_000],
+    rounds: [0, 9_000_000, 30_000_000, 90_000_000, 250_000_000, 500_000_000, 1_000_000_000],
     req: { majors: ['Engineering', 'Physics', 'Mathematics'], smarts: 82, text: 'an engineering, physics or math degree (or smarts 82+)' },
     expert: 'Chief Engineer',
     screen: { label: 'Launch Control', emoji: '\u{1F680}', header: 'Rockets, satellites and government contracts. Explosions are part of the learning curve.' },
@@ -135,7 +135,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 1.2,
     plant: ['factory', 'factories'],
     salesMult: 3,
-    rounds: [0, 5_000_000, 30_000_000, 100_000_000, 300_000_000, 700_000_000, 1_200_000_000],
+    rounds: [0, 8_000_000, 40_000_000, 150_000_000, 400_000_000, 800_000_000, 1_500_000_000],
     req: { majors: ['Engineering', 'Physics'], kinds: ['mba'], smarts: 75, text: 'an engineering or physics degree, an MBA (or smarts 75+)' },
     expert: 'Chief Engineer',
     screen: { label: 'Factory Floor', emoji: '\u{1F3ED}', header: 'Batteries, factories and the long road through production hell.' },
@@ -152,7 +152,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 0,
     plant: ['quantum system', 'quantum systems'],
     salesMult: 18,
-    rounds: [0, 3_000_000, 15_000_000, 50_000_000, 120_000_000, 250_000_000, 400_000_000],
+    rounds: [0, 8_000_000, 20_000_000, 60_000_000, 150_000_000, 300_000_000, 500_000_000],
     req: { majors: ['Physics', 'Mathematics'], smarts: 88, text: 'a physics or math degree (or smarts 88+)' },
     expert: 'Chief Physicist',
     screen: { label: 'Qubit Lab', emoji: '\u{269B}\u{FE0F}', header: 'More qubits, fewer errors. The hype runs ahead of the physics.' },
@@ -168,7 +168,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 1,
     plant: ['security operations center', 'security operations centers'],
     salesMult: 9,
-    rounds: [0, 1_500_000, 8_000_000, 25_000_000, 60_000_000, 120_000_000, 250_000_000],
+    rounds: [0, 2_500_000, 10_000_000, 30_000_000, 80_000_000, 150_000_000, 300_000_000],
     req: { majors: ['Computer Science', 'Information Systems', 'Mathematics', 'Engineering'], coding: 40, smarts: 75, text: 'a CS or IT degree, coding skill 40+ (or smarts 75+)' },
     expert: 'Chief Security Researcher',
     screen: { label: 'Threat Center', emoji: '\u{1F6E1}\u{FE0F}', header: 'Contracts, breaches and zero-days. Paranoia pays.' },
@@ -248,7 +248,7 @@ export const TRIALS: TrialStep[] = [
 export const PHASE_LABEL = ['Preclinical', 'Passed Phase I', 'Passed Phase II', 'Passed Phase III', 'Approved']
 
 /** Odds a drug that has passed `phase` eventually gets approved (for valuations). */
-export const APPROVAL_ODDS = [0.07, 0.12, 0.3, 0.85, 1]
+export const APPROVAL_ODDS = [0, 0.1, 0.25, 0.8, 1]
 
 // ---------------------------------------------------------------------------
 // R&D programs
@@ -505,7 +505,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
   spaceTech: [
     {
       id: 'engine', label: () => 'Rocket Engine', emoji: '\u{1F525}', blurb: 'Design, build and static-fire an engine that doesn’t melt.',
-      years: 2, cost: fixed(6_000_000), odds: fixed(0.75),
+      years: 2, cost: fixed(3_000_000), odds: fixed(0.75),
       gate: (t) => once(t, 'engine'),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 10), hype(x.t, 8), 'A full-duration static fire! The neighbors complained about the noise.'),
       lose: (x) => (lvl(x.t, 3), 'The engine blew its turbopump on the test stand. Spectacular. Expensive.'),
