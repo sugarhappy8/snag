@@ -190,6 +190,7 @@ describe(`MMA seed ${SEED}`, () => {
       pr.cardio = Math.max(pr.cardio, 90)
       pr.chin = Math.max(pr.chin, 85)
     }
+    if (!calledUp || !titleFought) require('fs').appendFileSync('/tmp/claude-0/-home-user-snag/10662b3d-d68a-59c1-a541-a28cb41ae61d/scratchpad/mmafail.txt', `SEED ${SEED} called ${calledUp} title ${titleFought} age ${g.character.age} job ${JSON.stringify(g.character.job?.data)} rec ${JSON.stringify((g.flags['special.sports.fight'] as any).pro)} attrs ${JSON.stringify(['striking','grappling','cardio','chin','iq'].map((k) => (g.flags['special.sports.fight'] as any)[k]))}\n`)
     expect(calledUp).toBe(true)
     expect(titleFought).toBe(true)
     const text = allText(seenAll)
