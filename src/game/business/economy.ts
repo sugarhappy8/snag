@@ -11,7 +11,7 @@
 import { seeded } from '../assets'
 import { corporateTax, exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
 import { bell, chance, rand } from '../rng'
-import { hasTalent, talentHint } from '../talents'
+import { hasTalent, talentHint, type TalentId } from '../talents'
 import type { Asset, GameState } from '../types'
 import { getCountry } from '../world'
 import { industryDef, type IndustryDef, type StaffFocus } from './industries'
@@ -244,9 +244,19 @@ export const TALENT_HIRE = 6
 
 /** True when the owner personally runs this company and has the Business talent. */
 export function talentCeo(g: GameState, b: BizState): boolean {
-  const c = g.character
-  return b.ceo !== 'manager' && c.alive && !c.prison && hasTalent(g, 'Business')
+  return ownerTalent(g, b, 'Business')
 }
+
+/** True when the owner personally runs this company and has the given talent. */
+export function ownerTalent(g: GameState, b: BizState, id: TalentId): boolean {
+  const c = g.character
+  return b.ceo !== 'manager' && c.alive && !c.prison && hasTalent(g, id)
+}
+
+/** Cooking talent: a food business run by its talented owner aims this much higher on quality (reviews). */
+export const TALENT_COOKING_QUALITY = 8
+/** Leadership talent: staff under a talented owner-CEO settle this much happier. */
+export const TALENT_LEADER_MORALE = 6
 
 /** Combined contribution of key staff with a focus (0 = nobody, ~1 = one strong hire). */
 export function staffPower(b: BizState, focus: StaffFocus): number {
@@ -619,7 +629,8 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   const traits = b.staff.reduce((s, x) => s + traitOf(x.trait).morale, 0)
   const inflationHit = m.inflation >= 0.08 && b.raiseYear < year ? -Math.min(18, m.inflation * 30) : 0
   const ceoVibe = b.ceo === 'owner' ? (g.character.hidden.karma - 50) / 10 : ((b.manager?.skill ?? 50) - 50) / 12
-  const moraleTarget = clampN(55 + (b.wageLevel - 1) * 120 + traits + busy + (stmt.net > 0 ? 3 : -6) + inflationHit + ceoVibe, 5, 98)
+  const leader = ownerTalent(g, b, 'Leadership') ? TALENT_LEADER_MORALE : 0
+  const moraleTarget = clampN(55 + (b.wageLevel - 1) * 120 + traits + busy + (stmt.net > 0 ? 3 : -6) + inflationHit + ceoVibe + leader, 5, 98)
   b.morale = clampN(Math.round(b.morale + (moraleTarget - b.morale) * 0.4 + bell(g, -4, 4)), 0, 100)
   for (const s of b.staff) {
     s.morale = clampN(Math.round(s.morale + (moraleTarget - s.morale) * 0.3 + bell(g, -5, 5)), 0, 100)
@@ -630,7 +641,8 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
 
   // Quality: suppliers, quality staff, morale, leadership.
   const sup = b.supplier === 'budget' ? -12 : b.supplier === 'premium' ? 12 : 0
-  const qTarget = clampN(45 + sup + 12 * Math.min(2, staffPower(b, 'quality')) + (b.morale - 50) / 6 + (skill - 50) / 10, 5, 98)
+  const chef = def.food && ownerTalent(g, b, 'Cooking') ? TALENT_COOKING_QUALITY : 0
+  const qTarget = clampN(45 + sup + 12 * Math.min(2, staffPower(b, 'quality')) + (b.morale - 50) / 6 + (skill - 50) / 10 + chef, 5, 98)
   b.quality = clampN(Math.round(b.quality + (qTarget - b.quality) * 0.3), 0, 100)
 
   // Brand: quality, marketing, age, products, fame of the founder.
@@ -810,6 +822,8 @@ export interface PlanSearch {
   ownerDraw?: number
   /** Fiscal year to plan (default: the coming one, g.year). */
   year?: number
+  /** Highest price allowed (a price the company promised to hold this year). */
+  maxPrice?: number
 }
 
 interface Scored {
@@ -839,7 +853,8 @@ export function nicePrice(p: number): number {
 export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): PlanPick {
   const year = opts.year ?? g.year
   const def = industryDef(b.industry)
-  const bounds = priceBounds(b)
+  const b0 = priceBounds(b)
+  const bounds = opts.maxPrice !== undefined && Number.isFinite(opts.maxPrice) ? { ...b0, max: Math.max(b0.min, Math.min(b0.max, opts.maxPrice)) } : b0
   const maxProd = maxProduction(g, b)
   const draw = Math.max(0, opts.ownerDraw ?? 0)
   const k = yearFixed(g, b)
@@ -951,13 +966,14 @@ export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): Plan
 }
 
 /** Expected profit of an exact plan for next year (same scenarios as bestPlan). */
-export function planOutcome(g: GameState, b: BizState, price: number, production: number, opts: PlanSearch = {}): { profit: number; score: number } {
+export function planOutcome(g: GameState, b: BizState, price: number, production: number, opts: PlanSearch = {}): { profit: number; score: number; pretax: number } {
   const year = opts.year ?? g.year
   const def = industryDef(b.industry)
   const k = yearFixed(g, b)
   let w = 0
   let profit = 0
   let score = 0
+  let pretax = 0
   for (const s of cycleScenarios(g, b, year)) {
     const base = planFor(g, b, year, { price, cycle: (cid) => s.cycle[cid] ?? 1, noise: 1 })
     const carry = def.perishable >= 1 ? 0 : base.unitCost * k.cf * CARRY
@@ -966,9 +982,10 @@ export function planOutcome(g: GameState, b: BizState, price: number, production
       w += s.w * wn
       profit += s.w * wn * r.stmt.net
       score += s.w * wn * (r.stmt.net + carry * r.inventoryEnd)
+      pretax += s.w * wn * (r.stmt.pbt + carry * r.inventoryEnd)
     }
   }
-  return { profit: w > 0 ? profit / w : 0, score: w > 0 ? score / w : 0 }
+  return { profit: w > 0 ? profit / w : 0, score: w > 0 ? score / w : 0, pretax: w > 0 ? pretax / w : 0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -1111,14 +1128,17 @@ export interface BizFx {
 /** The yearly profit change from charging `cut` less for a year (demand responds; capacity caps it). */
 export function priceCutCost(g: GameState, b: BizState, cut: number): number {
   if (!(cut > 0) || b.industry === 'gameStudio') return 0
-  const e = localEcon(b.industry, b.countryId, b.city)
-  const price = b.price > 0 ? b.price : e.goingPrice
-  const at = (p: number) => {
-    const plan = planFor(g, b, g.year, { price: p, calm: true })
-    const sold = Math.min(plan.demand, plan.capacity)
-    return sold * (p / (1 + e.taxRate) - plan.unitCost * costFactor(b, true))
-  }
-  return Math.max(0, at(price) - at(price * (1 - clampN(cut, 0, 0.9))))
+  const c = clampN(cut, 0, 0.9)
+  // Deep tech prices on its own planner: a year of its sales at the cut price (output is set).
+  if (isDeepTech(b)) return Math.max(0, (b.last?.netRevenue ?? 0) * c)
+  // The CEO has just planned the year (the Annual Report comes before the year's event); the cut
+  // caps the price for the rest of it (a price promise), and the best they can do is re-plan
+  // under that cap. Booked on the same model as the year itself.
+  const plan = bestPlan(g, b, { quick: true })
+  const capped = bestPlan(g, b, { quick: true, maxPrice: Math.max(0.01, round2(plan.price * (1 - c))) })
+  const was = planOutcome(g, b, plan.price, plan.production, { quick: true }).pretax
+  const now = planOutcome(g, b, capped.price, capped.production, { quick: true }).pretax
+  return Math.max(0, was - now)
 }
 
 /** Dollar value of one outcome for this company (positive = good for the owner). */

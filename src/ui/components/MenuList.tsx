@@ -7,6 +7,7 @@ import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
 import { confirmText, infoText, isMultiline, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report } from './menuModel'
 import { TalentHint } from './TalentHint'
+import { HINT_EMOJI } from '../../game/talents'
 
 export { groupChildren, groupHeader, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, resolveTrail } from './menuModel'
 
@@ -287,7 +288,7 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
       const text = infoText(node, g)
       if (!text) continue
       current.rows.push(
-        <div className="menu-info" key={key}>
+        <div className={node.emoji === HINT_EMOJI ? 'menu-info menu-info-hint' : 'menu-info'} key={key}>
           {node.emoji ? <span className="menu-info-emoji">{node.emoji}</span> : null}
           <span>{text}</span>
         </div>,

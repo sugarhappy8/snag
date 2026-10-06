@@ -14,7 +14,7 @@ import { sellBusiness } from './exit'
 import { conglomerate, investorFirm, laborProtection, traitOf, unionStrength } from './flavor'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, totalOutlets, type BizState, type KeyStaff } from './state'
-import { aPct, clampN, markBest, money, num, pct, rec, str } from './util'
+import { aPct, clampN, markBest, money, num, pct, promisePrice, rec, str } from './util'
 
 interface Ctx {
   a: Asset
@@ -413,11 +413,12 @@ function presentViral(g: GameState, a: Asset, b: BizState): void {
 const COMPETITOR = defineScript('business.ev.competitor', (g, choice, data) => {
   const x = ctx(g, data)
   if (!x) return
-  const { b } = x
+  const { a, b } = x
   if (choice === 'priceWar') {
     b.price = Math.max(0.01, Math.round(b.price * 0.88 * 100) / 100)
+    promisePrice(g, a.id, b.price)
     b.pressure = Math.max(b.pressure, 0.1)
-    tell(g, 'Price War', `You cut prices 12% to keep your regulars. Margins hurt, but so do theirs.`, '\u{2694}\u{FE0F}')
+    tell(g, 'Price War', `You cut prices 12% to keep your regulars, and you can't sneak them back up this year without losing the war. Margins hurt, but so do theirs.`, '\u{2694}\u{FE0F}')
   } else if (choice === 'quality') {
     const cost = pay(b, scaled(b, 8_000))
     b.quality = clampN(b.quality + 8, 0, 100)
@@ -522,8 +523,9 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
     tell(g, 'Prices Up', `You repriced everything overnight. Customers grumbled, but they grumble at everyone.`, '\u{1F3F7}\u{FE0F}')
   } else if (choice === 'hold') {
     b.price = Math.max(0.01, Math.round(b.price * 0.85 * 100) / 100)
+    promisePrice(g, x.a.id, b.price)
     b.brand = clampN(b.brand + 6, 0, 100)
-    tell(g, 'Holding the Line', `You kept prices steady while everyone else hiked. Customers love you; your margins less so.`, '\u{1F6E1}\u{FE0F}', 'good')
+    tell(g, 'Holding the Line', `You promised to keep prices steady for the rest of the year while everyone else hiked. Customers love you; your margins less so.`, '\u{1F6E1}\u{FE0F}', 'good')
   } else {
     const fee = pay(b, Math.max(0, b.cash) * 0.03)
     b.costShock = Math.max(1, b.costShock - 0.05)

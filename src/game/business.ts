@@ -1,4 +1,5 @@
-// Business: start or buy a company in one of 25 industries and run it in its country's market
+// Business: start or buy a company in one of 33 industries (25 classic + 8 deep tech) and run it in
+// its country's market
 // (Occupation › Special Careers › Business, and Assets › Businesses). The engine lives in
 // business/*.ts: industries, local economics, founding and buying, staff, management,
 // events, exits (sale, IPO, bankruptcy) and the yearly simulation + Annual Report. This file

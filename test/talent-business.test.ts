@@ -26,7 +26,8 @@ import { createBusinessAsset, newBiz, startFounding } from '../src/game/business
 import { startGreenlight, studioAssets, studioInternals } from '../src/game/business/gamestudio'
 import { businessView } from '../src/game/business/manage'
 import { bizOf, findBusiness, readBiz, type BizState, type KeyStaff } from '../src/game/business/state'
-import { applyPlan, autoPlan, crunchValues, planHint, reportData, yearlyBusinessImpl } from '../src/game/business/yearly'
+import { applyPlan, autoPlan, crunchValues, parsePlan, planHint, REPORT, reportData, yearlyBusinessImpl } from '../src/game/business/yearly'
+import { priceCapOf } from '../src/game/business/util'
 import { industryDemand, INDUSTRY_IDS, type Industry } from '../src/game/data/markets'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
@@ -524,5 +525,103 @@ describe('Business talent: game studios', () => {
     // And the team screen says to stop hiring.
     const hire = allNodes(poor.g, businessView(poor.g, poor.a)).find((n) => n.id === `studio.hire.${poor.a.id}`)
     expect(hire && hire.type === 'action' ? hire.hint?.(poor.g) : null).toMatch(/^\u{1F52E} Hold off/u)
+  })
+})
+
+describe('Business talent: honest against the simulation itself', () => {
+  /** Five years of pre-tax profit, the CEO re-planning every year with the talent's planner. */
+  function future(g: GameState, assetId: string): number {
+    const a = findBusiness(g, assetId)
+    if (!a) return 0
+    const b = bizOf(g, a)
+    let total = 0
+    for (let y = 0; y < 5; y++) {
+      const p = bestPlan(g, b, { fast: true, ownerDraw: b.ownerSalary, maxPrice: priceCapOf(g, assetId) ?? undefined })
+      b.price = p.price
+      b.production = p.production
+      const r = simulateYear(g, b, g.year, b.ownerSalary)
+      evolve(g, b, r.stmt, g.year)
+      recordYear(b, r.stmt)
+      total += r.stmt.pbt
+      g.year += 1
+    }
+    return total
+  }
+
+  it('the hinted choice is (nearly) the one that earns the most over the next five years', () => {
+    const N = 10
+    const countries = ['us', 'mx', 'ng', 'jp', 'br', 'in', 'de', 'ar', 'kr', 'tw']
+    const industries: Industry[] = ['restaurant', 'cafe', 'software', 'gym', 'fashion', 'foodTruck', 'brewery', 'hotel']
+    // Bribes leave out the cost of prison, which a five-year profit sum can't see.
+    const ids = ['audit', 'strike', 'viral', 'competitor', 'supplier', 'currency', 'celebrity', 'lawsuit', 'disaster', 'tacos', 'poached', 'embezzle']
+    let n = 0
+    let misses = 0
+    let regretShare = 0
+    for (const id of ids) {
+      for (let k = 0; k < 3; k++) {
+        const { g, a, b } = company(400 + k * 13 + id.length, countries[(k * 3 + id.length) % countries.length], industries[(k + id.length) % industries.length], true)
+        if (id === 'poached' || id === 'embezzle') b.staff.push(staffer('kx', (['sales', 'finance', 'ops'] as const)[k], 30 + k * 20, 20_000 + k * 30_000, ['steady', 'shady', 'lazy'][k]))
+        if (id === 'strike') b.morale = 20 + k * 5
+        g.queue = []
+        if (!businessEventInternals.present(g, a, b, id)) continue
+        const m = lastChoice(g)
+        const hinted = m.choices.find((c) => c.hint)
+        expect(hinted, id).toBeDefined()
+        g.queue = []
+        const means = new Map<string, number>()
+        for (const c of m.choices) {
+          let sum = 0
+          for (let i = 0; i < N; i++) {
+            const g1 = structuredClone(g)
+            g1.rng = 3_000 + i * 7919
+            // The CEO planned the year first (the report comes before the event), then it struck.
+            const b1 = bizOf(g1, findBusiness(g1, a.id)!)
+            const p0 = bestPlan(g1, b1, { fast: true, ownerDraw: b1.ownerSalary })
+            b1.price = p0.price
+            b1.production = p0.production
+            runScript(g1, m.scriptId!, c.id, m.data, m)
+            g1.queue = []
+            sum += future(g1, a.id)
+          }
+          means.set(c.id, sum / N)
+        }
+        const best = Math.max(...means.values())
+        const regret = best - means.get(hinted!.id)!
+        const share = regret / (Math.abs(best) + 1)
+        n++
+        regretShare += share
+        if (share > 0.03) misses++
+      }
+    }
+    expect(n).toBeGreaterThan(25)
+    expect(regretShare / n).toBeLessThan(0.02)
+    expect(misses / n).toBeLessThan(0.15)
+  }, 120_000)
+})
+
+describe('Business talent: price promises', () => {
+  it('a price war caps the price for the rest of the year, in the report, the plan and the hint', () => {
+    const { g, a, b } = company(77, 'us', 'cafe', true)
+    b.price = 5
+    g.queue = []
+    businessEventInternals.present(g, a, b, 'competitor')
+    const m = lastChoice(g)
+    g.queue = []
+    runScript(g, m.scriptId!, 'priceWar', m.data, m)
+    const cap = priceCapOf(g, a.id)
+    expect(cap).toBeCloseTo(4.4, 2)
+    const live = bizOf(g, findBusiness(g, a.id)!)
+    // The report can't go above the promise, nor can a hand-made plan or the talent's advice.
+    const r = reportData(g, a, live)
+    expect(r.maxPrice).toBeCloseTo(4.4, 2)
+    expect(r.talentHint!.price).toBeLessThanOrEqual(4.4)
+    expect(parsePlan(g, live, JSON.stringify({ price: 9, production: 100 }), a.id).price).toBeCloseTo(4.4, 2)
+    runScript(g, REPORT, JSON.stringify({ price: 9, production: 100 }), { assetId: a.id }, { kind: 'minigame', id: 'r', game: 'annualReport', title: '', scriptId: REPORT, data: {} } as unknown as MinigameModal)
+    expect(bizOf(g, findBusiness(g, a.id)!).price).toBeCloseTo(4.4, 2)
+    // The promise ends when the year is booked.
+    g.year += 1
+    yearlyBusinessImpl(g)
+    expect(priceCapOf(g, a.id)).toBeNull()
+    expect(Object.keys(g.flags).some((k) => k.startsWith('biz.priceCap.'))).toBe(false)
   })
 })

@@ -41,8 +41,18 @@ function settleFoundingLoan(g: GameState, b: BizState): number {
 }
 
 /** Sell the owner's whole stake for `price` (the price of 100% of the company). */
+/**
+ * The owner's cut of a sale or closure worth `total` for the whole company: outside investors
+ * take back their preference first (or their share, if that's more), the owner keeps the rest.
+ */
+export function ownerProceeds(b: BizState, total: number): number {
+  const t = Math.max(0, total)
+  const investors = b.share >= 1 ? 0 : Math.min(t, Math.max(b.pref ?? 0, t * (1 - b.share)))
+  return Math.round(t - investors)
+}
+
 export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number, buyer: string): void {
-  const gross = Math.round(Math.max(0, price) * b.share)
+  const gross = ownerProceeds(b, price)
   const tax = capitalGainsTax(g, gross, b.invested)
   const loan = settleFoundingLoan(g, b)
   const net = gross - tax - loan
@@ -88,7 +98,7 @@ export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: 
     declareBankruptcy(g, a, b, 'There was not enough left to pay the creditors, so')
     return
   }
-  const mine = Math.round(proceeds * b.share)
+  const mine = ownerProceeds(b, proceeds)
   addMoney(g, mine)
   removeBusiness(g, a)
   log(g, `I closed ${a.name} for good.`, 'neutral')
@@ -130,6 +140,8 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   b.sharePrice = Math.round((post / b.sharesOut) * pop * 100) / 100
   b.cash += raise - fees
   b.share = clampN(b.share * 0.75, 0.01, 1)
+  // Preferred shares convert to ordinary ones at the listing.
+  b.pref = 0
   b.public = true
   b.exchange = ex.code
   b.ipoYear = g.year

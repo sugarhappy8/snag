@@ -38,7 +38,7 @@ import { staffMenu } from './staff'
 import { industryDef } from './industries'
 import { bizOf, ceoJob, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
-import { aPct, clampN, markBest, money, num, pct, plural, rec, str, toJson, units } from './util'
+import { aPct, clampN, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -354,7 +354,7 @@ function productsMenu(a: Asset): MenuGroup {
       const v = cachedHint(g, cur, 'launch', () => launchValue(g, b))
       return talentHint(g, 'Business', v.value > 0 ? `Launch something this year: about ${aPct(v.p)} chance it works, worth ${money(v.value)} on average` : 'Hold off on launches: the R&D would cost more than a new line earns')
     },
-    header: (g) => `R&D for a launch costs about ${money(rdCost(readBiz(g, a)))}. Success depends on whoever runs the company, product quality and your quality team. Fresh products draw customers; old ones fade.`,
+    header: (g) => `${isDeepTech(readBiz(g, a)) ? 'Launching a product line' : 'R&D for a launch'} costs about ${money(rdCost(readBiz(g, a)))}. Success depends on whoever runs the company, product quality and your quality team. Fresh products draw customers; old ones fade.`,
     children: (g) => {
       const b = readBiz(g, a)
       const def = industryDef(b.industry)
@@ -1243,7 +1243,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
           if (!hinting(gg, cur)) return null
           const b = readBiz(gg, cur)
           if (!priceAndOutput(b)) return null
-          const p = cachedHint(gg, cur, 'plan', () => bestPlan(gg, b, { quick: true, ownerDraw: runsIt(gg, cur) ? b.ownerSalary : 0 }))
+          const p = cachedHint(gg, cur, `plan.${priceCapOf(gg, cur.id) ?? ''}`, () => bestPlan(gg, b, { quick: true, ownerDraw: runsIt(gg, cur) ? b.ownerSalary : 0, maxPrice: priceCapOf(gg, cur.id) ?? undefined }))
           const close = Math.abs(p.price - b.price) <= Math.max(0.02, b.price * 0.03) && Math.abs(p.production - b.production) <= Math.max(1, p.production * 0.05)
           return talentHint(gg, 'Business', close ? 'Your plan is already close to the sweet spot' : `The report has a better plan for you: about ${money(Math.abs(p.profit))} ${p.profit >= 0 ? 'profit' : 'loss'} next year`)
         },

@@ -173,6 +173,8 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // small studio the founder is the lead developer, in a big one just one voice of many.
   const founder = runs ? { code: codingSkill(g), art: artSkill(g), design: designSkill(g) } : null
   const voice = runs ? 0.12 + 0.33 / (1 + b.employees / 6) : 0.12
+  // The Gaming talent: a founder who lives and breathes games lifts every title (gamedev-make's +6).
+  const gamer = runs && hasTalent(g, 'Gaming') ? TALENT_GAMING_QUALITY : 0
   const qStaff = staffPower(b, 'quality')
   const wage = devCost(b)
   const scale = costScale(b.countryId)
@@ -204,7 +206,8 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
         sc.difficulty * (ratio < 0.6 ? 1.2 : 0.4) +
         Math.min(6, (ratio - 1) * 4) +
         (st.policy === 'relaxed' ? 3 : st.policy === 'crunch' ? -4 : 0) +
-        (x.stage === 'ea' ? 4 : 0),
+        (x.stage === 'ea' ? 4 : 0) +
+        gamer,
       5,
       98,
     )
@@ -652,14 +655,19 @@ function pitchTeam(b: BizState, st: StudioState, scope: ScopeId): number {
 }
 
 /** Where a game's quality settles with this team (the same target the yearly sim moves toward). */
+/** Gaming talent: quality a founder-CEO who is a gifted gamer adds to every game (matches gamedev-make). */
+export const TALENT_GAMING_QUALITY = 6
+
 function qualityTarget(g: GameState, a: Asset, b: BizState, st: StudioState, genre: GenreId, scope: ScopeId, engine: EngineId, ratio: number, ea = false): number {
   const sc = scopeDef(scope)
   const eng = engineDef(engine)
   const runs = runsIt(g, a) && !g.character.prison && g.character.alive
   const lead = runs ? Math.max(45, genreSkill(genre, codingSkill(g), artSkill(g), designSkill(g))) : (b.manager?.skill ?? 50)
   const voice = runs ? 0.12 + 0.33 / (1 + b.employees / 6) : 0.12
+  const gamer = runs && hasTalent(g, 'Gaming') ? TALENT_GAMING_QUALITY : 0
   return clampN(
     60 +
+      gamer +
       (b.quality - 50) * 0.4 +
       staffPower(b, 'quality') * 6 +
       (lead - 50) * voice +

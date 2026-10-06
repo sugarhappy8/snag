@@ -109,6 +109,12 @@ export interface BizState {
   share: number
   /** Money the owner has put in (cost basis for capital gains). */
   invested: number
+  /**
+   * Outside investors' liquidation preference (1x, non-participating): on a sale or closure they
+   * take their money back first, or their share of the proceeds if that's more. Cleared at an IPO.
+   * Missing (0) when nobody outside holds preferred shares.
+   */
+  pref?: number
   /** Company cash (separate from the owner's own money). */
   cash: number
   /** Company debt (bank loans taken by the company). */
@@ -292,6 +298,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     acquired: d.acquired === true,
     share: clampN(num(d.share, 1), 0.01, 1),
     invested: Math.max(0, num(d.invested)),
+    pref: Math.max(0, num(d.pref)),
     cash: num(d.cash),
     debt: Math.max(0, num(d.debt)),
     debtRate: clampN(num(d.debtRate, 0.08), 0, 0.6),

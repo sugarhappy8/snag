@@ -1707,6 +1707,13 @@ label {
 
 .menu-row + .menu-row,
 .menu-row + .menu-info,
+/* Talent hint info rows (e.g. the Investing talent's market instinct) read as purple hints. */
+.menu-info.menu-info-hint {
+  color: var(--hint-text);
+  background: var(--hint-bg);
+  font-weight: 600;
+}
+
 .menu-info + .menu-row,
 .menu-info + .menu-info {
   border-top: 1px solid var(--hairline);

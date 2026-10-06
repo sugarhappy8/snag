@@ -106,3 +106,34 @@ export function markBest<T extends ChoiceOption>(g: GameState, choices: T[], ev:
   best.c.hint = talentHint(g, 'Business', text)
   return choices
 }
+
+// ---------------------------------------------------------------------------
+// Price promises: a price war or holding prices through a currency crash caps what the company
+// may charge for the rest of the fiscal year (re-planning can't quietly undo it). Kept in g.flags
+// as plain JSON and cleared when the year is booked.
+
+const CAP_PREFIX = 'biz.priceCap.'
+
+/** The most this company may charge this fiscal year (null: no promise). */
+export function priceCapOf(g: GameState, assetId: string): number | null {
+  const v = rec(g.flags[CAP_PREFIX + assetId])
+  if (!v || num(v.year, -1) !== g.year) return null
+  const p = num(v.price, 0)
+  return p > 0 ? p : null
+}
+
+/** Promise to charge at most `price` until the year is booked (the lower promise wins). */
+export function promisePrice(g: GameState, assetId: string, price: number): void {
+  if (!Number.isFinite(price) || price <= 0) return
+  const cur = priceCapOf(g, assetId)
+  g.flags[CAP_PREFIX + assetId] = { year: g.year, price: round2(cur === null ? price : Math.min(cur, price)) }
+}
+
+/** Forget promises from years already booked. */
+export function prunePricePromises(g: GameState): void {
+  for (const k of Object.keys(g.flags)) {
+    if (!k.startsWith(CAP_PREFIX)) continue
+    const v = rec(g.flags[k])
+    if (!v || num(v.year, -1) < g.year) delete g.flags[k]
+  }
+}

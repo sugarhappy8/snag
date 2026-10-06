@@ -33,7 +33,7 @@ import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulat
 import { industryDef } from './industries'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
-import { clampN, markBest, money, num, pct, plural, rec, round2, str, toJson, unitMoney, units } from './util'
+import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
 
 // ---------------------------------------------------------------------------
 // Plans
@@ -43,9 +43,19 @@ export interface PlanChoice {
   production: number
 }
 
-/** Parse and clamp an Annual Report result (never trust it). 'skip' keeps last year's plan. */
-export function parsePlan(g: GameState, b: BizState, raw: string): PlanChoice {
+/** The report's price range, under any price the company promised to hold this year. */
+export function planBounds(g: GameState, assetId: string, b: BizState): { min: number; max: number; going: number; cap: number | null } {
   const bounds = priceBounds(b)
+  const cap = priceCapOf(g, assetId)
+  return { ...bounds, max: cap === null ? bounds.max : round2(Math.max(bounds.min, Math.min(bounds.max, cap))), cap }
+}
+
+/**
+ * Parse and clamp an Annual Report result (never trust it). 'skip' keeps last year's plan.
+ * `assetId` applies any price the company promised to hold this year.
+ */
+export function parsePlan(g: GameState, b: BizState, raw: string, assetId = ''): PlanChoice {
+  const bounds = assetId ? planBounds(g, assetId, b) : priceBounds(b)
   const maxProd = maxProduction(g, b)
   let price = b.price
   let production = b.production
@@ -141,7 +151,7 @@ function marketNote(b: BizState, lastCycle: number): string {
 /** Everything the Annual Report minigame needs (satisfies AnnualReportData exactly). */
 export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportData {
   const def = industryDef(b.industry)
-  const bounds = priceBounds(b)
+  const bounds = planBounds(g, a.id, b)
   const lastCycle = b.last?.cycle ?? cycleOf(g, b.countryId, g.year - 1)
   const plan = planFor(g, b, g.year, { calm: true, cycle: () => lastCycle })
   const suggested = round2(clampN(plan.suggested, bounds.min, bounds.max))
@@ -165,7 +175,7 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
     maxProduction: maxProd,
     inventory: Math.max(0, Math.round(b.inventory)),
     expectedDemand: Math.max(0, Math.round(expected)),
-    marketNote: marketNote(b, lastCycle),
+    marketNote: marketNote(b, lastCycle) + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
     lines,
     ...(hasTalent(g, 'Business') ? { talentHint: planHint(g, a, b) } : {}),
   }
@@ -177,7 +187,7 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
  */
 export function planHint(g: GameState, a: Asset, b: BizState): NonNullable<AnnualReportData['talentHint']> {
   const def = industryDef(b.industry)
-  const p = bestPlan(g, b, { ownerDraw: runsIt(g, a) ? b.ownerSalary : 0 })
+  const p = bestPlan(g, b, { ownerDraw: runsIt(g, a) ? b.ownerSalary : 0, maxPrice: priceCapOf(g, a.id) ?? undefined })
   const what = `Charge ${unitMoney(p.price)} and make ${units(p.production)} ${p.production === 1 ? def.unitOne : def.unit}`
   const outcome = p.profit >= 0 ? `${money(p.profit)} profit` : `${money(-p.profit)} loss`
   const text =
@@ -195,7 +205,7 @@ export const REPORT = defineScript('business.annualReport', (g, choice, data) =>
   const a = findBusiness(g, str(rec(data)?.assetId))
   if (!a) return
   const b = bizOf(g, a)
-  const plan = parsePlan(g, b, choice)
+  const plan = parsePlan(g, b, choice, a.id)
   applyPlan(b, plan)
   if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${plan.price >= 100 ? money(plan.price) : `$${plan.price.toFixed(2)}`} and planned ${units(plan.production)} ${industryDef(b.industry).unit} for the year.`)
 })
@@ -338,6 +348,8 @@ export function yearlyBusinessImpl(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   syncCeo(g)
+  // Last year's price promises end with the year that was just booked.
+  prunePricePromises(g)
   const list = businessAssets(g)
   if (list.length === 0) return
   const fiscal = g.year - 1
@@ -404,10 +416,9 @@ export function yearlyBusinessImpl(g: GameState): void {
     if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
     if (!plans) {
       if (studio) studioManagerTurn(g, a, b)
-      else {
-        if (tech) deepTechManagerTurn(g, a, b)
-        applyPlan(b, autoPlan(g, b, lastCycle))
-      }
+      // A deep-tech manager plans price and output with the tech model; the generic autoPlan can't see it.
+      else if (tech) deepTechManagerTurn(g, a, b)
+      else applyPlan(b, autoPlan(g, b, lastCycle))
     }
   }
 }
