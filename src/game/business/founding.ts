@@ -512,6 +512,8 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
   const b = newBiz(g, p.industry, p.countryId, p.city, {
     share: p.funding === 'investors' ? Math.round((1 - p.equity) * 100) / 100 : 1,
     invested: personal,
+    // Investors hold preferred shares: in a sale or closure they get their money back first.
+    ...(p.funding === 'investors' && p.investor > 0 ? { pref: Math.round(p.investor) } : {}),
     cash: Math.round(cost.capital * 0.2),
     openFraction: openFractionFor(p.days),
     loanId,
@@ -532,7 +534,7 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
     p.funding === 'loan'
       ? ` ${p.lender} lent you ${formatMoney(p.loan)} at ${pct(p.rate, 1)} over 7 years (you're personally on the hook).`
       : p.funding === 'investors'
-        ? ` ${p.investorName} put in ${formatMoney(p.investor)} for ${pct(p.equity)} of the company.`
+        ? ` ${p.investorName} put in ${formatMoney(p.investor)} for ${pct(p.equity)} of the company (if you ever sell or close it, they get their money back first).`
         : ''
   const open = b.openFraction < 0.95 ? ` Paperwork in ${country.name} took about ${p.days} days, so you'll only trade for part of this first year.` : ''
   const run = runIt

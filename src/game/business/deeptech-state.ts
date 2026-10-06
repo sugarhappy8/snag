@@ -7,6 +7,11 @@
 // outside the company's cash: it pays for R&D, compute, trials and payroll, but it is never paid
 // out to the owner (no dividends, no liquidation, no sale proceeds). That is how real preferred
 // stock and grant terms work, and it keeps funding rounds from becoming a money pump.
+//
+// The investors' 1x liquidation preference is `raised`, and the deep-tech valuation already nets
+// it out (deeptech-core refreshTechValue), so the owner's stake value and sale proceeds are what
+// is left after investors are paid back. BizState.pref therefore stays 0 for deep-tech companies
+// (setting it too would charge the preference twice in exit.ts).
 import { DEEP_TECH_IDS, type Industry } from '../data/markets'
 import type { Json } from '../types'
 import { clampN, num, rec, str } from './util'

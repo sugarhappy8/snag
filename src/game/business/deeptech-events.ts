@@ -13,10 +13,10 @@ import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { stepDown, managerCandidate, managerName } from './career'
 import { conglomerate } from './flavor'
-import { RESTRICTED, aiRegulator, bestModel, defenseBuyer, drugRegulator, spaceAgency } from './deeptech-data'
+import { APPROVAL_ODDS, RESTRICTED, TRIALS, aiRegulator, bestModel, defenseBuyer, drugRegulator, spaceAgency } from './deeptech-data'
 import { dtInd, earnTech, payTech, rdScale, revalue, runwayYears, techFunds, techOf, unitRevenue } from './deeptech-core'
-import { stopPrograms } from './deeptech-rd'
-import type { TechState } from './deeptech-state'
+import { stopPrograms, trialCost, trialStep } from './deeptech-rd'
+import type { Drug, TechState } from './deeptech-state'
 import { sellBusiness } from './exit'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, runsIt, type BizState } from './state'
@@ -128,12 +128,13 @@ const EVENTS: DtEvent[] = [
       const buyer = conglomerate(rand(x.g), rand(x.g))
       const offer = Math.round((x.b.valuation * (1.25 + rand(x.g) * 0.45)) / 1000) * 1000
       const runway = runwayYears(x.g, x.a, x.b, x.t)
-      const best = runway < 1.5 || x.t.stuck >= 2 || offer >= x.b.valuation * 1.55 ? 'accept' : 'decline'
+      // Every offer is 25-70% over the valuation; countering wins 15% more only 55% of the time.
+      const best = 'accept'
       ask(x, 'acquirer', 'Acquisition Offer', `${buyer} wants to buy ${x.a.name} outright for ${formatMoney(offer)}, well above its ${money(x.b.valuation)} valuation. ${x.b.share < 1 ? `Your ${Math.round(x.b.share * 100)}% would be worth ${formatMoney(offer * x.b.share)}.` : ''} Their CEO keeps saying "synergies".`, options(x.g, [
         { id: 'accept', label: `Sell for ${money(offer)}`, emoji: '\u{1F91D}' },
         { id: 'counter', label: 'Counter at a higher price', emoji: '\u{1F4C8}' },
         { id: 'decline', label: 'Not for sale', emoji: '\u{1F6AB}' },
-      ], best, best === 'accept' ? 'Take it: this premium won’t come again, and the road ahead is long.' : 'Say no: the company is worth more on its own path.'), '\u{1F3E6}', { buyer, offer })
+      ], best, runway < 1.5 || x.t.stuck >= 2 ? 'Take it: the money is running out and the milestones aren’t coming, and this is well over what the company is worth.' : 'Take it: this is well over what the company is worth today, and countering risks the whole deal.'), '\u{1F3E6}', { buyer, offer })
     },
     resolve: (x, choice) => {
       const offer = num(x.d.offer)
@@ -163,7 +164,7 @@ const EVENTS: DtEvent[] = [
       ask(x, 'troll', 'Patent Troll', `A company that makes nothing, owns a 1990s patent on "a method for computing things" and has an office in a strip mall is suing ${x.a.name}. They'll go away for ${formatMoney(settle)}.`, options(x.g, [
         { id: 'settle', label: `Settle (${money(settle)})`, emoji: '\u{1F4B8}' },
         { id: 'fight', label: 'Fight it in court', emoji: '\u{2696}\u{FE0F}' },
-      ], 'fight', 'Fight: troll patents like this one usually fall apart in court.'), '\u{1F9CC}', { settle })
+      ], 'fight', 'Fight: troll patents like this one usually fall apart in court, so on average it costs less than paying up.'), '\u{1F9CC}', { settle })
     },
     resolve: (x, choice) => {
       const settle = num(x.d.settle)
@@ -178,8 +179,9 @@ const EVENTS: DtEvent[] = [
         count(x.g, 'lawsuitsWon')
         tell(x.g, 'Patent Invalidated', `The judge tossed the patent as "obvious to anyone with a calculator". Legal fees: ${formatMoney(fees)}.`, '\u{2696}\u{FE0F}', 'good')
       } else {
-        payTech(x.b, x.t, settle * 2)
-        tell(x.g, 'Lost in Court', `A jury that didn't understand the patent (nobody does) awarded the troll ${formatMoney(settle * 2)}. Legal fees on top: ${formatMoney(fees)}.`, '\u{2696}\u{FE0F}', 'bad')
+        const award = Math.round(settle * 1.5)
+        payTech(x.b, x.t, award)
+        tell(x.g, 'Lost in Court', `A jury that didn't understand the patent (nobody does) awarded the troll ${formatMoney(award)}. Legal fees on top: ${formatMoney(fees)}.`, '\u{2696}\u{FE0F}', 'bad')
       }
     },
   },
@@ -342,7 +344,7 @@ const EVENTS: DtEvent[] = [
         x.b.brand = clampN(x.b.brand - 6, 0, 100)
         tell(x.g, 'Quick Money', `Brokers paid ${formatMoney(n)} for a batch and resold it at triple the price. Your regular customers noticed.`, '\u{1F4B0}')
       } else {
-        const per = Math.round(unitRevenue(x.b) * 0.08)
+        const per = Math.round(unitRevenue(x.b) * 0.12)
         x.t.deal = { name: 'long-term chip supply deals', perYear: per, years: 3 }
         x.b.brand = clampN(x.b.brand + 5, 0, 100)
         tell(x.g, 'Loyal Customers', `You kept supplying your regulars at normal prices. Three of them signed long-term deals worth about ${formatMoney(per)} a year.`, '\u{1F91D}', 'good')
@@ -381,7 +383,7 @@ const EVENTS: DtEvent[] = [
       ask(x, 'designWin', 'The Big Deal', `${who}. They want a 15% discount on a ${money(per)}-a-year contract for three years. Their procurement team has never smiled.`, options(x.g, [
         { id: 'accept', label: 'Accept the discount', emoji: '\u{1F91D}' },
         { id: 'hold', label: 'Hold out for full price', emoji: '\u{1F4AA}' },
-      ], x.t.stage <= 2 ? 'accept' : 'hold', x.t.stage <= 2 ? 'Take it: a marquee customer is worth more than the discount at your stage.' : 'Hold firm: you’re big enough that they need you more.'), '\u{1F4DD}', { per })
+      ], holdOdds(x.t) > 0.85 ? 'hold' : 'accept', holdOdds(x.t) > 0.85 ? 'Hold firm: you’re big enough that they need you more; they almost always blink.' : 'Take it: a sure 85% beats a coin flip on full price at your stage.'), '\u{1F4DD}', { per })
     },
     resolve: (x, choice) => {
       const per = num(x.d.per)
@@ -389,7 +391,7 @@ const EVENTS: DtEvent[] = [
         x.t.deal = { name: 'an anchor customer contract', perYear: Math.round(per * 0.85), years: 3 }
         x.t.hype = clampN(x.t.hype + 8, 0, 100)
         tell(x.g, 'Deal Signed', `Signed: about ${formatMoney(per * 0.85)} a year for three years, and a logo every investor recognizes on your website.`, '\u{1F91D}', 'good')
-      } else if (chance(x.g, 0.5)) {
+      } else if (chance(x.g, holdOdds(x.t))) {
         x.t.deal = { name: 'an anchor customer contract', perYear: per, years: 3 }
         tell(x.g, 'Full Price', `They blinked. ${formatMoney(per)} a year for three years at full price.`, '\u{1F4AA}', 'good')
       } else {
@@ -529,14 +531,13 @@ const EVENTS: DtEvent[] = [
       const d = open.find((y) => y.id === str(x.d.drug)) ?? open.sort((p, q) => q.phase - p.phase)[0]
       if (!d) return
       const pharma = conglomerate(rand(x.g), rand(x.g)).replace(/ \(.*\)$/, ' Pharma')
-      const upfront = Math.round(d.peak * unitRevenue(x.b) * [0, 0.12, 0.3, 0.6][Math.min(3, d.phase)] * (0.8 + rand(x.g) * 0.4))
-      const runway = runwayYears(x.g, x.a, x.b, x.t)
-      const best = runway < 2 || d.phase >= 2 ? 'accept' : 'keep'
+      const upfront = Math.round(d.peak * unitRevenue(x.b) * [0, 0.05, 0.15, 0.35][Math.min(3, d.phase)] * (0.8 + rand(x.g) * 0.4))
+      const best = licenseBest(x.b, x.t, d, upfront)
       ask(x, 'pharmaDeal', 'Big Pharma Calls', `${pharma} wants to license ${d.name}. They pay ${formatMoney(upfront)} upfront, run and pay for every remaining trial, and give you 15% royalties if it's approved. You'd give up the rest.`, options(x.g, [
         { id: 'accept', label: `License it (${money(upfront)} upfront)`, emoji: '\u{1F91D}' },
         { id: 'counter', label: 'Ask for more', emoji: '\u{1F4C8}' },
         { id: 'keep', label: 'Keep it and go it alone', emoji: '\u{1F4AA}' },
-      ], best, best === 'accept' ? 'License it: late-stage trials could bankrupt you, and this de-risks everything.' : 'Keep it: it’s worth far more if you can fund the next trial yourself.'), '\u{1F48A}', { drug: d.id, pharma, upfront })
+      ], best, best === 'accept' ? (techFunds(x.b, x.t) < nextTrialBill(x.b, d) ? 'License it: you can’t pay for the next trial yourself, and this way the drug still gets its chance.' : 'License it: the upfront and royalties are worth more than your odds of getting it approved alone.') : 'Keep it: you can pay for the next trial, and an approved drug is worth far more than this deal.'), '\u{1F48A}', { drug: d.id, pharma, upfront })
     },
     resolve: (x, choice) => {
       const d = x.t.drugs.find((y) => y.id === str(x.d.drug))
@@ -633,7 +634,7 @@ const EVENTS: DtEvent[] = [
         { id: 'low', label: 'Bid low to win', emoji: '\u{1F4C9}' },
         { id: 'fair', label: 'Bid a fair price', emoji: '\u{2696}\u{FE0F}' },
         { id: 'skip', label: 'Don’t bid', emoji: '\u{1F6AB}' },
-      ], x.t.stage >= 3 ? 'fair' : 'low', x.t.stage >= 3 ? 'Bid fair: your track record wins it without discounting.' : 'Bid low: a first government contract is worth it at any price.'), '\u{1F3DB}\u{FE0F}', { per, agency })
+      ], bestBid(x.b, x.t), bidHint(x.b, x.t)), '\u{1F3DB}\u{FE0F}', { per, agency })
     },
     resolve: (x, choice) => govBid(x, choice, 'cargo flights'),
   },
@@ -737,12 +738,12 @@ const EVENTS: DtEvent[] = [
         { id: 'lobby', label: `Lobby to keep it (${money(lobby)})`, emoji: '\u{1F3DB}\u{FE0F}' },
         { id: 'cut', label: 'Cut your prices to make up for it', emoji: '\u{2702}\u{FE0F}' },
         { id: 'wait', label: 'Ride it out', emoji: '\u{23F3}' },
-      ], 'cut', 'Cut prices: buyers notice the sticker, and your rivals will cut too.'), '\u{1F4B8}', { lobby })
+      ], subsidyBest(x.b, lobby), subsidyBest(x.b, lobby) === 'lobby' ? 'Lobby: at your sales, even a coin flip on keeping the subsidy is worth more than the lobbyists cost.' : 'Cut prices: a small, sure price cut costs less than losing the subsidy’s buyers.'), '\u{1F4B8}', { lobby })
     },
     resolve: (x, choice) => {
       if (choice === 'lobby') {
         payTech(x.b, x.t, num(x.d.lobby))
-        if (chance(x.g, 0.5 - marketOf(x.b.countryId).corruption / 400)) {
+        if (chance(x.g, lobbyOdds(x.b))) {
           x.b.demandShock = clampN(x.b.demandShock * 1.05, 0.3, 2)
           tell(x.g, 'Subsidy Saved', `Your lobbyists (${formatMoney(num(x.d.lobby))}) and a petition from owners kept the tax credit alive for now.`, '\u{1F3DB}\u{FE0F}', 'good')
         } else {
@@ -826,7 +827,7 @@ const EVENTS: DtEvent[] = [
         { id: 'low', label: 'Bid low to win', emoji: '\u{1F4C9}' },
         { id: 'fair', label: 'Bid a fair price', emoji: '\u{2696}\u{FE0F}' },
         { id: 'skip', label: 'Don’t bid', emoji: '\u{1F6AB}' },
-      ], x.t.level >= 60 ? 'fair' : 'low', x.t.level >= 60 ? 'Bid fair: you’re among the best, they need you.' : 'Bid low: the contract and the credibility matter more than the margin.'), '\u{1F3DB}\u{FE0F}', { per, agency })
+      ], bestBid(x.b, x.t), bidHint(x.b, x.t)), '\u{1F3DB}\u{FE0F}', { per, agency })
     },
     resolve: (x, choice) => govBid(x, choice, 'research'),
   },
@@ -910,11 +911,72 @@ const EVENTS: DtEvent[] = [
         { id: 'low', label: 'Bid low to win', emoji: '\u{1F4C9}' },
         { id: 'fair', label: 'Bid a fair price', emoji: '\u{2696}\u{FE0F}' },
         { id: 'skip', label: 'Don’t bid', emoji: '\u{1F6AB}' },
-      ], x.t.stage >= 3 ? 'fair' : 'skip', x.t.stage >= 3 ? 'Bid fair: your clearance wins it without discounting.' : 'Skip it: without clearance, the bid is wasted money.'), '\u{1F3DB}\u{FE0F}', { per, agency })
+      ], bestBid(x.b, x.t), bidHint(x.b, x.t)), '\u{1F3DB}\u{FE0F}', { per, agency })
     },
     resolve: (x, choice) => govBid(x, choice, 'network defense'),
   },
 ]
+
+/** Years of peak sales an approved drug is worth (about the multiple its sales earn in a valuation). */
+const DRUG_VALUE_YEARS = 4
+
+/** What the next clinical step costs in all. */
+function nextTrialBill(b: BizState, d: Drug): number {
+  const step = trialStep(d)
+  return step ? trialCost(b, d) * step.years : 0
+}
+
+/**
+ * License or keep, by the game's own numbers: keeping is worth the drug's odds of approval (as the
+ * valuation counts them) times what an approved drug earns, minus every trial still to pay for;
+ * licensing is the upfront plus 15% royalties on the same odds. A company that can't pay for its
+ * next trial has to license.
+ */
+export function licenseBest(b: BizState, t: TechState, d: Drug, upfront: number): 'accept' | 'keep' {
+  if (techFunds(b, t) < nextTrialBill(b, d)) return 'accept'
+  const odds = clampN(APPROVAL_ODDS[Math.max(0, Math.min(4, d.phase))] * (0.75 + d.quality / 200), 0, 1)
+  const value = d.peak * unitRevenue(b) * DRUG_VALUE_YEARS
+  let remaining = 0
+  for (let ph = Math.max(0, d.phase); ph < TRIALS.length; ph++) remaining += TRIALS[ph].cost * TRIALS[ph].years * rdScale(b.countryId)
+  const keep = odds * value - remaining
+  const license = upfront + odds * value * 0.15
+  return license >= keep ? 'accept' : 'keep'
+}
+
+/** Odds lobbyists save an EV subsidy. */
+function lobbyOdds(b: BizState): number {
+  return clampN(0.5 - marketOf(b.countryId).corruption / 400, 0, 1)
+}
+
+/** Lobby or cut prices, by this year's sales: a 7% price cut keeps 97% of buyers (about 90% of sales). */
+function subsidyBest(b: BizState, lobby: number): 'lobby' | 'cut' {
+  const sales = Math.max(0, b.last?.revenue ?? 0)
+  const p = lobbyOdds(b)
+  const lobbied = sales * (p * 1.05 + (1 - p) * 0.85) - lobby
+  return lobbied > sales * 0.93 * 0.97 ? 'lobby' : 'cut'
+}
+
+/** Odds an anchor customer gives in when you hold out for full price. */
+function holdOdds(t: TechState): number {
+  return t.stage >= 3 ? 0.9 : 0.5
+}
+
+/** Odds a government bid wins: low bids win more often (for 80% of the money). */
+function bidOdds(b: BizState, t: TechState, choice: 'low' | 'fair'): number {
+  const cleared = b.industry !== 'cybersecurity' || t.stage >= 3
+  return clampN((choice === 'low' ? 0.65 : 0.45) + t.level / 300 + (t.stage >= 3 ? 0.1 : 0) - (cleared ? 0 : 0.35) - marketOf(b.countryId).corruption / 400, 0.05, 0.9)
+}
+
+/** The bid with the best expected contract value (both cost the same 3% to prepare). */
+function bestBid(b: BizState, t: TechState): 'low' | 'fair' {
+  return bidOdds(b, t, 'fair') >= bidOdds(b, t, 'low') * 0.8 ? 'fair' : 'low'
+}
+
+function bidHint(b: BizState, t: TechState): string {
+  const best = bestBid(b, t)
+  const odds = Math.round(bidOdds(b, t, best) * 100)
+  return best === 'fair' ? `Bid fair: your record wins it about ${odds}% of the time without a discount, the best expected deal.` : `Bid low: it wins about ${odds}% of the time, and a likely contract at 80% beats a long shot at full price.`
+}
 
 /** Bid on a government contract: low bids win more often for less money. */
 function govBid(x: Ctx, choice: string, what: string): void {
@@ -923,8 +985,7 @@ function govBid(x: Ctx, choice: string, what: string): void {
   const agency = str(x.d.agency, 'The government')
   const bidCost = Math.round(per * 0.03)
   payTech(x.b, x.t, bidCost)
-  const cleared = x.b.industry !== 'cybersecurity' || x.t.stage >= 3
-  const odds = clampN((choice === 'low' ? 0.65 : 0.45) + x.t.level / 300 + (x.t.stage >= 3 ? 0.1 : 0) - (cleared ? 0 : 0.35) - marketOf(x.b.countryId).corruption / 400, 0.05, 0.9)
+  const odds = bidOdds(x.b, x.t, choice === 'low' ? 'low' : 'fair')
   if (chance(x.g, odds)) {
     const perYear = Math.round(per * (choice === 'low' ? 0.8 : 1))
     x.t.contract = { name: `${what} for ${agency.replace(/^the /, '')}`, perYear, years: 3 }
