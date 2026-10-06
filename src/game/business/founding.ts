@@ -125,7 +125,8 @@ function askCity(g: GameState, p: Plan): void {
     emoji: '\u{1F3D9}\u{FE0F}',
   }))
   choices.push({ id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' })
-  scriptChoice(g, CITY, `Where Will ${p.name} Be?`, `Pick a city in ${country.name} for your first ${industryDef(p.industry).site}. Big cities charge more rent but bring more customers.`, choices, {
+  const why = p.industry === 'gameStudio' ? 'Big cities charge more rent but have more developers to hire.' : 'Big cities charge more rent but bring more customers.'
+  scriptChoice(g, CITY, `Where Will ${p.name} Be?`, `Pick a city in ${country.name} for your first ${industryDef(p.industry).site}. ${why}`, choices, {
     emoji: '\u{1F4CD}',
     data: planJson(p),
   })
@@ -171,7 +172,8 @@ function askFunding(g: GameState, p: Plan): void {
   choices.push({ id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' })
   const permits = cost.permits > 0 ? ` plus ${formatMoney(cost.permits)} in licences and permits` : ''
   const days = cost.days > 30 ? ` Registration takes about ${cost.days} days, so you'll lose part of your first year.` : ` Registration takes about ${cost.days} ${cost.days === 1 ? 'day' : 'days'}.`
-  const text = `Opening ${p.name} in ${p.city} takes about ${formatMoney(cost.capital)} for the fit-out, equipment and opening stock, a ${formatMoney(cost.fee)} registration fee${permits}.${days} ${choices.length === 1 ? `You can't cover even a small share of that right now.` : 'How will you pay for it?'}`
+  const what = p.industry === 'gameStudio' ? 'workstations, dev kits, software licences and the office' : 'the fit-out, equipment and opening stock'
+  const text = `Opening ${p.name} in ${p.city} takes about ${formatMoney(cost.capital)} for ${what}, a ${formatMoney(cost.fee)} registration fee${permits}.${days} ${choices.length === 1 ? `You can't cover even a small share of that right now.` : 'How will you pay for it?'}`
   scriptChoice(g, FUND, 'Funding', text + (m.interestRate >= 0.15 ? ` (Interest rates here are brutal: the central bank sits at ${pct(m.interestRate)}.)` : ''), choices, {
     emoji: '\u{1F4B5}',
     data: planJson({ ...p, days: cost.days }),
@@ -356,6 +358,11 @@ export function initialProduction(g: GameState, b: BizState): number {
   return Math.round(clampN(plan.demand, 0, maxProduction(g, b)))
 }
 
+/** A kind 'business' asset for a company (the caller pushes it onto g.assets). */
+export function createBusinessAsset(g: GameState, name: string, b: BizState, purchasePrice: number): Asset {
+  return businessAsset(g, name, b, purchasePrice)
+}
+
 function businessAsset(g: GameState, name: string, b: BizState, purchasePrice: number): Asset {
   const def = industryDef(b.industry)
   const a: Asset = {
@@ -421,7 +428,11 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
   const run = runIt
     ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.`
     : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`
-  const text = `${p.name} is officially registered in ${country.name}! Your first ${def.site} is opening in ${p.city}. You put in ${formatMoney(personal)} of your own money, including ${formatMoney(fees)} in fees and permits.${funding}${open}${run} Every year you'll get an Annual Report to set prices and production.`
+  const plan =
+    p.industry === 'gameStudio'
+      ? ` Greenlight your first game from the company screen: your ${b.employees} developers are waiting for something to make.`
+      : " Every year you'll get an Annual Report to set prices and production."
+  const text = `${p.name} is officially registered in ${country.name}! Your first ${def.site} is opening in ${p.city}. You put in ${formatMoney(personal)} of your own money, including ${formatMoney(fees)} in fees and permits.${funding}${open}${run}${plan}`
   log(g, `I founded ${p.name}, a ${def.label.toLowerCase()} in ${p.city}.`, 'good')
   remember(g, `Founded ${p.name} (${def.label.toLowerCase()}) in ${p.city}, ${country.name}.`)
   notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good', ai: { when: 'full', facts: text } })
@@ -429,6 +440,29 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
 
 // ---------------------------------------------------------------------------
 // Start a Business menu
+
+/** Why the player can't start a company in this industry right now (block, rules, money), or null. */
+export function foundingProblem(g: GameState, industry: Industry): string | null {
+  const block = foundBlock(g)
+  if (block) return block
+  const problem = industryProblem(g, industry)
+  if (problem) return problem
+  const c = g.character
+  const need = minimumOutlay(industry, c.countryId, c.city)
+  if (c.money < need) return `You need at least ${formatMoney(need)} of your own (10% of the startup cost plus fees) before investors will even take a meeting.`
+  return null
+}
+
+/** Open the founding flow (name → city → funding → registration) for one industry. */
+export function startFounding(g: GameState, industry: Industry): void {
+  const reason = foundingProblem(g, industry)
+  if (reason) {
+    notice(g, industryDef(industry).label, reason, { emoji: industryDef(industry).emoji })
+    return
+  }
+  const row = industryRow(industry)
+  row.run(g)
+}
 
 function industryRow(industry: Industry): MenuAction {
   const def = INDUSTRIES[industry]

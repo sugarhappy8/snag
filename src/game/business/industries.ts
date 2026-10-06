@@ -238,8 +238,10 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   gameStudio: {
     id: 'gameStudio', label: 'Video Game Studio', emoji: '\u{1F3AE}', unit: 'game copies', unitOne: 'game copy', site: 'studio', sitePlural: 'studios',
     blurb: 'Make the game you always wanted. Ship it three years late.',
+    // Studios earn from game releases (business/gamestudio.ts), not from price and production.
+    // Startup: workstations, dev kits, licences and a small office for a founding team.
     price: 30, unitCost: 9, localShare: 0.1, tradable: 0.9, demand: 110_000, elasticity: 1.3, incomeSens: 0.7,
-    capital: 800_000, capitalLocal: 0.6, staff: 16, wage: 85_000, staffScale: 0.5, rent: 120_000, maint: 0.12, capMult: 8,
+    capital: 220_000, capitalLocal: 0.6, staff: 2, wage: 85_000, staffScale: 0.5, rent: 60_000, maint: 0.08, capMult: 8,
     multiple: 10, growth: 1, perMillion: 1, taxShare: 1, perishable: 0.5, marketingShare: 0.08,
     roles: [r('Creative Director', 'quality', 150_000), r('Lead Programmer', 'quality', 140_000), r('Art Director', 'quality', 120_000), r('Community Manager', 'sales', 75_000), r('Producer', 'ops', 110_000), r('CFO', 'finance', 150_000)],
     products: ['Open-World Sequel', 'Cozy Farming Game', 'Battle Royale Mode', 'Mobile Port', 'Story DLC', 'VR Spin-Off', 'Remastered Classic'],

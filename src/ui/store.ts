@@ -32,6 +32,27 @@ export interface AiActivity {
   startedAt: number
 }
 
+/** Sheets that can be reopened from the "Back to …" chip. */
+export type ReturnSheet = 'occupation' | 'assets' | 'activities' | 'relationships'
+
+/**
+ * Where the player was inside a menu sheet when an action closed it, so the game screen can
+ * offer "↩ Back to <menu>" once the popups are done. UI state only: never saved with the life.
+ */
+export interface ReturnPoint {
+  sheet: ReturnSheet
+  /** Relationships: the person whose sheet was open. */
+  personId?: string
+  /** Group ids from the sheet's root down to the menu that was showing. */
+  path: string[]
+  /** Scroll offset of every level, root first (the last one is the menu that was showing). */
+  scrolls: number[]
+  /** The life, age and year it was made in: aging up or another life makes it stale. */
+  lifeId: string
+  age: number
+  year: number
+}
+
 export interface AppState {
   screen: Screen
   /** Screen to return to from settings/ribbons/graveyard. */
@@ -43,6 +64,8 @@ export interface AppState {
   ai: AiActivity | null
   aiStatus: 'unknown' | 'checking' | 'online' | 'offline'
   aiMessage: string
+  /** The menu to go back to after an action closed a sheet (see ReturnPoint). */
+  returnPoint: ReturnPoint | null
 }
 
 let state: AppState = {
@@ -54,6 +77,7 @@ let state: AppState = {
   ai: null,
   aiStatus: 'unknown',
   aiMessage: '',
+  returnPoint: null,
 }
 
 const listeners = new Set<() => void>()
@@ -97,6 +121,40 @@ function isOverlay(s: Screen): boolean {
 
 export function goBack(): void {
   setState({ screen: state.game && state.previousScreen === 'home' ? 'home' : state.previousScreen })
+}
+
+// ---------------------------------------------------------------------------
+// "Back to where you were" (menu sheets)
+
+/** Remember the menu an action was run from (stamped with the current life, age and year). */
+export function setReturnPoint(spot: { sheet: ReturnSheet; personId?: string; path: string[]; scrolls: number[] }): void {
+  const g = state.game
+  if (!g) return
+  const point: ReturnPoint = {
+    sheet: spot.sheet,
+    path: spot.path.filter((id) => typeof id === 'string' && id !== ''),
+    scrolls: spot.scrolls.map((n) => (Number.isFinite(n) && n > 0 ? Math.round(n) : 0)),
+    lifeId: g.lifeId,
+    age: g.character.age,
+    year: g.year,
+  }
+  if (spot.personId) point.personId = spot.personId
+  setState({ returnPoint: point })
+}
+
+export function clearReturnPoint(): void {
+  if (state.returnPoint) setState({ returnPoint: null })
+}
+
+/** Still the same life, alive, and no birthday since it was made. Pure. */
+export function returnPointLive(point: ReturnPoint | null, g: GameState | null): point is ReturnPoint {
+  if (!point || !g) return false
+  return g.character.alive && g.lifeId === point.lifeId && g.character.age === point.age && g.year === point.year
+}
+
+/** Show the chip only once every popup that followed the action has been dealt with. Pure. */
+export function returnChipVisible(point: ReturnPoint | null, g: GameState | null): point is ReturnPoint {
+  return returnPointLive(point, g) && g !== null && g.queue.length === 0
 }
 
 export function updateSettings(patch: Partial<Settings>): void {
@@ -201,7 +259,7 @@ export function startNewLife(opts: NewLifeOptions = {}): void {
   abortRunning()
   const g = createNewLife(opts)
   commit(g)
-  setState({ screen: 'game', previousScreen: 'game' })
+  setState({ screen: 'game', previousScreen: 'game', returnPoint: null })
   processQueue()
 }
 
@@ -210,14 +268,14 @@ export function continueAs(childId: string): void {
   if (!g) return
   abortRunning()
   commit(continueAsChild(g, childId))
-  setState({ screen: 'game', previousScreen: 'game' })
+  setState({ screen: 'game', previousScreen: 'game', returnPoint: null })
   processQueue()
 }
 
 export function abandonLife(): void {
   abortRunning()
   clearSave()
-  setState({ game: null, screen: 'home', previousScreen: 'home' })
+  setState({ game: null, screen: 'home', previousScreen: 'home', returnPoint: null })
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +361,8 @@ function resolveModal(g: GameState, id: string, handler: ModalHandler): void {
 export function ageUpAction(): void {
   const g = state.game
   if (!g || !g.character.alive || g.queue.length > 0) return
+  // A new year: the menu you were in last year isn't "where you were" any more.
+  clearReturnPoint()
   act(ageUp)
 }
 

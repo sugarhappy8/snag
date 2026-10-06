@@ -18,6 +18,7 @@
 // This module must not import education.ts or careers.ts (they import it).
 import { cycleLabel, cycleOf } from './business/economy'
 import { devCvEntries } from './computer/dev-cv'
+import { codingSkill } from './computer/skills'
 import { addHidden, addStat, clamp, count, earnIncome, formatMoney, log, notice, parents, remember, spend, useYearAction, yearActionsUsed } from './core'
 import { ALL_JOBS, INDUSTRY_MARKET, INDUSTRY_TAGS, MAJOR_TAGS, PROGRAM_TAGS, type GradKey, type Industry as JobIndustry, type JobDef } from './data/jobs'
 import { fillLocal, localeOf, localTerm } from './data/locales'
@@ -562,6 +563,20 @@ const TALENT_TAGS: Record<string, string[]> = {
   Programming: ['tech'],
 }
 
+/** What a special career says about you on a CV (a former head of government reads as government, not showbiz). */
+function specialTags(defId: string): string[] {
+  const id = defId.toLowerCase()
+  if (id === 'politician') return ['government', 'law', 'service']
+  if (id === 'astronaut') return ['science', 'tech']
+  if (id === 'musician') return ['music', 'arts', 'media']
+  if (id === 'model') return ['beauty', 'media']
+  if (id === 'hustler') return ['business']
+  if (/game|studio/.test(id)) return ['tech', 'arts']
+  if (id === 'sports.esports') return ['sports', 'tech']
+  if (/athlete|sport|fight|mma|box|wrestl|player/.test(id)) return ['sports']
+  return ['arts', 'media']
+}
+
 /** Entries computed from the rest of the game state. */
 function derivedEntries(g: GameState): CvEntry[] {
   const c = g.character
@@ -651,7 +666,7 @@ function derivedEntries(g: GameState): CvEntry[] {
     const j = c[slot]
     if (!j) continue
     const ind = industryForTitle(j.title)
-    const tags = j.category === 'military' ? ['service', 'government', 'sports'] : j.category === 'special' ? ['arts', 'media'] : ind ? INDUSTRY_TAGS[ind] : []
+    const tags = j.category === 'military' ? ['service', 'government', 'sports'] : j.category === 'special' ? specialTags(j.defId) : ind ? INDUSTRY_TAGS[ind] : []
     out.push({
       id: `d:${slot}`,
       kind: 'experience',
@@ -788,13 +803,18 @@ function entryPoints(g: GameState, e: CvEntry, target: CvTarget): number {
   return e.strength * w
 }
 
+/** CV strength 0-100 from a list of entries (the sum of their points, with diminishing returns). */
+function strengthOf(g: GameState, entries: CvEntry[], target: CvTarget): number {
+  const sum = entries.reduce((s, e) => s + entryPoints(g, e, target), 0)
+  const k = target.kind === 'university' ? 28 : 30
+  return Math.round(100 * (1 - Math.exp(-sum / k)))
+}
+
 /** How strong the CV is for a target, 0-100, with a short breakdown. */
 export function cvScore(g: GameState, target: CvTarget): CvScore {
   const entries = cvEntries(g)
   const scored = entries.map((e) => ({ e, pts: entryPoints(g, e, target) })).sort((a, b) => b.pts - a.pts)
-  const sum = scored.reduce((s, x) => s + x.pts, 0)
-  const k = target.kind === 'university' ? 28 : 30
-  const score = Math.round(100 * (1 - Math.exp(-sum / k)))
+  const score = strengthOf(g, entries, target)
   const lines = scored
     .filter((x) => x.pts >= 1)
     .slice(0, 3)
@@ -837,6 +857,261 @@ export function jobScreenChance(def: Pick<JobDef, 'edu' | 'category'>, fit: numb
   else if (def.edu === 'none') p += 0.25
   else if (def.edu === 'highschool') p += 0.12
   return between(p, 0.04, 0.97)
+}
+
+// ---------------------------------------------------------------------------
+// Job fit: how well this CV matches one particular job (the recruiter and the job listings)
+//
+// cvScore says how strong a CV is in general; jobFit says how well it reads to the hiring
+// manager of one job: the CV's strength for that job, how much of it is relevant to the field,
+// the right degree (major, level, school rank), years in the field, coding skill for tech jobs,
+// certifications and the local market for that industry. Deterministic and read-only.
+
+/** Education levels on one scale, for a job's requirement and for the player's degrees. */
+const REQ_LEVEL: Record<string, number> = { none: 0, highschool: 1, community: 2, bachelor: 3, graduate: 4, business: 5, law: 5, medical: 5, dental: 5, nursing: 5, pharmacy: 5, veterinary: 5 }
+const DEGREE_RANK: Record<DegreeKind, number> = { ged: 1, highschool: 1, associate: 2, bachelor: 3, master: 4, doctorate: 4, nursing: 5, mba: 5, jd: 5, md: 5, dds: 5, pharmd: 5, dvm: 5 }
+/** The degree a professional requirement asks for, and how a recruiter says it. */
+const PRO_DEGREE: Record<string, [DegreeKind, string]> = {
+  business: ['mba', 'MBA'],
+  law: ['jd', 'law degree'],
+  medical: ['md', 'medical degree'],
+  dental: ['dds', 'dental degree'],
+  nursing: ['nursing', 'nursing degree'],
+  pharmacy: ['pharmd', 'pharmacy degree'],
+  veterinary: ['dvm', 'veterinary degree'],
+}
+const TIER_FIT: Record<SchoolTier, number> = { Elite: 6, Top: 4, Good: 1, Average: 0, Struggling: -3 }
+
+/** How a recruiter names a field, from CV tags. */
+const TAG_WORDS: Record<string, string> = {
+  tech: 'tech',
+  science: 'science',
+  academic: 'academia',
+  arts: 'the arts',
+  music: 'music',
+  media: 'media',
+  writing: 'writing',
+  business: 'business',
+  finance: 'finance',
+  law: 'law',
+  health: 'healthcare',
+  service: 'public service',
+  sports: 'sports',
+  education: 'education',
+  trades: 'the trades',
+  hospitality: 'hospitality',
+  beauty: 'beauty',
+  animals: 'animal care',
+  government: 'government',
+  language: 'languages',
+}
+
+export function fieldWord(tag: string | undefined): string {
+  return (tag && TAG_WORDS[tag]) || 'this field'
+}
+
+/** The field a job belongs to, in a recruiter's words ('tech', 'healthcare'...). */
+export function jobFieldWord(def: Pick<JobDef, 'industry'>): string {
+  return fieldWord(INDUSTRY_TAGS[def.industry]?.[0])
+}
+
+/** Everything about the CV that job fit needs, computed once for many jobs. */
+export interface FitContext {
+  entries: CvEntry[]
+  /** Years worked per job industry (past and current regular jobs). */
+  years: Partial<Record<JobIndustry, number>>
+  totalYears: number
+  coding: number
+  /** Highest education on the REQ_LEVEL scale. */
+  eduLevel: number
+  bachelorMajors: string[]
+  degreeKinds: DegreeKind[]
+  /** Best school tier among university and graduate degrees ('' = none). */
+  bestTier: SchoolTier | ''
+  /** The CV's strongest fields (tags), best first. */
+  fields: string[]
+}
+
+export function fitContext(g: GameState): FitContext {
+  const c = g.character
+  const entries = cvEntries(g)
+  const years: Partial<Record<JobIndustry, number>> = {}
+  let totalYears = 0
+  const add = (title: string, y: number, known?: JobIndustry) => {
+    const yrs = Math.max(0, Number.isFinite(y) ? y : 0)
+    totalYears += yrs
+    const ind = known ?? industryForTitle(title)
+    if (ind) years[ind] = (years[ind] ?? 0) + yrs
+  }
+  for (const r of c.careerHistory) add(r.title, r.endAge - r.startAge)
+  for (const slot of ['job', 'partTimeJob'] as const) {
+    const j = c[slot]
+    if (!j || (j.category !== 'fulltime' && j.category !== 'parttime')) continue
+    const known = typeof j.data.industry === 'string' && j.data.industry in INDUSTRY_TAGS ? (j.data.industry as JobIndustry) : undefined
+    add(j.title, j.yearsAtCompany, known)
+  }
+  let eduLevel = 0
+  let bestTier: SchoolTier | '' = ''
+  for (const d of c.education.degrees) {
+    eduLevel = Math.max(eduLevel, DEGREE_RANK[d.kind] ?? 0)
+    const level = degreeLevel(d.kind)
+    if (level !== 'university' && level !== 'graduate') continue
+    const tier = schoolRank(c.countryId, level, d.school).tier
+    if (!bestTier || TIER_FIT[tier] > TIER_FIT[bestTier]) bestTier = tier
+  }
+  return {
+    entries,
+    years,
+    totalYears,
+    coding: codingSkill(g),
+    eduLevel,
+    bachelorMajors: c.education.degrees.filter((d) => d.kind === 'bachelor' && d.major).map((d) => d.major as string),
+    degreeKinds: c.education.degrees.map((d) => d.kind),
+    bestTier,
+    fields: fieldsOf(entries),
+  }
+}
+
+function fieldsOf(entries: CvEntry[]): string[] {
+  const weight = new Map<string, number>()
+  for (const e of entries) for (const t of e.tags ?? []) weight.set(t, (weight.get(t) ?? 0) + e.strength)
+  return [...weight].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([t]) => t)
+}
+
+/** The CV's strongest fields in a recruiter's words ('tech', 'finance'...), best first. */
+export function cvFields(g: GameState, max = 2): string[] {
+  return fieldsOf(cvEntries(g))
+    .slice(0, max)
+    .map((t) => fieldWord(t))
+}
+
+export interface JobFit {
+  /** 0-100: how well the CV matches this job. */
+  fit: number
+  /** Selling points, best first ('Degree in Computer Science', '4 years in tech'...). */
+  strengths: string[]
+  /** What holds the application back (CV gaps, not hard requirements). */
+  gaps: string[]
+  /** 0-1: how much of the CV is about this job's field. */
+  relevance: number
+}
+
+/** How well the CV fits one job (pass a FitContext when scoring many jobs at once). */
+export function jobFit(g: GameState, def: JobDef, ctx: FitContext = fitContext(g), market: JobMarket = jobMarket(g, def.industry)): JobFit {
+  const target = jobTarget(def)
+  const want = target.tags ?? []
+  const field = jobFieldWord(def)
+  const strengths: [string, number][] = []
+  const gaps: string[] = []
+  const fulltime = def.category === 'fulltime'
+
+  // 1. The CV's overall strength for this job.
+  const strength = strengthOf(g, ctx.entries, target)
+  let fit = strength * 0.3
+
+  // 2. How much of it is relevant to the field.
+  let relPts = 0
+  let best: CvEntry | undefined
+  let bestPts = 0
+  for (const e of ctx.entries) {
+    if (!e.tags?.some((t) => want.includes(t))) continue
+    // Degrees count for relevance too, but they mostly score below (major, level, school).
+    const pts = entryPoints(g, e, target) * (e.kind === 'education' ? 0.5 : 1)
+    relPts += pts
+    if (e.kind === 'education') continue
+    if (pts > bestPts) {
+      bestPts = pts
+      best = e
+    }
+  }
+  const relevance = 1 - Math.exp(-relPts / 14)
+  fit += relevance * 26
+  const relatedDegree = ctx.bachelorMajors.some((m) => def.majors?.includes(m) || (MAJOR_TAGS[m] ?? []).some((t) => want.includes(t)))
+  if (best && bestPts >= 4) strengths.push([`"${best.title}"${best.org && best.kind !== 'skill' ? ` (${best.org})` : ''}`, bestPts])
+  else if (want.length && fulltime && relPts < 1 && !relatedDegree) gaps.push(`Nothing on your CV shows an interest in ${field}`)
+
+  // 3. The right degree, at the right level, from a good school.
+  const req = REQ_LEVEL[def.edu] ?? 0
+  const pro = PRO_DEGREE[def.edu]
+  if (pro) {
+    if (ctx.degreeKinds.includes(pro[0])) {
+      fit += 28
+      strengths.push([`Your ${pro[1]}`, 28])
+    }
+  } else if (req >= 3) {
+    const exact = ctx.bachelorMajors.find((m) => def.majors?.includes(m))
+    const related = ctx.bachelorMajors.find((m) => (MAJOR_TAGS[m] ?? []).some((t) => want.includes(t)))
+    if (exact) {
+      fit += 22
+      strengths.push([`Degree in ${exact}`, 22])
+    } else if (related) {
+      fit += 12
+      strengths.push([`Related degree (${related})`, 12])
+    } else if (ctx.eduLevel >= req) {
+      fit += def.majors?.length ? 3 : 7
+      if (ctx.bachelorMajors.length && def.majors?.length) gaps.push(`Your degree (${ctx.bachelorMajors[0]}) isn't in ${field}`)
+    }
+    if (ctx.eduLevel > req) fit += 4
+  } else if (ctx.eduLevel >= req) {
+    fit += 4
+  }
+  const overqualified = req <= 1 && fulltime && ctx.eduLevel >= 3
+  if (overqualified) gaps.push("Overqualified: they worry you'll quit the moment something better comes along")
+  if (req >= 3 && ctx.bestTier) {
+    fit += TIER_FIT[ctx.bestTier]
+    if (ctx.bestTier === 'Elite' || ctx.bestTier === 'Top') strengths.push([`${ctx.bestTier}-ranked school`, TIER_FIT[ctx.bestTier]])
+    else if (ctx.bestTier === 'Struggling') gaps.push('Your school is ranked near the bottom')
+  }
+
+  // 4. Years in the field (or close to it).
+  let sameYears = 0
+  let relatedYears = 0
+  for (const [ind, y] of Object.entries(ctx.years) as [JobIndustry, number][]) {
+    if (ind === def.industry) sameYears += y
+    else if ((INDUSTRY_TAGS[ind] ?? []).some((t) => want.includes(t))) relatedYears += y
+  }
+  const fieldYears = Math.round((sameYears + relatedYears * 0.6) * 10) / 10
+  const expPts = Math.min(16, fieldYears * 2.5) + Math.min(5, ctx.totalYears * 0.4)
+  fit += expPts
+  const years = (n: number) => `${Math.round(n)} year${Math.round(n) === 1 ? '' : 's'}`
+  if (sameYears >= 1) strengths.push([`${years(sameYears)} in ${field}`, Math.min(16, fieldYears * 2.5)])
+  else if (fieldYears >= 1) strengths.push([`${years(relatedYears)} of related experience`, Math.min(16, fieldYears * 2.5)])
+  else if (fulltime && req >= 1) gaps.push(ctx.totalYears >= 1 ? `No experience in ${field} yet` : 'No work experience yet')
+  if (def.experience && ctx.totalYears >= def.experience) strengths.push([`${Math.round(ctx.totalYears)} years of work experience`, 3])
+
+  // 5. Coding skill for tech jobs (self-taught developers count).
+  if (want.includes('tech')) {
+    const pts = between((ctx.coding - 25) / 4, 0, 14)
+    fit += pts
+    if (ctx.coding >= 50) strengths.push([`Coding skill ${ctx.coding}/100`, pts])
+    else if (def.industry === 'tech' && ctx.coding < 30) gaps.push('Thin coding skills (practice on the computer at home)')
+  }
+
+  // 6. Certifications and skills in the field.
+  let certs = 0
+  for (const e of ctx.entries) {
+    if ((e.kind === 'certification' || (e.kind === 'skill' && !e.id.startsWith('d:dev:'))) && e.tags?.some((t) => want.includes(t))) certs++
+  }
+  if (certs > 0) {
+    fit += Math.min(9, certs * 3)
+    strengths.push([certs === 1 ? 'A relevant certificate' : `${certs} relevant certificates`, Math.min(9, certs * 3)])
+  }
+
+  // 7. The local market for this industry.
+  fit += (market.score - 50) * 0.06 + between((market.demand - 1) * 6, -3, 3)
+
+  // A strong CV still counts when little of it is about this field, especially for entry-level
+  // work where the manager mostly wants someone who shows up (the floor is the CV's strength for
+  // this job, the number applications were screened on before job fit existed).
+  fit = Math.max(fit, strength * (target.entry ? 0.95 : 0.8))
+  if (overqualified) fit -= 12
+
+  return {
+    fit: Math.round(between(fit, 2, 98)),
+    strengths: strengths.sort((a, b) => b[1] - a[1]).map(([t]) => t).slice(0, 3),
+    gaps: gaps.slice(0, 3),
+    relevance,
+  }
 }
 
 /** One compact line about the CV for the AI's character context. */

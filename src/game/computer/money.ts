@@ -1,11 +1,13 @@
 // The risky side of the home computer: crypto pump-and-dumps (money-crypto.ts), options trading
-// (money-options.ts) and online scams (money-scams.ts). computer.ts assembles the menu and calls
-// the yearly hook; shared state and helpers live in money-common.ts (g.flags.computerMoney).
+// (money-options.ts), single-stock options and coin shorts (money-stocks.ts) and online scams
+// (money-scams.ts). computer.ts assembles the menu and calls the yearly hook; shared state and
+// helpers live in money-common.ts (g.flags.computerMoney).
 import type { GameState, MenuNode } from '../types'
 import { cap, isRecord, moneyState, readState, STATE_KEY, type News } from './money-common'
 import { coinProbeNews, cryptoMenu, cryptoSummary } from './money-crypto'
 import { compulsiveTrading, optionsMenu, optionsSummary, settleOptions } from './money-options'
 import { coolHeat, scamNews, SCAMS_MIN_AGE, scamsMenu, scamsSummary } from './money-scams'
+import { betsSummary, settleBets } from './money-stocks'
 
 /** Menu rows for Activities › Computer (crypto, options, scams...). */
 export function moneyNodes(g: GameState): MenuNode[] {
@@ -30,6 +32,8 @@ export function yearlyMoney(g: GameState): void {
   // Contracts expire on schedule, even for traders behind bars.
   const opt = settleOptions(g, st)
   if (opt) news.push(opt)
+  const bets = settleBets(g, st)
+  if (bets) news.push(bets)
 
   if (c.prison) {
     // Investigations wait for you to get out; the heat cools while you're away.
@@ -56,5 +60,5 @@ export function yearlyMoney(g: GameState): void {
 export function moneySummary(g: GameState): string {
   if (!isRecord(g.flags[STATE_KEY])) return ''
   const st = readState(g)
-  return cap([optionsSummary(st), cryptoSummary(st), scamsSummary(st)].filter(Boolean).join('; '))
+  return cap([optionsSummary(st), betsSummary(st), cryptoSummary(st), scamsSummary(st)].filter(Boolean).join('; '))
 }

@@ -1115,6 +1115,135 @@ label {
   font-size: 10px;
 }
 
+/* "Back to …" chip (components/ReturnChip.tsx) ------------------------------ */
+
+/* Zero-height anchor between the feed and the bottom bar: the chip floats above the
+   "+ Age" bulge without pushing anything around. Sheets (z 50) and popups (z 100) cover it. */
+.return-dock {
+  flex: none;
+  position: relative;
+  z-index: 3;
+  height: 0;
+}
+
+.return-chip {
+  position: absolute;
+  left: 50%;
+  bottom: 40px; /* the Age button rises 30px above the bar */
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(16, 60, 130, 0.32), 0 2px 0 var(--blue-dark);
+  animation: return-chip-in 0.28s cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+
+.return-chip button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.return-chip-go {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 10px 0 14px;
+  border-radius: 999px 0 0 999px;
+  font-size: 15px;
+  transition: background 0.15s;
+}
+
+.return-chip-arrow {
+  flex: none;
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.return-chip-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.return-chip-prefix {
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.return-chip-emoji {
+  margin-right: 4px;
+}
+
+.return-chip-text strong {
+  font-weight: 800;
+}
+
+.return-chip .return-chip-x {
+  flex: none;
+  width: 42px;
+  min-height: 44px;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0 999px 999px 0;
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0.85;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.return-chip-go:hover,
+.return-chip-x:hover {
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 1;
+}
+
+.return-chip-go:active,
+.return-chip-x:active {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.return-chip button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: -4px;
+}
+
+/* Room at the end of the feed so the newest lines can scroll clear of the chip
+   (LifeLog's CHIP_ROOM matches the extra 56px). */
+.lifelog.has-chip {
+  padding-bottom: 96px;
+}
+
+@keyframes return-chip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .return-chip {
+    background: var(--blue-dark);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+}
+
 /* Stat panel --------------------------------------------------------------- */
 
 .statpanel {

@@ -10,8 +10,10 @@ import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, forma
 import { taxAdditionalIncome } from '../finance'
 import { GAMBLING_ADDICTION } from '../gambling'
 import { exchangeByKey, exchangeInfo, indexMove, type ExInfo } from '../invest/engine'
+import { indexShockFactor } from '../invest/shocks'
 import { chance, pick, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
+import { stockBetsMenu } from './money-stocks'
 import { addScreenTime } from './skills'
 import type { GameState, Json, MenuGroup, MenuNode, Person } from '../types'
 import {
@@ -133,10 +135,16 @@ export function positionPayoff(pos: OptionPos, ret: number): number {
   return pos.side === 'buy' ? dollars(Math.min(raw, pos.premium * LOTTO_CAP)) : dollars(raw)
 }
 
-/** The index move a position settles on (the year after it was opened). */
+/**
+ * The index move a position settles on (the year after it was opened), including any market
+ * shock since it was opened (a ban on a listed company drags the whole index down).
+ */
 export function settleMove(g: GameState, pos: OptionPos): number {
   const info = exchangeByKey(pos.exKey) ?? exchangeInfo(pos.countryId || g.character.countryId)
-  return indexMove(fam(g), info, pos.year + 1).ret
+  const ret = indexMove(fam(g), info, pos.year + 1).ret
+  const open = typeof pos.fx === 'number' && Number.isFinite(pos.fx) && pos.fx > 0 ? pos.fx : indexShockFactor(g, info.key, pos.year)
+  const now = indexShockFactor(g, info.key, pos.year + 1)
+  return now === open ? ret : Math.max(-1, (1 + ret) * (now / open) - 1)
 }
 
 // ---------------------------------------------------------------------------
@@ -440,7 +448,7 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
       count(g, 'optionTrades')
     }
     addScreenTime(g, 1)
-    st.positions.push({ id: uid(g, 'opt'), mode: f.mode, side: 'sell', dir: f.dir, strike: f.strike, k, units, premium, year: g.year, exKey: inf.key, index: inf.ex.index, countryId: g.character.countryId, parentId: '' })
+    st.positions.push({ id: uid(g, 'opt'), mode: f.mode, side: 'sell', dir: f.dir, strike: f.strike, k, units, premium, year: g.year, exKey: inf.key, index: inf.ex.index, countryId: g.character.countryId, parentId: '', fx: indexShockFactor(g, inf.key, g.year) })
     gainSkill(st, f.mode === 'paper' ? 2 : 1, f.mode === 'paper' ? 4 : 3, g)
     log(g, `I sold ${formatMoney(units)} worth of ${f.dir} options on the ${inf.ex.index}${f.mode === 'paper' ? ' (paper trading)' : ''} for a ${formatMoney(premium)} premium.`)
     notice(
@@ -474,7 +482,7 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
     maybeTradingAddiction(g, premium, before)
   }
   addScreenTime(g, 1)
-  st.positions.push({ id: uid(g, 'opt'), mode: f.mode, side: 'buy', dir: f.dir, strike: f.strike, k, units, premium, year: g.year, exKey: inf.key, index: inf.ex.index, countryId: g.character.countryId, parentId: parent?.id ?? '' })
+  st.positions.push({ id: uid(g, 'opt'), mode: f.mode, side: 'buy', dir: f.dir, strike: f.strike, k, units, premium, year: g.year, exKey: inf.key, index: inf.ex.index, countryId: g.character.countryId, parentId: parent?.id ?? '', fx: indexShockFactor(g, inf.key, g.year) })
   gainSkill(st, f.mode === 'paper' ? 2 : 1, f.mode === 'paper' ? 4 : 3, g)
   const lev = premium > 0 ? units / premium : 0
   const where = f.mode === 'paper' ? ' with paper money' : f.mode === 'parent' && parent ? ` from ${parent.firstName}'s brokerage account` : ''
@@ -848,6 +856,7 @@ export function optionsMenu(): MenuGroup {
                 if (canAct(gg)) startIndexTrade(gg, { mode: 'real', side: 'sell' })
               },
             },
+            stockBetsMenu(),
           )
         }
       } else {

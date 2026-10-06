@@ -130,6 +130,56 @@ export interface OptionPos {
   countryId: string
   /** Parent whose account was "borrowed" (mode 'parent'). */
   parentId: string
+  /** The index's market-shock factor when opened (invest/shocks.ts); absent in old saves. */
+  fx?: number
+}
+
+/**
+ * A bet on one listed company or one coin (computer/money-stocks.ts): single-stock calls and puts,
+ * coin shorts and leveraged coin longs. Settles at the next age-up on the security's real price
+ * move, market shocks included. `via: 'crony'` bets sit in a friend's account (politicians tipping
+ * off a crony): the money comes back in cash, minus the crony's cut.
+ */
+export interface StockBet {
+  id: string
+  via: 'own' | 'crony'
+  asset: 'stock' | 'coin'
+  /** call / put (stock options), short / long (coins, 2x). */
+  kind: 'call' | 'put' | 'short' | 'long'
+  /** Strike as the move the price must beat (options; 0 = at the money). */
+  k: number
+  secId: string
+  /** Exchange key (stocks) or 'crypto'. */
+  exKey: string
+  slot: number
+  name: string
+  symbol: string
+  /** Dollars of exposure (notional). */
+  units: number
+  /** Premium paid (options) or cash put up (coins). */
+  premium: number
+  /** Price when the bet was placed (market shocks included). */
+  openPrice: number
+  /** Calendar year it was placed: it settles on the move to year + 1. */
+  year: number
+  countryId: string
+  /** The friend holding it (crony bets) and their cut of the profit. */
+  crony: string
+  cut: number
+  /** Set by politics when the bet rides on the player's own announcement (insider trading). */
+  caseId: string
+}
+
+/** A settled bet, kept briefly so investigators can follow the money. */
+export interface BetResult {
+  id: string
+  secId: string
+  name: string
+  year: number
+  via: 'own' | 'crony'
+  /** What it made (negative = lost), after the crony's cut. */
+  net: number
+  caseId: string
 }
 
 /** A meme coin the player launched. */
@@ -190,6 +240,10 @@ export interface MoneyState {
   bans: number
   /** Criminal-record indexes of scams (so a catch-up arrests for the right crime). */
   scamRecords: number[]
+  /** Open single-stock options, coin shorts and longs (money-stocks.ts). */
+  bets: StockBet[]
+  /** The last few settled bets. */
+  betLog: BetResult[]
 }
 
 export const PAPER_START = 10_000
@@ -214,6 +268,8 @@ function fresh(): MoneyState {
     scamKinds: {},
     bans: 0,
     scamRecords: [],
+    bets: [],
+    betLog: [],
   }
 }
 
@@ -241,6 +297,36 @@ function validCoin(v: Json): boolean {
   return isRecord(v) && typeof v.ticker === 'string' && typeof v.name === 'string' && ['dumped', 'rugged', 'dumpedOn'].includes(str(v.outcome))
 }
 
+const BET_KINDS = ['call', 'put', 'short', 'long']
+
+function validBet(v: Json): boolean {
+  if (!isRecord(v)) return false
+  return (
+    typeof v.id === 'string' &&
+    (v.via === 'own' || v.via === 'crony') &&
+    (v.asset === 'stock' || v.asset === 'coin') &&
+    BET_KINDS.includes(str(v.kind)) &&
+    typeof v.secId === 'string' &&
+    typeof v.exKey === 'string' &&
+    Number.isFinite(num(v.slot, NaN)) &&
+    typeof v.name === 'string' &&
+    typeof v.symbol === 'string' &&
+    num(v.units, -1) >= 0 &&
+    num(v.premium, -1) >= 0 &&
+    num(v.openPrice, -1) > 0 &&
+    Number.isFinite(num(v.k, NaN)) &&
+    Number.isFinite(num(v.year, NaN)) &&
+    typeof v.countryId === 'string' &&
+    typeof v.crony === 'string' &&
+    Number.isFinite(num(v.cut, NaN)) &&
+    typeof v.caseId === 'string'
+  )
+}
+
+function validResult(v: Json): boolean {
+  return isRecord(v) && typeof v.id === 'string' && typeof v.secId === 'string' && typeof v.caseId === 'string' && Number.isFinite(num(v.net, NaN)) && Number.isFinite(num(v.year, NaN))
+}
+
 function validProbe(v: Json): boolean {
   return isRecord(v) && typeof v.id === 'string' && (v.kind === 'dump' || v.kind === 'rug') && Number.isFinite(num(v.dueAge, NaN)) && typeof v.countryId === 'string'
 }
@@ -259,7 +345,7 @@ function repair(o: { [key: string]: Json }): void {
   const kinds = o.scamKinds as { [key: string]: Json }
   for (const k of Object.keys(kinds)) if (typeof kinds[k] !== 'number' || !Number.isFinite(kinds[k] as number)) delete kinds[k]
   const validIndex = (v: Json): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 0
-  for (const [key, ok] of [['positions', validPos], ['coins', validCoin], ['probes', validProbe], ['scamRecords', validIndex]] as const) {
+  for (const [key, ok] of [['positions', validPos], ['coins', validCoin], ['probes', validProbe], ['scamRecords', validIndex], ['bets', validBet], ['betLog', validResult]] as const) {
     const arr = o[key]
     if (!Array.isArray(arr)) o[key] = []
     else if (!arr.every(ok)) o[key] = arr.filter(ok)

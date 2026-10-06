@@ -1,6 +1,7 @@
-// Special career: Professional Athlete. Pick a sport and league, try out for a team, sign
-// contracts, practice your skills and fitness, play seasons, win championships and awards,
-// avoid (or embrace) doping and bribes, get traded, retire, and maybe reach the Hall of Fame.
+// Special Careers › Sports › Team Sports: the professional athlete. Pick a sport and league
+// (your country's own big sports and home league first), try out for a team, sign contracts,
+// practice your skills and fitness, play seasons, win championships and awards, avoid (or
+// embrace) doping and bribes, get traded, retire, and maybe reach the Hall of Fame.
 import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
@@ -9,6 +10,7 @@ import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../t
 import { localeOf } from '../data/locales'
 import { getCountry } from '../world'
 import { addFame, attendedUniversity, blocked, clamp100, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
+import { addBuzz, addHeadTrauma, banReason, countryName, honor, plural, recordCareer } from './sports-core'
 
 // ---------------------------------------------------------------------------
 // Sports & leagues
@@ -31,7 +33,15 @@ const SPORTS: Sport[] = [
   { id: 'rugby', name: 'Rugby', emoji: '\u{1F3C9}', skills: ['Celebrations', 'Kicking', 'Passing', 'Running', 'Scrummaging', 'Tackling'], positions: ['Hooker', 'Fly-half', 'Prop', 'Winger', 'Fullback'], needsUniversity: false },
   { id: 'cricket', name: 'Cricket', emoji: '\u{1F3CF}', skills: ['Batting', 'Bowling', 'Celebrations', 'Fielding', 'Running Between Wickets', 'Wicketkeeping'], positions: ['Opening Batter', 'Fast Bowler', 'Spin Bowler', 'All-Rounder', 'Wicketkeeper'], needsUniversity: false },
   { id: 'volleyball', name: 'Volleyball', emoji: '\u{1F3D0}', skills: ['Blocking', 'Bumping', 'Celebrations', 'Digging', 'Serving', 'Setting', 'Spiking'], positions: ['Outside Hitter', 'Setter', 'Libero', 'Middle Blocker', 'Opposite'], needsUniversity: false },
+  { id: 'handball', name: 'Handball', emoji: '\u{1F93E}', skills: ['Shooting', 'Passing', 'Defending', 'Jumping', 'Celebrations'], positions: ['Left Back', 'Center Back', 'Pivot', 'Wing', 'Goalkeeper'], needsUniversity: false },
+  { id: 'fieldhockey', name: 'Field Hockey', emoji: '\u{1F3D1}', skills: ['Dribbling', 'Passing', 'Shooting', 'Tackling', 'Celebrations'], positions: ['Forward', 'Midfielder', 'Defender', 'Drag-Flicker', 'Goalkeeper'], needsUniversity: false },
+  { id: 'aussie', name: 'Aussie Rules Football', emoji: '\u{1F3C9}', skills: ['Kicking', 'Marking', 'Handballing', 'Tackling', 'Celebrations'], positions: ['Full-Forward', 'Ruckman', 'Midfielder', 'Wingman', 'Full-Back'], needsUniversity: false },
+  { id: 'netball', name: 'Netball', emoji: '\u{1F3D0}', skills: ['Shooting', 'Passing', 'Defending', 'Footwork', 'Celebrations'], positions: ['Goal Shooter', 'Goal Attack', 'Wing Attack', 'Centre', 'Goal Keeper'], needsUniversity: false },
+  { id: 'kabaddi', name: 'Kabaddi', emoji: '\u{1F93C}', skills: ['Raiding', 'Tackling', 'Breath Control', 'Agility', 'Celebrations'], positions: ['Raider', 'All-Rounder', 'Corner Defender', 'Cover Defender'], needsUniversity: false },
 ]
+
+/** Team sports played at the Summer (or, for ice hockey, Winter) Olympics. */
+export const OLYMPIC_TEAM_SPORTS: Record<string, 'summer' | 'winter'> = { soccer: 'summer', basketball: 'summer', volleyball: 'summer', rugby: 'summer', handball: 'summer', fieldhockey: 'summer', hockey: 'winter' }
 
 interface League {
   id: string
@@ -80,6 +90,11 @@ const LOCAL_SPORT: [RegExp, string][] = [
   [/^rugby(?: league| union| sevens)?$/i, 'rugby'],
   [/^volleyball$/i, 'volleyball'],
   [/^cricket$/i, 'cricket'],
+  [/^handball$/i, 'handball'],
+  [/^field hockey$/i, 'fieldhockey'],
+  [/^aussie rules/i, 'aussie'],
+  [/^netball$/i, 'netball'],
+  [/^kabaddi$/i, 'kabaddi'],
 ]
 
 const SOCCER_CLUBS: [string[], string[]][] = [
@@ -106,6 +121,11 @@ const LEAGUE_PAY: Record<string, [number, number]> = {
   volleyball: [20_000, 400_000],
   cricket: [40_000, 1_500_000],
   football: [60_000, 2_000_000],
+  handball: [30_000, 1_200_000],
+  fieldhockey: [15_000, 300_000],
+  aussie: [80_000, 1_300_000],
+  netball: [30_000, 150_000],
+  kabaddi: [20_000, 400_000],
 }
 
 const HOME_LEAGUE_NAME: Record<string, string> = {
@@ -117,6 +137,23 @@ const HOME_LEAGUE_NAME: Record<string, string> = {
   volleyball: 'Volleyball League',
   cricket: 'Premier Cricket League',
   football: 'Football League',
+  handball: 'Handball Bundesliga',
+  fieldhockey: 'Hockey League',
+  aussie: 'Football League',
+  netball: 'Netball League',
+  kabaddi: 'Kabaddi League',
+}
+
+/**
+ * Home leagues famous enough to sign players from anywhere (the big leagues of sports that have
+ * no league in the list above): handball in Germany, Aussie rules in Australia...
+ */
+const FAMOUS_HOME: Record<string, string[]> = {
+  handball: ['de', 'fr', 'es', 'dk'],
+  fieldhockey: ['in', 'nl', 'be'],
+  aussie: ['au'],
+  netball: ['au', 'nz', 'gb'],
+  kabaddi: ['in'],
 }
 
 /** The sports (from SPORTS) that are big in a country, most popular first. */
@@ -153,7 +190,7 @@ function homeLeague(id: string): League | null {
   const cities = [...new Set(country.cities)]
   return {
     id,
-    name: `${women ? "Women's " : ''}${country.demonym} ${HOME_LEAGUE_NAME[sport] ?? 'League'}`,
+    name: `${women ? "Women's " : ''}${country.demonym} ${sport === 'handball' && countryId !== 'de' ? 'Handball League' : sport === 'aussie' ? 'Rules Football League' : HOME_LEAGUE_NAME[sport] ?? 'League'}`,
     sport,
     gender: women ? 'female' : 'male',
     country: country.name,
@@ -166,9 +203,18 @@ function homeLeague(id: string): League | null {
 /** Leagues for a sport: the home league first (unless a famous one already plays here), then the rest. */
 function leaguesFor(g: GameState, sport: string, gender: 'male' | 'female'): League[] {
   const country = getCountry(g.character.countryId)
+  if (sport === 'netball' && gender === 'male') return []
   const famous = LEAGUES.filter((l) => l.sport === sport && l.gender === gender)
-  const home = localSports(country.id).includes(sport) && !famous.some((l) => l.country === country.name) ? homeLeague(homeLeagueId(country.id, sport, gender)) : null
-  return home ? [home, ...famous] : famous
+  for (const cid of FAMOUS_HOME[sport] ?? []) {
+    const l = homeLeague(homeLeagueId(cid, sport, gender))
+    if (l) famous.push(l)
+  }
+  // Your own country's league comes first.
+  const own = famous.filter((l) => l.country === country.name)
+  const rest = famous.filter((l) => l.country !== country.name)
+  if (own.length) return [...own, ...rest]
+  const home = localSports(country.id).includes(sport) ? homeLeague(homeLeagueId(country.id, sport, gender)) : null
+  return home ? [home, ...rest] : rest
 }
 
 function sportOf(id: string | null | undefined): Sport {
@@ -271,7 +317,10 @@ function avgSkill(p: AthleteProfile): number {
 function salaryFor(league: League, greatness: number, teamStrength: number): number {
   const t = Math.max(0, Math.min(1, (greatness - 20) / 80))
   const raw = league.minPay + (league.maxPay - league.minPay) * t ** 2.2 * (0.8 + teamStrength / 250)
-  return Math.round(raw / 10_000) * 10_000
+  // Small leagues (women's leagues in poorer countries) pay a few thousand: round finely there,
+  // so a contract is never "worth $0 per year".
+  const step = raw < 100_000 ? 1_000 : 10_000
+  return Math.max(1_000, Math.round(raw / step) * step)
 }
 
 // ---------------------------------------------------------------------------
@@ -412,7 +461,7 @@ function tryoutReason(g: GameState): string | null {
   if (g.character.age > 36) return 'You are too old to try out for a professional team.'
   const p = peek<AthleteProfile>(g, 'athlete')
   if (p && p.bannedUntil > g.character.age) return p.bannedUntil >= 999 ? 'You have been banned from professional sports for life.' : `You are banned from professional sports until age ${p.bannedUntil}.`
-  return null
+  return banReason(g)
 }
 
 const tryoutAction: MenuAction = {
@@ -423,7 +472,23 @@ const tryoutAction: MenuAction = {
   subtitle: 'Try out for a professional team',
   disabledReason: tryoutReason,
   confirm: (g) => (g.character.job ? `If a team signs you, you'll quit your job as ${g.character.job.title}. Continue?` : null),
-  run: (g) => scriptChoice(g, sportScript, 'Professional Sports', 'Which sport do you want to play professionally?', [...SPORTS.map((s) => ({ id: s.id, label: s.name, emoji: s.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], { emoji: '\u{1F3C6}' }),
+  run: (g) => {
+    const local = localSports(g.character.countryId)
+    const ordered = [...SPORTS].sort((a, b) => rankLocal(local, a.id) - rankLocal(local, b.id))
+    scriptChoice(
+      g,
+      sportScript,
+      'Professional Sports',
+      `Which sport do you want to play professionally?${local.length ? ` The big ones in ${countryName(g)} come first.` : ''}`,
+      [...ordered.map((s) => ({ id: s.id, label: `${s.name}${local.includes(s.id) ? ` · popular in ${countryName(g)}` : ''}`, emoji: s.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+      { emoji: '\u{1F3C6}' },
+    )
+  },
+}
+
+function rankLocal(local: string[], id: string): number {
+  const i = local.indexOf(id)
+  return i < 0 ? 100 : i
 }
 
 // ---------------------------------------------------------------------------
@@ -661,9 +726,11 @@ function retire(g: GameState, forced: boolean): void {
   const p = athleteProfile(g)
   const team = job.company
   p.retiredAge = g.character.age
+  const sport = sportOf(p.sport)
+  recordCareer(g, { sport: sport.name, kind: 'team', from: typeof job.data.startAge === 'number' ? job.data.startAge : g.character.age - p.seasons, best: p.championships ? plural(p.championships, 'championship') : plural(p.seasons, 'season'), legacy: Math.min(100, p.championships * 10 + p.awards.length * 10 + Math.max(0, p.peakGreatness - 50)) })
   leave(g, 'retired')
   log(g, `I retired from professional sports.`, 'event')
-  remember(g, `Retired from pro sports after ${p.seasons} seasons and ${p.championships} championships.`)
+  remember(g, `Retired from pro sports after ${plural(p.seasons, 'season')} and ${plural(p.championships, 'championship')}.`)
   say(g, 'Retired', `${forced ? 'No team offered you a contract, so you ' : 'You '}retired after ${p.seasons} season${p.seasons === 1 ? '' : 's'}${p.championships ? ` and ${p.championships} championship${p.championships === 1 ? '' : 's'}` : ''}. The ${team} held a ceremony in your honor.`, '\u{1F3C5}', 'good')
 }
 
@@ -695,6 +762,7 @@ function injure(g: GameState, job: Job): void {
   }
   addStat(g, 'health', -randInt(g, 5, 12))
   ad(job).injured = 1
+  if (injury === 'Concussion') addHeadTrauma(g, 4, true)
   log(g, `I suffered a ${injury.toLowerCase()}.`, 'bad')
   scriptChoice(
     g,
@@ -838,7 +906,7 @@ export function yearlyAthlete(g: GameState): void {
     const sport = sportOf(p0.sport)
     if (sport.id === 'football') g.flags['special.athlete.canton'] = true
     log(g, `I was inducted into the ${sport.name} Hall of Fame.`, 'good')
-    remember(g, `Inducted into the ${sport.name} Hall of Fame.`)
+    honor(g, `Inducted into the ${sport.name} Hall of Fame.`, `${sport.name} Hall of Fame`, '', 10)
     say(g, 'Hall of Fame', `You were inducted into the ${sport.name} Hall of Fame! Your bronze bust looks only slightly like you.`, '\u{1F3DB}\u{FE0F}', 'good')
   }
   // Scouts approach talented 18 year olds.
@@ -892,6 +960,9 @@ export function yearlyAthlete(g: GameState): void {
   d.champion = table[0].team
   earnIncome(g, job.salary)
   addStat(g, 'health', -randInt(g, 0, 3))
+  // Collision sports add up: every season of tackles and checks leaves a mark.
+  const knocks: Record<string, number> = { football: 2.5, hockey: 1.2, rugby: 1.8, aussie: 1.5, soccer: 0.3 }
+  if (knocks[sport.id]) addHeadTrauma(g, knocks[sport.id] * (0.6 + rand(g) * 0.8))
 
   const statLine = seasonStats(g, sport, greatness, d.position)
   log(g, `I played my ${ordinal(p.seasons)} pro season with the ${d.team}. ${statLine}`, greatness >= 60 ? 'good' : 'neutral')
@@ -907,7 +978,8 @@ export function yearlyAthlete(g: GameState): void {
     const repeat = g.flags['special.athlete.lastTitle'] === c.age - 1
     g.flags['special.athlete.lastTitle'] = c.age
     log(g, repeat ? `The ${d.team} won the ${league.name} championship again! Back-to-back!` : `The ${d.team} won the ${league.name} championship!`, 'good')
-    remember(g, `Won the ${league.name} championship with the ${d.team}.`)
+    honor(g, `Won the ${league.name} championship with the ${d.team}.`, `${league.name} champion`, d.team, 8)
+    addBuzz(g, 15)
     say(g, 'Champions!', `The ${d.team} won the ${league.name} championship! ${statLine} You were doused in a cooler of sports drink.`, '\u{1F3C6}', 'good')
   } else {
     say(g, 'Season Over', `The ${d.team} finished ${ordinal(rank)} in the ${league.name}. ${d.champion} won the title. ${statLine}`, sport.emoji, rank <= 3 ? 'good' : 'neutral')
@@ -919,7 +991,8 @@ export function yearlyAthlete(g: GameState): void {
     addFame(g, 5)
     if (sport.id === 'soccer') g.flags['special.athlete.goldenOrb'] = true
     log(g, `I won the ${award}.`, 'good')
-    remember(g, `Won the ${award}.`)
+    honor(g, `Won the ${award}.`, award.replace(/ \(age \d+\)$/, ''), league.name, 8)
+    addBuzz(g, 10)
     say(g, award, `You won the ${award}, given to the best player of the season!`, '\u{1F947}', 'good')
   }
   if (d.injured > 0) d.injured -= 1
@@ -1004,7 +1077,96 @@ function seasonStats(g: GameState, sport: Sport, greatness: number, position: st
       return position === 'Goalkeeper' ? `I kept ${Math.round(k * 18 + rand(g) * 3)} clean sheets.` : `I scored ${Math.round(k * 30 + rand(g) * 4)} goals.`
     case 'rugby':
       return `I scored ${Math.round(k * 20 + rand(g) * 3)} tries.`
+    case 'handball':
+      return position === 'Goalkeeper' ? `I made ${Math.round(150 + k * 250 + rand(g) * 30)} saves.` : `I scored ${Math.round(40 + k * 180 + rand(g) * 20)} goals.`
+    case 'fieldhockey':
+      return position === 'Goalkeeper' ? `I kept ${Math.round(k * 12 + rand(g) * 2)} clean sheets.` : `I scored ${Math.round(k * 25 + rand(g) * 3)} goals.`
+    case 'aussie':
+      return `I kicked ${Math.round(k * 60 + rand(g) * 6)} goals.`
+    case 'netball':
+      return `I scored ${Math.round(100 + k * 600 + rand(g) * 40)} goals.`
+    case 'kabaddi':
+      return `I racked up ${Math.round(40 + k * 260 + rand(g) * 20)} raid points.`
+    case 'cricket':
+      return position.includes('Bowler') ? `I took ${Math.round(5 + k * 25 + rand(g) * 3)} wickets.` : `I scored ${Math.round(150 + k * 600 + rand(g) * 50)} runs.`
     default:
       return `I racked up ${Math.round(k * 400 + rand(g) * 40)} kills.`
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sports › Team Sports, and hooks for youth academies and the Olympics
+
+/** Team sports for menus elsewhere (youth academies): id, name, emoji. */
+export function teamSportList(): { id: string; name: string; emoji: string }[] {
+  return SPORTS.map((s) => ({ id: s.id, name: s.name, emoji: s.emoji }))
+}
+
+/** This country's big team sports (ids), most popular first. */
+export function localTeamSports(countryId: string): string[] {
+  return localSports(countryId)
+}
+
+/** The current team-sport career, for the Olympics and the AI. */
+export function teamStatus(g: GameState): { sportId: string; sportName: string; greatness: number; team: string; league: string } | null {
+  const job = athleteJob(g)
+  if (!job) return null
+  const d = ad(job)
+  const league = leagueOf(d.league)
+  const sport = sportOf(league.sport)
+  return { sportId: sport.id, sportName: sport.name, greatness: viewAthlete(g).greatness, team: d.team, league: league.name }
+}
+
+/**
+ * A youth-academy graduate's first professional contract (from the home league when the sport
+ * is played here). Skills are seeded from the academy level. Returns false if no league fits.
+ */
+export function offerYouthContract(g: GameState, sportId: string, level: number, academy: string): boolean {
+  const sport = SPORTS.find((s) => s.id === sportId)
+  if (!sport || athleteJob(g)) return false
+  const leagues = leaguesFor(g, sport.id, g.character.gender === 'female' ? 'female' : 'male')
+  if (!leagues.length) return false
+  const p = ensureSport(g, sport)
+  for (const k of Object.keys(p.skills)) p.skills[k] = clamp100(Math.max(p.skills[k], level - 8 + randInt(g, 0, 10)))
+  const league = leagues[0]
+  const strength = randInt(g, 40, 85)
+  const team = academy && league.teams.some((t) => academy.startsWith(t)) ? league.teams.find((t) => academy.startsWith(t))! : pick(g, league.teams)
+  const greatness = clamp100(level * 0.7 + 10)
+  offerContract(g, { league: league.id, team, strength, position: pick(g, sport.positions), years: randInt(g, 2, 4), salary: salaryFor(league, greatness, strength) }, `${team} (${league.name}) wants to sign you straight out of the ${academy}!`)
+  return true
+}
+
+/** The home club name for a youth academy ("Club Atlético Rosario Youth Academy"). */
+export function academyClub(g: GameState, sportId: string): string {
+  const leagues = leaguesFor(g, sportId, g.character.gender === 'female' ? 'female' : 'male')
+  const own = leagues.find((l) => l.country === getCountry(g.character.countryId).name) ?? leagues[0]
+  if (!own) return `${g.character.city} Sports Club`
+  const local = own.teams.find((t) => t.includes(g.character.city))
+  return (local ?? pick(g, own.teams)).replace(/ Women$/, '')
+}
+
+export const teamSportsMenu: MenuGroup = {
+  type: 'menu',
+  id: 'sports.team',
+  label: 'Team Sports',
+  emoji: '\u{26BD}',
+  subtitle: (g) => {
+    const job = athleteJob(g)
+    if (job) return `${job.title} · ${job.company}`
+    const local = localSports(g.character.countryId).map((id) => SPORTS.find((s) => s.id === id)?.name).filter(Boolean)
+    return local.length ? `Big here: ${local.slice(0, 3).join(', ')}` : 'Soccer, basketball, football, hockey, cricket, rugby and more'
+  },
+  header: (g) => {
+    const c = g.character
+    const local = localSports(c.countryId)
+    const leagues = local.flatMap((id) => leaguesFor(g, id, c.gender === 'female' ? 'female' : 'male').filter((l) => l.country === countryName(g)).map((l) => l.name))
+    return `Athleticism: ${c.hidden.athleticism}%. Teams want natural athletes between 18 and 36.${leagues.length ? ` Leagues at home: ${[...new Set(leagues)].slice(0, 4).join(', ')}.` : ''} Youth academies, school teams and the gym all help you get noticed.`
+  },
+  children: (g): MenuNode[] => {
+    if (athleteJob(g)) return [{ type: 'info', id: 'athlete.already', text: 'You are already a pro athlete. Manage your career from Occupation › My Work.', emoji: '\u{1F3C6}' }]
+    const nodes: MenuNode[] = [tryoutAction]
+    if (peek<AthleteProfile>(g, 'athlete')?.sport) nodes.push(statsInfo())
+    if (g.character.age < 18) nodes.push({ type: 'info', id: 'athlete.kids', emoji: '\u{1F9D2}', text: 'Too young for the pros. Join a youth academy in Sports › Youth Sports, or a school team.' })
+    return nodes
+  },
 }

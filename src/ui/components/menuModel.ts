@@ -100,3 +100,37 @@ export function isMultiline(action: MenuAction): boolean {
   if (!input || input.kind !== 'text') return false
   return action.id === 'doAnything' || (input.placeholder?.length ?? 0) > 36 || input.label.length > 40
 }
+
+/** Where a "Back to …" chip leads: the deepest menu of a saved path that still exists. */
+export interface ReturnTarget {
+  /** Group ids that still resolve, root first (may be shorter than the saved path). */
+  path: string[]
+  /** Labels from the sheet's root down to the target, e.g. Activities › Computer › Ventures. */
+  crumbs: string[]
+  /** The menu the chip reopens. */
+  label: string
+  emoji: string
+  /** The whole saved path still exists (otherwise this is its deepest valid ancestor). */
+  exact: boolean
+}
+
+/**
+ * Resolve a saved menu path against the latest state. Groups that vanished, became hidden
+ * or locked are dropped together with everything below them, so the target is always a
+ * menu the player can actually open.
+ */
+export function returnTarget(
+  g: GameState,
+  root: { label: string; emoji: string; nodes: MenuNode[] },
+  path: string[],
+): ReturnTarget {
+  const trail = resolveTrail(g, root.nodes, path)
+  const last = trail[trail.length - 1]
+  return {
+    path: trail.map((t) => t.id),
+    crumbs: [root.label, ...trail.map((t) => t.label)],
+    label: last ? last.label : root.label,
+    emoji: last ? last.emoji : root.emoji,
+    exact: trail.length === path.length,
+  }
+}

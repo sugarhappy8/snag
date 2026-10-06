@@ -27,8 +27,8 @@ import {
 } from './core'
 import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
 import { codeFreelanceMenu } from './computer/dev-freelance'
-import { catchEmbellishment, caughtLine, caughtLying, cvMenu, cvScore, embellishedEntries, jobMarket, jobScreenChance, jobTarget, screeningReason, screeningThoroughness } from './cv'
-import { COMPANY_WORDS, FULLTIME_JOBS, GIGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
+import { catchEmbellishment, caughtLine, caughtLying, cvFields, cvMenu, cvScore, embellishedEntries, fitContext, jobFit, jobMarket, jobScreenChance, screeningReason, screeningThoroughness, type JobMarket } from './cv'
+import { COMPANY_WORDS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
 import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation, presentAdmissionsInterview, screenedOut } from './education'
 import { createPerson, notePerson } from './people'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
@@ -442,7 +442,7 @@ export function applyScreening(g: GameState, app: ScreeningApp, decision: Screen
 /** Build the screening request for a listing. */
 function screeningFor(g: GameState, def: JobDef, job: InterviewJob): ScreeningApp {
   const market = jobMarket(g, def.industry)
-  const fit = cvScore(g, jobTarget(def)).score
+  const fit = jobFit(g, def, fitContext(g), market).fit
   return { kind: 'job', job, org: job.company, fit, chance: jobScreenChance(def, fit, market), market: market.line }
 }
 
@@ -585,30 +585,268 @@ function applyForListing(g: GameState, listing: JobListing): void {
   queueAi(g, { type: 'screenApplication', app })
 }
 
-function jobRecruiter(g: GameState): void {
+// ---------------------------------------------------------------------------
+// The job recruiter: reads your CV, ranks every opening in the country by how well you fit,
+// explains what's missing for the jobs just out of reach, and pitches you to employers.
+//
+// Matches are derived from a yearly seed (stable within a year, no state changes). A pitch goes
+// through the regular CV screening (AI or offline) with the recruiter's referral boosting the
+// odds; when the odds are already excellent the recruiter's contact skips straight to the
+// interview. Strong, relevant CVs get better jobs, better odds and a little more money.
+
+export interface RecruiterMatch {
+  key: string
+  def: JobDef
+  title: string
+  company: string
+  salary: number
+  /** 0-100 (cv.ts jobFit). */
+  fit: number
+  /** Odds the employer invites you to interview after the pitch, 0-1. */
+  odds: number
+  /** The recruiter knows the hiring manager: straight to the interview. */
+  direct: boolean
+  strengths: string[]
+  /** CV gaps (top matches) or everything missing (reach jobs). */
+  gaps: string[]
+  marketLine: string
+}
+
+export const RECRUITER_PITCHES = 2
+const RECRUITER_BOOST = 0.12
+const DIRECT_ODDS = 0.88
+const TOP_MATCHES = 6
+const REACH_JOBS = 3
+
+function recruiterName(g: GameState): string {
+  const pool = NAME_POOLS[getCountry(g.character.countryId).names] ?? NAME_POOLS.anglo
+  const r = seeded(hashString(`${g.lifeId}|${g.generation}|recruiter|${g.character.countryId}`))
+  return `${rPick(r, r() < 0.5 ? pool.male : pool.female)} ${rPick(r, pool.last)}`
+}
+
+/** Every requirement this job has that the player doesn't meet (all of them, not just the first). */
+export function requirementGaps(g: GameState, def: JobDef): string[] {
   const c = g.character
-  if (!c.alive) return
-  const schoolBlock = fullTimeSchoolBlocker(g)
-  if (schoolBlock) {
-    notice(g, 'Job Recruiter', schoolBlock, { emoji: '\u{1F3EB}' })
-    return
+  const out: string[] = []
+  const minAge = def.minAge ?? (def.category === 'parttime' ? 14 : 18)
+  if (c.age < minAge) out.push(`Be at least ${minAge}`)
+  if (def.drinkingAge && c.age < getCountry(c.countryId).drinkingAge) out.push(`Be at least ${getCountry(c.countryId).drinkingAge} (it serves alcohol)`)
+  if (!meetsEducation(g, def.edu, def.majors) && !selfTaughtDev(g, def)) {
+    out.push(`${educationRequirementLabel(def.edu, def.majors, g)}${def.industry === 'tech' && ['none', 'highschool', 'community', 'bachelor'].includes(def.edu) ? ' (or coding skill 60+ and a portfolio)' : ''}`)
   }
-  if (!useYearAction(g, 'recruiter', 1)) {
-    notice(g, 'Job Recruiter', 'Your recruiter is "still working on it." Check back next year.', { emoji: '\u{1F575}\u{FE0F}' })
-    return
+  if (def.experience) {
+    const missing = Math.ceil(def.experience - totalWorkExperience(g))
+    if (missing > 0) out.push(`${missing} more year${missing === 1 ? '' : 's'} of work experience`)
   }
+  if (def.license && !c.licenses.includes(def.license)) out.push(LICENSE_NAMES[def.license] ? LICENSE_NAMES[def.license][0].toUpperCase() + LICENSE_NAMES[def.license].slice(1) : `A ${def.license} license`)
+  if (def.car && !g.assets.some((a) => a.kind === 'car')) out.push('A car of your own')
+  if (def.cleanRecord && hasConviction(g)) out.push('A clean criminal record')
+  if (def.minSmarts && c.stats.smarts < def.minSmarts) out.push(`Smarts of ${def.minSmarts}%+ (you: ${c.stats.smarts}%)`)
+  if (def.minLooks && c.stats.looks < def.minLooks) out.push(`Looks of ${def.minLooks}%+ (you: ${c.stats.looks}%)`)
+  if (def.minAthleticism && c.hidden.athleticism < def.minAthleticism) out.push('Better physical fitness (hit the gym)')
+  return out
+}
+
+function payScore(g: GameState, salary: number): number {
+  return clamp(50 + 30 * Math.log2(Math.max(1, salary) / (45_000 * wealth(g))), 0, 100)
+}
+
+/** Interview odds after the recruiter's pitch. */
+function pitchOdds(def: JobDef, fit: number, market: JobMarket): number {
+  return clamp(jobScreenChance(def, fit, market) + RECRUITER_BOOST, 0.05, 0.97)
+}
+
+/** The recruiter's shortlist for this year: top matches you qualify for, and reach jobs with gap analysis. */
+export function recruiterMatches(g: GameState): { top: RecruiterMatch[]; reach: RecruiterMatch[] } {
+  const c = g.character
+  const ctx = fitContext(g)
   const fired = stringList(g.flags.firedJobs)
-  const options = FULLTIME_JOBS.filter((d) => !jobRequirementProblem(g, d) && !fired.includes(d.id) && d.id !== c.job?.defId)
-  if (options.length === 0) {
-    notice(g, 'Job Recruiter', "The recruiter looked at your resume, sighed, and said they couldn't find anything you qualify for.", { emoji: '\u{1F575}\u{FE0F}' })
+  const markets = new Map<Industry, JobMarket>()
+  const marketFor = (ind: Industry): JobMarket => {
+    let m = markets.get(ind)
+    if (!m) {
+      m = jobMarket(g, ind)
+      markets.set(ind, m)
+    }
+    return m
+  }
+  const scored: { m: RecruiterMatch; rank: number; qualified: boolean; relevance: number }[] = []
+  for (const def of FULLTIME_JOBS) {
+    if (fired.includes(def.id) || def.id === c.job?.defId) continue
+    if (def.gender && def.gender !== c.gender) continue
+    const market = marketFor(def.industry)
+    const f = jobFit(g, def, ctx, market)
+    const r = seeded(listingSeed(g, `rec|${def.id}`))
+    const company = companyName(g, def.industry, r)
+    // A good fit is worth a little more at the negotiating table.
+    const salary = round100(def.ladder[0].salary * wealth(g) * (1.0 + r() * 0.08 + Math.max(0, f.fit - 50) / 400))
+    const problem = jobRequirementProblem(g, def)
+    const odds = pitchOdds(def, f.fit, market)
+    const m: RecruiterMatch = {
+      key: `${def.id}@${company}`,
+      def,
+      title: def.ladder[0].title,
+      company,
+      salary,
+      fit: f.fit,
+      odds,
+      direct: !problem && odds >= DIRECT_ODDS,
+      strengths: f.strengths,
+      gaps: problem ? requirementGaps(g, def).slice(0, 4) : f.gaps,
+      marketLine: market.line,
+    }
+    // Fit first, then the odds of actually getting in, then the money.
+    const rank = f.fit * 0.55 + odds * 20 + payScore(g, salary) * 0.25 + (market.score - 50) * 0.1
+    scored.push({ m, rank, qualified: !problem, relevance: f.relevance })
+  }
+  const qualified = scored.filter((s) => s.qualified).sort((a, b) => b.rank - a.rank || a.m.title.localeCompare(b.m.title))
+  // Only real matches: nobody wants a recruiter pushing a nurse toward roadkill removal.
+  const bestFit = qualified.reduce((mx, s) => Math.max(mx, s.m.fit), 0)
+  const top = qualified
+    .filter((s) => s.m.fit >= bestFit * 0.4)
+    .slice(0, TOP_MATCHES)
+    .map((s) => s.m)
+  // Reach jobs: better-paid jobs in your field that you can't get yet (not just "be a surgeon").
+  const experience = totalWorkExperience(g)
+  const fields = ctx.fields.slice(0, 2)
+  const inField = (def: JobDef): boolean => {
+    const primary = def.majors?.length ? def.majors.map((m) => MAJOR_TAGS[m]?.[0]) : [INDUSTRY_TAGS[def.industry]?.[0]]
+    return primary.some((t) => !!t && fields.includes(t))
+  }
+  const bar = top.length ? Math.max(...top.map((m) => m.salary)) : 0
+  const reach = scored
+    .filter((s) => !s.qualified && s.m.salary > bar && c.age >= (s.m.def.minAge ?? 18) && s.relevance >= 0.15 && inField(s.m.def) && (s.m.def.experience ?? 0) - experience <= 6)
+    .sort((a, b) => b.relevance * 60 + payScore(g, b.m.salary) * 0.4 - (a.relevance * 60 + payScore(g, a.m.salary) * 0.4) || a.m.title.localeCompare(b.m.title))
+    .slice(0, REACH_JOBS)
+    .map((s) => s.m)
+  return { top, reach }
+}
+
+function pitchBlock(g: GameState, m: RecruiterMatch): string | null {
+  const b = blocked(g)
+  if (b) return b
+  const school = fullTimeSchoolBlocker(g)
+  if (school) return school
+  if (stringList(g.flags.jobsRejected).includes(m.key)) return `${m.company} already passed on you this year.`
+  if (yearActionsUsed(g, 'recruiter') >= RECRUITER_PITCHES) return `Your recruiter already pitched you to ${RECRUITER_PITCHES} employers this year. Check back next year.`
+  return null
+}
+
+function pitchMatch(g: GameState, key: string): void {
+  const c = g.character
+  if (!c.alive || c.prison) return
+  const m = recruiterMatches(g).top.find((x) => x.key === key)
+  if (!m) {
+    notice(g, 'Job Recruiter', 'Your recruiter called back: that opening has been filled. Pick another match.', { emoji: '\u{1F575}\u{FE0F}' })
     return
   }
-  const top = [...options].sort((a, b) => b.ladder[0].salary - a.ladder[0].salary).slice(0, 6)
-  const def = pick(g, top)
-  const company = companyName(g, def.industry, () => rand(g))
-  const salary = round100(def.ladder[0].salary * wealth(g) * (1.05 + rand(g) * 0.1))
-  notice(g, 'Job Recruiter', `A recruiter set you up with an interview for ${article(def.ladder[0].title)} ${def.ladder[0].title} position at ${company} paying ${formatMoney(salary)} a year.`, { emoji: '\u{1F575}\u{FE0F}' })
-  queueAi(g, { type: 'interview', job: { defId: def.id, title: def.ladder[0].title, company, salary, category: 'fulltime' } })
+  const why = pitchBlock(g, m)
+  if (why) {
+    notice(g, 'Job Recruiter', why, { emoji: '\u{1F575}\u{FE0F}' })
+    return
+  }
+  useYearAction(g, 'recruiter', RECRUITER_PITCHES)
+  const name = recruiterName(g)
+  const job: InterviewJob = { defId: m.def.id, title: m.title, company: m.company, salary: m.salary, category: 'fulltime' }
+  const app: ScreeningApp = { kind: 'job', job, org: m.company, fit: m.fit, chance: m.odds, market: m.marketLine }
+  if (m.direct) {
+    notice(
+      g,
+      'Job Recruiter',
+      pick(g, [
+        `${name} called the hiring manager at ${m.company} directly: "You need to meet this one." You have an interview for ${m.title} (${formatMoney(m.salary)} a year).`,
+        `${name} took one look at your CV and said, "Oh, this is an easy one." You're booked for an interview as ${article(m.title)} ${m.title} at ${m.company}, paying ${formatMoney(m.salary)} a year.`,
+      ]),
+      { emoji: '\u{1F575}\u{FE0F}', tone: 'good' },
+    )
+    // The usual background check still runs: a referral doesn't make made-up CV lines true.
+    applyScreening(g, app, { invite: true, reason: '' })
+    return
+  }
+  log(g, `My recruiter pitched me for a job at ${m.company}.`)
+  notice(g, 'Job Recruiter', `${name} sent your CV to ${m.company} for the ${m.title} opening (${formatMoney(m.salary)} a year) with a glowing referral. Now ${m.company} decides whether to interview you.`, { emoji: '\u{1F575}\u{FE0F}' })
+  queueAi(g, { type: 'screenApplication', app })
+}
+
+function pctText(p: number): string {
+  return `${Math.round(clamp(p, 0, 1) * 100)}%`
+}
+
+function matchAction(m: RecruiterMatch): MenuAction {
+  return {
+    type: 'action',
+    id: `recruiter.match.${m.def.id}`,
+    label: m.title,
+    emoji: m.def.emoji,
+    subtitle: `${shortMoney(m.salary)}/yr • ${m.company} • Fit ${m.fit}% • ${m.direct ? 'Interview guaranteed' : `Interview odds ${pctText(m.odds)}`}`,
+    disabledReason: (g) => pitchBlock(g, m),
+    confirm: (g) => {
+      const held = g.character.job
+      const quit = held && held.category === 'fulltime' ? `\n\nIf you're hired, you'll quit your job as ${held.title} at ${held.company}.` : ''
+      const why = m.strengths.length ? `\nWhy you fit: ${m.strengths.join(', ')}.` : ''
+      const gaps = m.gaps.length ? `\nHolding you back: ${m.gaps.join('; ')}.` : ''
+      const odds = m.direct ? 'Your recruiter knows the hiring manager: you go straight to the interview.' : `Interview odds with a referral: ${pctText(m.odds)}.`
+      return `${m.title}\n${m.company}\n\nPay: ${formatMoney(m.salary)} a year\nCV fit: ${m.fit}%${why}${gaps}\n${odds}${quit}\n\nHave your recruiter pitch you?`
+    },
+    run: (g) => pitchMatch(g, m.key),
+  }
+}
+
+/** What the recruiter says about a job you can't get yet. */
+export function reachText(m: RecruiterMatch): string {
+  const missing = m.gaps.length ? m.gaps : ['A stronger CV']
+  return `To land ${article(m.title)} ${m.title} job (${formatMoney(m.salary)} a year) you still need:\n• ${missing.join('\n• ')}`
+}
+
+function reachAction(m: RecruiterMatch): MenuAction {
+  const missing = m.gaps.length ? m.gaps : ['A stronger CV']
+  return {
+    type: 'action',
+    id: `recruiter.reach.${m.def.id}`,
+    label: m.title,
+    emoji: m.def.emoji,
+    subtitle: `${shortMoney(m.salary)}/yr • Missing: ${missing.slice(0, 2).join(', ')}`,
+    // A popup (not a greyed-out row) so the whole checklist is readable.
+    run: (g) => notice(g, 'Within Reach', reachText(m), { emoji: m.def.emoji }),
+  }
+}
+
+const recruiterMenu: MenuGroup = {
+  type: 'menu',
+  id: 'occupation.recruiter',
+  label: 'Job Recruiter',
+  emoji: '\u{1F575}\u{FE0F}',
+  subtitle: (g) => {
+    const best = recruiterMatches(g).top[0]
+    return best ? `Best match: ${best.title} (${best.fit}% fit)` : 'Finds jobs that fit your CV'
+  },
+  visible: (g) => g.character.age >= 18,
+  disabledReason: (g) => blocked(g) ?? fullTimeSchoolBlocker(g),
+  header: (g) => {
+    const left = Math.max(0, RECRUITER_PITCHES - yearActionsUsed(g, 'recruiter'))
+    return `${recruiterName(g)}, your recruiter, read your CV and ranked every opening by how well you fit. They'll pitch you to ${RECRUITER_PITCHES} employers a year (${left} left this year).\n${jobMarket(g).line}.`
+  },
+  children: (g) => {
+    const { top, reach } = recruiterMatches(g)
+    const fields = cvFields(g, 2)
+    const nodes: MenuNode[] = [
+      {
+        type: 'info',
+        id: 'recruiter.cv',
+        emoji: '\u{1F4C4}',
+        text: `Your CV strength: ${cvScore(g, { kind: 'job', edu: 'bachelor' }).score}/100${fields.length ? ` • Your strongest field${fields.length > 1 ? 's' : ''}: ${fields.join(' and ')}` : ' • No clear field yet'}`,
+      },
+      { type: 'heading', id: 'recruiter.h.top', label: 'Best Matches for Your CV' },
+    ]
+    if (top.length) nodes.push(...top.map(matchAction))
+    else nodes.push({ type: 'info', id: 'recruiter.none', emoji: '\u{1F937}', text: "Your recruiter couldn't find a single opening you qualify for. A diploma, a degree or a few lines on your CV would help." })
+    if (reach.length) {
+      nodes.push({ type: 'heading', id: 'recruiter.h.reach', label: 'Within Reach' })
+      nodes.push({ type: 'info', id: 'recruiter.reach.note', emoji: '\u{1FA9C}', text: 'Better-paid jobs in your field you can’t get yet. Tap one to see what’s missing.' })
+      nodes.push(...reach.map(reachAction))
+    }
+    return nodes
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -1353,13 +1591,20 @@ function listingAction(listing: JobListing): MenuAction {
     emoji: def.emoji,
     subtitle: (g) => {
       const problem = jobRequirementProblem(g, def)
-      return `${pay} • ${listing.company}${problem ? ' • Not qualified' : ''}`
+      if (problem) return `${pay} • ${listing.company} • Not qualified`
+      return pt ? `${pay} • ${listing.company}` : `${pay} • ${listing.company} • Fit ${jobFit(g, def).fit}%`
     },
     disabledReason: blocked,
     confirm: (g) => {
       const held = pt ? g.character.partTimeJob : g.character.job
       const quit = held && (held.category === 'fulltime' || held.category === 'parttime') ? `\n\nIf you're hired, you'll quit your job as ${held.title} at ${held.company}.` : ''
-      return `${listing.title}\n${listing.company}\n\nPay: ${pt ? pay : formatMoney(listing.salary) + ' a year'}\n${requirementSummary(def)}${quit}\n\nApply for this job?`
+      let fitLine = ''
+      if (!pt && !jobRequirementProblem(g, def)) {
+        const market = jobMarket(g, def.industry)
+        const f = jobFit(g, def, fitContext(g), market)
+        fitLine = `\nCV fit: ${f.fit}% • Interview odds: ${Math.round(jobScreenChance(def, f.fit, market) * 100)}%${f.gaps.length ? `\nHolding you back: ${f.gaps.join('; ')}.` : ''}`
+      }
+      return `${listing.title}\n${listing.company}\n\nPay: ${pt ? pay : formatMoney(listing.salary) + ' a year'}\n${requirementSummary(def)}${fitLine}${quit}\n\nApply for this job?`
     },
     run: (g) => applyForListing(g, listing),
   }
@@ -1383,17 +1628,6 @@ const jobsMenu: MenuGroup = {
     for (const l of fullTimeListings(g)) nodes.push(listingAction(l))
     return nodes
   },
-}
-
-const recruiterAction: MenuAction = {
-  type: 'action',
-  id: 'occupation.recruiter',
-  label: 'Job Recruiter',
-  emoji: '\u{1F575}\u{FE0F}',
-  subtitle: 'Get an interview for a random high-paying job',
-  visible: (g) => g.character.age >= 18,
-  disabledReason: blocked,
-  run: jobRecruiter,
 }
 
 const partTimeMenu: MenuGroup = {
@@ -1538,7 +1772,7 @@ export const occupationMenu: MenuGroup = {
     }
     if (c.age >= 13) {
       nodes.push({ type: 'heading', id: 'occupation.h.find', label: 'Find Work' })
-      nodes.push(freelanceMenu, recruiterAction, jobsMenu, militaryMenu, partTimeMenu, specialCareersMenu)
+      nodes.push(freelanceMenu, recruiterMenu, jobsMenu, militaryMenu, partTimeMenu, specialCareersMenu)
     } else {
       nodes.push(specialCareersMenu)
     }

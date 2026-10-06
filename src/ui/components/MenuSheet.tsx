@@ -1,22 +1,26 @@
 // Generic renderer for a MenuGroup tree (Occupation / Assets / Activities): a bottom sheet
 // with a back-arrow navigation stack. Rows re-render from the latest game state after
-// every action.
+// every action. It can reopen at a remembered spot ("Back to …" chip on the game screen).
 import type { MenuGroup } from '../../game/types'
 import { useApp } from '../store'
-import { groupChildren, groupHeader, MenuRows, nodeDisabled, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape } from './MenuList'
+import { groupChildren, groupHeader, MenuRows, nodeDisabled, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape, type MenuSpot } from './MenuList'
 import { Sheet } from './Sheet'
 
 export interface MenuSheetProps {
   root: MenuGroup
   onClose: () => void
+  /** Open at this spot (or the deepest part of it that still exists) instead of the root. */
+  initial?: MenuSpot | null
+  /** An action is about to close the sheet: where the player was. */
+  onLeave?: (spot: MenuSpot) => void
 }
 
-export function MenuSheet({ root, onClose }: MenuSheetProps) {
+export function MenuSheet({ root, onClose, initial, onLeave }: MenuSheetProps) {
   const g = useApp((s) => s.game)
   const rootReason = g ? nodeDisabled(root, g) : null
   const rootNodes = g && !rootReason ? groupChildren(root, g) : []
-  const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []))
-  const runner = useMenuRunner({ onOpenGroup: nav.push, onClose })
+  const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []), initial)
+  const runner = useMenuRunner({ onOpenGroup: nav.push, onClose, onLeave: onLeave && (() => onLeave(nav.snapshot())) })
   useSheetEscape(nav.anchorRef, () => (nav.trail.length > 0 ? nav.pop() : onClose()))
 
   if (!g) return null

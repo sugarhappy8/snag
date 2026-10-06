@@ -382,14 +382,18 @@ describe('job activities', () => {
     expect(g.character.job.category).toBe('military')
   })
 
-  it('sends a job recruiter interview once a year', () => {
+  it('the job recruiter pitches you to two employers a year from its CV-ranked matches', () => {
     const g = adult(30)
-    const rec = jobNode(g, 'occupation.recruiter') as MenuAction
+    const rec = jobNode(g, 'occupation.recruiter') as MenuGroup
     expect(rec.label).toBe('Job Recruiter')
-    rec.run(g)
-    expect(g.queue.some((m) => m.kind === 'aiTask' && m.task.type === 'interview')).toBe(true)
+    const matches = rec.children(g).filter((n): n is MenuAction => n.type === 'action' && n.id.startsWith('recruiter.match.'))
+    expect(matches.length).toBeGreaterThanOrEqual(3)
+    matches[0].run(g)
+    expect(g.queue.some((m) => m.kind === 'aiTask' && (m.task.type === 'interview' || m.task.type === 'screenApplication'))).toBe(true)
+    matches[1].run(g)
+    expect(matches[2].disabledReason?.(g)).toMatch(/already pitched/)
     const n = g.queue.length
-    rec.run(g)
+    matches[2].run(g)
     expect(g.queue.length).toBe(n + 1)
     expect(g.queue[g.queue.length - 1].kind).toBe('notice')
   })

@@ -102,10 +102,19 @@ export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: 
 // ---------------------------------------------------------------------------
 // Going public
 
+/**
+ * Yearly profit an exchange wants before listing this company. Game studios list on hits and
+ * franchises long before they earn like a conglomerate (studios have gone public on far less).
+ */
+export function ipoThreshold(b: BizState): number {
+  return b.industry === 'gameStudio' ? 25_000_000 : IPO_PROFIT
+}
+
 export function canIpo(b: BizState): string | null {
   if (b.public) return 'It is already listed.'
   const last = b.history[b.history.length - 1]
-  if (!last || last.profit < IPO_PROFIT) return `Exchanges want at least ${money(IPO_PROFIT)} of yearly profit. Last year: ${money(last?.profit ?? 0)}.`
+  const need = ipoThreshold(b)
+  if (!last || last.profit < need) return `Exchanges want at least ${money(need)} of yearly profit. Last year: ${money(last?.profit ?? 0)}.`
   return null
 }
 

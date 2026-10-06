@@ -41,6 +41,7 @@ import {
   shortCount,
   str,
   toJson,
+  allVentureAssets,
   ventureAssets,
   whole,
   withDev,
@@ -481,6 +482,7 @@ function readType(v: Json | undefined): VentureType {
 /** Start the founding flow (idea → build → name). */
 export function startVenture(g: GameState, type: VentureType): void {
   const vd = VENTURE_DEFS[type]
+  if (type === 'game') return notice(g, vd.label, GAMES_POINTER, { emoji: vd.emoji })
   const reason = firstReason(computerBlock(g), ageBlock(g, vd.minAge, `start ${vd.noun}`), canStartVenture(g))
   if (reason) return notice(g, vd.label, reason, { emoji: vd.emoji })
   const ideas = generateIdeas(g, type)
@@ -1472,7 +1474,7 @@ const EVENT_SCRIPT = defineScript('computer.dev.venture.event', (g, choice, data
 /** Yearly hook for ventures. `popupBudget` = how many popups this side may still show (0 or 1). Returns popups used. */
 export function yearlyVentures(g: GameState, popupBudget: number): number {
   const c = g.character
-  const list = ventureAssets(g)
+  const list = allVentureAssets(g)
   if (list.length === 0) return 0
   const absent = !!c.prison
   let used = 0
@@ -1514,7 +1516,7 @@ export function yearlyVentures(g: GameState, popupBudget: number): number {
   }
   if (!chance(g, 0.4)) return used
   const options: [EventCtx, EventId, number][] = []
-  for (const a of ventureAssets(g)) {
+  for (const a of allVentureAssets(g)) {
     const v = readVenture(g, a)
     if (v.lastEvent === g.year) continue
     for (const [ev, w] of eligibleEvents(g, { a, v })) options.push([{ a, v }, ev, w])
@@ -1923,7 +1925,11 @@ export function ventureActions(g: GameState, a: Asset): MenuNode[] {
 
 /** The whole owned-asset screen. */
 export function ventureView(g: GameState, a: Asset): MenuNode[] {
-  return [...ventureInfo(g, a), ...ventureActions(g, a)]
+  const nodes = [...ventureInfo(g, a), ...ventureActions(g, a)]
+  if (a.details?.type === 'game') {
+    nodes.push({ type: 'info', id: `venture-${a.id}-studio`, emoji: '\u{1F3E2}', text: `${a.name} also appears in Occupation › Special Careers › Game Industry, where it can grow into a registered game studio once you're 18.` })
+  }
+  return nodes
 }
 
 export function ventureSubtitle(g: GameState, a: Asset): string {
@@ -1943,12 +1949,12 @@ export const startVentureMenu: MenuGroup = {
   id: 'computer.dev.startVenture',
   label: 'Start a Venture',
   emoji: '\u{1F680}',
-  subtitle: (g) => `SaaS, apps, an online store, indie games · ${ventureAssets(g).length}/${MAX_VENTURES} running`,
+  subtitle: (g) => `SaaS, apps, an online store · ${ventureAssets(g).length}/${MAX_VENTURES} running`,
   visible: (g) => g.character.age >= 12,
   disabledReason: (g) => firstReason(computerBlock(g), canStartVenture(g)),
   header: (g) => `Coding skill ${codingSkill(g)}/100 · You have ${formatMoney(g.character.money)}. One new venture a year.`,
-  children: () =>
-    (['store', 'app', 'game', 'saas'] as VentureType[]).map((t): MenuAction => {
+  children: (): MenuNode[] => [
+    ...(['store', 'app', 'saas'] as VentureType[]).map((t): MenuAction => {
       const vd = VENTURE_DEFS[t]
       return {
         type: 'action',
@@ -1965,7 +1971,12 @@ export const startVentureMenu: MenuGroup = {
         run: (g) => startVenture(g, t),
       }
     }),
+    { type: 'info', id: 'computer.dev.start.games', emoji: '\u{1F579}\u{FE0F}', text: GAMES_POINTER },
+  ],
 }
+
+/** Where game making lives now. */
+export const GAMES_POINTER = 'Indie games: make, crowdfund and sell them in Occupation › Special Careers › Game Industry. At 18 a hit can grow into a real game studio.'
 
 /** For devSummary and the CV. */
 export function ventureLine(g: GameState, a: Asset): string {

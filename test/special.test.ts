@@ -100,7 +100,7 @@ describe('special careers menu', () => {
   it('lists every special career', () => {
     const g = game(20)
     const ids = careers(g).map((n) => ('id' in n ? n.id : ''))
-    for (const id of ['special.actor', 'special.astronaut', 'special.influencer', 'special.model', 'special.music', 'special.politics', 'special.athlete', 'special.hustler']) {
+    for (const id of ['special.actor', 'special.astronaut', 'special.influencer', 'special.model', 'special.music', 'special.politics', 'sports', 'gameIndustry', 'special.hustler']) {
       expect(ids).toContain(id)
     }
   })

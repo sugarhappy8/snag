@@ -40,6 +40,7 @@ import {
   type ExYear,
   type SecYear,
 } from './invest/engine'
+import { indexShockFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { chance, pick, randFloat, uid } from './rng'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode, Tone } from './types'
 import { getCountry } from './world'
@@ -432,6 +433,13 @@ function bondRisk(countryId: string): number {
   return Math.max(1, Math.min(5, 1 + Math.round(countryStress(countryId) * 4)))
 }
 
+/** A quote with any market shock applied (a ban, a state contract, a presidential endorsement...). */
+function withShock(_g: GameState, q: Quote, now: number, before: number): Quote {
+  if (now === 1 && before === 1) return q
+  const mv = shockedMove(q.price, q.ret, now, before)
+  return { ...q, price: Math.max(0.0001, mv.price), ret: mv.ret }
+}
+
 interface Listing {
   info: ExInfo
   year: ExYear
@@ -455,7 +463,7 @@ function listing(g: GameState): Listing {
   const ey = exchangeYear(f, an, info, g.year)
   const country = countryName(cid)
   const homeWord = localWords(info.home)[0]
-  const stocks = ey.stocks.map((s) => stockQuote(info, s, false))
+  const stocks = ey.stocks.map((s) => withShock(g, stockQuote(info, s, false), shockFactor(g, companyDef(info, s.slot, s.gen).id, g.year), shockFactor(g, companyDef(info, s.slot, s.gen).id, g.year - 1)))
   const pennies = ey.pennies.map((s) => stockQuote(info, s, true))
   const fundId = ey.fund.id
   const fund: Quote = {
@@ -474,6 +482,7 @@ function listing(g: GameState): Listing {
     details: {},
   }
   fund.details = { type: 'index', secId: fundId, symbol: fund.symbol, risk: fund.risk, yield: fund.yield, sector: fund.sector, blurb: fund.blurb, country: info.home, ...exDetails(info) }
+  Object.assign(fund, withShock(g, fund, indexShockFactor(g, info.key, g.year), indexShockFactor(g, info.key, g.year - 1)))
   const reitName = `${homeWord} Property Trust`
   const reit: Quote = {
     type: 'reit',
@@ -566,7 +575,7 @@ function listing(g: GameState): Listing {
   const banned = CRYPTO_BANNED.has(cid) ? `Crypto trading is banned in ${theCountry(cid)}.` : null
   const crypto = cy.coins.map((c): Quote => {
     const def = coinDef(c.slot, c.gen)
-    return {
+    return withShock(g, {
       type: 'crypto',
       secId: def.id,
       name: def.name,
@@ -580,7 +589,7 @@ function listing(g: GameState): Listing {
       blurb: def.blurb,
       blocked: banned,
       details: { type: 'crypto', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.yield, sector: def.stable ? 'Stablecoin' : 'Cryptocurrency', blurb: def.blurb, slot: c.slot, gen: c.gen, country: cid },
-    }
+    }, shockFactor(g, def.id, g.year), shockFactor(g, def.id, g.year - 1))
   })
   return { info, year: ey, stocks, pennies, fund, reit, bond, savings, term, gold, crypto }
 }
@@ -1090,7 +1099,9 @@ function stockHistory(g: GameState, info: ExInfo, slot: number, gen: number, pen
   for (let y = Math.max(an + 1, g.year - 4); y <= g.year; y++) {
     const s = (penny ? exchangeYear(f, an, info, y).pennies : exchangeYear(f, an, info, y).stocks)[slot]
     if (!s || s.gen !== gen || s.event === 'ipo') continue
-    parts.push(`'${String(y).slice(-2)} ${pct(s.ret, 0)}`)
+    const id = penny ? '' : companyDef(info, slot, gen).id
+    const ret = id ? (shockedMove(1, s.ret, shockFactor(g, id, y), shockFactor(g, id, y - 1)).ret ?? s.ret) : s.ret
+    parts.push(`'${String(y).slice(-2)} ${pct(ret, 0)}`)
   }
   return parts.length ? `Recent years: ${parts.join(' · ')}` : 'Recently listed: no track record yet.'
 }
@@ -1207,6 +1218,7 @@ function newsLines(g: GameState): string[] {
       lines.push(`🏆 Top performer: ${best.def.name} (${best.def.symbol}) ${pct(best.s.ret, 0)}`)
       if (worst.s.ret < 0) lines.push(`🧯 Worst performer: ${worst.def.name} (${worst.def.symbol}) ${pct(worst.s.ret, 0)}`)
     }
+    for (const sh of shocksThisYear(g)) lines.push(shockHeadline(sh))
     for (const s of ey.stocks) {
       const def = companyDef(l.info, s.slot, s.gen)
       if (s.ended) {
@@ -1239,6 +1251,26 @@ function newsLines(g: GameState): string[] {
   const tip = seededTip(g, l.info)
   if (tip) lines.push(tip)
   return lines
+}
+
+/** A headline for a market shock announced this year. */
+export function shockHeadline(sh: MarketShock): string {
+  const move = `${sh.mult >= 1 ? 'jumped' : 'plunged'} ${absPct(sh.mult - 1)}`
+  const label = `${sh.name} (${sh.symbol})`
+  switch (sh.cause) {
+    case 'ban':
+      return `🚫 ${label} ${move} after the government announced a ban.`
+    case 'probe':
+      return `🔎 ${label} ${move} when the government ordered an investigation.`
+    case 'nationalize':
+      return `🏛️ ${label} ${move} on talk of nationalization.`
+    case 'contract':
+      return `📜 ${label} ${move} after landing a huge government contract.`
+    case 'deregulate':
+      return `✂️ ${label} ${move} after its industry was deregulated.`
+    case 'endorse':
+      return `🎤 ${label} ${move} after a government endorsement.`
+  }
 }
 
 function seededTip(g: GameState, info: ExInfo): string | null {
@@ -1364,6 +1396,18 @@ function pathMove(cur: SecYear | undefined, a: Asset, price: number): YearlyMove
   return { price, ratio: 1, ret: 0, payout: 0, ended: { kind: 'delisted', perUnit: price, premium: 0 } }
 }
 
+/** A holding's yearly move with market shocks applied (a takeover pays a premium on the shocked price). */
+function shockMove(mv: YearlyMove, now: number, before: number): YearlyMove {
+  if (now === 1 && before === 1) return mv
+  if (mv.ended) {
+    // Only the engine's buyouts: a 'delisted' fallback is already at the holding's (shocked) price.
+    if (mv.ended.kind !== 'acquired' || !(mv.ended.perUnit > 0) || !(now > 0) || now === 1) return mv
+    return { ...mv, price: mv.price * now, ended: { ...mv.ended, perUnit: mv.ended.perUnit * now } }
+  }
+  const adj = shockedMove(mv.price, mv.ret, now, before)
+  return { ...mv, price: Math.max(0.0001, adj.price), ret: adj.ret ?? mv.ret }
+}
+
 function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
   const t = typeOf(a)
   const d = a.details
@@ -1377,14 +1421,16 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
     case 'reit': {
       const info = holdingExchange(a)
       const ey = exchangeYear(f, an, info, g.year)
-      if (t === 'index') return pathMove(ey.fund.id === str(d.secId) ? ey.fund : undefined, a, price)
+      if (t === 'index') return shockMove(pathMove(ey.fund.id === str(d.secId) ? ey.fund : undefined, a, price), indexShockFactor(g, info.key, g.year), indexShockFactor(g, info.key, g.year - 1))
       if (t === 'reit') return pathMove(ey.reit.id === str(d.secId) ? ey.reit : undefined, a, price)
       const list = t === 'penny' ? ey.pennies : ey.stocks
-      return pathMove(list[Math.round(num(d.slot, -1))], a, price)
+      const id = str(d.secId)
+      return shockMove(pathMove(list[Math.round(num(d.slot, -1))], a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
     }
     case 'crypto': {
       const cy = cryptoYear(f, an, g.year)
-      return pathMove(cy.coins[Math.round(num(d.slot, -1))], a, price)
+      const id = str(d.secId)
+      return shockMove(pathMove(cy.coins[Math.round(num(d.slot, -1))], a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
     }
     case 'gold': {
       const gy = goldYear(f, an, g.year)
@@ -1493,10 +1539,45 @@ function marketNews(g: GameState, held: Asset[]): News | null {
 
 const CRYPTO_EXCHANGES = ['CoinVault', 'BlockBarn', 'HODLHub', 'Satoshi Safe', 'CryptoCastle', 'MoonBase Exchange']
 
+/**
+ * Forget market shocks that have faded out or whose company / coin stopped trading before this
+ * year (a shock stays through the year its company is bought out, so the takeover price and any
+ * bets on it settle on the shocked price).
+ */
+function pruneShocks(g: GameState): void {
+  const f = fam(g)
+  const an = anchor(g)
+  const last = g.year - 1
+  pruneMarketShocks(g, (sh) => {
+    if (sh.year >= g.year) return true
+    if (sh.asset === 'coin') return cryptoYear(f, an, last).coins[sh.slot]?.id === sh.secId
+    const info = exchangeByKey(sh.exKey)
+    return !!info && exchangeYear(f, an, info, last).stocks[sh.slot]?.id === sh.secId
+  })
+}
+
+/**
+ * Re-price the player's stocks, index funds and coins at today's quotes, right after news moved
+ * the market mid-year (a ban, a contract...). Unrealized: nothing is taxed or sold.
+ */
+export function revalueHoldings(g: GameState): void {
+  const quotes = allQuotes(listing(g))
+  for (const a of investmentHoldings(g)) {
+    const t = typeOf(a)
+    if (t !== 'stock' && t !== 'index' && t !== 'crypto') continue
+    const q = quotes.find((x) => x.secId === str(a.details.secId))
+    const old = unitPrice(a)
+    if (!q || !(q.price > 0) || !(old > 0) || Math.abs(q.price / old - 1) < 1e-9) continue
+    if (num(a.details.updatedYear) === g.year) a.details.lastChange = Math.round(((1 + num(a.details.lastChange)) * (q.price / old) - 1) * 10000) / 10000
+    setPosition(a, units(a), q.price, basis(a))
+  }
+}
+
 /** Yearly hook (aging.ts, after business, before finance): prices move, dividends and coupons pay out. */
 export function yearlyInvestments(g: GameState): void {
   const c = g.character
   if (!c.alive) return
+  pruneShocks(g)
   const held = investmentHoldings(g)
   if (!held.length) {
     // Non-investors only hear about the really big days.

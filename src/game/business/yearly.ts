@@ -24,8 +24,9 @@ import {
   updateSharePrice,
   valuationOf,
 } from './economy'
-import { declareBankruptcy, IPO_PROFIT } from './exit'
+import { declareBankruptcy, ipoThreshold } from './exit'
 import { maybeBusinessEvent } from './events'
+import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
 import { industryDef } from './industries'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
@@ -176,6 +177,11 @@ export const REPORT = defineScript('business.annualReport', (g, choice, data) =>
 })
 
 export function queueReport(g: GameState, a: Asset, b: BizState): void {
+  // Game studios plan games, not prices and production: they get a studio report instead.
+  if (isStudio(b)) {
+    queueStudioReport(g, a, b)
+    return
+  }
   minigame(g, 'annualReport', `${a.name}: Annual Report`, REPORT, toJson(reportData(g, a, b)))
 }
 
@@ -291,11 +297,13 @@ export function yearlyBusinessImpl(g: GameState): void {
     if (b.founded > fiscal) continue
     const runs = runsIt(g, a)
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null
-    const res = simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
+    const studio = isStudio(b)
+    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     const lastCycle = s.cycle
     evolve(g, b, s, fiscal)
+    if (studio) afterStudioYear(a, b)
     const rec0 = recordYear(b, s)
     b.valuation = b.public ? updateSharePrice(g, b, fiscal) : valuationOf(b)
     rec0.valuation = b.valuation
@@ -324,7 +332,7 @@ export function yearlyBusinessImpl(g: GameState): void {
       notice(g, 'Ousted!', `After ${b.slump} straight years of falling profits, ${a.name}'s board voted to replace you as CEO with ${mgr.firstName} ${mgr.lastName}. You still own ${pct(b.share)} of the company, which is some comfort, and a lot of money.`, { emoji: '\u{1FA91}', tone: 'bad' })
     }
 
-    if (!b.public && s.net >= IPO_PROFIT && g.flags[`biz.ipoHint.${a.id}`] !== true) {
+    if (!b.public && s.net >= ipoThreshold(b) && g.flags[`biz.ipoHint.${a.id}`] !== true) {
       g.flags[`biz.ipoHint.${a.id}`] = true
       notice(g, 'Ready for Wall Street?', `${a.name} made ${money(s.net)} last year. That's big enough to list on a stock exchange: bankers keep calling about an IPO. You can go public from the company's screen.`, { emoji: '\u{1F514}', tone: 'good' })
     }
@@ -334,9 +342,11 @@ export function yearlyBusinessImpl(g: GameState): void {
       continue
     }
     const managed = !runsIt(g, a)
-    if (!eventQueued && maybeBusinessEvent(g, a, b, fiscal, managed)) eventQueued = true
+    if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
     if (!managed && !c.prison) {
       queueReport(g, a, b)
+    } else if (studio) {
+      studioManagerTurn(g, a, b)
     } else {
       applyPlan(b, autoPlan(g, b, lastCycle))
     }

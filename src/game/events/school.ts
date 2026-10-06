@@ -449,7 +449,7 @@ export const SCHOOL_EVENTS = defineEvents([
       bus: (g, x) => say(g, x, 'Bus nap', `You stayed on the bus the whole time and slept. You have no idea what ${x.s('place')} looks like.`, `I slept on the bus during a field trip to ${x.s('place')}.`, { health: 2, happiness: -2 }),
       giftshop: (g, x) => {
         const cost = Math.min(Math.max(0, g.character.money), randInt(g, 5, 20))
-        say(g, x, 'Souvenirs', cost > 0 ? `You blew your money on a light-up pencil and a keychain from the ${x.s('place')} gift shop.` : 'You browsed the gift shop with empty pockets. So close, yet so far.', `I went to the gift shop on a field trip to ${x.s('place')}.`, { money: -cost, happiness: cost > 0 ? 6 : -2 })
+        say(g, x, 'Souvenirs', cost > 0 ? `You blew your money on a light-up pencil and a keychain from the gift shop at ${x.s('place')}.` : 'You browsed the gift shop with empty pockets. So close, yet so far.', `I went to the gift shop on a field trip to ${x.s('place')}.`, { money: -cost, happiness: cost > 0 ? 6 : -2 })
       },
     },
   },

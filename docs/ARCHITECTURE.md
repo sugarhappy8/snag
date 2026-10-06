@@ -66,13 +66,39 @@ src/
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
-    business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report
+    business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report.
+                         Actions that spend/earn company cash move b.cash AND add to yearCosts/
+                         yearIncome (for the P&L); simulateYear must not move that cash twice.
+                         Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt)
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
                          cvScore for admissions/jobs, national school rankings, the job market, and
                          the "Your CV" menu. Applications go through the 'screenApplication' AI task
-                         (AI reads the CV + market and decides on an interview; offline fallback)
+                         (AI reads the CV + market and decides on an interview; offline fallback).
+                         jobFit(g, def) scores how well a job suits the CV; the careers recruiter
+                         ("Best Matches" / "Within Reach") sorts openings by it
+    computer.ts computer/*.ts   The home computer (needs an owned computer asset): learn to code, side
+                         projects, SaaS/app ventures, freelancing (dev-*.ts); crypto pump-and-dumps,
+                         options, single-stock options and coin shorts (money-*.ts), online scams
+    invest/shocks.ts     Market shocks (g.flags.marketShocks): a company/coin banned or hyped by a
+                         head of state; investments and options read the price hit. Kept across heirs
+    special/*.ts         Special careers split by section: politics.ts (incl. Abuse of Power:
+                         market-moving announcements + insider trades, abuseSummary for the AI),
+                         sports*.ts (Special Careers > Sports: team sports, MMA/UFC, boxing, tennis,
+                         golf, racing, esports...), gamedev*.ts (Game Industry: dev jobs, making games,
+                         founding a game studio via business/gamestudio*.ts)
+                         Sports: athlete.ts is Team Sports; sports-core/-data/-individual/-fight/
+                         -sumo/-prowrestling/-esports/-youth/-olympics/-legacy. Job defIds 'athlete',
+                         'sports.ind', 'sports.fighter', 'sports.sumo', 'sports.wrestler',
+                         'sports.esports', 'sports.coach', 'sports.pundit'; profiles in
+                         g.flags['special.sports*']. One pro start / esports signing a year
+                         ('sports.ind.start', 'sports.es.sign'); fight cards cached until the next bout.
+                         Game Industry: studio job defId 'game_dev'; solo profile g.flags['special.gamedev'].
+                         Game studios are 'gameStudio' businesses simulated by simulateStudioYear;
+                         advances/pledges for unreleased games are earmarkedCash and can't be paid out.
+                         Indie game ventures moved from the Computer menu to Game Industry:
+                         computer/dev-state ventureAssets() excludes them, allVentureAssets() doesn't
   ai/                    Provider clients + "director"                    [ai agent]
     providers.ts         Provider registry (local servers + cloud APIs), defaults, setup steps
     client.ts            Routes requests to openai-compat.ts or anthropic.ts; JSON parse/validate/retry
@@ -132,7 +158,7 @@ src/
 | File | Exports (must exist with these signatures) |
 |------|---------------------------------------------|
 | `world.ts` | `COUNTRIES: Country[]`, `NAME_POOLS`, `getCountry(id)`, `randomCountry(g)`, `randomCity(g, country)`, `randomFirstName(g, countryId, gender)`, `randomLastName(g, countryId)`, `randomSkinTone(g, country)` |
-| `life.ts` | `interface NewLifeOptions { firstName?; lastName?; gender?: Gender; countryId?; city?; sexuality?: Sexuality; seed?: number; year?: number }` (year = calendar year of birth; the UI passes the real current year), `createNewLife(opts: NewLifeOptions): GameState`, `continueAsChild(g: GameState, childId: string): GameState`, `yearlyMilestones(g): void` |
+| `life.ts` | `interface NewLifeOptions { firstName?; lastName?; gender?: Gender; countryId?; city?; sexuality?: Sexuality; seed?: number; year?: number; stats?: Partial<Stats> }` (stats = "Customize stats" on the New Life screen, keys in `START_STAT_KEYS`, clamped 0-100) (year = calendar year of birth; the UI passes the real current year), `createNewLife(opts: NewLifeOptions): GameState`, `continueAsChild(g: GameState, childId: string): GameState`, `yearlyMilestones(g): void` |
 | `health.ts` | `yearlyHealth(g)`, `checkDeath(g)` (old age / health 0 → `killCharacter`), `doctorMenu: MenuGroup` |
 | `ribbons.ts` | `interface RibbonDef { id; name; emoji; description }`, `RIBBONS: RibbonDef[]`, `getRibbon(id): RibbonDef \| undefined`, `computeRibbon(g): string \| null` |
 | `education.ts` | `yearlyEducation(g)`, `educationMenuNodes(g): MenuNode[]` (school / university section of the Occupation menu), `hasDegree(g, kind: DegreeKind, major?: string): boolean`, `highestEducationLabel(g): string` |
@@ -231,6 +257,10 @@ references are resolved by name to existing ids, and malformed JSON falls back o
   `runMenuAction(action, input?)`, `dismissNotice(id)`, `chooseOption(id, choiceId)`,
   `submitInput(id, value)`, `finishMinigame(id, result)`, `skipAi()`, `act(mutator)`,
   `updateSettings(patch)`, `checkAi()`. Screens: `'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'`.
+- Return point: when an action in one menu sheet sends the player to another screen/sheet, the store
+  remembers where they were (`returnPoint`, `setReturnPoint`, `clearReturnPoint`, `returnPointLive`,
+  `returnChipVisible`). `components/ReturnChip.tsx` (`resolveReturnPoint`, `ReturnChip`, `MENU_SHEETS`,
+  `openingClearsReturn`) shows a "Back to ..." chip that reopens that menu at the same submenu.
 - Shared components: `Sheet` (bottom sheet with title, back, close, footer) and `StatBar`.
 - Minigames: components in `src/ui/minigames/<Name>.tsx`, named export matching the file name,
   props `MinigameProps { modal, onDone(result) }`. Use the shared CSS classes below and inline styles.

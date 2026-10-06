@@ -1,12 +1,14 @@
 // New life: a big "Random Life" button and a "Custom Life" form (name, gender, country, city,
-// sexuality). Names are rolled from the country's name pool with Math.random (UI only; the
-// engine itself is seeded).
-import { useMemo, useState } from 'react'
+// sexuality, and optionally the starting stats). Names and rolled stats use Math.random (UI
+// only; the engine itself is seeded).
+import { useId, useMemo, useState } from 'react'
 import { avatarEmoji } from '../../game/core'
-import type { NewLifeOptions } from '../../game/life'
+import { START_STAT_KEYS, type NewLifeOptions, type StartStatKey } from '../../game/life'
 import { loadGame } from '../../game/save'
 import type { Gender, Sexuality } from '../../game/types'
 import { COUNTRIES, NAME_POOLS, getCountry } from '../../game/world'
+import { statColor } from '../components/StatBar'
+import { STAT_META } from '../components/StatPanel'
 import { goTo, hasSavedGame, startNewLife, useApp } from '../store'
 import '../styles/screens.css'
 import { ConfirmDialog, ScreenHeader } from './SettingsScreen'
@@ -62,6 +64,184 @@ export function countryPhrase(name: string): string {
 
 const SORTED_COUNTRIES = [...COUNTRIES].sort((a, b) => a.name.localeCompare(b.name))
 
+// ---------------------------------------------------------------------------
+// Starting stats ("Customize stats")
+
+/** A chosen value per stat; null = Random (rolled at birth, looks and smarts from the parents). */
+export type StatPicks = Record<StartStatKey, number | null>
+
+export const RANDOM_PICKS: StatPicks = { happiness: null, health: null, smarts: null, looks: null }
+
+const PICK_META = START_STAT_KEYS.map((key) => {
+  const meta = STAT_META.find((m) => m.key === key)
+  return { key, label: meta?.label ?? key, emoji: meta?.emoji ?? '•' }
+})
+
+/** 0-100 whole number (anything weird becomes 50). */
+export function clampPick(n: number): number {
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 50
+}
+
+/** One stepper press: from Random it starts at 50. */
+export function stepPick(value: number | null, delta: number): number {
+  return clampPick((value ?? 50) + delta)
+}
+
+/**
+ * A tap on a slider that is still on Random sets it to the tapped spot. Tapping the parked
+ * handle (at 50) fires no change event, so without this the tap would do nothing at all.
+ */
+export function pickFromTap(value: number | null, sliderValue: string | number): number {
+  return value ?? clampPick(Number(sliderValue))
+}
+
+/** Roll concrete values for every stat (the player can still tweak them). */
+export function rollStatPicks(random: () => number = Math.random): StatPicks {
+  const roll = () => clampPick(Math.floor(random() * 101))
+  return { happiness: roll(), health: roll(), smarts: roll(), looks: roll() }
+}
+
+/** What createNewLife gets: only the stats the player chose, or nothing at all. */
+export function statsOption(picks: StatPicks): NewLifeOptions['stats'] {
+  const out: Partial<Record<StartStatKey, number>> = {}
+  for (const key of START_STAT_KEYS) {
+    const v = picks[key]
+    if (v !== null) out[key] = clampPick(v)
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** "All random" / "2 of 4 set" / "All 4 set" for the collapsed header. */
+export function statsSummary(picks: StatPicks): string {
+  const set = START_STAT_KEYS.filter((k) => picks[k] !== null).length
+  if (set === 0) return 'All random'
+  if (set === START_STAT_KEYS.length) return `All ${set} set`
+  return `${set} of ${START_STAT_KEYS.length} set`
+}
+
+/** The Start Life button's small print. */
+export function startSubtitle(picks: StatPicks): string {
+  const set = START_STAT_KEYS.filter((k) => picks[k] !== null).length
+  if (set === 0) return 'Looks, smarts and family are up to fate'
+  if (set === START_STAT_KEYS.length) return 'Stats locked in; family is up to fate'
+  return 'Your picks are in; fate rolls the rest'
+}
+
+export interface StatCustomizerProps {
+  picks: StatPicks
+  onChange: (picks: StatPicks) => void
+  open: boolean
+  onToggle: () => void
+}
+
+/** Collapsible "Customize stats" section of the Custom Life form. */
+export function StatCustomizer({ picks, onChange, open, onToggle }: StatCustomizerProps) {
+  const panelId = useId()
+  const anySet = START_STAT_KEYS.some((k) => picks[k] !== null)
+  const set = (key: StartStatKey, value: number | null) => onChange({ ...picks, [key]: value === null ? null : clampPick(value) })
+
+  return (
+    <div className={open ? 'nl-stats is-open' : 'nl-stats'}>
+      <button type="button" className="nl-stats-toggle" aria-expanded={open} aria-controls={panelId} onClick={onToggle}>
+        <span className="nl-stats-icon" aria-hidden="true">
+          📊
+        </span>
+        <span className="nl-stats-title">Customize stats</span>
+        <span className={anySet ? 'nl-stats-summary is-set' : 'nl-stats-summary'}>{statsSummary(picks)}</span>
+        <span className="nl-stats-chevron" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div className="nl-stats-panel" id={panelId}>
+          <p className="al-muted al-small nl-stats-hint">
+            Pick a starting value, or leave it on Random and let fate (and your parents' genes) decide.
+          </p>
+          {PICK_META.map(({ key, label, emoji }) => {
+            const v = picks[key]
+            const random = v === null
+            const shown = v ?? 50
+            const labelId = `${panelId}-${key}`
+            return (
+              <div className="nl-stat" role="group" aria-labelledby={labelId} key={key}>
+                <div className="nl-stat-top">
+                  <span className="nl-stat-label" id={labelId}>
+                    <span aria-hidden="true">{emoji}</span> {label}
+                  </span>
+                  {random ? (
+                    <output className="nl-stat-value is-random" aria-live="polite">
+                      🎲 Random
+                    </output>
+                  ) : (
+                    <span className="nl-stat-set">
+                      <output className="nl-stat-value" aria-live="polite" style={{ color: statColor(shown) }}>
+                        {shown}
+                      </output>
+                      <button
+                        type="button"
+                        className="nl-stat-clear"
+                        aria-label={`Make ${label} random again`}
+                        title="Back to Random"
+                        onClick={() => set(key, null)}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <div className="nl-stat-controls">
+                  <button
+                    type="button"
+                    className="nl-step"
+                    aria-label={`Lower ${label}`}
+                    disabled={!random && shown <= 0}
+                    onClick={() => set(key, stepPick(v, -1))}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="range"
+                    className={random ? 'nl-stat-range is-random' : 'nl-stat-range'}
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={shown}
+                    aria-label={label}
+                    aria-valuetext={random ? 'Random' : String(shown)}
+                    style={{ ['--fill' as string]: `${shown}%`, ['--fill-color' as string]: random ? 'var(--muted)' : statColor(shown) }}
+                    onChange={(e) => set(key, Number(e.target.value))}
+                    onPointerUp={(e) => {
+                      // pointerup, not click: phones send no click to a range input after a tap.
+                      if (random) set(key, pickFromTap(v, e.currentTarget.value))
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="nl-step"
+                    aria-label={`Raise ${label}`}
+                    disabled={!random && shown >= 100}
+                    onClick={() => set(key, stepPick(v, 1))}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+          <div className="nl-stats-actions">
+            <button type="button" className="al-btn small" onClick={() => onChange(rollStatPicks())}>
+              🎲 Randomize
+            </button>
+            <button type="button" className="al-btn small ghost" disabled={!anySet} onClick={() => onChange({ ...RANDOM_PICKS })}>
+              ↺ All random
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function NewLifeScreen() {
   const game = useApp((s) => s.game)
   const [countryId, setCountryId] = useState(() => guessCountryId(typeof navigator !== 'undefined' ? navigator.language : undefined))
@@ -74,6 +254,9 @@ export function NewLifeScreen() {
   const [city, setCity] = useState('')
   const [sexuality, setSexuality] = useState<Sexuality | ''>('')
   const [pending, setPending] = useState<NewLifeOptions | null>(null)
+  const [picks, setPicks] = useState<StatPicks>(RANDOM_PICKS)
+  const [statsOpen, setStatsOpen] = useState(false)
+  const chosenStats = statsOption(picks)
 
   const country = getCountry(countryId)
   // A life still in progress (in memory or only in the save) gets a warning before it's replaced.
@@ -114,6 +297,7 @@ export function NewLifeScreen() {
     const opts: NewLifeOptions = { firstName: first, lastName: last, gender, countryId, year: new Date().getFullYear() }
     if (city) opts.city = city
     if (sexuality) opts.sexuality = sexuality
+    if (chosenStats) opts.stats = chosenStats
     begin(opts)
   }
 
@@ -256,13 +440,15 @@ export function NewLifeScreen() {
           </select>
         </label>
 
+        <StatCustomizer picks={picks} onChange={setPicks} open={statsOpen} onToggle={() => setStatsOpen((o) => !o)} />
+
         <button type="submit" className="al-bigbtn">
           <span className="al-bigbtn-emoji" aria-hidden="true">
             🍼
           </span>
           <span className="al-bigbtn-text">
             <span>Start Life</span>
-            <span className="al-bigbtn-sub">Looks, smarts and family are still up to fate</span>
+            <span className="al-bigbtn-sub">{startSubtitle(picks)}</span>
           </span>
         </button>
       </form>

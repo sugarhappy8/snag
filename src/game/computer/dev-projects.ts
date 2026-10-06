@@ -6,7 +6,8 @@ import { addHidden, addStat, count, earnIncome, formatMoney, log, notice, rememb
 import { fillLocal } from '../data/locales'
 import { pick, rand, randFloat, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
-import type { GameState, Json, MenuAction, MenuGroup } from '../types'
+import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import { makeGamesMenu } from '../special/gamedev-make'
 import { ageBlock, computerBlock, firstReason, useComputer } from './dev-common'
 import { practice } from './dev-learn'
 import { PROJECT_KINDS, type ProjectKind } from './dev-kinds'
@@ -137,6 +138,21 @@ export function buildProject(g: GameState, kind: ProjectKind): void {
   }
 }
 
+/** Game-making kinds live in Special Careers › Game Industry (special/gamedev-make.ts). */
+export const GAME_KINDS = new Set(['scratch', 'mod', 'game'])
+
+/** Shortcut from the computer to Game Industry › Make Games. */
+const makeGamesLink: MenuGroup = {
+  type: 'menu',
+  id: 'computer.dev.games',
+  label: 'Make Games',
+  emoji: '\u{1F3AE}',
+  subtitle: 'Moved to Special Careers › Game Industry · tap for a shortcut',
+  header: () => 'Scratch games, mods, game jams and real game releases now live in Occupation › Special Careers › Game Industry. Here is a shortcut.',
+  disabledReason: (g) => makeGamesMenu.disabledReason?.(g) ?? null,
+  children: (g) => makeGamesMenu.children(g),
+}
+
 export const projectsMenu: MenuGroup = {
   type: 'menu',
   id: 'computer.dev.projects',
@@ -144,7 +160,7 @@ export const projectsMenu: MenuGroup = {
   emoji: '\u{1F6E0}\u{FE0F}',
   subtitle: (g) => {
     const s = devState(g)
-    return `Websites, mods, bots, apps, games · ${s.shipped} shipped · ${yearActionsUsed(g, 'computer.dev.project')}/2 this year`
+    return `Websites, bots, extensions, apps · ${s.shipped} shipped · ${yearActionsUsed(g, 'computer.dev.project')}/2 this year`
   },
   disabledReason: computerBlock,
   header: (g) => {
@@ -153,8 +169,8 @@ export const projectsMenu: MenuGroup = {
     const total = earning.reduce((sum, p) => sum + p.income, 0)
     return `Coding skill ${codingSkill(g)}/100. ${earning.length ? `Your projects bring in about ${money(total)} a year.` : 'Build something. Ship it. Let the internet judge it.'}`
   },
-  children: () =>
-    PROJECT_KINDS.map(
+  children: (): MenuNode[] => [
+    ...PROJECT_KINDS.filter((k) => !GAME_KINDS.has(k.id)).map(
       (k): MenuAction => ({
         type: 'action',
         id: `computer.dev.project.${k.id}`,
@@ -170,6 +186,8 @@ export const projectsMenu: MenuGroup = {
         run: (g) => buildProject(g, k),
       }),
     ),
+    makeGamesLink,
+  ],
 }
 
 /**

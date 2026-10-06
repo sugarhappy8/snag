@@ -1,17 +1,22 @@
 // Relationships: everyone in your life grouped like the original (Parents, Siblings,
 // Partner, Children, Friends...). Tapping someone slides their PersonSheet over the list.
+// It can reopen on a person (and a submenu of theirs) for the "Back to …" chip.
 import { useRef, useState } from 'react'
 import { personAvatar } from '../../game/core'
 import { relationshipGroups } from '../../game/relationships'
 import type { GameState, Person } from '../../game/types'
 import { useApp } from '../store'
-import { useSheetEscape } from './MenuList'
+import { useSheetEscape, type MenuSpot } from './MenuList'
 import { personName, personSubtitle, PersonSheet } from './PersonSheet'
 import { Sheet } from './Sheet'
 import { statColor } from './StatBar'
 
 export interface RelationshipsSheetProps {
   onClose: () => void
+  /** Reopen on this person (if they're still around), inside `spot` of their interactions. */
+  initial?: { personId?: string; spot?: MenuSpot | null } | null
+  /** An interaction is about to close the sheet: who and where the player was. */
+  onLeave?: (personId: string, spot: MenuSpot) => void
 }
 
 function safeGroups(g: GameState): { title: string; people: Person[] }[] {
@@ -23,9 +28,14 @@ function safeGroups(g: GameState): { title: string; people: Person[] }[] {
   }
 }
 
-export function RelationshipsSheet({ onClose }: RelationshipsSheetProps) {
+export function RelationshipsSheet({ onClose, initial, onLeave }: RelationshipsSheetProps) {
   const g = useApp((s) => s.game)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(() => {
+    const id = initial?.personId
+    return id && g?.people.some((p) => p.id === id) ? id : null
+  })
+  // The remembered submenu applies to the first person sheet only, not to later visits.
+  const reopenSpot = useRef(initial?.spot ?? null)
   const anchorRef = useRef<HTMLDivElement | null>(null)
   useSheetEscape(anchorRef, onClose)
   if (!g) return null
@@ -55,7 +65,18 @@ export function RelationshipsSheet({ onClose }: RelationshipsSheetProps) {
           ))
         )}
       </Sheet>
-      {selected ? <PersonSheet personId={selected} onBack={() => setSelected(null)} onClose={onClose} /> : null}
+      {selected ? (
+        <PersonSheet
+          personId={selected}
+          onBack={() => {
+            reopenSpot.current = null
+            setSelected(null)
+          }}
+          onClose={onClose}
+          initial={selected === initial?.personId ? reopenSpot.current : null}
+          onLeave={onLeave && ((spot) => onLeave(selected, spot))}
+        />
+      ) : null}
     </>
   )
 }

@@ -665,6 +665,275 @@
   }
 }
 
+/* Customize stats (collapsed by default) */
+
+.nl-stats {
+  border: 1px solid var(--border, #e3e8ef);
+  border-radius: 14px;
+  background: var(--bg, #f3f6fb);
+  overflow: hidden;
+}
+
+.nl-stats-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text, #1b2330);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nl-stats-toggle:hover {
+  background: color-mix(in srgb, var(--blue, #1d6fd8) 6%, transparent);
+}
+
+.nl-stats-icon {
+  flex: none;
+  font-size: 1.2rem;
+}
+
+.nl-stats-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 800;
+}
+
+.nl-stats-summary {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--chip-bg, #e9eef6);
+  color: var(--muted, #6b7685);
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.nl-stats-summary.is-set {
+  background: color-mix(in srgb, var(--blue, #1d6fd8) 16%, transparent);
+  color: var(--blue, #1d6fd8);
+}
+
+.nl-stats-chevron {
+  flex: none;
+  color: var(--muted, #6b7685);
+  font-size: 0.9rem;
+  transition: transform 0.2s;
+}
+
+.nl-stats.is-open .nl-stats-chevron {
+  transform: rotate(180deg);
+}
+
+.nl-stats-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 12px 14px;
+  border-top: 1px solid var(--border, #e3e8ef);
+  animation: scr-fade 0.2s ease-out;
+}
+
+.nl-stats-hint {
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+.nl-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nl-stat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.nl-stat-label {
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.nl-stat-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nl-stat-value {
+  min-width: 2.5ch;
+  font-weight: 900;
+  font-size: 1.05rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.nl-stat-value.is-random {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--chip-bg, #e9eef6);
+  color: var(--muted, #6b7685);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.nl-stat-clear {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--chip-bg, #e9eef6);
+  color: var(--muted, #6b7685);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.nl-stat-clear:hover {
+  color: var(--text, #1b2330);
+}
+
+.nl-stat-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nl-step {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0 0 2px;
+  border: 1px solid var(--border, #e3e8ef);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  color: var(--text, #1b2330);
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.nl-step:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.nl-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The slider looks like a stat bar: the fill is painted from --fill / --fill-color. */
+.nl-stat-range {
+  --fill: 50%;
+  --fill-color: var(--stat-green, #34c35a);
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: pan-y;
+}
+
+.nl-stat-range::-webkit-slider-runnable-track {
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--fill-color) 0 var(--fill), var(--stat-track, #e4e9f0) var(--fill) 100%);
+}
+
+.nl-stat-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -6px;
+  border: 4px solid var(--fill-color);
+  border-radius: 50%;
+  background: var(--card, #fff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.nl-stat-range::-moz-range-track {
+  height: 14px;
+  border-radius: 999px;
+  background: var(--stat-track, #e4e9f0);
+}
+
+.nl-stat-range::-moz-range-progress {
+  height: 14px;
+  border-radius: 999px;
+  background: var(--fill-color);
+}
+
+.nl-stat-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 4px solid var(--fill-color);
+  border-radius: 50%;
+  background: var(--card, #fff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* Random: a striped "unknown" track and a hollow thumb parked in the middle. */
+.nl-stat-range.is-random::-webkit-slider-runnable-track {
+  background: repeating-linear-gradient(-45deg, var(--stat-track, #e4e9f0) 0 6px, var(--card, #fff) 6px 12px);
+}
+
+.nl-stat-range.is-random::-moz-range-track {
+  background: repeating-linear-gradient(-45deg, var(--stat-track, #e4e9f0) 0 6px, var(--card, #fff) 6px 12px);
+}
+
+.nl-stat-range.is-random::-moz-range-progress {
+  background: transparent;
+}
+
+.nl-stat-range.is-random::-webkit-slider-thumb {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.nl-stat-range.is-random::-moz-range-thumb {
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.nl-stats-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.nl-stats-actions .al-btn {
+  flex: 1 1 140px;
+}
+
+/* The Random Life / Start Life small print wraps instead of being cut off on 360px phones. */
+.new-life .al-bigbtn-sub {
+  white-space: normal;
+  line-height: 1.3;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Death screen                                                              */
 
