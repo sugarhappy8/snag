@@ -294,7 +294,8 @@ function queueCrunch(g: GameState, a: Asset, b: BizState): void {
   const values = hasTalent(g, 'Business') ? crunchValues(b) : {}
   // Ties go to the earlier option (your own money before the bank's, the bank's before a stranger's).
   // A company that keeps losing money is worth saving to sell, not to keep feeding.
-  const bleeding = b.last && b.last.net < 0 && b.slump >= 1 ? ` (but it lost ${money(-b.last.net)} last year: think about selling while a buyer would still pay about ${money(b.valuation)})` : ''
+  const losses = b.history.slice(-2)
+  const bleeding = losses.length === 2 && losses.every((r) => r.profit < 0) ? ` (but it lost ${money(-losses[1].profit)} last year: think about selling while a buyer would still pay about ${money(b.valuation)})` : ''
   markBest(g, choices, (id) => (id in values ? values[id] - choices.findIndex((c) => c.id === id) : null), (id) =>
     id === 'bankrupt' ? `Best move: ${a.name} is worth less than the hole it is in` : id === 'investor' ? `Best move: a fair price for a slice beats debt or your savings${bleeding}` : id === 'loan' ? `Best move: borrow your way through it${bleeding}` : `Best move: your stake is worth more than the bailout${bleeding}`,
   )
