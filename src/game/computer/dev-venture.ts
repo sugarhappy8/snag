@@ -18,6 +18,7 @@ import { worldYear } from '../invest/engine'
 import { chance, pick, rand, randFloat, randInt, shuffle, uid, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
 import { totalFollowers } from '../special/social'
+import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { randomFirstName } from '../world'
 import { ageBlock, computerBlock, earnNow, firstReason, guardians, lifeBlock, parentWord, receiveSale, useComputer } from './dev-common'
@@ -274,7 +275,8 @@ export function createVenture(g: GameState, type: VentureType, name: string, ide
   const [lo, hi] = d.niche
   const niche = Math.round(lo * Math.pow(hi / lo, randFloat(g, 0, 1)) * between(idea.mult, 0.05, 2))
   const best = bestLanguageFor(g, d.use)
-  const selfQ = 15 + codingSkill(g) * 0.5 + (best?.level ?? 0) * 0.1 + randInt(g, -6, 6)
+  // Programming talent: a gifted coder ships a noticeably better first version.
+  const selfQ = 15 + codingSkill(g) * 0.5 + (best?.level ?? 0) * 0.1 + (hasTalent(g, 'Programming') ? 8 : 0) + randInt(g, -6, 6)
   const storeQ = 38 + c.stats.smarts * 0.1 + c.stats.looks * 0.08 + randInt(g, -5, 5)
   const quality = between(opts.quality ?? (type === 'store' ? storeQ : opts.hired ? 40 + randInt(g, 0, 15) : selfQ), 5, 95)
   const live = opts.live === true || type === 'store'
@@ -694,7 +696,7 @@ export function stepVenture(g: GameState, a: Asset, absent: boolean): StepResult
   if (finesDue) v.strain += 1
 
   // Product, debt, reach and hype drift.
-  const team = Math.max(d.minSkill > 0 ? (absent ? 0 : codingSkill(g)) + 20 : 50 + c.stats.smarts * 0.2, v.contractors > 0 ? 45 + v.contractors * 7 : 0)
+  const team = Math.max(d.minSkill > 0 ? (absent ? 0 : codingSkill(g) + (hasTalent(g, 'Programming') ? 8 : 0)) + 20 : 50 + c.stats.smarts * 0.2, v.contractors > 0 ? 45 + v.contractors * 7 : 0)
   if (!worked) v.quality -= randInt(g, 1, 4)
   if (v.contractors > 0) v.quality += v.contractors * 1.5
   v.quality = between(Math.round(Math.min(v.quality, Math.max(team, 35))), 5, 100)

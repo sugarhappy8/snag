@@ -21,6 +21,7 @@ import {
 import { localeOf, localTerm } from './data/locales'
 import { isIndustryLegal } from './data/markets'
 import { killCharacter } from './death'
+import { hasTalent } from './talents'
 import { chance, pick, randFloat, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import { getCountry, NAME_POOLS } from './world'
@@ -1046,6 +1047,8 @@ function statDrift(g: GameState): void {
   else if (a < 56) looks = randInt(g, -2, 0)
   else if (a < 70) looks = randInt(g, -3, 0)
   else looks = randInt(g, -4, -1)
+  // Modeling talent: good bones. Adult looks fade about half as fast (no extra dice rolled).
+  if (a > 18 && looks < 0 && hasTalent(g, 'Modeling')) looks = Math.round(looks / 2)
   addStat(g, 'looks', looks)
 }
 

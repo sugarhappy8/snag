@@ -1,4 +1,4 @@
-// The 25 industries you can start a business in. Every number is a US baseline for ONE
+// The industries you can start a business in (25 classic + 8 deep-tech). Every number is a US baseline for ONE
 // outlet (a truck, a restaurant, an office, a plant) in a typical city; economy.ts scales it
 // to each market with data/markets.ts (labor cost, rents, local prices, taxes, demand).
 //
@@ -336,6 +336,91 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
     roles: [r('Talent Booker', 'quality', 80_000), r('Production Manager', 'ops', 70_000), r('Head of Ticketing', 'sales', 65_000), r('Promoter', 'sales', 60_000), r('Controller', 'finance', 75_000)],
     products: ['Summer Music Festival', 'Comedy Club Nights', 'Esports Tournament', 'Immersive Art Show', 'Drag Brunch', 'Podcast Live Tour'],
     suffixes: ['Entertainment', 'Events', 'Live', 'Productions'],
+  },
+  // --- Deep tech (business/deeptech*.ts adds R&D, funding rounds and breakthroughs on top) ---
+  // One site is a lab, design center or test stand: cheap enough for a founder to open. Fabs,
+  // gigafactories, GPU clusters and satellites are big R&D capital projects on top (deeptech-data).
+  // Demand and capacity per site are for a company at full commercial readiness; the deep-tech
+  // ladder (prototype → production → scale) multiplies them, so a garage lab sells nothing yet.
+  semiconductor: {
+    id: 'semiconductor', label: 'Semiconductor Company', emoji: '\u{1F4BE}', unit: 'chips', unitOne: 'chip', site: 'design center', sitePlural: 'design centers',
+    blurb: 'Etch billions of transistors onto sand. Start with a design team; maybe end with the most complicated factories on Earth.',
+    price: 40, unitCost: 18, localShare: 0.15, tradable: 1, demand: 500_000, elasticity: 1.3, incomeSens: 0.2,
+    capital: 600_000, capitalLocal: 0.3, staff: 30, wage: 150_000, staffScale: 0.6, rent: 300_000, maint: 0.12, capMult: 1,
+    multiple: 18, growth: 1, perMillion: 0.05, taxShare: 0, perishable: 0.15, marketingShare: 0.01,
+    roles: [r('Chief Process Engineer', 'quality', 260_000), r('Chip Architect', 'quality', 280_000), r('Head of Foundry Sales', 'sales', 240_000), r('Fab Operations Director', 'ops', 230_000), r('CFO', 'finance', 260_000)],
+    products: ['Low-Power IoT Chip', 'Smartphone SoC', 'Automotive Chip Line', 'Memory Line', 'Chiplet Platform', 'Developer Board'],
+    suffixes: ['Semiconductor', 'Silicon', 'Micro', 'Chips', 'Devices'],
+  },
+  aiLab: {
+    id: 'aiLab', label: 'AI Company', emoji: '\u{1F916}', unit: 'API subscriptions', unitOne: 'API subscription', site: 'lab', sitePlural: 'labs',
+    blurb: 'Train models on mountains of GPUs. Burn cash, chase the frontier, try not to get sued.',
+    price: 3_000, unitCost: 1_000, localShare: 0.1, tradable: 1, demand: 4_000, elasticity: 1.2, incomeSens: 0.5,
+    capital: 250_000, capitalLocal: 0.3, staff: 20, wage: 200_000, staffScale: 0.45, rent: 300_000, maint: 0.25, capMult: 1,
+    multiple: 30, growth: 1, perMillion: 0.3, taxShare: 0, perishable: 1, marketingShare: 0.05,
+    roles: [r('Chief Scientist', 'quality', 450_000), r('Head of Research', 'quality', 380_000), r('Head of Enterprise Sales', 'sales', 300_000), r('Infrastructure Lead', 'ops', 320_000), r('CFO', 'finance', 300_000)],
+    products: ['Chat Assistant App', 'Coding Assistant', 'Image Generator', 'Voice Mode', 'Enterprise Copilot', 'Developer Playground'],
+    suffixes: ['AI', 'Labs', 'Intelligence', 'Minds', 'Neural'],
+  },
+  robotics: {
+    id: 'robotics', label: 'Robotics Company', emoji: '\u{1F9BE}', unit: 'robots', unitOne: 'robot', site: 'robotics lab', sitePlural: 'robotics labs',
+    blurb: 'Build machines that walk, weld and fold laundry. Mostly they fall over, at first.',
+    price: 70_000, unitCost: 40_000, localShare: 0.3, tradable: 0.9, demand: 250, elasticity: 1.4, incomeSens: 0.4,
+    capital: 400_000, capitalLocal: 0.35, staff: 25, wage: 130_000, staffScale: 0.6, rent: 250_000, maint: 0.1, capMult: 1,
+    multiple: 16, growth: 1, perMillion: 0.4, taxShare: 0, perishable: 0.05, marketingShare: 0.03,
+    roles: [r('Head of Robotics', 'quality', 250_000), r('Controls Engineer', 'quality', 180_000), r('Head of Sales', 'sales', 200_000), r('Manufacturing Lead', 'ops', 170_000), r('CFO', 'finance', 220_000)],
+    products: ['Warehouse Picker', 'Robot-as-a-Service Plan', 'Surgical Assist Arm', 'Sidewalk Delivery Bot', 'Farm Harvester Bot', 'Home Helper'],
+    suffixes: ['Robotics', 'Dynamics', 'Automation', 'Machines', 'Mechatronics'],
+  },
+  biotech: {
+    id: 'biotech', label: 'Biotech Company', emoji: '\u{1F9EC}', unit: 'treatment courses', unitOne: 'treatment course', site: 'lab', sitePlural: 'labs',
+    blurb: 'Find a cure, survive the clinical trials, get it approved. Most drugs fail; the winners pay for everything.',
+    price: 40_000, unitCost: 4_000, localShare: 0.2, tradable: 0.9, demand: 3_000, elasticity: 0.6, incomeSens: 0.3,
+    capital: 800_000, capitalLocal: 0.35, staff: 22, wage: 140_000, staffScale: 0.5, rent: 350_000, maint: 0.12, capMult: 1,
+    multiple: 20, growth: 1, perMillion: 0.3, taxShare: 0, perishable: 0.3, marketingShare: 0.06,
+    roles: [r('Chief Medical Officer', 'quality', 320_000), r('Head of Discovery', 'quality', 280_000), r('Head of Commercial', 'sales', 260_000), r('Head of Clinical Operations', 'ops', 240_000), r('CFO', 'finance', 260_000)],
+    products: ['Patient Support Program', 'Physician Education Tour', 'Pediatric Formulation', 'Once-Weekly Version', 'Combination Therapy', 'Home Infusion Service'],
+    suffixes: ['Bio', 'Therapeutics', 'Genomics', 'Biosciences', 'Pharma'],
+  },
+  spaceTech: {
+    id: 'spaceTech', label: 'Space Company', emoji: '\u{1F680}', unit: 'launches', unitOne: 'launch', site: 'launch site', sitePlural: 'launch sites',
+    blurb: 'Rockets, satellites and the occasional spectacular explosion. Start with an engine on a test stand.',
+    price: 60_000_000, unitCost: 38_000_000, localShare: 0.25, tradable: 1, demand: 3, elasticity: 1.5, incomeSens: 0.2,
+    capital: 1_500_000, capitalLocal: 0.4, staff: 60, wage: 140_000, staffScale: 0.6, rent: 400_000, maint: 0.08, capMult: 1,
+    multiple: 20, growth: 1, perMillion: 0.02, taxShare: 0, perishable: 1, marketingShare: 0.005,
+    roles: [r('Chief Engineer', 'quality', 300_000), r('Propulsion Lead', 'quality', 250_000), r('Head of Launch Sales', 'sales', 260_000), r('Launch Director', 'ops', 240_000), r('CFO', 'finance', 270_000)],
+    products: ['Rideshare Missions', 'Dedicated Launch Package', 'Satellite Insurance Bundle', 'Launch Livestream Sponsorship', 'Payload Integration Service', 'Polar Orbit Service'],
+    suffixes: ['Aerospace', 'Space', 'Orbital', 'Rocketworks', 'Launch'],
+  },
+  electricVehicles: {
+    id: 'electricVehicles', label: 'Electric Car Maker', emoji: '\u{1F699}', unit: 'cars', unitOne: 'car', site: 'R&D center', sitePlural: 'R&D centers',
+    blurb: 'Build the car of the future. Survive production hell first.',
+    price: 45_000, unitCost: 37_000, localShare: 0.35, priceCat: 'car', tradable: 0.8, demand: 2_500, elasticity: 1.6, incomeSens: 0.7,
+    capital: 1_200_000, capitalLocal: 0.35, staff: 40, wage: 95_000, staffScale: 0.6, rent: 400_000, maint: 0.08, capMult: 1,
+    multiple: 15, growth: 1, perMillion: 0.05, taxShare: 1, perishable: 0.05, marketingShare: 0.02,
+    roles: [r('Chief Engineer', 'quality', 260_000), r('Battery Lead', 'quality', 230_000), r('Head of Sales', 'sales', 220_000), r('Production Chief', 'ops', 210_000), r('CFO', 'finance', 240_000)],
+    products: ['Performance Edition', 'Electric Pickup', 'Long-Range Battery Pack', 'Premium Connectivity', 'Fleet Leasing', 'Home Charger Bundle'],
+    suffixes: ['Motors', 'EV', 'Automotive', 'Electric', 'Mobility'],
+  },
+  quantum: {
+    id: 'quantum', label: 'Quantum Computing Company', emoji: '\u{269B}\u{FE0F}', unit: 'compute contracts', unitOne: 'compute contract', site: 'lab', sitePlural: 'labs',
+    blurb: 'Coax qubits into cooperating at near absolute zero. A long runway, a lot of hype, maybe everything.',
+    price: 500_000, unitCost: 80_000, localShare: 0.2, tradable: 1, demand: 30, elasticity: 1, incomeSens: 0.3,
+    capital: 1_200_000, capitalLocal: 0.3, staff: 15, wage: 180_000, staffScale: 0.5, rent: 250_000, maint: 0.15, capMult: 1,
+    multiple: 25, growth: 1, perMillion: 0.05, taxShare: 0, perishable: 1, marketingShare: 0.02,
+    roles: [r('Chief Physicist', 'quality', 330_000), r('Cryogenics Lead', 'quality', 220_000), r('Head of Partnerships', 'sales', 250_000), r('Lab Director', 'ops', 220_000), r('CFO', 'finance', 250_000)],
+    products: ['Quantum Chemistry Toolkit', 'Optimization Service', 'University Access Program', 'Quantum Training Course', 'Hybrid Cloud Plan'],
+    suffixes: ['Quantum', 'Qubit', 'Entanglement', 'Q Systems'],
+  },
+  cybersecurity: {
+    id: 'cybersecurity', label: 'Cybersecurity Company', emoji: '\u{1F6E1}\u{FE0F}', unit: 'enterprise contracts', unitOne: 'enterprise contract', site: 'office', sitePlural: 'offices',
+    blurb: 'Stop the hackers before they stop your clients. Paranoia as a service.',
+    price: 60_000, unitCost: 12_000, localShare: 0.3, tradable: 0.8, demand: 160, elasticity: 1.1, incomeSens: 0.5,
+    capital: 150_000, capitalLocal: 0.6, staff: 30, wage: 140_000, staffScale: 0.55, rent: 200_000, maint: 0.12, capMult: 1,
+    multiple: 14, growth: 1, perMillion: 0.8, taxShare: 0, perishable: 1, marketingShare: 0.15,
+    roles: [r('Chief Security Researcher', 'quality', 250_000), r('Red Team Lead', 'quality', 200_000), r('Head of Sales', 'sales', 210_000), r('SOC Director', 'ops', 190_000), r('CFO', 'finance', 220_000)],
+    products: ['Threat Intelligence Feed', 'Phishing Simulator', 'Managed Detection Plan', 'Compliance Toolkit', 'Small Business Edition'],
+    suffixes: ['Security', 'Cyber', 'Defense', 'Shield', 'Sentinel'],
   },
 }
 

@@ -4,7 +4,9 @@
 // last year's plan ('skip'). The engine (business.ts) clamps whatever comes back again.
 import { useId, useState, type CSSProperties, type ReactNode } from 'react'
 import { formatMoney, shortMoney } from '../../game/core'
+import { HINT_EMOJI } from '../../game/talents'
 import type { AnnualReportResult, Json } from '../../game/types'
+import { cleanHint } from '../components/TalentHint'
 import type { MinigameProps } from './types'
 import '../styles/business.css'
 
@@ -36,6 +38,14 @@ export interface ReportView {
   expectedDemand: number
   marketNote: string
   lines: ReportLine[]
+  /** Business talent: the plan that should earn the most next year (null without the talent). */
+  talentHint: TalentPlan | null
+}
+
+/** AnnualReportData.talentHint after parsing; `plan` is null when its numbers were unusable. */
+export interface TalentPlan {
+  text: string
+  plan: { price: number; production: number } | null
 }
 
 export interface Projection {
@@ -129,6 +139,7 @@ export function readReportData(data: Json): ReportView {
   const production = clamp(rawProduction, 0, maxProduction)
 
   const year = num(d.year)
+  const talentHint = readTalentHint(d.talentHint, { minPrice, maxPrice, maxProduction })
   return {
     businessName: text(d.businessName, 'Your Company', 80),
     emoji: text(d.emoji, '🏢', 16),
@@ -147,7 +158,25 @@ export function readReportData(data: Json): ReportView {
     expectedDemand,
     marketNote: text(d.marketNote, '', 400),
     lines: readLines(d.lines),
+    talentHint,
   }
+}
+
+/**
+ * The Business talent's purple hint: its text plus a plan clamped to this report's ranges.
+ * No text means no hint; bad numbers keep the text but drop the "Use this plan" button.
+ */
+export function readTalentHint(v: Json | undefined, r: Pick<ReportView, 'minPrice' | 'maxPrice' | 'maxProduction'>): TalentPlan | null {
+  const h = record(v)
+  const hintText = cleanHint(h.text)
+  if (!hintText) return null
+  const price = num(h.price)
+  const production = num(h.production)
+  const plan =
+    price !== null && price > 0 && production !== null && production >= 0
+      ? { price: cents(clamp(price, r.minPrice, r.maxPrice)), production: clamp(Math.round(production), 0, r.maxProduction) }
+      : null
+  return { text: hintText, plan }
 }
 
 // ---------------------------------------------------------------------------
@@ -394,12 +423,49 @@ function PlanSlider(props: PlanSliderProps) {
   )
 }
 
+interface TalentInstinctProps {
+  id: string
+  hint: TalentPlan
+  unitLabel: string
+  priceStep: number
+  /** The sliders already match the hinted plan. */
+  using: boolean
+  onUse: (plan: { price: number; production: number }) => void
+}
+
+/** The purple "Business instinct" box: what the talent reads in the market, and a one-tap plan. */
+function TalentInstinct({ id, hint, unitLabel, priceStep: step, using, onUse }: TalentInstinctProps) {
+  const plan = hint.plan
+  return (
+    <section className="ar-instinct" aria-labelledby={id}>
+      <h3 className="ar-instinct-head" id={id}>
+        <span className="ar-instinct-icon" aria-hidden>
+          {HINT_EMOJI}
+        </span>
+        Business instinct
+      </h3>
+      <p className="ar-instinct-text">{hint.text}</p>
+      {plan ? (
+        <div className="ar-instinct-plan">
+          <span className="ar-instinct-figures">
+            {formatPrice(plan.price, step)} each · make {unitsText(plan.production, unitLabel)}
+          </span>
+          <button type="button" className={using ? 'ar-instinct-use is-on' : 'ar-instinct-use'} aria-pressed={using} onClick={() => onUse(plan)}>
+            {using ? '✓ Using this plan' : 'Use this plan'}
+          </button>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 export function AnnualReport({ modal, onDone }: MinigameProps) {
   const [r] = useState(() => readReportData(modal.data))
   const [price, setPrice] = useState(r.price)
   const [production, setProduction] = useState(r.production)
   const uid = useId()
   const ids = {
+    instinct: `${uid}-instinct`,
     price: `${uid}-price`,
     priceTip: `${uid}-price-tip`,
     production: `${uid}-production`,
@@ -461,6 +527,20 @@ export function AnnualReport({ modal, onDone }: MinigameProps) {
           </span>
           <span>{r.marketNote}</span>
         </p>
+      ) : null}
+
+      {r.talentHint ? (
+        <TalentInstinct
+          id={ids.instinct}
+          hint={r.talentHint}
+          unitLabel={r.unitLabel}
+          priceStep={pStep}
+          using={r.talentHint.plan !== null && price === r.talentHint.plan.price && production === r.talentHint.plan.production}
+          onUse={(plan) => {
+            setPrice(plan.price)
+            setProduction(plan.production)
+          }}
+        />
       ) : null}
 
       <section className="ar-section" aria-labelledby={ids.plan}>

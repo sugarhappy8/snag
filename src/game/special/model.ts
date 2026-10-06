@@ -4,8 +4,9 @@
 import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, spend, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { addFame, blocked, bump, clamp100, fameOf, fameToward, flagSkill, hire, leave, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, talentMatches, tell, view, yearlyList } from './common'
+import { addFame, blocked, bump, clamp100, fameOf, fameToward, flagSkill, hire, leave, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
 
 interface Agency {
   name: string
@@ -83,7 +84,12 @@ function mdata(job: Job): ModelJob {
 }
 
 function modelingSkill(g: GameState): number {
-  return clamp100(flagSkill(g, 'modeling') + (talentMatches(g, /model/i) ? 10 : 0))
+  return clamp100(flagSkill(g, 'modeling') + (hasTalent(g, 'Modeling') ? 10 : 0))
+}
+
+/** Modeling talent: agencies forgive a few points of looks (they see the "it" factor). */
+function looksBar(g: GameState, a: Agency): number {
+  return a.looks - (hasTalent(g, 'Modeling') ? 8 : 0)
 }
 
 /** How sellable your look is right now (looks, headshot, skill, age). */
@@ -180,7 +186,7 @@ const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
   if (!gig) return
   if (!useYearAction(g, 'model.freelance', 3)) return tell(g, 'Freelance Gigs', "You've done all the castings you can handle this year.", '\u{1F971}')
   gigs.splice(idx, 1)
-  const score = marketability(g) + randInt(g, -15, 15)
+  const score = marketability(g) + randInt(g, -15, 15) + (hasTalent(g, 'Modeling') ? 8 : 0)
   if (score < gig.req) {
     log(g, `I didn't book the ${gig.name.toLowerCase()} gig.`, 'bad')
     return say(g, 'Casting', pick(g, [`The casting director for the ${gig.name.toLowerCase()} said you weren't the look they wanted.`, `You showed up to the ${gig.name.toLowerCase()} casting and were told to "work on your angles".`, `You lost the ${gig.name.toLowerCase()} gig to someone's cousin.`]), gig.emoji, 'bad')
@@ -227,9 +233,9 @@ const agencyScript = defineScript('special.model.agency', (g, choice) => {
   const p = modelProfile(g)
   if (p.headshot <= 0) return say(g, a.name, `${a.name} asked for your headshots. You don't have any. Get some taken first.`, '\u{1F4F7}', 'bad')
   if (p.rejectedBy.includes(a.name)) return say(g, a.name, `${a.name} already rejected you. Their receptionist recognized your face and locked the door.`, '\u{1F6AA}', 'bad')
-  const looksOk = c.stats.looks + randInt(g, -5, 5) >= a.looks
+  const looksOk = c.stats.looks + randInt(g, -5, 5) >= looksBar(g, a)
   const shotOk = p.headshot >= a.headshot
-  const ageOk = c.age <= 38 - a.tier * 2
+  const ageOk = c.age <= 38 - a.tier * 2 + (hasTalent(g, 'Modeling') ? 4 : 0)
   if (!looksOk || !shotOk || !ageOk) {
     if (!looksOk) p.rejectedBy.push(a.name)
     const why = !shotOk ? 'said your headshots were not up to their standards' : !ageOk ? 'said they are looking for "fresher faces"' : 'said you do not have the look they want'
@@ -245,6 +251,16 @@ const agencyScript = defineScript('special.model.agency', (g, choice) => {
   say(g, a.name, `${a.name} signed you as a New Face! Your retainer is ${money(salary)} a year, plus gigs.${quitNote(quit)}`, '\u{1F483}', 'good')
 })
 
+/** Modeling talent hint: the most prestigious agency you comfortably qualify for (no randomness). */
+function bestAgency(g: GameState): string | null {
+  const c = g.character
+  const p = viewModel(g)
+  const ok = AGENCIES.filter(
+    (a) => !p.rejectedBy.includes(a.name) && c.stats.looks - 5 >= looksBar(g, a) && p.headshot >= a.headshot && c.age <= 38 - a.tier * 2 + (hasTalent(g, 'Modeling') ? 4 : 0),
+  )
+  return ok.length ? ok[ok.length - 1].name : null
+}
+
 const agencyAction: MenuAction = {
   type: 'action',
   id: 'model.agency',
@@ -259,7 +275,15 @@ const agencyAction: MenuAction = {
       agencyScript,
       'Modeling Agencies',
       'Which agency do you want to send your book to?',
-      [...AGENCIES.map((a) => ({ id: a.name, label: `${a.name} ${'\u{2B50}'.repeat(a.tier + 1)} · wants Looks ${a.looks}%+`, emoji: '\u{1F3E2}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+      [
+        ...AGENCIES.map((a) => ({
+          id: a.name,
+          label: `${a.name} ${'\u{2B50}'.repeat(a.tier + 1)} · wants Looks ${a.looks}%+`,
+          emoji: '\u{1F3E2}',
+          ...(a.name === bestAgency(g) ? withHint(talentHint(g, 'Modeling', 'The top agency that should sign you right now.')) : {}),
+        })),
+        { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' },
+      ],
       { emoji: '\u{1F3E2}' },
     ),
 }
@@ -282,7 +306,7 @@ const bookingScript = defineScript('special.model.booking', (g, choice) => {
   const b = BOOKINGS.find((x) => x.id === choice)
   if (!job || !b) return
   if (!useYearAction(g, 'model.booking', 3)) return tell(g, 'Bookings', 'Your agent says your calendar is full for the year.', '\u{1F4C5}')
-  const score = marketability(g) + job.level * 4 + randInt(g, -20, 20)
+  const score = marketability(g) + job.level * 4 + randInt(g, -20, 20) + (hasTalent(g, 'Modeling') ? 8 : 0)
   const pay = Math.round((job.salary * b.mult * (0.8 + rand(g) * 0.6)) / 50) * 50
   mdata(job).gigsThisYear += 1
   modelProfile(g).gigs += 1
@@ -312,7 +336,7 @@ const PRACTICE = [
 const practiceScript = defineScript('special.model.practice', (g, choice) => {
   if (choice === 'cancel') return
   if (!useYearAction(g, `model.practice.${choice}`, 1)) return tell(g, 'Practice', `You've already practiced your ${choice === 'walk' ? 'walk' : 'poses'} this year.`, '\u{1F971}')
-  const gain = randInt(g, 3, 7) + (talentMatches(g, /model/i) ? 2 : 0)
+  const gain = Math.round(randInt(g, 3, 7) * talentMult(g, 'Modeling', 1.6))
   setFlagSkill(g, 'modeling', flagSkill(g, 'modeling') + gain)
   const job = modelJob(g)
   if (job) bump(job, 3)
@@ -484,7 +508,7 @@ const fashionWeekScript = defineScript('special.model.fashionWeek', (g, choice, 
   const p = modelProfile(g)
   p.fashionWeeks += 1
   count(g, 'fashionWeeks')
-  const score = marketability(g) + randInt(g, -15, 20)
+  const score = marketability(g) + randInt(g, -15, 20) + (hasTalent(g, 'Modeling') ? 8 : 0)
   const pay = Math.round((job.salary * 0.3 * (0.8 + rand(g) * 0.5)) / 100) * 100
   if (score >= 55) {
     earnIncome(g, pay)
@@ -518,8 +542,74 @@ const fashionWeekScript = defineScript('special.model.fashionWeek', (g, choice, 
   }
 })
 
+// Modeling talent: agencies come looking for you.
+const scoutScript = defineScript('special.model.scout', (g, choice, data) => {
+  const a = AGENCIES.find((x) => x.name === String((data as { agency?: string } | undefined)?.agency ?? ''))
+  if (!a || modelJob(g)) return
+  if (choice !== 'accept') {
+    const no = scoutDeclines(g) + 1
+    g.flags[SCOUT_DECLINES] = no
+    log(g, `I turned down a scout from ${a.name}.`)
+    return say(
+      g,
+      a.name,
+      no >= MAX_SCOUT_DECLINES
+        ? `You told the ${a.name} scout you weren't interested. Word gets around: the agencies have stopped asking. You can still send them your book from Special Careers.`
+        : `You told the ${a.name} scout you weren't interested. They left their card anyway, "in case you change your mind".`,
+      '\u{1F483}',
+    )
+  }
+  const blockedWhy = blocked(g, 18)
+  if (blockedWhy) return tell(g, a.name, blockedWhy, '\u{1F483}')
+  const p = modelProfile(g)
+  // The agency shoots your book for you.
+  p.headshot = Math.max(p.headshot, a.headshot)
+  p.headshotAge = g.character.age
+  const { quit } = hire(g, { defId: 'model', title: RANKS[0], company: a.name, salary: a.retainer, data: { tier: a.tier, gigsThisYear: 0, sabotaged: 0 } })
+  addFame(g, 1 + a.tier)
+  addStat(g, 'happiness', 12)
+  log(g, `A scout from ${a.name} discovered me and signed me as a model.`, 'good')
+  remember(g, `Discovered by a scout from ${a.name}.`)
+  say(g, a.name, `${a.name} signed you as a New Face and shot your portfolio on their dime. Your retainer is ${money(a.retainer)} a year, plus gigs.${quitNote(quit)}`, '\u{1F483}', 'good')
+})
+
+/** After this many "no thanks", scouts stop asking (the agency door stays open). */
+const MAX_SCOUT_DECLINES = 2
+const SCOUT_DECLINES = 'special.model.scoutDeclines'
+
+function scoutDeclines(g: GameState): number {
+  const v = g.flags[SCOUT_DECLINES]
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+const SCOUT_SPOTS = ['at the mall', 'at a coffee shop', 'on the train', 'at a music festival', 'at the airport', 'while you were crossing the street']
+
+function maybeScouted(g: GameState): void {
+  const c = g.character
+  if (!hasTalent(g, 'Modeling') || c.prison || c.age < 18 || c.age > 32 || modelJob(g) || scoutDeclines(g) >= MAX_SCOUT_DECLINES) return
+  // Scouts don't poach people out of other special careers or the military.
+  if (c.job && (c.job.category === 'special' || c.job.category === 'military')) return
+  if (g.queue.some((m) => m.kind === 'choice' && m.scriptId === scoutScript)) return
+  const p = viewModel(g)
+  const options = AGENCIES.filter((a) => !p.rejectedBy.includes(a.name) && c.stats.looks + 5 >= looksBar(g, a) && c.age <= 38 - a.tier * 2 + 4)
+  if (options.length === 0 || !chance(g, 0.3)) return
+  const a = options[options.length - 1]
+  scriptChoice(
+    g,
+    scoutScript,
+    'Scouted!',
+    `A scout from ${a.name} ${'\u{2B50}'.repeat(a.tier + 1)} stopped you ${pick(g, SCOUT_SPOTS)} and handed you a business card. They want to sign you on the spot: ${money(a.retainer)} a year to start.${c.job ? ` You'd have to quit your job as ${c.job.title}.` : ''}`,
+    [
+      { id: 'accept', label: 'Sign with them', emoji: '\u{270D}\u{FE0F}' },
+      { id: 'decline', label: 'Not interested', emoji: '\u{274C}' },
+    ],
+    { emoji: '\u{1F483}', data: { agency: a.name } },
+  )
+}
+
 export function yearlyModel(g: GameState): void {
   const c = g.character
+  if (c.alive) maybeScouted(g)
   const job = modelJob(g)
   if (!c.alive || !job || c.prison) return
   syncTenure(g, job)
@@ -531,7 +621,7 @@ export function yearlyModel(g: GameState): void {
   fameToward(g, [8, 15, 28, 45, 75][job.level] ?? 10, 3)
 
   // Dropped when your look no longer fits the agency.
-  if (c.stats.looks < agency.looks - 15 || job.performance < 15 || (c.age > 45 && chance(g, 0.2))) {
+  if (c.stats.looks < looksBar(g, agency) - 15 || job.performance < 15 || (c.age > 45 && chance(g, hasTalent(g, 'Modeling') ? 0.1 : 0.2))) {
     leave(g, 'fired')
     log(g, `${agency.name} dropped me.`, 'bad')
     say(g, 'Dropped', `${agency.name} let you go. ${c.age > 40 ? 'They said they want "younger faces", which is rude.' : 'They said your bookings dried up.'}`, '\u{1F4C9}', 'bad')
@@ -539,7 +629,8 @@ export function yearlyModel(g: GameState): void {
   }
 
   const next = job.level + 1
-  if (next < RANKS.length && job.yearsInRole >= 1 && job.performance >= 65 && c.stats.looks >= 55 + next * 7 && (next < 4 || fameOf(g) >= 40) && chance(g, 0.55)) {
+  const gifted = hasTalent(g, 'Modeling')
+  if (next < RANKS.length && job.yearsInRole >= 1 && job.performance >= (gifted ? 58 : 65) && c.stats.looks >= 55 + next * 7 - (gifted ? 6 : 0) && (next < 4 || fameOf(g) >= (gifted ? 32 : 40)) && chance(g, gifted ? 0.7 : 0.55)) {
     promote(g, job, RANKS[next], agency.retainer * RANK_MULT[next], next)
     log(g, `I was promoted to ${RANKS[next]} at ${agency.name}.`, 'good')
     remember(g, `Became a ${RANKS[next]}.`)

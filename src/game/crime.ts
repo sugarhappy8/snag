@@ -33,6 +33,7 @@ import { notePerson } from './people'
 import { addPrisonTime, fugitiveInfo, FUGITIVE_FLAG, moneyScale, releaseFromPrison, sendToPrison, yearlyPrison } from './prison'
 import { chance, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
+import { hasTalent, talentHint } from './talents'
 import { localStreetName } from './data/locales'
 import { COUNTRIES, getCountry, NAME_POOLS, randomCity, randomFirstName, randomLastName, trialBy, type NameRegion, type TrialBy } from './world'
 import type {
@@ -153,6 +154,19 @@ interface CrimeCost {
   heat: number
 }
 
+/**
+ * Crime talent: quick hands, a poker face and an uncanny knack for not getting caught.
+ * Scales the chance of getting caught (never to zero).
+ */
+function caughtMult(g: GameState): number {
+  return hasTalent(g, 'Crime') ? 0.7 : 1
+}
+
+/** Crime talent: extra success odds on a job (as a 0-1 bonus). */
+function crimeEdge(g: GameState): number {
+  return hasTalent(g, 'Crime') ? 0.1 : 0
+}
+
 /** Record a committed crime (uncaught for now). Returns its index in the criminal record. */
 function commitCrime(g: GameState, crime: string, cost: CrimeCost): number {
   const c = g.character
@@ -160,7 +174,7 @@ function commitCrime(g: GameState, crime: string, cost: CrimeCost): number {
   c.criminalRecord.push({ crime, age: c.age, caught: false, convicted: false })
   addHidden(g, 'karma', -Math.abs(cost.karma))
   addHidden(g, 'notoriety', cost.notoriety)
-  if (cost.heat > 0 && chance(g, Math.min(1, cost.heat))) c.wantedLevel = clamp(c.wantedLevel + (cost.heat > 1 ? 2 : 1), 0, 5)
+  if (cost.heat > 0 && chance(g, Math.min(1, cost.heat * caughtMult(g)))) c.wantedLevel = clamp(c.wantedLevel + (cost.heat > 1 ? 2 : 1), 0, 5)
   const fam = crimeFamily(g)
   if (fam) fam.standing = clamp(fam.standing + randInt(g, 1, 3))
   return c.criminalRecord.length - 1
@@ -413,12 +427,28 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
       `Sirens! An officer slapped the cuffs on you for ${name.toLowerCase()}.`,
       `"Freeze!" The police have you dead to rights for ${name.toLowerCase()}.`,
     ])
+  // Crime talent: you sense the way out (still a gamble).
+  const runOdds = runAwayOdds(g)
+  const bribeOdds = canAfford(g, bribe) ? bribeOdds0(sev) : 0
+  const way = runOdds >= bribeOdds ? 'run' : 'bribe'
+  const hint = talentHint(g, 'Crime', `Your best way out (about ${Math.round(Math.max(runOdds, bribeOdds) * 100)}%).`)
   scriptChoice(g, ARREST_SCRIPT, 'Busted!', `${intro} What do you do?`, [
     { id: 'cooperate', label: 'Cooperate', emoji: '\u{1F64C}' },
-    { id: 'run', label: 'Run', emoji: '\u{1F3C3}' },
-    { id: 'bribe', label: `Bribe the officer (${formatMoney(bribe)})`, emoji: '\u{1F4B5}' },
+    { id: 'run', label: 'Run', emoji: '\u{1F3C3}', ...(hint && way === 'run' ? { hint } : {}) },
+    { id: 'bribe', label: `Bribe the officer (${formatMoney(bribe)})`, emoji: '\u{1F4B5}', ...(hint && way === 'bribe' ? { hint } : {}) },
     { id: 'insult', label: 'Insult the officer', emoji: '\u{1F595}' },
   ], { emoji: '\u{1F6A8}', data: trialJson(trial) })
+}
+
+/** Odds of outrunning the arresting officer. */
+function runAwayOdds(g: GameState): number {
+  const c = g.character
+  return clamp(0.1 + (c.hidden.athleticism - 50) / 500 + (c.age < 30 ? 0.02 : -0.03), 0.04, 0.22) + (hasTalent(g, 'Crime') ? 0.12 : 0)
+}
+
+/** Odds that the officer takes the bribe. */
+function bribeOdds0(severity: number): number {
+  return [0.6, 0.45, 0.25, 0.08, 0.02][severity - 1] ?? 0.1
 }
 
 defineScript(ARREST_SCRIPT, (g, choice, data) => {
@@ -426,7 +456,7 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
   const c = g.character
   if (!t || !c.alive || c.prison) return
   if (choice === 'run') {
-    const p = clamp(0.1 + (c.hidden.athleticism - 50) / 500 + (c.age < 30 ? 0.02 : -0.03), 0.04, 0.22)
+    const p = runAwayOdds(g)
     if (chance(g, p)) {
       unmarkCaught(g, t)
       c.wantedLevel = clamp(c.wantedLevel + 2, 0, 5)
@@ -452,7 +482,7 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
       toLawyer(g, t)
       return
     }
-    const p = [0.6, 0.45, 0.25, 0.08, 0.02][t.severity - 1] ?? 0.1
+    const p = bribeOdds0(t.severity)
     if (chance(g, p)) {
       spend(g, amount)
       unmarkCaught(g, t)
@@ -894,11 +924,11 @@ const PICKPOCKET_RESULT = defineScript('crime.pickpocket.result', (g, result, da
       `Smooth as butter. You lifted ${formatMoney(amount)} from ${who}${phone ? ', plus a phone you flipped for cash' : ''}.`,
       `${t.label} never felt a thing. You walked away ${formatMoney(amount)} richer${phone ? ' (the phone helped)' : ''}.`,
     ]), t.emoji, 'good')
-    if (t.id !== 'cop' && chance(g, 0.05)) arrestPlayer(g, 'Pickpocketing', 1, { recordIndex: idx, evidence: 0.6, context: 'An undercover cop saw the whole thing.' })
+    if (t.id !== 'cop' && chance(g, 0.05 * caughtMult(g))) arrestPlayer(g, 'Pickpocketing', 1, { recordIndex: idx, evidence: 0.6, context: 'An undercover cop saw the whole thing.' })
     return
   }
   // Fail: the mark noticed.
-  if (t.id === 'cop' || chance(g, 0.4)) {
+  if (t.id === 'cop' || chance(g, 0.4 * caughtMult(g))) {
     arrestPlayer(g, 'Pickpocketing', 1, {
       recordIndex: idx,
       evidence: 0.75,
@@ -992,7 +1022,7 @@ const PORCH_SCRIPT = defineScript('crime.porch.pick', (g, choice, data) => {
   const opt = options.find((o) => isRecord(o) && o.id === choice)
   if (!isRecord(opt)) return
   const spot = str(opt.spot, 'a porch')
-  const risk = clamp(num(opt.risk, 0.2) - (c.stats.smarts - 50) / 500, 0.04, 0.7)
+  const risk = clamp((num(opt.risk, 0.2) - (c.stats.smarts - 50) / 500) * caughtMult(g), 0.03, 0.7)
   const idx = commitCrime(g, 'Larceny', { karma: 3, notoriety: 1, heat: 0.08 })
   if (chance(g, risk)) {
     if (chance(g, 0.5)) {
@@ -1091,7 +1121,7 @@ const SHOPLIFT_COP = defineScript('crime.shoplift.cop', (g, choice, data) => {
     arrestPlayer(g, 'Assault', 2, { evidence: 0.9, noResist: true, extraCharges: ['Shoplifting'], recordIndex })
     return
   }
-  if (chance(g, clamp(0.4 + (c.hidden.athleticism - 50) / 300, 0.2, 0.65))) {
+  if (chance(g, clamp(0.4 + (c.hidden.athleticism - 50) / 300 + crimeEdge(g), 0.2, 0.75))) {
     log(g, `I outran a ${mallCop(g)} with ${item}.`, 'event')
     c.wantedLevel = clamp(c.wantedLevel + 1, 0, 5)
     outcome(g, 'Escaped', pick(g, [`You bolted past the ${mallCop(g)}${g.character.countryId === 'us' ? "'s Segway" : ''} and disappeared into the ${g.character.countryId === 'us' ? 'parking lot' : 'crowd'} with ${item}.`, `The ${mallCop(g)} wheezed to a stop at the escalator. You got away with ${item}.`]), '\u{1F3C3}', 'good')
@@ -1109,7 +1139,7 @@ const SHOPLIFT_ITEM = defineScript('crime.shoplift.item', (g, choice, data) => {
   if (!isRecord(it)) return
   const item = str(it.item, 'something')
   const value = num(it.value)
-  const risk = clamp(store.security + Math.log10(Math.max(1, value)) / 15 - (c.stats.smarts - 50) / 400, 0.05, 0.8)
+  const risk = clamp((store.security + Math.log10(Math.max(1, value)) / 15 - (c.stats.smarts - 50) / 400) * caughtMult(g), 0.04, 0.8)
   const idx = commitCrime(g, 'Shoplifting', { karma: 2, notoriety: 1, heat: 0.05 })
   if (chance(g, risk)) {
     scriptChoice(g, SHOPLIFT_COP, g.character.countryId === 'us' ? 'Mall Cop!' : 'Security!', `You stuffed ${item} under your shirt and headed for the exit. A ${mallCop(g)} stepped in front of the door. "Not so fast."`, [
@@ -1210,7 +1240,7 @@ const DELINQUENCY_SCRIPT = defineScript('crime.delinquency', (g, choice, data) =
     }
   }
   const withText = partnerName ? ` with ${partner ? `your ${relationLabel(partner).toLowerCase()} ` : ''}${partnerName}` : ''
-  const risk = clamp(act.risk * (partnerName ? 0.85 : 1) - (c.stats.smarts - 50) / 500, 0.05, 0.7)
+  const risk = clamp((act.risk * (partnerName ? 0.85 : 1) - (c.stats.smarts - 50) / 500) * caughtMult(g), 0.04, 0.7)
   const idx = commitCrime(g, act.crime, { karma: 2, notoriety: 2, heat: 0.05 })
   if (chance(g, risk)) {
     if (partner) {
@@ -1424,8 +1454,8 @@ function generateHouse(g: GameState, tier: number): BurglaryData {
     cols: tpl.cols,
     rows: tpl.rows,
     rooms,
-    baseRisk: [0.04, 0.06, 0.09][tier - 1] + (alarm ? 0.04 : 0),
-    riskStep: 0.05,
+    baseRisk: ([0.04, 0.06, 0.09][tier - 1] + (alarm ? 0.04 : 0)) * caughtMult(g),
+    riskStep: 0.05 * caughtMult(g),
     rolls: rooms.map(() => Math.round(rand(g) * 10000) / 10000),
   }
 }
@@ -1475,7 +1505,7 @@ const BURGLARY_RESULT = defineScript('crime.burglary.result', (g, result, data) 
     return
   }
   const by = parsed.by === 'dog' || parsed.by === 'alarm' || parsed.by === 'owner' ? parsed.by : house.ownerHome ? 'owner' : house.dog ? 'dog' : 'alarm'
-  const policeChance = (by === 'alarm' ? 0.6 : by === 'owner' ? 0.4 : 0.25) + (house.tier === 3 ? 0.15 : 0)
+  const policeChance = ((by === 'alarm' ? 0.6 : by === 'owner' ? 0.4 : 0.25) + (house.tier === 3 ? 0.15 : 0)) * caughtMult(g)
   const lost = loot > 0 ? ` You dropped everything you'd grabbed.` : ''
   if (chance(g, policeChance)) {
     const context =
@@ -1612,7 +1642,7 @@ const GTA_PICK = defineScript('crime.gta.pick', (g, choice, data) => {
   const raw = cars.find((x) => isRecord(x) && x.id === choice)
   if (!isRecord(raw)) return
   const car = raw as unknown as StolenCar
-  const p = clamp(car.risk - (c.stats.smarts - 50) / 500 - (hasLicense(g, 'driver') ? 0.03 : -0.05), 0.05, 0.9)
+  const p = clamp((car.risk - (c.stats.smarts - 50) / 500 - (hasLicense(g, 'driver') ? 0.03 : -0.05)) * caughtMult(g), 0.04, 0.9)
   const idx = commitCrime(g, 'Grand Theft Auto', { karma: 5, notoriety: 3, heat: 0.3 })
   if (!chance(g, p)) {
     count(g, 'carsStolen')
@@ -1671,8 +1701,15 @@ const gtaAction: MenuAction = {
         risk: clamp(0.25 + t.risk + spot.risk, 0.05, 0.85),
       })
     }
+    // Crime talent: you can tell which ride is worth the risk.
+    const best = hasTalent(g, 'Crime') ? cars.reduce((a, b) => (b.value * (1 - b.risk) ** 2 > a.value * (1 - a.risk) ** 2 ? b : a)) : null
     scriptChoice(g, GTA_PICK, 'Grand Theft Auto', 'You go looking for a ride that is not yours. Which car will you steal?', [
-      ...cars.map((car) => ({ id: car.id, label: `${car.name} ${car.spot} (${shortMoney(car.value)})`, emoji: car.emoji })),
+      ...cars.map((car) => ({
+        id: car.id,
+        label: `${car.name} ${car.spot} (${shortMoney(car.value)})`,
+        emoji: car.emoji,
+        ...(best && car.id === best.id ? { hint: talentHint(g, 'Crime', 'Best payoff for the risk on this street. Your gut is rarely wrong.') } : {}),
+      })),
       { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
     ], { emoji: '\u{1F511}', data: { cars: cars as unknown as Json } })
   },
@@ -1760,7 +1797,7 @@ const BANK_SCRIPT = defineScript('crime.bank.step', (g, choice, data) => {
   const crew = str(data.crew, 'solo')
   const crewBonus = crew === 'family' ? 0.2 : crew === 'crew' ? 0.15 : 0
   const share = crew === 'family' ? 0.6 : crew === 'crew' ? 0.5 : 1
-  const p = clamp(0.35 - bank.difficulty + weapon.bonus + disguise.bonus + getaway.bonus + crewBonus + (c.stats.smarts - 50) / 600, 0.05, 0.85)
+  const p = clamp(0.35 - bank.difficulty + weapon.bonus + disguise.bonus + getaway.bonus + crewBonus + (c.stats.smarts - 50) / 600 + crimeEdge(g), 0.05, 0.85)
   const crime = weapon.armed ? 'Armed Robbery' : 'Bank Robbery'
   const idx = commitCrime(g, crime, { karma: 10, notoriety: 8, heat: disguise.id === 'none' ? 2 : 0.6 })
   const lines = [`You stormed into ${bank.name} wearing ${disguise.id === 'none' ? 'your regular face' : disguise.label.toLowerCase()} and waving ${weapon.label.toLowerCase()}.`]
@@ -1839,7 +1876,7 @@ const TRAIN_TIME_SCRIPT = defineScript('crime.train.time', (g, choice, data) => 
     return
   }
   const idx = commitCrime(g, 'Train Robbery', { karma: 10, notoriety: 10, heat: 0.6 })
-  if (chance(g, clamp(0.5 + (c.stats.smarts - 50) / 500 + (c.hidden.athleticism - 50) / 500, 0.2, 0.8))) {
+  if (chance(g, clamp(0.5 + (c.stats.smarts - 50) / 500 + (c.hidden.athleticism - 50) / 500 + crimeEdge(g), 0.2, 0.85))) {
     g.flags[TRAIN_FLAG] = true
     count(g, 'trainRobberies')
     const take = cash(g, randInt(g, 40000, 400000))
@@ -2068,7 +2105,7 @@ function attemptMurder(g: GameState, victim: Victim, person: Person | null, meth
   let p = method.success + (c.hidden.craziness - 50) / 400
   if (method.id === 'scare') p += victim.family ? -0.05 : 0.12 + Math.max(0, victim.age - 60) / 200
   if (person) p += (100 - person.stats.health) / 400
-  const success = chance(g, clamp(p, 0.03, 0.95))
+  const success = chance(g, clamp(p + crimeEdge(g), 0.03, 0.95))
 
   if (success) {
     const idx = commitCrime(g, 'Murder', { karma: 30, notoriety: 12, heat: 0.5 })
@@ -2076,7 +2113,7 @@ function attemptMurder(g: GameState, victim: Victim, person: Person | null, meth
     if (person) killPerson(g, person, 'Murdered')
     else log(g, `I murdered ${victim.name}.`, 'bad')
     const extra = person && victim.family ? ` Your ${relationLabel(person).toLowerCase()} ${person.firstName} died at the age of ${person.age}.` : ''
-    const caught = chance(g, clamp(method.cops + (victim.family ? 0.1 : 0) - (c.stats.smarts - 50) / 500, 0.03, 0.9))
+    const caught = chance(g, clamp((method.cops + (victim.family ? 0.1 : 0) - (c.stats.smarts - 50) / 500) * caughtMult(g), 0.03, 0.9))
     if (purpose === 'made') madeYourBones(g)
     if (caught) {
       arrestPlayer(g, 'Murder', 5, {
@@ -2201,7 +2238,7 @@ const HITMAN_DEMAND = defineScript('crime.hitman.demand', (g, choice, data) => {
     arrestPlayer(g, 'Conspiracy to Commit Murder', 4, { evidence: 0.85, noResist: true, context: `The police arrested both you and ${name}.` })
     return
   }
-  const evade = choice === 'run' ? 0.6 : choice === 'deal' ? 0.5 : 0.3
+  const evade = (choice === 'run' ? 0.6 : choice === 'deal' ? 0.5 : 0.3) + crimeEdge(g)
   if (chance(g, evade)) {
     log(g, `I stood up to ${name} and lived.`, 'event')
     outcome(g, 'Hitman', choice === 'deal' ? `You told ${name} that a deal's a deal. ${name} thought about it, shrugged, and apologized.` : `You ran and never looked back. ${name} lost your trail.`, '\u{1F3C3}', 'good')
@@ -2356,7 +2393,7 @@ const EMBEZZLE_SCRIPT = defineScript('crime.embezzle', (g, choice) => {
   if (!opt) return
   const amount = embezzleAmount(g, opt.share)
   const idx = commitCrime(g, 'Embezzlement', { karma: 5, notoriety: 2, heat: 0 })
-  if (chance(g, clamp(opt.risk - (c.stats.smarts - 50) / 400, 0.02, 0.85))) {
+  if (chance(g, clamp((opt.risk - (c.stats.smarts - 50) / 400) * caughtMult(g), 0.02, 0.85))) {
     embezzleCaught(g, amount, opt.share >= 0.35, idx)
     return
   }
@@ -2411,7 +2448,7 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
   if (!hack) return
   const target = str(data.target, 'someone')
   const person = getPerson(g, str(data.personId) || undefined)
-  const p = clamp(0.2 + c.stats.smarts / 140 - hack.difficulty, 0.05, 0.9)
+  const p = clamp(0.2 + c.stats.smarts / 140 - hack.difficulty + crimeEdge(g) + (hasTalent(g, 'Programming') ? 0.08 : 0), 0.05, 0.9)
   const success = chance(g, p)
   const idx = commitCrime(g, hack.crime, { karma: 4, notoriety: 2, heat: 0.1 })
   count(g, 'hacks')
@@ -2661,7 +2698,7 @@ const JOIN_SCRIPT = defineScript('crime.mafia.join', (g, choice, data) => {
   if (!isRecord(opt)) return
   const kind = str(opt.kind) as FamilyKind
   if (!FAMILY_KINDS.some((k) => k.kind === kind)) return
-  const p = clamp(0.25 + c.hidden.notoriety / 200 + Math.min(counter(g, 'crimes'), 20) / 50 + (counter(g, 'murders') > 0 ? 0.1 : 0), 0.1, 0.9)
+  const p = clamp(0.25 + c.hidden.notoriety / 200 + Math.min(counter(g, 'crimes'), 20) / 50 + (counter(g, 'murders') > 0 ? 0.1 : 0) + crimeEdge(g), 0.1, 0.9)
   if (!chance(g, p)) {
     log(g, `The ${str(opt.name)} turned me away.`, 'bad')
     notice(g, 'Rejected', pick(g, [`The ${str(opt.name)} don't know you from Adam. Come back when your name means something on the street.`, `A man in a nice suit told you the ${str(opt.name)} "aren't hiring." Then he laughed for a long time.`]), {
@@ -2805,7 +2842,7 @@ const EXTORT_PICK = defineScript('crime.extort.pick', (g, choice, data) => {
   const owner = str(b.owner, 'The owner')
   const demand = num(b.demand)
   const idx = commitCrime(g, 'Extortion', { karma: 6, notoriety: 4, heat: 0.15 })
-  const p = clamp(0.3 + c.hidden.notoriety / 250 + fam.rank * 0.06, 0.1, 0.85)
+  const p = clamp(0.3 + c.hidden.notoriety / 250 + fam.rank * 0.06 + crimeEdge(g), 0.1, 0.85)
   if (chance(g, p)) {
     extortPaid(g, business, demand, `You walked into the ${business} and explained that ${fam.name} offers "protection."`)
     return

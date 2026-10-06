@@ -10,11 +10,13 @@
 // minus the friend's cut, and a paper trail the regulator may or may not follow.
 import { addMoney, count, formatMoney, log, notice, scriptChoice, scriptInput, shortMoney, useYearAction, yearActionsUsed } from '../core'
 import { coinDef, companyDef, cryptoYear, exchangeByKey, exchangeInfo, exchangeYear, indexMove, SECTORS, type ExInfo, type SecurityDef } from '../invest/engine'
+import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
 import { shockFactor } from '../invest/shocks'
 import { seeded, type SRng } from '../assets'
 import { chance, pick, uid } from '../rng'
 import { defineScript } from '../scripts'
-import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import { talentHint } from '../talents'
+import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import {
   absPct,
   anchor,
@@ -28,9 +30,11 @@ import {
   isRecord,
   local,
   moneyState,
+  noteSharp,
   num,
   payOrBorrow,
   readState,
+  sharpSpread,
   str,
   type BetResult,
   type MoneyState,
@@ -212,9 +216,20 @@ export function stockFairValue(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put
   return Math.max(0.002, sum / xs.length)
 }
 
-/** What $1 of exposure costs: fair value plus the market maker's markup (single stocks are pricier). */
-export function stockOptionPrice(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put', strike: 'atm' | 'otm', skill: number): number {
-  return stockFairValue(inf, def, dir, stockStrike(inf, def, strike)) * (1 + markup(skill, strike) + 0.03)
+/**
+ * What $1 of exposure costs: fair value plus the market maker's markup (single stocks are pricier),
+ * plus `extra` for a trader flagged as sharp (money-common sharpSpread).
+ */
+export function stockOptionPrice(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put', strike: 'atm' | 'otm', skill: number, extra = 0): number {
+  return stockFairValue(inf, def, dir, stockStrike(inf, def, strike)) * (1 + markup(skill, strike) + 0.03 + Math.max(0, Number.isFinite(extra) ? extra : 0))
+}
+
+// ---------------------------------------------------------------------------
+// The Investing talent: the gut's once-a-year feeling (invest/instinct.ts) on these targets.
+
+function gutHint(g: GameState, secId: string): string | null {
+  const inst = marketInstinct(g, !cryptoBanned(g.character.countryId))
+  return inst && gutLikes(inst, secId) ? talentHint(g, 'Investing', `Your gut says this one rises in ${inst.year}`) : null
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +305,7 @@ export function settleBets(g: GameState, st: MoneyState): News | null {
   if (!due.length) return null
   st.bets = st.bets.filter((b) => b.year >= g.year)
   const t: BetTotals = { own: 0, crony: 0, margin: 0, vanished: [], lines: [], big: false }
+  let staked = 0
   for (const bet of due) {
     const price = settlePrice(g, bet)
     const pay = betPayoff(bet, price)
@@ -316,6 +332,7 @@ export function settleBets(g: GameState, st: MoneyState): News | null {
       continue
     }
     const net = pay - bet.premium
+    staked += bet.premium
     if (pay >= 0) bankGain(g, st, net, pay, false)
     else {
       // A short that owes more than the cash put up: the whole stake plus the bill is a loss.
@@ -332,6 +349,7 @@ export function settleBets(g: GameState, st: MoneyState): News | null {
     remember(st, { id: bet.id, secId: bet.secId, name: bet.name, year: bet.year, via: 'own', net, caseId: bet.caseId })
     t.lines.push(`${move}: your ${bet.kind === 'short' ? 'short' : bet.kind === 'long' ? 'long bet' : `${bet.kind}s`} on ${bet.symbol} ${net >= 0 ? `made ${formatMoney(net)}` : `lost ${formatMoney(-net)}`}.`)
   }
+  noteSharp(st, staked, staked + t.own)
   const total = t.own + t.crony
   const notable = t.big || t.margin > 0 || t.vanished.length > 0 || Math.abs(total) >= local(g, 5_000)
   const logLine = total >= 0 ? `My single-stock and coin bets made ${formatMoney(total)} this year.` : `My single-stock and coin bets lost ${formatMoney(-total)} this year.`
@@ -410,7 +428,8 @@ export function placeBet(g: GameState, spec: BetSpec): StockBet | null {
     const dir = spec.kind === 'put' ? 'put' : 'call'
     const strike = spec.strike === 'otm' ? 'otm' : 'atm'
     k = stockStrike(inf, def, strike)
-    units = dollars(stake / stockOptionPrice(inf, def, dir, strike, st.skill))
+    // Cronies trade on their own accounts; only your own broker knows your streak.
+    units = dollars(stake / stockOptionPrice(inf, def, dir, strike, st.skill, own ? sharpSpread(st) : 0))
   }
   const before = g.character.money
   addMoney(g, -(stake + fee))
@@ -511,7 +530,7 @@ defineScript(DIR_SCRIPT, (g, choice, data) => {
   const def = companyDef(inf, t.slot, m ? Number(m[2]) : 0)
   const st = readState(g)
   const otm = stockStrike(inf, def, 'otm')
-  const lines = (['atm', 'otm'] as const).map((s) => `${s === 'atm' ? 'At the money' : `Out of the money (needs ${choice === 'call' ? 'a rise' : 'a drop'} of more than ${absPct(otm, 0)})`}: $1 controls about ${shortMoney(1 / stockOptionPrice(inf, def, choice, s, st.skill))} of ${t.symbol}.`)
+  const lines = (['atm', 'otm'] as const).map((s) => `${s === 'atm' ? 'At the money' : `Out of the money (needs ${choice === 'call' ? 'a rise' : 'a drop'} of more than ${absPct(otm, 0)})`}: $1 controls about ${shortMoney(1 / stockOptionPrice(inf, def, choice, s, st.skill, sharpSpread(st)))} of ${t.symbol}.`)
   scriptChoice(g, STRIKE_SCRIPT, 'Pick a Strike', `${t.name} (${t.symbol}) trades at ${priceLabel(t.price)}. Cheaper options need a bigger move to pay off.\n\n${lines.join('\n')}`, [
     { id: 'atm', label: 'At the money', emoji: '\u{1F3AF}' },
     { id: 'otm', label: 'Out of the money', emoji: '\u{1F3B2}' },
@@ -588,25 +607,30 @@ function targetAction(t: BetTarget): MenuAction {
     label: `${t.name} (${t.symbol})`,
     emoji: t.emoji,
     subtitle: `${priceLabel(t.price)} · ${t.sector}${t.vol > 0 ? ` · swings ~${absPct(t.vol, 0)} a year` : ''}`,
+    hint: (g) => gutHint(g, t.secId),
     disabledReason: (g) => tradeBlock(g) ?? (coin && cryptoBanned(g.character.countryId) ? 'Crypto trading is banned here.' : null),
     run: (g) => {
       if (!canAct(g) || tradeBlock(g)) return
+      const choices: ChoiceOption[] = coin
+        ? [
+            { id: 'short', label: 'Short it (2x): it crashes', emoji: '\u{1F4C9}' },
+            { id: 'long', label: 'Go long: it moons', emoji: '\u{1F680}' },
+            { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
+          ]
+        : [
+            { id: 'call', label: 'Buy calls: it goes up', emoji: '\u{1F4C8}' },
+            { id: 'put', label: 'Buy puts: it goes down', emoji: '\u{1F4C9}' },
+            { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
+          ]
+      const hint = gutHint(g, t.secId)
+      const up = choices.find((c) => c.id === (coin ? 'long' : 'call'))
+      if (hint && up) up.hint = hint
       scriptChoice(
         g,
         DIR_SCRIPT,
         `${t.name} (${t.symbol})`,
         coin ? `${t.name} trades at ${priceLabel(t.price)}. Which way is it going by the end of the year?` : `${t.name} (${t.symbol}) trades at ${priceLabel(t.price)}. Calls pay if it rises, puts if it falls.`,
-        coin
-          ? [
-              { id: 'short', label: 'Short it (2x): it crashes', emoji: '\u{1F4C9}' },
-              { id: 'long', label: 'Go long: it moons', emoji: '\u{1F680}' },
-              { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
-            ]
-          : [
-              { id: 'call', label: 'Buy calls: it goes up', emoji: '\u{1F4C8}' },
-              { id: 'put', label: 'Buy puts: it goes down', emoji: '\u{1F4C9}' },
-              { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
-            ],
+        choices,
         { emoji: t.emoji, data: { secId: t.secId } },
       )
     },
@@ -622,6 +646,11 @@ export function stockBetsMenu(): MenuGroup {
     subtitle: (g) => `Puts and calls on one company${cryptoBanned(g.character.countryId) ? '' : ', coin shorts'} · ${readState(g).bets.length} open`,
     visible: (g) => g.character.alive && g.character.age >= 18,
     disabledReason: (g) => blockReason(g, 18) ?? (readState(g).broker ? null : 'Open a brokerage account first.'),
+    hint: (g) => {
+      const inst = marketInstinct(g, !cryptoBanned(g.character.countryId))
+      const mine = inst ? inst.picks.filter((p) => p.kind === 'stock' || p.kind === 'crypto') : []
+      return inst && mine.length ? talentHint(g, 'Investing', `Your gut likes ${listPicks(mine)} for ${inst.year}`) : null
+    },
     header: (g) => {
       const inf = info(g)
       return `Bet on one company on the ${inf.ex.code}${cryptoBanned(g.character.countryId) ? '' : ', or on one coin'}. Everything settles when the year ends on the real price, news included. ${BETS_PER_YEAR - Math.min(BETS_PER_YEAR, yearActionsUsed(g, LIMIT_KEY))} of ${BETS_PER_YEAR} bets left this year.`

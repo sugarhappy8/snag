@@ -3,14 +3,15 @@
 import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice, useYearAction } from '../core'
 import { bell, chance, pick, rand, randInt, uid, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
-import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import { hasTalent, talentHint } from '../talents'
+import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
-import { localEcon, localPay } from './economy'
+import { bizWorth, fxValue, LASTING_YEARS, localEcon, localPay, staffNet, TALENT_HIRE, talentCeo, type Worth } from './economy'
 import { laborProtection, localOuting, severanceMonths, STAFF_TRAITS, traitOf, unionStrength } from './flavor'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { industryDef, type RoleDef } from './industries'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
-import { clampN, money, num, rec, str, toJson } from './util'
+import { clampN, markBest, money, num, rec, str, toJson } from './util'
 
 export function maxKeyStaff(b: BizState): number {
   return Math.min(8, 3 + Math.floor(totalOutlets(b) / 3))
@@ -26,14 +27,21 @@ interface Candidate {
   trait: string
 }
 
+/** How likely each trait is among candidates. */
+function traitWeight(id: string): number {
+  return id === 'steady' ? 3 : id === 'shady' || id === 'nepo' ? 0.6 : 1
+}
+
 function candidatesFor(g: GameState, b: BizState, role: RoleDef): Candidate[] {
   const n = randInt(g, 2, 4)
   const base = localPay(b.countryId, role.pay)
+  // A business-talented owner-CEO has an eye for people: the shortlist is a notch better.
+  const eye = talentCeo(g, b) ? TALENT_HIRE : 0
   const out: Candidate[] = []
   for (let i = 0; i < n; i++) {
     const gender = chance(g, 0.5) ? 'male' : 'female'
-    const trait = weightedPick(g, STAFF_TRAITS, (t) => (t.id === 'steady' ? 3 : t.id === 'shady' || t.id === 'nepo' ? 0.6 : 1))
-    const skill = clampN(bell(g, 25, 98) + (trait.id === 'overqualified' ? 10 : 0), 10, 100)
+    const trait = weightedPick(g, STAFF_TRAITS, (t) => traitWeight(t.id))
+    const skill = clampN(bell(g, 25, 98) + (trait.id === 'overqualified' ? 10 : 0) + eye, 10, 100)
     const salary = Math.round((base * (0.6 + (skill / 100) * 0.8) * trait.ask) / 500) * 500
     out.push({
       firstName: randomFirstName(g, b.countryId, gender),
@@ -46,6 +54,44 @@ function candidatesFor(g: GameState, b: BizState, role: RoleDef): Candidate[] {
     })
   }
   return out
+}
+
+/** New hires start with morale between 65 and 85. */
+const HIRE_MORALE = 75
+
+/**
+ * A candidate's value over the next few years: what they add (by focus, at the margin) minus
+ * their pay, minus the theft a risky résumé tends to bring (the embezzlement event's weight).
+ */
+export function hireValue(g: GameState, b: BizState, w: Worth, focus: KeyStaff['focus'], c: { skill: number; salary: number; trait: string }): number {
+  const risk = Math.max(0, traitOf(c.trait).risk - 0.5) * 0.04 * Math.max(1_000, w.revenue * 0.03)
+  return (staffNet(g, b, w, { focus, skill: c.skill, trait: c.trait, morale: HIRE_MORALE, salary: c.salary }) - risk) * LASTING_YEARS
+}
+
+/** What a typical candidate for a role is worth (the average shortlist, at the going pay). */
+export function roleValue(g: GameState, b: BizState, w: Worth, role: RoleDef): number {
+  const base = localPay(b.countryId, role.pay)
+  const eye = talentCeo(g, b) ? TALENT_HIRE : 0
+  const total = STAFF_TRAITS.reduce((t, x) => t + traitWeight(x.id), 0)
+  let v = 0
+  for (const t of STAFF_TRAITS) {
+    const skill = clampN(61.5 + (t.id === 'overqualified' ? 10 : 0) + eye, 10, 100)
+    const salary = Math.max(1_000, base * (0.6 + (skill / 100) * 0.8) * t.ask)
+    v += (traitWeight(t.id) / total) * hireValue(g, b, w, role.focus, { skill, salary, trait: t.id })
+  }
+  return v
+}
+
+/** The key role worth filling first (null when none would pay for itself). */
+export function bestRole(g: GameState, b: BizState): { role: RoleDef; value: number } | null {
+  const w = bizWorth(g, b)
+  let best: { role: RoleDef; value: number } | null = null
+  for (const role of industryDef(b.industry).roles) {
+    if (b.staff.some((x) => x.role === role.title)) continue
+    const value = roleValue(g, b, w, role)
+    if (value > 0 && (!best || value > best.value)) best = { role, value }
+  }
+  return best
 }
 
 const HIRE = defineScript('business.hire', (g, choice, data) => {
@@ -104,6 +150,13 @@ function interviewAction(a: Asset, role: RoleDef): MenuAction {
       if (b.staff.some((s) => s.role === role.title)) return `You already have a ${role.title}.`
       return null
     },
+    hint: (g) => {
+      if (!hasTalent(g, 'Business')) return null
+      const b = readBiz(g, a)
+      if (b.staff.length >= maxKeyStaff(b)) return null
+      const best = bestRole(g, b)
+      return best && best.role.title === role.title ? talentHint(g, 'Business', `Hire this role first: a good one adds about ${money(best.value / LASTING_YEARS)} a year after pay`) : null
+    },
     run: (g) => {
       const cur = findBusiness(g, a.id)
       if (!cur) return
@@ -111,17 +164,21 @@ function interviewAction(a: Asset, role: RoleDef): MenuAction {
       const b = bizOf(g, cur)
       const list = candidatesFor(g, b, role)
       const lines = list.map((c) => `• ${c.firstName} ${c.lastName}, ${c.age}: skill ${c.skill}/100, asks ${formatMoney(c.salary)}, ${traitOf(c.trait).label.toLowerCase()}.`)
-      scriptChoice(
-        g,
-        HIRE,
-        `Hiring a ${role.title}`,
-        `You interviewed ${list.length} candidates in ${b.city}:\n${lines.join('\n')}`,
-        [
-          ...list.map((c, i) => ({ id: `c${i}`, label: `${c.firstName} ${c.lastName} · ${c.skill}/100 · ${money(c.salary)}`, emoji: c.gender === 'female' ? '\u{1F469}' : '\u{1F468}' })),
-          { id: 'none', label: 'Hire nobody', emoji: '\u{2716}\u{FE0F}' },
-        ],
-        { emoji: '\u{1F4BC}', data: { assetId: cur.id, role: role.title, focus: role.focus, candidates: toJson(list) } },
-      )
+      const choices: ChoiceOption[] = [
+        ...list.map((c, i) => ({ id: `c${i}`, label: `${c.firstName} ${c.lastName} · ${c.skill}/100 · ${money(c.salary)}`, emoji: c.gender === 'female' ? '\u{1F469}' : '\u{1F468}' })),
+        { id: 'none', label: 'Hire nobody', emoji: '\u{2716}\u{FE0F}' },
+      ]
+      if (hasTalent(g, 'Business')) {
+        const w = bizWorth(g, b)
+        const values = list.map((c) => hireValue(g, b, w, role.focus, c))
+        markBest(g, choices, (id) => (id === 'none' ? 0 : (values[Number(id.slice(1))] ?? null)), (id, margin) =>
+          id === 'none' ? 'Best move: none of them would earn their salary' : `Best hire: worth about ${money(values[Number(id.slice(1))] / LASTING_YEARS)} a year after pay${margin < 500 ? ' (a close call)' : ''}`,
+        )
+      }
+      scriptChoice(g, HIRE, `Hiring a ${role.title}`, `You interviewed ${list.length} candidates in ${b.city}:\n${lines.join('\n')}`, choices, {
+        emoji: '\u{1F4BC}',
+        data: { assetId: cur.id, role: role.title, focus: role.focus, candidates: toJson(list) },
+      })
     },
   }
 }
@@ -137,6 +194,13 @@ export function hireMenu(a: Asset): MenuGroup {
       return `${b.staff.length}/${maxKeyStaff(b)} leadership roles filled`
     },
     disabledReason: (g) => manageBlock(g, a),
+    hint: (g) => {
+      if (!hasTalent(g, 'Business')) return null
+      const b = readBiz(g, a)
+      if (b.staff.length >= maxKeyStaff(b)) return null
+      const best = bestRole(g, b)
+      return talentHint(g, 'Business', best ? `Start with a ${best.role.title}` : 'No open role would earn its salary right now')
+    },
     header: (g) => {
       const b = readBiz(g, a)
       const e = localEcon(b.industry, b.countryId, b.city)
@@ -261,19 +325,30 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         }
         notice(g, 'You Yelled', pick(g, [`You yelled at ${x.firstName} about missed targets. The whole floor went silent. Morale took a hit.`, `You lost it at ${x.firstName} in the break room. ${x.firstName} spat out ${x.gender === 'female' ? 'her' : 'his'} coffee. Nobody won.`]), { emoji: '\u{1F92C}', tone: 'bad' })
       }),
-      staffAction(
-        a,
-        id,
-        'fire',
-        'Fire',
-        '\u{1F525}',
-        'Let them go (severance follows local labor law)',
-        (g, b, x) => {
-          const cur = findBusiness(g, a.id)
-          if (cur) fireStaff(g, cur, b, x)
+      {
+        ...staffAction(
+          a,
+          id,
+          'fire',
+          'Fire',
+          '\u{1F525}',
+          'Let them go (severance follows local labor law)',
+          (g, b, x) => {
+            const cur = findBusiness(g, a.id)
+            if (cur) fireStaff(g, cur, b, x)
+          },
+          () => `Fire ${s.firstName} ${s.lastName}?`,
+        ),
+        hint: (g: GameState) => {
+          if (!hasTalent(g, 'Business')) return null
+          const b = readBiz(g, a)
+          const x = b.staff.find((y) => y.id === id)
+          if (!x) return null
+          const net = staffNet(g, b, bizWorth(g, b), x)
+          const severance = (x.salary * severanceMonths(b.countryId)) / 12
+          return net * LASTING_YEARS + severance < 0 ? talentHint(g, 'Business', `${x.firstName} costs about ${money(-net)} a year more than they bring in`) : null
         },
-        () => `Fire ${s.firstName} ${s.lastName}?`,
-      ),
+      },
     ],
   }
 }
@@ -331,12 +406,30 @@ export function staffMenu(a: Asset): MenuGroup {
   }
 }
 
+/** Team building: 82% of outings lift morale 8-16 points; the rest cost 2-6. */
+const OUTING_GOOD = 0.82
+
+/** Morale value of a pay level (immediate mood swing plus the lasting change), for the hints. */
+function payValue(g: GameState, b: BizState, w: Worth, level: number): number {
+  const prev = b.wageLevel
+  const mood = level < prev ? -Math.round((prev - level) * 60) : level > prev ? Math.round((level - prev) * 40) : 0
+  return fxValue(g, b, w, { wage: level - prev, morale: mood })
+}
+
 function teamBuildingAction(a: Asset): MenuAction {
   return {
     type: 'action',
     id: `biz.team.${a.id}`,
     label: 'Team Building',
     emoji: '\u{1F389}',
+    hint: (g) => {
+      if (!hasTalent(g, 'Business')) return null
+      const b = readBiz(g, a)
+      const w = bizWorth(g, b)
+      const mood = OUTING_GOOD * 12 - (1 - OUTING_GOOD) * 4
+      const v = fxValue(g, b, w, { cash: -teamBuildingCost(b), morale: mood })
+      return talentHint(g, 'Business', v > 0 ? `Worth it: about ${money(v)} in happier, harder-working staff` : 'Not worth it right now: it costs more than the mood is worth')
+    },
     subtitle: (g) => {
       const b = readBiz(g, a)
       return `${localOuting(b.countryId, 0).name.replace(/^a(n)? /, '').replace(/^\w/, (x) => x.toUpperCase())}... · about ${money(teamBuildingCost(b))}`
@@ -352,7 +445,7 @@ function teamBuildingAction(a: Asset): MenuAction {
       b.cash -= cost
       b.yearCosts += cost
       const outing = localOuting(b.countryId, rand(g))
-      const good = chance(g, 0.82)
+      const good = chance(g, OUTING_GOOD)
       const delta = good ? randInt(g, 8, 16) : -randInt(g, 2, 6)
       b.morale = clampN(b.morale + delta, 0, 100)
       for (const s of b.staff) s.morale = clampN(s.morale + delta, 0, 100)
@@ -375,6 +468,14 @@ function raiseAllAction(a: Asset): MenuAction {
     emoji: '\u{1F4B0}',
     subtitle: 'Pay up 5% for good (keeps up with inflation)',
     disabledReason: (g) => manageBlock(g, a),
+    hint: (g) => {
+      if (!hasTalent(g, 'Business')) return null
+      const b = readBiz(g, a)
+      const inflation = localEcon(b.industry, b.countryId, b.city).m.inflation
+      const relief = inflation >= 0.08 && b.raiseYear < g.year ? Math.min(18, inflation * 30) * 0.4 : 0
+      const v = fxValue(g, b, bizWorth(g, b), { wage: clampN(Math.round((b.wageLevel + 0.05) * 100) / 100, 0.7, 1.5) - b.wageLevel, morale: 9 + relief })
+      return v > 0 ? talentHint(g, 'Business', `Worth it: the morale pays for the raise (about ${money(v)})`) : null
+    },
     run: (g) => {
       const cur = findBusiness(g, a.id)
       if (!cur) return
@@ -400,6 +501,18 @@ function payPolicyMenu(a: Asset): MenuGroup {
     header: () => 'How much do you pay compared with other employers in town? Pay drives morale, and morale drives service, quality and strikes.',
     children: (g) => {
       const b = readBiz(g, a)
+      let best: number | null = null
+      if (hasTalent(g, 'Business')) {
+        const w = bizWorth(g, b)
+        let top = -Infinity
+        for (const p of PAY_LEVELS) {
+          const v = payValue(g, b, w, p.level)
+          if (v > top + 1) {
+            top = v
+            best = p.level
+          }
+        }
+      }
       return PAY_LEVELS.map(
         (p): MenuAction => ({
           type: 'action',
@@ -407,6 +520,7 @@ function payPolicyMenu(a: Asset): MenuGroup {
           label: `${p.label}${payLabel(b.wageLevel) === p.label ? ' (current)' : ''}`,
           emoji: p.level < 1 ? '\u{1FA99}' : p.level > 1.2 ? '\u{1F48E}' : p.level > 1 ? '\u{1F4B5}' : '\u{2696}\u{FE0F}',
           subtitle: p.note,
+          hint: (gg) => (best === p.level ? talentHint(gg, 'Business', payLabel(b.wageLevel) === p.label ? 'Best pay level: keep it here' : 'Best pay level for this company right now') : null),
           run: (gg) => {
             const cur = findBusiness(gg, a.id)
             if (!cur) return

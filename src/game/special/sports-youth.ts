@@ -7,8 +7,9 @@ import { addHidden, addStat, count, log, scriptChoice, useYearAction } from '../
 import { enrollmentClubs } from '../cv'
 import { bell, chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentMult } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { addFame, money, ordinal, peek, prof, say, short, talentMatches, tell } from './common'
+import { addFame, money, ordinal, peek, prof, say, short, tell } from './common'
 import { academyClub, localTeamSports, offerYouthContract, teamSportList } from './athlete'
 import { recordYouthBout, youthFightTrain } from './sports-fight'
 import { juniorLevel, offerTurnPro, placeReason, youthTrain } from './sports-individual'
@@ -142,7 +143,7 @@ const joinScript = defineScript('sports.youth.join', (g, choice) => {
   const c = g.character
   if (p.trial) {
     if (!useYearAction(g, 'sports.youth.trial', 2)) return tell(g, 'Trials', "You've already been to two academy trials this year. Try again next year.", '\u{1F971}')
-    const odds = logistic((c.hidden.athleticism + (talentMatches(g, /athlet|sport/i) ? 15 : 0) + bell(g, -10, 10) - 45) / 10)
+    const odds = logistic((c.hidden.athleticism + (hasTalent(g, 'Athletics') ? 15 : 0) + bell(g, -10, 10) - 45) / 10)
     if (!chance(g, odds)) {
       log(g, `I didn't make the cut at the ${p.name.toLowerCase()} trials.`, 'bad')
       return say(g, 'Trials', `The coaches at the ${p.name.toLowerCase()} trial said you have "a lot of heart". That means no. Keep practicing and try again.`, p.emoji, 'bad')
@@ -172,7 +173,7 @@ function startLevel(g: GameState, p: Program): number {
     const lv = juniorLevel(g, p.sport)
     if (lv) return lv
   }
-  return Math.max(5, Math.min(45, Math.round(c.hidden.athleticism * 0.35 + (talentMatches(g, /athlet|sport/i) ? 8 : 0) + randInt(g, 0, 8))))
+  return Math.max(5, Math.min(45, Math.round(c.hidden.athleticism * 0.35 + (hasTalent(g, 'Athletics') ? 8 : 0) + randInt(g, 0, 8))))
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +200,7 @@ function train(g: GameState): void {
   if (!p) return
   if (!useYearAction(g, 'sports.youth.train', 2)) return tell(g, 'Training', "Your coach says you've trained enough this year. Go be a kid.", '\u{1F971}')
   const c = g.character
-  const boost = (talentMatches(g, /athlet|sport/i) ? 1.3 : 1) * (c.age < 14 ? 1.15 : 1)
+  const boost = talentMult(g, 'Athletics', 1.5) * (c.age < 14 ? 1.15 : 1)
   const gain = Math.max(1, Math.round(randInt(g, 3, 6) * boost * Math.max(0.2, 1 - y.level / 110)))
   y.level = Math.min(100, y.level + gain)
   let extra = ''
@@ -374,7 +375,7 @@ export function yearlyYouth(g: GameState): void {
   }
   y.years += 1
   const school = schoolTeamBoost(g, p.sport)
-  const grow = randInt(g, 1, 3) + (school ? 2 : 0) + (talentMatches(g, /athlet|sport/i) ? 1 : 0)
+  const grow = randInt(g, 1, 3) + (school ? 2 : 0) + (hasTalent(g, 'Athletics') ? 2 : 0)
   y.level = Math.min(100, y.level + Math.max(1, Math.round(grow * Math.max(0.2, 1 - y.level / 110))))
   if (p.kind === 'individual') {
     youthTrain(g, p.sport, 1)
@@ -383,15 +384,17 @@ export function yearlyYouth(g: GameState): void {
   if (school) log(g, `Playing for my school ${school} sharpened my game.`)
   // Scouts and the jump to the pros.
   if (y.offered) return
-  if (p.kind === 'team' && c.age >= 17 && y.level >= 50) {
+  // Athletics talent: scouts come calling at a lower level (they can see where you're headed).
+  const scoutBar = hasTalent(g, 'Athletics') ? 6 : 0
+  if (p.kind === 'team' && c.age >= 17 && y.level >= 50 - scoutBar) {
     if (offerYouthContract(g, p.sport, y.level, y.club)) y.offered = true
     return
   }
-  if (p.kind === 'team' && c.age === 17 && y.level < 40) {
+  if (p.kind === 'team' && c.age === 17 && y.level < 40 - scoutBar) {
     log(g, `The ${y.club} told me I won't be offered a pro contract.`, 'bad')
     return
   }
-  if (p.kind === 'individual' && c.age >= 16 && y.level >= 55) {
+  if (p.kind === 'individual' && c.age >= 16 && y.level >= 55 - scoutBar) {
     const s = indSport(p.sport)
     if (!s || c.age < s.proAge) return
     y.offered = true
@@ -408,7 +411,7 @@ export function yearlyYouth(g: GameState): void {
     )
     return
   }
-  if (p.kind === 'sumo' && c.age >= 15 && y.level >= 40 && !sumoReason(g)) {
+  if (p.kind === 'sumo' && c.age >= 15 && y.level >= 40 - scoutBar && !sumoReason(g)) {
     y.offered = true
     inviteToStable(g, 'A sumo stable scout watched you win at the junior tournament. ')
   }

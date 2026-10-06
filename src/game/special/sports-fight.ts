@@ -12,9 +12,10 @@ import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction
 import { killCharacter } from '../death'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentMult } from '../talents'
 import type { GameState, Gender, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { addFame, blocked, fameToward, hire, leave, money, myJob, ownerKey, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
+import { addFame, blocked, fameToward, hire, leave, money, myJob, ownerKey, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
 import {
   addBuzz,
   addHeadTrauma,
@@ -307,7 +308,7 @@ const emptyRec = (): FightRec => ({ w: 0, l: 0, d: 0, nc: 0, ko: 0, sub: 0, dec:
 
 function initFighter(g: GameState): FProfile {
   const c = g.character
-  const base = c.hidden.athleticism * 0.35 + 10
+  const base = c.hidden.athleticism * 0.35 + 10 + (hasTalent(g, 'Athletics') ? 6 : 0)
   const arts = flagBelts(g)
   return {
     striking: clampN(base + arts.strike + randInt(g, 0, 8)),
@@ -382,7 +383,7 @@ function rating(p: FProfile, d: Discipline): number {
 /** A fighter's level for a discipline (0-100), with doping and talent. */
 function level(g: GameState, p: FProfile, d: Discipline): number {
   let r = rating(p, d)
-  if (talentMatches(g, /athlet|sport|fight/i)) r += 3
+  if (hasTalent(g, 'Athletics')) r += 5
   if (p.doping) r += 5
   return Math.max(1, Math.min(99, r))
 }
@@ -1516,7 +1517,7 @@ const trainScript = defineScript('sports.fight.train', (g, choice, data) => {
     text = `You sparred hard rounds and learned some lessons the painful way. Fight IQ: ${p.iq}%.${text}`
   } else {
     const key = choice as 'striking' | 'grappling' | 'cardio'
-    p[key] = clampN(p[key] + trainGain(g, p[key], 3, 7, mult * ageMult * (talentMatches(g, /athlet|sport|fight/i) ? 1.2 : 1)))
+    p[key] = clampN(p[key] + trainGain(g, p[key], 3, 7, mult * ageMult * talentMult(g, 'Athletics', 1.5)))
     text = `${pick(g, choice === 'cardio' ? ['Hill sprints, assault bike, more hill sprints.', 'You ran until your legs filed a formal complaint.'] : choice === 'grappling' ? ['Hours of rolling. You tapped thirty times and learned thirty things.', 'Takedown drills until the mat burns had mat burns.'] : ['Pad work until your coach’s arms gave out.', 'Bag work, mitt work, and one very confused heavy bag.'])} ${TRAIN.find((t) => t.id === choice)?.label}: ${p[key]}%.`
   }
   if (!p.trained.includes(choice)) p.trained.push(choice)

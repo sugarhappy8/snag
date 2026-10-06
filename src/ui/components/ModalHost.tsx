@@ -17,6 +17,7 @@ import {
 import type { AiLevel } from '../../settings'
 import { InputField, normalizeInput, PopupFrame, rangeHint, validateInput } from './Dialogs'
 import { personName } from './PersonSheet'
+import { cleanHint, TalentHint } from './TalentHint'
 
 const TONE_EMOJI: Partial<Record<Tone, string>> = {
   good: '😄',
@@ -109,7 +110,7 @@ function NoticeCard({ modal }: { modal: NoticeModal }) {
   )
 }
 
-function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
+export function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
   const showBadges = useApp((s) => s.settings.showAiBadges)
   const person = getPerson(g, modal.personId)
   const fromAi = modal.source === 'ai'
@@ -149,21 +150,31 @@ function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
       ) : null}
       <p className="popup-text">{modal.text}</p>
       <div className="popup-actions">
-        {modal.choices.map((c) => (
-          <button key={c.id} className="btn btn-primary btn-block popup-choice" onClick={() => chooseOption(modal.id, c.id)}>
-            {c.emoji ? (
-              <span className="popup-choice-emoji" aria-hidden>
-                {c.emoji}
+        {modal.choices.map((c) => {
+          const hint = cleanHint(c.hint)
+          return (
+            <button
+              key={c.id}
+              className={hint ? 'btn btn-primary btn-block popup-choice has-hint' : 'btn btn-primary btn-block popup-choice'}
+              onClick={() => chooseOption(modal.id, c.id)}
+            >
+              {c.emoji ? (
+                <span className="popup-choice-emoji" aria-hidden>
+                  {c.emoji}
+                </span>
+              ) : null}
+              <span className="popup-choice-text">
+                <span className="popup-choice-label">{c.label}</span>
+                {hint ? <TalentHint text={hint} className="popup-choice-hint" /> : null}
               </span>
-            ) : null}
-            <span className="popup-choice-label">{c.label}</span>
-            {fromAi && showBadges ? (
-              <span className="popup-choice-ai" aria-hidden>
-                ✨
-              </span>
-            ) : null}
-          </button>
-        ))}
+              {fromAi && showBadges ? (
+                <span className="popup-choice-ai" aria-hidden>
+                  ✨
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
         {modal.choices.length === 0 ? (
           // A malformed event with no options must still be dismissible.
           <button className="btn btn-primary btn-block" onClick={() => chooseOption(modal.id, 'ok')}>

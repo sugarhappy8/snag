@@ -6,7 +6,9 @@ import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, HiddenKey, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { killCharacter } from '../death'
+import { hasTalent, talentMult } from '../talents'
 import { bookMenu } from './books'
+import { creativeMenu } from './creative'
 import {
   addCondition,
   addictions,
@@ -183,7 +185,8 @@ function gymVisit(g: GameState, w: Workout): void {
   addStat(g, 'health', Math.round(scale(w.health) * elder))
   addStat(g, 'looks', scale(w.looks))
   addStat(g, 'happiness', scale(w.happiness))
-  addHidden(g, 'athleticism', randInt(g, w.athleticism[0], w.athleticism[1]))
+  // Athletics talent: your body responds to training much faster.
+  addHidden(g, 'athleticism', Math.round(randInt(g, w.athleticism[0], w.athleticism[1]) * talentMult(g, 'Athletics', 1.6)))
 
   if (chance(g, w.injury * (c.age >= 60 ? 1.8 : 1))) {
     const injury = pick(g, GYM_INJURIES)
@@ -596,7 +599,8 @@ function library(g: GameState): void {
   const c = g.character
   const base: [number, number] = c.age < 18 ? [2, 6] : c.age < 60 ? [1, 4] : [1, 2]
   const factor = [1, 0.5, 0][used] ?? 0
-  const gain = Math.round(randInt(g, base[0], base[1]) * factor)
+  // Academics talent: you remember everything you read.
+  const gain = Math.round(randInt(g, base[0], base[1]) * factor * talentMult(g, 'Academics', 1.6))
   addStat(g, 'smarts', gain)
   addStat(g, 'happiness', randInt(g, 0, 2))
   const topic = pick(g, TOPICS)
@@ -716,10 +720,6 @@ function setInstrumentSkill(g: GameState, name: string, skill: number): void {
   g.flags[INSTR_FLAG] = rec
 }
 
-function musicalTalent(g: GameState): boolean {
-  const t = (g.character.talent ?? '').toLowerCase()
-  return t.includes('music') || t.includes('sing') || t.includes('instrument')
-}
 
 function lessonCost(g: GameState): number {
   return localPrice(g, 60)
@@ -780,7 +780,7 @@ function instrumentLesson(g: GameState, name: string): void {
     result(g, 'Burnout', `You've taken too many ${name.toLowerCase()} lessons this year. You're burned out and actually got worse.`, '\u{1F635}', 'bad')
     return
   }
-  let gain = randInt(g, 4, 12) * (0.6 + c.stats.smarts / 200) * (musicalTalent(g) ? 1.6 : 1) * (c.age < 18 ? 1.2 : 1)
+  let gain = randInt(g, 4, 12) * (0.6 + c.stats.smarts / 200) * talentMult(g, 'Music', 1.6) * (c.age < 18 ? 1.2 : 1)
   if (name === 'Kazoo' || name === 'Triangle' || name === 'Tambourine') gain *= 1.6
   const after = Math.min(100, Math.round(before + gain))
   setInstrumentSkill(g, name, after)
@@ -901,11 +901,9 @@ function takeLesson(g: GameState, l: LessonDef): void {
   }
   useYearAction(g, `act.lesson.${l.id}`, 3)
   count(g, `${l.id}Lessons`)
-  const c = g.character
-  const talent = (c.talent ?? '').toLowerCase()
-  const talented = (l.id === 'acting' && talent.includes('act')) || (l.id === 'voice' && (talent.includes('sing') || talent.includes('music'))) || (l.id === 'modeling' && talent.includes('model'))
+  const talented = hasTalent(g, l.id === 'acting' ? 'Acting' : l.id === 'voice' ? 'Music' : 'Modeling')
   const before = skillLevel(g, l.id)
-  const after = Math.min(100, before + Math.round(randInt(g, 5, 13) * (talented ? 1.6 : 1)))
+  const after = Math.min(100, before + Math.round(randInt(g, 5, 13) * (talented ? 1.7 : 1)))
   g.flags[`skill.${l.id}`] = after
   addStat(g, 'happiness', randInt(g, 1, 4))
   if (l.id === 'modeling') addStat(g, 'looks', randInt(g, 0, 2))
@@ -991,6 +989,7 @@ export const mindBodyMenu: MenuGroup = {
     const nodes: MenuNode[] = [
       lessonAction(LESSONS[0]),
       bookMenu,
+      creativeMenu,
       dietMenu,
       gardeningAction,
       gymMenu,

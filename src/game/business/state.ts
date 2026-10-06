@@ -4,6 +4,7 @@
 import type { Industry } from '../data/markets'
 import { getCountry } from '../world'
 import type { Asset, GameState, Job, Json } from '../types'
+import { isDeepTechIndustry } from './deeptech-state'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, str } from './util'
 
@@ -108,6 +109,12 @@ export interface BizState {
   share: number
   /** Money the owner has put in (cost basis for capital gains). */
   invested: number
+  /**
+   * Outside investors' liquidation preference (1x, non-participating): on a sale or closure they
+   * take their money back first, or their share of the proceeds if that's more. Cleared at an IPO.
+   * Missing (0) when nobody outside holds preferred shares.
+   */
+  pref?: number
   /** Company cash (separate from the owner's own money). */
   cash: number
   /** Company debt (bank loans taken by the company). */
@@ -173,6 +180,8 @@ export interface BizState {
   slump: number
   /** Game studios only: the pipeline and back catalog (business/gamestudio-state.ts). */
   studio?: Json
+  /** Deep-tech companies only: R&D, tech level, funding rounds (business/deeptech-state.ts). */
+  tech?: Json
 }
 
 export const BIZ_VERSION = 1
@@ -289,6 +298,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     acquired: d.acquired === true,
     share: clampN(num(d.share, 1), 0.01, 1),
     invested: Math.max(0, num(d.invested)),
+    pref: Math.max(0, num(d.pref)),
     cash: num(d.cash),
     debt: Math.max(0, num(d.debt)),
     debtRate: clampN(num(d.debtRate, 0.08), 0, 0.6),
@@ -331,6 +341,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     loanId: str(d.loanId),
     slump: Math.max(0, num(d.slump)),
     ...(industry === 'gameStudio' && d.studio && typeof d.studio === 'object' && !Array.isArray(d.studio) ? { studio: d.studio } : {}),
+    ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
   }
 }
 

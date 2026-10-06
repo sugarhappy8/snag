@@ -928,6 +928,164 @@
   flex: 1 1 140px;
 }
 
+/* Special talents (collapsed by default, like Customize stats) */
+
+.nl-talents-summary.is-set {
+  background: var(--hint-bg, color-mix(in srgb, var(--purple, #8a4fd6) 14%, transparent));
+  color: var(--hint-text, var(--purple, #8a4fd6));
+}
+
+.nl-talents-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nl-talents-count {
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: var(--text, #1b2330);
+  font-variant-numeric: tabular-nums;
+}
+
+.nl-talents-count.is-full {
+  color: var(--hint-text, var(--purple, #8a4fd6));
+}
+
+.nl-talents-max {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--muted, #6b7685);
+}
+
+.nl-talent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nl-talent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 9px 10px;
+  border: 1.5px solid var(--border, #e3e8ef);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  color: var(--text, #1b2330);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.08s;
+}
+
+.nl-talent:hover {
+  border-color: var(--hint-ring, #a77ae8);
+}
+
+.nl-talent:active {
+  transform: translateY(1px);
+}
+
+.nl-talent:focus-visible {
+  outline: 3px solid var(--hint-ring, #a77ae8);
+  outline-offset: 2px;
+}
+
+.nl-talent.is-on {
+  border-color: var(--purple, #8a4fd6);
+  background: var(--hint-bg, color-mix(in srgb, var(--purple, #8a4fd6) 10%, var(--card, #fff)));
+  box-shadow: 0 0 0 1px var(--purple, #8a4fd6);
+}
+
+.nl-talent.is-locked {
+  cursor: not-allowed;
+}
+
+.nl-talent.is-locked .nl-talent-emoji,
+.nl-talent.is-locked .nl-talent-text {
+  opacity: 0.5;
+}
+
+.nl-talent.is-locked:hover {
+  border-color: var(--border, #e3e8ef);
+}
+
+.nl-talent-emoji {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--chip-bg, #e9eef6);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.nl-talent.is-on .nl-talent-emoji {
+  background: var(--card, #fff);
+}
+
+.nl-talent-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nl-talent-label {
+  font-weight: 800;
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.nl-talent.is-on .nl-talent-label {
+  color: var(--hint-text, var(--purple, #8a4fd6));
+}
+
+.nl-talent-perk {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--muted, #6b7685);
+  overflow-wrap: anywhere;
+}
+
+.nl-talent-check {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border, #e3e8ef);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.nl-talent.is-on .nl-talent-check {
+  border-color: var(--purple, #8a4fd6);
+  background: var(--purple, #8a4fd6);
+}
+
+.nl-preview-talents {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--hint-text, var(--purple, #8a4fd6));
+  word-break: break-word;
+}
+
 /* The Random Life / Start Life small print wraps instead of being cut off on 360px phones. */
 .new-life .al-bigbtn-sub {
   white-space: normal;

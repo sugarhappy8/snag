@@ -40,8 +40,10 @@ import {
   type ExYear,
   type SecYear,
 } from './invest/engine'
+import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
 import { indexShockFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { chance, pick, randFloat, uid } from './rng'
+import { HINT_EMOJI, talentHint } from './talents'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode, Tone } from './types'
 import { getCountry } from './world'
 
@@ -166,6 +168,29 @@ function countryName(id: string): string {
 function theCountry(id: string): string {
   const n = countryName(id)
   return /^(United|Netherlands|Philippines|Bahamas|Czech|Dominican|Central African|Democratic|Republic|Maldives|Gambia|Solomon|Marshall)/.test(n) ? `the ${n}` : n
+}
+
+// ---------------------------------------------------------------------------
+// The Investing talent's gut feeling (invest/instinct.ts): purple hints on what looks set to rise
+
+/** Next year's gut feeling, for an adult who can trade here (null without the talent). */
+export function investInstinct(g: GameState): Instinct | null {
+  if (g.character.age < 18 || inPrison(g)) return null
+  return marketInstinct(g, !CRYPTO_BANNED.has(g.character.countryId))
+}
+
+/** The purple hint on one security the gut likes ('' or null when it doesn't). */
+function gutHint(g: GameState, secId: string): string | null {
+  const inst = investInstinct(g)
+  return inst && gutLikes(inst, secId) ? talentHint(g, 'Investing', `Your gut says this one rises in ${inst.year}`) : null
+}
+
+/** The purple hint on a category row: the picks of that kind, if any. */
+function gutGroupHint(g: GameState, kinds: string[]): string | null {
+  const inst = investInstinct(g)
+  if (!inst) return null
+  const mine = inst.picks.filter((p) => kinds.includes(p.kind))
+  return mine.length ? talentHint(g, 'Investing', `Your gut likes ${listPicks(mine)} for ${inst.year}`) : null
 }
 
 // ---------------------------------------------------------------------------
@@ -1054,6 +1079,7 @@ function holdingNode(g: GameState, a: Asset): MenuGroup {
     label: a.name,
     emoji: a.emoji,
     subtitle: investmentAssetSubtitle(g, a),
+    hint: (gg) => gutHint(gg, str(a.details.secId)),
     header: (gg) => {
       const cur = gg.assets.find((x) => x.id === a.id)
       return cur ? `${cur.emoji} ${cur.name}` : 'You no longer own this.'
@@ -1072,6 +1098,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
     label: q.symbol && q.type !== 'bond' && q.type !== 'savings' ? `${q.name} (${q.symbol})` : q.name,
     emoji: q.emoji,
     subtitle: offerSubtitle(q),
+    hint: (gg) => gutHint(gg, q.secId),
     header: () => `${q.emoji} ${q.name}\n${q.blurb}`,
     children: (gg) => {
       const held = findHolding(gg, q.secId)
@@ -1115,6 +1142,7 @@ const stocksMenu: MenuGroup = {
     const info = exchangeInfo(g.character.countryId)
     return `Companies listed on the ${info.ex.code}`
   },
+  hint: (g) => gutGroupHint(g, ['stock']),
   header: (g) => {
     const l = listing(g)
     return `${marketLine(l.info, l.year)}\n${l.info.ex.name} (${l.info.ex.code}): the biggest companies in ${theCountry(l.info.home)}. Prices move once a year, and every stock rides the market's mood.`
@@ -1131,6 +1159,7 @@ const pennyMenu: MenuGroup = {
   label: 'Penny Stocks',
   emoji: '🎟️',
   subtitle: 'Tiny companies, huge swings',
+  hint: (g) => gutGroupHint(g, ['penny']),
   header: (g) => {
     const info = exchangeInfo(g.character.countryId)
     return `The ${info.ex.code}'s junior board: companies that trade for pocket change. Most of them go to zero. A few go to the moon. Fees include a 2% bid-ask spread.`
@@ -1147,6 +1176,7 @@ const cryptoMenu: MenuGroup = {
   label: 'Crypto',
   emoji: '🪙',
   subtitle: (g) => (CRYPTO_BANNED.has(g.character.countryId) ? `Banned in ${theCountry(g.character.countryId)}` : 'Coins that trade worldwide, 24/7'),
+  hint: (g) => gutGroupHint(g, ['crypto']),
   header: (g) => {
     const cy = cryptoYear(fam(g), anchor(g), g.year)
     const mood = cy.winter ? 'A crypto winter wiped out most of the market this year.' : cy.mania ? 'Crypto mania: everyone and their dentist bought coins this year.' : `The crypto market moved ${pct(cy.ret, 0)} this year.`
@@ -1250,6 +1280,8 @@ function newsLines(g: GameState): string[] {
   // An analyst call about next year: right about two times in three.
   const tip = seededTip(g, l.info)
   if (tip) lines.push(tip)
+  const inst = investInstinct(g)
+  if (inst) lines.push(`${HINT_EMOJI} ${instinctLine(inst)}`)
   return lines
 }
 
@@ -1343,6 +1375,8 @@ export const investmentsMenu: MenuGroup = {
   children: (g) => {
     const info = exchangeInfo(g.character.countryId)
     const nodes: MenuNode[] = []
+    const inst = investInstinct(g)
+    if (inst) nodes.push({ type: 'info', id: 'inv-instinct', text: instinctLine(inst), emoji: HINT_EMOJI })
     const history = historyLine(g, info)
     if (history) nodes.push({ type: 'info', id: 'inv-history', text: history, emoji: '📊' })
     nodes.push({ type: 'info', id: 'inv-local', text: localNote(g), emoji: getCountry(g.character.countryId).flag })

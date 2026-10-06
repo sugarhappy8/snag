@@ -5,10 +5,12 @@ import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
-import type { AnnualReportData, Asset, GameState } from '../types'
+import { hasTalent, talentHint } from '../talents'
+import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
 import { getCountry } from '../world'
 import { syncCeo, stepDown, managerCandidate } from './career'
 import {
+  bestPlan,
   costFactor,
   cycleLabel,
   cycleOf,
@@ -26,11 +28,12 @@ import {
 } from './economy'
 import { declareBankruptcy, ipoThreshold } from './exit'
 import { maybeBusinessEvent } from './events'
+import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
 import { industryDef } from './industries'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
-import { clampN, money, num, pct, plural, rec, round2, str, toJson, units } from './util'
+import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
 
 // ---------------------------------------------------------------------------
 // Plans
@@ -40,9 +43,19 @@ export interface PlanChoice {
   production: number
 }
 
-/** Parse and clamp an Annual Report result (never trust it). 'skip' keeps last year's plan. */
-export function parsePlan(g: GameState, b: BizState, raw: string): PlanChoice {
+/** The report's price range, under any price the company promised to hold this year. */
+export function planBounds(g: GameState, assetId: string, b: BizState): { min: number; max: number; going: number; cap: number | null } {
   const bounds = priceBounds(b)
+  const cap = priceCapOf(g, assetId)
+  return { ...bounds, max: cap === null ? bounds.max : round2(Math.max(bounds.min, Math.min(bounds.max, cap))), cap }
+}
+
+/**
+ * Parse and clamp an Annual Report result (never trust it). 'skip' keeps last year's plan.
+ * `assetId` applies any price the company promised to hold this year.
+ */
+export function parsePlan(g: GameState, b: BizState, raw: string, assetId = ''): PlanChoice {
+  const bounds = assetId ? planBounds(g, assetId, b) : priceBounds(b)
   const maxProd = maxProduction(g, b)
   let price = b.price
   let production = b.production
@@ -138,7 +151,7 @@ function marketNote(b: BizState, lastCycle: number): string {
 /** Everything the Annual Report minigame needs (satisfies AnnualReportData exactly). */
 export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportData {
   const def = industryDef(b.industry)
-  const bounds = priceBounds(b)
+  const bounds = planBounds(g, a.id, b)
   const lastCycle = b.last?.cycle ?? cycleOf(g, b.countryId, g.year - 1)
   const plan = planFor(g, b, g.year, { calm: true, cycle: () => lastCycle })
   const suggested = round2(clampN(plan.suggested, bounds.min, bounds.max))
@@ -162,16 +175,37 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
     maxProduction: maxProd,
     inventory: Math.max(0, Math.round(b.inventory)),
     expectedDemand: Math.max(0, Math.round(expected)),
-    marketNote: marketNote(b, lastCycle),
+    marketNote: marketNote(b, lastCycle) + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
     lines,
+    ...(hasTalent(g, 'Business') ? { talentHint: planHint(g, a, b) } : {}),
   }
+}
+
+/**
+ * The Business talent's plan for next year: the price and production with the best expected
+ * profit, scored on the same demand and cost model the year itself runs on (economy.bestPlan).
+ */
+export function planHint(g: GameState, a: Asset, b: BizState): NonNullable<AnnualReportData['talentHint']> {
+  const def = industryDef(b.industry)
+  const p = bestPlan(g, b, { ownerDraw: runsIt(g, a) ? b.ownerSalary : 0, maxPrice: priceCapOf(g, a.id) ?? undefined })
+  const what = `Charge ${unitMoney(p.price)} and make ${units(p.production)} ${p.production === 1 ? def.unitOne : def.unit}`
+  const outcome = p.profit >= 0 ? `${money(p.profit)} profit` : `${money(-p.profit)} loss`
+  const text =
+    p.production <= 0
+      ? b.inventory >= 1
+        ? `Charge ${unitMoney(p.price)} and make nothing new: sell the ${units(b.inventory)} ${b.inventory < 1.5 ? def.unitOne : def.unit} in stock (about ${outcome})`
+        : `Make nothing next year: every ${def.unitOne} would cost more than it brings in (about ${outcome})`
+      : p.profit >= 0
+        ? `${what}: the sweet spot for next year (about ${money(p.profit)} profit)`
+        : `${what}: the least-bad plan for next year (still about a ${money(-p.profit)} loss)`
+  return { price: p.price, production: p.production, text: talentHint(g, 'Business', text) }
 }
 
 export const REPORT = defineScript('business.annualReport', (g, choice, data) => {
   const a = findBusiness(g, str(rec(data)?.assetId))
   if (!a) return
   const b = bizOf(g, a)
-  const plan = parsePlan(g, b, choice)
+  const plan = parsePlan(g, b, choice, a.id)
   applyPlan(b, plan)
   if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${plan.price >= 100 ? money(plan.price) : `$${plan.price.toFixed(2)}`} and planned ${units(plan.production)} ${industryDef(b.industry).unit} for the year.`)
 })
@@ -182,6 +216,7 @@ export function queueReport(g: GameState, a: Asset, b: BizState): void {
     queueStudioReport(g, a, b)
     return
   }
+  if (isDeepTech(b) && deepTechReport(g, a, b)) return
   minigame(g, 'annualReport', `${a.name}: Annual Report`, REPORT, toJson(reportData(g, a, b)))
 }
 
@@ -241,13 +276,39 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
   declareBankruptcy(g, a, b, `With ${formatMoney(need)} of bills it couldn't pay,`)
 }
 
+/**
+ * What each way out of a cash crunch is worth to the owner (the owner's stake afterwards, minus
+ * their own money put in), from the numbers resolveCrunch uses. Bankruptcy keeps nothing.
+ */
+export function crunchValues(b: BizState): Record<string, number> {
+  const need = Math.max(0, -b.cash)
+  const filled = valuationOf({ ...b, cash: 0 })
+  const loan = Math.round(need * 1.1)
+  const inject = Math.round(need * 1.25)
+  const stake = clampN(inject / (Math.max(0, b.valuation) + inject), 0.05, 0.6)
+  return {
+    cover: b.share * filled - need,
+    loan: b.share * (filled - need) - b.share * loan * companyLoanRate(b) * 2,
+    investor: b.share * (1 - stake) * Math.max(0, filled + inject - need),
+    bankrupt: 0,
+  }
+}
+
 function queueCrunch(g: GameState, a: Asset, b: BizState): void {
   const need = Math.max(0, -b.cash)
-  const choices = [] as { id: string; label: string; emoji: string }[]
+  const choices: ChoiceOption[] = []
   if (g.character.money >= need) choices.push({ id: 'cover', label: `Cover it from my savings (${money(need)})`, emoji: '\u{1F6DF}' })
   if (companyCreditLimit(b) >= need) choices.push({ id: 'loan', label: `Emergency company loan (${pct(companyLoanRate(b), 1)})`, emoji: '\u{1F3E6}' })
   if (b.valuation > need && b.share > 0.2) choices.push({ id: 'investor', label: 'Sell part of the company to an investor', emoji: '\u{1F4BC}' })
   choices.push({ id: 'bankrupt', label: 'Declare bankruptcy', emoji: '\u{1F4C9}' })
+  const values = hasTalent(g, 'Business') ? crunchValues(b) : {}
+  // Ties go to the earlier option (your own money before the bank's, the bank's before a stranger's).
+  // A company that keeps losing money is worth saving to sell, not to keep feeding.
+  const losses = b.history.slice(-2)
+  const bleeding = losses.length === 2 && losses.every((r) => r.profit < 0) ? ` (but it lost ${money(-losses[1].profit)} last year: think about selling while a buyer would still pay about ${money(b.valuation)})` : ''
+  markBest(g, choices, (id) => (id in values ? values[id] - choices.findIndex((c) => c.id === id) : null), (id) =>
+    id === 'bankrupt' ? `Best move: ${a.name} is worth less than the hole it is in` : id === 'investor' ? `Best move: a fair price for a slice beats debt or your savings${bleeding}` : id === 'loan' ? `Best move: borrow your way through it${bleeding}` : `Best move: your stake is worth more than the bailout${bleeding}`,
+  )
   scriptChoice(
     g,
     CRUNCH,
@@ -287,6 +348,8 @@ export function yearlyBusinessImpl(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   syncCeo(g)
+  // Last year's price promises end with the year that was just booked.
+  prunePricePromises(g)
   const list = businessAssets(g)
   if (list.length === 0) return
   const fiscal = g.year - 1
@@ -298,12 +361,14 @@ export function yearlyBusinessImpl(g: GameState): void {
     const runs = runsIt(g, a)
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null
     const studio = isStudio(b)
-    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
+    const tech = isDeepTech(b)
+    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     const lastCycle = s.cycle
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
+    if (tech) afterDeepTechYear(g, a, b)
     const rec0 = recordYear(b, s)
     b.valuation = b.public ? updateSharePrice(g, b, fiscal) : valuationOf(b)
     rec0.valuation = b.valuation
@@ -342,13 +407,18 @@ export function yearlyBusinessImpl(g: GameState): void {
       continue
     }
     const managed = !runsIt(g, a)
-    if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
-    if (!managed && !c.prison) {
-      queueReport(g, a, b)
-    } else if (studio) {
-      studioManagerTurn(g, a, b)
-    } else {
-      applyPlan(b, autoPlan(g, b, lastCycle))
+    const plans = !managed && !c.prison
+    // The CEO plans the year first; this year's event strikes the plan they just made. (Shown the
+    // other way round, the report's numbers and the Business talent's plan would be stale, a
+    // price cut from a price war would be undone by the report, and a company sold in a buyout
+    // would still get a report.)
+    if (plans) queueReport(g, a, b)
+    if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
+    if (!plans) {
+      if (studio) studioManagerTurn(g, a, b)
+      // A deep-tech manager plans price and output with the tech model; the generic autoPlan can't see it.
+      else if (tech) deepTechManagerTurn(g, a, b)
+      else applyPlan(b, autoPlan(g, b, lastCycle))
     }
   }
 }

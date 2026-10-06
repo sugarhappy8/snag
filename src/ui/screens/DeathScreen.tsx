@@ -13,7 +13,9 @@ import {
   pronouns,
   relationLabel,
 } from '../../game/core'
+import type { NewLifeOptions } from '../../game/life'
 import { getRibbon } from '../../game/ribbons'
+import { pickedTalents } from '../../game/talents'
 import type { Degree, DegreeKind, GameState, Person, RelationKind } from '../../game/types'
 import { getCountry } from '../../game/world'
 import { StatBar } from '../components/StatBar'
@@ -172,6 +174,27 @@ export interface LegacyRow {
 }
 
 /** The family line so far, oldest first, ending with the life that just ended. */
+/**
+ * "Live again": the same name, birthplace and sexuality, plus the special talents this life
+ * started with (picked before birth or inherited), so a build can be replayed. Everything
+ * else is rolled fresh.
+ */
+export function liveAgainOptions(g: GameState, year: number): NewLifeOptions {
+  const c = g.character
+  const opts: NewLifeOptions = {
+    firstName: c.firstName,
+    lastName: c.lastName,
+    gender: c.gender,
+    countryId: c.birthCountryId,
+    city: c.birthCountryId === c.countryId ? c.city : undefined,
+    sexuality: c.sexuality,
+    year,
+  }
+  const talents = pickedTalents(g)
+  if (talents.length > 0) opts.talents = talents
+  return opts
+}
+
 export function legacyRows(g: GameState): LegacyRow[] {
   const c = g.character
   const rows: LegacyRow[] = g.ancestors.map((a) => ({
@@ -313,17 +336,8 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
       `Nobody got around to writing ${c.firstName}'s obituary. Somehow that sums it up.`,
     ])
 
-  const liveAgain = () => {
-    startNewLife({
-      firstName: c.firstName,
-      lastName: c.lastName,
-      gender: c.gender,
-      countryId: c.birthCountryId,
-      city: c.birthCountryId === c.countryId ? c.city : undefined,
-      sexuality: c.sexuality,
-      year: new Date().getFullYear(),
-    })
-  }
+  const keptTalents = pickedTalents(g)
+  const liveAgain = () => startNewLife(liveAgainOptions(g, new Date().getFullYear()))
 
   return (
     <div className="al-screen death-screen">
@@ -449,7 +463,7 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
           </span>
           <span className="al-bigbtn-text">
             <span>Live again as {c.firstName}</span>
-            <span className="al-bigbtn-sub">Same name and birthplace, brand-new fate</span>
+            <span className="al-bigbtn-sub">{keptTalents.length > 0 ? 'Same name, birthplace and talents, brand-new fate' : 'Same name and birthplace, brand-new fate'}</span>
           </span>
         </button>
         <div className="nl-grid">

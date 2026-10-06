@@ -33,6 +33,8 @@ import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabe
 import { createPerson, notePerson } from './people'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
+import { hasTalent, talentHint, type TalentId } from './talents'
+import { craftSkill, type CraftId } from './activities/creative'
 import { militaryMenu, specialCareersMenu, specialJobNodes } from './special'
 import { getCountry, NAME_POOLS, randomFirstName, randomLastName } from './world'
 import type { GameState, InterviewJob, InterviewQuestion, Job, Json, MenuAction, MenuGroup, MenuNode, Person, ScreeningApp, ScreeningDecision } from './types'
@@ -314,20 +316,121 @@ export function presentInterview(g: GameState, job: InterviewJob, q: InterviewQu
     `${interviewer} from ${job.company} shook your hand a little too firmly and started your interview for ${job.title}.`,
     `You showed up to ${job.company} ten minutes early for your ${job.title} interview. ${interviewer} called you in.`,
   ])
+  // Comedy talent: you can read a room. The answer that will land best gets a purple hint.
+  const top = Math.max(...safe.answers.map((a) => a.score))
+  const read = safe.answers.filter((a) => a.score === top).length === 1 ? talentHint(g, 'Comedy', 'You can read the room: this one will land.') : ''
   scriptChoice(
     g,
     INTERVIEW,
     'Job Interview',
     `${intro}\n\n"${safe.question}"`,
-    safe.answers.map((a, i) => ({ id: String(i), label: a.label })),
+    safe.answers.map((a, i) => ({ id: String(i), label: a.label, ...(read && a.score === top ? { hint: read } : {}) })),
     { emoji: '\u{1F91D}', data: { job: jobJson(job), scores: safe.answers.map((a) => a.score), interviewer } },
   )
+}
+
+// ---------------------------------------------------------------------------
+// Special talents at work
+
+const JOB_TALENTS: Record<string, TalentId> = {
+  chef: 'Cooking',
+  restaurant: 'Cooking',
+  baker: 'Cooking',
+  butcher: 'Cooking',
+  sommelier: 'Cooking',
+  fast_food: 'Cooking',
+  pt_barista: 'Cooking',
+  computer_programmer: 'Programming',
+  app_developer: 'Programming',
+  database_admin: 'Programming',
+  it_support: 'Programming',
+  pt_game_tester: 'Gaming',
+  pt_arcade: 'Gaming',
+  graphic_designer: 'Art',
+  animator: 'Art',
+  sculptor: 'Art',
+  fashion_designer: 'Art',
+  interior_designer: 'Art',
+  architect: 'Art',
+  photographer: 'Art',
+  gallery: 'Art',
+  curator: 'Art',
+  writer: 'Writing',
+  editor: 'Writing',
+  reporter: 'Writing',
+  translator: 'Writing',
+  music_composer: 'Music',
+  disc_jockey: 'Music',
+  puppeteer: 'Acting',
+  stunt_performer: 'Athletics',
+  dancer: 'Athletics',
+  choreographer: 'Athletics',
+  dance_instructor: 'Athletics',
+  pt_dance: 'Athletics',
+  pt_fitness: 'Athletics',
+  pt_trainer: 'Athletics',
+  pt_swim: 'Athletics',
+  pt_lifeguard: 'Athletics',
+  clown: 'Comedy',
+  magician: 'Comedy',
+  circus_performer: 'Comedy',
+  makeup_artist: 'Modeling',
+  hairdresser: 'Modeling',
+  pt_brand_ambassador: 'Modeling',
+  pt_boutique: 'Modeling',
+  professor: 'Academics',
+  college_dean: 'Academics',
+  teacher: 'Academics',
+  history_teacher: 'Academics',
+  school_psychologist: 'Academics',
+  librarian: 'Academics',
+  stockbroker: 'Investing',
+  financial_analyst: 'Investing',
+  financial_advisor: 'Investing',
+  investment_banker: 'Investing',
+  executive: 'Business',
+  consultant: 'Business',
+  business_analyst: 'Business',
+  marketing: 'Business',
+  lobbyist: 'Leadership',
+  judge: 'Leadership',
+  school_admin: 'Leadership',
+}
+
+/** The special talent that makes you better at this job (chef → Cooking, programmer → Programming...). */
+export function jobTalent(defId: string): TalentId | null {
+  const byId = JOB_TALENTS[defId]
+  if (byId) return byId
+  const def = getJobDef(defId)
+  if (!def) return null
+  if (def.industry === 'tech') return 'Programming'
+  if (def.industry === 'science' || def.industry === 'university') return 'Academics'
+  if (def.industry === 'restaurant') return 'Cooking'
+  return null
+}
+
+const JOB_CRAFT: Partial<Record<TalentId, CraftId>> = { Cooking: 'cooking', Writing: 'writing', Art: 'art', Comedy: 'comedy' }
+
+/** Practice at home shows at work: a chef who cooks a lot, a writer who writes a lot (0-10). */
+function craftEdge(g: GameState, defId: string): number {
+  const t = jobTalent(defId)
+  const craft = t ? JOB_CRAFT[t] : undefined
+  return craft ? craftSkill(g, craft) / 10 : 0
+}
+
+/** True when one of your talents suits this job. */
+function suitsTalent(g: GameState, defId: string): boolean {
+  const t = jobTalent(defId)
+  return !!t && hasTalent(g, t)
 }
 
 function hireChance(g: GameState, job: InterviewJob, score: number): number {
   const c = g.character
   const def = getJobDef(job.defId)
   let p = 0.08 + 0.72 * (clamp(score) / 100)
+  // A natural for the job stands out; a comedian charms the room.
+  if (suitsTalent(g, job.defId)) p += 0.1
+  if (hasTalent(g, 'Comedy')) p += 0.06
   p += (c.stats.smarts - 50) / 300
   p += (c.stats.looks - 50) / 500
   if (!def || def.edu === 'none') p += 0.1
@@ -1047,6 +1150,10 @@ function yearForJob(g: GameState, slot: Slot): void {
   const effort = Math.min(3, num(job.data.workedHarder, 0))
   job.data.workedHarder = 0
   let target = 28 + c.stats.smarts * 0.25 + c.stats.happiness * 0.15 + c.stats.health * 0.1 + effort * 8
+  // Talent: a natural for the job (a chef who can really cook) shines; leaders get noticed.
+  if (suitsTalent(g, job.defId)) target += 8
+  if (hasTalent(g, 'Leadership')) target += 4
+  target += craftEdge(g, job.defId)
   if (c.conditions.some((x) => x.kind === 'addiction')) target -= 12
   if (job.category === 'fulltime' && c.partTimeJob && slot === 'job') target -= 4
   // Your schedule: long weeks impress the boss and wear you down; short ones do the opposite.
@@ -1100,11 +1207,15 @@ function yearForJob(g: GameState, slot: Slot): void {
 
   if (slot === 'job' && def) {
     const top = job.level >= def.ladder.length - 1
-    const need = 2 + Math.floor(job.level / 3)
+    // Leadership and a talent for the job both put you on the fast track (never a sure thing).
+    const fastTrack = hasTalent(g, 'Leadership') || suitsTalent(g, job.defId)
+    const need = Math.max(1, 2 + Math.floor(job.level / 3) - (fastTrack ? 1 : 0))
     let promoted = false
     if (!top && job.yearsInRole >= need) {
-      const p = job.performance >= 85 ? 0.6 : job.performance >= 70 ? 0.35 : job.performance >= 60 ? 0.12 : 0
-      if (chance(g, p)) {
+      let p = job.performance >= 85 ? 0.6 : job.performance >= 70 ? 0.35 : job.performance >= 60 ? 0.12 : 0
+      if (p > 0 && hasTalent(g, 'Leadership')) p += 0.12
+      if (p > 0 && suitsTalent(g, job.defId)) p += 0.08
+      if (chance(g, Math.min(0.85, p))) {
         promote(g, job, def)
         promoted = true
       }
@@ -1244,7 +1355,7 @@ function workHarder(g: GameState, slot: Slot): void {
     notice(g, 'Work Harder', pick(g, ["You're already working as hard as humanly possible. Any harder and you'll burst a blood vessel.", 'You tried to work even harder but mostly just stared at your screen. Try again next year.']), { emoji: '\u{1F4A6}' })
     return
   }
-  job.performance = Math.round(clamp(job.performance + randInt(g, 3, 7)))
+  job.performance = Math.round(clamp(job.performance + randInt(g, 3, 7) * (suitsTalent(g, job.defId) ? 1.4 : 1)))
   job.data.workedHarder = num(job.data.workedHarder, 0) + 1
   addStat(g, 'happiness', -1)
   log(g, pick(g, ['I worked harder at my job.', 'I put in some extra effort at work.', 'I stayed late at the office.', 'I was the first one in and the last one out at work.']), 'neutral')
@@ -1294,6 +1405,15 @@ function askRaise(g: GameState, slot: Slot): void {
   notice(g, 'Ask for a Raise', pick(g, [`${boss} laughed and said "Maybe next year." It was not a nice laugh.`, `${boss} said the budget is "really tight right now," then left for a golf weekend.`, `${boss} told you raises are for people who earn them.`]), { emoji: '\u{1F62C}', tone: 'bad' })
 }
 
+/** Odds that asking for a promotion works (pure: safe for menus and hints). */
+function promotionAskOdds(g: GameState, job: Job): number {
+  let p = job.performance >= 85 && job.yearsInRole >= 1 ? 0.5 : job.performance >= 70 && job.yearsInRole >= 2 ? 0.3 : job.performance >= 55 ? 0.06 : 0.01
+  // Leadership talent: you pitch yourself like you already have the job.
+  if (hasTalent(g, 'Leadership')) p += job.performance >= 70 ? 0.15 : job.performance >= 55 ? 0.1 : 0.02
+  if (suitsTalent(g, job.defId) && job.performance >= 70) p += 0.05
+  return Math.min(0.8, p)
+}
+
 function askPromotion(g: GameState): void {
   const job = g.character.job
   const def = job ? getJobDef(job.defId) : undefined
@@ -1307,7 +1427,7 @@ function askPromotion(g: GameState): void {
     return
   }
   const boss = bossName(g, job)
-  const p = job.performance >= 85 && job.yearsInRole >= 1 ? 0.5 : job.performance >= 70 && job.yearsInRole >= 2 ? 0.3 : job.performance >= 55 ? 0.06 : 0.01
+  const p = promotionAskOdds(g, job)
   if (chance(g, p)) {
     promote(g, job, def)
     return
@@ -1548,6 +1668,14 @@ function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
           id: `${slot}.promotion`,
           label: 'Ask for a Promotion',
           emoji: '\u{1F4C8}',
+          hint: (x) => {
+            const held = x.character.job
+            if (!held || !d || held.level >= d.ladder.length - 1 || !hasTalent(x, 'Leadership')) return null
+            // Already asked this year: the boss's answer is in, nothing left to read.
+            if (yearActionsUsed(x, 'askPromotion') >= 1) return null
+            const odds = promotionAskOdds(x, held)
+            return talentHint(x, 'Leadership', odds >= 0.4 ? `Now's the moment: about ${Math.round(odds * 100)}% they say yes.` : `Not yet: only about ${Math.round(odds * 100)}%. Raise your performance first.`)
+          },
           disabledReason: (x) => blocked(x) ?? (d && j.level >= d.ladder.length - 1 ? "You're already at the top of the ladder here." : null),
           run: askPromotion,
         })

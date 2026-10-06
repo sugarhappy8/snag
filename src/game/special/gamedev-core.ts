@@ -12,6 +12,7 @@ import { industryDemand, marketOf } from '../data/markets'
 import { worldYear } from '../invest/engine'
 import { pick, rand, randInt } from '../rng'
 import type { GameState } from '../types'
+import { talentMult } from '../talents'
 import { genreDef, GENRES, NET_PER_PRICE, platformDef, scopeDef, type GenreDef, type GenreId, type PlatformId, type ScopeId } from './gamedev-data'
 import { clampN, whole, type GdProfile } from './gamedev-state'
 
@@ -269,14 +270,15 @@ export function skillCeiling(age: number): number {
 /** Practice game design: diminishing returns near the ceiling. Returns the gain. */
 export function trainDesign(g: GameState, p: GdProfile, base: number): number {
   const room = Math.max(0, 1 - p.design / 110)
-  const gain = Math.max(0, Math.min(Math.round(base * room * (0.8 + rand(g) * 0.5)), skillCeiling(g.character.age) - p.design))
+  // Gaming talent: thousands of hours of play turn into design instincts fast.
+  const gain = Math.max(0, Math.min(Math.round(base * talentMult(g, 'Gaming', 1.5) * room * (0.8 + rand(g) * 0.5)), skillCeiling(g.character.age) - p.design))
   p.design = Math.round(clampN(p.design + gain, 0, 100))
   return gain
 }
 
 /** Practice art (an art talent learns faster). Returns the gain. */
 export function trainArt(g: GameState, p: GdProfile, base: number): number {
-  const talent = g.character.talent === 'Art' ? 1.4 : 1
+  const talent = talentMult(g, 'Art', 1.5)
   const room = Math.max(0, 1 - p.art / 110)
   const gain = Math.max(0, Math.min(Math.round(base * talent * room * (0.8 + rand(g) * 0.5)), skillCeiling(g.character.age) - p.art))
   p.art = Math.round(clampN(p.art + gain, 0, 100))

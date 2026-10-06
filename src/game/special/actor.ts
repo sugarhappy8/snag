@@ -6,7 +6,8 @@ import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { randomFirstName, randomLastName } from '../world'
-import { actingSkill, addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, talentMatches, tell, view, yearlyList } from './common'
+import { hasTalent, talentHint, talentMult } from '../talents'
+import { actingSkill, addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
 
 type Role = 'Extra' | 'Supporting' | 'Lead'
 type Kind = 'film' | 'tv'
@@ -129,29 +130,72 @@ function genListings(g: GameState): Listing[] {
   const p = actorProfile(g)
   const f = fameOf(g)
   const hadSupporting = p.credits.some((x) => x.role !== 'Extra')
-  const hadLead = p.credits.some((x) => x.role === 'Lead')
   const agentQ = p.agent?.quality ?? 0
-  const n = p.agent ? 6 : 4
+  // Acting talent: casting directors call more often, offer bigger parts sooner (one tier up
+  // the ladder), cast you in more blockbusters and pay a premium for you.
+  const gifted = hasTalent(g, 'Acting')
+  const n = (p.agent ? 6 : 4) + (gifted ? 1 : 0)
+  const leadReady = hadSupporting || f >= (gifted ? 25 : 40) || (gifted && p.credits.length > 0)
   const out: Listing[] = []
   for (let i = 0; i < n; i++) {
     let role: Role = 'Extra'
-    const r = rand(g) + agentQ / 250
-    if ((hadSupporting || f >= 40) && r > 0.7) role = 'Lead'
-    else if ((p.credits.length > 0 || actingSkill(g) >= 45 || f >= 25) && r > 0.35) role = 'Supporting'
-    if (role === 'Lead' && !hadSupporting && !hadLead && f < 40) role = 'Supporting'
+    const r = rand(g) + agentQ / 250 + (gifted ? 0.15 : 0)
+    if (leadReady && r > 0.7) role = 'Lead'
+    else if ((p.credits.length > 0 || actingSkill(g) >= (gifted ? 35 : 45) || f >= 25) && r > 0.35) role = 'Supporting'
     const kind: Kind = chance(g, 0.6) ? 'film' : 'tv'
     let genre = kind === 'film' ? pick(g, FILM_GENRES) : pick(g, TV_GENRES)
     if (g.character.countryId === 'in' && kind === 'film' && chance(g, 0.5)) genre = 'Bollywood'
     if (LATIN.includes(g.character.countryId) && kind === 'tv' && chance(g, 0.5)) genre = 'Telenovela'
-    const budget = kind === 'film' ? pick(g, ['indie', 'studio', 'studio', 'blockbuster']) : pick(g, ['cable', 'network', 'streaming'])
+    const budget =
+      kind === 'film'
+        ? pick(g, gifted && role !== 'Extra' ? ['indie', 'studio', 'blockbuster', 'blockbuster'] : ['indie', 'studio', 'studio', 'blockbuster'])
+        : pick(g, gifted && role !== 'Extra' ? ['network', 'streaming', 'streaming'] : ['cable', 'network', 'streaming'])
     const budgetMult = budget === 'blockbuster' ? 2 : budget === 'indie' || budget === 'cable' ? 0.6 : 1
+    const premium = talentMult(g, 'Acting', 1.25)
     let pay: number
     if (role === 'Extra') pay = randInt(g, 3, 30) * 100
-    else if (role === 'Supporting') pay = Math.round((randInt(g, 15, 200) * 1_000 * (1 + f / 25) * budgetMult) / 1_000) * 1_000
-    else pay = Math.round((randInt(g, 80, 1_000) * 1_000 * (1 + (f * f) / 400) * budgetMult) / 1_000) * 1_000
+    else if (role === 'Supporting') pay = Math.round((randInt(g, 15, 200) * 1_000 * (1 + f / 25) * budgetMult * premium) / 1_000) * 1_000
+    else pay = Math.round((randInt(g, 80, 1_000) * 1_000 * (1 + (f * f) / 400) * budgetMult * premium) / 1_000) * 1_000
     out.push({ title: genTitle(g, genre), kind, genre, role, studio: kind === 'film' ? pick(g, STUDIOS) : pick(g, NETWORKS), pay, budget })
   }
   return out
+}
+
+const ROLE_DIFFICULTY: Record<Role, number> = { Extra: 0, Supporting: 25, Lead: 45 }
+
+/** The audition score before the approach and the luck roll (no randomness: safe in menus). */
+function auditionBase(g: GameState, l: Listing): number {
+  const c = g.character
+  const p = viewActor(g)
+  return (
+    actingSkill(g) * 0.5 +
+    (hasTalent(g, 'Acting') ? 15 : 0) +
+    c.stats.looks * (l.role === 'Lead' ? 0.25 : 0.1) +
+    p.reputation * 0.1 +
+    (p.agent?.quality ?? 0) * 0.1 +
+    fameOf(g) * 0.15 -
+    ROLE_DIFFICULTY[l.role]
+  )
+}
+
+/**
+ * Acting talent: the listing that suits you best — the biggest part you'd most likely land
+ * if you play it the way the casting director pictures it (still a roll of the dice).
+ */
+function bestListing(g: GameState, listings: Listing[]): number {
+  let best = -1
+  let bestScore = -Infinity
+  listings.forEach((l, i) => {
+    const odds = auditionBase(g, l) + 20 - 30 // margin over the pass mark with the right approach
+    const tier = l.role === 'Lead' ? 2 : l.role === 'Supporting' ? 1 : 0
+    // Prefer a part you'll probably get; among those, the bigger part and the bigger check.
+    const score = (odds >= 10 ? 1_000 : odds * 10) + tier * 100 + Math.min(99, l.pay / 20_000)
+    if (score > bestScore) {
+      bestScore = score
+      best = i
+    }
+  })
+  return best
 }
 
 const APPROACHES = [
@@ -186,14 +230,11 @@ const FIT: Record<string, string> = {
 
 const auditionScript = defineScript('special.actor.audition', (g, choice, data) => {
   const l = data as unknown as Listing
-  const c = g.character
   const p = actorProfile(g)
-  const difficulty = l.role === 'Lead' ? 45 : l.role === 'Supporting' ? 25 : 0
   let fit = 0
   if (choice === FIT[l.genre]) fit = 20
   else if (choice === 'overTop') fit = randInt(g, -15, 25)
-  const score =
-    actingSkill(g) * 0.5 + (talentMatches(g, /act/i) ? 15 : 0) + c.stats.looks * (l.role === 'Lead' ? 0.25 : 0.1) + p.reputation * 0.1 + (p.agent?.quality ?? 0) * 0.1 + fameOf(g) * 0.15 + fit + randInt(g, -15, 15) - difficulty
+  const score = auditionBase(g, l) + fit + randInt(g, -15, 15)
   if (score < 30) {
     p.reputation = clamp100(p.reputation - 1)
     log(g, `I auditioned for ${l.title} but didn't get the part.`, 'bad')
@@ -227,7 +268,7 @@ const pickRoleScript = defineScript('special.actor.pick', (g, choice) => {
     auditionScript,
     `Audition: ${l.title}`,
     `The casting director hands you a scene from "${l.title}" (${l.genre}). How do you play it?`,
-    APPROACHES,
+    APPROACHES.map((a) => (a.id === FIT[l.genre] && hasTalent(g, 'Acting') ? { ...a, hint: talentHint(g, 'Acting', `That's exactly how the director pictures this ${l.genre.toLowerCase()} role.`) } : a)),
     { emoji: '\u{1F3AC}', data: l as unknown as Json },
   )
 })
@@ -237,6 +278,7 @@ function openAuditions(g: GameState): void {
   if (job && project(job)) return tell(g, 'Auditions', `You're already committed to "${project(job)?.title}". Finish it first.`, '\u{1F3AC}')
   const listings = yearlyList<Listing>(g, 'actor.roles', () => genListings(g))
   if (listings.length === 0) return tell(g, 'Auditions', 'There are no more roles you are right for this year. Your agent says to "stay hungry".', '\u{1F3AC}')
+  const best = hasTalent(g, 'Acting') ? bestListing(g, listings) : -1
   scriptChoice(
     g,
     pickRoleScript,
@@ -247,6 +289,7 @@ function openAuditions(g: GameState): void {
         id: String(i),
         label: `${l.role === 'Extra' ? 'Extra' : l.role === 'Supporting' ? 'Supporting role' : 'Lead role'} · "${l.title}" (${l.genre} ${l.kind === 'film' ? 'film' : 'series'}) · ${short(l.pay)}${l.kind === 'tv' ? '/season' : ''}`,
         emoji: l.kind === 'film' ? '\u{1F3AC}' : '\u{1F4FA}',
+        ...(i === best ? { hint: talentHint(g, 'Acting', 'This part suits you best: your strongest shot at the biggest role.') } : {}),
       })),
       { id: 'cancel', label: 'Not now', emoji: '\u{274C}' },
     ],
@@ -389,7 +432,7 @@ const practiceAction: MenuAction = {
   disabledReason: (g) => blocked(g, 0),
   run: (g) => {
     if (!useYearAction(g, 'actor.practice', 2)) return tell(g, 'Practice', "You've rehearsed so much this year that you're starting to talk in monologues. Take a break.", '\u{1F971}')
-    const gain = randInt(g, 2, 6) + (talentMatches(g, /act|drama|theat/i) ? 2 : 0)
+    const gain = Math.round(randInt(g, 2, 6) * talentMult(g, 'Acting', 1.7))
     setFlagSkill(g, 'acting', actingSkill(g) + gain)
     log(g, 'I practiced my acting.')
     say(g, 'Practice', `${pick(g, ['You ran lines in front of the bathroom mirror for hours.', 'You studied old movies and copied every facial expression.', 'You practiced accents until your neighbors complained.'])} Your acting skill rose to ${actingSkill(g)}%.`, '\u{1F4D6}', 'good')
@@ -753,13 +796,16 @@ export function yearlyActor(g: GameState): void {
     return
   }
   const budgetBase = proj.budget === 'blockbuster' ? 15 : proj.budget === 'indie' || proj.budget === 'cable' ? -5 : 5
-  const quality = clamp100(actingSkill(g) * 0.5 + (talentMatches(g, /act/i) ? 15 : 0) + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
+  const quality = clamp100(actingSkill(g) * 0.5 + (hasTalent(g, 'Acting') ? 15 : 0) + proj.developed + budgetBase + randInt(g, 0, 35) + (proj.role === 'Extra' ? 10 : 0))
+  // On-set experience: every shoot teaches you something; a natural soaks up far more.
+  const onSet = hasTalent(g, 'Acting') ? (proj.role === 'Extra' ? randInt(g, 1, 2) : randInt(g, 2, 4)) : proj.role === 'Extra' ? 0 : 1
+  if (onSet > 0) setFlagSkill(g, 'acting', actingSkill(g) + onSet)
   const popularity = clamp100(quality * 0.6 + fameOf(g) * 0.2 + proj.buzz + randInt(g, -15, 25))
   const cut = ap.agent?.cut ?? 0
   const pay = Math.round(proj.pay * (1 - cut))
   earnIncome(g, pay)
   const verdict = verdictFor(g, popularity, proj.kind)
-  const fameGain = proj.role === 'Extra' ? (chance(g, 0.3) ? 1 : 0) : proj.role === 'Supporting' ? 1 + Math.round(popularity / 30) : 3 + Math.round(popularity / 14)
+  const fameGain = (proj.role === 'Extra' ? (chance(g, 0.3) ? 1 : 0) : proj.role === 'Supporting' ? 1 + Math.round(popularity / 30) : 3 + Math.round(popularity / 14)) + (hasTalent(g, 'Acting') && proj.role !== 'Extra' ? 1 : 0)
   addFame(g, fameGain)
   ap.reputation = clamp100(ap.reputation + (quality - 50) / 8)
   if (proj.role === 'Lead' && fameOf(g) >= 70) fameToward(g, 90, 2)

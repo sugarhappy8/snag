@@ -9,14 +9,16 @@
 // in that country), competition and market saturation. Costs follow local wages (never below
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
 import { seeded } from '../assets'
-import { corporateTax, exchangeFor, industryDemand, marketOf, type Industry, type MarketProfile } from '../data/markets'
+import { corporateTax, exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
 import { bell, chance, rand } from '../rng'
+import { hasTalent, talentHint, type TalentId } from '../talents'
 import type { Asset, GameState } from '../types'
 import { getCountry } from '../world'
 import { industryDef, type IndustryDef, type StaffFocus } from './industries'
 import { traitOf } from './flavor'
+import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { studioValue } from './gamestudio-state'
-import { stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
+import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { clampN, dollars, round2 } from './util'
 
 // ---------------------------------------------------------------------------
@@ -224,8 +226,37 @@ export function ceoSkill(g: GameState, b: BizState): number {
   else if (degrees.some((d) => d.major && /business|econom|finance|account|management|marketing/i.test(d.major))) s += 8
   s += Math.min(12, Math.max(0, g.year - b.founded))
   if (c.conditions.some((x) => x.kind === 'addiction')) s -= 10
+  if (hasTalent(g, 'Business')) s += TALENT_SKILL
   return clampN(Math.round(s), 5, 100)
 }
+
+// ---------------------------------------------------------------------------
+// The Business talent's growth perk (only while the owner runs the company personally)
+
+/** Extra demand a business-talented owner-CEO brings (+6%). */
+export const TALENT_DEMAND = 1.06
+/** Extra brand the company drifts toward under a business-talented owner-CEO. */
+export const TALENT_BRAND = 4
+/** Business sense added to a talented owner's CEO skill. */
+export const TALENT_SKILL = 5
+/** Skill added to key-staff candidates a talented owner-CEO interviews (a better eye for people). */
+export const TALENT_HIRE = 6
+
+/** True when the owner personally runs this company and has the Business talent. */
+export function talentCeo(g: GameState, b: BizState): boolean {
+  return ownerTalent(g, b, 'Business')
+}
+
+/** True when the owner personally runs this company and has the given talent. */
+export function ownerTalent(g: GameState, b: BizState, id: TalentId): boolean {
+  const c = g.character
+  return b.ceo !== 'manager' && c.alive && !c.prison && hasTalent(g, id)
+}
+
+/** Cooking talent: a food business run by its talented owner aims this much higher on quality (reviews). */
+export const TALENT_COOKING_QUALITY = 8
+/** Leadership talent: staff under a talented owner-CEO settle this much happier. */
+export const TALENT_LEADER_MORALE = 6
 
 /** Combined contribution of key staff with a focus (0 = nobody, ~1 = one strong hire). */
 export function staffPower(b: BizState, focus: StaffFocus): number {
@@ -244,7 +275,8 @@ function marketingFactor(level: number): number {
   return 0.85 + 0.15 * Math.log(1 + 1.718 * clampN(level, 0, 3))
 }
 
-function productsBoost(b: BizState, year: number): number {
+/** Extra demand from fresh product lines (capped by how far the industry's products can go). */
+export function productsBoost(b: BizState, year: number): number {
   const def = industryDef(b.industry)
   let sum = 0
   for (const p of b.products) sum += p.boost * Math.max(0.25, 1 - 0.1 * Math.max(0, year - p.launched))
@@ -273,7 +305,8 @@ export function appealOf(g: GameState, b: BizState, year: number): number {
   const morale = 0.85 + (0.3 * b.morale) / 100
   const sales = 1 + 0.06 * staffPower(b, 'sales')
   const ceo = 0.97 + ceoSkill(g, b) / 1500
-  return quality * brand * morale * sales * ceo * marketingFactor(b.marketingLevel) * (1 + productsBoost(b, year)) * (1 + b.campaignBoost)
+  const talent = talentCeo(g, b) ? TALENT_DEMAND : 1
+  return quality * brand * morale * sales * ceo * talent * marketingFactor(b.marketingLevel) * (1 + productsBoost(b, year)) * (1 + b.campaignBoost)
 }
 
 export interface LocPlan {
@@ -287,6 +320,8 @@ export interface LocPlan {
 
 export interface Plan {
   locs: LocPlan[]
+  /** The home-market price this plan was made for. */
+  price: number
   homeGoing: number
   suggested: number
   demand: number
@@ -349,7 +384,7 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
   }
   const weight = locs.reduce((s, l) => s + (l.demand > 0 ? Math.max(1, l.demand) : 0), 0)
   const unitCost = weight > 0 ? costW / weight : home.unitCost
-  return { locs, homeGoing, suggested: round2(homeGoing * premium), demand, capacity, unitCost }
+  return { locs, price, homeGoing, suggested: round2(homeGoing * premium), demand, capacity, unitCost }
 }
 
 /** Unit-cost multiplier from the supplier contract, key ops staff and shocks. */
@@ -395,17 +430,50 @@ export function managerCost(b: BizState): number {
   return b.ceo === 'manager' && b.manager ? b.manager.salary : 0
 }
 
+/** The parts of a year's costs that don't depend on the price and production plan. */
+export interface YearFixed {
+  /** Unit-cost multiplier (supplier, ops staff, shocks). */
+  cf: number
+  /** Labor premium for a missing licence. */
+  licence: number
+  /** Key staff and the general manager. */
+  keyStaff: number
+  insurance: number
+  /** Overhead multiplier from finance staff. */
+  finance: number
+  /** Overhead multiplier from whoever runs the company. */
+  ceoEff: number
+}
+
+export function yearFixed(g: GameState, b: BizState): YearFixed {
+  return {
+    cf: costFactor(b),
+    licence: licencePremium(g, b),
+    keyStaff: b.staff.reduce((s, x) => s + x.salary, 0) + managerCost(b),
+    insurance: b.insured ? insurancePremiumFor(b) : 0,
+    finance: 1 - 0.025 * staffPower(b, 'finance'),
+    ceoEff: 1.05 - ceoSkill(g, b) / 1000,
+  }
+}
+
+/** One fiscal year on paper: the statement plus the company's cash, stock and head count after it. */
+export interface Book {
+  stmt: Statement
+  cash: number
+  inventoryEnd: number
+  employees: number
+  unpaidSalary: number
+}
+
 /**
- * Simulate the fiscal year `year` for one business: sales, costs, taxes, cash. Mutates the
- * business (cash, inventory, employees, last statement) but not its quality/brand/morale (see
- * evolve()). `ownerDraw` is the salary the owner wants this year (0 when not CEO).
+ * Book one fiscal year for a demand plan and a production run, without touching the business:
+ * sales, costs, taxes and the cash, stock and staff it leaves behind. simulateYear() applies it;
+ * the Business talent's planner uses it to test plans against the very same numbers.
  */
-export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number): YearResult {
+export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, production: number, ownerDraw: number, k: YearFixed = yearFixed(g, b), cycle?: number): Book {
   const def = industryDef(b.industry)
-  const noise = fixedNoise ?? clampN(1 + bell(g, -80, 80) / 1000, 0.9, 1.1)
-  const plan = planFor(g, b, year, { noise })
   const capacity = plan.capacity
-  const produced = Math.floor(clampN(Math.min(b.production, capacity), 0, 1e12))
+  const produced = Math.floor(clampN(Math.min(production, capacity), 0, 1e12))
   const available = produced + b.inventory
   const demand = plan.demand
   const sold = Math.floor(Math.min(demand, available))
@@ -434,19 +502,19 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
     rent += l.outlet.count * e.rent
     upkeep += l.outlet.count * e.capital * def.maint
   }
-  wages *= licencePremium(g, b)
+  wages *= k.licence
   const employees = Math.max(totalOutlets(b), Math.round(wanted))
   const netRevenue = revenue - salesTax
 
   // Services can't stock up: idle capacity costs less than a served customer.
-  const cf = costFactor(b)
+  const cf = k.cf
   const cogs = def.perishable >= 1 ? plan.unitCost * cf * (sold * 0.7 + produced * 0.3) : plan.unitCost * cf * produced
-  const keyStaff = b.staff.reduce((s, x) => s + x.salary, 0) + managerCost(b)
+  const keyStaff = k.keyStaff
   const marketing = revenue * def.marketingShare * b.marketingLevel
   const interest = b.debt * b.debtRate
-  const insurance = b.insured ? insurancePremiumFor(b) : 0
-  const finance = 1 - 0.025 * staffPower(b, 'finance')
-  const ceoEff = 1.05 - ceoSkill(g, b) / 1000
+  const insurance = k.insurance
+  const finance = k.finance
+  const ceoEff = k.ceoEff
   const overhead = (wages + rent + upkeep) * finance * ceoEff
   const pbt0 = netRevenue - cogs - overhead - keyStaff - marketing - interest - insurance - b.yearCosts + b.yearIncome
 
@@ -466,28 +534,26 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
     if (Object.keys(netByCountry).length === 0) corpTax = corporateTax(b.countryId, pbt)
   }
   const net = pbt - corpTax
-  b.cash = dollars(b.cash + net + alreadyBooked)
+  let cash = dollars(b.cash + net + alreadyBooked)
 
   // Cash held in a currency that inflates faster than deposits pay loses value.
   const m = marketOf(b.countryId)
   let cashErosion = 0
-  if (b.cash > 0) {
+  if (cash > 0) {
     const real = clampN((m.inflation - m.interestRate) * 0.35, 0, 0.4)
-    cashErosion = Math.round(b.cash * real)
-    b.cash -= cashErosion
+    cashErosion = Math.round(cash * real)
+    cash -= cashErosion
   }
 
   const leftover = Math.max(0, available - sold)
   const inventoryEnd = Math.floor(leftover * (1 - def.perishable))
-  b.inventory = inventoryEnd
-  b.employees = employees
   const stmt: Statement = {
     year,
     demand: Math.round(demand),
     sold,
     produced,
     spoiled: leftover - inventoryEnd,
-    price: round2(b.price),
+    price: round2(plan.price),
     revenue: dollars(revenue),
     salesTax: dollars(salesTax),
     netRevenue: dollars(netRevenue),
@@ -505,12 +571,27 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
     corpTax: dollars(corpTax),
     net: dollars(net),
     cashErosion,
-    cycle: round2(cycleOf(g, b.countryId, year)),
+    cycle: round2(cycle ?? cycleOf(g, b.countryId, year)),
     openFraction: b.openFraction,
     employees,
   }
-  b.last = stmt
-  return { stmt, inventoryEnd, wantedStaff: employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay) }
+  return { stmt, cash, inventoryEnd, employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay) }
+}
+
+/**
+ * Simulate the fiscal year `year` for one business: sales, costs, taxes, cash. Mutates the
+ * business (cash, inventory, employees, last statement) but not its quality/brand/morale (see
+ * evolve()). `ownerDraw` is the salary the owner wants this year (0 when not CEO).
+ */
+export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number): YearResult {
+  const noise = fixedNoise ?? clampN(1 + bell(g, -80, 80) / 1000, 0.9, 1.1)
+  const plan = planFor(g, b, year, { noise })
+  const k = bookYear(g, b, year, plan, b.production, ownerDraw)
+  b.cash = k.cash
+  b.inventory = k.inventoryEnd
+  b.employees = k.employees
+  b.last = k.stmt
+  return { stmt: k.stmt, inventoryEnd: k.inventoryEnd, wantedStaff: k.employees, unpaidSalary: k.unpaidSalary }
 }
 
 /** Yearly business insurance premium (property, liability, interruption). */
@@ -548,7 +629,8 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   const traits = b.staff.reduce((s, x) => s + traitOf(x.trait).morale, 0)
   const inflationHit = m.inflation >= 0.08 && b.raiseYear < year ? -Math.min(18, m.inflation * 30) : 0
   const ceoVibe = b.ceo === 'owner' ? (g.character.hidden.karma - 50) / 10 : ((b.manager?.skill ?? 50) - 50) / 12
-  const moraleTarget = clampN(55 + (b.wageLevel - 1) * 120 + traits + busy + (stmt.net > 0 ? 3 : -6) + inflationHit + ceoVibe, 5, 98)
+  const leader = ownerTalent(g, b, 'Leadership') ? TALENT_LEADER_MORALE : 0
+  const moraleTarget = clampN(55 + (b.wageLevel - 1) * 120 + traits + busy + (stmt.net > 0 ? 3 : -6) + inflationHit + ceoVibe + leader, 5, 98)
   b.morale = clampN(Math.round(b.morale + (moraleTarget - b.morale) * 0.4 + bell(g, -4, 4)), 0, 100)
   for (const s of b.staff) {
     s.morale = clampN(Math.round(s.morale + (moraleTarget - s.morale) * 0.3 + bell(g, -5, 5)), 0, 100)
@@ -559,13 +641,15 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
 
   // Quality: suppliers, quality staff, morale, leadership.
   const sup = b.supplier === 'budget' ? -12 : b.supplier === 'premium' ? 12 : 0
-  const qTarget = clampN(45 + sup + 12 * Math.min(2, staffPower(b, 'quality')) + (b.morale - 50) / 6 + (skill - 50) / 10, 5, 98)
+  const chef = def.food && ownerTalent(g, b, 'Cooking') ? TALENT_COOKING_QUALITY : 0
+  const qTarget = clampN(45 + sup + 12 * Math.min(2, staffPower(b, 'quality')) + (b.morale - 50) / 6 + (skill - 50) / 10 + chef, 5, 98)
   b.quality = clampN(Math.round(b.quality + (qTarget - b.quality) * 0.3), 0, 100)
 
   // Brand: quality, marketing, age, products, fame of the founder.
   const age = Math.max(0, year - b.founded)
   const fame = b.ceo === 'owner' ? g.character.hidden.fame / 10 : 0
-  const bTarget = clampN(10 + b.quality * 0.45 + (b.marketingLevel - 1) * 8 + Math.min(12, age) + b.products.length * 2 + fame + Math.log10(1 + totalOutlets(b)) * 6, 0, 98)
+  const talent = talentCeo(g, b) ? TALENT_BRAND : 0
+  const bTarget = clampN(10 + b.quality * 0.45 + (b.marketingLevel - 1) * 8 + Math.min(12, age) + b.products.length * 2 + fame + Math.log10(1 + totalOutlets(b)) * 6 + talent, 0, 98)
   b.brand = clampN(Math.round(b.brand + (bTarget - b.brand) * 0.2), 0, 100)
 
   // One-year effects wear off.
@@ -605,7 +689,9 @@ export function valuationOf(b: BizState): number {
   const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
   // A game studio is also worth its back catalog and the games in its pipeline.
   const games = b.industry === 'gameStudio' ? studioValue(b.studio) : 0
-  let equity = Math.max(ev, floor) + games + b.cash - b.debt
+  // A deep-tech company is also worth its patents, tech lead and R&D pipeline.
+  const tech = isDeepTech(b) ? deepTechValue(b.tech) : 0
+  let equity = Math.max(ev, floor) + games + tech + b.cash - b.debt
   if (b.cooked > 0) equity *= 1 + 0.25 * Math.min(3, b.cooked)
   return Math.max(0, dollars(equity))
 }
@@ -659,4 +745,534 @@ export function redTape(countryId: string): number {
 
 export function coin(g: GameState, p: number): boolean {
   return chance(g, clampN(p, 0, 1))
+}
+
+// ---------------------------------------------------------------------------
+// The Business talent: next year's best plan, from the very same model as simulateYear.
+//
+// Nobody knows next year's economy, so plans are scored over the outcomes that can still happen:
+// last year's shock is known (35% of next year's cycle), next year's own shock and the market's
+// noise are not. Every score is an expected value over those scenarios; nothing here touches
+// g.rng, so asking never changes the future.
+
+interface Scenario {
+  w: number
+  cycle: Record<string, number>
+}
+
+/** Next year's possible business cycles per country (Gauss-Hermite nodes × recession/boom). */
+function cycleScenarios(g: GameState, b: BizState, year: number): Scenario[] {
+  const countries = [...new Set(b.outlets.map((o) => o.countryId))]
+  const known = new Map(countries.map((cid) => [cid, shock(g, cid, year - 1)]))
+  const amp = new Map(countries.map((cid) => [cid, 0.035 + 0.3 * clampN(exchangeFor(cid).volatility, 0.05, 0.8)]))
+  const nodes: [number, number][] = [
+    [-Math.sqrt(3), 1 / 6],
+    [0, 2 / 3],
+    [Math.sqrt(3), 1 / 6],
+  ]
+  // shock(): a recession (8%) knocks 1.6 off, a boom (6%) adds 1.2; both can happen.
+  const extra: [number, number][] = [
+    [0, 0.92 * 0.94],
+    [-1.6, 0.08 * 0.94],
+    [1.2, 0.92 * 0.06],
+    [-0.4, 0.08 * 0.06],
+  ]
+  const out: Scenario[] = []
+  for (const [z0, w0] of nodes) {
+    for (const [dz, w1] of extra) {
+      const cycle: Record<string, number> = {}
+      for (const cid of countries) cycle[cid] = clampN(1 + (amp.get(cid) ?? 0.1) * (0.65 * (z0 + dz) + 0.35 * (known.get(cid) ?? 0)), 0.55, 1.4)
+      out.push({ w: w0 * w1, cycle })
+    }
+  }
+  return out
+}
+
+/** simulateYear's competition noise (mean of three uniforms over ±8%) as three weighted nodes. */
+const NOISE_NODES: [number, number][] = [
+  [1 - Math.sqrt(3) * 0.0267, 1 / 6],
+  [1, 2 / 3],
+  [1 + Math.sqrt(3) * 0.0267, 1 / 6],
+]
+
+/** A plan with every location's demand scaled (demand is linear in the market noise). */
+function scalePlan(p: Plan, k: number): Plan {
+  if (k === 1) return p
+  return { ...p, demand: p.demand * k, locs: p.locs.map((l) => ({ ...l, demand: l.demand * k })) }
+}
+
+/** Value of one unit carried into next year, as a share of its unit cost (it still has to sell). */
+const CARRY = 0.85
+
+export interface PlanPick {
+  price: number
+  production: number
+  /** Expected net profit for the year (the Annual Report's bottom line). */
+  profit: number
+  /** Expected units wanted at that price. */
+  demand: number
+}
+
+export interface PlanSearch {
+  /** Fewer scenarios and a coarser search; the report uses the full one. */
+  quick?: boolean
+  /** Just the central scenario (comparing options on the company screen: what-ifs, not forecasts). */
+  fast?: boolean
+  /** The owner's salary drawn this year (when they run it). */
+  ownerDraw?: number
+  /** Fiscal year to plan (default: the coming one, g.year). */
+  year?: number
+  /** Highest price allowed (a price the company promised to hold this year). */
+  maxPrice?: number
+}
+
+interface Scored {
+  price: number
+  production: number
+  score: number
+  profit: number
+  demand: number
+}
+
+/** Round to a price a shop would actually charge ($3.45, $14.50, $1,290). */
+export function nicePrice(p: number): number {
+  if (!Number.isFinite(p) || p <= 0) return 0.01
+  if (p < 2) return Math.max(0.01, Math.round(p * 100) / 100)
+  if (p < 20) return Math.round(p * 20) / 20
+  if (p < 100) return Math.round(p * 10) / 10
+  if (p < 1_000) return Math.round(p)
+  const mag = Math.pow(10, Math.floor(Math.log10(p)) - 2)
+  return Math.round(p / mag) * mag
+}
+
+/**
+ * The price and production that maximize next year's expected profit (plus the stock it leaves
+ * to sell later), scored with planFor() and bookYear(): the same demand, cost and tax model the
+ * year itself runs on. Deterministic; never consumes g.rng.
+ */
+export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): PlanPick {
+  const year = opts.year ?? g.year
+  const def = industryDef(b.industry)
+  const b0 = priceBounds(b)
+  const bounds = opts.maxPrice !== undefined && Number.isFinite(opts.maxPrice) ? { ...b0, max: Math.max(b0.min, Math.min(b0.max, opts.maxPrice)) } : b0
+  const maxProd = maxProduction(g, b)
+  const draw = Math.max(0, opts.ownerDraw ?? 0)
+  const k = yearFixed(g, b)
+  const all = cycleScenarios(g, b, year)
+  const central = all.reduce((x, y) => (y.w > x.w ? y : x), all[0])
+  const cycles = opts.fast ? [{ ...central, w: 1 }] : opts.quick ? all.filter((s) => s.w >= 0.004) : all
+  const noises = opts.quick || opts.fast ? ([[1, 1]] as [number, number][]) : NOISE_NODES
+  const cycleHere = (s: Scenario) => s.cycle[b.countryId] ?? 1
+
+  const score = (price: number, fixedQ?: number): Scored => {
+    const scen: { w: number; plan: Plan; cyc: number }[] = []
+    for (const s of cycles) {
+      const base = planFor(g, b, year, { price, cycle: (cid) => s.cycle[cid] ?? 1, noise: 1 })
+      for (const [n, wn] of noises) scen.push({ w: s.w * wn, plan: scalePlan(base, n), cyc: cycleHere(s) })
+    }
+    const wsum = scen.reduce((t, x) => t + x.w, 0) || 1
+    const carry = def.perishable >= 1 ? 0 : (scen[0]?.plan.unitCost ?? 0) * k.cf * CARRY
+    const value = (q: number) => {
+      let sc = 0
+      let pr = 0
+      for (const x of scen) {
+        const r = bookYear(g, b, year, x.plan, q, draw, k, x.cyc)
+        pr += x.w * r.stmt.net
+        sc += x.w * (r.stmt.net + carry * r.inventoryEnd)
+      }
+      return { score: sc / wsum, profit: pr / wsum }
+    }
+    const demand = scen.reduce((t, x) => t + x.w * x.plan.demand, 0) / wsum
+    if (fixedQ !== undefined) {
+      const v = value(fixedQ)
+      return { price, production: fixedQ, score: v.score, profit: v.profit, demand }
+    }
+    // The newsvendor's answer sits at a quantile of demand: try the quantiles, then refine.
+    const sorted = [...scen].sort((x, y) => x.plan.demand - y.plan.demand)
+    const qs = new Set<number>([0, maxProd])
+    const levels = opts.fast ? [0.5] : opts.quick ? [0.2, 0.4, 0.5, 0.6, 0.8, 0.95] : [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
+    let acc = 0
+    let li = 0
+    for (const x of sorted) {
+      acc += x.w / wsum
+      while (li < levels.length && acc >= levels[li]) {
+        qs.add(Math.round(clampN(x.plan.demand - b.inventory, 0, maxProd)))
+        li++
+      }
+    }
+    let best = { q: 0, score: -Infinity, profit: 0 }
+    const cand = [...qs].sort((x, y) => x - y)
+    const tried = new Map<number, { score: number; profit: number }>()
+    const tryQ = (q: number) => {
+      const qq = Math.round(clampN(q, 0, maxProd))
+      let v = tried.get(qq)
+      if (!v) {
+        v = value(qq)
+        tried.set(qq, v)
+      }
+      if (v.score > best.score) best = { q: qq, score: v.score, profit: v.profit }
+      return v.score
+    }
+    for (const q of cand) tryQ(q)
+    // Golden-section between the best candidate's neighbours.
+    const i = cand.indexOf(best.q)
+    let lo = cand[Math.max(0, i - 1)]
+    let hi = cand[Math.min(cand.length - 1, i + 1)]
+    for (let it = 0; it < (opts.fast ? 0 : opts.quick ? 4 : 8) && hi - lo > 2; it++) {
+      const m1 = lo + (hi - lo) * 0.382
+      const m2 = lo + (hi - lo) * 0.618
+      if (tryQ(m1) >= tryQ(m2)) hi = m2
+      else lo = m1
+    }
+    return { price, production: best.q, score: best.score, profit: best.profit, demand }
+  }
+
+  // Prices: a log grid over a sensible band, then golden-section around the best point.
+  const ref = Math.max(bounds.min, Math.min(bounds.max, planFor(g, b, year, { calm: true }).suggested))
+  const pLo = Math.max(bounds.min, ref * 0.35)
+  const pHi = Math.min(bounds.max, ref * 3.2)
+  const n = opts.quick || opts.fast ? 12 : 20
+  const grid: Scored[] = []
+  for (let i = 0; i < n; i++) grid.push(score(pLo * Math.pow(pHi / Math.max(pLo, 0.01), i / Math.max(1, n - 1))))
+  let bi = 0
+  grid.forEach((x, i) => {
+    if (x.score > grid[bi].score) bi = i
+  })
+  let best = grid[bi]
+  let a = grid[Math.max(0, bi - 1)].price
+  let c = grid[Math.min(grid.length - 1, bi + 1)].price
+  for (let it = 0; it < (opts.quick || opts.fast ? 5 : 9) && c - a > 0.01; it++) {
+    const m1 = a + (c - a) * 0.382
+    const m2 = a + (c - a) * 0.618
+    const s1 = score(m1)
+    const s2 = score(m2)
+    if (s1.score > best.score) best = s1
+    if (s2.score > best.score) best = s2
+    if (s1.score >= s2.score) c = m2
+    else a = m1
+  }
+  // Round to a price and a run size people would actually write down, and re-score that.
+  const price = round2(clampN(nicePrice(best.price), bounds.min, bounds.max))
+  const tuned = score(price)
+  const production = Math.round(clampN(tuned.production > 0 ? niceAmount(tuned.production) : 0, 0, maxProd))
+  const final = score(price, production)
+  const pick = final.score >= tuned.score - Math.abs(tuned.score) * 0.002 ? final : tuned
+  return {
+    price,
+    production: pick.production,
+    profit: Number.isFinite(pick.profit) ? Math.round(pick.profit) : 0,
+    demand: Number.isFinite(pick.demand) ? Math.round(pick.demand) : 0,
+  }
+}
+
+/** Expected profit of an exact plan for next year (same scenarios as bestPlan). */
+export function planOutcome(g: GameState, b: BizState, price: number, production: number, opts: PlanSearch = {}): { profit: number; score: number; pretax: number } {
+  const year = opts.year ?? g.year
+  const def = industryDef(b.industry)
+  const k = yearFixed(g, b)
+  let w = 0
+  let profit = 0
+  let score = 0
+  let pretax = 0
+  for (const s of cycleScenarios(g, b, year)) {
+    const base = planFor(g, b, year, { price, cycle: (cid) => s.cycle[cid] ?? 1, noise: 1 })
+    const carry = def.perishable >= 1 ? 0 : base.unitCost * k.cf * CARRY
+    for (const [nz, wn] of opts.quick ? ([[1, 1]] as [number, number][]) : NOISE_NODES) {
+      const r = bookYear(g, b, year, scalePlan(base, nz), production, Math.max(0, opts.ownerDraw ?? 0), k, s.cycle[b.countryId] ?? 1)
+      w += s.w * wn
+      profit += s.w * wn * r.stmt.net
+      score += s.w * wn * (r.stmt.net + carry * r.inventoryEnd)
+      pretax += s.w * wn * (r.stmt.pbt + carry * r.inventoryEnd)
+    }
+  }
+  return { profit: w > 0 ? profit / w : 0, score: w > 0 ? score / w : 0, pretax: w > 0 ? pretax / w : 0 }
+}
+
+// ---------------------------------------------------------------------------
+// What a point of brand, quality or morale is worth to this company (Business talent hints).
+//
+// Event hints compare choices by expected value: every outcome a choice can lead to is turned
+// into dollars with the same levers simulateYear and evolve() pull. A brand point is worth the
+// extra customers it brings for as long as it lasts (brand drifts 20% a year toward its target),
+// a quality point the same (30% a year), morale less (40% a year); a one-year demand shock is a
+// year of contribution, a capacity loss only bites once demand fills what is left, and so on.
+
+export interface Worth {
+  /** Contribution margin of a normal year: net sales minus cost of goods and marketing. */
+  contrib: number
+  /** Net sales of a normal year. */
+  revenue: number
+  cogs: number
+  /** Wages, rent and upkeep. */
+  overhead: number
+  wages: number
+  /** Demand / capacity (0.2 - 1): how much a capacity loss bites. */
+  util: number
+  /** Dollars per point of brand, quality and morale (one-off changes that fade). */
+  brand: number
+  quality: number
+  morale: number
+  /** Dollars per point of a lasting shift in the morale target (pay policy, the boss's karma). */
+  moraleTarget: number
+  /** Dollars per point of the owner's karma (a nicer boss lifts morale a little). */
+  karma: number
+  /** Cost of the owner being arrested, per point of severity. */
+  arrest: number
+}
+
+export const BRAND_YEARS = 3.5
+export const QUALITY_YEARS = 2.7
+export const MORALE_YEARS = 2.2
+/** Years a permanent change (a raise, a cheaper supplier...) is counted for. */
+export const LASTING_YEARS = 2.7
+
+/** Recent yearly net sales, cost of goods, marketing, wages and overhead (or a projection). */
+function normalYear(g: GameState, b: BizState): { revenue: number; cogs: number; marketing: number; wages: number; overhead: number; demand: number } {
+  const s = b.last
+  const avgRev = b.history.length ? b.history.slice(-3).reduce((t, r) => t + Math.max(0, r.revenue), 0) / Math.min(3, b.history.length) : 0
+  if (s && (s.netRevenue > 0 || avgRev > 0)) {
+    // A short or quiet year (a studio between releases) is lifted toward the recent average,
+    // keeping last year's cost structure.
+    const revenue = Math.max(s.netRevenue, avgRev * 0.8)
+    const lift = s.netRevenue > 0 ? revenue / s.netRevenue : 0
+    return {
+      revenue,
+      cogs: lift > 0 ? s.cogs * lift : revenue * 0.35,
+      marketing: lift > 0 ? s.marketing * lift : revenue * industryDef(b.industry).marketingShare * b.marketingLevel,
+      wages: s.wages,
+      overhead: s.wages + s.rent + Math.max(0, s.upkeep),
+      demand: Math.max(s.demand, s.sold),
+    }
+  }
+  // A deep-tech lab that can't sell yet (no approval, no launch, no product) earns nothing; the
+  // classic planner would imagine a normal shop's sales and inflate every hint's payoff.
+  if (isDeepTech(b)) {
+    return { revenue: 0, cogs: 0, marketing: 0, wages: s?.wages ?? 0, overhead: s ? s.wages + s.rent + Math.max(0, s.upkeep) : 0, demand: 0 }
+  }
+  const e = localEcon(b.industry, b.countryId, b.city)
+  const plan = planFor(g, b, g.year, { calm: true })
+  const def = industryDef(b.industry)
+  const units = Math.min(plan.demand, plan.capacity)
+  const revenue = (units * plan.suggested) / (1 + e.taxRate)
+  const wages = totalOutlets(b) * def.staff * e.wage * b.wageLevel
+  return {
+    revenue,
+    cogs: units * plan.unitCost * costFactor(b, true),
+    marketing: revenue * def.marketingShare * b.marketingLevel,
+    wages,
+    overhead: wages + totalOutlets(b) * (e.rent + e.capital * def.maint),
+    demand: plan.demand,
+  }
+}
+
+export function bizWorth(g: GameState, b: BizState): Worth {
+  const def = industryDef(b.industry)
+  const e = localEcon(b.industry, b.countryId, b.city)
+  const y = normalYear(g, b)
+  const floor = 1_500 * clampN(e.level, 0.2, 2.4)
+  const contrib = Math.max(y.revenue - y.cogs - y.marketing, y.revenue * 0.15, floor)
+  const cap = Math.max(1, planFor(g, b, g.year, { calm: true }).capacity)
+  const util = clampN(y.demand / cap, 0.2, 1)
+  const el = clampN(def.elasticity, 0, 4)
+  const quality = contrib * (0.005 + el * 0.004) * QUALITY_YEARS
+  const morale = contrib * 0.003 * MORALE_YEARS + quality * 0.1
+  const moraleTarget = contrib * 0.003 * 2 + quality * 0.12
+  const owner = b.ceo !== 'manager'
+  return {
+    contrib,
+    revenue: y.revenue,
+    cogs: Math.max(0, y.cogs),
+    overhead: Math.max(0, y.overhead),
+    wages: Math.max(0, y.wages),
+    util,
+    brand: contrib * ((0.25 + 0.35 * clampN(def.growth, 0, 1)) / 100 + el * 0.002) * BRAND_YEARS,
+    quality,
+    morale,
+    moraleTarget,
+    karma: owner ? moraleTarget * 0.1 : 0,
+    arrest: Math.max(40_000 * clampN(e.level, 0.2, 2.4), 1.5 * b.ownerSalary + 0.25 * contrib),
+  }
+}
+
+/** One outcome of a decision, as changes to the company (and its owner). */
+export interface BizFx {
+  /** Company cash (costs negative). */
+  cash?: number
+  /** Dollars that reach the owner, or value gained or lost outright (a sale above valuation...). */
+  value?: number
+  brand?: number
+  quality?: number
+  morale?: number
+  /** Next year's demand shock moves toward this (below 1: the worse of the two, above 1: the better). */
+  demandTo?: number
+  /** Next year's capacity loss becomes at least this. */
+  capacityTo?: number
+  /** Next year's unit-cost shock becomes at least this. */
+  costTo?: number
+  /** Next year's unit-cost shock is set to exactly this (a locked-in contract). */
+  costSet?: number
+  /** Competitor pressure becomes at least this (it fades about half a year at a time). */
+  pressureTo?: number
+  /** This year's price is cut by this share (0.12 = 12%). */
+  priceCut?: number
+  /** General pay level change (0.08 = an 8% raise for everyone, for good). */
+  wage?: number
+  /** Lasting shift of the morale target (points). */
+  moraleTarget?: number
+  /** Lasting change to the yearly key-staff payroll. */
+  payroll?: number
+  /** Unit costs change for good by this factor (a new supplier). */
+  costFactor?: number
+  /** Quality target shift for good (points). */
+  qualityTarget?: number
+  karma?: number
+  /** Arrest risk: severity × probability already folded in by the caller's branch weight. */
+  arrest?: number
+}
+
+/** The yearly profit change from charging `cut` less for a year (demand responds; capacity caps it). */
+export function priceCutCost(g: GameState, b: BizState, cut: number): number {
+  if (!(cut > 0) || b.industry === 'gameStudio') return 0
+  const c = clampN(cut, 0, 0.9)
+  // Deep tech prices on its own planner: a year of its sales at the cut price (output is set).
+  if (isDeepTech(b)) return Math.max(0, (b.last?.netRevenue ?? 0) * c)
+  // The CEO has just planned the year (the Annual Report comes before the year's event); the cut
+  // caps the price for the rest of it (a price promise), and the best they can do is re-plan
+  // under that cap. Booked on the same model as the year itself.
+  const plan = bestPlan(g, b, { quick: true })
+  const capped = bestPlan(g, b, { quick: true, maxPrice: Math.max(0.01, round2(plan.price * (1 - c))) })
+  const was = planOutcome(g, b, plan.price, plan.production, { quick: true }).pretax
+  const now = planOutcome(g, b, capped.price, capped.production, { quick: true }).pretax
+  return Math.max(0, was - now)
+}
+
+/** Dollar value of one outcome for this company (positive = good for the owner). */
+export function fxValue(g: GameState, b: BizState, w: Worth, fx: BizFx): number {
+  let v = (fx.cash ?? 0) + (fx.value ?? 0)
+  if (fx.brand) v += (clampN(b.brand + fx.brand, 0, 100) - b.brand) * w.brand
+  if (fx.quality) v += (clampN(b.quality + fx.quality, 0, 100) - b.quality) * w.quality
+  if (fx.morale) v += (clampN(b.morale + fx.morale, 0, 100) - b.morale) * w.morale
+  if (fx.demandTo !== undefined) {
+    const next = fx.demandTo < 1 ? Math.min(b.demandShock, fx.demandTo) : Math.max(b.demandShock, fx.demandTo)
+    v += (next - b.demandShock) * w.contrib
+  }
+  if (fx.capacityTo !== undefined) {
+    const lost = (l: number) => (w.contrib * Math.max(0, l - (1 - w.util))) / Math.max(0.3, w.util)
+    v -= lost(Math.max(b.capacityLoss, fx.capacityTo)) - lost(b.capacityLoss)
+  }
+  if (fx.costTo !== undefined || fx.costSet !== undefined) {
+    const next = fx.costSet !== undefined ? fx.costSet : Math.max(b.costShock, fx.costTo ?? 1)
+    if (b.industry !== 'gameStudio') v -= (next - b.costShock) * w.cogs
+  }
+  if (fx.pressureTo !== undefined) v -= (Math.max(b.pressure, fx.pressureTo) - b.pressure) * w.contrib * 2
+  if (fx.priceCut) v -= priceCutCost(g, b, fx.priceCut)
+  if (fx.wage) {
+    v -= ((w.wages * fx.wage) / Math.max(0.5, b.wageLevel)) * LASTING_YEARS
+    v += 120 * fx.wage * w.moraleTarget
+  }
+  if (fx.moraleTarget) v += fx.moraleTarget * w.moraleTarget
+  if (fx.payroll) v -= fx.payroll * LASTING_YEARS
+  if (fx.costFactor && b.industry !== 'gameStudio') v -= (fx.costFactor - 1) * w.cogs
+  if (fx.qualityTarget) v += fx.qualityTarget * 0.3 * w.quality
+  if (fx.karma) v += fx.karma * w.karma
+  if (fx.arrest) v -= fx.arrest * w.arrest
+  return Number.isFinite(v) ? v : 0
+}
+
+/** Expected value of a decision with weighted outcomes. */
+export function expectedFx(g: GameState, b: BizState, w: Worth, branches: { p: number; fx: BizFx }[]): number {
+  let v = 0
+  for (const x of branches) if (x.p > 0) v += x.p * fxValue(g, b, w, x.fx)
+  return v
+}
+
+/**
+ * What one key staff member adds a year (before their salary), by focus, at the margin: the
+ * company's other staff with the same focus already count (staff power is capped).
+ */
+export function staffBenefit(g: GameState, b: BizState, w: Worth, focus: StaffFocus, power: number): number {
+  const others = staffPower(b, focus)
+  const capOf = focus === 'quality' ? 2 : 2.5
+  const add = Math.max(0, Math.min(capOf, others + power) - Math.min(capOf, others))
+  if (add <= 0) return 0
+  if (b.industry === 'gameStudio') {
+    // Studios: quality staff lift every game (≈6 points of game quality each), ops staff ship
+    // faster, finance trims overhead. Nobody needs a salesperson to sell a game.
+    if (focus === 'quality') return w.contrib * 0.06 * add
+    if (focus === 'ops') return w.contrib * 0.04 * add
+    if (focus === 'finance') return w.overhead * 0.025 * add
+    return 0
+  }
+  if (focus === 'sales') return w.contrib * 0.06 * add
+  if (focus === 'finance') return w.overhead * 0.025 * add * (1.05 - ceoSkill(g, b) / 1000)
+  if (focus === 'ops') return w.cogs * 0.03 * add + w.contrib * 0.08 * add * Math.max(0, w.util - 0.85) * 6
+  // Quality: +12 quality target per unit of power, reached at 30% a year.
+  return 12 * add * (w.quality / QUALITY_YEARS) * 0.6
+}
+
+/** A key staff member's yearly value to the company (benefit minus salary). */
+export function staffNet(g: GameState, b: BizState, w: Worth, s: { focus: StaffFocus; skill: number; trait: string; morale: number; salary: number; id?: string }): number {
+  const without = s.id ? { ...b, staff: b.staff.filter((x) => x.id !== s.id) } : b
+  const power = (s.skill / 100) * traitOf(s.trait).impact * (0.7 + (0.6 * s.morale) / 100)
+  const benefit = staffBenefit(g, without, w, s.focus, power)
+  const vibe = traitOf(s.trait).morale * w.moraleTarget
+  return benefit - s.salary + vibe / LASTING_YEARS
+}
+
+// ---------------------------------------------------------------------------
+// The Business talent: which industries are hot in a city (the start-a-business list)
+
+/**
+ * A brand-new company's expected first full year in a city, run by this player (the planner on a
+ * fresh business), and how many years that takes to earn back the startup cost.
+ */
+export function foundingOutlook(g: GameState, industry: Industry, countryId: string, city: string): { profit: number; payback: number } {
+  const e = localEcon(industry, countryId, city)
+  if (e.demandMult <= 0 || !isIndustryLegal(countryId, industry)) return { profit: 0, payback: Infinity }
+  const b = normalizeBiz({ industry, countryId, city, founded: g.year - 1, price: e.goingPrice, brand: Math.round(clampN(15 + g.character.hidden.fame / 4, 0, 60)), morale: 70, ceo: 'owner' }, g.year)
+  const p = bestPlan(g, b, { fast: true })
+  const cost = startupCost(industry, countryId, city).total
+  return { profit: p.profit, payback: p.profit > 0 ? cost / p.profit : Infinity }
+}
+
+const hotCache = new Map<string, { industry: Industry; payback: number }[]>()
+
+/** Most years a startup may take to pay back and still count as a hot bet. */
+const HOT_PAYBACK = 10
+
+/**
+ * The classic industries that pay back fastest in a city for this player, best first (at most
+ * `n`). Game studios and deep tech live on launches and R&D rather than price and production, so
+ * they aren't ranked here.
+ */
+export function hotIndustries(g: GameState, countryId: string, city: string, n = 3): { industry: Industry; payback: number }[] {
+  const c = g.character
+  const key = `${g.lifeId}|${g.year}|${countryId}|${city}|${c.stats.smarts}|${c.hidden.discipline}|${c.hidden.fame}|${c.education.degrees.length}|${hasTalent(g, 'Business') ? 1 : 0}|${n}`
+  const hit = hotCache.get(key)
+  if (hit) return hit
+  const out = INDUSTRY_IDS.filter((id) => id !== 'gameStudio' && !isDeepTechIndustry(id))
+    .map((industry) => ({ industry, payback: foundingOutlook(g, industry, countryId, city).payback }))
+    .filter((x) => x.payback <= HOT_PAYBACK)
+    .sort((x, y) => x.payback - y.payback)
+    .slice(0, n)
+  hotCache.set(key, out)
+  if (hotCache.size > 16) {
+    const first = hotCache.keys().next().value
+    if (first !== undefined) hotCache.delete(first)
+  }
+  return out
+}
+
+/**
+ * The Business talent's purple hint for one row of the start-a-business list: null unless the
+ * industry is one of the hottest bets in that city.
+ */
+export function industryHint(g: GameState, industry: Industry, countryId: string, city: string): string | null {
+  if (!hasTalent(g, 'Business')) return null
+  const hot = hotIndustries(g, countryId, city)
+  const i = hot.findIndex((x) => x.industry === industry)
+  if (i < 0) return null
+  const years = hot[i].payback
+  const when = years < 1.5 ? 'about a year' : `about ${Math.round(years)} years`
+  return talentHint(g, 'Business', `${i === 0 ? 'The hottest bet in' : 'One of the hottest bets in'} ${city}: it should earn back its startup cost in ${when}`)
 }

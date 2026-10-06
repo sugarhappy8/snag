@@ -5,9 +5,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/types'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
-import { confirmText, infoText, isMultiline, nodeDisabled, nodeSubtitle, nodeVisible, report } from './menuModel'
+import { confirmText, infoText, isMultiline, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report } from './menuModel'
+import { TalentHint } from './TalentHint'
+import { HINT_EMOJI } from '../../game/talents'
 
-export { groupChildren, groupHeader, nodeDisabled, nodeSubtitle, nodeVisible, resolveTrail } from './menuModel'
+export { groupChildren, groupHeader, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, resolveTrail } from './menuModel'
 
 // ---------------------------------------------------------------------------
 // Navigation stack (group ids) with scroll restoration.
@@ -286,7 +288,7 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
       const text = infoText(node, g)
       if (!text) continue
       current.rows.push(
-        <div className="menu-info" key={key}>
+        <div className={node.emoji === HINT_EMOJI ? 'menu-info menu-info-hint' : 'menu-info'} key={key}>
           {node.emoji ? <span className="menu-info-emoji">{node.emoji}</span> : null}
           <span>{text}</span>
         </div>,
@@ -314,10 +316,12 @@ export function MenuRows({ nodes, g, onTap, emptyText = 'Nothing to do here righ
 export function MenuRow({ node, g, onTap }: { node: MenuAction | MenuGroup; g: GameState; onTap: (node: MenuAction | MenuGroup) => void }) {
   const reason = nodeDisabled(node, g)
   const subtitle = nodeSubtitle(node, g)
+  const hint = nodeHint(node, g)
+  const cls = ['menu-row', reason ? 'is-disabled' : '', hint ? 'has-hint' : ''].filter(Boolean).join(' ')
   return (
     <button
       type="button"
-      className={reason ? 'menu-row is-disabled' : 'menu-row'}
+      className={cls}
       onClick={() => onTap(node)}
       aria-disabled={reason ? true : undefined}
       title={reason ?? undefined}
@@ -328,6 +332,7 @@ export function MenuRow({ node, g, onTap }: { node: MenuAction | MenuGroup; g: G
       <span className="menu-row-text">
         <span className="menu-row-label">{node.label}</span>
         {subtitle ? <span className="menu-row-sub">{subtitle}</span> : null}
+        {hint ? <TalentHint text={hint} className="menu-row-hint" /> : null}
       </span>
       <span className="menu-row-end" aria-hidden>
         {reason ? <span className="menu-row-lock">🔒</span> : null}

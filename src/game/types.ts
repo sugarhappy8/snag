@@ -245,6 +245,12 @@ export interface Character {
   social: SocialMedia | null
   /** A talent revealed in childhood (e.g. 'Singing', 'Athletics'), if any. */
   talent: string | null
+  /**
+   * Special talents picked before birth (New Life › Special Talents, up to MAX_START_TALENTS),
+   * ids from talents.ts SPECIAL_TALENTS. Their perks apply from birth. Missing on old saves.
+   * Always test talents with talents.ts hasTalent(g, id), which also counts `talent`.
+   */
+  talents?: string[]
   /** Short notable life events, oldest first, used as long-term memory for the AI. */
   memories: string[]
   /** Person ids named in the will; empty = split among children. */
@@ -459,6 +465,11 @@ export interface ChoiceOption {
   id: string
   label: string
   emoji?: string
+  /**
+   * A purple talent hint shown under the label (e.g. the Business talent marking the choice that
+   * works out best). Only set it when the player has the talent; see talents.ts.
+   */
+  hint?: string
 }
 
 /** Optional AI rewrite of a notice's text (see ai/director narrate). */
@@ -531,6 +542,11 @@ export interface AnnualReportData {
   marketNote: string
   /** Summary of the year just finished (revenue, costs, taxes, profit...). */
   lines: { label: string; value: string; tone?: 'good' | 'bad' | 'neutral' }[]
+  /**
+   * Business talent only: the plan that should earn the most next year, shown as a purple hint
+   * with a one-tap "Use this plan" button.
+   */
+  talentHint?: { price: number; production: number; text: string }
 }
 
 export interface AnnualReportResult {
@@ -669,6 +685,8 @@ interface MenuBase {
   visible?: (g: GameState) => boolean
   /** When it returns a string the row is greyed out and tapping shows the reason. */
   disabledReason?: (g: GameState) => string | null
+  /** A purple talent hint line under the row (talents.ts); null/'' shows nothing. */
+  hint?: (g: GameState) => string | null
 }
 
 export interface MenuAction extends MenuBase {

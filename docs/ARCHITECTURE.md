@@ -63,13 +63,42 @@ src/
     events.ts (+ events/*.ts if split)                                    [events agent]
     data/markets.ts      Per-country economy (taxes, wages, rents, rates, red tape, corruption, exchange,
                          industry demand, local prices); data in data/markets/<region>.ts
+    talents.ts           Special talents picked before birth (New Life › Special Talents, max 3) plus the
+                         one discovered in childhood. ALWAYS test with hasTalent(g, id) (never
+                         c.talent). Helpers: characterTalents, pickedTalents, normalizeTalents,
+                         talentMult, talentHint (purple 🔮 hint text), talentEmoji, talentsSummary.
+                         Purple hints reach the UI through ChoiceOption.hint, MenuBase.hint and
+                         AnnualReportData.talentHint; hints must be honest (computed from the same
+                         math the resolver uses, never consuming g's RNG in menus) and never make
+                         anything risk-free. life.ts owns discovery (flags talentsRevealed,
+                         talentNoticeAge: one talent popup a year) and heirs (40% inherit a pick).
+                         Hidden per-year trends that hints reveal use special/common.ts
+                         stableRoll/stableChoice; activities/creative.ts is Mind & Body › Creative
+                         Arts (craftSkill writing/art/cooking/comedy in g.flags 'skill.<id>')
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
     business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report.
                          Actions that spend/earn company cash move b.cash AND add to yearCosts/
                          yearIncome (for the P&L); simulateYear must not move that cash twice.
-                         Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt)
+                         Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt).
+                         Investors hold a 1x liquidation preference (BizState.pref, exit.ownerProceeds):
+                         on a sale/closure they're paid back first; it converts at an IPO.
+                         Business talent: economy.bestPlan/bookYear (pure, no RNG) drive the Annual
+                         Report talentHint; bizWorth/fxValue/markBest value event outcomes so hints
+                         match the resolvers; price promises (util.priceCapOf) cap price until booked.
+                         ownerTalent(g, b, id): Cooking (+food quality), Leadership (+morale) perks
+    business/deeptech*.ts  8 deep-tech industries (DEEP_TECH_IDS): state in Asset.details.tech
+                         (deeptech-state readTech/TECH_VERSION — bump it when TechState gains fields);
+                         data, core, rd, funding, sim, events, menu, manager, found modules. Investor and
+                         grant money sits in TechState.venture (the R&D account), never in b.cash; the
+                         valuation nets out investors' 1x preference itself (so BizState.pref stays 0 for
+                         deep tech); deepTechValue may be negative (cancels one-off windfalls); grants
+                         count as income only up to the year's R&D spend and are repaid on cancellation.
+                         invest/engine lists deep-tech companies as extra slots after each hub exchange's
+                         classic plan (classicSlots()). Missing deep-tech demand defaults by income
+    invest/instinct.ts   Investing talent: marketInstinct(g), an honest ~80% gut read of next year's
+                         deterministic engine moves (per character + year, never rerolls)
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
@@ -257,6 +286,10 @@ references are resolved by name to existing ids, and malformed JSON falls back o
   `runMenuAction(action, input?)`, `dismissNotice(id)`, `chooseOption(id, choiceId)`,
   `submitInput(id, value)`, `finishMinigame(id, result)`, `skipAi()`, `act(mutator)`,
   `updateSettings(patch)`, `checkAi()`. Screens: `'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'`.
+- Purple talent hints: `components/TalentHint.tsx` renders them; `menuModel` `nodeHint` reads
+  `MenuBase.hint` safely and `cleanHint` strips a leading 🔮 and caps at `HINT_MAX` (220 chars).
+  CSS tokens `--hint-text`, `--hint-bg`, `--hint-border`, `--hint-ring`. The Death screen's
+  "Live again" keeps the picked talents (`liveAgainOptions`).
 - Return point: when an action in one menu sheet sends the player to another screen/sheet, the store
   remembers where they were (`returnPoint`, `setReturnPoint`, `clearReturnPoint`, `returnPointLive`,
   `returnChipVisible`). `components/ReturnChip.tsx` (`resolveReturnPoint`, `ReturnChip`, `MENU_SHEETS`,

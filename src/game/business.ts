@@ -1,9 +1,11 @@
-// Business: start or buy a company in one of 25 industries and run it in its country's market
+// Business: start or buy a company in one of 33 industries (25 classic + 8 deep tech) and run it in
+// its country's market
 // (Occupation › Special Careers › Business, and Assets › Businesses). The engine lives in
 // business/*.ts: industries, local economics, founding and buying, staff, management,
 // events, exits (sale, IPO, bankruptcy) and the yearly simulation + Annual Report. This file
 // is the public surface the rest of the game imports.
 import { shortMoney } from './core'
+import { deepTechSummary } from './business/deeptech'
 import { buyBusinessMenu, startBusinessMenu } from './business/founding'
 import { industryDef } from './business/industries'
 import { businessView } from './business/manage'
@@ -97,7 +99,8 @@ export function businessSummary(g: GameState): string {
     const def = industryDef(b.industry)
     const profit = b.last ? `${b.last.net >= 0 ? '' : '-'}${shortMoney(Math.abs(b.last.net))} ${b.last.net >= 0 ? 'profit' : 'loss'} last year` : 'just opened'
     const role = runsIt(g, a) ? 'CEO' : 'owner'
-    return `${a.name} (${def.label.toLowerCase()}, ${b.city}, ${totalOutlets(b)} ${totalOutlets(b) === 1 ? def.site : def.sitePlural}, ${b.employees + b.staff.length} staff, ${profit}; ${role})`
+    const tech = deepTechSummary(g, a)
+    return `${a.name} (${def.label.toLowerCase()}, ${b.city}, ${totalOutlets(b)} ${totalOutlets(b) === 1 ? def.site : def.sitePlural}, ${b.employees + b.staff.length} staff, ${profit}${tech ? `; ${tech}` : ''}; ${role})`
   })
   return `Owns ${parts.join('; ')}${list.length > 3 ? ` and ${list.length - 3} more` : ''}`
 }

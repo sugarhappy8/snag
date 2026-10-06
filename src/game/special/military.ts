@@ -6,6 +6,7 @@ import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
 import { chance, pick, rand, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent } from '../talents'
 import type { GameState, Job, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry } from '../world'
 import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
@@ -559,15 +560,17 @@ export function yearlyMilitary(g: GameState): void {
     return
   }
 
-  // Performance drifts with discipline.
-  bump(job, (c.hidden.discipline - 50) / 12 + randInt(g, -6, 5))
+  // Performance drifts with discipline; natural leaders keep their unit in line.
+  bump(job, (c.hidden.discipline - 50) / 12 + randInt(g, -6, 5) + (hasTalent(g, 'Leadership') ? 3 : 0) + (hasTalent(g, 'Athletics') ? 1 : 0))
 
   // Promotions.
   const ladder = ranks(b, md.track)
   const next = job.level + 1
   const wait = job.level < 3 ? 1 : job.level < 6 ? 2 : 3
-  const bar = next >= ladder.length - 3 ? 80 : 60
-  if (next < ladder.length && job.yearsInRole >= wait && job.performance >= bar && chance(g, 0.55)) {
+  // Leadership talent: officers notice who the troops follow.
+  const leader = hasTalent(g, 'Leadership')
+  const bar = (next >= ladder.length - 3 ? 80 : 60) - (leader ? 5 : 0)
+  if (next < ladder.length && job.yearsInRole >= wait && job.performance >= bar && chance(g, leader ? 0.7 : 0.55)) {
     promote(g, job, ladder[next], payFor(md.track, next), next)
     if (next === ladder.length - 1) milProfile(g).topRank = true
     log(g, `I was promoted to ${ladder[next]}.`, 'good')

@@ -1,6 +1,7 @@
 // Mind & Body > Book: pick a book from this year's shelf and read it cover to cover.
 import { addStat, count, counter, log } from '../core'
 import { chance, pick, randInt } from '../rng'
+import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { gate, result, stablePick } from './common'
 
@@ -209,7 +210,7 @@ function readBook(g: GameState, book: Book): void {
   g.yearActions[PAGES_KEY] = used + book.pages
   const c = g.character
   // Long, dense books can be abandoned by impatient readers.
-  if (book.pages > 500 && c.stats.smarts < 45 && book.genre !== 'Reference' && chance(g, 0.3)) {
+  if (book.pages > 500 && c.stats.smarts < 45 && book.genre !== 'Reference' && !hasTalent(g, 'Academics') && chance(g, 0.3)) {
     const page = randInt(g, 20, Math.floor(book.pages / 2))
     addStat(g, 'smarts', 1)
     log(g, `I gave up on ${book.title} on page ${page}.`, 'neutral')
@@ -218,7 +219,8 @@ function readBook(g: GameState, book: Book): void {
   }
   const eff = GENRE_EFFECTS[book.genre]
   const h = randInt(g, eff.h[0], eff.h[1])
-  const s = randInt(g, eff.s[0], eff.s[1]) + Math.floor(book.pages / 450) + (c.age < 13 ? 1 : 0)
+  // Academics talent: every book sticks.
+  const s = Math.round((randInt(g, eff.s[0], eff.s[1]) + Math.floor(book.pages / 450) + (c.age < 13 ? 1 : 0)) * talentMult(g, 'Academics', 1.5))
   addStat(g, 'happiness', h)
   addStat(g, 'smarts', s)
   if (book.genre === 'Cookbook') addStat(g, 'health', 1)
@@ -235,6 +237,23 @@ function readBook(g: GameState, book: Book): void {
   result(g, book.title, text.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k as keyof typeof vars])), '\u{1F4DA}', h >= 0 ? 'good' : undefined)
 }
 
+/** Academics talent hint: the book on the shelf that fits this year and teaches the most. */
+function mostEducational(g: GameState, books: Book[]): Book | null {
+  const left = pageBudget(g) - pagesRead(g)
+  let best: Book | null = null
+  let bestScore = -Infinity
+  for (const b of books) {
+    if (b.pages > left) continue
+    const eff = GENRE_EFFECTS[b.genre]
+    const score = (eff.s[0] + eff.s[1]) / 2 + Math.floor(b.pages / 450)
+    if (score > bestScore) {
+      bestScore = score
+      best = b
+    }
+  }
+  return best
+}
+
 export const bookMenu: MenuGroup = {
   type: 'menu',
   id: 'mb.book',
@@ -246,15 +265,19 @@ export const bookMenu: MenuGroup = {
     const left = Math.max(0, pageBudget(g) - pagesRead(g))
     return `Pick a book from the shelf. You have time for about ${left.toLocaleString('en-US')} more pages this year.`
   },
-  children: (g): MenuNode[] =>
-    shelf(g).map(
+  children: (g): MenuNode[] => {
+    const books = shelf(g)
+    const best = hasTalent(g, 'Academics') ? mostEducational(g, books) : null
+    return books.map(
       (book): MenuAction => ({
         type: 'action',
         id: `mb.book.${book.title}`,
         label: book.title,
         emoji: book.genre === 'Reference' ? '\u{1F4D6}' : book.genre.startsWith('Children') ? '\u{1F4D8}' : '\u{1F4D5}',
         subtitle: `${book.author} · ${book.genre} · ${book.pages.toLocaleString('en-US')} pages`,
+        hint: (gg) => (best === book ? talentHint(gg, 'Academics', 'You will learn the most from this one.') : null),
         run: (draft) => readBook(draft, book),
       }),
-    ),
+    )
+  },
 }
