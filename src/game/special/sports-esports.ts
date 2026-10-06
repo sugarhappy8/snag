@@ -6,6 +6,7 @@
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity } from '../world'
 import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view, yearlyList } from './common'
@@ -128,7 +129,9 @@ interface EsJob {
 
 const initEs = (g: GameState): EsProfile => {
   const c = g.character
-  const base = (v: number) => Math.max(5, Math.min(45, Math.round(v)))
+  // Gaming talent: you show up already better than most of the lobby.
+  const gift = hasTalent(g, 'Gaming') ? 8 : 0
+  const base = (v: number) => Math.max(5, Math.min(45 + gift, Math.round(v + gift)))
   return {
     game: null,
     mmr: {},
@@ -163,7 +166,13 @@ function skill(g: GameState, p: EsProfile): number {
   // Reaction time peaks in your early twenties.
   const age = g.character.age
   if (age > 25) s -= (age - 25) * 0.8
+  if (hasTalent(g, 'Gaming')) s += 6
   return Math.max(1, Math.min(99, Math.round(s)))
+}
+
+/** How much each attribute counts toward your overall level (see skill()). */
+function attrWeight(a: string): number {
+  return a === 'Mechanics' ? 0.4 : a === 'Game Sense' ? 0.3 : 0.15
 }
 
 function tierOf(mmr: number): string {
@@ -218,10 +227,12 @@ function grind(g: GameState): void {
   const gm = game(p.game)
   if (!useYearAction(g, 'sports.es.grind', 3)) return tell(g, 'Ranked', "You've played so much this year your mouse has a groove worn into it. Touch grass.", '\u{1F331}')
   const s = skill(g, p)
-  for (const a of ['Mechanics', 'Game Sense'] as const) p.attrs[a] = Math.min(100, (p.attrs[a] ?? 0) + trainGain(g, p.attrs[a] ?? 0, 2, 4, g.character.age < 22 ? 1.2 : 0.9))
+  const gamer = hasTalent(g, 'Gaming')
+  for (const a of ['Mechanics', 'Game Sense'] as const) p.attrs[a] = Math.min(100, (p.attrs[a] ?? 0) + trainGain(g, p.attrs[a] ?? 0, 2, 4, (g.character.age < 22 ? 1.2 : 0.9) * (gamer ? 1.5 : 1)))
   const mmr = p.mmr[gm.id] ?? 500
   const target = s * 35
-  const next = Math.max(0, Math.round(mmr + (target - mmr) * (0.3 + rand(g) * 0.2) + bell(g, -120, 120)))
+  // Gaming talent: you climb toward your true rank much faster.
+  const next = Math.max(0, Math.round(mmr + (target - mmr) * (0.3 + rand(g) * 0.2 + (gamer ? 0.15 : 0)) + bell(g, -120, 120)))
   p.mmr[gm.id] = next
   addStat(g, 'health', -1)
   const up = next > mmr
@@ -239,7 +250,7 @@ function cup(g: GameState): void {
   const gm = game(p.game)
   if (!useYearAction(g, 'sports.es.cup', 2)) return tell(g, 'Online Cup', 'You already entered enough online cups this year.', '\u{1F3C6}')
   const mmr = p.mmr[gm.id] ?? 0
-  const perf = mmr / 35 + bell(g, -10, 10)
+  const perf = mmr / 35 + bell(g, -10, 10) + (hasTalent(g, 'Gaming') ? 4 : 0)
   const place = Math.max(1, Math.min(64, Math.round(64 / (1 + Math.exp((perf - 62) / 6)))))
   const prize = place === 1 ? tidy(1_000 + mmr) : place <= 4 ? tidy(200 + mmr / 5) : 0
   if (prize) {
@@ -502,7 +513,7 @@ const scrimScript = defineScript('sports.es.scrim', (g, choice) => {
   if (!ATTRS.includes(choice) || !esportsJob(g)) return
   if (!useYearAction(g, `sports.es.scrim.${choice}`, 1)) return tell(g, 'Scrims', `You already focused on ${choice.toLowerCase()} this year.`, '\u{1F971}')
   const p = es(g)
-  p.attrs[choice] = Math.min(100, (p.attrs[choice] ?? 0) + trainGain(g, p.attrs[choice] ?? 0, 3, 6, g.character.age < 23 ? 1.2 : 0.9))
+  p.attrs[choice] = Math.min(100, (p.attrs[choice] ?? 0) + trainGain(g, p.attrs[choice] ?? 0, 3, 6, (g.character.age < 23 ? 1.2 : 0.9) * talentMult(g, 'Gaming', 1.5)))
   addStat(g, 'health', -1)
   log(g, `I practiced ${choice.toLowerCase()} in scrims.`)
   say(g, 'Scrims', `${pick(g, ['Twelve hours of scrims and one cold energy drink.', 'Your coach made you rewatch your worst games in slow motion.', 'You ran the same drill 400 times. Your wrist hates you.'])} ${choice}: ${p.attrs[choice]}%.`, '\u{1F5A5}\u{FE0F}', 'good')
@@ -535,7 +546,22 @@ export function esportsJobNodes(g: GameState): MenuNode[] {
       emoji: '\u{1F5A5}\u{FE0F}',
       subtitle: 'Each skill once a year',
       disabledReason: (gg) => sportsGate(gg, 0),
-      run: (gg) => scriptChoice(gg, scrimScript, 'Scrims', 'What do you work on?', [...ATTRS.map((a) => ({ id: a, label: `${a} (${viewEs(gg)?.attrs[a] ?? 0}%)`, emoji: '\u{1F3AF}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], { emoji: '\u{1F5A5}\u{FE0F}' }),
+      run: (gg) => {
+        const attrs = viewEs(gg)?.attrs ?? {}
+        // Gaming talent: you know what's really holding your level back.
+        const weak = hasTalent(gg, 'Gaming') ? ATTRS.filter((a) => !gg.yearActions[`sports.es.scrim.${a}`]).reduce<string | null>((best, a) => (best === null || attrWeight(a) * (1 - (attrs[a] ?? 0) / 115) > attrWeight(best) * (1 - (attrs[best] ?? 0) / 115) ? a : best), null) : null
+        scriptChoice(
+          gg,
+          scrimScript,
+          'Scrims',
+          'What do you work on?',
+          [
+            ...ATTRS.map((a) => ({ id: a, label: `${a} (${attrs[a] ?? 0}%)`, emoji: '\u{1F3AF}', ...(a === weak ? { hint: talentHint(gg, 'Gaming', 'This is what is really holding your level back.') } : {}) })),
+            { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' },
+          ],
+          { emoji: '\u{1F5A5}\u{FE0F}' },
+        )
+      },
     },
     {
       type: 'action',

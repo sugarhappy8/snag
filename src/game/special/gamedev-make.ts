@@ -16,6 +16,7 @@ import { bestLanguageFor, codingSkill } from '../computer/skills'
 import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { pick, rand, randFloat, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addFame, blocked, money, say, tell } from './common'
 import {
@@ -146,8 +147,10 @@ export function qualityCap(g: GameState, pr: GdProject, p: GdProfile = gdView(g)
   const engineBonus = sc.index >= 3 ? e.bigBonus : e.bonus
   const homebrew = pr.engine === 'homebrew' ? (code - 60) / 4 : 0
   const ea = pr.earlyAccess ? 5 : 0
+  // Gaming talent: you can feel when a level is fun, so you polish the right things.
+  const gamer = hasTalent(g, 'Gaming') ? 6 : 0
   // A one-person team (plus a few freelancers) can only polish so far: studios reach higher.
-  return clampN(genreSkill(pr.genre, code, art, design) + 10 - sc.difficulty + engineBonus + homebrew + ea + pr.contractors * 2, 5, SOLO_POLISH)
+  return clampN(genreSkill(pr.genre, code, art, design) + 10 - sc.difficulty + engineBonus + homebrew + ea + gamer + pr.contractors * 2, 5, SOLO_POLISH)
 }
 
 /** Dev kits, certification and age ratings for a platform (mostly global prices). */
@@ -250,6 +253,16 @@ const SCOPE_SCRIPT = defineScript('gamedev.make.scope', (g, choice, data) => {
   const hot = new Set(hotGenres(g).map((x) => x.id))
   // Both hot genres are always on the list, plus four others.
   const options = shuffle(g, [...hotGenres(g), ...shuffle(g, GENRES.filter((x) => !hot.has(x.id))).slice(0, 4)])
+  // Gaming talent: you can feel where players are heading. Games ship later (a small game next
+  // year, an indie in two), so the trend in the year you ship matters more than today's. (Only
+  // shown if one of these will really be riding high then.)
+  const ahead = Math.max(1, scopeDef(d.scope).years)
+  const shipYear = g.year + ahead
+  const next = options.reduce((a, b) => (genreTrend(g, b.id, shipYear) > genreTrend(g, a.id, shipYear) ? b : a))
+  const nextHint =
+    genreTrend(g, next.id, shipYear) >= 1.1
+      ? talentHint(g, 'Gaming', ahead === 1 ? 'Players will be all over this genre next year, right about when you ship.' : `Players will be all over this genre in ${ahead} years, about when a game this size could be ready.`)
+      : ''
   scriptChoice(
     g,
     GENRE_SCRIPT,
@@ -258,7 +271,12 @@ const SCOPE_SCRIPT = defineScript('gamedev.make.scope', (g, choice, data) => {
       .map((x) => x.label)
       .join(' and ')} games are hot right now.`,
     [
-      ...options.map((x) => ({ id: x.id, label: `${x.label}${hot.has(x.id) ? ' (hot!)' : genreTrend(g, x.id) < 0.8 ? ' (out of fashion)' : ''}`, emoji: x.emoji })),
+      ...options.map((x) => ({
+        id: x.id,
+        label: `${x.label}${hot.has(x.id) ? ' (hot!)' : genreTrend(g, x.id) < 0.8 ? ' (out of fashion)' : ''}`,
+        emoji: x.emoji,
+        ...(nextHint && x.id === next.id ? { hint: nextHint } : {}),
+      })),
       { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
     ],
     { emoji: '\u{1F3AE}', data: draftJson(d) },
@@ -952,7 +970,7 @@ export function gameJam(g: GameState): void {
   const genre = pick(g, GENRES)
   const engine: EngineId = codingSkill(g) < 25 && c.age < 16 ? 'blocks' : 'cobalt'
   const skill = genreSkill(genre.id, codingSkill(g), artSkill(g, p), designSkill(g, p))
-  const q = Math.round(clampN(skill + 14 + engineDef(engine).bonus + randInt(g, -15, 15), 3, 99))
+  const q = Math.round(clampN(skill + 14 + engineDef(engine).bonus + (hasTalent(g, 'Gaming') ? 6 : 0) + randInt(g, -15, 15), 3, 99))
   const entrants = randInt(g, 300, 4_000)
   const pct = clampN(1 - qualityFactor(q) / 2 - randFloat(g, -0.08, 0.08), 0.001, 0.99)
   const rank = Math.max(1, Math.round(entrants * pct))

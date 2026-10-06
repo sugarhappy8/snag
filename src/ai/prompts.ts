@@ -15,6 +15,7 @@ import { localeOf, type LocaleProfile } from '../game/data/locales'
 import { marketOf } from '../game/data/markets'
 import { investmentsSummary } from '../game/investments'
 import { luxurySummary } from '../game/shops/luxury'
+import { talentsSummary } from '../game/talents'
 import { getCountry } from '../game/world'
 import type { ChoiceModal, GameState, InterviewJob, LifeStage, NoticeModal, Person, RelationKind, SchoolLevel, ScreeningApp } from '../game/types'
 import type { ContentRating, Settings } from '../settings'
@@ -320,7 +321,8 @@ export function describeCharacter(g: GameState): string {
   if (conditions.length || hidden) lines.push(`HEALTH ISSUES: ${[...conditions, hidden ? 'feels unwell lately' : ''].filter(Boolean).join(', ')}`)
   if (c.licenses.length) lines.push(`LICENSES: ${c.licenses.join(', ')}`)
   else if (c.age >= 15) lines.push('LICENSES: none (no driver\'s license)')
-  if (c.talent) lines.push(`TALENT: ${c.talent}`)
+  const talents = talentsSummary(g)
+  if (talents) lines.push(talents)
   if (c.age >= 12) {
     const cv = cvSummary(g, 5)
     if (cv) lines.push(`CV HIGHLIGHTS: ${cv}`)
@@ -713,7 +715,8 @@ export function obituaryPrompt(g: GameState): string {
     `STATS: happiness ${c.stats.happiness}, smarts ${c.stats.smarts}, looks ${c.stats.looks}, karma ${c.hidden.karma}, fame ${c.hidden.fame}`,
   ]
   if (c.criminalRecord.length) lines.push(`CRIMES: ${c.criminalRecord.slice(-4).map((r) => r.crime).join(', ')}${c.prison ? ' (died in prison)' : ''}`)
-  if (c.talent) lines.push(`TALENT: ${c.talent}`)
+  const talents = talentsSummary(g)
+  if (talents) lines.push(talents)
   const pets = g.people.filter((p) => p.relation === 'pet' && p.alive)
   if (pets.length) lines.push(`PETS: ${pets.map((p) => `${p.firstName} the ${p.species ?? 'pet'}`).join(', ')}`)
   const mems = c.memories.slice(-12).map((m) => `- ${truncate(m, 100)}`)

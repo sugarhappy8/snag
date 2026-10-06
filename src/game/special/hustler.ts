@@ -7,6 +7,7 @@ import { arrestPlayer } from '../crime'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import { localeOf } from '../data/locales'
+import { hasTalent } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addFame, blocked, clamp100, hire, instrumentSkill, knownInstruments, leave, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
 
@@ -167,6 +168,18 @@ function raiseSkill(g: GameState, d: Pick<HustleData, 'act' | 'instrument'>, by:
   const key = d.act === 'busk' ? (d.instrument === 'Bucket Drums' ? 'bucket' : '') : d.act
   if (!key) return // instrument skill is trained through lessons
   p.skills[key] = clamp100((p.skills[key] ?? (key === 'bucket' ? 10 : 0)) + by)
+}
+
+/**
+ * Special talents on the street: a musician busks better, a comedian or actor works a crowd,
+ * an athlete breakdances and a natural con artist runs a smoother game (0-12 skill points).
+ */
+function streetTalent(g: GameState, act: Act): number {
+  if (act.kind === 'busk') return hasTalent(g, 'Music') ? 12 : 0
+  if (act.kind === 'scam') return hasTalent(g, 'Crime') ? 12 : 0
+  if (act.id === 'breakdance') return hasTalent(g, 'Athletics') ? 12 : 0
+  if (act.kind === 'perform') return hasTalent(g, 'Comedy') || hasTalent(g, 'Acting') ? 10 : 0
+  return hasTalent(g, 'Acting') ? 6 : 0
 }
 
 function actLabel(d: Pick<HustleData, 'act' | 'instrument' | 'prop'>): string {
@@ -497,7 +510,7 @@ function workStreet(g: GameState): void {
   if (!useYearAction(g, 'hustle.work', 6)) return tell(g, 'Work the Street', "Your feet are killing you. You've hustled as much as you can this year.", '\u{1F971}')
   const d = hdata(job)
   const act = actOf(d.act)
-  const skill = actSkill(g, d)
+  const skill = clamp100(actSkill(g, d) + streetTalent(g, act))
   const p = hustleProfile(g)
   d.sessionsYear += 1
   p.sessions += 1
@@ -505,7 +518,7 @@ function workStreet(g: GameState): void {
 
   // Scams: busted or a furious mark.
   if (act.kind === 'scam') {
-    const busted = 0.02 + d.police * 0.025 - skill / 2500
+    const busted = (0.02 + d.police * 0.025 - skill / 2500) * (hasTalent(g, 'Crime') ? 0.7 : 1)
     if (chance(g, Math.max(0.01, busted))) {
       p.arrests += 1
       log(g, `I was arrested for running ${act.label.toLowerCase()} on ${d.street}.`, 'bad')

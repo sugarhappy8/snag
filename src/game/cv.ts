@@ -24,6 +24,7 @@ import { ALL_JOBS, INDUSTRY_MARKET, INDUSTRY_TAGS, MAJOR_TAGS, PROGRAM_TAGS, typ
 import { fillLocal, localeOf, localTerm } from './data/locales'
 import { industryDemand, marketOf } from './data/markets'
 import { chance, nextRandom, pick, randInt, uid } from './rng'
+import { characterTalents, hasTalent, isTalentId, talentHint, type TalentId } from './talents'
 import { getCountry } from './world'
 import type {
   CvEntry,
@@ -561,6 +562,10 @@ const TALENT_TAGS: Record<string, string[]> = {
   Modeling: ['beauty', 'media'],
   Cooking: ['hospitality'],
   Programming: ['tech'],
+  Business: ['business', 'finance'],
+  Investing: ['finance', 'business'],
+  Leadership: ['government', 'business'],
+  Gaming: ['tech', 'arts'],
 }
 
 /** What a special career says about you on a CV (a former head of government reads as government, not showbiz). */
@@ -732,8 +737,22 @@ function derivedEntries(g: GameState): CvEntry[] {
     const [title, strength, tags] = LICENSE_ENTRIES[lic] ?? [`${titleCase(lic)} license`, 1, []]
     out.push({ id: `d:license:${lic}`, kind: 'certification', title, org: '', startAge: c.age, detail: '', strength, embellished: false, tags })
   }
-  if (c.talent && c.talent !== 'Crime') {
-    out.push({ id: 'd:talent', kind: 'skill', title: `Natural talent: ${c.talent}`, org: '', startAge: c.age, detail: 'Discovered as a kid', strength: 3, embellished: false, tags: TALENT_TAGS[c.talent] ?? [] })
+  // Talents: picked before birth (or inherited) and the one discovered as a kid. Crime stays off the record.
+  const picked = Array.isArray(c.talents) ? c.talents : []
+  for (const t of characterTalents(g)) {
+    if (t === 'Crime') continue
+    const born = picked.includes(t)
+    out.push({
+      id: born ? `d:talent:${t}` : 'd:talent',
+      kind: 'skill',
+      title: `Natural talent: ${t}`,
+      org: '',
+      startAge: c.age,
+      detail: born ? 'A gift since birth' : 'Discovered as a kid',
+      strength: 3,
+      embellished: false,
+      tags: TALENT_TAGS[t] ?? [],
+    })
   }
   // The home computer: coding skill, shipped projects, ventures, freelance work, contests.
   out.push(...devCvEntries(g))
@@ -1308,7 +1327,13 @@ function paidLine(who: string | null, amount: number): string {
 }
 
 function talentBonus(g: GameState, talents: string[]): number {
-  return g.character.talent && talents.includes(g.character.talent) ? 18 : 0
+  return talents.some((t) => isTalentId(t) && hasTalent(g, t)) ? 18 : 0
+}
+
+/** A purple menu hint when one of your talents gives a project or competition an edge. */
+function talentEdge(g: GameState, talents: string[]): string | null {
+  const t = talents.find((id): id is TalentId => isTalentId(id) && hasTalent(g, id))
+  return t ? talentHint(g, t, `Your gift for ${t.toLowerCase()} gives you an edge here.`) || null : null
 }
 
 /** Time is a cost too: school and work suffer a little. */
@@ -1470,7 +1495,7 @@ const PROJECTS: ProjectDef[] = [
     cost: 0,
     online: true,
     tags: ['media', 'writing'],
-    talents: ['Comedy', 'Writing', 'Modeling', 'Music'],
+    talents: ['Comedy', 'Writing', 'Modeling', 'Music', 'Gaming'],
     base: (g) => 25 + g.character.stats.looks * 0.25 + g.character.stats.smarts * 0.2 + g.character.hidden.craziness * 0.2,
     make: (g, q) => ({
       title: `Started a ${pick(g, ['cooking', 'study-tips', 'gaming', 'book review', 'local history', 'sneaker'])} ${pick(g, ['channel', 'blog', 'podcast'])}`,
@@ -1488,7 +1513,7 @@ const PROJECTS: ProjectDef[] = [
     minAge: 13,
     cost: 100,
     tags: ['service'],
-    talents: [],
+    talents: ['Leadership'],
     base: (g) => 20 + g.character.hidden.discipline * 0.35 + g.character.stats.smarts * 0.2 + g.character.hidden.karma * 0.2,
     make: (g, q) => ({
       title: fillLocal(g, pick(g, ['Organized a cleanup at {hangout}', 'Started a book swap in {city}', 'Ran a {holiday} food drive', 'Painted a mural near {hangout}', 'Set up free study sessions in {place}'])),
@@ -1524,7 +1549,7 @@ const PROJECTS: ProjectDef[] = [
     minAge: 15,
     cost: 0,
     tags: ['business'],
-    talents: [],
+    talents: ['Business', 'Investing'],
     base: (g) => g.character.stats.smarts * 0.55 + g.character.hidden.discipline * 0.25 + g.character.hidden.willpower * 0.2,
     make: (g, q) => ({
       title: `Business plan: ${pick(g, ['a dog-walking app', 'subscription socks', 'a late-night study café', 'electric scooter repair', 'meal-prep for students'])}`,
@@ -1750,13 +1775,13 @@ const COMPETITIONS: CompetitionDef[] = [
   { id: 'math', label: 'Math Olympiad', emoji: '\u{1F9EE}', minAge: 12, maxAge: 19, fee: 0, tags: ['science', 'academic'], talents: ['Academics'], name: (g) => `the ${getCountry(g.character.countryId).name} Mathematical Olympiad`, skill: (g) => g.character.stats.smarts },
   { id: 'science', label: 'Science Olympiad', emoji: '\u{1F52D}', minAge: 12, maxAge: 19, fee: 0, tags: ['science'], talents: ['Academics'], name: (g) => `the ${getCountry(g.character.countryId).name} Science Olympiad`, skill: (g) => g.character.stats.smarts * 0.9 + g.character.hidden.discipline * 0.1 },
   { id: 'spelling', label: 'Spelling Bee', emoji: '\u{1F41D}', minAge: 12, maxAge: 15, fee: 0, tags: ['academic', 'language'], talents: ['Academics', 'Writing'], name: (g) => `the ${g.character.city} Spelling Bee`, skill: (g) => g.character.stats.smarts * 0.85 + g.character.hidden.discipline * 0.15 },
-  { id: 'debate', label: 'Debate Tournament', emoji: '\u{1F3A4}', minAge: 12, fee: 20, tags: ['law', 'government', 'writing'], talents: ['Comedy', 'Acting'], name: (g) => (g.character.age <= 19 ? `the ${getCountry(g.character.countryId).name} Schools Debating Championship` : `the ${g.character.city} Open Debate`), skill: (g) => g.character.stats.smarts * 0.6 + g.character.stats.looks * 0.15 + g.character.hidden.willpower * 0.25 },
+  { id: 'debate', label: 'Debate Tournament', emoji: '\u{1F3A4}', minAge: 12, fee: 20, tags: ['law', 'government', 'writing'], talents: ['Comedy', 'Acting', 'Leadership'], name: (g) => (g.character.age <= 19 ? `the ${getCountry(g.character.countryId).name} Schools Debating Championship` : `the ${g.character.city} Open Debate`), skill: (g) => g.character.stats.smarts * 0.6 + g.character.stats.looks * 0.15 + g.character.hidden.willpower * 0.25 },
   { id: 'essay', label: 'Essay Contest', emoji: '\u{270D}\u{FE0F}', minAge: 12, fee: 0, tags: ['writing'], talents: ['Writing'], name: (g) => `the ${getCountry(g.character.countryId).name} Young Writers Prize`, skill: (g) => g.character.stats.smarts * 0.75 + g.character.hidden.discipline * 0.25 },
   { id: 'art', label: 'Art Contest', emoji: '\u{1F3A8}', minAge: 12, fee: 20, tags: ['arts'], talents: ['Art'], name: (g) => `the ${g.character.city} Young Artists Contest`, skill: (g) => 35 + g.character.hidden.discipline * 0.3 + g.character.stats.smarts * 0.1 },
   { id: 'music', label: 'Music Competition', emoji: '\u{1F3BB}', minAge: 12, fee: 30, tags: ['music', 'arts'], talents: ['Music'], name: (g) => `the ${getCountry(g.character.countryId).name} Young Musicians Competition`, skill: (g) => 35 + g.character.hidden.discipline * 0.35 },
   { id: 'robotics', label: 'Robotics Competition', emoji: '\u{1F916}', minAge: 12, maxAge: 24, fee: 50, tags: ['tech', 'science'], talents: ['Programming'], name: (g) => `the ${getCountry(g.character.countryId).name} Robotics Challenge`, skill: (g) => g.character.stats.smarts * 0.7 + g.character.hidden.discipline * 0.3 },
   { id: 'hackathon', label: 'Hackathon', emoji: '\u{1F4BB}', minAge: 14, fee: 0, tags: ['tech'], talents: ['Programming'], name: (g) => `the ${g.character.city} Hackathon`, skill: (g) => g.character.stats.smarts * 0.7 + g.character.hidden.discipline * 0.3 },
-  { id: 'pitch', label: 'Startup Pitch Competition', emoji: '\u{1F4A1}', minAge: 16, fee: 50, tags: ['business'], talents: ['Comedy', 'Acting'], name: (g) => `the ${g.character.city} Startup Pitch Night`, skill: (g) => g.character.stats.smarts * 0.5 + g.character.stats.looks * 0.25 + g.character.hidden.willpower * 0.25 },
+  { id: 'pitch', label: 'Startup Pitch Competition', emoji: '\u{1F4A1}', minAge: 16, fee: 50, tags: ['business'], talents: ['Business', 'Comedy', 'Acting'], name: (g) => `the ${g.character.city} Startup Pitch Night`, skill: (g) => g.character.stats.smarts * 0.5 + g.character.stats.looks * 0.25 + g.character.hidden.willpower * 0.25 },
 ]
 
 const PLACE_LINES: Record<string, string[]> = {
@@ -2126,6 +2151,7 @@ const projectsMenu: MenuGroup = {
         label: p.label,
         emoji: p.emoji,
         subtitle: (x) => `${costLabel(x, p.cost, p.online)} • Age ${p.minAge}+`,
+        hint: (x) => talentEdge(x, p.talents),
         disabledReason: chain(ageGate(p.minAge, p.maxAge), limitGate('cv.project', 2, 'projects')),
         run: (x) => doProject(x, p),
       }),
@@ -2195,6 +2221,7 @@ const competitionsMenu: MenuGroup = {
         label: cdef.label,
         emoji: cdef.emoji,
         subtitle: (x) => `Entry ${costLabel(x, cdef.fee)} • Age ${cdef.minAge}${cdef.maxAge ? `-${cdef.maxAge}` : '+'}`,
+        hint: (x) => talentEdge(x, cdef.talents),
         disabledReason: chain(ageGate(cdef.minAge, cdef.maxAge), limitGate('cv.competition', 2, 'competitions')),
         run: (x) => enterCompetition(x, cdef),
       }),

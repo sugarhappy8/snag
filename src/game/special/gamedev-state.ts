@@ -8,6 +8,7 @@
 // this file.
 import { devState, readVenture } from '../computer/dev-state'
 import type { Asset, GameState, Job, Json } from '../types'
+import { hasTalent } from '../talents'
 import { peek, prof } from './common'
 import { ENGINES, GENRES, isEngine, isGenre, isPlatform, isScope, type EngineId, type GenreId, type PlatformId, type ScopeId, type Tier, type Track } from './gamedev-data'
 
@@ -462,15 +463,17 @@ export function hasArtDegree(g: GameState): boolean {
 
 /** Art skill: practice, plus a head start from an art talent or degree. */
 export function artSkill(g: GameState, p: GdProfile = gdView(g)): number {
-  const c = g.character
-  const bonus = (c.talent === 'Art' ? 15 : 0) + (majors(g).includes('Graphic Design') ? 15 : hasArtDegree(g) ? 8 : 0)
+  const bonus = (hasTalent(g, 'Art') ? 15 : 0) + (majors(g).includes('Graphic Design') ? 15 : hasArtDegree(g) ? 8 : 0)
   return Math.round(clampN(p.art + bonus, 0, 100))
 }
 
-/** Game design skill: practice and shipped games, plus a little from writing talent and smarts. */
+/**
+ * Game design skill: practice and shipped games, plus smarts, a little from a writing talent
+ * and a lot from a gaming talent (you know exactly what makes a game fun).
+ */
 export function designSkill(g: GameState, p: GdProfile = gdView(g)): number {
   const c = g.character
-  const bonus = (c.talent === 'Writing' ? 6 : 0) + Math.max(0, (c.stats.smarts - 60) / 8)
+  const bonus = (hasTalent(g, 'Writing') ? 6 : 0) + (hasTalent(g, 'Gaming') ? 10 : 0) + Math.max(0, (c.stats.smarts - 60) / 8)
   return Math.round(clampN(p.design + bonus, 0, 100))
 }
 

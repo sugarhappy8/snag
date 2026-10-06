@@ -3,7 +3,8 @@
 // "special.<key>" so it survives quitting a career; the current gig lives in Job.data.
 import { addHidden, article, count, endJob, formatMoney, notice, shortMoney } from '../core'
 import { createPerson } from '../people'
-import { pick, rand } from '../rng'
+import { nextRandom, pick, rand } from '../rng'
+import { characterTalents } from '../talents'
 import type { CareerRecord, DegreeKind, GameState, Gender, Job, JobCategory, Json, Person, Tone } from '../types'
 
 /** Fame (0-100) at which the game treats you as a celebrity. */
@@ -58,6 +59,30 @@ export function yearlyList<T>(g: GameState, key: string, gen: () => T[]): T[] {
 
 export function dropList(g: GameState, key: string): void {
   delete g.flags[`special.list.${key}`]
+}
+
+/**
+ * A deterministic 0-1 roll for this year of this life and `key`. Never touches g.rng, so it
+ * is safe in menu code; used for hidden "what's hot this year" facts that talent hints reveal.
+ */
+export function stableRoll(g: GameState, key: string): number {
+  const s = `${g.lifeId}|${g.year}|${key}`
+  let h = 2166136261
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return nextRandom(h | 0)[0]
+}
+
+/** Spread into a ChoiceOption: `{ hint }` when there is a purple hint, nothing otherwise. */
+export function withHint(text: string | null | undefined): { hint?: string } {
+  return text ? { hint: text } : {}
+}
+
+/** A stable pick for this year of this life (see stableRoll). */
+export function stableChoice<T>(g: GameState, key: string, items: readonly T[]): T {
+  return items[Math.min(items.length - 1, Math.floor(stableRoll(g, key) * items.length))]
 }
 
 // ---------------------------------------------------------------------------
@@ -120,9 +145,12 @@ export function hasAddiction(g: GameState): boolean {
   return g.character.conditions.some((x) => x.kind === 'addiction')
 }
 
+/**
+ * True when any of the character's talents (picked before birth or discovered as a kid)
+ * matches. Prefer talents.ts hasTalent(g, id) in new code.
+ */
 export function talentMatches(g: GameState, re: RegExp): boolean {
-  const t = g.character.talent
-  return !!t && re.test(t)
+  return characterTalents(g).some((t) => re.test(t))
 }
 
 // ---------------------------------------------------------------------------

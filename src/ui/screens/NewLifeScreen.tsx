@@ -1,10 +1,11 @@
 // New life: a big "Random Life" button and a "Custom Life" form (name, gender, country, city,
-// sexuality, and optionally the starting stats). Names and rolled stats use Math.random (UI
-// only; the engine itself is seeded).
+// sexuality, and optionally the starting stats and up to three special talents). Names and
+// rolled stats use Math.random (UI only; the engine itself is seeded).
 import { useId, useMemo, useState } from 'react'
 import { avatarEmoji } from '../../game/core'
 import { START_STAT_KEYS, type NewLifeOptions, type StartStatKey } from '../../game/life'
 import { loadGame } from '../../game/save'
+import { isTalentId, MAX_START_TALENTS, normalizeTalents, SPECIAL_TALENTS, specialTalent, type TalentId } from '../../game/talents'
 import type { Gender, Sexuality } from '../../game/types'
 import { COUNTRIES, NAME_POOLS, getCountry } from '../../game/world'
 import { statColor } from '../components/StatBar'
@@ -119,9 +120,13 @@ export function statsSummary(picks: StatPicks): string {
   return `${set} of ${START_STAT_KEYS.length} set`
 }
 
-/** The Start Life button's small print. */
-export function startSubtitle(picks: StatPicks): string {
+/** The Start Life button's small print (`talents` = how many special talents are picked). */
+export function startSubtitle(picks: StatPicks, talents = 0): string {
   const set = START_STAT_KEYS.filter((k) => picks[k] !== null).length
+  if (talents > 0) {
+    const gifts = talents === 1 ? 'a special talent' : `${talents} special talents`
+    return set === 0 ? `Born with ${gifts}; fate rolls the rest` : `Born with ${gifts} and your stats; fate rolls the rest`
+  }
   if (set === 0) return 'Looks, smarts and family are up to fate'
   if (set === START_STAT_KEYS.length) return 'Stats locked in; family is up to fate'
   return 'Your picks are in; fate rolls the rest'
@@ -242,6 +247,139 @@ export function StatCustomizer({ picks, onChange, open, onToggle }: StatCustomiz
   )
 }
 
+// ---------------------------------------------------------------------------
+// Special talents (picked before birth)
+
+/** Tap a talent: unpick it, or pick it when there's room (never more than `max`). */
+export function toggleTalentPick(picks: readonly string[], id: string, max: number = MAX_START_TALENTS): TalentId[] {
+  const chosen = normalizeTalents(picks, max)
+  if (!isTalentId(id)) return chosen
+  if (chosen.includes(id)) return chosen.filter((t) => t !== id)
+  return chosen.length >= max ? chosen : [...chosen, id]
+}
+
+/** What createNewLife gets: the picks, or nothing at all. */
+export function talentsOption(picks: readonly string[]): string[] | undefined {
+  const chosen = normalizeTalents(picks)
+  return chosen.length > 0 ? chosen : undefined
+}
+
+/** "2/3 picked" (the counter in the open panel). */
+export function talentCount(picks: readonly string[]): string {
+  return `${normalizeTalents(picks).length}/${MAX_START_TALENTS} picked`
+}
+
+/** The collapsed header: "None picked" or the picks' emoji plus the counter. */
+export function talentSummary(picks: readonly string[]): string {
+  const chosen = normalizeTalents(picks)
+  if (chosen.length === 0) return 'None picked'
+  return `${chosen.map((id) => specialTalent(id)?.emoji ?? '').join('')} ${chosen.length}/${MAX_START_TALENTS}`
+}
+
+export interface TalentPickerProps {
+  picks: readonly string[]
+  onChange: (picks: TalentId[]) => void
+  open: boolean
+  onToggle: () => void
+}
+
+/** Collapsible "Special talents" section of the Custom Life form: pick up to MAX_START_TALENTS. */
+export function TalentPicker({ picks, onChange, open, onToggle }: TalentPickerProps) {
+  const panelId = useId()
+  const chosen = normalizeTalents(picks)
+  const full = chosen.length >= MAX_START_TALENTS
+
+  return (
+    <div className={open ? 'nl-stats nl-talents is-open' : 'nl-stats nl-talents'}>
+      <button type="button" className="nl-stats-toggle" aria-expanded={open} aria-controls={panelId} onClick={onToggle}>
+        <span className="nl-stats-icon" aria-hidden="true">
+          🌟
+        </span>
+        <span className="nl-stats-title">Special talents</span>
+        <span className={chosen.length > 0 ? 'nl-stats-summary nl-talents-summary is-set' : 'nl-stats-summary nl-talents-summary'}>{talentSummary(chosen)}</span>
+        <span className="nl-stats-chevron" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div className="nl-stats-panel nl-talents-panel" id={panelId}>
+          <p className="al-muted al-small nl-stats-hint">
+            Born gifted. Pick up to {MAX_START_TALENTS}: each perk works from day one, and you'll still get that "wait, I'm good at
+            this!" moment as a kid.
+          </p>
+          <div className="nl-talents-bar">
+            <output className={full ? 'nl-talents-count is-full' : 'nl-talents-count'} aria-live="polite">
+              {talentCount(chosen)}
+              {full ? <span className="nl-talents-max"> · unpick one to swap</span> : null}
+            </output>
+            <button type="button" className="al-btn small ghost" disabled={chosen.length === 0} onClick={() => onChange([])}>
+              ✕ Clear
+            </button>
+          </div>
+          <div className="nl-talent-list" role="group" aria-label={`Special talents, up to ${MAX_START_TALENTS}`}>
+            {SPECIAL_TALENTS.map((t) => {
+              const on = chosen.includes(t.id)
+              const locked = full && !on
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={on ? 'nl-talent is-on' : locked ? 'nl-talent is-locked' : 'nl-talent'}
+                  aria-pressed={on}
+                  aria-disabled={locked || undefined}
+                  title={locked ? `You can pick up to ${MAX_START_TALENTS}. Unpick one first.` : undefined}
+                  onClick={() => {
+                    if (!locked) onChange(toggleTalentPick(chosen, t.id))
+                  }}
+                >
+                  <span className="nl-talent-emoji" aria-hidden="true">
+                    {t.emoji}
+                  </span>
+                  <span className="nl-talent-text">
+                    <span className="nl-talent-label">{t.label}</span>
+                    <span className="nl-talent-perk">{t.perk}</span>
+                  </span>
+                  <span className="nl-talent-check" aria-hidden="true">
+                    {on ? '✓' : ''}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** Everything the Custom Life form holds. */
+export interface CustomLifeForm {
+  firstName: string
+  lastName: string
+  gender: Gender
+  countryId: string
+  /** '' = random. */
+  city: string
+  sexuality: Sexuality | ''
+  picks: StatPicks
+  talents: readonly string[]
+  year: number
+}
+
+/** What Start Life passes to createNewLife: blank names are rolled, unset choices left to fate. */
+export function customLifeOptions(f: CustomLifeForm): NewLifeOptions {
+  const first = cleanName(f.firstName) || rollFirstName(f.countryId, f.gender)
+  const last = cleanName(f.lastName, false) || rollLastName(f.countryId)
+  const opts: NewLifeOptions = { firstName: first, lastName: last, gender: f.gender, countryId: f.countryId, year: f.year }
+  if (f.city) opts.city = f.city
+  if (f.sexuality) opts.sexuality = f.sexuality
+  const stats = statsOption(f.picks)
+  if (stats) opts.stats = stats
+  const talents = talentsOption(f.talents)
+  if (talents) opts.talents = talents
+  return opts
+}
+
 export function NewLifeScreen() {
   const game = useApp((s) => s.game)
   const [countryId, setCountryId] = useState(() => guessCountryId(typeof navigator !== 'undefined' ? navigator.language : undefined))
@@ -256,7 +394,9 @@ export function NewLifeScreen() {
   const [pending, setPending] = useState<NewLifeOptions | null>(null)
   const [picks, setPicks] = useState<StatPicks>(RANDOM_PICKS)
   const [statsOpen, setStatsOpen] = useState(false)
-  const chosenStats = statsOption(picks)
+  const [talents, setTalents] = useState<TalentId[]>([])
+  const [talentsOpen, setTalentsOpen] = useState(false)
+  const chosenTalents = talentsOption(talents)
 
   const country = getCountry(countryId)
   // A life still in progress (in memory or only in the save) gets a warning before it's replaced.
@@ -291,15 +431,8 @@ export function NewLifeScreen() {
 
   const randomLife = () => begin({ year: new Date().getFullYear() })
 
-  const customLife = () => {
-    const first = cleanName(firstName) || rollFirstName(countryId, gender)
-    const last = cleanName(lastName, false) || rollLastName(countryId)
-    const opts: NewLifeOptions = { firstName: first, lastName: last, gender, countryId, year: new Date().getFullYear() }
-    if (city) opts.city = city
-    if (sexuality) opts.sexuality = sexuality
-    if (chosenStats) opts.stats = chosenStats
-    begin(opts)
-  }
+  const customLife = () =>
+    begin(customLifeOptions({ firstName, lastName, gender, countryId, city, sexuality, picks, talents, year: new Date().getFullYear() }))
 
   return (
     <div className="al-screen new-life">
@@ -332,6 +465,11 @@ export function NewLifeScreen() {
             <div className="al-muted al-small">
               {country.flag} Born {preview.place}
             </div>
+            {chosenTalents ? (
+              <div className="nl-preview-talents">
+                {chosenTalents.map((id) => `${specialTalent(id)?.emoji ?? ''} ${specialTalent(id)?.label ?? id}`).join(' · ')}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -442,13 +580,15 @@ export function NewLifeScreen() {
 
         <StatCustomizer picks={picks} onChange={setPicks} open={statsOpen} onToggle={() => setStatsOpen((o) => !o)} />
 
+        <TalentPicker picks={talents} onChange={setTalents} open={talentsOpen} onToggle={() => setTalentsOpen((o) => !o)} />
+
         <button type="submit" className="al-bigbtn">
           <span className="al-bigbtn-emoji" aria-hidden="true">
             🍼
           </span>
           <span className="al-bigbtn-text">
             <span>Start Life</span>
-            <span className="al-bigbtn-sub">{startSubtitle(picks)}</span>
+            <span className="al-bigbtn-sub">{startSubtitle(picks, chosenTalents?.length ?? 0)}</span>
           </span>
         </button>
       </form>

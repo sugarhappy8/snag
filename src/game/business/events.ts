@@ -6,14 +6,15 @@ import { arrestPlayer } from '../crime'
 import { marketOf } from '../data/markets'
 import { chance, pick, rand, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
-import { ceoSkill, equipmentValue, localEcon, redTape, staffPower } from './economy'
+import { bizWorth, ceoSkill, equipmentValue, expectedFx, LASTING_YEARS, localEcon, redTape, staffNet, staffPower, type BizFx, type Worth } from './economy'
 import { sellBusiness } from './exit'
 import { conglomerate, investorFirm, laborProtection, traitOf, unionStrength } from './flavor'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, totalOutlets, type BizState, type KeyStaff } from './state'
-import { clampN, money, num, rec, str } from './util'
+import { aPct, clampN, markBest, money, num, pct, rec, str } from './util'
 
 interface Ctx {
   a: Asset
@@ -56,21 +57,57 @@ function corrupt(b: BizState): number {
   return marketOf(b.countryId).corruption
 }
 
+/** Chance an anti-corruption sting catches a bribe here. */
+export function bribeCaughtP(b: BizState): number {
+  return 0.04 + (100 - corrupt(b)) / 500
+}
+
 function bribeCaught(g: GameState, b: BizState, crime: string): boolean {
-  const p = 0.04 + (100 - corrupt(b)) / 500
-  if (!chance(g, p)) return false
+  if (!chance(g, bribeCaughtP(b))) return false
   arrestPlayer(g, crime, 2, { evidence: 0.6, context: 'An anti-corruption sting caught you handing an official an envelope of cash.' })
   return true
 }
 
 // ---------------------------------------------------------------------------
+// The Business talent: every choice below is scored by expected value with the odds and amounts
+// its resolver uses (the shared helpers next to each event), turned into dollars by
+// economy.bizWorth / fxValue. The best one gets the purple hint.
+
+type Branch = { p: number; fx: BizFx }
+
+/** Expected values per choice id (empty without the talent: no work for nothing). */
+function scorer(g: GameState, b: BizState, build: (w: Worth) => Record<string, Branch[]>): (id: string) => number | null {
+  if (!hasTalent(g, 'Business')) return () => null
+  const w = bizWorth(g, b)
+  const table = build(w)
+  return (id) => (table[id] ? expectedFx(g, b, w, table[id]) : null)
+}
+
+/** The bribe option: the envelope, the karma and the chance of a sting. */
+function bribeBranches(b: BizState, cost: number): Branch[] {
+  return [
+    { p: 1, fx: { cash: -cost, karma: -6 } },
+    { p: bribeCaughtP(b), fx: { arrest: 2 } },
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Health inspection (food businesses)
+
+/** Chance of passing a health inspection (stalling annoys the inspector). */
+export function inspectionPassP(b: BizState, choice: string): number {
+  return clampN(0.3 + b.quality / 130 + 0.08 * staffPower(b, 'quality') - (choice === 'stall' ? 0.1 : 0), 0.05, 0.95)
+}
+
+export function inspectionFine(b: BizState, choice: string): number {
+  return scaled(b, 2_500) * (choice === 'stall' ? 1.6 : 1)
+}
 
 const INSPECTION = defineScript('business.ev.inspection', (g, choice, data) => {
   const x = ctx(g, data)
   if (!x) return
   const { a, b } = x
-  const passP = clampN(0.3 + b.quality / 130 + 0.08 * staffPower(b, 'quality') - (choice === 'stall' ? 0.1 : 0), 0.05, 0.95)
+  const passP = inspectionPassP(b, choice)
   if (choice === 'bribe') {
     const cost = pay(b, num(x.d.bribe))
     addHidden(g, 'karma', -6)
@@ -85,7 +122,7 @@ const INSPECTION = defineScript('business.ev.inspection', (g, choice, data) => {
     tell(g, 'Inspection Passed', `The inspector ran a finger along every shelf, sniffed the fridge and gave ${a.name} top marks. You framed the certificate.`, '\u{2705}', 'good')
     return
   }
-  const fine = pay(b, scaled(b, 2_500) * (choice === 'stall' ? 1.6 : 1))
+  const fine = pay(b, inspectionFine(b, choice))
   b.brand = clampN(b.brand - 7, 0, 100)
   b.demandShock = Math.min(b.demandShock, 0.93)
   if (choice === 'stall') b.capacityLoss = Math.max(b.capacityLoss, 0.08)
@@ -107,6 +144,13 @@ function presentInspection(g: GameState, a: Asset, b: BizState): void {
     { id: 'stall', label: 'Stall while the staff scrub everything', emoji: '\u{1F9FD}' },
   ]
   if (c >= 45) choices.push({ id: 'bribe', label: `Slip them an envelope (${money(bribe)})`, emoji: '\u{2709}\u{FE0F}' })
+  const inspect = (choice: string): Branch[] => [
+    { p: inspectionPassP(b, choice), fx: { brand: 3 } },
+    { p: 1 - inspectionPassP(b, choice), fx: { cash: -inspectionFine(b, choice), brand: -7, demandTo: 0.93, ...(choice === 'stall' ? { capacityTo: 0.08 } : {}) } },
+  ]
+  markBest(g, choices, scorer(g, b, () => ({ cooperate: inspect('cooperate'), stall: inspect('stall'), bribe: bribeBranches(b, bribe) })), (id) =>
+    id === 'bribe' ? `Best move by the numbers: about ${aPct(1 - bribeCaughtP(b))} chance nobody notices` : `Best move: about ${aPct(inspectionPassP(b, id))} chance to pass`,
+  )
   scriptChoice(
     g,
     INSPECTION,
@@ -120,12 +164,42 @@ function presentInspection(g: GameState, a: Asset, b: BizState): void {
 // ---------------------------------------------------------------------------
 // Tax audit
 
+/** Chance the auditors find something to fine (half as likely with a lawyer). */
+export function auditIssueP(b: BizState, choice: string): number {
+  return clampN(0.3 + redTape(b.countryId) * 0.35 - 0.1 * staffPower(b, 'finance'), 0.08, 0.85) * (choice === 'lawyer' ? 0.5 : 1)
+}
+
+/** Chance cooked books are found. */
+export function auditFoundP(choice: string): number {
+  return choice === 'lawyer' ? 0.7 : 0.9
+}
+
+export function auditFraudFine(b: BizState): number {
+  return Math.max(scaled(b, 20_000), b.valuation * 0.12)
+}
+
+/** Back taxes and penalties for a roll `u` (0-1). */
+export function auditPenalty(b: BizState, choice: string, u: number): number {
+  const lastTax = Math.max(0, b.last?.corpTax ?? 0)
+  return Math.max(scaled(b, 3_000), lastTax * (0.15 + u * 0.35)) * (choice === 'lawyer' ? 0.5 : 1)
+}
+
+function auditBranches(b: BizState, choice: string): Branch[] {
+  const out: Branch[] = []
+  if (choice === 'lawyer') out.push({ p: 1, fx: { cash: -scaled(b, 4_000) } })
+  const found = b.cooked > 0 ? auditFoundP(choice) : 0
+  if (found > 0) out.push({ p: found, fx: { cash: -auditFraudFine(b), brand: -20, karma: -5, arrest: 0.55 * 3 } })
+  const issue = (1 - found) * auditIssueP(b, choice)
+  // The penalty's roll is uniform: average it over the range.
+  for (let i = 0; i < 8; i++) out.push({ p: issue / 8, fx: { cash: -auditPenalty(b, choice, (i + 0.5) / 8) } })
+  return out
+}
+
 const AUDIT = defineScript('business.ev.audit', (g, choice, data) => {
   const x = ctx(g, data)
   if (!x) return
   const { a, b } = x
   const m = marketOf(b.countryId)
-  const lastTax = Math.max(0, b.last?.corpTax ?? 0)
   if (choice === 'gift') {
     const cost = pay(b, num(x.d.gift))
     addHidden(g, 'karma', -6)
@@ -137,9 +211,9 @@ const AUDIT = defineScript('business.ev.audit', (g, choice, data) => {
   let lawyer = 0
   if (choice === 'lawyer') lawyer = pay(b, scaled(b, 4_000))
   if (b.cooked > 0) {
-    const found = chance(g, choice === 'lawyer' ? 0.7 : 0.9)
+    const found = chance(g, auditFoundP(choice))
     if (found) {
-      const fine = pay(b, Math.max(scaled(b, 20_000), b.valuation * 0.12))
+      const fine = pay(b, auditFraudFine(b))
       b.cooked = 0
       b.brand = clampN(b.brand - 20, 0, 100)
       addHidden(g, 'karma', -5)
@@ -150,12 +224,11 @@ const AUDIT = defineScript('business.ev.audit', (g, choice, data) => {
     }
     b.cooked = 0
   }
-  const issueP = clampN(0.3 + redTape(b.countryId) * 0.35 - 0.1 * staffPower(b, 'finance'), 0.08, 0.85) * (choice === 'lawyer' ? 0.5 : 1)
-  if (!chance(g, issueP)) {
+  if (!chance(g, auditIssueP(b, choice))) {
     tell(g, 'Clean Audit', `After three weeks of questions about receipts, the auditors found nothing wrong with ${a.name}'s books.${lawyer ? ` Your tax lawyer billed ${formatMoney(lawyer)} for sitting next to you looking serious.` : ''}`, '\u{2705}', 'good')
     return
   }
-  const penalty = pay(b, Math.max(scaled(b, 3_000), lastTax * (0.15 + rand(g) * 0.35)) * (choice === 'lawyer' ? 0.5 : 1))
+  const penalty = pay(b, auditPenalty(b, choice, rand(g)))
   log(g, `A tax audit cost ${a.name} ${money(penalty)} in back taxes and penalties.`, 'bad')
   tell(g, 'Audit Penalty', `The auditors decided ${a.name} misread a rule about ${pick(g, ['deductible lunches', 'depreciation schedules', `${m.salesTaxName} on delivery fees`, 'staff benefits', 'a form nobody has ever heard of'])}. Back taxes and penalties: ${formatMoney(penalty)}.${lawyer ? ` Your lawyer (${formatMoney(lawyer)}) got it cut in half.` : ''}`, '\u{1F9FE}', 'bad')
 })
@@ -167,6 +240,9 @@ function presentAudit(g: GameState, a: Asset, b: BizState): void {
     { id: 'lawyer', label: `Hire a tax lawyer (~${money(scaled(b, 4_000))})`, emoji: '\u{1F468}\u{200D}\u{2696}\u{FE0F}' },
   ]
   if (corrupt(b) >= 50) choices.push({ id: 'gift', label: `Offer the auditor a "gift" (${money(gift)})`, emoji: '\u{1F381}' })
+  markBest(g, choices, scorer(g, b, () => ({ cooperate: auditBranches(b, 'cooperate'), lawyer: auditBranches(b, 'lawyer'), gift: bribeBranches(b, gift) })), (id) =>
+    id === 'lawyer' ? 'Best move: the lawyer pays for themselves by halving any penalty' : id === 'gift' ? `Best move by the numbers: about ${aPct(1 - bribeCaughtP(b))} chance nobody notices` : undefined,
+  )
   const m = marketOf(b.countryId)
   scriptChoice(
     g,
@@ -181,6 +257,17 @@ function presentAudit(g: GameState, a: Asset, b: BizState): void {
 // ---------------------------------------------------------------------------
 // Strike
 
+/** Chance the union takes a negotiated deal. */
+export function strikeDealP(g: GameState, b: BizState): number {
+  return clampN(0.3 + ceoSkill(g, b) / 160, 0.1, 0.85)
+}
+
+/** Morale saved this year by a raise when inflation would otherwise sour the mood (evolve()). */
+function raiseRelief(g: GameState, b: BizState): number {
+  const inflation = marketOf(b.countryId).inflation
+  return inflation >= 0.08 && b.raiseYear < g.year ? Math.min(18, inflation * 30) * 0.4 : 0
+}
+
 const STRIKE = defineScript('business.ev.strike', (g, choice, data) => {
   const x = ctx(g, data)
   if (!x) return
@@ -194,7 +281,7 @@ const STRIKE = defineScript('business.ev.strike', (g, choice, data) => {
     return
   }
   if (choice === 'negotiate') {
-    if (chance(g, clampN(0.3 + ceoSkill(g, b) / 160, 0.1, 0.85))) {
+    if (chance(g, strikeDealP(g, b))) {
       b.wageLevel = clampN(Math.round((b.wageLevel + 0.04) * 100) / 100, 0.7, 1.5)
       b.raiseYear = g.year
       b.morale = clampN(b.morale + 14, 0, 100)
@@ -229,6 +316,18 @@ function presentStrike(g: GameState, a: Asset, b: BizState): void {
   ]
   if (laborProtection(b.countryId) < 0.4) choices.push({ id: 'replace', label: 'Hire replacement workers', emoji: '\u{1F6A7}' })
   const protect = laborProtection(b.countryId) >= 0.4 ? ` Labor law in ${country(b)} makes replacing strikers illegal.` : ''
+  const relief = raiseRelief(g, b)
+  const deal = strikeDealP(g, b)
+  const wage = (x: number) => clampN(Math.round((b.wageLevel + x) * 100) / 100, 0.7, 1.5) - b.wageLevel
+  markBest(g, choices, scorer(g, b, () => ({
+    meet: [{ p: 1, fx: { wage: wage(0.08), morale: 22 + relief } }],
+    negotiate: [
+      { p: deal, fx: { wage: wage(0.04), morale: 14 + relief } },
+      { p: 1 - deal, fx: { capacityTo: 0.25, morale: -5 } },
+    ],
+    wait: [{ p: 1, fx: { capacityTo: 0.35, brand: -4 } }],
+    replace: [{ p: 1, fx: { morale: -15, quality: -8, brand: -6, capacityTo: 0.1, karma: -6 } }],
+  })), (id) => (id === 'negotiate' ? `Best move: about ${aPct(deal)} chance of a deal` : undefined))
   scriptChoice(g, STRIKE, 'Strike!', `Morale at ${a.name} hit rock bottom (${b.morale}%). The staff walked out and set up a picket line in front of your ${industryDef(b.industry).site} in ${b.city}.${protect}`, choices, {
     emoji: '\u{1FAA7}',
     data: { assetId: a.id },
@@ -237,6 +336,9 @@ function presentStrike(g: GameState, a: Asset, b: BizState): void {
 
 // ---------------------------------------------------------------------------
 // Viral review
+
+/** Chance a clapback at a bad review wins the internet over. */
+const VIRAL_CLAPBACK = 0.4
 
 const VIRAL = defineScript('business.ev.viral', (g, choice, data) => {
   const x = ctx(g, data)
@@ -261,7 +363,7 @@ const VIRAL = defineScript('business.ev.viral', (g, choice, data) => {
     b.demandShock = Math.min(b.demandShock, 0.97)
     tell(g, 'Public Apology', `Your heartfelt apology got almost as many views as the complaint. Most people moved on.`, '\u{1F64F}')
   } else if (choice === 'fight') {
-    if (chance(g, 0.4)) {
+    if (chance(g, VIRAL_CLAPBACK)) {
       b.brand = clampN(b.brand + 6, 0, 100)
       tell(g, 'Clapback Won', `Your savage reply went even more viral than the original review. The internet is on your side. For now.`, '\u{1F525}', 'good')
     } else {
@@ -292,6 +394,16 @@ function presentViral(g: GameState, a: Asset, b: BizState): void {
         { id: 'fight', label: 'Fire back online', emoji: '\u{1F525}' },
         { id: 'ignore', label: 'Ignore it', emoji: '\u{1F648}' },
       ]
+  markBest(g, choices, scorer(g, b, () => ({
+    ride: [{ p: 1, fx: { cash: -scaled(b, 5_000), brand: 9, demandTo: 1.16 } }],
+    humble: [{ p: 1, fx: { brand: 5, demandTo: 1.08 } }],
+    apologize: [{ p: 1, fx: { brand: -2, demandTo: 0.97 } }],
+    fight: [
+      { p: VIRAL_CLAPBACK, fx: { brand: 6 } },
+      { p: 1 - VIRAL_CLAPBACK, fx: { brand: -14, demandTo: 0.88 } },
+    ],
+    ignore: [{ p: 1, fx: { brand: -6, demandTo: 0.94 } }],
+  })), (id) => (id === 'fight' ? `Best move: ${aPct(VIRAL_CLAPBACK)} shot at winning the internet` : undefined))
   scriptChoice(g, VIRAL, good ? 'Gone Viral!' : 'Viral Review', text, choices, { emoji: '\u{1F4F1}', data: { assetId: a.id, good } })
 }
 
@@ -321,22 +433,33 @@ function presentCompetitor(g: GameState, a: Asset, b: BizState): void {
   const def = industryDef(b.industry)
   const words = marketOf(b.countryId).nameWords
   const rival = `${words.length ? pick(g, words) : randomLastName(g, b.countryId)} ${pick(g, def.suffixes)}`
+  const choices: ChoiceOption[] = [
+    { id: 'priceWar', label: 'Start a price war', emoji: '\u{2694}\u{FE0F}' },
+    { id: 'quality', label: `Out-class them (~${money(scaled(b, 8_000))})`, emoji: '\u{2728}' },
+    { id: 'ignore', label: 'Ignore them', emoji: '\u{1F937}' },
+  ]
+  markBest(g, choices, scorer(g, b, () => ({
+    priceWar: [{ p: 1, fx: { priceCut: 0.12, pressureTo: 0.1 } }],
+    quality: [{ p: 1, fx: { cash: -scaled(b, 8_000), quality: 8, pressureTo: 0.14 } }],
+    ignore: [{ p: 1, fx: { pressureTo: 0.24 } }],
+  })))
   scriptChoice(
     g,
     COMPETITOR,
     'New Competition',
     `${rival} just opened a shiny new ${def.site} right across the street from ${a.name} in ${b.city}, with an opening-week discount and a guy in a mascot suit.`,
-    [
-      { id: 'priceWar', label: 'Start a price war', emoji: '\u{2694}\u{FE0F}' },
-      { id: 'quality', label: `Out-class them (~${money(scaled(b, 8_000))})`, emoji: '\u{2728}' },
-      { id: 'ignore', label: 'Ignore them', emoji: '\u{1F937}' },
-    ],
+    choices,
     { emoji: '\u{1F3EA}', data: { assetId: a.id } },
   )
 }
 
 // ---------------------------------------------------------------------------
 // Supplier price spike
+
+/** Chance of locking in a fixed-price supply contract before the hike. */
+export function supplierDealP(g: GameState, b: BizState): number {
+  return clampN(0.25 + ceoSkill(g, b) / 150 + 0.1 * staffPower(b, 'finance'), 0.1, 0.9)
+}
 
 const SUPPLIER = defineScript('business.ev.supplier', (g, choice, data) => {
   const x = ctx(g, data)
@@ -348,7 +471,7 @@ const SUPPLIER = defineScript('business.ev.supplier', (g, choice, data) => {
     b.quality = clampN(b.quality - 6, 0, 100)
     tell(g, 'Cheaper Supplier', `You switched to a budget supplier. Costs are down; so is quality (${b.quality}%). Customers may notice.`, '\u{1F4E6}')
   } else if (choice === 'contract') {
-    if (chance(g, clampN(0.25 + ceoSkill(g, b) / 150 + 0.1 * staffPower(b, 'finance'), 0.1, 0.9))) {
+    if (chance(g, supplierDealP(g, b))) {
       b.costShock = 0.97
       tell(g, 'Locked In', `You negotiated a three-year fixed-price contract before the increase kicked in. Your competitors are paying full price.`, '\u{1F4DD}', 'good')
     } else {
@@ -370,6 +493,18 @@ function presentSupplier(g: GameState, a: Asset, b: BizState): void {
     { id: 'contract', label: 'Negotiate a long-term contract', emoji: '\u{1F4DD}' },
   ]
   if (b.supplier !== 'budget') choices.push({ id: 'switch', label: 'Switch to a cheaper supplier', emoji: '\u{1F4E6}' })
+  const deal = supplierDealP(g, b)
+  // Budget suppliers: 14% cheaper inputs than standard (27% cheaper than premium), quality drifts
+  // 12 points down per tier. Counted for a year: you can switch back from the Quality menu.
+  const fromPremium = b.supplier === 'premium'
+  markBest(g, choices, scorer(g, b, () => ({
+    absorb: [{ p: 1, fx: { costTo: spike } }],
+    contract: [
+      { p: deal, fx: { costSet: 0.97 } },
+      { p: 1 - deal, fx: { costTo: spike - 0.04 } },
+    ],
+    switch: [{ p: 1, fx: { quality: -6, costFactor: 0.86 / (fromPremium ? 1.18 : 1), qualityTarget: fromPremium ? -24 : -12 } }],
+  })), (id) => (id === 'contract' ? `Best move: about ${aPct(deal)} chance to lock in the old price` : undefined))
   scriptChoice(g, SUPPLIER, 'Supplier Price Hike', `Your main supplier says ${why}: prices go up ${Math.round((spike - 1) * 100)}% next year.`, choices, { emoji: '\u{1F69A}', data: { assetId: a.id, spike } })
 }
 
@@ -391,7 +526,6 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
     tell(g, 'Holding the Line', `You kept prices steady while everyone else hiked. Customers love you; your margins less so.`, '\u{1F6E1}\u{FE0F}', 'good')
   } else {
     const fee = pay(b, Math.max(0, b.cash) * 0.03)
-    b.cash = Math.max(b.cash, 0)
     b.costShock = Math.max(1, b.costShock - 0.05)
     tell(g, 'Into Hard Currency', `You moved the company's ${m.currencyName} cash into dollars (${formatMoney(fee)} in fees and "fees"). Your cash should hold its value better.`, '\u{1F4B5}', 'good')
   }
@@ -399,22 +533,32 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
 
 function presentCurrency(g: GameState, a: Asset, b: BizState): void {
   const m = marketOf(b.countryId)
+  const choices: ChoiceOption[] = [
+    { id: 'raise', label: 'Raise prices immediately', emoji: '\u{1F3F7}\u{FE0F}' },
+    { id: 'hold', label: 'Hold prices to win loyalty', emoji: '\u{1F6E1}\u{FE0F}' },
+    { id: 'dollarize', label: 'Move company cash into dollars', emoji: '\u{1F4B5}' },
+  ]
+  const hit = Math.max(b.costShock, 1.1)
+  markBest(g, choices, scorer(g, b, () => ({
+    raise: [{ p: 1, fx: { costTo: 1.1, brand: -3 } }],
+    hold: [{ p: 1, fx: { costTo: 1.1, priceCut: 0.15, brand: 6 } }],
+    dollarize: [{ p: 1, fx: { cash: -Math.round(Math.max(0, b.cash) * 0.03), costSet: Math.max(1, hit - 0.05) } }],
+  })))
   scriptChoice(
     g,
     CURRENCY,
     'Currency Crash',
     `The ${m.currencyName} lost ${randInt(g, 15, 40)}% of its value in a week. Imported inputs cost more, shoppers are panic-buying and ${a.name}'s price tags are already out of date.`,
-    [
-      { id: 'raise', label: 'Raise prices immediately', emoji: '\u{1F3F7}\u{FE0F}' },
-      { id: 'hold', label: 'Hold prices to win loyalty', emoji: '\u{1F6E1}\u{FE0F}' },
-      { id: 'dollarize', label: 'Move company cash into dollars', emoji: '\u{1F4B5}' },
-    ],
+    choices,
     { emoji: '\u{1F4C9}', data: { assetId: a.id } },
   )
 }
 
 // ---------------------------------------------------------------------------
 // Celebrity endorsement
+
+/** Chance a celebrity spokesperson lands you in their scandal. */
+const CELEB_SCANDAL = 0.15
 
 const CELEB = defineScript('business.ev.celebrity', (g, choice, data) => {
   const x = ctx(g, data)
@@ -425,7 +569,7 @@ const CELEB = defineScript('business.ev.celebrity', (g, choice, data) => {
     return
   }
   const cost = pay(b, num(x.d.fee))
-  if (chance(g, 0.15)) {
+  if (chance(g, CELEB_SCANDAL)) {
     b.brand = clampN(b.brand - 12, 0, 100)
     b.demandShock = Math.min(b.demandShock, 0.92)
     log(g, `Our celebrity spokesperson got ${a.name} dragged into a scandal.`, 'bad')
@@ -443,15 +587,24 @@ function presentCelebrity(g: GameState, a: Asset, b: BizState): void {
   const celeb = `${randomFirstName(g, b.countryId, gender)} ${randomLastName(g, b.countryId)}`
   const what = pick(g, ['the pop star', 'the reality-TV star', 'the soap actor', `the national ${pick(g, ['football', 'tennis', 'boxing', 'chess'])} champion`, 'the cooking-show host'])
   const fee = scaled(b, 25_000)
+  const choices: ChoiceOption[] = [
+    { id: 'sign', label: `Sign the deal (${money(fee)})`, emoji: '\u{270D}\u{FE0F}' },
+    { id: 'pass', label: 'Pass', emoji: '\u{1F645}' },
+  ]
+  markBest(g, choices, scorer(g, b, () => ({
+    sign: [
+      { p: 1, fx: { cash: -fee } },
+      { p: CELEB_SCANDAL, fx: { brand: -12, demandTo: 0.92 } },
+      { p: 1 - CELEB_SCANDAL, fx: { brand: 11, demandTo: 1.12 } },
+    ],
+    pass: [],
+  })), (id) => (id === 'sign' ? `Best move: ${pct(1 - CELEB_SCANDAL)} of these deals pay off` : 'Best move: the fee is more than the bump is worth'))
   scriptChoice(
     g,
     CELEB,
     'Celebrity Endorsement',
     `${celeb}, ${what}, wants to be the face of ${a.name} for ${formatMoney(fee)}.`,
-    [
-      { id: 'sign', label: `Sign the deal (${money(fee)})`, emoji: '\u{270D}\u{FE0F}' },
-      { id: 'pass', label: 'Pass', emoji: '\u{1F645}' },
-    ],
+    choices,
     { emoji: '\u{1F31F}', data: { assetId: a.id, celeb, fee } },
   )
 }
@@ -466,6 +619,11 @@ const CLAIMS: Record<string, string[]> = {
   default: ['says your product ruined their wedding', 'claims your sign fell on their car', 'slipped on the entrance mat and lawyered up'],
 }
 
+/** Chance the judge throws a lawsuit out. */
+export function lawsuitWinP(g: GameState, b: BizState): number {
+  return clampN(0.35 + ceoSkill(g, b) / 250 + b.quality / 400, 0.15, 0.85)
+}
+
 const LAWSUIT = defineScript('business.ev.lawsuit', (g, choice, data) => {
   const x = ctx(g, data)
   if (!x) return
@@ -477,7 +635,7 @@ const LAWSUIT = defineScript('business.ev.lawsuit', (g, choice, data) => {
     return
   }
   const fees = pay(b, claim * 0.15)
-  if (chance(g, clampN(0.35 + ceoSkill(g, b) / 250 + b.quality / 400, 0.15, 0.85))) {
+  if (chance(g, lawsuitWinP(g, b))) {
     count(g, 'lawsuitsWon')
     tell(g, 'Case Dismissed', `The judge threw the case out. ${a.name} only lost ${formatMoney(fees)} in legal fees and a little faith in humanity.`, '\u{2696}\u{FE0F}', 'good')
   } else {
@@ -492,21 +650,42 @@ function presentLawsuit(g: GameState, a: Asset, b: BizState): void {
   const def = industryDef(b.industry)
   const pool = def.food ? CLAIMS.food : b.industry === 'gym' ? CLAIMS.gym : b.industry === 'software' || b.industry === 'gameStudio' ? CLAIMS.software : CLAIMS.default
   const claim = scaled(b, 30_000)
+  const choices: ChoiceOption[] = [
+    { id: 'settle', label: `Settle (~${money(claim * 0.5)})`, emoji: '\u{1F4DD}' },
+    { id: 'fight', label: 'Fight it in court', emoji: '\u{2696}\u{FE0F}' },
+  ]
+  const win = lawsuitWinP(g, b)
+  markBest(g, choices, scorer(g, b, () => ({
+    settle: [{ p: 1, fx: { cash: -Math.round(claim * 0.5) } }],
+    fight: [
+      { p: 1, fx: { cash: -Math.round(claim * 0.15) } },
+      { p: 1 - win, fx: { cash: -Math.round(claim * 1.4), brand: -4 } },
+    ],
+  })), (id) => (id === 'fight' ? `Best move: you'd win about ${pct(win)} of the time` : `Best move: settle out of court (your odds in court are about ${pct(win)})`))
   scriptChoice(
     g,
     LAWSUIT,
     'You’re Being Sued',
     `A customer ${pick(g, pool)} and is suing ${a.name} for ${formatMoney(claim)}.`,
-    [
-      { id: 'settle', label: `Settle (~${money(claim * 0.5)})`, emoji: '\u{1F4DD}' },
-      { id: 'fight', label: 'Fight it in court', emoji: '\u{2696}\u{FE0F}' },
-    ],
+    choices,
     { emoji: '\u{2696}\u{FE0F}', data: { assetId: a.id, claim } },
   )
 }
 
 // ---------------------------------------------------------------------------
 // Embezzlement
+
+/** Courts order 30-70% of the stolen money paid back. */
+const EMBEZZLE_BACK_MIN = 0.3
+const EMBEZZLE_BACK_SPREAD = 0.4
+
+/**
+ * What a key person is worth to keep for a few more years (benefit minus pay), and the extra theft
+ * a second chance invites: a shady résumé makes the embezzlement event likelier.
+ */
+function keepValue(g: GameState, b: BizState, w: Worth, s: KeyStaff, change: Partial<KeyStaff> = {}): number {
+  return staffNet(g, b, w, { ...s, ...change }) * LASTING_YEARS
+}
 
 const EMBEZZLE = defineScript('business.ev.embezzle', (g, choice, data) => {
   const x = ctx(g, data)
@@ -525,7 +704,7 @@ const EMBEZZLE = defineScript('business.ev.embezzle', (g, choice, data) => {
   }
   b.staff = b.staff.filter((y) => y.id !== id)
   if (choice === 'press') {
-    const back = Math.round(amount * (0.3 + rand(g) * 0.4))
+    const back = Math.round(amount * (EMBEZZLE_BACK_MIN + rand(g) * EMBEZZLE_BACK_SPREAD))
     b.cash += back
     b.yearIncome += back
     tell(g, 'Charges Pressed', `${who} was fired and charged. The court ordered ${formatMoney(back)} paid back; the rest is "gone".`, '\u{1F46E}', 'good')
@@ -540,22 +719,38 @@ function presentEmbezzle(g: GameState, a: Asset, b: BizState): void {
   const who = s ? `${s.firstName} ${s.lastName}, your ${s.role}` : `${randomFirstName(g, b.countryId, chance(g, 0.5) ? 'male' : 'female')}, a shift supervisor`
   const amount = Math.round(Math.min(Math.max(1_000, (b.last?.revenue ?? 0) * (0.01 + rand(g) * 0.04)), Math.max(1_000, Math.abs(b.cash) * 0.5 + 1_000)))
   b.cash -= amount
+  const choices: ChoiceOption[] = [
+    { id: 'press', label: 'Fire them and press charges', emoji: '\u{1F46E}' },
+    { id: 'quiet', label: 'Fire them quietly', emoji: '\u{1F92B}' },
+    { id: 'second', label: 'Give them a second chance', emoji: '\u{1F91E}' },
+  ]
+  markBest(g, choices, scorer(g, b, (w) => {
+    // A second chance keeps them (now with a shady streak); firing them loses what they add.
+    const weights = EVENTS.reduce((t, e) => t + Math.max(0, e.weight(g, b)), 0) || 1
+    const extraRisk = s && traitOf(s.trait).risk < 1 ? 0.3 : 0
+    const again = 0.3 * (extraRisk / weights) * amount * LASTING_YEARS
+    const second = s ? keepValue(g, b, w, s, { trait: 'shady' }) - again : 0
+    return {
+      press: [{ p: 1, fx: { cash: Math.round(amount * (EMBEZZLE_BACK_MIN + EMBEZZLE_BACK_SPREAD / 2)) } }],
+      quiet: [],
+      second: [{ p: 1, fx: { karma: 3, value: second } }],
+    }
+  }))
   scriptChoice(
     g,
     EMBEZZLE,
     'Embezzler!',
     `An audit of the accounts revealed that ${who} has been quietly skimming money: ${formatMoney(amount)} so far, mostly spent on ${pick(g, ['a jet ski', 'crypto that went to zero', 'designer sneakers', 'a racehorse named after themselves'])}.`,
-    [
-      { id: 'press', label: 'Fire them and press charges', emoji: '\u{1F46E}' },
-      { id: 'quiet', label: 'Fire them quietly', emoji: '\u{1F92B}' },
-      { id: 'second', label: 'Give them a second chance', emoji: '\u{1F91E}' },
-    ],
+    choices,
     { emoji: '\u{1F4B0}', data: { assetId: a.id, amount, staffId: s?.id ?? '', who: s ? `${s.firstName} ${s.lastName}` : 'the supervisor' } },
   )
 }
 
 // ---------------------------------------------------------------------------
 // Buyout offer
+
+/** Chance a buyer accepts a counteroffer 15% higher. */
+const BUYOUT_COUNTER = 0.5
 
 const BUYOUT = defineScript('business.ev.buyout', (g, choice, data) => {
   const x = ctx(g, data)
@@ -568,7 +763,7 @@ const BUYOUT = defineScript('business.ev.buyout', (g, choice, data) => {
     return
   }
   if (choice === 'counter') {
-    if (chance(g, 0.5)) {
+    if (chance(g, BUYOUT_COUNTER)) {
       sellBusiness(g, a, b, Math.round(offer * 1.15), buyer)
     } else {
       tell(g, 'They Walked', `${buyer} said your counteroffer was "ambitious" and walked away.`, '\u{1F6B6}')
@@ -582,16 +777,26 @@ function presentBuyout(g: GameState, a: Asset, b: BizState): void {
   const buyer = chance(g, 0.5) ? investorFirm(b.countryId, rand(g), rand(g)) : conglomerate(rand(g), rand(g))
   const offer = Math.round(Math.max(b.valuation, 10_000) * (1.1 + rand(g) * 0.4))
   const stake = b.share < 1 ? ` (your ${Math.round(b.share * 100)}% would be ${money(offer * b.share)})` : ''
+  const choices: ChoiceOption[] = [
+    { id: 'accept', label: 'Accept', emoji: '\u{1F91D}' },
+    { id: 'counter', label: 'Counter 15% higher', emoji: '\u{1F4C8}' },
+    { id: 'decline', label: 'Decline', emoji: '\u{1F645}' },
+  ]
+  // Selling is worth what the offer beats the company's value by (your share of it).
+  const over = (price: number) => (price - b.valuation) * b.share
+  markBest(g, choices, scorer(g, b, () => ({
+    accept: [{ p: 1, fx: { value: over(offer) } }],
+    counter: [{ p: BUYOUT_COUNTER, fx: { value: over(Math.round(offer * 1.15)) } }],
+    decline: [],
+  })), (id) =>
+    id === 'accept' ? `Best move: ${pct(offer / Math.max(1, b.valuation) - 1)} over what it's worth, guaranteed` : id === 'counter' ? 'Best move: a coin flip at 15% more beats taking it now' : 'Best move: it is worth more to you than they are offering',
+  )
   scriptChoice(
     g,
     BUYOUT,
     'Buyout Offer',
     `${buyer} wants to buy ${a.name} outright for ${formatMoney(offer)}${stake}. Your accountant estimates it is worth about ${money(b.valuation)}.`,
-    [
-      { id: 'accept', label: 'Accept', emoji: '\u{1F91D}' },
-      { id: 'counter', label: 'Counter 15% higher', emoji: '\u{1F4C8}' },
-      { id: 'decline', label: 'Decline', emoji: '\u{1F645}' },
-    ],
+    choices,
     { emoji: '\u{1F4BC}', data: { assetId: a.id, offer, buyer } },
   )
 }
@@ -640,15 +845,20 @@ function presentDisaster(g: GameState, a: Asset, b: BizState): void {
         : pick(g, [`A kitchen fire gutted the back of ${site}.`, `A burst water main flooded ${site}.`, `Lightning fried the electrics at ${site}.`, `A runaway delivery truck crashed into ${site}.`])
   const damage = Math.round(equipmentValue(b) * (0.12 + rand(g) * 0.25) / Math.max(1, Math.sqrt(totalOutlets(b))))
   const loss = Math.round((0.25 + rand(g) * 0.3) / Math.max(1, Math.sqrt(totalOutlets(b))) * 100) / 100
+  const choices: ChoiceOption[] = [
+    { id: 'fast', label: 'Pay extra to rebuild fast', emoji: '\u{1F3CE}\u{FE0F}' },
+    { id: 'normal', label: 'Rebuild at normal speed', emoji: '\u{1F6A7}' },
+  ]
+  markBest(g, choices, scorer(g, b, () => ({
+    fast: [{ p: 1, fx: { cash: -Math.round(damage * 1.2), capacityTo: loss / 2 } }],
+    normal: [{ p: 1, fx: { cash: -damage, capacityTo: loss } }],
+  })))
   scriptChoice(
     g,
     DISASTER,
     'Disaster!',
     `${what} Nobody was hurt, but it's closed until it is repaired (damage: ${formatMoney(damage)}).${b.insured ? ' Thank goodness for the insurance.' : ''}`,
-    [
-      { id: 'fast', label: 'Pay extra to rebuild fast', emoji: '\u{1F3CE}\u{FE0F}' },
-      { id: 'normal', label: 'Rebuild at normal speed', emoji: '\u{1F6A7}' },
-    ],
+    choices,
     { emoji: '\u{1F525}', data: { assetId: a.id, damage, loss } },
   )
 }
@@ -674,10 +884,15 @@ const TACOS = defineScript('business.ev.tacos', (g, choice, data) => {
 function presentTacos(g: GameState, a: Asset, b: BizState): void {
   const kind = chance(g, 0.5) ? 0 : 1
   const cost = Math.round(Math.max(1, b.employees + b.staff.length) * 15 * localEcon(b.industry, b.countryId, b.city).level)
-  scriptChoice(g, TACOS, 'A Humble Request', `The staff at ${a.name} have started a petition asking for ${kind === 0 ? 'Taco Tuesday' : 'Pizza Friday'}. It has more signatures than there are employees.`, [
+  const choices: ChoiceOption[] = [
     { id: 'yes', label: `Make it happen (${money(cost)})`, emoji: kind === 0 ? '\u{1F32E}' : '\u{1F355}' },
     { id: 'no', label: 'Say no', emoji: '\u{1F645}' },
-  ], { emoji: '\u{1F4CB}', data: { assetId: a.id, cost, kind } })
+  ]
+  markBest(g, choices, scorer(g, b, () => ({
+    yes: [{ p: 1, fx: { cash: -cost, morale: 8 } }],
+    no: [{ p: 1, fx: { morale: -4 } }],
+  })), (id) => (id === 'yes' ? 'Best move: happier staff sell more than the food costs' : 'Best move: the morale bump is worth less than the bill'))
+  scriptChoice(g, TACOS, 'A Humble Request', `The staff at ${a.name} have started a petition asking for ${kind === 0 ? 'Taco Tuesday' : 'Pizza Friday'}. It has more signatures than there are employees.`, choices, { emoji: '\u{1F4CB}', data: { assetId: a.id, cost, kind } })
 }
 
 const POACHED = defineScript('business.ev.poached', (g, choice, data) => {
@@ -699,10 +914,15 @@ const POACHED = defineScript('business.ev.poached', (g, choice, data) => {
 
 function presentPoached(g: GameState, a: Asset, b: BizState): void {
   const s = pick(g, b.staff)
-  scriptChoice(g, POACHED, 'Poaching Attempt', `A competitor offered ${s.firstName} ${s.lastName}, your ${s.role}, 25% more money to jump ship.`, [
+  const choices: ChoiceOption[] = [
     { id: 'counter', label: `Match it (+${money(s.salary * 0.25)}/yr)`, emoji: '\u{1F4B5}' },
     { id: 'letGo', label: 'Let them go', emoji: '\u{1F44B}' },
-  ], { emoji: '\u{1F3A3}', data: { assetId: a.id, staffId: s.id } })
+  ]
+  markBest(g, choices, scorer(g, b, (w) => ({
+    counter: [{ p: 1, fx: { value: keepValue(g, b, w, s, { salary: Math.round(s.salary * 1.25), morale: clampN(s.morale + 12, 0, 100) }) } }],
+    letGo: [],
+  })), (id) => (id === 'counter' ? `Best move: ${s.firstName} is worth more than the raise` : `Best move: ${s.firstName} isn't worth ${money(s.salary * 1.25)} a year`))
+  scriptChoice(g, POACHED, 'Poaching Attempt', `A competitor offered ${s.firstName} ${s.lastName}, your ${s.role}, 25% more money to jump ship.`, choices, { emoji: '\u{1F3A3}', data: { assetId: a.id, staffId: s.id } })
 }
 
 // ---------------------------------------------------------------------------
@@ -731,6 +951,28 @@ const EVENTS: BizEvent[] = [
   { id: 'tacos', weight: (_g, b) => (b.employees + b.staff.length >= 4 ? 0.3 : 0), present: presentTacos },
   { id: 'poached', weight: (_g, b) => (b.staff.length > 0 ? 0.35 : 0), present: presentPoached },
 ]
+
+/**
+ * Chance a given event hits this company in a year (for the Business talent's what-ifs, such as
+ * whether insurance pays): the yearly event roll times the event's share of the weights.
+ */
+export function eventChance(g: GameState, b: BizState, id: string, managed = false): number {
+  const total = EVENTS.reduce((t, e) => t + Math.max(0, e.weight(g, b)), 0)
+  const ev = EVENTS.find((e) => e.id === id)
+  if (!ev || total <= 0) return 0
+  return (managed ? 0.18 : 0.3) * (Math.max(0, ev.weight(g, b)) / total)
+}
+
+/** For tests: present a specific event (the hints are checked against the resolvers' odds). */
+export const businessEventInternals = {
+  present(g: GameState, a: Asset, b: BizState, id: string): boolean {
+    const ev = EVENTS.find((e) => e.id === id)
+    if (!ev) return false
+    ev.present(g, a, b)
+    return true
+  },
+  ids: (): string[] => EVENTS.map((e) => e.id),
+}
 
 /** Maybe queue one event for this business (returns true when one was queued). */
 export function maybeBusinessEvent(g: GameState, a: Asset, b: BizState, year: number, managed: boolean): boolean {

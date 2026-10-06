@@ -10,30 +10,35 @@ import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, forma
 import { taxAdditionalIncome } from '../finance'
 import { GAMBLING_ADDICTION } from '../gambling'
 import { exchangeByKey, exchangeInfo, indexMove, type ExInfo } from '../invest/engine'
+import { marketInstinct, type Instinct } from '../invest/instinct'
 import { indexShockFactor } from '../invest/shocks'
 import { chance, pick, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
+import { HINT_EMOJI, talentHint } from '../talents'
 import { stockBetsMenu } from './money-stocks'
 import { addScreenTime } from './skills'
-import type { GameState, Json, MenuGroup, MenuNode, Person } from '../types'
+import type { ChoiceOption, GameState, Json, MenuGroup, MenuNode, Person } from '../types'
 import {
   absPct,
   blockReason,
   brokerName,
   canAct,
   clampNum,
+  cryptoBanned,
   dollars,
   fam,
   isRecord,
   local,
   moneyState,
   normal,
+  noteSharp,
   PAPER_START,
   parentsCatch,
   payOrBorrow,
   pct,
   readState,
   richestParent,
+  sharpSpread,
   str,
   type MoneyState,
   type News,
@@ -121,11 +126,58 @@ export function markup(skill: number, strike: OptionStrike): number {
   return Math.max(0.07, 0.15 - s * 0.0008) + (strike === 'lotto' ? 0.12 : strike === 'otm' ? 0.03 : 0)
 }
 
-/** What $1 of exposure costs to buy (or pays when sold). */
-export function optionPrice(info: ExInfo, dir: OptionDir, strike: OptionStrike, skill: number, side: 'buy' | 'sell'): number {
+/**
+ * What $1 of exposure costs to buy (or pays when sold). `extra` is the wider spread brokers
+ * charge a trader they've flagged as sharp (money-common sharpSpread).
+ */
+export function optionPrice(info: ExInfo, dir: OptionDir, strike: OptionStrike, skill: number, side: 'buy' | 'sell', extra = 0): number {
   const fair = fairValue(info, dir, strikeOffset(info, dir, strike))
-  const m = markup(skill, strike)
+  const m = markup(skill, strike) + Math.max(0, Number.isFinite(extra) ? extra : 0)
   return side === 'buy' ? fair * (1 + m) : fair / (1 + m)
+}
+
+/** The sharp-trader spread that applies to a flow (only your own real-money account gets flagged). */
+function spreadFor(st: MoneyState, f: { mode: OptionMode }): number {
+  return f.mode === 'real' ? sharpSpread(st) : 0
+}
+
+// ---------------------------------------------------------------------------
+// The Investing talent: the gut's feeling about next year's index (invest/instinct.ts). The same
+// once-a-year feeling as the Investments menu: about four times in five right, never certain,
+// and trades stay capped per year, so a wrong call still costs the whole premium.
+
+function instinct(g: GameState): Instinct | null {
+  return marketInstinct(g, !cryptoBanned(g.character.countryId))
+}
+
+/** 'climbs' / 'has a rough year' / null when the gut has no feeling about the index. */
+function indexFeeling(inst: Instinct | null): 'up' | 'down' | null {
+  if (!inst) return null
+  if (inst.gloomy || inst.market === 'down') return 'down'
+  return inst.market === 'up' ? 'up' : null
+}
+
+function instinctRow(g: GameState): MenuNode | null {
+  const inst = instinct(g)
+  if (!inst) return null
+  const feel = indexFeeling(inst)
+  const text =
+    feel === 'up'
+      ? `Market instinct: your gut says the ${inst.index} climbs in ${inst.year}.`
+      : feel === 'down'
+        ? `Market instinct: your gut says the ${inst.index} has a rough ${inst.year}.`
+        : `Market instinct: your gut has no clear feeling about the ${inst.index} in ${inst.year}.`
+  return { type: 'info', id: 'computer.options.instinct', emoji: HINT_EMOJI, text: `${text} Gut feelings, not guarantees.` }
+}
+
+/** Purple hint on the direction the gut favors (buying: that way; selling: against the other way). */
+function hintDirection(g: GameState, choices: ChoiceOption[], side: 'buy' | 'sell', index: string): void {
+  const inst = instinct(g)
+  const feel = indexFeeling(inst)
+  if (!inst || !feel) return
+  const id = side === 'buy' ? (feel === 'up' ? 'call' : 'put') : feel === 'up' ? 'put' : 'call'
+  const c = choices.find((x) => x.id === id)
+  if (c) c.hint = talentHint(g, 'Investing', feel === 'up' ? `Your gut says the ${index} climbs in ${inst.year}` : `Your gut says the ${index} has a rough ${inst.year}`)
 }
 
 /** Payout of a position given the index move (buy side, capped at 100x premium). */
@@ -324,24 +376,19 @@ function startIndexTrade(g: GameState, f: Flow): void {
   const text = sell
     ? `Selling options means earning a premium if the ${inf.ex.index} stays calm, and paying up if it moves hard against you. Which do you want to sell?`
     : `The ${inf.ex.index} settles your trade at the end of the year. Which way is it going?`
-  scriptChoice(
-    g,
-    DIR_SCRIPT,
-    sell ? 'Sell Options' : f.mode === 'paper' ? 'Paper Trade' : 'Buy Options',
-    text,
-    sell
-      ? [
-          { id: 'put', label: `Sell puts (bet it won't crash)`, emoji: '\u{1F6E1}\u{FE0F}' },
-          { id: 'call', label: `Sell calls (bet it won't rocket)`, emoji: '\u{1F9CA}' },
-          { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
-        ]
-      : [
-          { id: 'call', label: `Calls: the ${inf.ex.index} goes up`, emoji: '\u{1F4C8}' },
-          { id: 'put', label: `Puts: the ${inf.ex.index} goes down`, emoji: '\u{1F4C9}' },
-          { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
-        ],
-    { emoji: sell ? '\u{1F9FE}' : '\u{1F4CA}', data: flowJson(f) },
-  )
+  const choices: ChoiceOption[] = sell
+    ? [
+        { id: 'put', label: `Sell puts (bet it won't crash)`, emoji: '\u{1F6E1}\u{FE0F}' },
+        { id: 'call', label: `Sell calls (bet it won't rocket)`, emoji: '\u{1F9CA}' },
+        { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
+      ]
+    : [
+        { id: 'call', label: `Calls: the ${inf.ex.index} goes up`, emoji: '\u{1F4C8}' },
+        { id: 'put', label: `Puts: the ${inf.ex.index} goes down`, emoji: '\u{1F4C9}' },
+        { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
+      ]
+  hintDirection(g, choices, sell ? 'sell' : 'buy', inf.ex.index)
+  scriptChoice(g, DIR_SCRIPT, sell ? 'Sell Options' : f.mode === 'paper' ? 'Paper Trade' : 'Buy Options', text, choices, { emoji: sell ? '\u{1F9FE}' : '\u{1F4CA}', data: flowJson(f) })
 }
 
 defineScript(DIR_SCRIPT, (g, choice, data) => {
@@ -351,8 +398,9 @@ defineScript(DIR_SCRIPT, (g, choice, data) => {
   const inf = info(g)
   const strikes: OptionStrike[] = ['atm', 'otm', 'lotto']
   const st = moneyState(g)
+  const extra = spreadFor(st, f)
   const lines = strikes.map((s) => {
-    const price = optionPrice(inf, choice, s, st.skill, f.side)
+    const price = optionPrice(inf, choice, s, st.skill, f.side, extra)
     return f.side === 'buy'
       ? `${strikeLabel(inf, choice, s)}: every $1 of premium controls about ${shortMoney(1 / price)} of the index.`
       : `${strikeLabel(inf, choice, s)}: you collect about ${formatMoney(price * 1000)} for every $1,000 you put on the hook.`
@@ -361,7 +409,7 @@ defineScript(DIR_SCRIPT, (g, choice, data) => {
     g,
     STRIKE_SCRIPT,
     'Pick a Strike',
-    `${f.side === 'buy' ? 'Cheaper options need a bigger move to pay off.' : 'Further out = smaller premium, but a crash still hurts.'}\n\n${lines.join('\n')}`,
+    `${f.side === 'buy' ? 'Cheaper options need a bigger move to pay off.' : 'Further out = smaller premium, but a crash still hurts.'}${extra > 0 ? ` ${st.broker || 'Your broker'} has flagged you as a sharp trader, so its market makers quote you ${Math.round(extra * 100)}% worse prices than usual.` : ''}\n\n${lines.join('\n')}`,
     [
       ...strikes.map((s) => ({ id: s, label: strikeLabel(inf, choice, s), emoji: s === 'atm' ? '\u{1F3AF}' : s === 'otm' ? '\u{1F3B2}' : '\u{1F39F}\u{FE0F}' })),
       { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
@@ -438,7 +486,7 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
     if (!units || max < lo * 10) return
     if (f.mode === 'real' && !useYearAction(g, 'computer.opt.trade', 4)) return tooMuch(g)
     if (f.mode === 'paper' && !useYearAction(g, 'computer.opt.paper', 5)) return tooMuch(g)
-    const premium = dollars(units * optionPrice(inf, f.dir, f.strike, st.skill, 'sell'))
+    const premium = dollars(units * optionPrice(inf, f.dir, f.strike, st.skill, 'sell', spreadFor(st, f)))
     const cost = f.mode === 'paper' ? 0 : Math.min(fee(premium), dollars(g.character.money))
     // The broker holds the premium as collateral until expiry: it nets out at settlement, so it
     // can't be spent (or left to heirs) before the options are paid for.
@@ -465,7 +513,7 @@ defineScript(SIZE_SCRIPT, (g, value, data) => {
   if (!premium || max < lo) return
   const limitKey = f.mode === 'paper' ? 'computer.opt.paper' : 'computer.opt.trade'
   if (!useYearAction(g, limitKey, f.mode === 'paper' ? 5 : 4)) return tooMuch(g)
-  const units = dollars(premium / optionPrice(inf, f.dir, f.strike, st.skill, 'buy'))
+  const units = dollars(premium / optionPrice(inf, f.dir, f.strike, st.skill, 'buy', spreadFor(st, f)))
   const cost = f.mode === 'paper' ? 0 : fee(premium)
   let parent: Person | undefined
   if (f.mode === 'paper') st.paperCash = dollars(st.paperCash - premium)
@@ -675,6 +723,7 @@ export function settleOptions(g: GameState, st: MoneyState): News | null {
   st.positions = st.positions.filter((p) => p.year >= g.year)
   const t: SettleTotals = { realNet: 0, paperNet: 0, parentNet: 0, margin: 0, lines: [], popupText: [], bigWin: false }
   const moves = new Map<string, number>()
+  let staked = 0
   for (const pos of due) {
     const ret = settleMove(g, pos)
     moves.set(pos.index, ret)
@@ -698,6 +747,7 @@ export function settleOptions(g: GameState, st: MoneyState): News | null {
       if (caught) t.popupText.push(caught)
       continue
     }
+    staked += pos.premium
     if (pos.side === 'buy') {
       const net = pay - pos.premium
       bankGain(g, st, net, pay, false)
@@ -720,6 +770,8 @@ export function settleOptions(g: GameState, st: MoneyState): News | null {
       t.realNet += net
     }
   }
+  // A good year on your own account makes the market makers wary (wider spreads next time).
+  noteSharp(st, staked, staked + t.realNet)
   const moveText = [...moves].map(([idx, r]) => `The ${idx} ${r >= 0 ? 'rose' : 'fell'} ${absPct(r, 1)}`).join('; ')
   const parts: string[] = []
   if (t.realNet !== 0 || due.some((p) => p.mode === 'real')) parts.push(`your options ${t.realNet >= 0 ? `made ${formatMoney(t.realNet)}` : `lost ${formatMoney(-t.realNet)}`}`)
@@ -800,8 +852,10 @@ export function optionsMenu(): MenuGroup {
         type: 'info',
         id: 'computer.options.status',
         emoji: '\u{1F9EE}',
-        text: `Trading skill ${Math.round(st.skill)}/100${st.trades ? ` · real P&L ${st.pnl >= 0 ? '+' : ''}${formatMoney(st.pnl)}` : ''} · paper P&L ${st.paperPnl >= 0 ? '+' : ''}${formatMoney(st.paperPnl)}\n${positionsText(st)}`,
+        text: `Trading skill ${Math.round(st.skill)}/100${st.trades ? ` · real P&L ${st.pnl >= 0 ? '+' : ''}${formatMoney(st.pnl)}` : ''} · paper P&L ${st.paperPnl >= 0 ? '+' : ''}${formatMoney(st.paperPnl)}${st.sharp >= 0.5 ? ` · flagged as a sharp trader (spreads +${Math.round(sharpSpread(st) * 100)}%)` : ''}\n${positionsText(st)}`,
       })
+      const gut = instinctRow(g)
+      if (gut) nodes.push(gut)
       if (c.age >= 18) {
         if (!st.broker) {
           const name = brokerName(c.countryId)

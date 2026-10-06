@@ -38,8 +38,8 @@ export interface SpecialTalentDef {
 
 /** Every talent the player can pick before birth. Ids match life.ts TALENTS where both exist. */
 export const SPECIAL_TALENTS: readonly SpecialTalentDef[] = [
-  { id: 'Business', label: 'Business', emoji: '\u{1F4BC}', perk: 'Purple hints for every company you run: the best price and production, the smartest choice in a crisis, the hottest industries. Your companies grow faster.' },
-  { id: 'Investing', label: 'Investing', emoji: '\u{1F4C8}', perk: "Purple hints on which stocks, funds and coins look set to rise next year (if anything is). Gut feelings, not guarantees." },
+  { id: 'Business', label: 'Business', emoji: '\u{1F4BC}', perk: 'Purple hints in every company you run (best price and output, crisis calls, hot industries) and faster growth.' },
+  { id: 'Investing', label: 'Investing', emoji: '\u{1F4C8}', perk: 'Purple hints on which stocks, funds and coins look set to rise next year, if any. Gut feelings, not guarantees.' },
   { id: 'Acting', label: 'Acting', emoji: '\u{1F3AD}', perk: 'Acting skill grows much faster and casting directors notice: better auditions and bigger roles.' },
   { id: 'Music', label: 'Music', emoji: '\u{1F3B5}', perk: 'Learn instruments and singing faster; better gigs, record deals and chart runs.' },
   { id: 'Athletics', label: 'Athletics', emoji: '\u{1F3C3}', perk: 'Train faster, get scouted earlier and perform better in every sport.' },
@@ -69,12 +69,31 @@ export function specialTalent(id: string): SpecialTalentDef | undefined {
   return SPECIAL_TALENTS.find((t) => t.id === id)
 }
 
+/**
+ * Clean a list of picks (New Life options, an old or hand-edited save): known ids only, no
+ * duplicates, at most `max`, in the order given.
+ */
+export function normalizeTalents(list: unknown, max: number = MAX_START_TALENTS): TalentId[] {
+  if (!Array.isArray(list)) return []
+  const out: TalentId[] = []
+  for (const id of list) {
+    if (out.length >= max) break
+    if (isTalentId(id) && !out.includes(id)) out.push(id)
+  }
+  return out
+}
+
+/** Talents picked before birth (or inherited from a parent's picks), without the discovered one. */
+export function pickedTalents(g: GameState): TalentId[] {
+  return normalizeTalents(g.character.talents, SPECIAL_TALENTS.length)
+}
+
 /** Every talent the character has: picked before birth plus the one discovered in childhood. */
 export function characterTalents(g: GameState): string[] {
   const c = g.character
-  const out = Array.isArray(c.talents) ? c.talents.filter((t): t is string => typeof t === 'string') : []
+  const out: string[] = Array.isArray(c.talents) ? c.talents.filter((t): t is string => typeof t === 'string') : []
   if (c.talent && !out.includes(c.talent)) out.push(c.talent)
-  return out
+  return [...new Set(out)]
 }
 
 /** True when the character has this talent (picked before birth or discovered as a kid). */
@@ -90,6 +109,11 @@ export function talentMult(g: GameState, id: TalentId, mult: number): number {
 /** A purple hint string for ChoiceOption.hint / MenuBase.hint ('' when the talent is missing). */
 export function talentHint(g: GameState, id: TalentId, text: string): string {
   return hasTalent(g, id) ? `${HINT_EMOJI} ${text}` : ''
+}
+
+/** The emoji for a talent id ('🌟' for anything unknown). */
+export function talentEmoji(id: string): string {
+  return specialTalent(id)?.emoji ?? '\u{1F31F}'
 }
 
 /** One line for the AI prompt ('' when the character has no talents). */

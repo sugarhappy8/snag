@@ -1,6 +1,7 @@
 // Pure helpers for evaluating menu nodes safely (no React, no store), shared by the menu
 // UI and unit-tested on their own. A bug in one feature menu must not take the UI down,
 // so every callback is wrapped.
+import { HINT_EMOJI } from '../../game/talents'
 import type { GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../../game/types'
 
 export function report(where: string, err: unknown): void {
@@ -35,6 +36,37 @@ export function nodeSubtitle(node: MenuAction | MenuGroup, g: GameState): string
     return s(g) || null
   } catch (err) {
     report(`subtitle(${node.id})`, err)
+    return null
+  }
+}
+
+/** Longest talent hint we show; anything longer is cut with an ellipsis (hints are one-liners). */
+export const HINT_MAX = 220
+
+const LEADING_HINT_EMOJI = new RegExp(`^(?:\\s|${HINT_EMOJI}|\\u{FE0F})+`, 'u')
+
+/**
+ * Talent hint text ready to show: '' for anything that isn't a non-empty string. Strips the
+ * leading 🔮 (TalentHint draws its own), collapses whitespace and caps the length.
+ */
+export function cleanHint(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  const text = raw.replace(LEADING_HINT_EMOJI, '').replace(/\s+/g, ' ').trim()
+  if (text.length <= HINT_MAX) return text
+  // Cut by code points so an emoji (a surrogate pair) is never split into a broken "�".
+  const points = Array.from(text)
+  if (points.length <= HINT_MAX) return text
+  return `${points.slice(0, HINT_MAX - 1).join('').trimEnd()}…`
+}
+
+/** The purple talent hint under a row (MenuBase.hint), cleaned up; null when there is none. */
+export function nodeHint(node: MenuAction | MenuGroup, g: GameState): string | null {
+  const h = node.hint
+  if (typeof h !== 'function') return null
+  try {
+    return cleanHint(h(g)) || null
+  } catch (err) {
+    report(`hint(${node.id})`, err)
     return null
   }
 }

@@ -4,6 +4,7 @@
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import {
   addColleague,
@@ -26,8 +27,9 @@ import {
   setInstrumentSkill,
   setRole,
   short,
+  stableChoice,
   syncTenure,
-  talentMatches,
+  withHint,
   tell,
   view,
 } from './common'
@@ -152,7 +154,19 @@ function artistName(g: GameState): string {
 }
 
 function musicTalent(g: GameState): boolean {
-  return talentMatches(g, /music|sing|instrument/i)
+  return hasTalent(g, 'Music')
+}
+
+/** The subgenre that's about to blow up this year (stable; Music talent sees it as a hint). */
+function trendingSubgenre(g: GameState, genre: string): string {
+  return stableChoice(g, `music.trend.${genre}`, GENRES[genre] ?? GENRES.Pop)
+}
+
+/** The audition score before the luck roll (no randomness: safe for hints). */
+function labelPull(g: GameState, instrument: string): number {
+  const job = musicJob(g)
+  const pop = job ? md(job).popularity : 0
+  return effectiveSkill(g, instrument) + fameOf(g) * 0.3 + pop * 0.3 + (musicTalent(g) ? 10 : 0)
 }
 
 function effectiveSkill(g: GameState, instrument: string): number {
@@ -230,10 +244,9 @@ const contractScript = defineScript('special.music.contract', (g, choice, data) 
 })
 
 function auditionForLabel(g: GameState, instrument: string, label: Label, goingSolo: boolean): void {
-  const skill = effectiveSkill(g, instrument)
   const job = musicJob(g)
   const pop = job ? md(job).popularity : 0
-  const score = skill + fameOf(g) * 0.3 + pop * 0.3 + randInt(g, -20, 20)
+  const score = labelPull(g, instrument) + randInt(g, -20, 20)
   const need = 60 + label.tier * 10
   if (score < need) {
     log(g, `I auditioned for ${label.name} but they passed.`, 'bad')
@@ -251,7 +264,7 @@ function auditionForLabel(g: GameState, instrument: string, label: Label, goingS
   }
   const genre = job && goingSolo ? md(job).genre : pick(g, GENRE_NAMES)
   const years = randInt(g, 2, 4)
-  const advance = Math.round(([25_000, 80_000, 250_000][label.tier] ?? 25_000) * (1 + fameOf(g) / 30 + pop / 50) * (0.7 + rand(g) * 0.6) / 1_000) * 1_000
+  const advance = Math.round(([25_000, 80_000, 250_000][label.tier] ?? 25_000) * (1 + fameOf(g) / 30 + pop / 50) * (0.7 + rand(g) * 0.6) * talentMult(g, 'Music', 1.25) / 1_000) * 1_000
   const offer: ContractOffer = { instrument, label: label.name, tier: label.tier, genre, advance, years }
   scriptChoice(
     g,
@@ -279,12 +292,24 @@ function chooseLabel(g: GameState, instrument: string, goingSolo: boolean): void
   const burned = musicProfile(g).burnedLabels
   const labels = LABELS.filter((l) => !burned.includes(l.name))
   if (labels.length === 0) return tell(g, 'Record Labels', 'Every record label in town has blacklisted you. Maybe stop turning down contracts.', '\u{1F6AB}')
+  // Music talent: the biggest label that would most likely sign you (luck still decides).
+  const pull = labelPull(g, instrument)
+  const reachable = labels.filter((l) => pull >= 60 + l.tier * 10 + 5)
+  const best = reachable.length ? reachable[reachable.length - 1].name : null
   scriptChoice(
     g,
     labelScript,
     'Record Labels',
     `Which record label do you want to audition for? (${instrument} skill: ${effectiveSkill(g, instrument)}%)`,
-    [...labels.map((l) => ({ id: l.name, label: `${l.name} ${'\u{2B50}'.repeat(l.tier + 1)}`, emoji: '\u{1F4BF}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+    [
+      ...labels.map((l) => ({
+        id: l.name,
+        label: `${l.name} ${'\u{2B50}'.repeat(l.tier + 1)}`,
+        emoji: '\u{1F4BF}',
+        ...(l.name === best ? withHint(talentHint(g, 'Music', 'The biggest label that should bite on your demo.')) : {}),
+      })),
+      { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' },
+    ],
     { emoji: '\u{1F4BF}', data: { instrument, goingSolo } },
   )
 }
@@ -311,7 +336,7 @@ interface BandOffer {
 
 function genBand(g: GameState, instrument: string): BandOffer {
   const skill = effectiveSkill(g, instrument)
-  const popularity = clamp100(randInt(g, 5, 25) + skill * 0.4 + randInt(g, -10, 10))
+  const popularity = clamp100(randInt(g, 5, 25) + skill * 0.4 + randInt(g, -10, 10) + (musicTalent(g) ? 8 : 0))
   const members = randInt(g, 2, 5)
   return {
     instrument,
@@ -437,7 +462,9 @@ const releaseTypeScript = defineScript('special.music.type', (g, choice) => {
   if (!job) return
   const genre = md(job).genre
   const subs = shuffle(g, GENRES[genre] ?? GENRES.Pop).slice(0, 4)
-  scriptChoice(g, subgenreScript, 'Subgenre', `What kind of ${genre} sound are you going for?`, [...subs.map((s) => ({ id: s, label: s, emoji: '\u{1F3B6}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
+  const trend = trendingSubgenre(g, genre)
+  const options = subs.map((s) => ({ id: s, label: s, emoji: '\u{1F3B6}', ...(s === trend ? withHint(talentHint(g, 'Music', 'This sound is about to blow up on the charts this year.')) : {}) }))
+  scriptChoice(g, subgenreScript, 'Subgenre', `What kind of ${genre} sound are you going for?`, [...options, { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], {
     emoji: '\u{1F3B6}',
     data: { type: choice },
   })
@@ -460,9 +487,11 @@ function release(g: GameState, job: Job, typeId: string, subgenre: string, title
   const type = RELEASE_TYPES.find((t) => t.id === typeId) ?? RELEASE_TYPES[0]
   const skill = effectiveSkill(g, d.instrument)
   const synergy = d.mode === 'band' ? avgBandRelationship(g, job) / 10 : 0
-  const quality = clamp100(skill * 0.5 + randInt(g, 0, 40) + synergy + (musicTalent(g) ? 5 : 0))
+  // Riding this year's trending sound helps anyone; Music talent knows which one it is.
+  const onTrend = subgenre === trendingSubgenre(g, d.genre)
+  const quality = clamp100(skill * 0.5 + randInt(g, 0, 40) + synergy + (musicTalent(g) ? 10 : 0) + (onTrend ? 6 : 0))
   const pop = d.popularity
-  const sold = Math.max(50, Math.round(((pop ** 3) * 3 + quality * 800 + 200) * type.mult * (0.3 + rand(g) * 1.7) * (quality / 60)))
+  const sold = Math.max(50, Math.round(((pop ** 3) * 3 + quality * 800 + 200) * type.mult * (0.3 + rand(g) * 1.7) * (quality / 60) * (onTrend ? 1.3 : 1) * talentMult(g, 'Music', 1.2)))
   const perUnit = 1 * type.pay
   const gross = Math.round(sold * perUnit)
   const share = d.mode === 'band' ? Math.round(gross / Math.max(1, d.members)) : gross
@@ -535,7 +564,7 @@ const concertScript = defineScript('special.music.concert', (g, choice) => {
   if (!useYearAction(g, 'music.concert', 2)) return tell(g, 'Concert', "Your voice is shot from all the shows this year. Rest up.", '\u{1F971}')
   const d = md(job)
   const skill = effectiveSkill(g, d.instrument)
-  const performance = clamp100(skill * 0.6 + randInt(g, 0, 40))
+  const performance = clamp100(skill * 0.6 + randInt(g, 0, 40) + (musicTalent(g) ? 10 : 0))
   const fill = Math.min(1, Math.max(0.05, (d.popularity + 20 - venue.minPop) / 60 + rand(g) * 0.2))
   const attendance = Math.max(3, Math.round(venue.capacity * fill))
   const ticket = 10 + Math.round(d.popularity * 1.2)
@@ -811,7 +840,7 @@ export function musicJobNodes(g: GameState): MenuNode[] {
         if (!j) return
         if (!useYearAction(gg, 'music.practice', 2)) return tell(gg, 'Practice', 'Your fingers are blistered. No more practice this year.', '\u{1F971}')
         const inst = md(j).instrument
-        const gain = randInt(gg, 2, 6) + (musicTalent(gg) ? 2 : 0)
+        const gain = Math.round(randInt(gg, 2, 6) * talentMult(gg, 'Music', 1.7))
         setInstrumentSkill(gg, inst, instrumentSkill(gg, inst) + gain)
         log(gg, `I practiced my ${inst.toLowerCase()}.`)
         say(gg, 'Practice', `${pick(gg, ['You rehearsed for eight hours straight.', 'You wrote three new riffs and deleted two.', 'You practiced until the neighbors started requesting songs.'])} Your ${inst.toLowerCase()} skill is now ${instrumentSkill(gg, inst)}%.`, '\u{1F3B6}', 'good')

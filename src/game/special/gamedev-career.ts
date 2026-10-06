@@ -13,6 +13,7 @@ import { addHidden, addRelationship, addStat, count, currentPartner, earnIncome,
 import { industryDemand, localMarket } from '../data/markets'
 import { chance, pick, randFloat, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import { addColleague, addFame, blocked, hire, leave, money, ownFlag, promote, quitNote, say, setOwnFlag, setRole, syncTenure, tell } from './common'
@@ -220,7 +221,8 @@ const INTERVIEW = defineScript('gamedev.job.interview', (g, choice, data) => {
   const skill = trackSkill(g, l.track, p)
   const port = gamePortfolio(g, p)
   const mood = industryYear(g).mood
-  const talent = (l.track === 'code' && g.character.talent === 'Programming') || (l.track === 'art' && g.character.talent === 'Art') ? 6 : 0
+  const talent =
+    (l.track === 'code' && hasTalent(g, 'Programming')) || (l.track === 'art' && hasTalent(g, 'Art')) || (l.track === 'design' && hasTalent(g, 'Gaming')) || (l.track === 'qa' && hasTalent(g, 'Gaming')) ? 8 : 0
   const referral = hasReferral(g, l.studio) ? 10 : 0
   const score =
     42 +

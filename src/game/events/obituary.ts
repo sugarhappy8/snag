@@ -2,6 +2,7 @@
 // career, family left behind, notable counters and the estate — with varied phrasing.
 import { counter, formatMoney, fullName, netWorth, peopleBy, pronouns, shortMoney } from '../core'
 import { pick, randInt } from '../rng'
+import { characterTalents } from '../talents'
 import type { GameState, Person } from '../types'
 import { country } from './helpers'
 
@@ -85,7 +86,8 @@ export function writeObituary(g: GameState): string {
   if (n('pets') >= 3) notable.push(`${P.He} adored animals and cared for ${n('pets')} pets over the years.`)
   if (n('casinoWins') + n('casinoLosses') >= 10) notable.push(`${P.He} was a familiar face at the casino.`)
   if (n('fights') >= 10) notable.push(`${P.He} never backed down from a fight, and there were many.`)
-  if (c.talent) notable.push(`${P.He} had a real gift for ${c.talent.toLowerCase()}.`)
+  const gifts = characterTalents(g).map((t) => t.toLowerCase())
+  if (gifts.length) notable.push(`${P.He} had a real gift for ${gifts.length > 1 ? `${gifts.slice(0, -1).join(', ')} and ${gifts[gifts.length - 1]}` : gifts[0]}.`)
   if (c.hidden.karma >= 80) notable.push(`Friends remember ${P.him} as one of the kindest people they ever met.`)
   else if (c.hidden.karma <= 15) notable.push(`Few will admit to missing ${P.him}.`)
   const picked: string[] = []

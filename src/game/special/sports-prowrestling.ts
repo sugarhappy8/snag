@@ -6,6 +6,7 @@
 import { addHidden, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity } from '../world'
 import { addFame, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
@@ -43,7 +44,7 @@ interface WrestleJob {
 const TIERS = ['Indie Circuit', 'CWE Proving Grounds', 'CWE Main Roster']
 
 const initWrestle = (g: GameState): WrestleProfile => ({
-  inRing: Math.max(5, Math.min(40, Math.round(g.character.hidden.athleticism * 0.3 + randInt(g, 0, 10)))),
+  inRing: Math.max(5, Math.min(40, Math.round(g.character.hidden.athleticism * 0.3 + randInt(g, 0, 10) + (hasTalent(g, 'Athletics') ? 6 : 0)))),
   mic: Math.max(5, Math.min(50, Math.round(g.character.stats.smarts * 0.15 + g.character.stats.looks * 0.15 + g.character.hidden.craziness * 0.15 + randInt(g, 0, 10)))),
   popularity: 0,
   align: 'face',
@@ -117,8 +118,8 @@ const schoolAction: MenuAction = {
     const fee = p.schooled ? localFee(g, 800) : localFee(g, 3_500)
     const paid = payFee(g, fee)
     if (!paid) return tell(g, 'Wrestling School', `Tuition is ${money(fee)}. You can't afford it.`, '\u{1F4B8}')
-    p.inRing = Math.min(100, p.inRing + trainGain(g, p.inRing, 6, 12))
-    p.mic = Math.min(100, p.mic + trainGain(g, p.mic, 2, 5))
+    p.inRing = Math.min(100, p.inRing + trainGain(g, p.inRing, 6, 12, talentMult(g, 'Athletics', 1.5)))
+    p.mic = Math.min(100, p.mic + trainGain(g, p.mic, 2, 5, hasTalent(g, 'Acting') || hasTalent(g, 'Comedy') ? 1.5 : 1))
     addHeadTrauma(g, 0.3)
     const first = !p.schooled
     p.schooled = true

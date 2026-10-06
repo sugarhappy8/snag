@@ -15,6 +15,7 @@ import { agesLabel, cvEntries, cvScore, KIND_META, rankLabel, rankOf, rankShort,
 import { highestEducationLabel } from '../../game/education'
 import { investmentsSummary } from '../../game/investments'
 import { getRibbon } from '../../game/ribbons'
+import { characterTalents, specialTalent, talentEmoji } from '../../game/talents'
 import { getCountry } from '../../game/world'
 import type {
   CvEntry,
@@ -276,6 +277,30 @@ function ribbonLabel(id: string | null): string | null {
   }
 }
 
+export interface TalentRow {
+  id: string
+  emoji: string
+  label: string
+  perk: string
+  /** How the character got it. */
+  origin: string
+}
+
+/** The character's talents for the profile: picked (or inherited) ones first, then the discovered one. */
+export function talentRows(g: GameState): TalentRow[] {
+  try {
+    const c = g.character
+    const picked = Array.isArray(c.talents) ? c.talents : []
+    return characterTalents(g).map((id) => {
+      const def = specialTalent(id)
+      const origin = picked.includes(id) ? (g.ancestors.length > 0 ? 'Runs in the family' : 'Picked before birth') : 'Discovered as a kid'
+      return { id, emoji: talentEmoji(id), label: def?.label ?? id, perk: def?.perk ?? '', origin }
+    })
+  } catch {
+    return []
+  }
+}
+
 export function ProfileSheet({ onClose }: ProfileSheetProps) {
   const g = useApp((s) => s.game)
   const anchorRef = useRef<HTMLDivElement | null>(null)
@@ -300,9 +325,11 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
     ['Sexuality', sexualityKnown(g) ? cap(c.sexuality) : 'Still figuring it out'],
   ]
   if (c.religion) about.push(['Religion', c.religion])
-  if (c.talent) about.push(['Special talent', `🌟 ${c.talent}`])
   about.push(['Generation', `#${g.generation}`])
   if (!c.alive && c.causeOfDeath) about.push(['Cause of death', c.causeOfDeath])
+
+  // --- talents (picked before birth + discovered as a kid)
+  const talents = talentRows(g)
 
   // --- education
   const edu = c.education
@@ -397,6 +424,20 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
       <Section title="About">
         <KV rows={about} />
       </Section>
+
+      {talents.length > 0 ? (
+        <Section title="Special talents">
+          <ul className="list-plain profile-talents">
+            {talents.map((t) => (
+              <li key={t.id}>
+                <span aria-hidden>{t.emoji}</span> <strong>{t.label}</strong>
+                <span className="profile-talent-origin"> · {t.origin}</span>
+                {t.perk ? <span className="li-sub">{t.perk}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
 
       <Section title="Stats">
         <div className="person-bars">

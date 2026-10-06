@@ -17,6 +17,7 @@ import { addMarketShock, indexShockFactor, type ShockCause } from '../invest/sho
 import { investmentHoldings, revalueHoldings } from '../investments'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentHint } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry, randomFirstName, randomLastName } from '../world'
 import {
@@ -40,10 +41,12 @@ import {
   quitNote,
   say,
   setRole,
+  stableChoice,
   str,
   syncTenure,
   tell,
   view,
+  withHint,
 } from './common'
 
 // ---------------------------------------------------------------------------
@@ -661,6 +664,7 @@ defineScript(BUDGET_SCRIPT, (g, choice, data) => {
     experience -
     convictions(g) * 5 -
     (o.opponent - 50) * 0.6 +
+    (hasTalent(g, 'Leadership') ? 5 : 0) +
     randInt(g, -6, 6)
   const opp = opponentName(g)
   const oppParty = pick(
@@ -711,14 +715,46 @@ function pollLine(c: Campaign): string {
   return `Polls: You ${c.poll}% · ${c.opponent} ${100 - c.poll}%`
 }
 
+/** The campaign stop voters are hungry for this race (stable; the Leadership hint reveals it). */
+function voterMood(g: GameState, camp: Campaign): string {
+  return stableChoice(g, `pol.mood.${camp.office}.${camp.opponent}`, TRAIL.map((t) => t.id))
+}
+
+/** Expected poll swing of a stop for this candidate (no randomness: safe for hints). */
+function expectedSwing(g: GameState, camp: Campaign, id: string): number {
+  const c = g.character
+  const followers = c.social?.followers ?? 0
+  const base: Record<string, number> = {
+    debate: (c.stats.smarts - 50) / 6,
+    rally: 2,
+    babies: 1,
+    attack: 1,
+    doors: 2,
+    tv: (c.stats.looks - 50) / 8,
+    social: 0.5 + (followers > 100_000 ? 3 : followers > 5_000 ? 1 : 0),
+    fair: 1,
+    townhall: (c.stats.smarts - 50) / 10 + 0.5,
+    endorse: 3,
+    diner: 1.5,
+  }
+  return (base[id] ?? 1) + (id === voterMood(g, camp) ? 3 : 0)
+}
+
 function trailChoice(g: GameState, camp: Campaign, prefix: string): void {
   const opts = shuffle(g, TRAIL).slice(0, 4)
+  // Leadership talent: you can feel which stop will move the needle most (still not a sure thing).
+  const best = hasTalent(g, 'Leadership') ? opts.reduce((a, b) => (expectedSwing(g, camp, b.id) > expectedSwing(g, camp, a.id) ? b : a)).id : null
   scriptChoice(
     g,
     TRAIL_SCRIPT,
     `Campaign Trail (${camp.round}/3)`,
     `${prefix}\n\n${pollLine(camp)}\n\nWhat's your next campaign stop?`,
-    opts.map((x) => ({ id: x.id, label: trailLabel(g, x.id, x.label), emoji: x.emoji })),
+    opts.map((x) => ({
+      id: x.id,
+      label: trailLabel(g, x.id, x.label),
+      emoji: x.emoji,
+      ...(x.id === best ? { hint: talentHint(g, 'Leadership', x.id === voterMood(g, camp) ? 'Voters are hungry for exactly this right now. Your best move.' : 'Your strongest move on this stretch of the trail.') } : {}),
+    })),
     { emoji: '\u{1F5F3}\u{FE0F}', data: camp as unknown as Json },
   )
 }
@@ -807,7 +843,10 @@ defineScript(TRAIL_SCRIPT, (g, choice, data) => {
     incumbentRun: !!raw.incumbentRun,
   }
   if (!g.character.alive || g.character.prison) return
-  const { delta, text } = trailOutcome(g, camp, choice)
+  const out = trailOutcome(g, camp, choice)
+  const text = out.text
+  // What voters are hungry for this race lands better for anyone; leaders work every room a bit better.
+  const delta = out.delta + (choice === voterMood(g, camp) ? 3 : 0) + (hasTalent(g, 'Leadership') ? 1 : 0)
   camp.poll = Math.round(Math.max(5, Math.min(92, camp.poll + delta)))
   if (camp.round < 3) {
     camp.round += 1
@@ -1012,7 +1051,7 @@ defineScript(SPEECH_SCRIPT, (g, choice) => {
   if (!d.hot.length) d.hot = hotIssues(g)
   const issue = issueOf(choice)
   const hot = d.hot.includes(issue.id)
-  const delta = hot ? randInt(g, 3, 8) + (g.character.stats.smarts >= 70 ? 1 : 0) : randInt(g, -3, 2)
+  const delta = (hot ? randInt(g, 3, 8) + (g.character.stats.smarts >= 70 ? 1 : 0) : randInt(g, -3, 2)) + (hasTalent(g, 'Leadership') ? 1 : 0)
   addApproval(job, delta)
   addFame(g, 1)
   log(g, `I gave a televised speech about ${issue.label.toLowerCase()}.`)
@@ -1046,7 +1085,13 @@ const speechAction: MenuAction = {
       'Broadcast a Speech',
       know ? 'You read the newspaper, so you know what people care about. What will you talk about?' : "What will your speech be about? (Read the newspaper to learn what's on voters' minds.)",
       [
-        ...ISSUES.map((i) => ({ id: i.id, label: know && d.hot.includes(i.id) ? `${i.label} \u{1F525}` : i.label, emoji: i.emoji })),
+        ...ISSUES.map((i) => ({
+          id: i.id,
+          label: know && d.hot.includes(i.id) ? `${i.label} \u{1F525}` : i.label,
+          emoji: i.emoji,
+          // Leadership talent: you have a feel for the public mood, newspaper or not.
+          ...(!know && i.id === d.hot[0] ? withHint(talentHint(g, 'Leadership', 'Your gut says this is what people are worried about.')) : {}),
+        })),
         { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' },
       ],
       { emoji: '\u{1F399}\u{FE0F}' },
@@ -1078,12 +1123,12 @@ const rallyAction: MenuAction = {
       return tell(g, 'Rally', `You can't afford the ${money(cost)} it costs to stage a rally.`, '\u{1F4B8}')
     }
     const roll = rand(g)
-    if (roll < 0.15) {
+    if (roll < (hasTalent(g, 'Leadership') ? 0.1 : 0.15)) {
       addApproval(job, -3)
       log(g, 'Protesters crashed my rally.', 'bad')
       return say(g, 'Rally', `${pick(g, ['Protesters drowned out your speech with kazoos.', 'Someone threw a tomato at you. They had good aim.', 'Your teleprompter died and you rambled for forty minutes.'])} Approval: ${pdata(job).approval}% (-3).`, '\u{1F345}', 'bad')
     }
-    const delta = randInt(g, 2, 7)
+    const delta = randInt(g, 2, 7) + (hasTalent(g, 'Leadership') ? 1 : 0)
     addApproval(job, delta)
     addFame(g, 1)
     addStat(g, 'happiness', 4)
@@ -2236,6 +2281,14 @@ defineScript(TERM_SCRIPT, (g, choice) => {
   say(g, 'Retired', `You left office as ${title} with a ${d.approval}% approval rating. ${pick(g, ['Your portrait now hangs in a hallway nobody walks down.', 'You celebrated by sleeping in for the first time in years.', 'Publishers are already calling about your memoir.'])}`, '\u{1F3D6}\u{FE0F}', 'good')
 })
 
+/**
+ * Leadership talent in office. Together these take a do-nothing incumbent from winning about
+ * 55-60% of re-elections to about 80-85%: a real edge, never a sure thing (+2 a year and +4 at
+ * the polls made it ~98%).
+ */
+const LEADER_APPROVAL_DRIFT = 1
+const LEADER_REELECT_EDGE = 2
+
 function reelection(g: GameState, job: Job): void {
   const d = pdata(job)
   const o = officeOf(d.office)
@@ -2243,7 +2296,7 @@ function reelection(g: GameState, job: Job): void {
   const opp = opponentName(g)
   const chest = d.warChest
   d.warChest = 0
-  const poll = 30 + d.approval * 0.45 + Math.min(8, (chest / Math.max(1, o.budgets[2])) * 8) + (c.stats.smarts - 50) * 0.05 + Math.min(6, fameOf(g) * 0.08) - d.scandals * 2
+  const poll = 30 + d.approval * 0.45 + Math.min(8, (chest / Math.max(1, o.budgets[2])) * 8) + (c.stats.smarts - 50) * 0.05 + Math.min(6, fameOf(g) * 0.08) - d.scandals * 2 + (hasTalent(g, 'Leadership') ? LEADER_REELECT_EDGE : 0)
   const share = Math.round(Math.max(5, Math.min(95, poll + randInt(g, -6, 6))))
   const title = job.title
   if (share > 50) {
@@ -2312,7 +2365,9 @@ export function yearlyPolitics(g: GameState): void {
   d.hot = hotIssues(g)
   d.bills = newBills(g, o.id)
   // Approval drifts toward 50 with noise.
-  setApproval(job, d.approval + (50 - d.approval) * 0.12 + randInt(g, -6, 5))
+  // Leadership talent: people just like following you. Kept small on purpose: approval drifts
+  // toward 50, so +1 a year already lifts where it settles by ~8 points.
+  setApproval(job, d.approval + (50 - d.approval) * 0.12 + randInt(g, -6, 5) + (hasTalent(g, 'Leadership') ? LEADER_APPROVAL_DRIFT : 0))
   fameToward(g, o.fame, 3 + o.rank)
   addStat(g, 'happiness', d.approval >= 60 ? 2 : d.approval < 30 ? -4 : 0)
 

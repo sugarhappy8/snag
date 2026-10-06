@@ -217,6 +217,11 @@ export interface MoneyState {
   broker: string
   /** Lifetime realized options P&L with real money. */
   pnl: number
+  /**
+   * How sharp brokers think you are (0-4): years of winning option trades and bets add to it,
+   * losing years and time take it away. Market makers widen their spreads for sharp traders.
+   */
+  sharp: number
   paperPnl: number
   /** Virtual paper-trading cash. */
   paperCash: number
@@ -248,11 +253,32 @@ export interface MoneyState {
 
 export const PAPER_START = 10_000
 
+/** Highest "sharp trader" score, the extra spread per point, and how fast it fades each year. */
+export const SHARP_MAX = 4
+export const SHARP_SPREAD = 0.4
+export const SHARP_FADE = 0.7
+
+/** Extra market-maker markup for a trader the brokers have flagged as sharp (0 for most people). */
+export function sharpSpread(st: Pick<MoneyState, 'sharp'>): number {
+  return SHARP_SPREAD * clampNum(Number.isFinite(st.sharp) ? st.sharp : 0, 0, SHARP_MAX)
+}
+
+/**
+ * Book a year of settled real-money option trades and bets: a good year (returns on the premium
+ * paid) makes brokers wary, a bad one reassures them. Called once per settlement.
+ */
+export function noteSharp(st: MoneyState, premium: number, payout: number): void {
+  if (!(premium > 0)) return
+  const r = clampNum(payout / premium - 1, -1, SHARP_MAX)
+  st.sharp = clampNum(st.sharp + r, 0, SHARP_MAX)
+}
+
 function fresh(): MoneyState {
   return {
     skill: 0,
     broker: '',
     pnl: 0,
+    sharp: 0,
     paperPnl: 0,
     paperCash: PAPER_START,
     lossCarry: 0,
@@ -334,10 +360,11 @@ function validProbe(v: Json): boolean {
 /** Fix one record's fields in place (old saves, hand-edited saves). */
 function repair(o: { [key: string]: Json }): void {
   const d = fresh() as unknown as { [key: string]: Json }
-  for (const key of ['skill', 'pnl', 'paperPnl', 'paperCash', 'lossCarry', 'trades', 'apePnl', 'apes', 'heat', 'scams', 'scamTake', 'bans']) {
+  for (const key of ['skill', 'pnl', 'sharp', 'paperPnl', 'paperCash', 'lossCarry', 'trades', 'apePnl', 'apes', 'heat', 'scams', 'scamTake', 'bans']) {
     if (typeof o[key] !== 'number' || !Number.isFinite(o[key] as number)) o[key] = d[key]
   }
   o.skill = clampNum(num(o.skill), 0, 100)
+  o.sharp = clampNum(num(o.sharp), 0, SHARP_MAX)
   o.heat = clampNum(num(o.heat), 0, 100)
   o.lossCarry = Math.max(0, num(o.lossCarry))
   if (typeof o.broker !== 'string') o.broker = ''

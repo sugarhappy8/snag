@@ -28,7 +28,7 @@ import { contractCondition } from './health'
 import { createPerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
-import { isTalentId, MAX_START_TALENTS } from './talents'
+import { MAX_START_TALENTS, normalizeTalents, pickedTalents, type TalentId } from './talents'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
 import type {
   AncestorSummary,
@@ -88,6 +88,10 @@ function applyStartStats(c: Character, stats: NewLifeOptions['stats']): void {
 
 // ---------------------------------------------------------------------------
 // Talents
+//
+// Childhood talents: a kid may discover one at random (g.flags.latentTalent → Character.talent),
+// and every talent picked before birth (talents.ts, Character.talents) also gets its own
+// discovery moment here. Perks are applied by the modules that ask talents.ts hasTalent().
 
 export interface TalentDef {
   id: string
@@ -191,6 +195,69 @@ export const TALENTS: TalentDef[] = [
     hints: ["I figured out the password to my parents' tablet.", 'I taught myself how to make a simple video game.'],
     discovery: 'You built your own website from scratch, and it actually works. You have a special talent for programming!',
     apply: (g) => addStat(g, 'smarts', 6),
+  },
+  {
+    id: 'Business',
+    emoji: '\u{1F4BC}',
+    weight: 5,
+    hints: [
+      'I sold my drawings to my grandparents. Then I raised my prices.',
+      'I traded one sticker for three better stickers. Everyone on the playground wants to trade with me now.',
+      'I talked my parents into a bigger allowance with a hand-drawn chart.',
+    ],
+    discovery:
+      'You started a snack-trading empire at school, hired two classmates as salespeople and turned a real profit before a teacher shut it down. Off the record, she said she was impressed. You have a special talent for business!',
+    apply: (g) => {
+      addStat(g, 'smarts', 4)
+      addHidden(g, 'willpower', 5)
+    },
+  },
+  {
+    id: 'Investing',
+    emoji: '\u{1F4C8}',
+    weight: 3,
+    hints: [
+      'I refused to spend my birthday money. I told everyone I was "letting it grow."',
+      'I kept a little notebook of how much everything costs. I check it every week.',
+      'I asked why the numbers on the business news go up and down. Nobody at home could explain it.',
+    ],
+    discovery:
+      "You've been guessing which toys and snacks will cost more next month, and you're right a suspicious amount of the time. A family friend who works at a bank asked you for tips. You have a special talent for investing!",
+    apply: (g) => {
+      addStat(g, 'smarts', 5)
+      addHidden(g, 'discipline', 3)
+    },
+  },
+  {
+    id: 'Leadership',
+    emoji: '\u{1F3DB}\u{FE0F}',
+    weight: 5,
+    hints: [
+      'I organized the kids on our street into teams. Nobody argued.',
+      'I settled a playground fight with a speech. Both sides clapped.',
+      'I got put in charge of the class pet. I made a feeding schedule and stuck it on the wall.',
+    ],
+    discovery:
+      'Your class voted you class representative by a landslide, and within a week you had talked your teachers into a longer break. Even the older kids do what you say. You have a special talent for leadership!',
+    apply: (g) => {
+      addStat(g, 'happiness', 3)
+      addHidden(g, 'willpower', 6)
+    },
+  },
+  {
+    id: 'Gaming',
+    emoji: '\u{1F3AE}',
+    weight: 6,
+    hints: [
+      'I beat a video game my cousin has been stuck on for months.',
+      "I memorized every level of my favorite game. I'd like that on my report card.",
+      'I figured out a shortcut in a racing game that the grown-ups say is impossible.',
+    ],
+    discovery: 'You entered an online tournament for kids and finished in the top ten in all of {country}. Your reaction times are off the charts. You have a special talent for gaming!',
+    apply: (g) => {
+      addStat(g, 'happiness', 4)
+      addStat(g, 'smarts', 2)
+    },
   },
 ]
 
@@ -713,8 +780,15 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
 
   // Chosen stats and talents go on last so the same seed still rolls the same family and destiny.
   applyStartStats(c, opts.stats)
-  const picked = [...new Set((opts.talents ?? []).filter(isTalentId))].slice(0, MAX_START_TALENTS)
-  if (picked.length) c.talents = picked
+  const picked = normalizeTalents(opts.talents, MAX_START_TALENTS)
+  if (picked.length) {
+    c.talents = picked
+    // A random extra talent is still possible, just not a second copy of one already picked.
+    if (typeof g.flags.latentTalent === 'string' && (picked as string[]).includes(g.flags.latentTalent)) {
+      delete g.flags.latentTalent
+      delete g.flags.talentAge
+    }
+  }
   return g
 }
 
@@ -804,6 +878,23 @@ function adultEducation(g: GameState, age: number, countryId: string, occupation
     }
   }
   return edu
+}
+
+/** Chance that an heir inherits one of the late player's picked talents. */
+const TALENT_INHERIT_CHANCE = 0.4
+
+/**
+ * Maybe hand one of the late player's picked talents to the heir (stored on heir.talents, so
+ * it works like a pick from birth). Consumes no randomness when there was nothing picked.
+ */
+function inheritTalent(n: GameState, old: Character, heir: Character): TalentDef | undefined {
+  const picks = normalizeTalents(old.talents, Number.MAX_SAFE_INTEGER).filter((id) => id !== heir.talent)
+  if (picks.length === 0 || !chance(n, TALENT_INHERIT_CHANCE)) return undefined
+  const id: TalentId = picks.length === 1 ? picks[0] : pick(n, picks)
+  const def = getTalent(id)
+  if (!def) return undefined
+  heir.talents = [id]
+  return def
 }
 
 function siblingRelation(heir: Person, other: Person): RelationKind {
@@ -1113,6 +1204,12 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     n.flags.latentTalent = weightedPick(n, TALENTS, (t) => t.weight).id
     n.flags.talentAge = Math.max(age + 1, randInt(n, 5, 12))
   }
+  // Talents picked before birth aren't handed down whole, but a gift can run in the family.
+  const inherited = inheritTalent(n, old, heir)
+  if (inherited && n.flags.latentTalent === inherited.id) {
+    delete n.flags.latentTalent
+    delete n.flags.talentAge
+  }
   n.flags.grandkidsSeen = n.people.filter((p) => p.relation === 'grandchild').map((p) => p.id)
 
   const childWord = heir.gender === 'male' ? (heirP.relation === 'stepchild' ? 'stepson' : 'son') : heirP.relation === 'stepchild' ? 'stepdaughter' : 'daughter'
@@ -1139,6 +1236,13 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     inheritanceLines.push(estate <= 0 ? `${old.gender === 'male' ? 'He' : 'She'} died broke, so there was nothing to inherit.` : 'There was nothing left for you to inherit.')
     log(n, `My ${oldNoun} left me nothing but memories.`)
   }
+  const giftFrom = heirP.relation === 'stepchild' ? `step${oldNoun}` : oldNoun
+  if (inherited && age > PICK_REVEAL_BY) {
+    // Old enough to have noticed long ago; a younger heir finds out in a childhood moment.
+    markRevealed(n, [inherited.id])
+    inheritanceLines.push(`Like your ${giftFrom}, you have a natural gift for ${inherited.id.toLowerCase()}.`)
+    log(n, `Like my ${giftFrom}, I have a natural gift for ${inherited.id.toLowerCase()}.`, 'good')
+  }
   if (heirlooms.length > 0) {
     inheritanceLines.push(`You also inherited ${heirlooms.length === 1 ? 'a family heirloom' : `${heirlooms.length} family heirlooms`}: ${heirlooms.map((a) => a.name).join(', ')}.`)
     log(n, `I inherited the family heirloom${heirlooms.length === 1 ? '' : 's'}.`)
@@ -1152,6 +1256,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   if (guardian && age < 18) log(n, `I live with my ${guardian.relation === 'grandparent' ? (guardian.gender === 'male' ? 'grandfather' : 'grandmother') : guardian.relation === 'stepparent' ? (guardian.gender === 'male' ? 'stepfather' : 'stepmother') : parentNoun(guardian.gender)}.`)
 
   heir.memories.push(`Age ${age}: My ${oldNoun} ${oldName} died from ${cause.toLowerCase()} at ${old.age}. I took over as generation ${n.generation} of the ${heir.lastName} family.`)
+  if (inherited && age > PICK_REVEAL_BY) heir.memories.push(`Age ${age}: Inherited my ${giftFrom}'s gift for ${inherited.id.toLowerCase()}.`)
   notice(
     n,
     `Generation ${n.generation}`,
@@ -1210,23 +1315,77 @@ function schoolDanceMemory(g: GameState): string {
 
 const HOBBIES = ['skydiving', 'the electric guitar', 'pottery', 'marathon running', 'salsa dancing', 'rock climbing', 'surfing', 'karate']
 
+/** Picked talents get their childhood "you have a special talent" moment between these ages. */
+const PICK_REVEAL_FROM = 5
+const PICK_REVEAL_BY = 10
+
+/** The "Special Talent" moment: one-time bump, popup, log line and memory. */
+function revealTalent(g: GameState, def: TalentDef): void {
+  def.apply(g)
+  notice(g, 'Special Talent', lifeLocal(g, def.discovery), { emoji: def.emoji, tone: 'good' })
+  log(g, `I discovered I have a special talent for ${def.id.toLowerCase()}.`, 'good')
+  remember(g, `Discovered a special talent for ${def.id.toLowerCase()}.`)
+  g.flags.talentNoticeAge = g.character.age
+}
+
+/** Talents picked before birth (or inherited) that haven't had their discovery moment yet. */
+function pendingPicks(g: GameState): TalentDef[] {
+  const revealed = strList(g.flags.talentsRevealed)
+  const out: TalentDef[] = []
+  for (const id of pickedTalents(g)) {
+    if (revealed.includes(id) || id === g.character.talent) continue
+    const def = getTalent(id)
+    if (def) out.push(def)
+  }
+  return out
+}
+
+function markRevealed(g: GameState, ids: string[]): void {
+  g.flags.talentsRevealed = [...new Set([...strList(g.flags.talentsRevealed), ...ids])]
+}
+
+/**
+ * Childhood talents. A random latent talent (rolled at birth) surfaces at its age; talents
+ * picked before birth are active from day one but each still gets its own discovery moment
+ * between PICK_REVEAL_FROM and PICK_REVEAL_BY, one a year at most (never on top of another
+ * "Special Talent" popup). Before that, a few journal lines hint at what's coming.
+ */
 function talentMilestones(g: GameState): void {
   const c = g.character
-  const latent = typeof g.flags.latentTalent === 'string' ? getTalent(g.flags.latentTalent) : undefined
-  if (!latent || c.talent) return
+  const latent = typeof g.flags.latentTalent === 'string' && !c.talent ? getTalent(g.flags.latentTalent) : undefined
   const talentAge = typeof g.flags.talentAge === 'number' ? g.flags.talentAge : 8
-  if (c.age >= talentAge) {
+  const noticeThisYear = () => g.flags.talentNoticeAge === c.age
+  if (latent && c.age >= talentAge && !noticeThisYear()) {
     c.talent = latent.id
-    latent.apply(g)
-    notice(g, 'Special Talent', lifeLocal(g, latent.discovery), { emoji: latent.emoji, tone: 'good' })
-    log(g, `I discovered I have a special talent for ${latent.id.toLowerCase()}.`, 'good')
-    remember(g, `Discovered a special talent for ${latent.id.toLowerCase()}.`)
+    revealTalent(g, latent)
     return
   }
+
+  let pending = pendingPicks(g)
+  if (pending.length > 0 && c.age > PICK_REVEAL_BY + 2) {
+    // Too old for a "you have a gift" popup (an heir, an odd save): they've always known.
+    markRevealed(g, pending.map((t) => t.id))
+    pending = []
+  }
+  if (pending.length > 0 && c.age >= PICK_REVEAL_FROM && !noticeThisYear()) {
+    // Spread the moments out, but make sure every one has happened by PICK_REVEAL_BY.
+    const yearsLeft = Math.max(1, PICK_REVEAL_BY - c.age + 1)
+    if (pending.length >= yearsLeft || chance(g, pending.length / yearsLeft)) {
+      const def = pending.length === 1 ? pending[0] : pick(g, pending)
+      markRevealed(g, [def.id])
+      revealTalent(g, def)
+      return
+    }
+  }
+  if (noticeThisYear()) return
+
+  // Journal hints: a latent talent before its age, or picked talents before their moment.
+  const pool = [...(latent && c.age < talentAge ? latent.hints : []), ...pending.flatMap((t) => t.hints)]
+  if (pool.length === 0) return
   const hints = typeof g.flags.talentHints === 'number' ? g.flags.talentHints : 0
   // Each hint is used once, and never two years running.
   const used = strList(g.flags.talentHintsUsed)
-  const fresh = latent.hints.filter((h) => !used.includes(h))
+  const fresh = pool.filter((h) => !used.includes(h))
   const lastAge = typeof g.flags.talentHintAge === 'number' ? g.flags.talentHintAge : -9
   if (c.age >= 2 && hints < 3 && fresh.length > 0 && c.age - lastAge >= 2 && chance(g, 0.4)) {
     const hint = pick(g, fresh)

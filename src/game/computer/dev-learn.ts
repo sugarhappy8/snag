@@ -6,6 +6,7 @@ import { addHidden, addRelationship, addStat, count, formatMoney, log, notice, p
 import { fillLocal } from '../data/locales'
 import { createPerson } from '../people'
 import { chance, pick, randFloat, randInt, uid } from '../rng'
+import { hasTalent, talentMult } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
 import { ageBlock, computerBlock, earnNow, firstReason, guardians, lifeBlock, paidLine, parentWord, payFor, taxLine, useComputer } from './dev-common'
@@ -28,10 +29,10 @@ import {
 // ---------------------------------------------------------------------------
 // Skill gain
 
-/** How quickly you learn: smarts and discipline, plus the Programming talent. */
+/** How quickly you learn: smarts and discipline, plus the Programming talent (picked or discovered). */
 export function aptitude(g: GameState): number {
   const c = g.character
-  return (0.45 + (c.stats.smarts / 100) * 0.55 + (c.hidden.discipline / 100) * 0.35) * (c.talent === 'Programming' ? 1.3 : 1)
+  return (0.45 + (c.stats.smarts / 100) * 0.55 + (c.hidden.discipline / 100) * 0.35) * talentMult(g, 'Programming', 1.5)
 }
 
 /**
@@ -399,7 +400,7 @@ function compete(g: GameState, def: CompDef): void {
   useComputer(g, 2)
   const name = def.name(g)
   const best = bestLanguageFor(g, def.use)
-  const score = codingSkill(g) * 0.75 + c.stats.smarts * 0.2 + c.hidden.discipline * 0.1 + (best ? best.level * 0.12 : 0) + (c.talent === 'Programming' ? 8 : 0) + randInt(g, -22, 22) - def.bar
+  const score = codingSkill(g) * 0.75 + c.stats.smarts * 0.2 + c.hidden.discipline * 0.1 + (best ? best.level * 0.12 : 0) + (hasTalent(g, 'Programming') ? 10 : 0) + randInt(g, -22, 22) - def.bar
   practice(g, 2, best?.id ?? null, 1)
   count(g, 'codingCompetitions')
   const placed: number = score >= 92 ? 0 : score >= 80 ? 1 : score >= 70 ? 2 : score >= 58 ? 3 : -1

@@ -33,6 +33,7 @@ import { locale, localPick, localTerm } from './data/locales'
 import { createPerson, notePerson, pickDistinct, randomOccupation, randomWealth, TRAITS } from './people'
 import { bell, chance, pick, randFloat, randInt, uid } from './rng'
 import { defineScript } from './scripts'
+import { hasTalent, talentHint } from './talents'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 
@@ -423,6 +424,8 @@ export function askOut(g: GameState, p: Person): void {
   if (hasTrait(p, 'flirty', 'romantic')) odds += 0.1
   if (hasTrait(p, 'shy', 'serious')) odds -= 0.05
   if (p.data.married === true) odds -= 0.25
+  // The Comedy talent: making someone laugh is half the battle.
+  if (hasTalent(g, 'Comedy')) odds += 0.1
   odds = clamp(odds, 0.05, 0.92)
   if (chance(g, odds)) {
     startDating(g, p, `asked out (was ${article2(labelOf(p))})`)
@@ -454,7 +457,7 @@ function showDateCandidate(g: GameState, k: Candidate): void {
     'Date',
     `You've met someone!\n\n${candidateSummary(k)}\n\nWould you like to ask ${pronouns(k.gender).him} out?`,
     [
-      { id: 'ask', label: 'Ask them out', emoji: '\u{1F498}' },
+      { id: 'ask', label: 'Ask them out', emoji: '\u{1F498}', hint: talentHint(g, 'Comedy', `Open with a joke: about ${Math.round(attractionOdds(g, k) * 100)}% they say yes.`) || undefined },
       { id: 'next', label: 'Find someone else', emoji: '\u{1F504}' },
       { id: 'cancel', label: 'Never mind', emoji: '\u{1F6B6}' },
     ],
@@ -464,7 +467,8 @@ function showDateCandidate(g: GameState, k: Candidate): void {
 
 function attractionOdds(g: GameState, k: Candidate, bonus = 0): number {
   const c = g.character
-  return clamp(0.5 + (c.stats.looks - k.looks) / 160 + (c.stats.smarts - 50) / 500 + bonus, 0.08, 0.95)
+  const charm = hasTalent(g, 'Comedy') ? 0.1 : 0
+  return clamp(0.5 + (c.stats.looks - k.looks) / 160 + (c.stats.smarts - 50) / 500 + charm + bonus, 0.08, 0.95)
 }
 
 defineScript('love.date.pick', (g, choice, data) => {

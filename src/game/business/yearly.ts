@@ -5,10 +5,12 @@ import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
-import type { AnnualReportData, Asset, GameState } from '../types'
+import { hasTalent, talentHint } from '../talents'
+import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
 import { getCountry } from '../world'
 import { syncCeo, stepDown, managerCandidate } from './career'
 import {
+  bestPlan,
   costFactor,
   cycleLabel,
   cycleOf,
@@ -31,7 +33,7 @@ import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulat
 import { industryDef } from './industries'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
-import { clampN, money, num, pct, plural, rec, round2, str, toJson, units } from './util'
+import { clampN, markBest, money, num, pct, plural, rec, round2, str, toJson, unitMoney, units } from './util'
 
 // ---------------------------------------------------------------------------
 // Plans
@@ -165,7 +167,25 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
     expectedDemand: Math.max(0, Math.round(expected)),
     marketNote: marketNote(b, lastCycle),
     lines,
+    ...(hasTalent(g, 'Business') ? { talentHint: planHint(g, a, b) } : {}),
   }
+}
+
+/**
+ * The Business talent's plan for next year: the price and production with the best expected
+ * profit, scored on the same demand and cost model the year itself runs on (economy.bestPlan).
+ */
+export function planHint(g: GameState, a: Asset, b: BizState): NonNullable<AnnualReportData['talentHint']> {
+  const def = industryDef(b.industry)
+  const p = bestPlan(g, b, { ownerDraw: runsIt(g, a) ? b.ownerSalary : 0 })
+  const what = `Charge ${unitMoney(p.price)} and make ${units(p.production)} ${p.production === 1 ? def.unitOne : def.unit}`
+  const text =
+    p.production <= 0
+      ? `Charge ${unitMoney(p.price)} and make nothing new: sell the ${units(b.inventory)} ${def.unit} in stock (about ${p.profit >= 0 ? `${money(p.profit)} profit` : `${money(-p.profit)} loss`})`
+      : p.profit >= 0
+        ? `${what}: the sweet spot for next year (about ${money(p.profit)} profit)`
+        : `${what}: the least-bad plan for next year (still about a ${money(-p.profit)} loss)`
+  return { price: p.price, production: p.production, text: talentHint(g, 'Business', text) }
 }
 
 export const REPORT = defineScript('business.annualReport', (g, choice, data) => {
@@ -243,13 +263,36 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
   declareBankruptcy(g, a, b, `With ${formatMoney(need)} of bills it couldn't pay,`)
 }
 
+/**
+ * What each way out of a cash crunch is worth to the owner (the owner's stake afterwards, minus
+ * their own money put in), from the numbers resolveCrunch uses. Bankruptcy keeps nothing.
+ */
+export function crunchValues(b: BizState): Record<string, number> {
+  const need = Math.max(0, -b.cash)
+  const filled = valuationOf({ ...b, cash: 0 })
+  const loan = Math.round(need * 1.1)
+  const inject = Math.round(need * 1.25)
+  const stake = clampN(inject / (Math.max(0, b.valuation) + inject), 0.05, 0.6)
+  return {
+    cover: b.share * filled - need,
+    loan: b.share * (filled - need) - b.share * loan * companyLoanRate(b) * 2,
+    investor: b.share * (1 - stake) * Math.max(0, filled + inject - need),
+    bankrupt: 0,
+  }
+}
+
 function queueCrunch(g: GameState, a: Asset, b: BizState): void {
   const need = Math.max(0, -b.cash)
-  const choices = [] as { id: string; label: string; emoji: string }[]
+  const choices: ChoiceOption[] = []
   if (g.character.money >= need) choices.push({ id: 'cover', label: `Cover it from my savings (${money(need)})`, emoji: '\u{1F6DF}' })
   if (companyCreditLimit(b) >= need) choices.push({ id: 'loan', label: `Emergency company loan (${pct(companyLoanRate(b), 1)})`, emoji: '\u{1F3E6}' })
   if (b.valuation > need && b.share > 0.2) choices.push({ id: 'investor', label: 'Sell part of the company to an investor', emoji: '\u{1F4BC}' })
   choices.push({ id: 'bankrupt', label: 'Declare bankruptcy', emoji: '\u{1F4C9}' })
+  const values = hasTalent(g, 'Business') ? crunchValues(b) : {}
+  // Ties go to the earlier option (your own money before the bank's, the bank's before a stranger's).
+  markBest(g, choices, (id) => (id in values ? values[id] - choices.findIndex((c) => c.id === id) : null), (id) =>
+    id === 'bankrupt' ? `Best move: ${a.name} is worth less than the hole it is in` : id === 'investor' ? 'Best move: a fair price for a slice beats debt or your savings' : id === 'loan' ? 'Best move: borrow your way through it' : 'Best move: your stake is worth more than the bailout',
+  )
   scriptChoice(
     g,
     CRUNCH,

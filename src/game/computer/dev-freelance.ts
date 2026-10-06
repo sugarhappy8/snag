@@ -5,6 +5,7 @@ import { addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, 
 import { fillLocal } from '../data/locales'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup } from '../types'
 import { randomFirstName, randomLastName } from '../world'
 import { ageBlock, computerBlock, earnNow, firstReason, taxLine, useComputer } from './dev-common'
@@ -89,7 +90,7 @@ export function gigRate(g: GameState, gig: CodeGig): number {
   const s = devState(g)
   const rating = freelanceRating(s)
   const skill = codingSkill(g)
-  const base = gig.use === null ? 8 + c.stats.smarts * 0.25 + (c.talent === 'Art' ? 15 : 0) + skill * 0.15 : 8 + skill * 0.85
+  const base = gig.use === null ? 8 + c.stats.smarts * 0.25 + (hasTalent(g, 'Art') ? 15 : 0) + skill * 0.15 : 8 + skill * 0.85 + (hasTalent(g, 'Programming') ? 6 : 0)
   const reviews = rating > 0 ? (rating - 3.5) * 8 : 0
   const kid = c.age < 16 ? 0.7 : c.age < 18 ? 0.85 : 1
   return Math.max(2, Math.round((base + reviews) * gig.pay * kid * freelanceRateMult(c.countryId)))
@@ -166,7 +167,10 @@ export function doCodeGig(g: GameState, gig: CodeGig): void {
   const pay = rate * hours
   const best = gig.use ? bestLanguageFor(g, gig.use) : null
   const skill = codingSkill(g)
-  const score = (gig.use === null ? c.stats.smarts * 0.4 + skill * 0.2 + (c.talent === 'Art' ? 20 : 0) + 15 : skill * 0.7 + (best?.level ?? 0) * 0.2 - gig.minSkill * 0.3 + 15) + c.hidden.discipline * 0.15 + randInt(g, -20, 20)
+  const score =
+    (gig.use === null ? c.stats.smarts * 0.4 + skill * 0.2 + (hasTalent(g, 'Art') ? 20 : 0) + 15 : skill * 0.7 + (best?.level ?? 0) * 0.2 - gig.minSkill * 0.3 + 15 + (hasTalent(g, 'Programming') ? 8 : 0)) +
+    c.hidden.discipline * 0.15 +
+    randInt(g, -20, 20)
   const rating = stars(score)
   if (gig.use) practice(g, 1.5, best?.id ?? null, 1)
   const lang = best ? getLanguage(best.id)?.label : undefined

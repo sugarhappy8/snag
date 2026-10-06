@@ -68,6 +68,7 @@ import {
 import { createPerson, notePerson } from './people'
 import { bell, chance, pick, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
+import { hasTalent, talentHint, talentMult, type TalentId } from './talents'
 import { getCountry, randomLastName } from './world'
 import type {
   ChoiceOption,
@@ -983,6 +984,48 @@ export const CLUBS: ClubDef[] = [
 
 const CLUB_INDEX: Record<string, ClubDef> = Object.fromEntries(CLUBS.map((c) => [c.id, c]))
 
+const CLUB_TALENTS: Record<string, TalentId> = {
+  drama: 'Acting',
+  film: 'Acting',
+  improv: 'Comedy',
+  creative_writing: 'Writing',
+  poetry: 'Writing',
+  journalism: 'Writing',
+  yearbook: 'Writing',
+  art: 'Art',
+  pottery: 'Art',
+  photography: 'Art',
+  fashion: 'Modeling',
+  makeup: 'Modeling',
+  dance: 'Athletics',
+  computer_science: 'Programming',
+  web_design: 'Programming',
+  robotics: 'Programming',
+  business: 'Business',
+  investing: 'Investing',
+  debate: 'Leadership',
+  student_council: 'Leadership',
+  video_games: 'Gaming',
+  cooking: 'Cooking',
+  baking: 'Cooking',
+  broadcasting: 'Comedy',
+}
+
+/** The special talent that gives you an edge in a school club or team (null if none does). */
+function clubTalent(def: ClubDef): TalentId | null {
+  const byId = CLUB_TALENTS[def.id]
+  if (byId) return byId
+  if (def.kind === 'sport') return 'Athletics'
+  if (def.kind === 'music') return 'Music'
+  if (def.kind === 'academic') return 'Academics'
+  return null
+}
+
+function clubGifted(g: GameState, def: ClubDef): boolean {
+  const t = clubTalent(def)
+  return !!t && hasTalent(g, t)
+}
+
 // Local sports ------------------------------------------------------------------
 // The sports a country actually plays (locale.sports) come first in the Sports list, under their
 // local names ("Football Team" in Britain means soccer). Local sports with no club of their own
@@ -1274,13 +1317,15 @@ function updateGrades(g: GameState, cur: Enrollment): void {
   if (clique === 'troublemakers' || clique === 'popular') target -= 5
   if (c.partTimeJob) target -= 4
   if (c.stats.happiness < 25) target -= 6
+  // Academics talent: school just clicks.
+  if (hasTalent(g, 'Academics')) target += 8
   // Better schools push you harder (and the kids next to you study more).
   const tier = rankOf(g, cur.level, cur.school).tier
   target += TIER_GRADE_EDGE[tier]
   target = clamp(target)
   addGrades(cur, (target - cur.grades) * 0.35 + randInt(g, -6, 6))
   // Studying keeps your brain in shape.
-  if (cur.grades >= 85 && chance(g, 0.35)) addStat(g, 'smarts', 1)
+  if (cur.grades >= 85 && chance(g, hasTalent(g, 'Academics') ? 0.6 : 0.35)) addStat(g, 'smarts', 1)
   if ((tier === 'Elite' && chance(g, 0.35)) || (tier === 'Top' && chance(g, 0.2))) addStat(g, 'smarts', 1)
 }
 
@@ -1303,7 +1348,7 @@ function updateSocial(g: GameState, cur: Enrollment): void {
     m.years += 1
     m.name = def.name
     m.kind = def.kind
-    const athletic = def.kind === 'sport' ? (c.hidden.athleticism - 50) / 10 : (c.stats.smarts - 50) / 15
+    const athletic = (def.kind === 'sport' ? (c.hidden.athleticism - 50) / 10 : (c.stats.smarts - 50) / 15) + (clubGifted(g, def) ? 4 : 0)
     m.perf = Math.round(clamp(m.perf + athletic + randInt(g, -7, 7)))
     if (def.kind === 'sport') {
       addHidden(g, 'athleticism', randInt(g, 0, 2))
@@ -1576,8 +1621,10 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
       ai: { when: 'full', facts: `The player graduated from ${school}${honors ? ' with honors' : ''}.` },
     })
     // Athletic scholarship for star athletes (a big American thing; rarer elsewhere).
-    const athlete = prevClubs.find((m) => clubDef(m.id)?.kind === 'sport' && clubDef(m.id)?.tryout && m.perf >= 70)
-    const athletic = athlete && c.hidden.athleticism >= 50 && chance(g, isUS(g) ? 0.65 : 0.35) ? clubDef(athlete.id, g)?.name ?? null : null
+    // Athletics talent: college scouts notice you sooner.
+    const gifted = hasTalent(g, 'Athletics')
+    const athlete = prevClubs.find((m) => clubDef(m.id)?.kind === 'sport' && clubDef(m.id)?.tryout && m.perf >= (gifted ? 62 : 70))
+    const athletic = athlete && c.hidden.athleticism >= (gifted ? 45 : 50) && chance(g, (isUS(g) ? 0.65 : 0.35) + (gifted ? 0.15 : 0)) ? clubDef(athlete.id, g)?.name ?? null : null
     offerAfterHighSchool(g, athletic)
     return
   }
@@ -1666,7 +1713,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
 function sitFinalExam(g: GameState, cur: Enrollment): void {
   const c = g.character
   const prepped = Math.min(6, num(cur.data.examPrep, 0)) * 1.5
-  const score = Math.round(clamp(c.stats.smarts * 0.55 + cur.grades * 0.35 + prepped + randInt(g, -12, 12)))
+  const score = Math.round(clamp(c.stats.smarts * 0.55 + cur.grades * 0.35 + prepped + (hasTalent(g, 'Academics') ? 8 : 0) + randInt(g, -12, 12)))
   g.flags.examScore = score
   const exam = finalExam(g)
   const tone = score >= 65 ? 'good' : score >= 45 ? 'neutral' : 'bad'
@@ -1987,7 +2034,8 @@ export function applicantMerit(g: GameState, major?: string): { merit: number; f
   const examPart = typeof exam === 'number' ? exam : grades * 0.9
   const fit = cvScore(g, universityTarget(major)).score
   const hs = highSchoolTier(g)
-  const merit = c.stats.smarts * 0.3 + grades * 0.25 + examPart * 0.15 + fit * 0.3 + (hs ? TIER_GRADE_EDGE[hs] * 0.8 : 0)
+  // Academics talent: glowing teacher references and a personal essay that writes itself.
+  const merit = c.stats.smarts * 0.3 + grades * 0.25 + examPart * 0.15 + fit * 0.3 + (hs ? TIER_GRADE_EDGE[hs] * 0.8 : 0) + (hasTalent(g, 'Academics') ? 6 : 0)
   return { merit, fit }
 }
 
@@ -2268,7 +2316,7 @@ export function graduateChance(g: GameState, key: GradKey, school?: string): num
   const honors = c.education.degrees.some((d) => d.kind === 'bachelor' && d.honors) ? 8 : 0
   const uni = lastUniversity(g)
   const tierEdge = uni ? TIER_GRADE_EDGE[rankOf(g, 'university', uni).tier] * 0.8 : 0
-  const merit = c.stats.smarts * 0.45 + grades * 0.25 + fit * 0.3 + honors + tierEdge
+  const merit = c.stats.smarts * 0.45 + grades * 0.25 + fit * 0.3 + honors + tierEdge + (hasTalent(g, 'Academics') ? 6 : 0)
   const bar = 30 + info.minSmarts * 0.55 + (school ? TIER_GRADE_EDGE[rankOf(g, 'graduate', school).tier] * 0.6 : 0)
   return clamp(1 / (1 + Math.exp(-(merit - bar) / 6)), 0.04, 0.95)
 }
@@ -2365,11 +2413,25 @@ function readTuition(data: Json | undefined): TuitionAsk | null {
   return { level, school: data.school, major: data.major, tuition: num(data.tuition, 0), years: num(data.years, 4), tried, track }
 }
 
+/** Odds of a full academic scholarship (pure: safe for hints). Academics talent lowers the bar. */
+function scholarshipOdds(g: GameState): number {
+  const grades = num(g.flags.lastGrades as Json, 70)
+  const smarts = g.character.stats.smarts
+  const gifted = hasTalent(g, 'Academics')
+  const edge = gifted ? 8 : 0
+  if (smarts + edge < 70 || grades + edge < 75) return gifted ? 0.1 : 0.04
+  return Math.min(0.9, clamp((smarts + grades + edge * 2 - 145) / 55 + 0.3, 0.2, 0.9) + (gifted ? 0.1 : 0))
+}
+
 function askTuition(g: GameState, a: TuitionAsk): void {
   const total = a.tuition * a.years
   const choices: ChoiceOption[] = []
   if (parents(g).length > 0 && !a.tried.includes('parents')) choices.push({ id: 'parents', label: 'Ask my parents to pay', emoji: '\u{1F46A}' })
-  if (!a.tried.includes('scholarship')) choices.push({ id: 'scholarship', label: 'Apply for a scholarship', emoji: '\u{1F3C6}' })
+  if (!a.tried.includes('scholarship')) {
+    const odds = scholarshipOdds(g)
+    const hint = talentHint(g, 'Academics', odds >= 0.5 ? `Your record should win this (about ${Math.round(odds * 100)}%).` : `A long shot this time (about ${Math.round(odds * 100)}%).`)
+    choices.push({ id: 'scholarship', label: 'Apply for a scholarship', emoji: '\u{1F3C6}', ...(hint ? { hint } : {}) })
+  }
   choices.push({ id: 'loans', label: 'Take out student loans', emoji: '\u{1F3E6}' })
   if (g.character.money >= total) choices.push({ id: 'cash', label: `Pay cash (${formatMoney(total)})`, emoji: '\u{1F4B5}' })
   choices.push({ id: 'cancel', label: 'Never mind', emoji: '\u{274C}' })
@@ -2452,9 +2514,7 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
       return
     }
     case 'scholarship': {
-      const grades = num(g.flags.lastGrades as Json, 70)
-      const smarts = c.stats.smarts
-      const p = smarts >= 70 && grades >= 75 ? clamp((smarts + grades - 145) / 55 + 0.3, 0.2, 0.9) : 0.04
+      const p = scholarshipOdds(g)
       if (chance(g, p)) {
         finishEnrollment(g, a, 'scholarship')
         notice(g, 'Scholarship', `You were awarded a full academic scholarship to ${a.school}! Brains pay off.`, { emoji: '\u{1F3C6}', tone: 'good' })
@@ -2642,9 +2702,10 @@ function studyHarder(g: GameState): void {
     notice(g, 'Study Harder', pick(g, ["You're burnt out from studying. Your brain needs the rest of the year off.", 'You tried to study again but fell asleep on your textbook. Give it a rest until next year.']), { emoji: '\u{1F634}' })
     return
   }
-  const gain = cur.grades >= 90 ? randInt(g, 1, 3) : randInt(g, 3, 8)
+  // Academics talent: an hour of your studying is worth an afternoon of anyone else's.
+  const gain = Math.round((cur.grades >= 90 ? randInt(g, 1, 3) : randInt(g, 3, 8)) * talentMult(g, 'Academics', 1.5))
   addGrades(cur, gain)
-  if (chance(g, 0.4)) addStat(g, 'smarts', randInt(g, 1, 2))
+  if (chance(g, hasTalent(g, 'Academics') ? 0.65 : 0.4)) addStat(g, 'smarts', randInt(g, 1, 2))
   addStat(g, 'happiness', -1)
   count(g, 'studied')
   // The last two years of high school are all about the big exam.
@@ -2772,7 +2833,8 @@ function tryJoinClub(g: GameState, def: ClubDef): void {
     notice(g, def.name, pick(g, [`The ${def.kind === 'sport' ? 'coach' : 'sponsor'} told you to get lost.`, `The ${def.kind === 'sport' ? 'coach' : 'sponsor'} already said no. Twice. Take the hint.`]), { emoji: def.emoji, tone: 'bad' })
     return
   }
-  if (def.minPopularity && popularity(cur) < def.minPopularity) {
+  // Leadership talent: you can win a school election without being the most popular kid.
+  if (def.minPopularity && popularity(cur) < def.minPopularity - (hasTalent(g, 'Leadership') ? 15 : 0)) {
     addStat(g, 'happiness', -4)
     notice(g, def.name, `You ran for a spot on the ${def.name} but lost in a landslide. Maybe work on your popularity first.`, { emoji: def.emoji, tone: 'bad' })
     log(g, `I ran for ${def.name} and lost.`, 'bad')
@@ -2787,6 +2849,7 @@ function tryJoinClub(g: GameState, def: ClubDef): void {
     if (def.kind === 'sport') skill = c.hidden.athleticism * 0.7 + c.stats.health * 0.2 + randInt(g, 0, 30)
     else if (def.kind === 'academic') skill = c.stats.smarts * 0.8 + randInt(g, 0, 30)
     else skill = c.stats.looks * 0.2 + c.stats.smarts * 0.3 + c.hidden.craziness * 0.1 + randInt(g, 10, 50)
+    if (clubGifted(g, def)) skill += 12
     if (skill < 55) {
       addStat(g, 'happiness', -5)
       log(g, `I tried out for the ${def.name} but didn't make it.`, 'bad')
@@ -2818,10 +2881,10 @@ function practiceClub(g: GameState, id: string): void {
     notice(g, def.name, "You've already practiced as much as you can this year.", { emoji: def.emoji })
     return
   }
-  m.perf = Math.round(clamp(m.perf + randInt(g, 4, 10)))
+  m.perf = Math.round(clamp(m.perf + randInt(g, 4, 10) * (clubGifted(g, def) ? 1.5 : 1)))
   setClubs(cur, clubs)
   if (def.kind === 'sport') {
-    addHidden(g, 'athleticism', randInt(g, 1, 3))
+    addHidden(g, 'athleticism', Math.round(randInt(g, 1, 3) * talentMult(g, 'Athletics', 1.5)))
     addStat(g, 'health', 1)
   } else if (def.kind === 'academic') {
     if (chance(g, 0.4)) addStat(g, 'smarts', 1)
@@ -3291,6 +3354,11 @@ function clubsMenu(cur: Enrollment): MenuGroup {
             label: def.name,
             emoji: def.emoji,
             subtitle: def.minPopularity ? 'Requires an election' : def.tryout ? 'Tryout required' : def.minGrades ? `Requires good grades` : 'Open to all',
+            hint: (x) => {
+              const t = clubTalent(def)
+              if (!t || !(def.tryout || def.minPopularity)) return null
+              return talentHint(x, t, def.minPopularity ? 'Born to campaign: your talent gives you a real edge in this election.' : 'Your talent gives you a real edge at the tryout.') || null
+            },
             disabledReason: (x) => aliveFree(x) ?? (clubsOf(current(x) ?? cu).length >= MAX_CLUBS ? `You're already in ${MAX_CLUBS} activities.` : null),
             run: (x) => tryJoinClub(x, def),
           })

@@ -5,8 +5,9 @@
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuGroup, MenuNode } from '../types'
-import { addFame, attendedUniversity, fameToward, hire, leave, myJob, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
+import { addFame, attendedUniversity, fameToward, hire, leave, myJob, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
 import { addBuzz, addHeadTrauma, honor, injure, logistic, recordCareer, sportsGate, tidy, trainGain } from './sports-core'
 
 const DIVS = ['Jonokuchi', 'Jonidan', 'Sandanme', 'Makushita', 'Juryo', 'Maegashira', 'Komusubi', 'Sekiwake', 'Ozeki', 'Yokozuna']
@@ -81,7 +82,7 @@ function sumoRating(g: GameState, p: SumoProfile): number {
   const vals = SKILLS.map((s) => p.skills[s] ?? 0)
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length
   const weightBonus = Math.max(-6, Math.min(8, (p.weight - 110) / 7))
-  let r = avg * 0.75 + g.character.hidden.athleticism * 0.15 + weightBonus + (talentMatches(g, /athlet|sport/i) ? 3 : 0)
+  let r = avg * 0.75 + g.character.hidden.athleticism * 0.15 + weightBonus + (hasTalent(g, 'Athletics') ? 5 : 0)
   if (g.character.stats.health < 50) r -= (50 - g.character.stats.health) / 5
   return Math.max(1, Math.min(99, Math.round(r)))
 }
@@ -140,7 +141,7 @@ const keikoScript = defineScript('sports.sumo.keiko', (g, choice) => {
   if (!sumoJob(g)) return
   if (!useYearAction(g, `sports.sumo.keiko.${choice}`, 1)) return tell(g, 'Keiko', `You already drilled ${choice.toLowerCase()} until dawn this year.`, '\u{1F971}')
   const p = sumoProfile(g)
-  const gain = trainGain(g, p.skills[choice] ?? 0, 3, 7, g.character.age < 24 ? 1.2 : 1)
+  const gain = trainGain(g, p.skills[choice] ?? 0, 3, 7, (g.character.age < 24 ? 1.2 : 1) * talentMult(g, 'Athletics', 1.5))
   p.skills[choice] = Math.min(100, (p.skills[choice] ?? 0) + gain)
   addHidden(g, 'discipline', 1)
   log(g, `I practiced ${choice.toLowerCase()} at morning keiko.`)

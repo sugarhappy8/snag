@@ -505,6 +505,98 @@ button.ar-chip.is-on {
   min-height: 46px;
 }
 
+/* ------------------------------------------------------------------------ */
+/* Business talent: the purple "Business instinct" box (talents.ts hints)    */
+
+.ar-instinct {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--hint-bg, color-mix(in srgb, var(--purple) 10%, var(--card)));
+  border: 1.5px solid var(--hint-ring, var(--purple));
+  color: var(--text);
+}
+
+.ar-instinct-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--hint-text, var(--purple));
+}
+
+.ar-instinct-icon {
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.ar-instinct-text {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ar-instinct-plan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.ar-instinct-figures {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--hint-text, var(--purple));
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.ar-instinct-use {
+  flex: none;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--purple);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--purple) 60%, #000);
+  transition: transform 0.08s ease, filter 0.15s ease;
+}
+
+.ar-instinct-use:hover {
+  filter: brightness(1.07);
+}
+
+.ar-instinct-use:active {
+  transform: translateY(1px);
+}
+
+.ar-instinct-use:focus-visible {
+  outline: 3px solid var(--hint-ring, var(--purple));
+  outline-offset: 2px;
+}
+
+.ar-instinct-use.is-on {
+  background: transparent;
+  color: var(--hint-text, var(--purple));
+  box-shadow: inset 0 0 0 1.5px var(--hint-ring, var(--purple));
+}
+
 @media (max-width: 370px) {
   .ar-head {
     padding: 10px;

@@ -1,0 +1,499 @@
+// Deep-tech engine helpers shared by the simulation, menus, events and founding: the typed
+// TechState inside a BizState, local cost scales, founder and team skill, the industry boom/bust
+// cycles, the demand/capacity model (stage, tech level, R&D premiums, compute, plants) and the
+// valuation cache that economy.valuationOf reads through deepTechValue().
+import { seeded } from '../assets'
+import { marketOf, industryDemand } from '../data/markets'
+import { codingSkill } from '../computer/skills'
+import { hasTalent } from '../talents'
+import type { Asset, GameState } from '../types'
+import { appealOf, ceoSkill, costFactor, cycleOf, localEcon, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
+import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, vcDepth } from './deeptech-data'
+import { MAX_TECH_VALUE, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
+import { industryDef } from './industries'
+import { runsIt, totalOutlets, type BizState } from './state'
+import { clampN, round2, toJson } from './util'
+
+// ---------------------------------------------------------------------------
+// State access
+
+export function dtInd(b: { industry: string }): DeepTechIndustry {
+  return b.industry as DeepTechIndustry
+}
+
+/** Read-only view of a company's deep-tech state (for menus). */
+export function techView(b: BizState): TechState {
+  return readTech(b.tech)
+}
+
+/**
+ * Mutable deep-tech state: normalizes b.tech in place (once) and returns it typed. Only call from
+ * actions, scripts and yearly hooks (never from menu builders).
+ */
+export function techOf(b: BizState): TechState {
+  const cur = b.tech
+  if (!cur || typeof cur !== 'object' || Array.isArray(cur) || cur.v !== 1) {
+    b.tech = toJson(readTech(cur))
+  }
+  return b.tech as unknown as TechState
+}
+
+// ---------------------------------------------------------------------------
+// Local scales
+
+/** What R&D costs here vs the US: talent is local, equipment and compute are global. */
+export function rdScale(countryId: string, capex = false): number {
+  const labor = clampN(marketOf(countryId).laborCost, 0.05, 2)
+  const local = Math.pow(Math.min(1.6, labor), 0.8)
+  return capex ? 0.75 + 0.25 * local : 0.4 + 0.6 * local
+}
+
+/** Revenue of one "market unit" at home: going price times what one strong product line sells. */
+export function unitRevenue(b: BizState): number {
+  const e = localEcon(b.industry, b.countryId, b.city)
+  return Math.max(0, e.baseDemand * e.goingPrice)
+}
+
+/** Local revenue scale vs the US baseline (for satellites, foundry services, licensing...). */
+export function revenueScale(b: BizState): number {
+  const def = industryDef(b.industry)
+  return clampN(unitRevenue(b) / Math.max(1, def.demand * def.price), 0.05, 3)
+}
+
+/** 0-1: how good the local ecosystem is for this industry (investors, talent, customers). */
+export function ecosystem(countryId: string, ind: DeepTechIndustry): number {
+  const m = marketOf(countryId)
+  const depth = vcDepth(countryId, m.gdpPerCapita, m.easeOfBusiness)
+  const demand = industryDemand(countryId, ind)
+  return clampN(depth * 0.6 + 0.2 * Math.min(1.5, demand) + 0.1 * (m.easeOfBusiness / 100), 0.03, 1)
+}
+
+export interface PaceDef {
+  id: Pace
+  label: string
+  speed: number
+  cost: number
+  team: number
+  note: string
+}
+
+export const PACES: PaceDef[] = [
+  { id: 'lean', label: 'Lean', speed: 0.75, cost: 0.65, team: 0.85, note: 'Slower R&D, much lower burn' },
+  { id: 'steady', label: 'Steady', speed: 1, cost: 1, team: 1, note: 'The plan as budgeted' },
+  { id: 'blitz', label: 'Blitz', speed: 1.5, cost: 1.55, team: 1.15, note: 'Faster R&D, much higher burn' },
+]
+
+export function paceOf(p: Pace): PaceDef {
+  return PACES.find((x) => x.id === p) ?? PACES[1]
+}
+
+// ---------------------------------------------------------------------------
+// Skills
+
+/** How well the player's own background fits an industry, 0-100. */
+export function founderSkill(g: GameState, ind: DeepTechIndustry): number {
+  const c = g.character
+  const req = DEEP_TECH[ind].req
+  let s = c.stats.smarts * 0.6
+  let degree = 0
+  for (const d of c.education.degrees) {
+    const relevant = (d.major && req.majors.includes(d.major)) || (req.kinds ?? []).includes(d.kind)
+    if (!relevant) continue
+    const v = d.kind === 'doctorate' ? 30 : d.kind === 'master' || d.kind === 'md' || d.kind === 'pharmd' ? 22 : d.kind === 'bachelor' || d.kind === 'mba' ? 15 : 8
+    degree = Math.max(degree, v)
+  }
+  s += degree
+  if (req.coding) s += Math.min(25, codingSkill(g) / 3)
+  if ((ind === 'aiLab' || ind === 'cybersecurity' || ind === 'robotics') && hasTalent(g, 'Programming')) s += 8
+  if ((ind === 'biotech' || ind === 'quantum' || ind === 'semiconductor') && hasTalent(g, 'Academics')) s += 8
+  return clampN(Math.round(s), 5, 100)
+}
+
+/** True when the player has the background to found this industry without help. */
+export function hasBackground(g: GameState, ind: DeepTechIndustry): boolean {
+  const c = g.character
+  const req = DEEP_TECH[ind].req
+  if (c.stats.smarts >= req.smarts) return true
+  if (req.coding !== undefined && codingSkill(g) >= req.coding) return true
+  return c.education.degrees.some((d) => (d.major && req.majors.includes(d.major) && d.kind !== 'highschool' && d.kind !== 'ged') || (req.kinds ?? []).includes(d.kind))
+}
+
+/** The technical strength of the team, 0-100: whoever runs it, the experts and a co-founder. */
+export function techSkill(g: GameState, a: Asset, b: BizState, t: TechState): number {
+  const ind = dtInd(b)
+  const lead = runsIt(g, a) && g.character.alive && !g.character.prison ? founderSkill(g, ind) : b.manager ? b.manager.skill * 0.7 : 35
+  // A business-minded CEO still runs the place; the lab's own experts do most of the science.
+  const base = Math.max(lead, 30 + ceoSkill(g, b) * 0.2)
+  const experts = 10 * Math.min(2, staffPower(b, 'quality'))
+  return clampN(Math.round(base * 0.7 + experts + (t.cofounder ? 12 : 0) + t.level * 0.1), 5, 100)
+}
+
+// ---------------------------------------------------------------------------
+// Industry cycles (shared by every company of that industry, no g.rng)
+
+export interface IndustryCycle {
+  demand: number
+  price: number
+  /** Multiplier on valuations (bubbles and winters). */
+  value: number
+  z: number
+  label: string
+}
+
+function cycleZ(g: GameState, ind: DeepTechIndustry, year: number): number {
+  const s = seeded(`${g.lifeId}|dtcycle|${ind}|${year}`)
+  return (s.next() + s.next() + s.next() - 1.5) * 2
+}
+
+export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number): IndustryCycle {
+  const amp = DEEP_TECH[ind].cycle.amp
+  const z = 0.65 * cycleZ(g, ind, year) + 0.35 * cycleZ(g, ind, year - 1)
+  const c = DEEP_TECH[ind].cycle
+  return {
+    demand: clampN(1 + amp * z, 0.6, 1.5),
+    price: ind === 'semiconductor' ? clampN(1 + 0.6 * amp * z, 0.8, 1.2) : 1,
+    value: clampN(1 + 1.5 * amp * z, 0.5, 1.9),
+    z,
+    label: z > 0.8 ? c.up : z < -0.8 ? c.down : 'steady',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The commercial model
+
+/** AI: how competitive the best model is vs the frontier (0.05 - 1.6). */
+export function competitiveness(t: TechState, year: number): number {
+  const best = bestModel(t)
+  if (!best) return 0
+  const f = frontierScore(year)
+  return clampN((best.score - (f - 25)) / 25, 0.05, 1.6)
+}
+
+/** Biotech: sales a drug has reached `years` after approval (ramp up, then the patent cliff). */
+export function drugCurve(filed: number, approved: number, year: number): number {
+  const since = year - approved
+  const ramp = since <= 0 ? 0.25 : since === 1 ? 0.55 : since === 2 ? 0.8 : 1
+  const age = year - filed
+  const cliff = age >= 20 ? 0.15 : age >= 18 ? 0.5 : 1
+  return ramp * cliff
+}
+
+/** Biotech: market units of the company's own approved drugs this year. */
+export function ownDrugUnits(t: TechState, year: number): number {
+  let n = 0
+  for (const d of t.drugs) if (!d.failed && d.phase >= 4 && !d.partner) n += d.peak * drugCurve(d.filed, d.approved, year)
+  return n
+}
+
+/** Biotech: the company's stage on the ladder from its best drug. */
+export function syncBiotechStage(t: TechState): void {
+  let best = 0
+  for (const d of t.drugs) {
+    if (d.failed) continue
+    const inTrial = t.programs.some((p) => p.id === 'trial' && p.target === d.id)
+    best = Math.max(best, d.phase >= 4 ? 4 : Math.min(3, d.phase + (inTrial ? 1 : 0)))
+  }
+  t.stage = best
+}
+
+/** Demand in market units before price, appeal and the economy. */
+export function demandScale(b: BizState, t: TechState, year: number): number {
+  const ind = dtInd(b)
+  const st = DEEP_TECH[ind].stages
+  let base = ind === 'biotech' ? ownDrugUnits(t, year) : st[Math.min(st.length - 1, t.stage)].scale
+  if (base <= 0) return 0
+  base *= 0.6 + t.level / 125
+  base *= 1 + t.boost
+  base *= 0.92 + t.hype / 600
+  if (ind === 'aiLab') {
+    base *= competitiveness(t, year)
+    const best = bestModel(t)
+    if (best?.open) base *= 0.75
+  }
+  if (ind === 'quantum') base *= (0.7 + Math.log10(Math.max(1, t.qubits)) / 5) * (1 + Math.min(1, t.logical * 0.08))
+  if (RESTRICTED.has(b.countryId) && (ind === 'semiconductor' || ind === 'aiLab' || ind === 'quantum' || ind === 'spaceTech')) base *= 0.75
+  return Math.max(0, base)
+}
+
+/** Capacity in market units: sites, plants, compute. */
+export function capacityUnits(b: BizState, t: TechState, year: number): number {
+  const ind = dtInd(b)
+  const d = DEEP_TECH[ind]
+  const st = d.stages[Math.min(d.stages.length - 1, t.stage)]
+  const sites = totalOutlets(b)
+  switch (ind) {
+    case 'aiLab':
+      return t.stage === 0 ? 0 : sites * st.siteCap + t.rented * 1.5 + t.plant * d.plantCap
+    case 'electricVehicles':
+      return t.stage === 0 ? 0 : sites * st.siteCap + t.plant * d.plantCap * (t.stage === 2 ? 0.45 : 1)
+    case 'biotech':
+      return Math.max(ownDrugUnits(t, year) * 1.6, ownDrugUnits(t, year) > 0 ? sites * 0.5 : 0) + t.plant * d.plantCap
+    case 'spaceTech':
+      return t.stage < 3 ? 0 : sites * st.siteCap
+    default:
+      return sites * st.siteCap + t.plant * d.plantCap
+  }
+}
+
+/** Price premium the tech earns over the market's going price. */
+export function techPremium(b: BizState, t: TechState, year: number, calm: boolean, g: GameState): number {
+  const ind = dtInd(b)
+  let p = 1 + t.premium
+  if (ind === 'semiconductor') p *= 1 + 0.12 * t.node
+  if (ind === 'aiLab') {
+    const best = bestModel(t)
+    if (best && best.score >= frontierScore(year)) p *= 1.15
+  }
+  if (!calm) p *= industryCycle(g, ind, year).price
+  return Math.max(0.3, p)
+}
+
+/** Unit-cost multiplier from the stage, R&D and yields. */
+export function techCost(b: BizState, t: TechState): number {
+  const ind = dtInd(b)
+  const st = DEEP_TECH[ind].stages
+  let c = st[Math.min(st.length - 1, t.stage)].cost * (1 - t.costCut)
+  if (ind === 'semiconductor') c *= (1.25 - 0.5 * t.yieldRate) / (1.25 - 0.5 * 0.55)
+  if (ind === 'aiLab' && RESTRICTED.has(b.countryId)) c *= 1.25
+  return Math.max(0.2, c)
+}
+
+export interface TechPlan {
+  price: number
+  /** Tech-adjusted going price at home. */
+  going: number
+  suggested: number
+  demand: number
+  capacity: number
+  unitCost: number
+  taxRate: number
+}
+
+export interface TechPlanOptions {
+  price?: number
+  calm?: boolean
+  cycle?: number
+  noise?: number
+}
+
+/** Demand, capacity and costs for a home-market price (the deep-tech version of planFor). */
+export function techPlan(g: GameState, b: BizState, t: TechState, year: number, opts: TechPlanOptions = {}): TechPlan {
+  const ind = dtInd(b)
+  const def = industryDef(ind)
+  const home = localEcon(ind, b.countryId, b.city)
+  const calm = !!opts.calm
+  const going = Math.max(0.01, home.goingPrice * techPremium(b, t, year, calm, g))
+  const premium = premiumOf(b)
+  const price = Math.max(0, opts.price ?? b.price)
+  const cyc = opts.cycle ?? cycleOf(g, b.countryId, year)
+  const cycleEffect = 1 + (cyc - 1) * (0.25 + def.incomeSens * 0.5)
+  const ic = calm ? 1 : industryCycle(g, ind, year).demand
+  const open = calm ? 1 : b.openFraction
+  const shock = calm ? 1 : b.demandShock
+  const pressure = calm ? b.pressure * 0.5 : b.pressure
+  const scale = demandScale(b, t, year)
+  const demand =
+    scale > 0
+      ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * cycleEffect * ic * (1 - pressure) * shock * (opts.noise ?? 1) * open
+      : 0
+  const ops = 1 + 0.08 * staffPower(b, 'ops')
+  const loss = calm ? 0 : b.capacityLoss
+  const capacity = capacityUnits(b, t, year) * home.baseDemand * ops * (1 - loss) * open
+  const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm)
+  return {
+    price,
+    going: round2(going),
+    suggested: round2(going * premium),
+    demand: Number.isFinite(demand) ? Math.max(0, demand) : 0,
+    capacity: Number.isFinite(capacity) ? Math.max(0, capacity) : 0,
+    unitCost: round2(unitCost),
+    taxRate: home.taxRate,
+  }
+}
+
+/** Can the company sell anything this year (product, capacity)? */
+export function sellable(g: GameState, b: BizState, t: TechState): boolean {
+  return demandScale(b, t, g.year) > 0 && capacityUnits(b, t, g.year) > 0
+}
+
+/** Report bounds for the price (around the tech-adjusted going price). */
+export function techPriceBounds(g: GameState, b: BizState, t: TechState): { min: number; max: number; going: number } {
+  const going = techPlan(g, b, t, g.year, { calm: true }).going
+  return { min: round2(Math.max(0.01, going * 0.25)), max: round2(Math.max(0.05, going * 4)), going }
+}
+
+/** The most profitable plan for next year (the Business talent's hint and the manager's plan). */
+export function bestTechPlan(g: GameState, b: BizState, t: TechState, cycle?: number): { price: number; production: number; profit: number } {
+  const bounds = techPriceBounds(g, b, t)
+  let best = { price: bounds.going, production: 0, profit: -Infinity }
+  for (let r = 0.6; r <= 2.01; r += 0.05) {
+    const price = round2(clampN(bounds.going * r, bounds.min, bounds.max))
+    const plan = techPlan(g, b, t, g.year, { price, calm: true, cycle })
+    const sold = Math.min(plan.demand, plan.capacity)
+    const profit = sold * (price / (1 + plan.taxRate) - plan.unitCost)
+    if (profit > best.profit) best = { price, production: Math.round(Math.max(0, Math.min(plan.capacity, plan.demand - b.inventory))), profit }
+  }
+  return best
+}
+
+// ---------------------------------------------------------------------------
+// Side revenue: contracts, satellites, foundry services, royalties, licences
+
+export function sideRevenue(b: BizState, t: TechState, year: number): { total: number; parts: string[] } {
+  const ind = dtInd(b)
+  const parts: string[] = []
+  let total = 0
+  const add = (n: number, what: string) => {
+    if (!(n > 0)) return
+    total += n
+    parts.push(what)
+  }
+  const scale = revenueScale(b)
+  if (t.contract) add(t.contract.perYear, t.contract.name)
+  if (t.deal) add(t.deal.perYear, t.deal.name)
+  if (ind === 'semiconductor' && t.plant > 0) add(t.plant * 20_000_000 * scale * (0.6 + t.level / 150), 'foundry services')
+  if (ind === 'spaceTech') {
+    add(t.sats * 25_000_000 * scale * (0.6 + t.level / 150), 'satellite internet')
+    if (timesDone(t, 'smallsat') > 0) add(6_000_000 * scale, 'satellite building')
+  }
+  if (ind === 'quantum' && timesDone(t, 'pqc') > 0) add(3_000_000 * scale, 'encryption licences')
+  if (ind === 'biotech') {
+    let units = 0
+    for (const d of t.drugs) if (!d.failed && d.phase >= 4 && d.partner) units += d.peak * drugCurve(d.filed, d.approved, year) * d.royalty
+    add(units * unitRevenue(b), 'drug royalties')
+  }
+  return { total: Number.isFinite(total) ? Math.round(total) : 0, parts }
+}
+
+// ---------------------------------------------------------------------------
+// People and costs
+
+/** Head count: the R&D team plus production staff for what was made. */
+export function headCount(b: BizState, t: TechState, produced: number): number {
+  const def = industryDef(b.industry)
+  const sites = totalOutlets(b)
+  const rd = sites * def.staff * (0.3 + 0.12 * t.stage) * paceOf(t.pace).team
+  const prod = produced > 0 ? def.staff * 0.6 * Math.pow(produced / Math.max(1, def.demand), def.staffScale) : 0
+  const plant = t.plant * def.staff * 0.4
+  return Math.max(2, Math.round(rd + prod + plant))
+}
+
+/** Yearly R&D spend of the running programs at the current pace. */
+export function rdBudget(t: TechState): number {
+  const pace = paceOf(t.pace)
+  return Math.round(t.programs.reduce((s, p) => s + p.cost * pace.cost, 0))
+}
+
+/** Yearly cost of rented GPU clusters (AI labs). */
+export function computeRent(b: BizState, t: TechState): number {
+  if (t.rented <= 0) return 0
+  const restricted = RESTRICTED.has(b.countryId) ? 1.6 : 1
+  return Math.round(t.rented * 4_000_000 * rdScale(b.countryId, true) * restricted)
+}
+
+/** Rough yearly cash burn going forward (costs not covered by gross margin). */
+export function burnRate(g: GameState, a: Asset, b: BizState, t: TechState): number {
+  const def = industryDef(b.industry)
+  const e = localEcon(b.industry, b.countryId, b.city)
+  const produced = Math.max(0, b.last?.produced ?? 0)
+  const wages = headCount(b, t, produced) * e.wage * b.wageLevel
+  let rent = 0
+  let upkeep = 0
+  for (const o of b.outlets) {
+    const le = localEcon(b.industry, o.countryId, o.city)
+    rent += o.count * le.rent
+    upkeep += o.count * le.capital * def.maint
+  }
+  upkeep += t.plantBook * 0.04
+  const keyStaff = b.staff.reduce((s, x) => s + x.salary, 0) + (b.ceo === 'manager' && b.manager ? b.manager.salary : 0) + (runsIt(g, a) ? b.ownerSalary : 0)
+  const gross = b.last ? Math.max(0, b.last.netRevenue - b.last.cogs - b.last.marketing) : 0
+  const burn = wages + rent + upkeep + keyStaff + rdBudget(t) + computeRent(b, t) + b.debt * b.debtRate - gross
+  return Number.isFinite(burn) ? Math.max(0, Math.round(burn)) : 0
+}
+
+/** Years of runway at the current burn (99 when profitable). */
+export function runwayYears(g: GameState, a: Asset, b: BizState, t: TechState): number {
+  const burn = burnRate(g, a, b, t)
+  const funds = t.venture + Math.max(0, b.cash)
+  if (burn <= 0) return 99
+  return Math.round((funds / burn) * 10) / 10
+}
+
+// ---------------------------------------------------------------------------
+// Valuation
+
+/** Recompute the cached deep-tech value (IP, pipeline, plants, revenue multiple, investor money). */
+export function refreshTechValue(g: GameState, b: BizState, t: TechState): void {
+  const ind = dtInd(b)
+  const def = industryDef(ind)
+  const d = DEEP_TECH[ind]
+  const cyc = industryCycle(g, ind, g.year).value
+  const hypeMult = (0.6 + t.hype / 110) * cyc
+  const h = b.history
+  const revenue = b.last ? b.last.revenue : 0
+  const prev = h.length >= 1 ? h[h.length - 1].revenue : 0
+  const growth = prev > 0 && revenue > 0 ? clampN(1 + (revenue / prev - 1) * 0.5, 0.6, 1.6) : 1
+  const revValue = revenue * d.salesMult * hypeMult * growth
+  const ip = t.ipBook * (0.7 + t.level / 200) * hypeMult
+  let pipeline = 0
+  if (ind === 'biotech') {
+    const unit = unitRevenue(b)
+    for (const x of t.drugs) {
+      if (x.failed || x.phase >= 4) continue
+      const odds = APPROVAL_ODDS[Math.max(0, Math.min(4, x.phase))] * (0.75 + x.quality / 200)
+      pipeline += x.peak * unit * odds * 1.6 * x.royalty
+    }
+    pipeline *= hypeMult
+  }
+  const target = Math.max(revValue, ip + pipeline) + t.plantBook * 0.8
+  const profits = [b.last ? b.last.net : 0, ...h.slice(-2).map((r) => r.profit)]
+  const avgProfit = profits.reduce((s, x) => s + x, 0) / profits.length
+  const ev = Math.max(0, avgProfit) * def.multiple
+  const add = clampN(target - ev, 0, MAX_TECH_VALUE)
+  // Investor money in the R&D account counts toward the company's value only as far as the
+  // investors' liquidation preference leaves room for the founder (1x non-participating).
+  t.value = add
+  const base = valuationOf(b)
+  const credit = b.public ? t.venture : Math.min(t.venture, base * (1 / Math.max(0.01, b.share) - 1))
+  t.value = clampN(Math.round(add + Math.max(0, credit)), 0, MAX_TECH_VALUE)
+}
+
+/** Refresh the cached value and push the new valuation into the asset. */
+export function revalue(g: GameState, a: Asset, b: BizState, t: TechState): void {
+  refreshTechValue(g, b, t)
+  if (!b.public) b.valuation = valuationOf(b)
+  refreshValue(a, b)
+}
+
+// ---------------------------------------------------------------------------
+// Paying one-off deep-tech costs
+
+/** Money the company can spend on R&D right now: the R&D account plus spare company cash. */
+export function techFunds(b: BizState, t: TechState): number {
+  return Math.max(0, t.venture) + Math.max(0, b.cash)
+}
+
+/**
+ * Pay a one-off deep-tech cost (a test launch, a demo, a lawyer): from the R&D account first,
+ * then company cash. Booked as a cost of the year either way, never moved twice.
+ */
+export function payTech(b: BizState, t: TechState, amount: number): number {
+  const n = Math.max(0, Math.round(amount))
+  const fromVenture = Math.min(Math.max(0, t.venture), n)
+  t.venture -= fromVenture
+  t.yearSpent += fromVenture
+  const rest = n - fromVenture
+  if (rest > 0) {
+    b.cash -= rest
+    b.yearCosts += rest
+  }
+  return n
+}
+
+/** Income that lands in company cash this year (licensing upfronts, settlements). */
+export function earnTech(b: BizState, amount: number): number {
+  const n = Math.max(0, Math.round(amount))
+  b.cash += n
+  b.yearIncome += n
+  return n
+}

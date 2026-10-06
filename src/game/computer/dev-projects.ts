@@ -6,6 +6,8 @@ import { addHidden, addStat, count, earnIncome, formatMoney, log, notice, rememb
 import { fillLocal } from '../data/locales'
 import { pick, rand, randFloat, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
+import { stableChoice } from '../special/common'
+import { hasTalent, talentHint } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { makeGamesMenu } from '../special/gamedev-make'
 import { ageBlock, computerBlock, firstReason, useComputer } from './dev-common'
@@ -43,6 +45,15 @@ function audienceLuck(g: GameState): number {
   return between(Math.exp(-1.05 + 1.15 * z), 0.04, 6)
 }
 
+/** The kind of project the internet is hungry for this year (stable; the Programming talent sees it). */
+function trendingKind(g: GameState): string {
+  return stableChoice(
+    g,
+    'computer.dev.trend',
+    PROJECT_KINDS.filter((k) => !GAME_KINDS.has(k.id)).map((k) => k.id),
+  )
+}
+
 /** Shipping the same kind of thing over and over: each one from the last two years costs 30% of the audience. */
 function audienceFatigue(g: GameState, kind: ProjectKind): number {
   const recent = devState(g).projects.filter((p) => p.kind === kind.id && g.character.age - p.age <= 2).length
@@ -51,7 +62,7 @@ function audienceFatigue(g: GameState, kind: ProjectKind): number {
 
 function quality(g: GameState, kind: ProjectKind, langLevel: number): number {
   const c = g.character
-  const base = codingSkill(g) * 0.62 + langLevel * 0.15 + c.stats.smarts * 0.12 + c.hidden.discipline * 0.08 + (c.talent === 'Programming' ? 8 : 0)
+  const base = codingSkill(g) * 0.62 + langLevel * 0.15 + c.stats.smarts * 0.12 + c.hidden.discipline * 0.08 + (hasTalent(g, 'Programming') ? 10 : 0)
   return Math.round(between(base + randInt(g, -18, 18) - kind.difficulty + 10, 0, 100))
 }
 
@@ -93,7 +104,8 @@ export function buildProject(g: GameState, kind: ProjectKind): void {
     return
   }
   const [lo, hi] = kind.users
-  const users = Math.max(1, Math.round((lo + (hi - lo) * Math.pow(q / 100, 3)) * audienceLuck(g) * tired))
+  const trend = kind.id === trendingKind(g) ? 1.5 : 1
+  const users = Math.max(1, Math.round((lo + (hi - lo) * Math.pow(q / 100, 3)) * audienceLuck(g) * tired * trend))
   const income = launchIncome(g, kind, users, q)
   const proj: DevProject = { id: uid(g, 'dp'), kind: kind.id, name, q, age: c.age, users, income, earned: 0, lang: best?.id ?? '' }
   const s = devState(g)
@@ -181,6 +193,7 @@ export const projectsMenu: MenuGroup = {
           const lang = best ? getLanguage(best.id)?.label : null
           return `Skill ${k.minSkill}+${lang ? ` · you'd use ${lang}` : ''}${k.income !== 'none' ? ' · can earn money' : ''}`
         },
+        hint: (g) => (k.id === trendingKind(g) ? talentHint(g, 'Programming', `${k.label}s are having a moment this year: expect a bigger audience.`) || null : null),
         visible: (g) => g.character.age >= k.minAge && (k.maxAge === undefined || g.character.age <= k.maxAge),
         disabledReason: (g) => firstReason(computerBlock(g), codingSkill(g) < k.minSkill ? `You need coding skill ${k.minSkill} (you have ${codingSkill(g)}).` : null),
         run: (g) => buildProject(g, k),

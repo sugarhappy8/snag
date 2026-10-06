@@ -7,9 +7,10 @@ import { arrestPlayer } from '../crime'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import { hasTalent, talentHint, talentMult } from '../talents'
 import { localeOf } from '../data/locales'
 import { getCountry } from '../world'
-import { addFame, attendedUniversity, blocked, clamp100, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
+import { addFame, attendedUniversity, blocked, clamp100, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
 import { addBuzz, addHeadTrauma, banReason, countryName, honor, plural, recordCareer } from './sports-core'
 
 // ---------------------------------------------------------------------------
@@ -294,7 +295,7 @@ function ad(job: Job): AthleteJob {
 }
 
 function sportsTalent(g: GameState): boolean {
-  return talentMatches(g, /athlet|sport/i)
+  return hasTalent(g, 'Athletics')
 }
 
 /** Make sure the profile tracks this sport, seeding skills from natural athleticism. */
@@ -389,18 +390,37 @@ function offerContract(g: GameState, o: ContractOffer, intro: string): void {
   )
 }
 
+/** The tryout score before the luck roll (no randomness: safe for hints). */
+function tryoutBase(g: GameState, p: AthleteProfile, strength: number): number {
+  const c = g.character
+  const agePenalty = c.age > 30 ? (c.age - 30) * 4 : 0
+  return c.hidden.athleticism * 0.45 + avgSkill(p) * 0.3 + p.fitness * 0.2 + (sportsTalent(g) ? 10 : 0) - strength * 0.2 - agePenalty
+}
+
+/** Athletics talent hint: the strongest team you'd most likely make (stronger teams pay more). */
+function bestTryout(g: GameState, league: League, options: TeamOption[]): number {
+  const sport = sportOf(league.sport)
+  const prof0 = viewAthlete(g)
+  // A sport you haven't played yet starts from your natural athleticism.
+  const p: AthleteProfile =
+    prof0.sport === sport.id ? prof0 : { ...prof0, skills: Object.fromEntries(sport.skills.map((s) => [s, clamp100(g.character.hidden.athleticism * 0.45 + 10 + 6)])) }
+  let best = -1
+  options.forEach((o, i) => {
+    if (tryoutBase(g, p, o.strength) >= 38 + 5 && (best < 0 || o.strength > options[best].strength)) best = i
+  })
+  return best
+}
+
 const tryoutScript = defineScript('special.athlete.tryout', (g, choice, data) => {
   if (choice === 'cancel') return
   const options = data as unknown as TeamOption[]
   const t = options[Number(choice)]
   if (!t) return
   if (!useYearAction(g, 'athlete.tryout', 2)) return tell(g, 'Tryouts', "You've already tried out for enough teams this year. Your legs are jelly.", '\u{1F971}')
-  const c = g.character
   const league = leagueOf(t.league)
   const sport = sportOf(league.sport)
   const p = ensureSport(g, sport)
-  const agePenalty = c.age > 30 ? (c.age - 30) * 4 : 0
-  const score = c.hidden.athleticism * 0.45 + avgSkill(p) * 0.3 + p.fitness * 0.2 + (sportsTalent(g) ? 10 : 0) + randInt(g, -15, 15) - t.strength * 0.2 - agePenalty
+  const score = tryoutBase(g, p, t.strength) + randInt(g, -15, 15)
   if (score < 38) {
     log(g, `I tried out for the ${t.team} but didn't make the team.`, 'bad')
     return say(
@@ -426,12 +446,21 @@ const leagueScript = defineScript('special.athlete.league', (g, choice) => {
   if (!league) return
   const teams = shuffle(g, league.teams).slice(0, 5)
   const options: TeamOption[] = teams.map((team) => ({ league: league.id, team, strength: randInt(g, 35, 95) }))
+  const best = sportsTalent(g) ? bestTryout(g, league, options) : -1
   scriptChoice(
     g,
     tryoutScript,
     league.name,
     `Which ${league.name} team do you want to try out for?`,
-    [...options.map((o, i) => ({ id: String(i), label: `${o.team} · Strength ${o.strength}%`, emoji: sportOf(league.sport).emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+    [
+      ...options.map((o, i) => ({
+        id: String(i),
+        label: `${o.team} · Strength ${o.strength}%`,
+        emoji: sportOf(league.sport).emoji,
+        ...(i === best ? { hint: talentHint(g, 'Athletics', 'The strongest team that should take you.') } : {}),
+      })),
+      { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' },
+    ],
     { emoji: sportOf(league.sport).emoji, data: options as unknown as Json },
   )
 })
@@ -503,7 +532,7 @@ const practiceScript = defineScript('special.athlete.practice', (g, choice) => {
   const p = ensureSport(g, sport)
   if (!sport.skills.includes(choice)) return
   if (!useYearAction(g, `athlete.practice.${choice}`, 1)) return tell(g, 'Practice', `You've already worked on your ${choice.toLowerCase()} this year.`, '\u{1F971}')
-  const gain = randInt(g, 3, 8) + (sportsTalent(g) ? 2 : 0) - (g.character.age > 32 ? 2 : 0)
+  const gain = Math.round(randInt(g, 3, 8) * talentMult(g, 'Athletics', 1.5)) - (g.character.age > 32 ? 2 : 0)
   p.skills[choice] = clamp100((p.skills[choice] ?? 0) + Math.max(1, gain))
   if (!d.practiced.includes(choice)) d.practiced.push(choice)
   job.performance = clamp100(job.performance + 2)
@@ -529,7 +558,7 @@ const trainScript = defineScript('special.athlete.train', (g, choice) => {
   if (!job) return
   if (!useYearAction(g, `athlete.train.${choice}`, 1)) return tell(g, 'Train', `You've already done your ${choice.toLowerCase()} training this year.`, '\u{1F971}')
   const p = athleteProfile(g)
-  p.fitness = clamp100(p.fitness + randInt(g, 2, 5))
+  p.fitness = clamp100(p.fitness + Math.round(randInt(g, 2, 5) * talentMult(g, 'Athletics', 1.5)))
   addStat(g, 'health', 2)
   addHidden(g, 'athleticism', 1)
   log(g, `I did ${choice.toLowerCase()} training.`)
@@ -910,7 +939,9 @@ export function yearlyAthlete(g: GameState): void {
     say(g, 'Hall of Fame', `You were inducted into the ${sport.name} Hall of Fame! Your bronze bust looks only slightly like you.`, '\u{1F3DB}\u{FE0F}', 'good')
   }
   // Scouts approach talented 18 year olds.
-  if (!c.prison && !c.job && c.age >= 18 && c.age <= 19 && !g.flags['special.athlete.scouted'] && (c.hidden.athleticism >= 80 || (sportsTalent(g) && c.hidden.athleticism >= 65)) && chance(g, 0.5)) {
+  // Athletics talent: scouts keep an eye on you for longer and see past rawer numbers.
+  const scoutAge = sportsTalent(g) ? 22 : 19
+  if (!c.prison && !c.job && c.age >= 18 && c.age <= scoutAge && !g.flags['special.athlete.scouted'] && (c.hidden.athleticism >= 80 || (sportsTalent(g) && c.hidden.athleticism >= 55)) && chance(g, sportsTalent(g) ? 0.6 : 0.5)) {
     g.flags['special.athlete.scouted'] = true
     const leagues = LEAGUES.filter((l) => l.gender === c.gender && l.sport !== 'football')
     // Scouts from the home league come first; the big foreign leagues now and then.
@@ -941,7 +972,7 @@ export function yearlyAthlete(g: GameState): void {
   if (c.age > 30) p.fitness = clamp100(p.fitness - randInt(g, 1, 3))
 
   const doping = d.doping
-  const greatness = clamp100(avgSkill(p) * 0.6 + p.fitness * 0.25 + randInt(g, 0, 15) + (doping ? 8 : 0) - (d.injured > 0 ? 15 : 0))
+  const greatness = clamp100(avgSkill(p) * 0.6 + p.fitness * 0.25 + randInt(g, 0, 15) + (doping ? 8 : 0) + (sportsTalent(g) ? 5 : 0) - (d.injured > 0 ? 15 : 0))
   p.greatness = greatness
   p.peakGreatness = Math.max(p.peakGreatness, greatness)
   p.seasons += 1

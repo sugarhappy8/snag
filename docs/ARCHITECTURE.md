@@ -63,6 +63,18 @@ src/
     events.ts (+ events/*.ts if split)                                    [events agent]
     data/markets.ts      Per-country economy (taxes, wages, rents, rates, red tape, corruption, exchange,
                          industry demand, local prices); data in data/markets/<region>.ts
+    talents.ts           Special talents picked before birth (New Life › Special Talents, max 3) plus the
+                         one discovered in childhood. ALWAYS test with hasTalent(g, id) (never
+                         c.talent). Helpers: characterTalents, pickedTalents, normalizeTalents,
+                         talentMult, talentHint (purple 🔮 hint text), talentEmoji, talentsSummary.
+                         Purple hints reach the UI through ChoiceOption.hint, MenuBase.hint and
+                         AnnualReportData.talentHint; hints must be honest (computed from the same
+                         math the resolver uses, never consuming g's RNG in menus) and never make
+                         anything risk-free. life.ts owns discovery (flags talentsRevealed,
+                         talentNoticeAge: one talent popup a year) and heirs (40% inherit a pick).
+                         Hidden per-year trends that hints reveal use special/common.ts
+                         stableRoll/stableChoice; activities/creative.ts is Mind & Body › Creative
+                         Arts (craftSkill writing/art/cooking/comedy in g.flags 'skill.<id>')
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
@@ -257,6 +269,10 @@ references are resolved by name to existing ids, and malformed JSON falls back o
   `runMenuAction(action, input?)`, `dismissNotice(id)`, `chooseOption(id, choiceId)`,
   `submitInput(id, value)`, `finishMinigame(id, result)`, `skipAi()`, `act(mutator)`,
   `updateSettings(patch)`, `checkAi()`. Screens: `'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'`.
+- Purple talent hints: `components/TalentHint.tsx` renders them; `menuModel` `nodeHint` reads
+  `MenuBase.hint` safely and `cleanHint` strips a leading 🔮 and caps at `HINT_MAX` (220 chars).
+  CSS tokens `--hint-text`, `--hint-bg`, `--hint-border`, `--hint-ring`. The Death screen's
+  "Live again" keeps the picked talents (`liveAgainOptions`).
 - Return point: when an action in one menu sheet sends the player to another screen/sheet, the store
   remembers where they were (`returnPoint`, `setReturnPoint`, `clearReturnPoint`, `returnPointLive`,
   `returnChipVisible`). `components/ReturnChip.tsx` (`resolveReturnPoint`, `ReturnChip`, `MENU_SHEETS`,

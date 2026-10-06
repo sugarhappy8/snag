@@ -10,9 +10,10 @@
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { chance, pick, rand, randInt, bell } from '../rng'
 import { defineScript } from '../scripts'
+import { hasTalent, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity, COUNTRIES } from '../world'
-import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view, yearlyList } from './common'
+import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view, yearlyList } from './common'
 import {
   addBuzz,
   addHeadTrauma,
@@ -111,7 +112,7 @@ export function viewRecord(g: GameState, sportId: string): IndRecord | null {
 
 function startingAttr(g: GameState, sport: IndSport): number {
   const c = g.character
-  const talent = talentMatches(g, /athlet|sport/i) ? 8 : 0
+  const talent = hasTalent(g, 'Athletics') ? 8 : 0
   const kid = c.age < 12 ? -8 : 0
   return Math.max(5, Math.min(60, Math.round(c.hidden.athleticism * (0.2 + sport.athletic * 0.5) + 15 + talent + kid + randInt(g, 0, 10))))
 }
@@ -153,7 +154,7 @@ export function indRating(g: GameState, sport: IndSport, rec: IndRecord, job?: J
   const c = g.character
   const a = sport.athletic
   let r = avgAttr(sport, rec) * (0.8 - a) + rec.fitness * 0.2 + c.hidden.athleticism * a
-  if (talentMatches(g, /athlet|sport/i)) r += 3
+  if (hasTalent(g, 'Athletics')) r += 5
   if (job) {
     const d = jd(job)
     r += d.coach * 2
@@ -582,7 +583,7 @@ const practiceScript = defineScript('sports.ind.practice', (g, choice, data) => 
   const rec = sportRecord(g, sport)
   const coach = job && pro ? jd(job).coach : 0
   const youth = g.character.age < 22 ? 1.2 : g.character.age > sport.peak[1] ? 0.6 : 1
-  const gain = trainGain(g, rec.attrs[choice] ?? 0, 3, 7, (1 + coach * 0.25) * youth * (talentMatches(g, /athlet|sport/i) ? 1.2 : 1))
+  const gain = trainGain(g, rec.attrs[choice] ?? 0, 3, 7, (1 + coach * 0.25) * youth * talentMult(g, 'Athletics', 1.5))
   rec.attrs[choice] = Math.min(100, (rec.attrs[choice] ?? 0) + gain)
   if (!rec.practiced.includes(choice)) rec.practiced.push(choice)
   addHidden(g, 'discipline', 1)

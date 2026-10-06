@@ -3,7 +3,7 @@
 // (money-scams.ts). computer.ts assembles the menu and calls the yearly hook; shared state and
 // helpers live in money-common.ts (g.flags.computerMoney).
 import type { GameState, MenuNode } from '../types'
-import { cap, isRecord, moneyState, readState, STATE_KEY, type News } from './money-common'
+import { cap, clampNum, isRecord, moneyState, readState, SHARP_FADE, SHARP_MAX, STATE_KEY, type News } from './money-common'
 import { coinProbeNews, cryptoMenu, cryptoSummary } from './money-crypto'
 import { compulsiveTrading, optionsMenu, optionsSummary, settleOptions } from './money-options'
 import { coolHeat, scamNews, SCAMS_MIN_AGE, scamsMenu, scamsSummary } from './money-scams'
@@ -28,6 +28,9 @@ export function yearlyMoney(g: GameState): void {
   if (!isRecord(g.flags[STATE_KEY])) return
   const st = moneyState(g)
   const news: News[] = []
+
+  // Brokers slowly forget a hot streak.
+  st.sharp = clampNum(st.sharp * SHARP_FADE, 0, SHARP_MAX)
 
   // Contracts expire on schedule, even for traders behind bars.
   const opt = settleOptions(g, st)

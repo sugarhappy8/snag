@@ -5,6 +5,7 @@ import { addHidden, addRelationship, addStat, count, earnIncome, log, parents, r
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { localStreetName } from '../data/locales'
+import { hasTalent, talentHint } from '../talents'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
 
@@ -91,9 +92,11 @@ const bookAction: MenuAction = {
     }
     const c = g.character
     const title = cleanName(input, `${c.firstName}: Unfiltered`, 60)
-    const score = fameOf(g) * 0.55 + c.stats.smarts * 0.35 + randInt(g, -20, 20) + (/writ|author|poet/i.test(c.talent ?? '') ? 10 : 0)
+    // Writing talent: the book is actually good, and good books sell.
+    const writer = hasTalent(g, 'Writing')
+    const score = fameOf(g) * 0.55 + c.stats.smarts * 0.35 + randInt(g, -20, 20) + (writer ? 14 : 0)
     const [, verdict, mult, fameDelta] = BOOK_TIERS.find(([max]) => score < max) ?? BOOK_TIERS[BOOK_TIERS.length - 1]
-    const earned = Math.max(150, vary(g, (4_000 + fameOf(g) ** 2 * 120 + c.stats.smarts * 150) * mult, 0.3))
+    const earned = Math.max(150, vary(g, (4_000 + fameOf(g) ** 2 * 120 + c.stats.smarts * 150) * mult * (writer ? 1.3 : 1), 0.3))
     earnIncome(g, earned)
     addFame(g, fameDelta)
     addStat(g, 'happiness', fameDelta >= 2 ? 8 : fameDelta < 0 ? -6 : 2)
@@ -311,16 +314,22 @@ const TALK_TOPICS = [
   { id: 'emotional', label: 'Open up about your childhood', emoji: '\u{1F622}' },
 ]
 
-const talkTopicScript = defineScript('special.fame.talkTopic', (g, choice, data) => {
-  const show = String((data as { show?: string } | undefined)?.show ?? 'the show')
+/** How well each talk-show bit plays for you before luck (pure: safe for hints). */
+function talkBase(g: GameState): Record<string, number> {
   const c = g.character
-  const base: Record<string, number> = {
-    story: c.stats.smarts * 0.4 + c.hidden.craziness * 0.2,
+  // Comedy talent: your stories kill; Acting talent: you can make a room cry on cue.
+  return {
+    story: c.stats.smarts * 0.4 + c.hidden.craziness * 0.2 + (hasTalent(g, 'Comedy') ? 22 : 0),
     plug: 30 + fameOf(g) * 0.3,
     gossip: 20 + c.hidden.craziness * 0.4,
-    stunt: c.hidden.athleticism * 0.5,
-    emotional: 25 + c.stats.looks * 0.2 + c.hidden.karma * 0.2,
+    stunt: c.hidden.athleticism * 0.5 + (hasTalent(g, 'Athletics') ? 10 : 0),
+    emotional: 25 + c.stats.looks * 0.2 + c.hidden.karma * 0.2 + (hasTalent(g, 'Acting') ? 12 : 0),
   }
+}
+
+const talkTopicScript = defineScript('special.fame.talkTopic', (g, choice, data) => {
+  const show = String((data as { show?: string } | undefined)?.show ?? 'the show')
+  const base = talkBase(g)
   const score = (base[choice] ?? 30) + randInt(g, -15, 35)
   count(g, 'fameActions')
   let text: string
@@ -363,7 +372,10 @@ const talkTopicScript = defineScript('special.fame.talkTopic', (g, choice, data)
 const talkShowScript = defineScript('special.fame.talkShow', (g, choice, data) => {
   const show = String((data as { show?: string } | undefined)?.show ?? 'the show')
   if (choice !== 'accept') return say(g, 'Talk Show', `You declined the invitation to ${show}. The producers booked a ventriloquist instead.`, '\u{1F399}\u{FE0F}')
-  scriptChoice(g, talkTopicScript, show, `The lights are on and the host turns to you. What will you do?`, TALK_TOPICS, { emoji: '\u{1F399}\u{FE0F}', data: { show } })
+  const base = talkBase(g)
+  const best = TALK_TOPICS.reduce((a, b) => ((base[b.id] ?? 0) > (base[a.id] ?? 0) ? b : a)).id
+  const hint = talentHint(g, 'Comedy', 'You can read this room: this bit will play best.')
+  scriptChoice(g, talkTopicScript, show, `The lights are on and the host turns to you. What will you do?`, TALK_TOPICS.map((t) => (hint && t.id === best ? { ...t, hint } : t)), { emoji: '\u{1F399}\u{FE0F}', data: { show } })
 })
 
 const talkShowAction: MenuAction = {
