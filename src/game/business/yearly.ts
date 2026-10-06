@@ -26,6 +26,7 @@ import {
 } from './economy'
 import { declareBankruptcy, ipoThreshold } from './exit'
 import { maybeBusinessEvent } from './events'
+import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
 import { industryDef } from './industries'
 import { staffTurnover } from './staff'
@@ -182,6 +183,7 @@ export function queueReport(g: GameState, a: Asset, b: BizState): void {
     queueStudioReport(g, a, b)
     return
   }
+  if (isDeepTech(b) && deepTechReport(g, a, b)) return
   minigame(g, 'annualReport', `${a.name}: Annual Report`, REPORT, toJson(reportData(g, a, b)))
 }
 
@@ -298,12 +300,14 @@ export function yearlyBusinessImpl(g: GameState): void {
     const runs = runsIt(g, a)
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null
     const studio = isStudio(b)
-    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
+    const tech = isDeepTech(b)
+    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     const lastCycle = s.cycle
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
+    if (tech) afterDeepTechYear(g, a, b)
     const rec0 = recordYear(b, s)
     b.valuation = b.public ? updateSharePrice(g, b, fiscal) : valuationOf(b)
     rec0.valuation = b.valuation
@@ -342,12 +346,13 @@ export function yearlyBusinessImpl(g: GameState): void {
       continue
     }
     const managed = !runsIt(g, a)
-    if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
+    if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
     if (!managed && !c.prison) {
       queueReport(g, a, b)
     } else if (studio) {
       studioManagerTurn(g, a, b)
     } else {
+      if (tech) deepTechManagerTurn(g, a, b)
       applyPlan(b, autoPlan(g, b, lastCycle))
     }
   }

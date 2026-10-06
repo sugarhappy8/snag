@@ -4,6 +4,7 @@ import { exchangeFor, marketOf } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
 import type { Asset, GameState } from '../types'
+import { deepTechIpoThreshold } from './deeptech-state'
 import { refreshValue, valuationOf } from './economy'
 import { industryDef } from './industries'
 import { ceoJob, stakeValue, type BizState } from './state'
@@ -107,7 +108,7 @@ export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: 
  * franchises long before they earn like a conglomerate (studios have gone public on far less).
  */
 export function ipoThreshold(b: BizState): number {
-  return b.industry === 'gameStudio' ? 25_000_000 : IPO_PROFIT
+  return b.industry === 'gameStudio' ? 25_000_000 : (deepTechIpoThreshold(b) ?? IPO_PROFIT)
 }
 
 export function canIpo(b: BizState): string | null {

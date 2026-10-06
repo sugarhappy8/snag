@@ -11,6 +11,7 @@ import { becomeCeo, ceoPayNorm, installManager, managerCandidate, managerName, m
 import { ceoSkill, equipmentValue, insurancePremiumFor, localEcon, maxProduction, planFor, priceBounds, refreshValue, startupCost, staffPower, valuationOf } from './economy'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
 import { conglomerate, investorFirm, localSport } from './flavor'
+import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
@@ -876,6 +877,10 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
   rows.push(isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
   if (isStudio(b)) rows.push(studioInfo(g, a))
+  if (isDeepTech(b)) {
+    const tech = deepTechInfo(g, a)
+    if (tech) rows.push(tech)
+  }
   else rows.push(`Price ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : `$${e.goingPrice.toFixed(2)}`}) · plan ${units(b.production)} ${def.unit}`)
   const s = b.last
   if (s) {
@@ -903,6 +908,8 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
         run: (gg, cur, bb) => queueReport(gg, cur, bb),
       }),
     )
+    // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
+    if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
     nodes.push(staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })

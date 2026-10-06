@@ -4,6 +4,7 @@
 import type { Industry } from '../data/markets'
 import { getCountry } from '../world'
 import type { Asset, GameState, Job, Json } from '../types'
+import { isDeepTechIndustry } from './deeptech-state'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, str } from './util'
 
@@ -173,6 +174,8 @@ export interface BizState {
   slump: number
   /** Game studios only: the pipeline and back catalog (business/gamestudio-state.ts). */
   studio?: Json
+  /** Deep-tech companies only: R&D, tech level, funding rounds (business/deeptech-state.ts). */
+  tech?: Json
 }
 
 export const BIZ_VERSION = 1
@@ -331,6 +334,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     loanId: str(d.loanId),
     slump: Math.max(0, num(d.slump)),
     ...(industry === 'gameStudio' && d.studio && typeof d.studio === 'object' && !Array.isArray(d.studio) ? { studio: d.studio } : {}),
+    ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
   }
 }
 

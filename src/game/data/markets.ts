@@ -15,7 +15,7 @@ import { AMERICAS_MARKETS } from './markets/americas'
 import { ASIA_OCEANIA_MARKETS } from './markets/asiaOceania'
 import { EUROPE_MARKETS } from './markets/europe'
 
-/** The 25 industries you can start a business in (BitLife's Business update has 25). */
+/** The industries you can start a business in: BitLife's 25 plus 8 deep-tech ones. */
 export const INDUSTRY_IDS = [
   'foodTruck',
   'restaurant',
@@ -42,7 +42,19 @@ export const INDUSTRY_IDS = [
   'farm',
   'energy',
   'entertainment',
+  // Deep tech (business/deeptech*.ts): R&D, funding rounds, breakthroughs and big exits.
+  'semiconductor',
+  'aiLab',
+  'robotics',
+  'biotech',
+  'spaceTech',
+  'electricVehicles',
+  'quantum',
+  'cybersecurity',
 ] as const
+
+/** The deep-tech industries (a subset of INDUSTRY_IDS with their own simulation layer). */
+export const DEEP_TECH_IDS = ['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity'] as const
 
 export type Industry = (typeof INDUSTRY_IDS)[number]
 

@@ -28,6 +28,7 @@ import { contractCondition } from './health'
 import { createPerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
+import { isTalentId, MAX_START_TALENTS } from './talents'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
 import type {
   AncestorSummary,
@@ -65,6 +66,11 @@ export interface NewLifeOptions {
    * rolled/inherited value once the baby is generated (clamped 0-100); missing keys stay random.
    */
   stats?: Partial<Record<StartStatKey, number>>
+  /**
+   * Special talents picked before birth (New Life › Special Talents): talents.ts ids, unique,
+   * at most MAX_START_TALENTS; unknown ids are dropped. Stored on Character.talents.
+   */
+  talents?: string[]
 }
 
 /** The four main stats a player may set before birth. */
@@ -705,8 +711,10 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
     g.flags.talentAge = randInt(g, 5, 12)
   }
 
-  // Chosen stats go on last so the same seed still rolls the same family and destiny.
+  // Chosen stats and talents go on last so the same seed still rolls the same family and destiny.
   applyStartStats(c, opts.stats)
+  const picked = [...new Set((opts.talents ?? []).filter(isTalentId))].slice(0, MAX_START_TALENTS)
+  if (picked.length) c.talents = picked
   return g
 }
 
