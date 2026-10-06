@@ -4,6 +4,7 @@
 import {
   addHidden,
   addStat,
+  bindMoneyContext,
   currentLogYear,
   formatMoney,
   fullName,
@@ -789,6 +790,9 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
       delete g.flags.talentAge
     }
   }
+  // A citizen of the country you're born in (immigration.ts adds passports later).
+  c.citizenships = [c.countryId]
+  bindMoneyContext(g)
   return g
 }
 

@@ -10,7 +10,7 @@ import { applyFallback, narrateNotice, runAiTask, testConnection } from '../ai/d
 import { resetAiSession } from '../ai/lmstudio'
 import { providerFor } from '../ai/providers'
 import { ageUp } from '../game/aging'
-import { netWorth } from '../game/core'
+import { bindMoneyContext, netWorth } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
 import { uid } from '../game/rng'
 import { addToGraveyard, clearSave, loadGame, recordRibbon, saveGame } from '../game/save'
@@ -282,6 +282,8 @@ export function abandonLife(): void {
 // Mutations
 
 function commit(g: GameState): void {
+  // Money text is written in the currency and prices of the life on screen (core.ts display).
+  bindMoneyContext(g)
   finalizeIfDead(g)
   saveGame(g)
   setState({ game: g })

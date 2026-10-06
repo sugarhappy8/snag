@@ -77,18 +77,107 @@ export function canAfford(g: GameState, amount: number): boolean {
   return g.character.money >= amount
 }
 
-export function formatMoney(n: number): string {
-  const sign = n < 0 ? '-' : ''
-  return `${sign}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`
+// ---------------------------------------------------------------------------
+// Money display
+//
+// The engine keeps every amount in constant PRESENT_YEAR US dollars (history/timeline.ts). What
+// the player sees can be the local currency and/or the prices of the year being lived ("a 1980
+// salary of $10K"). formatMoney/shortMoney (and every module's money() helper, which must call
+// them) go through the registered converter; the default shows plain US dollars, so tests and
+// old code behave exactly as before. The UI binds the live game (bindMoneyContext) and the
+// player's settings (setMoneyDisplay); data/currencies.ts registers the real converter.
+
+export type MoneyMode = 'usd' | 'local'
+
+export interface MoneyDisplay {
+  /** 'local': the currency of the country the character lives in; 'usd': US dollars. */
+  mode: MoneyMode
+  /** True: prices as they were in the year being lived (1980 money); false: today's money. */
+  nominal: boolean
 }
 
-/** Compact money: $1.2M, $45K. */
+/** An internal amount as the player should see it. */
+export interface ShownMoney {
+  /** The amount in display units (already converted). */
+  amount: number
+  /** e.g. '$', '¥', 'Rp', 'R$', '₦', 'CHF'. */
+  symbol: string
+  /** ISO code, e.g. 'USD', 'JPY'. */
+  code: string
+  /** True when the symbol goes after the number ('100 kr'). */
+  suffix?: boolean
+}
+
+export interface MoneyContext {
+  countryId: string
+  year: number
+}
+
+export type MoneyConverter = (n: number, ctx: MoneyContext | null, display: MoneyDisplay) => ShownMoney
+
+let moneyDisplaySetting: MoneyDisplay = { mode: 'usd', nominal: false }
+let moneyContext: () => MoneyContext | null = () => null
+let converter: MoneyConverter = (n) => ({ amount: n, symbol: '$', code: 'USD' })
+
+/** The player's display choice (Settings). */
+export function setMoneyDisplay(d: Partial<MoneyDisplay>): void {
+  moneyDisplaySetting = { ...moneyDisplaySetting, ...d }
+}
+
+export function moneyDisplay(): MoneyDisplay {
+  return moneyDisplaySetting
+}
+
+/** Which life money is shown for (its country and year); null = plain US dollars. */
+export function bindMoneyContext(g: GameState | null): void {
+  moneyContext = g ? () => ({ countryId: g.character.countryId, year: g.year }) : () => null
+}
+
+export function currentMoneyContext(): MoneyContext | null {
+  return moneyContext()
+}
+
+/** data/currencies.ts installs the real converter (local currency + year prices). */
+export function registerMoneyConverter(fn: MoneyConverter): void {
+  converter = fn
+}
+
+/** An internal amount converted for display with the current settings and context. */
+export function showMoney(n: number): ShownMoney {
+  return converter(n, moneyContext(), moneyDisplaySetting)
+}
+
+/** Display units per internal dollar right now (1 in plain USD mode); for money input fields. */
+export function moneyScale(): number {
+  const one = showMoney(1_000_000).amount / 1_000_000
+  return Number.isFinite(one) && one > 0 ? one : 1
+}
+
+/** A number the player typed in display units, back to internal dollars. */
+export function moneyFromInput(displayAmount: number): number {
+  return displayAmount / moneyScale()
+}
+
+function joinMoney(sign: string, digits: string, m: ShownMoney): string {
+  if (m.suffix) return `${sign}${digits} ${m.symbol}`
+  return `${sign}${m.symbol}${digits}`
+}
+
+export function formatMoney(n: number): string {
+  const m = showMoney(n)
+  const sign = m.amount < 0 ? '-' : ''
+  return joinMoney(sign, Math.abs(Math.round(m.amount)).toLocaleString('en-US'), m)
+}
+
+/** Compact money: $1.2M, $45K (thousands, millions, billions, trillions). */
 export function shortMoney(n: number): string {
-  const a = Math.abs(n)
-  const sign = n < 0 ? '-' : ''
-  if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(a >= 1e10 ? 0 : 1)}B`
-  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`
-  if (a >= 1e4) return `${sign}$${Math.round(a / 1e3)}K`
+  const m = showMoney(n)
+  const a = Math.abs(m.amount)
+  const sign = m.amount < 0 ? '-' : ''
+  if (a >= 1e12) return joinMoney(sign, `${(a / 1e12).toFixed(a >= 1e13 ? 0 : 1)}T`, m)
+  if (a >= 1e9) return joinMoney(sign, `${(a / 1e9).toFixed(a >= 1e10 ? 0 : 1)}B`, m)
+  if (a >= 1e6) return joinMoney(sign, `${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`, m)
+  if (a >= 1e4) return joinMoney(sign, `${Math.round(a / 1e3)}K`, m)
   return formatMoney(n)
 }
 

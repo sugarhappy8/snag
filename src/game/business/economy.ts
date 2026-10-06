@@ -10,6 +10,7 @@
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
 import { seeded } from '../assets'
 import { corporateTax, exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
+import { historicalCycle } from '../history/markets'
 import { bell, chance, rand } from '../rng'
 import { hasTalent, talentHint, type TalentId } from '../talents'
 import type { Asset, GameState } from '../types'
@@ -202,7 +203,8 @@ export function cycleOf(g: GameState, countryId: string, year: number): number {
   const vol = clampN(exchangeFor(countryId).volatility, 0.05, 0.8)
   const amp = 0.035 + 0.3 * vol
   const z = 0.65 * shock(g, countryId, year) + 0.35 * shock(g, countryId, year - 1)
-  return clampN(1 + amp * z, 0.55, 1.4)
+  // Real history (recessions, booms) where the year has it; the procedural cycle otherwise.
+  return clampN(historicalCycle(countryId, year, clampN(1 + amp * z, 0.55, 1.4)), 0.55, 1.4)
 }
 
 export function cycleLabel(c: number): string {
