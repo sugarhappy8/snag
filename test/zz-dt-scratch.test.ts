@@ -48,7 +48,7 @@ const find = (nodes: MenuNode[], id: string) => nodes.find((n) => n.id === id)
 
 it('calibrate', () => {
   const out: string[] = []
-  for (const cc of ['us', 'tw', 'ng']) for (const ind of DEEP_TECH_IDS) for (const seed of [3, 7]) {
+  for (const cc of ["us", "tw", "ng"]) for (const ind of DEEP_TECH_IDS) for (const seed of [3, 7]) {
     const g = adultIn(cc, 3_000_000, seed)
     const start = find(businessCareerMenu.children(g), 'biz.start')
     if (!start || start.type !== 'menu') throw new Error('no start')

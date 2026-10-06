@@ -579,8 +579,13 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
   refreshValue(a, b)
   count(g, 'businessesFounded')
   let quit: string | null = null
-  if (runIt) quit = becomeCeo(g, a, b, 'Founder & CEO')
-  else installManager(g, b, managerCandidate(g, b))
+  if (runIt) {
+    quit = becomeCeo(g, a, b, 'Founder & CEO')
+    // Startup founders pay themselves like one of their engineers, not like a CEO.
+    b.ownerSalary = Math.min(b.ownerSalary, localEcon(ind, p.countryId, p.city).wage)
+    const job = ceoJob(g, a.id)
+    if (job) job.salary = b.ownerSalary
+  } else installManager(g, b, managerCandidate(g, b))
   addStat(g, 'happiness', 8)
   const country = getCountry(p.countryId)
   const parts = [`${p.name} is officially registered in ${country.name}! Your first ${def.site} opens in ${p.city}. You put in ${formatMoney(personal)} of your own money, including ${formatMoney(fees)} in fees and permits.`]
