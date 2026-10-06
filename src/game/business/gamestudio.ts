@@ -16,7 +16,7 @@ import { chance, pick, randFloat, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import { hire } from '../special/common'
 import { salaryFor } from '../special/gamedev-career'
-import { addGamerFame, copiesLabel, engineRoyalty, firstYearCopies, gameTitle, genreTrend, homeReach, hotGenres, industryYear, netPerCopy, nextTail, priceOf, qualityFactor, reviewScores, sequelTitle, trendLabel } from '../special/gamedev-core'
+import { addGamerFame, backerCap, copiesLabel, engineRoyalty, firstYearCopies, gameTitle, genreSkill, genreTrend, homeReach, hotGenres, industryYear, netPerCopy, nextTail, priceOf, qualityFactor, reviewScores, sequelTitle, trendLabel } from '../special/gamedev-core'
 import {
   CRITIC_SITE,
   ENGINES,
@@ -39,7 +39,8 @@ import {
   type PlatformId,
   type ScopeId,
 } from '../special/gamedev-data'
-import { designSkill, GAME_JOB, gdMut, gdView, nextId, playerLabel, tidy } from '../special/gamedev-state'
+import { artSkill, designSkill, GAME_JOB, gdMut, gdView, nextId, playerLabel, tidy } from '../special/gamedev-state'
+import { codingSkill } from '../computer/skills'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import { becomeCeo, installManager, managerCandidate } from './career'
@@ -99,11 +100,12 @@ function ensureCatalog(g: GameState, b: BizState, st: StudioState, year = g.year
   const copies = whole(last.units)
   if (copies <= 0) return
   const price = clampN(b.price > 0 ? b.price : 20, 5, 70)
+  const genre = pick(g, GENRES)
   st.seq += 1
   st.games.push({
     id: `sg${st.seq}`,
-    title: `${pick(g, GENRES).label} Classics Collection`,
-    genre: pick(g, GENRES).id,
+    title: `${genre.label} Classics Collection`,
+    genre: genre.id,
     platform: 'pc',
     scope: 'indie',
     engine: 'cobalt',
@@ -165,8 +167,10 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   const ops = 1 + 0.08 * staffPower(b, 'ops')
   const open = (1 - b.capacityLoss) * b.openFraction
   const runs = runsIt(g, a) && !g.character.prison && g.character.alive
-  // A CEO who isn't a designer delegates; a great designer at the top lifts every game.
-  const creative = runs ? Math.max(45, designSkill(g)) : (b.manager?.skill ?? 50)
+  // A CEO who isn't a game maker delegates; a great one at the top lifts every game. In a
+  // small studio the founder is the lead developer, in a big one just one voice of many.
+  const founder = runs ? { code: codingSkill(g), art: artSkill(g), design: designSkill(g) } : null
+  const voice = runs ? 0.12 + 0.33 / (1 + b.employees / 6) : 0.12
   const qStaff = staffPower(b, 'quality')
   const wage = devCost(b)
   const scale = costScale(b.countryId)
@@ -192,7 +196,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
       60 +
         (b.quality - 50) * 0.4 +
         qStaff * 6 +
-        (creative - 50) * 0.12 +
+        ((founder ? Math.max(45, genreSkill(x.genre, founder.code, founder.art, founder.design)) : (b.manager?.skill ?? 50)) - 50) * voice +
         (b.morale - 60) * 0.1 +
         (sc.index >= 3 ? eng.bigBonus : eng.bonus) -
         sc.difficulty * (ratio < 0.6 ? 1.2 : 0.4) +
@@ -868,8 +872,8 @@ const GL_SCOPE = defineScript('gamestudio.gl.scope', (g, choice, data) => {
   d.scope = choice
   if (d.sequelOf) return glPlatform(g, d)
   const hot = new Set(hotGenres(g).map((x) => x.id))
-  const options = shuffle(g, GENRES).slice(0, 6)
-  for (const h of hotGenres(g)) if (!options.some((o) => o.id === h.id)) options[options.length - 1] = h
+  // Both hot genres are always on the list, plus four others.
+  const options = shuffle(g, [...hotGenres(g), ...shuffle(g, GENRES.filter((x) => !hot.has(x.id))).slice(0, 4)])
   scriptChoice(g, GL_GENRE, 'Pick a Genre', `What will it be? ${[...hot].map((x) => genreDef(x).label).join(' and ')} games are hot right now.`, [
     ...options.map((x) => ({ id: x.id, label: `${x.label}${hot.has(x.id) ? ' (hot!)' : ''}`, emoji: x.emoji })),
     { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
@@ -1073,7 +1077,10 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
               const y = st.games.find((z) => z.id === gid)
               if (!y || y.raised) return
               const fans = gdView(gg).gamerFame
-              const backers = whole((300 + y.hype * 60 + bb.brand * 80 + fans * 250) * Math.pow(clampN(y.quality, 10, 100) / 55, 1.5) * genreTrend(gg, y.genre) * randFloat(gg, 0.4, 1.6))
+              const interest = (300 + y.hype * 60 + bb.brand * 80 + fans * 250) * Math.pow(clampN(y.quality, 10, 100) / 55, 1.5) * genreTrend(gg, y.genre) * randFloat(gg, 0.4, 1.6)
+              // Backers are a slice of the people who would buy the game, never more.
+              const cap = backerCap(gg, { scope: y.scope, genre: y.genre, platform: y.platform, quality: Math.max(y.quality, 60), hype: y.hype, fame: Math.max(fans, bb.brand / 2), reach: homeReach(bb.countryId) })
+              const backers = whole(Math.min(interest, cap * randFloat(gg, 0.7, 1.1)))
               const raised = whole(backers * (priceOf(y.scope, y.platform) * 1.5 + 5) * 0.9)
               const goal = Math.round(scopeDef(y.scope).extraUsd * 2 + devCost(bb) * 2)
               y.raised = 1
@@ -1292,6 +1299,16 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
       ]
     },
   }
+}
+
+/**
+ * Money a studio holds for games still in development that it would owe back if they were
+ * cancelled (publisher advances, exclusivity fees, crowdfunding pledges). It funds the work;
+ * it can't be paid out to the owner.
+ */
+export function earmarkedCash(a: Asset): number {
+  if (a.kind !== 'business' || a.details?.industry !== 'gameStudio') return 0
+  return devGames(studioOf(a)).reduce((sum, x) => sum + x.advanceGot + x.exclusiveFee + (x.raised > 1 ? x.raised : 0), 0)
 }
 
 /** Info line for the business screen. */

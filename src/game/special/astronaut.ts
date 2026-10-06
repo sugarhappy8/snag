@@ -87,7 +87,7 @@ function agenciesFor(g: GameState): Agency[] {
 
 /** "NASA" and "Roscosmos" go without "the"; "the European Space Agency" takes it. */
 function theAgency(a: Agency): string {
-  return /^[A-Z]{3,}$/.test(a.name) || /cosmos$/.test(a.name) ? a.name : `${theAgency(a)}`
+  return /^[A-Z]{3,}$/.test(a.name) || /cosmos$/.test(a.name) ? a.name : `the ${a.name}`
 }
 
 function TheAgency(a: Agency): string {

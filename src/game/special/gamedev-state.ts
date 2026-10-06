@@ -82,6 +82,8 @@ export interface GdProject {
   hype: number
   /** Freelance artists/composers on the project (0-3). */
   contractors: number
+  /** Freelancer seats already paid for this year (contracts are paid a year up front). */
+  contractorsPaid: number
   /** Money held for the project (crowdfunding, publisher advances). */
   budget: number
   /** Your own money put in. */
@@ -241,6 +243,7 @@ export function readProject(v: Json, i: number): GdProject | null {
     bugs: clampN(num(o.bugs), 0, 100),
     hype: clampN(num(o.hype), 0, 100),
     contractors: Math.round(clampN(num(o.contractors), 0, 3)),
+    contractorsPaid: Math.round(clampN(num(o.contractorsPaid, num(o.contractors)), 0, 3)),
     budget: whole(num(o.budget)),
     spent: whole(num(o.spent)),
     backers: whole(num(o.backers)),
@@ -382,6 +385,8 @@ export interface GdJobData {
   effort: number
   /** Year of the last layoff scare. */
   scare: number
+  /** Year you last crunched for the studio (burnout keeps climbing the year after). */
+  crunchYear: number
 }
 
 const TIERS: Tier[] = ['indie', 'mid', 'aaa']
@@ -428,6 +433,7 @@ export function readJobData(job: Job): GdJobData {
     raiseYear: num(d.raiseYear),
     effort: whole(num(d.effort)),
     scare: num(d.scare),
+    crunchYear: num(d.crunchYear),
   }
 }
 

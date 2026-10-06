@@ -14,12 +14,13 @@ import { buildProject, PROJECT_KINDS } from '../computer/dev-projects'
 import { localFee, niceAmount, onlinePrice, wealthOf } from '../computer/dev-state'
 import { bestLanguageFor, codingSkill } from '../computer/skills'
 import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
-import { pick, randFloat, randInt, shuffle } from '../rng'
+import { pick, rand, randFloat, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addFame, blocked, money, say, tell } from './common'
 import {
   addGamerFame,
+  backerCap,
   copiesLabel,
   engineRoyalty,
   firstYearCopies,
@@ -68,6 +69,8 @@ import { artSkill, clampN, designSkill, gdMut, gdView, nextId, playerLabel, tidy
 import { totalFollowers } from './social'
 
 const MAX_WORK = 3
+/** Highest quality a solo project can be polished to before launch (launch-day luck can still beat it). */
+const SOLO_POLISH = 93
 
 function obj(v: Json | undefined): Record<string, Json> {
   return v && typeof v === 'object' && !Array.isArray(v) ? v : {}
@@ -102,15 +105,34 @@ export function maxProjects(g: GameState): number {
 // ---------------------------------------------------------------------------
 // Development math
 
-/** Progress (percentage points) one work session adds. */
+/**
+ * Progress (percentage points) one work session adds. A year's three sessions are about a
+ * person-year of evenings and weekends: a small game takes a decent coder about a year, an
+ * indie game (a team of five for two years) takes years solo, and freelancers you direct
+ * stretch each session further without turning one person into a studio.
+ */
 export function sessionRate(g: GameState, pr: GdProject): number {
   const sc = scopeDef(pr.scope)
   const e = engineDef(pr.engine)
   const skill = codingSkill(g)
   const engineFit = skill >= e.minSkill ? 1 : 0.7
   const speed = e.speed * engineFit * (0.6 + skill / 125)
-  const team = Math.max(1, sc.team / (1 + pr.contractors * 1.2))
-  return clampN((50 / (Math.max(0.5, sc.years) * team)) * speed, 2, 70)
+  const crew = Math.max(1, sc.team / (1 + pr.contractors * 0.3))
+  return clampN((30 / (Math.max(0.5, sc.years) * crew)) * speed, 1, 60)
+}
+
+/** Progress each freelancer adds over a year on their own (on top of your sessions). */
+export function freelancerProgress(pr: GdProject): number {
+  return pr.contractors * (scopeDef(pr.scope).id === 'indie' ? 2.5 : 10)
+}
+
+/**
+ * Back-to-back launches split your fans' attention and the store's front page: the second
+ * release in a calendar year sells two-thirds as well, the third half as well, and so on.
+ */
+export function releaseFatigue(p: GdProfile, year: number): number {
+  const sameYear = p.games.filter((x) => x.own && !x.free && x.year === year).length
+  return 1 / (1 + 0.5 * sameYear)
 }
 
 /** The best this game can turn out with the people working on it. */
@@ -124,7 +146,8 @@ export function qualityCap(g: GameState, pr: GdProject, p: GdProfile = gdView(g)
   const engineBonus = sc.index >= 3 ? e.bigBonus : e.bonus
   const homebrew = pr.engine === 'homebrew' ? (code - 60) / 4 : 0
   const ea = pr.earlyAccess ? 5 : 0
-  return clampN(genreSkill(pr.genre, code, art, design) + 14 - sc.difficulty + engineBonus + homebrew + ea + pr.contractors * 2, 5, 98)
+  // A one-person team (plus a few freelancers) can only polish so far: studios reach higher.
+  return clampN(genreSkill(pr.genre, code, art, design) + 10 - sc.difficulty + engineBonus + homebrew + ea + pr.contractors * 2, 5, SOLO_POLISH)
 }
 
 /** Dev kits, certification and age ratings for a platform (mostly global prices). */
@@ -204,7 +227,7 @@ export function startGame(g: GameState, preset: Partial<Draft> = {}): void {
   const skill = codingSkill(g)
   const choices: ChoiceOption[] = SCOPES.filter((x) => x.id === 'small' || x.id === 'indie').map((x) => ({
     id: x.id,
-    label: `${x.label}: ${x.id === 'small' ? 'about a year solo' : 'two years or more; you will want freelancers'}`,
+    label: `${x.label}: ${x.id === 'small' ? 'about a year solo' : 'many years solo, two or three with freelancers'}`,
     emoji: x.emoji,
   }))
   choices.push({ id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' })
@@ -225,8 +248,8 @@ const SCOPE_SCRIPT = defineScript('gamedev.make.scope', (g, choice, data) => {
   d.scope = isScope(choice) ? choice : 'small'
   if (d.sequelOf) return askPlatform(g, d)
   const hot = new Set(hotGenres(g).map((x) => x.id))
-  const options = shuffle(g, GENRES).slice(0, 6)
-  for (const h of hotGenres(g)) if (!options.some((o) => o.id === h.id)) options[options.length - 1] = h
+  // Both hot genres are always on the list, plus four others.
+  const options = shuffle(g, [...hotGenres(g), ...shuffle(g, GENRES.filter((x) => !hot.has(x.id))).slice(0, 4)])
   scriptChoice(
     g,
     GENRE_SCRIPT,
@@ -336,6 +359,7 @@ const NAME_SCRIPT = defineScript('gamedev.make.name', (g, input, data) => {
     bugs: 0,
     hype: d.sequelOf ? 25 : 0,
     contractors: 0,
+    contractorsPaid: 0,
     budget: 0,
     spent: 0,
     backers: 0,
@@ -379,7 +403,8 @@ export function workOnGame(g: GameState, id: string, crunch = false): void {
   const pr = projectById(p, id)
   if (!pr) return
   if (crunch) {
-    if (!useYearAction(g, `gamedev.crunch.${id}`, 1)) return tell(g, 'Crunch', 'You already crunched on this game this year. Your body filed a complaint.', '\u{1F35C}')
+    // One crunch a year in total, however many projects you juggle (or start fresh to dodge it).
+    if (!useYearAction(g, 'gamedev.crunch', 1)) return tell(g, 'Crunch', 'You already crunched this year. Your body filed a complaint.', '\u{1F35C}')
   } else if (!useYearAction(g, 'gamedev.work', MAX_WORK)) {
     return tell(g, 'Work on Your Game', `You've already had ${MAX_WORK} long dev sessions this year. Even passion projects need sleep.`, '\u{1F634}')
   }
@@ -462,14 +487,25 @@ function contractor(g: GameState, id: string, delta: number): void {
   const next = Math.round(clampN(pr.contractors + delta, 0, 3))
   if (next === pr.contractors) return tell(g, 'Freelancers', delta > 0 ? 'Three freelancers is all you can manage over chat.' : 'Nobody left to let go.', '\u{1F3A8}')
   const cost = freelancerCost(g.character.countryId)
-  if (delta > 0 && g.character.money + pr.budget < cost) return tell(g, "Can't Afford It", `A freelance artist or composer costs about ${money(cost)} a year, paid as they work. You have ${money(Math.max(0, g.character.money))}${pr.budget > 0 ? ` plus ${money(pr.budget)} in the project budget` : ''}.`, '\u{1F4B8}')
+  // Contracts are a year at a time, paid up front: letting someone go doesn't refund the year,
+  // and filling a seat you already paid for this year costs nothing extra.
+  let charged = 0
+  if (delta > 0 && next > pr.contractorsPaid) {
+    if (g.character.money + pr.budget < cost) return tell(g, "Can't Afford It", `A freelance artist or composer costs about ${money(cost)} a year, paid up front. You have ${money(Math.max(0, g.character.money))}${pr.budget > 0 ? ` plus ${money(pr.budget)} in the project budget` : ''}.`, '\u{1F4B8}')
+    const fromBudget = Math.min(pr.budget, cost)
+    pr.budget -= fromBudget
+    g.character.money -= cost - fromBudget
+    pr.spent += cost - fromBudget
+    pr.contractorsPaid = next
+    charged = cost
+  }
   pr.contractors = next
   say(
     g,
     delta > 0 ? 'Freelancer Hired' : 'Freelancer Let Go',
     delta > 0
-      ? `You hired ${pick(g, ['a pixel artist who only communicates in GIFs', 'a composer who sends 4 AM voice memos', 'a 3D artist who is very particular about polygons', 'a sound designer who recorded a cabbage for the punch sounds'])} for "${pr.title}" at about ${money(cost)} a year. Team: you + ${pr.contractors}.`
-      : `You let a freelancer go. Team: you + ${pr.contractors}.`,
+      ? `You hired ${pick(g, ['a pixel artist who only communicates in GIFs', 'a composer who sends 4 AM voice memos', 'a 3D artist who is very particular about polygons', 'a sound designer who recorded a cabbage for the punch sounds'])} for "${pr.title}" (${charged > 0 ? `${money(charged)} for the year, paid up front` : "a seat you'd already paid for this year"}). Team: you + ${pr.contractors}.`
+      : `You let a freelancer go. This year's fee is already spent. Team: you + ${pr.contractors}.`,
     '\u{1F3A8}',
   )
 }
@@ -490,9 +526,10 @@ const CROWD_SCRIPT = defineScript('gamedev.make.crowdfund', (g, choice, data) =>
   const price = Math.max(5, priceOf(pr.scope, pr.platform))
   const goal = choice === 'big' ? niceAmount(price * 1_500) : niceAmount(price * 250)
   const followers = totalFollowers(g)
-  const backers = whole(
-    (150 + pr.hype * 30 + p.gamerFame * 250 + followers * 0.004) * Math.pow(clampN(pr.quality, 10, 100) / 55, 1.5) * genreTrend(g, pr.genre) * randFloat(g, 0.4, 1.6),
-  )
+  const interest = (150 + pr.hype * 30 + p.gamerFame * 250 + followers * 0.004) * Math.pow(clampN(pr.quality, 10, 100) / 55, 1.5) * genreTrend(g, pr.genre) * randFloat(g, 0.4, 1.6)
+  // Fans can only back what they'd buy: a slice of the game's realistic audience.
+  const cap = backerCap(g, { scope: pr.scope, genre: pr.genre, platform: pr.platform, quality: Math.max(pr.quality, qualityCap(g, pr, p) * 0.8), hype: pr.hype, fame: p.gamerFame, reach: homeReach(g.character.countryId) })
+  const backers = whole(Math.min(interest, cap * randFloat(g, 0.7, 1.1)))
   const pledge = price * 1.5 + 5
   const raised = whole(backers * pledge * 0.9)
   if (raised < goal) {
@@ -713,25 +750,30 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
   }
   const unfinished = Math.max(0, 100 - pr.progress)
   const bugs = clampN(pr.bugs + unfinished * 1.5, 0, 100)
-  const finalQ = clampN(pr.quality - bugs * 0.12 - unfinished * 0.3 + randInt(g, -4, 4), 3, 99)
+  // Whether the fun really came together is only clear at launch, however good the team is.
+  const execution = (rand(g) + rand(g) + rand(g) - 1.5) * 12
+  const finalQ = clampN(pr.quality - bugs * 0.12 - unfinished * 0.3 + execution, 3, 99)
   const prev = pr.sequelOf ? p.games.find((x) => x.id === pr.sequelOf) : undefined
   const sequels = pr.franchise ? p.games.filter((x) => x.franchise === pr.franchise && x.own).length : 0
   const fans = prev ? clampN((prev.players - 60) / 30, -1, 1) : 0
   const r = reviewScores(g, finalQ, { bugs, hype: pr.hype, fans })
   const franchise = prev ? clampN(Math.min(1, prev.copies / Math.max(1, scopeDef(prev.scope).potential * 0.3)) * (prev.players / 100) * Math.pow(0.85, Math.max(0, sequels - 1)), 0, 1) : 0
   const price = priceOf(pr.scope, pr.platform)
-  const firstYear = firstYearCopies(g, {
+  const firstYear0 = firstYearCopies(g, {
     scope: pr.scope,
     genre: pr.genre,
     platform: pr.platform,
     quality: (r.critic + r.players) / 2,
     hype: pr.hype,
-    marketing: pr.publisher ? 1.25 : 0.55 + Math.min(0.45, pr.hype / 200),
-    reach: homeReach(c.countryId) * (pr.publisher ? 1.15 : 0.75),
+    // Indie labels have indie marketing budgets (the big publishers sign studios, not solo devs).
+    marketing: pr.publisher ? 1.1 : 0.55 + Math.min(0.45, pr.hype / 200),
+    reach: homeReach(c.countryId) * (pr.publisher ? 1.05 : 0.75),
     fame: p.gamerFame,
     franchise,
     presold: pr.backers + pr.eaCopies,
   })
+  const fatigue = releaseFatigue(p, g.year)
+  const firstYear = whole(firstYear0 * fatigue)
   const launch = whole(firstYear * 0.2)
   const credit: GdCredit = {
     id: nextId(p, 'gc'),
@@ -773,7 +815,8 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
   p.projects = p.projects.filter((x) => x.id !== pr.id)
   p.games.push(credit)
   // Fame: a hit makes your name.
-  const fameGain = Math.round(Math.max(0, (r.critic - 55) / 6) * (0.5 + Math.log10(1 + firstYear) / 6))
+  // Bigger games make bigger names, and the last steps to household-name status are the hardest.
+  const fameGain = Math.round(Math.max(0, (r.critic - 55) / 6) * (0.5 + Math.log10(1 + firstYear) / 6) * (pr.scope === 'indie' ? 1 : 0.6) * Math.max(0.2, 1 - p.gamerFame / 125))
   addGamerFame(p, fameGain)
   if (fameGain >= 6) addFame(g, Math.round(fameGain / 3))
   trainDesign(g, p, 3)
@@ -794,6 +837,7 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
             ? `Reviews are mixed.`
             : pick(g, ['Critics were brutal. One review was just the word "why."', 'It is being called "a war crime against fun."'])
   const extra = [
+    fatigue < 1 ? 'Your last release is still on the front page, so this one got less attention than it deserved.' : '',
     c.age < 18 ? pick(g, ["Your parents set up the store account and now introduce you as \"our little CEO.\"", 'The store account is in your mom\'s name. She has already read every review out loud at dinner.']) : '',
     leftover > 0 ? `${money(leftover)} left in the project budget is yours.` : '',
     milestone > 0 ? `${pr.publisher} paid the final ${money(milestone)} of your advance.` : pr.advanceDue > 0 ? `${pr.publisher} withheld the final ${money(pr.advanceDue)} milestone payment over the quality.` : '',
@@ -1046,22 +1090,22 @@ export function yearlyMakeGames(g: GameState): MakeYear {
       continue
     }
     if (pr.contractors > 0) {
-      const cost = pr.contractors * freelancerCost(c.countryId)
-      const fromBudget = Math.min(pr.budget, cost)
-      const fromYou = Math.min(cost - fromBudget, Math.max(0, c.money))
+      // The year's work they were paid for.
+      pr.progress = clampN(pr.progress + freelancerProgress(pr) * randFloat(g, 0.8, 1.2), 0, 100)
+      const cap = qualityCap(g, pr, p)
+      if (cap > pr.quality) pr.quality = clampN(pr.quality + (cap - pr.quality) * 0.15 * pr.contractors, 0, 100)
+      // Contracts renew for the new year, paid up front (project budget first): keep whoever you can pay.
+      const each = freelancerCost(c.countryId)
+      const keep = each > 0 ? Math.min(pr.contractors, Math.floor((pr.budget + Math.max(0, c.money)) / each)) : pr.contractors
+      const due = keep * each
+      const fromBudget = Math.min(pr.budget, due)
       pr.budget -= fromBudget
-      c.money -= fromYou
-      pr.spent += fromYou
-      if (fromBudget + fromYou < cost) {
-        log(g, `I couldn't pay the freelancers on "${pr.title}", so they left.`, 'bad')
-        pr.contractors = 0
-      } else {
-        const sc = scopeDef(pr.scope)
-        pr.progress = clampN(pr.progress + pr.contractors * (sc.id === 'indie' ? 7 : 15) * randFloat(g, 0.8, 1.2), 0, 100)
-        const cap = qualityCap(g, pr, p)
-        if (cap > pr.quality) pr.quality = clampN(pr.quality + (cap - pr.quality) * 0.15 * pr.contractors, 0, 100)
-      }
+      c.money -= due - fromBudget
+      pr.spent += due - fromBudget
+      if (keep < pr.contractors) log(g, `I couldn't afford to renew ${pr.contractors - keep === 1 ? 'a freelancer' : `${pr.contractors - keep} freelancers`} on "${pr.title}", so they moved on.`, 'bad')
+      pr.contractors = keep
     }
+    pr.contractorsPaid = pr.contractors
     if (pr.earlyAccess && pr.eaTail > 0) {
       const copies = whole(pr.eaTail * mood * randFloat(g, 0.85, 1.15))
       pr.eaCopies = whole(pr.eaCopies + copies)
@@ -1070,6 +1114,8 @@ export function yearlyMakeGames(g: GameState): MakeYear {
       out.sold += copies
       out.paid += eaPayout(pr, whole(copies * netPerCopy(priceOf(pr.scope, pr.platform) * 0.8)))
     }
+    // Hype fades unless you keep feeding it (devlogs, trailers, streams).
+    pr.hype = clampN(pr.hype * 0.85, 0, 100)
     // Backers expect delivery.
     const overdue = g.year - pr.started - (scopeDef(pr.scope).years + 2)
     if (pr.raised > 1 && overdue > 0) {
@@ -1135,9 +1181,9 @@ function projectNode(pr: GdProject): MenuGroup {
           id: `gamedev.project.${id}.crunch`,
           label: 'Crunch on It',
           emoji: '\u{1F35C}',
-          subtitle: 'Big progress; costs health, adds bugs',
+          subtitle: 'Once a year · big progress; costs health, adds bugs',
           visible: () => cur.progress < 100,
-          disabledReason: (x) => makeBlock(x) ?? (yearActionsUsed(x, `gamedev.crunch.${id}`) >= 1 ? 'Once a year.' : null),
+          disabledReason: (x) => makeBlock(x) ?? (yearActionsUsed(x, 'gamedev.crunch') >= 1 ? 'You already crunched this year.' : null),
           run: (x) => workOnGame(x, id, true),
         },
         {
@@ -1158,7 +1204,7 @@ function projectNode(pr: GdProject): MenuGroup {
           id: `gamedev.project.${id}.hire`,
           label: 'Hire a Freelancer',
           emoji: '\u{1F3A8}',
-          subtitle: (x) => `${money(freelancerCost(x.character.countryId))}/yr · art, music, speed · ${cur.contractors}/3`,
+          subtitle: (x) => `${money(freelancerCost(x.character.countryId))}/yr, paid up front · art, music, speed · ${cur.contractors}/3`,
           disabledReason: (x) => blocked(x) ?? (cur.contractors >= 3 ? 'Three is the most you can manage.' : null),
           run: (x) => contractor(x, id, 1),
         },

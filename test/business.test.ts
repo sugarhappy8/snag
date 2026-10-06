@@ -3,8 +3,8 @@
 import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/ai/director'
 import { ageUp } from '../src/game/aging'
-import { businessCareerMenu, businessSummary } from '../src/game/business'
-import { businessAssets, readBiz } from '../src/game/business/state'
+import { businessAssetView, businessCareerMenu, businessSummary } from '../src/game/business'
+import { bizOf, businessAssets, readBiz } from '../src/game/business/state'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
 import type { AnnualReportData, GameState, MenuAction, MenuNode } from '../src/game/types'
@@ -104,6 +104,24 @@ describe('business', () => {
     const ng = adultIn('ng', 5_000_000)
     const subs = [us, jp, ng].map((g) => String(typeof startRow(g, 'cafe').subtitle === 'function' ? (startRow(g, 'cafe').subtitle as (g: GameState) => string)(g) : ''))
     expect(new Set(subs).size, `cafe rows: ${subs.join(' | ')}`).toBe(3)
+  })
+
+  it("won't let the owner pay out borrowed money (loan, withdraw, bankruptcy loop)", () => {
+    const g = adultIn('us', 400_000)
+    found(g, 'foodTruck')
+    const a = businessAssets(g)[0]
+    const b = bizOf(g, a)
+    b.cash = 500_000
+    b.debt = 450_000
+    const all = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => (n.type === 'menu' ? [n, ...all(n.children(g))] : [n]))
+    const withdraw = all(businessAssetView(g, a)).find((n) => n.id === `biz.dividend.${a.id}`) as MenuAction | undefined
+    expect(withdraw).toBeDefined()
+    expect(withdraw!.input?.max).toBe(50_000)
+    const before = g.character.money
+    withdraw!.run(g, '500000')
+    g.queue = []
+    expect(readBiz(g, a).cash).toBe(450_000)
+    expect(g.character.money - before).toBeLessThanOrEqual(50_000)
   })
 
   it('survives hyperinflation and many years in Venezuela, Switzerland and Nigeria', () => {

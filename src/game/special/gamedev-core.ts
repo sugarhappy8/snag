@@ -181,6 +181,41 @@ export function firstYearCopies(g: GameState, x: LaunchInput): number {
   return whole(Math.max(0, potential - x.presold * 0.85))
 }
 
+export interface MarketInput {
+  scope: ScopeId
+  genre: GenreId
+  platform: PlatformId
+  /** Promised quality 0-100. */
+  quality: number
+  hype: number
+  fame: number
+  reach: number
+}
+
+/**
+ * First-year copies a game like this sells with ordinary luck: what backers and publishers
+ * size it by. Crowdfunding backers are a slice of this audience, never more than it.
+ */
+export function expectedCopies(g: GameState, x: MarketInput): number {
+  const s = scopeDef(x.scope)
+  const v =
+    s.potential *
+    platformDef(x.platform).audience *
+    genreDef(x.genre).appeal *
+    genreTrend(g, x.genre) *
+    qualityFactor(x.quality) *
+    (1 + (clampN(x.hype, 0, 100) / 100) * 0.8) *
+    clampN(x.reach, 0.2, 1.6) *
+    (1 + clampN(x.fame, 0, 100) / 150) *
+    s.luck[0]
+  return whole(v)
+}
+
+/** Most backers a campaign can find: about a third of the game's expected first-year audience. */
+export function backerCap(g: GameState, x: MarketInput): number {
+  return whole(50 + expectedCopies(g, x) * 0.3)
+}
+
 /** Share of this year's buyers who still show up next year. */
 export function tailKeep(players: number, scope: ScopeId): number {
   const base = 0.2 + 0.4 * Math.pow(clampN(players, 0, 100) / 100, 1.5)

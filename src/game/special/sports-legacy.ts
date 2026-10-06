@@ -53,19 +53,23 @@ export function pastCareers(g: GameState): CareerLine[] {
     if (!r || r.seasons <= 0) continue
     if (current?.defId === 'sports.ind' && current.data.sport === id) continue
     const name = id === 'motor' ? 'Motor Racing' : id === 'track' ? 'Track & Field' : id === 'tabletennis' ? 'Table Tennis' : id === 'skating' ? 'Figure Skating' : id === 'ski' ? 'Alpine Skiing' : id === 'surf' ? 'Surfing' : id === 'skate' ? 'Skateboarding' : id[0].toUpperCase() + id.slice(1)
-    if (!has(name)) list.push({ sport: name, kind: 'individual', from: r.startAge, to: r.retiredAge ?? g.character.age, best: r.majors ? `${r.majors} majors` : `${r.titles} titles`, legacy: Math.min(100, r.majors * 9 + r.titles * 1.5) })
+    // A career left without retiring (another job, prison) ended after its last season.
+    const to = r.retiredAge ?? Math.max(r.startAge, Math.min(g.character.age, r.startAge + r.seasons))
+    if (!has(name)) list.push({ sport: name, kind: 'individual', from: r.startAge, to, best: r.majors ? plural(r.majors, 'major') : plural(r.titles, 'title'), legacy: Math.min(100, r.majors * 9 + r.titles * 1.5) })
   }
-  const fight = peek<{ pro: Record<string, { w: number; l: number; d: number }>; startAge: number }>(g, 'sports.fight')
+  const fight = peek<{ pro: Record<string, { w: number; l: number; d: number }>; startAge: number; retiredAge: number | null; lastFightAge: number }>(g, 'sports.fight')
   for (const [disc, r] of Object.entries(fight?.pro ?? {})) {
     if (!r || r.w + r.l + r.d <= 0) continue
     if (current?.defId === 'sports.fighter' && current.data.disc === disc) continue
     const name = disc === 'mma' ? 'MMA' : disc === 'muaythai' ? 'Muay Thai' : disc[0].toUpperCase() + disc.slice(1)
-    if (!has(name)) list.push({ sport: name, kind: 'combat', from: fight?.startAge ?? g.character.age, to: g.character.age, best: `${r.w}-${r.l}${r.d ? `-${r.d}` : ''} record`, legacy: Math.min(100, r.w * 2) })
+    const from = fight?.startAge ?? g.character.age
+    const last = typeof fight?.lastFightAge === 'number' && fight.lastFightAge >= from ? fight.lastFightAge : g.character.age
+    if (!has(name)) list.push({ sport: name, kind: 'combat', from, to: typeof fight?.retiredAge === 'number' ? fight.retiredAge : last, best: `${r.w}-${r.l}${r.d ? `-${r.d}` : ''} record`, legacy: Math.min(100, r.w * 2) })
   }
   const team = peek<{ sport: string | null; retiredAge: number | null; seasons: number; championships: number; peakGreatness: number }>(g, 'athlete')
   if (team && team.retiredAge !== null && team.sport && !list.some((c) => c.kind === 'team')) {
     const name = team.sport === 'football' ? 'American Football' : team.sport[0].toUpperCase() + team.sport.slice(1)
-    list.push({ sport: name, kind: 'team', from: team.retiredAge - team.seasons, to: team.retiredAge, best: `${team.championships} championships`, legacy: Math.min(100, team.championships * 10 + Math.max(0, team.peakGreatness - 50)) })
+    list.push({ sport: name, kind: 'team', from: team.retiredAge - team.seasons, to: team.retiredAge, best: plural(team.championships, 'championship'), legacy: Math.min(100, team.championships * 10 + Math.max(0, team.peakGreatness - 50)) })
   }
   return list
 }
@@ -348,8 +352,10 @@ export function yearlyLegacy(g: GameState): void {
       leave(g, 'fired')
       return say(g, 'Cancelled', 'The network replaced you with a younger former player who wears louder suits.', '\u{1F4FA}', 'bad')
     }
-    if (pundit.performance >= 80 && chance(g, 0.35)) {
-      pundit.salary = tidy(pundit.salary * 1.25)
+    // Star pundits get raises, up to what the network pays its biggest name.
+    const ceiling = tidy(1_500_000 * Math.max(0.3, wealth(g)))
+    if (pundit.performance >= 80 && pundit.salary < ceiling && chance(g, 0.35)) {
+      pundit.salary = Math.min(ceiling, tidy(pundit.salary * 1.25))
       log(g, 'I got a raise at the network.', 'good')
     }
     pundit.performance = Math.max(0, Math.min(100, pundit.performance - randInt(g, 0, 8)))

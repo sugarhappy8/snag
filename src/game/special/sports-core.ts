@@ -433,12 +433,12 @@ const sponsorScript = defineScript('sports.sponsor.offer', (g, choice, data) => 
   say(g, 'Endorsement Deal', `You signed a ${o.years}-year deal to be the face of ${o.brand} ${o.product}, worth ${money(yearly)} a year. Your first ad shoot involved a lot of slow-motion hair flipping.`, '\u{1F91D}', 'good')
 })
 
-/** Maybe have a brand call with an offer (at most one a year unless `force`). */
 /** How many brands want you at once: one for a local hero, three for a global star. */
 export function maxDeals(fame: number): number {
   return fame >= 70 ? 3 : fame >= 40 ? 2 : 1
 }
 
+/** Maybe have a brand call with an offer (`force` skips the chance roll, not the rules). */
 export function sponsorCall(g: GameState, sport: string, appeal: number, force = false): boolean {
   const c = g.character
   const p = sportsProfile(g)
@@ -490,9 +490,9 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
     }
     return
   }
+  // Deals pay as signed; faded stars find out when a deal comes up for renewal.
   let total = 0
   for (const d of p.sponsors) {
-    // Faded stars get paid less when deals come up; the rest pay as signed.
     total += d.yearly
     d.yearsLeft -= 1
   }
@@ -500,8 +500,8 @@ export function yearlySponsors(g: GameState, sport: string | null, appeal: numbe
   const ended = p.sponsors.filter((d) => d.yearsLeft <= 0)
   p.sponsors = p.sponsors.filter((d) => d.yearsLeft > 0)
   for (const d of ended) {
-    if (sport && c.hidden.fame >= 15 && chance(g, 0.5)) {
-      p.sponsors.push({ ...d, yearsLeft: randInt(g, 1, 3), yearly: tidy(d.yearly * (0.8 + rand(g) * 0.5)) })
+    if (sport && c.hidden.fame >= 15 && p.sponsors.length < maxDeals(c.hidden.fame) && chance(g, 0.5)) {
+      p.sponsors.push({ ...d, yearsLeft: randInt(g, 1, 3), yearly: tidy(d.yearly * (0.6 + (c.hidden.fame / 100) * 0.6) * (0.85 + rand(g) * 0.3)) })
       log(g, `${d.brand} renewed my endorsement deal.`, 'good')
     } else log(g, `My endorsement deal with ${d.brand} ended.`)
   }
@@ -600,7 +600,13 @@ export function rankLabel(rank: number | null): string {
 }
 
 export function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`
+  if (n === 1) return `${n} ${word}`
+  return `${n} ${/(?:s|x|z|ch|sh)$/.test(word) ? `${word}es` : `${word}s`}`
+}
+
+/** "the Kimberley Classic" for an event called "The Kimberley Classic" or "Kimberley Classic". */
+export function theName(name: string): string {
+  return /^the\s/i.test(name) ? `the ${name.slice(4)}` : `the ${name}`
 }
 
 /** Train an attribute with diminishing returns; returns the gain. */

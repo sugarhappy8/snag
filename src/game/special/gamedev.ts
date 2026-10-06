@@ -102,7 +102,7 @@ function ventureNode(a: Asset): MenuGroup {
     },
     header: (g) => {
       const cur = g.assets.find((x) => x.id === a.id)
-      return cur ? `${cur.emoji} ${cur.name}: your indie game venture. At 18 it can grow into a registered game studio.` : 'This venture is gone.'
+      return cur ? `${cur.emoji} ${cur.name}: your indie game venture. ${g.character.age >= 18 ? 'It can grow' : 'At 18 it can grow'} into a registered game studio.` : 'This venture is gone.'
     },
     children: (g) => {
       const cur = g.assets.find((x) => x.id === a.id)

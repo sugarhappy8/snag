@@ -14,7 +14,7 @@ import { recordYouthBout, youthFightTrain } from './sports-fight'
 import { juniorLevel, offerTurnPro, placeReason, youthTrain } from './sports-individual'
 import { IND_SPORTS, indSport } from './sports-data'
 import { inviteToStable, sumoReason } from './sports-sumo'
-import { countryName, honor, localFee, logistic, payFee, payerNote, popularity } from './sports-core'
+import { countryName, honor, localFee, logistic, payFee, payerNote, playingJob, popularity } from './sports-core'
 
 type Kind = 'team' | 'individual' | 'combat' | 'sumo'
 
@@ -357,6 +357,12 @@ export function yearlyYouth(g: GameState): void {
   if (c.age >= 18) {
     y.program = null
     log(g, `I aged out of the ${y.club}.`)
+    return
+  }
+  if (playingJob(g)) {
+    // Turned pro: the academy days are over.
+    y.program = null
+    log(g, `I left the ${y.club} to play professionally.`)
     return
   }
   const paid = payFee(g, p.fee)

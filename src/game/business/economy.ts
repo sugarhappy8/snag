@@ -450,8 +450,11 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
   const overhead = (wages + rent + upkeep) * finance * ceoEff
   const pbt0 = netRevenue - cogs - overhead - keyStaff - marketing - interest - insurance - b.yearCosts + b.yearIncome
 
+  // One-off costs and income (b.yearCosts / b.yearIncome) count toward profit, but the actions
+  // that caused them already moved the cash, so they must not move it a second time here.
+  const alreadyBooked = b.yearCosts - b.yearIncome
   // The owner's salary is paid if the company can cover it.
-  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0)))
+  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + alreadyBooked)))
   const pbt = pbt0 - ownerPay
   let corpTax = 0
   if (pbt > 0) {
@@ -463,7 +466,7 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
     if (Object.keys(netByCountry).length === 0) corpTax = corporateTax(b.countryId, pbt)
   }
   const net = pbt - corpTax
-  b.cash = dollars(b.cash + net)
+  b.cash = dollars(b.cash + net + alreadyBooked)
 
   // Cash held in a currency that inflates faster than deposits pay loses value.
   const m = marketOf(b.countryId)

@@ -14,7 +14,7 @@ import { bell, chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Gender, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { addFame, blocked, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
+import { addFame, blocked, fameToward, hire, leave, money, myJob, ownerKey, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
 import {
   addBuzz,
   addHeadTrauma,
@@ -30,6 +30,7 @@ import {
   scandal,
   sportsBan,
   sportsGate,
+  theName,
   tidy,
   trainGain,
   wealth,
@@ -193,17 +194,18 @@ function classList(d: Discipline, gender: Gender): string[] {
   return gender === 'female' ? d.classes.female : d.classes.male
 }
 
-function beltName(d: Discipline, cls: string, body?: string): string {
+function beltName(g: GameState, d: Discipline, cls: string, body?: string): string {
   if (d.id === 'boxing') return `${body ?? 'GBF'} ${cls} title`
   if (d.id === 'mma') return `HFC ${cls} Championship`
   if (d.id === 'kickboxing') return `Valor ${cls} World Championship`
-  return `Siam Grand Stadium ${cls} title`
+  return `${majorName(g, d)} ${cls} title`
 }
 
+/** The regional promotion or circuit (a proper name: use theName() inside sentences). */
 function regionalName(g: GameState, d: Discipline): string {
   const c = getCountry(g.character.countryId)
-  if (d.id === 'muaythai' && c.id === 'th') return 'the Bangkok stadium circuit'
-  if (d.id === 'boxing') return `the ${c.demonym} boxing circuit`
+  if (d.id === 'muaythai' && c.id === 'th') return 'Bangkok Stadium Circuit'
+  if (d.id === 'boxing') return `${c.demonym} Boxing Circuit`
   if (d.id === 'kickboxing') return `${c.demonym} Kickboxing League`
   if (d.id === 'muaythai') return `${c.demonym} Muay Thai League`
   return `${c.demonym} Fight Series`
@@ -537,7 +539,7 @@ function buildOffers(g: GameState, d: Discipline, job: Job | null, amateur: bool
       out.push(mk('defense', makeOpp(g, d, rankLevel(randInt(g, 2, 4)), { rank: randInt(g, 2, 4), record: 'major' }), true, j.belts.join(' & ')))
       if (d.id === 'boxing' && j.belts.length < BOX_BODIES.length) {
         const body = BOX_BODIES.find(([b]) => !j.belts.some((x) => x.startsWith(b)))
-        if (body) out.push(mk('unify', makeOpp(g, d, rankLevel(0) - 2, { champ: true, belt: beltName(d, cls, body[0]), record: 'major' }), true, beltName(d, cls, body[0])))
+        if (body) out.push(mk('unify', makeOpp(g, d, rankLevel(0) - 2, { champ: true, belt: beltName(g, d, cls, body[0]), record: 'major' }), true, beltName(g, d, cls, body[0])))
       }
     } else {
       const r = j.rank
@@ -547,15 +549,18 @@ function buildOffers(g: GameState, d: Discipline, job: Job | null, amateur: bool
       if (r === null ? j.promoWins >= 1 : r > 1) out.push(mk('regular', makeOpp(g, d, rankLevel(up), { rank: up, home: 0.15 }), true))
       const shot = r !== null && ((r <= 3 && j.streak >= 2) || r === 1 || (r <= 6 && p.hype >= 75) || (r <= 8 && j.streak >= 5))
       if (shot) {
-        if (!j.champ) j.champ = makeOpp(g, d, rankLevel(0), { champ: true, record: 'major', belt: beltName(d, cls, BOX_BODIES[randInt(g, 0, 3)][0]) })
+        if (!j.champ) j.champ = makeOpp(g, d, rankLevel(0), { champ: true, record: 'major', belt: beltName(g, d, cls, BOX_BODIES[randInt(g, 0, 3)][0]) })
         const champ = j.champ
-        out.push(mk('title', champ, true, champ.belt || beltName(d, cls)))
+        out.push(mk('title', champ, true, champ.belt || beltName(g, d, cls)))
       }
     }
   }
   const rival = p.rivals.find((x) => x.disc === d.id && x.heat >= 15)
   if (rival && !amateur) {
-    const opp = makeOpp(g, d, Math.max(rival.rating, me - 3), { rank: j.tier === 'major' && j.rank !== 0 ? Math.max(1, (j.rank ?? 12) - 1) : null })
+    // Rivals keep their own level (they improve a little), within what the circuit allows.
+    const cap = j.tier === 'major' ? 92 : 74
+    const lvl = Math.max(30, Math.min(cap, rival.rating + randInt(g, -2, 3)))
+    const opp = makeOpp(g, d, lvl, { rank: j.tier === 'major' && j.rank !== 0 ? Math.max(1, (j.rank ?? 12) - 1) : null })
     opp.name = rival.name
     opp.flag = rival.flag
     opp.nick = rival.nick
@@ -564,6 +569,28 @@ function buildOffers(g: GameState, d: Discipline, job: Job | null, amateur: bool
     out.push(mk('rival', opp, true))
   }
   return out
+}
+
+/**
+ * The matchmaker's card stays the same until you fight (or the year turns), so backing out of
+ * the offers and reopening them can't reroll your way to a softer opponent.
+ */
+function fightCard(g: GameState, d: Discipline, job: Job | null, amateur: boolean): Offer[] {
+  const key = 'special.sports.fight.card'
+  const used = yearActionsUsed(g, amateur ? 'sports.fight.amBouts' : 'sports.fight.bouts')
+  const j = job ? fj(job) : null
+  // A new card also comes when what you're owed changes (a title shot from hype, a grudge match).
+  const p = viewFighter(g)
+  const hot = (p?.hype ?? 0) >= 75
+  const grudge = !!p?.rivals.some((x) => x.disc === d.id && x.heat >= 15)
+  const tag = [ownerKey(g), g.character.age, d.id, amateur ? 'am' : 'pro', used, j ? `${j.tier}.${j.rank}.${j.cls}.${j.streak}.${j.belts.length}` : '', hot, grudge].join('|')
+  const v = g.flags[key]
+  // Copies, so the popup's data never aliases the stored card.
+  const copy = (o: Offer[]): Offer[] => JSON.parse(JSON.stringify(o)) as Offer[]
+  if (v && typeof v === 'object' && !Array.isArray(v) && v.tag === tag && Array.isArray(v.offers) && v.offers.length) return copy(v.offers as unknown as Offer[])
+  const offers = buildOffers(g, d, job, amateur)
+  g.flags[key] = { tag, offers: copy(offers) } as unknown as Json
+  return offers
 }
 
 // ---------------------------------------------------------------------------
@@ -1073,8 +1100,8 @@ function afterResult(g: GameState, d: Discipline, job: Job, p: FProfile, st: Fig
     if (st.offer.kind === 'regionalTitle' && outcome === 'win') {
       j.regionalChamp = true
       p.belts.push(`${regionalName(g, d)} ${cls} champion (${g.year})`)
-      honor(g, `Won the ${regionalName(g, d)} ${cls} title.`)
-      text += ` You're the ${regionalName(g, d)} ${cls} champion!`
+      honor(g, `Won ${theName(regionalName(g, d))} ${cls} title.`)
+      text += ` You're ${theName(regionalName(g, d))} ${cls} champion!`
     } else if (j.regionalChamp && outcome === 'loss' && st.offer.main) {
       j.regionalChamp = false
       text += ' You lost your regional title.'
@@ -1097,7 +1124,7 @@ function afterResult(g: GameState, d: Discipline, job: Job, p: FProfile, st: Fig
   const titleOnLine = st.offer.kind === 'title' || st.offer.kind === 'defense' || st.offer.kind === 'unify'
   if (outcome === 'win') {
     if (st.offer.kind === 'title' || (st.offer.kind === 'unify' && j.rank === 0)) {
-      const belt = st.offer.belt || beltName(d, cls)
+      const belt = st.offer.belt || beltName(g, d, cls)
       if (!j.belts.includes(belt)) j.belts.push(belt)
       j.rank = 0
       j.defenses = 0
@@ -1106,7 +1133,7 @@ function afterResult(g: GameState, d: Discipline, job: Job, p: FProfile, st: Fig
       addFame(g, 6)
       addBuzz(g, 25)
       p.belts.push(`${belt} (${g.year})`)
-      honor(g, `Won the ${belt}.`, `${d.id === 'boxing' ? 'World boxing champion' : `${majorName(g, d)} champion`}`, majorName(g, d), 9)
+      honor(g, `Won ${theName(belt)}.`, `${d.id === 'boxing' ? 'World boxing champion' : `${majorName(g, d)} champion`}`, majorName(g, d), 9)
       text += ` AND NEW ${belt.toUpperCase()}!`
       if (d.id === 'boxing' && j.belts.length >= BOX_BODIES.length) {
         text += ' You are the UNDISPUTED champion of the world.'
@@ -1165,7 +1192,7 @@ function afterResult(g: GameState, d: Discipline, job: Job, p: FProfile, st: Fig
     j.promoWins = 0
     job.company = j.promotion
     log(g, `${majorName(g, d)} released me after three straight losses.`, 'bad')
-    text += ` ${majorName(g, d)} released you after three straight losses. Back to ${regionalName(g, d)}.`
+    text += ` ${majorName(g, d)} released you after three straight losses. Back to ${theName(regionalName(g, d))}.`
   }
   return text
 }
@@ -1206,7 +1233,7 @@ const callupScript = defineScript('sports.fight.callup', (g, choice) => {
   j.fightsLeft = 4
   j.streak = Math.max(0, j.streak)
   job.company = j.promotion
-  job.title = d.id === 'boxing' ? 'Professional Boxer' : `${j.promotion} Fighter`
+  job.title = d.id === 'boxing' ? 'Professional Boxer' : d.id === 'mma' ? 'HFC Fighter' : d.id === 'kickboxing' ? 'Valor Kickboxer' : 'Stadium Nak Muay'
   addFame(g, 5)
   addBuzz(g, 10)
   log(g, `I signed with ${j.promotion}.`, 'good')
@@ -1392,6 +1419,7 @@ function fightAction(id: string, disc: DiscId, amateur: boolean): MenuAction {
       if (!amateur && (!job || fj(job).disc !== disc)) return 'You are not a pro in this sport.'
       if (job && fj(job).injured > 0) return "You're injured."
       if (amateur && job) return "You're a pro now. Amateur bouts are behind you."
+      if (amateur && g.character.age > 40) return 'Amateur commissions stop licensing fighters over 40. Your knees agree with them.'
       const used = yearActionsUsed(g, amateur ? 'sports.fight.amBouts' : 'sports.fight.bouts')
       if (used >= 99) return "You're on medical suspension after that knockout. No more fights this year."
       if (used >= (amateur ? 4 : d.maxFights)) return 'Your coach says your body needs a break. No more fights this year.'
@@ -1403,7 +1431,7 @@ function fightAction(id: string, disc: DiscId, amateur: boolean): MenuAction {
       if (used >= (amateur ? 4 : d.maxFights)) return tell(g, 'Fight', used >= 99 ? "You're on medical suspension after that knockout. No more fights this year." : 'Your coach says your body needs a break. No more fights this year.', '\u{1F915}')
       const p = fighter(g)
       if (!p.gym && amateur) log(g, 'I signed up for an amateur bout without a proper gym behind me.')
-      const offers = buildOffers(g, d, job, amateur)
+      const offers = fightCard(g, d, job, amateur)
       const kindLabel: Record<OfferKind, string> = { amateur: '', regular: '', regionalTitle: 'TITLE · ', title: 'TITLE SHOT · ', defense: 'TITLE DEFENSE · ', unify: 'UNIFICATION · ', rival: 'GRUDGE MATCH · ' }
       scriptChoice(
         g,
@@ -1681,10 +1709,12 @@ export function turnProReason(g: GameState, disc: DiscId): string | null {
   if (gate) return gate
   const job = fighterJob(g)
   if (job && fj(job).disc === disc) return `You're already a pro ${discipline(disc).fighter.toLowerCase()}.`
-  if (g.character.age > 45) return 'No commission will license a first-time pro fighter over 45. Your mom is relieved.'
   const p = viewFighter(g)
   const am = p?.amateur[disc]
   const pro = p?.pro[disc]
+  // Pros are retired by force at 48 (see yearlyFighter), so nobody gets licensed that late.
+  if (g.character.age >= 48) return 'No athletic commission will license you at your age. Your mom is relieved.'
+  if (g.character.age > 45 && !pro) return 'No commission will license a first-time pro fighter over 45. Your mom is relieved.'
   if (!pro && (!am || am.w + am.l + am.d < 3) && g.character.hidden.athleticism < 75) return 'Promoters want to see at least 3 amateur fights first (or freakish athleticism).'
   return null
 }
@@ -1726,7 +1756,8 @@ function retireFighter(g: GameState, forced: boolean): void {
   const p = fighter(g)
   const rec = recOf(p, d.id, false)
   p.retiredAge = g.character.age
-  const champ = p.belts.some((b) => !/regional|circuit|League|Series/i.test(b))
+  // Held a world title at some point (peakRank 0 = champion).
+  const champ = p.peakRank === 0
   const legacy = Math.min(100, rec.w * 2 + (champ ? 35 : 0) + p.belts.length * 6 + (p.peakRank !== null ? Math.max(0, 20 - p.peakRank) : 0))
   recordCareer(g, { sport: d.name, kind: 'combat', from: p.startAge, best: champ ? 'world champion' : p.peakRank ? `ranked #${p.peakRank}` : `${fmt(rec)} record`, legacy })
   leave(g, 'retired')
@@ -1836,7 +1867,7 @@ export function disciplineMenu(disc: DiscId): MenuGroup {
       const p = viewFighter(g)
       const lvl = p ? ` Your level: ${level(g, p, d)}/100.` : ''
       const where = disc === 'muaythai' && g.character.countryId !== 'th' ? ' The best stadiums are in Thailand; the World Series tours everywhere.' : ''
-      return `${d.id === 'mma' ? `Join a gym, fight amateur, sign with ${regionalName(g, d)}, then get called up to the ${d.major} (the Hexagon).` : `Build an amateur record, turn pro on ${regionalName(g, d)}, then fight for ${d.id === 'boxing' ? 'the GBF, WPA, IPC and UBO belts' : `${majorName(g, d)} gold`}.`} Amateur bouts from 16, pro at 18.${where}${lvl}`
+      return `${d.id === 'mma' ? `Join a gym, fight amateur, sign with ${regionalName(g, d)}, then get called up to the ${d.major} (the Hexagon).` : `Build an amateur record, turn pro on ${theName(regionalName(g, d))}, then fight for ${d.id === 'boxing' ? 'the GBF, WPA, IPC and UBO belts' : `${majorName(g, d)} gold`}.`} Amateur bouts from 16, pro at 18.${where}${lvl}`
     },
     children: (g): MenuNode[] => {
       const job = fighterJob(g)
@@ -1866,8 +1897,15 @@ const renewScript = defineScript('sports.fight.renew', (g, choice) => {
     return
   }
   if (choice === 'retire') return retireFighter(g, false)
-  // Free agency: a rival promotion pays more but has less prestige.
+  // Free agency: a bluff about a rival promotion's offer. Stars get paid; nobodies get called out.
   j.fightsLeft = 4
+  const odds = j.rank === 0 ? 0.85 : j.rank !== null && j.rank <= 5 ? 0.7 : j.rank !== null ? 0.55 : 0.35
+  if (!chance(g, odds)) {
+    const p = fighter(g)
+    p.hype = Math.max(0, p.hype - 8)
+    log(g, `${j.promotion} called my free-agency bluff, so I re-signed for the same money.`, 'bad')
+    return say(g, 'Bluff Called', `Your manager leaked a "huge offer" from a rival promotion. ${j.promotion} told you to take it. There was no offer. You re-signed for the same money, and the president now introduces you as "the one with the imaginary suitor".`, '\u{1F921}', 'bad')
+  }
   j.promoWins += 2
   const bonus = tidy(discipline(j.disc).purse.major * 3 * Math.max(1, 16 - (j.rank ?? 15)) / 4)
   earnIncome(g, bonus)
@@ -1932,6 +1970,10 @@ export function yearlyFighter(g: GameState): void {
       log(g, `${majorName(g, d)} released me for inactivity.`, 'bad')
     }
   } else if (j.rank !== null && j.rank > 1 && chance(g, 0.3)) j.rank += chance(g, 0.5) ? 1 : -1
+  if (age >= 48 || (age >= 40 && level(g, p, d) < 35)) {
+    retireFighter(g, true)
+    return
+  }
   // Contract.
   if (j.tier === 'major' && j.fightsLeft <= 0) {
     scriptChoice(
@@ -1946,10 +1988,6 @@ export function yearlyFighter(g: GameState): void {
       ],
       { emoji: d.emoji },
     )
-    return
-  }
-  if (age >= 48 || (age >= 40 && level(g, p, d) < 35)) {
-    retireFighter(g, true)
     return
   }
   if (age >= 37 && chance(g, 0.5)) {

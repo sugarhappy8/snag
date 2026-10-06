@@ -572,6 +572,7 @@ function specialTags(defId: string): string[] {
   if (id === 'model') return ['beauty', 'media']
   if (id === 'hustler') return ['business']
   if (/game|studio/.test(id)) return ['tech', 'arts']
+  if (id === 'sports.esports') return ['sports', 'tech']
   if (/athlete|sport|fight|mma|box|wrestl|player/.test(id)) return ['sports']
   return ['arts', 'media']
 }

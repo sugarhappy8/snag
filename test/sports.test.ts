@@ -4,7 +4,7 @@ import { specialCareersMenu, specialJobNodes, yearlySpecial } from '../src/game/
 import { hire, ownerKey } from '../src/game/special/common'
 import { sportsCareerMenu, sportsJobNodes, sportsSummary, yearlySports } from '../src/game/special/sports'
 import { addHeadTrauma, gamesSeason, rankFromPoints, sponsorCall, yearlyBrain } from '../src/game/special/sports-core'
-import { fightInternals } from '../src/game/special/sports-fight'
+import { DISCIPLINES, fightInternals } from '../src/game/special/sports-fight'
 import type { Asset, Character, GameState, Json, MenuAction, MenuNode, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
@@ -595,5 +595,310 @@ describe('Olympics, sponsors and the brain', () => {
     }
     expect(g.character.conditions.some((c) => c.name === 'Dementia' && c.curable === false)).toBe(true)
     expect(sportsSummary(g)).toMatch(/CTE/)
+  })
+})
+
+describe('random sports lives', () => {
+  it('survive random sports actions from birth to old age (full engine, AI off)', async () => {
+    const { applyFallback } = await import('../src/ai/director')
+    const { ageUp } = await import('../src/game/aging')
+    const { createNewLife } = await import('../src/game/life')
+    const collect = (g: GameState, nodes: MenuNode[], out: MenuAction[] = [], d = 0): MenuAction[] => {
+      if (d > 7) return out
+      for (const n of nodes) {
+        if (n.type === 'info' || n.type === 'heading') continue
+        if (n.visible && !n.visible(g)) continue
+        if (n.disabledReason && n.disabledReason(g)) continue
+        if (n.type === 'action') out.push(n)
+        else collect(g, n.children(g), out, d + 1)
+      }
+      return out
+    }
+    const countries = ['us', 'br', 'jp', 'th', 'in', 'gb', 'mx', 'ch']
+    for (let seed = 1; seed <= 8; seed++) {
+      let s = seed * 7919
+      const r = () => {
+        s ^= s << 13
+        s ^= s >>> 17
+        s ^= s << 5
+        return (s >>> 0) / 4294967296
+      }
+      const g = createNewLife({ seed, year: 2026, countryId: countries[seed % countries.length] })
+      const settle = () => {
+        for (let guard = 0; g.queue.length; guard++) {
+          if (guard > 400) throw new Error(`queue stuck: ${JSON.stringify(g.queue[0]).slice(0, 200)}`)
+          const m = g.queue.shift()!
+          const before = g.queue.length
+          if (m.kind === 'choice') {
+            const c = m.choices[Math.floor(r() * m.choices.length)]
+            if (m.source === 'script') runScript(g, m.scriptId!, c.id, m.data, m)
+            else applyFallback(g, { type: 'resolveChoice', event: m, choiceId: c.id })
+          } else if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Ace', m.data, m)
+          else if (m.kind === 'minigame') runScript(g, m.scriptId, 'done', m.data, m)
+          else if (m.kind === 'aiTask') applyFallback(g, m.task)
+          g.queue.unshift(...g.queue.splice(before))
+        }
+      }
+      settle()
+      g.character.hidden.athleticism = 50 + Math.floor(r() * 50)
+      g.character.money += 40_000
+      while (g.character.alive && g.character.age < 70) {
+        for (let i = 0; i < 5 && g.character.alive; i++) {
+          const pool = [...collect(g, [sportsCareerMenu]), ...collect(g, sportsJobNodes(g))]
+          if (!pool.length) break
+          pool[Math.floor(r() * pool.length)].run(g)
+          settle()
+        }
+        ageUp(g)
+        settle()
+        expect(Number.isFinite(g.character.money)).toBe(true)
+        const json = JSON.stringify(g)
+        expect(json).not.toContain('NaN')
+        expect(JSON.stringify(JSON.parse(json))).toBe(json)
+      }
+    }
+  }, 120_000)
+})
+
+describe('review fixes', () => {
+  const indProfile = (g: GameState) => flagProfile<{ sports: Record<string, { attrs: Record<string, number>; fitness: number }> }>(g, 'sports.ind')
+
+  function indPro(g: GameState, sport: string, level: number, disc?: string): void {
+    run(g, `sports.ind.${sport}.practice`)
+    drain(g)
+    const rec = indProfile(g).sports[sport]
+    for (const k of Object.keys(rec.attrs)) rec.attrs[k] = level
+    rec.fitness = level
+    run(g, `sports.ind.${sport}.pro`)
+    drain(g, (m) => (disc && m.choices.some((c) => c.id === disc) ? disc : undefined))
+    expect(g.character.job?.defId).toBe('sports.ind')
+  }
+
+  it('event names that start with "The" read naturally', () => {
+    const g = game(24, { hidden: { ...game(0).character.hidden, athleticism: 80 } }, 4)
+    g.character.money = 500_000
+    indPro(g, 'golf', 80)
+    const seen: ModalItem[] = []
+    for (let season = 0; season < 3; season++) {
+      run(g, 'sports.ind.compete', sportsJobNodes(g))
+      seen.push(...drain(g, (m) => (m.scriptId === 'sports.ind.enter' ? 'dev' : m.scriptId === 'sports.ind.pivot' ? 'attack' : undefined)))
+      nextYear(g)
+      yearlySports(g)
+      seen.push(...drain(g, (m) => (m.scriptId === 'sports.ind.retireAsk' ? 'keep' : undefined)))
+    }
+    const text = allText(seen) + JSON.stringify(g.log) + JSON.stringify(g.flags['special.sports'] ?? '')
+    expect(text).toMatch(/Classic/)
+    expect(text).not.toMatch(/\bthe The\b/)
+  })
+
+  it('biennial world championships are only held in their own season', () => {
+    const g = game(24, { hidden: { ...game(0).character.hidden, athleticism: 90 } }, 6)
+    g.character.money = 500_000
+    g.year = 2030
+    indPro(g, 'track', 85, '100m')
+    const job = g.character.job!
+    job.data.tier = 1
+    job.data.rank = 5
+    job.data.carry = 5000
+    // During an even season the (odd-year) World Championships aren't on the calendar...
+    run(g, 'sports.ind.compete', sportsJobNodes(g))
+    const cal = g.queue[0]
+    expect(cal.kind === 'choice' && cal.choices.some((c) => c.id === 'wtc')).toBe(false)
+    drain(g, () => 'cancel')
+    // ...and the end-of-season simulation (which runs after New Year) doesn't hold them either.
+    nextYear(g)
+    yearlySports(g)
+    const even = allText(drain(g, (m) => (m.scriptId === 'sports.ind.retireAsk' ? 'keep' : m.scriptId === 'sports.olympics.final' ? 'medal' : undefined)))
+    expect(even).toMatch(/Track & Field Season/)
+    expect(even).not.toMatch(/World Track Championships/)
+    // The odd season does.
+    g.character.job!.data.rank = 5
+    nextYear(g)
+    yearlySports(g)
+    const odd = allText(drain(g, (m) => (m.scriptId === 'sports.ind.retireAsk' ? 'keep' : m.scriptId === 'sports.olympics.final' ? 'medal' : undefined)))
+    expect(odd).toMatch(/World Track Championships/)
+    checkSane(g)
+  })
+
+  it("retiring and coming back can't replay a season's prize money", () => {
+    const g = game(22, { hidden: { ...game(0).character.hidden, athleticism: 85 } }, 8)
+    g.character.money = 300_000
+    indPro(g, 'tennis', 80)
+    run(g, 'sports.ind.retire', sportsJobNodes(g))
+    drain(g)
+    expect(g.character.job).toBeNull()
+    expect(reason(g, 'sports.ind.tennis.pro')).toMatch(/already started a pro season/)
+    expect(reason(g, 'sports.ind.golf.pro')).toMatch(/already started a pro season/)
+    nextYear(g)
+    expect(reason(g, 'sports.ind.tennis.pro')).toBeNull()
+
+    const e = game(18, {}, 8)
+    e.assets.push({ id: 'pc', kind: 'other', name: 'Gaming PC', emoji: '\u{1F5A5}\u{FE0F}', value: 1500, purchasePrice: 1500, condition: 100, purchasedAge: 18, upkeep: 0, details: {} })
+    run(e, 'sports.es.game')
+    drain(e, () => 'siege')
+    const p = flagProfile<{ attrs: Record<string, number>; mmr: Record<string, number> }>(e, 'sports.esports')
+    for (const k of Object.keys(p.attrs)) p.attrs[k] = 95
+    p.mmr.siege = 3400
+    run(e, 'sports.es.pro')
+    drain(e, (m) => m.choices[m.choices.length - 2]?.id)
+    expect(e.character.job?.defId).toBe('sports.esports')
+    run(e, 'sports.es.retire', sportsJobNodes(e))
+    drain(e)
+    expect(reason(e, 'sports.es.pro')).toMatch(/already went pro/)
+    nextYear(e)
+    expect(reason(e, 'sports.es.pro')).toBeNull()
+  })
+
+  it("backing out of fight offers doesn't reroll the opponents", () => {
+    const g = game(20, { hidden: { ...game(0).character.hidden, athleticism: 80 } }, 12)
+    const names = (): string[] => {
+      run(g, 'sports.mma.amateur')
+      const m = g.queue[0]
+      const out = m.kind === 'choice' ? (m.data as unknown as { offers: { opp: { name: string } }[] }).offers.map((o) => o.opp.name) : []
+      return out
+    }
+    const first = names()
+    drain(g, () => 'cancel')
+    expect(names()).toEqual(first)
+    drain(g, () => 'cancel')
+    expect(names()).toEqual(first)
+    // Fighting one of them brings a fresh card.
+    drain(g, (m) => (m.scriptId === 'sports.fight.pick' ? '0' : m.scriptId === 'sports.fight.round' ? 'strike' : undefined))
+    if (!reason(g, 'sports.mma.amateur')) {
+      expect(names()).not.toEqual(first)
+      drain(g, () => 'cancel')
+    }
+    checkSane(g)
+  })
+
+  it("saying no to a team or a race seat doesn't reroll the offer", () => {
+    const e = game(18, {}, 14)
+    e.assets.push({ id: 'pc', kind: 'other', name: 'Gaming PC', emoji: '\u{1F5A5}\u{FE0F}', value: 1500, purchasePrice: 1500, condition: 100, purchasedAge: 18, upkeep: 0, details: {} })
+    run(e, 'sports.es.game')
+    drain(e, () => 'strike')
+    const p = flagProfile<{ attrs: Record<string, number>; mmr: Record<string, number> }>(e, 'sports.esports')
+    for (const k of Object.keys(p.attrs)) p.attrs[k] = 95
+    p.mmr.strike = 3400
+    const teams = (): string => {
+      run(e, 'sports.es.pro')
+      const m = e.queue[0]
+      return m.kind === 'choice' ? JSON.stringify(m.data) : ''
+    }
+    const first = teams()
+    drain(e, () => 'cancel')
+    expect(teams()).toBe(first)
+    drain(e, () => 'cancel')
+
+    const g = game(18, {}, 14)
+    g.character.money = 1_000
+    run(g, 'sports.ind.motor.practice')
+    drain(g)
+    const seat = (): string => {
+      run(g, 'sports.ind.motor.pro')
+      const m = g.queue[0]
+      return m.kind === 'choice' ? m.text : ''
+    }
+    const offer = seat()
+    expect(offer).toMatch(/car rating/)
+    drain(g, () => 'no')
+    expect(seat()).toBe(offer)
+    drain(g, () => 'no')
+  })
+
+  it('amateur bouts stop at 40 and commissions stop licensing at 48', () => {
+    expect(reason(game(41), 'sports.mma.amateur')).toMatch(/over 40/)
+    expect(reason(game(40), 'sports.mma.amateur')).toBeNull()
+    const old = game(48)
+    old.flags['special.sports.fight'] = { striking: 50, grappling: 50, cardio: 50, chin: 60, iq: 50, natural: 3, gym: '', gymTier: 0, gymFee: 0, amateur: {}, pro: { mma: { w: 5, l: 2, d: 0, nc: 0, ko: 2, sub: 1, dec: 2, koLosses: 0 } }, belts: [], hype: 5, rivals: [], peakRank: null, retiredAge: 40, startAge: 25, earnings: 1000, doping: false, trained: [], lastFightAge: 40, owner: ownerKey(old) } as unknown as Json
+    expect(reason(old, 'sports.mma.turnPro')).toMatch(/license/)
+  })
+
+  it('belts and circuits are named for where you fight', () => {
+    const disc = (id: string) => DISCIPLINES.find((d) => d.id === id)!
+    for (const [cid, want] of [['us', /Muay Thai World Series/], ['th', /Siam Grand Stadium/]] as const) {
+      const g = game(26, { countryId: cid }, 2)
+      hire(g, { defId: 'sports.fighter', title: 'Stadium Nak Muay', company: 'x', salary: 0, data: { disc: 'muaythai', tier: 'major', promotion: 'x', cls: 2, rank: 1, regionalChamp: false, belts: [], defenses: 0, champ: null, fightsLeft: 3, streak: 2, promoWins: 4, injured: 0, earned: 0 } })
+      const offers = fightInternals.buildOffers(g, disc('muaythai'), g.character.job, false)
+      const title = offers.find((o) => o.kind === 'title')
+      expect(title?.belt).toMatch(want)
+    }
+    const g = game(20, { countryId: 'us' })
+    const boxing = findNode(g, sports(g), 'sports.boxing')
+    const header = boxing?.type === 'menu' && typeof boxing.header === 'function' ? boxing.header(g) : ''
+    expect(header).toMatch(/the American Boxing Circuit/)
+    expect(header).not.toMatch(/\bthe the\b/i)
+  })
+
+  it('Olympic placings use proper ordinals', () => {
+    const texts: string[] = []
+    for (let r = 40; r <= 80; r += 2) {
+      const g = game(25, {}, r)
+      runScript(g, 'sports.olympics.final', 'moment', { year: 2028, entry: { sport: 'Swimming', event: 'Swimming', rating: r, team: false, squad: 0 } } as unknown as Json, g.queue[0] ?? ({} as ModalItem))
+      texts.push(allText(g.queue))
+    }
+    const all = texts.join('\n')
+    expect(all).toMatch(/You finished|You won/)
+    expect(all).not.toMatch(/(?<!1)[123]th\b/)
+  })
+
+  it('esports salaries and pundit raises top out', () => {
+    const g = game(22, {}, 5)
+    hire(g, { defId: 'sports.esports', title: 'Esports Pro (Arcane Siege)', company: 'Team Nebula', salary: 2_900_000, data: { game: 'siege', team: 'Team Nebula', teamStrength: 90, tier: 1, contractYears: 1, played: [], results: [], earned: 0 } })
+    g.flags['special.sports.esports'] = { game: 'siege', mmr: { siege: 3500 }, attrs: { Mechanics: 99, 'Game Sense': 99, Teamwork: 99, Mental: 99 }, titles: [], earnings: 0, startAge: 18, retiredAge: null, cups: 0, owner: ownerKey(g) } as unknown as Json
+    for (let y = 0; y < 3 && g.character.job; y++) {
+      nextYear(g)
+      yearlySports(g)
+      drain(g, (m) => (m.scriptId === 'sports.es.renew' ? 'stay' : undefined))
+      expect(g.character.job?.salary ?? 0).toBeLessThanOrEqual(3_000_000)
+    }
+    const t = game(40, {}, 5)
+    hire(t, { defId: 'sports.pundit', title: 'Tennis Commentator', company: 'American Sports Network', salary: 1_400_000, performance: 99, data: { sport: 'Tennis', bad: 0 } })
+    for (let y = 0; y < 30 && t.character.job; y++) {
+      t.character.job.performance = 99
+      nextYear(t)
+      yearlySports(t)
+      drain(t)
+      expect(t.character.job?.salary ?? 0).toBeLessThanOrEqual(1_500_000)
+    }
+    checkSane(t)
+  })
+
+  it("teenage pros can't buy performance enhancers", () => {
+    const g = game(16, { hidden: { ...game(0).character.hidden, athleticism: 85 } }, 3)
+    g.character.money = 200_000
+    indPro(g, 'tennis', 70)
+    expect(reason(g, 'sports.ind.dope', sportsJobNodes(g))).toMatch(/teenager/)
+  })
+})
+
+describe('review fixes: copy and contracts', () => {
+  it('small leagues never offer a $0 contract', () => {
+    let offers = 0
+    for (let seed = 1; seed <= 12 && offers < 2; seed++) {
+      // A scout from a small home league (women's basketball in Mexico) pays a few thousand a year.
+      const g = game(18, { countryId: 'mx', city: 'Cancún', gender: 'female', hidden: { ...game(0).character.hidden, athleticism: 90 } }, seed)
+      yearlySports(g)
+      const seen = drain(g, () => 'decline')
+      const contract = seen.find((m) => m.kind === 'choice' && m.scriptId === 'special.athlete.contract')
+      if (!contract || contract.kind !== 'choice') continue
+      const o = contract.data as unknown as { league: string; salary: number }
+      if (!o.league.startsWith('home:mx')) continue
+      offers++
+      expect(contract.text).not.toMatch(/\$0 per year/)
+      expect(o.salary).toBeGreaterThanOrEqual(1_000)
+      expect(o.salary).toBeLessThan(20_000)
+    }
+    expect(offers).toBeGreaterThan(0)
+  })
+
+  it('past careers read "1 title", and end when the career did', () => {
+    const g = game(60)
+    g.flags['special.sports.ind'] = { sports: { tabletennis: { attrs: { Spin: 50 }, fitness: 50, discipline: null, bestRank: 200, titles: 1, majors: 0, majorList: [], earnings: 9000, seasons: 1, startAge: 21, retiredAge: null, crowns: 0, practiced: [] } }, owner: ownerKey(g) } as unknown as Json
+    g.flags['special.sports.fight'] = { striking: 50, grappling: 50, cardio: 50, chin: 60, iq: 50, natural: 3, gym: '', gymTier: 0, gymFee: 0, amateur: {}, pro: { mma: { w: 1, l: 0, d: 0, nc: 0, ko: 1, sub: 0, dec: 0, koLosses: 0 } }, belts: [], hype: 5, rivals: [], peakRank: null, retiredAge: null, startAge: 25, earnings: 1000, doping: false, trained: [], lastFightAge: 26, owner: ownerKey(g) } as unknown as Json
+    const after = findNode(g, sports(g), 'sports.after')
+    const lines = after?.type === 'menu' ? after.children(g).flatMap((n) => (n.type === 'info' ? [String(n.text)] : [])) : []
+    const tt = lines.find((l) => l.startsWith('Table Tennis'))
+    expect(tt).toMatch(/age 21–22, 1 title$/)
+    expect(lines.find((l) => l.startsWith('MMA'))).toMatch(/age 25–26/)
   })
 })

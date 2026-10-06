@@ -149,7 +149,7 @@ export function gameCvEntries(g: GameState): CvEntry[] {
     })
   p.awards.slice(-4).forEach((a, i) => {
     const worst = /Rusty Cartridge/.test(a)
-    out.push({ id: `d:dev:gd:award:${i}`, kind: 'award', title: a.replace(/:.*$/, ''), org: a.includes('"') ? a.slice(a.indexOf('"')) : '', startAge: c.age, detail: worst ? 'Technically an award' : 'Game industry award', strength: worst ? 1 : /Pixel Crown/.test(a) ? 9 : 6, embellished: false, tags: ['arts', 'media'] })
+    out.push({ id: `d:dev:gd:award:${i}`, kind: 'award', title: a.replace(/(: | for ").*$/, ''), org: a.includes('"') ? a.slice(a.indexOf('"')) : '', startAge: c.age, detail: worst ? 'Technically an award' : 'Game industry award', strength: worst ? 1 : /Pixel Crown/.test(a) ? 9 : 6, embellished: false, tags: ['arts', 'media'] })
   })
   if (p.jams >= 3) out.push({ id: 'd:dev:gd:jams', kind: 'activity', title: 'Game jam regular', org: '', startAge: c.age, detail: plural(p.jams, 'jam'), strength: between(2 + Math.floor(p.jams / 5), 2, 5), embellished: false, tags: ['tech', 'arts'] })
   return out

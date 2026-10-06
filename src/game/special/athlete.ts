@@ -10,7 +10,7 @@ import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../t
 import { localeOf } from '../data/locales'
 import { getCountry } from '../world'
 import { addFame, attendedUniversity, blocked, clamp100, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
-import { addBuzz, addHeadTrauma, banReason, countryName, honor, recordCareer } from './sports-core'
+import { addBuzz, addHeadTrauma, banReason, countryName, honor, plural, recordCareer } from './sports-core'
 
 // ---------------------------------------------------------------------------
 // Sports & leagues
@@ -317,7 +317,10 @@ function avgSkill(p: AthleteProfile): number {
 function salaryFor(league: League, greatness: number, teamStrength: number): number {
   const t = Math.max(0, Math.min(1, (greatness - 20) / 80))
   const raw = league.minPay + (league.maxPay - league.minPay) * t ** 2.2 * (0.8 + teamStrength / 250)
-  return Math.round(raw / 10_000) * 10_000
+  // Small leagues (women's leagues in poorer countries) pay a few thousand: round finely there,
+  // so a contract is never "worth $0 per year".
+  const step = raw < 100_000 ? 1_000 : 10_000
+  return Math.max(1_000, Math.round(raw / step) * step)
 }
 
 // ---------------------------------------------------------------------------
@@ -724,10 +727,10 @@ function retire(g: GameState, forced: boolean): void {
   const team = job.company
   p.retiredAge = g.character.age
   const sport = sportOf(p.sport)
-  recordCareer(g, { sport: sport.name, kind: 'team', from: typeof job.data.startAge === 'number' ? job.data.startAge : g.character.age - p.seasons, best: p.championships ? `${p.championships} championship${p.championships === 1 ? '' : 's'}` : `${p.seasons} seasons`, legacy: Math.min(100, p.championships * 10 + p.awards.length * 10 + Math.max(0, p.peakGreatness - 50)) })
+  recordCareer(g, { sport: sport.name, kind: 'team', from: typeof job.data.startAge === 'number' ? job.data.startAge : g.character.age - p.seasons, best: p.championships ? plural(p.championships, 'championship') : plural(p.seasons, 'season'), legacy: Math.min(100, p.championships * 10 + p.awards.length * 10 + Math.max(0, p.peakGreatness - 50)) })
   leave(g, 'retired')
   log(g, `I retired from professional sports.`, 'event')
-  remember(g, `Retired from pro sports after ${p.seasons} seasons and ${p.championships} championships.`)
+  remember(g, `Retired from pro sports after ${plural(p.seasons, 'season')} and ${plural(p.championships, 'championship')}.`)
   say(g, 'Retired', `${forced ? 'No team offered you a contract, so you ' : 'You '}retired after ${p.seasons} season${p.seasons === 1 ? '' : 's'}${p.championships ? ` and ${p.championships} championship${p.championships === 1 ? '' : 's'}` : ''}. The ${team} held a ceremony in your honor.`, '\u{1F3C5}', 'good')
 }
 

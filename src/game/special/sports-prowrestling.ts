@@ -9,7 +9,7 @@ import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity } from '../world'
 import { addFame, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
-import { addBuzz, addHeadTrauma, honor, injure, localFee, payFee, payerNote, recordCareer, sportsGate, tidy, trainGain, wealth, worldAthlete } from './sports-core'
+import { addBuzz, addHeadTrauma, honor, injure, localFee, payFee, payerNote, plural, recordCareer, sportsGate, tidy, trainGain, wealth, worldAthlete } from './sports-core'
 
 type Align = 'face' | 'heel'
 
@@ -361,7 +361,7 @@ function wrestlerActions(): MenuNode[] {
           'The camera light turns red. You have the microphone.',
           [
             { id: 'hometown', label: 'Praise the hometown', emoji: '\u{1F3D9}\u{FE0F}' },
-            { id: 'insult', label: 'Insult the hometown', emoji: '\u{1F595}' },
+            { id: 'insult', label: 'Insult the hometown', emoji: '\u{1F624}' },
             { id: 'callout', label: 'Call out the champion', emoji: '\u{1F451}' },
             { id: 'fourth', label: 'Break the fourth wall', emoji: '\u{1F4FA}' },
           ],
@@ -449,7 +449,7 @@ export function wrestlerJobNodes(g: GameState): MenuNode[] {
       id: 'sports.wrestle.record',
       label: 'Career',
       emoji: '\u{1F4CB}',
-      subtitle: () => `${p?.matches ?? 0} matches · ${p?.titles.length ?? 0} titles`,
+      subtitle: () => `${plural(p?.matches ?? 0, 'match')} · ${plural(p?.titles.length ?? 0, 'title')}`,
       children: (): MenuNode[] => {
         const nodes: MenuNode[] = [{ type: 'info', id: 'sports.wrestle.r.skills', emoji: '\u{1F93C}', text: `In-ring ${p?.inRing ?? 0}% · Mic ${p?.mic ?? 0}% · ${p?.fiveStars ?? 0} five-star matches` }]
         ;(p?.titles ?? []).slice(-6).forEach((t, i) => nodes.push({ type: 'info', id: `sports.wrestle.r.t${i}`, emoji: '\u{1F3C6}', text: t }))
@@ -474,10 +474,10 @@ function retireWrestler(g: GameState): void {
   const p = wp(g)
   p.retiredAge = g.character.age
   const legacy = Math.min(100, p.titles.length * 8 + p.popularity * 0.4 + p.fiveStars * 5)
-  recordCareer(g, { sport: 'Pro Wrestling', kind: 'entertainment', from: p.startAge, best: p.titles.length ? p.titles[p.titles.length - 1] : `${p.matches} matches`, legacy })
+  recordCareer(g, { sport: 'Pro Wrestling', kind: 'entertainment', from: p.startAge, best: p.titles.length ? p.titles[p.titles.length - 1] : plural(p.matches, 'match'), legacy })
   leave(g, 'retired')
   log(g, 'I retired from pro wrestling.', 'event')
-  say(g, 'Retired', `You left your boots in the middle of the ring. ${p.matches} matches, ${p.titles.length} title reign${p.titles.length === 1 ? '' : 's'}. The locker room came out to applaud. Even the people who hated you. Especially them.`, '\u{1F3C5}', 'good')
+  say(g, 'Retired', `You left your boots in the middle of the ring. ${plural(p.matches, 'match')}, ${plural(p.titles.length, 'title reign')}. The locker room came out to applaud. Even the people who hated you. Especially them.`, '\u{1F3C5}', 'good')
 }
 
 export const proWrestlingMenu: MenuGroup = {
@@ -513,18 +513,20 @@ export function yearlyWrestler(g: GameState): void {
   if (j.tier === 0) pay = tidy((2_000 + p.popularity * 250) * Math.max(0.3, wealth(g)) * (0.7 + rand(g) * 0.6))
   else pay = job.salary
   let merch = 0
-  if (j.tier === 2) merch = tidy((p.popularity / 100) ** 2.2 * 4_000_000)
+  if (j.tier === 2) merch = tidy((p.popularity / 100) ** 3 * 2_500_000)
   if (pay + merch > 0) earnIncome(g, pay + merch)
   if (j.tier === 0) job.salary = pay
-  p.popularity = Math.max(0, Math.min(100, Math.round(p.popularity * 0.9 + j.push * 0.12)))
+  // Crowds move on unless creative keeps featuring you; booking momentum fades too.
+  p.popularity = Math.max(0, Math.min(100, Math.round(p.popularity * 0.85 + j.push * 0.12)))
+  if (!j.belt) j.push = Math.max(0, j.push - 5)
   addHeadTrauma(g, 0.6)
   if (c.age > 35) p.inRing = Math.max(1, p.inRing - randInt(g, 1, 3))
-  fameToward(g, j.tier === 2 ? p.popularity * 0.8 : j.tier === 1 ? 15 : 5, 5)
+  fameToward(g, j.tier === 2 ? p.popularity * 0.7 : j.tier === 1 ? 15 : 5, 5)
   const lines: string[] = [`Earnings: ${short(pay)}${merch ? ` plus ${short(merch)} in merch` : ''}.`]
   // Colossal Clash, the biggest show of the year.
   if (j.tier === 2 && p.popularity >= 70 && j.push >= 60) {
     const main = j.push >= 80
-    const bonus = tidy(main ? 500_000 + p.popularity * 15_000 : 100_000)
+    const bonus = tidy(main ? 250_000 + p.popularity * 5_000 : 75_000)
     earnIncome(g, bonus)
     addFame(g, main ? 6 : 2)
     if (main) honor(g, 'Headlined Colossal Clash, the biggest wrestling show of the year.', 'Colossal Clash main eventer', 'CWE', 8)
@@ -560,7 +562,7 @@ export function yearlyWrestler(g: GameState): void {
         j.belt = ''
       } else {
         j.contractYears = randInt(g, 2, 4)
-        if (j.tier === 2) job.salary = tidy(Math.max(job.salary, 250_000 + p.popularity * 30_000 * (p.popularity / 100)))
+        if (j.tier === 2) job.salary = tidy(Math.max(job.salary, 250_000 + (p.popularity / 100) ** 2 * 2_750_000))
         lines.push(`You signed a new ${j.contractYears}-year CWE deal.`)
       }
     }

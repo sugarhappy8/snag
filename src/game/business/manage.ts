@@ -11,7 +11,7 @@ import { becomeCeo, ceoPayNorm, installManager, managerCandidate, managerName, m
 import { ceoSkill, equipmentValue, insurancePremiumFor, localEcon, maxProduction, planFor, priceBounds, refreshValue, startupCost, staffPower, valuationOf } from './economy'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
 import { conglomerate, investorFirm, localSport } from './flavor'
-import { isStudio, studioInfo, studioNodes } from './gamestudio'
+import { earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { industryDef } from './industries'
@@ -561,6 +561,22 @@ function insuranceAction(a: Asset): MenuAction {
 // ---------------------------------------------------------------------------
 // Money
 
+/**
+ * What the owner may take out: cash beyond the company's loans and anything earmarked for
+ * unreleased games. Paying out borrowed money and then declaring bankruptcy would let the
+ * owner keep the loan, so lenders (and the game) don't allow it.
+ */
+function payable(a: Asset, b: BizState): number {
+  return Math.max(0, b.cash - earmarkedCash(a) - b.debt)
+}
+
+function payoutBlocked(a: Asset, b: BizState): string | null {
+  if (b.cash <= 0) return 'The company has no spare cash.'
+  if (b.cash - earmarkedCash(a) <= 0) return 'Its cash is advances and pledges for games still in development. That money funds the games; it is not profit yet.'
+  if (payable(a, b) <= 0) return `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
+  return null
+}
+
 function moneyNodes(a: Asset, g: GameState): MenuNode[] {
   const b = readBiz(g, a)
   const nodes: MenuNode[] = [
@@ -579,11 +595,11 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
       },
     }),
     act(a, 'dividend', b.share < 1 ? 'Pay a Dividend' : 'Withdraw Profits', '\u{1F4E4}', {
-      subtitle: b.share < 1 ? `You get ${pct(b.share)} of any payout (taxed as income)` : 'Taxed as income',
-      disabled: (_gg, bb) => (bb.cash <= 0 ? 'The company has no spare cash.' : null),
-      input: { kind: 'number', label: 'Total payout', min: 1, max: Math.max(1, Math.round(b.cash)), defaultValue: () => String(Math.max(1, Math.round(b.cash * 0.25))) },
+      subtitle: earmarkedCash(a) > 0 ? `Taxed as income · ${money(earmarkedCash(a))} of advances and pledges is set aside for unreleased games` : b.share < 1 ? `You get ${pct(b.share)} of any payout (taxed as income)` : 'Taxed as income',
+      disabled: (_gg, bb) => payoutBlocked(a, bb),
+      input: { kind: 'number', label: 'Total payout', min: 1, max: Math.max(1, Math.round(payable(a, b))), defaultValue: () => String(Math.max(1, Math.round(payable(a, b) * 0.25))) },
       run: (gg, cur, bb, input) => {
-        const n = amount(input, bb.cash)
+        const n = amount(input, payable(cur, bb))
         if (n <= 0) return
         bb.cash -= n
         const mine = Math.round(n * bb.share)
@@ -650,11 +666,11 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
     }),
     act(a, 'bonus', 'Take a Bonus', '\u{1F911}', {
       subtitle: 'A one-off payout to yourself (taxed as income)',
-      disabled: (_gg, bb) => (bb.cash <= 0 ? 'The company has no spare cash.' : null),
-      input: { kind: 'number', label: 'Bonus amount', min: 1, max: Math.max(1, Math.round(Math.min(Math.max(0, b.cash), maxOwnerSalary(b)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(Math.max(0, b.cash) * 0.1, maxOwnerSalary(b) / 4)))) },
+      disabled: (_gg, bb) => payoutBlocked(a, bb),
+      input: { kind: 'number', label: 'Bonus amount', min: 1, max: Math.max(1, Math.round(Math.min(payable(a, b), maxOwnerSalary(b)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(payable(a, b) * 0.1, maxOwnerSalary(b) / 4)))) },
       run: (gg, cur, bb, input) => {
         if (!useYearAction(gg, `biz.bonus.${cur.id}`, 1)) return tooBusy(gg, 'taken a bonus')
-        const n = amount(input, Math.min(Math.max(0, bb.cash), maxOwnerSalary(bb)))
+        const n = amount(input, Math.min(payable(cur, bb), maxOwnerSalary(bb)))
         if (n <= 0) return
         bb.cash -= n
         earnIncome(gg, n)

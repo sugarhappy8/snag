@@ -66,7 +66,10 @@ src/
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
-    business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report
+    business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report.
+                         Actions that spend/earn company cash move b.cash AND add to yearCosts/
+                         yearIncome (for the P&L); simulateYear must not move that cash twice.
+                         Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt)
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
@@ -85,6 +88,17 @@ src/
                          sports*.ts (Special Careers > Sports: team sports, MMA/UFC, boxing, tennis,
                          golf, racing, esports...), gamedev*.ts (Game Industry: dev jobs, making games,
                          founding a game studio via business/gamestudio*.ts)
+                         Sports: athlete.ts is Team Sports; sports-core/-data/-individual/-fight/
+                         -sumo/-prowrestling/-esports/-youth/-olympics/-legacy. Job defIds 'athlete',
+                         'sports.ind', 'sports.fighter', 'sports.sumo', 'sports.wrestler',
+                         'sports.esports', 'sports.coach', 'sports.pundit'; profiles in
+                         g.flags['special.sports*']. One pro start / esports signing a year
+                         ('sports.ind.start', 'sports.es.sign'); fight cards cached until the next bout.
+                         Game Industry: studio job defId 'game_dev'; solo profile g.flags['special.gamedev'].
+                         Game studios are 'gameStudio' businesses simulated by simulateStudioYear;
+                         advances/pledges for unreleased games are earmarkedCash and can't be paid out.
+                         Indie game ventures moved from the Computer menu to Game Industry:
+                         computer/dev-state ventureAssets() excludes them, allVentureAssets() doesn't
   ai/                    Provider clients + "director"                    [ai agent]
     providers.ts         Provider registry (local servers + cloud APIs), defaults, setup steps
     client.ts            Routes requests to openai-compat.ts or anthropic.ts; JSON parse/validate/retry

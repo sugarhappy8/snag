@@ -12,7 +12,7 @@ import { chance, pick, rand, randInt, bell } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity, COUNTRIES } from '../world'
-import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view } from './common'
+import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, talentMatches, tell, view, yearlyList } from './common'
 import {
   addBuzz,
   addHeadTrauma,
@@ -34,6 +34,7 @@ import {
   recordCareer,
   sportsBan,
   sportsGate,
+  theName,
   tidy,
   trainGain,
   wealth,
@@ -208,12 +209,16 @@ function calendar(g: GameState, sport: IndSport, job: Job, endOfSeason = false):
 
 type Entry = 'direct' | 'qualify' | null
 
-function entryFor(g: GameState, sport: IndSport, job: Job, ev: IndEvent): Entry {
+/**
+ * Whether you can enter an event. `year` is the season's calendar year: the end-of-season
+ * simulation runs after the birthday (g.year has already moved on), so it passes g.year - 1.
+ */
+function entryFor(g: GameState, sport: IndSport, job: Job, ev: IndEvent, year = g.year): Entry {
   const d = jd(job)
   if (ev.onlyTier !== undefined && d.tier !== ev.onlyTier) return null
   if (ev.minTier !== undefined && d.tier < ev.minTier) return null
-  if (ev.years === 'odd' && g.year % 2 === 0) return null
-  if (ev.years === 'even' && g.year % 2 === 1) return null
+  if (ev.years === 'odd' && year % 2 === 0) return null
+  if (ev.years === 'even' && year % 2 === 1) return null
   if (ev.disc && d.disc && !ev.disc.includes(d.disc)) return null
   if (ev.minRank === undefined || sport.format === 'race') return 'direct'
   const rank = d.rank
@@ -347,7 +352,7 @@ function playEvent(g: GameState, sport: IndSport, job: Job, rec: IndRecord, ev: 
 // ---------------------------------------------------------------------------
 // Applying results
 
-function bookResult(g: GameState, sport: IndSport, job: Job, rec: IndRecord, ev: { id: string; tier: IndEvent['tier'] }, name: string, o: Outcome, auto: boolean): string {
+function bookResult(g: GameState, sport: IndSport, job: Job, rec: IndRecord, ev: { id: string; tier: IndEvent['tier'] }, name: string, o: Outcome, auto: boolean, year = g.year): string {
   const d = jd(job)
   if (o.prize > 0) {
     earnIncome(g, o.prize)
@@ -356,26 +361,26 @@ function bookResult(g: GameState, sport: IndSport, job: Job, rec: IndRecord, ev:
   }
   if (sport.format === 'race') d.standing += o.pts
   else d.season += o.pts
-  let line = `${o.label} at the ${name}`
+  let line = `${o.label} at ${theName(name)}`
   if (o.won) {
     rec.titles += 1
     d.titles.push(name)
     count(g, 'sportsTitles')
     if (ev.tier === 'major' || ev.tier === 'finals') {
       if (ev.tier === 'major') rec.majors += 1
-      rec.majorList.push(`${name} ${g.year}`)
+      rec.majorList.push(`${name} ${year}`)
       if (rec.majorList.length > 30) rec.majorList.splice(0, rec.majorList.length - 30)
       count(g, 'championships')
       addFame(g, ev.tier === 'major' ? 4 : 3)
       addBuzz(g, 15)
       addStat(g, 'happiness', 12)
-      honor(g, `Won the ${name} (${sport.name}).`, `${name} champion`, sport.name, ev.tier === 'major' ? 8 : 7)
+      honor(g, `Won ${theName(name)} (${sport.name}).`, `${name} champion`, sport.name, ev.tier === 'major' ? 8 : 7)
     } else {
       if (chance(g, 0.3)) addFame(g, 1)
       addBuzz(g, 4)
       addStat(g, 'happiness', 5)
     }
-    line = `won the ${name}`
+    line = `won ${theName(name)}`
   } else if ((ev.tier === 'major' || ev.tier === 'finals') && sport.format === 'bracket' && o.pos <= 2) addBuzz(g, 5)
   if (!auto || o.won || ev.tier === 'major') {
     d.results.push(`${line}${o.prize > 0 ? ` (${short(o.prize)})` : ''}`)
@@ -418,10 +423,10 @@ function resultNotice(g: GameState, sport: IndSport, job: Job, name: string, o: 
   const money = o.prize > 0 ? ` Prize money: ${short(o.prize)}.` : ''
   const hurt = riskInjury(g, sport, job, o.won ? 0 : 0.01)
   if (o.won) {
-    log(g, `I won the ${name}!`, 'good')
-    say(g, 'Champion!', `${lead}You won the ${name}!${money} ${rank}${hurt}`, '\u{1F3C6}', 'good')
+    log(g, `I won ${theName(name)}!`, 'good')
+    say(g, 'Champion!', `${lead}You won ${theName(name)}!${money} ${rank}${hurt}`, '\u{1F3C6}', 'good')
   } else {
-    log(g, `I ${o.label} at the ${name}.`, o.pos <= 3 && o.pos > 0 ? 'good' : 'neutral')
+    log(g, `I ${o.label} at ${theName(name)}.`, o.pos <= 3 && o.pos > 0 ? 'good' : 'neutral')
     say(g, name, `${lead}You ${o.label}.${money} ${rank}${hurt}`, sport.emoji, o.pos > 0 && o.pos <= 3 ? 'good' : 'neutral')
   }
 }
@@ -491,7 +496,7 @@ const enterScript = defineScript('sports.ind.enter', (g, choice) => {
   const r = playEvent(g, sport, job, rec, ev, name, entry, true)
   if (r.pivot) {
     const p = r.pivot
-    const where = sport.format === 'bracket' ? `You reached the final of the ${p.evName} against ${p.opp}.` : `You're in ${ordinal(p.base)} place at the ${p.evName}, with ${p.opp} ${p.base === 1 ? 'right behind you' : 'just ahead'}.`
+    const where = sport.format === 'bracket' ? `You reached the final of ${theName(p.evName)} against ${p.opp}.` : `You're in ${ordinal(p.base)} place at ${theName(p.evName)}, with ${p.opp} ${p.base === 1 ? 'right behind you' : 'just ahead'}.`
     scriptChoice(
       g,
       pivotScript,
@@ -646,6 +651,8 @@ function salaryFor(tier: IndTier, rating: number, strength: number): number {
 }
 
 function startCareer(g: GameState, sport: IndSport, disc: string, opts: { tier?: number; team?: string; strength?: number; funded?: boolean } = {}): void {
+  // One new pro career a year: retiring and coming back can't reset the season's calendar.
+  useYearAction(g, 'sports.ind.start', 1)
   const rec = sportRecord(g, sport)
   if (disc) rec.discipline = disc
   rec.retiredAge = null
@@ -659,7 +666,7 @@ function startCareer(g: GameState, sport: IndSport, disc: string, opts: { tier?:
     title: disc && sport.id !== 'cycling' ? `${sport.title} (${disc})` : sport.title,
     company: t.team || tier.name,
     salary,
-    data: { sport: sport.id, disc, tier: tierIdx, team: t.team, teamStrength: t.strength, contractYears: t.team ? randInt(g, 1, 3) : 0, funded: !!opts.funded, season: 0, carry: 0, rank: null, earned: 0, played: [], titles: [], results: [], injured: 0, doping: false, coach: 0, standing: 0, lastPos: 0, wage: salary, cal: [], calAge: -1 },
+    data: { sport: sport.id, disc, tier: tierIdx, team: t.team, teamStrength: t.strength, contractYears: t.team ? (tier.seatCost && !opts.funded ? 1 : randInt(g, 1, 3)) : 0, funded: !!opts.funded, season: 0, carry: 0, rank: null, earned: 0, played: [], titles: [], results: [], injured: 0, doping: false, coach: 0, standing: 0, lastPos: 0, wage: salary, cal: [], calAge: -1 },
   })
   if (rec.seasons === 0) rec.startAge = g.character.age
   addStat(g, 'happiness', 10)
@@ -702,7 +709,8 @@ function turnPro(g: GameState, sport: IndSport, disc: string): void {
   if (sport.id === 'motor') {
     const tier = sport.tiers[0]
     const funded = rating >= 68
-    const { team, strength } = teamFor(g, sport, 0)
+    // One seat offer a year: saying "not now" can't reroll a faster car.
+    const [{ team, strength }] = yearlyList(g, `sports.motor.seat.${funded ? 'funded' : 'paid'}`, () => [teamFor(g, sport, 0)])
     const cost = funded ? 0 : tidy((tier.seatCost ?? 0) * (0.7 + strength / 200))
     return scriptChoice(
       g,
@@ -726,10 +734,11 @@ export function proReason(g: GameState, sport: IndSport): string | null {
   if (place) return place
   const j = indJob(g)
   if (j && jd(j).sport === sport.id) return `You're already a pro in ${sport.name.toLowerCase()}.`
+  if (yearActionsUsed(g, 'sports.ind.start') > 0) return 'You already started a pro season this year. The tour will register you again next season.'
   const rec = viewRecord(g, sport.id)
   const comeback = !!rec && rec.seasons > 0
   if (!comeback && g.character.age > sport.maxStartAge) return `At ${g.character.age} you're too old to start a pro ${sport.name.toLowerCase()} career from scratch.`
-  if (comeback && g.character.age > sport.retire + 5) return `At ${g.character.age}, a comeback in ${sport.name.toLowerCase()} would be a medical event, not a sporting one.`
+  if (comeback && g.character.age > sport.retire + 2) return `At ${g.character.age}, a comeback in ${sport.name.toLowerCase()} would be a medical event, not a sporting one.`
   return null
 }
 
@@ -845,7 +854,7 @@ const dopeAction: MenuAction = {
     const j = indJob(g)
     return !!j && !jd(j).doping
   },
-  disabledReason: (g) => sportsGate(g, 0),
+  disabledReason: (g) => (g.character.age < 18 ? 'Nobody sells that stuff to a teenager. Your coach would also kill you.' : sportsGate(g, 0)),
   confirm: () => 'Doping can get you banned and stripped of your results. Do it anyway?',
   run: (g) => {
     const job = indJob(g)
@@ -921,7 +930,7 @@ export function individualJobNodes(g: GameState): MenuNode[] {
           gg,
           coachScript,
           'Coaching Team',
-          'Coaches speed up your practice and add a little to every performance. Their fee is paid up front for the year.',
+          'Coaches speed up your practice and add a little to every performance. You pay their fee up front for this season, then again each new season you keep them.',
           [
             { id: '1', label: `Full-time coach (${short(coachFee(gg, 1))}/yr)`, emoji: '\u{1F4CB}' },
             { id: '2', label: `Elite coach (${short(coachFee(gg, 2))}/yr)`, emoji: '\u{1F451}' },
@@ -986,15 +995,16 @@ function simulateRestOfSeason(g: GameState, sport: IndSport, job: Job, rec: IndR
   const majorsBest: string[] = []
   if (d.injured > 0) scale *= 0.4
   const cal = calendar(g, sport, job, true)
+  const season = g.year - 1
   for (const ev of sport.events) {
     if (d.played.includes(ev.id)) continue
-    const entry = entryFor(g, sport, job, ev)
+    const entry = entryFor(g, sport, job, ev, season)
     if (!entry) continue
     if (scale < 1 && ev.tier !== 'major' && !chance(g, scale)) continue
     const name = cal.find((c) => c.id === ev.id)?.name ?? ev.name
     const r = playEvent(g, sport, job, rec, ev, name, entry, false)
     if (!r.outcome) continue
-    const line = bookResult(g, sport, job, rec, ev, name, r.outcome, true)
+    const line = bookResult(g, sport, job, rec, ev, name, r.outcome, true, season)
     if (r.outcome.won) titles.push(name)
     else if (ev.tier === 'major' && !r.outcome.qualifyingLoss) majorsBest.push(line)
   }
@@ -1074,7 +1084,6 @@ export function yearlyIndividual(g: GameState): void {
 
   // Paying for the season: coaching, travel, entry fees (lower circuits hurt).
   const costs = tierIdx === 0 ? tidy(sport.costs * Math.max(0.5, Math.min(1, wealth(g) + 0.2))) : tidy(sport.costs * 1.5)
-  const coach = d.coach ? coachFee(g, d.coach) : 0
   let scale = 1
   if (costs > 0) {
     const payer = payFee(g, costs)
@@ -1084,10 +1093,6 @@ export function yearlyIndividual(g: GameState): void {
       scale = 0.5
       log(g, "I couldn't afford a full season of travel, so I skipped half the schedule.", 'bad')
     } else if (payer === 'parent') log(g, 'My parents paid for my season on tour.')
-  }
-  if (coach > 0 && !payFee(g, coach)) {
-    d.coach = 0
-    log(g, "I couldn't afford my coach anymore.", 'bad')
   }
 
   const { titles, majorsBest } = simulateRestOfSeason(g, sport, job, rec, scale)
@@ -1184,8 +1189,17 @@ export function yearlyIndividual(g: GameState): void {
     log(g, 'I passed a random drug test.')
   }
 
+  // Coaches are paid up front for the coming season (hiring one mid-season pays for that season).
+  const renewCoach = (): void => {
+    if (d.coach > 0 && !payFee(g, coachFee(g, d.coach))) {
+      d.coach = 0
+      log(g, "I couldn't afford to keep my coach for next season.", 'bad')
+    }
+  }
+
   // Contracts (teams), the next step up, and retirement.
   if (offer) {
+    renewCoach()
     const nt = sport.tiers[offer.tier]
     scriptChoice(
       g,
@@ -1226,6 +1240,7 @@ export function yearlyIndividual(g: GameState): void {
     retireInd(g, true)
     return
   }
+  renewCoach()
   if (c.age >= sport.retire) {
     scriptChoice(
       g,
@@ -1257,5 +1272,5 @@ export function individualSummary(g: GameState): string {
   const sport = sportOfJob(job)
   const d = jd(job)
   const rec = viewRecord(g, sport.id)
-  return `${sport.name}${d.disc ? ` (${d.disc})` : ''}, ${sport.tiers[d.tier]?.name ?? ''}, ${sport.format === 'race' ? `${d.standing} pts` : rankLabel(d.rank)}${rec ? `, ${rec.titles} titles, ${rec.majors} majors` : ''}`
+  return `${sport.name}${d.disc ? ` (${d.disc})` : ''}, ${sport.tiers[d.tier]?.name ?? ''}, ${sport.format === 'race' ? `${d.standing} pts` : rankLabel(d.rank)}${rec ? `, ${plural(rec.titles, 'title')}, ${plural(rec.majors, 'major')}` : ''}`
 }

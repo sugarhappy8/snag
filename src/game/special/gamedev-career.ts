@@ -15,7 +15,7 @@ import { chance, pick, randFloat, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { addColleague, addFame, blocked, hire, leave, money, promote, quitNote, say, setRole, syncTenure, tell } from './common'
+import { addColleague, addFame, blocked, hire, leave, money, ownFlag, promote, quitNote, say, setOwnFlag, setRole, syncTenure, tell } from './common'
 import { addGamerFame, copiesLabel, firstYearCopies, gamePay, gameTitle, homeReach, industryYear, reviewScores, sequelTitle, trainArt, trainDesign } from './gamedev-core'
 import {
   CONVENTION,
@@ -221,6 +221,7 @@ const INTERVIEW = defineScript('gamedev.job.interview', (g, choice, data) => {
   const port = gamePortfolio(g, p)
   const mood = industryYear(g).mood
   const talent = (l.track === 'code' && g.character.talent === 'Programming') || (l.track === 'art' && g.character.talent === 'Art') ? 6 : 0
+  const referral = hasReferral(g, l.studio) ? 10 : 0
   const score =
     42 +
     (skill - L.skill) * 0.7 +
@@ -228,6 +229,7 @@ const INTERVIEW = defineScript('gamedev.job.interview', (g, choice, data) => {
     Math.min(12, (port.shipped - L.credits) * 3) +
     p.gamerFame * 0.2 +
     talent +
+    referral +
     (mood === 'boom' ? 8 : mood === 'downturn' ? -12 : 0) +
     (l.tier === 'aaa' ? -6 : l.tier === 'indie' ? 4 : 0) +
     randInt(g, -14, 14)
@@ -240,12 +242,18 @@ const INTERVIEW = defineScript('gamedev.job.interview', (g, choice, data) => {
   takeJob(g, l, answer.reply)
 })
 
+/** A recruiter you met at the convention this year vouches for you at their studio. */
+function hasReferral(g: GameState, studio: string): boolean {
+  const v = ownFlag(g, 'gamedev.referral')
+  return !!v && typeof v === 'object' && !Array.isArray(v) && v.year === g.year && v.studio === studio
+}
+
 /** Start working at a studio (quits the current main job). */
 export function takeJob(g: GameState, l: Listing, intro = ''): void {
   const c = g.character
   if (blocked(g) || c.age < levelDef(l.level).minAge) return
   const genre = studioGenre(g, l)
-  const d: GdJobData = { studio: l.studio, tier: l.tier, track: l.track, craft: l.craft, hq: l.hq, city: l.city, proj: null, raiseYear: 0, effort: 0, scare: 0 }
+  const d: GdJobData = { studio: l.studio, tier: l.tier, track: l.track, craft: l.craft, hq: l.hq, city: l.city, proj: null, raiseYear: 0, effort: 0, scare: 0, crunchYear: 0 }
   d.proj = newStudioProject(g, d, genre)
   const { quit } = hire(g, {
     defId: GAME_JOB,
@@ -364,6 +372,7 @@ const CRUNCH = defineScript('gamedev.job.crunch', (g, choice) => {
       proj.quality = clampN(proj.quality + 2, 0, 100)
       proj.crunch += 1
     }
+    d.crunchYear = g.year
     addStat(g, 'health', -randInt(g, 3, 7))
     addStat(g, 'happiness', -randInt(g, 4, 7))
     p.burnout = Math.round(clampN(p.burnout + 22, 0, 100))
@@ -544,7 +553,8 @@ function maybePromote(g: GameState, job: Job, d: GdJobData, p: GdProfile): strin
   const seniority = job.yearsInRole >= 4 && job.performance >= 58
   if (!star && !seniority) return null
   let track = d.track
-  if (track === 'qa' && job.level === 0) track = bestTrack(g, p) ?? 'qa'
+  // Testers move into a craft once they're good enough (a QA Lead isn't stuck there forever).
+  if (track === 'qa' && job.level <= 1) track = bestTrack(g, p) ?? 'qa'
   const L = levelDef(next)
   if (track === 'qa' && next > 1) return null
   if (track !== 'qa' && trackSkill(g, track, p) < L.skill) return null
@@ -606,7 +616,7 @@ export function yearlyGameJob(g: GameState, budget: number): number {
   d.effort = 0
 
   // Burnout: every year in the industry costs a little; a quiet year gives some back.
-  const crunchedThisYear = !!d.proj && d.proj.crunch > 0
+  const crunchedThisYear = d.crunchYear >= g.year - 1
   p.burnout = Math.round(clampN(p.burnout + (crunchedThisYear ? 4 : -8) + (d.tier === 'aaa' ? 2 : 0), 0, 100))
 
   // The studio's game moves forward.
@@ -618,11 +628,9 @@ export function yearlyGameJob(g: GameState, budget: number): number {
   let release: StudioRelease | null = null
   if (proj.progress >= 100) {
     release = releaseStudioGame(g, job, d, p)
-  } else if (proj.progress >= 65 && used < budget && chance(g, d.tier === 'aaa' ? 0.55 : d.tier === 'mid' ? 0.4 : 0.25)) {
-    used++
-    writeJobData(job, d)
-    queueCrunch(g, d)
   }
+  // Crunch before launch (asked at the end of the year, once we know you still work here).
+  const crunchDue = !release && proj.progress >= 65 && chance(g, d.tier === 'aaa' ? 0.55 : d.tier === 'mid' ? 0.4 : 0.25)
   writeJobData(job, d)
   tidy(p)
   if (release && used < budget) {
@@ -681,6 +689,11 @@ export function yearlyGameJob(g: GameState, budget: number): number {
       used++
       say(g, 'Promoted!', `${d.studio} promoted you to ${promoted}! Your new salary is ${money(job.salary)} a year${job.level >= 4 ? ', and junior devs now ask YOU the questions you used to ask' : ''}.`, '\u{1F389}', 'good')
     }
+  }
+
+  if (crunchDue && used < budget) {
+    used++
+    queueCrunch(g, d)
   }
 
   // Burnout catches up.
@@ -880,10 +893,11 @@ export function attendConvention(g: GameState): void {
   // Sometimes a recruiter likes you.
   const listing = g.character.age >= 16 && !gameJob(g) && chance(g, 0.25 + port.shipped * 0.05) ? jobListings(g).find((l) => !requirementProblem(g, l.level, l.track)) : undefined
   if (listing) {
-    say(g, CONVENTION, `${pick(g, lines)} A recruiter from ${listing.studio} liked your ${port.shipped ? 'games' : 'enthusiasm'} and set up an interview for ${listing.title}. Find it in Studio Jobs. (Pass: ${money(cost)}.)`, '\u{1F3AA}', 'good')
+    setOwnFlag(g, 'gamedev.referral', { year: g.year, studio: listing.studio })
+    say(g, CONVENTION, `${pick(g, lines)} A recruiter from ${listing.studio} liked your ${port.shipped ? 'games' : 'enthusiasm'} and told you to apply for their ${listing.title} opening (it's in Studio Jobs). You'll walk into that interview with a referral this year. (Pass: ${money(cost)}.)`, '\u{1F3AA}', 'good')
     return
   }
   say(g, CONVENTION, `${pick(g, lines)}${gain > 0 ? ' A few people recognized your name!' : ''} (Pass: ${money(cost)}.)`, '\u{1F3AA}', 'good')
 }
 
-export const careerInternals = { CRUNCH, BURNOUT, INTERVIEW, releaseStudioGame, maybePromote, applyTo, workHard, takeItEasy, askRaise, pitchIdea, quitJob, retireJob }
+export const careerInternals = { CRUNCH, BURNOUT, INTERVIEW, releaseStudioGame, maybePromote, applyTo, workHard, takeItEasy, askRaise, pitchIdea, quitJob, retireJob, hasReferral }

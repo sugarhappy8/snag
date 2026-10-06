@@ -8,7 +8,7 @@ import { bell, chance, pick } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { addFame, peek, say, short } from './common'
+import { addFame, ordinal, peek, say, short } from './common'
 import { OLYMPIC_TEAM_SPORTS, teamStatus } from './athlete'
 import { amateurBoxer } from './sports-fight'
 import { individualStatus, juniorLevel } from './sports-individual'
@@ -93,8 +93,8 @@ const finalScript = defineScript('sports.olympics.final', (g, choice, data) => {
   if (!medal) {
     addFame(g, 2)
     addStat(g, 'happiness', -6)
-    log(g, `I finished ${pos}th in ${e.event} at the ${games}.`, 'neutral')
-    say(g, 'So Close', `You finished ${pos}${pos === 4 ? 'th, the cruelest place in sport' : 'th'} in ${e.event} at the ${games}. You're still an Olympian, forever.`, '\u{1F3C5}', 'neutral')
+    log(g, `I finished ${ordinal(pos)} in ${e.event} at the ${games}.`, 'neutral')
+    say(g, 'So Close', `You finished ${ordinal(pos)}${pos === 4 ? ', the cruelest place in sport,' : ''} in ${e.event} at the ${games}. You're still an Olympian, forever.`, '\u{1F3C5}', 'neutral')
     honor(g, `Competed for ${nationalTeam(g)} at the ${games}.`, 'Olympian', nationalTeam(g), 7)
     return
   }

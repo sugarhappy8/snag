@@ -3,13 +3,16 @@
 // for prize pools at Masters events and the World Championship. Reflexes peak young, so careers
 // are short; retire into coaching or the casting booth.
 // Every game, team and tournament here is original.
-import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
+import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity } from '../world'
-import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
-import { addBuzz, honor, logistic, recordCareer, sportsGate, tidy, trainGain, wealth } from './sports-core'
+import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view, yearlyList } from './common'
+import { addBuzz, honor, logistic, plural, recordCareer, sportsGate, theName, tidy, trainGain, wealth } from './sports-core'
+
+/** Top salary a team pays a player (the very best earn more from prize money and streaming). */
+const MAX_SALARY = 3_000_000
 
 interface EsEvent {
   id: string
@@ -266,6 +269,8 @@ const signScript = defineScript('sports.es.sign', (g, choice, data) => {
   const o = offers?.[Number(choice)]
   if (!o) return
   const gm = game(o.game)
+  // One signing a year: retiring and re-signing can't reset the event calendar.
+  if (!useYearAction(g, 'sports.es.sign', 1)) return tell(g, 'Team Offers', 'You already went pro once this year. Teams will look at you again next season.', gm.emoji)
   const p = es(g)
   p.retiredAge = null
   const { quit } = hire(g, {
@@ -285,6 +290,7 @@ function proReason(g: GameState): string | null {
   const gate = sportsGate(g, 16)
   if (gate) return gate
   if (esportsJob(g)) return "You're already an esports pro."
+  if (yearActionsUsed(g, 'sports.es.sign') > 0) return 'You already went pro once this year. Teams will look at you again next season.'
   const p = viewEs(g)
   if (!p?.game) return 'Pick your main game first.'
   if (g.character.age > 30) return 'Teams want reflexes. At your age they offer you a coaching job, not a roster spot.'
@@ -302,13 +308,19 @@ function teamOffers(g: GameState, p: EsProfile): TeamOffer[] {
   out.push({ game: gm.id, team: gm.team ? `${pick(g, TEAMS)} Academy` : `${city} Fight Club Gaming`, strength: randInt(g, 40, 65), tier: 0, salary: tidy(18_000 * Math.max(0.4, wealth(g)) + s * 300) })
   if (mmr >= 2800 || s >= 70) {
     const team = pick(g, TEAMS)
-    out.push({ game: gm.id, team, strength: randInt(g, 55, 90), tier: 1, salary: tidy(60_000 + Math.max(0, s - 60) ** 2 * 900) })
+    out.push({ game: gm.id, team, strength: randInt(g, 55, 90), tier: 1, salary: tidy(Math.min(MAX_SALARY, 60_000 + Math.max(0, s - 60) ** 2 * 900)) })
   }
   return out
 }
 
 function esportsAmateurNodes(): MenuNode[] {
-  const needSetup = (g: GameState) => (hasSetup(g) ? null : 'You need a gaming PC, laptop or console (Shopping › Electronics).')
+  const needSetup = (g: GameState) => {
+    if (!hasSetup(g)) return 'You need a gaming PC, laptop or console (Shopping › Electronics).'
+    // Same rule as computer.ts computerLocked: grounded from screens until a set age.
+    const until = g.flags.computerLockedUntil
+    if (typeof until === 'number' && g.character.age < until) return `${typeof g.flags.computerLockedBy === 'string' ? g.flags.computerLockedBy : 'Your parents'} took your computer away until you're ${until}.`
+    return null
+  }
   return [
     {
       type: 'action',
@@ -350,7 +362,10 @@ function esportsAmateurNodes(): MenuNode[] {
       confirm: (g) => (g.character.job ? `Gaming full-time means quitting your job as ${g.character.job.title}. Continue?` : null),
       run: (g) => {
         const p = es(g)
-        const offers = teamOffers(g, p)
+        // The year's offers stay put (backing out can't reroll a stronger team); a new tier of
+        // offers opens once you're good enough for the pro league.
+        const pro = (p.mmr[game(p.game).id] ?? 0) >= 2800 || skill(g, p) >= 70
+        const offers = yearlyList<TeamOffer>(g, `sports.es.offers.${p.game}.${pro ? 'pro' : 'academy'}`, () => teamOffers(g, p))
         scriptChoice(g, signScript, 'Team Offers', 'Teams slid into your DMs.', [...offers.map((o, i) => ({ id: String(i), label: `${o.team}${o.tier === 0 ? ' (academy)' : ''} · ${short(o.salary)}/yr`, emoji: game(o.game).emoji })), { id: 'cancel', label: 'Not yet', emoji: '\u{274C}' }], { emoji: '\u{1F3AE}', data: offers as unknown as Json })
       },
     },
@@ -393,16 +408,16 @@ function bookEs(g: GameState, job: Job, ev: EsEvent, name: string, place: number
     d.earned += prize
     p.earnings += prize
   }
-  let line = `${ordinal(place)} at the ${name}`
+  let line = `${ordinal(place)} at ${theName(name)}`
   if (place === 1) {
-    line = `won the ${name}`
+    line = `won ${theName(name)}`
     p.titles.push(`${name} (${g.year})`)
     count(g, 'sportsTitles')
     addFame(g, ev.tier === 'finals' ? 10 : ev.tier === 'major' ? 5 : 2)
     addBuzz(g, ev.tier === 'finals' ? 25 : 8)
     if (ev.tier !== 'tour') {
       count(g, 'championships')
-      honor(g, `Won the ${name}.`, ev.tier === 'finals' ? `${gm.name} world champion` : `${gm.name} major champion`, gm.name, ev.tier === 'finals' ? 9 : 7)
+      honor(g, `Won ${theName(name)}.`, ev.tier === 'finals' ? `${gm.name} world champion` : `${gm.name} major champion`, gm.name, ev.tier === 'finals' ? 9 : 7)
     }
   }
   if (!d.played.includes(ev.id)) d.played.push(ev.id)
@@ -439,8 +454,8 @@ const finalScript = defineScript('sports.es.final', (g, choice, data) => {
   const won = chance(g, Math.max(0.05, Math.min(0.95, prob)))
   bookEs(g, job, ev, f.name, won ? 1 : 2, false)
   const lead = won ? `${pick(g, ['You hit an impossible clutch and the arena exploded.', 'Your call won the final fight and the trophy.', 'You popped off. The caster lost his voice screaming your name.'])}` : `${pick(g, ['You whiffed the clutch play. The clip will haunt you forever.', `${f.opp} out-played you in the deciding map.`, 'Your team collapsed in the last fight.'])}`
-  log(g, won ? `We won the ${f.name}!` : `We lost the grand final of the ${f.name}.`, won ? 'good' : 'neutral')
-  say(g, won ? 'CHAMPIONS!' : 'Grand Final', `${lead} ${won ? `You won the ${f.name}!` : `Runners-up at the ${f.name}.`}`, won ? '\u{1F3C6}' : gm.emoji, won ? 'good' : 'neutral')
+  log(g, won ? `We won ${theName(f.name)}!` : `We lost the grand final of ${theName(f.name)}.`, won ? 'good' : 'neutral')
+  say(g, won ? 'CHAMPIONS!' : 'Grand Final', `${lead} ${won ? `You won ${theName(f.name)}!` : `Runners-up at ${theName(f.name)}.`}`, won ? '\u{1F3C6}' : gm.emoji, won ? 'good' : 'neutral')
 })
 
 const enterScript = defineScript('sports.es.enter', (g, choice) => {
@@ -460,7 +475,7 @@ const enterScript = defineScript('sports.es.enter', (g, choice) => {
       g,
       finalScript,
       'Grand Final',
-      `You made the grand final of the ${name} against ${opp}. Deciding map, last round, everything on the line.`,
+      `You made the grand final of ${theName(name)} against ${opp}. Deciding map, last round, everything on the line.`,
       [
         { id: 'flank', label: 'Go for the hero flank', emoji: '\u{1F525}' },
         { id: 'safe', label: 'Play it safe and trade', emoji: '\u{1F9CA}' },
@@ -520,7 +535,7 @@ export function esportsJobNodes(g: GameState): MenuNode[] {
       emoji: '\u{1F5A5}\u{FE0F}',
       subtitle: 'Each skill once a year',
       disabledReason: (gg) => sportsGate(gg, 0),
-      run: (gg) => scriptChoice(gg, scrimScript, 'Scrims', 'What do you work on?', ATTRS.map((a) => ({ id: a, label: `${a} (${viewEs(gg)?.attrs[a] ?? 0}%)`, emoji: '\u{1F3AF}' })), { emoji: '\u{1F5A5}\u{FE0F}' }),
+      run: (gg) => scriptChoice(gg, scrimScript, 'Scrims', 'What do you work on?', [...ATTRS.map((a) => ({ id: a, label: `${a} (${viewEs(gg)?.attrs[a] ?? 0}%)`, emoji: '\u{1F3AF}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }], { emoji: '\u{1F5A5}\u{FE0F}' }),
     },
     {
       type: 'action',
@@ -562,7 +577,7 @@ export function esportsJobNodes(g: GameState): MenuNode[] {
       id: 'sports.es.record',
       label: 'Career',
       emoji: '\u{1F4CB}',
-      subtitle: () => `${p?.titles.length ?? 0} titles · ${short(p?.earnings ?? 0)} earnings`,
+      subtitle: () => `${plural(p?.titles.length ?? 0, 'title')} · ${short(p?.earnings ?? 0)} earnings`,
       children: (): MenuNode[] => {
         const nodes: MenuNode[] = [{ type: 'info', id: 'sports.es.r.a', emoji: '\u{1F3AF}', text: ATTRS.map((a) => `${a} ${p?.attrs[a] ?? 0}`).join(' · ') }]
         ;(p?.titles ?? []).slice(-6).forEach((t, i) => nodes.push({ type: 'info', id: `sports.es.r.t${i}`, emoji: '\u{1F3C6}', text: t }))
@@ -580,7 +595,7 @@ function retireEs(g: GameState): void {
   const gm = game(ej(job).game)
   p.retiredAge = g.character.age
   const majors = p.titles.filter((t) => /Masters|Major|World|Grand Brawl|Invitational|Combo Kings/.test(t)).length
-  recordCareer(g, { sport: `${gm.name} (esports)`, kind: 'esports', from: p.startAge, best: majors ? `${majors} major titles` : `${p.titles.length} titles`, legacy: Math.min(100, majors * 15 + p.titles.length * 4) })
+  recordCareer(g, { sport: `${gm.name} (esports)`, kind: 'esports', from: p.startAge, best: majors ? plural(majors, 'major title') : plural(p.titles.length, 'title'), legacy: Math.min(100, majors * 15 + p.titles.length * 4) })
   leave(g, 'retired')
   log(g, `I retired from pro ${gm.name}.`, 'event')
   say(g, 'Retired', `You retired from competitive ${gm.name} at ${g.character.age} (ancient, in esports years) with ${p.titles.length} title${p.titles.length === 1 ? '' : 's'} and ${short(p.earnings)} in prize money.`, '\u{1F3C5}', 'good')
@@ -661,8 +676,14 @@ export function yearlyEsports(g: GameState): void {
   d.contractYears -= 1
   if (d.contractYears <= 0) {
     const s = skill(g, p)
-    const salary = tidy(Math.max(15_000, job.salary * (s >= 70 ? 1.3 : s >= 55 ? 1 : 0.7)))
-    const up: TeamOffer | null = s >= 68 && d.tier === 0 ? { game: gm.id, team: pick(g, TEAMS), strength: randInt(g, 60, 90), tier: 1, salary: tidy(80_000 + (s - 60) ** 2 * 1_200) } : s >= 80 && chance(g, 0.5) ? { game: gm.id, team: pick(g, TEAMS.filter((t) => t !== d.team)), strength: randInt(g, 75, 95), tier: 1, salary: tidy(salary * 1.5) } : null
+    // Raises follow form, but no team pays more than the market's top contract.
+    const salary = tidy(Math.min(MAX_SALARY, Math.max(15_000, job.salary * (s >= 70 ? 1.3 : s >= 55 ? 1 : 0.7))))
+    const up: TeamOffer | null =
+      s >= 68 && d.tier === 0
+        ? { game: gm.id, team: pick(g, TEAMS), strength: randInt(g, 60, 90), tier: 1, salary: tidy(Math.min(MAX_SALARY, 80_000 + (s - 60) ** 2 * 1_200)) }
+        : s >= 80 && chance(g, 0.5)
+          ? { game: gm.id, team: pick(g, TEAMS.filter((t) => t !== d.team)), strength: randInt(g, 75, 95), tier: 1, salary: tidy(Math.min(MAX_SALARY, Math.max(salary, salary * 1.5))) }
+          : null
     scriptChoice(
       g,
       renewScript,
