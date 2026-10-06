@@ -60,6 +60,24 @@ export interface NewLifeOptions {
   seed?: number
   /** Calendar year of birth (the UI passes the real current year). */
   year?: number
+  /**
+   * Starting stats chosen before birth (New Life › Customize stats). Each one replaces the
+   * rolled/inherited value once the baby is generated (clamped 0-100); missing keys stay random.
+   */
+  stats?: Partial<Record<StartStatKey, number>>
+}
+
+/** The four main stats a player may set before birth. */
+export type StartStatKey = 'happiness' | 'health' | 'smarts' | 'looks'
+export const START_STAT_KEYS: readonly StartStatKey[] = ['happiness', 'health', 'smarts', 'looks']
+
+/** Apply pre-birth stat choices; ignores anything that isn't a finite number. */
+function applyStartStats(c: Character, stats: NewLifeOptions['stats']): void {
+  if (!stats || typeof stats !== 'object') return
+  for (const key of START_STAT_KEYS) {
+    const v = stats[key]
+    if (typeof v === 'number' && Number.isFinite(v)) c.stats[key] = clampStat(v)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -686,6 +704,9 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
     g.flags.latentTalent = weightedPick(g, TALENTS, (t) => t.weight).id
     g.flags.talentAge = randInt(g, 5, 12)
   }
+
+  // Chosen stats go on last so the same seed still rolls the same family and destiny.
+  applyStartStats(c, opts.stats)
   return g
 }
 
@@ -1077,6 +1098,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     midlifeCrisis: age > 55,
     previousGeneration: oldName,
     ...(typeof n.flags.heirOccupation === 'string' ? { heirOccupation: n.flags.heirOccupation } : {}),
+    // Market shocks are world state (a banned company stays banned), not the old character's.
+    ...(Array.isArray(n.flags.marketShocks) ? { marketShocks: n.flags.marketShocks } : {}),
   }
   if (age < 12 && !heir.talent && chance(n, 0.3)) {
     n.flags.latentTalent = weightedPick(n, TALENTS, (t) => t.weight).id

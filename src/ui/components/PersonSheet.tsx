@@ -6,7 +6,7 @@ import { personActions } from '../../game/relationships'
 import type { GameState, MenuNode, Person } from '../../game/types'
 import { useApp } from '../store'
 import { ChatSheet } from './ChatSheet'
-import { groupChildren, groupHeader, MenuRows, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape } from './MenuList'
+import { groupChildren, groupHeader, MenuRows, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape, type MenuSpot } from './MenuList'
 import { Sheet } from './Sheet'
 import { StatBar } from './StatBar'
 
@@ -15,6 +15,10 @@ export interface PersonSheetProps {
   onClose: () => void
   /** Back arrow at the top level (e.g. return to the relationships list). */
   onBack?: () => void
+  /** Open inside this group path (or the deepest part of it that still exists). */
+  initial?: MenuSpot | null
+  /** An interaction is about to close the sheet: where the player was. */
+  onLeave?: (spot: MenuSpot) => void
 }
 
 /** Display name: pets and people without a last name use the first name only. */
@@ -33,7 +37,7 @@ export function personSubtitle(p: Person): string {
   return `${rel} · ${ageText(p.age)}`
 }
 
-function safeActions(g: GameState, p: Person): MenuNode[] {
+export function safeActions(g: GameState, p: Person): MenuNode[] {
   try {
     return personActions(g, p)
   } catch (err) {
@@ -166,13 +170,13 @@ export function PersonDetails({ g, person }: { g: GameState; person: Person }) {
   )
 }
 
-export function PersonSheet({ personId, onClose, onBack }: PersonSheetProps) {
+export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: PersonSheetProps) {
   const g = useApp((s) => s.game)
   const [chatOpen, setChatOpen] = useState(false)
   const person = g?.people.find((p) => p.id === personId)
   const rootNodes = g && person ? safeActions(g, person) : []
-  const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []))
-  const runner = useMenuRunner({ onOpenGroup: nav.push, onClose })
+  const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []), initial)
+  const runner = useMenuRunner({ onOpenGroup: nav.push, onClose, onLeave: onLeave && (() => onLeave(nav.snapshot())) })
   useSheetEscape(nav.anchorRef, () => (nav.trail.length > 0 ? nav.pop() : (onBack ?? onClose)()))
 
   if (!g) return null

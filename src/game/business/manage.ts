@@ -11,6 +11,7 @@ import { becomeCeo, ceoPayNorm, installManager, managerCandidate, managerName, m
 import { ceoSkill, equipmentValue, insurancePremiumFor, localEcon, maxProduction, planFor, priceBounds, refreshValue, startupCost, staffPower, valuationOf } from './economy'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
 import { conglomerate, investorFirm, localSport } from './flavor'
+import { isStudio, studioInfo, studioNodes } from './gamestudio'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { industryDef } from './industries'
@@ -857,8 +858,9 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   else rows.push(b.manager ? `Run by ${managerName(b.manager)} (general manager, skill ${b.manager.skill}/100, ${money(b.manager.salary)}/yr)` : 'No one is running it day to day.')
   rows.push(b.public ? `Listed on the ${b.exchange} at $${b.sharePrice.toFixed(2)} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')
   rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
-  rows.push(`Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
-  rows.push(`Price ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : `$${e.goingPrice.toFixed(2)}`}) · plan ${units(b.production)} ${def.unit}`)
+  rows.push(isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
+  if (isStudio(b)) rows.push(studioInfo(g, a))
+  else rows.push(`Price ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : `$${e.goingPrice.toFixed(2)}`}) · plan ${units(b.production)} ${def.unit}`)
   const s = b.last
   if (s) {
     rows.push(`${s.year}: sales ${money(s.revenue)} · ${s.net >= 0 ? 'profit' : 'loss'} ${money(Math.abs(s.net))} · corporate tax ${money(s.corpTax)}${s.salesTax > 0 ? ` · ${m.salesTaxName} remitted ${money(s.salesTax)}` : ''}`)
@@ -874,13 +876,19 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
 export function businessView(g: GameState, a: Asset): MenuNode[] {
   const nodes: MenuNode[] = [...infoRows(g, a)]
   nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-  nodes.push(
-    act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
-      subtitle: 'Open the planning report',
-      run: (gg, cur, bb) => queueReport(gg, cur, bb),
-    }),
-  )
-  nodes.push(staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
+  if (isStudio(readBiz(g, a))) {
+    // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
+    nodes.push(...studioNodes(g, a))
+    nodes.push(staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))
+  } else {
+    nodes.push(
+      act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
+        subtitle: 'Open the planning report',
+        run: (gg, cur, bb) => queueReport(gg, cur, bb),
+      }),
+    )
+    nodes.push(staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
+  }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })

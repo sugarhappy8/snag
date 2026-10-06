@@ -15,6 +15,7 @@ import type { Asset, GameState } from '../types'
 import { getCountry } from '../world'
 import { industryDef, type IndustryDef, type StaffFocus } from './industries'
 import { traitOf } from './flavor'
+import { studioValue } from './gamestudio-state'
 import { stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { clampN, dollars, round2 } from './util'
 
@@ -599,7 +600,9 @@ export function valuationOf(b: BizState): number {
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
   const unitCost = localEcon(b.industry, b.countryId, b.city).unitCost
   const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
-  let equity = Math.max(ev, floor) + b.cash - b.debt
+  // A game studio is also worth its back catalog and the games in its pipeline.
+  const games = b.industry === 'gameStudio' ? studioValue(b.studio) : 0
+  let equity = Math.max(ev, floor) + games + b.cash - b.debt
   if (b.cooked > 0) equity *= 1 + 0.25 * Math.min(3, b.cooked)
   return Math.max(0, dollars(equity))
 }

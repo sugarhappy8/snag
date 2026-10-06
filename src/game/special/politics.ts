@@ -2,11 +2,19 @@
 // campaign trail, election night), then govern: read the newspaper to learn what voters care
 // about, broadcast speeches, stage rallies, pass or veto bills, dodge (or pocket) political
 // favors, survive scandals and impeachment, and run for re-election or higher office.
-// School Board Director → Mayor → Governor → President / Prime Minister.
-import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, spend, useYearAction } from '../core'
+// School Board Director → Mayor → Governor → President / Prime Minister. From Mayor up you can
+// also abuse the office: market-moving announcements, insider trades and the fallout (see
+// "Abuse of power" below).
+import { cryptoBanned, enforcement, local, readState as readMoney, regulator } from '../computer/money-common'
+import { caseProfit, coinTargets, findTarget, freezeBets, maxBet, minBet, openBetsOn, placeBet, priceLabel, stockTargets, tagBets, type BetTarget } from '../computer/money-stocks'
+import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, spend, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
 import { localPick, localSoftDrink } from '../data/locales'
+import { marketOf } from '../data/markets'
+import { exchangeInfo } from '../invest/engine'
+import { addMarketShock, indexShockFactor, type ShockCause } from '../invest/shocks'
+import { investmentHoldings, revalueHoldings } from '../investments'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -462,6 +470,8 @@ interface PolProfile {
   impeached: number
   formerLeader: boolean
   formerLeaderTitle: string
+  /** Market-moving announcements, insider trades and the cases they left behind (absent in old saves). */
+  abuse?: AbuseData
 }
 
 const initPol = (): PolProfile => ({ held: [], wins: 0, losses: 0, party: '', billsPassed: 0, vetoes: 0, impeached: 0, formerLeader: false, formerLeaderTitle: '' })
@@ -1339,9 +1349,745 @@ export function politicsJobNodes(g: GameState): MenuNode[] {
     billsMenu(),
     orderAction,
     fundraiseAction,
+    abuseMenu(),
     careerInfo(),
     resignAction,
   ]
+}
+
+// ---------------------------------------------------------------------------
+// Abuse of power: market-moving announcements and insider trading
+//
+// From Mayor up, office lets you move markets: ban a company, order an investigation, threaten
+// to nationalize it, hand it a fat government contract, deregulate its industry, or endorse a
+// coin. The price really moves (invest/shocks.ts): the Investments menu, index funds and every
+// option or short on it feel it. Bet on the move first (puts or calls from the computer, coins,
+// plain shares, or a crony's account) and you profit... until a journalist, the regulator or
+// your own crony connects the dots. Heads of government move markets the most; a mayor barely
+// nudges them. Where corruption is high regulators look away; where it is low they rarely do.
+// Presidents (and leaders of captured courts) can't be charged while in office, but the case
+// waits for them. Heat rises with every announcement and cools a little each year.
+
+interface InsiderCase {
+  id: string
+  age: number
+  year: number
+  target: string
+  symbol: string
+  secId: string
+  cause: ShockCause
+  /** Dollars riding on the move when it was announced. */
+  stake: number
+  /** 'own' brokerage bets, a 'crony' account, or plain 'shares' / coins in Investments. */
+  via: 'own' | 'crony' | 'shares'
+  crony: string
+  /** 0-1: how strong the case is once someone looks. */
+  evidence: number
+  /** open: nobody knows yet · pending: charges wait until you leave office · closed. */
+  status: 'open' | 'pending' | 'closed'
+  office: OfficeId
+  title: string
+  countryId: string
+  /** Years it has gone unnoticed. */
+  quiet: number
+  /** Extra charges picked up along the way (obstruction...). */
+  extra: string[]
+  /** Estimated paper gain on plain shares and coins held through the announcement. */
+  gain: number
+}
+
+interface AbuseData {
+  /** 0-100: how closely the press and regulators are watching you. Cools every year. */
+  heat: number
+  /** Market-moving announcements made (markets learn to shrug). */
+  moves: number
+  cases: InsiderCase[]
+  /** The friend who "runs a little fund" ('' until you need one). */
+  crony: string
+}
+
+const ABUSE_SCRIPT = 'special.pol.abuse.announce'
+const CRONY_DIR_SCRIPT = 'special.pol.abuse.cronyDir'
+const CRONY_SIZE_SCRIPT = 'special.pol.abuse.cronySize'
+const INSIDER_SCRIPT = 'special.pol.abuse.exposed'
+const CRONY_CUT = 0.25
+const MAX_CRONY_BETS = 2
+
+function freshAbuse(): AbuseData {
+  return { heat: 0, moves: 0, cases: [], crony: '' }
+}
+
+function repairAbuse(a: AbuseData): AbuseData {
+  a.heat = Math.max(0, Math.min(100, Number.isFinite(a.heat) ? a.heat : 0))
+  a.moves = Math.max(0, Number.isFinite(a.moves) ? Math.round(a.moves) : 0)
+  if (typeof a.crony !== 'string') a.crony = ''
+  if (!Array.isArray(a.cases)) a.cases = []
+  a.cases = a.cases.filter((c) => c && typeof c.id === 'string' && typeof c.secId === 'string' && ['open', 'pending', 'closed'].includes(c.status) && Number.isFinite(c.age))
+  for (const c of a.cases) {
+    if (!Array.isArray(c.extra)) c.extra = []
+    if (!Number.isFinite(c.evidence)) c.evidence = 0.5
+    if (!Number.isFinite(c.quiet)) c.quiet = 0
+    if (!Number.isFinite(c.stake)) c.stake = 0
+    if (!Number.isFinite(c.gain)) c.gain = 0
+  }
+  // Keep every live case, and only the last few closed ones.
+  const closed = a.cases.filter((c) => c.status === 'closed')
+  if (closed.length > 8) {
+    const drop = new Set(closed.slice(0, closed.length - 8).map((c) => c.id))
+    a.cases = a.cases.filter((c) => !drop.has(c.id))
+  }
+  return a
+}
+
+/** Read-only view (menus). */
+function abuseView(g: GameState): AbuseData {
+  const p = peek<PolProfile>(g, 'politics')
+  const raw = p?.abuse
+  return raw && typeof raw === 'object' ? repairAbuse(JSON.parse(JSON.stringify(raw)) as AbuseData) : freshAbuse()
+}
+
+/** Mutable data (actions and hooks only). */
+function abuseData(g: GameState): AbuseData {
+  const p = polProfile(g)
+  if (!p.abuse || typeof p.abuse !== 'object') p.abuse = freshAbuse()
+  return repairAbuse(p.abuse)
+}
+
+function officeRank(job: Job | null): number {
+  return job ? officeOf(pdata(job).office).rank : -1
+}
+
+/** Can't be charged while in office: presidents, and leaders whose courts answer to them. */
+function immuneInOffice(g: GameState): boolean {
+  const job = politicianJob(g)
+  if (!job || pdata(job).office !== 'leader') return false
+  return leaderTitle(g) === 'President' || marketOf(g.character.countryId).corruption >= 60
+}
+
+function heatLabel(h: number): string {
+  return h >= 70 ? 'scorching' : h >= 45 ? 'hot' : h >= 20 ? 'warm' : 'cool'
+}
+
+function country(g: GameState): string {
+  return countryLabel(getCountry(g.character.countryId))
+}
+
+/** The local paper that breaks a story (the same paper for the whole scandal, picked from its id). */
+function newspaper(g: GameState, key: string): string {
+  const names = ['Herald', 'Chronicle', 'Gazette', 'Tribune', 'Courier', 'Sentinel']
+  let h = 0
+  for (const ch of `${g.character.city}|${key}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return `The ${g.character.city} ${names[h % names.length]}`
+}
+
+interface MoveDef {
+  id: ShockCause
+  label: string
+  emoji: string
+  bearish: boolean
+  /** Which assets it applies to. */
+  stock: boolean
+  coin: boolean
+  /** Lowest office rank that can do it (1 Mayor, 2 Governor / legislator, 3 head of government). */
+  minRank: number
+  /** Size of the move at full power (share of the price). The move is permanent (see invest/shocks.ts). */
+  size: number
+  /** Approval change range. */
+  approval: [number, number]
+}
+
+const MOVES: MoveDef[] = [
+  { id: 'ban', label: 'Announce a ban', emoji: '\u{1F6AB}', bearish: true, stock: true, coin: true, minRank: 1, size: 0.55, approval: [-3, 4] },
+  { id: 'probe', label: 'Order an investigation', emoji: '\u{1F50E}', bearish: true, stock: true, coin: true, minRank: 1, size: 0.3, approval: [-1, 3] },
+  { id: 'nationalize', label: 'Threaten to nationalize it', emoji: '\u{1F3DB}\u{FE0F}', bearish: true, stock: true, coin: false, minRank: 3, size: 0.65, approval: [-8, 6] },
+  { id: 'contract', label: 'Award it a huge contract', emoji: '\u{1F4DC}', bearish: false, stock: true, coin: false, minRank: 1, size: 0.45, approval: [-4, 1] },
+  { id: 'deregulate', label: 'Deregulate its industry', emoji: '\u{2702}\u{FE0F}', bearish: false, stock: true, coin: false, minRank: 2, size: 0.28, approval: [-3, 2] },
+  { id: 'endorse', label: 'Publicly endorse it', emoji: '\u{1F3A4}', bearish: false, stock: false, coin: true, minRank: 2, size: 0.8, approval: [-6, 1] },
+]
+
+function moveOf(id: string): MoveDef | undefined {
+  return MOVES.find((m) => m.id === id)
+}
+
+/** The moves this office can make about this kind of asset. */
+function movesFor(rank: number, asset: 'stock' | 'coin'): MoveDef[] {
+  return MOVES.filter((m) => rank >= m.minRank && (asset === 'coin' ? m.coin && rank >= 2 : m.stock))
+}
+
+/** How much a word from this office moves this market (0-1). */
+function marketPower(g: GameState, rank: number, t: BetTarget): number {
+  const office = rank >= 3 ? 1 : rank === 2 ? 0.45 : 0.18
+  if (t.asset === 'coin') {
+    // Crypto trades worldwide: only big economies move it much.
+    const m = marketOf(g.character.countryId)
+    const gdpM = Math.max(1, m.populationM * m.gdpPerCapita)
+    const weight = Math.max(0.15, Math.min(1, (Math.log10(gdpM) - 4) / 3.2))
+    return office * weight * (rank >= 3 ? 1 : 0.5)
+  }
+  // A small country trading on a neighbor's exchange is a small slice of these companies' business.
+  return office * (exchangeInfo(g.character.countryId).home === g.character.countryId ? 1 : 0.5)
+}
+
+const NATIONAL_PROJECTS = ['rebuild every bridge in the country', 'supply the army with "tactical snacks"', 'build a high-speed rail line to nowhere in particular', 'digitize every government form (twice)', 'modernize the national power grid', 'paint every government building beige']
+const REGIONAL_PROJECTS = ['repave every highway in {region}', 'build a prison nobody asked for', 'run the regional lottery', 'replace every streetlight in {region}']
+const CITY_PROJECTS = ['fix every pothole in {city}', 'build a new stadium', "run the city's parking meters", 'collect the garbage in {city}']
+
+function contractSize(g: GameState, rank: number): number {
+  const w = Math.max(0.25, getCountry(g.character.countryId).wealth || 1)
+  const base = rank >= 3 ? randInt(g, 3, 30) * 1_000_000_000 : rank === 2 ? randInt(g, 2, 20) * 100_000_000 : randInt(g, 5, 80) * 1_000_000
+  return Math.round((base * w) / 1_000_000) * 1_000_000
+}
+
+/** What you said, in the words of your office. */
+function announcementText(g: GameState, rank: number, move: MoveDef, t: BetTarget): string {
+  const c = g.character
+  const place = rank >= 3 ? country(g) : rank === 2 ? (regional(g) ? regionName(g) : country(g)) : c.city
+  const legislator = rank === 2 && !regional(g)
+  const coin = t.asset === 'coin'
+  const fill = (s: string) => s.replace('{region}', regionName(g)).replace('{city}', c.city)
+  switch (move.id) {
+    case 'ban':
+      if (coin) return rank >= 3 ? `You announced that ${t.name} will be banned in ${place}, effective "very soon."` : legislator ? `You tabled a bill to ban ${t.name} and called it "a pyramid scheme with a logo."` : `You announced that ${place} will ban ${t.name} "to protect our grandmothers."`
+      if (legislator) return `You tabled a bill to ban ${t.name} from operating in ${country(g)}, citing "concerns" you declined to name.`
+      return rank === 1 ? `You announced that ${t.name} is banned from doing business in ${place}.` : `You announced that ${t.name} will be banned from operating in ${place} "for reasons of public safety."`
+    case 'probe':
+      if (coin) return `You ordered a crackdown on ${t.name}, calling it "a scam for people who think they're too smart for scams."`
+      if (rank === 1) return `You sent city inspectors to every ${t.name} office in ${place}, armed with clipboards and a grudge.`
+      if (legislator) return `You used parliamentary privilege to accuse ${t.name} of fraud on the floor of ${legislatorHouse(g)}, in front of every camera in the building.`
+      return `You ordered a sweeping government investigation into ${t.name}, citing "very serious concerns."`
+    case 'nationalize':
+      return `You told reporters that ${t.name} is "too important to be left to shareholders" and hinted at nationalizing it.`
+    case 'contract': {
+      const amount = money(contractSize(g, rank))
+      const project = fill(pick(g, rank >= 3 ? NATIONAL_PROJECTS : rank === 2 ? REGIONAL_PROJECTS : CITY_PROJECTS))
+      if (legislator) return `You steered a ${amount} government contract to ${t.name} to ${project}.`
+      const level = rank >= 3 ? 'government' : rank === 2 ? (regional(g)?.unit === 'state' ? 'state' : 'regional') : 'city'
+      return `You awarded ${t.name} a ${amount} ${level} contract to ${project}.`
+    }
+    case 'deregulate':
+      return legislator ? `You pushed through an amendment scrapping the rules ${t.name}'s whole industry hates most.` : `You scrapped a mountain of regulations on ${t.sector.toLowerCase()} companies, starting with ${t.name}'s least favorite ones.`
+    case 'endorse':
+      if (rank >= 3) return `You declared ${t.name} "the currency of the future" and floated making it legal tender in ${place}.`
+      if (legislator) return `You told ${legislatorHouse(g)} that ${t.name} is "the future of money," then changed your profile picture to one with laser eyes.`
+      return `You announced that ${place} will accept ${t.name} for taxes and posted a selfie with laser eyes.`
+  }
+}
+
+function legislatorHouse(g: GameState): string {
+  return legislator(g).house
+}
+
+/** The player's positions that win if the price moves this way (insider positions). */
+function insiderPositions(g: GameState, t: BetTarget, bearish: boolean): { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string } {
+  const out = { betIds: [] as string[], own: 0, crony: 0, shares: 0, index: 0, indexUnits: 0, cronyName: '' }
+  // Index options on the same exchange: a company's crash drags its index down with it.
+  if (t.asset === 'stock') {
+    for (const p of readMoney(g).positions) {
+      if (p.side !== 'buy' || p.mode === 'paper' || p.exKey !== t.exKey || p.dir !== (bearish ? 'put' : 'call')) continue
+      out.index += Math.max(0, p.premium)
+      out.indexUnits += Math.max(0, p.units)
+    }
+  }
+  for (const b of openBetsOn(g, t.secId)) {
+    const wins = bearish ? b.kind === 'put' || b.kind === 'short' : b.kind === 'call' || b.kind === 'long'
+    if (!wins || b.caseId) continue
+    out.betIds.push(b.id)
+    if (b.via === 'crony') {
+      out.crony += b.premium
+      out.cronyName = b.crony
+    } else out.own += b.premium
+  }
+  if (!bearish) for (const a of investmentHoldings(g)) if (str(a.details.secId) === t.secId) out.shares += Math.max(0, a.value)
+  return out
+}
+
+/** Make a market-moving announcement about a company or a coin. */
+function announce(g: GameState, secId: string, moveId: string): void {
+  const job = politicianJob(g)
+  const rank = officeRank(job)
+  const move = moveOf(moveId)
+  if (!job || rank < 1 || !move || blocked(g, 0)) return
+  const t = findTarget(g, secId)
+  if (!t) return tell(g, 'Announcement', 'That company no longer trades. Your speechwriters are crushed.', '\u{1F4E2}')
+  if (!movesFor(rank, t.asset).some((m) => m.id === move.id)) return tell(g, 'Announcement', `A ${job.title} can't do that. Even you have limits, apparently.`, '\u{1F6AB}')
+  if (!useYearAction(g, 'pol.marketMove', 1)) return tell(g, 'Announcement', "You already moved the markets once this year. Your press secretary has locked the podium.", '\u{1F4E2}')
+  const a = abuseData(g)
+  const d = pdata(job)
+  // Positions first: the shock reprices them.
+  const pos = insiderPositions(g, t, move.bearish)
+  const stake = pos.own + pos.crony + pos.shares + pos.index
+  const indexBefore = indexShockFactor(g, t.exKey, g.year)
+  // Markets take a popular leader more seriously, and learn to shrug at a serial announcer.
+  const credibility = 0.75 + d.approval / 200
+  const shrug = Math.pow(0.8, a.moves)
+  const size = Math.min(0.85, move.size * marketPower(g, rank, t) * credibility * shrug * (0.8 + rand(g) * 0.4))
+  const mult = move.bearish ? Math.max(0.15, 1 - size) : 1 + size
+  addMarketShock(g, { asset: t.asset, secId: t.secId, exKey: t.exKey, slot: t.slot, name: t.name, symbol: t.symbol, cause: move.id, year: g.year, mult, fade: 0, countryId: g.character.countryId })
+  revalueHoldings(g)
+  // What the index options gain from the drag on the index (seized if investigators come).
+  const indexGain = t.asset === 'stock' ? pos.indexUnits * Math.abs(indexShockFactor(g, t.exKey, g.year) / indexBefore - 1) : 0
+  a.moves += 1
+  a.heat = Math.min(100, a.heat + (stake > 0 ? (pos.own > 0 || pos.index > 0 ? 24 : 16) : 8))
+  count(g, 'marketMoves')
+  const delta = randInt(g, move.approval[0], move.approval[1]) - (a.moves >= 3 ? 2 : 0)
+  addApproval(job, delta)
+  addFame(g, 1)
+  const said = announcementText(g, rank, move, t)
+  const moved = `${t.name} (${t.symbol}) ${move.bearish ? 'plunged' : 'soared'} ${Math.round(Math.abs(mult - 1) * 100)}% within hours.`
+  let tail = ''
+  if (stake > 0) {
+    const via: InsiderCase['via'] = pos.own > 0 || pos.index > 0 ? 'own' : pos.crony > 0 ? 'crony' : 'shares'
+    const cs: InsiderCase = {
+      id: `case${g.year}-${a.cases.length}`,
+      age: g.character.age,
+      year: g.year,
+      target: t.name,
+      symbol: t.symbol,
+      secId: t.secId,
+      cause: move.id,
+      stake: Math.round(stake),
+      via,
+      crony: pos.cronyName,
+      evidence: via === 'own' ? 0.75 : via === 'shares' ? 0.6 : 0.4,
+      status: 'open',
+      office: d.office,
+      title: job.title,
+      countryId: g.character.countryId,
+      quiet: 0,
+      extra: [],
+      gain: Math.round(pos.shares * Math.max(0, mult - 1) + (Number.isFinite(indexGain) ? indexGain : 0)),
+    }
+    a.cases.push(cs)
+    tagBets(g, pos.betIds, cs.id)
+    addHidden(g, 'karma', -6)
+    addHidden(g, 'notoriety', 2)
+    count(g, 'insiderTrades')
+    remember(g, `As ${job.title}, bet on ${t.name} before announcing news that moved its price.`)
+    tail =
+      via === 'shares'
+        ? ` The ${t.symbol} you quietly bought beforehand is suddenly worth a lot more.`
+        : via === 'crony'
+          ? ` Somewhere, ${pos.cronyName} is smiling at a screen. Your bet pays out when the year ends.`
+          : pos.own > 0
+            ? ` The ${move.bearish ? 'puts' : 'calls'} in your own brokerage account are suddenly worth a fortune. They settle when the year ends.`
+            : ` The ${exchangeInfo(g.character.countryId).ex.index} ${move.bearish ? 'puts' : 'calls'} in your brokerage account just got a lot more valuable. They settle when the year ends.`
+  }
+  log(g, `As ${job.title}, I ${move.bearish ? 'went after' : 'boosted'} ${t.name}, and its ${t.asset === 'coin' ? 'price' : 'stock'} ${move.bearish ? 'crashed' : 'jumped'}.`, 'event')
+  say(g, 'Market Mover', `${said}\n\n${moved}${tail}\n\nApproval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`, move.emoji, stake > 0 ? 'neutral' : delta >= 0 ? 'good' : 'neutral')
+}
+
+defineScript(ABUSE_SCRIPT, (g, choice, data) => {
+  if (choice === 'cancel' || !data || typeof data !== 'object' || Array.isArray(data)) return
+  announce(g, str(data.secId), choice)
+})
+
+function cronyName(g: GameState): string {
+  const a = abuseData(g)
+  if (!a.crony) {
+    const gender = chance(g, 0.5) ? 'male' : 'female'
+    a.crony = `${randomFirstName(g, g.character.countryId, gender)} ${randomLastName(g, g.character.countryId)}`
+  }
+  return a.crony
+}
+
+function cronyBlock(g: GameState): string | null {
+  const b = blocked(g, 0)
+  if (b) return b
+  if (yearActionsUsed(g, 'pol.crony') >= 1) return 'You already tipped off your crony this year. Even they think you should lie low.'
+  const open = readMoney(g).bets.filter((x) => x.via === 'crony').length
+  if (open >= MAX_CRONY_BETS) return `Your crony is already holding ${open} of your bets. Wait for them to settle.`
+  if (g.character.money < minBet(g)) return `You need at least ${money(minBet(g))} in cash to hand over.`
+  return null
+}
+
+defineScript(CRONY_DIR_SCRIPT, (g, choice, data) => {
+  if (choice === 'cancel' || !data || typeof data !== 'object' || Array.isArray(data) || cronyBlock(g)) return
+  const job = politicianJob(g)
+  const t = findTarget(g, str(data.secId))
+  if (!job || officeRank(job) < 1 || !t) return
+  const coin = t.asset === 'coin'
+  const kind = choice === 'down' ? (coin ? 'short' : 'put') : choice === 'up' ? (coin ? 'long' : 'call') : ''
+  if (!kind) return
+  const name = cronyName(g)
+  const hi = Math.max(minBet(g), Math.min(maxBet(g), Math.floor(Math.max(0, g.character.money))))
+  scriptInput(g, {
+    title: 'Hand Over the Cash',
+    emoji: '\u{1F4BC}',
+    text: `How much cash do you slip ${name} for ${coin ? (kind === 'short' ? `a 2x short on ${t.name}` : `a long bet on ${t.name}`) : `${kind}s on ${t.name}`}? ${name} keeps ${Math.round(CRONY_CUT * 100)}% of any profit. You can hand over ${money(minBet(g))} to ${money(hi)}.`,
+    input: 'number',
+    min: minBet(g),
+    max: hi,
+    defaultValue: String(Math.max(minBet(g), Math.round(hi / 10))),
+    scriptId: CRONY_SIZE_SCRIPT,
+    data: { secId: t.secId, kind },
+  })
+})
+
+defineScript(CRONY_SIZE_SCRIPT, (g, value, data) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || cronyBlock(g)) return
+  const job = politicianJob(g)
+  if (!job || officeRank(job) < 1) return
+  const kind = str(data.kind)
+  if (!['call', 'put', 'short', 'long'].includes(kind)) return
+  const n = Number(String(value).replace(/[^0-9.]/g, ''))
+  if (!Number.isFinite(n) || n <= 0) return
+  const stake = Math.round(Math.max(minBet(g), Math.min(maxBet(g), n, Math.max(0, g.character.money))))
+  const name = cronyName(g)
+  const bet = placeBet(g, { via: 'crony', secId: str(data.secId), kind: kind as 'call' | 'put' | 'short' | 'long', strike: 'atm', stake, crony: name, cut: CRONY_CUT })
+  if (!bet) return
+  useYearAction(g, 'pol.crony', 1)
+  const a = abuseData(g)
+  a.heat = Math.min(100, a.heat + 4)
+  addHidden(g, 'karma', -2)
+  log(g, `I slipped ${name} ${money(stake)} to bet on ${bet.name}.`, 'neutral')
+  say(
+    g,
+    'A Quiet Word',
+    `${pick(g, [`Over a round of golf, you told ${name} that ${bet.name} might be in for an "interesting" year.`, `You met ${name} in a parking garage, which is a perfectly normal place to meet.`, `You sent ${name} a text that just said "${bet.symbol}?" followed by a winking emoji. Then you deleted it.`])} ${name} took your ${money(stake)} in cash and bought ${bet.asset === 'coin' ? (bet.kind === 'short' ? 'a 2x short' : 'a long bet') : `${bet.kind}s`} on ${bet.symbol} in ${name.split(' ')[0]}'s own name. It settles when the year ends.`,
+    '\u{1F91D}',
+  )
+})
+
+function targetRows(g: GameState, idPrefix: string, run: (g: GameState, t: BetTarget) => void, coins: boolean): MenuNode[] {
+  const nodes: MenuNode[] = [{ type: 'heading', id: `${idPrefix}.h.stocks`, label: `Companies on the ${exchangeInfo(g.character.countryId).ex.code}` }]
+  for (const t of stockTargets(g)) nodes.push(targetAction(t, idPrefix, run))
+  if (coins && !cryptoBanned(g.character.countryId)) {
+    nodes.push({ type: 'heading', id: `${idPrefix}.h.coins`, label: 'Coins' })
+    for (const t of coinTargets(g)) nodes.push(targetAction(t, idPrefix, run))
+  }
+  return nodes
+}
+
+function targetAction(t: BetTarget, idPrefix: string, run: (g: GameState, t: BetTarget) => void): MenuAction {
+  return {
+    type: 'action',
+    id: `${idPrefix}.${t.secId}`,
+    label: `${t.name} (${t.symbol})`,
+    emoji: t.emoji,
+    subtitle: `${priceLabel(t.price)} · ${t.sector}`,
+    disabledReason: (g) => blocked(g, 0),
+    run: (g) => run(g, t),
+  }
+}
+
+function announceMenu(): MenuGroup {
+  return {
+    type: 'menu',
+    id: 'pol.abuse.announce',
+    label: 'Make a Market-Moving Announcement',
+    emoji: '\u{1F4E2}',
+    subtitle: 'Ban it, probe it, fund it or endorse it',
+    disabledReason: (g) => blocked(g, 0) ?? (yearActionsUsed(g, 'pol.marketMove') >= 1 ? 'You already moved the markets once this year.' : null),
+    header: (g) => {
+      const rank = officeRank(politicianJob(g))
+      const reach = rank >= 3 ? 'The whole country hangs on your words.' : rank === 2 ? 'Markets listen, a bit.' : 'Markets mostly ignore mayors, but not entirely.'
+      return `Pick a company${rank >= 2 && !cryptoBanned(g.character.countryId) ? ' or a coin' : ''}, then say something about it. ${reach} Bet on it first and it's insider trading.`
+    },
+    children: (g) => {
+      const rank = officeRank(politicianJob(g))
+      return targetRows(g, 'pol.abuse.announce', (gg, t) => {
+        const job = politicianJob(gg)
+        const r = officeRank(job)
+        if (!job || r < 1) return
+        const moves = movesFor(r, t.asset)
+        if (!moves.length) return tell(gg, 'Announcement', `A ${job.title} can't move the crypto market. You tried tweeting at it; it did not notice.`, '\u{1F937}')
+        scriptChoice(gg, ABUSE_SCRIPT, `${t.name} (${t.symbol})`, `What will you announce about ${t.name}? The price will move the moment you say it.`, [...moves.map((m) => ({ id: m.id, label: m.label, emoji: m.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' }], { emoji: '\u{1F4E2}', data: { secId: t.secId } })
+      }, rank >= 2)
+    },
+  }
+}
+
+function cronyMenu(): MenuGroup {
+  return {
+    type: 'menu',
+    id: 'pol.abuse.crony',
+    label: 'Tip Off a Crony',
+    emoji: '\u{1F91D}',
+    subtitle: (g) => {
+      const name = abuseView(g).crony
+      return name ? `${name} places the bet in their name` : 'A friend places the bet in their name'
+    },
+    disabledReason: cronyBlock,
+    header: (g) => {
+      const name = abuseView(g).crony || 'An old friend'
+      return `${name} "runs a little fund." Tell them which way a company or coin is about to move and they'll bet your cash in their own name. Harder to trace than your own account; they keep ${Math.round(CRONY_CUT * 100)}% of any profit, and they're not great at keeping secrets.`
+    },
+    children: (g) =>
+      targetRows(g, 'pol.abuse.crony', (gg, t) => {
+        if (cronyBlock(gg)) return
+        scriptChoice(gg, CRONY_DIR_SCRIPT, `${t.name} (${t.symbol})`, `Which way is ${t.name} about to move? (You'd know.)`, [
+          { id: 'down', label: t.asset === 'coin' ? 'Down: short it' : 'Down: buy puts', emoji: '\u{1F4C9}' },
+          { id: 'up', label: t.asset === 'coin' ? 'Up: go long' : 'Up: buy calls', emoji: '\u{1F4C8}' },
+          { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
+        ], { emoji: '\u{1F91D}', data: { secId: t.secId } })
+      }, true),
+  }
+}
+
+function abuseMenu(): MenuGroup {
+  return {
+    type: 'menu',
+    id: 'pol.abuse',
+    label: 'Abuse of Power',
+    emoji: '\u{1F92B}',
+    subtitle: (g) => `Move markets, quietly · heat: ${heatLabel(abuseView(g).heat)}`,
+    visible: (g) => officeRank(politicianJob(g)) >= 1,
+    disabledReason: (g) => blocked(g, 0),
+    header: (g) => {
+      const rank = officeRank(politicianJob(g))
+      const imm = immuneInOffice(g) ? ' Prosecutors cannot charge you while you hold this office. They can wait.' : ''
+      const reach = rank >= 3 ? 'When you speak, the whole market listens.' : rank === 2 ? 'When you speak, markets listen. Some of them.' : "When a mayor speaks, markets mostly keep scrolling. Mostly."
+      return `${reach} Bet on the move before you make it and it's insider trading: illegal, lucrative, and the press loves it. ${uc(regulator(g.character.countryId))} watches how neatly the timing lines up.${imm}`
+    },
+    children: (g) => {
+      const a = abuseView(g)
+      const open = a.cases.filter((c) => c.status !== 'closed')
+      const nodes: MenuNode[] = [
+        {
+          type: 'info',
+          id: 'pol.abuse.status',
+          emoji: a.heat >= 45 ? '\u{1F525}' : '\u{1F321}\u{FE0F}',
+          text: `Heat: ${heatLabel(a.heat)} (${Math.round(a.heat)}/100) · Announcements: ${a.moves}${open.length ? ` · Trades that could come back to bite you: ${open.length}` : ''}`,
+        },
+        announceMenu(),
+        cronyMenu(),
+        { type: 'info', id: 'pol.abuse.tip', emoji: '\u{1F4BB}', text: 'You can also bet from your own brokerage account (Activities › Computer › Options Trading › Single Stocks & Coins), or simply buy the shares in Assets › Investments. Your own name is the easiest one to trace.' },
+      ]
+      return nodes
+    },
+  }
+}
+
+// --- Getting caught ------------------------------------------------------------
+
+function caseSeverity(g: GameState, cs: InsiderCase): number {
+  let sev = 3
+  if (cs.stake >= local(g, 1_000_000)) sev += 1
+  if (cs.stake >= local(g, 10_000_000)) sev += 1
+  if (cs.office === 'mayor' || cs.office === 'school') sev -= 1
+  return Math.max(2, Math.min(5, sev))
+}
+
+function caseCharges(cs: InsiderCase): string[] {
+  const bearish = moveOf(cs.cause)?.bearish ?? true
+  return [bearish ? 'Market Manipulation' : 'Abuse of Office', ...cs.extra]
+}
+
+function exposureChance(g: GameState, cs: InsiderCase, heat: number): number {
+  const base = cs.via === 'own' ? 0.3 : cs.via === 'shares' ? 0.22 : 0.12
+  let p = base * (0.5 + enforcement(cs.countryId)) * (1 + heat / 120)
+  // Big trades stand out: a fortune moved the day before is hard to miss.
+  p += Math.min(0.3, (cs.stake / Math.max(1, local(g, 20_000_000))) * 0.3)
+  if (cs.office === 'leader') p *= 1.2
+  if (cs.via === 'crony') p += 0.04 // cronies brag
+  return Math.max(0.02, Math.min(0.85, p))
+}
+
+function viaText(cs: InsiderCase, g: GameState): string {
+  if (cs.via === 'crony') return `your friend ${cs.crony || 'a close friend'}`
+  if (cs.via === 'shares') return 'an account in your own name'
+  return `a brokerage account in the name of ${g.character.firstName} ${g.character.lastName}`
+}
+
+function causeText(cs: InsiderCase): string {
+  switch (cs.cause) {
+    case 'ban':
+      return `announced a ban on ${cs.target}`
+    case 'probe':
+      return `ordered an investigation into ${cs.target}`
+    case 'nationalize':
+      return `threatened to nationalize ${cs.target}`
+    case 'contract':
+      return `handed ${cs.target} a huge contract`
+    case 'deregulate':
+      return `deregulated ${cs.target}'s industry`
+    case 'endorse':
+      return `endorsed ${cs.target}`
+  }
+}
+
+/** The press connects the dots: a popup with how you respond. */
+function exposeCase(g: GameState, cs: InsiderCase): void {
+  const job = politicianJob(g)
+  const inOffice = !!job
+  addHidden(g, 'notoriety', randInt(g, 8, 16))
+  addFame(g, 3)
+  const monarchy = getCountry(cs.countryId).monarchy ? ' Even the palace issued a statement expressing "deep concern."' : ''
+  const text = `${newspaper(g, cs.id)} reports that ${viaText(cs, g)} made a killing betting on ${cs.target} (${cs.symbol}) just before you ${causeText(cs)}. The timing is "remarkable," says every expert on television.${monarchy}\n\nHow do you respond?`
+  const choices = [
+    { id: 'deny', label: 'Deny everything', emoji: '\u{1F645}' },
+    { id: 'blame', label: cs.via === 'crony' ? `Throw ${cs.crony ? cs.crony.split(' ')[0] : 'your crony'} under the bus` : 'Blame your financial advisor', emoji: '\u{1F449}' },
+  ]
+  if (inOffice && officeRank(job) >= 2) choices.push({ id: 'lean', label: 'Lean on the regulator', emoji: '\u{1F574}\u{FE0F}' })
+  if (inOffice) choices.push({ id: 'resign', label: 'Resign', emoji: '\u{1F6AA}' })
+  else choices.push({ id: 'lawyer', label: 'Lawyer up and say nothing', emoji: '\u{1F4BC}' })
+  log(g, `The press found out I bet on ${cs.target} before my announcement.`, 'bad')
+  scriptChoice(g, INSIDER_SCRIPT, 'Insider Trading Scandal', text, choices, { emoji: '\u{1F4F0}', data: { caseId: cs.id } })
+}
+
+defineScript(INSIDER_SCRIPT, (g, choice, data) => {
+  const c = g.character
+  if (!c.alive || !data || typeof data !== 'object' || Array.isArray(data)) return
+  const a = abuseData(g)
+  const cs = a.cases.find((x) => x.id === str(data.caseId))
+  if (!cs || cs.status === 'closed') return
+  const job = politicianJob(g)
+  const lines: string[] = []
+  let leaned = false
+  let drop = 0
+  if (choice === 'deny') {
+    if (chance(g, 0.3)) {
+      drop = randInt(g, 2, 6)
+      lines.push('You called it "a coincidence, and a very boring one." Somehow, that mostly worked.')
+    } else {
+      drop = randInt(g, 12, 22)
+      lines.push(`You denied everything. Then ${newspaper(g, cs.id)} published the trade confirmations.`)
+      cs.evidence = Math.min(0.95, cs.evidence + 0.05)
+    }
+  } else if (choice === 'blame') {
+    addHidden(g, 'karma', -6)
+    drop = randInt(g, 6, 12)
+    if (cs.via === 'crony') {
+      cs.evidence = Math.max(0.2, cs.evidence - 0.2)
+      lines.push(`You said you barely know ${cs.crony || 'the man'}. ${cs.crony ? cs.crony.split(' ')[0] : 'Your crony'} was arrested on live TV, glaring into the camera.`)
+    } else {
+      cs.evidence = Math.max(0.3, cs.evidence - 0.1)
+      lines.push('You blamed your financial advisor, who blamed an algorithm, which declined to comment.')
+    }
+  } else if (choice === 'lean' && job) {
+    const p = Math.min(0.85, 0.12 + marketOf(cs.countryId).corruption / 120)
+    if (chance(g, p)) {
+      leaned = true
+      drop = randInt(g, 3, 8)
+      addHidden(g, 'karma', -5)
+      lines.push(`You made a few calls. ${uc(regulator(cs.countryId))} announced it had "found no evidence of wrongdoing" and its chief got a lovely new office.`)
+    } else {
+      drop = randInt(g, 14, 24)
+      cs.extra = [...new Set([...cs.extra, 'Obstruction of Justice'])]
+      cs.evidence = Math.min(0.95, cs.evidence + 0.15)
+      lines.push(`You leaned on ${regulator(cs.countryId)}. Its chief recorded the call and played it at a press conference.`)
+    }
+  } else if (choice === 'resign' && job) {
+    const title = job.title
+    closeHeld(g)
+    leave(g, 'quit')
+    addFame(g, -4)
+    log(g, `I resigned as ${title} over an insider trading scandal.`, 'bad')
+    lines.push(`You resigned as ${title} "to focus on clearing my name."`)
+  } else {
+    cs.evidence = Math.max(0.3, cs.evidence - 0.05)
+    lines.push('You hired the most expensive lawyer in the country and said "no comment" 214 times.')
+  }
+  const still = politicianJob(g)
+  if (still && drop > 0) {
+    addApproval(still, -drop)
+    lines.push(`Approval: ${pdata(still).approval}% (-${drop}).`)
+    if (pdata(still).approval < 30) {
+      addStat(g, 'happiness', -6)
+      lines.push(pick(g, [`Thousands of protesters marched on ${pdata(still).office === 'mayor' ? 'City Hall' : 'the capital'} waving cardboard stock charts.`, 'Protesters camped outside your office chanting "Lock! Them! Up!"', 'Crowds filled the streets banging pots and pans. It was loud and, frankly, rhythmic.']))
+    }
+  }
+  addStat(g, 'happiness', -randInt(g, 4, 9))
+  // Does the regulator open a case?
+  const investigate = !leaned && chance(g, Math.min(0.95, (0.25 + 0.65 * enforcement(cs.countryId)) * (0.6 + cs.evidence * 0.6)))
+  if (!investigate) {
+    cs.status = 'closed'
+    if (!leaned) lines.push(`${uc(regulator(cs.countryId))} looked into it and decided it had "better things to do." Friends in high places.`)
+    say(g, 'Insider Trading Scandal', lines.join('\n\n'), '\u{1F4F0}', 'bad')
+    return
+  }
+  // The money is frozen and the profits clawed back.
+  const frozen = freezeBets(g, cs.id)
+  const profit = Math.max(0, caseProfit(g, cs.id) + cs.gain)
+  const seized = Math.min(profit, Math.max(0, Math.floor(c.money)))
+  if (seized > 0) addMoney(g, -seized)
+  if (frozen > 0 || seized > 0) lines.push(`Investigators ${[frozen > 0 ? `froze ${money(frozen)} of open bets` : '', seized > 0 ? `seized ${money(seized)} of profits` : ''].filter(Boolean).join(' and ')}.`)
+  if (politicianJob(g) && immuneInOffice(g)) {
+    cs.status = 'pending'
+    const title = politicianJob(g)!.title
+    lines.push(`${uc(regulator(cs.countryId))} opened a case, but prosecutors ${title === 'President' ? "can't charge a sitting President" : `won't dare charge a sitting ${title}`}. It will be waiting for you the day you leave office.`)
+    say(g, 'Insider Trading Scandal', lines.join('\n\n'), '\u{1F4F0}', 'bad')
+    const sj = politicianJob(g)!
+    if (pdata(sj).approval < 40 || chance(g, 0.5)) {
+      const w = removalWords(g, pdata(sj).office)
+      scriptChoice(g, IMPEACH_SCRIPT, w.title, `Over the insider trading scandal, ${w.vote} as ${sj.title}. What will you do?`, [
+        { id: 'fight', label: 'Fight it', emoji: '\u{1F4AA}' },
+        { id: 'resign', label: 'Resign', emoji: '\u{1F6AA}' },
+      ], { emoji: '\u{1F528}' })
+    }
+    return
+  }
+  cs.status = 'closed'
+  const inOffice = politicianJob(g)
+  if (inOffice) {
+    const title = inOffice.title
+    closeHeld(g)
+    leave(g, 'fired')
+    addFame(g, -8)
+    lines.push(`You were removed as ${title} pending trial.`)
+    remember(g, `Removed as ${title} and charged with insider trading.`)
+  }
+  say(g, 'Insider Trading Scandal', lines.join('\n\n'), '\u{1F4F0}', 'bad')
+  arrestPlayer(g, 'Insider Trading', caseSeverity(g, cs), { evidence: Math.max(0.3, Math.min(0.95, cs.evidence)), extraCharges: caseCharges(cs), context: `Agents from ${regulator(cs.countryId)} arrived with a warrant and a very large box for your files.` })
+})
+
+/** One line for the AI context about the player's market meddling ('' when there is none). */
+export function abuseSummary(g: GameState): string {
+  const a = abuseView(g)
+  if (!a.moves && !a.cases.length) return ''
+  const pending = a.cases.filter((c) => c.status === 'pending').length
+  const open = a.cases.filter((c) => c.status === 'open').length
+  const parts = [`${a.moves} market-moving announcement${a.moves === 1 ? '' : 's'} while in office`]
+  if (a.cases.length) parts.push(`${a.cases.length} insider trade${a.cases.length === 1 ? '' : 's'} on them`)
+  if (open) parts.push(`${open} not yet discovered`)
+  if (pending) parts.push(`${pending} insider-trading case${pending === 1 ? '' : 's'} waiting until they leave office`)
+  return `Abuse of power: ${parts.join(', ')}; press heat ${heatLabel(a.heat)}`
+}
+
+/**
+ * Yearly: heat cools, open cases may surface, pending cases wait out your immunity, and old cases
+ * expire. At most one popup a year from here. Runs in and out of office (charges follow you).
+ */
+function yearlyAbuse(g: GameState): void {
+  const c = g.character
+  const p = peek<PolProfile>(g, 'politics')
+  if (!p?.abuse || c.prison) return
+  const a = abuseData(g)
+  const heat = a.heat
+  a.heat = Math.max(0, a.heat - 10)
+  let acted = false
+  for (const cs of a.cases) {
+    if (cs.status === 'closed') continue
+    if (c.age - cs.age > 10) {
+      cs.status = 'closed'
+      log(g, `The statute of limitations ran out on my ${cs.symbol} trades.`, 'good')
+      continue
+    }
+    if (acted) continue
+    if (cs.status === 'open') {
+      if (chance(g, exposureChance(g, cs, heat))) {
+        acted = true
+        exposeCase(g, cs)
+      } else if (++cs.quiet >= 4) {
+        cs.status = 'closed'
+        log(g, `Nobody ever connected my ${cs.symbol} bet to my announcement. The trail went cold.`, 'good')
+      }
+      continue
+    }
+    // Pending: charges wait for immunity to end.
+    if (immuneInOffice(g)) continue
+    if (chance(g, marketOf(cs.countryId).corruption / 300)) {
+      cs.status = 'closed'
+      log(g, `The case file on my ${cs.symbol} trades was "lost in a flood." There was no flood.`, 'good')
+      continue
+    }
+    if (chance(g, 0.3 + 0.5 * enforcement(cs.countryId))) {
+      acted = true
+      cs.status = 'closed'
+      remember(g, `Charged with insider trading over ${cs.target} after leaving office.`)
+      arrestPlayer(g, 'Insider Trading', caseSeverity(g, cs), { evidence: Math.max(0.3, Math.min(0.95, cs.evidence)), extraCharges: caseCharges(cs), context: `Now that you no longer hold office, prosecutors finally came for you over the ${cs.symbol} trades.` })
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1555,7 +2301,10 @@ export function yearlyPolitics(g: GameState): void {
     earnIncome(g, pension)
     if (chance(g, 0.15)) addFame(g, 1)
   }
-  if (!job || c.prison) return
+  // Insider trades can surface years later, in or out of office.
+  yearlyAbuse(g)
+  if (!c.alive) return
+  if (!job || c.prison || !politicianJob(g)) return
   syncTenure(g, job)
   const d = pdata(job)
   const o = officeOf(d.office)

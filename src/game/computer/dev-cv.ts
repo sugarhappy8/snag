@@ -3,10 +3,12 @@
 // "self-taught developer" check careers.ts uses for software/IT jobs.
 //
 // Light on imports on purpose: cv.ts and careers.ts import this file.
+import { genreDef, scopeDef } from '../special/gamedev-data'
+import { artSkill, designSkill, gdPeek, type GdCredit } from '../special/gamedev-state'
 import type { CvEntry, GameState } from '../types'
 import { getCountry } from '../world'
 import { getProjectKind, projectDetail, VENTURE_DEFS, ventureUnits } from './dev-kinds'
-import { between, devState, freelanceRating, money, readVenture, ventureAssets } from './dev-state'
+import { allVentureAssets, between, devState, freelanceRating, money, plural, readVenture, shortCount } from './dev-state'
 import { codingSkill, codingSkillLabel, knownLanguages } from './skills'
 
 function wealth(g: GameState): number {
@@ -52,7 +54,7 @@ export function devCvEntries(g: GameState): CvEntry[] {
         tags: p.kind === 'game' || p.kind === 'scratch' || p.kind === 'mod' ? ['tech', 'arts'] : ['tech'],
       })
     })
-  ventureAssets(g).forEach((a, i) => {
+  allVentureAssets(g).forEach((a, i) => {
     const v = readVenture(g, a)
     const d = VENTURE_DEFS[v.type]
     const rel = v.revenue / (40_000 * wealth(g))
@@ -107,6 +109,49 @@ export function devCvEntries(g: GameState): CvEntry[] {
   s.certs.forEach((a, i) => {
     out.push({ id: `d:dev:cert:${i}`, kind: 'certification', title: a.title, org: a.org, startAge: a.age, endAge: a.age, detail: a.title.startsWith('Coding bootcamp') ? 'Twelve-week intensive program' : 'Completed', strength: a.strength, embellished: false, tags: ['tech'] })
   })
+  out.push(...gameCvEntries(g))
+  return out
+}
+
+/** How impressive a shipped game reads: critics, sales and the size of the game. */
+function creditStrength(x: GdCredit): number {
+  const sales = x.copies >= 5_000_000 ? 2 : x.copies >= 250_000 ? 1 : 0
+  return between(Math.round(x.critic / 14) + sales + (scopeDef(x.scope).index >= 3 ? 1 : 0) + (x.awards.length ? 1 : 0), 2, 10)
+}
+
+/** Game Industry entries (ids 'd:dev:gd:'): design and art skills, shipped games, awards, jams. */
+export function gameCvEntries(g: GameState): CvEntry[] {
+  const p = gdPeek(g)
+  if (!p) return []
+  const c = g.character
+  const out: CvEntry[] = []
+  const design = designSkill(g, p)
+  const art = artSkill(g, p)
+  if (design >= 20) out.push({ id: 'd:dev:gd:design', kind: 'skill', title: 'Game design', org: '', startAge: c.age, detail: `Skill ${design}/100`, strength: between(Math.round(design / 12), 1, 8), embellished: false, tags: ['tech', 'arts'] })
+  if (art >= 20) out.push({ id: 'd:dev:gd:art', kind: 'skill', title: 'Digital art & animation', org: '', startAge: c.age, detail: `Skill ${art}/100`, strength: between(Math.round(art / 12), 1, 8), embellished: false, tags: ['arts', 'media'] })
+  ;[...p.games]
+    .filter((x) => !x.free)
+    .sort((a, b) => creditStrength(b) - creditStrength(a) || b.year - a.year)
+    .slice(0, 4)
+    .forEach((x, i) => {
+      out.push({
+        id: `d:dev:gd:credit:${i}`,
+        kind: 'project',
+        title: x.own ? `Released "${x.title}", ${genreDef(x.genre).noun.replace(/^an? /, '')}` : `${x.role} on "${x.title}"`,
+        org: x.own ? (x.publisher ? `Published by ${x.publisher}` : 'Self-published') : x.studio,
+        startAge: x.age,
+        endAge: x.age,
+        detail: `Critic score ${x.critic} • ${shortCount(x.copies)} copies${x.awards.length ? ` • ${x.awards[0]}` : ''}`,
+        strength: creditStrength(x),
+        embellished: false,
+        tags: ['tech', 'arts', 'media'],
+      })
+    })
+  p.awards.slice(-4).forEach((a, i) => {
+    const worst = /Rusty Cartridge/.test(a)
+    out.push({ id: `d:dev:gd:award:${i}`, kind: 'award', title: a.replace(/:.*$/, ''), org: a.includes('"') ? a.slice(a.indexOf('"')) : '', startAge: c.age, detail: worst ? 'Technically an award' : 'Game industry award', strength: worst ? 1 : /Pixel Crown/.test(a) ? 9 : 6, embellished: false, tags: ['arts', 'media'] })
+  })
+  if (p.jams >= 3) out.push({ id: 'd:dev:gd:jams', kind: 'activity', title: 'Game jam regular', org: '', startAge: c.age, detail: plural(p.jams, 'jam'), strength: between(2 + Math.floor(p.jams / 5), 2, 5), embellished: false, tags: ['tech', 'arts'] })
   return out
 }
 
@@ -114,15 +159,16 @@ export function devCvEntries(g: GameState): CvEntry[] {
 export function codingPortfolio(g: GameState): number {
   const s = devState(g)
   const good = Math.min(4, s.projects.filter((p) => p.q >= 50).length)
-  const live = ventureAssets(g).filter((a) => {
+  const live = allVentureAssets(g).filter((a) => {
     const v = readVenture(g, a)
     return v.type !== 'store' && v.stage === 'live'
   }).length
+  const games = Math.min(3, gdPeek(g)?.games.filter((x) => x.own && !x.free && x.critic >= 50).length ?? 0)
   const exits = s.exits.filter((e) => e.type !== 'store').length
   const gigs = (s.freelance.gigs >= 5 ? 1 : 0) + (s.freelance.gigs >= 20 ? 1 : 0)
   const awards = s.awards.filter((a) => a.strength >= 5).length
   const bootcamps = s.certs.filter((x) => x.title.startsWith('Coding bootcamp')).length
-  return good + live + exits + gigs + awards + bootcamps
+  return good + live + games + exits + gigs + awards + bootcamps
 }
 
 /**

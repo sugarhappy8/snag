@@ -1,0 +1,1554 @@
+// Game studios: a 'gameStudio' business earns from game releases instead of the generic
+// price-and-production model. Everything else (cash, debt, key staff, managers, offices,
+// valuation, selling, IPO, inheritance, bankruptcy) is the normal business system.
+//
+// The yearly loop (business/yearly.ts) calls simulateStudioYear() for studios instead of
+// simulateYear(): developers push the pipeline forward (team size, crunch policy, craft and
+// key staff decide speed and quality), finished games launch to critics and players, the
+// back catalog sells its long tail, and the statement is built from receipts, salaries,
+// production, marketing and rent. One simulation per studio per year, no double counting.
+// Players greenlight games (scope, genre, platform, engine), staff them, crowdfund, sign
+// publishers, try early access, ship DLC and sequels; big publishers try to buy hit studios.
+import { readVenture } from '../computer/dev-state'
+import { addHidden, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
+import { corporateTax, marketOf } from '../data/markets'
+import { chance, pick, randFloat, randInt, shuffle } from '../rng'
+import { defineScript } from '../scripts'
+import { hire } from '../special/common'
+import { salaryFor } from '../special/gamedev-career'
+import { addGamerFame, copiesLabel, engineRoyalty, firstYearCopies, gameTitle, genreTrend, homeReach, hotGenres, industryYear, netPerCopy, nextTail, priceOf, qualityFactor, reviewScores, sequelTitle, trendLabel } from '../special/gamedev-core'
+import {
+  CRITIC_SITE,
+  ENGINES,
+  engineDef,
+  GENRES,
+  genreDef,
+  GIANTS,
+  isEngine,
+  isGenre,
+  isPlatform,
+  isScope,
+  PLATFORM_HOLDERS,
+  PLATFORMS,
+  platformDef,
+  PUBLISHERS,
+  SCOPES,
+  scopeDef,
+  type EngineId,
+  type GenreId,
+  type PlatformId,
+  type ScopeId,
+} from '../special/gamedev-data'
+import { designSkill, GAME_JOB, gdMut, gdView, nextId, playerLabel, tidy } from '../special/gamedev-state'
+import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
+import { getCountry } from '../world'
+import { becomeCeo, installManager, managerCandidate } from './career'
+import { ceoSkill, equipmentValue, insurancePremiumFor, licencePremium, localEcon, managerCost, refreshValue, staffPower, startupCost, valuationOf, type YearResult } from './economy'
+import { sellBusiness } from './exit'
+import { severanceMonths } from './flavor'
+import { createBusinessAsset, newBiz } from './founding'
+import { foundBlock, manageBlock, noCash, tooBusy } from './gate'
+import { industryDef } from './industries'
+import { bizOf, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Statement } from './state'
+import { assignedDevs, devGames, normalizeStudio, studioLine, trimStudioGames, type StudioGame, type StudioPolicy, type StudioState } from './gamestudio-state'
+import { clampN, dollars, money, pct, round2, toJson } from './util'
+
+export const DEVS_PER_OFFICE = 120
+
+export function isStudio(b: { industry: string }): boolean {
+  return b.industry === 'gameStudio'
+}
+
+/** Read-modify-write helpers for Asset.details.studio. */
+export function studioOf(a: Asset): StudioState {
+  return normalizeStudio(a.details.studio)
+}
+
+export function saveStudio(a: Asset, st: StudioState): void {
+  st.games = trimStudioGames(st.games)
+  a.details.studio = toJson(st)
+}
+
+function whole(n: number): number {
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0
+}
+
+function an(noun: string): string {
+  return `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
+}
+
+/** Most developers the studio's offices can seat. */
+export function maxDevs(b: BizState): number {
+  return Math.max(DEVS_PER_OFFICE, totalOutlets(b) * DEVS_PER_OFFICE)
+}
+
+/** A developer's yearly cost here (the local going wage times the pay policy). */
+export function devCost(b: BizState): number {
+  return Math.round(localEcon('gameStudio', b.countryId, b.city).wage * b.wageLevel)
+}
+
+/** How global prices land here: production and ads cost less in cheaper countries, but not proportionally. */
+function costScale(countryId: string): number {
+  return 0.55 + 0.45 * Math.min(1.1, getCountry(countryId).wealth ?? 1)
+}
+
+/** Old saves and bought studios: turn their trading history into a back catalog once. */
+function ensureCatalog(g: GameState, b: BizState, st: StudioState, year = g.year): void {
+  if (st.games.length || !b.history.length) return
+  const last = b.history[b.history.length - 1]
+  const copies = whole(last.units)
+  if (copies <= 0) return
+  const price = clampN(b.price > 0 ? b.price : 20, 5, 70)
+  st.seq += 1
+  st.games.push({
+    id: `sg${st.seq}`,
+    title: `${pick(g, GENRES).label} Classics Collection`,
+    genre: pick(g, GENRES).id,
+    platform: 'pc',
+    scope: 'indie',
+    engine: 'cobalt',
+    stage: 'live',
+    progress: 100,
+    quality: b.quality,
+    team: 0,
+    bugs: 0,
+    hype: 0,
+    started: Math.max(b.founded, last.year - 2),
+    released: Math.min(last.year, year - 1),
+    critic: Math.round(clampN(b.quality, 30, 90)),
+    players: Math.round(clampN(b.quality, 30, 90)),
+    copies,
+    tail: whole(copies * 0.6),
+    price,
+    gross: whole(last.revenue),
+    dlcs: 0,
+    lastDlc: 0,
+    franchise: '',
+    sequelOf: '',
+    publisher: '',
+    recoup: 0,
+    advance: 0,
+    advanceGot: 0,
+    exclusiveFee: 0,
+    devShare: 1,
+    exclusive: '',
+    backers: 0,
+    raised: 0,
+    eaCopies: 0,
+    eaTail: 0,
+    crunch: 0,
+    spent: 0,
+    awards: [],
+  })
+}
+
+// ---------------------------------------------------------------------------
+// The yearly simulation
+
+interface Sale {
+  game: StudioGame
+  copies: number
+  price: number
+}
+
+/**
+ * One fiscal year for a game studio: development, launches, back-catalog sales, costs, tax,
+ * cash. Returns the same YearResult as economy.simulateYear so the rest of the business loop
+ * (evolve, valuation, owner pay, cash crunches, events) works unchanged.
+ */
+export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number): YearResult {
+  const st = studioOf(a)
+  ensureCatalog(g, b, st, year)
+  const m = marketOf(b.countryId)
+  const iy = industryYear(g, year)
+  const speed = st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1
+  const ops = 1 + 0.08 * staffPower(b, 'ops')
+  const open = (1 - b.capacityLoss) * b.openFraction
+  const runs = runsIt(g, a) && !g.character.prison && g.character.alive
+  // A CEO who isn't a designer delegates; a great designer at the top lifts every game.
+  const creative = runs ? Math.max(45, designSkill(g)) : (b.manager?.skill ?? 50)
+  const qStaff = staffPower(b, 'quality')
+  const wage = devCost(b)
+  const scale = costScale(b.countryId)
+  const sales: Sale[] = []
+  const notes: string[] = []
+  let production = 0
+  let certs = 0
+  let launchMarketing = 0
+  let milestones = 0
+
+  // 1) Development.
+  const dev = devGames(st)
+  const want = dev.reduce((s, x) => s + x.team, 0)
+  const share = want > b.employees && want > 0 ? b.employees / want : 1
+  for (const x of dev) {
+    const sc = scopeDef(x.scope)
+    const eng = engineDef(x.engine)
+    const team = x.team * share
+    const ratio = clampN(team / sc.team, 0, 3)
+    const before = x.progress
+    x.progress = clampN(x.progress + (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed * ops * open * eng.speed * randFloat(g, 0.85, 1.15), 0, 100)
+    const target = clampN(
+      60 +
+        (b.quality - 50) * 0.4 +
+        qStaff * 6 +
+        (creative - 50) * 0.12 +
+        (b.morale - 60) * 0.1 +
+        (sc.index >= 3 ? eng.bigBonus : eng.bonus) -
+        sc.difficulty * (ratio < 0.6 ? 1.2 : 0.4) +
+        Math.min(6, (ratio - 1) * 4) +
+        (st.policy === 'relaxed' ? 3 : st.policy === 'crunch' ? -4 : 0) +
+        (x.stage === 'ea' ? 4 : 0),
+      5,
+      98,
+    )
+    // The game takes shape as it gets built: quality moves toward what this team can make.
+    if (ratio > 0) x.quality = clampN(x.quality + (target - x.quality) * clampN((x.progress - before) / 70, 0.2, 0.9), 0, 100)
+    x.bugs = clampN(x.bugs + (st.policy === 'crunch' ? 10 : st.policy === 'relaxed' ? -6 : -2), 0, 100)
+    if (st.policy === 'crunch' && ratio > 0) x.crunch += 1
+    const prod = sc.extraUsd * Math.min(1.5, ratio) * scale * open
+    production += prod
+    x.spent = whole(x.spent + team * wage + prod)
+    x.hype = clampN(x.hype * 0.9, 0, 100)
+    // Publishers pay the rest of the advance in milestones as the game gets built.
+    if (x.publisher && x.advance > x.advanceGot && x.progress < 100) {
+      const left = x.advance - x.advanceGot
+      const milestone = whole(left * clampN((x.progress - before) / Math.max(1, 100 - before), 0, 1) * 0.8)
+      x.advanceGot += milestone
+      milestones += milestone
+    }
+    // Early access keeps selling while development continues.
+    if (x.stage === 'ea' && x.eaTail > 0) {
+      const copies = whole(x.eaTail * iy.mult * randFloat(g, 0.85, 1.15))
+      x.eaCopies = whole(x.eaCopies + copies)
+      x.eaTail = whole(copies * 0.55)
+      sales.push({ game: x, copies, price: priceOf(x.scope, x.platform) * 0.8 })
+    }
+  }
+
+  // 2) Launches.
+  const fame = runs ? gdView(g).gamerFame : 0
+  const countries = new Set(b.outlets.map((o) => o.countryId)).size
+  for (const x of dev) {
+    if (x.progress < 100) continue
+    const sc = scopeDef(x.scope)
+    const finalQ = clampN(x.quality - x.bugs * 0.12 + randInt(g, -4, 4), 3, 99)
+    const prev = x.sequelOf ? st.games.find((y) => y.id === x.sequelOf) : undefined
+    const fans = prev ? clampN((prev.players - 60) / 30, -1, 1) : 0
+    const r = reviewScores(g, finalQ, { bugs: x.bugs, hype: x.hype, fans })
+    const sequels = x.franchise ? st.games.filter((y) => y.franchise === x.franchise && y.stage === 'live').length : 0
+    const franchise = prev ? clampN(Math.min(1, prev.copies / Math.max(1, scopeDef(prev.scope).potential * 0.3)) * (prev.players / 100) * Math.pow(0.85, Math.max(0, sequels - 1)), 0, 1) : 0
+    const marketing = x.publisher ? 1.3 : clampN((0.55 + 0.3 * b.marketingLevel) * (0.75 + b.brand / 200), 0.4, 1.6)
+    const reach = homeReach(b.countryId) * (x.publisher ? 1.2 : 0.95) * (1 + Math.min(0.3, (countries - 1) * 0.08))
+    const copies = whole(
+      firstYearCopies(g, {
+        scope: x.scope,
+        genre: x.genre,
+        platform: x.platform,
+        quality: (r.critic + r.players) / 2,
+        hype: x.hype,
+        marketing,
+        reach,
+        fame: Math.max(fame, b.brand / 2),
+        franchise,
+        presold: x.backers + x.eaCopies,
+        exclusive: !!x.exclusive,
+        year,
+      }) *
+        (1 + b.campaignBoost) *
+        b.demandShock *
+        (1 - b.pressure),
+    )
+    // The last milestone comes with the launch, if the publisher thinks it's any good.
+    if (x.publisher && x.advance > x.advanceGot && r.critic >= 50) {
+      milestones += x.advance - x.advanceGot
+      x.advanceGot = x.advance
+    }
+    x.stage = 'live'
+    x.progress = 100
+    x.released = year
+    x.critic = r.critic
+    x.players = r.players
+    x.price = priceOf(x.scope, x.platform)
+    x.copies = whole(x.copies + copies + x.backers + x.eaCopies)
+    x.tail = nextTail(copies, r.players, x.scope)
+    x.eaTail = 0
+    x.team = 0
+    if (!x.publisher) launchMarketing += sc.marketingUsd * b.marketingLevel * scale
+    certs += platformDef(x.platform).certUsd * scale
+    sales.push({ game: x, copies, price: x.price })
+    if (r.critic >= 85) {
+      st.hits += 1
+      b.brand = clampN(b.brand + 6, 0, 100)
+      b.morale = clampN(b.morale + 6, 0, 100)
+    } else if (r.critic < 50) {
+      st.flops += 1
+      b.brand = clampN(b.brand - 6, 0, 100)
+      b.morale = clampN(b.morale - 6, 0, 100)
+    }
+    notes.push(`"${x.title}" launched: ${CRITIC_SITE} ${r.critic}, players ${r.players}, ${copiesLabel(copies)} in its first year`)
+    creditOwner(g, a, x, copies, runs)
+  }
+
+  // 3) The back catalog.
+  for (const x of st.games) {
+    if (x.stage !== 'live' || x.released >= year || x.tail <= 0) continue
+    const copies = whole(x.tail * iy.mult * (1 + b.campaignBoost * 0.5) * b.demandShock * (1 - b.pressure) * randFloat(g, 0.85, 1.15))
+    x.copies = whole(x.copies + copies)
+    x.tail = nextTail(copies, x.players, x.scope)
+    if (copies > 0) sales.push({ game: x, copies, price: x.price })
+  }
+
+  // 4) Money in: stores keep 30%, engines take royalties, publishers recoup first.
+  let revenue = 0
+  let storeFees = 0
+  let royalties = 0
+  let copiesTotal = 0
+  let priced = 0
+  for (const s of sales) {
+    const x = s.game
+    const gross = s.copies * s.price * 0.78
+    const net = s.copies * netPerCopy(s.price)
+    const royalty = engineRoyalty(engineDef(x.engine).royalty, x.gross, net)
+    x.gross = whole(x.gross + net)
+    copiesTotal += s.copies
+    priced += s.copies * s.price
+    if (x.publisher) {
+      let rest = Math.max(0, net - royalty)
+      const recoup = Math.min(x.recoup, rest)
+      x.recoup = whole(x.recoup - recoup)
+      rest -= recoup
+      revenue += rest * x.devShare
+    } else {
+      revenue += gross
+      storeFees += gross - net
+      royalties += royalty
+    }
+  }
+
+  revenue += milestones
+
+  // 5) Money out.
+  const finance = 1 - 0.025 * staffPower(b, 'finance')
+  const ceoEff = 1.05 - ceoSkill(g, b) / 1000
+  const wages = b.employees * wage * b.openFraction * licencePremium(g, b)
+  let rent = 0
+  for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent
+  const upkeep = equipmentValue(b) * industryDef('gameStudio').maint
+  const insurance = b.insured ? insurancePremiumFor(b) : 0
+  const keyStaff = b.staff.reduce((s, x) => s + x.salary, 0) + managerCost(b)
+  const community = revenue * 0.02 * b.marketingLevel
+  const marketing = launchMarketing + community
+  const cogs = storeFees + royalties + production + certs
+  const overhead = (wages + rent + upkeep) * finance * ceoEff
+  const interest = b.debt * b.debtRate
+  const pbt0 = revenue - cogs - overhead - keyStaff - marketing - interest - insurance - b.yearCosts + b.yearIncome
+  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0)))
+  const pbt = pbt0 - ownerPay
+  const corpTax = pbt > 0 ? corporateTax(b.countryId, pbt) : 0
+  const net = pbt - corpTax
+  // One-off costs and income booked during the year already moved the company's cash.
+  b.cash = dollars(b.cash + net + b.yearCosts - b.yearIncome)
+  let cashErosion = 0
+  if (b.cash > 0) {
+    const real = clampN((m.inflation - m.interestRate) * 0.35, 0, 0.4)
+    cashErosion = Math.round(b.cash * real)
+    b.cash -= cashErosion
+  }
+  b.inventory = 0
+  const idle = devGames(st).length === 0 && b.employees > 0
+  if (st.policy === 'crunch' && dev.length) st.crunchYears += 1
+  st.report = { year, releases: notes, copies: whole(copiesTotal), revenue: dollars(revenue), idle }
+  saveStudio(a, st)
+  const stmt: Statement = {
+    year,
+    demand: whole(copiesTotal),
+    sold: whole(copiesTotal),
+    produced: whole(copiesTotal),
+    spoiled: 0,
+    price: copiesTotal > 0 ? round2(priced / copiesTotal) : 0,
+    revenue: dollars(revenue),
+    salesTax: 0,
+    netRevenue: dollars(revenue),
+    cogs: dollars(cogs),
+    wages: dollars(wages * finance * ceoEff),
+    keyStaff: dollars(keyStaff),
+    rent: dollars(rent * finance * ceoEff),
+    marketing: dollars(marketing),
+    interest: dollars(interest),
+    upkeep: dollars(upkeep * finance * ceoEff + insurance),
+    other: dollars(b.yearCosts),
+    otherIncome: dollars(b.yearIncome),
+    ownerPay,
+    pbt: dollars(pbt),
+    corpTax: dollars(corpTax),
+    net: dollars(net),
+    cashErosion,
+    cycle: 1,
+    openFraction: b.openFraction,
+    employees: b.employees,
+  }
+  b.last = stmt
+  return { stmt, inventoryEnd: 0, wantedStaff: b.employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay) }
+}
+
+/** The owner's name goes in the credits (and gamers notice a hit). */
+function creditOwner(g: GameState, a: Asset, x: StudioGame, copies: number, runs: boolean): void {
+  if (!g.character.alive) return
+  const p = gdMut(g)
+  p.games.push({
+    id: nextId(p, 'gc'),
+    title: x.title,
+    genre: x.genre,
+    platform: x.platform,
+    scope: x.scope,
+    engine: x.engine,
+    role: runs ? 'Studio Founder & CEO' : 'Executive Producer',
+    studio: a.name,
+    own: false,
+    free: false,
+    year: x.released,
+    age: g.character.age,
+    critic: x.critic,
+    players: x.players,
+    copies,
+    tail: 0,
+    price: x.price,
+    gross: 0,
+    earned: 0,
+    dlcs: 0,
+    lastDlc: 0,
+    patched: 0,
+    franchise: x.franchise,
+    publisher: x.publisher,
+    recoup: 0,
+    devShare: 0,
+    awards: [],
+  })
+  const gain = Math.round((runs ? 1.4 : 0.6) * Math.max(0, (x.critic - 55) / 8) * (0.4 + Math.log10(1 + copies) / 7))
+  addGamerFame(p, gain)
+  tidy(p)
+  count(g, 'gamesShipped')
+}
+
+/** After evolve(): crunch grinds morale down, a relaxed studio is a happier one. */
+export function afterStudioYear(a: Asset, b: BizState): void {
+  const st = studioOf(a)
+  if (st.policy === 'crunch' && devGames(st).length) b.morale = clampN(b.morale - 9, 0, 100)
+  else if (st.policy === 'relaxed') b.morale = clampN(b.morale + 4, 0, 100)
+  if (st.report?.idle) b.morale = clampN(b.morale - 5, 0, 100)
+  refreshValue(a, b)
+}
+
+/** A general manager keeps the pipeline full. */
+export function studioManagerTurn(g: GameState, a: Asset, b: BizState): void {
+  const st = studioOf(a)
+  if (devGames(st).length > 0 || b.employees < 1) return
+  const scope = [...SCOPES].reverse().find((s) => s.id !== 'jam' && s.minTeam <= b.employees && (s.id !== 'aaa' || b.cash > 0)) ?? SCOPES[1]
+  const best = st.games.filter((x) => x.stage === 'live' && x.critic >= 75).sort((x, y) => y.copies - x.copies)[0]
+  const genre = best && chance(g, 0.5) ? best.genre : hotGenres(g)[0].id
+  const platform: PlatformId = scope.index >= 4 ? 'multi' : scope.index >= 3 ? 'console' : 'pc'
+  const engine: EngineId = scope.index >= 3 ? 'titan' : 'cobalt'
+  const sequel = best && best.genre === genre
+  const title = sequel ? sequelTitle(best.franchise || best.title, st.games.filter((x) => x.franchise === (best.franchise || best.title)).length + 1) : gameTitle(g, genre, new Set(st.games.map((x) => x.title)))
+  addGame(st, g, { scope: scope.id, genre, platform, engine, title, team: Math.min(b.employees, Math.max(1, Math.round(scope.team * 1.2))), franchise: sequel ? best.franchise || best.title : '', sequelOf: sequel ? best.id : '' })
+  saveStudio(a, st)
+  log(g, `${a.name}'s manager greenlit "${title}".`, 'neutral')
+}
+
+interface NewGame {
+  scope: ScopeId
+  genre: GenreId
+  platform: PlatformId
+  engine: EngineId
+  title: string
+  team: number
+  franchise: string
+  sequelOf: string
+}
+
+function addGame(st: StudioState, g: GameState, n: NewGame): StudioGame {
+  st.seq += 1
+  const x: StudioGame = {
+    id: `sg${st.seq}`,
+    title: n.title,
+    genre: n.genre,
+    platform: n.platform,
+    scope: n.scope,
+    engine: n.engine,
+    stage: 'dev',
+    progress: 0,
+    quality: 45,
+    team: Math.max(1, whole(n.team)),
+    bugs: 0,
+    hype: n.sequelOf ? 25 : 5,
+    started: g.year,
+    released: 0,
+    critic: 0,
+    players: 0,
+    copies: 0,
+    tail: 0,
+    price: priceOf(n.scope, n.platform),
+    gross: 0,
+    dlcs: 0,
+    lastDlc: 0,
+    franchise: n.franchise,
+    sequelOf: n.sequelOf,
+    publisher: '',
+    recoup: 0,
+    advance: 0,
+    advanceGot: 0,
+    exclusiveFee: 0,
+    devShare: 1,
+    exclusive: '',
+    backers: 0,
+    raised: 0,
+    eaCopies: 0,
+    eaTail: 0,
+    crunch: 0,
+    spent: 0,
+    awards: [],
+  }
+  st.games.push(x)
+  return x
+}
+
+// ---------------------------------------------------------------------------
+// The yearly report
+
+const IDLE_SCRIPT = defineScript('gamestudio.idle', (g, choice, data) => {
+  const d = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  const a = findBusiness(g, typeof d.assetId === 'string' ? d.assetId : undefined)
+  if (!a || manageBlock(g, a)) return
+  if (choice === 'auto') {
+    const b = bizOf(g, a)
+    studioManagerTurn(g, a, b)
+    const st = studioOf(a)
+    const x = devGames(st)[0]
+    if (x) notice(g, 'Greenlit', `Your leads pitched "${x.title}", ${an(genreDef(x.genre).noun)} (${scopeDef(x.scope).label}). You said yes. ${x.team} developers are on it.`, { emoji: '\u{1F7E2}', tone: 'good' })
+    return
+  }
+  if (choice === 'mine') startGreenlight(g, a.id)
+})
+
+/** The studio's yearly summary popup (instead of the price-and-production Annual Report). */
+export function queueStudioReport(g: GameState, a: Asset, b: BizState): void {
+  const st = studioOf(a)
+  const s = b.last
+  const r = st.report
+  const lines: string[] = []
+  if (r && r.releases.length) lines.push(...r.releases.map((x) => `\u{1F680} ${x}.`))
+  if (s) {
+    lines.push(`\u{1F4B5} ${s.year}: ${copiesLabel(r?.copies ?? s.sold)} sold, ${money(s.revenue)} in sales, ${s.net >= 0 ? `${money(s.net)} profit` : `${money(-s.net)} loss`}.`)
+    lines.push(`\u{1F465} ${b.employees} developers · morale ${b.morale}% · ${policyLabel(st.policy)}.`)
+  }
+  const dev = devGames(st)
+  if (dev.length) lines.push(`\u{1F6E0}\u{FE0F} In development: ${dev.map((x) => `"${x.title}" (${Math.round(x.progress)}%)`).join(', ')}.`)
+  lines.push(`\u{1F3F7}\u{FE0F} Valuation ${money(b.valuation)} · cash ${money(b.cash)}.`)
+  if (r?.idle || (!dev.length && b.employees > 0)) {
+    scriptChoice(g, IDLE_SCRIPT, `${a.name}: Studio Report`, `${lines.join('\n')}\n\nYour developers have nothing to work on and are playing ping-pong on the company's dime. Greenlight something?`, [
+      { id: 'mine', label: 'Pitch my own game', emoji: '\u{1F4A1}' },
+      { id: 'auto', label: "Let the leads pick (they'll go for what's hot)", emoji: '\u{1F465}' },
+      { id: 'later', label: 'Later', emoji: '\u{23F3}' },
+    ], { emoji: '\u{1F3AE}', data: { assetId: a.id } })
+    return
+  }
+  notice(g, `${a.name}: Studio Report`, lines.join('\n'), { emoji: '\u{1F3AE}', tone: s && s.net >= 0 ? 'good' : 'neutral' })
+}
+
+function policyLabel(p: StudioPolicy): string {
+  return p === 'crunch' ? 'crunch mode' : p === 'relaxed' ? 'relaxed hours' : 'normal hours'
+}
+
+// ---------------------------------------------------------------------------
+// Studio events (game-specific; the generic business events still happen too)
+
+const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
+  const d = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  const a = findBusiness(g, typeof d.assetId === 'string' ? d.assetId : undefined)
+  if (!a || !g.character.alive) return
+  const b = bizOf(g, a)
+  const st = studioOf(a)
+  const ev = typeof d.ev === 'string' ? d.ev : ''
+  const x = st.games.find((y) => y.id === d.gameId)
+  const amount = typeof d.amount === 'number' && Number.isFinite(d.amount) ? Math.max(0, Math.round(d.amount)) : 0
+  const who = typeof d.who === 'string' ? d.who : 'a big publisher'
+  switch (ev) {
+    case 'bid': {
+      if (choice === 'decline') {
+        st.declined += 1
+        saveStudio(a, st)
+        log(g, `I turned down ${who}'s offer for ${a.name}.`, 'neutral')
+        notice(g, 'Not for Sale', `You told ${who} that ${a.name} is not for sale. Your developers cheered. Your accountant quietly wept.`, { emoji: '\u{1F645}' })
+        return
+      }
+      if (b.public) return
+      sellBusiness(g, a, b, amount, who)
+      if (choice === 'stay' && g.character.alive && !g.character.prison) {
+        hire(g, { defId: GAME_JOB, title: 'Studio Head', company: a.name, salary: salaryFor(g, 6, 'aaa'), level: 6, performance: 70, data: { studio: a.name, tier: 'aaa', track: 'design', craft: Math.round(clampN(b.quality + 10, 50, 90)), hq: b.countryId, city: b.city, proj: null, raiseYear: 0, effort: 0, scare: 0 } })
+        log(g, `I stayed on as Studio Head of ${a.name} under ${who}.`, 'good')
+        notice(g, 'Studio Head', `You stayed on to run ${a.name} as a ${who} studio. Same desk, same team, a parent company that sends a lot of slide decks. Salary: ${formatMoney(g.character.job?.salary ?? 0)} a year.`, { emoji: '\u{1F454}', tone: 'good' })
+      }
+      return
+    }
+    case 'exclusive': {
+      if (!x || x.stage === 'live') return
+      if (choice === 'accept') {
+        x.exclusive = who
+        x.exclusiveFee = amount
+        x.platform = 'console'
+        x.hype = clampN(x.hype + 15, 0, 100)
+        b.cash += amount
+        b.yearIncome += amount
+        saveStudio(a, st)
+        log(g, `${who} paid ${a.name} ${money(amount)} to keep "${x.title}" exclusive.`, 'good')
+        notice(g, 'Exclusive Deal', `${who} paid ${formatMoney(amount)} to keep "${x.title}" off every other platform. Fans of other consoles have opinions, mostly in all caps.`, { emoji: '\u{1F91D}', tone: 'good' })
+      } else {
+        notice(g, 'Multiplatform', `You turned down ${who}. "${x.title}" will launch everywhere you planned.`, { emoji: '\u{1F310}' })
+      }
+      return
+    }
+    case 'leak': {
+      if (!x) return
+      if (choice === 'embrace') {
+        x.hype = clampN(x.hype + 18, 0, 100)
+        b.brand = clampN(b.brand + 2, 0, 100)
+        notice(g, 'Leaked!', `You posted "well, that's awkward" with a winking emoji and released the official trailer early. Hype for "${x.title}" went through the roof.`, { emoji: '\u{1F648}', tone: 'good' })
+      } else if (choice === 'lawyers') {
+        const cost = Math.round(devCost(b) * 0.6)
+        b.cash -= cost
+        b.yearCosts += cost
+        b.morale = clampN(b.morale - 3, 0, 100)
+        notice(g, 'Takedowns', `Your lawyers sent ${randInt(g, 200, 4_000)} takedown notices (${formatMoney(cost)}). The internet now shares the leak out of spite.`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
+      } else {
+        x.hype = clampN(x.hype + 6, 0, 100)
+        b.morale = clampN(b.morale - 4, 0, 100)
+        notice(g, 'Leak', `You said nothing. The leak was half fake anyway. The team is upset someone on the inside did it.`, { emoji: '\u{1F910}' })
+      }
+      saveStudio(a, st)
+      return
+    }
+    case 'bomb': {
+      if (!x) return
+      if (choice === 'patch') {
+        const cost = Math.round(devCost(b) * 2)
+        b.cash -= cost
+        b.yearCosts += cost
+        x.players = Math.round(clampN(x.players + randInt(g, 3, 7), 0, 99))
+        notice(g, 'Hotfix', `Your team shipped a hotfix in a week (${formatMoney(cost)}). Players calmed down; "${x.title}" is back to "${playerLabel(x.players)}".`, { emoji: '\u{1FA79}', tone: 'good' })
+      } else if (choice === 'statement') {
+        x.players = Math.round(clampN(x.players - randInt(g, 0, 3), 0, 99))
+        notice(g, 'Statement', `You posted a heartfelt statement. Half the comments called it "corporate", the other half "based". Score: "${playerLabel(x.players)}".`, { emoji: '\u{1F4DD}' })
+      } else {
+        x.players = Math.round(clampN(x.players - randInt(g, 4, 9), 0, 99))
+        x.tail = whole(x.tail * 0.85)
+        notice(g, 'Ignored', `You ignored the review bomb. It did not ignore you: "${x.title}" sank to "${playerLabel(x.players)}".`, { emoji: '\u{1F4A3}', tone: 'bad' })
+      }
+      saveStudio(a, st)
+      return
+    }
+    case 'expose': {
+      if (choice === 'change') {
+        st.policy = 'normal'
+        b.morale = clampN(b.morale + 8, 0, 100)
+        b.brand = clampN(b.brand - 2, 0, 100)
+        notice(g, 'No More Crunch', `You ended mandatory overtime and apologized publicly. The team bought you a cake that says "THANK YOU (finally)".`, { emoji: '\u{1F370}', tone: 'good' })
+      } else if (choice === 'deny') {
+        addHidden(g, 'karma', -6)
+        b.brand = clampN(b.brand - 8, 0, 100)
+        b.morale = clampN(b.morale - 8, 0, 100)
+        notice(g, 'Denied', `You called the article "inaccurate". Thirty employees posted their timesheets the next day. Brand down to ${b.brand}%.`, { emoji: '\u{1F4F0}', tone: 'bad' })
+      } else {
+        b.brand = clampN(b.brand - 4, 0, 100)
+        notice(g, 'Apology', `You apologized and promised "a better culture going forward." Nothing else changed. Everyone noticed.`, { emoji: '\u{1F64F}' })
+      }
+      saveStudio(a, st)
+      return
+    }
+    case 'streamer': {
+      if (!x) return
+      if (choice === 'sponsor') {
+        const cost = Math.round(devCost(b) * 0.5)
+        b.cash -= cost
+        b.yearCosts += cost
+        x.tail = whole(x.tail * 1.6)
+        notice(g, 'Sponsored', `You sponsored the streamer's next three sessions (${formatMoney(cost)}). "${x.title}" sales are climbing again.`, { emoji: '\u{1F3A5}', tone: 'good' })
+      } else {
+        x.tail = whole(x.tail * 1.25)
+        notice(g, 'Free Publicity', `You sent a thank-you note and a plushie. Sales of "${x.title}" picked up anyway.`, { emoji: '\u{1F9F8}', tone: 'good' })
+      }
+      saveStudio(a, st)
+      return
+    }
+  }
+})
+
+type StudioEv = 'bid' | 'exclusive' | 'leak' | 'bomb' | 'expose' | 'streamer'
+
+function acquirer(g: GameState, b: BizState): string {
+  const foreign = GIANTS.filter((x) => x.hq !== b.countryId)
+  return pick(g, foreign.length && chance(g, 0.7) ? foreign : GIANTS).name
+}
+
+/** Maybe queue one game-studio event (returns true when one was queued). */
+export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: number, managed: boolean): boolean {
+  if (g.character.prison || !g.character.alive || b.founded >= year) return false
+  if (!chance(g, managed ? 0.2 : 0.35)) return false
+  const st = studioOf(a)
+  const options: [StudioEv, number, StudioGame | undefined][] = []
+  const dev = devGames(st)
+  const live = st.games.filter((x) => x.stage === 'live' && x.released >= year - 2)
+  const recentHit = live.some((x) => x.critic >= 82)
+  if (!b.public && b.valuation > 0 && (recentHit || b.brand >= 60) && st.declined < 4) options.push(['bid', recentHit ? 1.2 : 0.5, undefined])
+  const big = dev.find((x) => scopeDef(x.scope).index >= 2 && !x.exclusive && x.progress >= 30 && (x.platform === 'console' || x.platform === 'multi'))
+  if (big) options.push(['exclusive', 0.8, big])
+  const hyped = dev.find((x) => x.progress >= 40)
+  if (hyped) options.push(['leak', 0.6, hyped])
+  if (live.length) options.push(['bomb', 0.5, pick(g, live)], ['streamer', 0.7, pick(g, live)])
+  if (st.policy === 'crunch' && dev.length) options.push(['expose', 0.4 + st.crunchYears * 0.25, undefined])
+  if (!options.length) return false
+  const total = options.reduce((s, o) => s + o[1], 0)
+  let roll = randFloat(g, 0, total)
+  let pickd = options[0]
+  for (const o of options) {
+    roll -= o[1]
+    if (roll <= 0) {
+      pickd = o
+      break
+    }
+  }
+  const [ev, , x] = pickd
+  b.lastEvent = year
+  const base = { assetId: a.id, ev, gameId: x?.id ?? '' }
+  switch (ev) {
+    case 'bid': {
+      const who = acquirer(g, b)
+      const amount = Math.round(Math.max(b.valuation, 50_000) * randFloat(g, recentHit ? 1.3 : 1.1, recentHit ? 1.8 : 1.4))
+      const stake = b.share < 1 ? ` (your ${pct(b.share)}: ${money(amount * b.share)})` : ''
+      scriptChoice(g, EVENT, 'Acquisition Offer', `${who} wants to buy ${a.name} for ${formatMoney(amount)}${stake}. Valuation: ${money(b.valuation)}. They promise "nothing will change." Something always changes.`, [
+        { id: 'sell', label: 'Sell and walk away', emoji: '\u{1F4B0}' },
+        { id: 'stay', label: 'Sell, but stay on as Studio Head', emoji: '\u{1F454}' },
+        { id: 'decline', label: 'Not for sale', emoji: '\u{1F645}' },
+      ], { emoji: '\u{1F3F0}', data: { ...base, amount, who } })
+      return true
+    }
+    case 'exclusive': {
+      if (!x) return false
+      const holder = pick(g, PLATFORM_HOLDERS)
+      const sc = scopeDef(x.scope)
+      const amount = Math.round(sc.potential * qualityFactor(Math.max(50, x.quality)) * 0.35 * netPerCopy(priceOf(x.scope, x.platform)) * 0.3)
+      if (amount <= 0) return false
+      scriptChoice(g, EVENT, 'Exclusivity Offer', `${holder.name} will pay ${formatMoney(amount)} if "${x.title}" launches only on ${holder.console}. Fewer players, guaranteed money, and their marketing team behind it.`, [
+        { id: 'accept', label: `Take the ${money(amount)}`, emoji: '\u{1F91D}' },
+        { id: 'decline', label: 'Stay multiplatform', emoji: '\u{1F310}' },
+      ], { emoji: '\u{1F579}\u{FE0F}', data: { ...base, amount, who: holder.name } })
+      return true
+    }
+    case 'leak': {
+      if (!x) return false
+      scriptChoice(g, EVENT, 'Leaked Build', `An early build of "${x.title}" leaked online. People are streaming it. Someone already found the placeholder boss: a gray cube labeled "BOSS TODO".`, [
+        { id: 'embrace', label: 'Lean into it', emoji: '\u{1F648}' },
+        { id: 'lawyers', label: 'Send the lawyers', emoji: '\u{2696}\u{FE0F}' },
+        { id: 'quiet', label: 'Say nothing', emoji: '\u{1F910}' },
+      ], { emoji: '\u{1F4E1}', data: base })
+      return true
+    }
+    case 'bomb': {
+      if (!x) return false
+      scriptChoice(g, EVENT, 'Review Bomb', `"${x.title}" is getting review-bombed because ${pick(g, ['a hat costs real money now', 'one character got a new haircut', 'the new patch moved the jump button', 'a developer said they prefer cats'])}. ${randInt(g, 2, 40)},000 one-star reviews in a weekend.`, [
+        { id: 'patch', label: 'Ship a hotfix', emoji: '\u{1FA79}' },
+        { id: 'statement', label: 'Post a statement', emoji: '\u{1F4DD}' },
+        { id: 'ignore', label: 'Ignore it', emoji: '\u{1F648}' },
+      ], { emoji: '\u{1F4A3}', data: base })
+      return true
+    }
+    case 'expose': {
+      scriptChoice(g, EVENT, 'Crunch Exposé', `A games journalist published "Inside ${a.name}'s Crunch Culture", with anonymous quotes about 90-hour weeks and a ${pick(g, ['nap pod nobody is allowed to use', 'mandatory weekend "fun day"', 'pizza budget bigger than the QA budget'])}.`, [
+        { id: 'change', label: 'End mandatory crunch', emoji: '\u{1F370}' },
+        { id: 'apologize', label: 'Apologize, change nothing', emoji: '\u{1F64F}' },
+        { id: 'deny', label: 'Deny everything', emoji: '\u{1F645}' },
+      ], { emoji: '\u{1F4F0}', data: base })
+      return true
+    }
+    case 'streamer': {
+      if (!x) return false
+      scriptChoice(g, EVENT, 'Streamer Spotlight', `A huge streamer played "${x.title}" for nine hours straight and called it "${pick(g, ['the best game nobody is talking about', 'my new obsession', 'the reason I have not slept'])}". Clips are everywhere.`, [
+        { id: 'sponsor', label: 'Sponsor more streams', emoji: '\u{1F3A5}' },
+        { id: 'thank', label: 'Send a thank-you plushie', emoji: '\u{1F9F8}' },
+      ], { emoji: '\u{1F3A5}', data: base })
+      return true
+    }
+  }
+  return false
+}
+
+// ---------------------------------------------------------------------------
+// Greenlighting a game: scope → genre → platform → engine → name
+
+interface GlDraft {
+  assetId: string
+  scope: ScopeId
+  genre: GenreId
+  platform: PlatformId
+  engine: EngineId
+  franchise: string
+  sequelOf: string
+  title: string
+}
+
+function readGl(v: Json | undefined): GlDraft {
+  const d = v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+  return {
+    assetId: typeof d.assetId === 'string' ? d.assetId : '',
+    scope: isScope(d.scope) ? d.scope : 'small',
+    genre: isGenre(d.genre) ? d.genre : GENRES[0].id,
+    platform: isPlatform(d.platform) ? d.platform : 'pc',
+    engine: isEngine(d.engine) ? d.engine : 'cobalt',
+    franchise: typeof d.franchise === 'string' ? d.franchise : '',
+    sequelOf: typeof d.sequelOf === 'string' ? d.sequelOf : '',
+    title: typeof d.title === 'string' ? d.title : '',
+  }
+}
+
+function glJson(d: GlDraft): Json {
+  return toJson(d)
+}
+
+const MAX_PIPELINE = 4
+
+function greenlightBlock(g: GameState, a: Asset): string | null {
+  const block = manageBlock(g, a)
+  if (block) return block
+  const st = studioOf(a)
+  if (devGames(st).length >= MAX_PIPELINE) return `${a.name} already has ${MAX_PIPELINE} games in development.`
+  if (readBiz(g, a).employees < 1) return 'Hire some developers first.'
+  return null
+}
+
+/** Open the greenlight flow for a studio (optionally a sequel). */
+export function startGreenlight(g: GameState, assetId: string, preset: Partial<GlDraft> = {}): void {
+  const a = findBusiness(g, assetId)
+  if (!a) return
+  const reason = greenlightBlock(g, a)
+  if (reason) {
+    notice(g, 'Greenlight', reason, { emoji: '\u{1F6A6}' })
+    return
+  }
+  const b = readBiz(g, a)
+  const st = studioOf(a)
+  const free = Math.max(0, b.employees - assignedDevs(st))
+  const options = SCOPES.filter((s) => s.id !== 'jam')
+  scriptChoice(
+    g,
+    GL_SCOPE,
+    preset.sequelOf ? `Sequel: ${preset.franchise || 'Untitled'}` : 'Greenlight a Game',
+    `${a.name} has ${b.employees} developers (${free} free). How big is the next game?`,
+    [
+      ...options.map((s) => ({
+        id: s.id,
+        label: `${s.label}: ~${s.team} dev${s.team === 1 ? '' : 's'} for ${s.years} year${s.years === 1 ? '' : 's'}${b.employees < s.minTeam ? ` (needs ${s.minTeam}+ devs)` : ''}`,
+        emoji: s.emoji,
+      })),
+      { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
+    ],
+    { emoji: '\u{1F6A6}', data: glJson({ assetId, scope: 'small', genre: preset.genre ?? GENRES[0].id, platform: 'pc', engine: 'cobalt', franchise: preset.franchise ?? '', sequelOf: preset.sequelOf ?? '', title: preset.title ?? '' }) },
+  )
+}
+
+const GL_SCOPE = defineScript('gamestudio.gl.scope', (g, choice, data) => {
+  if (choice === 'cancel') return
+  const d = readGl(data)
+  const a = findBusiness(g, d.assetId)
+  if (!a || greenlightBlock(g, a) || !isScope(choice)) return
+  const sc = scopeDef(choice)
+  if (readBiz(g, a).employees < sc.minTeam) {
+    notice(g, 'Too Small', `${sc.label} games need at least ${sc.minTeam} developers. ${a.name} has ${readBiz(g, a).employees}. Hire more first.`, { emoji: '\u{1F6A6}' })
+    return
+  }
+  d.scope = choice
+  if (d.sequelOf) return glPlatform(g, d)
+  const hot = new Set(hotGenres(g).map((x) => x.id))
+  const options = shuffle(g, GENRES).slice(0, 6)
+  for (const h of hotGenres(g)) if (!options.some((o) => o.id === h.id)) options[options.length - 1] = h
+  scriptChoice(g, GL_GENRE, 'Pick a Genre', `What will it be? ${[...hot].map((x) => genreDef(x).label).join(' and ')} games are hot right now.`, [
+    ...options.map((x) => ({ id: x.id, label: `${x.label}${hot.has(x.id) ? ' (hot!)' : ''}`, emoji: x.emoji })),
+    { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
+  ], { emoji: '\u{1F3AE}', data: glJson(d) })
+})
+
+const GL_GENRE = defineScript('gamestudio.gl.genre', (g, choice, data) => {
+  if (choice === 'cancel' || !isGenre(choice)) return
+  const d = readGl(data)
+  const a = findBusiness(g, d.assetId)
+  if (!a || greenlightBlock(g, a)) return
+  d.genre = choice
+  glPlatform(g, d)
+})
+
+function glPlatform(g: GameState, d: GlDraft): void {
+  const sc = scopeDef(d.scope)
+  const scale = costScale(g.character.countryId)
+  scriptChoice(g, GL_PLATFORM, 'Pick a Platform', `Where will it launch?`, [
+    ...PLATFORMS.filter((p) => p.minScope <= sc.index).map((p) => ({ id: p.id, label: `${p.label}${p.certUsd > 0 ? ` (${money(p.certUsd * scale)} dev kits & certification)` : ''}`, emoji: p.emoji })),
+    { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
+  ], { emoji: '\u{1F579}\u{FE0F}', data: glJson(d) })
+}
+
+const GL_PLATFORM = defineScript('gamestudio.gl.platform', (g, choice, data) => {
+  if (choice === 'cancel' || !isPlatform(choice)) return
+  const d = readGl(data)
+  const a = findBusiness(g, d.assetId)
+  if (!a || greenlightBlock(g, a)) return
+  d.platform = choice
+  const sc = scopeDef(d.scope)
+  scriptChoice(g, GL_ENGINE, 'Pick an Engine', 'Which engine will the team use?', [
+    ...ENGINES.filter((e) => e.id !== 'blocks' && e.maxScope >= sc.index).map((e) => ({ id: e.id, label: `${e.label}: ${e.note}`, emoji: e.emoji })),
+    { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
+  ], { emoji: '\u{2699}\u{FE0F}', data: glJson(d) })
+})
+
+const GL_ENGINE = defineScript('gamestudio.gl.engine', (g, choice, data) => {
+  if (choice === 'cancel' || !isEngine(choice)) return
+  const d = readGl(data)
+  const a = findBusiness(g, d.assetId)
+  if (!a || greenlightBlock(g, a)) return
+  d.engine = choice
+  const st = studioOf(a)
+  const suggestion = d.title || (d.sequelOf ? sequelTitle(d.franchise, 2) : gameTitle(g, d.genre, new Set(st.games.map((x) => x.title))))
+  scriptInput(g, {
+    title: 'Name the Game',
+    emoji: genreDef(d.genre).emoji,
+    text: `${scopeDef(d.scope).label} ${genreDef(d.genre).label.toLowerCase()} for ${platformDef(d.platform).label}, built in ${engineDef(d.engine).label}. Working title?`,
+    input: 'text',
+    placeholder: 'Title',
+    defaultValue: suggestion,
+    scriptId: GL_NAME,
+    data: glJson(d),
+  })
+})
+
+const GL_NAME = defineScript('gamestudio.gl.name', (g, input, data) => {
+  const d = readGl(data)
+  const a = findBusiness(g, d.assetId)
+  if (!a || greenlightBlock(g, a)) return
+  const b = bizOf(g, a)
+  const st = studioOf(a)
+  const title =
+    String(input ?? '')
+      .replace(/[\u0000-\u001f<>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 48) || (d.sequelOf ? sequelTitle(d.franchise, 2) : gameTitle(g, d.genre, new Set(st.games.map((x) => x.title))))
+  const sc = scopeDef(d.scope)
+  const free = b.employees - assignedDevs(st)
+  const team = Math.max(1, Math.min(sc.team, free > 0 ? free : Math.max(1, Math.round(b.employees / (devGames(st).length + 1)))))
+  const x = addGame(st, g, { scope: d.scope, genre: d.genre, platform: d.platform, engine: d.engine, title, team, franchise: d.franchise, sequelOf: d.sequelOf })
+  saveStudio(a, st)
+  count(g, 'studioGreenlights')
+  log(g, `${a.name} greenlit "${title}".`, 'good')
+  const years = Math.max(1, Math.round(sc.years / Math.pow(clampN(x.team / sc.team, 0.05, 3), 0.8)))
+  notice(g, 'Greenlit!', `"${x.title}" is in production at ${a.name}: ${an(genreDef(x.genre).noun)} with ${x.team} developer${x.team === 1 ? '' : 's'}${free <= 0 ? ' (shared with your other projects)' : ''}. At this size it should take about ${years === 1 ? 'a year' : `${years} years`}.`, { emoji: '\u{1F7E2}', tone: 'good' })
+})
+
+// ---------------------------------------------------------------------------
+// Studio actions
+
+type StudioRun = (g: GameState, a: Asset, b: BizState, st: StudioState, input?: string) => void
+
+function studioAct(a: Asset, key: string, label: string, emoji: string, opts: { subtitle?: string | ((g: GameState) => string); disabled?: (g: GameState) => string | null; confirm?: (g: GameState) => string | null; input?: MenuAction['input']; run: StudioRun }): MenuAction {
+  return {
+    type: 'action',
+    id: `studio.${key}.${a.id}`,
+    label,
+    emoji,
+    subtitle: opts.subtitle,
+    disabledReason: (g) => manageBlock(g, a) ?? (opts.disabled ? opts.disabled(g) : null),
+    confirm: opts.confirm,
+    input: opts.input,
+    run: (g, input) => {
+      const cur = findBusiness(g, a.id)
+      if (!cur || manageBlock(g, cur)) return
+      const b = bizOf(g, cur)
+      const st = studioOf(cur)
+      opts.run(g, cur, b, st, input)
+    },
+  }
+}
+
+function amountOf(input: string | undefined, max: number): number {
+  const n = Math.round(Number(String(input ?? '').replace(/[^0-9.]/g, '')))
+  return Number.isFinite(n) ? Math.max(0, Math.min(Math.max(0, max), n)) : 0
+}
+
+function hireDevs(g: GameState, a: Asset, b: BizState, n: number): void {
+  const room = maxDevs(b) - b.employees
+  const count0 = Math.min(n, room)
+  if (count0 <= 0) return notice(g, 'Full House', `${a.name}'s offices are full (${maxDevs(b)} desks). Open another studio office to grow.`, { emoji: '\u{1F3E2}' })
+  const fee = Math.round(count0 * devCost(b) * 0.08)
+  if (b.cash < fee) return noCash(g, a, fee, 'recruiting')
+  b.cash -= fee
+  b.yearCosts += fee
+  b.employees += count0
+  notice(g, 'Hiring Spree', `${a.name} hired ${count0} developer${count0 === 1 ? '' : 's'} (recruiters: ${formatMoney(fee)}). Each costs about ${formatMoney(devCost(b))} a year. Team: ${b.employees}.`, { emoji: '\u{1F465}', tone: 'good' })
+}
+
+function layOff(g: GameState, a: Asset, b: BizState, st: StudioState, n: number): void {
+  const cut = Math.min(n, Math.max(0, b.employees - 1))
+  if (cut <= 0) return notice(g, 'Layoffs', 'There is nobody left to lay off except you.', { emoji: '\u{1F4E6}' })
+  const sev = Math.round((cut * devCost(b) * clampN(severanceMonths(b.countryId), 0, 12)) / 12)
+  b.cash -= sev
+  b.yearCosts += sev
+  b.employees -= cut
+  b.morale = clampN(b.morale - Math.min(20, 4 + Math.round((cut / Math.max(1, b.employees + cut)) * 40)), 0, 100)
+  b.brand = clampN(b.brand - (cut >= 10 ? 3 : 1), 0, 100)
+  // Teams shrink with the studio.
+  const assigned = assignedDevs(st)
+  if (assigned > b.employees) for (const x of devGames(st)) x.team = Math.max(1, Math.round((x.team * b.employees) / assigned))
+  saveStudio(a, st)
+  log(g, `${a.name} laid off ${cut} developer${cut === 1 ? '' : 's'}.`, 'bad')
+  notice(g, 'Layoffs', `${a.name} laid off ${cut} developer${cut === 1 ? '' : 's'}${sev > 0 ? ` (${formatMoney(sev)} in severance)` : ''}. The remaining ${b.employees} are updating their CVs "just in case".`, { emoji: '\u{1F4E6}', tone: 'bad' })
+}
+
+function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
+  const gid = x0.id
+  const cur = (g: GameState) => {
+    const found = findBusiness(g, a.id)
+    return found ? studioOf(found).games.find((y) => y.id === gid && y.stage !== 'live') : undefined
+  }
+  const once = (key: string) => `studio.${key}.${a.id}.${gid}`
+  return {
+    type: 'menu',
+    id: `studio.game.${a.id}.${gid}`,
+    label: x0.title,
+    emoji: genreDef(x0.genre).emoji,
+    subtitle: `${scopeDef(x0.scope).label} · ${Math.round(x0.progress)}% · ${x0.team} devs${x0.stage === 'ea' ? ' · early access' : ''}${x0.publisher ? ` · ${x0.publisher}` : ''}`,
+    header: (g) => {
+      const x = cur(g)
+      if (!x) return 'This game is no longer in development.'
+      return [
+        `${genreDef(x.genre).emoji} "${x.title}": ${scopeDef(x.scope).label} ${genreDef(x.genre).label.toLowerCase()} for ${platformDef(x.platform).label}${x.exclusive ? ` (exclusive to ${x.exclusive})` : ''}, ${engineDef(x.engine).label}.`,
+        `Progress ${Math.round(x.progress)}% · quality so far ${Math.round(x.quality)} · hype ${Math.round(x.hype)}${x.bugs >= 10 ? ` · bugs ${Math.round(x.bugs)}` : ''} · ${x.team} developers · ${money(x.spent)} spent`,
+        `${genreDef(x.genre).label} games are ${trendLabel(genreTrend(g, x.genre))} this year.${x.publisher ? ` Published by ${x.publisher} (recouping ${money(x.recoup)}, then ${Math.round(x.devShare * 100)}% to you).` : ''}${x.backers ? ` ${x.backers.toLocaleString('en-US')} backers are waiting.` : ''}`,
+      ].join('\n')
+    },
+    children: (g) => {
+      const x = cur(g)
+      if (!x) return [{ type: 'info', id: `studio.game.${a.id}.${gid}.gone`, text: 'This game is no longer in development.' }]
+      const sc = scopeDef(x.scope)
+      const nodes: MenuNode[] = [
+        studioAct(a, `team.${gid}`, 'Set Team Size', '\u{1F465}', {
+          subtitle: (gg) => `${x.team} assigned · ${readBiz(gg, a).employees} developers in the studio`,
+          input: { kind: 'number', label: 'Developers on this game', min: 1, max: Math.max(1, readBiz(g, a).employees), defaultValue: () => String(Math.max(1, Math.min(readBiz(g, a).employees, sc.team))) },
+          run: (gg, aa, bb, st, input) => {
+            const y = st.games.find((z) => z.id === gid)
+            if (!y) return
+            y.team = Math.max(1, amountOf(input, bb.employees))
+            saveStudio(aa, st)
+            notice(gg, 'Team Set', `${y.team} developers are now on "${y.title}". The ideal team for ${an(sc.label)} game is about ${sc.team}.`, { emoji: '\u{1F465}' })
+          },
+        }),
+        studioAct(a, `hype.${gid}`, 'Marketing Push', '\u{1F3AC}', {
+          subtitle: (gg) => `${money(sc.marketingUsd * 0.12 * costScale(readBiz(gg, a).countryId))} · trailer and showcase slot`,
+          disabled: (gg) => (yearActionsUsed(gg, once('hype')) >= 1 ? 'Once a year per game.' : null),
+          run: (gg, aa, bb, st) => {
+            const y = st.games.find((z) => z.id === gid)
+            if (!y) return
+            if (!useYearAction(gg, once('hype'), 1)) return tooBusy(gg, 'run a marketing push for this game')
+            const cost = Math.round(sc.marketingUsd * 0.12 * costScale(bb.countryId))
+            if (bb.cash < cost) return noCash(gg, aa, cost, 'the trailer')
+            bb.cash -= cost
+            bb.yearCosts += cost
+            y.hype = clampN(y.hype + randInt(gg, 15, 25) * (0.8 + bb.brand / 200), 0, 100)
+            saveStudio(aa, st)
+            notice(gg, 'Trailer Drop', `"${y.title}" got a trailer and a slot in a big online showcase (${formatMoney(cost)}). ${pick(gg, ['The comments say "TAKE MY MONEY".', 'It trended for six hours.', 'A famous streamer reacted with a single tear.'])} Hype ${Math.round(y.hype)}/100.`, { emoji: '\u{1F3AC}', tone: 'good' })
+          },
+        }),
+      ]
+      if (sc.index <= 2 && !x.raised && x.stage === 'dev') {
+        nodes.push(
+          studioAct(a, `crowd.${gid}`, 'Crowdfund It', '\u{1F4B8}', {
+            subtitle: 'All or nothing; backers already own it at launch',
+            disabled: () => (x.progress < 10 ? 'Make some progress first.' : null),
+            run: (gg, aa, bb, st) => {
+              const y = st.games.find((z) => z.id === gid)
+              if (!y || y.raised) return
+              const fans = gdView(gg).gamerFame
+              const backers = whole((300 + y.hype * 60 + bb.brand * 80 + fans * 250) * Math.pow(clampN(y.quality, 10, 100) / 55, 1.5) * genreTrend(gg, y.genre) * randFloat(gg, 0.4, 1.6))
+              const raised = whole(backers * (priceOf(y.scope, y.platform) * 1.5 + 5) * 0.9)
+              const goal = Math.round(scopeDef(y.scope).extraUsd * 2 + devCost(bb) * 2)
+              y.raised = 1
+              if (raised < goal) {
+                saveStudio(aa, st)
+                notice(gg, 'Campaign Failed', `"${y.title}" raised ${formatMoney(raised)} of its ${formatMoney(goal)} goal, so it got nothing. All or nothing is a harsh mistress.`, { emoji: '\u{1F4C9}', tone: 'bad' })
+                return
+              }
+              y.raised = raised
+              y.backers = backers
+              y.hype = clampN(y.hype + 15, 0, 100)
+              bb.cash += raised
+              bb.yearIncome += raised
+              saveStudio(aa, st)
+              log(gg, `${aa.name} crowdfunded "${y.title}": ${money(raised)}.`, 'good')
+              notice(gg, 'Funded!', `"${y.title}" raised ${formatMoney(raised)} from ${backers.toLocaleString('en-US')} backers (goal ${formatMoney(goal)}). The money is in the company account. The backers own the game at launch, so they won't buy it twice.`, { emoji: '\u{1F4B8}', tone: 'good' })
+            },
+          }),
+        )
+      }
+      if (!x.publisher) {
+        nodes.push(
+          studioAct(a, `pub.${gid}`, 'Sign with a Publisher', '\u{1F91D}', {
+            subtitle: 'Cash now and marketing muscle, for a cut of sales',
+            disabled: (gg) => (x.progress < 15 ? 'Publishers want a vertical slice first (15%).' : yearActionsUsed(gg, once('pub')) >= 1 ? 'You already pitched it this year.' : null),
+            run: (gg, aa, bb, st) => {
+              if (!useYearAction(gg, once('pub'), 1)) return tooBusy(gg, 'pitched this game to publishers')
+              const y = st.games.find((z) => z.id === gid)
+              if (!y) return
+              const s2 = scopeDef(y.scope)
+              const est = s2.potential * platformDef(y.platform).audience * genreDef(y.genre).appeal * genreTrend(gg, y.genre) * qualityFactor(Math.max(y.quality, 55)) * s2.luck[0] * homeReach(bb.countryId)
+              const advance = Math.round(clampN(est * netPerCopy(priceOf(y.scope, y.platform)) * randFloat(gg, 0.3, 0.45) * (0.8 + bb.brand / 250), 0, s2.marketingUsd * 2 + s2.extraUsd * s2.years))
+              if (advance < devCost(bb)) {
+                notice(gg, 'Publishers Passed', `Publishers watched the "${y.title}" demo and said it "isn't a fit for our portfolio right now." Polish it and try next year.`, { emoji: '\u{1F4E7}', tone: 'bad' })
+                return
+              }
+              const pubName = pick(gg, s2.index >= 3 ? GIANTS.map((z) => z.name) : PUBLISHERS)
+              const devShare = Math.round(randFloat(gg, 0.4, 0.6) * 100) / 100
+              scriptChoice(gg, PUB, 'Publishing Offer', `${pubName} offers a ${formatMoney(advance)} advance for "${y.title}" (a quarter now, the rest in milestones) and will market it worldwide. They earn back the advance and their marketing from sales first; after that ${a.name} gets ${Math.round(devShare * 100)}%.`, [
+                { id: 'sign', label: `Sign (${money(advance)} advance)`, emoji: '\u{1F91D}' },
+                { id: 'self', label: 'Self-publish', emoji: '\u{1F3E0}' },
+              ], { emoji: '\u{1F91D}', data: { assetId: aa.id, gameId: gid, advance, devShare, publisher: pubName } })
+            },
+          }),
+        )
+      }
+      if (sc.index <= 2 && x.stage === 'dev' && (x.platform === 'pc' || x.platform === 'vr')) {
+        nodes.push(
+          studioAct(a, `ea.${gid}`, 'Launch in Early Access', '\u{1F6A7}', {
+            subtitle: 'Sell it while you finish it',
+            disabled: () => (x.progress < 50 ? 'Needs to be at least 50% done.' : null),
+            run: (gg, aa, bb, st) => {
+              const y = st.games.find((z) => z.id === gid)
+              if (!y || y.stage !== 'dev') return
+              const est = firstYearCopies(gg, { scope: y.scope, genre: y.genre, platform: y.platform, quality: y.quality * 0.9, hype: y.hype, marketing: 0.8, reach: homeReach(bb.countryId), fame: bb.brand / 2, franchise: 0, presold: y.backers })
+              y.stage = 'ea'
+              y.eaTail = whole(est * 0.35)
+              y.hype = clampN(y.hype + 8, 0, 100)
+              saveStudio(aa, st)
+              log(gg, `${aa.name} launched "${y.title}" in early access.`, 'good')
+              notice(gg, 'Early Access', `"${y.title}" is in early access. Expect around ${copiesLabel(y.eaTail)} this year, plus a firehose of feedback that will make the full release better.`, { emoji: '\u{1F6A7}', tone: 'good' })
+            },
+          }),
+        )
+      }
+      nodes.push(
+        studioAct(a, `cancel.${gid}`, 'Cancel It', '\u{1F5D1}\u{FE0F}', {
+          confirm: () => `Cancel "${x.title}"? ${money(x.spent)} of work goes in the bin${x.advanceGot + x.exclusiveFee + (x.raised > 1 ? x.raised : 0) > 0 ? `, and ${money(x.advanceGot + x.exclusiveFee + (x.raised > 1 ? x.raised : 0))} in advances, fees and pledges must be paid back` : ''}.`,
+          run: (gg, aa, bb, st) => {
+            const y = st.games.find((z) => z.id === gid)
+            if (!y) return
+            st.games = st.games.filter((z) => z.id !== gid)
+            bb.morale = clampN(bb.morale - 8, 0, 100)
+            // Money taken for a game that will never ship goes back: refunds, advances, exclusivity fees.
+            const refunds = (y.raised > 1 ? y.raised : 0) + y.advanceGot + y.exclusiveFee
+            if (refunds > 0) {
+              bb.cash -= refunds
+              bb.yearCosts += refunds
+            }
+            if (y.raised > 1) {
+              bb.brand = clampN(bb.brand - 10, 0, 100)
+              addHidden(gg, 'karma', -5)
+            }
+            saveStudio(aa, st)
+            log(gg, `${aa.name} cancelled "${y.title}".`, 'bad')
+            const owed = [
+              y.raised > 1 ? `${y.backers.toLocaleString('en-US')} backers are furious and got ${formatMoney(y.raised)} in refunds.` : '',
+              y.advanceGot > 0 ? `${y.publisher} invoked the cancellation clause and took back its ${formatMoney(y.advanceGot)} advance.` : '',
+              y.exclusiveFee > 0 ? `${y.exclusive} wants its ${formatMoney(y.exclusiveFee)} exclusivity fee back, and got it.` : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
+            notice(gg, 'Cancelled', `You cancelled "${y.title}". The team held a small funeral for the prototype.${owed ? ` ${owed}` : ''}`, { emoji: '\u{1F5D1}\u{FE0F}', tone: 'bad' })
+          },
+        }),
+      )
+      return nodes
+    },
+  }
+}
+
+const PUB = defineScript('gamestudio.publisher', (g, choice, data) => {
+  if (choice !== 'sign') return
+  const d = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  const a = findBusiness(g, typeof d.assetId === 'string' ? d.assetId : undefined)
+  if (!a || manageBlock(g, a)) return
+  const b = bizOf(g, a)
+  const st = studioOf(a)
+  const x = st.games.find((y) => y.id === d.gameId)
+  if (!x || x.publisher || x.stage === 'live') return
+  const advance = typeof d.advance === 'number' && Number.isFinite(d.advance) ? Math.max(0, Math.round(d.advance)) : 0
+  const upfront = Math.round(advance * 0.25)
+  x.publisher = typeof d.publisher === 'string' ? d.publisher : PUBLISHERS[0]
+  x.devShare = typeof d.devShare === 'number' && Number.isFinite(d.devShare) ? clampN(d.devShare, 0.3, 0.8) : 0.5
+  x.recoup = whole(advance + scopeDef(x.scope).marketingUsd)
+  x.advance = advance
+  x.advanceGot = upfront
+  x.hype = clampN(x.hype + 15, 0, 100)
+  b.cash += upfront
+  b.yearIncome += upfront
+  saveStudio(a, st)
+  log(g, `${a.name} signed "${x.title}" with ${x.publisher}.`, 'good')
+  notice(g, 'Deal Signed', `${x.publisher} signed "${x.title}" for a ${formatMoney(advance)} advance: ${formatMoney(upfront)} now, the rest in milestones as the game gets built and at launch. They handle marketing, and royalties start once they've earned back ${formatMoney(x.recoup)}. Cancel the game and they'll want their money back.`, { emoji: '\u{1F91D}', tone: 'good' })
+})
+
+function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
+  const gid = x0.id
+  const cur = (g: GameState) => {
+    const found = findBusiness(g, a.id)
+    return found ? studioOf(found).games.find((y) => y.id === gid && y.stage === 'live') : undefined
+  }
+  const once = (key: string) => `studio.${key}.${a.id}.${gid}`
+  return {
+    type: 'menu',
+    id: `studio.live.${a.id}.${gid}`,
+    label: x0.title,
+    emoji: genreDef(x0.genre).emoji,
+    subtitle: `${x0.released} · ${CRITIC_SITE} ${x0.critic} · ${copiesLabel(x0.copies)}`,
+    header: (g) => {
+      const x = cur(g)
+      if (!x) return 'Gone.'
+      return [
+        `${genreDef(x.genre).emoji} "${x.title}" (${x.released}): ${scopeDef(x.scope).label} ${genreDef(x.genre).label.toLowerCase()} on ${platformDef(x.platform).label}.`,
+        `${CRITIC_SITE} ${x.critic} · players ${x.players} ("${playerLabel(x.players)}") · ${copiesLabel(x.copies)} sold${x.dlcs ? ` · ${x.dlcs} DLC` : ''}`,
+        x.tail > 0 ? `Still selling: about ${copiesLabel(x.tail)} expected next year.` : 'It has stopped selling.',
+        x.publisher ? `Published by ${x.publisher}${x.recoup > 0 ? ` (still recouping ${money(x.recoup)})` : ''}.` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    },
+    children: (g) => {
+      const x = cur(g)
+      if (!x) return []
+      const sc = scopeDef(x.scope)
+      return [
+        studioAct(a, `dlc.${gid}`, 'Release DLC', '\u{1F381}', {
+          subtitle: (gg) => `${money(sc.extraUsd * 0.6 * costScale(readBiz(gg, a).countryId) + devCost(readBiz(gg, a)) * Math.max(1, sc.team * 0.15) * 0.5)} · ${x.dlcs}/8`,
+          disabled: (gg) => (x.released >= gg.year ? 'Give it a year first.' : x.dlcs >= 8 ? 'Eight DLCs. Time for a sequel.' : yearActionsUsed(gg, once('dlc')) >= 1 ? 'One DLC a year.' : null),
+          run: (gg, aa, bb, st) => {
+            const y = st.games.find((z) => z.id === gid)
+            if (!y) return
+            if (!useYearAction(gg, once('dlc'), 1)) return tooBusy(gg, 'released DLC for this game')
+            const cost = Math.round(sc.extraUsd * 0.6 * costScale(bb.countryId) + devCost(bb) * Math.max(1, sc.team * 0.15) * 0.5)
+            if (bb.cash < cost) return noCash(gg, aa, cost, 'the DLC')
+            bb.cash -= cost
+            bb.yearCosts += cost
+            const q = clampN(bb.quality * 0.5 + y.critic * 0.4 + staffPower(bb, 'quality') * 5 + randInt(gg, -10, 10), 0, 100)
+            y.lastDlc = gg.year
+            if (q < 45) {
+              y.players = Math.round(clampN(y.players - 5, 0, 99))
+              saveStudio(aa, st)
+              notice(gg, 'DLC Flopped', `The "${y.title}" DLC was called "a cash grab" in every language. Player score down to ${y.players}.`, { emoji: '\u{1F41F}', tone: 'bad' })
+              return
+            }
+            y.dlcs += 1
+            y.tail = whole(y.tail + Math.min(y.copies * 0.25, y.copies * 0.1 * (qualityFactor(q) / qualityFactor(70)) * Math.pow(0.8, y.dlcs - 1)) * 0.5)
+            y.players = Math.round(clampN(y.players + randInt(gg, 0, 3), 0, 99))
+            saveStudio(aa, st)
+            log(gg, `${aa.name} released DLC for "${y.title}".`, 'good')
+            notice(gg, 'DLC Out', `"${y.title}: ${pick(gg, ['The Frozen North', 'Blood & Brine', 'The Lost Archive', 'Cosmic Edition', 'Heart of the Swamp'])}" is out (${formatMoney(cost)}). Reviews: "${playerLabel(q)}".`, { emoji: '\u{1F381}', tone: 'good' })
+          },
+        }),
+        studioAct(a, `patch.${gid}`, 'Ship a Big Patch', '\u{1FA79}', {
+          subtitle: (gg) => `${money(devCost(readBiz(gg, a)) * 1.5)} · win players back`,
+          disabled: (gg) => (yearActionsUsed(gg, once('patch')) >= 1 ? 'Once a year.' : x.players >= x.critic + 12 ? 'Players already love it as much as they will.' : null),
+          run: (gg, aa, bb, st) => {
+            const y = st.games.find((z) => z.id === gid)
+            if (!y) return
+            if (!useYearAction(gg, once('patch'), 1)) return tooBusy(gg, 'patched this game')
+            const cost = Math.round(devCost(bb) * 1.5)
+            if (bb.cash < cost) return noCash(gg, aa, cost, 'the patch')
+            bb.cash -= cost
+            bb.yearCosts += cost
+            const up = Math.min(Math.max(0, y.critic + 12 - y.players), randInt(gg, 3, 8))
+            y.players = Math.round(clampN(y.players + up, 0, 99))
+            y.tail = whole(y.tail * 1.08)
+            saveStudio(aa, st)
+            notice(gg, 'Patched', `Patch notes for "${y.title}" ran 40 pages. Player score up to ${y.players} ("${playerLabel(y.players)}").`, { emoji: '\u{1FA79}', tone: 'good' })
+          },
+        }),
+        studioAct(a, `sequel.${gid}`, 'Greenlight a Sequel', '\u{1F501}', {
+          subtitle: x.critic >= 50 ? 'Franchise time' : 'Nobody asked for one',
+          disabled: (gg) => greenlightBlock(gg, a) ?? (x.critic < 50 ? 'It flopped. Nobody wants a sequel.' : null),
+          run: (gg, aa, _bb, st) => {
+            const y = st.games.find((z) => z.id === gid)
+            if (!y) return
+            const franchise = y.franchise || y.title
+            const nth = st.games.filter((z) => z.franchise === franchise || z.title === franchise).length + 1
+            if (!y.franchise) {
+              y.franchise = franchise
+              saveStudio(aa, st)
+            }
+            startGreenlight(gg, aa.id, { genre: y.genre, franchise, sequelOf: y.id, title: sequelTitle(franchise, Math.max(2, nth)) })
+          },
+        }),
+      ]
+    },
+  }
+}
+
+/** Info line for the business screen. */
+export function studioInfo(g: GameState, a: Asset): string {
+  const st = studioOf(a)
+  const b = readBiz(g, a)
+  return `${studioLine(st)} · ${b.employees} developers (${assignedDevs(st)} assigned) · ${policyLabel(st.policy)}`
+}
+
+/** The game-specific part of a studio's management screen. */
+export function studioNodes(g: GameState, a: Asset): MenuNode[] {
+  const st = studioOf(a)
+  const b = readBiz(g, a)
+  const nodes: MenuNode[] = []
+  nodes.push({
+    type: 'action',
+    id: `studio.greenlight.${a.id}`,
+    label: 'Greenlight a Game',
+    emoji: '\u{1F6A6}',
+    subtitle: `${devGames(st).length}/${MAX_PIPELINE} in development · hot: ${hotGenres(g)
+      .map((x) => x.label)
+      .join(', ')}`,
+    disabledReason: (gg) => greenlightBlock(gg, a),
+    run: (gg) => startGreenlight(gg, a.id),
+  })
+  const dev = devGames(st)
+  if (dev.length) {
+    nodes.push({ type: 'heading', id: `studio.devH.${a.id}`, label: 'In Development' })
+    for (const x of dev) nodes.push(devGameNode(a, x))
+  }
+  const live = st.games.filter((x) => x.stage === 'live').sort((x, y) => y.released - x.released)
+  if (live.length) {
+    nodes.push({
+      type: 'menu',
+      id: `studio.catalog.${a.id}`,
+      label: 'Released Games',
+      emoji: '\u{1F4DA}',
+      subtitle: `${live.length} game${live.length === 1 ? '' : 's'} · ${copiesLabel(live.reduce((s, x) => s + x.copies, 0))} sold`,
+      children: () => live.map((x) => liveGameNode(a, x)),
+    })
+  }
+  nodes.push({
+    type: 'menu',
+    id: `studio.team.${a.id}`,
+    label: 'Developers & Crunch',
+    emoji: '\u{1F465}',
+    subtitle: `${b.employees} developers · ${policyLabel(st.policy)} · morale ${b.morale}%`,
+    disabledReason: (gg) => manageBlock(gg, a),
+    header: (gg) => {
+      const bb = readBiz(gg, a)
+      return `Each developer costs about ${money(devCost(bb))} a year in ${getCountry(bb.countryId).name}. Offices seat ${maxDevs(bb)}. Crunch ships games faster but grinds morale down and adds bugs; relaxed hours make better games, slower.`
+    },
+    children: (gg) => {
+      const bb = readBiz(gg, a)
+      const found = findBusiness(gg, a.id)
+      const cur = found ? studioOf(found) : normalizeStudio(undefined)
+      const rows: MenuNode[] = [
+        studioAct(a, 'hire', 'Hire Developers', '\u{1F4E5}', {
+          subtitle: `${money(devCost(bb))}/yr each · ${bb.employees}/${maxDevs(bb)}`,
+          input: { kind: 'number', label: 'How many?', min: 1, max: Math.max(1, maxDevs(bb) - bb.employees), defaultValue: () => '5' },
+          disabled: () => (bb.employees >= maxDevs(bb) ? 'The offices are full.' : null),
+          run: (x, aa, b2, _st, input) => hireDevs(x, aa, b2, amountOf(input, maxDevs(b2) - b2.employees)),
+        }),
+        studioAct(a, 'layoff', 'Lay Off Developers', '\u{1F4E6}', {
+          subtitle: `Severance: ${severanceMonths(bb.countryId)} months' pay`,
+          input: { kind: 'number', label: 'How many?', min: 1, max: Math.max(1, bb.employees - 1), defaultValue: () => '1' },
+          disabled: () => (bb.employees <= 1 ? 'Nobody left to lay off.' : null),
+          run: (x, aa, b2, st2, input) => layOff(x, aa, b2, st2, amountOf(input, b2.employees - 1)),
+        }),
+        { type: 'heading', id: `studio.policyH.${a.id}`, label: 'Working hours' },
+      ]
+      for (const p of ['relaxed', 'normal', 'crunch'] as StudioPolicy[]) {
+        rows.push(
+          studioAct(a, `policy.${p}`, `${p === 'relaxed' ? 'Relaxed Hours' : p === 'crunch' ? 'Crunch Mode' : 'Normal Hours'}${cur.policy === p ? ' (current)' : ''}`, p === 'relaxed' ? '\u{1F33F}' : p === 'crunch' ? '\u{1F35C}' : '\u{1F552}', {
+            subtitle: p === 'relaxed' ? 'Slower, better games, happy team' : p === 'crunch' ? '25% faster, buggier, miserable team' : 'The usual',
+            disabled: () => (cur.policy === p ? 'Already the policy.' : null),
+            run: (x, aa, _b2, st2) => {
+              st2.policy = p
+              saveStudio(aa, st2)
+              notice(x, 'Working Hours', p === 'crunch' ? `${aa.name} is in crunch mode. Free dinners, no weekends, a lot of quiet crying in the stairwell.` : p === 'relaxed' ? `${aa.name} switched to relaxed hours. Someone brought a dog to work. Productivity dipped; happiness soared.` : `${aa.name} is back to normal hours.`, { emoji: p === 'crunch' ? '\u{1F35C}' : '\u{1F552}' })
+            },
+          }),
+        )
+      }
+      return rows
+    },
+  })
+  return nodes
+}
+
+// ---------------------------------------------------------------------------
+// Founding a studio from a teenage indie game venture
+
+/** Why an indie game venture can't become a studio right now (null = it can). */
+export function ventureStudioBlock(g: GameState, va: Asset): string | null {
+  const block = foundBlock(g)
+  if (block) return block
+  if (va.kind !== 'venture' || va.details?.type !== 'game') return 'Only an indie game venture can grow into a studio.'
+  const v = readVenture(g, va)
+  if (v.stage !== 'live') return 'Launch the game first.'
+  const fee = studioRegistrationFee(g)
+  if (g.character.money + v.cash < fee) return `Registering a company costs ${formatMoney(fee)}.`
+  return null
+}
+
+export function studioRegistrationFee(g: GameState): number {
+  const c = g.character
+  const city = getCountry(c.countryId).cities.includes(c.city) ? c.city : getCountry(c.countryId).cities[0]
+  const cost = startupCost('gameStudio', c.countryId, city)
+  return Math.round(cost.fee + cost.permits)
+}
+
+function ventureGenre(idea: string): GenreId {
+  const t = idea.toLowerCase()
+  if (/farm|cozy/.test(t)) return 'cozy'
+  if (/roguelike/.test(t)) return 'roguelike'
+  if (/horror/.test(t)) return 'horror'
+  if (/puzzle|tax/.test(t)) return 'puzzle'
+  if (/racing|cart/.test(t)) return 'racing'
+  if (/strategy|stand/.test(t)) return 'strategy'
+  if (/soulslike|cat/.test(t)) return 'rpg'
+  return 'platformer'
+}
+
+const GROW = defineScript('gamestudio.grow', (g, choice, data) => {
+  if (choice === 'no') return
+  const d = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
+  const va = g.assets.find((x) => x.id === d.assetId)
+  if (!va) return
+  growVentureIntoStudio(g, va, choice === 'manager' ? 'manager' : 'me')
+})
+
+/** Ask whether to grow an indie game venture into a studio (who runs it?). */
+export function offerStudioGrowth(g: GameState, va: Asset, intro = ''): void {
+  const reason = ventureStudioBlock(g, va)
+  if (reason) {
+    notice(g, 'Game Studio', reason, { emoji: '\u{1F3AE}' })
+    return
+  }
+  const job = g.character.job
+  scriptChoice(
+    g,
+    GROW,
+    'Become a Real Studio?',
+    `${intro}${intro ? ' ' : ''}Turn ${va.name} into a registered game studio: a real company with developers, offices, a pipeline of games and a valuation (registration about ${formatMoney(studioRegistrationFee(g))}). Its game, cash and investors come along.`,
+    [
+      { id: 'me', label: job ? `Run it myself (quit my job as ${job.title})` : 'Run it myself', emoji: '\u{1F454}' },
+      { id: 'manager', label: 'Hire a manager to run it', emoji: '\u{1F9D1}\u{200D}\u{1F4BC}' },
+      { id: 'no', label: 'Keep it an indie venture', emoji: '\u{1F3E0}' },
+    ],
+    { emoji: '\u{1F3AE}', data: { assetId: va.id } },
+  )
+}
+
+/** Convert an indie game venture into a game studio business. Returns the new asset. */
+export function growVentureIntoStudio(g: GameState, va: Asset, runner: 'me' | 'manager'): Asset | null {
+  const reason = ventureStudioBlock(g, va)
+  if (reason) {
+    notice(g, 'Game Studio', reason, { emoji: '\u{1F3AE}' })
+    return null
+  }
+  const c = g.character
+  const v = readVenture(g, va)
+  const fee = studioRegistrationFee(g)
+  const fromCash = Math.min(v.cash, fee)
+  const fromYou = fee - fromCash
+  c.money = Math.round(c.money - fromYou)
+  const country = getCountry(c.countryId)
+  const city = country.cities.includes(c.city) ? c.city : country.cities[0]
+  const price = [4.99, 14.99, 24.99][clampN(Math.round(v.tier), 0, 2)]
+  const b = newBiz(g, 'gameStudio', c.countryId, city, {
+    share: clampN(v.stake, 0.01, 1),
+    invested: whole(v.invested + fromYou),
+    cash: whole(v.cash - fromCash),
+    employees: Math.max(1, Math.min(6, 1 + v.contractors)),
+    quality: Math.round(clampN(v.quality, 30, 80)),
+    brand: Math.round(clampN(15 + v.hype / 3 + c.hidden.fame / 4, 5, 60)),
+    morale: 75,
+  })
+  const st = normalizeStudio(undefined)
+  st.seq = 1
+  st.games.push({
+    id: 'sg1',
+    title: va.name,
+    genre: ventureGenre(v.idea),
+    platform: 'pc',
+    scope: v.users >= 50_000 ? 'indie' : 'small',
+    engine: 'cobalt',
+    stage: 'live',
+    progress: 100,
+    quality: v.quality,
+    team: 0,
+    bugs: 0,
+    hype: v.hype,
+    started: v.founded,
+    released: v.launchYear || v.founded,
+    critic: Math.round(v.quality),
+    players: Math.round(v.quality),
+    copies: whole(v.users),
+    tail: whole(v.tail),
+    price,
+    gross: whole(v.revenue),
+    dlcs: 0,
+    lastDlc: 0,
+    franchise: '',
+    sequelOf: '',
+    publisher: '',
+    recoup: 0,
+    advance: 0,
+    advanceGot: 0,
+    exclusiveFee: 0,
+    devShare: 1,
+    exclusive: '',
+    backers: 0,
+    raised: 0,
+    eaCopies: 0,
+    eaTail: 0,
+    crunch: 0,
+    spent: 0,
+    awards: [],
+  })
+  b.studio = toJson(st)
+  const a = createBusinessAsset(g, va.name, b, whole(v.invested + fromYou))
+  a.purchasedAge = va.purchasedAge
+  g.assets = g.assets.filter((x) => x.id !== va.id)
+  g.assets.push(a)
+  b.valuation = Math.max(valuationOf(b), v.valuation)
+  refreshValue(a, b)
+  const p = gdMut(g)
+  if (!p.offered.includes(va.id)) p.offered.push(va.id)
+  tidy(p)
+  count(g, 'businessesFounded')
+  count(g, 'studiosFounded')
+  let quit: string | null = null
+  if (runner === 'me') quit = becomeCeo(g, a, b, 'Founder & CEO')
+  else installManager(g, b, managerCandidate(g, b))
+  addStat(g, 'happiness', 10)
+  log(g, `I turned ${va.name} into a real game studio.`, 'good')
+  remember(g, `Turned the indie game ${va.name} into a registered game studio in ${city}.`)
+  const run = runner === 'me' ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.` : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} runs it day to day.`
+  notice(g, 'Studio Founded!', `${va.name} is now a registered game studio in ${city} with ${b.employees} developer${b.employees === 1 ? '' : 's'}. Its game keeps selling under the company, and the next one is up to you: greenlight it from the company screen.${fromYou > 0 ? ` Registration cost you ${formatMoney(fromYou)}.` : ''}${run}`, { emoji: '\u{1F3AE}', tone: 'good', ai: { when: 'full', facts: `${va.name} became a game studio in ${city}.` } })
+  return a
+}
+
+/** Studios the player owns (Game Industry lists them). */
+export function studioAssets(g: GameState): Asset[] {
+  return g.assets.filter((a) => a.kind === 'business' && a.details?.industry === 'gameStudio')
+}
+
+/** One-line summary for the AI context. */
+export function studioSummary(g: GameState, a: Asset): string {
+  const st = studioOf(a)
+  const b = readBiz(g, a)
+  const dev = devGames(st)
+  const live = st.games.filter((x) => x.stage === 'live')
+  const best = [...live].sort((x, y) => y.critic - x.critic)[0]
+  return `${a.name} (game studio, ${b.employees} devs, ${dev.length} in development${best ? `, best game "${best.title}" ${best.critic}` : ''}${b.public ? ', publicly traded' : ''}; ${runsIt(g, a) ? 'CEO' : 'owner'})`
+}
+
+export const studioInternals = { EVENT, IDLE_SCRIPT, GL_SCOPE, GL_GENRE, GL_PLATFORM, GL_ENGINE, GL_NAME, PUB, GROW, hireDevs, layOff, addGame, ensureCatalog }

@@ -21,17 +21,30 @@ export interface MenuNav {
   pop: () => void
   /** Attach to an element inside the scrolling sheet body (scroll restoration). */
   anchorRef: React.RefObject<HTMLDivElement | null>
+  /** Where the player is right now: open group ids and every level's scroll offset. */
+  snapshot: () => MenuSpot
+}
+
+/** A place inside a sheet's menu tree (see ReturnPoint in the store). */
+export interface MenuSpot {
+  /** Group ids, root first. */
+  path: string[]
+  /** Scroll offset of every level, root first; the last one is the menu that is showing. */
+  scrolls: number[]
 }
 
 /**
  * Navigation stack for nested menus. `resolve` turns the stored id path into groups
  * using the latest state (see resolveTrail); groups that vanished, e.g. a job you just
- * quit, are dropped automatically.
+ * quit, are dropped automatically. `initial` reopens a sheet where the player left it
+ * (or at the deepest part of that path that still exists).
  */
-export function useMenuNav(resolve: (path: string[]) => MenuGroup[]): MenuNav {
-  const [path, setPath] = useState<string[]>([])
+export function useMenuNav(resolve: (path: string[]) => MenuGroup[], initial?: MenuSpot | null): MenuNav {
+  const [path, setPath] = useState<string[]>(() => (initial ? [...initial.path] : []))
   const anchorRef = useRef<HTMLDivElement | null>(null)
-  const scrolls = useRef<number[]>([])
+  const scrolls = useRef<number[]>(initial ? initial.scrolls.slice(0, initial.path.length) : [])
+  // Reopening: restore the scroll of whatever level we land on once it has rendered.
+  const restore = useRef<number[] | null>(initial ? initial.scrolls : null)
   const pendingScroll = useRef<number | null>(null)
   const trail = resolve(path)
   const depth = trail.length
@@ -43,6 +56,10 @@ export function useMenuNav(resolve: (path: string[]) => MenuGroup[]): MenuNav {
   }, [depth, path.length])
 
   useEffect(() => {
+    if (restore.current) {
+      pendingScroll.current = restore.current[depth] ?? 0
+      restore.current = null
+    }
     const el = scroller()
     if (!el || pendingScroll.current === null) return
     el.scrollTop = pendingScroll.current
@@ -62,6 +79,10 @@ export function useMenuNav(resolve: (path: string[]) => MenuGroup[]): MenuNav {
       pendingScroll.current = scrolls.current[depth - 1] ?? 0
       setPath(path.slice(0, depth - 1))
     },
+    snapshot: () => ({
+      path: trail.map((t) => t.id),
+      scrolls: [...Array.from({ length: depth }, (_, i) => scrolls.current[i] ?? 0), scroller()?.scrollTop ?? 0],
+    }),
   }
 }
 
@@ -100,6 +121,8 @@ export interface MenuRunnerOptions {
   onOpenGroup: (group: MenuGroup) => void
   /** Close the whole sheet (after an action without stayOpen). */
   onClose: () => void
+  /** Called right before an action closes the sheet (remember where the player was). */
+  onLeave?: () => void
 }
 
 export interface MenuRunner {
@@ -127,6 +150,14 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
     setPending(null)
     const g = getApp().game
     if (!g || !g.character.alive) return
+    if (!action.stayOpen) {
+      // Snapshot first: the action may change which menus exist.
+      try {
+        optsRef.current.onLeave?.()
+      } catch (err) {
+        report(`onLeave(${action.id})`, err)
+      }
+    }
     runMenuAction(action, input)
     if (!action.stayOpen) optsRef.current.onClose()
   }

@@ -6,6 +6,7 @@
 import { businessSummary } from '../game/business'
 import { computerSummary } from '../game/computer'
 import { gameDevSummary } from '../game/special/gamedev'
+import { abuseSummary } from '../game/special/politics'
 import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, shortMoney } from '../game/core'
 import { cvPromptLines, cvSummary, graduateTarget, jobTarget, rankLabel, rankOf, universityTarget, type CvTarget } from '../game/cv'
 import { getJobDef, type GradKey } from '../game/data/jobs'
@@ -334,6 +335,8 @@ export function describeCharacter(g: GameState): string {
   if (portfolio) lines.push(`INVESTMENTS: ${portfolio}`)
   const gamedev = gameDevSummary(g)
   if (gamedev) lines.push(`GAME INDUSTRY: ${gamedev}`)
+  const abuse = abuseSummary(g)
+  if (abuse) lines.push(abuse)
   const computer = computerSummary(g)
   if (computer) lines.push(`AT THE COMPUTER: ${computer}`)
   const luxury = luxurySummary(g)

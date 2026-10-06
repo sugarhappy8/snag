@@ -6,6 +6,8 @@ import { useApp } from '../store'
 
 export interface LifeLogProps {
   log: LogYear[]
+  /** Leave room at the bottom for the floating "Back to …" chip. */
+  reserveBottom?: boolean
 }
 
 export function ageHeading(age: number): string {
@@ -50,7 +52,10 @@ const YearBlock = memo(
     a.year.entries[a.year.entries.length - 1]?.text === b.year.entries[b.year.entries.length - 1]?.text,
 )
 
-export function LifeLog({ log }: LifeLogProps) {
+/** Extra bottom padding (px) while the "Back to …" chip floats over the feed (matches the CSS). */
+const CHIP_ROOM = 56
+
+export function LifeLog({ log, reserveBottom = false }: LifeLogProps) {
   const showBadges = useApp((s) => s.settings.showAiBadges)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const total = log.reduce((n, y) => n + y.entries.length, 0)
@@ -72,9 +77,17 @@ export function LifeLog({ log }: LifeLogProps) {
     else el.scrollTo({ top, behavior: 'smooth' })
   }, [signature, total])
 
+  // When the chip appears, keep the newest lines in view above it (if you were reading them).
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || !reserveBottom) return
+    const gap = el.scrollHeight - el.clientHeight - el.scrollTop
+    if (gap > 0 && gap < CHIP_ROOM + 80) el.scrollTop = el.scrollHeight
+  }, [reserveBottom])
+
   let index = 0
   return (
-    <div className="lifelog" ref={scrollRef} role="log" aria-live="polite" aria-label="Life story">
+    <div className={reserveBottom ? 'lifelog has-chip' : 'lifelog'} ref={scrollRef} role="log" aria-live="polite" aria-label="Life story">
       {log.length === 0 ? <div className="lifelog-empty">Your story hasn't started yet.</div> : null}
       {log.map((year) => {
         const start = index

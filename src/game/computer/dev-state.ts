@@ -445,7 +445,18 @@ export function isVenture(a: Asset): boolean {
   return a.kind === 'venture'
 }
 
+/** Indie game ventures live under Special Careers › Game Industry (special/gamedev.ts). */
+export function isGameVenture(a: Asset): boolean {
+  return isVenture(a) && a.details?.type === 'game'
+}
+
+/** The computer's online ventures (SaaS, apps, stores). Indie game ventures are listed in Game Industry. */
 export function ventureAssets(g: GameState): Asset[] {
+  return g.assets.filter((a) => isVenture(a) && !isGameVenture(a))
+}
+
+/** Every venture, games included (the yearly simulation, the CV, the portfolio). */
+export function allVentureAssets(g: GameState): Asset[] {
   return g.assets.filter(isVenture)
 }
 
