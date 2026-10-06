@@ -86,7 +86,7 @@ const hintCache = new Map<string, unknown>()
 
 function cachedHint<T>(g: GameState, a: Asset, what: string, make: () => T): T {
   const c = g.character
-  const key = `${what}|${a.id}|${g.year}|${c.stats.smarts}|${c.hidden.discipline}|${c.education.degrees.length}|${c.conditions.length}|${c.prison ? 1 : 0}|${JSON.stringify(a.details)}`
+  const key = `${what}|${g.lifeId}|${c.id}|${a.id}|${g.year}|${c.stats.smarts}|${c.hidden.discipline}|${c.education.degrees.length}|${c.conditions.length}|${c.licenses.length}|${c.prison ? 1 : 0}|${JSON.stringify(a.details)}`
   if (hintCache.has(key)) return hintCache.get(key) as T
   const v = make()
   hintCache.set(key, v)
@@ -849,7 +849,7 @@ function insuranceAction(a: Asset): MenuAction {
     },
     run: (g, cur, b) => {
       b.insured = !b.insured
-      notice(g, b.insured ? 'Insured' : 'Insurance Canceled', b.insured ? `${cur.name} is now insured against fire, flood and lawsuits for ${formatMoney(insurancePremiumFor(b))} a year.` : `You canceled ${cur.name}'s insurance. Feeling lucky?`, { emoji: '\u{1F6E1}\u{FE0F}' })
+      notice(g, b.insured ? 'Insured' : 'Insurance Canceled', b.insured ? `${cur.name} is now insured against fires, floods, storms and other disasters for ${formatMoney(insurancePremiumFor(b))} a year.` : `You canceled ${cur.name}'s insurance. Feeling lucky?`, { emoji: '\u{1F6E1}\u{FE0F}' })
     },
   })
 }

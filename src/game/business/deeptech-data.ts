@@ -373,7 +373,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
   aiLab: [
     {
       id: 'train', label: (t) => `Train ${modelFamily(t)} ${t.models.length + 1}`, emoji: '\u{1F9E0}', blurb: 'A training run: weeks of GPUs crunching data. Bigger runs, better models.',
-      years: 1, cost: (t) => 1_500_000 * Math.pow(2.6, t.models.length) * (1 - Math.min(0.45, t.plant * 0.12)), odds: fixed(0.88),
+      years: 1, cost: (t) => 1_500_000 * Math.pow(2.6, t.models.length) * (1 - Math.min(0.45, t.plant * 0.12)), odds: fixed(0.82),
       gate: (t) => (t.models.length >= 10 ? 'Ten generations is a whole family tree.' : t.models.length >= 3 && t.rented + t.plant < 1 ? 'Runs this big need GPU compute: rent or build a cluster.' : t.models.length >= 5 && t.plant < 1 ? 'Frontier-scale runs need your own GPU cluster.' : null),
       win: (x) => trainWin(x),
       lose: (x) => (lvl(x.t, 1), 'The training run diverged halfway through. The loss curve looks like a seismograph.'),
@@ -439,7 +439,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'line', label: () => 'Production Line', emoji: '\u{1F3ED}', blurb: 'Stop building robots by hand.',
-      years: 2, cost: fixed(15_000_000), odds: fixed(0.85), capex: true,
+      years: 2, cost: fixed(8_000_000), odds: fixed(0.85), capex: true,
       gate: (t) => once(t, 'line') ?? (t.stage < 1 ? 'Needs customer pilots first.' : null),
       win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 2), lvl(x.t, 4), 'Your production line is humming. Robots building robots, sort of.'),
     },
@@ -464,7 +464,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'gigaline', label: () => 'Mass Production Gigaline', emoji: '\u{1F3D7}\u{FE0F}', blurb: 'A factory that builds robots by the thousand.',
-      years: 3, cost: fixed(60_000_000), odds: fixed(0.82), capex: true,
+      years: 3, cost: fixed(40_000_000), odds: fixed(0.82), capex: true,
       gate: (t) => once(t, 'gigaline') ?? (t.stage < 2 ? 'Needs a production line first.' : null),
       win: (x) => ((x.t.plant += 2), stageAtLeast(x.t, 3), lvl(x.t, 5), 'The gigaline is open. Robots are now a mass-market product.'),
     },
@@ -512,7 +512,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'rocket', label: () => 'Orbital Rocket', emoji: '\u{1F680}', blurb: 'Stack the stages and get the whole thing ready for a first flight.',
-      years: 3, cost: fixed(25_000_000), odds: fixed(0.85),
+      years: 3, cost: fixed(15_000_000), odds: fixed(0.85),
       gate: (t) => once(t, 'rocket') ?? (t.stage < 1 ? 'Needs a working engine.' : null),
       win: (x) => (stageAtLeast(x.t, 2), lvl(x.t, 8), hype(x.t, 10), 'Your rocket is standing on the pad. Time for a test flight.'),
     },
@@ -524,14 +524,14 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'reuse', label: () => 'Reusable Booster', emoji: '\u{267B}\u{FE0F}', blurb: 'Land the first stage and fly it again. Cuts launch costs nearly in half.',
-      years: 2, cost: fixed(50_000_000), odds: fixed(0.6),
+      years: 2, cost: fixed(40_000_000), odds: fixed(0.6),
       gate: (t) => once(t, 'reuse') ?? (t.stage < 3 ? 'Needs an operational rocket.' : null),
       win: (x) => (stageAtLeast(x.t, 4), hype(x.t, 20), lvl(x.t, 8), 'The booster landed on its legs and flew again a month later. Launch costs collapsed.'),
       lose: (x) => (lvl(x.t, 3), 'Every landing attempt ended as a crater. Still expendable, for now.'),
     },
     {
       id: 'sats', label: (t) => `Satellite Constellation Batch ${t.sats + 1}`, emoji: '\u{1F310}', blurb: 'Your own satellites in orbit: internet from space, paid monthly.',
-      years: 1, cost: fixed(70_000_000), odds: fixed(0.9), capex: true,
+      years: 1, cost: fixed(50_000_000), odds: fixed(0.9), capex: true,
       gate: (t) => (t.stage < 3 ? 'Needs an operational rocket.' : t.sats >= 12 ? 'Twelve batches: astronomers already hate you.' : null),
       win: (x) => ((x.t.sats += 1), lvl(x.t, 2), `Batch ${x.t.sats} is in orbit. Subscribers can see your satellites trail across the night sky.`),
     },
@@ -559,7 +559,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'lowvol', label: () => 'Low-Volume Assembly Plant', emoji: '\u{1F529}', blurb: 'A small plant to hand-build the first few thousand cars.',
-      years: 2, cost: fixed(25_000_000), odds: fixed(0.85), capex: true,
+      years: 2, cost: fixed(15_000_000), odds: fixed(0.85), capex: true,
       gate: (t) => once(t, 'lowvol') ?? (!done(t, 'prototype') ? 'Needs a drivable prototype.' : null),
       win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 1), lvl(x.t, 4), 'The first customer cars rolled out. Some of the panel gaps are even consistent.'),
     },
@@ -571,7 +571,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'giga', label: (t) => (t.stage >= 2 ? 'Another Gigafactory' : 'Gigafactory'), emoji: '\u{1F3ED}', blurb: 'A factory big enough to see from space.',
-      years: 3, cost: fixed(220_000_000), odds: fixed(0.85), capex: true,
+      years: 3, cost: fixed(150_000_000), odds: fixed(0.85), capex: true,
       gate: (t) => (t.stage < 1 ? 'Needs low-volume production first.' : timesDone(t, 'giga') >= 3 ? 'Three gigafactories is an empire.' : null),
       win: (x) => ((x.t.plant += 3), stageAtLeast(x.t, 2), lvl(x.t, 4), x.t.stage === 2 ? 'The gigafactory is open. Welcome to production hell.' : 'Another gigafactory is open and running.'),
     },
@@ -706,7 +706,7 @@ function trainWin(x: ProgCtx): string {
   const gen = t.models.length + 1
   const frontier = frontierScore(x.year)
   const compute = Math.min(12, t.plant * 2 + t.rented * 0.8)
-  const score = Math.round(Math.max(5, Math.min(99, frontier - 30 + t.level * 0.35 + gen * 2.5 + compute + (x.roll() - 0.5) * 12)))
+  const score = Math.round(Math.max(5, Math.min(99, frontier - 38 + t.level * 0.35 + gen * 2 + compute + (x.roll() - 0.5) * 16)))
   const name = `${modelFamily(t)} ${gen}`
   t.models.push({ gen, name, score, open: false, year: x.year })
   if (t.models.length > 10) t.models.splice(0, t.models.length - 10)

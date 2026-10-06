@@ -7,7 +7,7 @@
 // the same life always replays the same market. Paths are computed year by year from the
 // family's anchor year and memoized in a small module-level cache (never stored in the state).
 import { seeded, type SRng } from '../assets'
-import { exchangeFor, marketOf, type Industry, type MarketProfile, type StockExchange } from '../data/markets'
+import { DEEP_TECH_IDS, exchangeFor, marketOf, type Industry, type MarketProfile, type StockExchange } from '../data/markets'
 import { COUNTRIES, getCountry } from '../world'
 
 // ---------------------------------------------------------------------------
@@ -182,6 +182,8 @@ export type SectorId =
   | 'industrials' | 'tech' | 'games' | 'ecommerce' | 'media' | 'entertainment' | 'pharma' | 'hotels'
   | 'airlines' | 'shipping' | 'agri' | 'construction' | 'property' | 'supermarkets' | 'food'
   | 'brewers' | 'fashion' | 'cosmetics' | 'leisure'
+  // Deep tech: listed only on the exchanges of the countries that are hubs for them.
+  | 'semis' | 'ai' | 'robotics' | 'biotech' | 'space' | 'ev' | 'quantum' | 'cyber'
 
 export interface SectorDef {
   id: SectorId
@@ -225,6 +227,26 @@ export const SECTORS: Record<SectorId, SectorDef> = {
   fashion: { id: 'fashion', label: 'Fashion', emoji: '👗', names: ['{w} Fashion', '{w} Apparel', '{w} Textiles'], beta: 1.2, idio: 0.3, dy: [0.01, 0.03], drivers: ['fashion'], base: 0.5, blurbs: ['Twelve collections a year and a warehouse full of last season.', 'Its logo is worth more than its factories.'] },
   cosmetics: { id: 'cosmetics', label: 'Cosmetics', emoji: '💄', names: ['{w} Cosmetics', '{w} Beauty'], beta: 0.9, idio: 0.22, dy: [0.01, 0.025], drivers: ['beauty', 'salon'], base: 0.4, blurbs: ['Ten-step skincare routines, sold one step at a time.', 'Influencers are its sales team and they work for free samples.'] },
   leisure: { id: 'leisure', label: 'Sports & Leisure', emoji: '🏋️', names: ['{w} Leisure', '{w} Sports', '{w} Fitness'], beta: 1.0, idio: 0.25, dy: [0.01, 0.03], drivers: ['gym'], base: 0.4, blurbs: ['Gyms, sneakers and the January sign-up rush.', 'Sells the dream of getting in shape, monthly.'] },
+  semis: { id: 'semis', label: 'Semiconductors', emoji: '💾', names: ['{w} Semiconductor', '{w} Silicon', '{w} Microelectronics', '{w} Foundry'], beta: 1.5, idio: 0.34, dy: [0, 0.015], drivers: ['semiconductor'], base: 0.4, blurbs: ['Every gadget on Earth needs its chips; every chip cycle wrecks its share price.', 'Builds a new fab every year and a new excuse every downturn.'] },
+  ai: { id: 'ai', label: 'Artificial Intelligence', emoji: '🤖', names: ['{w} AI', '{w} Intelligence', '{w} Neural'], beta: 1.7, idio: 0.45, dy: [0, 0.005], drivers: ['aiLab'], base: 0.3, blurbs: ['Trains ever-bigger models; its valuation trains ever-bigger expectations.', 'Promises machines that think. Delivers machines that write emails, profitably.'] },
+  robotics: { id: 'robotics', label: 'Robotics', emoji: '🦾', names: ['{w} Robotics', '{w} Automation', '{w} Dynamics'], beta: 1.4, idio: 0.38, dy: [0, 0.01], drivers: ['robotics'], base: 0.3, blurbs: ['Its robots weld cars, pick parcels and, in the marketing videos, dance.', 'Every factory wants its arms; every investor wants its humanoid.'] },
+  biotech: { id: 'biotech', label: 'Biotech', emoji: '🧬', names: ['{w} Therapeutics', '{w} Biosciences', '{w} Genomics'], beta: 1.0, idio: 0.45, dy: [0, 0.005], drivers: ['biotech'], base: 0.3, blurbs: ['One trial readout away from doubling, or halving.', 'A pipeline full of molecules with names nobody can pronounce.'] },
+  space: { id: 'space', label: 'Space', emoji: '🚀', names: ['{w} Aerospace', '{w} Orbital', '{w} Space Systems'], beta: 1.5, idio: 0.45, dy: [0, 0.005], drivers: ['spaceTech'], base: 0.25, blurbs: ['Launches satellites, government payloads and the occasional fireball.', 'The stock goes up like its rockets: usually.'] },
+  ev: { id: 'ev', label: 'Electric Vehicles', emoji: '🚙', names: ['{w} EV', '{w} Electric Motors', '{w} Mobility'], beta: 1.6, idio: 0.42, dy: [0, 0.005], drivers: ['electricVehicles'], base: 0.3, blurbs: ['Sells the future of driving, plus a lot of recalls.', 'Its delivery numbers move the stock more than its profits do.'] },
+  quantum: { id: 'quantum', label: 'Quantum Computing', emoji: '⚛️', names: ['{w} Quantum', '{w} Qubit Systems'], beta: 1.8, idio: 0.6, dy: [0, 0], drivers: ['quantum'], base: 0.2, blurbs: ['Nobody fully understands what it sells, which is great for the stock.', 'Revenue is tiny; the press releases are enormous.'] },
+  cyber: { id: 'cyber', label: 'Cybersecurity', emoji: '🛡️', names: ['{w} Cyber', '{w} Security', '{w} Shield'], beta: 1.2, idio: 0.3, dy: [0, 0.01], drivers: ['cybersecurity'], base: 0.3, blurbs: ['Every data breach in the news is an ad for its products.', 'Sells peace of mind by the subscription seat.'] },
+}
+
+/** Deep-tech sectors: listed only as extra slots on hub exchanges (never in the classic plan). */
+const DEEP_SECTOR: Partial<Record<Industry, SectorId>> = {
+  semiconductor: 'semis', aiLab: 'ai', robotics: 'robotics', biotech: 'biotech', spaceTech: 'space', electricVehicles: 'ev', quantum: 'quantum', cybersecurity: 'cyber',
+}
+const DEEP_SECTORS = new Set<SectorId>(Object.values(DEEP_SECTOR) as SectorId[])
+const DEEP_INDUSTRIES = new Set<string>(DEEP_TECH_IDS)
+
+/** The sectors every exchange draws its classic listings from (stable since before deep tech). */
+function classicSectors(): SectorDef[] {
+  return Object.values(SECTORS).filter((x) => !DEEP_SECTORS.has(x.id))
 }
 
 const INDUSTRY_SECTOR: Partial<Record<Industry, SectorId>> = {
@@ -264,7 +286,7 @@ function manufacturingSector(m: MarketProfile, r: SRng): SectorId {
 function sectorForIndustry(m: MarketProfile, ind: Industry, r: SRng): SectorId {
   if (ind === 'energy') return energySector(m, r)
   if (ind === 'manufacturing') return manufacturingSector(m, r)
-  return INDUSTRY_SECTOR[ind] ?? 'industrials'
+  return INDUSTRY_SECTOR[ind] ?? DEEP_SECTOR[ind] ?? 'industrials'
 }
 
 function sectorWeight(m: MarketProfile, s: SectorDef): number {
@@ -277,6 +299,25 @@ function sectorWeight(m: MarketProfile, s: SectorDef): number {
 }
 
 const planCache = new Map<string, SectorId[]>()
+const classicCount = new Map<string, number>()
+
+/** Most deep-tech listings an exchange adds on top of its classic plan, and the cap on all. */
+const MAX_DEEP_SLOTS = 4
+const MAX_SLOTS = 14
+
+/** Deep-tech champions a hub exchange lists after its classic companies (strongest first). */
+function deepSlots(m: MarketProfile, have: number): SectorId[] {
+  const hubs = DEEP_TECH_IDS.filter((ind) => demandOf(m, ind) >= 1.4)
+    .sort((a, b) => demandOf(m, b) - demandOf(m, a) || a.localeCompare(b))
+    .slice(0, bigEconomy(m) ? MAX_DEEP_SLOTS : 2)
+  return hubs.map((ind) => DEEP_SECTOR[ind] as SectorId).slice(0, Math.max(0, MAX_SLOTS - have))
+}
+
+/** How many of an exchange's slots are classic listings (the rest are deep-tech extras). */
+export function classicSlots(info: ExInfo): number {
+  slotPlan(info)
+  return classicCount.get(info.key) ?? slotPlan(info).length
+}
 
 /** The sector of each listed slot on an exchange (stable per exchange). */
 export function slotPlan(info: ExInfo): SectorId[] {
@@ -293,7 +334,7 @@ export function slotPlan(info: ExInfo): SectorId[] {
   }
   // The market's strongest industries always get a listed champion.
   const top = (Object.keys(m.demand) as Industry[])
-    .filter((ind) => demandOf(m, ind) >= 1.15)
+    .filter((ind) => !DEEP_INDUSTRIES.has(ind) && demandOf(m, ind) >= 1.15)
     .sort((a, b) => demandOf(m, b) - demandOf(m, a) || a.localeCompare(b))
     .slice(0, 4)
   for (const ind of top) {
@@ -301,12 +342,15 @@ export function slotPlan(info: ExInfo): SectorId[] {
     const s = sectorForIndustry(m, ind, r)
     if (!plan.includes(s) && sectorWeight(m, SECTORS[s]) > 0) plan.push(s)
   }
-  const all = Object.values(SECTORS)
+  const all = classicSectors()
   let guard = 0
   while (plan.length < n && guard++ < 200) {
     const s = r.weighted(all, (d) => sectorWeight(m, d) * Math.pow(0.2, plan.filter((p) => p === d.id).length))
     if (sectorWeight(m, s) > 0) plan.push(s.id)
   }
+  classicCount.set(info.key, plan.length)
+  // Deep-tech hubs list their champions too, after (never instead of) the classic companies.
+  for (const s of deepSlots(m, plan.length)) if (!plan.includes(s)) plan.push(s)
   planCache.set(info.key, plan)
   return plan
 }
@@ -384,7 +428,10 @@ function shuffledWords(info: ExInfo): string[] {
 function rawIdentity(info: ExInfo, slot: number, gen: number): Identity {
   const m = marketOf(info.home)
   const r = seeded(`id|${info.key}#s${slot}g${gen}`)
-  const sector = gen === 0 ? SECTORS[slotPlan(info)[slot % slotPlan(info).length]] : r.weighted(Object.values(SECTORS), (d) => sectorWeight(m, d))
+  const planned = SECTORS[slotPlan(info)[slot % slotPlan(info).length]]
+  // A deep-tech slot is always replaced by another company of its sector; classic slots draw
+  // from the classic sectors exactly as they always have.
+  const sector = gen === 0 || DEEP_SECTORS.has(planned.id) ? planned : r.weighted(classicSectors(), (d) => sectorWeight(m, d))
   const words = shuffledWords(info)
   const word = gen === 0 ? words[slot % words.length] : r.pick(words)
   const name = r.pick(sector.names).replace('{w}', word)
@@ -541,9 +588,12 @@ function splitRatio(price: number): number {
 
 function initialExYear(fam: string, info: ExInfo, year: number): ExYear {
   const r = seeded(`${fam}|init|${info.key}`)
+  // Deep-tech extras draw from their own stream so the classic listings keep their old prices.
+  const rd = seeded(`${fam}|initdt|${info.key}`)
+  const classic = classicSlots(info)
   const stocks = slotPlan(info).map((_, slot): SecYear => {
     const def = companyDef(info, slot, 0)
-    return { id: def.id, slot, gen: 0, price: Math.round(def.ipoPrice * r.float(0.6, 2.5) * 100) / 100, ret: 0, payout: def.dy }
+    return { id: def.id, slot, gen: 0, price: Math.round(def.ipoPrice * (slot < classic ? r : rd).float(0.6, 2.5) * 100) / 100, ret: 0, payout: def.dy }
   })
   const pennies = Array.from({ length: PENNY_SLOTS }, (_, slot): SecYear => {
     const def = pennyDef(info, slot, 0)
@@ -642,7 +692,9 @@ function nextExYear(fam: string, info: ExInfo, prev: ExYear, year: number): ExYe
   const idx = indexMove(fam, info, year)
   const dyIdx = indexYield(info)
   const r = seeded(`${fam}|ex|${info.key}|${year}`)
-  const stocks = prev.stocks.map((s) => nextStock(info, s, idx, r))
+  const rd = seeded(`${fam}|exdt|${info.key}|${year}`)
+  const classic = classicSlots(info)
+  const stocks = prev.stocks.map((s) => nextStock(info, s, idx, s.slot < classic ? r : rd))
   const pennies = prev.pennies.map((s) => nextPenny(info, s, idx, r))
   // The index fund tracks the index (price) minus its yearly fee.
   const fundRet = Math.max(-0.99, (1 + idx.ret) * (1 - fundFee(info)) - 1)

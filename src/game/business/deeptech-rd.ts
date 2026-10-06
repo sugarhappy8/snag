@@ -221,7 +221,7 @@ function programScore(b: BizState, t: TechState, def: ProgramDef): number {
   const odds = def.odds(t)
   // Programs that unlock the next stage are worth the most; then price, cost and demand gains.
   const unlocks = def.id === 'firstChip' || def.id === 'volume' || def.id === 'api' || def.id === 'enterprise' || def.id === 'pilots' || def.id === 'line' || def.id === 'engine' || def.id === 'rocket' || def.id === 'prototype' || def.id === 'lowvol' || def.id === 'ramp' || def.id === 'cloud' || def.id === 'detect' || def.id === 'platform' || def.id === 'clearance' || def.id === 'proto' || def.id === 'discovery' || (def.id === 'train' && t.models.length < 3) || (def.id === 'qubits' && t.qubits < 20)
-  const value = (unlocks ? 3 : 1) * (def.capex ? 1.4 : 1)
+  const value = (unlocks ? 5 : 1) * (def.capex ? 1.4 : 1)
   return (odds * value * 1e7) / cost
 }
 

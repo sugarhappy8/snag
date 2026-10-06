@@ -179,9 +179,12 @@ export function planHint(g: GameState, a: Asset, b: BizState): NonNullable<Annua
   const def = industryDef(b.industry)
   const p = bestPlan(g, b, { ownerDraw: runsIt(g, a) ? b.ownerSalary : 0 })
   const what = `Charge ${unitMoney(p.price)} and make ${units(p.production)} ${p.production === 1 ? def.unitOne : def.unit}`
+  const outcome = p.profit >= 0 ? `${money(p.profit)} profit` : `${money(-p.profit)} loss`
   const text =
     p.production <= 0
-      ? `Charge ${unitMoney(p.price)} and make nothing new: sell the ${units(b.inventory)} ${def.unit} in stock (about ${p.profit >= 0 ? `${money(p.profit)} profit` : `${money(-p.profit)} loss`})`
+      ? b.inventory >= 1
+        ? `Charge ${unitMoney(p.price)} and make nothing new: sell the ${units(b.inventory)} ${b.inventory < 1.5 ? def.unitOne : def.unit} in stock (about ${outcome})`
+        : `Make nothing next year: every ${def.unitOne} would cost more than it brings in (about ${outcome})`
       : p.profit >= 0
         ? `${what}: the sweet spot for next year (about ${money(p.profit)} profit)`
         : `${what}: the least-bad plan for next year (still about a ${money(-p.profit)} loss)`
@@ -389,14 +392,19 @@ export function yearlyBusinessImpl(g: GameState): void {
       continue
     }
     const managed = !runsIt(g, a)
+    const plans = !managed && !c.prison
+    // The CEO plans the year first; this year's event strikes the plan they just made. (Shown the
+    // other way round, the report's numbers and the Business talent's plan would be stale, a
+    // price cut from a price war would be undone by the report, and a company sold in a buyout
+    // would still get a report.)
+    if (plans) queueReport(g, a, b)
     if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
-    if (!managed && !c.prison) {
-      queueReport(g, a, b)
-    } else if (studio) {
-      studioManagerTurn(g, a, b)
-    } else {
-      if (tech) deepTechManagerTurn(g, a, b)
-      applyPlan(b, autoPlan(g, b, lastCycle))
+    if (!plans) {
+      if (studio) studioManagerTurn(g, a, b)
+      else {
+        if (tech) deepTechManagerTurn(g, a, b)
+        applyPlan(b, autoPlan(g, b, lastCycle))
+      }
     }
   }
 }

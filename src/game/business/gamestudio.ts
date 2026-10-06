@@ -777,7 +777,7 @@ const pitchCache = new Map<string, (Pitch & PitchOut) | null>()
 
 /** bestPitch for the company screen, cached per studio state and year. */
 function cachedPitch(g: GameState, a: Asset): (Pitch & PitchOut) | null {
-  const key = `${a.id}|${g.year}|${g.character.age}|${JSON.stringify(a.details)}`
+  const key = `${g.lifeId}|${g.character.id}|${a.id}|${g.year}|${g.character.age}|${JSON.stringify(a.details)}`
   if (pitchCache.has(key)) return pitchCache.get(key) ?? null
   const b = readBiz(g, a)
   const v = bestPitch(g, a, b, studioOf(a), {})

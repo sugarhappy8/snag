@@ -71,7 +71,10 @@ describe('Investing talent: hints', () => {
       expect(stocks.hint?.(g)).toMatch(/^\u{1F52E} Your gut likes/u)
       const rows = stocks.children(g)
       const hinted = rows.filter((n) => n.type === 'menu' && n.hint?.(g))
-      expect(hinted.map((n) => n.id)).toEqual([`inv-offer-${stock.secId}`])
+      // The gut can like more than one stock in a year (hub exchanges also list deep-tech names).
+      const wanted = inst.picks.filter((p) => p.kind === 'stock').map((p) => `inv-offer-${p.secId}`)
+      expect(hinted.map((n) => n.id).sort()).toEqual(wanted.sort())
+      expect(hinted.map((n) => n.id)).toContain(`inv-offer-${stock.secId}`)
     }
     expect(found).toBe(true)
   })

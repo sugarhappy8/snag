@@ -28,6 +28,8 @@ export interface TermSheet {
 
 /** Stage investors expect before each series (index = series). */
 const STAGE_FOR = [0, 0, 1, 2, 3, 3, 4]
+/** Where investors think a company raising each series usually is (prices the round). */
+const EXPECT = [0, 0, 0.5, 1.5, 2.5, 3, 4]
 /** Or yearly sales that prove it (US dollars, scaled to the market). */
 const SALES_FOR = [0, 0, 0, 0, 30_000_000, 50_000_000, 150_000_000]
 /** Typical share sold in each round. */
@@ -47,7 +49,7 @@ export function nextRoundNeed(b: BizState, t: TechState): { series: number; met:
   const revenue = b.last ? b.last.revenue : 0
   const stageName = DEEP_TECH[ind].stages[stage].name
   // A first R&D win is enough for a Series A; a Series B also takes a breakthrough-level lab.
-  const alt = k === 2 ? t.done.length > 0 || t.drugs.some((d) => d.phase >= 1) : k === 3 ? t.stage >= stage - 1 && t.level >= 50 : false
+  const alt = k === 2 ? t.done.length > 0 || t.drugs.some((d) => d.phase >= 1) : k === 3 ? t.stage >= stage - 1 && t.level >= 45 : false
   const met = t.stage >= stage || (sales > 0 && revenue >= sales) || alt
   const text =
     k <= 1
@@ -55,7 +57,7 @@ export function nextRoundNeed(b: BizState, t: TechState): { series: number; met:
       : k === 2
         ? `a first R&D breakthrough or "${stageName}"`
         : k === 3
-          ? `"${stageName}" (or the stage before it with tech level 50+)`
+          ? `"${stageName}" (or the stage before it with tech level 45+)`
           : sales > 0
             ? `"${stageName}" or ${money(sales)} of yearly sales`
             : `"${stageName}"`
@@ -84,7 +86,7 @@ export function bridgeBlock(g: GameState, b: BizState, t: TechState): string | n
 export function investorAppetite(g: GameState, a: Asset, b: BizState, t: TechState): number {
   const ind = dtInd(b)
   const k = Math.min(MAX_SERIES, t.series + 1)
-  const expected = Math.min(maxStage(ind), STAGE_FOR[k])
+  const expected = Math.min(maxStage(ind), EXPECT[k])
   const revenue = b.last ? b.last.revenue : 0
   const p = 0.45 + t.level / 120 + (t.stage - expected) * 0.25 + Math.log10(1 + Math.max(0, revenue) / 1e6) * 0.12 + t.hype / 250 + (techSkill(g, a, b, t) - 50) / 300
   return clampN(p, 0.25, 2.5)

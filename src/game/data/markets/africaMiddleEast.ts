@@ -48,6 +48,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 2.5, construction: 1.3, logistics: 1.2, farm: 1.2, entertainment: 1.2,
       hotel: 0.7, software: 0.5, ecommerce: 0.5, gameStudio: 0.4,
+      semiconductor: 0.3,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.3, luxury: 1.4, alcohol: 0.6, food: 0.7, fuel: 0.4 },
@@ -67,6 +68,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       logistics: 2.5, hotel: 1.2, construction: 1.3, restaurant: 1.1,
       manufacturing: 0.5, software: 0.5, ecommerce: 0.4, gameStudio: 0.3, farm: 0.3,
+      semiconductor: 0.3,
     },
     banned: [],
     priceMult: { car: 1.2, electronics: 1.2, luxury: 1.2, alcohol: 1.3, food: 0.8, fuel: 1.5 },
@@ -124,6 +126,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       cafe: 2, farm: 1.8, energy: 1.4, construction: 1.4, manufacturing: 1.3,
       logistics: 0.8, software: 0.5, ecommerce: 0.4, gameStudio: 0.3,
+      semiconductor: 0.3,
     },
     banned: [],
     priceMult: { car: 2.5, electronics: 1.4, luxury: 1.4, alcohol: 0.35, food: 0.5 },
@@ -143,6 +146,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       software: 1.5, hotel: 1.5, farm: 1.5, ecommerce: 1.4, logistics: 1.3,
       energy: 1.2, gameStudio: 0.7,
+      aiLab: 0.7, cybersecurity: 0.8, spaceTech: 0.4,
     },
     banned: [],
     priceMult: { car: 1.5, electronics: 1.2, luxury: 1.25, alcohol: 0.6, food: 0.55, fuel: 1.6 },
@@ -162,6 +166,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 1.9, cafe: 1.5, manufacturing: 1.5, logistics: 1.4, restaurant: 1.3,
       construction: 1.3, farm: 1.3, bar: 0.6, brewery: 0.5,
+      electricVehicles: 1.1,
     },
     banned: [],
     priceMult: { car: 1.2, electronics: 1.15, luxury: 1.2, alcohol: 1.1, food: 0.45, fuel: 1.65 },
@@ -181,6 +186,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 2.2, entertainment: 2, fashion: 1.5, beauty: 1.4, software: 1.4,
       ecommerce: 1.4, farm: 1.3, construction: 1.3, hotel: 0.8,
+      aiLab: 0.7,
     },
     banned: [],
     priceMult: { car: 1.6, electronics: 1.25, luxury: 1.4, alcohol: 0.5, food: 0.5, fuel: 0.7 },
@@ -200,6 +206,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 1.7, hotel: 1.4, brewery: 1.4, farm: 1.3, autoShop: 1.3,
       bar: 1.2, manufacturing: 1.2,
+      spaceTech: 0.8, biotech: 0.8, aiLab: 0.8,
     },
     banned: [],
     priceMult: { car: 1.15, electronics: 1.15, luxury: 1.2, alcohol: 0.6, food: 0.5, fuel: 1.35 },
@@ -219,6 +226,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 1.8, cafe: 1.6, farm: 1.3, manufacturing: 1.3, bakery: 1.3,
       software: 1.2, bar: 0.7, brewery: 0.6, gameStudio: 0.6,
+      aiLab: 0.7,
     },
     banned: [],
     priceMult: { car: 1.6, electronics: 1.4, luxury: 1.4, alcohol: 0.8, food: 0.4 },
@@ -238,6 +246,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       farm: 2, energy: 1.4, hotel: 1.2, construction: 1.2, logistics: 1.1,
       software: 0.5, ecommerce: 0.5, gameStudio: 0.3,
+      semiconductor: 0.3, quantum: 0.3,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.25, luxury: 1.3, alcohol: 0.5, food: 0.45, fuel: 1.6 },
@@ -257,6 +266,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       farm: 1.6, energy: 1.4, hotel: 1.3, grocery: 1.3, logistics: 1.2,
       manufacturing: 0.6, software: 0.5, ecommerce: 0.5, gameStudio: 0.3,
+      semiconductor: 0.3,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.3, luxury: 1.3, alcohol: 0.6, food: 0.75, fuel: 1.75 },
@@ -278,6 +288,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 1.9, restaurant: 1.5, realEstate: 1.4, construction: 1.4, farm: 1.3,
       bar: 1.3, software: 1.2, logistics: 1.2,
+      aiLab: 0.6, cybersecurity: 0.7,
     },
     banned: [],
     priceMult: { car: 0.85, electronics: 1.1, luxury: 1.1, alcohol: 0.5, food: 0.5, fuel: 1.3 },
@@ -297,6 +308,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 2, autoShop: 1.5, manufacturing: 1.4, ecommerce: 1.3, cafe: 1.3,
       software: 1.2, construction: 1.2, hotel: 0.5,
+      spaceTech: 0.8, semiconductor: 0.5,
     },
     banned: ['bar', 'brewery'],
     priceMult: { car: 2.5, electronics: 1.8, luxury: 1.7, alcohol: 3.5, food: 0.35, fuel: 0.04 },
@@ -335,6 +347,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       software: 2.5, gameStudio: 1.5, ecommerce: 1.4, realEstate: 1.4, marketing: 1.3,
       cafe: 1.3, construction: 1.3, clinic: 1.2, farm: 0.8,
+      cybersecurity: 2.8,
     },
     banned: [],
     priceMult: { car: 1.5, electronics: 1.25, luxury: 1.2, alcohol: 1.2, food: 1.3, fuel: 2.3 },
@@ -354,6 +367,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       clinic: 1.5, hotel: 1.4, restaurant: 1.2, software: 1.2, logistics: 1.1,
       bar: 0.6, brewery: 0.6, energy: 0.6, farm: 0.6,
+      cybersecurity: 0.9,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.3, luxury: 1.25, alcohol: 1.3, food: 0.65, fuel: 1.5 },
@@ -392,6 +406,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       restaurant: 1.6, energy: 1.6, bar: 1.5, beauty: 1.4, fashion: 1.4,
       clinic: 1.2, ecommerce: 0.8, construction: 0.6, realEstate: 0.6,
+      biotech: 0.7,
     },
     banned: [],
     priceMult: { car: 1.2, electronics: 1.1, luxury: 1.15, alcohol: 0.9, food: 0.75, fuel: 1.1 },
@@ -411,6 +426,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 2.6, construction: 1.4, hotel: 1.3, restaurant: 1.3, realEstate: 1.3,
       cafe: 1.3, logistics: 1.2, manufacturing: 0.6, farm: 0.3,
+      aiLab: 1.2,
     },
     banned: ['bar', 'brewery'],
     priceMult: { car: 0.9, electronics: 0.95, luxury: 0.95, alcohol: 2.5, food: 0.9, fuel: 0.65 },
@@ -468,6 +484,7 @@ export const AFRICA_MIDDLE_EAST_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 1.8, manufacturing: 1.5, gameStudio: 1.5, fashion: 1.4, construction: 1.4,
       cafe: 1.4, logistics: 1.3, bakery: 1.3, realEstate: 1.3,
+      electricVehicles: 1.3,
     },
     banned: [],
     priceMult: { car: 1.9, electronics: 1.8, luxury: 1.3, alcohol: 1.2, food: 0.55, fuel: 1.45 },

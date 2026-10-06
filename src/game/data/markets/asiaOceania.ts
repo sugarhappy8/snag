@@ -21,6 +21,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       farm: 1.8, bakery: 1.4, grocery: 1.3, logistics: 1.2, beauty: 0.5,
       ecommerce: 0.5, hotel: 0.4, software: 0.4, gameStudio: 0.3, entertainment: 0.3,
+      semiconductor: 0.3, aiLab: 0.3, robotics: 0.3, biotech: 0.3, spaceTech: 0.3, electricVehicles: 0.3, quantum: 0.3, cybersecurity: 0.3,
     },
     banned: ['bar', 'brewery', 'salon'],
     priceMult: { electronics: 1.2, luxury: 1.5, alcohol: 3, food: 0.35, fuel: 1.1 },
@@ -40,6 +41,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       manufacturing: 1.8, fashion: 1.5, farm: 1.4, logistics: 1.3, construction: 1.3,
       hotel: 0.7, gameStudio: 0.4, bar: 0.3, brewery: 0.3,
+      semiconductor: 0.5, aiLab: 0.6, robotics: 0.5, biotech: 0.6, spaceTech: 0.3, electricVehicles: 0.5, quantum: 0.3, cybersecurity: 0.6,
     },
     banned: [],
     priceMult: { car: 2.2, electronics: 1.3, luxury: 1.4, alcohol: 2, food: 0.35, fuel: 1.15 },
@@ -59,6 +61,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       manufacturing: 2, ecommerce: 1.8, logistics: 1.6, software: 1.4, energy: 1.3,
       gameStudio: 1.3, cafe: 1.2, construction: 0.8, realEstate: 0.6,
+      semiconductor: 1.8, aiLab: 1.9, robotics: 2, biotech: 1.4, spaceTech: 1.7, electricVehicles: 2.6, quantum: 1.4, cybersecurity: 1,
     },
     banned: [],
     priceMult: { car: 0.85, luxury: 1.25, alcohol: 0.6, food: 0.6, fuel: 1.2 },
@@ -78,6 +81,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       logistics: 1.5, restaurant: 1.4, fashion: 1.3, beauty: 1.3, marketing: 1.2,
       hotel: 1.2, manufacturing: 0.5, energy: 0.5, farm: 0.3,
+      aiLab: 1.2, biotech: 1.3, cybersecurity: 1.1, quantum: 0.8, semiconductor: 0.7, robotics: 0.9, spaceTech: 0.4, electricVehicles: 0.8,
     },
     banned: [],
     priceMult: { car: 1.6, electronics: 0.95, luxury: 0.9, alcohol: 0.9, food: 1.15, fuel: 3.5 },
@@ -97,6 +101,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       software: 1.8, ecommerce: 1.5, construction: 1.5, farm: 1.5, entertainment: 1.4,
       logistics: 1.3, clinic: 1.3, cafe: 0.8, bar: 0.7, brewery: 0.6,
+      spaceTech: 1.5, aiLab: 1.2, cybersecurity: 1.3, semiconductor: 0.9, biotech: 1.1, electricVehicles: 1.1, robotics: 0.7, quantum: 0.6,
     },
     banned: [],
     priceMult: { car: 1.5, electronics: 1.2, luxury: 1.35, food: 0.3, fuel: 1.35 },
@@ -116,6 +121,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 1.5, cafe: 1.4, ecommerce: 1.4, farm: 1.4, energy: 1.4,
       logistics: 1.3, manufacturing: 1.2, bar: 0.5, brewery: 0.4,
+      electricVehicles: 1.1, aiLab: 0.7, biotech: 0.6, robotics: 0.5, cybersecurity: 0.7, semiconductor: 0.4, spaceTech: 0.4, quantum: 0.3,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.25, luxury: 1.3, alcohol: 1.6, food: 0.45, fuel: 0.7 },
@@ -135,6 +141,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       gameStudio: 1.8, entertainment: 1.4, hotel: 1.4, clinic: 1.3, restaurant: 1.2,
       cafe: 1.2, manufacturing: 1.2, realEstate: 0.8, farm: 0.6,
+      semiconductor: 1.8, robotics: 2.4, spaceTech: 1.4, aiLab: 1.1, biotech: 1.3, quantum: 1.2, electricVehicles: 0.9, cybersecurity: 1,
     },
     banned: [],
     priceMult: { car: 0.85, luxury: 0.85, alcohol: 0.9, food: 0.85, fuel: 1.3 },
@@ -154,6 +161,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 2.2, construction: 1.3, logistics: 1.3, farm: 1.2, autoShop: 1.2,
       hotel: 0.8, gameStudio: 0.5,
+      spaceTech: 1.2, aiLab: 0.5, biotech: 0.4, semiconductor: 0.3, robotics: 0.4, electricVehicles: 0.4, quantum: 0.3, cybersecurity: 0.5,
     },
     banned: [],
     priceMult: { car: 1.15, electronics: 1.25, luxury: 1.2, alcohol: 0.7, food: 0.45, fuel: 0.55 },
@@ -173,6 +181,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 1.6, manufacturing: 1.5, farm: 1.3, restaurant: 1.3, logistics: 1.3,
       ecommerce: 1.2, hotel: 1.2, bar: 0.6, brewery: 0.3,
+      semiconductor: 1.6, electricVehicles: 0.8, aiLab: 0.8, robotics: 0.8, biotech: 0.6, spaceTech: 0.4, quantum: 0.4, cybersecurity: 0.8,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.1, alcohol: 1.6, food: 0.5, fuel: 0.52 },
@@ -192,6 +201,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 1.8, farm: 1.5, fashion: 1.2, logistics: 1.2, construction: 1.2,
       hotel: 0.8, software: 0.6, ecommerce: 0.6, gameStudio: 0.4,
+      semiconductor: 0.3, aiLab: 0.3, robotics: 0.3, biotech: 0.3, spaceTech: 0.3, electricVehicles: 0.3, quantum: 0.3, cybersecurity: 0.3,
     },
     banned: [],
     priceMult: { electronics: 1.25, luxury: 1.3, alcohol: 0.7, food: 0.55 },
@@ -211,6 +221,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 1.6, farm: 1.5, energy: 1.3, restaurant: 1.2, construction: 1.2,
       manufacturing: 0.6, ecommerce: 0.6, software: 0.5, gameStudio: 0.3,
+      semiconductor: 0.3, aiLab: 0.3, robotics: 0.3, biotech: 0.3, spaceTech: 0.3, electricVehicles: 0.3, quantum: 0.3, cybersecurity: 0.3,
     },
     banned: [],
     priceMult: { car: 2.5, electronics: 1.3, luxury: 1.4, food: 0.35, fuel: 1.35 },
@@ -231,6 +242,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       farm: 1.5, fashion: 1.4, manufacturing: 1.3, construction: 1.3, restaurant: 1.2,
       hotel: 0.6, gameStudio: 0.5,
+      aiLab: 0.6, cybersecurity: 0.6, semiconductor: 0.3, robotics: 0.4, biotech: 0.5, spaceTech: 0.4, electricVehicles: 0.4, quantum: 0.3,
     },
     banned: ['bar', 'brewery'],
     priceMult: { car: 1.3, electronics: 1.8, luxury: 1.5, alcohol: 2.5, food: 0.3 },
@@ -250,6 +262,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       bakery: 1.3, grocery: 1.3, entertainment: 1.3, hotel: 1.3, marketing: 1.3,
       restaurant: 1.2, logistics: 1.2, manufacturing: 0.8, gameStudio: 0.6,
+      semiconductor: 0.9, cybersecurity: 0.7, aiLab: 0.7, robotics: 0.4, biotech: 0.4, spaceTech: 0.3, electricVehicles: 0.5, quantum: 0.3,
     },
     banned: [],
     priceMult: { car: 1.2, electronics: 1.25, luxury: 1.15, alcohol: 0.45, food: 0.55, fuel: 1.2 },
@@ -270,6 +283,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       logistics: 1.6, software: 1.5, clinic: 1.3, restaurant: 1.3, marketing: 1.3,
       ecommerce: 1.3, autoShop: 0.6, farm: 0.3,
+      semiconductor: 1.6, biotech: 1.3, aiLab: 1.3, cybersecurity: 1.3, quantum: 1.1, robotics: 1.1, spaceTech: 0.8, electricVehicles: 0.6,
     },
     banned: [],
     priceMult: { car: 2.8, electronics: 1.15, alcohol: 2, food: 1.1, fuel: 2.5 },
@@ -289,6 +303,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       beauty: 1.8, gameStudio: 1.7, cafe: 1.6, entertainment: 1.6, software: 1.3,
       manufacturing: 1.3, ecommerce: 1.3, energy: 0.7, farm: 0.6,
+      semiconductor: 2.6, electricVehicles: 1.6, robotics: 1.8, aiLab: 1.3, spaceTech: 0.8, biotech: 1.2, quantum: 0.9, cybersecurity: 1.1,
     },
     banned: [],
     priceMult: { electronics: 1.15, luxury: 1.1, alcohol: 0.8, food: 1.15, fuel: 1.35 },
@@ -308,6 +323,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       manufacturing: 1.7, cafe: 1.4, foodTruck: 1.4, restaurant: 1.3, software: 1.2,
       ecommerce: 1.2, farm: 0.7, energy: 0.6,
+      semiconductor: 3, aiLab: 1.3, robotics: 1.2, electricVehicles: 0.7, spaceTech: 0.5, biotech: 1, quantum: 0.9, cybersecurity: 1,
     },
     banned: [],
     priceMult: { car: 1.3, electronics: 1.15, alcohol: 0.8, food: 0.85 },
@@ -327,6 +343,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 2, foodTruck: 1.5, bar: 1.4, restaurant: 1.4, clinic: 1.4,
       salon: 1.3, manufacturing: 1.3, farm: 1.2, gameStudio: 0.7,
+      electricVehicles: 1.1, semiconductor: 0.7, robotics: 0.8, aiLab: 0.6, biotech: 0.6, spaceTech: 0.4, quantum: 0.3, cybersecurity: 0.6,
     },
     banned: [],
     priceMult: { car: 1.5, electronics: 1.1, luxury: 1.2, alcohol: 1.1, food: 0.6, fuel: 1.25 },
@@ -347,6 +364,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       manufacturing: 1.8, cafe: 1.7, foodTruck: 1.5, logistics: 1.3, construction: 1.3,
       hotel: 1.3, farm: 1.3, bar: 1.2,
+      semiconductor: 1, electricVehicles: 1.1, aiLab: 0.7, robotics: 0.6, biotech: 0.5, spaceTech: 0.3, quantum: 0.3, cybersecurity: 0.6,
     },
     banned: [],
     priceMult: { car: 1.6, electronics: 1.15, luxury: 1.2, alcohol: 0.4, food: 0.5 },
@@ -368,6 +386,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 1.8, realEstate: 1.5, cafe: 1.5, construction: 1.4, farm: 1.3,
       brewery: 1.3, gym: 1.2, hotel: 1.2, manufacturing: 0.7,
+      spaceTech: 1, quantum: 1.3, biotech: 1.3, cybersecurity: 1, aiLab: 1, robotics: 1.1, semiconductor: 0.6, electricVehicles: 0.8,
     },
     banned: [],
     priceMult: { car: 1.15, electronics: 1.15, luxury: 1.15, alcohol: 1.5, fuel: 1.35 },
@@ -387,6 +406,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       farm: 2, hotel: 1.4, cafe: 1.4, brewery: 1.3, construction: 1.2,
       entertainment: 1.2, energy: 0.8, manufacturing: 0.7,
+      spaceTech: 1.3, aiLab: 0.8, biotech: 0.9, cybersecurity: 0.8, robotics: 0.7, electricVehicles: 0.9, quantum: 0.6, semiconductor: 0.3,
     },
     banned: [],
     priceMult: { electronics: 1.2, luxury: 1.15, alcohol: 1.3, fuel: 1.8 },
@@ -407,6 +427,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       energy: 2, logistics: 1.4, farm: 1.4, construction: 1.2, hotel: 0.6,
       marketing: 0.6, ecommerce: 0.4, software: 0.3, gameStudio: 0.3,
+      semiconductor: 0.3, aiLab: 0.3, robotics: 0.3, biotech: 0.3, spaceTech: 0.3, electricVehicles: 0.3, quantum: 0.3, cybersecurity: 0.3,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.4, luxury: 1.4, alcohol: 1.3, food: 0.85, fuel: 1.4 },
@@ -427,6 +448,7 @@ export const ASIA_OCEANIA_MARKETS: Record<string, MarketProfile> = {
     demand: {
       hotel: 1.8, farm: 1.5, restaurant: 1.2, realEstate: 0.6, manufacturing: 0.5,
       energy: 0.5, ecommerce: 0.4, software: 0.3, gameStudio: 0.3,
+      semiconductor: 0.3, aiLab: 0.3, robotics: 0.3, biotech: 0.3, spaceTech: 0.3, electricVehicles: 0.3, quantum: 0.3, cybersecurity: 0.3,
     },
     banned: [],
     priceMult: { car: 1.4, electronics: 1.35, luxury: 1.4, alcohol: 1.2, food: 0.8, fuel: 1.6 },
