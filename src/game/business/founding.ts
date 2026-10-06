@@ -44,13 +44,18 @@ export function industryProblem(g: GameState, industry: Industry): string | null
  */
 export function minimumOutlay(industry: Industry, countryId: string, city: string): number {
   const cost = startupCost(industry, countryId, city)
-  const own = isDeepTechIndustry(industry) ? DEEP_TECH_OWN_SHARE : 0.1
-  return Math.round(cost.fee + cost.permits + cost.capital * own)
+  return Math.round(cost.fee + cost.permits + cost.capital * ownShare(industry, countryId))
 }
 
-function outlayText(industry: Industry, need: number): string {
+/** Share of the first site the founder must pay (deep tech: what a bank won't lend). */
+function ownShare(industry: Industry, countryId: string): number {
+  if (!isDeepTechIndustry(industry)) return 0.1
+  return marketOf(countryId).easeOfBusiness >= 60 ? DEEP_TECH_OWN_SHARE : 0.4
+}
+
+function outlayText(industry: Industry, countryId: string, need: number): string {
   return isDeepTechIndustry(industry)
-    ? `You need at least ${formatMoney(need)} of your own (a quarter of the first lab plus fees; a bank may lend the rest) before investors will take a meeting.`
+    ? `You need at least ${formatMoney(need)} of your own (${pct(ownShare(industry, countryId))} of the first ${industryDef(industry).site} plus fees; a bank may lend the rest) before investors will take a meeting.`
     : `You need at least ${formatMoney(need)} of your own (10% of the startup cost plus fees) before investors will even take a meeting.`
 }
 
@@ -188,7 +193,7 @@ function askBackground(g: GameState, p: Plan): void {
     g,
     BACKGROUND,
     'You Need a Scientist',
-    `Investors in ${industryDef(ind).label.toLowerCase()}s back technical founders: ${d.req.text}. You don't have that, so you need someone who does.`,
+    `Investors only back a ${industryDef(ind).label.toLowerCase()} with a technical founder: ${d.req.text}. You don't have that, so you need someone who does.`,
     choices,
     { emoji: '\u{1F52C}', data: { ...(planJson(p) as Record<string, Json>), cofounderName: co } },
   )
@@ -614,7 +619,7 @@ export function foundingProblem(g: GameState, industry: Industry): string | null
   if (problem) return problem
   const c = g.character
   const need = minimumOutlay(industry, c.countryId, c.city)
-  if (c.money < need) return outlayText(industry, need)
+  if (c.money < need) return outlayText(industry, c.countryId, need)
   return null
 }
 
@@ -667,7 +672,7 @@ function industryRow(industry: Industry): MenuAction {
       if (problem) return problem
       const c = g.character
       const need = minimumOutlay(industry, c.countryId, c.city)
-      if (c.money < need) return outlayText(industry, need)
+      if (c.money < need) return outlayText(industry, c.countryId, need)
       return null
     },
     run: (g) => {
@@ -734,7 +739,7 @@ export const startBusinessMenu: MenuGroup = {
       type: 'info',
       id: 'biz.start.deepInfo',
       emoji: '\u{1F52C}',
-      text: 'High risk, high reward: R&D programs, venture rounds, breakthroughs and big exits. You put in a quarter of the first lab (a bank may lend the rest); investors fund the research. Most need a technical background, a co-founder or a hired expert.',
+      text: 'High risk, high reward: R&D programs, venture rounds, breakthroughs and big exits. You pay for part of your first lab (a bank may lend the rest); investors fund the research. Each needs a technical background, a co-founder or a hired expert.',
     },
     ...INDUSTRY_IDS.filter((i) => isDeepTechIndustry(i)).map(industryRow),
   ],

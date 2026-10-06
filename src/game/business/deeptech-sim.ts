@@ -10,7 +10,7 @@ import { hasTalent, talentHint } from '../talents'
 import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
 import { stepDown, managerCandidate } from './career'
 import { ceoSkill, cycleOf, insurancePremiumFor, localEcon, staffPower, valuationOf, type YearResult } from './economy'
-import { DEEP_TECH, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, stageName } from './deeptech-data'
+import { DEEP_TECH, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
 import {
   PACES,
   bestTechPlan,
@@ -25,11 +25,12 @@ import {
   runwayYears,
   sellable,
   sideRevenue,
+  techFunds,
   techOf,
   techPlan,
   techPriceBounds,
 } from './deeptech-core'
-import { advancePrograms } from './deeptech-rd'
+import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
 import { milestoneListingBlock, SERIES, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
@@ -61,6 +62,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const produced = Math.floor(clampN(Math.min(b.production, plan.capacity), 0, 1e12))
   const available = produced + b.inventory
   let sold = Math.floor(Math.min(plan.demand, available))
+  const flown = sold
   const notes: string[] = []
 
   // Rockets don't always make it: a failed commercial launch earns nothing and hurts.
@@ -68,6 +70,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     const reliability = clampN(0.9 + 0.01 * Math.min(9, t.wins) + t.level / 1000, 0.85, 0.99)
     let lost = 0
     for (let i = 0; i < Math.min(sold, 60); i++) if (!chance(g, reliability)) lost++
+    // Every successful flight adds to the track record customers trust.
+    t.wins += sold - lost
     if (lost > 0) {
       sold -= lost
       b.brand = clampN(b.brand - 3 * lost, 0, 100)
@@ -82,7 +86,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const netRevenue = revenue - salesTax + side.total
 
   // Costs.
-  const cogs = def.perishable >= 1 ? plan.unitCost * (sold * 0.7 + produced * 0.3) : plan.unitCost * produced
+  // A rocket that blows up still had to be built.
+  const cogs = def.perishable >= 1 ? plan.unitCost * (flown * 0.7 + produced * 0.3) : plan.unitCost * produced
   const employees = headCount(b, t, produced)
   let wageSum = 0
   let rent = 0
@@ -150,7 +155,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
 
   notes.push(...rd0.notes)
   if (side.parts.length) notes.push(`\u{1F4B5} Other revenue: ${side.parts.join(', ')} (${money(side.total)}).`)
-  t.stuck = rd0.wins > 0 || rd0.stageUp ? 0 : t.stuck + 1
+  // Investors count breakthroughs as progress; work still underway buys patience, nothing doesn't.
+  t.stuck = rd0.wins > 0 || rd0.stageUp ? 0 : t.programs.length > 0 ? t.stuck : t.stuck + 1
   t.last = { year, rd, compute, side: side.total, grants, credit, fromVenture, notes: notes.slice(0, 12) }
   t.yearGrant = 0
   t.yearSpent = 0
@@ -480,12 +486,12 @@ export const TECH_REPORT = defineScript('deeptech.report', (g, choice, data) => 
   if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} and planned ${units(b.production)} ${industryDef(b.industry).unit} for the year.`)
 })
 
-function paceChoices(g: GameState, a: Asset, b: BizState, t: TechState): ChoiceOption[] {
+function paceChoices(g: GameState, a: Asset, b: BizState, t: TechState, hinted = true): ChoiceOption[] {
   const runway = runwayYears(g, a, b, t)
   const best: Pace = runway < 1.2 ? 'lean' : runway > 3.5 && t.programs.length > 0 ? 'blitz' : 'steady'
   return PACES.map((p) => {
-    const hint = p.id === best ? talentHint(g, 'Business', p.id === 'lean' ? 'Cut the burn: at this rate the money runs out within a year.' : p.id === 'blitz' ? 'Floor it: you have the runway, and speed wins in deep tech.' : 'Hold the course: the runway fits the plan.') : ''
-    const opt: ChoiceOption = { id: p.id, label: `${p.label} pace${t.pace === p.id ? ' (current)' : ''}: ${p.note.toLowerCase()}`, emoji: p.id === 'lean' ? '\u{1F422}' : p.id === 'blitz' ? '\u{1F407}' : '\u{1F6B6}' }
+    const hint = hinted && p.id === best ? talentHint(g, 'Business', p.id === 'lean' ? 'Cut the burn: at this rate the money runs out within a year.' : p.id === 'blitz' ? 'Floor it: you have the runway, and speed wins in deep tech.' : 'Hold the course: the runway fits the plan.') : ''
+    const opt: ChoiceOption = { id: p.id, label: `${p.label} pace${t.pace === p.id ? ' (current)' : ''}: ${p.note.charAt(0).toLowerCase()}${p.note.slice(1)}`, emoji: p.id === 'lean' ? '\u{1F422}' : p.id === 'blitz' ? '\u{1F407}' : '\u{1F6B6}' }
     if (hint) opt.hint = hint
     return opt
   })
@@ -509,15 +515,47 @@ export function deepTechReportImpl(g: GameState, a: Asset, b: BizState): boolean
   if (t.last?.notes.length) parts.push(t.last.notes.slice(0, 4).join(' '))
   if (s) parts.push(`Last year: ${s.net >= 0 ? `${money(s.net)} profit` : `${money(-s.net)} loss`} on ${money(s.revenue)} of revenue.`)
   parts.push(`Burn about ${money(burn)} a year; R&D account ${money(t.venture)}, company cash ${money(b.cash)}: ${runway >= 99 ? 'self-funding' : `${runway} years of runway`}.`)
-  parts.push(`${SERIES[t.series]}, you own ${pct(b.share)}. How hard do you push the lab next year?`)
-  scriptChoice(g, LAB_REPORT, `${a.name}: Lab Report`, parts.join('\n'), paceChoices(g, a, b, t), { emoji: DEEP_TECH[ind].screen.emoji, data: { assetId: a.id } })
+  const next = nextStep(g, a, b, t)
+  parts.push(`${SERIES[t.series]}, you own ${pct(b.share)}. ${next ? 'Start the next program, or set' : 'How hard do you push'} the lab's pace for next year?`)
+  // One purple hint per popup: on the program to start when there is one, else on the pace.
+  const choices = paceChoices(g, a, b, t, !next)
+  if (next) {
+    const hint = talentHint(g, 'Business', 'Start this: the best value for your R&D money right now.')
+    choices.unshift({ id: `start:${next.key}`, label: `Start ${next.name} (${money(next.cost)}/yr)`, emoji: next.emoji, ...(hint ? { hint } : {}) })
+  }
+  scriptChoice(g, LAB_REPORT, `${a.name}: Lab Report`, parts.join('\n'), choices, { emoji: DEEP_TECH[ind].screen.emoji, data: { assetId: a.id } })
   return true
+}
+
+/** The program (or clinical trial) a free lab slot should take next, if any. */
+function nextStep(g: GameState, a: Asset, b: BizState, t: TechState): { key: string; name: string; cost: number; emoji: string } | null {
+  if (t.programs.length >= maxPrograms(b, t)) return null
+  if (dtInd(b) === 'biotech') {
+    const d = bestTrial(b, t, Math.max(1, techFunds(b, t)))
+    if (d && !trialBlock(b, t, d)) return { key: `trial:${d.id}`, name: trialName(d, b.countryId), cost: trialCost(b, d), emoji: '\u{1F9EA}' }
+  }
+  const def = bestProgram(g, a, b, t)
+  return def ? { key: `program:${def.id}`, name: def.label(t), cost: programCost(b, t, def), emoji: def.emoji } : null
 }
 
 const LAB_REPORT = defineScript('deeptech.labReport', (g, choice, data) => {
   const a = findBusiness(g, str(rec(data)?.assetId))
   if (!a) return
-  const t = techOf(bizOf(g, a))
+  const b = bizOf(g, a)
+  const t = techOf(b)
+  if (choice.startsWith('start:')) {
+    const [, kind, id] = choice.split(':')
+    if (kind === 'trial') {
+      const d = t.drugs.find((x) => x.id === id)
+      const p = d ? startTrial(g, b, t, d) : null
+      if (p) log(g, `${a.name} started ${p.name}.`)
+    } else {
+      const def = programDef(dtInd(b), id ?? '')
+      const p = def ? startProgram(g, b, t, def) : null
+      if (p) log(g, `${a.name} started an R&D program: ${p.name}.`)
+    }
+    return
+  }
   const pace = PACES.find((p) => p.id === choice)
   if (!pace || t.pace === pace.id) return
   t.pace = pace.id

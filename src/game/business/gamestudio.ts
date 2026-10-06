@@ -563,10 +563,12 @@ export function queueStudioReport(g: GameState, a: Asset, b: BizState): void {
       const best = bestPitch(g, a, b, st, {})
       const leads = leadsPitch(g, a, b, st)
       const w = bizWorth(g, b)
+      const funded = (best ? best.short <= 0 : false) || leads.short <= 0
       // Waiting a year: idle developers sulk (-5 morale) and the next game ships a year later.
-      const later = fxValue(g, b, w, { morale: -5 }) - Math.max(0, best?.perYear ?? 0)
-      markBest(g, choices, (id) => (id === 'mine' ? (best?.value ?? null) : id === 'auto' ? leads : later), (id) =>
-        id === 'mine' && best ? `Best move: pitch ${pitchName(best)}` : id === 'auto' ? 'Best move: the leads will pick about as well as you would' : undefined,
+      // (When no game can be funded to launch, waiting doesn't stop the payroll either.)
+      const later = funded ? fxValue(g, b, w, { morale: -5 }) - Math.max(0, best?.perYear ?? 0) : null
+      markBest(g, choices, (id) => (id === 'mine' ? (best ? pitchRank(best, best.value, funded) : null) : id === 'auto' ? pitchRank(leads, leads.value, funded) : later), (id) =>
+        id === 'mine' && best ? `Best move: pitch ${pitchName(best)}${fundingNote(best)}` : id === 'auto' ? `Best move: the leads will pick about as well as you would${fundingNote(leads)}` : undefined,
       )
     }
     scriptChoice(g, IDLE_SCRIPT, `${a.name}: Studio Report`, `${lines.join('\n')}\n\nYour developers have nothing to work on and are playing ping-pong on the company's dime. Greenlight something?`, choices, { emoji: '\u{1F3AE}', data: { assetId: a.id } })
@@ -599,6 +601,11 @@ interface PitchOut {
   perYear: number
   years: number
   quality: number
+  /**
+   * Cash the studio would run short of before the game's launch money comes in (0: its cash
+   * carries the game to launch). A great game the studio can't fund ends in a cash crunch.
+   */
+  short: number
 }
 
 const luckCache = new Map<string, number>()
@@ -709,8 +716,30 @@ function royaltyOf(engine: EngineId, receipts: number): number {
   return engineDef(engine).royalty * Math.max(0, receipts - 1_000_000)
 }
 
+/**
+ * A year of the studio's running costs whatever it makes next (developers, rent, upkeep, key
+ * staff, games already in production, interest), minus what its back catalog should bring in:
+ * the same items simulateStudioYear books.
+ */
+function studioBurn(g: GameState, b: BizState, st: StudioState): number {
+  let rent = 0
+  for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent
+  const overhead = (b.employees * devCost(b) * licencePremium(g, b) + rent + equipmentValue(b) * industryDef('gameStudio').maint) * (1 - 0.025 * staffPower(b, 'finance')) * (1.05 - ceoSkill(g, b) / 1000)
+  const fixed = overhead + b.staff.reduce((t, x) => t + x.salary, 0) + managerCost(b) + (b.insured ? insurancePremiumFor(b) : 0) + b.debt * b.debtRate
+  const scale = costScale(b.countryId)
+  let inProduction = 0
+  for (const x of devGames(st)) {
+    const sc = scopeDef(x.scope)
+    inProduction += sc.extraUsd * Math.min(1.5, clampN(x.team / sc.team, 0, 3)) * scale
+  }
+  let catalog = 0
+  for (const x of st.games) if (x.stage === 'live' && x.tail > 0) catalog += x.tail * netPerCopy(x.price) * (x.publisher ? x.devShare * (x.recoup > 0 ? 0.6 : 1) : 1)
+  const burn = fixed + inProduction - catalog
+  return Number.isFinite(burn) ? burn : 0
+}
+
 /** What greenlighting this game would earn (developers are paid either way, so not counted). */
-function pitchValue(g: GameState, a: Asset, b: BizState, st: StudioState, x: Pitch, franchise = 0): PitchOut {
+function pitchValue(g: GameState, a: Asset, b: BizState, st: StudioState, x: Pitch, franchise = 0, burn = studioBurn(g, b, st)): PitchOut {
   const sc = scopeDef(x.scope)
   const eng = engineDef(x.engine)
   const team = pitchTeam(b, st, x.scope)
@@ -724,9 +753,26 @@ function pitchValue(g: GameState, a: Asset, b: BizState, st: StudioState, x: Pit
   const hype = (franchise > 0 ? 25 : 5) * Math.pow(0.9, years)
   const scale = costScale(b.countryId)
   const receipts = receiptsOf(g, b, x, { quality, hype, years, publisher: false, franchise })
-  const costs = sc.extraUsd * Math.min(1.5, ratio) * scale * years + sc.marketingUsd * b.marketingLevel * scale + platformDef(x.platform).certUsd * scale
+  const extra = sc.extraUsd * Math.min(1.5, ratio) * scale
+  const launch = sc.marketingUsd * b.marketingLevel * scale + platformDef(x.platform).certUsd * scale
+  const costs = extra * years + launch
   const value = receipts - royaltyOf(x.engine, receipts) - costs
-  return { value, perYear: value / years, years, quality }
+  // Cash needed until launch: every development year's costs, then the launch year's costs
+  // less its first year of sales (receiptsOf spreads a game's sales over its tail).
+  const firstYear = receipts * Math.max(0.3, 1 - tailKeep(quality, x.scope))
+  const need = (years - 1) * Math.max(0, burn + extra) + Math.max(0, burn + extra + launch - firstYear)
+  const short = Math.max(0, Math.round(need - Math.max(0, b.cash)))
+  return { value, perYear: value / years, years, quality, short: Number.isFinite(short) ? short : 0 }
+}
+
+/**
+ * How a pitch ranks against the others on the table: when the studio's cash can carry some of
+ * them to launch, those (by `metric`) and nothing else; when it can't carry any, the smallest
+ * shortfall (the game that gets money coming in soonest).
+ */
+function pitchRank(p: PitchOut, metric: number, anyFunded: boolean): number {
+  if (anyFunded) return p.short > 0 ? -1e15 : metric
+  return -p.short + clampN(metric, -1e6, 1e6) * 1e-9
 }
 
 /** 'an AA role-playing game for Every Platform'. */
@@ -757,7 +803,8 @@ function enginesFor(scope: ScopeId): EngineId[] {
 
 /** The best game to make next given what's already decided (ranked by profit per year of work). */
 function bestPitch(g: GameState, a: Asset, b: BizState, st: StudioState, fixed: Partial<Pitch>, franchise = 0): (Pitch & PitchOut) | null {
-  let best: (Pitch & PitchOut) | null = null
+  const burn = studioBurn(g, b, st)
+  const all: (Pitch & PitchOut)[] = []
   const scopes = fixed.scope ? [fixed.scope] : SCOPES.map((x) => x.id).filter((x) => scopeOk(b, x))
   for (const scope of scopes) {
     const genres = fixed.genre ? [fixed.genre] : GENRES.map((x) => x.id)
@@ -765,12 +812,35 @@ function bestPitch(g: GameState, a: Asset, b: BizState, st: StudioState, fixed: 
     const engines = fixed.engine ? [fixed.engine] : enginesFor(scope)
     for (const genre of genres)
       for (const platform of platforms)
-        for (const engine of engines) {
-          const out = pitchValue(g, a, b, st, { scope, genre, platform, engine }, franchise)
-          if (!best || out.perYear > best.perYear) best = { scope, genre, platform, engine, ...out }
-        }
+        for (const engine of engines) all.push({ scope, genre, platform, engine, ...pitchValue(g, a, b, st, { scope, genre, platform, engine }, franchise, burn) })
   }
+  const funded = all.some((x) => x.short <= 0)
+  let best: (Pitch & PitchOut) | null = null
+  for (const x of all) if (!best || pitchRank(x, x.perYear, funded) > pitchRank(best, best.perYear, funded)) best = x
   return best
+}
+
+/**
+ * How long the studio's cash lasts at its current burn (months, rounded) and how many of its
+ * developers sit idle (on no game). Null without the talent, or when nothing is burning.
+ */
+function teamRunway(g: GameState, a: Asset): { months: number; idle: number } | null {
+  const found = findBusiness(g, a.id)
+  if (!found || !hasTalent(g, 'Business') || manageBlock(g, found)) return null
+  const b = readBiz(g, found)
+  const st = studioOf(found)
+  const burn = studioBurn(g, b, st)
+  if (!(burn > 0)) return null
+  return { months: Math.max(0, Math.floor((Math.max(0, b.cash) / burn) * 12)), idle: Math.max(0, b.employees - assignedDevs(st)) }
+}
+
+function monthsOf(m: number): string {
+  return m < 1 ? 'less than a month' : `about ${m} month${m === 1 ? '' : 's'}`
+}
+
+/** Why a pitch is the best one, or the warning that comes with it when the studio can't fund any. */
+function fundingNote(p: PitchOut): string {
+  return p.short > 0 ? ` (even so, the studio runs about ${money(p.short)} short before launch: line up a publisher or more cash)` : ''
 }
 
 const pitchCache = new Map<string, (Pitch & PitchOut) | null>()
@@ -816,15 +886,16 @@ function publishValues(g: GameState, a: Asset, b: BizState, st: StudioState, x: 
 }
 
 /** What the leads would greenlight (studioManagerTurn's rule: half the time a sequel to a hit). */
-function leadsPitch(g: GameState, a: Asset, b: BizState, st: StudioState): number {
+function leadsPitch(g: GameState, a: Asset, b: BizState, st: StudioState): PitchOut {
   const scope = [...SCOPES].reverse().find((s) => s.id !== 'jam' && s.minTeam <= b.employees && (s.id !== 'aaa' || b.cash > 0)) ?? SCOPES[1]
   const platform: PlatformId = scope.index >= 4 ? 'multi' : scope.index >= 3 ? 'console' : 'pc'
   const engine: EngineId = scope.index >= 3 ? 'titan' : 'cobalt'
   const best = st.games.filter((x) => x.stage === 'live' && x.critic >= 75).sort((x, y) => y.copies - x.copies)[0]
-  const hot = pitchValue(g, a, b, st, { scope: scope.id, genre: hotGenres(g)[0].id, platform, engine }).value
+  const hot = pitchValue(g, a, b, st, { scope: scope.id, genre: hotGenres(g)[0].id, platform, engine })
   if (!best) return hot
-  const sequel = pitchValue(g, a, b, st, { scope: scope.id, genre: best.genre, platform, engine }, franchisePull(st, best.id)).value
-  return 0.5 * hot + 0.5 * sequel
+  const sequel = pitchValue(g, a, b, st, { scope: scope.id, genre: best.genre, platform, engine }, franchisePull(st, best.id))
+  const avg = (k: keyof PitchOut) => 0.5 * hot[k] + 0.5 * sequel[k]
+  return { value: avg('value'), perYear: avg('perYear'), years: avg('years'), quality: avg('quality'), short: avg('short') }
 }
 
 /** Lifetime receipts still to come from a released game (its share after any publisher). */
@@ -1177,9 +1248,15 @@ export function startGreenlight(g: GameState, assetId: string, preset: Partial<G
     const franchise = preset.sequelOf ? franchisePull(st, preset.sequelOf) : 0
     const fixed: Partial<Pitch> = preset.genre && preset.sequelOf ? { genre: preset.genre } : {}
     const per = new Map(options.filter((s) => scopeOk(b, s.id)).map((s) => [s.id as string, bestPitch(g, a, b, st, { ...fixed, scope: s.id }, franchise)]))
-    markBest(g, choices, (id) => (id === 'cancel' ? 0 : (per.get(id)?.perYear ?? null)), (id) => {
+    const funded = [...per.values()].some((p) => !!p && p.short <= 0)
+    // Holding off only beats a game the studio can pay for; it doesn't stop the payroll.
+    markBest(g, choices, (id) => {
+      if (id === 'cancel') return funded ? 0 : null
       const p = per.get(id)
-      return id === 'cancel' ? 'Best move: no game this team can make right now would pay back' : p ? `Best size for this team: it should earn about ${money(p.perYear)} for every year it takes to make` : undefined
+      return p ? pitchRank(p, p.perYear, funded) : null
+    }, (id) => {
+      const p = per.get(id)
+      return id === 'cancel' ? 'Best move: no game this team can make right now would pay back' : p ? `Best size for this team and its cash: it should earn about ${money(p.perYear)} for every year it takes to make${fundingNote(p)}` : undefined
     })
   }
   scriptChoice(
@@ -1212,9 +1289,14 @@ const GL_SCOPE = defineScript('gamestudio.gl.scope', (g, choice, data) => {
     const b = readBiz(g, a)
     const st = studioOf(a)
     const per = new Map(options.map((x) => [x.id as string, bestPitch(g, a, b, st, { scope: d.scope, genre: x.id })]))
-    markBest(g, choices, (id) => per.get(id)?.value ?? null, (id) => {
-      const years = per.get(id)?.years ?? 1
-      return `Best genre for this one: the biggest audience for your team when it launches${years > 1 ? ` in ${years} years` : ''}`
+    const funded = [...per.values()].some((p) => !!p && p.short <= 0)
+    markBest(g, choices, (id) => {
+      const p = per.get(id)
+      return p ? pitchRank(p, p.value, funded) : null
+    }, (id) => {
+      const p = per.get(id)
+      const years = p?.years ?? 1
+      return `Best genre for this one: the biggest audience for your team when it launches${years > 1 ? ` in ${years} years` : ''}${p ? fundingNote(p) : ''}`
     })
   }
   scriptChoice(g, GL_GENRE, 'Pick a Genre', `What will it be? ${[...hot].map((x) => genreDef(x).label).join(' and ')} games are hot right now.`, choices, { emoji: '\u{1F3AE}', data: glJson(d) })
@@ -1242,7 +1324,14 @@ function glPlatform(g: GameState, d: GlDraft): void {
     const st = studioOf(a)
     const franchise = d.sequelOf ? franchisePull(st, d.sequelOf) : 0
     const per = new Map(choices.filter((c) => isPlatform(c.id)).map((c) => [c.id, bestPitch(g, a, b, st, { scope: d.scope, genre: d.genre, platform: c.id as PlatformId }, franchise)]))
-    markBest(g, choices, (id) => per.get(id)?.value ?? null, (id) => `Best platform: about ${money(Math.max(0, per.get(id)?.value ?? 0))} after store cuts, dev kits and launch costs`)
+    const funded = [...per.values()].some((p) => !!p && p.short <= 0)
+    markBest(g, choices, (id) => {
+      const p = per.get(id)
+      return p ? pitchRank(p, p.value, funded) : null
+    }, (id) => {
+      const p = per.get(id)
+      return `Best platform: about ${money(Math.max(0, p?.value ?? 0))} after store cuts, dev kits and launch costs${p ? fundingNote(p) : ''}`
+    })
   }
   scriptChoice(g, GL_PLATFORM, 'Pick a Platform', `Where will it launch?`, choices, { emoji: '\u{1F579}\u{FE0F}', data: glJson(d) })
 }
@@ -1262,10 +1351,15 @@ const GL_PLATFORM = defineScript('gamestudio.gl.platform', (g, choice, data) => 
     const b = readBiz(g, a)
     const st = studioOf(a)
     const franchise = d.sequelOf ? franchisePull(st, d.sequelOf) : 0
-    const per = new Map(choices.filter((c) => isEngine(c.id)).map((c) => [c.id, pitchValue(g, a, b, st, { scope: d.scope, genre: d.genre, platform: choice, engine: c.id as EngineId }, franchise)]))
-    markBest(g, choices, (id) => per.get(id)?.perYear ?? null, (id) => {
+    const burn = studioBurn(g, b, st)
+    const per = new Map(choices.filter((c) => isEngine(c.id)).map((c) => [c.id, pitchValue(g, a, b, st, { scope: d.scope, genre: d.genre, platform: choice, engine: c.id as EngineId }, franchise, burn)]))
+    const funded = [...per.values()].some((p) => p.short <= 0)
+    markBest(g, choices, (id) => {
       const p = per.get(id)
-      return p ? `Best engine for this game: about ${p.years === 1 ? 'a year' : `${p.years} years`} of work and quality around ${Math.round(p.quality)}` : undefined
+      return p ? pitchRank(p, p.perYear, funded) : null
+    }, (id) => {
+      const p = per.get(id)
+      return p ? `Best engine for this game: about ${p.years === 1 ? 'a year' : `${p.years} years`} of work and quality around ${Math.round(p.quality)}${fundingNote(p)}` : undefined
     })
   }
   scriptChoice(g, GL_ENGINE, 'Pick an Engine', 'Which engine will the team use?', choices, { emoji: '\u{2699}\u{FE0F}', data: glJson(d) })
@@ -1720,7 +1814,7 @@ export function studioNodes(g: GameState, a: Asset): MenuNode[] {
       if (!found || !hasTalent(gg, 'Business') || greenlightBlock(gg, found)) return null
       const p = cachedPitch(gg, found)
       if (!p) return null
-      return talentHint(gg, 'Business', p.value > 0 ? `Next game: ${pitchName(p)} looks best` : 'Nothing this team can make right now would pay back')
+      return talentHint(gg, 'Business', p.value > 0 ? `Next game: ${pitchName(p)} looks best${fundingNote(p)}` : 'Nothing this team can make right now would pay back')
     },
     run: (gg) => startGreenlight(gg, a.id),
   })
@@ -1757,12 +1851,22 @@ export function studioNodes(g: GameState, a: Asset): MenuNode[] {
       const cur = found ? studioOf(found) : normalizeStudio(undefined)
       const rows: MenuNode[] = [
         studioAct(a, 'hire', 'Hire Developers', '\u{1F4E5}', {
+          hint: (x) => {
+            const r = teamRunway(x, a)
+            return r && r.months < 12 ? talentHint(x, 'Business', `Hold off: the studio's cash covers only ${monthsOf(r.months)} of the team you already have`) : null
+          },
           subtitle: `${money(devCost(bb))}/yr each · ${bb.employees}/${maxDevs(bb)}`,
           input: { kind: 'number', label: 'How many?', min: 1, max: Math.max(1, maxDevs(bb) - bb.employees), defaultValue: () => '5' },
           disabled: () => (bb.employees >= maxDevs(bb) ? 'The offices are full.' : null),
           run: (x, aa, b2, _st, input) => hireDevs(x, aa, b2, amountOf(input, maxDevs(b2) - b2.employees)),
         }),
         studioAct(a, 'layoff', 'Lay Off Developers', '\u{1F4E6}', {
+          hint: (x) => {
+            const r = teamRunway(x, a)
+            return r && r.months < 12 && r.idle > 0
+              ? talentHint(x, 'Business', `Let the ${r.idle} idle developer${r.idle === 1 ? '' : 's'} go: the cash covers only ${monthsOf(r.months)} of payroll, and severance is cheaper than a cash crunch`)
+              : null
+          },
           subtitle: `Severance: ${severanceMonths(bb.countryId)} months' pay`,
           input: { kind: 'number', label: 'How many?', min: 1, max: Math.max(1, bb.employees - 1), defaultValue: () => '1' },
           disabled: () => (bb.employees <= 1 ? 'Nobody left to lay off.' : null),

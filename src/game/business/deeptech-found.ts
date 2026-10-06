@@ -2,7 +2,7 @@
 // co-founder or a hired expert), the seed round on offer in this market, the starting state of
 // the lab, and the Business talent's pick of the best industries to start in.
 import { count } from '../core'
-import { INDUSTRY_IDS, industryDemand, isIndustryLegal, marketOf, type Industry } from '../data/markets'
+import { INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry } from '../data/markets'
 import { bell, chance, rand, uid } from '../rng'
 import { hasTalent } from '../talents'
 import type { GameState } from '../types'
@@ -137,7 +137,9 @@ export function bestIndustries(countryId: string, city: string): { classic: Indu
   for (const id of INDUSTRY_IDS) {
     if (!isIndustryLegal(countryId, id)) continue
     if (isDeepTechIndustry(id)) {
-      deep.push({ id, score: ecosystem(countryId, id) * industryDemand(countryId, id) })
+      // Only real hubs get the nod: a market with no deep-tech scene to speak of gets no hint.
+      const d = marketOf(countryId).demand[id]
+      if (d !== undefined && d >= 1.2) deep.push({ id, score: ecosystem(countryId, id) * d })
       continue
     }
     if (id === 'gameStudio') continue

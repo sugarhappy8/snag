@@ -239,7 +239,7 @@ export interface TrialStep {
 }
 
 export const TRIALS: TrialStep[] = [
-  { label: 'Phase I trial', years: 1, cost: 6_000_000, odds: 0.62 },
+  { label: 'Phase I trial', years: 1, cost: 4_000_000, odds: 0.62 },
   { label: 'Phase II trial', years: 2, cost: 14_000_000, odds: 0.38 },
   { label: 'Phase III trial', years: 3, cost: 45_000_000, odds: 0.6 },
   { label: 'regulatory review', years: 1, cost: 3_000_000, odds: 0.88 },
@@ -372,7 +372,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
   ],
   aiLab: [
     {
-      id: 'train', label: (t) => `Train ${modelFamily(t)} ${t.models.length + 1}`, emoji: '\u{1F9E0}', blurb: 'A training run: weeks of GPUs crunching data. Bigger runs, better models.',
+      id: 'train', label: (t) => (t.models.length === 0 ? 'Train Your First Model' : `Train ${modelFamily(t, '')} ${t.models.length + 1}`), emoji: '\u{1F9E0}', blurb: 'A training run: weeks of GPUs crunching data. Bigger runs, better models.',
       years: 1, cost: (t) => 1_500_000 * Math.pow(2.6, t.models.length) * (1 - Math.min(0.45, t.plant * 0.12)), odds: fixed(0.82),
       gate: (t) => (t.models.length >= 10 ? 'Ten generations is a whole family tree.' : t.models.length >= 3 && t.rented + t.plant < 1 ? 'Runs this big need GPU compute: rent or build a cluster.' : t.models.length >= 5 && t.plant < 1 ? 'Frontier-scale runs need your own GPU cluster.' : null),
       win: (x) => trainWin(x),
@@ -380,14 +380,14 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'api', label: () => 'Developer API & Billing', emoji: '\u{1F50C}', blurb: 'Let developers pay to use your models.',
-      years: 1, cost: fixed(1_200_000), odds: fixed(0.92),
+      years: 1, cost: fixed(2_000_000), odds: fixed(0.9),
       gate: (t) => once(t, 'api') ?? (t.models.length === 0 ? 'Train a model first.' : null),
       win: (x) => (stageAtLeast(x.t, 2), lvl(x.t, 2), 'Your API is live. Developers are building on it.'),
     },
     {
       id: 'enterprise', label: () => 'Enterprise Platform', emoji: '\u{1F3E2}', blurb: 'Security reviews, admin consoles and a sales team in suits.',
-      years: 1.5, cost: fixed(5_000_000), odds: fixed(0.8),
-      gate: (t) => once(t, 'enterprise') ?? (t.stage < 2 ? 'Needs paying API customers first.' : null),
+      years: 1.5, cost: fixed(12_000_000), odds: fixed(0.7),
+      gate: (t) => once(t, 'enterprise') ?? (t.stage < 2 ? 'Needs paying API customers first.' : t.level < 50 ? 'Big companies only buy from labs at tech level 50+.' : null),
       win: (x) => (stageAtLeast(x.t, 3), lvl(x.t, 3), 'Big companies are signing up. Procurement departments everywhere sighed.'),
     },
     {
@@ -695,10 +695,14 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
   ],
 }
 
-function modelFamily(t: TechState): string {
+/** The lab's model family name: kept from its first model, else picked from the company name. */
+function modelFamily(t: TechState, company: string): string {
   const first = t.models[0]?.name ?? ''
   const fam = first.replace(/\s+\d+$/, '')
-  return fam || MODEL_FAMILIES[t.seq % MODEL_FAMILIES.length]
+  if (fam) return fam
+  let h = 0
+  for (const ch of company) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return MODEL_FAMILIES[h % MODEL_FAMILIES.length]
 }
 
 function trainWin(x: ProgCtx): string {
@@ -707,7 +711,7 @@ function trainWin(x: ProgCtx): string {
   const frontier = frontierScore(x.year)
   const compute = Math.min(12, t.plant * 2 + t.rented * 0.8)
   const score = Math.round(Math.max(5, Math.min(99, frontier - 38 + t.level * 0.35 + gen * 2 + compute + (x.roll() - 0.5) * 16)))
-  const name = `${modelFamily(t)} ${gen}`
+  const name = `${modelFamily(t, x.company)} ${gen}`
   t.models.push({ gen, name, score, open: false, year: x.year })
   if (t.models.length > 10) t.models.splice(0, t.models.length - 10)
   t.stage = Math.max(t.stage, 1)

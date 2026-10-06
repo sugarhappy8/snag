@@ -107,6 +107,15 @@ function hinting(g: GameState, a: Asset): boolean {
   return hasTalent(g, 'Business') && !manageBlock(g, a)
 }
 
+/**
+ * Companies the price-and-production planner models (economy.bestPlan). Game studios live on
+ * launches and deep-tech companies on their own tech-driven planner, so the planner-based hints
+ * (budget, plan, expansion) would mislead there; their own screens carry their hints.
+ */
+function priceAndOutput(b: BizState): boolean {
+  return !isStudio(b) && !isDeepTech(b)
+}
+
 /** A permanent shift in brand or quality targets, counted as the points it builds over a few years. */
 const TARGET_SHARE = 0.5
 
@@ -254,7 +263,7 @@ function marketingMenu(a: Asset): MenuGroup {
     disabledReason: (g) => manageBlock(g, a),
     hint: (g) => {
       const cur = live(g, a)
-      if (!hinting(g, cur) || isStudio(readBiz(g, cur))) return null
+      if (!hinting(g, cur) || !priceAndOutput(readBiz(g, cur))) return null
       const best = bestBudget(g, cur)
       if (best.level === readBiz(g, cur).marketingLevel || best.gain < 500) return talentHint(g, 'Business', 'Your marketing budget is about right')
       return talentHint(g, 'Business', `Switch to a ${budgetLabel(best.level).toLowerCase()} budget: about ${money(best.gain)} better a year`)
@@ -276,7 +285,7 @@ function marketingMenu(a: Asset): MenuGroup {
             subtitle: `${pct(def.marketingShare * x.level, 1)} of sales`,
             hint: (gg) => {
               const cur = live(gg, a)
-              if (!hinting(gg, cur) || isStudio(readBiz(gg, cur))) return null
+              if (!hinting(gg, cur) || !priceAndOutput(readBiz(gg, cur))) return null
               const best = bestBudget(gg, cur)
               if (best.level !== x.level) return null
               return talentHint(gg, 'Business', best.level === readBiz(gg, cur).marketingLevel ? 'Best budget: keep it here' : `Best budget: about ${money(best.gain)} more profit a year, brand included`)
@@ -559,7 +568,7 @@ function openAction(a: Asset, countryId: string, city: string): MenuAction {
   return act(a, `open.${countryId}.${city}`, city, '\u{1F4CD}', {
     hint: (g) => {
       const cur = live(g, a)
-      if (!hinting(g, cur) || isStudio(readBiz(g, cur))) return null
+      if (!hinting(g, cur) || !priceAndOutput(readBiz(g, cur))) return null
       const b = readBiz(g, cur)
       if (countryId === b.countryId) {
         const best = bestHomeCity(g, cur)
@@ -624,7 +633,7 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
     header: () => marketOf(countryId).businessNote,
     hint: (g) => {
       const cur = live(g, a)
-      if (!hinting(g, cur) || isStudio(readBiz(g, cur))) return null
+      if (!hinting(g, cur) || !priceAndOutput(readBiz(g, cur))) return null
       const best = bestAbroad(g, cur)
       return best && best.countryId === countryId ? talentHint(g, 'Business', `Best market abroad: a location in ${best.city} pays for itself in ${yearsText(best.years)}`) : null
     },
@@ -729,7 +738,7 @@ function expansionMenu(a: Asset): MenuGroup {
     disabledReason: (g) => manageBlock(g, a),
     hint: (g) => {
       const cur = live(g, a)
-      if (!hinting(g, cur) || isStudio(readBiz(g, cur))) return null
+      if (!hinting(g, cur) || !priceAndOutput(readBiz(g, cur))) return null
       const best = bestHomeCity(g, cur)
       return talentHint(g, 'Business', best ? `Expanding pays: a new location in ${best.city} earns its cost back in ${yearsText(best.years)}` : `Don't expand at home yet: a new location wouldn't pay for itself within ${PAYBACK_MAX} years`)
     },
@@ -1233,6 +1242,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
           const cur = live(gg, a)
           if (!hinting(gg, cur)) return null
           const b = readBiz(gg, cur)
+          if (!priceAndOutput(b)) return null
           const p = cachedHint(gg, cur, 'plan', () => bestPlan(gg, b, { quick: true, ownerDraw: runsIt(gg, cur) ? b.ownerSalary : 0 }))
           const close = Math.abs(p.price - b.price) <= Math.max(0.02, b.price * 0.03) && Math.abs(p.production - b.production) <= Math.max(1, p.production * 0.05)
           return talentHint(gg, 'Business', close ? 'Your plan is already close to the sweet spot' : `The report has a better plan for you: about ${money(Math.abs(p.profit))} ${p.profit >= 0 ? 'profit' : 'loss'} next year`)

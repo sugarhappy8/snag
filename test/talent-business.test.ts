@@ -22,15 +22,17 @@ import {
   type BizFx,
 } from '../src/game/business/economy'
 import { businessEventInternals } from '../src/game/business/events'
-import { createBusinessAsset, newBiz } from '../src/game/business/founding'
+import { createBusinessAsset, newBiz, startFounding } from '../src/game/business/founding'
+import { startGreenlight, studioAssets, studioInternals } from '../src/game/business/gamestudio'
 import { businessView } from '../src/game/business/manage'
 import { bizOf, findBusiness, readBiz, type BizState, type KeyStaff } from '../src/game/business/state'
-import { applyPlan, autoPlan, crunchValues, reportData } from '../src/game/business/yearly'
+import { applyPlan, autoPlan, crunchValues, planHint, reportData, yearlyBusinessImpl } from '../src/game/business/yearly'
 import { industryDemand, INDUSTRY_IDS, type Industry } from '../src/game/data/markets'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
-import type { Asset, ChoiceModal, GameState, MenuNode } from '../src/game/types'
+import type { AnnualReportData, Asset, ChoiceModal, GameState, MenuNode, MinigameModal } from '../src/game/types'
 import { getCountry } from '../src/game/world'
+import { makeTestGame } from './helpers'
 
 /** An adult who has run a company for two years (so it has a history and a last statement). */
 function company(seed: number, countryId: string, industry: Industry, talent: boolean, opts: Partial<BizState> = {}): { g: GameState; a: Asset; b: BizState } {
@@ -406,5 +408,121 @@ describe('Business talent: old saves', () => {
     delete (g.character as { talents?: string[] }).talents
     expect(reportData(g, a, b).talentHint).toBeUndefined()
     expect(hints(g, allNodes(g, businessView(g, a)))).toHaveLength(0)
+  })
+})
+
+describe('Business talent: the yearly flow', () => {
+  /** Book a fiscal year for a healthy company until it draws an event whose popup matches `title`. */
+  function yearWithEvent(title: RegExp): { g: GameState; a: Asset } {
+    for (let seed = 100; seed < 600; seed++) {
+      const { g, a, b } = company(seed, 'us', 'cafe', true)
+      b.cash = Math.max(b.cash, 2_000_000)
+      b.lastEvent = 0
+      g.year += 1
+      g.rng = seed * 7 + 1
+      g.queue = []
+      yearlyBusinessImpl(g)
+      if (g.queue.some((m) => m.kind === 'choice' && title.test(m.title))) return { g, a }
+    }
+    throw new Error(`no ${title} event`)
+  }
+
+  function reportOf(g: GameState, a: Asset): number {
+    return g.queue.findIndex((m) => m.kind === 'minigame' && m.game === 'annualReport' && (m.data as { assetId?: string } | undefined)?.assetId === a.id)
+  }
+
+  /** Answer the queue in order like the player would (follow-ups first), picking `want` where offered. */
+  function play(g: GameState, want: Record<string, string>): void {
+    for (let guard = 0; g.queue.length && guard < 50; guard++) {
+      const m = g.queue.shift()!
+      const before = g.queue.length
+      if (m.kind === 'minigame' && m.game === 'annualReport') {
+        const h = (m.data as unknown as AnnualReportData).talentHint!
+        runScript(g, m.scriptId, JSON.stringify({ price: h.price, production: h.production }), m.data, m)
+      } else if (m.kind === 'choice' && m.scriptId) {
+        const id = Object.entries(want).find(([t]) => m.title.includes(t))?.[1] ?? m.choices[0].id
+        runScript(g, m.scriptId, id, m.data, m)
+      }
+      const added = g.queue.splice(before)
+      g.queue.unshift(...added)
+    }
+  }
+
+  it("plans the year before the year's event strikes it: a price war's cut sticks", () => {
+    const { g, a } = yearWithEvent(/New Competition/)
+    const ev = g.queue.findIndex((m) => m.kind === 'choice' && m.title === 'New Competition')
+    const rep = reportOf(g, a)
+    expect(rep).toBeGreaterThanOrEqual(0)
+    expect(rep).toBeLessThan(ev)
+    const h = ((g.queue[rep] as MinigameModal).data as unknown as AnnualReportData).talentHint!
+    play(g, { 'New Competition': 'priceWar' })
+    // The report set the price; the price war then cut it, and nothing undid the cut.
+    expect(readBiz(g, a).price).toBeCloseTo(Math.round(h.price * 0.88 * 100) / 100, 2)
+  })
+
+  it('never shows an Annual Report for a company an event just sold', () => {
+    const { g, a } = yearWithEvent(/Buyout Offer/)
+    const ev = g.queue.findIndex((m) => m.kind === 'choice' && m.title === 'Buyout Offer')
+    expect(reportOf(g, a)).toBeLessThan(ev)
+    g.queue = g.queue.slice(0, ev + 1)
+    play(g, { 'Buyout Offer': 'accept' })
+    expect(findBusiness(g, a.id)).toBeUndefined()
+    expect(reportOf(g, a)).toBe(-1)
+  })
+
+  it('words a plan that makes nothing sensibly', () => {
+    const { g, a, b } = company(23, 'us', 'cafe', true)
+    // Inputs so dear that every cup loses money, and nothing left in stock.
+    b.costShock = 50
+    b.inventory = 0
+    const h = planHint(g, a, b)
+    expect(h.production).toBe(0)
+    expect(h.text).toMatch(/^\u{1F52E} Make nothing next year: every cup would cost more than it brings in \(about \$[\d.,KM]+ loss\)$/u)
+  })
+})
+
+describe('Business talent: game studios', () => {
+  /** A talented founder's studio with `devs` developers and `cash` in the bank. */
+  function studio(devs: number, cash: number): { g: GameState; a: Asset } {
+    const g = makeTestGame(7, { age: 30, countryId: 'us', money: 50_000_000, talents: ['Business'] })
+    g.lifeId = 'talent-studio'
+    g.character.city = getCountry('us').cities[0]
+    startFounding(g, 'gameStudio')
+    for (let guard = 0; g.queue.length && guard < 40; guard++) {
+      const m = g.queue.shift()!
+      if (m.kind === 'choice' && m.scriptId) runScript(g, m.scriptId, (m.choices.find((c) => ['city0', 'savings', 'me'].includes(c.id)) ?? m.choices[0]).id, m.data, m)
+      else if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Test Studio', m.data, m)
+    }
+    const a = studioAssets(g)[0]
+    const b = bizOf(g, a)
+    b.cash = 50_000_000
+    studioInternals.hireDevs(g, a, b, devs)
+    b.cash = cash
+    g.queue = []
+    return { g, a }
+  }
+
+  function scopeHint(g: GameState, a: Asset): { id: string; hint: string } {
+    startGreenlight(g, a.id)
+    const m = lastChoice(g)
+    const c = m.choices.find((x) => x.hint)!
+    g.queue = []
+    return { id: c.id, hint: c.hint! }
+  }
+
+  it("never steers a studio into a game its cash can't carry to launch", () => {
+    // Plenty of money: the big, slow game that earns the most per year of work.
+    const rich = studio(25, 40_000_000)
+    const big = scopeHint(rich.g, rich.a)
+    expect(['aa', 'aaa']).toContain(big.id)
+    expect(big.hint).not.toMatch(/short before launch/)
+    // Same team, a few months of payroll in the bank: a quick game, and a warning.
+    const poor = studio(25, 600_000)
+    const quick = scopeHint(poor.g, poor.a)
+    expect(['small', 'indie']).toContain(quick.id)
+    expect(quick.hint).toMatch(/short before launch: line up a publisher or more cash/)
+    // And the team screen says to stop hiring.
+    const hire = allNodes(poor.g, businessView(poor.g, poor.a)).find((n) => n.id === `studio.hire.${poor.a.id}`)
+    expect(hire && hire.type === 'action' ? hire.hint?.(poor.g) : null).toMatch(/^\u{1F52E} Hold off/u)
   })
 })

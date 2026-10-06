@@ -123,7 +123,7 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
       const p = startProgram(g, b, t, def)
       if (!p) return
       log(g, `${cur.name} started an R&D program: ${p.name}.`)
-      notice(g, 'Program Started', `${p.name} is underway at ${cur.name}. ${def.blurb} At a steady pace it takes ${plural(def.years, 'year')} and about ${formatMoney(p.cost)} a year, paid from the R&D account first.`, { emoji: def.emoji })
+      notice(g, 'Program Started', `${p.name} is underway at ${cur.name}. ${def.blurb} At a steady pace it takes ${plural(def.years, 'year')} and about ${money(p.cost)} a year, paid from the R&D account first.`, { emoji: def.emoji })
     },
   })
 }
@@ -419,7 +419,28 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
       }),
     )
   }
-  nodes.push(bidAction(a, 'nationalLab', 'Bid for a Government AI Contract'))
+  nodes.push(
+    dtAct(a, 'enterprise', 'Pitch a Giant Corporation', '\u{1F3E2}', {
+      subtitle: 'A multi-year enterprise AI deal, if your models are good enough',
+      disabled: (gg, _bb, tt) => (tt.stage < 3 ? 'Big corporations only sign with an enterprise platform.' : tt.deal ? `You already have ${tt.deal.name} running.` : (gg.yearActions[`dt.enterprise.${a.id}`] ?? 0) >= 1 ? 'You already pitched a big customer this year.' : null),
+      hint: (gg) => (competitiveness(t, gg.year) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier to win this.') : null),
+      run: (gg, cur, bb, tt) => {
+        if (!useYearAction(gg, `dt.enterprise.${cur.id}`, 1)) return tooBusy(gg, 'pitched a big customer')
+        const cost = payTech(bb, tt, Math.round(300_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
+        if (chance(gg, clampN(0.15 + competitiveness(tt, gg.year) * 0.45, 0.1, 0.8))) {
+          const unit = localEcon(bb.industry, bb.countryId, bb.city).baseDemand * localEcon(bb.industry, bb.countryId, bb.city).goingPrice
+          const perYear = Math.round(unit * (0.1 + rand(gg) * 0.15))
+          tt.deal = { name: 'an enterprise AI contract', perYear, years: 2 }
+          revalue(gg, cur, bb, tt)
+          log(gg, `${cur.name} signed an enterprise AI deal.`, 'good')
+          notice(gg, 'Deal Signed!', `A giant corporation is rolling out your models to 200,000 employees: about ${formatMoney(perYear)} a year for two years. The pitch cost ${formatMoney(cost)} in travel and very good slides.`, { emoji: '\u{1F3E2}', tone: 'good' })
+        } else {
+          notice(gg, 'They Went With Someone Else', `After six months of demos, security reviews and lunches, the corporation picked a rival whose model scored a bit higher. The pitch cost ${formatMoney(cost)}.`, { emoji: '\u{1F937}', tone: 'bad' })
+        }
+      },
+    }),
+    bidAction(a, 'nationalLab', 'Bid for a Government AI Contract'),
+  )
   return nodes
 }
 
@@ -492,7 +513,7 @@ function drugMenu(a: Asset, d0: Drug): MenuGroup {
               const p = startTrial(gg, bb, tt, dd)
               if (!p) return
               log(gg, `${cur.name} started a trial: ${p.name}.`)
-              notice(gg, 'Trial Started', `${p.name} is enrolling patients. It runs ${plural(p.years, 'year')} at about ${formatMoney(p.cost)} a year.`, { emoji: '\u{1F9EA}' })
+              notice(gg, 'Trial Started', `${p.name} is enrolling patients. It runs ${plural(p.years, 'year')} at about ${money(p.cost)} a year.`, { emoji: '\u{1F9EA}' })
             },
           }),
         )

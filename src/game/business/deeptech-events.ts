@@ -727,6 +727,65 @@ const EVENTS: DtEvent[] = [
     },
   },
 
+  {
+    id: 'evSubsidy',
+    weight: (_g, _a, b, t) => (b.industry === 'electricVehicles' && t.stage >= 1 ? 0.7 : 0),
+    present: (x) => {
+      const lobby = scaled(x.b, 700_000)
+      ask(x, 'evSubsidy', 'Subsidies on the Chopping Block', `${country(x.b)}'s government wants to scrap the tax credit that knocks thousands off the price of every electric car. Your sales team just went pale.`, options(x.g, [
+        { id: 'lobby', label: `Lobby to keep it (${money(lobby)})`, emoji: '\u{1F3DB}\u{FE0F}' },
+        { id: 'cut', label: 'Cut your prices to make up for it', emoji: '\u{2702}\u{FE0F}' },
+        { id: 'wait', label: 'Ride it out', emoji: '\u{23F3}' },
+      ], 'cut', 'Cut prices: buyers notice the sticker, and your rivals will cut too.'), '\u{1F4B8}', { lobby })
+    },
+    resolve: (x, choice) => {
+      if (choice === 'lobby') {
+        payTech(x.b, x.t, num(x.d.lobby))
+        if (chance(x.g, 0.5 - marketOf(x.b.countryId).corruption / 400)) {
+          x.b.demandShock = clampN(x.b.demandShock * 1.05, 0.3, 2)
+          tell(x.g, 'Subsidy Saved', `Your lobbyists (${formatMoney(num(x.d.lobby))}) and a petition from owners kept the tax credit alive for now.`, '\u{1F3DB}\u{FE0F}', 'good')
+        } else {
+          x.b.demandShock = clampN(x.b.demandShock * 0.85, 0.3, 2)
+          tell(x.g, 'Subsidy Scrapped', `The lobbying didn't work. The tax credit is gone and showroom traffic fell off a cliff.`, '\u{1F4C9}', 'bad')
+        }
+      } else if (choice === 'cut') {
+        x.b.price = Math.round(x.b.price * 0.93 * 100) / 100
+        x.b.demandShock = clampN(x.b.demandShock * 0.97, 0.3, 2)
+        tell(x.g, 'Price Cut', `You cut prices to soften the blow. Margins are thinner; the order book barely flinched.`, '\u{2702}\u{FE0F}')
+      } else {
+        x.b.demandShock = clampN(x.b.demandShock * 0.85, 0.3, 2)
+        tell(x.g, 'Riding It Out', `Without the subsidy, many buyers decided their old car was "fine, actually". Sales will dip this year.`, '\u{23F3}', 'bad')
+      }
+    },
+  },
+  {
+    id: 'autopilot',
+    weight: (_g, _a, b, t) => (b.industry === 'electricVehicles' && t.autonomy >= 1 ? 0.8 : 0),
+    present: (x) => {
+      const fix = scaled(x.b, 1_200_000)
+      ask(x, 'autopilot', 'Self-Driving Crash', `One of your cars rear-ended a parked fire truck while the driver was "letting the car handle it". The road safety regulator opened an investigation into your self-driving system.`, options(x.g, [
+        { id: 'cooperate', label: `Cooperate and add driver monitoring (${money(fix)})`, emoji: '\u{1F91D}' },
+        { id: 'defend', label: 'Defend the system publicly', emoji: '\u{1F4E2}' },
+      ], 'cooperate', 'Cooperate: regulators can switch your self-driving off with one letter.'), '\u{1F692}', { fix })
+    },
+    resolve: (x, choice) => {
+      if (choice === 'cooperate') {
+        payTech(x.b, x.t, num(x.d.fix))
+        x.t.safety = clampN(x.t.safety + 12, 0, 100)
+        x.t.premium = clampN(x.t.premium - 0.02, 0, 1)
+        tell(x.g, 'Investigation Closed', `You added camera-based driver monitoring (${formatMoney(num(x.d.fix))}). The investigation closed with a stern letter.`, '\u{1F91D}')
+      } else if (chance(x.g, 0.4)) {
+        x.t.autonomy = Math.max(0, x.t.autonomy - 1)
+        x.t.premium = clampN(x.t.premium - 0.06, 0, 1)
+        x.b.brand = clampN(x.b.brand - 6, 0, 100)
+        tell(x.g, 'Feature Suspended', `The regulator ordered your top self-driving mode switched off until further notice. Owners are furious; the fire truck is fine.`, '\u{1F6AB}', 'bad')
+      } else {
+        x.t.hype = clampN(x.t.hype + 5, 0, 100)
+        tell(x.g, 'Defiant', `Your statistics showed the system crashes less than humans do. The regulator grumbled and moved on.`, '\u{1F4E2}')
+      }
+    },
+  },
+
   // ----- Quantum -----
   {
     id: 'supremacy',

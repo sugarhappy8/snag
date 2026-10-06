@@ -137,6 +137,10 @@ function company(g: GameState, industry: string, patch: Partial<TechState> = {},
   return a
 }
 
+function cancelAll(g: GameState, a: Asset): void {
+  techOf(bizOf(g, a)).programs = []
+}
+
 function act(g: GameState, a: Asset, id: string): MenuAction {
   const node = all(g, businessAssetView(g, a)).find((n) => n.id === `${id}.${a.id}`)
   if (!node || node.type !== 'action') throw new Error(`no action ${id}`)
@@ -222,6 +226,20 @@ describe('deep tech', () => {
     expect(t.last?.rd).toBeGreaterThan(0)
     expect(t.venture).toBeLessThan(before)
     expect(t.done.includes('proto') || t.fails > 0).toBe(true)
+    // The yearly Lab Report offers to start the recommended program in a free slot.
+    g.queue = []
+    const lab2 = find(businessAssetView(g, a), `biz.plan.${a.id}`) as MenuAction
+    lab2.run(g)
+    const report = g.queue.find((m) => m.kind === 'choice' && m.scriptId === 'deeptech.labReport') as ChoiceModal | undefined
+    if (report) {
+      const start = report.choices.find((c) => c.id.startsWith('start:'))
+      expect(start, 'lab report offers a program').toBeTruthy()
+      expect(report.choices.filter((c) => c.hint)).toHaveLength(0)
+      g.queue = []
+      runScript(g, report.scriptId!, start!.id, report.data, report)
+      expect(techView(readBiz(g, a)).programs.length).toBe(1)
+      cancelAll(g, a)
+    }
     // A finished one-off program disappears from the list; slots are limited.
     const b = bizOf(g, a)
     const tt = techOf(b)
@@ -387,14 +405,21 @@ describe('deep tech', () => {
         expect(techView(readBiz(g, a)).venture).toBeLessThan(v0)
         if (techView(readBiz(g, a)).wins > 0) break
       }
+      if (techView(readBiz(g, a)).wins > 0) break
       ageUp(g)
       drain(g, YEAR_PREFS)
     }
     const t = techView(readBiz(g, a))
     expect(t.tests).toBe(flights)
     expect(t.wins + t.booms).toBe(t.tests)
-    expect(t.wins).toBeGreaterThan(0)
+    expect(t.wins).toBe(1)
     expect(t.stage).toBeGreaterThanOrEqual(3)
+    // Now it sells launches, and every good flight adds to the track record.
+    expect(sellable(g, readBiz(g, a), t)).toBe(true)
+    ageUp(g)
+    drain(g, YEAR_PREFS)
+    expect(readBiz(g, a).last!.revenue).toBeGreaterThan(0)
+    expect(techView(readBiz(g, a)).wins).toBeGreaterThanOrEqual(1)
     // Two flights a year at most.
     g.yearActions = {}
     act(g, a, 'dt.testflight').run(g)
@@ -573,6 +598,63 @@ describe('deep tech', () => {
       }
     }
     expect(seen.size).toBe(DEEP_TECH_EVENT_IDS.length)
+  })
+
+  it('renders every deep-tech menu at every stage without NaN, and menus never touch the dice or the state', () => {
+    for (const ind of DEEP_TECH_IDS) {
+      for (let stage = 0; stage < DEEP_TECH[ind].stages.length; stage++) {
+        for (const talent of [false, true]) {
+          const g = adultIn('in', 2_000_000, 50 + stage)
+          if (talent) g.character.talents = ['Business']
+          const a = company(g, ind, {
+            stage,
+            level: 30 + stage * 15,
+            venture: 40_000_000,
+            series: Math.min(6, stage + 1),
+            models: stage > 0 ? [{ gen: 1, name: 'Echo 1', score: 55, open: false, year: 1999 }] : [],
+            drugs: [{ id: 'd1', name: 'Pelatide', area: 'obesity', phase: Math.min(4, stage), quality: 60, peak: 3, filed: 1998, approved: stage >= 4 ? 1999 : 0, royalty: 1, partner: '', failed: false }],
+            contract: stage >= 3 ? { name: 'cargo flights for NASA', perYear: 30_000_000, years: 2 } : null,
+            sats: stage >= 3 ? 2 : 0,
+            plant: stage >= 2 ? 1 : 0,
+            rented: 1,
+          })
+          const b = bizOf(g, a)
+          b.last = { year: g.year - 1, demand: 100, sold: 90, produced: 95, spoiled: 0, price: 10, revenue: 2_000_000, salesTax: 0, netRevenue: 2_000_000, cogs: 500_000, wages: 900_000, keyStaff: 0, rent: 100_000, marketing: 50_000, interest: 0, upkeep: 50_000, other: 3_000_000, otherIncome: 100_000, ownerPay: 0, pbt: -2_500_000, corpTax: 0, net: -2_500_000, cashErosion: 0, cycle: 1, openFraction: 1, employees: 12 }
+          techOf(b).last = { year: g.year - 1, rd: 2_000_000, compute: 500_000, side: 100_000, grants: 50_000, credit: 20_000, fromVenture: 1_000_000, notes: ['A note.'] }
+          const before = JSON.stringify(g)
+          const rng = g.rng
+          const text: string[] = []
+          const walk = (nodes: MenuNode[]) => {
+            for (const n of nodes) {
+              if (n.type === 'heading') text.push(n.label)
+              else if (n.type === 'info') text.push(typeof n.text === 'function' ? n.text(g) : n.text)
+              else {
+                if (n.visible && !n.visible(g)) continue
+                text.push(n.label)
+                const sub = typeof n.subtitle === 'function' ? n.subtitle(g) : n.subtitle
+                if (sub) text.push(sub)
+                const h = n.hint?.(g)
+                if (h) text.push(h)
+                const why = n.disabledReason?.(g)
+                if (why) text.push(why)
+                if (n.type === 'menu') {
+                  if (n.header) text.push(n.header(g))
+                  walk(n.children(g))
+                } else if (n.confirm) {
+                  const c = n.confirm(g)
+                  if (c) text.push(c)
+                }
+              }
+            }
+          }
+          walk(businessAssetView(g, a))
+          expect(g.rng, `${ind} stage ${stage}`).toBe(rng)
+          expect(JSON.stringify(g), `${ind} stage ${stage}: menus changed the state`).toBe(before)
+          for (const x of text) expect(x, `${ind} stage ${stage}`).not.toMatch(/NaN|undefined|\[object|Infinity/)
+          expect(text.join(' ')).toMatch(/R&D Lab/)
+        }
+      }
+    }
   })
 
   it('knows the real tech hubs and lists their champions on local exchanges', () => {
