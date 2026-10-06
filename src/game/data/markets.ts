@@ -192,7 +192,12 @@ export function hasMarketData(countryId: string): boolean {
 export function industryDemand(countryId: string, industry: Industry): number {
   const m = marketOf(countryId)
   if (m.banned.includes(industry)) return 0
-  return m.demand[industry] ?? 1
+  const d = m.demand[industry]
+  if (d !== undefined) return d
+  // Deep tech needs capital, talent and customers that poorer markets lack: without hand-written
+  // data, scale it by income (a rich country without a tech scene still beats a poor one).
+  if ((DEEP_TECH_IDS as readonly string[]).includes(industry)) return Math.max(0.25, Math.min(1, m.gdpPerCapita / 60_000))
+  return 1
 }
 
 export function isIndustryLegal(countryId: string, industry: Industry): boolean {

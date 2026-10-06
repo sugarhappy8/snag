@@ -211,8 +211,11 @@ const BACKGROUND = defineScript('business.found.background', (g, choice, data) =
 function askSeed(g: GameState, p: Plan): void {
   const ind = p.industry as DeepTechIndustry
   const offer = seedOffer(g, ind, p.countryId, investorFirm(p.countryId, rand(g), rand(g)), hasBackground(g, ind) || !!p.cofounder)
-  const rich = g.character.money >= offer.amount * 3
-  const hint = talentHint(g, 'Business', rich ? 'Bootstrap: you can fund the early R&D yourself and keep the whole company.' : 'Take the seed: deep tech eats cash, and the R&D account is what keeps the lab alive.')
+  // Investors are paid back first in a sale, so the seed costs you equity only if the company
+  // takes off, and if it fails it's their money that's gone. Bootstrapping pays only when the
+  // seed is pocket change next to your savings.
+  const rich = g.character.money >= offer.amount * 20
+  const hint = talentHint(g, 'Business', rich ? 'Bootstrap: the seed is pocket change next to your savings, and keeping 100% pays off big if this works.' : 'Take the seed: deep tech eats cash, and if the lab fails it is the investors’ money that’s gone, not yours.')
   const choices: ChoiceOption[] = [
     { id: 'seed', label: `Seed round: ${money(offer.amount)} for ${pct(offer.equity)} of the company`, emoji: '\u{1F331}' },
     { id: 'bootstrap', label: 'Bootstrap: keep 100% and fund R&D yourself', emoji: '\u{1F4AA}' },
@@ -222,7 +225,7 @@ function askSeed(g: GameState, p: Plan): void {
     g,
     SEED,
     'Seed Round',
-    `${offer.investor} likes the idea. They'll put ${formatMoney(offer.amount)} into ${p.name}'s R&D account for ${pct(offer.equity)} of the company. Investor money pays for research, compute and payroll; it can never be paid out to you. Or you can go it alone and pay for R&D from your own pocket.`,
+    `${offer.investor} likes the idea. They'll put ${formatMoney(offer.amount)} into ${p.name}'s R&D account for ${pct(offer.equity)} of the company. Investor money pays for research, compute and payroll; it can never be paid out to you, and if you ever sell, they get it back before you see a cent. Or you can go it alone and pay for R&D from your own pocket.`,
     withHint,
     { emoji: '\u{1F331}', data: { ...(planJson(p) as Record<string, Json>), offerAmount: offer.amount, offerEquity: offer.equity, offerInvestor: offer.investor } },
   )

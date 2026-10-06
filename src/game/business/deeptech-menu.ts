@@ -43,7 +43,7 @@ import {
   techView,
 } from './deeptech-core'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
-import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
+import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
 import { bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
@@ -230,13 +230,14 @@ const TERM = defineScript('deeptech.term', (g, choice, data) => {
     return
   }
   if (choice === 'push' && d.pushed !== true) {
+    const odds = pushOdds(g, a, b, t)
     const roll = rand(g)
-    if (roll < 0.45) {
+    if (roll < odds.better) {
       ts.pre = Math.round(ts.pre * 1.25)
       ts.equity = ts.amount / (ts.pre + ts.amount)
       ts.down = lastPost(t) > 0 && ts.pre < lastPost(t) * 0.9
       presentTerms(g, a, b, t, ts, true, `${ts.investor} came back with better terms.`)
-    } else if (roll < 0.7) {
+    } else if (roll < 1 - odds.walk) {
       presentTerms(g, a, b, t, ts, true, `${ts.investor} held firm: take it or leave it.`)
     } else {
       notice(g, 'They Walked', `${ts.investor} didn't like being pushed and passed on the deal. Try again next year.`, { emoji: '\u{1F6B6}', tone: 'bad' })
@@ -259,7 +260,8 @@ const TERM = defineScript('deeptech.term', (g, choice, data) => {
 
 function presentTerms(g: GameState, a: Asset, b: BizState, t: TechState, ts: TermSheet, pushed: boolean, intro = ''): void {
   const advice = termAdvice(g, a, b, t, ts, !pushed)
-  const why = advice === 'sign' ? 'Sign it: the terms are fair for where you are, and runway is life.' : advice === 'push' ? 'Push back: the market is hot and investors want in. You have leverage.' : 'Walk away: the terms are too harsh and you can afford to wait.'
+  const odds = pushOdds(g, a, b, t)
+  const why = advice === 'sign' ? 'Sign it: the terms are fair for where you are, and runway is life.' : advice === 'push' ? `Push back: investors want in, so they will probably sweeten it (about ${Math.round(odds.better * 100)}%) and rarely walk.` : 'Walk away: the terms are too harsh and you can afford to wait.'
   const hint = talentHint(g, 'Business', why)
   const choices: ChoiceOption[] = [{ id: 'sign', label: `Sign: ${money(ts.amount)} for ${pct(ts.equity, 1)}`, emoji: '\u{270D}\u{FE0F}' }]
   if (!pushed) choices.push({ id: 'push', label: 'Push for better terms', emoji: '\u{1F4AA}' })

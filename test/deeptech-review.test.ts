@@ -7,7 +7,7 @@ import { ageUp } from '../src/game/aging'
 import { businessAssetView, businessCareerMenu } from '../src/game/business'
 import { earnTech, operatingValue, refreshTechValue, revalue, techOf, techView } from '../src/game/business/deeptech-core'
 import { PROGRAMS, grantsFor } from '../src/game/business/deeptech-data'
-import { awardGrant, grantAmount } from '../src/game/business/deeptech-funding'
+import { awardGrant, grantAmount, pushOdds } from '../src/game/business/deeptech-funding'
 import { cancelProgram, startProgram } from '../src/game/business/deeptech-rd'
 import { presentDeepTechEvent } from '../src/game/business/deeptech-events'
 import { simInternals } from '../src/game/business/deeptech-sim'
@@ -408,6 +408,27 @@ describe('deep tech review: event hints follow the odds', () => {
     expect(hinted(g, robots, 'troll')).toBe('fight')
   })
 
+  it('advises pushing on a term sheet only when investors will likely improve it and rarely walk', () => {
+    let pushes = 0
+    let signs = 0
+    for (const [hype, level] of [[0, 20], [100, 95], [60, 70], [10, 40]]) {
+      const g = adultIn('us', 1_000_000, 20 + hype)
+      g.character.talents = ['Business']
+      const a = company(g, 'aiLab', { stage: 1, level, hype, venture: 40_000_000, raised: 6_000_000, series: 1, done: ['train'], lastRoundYear: g.year - 1, models: [{ gen: 1, name: 'Iris 1', score: 60, open: false, year: 2000 }] }, { share: 0.8 })
+      act(g, a, 'dt.raise').run(g)
+      const sheet = g.queue.find((m) => m.kind === 'choice' && m.scriptId === 'deeptech.term') as ChoiceModal
+      const hinted = sheet.choices.find((c) => c.hint)?.id
+      const b = bizOf(g, a)
+      const odds = pushOdds(g, a, b, techOf(b))
+      if (hinted === 'push') {
+        pushes++
+        expect(odds.better).toBeGreaterThanOrEqual(0.5)
+        expect(odds.walk).toBeLessThanOrEqual(0.2)
+      } else signs++
+    }
+    expect(pushes + signs).toBe(4)
+  })
+
   it('licenses a drug when the lab cannot pay for its next trial, keeps it when it can', () => {
     const g = adultIn('us', 1_000_000, 19)
     g.character.talents = ['Business']
@@ -416,6 +437,26 @@ describe('deep tech review: event hints follow the odds', () => {
     expect(hinted(g, poor, 'pharmaDeal', { drug: 'd1' })).toBe('accept')
     const rich = company(g, 'biotech', { stage: 2, level: 50, drugs: [{ ...drug }], venture: 400_000_000, raised: 400_000_000, series: 4 }, { share: 0.4 })
     expect(hinted(g, rich, 'pharmaDeal', { drug: 'd1' })).toBe('keep')
+  })
+})
+
+describe('deep tech review: saves from before the review', () => {
+  it('re-reads a version-1 lab state that lacks the newer fields instead of crashing', () => {
+    const g = adultIn('us', 1_000_000, 21)
+    const a = company(g, 'cybersecurity', { stage: 1, level: 50, done: ['detect'] }, { cash: 2_000_000 })
+    const tech = a.details.tech as Record<string, Json>
+    tech.v = 1
+    delete tech.oneOff
+    delete tech.oneOffs
+    const b = bizOf(g, a)
+    earnTech(b, techOf(b), 1_000)
+    for (let y = 0; y < 2; y++) {
+      ageUp(g)
+      drain(g, YEAR_PREFS)
+    }
+    const t = techView(readBiz(g, a))
+    expect(Array.isArray(t.oneOffs)).toBe(true)
+    expect(Number.isFinite(readBiz(g, a).valuation)).toBe(true)
   })
 })
 

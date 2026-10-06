@@ -34,7 +34,7 @@ import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, star
 import { milestoneListingBlock, SERIES, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
-import { clampN, dollars, money, pct, plural, rec, round2, str, toJson, units } from './util'
+import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
 
 // ---------------------------------------------------------------------------
 // The year
@@ -437,11 +437,23 @@ function techMarketNote(g: GameState, b: BizState, t: TechState): string {
   return parts.join(' ')
 }
 
+/**
+ * Price bounds for the yearly report, capped by any price promise made this year (a price war or a
+ * 'hold prices' choice in a business event), so the report can't quietly undo it.
+ */
+function reportBounds(g: GameState, a: Asset, b: BizState, t: TechState): { min: number; max: number } {
+  const bounds = techPriceBounds(g, b, t)
+  const cap = priceCapOf(g, a.id)
+  if (cap === null) return bounds
+  const max = Math.max(0.01, Math.min(bounds.max, cap))
+  return { ...bounds, min: Math.min(bounds.min, max), max }
+}
+
 /** Everything the Annual Report minigame needs, with deep-tech demand and capacity. */
 export function techReportData(g: GameState, a: Asset, b: BizState): AnnualReportData {
   const t = techOf(b)
   const def = industryDef(b.industry)
-  const bounds = techPriceBounds(g, b, t)
+  const bounds = reportBounds(g, a, b, t)
   const lastCycle = b.last?.cycle ?? cycleOf(g, b.countryId, g.year - 1)
   const base = techPlan(g, b, t, g.year, { calm: true, cycle: lastCycle })
   const suggested = round2(clampN(base.suggested, bounds.min, bounds.max))
@@ -486,7 +498,7 @@ export const TECH_REPORT = defineScript('deeptech.report', (g, choice, data) => 
   if (!a) return
   const b = bizOf(g, a)
   const t = techOf(b)
-  const bounds = techPriceBounds(g, b, t)
+  const bounds = reportBounds(g, a, b, t)
   const maxProd = Math.max(1, Math.floor(techPlan(g, b, t, g.year, { calm: true }).capacity))
   let price = b.price
   let production = b.production

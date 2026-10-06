@@ -81,7 +81,24 @@ src/
     business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report.
                          Actions that spend/earn company cash move b.cash AND add to yearCosts/
                          yearIncome (for the P&L); simulateYear must not move that cash twice.
-                         Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt)
+                         Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt).
+                         Investors hold a 1x liquidation preference (BizState.pref, exit.ownerProceeds):
+                         on a sale/closure they're paid back first; it converts at an IPO.
+                         Business talent: economy.bestPlan/bookYear (pure, no RNG) drive the Annual
+                         Report talentHint; bizWorth/fxValue/markBest value event outcomes so hints
+                         match the resolvers; price promises (util.priceCapOf) cap price until booked.
+                         ownerTalent(g, b, id): Cooking (+food quality), Leadership (+morale) perks
+    business/deeptech*.ts  8 deep-tech industries (DEEP_TECH_IDS): state in Asset.details.tech
+                         (deeptech-state readTech/TECH_VERSION — bump it when TechState gains fields);
+                         data, core, rd, funding, sim, events, menu, manager, found modules. Investor and
+                         grant money sits in TechState.venture (the R&D account), never in b.cash; the
+                         valuation nets out investors' 1x preference itself (so BizState.pref stays 0 for
+                         deep tech); deepTechValue may be negative (cancels one-off windfalls); grants
+                         count as income only up to the year's R&D spend and are repaid on cancellation.
+                         invest/engine lists deep-tech companies as extra slots after each hub exchange's
+                         classic plan (classicSlots()). Missing deep-tech demand defaults by income
+    invest/instinct.ts   Investing talent: marketInstinct(g), an honest ~80% gut read of next year's
+                         deterministic engine moves (per character + year, never rerolls)
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),

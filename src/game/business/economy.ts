@@ -1044,6 +1044,11 @@ function normalYear(g: GameState, b: BizState): { revenue: number; cogs: number;
       demand: Math.max(s.demand, s.sold),
     }
   }
+  // A deep-tech lab that can't sell yet (no approval, no launch, no product) earns nothing; the
+  // classic planner would imagine a normal shop's sales and inflate every hint's payoff.
+  if (isDeepTech(b)) {
+    return { revenue: 0, cogs: 0, marketing: 0, wages: s?.wages ?? 0, overhead: s ? s.wages + s.rent + Math.max(0, s.upkeep) : 0, demand: 0 }
+  }
   const e = localEcon(b.industry, b.countryId, b.city)
   const plan = planFor(g, b, g.year, { calm: true })
   const def = industryDef(b.industry)

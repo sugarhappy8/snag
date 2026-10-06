@@ -12,7 +12,7 @@ import { DEEP_TECH_EVENT_IDS, presentDeepTechEvent } from '../src/game/business/
 import { closeRound, grantBlock, makeTermSheet, roundBlock } from '../src/game/business/deeptech-funding'
 import { deepTechManagerTurnImpl } from '../src/game/business/deeptech-manager'
 import { startProgram, startTrial } from '../src/game/business/deeptech-rd'
-import { deepTechIpoThreshold, readTech, type TechState } from '../src/game/business/deeptech-state'
+import { TECH_VERSION, deepTechIpoThreshold, readTech, type TechState } from '../src/game/business/deeptech-state'
 import { canIpo, goPublic } from '../src/game/business/exit'
 import { listingsForSale, newBiz, createBusinessAsset } from '../src/game/business/founding'
 import { bizOf, businessAssets, normalizeBiz, readBiz } from '../src/game/business/state'
@@ -509,7 +509,7 @@ describe('deep tech', () => {
       drain(g2, YEAR_PREFS)
       finiteBiz(g2)
     }
-    expect(readTech(readBiz(g2, businessAssets(g2)[0] ?? old).tech).v).toBe(1)
+    expect(readTech(readBiz(g2, businessAssets(g2)[0] ?? old).tech).v).toBe(TECH_VERSION)
     void a
   })
 

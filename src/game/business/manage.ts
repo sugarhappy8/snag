@@ -1119,7 +1119,8 @@ function makeOffers(g: GameState, b: BizState): Offer[] {
     { buyer: `a rival ${def.label.toLowerCase()} chain`, amount: f(0.78, 1.05) },
     { buyer: `${investorFirm(b.countryId, rand(g), rand(g))} (private equity)`, amount: f(0.88, 1.15) },
   ]
-  if (v >= 2_000_000 || chance(g, 0.4)) offers.push({ buyer: conglomerate(rand(g), rand(g)), amount: f(0.95, 1.28) })
+  // A conglomerate pays a premium for a track record; a company with no booked year gets none.
+  if (v >= 2_000_000 || chance(g, 0.4)) offers.push({ buyer: conglomerate(rand(g), rand(g)), amount: b.history.length ? f(0.95, 1.28) : f(0.85, 1) })
   if (chance(g, 0.5)) offers.push({ buyer: 'a local tycoon', amount: f(0.72, 1.12) })
   return offers.sort((x, y) => y.amount - x.amount)
 }

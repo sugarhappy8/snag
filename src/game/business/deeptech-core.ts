@@ -9,7 +9,7 @@ import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
 import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, vcDepth } from './deeptech-data'
-import { MAX_TECH_VALUE, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
+import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, round2, toJson } from './util'
@@ -32,7 +32,7 @@ export function techView(b: BizState): TechState {
  */
 export function techOf(b: BizState): TechState {
   const cur = b.tech
-  if (!cur || typeof cur !== 'object' || Array.isArray(cur) || cur.v !== 1) {
+  if (!cur || typeof cur !== 'object' || Array.isArray(cur) || cur.v !== TECH_VERSION) {
     b.tech = toJson(readTech(cur))
   }
   return b.tech as unknown as TechState

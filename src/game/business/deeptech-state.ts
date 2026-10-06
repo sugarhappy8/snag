@@ -30,7 +30,8 @@ export function isDeepTech(b: { industry: Industry | string }): boolean {
 // ---------------------------------------------------------------------------
 // Types
 
-export const TECH_VERSION = 1
+/** Bumped whenever TechState gains fields, so techOf() re-normalizes states saved before. */
+export const TECH_VERSION = 2
 
 /** Funding stages: index = TechState.series. */
 export const SERIES = ['Bootstrapped', 'Seed', 'Series A', 'Series B', 'Series C', 'Series D', 'Series E'] as const

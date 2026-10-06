@@ -149,13 +149,25 @@ export function closeRound(g: GameState, a: Asset, b: BizState, t: TechState, ts
   revalue(g, a, b, t)
 }
 
+/**
+ * What happens when you push back on a term sheet: investors improve the price by 25%, hold firm,
+ * or walk away. Hot markets and companies investors love give you leverage.
+ */
+export function pushOdds(g: GameState, a: Asset, b: BizState, t: TechState): { better: number; walk: number } {
+  const heat = industryCycle(g, dtInd(b), g.year).value
+  const appetite = investorAppetite(g, a, b, t)
+  const lean = (appetite - 1) * 0.25 + (heat - 1) * 0.6
+  return { better: clampN(0.4 + lean, 0.15, 0.75), walk: clampN(0.3 - lean, 0.08, 0.5) }
+}
+
 /** Advice for a term sheet (the Business talent): 'sign', 'push' or 'walk'. */
 export function termAdvice(g: GameState, a: Asset, b: BizState, t: TechState, ts: TermSheet, canPush: boolean): 'sign' | 'push' | 'walk' {
   const runway = runwayYears(g, a, b, t)
   if (runway < 1.2) return 'sign'
   if (ts.down && runway >= 2) return 'walk'
-  const heat = industryCycle(g, dtInd(b), g.year).value
-  if (canPush && !ts.down && (heat >= 1.05 || investorAppetite(g, a, b, t) >= 1.3) && runway >= 1.5) return 'push'
+  // Push only when better terms are the likely outcome and losing the deal is unlikely and survivable.
+  const odds = pushOdds(g, a, b, t)
+  if (canPush && !ts.down && runway >= 1.5 && odds.better >= 0.5 && odds.walk <= 0.2) return 'push'
   if (ts.equity > 0.3 && runway >= 2) return 'walk'
   return 'sign'
 }
