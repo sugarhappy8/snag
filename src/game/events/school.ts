@@ -31,7 +31,9 @@ import {
   siblings,
   strangerName,
   type Ctx,
+  v,
 } from './helpers'
+import { common, declined, eraLines } from './era'
 
 /** A classmate from the contacts, or a made-up one (not added to contacts). */
 function classmate(g: GameState): { p: Person | undefined; first: string; last: string; gender: 'male' | 'female' } {
@@ -79,8 +81,9 @@ const BULLY_ACTIONS = [
 
 const CLOWN_ACTS = [
   'is making fart noises with their armpit',
-  'put a whoopee cushion on the teacher\'s chair',
-  'is throwing spitballs at the whiteboard',
+  '@1930 put a whoopee cushion on the teacher\'s chair',
+  '@1990 is throwing spitballs at the whiteboard',
+  '@-1990 is throwing spitballs at the chalkboard',
   'keeps answering every question with "your mom"',
   'released a frog in the classroom',
   'is doing an impression of the teacher behind their back',
@@ -112,11 +115,15 @@ const LOCAL_PLAYS: Record<string, string[]> = {
   es: ['Don Quixote', 'Platero and I'],
 }
 
+/** Local plays written in the twentieth century (by year first staged or published). */
+const PLAY_SINCE: Record<string, number> = { 'The Little Prince': 1945, 'Things Fall Apart': 1960, 'The Lion and the Jewel': 1960, 'Platero and I': 1915 }
+
 function schoolPlays(g: GameState): string[] {
-  const base = ['Peter Pan', 'The Wizard of Oz', 'Romeo and Juliet', 'Annie', 'Into the Woods']
-  const christmas = locale(g).holidays.some((h) => /Christmas/i.test(h)) ? ['The Nutcracker Prince', 'A Christmas Carol'] : []
-  const local = LOCAL_PLAYS[g.character.countryId] ?? []
-  return [...base, ...christmas, ...local, ...local]
+  // Era tags: only plays that had been written by this year (Annie is a seventies musical).
+  const base = ['@1905 Peter Pan', 'The Wizard of Oz', 'Romeo and Juliet', '@1977 Annie', '@1987 Into the Woods', 'A Midsummer Night’s Dream']
+  const christmas = locale(g).holidays.some((h) => /Christmas/i.test(h)) ? ['@1990 The Nutcracker Prince', 'A Christmas Carol'] : []
+  const local = (LOCAL_PLAYS[g.character.countryId] ?? []).map((p) => (PLAY_SINCE[p] ? `@${PLAY_SINCE[p]} ${p}` : p))
+  return eraLines(g, [...base, ...christmas, ...local, ...local])
 }
 
 export const SCHOOL_EVENTS = defineEvents([
@@ -205,7 +212,7 @@ export const SCHOOL_EVENTS = defineEvents([
       const c = classmate(g)
       const t = teacher(g)
       return {
-        text: `Your classmate ${c.first} ${pick(g, CLOWN_ACTS)} in ${t}'s class. What will you do?`,
+        text: `Your classmate ${c.first} ${v(g, CLOWN_ACTS)} in ${t}'s class. What will you do?`,
         choices: [ch('ignore', `Ignore ${c.gender === 'male' ? 'his' : 'her'} antics`), ch('laugh', `Laugh at ${c.gender === 'male' ? 'him' : 'her'}`), ch('talk', 'Have a talk with them'), ch('report', 'Report them to the principal')],
         person: c.p,
         data: { ...classmateData(c), teacher: t },
@@ -381,7 +388,8 @@ export const SCHOOL_EVENTS = defineEvents([
     title: 'Science Fair',
     minAge: 8,
     maxAge: 15,
-    when: inGradeSchool,
+    // School science fairs caught on after the Second World War.
+    when: (g) => inGradeSchool(g) && g.year >= 1950,
     setup: () => ({
       text: "The school science fair is coming up! What's your project?",
       choices: [ch('volcano', 'Baking soda volcano', '🌋'), ch('potato', 'Potato battery', '🥔'), ch('mold', 'Growing mold in my room', '🦠'), ch('parents', 'Have my parents do it', '👪')],
@@ -393,7 +401,7 @@ export const SCHOOL_EVENTS = defineEvents([
       },
       potato: (g) => {
         const won = chance(g, 0.4 + g.character.stats.smarts / 300)
-        say(g, null, won ? ['Electrifying', 'First place'] : 'Low voltage', won ? 'Your potato battery powered a digital clock. The judges were amazed. First place!' : "Your potato battery didn't light the bulb. You ate the potato.", won ? 'I won the science fair with a potato battery.' : 'My potato battery failed at the science fair.', won ? { smarts: 10, happiness: 10, grades: 5 } : { smarts: 4, happiness: -4 }, won ? 'good' : 'bad')
+        say(g, null, won ? ['Electrifying', 'First place'] : 'Low voltage', won ? g.year >= 1975 ? 'Your potato battery powered a digital clock. The judges were amazed. First place!' : 'Your potato battery lit a tiny bulb. The judges were amazed. First place!' : "Your potato battery didn't light the bulb. You ate the potato.", won ? 'I won the science fair with a potato battery.' : 'My potato battery failed at the science fair.', won ? { smarts: 10, happiness: 10, grades: 5 } : { smarts: 4, happiness: -4 }, won ? 'good' : 'bad')
       },
       mold: (g) => say(g, null, 'Biohazard', "You grew a spectacular mold colony in your bedroom. You got second place and a mild cough.", 'I grew mold in my bedroom for the science fair and got second place.', { smarts: 8, health: -4, grades: 3 }),
       parents: (g) => {
@@ -433,7 +441,7 @@ export const SCHOOL_EVENTS = defineEvents([
     maxAge: 15,
     when: inGradeSchool,
     setup: (g) => {
-      const place = pick(g, ['the zoo', 'the natural history museum', 'the aquarium', 'a chocolate factory', 'the planetarium', 'a dairy farm'])
+      const place = v(g, ['the zoo', 'the natural history museum', 'the aquarium', 'a chocolate factory', '@1930 the planetarium', 'a dairy farm'])
       return {
         text: `Your class is going on a field trip to ${place}! What will you do there?`,
         choices: [ch('group', 'Stay with the group'), ch('wander', 'Wander off on my own'), ch('bus', 'Stay on the bus'), ch('giftshop', 'Spend it all at the gift shop')],
@@ -444,12 +452,12 @@ export const SCHOOL_EVENTS = defineEvents([
       group: (g, x) => say(g, x, 'Learned something', `You stuck with your class at ${x.s('place')} and actually learned a lot.`, `I went on a field trip to ${x.s('place')}.`, { smarts: 6, happiness: 4 }, 'good'),
       wander: (g, x) => {
         const lost = chance(g, 0.4)
-        say(g, x, lost ? 'Missing child' : 'Explorer', lost ? `You got lost at ${x.s('place')}. Your name was called over the loudspeaker three times.` : `You wandered off and found the coolest exhibit at ${x.s('place')}. Nobody noticed you were gone.`, lost ? `I got lost on a field trip to ${x.s('place')}.` : `I explored ${x.s('place')} on my own during a field trip.`, lost ? { happiness: -6, grades: -2 } : { happiness: 8, smarts: 4 }, lost ? 'bad' : 'good')
+        say(g, x, lost ? 'Missing child' : 'Explorer', lost ? g.year >= 1930 ? `You got lost at ${x.s('place')}. Your name was called over the loudspeaker three times.` : `You got lost at ${x.s('place')}. Your teacher shouted your name until she went hoarse.` : `You wandered off and found the coolest exhibit at ${x.s('place')}. Nobody noticed you were gone.`, lost ? `I got lost on a field trip to ${x.s('place')}.` : `I explored ${x.s('place')} on my own during a field trip.`, lost ? { happiness: -6, grades: -2 } : { happiness: 8, smarts: 4 }, lost ? 'bad' : 'good')
       },
       bus: (g, x) => say(g, x, 'Bus nap', `You stayed on the bus the whole time and slept. You have no idea what ${x.s('place')} looks like.`, `I slept on the bus during a field trip to ${x.s('place')}.`, { health: 2, happiness: -2 }),
       giftshop: (g, x) => {
         const cost = Math.min(Math.max(0, g.character.money), randInt(g, 5, 20))
-        say(g, x, 'Souvenirs', cost > 0 ? `You blew your money on a light-up pencil and a keychain from the gift shop at ${x.s('place')}.` : 'You browsed the gift shop with empty pockets. So close, yet so far.', `I went to the gift shop on a field trip to ${x.s('place')}.`, { money: -cost, happiness: cost > 0 ? 6 : -2 })
+        say(g, x, 'Souvenirs', cost > 0 ? `You blew your money on ${g.year >= 1990 ? 'a light-up pencil and a keychain' : 'a souvenir pencil and a postcard'} from the gift shop at ${x.s('place')}.` : 'You browsed the gift shop with empty pockets. So close, yet so far.', `I went to the gift shop on a field trip to ${x.s('place')}.`, { money: -cost, happiness: cost > 0 ? 6 : -2 })
       },
     },
   },
@@ -515,14 +523,23 @@ export const SCHOOL_EVENTS = defineEvents([
     minAge: 12,
     maxAge: 17,
     when: inGradeSchool,
-    setup: () => ({
-      text: 'While using the restroom between classes, a group of kids offers you a hit of a grape-flavored vape. What will you do?',
-      choices: [ch('hit', 'Vape it up'), ch('decline', 'Decline the offer'), ch('tell', 'Tell a teacher')],
-    }),
+    // The school-bathroom vape is a 2010s thing; before that it was a shared cigarette.
+    setup: (g) => {
+      const vape = g.year >= 2014
+      return {
+        title: vape ? 'Potty Flavors' : 'Smoke Break',
+        text: vape ? 'While using the restroom between classes, a group of kids offers you a hit of a grape-flavored vape. What will you do?' : 'While using the restroom between classes, a group of kids offers you a drag of their cigarette. What will you do?',
+        choices: [ch('hit', vape ? 'Vape it up' : 'Take a drag'), ch('decline', 'Decline the offer'), ch('tell', 'Tell a teacher')],
+        data: { vape: vape ? 1 : 0 },
+      }
+    },
     resolve: {
-      hit: (g) => say(g, null, ['Cough cough', 'Not cool'], 'You took a hit and coughed so hard you saw stars. You did not feel well for the rest of the day.', "I tried vaping in the school bathroom. I didn't feel well afterwards.", { smarts: -4, health: -4, happiness: 2 }, 'bad', '💨'),
-      decline: (g) => say(g, null, 'No thanks', 'You washed your hands and went about your business.', 'I declined when some kids offered me a vape in the school bathroom.', { health: 1 }),
-      tell: (g) => say(g, null, ['Busted!', 'Snitch'], 'You told a teacher. The kids were busted and you are now officially "that kid."', 'I told a teacher about kids vaping in the bathroom. They were busted!', { karma: 4, happiness: -4 }),
+      hit: (g, x) => {
+        const vape = x.data.vape === undefined || x.n('vape') === 1
+        say(g, x, ['Cough cough', 'Not cool'], vape ? 'You took a hit and coughed so hard you saw stars. You did not feel well for the rest of the day.' : 'You took a drag and coughed so hard you saw stars. You smelled like an ashtray for the rest of the day.', vape ? "I tried vaping in the school bathroom. I didn't feel well afterwards." : "I tried smoking in the school bathroom. I didn't feel well afterwards.", { smarts: -4, health: -4, happiness: 2 }, 'bad', '💨')
+      },
+      decline: (g, x) => say(g, x, 'No thanks', 'You washed your hands and went about your business.', x.data.vape === undefined || x.n('vape') === 1 ? 'I declined when some kids offered me a vape in the school bathroom.' : 'I declined when some kids offered me a cigarette in the school bathroom.', { health: 1 }),
+      tell: (g, x) => say(g, x, ['Busted!', 'Snitch'], 'You told a teacher. The kids were busted and you are now officially "that kid."', x.data.vape === undefined || x.n('vape') === 1 ? 'I told a teacher about kids vaping in the bathroom. They were busted!' : 'I told a teacher about kids smoking in the bathroom. They were busted!', { karma: 4, happiness: -4 }),
     },
   },
   {
@@ -535,18 +552,26 @@ export const SCHOOL_EVENTS = defineEvents([
     setup: (g) => {
       const t = teacher(g)
       return {
-        text: isUS(g) ? `Your friends are going to toilet paper the house of ${t}, a teacher at your school. What will you do?` : `Your friends are going to cover the car of ${t}, a teacher at your school, in sticky notes. What will you do?`,
+        // Toilet-papering is American and postwar; sticky notes arrived in 1980; before that, chalk.
+        text: isUS(g) && g.year >= 1950 ? `Your friends are going to toilet paper the house of ${t}, a teacher at your school. What will you do?` : g.year >= 1980 ? `Your friends are going to cover the car of ${t}, a teacher at your school, in sticky notes. What will you do?` : `Your friends are going to chalk silly drawings all over the front steps of ${t}, a teacher at your school. What will you do?`,
         choices: [ch('watch', 'Go and watch only'), ch('no', "I'm not interested"), ch('in', "I'm in!")],
-        data: { teacher: t, us: isUS(g) ? 1 : 0 },
+        data: { teacher: t, us: isUS(g) && g.year >= 1950 ? 1 : 0, chalk: !(isUS(g) && g.year >= 1950) && g.year < 1980 ? 1 : 0 },
       }
     },
     resolve: {
       watch: (g, x) =>
-        x.n('us') === 1
+        x.n('chalk') === 1
+          ? say(g, x, 'Lookout', `You watched your friends turn ${x.s('teacher')}'s front steps into a gallery of very unflattering portraits. You didn't draw a single line.`, "I watched my friends chalk a teacher's front steps, but didn't join in.", { happiness: 4 })
+          : x.n('us') === 1
           ? say(g, x, 'Lookout', `You watched your friends wrap ${x.s('teacher')}'s house like a mummy. You didn't touch a single roll.`, "I watched my friends toilet paper a teacher's house, but didn't join in.", { happiness: 4 })
           : say(g, x, 'Lookout', `You watched your friends turn ${x.s('teacher')}'s car into a giant yellow sticky note. You didn't stick a single one.`, "I watched my friends cover a teacher's car in sticky notes, but didn't join in.", { happiness: 4 }),
-      no: (g, x) => say(g, x, 'Early night', 'You stayed home. Your friends sent you pictures.', x.n('us') === 1 ? "I decided not to join my friends as they toilet papered a teacher's house." : "I decided not to join my friends' sticky-note prank on a teacher.", {}),
+      no: (g, x) => say(g, x, 'Early night', common(g, 'smartphone') ? 'You stayed home. Your friends sent you pictures.' : 'You stayed home. Your friends told you all about it the next day.', x.n('us') === 1 ? "I decided not to join my friends as they toilet papered a teacher's house." : x.n('chalk') === 1 ? "I decided not to join my friends' chalk prank on a teacher." : "I decided not to join my friends' sticky-note prank on a teacher.", {}),
       in: (g, x) => {
+        if (x.n('chalk') === 1) {
+          const caught = chance(g, 0.25)
+          say(g, x, caught ? 'Caught red-handed' : 'Legendary prank', caught ? `${x.s('teacher')} opened the door mid-drawing and recognized you. Detention for a month.` : `You helped cover ${x.s('teacher')}'s front steps in chalk masterpieces. The rain took a week to wash them off.`, "I helped my friends chalk a teacher's front steps.", caught ? { happiness: -4, grades: -4, count: 'pranks' } : { happiness: 10, karma: -2, count: 'pranks' }, caught ? 'bad' : 'good')
+          return
+        }
         const caught = chance(g, 0.25)
         const us = x.n('us') === 1
         say(g, x, caught ? (us ? 'Caught by the porch light' : 'Caught red-handed') : ['Mummified', 'Legendary prank'], caught ? (us ? `${x.s('teacher')} flipped on the porch light and recognized you. Detention for a month.` : `${x.s('teacher')} walked out mid-prank and recognized you. Detention for a month.`) : us ? `You helped cover ${x.s('teacher')}'s house with 50 rolls of toilet paper. A work of art.` : `You helped cover ${x.s('teacher')}'s car with 3,000 sticky notes. A work of art.`, us ? "I helped my friends cover a teacher's house in toilet paper." : "I helped my friends cover a teacher's car in sticky notes.", caught ? { smarts: -4, grades: -6, happiness: -6, count: 'pranks' } : { smarts: -4, happiness: 10, count: 'pranks' }, caught ? 'bad' : 'good')
@@ -617,7 +642,7 @@ export const SCHOOL_EVENTS = defineEvents([
     when: (g) => inGradeSchool(g) || inUniversity(g),
     setup: (g) => {
       const f = anyOf(g, friends(g))
-      const place = isUS(g) ? `the ${pick(g, ['mall', 'beach', 'arcade', 'skate park', 'movies'])}` : hangout(g)
+      const place = isUS(g) ? `the ${v(g, ['@1962 mall', 'beach', '@1978,-1998 arcade', '@1966 skate park', '@1910 movies', '@-1960 swimming hole'])}` : hangout(g)
       return {
         text: `${f ? `Your friend ${f.firstName}` : 'A group of your friends'} wants you to ditch class and go to ${place}. What will you do?`,
         choices: [ch('go', "Let's go!"), ch('no', "No, I'm going to class"), ch('report', 'Report them')],
@@ -662,7 +687,7 @@ export const SCHOOL_EVENTS = defineEvents([
         }
       },
       alone: (g) => say(g, null, ['Wallflower', 'Solo'], 'You went by yourself and danced like nobody was watching. Some people were watching.', 'I went to the school dance by myself.', { happiness: 4 }),
-      skip: (g) => say(g, null, 'Not my scene', 'You stayed home and watched movies instead.', 'I decided not to go to the school dance.', {}),
+      skip: (g) => say(g, null, 'Not my scene', common(g, 'tv') ? 'You stayed home and watched movies instead.' : 'You stayed home and read a good book instead.', 'I decided not to go to the school dance.', {}),
     },
   },
   {
@@ -689,7 +714,7 @@ export const SCHOOL_EVENTS = defineEvents([
             ? 'Prom is coming up! Everyone is pairing off. What will you do?'
             : `${Dance} is coming up! Everyone is figuring out who to go with. What will you do?`,
         choices: p
-          ? [ch('promposal', us ? 'Do an over-the-top promposal' : 'Ask in the most dramatic way possible'), ch('simple', 'Just ask normally'), ch('skip', `Skip ${us ? 'prom' : 'it'}`)]
+          ? [ch('promposal', us && g.year >= 2005 ? 'Do an over-the-top promposal' : 'Ask in the most dramatic way possible'), ch('simple', 'Just ask normally'), ch('skip', `Skip ${us ? 'prom' : 'it'}`)]
           : [ch('friends', 'Go with a group of friends'), ch('askout', 'Ask someone out'), ch('skip', `Skip ${us ? 'prom' : 'it'}`)],
         person: p,
         data: { dance, us: us ? 1 : 0 },
@@ -700,9 +725,10 @@ export const SCHOOL_EVENTS = defineEvents([
         const ok = chance(g, 0.75)
         const us = x.n('us') === 1
         const dance = x.s('dance') || 'prom'
-        say(g, x, ok ? (us ? 'Promposal goals' : 'Romance goals') : 'Cringe', ok ? (us ? `You spelled out "PROM?" with candles on ${x.p?.firstName ?? 'their'}'s lawn. They said yes and the video got 4,000 likes.` : `You spelled out a question with candles outside ${x.p?.firstName ?? 'their'}'s house. They said yes and the video got 4,000 likes.`) : 'Your big romantic gesture set a bush on fire. They still said yes, but the fire department was involved.', us ? 'I did a big promposal and went to prom.' : `I asked my partner to ${dance} in the most dramatic way possible.`, ok ? { happiness: 16, rel: 12, money: -Math.min(Math.max(0, g.character.money), 60) } : { happiness: 6, rel: 6 }, 'good', '🕯️')
+        const buzz = common(g, 'socialMedia') ? 'the video got 4,000 likes' : 'the whole school heard about it by lunch'
+        say(g, x, ok ? (us && g.year >= 2005 ? 'Promposal goals' : 'Romance goals') : 'Cringe', ok ? (us ? `You spelled out "PROM?" with candles on ${x.p?.firstName ?? 'their'}'s lawn. They said yes and ${buzz}.` : `You spelled out a question with candles outside ${x.p?.firstName ?? 'their'}'s house. They said yes and ${buzz}.`) : 'Your big romantic gesture set a bush on fire. They still said yes, but the fire department was involved.', us ? (g.year >= 2005 ? 'I did a big promposal and went to prom.' : 'I asked my partner to prom in the most dramatic way possible.') : `I asked my partner to ${dance} in the most dramatic way possible.`, ok ? { happiness: 16, rel: 12, money: -Math.min(Math.max(0, g.character.money), 60) } : { happiness: 6, rel: 6 }, 'good', '🕯️')
       },
-      simple: (g, x) => say(g, x, `${titleOf(x.s('dance') || 'prom')} night`, `You asked ${x.p?.firstName ?? 'your date'} and had a magical night under the disco ball.`, `I went to ${x.s('dance') || 'prom'} with my partner.`, { happiness: 12, rel: 6 }, 'good'),
+      simple: (g, x) => say(g, x, `${titleOf(x.s('dance') || 'prom')} night`, `You asked ${x.p?.firstName ?? 'your date'} and had a magical night under the ${g.year >= 1970 ? 'disco ball' : 'paper lanterns'}.`, `I went to ${x.s('dance') || 'prom'} with my partner.`, { happiness: 12, rel: 6 }, 'good'),
       friends: (g, x) => say(g, x, ['Squad goals', 'Best night'], x.n('us') === 1 ? 'You went with your friends, danced until midnight and ate fries in a parking lot at 2 AM. Perfect.' : loc(g, 'You went with your friends, danced until midnight and ate {food} at 2 AM. Perfect.'), `I went to ${x.s('dance') || 'prom'} with a group of friends.`, { happiness: 14 }, 'good'),
       askout: (g, x) => {
         const yes = chance(g, 0.3 + g.character.stats.looks / 200)
@@ -710,7 +736,7 @@ export const SCHOOL_EVENTS = defineEvents([
         const dance = x.s('dance') || 'prom'
         say(g, x, yes ? 'Date secured' : 'Rejected', yes ? `${s.first} ${s.last} said yes! You had an unforgettable night.` : `You asked ${s.first} ${s.last} and they said they were "going with friends." Sure.`, yes ? `I went to ${dance} with ${s.first} ${s.last}.` : `I asked ${s.first} ${s.last} to ${dance} and got turned down.`, yes ? { happiness: 14, looks: 2 } : { happiness: -10 }, yes ? 'good' : 'bad')
       },
-      skip: (g, x) => say(g, x, x.n('us') === 1 ? 'Anti-prom' : 'Not my scene', `You skipped ${x.s('dance') || 'prom'} and had a movie marathon instead. No regrets. Mostly.`, `I skipped ${x.s('dance') || 'prom'}.`, x.p ? { happiness: -2, rel: -10 } : { happiness: -2 }),
+      skip: (g, x) => say(g, x, x.n('us') === 1 ? 'Anti-prom' : 'Not my scene', `You skipped ${x.s('dance') || 'prom'} and had ${common(g, 'tv') ? 'a movie marathon' : 'a quiet night in'} instead. No regrets. Mostly.`, `I skipped ${x.s('dance') || 'prom'}.`, x.p ? { happiness: -2, rel: -10 } : { happiness: -2 }),
     },
   },
   {
@@ -729,7 +755,7 @@ export const SCHOOL_EVENTS = defineEvents([
     resolve: {
       crickets: (g) => {
         const caught = chance(g, 0.3)
-        say(g, null, caught ? 'Caught chirping' : 'Chirp chirp', caught ? 'Security cameras caught you with a box labeled "CRICKETS." You were banned from graduation festivities.' : "The school sounded like a summer night for a month. Nobody ever found out it was you.", isUS(g) ? 'I released 1,000 crickets in my high school for the senior prank.' : 'I released 1,000 crickets in my school as a leavers\' prank.', caught ? { happiness: -6, grades: -5, count: 'pranks' } : { happiness: 14, count: 'pranks' }, caught ? 'bad' : 'good')
+        say(g, null, caught ? 'Caught chirping' : 'Chirp chirp', caught ? g.year >= 1995 ? 'Security cameras caught you with a box labeled "CRICKETS." You were banned from graduation festivities.' : 'The janitor caught you with a box labeled "CRICKETS." You were banned from graduation festivities.' : "The school sounded like a summer night for a month. Nobody ever found out it was you.", isUS(g) ? 'I released 1,000 crickets in my high school for the senior prank.' : 'I released 1,000 crickets in my school as a leavers\' prank.', caught ? { happiness: -6, grades: -5, count: 'pranks' } : { happiness: 14, count: 'pranks' }, caught ? 'bad' : 'good')
       },
       car: (g) => {
         const caught = chance(g, 0.4)
@@ -857,7 +883,7 @@ export const SCHOOL_EVENTS = defineEvents([
       buy: (g, x) => {
         const price = x.n('price')
         if (g.character.money < price) {
-          say(g, x, 'Declined', "Your card was declined at the bookstore. You're going without.", "I couldn't afford my textbook.", { grades: -3, happiness: -4 }, 'bad', '💳')
+          say(g, x, 'Declined', `${declined(g)} You're going without.`, "I couldn't afford my textbook.", { grades: -3, happiness: -4 }, 'bad', '💳')
         } else {
           say(g, x, 'Highway robbery', 'You paid full price. The professor thanks you for funding their boat.', `I bought a brand new textbook for ${money(price)}.`, { money: -price, grades: 3 })
         }

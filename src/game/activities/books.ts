@@ -1,4 +1,6 @@
 // Mind & Body > Book: pick a book from this year's shelf and read it cover to cover.
+// The shelf only holds books that had been published by the current year (no Harry Potter in
+// 1950), so a childhood in 1905 gets Peter Rabbit and the Wizard of Oz.
 import { addStat, count, counter, log } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { hasTalent, talentHint, talentMult } from '../talents'
@@ -128,7 +130,114 @@ export const BOOKS: Book[] = [
   B('War and Peace', 'Leo Tolstoy', 'Historical Fiction', 1225, 18),
   B('The Godfather', 'Mario Puzo', 'Crime Fiction', 448, 18),
   B('The Total Money Makeover', 'Dave Ramsey', 'Self-Help', 289, 18),
+  B('The Tale of Peter Rabbit', 'Beatrix Potter', "Children's Picture Book", 72, 6),
+  B('Just So Stories', 'Rudyard Kipling', "Children's Picture Book", 249, 6),
+  B("Grimms' Fairy Tales", 'The Brothers Grimm', "Children's Picture Book", 400, 6),
+  B('The Wonderful Wizard of Oz', 'L. Frank Baum', "Children's Novel", 259, 8),
+  B('The Wind in the Willows', 'Kenneth Grahame', "Children's Novel", 302, 9),
 ]
+
+/** Year each book first came out (the shelf hides books that don't exist yet). Missing: ancient. */
+const PUBLISHED: Record<string, number> = {
+  'Brown Bear, Brown Bear, What Do You See?': 1967,
+  Corduroy: 1968,
+  'Goodnight Moon': 1947,
+  'If You Give a Mouse a Cookie': 1985,
+  'The Very Hungry Caterpillar': 1969,
+  'Where the Wild Things Are': 1963,
+  'The Cat in the Hat': 1957,
+  'The Snowy Day': 1962,
+  'The Little Engine That Could': 1930,
+  Stellaluna: 1993,
+  'Charlie and the Chocolate Factory': 1964,
+  "Charlotte's Web": 1952,
+  'Ramona Quimby, Age 8': 1981,
+  Goosebumps: 1992,
+  'The Secret Garden': 1911,
+  "Harry Potter and the Sorcerer's Stone": 1998,
+  "Alice's Adventures in Wonderland": 1865,
+  'A Wrinkle in Time': 1962,
+  'Diary of a Wimpy Kid': 2007,
+  'Where the Red Fern Grows': 1961,
+  Holes: 1998,
+  'Treasure Island': 1883,
+  'The Lion, the Witch and the Wardrobe': 1950,
+  'Little Women': 1868,
+  'Tales of a Fourth Grade Nothing': 1972,
+  'The Book Thief': 2005,
+  Hatchet: 1987,
+  'The Hunger Games': 2008,
+  'The Lord of the Rings': 1955,
+  "The Hitchhiker's Guide to the Galaxy": 1979,
+  Frankenstein: 1818,
+  Dracula: 1897,
+  'Sherlock Holmes': 1892,
+  'Twenty Thousand Leagues Under the Sea': 1870,
+  'The Time Machine': 1895,
+  'The Joy of Cooking': 1931,
+  'The Merriam-Webster Dictionary': 1847,
+  'Ready Player One': 2011,
+  'A Tree Grows in Brooklyn': 1943,
+  'To Kill a Mockingbird': 1960,
+  'Lord of the Flies': 1954,
+  'Pride and Prejudice': 1813,
+  'The Diary of a Young Girl': 1947,
+  'The Adventures of Huckleberry Finn': 1884,
+  'The Importance of Being Earnest': 1895,
+  'Moby-Dick': 1851,
+  'Jane Eyre': 1847,
+  'Jurassic Park': 1990,
+  'I, Robot': 1950,
+  'Life of Pi': 2001,
+  'The Catcher in the Rye': 1951,
+  Becoming: 2018,
+  'How to Win Friends and Influence People': 1936,
+  'The 7 Habits of Highly Effective People': 1989,
+  'Rich Dad, Poor Dad': 1997,
+  'Tuesdays with Morrie': 1997,
+  'The Power of Now': 1997,
+  'Long Walk to Freedom': 1994,
+  'Fahrenheit 451': 1953,
+  'Flowers for Algernon': 1966,
+  'The Great Gatsby': 1925,
+  'Of Mice and Men': 1937,
+  'The Old Man and the Sea': 1952,
+  'The Count of Monte Cristo': 1844,
+  'The Metamorphosis': 1915,
+  'The Da Vinci Code': 2003,
+  'Wuthering Heights': 1847,
+  '1984': 1949,
+  'A Brief History of Time': 1988,
+  'Brave New World': 1932,
+  Cosmos: 1980,
+  'The Alchemist': 1988,
+  'The Wealth of Nations': 1776,
+  'On the Origin of Species': 1859,
+  'Slaughterhouse-Five': 1969,
+  'One Hundred Years of Solitude': 1967,
+  'Don Quixote': 1605,
+  'Gone with the Wind': 1936,
+  'A Tale of Two Cities': 1859,
+  'The Girl with the Dragon Tattoo': 2005,
+  'The Tipping Point': 2000,
+  'Think and Grow Rich': 1937,
+  'A Game of Thrones': 1996,
+  'Crime and Punishment': 1866,
+  Hamlet: 1603,
+  'War and Peace': 1869,
+  'The Godfather': 1969,
+  'The Total Money Makeover': 2003,
+  'The Tale of Peter Rabbit': 1902,
+  'Just So Stories': 1902,
+  "Grimms' Fairy Tales": 1812,
+  'The Wonderful Wizard of Oz': 1900,
+  'The Wind in the Willows': 1908,
+}
+
+/** Had this book been published by the current year? */
+export function publishedBy(book: Book, year: number): boolean {
+  return year >= (PUBLISHED[book.title] ?? 0)
+}
 
 const GENRE_EFFECTS: Record<Genre, { h: [number, number]; s: [number, number] }> = {
   "Children's Picture Book": { h: [3, 8], s: [1, 3] },
@@ -170,7 +279,7 @@ function pagesRead(g: GameState): number {
 
 function shelf(g: GameState): Book[] {
   const age = g.character.age
-  const eligible = BOOKS.filter((b) => b.minAge <= age && (age >= 13 || b.genre.startsWith('Children') || b.minAge <= 11))
+  const eligible = BOOKS.filter((b) => b.minAge <= age && (age >= 13 || b.genre.startsWith('Children') || b.minAge <= 11) && publishedBy(b, g.year))
   return stablePick(g, `books:${counter(g, 'booksRead')}`, eligible, 7)
 }
 
@@ -214,7 +323,7 @@ function readBook(g: GameState, book: Book): void {
     const page = randInt(g, 20, Math.floor(book.pages / 2))
     addStat(g, 'smarts', 1)
     log(g, `I gave up on ${book.title} on page ${page}.`, 'neutral')
-    result(g, 'Abandoned', `You gave up on ${book.title} on page ${page}. Maybe you'll watch the movie instead.`, '\u{1F4D5}')
+    result(g, 'Abandoned', `You gave up on ${book.title} on page ${page}. ${g.year >= 1930 ? "Maybe you'll watch the movie instead." : 'Maybe someone will read it aloud to you instead.'}`, '\u{1F4D5}')
     return
   }
   const eff = GENRE_EFFECTS[book.genre]

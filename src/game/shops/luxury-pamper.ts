@@ -81,7 +81,9 @@ export const SPA_TREATMENTS: SpaTreatment[] = [
     usd: 1_200,
     effects: { health: [2, 5] },
     text: ['A nurse in a silk scrub top hooked you up to a bag of "Executive Recovery." You felt amazing. It was mostly vitamin C.', 'You sat in a leather recliner with a vitamin drip and a glass of cucumber water, feeling medically rich.'],
-    oops: 'You felt absolutely nothing. You suspect it was a $1,200 bag of salt water.',
+    get oops() {
+      return `You felt absolutely nothing. You suspect it was a ${formatMoney(1_200)} bag of salt water.`
+    },
     oopsStat: 'happiness',
   },
   {

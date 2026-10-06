@@ -3,6 +3,7 @@
 // and invented music festivals) and theme parks. Each category has a seeded per-year line-up; a
 // ticket is a one-off purchase (no asset): pick a seat tier, maybe bring someone, and see what
 // happens. Per-year limits stop spam; kids go with a parent, who usually pays.
+import { hasTech } from '../history/timeline'
 import { addCondition, companionCandidates, payingParents } from '../activities/common'
 import { globalGoodsMult, nicePrice, salesTaxNote, seeded, yearKey, type SRng } from '../assets'
 import {
@@ -1168,7 +1169,7 @@ export function goToEvent(g: GameState, ev: TicketEvent, tierIndex: number, comp
   if (tierIndex === 3) {
     if (ev.kind === 'concert' && ev.artist) {
       remember(g, `Met ${ev.artist} backstage.`)
-      parts.push(`Backstage, you met ${ev.artist} and got a selfie. You will be posting it every year on this date.`)
+      parts.push(hasTech(g, 'smartphone') ? `Backstage, you met ${ev.artist} and got a selfie. You will be posting it every year on this date.` : `Backstage, you met ${ev.artist} and got a signed photo. You will be showing it to everyone for years.`)
     } else if (ev.kind === 'sports') parts.push('The VIP package included a stadium tour and a buffet. You ate like it was your job.')
     else parts.push('The VIP treatment included free snacks, a lounge and a lanyard you will never throw away.')
   }
@@ -1202,7 +1203,7 @@ export function goToEvent(g: GameState, ev: TicketEvent, tierIndex: number, comp
   // Fame has its price.
   if (c.hidden.fame >= 60 && chance(g, 0.35)) {
     addHidden(g, 'fame', 1)
-    parts.push('Fans recognized you and you spent half the event posing for selfies.')
+    parts.push(hasTech(g, 'smartphone') ? 'Fans recognized you and you spent half the event posing for selfies.' : 'Fans recognized you and you spent half the event signing autographs.')
   }
 
   log(g, `I went to ${ev.title}${companion ? ` with ${companion.firstName}` : ''}.`, 'good')

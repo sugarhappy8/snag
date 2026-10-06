@@ -26,7 +26,11 @@ import { fillLocal, hasSnow, localeOf, localSchoolName, localTerm, localUniversi
 import { isIndustryLegal } from './data/markets'
 import { schoolSystem } from './education'
 import { contractCondition } from './health'
-import { createPerson, randomOccupation } from './people'
+import { isNewsLine, logNews } from './history/events'
+import { eraOccupation, familyWeights, homemakerShare, realWealthFactor, sameSexAdoptionShare, siblingWeights } from './history/events-people'
+import { WARS, type WarDef } from './history/events-wars'
+import { hasTech, HISTORY_START, isHistorical, PRESENT_YEAR, techOdds } from './history/timeline'
+import { createPerson, notePerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import { MAX_START_TALENTS, normalizeTalents, pickedTalents, type TalentId } from './talents'
@@ -60,7 +64,11 @@ export interface NewLifeOptions {
   city?: string
   sexuality?: Sexuality
   seed?: number
-  /** Calendar year of birth (the UI passes the real current year). */
+  /**
+   * Calendar year of birth (New Life › Born in; default PRESENT_YEAR). Years before
+   * PRESENT_YEAR are real history: parents, jobs, technology, news and medicine of that era.
+   * Clamped to HISTORY_START and later.
+   */
   year?: number
   /**
    * Starting stats chosen before birth (New Life › Customize stats). Each one replaces the
@@ -266,6 +274,69 @@ export function getTalent(id: string | null | undefined): TalentDef | undefined 
   return TALENTS.find((t) => t.id === id)
 }
 
+/**
+ * A talent's childhood hints and discovery as they'd happen in this year and country: no
+ * websites before the internet, no video games before consoles, no radio before radio. Modern
+ * years (and anything that already fits) use the originals.
+ */
+function eraTalentText(g: GameState, def: TalentDef): { hints?: string[]; discovery?: string } | null {
+  if (!isHistorical(g.year)) return null
+  switch (def.id) {
+    case 'Programming': {
+      if (!hasTech(g, 'homeComputer')) {
+        return {
+          hints: [
+            hasTech(g, 'radio') ? 'I took apart the family radio to see how it works. It almost works again.' : 'I took apart the kitchen clock to see how it works. It almost works again.',
+            'I invented a secret code that nobody in my class can crack.',
+          ],
+          discovery: "You built a working adding machine out of a shoebox, string and sheer stubbornness. Your teacher says you think like an engineer. You have a special talent for programming, even if there's nothing to program yet!",
+        }
+      }
+      if (hasTech(g, 'smartphone')) return null
+      const home = techOdds(g, 'homeComputer') >= 0.15
+      return {
+        hints: home
+          ? ['I typed a whole game out of a magazine into the family computer. It crashed. I fixed it.', "I figured out the password to my dad's computer."]
+          : ['I spent every spare minute on the one computer at school.', "I filled a notebook with programs for a computer we can't afford."],
+        discovery: hasTech(g, 'internet')
+          ? 'You built your own website from scratch, and it actually works. You have a special talent for programming!'
+          : home
+            ? 'You wrote a working game on the family computer, and your teacher had to ask you how it worked. You have a special talent for programming!'
+            : "You wrote a program on the school computer that did the whole class's math homework. You have a special talent for programming!",
+      }
+    }
+    case 'Gaming':
+      if (!hasTech(g, 'videoGameConsole')) {
+        return {
+          hints: ['I beat my grandfather at checkers. He demanded a rematch. I won that too.', 'I memorized every card in the deck during a game of rummy.', 'I figured out how to win at marbles every single time.'],
+          discovery: 'You won the town chess tournament against grown-ups three times your age. You have a special talent for games!',
+        }
+      }
+      return hasTech(g, 'internet') ? null : { discovery: 'You set a high score at the local arcade that nobody in {country} can beat. You have a special talent for gaming!' }
+    case 'Music':
+      if (hasTech(g, 'radio') && g.year >= 1955) return null
+      return {
+        hints: [
+          g.year >= 1955 ? 'I banged on pots and pans like a rock-star drummer.' : 'I banged on pots and pans like a marching-band drummer.',
+          hasTech(g, 'radio') ? 'I hummed along to every song on the radio, perfectly in tune.' : 'I sang along with every hymn in church, perfectly in tune.',
+          'I spent the whole day tapping out rhythms on the kitchen table.',
+        ],
+      }
+    case 'Modeling':
+      return hasTech(g, 'tv') ? null : { hints: ['Strangers keep telling my parents I should pose for magazine advertisements.', 'I struck a pose for every camera I saw.'] }
+    default:
+      return null
+  }
+}
+
+function talentHints(g: GameState, def: TalentDef): string[] {
+  return eraTalentText(g, def)?.hints ?? def.hints
+}
+
+function talentDiscovery(g: GameState, def: TalentDef): string {
+  return eraTalentText(g, def)?.discovery ?? def.discovery
+}
+
 // ---------------------------------------------------------------------------
 // Small helpers
 
@@ -385,6 +456,31 @@ const SINGLE_MOTHER_CONCEPTION = [
   'I was the souvenir from my mother’s trip to {getaway}.',
 ]
 
+/** Birth-story lines that only make sense from a certain year (IVF, the pill, TV, festivals...). */
+const CONCEPTION_FROM: Readonly<Record<string, number>> = {
+  'I was a test tube baby.': 1979,
+  'I was conceived after my mother’s birth control failed.': 1962,
+  'I was conceived after my father’s vasectomy failed.': 1965,
+  'I was conceived at a music festival. My parents still argue about which band was playing.': 1969,
+  'I was the result of a long-distance relationship and one very expensive plane ticket.': 1950,
+  'I was conceived after my parents’ anniversary dinner at an all-you-can-eat buffet.': 1950,
+  'I was conceived during a power outage. My parents blame the lack of TV.': 1955,
+  'I was conceived after my parents won a weekend in {getaway} in a radio contest.': 1930,
+}
+
+/** The birth-story lines that fit the year (all of them from PRESENT_YEAR on). */
+function eraLines(g: GameState, lines: readonly string[]): readonly string[] {
+  if (!isHistorical(g.year)) return lines
+  const fit = lines.filter((l) => {
+    const from = CONCEPTION_FROM[l]
+    if (from !== undefined && g.year < from) return false
+    if (l.includes('TV') && !hasTech(g, 'tv')) return false
+    if (l.includes('radio') && !hasTech(g, 'radio')) return false
+    return true
+  })
+  return fit.length ? fit : lines
+}
+
 /** How my parents met (married couples only). */
 const PARENTS_MET = [
   'My parents met at {dateSpot}.',
@@ -489,9 +585,9 @@ function strList(v: Json | undefined): string[] {
 type FamilyType = 'together' | 'singleMother' | 'singleFather' | 'divorced' | 'blended' | 'adopted'
 
 function rollFamilyType(g: GameState): FamilyType {
-  return weightedPick(g, ['together', 'singleMother', 'singleFather', 'divorced', 'blended', 'adopted'] as FamilyType[], (t) =>
-    ({ together: 78, singleMother: 9, singleFather: 2, divorced: 3, blended: 6, adopted: 2 })[t],
-  )
+  // Divorce and single parenthood were far rarer in the past (history/events-people.ts).
+  const weights = familyWeights(g.year) ?? { together: 78, singleMother: 9, singleFather: 2, divorced: 3, blended: 6, adopted: 2 }
+  return weightedPick(g, ['together', 'singleMother', 'singleFather', 'divorced', 'blended', 'adopted'] as FamilyType[], (t) => weights[t])
 }
 
 interface ParentSpec {
@@ -503,8 +599,10 @@ interface ParentSpec {
   skinTone: number
 }
 
-function makeParent(g: GameState, spec: ParentSpec, rich: boolean, wealth: number): Person {
-  const occupation = rich ? pick(g, richOccupations(getCountry(g.character.countryId))) : randomOccupation(g, spec.age)
+function makeParent(g: GameState, spec: ParentSpec, rich: boolean, wealth: number, mayStayHome = false): Person {
+  let occupation = rich ? eraOccupation(pick(g, richOccupations(getCountry(g.character.countryId))), g.year) : randomOccupation(g, spec.age)
+  // In the past most mothers in a two-parent home were full-time homemakers.
+  if (mayStayHome && isHistorical(g.year) && spec.gender === 'female' && chance(g, homemakerShare(g.year))) occupation = 'Homemaker'
   const p = createPerson(g, {
     relation: spec.relation,
     age: spec.age,
@@ -516,8 +614,45 @@ function makeParent(g: GameState, spec: ParentSpec, rich: boolean, wealth: numbe
     skinTone: spec.skinTone,
   })
   const base = rich ? Math.max(p.money, 150_000) * randInt(g, 6, 30) : p.money
-  p.money = Math.round(base * Math.max(0.2, wealth))
+  // Real (today's-dollar) savings were smaller in the past (1 from PRESENT_YEAR on).
+  p.money = Math.round(base * Math.max(0.2, wealth) * realWealthFactor(g.year))
   return p
+}
+
+/** "the Second World War" → war drafts that could have taken someone born in `born`. */
+function warsFor(countryId: string, born: number, before: number): WarDef[] {
+  return WARS.filter((w) => {
+    const rule = w.draft?.[countryId]
+    if (!rule || rule.to >= before) return false
+    return born + rule.maxAge >= rule.from && born + rule.minAge <= rule.to
+  })
+}
+
+/**
+ * Family history for a life born in the past: a father who served in a war before you were
+ * born, a grandfather from an older one. Flavor lines plus a note on the father for the AI.
+ */
+function familyWarLines(g: GameState, father: Person | undefined, mother: Person | undefined, year: number): string[] {
+  const out: string[] = []
+  const id = g.character.countryId
+  if (father && father.relation === 'parent') {
+    const war = warsFor(id, year - father.age, year).pop()
+    if (war && chance(g, 0.55)) {
+      father.data.veteran = war.name
+      notePerson(father, `Served in ${war.name}.`)
+      out.push(`My father served in ${war.name}.`)
+    }
+  }
+  const parentAge = father?.age ?? mother?.age ?? 28
+  const grandWar = warsFor(id, year - parentAge - 30, year - 5).pop()
+  if (grandWar && chance(g, 0.4)) out.push(`My grandfather fought in ${grandWar.name}.`)
+  return out
+}
+
+/** A usable calendar year of birth: PRESENT_YEAR by default, never before HISTORY_START. */
+export function birthYearOf(year: number | undefined): number {
+  if (typeof year !== 'number' || !Number.isFinite(year)) return PRESENT_YEAR
+  return Math.max(HISTORY_START, Math.round(year))
 }
 
 /**
@@ -526,7 +661,7 @@ function makeParent(g: GameState, spec: ParentSpec, rich: boolean, wealth: numbe
  */
 export function createNewLife(opts: NewLifeOptions = {}): GameState {
   const seed = Math.abs(Math.floor(opts.seed ?? freshSeed())) % 2 ** 31
-  const year = opts.year ?? 2026
+  const year = birthYearOf(opts.year)
   const g: GameState = {
     version: GAME_VERSION,
     lifeId: `life-${year}-${seed.toString(36)}`,
@@ -622,7 +757,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   let custodial: Person | undefined
 
   if (family === 'adopted') {
-    const sameSex = chance(g, 0.2)
+    const sameSex = chance(g, sameSexAdoptionShare(year) ?? 0.2)
     const g1: Gender = sameSex ? (chance(g, 0.5) ? 'male' : 'female') : 'female'
     const g2: Gender = sameSex ? g1 : 'male'
     const a = makeParent(g, { gender: g1, age: motherAge + randInt(g, 2, 8), lastName, livesWithPlayer: true, relation: 'parent', skinTone: randomSkinTone(g, country) }, rich, wealth)
@@ -649,6 +784,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
         { gender: 'female', age: motherAge, lastName: motherHasName ? lastName : randomLastName(g, country.id), livesWithPlayer: together || family === 'singleMother' || chance(g, 0.75), relation: 'parent', skinTone: avatar.skinTone },
         rich,
         wealth,
+        together,
       )
     }
     if (family !== 'singleMother') {
@@ -689,8 +825,8 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
       step.data.spouseId = custodial.id
       custodial.data.spouseId = step.id
     }
-    if (family === 'singleMother') lines.push(localLine(g, pick(g, SINGLE_MOTHER_CONCEPTION), country.id))
-    else if (chance(g, 0.75)) lines.push(localLine(g, pick(g, CONCEPTION), country.id))
+    if (family === 'singleMother') lines.push(localLine(g, pick(g, eraLines(g, SINGLE_MOTHER_CONCEPTION)), country.id))
+    else if (chance(g, 0.75)) lines.push(localLine(g, pick(g, eraLines(g, CONCEPTION)), country.id))
     if (mother) lines.push(`My mother is ${describe(mother)}.`)
     else lines.push(pick(g, ["My mother isn't in the picture.", 'My mother left shortly after I was born.', "I don't know much about my mother."]))
     if (father) lines.push(`My father is ${describe(father)}.`)
@@ -714,7 +850,12 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   // --- Siblings -------------------------------------------------------------
   const anchor = mother ?? father ?? custodial
   const maxSiblingAge = anchor ? Math.min(15, anchor.age - 18) : 0
-  const siblingCount = maxSiblingAge >= 1 ? weightedPick(g, [0, 1, 2, 3], (n) => [40, 32, 18, 10][n]) : 0
+  // Big families were the norm in the past (history/events-people.ts).
+  const eraSiblings = siblingWeights(year)
+  const sibWeights = eraSiblings ?? [40, 32, 18, 10]
+  let siblingCount = maxSiblingAge >= 1 ? weightedPick(g, sibWeights.map((_, i) => i), (n) => sibWeights[n]) : 0
+  // A big family needs the years to have it in: no five four-year-olds for a 22-year-old mother.
+  if (eraSiblings) siblingCount = Math.min(siblingCount, Math.max(1, Math.floor(maxSiblingAge / 1.6)))
   const ages: number[] = []
   for (let i = 0; i < siblingCount; i++) ages.push(randInt(g, 1, maxSiblingAge))
   ages.sort((a, b) => b - a)
@@ -771,6 +912,9 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   log(g, `My birthday is ${MONTHS[birthday.month - 1]} ${birthday.day}. I am ${/^[AEIOU]/.test(c.zodiac) ? 'an' : 'a'} ${c.zodiac}.`)
   log(g, `My name is ${firstName} ${lastName}.`)
   for (const line of lines) log(g, line)
+  if (isHistorical(year)) for (const line of familyWarLines(g, father, mother, year)) log(g, line)
+  // The news the year I was born.
+  logNews(g)
   remember(g, `Born in ${city}, ${country.name}${custodial ? `, raised by my ${custodial.gender === 'male' ? 'father' : 'mother'} ${custodial.firstName}` : ''}.`)
 
   // --- Hidden destiny -------------------------------------------------------------
@@ -1319,6 +1463,15 @@ function schoolDanceMemory(g: GameState): string {
 
 const HOBBIES = ['skydiving', 'the electric guitar', 'pottery', 'marathon running', 'salsa dancing', 'rock climbing', 'surfing', 'karate']
 
+/** Hobbies a mid-life crisis could reach for in that year. */
+const HOBBY_FROM: Readonly<Record<string, number>> = { skydiving: 1960, 'the electric guitar': 1952, 'salsa dancing': 1970, karate: 1960, 'marathon running': 1970, 'rock climbing': 1950 }
+
+function eraHobbies(g: GameState): readonly string[] {
+  if (!isHistorical(g.year)) return HOBBIES
+  const fit = HOBBIES.filter((h) => g.year >= (HOBBY_FROM[h] ?? 0))
+  return fit.length ? fit : ['ballroom dancing', 'pottery']
+}
+
 /** Picked talents get their childhood "you have a special talent" moment between these ages. */
 const PICK_REVEAL_FROM = 5
 const PICK_REVEAL_BY = 10
@@ -1326,7 +1479,7 @@ const PICK_REVEAL_BY = 10
 /** The "Special Talent" moment: one-time bump, popup, log line and memory. */
 function revealTalent(g: GameState, def: TalentDef): void {
   def.apply(g)
-  notice(g, 'Special Talent', lifeLocal(g, def.discovery), { emoji: def.emoji, tone: 'good' })
+  notice(g, 'Special Talent', lifeLocal(g, talentDiscovery(g, def)), { emoji: def.emoji, tone: 'good' })
   log(g, `I discovered I have a special talent for ${def.id.toLowerCase()}.`, 'good')
   remember(g, `Discovered a special talent for ${def.id.toLowerCase()}.`)
   g.flags.talentNoticeAge = g.character.age
@@ -1384,7 +1537,7 @@ function talentMilestones(g: GameState): void {
   if (noticeThisYear()) return
 
   // Journal hints: a latent talent before its age, or picked talents before their moment.
-  const pool = [...(latent && c.age < talentAge ? latent.hints : []), ...pending.flatMap((t) => t.hints)]
+  const pool = [...(latent && c.age < talentAge ? talentHints(g, latent) : []), ...pending.flatMap((t) => talentHints(g, t))]
   if (pool.length === 0) return
   const hints = typeof g.flags.talentHints === 'number' ? g.flags.talentHints : 0
   // Each hint is used once, and never two years running.
@@ -1455,9 +1608,11 @@ const SEXUALITY = defineScript('life.sexuality', (g, choice) => {
   const fam = parents(g)
   const reactions: string[] = []
   let rejected = 0
+  // Acceptance came slowly: parents were far less supportive in past decades.
+  const era = !isHistorical(g.year) ? 1 : g.year < 1970 ? 0.4 : g.year < 1990 ? 0.6 : g.year < 2005 ? 0.8 : 0.92
   for (const p of fam) {
     const strict = p.traits.includes('religious') || p.traits.includes('grumpy') || p.traits.includes('serious')
-    const supportive = chance(g, strict ? 0.45 : 0.88)
+    const supportive = chance(g, (strict ? 0.45 : 0.88) * era)
     const who = p.relation === 'stepparent' ? (p.gender === 'male' ? 'stepfather' : 'stepmother') : p.gender === 'male' ? 'father' : 'mother'
     if (supportive) {
       p.relationship = clampStat(p.relationship + randInt(g, 3, 10))
@@ -1542,7 +1697,7 @@ const MIDLIFE = defineScript('life.midlife', (g, choice) => {
     return
   }
   if (choice === 'hobby') {
-    const hobby = pick(g, HOBBIES)
+    const hobby = pick(g, eraHobbies(g))
     addStat(g, 'happiness', randInt(g, 6, 12))
     addStat(g, 'health', randInt(g, 1, 5))
     notice(g, 'Mid-Life Crisis', `You took up ${hobby}. Your family thinks you've lost it, but you feel alive.`, { emoji: '\u{1FA82}', tone: 'good' })
@@ -1585,10 +1740,11 @@ function grandparenthood(g: GameState): void {
 export function yearlyMilestones(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  const entries = currentLogYear(g).entries
+  // The yearly world-news line doesn't count as something happening to me.
+  const quiet = currentLogYear(g).entries.every((e) => isNewsLine(e.text))
 
-  if (c.age === 1 && entries.length === 0) log(g, pick(g, FIRST_STEPS))
-  else if (c.age === 2 && entries.length === 0) log(g, pick(g, TODDLER))
+  if (c.age === 1 && quiet) log(g, pick(g, FIRST_STEPS))
+  else if (c.age === 2 && quiet) log(g, pick(g, TODDLER))
 
   talentMilestones(g)
 

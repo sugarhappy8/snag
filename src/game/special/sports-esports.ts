@@ -11,6 +11,7 @@ import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../t
 import { getCountry, randomCity } from '../world'
 import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view, yearlyList } from './common'
 import { addBuzz, honor, logistic, plural, recordCareer, sportsGate, theName, tidy, trainGain, wealth } from './sports-core'
+import { eraOpen, ESPORTS_GATE, STREAMING_GATE } from '../computer/era'
 
 /** Top salary a team pays a player (the very best earn more from prize money and streaming). */
 const MAX_SALARY = 3_000_000
@@ -569,6 +570,7 @@ export function esportsJobNodes(g: GameState): MenuNode[] {
       label: 'Stream',
       emoji: '\u{1F4F9}',
       subtitle: 'Grow your fanbase (once a year)',
+      visible: (gg) => eraOpen(gg, STREAMING_GATE),
       disabledReason: (gg) => sportsGate(gg, 0),
       run: (gg) => {
         if (!useYearAction(gg, 'sports.es.stream', 1)) return tell(gg, 'Stream', 'You already streamed until your voice gave out this year.', '\u{1F4F9}')
@@ -639,6 +641,8 @@ export const esportsMenu: MenuGroup = {
     if (p?.game) return `${game(p.game).name} · ${tierOf(p.mmr[p.game] ?? 0)}`
     return ESPORTS_HOTSPOTS.has(g.character.countryId) ? `Huge in ${getCountry(g.character.countryId).name}` : 'Competitive gaming: teams, tournaments, prize pools'
   },
+  // Pro gaming with teams and prize pools only exists once esports does here (an old pro keeps the menu).
+  visible: (g) => eraOpen(g, ESPORTS_GATE) || !!esportsJob(g) || !!viewEs(g)?.game,
   header: () => 'Climb the ranked ladder, win online cups, get signed by a team and play for million-dollar prize pools. Reflexes peak in your early twenties.',
   children: (g): MenuNode[] => {
     if (esportsJob(g)) return [{ type: 'info', id: 'sports.es.in', emoji: '\u{1F3AE}', text: "You're an esports pro. Manage your career from Occupation › My Work." }]

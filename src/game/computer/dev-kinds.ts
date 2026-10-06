@@ -3,6 +3,7 @@
 // whole computer module graph.
 import { money, plural } from './dev-state'
 import type { DevProject, VentureData, VentureType } from './dev-state'
+import type { EraGate } from './era'
 
 export interface ProjectKind {
   id: string
@@ -33,6 +34,8 @@ export interface ProjectKind {
   cvTitle: (name: string) => string
   /** A hit can be spun into a venture of this type. */
   spin?: 'app' | 'game'
+  /** When people build these (no phone apps before smartphones, no BBS after the web won). */
+  era?: EraGate
 }
 
 export const PROJECT_KINDS: ProjectKind[] = [
@@ -54,6 +57,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
     flops: ['The cat sprite walked off the screen and never came back.', 'Your game had one level, and the level was a bug.'],
     great: 'It got featured on the front page and a kid in another country made a sequel.',
     cvTitle: (n) => `Made "${n}", a Scratch game`,
+    era: { tech: 'internet', from: 2007 },
   },
   {
     id: 'website',
@@ -72,6 +76,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
     flops: ['It looked fine on your screen and like a ransom note on everyone else\'s.', 'You spent the whole time picking a font. The site is one heading in that font.'],
     great: 'It ranked first in search results for something oddly specific.',
     cvTitle: (n) => `Built ${n}`,
+    era: { tech: 'internet', from: 1994 },
   },
   {
     id: 'mod',
@@ -90,6 +95,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
     flops: ['Your mod turned every tree into a chicken. Not on purpose.', 'It crashed the game so hard it deleted a friend\'s save. You are no longer friends.'],
     great: 'The Dirtblock forums voted it mod of the month.',
     cvTitle: (n) => `Created "${n}", a Dirtblock mod`,
+    era: { tech: 'internet', from: 2010 },
   },
   {
     id: 'bot',
@@ -108,6 +114,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
     flops: ['Your bot replied to every message with "undefined." Your friends muted it.', 'It got stuck in a loop and posted the same joke 40,000 times.'],
     great: 'Half the group chats in your school run it now.',
     cvTitle: (n) => `Built ${n}, a chat bot`,
+    era: { tech: 'smartphone', from: 2010 },
   },
   {
     id: 'extension',
@@ -126,6 +133,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
     flops: ['The extension store rejected it for "doing nothing, aggressively."', 'It worked perfectly until a browser update the next morning.'],
     great: 'A tech newsletter called it "the only extension you need."',
     cvTitle: (n) => `Built ${n}, a browser extension`,
+    era: { tech: 'internet', from: 2005 },
   },
   {
     id: 'app',
@@ -145,6 +153,7 @@ export const PROJECT_KINDS: ProjectKind[] = [
     great: 'It hit the top charts in your country for a week!',
     cvTitle: (n) => `Built "${n}", a mobile app`,
     spin: 'app',
+    era: { tech: 'smartphone', from: 2008 },
   },
   {
     id: 'game',
@@ -164,6 +173,65 @@ export const PROJECT_KINDS: ProjectKind[] = [
     great: 'It hit "Overwhelmingly Positive" on PixelPantry!',
     cvTitle: (n) => `Released "${n}", an indie game`,
     spin: 'game',
+    era: { tech: 'homeComputer' },
+  },
+  // Before the web: what bedroom coders built in the 80s and 90s (appended so old ids stay put).
+  {
+    id: 'listing',
+    noun: 'magazine type-in program',
+    label: 'Magazine Type-In',
+    emoji: '\u{1F4F0}',
+    minAge: 10,
+    minSkill: 8,
+    use: 'games',
+    difficulty: 0,
+    income: 'sales',
+    users: [200, 25_000],
+    arpu: 0.02,
+    unit: 'reader',
+    names: ['Lunar Lander Deluxe', 'Snake Pit', 'Grandpa Invaders', 'Maze of the Minotaur', 'Checkbook Wizard', 'Frog Crossing {city}'],
+    flops: ['The magazine sent it back with a polite note: "Our readers have enough snake games."', 'You mailed it off on a cassette. It arrived as a cassette of static.'],
+    great: 'A computer magazine printed it, paid you for it, and readers wrote in to say they typed it in with their dads.',
+    cvTitle: (n) => `Published "${n}" as a magazine type-in program`,
+    era: { tech: 'homeComputer', until: 1994 },
+  },
+  {
+    id: 'shareware',
+    noun: 'shareware program',
+    label: 'Shareware Program',
+    emoji: '\u{1F4BE}',
+    minAge: 12,
+    minSkill: 18,
+    use: 'systems',
+    difficulty: 4,
+    income: 'donations',
+    users: [300, 60_000],
+    arpu: 0.05,
+    unit: 'user',
+    names: ['DiskDoctor', 'QuickRecipe', 'FileFerret', 'StarChart Pro', 'TypeTutor', 'BudgetBuddy'],
+    flops: ['Nobody registered it. Somebody did send you a postcard that just says "why."', 'It reformatted your own hard drive during testing. Version 2 will be better.'],
+    great: 'Copies spread on floppy disks across the country, and registration checks started arriving in the mail.',
+    cvTitle: (n) => `Wrote ${n}, a shareware program`,
+    era: { tech: 'homeComputer', from: 1985, until: 2003 },
+  },
+  {
+    id: 'bbs',
+    noun: 'bulletin board system',
+    label: 'Bulletin Board (BBS)',
+    emoji: '\u{1F4DE}',
+    minAge: 12,
+    minSkill: 15,
+    use: 'systems',
+    difficulty: 2,
+    income: 'donations',
+    users: [30, 3_000],
+    arpu: 0.3,
+    unit: 'caller',
+    names: ['The Dungeon BBS', 'Midnight Modem', 'The {city} Underground', 'Byte Me BBS', 'Castle Kilobyte', 'The Phone Bill'],
+    flops: ['Your mom picked up the phone during every call. Your callers gave up.', 'Twelve people called. Eleven of them were the same person.'],
+    great: 'Half the computer nerds in town dial in every night, and your phone line is never free.',
+    cvTitle: (n) => `Ran ${n}, a dial-up bulletin board`,
+    era: { tech: 'homeComputer', from: 1982, until: 1998 },
   },
 ]
 
@@ -193,6 +261,8 @@ export interface Tier {
 
 export interface TypeDef {
   type: VentureType
+  /** When this kind of online business exists. */
+  era?: EraGate
   label: string
   /** "a SaaS", "an app"... */
   noun: string
@@ -224,6 +294,7 @@ export interface TypeDef {
 export const VENTURE_DEFS: Record<VentureType, TypeDef> = {
   saas: {
     type: 'saas',
+    era: { tech: 'internet', from: 2000 },
     label: 'SaaS',
     noun: 'a SaaS',
     emoji: '\u{2601}\u{FE0F}',
@@ -248,6 +319,7 @@ export const VENTURE_DEFS: Record<VentureType, TypeDef> = {
   },
   app: {
     type: 'app',
+    era: { tech: 'smartphone', from: 2008 },
     label: 'Mobile App',
     noun: 'an app',
     emoji: '\u{1F4F2}',
@@ -271,6 +343,7 @@ export const VENTURE_DEFS: Record<VentureType, TypeDef> = {
   },
   store: {
     type: 'store',
+    era: { tech: ['internet', 'onlineShopping'], from: 1996 },
     label: 'Online Store',
     noun: 'an online store',
     emoji: '\u{1F6CD}\u{FE0F}',
@@ -294,6 +367,7 @@ export const VENTURE_DEFS: Record<VentureType, TypeDef> = {
   },
   game: {
     type: 'game',
+    era: { tech: 'internet', from: 2004 },
     label: 'Indie Game',
     noun: 'an indie game',
     emoji: '\u{1F579}\u{FE0F}',

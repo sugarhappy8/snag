@@ -30,6 +30,7 @@ import { dietMenu, syncDiet } from './diet'
 import { maybeAskedOut, presentSos } from './encounters'
 import { martialArtsMenu } from './martialArts'
 import { memoryTestAction } from './memory'
+import { eraPick, eraLines } from '../events/era'
 
 const tooTiredLines = (activity: string) => [
   `You're too exhausted to ${activity} again this year.`,
@@ -53,6 +54,11 @@ interface Workout {
   past: string
   lines: string[]
   prison?: boolean
+  /** Years the class was offered (spin classes are a nineties thing). */
+  since?: number
+  until?: number
+  /** Countries where it was taught before `since` (yoga in India). */
+  homeOf?: string[]
 }
 
 const WORKOUTS: Workout[] = [
@@ -86,9 +92,11 @@ const WORKOUTS: Workout[] = [
     injury: 0.03,
     prison: true,
     lines: [
-      'You ran five miles on the treadmill while watching a cooking show. Ironic.',
-      'You did intervals on the treadmill until you could taste your own heartbeat.',
-      'You jogged for 45 minutes and only checked the calorie counter 300 times.',
+      '@1995 You ran five miles on the treadmill while watching a cooking show. Ironic.',
+      '@1975 You did intervals on the treadmill until you could taste your own heartbeat.',
+      '@1990 You jogged for 45 minutes and only checked the calorie counter 300 times.',
+      '@-1975 You ran laps around the track until you could taste your own heartbeat.',
+      '@-1975 You jogged around the gymnasium for 45 minutes while an old man timed you with a stopwatch.',
     ],
   },
   {
@@ -101,6 +109,8 @@ const WORKOUTS: Workout[] = [
     happiness: [2, 5],
     athleticism: [0, 2],
     injury: 0.02,
+    since: 1965,
+    homeOf: ['in', 'np', 'lk'],
     lines: [
       'You held downward dog for an eternity. Your hamstrings will never forgive you.',
       'You nailed tree pose without wobbling. Mostly.',
@@ -117,6 +127,7 @@ const WORKOUTS: Workout[] = [
     happiness: [1, 3],
     athleticism: [1, 2],
     injury: 0.03,
+    since: 1993,
     lines: [
       'The spin instructor screamed motivational quotes at you for 45 minutes. It worked.',
       "You pedaled to nowhere at top speed and somehow it's the best you've felt all week.",
@@ -147,12 +158,37 @@ const WORKOUTS: Workout[] = [
     happiness: [-1, 3],
     athleticism: [2, 4],
     injury: 0.1,
+    since: 1995,
     lines: [
       'The boot camp instructor made you do burpees until you saw your ancestors.',
       'You flipped a giant tire across the parking lot. You have no idea why, but you feel powerful.',
     ],
   },
+  {
+    id: 'calisthenics',
+    past: 'did a calisthenics class',
+    label: 'Calisthenics Class',
+    emoji: '\u{1F938}',
+    health: [2, 5],
+    looks: [1, 3],
+    happiness: [0, 3],
+    athleticism: [1, 3],
+    injury: 0.04,
+    until: 1975,
+    lines: [
+      'You did jumping jacks in perfect unison with forty strangers in matching gym suits.',
+      'The instructor barked "one, two, one, two!" through a megaphone for an hour. You touched your toes. Almost.',
+      'You swung Indian clubs and tossed a medicine ball until your arms gave out.',
+    ],
+  },
 ]
+
+/** Was this workout offered at gyms here this year? */
+function workoutOffered(g: GameState, w: Workout): boolean {
+  if (w.until !== undefined && g.year >= w.until) return false
+  if (w.since === undefined || g.year >= w.since) return true
+  return !!w.homeOf?.includes(g.character.countryId)
+}
 
 const GYM_MAX = 4
 const GYM_INJURIES = ['Pulled Muscle', 'Sprained Ankle', 'Strained Back', 'Torn Rotator Cuff', 'Pulled Hamstring']
@@ -206,7 +242,7 @@ function gymVisit(g: GameState, w: Workout): void {
     }
   }
   log(g, c.prison ? `I ${w.past} in the prison yard.` : `I went to the gym and ${w.past}.`, 'good')
-  const flavor = used >= 3 ? `${pick(g, w.lines)}\n\nYou've worked out a lot this year. The gains are slowing down.` : pick(g, w.lines)
+  const flavor = used >= 3 ? `${eraPick(g, w.lines)}\n\nYou've worked out a lot this year. The gains are slowing down.` : eraPick(g, w.lines)
   result(g, c.prison ? 'Prison Gym' : 'Gym', flavor, w.emoji, 'good')
   if (!c.prison) maybeAskedOut(g, 'gym', 0.05)
 }
@@ -223,11 +259,11 @@ export const gymMenu: MenuGroup = {
       ? `The prison gym is free. You can work out ${usesLeft(g, 'act.gym', GYM_MAX)} more times this year.`
       : `A day pass costs ${money(localPrice(g, 12))}. You can work out ${usesLeft(g, 'act.gym', GYM_MAX)} more times this year.`,
   children: (g): MenuNode[] =>
-    WORKOUTS.filter((w) => !g.character.prison || w.prison).map(
+    WORKOUTS.filter((w) => (!g.character.prison || w.prison) && workoutOffered(g, w)).map(
       (w): MenuAction => ({
         type: 'action',
         id: `mb.gym.${w.id}`,
-        label: g.character.prison && w.id === 'cardio' ? 'Run Laps in the Yard' : w.label,
+        label: g.character.prison && w.id === 'cardio' ? 'Run Laps in the Yard' : w.id === 'cardio' && g.year < 1975 ? 'Run Laps' : w.label,
         emoji: w.emoji,
         run: (draft) => gymVisit(draft, w),
       }),
@@ -273,7 +309,8 @@ const WALKS: WalkType[] = [
     strain: 1,
     minAge: 8,
     lines: [
-      'You power walked so aggressively that a jogger moved out of your way.',
+      '@1970 You power walked so aggressively that a jogger moved out of your way.',
+      '@-1970 You power walked so aggressively that a horse moved out of your way.',
       'You pumped your arms like a champion and power walked three miles.',
     ],
   },
@@ -299,7 +336,8 @@ const WALKS: WalkType[] = [
     strain: 1.8,
     minAge: 12,
     lines: [
-      'You hiked to the top of a ridge and took 47 photos of the same view.',
+      '@2003 You hiked to the top of a ridge and took 47 photos of the same view.',
+      '@-2003 You hiked to the top of a ridge and stared at the view until the sun went down.',
       'You hiked through the woods and only got slightly lost.',
       'You conquered a trail rated "strenuous." Your calves are filing for divorce.',
     ],
@@ -426,7 +464,7 @@ function takeWalk(g: GameState, w: WalkType): void {
   const kind = w.id === 'hike' ? 'hike' : w.id === 'stroll' ? 'stroll' : `${w.id} walk`
   log(g, prison ? 'I walked laps around the prison yard.' : `I went for a ${kind}.`, 'good')
   if (walkEvent(g, w)) return
-  result(g, prison ? 'Yard Time' : 'Walk', prison ? pick(g, ['You walked laps around the yard. A guard counted them with you, out loud, to annoy you.', 'You walked the yard and soaked up the only sunlight you get all day.']) : pick(g, w.lines), w.emoji, 'good')
+  result(g, prison ? 'Yard Time' : 'Walk', prison ? pick(g, ['You walked laps around the yard. A guard counted them with you, out loud, to annoy you.', 'You walked the yard and soaked up the only sunlight you get all day.']) : eraPick(g, w.lines), w.emoji, 'good')
 }
 
 function walkWith(g: GameState, p: Person): void {
@@ -441,7 +479,7 @@ function walkWith(g: GameState, p: Person): void {
   }
   if (p.relationship < 15 && p.relation !== 'child') {
     g.yearActions['act.walk'] = Math.max(0, (g.yearActions['act.walk'] ?? 1) - 1)
-    result(g, 'Declined', `${p.firstName} said ${p.gender === 'male' ? 'he' : 'she'} would rather walk barefoot on Lego than go on a walk with you.`, '\u{1F645}', 'bad')
+    result(g, 'Declined', `${p.firstName} said ${p.gender === 'male' ? 'he' : 'she'} would rather walk barefoot on thumbtacks than go on a walk with you.`, '\u{1F645}', 'bad')
     return
   }
   count(g, 'walks')
@@ -568,17 +606,19 @@ export const meditateAction: MenuAction = {
 const LIBRARY_MAX = 3
 const TOPICS = [
   'the history of cheese',
-  'black holes',
+  '@1967 black holes',
+  '@-1967 the planets and their moons',
   'ancient Rome',
   'how bridges stay up',
   'the stock market',
   'deep-sea creatures',
-  'world war history',
+  '@1920 world war history',
+  '@-1920 the Napoleonic wars',
   'the human brain',
   'medieval torture devices',
-  'quantum physics (you understood maybe 4%)',
+  '@1926 quantum physics (you understood maybe 4%)',
   'famous unsolved mysteries',
-  'how to fold a fitted sheet',
+  '@1960 how to fold a fitted sheet',
   'volcanoes',
   'the migration patterns of geese',
   'the history of the toilet',
@@ -603,7 +643,7 @@ function library(g: GameState): void {
   const gain = Math.round(randInt(g, base[0], base[1]) * factor * talentMult(g, 'Academics', 1.6))
   addStat(g, 'smarts', gain)
   addStat(g, 'happiness', randInt(g, 0, 2))
-  const topic = pick(g, TOPICS)
+  const topic = pick(g, eraLines(g, TOPICS))
   if (gain > 0) {
     log(g, `I went to the ${c.prison ? 'prison ' : ''}library and read about ${topic}.`, 'good')
     result(g, 'Library', pick(g, [
@@ -680,6 +720,9 @@ export const gardeningAction: MenuAction = {
 
 // ---------------------------------------------------------------------------
 // Instruments
+
+/** Instruments that came later: the electric bass, the steel pan, the electronic keyboard. */
+const INSTRUMENT_SINCE: Record<string, number> = { 'Bass Guitar': 1955, 'Steel Drum': 1950, Keyboard: 1975 }
 
 export const INSTRUMENTS: { name: string; emoji: string }[] = [
   { name: 'Accordion', emoji: '\u{1FA97}' },
@@ -815,7 +858,7 @@ export const instrumentsMenu: MenuGroup = {
       ? `Lessons cost ${money(lessonCost(g))}. You'll have to ask your parents to pay. Taking more than 3 lessons on one instrument in a year will burn you out.`
       : `Lessons cost ${money(lessonCost(g))} each. Taking more than 3 lessons on one instrument in a year will burn you out.`,
   children: (g): MenuNode[] =>
-    INSTRUMENTS.map((inst): MenuAction => {
+    INSTRUMENTS.filter((inst) => g.year >= (INSTRUMENT_SINCE[inst.name] ?? 0) || instrumentSkill(g, inst.name) > 0).map((inst): MenuAction => {
       const skill = instrumentSkill(g, inst.name)
       return {
         type: 'action',
@@ -851,7 +894,8 @@ const LESSONS: LessonDef[] = [
       'Your acting coach made you pretend to be a tree for an hour. You were a very convincing oak.',
       'You cried real tears during an improv scene. Your coach called you "a natural."',
       'You practiced a monologue from a famous play. You only forgot your lines twice.',
-      'You did a cold read of a commercial script. You sold that cereal like your life depended on it.',
+      '@1950 You did a cold read of a commercial script. You sold that cereal like your life depended on it.',
+      '@-1950 You recited a speech from an old melodrama and fainted on cue. Twice.',
     ],
   },
   {
@@ -875,7 +919,8 @@ const LESSONS: LessonDef[] = [
     price: 150,
     lines: [
       'You practiced your runway walk until you could do it in your sleep.',
-      'Your coach taught you how to smize. You smized at everyone on the way home.',
+      '@2009 Your coach taught you how to smize. You smized at everyone on the way home.',
+      '@-2009 Your coach taught you to walk with a book balanced on your head. You went through three books.',
       'You learned 14 different poses. Your favorite is "confused about the menu."',
     ],
   },
@@ -910,7 +955,7 @@ function takeLesson(g: GameState, l: LessonDef): void {
   if (l.id === 'acting') addStat(g, 'smarts', randInt(g, 0, 1))
   log(g, `I took ${l.label.toLowerCase()}.`, 'good')
   const paidBy = paid.by === 'parent' && paid.parent ? `\n\nYour ${paid.parent.gender === 'male' ? 'dad' : 'mom'} paid for it.` : ''
-  result(g, l.label, `${pick(g, l.lines)}\n\nSkill: ${after}%${paidBy}`, l.emoji, 'good')
+  result(g, l.label, `${eraPick(g, l.lines)}\n\nSkill: ${after}%${paidBy}`, l.emoji, 'good')
 }
 
 function lessonAction(l: LessonDef): MenuAction {
@@ -970,7 +1015,8 @@ export const spaceCampAction: MenuAction = {
   label: 'Space Camp',
   emoji: '\u{1F680}',
   subtitle: (g) => `${money(localPrice(g, 1200))} · For future astronauts`,
-  visible: (g) => !g.character.prison && g.character.age <= 17,
+  // Space camps for kids opened in 1982.
+  visible: (g) => !g.character.prison && g.character.age <= 17 && g.year >= 1982,
   disabledReason: (g) => gate(g, { minAge: 8 }),
   run: spaceCamp,
 }

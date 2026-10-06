@@ -1295,7 +1295,7 @@ const fundraiseAction: MenuAction = {
     say(
       g,
       'Fundraiser',
-      `${pick(g, ['You hosted a $500-a-plate dinner. The food was cold but the checks cleared.', 'You held a gala fundraiser and laughed at a lot of donor jokes.', 'You spent the evening shaking hands with very rich people who want very specific things.'])} You raised ${money(raised)} for your next campaign. War chest: ${money(d.warChest)}.`,
+      `${pick(g, [`You hosted a ${money(500)}-a-plate dinner. The food was cold but the checks cleared.`, 'You held a gala fundraiser and laughed at a lot of donor jokes.', 'You spent the evening shaking hands with very rich people who want very specific things.'])} You raised ${money(raised)} for your next campaign. War chest: ${money(d.warChest)}.`,
       '\u{1F942}',
       'good',
     )

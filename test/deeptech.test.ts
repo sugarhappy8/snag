@@ -23,6 +23,7 @@ import { runScript } from '../src/game/scripts'
 import { HINT_EMOJI } from '../src/game/talents'
 import type { AnnualReportData, Asset, ChoiceModal, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
+import { PRESENT_YEAR } from '../src/game/history/timeline'
 
 function adultIn(countryId: string, money: number, seed = 3, smarts = 90): GameState {
   const g = createNewLife({ seed, year: 2000, countryId })
@@ -392,6 +393,9 @@ describe('deep tech', () => {
 
   it('flies test rockets that explode or reach orbit; the first success makes it operational', () => {
     const g = adultIn('us', 1_000_000, 16)
+    // Today's launch market: before private spaceflight opened up (~2002-08), state-backed
+    // launch providers took almost every customer (business/competition-data.ts).
+    g.year = PRESENT_YEAR
     const a = company(g, 'spaceTech', { venture: 2_000_000_000, series: 3, stage: 2, level: 50, done: ['engine', 'rocket'] })
     let flights = 0
     for (let y = 0; y < 8 && techView(readBiz(g, a)).wins === 0; y++) {

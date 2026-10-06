@@ -1,6 +1,6 @@
 // The end-of-life screen (shown by GameScreen once the character is dead and the queue is
 // empty): tombstone, ribbon, obituary, life summary, journal, and what to do next —
-// continue as one of your children, live again, or start over.
+// use the Time Machine, continue as one of your children, live again, or start over.
 import { useMemo, useState } from 'react'
 import {
   characterAvatar,
@@ -19,6 +19,7 @@ import { pickedTalents } from '../../game/talents'
 import type { Degree, DegreeKind, GameState, Person, RelationKind } from '../../game/types'
 import { getCountry } from '../../game/world'
 import { StatBar } from '../components/StatBar'
+import { TimeMachineDeathButton, TimeMachineSheet } from '../components/TimeMachine'
 import { continueAs, goTo, startNewLife, useApp } from '../store'
 import '../styles/screens.css'
 
@@ -176,8 +177,8 @@ export interface LegacyRow {
 /** The family line so far, oldest first, ending with the life that just ended. */
 /**
  * "Live again": the same name, birthplace and sexuality, plus the special talents this life
- * started with (picked before birth or inherited), so a build can be replayed. Everything
- * else is rolled fresh.
+ * started with (picked before birth or inherited), so a build can be replayed. The Death screen
+ * passes this life's birth year as `year`. Everything else is rolled fresh.
  */
 export function liveAgainOptions(g: GameState, year: number): NewLifeOptions {
   const c = g.character
@@ -308,6 +309,7 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
   const showAiBadges = useApp((s) => s.settings.showAiBadges)
   const aiStatus = useApp((s) => s.aiStatus)
   const [journalOpen, setJournalOpen] = useState(false)
+  const [timeMachineOpen, setTimeMachineOpen] = useState(false)
   const g = gameProp ?? storeGame
 
   const view = useMemo(() => {
@@ -337,7 +339,8 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
     ])
 
   const keptTalents = pickedTalents(g)
-  const liveAgain = () => startNewLife(liveAgainOptions(g, new Date().getFullYear()))
+  // Same birth year too: a 1980 life lived again starts in 1980 (not today), with a new fate.
+  const liveAgain = () => startNewLife(liveAgainOptions(g, bornYear))
 
   return (
     <div className="al-screen death-screen">
@@ -421,6 +424,10 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
         {journalOpen ? <Journal g={g} showAi={showAiBadges} /> : null}
       </section>
 
+      {/* Only shown when this life has a past year saved to go back to. */}
+      <TimeMachineDeathButton g={g} onOpen={() => setTimeMachineOpen(true)} />
+      {timeMachineOpen ? <TimeMachineSheet g={g} onClose={() => setTimeMachineOpen(false)} /> : null}
+
       {view.heirs.length > 0 ? (
         <>
           <p className="al-section-title">Continue the family</p>
@@ -463,7 +470,9 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
           </span>
           <span className="al-bigbtn-text">
             <span>Live again as {c.firstName}</span>
-            <span className="al-bigbtn-sub">{keptTalents.length > 0 ? 'Same name, birthplace and talents, brand-new fate' : 'Same name and birthplace, brand-new fate'}</span>
+            <span className="al-bigbtn-sub">
+              {keptTalents.length > 0 ? `Born ${bornYear}, same name, place and talents` : `Born ${bornYear}, same name and birthplace`}
+            </span>
           </span>
         </button>
         <div className="nl-grid">

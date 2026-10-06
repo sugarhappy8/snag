@@ -1,5 +1,7 @@
 // Salon & Spa: hair salon, barber, massage, nails, tanning, waxing.
 // Juveniles can only use the hair salon, barber and nail salon, and pay with their own money.
+// Services follow the decades: Marcel waves and perms early on, tanning beds from the late
+// seventies, spray tans and keratin treatments only recently.
 import { addStat, count, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
@@ -21,6 +23,11 @@ interface Service {
   minAge?: number
   /** Ask for a new hair color afterwards. */
   color?: boolean
+  /** Years the service was offered (until = the year it went out of fashion). */
+  since?: number
+  until?: number
+  /** Countries where it was around earlier (Thai massage in Thailand). */
+  homeOf?: string[]
 }
 
 interface Section {
@@ -30,6 +37,7 @@ interface Section {
   subtitle: string
   minAge: number
   services: Service[]
+  since?: number
 }
 
 const SECTIONS: Section[] = [
@@ -48,6 +56,7 @@ const SECTIONS: Section[] = [
         looks: [2, 5],
         happiness: [2, 5],
         color: true,
+        since: 1930,
         lines: ['Your stylist gave you a fresh cut and a whole new color. You keep catching yourself in shop windows.'],
         mishap: { chance: 0.08, text: 'Your stylist got distracted gossiping and dyed your hair a shade of green not found in nature.', log: 'My hair dye job went horribly wrong.', looks: -4 },
       },
@@ -73,6 +82,7 @@ const SECTIONS: Section[] = [
         looks: [1, 3],
         happiness: [1, 4],
         color: true,
+        since: 1930,
         lines: ['Your stylist mixed the color with the precision of a chemist.'],
         mishap: { chance: 0.08, text: 'The color came out pumpkin orange. Your stylist called it "a bold choice."', log: 'My hair color came out orange.', looks: -3 },
       },
@@ -83,7 +93,30 @@ const SECTIONS: Section[] = [
         price: 12,
         looks: [1, 2],
         happiness: [2, 4],
+        since: 1960,
         lines: ['Your stylist gave you a blowout with so much volume it has its own weather system.', 'Your hair looked fantastic. For about six hours, until it rained.'],
+      },
+      {
+        id: 'marcel',
+        label: 'Marcel Wave',
+        emoji: '\u{1F30A}',
+        price: 12,
+        looks: [1, 3],
+        happiness: [2, 4],
+        until: 1945,
+        lines: ['Your stylist heated the curling irons on the stove and set perfect waves in your hair. Very glamorous.'],
+        mishap: { chance: 0.06, text: 'The curling iron was a little too hot. You can smell your own hair.', log: 'My Marcel wave singed my hair.', looks: -2 },
+      },
+      {
+        id: 'perm',
+        label: 'Perm',
+        emoji: '\u{1F300}',
+        price: 50,
+        looks: [1, 4],
+        happiness: [1, 4],
+        since: 1920,
+        lines: ['You walked out with a head full of bouncy curls and the faint smell of chemicals.'],
+        mishap: { chance: 0.08, text: 'The perm went wrong. You look like you were electrocuted by a poodle.', log: 'My perm went horribly wrong.', looks: -3 },
       },
       {
         id: 'keratin',
@@ -92,6 +125,7 @@ const SECTIONS: Section[] = [
         price: 75,
         looks: [2, 4],
         happiness: [1, 3],
+        since: 2005,
         lines: ['Your hair is now so smooth that birds keep trying to land on it and sliding off.'],
       },
       {
@@ -102,6 +136,7 @@ const SECTIONS: Section[] = [
         looks: [3, 6],
         happiness: [2, 5],
         minAge: 16,
+        since: 1990,
         lines: ['You walked in with short hair and walked out with a mane worthy of a shampoo commercial.'],
       },
     ],
@@ -114,10 +149,10 @@ const SECTIONS: Section[] = [
     minAge: 14,
     services: [
       { id: 'buzz', label: 'Buzz Cut', emoji: '\u{1F488}', price: 10, looks: [0, 2], happiness: [0, 2], lines: ['The barber buzzed it all off in four minutes flat. Aerodynamic.'] },
-      { id: 'fade', label: 'Fade', emoji: '\u{1F488}', price: 20, looks: [1, 3], happiness: [1, 3], lines: ['Your barber blended that fade so smooth it looked airbrushed.'], mishap: { chance: 0.05, text: 'Your barber sneezed mid-fade. You now have a bald spot shaped like a lightning bolt.', log: 'My barber messed up my fade.', looks: -3 } },
+      { id: 'fade', label: 'Fade', emoji: '\u{1F488}', price: 20, since: 1940, looks: [1, 3], happiness: [1, 3], lines: ['Your barber blended that fade so smooth it looked airbrushed.'], mishap: { chance: 0.05, text: 'Your barber sneezed mid-fade. You now have a bald spot shaped like a lightning bolt.', log: 'My barber messed up my fade.', looks: -3 } },
       { id: 'crew', label: 'Crew Cut', emoji: '\u{1F488}', price: 15, looks: [1, 2], happiness: [1, 2], lines: ['A classic crew cut. You look like you could run a small company.'] },
       { id: 'undercut', label: 'Undercut', emoji: '\u{1F488}', price: 20, looks: [1, 3], happiness: [1, 3], lines: ['Your undercut is crisp. You look like the lead singer of a band nobody has heard of.'] },
-      { id: 'mullet', label: 'Mullet', emoji: '\u{1F488}', price: 15, looks: [-2, 3], happiness: [2, 5], lines: ['Business in the front, party in the back. Your barber took a photo for the wall of fame.'] },
+      { id: 'mullet', label: 'Mullet', emoji: '\u{1F488}', price: 15, since: 1972, looks: [-2, 3], happiness: [2, 5], lines: ['Business in the front, party in the back. Your barber took a photo for the wall of fame.'] },
       { id: 'pompadour', label: 'Pompadour', emoji: '\u{1F488}', price: 25, looks: [1, 3], happiness: [1, 3], lines: ['Your pompadour is so tall it has its own zip code.'] },
       { id: 'beard', label: 'Beard Trim', emoji: '\u{1F9D4}', price: 15, looks: [1, 2], happiness: [1, 2], gender: 'male', minAge: 16, lines: ['Your barber sculpted your beard into a work of art.'] },
       { id: 'shave', label: 'Hot Towel Shave', emoji: '\u{1FA92}', price: 30, looks: [1, 3], happiness: [2, 4], gender: 'male', minAge: 18, lines: ['A hot towel, a straight razor and total trust. Your face is smoother than a baby dolphin.'], mishap: { chance: 0.04, text: 'Your barber nicked your chin with the straight razor. You left with a tiny piece of tissue stuck to your face.', log: 'My barber cut me while shaving me.', looks: -1 } },
@@ -130,11 +165,11 @@ const SECTIONS: Section[] = [
     subtitle: 'Relax your muscles',
     minAge: 18,
     services: [
-      { id: 'deep', label: 'Deep Tissue', emoji: '\u{1F486}', price: 30, looks: [0, 0], happiness: [3, 6], health: [2, 5], lines: ['The masseuse found knots you didn’t know you had and destroyed every single one.'], mishap: { chance: 0.04, text: 'The masseuse went a little too deep. You walked out with a pulled muscle.', log: 'I pulled a muscle during a deep tissue massage.', looks: 0 } },
-      { id: 'hotstone', label: 'Hot Stone', emoji: '\u{1FAA8}', price: 35, looks: [0, 0], happiness: [4, 7], health: [2, 4], lines: ['Warm stones, soft music, and you fell asleep and snored. Twice.'] },
-      { id: 'shiatsu', label: 'Shiatsu', emoji: '\u{1F486}', price: 30, looks: [0, 0], happiness: [3, 6], health: [2, 5], lines: ['The shiatsu therapist pressed on pressure points you didn’t know existed. You feel brand new.'] },
+      { id: 'deep', label: 'Deep Tissue', emoji: '\u{1F486}', price: 30, since: 1950, looks: [0, 0], happiness: [3, 6], health: [2, 5], lines: ['The masseuse found knots you didn’t know you had and destroyed every single one.'], mishap: { chance: 0.04, text: 'The masseuse went a little too deep. You walked out with a pulled muscle.', log: 'I pulled a muscle during a deep tissue massage.', looks: 0 } },
+      { id: 'hotstone', label: 'Hot Stone', emoji: '\u{1FAA8}', price: 35, since: 1993, looks: [0, 0], happiness: [4, 7], health: [2, 4], lines: ['Warm stones, soft music, and you fell asleep and snored. Twice.'] },
+      { id: 'shiatsu', label: 'Shiatsu', emoji: '\u{1F486}', price: 30, since: 1970, homeOf: ['jp'], looks: [0, 0], happiness: [3, 6], health: [2, 5], lines: ['The shiatsu therapist pressed on pressure points you didn’t know existed. You feel brand new.'] },
       { id: 'swedish', label: 'Swedish', emoji: '\u{1F486}', price: 25, looks: [0, 0], happiness: [3, 6], health: [1, 4], lines: ['A long, relaxing Swedish massage. You floated out of the spa like a cloud.'] },
-      { id: 'thai', label: 'Thai', emoji: '\u{1F486}', price: 30, looks: [0, 0], happiness: [3, 6], health: [2, 5], lines: ['The Thai massage therapist folded you like a pretzel. Your spine cracked in eleven places. You feel incredible.'] },
+      { id: 'thai', label: 'Thai', emoji: '\u{1F486}', price: 30, since: 1990, homeOf: ['th'], looks: [0, 0], happiness: [3, 6], health: [2, 5], lines: ['The Thai massage therapist folded you like a pretzel. Your spine cracked in eleven places. You feel incredible.'] },
     ],
   },
   {
@@ -155,8 +190,9 @@ const SECTIONS: Section[] = [
     emoji: '\u{1F31E}',
     subtitle: 'Get a glow',
     minAge: 18,
+    since: 1978,
     services: [
-      { id: 'spray', label: 'Spray Tan', emoji: '\u{1F9F4}', price: 12, looks: [1, 4], happiness: [1, 3], lines: ['You got a spray tan. You look like you just got back from a beach vacation you never took.'], mishap: { chance: 0.15, text: 'The spray tan came out so orange that a child asked if you were a traffic cone.', log: 'My spray tan turned me orange.', looks: -3 } },
+      { id: 'spray', label: 'Spray Tan', emoji: '\u{1F9F4}', price: 12, since: 1999, looks: [1, 4], happiness: [1, 3], lines: ['You got a spray tan. You look like you just got back from a beach vacation you never took.'], mishap: { chance: 0.15, text: 'The spray tan came out so orange that a child asked if you were a traffic cone.', log: 'My spray tan turned me orange.', looks: -3 } },
       { id: 'bed', label: 'Tanning Bed', emoji: '\u{1F31E}', price: 15, looks: [2, 4], happiness: [1, 3], lines: ['You baked in the tanning bed for 15 minutes and came out golden.'], mishap: { chance: 0.08, text: 'You fell asleep in the tanning bed and came out looking like a boiled lobster.', log: 'I got a horrible sunburn in a tanning bed.', looks: -3 } },
     ],
   },
@@ -166,6 +202,7 @@ const SECTIONS: Section[] = [
     emoji: '\u{1FAD7}',
     subtitle: 'Smooth things over',
     minAge: 18,
+    since: 1960,
     services: [
       { id: 'brows', label: 'Eyebrow Wax', emoji: '\u{1F441}\u{FE0F}', price: 15, looks: [1, 2], happiness: [0, 2], lines: ['Your brows are now perfectly arched. You look permanently intrigued.'], mishap: { chance: 0.05, text: 'The technician took off half an eyebrow. You look permanently surprised.', log: 'A waxing accident took off half my eyebrow.', looks: -3 } },
       { id: 'legs', label: 'Leg Wax', emoji: '\u{1F9B5}', price: 40, looks: [1, 2], happiness: [-1, 2], lines: ['Your legs are smooth as glass. The screaming was mostly internal.'] },
@@ -253,6 +290,13 @@ function doService(g: GameState, section: Section, s: Service): void {
   result(g, s.label, text + capped, s.emoji, 'good')
 }
 
+/** Was this service on offer here this year? */
+function offered(g: GameState, s: Service): boolean {
+  if (s.until !== undefined && g.year >= s.until) return false
+  if (s.since === undefined || g.year >= s.since) return true
+  return !!s.homeOf?.includes(g.character.countryId)
+}
+
 function sectionMenu(section: Section): MenuGroup {
   return {
     type: 'menu',
@@ -263,7 +307,7 @@ function sectionMenu(section: Section): MenuGroup {
     disabledReason: (g) => gate(g, { minAge: section.minAge }),
     children: (g): MenuNode[] =>
       section.services
-        .filter((s) => !s.gender || s.gender === g.character.gender)
+        .filter((s) => (!s.gender || s.gender === g.character.gender) && offered(g, s))
         .map(
           (s): MenuAction => ({
             type: 'action',
@@ -286,5 +330,5 @@ export const salonMenu: MenuGroup = {
   subtitle: 'Take time for yourself',
   disabledReason: (g) => gate(g, { minAge: 14 }),
   header: (g) => (g.character.age < 18 ? "You'll have to pay with your own money. Your parents only pay for the doctor." : 'Pamper yourself.'),
-  children: () => SECTIONS.map(sectionMenu),
+  children: (g) => SECTIONS.filter((s) => g.year >= (s.since ?? 0)).map(sectionMenu),
 }

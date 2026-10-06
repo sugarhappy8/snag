@@ -1,6 +1,6 @@
 // Management actions on an owned business: marketing, products, quality, expansion, money,
 // leadership and the exits. Each action re-reads the business from state when it runs.
-import { addHidden, addMoney, addStat, earnIncome, formatMoney, log, notice, scriptChoice, useYearAction } from '../core'
+import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { chance, rand, randInt } from '../rng'
@@ -35,6 +35,7 @@ import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
+import { marketInfoLine, marketMenu } from './competition-menu'
 import { industryDef } from './industries'
 import { bizOf, ceoJob, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
@@ -809,7 +810,7 @@ function consultantAction(a: Asset): MenuAction {
       notice(
         g,
         'Consultant’s Report',
-        `For ${formatMoney(fee)}, a consultant in a very expensive suit studied ${cur.name}. They reckon the sweet spot is about ${best.price >= 100 ? money(best.price) : `$${best.price.toFixed(2)}`} per ${def.unitOne}, selling roughly ${units(best.units)} ${def.unit} this year. ${tip}`,
+        `For ${formatMoney(fee)}, a consultant in a very expensive suit studied ${cur.name}. They reckon the sweet spot is about ${best.price >= 100 ? money(best.price) : formatCents(best.price)} per ${def.unitOne}, selling roughly ${units(best.units)} ${def.unit} this year. ${tip}`,
         { emoji: '\u{1F4CA}' },
       )
     },
@@ -888,7 +889,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'inject', 'Invest My Own Money', '\u{1F4E5}', {
       subtitle: 'Move savings into company cash',
       disabled: (gg) => (gg.character.money <= 0 ? "You don't have any money to put in." : null),
-      input: { kind: 'number', label: 'How much?', min: 1, max: Math.max(1, Math.round(g.character.money)), defaultValue: (gg) => String(Math.max(1, Math.round(Math.min(gg.character.money, Math.max(1_000, -b.cash))))) },
+      input: { kind: 'number', money: true, label: 'How much?', min: 1, max: Math.max(1, Math.round(g.character.money)), defaultValue: (gg) => String(Math.max(1, Math.round(Math.min(gg.character.money, Math.max(1_000, -b.cash))))) },
       run: (gg, cur, bb, input) => {
         const n = amount(input, gg.character.money)
         if (n <= 0) return
@@ -902,7 +903,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'dividend', b.share < 1 ? 'Pay a Dividend' : 'Withdraw Profits', '\u{1F4E4}', {
       subtitle: earmarkedCash(a) > 0 ? `Taxed as income · ${money(earmarkedCash(a))} of advances and pledges is set aside for unreleased games` : b.share < 1 ? `You get ${pct(b.share)} of any payout (taxed as income)` : 'Taxed as income',
       disabled: (_gg, bb) => payoutBlocked(a, bb),
-      input: { kind: 'number', label: 'Total payout', min: 1, max: Math.max(1, Math.round(payable(a, b))), defaultValue: () => String(Math.max(1, Math.round(payable(a, b) * 0.25))) },
+      input: { kind: 'number', money: true, label: 'Total payout', min: 1, max: Math.max(1, Math.round(payable(a, b))), defaultValue: () => String(Math.max(1, Math.round(payable(a, b) * 0.25))) },
       run: (gg, cur, bb, input) => {
         const n = amount(input, payable(cur, bb))
         if (n <= 0) return
@@ -921,7 +922,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
         return `Up to ${money(companyCreditLimit(bb))} at ${pct(companyLoanRate(bb), 1)} (${getCountry(bb.countryId).name} rates)`
       },
       disabled: (_gg, bb) => (companyCreditLimit(bb) < 1_000 ? 'No bank will lend this company more right now.' : null),
-      input: { kind: 'number', label: 'How much?', min: 1, max: Math.max(1, companyCreditLimit(b)), defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b) / 2))) },
+      input: { kind: 'number', money: true, label: 'How much?', min: 1, max: Math.max(1, companyCreditLimit(b)), defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b) / 2))) },
       run: (gg, cur, bb, input) => {
         if (!useYearAction(gg, `biz.borrow.${cur.id}`, 2)) return tooBusy(gg, `asked the bank for money twice for ${cur.name}`)
         const n = amount(input, companyCreditLimit(bb))
@@ -939,7 +940,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
       act(a, 'repay', 'Repay Company Debt', '\u{1F4B3}', {
         subtitle: `${money(b.debt)} owed at ${pct(b.debtRate, 1)}`,
         disabled: (_gg, bb) => (bb.cash <= 0 ? 'The company has no cash to repay with.' : null),
-        input: { kind: 'number', label: 'Repay how much?', min: 1, max: Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash))))) },
+        input: { kind: 'number', money: true, label: 'Repay how much?', min: 1, max: Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash))))) },
         run: (gg, cur, bb, input) => {
           const n = amount(input, Math.min(bb.debt, Math.max(0, bb.cash)))
           if (n <= 0) return
@@ -960,7 +961,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
   return [
     act(a, 'salary', 'Set My Salary', '\u{1F4B5}', {
       subtitle: `Now ${money(b.ownerSalary)}/yr · typical here ${money(ceoPayNorm(b))}`,
-      input: { kind: 'number', label: 'Yearly salary', min: 0, max: maxOwnerSalary(b), defaultValue: () => String(b.ownerSalary) },
+      input: { kind: 'number', money: true, label: 'Yearly salary', min: 0, max: maxOwnerSalary(b), defaultValue: () => String(b.ownerSalary) },
       run: (gg, cur, bb, input) => {
         const n = amount(input, maxOwnerSalary(bb))
         bb.ownerSalary = n
@@ -972,7 +973,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'bonus', 'Take a Bonus', '\u{1F911}', {
       subtitle: 'A one-off payout to yourself (taxed as income)',
       disabled: (_gg, bb) => payoutBlocked(a, bb),
-      input: { kind: 'number', label: 'Bonus amount', min: 1, max: Math.max(1, Math.round(Math.min(payable(a, b), maxOwnerSalary(b)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(payable(a, b) * 0.1, maxOwnerSalary(b) / 4)))) },
+      input: { kind: 'number', money: true, label: 'Bonus amount', min: 1, max: Math.max(1, Math.round(Math.min(payable(a, b), maxOwnerSalary(b)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(payable(a, b) * 0.1, maxOwnerSalary(b) / 4)))) },
       run: (gg, cur, bb, input) => {
         if (!useYearAction(gg, `biz.bonus.${cur.id}`, 1)) return tooBusy(gg, 'taken a bonus')
         const n = amount(input, Math.min(payable(cur, bb), maxOwnerSalary(bb)))
@@ -1166,7 +1167,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
   } else {
     nodes.push(
       act(a, 'sellShares', 'Sell Shares', '\u{1F4C8}', {
-        subtitle: `$${b.sharePrice.toFixed(2)}/share · your stake ${money(b.valuation * b.share)}`,
+        subtitle: `${moneyWith(b.sharePrice, (x) => x.toFixed(2))}/share · your stake ${money(b.valuation * b.share)}`,
         input: { kind: 'number', label: 'Percent of your shares to sell', min: 1, max: 100, defaultValue: () => '10' },
         run: (gg, cur, bb, input) => {
           if (!useYearAction(gg, `biz.shares.${cur.id}`, 2)) return tooBusy(gg, 'sold shares twice')
@@ -1206,16 +1207,17 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   rows.push(`${def.label} · ${b.city}, ${country.name} · ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`)
   if (runsIt(g, a)) rows.push(`Run by you, the CEO · salary ${money(b.ownerSalary)}/yr`)
   else rows.push(b.manager ? `Run by ${managerName(b.manager)} (general manager, skill ${b.manager.skill}/100, ${money(b.manager.salary)}/yr)` : 'No one is running it day to day.')
-  rows.push(b.public ? `Listed on the ${b.exchange} at $${b.sharePrice.toFixed(2)} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')
+  rows.push(b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')
   rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
   rows.push(isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
+  rows.push(marketInfoLine(g, a))
   if (isStudio(b)) rows.push(studioInfo(g, a))
   else {
     if (isDeepTech(b)) {
       const tech = deepTechInfo(g, a)
       if (tech) rows.push(tech)
     }
-    rows.push(`Price ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : `$${e.goingPrice.toFixed(2)}`}) · plan ${units(b.production)} ${def.unit}`)
+    rows.push(`Price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)}) · plan ${units(b.production)} ${def.unit}`)
   }
   const s = b.last
   if (s) {
@@ -1225,7 +1227,7 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   }
   rows.push(`${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 ? ` (your stake ${money(b.valuation * b.share)})` : ''} · cash ${money(b.cash)}${b.debt > 0 ? ` · debt ${money(b.debt)}` : ''}`)
   rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${m.businessNote}`)
-  const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
+  const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3C6}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
   return rows.map((text, i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji: emojis[i] ?? '\u{2139}\u{FE0F}' }))
 }
 
@@ -1235,7 +1237,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   if (isStudio(readBiz(g, a))) {
     // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
     nodes.push(...studioNodes(g, a))
-    nodes.push(staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))
   } else {
     nodes.push(
       act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
@@ -1254,7 +1256,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     )
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
-    nodes.push(staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))

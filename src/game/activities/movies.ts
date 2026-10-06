@@ -1,4 +1,9 @@
 // Movie Theater (pick a genre, go alone or with someone) and the Zoo.
+//
+// The pictures follow film history: nickelodeons from 1905, silent pictures with a piano player
+// until 1928, talkies, Technicolor, then blockbusters. Genres arrive when they did (musicals with
+// sound, documentaries in the twenties, indie film in the nineties) and titles carry era tags
+// (events/era.ts) so nobody watches a movie about being ghosted in 1952.
 import { addRelationship, addStat, count, log, relationLabel } from '../core'
 import { notePerson } from '../people'
 import { chance, pick, randInt, weightedPick } from '../rng'
@@ -6,6 +11,7 @@ import { randomFirstName, randomLastName } from '../world'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, companionCandidates, gate, localPrice, money, payFor, result, usesLeft } from './common'
 import { maybeAskedOut, presentSos } from './encounters'
+import { eraPick, movieKind } from '../events/era'
 
 type Genre =
   | 'Family'
@@ -31,6 +37,8 @@ interface GenreDef {
   emoji: string
   minAge: number
   titles: string[]
+  /** First year the genre was in cinemas. */
+  since?: number
 }
 
 // {first} / {last} are filled with random names, sometimes the player's own.
@@ -39,13 +47,14 @@ const GENRES: GenreDef[] = [
     id: 'Family',
     emoji: '\u{1F9F8}',
     minAge: 0,
-    titles: ['My Hamster Is a Spy', 'The Secret Elevator in My Closet', 'Dinosaur Bones in My Backyard', '{first} and the Bamboo Beanstalk', 'Overcast with a Chance of Pancakes', "{first}'s Unicorn", 'The Muscular Merman', 'Grandma Goes to Space', 'Pickle Patrol'],
+    titles: ['My Hamster Is a Spy', 'The Secret Elevator in My Closet', 'Dinosaur Bones in My Backyard', '{first} and the Bamboo Beanstalk', 'Overcast with a Chance of Pancakes', "{first}'s Unicorn", 'The Muscular Merman', '@1957 Grandma Goes to Space', 'Pickle Patrol'],
   },
   {
     id: 'Action',
     emoji: '\u{1F4A5}',
     minAge: 13,
     titles: ['Maximum Endangerment', 'Savage {first}', 'Explosion Highway 4', 'No Time to Blink', 'Die Harder Than Before', '{last}: Rogue Agent', 'Fist Protocol'],
+    since: 1960,
   },
   {
     id: 'Adventure',
@@ -57,13 +66,14 @@ const GENRES: GenreDef[] = [
     id: 'Comedy',
     emoji: '\u{1F602}',
     minAge: 13,
-    titles: ['A Bunch of Malarkey', 'Brouhaha', 'Cattywampus', 'Kung Fu Tofu', "Grandpa's Unfiltered Opinion", 'Mr. {last} Goes to Philadelphia', "There's Something About {first}", '{first} Relocates to Rural Florida', 'Honey Badger Is Unbothered'],
+    titles: ['A Bunch of Malarkey', 'Brouhaha', 'Cattywampus', '@1972 Kung Fu Tofu', "Grandpa's Unfiltered Opinion", 'Mr. {last} Goes to Philadelphia', "There's Something About {first}", '{first} Relocates to Rural Florida', 'Honey Badger Is Unbothered'],
   },
   {
     id: 'Documentary',
     emoji: '\u{1F3A5}',
     minAge: 13,
-    titles: ['A History of Badminton', 'Happy Little Trees: The Legend of a Painter', 'I Love Math: The Musical Mathematicians', 'Sea Creatures: What Lies Beneath', 'Who Is Eating What: Why We Photograph Food', 'The Other Web: Inside the Dark Net', 'Politicians Without Limits', 'Vultures of Time'],
+    titles: ['A History of Badminton', '@1995 Happy Little Trees: The Legend of a Painter', 'I Love Math: The Musical Mathematicians', 'Sea Creatures: What Lies Beneath', '@2012 Who Is Eating What: Why We Photograph Food', '@2012 The Other Web: Inside the Dark Net', 'Politicians Without Limits', 'Vultures of Time'],
+    since: 1922,
   },
   {
     id: 'Drama',
@@ -87,31 +97,34 @@ const GENRES: GenreDef[] = [
     id: 'Indie',
     emoji: '\u{1F3B8}',
     minAge: 16,
-    titles: ['Millennial Man', 'My Budding Flower', "My Sister's Skinny Jeans", 'Spilling the Tea', "Who's Salty?"],
+    titles: ['@2012 Millennial Man', 'My Budding Flower', "@2006 My Sister's Skinny Jeans", '@2015 Spilling the Tea', "Who's Salty?", 'Dial Tone Blues'],
+    since: 1990,
   },
   {
     id: 'Musical',
     emoji: '\u{1F3B6}',
     minAge: 6,
     titles: ['Fiddler in the Attic', 'Ghost in the Concert Hall', 'Singing in the Snow', 'Shop Full of Fright', '{first}! The Musical'],
+    since: 1928,
   },
   {
     id: 'Mystery',
     emoji: '\u{1F575}\u{FE0F}',
     minAge: 13,
-    titles: ['Dinner at the Haunted Mansion', 'Get a Clue!', "I'm Dead!", 'The Man Who Ghosted Me', 'Who Took the Last Cookie?'],
+    titles: ['Dinner at the Haunted Mansion', 'Get a Clue!', "I'm Dead!", '@2014 The Man Who Ghosted Me', 'Who Took the Last Cookie?'],
   },
   {
     id: 'Romantic Comedy',
     emoji: '\u{1F498}',
     minAge: 13,
-    titles: ['99 Things I Love About You', 'Bounce with My Bae', "Breakfast at {first}'s", 'Duke with Funny Socks', 'I Fell for a Mortician', 'Mom Meets My Boyfriends', "My Best Friend's Funeral", 'When Harry Met {first}', 'Sorry Not Sorry'],
+    titles: ['99 Things I Love About You', '@2014 Bounce with My Bae', "Breakfast at {first}'s", 'Duke with Funny Socks', 'I Fell for a Mortician', 'Mom Meets My Boyfriends', "My Best Friend's Funeral", 'When Harry Met {first}', '@2014 Sorry Not Sorry'],
   },
   {
     id: 'Science Fiction',
     emoji: '\u{1F47D}',
     minAge: 13,
-    titles: ['Cryostasis', 'Dr. {last}', 'Robot of Darkness', 'Volunteer of the New World', "{first}'s Computer Takes Over", 'Planet of the Sentient Toasters'],
+    titles: ['Cryostasis', 'Dr. {last}', 'Robot of Darkness', 'Volunteer of the New World', "@1960 {first}'s Computer Takes Over", 'Planet of the Sentient Toasters', 'Rocket to the Moon'],
+    since: 1910,
   },
   {
     id: 'Sports',
@@ -147,7 +160,15 @@ function movieTitle(g: GameState, genre: GenreDef): string {
   const gender = chance(g, 0.5) ? 'male' : 'female'
   const first = own ? c.firstName : randomFirstName(g, c.countryId, gender)
   const last = own ? c.lastName : randomLastName(g, c.countryId)
-  return pick(g, genre.titles).replace('{first}', first).replace('{last}', last)
+  return eraPick(g, genre.titles).replace('{first}', first).replace('{last}', last)
+}
+
+/** Cinemas (nickelodeons) caught on around 1905. */
+const CINEMA_SINCE = 1905
+
+/** What the movie house was called: the picture house before talkies, the movie theater after. */
+function theaterName(g: GameState): string {
+  return g.year < 1930 ? 'Picture House' : 'Movie Theater'
 }
 
 function ticketPrice(g: GameState): number {
@@ -156,23 +177,27 @@ function ticketPrice(g: GameState): number {
 
 function availableGenres(g: GameState): GenreDef[] {
   const age = g.character.age
-  if (age < 13) return GENRES.filter((x) => x.id === 'Family' || x.id === 'Musical')
-  return GENRES.filter((x) => age >= x.minAge)
+  const open = GENRES.filter((x) => g.year >= (x.since ?? 0))
+  if (age < 13) return open.filter((x) => x.id === 'Family' || x.id === 'Musical')
+  return open.filter((x) => age >= x.minAge)
 }
 
+// Era tags (see events/era.ts): silent pictures had a piano player, not a soundtrack.
 const REVIEWS: Record<number, string[]> = {
   1: ['It was the worst movie you have ever seen. You want those two hours back.', 'You fell asleep halfway through and woke up to the credits. You did not miss anything.'],
-  2: ['It was... fine. You forgot the plot before you reached the parking lot.', 'The trailer was better than the movie.'],
-  3: ['It was a perfectly decent movie. Solid popcorn flick.', 'Not bad! A couple of good scenes and a nice soundtrack.'],
-  4: ['You loved it! You are already planning to see it again.', 'Great movie. You stayed through the credits for the bonus scene.'],
+  2: ['@1940 It was... fine. You forgot the plot before you reached the parking lot.', '@-1940 It was... fine. You forgot the plot before you reached the street corner.', '@1960 The trailer was better than the movie.', '@-1960 The newsreel before it was better than the picture.'],
+  3: ['It was a perfectly decent movie. Solid popcorn flick.', '@1928 Not bad! A couple of good scenes and a nice soundtrack.', '@-1928 Not bad! A couple of good scenes and a lively piano player.'],
+  4: ['You loved it! You are already planning to see it again.', '@2008 Great movie. You stayed through the credits for the bonus scene.', '@-2008 Great movie. You stayed for the cartoon afterwards too.'],
   5: ['A masterpiece. You left the theater a changed person.', 'Best movie of the year. You clapped when it ended and you are not even embarrassed.'],
 }
 
 const MISHAPS = [
   'Someone kicked the back of your seat for the entire movie.',
-  "Someone's phone kept ringing during the quiet parts.",
+  "@mobilePhone Someone's phone kept ringing during the quiet parts.",
   'You spilled an entire tub of popcorn in your lap.',
   'A couple behind you narrated the whole thing.',
+  '@-1955 The film reel snapped twice and everybody booed the projectionist.',
+  '@-1930 The piano player fell asleep during the chase scene.',
 ]
 
 function watchMovie(g: GameState, genre: GenreDef, companionId: string | null): void {
@@ -227,7 +252,7 @@ function watchMovie(g: GameState, genre: GenreDef, companionId: string | null): 
   if (genre.id === 'Horror' && chance(g, 0.3)) extra = '\n\nYou screamed so loudly during the jump scare that the whole theater laughed at you.'
   if (chance(g, 0.12)) {
     addStat(g, 'happiness', -1)
-    extra += `\n\n${pick(g, MISHAPS)}`
+    extra += `\n\n${eraPick(g, MISHAPS)}`
   }
   let withLine = ''
   if (companion) {
@@ -235,9 +260,10 @@ function watchMovie(g: GameState, genre: GenreDef, companionId: string | null): 
     notePerson(companion, `Saw "${title}" at the movies with the player.`)
     withLine = `\n\nYou and ${companion.firstName} had a great time together.`
   }
-  log(g, companion ? `I saw "${title}" with ${companion.firstName}. ${stars}/5 stars.` : `I went to see "${title}." ${stars}/5 stars.`, stars >= 3 ? 'good' : 'neutral')
+  const kind = g.year < 1960 ? ` (a ${movieKind(g)})` : ''
+  log(g, companion ? `I saw "${title}"${kind} with ${companion.firstName}. ${stars}/5 stars.` : `I went to see "${title}"${kind}. ${stars}/5 stars.`, stars >= 3 ? 'good' : 'neutral')
   const payer = paid.by === 'parent' && paid.parent && paid.parent.id !== companion?.id ? `\n\nYour ${paid.parent.gender === 'male' ? 'dad' : 'mom'} paid for the tickets.` : ''
-  result(g, title, `${genre.emoji} ${genre.id}\n${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}\n\n${pick(g, REVIEWS[stars])}${extra}${withLine}${payer}`, '\u{1F3AC}', stars >= 3 ? 'good' : undefined)
+  result(g, title, `${genre.emoji} ${genre.id}\n${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}\n\n${eraPick(g, REVIEWS[stars])}${extra}${withLine}${payer}`, '\u{1F3AC}', stars >= 3 ? 'good' : undefined)
   if (!companion) maybeAskedOut(g, 'movie theater', 0.05)
 }
 
@@ -268,9 +294,9 @@ export const moviesMenu: MenuGroup = {
   id: 'movies',
   label: 'Movie Theater',
   emoji: '\u{1F3AC}',
-  subtitle: 'Go to the movies',
-  disabledReason: (g) => gate(g, { minAge: 6 }),
-  header: (g) => `Tickets cost ${money(ticketPrice(g))}. You can see ${usesLeft(g, 'act.movie', MOVIES_PER_YEAR)} more movies this year.`,
+  subtitle: (g) => (g.year < 1930 ? `See a ${movieKind(g)}` : 'Go to the movies'),
+  disabledReason: (g) => (g.year < CINEMA_SINCE ? 'There are no picture houses in town yet.' : gate(g, { minAge: 6 })),
+  header: (g) => `${theaterName(g)} tickets cost ${money(ticketPrice(g))}. You can see ${usesLeft(g, 'act.movie', MOVIES_PER_YEAR)} more ${g.year < 1930 ? 'pictures' : 'movies'} this year.`,
   children: (g): MenuNode[] =>
     availableGenres(g).map(
       (genre): MenuGroup => ({
@@ -297,14 +323,15 @@ const ZOO_HIGHLIGHTS = [
   'You spent an hour at the gorilla exhibit having a staring contest with a silverback. You lost.',
   'The baby elephant splashed water on the crowd and you got soaked.',
   'You watched the sea lion show and got front-row seats in the splash zone.',
-  'The otters were holding hands. You took 60 pictures.',
+  '@smartphone The otters were holding hands. You took 60 pictures.',
+  '@!smartphone The otters were holding hands. You watched them until closing time.',
   'A peacock fanned its feathers just for you. Probably.',
 ]
 
 const ZOO_MISHAPS = [
   { text: 'A monkey threw something at you. It was not a banana.', happy: -3 },
   { text: 'A goat in the petting zoo ate part of your shirt.', happy: -1 },
-  { text: 'You paid $9 for a hot dog that tasted like sadness.', happy: -1 },
+  { text: 'You paid {price} for a hot dog that tasted like sadness.', happy: -1 },
   { text: 'It rained the whole time and the animals all hid inside.', happy: -2 },
 ]
 
@@ -347,10 +374,10 @@ function zooVisit(g: GameState, companionId: string | null): void {
   if (chance(g, 0.15)) {
     const m = pick(g, ZOO_MISHAPS)
     addStat(g, 'happiness', m.happy)
-    result(g, 'Zoo', `${pick(g, ZOO_HIGHLIGHTS)}\n\n${m.text}${withLine}`, '\u{1F412}')
+    result(g, 'Zoo', `${eraPick(g, ZOO_HIGHLIGHTS)}\n\n${m.text.replace('{price}', money(localPrice(g, 9)))}${withLine}`, '\u{1F412}')
     return
   }
-  result(g, 'Zoo', `${pick(g, ZOO_HIGHLIGHTS)}${withLine}`, '\u{1F981}', 'good')
+  result(g, 'Zoo', `${eraPick(g, ZOO_HIGHLIGHTS)}${withLine}`, '\u{1F981}', 'good')
 }
 
 export const zooMenu: MenuGroup = {

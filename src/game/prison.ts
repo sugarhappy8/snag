@@ -1012,7 +1012,7 @@ function prisonEvent(g: GameState): void {
     const story = pick(g, [
       `My cellmate ${m.firstName} told me the whole story of how ${pronouns(m.gender).he} got caught. Twice.`,
       `${m.firstName} snored all year. I counted ceiling cracks instead of sheep.`,
-      `${m.firstName} taught me how to make a cake out of vending machine snacks.`,
+      g.year >= 1960 ? `${m.firstName} taught me how to make a cake out of vending machine snacks.` : `${m.firstName} taught me how to make a cake out of stale bread and jam.`,
       `${m.firstName} and I played about four hundred games of cards.`,
     ])
     log(g, story, 'neutral')
@@ -1717,7 +1717,7 @@ const libraryAction: MenuAction = {
       'a self-help book called "Finding Freedom Within"',
       'a history of famous prison escapes (the guards confiscated it halfway through)',
       'a dictionary, front to back',
-      'a cookbook full of recipes you can make with a microwave and ramen',
+      g.year >= 1985 ? 'a cookbook full of recipes you can make with a microwave and ramen' : 'a cookbook full of recipes you can make with a hot plate and canned beans',
     ])
     log(g, `I read ${book} in the prison library.`, 'good')
     notice(g, 'Prison Library', `You spent a quiet afternoon reading ${book}.`, { emoji: '\u{1F4D6}', tone: 'good' })
@@ -1802,7 +1802,7 @@ function gangNodes(g: GameState): MenuNode[] {
           const cut = Math.round(randInt(gg, 100, 900) * moneyScale(gg))
           addMoney(gg, cut)
           pp.respect = clamp(pp.respect + randInt(gg, 3, 7))
-          const goods = pick(gg, ['cigarettes', 'instant coffee', 'contraband phones', 'hot sauce', 'smuggled snacks', 'romance novels'])
+          const goods = pick(gg, ['cigarettes', 'instant coffee', gg.year >= 2000 ? 'contraband phones' : 'jailhouse moonshine', 'hot sauce', 'smuggled snacks', 'romance novels'])
           log(gg, `I smuggled ${goods} for the ${gang} and made ${formatMoney(cut)}.`, 'event')
           notice(gg, 'Smuggling Run', `You moved a shipment of ${goods} through the laundry for the ${gang}. Your cut: ${formatMoney(cut)}.`, { emoji: '\u{1F4E6}' })
         },

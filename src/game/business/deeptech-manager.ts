@@ -5,12 +5,14 @@ import { log } from '../core'
 import { chance } from '../rng'
 import type { Asset, GameState } from '../types'
 import { PROGRAMS, programDef } from './deeptech-data'
-import { bestTechPlan, burnRate, dtInd, revalue, runwayYears, sellable, techFunds, techOf } from './deeptech-core'
+import { bestTechPlan, burnRate, dtInd, revalue, runwayYears, sellable, techFunds, techOf, techPlan } from './deeptech-core'
+import { localEcon } from './economy'
+import { industryDef } from './industries'
 import { awardGrant, bestGrant, bridgeBlock, closeRound, grantAmount, grantKey, grantOdds, makeTermSheet, roundBlock } from './deeptech-funding'
 import { bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialCost } from './deeptech-rd'
-import { SERIES } from './deeptech-state'
+import { SERIES, type TechState } from './deeptech-state'
 import { testFlightAuto } from './deeptech-menu'
-import { type BizState } from './state'
+import { totalOutlets, type BizState } from './state'
 import { money } from './util'
 
 export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): void {
@@ -78,6 +80,9 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
   if (ind === 'aiLab' && t.models.length >= 3 && t.rented + t.plant < 1) t.rented = 1
   if (ind === 'aiLab' && runway < 0.8 && t.rented > 0) t.rented -= 1
 
+  // 5b) Keep up with the market: turning customers away hands them to rivals for good.
+  scaleUp(g, a, b, t)
+
   // Don't leave unknown program ids lying around (old saves, renamed programs).
   t.programs = t.programs.filter((p) => p.id === 'trial' || !!programDef(ind, p.id) || PROGRAMS[ind].length === 0)
 
@@ -89,3 +94,27 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
   } else b.production = 0
   revalue(g, a, b, t)
 }
+
+/**
+ * A manager opens more sites when last year's demand ran well past what the company could make,
+ * paying from company cash only and keeping a year of burn in reserve. Up to 25 a year.
+ */
+function scaleUp(g: GameState, a: Asset, b: BizState, t: TechState): void {
+  const s = b.last
+  if (!s || !sellable(g, b, t) || s.demand <= s.sold * 1.15) return
+  const plan = techPlan(g, b, t, g.year, { calm: true })
+  const per = plan.capacity / Math.max(1, totalOutlets(b))
+  if (!(per > 0) || plan.demand <= plan.capacity * 1.05) return
+  const capital = localEcon(b.industry, b.countryId, b.city).capital
+  const reserve = burnRate(g, a, b, t)
+  const affordable = Math.floor(Math.max(0, b.cash - reserve) / Math.max(1, capital))
+  const n = Math.min(25, affordable, Math.ceil((plan.demand - plan.capacity) / per))
+  if (n <= 0) return
+  b.cash -= n * capital
+  const home = b.outlets.find((o) => o.countryId === b.countryId && o.city === b.city)
+  if (home) home.count += n
+  else b.outlets.push({ countryId: b.countryId, city: b.city, count: n, opened: g.year })
+  const def = industryDef(b.industry)
+  log(g, `${a.name}'s manager opened ${n} new ${n === 1 ? def.site : def.sitePlural} to keep up with demand.`, 'neutral')
+}
+

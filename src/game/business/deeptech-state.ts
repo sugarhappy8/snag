@@ -14,7 +14,7 @@
 // (setting it too would charge the preference twice in exit.ts).
 import { DEEP_TECH_IDS, type Industry } from '../data/markets'
 import type { Json } from '../types'
-import { clampN, num, rec, str } from './util'
+import { clampN, money, num, rec, str } from './util'
 
 export type DeepTechIndustry = (typeof DEEP_TECH_IDS)[number]
 
@@ -441,8 +441,8 @@ export function milestoneListingBlock(b: ListingView): string {
   const years = h.length
   if (t.stage < IPO_STAGE[b.industry]) return 'it needs commercial proof first (a higher stage on the R&D ladder)'
   if (years < 3) return 'exchanges want at least three years of audited accounts'
-  if (t.series < 3 && revenue < 50_000_000) return 'bankers want a Series B behind you, or $50M of yearly sales'
-  if (value < DEEP_IPO_VALUE) return `the company must be worth at least $${DEEP_IPO_VALUE / 1e6}M`
+  if (t.series < 3 && revenue < 50_000_000) return `bankers want a Series B behind you, or ${money(50_000_000)} of yearly sales`
+  if (value < DEEP_IPO_VALUE) return `the company must be worth at least ${money(DEEP_IPO_VALUE)}`
   if (last && last.profit < 0 && -last.profit > value * 0.35) return 'losses are too big for public investors (over 35% of the valuation a year)'
   return ''
 }

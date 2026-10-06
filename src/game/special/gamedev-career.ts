@@ -16,13 +16,17 @@ import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
+import { hasTech } from '../history/timeline'
+import { anachronistic } from '../events/era'
 import { addColleague, addFame, blocked, hire, leave, money, ownFlag, promote, quitNote, say, setOwnFlag, setRole, syncTenure, tell } from './common'
 import { addGamerFame, copiesLabel, firstYearCopies, gamePay, gameTitle, homeReach, industryYear, reviewScores, sequelTitle, trainArt, trainDesign } from './gamedev-core'
 import {
   CONVENTION,
   GIANTS,
   genreDef,
-  GENRES,
+  gameIndustryExists,
+  genreOpen,
+  genresIn,
   HUBS,
   INDIE_SUFFIX,
   INDIE_WORDS,
@@ -39,7 +43,11 @@ import {
   titleFor,
   TRACK_LABEL,
   type GenreId,
+  platformOpen,
+  platformsIn,
+  scopeOpen,
   type PlatformId,
+  type ScopeId,
   type Tier,
   type Track,
 } from './gamedev-data'
@@ -166,6 +174,7 @@ function sceneSize(countryId: string): number {
  */
 export function jobListings(g: GameState): Listing[] {
   const c = g.character
+  if (!gameIndustryExists(g.year) || !hasTech(g, 'videoGameConsole')) return []
   const s = seeded(yearKey(g, 'gamedev.jobs'))
   const scene = sceneSize(c.countryId)
   const mood = industryYear(g).mood
@@ -177,7 +186,8 @@ export function jobListings(g: GameState): Listing[] {
     const tiers: [Tier, number][] = [
       ['indie', 0.45],
       ['mid', 0.35 * Math.min(1.3, scene)],
-      ['aaa', scene >= 1.2 ? 0.3 : scene >= 0.6 ? 0.08 : 0],
+      // Blockbuster publishers with offices everywhere are a 1990s-and-later thing.
+      ['aaa', g.year < 1993 ? 0 : scene >= 1.2 ? 0.3 : scene >= 0.6 ? 0.08 : 0],
     ]
     const tier = s.weighted(
       tiers.filter((t) => t[1] > 0),
@@ -290,7 +300,7 @@ function applyTo(g: GameState, l: Listing): void {
   if (!useYearAction(g, 'gamedev.apply', 4)) return tell(g, 'Application Fatigue', "You've sent four applications this year. Your cover letter template is starting to sound desperate.", '\u{1F4E7}')
   const pool = INTERVIEWS.map((q, i) => [q, i] as const).filter(([q]) => q.track === l.track || (q.track === 'any' && l.level > 0))
   const [q, qi] = pick(g, pool)
-  scriptChoice(g, INTERVIEW, `Interview at ${l.studio}`, `${l.title} · ${TIER_LABEL[l.tier]}${l.tier === 'aaa' ? ` (${l.city} office)` : ` in ${l.city}`}\n\n${q.text}`, q.answers.map((a) => ({ id: a.id, label: a.label, emoji: a.emoji })), {
+  scriptChoice(g, INTERVIEW, `Interview at ${l.studio}`, `${l.title} · ${TIER_LABEL[l.tier]}${l.tier === 'aaa' ? ` (${l.city} office)` : ` in ${l.city}`}\n\n${q.text}`, q.answers.filter((a) => !anachronistic(g, a.label)).map((a) => ({ id: a.id, label: a.label, emoji: a.emoji })), {
     emoji: '\u{1F3AE}',
     data: { listing: JSON.parse(JSON.stringify(l)) as Json, q: qi },
   })
@@ -341,16 +351,33 @@ export const studioJobsMenu: MenuGroup = {
 // ---------------------------------------------------------------------------
 // The studio's game
 
+/** The genres a studio makes this year (a giant's own genres when they exist yet). */
+function studioGenres(g: GameState, giant: { genres: GenreId[] } | undefined): GenreId[] {
+  const own = giant ? giant.genres.filter((x) => genreOpen(x, g.year)) : []
+  return own.length ? own : genresIn(g.year).map((x) => x.id)
+}
+
 function studioGenre(g: GameState, l: { studio: string; tier: Tier }): GenreId {
   const giant = GIANTS.find((x) => x.name === l.studio)
-  return giant ? pick(g, giant.genres) : pick(g, GENRES).id
+  return pick(g, studioGenres(g, giant))
+}
+
+/** A platform of the era for a scope (no phone games in 1995, no "every platform" in 1985). */
+function studioPlatform(g: GameState, scope: ScopeId): PlatformId {
+  const open = (xs: PlatformId[]) => xs.filter((x) => platformOpen(x, g.year))
+  const options = scope === 'aaa' ? open(['multi']) : scope === 'aa' ? open(['console', 'multi']) : open(['pc', 'pc', 'handheld', 'mobile'])
+  // A single option costs no roll (keeps today's games identical to before the year system).
+  if (options.length === 1) return options[0]
+  if (options.length) return pick(g, options)
+  return platformsIn(g.year)[0]?.id ?? 'pc'
 }
 
 function newStudioProject(g: GameState, d: GdJobData, genre?: GenreId): GdJobProject {
   const giant = GIANTS.find((x) => x.name === d.studio)
-  const scope = pick(g, TIER_INFO[d.tier].scopes)
-  const gen = genre ?? (giant ? pick(g, giant.genres) : pick(g, GENRES).id)
-  const platform: PlatformId = scope === 'aaa' ? 'multi' : scope === 'aa' ? pick(g, ['console', 'multi'] as PlatformId[]) : pick(g, ['pc', 'pc', 'handheld', 'mobile'] as PlatformId[])
+  const scopes = TIER_INFO[d.tier].scopes.filter((x) => scopeOpen(x, g.year))
+  const scope = scopes.length ? pick(g, scopes) : 'small'
+  const gen = genre ?? pick(g, studioGenres(g, giant))
+  const platform: PlatformId = studioPlatform(g, scope)
   const title = giant && chance(g, 0.45) ? sequelTitle(giant.franchise, randInt(g, 2, 9)) : gameTitle(g, gen, new Set(gdView(g).games.map((x) => x.title)))
   return { title, genre: gen, scope, platform, progress: randInt(g, 0, 40), quality: d.craft, crunch: 0, started: g.year }
 }
@@ -779,12 +806,13 @@ function pitchIdea(g: GameState): void {
   const p = gdMut(g)
   const design = designSkill(g, p)
   const odds = clampN(0.1 + design / 200 + job.level * 0.05 + p.gamerFame / 300, 0.05, 0.8)
-  const genre = pick(g, GENRES)
+  const genre = pick(g, genresIn(g.year))
   if (chance(g, odds)) {
     const title = gameTitle(g, genre.id, new Set(p.games.map((x) => x.title)))
-    const scope = pick(g, TIER_INFO[d.tier].scopes)
+    const scopes = TIER_INFO[d.tier].scopes.filter((x) => scopeOpen(x, g.year))
+    const scope = scopes.length ? pick(g, scopes) : 'small'
     // Your pitch becomes the studio's next game (or replaces a project that barely started).
-    if (!d.proj || d.proj.progress < 25) d.proj = { title, genre: genre.id, scope, platform: scope === 'aaa' ? 'multi' : 'pc', progress: 5, quality: Math.min(98, d.craft + Math.max(0, (design - 50) / 5)), crunch: 0, started: g.year }
+    if (!d.proj || d.proj.progress < 25) d.proj = { title, genre: genre.id, scope, platform: scope === 'aaa' && platformOpen('multi', g.year) ? 'multi' : platformOpen('pc', g.year) ? 'pc' : 'console', progress: 5, quality: Math.min(98, d.craft + Math.max(0, (design - 50) / 5)), crunch: 0, started: g.year }
     job.performance = Math.round(clampN(job.performance + 8, 0, 100))
     addGamerFame(p, 2)
     trainDesign(g, p, 2)

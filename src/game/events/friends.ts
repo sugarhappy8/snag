@@ -4,7 +4,8 @@ import { removePerson } from '../core'
 import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
-import { anyOf, canDrink, ch, defineEvents, dollars, friends, money, muslimMajority, say, strangerName, type Ctx } from './helpers'
+import { anyOf, canDrink, ch, defineEvents, dollars, friends, money, muslimMajority, say, strangerName, v, type Ctx } from './helpers'
+import { bragged, cars, common, landline, prohibition, texting } from './era'
 
 function nm(x: Ctx): string {
   return x.p?.firstName ?? 'your friend'
@@ -20,10 +21,11 @@ const ADVICE = [
   'is wondering if they should move across the country for a crush',
   'wants to know if they should tell their roommate they hate their cooking',
   'is thinking about getting a face tattoo',
-  'is considering investing their life savings in a meme coin',
+  '@+crypto is considering investing their life savings in a meme coin',
+  '@-1990 is thinking about running away to join the circus',
 ]
 
-const RUMORS = ['still wets the bed', 'is secretly a furry', 'cheated on a spelling test', 'sleeps with a night light', 'has a crush on a teacher', 'eats cereal with orange juice']
+const RUMORS = ['still wets the bed', '@1990 is secretly a furry', 'cheated on a spelling test', 'sleeps with a night light', 'has a crush on a teacher', 'eats cereal with orange juice']
 
 export const FRIEND_EVENTS = defineEvents([
   {
@@ -35,7 +37,7 @@ export const FRIEND_EVENTS = defineEvents([
     cooldown: 3,
     setup: (g) => {
       const s = strangerName(g)
-      const where = g.character.age < 18 ? pick(g, ['at school', 'at the park', 'at summer camp', 'at the library']) : pick(g, ['at the gym', 'at a coffee shop', 'at the dog park', 'in your building', 'at a concert'])
+      const where = g.character.age < 18 ? pick(g, ['at school', 'at the park', 'at summer camp', 'at the library']) : v(g, ['at the gym', 'at a coffee shop', '@1985 at the dog park', 'in your building', 'at a concert', '@-1960 at a dance hall'])
       return {
         text: `A person named ${s.first} ${s.last} you met ${where} wants to become your friend. What will you do?`,
         choices: [ch('yes', 'Become friends with them'), ch('no', 'Reject them')],
@@ -62,7 +64,7 @@ export const FRIEND_EVENTS = defineEvents([
       const f = anyOf(g, friends(g))
       if (!f) return null
       return {
-        text: `Your friend ${f.firstName} ${pick(g, ADVICE)}. What will you do?`,
+        text: `Your friend ${f.firstName} ${v(g, ADVICE)}. What will you do?`,
         choices: [ch('good', 'Give them good advice'), ch('bad', 'Give them bad advice'), ch('cant', "Tell them I can't help"), ch('ignore', 'Ignore them')],
         person: f,
       }
@@ -71,7 +73,7 @@ export const FRIEND_EVENTS = defineEvents([
       good: (g, x) => say(g, x, 'Wise friend', `You gave ${nm(x)} the best advice you could. They really appreciated it.`, 'I gave my friend the best advice I could.', { rel: 10, karma: 3 }, 'good'),
       bad: (g, x) => say(g, x, 'Chaos agent', `You intentionally gave ${nm(x)} terrible advice. They took it. Things are going... poorly for them.`, 'I intentionally misled my friend with bad advice.', { rel: -6, karma: -8, happiness: 2 }),
       cant: (g, x) => say(g, x, 'Out of my depth', `You told ${nm(x)} you couldn't help with that. They understood.`, "I told my friend that I couldn't help with that.", { rel: -2 }),
-      ignore: (g, x) => say(g, x, 'Ghosted', `You left ${nm(x)} on read. They noticed.`, 'I ignored my friend when they asked for advice.', { rel: -10 }, 'bad'),
+      ignore: (g, x) => say(g, x, common(g, 'smartphone') ? 'Ghosted' : 'Ignored', common(g, 'smartphone') ? `You left ${nm(x)} on read. They noticed.` : `You changed the subject and never brought it up again. ${nm(x)} noticed.`, 'I ignored my friend when they asked for advice.', { rel: -10 }, 'bad'),
     },
   },
   {
@@ -115,7 +117,7 @@ export const FRIEND_EVENTS = defineEvents([
     setup: (g) => {
       const f = anyOf(g, friends(g))
       if (!f) return null
-      const rumor = pick(g, RUMORS)
+      const rumor = v(g, RUMORS)
       return {
         text: `Your friend ${f.firstName} started a rumor that you ${rumor}. What will you do?`,
         choices: [ch('counter', 'Start a rumor about them'), ch('confront', 'Confront them'), ch('deny', 'Deny it'), ch('ignore', "It doesn't bother me")],
@@ -125,7 +127,7 @@ export const FRIEND_EVENTS = defineEvents([
     },
     resolve: {
       counter: (g, x) => {
-        const r = pick(g, RUMORS)
+        const r = v(g, RUMORS)
         say(g, x, 'Rumor war', `You started a rumor that ${nm(x)} ${r}. Mutually assured destruction.`, `I started a rumor that ${nm(x)} ${r}.`, { rel: -15, karma: -5 })
       },
       confront: (g, x) => {
@@ -150,10 +152,14 @@ export const FRIEND_EVENTS = defineEvents([
     setup: (g) => {
       const f = anyOf(g, plainFriends(g).filter((p) => p.relationship < 40))
       if (!f) return null
+      // An unfriending once social media exists; a plain falling-out before that.
+      const online = common(g, 'socialMedia')
       return {
-        text: `Your friend ${f.firstName} has unfriended you. What will you do?`,
+        title: online ? 'Unfriended' : 'Falling Out',
+        text: online ? `Your friend ${f.firstName} has unfriended you. What will you do?` : `Your friend ${f.firstName} has stopped speaking to you and crosses the street when they see you coming. What will you do?`,
         choices: [ch('salvage', 'Try to salvage our friendship'), ch('let', 'Let them go'), ch('insult', 'Insult them one last time')],
         person: f,
+        data: { online: online ? 1 : 0 },
       }
     },
     resolve: {
@@ -162,17 +168,17 @@ export const FRIEND_EVENTS = defineEvents([
         if (ok) say(g, x, 'Friendship saved', `You reached out and talked things through with ${nm(x)}. You're friends again!`, `I salvaged my friendship with ${nm(x)}.`, { rel: 25, happiness: 6 }, 'good')
         else {
           if (x.p) removePerson(g, x.p.id)
-          say(g, x, 'Done for good', `${nm(x)} wasn't interested. The friendship is over.`, `My friend ${nm(x)} unfriended me.`, { happiness: -8 }, 'bad')
+          say(g, x, 'Done for good', `${nm(x)} wasn't interested. The friendship is over.`, x.n('online') ? `My friend ${nm(x)} unfriended me.` : `My friend ${nm(x)} dropped me.`, { happiness: -8 }, 'bad')
         }
       },
       let: (g, x) => {
         if (x.p) removePerson(g, x.p.id)
-        say(g, x, 'Moving on', `You let ${nm(x)} go. People drift apart.`, `My friend ${nm(x)} unfriended me and I let them go.`, { happiness: -4 })
+        say(g, x, 'Moving on', `You let ${nm(x)} go. People drift apart.`, x.n('online') ? `My friend ${nm(x)} unfriended me and I let them go.` : `My friend ${nm(x)} and I had a falling-out and I let them go.`, { happiness: -4 })
       },
       insult: (g, x) => {
         const n = nm(x)
         if (x.p) removePerson(g, x.p.id)
-        say(g, x, 'Done for good', `You sent ${n} a scathing parting message. It felt good for about four minutes.`, `I insulted ${n} after they unfriended me.`, { happiness: 2, karma: -4, count: 'insults' })
+        say(g, x, 'Done for good', `You sent ${n} a scathing parting ${texting(g) || common(g, 'internet') ? 'message' : 'letter'}. It felt good for about four minutes.`, x.n('online') ? `I insulted ${n} after they unfriended me.` : `I insulted ${n} after they dropped me.`, { happiness: 2, karma: -4, count: 'insults' })
       },
     },
   },
@@ -186,7 +192,7 @@ export const FRIEND_EVENTS = defineEvents([
     setup: (g) => {
       const f = anyOf(g, friends(g))
       if (!f) return null
-      const drug = pick(g, ['weed', 'mushrooms', 'ecstasy', 'some pills they found'])
+      const drug = v(g, ['@1965 weed', '@1965 mushrooms', '@1985 ecstasy', '@1950 some pills they found', '@1925,-1965 reefer', '@-1925 laudanum', '@-1950 absinthe'])
       return {
         text: `Your friend ${f.firstName} invited you over to take ${drug} with them. What will you do?`,
         choices: [ch('do', 'Do it'), ch('excuse', 'Make up an excuse'), ch('no', 'No way!')],
@@ -216,7 +222,7 @@ export const FRIEND_EVENTS = defineEvents([
     title: 'Up in Flames',
     minAge: 18,
     maxAge: 70,
-    when: (g) => friends(g).some((f) => f.age >= 18),
+    when: (g) => cars(g) && friends(g).some((f) => f.age >= 18),
     setup: (g) => {
       const f = anyOf(g, friends(g).filter((p) => p.age >= 18))
       if (!f) return null
@@ -229,7 +235,7 @@ export const FRIEND_EVENTS = defineEvents([
     resolve: {
       do: (g, x) => {
         const caught = chance(g, 0.25)
-        if (caught) say(g, x, 'Arson investigators', 'The insurance company sent investigators. Your phone was pinging from the field at 2 AM.', `I got caught helping my friend ${nm(x)} torch their car for insurance money.`, { smarts: -8, karma: -10, count: 'crimes', arrest: { crime: 'Insurance Fraud', severity: 2 } }, 'bad', '🚓')
+        if (caught) say(g, x, 'Arson investigators', common(g, 'mobilePhone') ? 'The insurance company sent investigators. Your phone was pinging from the field at 2 AM.' : 'The insurance company sent investigators. A farmer remembered your face in the firelight.', `I got caught helping my friend ${nm(x)} torch their car for insurance money.`, { smarts: -8, karma: -10, count: 'crimes', arrest: { crime: 'Insurance Fraud', severity: 2 } }, 'bad', '🚓')
         else {
           const cut = dollars(g, 500, 2000)
           say(g, x, 'Burn baby burn', `You torched the car in a field. ${nm(x)} got the insurance payout and gave you ${money(cut)} for your trouble.`, `I helped my friend ${nm(x)} torch their car for a bogus insurance claim.`, { smarts: -8, karma: -10, money: cut, rel: 12, count: 'crimes' }, 'neutral', '🔥')
@@ -260,7 +266,7 @@ export const FRIEND_EVENTS = defineEvents([
     resolve: {
       cover: (g, x) => {
         const caught = chance(g, 0.2)
-        if (caught) say(g, x, 'Perjury', 'Security footage proved your story was a lie. Now you are in trouble too.', `I lied to the police to cover for my friend ${nm(x)} and got caught.`, { smarts: -4, karma: -8, count: 'crimes', arrest: { crime: 'Obstruction of Justice', severity: 2 } }, 'bad', '🚓')
+        if (caught) say(g, x, 'Perjury', g.year >= 1990 ? 'Security footage proved your story was a lie. Now you are in trouble too.' : 'A witness put your friend across town that night. Now you are in trouble too.', `I lied to the police to cover for my friend ${nm(x)} and got caught.`, { smarts: -4, karma: -8, count: 'crimes', arrest: { crime: 'Obstruction of Justice', severity: 2 } }, 'bad', '🚓')
         else say(g, x, 'Ride or die', `You told the police ${nm(x)} was with you all night. They walked free. You're bonded for life now.`, `I lied to the authorities about my friend ${nm(x)}'s whereabouts during ${x.s('crime')}.`, { smarts: -4, karma: -8, rel: 20 })
       },
       no: (g, x) => say(g, x, 'Integrity', `You refused to lie for ${nm(x)}. They were hurt, but you sleep fine.`, `I refused to give my friend ${nm(x)} a fake alibi.`, { rel: -12, karma: 4 }),
@@ -278,7 +284,7 @@ export const FRIEND_EVENTS = defineEvents([
       const f = anyOf(g, friends(g).filter((p) => p.age >= 18))
       if (!f) return null
       return {
-        text: `Your friend ${f.firstName} just bought a new condo and is asking if you'll help them move in. They have a piano. On the fourth floor. No elevator. What will you do?`,
+        text: `Your friend ${f.firstName} just bought a new ${g.year >= 1965 ? 'condo' : 'apartment'} and is asking if you'll help them move in. They have a piano. On the fourth floor. No elevator. What will you do?`,
         choices: [ch('help', 'Lend a hand'), ch('excuse', 'Make an excuse'), ch('no', 'Just say no')],
         person: f,
       }
@@ -286,7 +292,7 @@ export const FRIEND_EVENTS = defineEvents([
     resolve: {
       help: (g, x) => {
         const hurt = chance(g, 0.15)
-        say(g, x, hurt ? 'Pulled a muscle' : 'Good friend', hurt ? `You helped ${nm(x)} move and threw out your back on the piano. They bought you pizza and a heating pad.` : `You helped ${nm(x)} move in. They paid you in pizza and eternal gratitude.`, `I helped my friend ${nm(x)} move into their new condo.`, hurt ? { rel: 15, health: -8 } : { rel: 15, health: 2 }, 'good', '📦')
+        say(g, x, hurt ? 'Pulled a muscle' : 'Good friend', hurt ? `You helped ${nm(x)} move and threw out your back on the piano. They bought you pizza and a heating pad.` : `You helped ${nm(x)} move in. They paid you in pizza and eternal gratitude.`, `I helped my friend ${nm(x)} move into their new ${g.year >= 1965 ? 'condo' : 'apartment'}.`, hurt ? { rel: 15, health: -8 } : { rel: 15, health: 2 }, 'good', '📦')
       },
       excuse: (g, x) => say(g, x, 'White lie', `You told ${nm(x)} you had a dentist appointment. They know you don't go to the dentist.`, 'I told a white lie to avoid helping my friend move.', { rel: -6 }),
       no: (g, x) => say(g, x, 'Honest', `You just said no. ${nm(x)} appreciated the honesty less than you'd hoped.`, 'I said no when my friend asked for help moving.', { rel: -10 }),
@@ -298,19 +304,20 @@ export const FRIEND_EVENTS = defineEvents([
     title: 'Deflated',
     minAge: 17,
     maxAge: 75,
-    when: (g) => friends(g).some((f) => f.age >= 16),
+    // Needs cars and a phone at home; before mobile phones the call comes from a roadside payphone.
+    when: (g) => cars(g) && landline(g) && friends(g).some((f) => f.age >= 16),
     setup: (g) => {
       const f = anyOf(g, friends(g).filter((p) => p.age >= 16))
       if (!f) return null
       return {
-        text: `Your friend ${f.firstName} calls you at 2 AM. They're on the side of the road with a flat tire and need help. What will you do?`,
-        choices: [ch('help', 'Help them change the tire'), ch('ride', 'Arrange a ride for them'), ch('sleep', "I can't be bothered")],
+        text: common(g, 'mobilePhone') ? `Your friend ${f.firstName} calls you at 2 AM. They're on the side of the road with a flat tire and need help. What will you do?` : `Your friend ${f.firstName} calls you at 2 AM from a payphone by the highway. They have a flat tire and need help. What will you do?`,
+        choices: [ch('help', 'Help them change the tire'), ch('ride', common(g, 'rideHailing') ? 'Arrange a ride for them' : 'Send a taxi for them'), ch('sleep', "I can't be bothered")],
         person: f,
       }
     },
     resolve: {
       help: (g, x) => say(g, x, 'Night rider', `You got out of bed and helped ${nm(x)} change the tire in the rain. They owe you forever.`, 'I helped my friend change a flat tire in the middle of the night.', { rel: 18, health: -2, karma: 4 }, 'good'),
-      ride: (g, x) => say(g, x, 'Logistics', `You booked ${nm(x)} a ride home and went back to sleep. Efficient.`, 'I arranged a ride for my friend stuck with a flat tire.', { rel: 6, money: -Math.min(Math.max(0, g.character.money), 35) }),
+      ride: (g, x) => say(g, x, 'Logistics', common(g, 'rideHailing') ? `You booked ${nm(x)} a ride home and went back to sleep. Efficient.` : `You called ${nm(x)} a taxi, paid the fare in advance and went back to sleep. Efficient.`, 'I arranged a ride for my friend stuck with a flat tire.', { rel: 6, money: -Math.min(Math.max(0, g.character.money), 35) }),
       sleep: (g, x) => say(g, x, 'Hung up', `You told ${nm(x)} to call someone else and went back to sleep.`, "I ignored my friend's late-night call for help.", { rel: -18 }, 'bad'),
     },
   },
@@ -333,7 +340,7 @@ export const FRIEND_EVENTS = defineEvents([
     resolve: {
       eat: (g, x) => say(g, x, 'Hungry', `You started eating. ${nm(x)} arrived just as you finished dessert.`, 'I started eating without my friend when they were late again.', { happiness: 2, rel: -2 }),
       wait: (g, x) => say(g, x, 'Saint', `You waited an hour. ${nm(x)} walked in and said "sorry, traffic." There is no traffic in this town.`, 'I waited patiently for my late friend.', { rel: 4, happiness: -4 }),
-      leave: (g, x) => say(g, x, 'Boundaries', `You left. ${nm(x)} texted "where r u" twenty minutes later.`, 'I left when my friend was late again.', { rel: -8, happiness: 2 }),
+      leave: (g, x) => say(g, x, 'Boundaries', texting(g) ? `You left. ${nm(x)} texted "where r u" twenty minutes later.` : `You left. ${nm(x)} showed up twenty minutes later and had to eat alone.`, 'I left when my friend was late again.', { rel: -8, happiness: 2 }),
       prank: (g, x) => say(g, x, 'Payback', `You ordered ${nm(x)} the anchovy and liver special. They ate it out of guilt.`, 'I ordered my late friend something disgusting.', { happiness: 6, rel: -2, count: 'pranks' }),
     },
   },
@@ -378,10 +385,10 @@ export const FRIEND_EVENTS = defineEvents([
     setup: (g) => {
       const f = anyOf(g, friends(g).filter((p) => p.age >= 16))
       if (!f) return null
-      const thing = canDrink(g) ? pick(g, ['alcohol', 'painkillers', 'gambling', 'energy drinks']) : pick(g, ['energy drinks', 'video games', 'vaping'])
+      const thing = canDrink(g) ? v(g, ['alcohol', 'painkillers', 'gambling', '@1997 energy drinks']) : v(g, ['@1997 energy drinks', '@videoGameConsole video games', '@2012 vaping', 'candy', '@-1990 comic book'])
       return {
         text: `You're concerned because your friend ${f.firstName}'s ${thing} habit is spiraling out of control. What will you do?`,
-        choices: [ch('intervene', 'Stage an intervention'), ch('let', 'Let them continue'), ch('unfriend', 'Unfriend them')],
+        choices: [ch('intervene', 'Stage an intervention'), ch('let', 'Let them continue'), ch('unfriend', common(g, 'socialMedia') ? 'Unfriend them' : 'Cut them off')],
         person: f,
         data: { thing },
       }
@@ -395,7 +402,7 @@ export const FRIEND_EVENTS = defineEvents([
       unfriend: (g, x) => {
         const n = nm(x)
         if (x.p) removePerson(g, x.p.id)
-        say(g, x, 'Cut off', `You cut ${n} out of your life.`, `I unfriended ${n} over their ${x.s('thing')} habit.`, { karma: -4, happiness: -4 })
+        say(g, x, 'Cut off', `You cut ${n} out of your life.`, common(g, 'socialMedia') ? `I unfriended ${n} over their ${x.s('thing')} habit.` : `I cut ${n} off over their ${x.s('thing')} habit.`, { karma: -4, happiness: -4 })
       },
     },
   },
@@ -405,7 +412,7 @@ export const FRIEND_EVENTS = defineEvents([
     title: 'Free Booze',
     minAge: 18,
     maxAge: 90,
-    when: (g) => canDrink(g) && !muslimMajority(g) && friends(g).length > 0,
+    when: (g) => canDrink(g) && !muslimMajority(g) && !prohibition(g) && friends(g).length > 0,
     setup: (g) => {
       const f = anyOf(g, friends(g))
       if (!f) return null
@@ -427,7 +434,7 @@ export const FRIEND_EVENTS = defineEvents([
     title: 'Road Trip',
     minAge: 17,
     maxAge: 60,
-    when: (g) => friends(g).some((f) => f.age >= 17) && g.character.residence.status !== 'parents',
+    when: (g) => cars(g) && friends(g).some((f) => f.age >= 17) && g.character.residence.status !== 'parents',
     setup: (g) => {
       const f = anyOf(g, friends(g).filter((p) => p.age >= 17))
       if (!f) return null
@@ -442,11 +449,11 @@ export const FRIEND_EVENTS = defineEvents([
     resolve: {
       go: (g, x) => {
         const cost = x.n('cost')
-        if (g.character.money < cost) return say(g, x, 'Broke', `You couldn't afford the road trip. ${nm(x)} said they'd send pictures.`, null, { rel: -2 })
+        if (g.character.money < cost) return say(g, x, 'Broke', `You couldn't afford the road trip. ${nm(x)} said they'd send ${common(g, 'smartphone') ? 'pictures' : 'a postcard'}.`, null, { rel: -2 })
         const r = randInt(g, 1, 10)
-        say(g, x, r <= 7 ? ['Open road', 'Unforgettable'] : 'Stranded', r <= 7 ? `You and ${nm(x)} sang every song on the radio and ate at every diner. A weekend for the ages.` : 'The car broke down in the middle of nowhere. You spent the night in a cornfield telling ghost stories. Honestly? Still fun.', `I went on a road trip with my friend ${nm(x)}.`, { money: -cost, happiness: r <= 7 ? 12 : 6, rel: 12 }, 'good', '🚙')
+        say(g, x, r <= 7 ? ['Open road', 'Unforgettable'] : 'Stranded', r <= 7 ? `You and ${nm(x)} sang every song ${common(g, 'radio') ? 'on the radio' : 'you knew'} and ate at every diner. A weekend for the ages.` : 'The car broke down in the middle of nowhere. You spent the night in a cornfield telling ghost stories. Honestly? Still fun.', `I went on a road trip with my friend ${nm(x)}.`, { money: -cost, happiness: r <= 7 ? 12 : 6, rel: 12 }, 'good', '🚙')
       },
-      no: (g, x) => say(g, x, 'Responsible', `You stayed home. ${nm(x)} posted 300 photos of the trip.`, null, { rel: -4 }),
+      no: (g, x) => say(g, x, 'Responsible', common(g, 'socialMedia') ? `You stayed home. ${nm(x)} posted 300 photos of the trip.` : `You stayed home. ${nm(x)} ${bragged(g)}.`, null, { rel: -4 }),
     },
   },
   {
@@ -459,7 +466,7 @@ export const FRIEND_EVENTS = defineEvents([
     setup: (g) => {
       const f = anyOf(g, friends(g))
       if (!f) return null
-      const look = pick(g, ['a bowl cut', 'neon green hair', 'a mullet', 'a shaved head with a lightning bolt', 'frosted tips'])
+      const look = v(g, ['a bowl cut', '@1980 neon green hair', '@1975 a mullet', '@1985 a shaved head with a lightning bolt', '@1995 frosted tips', '@-1975 a pompadour the size of a loaf of bread', '@-1950 enough pomade to grease a bicycle chain'])
       return {
         text: `Your friend ${f.firstName} just got ${look} and asks what you honestly think. It's... a lot. What will you say?`,
         choices: [ch('honest', 'Tell the truth'), ch('lie', 'Say it looks amazing'), ch('laugh', 'Burst out laughing')],
@@ -487,7 +494,7 @@ export const FRIEND_EVENTS = defineEvents([
       const f = anyOf(g, friends(g))
       if (!f) return null
       return {
-        text: `Your friend ${f.firstName} says they left their game console inside the neighbor's house and wants you to sneak in while the neighbors aren't home to get it back. What will you do?`,
+        text: `Your friend ${f.firstName} says they left their ${common(g, 'videoGameConsole') ? 'game console' : 'favorite football'} inside the neighbor's house and wants you to sneak in while the neighbors aren't home to get it back. What will you do?`,
         choices: [ch('sus', 'That sounds suspicious'), ch('help', 'Help a friend in need'), ch('insult', 'Insult them')],
         person: f,
       }
@@ -498,7 +505,7 @@ export const FRIEND_EVENTS = defineEvents([
         const caught = chance(g, 0.3)
         if (caught && g.character.age >= 14) say(g, x, 'Breaking and entering', 'The neighbors came home early and found you in their living room. They called the police.', "I got caught sneaking into a neighbor's house.", { karma: -8, count: 'crimes', arrest: { crime: 'Trespassing', severity: 1 } }, 'bad', '🚓')
         else if (caught) say(g, x, 'Caught', 'The neighbors came home early and marched you straight to your parents. Grounded for a month.', "I got caught sneaking into a neighbor's house and was grounded.", { karma: -8, happiness: -8 }, 'bad')
-        else say(g, x, 'In and out', `You snuck in and grabbed the console. It turns out it was never ${nm(x)}'s. Oops.`, `I snuck into a neighbor's house for my friend ${nm(x)}.`, { karma: -8, rel: 8, count: 'crimes' })
+        else say(g, x, 'In and out', `You snuck in and grabbed it. It turns out it was never ${nm(x)}'s. Oops.`, `I snuck into a neighbor's house for my friend ${nm(x)}.`, { karma: -8, rel: 8, count: 'crimes' })
       },
       insult: (g, x) => say(g, x, 'Rude', `You called ${nm(x)} a con artist. They stomped off.`, `I insulted my friend ${nm(x)}.`, { rel: -10, count: 'insults' }),
     },

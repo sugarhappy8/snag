@@ -11,6 +11,7 @@
 //   business/gamestudio  owned studios: pipeline, releases, publishers, acquisitions, IPO
 // The home computer's old indie-game projects and indie-game ventures show up here too.
 import { businessView } from '../business/manage'
+import { hasTech } from '../history/timeline'
 import { foundingProblem, startFounding } from '../business/founding'
 import { offerStudioGrowth, studioAssets, studioOf, studioSummary, ventureStudioBlock } from '../business/gamestudio'
 import { devGames } from '../business/gamestudio-state'
@@ -24,7 +25,7 @@ import type { Asset, GameState, MenuGroup, MenuNode } from '../types'
 import { addFame, blocked, money, say } from './common'
 import { attendConvention, gameJobNodes, studioJobsMenu, trackSkill, yearlyGameJob } from './gamedev-career'
 import { addGamerFame, coldGenre, copiesLabel, hotGenres, industryYear } from './gamedev-core'
-import { AWARDS, CONVENTION, CRITIC_SITE, genreDef, JOYPAD_CATEGORIES, scopeDef, TIER_LABEL } from './gamedev-data'
+import { AWARDS, CONVENTION, CRITIC_SITE, gameIndustryExists, genreDef, industryEraLine, JOYPAD_CATEGORIES, scopeDef, TIER_LABEL } from './gamedev-data'
 import { makeGamesMenu, ownGameNode, yearlyMakeGames } from './gamedev-make'
 import { gameJob, gamePortfolio, gameVentures, gdMut, gdPeek, gdView, playerLabel, readJobData, tidy, type GdCredit } from './gamedev-state'
 
@@ -174,13 +175,19 @@ function studioSection(g: GameState): MenuNode[] {
 // ---------------------------------------------------------------------------
 // The menu
 
+/** Video games exist here: the arcade era has reached the player's country. */
+function industryHere(g: GameState): boolean {
+  return gameIndustryExists(g.year) && hasTech(g, 'videoGameConsole')
+}
+
 function newsLine(g: GameState): string {
   const iy = industryYear(g)
   const hot = hotGenres(g)
     .map((x) => x.label)
     .join(' and ')
   const mood = iy.mood === 'downturn' ? 'Layoff season: studios are cutting jobs and cancelling games.' : iy.mood === 'boom' ? 'Boom times: players are spending and studios are hiring.' : 'A steady year for games.'
-  return `${mood} Hot right now: ${hot}. Out of fashion: ${coldGenre(g).label}.`
+  const era = industryEraLine(g.year)
+  return `${era ? `${era} ` : ''}${mood} Hot right now: ${hot}. Out of fashion: ${coldGenre(g).label}.`
 }
 
 /** Special Careers › Game Industry. */
@@ -196,7 +203,7 @@ export const gameIndustryMenu: MenuGroup = {
     if (studios.length) return `${studios.length === 1 ? studios[0].name : `${studios.length} studios`} · make games, run the studio`
     const p = gdPeek(g)
     if (p && (p.projects.length || p.games.length)) return `${p.projects.length} in development · ${p.games.filter((x) => !x.free).length} released`
-    return 'Make games, work at studios, start your own'
+    return industryHere(g) ? 'Make games, work at studios, start your own' : 'No video game industry yet'
   },
   visible: (g) => g.character.alive && !g.character.prison,
   header: (g) => {
@@ -207,6 +214,9 @@ export const gameIndustryMenu: MenuGroup = {
   },
   children: (g): MenuNode[] => {
     const c = g.character
+    if (!industryHere(g) && !gdPeek(g)) {
+      return [{ type: 'info', id: 'gamedev.noIndustry', emoji: '\u{1F579}\u{FE0F}', text: `It's ${g.year}. Video games are a curiosity in university labs; the first arcade machines and home consoles won't arrive until the 1970s. Come back then.` }]
+    }
     if (c.age < 6) return [{ type: 'info', id: 'gamedev.young', emoji: '\u{1F476}', text: 'Come back when you can hold a controller the right way up.' }]
     const nodes: MenuNode[] = []
     const job = gameJob(g)
@@ -222,7 +232,7 @@ export const gameIndustryMenu: MenuGroup = {
       label: `Go to ${CONVENTION}`,
       emoji: '\u{1F3AA}',
       subtitle: 'The big games convention: networking, demos, recruiters',
-      visible: (gg) => gg.character.age >= 14,
+      visible: (gg) => gg.character.age >= 14 && gg.year >= 1995,
       disabledReason: (gg) => blocked(gg, 14),
       run: attendConvention,
     })

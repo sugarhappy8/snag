@@ -88,7 +88,7 @@ export function canAct(g: GameState): boolean {
 export function blockReason(g: GameState, minAge: number): string | null {
   const c = g.character
   if (!c.alive) return 'You are dead.'
-  if (c.prison) return "There's no Wi-Fi in a prison cell."
+  if (c.prison) return g.year >= 2003 ? "There's no Wi-Fi in a prison cell." : "There's no modem in a prison cell."
   if (c.age < minAge) return `You must be at least ${minAge} to do that.`
   return null
 }

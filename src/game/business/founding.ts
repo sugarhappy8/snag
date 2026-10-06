@@ -13,6 +13,7 @@ import { getCountry, randomFirstName, randomLastName } from '../world'
 import { talentHint } from '../talents'
 import { becomeCeo, installManager, managerCandidate } from './career'
 import { industryHint, localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
+import { industryEraBlock, marketDef } from './competition-data'
 import { refreshTechValue } from './deeptech-core'
 import { DEEP_TECH } from './deeptech-data'
 import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
@@ -32,6 +33,8 @@ export function industryProblem(g: GameState, industry: Industry): string | null
   const country = getCountry(c.countryId)
   const def = industryDef(industry)
   if (!isIndustryLegal(c.countryId, industry)) return `Not allowed in ${country.name}. ${marketOf(c.countryId).businessNote}`
+  const era = industryEraBlock(industry, c.countryId, g.year)
+  if (era) return era
   if (def.needs === 'drinking' && c.age < country.drinkingAge) return `You must be ${country.drinkingAge} to hold a liquor license in ${country.name}.`
   if (def.needs === 'driver' && !c.licenses.includes('driver')) return `You need a driver's license to run a ${def.label.toLowerCase()}.`
   return null
@@ -656,6 +659,7 @@ function industryRow(industry: Industry): MenuAction {
       const c = g.character
       const city = homeCity(g)
       if (!isIndustryLegal(c.countryId, industry)) return 'Not allowed here'
+      if (industryEraBlock(industry, c.countryId, g.year)) return 'Not invented yet'
       const cost = startupCost(industry, c.countryId, city)
       if (deep) {
         const note = backgroundNote(g, industry as DeepTechIndustry)
@@ -773,7 +777,7 @@ export function listingsForSale(g: GameState): ForSale[] {
   const s = seeded(yearKey(g, 'biz.forSale'))
   // Deep-tech startups are founded, not bought off the shelf (and leaving them out keeps the
   // classic listings exactly as they were).
-  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i) && !isDeepTechIndustry(i))
+  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i) && !isDeepTechIndustry(i) && !industryEraBlock(i, c.countryId, g.year))
   const out: ForSale[] = []
   const bought = Array.isArray(g.flags['biz.bought']) ? (g.flags['biz.bought'] as Json[]) : []
   const words = marketOf(c.countryId).nameWords
@@ -781,7 +785,8 @@ export function listingsForSale(g: GameState): ForSale[] {
     const industry = s.weighted(legal, (x) => industryDemand(c.countryId, x) / Math.sqrt(Math.max(1, INDUSTRIES[x].capital / 100_000)))
     const def = industryDef(industry)
     const city = s.pick(country.cities)
-    const years = s.int(2, 18)
+    // Nobody sells a 15-year-old online store in 1998.
+    const years = Math.max(1, Math.min(s.int(2, 18), g.year - (marketDef(industry).from ?? g.year - 99)))
     const outlets = 1 + (s.chance(0.35) ? s.int(1, 3) : 0)
     const b = newBiz(g, industry, c.countryId, city, {
       founded: g.year - years,

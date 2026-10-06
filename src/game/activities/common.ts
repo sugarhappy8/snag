@@ -14,6 +14,7 @@ import {
   notice,
   spend,
 } from '../core'
+import { declined } from '../events/era'
 import { createPerson, notePerson } from '../people'
 import { chance, nextRandom, pick, randInt } from '../rng'
 import { getCountry, NAME_POOLS, type Country } from '../world'
@@ -128,7 +129,7 @@ export function brokeNotice(g: GameState, cost: number, what?: string): void {
   const lines = [
     `You can't afford ${what ?? 'that'}. It costs ${money(cost)} and your bank account just laughed at you.`,
     `${what ? capitalize(what) : 'That'} costs ${money(cost)}. You have ${money(Math.max(0, g.character.money))}. Do the math.`,
-    `Your card was declined. You need ${money(cost)} for ${what ?? 'that'}.`,
+    `${declined(g)} You need ${money(cost)} for ${what ?? 'that'}.`,
   ]
   notice(g, 'Insufficient Funds', pick(g, lines), { emoji: '\u{1F4B8}', tone: 'bad' })
 }

@@ -428,7 +428,7 @@ export const islandRealtorMenu: MenuGroup = {
   id: 'luxuryIslands',
   label: 'Island Realtor',
   emoji: '\u{1F3DD}\u{FE0F}',
-  subtitle: 'Private islands from $5M to $300M',
+  subtitle: () => `Private islands from ${shortMoney(5_000_000)} to ${shortMoney(300_000_000)}`,
   disabledReason: luxuryReason,
   header: (g) => {
     const realtor = REALTOR_NAMES[Math.abs(g.year * 7 + g.character.age) % REALTOR_NAMES.length]

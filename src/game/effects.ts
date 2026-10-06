@@ -1,6 +1,6 @@
 // Applying a GameEffects bundle (from AI outcomes or scripted events) with sane limits,
 // so a local model can never hand out a billion dollars or 500 health.
-import { addHidden, addMoney, addRelationship, addStat, attractedTo, clamp, currentPartner, getPerson, log, netWorth, remember } from './core'
+import { addHidden, addMoney, addRelationship, addStat, attractedTo, clamp, currentPartner, formatMoney, getPerson, log, netWorth, remember } from './core'
 import { arrestPlayer } from './crime'
 import { killCharacter } from './death'
 import { createPerson } from './people'
@@ -55,7 +55,7 @@ export function applyEffects(g: GameState, eff: GameEffects): string[] {
     const delta = Math.round(clamp(money, -maxLoss, maxGain))
     if (delta !== 0) {
       addMoney(g, delta)
-      changes.push(`${delta > 0 ? '+' : '-'}$${Math.abs(delta).toLocaleString('en-US')}`)
+      changes.push(`${delta > 0 ? '+' : '-'}${formatMoney(Math.abs(delta))}`)
     }
   }
 

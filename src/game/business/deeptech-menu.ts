@@ -2,13 +2,14 @@
 // Investors (rounds, bridges, grants, IPO readiness) and each industry's own screen (fabs,
 // compute and models, robot demos, the drug pipeline, launch control, the factory floor, the
 // qubit lab, the threat center). Menu builders only read state; actions re-read the business.
-import { addStat, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
+import { addStat, formatCents, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import { localEcon } from './economy'
+import { shareSummary } from './competition'
 import {
   DEEP_TECH,
   DRUG_AREAS,
@@ -798,7 +799,7 @@ export function deepTechInfoImpl(g: GameState, a: Asset): string {
   const def = industryDef(ind)
   const parts = [`Tech level ${Math.round(t.level)}/100`, stageName(ind, t.stage), b.public ? `listed on the ${b.exchange}` : SERIES[t.series]]
   parts.push(`R&D account ${money(t.venture)}`, runwayText(runwayYears(g, a, b, t)))
-  if (sellable(g, b, t)) parts.push(`price ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} per ${def.unitOne}, plan ${units(b.production)} ${def.unit}`)
+  if (sellable(g, b, t)) parts.push(`price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne}, plan ${units(b.production)} ${def.unit}`)
   return parts.join(' · ')
 }
 
@@ -822,5 +823,7 @@ export function deepTechSummaryImpl(g: GameState, a: Asset): string {
   if (t.programs.length) parts.push(`working on ${t.programs.map((p) => p.name).slice(0, 2).join(' and ')}`)
   const r = runwayYears(g, a, b, t)
   if (r < 1) parts.push('running out of money')
+  const share = shareSummary(g, b)
+  if (share) parts.push(share)
   return parts.join(', ')
 }

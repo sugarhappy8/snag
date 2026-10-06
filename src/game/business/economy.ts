@@ -21,6 +21,8 @@ import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { studioValue } from './gamestudio-state'
 import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { clampN, dollars, round2 } from './util'
+import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
+import { marketDef } from './competition-data'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -330,6 +332,34 @@ export interface Plan {
   capacity: number
   /** Demand-weighted unit cost (before supplier/shock adjustments). */
   unitCost: number
+  /**
+   * The company's market (competition-core): bottom-up units in it before competition and the
+   * business cycle, and what competition left of them. Null when nothing sells.
+   */
+  market: (MarketPick & { bu: number }) | null
+}
+
+// ---------------------------------------------------------------------------
+// The market a company competes in (business/competition-*.ts)
+
+/**
+ * The reference competitor's yearly units and the rivals' combined pull at PRESENT_YEAR for an
+ * industry's market: the world for tradable industries (fixed sizes), the country for local
+ * trades (outlets per million people, scaled by spending power and local demand).
+ */
+export function marketScale(industry: Industry, countryId: string): { dRef: number; fieldP: number } {
+  const d = marketDef(industry)
+  const def = industryDef(industry)
+  if (d.scope === 'world') return { dRef: def.demand * d.ref, fieldP: d.field }
+  const e = localEcon(industry, countryId, '')
+  const fieldP = Math.max(4, d.field * Math.max(0.3, e.m.populationM) * Math.max(0.05, e.demandMult) * e.income)
+  return { dRef: Math.max(1, e.baseDemand), fieldP }
+}
+
+/** The competitive situation of a company's market in `year` (pure; cached). */
+export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx {
+  const { dRef, fieldP } = marketScale(b.industry, b.countryId)
+  return buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP)
 }
 
 export interface PlanOptions {
@@ -358,17 +388,25 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
   const shockD = opts.calm ? 1 : b.demandShock
   const lossC = opts.calm ? 0 : b.capacityLoss
   const pressure = opts.calm ? b.pressure * 0.5 : b.pressure
+  // The market: the world for tradable industries, the home country for local trades.
+  const mctx = marketCtxFor(g, b, year)
+  const world = mctx.def.scope === 'world'
+  const inMarket = (o: Outlet) => world || o.countryId === b.countryId
+  // A dominant company buys cheaper (scale) and, in a national market, can charge a bit more.
+  const costCut = 1 - SCALE_SAVING * mctx.dominance
+  const pricePremium = premium * (world ? 1 : 1 + PRICE_POWER * mctx.dominance)
   // Outlets per country (saturation).
   const perCountry: Record<string, number> = {}
   for (const o of b.outlets) perCountry[o.countryId] = (perCountry[o.countryId] ?? 0) + o.count
   const locs: LocPlan[] = []
-  let demand = 0
+  const cycles: number[] = []
+  let bu = 0
   let capacity = 0
-  let costW = 0
   for (const o of b.outlets) {
     const e = o.countryId === b.countryId && o.city === b.city ? home : localEcon(b.industry, o.countryId, o.city)
     if (e.demandMult <= 0) {
       locs.push({ outlet: o, econ: e, price: 0, demand: 0, capacity: 0 })
+      cycles.push(1)
       continue
     }
     const p = e.goingPrice * ratioToGoing
@@ -376,17 +414,28 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
     const cycleEffect = 1 + (cyc - 1) * (0.5 + def.incomeSens)
     const n = perCountry[o.countryId] ?? o.count
     const sat = n > e.saturation ? Math.pow(e.saturation / n, 0.6) : 1
-    const d =
-      o.count * e.baseDemand * priceResponse(p / Math.max(0.01, e.goingPrice * premium), def.elasticity) * appeal * cycleEffect * sat * (1 - pressure) * shockD * noise * open
+    // Customers before competition and the economy (the business cycle hits every competitor alike).
+    const d = o.count * e.baseDemand * priceResponse(p / Math.max(0.01, e.goingPrice * pricePremium), def.elasticity) * appeal * sat * (1 - pressure) * shockD * noise * open
     const cap = o.count * e.capacity * ops * (1 - lossC) * open
     locs.push({ outlet: o, econ: e, price: round2(p), demand: Math.max(0, d), capacity: cap })
-    demand += Math.max(0, d)
+    cycles.push(cycleEffect)
+    if (inMarket(o)) bu += Math.max(0, d)
     capacity += cap
-    costW += e.unitCost * Math.max(1, d)
   }
+  // Competition: what the rivals and the size of the market leave of those customers.
+  const pick = bu > 0 ? marketDemand(mctx, bu) : null
+  let demand = 0
+  let costW = 0
+  locs.forEach((l, i) => {
+    if (l.demand <= 0) return
+    const d = l.demand * (pick && inMarket(l.outlet) ? pick.factor : 1) * cycles[i]
+    l.demand = Math.max(0, Number.isFinite(d) ? d : 0)
+    demand += l.demand
+    costW += l.econ.unitCost * costCut * Math.max(1, l.demand)
+  })
   const weight = locs.reduce((s, l) => s + (l.demand > 0 ? Math.max(1, l.demand) : 0), 0)
-  const unitCost = weight > 0 ? costW / weight : home.unitCost
-  return { locs, price, homeGoing, suggested: round2(homeGoing * premium), demand, capacity, unitCost }
+  const unitCost = weight > 0 ? costW / weight : home.unitCost * costCut
+  return { locs, price, homeGoing, suggested: round2(homeGoing * pricePremium), demand, capacity, unitCost, market: pick ? { ...pick, bu } : null }
 }
 
 /** Unit-cost multiplier from the supplier contract, key ops staff and shocks. */
@@ -416,6 +465,8 @@ export interface YearResult {
   inventoryEnd: number
   wantedStaff: number
   unpaidSalary: number
+  /** The year's demand in its market at the price charged, and what the company could make (for the market-share booking). */
+  market?: (MarketPick & { bu: number; capacity?: number }) | null
 }
 
 /** Labor premium when the owner lacks the licence the trade expects. */
@@ -593,7 +644,7 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
   b.inventory = k.inventoryEnd
   b.employees = k.employees
   b.last = k.stmt
-  return { stmt: k.stmt, inventoryEnd: k.inventoryEnd, wantedStaff: k.employees, unpaidSalary: k.unpaidSalary }
+  return { stmt: k.stmt, inventoryEnd: k.inventoryEnd, wantedStaff: k.employees, unpaidSalary: k.unpaidSalary, market: plan.market ? { ...plan.market, capacity: plan.capacity } : null }
 }
 
 /** Yearly business insurance premium (property, liability, interruption). */
@@ -674,6 +725,9 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
 // ---------------------------------------------------------------------------
 // Valuation
 
+/** Extra profit multiple for a fully dominant company (its profits are hard to take away). */
+export const MOAT = 0.3
+
 /** Equity value of the whole company. */
 export function valuationOf(b: BizState): number {
   const def = industryDef(b.industry)
@@ -684,7 +738,8 @@ export function valuationOf(b: BizState): number {
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)
-  const mult = def.multiple * (1 + growth * def.growth) * (0.85 + b.brand / 333)
+  // A dominant company's profits are safer (a moat): investors pay a little more for them.
+  const mult = def.multiple * (1 + growth * def.growth) * (0.85 + b.brand / 333) * (1 + MOAT * dominanceOf(b))
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
   const unitCost = localEcon(b.industry, b.countryId, b.city).unitCost

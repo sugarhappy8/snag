@@ -86,6 +86,12 @@ export function canAfford(g: GameState, amount: number): boolean {
 // them) go through the registered converter; the default shows plain US dollars, so tests and
 // old code behave exactly as before. The UI binds the live game (bindMoneyContext) and the
 // player's settings (setMoneyDisplay); data/currencies.ts registers the real converter.
+//
+// Never format money by hand ('$' + n, toLocaleString): use formatMoney / shortMoney, formatCents
+// (unit prices with cents), formatPrice (share and coin quotes) or moneyWith (custom digits).
+// Amounts the player types are in display units: mark the input `money: true` (MenuInput or
+// InputModal) and the UI converts them back with moneyFromInput before the engine sees them. The
+// AI is shown money the same way, and the director converts its answers back (aiMoneyToDollars).
 
 export type MoneyMode = 'usd' | 'local'
 
@@ -106,6 +112,17 @@ export interface ShownMoney {
   code: string
   /** True when the symbol goes after the number ('100 kr'). */
   suffix?: boolean
+  /** A space between a symbol in front and the number ('CHF 100', 'Rp 5,000'). */
+  space?: boolean
+  /** Digits after the decimal point the currency uses (0 for yen, won, rupiah...). Default 2. */
+  decimals?: number
+  /** The currency's name for prose and the AI ('Japanese yen', 'US dollars'). */
+  name?: string
+  /**
+   * True when the amount was converted (another currency, or another year's prices): small
+   * amounts then keep their cents ($0.35 in 1925), which whole internal dollars never need.
+   */
+  converted?: boolean
 }
 
 export interface MoneyContext {
@@ -137,6 +154,22 @@ export function currentMoneyContext(): MoneyContext | null {
   return moneyContext()
 }
 
+/** Run `fn` with money shown for `ctx` (e.g. a settings preview), then restore the bound life. */
+export function withMoneyContext<T>(ctx: MoneyContext | null, fn: () => T): T {
+  const saved = moneyContext
+  moneyContext = () => ctx
+  try {
+    return fn()
+  } finally {
+    moneyContext = saved
+  }
+}
+
+/** The money context of a life (its country and year), without binding it. */
+export function moneyContextOf(g: GameState): MoneyContext {
+  return { countryId: g.character.countryId, year: g.year }
+}
+
 /** data/currencies.ts installs the real converter (local currency + year prices). */
 export function registerMoneyConverter(fn: MoneyConverter): void {
   converter = fn
@@ -147,38 +180,133 @@ export function showMoney(n: number): ShownMoney {
   return converter(n, moneyContext(), moneyDisplaySetting)
 }
 
-/** Display units per internal dollar right now (1 in plain USD mode); for money input fields. */
-export function moneyScale(): number {
-  const one = showMoney(1_000_000).amount / 1_000_000
+/** showMoney for a given life's country and year instead of the bound one. */
+export function showMoneyIn(n: number, ctx: MoneyContext | null): ShownMoney {
+  return converter(n, ctx, moneyDisplaySetting)
+}
+
+function scaleOf(m: ShownMoney, n: number): number {
+  const one = m.amount / n
   return Number.isFinite(one) && one > 0 ? one : 1
 }
 
-/** A number the player typed in display units, back to internal dollars. */
-export function moneyFromInput(displayAmount: number): number {
-  return displayAmount / moneyScale()
+/** Display units per internal dollar right now (1 in plain USD mode); for money input fields. */
+export function moneyScale(): number {
+  return scaleOf(showMoney(1_000_000), 1_000_000)
+}
+
+/** Display units per internal dollar for a given life (AI replies are converted with this). */
+export function moneyScaleFor(ctx: MoneyContext | null): number {
+  return scaleOf(showMoneyIn(1_000_000, ctx), 1_000_000)
+}
+
+/** A number the player (or the AI) gave in display units, back to internal dollars. */
+export function moneyFromInput(displayAmount: number, ctx?: MoneyContext | null): number {
+  if (!Number.isFinite(displayAmount)) return 0
+  return displayAmount / (ctx === undefined ? moneyScale() : moneyScaleFor(ctx))
+}
+
+/** An internal amount in display units (for prefilled money inputs and sliders). */
+export function moneyToInput(n: number): number {
+  return Number.isFinite(n) ? n * moneyScale() : 0
 }
 
 function joinMoney(sign: string, digits: string, m: ShownMoney): string {
   if (m.suffix) return `${sign}${digits} ${m.symbol}`
-  return `${sign}${m.symbol}${digits}`
+  return `${sign}${m.symbol}${m.space ? ' ' : ''}${digits}`
 }
+
+function decimalsOf(m: ShownMoney): number {
+  return m.decimals ?? 2
+}
+
+/** Amounts this big (hyperinflation) are always written the compact way. */
+const HUGE = 1e15
 
 export function formatMoney(n: number): string {
   const m = showMoney(n)
+  if (!Number.isFinite(m.amount)) return joinMoney('', '0', m)
+  const a = Math.abs(m.amount)
+  if (a >= HUGE) return compactMoney(m)
   const sign = m.amount < 0 ? '-' : ''
+  // Converted small amounts keep their cents: a 1925 movie ticket was $0.35, not $0.
+  if (m.converted && a < 10 && decimalsOf(m) > 0) {
+    const cents = Math.round(a * 100)
+    if (cents % 100 !== 0) return joinMoney(sign, (cents / 100).toFixed(2), m)
+  }
   return joinMoney(sign, Math.abs(Math.round(m.amount)).toLocaleString('en-US'), m)
 }
 
-/** Compact money: $1.2M, $45K (thousands, millions, billions, trillions). */
-export function shortMoney(n: number): string {
-  const m = showMoney(n)
+const BIG_UNITS: readonly [number, string][] = [
+  [1e30, 'No'],
+  [1e27, 'Oc'],
+  [1e24, 'Sp'],
+  [1e21, 'Sx'],
+  [1e18, 'Qi'],
+  [1e15, 'Qa'],
+  [1e12, 'T'],
+  [1e9, 'B'],
+  [1e6, 'M'],
+]
+
+function compactMoney(m: ShownMoney): string {
   const a = Math.abs(m.amount)
   const sign = m.amount < 0 ? '-' : ''
-  if (a >= 1e12) return joinMoney(sign, `${(a / 1e12).toFixed(a >= 1e13 ? 0 : 1)}T`, m)
-  if (a >= 1e9) return joinMoney(sign, `${(a / 1e9).toFixed(a >= 1e10 ? 0 : 1)}B`, m)
-  if (a >= 1e6) return joinMoney(sign, `${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`, m)
-  if (a >= 1e4) return joinMoney(sign, `${Math.round(a / 1e3)}K`, m)
+  if (a >= 1e33) return joinMoney(sign, a.toExponential(1).replace('e+', 'e'), m)
+  for (const [v, s] of BIG_UNITS) {
+    if (a >= v) return joinMoney(sign, `${(a / v).toFixed(a >= v * 10 ? 0 : 1)}${s}`, m)
+  }
+  return joinMoney(sign, `${Math.round(a / 1e3)}K`, m)
+}
+
+/** Compact money: $1.2M, $45K (thousands, millions, billions, trillions, then Qa, Qi...). */
+export function shortMoney(n: number): string {
+  const m = showMoney(n)
+  if (!Number.isFinite(m.amount)) return joinMoney('', '0', m)
+  if (Math.abs(m.amount) >= 1e4) return compactMoney(m)
   return formatMoney(n)
+}
+
+/**
+ * Money with the digits written by the caller, e.g. moneyWith(p, (a) => a.toFixed(2)) → '$8.17'.
+ * `digits` gets the absolute display amount; the sign and the currency symbol are added here.
+ * Currencies without cents (yen, won...) and converted amounts of 1,000 or more are written as
+ * whole numbers instead.
+ */
+export function moneyWith(n: number, digits: (amount: number) => string): string {
+  const m = showMoney(n)
+  if (!Number.isFinite(m.amount)) return joinMoney('', '0', m)
+  const a = Math.abs(m.amount)
+  if (a >= HUGE) return compactMoney(m)
+  if (m.converted && (a >= 1_000 || (decimalsOf(m) === 0 && a >= 1))) return formatMoney(n)
+  return joinMoney(m.amount < 0 ? '-' : '', digits(a), m)
+}
+
+/** Unit prices with cents below 100: '$3.50', '€2.95', '¥480', and whole above: '$1,250'. */
+export function formatCents(n: number): string {
+  const m = showMoney(n)
+  if (!Number.isFinite(m.amount)) return joinMoney('', '0', m)
+  const a = Math.abs(m.amount)
+  if (a >= 100 || decimalsOf(m) === 0) return formatMoney(n)
+  return joinMoney(m.amount < 0 ? '-' : '', a.toFixed(2), m)
+}
+
+/** Share, fund and coin quotes: '$45,210', '$8.17', '$0.031', '$0.00042'. */
+export function formatPrice(n: number): string {
+  const m = showMoney(n)
+  const a = m.amount
+  if (!Number.isFinite(a) || a <= 0) return joinMoney('', '0', m)
+  if (a >= 1_000) return formatMoney(n)
+  if (a >= 1) return joinMoney('', decimalsOf(m) === 0 ? Math.round(a).toLocaleString('en-US') : a.toFixed(2), m)
+  if (a >= 0.01) return joinMoney('', a.toFixed(3), m)
+  return joinMoney('', a.toPrecision(2), m)
+}
+
+/** The currency money is shown in right now, for prose and the AI: 'Japanese yen (¥)'. */
+export function moneyCurrencyLabel(): string {
+  const m = showMoney(1)
+  const name = m.name ?? (m.code === 'USD' ? 'US dollars' : m.code)
+  return `${name} (${m.symbol})`
 }
 
 /** Cash + asset equity - debts. */

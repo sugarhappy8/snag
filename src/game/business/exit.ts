@@ -1,5 +1,5 @@
 // Leaving a business: selling it, listing it on a stock exchange, selling shares, going bankrupt.
-import { addMoney, addStat, count, endJob, formatMoney, log, notice, remember } from '../core'
+import { addMoney, addStat, count, endJob, formatMoney, log, moneyWith, notice, remember } from '../core'
 import { exchangeFor, marketOf } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
@@ -149,7 +149,7 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   refreshValue(a, b)
   count(g, 'businessIpos')
   addStat(g, 'happiness', 15)
-  const text = `${a.name} rang the opening bell on the ${ex.name} (${ex.code}). The IPO raised ${money(raise)} for the company (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at $${b.sharePrice.toFixed(2)}. Your ${pct(b.share)} stake is worth ${money(stakeValue(b))}.`
+  const text = `${a.name} rang the opening bell on the ${ex.name} (${ex.code}). The IPO raised ${money(raise)} for the company (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))}. Your ${pct(b.share)} stake is worth ${money(stakeValue(b))}.`
   log(g, `I took ${a.name} public on the ${ex.code}.`, 'good')
   remember(g, `Took ${a.name} public on the ${ex.name}.`)
   notice(g, 'IPO Day!', text, { emoji: '\u{1F514}', tone: 'good', ai: { when: 'full', facts: text } })
@@ -183,7 +183,7 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   notice(
     g,
     'Shares Sold',
-    `You sold ${pct(sold, 1)} of ${a.name} for ${formatMoney(gross)}${tax ? `; capital gains tax took ${formatMoney(tax)}` : ''}. The share price dipped to $${b.sharePrice.toFixed(2)} on the news. You still own ${pct(b.share, 1)}.`,
+    `You sold ${pct(sold, 1)} of ${a.name} for ${formatMoney(gross)}${tax ? `; capital gains tax took ${formatMoney(tax)}` : ''}. The share price dipped to ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} on the news. You still own ${pct(b.share, 1)}.`,
     { emoji: '\u{1F4C8}', tone: 'good' },
   )
 }

@@ -1,6 +1,12 @@
 // Vacation: fly somewhere (Budget/Economy/Business/First) or take a cruise (Interior to Suite),
 // alone, with your partner or with the whole family. Trips raise happiness and come with
 // random events: lost luggage, food poisoning, meeting a local, the rare disaster.
+//
+// Travel follows the calendar: before airlines (1925) trips abroad go by ocean liner and trips
+// at home by train; flying stays a luxury (pricey, first or tourist class only) until jets and
+// package holidays made it ordinary in the seventies (later in poorer countries, events/era.ts
+// flights). Business class arrives in 1978 and budget airlines in the nineties. Destinations
+// that didn't exist yet (Dubai's skyline, Florida's theme parks, Chernobyl tours) stay hidden.
 import { killCharacter } from '../death'
 import { addHidden, addMoney, addRelationship, addStat, count, currentPartner, log, notice, remember, scriptChoice, useYearAction } from '../core'
 import { notePerson } from '../people'
@@ -9,6 +15,7 @@ import { defineScript } from '../scripts'
 import { COUNTRIES, countryLabel, getCountry } from '../world'
 import { localeOf } from '../data/locales'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
+import { common, eraPick, flights } from '../events/era'
 import {
   addCondition,
   brokeNotice,
@@ -152,6 +159,88 @@ export const CRUISES: Destination[] = [
   C('Transatlantic Cruise', '\u{1F30A}'),
 ]
 
+/** First year each destination made sense as a holiday (by id); missing means always. */
+const SINCE: Record<string, number> = {
+  'dubai-united-arab-emirates': 1995,
+  'electronic-music-festival-belgium': 2005,
+  'desert-art-festival-nevada': 1991,
+  'comic-convention-san-diego': 1970,
+  'cannes-film-festival': 1946,
+  'monaco-grand-prix': 1929,
+  'chernobyl-ukraine': 2011,
+  'area-51-nevada': 1990,
+  'theme-park-florida': 1971,
+  'canc-n-mexico': 1975,
+  'cabo-san-lucas-mexico': 1975,
+  'las-vegas-nevada': 1946,
+  'ibiza-spain': 1960,
+  'phuket-thailand': 1975,
+  maldives: 1972,
+  'bora-bora': 1960,
+  antarctica: 1970,
+  'gal-pagos-islands': 1969,
+  'serengeti-national-park-tanzania': 1951,
+  'blue-lagoon-iceland': 1987,
+  'machu-picchu-peru': 1948,
+  'sapporo-snow-festival-japan': 1950,
+  'la-tomatina-spain': 1945,
+  'seoul-south-korea': 1960,
+  'jerusalem-israel': 1949,
+  'kathmandu-nepal': 1951,
+  'truth-or-consequences-new-mexico': 1950,
+  'alaska-cruise': 1950,
+  'bahamas-cruise': 1950,
+  'caribbean-cruise': 1966,
+  'mexican-riviera-cruise': 1968,
+  'panama-canal-cruise': 1915,
+  'southeast-asia-cruise': 1980,
+  'hawaii-cruise': 1928,
+}
+
+/** Older names for places whose country changed: [until year, name]. */
+const OLD_NAMES: Record<string, [number, string][]> = {
+  'istanbul-turkey': [[1923, 'Constantinople, Ottoman Empire'], [1930, 'Constantinople, Turkey']],
+  'prague-czech-republic': [[1918, 'Prague, Austria-Hungary'], [1993, 'Prague, Czechoslovakia']],
+  'mount-kilimanjaro-tanzania': [[1919, 'Mount Kilimanjaro, German East Africa'], [1964, 'Mount Kilimanjaro, Tanganyika']],
+  'serengeti-national-park-tanzania': [[1964, 'Serengeti National Park, Tanganyika']],
+  'reykjav-k-iceland': [[1918, 'Reykjavík, Danish Iceland']],
+}
+
+/** Is this destination a holiday spot yet? */
+function destOpen(g: GameState, d: Destination): boolean {
+  return g.year >= (SINCE[d.id] ?? 0)
+}
+
+/** The destination as people called it this year. */
+function eraDest(g: GameState, d: Destination): Destination {
+  for (const [until, name] of OLD_NAMES[d.id] ?? []) if (g.year < until) return { ...d, name }
+  return d
+}
+
+/** A trip inside the player's own country (local getaways, or US destinations for Americans). */
+function atHome(g: GameState, dest: Destination): boolean {
+  return !!dest.domestic || dest.country === getCountry(g.character.countryId).name
+}
+
+/** How you get abroad: by plane, or by ocean liner before the airlines (1925). */
+function byShip(g: GameState, dest: Destination): boolean {
+  return !dest.cruise && !atHome(g, dest) && g.year < 1925
+}
+
+/** Trips at home go by train until flying is ordinary here. */
+function byTrain(g: GameState, dest: Destination): boolean {
+  return !dest.cruise && atHome(g, dest) && !flights(g)
+}
+
+/** Airfares before the jet age and package holidays cost several times today's. */
+function fareMultiplier(g: GameState, dest: Destination): number {
+  if (dest.cruise || byTrain(g, dest)) return 1
+  if (byShip(g, dest)) return 1.6
+  const y = g.year
+  const era = y < 1958 ? 4.5 : y < 1970 ? 2.5 : y < 1980 ? 1.6 : y < 1995 ? 1.25 : 1
+  return flights(g) ? era : Math.max(2, era)
+}
+
 interface TravelClass {
   id: string
   label: string
@@ -167,6 +256,29 @@ const FLIGHT_CLASSES: TravelClass[] = [
   { id: 'first', label: 'First Class', emoji: '\u{1F942}', mult: 4.5, happiness: 5 },
 ]
 
+/** Steamship berths for trips abroad before the airlines. */
+const SHIP_CLASSES: TravelClass[] = [
+  { id: 'third', label: 'Third Class', emoji: '\u{1F6A2}', mult: 0.6, happiness: -2 },
+  { id: 'second', label: 'Second Class', emoji: '\u{1F6F3}\u{FE0F}', mult: 1.2, happiness: 1 },
+  { id: 'first', label: 'First Class', emoji: '\u{1F942}', mult: 4, happiness: 5 },
+]
+
+/** Train tickets for trips at home before flying was ordinary. */
+const TRAIN_CLASSES: TravelClass[] = [
+  { id: 'coach', label: 'Coach Seat', emoji: '\u{1F682}', mult: 0.6, happiness: -1 },
+  { id: 'sleeper', label: 'Sleeper Car', emoji: '\u{1F6CF}\u{FE0F}', mult: 1, happiness: 2 },
+  { id: 'first', label: 'First-Class Compartment', emoji: '\u{1F942}', mult: 2.2, happiness: 4 },
+]
+
+/** Fare classes the airlines sold this year: first class only at first, tourist class from 1952,
+ * economy from 1958, business from 1978, budget airlines from the mid-nineties. */
+function airClasses(g: GameState): TravelClass[] {
+  const y = g.year
+  return FLIGHT_CLASSES.filter((c) => (c.id === 'budget' ? y >= 1995 && flights(g) : c.id === 'business' ? y >= 1978 : c.id === 'economy' ? y >= 1952 : true)).map((c) =>
+    c.id === 'economy' && y < 1958 ? { ...c, label: 'Tourist Class' } : c,
+  )
+}
+
 const CABINS: TravelClass[] = [
   { id: 'interior', label: 'Interior Cabin', emoji: '\u{1F6CF}\u{FE0F}', mult: 1, happiness: 0 },
   { id: 'oceanview', label: 'Ocean View Cabin', emoji: '\u{1FA9F}', mult: 1.4, happiness: 2 },
@@ -178,15 +290,29 @@ const TRIPS_PER_YEAR = 3
 
 function basePrice(g: GameState, dest: Destination): number {
   const usd = dest.cruise ? 1800 : dest.domestic ? 350 : dest.tier === 1 ? 600 : dest.tier === 2 ? 1500 : 3200
-  return localPrice(g, usd)
+  return localPrice(g, usd * fareMultiplier(g, dest))
 }
 
 function perPerson(g: GameState, dest: Destination, cls: TravelClass): number {
   return Math.round(basePrice(g, dest) * cls.mult)
 }
 
-function classesFor(dest: Destination): TravelClass[] {
-  return dest.cruise ? CABINS : FLIGHT_CLASSES
+function classesFor(g: GameState, dest: Destination): TravelClass[] {
+  if (dest.cruise) return CABINS
+  if (byShip(g, dest)) return SHIP_CLASSES
+  if (byTrain(g, dest)) return TRAIN_CLASSES
+  return airClasses(g)
+}
+
+/** 'flight', 'voyage' or 'train' for this trip. */
+function legWord(g: GameState, dest: Destination): string {
+  return byShip(g, dest) ? 'voyage' : byTrain(g, dest) ? 'train' : 'flight'
+}
+
+/** Who loses your bags: the airline, the steamship line, the railway or the cruise line. */
+function carrier(g: GameState, dest: Destination): string {
+  if (dest.cruise) return 'cruise line'
+  return byShip(g, dest) ? 'steamship line' : byTrain(g, dest) ? 'railway' : 'airline'
 }
 
 // Trips at home: the getaways and landmarks people in the player's country actually go to
@@ -239,7 +365,8 @@ function noTripsLeft(g: GameState): boolean {
   return true
 }
 
-function chooseClass(g: GameState, dest: Destination, cls: TravelClass): void {
+function chooseClass(g: GameState, place: Destination, cls: TravelClass): void {
+  const dest = eraDest(g, place)
   if (noTripsLeft(g)) return
   const each = perPerson(g, dest, cls)
   if (g.character.money < each) {
@@ -264,9 +391,10 @@ function chooseClass(g: GameState, dest: Destination, cls: TravelClass): void {
 const WHO = defineScript('act.vacation.who', (g, choice, data) => {
   if (choice === 'cancel') return
   const d = (data ?? {}) as Record<string, Json>
-  const dest = findDest(d.dest, g)
-  if (!dest) return
-  const cls = classesFor(dest).find((c) => c.id === d.cls) ?? classesFor(dest)[0]
+  const found = findDest(d.dest, g)
+  if (!found) return
+  const dest = eraDest(g, found)
+  const cls = classesFor(g, dest).find((c) => c.id === d.cls) ?? classesFor(g, dest)[0]
   if (noTripsLeft(g)) return
   const partner = travelPartner(g)
   const companions: Person[] = []
@@ -288,20 +416,24 @@ const WHO = defineScript('act.vacation.who', (g, choice, data) => {
 // ---------------------------------------------------------------------------
 // The trip
 
+// Era tags (see events/era.ts): no step counters or phone photos of every meal in 1955.
 const FLAVOR: Record<DestType, string[]> = {
   city: [
-    'You toured museums, ate at a dozen restaurants and walked 30,000 steps a day.',
+    '@2012 You toured museums, ate at a dozen restaurants and walked 30,000 steps a day.',
+    '@-2012 You toured museums, ate at a dozen restaurants and walked until your feet gave out.',
     'You got lost in the winding streets of {name} and loved every minute of it.',
-    'You ate your weight in local food and took a picture of every meal.',
+    '@smartphone You ate your weight in local food and took a picture of every meal.',
+    '@!smartphone You ate your weight in local food and mailed a postcard about every meal.',
   ],
   beach: [
     'You spent your days on the beach with a good book and your nights watching sunsets.',
-    'You snorkeled with tropical fish and finally got a tan.',
+    '@1950 You snorkeled with tropical fish and finally got a tan.',
     'You did absolutely nothing for a week, and it was glorious.',
   ],
   nature: [
-    'You hiked, explored and took 900 photos of the scenery.',
-    'The views at {name} were so beautiful you forgot to check your phone for three days.',
+    '@2003 You hiked, explored and took 900 photos of the scenery.',
+    '@-2003 You hiked, explored and used up every roll of film you brought.',
+    '@smartphone The views at {name} were so beautiful you forgot to check your phone for three days.',
     'You breathed real fresh air for the first time in years.',
   ],
   festival: [
@@ -325,7 +457,8 @@ const CRUISE_FLAVOR = [
   'You ate at the midnight buffet every single night. No regrets.',
   'You lounged by the pool deck, explored every port and won a towel-folding contest.',
   'You watched dolphins race alongside the ship at sunrise.',
-  'You sang karaoke in the ship lounge and became a minor celebrity on deck 7.',
+  '@1985 You sang karaoke in the ship lounge and became a minor celebrity on deck 7.',
+  '@-1985 You danced to the ship\'s orchestra every night and became a minor celebrity on deck 7.',
 ]
 
 type TripEvent =
@@ -399,10 +532,11 @@ function rollEvent(g: GameState, dest: Destination, cls: TravelClass, alone: boo
   })
 }
 
-const ACCIDENTS: Record<DestType, { text: string; cause: string; injury: string }[]> = {
+const ACCIDENTS: Record<DestType, { text: string; cause: string; injury: string; since?: number; until?: number }[]> = {
   beach: [
     { text: 'You were swimming far from shore when something brushed your leg. It was a shark.', cause: 'Shark Attack', injury: 'Shark Bite' },
-    { text: 'You went parasailing and the rope snapped.', cause: 'Parasailing Accident', injury: 'Broken Leg' },
+    { text: 'You went parasailing and the rope snapped.', cause: 'Parasailing Accident', injury: 'Broken Leg', since: 1975 },
+    { text: 'You rowed a little boat out past the waves and it capsized.', cause: 'Boating Accident', injury: 'Broken Leg', until: 1975 },
   ],
   nature: [
     { text: 'You wandered off the trail for a better photo and the ground gave way beneath you.', cause: 'Hiking Accident', injury: 'Broken Leg' },
@@ -414,14 +548,16 @@ const ACCIDENTS: Record<DestType, { text: string; cause: string; injury: string 
   ],
   city: [
     { text: 'You rented a scooter, forgot which side of the road they drive on, and met a bus.', cause: 'Scooter Accident', injury: 'Broken Arm' },
-    { text: 'The helicopter tour you booked had engine trouble over the city.', cause: 'Helicopter Crash', injury: 'Broken Ribs' },
+    { text: 'The helicopter tour you booked had engine trouble over the city.', cause: 'Helicopter Crash', injury: 'Broken Ribs', since: 1965 },
+    { text: 'The horse pulling your sightseeing carriage bolted down a hill.', cause: 'Carriage Accident', injury: 'Broken Ribs', until: 1965 },
   ],
   festival: [
     { text: 'You got caught in a stampeding crowd near the main stage.', cause: 'Crowd Crush', injury: 'Broken Ribs' },
     { text: 'You ran with the bulls. One of the bulls ran into you.', cause: 'Gored by a Bull', injury: 'Goring Wound' },
   ],
   landmark: [
-    { text: 'You climbed somewhere you really should not have climbed for a selfie, and slipped.', cause: 'Selfie Accident', injury: 'Broken Arm' },
+    { text: 'You climbed somewhere you really should not have climbed for a selfie, and slipped.', cause: 'Selfie Accident', injury: 'Broken Arm', since: 2013 },
+    { text: 'You climbed somewhere you really should not have climbed for a better view, and slipped.', cause: 'Climbing Accident', injury: 'Broken Arm', until: 2013 },
     { text: 'The tour bus you were on swerved off the road.', cause: 'Bus Crash', injury: 'Concussion' },
   ],
 }
@@ -456,8 +592,8 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
   switch (event) {
     case 'luggage': {
       addStat(g, 'happiness', -randInt(g, 3, 6))
-      log(g, 'The airline lost my luggage.', 'bad')
-      result(g, title, `The ${dest.cruise ? 'cruise line' : 'airline'} lost your luggage, so you spent the first three days in the same outfit. Once you bought new clothes, the trip turned out great.${companionLine}`, '\u{1F9F3}')
+      log(g, `The ${carrier(g, dest)} lost my luggage.`, 'bad')
+      result(g, title, `The ${carrier(g, dest)} lost your luggage, so you spent the first three days in the same outfit. Once you bought new clothes, the trip turned out great.${companionLine}`, '\u{1F9F3}')
       return
     }
     case 'local': {
@@ -505,14 +641,17 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
     }
     case 'delay': {
       addStat(g, 'happiness', -randInt(g, 2, 4))
-      log(g, `My flight to ${dest.name} was delayed by a day.`, 'neutral')
-      result(g, title, `Your ${cls.label.toLowerCase()} flight was delayed 19 hours. You slept on the airport floor next to a crying baby. ${dest.name} was worth it, though.${companionLine}`, '\u{23F3}')
+      const leg = legWord(g, dest)
+      log(g, `My ${leg} to ${dest.name} was delayed by a day.`, 'neutral')
+      const waited = leg === 'flight' ? 'You slept on the airport floor next to a crying baby.' : leg === 'train' ? 'You slept on a station bench next to a crying baby.' : 'You slept on your trunk at the docks next to a crying baby.'
+      result(g, title, `Your ${cls.label.toLowerCase()} ${leg} was delayed 19 hours. ${waited} ${dest.name} was worth it, though.${companionLine}`, '\u{23F3}')
       return
     }
     case 'upgrade': {
       addStat(g, 'happiness', randInt(g, 3, 6))
-      log(g, `I got a free upgrade on my flight to ${dest.name}.`, 'good')
-      result(g, title, `The airline upgraded you to first class for free! Warm nuts, real silverware, the works. And ${dest.name} was amazing.${companionLine}`, '\u{1F942}', 'good')
+      const leg = legWord(g, dest)
+      log(g, `I got a free upgrade on my ${leg} to ${dest.name}.`, 'good')
+      result(g, title, `The ${carrier(g, dest)} upgraded you to first class for free! ${leg === 'flight' ? 'Warm nuts, real silverware, the works.' : 'Crisp linen, real silverware, the works.'} And ${dest.name} was amazing.${companionLine}`, '\u{1F942}', 'good')
       return
     }
     case 'sunburn': {
@@ -527,6 +666,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
       addHidden(g, 'craziness', randInt(g, 1, 3))
       log(g, 'I toured the Chernobyl exclusion zone.', 'neutral')
       result(g, title, 'You toured the abandoned city and the guide waved a Geiger counter around a lot. It clicked more than you would have liked.', '☢\u{FE0F}')
+      if (common(g, 'smartphone')) log(g, 'My phone photos from Chernobyl came out strangely grainy.', 'neutral')
       return
     }
     case 'seasick': {
@@ -563,8 +703,8 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
       return
     }
     case 'accident': {
-      const options = ACCIDENTS[dest.type]
-      const acc = pick(g, options)
+      const options = ACCIDENTS[dest.type].filter((a) => g.year >= (a.since ?? 0) && g.year < (a.until ?? 99999))
+      const acc = pick(g, options.length ? options : ACCIDENTS[dest.type])
       const fatal = chance(g, 0.25)
       if (fatal) {
         notice(g, 'Tragedy Abroad', `${acc.text} You didn't survive.`, { emoji: '\u{1F54A}\u{FE0F}', tone: 'bad' })
@@ -584,7 +724,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
     }
     default: {
       const lines = dest.cruise ? CRUISE_FLAVOR : FLAVOR[dest.type]
-      const text = pick(g, lines).replace('{name}', dest.name)
+      const text = eraPick(g, lines).replace('{name}', dest.name)
       result(g, title, `${text}${companionLine}`, dest.emoji, 'good')
     }
   }
@@ -604,16 +744,17 @@ function markLocal(p: Person, dest: Destination): void {
 // ---------------------------------------------------------------------------
 // Menu
 
-function destinationMenu(dest: Destination): MenuGroup {
+function destinationMenu(g: GameState, place: Destination): MenuGroup {
+  const dest = eraDest(g, place)
   return {
     type: 'menu',
     id: `vacation.${dest.id}`,
     label: dest.name[0].toUpperCase() + dest.name.slice(1),
     emoji: dest.emoji,
-    subtitle: (g) => `From ${money(perPerson(g, dest, classesFor(dest)[0]))} per person`,
-    header: () => (dest.cruise ? 'Pick a cabin.' : dest.domestic ? 'How do you want to get there?' : 'How do you want to fly?'),
+    subtitle: (g) => `From ${money(perPerson(g, dest, classesFor(g, dest)[0]))} per person`,
+    header: (g) => (dest.cruise ? 'Pick a cabin.' : byShip(g, dest) ? 'Pick a berth on the steamship.' : byTrain(g, dest) ? 'Pick your train ticket.' : dest.domestic ? 'How do you want to get there?' : 'How do you want to fly?'),
     children: (g): MenuNode[] =>
-      classesFor(dest).map(
+      classesFor(g, dest).map(
         (cls): MenuAction => ({
           type: 'action',
           id: `vacation.${dest.id}.${cls.id}`,
@@ -637,13 +778,15 @@ export const vacationMenu: MenuGroup = {
   children: (g): MenuNode[] => {
     const home = domesticDestinations(g)
     const country = getCountry(g.character.countryId)
-    const abroad = DESTINATIONS.filter((d) => !home.length || d.country !== country.name)
+    const abroad = DESTINATIONS.filter((d) => (!home.length || d.country !== country.name) && destOpen(g, d))
+    const cruises = CRUISES.filter((d) => destOpen(g, d))
+    const toMenu = (d: Destination) => destinationMenu(g, d)
     return [
-    ...(home.length ? [{ type: 'heading' as const, id: 'vacation.home', label: `Around ${countryLabel(country)}` }, ...stablePick(g, 'vacations.home', home, 4).map(destinationMenu)] : []),
+    ...(home.length ? [{ type: 'heading' as const, id: 'vacation.home', label: `Around ${countryLabel(country)}` }, ...stablePick(g, 'vacations.home', home, 4).map(toMenu)] : []),
     { type: 'heading', id: 'vacation.trips', label: home.length ? 'Abroad' : 'Vacations' },
-    ...stablePick(g, 'vacations', abroad, 8).map(destinationMenu),
-    { type: 'heading', id: 'vacation.cruises', label: 'Cruises' },
-    ...stablePick(g, 'cruises', CRUISES, 4).map(destinationMenu),
+    ...stablePick(g, 'vacations', abroad, 8).map(toMenu),
+    { type: 'heading', id: 'vacation.cruises', label: g.year < 1960 ? 'Ocean Liners' : 'Cruises' },
+    ...stablePick(g, 'cruises', cruises, 4).map(toMenu),
     ]
   },
 }

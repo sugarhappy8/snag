@@ -2,6 +2,7 @@
 // part-time (hourly) jobs and freelance gigs. Pure data + tiny builders, no game logic.
 // Salaries are US dollars per year for an American character; careers.ts scales them by
 // the country's wealth.
+import { techAdoption, type TechId } from '../history/timeline'
 import type { Gender } from '../types'
 import type { Industry as MarketIndustry } from './markets'
 
@@ -113,6 +114,12 @@ export interface JobDef {
   stress?: number
   /** Yearly chance of a workplace injury. */
   danger?: number
+  /** First calendar year anyone was hired for this (no app developers before smartphones). */
+  from?: number
+  /** Last calendar year (switchboard operators were automated away). */
+  until?: number
+  /** Needs this technology where the player lives (social media managers need social media). */
+  tech?: TechId
 }
 
 type Rung = [string, number]
@@ -235,33 +242,33 @@ export const FULLTIME_JOBS: JobDef[] = [
   ft('financial_advisor', '\u{1F4B5}', 'bank', 'bachelor', [['Jr. Financial Advisor', 45], ['Financial Advisor', 62], ['Sr. Financial Advisor', 85]], { majors: ['Finance', 'Economics'], cleanRecord: true }),
   ft('stockbroker', '\u{1F4C8}', 'finance', 'bachelor', [['Jr. Stockbroker', 45], ['Stockbroker', 70], ['Sr. Stockbroker', 110]], { majors: ['Finance', 'Economics'], cleanRecord: true, stress: 2 }),
   ft('banker', '\u{1F3E6}', 'bank', 'bachelor', [['Jr. Banker', 53], ['Banker', 64], ['Sr. Banker', 78]], { majors: ['Accounting', 'Finance'], cleanRecord: true }),
-  ft('business_analyst', '\u{1F4CA}', 'corporate', 'bachelor', [['Jr. Business Analyst', 45], ['Business Analyst', 64], ['Sr. Business Analyst', 75]], { majors: ['Finance', 'Economics', 'Information Systems'], cleanRecord: true }),
-  ft('operations_analyst', '\u{1F4CA}', 'corporate', 'bachelor', [['Jr. Operations Analyst', 48], ['Operations Analyst', 60], ['Sr. Operations Analyst', 72]], { majors: ['Information Systems', 'Mathematics'], cleanRecord: true }),
+  ft('business_analyst', '\u{1F4CA}', 'corporate', 'bachelor', [['Jr. Business Analyst', 45], ['Business Analyst', 64], ['Sr. Business Analyst', 75]], { majors: ['Finance', 'Economics', 'Information Systems'], cleanRecord: true, from: 1960 }),
+  ft('operations_analyst', '\u{1F4CA}', 'corporate', 'bachelor', [['Jr. Operations Analyst', 48], ['Operations Analyst', 60], ['Sr. Operations Analyst', 72]], { majors: ['Information Systems', 'Mathematics'], cleanRecord: true, from: 1960 }),
   ft('marketing', '\u{1F4E3}', 'corporate', 'bachelor', [['Marketing Coordinator', 42], ['Marketing Specialist', 54], ['Marketing Manager', 78], ['Director of Marketing', 120], ['Chief Marketing Officer', 175]], { majors: ['Marketing', 'Communications', 'Journalism', 'Economics'], stress: 1 }),
   ft('insurance_agent', '\u{1F4CB}', 'corporate', 'highschool', [['Jr. Insurance Agent', 28], ['Insurance Agent', 38], ['Sr. Insurance Agent', 52]], { cleanRecord: true }),
   ft('lobbyist', '\u{1F5E3}\u{FE0F}', 'corporate', 'bachelor', [['Jr. Lobbyist', 45], ['Lobbyist', 70], ['Sr. Lobbyist', 95]], { majors: ['Political Science'], stress: 1 }),
-  ft('policy_analyst', '\u{1F50D}', 'municipal', 'bachelor', [['Jr. Policy Analyst', 45], ['Policy Analyst', 58], ['Sr. Policy Analyst', 72]], { majors: ['Political Science', 'Economics'], cleanRecord: true }),
+  ft('policy_analyst', '\u{1F50D}', 'municipal', 'bachelor', [['Jr. Policy Analyst', 45], ['Policy Analyst', 58], ['Sr. Policy Analyst', 72]], { majors: ['Political Science', 'Economics'], cleanRecord: true, from: 1960 }),
   ft('executive', '\u{1F4CD}', 'corporate', 'business', [['Assistant Vice President', 105], ['Vice President', 125], ['First Vice President', 140], ['Senior Vice President', 155], ['Executive Vice President', 172], ['Managing Director', 190], ['President', 240], ['Chief Executive Officer', 420]], { experience: 15, cleanRecord: true, stress: 3 }),
   ft('consultant', '\u{1F4BC}', 'corporate', 'business', [['Associate Consultant', 85], ['Consultant', 105], ['Senior Consultant', 130], ['Principal', 165], ['Partner', 260]], { cleanRecord: true, stress: 2 }),
   ft('investment_banker', '\u{1F4B0}', 'finance', 'business', [['Investment Banking Analyst', 95], ['Investment Banking Associate', 140], ['Vice President of Investment Banking', 210], ['Director of Investment Banking', 290], ['Managing Director', 400]], { cleanRecord: true, stress: 3 }),
-  ft('computer_programmer', '\u{1F5A5}\u{FE0F}', 'tech', 'bachelor', [['Jr. Computer Programmer', 55], ['Computer Programmer', 75], ['Sr. Computer Programmer', 98], ['Software Architect', 135]], { majors: ['Computer Science', 'Information Systems', 'Mathematics', 'Engineering'] }),
-  ft('app_developer', '\u{1F4F2}', 'tech', 'bachelor', [['Jr. Mobile App Developer', 58], ['Mobile App Developer', 80], ['Sr. Mobile App Developer', 108]], { majors: ['Computer Science'] }),
-  ft('database_admin', '\u{1F5C4}\u{FE0F}', 'tech', 'bachelor', [['Jr. Database Administrator', 52], ['Database Administrator', 66], ['Sr. Database Administrator', 86]], { majors: ['Computer Science', 'Information Systems'] }),
-  ft('it_support', '\u{1F5B1}\u{FE0F}', 'tech', 'bachelor', [['Jr. IT Support', 32], ['IT Support', 40], ['Sr. IT Support', 50], ['Technical Support Specialist', 62]], { majors: ['Computer Science', 'Information Systems'] }),
+  ft('computer_programmer', '\u{1F5A5}\u{FE0F}', 'tech', 'bachelor', [['Jr. Computer Programmer', 55], ['Computer Programmer', 75], ['Sr. Computer Programmer', 98], ['Software Architect', 135]], { majors: ['Computer Science', 'Information Systems', 'Mathematics', 'Engineering'], tech: 'homeComputer' }),
+  ft('app_developer', '\u{1F4F2}', 'tech', 'bachelor', [['Jr. Mobile App Developer', 58], ['Mobile App Developer', 80], ['Sr. Mobile App Developer', 108]], { majors: ['Computer Science'], tech: 'smartphone', from: 2008 }),
+  ft('database_admin', '\u{1F5C4}\u{FE0F}', 'tech', 'bachelor', [['Jr. Database Administrator', 52], ['Database Administrator', 66], ['Sr. Database Administrator', 86]], { majors: ['Computer Science', 'Information Systems'], from: 1975 }),
+  ft('it_support', '\u{1F5B1}\u{FE0F}', 'tech', 'bachelor', [['Jr. IT Support', 32], ['IT Support', 40], ['Sr. IT Support', 50], ['Technical Support Specialist', 62]], { majors: ['Computer Science', 'Information Systems'], from: 1980 }),
   ft('engineer', '\u{1F4D0}', 'corporate', 'bachelor', [['Engineer I', 62], ['Engineer II', 72], ['Engineer III', 84], ['Asst. Engineering Manager', 96], ['Engineering Manager', 113], ['Director of Engineering', 135], ['VP of Engineering', 168]], { majors: ['Engineering'] }),
   ft('chemical_engineer', '\u{2697}\u{FE0F}', 'science', 'bachelor', [['Jr. Chemical Engineer', 63], ['Chemical Engineer', 80], ['Sr. Chemical Engineer', 100]], { majors: ['Engineering', 'Chemistry'] }),
   ft('mechanical_engineer', '\u{2699}\u{FE0F}', 'factory', 'bachelor', [['Jr. Mechanical Engineer', 60], ['Mechanical Engineer', 76], ['Sr. Mechanical Engineer', 96]], { majors: ['Engineering', 'Physics'] }),
   ft('architect', '\u{1F3DB}\u{FE0F}', 'design', 'bachelor', [['Jr. Architect', 50], ['Architect', 75], ['Sr. Architect', 96]], { majors: ['Architecture'] }),
   ft('translator', '\u{1F232}', 'corporate', 'bachelor', [['Jr. Translator', 32], ['Translator', 42], ['Sr. Translator', 55]], { majors: ['Communications', 'English'] }),
-  ft('telemarketer', '\u{1F4DE}', 'corporate', 'highschool', [['Apprentice Telemarketer', 20], ['Telemarketer', 25]]),
+  ft('telemarketer', '\u{1F4DE}', 'corporate', 'highschool', [['Apprentice Telemarketer', 20], ['Telemarketer', 25]], { from: 1970 }),
   ft('receptionist', '\u{1F6CE}\u{FE0F}', 'corporate', 'highschool', [['Receptionist', 22]]),
   ft('bill_collector', '\u{1F911}', 'corporate', 'highschool', [['Bill Collector', 31]], { stress: 1 }),
   ft('factory_worker', '\u{1F3ED}', 'factory', 'none', [['Factory Worker', 24]], { danger: 0.03 }),
   ft('janitor', '\u{1F9F9}', 'corporate', 'none', [['Janitor', 19]]),
 
   // Science
-  ft('biotechnologist', '\u{1F331}', 'science', 'bachelor', [['Jr. Biotechnologist', 48], ['Biotechnologist', 62], ['Sr. Biotechnologist', 90]], { majors: ['Biology', 'Chemistry'] }),
-  ft('environmental_scientist', '\u{267B}\u{FE0F}', 'science', 'bachelor', [['Jr. Environmental Scientist', 40], ['Environmental Scientist', 48], ['Sr. Environmental Scientist', 60]], { majors: ['Physics', 'Biology', 'Chemistry'] }),
+  ft('biotechnologist', '\u{1F331}', 'science', 'bachelor', [['Jr. Biotechnologist', 48], ['Biotechnologist', 62], ['Sr. Biotechnologist', 90]], { majors: ['Biology', 'Chemistry'], from: 1980 }),
+  ft('environmental_scientist', '\u{267B}\u{FE0F}', 'science', 'bachelor', [['Jr. Environmental Scientist', 40], ['Environmental Scientist', 48], ['Sr. Environmental Scientist', 60]], { majors: ['Physics', 'Biology', 'Chemistry'], from: 1970 }),
   ft('microbiologist', '\u{1F52C}', 'science', 'bachelor', [['Jr. Microbiologist', 42], ['Microbiologist', 52], ['Sr. Microbiologist', 66]], { majors: ['Biology'] }),
   ft('marine_biologist', '\u{1F991}', 'science', 'graduate', [['Jr. Marine Biologist', 38], ['Marine Biologist', 48], ['Sr. Marine Biologist', 62]], { majors: ['Biology', 'Mathematics'] }),
   ft('archaeologist', '\u{1F480}', 'museum', 'graduate', [['Jr. Archaeologist', 40], ['Archaeologist', 55], ['Sr. Archaeologist', 70]], { majors: ['Archaeology', 'Anthropology', 'History'] }),
@@ -280,7 +287,7 @@ export const FULLTIME_JOBS: JobDef[] = [
   ft('veterinarian', '\u{1F436}', 'vet', 'veterinary', [['Jr. Veterinarian', 55], ['Veterinarian', 80], ['Sr. Veterinarian', 100]], { cleanRecord: true, stress: 1 }),
   ft('pet_groomer', '\u{1F429}', 'vet', 'none', [['Apprentice Pet Groomer', 22], ['Pet Groomer', 30]]),
   ft('massage_therapist', '\u{1F450}', 'salon', 'community', [['Massage Therapist', 32]]),
-  ft('school_psychologist', '\u{1F9E0}', 'school', 'bachelor', [['School Psychologist', 60]], { majors: ['Psychology'], cleanRecord: true }),
+  ft('school_psychologist', '\u{1F9E0}', 'school', 'bachelor', [['School Psychologist', 60]], { majors: ['Psychology'], cleanRecord: true, from: 1950 }),
   ft('marriage_counselor', '\u{1F492}', 'medical', 'bachelor', [['Marriage Counselor', 54]], { majors: ['Psychology'] }),
 
   // Law
@@ -307,12 +314,12 @@ export const FULLTIME_JOBS: JobDef[] = [
   ft('waste_collector', '\u{1F5D1}\u{FE0F}', 'municipal', 'none', [['Waste Collector', 36]], { danger: 0.02 }),
   ft('sculptor', '\u{1F5FF}', 'municipal', 'none', [['Sculptor', 25]]),
   ft('security_guard', '\u{1F512}', 'smallbiz', 'none', [['Security Guard', 22], ['Head of Security', 34]], { cleanRecord: true }),
-  ft('mall_cop', '\u{1F46E}', 'mall', 'none', [['Mall Cop', 18]], { cleanRecord: true }),
+  ft('mall_cop', '\u{1F46E}', 'mall', 'none', [['Mall Cop', 18]], { cleanRecord: true, from: 1960 }),
 
   // Airline & travel
-  ft('pilot', '\u{2708}\u{FE0F}', 'airline', 'bachelor', [['Pilot Trainee', 45], ['Co-Pilot', 68], ['Pilot', 98], ['Chief Pilot', 135]], { license: 'pilot', cleanRecord: true, stress: 1 }),
-  ft('flight_attendant', '\u{1F4BA}', 'airline', 'highschool', [['Jr. Flight Attendant', 24], ['Flight Attendant', 31], ['Sr. Flight Attendant', 39]], { cleanRecord: true }),
-  ft('baggage_handler', '\u{1F6C4}', 'airline', 'none', [['Baggage Handler', 22]]),
+  ft('pilot', '\u{2708}\u{FE0F}', 'airline', 'bachelor', [['Pilot Trainee', 45], ['Co-Pilot', 68], ['Pilot', 98], ['Chief Pilot', 135]], { license: 'pilot', cleanRecord: true, stress: 1, from: 1925 }),
+  ft('flight_attendant', '\u{1F4BA}', 'airline', 'highschool', [['Jr. Flight Attendant', 24], ['Flight Attendant', 31], ['Sr. Flight Attendant', 39]], { cleanRecord: true, from: 1930 }),
+  ft('baggage_handler', '\u{1F6C4}', 'airline', 'none', [['Baggage Handler', 22]], { from: 1930 }),
   ft('travel_agent', '\u{1F3D6}\u{FE0F}', 'travel', 'highschool', [['Travel Associate', 24], ['Travel Agent', 30], ['Regional Manager', 37], ['Agency Operator', 42]]),
 
   // Media & arts
@@ -342,7 +349,7 @@ export const FULLTIME_JOBS: JobDef[] = [
   ft('dishwasher', '\u{1F37D}\u{FE0F}', 'restaurant', 'highschool', [['Dishwasher', 18]]),
   ft('bartender', '\u{1F378}', 'nightclub', 'none', [['Jr. Bartender', 26], ['Bartender', 33], ['Sr. Bartender', 38]], { drinkingAge: true }),
   ft('sommelier', '\u{1F377}', 'restaurant', 'highschool', [['Introductory Sommelier', 48], ['Certified Sommelier', 56], ['Advanced Sommelier', 78], ['Master Sommelier', 92]], { drinkingAge: true }),
-  ft('fast_food', '\u{1F354}', 'fastfood', 'none', [['Crew Member', 16], ['Shift Manager', 19], ['Restaurant Manager', 28], ['General Manager', 34]]),
+  ft('fast_food', '\u{1F354}', 'fastfood', 'none', [['Crew Member', 16], ['Shift Manager', 19], ['Restaurant Manager', 28], ['General Manager', 34]], { from: 1950 }),
   ft('baker', '\u{1F950}', 'smallbiz', 'none', [['Apprentice Baker', 22], ['Baker', 34]]),
   ft('butcher', '\u{1F969}', 'grocery', 'highschool', [['Apprentice Butcher', 22], ['Butcher', 30]]),
   ft('grocer', '\u{1F966}', 'grocery', 'highschool', [['Apprentice Grocer', 18], ['Grocer', 23]], { cleanRecord: true }),
@@ -353,11 +360,11 @@ export const FULLTIME_JOBS: JobDef[] = [
 
   // Personal services
   ft('hairdresser', '\u{2702}\u{FE0F}', 'salon', 'highschool', [['Apprentice Hairdresser', 18], ['Hairdresser', 27], ['Salon Manager', 38]]),
-  ft('nail_technician', '\u{1F485}', 'salon', 'highschool', [['Apprentice Nail Technician', 18], ['Nail Technician', 25]]),
+  ft('nail_technician', '\u{1F485}', 'salon', 'highschool', [['Apprentice Nail Technician', 18], ['Nail Technician', 25]], { from: 1980 }),
   ft('wedding_planner', '\u{1F492}', 'smallbiz', 'highschool', [['Wedding Planner', 26], ['Sr. Wedding Planner', 36]], { cleanRecord: true }),
   ft('real_estate_agent', '\u{1F3E1}', 'realestate', 'highschool', [['Real Estate Agent', 32], ['Senior Real Estate Agent', 55], ['Real Estate Broker', 82]], { license: 'driver', car: true }),
   ft('housekeeper', '\u{1F9FA}', 'hotel', 'none', [['Housekeeper', 19]]),
-  ft('cat_consultant', '\u{1F408}', 'smallbiz', 'none', [['Cat Behavior Consultant', 20]]),
+  ft('cat_consultant', '\u{1F408}', 'smallbiz', 'none', [['Cat Behavior Consultant', 20]], { from: 1990 }),
   ft('mortician', '\u{26B0}\u{FE0F}', 'mortuary', 'bachelor', [['Mortician', 32], ['Funeral Director', 46]], { majors: ['Chemistry', 'Biology'] }),
 
   // Trades & outdoors
@@ -379,10 +386,10 @@ export const FULLTIME_JOBS: JobDef[] = [
   ft('fisherman', '\u{1F3A3}', 'fishery', 'none', [['Fisherman', 18]]),
   ft('crab_fisherman', '\u{1F980}', 'fishery', 'none', [['Greenhorn', 30], ['Deck Hand', 48], ['Deck Boss', 68], ['Engineer', 92], ['Captain', 125]], { minAthleticism: 35, danger: 0.08 }),
   ft('trucker', '\u{1F69B}', 'trucking', 'highschool', [['Apprentice Trucker', 33], ['Trucker', 44]], { license: 'driver', cleanRecord: true }),
-  ft('rideshare', '\u{1F696}', 'rideshare', 'none', [['Driver', 28]], { license: 'driver', car: true, cleanRecord: true }),
+  ft('rideshare', '\u{1F696}', 'rideshare', 'none', [['Driver', 28]], { license: 'driver', car: true, cleanRecord: true, tech: 'rideHailing' }),
   ft('roadkill_remover', '\u{2620}\u{FE0F}', 'municipal', 'none', [['Roadkill Remover', 32]]),
-  ft('porta_potty', '\u{1F6BD}', 'smallbiz', 'none', [['Porta Potty Pumper', 34]]),
-  ft('water_slide_tester', '\u{1F30A}', 'smallbiz', 'none', [['Water Slide Tester', 29]]),
+  ft('porta_potty', '\u{1F6BD}', 'smallbiz', 'none', [['Porta Potty Pumper', 34]], { from: 1960 }),
+  ft('water_slide_tester', '\u{1F30A}', 'smallbiz', 'none', [['Water Slide Tester', 29]], { from: 1980 }),
   ft('worm_picker', '\u{1F41B}', 'farm', 'none', [['Worm Picker', 18]]),
   ft('moonshiner', '\u{1F943}', 'smallbiz', 'none', [['Apprentice Moonshiner', 12], ['Moonshiner', 30]], { drinkingAge: true }),
   ft('zookeeper', '\u{1F992}', 'municipal', 'highschool', [['Zookeeper', 30], ['Head Zookeeper', 44]], { danger: 0.03 }),
@@ -401,17 +408,17 @@ export const FULLTIME_JOBS: JobDef[] = [
 // Part-time jobs (hourly)
 
 export const PARTTIME_JOBS: JobDef[] = [
-  pt('pt_fitness', '\u{1F938}', 'Fitness Instructor', 'gym', 37, 15, { minAge: 18, minAthleticism: 50 }),
-  pt('pt_trainer', '\u{1F3CB}\u{FE0F}', 'Personal Trainer', 'gym', 32, 20, { minAge: 18, minAthleticism: 55, cleanRecord: true }),
+  pt('pt_fitness', '\u{1F938}', 'Fitness Instructor', 'gym', 37, 15, { minAge: 18, minAthleticism: 50, from: 1980 }),
+  pt('pt_trainer', '\u{1F3CB}\u{FE0F}', 'Personal Trainer', 'gym', 32, 20, { minAge: 18, minAthleticism: 55, cleanRecord: true, from: 1980 }),
   pt('pt_beverage_cart', '\u{1F6FA}', 'Beverage Cart Attendant', 'corporate', 30, 15, { minAge: 18 }),
   pt('pt_mystery_shopper', '\u{1F575}\u{FE0F}', 'Mystery Shopper', 'retail', 24, 10, { minAge: 18, cleanRecord: true }),
   pt('pt_dance', '\u{1FA70}', 'Dance Instructor', 'gym', 21, 27, { minAge: 16, minAthleticism: 35 }),
-  pt('pt_game_tester', '\u{1F3AE}', 'Video Game Tester', 'tech', 20, 17),
+  pt('pt_game_tester', '\u{1F3AE}', 'Video Game Tester', 'tech', 20, 17, { tech: 'videoGameConsole', from: 1985 }),
   pt('pt_secretary', '\u{1F4C7}', 'Secretary', 'corporate', 19, 11, { minAge: 16, cleanRecord: true }),
-  pt('pt_kiosk', '\u{1F6D2}', 'Mall Kiosk Worker', 'mall', 19, 21),
+  pt('pt_kiosk', '\u{1F6D2}', 'Mall Kiosk Worker', 'mall', 19, 21, { from: 1970 }),
   pt('pt_mover', '\u{1F4E6}', 'Mover', 'smallbiz', 18, 14, { minAge: 16, cleanRecord: true }),
-  pt('pt_valet', '\u{1F697}', 'Valet', 'hotel', 10, 21, { minAge: 16, license: 'driver', cleanRecord: true }),
-  pt('pt_brand_ambassador', '\u{1F4E2}', 'Brand Ambassador', 'corporate', 17, 15, { minLooks: 50, cleanRecord: true }),
+  pt('pt_valet', '\u{1F697}', 'Valet', 'hotel', 10, 21, { minAge: 16, license: 'driver', cleanRecord: true, from: 1930 }),
+  pt('pt_brand_ambassador', '\u{1F4E2}', 'Brand Ambassador', 'corporate', 17, 15, { minLooks: 50, cleanRecord: true, from: 2000 }),
   pt('pt_swim', '\u{1F3CA}', 'Swim Instructor', 'pool', 17, 15, { minAthleticism: 35, cleanRecord: true }),
   pt('pt_bookkeeper', '\u{1F4D2}', 'Bookkeeper', 'corporate', 17, 17, { minAge: 16, cleanRecord: true }),
   pt('pt_usher', '\u{1F39F}\u{FE0F}', 'Usher', 'hotel', 17, 10, { cleanRecord: true }),
@@ -425,27 +432,27 @@ export const PARTTIME_JOBS: JobDef[] = [
   pt('pt_lifeguard', '\u{1F6DF}', 'Lifeguard', 'pool', 14, 9, { minAthleticism: 40, cleanRecord: true }),
   pt('pt_doorman', '\u{1F6AA}', 'Doorman', 'nightclub', 13, 28, { minAge: 18 }),
   pt('pt_bike_mechanic', '\u{1F6B2}', 'Bike Shop Mechanic', 'smallbiz', 13, 24),
-  pt('pt_school_bus', '\u{1F68C}', 'School Bus Driver', 'municipal', 13, 25, { minAge: 18, license: 'driver', cleanRecord: true }),
+  pt('pt_school_bus', '\u{1F68C}', 'School Bus Driver', 'municipal', 13, 25, { minAge: 18, license: 'driver', cleanRecord: true, from: 1930 }),
   pt('pt_street_sweeper', '\u{1F9F9}', 'Street Sweeper', 'municipal', 13, 24),
-  pt('pt_arcade', '\u{1F579}\u{FE0F}', 'Arcade Assistant', 'mall', 13, 29),
+  pt('pt_arcade', '\u{1F579}\u{FE0F}', 'Arcade Assistant', 'mall', 13, 29, { from: 1975 }),
   pt('pt_bellhop', '\u{1F6CE}\u{FE0F}', 'Bellhop', 'hotel', 12, 14, { cleanRecord: true }),
-  pt('pt_barista', '\u{2615}', 'Barista', 'cafe', 12, 29, { cleanRecord: true }),
+  pt('pt_barista', '\u{2615}', 'Barista', 'cafe', 12, 29, { cleanRecord: true, from: 1990 }),
   pt('pt_concessions', '\u{1F37F}', 'Concessions Attendant', 'mall', 12, 18, { cleanRecord: true }),
   pt('pt_golf_shop', '\u{26F3}', 'Golf Shop Assistant', 'smallbiz', 10, 30),
   pt('pt_library', '\u{1F4DA}', 'Library Assistant', 'library', 10, 10),
   pt('pt_sign_holder', '\u{1FAA7}', 'Sign Holder', 'smallbiz', 10, 11),
   pt('pt_front_desk', '\u{1F3E8}', 'Hotel Front Desk Clerk', 'hotel', 10, 30, { minAge: 16, cleanRecord: true }),
-  pt('pt_gym_reception', '\u{1F3CB}\u{FE0F}', 'Gym Receptionist', 'gym', 10, 17, { cleanRecord: true }),
+  pt('pt_gym_reception', '\u{1F3CB}\u{FE0F}', 'Gym Receptionist', 'gym', 10, 17, { cleanRecord: true, from: 1970 }),
   pt('pt_paperboy', '\u{1F5DE}\u{FE0F}', 'Newspaper Delivery Person', 'newspaper', 10, 12),
-  pt('pt_yoga_reception', '\u{1F9D8}', 'Yoga Receptionist', 'gym', 9, 18, { cleanRecord: true }),
+  pt('pt_yoga_reception', '\u{1F9D8}', 'Yoga Receptionist', 'gym', 9, 18, { cleanRecord: true, from: 1990 }),
   pt('pt_boutique', '\u{1F45C}', 'Boutique Associate', 'retail', 9, 11, { cleanRecord: true }),
-  pt('pt_laser_tag', '\u{1F52B}', 'Laser Tag Assistant', 'mall', 8, 21),
+  pt('pt_laser_tag', '\u{1F52B}', 'Laser Tag Assistant', 'mall', 8, 21, { from: 1985 }),
   pt('pt_donut', '\u{1F369}', 'Donut Maker', 'cafe', 8, 9),
   pt('pt_car_wash', '\u{1F9FC}', 'Car Wash Attendant', 'smallbiz', 8, 14),
   pt('pt_camp_counselor', '\u{1F3D5}\u{FE0F}', 'Camp Counselor', 'smallbiz', 12, 30, { minAge: 16 }),
   pt('pt_office_assistant', '\u{1F5C2}\u{FE0F}', 'Office Assistant', 'corporate', 13, 30, { minAge: 16, cleanRecord: true }),
   pt('pt_ice_cream', '\u{1F366}', 'Ice Cream Scooper', 'cafe', 8, 19),
-  pt('pt_social_media', '\u{1F4F1}', 'Social Media Manager', 'corporate', 18, 12, { minAge: 16 }),
+  pt('pt_social_media', '\u{1F4F1}', 'Social Media Manager', 'corporate', 18, 12, { minAge: 16, tech: 'socialMedia', from: 2008 }),
   pt('pt_stocker', '\u{1F4E6}', 'Grocery Store Stocker', 'grocery', 12, 20),
   pt('pt_sandwich', '\u{1F96A}', 'Sandwich Maker', 'fastfood', 11, 20),
   pt('pt_pizza', '\u{1F355}', 'Pizza Maker', 'fastfood', 11, 22),
@@ -453,7 +460,7 @@ export const PARTTIME_JOBS: JobDef[] = [
   pt('pt_amusement', '\u{1F3A2}', 'Amusement Park Attendant', 'smallbiz', 12, 24),
   pt('pt_bowling', '\u{1F3B3}', 'Bowling Alley Attendant', 'smallbiz', 10, 20),
   pt('pt_tour_guide', '\u{1F5FA}\u{FE0F}', 'Tour Guide', 'travel', 15, 16, { minAge: 16 }),
-  pt('pt_mall_santa', '\u{1F385}', 'Mall Santa', 'mall', 20, 25, { minAge: 50, gender: 'male' }),
+  pt('pt_mall_santa', '\u{1F385}', 'Mall Santa', 'mall', 20, 25, { minAge: 50, gender: 'male', from: 1950 }),
   // University students only
   pt('pt_research_assistant', '\u{1F9EA}', 'Research Assistant', 'university', 16, 10, { studentOnly: true, minSmarts: 50 }),
   pt('pt_lab_assistant', '\u{1F52C}', 'Lab Assistant', 'university', 15, 15, { studentOnly: true }),
@@ -605,7 +612,47 @@ export const PROGRAM_TAGS: Record<GradKey, string[]> = {
   veterinary: ['animals', 'health', 'science'],
 }
 
-export const ALL_JOBS: JobDef[] = [...FULLTIME_JOBS, ...PARTTIME_JOBS]
+// ---------------------------------------------------------------------------
+// Jobs of particular eras: listed as extra openings in their years (kept apart from the lists
+// above so today's job board is built exactly as before). Switchboards and typing pools in the
+// past; data science and machine learning only once those fields exist.
+
+export const ERA_FULLTIME_JOBS: JobDef[] = [
+  ft('lamplighter', '\u{1F56F}\u{FE0F}', 'municipal', 'none', [['Lamplighter', 18]], { until: 1930 }),
+  ft('iceman', '\u{1F9CA}', 'smallbiz', 'none', [['Ice Delivery Man', 20]], { until: 1945, minAthleticism: 30 }),
+  ft('elevator_operator', '\u{1F6D7}', 'corporate', 'none', [['Elevator Operator', 19]], { until: 1970 }),
+  ft('telegraph_operator', '\u{1F4E0}', 'municipal', 'highschool', [['Telegraph Operator', 26], ['Chief Telegrapher', 34]], { until: 1975 }),
+  ft('switchboard_operator', '\u{260E}\u{FE0F}', 'corporate', 'highschool', [['Switchboard Operator', 24], ['Chief Operator', 32]], { from: 1920, until: 1985 }),
+  ft('milkman', '\u{1F95B}', 'smallbiz', 'none', [['Milkman', 26]], { until: 1985, license: 'driver' }),
+  ft('typist', '\u{2328}\u{FE0F}', 'corporate', 'highschool', [['Typist', 22], ['Senior Typist', 27], ['Typing Pool Supervisor', 34]], { until: 1995 }),
+  ft('keypunch_operator', '\u{1F5C3}\u{FE0F}', 'tech', 'highschool', [['Keypunch Operator', 28], ['Data Entry Supervisor', 36]], { from: 1950, until: 1985 }),
+  ft('computer_operator', '\u{1F4BE}', 'tech', 'highschool', [['Mainframe Operator', 34], ['Senior Mainframe Operator', 44], ['Data Center Manager', 62]], { from: 1955, until: 1995 }),
+  ft('projectionist', '\u{1F4FD}\u{FE0F}', 'film', 'none', [['Film Projectionist', 26], ['Chief Projectionist', 34]], { until: 2012 }),
+  ft('photo_lab', '\u{1F39E}\u{FE0F}', 'retail', 'highschool', [['Photo Lab Technician', 24], ['Photo Lab Manager', 33]], { from: 1950, until: 2008 }),
+  ft('web_developer', '\u{1F578}\u{FE0F}', 'tech', 'bachelor', [['Jr. Web Developer', 52], ['Web Developer', 70], ['Sr. Web Developer', 92]], { majors: ['Computer Science', 'Information Systems', 'Graphic Design'], tech: 'internet', from: 1996 }),
+  ft('data_scientist', '\u{1F4CA}', 'tech', 'bachelor', [['Jr. Data Scientist', 72], ['Data Scientist', 98], ['Sr. Data Scientist', 130], ['Head of Data Science', 175]], { majors: ['Computer Science', 'Mathematics', 'Physics', 'Economics'], from: 2011 }),
+  ft('ml_engineer', '\u{1F916}', 'tech', 'bachelor', [['Machine Learning Engineer', 95], ['Sr. Machine Learning Engineer', 140], ['Principal AI Engineer', 200]], { majors: ['Computer Science', 'Mathematics', 'Physics'], tech: 'deepLearning', from: 2015, minSmarts: 70 }),
+  ft('social_media_manager', '\u{1F4F2}', 'corporate', 'bachelor', [['Social Media Coordinator', 40], ['Social Media Manager', 58], ['Head of Social', 85]], { majors: ['Communications', 'Marketing', 'Journalism'], tech: 'socialMedia', from: 2009 }),
+  ft('cybersecurity', '\u{1F6E1}\u{FE0F}', 'tech', 'bachelor', [['Jr. Security Analyst', 62], ['Cybersecurity Analyst', 85], ['Chief Information Security Officer', 160]], { majors: ['Computer Science', 'Information Systems'], tech: 'internet', from: 2003 }),
+]
+
+export const ERA_PARTTIME_JOBS: JobDef[] = [
+  pt('pt_pinsetter', '\u{1F3B3}', 'Bowling Pinsetter', 'smallbiz', 8, 20, { until: 1955 }),
+  pt('pt_soda_jerk', '\u{1F964}', 'Soda Fountain Clerk', 'cafe', 9, 20, { until: 1965 }),
+  pt('pt_switchboard', '\u{260E}\u{FE0F}', 'Telephone Operator', 'corporate', 11, 20, { minAge: 16, from: 1920, until: 1980 }),
+  pt('pt_video_store', '\u{1F4FC}', 'Video Store Clerk', 'retail', 10, 20, { from: 1980, until: 2010 }),
+  pt('pt_courier_app', '\u{1F6F5}', 'Delivery App Courier', 'smallbiz', 15, 20, { minAge: 18, license: 'driver', tech: 'smartphone', from: 2014 }),
+]
+
+/** True when anyone is hired for this job in that country and year. */
+export function jobInEra(def: JobDef, year: number, countryId: string): boolean {
+  if (def.from !== undefined && year < def.from) return false
+  if (def.until !== undefined && year > def.until) return false
+  if (def.tech && techAdoption(countryId, def.tech, year) < 0.02) return false
+  return true
+}
+
+export const ALL_JOBS: JobDef[] = [...FULLTIME_JOBS, ...PARTTIME_JOBS, ...ERA_FULLTIME_JOBS, ...ERA_PARTTIME_JOBS]
 
 const JOB_INDEX: Record<string, JobDef> = Object.fromEntries(ALL_JOBS.map((j) => [j.id, j]))
 

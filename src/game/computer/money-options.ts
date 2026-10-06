@@ -17,6 +17,7 @@ import { defineScript } from '../scripts'
 import { HINT_EMOJI, talentHint } from '../talents'
 import { stockBetsMenu } from './money-stocks'
 import { addScreenTime } from './skills'
+import { eraOpen, ZERO_DTE_GATE } from './era'
 import type { ChoiceOption, GameState, Json, MenuGroup, MenuNode, Person } from '../types'
 import {
   absPct,
@@ -402,8 +403,8 @@ defineScript(DIR_SCRIPT, (g, choice, data) => {
   const lines = strikes.map((s) => {
     const price = optionPrice(inf, choice, s, st.skill, f.side, extra)
     return f.side === 'buy'
-      ? `${strikeLabel(inf, choice, s)}: every $1 of premium controls about ${shortMoney(1 / price)} of the index.`
-      : `${strikeLabel(inf, choice, s)}: you collect about ${formatMoney(price * 1000)} for every $1,000 you put on the hook.`
+      ? `${strikeLabel(inf, choice, s)}: every ${formatMoney(1)} of premium controls about ${shortMoney(1 / price)} of the index.`
+      : `${strikeLabel(inf, choice, s)}: you collect about ${formatMoney(price * 1000)} for every ${formatMoney(1_000)} you put on the hook.`
   })
   scriptChoice(
     g,
@@ -436,8 +437,8 @@ defineScript(STRIKE_SCRIPT, (g, choice, data) => {
       emoji: '\u{1F9FE}',
       text:
         f.mode === 'paper'
-          ? `How many (pretend) dollars of the index do you want to be on the hook for? You can go up to ${formatMoney(max)} (5x your paper cash). The premium is yours at the end of the year if the index behaves; a big move against you eats it and then some.`
-          : `How many dollars of the index do you want to be on the hook for? You can go up to ${formatMoney(max)} (5x your cash). Your broker holds the premium as collateral until the options expire at the end of the year. A big move against you is paid out of the premium, then your pocket, then a margin loan.`,
+          ? `How much of the index (in pretend money) do you want to be on the hook for? You can go up to ${formatMoney(max)} (5x your paper cash). The premium is yours at the end of the year if the index behaves; a big move against you eats it and then some.`
+          : `How much of the index do you want to be on the hook for? You can go up to ${formatMoney(max)} (5x your cash). Your broker holds the premium as collateral until the options expire at the end of the year. A big move against you is paid out of the premium, then your pocket, then a margin loan.`,
       input: 'number',
       min: lo * 10,
       max,
@@ -890,6 +891,7 @@ export function optionsMenu(): MenuGroup {
             },
             {
               type: 'action',
+              visible: (gg) => eraOpen(gg, ZERO_DTE_GATE),
               id: 'computer.options.yolo',
               label: '0DTE YOLO',
               emoji: '\u{1F3B2}',
@@ -927,7 +929,7 @@ export function optionsMenu(): MenuGroup {
             if (!canAct(gg) || !pp || gg.character.age >= 18) return
             scriptChoice(gg, PARENT_SCRIPT, 'Borrowed Login', `${pp.firstName}'s password is on a sticky note under the keyboard. You could trade options with real money from ${pp.gender === 'male' ? 'his' : 'her'} account. What could possibly go wrong?`, [
               { id: 'index', label: 'Buy index options', emoji: '\u{1F4CA}' },
-              { id: 'yolo', label: '0DTE YOLO', emoji: '\u{1F3B2}' },
+              ...(eraOpen(gg, ZERO_DTE_GATE) ? [{ id: 'yolo', label: '0DTE YOLO', emoji: '\u{1F3B2}' }] : []),
               { id: 'cancel', label: 'Put the sticky note back', emoji: '\u{1F645}' },
             ], { emoji: '\u{1F511}', data: { parentId: pp.id } })
           },
@@ -952,6 +954,7 @@ export function optionsMenu(): MenuGroup {
           },
           {
             type: 'action',
+            visible: (gg) => eraOpen(gg, ZERO_DTE_GATE),
             id: 'computer.options.paper.yolo',
             label: 'Paper 0DTE',
             emoji: '\u{1F3B2}',

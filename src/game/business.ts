@@ -5,6 +5,7 @@
 // events, exits (sale, IPO, bankruptcy) and the yearly simulation + Annual Report. This file
 // is the public surface the rest of the game imports.
 import { shortMoney } from './core'
+import { shareSummary } from './business/competition'
 import { deepTechSummary } from './business/deeptech'
 import { buyBusinessMenu, startBusinessMenu } from './business/founding'
 import { industryDef } from './business/industries'
@@ -100,7 +101,9 @@ export function businessSummary(g: GameState): string {
     const profit = b.last ? `${b.last.net >= 0 ? '' : '-'}${shortMoney(Math.abs(b.last.net))} ${b.last.net >= 0 ? 'profit' : 'loss'} last year` : 'just opened'
     const role = runsIt(g, a) ? 'CEO' : 'owner'
     const tech = deepTechSummary(g, a)
-    return `${a.name} (${def.label.toLowerCase()}, ${b.city}, ${totalOutlets(b)} ${totalOutlets(b) === 1 ? def.site : def.sitePlural}, ${b.employees + b.staff.length} staff, ${profit}${tech ? `; ${tech}` : ''}; ${role})`
+    // Deep tech carries its market share in its own clause; everyone else gets it here.
+    const share = tech ? '' : shareSummary(g, b)
+    return `${a.name} (${def.label.toLowerCase()}, ${b.city}, ${totalOutlets(b)} ${totalOutlets(b) === 1 ? def.site : def.sitePlural}, ${b.employees + b.staff.length} staff, ${profit}${share ? `, ${share}` : ''}${tech ? `; ${tech}` : ''}; ${role})`
   })
   return `Owns ${parts.join('; ')}${list.length > 3 ? ` and ${list.length - 3} more` : ''}`
 }

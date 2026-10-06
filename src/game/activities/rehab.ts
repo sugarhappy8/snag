@@ -8,7 +8,7 @@ import type { Condition, GameState, Json, MenuAction, MenuGroup, MenuNode } from
 import { addictions, brokeNotice, gate, localPrice, money, removeCondition, result, usesLeft } from './common'
 
 interface Treatment {
-  id: 'meeting' | 'hypno' | 'center' | 'luxury'
+  id: 'meeting' | 'hypno' | 'center' | 'luxury' | 'sanatorium'
   label: string
   emoji: string
   subtitle: string
@@ -16,13 +16,16 @@ interface Treatment {
   /** Base cure chance. */
   chance: number
   perYear: number
+  /** First year the treatment existed (twelve-step groups 1935, rehab clinics after the war). */
+  since?: number
 }
 
 export const TREATMENTS: Treatment[] = [
-  { id: 'meeting', label: 'Alcoholics Anonymous', emoji: '\u{1FA91}', subtitle: 'Free support group meeting', price: 0, chance: 0.2, perYear: 4 },
+  { id: 'meeting', label: 'Support Group', emoji: '\u{1FA91}', subtitle: 'Free twelve-step meeting', price: 0, chance: 0.2, perYear: 4, since: 1935 },
   { id: 'hypno', label: 'Hypnotherapy', emoji: '\u{1F300}', subtitle: 'A session with a hypnotist', price: 250, chance: 0.35, perYear: 2 },
-  { id: 'center', label: 'Rehab Center', emoji: '\u{1F3E5}', subtitle: 'A 30-day inpatient program', price: 12000, chance: 0.55, perYear: 1 },
-  { id: 'luxury', label: 'Luxury Rehab Center', emoji: '\u{1F334}', subtitle: 'Recovery with an ocean view', price: 45000, chance: 0.75, perYear: 1 },
+  { id: 'center', label: 'Rehab Center', emoji: '\u{1F3E5}', subtitle: 'A 30-day inpatient program', price: 12000, chance: 0.55, perYear: 1, since: 1950 },
+  { id: 'luxury', label: 'Luxury Rehab Center', emoji: '\u{1F334}', subtitle: 'Recovery with an ocean view', price: 45000, chance: 0.75, perYear: 1, since: 1975 },
+  { id: 'sanatorium', label: 'Sanatorium', emoji: '\u{1F3DE}\u{FE0F}', subtitle: 'Fresh air, cold baths and strict routines', price: 6000, chance: 0.4, perYear: 1 },
 ]
 
 function priceOf(g: GameState, t: Treatment): number {
@@ -44,7 +47,7 @@ export function cureChance(g: GameState, t: Treatment, a: Condition): number {
 function noAddictionVisit(g: GameState, t: Treatment): void {
   addStat(g, 'happiness', randInt(g, 0, 3))
   addHidden(g, 'willpower', 1)
-  log(g, `I went to ${t.id === 'meeting' ? 'an Alcoholics Anonymous meeting' : t.id === 'hypno' ? 'a hypnotherapy session' : 'rehab'} even though I'm not addicted to anything.`, 'neutral')
+  log(g, `I went to ${t.id === 'meeting' ? 'a support group meeting' : t.id === 'hypno' ? 'a hypnotherapy session' : t.id === 'sanatorium' ? 'a sanatorium' : 'rehab'} even though I'm not addicted to anything.`, 'neutral')
   const lines: Record<Treatment['id'], string[]> = {
     meeting: [
       'You stood up at the meeting and said "Hi, I’m not addicted to anything." Everyone stared. Someone offered you a cookie.',
@@ -53,6 +56,7 @@ function noAddictionVisit(g: GameState, t: Treatment): void {
     hypno: ['The hypnotist swung a pocket watch at you for an hour. You now cluck like a chicken whenever someone says "Tuesday."'],
     center: ['You checked into rehab for 30 days without an addiction. The staff were confused, but you enjoyed the group yoga.'],
     luxury: ['You spent a month at a luxury rehab center without any addictions. Best spa vacation of your life.'],
+    sanatorium: ['You spent a month at a mountain sanatorium without any addiction. The cold baths were bracing. The porridge was not.'],
   }
   result(g, t.label, pick(g, lines[t.id]), t.emoji)
 }
@@ -73,6 +77,7 @@ function treat(g: GameState, t: Treatment, a: Condition): void {
       hypno: 'The hypnotist snapped their fingers and the cravings simply... stopped.',
       center: 'Thirty days of therapy, routines and honest conversations changed your life.',
       luxury: 'Between the therapy sessions and the infinity pool, you found yourself again.',
+      sanatorium: 'Months of mountain air, cold baths and early bedtimes did the trick.',
     }
     result(g, 'Recovered!', `${how[t.id]}\n\nYou've overcome your ${a.name.toLowerCase()}!`, '\u{1F31F}', 'good')
     return
@@ -85,6 +90,7 @@ function treat(g: GameState, t: Treatment, a: Condition): void {
     hypno: ['The hypnotist swung the watch. You stayed wide awake and very much still addicted.'],
     center: ['You completed the program, but relapsed a few weeks after getting out. Recovery takes time.'],
     luxury: ['You had a lovely month by the ocean, but the cravings were waiting for you when you got home.'],
+    sanatorium: ['You took the waters and the cold baths, but the cravings followed you down the mountain.'],
   }
   result(g, 'Relapse', `${pick(g, fail[t.id])}\n\nDon't give up. Many people need more than one try.`, '\u{1F614}', 'bad')
 }
@@ -140,8 +146,9 @@ export const rehabMenu: MenuGroup = {
     const list = addictions(g)
     return list.length ? `You are struggling with: ${list.map((a) => a.name).join(', ')}.` : "You don't have any addictions, but you can still attend."
   },
-  children: (): MenuNode[] =>
-    TREATMENTS.map(
+  // Sanatoriums until rehab clinics replaced them; twelve-step groups from 1935.
+  children: (g): MenuNode[] =>
+    TREATMENTS.filter((t) => g.year >= (t.since ?? 0) && (t.id !== 'sanatorium' || g.year < 1960)).map(
       (t): MenuAction => ({
         type: 'action',
         id: `rehab.${t.id}`,

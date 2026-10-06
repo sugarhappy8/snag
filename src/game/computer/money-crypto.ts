@@ -12,6 +12,7 @@ import { totalFollowers } from '../special/social'
 import type { GameState, Json, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import { addScreenTime, codingSkill } from './skills'
+import { CRYPTO_GATE, eraReason } from './era'
 import {
   anchor,
   blockReason,
@@ -179,7 +180,7 @@ function runJson(r: CoinRun): Json {
 }
 
 function coinReason(g: GameState): string | null {
-  const b = blockReason(g, CRYPTO_MIN_AGE)
+  const b = blockReason(g, CRYPTO_MIN_AGE) ?? eraReason(g, CRYPTO_GATE, 'cryptocurrency')
   if (b) return b
   if (cryptoBanned(g.character.countryId)) return `Crypto is banned in ${getCountry(g.character.countryId).name}. Even the meme coins.`
   return null

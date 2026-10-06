@@ -1,5 +1,5 @@
 // Top of the game screen: avatar, name, role, bank balance, AI status and settings.
-import { characterAvatar, formatMoney, fullName, roleLabel, shortMoney } from '../../game/core'
+import { characterAvatar, formatMoney, fullName, moneyContextOf, roleLabel, shortMoney, showMoney, withMoneyContext } from '../../game/core'
 import { getCountry } from '../../game/world'
 import type { GameState } from '../../game/types'
 import { providerFor } from '../../ai/providers'
@@ -46,7 +46,13 @@ export function Header({ g, onProfile }: HeaderProps) {
   const ai = useAiBadge()
   const country = getCountry(c.countryId)
   const badge = avatarBadge(g)
-  const money = Math.abs(c.money) >= 1e9 ? shortMoney(c.money) : formatMoney(c.money)
+  // In the currency and prices of this life (Settings › Money); compact once it gets long
+  // (a billion of anything, or rupiah-sized numbers).
+  const ctx = moneyContextOf(g)
+  const shown = withMoneyContext(ctx, () => showMoney(c.money))
+  const full = withMoneyContext(ctx, () => formatMoney(c.money))
+  const money = Math.abs(shown.amount) >= 1e9 || full.length > 16 ? withMoneyContext(ctx, () => shortMoney(c.money)) : full
+  const title = shown.converted ? `${full} (${withMoneyContext(null, () => formatMoney(c.money))} in today's US dollars)` : full
 
   return (
     <header className="hdr">
@@ -86,7 +92,7 @@ export function Header({ g, onProfile }: HeaderProps) {
         </button>
         <div className="hdr-money">
           <div className="hdr-money-label">Bank Balance</div>
-          <div className={c.money < 0 ? 'hdr-money-value is-negative' : 'hdr-money-value'} title={formatMoney(c.money)}>
+          <div className={c.money < 0 ? 'hdr-money-value is-negative' : 'hdr-money-value'} title={title}>
             {money}
           </div>
         </div>

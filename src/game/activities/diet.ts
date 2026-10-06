@@ -1,5 +1,7 @@
 // Mind & Body > Diet: pick a diet plan. It costs money every month and changes health,
 // looks and happiness every year you stay on it (applied by yearlyDiet / syncDiet).
+// Diets are fads of their decade: thorough chewing in the 1900s, grapefruit in the thirties,
+// cabbage soup in the fifties, Atkins in the seventies, keto and paleo in the 2010s.
 import { addStat, count, log, notice, spend } from '../core'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -17,24 +19,36 @@ interface DietDef {
   /** Yearly chance of malnutrition. */
   malnutrition?: number
   blurb: string
+  /** Years the plan was around (first year, and the year it faded). */
+  since?: number
+  until?: number
 }
 
 export const DIETS: DietDef[] = [
-  { id: 'atkins', name: 'Atkins', emoji: '\u{1F969}', monthly: 120, health: [-3, 0], looks: [0, 2], happiness: [0, 2], blurb: 'Low carb, lots of meat and eggs' },
+  { id: 'atkins', name: 'Atkins', emoji: '\u{1F969}', monthly: 120, health: [-3, 0], looks: [0, 2], happiness: [0, 2], blurb: 'Low carb, lots of meat and eggs', since: 1972 },
   { id: 'highCalorie', name: 'High Calorie', emoji: '\u{1F354}', monthly: 160, health: [-17, -10], looks: [-5, -2], happiness: [3, 7], blurb: 'Eat everything. Always.' },
-  { id: 'hotChips', name: 'Spicy Cheese Puff', emoji: '\u{1F336}\u{FE0F}', monthly: 45, health: [-25, -15], looks: [-3, 0], happiness: [2, 6], blurb: 'Nothing but spicy cheese puffs' },
-  { id: 'jennyCraig', name: 'Portion Coach', emoji: '\u{1F957}', monthly: 400, health: [2, 4], looks: [1, 2], happiness: [1, 3], blurb: 'Prepackaged meals and a coach' },
-  { id: 'keto', name: 'Keto', emoji: '\u{1F951}', monthly: 210, health: [1, 3], looks: [1, 3], happiness: [-3, -1], blurb: 'Fat is your new best friend' },
-  { id: 'liquid', name: 'Liquid', emoji: '\u{1F964}', monthly: 150, health: [-6, -2], looks: [-3, -1], happiness: [-5, -2], malnutrition: 0.25, blurb: 'Shakes for breakfast, lunch and dinner' },
-  { id: 'mediterranean', name: 'Mediterranean', emoji: '\u{1FAD2}', monthly: 250, health: [3, 6], looks: [1, 2], happiness: [1, 3], blurb: 'Olive oil, fish and vegetables' },
-  { id: 'paleo', name: 'Paleo', emoji: '\u{1F356}', monthly: 230, health: [1, 3], looks: [1, 2], happiness: [-3, -1], blurb: 'Eat like a caveman' },
-  { id: 'southBeach', name: 'South Beach', emoji: '\u{1F3D6}\u{FE0F}', monthly: 200, health: [2, 4], looks: [1, 3], happiness: [0, 1], blurb: 'Lean protein, good carbs' },
+  { id: 'hotChips', name: 'Spicy Cheese Puff', emoji: '\u{1F336}\u{FE0F}', monthly: 45, health: [-25, -15], looks: [-3, 0], happiness: [2, 6], blurb: 'Nothing but spicy cheese puffs', since: 1990 },
+  { id: 'jennyCraig', name: 'Portion Coach', emoji: '\u{1F957}', monthly: 400, health: [2, 4], looks: [1, 2], happiness: [1, 3], blurb: 'Prepackaged meals and a coach', since: 1983 },
+  { id: 'keto', name: 'Keto', emoji: '\u{1F951}', monthly: 210, health: [1, 3], looks: [1, 3], happiness: [-3, -1], blurb: 'Fat is your new best friend', since: 2012 },
+  { id: 'liquid', name: 'Liquid', emoji: '\u{1F964}', monthly: 150, health: [-6, -2], looks: [-3, -1], happiness: [-5, -2], malnutrition: 0.25, blurb: 'Shakes for breakfast, lunch and dinner', since: 1977 },
+  { id: 'mediterranean', name: 'Mediterranean', emoji: '\u{1FAD2}', monthly: 250, health: [3, 6], looks: [1, 2], happiness: [1, 3], blurb: 'Olive oil, fish and vegetables', since: 1975 },
+  { id: 'paleo', name: 'Paleo', emoji: '\u{1F356}', monthly: 230, health: [1, 3], looks: [1, 2], happiness: [-3, -1], blurb: 'Eat like a caveman', since: 2010 },
+  { id: 'southBeach', name: 'South Beach', emoji: '\u{1F3D6}\u{FE0F}', monthly: 200, health: [2, 4], looks: [1, 3], happiness: [0, 1], blurb: 'Lean protein, good carbs', since: 2003 },
   { id: 'tapeworm', name: 'Tapeworm', emoji: '\u{1FAB1}', monthly: 30, health: [-20, -12], looks: [-6, -2], happiness: [-3, 0], blurb: 'Swallow a parasite. What could go wrong?' },
-  { id: 'vegan', name: 'Vegan', emoji: '\u{1F966}', monthly: 180, health: [2, 4], looks: [0, 1], happiness: [-2, 0], malnutrition: 0.08, blurb: 'No animal products whatsoever' },
+  { id: 'vegan', name: 'Vegan', emoji: '\u{1F966}', monthly: 180, health: [2, 4], looks: [0, 1], happiness: [-2, 0], malnutrition: 0.08, blurb: 'No animal products whatsoever', since: 1944 },
   { id: 'vegetarian', name: 'Vegetarian', emoji: '\u{1F955}', monthly: 160, health: [2, 5], looks: [0, 1], happiness: [0, 1], malnutrition: 0.05, blurb: 'No meat' },
-  { id: 'weightWatchers', name: 'Point Counter', emoji: '\u{2696}\u{FE0F}', monthly: 300, health: [2, 4], looks: [1, 3], happiness: [1, 3], blurb: 'Count points, not calories' },
-  { id: 'whole30', name: 'Whole30', emoji: '\u{1F34E}', monthly: 220, health: [2, 5], looks: [1, 2], happiness: [-3, -1], blurb: '30 days of nothing fun, forever' },
+  { id: 'weightWatchers', name: 'Point Counter', emoji: '\u{2696}\u{FE0F}', monthly: 300, health: [2, 4], looks: [1, 3], happiness: [1, 3], blurb: 'Count points, not calories', since: 1997 },
+  { id: 'whole30', name: 'Whole30', emoji: '\u{1F34E}', monthly: 220, health: [2, 5], looks: [1, 2], happiness: [-3, -1], blurb: '30 days of nothing fun, forever', since: 2009 },
+  { id: 'fletcher', name: 'Thorough Chewing', emoji: '\u{1F9B7}', monthly: 20, health: [0, 2], looks: [0, 1], happiness: [-3, -1], blurb: 'Chew every bite exactly 32 times', until: 1935 },
+  { id: 'grapefruit', name: 'Grapefruit', emoji: '\u{1F34A}', monthly: 60, health: [0, 2], looks: [0, 2], happiness: [-2, 0], blurb: 'Half a grapefruit with every single meal', since: 1930 },
+  { id: 'cabbageSoup', name: 'Cabbage Soup', emoji: '\u{1F96C}', monthly: 40, health: [-1, 1], looks: [1, 2], happiness: [-4, -2], blurb: 'Cabbage soup. All week. Every week.', since: 1950 },
+  { id: 'calorieCounting', name: 'Calorie Counting', emoji: '\u{1F4DD}', monthly: 30, health: [1, 3], looks: [0, 2], happiness: [-1, 1], blurb: 'Add up every bite in a little notebook', since: 1918 },
 ]
+
+/** Was this diet around in the current year? */
+function dietExists(g: GameState, d: DietDef): boolean {
+  return g.year >= (d.since ?? 0) && g.year < (d.until ?? 99999)
+}
 
 const DIET_KEY = 'diet'
 
@@ -173,7 +187,7 @@ export const dietMenu: MenuGroup = {
   },
   children: (g): MenuNode[] => {
     const cur = currentDiet(g)
-    const offered = stablePick(g, 'diets', DIETS, 8)
+    const offered = stablePick(g, 'diets', DIETS.filter((d) => dietExists(g, d)), 8)
     if (cur && !offered.some((d) => d.id === cur.def.id)) offered.unshift(cur.def)
     const nodes: MenuNode[] = []
     if (cur) {

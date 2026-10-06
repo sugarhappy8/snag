@@ -10,6 +10,7 @@ import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { bizWorth, ceoSkill, equipmentValue, expectedFx, LASTING_YEARS, localEcon, redTape, staffNet, staffPower, type BizFx, type Worth } from './economy'
+import { COMPETITION_EVENTS } from './competition-events'
 import { sellBusiness } from './exit'
 import { conglomerate, investorFirm, laborProtection, traitOf, unionStrength } from './flavor'
 import { industryDef } from './industries'
@@ -952,6 +953,8 @@ const EVENTS: BizEvent[] = [
   { id: 'disaster', weight: (_g, b) => (QUAKE.has(b.countryId) || STORM.has(b.countryId) ? 0.3 : 0.2), present: presentDisaster },
   { id: 'tacos', weight: (_g, b) => (b.employees + b.staff.length >= 4 ? 0.3 : 0), present: presentTacos },
   { id: 'poached', weight: (_g, b) => (b.staff.length > 0 ? 0.35 : 0), present: presentPoached },
+  // Rivals in the company's market: takeover bids, copycats, price wars, scandals, newcomers.
+  ...COMPETITION_EVENTS,
 ]
 
 /**

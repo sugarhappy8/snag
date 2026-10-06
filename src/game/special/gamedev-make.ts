@@ -46,7 +46,6 @@ import {
 import {
   AWARDS,
   CRITIC_SITE,
-  ENGINES,
   engineDef,
   GENRES,
   genreDef,
@@ -55,12 +54,18 @@ import {
   isPlatform,
   isScope,
   JAM_THEMES,
-  PLATFORMS,
   platformDef,
   PUBLISHERS,
   SCOPES,
   scopeDef,
-  STORE,
+  enginesIn,
+  gamedevFeatureOpen,
+  genresIn,
+  platformLabel,
+  platformOpen,
+  platformsIn,
+  scopeOpen,
+  storeIn,
   type EngineId,
   type GenreId,
   type PlatformId,
@@ -68,6 +73,8 @@ import {
 } from './gamedev-data'
 import { artSkill, clampN, designSkill, gdMut, gdView, nextId, playerLabel, tidy, whole, type GdCredit, type GdProfile, type GdProject } from './gamedev-state'
 import { totalFollowers } from './social'
+import { eraOpen, ONLINE_COURSE_GATE, VIDEO_GATE } from '../computer/era'
+import { hasTech } from '../history/timeline'
 
 const MAX_WORK = 3
 /** Highest quality a solo project can be polished to before launch (launch-day luck can still beat it). */
@@ -95,7 +102,13 @@ function cap(text: string): string {
 
 /** Why the player can't work on games at the computer right now. */
 export function makeBlock(g: GameState, minAge = 0): string | null {
-  return firstReason(computerBlock(g), g.character.age < minAge ? `You must be at least ${minAge}.` : null)
+  return firstReason(eraMakeBlock(g), computerBlock(g), g.character.age < minAge ? `You must be at least ${minAge}.` : null)
+}
+
+/** Before home consoles and computers, nobody makes games at home. */
+function eraMakeBlock(g: GameState): string | null {
+  if (platformsIn(g.year).length === 0 || !hasTech(g, 'videoGameConsole')) return `It's ${g.year}. Nobody around here makes games at home yet.`
+  return null
 }
 
 /** Max games in development at once (teens can juggle one). */
@@ -228,7 +241,7 @@ export function startGame(g: GameState, preset: Partial<Draft> = {}): void {
   const reason = startBlock(g)
   if (reason) return tell(g, 'Develop a Game', reason, '\u{1F3AE}')
   const skill = codingSkill(g)
-  const choices: ChoiceOption[] = SCOPES.filter((x) => x.id === 'small' || x.id === 'indie').map((x) => ({
+  const choices: ChoiceOption[] = SCOPES.filter((x) => (x.id === 'small' || x.id === 'indie') && scopeOpen(x.id, g.year)).map((x) => ({
     id: x.id,
     label: `${x.label}: ${x.id === 'small' ? 'about a year solo' : 'many years solo, two or three with freelancers'}`,
     emoji: x.emoji,
@@ -252,7 +265,7 @@ const SCOPE_SCRIPT = defineScript('gamedev.make.scope', (g, choice, data) => {
   if (d.sequelOf) return askPlatform(g, d)
   const hot = new Set(hotGenres(g).map((x) => x.id))
   // Both hot genres are always on the list, plus four others.
-  const options = shuffle(g, [...hotGenres(g), ...shuffle(g, GENRES.filter((x) => !hot.has(x.id))).slice(0, 4)])
+  const options = shuffle(g, [...hotGenres(g), ...shuffle(g, genresIn(g.year).filter((x) => !hot.has(x.id))).slice(0, 4)])
   // Gaming talent: you can feel where players are heading. Games ship later (a small game next
   // year, an indie in two), so the trend in the year you ship matters more than today's. (Only
   // shown if one of these will really be riding high then.)
@@ -293,7 +306,8 @@ const GENRE_SCRIPT = defineScript('gamedev.make.genre', (g, choice, data) => {
 
 function askPlatform(g: GameState, d: Draft): void {
   const sc = scopeDef(d.scope)
-  const options = PLATFORMS.filter((x) => x.minScope <= sc.index)
+  const options = platformsIn(g.year).filter((x) => x.minScope <= sc.index)
+  if (options.length === 0) return tell(g, 'Pick a Platform', `No platform takes a game that size in ${g.year}. Try something smaller.`, '\u{1F579}\u{FE0F}')
   scriptChoice(
     g,
     PLATFORM_SCRIPT,
@@ -302,7 +316,7 @@ function askPlatform(g: GameState, d: Draft): void {
     [
       ...options.map((x) => {
         const cert = certCost(g, x.id)
-        return { id: x.id, label: `${x.label}${cert > 0 ? ` (${money(cert)} in dev kits & certification)` : ''}`, emoji: x.emoji }
+        return { id: x.id, label: `${platformLabel(x.id, g.year)}${cert > 0 ? ` (${money(cert)} in dev kits & certification)` : ''}`, emoji: x.emoji }
       }),
       { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
     ],
@@ -313,11 +327,11 @@ function askPlatform(g: GameState, d: Draft): void {
 const PLATFORM_SCRIPT = defineScript('gamedev.make.platform', (g, choice, data) => {
   if (choice === 'cancel' || startBlock(g)) return
   const d = readDraft(data)
-  if (!isPlatform(choice)) return
+  if (!isPlatform(choice) || !platformOpen(choice, g.year)) return
   d.platform = choice
   const sc = scopeDef(d.scope)
   const skill = codingSkill(g)
-  const engines = ENGINES.filter((e) => e.maxScope >= sc.index && (e.id !== 'blocks' || g.character.age < 16))
+  const engines = enginesIn(g.year).filter((e) => e.maxScope >= sc.index && (e.id !== 'blocks' || g.character.age < 16))
   scriptChoice(
     g,
     ENGINE_SCRIPT,
@@ -342,7 +356,7 @@ const ENGINE_SCRIPT = defineScript('gamedev.make.engine', (g, choice, data) => {
   scriptInput(g, {
     title: 'Name Your Game',
     emoji: genreDef(d.genre).emoji,
-    text: `What's it called? ${cap(an(genreDef(d.genre).noun))} for ${platformDef(d.platform).label}, made in ${engineDef(d.engine).label}.`,
+    text: `What's it called? ${cap(an(genreDef(d.genre).noun))} for ${platformLabel(d.platform, g.year)}, made in ${engineDef(d.engine).label}.`,
     input: 'text',
     placeholder: 'Title',
     defaultValue: suggestion,
@@ -725,7 +739,7 @@ function earlyAccess(g: GameState, id: string): void {
   say(
     g,
     'Early Access',
-    `"${pr.title}" is in early access on ${STORE}! ${copiesLabel(launch)} in the first weeks${toYou > 0 ? `, ${money(toYou)} to you${tax > 0 ? ` (${money(tax)} in tax)` : ''}` : pr.publisher ? ' (the publisher is still earning back its advance)' : ''}. Players will tell you exactly what's wrong with it, in caps lock. Their feedback makes the final game better.`,
+    `"${pr.title}" is in early access on ${storeIn(g.year)}! ${copiesLabel(launch)} in the first weeks${toYou > 0 ? `, ${money(toYou)} to you${tax > 0 ? ` (${money(tax)} in tax)` : ''}` : pr.publisher ? ' (the publisher is still earning back its advance)' : ''}. Players will tell you exactly what's wrong with it, in caps lock. Their feedback makes the final game better.`,
     '\u{1F6A7}',
     'good',
   )
@@ -759,7 +773,7 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
   if (cert > 0) {
     const fromBudget = Math.min(pr.budget, cert)
     if (c.money < cert - fromBudget) {
-      tell(g, 'Certification', `Shipping on ${platformDef(pr.platform).label} costs ${money(cert)} for dev kits, certification and age ratings. You have ${money(Math.max(0, c.money))}${pr.budget > 0 ? ` plus ${money(pr.budget)} in the budget` : ''}.`, '\u{1F4B8}')
+      tell(g, 'Certification', `Shipping on ${platformLabel(pr.platform, g.year)} costs ${money(cert)} for dev kits, certification and age ratings. You have ${money(Math.max(0, c.money))}${pr.budget > 0 ? ` plus ${money(pr.budget)} in the budget` : ''}.`, '\u{1F4B8}')
       return null
     }
     pr.budget -= fromBudget
@@ -866,7 +880,7 @@ export function releaseGame(g: GameState, id: string): GdCredit | null {
   say(
     g,
     'Launch Day!',
-    `"${credit.title}" is out on ${platformDef(credit.platform).label}! ${verdict} ${CRITIC_SITE} score ${r.critic}; players say "${playerLabel(r.players)}". ${copiesLabel(launch)} sold in launch week${pr.backers ? ` (plus ${pr.backers.toLocaleString('en-US')} backers)` : ''}; expect about ${copiesLabel(credit.tail)} more this year.${pay > 0 ? ` You made ${money(pay)}.` : ''} ${extra}`.trim(),
+    `"${credit.title}" is out on ${platformLabel(credit.platform, g.year)}! ${verdict} ${CRITIC_SITE} score ${r.critic}; players say "${playerLabel(r.players)}". ${copiesLabel(launch)} sold in launch week${pr.backers ? ` (plus ${pr.backers.toLocaleString('en-US')} backers)` : ''}; expect about ${copiesLabel(credit.tail)} more this year.${pay > 0 ? ` You made ${money(pay)}.` : ''} ${extra}`.trim(),
     '\u{1F680}',
     r.critic >= 60 ? 'good' : 'bad',
   )
@@ -1045,11 +1059,13 @@ function study(g: GameState, kind: 'videos' | 'course' | 'draw' | 'artClass'): v
   let text = ''
   if (kind === 'videos') {
     gain = trainDesign(g, p, 3)
-    text = `You watched ${randInt(g, 6, 30)} hours of video essays about why old games felt good. You now say "game feel" in conversations.`
+    text = eraOpen(g, VIDEO_GATE)
+      ? `You watched ${randInt(g, 6, 30)} hours of video essays about why old games felt good. You now say "game feel" in conversations.`
+      : `You read ${randInt(g, 3, 12)} back issues of game magazines and took notes on every review. You now say "playability" in conversations.`
   } else if (kind === 'course') {
     gain = trainDesign(g, p, 7)
     trainArt(g, p, 1)
-    text = `You finished an online game design course (${money(cost)}). Final project: a board game about tax fraud. You got an A.`
+    text = `You finished ${eraOpen(g, ONLINE_COURSE_GATE) ? 'an online' : 'a night-school'} game design course (${money(cost)}). Final project: a board game about tax fraud. You got an A.`
   } else if (kind === 'draw') {
     gain = trainArt(g, p, 3)
     text = pick(g, ['You drew 200 hands. Three of them look like hands.', 'You practiced pixel art: a sword, a slime, and a very determined potato.', 'You filled a sketchbook with goblins.'])
@@ -1071,7 +1087,7 @@ function streamDev(g: GameState): void {
   const gain = addGamerFame(p, randInt(g, 0, 2) + (followers >= 100_000 ? 2 : followers >= 5_000 ? 1 : 0))
   for (const pr of p.projects) pr.hype = clampN(pr.hype + 6, 0, 100)
   const viewers = Math.max(1, Math.round((3 + p.gamerFame * 20 + followers * 0.01) * randFloat(g, 0.5, 1.5)))
-  say(g, 'Live Dev Stream', `You streamed yourself making a game. Peak viewers: ${viewers.toLocaleString('en-US')}. ${pick(g, ['Chat named a bug after you.', 'Someone donated $5 to make you add a hat to the boss. You did.', 'Chat watched you debug for two hours and cheered when it worked.'])}${gain > 0 ? ' More gamers know your name now.' : ''}`, '\u{1F3A5}', 'good')
+  say(g, 'Live Dev Stream', `You streamed yourself making a game. Peak viewers: ${viewers.toLocaleString('en-US')}. ${pick(g, ['Chat named a bug after you.', `Someone donated ${money(5)} to make you add a hat to the boss. You did.`, 'Chat watched you debug for two hours and cheered when it worked.'])}${gain > 0 ? ' More gamers know your name now.' : ''}`, '\u{1F3A5}', 'good')
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,7 +1191,7 @@ function projectNode(pr: GdProject): MenuGroup {
       if (!cur) return 'This project is gone.'
       const cap = qualityCap(gg, cur)
       return [
-        `${genreDef(cur.genre).emoji} "${cur.title}": ${an(genreDef(cur.genre).noun)} for ${platformDef(cur.platform).label}, made in ${engineDef(cur.engine).label}.`,
+        `${genreDef(cur.genre).emoji} "${cur.title}": ${an(genreDef(cur.genre).noun)} for ${platformLabel(cur.platform, gg.year)}, made in ${engineDef(cur.engine).label}.`,
         `Progress ${Math.round(cur.progress)}% · quality ${Math.round(cur.quality)} (your team could reach ~${Math.round(cap)}) · hype ${Math.round(cur.hype)}${cur.bugs >= 10 ? ` · bugs ${Math.round(cur.bugs)}` : ''}`,
         `${cur.contractors ? `Freelancers: ${cur.contractors} (${money(cur.contractors * freelancerCost(gg.character.countryId))}/yr)` : 'Just you.'}${cur.budget > 0 ? ` Budget: ${money(cur.budget)}.` : ''}${cur.backers ? ` Backers: ${cur.backers.toLocaleString('en-US')}.` : ''}${cur.publisher ? ` Publisher: ${cur.publisher}.` : ''}`,
         `${genreDef(cur.genre).label} games are ${trendLabel(genreTrend(gg, cur.genre))} this year.`,
@@ -1230,6 +1246,7 @@ function projectNode(pr: GdProject): MenuGroup {
         {
           type: 'action',
           id: `gamedev.project.${id}.devlog`,
+          visible: (x) => gamedevFeatureOpen('devlog', x.year),
           label: 'Post a Devlog',
           emoji: '\u{1F4DD}',
           subtitle: 'Free · a little hype',
@@ -1251,7 +1268,7 @@ function projectNode(pr: GdProject): MenuGroup {
           label: 'Crowdfund It',
           emoji: '\u{1F4B8}',
           subtitle: 'All or nothing; backers expect delivery',
-          visible: (x) => x.character.age >= 16,
+          visible: (x) => x.character.age >= 16 && gamedevFeatureOpen('crowdfund', x.year),
           disabledReason: (x) => crowdBlock(x, cur),
           run: (x) => crowdfund(x, id),
         },
@@ -1271,7 +1288,7 @@ function projectNode(pr: GdProject): MenuGroup {
           label: 'Launch in Early Access',
           emoji: '\u{1F6A7}',
           subtitle: 'Sell it unfinished; feedback improves it',
-          visible: () => !cur.earlyAccess && (cur.platform === 'pc' || cur.platform === 'vr'),
+          visible: (x) => !cur.earlyAccess && (cur.platform === 'pc' || cur.platform === 'vr') && gamedevFeatureOpen('earlyAccess', x.year),
           disabledReason: (x) => eaBlock(x, cur),
           run: (x) => earlyAccess(x, id),
         },
@@ -1304,7 +1321,7 @@ export function ownGameNode(x: GdCredit): MenuGroup {
       const cur = live(gg)
       if (!cur) return 'Gone.'
       return [
-        `${genreDef(cur.genre).emoji} "${cur.title}" (${cur.year}): ${scopeDef(cur.scope).label} ${genreDef(cur.genre).label} on ${platformDef(cur.platform).label}.`,
+        `${genreDef(cur.genre).emoji} "${cur.title}" (${cur.year}): ${scopeDef(cur.scope).label} ${genreDef(cur.genre).label} on ${platformLabel(cur.platform, cur.year)}.`,
         `${CRITIC_SITE} ${cur.critic} · players ${cur.players} ("${playerLabel(cur.players)}") · ${copiesLabel(cur.copies, cur.free)}${cur.dlcs ? ` · ${cur.dlcs} DLC` : ''}`,
         cur.free ? 'A free jam game: no sales, all glory.' : `Earned you ${money(cur.earned)} so far${cur.tail > 0 ? ` · still selling (~${copiesLabel(cur.tail)} next year)` : ' · done selling'}.`,
         cur.publisher ? `Published by ${cur.publisher}${cur.recoup > 0 ? ` (still earning back ${money(cur.recoup)} before royalties)` : ` · you get ${Math.round(cur.devShare * 100)}%`}.` : '',
@@ -1323,6 +1340,7 @@ export function ownGameNode(x: GdCredit): MenuGroup {
           label: 'Ship a Patch',
           emoji: '\u{1FA79}',
           subtitle: 'Fix bugs, win back players · uses a dev session',
+          visible: (y) => gamedevFeatureOpen('patch', y.year),
           disabledReason: (y) => makeBlock(y) ?? (cur.patched === y.year ? 'Already patched this year.' : null),
           run: (y) => patchGame(y, id),
         },
@@ -1341,7 +1359,7 @@ export function ownGameNode(x: GdCredit): MenuGroup {
           label: 'Run a 50% Sale',
           emoji: '\u{1F3F7}\u{FE0F}',
           subtitle: 'Cash now, a bit less later',
-          visible: () => cur.tail > 0 && cur.price > 0,
+          visible: (y) => cur.tail > 0 && cur.price > 0 && gamedevFeatureOpen('sale', y.year),
           disabledReason: (y) => blocked(y) ?? (yearActionsUsed(y, `gamedev.sale.${id}`) >= 1 ? 'Once a year.' : null),
           run: (y) => runSale(y, id),
         },
@@ -1409,7 +1427,7 @@ export const makeGamesMenu: MenuGroup = {
       label: 'Enter a Game Jam',
       emoji: '\u{1F355}',
       subtitle: (gg) => `Make a game in 48 hours · ${yearActionsUsed(gg, 'gamedev.jam')}/2 this year`,
-      visible: (gg) => gg.character.age >= 10,
+      visible: (gg) => gg.character.age >= 10 && scopeOpen('jam', gg.year),
       disabledReason: (gg) => makeBlock(gg, 10) ?? (yearActionsUsed(gg, 'gamedev.jam') >= 2 ? 'Two jams a year.' : null),
       run: gameJam,
     })
@@ -1422,20 +1440,23 @@ export const makeGamesMenu: MenuGroup = {
         label: kind.id === 'scratch' ? 'Make a Scratch Game' : 'Make a Game Mod',
         emoji: kind.emoji,
         subtitle: `Coding skill ${kind.minSkill}+ · shares the computer's 2 projects a year`,
-        visible: (gg) => gg.character.age >= kind.minAge && (kind.maxAge === undefined || gg.character.age <= kind.maxAge),
+        visible: (gg) => gg.character.age >= kind.minAge && (kind.maxAge === undefined || gg.character.age <= kind.maxAge) && eraOpen(gg, kind.era),
         disabledReason: (gg) => makeBlock(gg) ?? (codingSkill(gg) < kind.minSkill ? `You need coding skill ${kind.minSkill} (you have ${codingSkill(gg)}).` : null),
         run: (gg) => buildProject(gg, kind),
       })
     }
     nodes.push({ type: 'heading', id: 'gamedev.make.h.learn', label: 'Get Better' })
     nodes.push(
-      { type: 'action', id: 'gamedev.learn.videos', label: 'Watch Game Design Videos', emoji: '\u{1F4FA}', subtitle: 'Free · game design skill', visible: (gg) => gg.character.age >= 8, disabledReason: (gg) => blocked(gg, 8), run: (gg) => study(gg, 'videos') },
-      { type: 'action', id: 'gamedev.learn.course', label: 'Take a Game Design Course', emoji: '\u{1F393}', subtitle: (gg) => `${money(onlinePrice(gg, 300))} online · big design boost`, visible: (gg) => gg.character.age >= 13, disabledReason: (gg) => blocked(gg, 13), run: (gg) => study(gg, 'course') },
+      { type: 'action', id: 'gamedev.learn.videos', label: eraOpen(g, VIDEO_GATE) ? 'Watch Game Design Videos' : 'Read Game Magazines', emoji: eraOpen(g, VIDEO_GATE) ? '\u{1F4FA}' : '\u{1F4F0}', subtitle: 'Free · game design skill', visible: (gg) => gg.character.age >= 8, disabledReason: (gg) => blocked(gg, 8), run: (gg) => study(gg, 'videos') },
+      { type: 'action', id: 'gamedev.learn.course', label: 'Take a Game Design Course', emoji: '\u{1F393}', subtitle: (gg) => `${money(onlinePrice(gg, 300))} ${eraOpen(gg, ONLINE_COURSE_GATE) ? 'online' : 'night school'} · big design boost`, visible: (gg) => gg.character.age >= 13, disabledReason: (gg) => blocked(gg, 13), run: (gg) => study(gg, 'course') },
       { type: 'action', id: 'gamedev.learn.draw', label: 'Practice Drawing', emoji: '\u{270F}\u{FE0F}', subtitle: 'Free · art skill', disabledReason: (gg) => blocked(gg, 6), run: (gg) => study(gg, 'draw') },
       { type: 'action', id: 'gamedev.learn.art', label: 'Take an Art Class', emoji: '\u{1F3A8}', subtitle: (gg) => `${money(localFee(gg, 400))} · big art boost`, visible: (gg) => gg.character.age >= 10, disabledReason: (gg) => blocked(gg, 10), run: (gg) => study(gg, 'artClass') },
-      { type: 'action', id: 'gamedev.learn.stream', label: 'Stream Your Dev Work', emoji: '\u{1F3A5}', subtitle: 'Gamer fame and hype', visible: (gg) => gg.character.age >= 13, disabledReason: (gg) => makeBlock(gg, 13) ?? (yearActionsUsed(gg, 'gamedev.stream') >= 1 ? 'Once a year.' : null), run: streamDev },
+      { type: 'action', id: 'gamedev.learn.stream', label: 'Stream Your Dev Work', emoji: '\u{1F3A5}', subtitle: 'Gamer fame and hype', visible: (gg) => gg.character.age >= 13 && gamedevFeatureOpen('stream', gg.year), disabledReason: (gg) => makeBlock(gg, 13) ?? (yearActionsUsed(gg, 'gamedev.stream') >= 1 ? 'Once a year.' : null), run: streamDev },
     )
-    if (c.age < 12) nodes.push({ type: 'info', id: 'gamedev.make.kid', emoji: '\u{1F9D2}', text: 'Real game projects unlock at 12. Jams at 10. Until then: Scratch, mods, drawing and a LOT of playing.' })
+    if (c.age < 12) {
+      const modern = scopeOpen('jam', g.year)
+      nodes.push({ type: 'info', id: 'gamedev.make.kid', emoji: '\u{1F9D2}', text: modern ? 'Real game projects unlock at 12. Jams at 10. Until then: Scratch, mods, drawing and a LOT of playing.' : 'Real game projects unlock at 12. Until then: type-in games from magazines, drawing and a LOT of playing.' })
+    }
     return nodes
   },
 }

@@ -1,0 +1,398 @@
+/* ------------------------------------------------------------------------ */
+/* Time Machine (components/TimeMachine.tsx, TimeMachineSettings.tsx)         */
+
+:root {
+  --tm-from: #7b4be0;
+  --tm-to: #2f8fe0;
+  --tm-glow: rgba(123, 75, 224, 0.35);
+}
+
+/* Sheet: dial, blurb and fuel ------------------------------------------------ */
+
+.tm-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 16px 14px 14px;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--tm-from) 18%, transparent), transparent 70%),
+    var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.tm-dial {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tm-from), var(--tm-to));
+  box-shadow: 0 6px 18px var(--tm-glow), inset 0 0 0 3px rgba(255, 255, 255, 0.25);
+  font-size: 32px;
+  line-height: 1;
+  animation: tm-tilt 3.2s ease-in-out infinite;
+}
+
+.tm-blurb {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.tm-fuel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tm-fuel-cell {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--chip-bg);
+  font-size: 15px;
+  line-height: 1;
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.tm-fuel-cell.is-full {
+  background: color-mix(in srgb, var(--tm-from) 18%, var(--card));
+  filter: none;
+  opacity: 1;
+}
+
+.tm-fuel-inf {
+  width: auto;
+  padding: 0 9px;
+  color: var(--tone-event);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.tm-fuel-text {
+  margin-left: 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tm-note {
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.tm-note.is-error {
+  color: var(--tone-bad);
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+}
+
+.tm-empty {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  line-height: 1.45;
+}
+
+/* Plain rows with hairlines between them, whatever the shared menu rules do to sibling rows. */
+.tm-list > .menu-row.tm-row {
+  color: var(--text);
+  background: var(--card);
+  font-weight: inherit;
+}
+
+.tm-list > .menu-row.tm-row + .menu-row.tm-row {
+  border-top: 1px solid var(--hairline);
+}
+
+.tm-list > .menu-row.tm-row:hover {
+  background: var(--card-2);
+}
+
+.tm-list > .menu-row.tm-row:active {
+  background: color-mix(in srgb, var(--tm-from) 10%, var(--card));
+}
+
+.tm-row .menu-row-icon {
+  background: color-mix(in srgb, var(--tm-from) 14%, var(--card));
+}
+
+.tm-busy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tone-event);
+}
+
+.tm-busy-spin {
+  display: inline-block;
+  animation: tm-spin 0.9s linear infinite;
+}
+
+/* Game screen button ---------------------------------------------------------- */
+
+/* Sits in the zero-height dock above the bottom bar, left of the "+ Age" bulge. */
+.tm-fab {
+  position: absolute;
+  left: 12px;
+  bottom: 40px;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tm-from), var(--tm-to));
+  color: #fff;
+  box-shadow: 0 6px 16px var(--tm-glow), 0 2px 0 rgba(40, 20, 110, 0.35);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.1s, filter 0.15s;
+  animation: tm-fab-in 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
+}
+
+.tm-fab:hover {
+  filter: brightness(1.08);
+}
+
+.tm-fab:active {
+  transform: scale(0.92);
+}
+
+.tm-fab:focus-visible {
+  outline: 3px solid var(--hint-ring);
+  outline-offset: 2px;
+}
+
+.tm-fab.is-empty {
+  background: linear-gradient(135deg, #8d8fa0, #6c7184);
+  box-shadow: 0 4px 10px rgba(20, 30, 50, 0.22);
+}
+
+.tm-fab-icon {
+  font-size: 23px;
+  line-height: 1;
+}
+
+.tm-fab-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--tone-event);
+  box-shadow: 0 0 0 2px var(--tm-from);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.tm-fab.is-empty .tm-fab-badge {
+  color: var(--muted);
+  box-shadow: 0 0 0 2px #8d8fa0;
+}
+
+/* Leave the button room when the "Back to …" chip shows too. */
+.return-dock.has-tm .return-chip {
+  max-width: calc(100% - 136px);
+}
+
+/* Death screen ------------------------------------------------------------------ */
+
+.tm-revive {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.al-bigbtn.tm-bigbtn {
+  background: linear-gradient(120deg, var(--tm-from), var(--tm-to));
+  box-shadow: 0 4px 0 #4a2aa8;
+}
+
+.al-bigbtn.tm-bigbtn:active {
+  box-shadow: 0 1px 0 #4a2aa8;
+}
+
+.al-bigbtn.tm-bigbtn.is-empty {
+  background: linear-gradient(120deg, #8d8fa0, #6c7184);
+  box-shadow: 0 4px 0 #4f5466;
+}
+
+.al-bigbtn.tm-bigbtn .al-bigbtn-emoji {
+  animation: tm-tilt 3.2s ease-in-out infinite;
+}
+
+/* Arrival warp -------------------------------------------------------------------- */
+
+.tm-arrive {
+  position: fixed;
+  inset: 0;
+  z-index: 95; /* over sheets and dialogs, under popups */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--tm-from) 45%, transparent), transparent 65%);
+  animation: tm-arrive-fade 2.1s ease-out both;
+}
+
+.tm-arrive-ring {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 6px solid color-mix(in srgb, var(--tm-to) 70%, #fff);
+  box-shadow: 0 0 40px var(--tm-glow);
+  animation: tm-ring 1.4s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.tm-arrive-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 22px;
+  border-radius: 20px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  animation: tm-card 2.1s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+}
+
+.tm-arrive-emoji {
+  font-size: 30px;
+  line-height: 1.1;
+  animation: tm-spin 0.8s ease-in-out 2;
+}
+
+.tm-arrive-year {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, var(--tm-from), var(--tm-to));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tm-arrive-age {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+@keyframes tm-tilt {
+  0%,
+  100% {
+    transform: rotate(-8deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+}
+
+@keyframes tm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes tm-fab-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes tm-arrive-fade {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes tm-ring {
+  from {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  to {
+    transform: scale(6);
+    opacity: 0;
+  }
+}
+
+@keyframes tm-card {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  18% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  75% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-dial,
+  .tm-busy-spin,
+  .tm-fab,
+  .al-bigbtn.tm-bigbtn .al-bigbtn-emoji,
+  .tm-arrive-ring,
+  .tm-arrive-emoji {
+    animation: none;
+  }
+  .tm-arrive-ring {
+    display: none;
+  }
+  .tm-arrive-card {
+    animation: tm-arrive-fade 2.1s linear both;
+  }
+}

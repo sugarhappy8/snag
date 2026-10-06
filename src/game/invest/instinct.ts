@@ -14,7 +14,8 @@
 import { seeded } from '../assets'
 import { hasTalent } from '../talents'
 import type { GameState } from '../types'
-import { coinDef, companyDef, cryptoYear, exchangeInfo, exchangeYear, goldHedge, goldYear, pennyDef, type ExInfo, type SecYear } from './engine'
+import { goldBan, investingBlocked } from '../history/markets'
+import { coinDef, coinListed, companyDef, cryptoYear, eraIdentity, exchangeInfo, exchangeStatus, exchangeYear, goldHedge, goldYear, indexName, pennyDef, type ExInfo, type SecYear } from './engine'
 import { indexShockFactor, shockFactor } from './shocks'
 
 export type GutKind = 'stock' | 'penny' | 'index' | 'reit' | 'gold' | 'crypto'
@@ -109,31 +110,38 @@ function candidates(g: GameState, cryptoOk: boolean): { list: Candidate[]; info:
   const next = exchangeYear(f, an, info, y + 1)
   const vol = exVol(info)
   const list: Candidate[] = []
-  for (const s of now.stocks) {
-    const def = companyDef(info, s.slot, s.gen)
-    const ret = slotMove(next.stocks[s.slot], def.id, shockFactor(g, def.id, y), shockFactor(g, def.id, y + 1))
-    if (ret === null) continue
-    list.push({ secId: def.id, kind: 'stock', name: def.name, symbol: def.symbol, ret, sigma: Math.sqrt((def.beta * vol * 0.85) ** 2 + def.idio ** 2) })
+  const cid = g.character.countryId
+  // Only what can actually be bought this year: an open exchange, legal gold, launched coins.
+  const stocksOk = exchangeStatus(info, y) === 'open' && !investingBlocked(cid, y)
+  if (stocksOk) {
+    for (const s of now.stocks) {
+      const def = companyDef(info, s.slot, s.gen)
+      const ret = slotMove(next.stocks[s.slot], def.id, shockFactor(g, def.id, y), shockFactor(g, def.id, y + 1))
+      if (ret === null) continue
+      list.push({ secId: def.id, kind: 'stock', name: eraIdentity(def, y).name, symbol: def.symbol, ret, sigma: Math.sqrt((def.beta * vol * 0.85) ** 2 + def.idio ** 2) })
+    }
+    for (const s of now.pennies) {
+      const def = pennyDef(info, s.slot, s.gen)
+      const ret = slotMove(next.pennies[s.slot], def.id, shockFactor(g, def.id, y), shockFactor(g, def.id, y + 1))
+      if (ret === null) continue
+      list.push({ secId: def.id, kind: 'penny', name: eraIdentity(def, y).name, symbol: def.symbol, ret, sigma: Math.sqrt((1.5 * vol * 0.85) ** 2 + 0.36) })
+    }
+    if (next.fund.id === now.fund.id) {
+      const ret = Math.max(-1, (1 + next.fund.ret) * (indexShockFactor(g, info.key, y + 1) / indexShockFactor(g, info.key, y)) - 1)
+      list.push({ secId: now.fund.id, kind: 'index', name: `${indexName(info, y)} Index Fund`, symbol: indexName(info, y), ret, sigma: vol * 0.85 })
+    }
+    if (next.reit.id === now.reit.id) list.push({ secId: now.reit.id, kind: 'reit', name: 'the local property fund', symbol: 'REIT', ret: next.reit.ret, sigma: Math.sqrt(0.06 ** 2 + (0.5 * vol * 0.85) ** 2 + 0.05 ** 2) })
   }
-  for (const s of now.pennies) {
-    const def = pennyDef(info, s.slot, s.gen)
-    const ret = slotMove(next.pennies[s.slot], def.id, shockFactor(g, def.id, y), shockFactor(g, def.id, y + 1))
-    if (ret === null) continue
-    list.push({ secId: def.id, kind: 'penny', name: def.name, symbol: def.symbol, ret, sigma: Math.sqrt((1.5 * vol * 0.85) ** 2 + 0.36) })
+  if (!goldBan(cid, y) && !investingBlocked(cid, y)) {
+    const gold = goldYear(f, an, y + 1)
+    list.push({ secId: `gold:${cid}`, kind: 'gold', name: 'gold', symbol: 'XAU', ret: (1 + gold.ret) * (1 + goldHedge(cid, y + 1)) - 1, sigma: 0.14 })
   }
-  if (next.fund.id === now.fund.id) {
-    const ret = Math.max(-1, (1 + next.fund.ret) * (indexShockFactor(g, info.key, y + 1) / indexShockFactor(g, info.key, y)) - 1)
-    list.push({ secId: now.fund.id, kind: 'index', name: `${info.ex.index} Index Fund`, symbol: info.ex.index, ret, sigma: vol * 0.85 })
-  }
-  if (next.reit.id === now.reit.id) list.push({ secId: now.reit.id, kind: 'reit', name: 'the local property fund', symbol: 'REIT', ret: next.reit.ret, sigma: Math.sqrt(0.06 ** 2 + (0.5 * vol * 0.85) ** 2 + 0.05 ** 2) })
-  const gold = goldYear(f, an, y + 1)
-  list.push({ secId: `gold:${g.character.countryId}`, kind: 'gold', name: 'gold', symbol: 'XAU', ret: (1 + gold.ret) * (1 + goldHedge(g.character.countryId)) - 1, sigma: 0.14 })
-  if (cryptoOk) {
+  if (cryptoOk && !investingBlocked(cid, y)) {
     const cy = cryptoYear(f, an, y)
     const cn = cryptoYear(f, an, y + 1)
     for (const c of cy.coins) {
       const def = coinDef(c.slot, c.gen)
-      if (def.stable) continue
+      if (def.stable || !coinListed(c)) continue
       const ret = slotMove(cn.coins[c.slot], def.id, shockFactor(g, def.id, y), shockFactor(g, def.id, y + 1))
       if (ret === null) continue
       list.push({ secId: def.id, kind: 'crypto', name: def.name, symbol: def.symbol, ret, sigma: Math.min(2, Math.sqrt((def.beta * 0.5) ** 2 + def.idio ** 2)) })
@@ -184,7 +192,7 @@ export function marketInstinct(g: GameState, cryptoOk = true): Instinct | null {
   }
   const idx = reads.find((x) => x.c.kind === 'index')
   const market: Instinct['market'] = !idx ? 'unsure' : idx.z >= GUT_MARGIN ? 'up' : idx.z <= -GUT_MARGIN ? 'down' : 'unsure'
-  const out: Instinct = { year: g.year + 1, picks, market: gloomy && market === 'up' ? 'unsure' : market, gloomy, exKey: info.key, index: info.ex.index }
+  const out: Instinct = { year: g.year + 1, picks, market: gloomy && market === 'up' ? 'unsure' : market, gloomy, exKey: info.key, index: indexName(info, g.year) }
   cache.set(key, out)
   if (cache.size > 32) {
     const first = cache.keys().next().value

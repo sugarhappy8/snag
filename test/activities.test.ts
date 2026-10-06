@@ -200,26 +200,36 @@ describe("driver's license", () => {
 // Emigrate
 
 describe('emigrate', () => {
+  /** The first open visa route among the "Easiest Moves" countries (not a citizen's own move). */
+  function firstOpenRoute(g: GameState): MenuAction | undefined {
+    const countries = kids(g, emigrateMenu).filter((n): n is MenuGroup => n.type === 'menu' && !n.id.startsWith('emigrate.cont.') && n.id !== 'emigrate.status')
+    for (const c of countries) {
+      for (const a of kids(g, c)) {
+        if (a.type === 'action' && !a.disabledReason?.(g) && !/\.(sneak|escape|citizen)$/.test(a.id)) return a
+      }
+    }
+    return undefined
+  }
+
   it('moves the player to a new country and leaves the family behind', () => {
     let moved = false
     for (let seed = 1; seed <= 15 && !moved; seed++) {
-      const g = adult(seed, { smarts: 90 } as never)
+      const g = adult(seed)
       g.character.stats.smarts = 90
       const mom = addParent(g)
-      const opts = kids(g, emigrateMenu).filter((n): n is MenuAction => n.type === 'action')
-      expect(opts.length).toBeGreaterThan(0)
-      const target = opts[0]
+      const target = firstOpenRoute(g)
+      expect(target).toBeTruthy()
       const before = g.character.money
-      run(g, target)
+      run(g, target!)
       if (g.character.countryId !== 'us') {
         moved = true
-        expect(target.id).toBe(`emigrate.${g.character.countryId}`)
+        expect(target!.id.startsWith(`emigrate.${g.character.countryId}.`)).toBe(true)
         expect(g.character.money).toBeLessThan(before)
         expect(counter(g, 'emigrations')).toBe(1)
         expect(mom.data.countryId).toBe('us')
         expect(g.character.city).toBeTruthy()
-        // Can't apply to the same country twice in one year.
-        expect(kids(g, emigrateMenu).some((n) => n.id === target.id)).toBe(false)
+        // Where you live isn't a destination.
+        expect(kids(g, emigrateMenu).some((n) => n.id === `emigrate.${g.character.countryId}`)).toBe(false)
       }
     }
     expect(moved).toBe(true)
@@ -232,7 +242,7 @@ describe('emigrate', () => {
 
   it('denies wanted fugitives', () => {
     const g = adult(4, { wantedLevel: 2 })
-    run(g, kids(g, emigrateMenu)[0] as MenuAction)
+    run(g, firstOpenRoute(g)!)
     expect(g.character.countryId).toBe('us')
     expect(g.queue.some((m) => m.kind === 'choice' && /warrant/.test(m.text))).toBe(true)
   })

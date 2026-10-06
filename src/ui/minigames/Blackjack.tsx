@@ -2,6 +2,7 @@
 // draws to 17. Five cards without busting is a "Five Card Charlie" (automatic win).
 // Reports 'win' | 'lose' | 'push' | 'blackjack' (+ ':double', ':charlie', ':bust').
 import { useEffect, useState, type CSSProperties } from 'react'
+import { formatMoney } from '../../game/core'
 import type { Json } from '../../game/types'
 import type { MinigameProps } from './types'
 
@@ -59,10 +60,6 @@ export function handValue(cards: { rank: string }[]): { total: number; soft: boo
 
 function isBlackjack(cards: Card[]): boolean {
   return cards.length === 2 && handValue(cards).total === 21
-}
-
-function formatMoney(n: number): string {
-  return `$${Math.round(n).toLocaleString('en-US')}`
 }
 
 const KEYFRAMES = `

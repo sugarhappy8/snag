@@ -1,5 +1,7 @@
 // Generating NPCs. Every module that adds someone to the player's life uses createPerson.
 import { clamp } from './core'
+import { eraOccupation, oldTradeShare, OLD_TRADES } from './history/events-people'
+import { isHistorical } from './history/timeline'
 import { bell, chance, pick, rand, randInt, uid } from './rng'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import type { GameState, Gender, Json, Person, RelationKind, StatKey } from './types'
@@ -100,15 +102,30 @@ const LOCAL_TRADES = [
   'Teacher',
 ]
 
-/** A plausible occupation label for an NPC of this age in a country (default: where the player lives). */
+/** Share of 18-22-year-olds at university, by year (only far fewer went in the past). */
+function universityShare(year: number): number {
+  if (!isHistorical(year)) return 0.5
+  if (year < 1930) return 0.06
+  if (year < 1960) return 0.15
+  if (year < 1980) return 0.3
+  if (year < 2000) return 0.4
+  return 0.5
+}
+
+/**
+ * A plausible occupation label for an NPC of this age in a country (default: where the player
+ * lives), named as it was in the game year: a 1930 neighbor is a Switchboard Operator or a Coal
+ * Miner, not a Barista (history/events-people.ts; modern years are unchanged).
+ */
 export function randomOccupation(g: GameState, age: number, countryId: string = g.character.countryId): string {
   if (age < 5) return 'None'
   if (age < 18) return 'Student'
-  if (age < 23 && chance(g, 0.5)) return 'University Student'
+  if (age < 23 && chance(g, universityShare(g.year))) return 'University Student'
   if (age >= 67) return 'Retired'
   const wealth = getCountry(countryId).wealth
-  if (wealth < 0.45 && chance(g, 0.6 - wealth)) return pick(g, LOCAL_TRADES)
-  return pick(g, ADULT_OCCUPATIONS)
+  if (wealth < 0.45 && chance(g, 0.6 - wealth)) return eraOccupation(pick(g, LOCAL_TRADES), g.year)
+  if (isHistorical(g.year) && chance(g, oldTradeShare(g.year))) return pick(g, OLD_TRADES)
+  return eraOccupation(pick(g, ADULT_OCCUPATIONS), g.year)
 }
 
 /** Rough wealth for an NPC with this occupation and age. */

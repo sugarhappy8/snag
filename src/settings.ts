@@ -2,6 +2,12 @@
 //
 // API keys live only here (this browser's localStorage) and are sent only to the provider
 // they belong to.
+//
+// The money display (local currency or US dollars, prices of the year or today's money) is
+// applied to the engine's formatter (core.ts setMoneyDisplay) whenever settings are loaded or
+// saved. Importing this module also installs the currency converter (game/data/currencies.ts).
+import { setMoneyDisplay } from './game/core'
+import './game/data/currencies'
 import {
   defaultBaseUrlFor,
   getProvider,
@@ -19,6 +25,10 @@ export type { ProviderId }
 
 export type AiLevel = 'off' | 'balanced' | 'full'
 export type ContentRating = 'family' | 'teen' | 'mature'
+/** 'local': the currency where the character lives (yen in Japan); 'usd': US dollars everywhere. */
+export type MoneySetting = 'local' | 'usd'
+/** 'nominal': prices as they were in the year being lived (a 1980 salary in 1980 money); 'today': today's money. */
+export type PricesSetting = 'nominal' | 'today'
 
 /** Connection details remembered per provider, so switching back and forth keeps them. */
 export interface ProviderConfig {
@@ -60,6 +70,10 @@ export interface Settings {
   contentRating: ContentRating
   /** Show the little AI sparkle on AI-written log lines. */
   showAiBadges: boolean
+  /** Which currency money is shown in. */
+  money: MoneySetting
+  /** Whether amounts are in the money of the year being lived or in today's money. */
+  prices: PricesSetting
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -77,6 +91,8 @@ export const DEFAULT_SETTINGS: Settings = {
   disableThinking: true,
   contentRating: 'teen',
   showAiBadges: true,
+  money: 'local',
+  prices: 'nominal',
 }
 
 /** A fresh config for a provider: its default URL and model, no key. */
@@ -132,6 +148,8 @@ const KEY = 'anotherlife.settings.v1'
 
 const AI_LEVELS: readonly AiLevel[] = ['off', 'balanced', 'full']
 const RATINGS: readonly ContentRating[] = ['family', 'teen', 'mature']
+const MONEY_SETTINGS: readonly MoneySetting[] = ['local', 'usd']
+const PRICES_SETTINGS: readonly PricesSetting[] = ['nominal', 'today']
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v)
@@ -187,10 +205,23 @@ export function normalizeSettings(raw: unknown): Settings {
     disableThinking: bool(raw.disableThinking, d.disableThinking),
     contentRating: oneOf(raw.contentRating, RATINGS, d.contentRating),
     showAiBadges: bool(raw.showAiBadges, d.showAiBadges),
+    money: oneOf(raw.money, MONEY_SETTINGS, d.money),
+    prices: oneOf(raw.prices, PRICES_SETTINGS, d.prices),
   }
 }
 
+/** Make the engine's money formatting follow these settings (currency and year prices). */
+export function applyMoneySettings(s: Pick<Settings, 'money' | 'prices'>): void {
+  setMoneyDisplay({ mode: s.money === 'usd' ? 'usd' : 'local', nominal: s.prices !== 'today' })
+}
+
 export function loadSettings(): Settings {
+  const s = readSettings()
+  applyMoneySettings(s)
+  return s
+}
+
+function readSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY)
     if (!raw) return normalizeSettings(null)
@@ -201,6 +232,7 @@ export function loadSettings(): Settings {
 }
 
 export function saveSettings(s: Settings): void {
+  applyMoneySettings(s)
   try {
     localStorage.setItem(KEY, JSON.stringify(s))
   } catch {

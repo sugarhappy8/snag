@@ -35,6 +35,7 @@ import { chance, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
 import { localStreetName } from './data/locales'
+import { cars, common, eraLines, eraOk, eraPick, eraStrip, exists, gateHolds, landline, prohibition, texting, venueExists } from './events/era'
 import { COUNTRIES, getCountry, NAME_POOLS, randomCity, randomFirstName, randomLastName, trialBy, type NameRegion, type TrialBy } from './world'
 import type {
   ChoiceOption,
@@ -123,6 +124,7 @@ const CRIME_SEVERITY: Record<string, number> = {
   'Aggravated Twerking': 1,
   'Breaking and Entering': 1,
   Joyriding: 1,
+  Bootlegging: 1,
   Burglary: 2,
   'Grand Theft Auto': 2,
   Embezzlement: 2,
@@ -897,10 +899,25 @@ export interface PickpocketData {
   targetId: string
 }
 
+/** The mark as people looked that year: selfies and phones are recent; before that, cameras, radios and newspapers. */
+function markLabel(g: GameState, t: PickpocketTarget): string {
+  if (t.id === 'tourist') return common(g, 'smartphone') ? t.label : g.year >= 1925 ? 'A tourist fiddling with a camera' : 'A tourist squinting at a map'
+  if (t.id === 'teen') {
+    if (common(g, 'smartphone')) return t.label
+    if (g.year >= 1980) return 'A teenager with headphones on'
+    if (g.year >= 1955) return 'A teenager glued to a transistor radio'
+    return 'A newsboy shouting the headlines'
+  }
+  if (t.id === 'jogger' && g.year < 1965) return 'A gentleman feeding pigeons in the park'
+  if (t.id === 'commuter' && g.year < 1905) return 'A sleeping commuter on the streetcar'
+  return t.label
+}
+
 const PICKPOCKET_RESULT = defineScript('crime.pickpocket.result', (g, result, data) => {
   if (!canAct(g) || !isRecord(data)) return
   const t = PICKPOCKET_TARGETS.find((x) => x.id === str(data.targetId)) ?? PICKPOCKET_TARGETS[0]
-  const who = t.label.charAt(0).toLowerCase() + t.label.slice(1)
+  const label = markLabel(g, t)
+  const who = label.charAt(0).toLowerCase() + label.slice(1)
   if (result !== 'success' && result !== 'fail') {
     log(g, 'I thought about picking a pocket, but lost my nerve.', 'neutral')
     notice(g, 'Cold Feet', `You lost your nerve and walked right past ${who}.`, { emoji: '\u{1F976}' })
@@ -910,7 +927,7 @@ const PICKPOCKET_RESULT = defineScript('crime.pickpocket.result', (g, result, da
   if (result === 'success') {
     count(g, 'pickpockets')
     let amount = cash(g, randInt(g, t.min, t.max))
-    const phone = chance(g, 0.12)
+    const phone = chance(g, 0.12) && common(g, 'mobilePhone')
     if (phone) amount += cash(g, randInt(g, 40, 250))
     if (amount <= 0) {
       log(g, `I pickpocketed ${who}, but the wallet was empty.`, 'neutral')
@@ -922,7 +939,7 @@ const PICKPOCKET_RESULT = defineScript('crime.pickpocket.result', (g, result, da
     outcome(g, 'Sticky Fingers', pick(g, [
       `You slipped your hand into ${who}'s pocket and came out with ${formatMoney(amount)}${phone ? ' and a phone you sold on the spot' : ''}.`,
       `Smooth as butter. You lifted ${formatMoney(amount)} from ${who}${phone ? ', plus a phone you flipped for cash' : ''}.`,
-      `${t.label} never felt a thing. You walked away ${formatMoney(amount)} richer${phone ? ' (the phone helped)' : ''}.`,
+      `${label} never felt a thing. You walked away ${formatMoney(amount)} richer${phone ? ' (the phone helped)' : ''}.`,
     ]), t.emoji, 'good')
     if (t.id !== 'cop' && chance(g, 0.05 * caughtMult(g))) arrestPlayer(g, 'Pickpocketing', 1, { recordIndex: idx, evidence: 0.6, context: 'An undercover cop saw the whole thing.' })
     return
@@ -932,18 +949,18 @@ const PICKPOCKET_RESULT = defineScript('crime.pickpocket.result', (g, result, da
     arrestPlayer(g, 'Pickpocketing', 1, {
       recordIndex: idx,
       evidence: 0.75,
-      context: t.id === 'cop' ? 'The "mark" flashed a badge. You just tried to pickpocket a police officer.' : `${t.label} grabbed your wrist and screamed for the police.`,
+      context: t.id === 'cop' ? 'The "mark" flashed a badge. You just tried to pickpocket a police officer.' : `${label} grabbed your wrist and screamed for the police.`,
     })
     return
   }
   if (chance(g, 0.45)) {
     const dmg = hurt(g, randInt(g, 4, 14))
     log(g, `I got beaten up trying to pickpocket ${who}.`, 'bad')
-    outcome(g, 'Caught', `${t.label} caught your hand in their pocket and clobbered you. (-${dmg} health)`, '\u{1F915}', 'bad')
+    outcome(g, 'Caught', `${label} caught your hand in their pocket and clobbered you. (-${dmg} health)`, '\u{1F915}', 'bad')
     return
   }
   log(g, `I tried to pickpocket ${who} and had to run for it.`, 'bad')
-  outcome(g, 'Caught', `${t.label} felt your hand and yelled "THIEF!" You sprinted away empty-handed.`, '\u{1F3C3}', 'bad')
+  outcome(g, 'Caught', `${label} felt your hand and yelled "THIEF!" You sprinted away empty-handed.`, '\u{1F3C3}', 'bad')
 })
 
 const PICKPOCKET_PICK = defineScript('crime.pickpocket.pick', (g, choice, data) => {
@@ -955,7 +972,7 @@ const PICKPOCKET_PICK = defineScript('crime.pickpocket.pick', (g, choice, data) 
   const zoneWidth = clamp(0.3 - t.difficulty * 0.2 + skill, 0.08, 0.34)
   const zoneStart = 0.05 + rand(g) * (0.9 - zoneWidth)
   const payload: PickpocketData = {
-    target: t.label,
+    target: markLabel(g, t),
     emoji: t.emoji,
     speed: Math.round((0.7 + t.difficulty * 1.1) * 100) / 100,
     zoneStart: Math.round(zoneStart * 1000) / 1000,
@@ -976,7 +993,7 @@ const pickpocketAction: MenuAction = {
     if (!canAct(g) || !lieLow(g, 'crime.pickpocket', 5)) return
     const targets = shuffle(g, PICKPOCKET_TARGETS).slice(0, 4)
     scriptChoice(g, PICKPOCKET_PICK, 'Pickpocket', 'You blend into the crowd and scan for a mark. Who will you rob?', [
-      ...targets.map((t) => ({ id: t.id, label: t.label, emoji: t.emoji })),
+      ...targets.map((t) => ({ id: t.id, label: markLabel(g, t), emoji: t.emoji })),
       { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
     ], { emoji: '\u{1F45B}', data: { targets: targets.map((t) => t.id) } })
   },
@@ -987,32 +1004,38 @@ const pickpocketAction: MenuAction = {
 
 const PORCH_SPOTS = [
   { text: 'a porch with a "Beware of Dog" sign', risk: 0.22 },
-  { text: 'a mansion with a doorbell camera', risk: 0.35 },
+  { text: '@2015 a mansion with a doorbell camera', risk: 0.35 },
+  { text: '@-2015 a mansion with a butler who never sleeps', risk: 0.35 },
   { text: 'a porch covered in garden gnomes', risk: 0.15 },
   { text: 'an apartment stoop', risk: 0.12 },
+  { text: '@-1970 a doorstep with the morning milk delivery', risk: 0.12 },
   { text: 'a house with every light on', risk: 0.25 },
   { text: 'a porch with a rocking chair and a sleeping cat', risk: 0.1 },
   { text: 'a farmhouse at the end of a dirt road', risk: 0.08 },
   { text: "the neighborhood watch captain's porch", risk: 0.45 },
 ]
 const PACKAGE_SIZES = ['small box', 'huge box', 'padded envelope', 'long tube', 'heavy box', 'gift-wrapped package']
+/** Parcels by era (tags as in events/era.ts): mail-order goods first, online shopping later. */
 const PACKAGE_CONTENTS: { item: string; emoji: string; value: number }[] = [
-  { item: 'a box of cat litter', emoji: '\u{1F408}', value: 8 },
-  { item: 'a pair of sneakers', emoji: '\u{1F45F}', value: 70 },
-  { item: 'a brand-new smartphone', emoji: '\u{1F4F1}', value: 400 },
-  { item: 'a 40-pound bag of dog food', emoji: '\u{1F415}', value: 20 },
-  { item: 'a gaming console', emoji: '\u{1F3AE}', value: 250 },
-  { item: 'a toaster', emoji: '\u{1F35E}', value: 15 },
+  { item: '@1950 a box of cat litter', emoji: '\u{1F408}', value: 8 },
+  { item: '@1920 a pair of sneakers', emoji: '\u{1F45F}', value: 70 },
+  { item: '@smartphone a brand-new smartphone', emoji: '\u{1F4F1}', value: 400 },
+  { item: '@1950 a 40-pound bag of dog food', emoji: '\u{1F415}', value: 20 },
+  { item: '@videoGameConsole a gaming console', emoji: '\u{1F3AE}', value: 250 },
+  { item: '@1920 a toaster', emoji: '\u{1F35E}', value: 15 },
+  { item: '@-1960 a mail-order dress from the catalog', emoji: '\u{1F457}', value: 30 },
+  { item: '@-1970 a crate of milk bottles', emoji: '\u{1F95B}', value: 4 },
+  { item: '@-1980 a set of encyclopedias', emoji: '\u{1F4DA}', value: 60 },
   { item: 'a designer handbag', emoji: '\u{1F45C}', value: 500 },
   { item: 'a box of rocks', emoji: '\u{1FAA8}', value: 0 },
   { item: 'a single sock', emoji: '\u{1F9E6}', value: 0 },
   { item: 'a pair of diamond earrings', emoji: '\u{1F48E}', value: 1200 },
-  { item: 'a camera drone', emoji: '\u{1F681}', value: 350 },
-  { item: 'a 12-pack of vitamins', emoji: '\u{1F48A}', value: 15 },
-  { item: 'a fancy espresso machine', emoji: '\u{2615}', value: 300 },
+  { item: '@2014 a camera drone', emoji: '\u{1F681}', value: 350 },
+  { item: '@1950 a 12-pack of vitamins', emoji: '\u{1F48A}', value: 15 },
+  { item: '@1990 a fancy espresso machine', emoji: '\u{2615}', value: 300 },
   { item: 'a stack of romance novels', emoji: '\u{1F4DA}', value: 12 },
-  { item: 'a smartwatch', emoji: '\u{231A}', value: 180 },
-  { item: 'a life-size cardboard cutout of a celebrity', emoji: '\u{1F5BC}\u{FE0F}', value: 5 },
+  { item: '@2015 a smartwatch', emoji: '\u{231A}', value: 180 },
+  { item: '@1980 a life-size cardboard cutout of a celebrity', emoji: '\u{1F5BC}\u{FE0F}', value: 5 },
 ]
 
 const PORCH_SCRIPT = defineScript('crime.porch.pick', (g, choice, data) => {
@@ -1033,11 +1056,16 @@ const PORCH_SCRIPT = defineScript('crime.porch.pick', (g, choice, data) => {
       ]), '\u{1F9F9}', 'bad')
       return
     }
-    arrestPlayer(g, 'Larceny', 1, { recordIndex: idx, evidence: 0.8, context: `Doorbell camera footage of you stealing a package from ${spot} went viral. The police found you in an hour.` })
+    const seen =
+      g.year >= 2015 && common(g, 'smartphone')
+        ? `Doorbell camera footage of you stealing a package from ${spot} went viral. The police found you in an hour.`
+        : `A nosy neighbor watched you take a package from ${spot} and ${landline(g) ? 'called the police' : 'fetched a policeman'}.`
+    arrestPlayer(g, 'Larceny', 1, { recordIndex: idx, evidence: 0.8, context: seen })
     return
   }
   count(g, 'porchPirate')
-  const content = pick(g, PACKAGE_CONTENTS)
+  const fits = PACKAGE_CONTENTS.filter((x) => eraOk(g, x.item)).map((x) => ({ ...x, item: eraStrip(x.item) }))
+  const content = pick(g, fits.length ? fits : PACKAGE_CONTENTS.filter((x) => !x.item.startsWith('@')))
   const value = cash(g, content.value * (0.7 + rand(g) * 0.6))
   log(g, `I stole a package from ${spot}. It was ${content.item}.`, 'neutral')
   if (value <= 0) {
@@ -1056,7 +1084,7 @@ const porchAction: MenuAction = {
   disabledReason: ageGate(8),
   run: (g) => {
     if (!canAct(g) || !lieLow(g, 'crime.porch', 5)) return
-    const spots = shuffle(g, PORCH_SPOTS).slice(0, 3)
+    const spots = shuffle(g, PORCH_SPOTS.filter((x) => eraOk(g, x.text)).map((x) => ({ ...x, text: eraStrip(x.text) }))).slice(0, 3)
     const options = spots.map((s, i) => ({ id: `p${i}`, spot: s.text, risk: s.risk, size: pick(g, PACKAGE_SIZES) }))
     scriptChoice(g, PORCH_SCRIPT, 'Porch Pirate', 'You stroll through the neighborhood. A few packages are sitting unattended. Which one do you take?', [
       ...options.map((o) => ({ id: o.id, label: `A ${o.size} on ${o.spot}`, emoji: '\u{1F4E6}' })),
@@ -1073,22 +1101,54 @@ interface Store {
   name: string
   emoji: string
   security: number
+  /** Items may carry era tags ('@2001 a pair of earbuds'); see events/era.ts. */
   items: [string, number][]
+  /** First year this kind of shop exists. */
+  since?: number
+  /** The older name ('Radio Shop' before electronics stores). */
+  oldName?: [number, string]
 }
 
 const STORES: Store[] = [
-  { id: 'grocery', name: 'Grocery Store', emoji: '\u{1F6D2}', security: 0.1, items: [['a candy bar', 2], ['a rotisserie chicken', 8], ['a bottle of fancy olive oil', 25], ['a wheel of brie', 18], ['a family-size bag of chips', 6], ['a jar of caviar', 90]] },
-  { id: 'department', name: 'Department Store', emoji: '\u{1F3EC}', security: 0.2, items: [['a pair of jeans', 60], ['a leather jacket', 250], ['a bottle of perfume', 90], ['designer sunglasses', 180], ['a silk tie', 45], ['a scented candle', 25]] },
-  { id: 'electronics', name: 'Electronics Store', emoji: '\u{1F4FA}', security: 0.3, items: [['a pair of earbuds', 150], ['a video game', 60], ['a smartwatch', 350], ['a laptop', 1100], ['a phone charger', 25], ['a drone', 600]] },
+  { id: 'grocery', name: 'Grocery Store', emoji: '\u{1F6D2}', security: 0.1, items: [['a candy bar', 2], ['@1960 a rotisserie chicken', 8], ['a bottle of fancy olive oil', 25], ['a wheel of brie', 18], ['@1950 a family-size bag of chips', 6], ['a jar of caviar', 90], ['@-1960 a tin of sardines', 3]] },
+  { id: 'department', name: 'Department Store', emoji: '\u{1F3EC}', security: 0.2, items: [['@1955 a pair of jeans', 60], ['a leather jacket', 250], ['a bottle of perfume', 90], ['@1960 designer sunglasses', 180], ['a silk tie', 45], ['a scented candle', 25], ['@-1960 a pair of kid gloves', 30], ['a felt hat', 40]] },
+  {
+    id: 'electronics',
+    name: 'Electronics Store',
+    emoji: '\u{1F4FA}',
+    security: 0.3,
+    since: 1922,
+    oldName: [1970, 'Radio Shop'],
+    items: [
+      ['@2001 a pair of earbuds', 150],
+      ['@videoGameConsole a video game', 60],
+      ['@2015 a smartwatch', 350],
+      ['@1995,homeComputer a laptop', 1100],
+      ['@mobilePhone a phone charger', 25],
+      ['@2014 a drone', 600],
+      ['@1955,-1985 a transistor radio', 40],
+      ['@-1960 a tabletop radio set', 90],
+      ['@1979,-2005 a portable cassette player', 60],
+      ['@tv,-1990 a portable television', 200],
+      ['a box of light bulbs', 8],
+      ['an electric fan', 30],
+    ],
+  },
   { id: 'jewelry', name: 'Jewelry Store', emoji: '\u{1F48D}', security: 0.45, items: [['a pair of silver earrings', 200], ['a gold bracelet', 1200], ['a diamond ring', 4500], ['a luxury watch', 8000], ['a pearl necklace', 1800]] },
-  { id: 'sporting', name: 'Sporting Goods Store', emoji: '\u{26BD}', security: 0.18, items: [['a baseball glove', 60], ['a pair of running shoes', 130], ['a fishing rod', 90], ['a yoga mat', 35], ['a skateboard', 110]] },
-  { id: 'toy', name: 'Toy Store', emoji: '\u{1F9F8}', security: 0.12, items: [['a teddy bear', 25], ['a building block set', 80], ['a remote-control car', 70], ['a collectible action figure', 40], ['a yo-yo', 8]] },
-  { id: 'books', name: 'Bookstore', emoji: '\u{1F4DA}', security: 0.08, items: [['a bestselling novel', 28], ['a cookbook', 35], ['a comic book', 5], ['a leather-bound journal', 40]] },
-  { id: 'pharmacy', name: 'Pharmacy', emoji: '\u{1F48A}', security: 0.15, items: [['a tube of lipstick', 12], ['a bottle of vitamins', 20], ['an electric toothbrush', 90], ['a box of bandages', 6], ['a hair straightener', 70]] },
+  { id: 'sporting', name: 'Sporting Goods Store', emoji: '\u{26BD}', security: 0.18, items: [['a baseball glove', 60], ['@1970 a pair of running shoes', 130], ['@-1970 a pair of canvas tennis shoes', 30], ['a fishing rod', 90], ['@1990 a yoga mat', 35], ['@1965 a skateboard', 110], ['a leather football', 25]] },
+  { id: 'toy', name: 'Toy Store', emoji: '\u{1F9F8}', security: 0.12, items: [['a teddy bear', 25], ['a building block set', 80], ['@1970 a remote-control car', 70], ['@1964 a collectible action figure', 40], ['@1930 a yo-yo', 8], ['@-1960 a box of tin soldiers', 15], ['a spinning top', 4]] },
+  { id: 'books', name: 'Bookstore', emoji: '\u{1F4DA}', security: 0.08, items: [['a bestselling novel', 28], ['a cookbook', 35], ['@1935 a comic book', 5], ['a leather-bound journal', 40]] },
+  { id: 'pharmacy', name: 'Pharmacy', emoji: '\u{1F48A}', security: 0.15, items: [['a tube of lipstick', 12], ['@1940 a bottle of vitamins', 20], ['@1960 an electric toothbrush', 90], ['a box of bandages', 6], ['@1990 a hair straightener', 70], ['@-1950 a bottle of cough tonic', 4]] },
 ]
 
-/** Store security: a mall cop in North America, a security guard everywhere else. */
+/** The shop's name this year ('Radio Shop' before electronics stores). */
+function storeName(g: GameState, store: Store): string {
+  return store.oldName && g.year < store.oldName[0] ? store.oldName[1] : store.name
+}
+
+/** Store security: a mall cop in North American malls, a store detective before malls, a security guard elsewhere. */
 function mallCop(g: GameState): string {
+  if (!venueExists(g, 'mall')) return 'store detective'
   return g.character.countryId === 'us' || g.character.countryId === 'ca' ? 'mall cop' : 'security guard'
 }
 
@@ -1117,14 +1177,15 @@ const SHOPLIFT_COP = defineScript('crime.shoplift.cop', (g, choice, data) => {
     }
     const dmg = hurt(g, randInt(g, 5, 15))
     log(g, `A ${mallCop(g)} body-slammed me after I attacked him.`, 'bad')
-    notice(g, 'Bad Idea', `The ${mallCop(g)} had been waiting his whole career for this. He body-slammed you onto the ${g.character.countryId === 'us' ? 'food court tile' : 'shop floor'}. (-${dmg} health)`, { emoji: '\u{1F93C}', tone: 'bad' })
+    notice(g, 'Bad Idea', `The ${mallCop(g)} had been waiting his whole career for this. He body-slammed you onto the ${g.character.countryId === 'us' && venueExists(g, 'food court') ? 'food court tile' : 'shop floor'}. (-${dmg} health)`, { emoji: '\u{1F93C}', tone: 'bad' })
     arrestPlayer(g, 'Assault', 2, { evidence: 0.9, noResist: true, extraCharges: ['Shoplifting'], recordIndex })
     return
   }
   if (chance(g, clamp(0.4 + (c.hidden.athleticism - 50) / 300 + crimeEdge(g), 0.2, 0.75))) {
     log(g, `I outran a ${mallCop(g)} with ${item}.`, 'event')
     c.wantedLevel = clamp(c.wantedLevel + 1, 0, 5)
-    outcome(g, 'Escaped', pick(g, [`You bolted past the ${mallCop(g)}${g.character.countryId === 'us' ? "'s Segway" : ''} and disappeared into the ${g.character.countryId === 'us' ? 'parking lot' : 'crowd'} with ${item}.`, `The ${mallCop(g)} wheezed to a stop at the escalator. You got away with ${item}.`]), '\u{1F3C3}', 'good')
+    const us = g.character.countryId === 'us'
+    outcome(g, 'Escaped', pick(g, [`You bolted past the ${mallCop(g)}${us && g.year >= 2003 ? "'s Segway" : ''} and disappeared into the ${us && cars(g) ? 'parking lot' : 'crowd'} with ${item}.`, `The ${mallCop(g)} wheezed to a stop ${g.year >= 1950 ? 'at the escalator' : 'at the door'}. You got away with ${item}.`]), '\u{1F3C3}', 'good')
     return
   }
   arrestPlayer(g, 'Shoplifting', 1, { recordIndex, evidence: 0.9, noResist: true, extraCharges: ['Resisting Arrest'] })
@@ -1142,7 +1203,7 @@ const SHOPLIFT_ITEM = defineScript('crime.shoplift.item', (g, choice, data) => {
   const risk = clamp((store.security + Math.log10(Math.max(1, value)) / 15 - (c.stats.smarts - 50) / 400) * caughtMult(g), 0.04, 0.8)
   const idx = commitCrime(g, 'Shoplifting', { karma: 2, notoriety: 1, heat: 0.05 })
   if (chance(g, risk)) {
-    scriptChoice(g, SHOPLIFT_COP, g.character.countryId === 'us' ? 'Mall Cop!' : 'Security!', `You stuffed ${item} under your shirt and headed for the exit. A ${mallCop(g)} stepped in front of the door. "Not so fast."`, [
+    scriptChoice(g, SHOPLIFT_COP, mallCop(g) === 'mall cop' ? 'Mall Cop!' : 'Security!', `You stuffed ${item} under your shirt and headed for the exit. A ${mallCop(g)} stepped in front of the door. "Not so fast."`, [
       { id: 'cooperate', label: 'Cooperate', emoji: '\u{1F64C}' },
       { id: 'assault', label: `Assault the ${mallCop(g)}`, emoji: '\u{1F44A}' },
       { id: 'run', label: 'Run for it', emoji: '\u{1F3C3}' },
@@ -1150,24 +1211,27 @@ const SHOPLIFT_ITEM = defineScript('crime.shoplift.item', (g, choice, data) => {
     return
   }
   count(g, 'shoplifts')
-  log(g, `I shoplifted ${item} from a ${store.name.toLowerCase()}.`, 'neutral')
+  const shop = storeName(g, store).toLowerCase()
+  log(g, `I shoplifted ${item} from a ${shop}.`, 'neutral')
   const pawn = Math.max(1, Math.round(value * 0.4))
-  offerFence(g, item, store.emoji, pawn, `You walked out of the ${store.name.toLowerCase()} with ${item} and nobody batted an eye.`)
+  offerFence(g, item, store.emoji, pawn, `You walked out of the ${shop} with ${item} and nobody batted an eye.`)
 })
 
-function shopliftStore(store: Store): MenuAction {
+function shopliftStore(g0: GameState, store: Store): MenuAction {
   return {
     type: 'action',
     id: `crime.shoplift.${store.id}`,
-    label: store.name,
+    label: storeName(g0, store),
     emoji: store.emoji,
     subtitle: store.security >= 0.3 ? 'Tight security' : store.security >= 0.18 ? 'Some security' : 'Barely any security',
     disabledReason: ageGate(8),
     run: (g) => {
       if (!canAct(g) || !lieLow(g, 'crime.shoplift', 5)) return
-      const picks = shuffle(g, store.items).slice(0, 3)
+      const fits = store.items.filter(([item]) => eraOk(g, item)).map(([item, base]): [string, number] => [eraStrip(item), base])
+      const picks = shuffle(g, fits).slice(0, 3)
       const items = picks.map(([item, base], i) => ({ id: `i${i}`, item, value: cash(g, base * (0.8 + rand(g) * 0.4)) }))
-      scriptChoice(g, SHOPLIFT_ITEM, store.name, `You wander the aisles of the ${store.name.toLowerCase()}, trying to look casual. What will you swipe?`, [
+      const name = storeName(g, store)
+      scriptChoice(g, SHOPLIFT_ITEM, name, `You wander the aisles of the ${name.toLowerCase()}, trying to look casual. What will you swipe?`, [
         ...items.map((x) => ({ id: x.id, label: `${titleCase(x.item.replace(/^(a|an) /, ''))} (${formatMoney(x.value)})`, emoji: store.emoji })),
         { id: 'cancel', label: 'Leave', emoji: '\u{1F6B6}' },
       ], { emoji: store.emoji, data: { store: store.id, items } })
@@ -1183,7 +1247,7 @@ const shopliftMenu: MenuGroup = {
   subtitle: 'Five-finger discount',
   disabledReason: ageGate(8),
   header: (g) => `Pick a store. Pricier loot draws more attention, and beware of the ${mallCop(g)}.`,
-  children: () => STORES.map(shopliftStore),
+  children: (g) => STORES.filter((s) => g.year >= (s.since ?? 0)).map((s) => shopliftStore(g, s)),
 }
 
 // ---------------------------------------------------------------------------
@@ -1197,21 +1261,34 @@ interface DelinquentAct {
   risk: number
   minAge: number
   money?: [number, number]
+  /** Era tag lines (see events/era.ts); the act is offered with at least one fitting line. */
   success: string[]
+  /** Era gates for the act itself ('videoGameConsole', '1950', '-2013', 'cars'). */
+  era?: string
 }
 
 const DELINQUENT_ACTS: DelinquentAct[] = [
-  { id: 'graffiti', label: 'Spray-paint graffiti', emoji: '\u{1F3A8}', crime: 'Criminal Mischief', risk: 0.25, minAge: 8, success: ['You spray-painted a very large, very anatomically questionable duck on the side of the post office.', 'You tagged the overpass with your initials. Art critics are divided.'] },
-  { id: 'stopsign', label: 'Steal a stop sign', emoji: '\u{1F6D1}', crime: 'Larceny', risk: 0.3, minAge: 10, success: ['You unbolted a stop sign and hung it in your bedroom. Very edgy.', 'You stole a stop sign. Traffic at that intersection is now a lawless free-for-all.'] },
-  { id: 'twerk', label: 'Crash a party and twerk on the host', emoji: '\u{1F351}', crime: 'Aggravated Twerking', risk: 0.3, minAge: 12, success: ['You crashed a stranger\'s birthday party and twerked so aggressively the DJ stopped the music.', 'You twerked your way through a wedding reception and left before anyone could stop you.'] },
-  { id: 'bootleg', label: 'Sell bootleg movies', emoji: '\u{1F4C0}', crime: 'Piracy', risk: 0.25, minAge: 10, money: [20, 300], success: ['You sold bootleg DVDs out of a backpack. Half of them were filmed with a phone in a theater.', 'You set up a folding table and sold bootleg movies to tourists.'] },
-  { id: 'fireworks', label: 'Set off fireworks indoors', emoji: '\u{1F386}', crime: 'Reckless Endangerment', risk: 0.35, minAge: 10, success: ['You set off a bottle rocket in the school cafeteria. Nobody got hurt, miraculously.', 'You lit fireworks in a mall fountain. Spectacular. Also a crime.'] },
-  { id: 'fountain', label: 'Steal coins from a fountain', emoji: '\u{26F2}', crime: 'Larceny', risk: 0.2, minAge: 8, money: [3, 60], success: ['You waded into the town fountain and scooped up everyone\'s wishes.', 'You fished coins out of the mall fountain with a magnet on a string.'] },
+  { id: 'graffiti', label: 'Spray-paint graffiti', emoji: '\u{1F3A8}', crime: 'Criminal Mischief', risk: 0.25, minAge: 8, era: '1950', success: ['You spray-painted a very large, very anatomically questionable duck on the side of the post office.', 'You tagged the overpass with your initials. Art critics are divided.'] },
+  { id: 'chalk', label: 'Chalk rude words on a wall', emoji: '\u{1F3A8}', crime: 'Criminal Mischief', risk: 0.2, minAge: 8, era: '-1950', success: ['You chalked a very large, very anatomically questionable duck on the side of the post office.', "You chalked the mayor's name next to a drawing of a donkey. The whole town is talking."] },
+  { id: 'stopsign', label: 'Steal a stop sign', emoji: '\u{1F6D1}', crime: 'Larceny', risk: 0.3, minAge: 10, era: '1920', success: ['You unbolted a stop sign and hung it in your bedroom. Very edgy.', 'You stole a stop sign. Traffic at that intersection is now a lawless free-for-all.'] },
+  { id: 'twerk', label: 'Crash a party and twerk on the host', emoji: '\u{1F351}', crime: 'Aggravated Twerking', risk: 0.3, minAge: 12, era: '2013', success: ['You crashed a stranger\'s birthday party and twerked so aggressively the DJ stopped the music.', 'You twerked your way through a wedding reception and left before anyone could stop you.'] },
+  { id: 'tables', label: 'Crash a party and dance on the tables', emoji: '\u{1F483}', crime: 'Disorderly Conduct', risk: 0.3, minAge: 12, era: '-2013', success: ["You crashed a stranger's birthday party and danced on the dining table until the band stopped playing.", 'You high-kicked your way through a wedding reception and left before anyone could stop you.'] },
+  { id: 'bootleg', label: 'Sell bootleg movies', emoji: '\u{1F4C0}', crime: 'Piracy', risk: 0.25, minAge: 10, money: [20, 300], era: '1980', success: ['@smartphone You sold bootleg DVDs out of a backpack. Half of them were filmed with a phone in a theater.', '@1998,!smartphone You sold bootleg DVDs out of a backpack. Half of them were filmed with a camcorder in a theater.', '@-1998 You sold bootleg videotapes out of a duffel bag. The tracking was terrible.', 'You set up a folding table and sold bootleg movies to tourists.'] },
+  { id: 'fireworks', label: 'Set off fireworks indoors', emoji: '\u{1F386}', crime: 'Reckless Endangerment', risk: 0.35, minAge: 10, success: ['You set off a bottle rocket in the school cafeteria. Nobody got hurt, miraculously.', '@1962 You lit fireworks in a mall fountain. Spectacular. Also a crime.', '@-1962 You lit firecrackers in the church bell tower. Spectacular. Also a crime.'] },
+  { id: 'fountain', label: 'Steal coins from a fountain', emoji: '\u{26F2}', crime: 'Larceny', risk: 0.2, minAge: 8, money: [3, 60], success: ['You waded into the town fountain and scooped up everyone\'s wishes.', '@1962 You fished coins out of the mall fountain with a magnet on a string.'] },
   { id: 'eggs', label: 'Egg a house', emoji: '\u{1F95A}', crime: 'Criminal Mischief', risk: 0.25, minAge: 8, success: ['You egged a house that had it coming. Probably.', 'You hurled a dozen eggs at a house and ran off cackling.'] },
-  { id: 'console', label: "Break into a neighbor's house to play their console", emoji: '\u{1F3AE}', crime: 'Breaking and Entering', risk: 0.35, minAge: 10, success: ['You snuck into your neighbor\'s house and beat their high score. Then you left.', 'You broke into a neighbor\'s place, played video games for two hours, and even put the controller back.'] },
-  { id: 'library', label: 'Start a mosh pit in the library', emoji: '\u{1F918}', crime: 'Disorderly Conduct', risk: 0.4, minAge: 8, success: ['You started a mosh pit in the quiet section of the library. The librarian is still shushing.', 'You blasted heavy metal in the library and got three retirees to mosh.'] },
-  { id: 'joyride', label: "Take a neighbor's car for a joyride", emoji: '\u{1F699}', crime: 'Joyriding', risk: 0.35, minAge: 12, success: ['You "borrowed" a neighbor\'s car, did donuts in a parking lot, and returned it with an empty tank.', 'You took the neighbor\'s car out for a spin and parked it back exactly one foot to the left.'] },
+  { id: 'console', label: "Break into a neighbor's house to play their console", emoji: '\u{1F3AE}', crime: 'Breaking and Entering', risk: 0.35, minAge: 10, era: 'videoGameConsole', success: ['You snuck into your neighbor\'s house and beat their high score. Then you left.', 'You broke into a neighbor\'s place, played video games for two hours, and even put the controller back.'] },
+  { id: 'orchard', label: "Raid a neighbor's orchard", emoji: '\u{1F34E}', crime: 'Larceny', risk: 0.2, minAge: 8, era: '-1970', success: ["You climbed the fence and filled your shirt with the neighbor's best apples.", 'You raided the orchard at dusk. The farmer shook a fist at you from the porch.'] },
+  { id: 'library', label: 'Start a mosh pit in the library', emoji: '\u{1F918}', crime: 'Disorderly Conduct', risk: 0.4, minAge: 8, era: '1982', success: ['You started a mosh pit in the quiet section of the library. The librarian is still shushing.', 'You blasted heavy metal in the library and got three retirees to mosh.'] },
+  { id: 'singalong', label: 'Start a sing-along in the library', emoji: '\u{1F3B6}', crime: 'Disorderly Conduct', risk: 0.4, minAge: 8, era: '-1982', success: ['You led a rousing sing-along in the quiet section of the library. The librarian is still shushing.', 'You got three retirees in the reading room to belt out a sea shanty.'] },
+  { id: 'joyride', label: "Take a neighbor's car for a joyride", emoji: '\u{1F699}', crime: 'Joyriding', risk: 0.35, minAge: 12, era: 'cars', success: ['You "borrowed" a neighbor\'s car, did donuts in a parking lot, and returned it with an empty tank.', 'You took the neighbor\'s car out for a spin and parked it back exactly one foot to the left.'] },
+  { id: 'horse', label: "Take a neighbor's horse for a gallop", emoji: '\u{1F40E}', crime: 'Larceny', risk: 0.3, minAge: 10, era: '-1940', success: ["You \"borrowed\" a neighbor's horse, galloped through the town square, and returned it lathered and smug.", "You took the neighbor's horse out for a ride and tied it back up one post to the left."] },
 ]
+
+/** Is this bit of mischief possible this year? */
+function actFits(g: GameState, act: DelinquentAct): boolean {
+  return !act.era || act.era.split(',').every((t) => gateHolds(g, t.trim()))
+}
 
 const DELINQUENCY_SCRIPT = defineScript('crime.delinquency', (g, choice, data) => {
   const c = g.character
@@ -1258,7 +1335,7 @@ const DELINQUENCY_SCRIPT = defineScript('crime.delinquency', (g, choice, data) =
   let money = 0
   if (act.money) money = pocket(g, cash(g, randInt(g, act.money[0], act.money[1])))
   log(g, `I decided to ${act.label.toLowerCase()}${partnerName ? ` with ${partnerName}` : ''}.`, 'event')
-  outcome(g, 'Delinquent', `${pick(g, act.success)}${partnerName ? ` ${partnerName} had a blast too.` : ''}${money ? ` You made ${formatMoney(money)}.` : ''}`, act.emoji, 'event')
+  outcome(g, 'Delinquent', `${eraPick(g, act.success)}${partnerName ? ` ${partnerName} had a blast too.` : ''}${money ? ` You made ${formatMoney(money)}.` : ''}`, act.emoji, 'event')
 })
 
 function delinquentAction(act: DelinquentAct): MenuAction {
@@ -1289,7 +1366,7 @@ const delinquencyMenu: MenuGroup = {
   subtitle: 'Minor mischief and public nuisance',
   disabledReason: ageGate(8),
   header: () => 'Small-time trouble. Getting caught usually means a year or so in juvie or jail.',
-  children: () => DELINQUENT_ACTS.map(delinquentAction),
+  children: (g) => DELINQUENT_ACTS.filter((a) => actFits(g, a)).map(delinquentAction),
 }
 
 // ---------------------------------------------------------------------------
@@ -1391,19 +1468,29 @@ const HOUSE_TEMPLATES: { cols: number; rows: number; rooms: RoomTemplate[] }[] =
   },
 ]
 
-const ROOM_LOOT: Record<string, [string, string, number, number][]> = {
-  'Living Room': [['Flat-screen TV', '\u{1F4FA}', 200, 1500], ['Game console', '\u{1F3AE}', 150, 500], ['Stack of cash', '\u{1F4B5}', 50, 2000], ['Soundbar', '\u{1F50A}', 80, 400]],
-  Kitchen: [['Cash jar', '\u{1FAD9}', 10, 300], ['Stand mixer', '\u{1F963}', 100, 450], ['Silverware set', '\u{1F374}', 80, 600]],
-  Bedroom: [['Jewelry box', '\u{1F48D}', 200, 3000], ['Watch', '\u{231A}', 100, 2500], ['Laptop', '\u{1F4BB}', 300, 1500]],
-  'Master Bedroom': [['Jewelry box', '\u{1F48D}', 200, 3000], ['Watch', '\u{231A}', 100, 2500], ['Diamond', '\u{1F48E}', 1000, 10000], ['Laptop', '\u{1F4BB}', 300, 1500]],
+/** Loot by room: [name, emoji, low, high, era gates]. Gates as in events/era.ts ('tv,2005', '-1960'). */
+const ROOM_LOOT: Record<string, [string, string, number, number, string?][]> = {
+  'Living Room': [
+    ['Flat-screen TV', '\u{1F4FA}', 200, 1500, 'tv,2005'],
+    ['Television set', '\u{1F4FA}', 100, 800, 'tv,-2005'],
+    ['Game console', '\u{1F3AE}', 150, 500, 'videoGameConsole'],
+    ['Stack of cash', '\u{1F4B5}', 50, 2000],
+    ['Soundbar', '\u{1F50A}', 80, 400, '2010'],
+    ['Record player', '\u{1F3B5}', 60, 400, '1950,-1995'],
+    ['Radio set', '\u{1F4FB}', 40, 300, 'radio,-1960'],
+    ['Mantel clock', '\u{1F570}\u{FE0F}', 40, 500, '-1960'],
+  ],
+  Kitchen: [['Cash jar', '\u{1FAD9}', 10, 300], ['Stand mixer', '\u{1F963}', 100, 450, '1937'], ['Silverware set', '\u{1F374}', 80, 600]],
+  Bedroom: [['Jewelry box', '\u{1F48D}', 200, 3000], ['Watch', '\u{231A}', 100, 2500], ['Laptop', '\u{1F4BB}', 300, 1500, '1995,homeComputer'], ['Fur stole', '\u{1F9E5}', 100, 1200, '-1970']],
+  'Master Bedroom': [['Jewelry box', '\u{1F48D}', 200, 3000], ['Watch', '\u{231A}', 100, 2500], ['Diamond', '\u{1F48E}', 1000, 10000], ['Laptop', '\u{1F4BB}', 300, 1500, '1995,homeComputer']],
   'Master Suite': [['Diamond', '\u{1F48E}', 1000, 10000], ['Gold watch', '\u{231A}', 1000, 9000], ['Jewelry box', '\u{1F48D}', 500, 6000]],
-  "Kid's Room": [['Teddy bear', '\u{1F9F8}', 5, 40], ['Tablet', '\u{1F4F1}', 100, 400], ['Piggy bank', '\u{1F437}', 5, 150]],
-  Office: [['Computer', '\u{1F5A5}\u{FE0F}', 300, 1500], ['Laptop', '\u{1F4BB}', 300, 1500], ['Cash box', '\u{1F4B0}', 100, 2500]],
-  'Home Office': [['Computer', '\u{1F5A5}\u{FE0F}', 500, 3000], ['Safe full of cash', '\u{1F4B0}', 1000, 15000]],
-  Garage: [['Guitar', '\u{1F3B8}', 100, 1200], ['Power tools', '\u{1F527}', 80, 600], ['Mountain bike', '\u{1F6B2}', 100, 900]],
-  Bathroom: [['Electric toothbrush', '\u{1FAA5}', 20, 120], ['Designer perfume', '\u{1F9F4}', 40, 200]],
+  "Kid's Room": [['Teddy bear', '\u{1F9F8}', 5, 40], ['Tablet', '\u{1F4F1}', 100, 400, 'smartphone'], ['Piggy bank', '\u{1F437}', 5, 150], ['Tin toy train', '\u{1F682}', 10, 120, '-1965'], ['Comic book collection', '\u{1F4DA}', 10, 400, '1938']],
+  Office: [['Computer', '\u{1F5A5}\u{FE0F}', 300, 1500, 'homeComputer'], ['Laptop', '\u{1F4BB}', 300, 1500, '1995,homeComputer'], ['Cash box', '\u{1F4B0}', 100, 2500], ['Typewriter', '\u{1F4DC}', 40, 300, '-1995']],
+  'Home Office': [['Computer', '\u{1F5A5}\u{FE0F}', 500, 3000, 'homeComputer'], ['Safe full of cash', '\u{1F4B0}', 1000, 15000], ['Fountain pen set', '\u{1F58B}\u{FE0F}', 50, 600, '-1980']],
+  Garage: [['Guitar', '\u{1F3B8}', 100, 1200], ['Power tools', '\u{1F527}', 80, 600, '1950'], ['Mountain bike', '\u{1F6B2}', 100, 900, '1980'], ['Bicycle', '\u{1F6B2}', 20, 200, '-1980']],
+  Bathroom: [['Electric toothbrush', '\u{1FAA5}', 20, 120, '1960'], ['Designer perfume', '\u{1F9F4}', 40, 200]],
   'Dining Room': [['Silver candlesticks', '\u{1F56F}\u{FE0F}', 60, 500], ['Fine china', '\u{1F37D}\u{FE0F}', 80, 700]],
-  'Game Room': [['Arcade machine', '\u{1F579}\u{FE0F}', 300, 2500], ['Signed baseball', '\u{26BE}', 100, 3000]],
+  'Game Room': [['Arcade machine', '\u{1F579}\u{FE0F}', 300, 2500, '1975'], ['Signed baseball', '\u{26BE}', 100, 3000], ['Billiard cues', '\u{1F3B1}', 50, 600]],
   'Wine Cellar': [['Vintage wine', '\u{1F377}', 100, 3000]],
   Library: [['First-edition book', '\u{1F4D5}', 100, 5000], ['Antique globe', '\u{1F30D}', 100, 1500]],
   'Walk-in Closet': [['Designer handbag', '\u{1F45C}', 300, 4000], ['Fur coat', '\u{1F9E5}', 200, 3000]],
@@ -1420,10 +1507,10 @@ function generateHouse(g: GameState, tier: number): BurglaryData {
   const street = us ? pick(g, STREETS) : localStreetName(g)
   const house =
     tier === 1
-      ? pick(g, us ? [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a mobile home on ${street}`] : [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a cramped ground-floor flat on ${street}`])
+      ? pick(g, us ? [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, g.year >= 1955 ? `a mobile home on ${street}` : `a boarding house on ${street}`] : [`a run-down bungalow on ${street}`, `a tiny cottage on ${street}`, `a cramped ground-floor flat on ${street}`])
       : tier === 2
-        ? pick(g, us ? [`a two-story house on ${street}`, `a suburban split-level on ${street}`, `a brick colonial on ${street}`] : [`a two-story house on ${street}`, `a family house on ${street}`, `a big townhouse on ${street}`])
-        : pick(g, [`a gated mansion on ${street}`, `a hilltop estate on ${street}`, `a modern glass mansion on ${street}`])
+        ? pick(g, us ? [`a two-story house on ${street}`, g.year >= 1955 ? `a suburban split-level on ${street}` : `a clapboard farmhouse on ${street}`, `a brick colonial on ${street}`] : [`a two-story house on ${street}`, `a family house on ${street}`, `a big townhouse on ${street}`])
+        : pick(g, [`a gated mansion on ${street}`, `a hilltop estate on ${street}`, g.year >= 1950 ? `a modern glass mansion on ${street}` : `a Victorian mansion on ${street}`])
   const ownerGender: Gender = chance(g, 0.5) ? 'male' : 'female'
   const owner = strangerName(g, ownerGender)
   const ownerHome = chance(g, tier === 3 ? 0.4 : 0.5)
@@ -1431,12 +1518,14 @@ function generateHouse(g: GameState, tier: number): BurglaryData {
   const alarm = chance(g, [0.15, 0.4, 0.85][tier - 1])
   const mult = [0.5, 1, 2.5][tier - 1] * moneyScale(g)
   const rooms: BurglaryRoom[] = tpl.rooms.map(([name, emoji, x, y, w, h], i) => {
-    const pool = ROOM_LOOT[name] ?? []
+    const pool = (ROOM_LOOT[name] ?? []).filter(([, , , , era]) => !era || era.split(',').every((t) => gateHolds(g, t)))
     const n = pool.length === 0 || chance(g, 0.15) ? 0 : chance(g, tier === 1 ? 0.25 : 0.45) ? 2 : 1
     const loot = shuffle(g, pool)
       .slice(0, n)
       .map(([lname, lemoji, lo, hi]) => ({ name: lname, emoji: lemoji, value: Math.max(1, Math.round(randInt(g, lo, hi) * mult)) }))
-    return { id: `r${i}`, name, emoji, x, y, w, h, loot, hazard: null }
+    // No cars, no garage: the tools and the bike live in the shed.
+    const shown = name === 'Garage' && !cars(g) ? 'Shed' : name === 'Office' || name === 'Home Office' ? (common(g, 'homeComputer') ? name : 'Study') : name
+    return { id: `r${i}`, name: shown, emoji: shown === 'Study' ? '\u{1F4DA}' : emoji, x, y, w, h, loot, hazard: null }
   })
   const bedrooms = rooms.filter((r) => /Bedroom|Suite|Guest/.test(r.name))
   if (ownerHome && bedrooms.length) pick(g, bedrooms).hazard = 'owner'
@@ -1570,25 +1659,29 @@ const burglaryAction: MenuAction = {
 // Grand Theft Auto (age 14+)
 
 const CAR_MAKES = ['Brava', 'Corvex', 'Dorado', 'Falconi', 'Hondo', 'Kestrel', 'Lumen', 'Maverik', 'Novara', 'Pacer', 'Raptor', 'Sable', 'Titan', 'Valiant', 'Zephyr']
-const CAR_TYPES: { type: string; emoji: string; lo: number; hi: number; risk: number }[] = [
-  { type: 'Hatchback', emoji: '\u{1F697}', lo: 3000, hi: 15000, risk: 0 },
-  { type: 'Sedan', emoji: '\u{1F697}', lo: 4000, hi: 25000, risk: 0 },
-  { type: 'Pickup Truck', emoji: '\u{1F6FB}', lo: 6000, hi: 35000, risk: 0.02 },
-  { type: 'Minivan', emoji: '\u{1F690}', lo: 3000, hi: 20000, risk: -0.03 },
-  { type: 'SUV', emoji: '\u{1F699}', lo: 8000, hi: 45000, risk: 0.04 },
-  { type: 'Convertible', emoji: '\u{1F697}', lo: 15000, hi: 60000, risk: 0.06 },
-  { type: 'Sports Car', emoji: '\u{1F3CE}\u{FE0F}', lo: 30000, hi: 90000, risk: 0.1 },
-  { type: 'Luxury Sedan', emoji: '\u{1F698}', lo: 40000, hi: 110000, risk: 0.12 },
-  { type: 'Supercar', emoji: '\u{1F3CE}\u{FE0F}', lo: 150000, hi: 400000, risk: 0.2 },
+/** Body styles by era: no minivans before the 1980s, touring cars and roadsters early on. */
+const CAR_TYPES: { type: string; emoji: string; lo: number; hi: number; risk: number; since?: number; until?: number }[] = [
+  { type: 'Hatchback', emoji: '\u{1F697}', lo: 3000, hi: 15000, risk: 0, since: 1965 },
+  { type: 'Sedan', emoji: '\u{1F697}', lo: 4000, hi: 25000, risk: 0, since: 1915 },
+  { type: 'Pickup Truck', emoji: '\u{1F6FB}', lo: 6000, hi: 35000, risk: 0.02, since: 1925 },
+  { type: 'Minivan', emoji: '\u{1F690}', lo: 3000, hi: 20000, risk: -0.03, since: 1984 },
+  { type: 'SUV', emoji: '\u{1F699}', lo: 8000, hi: 45000, risk: 0.04, since: 1985 },
+  { type: 'Convertible', emoji: '\u{1F697}', lo: 15000, hi: 60000, risk: 0.06, since: 1925 },
+  { type: 'Sports Car', emoji: '\u{1F3CE}\u{FE0F}', lo: 30000, hi: 90000, risk: 0.1, since: 1950 },
+  { type: 'Luxury Sedan', emoji: '\u{1F698}', lo: 40000, hi: 110000, risk: 0.12, since: 1920 },
+  { type: 'Supercar', emoji: '\u{1F3CE}\u{FE0F}', lo: 150000, hi: 400000, risk: 0.2, since: 1970 },
+  { type: 'Touring Car', emoji: '\u{1F697}', lo: 2000, hi: 12000, risk: 0, until: 1935 },
+  { type: 'Roadster', emoji: '\u{1F3CE}\u{FE0F}', lo: 5000, hi: 30000, risk: 0.06, until: 1945 },
 ]
 const CAR_SPOTS: { text: string; risk: number }[] = [
-  { text: 'idling outside a gas station with the keys in it', risk: -0.15 },
+  { text: '@1915 idling outside a gas station with the keys in it', risk: -0.15 },
+  { text: '@-1915 idling outside the general store with the engine still running', risk: -0.15 },
   { text: 'parked in a dark alley', risk: -0.05 },
-  { text: 'in a mall parking lot', risk: 0.05 },
+  { text: '@1962 in a mall parking lot', risk: 0.05 },
   { text: 'on a busy street', risk: 0.1 },
   { text: 'in a gated driveway', risk: 0.15 },
   { text: 'outside the police station', risk: 0.35 },
-  { text: 'in a valet lot', risk: 0.08 },
+  { text: '@1950 in a valet lot', risk: 0.08 },
   { text: 'outside a gym', risk: 0 },
 ]
 
@@ -1658,8 +1751,13 @@ const GTA_PICK = defineScript('crime.gta.pick', (g, choice, data) => {
   }
   const roll = rand(g)
   if (roll < 0.3) {
-    log(g, 'I tried to steal a car, but the alarm scared me off.', 'bad')
-    outcome(g, 'Car Alarm', `The ${car.name}'s alarm went off the second you touched the door. You ran.`, '\u{1F6A8}', 'bad')
+    if (g.year >= 1970) {
+      log(g, 'I tried to steal a car, but the alarm scared me off.', 'bad')
+      outcome(g, 'Car Alarm', `The ${car.name}'s alarm went off the second you touched the door. You ran.`, '\u{1F6A8}', 'bad')
+    } else {
+      log(g, 'I tried to steal a car, but a passerby scared me off.', 'bad')
+      outcome(g, 'Spotted', `A passerby shouted "Hey, that's not yours!" the second you touched the ${car.name}'s door. You ran.`, '\u{1F6A8}', 'bad')
+    }
     return
   }
   if (roll < 0.55) {
@@ -1669,7 +1767,7 @@ const GTA_PICK = defineScript('crime.gta.pick', (g, choice, data) => {
     outcome(g, 'Owner!', `${owner} came back to the ${car.name} and caught you elbow-deep in the dashboard wires. ${pick(g, ['They dragged you out by your collar and pummeled you.', 'They hit you with a tire iron.'])} (-${dmg} health)`, '\u{1F915}', 'bad')
     return
   }
-  arrestPlayer(g, 'Grand Theft Auto', 2, { recordIndex: idx, evidence: 0.8, context: `A police cruiser pulled up just as you got the ${car.name} started.` })
+  arrestPlayer(g, 'Grand Theft Auto', 2, { recordIndex: idx, evidence: 0.8, context: `${g.year >= 1930 ? 'A police cruiser pulled up' : 'A constable on a bicycle pedaled up'} just as you got the ${car.name} started.` })
 })
 
 const gtaAction: MenuAction = {
@@ -1678,17 +1776,21 @@ const gtaAction: MenuAction = {
   label: 'Grand Theft Auto',
   emoji: '\u{1F697}',
   subtitle: 'Steal a car',
+  visible: (g) => g.year >= 1910,
   disabledReason: ageGate(14),
   run: (g) => {
     if (!canAct(g) || !lieLow(g, 'crime.gta', 3)) return
-    const types = shuffle(g, CAR_TYPES)
+    const era = CAR_TYPES.filter((t) => g.year >= (t.since ?? 0) && g.year <= (t.until ?? 9999))
+    const types = shuffle(g, era.length ? era : CAR_TYPES)
+    const spots = CAR_SPOTS.filter((x) => eraOk(g, x.text)).map((x) => ({ ...x, text: eraStrip(x.text) }))
     const cars: StolenCar[] = []
     for (let i = 0; i < 5; i++) {
       const t = types[i % types.length]
       const make = pick(g, CAR_MAKES)
-      const age = randInt(g, 0, 15)
+      // Cars are no older than the motor age (about 1900).
+      const age = Math.min(randInt(g, 0, 15), Math.max(0, g.year - 1900))
       const value = cash(g, randInt(g, t.lo, t.hi) * Math.max(0.35, 1 - age * 0.05))
-      const spot = pick(g, CAR_SPOTS)
+      const spot = pick(g, spots)
       cars.push({
         id: `c${i}`,
         name: `${g.year - age} ${make} ${t.type}`,
@@ -1726,27 +1828,29 @@ interface Bank {
   difficulty: number
 }
 
-const BANK_WEAPONS: { id: string; label: string; emoji: string; bonus: number; armed: boolean }[] = [
+const BANK_WEAPONS: { id: string; label: string; emoji: string; bonus: number; armed: boolean; since?: number }[] = [
   { id: 'pistol', label: 'A pistol', emoji: '\u{1F52B}', bonus: 0.12, armed: true },
   { id: 'shotgun', label: 'A sawed-off shotgun', emoji: '\u{1F4A5}', bonus: 0.15, armed: true },
-  { id: 'toy', label: 'A water gun painted black', emoji: '\u{1F4A6}', bonus: 0.05, armed: false },
+  { id: 'toy', label: 'A water gun painted black', emoji: '\u{1F4A6}', bonus: 0.05, armed: false, since: 1950 },
   { id: 'note', label: 'A politely worded note', emoji: '\u{1F4DD}', bonus: -0.05, armed: false },
   { id: 'banana', label: 'A banana in my pocket', emoji: '\u{1F34C}', bonus: -0.1, armed: false },
 ]
-const BANK_DISGUISES: { id: string; label: string; emoji: string; bonus: number }[] = [
-  { id: 'ski', label: 'Ski mask', emoji: '\u{1F977}', bonus: 0.1 },
+const BANK_DISGUISES: { id: string; label: string; emoji: string; bonus: number; since?: number; until?: number }[] = [
+  { id: 'ski', label: 'Ski mask', emoji: '\u{1F977}', bonus: 0.1, since: 1960 },
+  { id: 'bandana', label: 'Bandana over my face', emoji: '\u{1F920}', bonus: 0.1, until: 1959 },
   { id: 'clown', label: 'Clown mask', emoji: '\u{1F921}', bonus: 0.08 },
-  { id: 'pantyhose', label: 'Pantyhose over my face', emoji: '\u{1F9E6}', bonus: 0.06 },
-  { id: 'president', label: 'Rubber president mask', emoji: '\u{1F468}\u{200D}\u{1F4BC}', bonus: 0.08 },
+  { id: 'pantyhose', label: 'Pantyhose over my face', emoji: '\u{1F9E6}', bonus: 0.06, since: 1960 },
+  { id: 'president', label: 'Rubber president mask', emoji: '\u{1F468}\u{200D}\u{1F4BC}', bonus: 0.08, since: 1965 },
   { id: 'mustache', label: 'Fake mustache', emoji: '\u{1F978}', bonus: 0 },
   { id: 'none', label: 'No disguise', emoji: '\u{1F600}', bonus: -0.15 },
 ]
-const BANK_GETAWAYS: { id: string; label: string; emoji: string; bonus: number; text: string }[] = [
-  { id: 'car', label: 'Getaway car', emoji: '\u{1F697}', bonus: 0.1, text: 'in a getaway car' },
-  { id: 'motorcycle', label: 'Motorcycle', emoji: '\u{1F3CD}\u{FE0F}', bonus: 0.12, text: 'on a motorcycle' },
+const BANK_GETAWAYS: { id: string; label: string; emoji: string; bonus: number; text: string; fits?: (g: GameState) => boolean }[] = [
+  { id: 'car', label: 'Getaway car', emoji: '\u{1F697}', bonus: 0.1, text: 'in a getaway car', fits: (g) => g.year >= 1910 },
+  { id: 'motorcycle', label: 'Motorcycle', emoji: '\u{1F3CD}\u{FE0F}', bonus: 0.12, text: 'on a motorcycle', fits: (g) => g.year >= 1910 },
   { id: 'bike', label: 'Bicycle', emoji: '\u{1F6B2}', bonus: -0.02, text: 'on a bicycle, pedaling furiously' },
   { id: 'foot', label: 'On foot', emoji: '\u{1F3C3}', bonus: -0.08, text: 'on foot' },
-  { id: 'rideshare', label: 'Call a rideshare', emoji: '\u{1F4F1}', bonus: -0.12, text: 'in a rideshare (you gave the driver five stars)' },
+  { id: 'rideshare', label: 'Call a rideshare', emoji: '\u{1F4F1}', bonus: -0.12, text: 'in a rideshare (you gave the driver five stars)', fits: (g) => common(g, 'rideHailing') },
+  { id: 'horse', label: 'On horseback', emoji: '\u{1F40E}', bonus: 0.08, text: 'on horseback in a cloud of dust', fits: (g) => g.year < 1940 },
 ]
 
 const BANK_SCRIPT = defineScript('crime.bank.step', (g, choice, data) => {
@@ -1772,19 +1876,19 @@ const BANK_SCRIPT = defineScript('crime.bank.step', (g, choice, data) => {
   if (step === 'crew') {
     next.crew = choice
     next.step = 'weapon'
-    scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'Choose your weapon.', BANK_WEAPONS.map((w) => ({ id: w.id, label: w.label, emoji: w.emoji })), { emoji: '\u{1F3E6}', data: next })
+    scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'Choose your weapon.', BANK_WEAPONS.filter((w) => g.year >= (w.since ?? 0)).map((w) => ({ id: w.id, label: w.label, emoji: w.emoji })), { emoji: '\u{1F3E6}', data: next })
     return
   }
   if (step === 'weapon') {
     next.weapon = choice
     next.step = 'disguise'
-    scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'Choose your disguise.', BANK_DISGUISES.map((d) => ({ id: d.id, label: d.label, emoji: d.emoji })), { emoji: '\u{1F3E6}', data: next })
+    scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'Choose your disguise.', BANK_DISGUISES.filter((d) => g.year >= (d.since ?? 0) && g.year <= (d.until ?? 9999)).map((d) => ({ id: d.id, label: d.label, emoji: d.emoji })), { emoji: '\u{1F3E6}', data: next })
     return
   }
   if (step === 'disguise') {
     next.disguise = choice
     next.step = 'getaway'
-    scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'How will you get away?', BANK_GETAWAYS.map((x) => ({ id: x.id, label: x.label, emoji: x.emoji })), { emoji: '\u{1F3E6}', data: next })
+    scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'How will you get away?', BANK_GETAWAYS.filter((x) => !x.fits || x.fits(g)).map((x) => ({ id: x.id, label: x.label, emoji: x.emoji })), { emoji: '\u{1F3E6}', data: next })
     return
   }
   if (step !== 'getaway') return
@@ -1792,7 +1896,7 @@ const BANK_SCRIPT = defineScript('crime.bank.step', (g, choice, data) => {
   if (!isRecord(bankRaw)) return
   const bank = bankRaw as unknown as Bank
   const weapon = BANK_WEAPONS.find((w) => w.id === str(data.weapon)) ?? BANK_WEAPONS[3]
-  const disguise = BANK_DISGUISES.find((d) => d.id === str(data.disguise)) ?? BANK_DISGUISES[5]
+  const disguise = BANK_DISGUISES.find((d) => d.id === str(data.disguise)) ?? BANK_DISGUISES.find((d) => d.id === 'none') ?? BANK_DISGUISES[0]
   const getaway = BANK_GETAWAYS.find((x) => x.id === choice) ?? BANK_GETAWAYS[3]
   const crew = str(data.crew, 'solo')
   const crewBonus = crew === 'family' ? 0.2 : crew === 'crew' ? 0.15 : 0
@@ -1985,6 +2089,7 @@ const MURDER_METHODS: MurderMethod[] = [
     win: (v) => `You tossed a plugged-in toaster into ${v}'s bubble bath. The lights flickered across the whole neighborhood.`,
     miss: (v) => `You threw a toaster into ${v}'s bath, but it wasn't plugged in. ${v} screamed and threw a loofah at you.`,
     backfireText: (v) => `${v} leapt out of the tub and threw you into it, toaster and all.`,
+    requires: (g) => g.year >= 1925,
   },
   {
     id: 'stairs', label: 'Push Down the Stairs', emoji: '\u{1FA9C}', success: 0.3, cops: 0.45, backfire: 0.08, playerCause: 'Fell Down the Stairs',
@@ -2012,21 +2117,21 @@ const MURDER_METHODS: MurderMethod[] = [
   },
   {
     id: 'poison', label: 'Poison Them', emoji: '\u{1F9EA}', success: 0.55, cops: 0.3, backfire: 0.08, playerCause: 'Poisoned',
-    win: (v) => `You slipped antifreeze into ${v}'s iced tea. ${v} said it was the sweetest tea ${'they'} ever had. It was also the last.`,
+    win: (v) => `You slipped rat poison into ${v}'s iced tea. ${v} said it was the sweetest tea ${'they'} ever had. It was also the last.`,
     miss: (v, p) => `You spiked ${v}'s iced tea, but ${p.he} said it tasted funny and poured it into a plant. The plant died.`,
     backfireText: (v) => `${v} saw you tamper with the iced tea and quietly swapped glasses. You drank the wrong one.`,
   },
   {
     id: 'beartrap', label: 'Bear Trap', emoji: '\u{1FAA4}', success: 0.2, cops: 0.25, backfire: 0.07, playerCause: 'Fell in a Bear Trap',
-    win: (v) => `You spent all night digging a bear trap on ${v}'s morning jogging route. ${v} jogged right into it.`,
+    win: (v) => `You spent all night digging a bear trap on ${v}'s morning walking route. ${v} strolled right into it.`,
     miss: (v) => `You dug a bear trap for ${v}, but a confused raccoon fell in instead.`,
     backfireText: (v) => `${v} watched you build the trap, then snuck up behind you and said "boo." You fell in head-first.`,
   },
   {
     id: 'laxative', label: 'Elephant Laxative', emoji: '\u{1F418}', success: 0.3, cops: 0.25, backfire: 0.07, playerCause: 'Elephant Laxative Overdose',
-    win: (v) => `You snuck an elephant-strength laxative into ${v}'s morning smoothie. Let's just say ${v} won't be needing breakfast anymore.`,
-    miss: (v) => `You spiked ${v}'s smoothie with elephant laxative. ${v} survived, but ${'their'} bathroom did not.`,
-    backfireText: (v) => `${v} switched smoothies with you while you weren't looking. Elephant laxative is not meant for humans.`,
+    win: (v) => `You snuck an elephant-strength laxative into ${v}'s morning coffee. Let's just say ${v} won't be needing breakfast anymore.`,
+    miss: (v) => `You spiked ${v}'s coffee with elephant laxative. ${v} survived, but ${'their'} bathroom did not.`,
+    backfireText: (v) => `${v} switched cups with you while you weren't looking. Elephant laxative is not meant for humans.`,
   },
   {
     id: 'cliff', label: 'Push Off a Cliff', emoji: '\u{1F3D4}\u{FE0F}', success: 0.7, cops: 0.25, backfire: 0.05, playerCause: 'Fell Off a Cliff',
@@ -2426,18 +2531,23 @@ const embezzleAction: MenuAction = {
 // ---------------------------------------------------------------------------
 // Cybercrime (age 13+): hack people or companies
 
-const PERSON_HACKS: { id: string; label: string; emoji: string; difficulty: number; crime: string }[] = [
-  { id: 'social', label: 'Hack their social media', emoji: '\u{1F4F1}', difficulty: 0, crime: 'Computer Fraud' },
-  { id: 'identity', label: 'Steal their identity', emoji: '\u{1FAAA}', difficulty: 0.08, crime: 'Identity Theft' },
-  { id: 'bank', label: 'Drain their bank account', emoji: '\u{1F3E6}', difficulty: 0.15, crime: 'Wire Fraud' },
-  { id: 'ransom', label: 'Lock their computer with ransomware', emoji: '\u{1F512}', difficulty: 0.1, crime: 'Computer Fraud' },
+/** Hacks, each with the era gates it needs (events/era.ts): no social media to hijack before social media. */
+const PERSON_HACKS: { id: string; label: string; emoji: string; difficulty: number; crime: string; era?: string }[] = [
+  { id: 'social', label: 'Hack their social media', emoji: '\u{1F4F1}', difficulty: 0, crime: 'Computer Fraud', era: '+socialMedia' },
+  { id: 'identity', label: 'Steal their identity', emoji: '\u{1FAAA}', difficulty: 0.08, crime: 'Identity Theft', era: 'creditCards' },
+  { id: 'bank', label: 'Drain their bank account', emoji: '\u{1F3E6}', difficulty: 0.15, crime: 'Wire Fraud', era: '1998' },
+  { id: 'ransom', label: 'Lock their computer with ransomware', emoji: '\u{1F512}', difficulty: 0.1, crime: 'Computer Fraud', era: '2005' },
   { id: 'leak', label: 'Leak their private messages', emoji: '\u{1F4E8}', difficulty: 0.05, crime: 'Computer Fraud' },
 ]
-const CORP_HACKS: { id: string; label: string; emoji: string; difficulty: number; crime: string }[] = [
-  { id: 'ransomware', label: 'Launch a ransomware attack', emoji: '\u{1F512}', difficulty: 0.25, crime: 'Computer Fraud' },
+const CORP_HACKS: { id: string; label: string; emoji: string; difficulty: number; crime: string; era?: string }[] = [
+  { id: 'ransomware', label: 'Launch a ransomware attack', emoji: '\u{1F512}', difficulty: 0.25, crime: 'Computer Fraud', era: '2010' },
   { id: 'breach', label: 'Steal and sell customer data', emoji: '\u{1F4BE}', difficulty: 0.2, crime: 'Identity Theft' },
-  { id: 'crypto', label: 'Raid their crypto wallet', emoji: '\u{1FA99}', difficulty: 0.3, crime: 'Wire Fraud' },
+  { id: 'crypto', label: 'Raid their crypto wallet', emoji: '\u{1FA99}', difficulty: 0.3, crime: 'Wire Fraud', era: '+crypto' },
 ]
+
+function hackFits(g: GameState, era?: string): boolean {
+  return !era || era.split(',').every((t) => gateHolds(g, t.trim()))
+}
 const CORPS = ['MegaMart', 'Globex Logistics', 'Nimbus Cloud', 'Pinnacle Insurance', 'Quantum Burger', 'Hyperion Bank', 'Zentrix Pharma', 'Starlight Airlines']
 
 const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
@@ -2467,7 +2577,9 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
     const ranges: Record<string, [number, number]> = { ransomware: [20000, 500000], breach: [10000, 150000], crypto: [5000, 250000] }
     const [lo, hi] = ranges[hack.id] ?? [5000, 50000]
     money = cash(g, randInt(g, lo, hi))
-    text = hack.id === 'ransomware' ? `${target}'s servers locked up and their IT department paid ${formatMoney(money)} in crypto to get them back.` : hack.id === 'breach' ? `You siphoned millions of customer records from ${target} and sold them on the dark web for ${formatMoney(money)}.` : `You cracked ${target}'s crypto wallet and transferred ${formatMoney(money)} to yourself.`
+    const paidIn = exists(g, 'crypto') ? 'in crypto' : 'by wire transfer'
+    const buyer = g.year >= 2005 ? 'on the dark web' : 'to a shady data broker'
+    text = hack.id === 'ransomware' ? `${target}'s servers locked up and their IT department paid ${formatMoney(money)} ${paidIn} to get them back.` : hack.id === 'breach' ? `You siphoned ${g.year >= 2005 ? 'millions of' : 'thousands of'} customer records from ${target} and sold them ${buyer} for ${formatMoney(money)}.` : `You cracked ${target}'s crypto wallet and transferred ${formatMoney(money)} to yourself.`
   } else if (hack.id === 'social') {
     addStat(g, 'happiness', randInt(g, 3, 8))
     if (person) {
@@ -2481,7 +2593,7 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
       addPersonStat(person, 'happiness', -randInt(g, 10, 20))
     }
     addStat(g, 'happiness', randInt(g, 2, 6))
-    text = `You leaked ${target}'s private messages. Turns out ${pick(g, ['they have a secret fan account for a soap opera', 'they talk to their cat in baby voice', 'they have been feuding with a neighbor over a hedge for years', 'they still text their ex at 3 a.m.'])}.`
+    text = `You leaked ${target}'s private messages. Turns out ${pick(g, ['they have a secret fan account for a soap opera', 'they talk to their cat in baby voice', 'they have been feuding with a neighbor over a hedge for years', texting(g) ? 'they still text their ex at 3 a.m.' : 'they still write their ex long letters at 3 a.m.'])}.`
   } else {
     const base = hack.id === 'bank' ? 0.4 : hack.id === 'identity' ? 0.2 : 0.05
     const wealth = person ? Math.max(0, person.money) : randInt(g, 2000, 60000)
@@ -2508,7 +2620,7 @@ const CYBER_SCRIPT = defineScript('crime.cyber', (g, choice, data) => {
 })
 
 function cyberTarget(g: GameState, label: string, personId: string | null, corp: boolean): void {
-  const hacks = corp ? CORP_HACKS : PERSON_HACKS
+  const hacks = (corp ? CORP_HACKS : PERSON_HACKS).filter((h) => hackFits(g, h.era))
   scriptChoice(g, CYBER_SCRIPT, 'Cybercrime', `You crack your knuckles and open a terminal. Target: ${label}. What's the plan?`, [
     ...hacks.map((h) => ({ id: h.id, label: h.label, emoji: h.emoji })),
     { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
@@ -2521,6 +2633,8 @@ const cyberMenu: MenuGroup = {
   label: 'Cybercrime',
   emoji: '\u{1F4BB}',
   subtitle: 'Hack friends, family and randos',
+  // No hacking before the internet reaches your country (and home computers with it).
+  visible: (g) => exists(g, 'internet') && exists(g, 'homeComputer'),
   disabledReason: ageGate(13),
   header: () => 'Smarter hackers succeed more often. Corporations pay more but fight back harder.',
   children: (g) => [
@@ -2741,7 +2855,8 @@ const joinFamilyAction: MenuAction = {
 
 // --- Extortion -------------------------------------------------------------
 
-const BUSINESSES = ['pizzeria', 'laundromat', 'nail salon', 'pawn shop', 'nightclub', 'bakery', 'car wash', 'corner deli', 'dry cleaner', 'tattoo parlor', 'used car lot', 'bowling alley']
+/** Shops to shake down (era tags as in events/era.ts). */
+const BUSINESSES = ['@1950 pizzeria', '@1934 laundromat', '@1980 nail salon', 'pawn shop', '@1925 nightclub', 'bakery', '@1940 car wash', 'corner deli', 'dry cleaner', 'tattoo parlor', '@1920 used car lot', 'bowling alley', '@-1960 barbershop', '@-1950 ice house', '@-1934 speakeasy']
 
 const EXTORT_OFFER = 'crime.extort.offer'
 
@@ -2865,10 +2980,10 @@ const extortAction: MenuAction = {
   disabledReason: (g) => blocked(g, 18) ?? (!crimeFamily(g) ? 'Only members of a crime family can run protection rackets.' : null),
   run: (g) => {
     if (!canAct(g) || !crimeFamily(g) || !lieLow(g, 'crime.extort', 3)) return
-    const picks = shuffle(g, BUSINESSES).slice(0, 3)
+    const picks = shuffle(g, eraLines(g, BUSINESSES).filter((b) => b !== 'speakeasy' || prohibition(g))).slice(0, 3)
     const businesses = picks.map((business, i) => {
       const gender: Gender = chance(g, 0.5) ? 'male' : 'female'
-      const big = business === 'nightclub' || business === 'used car lot'
+      const big = business === 'nightclub' || business === 'used car lot' || business === 'speakeasy'
       return { id: `b${i}`, business, owner: strangerName(g, gender), demand: cash(g, big ? randInt(g, 10000, 50000) : randInt(g, 2000, 15000)) }
     })
     scriptChoice(g, EXTORT_PICK, 'Extortion', 'Which business needs some "protection"?', [
@@ -3052,7 +3167,7 @@ const WITNESS_SCRIPT = defineScript('crime.mafia.witness', (g, choice, data) => 
   count(g, 'emigrations')
   log(g, `I entered witness protection and moved to ${c.city}, ${country.name} as ${c.firstName} ${c.lastName}.`, 'event')
   remember(g, `Entered witness protection; new identity ${c.firstName} ${c.lastName} in ${country.name} (formerly ${old}).`)
-  outcome(g, 'New Identity', `The feds handed you a new passport and a plane ticket. Say hello to ${c.firstName} ${c.lastName} of ${c.city}, ${country.name}.`, country.flag || '\u{2708}\u{FE0F}', 'good')
+  outcome(g, 'New Identity', `The feds handed you a new passport and a one-way ticket. Say hello to ${c.firstName} ${c.lastName} of ${c.city}, ${country.name}.`, country.flag || '\u{2708}\u{FE0F}', 'good')
 })
 
 const CARD_SCRIPT = defineScript('crime.mafia.card', (g, choice, data) => {
@@ -3282,7 +3397,7 @@ function familyNodes(g: GameState, fam: CrimeFamily): MenuNode[] {
         f.informant = { years: 0, evidence: 0 }
         log(gg, `I secretly became a ${feds(gg).informant}.`, 'event')
         remember(gg, `Became a ${feds(gg).informant} against ${f.name}.`)
-        notice(gg, 'Wired', `You met ${gg.character.countryId === 'us' ? 'an FBI agent' : 'a detective'} in a parking garage and agreed to wear a wire. Gather enough evidence on ${f.name} within 5 years and you walk away clean.`, { emoji: '\u{1F399}\u{FE0F}', tone: 'event' })
+        notice(gg, 'Wired', `You met ${gg.character.countryId === 'us' ? (gg.year >= 1935 ? 'an FBI agent' : 'a federal agent') : 'a detective'} in ${cars(gg) ? 'a parking garage' : 'a dark alley'} and agreed to wear a wire. Gather enough evidence on ${f.name} within 5 years and you walk away clean.`, { emoji: '\u{1F399}\u{FE0F}', tone: 'event' })
       },
     })
   }
@@ -3441,10 +3556,96 @@ function yearlyFamily(g: GameState, fam: CrimeFamily): void {
     }
   }
   log(g, pick(g, [
-    `I helped ${fam.name} come up with a name for a new front business: "${pick(g, ['Totally Legit Laundry', 'Honest Abe\'s Pawn', 'Nothing To See Here Bakery', 'Clean Money Car Wash'])}".`,
+    `I helped ${fam.name} come up with a name for a new front business: "${pick(g, ['Totally Legit Laundry', 'Honest Abe\'s Pawn', 'Nothing To See Here Bakery', ...(g.year >= 1940 ? ['Clean Money Car Wash'] : ['Spotless Linen Laundry'])])}".`,
     `I went to a ${fam.kind === 'Mafia' ? 'Sunday dinner' : 'family banquet'} with ${fam.name}. Nobody talked business. Officially.`,
     `${superior(fam)?.name ?? 'The boss'} complimented my work this year.`,
   ]), 'neutral')
+}
+
+// ---------------------------------------------------------------------------
+// Bootlegging (age 14+, US Prohibition 1920-1933): bathtub gin, speakeasy runs and rum-running
+
+interface BootlegJob {
+  id: string
+  label: string
+  emoji: string
+  risk: number
+  pay: [number, number]
+  win: string[]
+  caught: string
+}
+
+const BOOTLEG_JOBS: BootlegJob[] = [
+  {
+    id: 'gin',
+    label: 'Brew bathtub gin',
+    emoji: '\u{1F6C1}',
+    risk: 0.12,
+    pay: [150, 900],
+    win: ['You cooked up a batch of bathtub gin and sold it by the jar. It tasted like turpentine. Nobody complained.', 'Your bathtub gin was the talk of three speakeasies. The bathtub may never recover.'],
+    caught: 'A neighbor smelled juniper and turpentine through the wall and tipped off the Prohibition agents.',
+  },
+  {
+    id: 'deliver',
+    label: 'Supply the speakeasies',
+    emoji: '\u{1F943}',
+    risk: 0.2,
+    pay: [400, 2500],
+    win: ['You delivered crates of whiskey to four speakeasies before sunrise. Every doorman knew your knock.', 'You hid the bottles under a load of potatoes and made every delivery on time.'],
+    caught: 'Prohibition agents stopped your delivery truck and found the bottles under the potatoes.',
+  },
+  {
+    id: 'border',
+    label: 'Smuggle whiskey across the border',
+    emoji: '\u{1F69A}',
+    risk: 0.25,
+    pay: [1000, 7000],
+    win: ['You hauled a load of whiskey down from the northern border, hidden under crates of lumber.', 'You smuggled whiskey across the border in milk cans. The cows would be proud.'],
+    caught: 'Border agents tapped your milk cans and heard whiskey sloshing inside.',
+  },
+  {
+    id: 'rumrun',
+    label: 'Run rum by boat',
+    emoji: '\u{1F6A4}',
+    risk: 0.3,
+    pay: [2000, 12000],
+    win: ['You met a schooner offshore in the dark and ran a boatload of rum back to the docks.', 'You outran a Coast Guard cutter in fog so thick you could chew it. The rum made it ashore.'],
+    caught: 'A Coast Guard cutter caught your boat riding low in the water with a hundred cases of rum aboard.',
+  },
+]
+
+const BOOTLEG_SCRIPT = defineScript('crime.bootleg', (g, choice) => {
+  const c = g.character
+  if (!canAct(g) || choice === 'cancel' || !prohibition(g)) return
+  const job = BOOTLEG_JOBS.find((j) => j.id === choice)
+  if (!job) return
+  const risk = clamp((job.risk - (c.stats.smarts - 50) / 500) * caughtMult(g), 0.04, 0.6)
+  const idx = commitCrime(g, 'Bootlegging', { karma: 1, notoriety: 2, heat: 0.08 })
+  if (chance(g, risk)) {
+    arrestPlayer(g, 'Bootlegging', 1, { recordIndex: idx, evidence: 0.8, context: job.caught })
+    return
+  }
+  count(g, 'bootlegRuns')
+  const got = pocket(g, cash(g, randInt(g, job.pay[0], job.pay[1])))
+  log(g, `I ran bootleg liquor during Prohibition and made ${formatMoney(got)}.`, 'event')
+  outcome(g, 'Bootlegger', `${pick(g, job.win)} You cleared ${formatMoney(got)}.`, job.emoji, 'good')
+})
+
+const bootlegAction: MenuAction = {
+  type: 'action',
+  id: 'crime.bootleg',
+  label: 'Bootlegging',
+  emoji: '\u{1F943}',
+  subtitle: 'Liquor is illegal. Thirst is not.',
+  visible: (g) => prohibition(g),
+  disabledReason: ageGate(14),
+  run: (g) => {
+    if (!canAct(g) || !lieLow(g, 'crime.bootleg', 3)) return
+    scriptChoice(g, BOOTLEG_SCRIPT, 'Bootlegging', 'Prohibition made liquor illegal, and the speakeasies are thirsty. What is the job?', [
+      ...BOOTLEG_JOBS.map((j) => ({ id: j.id, label: j.label, emoji: j.emoji })),
+      { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
+    ], { emoji: '\u{1F943}' })
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -3474,6 +3675,7 @@ export const crimeMenu: MenuGroup = {
     if (g.character.wantedLevel > 0) nodes.push({ type: 'info', id: 'crime.wanted', emoji: '\u{1F6A8}', text: `Wanted level: ${wantedStars(g.character.wantedLevel)}` })
     nodes.push(
       bankAction,
+      bootlegAction,
       burglaryAction,
       cyberMenu,
       delinquencyMenu,

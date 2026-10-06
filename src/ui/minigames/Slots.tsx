@@ -1,6 +1,7 @@
 // Slot machine: the engine already picked the three reel symbols; pull the lever to watch
 // the reels spin and land on them one by one, then report 'done'.
 import { useEffect, useRef, useState } from 'react'
+import { formatMoney } from '../../game/core'
 import type { Json } from '../../game/types'
 import type { MinigameProps } from './types'
 
@@ -36,10 +37,6 @@ function readData(data: Json): SlotData {
     precious: strs(d.precious),
     fruits: strs(d.fruits),
   }
-}
-
-function formatMoney(n: number): string {
-  return `$${Math.round(n).toLocaleString('en-US')}`
 }
 
 const STOP_MS = [1100, 1700, 2300]

@@ -55,6 +55,7 @@ import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Statement } from './state'
 import { assignedDevs, devGames, normalizeStudio, studioLine, trimStudioGames, type StudioGame, type StudioPolicy, type StudioState } from './gamestudio-state'
 import { clampN, dollars, markBest, money, pct, round2, toJson } from './util'
+import { studioMarketFactor, studioPick } from './competition'
 
 export const DEVS_PER_OFFICE = 120
 
@@ -165,6 +166,9 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   ensureCatalog(g, b, st, year)
   const m = marketOf(b.countryId)
   const iy = industryYear(g, year)
+  // The market: tiny in the arcade era, crashing in 1983, crowded today (business/competition.ts).
+  // It scales launches; a game's long tail follows from how its launch went.
+  const mf = studioMarketFactor(g, b, year)
   const speed = st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1
   const ops = 1 + 0.08 * staffPower(b, 'ops')
   const open = (1 - b.capacityLoss) * b.openFraction
@@ -268,6 +272,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
         (1 + b.campaignBoost) *
         b.demandShock *
         (1 - b.pressure) *
+        mf *
         knack,
     )
     // The last milestone comes with the launch, if the publisher thinks it's any good.
@@ -400,7 +405,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     employees: b.employees,
   }
   b.last = stmt
-  return { stmt, inventoryEnd: 0, wantedStaff: b.employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay) }
+  return { stmt, inventoryEnd: 0, wantedStaff: b.employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), market: studioPick(g, b, year, copiesTotal) }
 }
 
 /** The owner's name goes in the credits (and gamers notice a hit). */

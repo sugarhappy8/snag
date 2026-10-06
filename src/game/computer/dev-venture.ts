@@ -12,7 +12,7 @@
 // data breaches, co-founder drama, investors, and type-specific chaos.
 import { cycleOf } from '../business/economy'
 import { COMPANY_WORDS } from '../data/jobs'
-import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, formatMoney, log, notice, peopleBy, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, formatCents, formatMoney, log, notice, peopleBy, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal, localPick, localTerm } from '../data/locales'
 import { worldYear } from '../invest/engine'
 import { chance, pick, rand, randFloat, randInt, shuffle, uid, weightedPick } from '../rng'
@@ -52,6 +52,8 @@ import {
 } from './dev-state'
 import { bestLanguageFor, codingSkill } from './skills'
 import { MAX_VENTURES, VENTURE_DEFS, type Tier, type TypeDef } from './dev-kinds'
+import { eraOpen, eraReason } from './era'
+import { hasTech } from '../history/timeline'
 
 export { MAX_VENTURES, VENTURE_DEFS }
 
@@ -232,7 +234,7 @@ function tierOf(v: VentureData): Tier {
 
 export function tierPriceLabel(v: VentureData, t: Tier = tierOf(v)): string {
   const p = custPrice(v, t.price)
-  const amount = p >= 20 ? formatMoney(Math.round(p)) : `$${p.toFixed(2)}`
+  const amount = p >= 20 ? formatMoney(Math.round(p)) : formatCents(p)
   switch (v.type) {
     case 'saas':
       return `${amount}/month`
@@ -485,7 +487,7 @@ function readType(v: Json | undefined): VentureType {
 export function startVenture(g: GameState, type: VentureType): void {
   const vd = VENTURE_DEFS[type]
   if (type === 'game') return notice(g, vd.label, GAMES_POINTER, { emoji: vd.emoji })
-  const reason = firstReason(computerBlock(g), ageBlock(g, vd.minAge, `start ${vd.noun}`), canStartVenture(g))
+  const reason = firstReason(computerBlock(g), ageBlock(g, vd.minAge, `start ${vd.noun}`), eraReason(g, vd.era, `${vd.label.toLowerCase()} businesses`), canStartVenture(g))
   if (reason) return notice(g, vd.label, reason, { emoji: vd.emoji })
   const ideas = generateIdeas(g, type)
   useComputer(g, 1)
@@ -859,7 +861,11 @@ function eligibleEvents(g: GameState, { a, v }: EventCtx): [EventId, number][] {
   if (live && growth > 0.15 && v.valuation >= 20_000 * pl && v.stake > 0.35 && v.revenue > 0) out.push(['investor', 0.8])
   if (!v.cofounder && (v.stage === 'building' || yearsLive <= 2) && v.stake >= 0.9 && friendFor(g)) out.push(['cofounderOffer', 0.5])
   if (live && v.type === 'store' && v.users >= 15) out.push(['counterfeit', 0.8], ['lostParcels', 0.6])
-  if (live && v.type === 'game' && v.users >= 100) out.push(['streamer', 1], ['reviewBomb', 0.6])
+  if (live && v.type === 'game' && v.users >= 100) {
+    // Streamers need streaming; review bombs need a storefront with reviews.
+    if (hasTech(g, 'streaming')) out.push(['streamer', 1])
+    out.push(['reviewBomb', 0.6])
+  }
   if (c.age < 18 && c.education.current && c.education.current.level !== 'preschool' && a.name) out.push(['teacher', 0.5])
   return out
 }
@@ -898,7 +904,9 @@ function fireEvent(g: GameState, ctx: EventCtx, ev: EventId): void {
       return
     }
     case 'viral': {
-      const who = v.type === 'store' ? 'a fashion influencer' : pick(g, ['a huge tech creator', 'a celebrity with 30 million followers', 'a viral video', 'a popular newsletter'])
+      // Before social media, buzz came from TV segments, magazines and email newsletters.
+      const social = hasTech(g, 'socialMedia')
+      const who = v.type === 'store' ? (social ? 'a fashion influencer' : 'a fashion magazine') : pick(g, social ? ['a huge tech creator', 'a celebrity with 30 million followers', 'a viral video', 'a popular newsletter'] : ['a morning TV segment', 'a famous tech columnist', 'a popular email newsletter', 'a magazine cover story'])
       const boost = adBudget(v.countryId, 2)
       show('Going Viral', `${capWord(who)} just featured ${name}. Traffic is exploding. ${pick(g, ['Your server is sweating.', 'Your phone has not stopped buzzing.', 'Your aunt saw it before you did.'])}`, [
         { id: 'ride', label: `Pour ${formatMoney(boost)} into ads while it's hot`, emoji: '\u{1F4E3}' },
@@ -1951,8 +1959,12 @@ export const startVentureMenu: MenuGroup = {
   id: 'computer.dev.startVenture',
   label: 'Start a Venture',
   emoji: '\u{1F680}',
-  subtitle: (g) => `SaaS, apps, an online store · ${ventureAssets(g).length}/${MAX_VENTURES} running`,
-  visible: (g) => g.character.age >= 12,
+  subtitle: (g) => {
+    const open = (['saas', 'app', 'store'] as VentureType[]).filter((t) => eraOpen(g, VENTURE_DEFS[t].era))
+    const what = open.length === 3 ? 'SaaS, apps, an online store' : open.map((t) => (t === 'saas' ? 'SaaS' : t === 'app' ? 'apps' : 'an online store')).join(', ')
+    return `${what} · ${ventureAssets(g).length}/${MAX_VENTURES} running`
+  },
+  visible: (g) => g.character.age >= 12 && (['saas', 'app', 'store'] as VentureType[]).some((t) => eraOpen(g, VENTURE_DEFS[t].era)),
   disabledReason: (g) => firstReason(computerBlock(g), canStartVenture(g)),
   header: (g) => `Coding skill ${codingSkill(g)}/100 · You have ${formatMoney(g.character.money)}. One new venture a year.`,
   children: (): MenuNode[] => [
@@ -1969,6 +1981,7 @@ export const startVentureMenu: MenuGroup = {
           const hired = vd.hireUsd > 0 ? ` or hire a freelancer (${money(localFee(g, vd.hireUsd))})` : ''
           return `From ${formatMoney(start)} · ${self}${hired} · age ${vd.minAge}+`
         },
+        visible: (g) => eraOpen(g, vd.era),
         disabledReason: (g) => firstReason(computerBlock(g), ageBlock(g, vd.minAge, `start ${vd.noun}`), canStartVenture(g)),
         run: (g) => startVenture(g, t),
       }

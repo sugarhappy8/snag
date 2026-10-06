@@ -46,6 +46,8 @@ import {
   yearlyDebtPayments,
   yearlyIncome,
 } from './finance'
+import { computerUsd } from './computer/era'
+import { hasTech, type TechId } from './history/timeline'
 import { createPerson } from './people'
 import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
@@ -118,7 +120,7 @@ function cantAfford(g: GameState, price: number, what: string): void {
     pick(g, [
       `You can't afford ${what}. It costs ${formatMoney(price)} and you have ${formatMoney(Math.max(0, g.character.money))}.`,
       `Your bank account laughed at the idea of ${what}. You need ${formatMoney(price)}.`,
-      `Nice try. ${capitalize(what)} costs ${formatMoney(price)}, and your card was declined.`,
+      hasTech(g, 'creditCards') ? `Nice try. ${capitalize(what)} costs ${formatMoney(price)}, and your card was declined.` : `Nice try. ${capitalize(what)} costs ${formatMoney(price)}, and you counted your cash twice. Still short.`,
     ]),
     { emoji: '💸', tone: 'bad' },
   )
@@ -1066,67 +1068,115 @@ interface CarModel {
   /** Classic cars have a fixed model year. */
   year?: number
   rare?: boolean
+  /** First and last calendar year it was sold new (no Model 3 in 1990, no Model T in 1960). */
+  from?: number
+  until?: number
 }
 
 const CAR_MODELS: CarModel[] = [
-  { make: 'Toyota', model: 'Corolla', type: 'economy', base: 23_000 },
-  { make: 'Honda', model: 'Civic', type: 'economy', base: 25_000 },
-  { make: 'Hyundai', model: 'Elantra', type: 'economy', base: 22_000 },
-  { make: 'Kia', model: 'Rio', type: 'economy', base: 18_000 },
-  { make: 'Nissan', model: 'Versa', type: 'economy', base: 17_500 },
-  { make: 'Chevrolet', model: 'Spark', type: 'economy', base: 15_000 },
-  { make: 'Volkswagen', model: 'Golf', type: 'economy', base: 24_000 },
-  { make: 'Mazda', model: 'Mazda3', type: 'economy', base: 24_500 },
-  { make: 'Ford', model: 'Focus', type: 'economy', base: 21_000 },
-  { make: 'Subaru', model: 'Impreza', type: 'economy', base: 23_000 },
-  { make: 'Fiat', model: '500', type: 'economy', base: 18_500 },
-  { make: 'Mini', model: 'Cooper', type: 'economy', base: 30_000 },
-  { make: 'Toyota', model: 'Prius', type: 'economy', base: 28_000 },
-  { make: 'Toyota', model: 'RAV4', type: 'suv', base: 30_000 },
-  { make: 'Honda', model: 'CR-V', type: 'suv', base: 31_000 },
-  { make: 'Jeep', model: 'Wrangler', type: 'suv', base: 35_000 },
-  { make: 'Ford', model: 'Explorer', type: 'suv', base: 38_000 },
-  { make: 'Subaru', model: 'Outback', type: 'suv', base: 31_000 },
-  { make: 'Chevrolet', model: 'Tahoe', type: 'suv', base: 58_000 },
-  { make: 'Ford', model: 'F-150', type: 'truck', base: 40_000 },
-  { make: 'Chevrolet', model: 'Silverado', type: 'truck', base: 42_000 },
-  { make: 'Ram', model: '1500', type: 'truck', base: 41_000 },
-  { make: 'Toyota', model: 'Tacoma', type: 'truck', base: 33_000 },
-  { make: 'Tesla', model: 'Model 3', type: 'electric', base: 40_000 },
-  { make: 'Tesla', model: 'Model Y', type: 'electric', base: 45_000 },
-  { make: 'Nissan', model: 'Leaf', type: 'electric', base: 29_000 },
-  { make: 'Rivian', model: 'R1T', type: 'electric', base: 70_000 },
-  { make: 'BMW', model: '5 Series', type: 'luxury', base: 58_000 },
-  { make: 'Mercedes-Benz', model: 'E-Class', type: 'luxury', base: 62_000 },
-  { make: 'Audi', model: 'A6', type: 'luxury', base: 57_000 },
-  { make: 'Lexus', model: 'ES', type: 'luxury', base: 44_000 },
-  { make: 'Cadillac', model: 'Escalade', type: 'luxury', base: 85_000 },
-  { make: 'Land Rover', model: 'Range Rover', type: 'luxury', base: 105_000 },
-  { make: 'Porsche', model: 'Cayenne', type: 'luxury', base: 85_000 },
-  { make: 'Tesla', model: 'Model S', type: 'luxury', base: 80_000 },
-  { make: 'Mercedes-Benz', model: 'S-Class', type: 'luxury', base: 115_000 },
-  { make: 'Bentley', model: 'Continental GT', type: 'luxury', base: 240_000 },
-  { make: 'Rolls-Royce', model: 'Phantom', type: 'luxury', base: 460_000 },
-  { make: 'Ford', model: 'Mustang GT', type: 'sports', base: 42_000 },
-  { make: 'Chevrolet', model: 'Corvette', type: 'sports', base: 68_000 },
-  { make: 'Porsche', model: '911', type: 'sports', base: 115_000 },
-  { make: 'Nissan', model: 'GT-R', type: 'sports', base: 115_000 },
-  { make: 'BMW', model: 'M4', type: 'sports', base: 78_000 },
-  { make: 'Jaguar', model: 'F-Type', type: 'sports', base: 75_000 },
-  { make: 'Mazda', model: 'MX-5 Miata', type: 'sports', base: 30_000 },
-  { make: 'Ferrari', model: 'F8 Tributo', type: 'supercar', base: 280_000 },
-  { make: 'Lamborghini', model: 'Huracán', type: 'supercar', base: 250_000 },
-  { make: 'McLaren', model: '720S', type: 'supercar', base: 300_000 },
-  { make: 'Aston Martin', model: 'DBS', type: 'supercar', base: 320_000 },
-  { make: 'Bugatti', model: 'Chiron', type: 'supercar', base: 3_100_000, rare: true },
-  { make: 'Koenigsegg', model: 'Jesko', type: 'supercar', base: 3_000_000, rare: true },
+  { make: 'Toyota', model: 'Corolla', type: 'economy', base: 23_000, from: 1966 },
+  { make: 'Honda', model: 'Civic', type: 'economy', base: 25_000, from: 1972 },
+  { make: 'Hyundai', model: 'Elantra', type: 'economy', base: 22_000, from: 1990 },
+  { make: 'Kia', model: 'Rio', type: 'economy', base: 18_000, from: 2000 },
+  { make: 'Nissan', model: 'Versa', type: 'economy', base: 17_500, from: 2006 },
+  { make: 'Chevrolet', model: 'Spark', type: 'economy', base: 15_000, from: 2009 },
+  { make: 'Volkswagen', model: 'Golf', type: 'economy', base: 24_000, from: 1974 },
+  { make: 'Mazda', model: 'Mazda3', type: 'economy', base: 24_500, from: 2003 },
+  { make: 'Ford', model: 'Focus', type: 'economy', base: 21_000, from: 1998 },
+  { make: 'Subaru', model: 'Impreza', type: 'economy', base: 23_000, from: 1992 },
+  { make: 'Fiat', model: '500', type: 'economy', base: 18_500, from: 2007 },
+  { make: 'Mini', model: 'Cooper', type: 'economy', base: 30_000, from: 1961 },
+  { make: 'Toyota', model: 'Prius', type: 'economy', base: 28_000, from: 1997 },
+  { make: 'Toyota', model: 'RAV4', type: 'suv', base: 30_000, from: 1994 },
+  { make: 'Honda', model: 'CR-V', type: 'suv', base: 31_000, from: 1995 },
+  { make: 'Jeep', model: 'Wrangler', type: 'suv', base: 35_000, from: 1986 },
+  { make: 'Ford', model: 'Explorer', type: 'suv', base: 38_000, from: 1990 },
+  { make: 'Subaru', model: 'Outback', type: 'suv', base: 31_000, from: 1994 },
+  { make: 'Chevrolet', model: 'Tahoe', type: 'suv', base: 58_000, from: 1995 },
+  { make: 'Ford', model: 'F-150', type: 'truck', base: 40_000, from: 1975 },
+  { make: 'Chevrolet', model: 'Silverado', type: 'truck', base: 42_000, from: 1998 },
+  { make: 'Ram', model: '1500', type: 'truck', base: 41_000, from: 1994 },
+  { make: 'Toyota', model: 'Tacoma', type: 'truck', base: 33_000, from: 1995 },
+  { make: 'Tesla', model: 'Model 3', type: 'electric', base: 40_000, from: 2017 },
+  { make: 'Tesla', model: 'Model Y', type: 'electric', base: 45_000, from: 2020 },
+  { make: 'Nissan', model: 'Leaf', type: 'electric', base: 29_000, from: 2010 },
+  { make: 'Rivian', model: 'R1T', type: 'electric', base: 70_000, from: 2021 },
+  { make: 'BMW', model: '5 Series', type: 'luxury', base: 58_000, from: 1972 },
+  { make: 'Mercedes-Benz', model: 'E-Class', type: 'luxury', base: 62_000, from: 1993 },
+  { make: 'Audi', model: 'A6', type: 'luxury', base: 57_000, from: 1994 },
+  { make: 'Lexus', model: 'ES', type: 'luxury', base: 44_000, from: 1989 },
+  { make: 'Cadillac', model: 'Escalade', type: 'luxury', base: 85_000, from: 1999 },
+  { make: 'Land Rover', model: 'Range Rover', type: 'luxury', base: 105_000, from: 1970 },
+  { make: 'Porsche', model: 'Cayenne', type: 'luxury', base: 85_000, from: 2002 },
+  { make: 'Tesla', model: 'Model S', type: 'luxury', base: 80_000, from: 2012 },
+  { make: 'Mercedes-Benz', model: 'S-Class', type: 'luxury', base: 115_000, from: 1972 },
+  { make: 'Bentley', model: 'Continental GT', type: 'luxury', base: 240_000, from: 2003 },
+  { make: 'Rolls-Royce', model: 'Phantom', type: 'luxury', base: 460_000, from: 2003 },
+  { make: 'Ford', model: 'Mustang GT', type: 'sports', base: 42_000, from: 1964 },
+  { make: 'Chevrolet', model: 'Corvette', type: 'sports', base: 68_000, from: 1953 },
+  { make: 'Porsche', model: '911', type: 'sports', base: 115_000, from: 1964 },
+  { make: 'Nissan', model: 'GT-R', type: 'sports', base: 115_000, from: 2007 },
+  { make: 'BMW', model: 'M4', type: 'sports', base: 78_000, from: 2014 },
+  { make: 'Jaguar', model: 'F-Type', type: 'sports', base: 75_000, from: 2013 },
+  { make: 'Mazda', model: 'MX-5 Miata', type: 'sports', base: 30_000, from: 1989 },
+  { make: 'Ferrari', model: 'F8 Tributo', type: 'supercar', base: 280_000, from: 2019 },
+  { make: 'Lamborghini', model: 'Huracán', type: 'supercar', base: 250_000, from: 2014 },
+  { make: 'McLaren', model: '720S', type: 'supercar', base: 300_000, from: 2017 },
+  { make: 'Aston Martin', model: 'DBS', type: 'supercar', base: 320_000, from: 2007 },
+  { make: 'Bugatti', model: 'Chiron', type: 'supercar', base: 3_100_000, rare: true, from: 2016 },
+  { make: 'Koenigsegg', model: 'Jesko', type: 'supercar', base: 3_000_000, rare: true, from: 2021 },
   { make: 'Ford', model: 'Mustang Fastback', type: 'classic', base: 65_000, year: 1967 },
   { make: 'Chevrolet', model: 'Corvette Stingray', type: 'classic', base: 120_000, year: 1963 },
   { make: 'Dodge', model: 'Challenger R/T', type: 'classic', base: 90_000, year: 1970 },
   { make: 'Chevrolet', model: 'Bel Air', type: 'classic', base: 70_000, year: 1957 },
   { make: 'Volkswagen', model: 'Beetle', type: 'classic', base: 15_000, year: 1965 },
   { make: 'Jaguar', model: 'E-Type', type: 'classic', base: 150_000, year: 1962 },
+  // Cars of earlier decades, sold new in their day (appended: today's showrooms are unchanged).
+  { make: 'Ford', model: 'Model T', type: 'economy', base: 9_000, from: 1908, until: 1927 },
+  { make: 'Ford', model: 'Model A', type: 'economy', base: 10_000, from: 1928, until: 1931 },
+  { make: 'Chevrolet', model: 'Master Deluxe', type: 'economy', base: 14_000, from: 1933, until: 1942 },
+  { make: 'Volkswagen', model: 'Beetle', type: 'economy', base: 15_000, from: 1946, until: 1985 },
+  { make: 'Austin', model: 'Mini', type: 'economy', base: 14_000, from: 1959, until: 2000 },
+  { make: 'Fiat', model: '600', type: 'economy', base: 12_000, from: 1955, until: 1969 },
+  { make: 'Toyota', model: 'Corona', type: 'economy', base: 17_000, from: 1957, until: 2001 },
+  { make: 'Ford', model: 'Escort', type: 'economy', base: 16_000, from: 1968, until: 2003 },
+  { make: 'Ford', model: 'Pinto', type: 'economy', base: 15_000, from: 1971, until: 1980 },
+  { make: 'Honda', model: 'Accord', type: 'economy', base: 26_000, from: 1976, until: 2025 },
+  { make: 'Chevrolet', model: 'Bel Air', type: 'economy', base: 28_000, from: 1950, until: 1975 },
+  { make: 'Jeep', model: 'CJ', type: 'suv', base: 24_000, from: 1945, until: 1985 },
+  { make: 'Land Rover', model: 'Series', type: 'suv', base: 30_000, from: 1948, until: 1985 },
+  { make: 'Chevrolet', model: 'Suburban', type: 'suv', base: 42_000, from: 1935, until: 1994 },
+  { make: 'Ford', model: 'Bronco', type: 'suv', base: 33_000, from: 1966, until: 1996 },
+  { make: 'Ford', model: 'F-100', type: 'truck', base: 26_000, from: 1953, until: 1983 },
+  { make: 'Ford', model: 'Model TT', type: 'truck', base: 11_000, from: 1917, until: 1927 },
+  { make: 'Chevrolet', model: 'C/K Pickup', type: 'truck', base: 30_000, from: 1960, until: 1997 },
+  { make: 'Detroit Electric', model: 'Model 47', type: 'electric', base: 45_000, from: 1907, until: 1929 },
+  { make: 'Packard', model: 'Twin Six', type: 'luxury', base: 90_000, from: 1916, until: 1934 },
+  { make: 'Cadillac', model: 'De Ville', type: 'luxury', base: 60_000, from: 1949, until: 2005 },
+  { make: 'Lincoln', model: 'Continental', type: 'luxury', base: 65_000, from: 1939, until: 2002 },
+  { make: 'Mercedes-Benz', model: 'W123', type: 'luxury', base: 50_000, from: 1976, until: 1986 },
+  { make: 'Rolls-Royce', model: 'Silver Shadow', type: 'luxury', base: 260_000, from: 1965, until: 1980 },
+  { make: 'Rolls-Royce', model: 'Silver Ghost', type: 'luxury', base: 300_000, from: 1907, until: 1926 },
+  { make: 'Jaguar', model: 'E-Type', type: 'sports', base: 80_000, from: 1961, until: 1975 },
+  { make: 'Datsun', model: '240Z', type: 'sports', base: 30_000, from: 1969, until: 1978 },
+  { make: 'Toyota', model: 'Supra', type: 'sports', base: 42_000, from: 1978, until: 2002 },
+  { make: 'Mazda', model: 'RX-7', type: 'sports', base: 38_000, from: 1978, until: 2002 },
+  { make: 'Lamborghini', model: 'Miura', type: 'supercar', base: 300_000, from: 1966, until: 1973 },
+  { make: 'Lamborghini', model: 'Countach', type: 'supercar', base: 400_000, from: 1974, until: 1990 },
+  { make: 'Ferrari', model: 'Testarossa', type: 'supercar', base: 350_000, from: 1984, until: 1996 },
+  { make: 'Ferrari', model: 'F40', type: 'supercar', base: 1_100_000, from: 1987, until: 1992, rare: true },
+  { make: 'McLaren', model: 'F1', type: 'supercar', base: 2_400_000, from: 1992, until: 1998, rare: true },
 ]
+
+/** A car on sale new (or as a classic) in that year: model years, classics 20+ years old, EVs once modern EVs exist. */
+function carInEra(g: GameState, m: CarModel, year = g.year): boolean {
+  if (m.year) return year >= m.year + 20
+  if (m.from !== undefined && year < m.from) return false
+  if (m.until !== undefined && year > m.until) return false
+  // Modern battery cars need the technology; the antique electrics of the 1910s don't.
+  if (m.type === 'electric' && (m.from ?? 0) >= 2000 && !hasTech(g, 'electricCars', year)) return false
+  return true
+}
 
 const CAR_EMOJI: Record<CarType, string> = { economy: '🚗', suv: '🚙', truck: '🛻', electric: '🚘', luxury: '🚘', sports: '🏎️', supercar: '🏎️', classic: '🚗' }
 const CAR_UPKEEP: Record<CarType, number> = { economy: 1_500, suv: 2_000, truck: 2_200, electric: 900, luxury: 3_500, sports: 4_000, supercar: 12_000, classic: 2_500 }
@@ -1167,8 +1217,9 @@ export interface CarListing {
 export function carListings(g: GameState, dealerId: string): CarListing[] {
   const dealer = DEALERS.find((d) => d.id === dealerId) ?? DEALERS[0]
   const r = seeded(yearKey(g, `cars:${dealer.id}`))
-  const pool = CAR_MODELS.filter((m) => dealer.types.includes(m.type))
+  const pool = CAR_MODELS.filter((m) => dealer.types.includes(m.type) && carInEra(g, m))
   const out: CarListing[] = []
+  if (pool.length === 0) return out
   for (let i = 0; i < dealer.count; i++) {
     const m = r.weighted(pool, (x) => (x.rare ? 0.15 : 1))
     let modelYear = g.year
@@ -1181,7 +1232,8 @@ export function carListings(g: GameState, dealerId: string): CarListing[] {
       price = m.base * (0.6 + 0.6 * (condition / 100))
       mileage = r.int(20_000, 140_000)
     } else if (dealer.used) {
-      const age = r.int(2, 16)
+      // Never older than the model itself (no 2012 Model Y on the used lot).
+      const age = Math.min(r.int(2, 16), Math.max(0, g.year - (m.from ?? g.year - 16)))
       modelYear = g.year - age
       condition = r.int(15, 85)
       price = m.base * Math.pow(0.86, age) * (0.6 + 0.5 * (condition / 100))
@@ -1307,7 +1359,7 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
   count(g, 'purchases')
   addStat(g, 'happiness', randInt(g, 5, 12))
   log(g, `I bought a ${l.color.toLowerCase()} ${name}${loanId ? ' with an auto loan' : ''}.`, 'good')
-  let text = `You drove a ${l.color.toLowerCase()} ${name} off the lot${loanId ? ' with a car loan' : ` for ${formatMoney(l.price)}`}. ${pick(g, ['That new car smell is intoxicating.', 'You honked at nobody, just because you could.', 'You took 40 selfies with it in the parking lot.'])}`
+  let text = `You drove a ${l.color.toLowerCase()} ${name} off the lot${loanId ? ' with a car loan' : ` for ${formatMoney(l.price)}`}. ${pick(g, ['That new car smell is intoxicating.', 'You honked at nobody, just because you could.', hasTech(g, 'smartphone') ? 'You took 40 selfies with it in the parking lot.' : 'You drove it slowly past every house you know.'])}`
   const tax = salesTaxNote(g, l.price)
   if (tax) text += ` ${tax}`
   if (localPriceMult(g, 'car') >= 1.6) text += ` ${pick(g, ['A big chunk of the sticker price was duties and registration tax.', 'The government made more on this car than the dealer did.'])}`
@@ -1367,7 +1419,7 @@ export const carDealersMenu: MenuGroup = {
         id: `dealer-${d.id}`,
         label: dealerName(g, d),
         emoji: d.emoji,
-        subtitle: d.blurb,
+        subtitle: (gg) => (d.id === 'main' && !hasTech(gg, 'electricCars') ? 'New economy cars, SUVs and trucks' : d.id === 'exotic' && gg.year < 1975 ? 'Sports cars and the fastest machines money can buy' : d.blurb),
         header: (gg) => `Inventory changes every year. ${pricesIncludeTax(gg)}`.trim(),
         children: (g) => {
           const list = carListings(g, d.id)
@@ -1702,30 +1754,97 @@ export function instrumentListings(g: GameState): ItemListing[] {
   return out.filter((x) => !isBought(g, x.id))
 }
 
-const ELECTRONICS: [string, string, number][] = [
-  ['Smartphone', '📱', 900],
-  ['Laptop', '💻', 1_300],
-  ['Gaming Console', '🎮', 500],
-  ['Gaming PC', '🖥️', 2_200],
-  ['Tablet', '📲', 600],
-  ['4K Smart TV', '📺', 1_100],
-  ['VR Headset', '🥽', 500],
-  ['Camera Drone', '🛸', 800],
-  ['Smartwatch', '⌚', 400],
-  ['Noise-Canceling Headphones', '🎧', 350],
-  ['Mirrorless Camera', '📷', 1_500],
-  ['E-Reader', '📖', 150],
-  ['Smart Speaker', '🔊', 100],
-  ['Robot Vacuum', '🤖', 450],
+interface Gadget {
+  label: string
+  emoji: string
+  /** Price in today's dollars (what it cost then, in real terms). */
+  base: number
+  /** On sale from / until these years (inclusive). */
+  from?: number
+  until?: number
+  /** Needs this technology where the player lives. */
+  tech?: TechId
+  /** The name in a given year ("16-Bit Game Console" in 1991). */
+  name?: (year: number) => string
+  /** The price in a given year, today's dollars (computers cost a fortune in 1985). */
+  price?: (year: number) => number
+}
+
+// Today's gadgets first (in their original order, so today's store is unchanged), then the
+// gadgets of earlier decades. Prices are real terms: a 1985 VCR at $1,200 of today's money.
+const ELECTRONICS: Gadget[] = [
+  { label: 'Smartphone', emoji: '📱', base: 900, tech: 'smartphone' },
+  { label: 'Laptop', emoji: '💻', base: 1_300, from: 1995, tech: 'homeComputer', price: (y) => (y >= 2010 ? 1_300 : Math.round(computerUsd(y) * 1.4)) },
+  {
+    label: 'Gaming Console',
+    emoji: '🎮',
+    base: 500,
+    tech: 'videoGameConsole',
+    name: (y) => (y < 1985 ? 'Cartridge Game Console' : y < 1995 ? '16-Bit Game Console' : y < 2006 ? '3D Game Console' : y < 2013 ? 'HD Game Console' : 'Gaming Console'),
+    price: (y) => (y >= 2013 ? 500 : y >= 1995 ? 750 : 900),
+  },
+  { label: 'Gaming PC', emoji: '🖥️', base: 2_200, from: 1997, tech: 'homeComputer', price: (y) => (y >= 2010 ? 2_200 : Math.round(computerUsd(y) * 1.5)) },
+  { label: 'Tablet', emoji: '📲', base: 600, from: 2010 },
+  { label: '4K Smart TV', emoji: '📺', base: 1_100, from: 2014 },
+  { label: 'VR Headset', emoji: '🥽', base: 500, from: 2016 },
+  { label: 'Camera Drone', emoji: '🛸', base: 800, from: 2014 },
+  { label: 'Smartwatch', emoji: '⌚', base: 400, from: 2015 },
+  { label: 'Noise-Canceling Headphones', emoji: '🎧', base: 350, from: 2008 },
+  { label: 'Mirrorless Camera', emoji: '📷', base: 1_500, from: 2010 },
+  { label: 'E-Reader', emoji: '📖', base: 150, from: 2008 },
+  { label: 'Smart Speaker', emoji: '🔊', base: 100, from: 2015 },
+  { label: 'Robot Vacuum', emoji: '🤖', base: 450, from: 2003 },
+  // Earlier decades.
+  { label: 'Phonograph', emoji: '🎶', base: 1_500, until: 1950 },
+  { label: 'Tube Radio', emoji: '📻', base: 1_200, tech: 'radio', until: 1960 },
+  { label: 'Transistor Radio', emoji: '📻', base: 300, tech: 'radio', from: 1955, until: 1990 },
+  { label: 'Black-and-White TV', emoji: '📺', base: 3_000, tech: 'tv', until: 1975 },
+  { label: 'Color TV', emoji: '📺', base: 2_500, tech: 'colorTv', until: 2004, price: (y) => (y < 1975 ? 4_500 : y < 1990 ? 2_200 : 1_200) },
+  { label: 'Hi-Fi Record Player', emoji: '🎶', base: 1_200, from: 1955, until: 1995 },
+  { label: 'Electric Typewriter', emoji: '⌨️', base: 900, from: 1950, until: 1995 },
+  { label: 'Film Camera', emoji: '📷', base: 500, until: 2005 },
+  { label: 'Portable Cassette Player', emoji: '📼', base: 250, from: 1979, until: 2002 },
+  { label: 'VCR', emoji: '📼', base: 1_200, from: 1978, until: 2006, price: (y) => (y < 1985 ? 2_500 : y < 1995 ? 700 : 250) },
+  { label: 'Camcorder', emoji: '📹', base: 2_000, from: 1984, until: 2012 },
+  { label: 'Pager', emoji: '📟', base: 250, from: 1985, until: 2002 },
+  { label: 'Mobile Phone', emoji: '📱', base: 4_000, tech: 'mobilePhone', until: 1996, name: (y) => (y < 1992 ? 'Brick Mobile Phone' : 'Mobile Phone') },
+  { label: 'Flip Phone', emoji: '📱', base: 400, tech: 'mobilePhone', from: 1996, until: 2012 },
+  { label: 'CD Player', emoji: '💿', base: 600, from: 1983, until: 2008 },
+  { label: 'Portable CD Player', emoji: '💿', base: 250, from: 1985, until: 2005 },
+  { label: 'MP3 Player', emoji: '🎧', base: 350, tech: 'internet', from: 2000, until: 2014 },
+  { label: 'Digital Camera', emoji: '📷', base: 600, from: 1996, until: 2015 },
+  { label: 'DVD Player', emoji: '📀', base: 300, from: 1997, until: 2015 },
+  { label: 'Flat-Screen TV', emoji: '📺', base: 2_500, from: 2000, until: 2013 },
+  { label: 'Handheld Game Console', emoji: '🎮', base: 300, tech: 'videoGameConsole', from: 1989, until: 2016 },
+  {
+    label: 'Home Computer',
+    emoji: '🖥️',
+    base: 2_000,
+    tech: 'homeComputer',
+    until: 1990,
+    name: (y) => (y < 1988 ? '8-Bit Home Computer' : 'Home Computer'),
+    price: (y) => computerUsd(y),
+  },
+  { label: 'Desktop PC', emoji: '🖥️', base: 3_500, tech: 'homeComputer', from: 1985, until: 2012, name: (y) => (y < 1994 ? 'Beige Desktop PC' : y < 2001 ? 'Multimedia Desktop PC' : 'Desktop PC'), price: (y) => computerUsd(y) },
 ]
+
+/** True when this gadget is in the shops where the player lives this year. */
+function gadgetInEra(g: GameState, x: Gadget): boolean {
+  if (x.from !== undefined && g.year < x.from) return false
+  if (x.until !== undefined && g.year > x.until) return false
+  return !x.tech || hasTech(g, x.tech)
+}
 
 export function electronicsListings(g: GameState): ItemListing[] {
   const r = seeded(yearKey(g, 'electronics'))
   const mult = localGoodsMult(g, 'electronics')
-  return ELECTRONICS.map(([label, emoji, base], i): ItemListing => {
-    const price = nicePrice(base * mult * r.float(0.85, 1.1))
-    return { id: `${g.year}:elec-${i}`, kind: 'other', category: 'electronics', name: label, emoji, price, value: nicePrice(price * 0.7), condition: 100, isNew: true, details: { category: 'electronics' } }
-  }).filter((x) => !isBought(g, x.id))
+  return ELECTRONICS.filter((x) => gadgetInEra(g, x))
+    .map((x, i): ItemListing => {
+      const price = nicePrice((x.price ? x.price(g.year) : x.base) * mult * r.float(0.85, 1.1))
+      const label = x.name ? x.name(g.year) : x.label
+      return { id: `${g.year}:elec-${i}`, kind: 'other', category: 'electronics', name: label, emoji: x.emoji, price, value: nicePrice(price * 0.7), condition: 100, isNew: true, details: { category: 'electronics' } }
+    })
+    .filter((x) => !isBought(g, x.id))
 }
 
 const LUXURY: [string, string, number, number, string][] = [
@@ -1851,7 +1970,7 @@ export function buyItem(g: GameState, item: ItemListing, minAge = 18): Asset | n
     item.details.fake === true
       ? ['It sparkles almost like the real thing.', 'The clerk winked at you. You chose not to ask why.', 'From across the room, nobody could ever tell.']
       : item.category === 'electronics'
-        ? ['You spent the rest of the day peeling off the protective film.', 'It will be obsolete in 18 months. You love it anyway.', 'You immediately downloaded 47 updates.']
+        ? ['You spent the rest of the day peeling off the protective film.', 'It will be obsolete in 18 months. You love it anyway.', hasTech(g, 'internet') && g.year >= 2005 ? 'You immediately downloaded 47 updates.' : 'You read the entire manual, including the warranty.']
         : item.category === 'instrument'
           ? ['Your neighbors have already started complaining.', 'You played it the whole way home.', 'You can now play exactly one song on it. Badly.']
           : item.category === 'art'
@@ -2249,12 +2368,14 @@ function makeOffers(g: GameState, a: Asset): Offer[] {
   const c = g.character
   const v = Math.max(1, a.value)
   const person = () => `${randomFirstName(g, c.countryId, chance(g, 0.5) ? 'male' : 'female')} ${randomLastName(g, c.countryId)}`
+  // Before online marketplaces, small things sold through a classified ad in the paper.
+  const casual = hasTech(g, 'onlineShopping') ? 'online buyer' : 'local buyer'
   const f = (lo: number, hi: number) => nicePrice(v * (lo + (hi - lo) * (randInt(g, 0, 1000) / 1000)))
   if (isHeirloom(a)) {
     if (v < 500) {
       return [
         { buyer: 'Garage sale shopper', amount: f(0.5, 1.2) },
-        { buyer: `${person()} (online buyer)`, amount: f(0.8, 1.1) },
+        { buyer: `${person()} (${casual})`, amount: f(0.8, 1.1) },
       ]
     }
     return [
@@ -2282,7 +2403,7 @@ function makeOffers(g: GameState, a: Asset): Offer[] {
       return a.details.fake === true
         ? [
             { buyer: 'Pawn shop', amount: f(0.1, 0.3) },
-            { buyer: `${person()} (online buyer)`, amount: f(0.3, 0.6) },
+            { buyer: `${person()} (${casual})`, amount: f(0.3, 0.6) },
           ]
         : [
             { buyer: 'Pawn shop', amount: f(0.4, 0.55) },
@@ -2297,7 +2418,7 @@ function makeOffers(g: GameState, a: Asset): Offer[] {
     default:
       return [
         { buyer: 'Pawn shop', amount: f(0.4, 0.6) },
-        { buyer: `${person()} (online buyer)`, amount: f(0.7, 0.95) },
+        { buyer: `${person()} (${casual})`, amount: f(0.7, 0.95) },
       ]
   }
 }
@@ -2647,6 +2768,15 @@ interface Amenity {
   boost: number
 }
 
+/** First year an amenity can be installed (no selfie studios or cryo chambers in 1950). */
+const AMENITY_FROM: Record<string, number> = { selfie: 2012, cryo: 2010, robot: 2020, infinityPool: 1960, theater: 1995, panicRoom: 1980, hotTub: 1970, gameRoom: 1975 }
+
+function amenityInEra(g: GameState, id: string): boolean {
+  const from = AMENITY_FROM[id]
+  if (from !== undefined && g.year < from) return false
+  return id !== 'selfie' || hasTech(g, 'smartphone')
+}
+
 /** Home amenities (value increase % and price ranges from the landlord expansion). */
 export const AMENITIES: Amenity[] = [
   { id: 'sauna', label: 'Sauna', emoji: '🧖', pct: 0.05, min: 7_500, max: 10_200, stat: 'health', boost: 4 },
@@ -2691,7 +2821,7 @@ function amenitiesMenu(a: Asset): MenuGroup {
     disabledReason: (g) => blockReason(g) ?? (live(g, a).rentedOutFor ? "You can't build amenities while it's rented out." : null),
     header: (g) => (amenities(live(g, a)).length ? `Installed: ${amenities(live(g, a)).map((id) => AMENITIES.find((x) => x.id === id)?.label ?? id).join(', ')}.` : 'Amenities raise your property value and can be enjoyed every year.'),
     children: (g) =>
-      AMENITIES.filter((am) => !amenities(live(g, a)).includes(am.id)).map(
+      AMENITIES.filter((am) => !amenities(live(g, a)).includes(am.id) && amenityInEra(g, am.id)).map(
         (am): MenuAction => ({
           type: 'action',
           id: `amenity-${a.id}-${am.id}`,

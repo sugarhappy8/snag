@@ -3,8 +3,19 @@
 // the small screen header / confirm dialog / toast pieces the other out-of-game screens share.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { providerFor } from '../../ai/providers'
+import { formatMoney, moneyContextOf, withMoneyContext } from '../../game/core'
 import { clearRibbonsAndGraveyard, loadGame } from '../../game/save'
-import { DEFAULT_SETTINGS, type AiLevel, type ContentRating, type ProviderId, type Settings } from '../../settings'
+import type { GameState } from '../../game/types'
+import { getCountry } from '../../game/world'
+import {
+  DEFAULT_SETTINGS,
+  type AiLevel,
+  type ContentRating,
+  type MoneySetting,
+  type PricesSetting,
+  type ProviderId,
+  type Settings,
+} from '../../settings'
 import { connectionFor, ProviderConfigForm, ProviderPicker, sameConnection, useConnectionTest } from '../components/AiProviderForm'
 import { abandonLife, checkAi, getApp, goBack, goTo, hasSavedGame, saveAiConnection, updateSettings, useApp, type AiConnection } from '../store'
 import '../styles/screens.css'
@@ -140,6 +151,28 @@ const RATINGS: { id: ContentRating; label: string; desc: string }[] = [
   { id: 'teen', label: 'Teen', desc: 'Dark humor, drama, crime and bad decisions, but nothing explicit. The classic feel.' },
   { id: 'mature', label: 'Mature', desc: 'Edgier jokes, harsher outcomes and stronger language. Still nothing sexually explicit.' },
 ]
+
+const MONEY_OPTIONS: { id: MoneySetting; label: string; desc: string }[] = [
+  { id: 'local', label: 'Local currency', desc: 'Yen in Japan, rupiah in Indonesia, Deutsche Marks in 1980s Germany: whatever people there were paid in.' },
+  { id: 'usd', label: 'US dollars', desc: 'Dollars everywhere, wherever you live.' },
+]
+
+const PRICE_OPTIONS: { id: PricesSetting; label: string; desc: string }[] = [
+  { id: 'nominal', label: 'As they were', desc: 'The prices of the year you are living: a 1980 salary looks like a 1980 salary.' },
+  { id: 'today', label: 'Today’s money', desc: 'Every year in today’s prices, so amounts are easy to compare across a life.' },
+]
+
+/** One line showing what the money settings do, for the life in progress or an example. */
+export function moneyPreview(g: GameState | null): string {
+  if (g) {
+    const where = getCountry(g.character.countryId).name
+    const cash = withMoneyContext(moneyContextOf(g), () => formatMoney(g.character.money))
+    return `${g.character.firstName}’s bank balance (${where}, ${g.year}): ${cash}`
+  }
+  const salary = withMoneyContext({ countryId: 'jp', year: 1980 }, () => formatMoney(40_000))
+  const today = withMoneyContext(null, () => formatMoney(40_000))
+  return `Example: a job paying ${today} today, for a life in Japan in 1980: ${salary} a year`
+}
 
 function Toggle({ title, desc, value, onChange }: { title: string; desc: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -366,6 +399,55 @@ export function SettingsScreen() {
         <button type="button" className="al-btn ghost block" onClick={() => goTo('aiSetup')}>
           🧭 Change AI provider / run setup again
         </button>
+      </section>
+
+      {/* Money */}
+      <section className="al-card set-section">
+        <h2>
+          <span aria-hidden="true">💱</span> Money
+        </h2>
+        <p className="set-help">
+          How amounts are shown. Only the display changes: what things are worth, and what you can afford, stays the same.
+        </p>
+        <div className="al-field">
+          <span className="al-label">Currency</span>
+          <div className="al-seg" role="radiogroup" aria-label="Currency">
+            {MONEY_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={settings.money === o.id}
+                aria-pressed={settings.money === o.id}
+                onClick={() => updateSettings({ money: o.id })}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <span className="al-muted al-small">{MONEY_OPTIONS.find((o) => o.id === settings.money)?.desc}</span>
+        </div>
+        <div className="al-field">
+          <span className="al-label">Prices</span>
+          <div className="al-seg" role="radiogroup" aria-label="Prices">
+            {PRICE_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="radio"
+                aria-checked={settings.prices === o.id}
+                aria-pressed={settings.prices === o.id}
+                onClick={() => updateSettings({ prices: o.id })}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <span className="al-muted al-small">{PRICE_OPTIONS.find((o) => o.id === settings.prices)?.desc}</span>
+        </div>
+        <p className="al-muted al-small" aria-live="polite">
+          {moneyPreview(game)}
+        </p>
       </section>
 
       {/* Advanced */}

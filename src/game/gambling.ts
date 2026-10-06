@@ -409,7 +409,7 @@ function casinoGroup(name: string, idx: number): MenuGroup {
         label: 'Blackjack',
         emoji: '🃏',
         subtitle: 'Win 2x, blackjack pays 3x',
-        input: { kind: 'number', label: 'How much do you want to bet?', min: MIN_BET, defaultValue: suggestedBet },
+        input: { kind: 'number', money: true, label: 'How much do you want to bet?', min: MIN_BET, defaultValue: suggestedBet },
         run: (g, input) => startBlackjack(g, name, input),
       },
       {
@@ -418,7 +418,7 @@ function casinoGroup(name: string, idx: number): MenuGroup {
         label: 'Slot Machines',
         emoji: '🎰',
         subtitle: 'Three stars pays 20x',
-        input: { kind: 'number', label: 'How much do you want to bet on this spin?', min: MIN_BET, defaultValue: suggestedBet },
+        input: { kind: 'number', money: true, label: 'How much do you want to bet on this spin?', min: MIN_BET, defaultValue: suggestedBet },
         run: (g, input) => startSlots(g, name, input),
       },
     ],
@@ -630,7 +630,7 @@ export const horseRacesMenu: MenuGroup = {
           label: h.name,
           emoji: h.dot,
           subtitle: `Odds ${h.odds} · Recent form ${h.form}`,
-          input: { kind: 'number', label: `How much do you want to bet on ${h.name} (${h.odds})?`, min: MIN_BET, defaultValue: suggestedBet },
+          input: { kind: 'number', money: true, label: `How much do you want to bet on ${h.name} (${h.odds})?`, min: MIN_BET, defaultValue: suggestedBet },
           run: (gg, input) => startRace(gg, i, input),
         }),
       ),
@@ -719,7 +719,9 @@ export const LOTTERY_GAMES: LotteryGame[] = [
     emoji: '🍀',
     price: 1,
     scratch: true,
-    blurb: 'Top prize $1,000',
+    get blurb() {
+      return `Top prize ${formatMoney(1_000)}`
+    },
     tiers: [
       { odds: 25_000, prize: 1_000, label: 'the top prize' },
       { odds: 800, prize: 50, label: 'three clovers' },
@@ -734,7 +736,9 @@ export const LOTTERY_GAMES: LotteryGame[] = [
     emoji: '💥',
     price: 5,
     scratch: true,
-    blurb: 'Top prize $100,000',
+    get blurb() {
+      return `Top prize ${formatMoney(100_000)}`
+    },
     tiers: [
       { odds: 1_500_000, prize: 100_000, label: 'the top prize' },
       { odds: 12_000, prize: 1_000, label: 'three money bags' },
@@ -749,7 +753,9 @@ export const LOTTERY_GAMES: LotteryGame[] = [
     emoji: '💎',
     price: 20,
     scratch: true,
-    blurb: 'Top prize $1,000,000',
+    get blurb() {
+      return `Top prize ${formatMoney(1_000_000)}`
+    },
     tiers: [
       { odds: 3_000_000, prize: 1_000_000, label: 'the top prize' },
       { odds: 150_000, prize: 25_000, label: 'three diamonds' },

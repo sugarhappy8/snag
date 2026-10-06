@@ -12,6 +12,7 @@ import {
   queueFallbackYearEvents,
 } from '../src/game/events'
 import { CUSTOM_RULE_IDS } from '../src/game/events/custom'
+import { eraStrip } from '../src/game/events/era'
 import { FLAVOR_POOLS } from '../src/game/events/flavor'
 import { EVENT_SCRIPT, present } from '../src/game/events/helpers'
 import { createPerson } from '../src/game/people'
@@ -318,12 +319,14 @@ describe('queueFallbackYearEvents', () => {
   })
 
   it('flavor pools are large and use only known tokens', () => {
-    const known = new Set(['mom', 'dad', 'sib', 'sibRel', 'friend', 'partner', 'pet', 'petSpecies', 'kid', 'kidRel', 'adultKid', 'adultKidRel', 'grandkid', 'cellmate', 'school', 'company', 'city', 'country', 'food', 'show', 'hobby'])
+    const known = new Set(['mom', 'dad', 'sib', 'sibRel', 'friend', 'partner', 'pet', 'petSpecies', 'kid', 'kidRel', 'adultKid', 'adultKidRel', 'grandkid', 'cellmate', 'school', 'company', 'city', 'country', 'food', 'show', 'hobby', 'radioShow', 'kidPrize', 'movieKind'])
     let total = 0
     for (const [key, lines] of Object.entries(FLAVOR_POOLS)) {
       expect(lines.length, key).toBeGreaterThanOrEqual(4)
       total += lines.length
-      for (const line of lines) {
+      for (const tagged of lines) {
+        // Era tags ("@tv ...") pick the years a line fits; the text after the tag is what shows.
+        const line = eraStrip(tagged)
         expect(line).toMatch(/^[A-Z{]/)
         for (const m of line.matchAll(/\{(\w+)\}/g)) expect(known.has(m[1]), `${key}: ${m[1]}`).toBe(true)
       }

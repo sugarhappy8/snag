@@ -7,6 +7,8 @@
 // "SD Negeri 3 Menteng", sits the UTBK and goes to prom night; an American one starts at
 // "Lincoln Elementary School", takes the SATs and goes to prom. Internal level ids
 // ('elementary' | 'middle' | 'high' ...) never change.
+import { techAdoption, type TechId } from './history/timeline'
+import { anachronistic } from './events/era'
 import {
   addHidden,
   addRelationship,
@@ -637,6 +639,70 @@ function lastUniversity(g: GameState): string | null {
 const SUBJECTS = ['Math', 'English', 'Science', 'History', 'Art', 'Music', 'Physical Education', 'Spanish', 'French', 'Geography', 'Computer Science', 'Drama', 'Health']
 const HIGH_SUBJECTS = ['Algebra', 'Chemistry', 'Biology', 'Physics', 'English Literature', 'World History', 'Calculus', 'Economics', 'Psychology', 'Art', 'Music', 'Physical Education', 'Spanish', 'French', 'Computer Science']
 
+// ---------------------------------------------------------------------------
+// Education by era: what schools and universities teach in a given year
+
+/** First year a university major is offered (no computer science degrees in 1950). */
+const MAJOR_FROM: Partial<Record<string, number>> = {
+  'Computer Science': 1965,
+  'Information Systems': 1975,
+  'Graphic Design': 1960,
+  'Criminal Justice': 1960,
+  Communications: 1950,
+  Marketing: 1930,
+  Anthropology: 1910,
+  Psychology: 1910,
+}
+
+/** First year a school subject is taught (computer class arrives with the computers). */
+const SUBJECT_FROM: Partial<Record<string, number>> = { 'Computer Science': 1982, Psychology: 1950, Economics: 1940 }
+
+/** First year a school club exists (no web design club before the web). */
+const CLUB_FROM: Partial<Record<string, number>> = {
+  computer_science: 1975,
+  web_design: 1996,
+  robotics: 1990,
+  video_games: 1980,
+  dnd: 1975,
+  anime: 1985,
+  cosplay: 1990,
+  skateboarding: 1965,
+  ultimate: 1970,
+  yoga: 1970,
+  rock_climbing: 1975,
+  makeup: 1950,
+  investing: 1950,
+}
+
+/** Technology a subject or club needs where the player lives (computer class needs computers). */
+const NEEDS_TECH: Partial<Record<string, TechId>> = {
+  'Computer Science': 'homeComputer',
+  computer_science: 'homeComputer',
+  web_design: 'internet',
+  video_games: 'videoGameConsole',
+}
+
+function openIn(table: Partial<Record<string, number>>, id: string, year: number, countryId?: string): boolean {
+  const from = table[id]
+  if (from !== undefined && year < from) return false
+  const tech = NEEDS_TECH[id]
+  return !tech || !countryId || techAdoption(countryId, tech, year) >= 0.02
+}
+
+/** Majors universities offer this year (in this country: no computer science before computers). */
+export function majorsInEra(year: number, countryId?: string): string[] {
+  return MAJORS.filter((m) => openIn(MAJOR_FROM, m, year, countryId))
+}
+
+function subjectsInEra(list: string[], year: number, countryId?: string): string[] {
+  return list.filter((x) => openIn(SUBJECT_FROM, x, year, countryId))
+}
+
+/** True when the school club exists in that year (and country). */
+export function clubInEra(id: string, year: number, countryId?: string): boolean {
+  return openIn(CLUB_FROM, id, year, countryId)
+}
+
 function teacherTitle(p: Person): string {
   return `${p.gender === 'male' ? 'Mr.' : 'Ms.'} ${p.lastName}`
 }
@@ -647,7 +713,7 @@ function createClassmates(g: GameState, cur: Enrollment, n: number): void {
   for (let i = 0; i < n; i++) {
     const age = Math.max(3, c.age + randInt(g, -1, 1))
     const data: Record<string, Json> = {}
-    if (cur.level !== 'preschool' && cur.level !== 'elementary' && chance(g, 0.45)) data.clique = pick(g, CLIQUES).id
+    if (cur.level !== 'preschool' && cur.level !== 'elementary' && chance(g, 0.45)) data.clique = pick(g, CLIQUES.filter((d) => cliqueInEra(g, d.id))).id
     createPerson(g, {
       relation: 'classmate',
       age,
@@ -666,10 +732,10 @@ function createTeacher(g: GameState, cur: Enrollment): Person {
     subject = 'Preschool'
     occupation = 'Preschool Teacher'
   } else if (cur.level === 'university' || cur.level === 'community' || cur.level === 'graduate') {
-    subject = cur.major && chance(g, 0.6) ? cur.major : pick(g, MAJORS)
+    subject = cur.major && chance(g, 0.6) ? cur.major : pick(g, majorsInEra(g.year, g.character.countryId))
     occupation = `${subject} Professor`
   } else {
-    subject = pick(g, cur.level === 'high' ? HIGH_SUBJECTS : SUBJECTS)
+    subject = pick(g, subjectsInEra(cur.level === 'high' ? HIGH_SUBJECTS : SUBJECTS, g.year, g.character.countryId))
     occupation = `${subject} Teacher`
   }
   return createPerson(g, {
@@ -1167,6 +1233,7 @@ function localClubs(g: GameState): ClubDef[] {
   }
   for (const base of CLUBS) {
     if (local.includes(base.id)) continue
+    if (!clubInEra(base.id, g.year, cid)) continue
     const only = CLUB_ONLY[base.id]
     if (only && !only.includes(cid)) continue
     // No curling or ice hockey team in the tropics.
@@ -1199,6 +1266,15 @@ interface CliqueDef {
 }
 
 const hasClub = (x: CliqueCtx, ids: string[]) => x.clubs.some((c) => ids.includes(c.id))
+
+/** Cliques of later decades (no goths in 1955, no gamers before video games reached the country). */
+const CLIQUE_FROM: Partial<Record<string, number>> = { goths: 1980, hipsters: 2003, weebs: 1990, skaters: 1965, gamers: 1980 }
+
+function cliqueInEra(g: GameState, id: string): boolean {
+  const from = CLIQUE_FROM[id]
+  if (from !== undefined && g.year < from) return false
+  return id !== 'gamers' || techAdoption(g.character.countryId, 'videoGameConsole', g.year) >= 0.02
+}
 const hasKind = (x: CliqueCtx, kind: ClubKind) => x.clubs.some((c) => c.kind === kind)
 
 export const CLIQUES: CliqueDef[] = [
@@ -2208,7 +2284,7 @@ function fallbackAdmissionsQuestion(g: GameState, app: ScreeningApp): InterviewQ
         { label: `I've seen how much good a great ${profession} can do`, score: 85 },
         { label: 'My research and volunteer work convinced me', score: 85 },
         { label: 'My family expects it', score: 35 },
-        { label: 'I watched a lot of TV dramas about it', score: 20 },
+        { label: techAdoption(g.character.countryId, 'tv', g.year) >= 0.02 ? 'I watched a lot of TV dramas about it' : 'I read a lot of novels about it', score: 20 },
         { label: 'The salary, mostly', score: 15 },
       ]).slice(0, 4),
     }
@@ -2218,9 +2294,12 @@ function fallbackAdmissionsQuestion(g: GameState, app: ScreeningApp): InterviewQ
   if (idx === last) idx = (idx + 1) % ADMISSIONS_QUESTIONS.length
   g.flags.lastAdmissionsQ = idx
   const def = ADMISSIONS_QUESTIONS[idx]
-  let answers = shuffle(g, def.a).slice(0, 4)
+  // No "the website" answers in 1924.
+  const pool = def.a.filter(([label]) => !anachronistic(g, label))
+  const from = pool.length >= 4 ? pool : def.a
+  let answers = shuffle(g, from).slice(0, 4)
   if (!answers.some(([, s]) => s >= 70)) {
-    answers[0] = [...def.a].sort((x, y) => y[1] - x[1])[0]
+    answers[0] = [...from].sort((x, y) => y[1] - x[1])[0]
     answers = shuffle(g, answers)
   }
   const field = app.major ?? (app.program && app.program in PROGRAMS ? PROGRAMS[app.program as GradKey].label.toLowerCase() : 'this')
@@ -2553,7 +2632,7 @@ const TUITION = defineScript('school.tuition', (g, choice, data) => {
 // Post-graduation choices
 
 function majorChoices(g: GameState, n: number): ChoiceOption[] {
-  return shuffle(g, MAJORS)
+  return shuffle(g, majorsInEra(g.year, g.character.countryId))
     .slice(0, n)
     .sort()
     .map((m) => ({ id: m, label: m, emoji: MAJOR_EMOJI[m] }))
@@ -2599,7 +2678,7 @@ const PICK_MAJOR = defineScript('school.pickMajor', (g, choice, data) => {
     if (choice === '__later') log(g, `I put off choosing a ${localTerm(g, 'university') || 'university'} major.`, 'neutral')
     return
   }
-  if (!(MAJORS as readonly string[]).includes(choice)) return
+  if (!majorsInEra(g.year, g.character.countryId).includes(choice)) return
   const athletic = !!data && typeof data === 'object' && !Array.isArray(data) && data.athletic === true
   if (athletic) {
     applyToUniversity(g, choice, { athletic })
@@ -3344,7 +3423,7 @@ function clubsMenu(cur: Enrollment): MenuGroup {
         ['service', 'Service & Student Life'],
       ]
       for (const [kind, title] of groups) {
-        const list = CLUBS.filter((c) => c.kind === kind && !mine.some((m) => m.id === c.id))
+        const list = CLUBS.filter((c) => c.kind === kind && !mine.some((m) => m.id === c.id) && clubInEra(c.id, gg.year, gg.character.countryId))
         if (!list.length) continue
         nodes.push({ type: 'heading', id: `clubs.h.${kind}`, label: title })
         for (const def of list) {
@@ -3388,6 +3467,7 @@ function cliquesMenu(cur: Enrollment): MenuGroup {
         nodes.push({ type: 'action', id: 'cliques.leave', label: `Leave the ${mineNow.name}`, emoji: '\u{1F6AA}', confirm: () => `Leave the ${mineNow.name}?`, disabledReason: aliveFree, run: leaveClique })
       }
       for (const def of CLIQUES) {
+        if (!cliqueInEra(g, def.id)) continue
         if (def.gender && def.gender !== g.character.gender) continue
         if (mineNow && def.id === mineNow.id) continue
         nodes.push({ type: 'action', id: `cliques.join.${def.id}`, label: def.name, emoji: def.emoji, subtitle: def.blurb, disabledReason: aliveFree, run: (x) => tryJoinClique(x, def) })

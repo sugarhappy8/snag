@@ -7,6 +7,7 @@ import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, SocialMedia } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, compact, fameOf, money, peek, prof, say, tell } from './common'
+import { eraOpen, type EraGate } from '../computer/era'
 
 // ---------------------------------------------------------------------------
 // Data
@@ -70,11 +71,14 @@ interface Platform {
   stream: boolean
   noun: string
   postVerb: string
+  /** When the platform exists where the player lives (none of them before social media). */
+  era: EraGate
 }
 
 export const PLATFORMS: Platform[] = [
   {
     id: 'friendbook',
+    era: { tech: 'socialMedia', from: 2004 },
     name: 'Friendbook',
     emoji: '\u{1F465}',
     growth: 0.6,
@@ -91,6 +95,7 @@ export const PLATFORMS: Platform[] = [
   },
   {
     id: 'snapgram',
+    era: { tech: ['socialMedia', 'smartphone'], from: 2010 },
     name: 'Snapgram',
     emoji: '\u{1F4F8}',
     growth: 1,
@@ -107,6 +112,7 @@ export const PLATFORMS: Platform[] = [
   },
   {
     id: 'chirper',
+    era: { tech: 'socialMedia', from: 2006 },
     name: 'Chirper',
     emoji: '\u{1F426}',
     growth: 0.9,
@@ -123,6 +129,7 @@ export const PLATFORMS: Platform[] = [
   },
   {
     id: 'clipz',
+    era: { tech: ['videoSharing', 'smartphone'], from: 2016 },
     name: 'Clipz',
     emoji: '\u{1F3B5}',
     growth: 1.3,
@@ -139,6 +146,7 @@ export const PLATFORMS: Platform[] = [
   },
   {
     id: 'viewtube',
+    era: { tech: 'videoSharing', from: 2005 },
     name: 'ViewTube',
     emoji: '\u{25B6}\u{FE0F}',
     growth: 0.8,
@@ -155,6 +163,7 @@ export const PLATFORMS: Platform[] = [
   },
   {
     id: 'glitch',
+    era: { tech: 'videoSharing', from: 2011 },
     name: 'Glitch',
     emoji: '\u{1F3AE}',
     growth: 0.9,
@@ -170,6 +179,17 @@ export const PLATFORMS: Platform[] = [
     postVerb: 'Start a Livestream',
   },
 ]
+
+/** True when this platform exists for the player this year. */
+export function platformExists(g: GameState, id: string): boolean {
+  const plat = PLATFORMS.find((p) => p.id === id)
+  return !!plat && eraOpen(g, plat.era)
+}
+
+/** True when any social platform exists here this year (no social media in 1990). */
+export function socialMediaExists(g: GameState): boolean {
+  return PLATFORMS.some((p) => eraOpen(g, p.era))
+}
 
 function platformOf(id: string): Platform {
   return PLATFORMS.find((p) => p.id === id) ?? PLATFORMS[0]
@@ -983,12 +1003,12 @@ function joinAction(plat: Platform): MenuAction {
     label: plat.name,
     emoji: plat.emoji,
     subtitle: 'Sign up',
-    visible: (g) => !viewAccount(g, plat.id),
+    visible: (g) => !viewAccount(g, plat.id) && eraOpen(g, plat.era),
     disabledReason: accountReason,
     input: { kind: 'text', label: `Choose your ${plat.name} handle`, placeholder: 'username', defaultValue: (g) => defaultHandle(g, plat.id) },
     run: (g, input) => {
       const list = load(g)
-      if (list.some((a) => a.platform === plat.id)) return
+      if (list.some((a) => a.platform === plat.id) || !eraOpen(g, plat.era)) return
       const handle = cleanHandle(input, defaultHandle(g, plat.id))
       const start = Math.round(fameOf(g) ** 2 * 30 + randInt(g, 0, 15))
       list.push(newAccount(g, plat.id, handle, start))
@@ -1009,7 +1029,7 @@ export const socialMediaMenu: MenuGroup = {
     const total = totalFollowers(g)
     return total > 0 ? `${compact(total)} followers` : 'Become an influencer'
   },
-  visible: (g) => g.character.alive && !g.character.prison && g.character.age >= MIN_AGE,
+  visible: (g) => g.character.alive && !g.character.prison && g.character.age >= MIN_AGE && (socialMediaExists(g) || totalFollowers(g) > 0 || !!g.character.social),
   header: (g) => {
     const total = totalFollowers(g)
     return total > 0 ? `You have ${total.toLocaleString('en-US')} followers across all platforms.` : 'Sign up for a platform and start posting.'
@@ -1017,7 +1037,7 @@ export const socialMediaMenu: MenuGroup = {
   children: (): MenuNode[] => [
     { type: 'heading', id: 'social.mine', label: 'Your Accounts', visible: (g) => PLATFORMS.some((p) => !!viewAccount(g, p.id)) },
     ...PLATFORMS.map(accountMenu),
-    { type: 'heading', id: 'social.join', label: 'Join a Platform', visible: (g) => PLATFORMS.some((p) => !viewAccount(g, p.id)) },
+    { type: 'heading', id: 'social.join', label: 'Join a Platform', visible: (g) => PLATFORMS.some((p) => !viewAccount(g, p.id) && eraOpen(g, p.era)) },
     ...PLATFORMS.map(joinAction),
   ],
 }

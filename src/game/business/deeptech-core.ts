@@ -7,7 +7,8 @@ import { marketOf, industryDemand } from '../data/markets'
 import { codingSkill } from '../computer/skills'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
-import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
+import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
+import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
@@ -267,6 +268,8 @@ export interface TechPlan {
   capacity: number
   unitCost: number
   taxRate: number
+  /** The world market (competition-core): bottom-up units and what competition left of them. */
+  market: (MarketPick & { bu: number }) | null
 }
 
 export interface TechPlanOptions {
@@ -292,14 +295,16 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
   const shock = calm ? 1 : b.demandShock
   const pressure = calm ? b.pressure * 0.5 : b.pressure
   const scale = demandScale(b, t, year)
-  const demand =
-    scale > 0
-      ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * cycleEffect * ic * (1 - pressure) * shock * (opts.noise ?? 1) * open
-      : 0
+  // Customers before competition and the economy, then what the world market leaves of them (an
+  // early lab in a tiny market sells little; a dominant one keeps its customers at higher prices).
+  const bu = scale > 0 ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
+  const mctx = marketCtxFor(g, b, year)
+  const pick = bu > 0 && Number.isFinite(bu) ? marketDemand(mctx, bu) : null
+  const demand = pick ? pick.units * cycleEffect * ic : 0
   const ops = 1 + 0.08 * staffPower(b, 'ops')
   const loss = calm ? 0 : b.capacityLoss
   const capacity = capacityUnits(b, t, year) * home.baseDemand * ops * (1 - loss) * open
-  const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm)
+  const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm) * (1 - SCALE_SAVING * mctx.dominance)
   return {
     price,
     going: round2(going),
@@ -308,6 +313,7 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
     capacity: Number.isFinite(capacity) ? Math.max(0, capacity) : 0,
     unitCost: round2(unitCost),
     taxRate: home.taxRate,
+    market: pick ? { ...pick, bu } : null,
   }
 }
 

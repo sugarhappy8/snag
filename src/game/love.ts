@@ -26,6 +26,7 @@ import {
   remember,
   scriptChoice,
   scriptInput,
+  shortMoney,
   spend,
   useYearAction,
 } from './core'
@@ -35,6 +36,8 @@ import { bell, chance, pick, randFloat, randInt, uid } from './rng'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
+import { DATING_SITE_GATE, eraOpen } from './computer/era'
+import { hasTech } from './history/timeline'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
@@ -450,12 +453,25 @@ function dateCandidate(g: GameState): Candidate {
   return makeCandidate(g, { minAge: lo, maxAge: hi })
 }
 
+/** How you met: before the apps, at dances, through friends of friends, at church or the soda fountain. */
+function meetLine(g: GameState, k: Candidate): string {
+  if (hasTech(g, 'datingApps')) return "You've met someone!"
+  const places =
+    g.year < 1960
+      ? ['at a Saturday night dance', 'at the soda fountain', 'through a friend of a friend', 'at a church social', 'at the county fair']
+      : g.year < 1985
+        ? ['at a disco', 'through a friend of a friend', 'at a house party', 'at the roller rink', 'at a friend\'s wedding']
+        : ['at a club', 'through a friend of a friend', 'at a house party', 'at a friend\'s wedding', 'at the video store']
+  // A stable pick (no dice in a popup's wording).
+  return `You met someone ${places[(k.firstName.length + k.age) % places.length]}!`
+}
+
 function showDateCandidate(g: GameState, k: Candidate): void {
   scriptChoice(
     g,
     'love.date.pick',
     'Date',
-    `You've met someone!\n\n${candidateSummary(k)}\n\nWould you like to ask ${pronouns(k.gender).him} out?`,
+    `${meetLine(g, k)}\n\n${candidateSummary(k)}\n\nWould you like to ask ${pronouns(k.gender).him} out?`,
     [
       { id: 'ask', label: 'Ask them out', emoji: '\u{1F498}', hint: talentHint(g, 'Comedy', `Open with a joke: about ${Math.round(attractionOdds(g, k) * 100)}% they say yes.`) || undefined },
       { id: 'next', label: 'Find someone else', emoji: '\u{1F504}' },
@@ -477,7 +493,7 @@ defineScript('love.date.pick', (g, choice, data) => {
   if (!k || choice === 'cancel') return
   if (choice === 'next') {
     if (!useYearAction(g, 'love.dateSearch', 8)) {
-      notice(g, 'Date', "You've swiped through everyone in town this year. Try again next year.", { emoji: '\u{1F648}' })
+      notice(g, 'Date', hasTech(g, 'datingApps') ? "You've swiped through everyone in town this year. Try again next year." : "You've met everyone at every dance in town this year. Try again next year.", { emoji: '\u{1F648}' })
       return
     }
     showDateCandidate(g, dateCandidate(g))
@@ -506,6 +522,33 @@ defineScript('love.date.pick', (g, choice, data) => {
 // Dating app ("Kindling")
 
 const APP_NAME = 'Kindling'
+
+/** How strangers find each other this year: the app, a dating website, or the newspaper's personal ads. */
+interface DatingService {
+  kind: 'app' | 'site' | 'ads'
+  /** Popup title. */
+  name: string
+  /** Menu labels. */
+  label: string
+  goldLabel: string
+  /** "per swipe", "per message", "per ad". */
+  unit: string
+  again: string
+  close: string
+  /** Where you met, for the relationship record. */
+  via: string
+  emoji: string
+}
+
+function datingService(g: GameState): DatingService {
+  if (hasTech(g, 'datingApps')) {
+    return { kind: 'app', name: APP_NAME, label: `${APP_NAME} (Dating App)`, goldLabel: `${APP_NAME} Gold`, unit: 'swipe', again: 'Swipe again', close: 'Close the app', via: `the ${APP_NAME} app`, emoji: '\u{1F525}' }
+  }
+  if (eraOpen(g, DATING_SITE_GATE)) {
+    return { kind: 'site', name: 'LoveLink', label: 'LoveLink (Dating Website)', goldLabel: 'LoveLink Premium', unit: 'message', again: 'Browse more profiles', close: 'Log off', via: 'the LoveLink dating website', emoji: '\u{1F4BB}' }
+  }
+  return { kind: 'ads', name: 'Personal Ads', label: 'Personal Ad (Newspaper)', goldLabel: 'Boxed Personal Ad (Front Page)', unit: 'ad', again: 'Read more replies', close: 'Put the paper down', via: 'a personal ad in the newspaper', emoji: '\u{1F4F0}' }
+}
 const APP_PRICE = 100
 const APP_GOLD_PRICE = 1000
 
@@ -534,7 +577,7 @@ function startDatingApp(g: GameState, gold: boolean): void {
     scriptChoice(
       g,
       'love.app.gender',
-      APP_NAME,
+      datingService(g).name,
       'Who would you like to see?',
       [
         { id: 'female', label: 'Women', emoji: '\u{1F469}' },
@@ -552,7 +595,7 @@ function askAppAge(g: GameState, f: AppFilters): void {
   scriptChoice(
     g,
     'love.app.age',
-    APP_NAME,
+    datingService(g).name,
     'What age range are you looking for?',
     APP_AGE_RANGES.map((r) => ({ id: r.id, label: r.label })),
     { emoji: '\u{1F525}', data: asJson(f) },
@@ -572,13 +615,13 @@ defineScript('love.app.age', (g, choice, data) => {
   scriptChoice(
     g,
     'love.app.worth',
-    APP_NAME,
+    datingService(g).name,
     'Any preference on their net worth?',
     [
       { id: 'any', label: "Doesn't matter", emoji: '\u{1F937}' },
-      { id: 'comfortable', label: '$100K+', emoji: '\u{1F4B5}' },
-      { id: 'rich', label: '$1M+', emoji: '\u{1F4B0}' },
-      { id: 'loaded', label: '$10M+', emoji: '\u{1F48E}' },
+      { id: 'comfortable', label: `${shortMoney(100_000)}+`, emoji: '\u{1F4B5}' },
+      { id: 'rich', label: `${shortMoney(1_000_000)}+`, emoji: '\u{1F4B0}' },
+      { id: 'loaded', label: `${shortMoney(10_000_000)}+`, emoji: '\u{1F48E}' },
     ],
     { emoji: '\u{1F525}', data: asJson(next) },
   )
@@ -586,13 +629,14 @@ defineScript('love.app.age', (g, choice, data) => {
 
 function appSwipe(g: GameState, f: AppFilters): void {
   const price = f.gold ? APP_GOLD_PRICE : APP_PRICE
+  const svc = datingService(g)
   if (!spend(g, price)) {
-    notice(g, APP_NAME, `You can't afford ${f.gold ? `${APP_NAME} Gold` : 'another swipe'} (${money(price)}).`, { emoji: '\u{1F4B8}' })
+    notice(g, svc.name, `You can't afford ${f.gold ? svc.goldLabel : `another ${svc.unit}`} (${money(price)}).`, { emoji: '\u{1F4B8}' })
     return
   }
   if (!useYearAction(g, 'love.appSwipe', 12)) {
     addMoney(g, price)
-    notice(g, APP_NAME, "You've run out of matches in your area this year. Try again next year.", { emoji: '\u{1F648}' })
+    notice(g, svc.name, svc.kind === 'ads' ? 'Nobody else answered your ad this year. Try again next year.' : "You've run out of matches in your area this year. Try again next year.", { emoji: '\u{1F648}' })
     return
   }
   const gender: Gender = f.gender === 'any' ? (chance(g, 0.5) ? 'male' : 'female') : f.gender
@@ -605,18 +649,19 @@ function appSwipe(g: GameState, f: AppFilters): void {
     quality: f.gold ? 'premium' : 'normal',
     wealth: wealthHit ? f.wealth : 'any',
   })
-  const miss = wealthHit ? '' : "\n\n(The app couldn't find anyone that wealthy, so here's the next best thing.)"
+  const miss = wealthHit ? '' : svc.kind === 'ads' ? "\n\n(Nobody that wealthy answered, so here's the best reply in the pile.)" : `\n\n(${svc.kind === 'app' ? 'The app' : 'The site'} couldn't find anyone that wealthy, so here's the next best thing.)`
+  const intro = svc.kind === 'app' ? `${APP_NAME}${f.gold ? ' Gold' : ''} matched you with:` : svc.kind === 'site' ? `${f.gold ? 'LoveLink Premium' : 'LoveLink'} suggested a profile:` : `A letter arrived in reply to your${f.gold ? ' front-page' : ''} personal ad:`
   scriptChoice(
     g,
     'love.app.match',
-    APP_NAME,
-    `${APP_NAME}${f.gold ? ' Gold' : ''} matched you with:\n\n${candidateSummary(k)}${miss}`,
+    svc.name,
+    `${intro}\n\n${candidateSummary(k)}${miss}`,
     [
       { id: 'date', label: 'Go on a date', emoji: '\u{1F377}' },
-      { id: 'again', label: `Swipe again (${money(price)})`, emoji: '\u{1F449}' },
-      { id: 'close', label: 'Close the app', emoji: '\u{274C}' },
+      { id: 'again', label: `${svc.again} (${money(price)})`, emoji: '\u{1F449}' },
+      { id: 'close', label: svc.close, emoji: '\u{274C}' },
     ],
-    { emoji: '\u{1F525}', data: asJson({ filters: f, candidate: k }) },
+    { emoji: svc.emoji, data: asJson({ filters: f, candidate: k }) },
   )
 }
 
@@ -636,24 +681,26 @@ defineScript('love.app.match', (g, choice, data) => {
     return
   }
   const partner = currentPartner(g)
+  const svc = datingService(g)
   if (partner) {
-    notice(g, APP_NAME, `You're already in a relationship with ${partner.firstName}.`, { emoji: '\u{1F6AB}' })
+    notice(g, svc.name, `You're already in a relationship with ${partner.firstName}.`, { emoji: '\u{1F6AB}' })
     return
   }
   if (chance(g, 0.12)) {
     addStat(g, 'happiness', -randInt(g, 3, 8))
-    log(g, `My ${APP_NAME} date stood me up.`, 'bad')
-    notice(g, APP_NAME, pick(g, [`${k.firstName} never showed up. You ate breadsticks alone for two hours.`, `${k.firstName} looked nothing like ${pronouns(k.gender).his} pictures, and you both knew it.`, `${k.firstName} unmatched you five minutes before the date.`]), { emoji: '\u{1F494}', tone: 'bad' })
+    log(g, svc.kind === 'app' ? `My ${APP_NAME} date stood me up.` : 'My blind date stood me up.', 'bad')
+    const third = svc.kind === 'app' ? `${k.firstName} unmatched you five minutes before the date.` : svc.kind === 'site' ? `${k.firstName} logged off forever five minutes before the date.` : `${k.firstName} sent a letter saying ${pronouns(k.gender).he} had "met someone at the bowling alley."`
+    notice(g, svc.name, pick(g, [`${k.firstName} never showed up. You ate breadsticks alone for two hours.`, `${k.firstName} looked nothing like ${pronouns(k.gender).his} ${svc.kind === 'ads' ? 'description' : 'pictures'}, and you both knew it.`, third]), { emoji: '\u{1F494}', tone: 'bad' })
     return
   }
   if (chance(g, attractionOdds(g, k, 0.2))) {
-    const p = startDating(g, k, `the ${APP_NAME} app`)
-    log(g, `The dating app paired me with ${article2(k.occupation)} named ${k.firstName}.`)
+    const p = startDating(g, k, svc.via)
+    log(g, svc.kind === 'app' ? `The dating app paired me with ${article2(k.occupation)} named ${k.firstName}.` : svc.kind === 'site' ? `A dating website paired me with ${article2(k.occupation)} named ${k.firstName}.` : `My personal ad brought me ${article2(k.occupation)} named ${k.firstName}.`)
     addStat(g, 'happiness', randInt(g, 6, 12))
-    notice(g, APP_NAME, `You went on a date with ${k.firstName} and hit it off! You're now dating ${fullName(p)}.`, { emoji: '\u{1F496}', tone: 'good' })
+    notice(g, svc.name, `You went on a date with ${k.firstName} and hit it off! You're now dating ${fullName(p)}.`, { emoji: '\u{1F496}', tone: 'good' })
   } else {
     addStat(g, 'happiness', -randInt(g, 2, 5))
-    notice(g, APP_NAME, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pick(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`])}`, { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, svc.name, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pick(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`])}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
 })
 
@@ -2225,30 +2272,37 @@ const dateAction: MenuAction = {
   },
 }
 
-const appAction: MenuAction = {
-  type: 'action',
-  id: 'datingApp',
-  label: `${APP_NAME} (Dating App)`,
-  emoji: '\u{1F525}',
-  subtitle: `Find love on the dating app (${money(APP_PRICE)} per swipe)`,
-  disabledReason: (g) => {
-    const p = currentPartner(g)
-    return tooYoungReason(g, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
-  },
-  run: (g) => startDatingApp(g, false),
+/** The dating service of the era: the app today, a website around 2000, personal ads before. */
+function appAction(g: GameState): MenuAction {
+  const svc = datingService(g)
+  return {
+    type: 'action',
+    id: 'datingApp',
+    label: svc.label,
+    emoji: svc.emoji,
+    subtitle: () => (svc.kind === 'app' ? `Find love on the dating app (${money(APP_PRICE)} per swipe)` : svc.kind === 'site' ? `Find love on a dating website (${money(APP_PRICE)} per message)` : `Lonely hearts column: "SWF, 28, likes long walks..." (${money(APP_PRICE)} per ad)`),
+    disabledReason: (gg) => {
+      const p = currentPartner(gg)
+      return tooYoungReason(gg, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
+    },
+    run: (gg) => startDatingApp(gg, false),
+  }
 }
 
-const appGoldAction: MenuAction = {
-  type: 'action',
-  id: 'datingAppGold',
-  label: `${APP_NAME} Gold`,
-  emoji: '\u{1F31F}',
-  subtitle: `Premium matches with better-looking people (${money(APP_GOLD_PRICE)} per swipe)`,
-  disabledReason: (g) => {
-    const p = currentPartner(g)
-    return tooYoungReason(g, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
-  },
-  run: (g) => startDatingApp(g, true),
+function appGoldAction(g: GameState): MenuAction {
+  const svc = datingService(g)
+  return {
+    type: 'action',
+    id: 'datingAppGold',
+    label: svc.goldLabel,
+    emoji: '\u{1F31F}',
+    subtitle: () => `Premium matches with better-looking people (${money(APP_GOLD_PRICE)} per ${svc.unit})`,
+    disabledReason: (gg) => {
+      const p = currentPartner(gg)
+      return tooYoungReason(gg, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
+    },
+    run: (gg) => startDatingApp(gg, true),
+  }
 }
 
 const matchmakerAction: MenuAction = {
@@ -2397,7 +2451,7 @@ export const loveMenu: MenuGroup = {
     if (!p) return g.character.age < 18 ? 'Looking for a crush?' : 'Single and ready to mingle.'
     return `You're with ${fullName(p)}.`
   },
-  children: (g) => [dateAction, appAction, appGoldAction, matchmakerAction, hookupAction, fertilityMenu, ...partnerShortcuts(g)],
+  children: (g) => [dateAction, appAction(g), appGoldAction(g), matchmakerAction, hookupAction, fertilityMenu, ...partnerShortcuts(g)],
 }
 
 // ---------------------------------------------------------------------------

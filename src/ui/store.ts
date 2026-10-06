@@ -5,6 +5,9 @@
 // Popups live in g.queue and are shown one at a time. When the head of the queue is
 // an AI task, processQueue() runs it against the player's chosen AI provider (or the offline
 // fallback).
+//
+// Time Machine: commit() snapshots the life at the start of every year (save.ts keeps the last
+// few outside the main save) and travelBack() restores one (game/timeMachine.ts has the rules).
 import { useSyncExternalStore } from 'react'
 import { applyFallback, narrateNotice, runAiTask, testConnection } from '../ai/director'
 import { resetAiSession } from '../ai/lmstudio'
@@ -13,8 +16,25 @@ import { ageUp } from '../game/aging'
 import { bindMoneyContext, netWorth } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
 import { uid } from '../game/rng'
-import { addToGraveyard, clearSave, loadGame, recordRibbon, saveGame } from '../game/save'
+import {
+  clearSave,
+  clearTimeline,
+  expectSnapshot,
+  forgetFuture,
+  forgetStop,
+  loadGame,
+  loadSnapshot,
+  recordDeath,
+  resumeTimeline,
+  saveGame,
+  snapshotIfDue,
+  startTimeline,
+  subscribeTimeStops,
+  timeStops,
+  unrecordDeath,
+} from '../game/save'
 import { runScript } from '../game/scripts'
+import { arriveInPast, sandboxTimeMachine, travelBlock, type TimeStop } from '../game/timeMachine'
 import type { GameState, MenuAction, ModalItem } from '../game/types'
 import { loadSettings, saveSettings, switchProvider, type ProviderConfig, type ProviderId, type Settings } from '../settings'
 
@@ -53,6 +73,16 @@ export interface ReturnPoint {
   year: number
 }
 
+/** The Time Machine's state for the UI. */
+export interface TimeTravelState {
+  /** A jump is loading its snapshot. */
+  busy: boolean
+  /** Why the last jump failed ('' when it didn't). */
+  error: string
+  /** The last jump (the game screen plays its arrival once per jump). */
+  arrived: { id: number; year: number; age: number } | null
+}
+
 export interface AppState {
   screen: Screen
   /** Screen to return to from settings/ribbons/graveyard. */
@@ -66,7 +96,13 @@ export interface AppState {
   aiMessage: string
   /** The menu to go back to after an action closed a sheet (see ReturnPoint). */
   returnPoint: ReturnPoint | null
+  /** Start-of-year snapshots of the current life the Time Machine can go back to, oldest first. */
+  timeStops: readonly TimeStop[]
+  timeTravel: TimeTravelState
 }
+
+const IDLE_TRAVEL: TimeTravelState = { busy: false, error: '', arrived: null }
+const NO_STOPS: readonly TimeStop[] = []
 
 let state: AppState = {
   screen: 'home',
@@ -78,6 +114,8 @@ let state: AppState = {
   aiStatus: 'unknown',
   aiMessage: '',
   returnPoint: null,
+  timeStops: NO_STOPS,
+  timeTravel: IDLE_TRAVEL,
 }
 
 const listeners = new Set<() => void>()
@@ -90,6 +128,12 @@ function setState(patch: Partial<AppState>): void {
 export function getApp(): AppState {
   return state
 }
+
+// The snapshot list changes in the background (writes finish, old years are pruned).
+subscribeTimeStops(() => {
+  const stops = state.game ? timeStops(state.game.lifeId) : NO_STOPS
+  if (stops !== state.timeStops) setState({ timeStops: stops })
+})
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener)
@@ -250,7 +294,9 @@ export function hasSavedGame(): boolean {
 export function resumeSavedGame(): boolean {
   const g = loadGame()
   if (!g) return false
-  setState({ game: g, screen: 'game', previousScreen: 'game' })
+  bindMoneyContext(g)
+  resumeTimeline(g.lifeId)
+  setState({ game: g, screen: 'game', previousScreen: 'game', timeStops: timeStops(g.lifeId), timeTravel: IDLE_TRAVEL })
   processQueue()
   return true
 }
@@ -258,8 +304,10 @@ export function resumeSavedGame(): boolean {
 export function startNewLife(opts: NewLifeOptions = {}): void {
   abortRunning()
   const g = createNewLife(opts)
+  // A new timeline: the previous life's snapshots go, this one's birth is the first stop.
+  startTimeline(g.lifeId, g.character.age)
   commit(g)
-  setState({ screen: 'game', previousScreen: 'game', returnPoint: null })
+  setState({ screen: 'game', previousScreen: 'game', returnPoint: null, timeTravel: IDLE_TRAVEL })
   processQueue()
 }
 
@@ -267,15 +315,90 @@ export function continueAs(childId: string): void {
   const g = state.game
   if (!g) return
   abortRunning()
-  commit(continueAsChild(g, childId))
-  setState({ screen: 'game', previousScreen: 'game', returnPoint: null })
+  const next = continueAsChild(g, childId)
+  // The heir's life is a new timeline: the parent's snapshots can't be gone back to.
+  if (next !== g) startTimeline(next.lifeId, next.character.age)
+  commit(next)
+  setState({ screen: 'game', previousScreen: 'game', returnPoint: null, timeTravel: IDLE_TRAVEL })
   processQueue()
 }
 
 export function abandonLife(): void {
   abortRunning()
   clearSave()
-  setState({ game: null, screen: 'home', previousScreen: 'home', returnPoint: null })
+  clearTimeline()
+  setState({ game: null, screen: 'home', previousScreen: 'home', returnPoint: null, timeStops: NO_STOPS, timeTravel: IDLE_TRAVEL })
+}
+
+// ---------------------------------------------------------------------------
+// Time Machine
+
+let travelSeq = 0
+
+/**
+ * Go back to the start of age `age` of the current life: the snapshot is restored exactly
+ * (plus a log line, the jump counted and fresh dice), any AI work is dropped, the "Back to"
+ * chip is cleared, and a death that happened since is taken off the graveyard and ribbons.
+ * Resolves true once you've arrived; false (with timeTravel.error set) when you can't go.
+ */
+export async function travelBack(age: number): Promise<boolean> {
+  const g = state.game
+  if (!g || state.timeTravel.busy) return false
+  const unlimited = sandboxTimeMachine(state.settings)
+  const stop = timeStops(g.lifeId).find((s) => s.age === age)
+  const blocked = travelBlock(g, stop, unlimited)
+  if (blocked || !stop) {
+    setState({ timeTravel: { ...state.timeTravel, error: blocked } })
+    return false
+  }
+  setState({ timeTravel: { ...state.timeTravel, busy: true, error: '' } })
+  let snapshot: GameState | null = null
+  try {
+    snapshot = await loadSnapshot(g.lifeId, age)
+  } catch {
+    snapshot = null
+  }
+  // The life may have moved on while the snapshot loaded: travel from where it is now.
+  const now = state.game
+  if (!now || now.lifeId !== g.lifeId) {
+    setState({ timeTravel: { ...state.timeTravel, busy: false } })
+    return false
+  }
+  if (!snapshot) {
+    forgetStop(g.lifeId, age)
+    setState({
+      timeTravel: {
+        ...state.timeTravel,
+        busy: false,
+        error: `The Time Machine couldn't find its way back to ${stop.year}: that year is missing from this browser's storage.`,
+      },
+    })
+    return false
+  }
+  const stillBlocked = travelBlock(now, stop, unlimited)
+  if (stillBlocked) {
+    setState({ timeTravel: { ...state.timeTravel, busy: false, error: stillBlocked } })
+    return false
+  }
+  abortRunning()
+  // The death you're escaping never happened: take it back off the graveyard and ribbons.
+  unrecordDeath(now)
+  const arrived = arriveInPast(now, snapshot)
+  forgetFuture(now.lifeId, age)
+  commit(arrived)
+  setState({
+    screen: 'game',
+    previousScreen: 'game',
+    returnPoint: null,
+    timeTravel: { busy: false, error: '', arrived: { id: ++travelSeq, year: arrived.year, age: arrived.character.age } },
+  })
+  processQueue()
+  return true
+}
+
+/** Forget the last Time Machine error (the sheet was closed). */
+export function clearTimeTravelError(): void {
+  if (state.timeTravel.error) setState({ timeTravel: { ...state.timeTravel, error: '' } })
 }
 
 // ---------------------------------------------------------------------------
@@ -286,16 +409,20 @@ function commit(g: GameState): void {
   bindMoneyContext(g)
   finalizeIfDead(g)
   saveGame(g)
-  setState({ game: g })
+  // The start of a year (its birthday popups done): keep it for the Time Machine. Best-effort
+  // and asynchronous, after the save, so it can never cost the player their game.
+  void snapshotIfDue(g)
+  setState({ game: g, timeStops: timeStops(g.lifeId) })
 }
 
-/** Record the ribbon and graveyard entry once, after the obituary has been written. */
+/**
+ * Record the ribbon and graveyard entry once, after the obituary has been written. The Time
+ * Machine can still undo the death afterwards (save.unrecordDeath takes both back).
+ */
 function finalizeIfDead(g: GameState): void {
   if (g.character.alive || g.flags.deathRecorded || g.queue.length > 0) return
-  g.flags.deathRecorded = true
-  if (g.ribbon) recordRibbon(g.ribbon)
   const c = g.character
-  addToGraveyard({
+  recordDeath(g, {
     lifeId: g.lifeId,
     generation: g.generation,
     name: `${c.firstName} ${c.lastName}`,
@@ -365,6 +492,8 @@ export function ageUpAction(): void {
   if (!g || !g.character.alive || g.queue.length > 0) return
   // A new year: the menu you were in last year isn't "where you were" any more.
   clearReturnPoint()
+  // The Time Machine keeps the new year as it starts (once its popups are done).
+  expectSnapshot(g.lifeId, g.character.age + 1)
   act(ageUp)
 }
 

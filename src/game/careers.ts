@@ -28,7 +28,10 @@ import {
 import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
 import { codeFreelanceMenu } from './computer/dev-freelance'
 import { catchEmbellishment, caughtLine, caughtLying, cvFields, cvMenu, cvScore, embellishedEntries, fitContext, jobFit, jobMarket, jobScreenChance, screeningReason, screeningThoroughness, type JobMarket } from './cv'
-import { COMPANY_WORDS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
+import { COMPANY_WORDS, ERA_FULLTIME_JOBS, ERA_PARTTIME_JOBS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, jobInEra, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
+import { historicalCycle, marketHistory } from './history/markets'
+import { hasTech } from './history/timeline'
+import { anachronistic } from './events/era'
 import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation, presentAdmissionsInterview, screenedOut } from './education'
 import { createPerson, notePerson } from './people'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
@@ -137,6 +140,7 @@ const LICENSE_NAMES: Record<string, string> = { driver: "a driver's license", pi
 /** Why the player can't be hired for this job (null when qualified). */
 export function jobRequirementProblem(g: GameState, def: JobDef): string | null {
   const c = g.character
+  if (!jobInEra(def, g.year, c.countryId)) return def.until !== undefined && g.year > def.until ? 'Nobody hires for that anymore.' : "That job doesn't exist yet."
   const minAge = def.minAge ?? (def.category === 'parttime' ? 14 : 18)
   if (c.age < minAge) return `You must be at least ${minAge} years old.`
   if (def.drinkingAge) {
@@ -191,13 +195,40 @@ function makeListing(g: GameState, def: JobDef, r: () => number): JobListing {
   return { key: `${def.id}@${company}`, def, title: def.ladder[0].title, company, salary }
 }
 
+/** Jobs that exist this year where the player lives (no app developers in 1995, no lamplighters in 1960). */
+function inEra(g: GameState) {
+  return (d: JobDef) => jobInEra(d, g.year, g.character.countryId)
+}
+
+/**
+ * A historical slump this year (from history/markets.ts): companies freeze hiring. 1 = normal
+ * (always 1 in the present and the future, so today's job board is untouched).
+ */
+export function hiringClimate(g: GameState): number {
+  const cyc = historicalCycle(g.character.countryId, g.year, 1)
+  return Number.isFinite(cyc) ? Math.max(0.5, Math.min(1.5, cyc)) : 1
+}
+
+export function hiringFreeze(g: GameState): boolean {
+  return hiringClimate(g) < 0.88
+}
+
+/** This year's era-specific openings (a typing pool in 1960, data science in 2015). */
+function eraExtras(g: GameState, list: JobDef[], key: string, max: number): JobDef[] {
+  const open = list.filter(inEra(g))
+  if (!open.length) return []
+  return rShuffle(seeded(listingSeed(g, key)), open).slice(0, max)
+}
+
 export function fullTimeListings(g: GameState): JobListing[] {
   const r = seeded(listingSeed(g, 'ft'))
-  const shuffled = rShuffle(r, FULLTIME_JOBS)
-  const picked = shuffled.slice(0, 24)
-  const qualified = shuffled.slice(24).filter((d) => !jobRequirementProblem(g, d))
+  const shuffled = rShuffle(r, FULLTIME_JOBS.filter(inEra(g)))
+  // In a historical recession, fewer companies are hiring.
+  const picked = shuffled.slice(0, hiringFreeze(g) ? 14 : 24)
+  const qualified = shuffled.slice(picked.length).filter((d) => !jobRequirementProblem(g, d))
   const have = picked.filter((d) => !jobRequirementProblem(g, d)).length
   for (let i = 0; i < Math.max(0, 6 - have) && i < qualified.length; i++) picked.push(qualified[i])
+  picked.push(...eraExtras(g, ERA_FULLTIME_JOBS, 'ft-era', 3))
   return picked.map((d) => makeListing(g, d, r)).sort((a, b) => a.title.localeCompare(b.title))
 }
 
@@ -205,10 +236,11 @@ export function partTimeListings(g: GameState): JobListing[] {
   const r = seeded(listingSeed(g, 'pt'))
   const regular = rShuffle(
     r,
-    PARTTIME_JOBS.filter((d) => !d.studentOnly),
+    PARTTIME_JOBS.filter((d) => !d.studentOnly && jobInEra(d, g.year, g.character.countryId)),
   ).slice(0, 14)
   const campus = isStudent(g, [...STUDENT_LEVELS]) ? rShuffle(r, PARTTIME_JOBS.filter((d) => d.studentOnly)).slice(0, 4) : []
-  return [...regular, ...campus].map((d) => makeListing(g, d, r)).sort((a, b) => a.title.localeCompare(b.title))
+  const extras = eraExtras(g, ERA_PARTTIME_JOBS, 'pt-era', 2)
+  return [...regular, ...campus, ...extras].map((d) => makeListing(g, d, r)).sort((a, b) => a.title.localeCompare(b.title))
 }
 
 // ---------------------------------------------------------------------------
@@ -255,17 +287,43 @@ const QUESTIONS: QDef[] = [
   { q: 'Which of these secret powers would you most like to possess?', random: true, a: [['Telepathy', 0], ['Flight', 0], ['Invisibility', 0], ['Time travel', 0], ['Healing', 0], ['Teleportation', 0], ['Immortality', 0], ['Eat sweets without gaining weight', 0]] },
 ]
 
+/** Answers that name people or heroes who weren't famous yet (no Messi in a 1960 interview). */
+const ANSWER_FROM: Record<string, number> = {
+  "Nelson Mandela's fortitude": 1964,
+  "Martin Luther King Jr.'s dream": 1963,
+  'The compassion of Mother Teresa': 1970,
+  "Keanu Reeves' acts of kindness": 1995,
+  "Lionel Messi's talent": 2006,
+  "Tony Robbins' positive attitude": 1990,
+  "Arnold Schwarzenegger's acting": 1984,
+  "Mick Jagger's moves": 1964,
+  Batman: 1939,
+  Superman: 1938,
+  'Wonder Woman': 1941,
+  'Spider-Man': 1962,
+  'Captain America': 1941,
+  Thor: 1962,
+  Wolverine: 1974,
+  'S.M.A.R.T. goals all day long': 1981,
+  'With the help of my therapy dog': 1990,
+  'Index funds': 1976,
+  Crypto: 2013,
+}
+
 /** Offline interview question with 4 scored answers (score 0-100 drives the hire chance). */
 export function fallbackInterviewQuestion(g: GameState, job: InterviewJob): InterviewQuestion {
   void job
   const last = num(g.flags.lastInterviewQ, -1)
-  let idx = randInt(g, 0, QUESTIONS.length - 1)
-  if (idx === last) idx = (idx + 1) % QUESTIONS.length
+  // Only questions and answers of the era ("call or text?" waits for mobile phones).
+  const qs = QUESTIONS.filter((x) => !anachronistic(g, x.q))
+  let idx = randInt(g, 0, qs.length - 1)
+  if (idx === last) idx = (idx + 1) % qs.length
   g.flags.lastInterviewQ = idx
-  const def = QUESTIONS[idx]
-  let answers = shuffle(g, def.a).slice(0, 4)
+  const def = qs[idx]
+  const pool = def.a.filter(([label]) => !anachronistic(g, label) && g.year >= (ANSWER_FROM[label] ?? 0))
+  let answers = shuffle(g, pool.length >= 4 ? pool : def.a).slice(0, 4)
   if (!def.random && !answers.some(([, s]) => s >= 70)) {
-    const best = [...def.a].sort((x, y) => y[1] - x[1])[0]
+    const best = [...(pool.length >= 4 ? pool : def.a)].sort((x, y) => y[1] - x[1])[0]
     answers[0] = best
     answers = shuffle(g, answers)
   }
@@ -774,7 +832,8 @@ export function recruiterMatches(g: GameState): { top: RecruiterMatch[]; reach: 
     return m
   }
   const scored: { m: RecruiterMatch; rank: number; qualified: boolean; relevance: number }[] = []
-  for (const def of FULLTIME_JOBS) {
+  for (const def of [...FULLTIME_JOBS, ...ERA_FULLTIME_JOBS]) {
+    if (!jobInEra(def, g.year, c.countryId)) continue
     if (fired.includes(def.id) || def.id === c.job?.defId) continue
     if (def.gender && def.gender !== c.gender) continue
     const market = marketFor(def.industry)
@@ -1053,7 +1112,7 @@ const FIRED = defineScript('career.fired', (g, choice, data) => {
     addStat(g, 'happiness', randInt(g, 3, 8))
     addHidden(g, 'karma', -2)
     log(g, 'I told my boss off on the way out.', 'neutral')
-    notice(g, 'Fired', pick(g, ['You told your boss exactly where to put that pink slip. Security walked you out, but you felt great.', 'You knocked over a potted plant on your way out and told everyone you were "going to be a YouTuber now."']), { emoji: '\u{1F595}' })
+    notice(g, 'Fired', pick(g, ['You told your boss exactly where to put that pink slip. Security walked you out, but you felt great.', hasTech(g, 'videoSharing') ? 'You knocked over a potted plant on your way out and told everyone you were "going to be a YouTuber now."' : 'You knocked over a potted plant on your way out and told everyone you were "going to be a movie star now."']), { emoji: '\u{1F595}' })
     return
   }
   log(g, 'I cleaned out my desk.', 'neutral')
@@ -1193,15 +1252,29 @@ function yearForJob(g: GameState, slot: Slot): void {
     notice(g, 'Warning', pick(g, [`${bossName(g, job)} pulled you aside and said your work as ${job.title} needs to improve. Fast.`, `You got a written warning at ${job.company}. Maybe try working harder?`]), { emoji: '\u{26A0}\u{FE0F}', tone: 'bad' })
   }
 
-  // Rare layoffs.
-  if (slot === 'job' && chance(g, 0.006)) {
+  // Jobs that history made obsolete (the last switchboard in town gets automated).
+  if (def && def.until !== undefined && g.year > def.until && (job.category === 'fulltime' || job.category === 'parttime')) {
+    const severance = round100(job.salary * randInt(g, 5, 15) / 100)
+    endJob(g, slot, 'laid off')
+    if (severance > 0) earnIncome(g, severance)
+    addStat(g, 'happiness', -8)
+    remember(g, `My job as ${job.title} disappeared when the world moved on.`)
+    log(g, `My job as ${job.title} was made obsolete.`, 'bad')
+    notice(g, 'Made Obsolete', `${job.company} doesn't need a ${job.title} anymore: ${obsoleteLine(def.id)} You received ${formatMoney(severance)} in severance and a handshake.`, { emoji: '\u{1F4E6}', tone: 'bad' })
+    return
+  }
+
+  // Rare layoffs; much less rare in a real recession (2008, 2001 for tech, 1929 for everyone).
+  const pressure = slot === 'job' && def ? layoffPressure(g, def.industry) : 0
+  if (slot === 'job' && chance(g, Math.min(0.15, 0.006 * (1 + 4 * pressure)))) {
     const severance = round100(job.salary * randInt(g, 5, 20) / 100)
     endJob(g, slot, 'laid off')
     earnIncome(g, severance)
     addStat(g, 'happiness', -10)
     remember(g, `Laid off from ${job.company}.`)
-    log(g, `I was laid off from ${job.company}.`, 'bad')
-    notice(g, 'Laid Off', `${job.company} is "restructuring" and your position as ${job.title} was eliminated. You received ${formatMoney(severance)} in severance.`, { emoji: '\u{1F4E6}', tone: 'bad' })
+    log(g, pressure > 0.4 ? `I was laid off from ${job.company} in the downturn.` : `I was laid off from ${job.company}.`, 'bad')
+    const why = pressure > 0.4 ? `The downturn hit ${job.company} hard, and your position as ${job.title} was one of hundreds cut.` : `${job.company} is "restructuring" and your position as ${job.title} was eliminated.`
+    notice(g, 'Laid Off', `${why} You received ${formatMoney(severance)} in severance.`, { emoji: '\u{1F4E6}', tone: 'bad' })
     return
   }
 
@@ -1311,6 +1384,66 @@ const JOB_EVENT = defineScript('career.event', (g, choice, data) => {
 
 // ---------------------------------------------------------------------------
 // Yearly hook
+
+// Which stock-market sector (history/markets.ts) a job's industry rides with.
+const INDUSTRY_SECTOR: Partial<Record<Industry, string>> = {
+  tech: 'tech',
+  finance: 'banks',
+  bank: 'banks',
+  airline: 'airlines',
+  realestate: 'property',
+  trades: 'construction',
+  factory: 'industrials',
+  newspaper: 'media',
+  publisher: 'media',
+  film: 'entertainment',
+  record: 'entertainment',
+  hotel: 'hotels',
+  travel: 'hotels',
+  retail: 'fashion',
+  mall: 'fashion',
+  grocery: 'supermarkets',
+  trucking: 'shipping',
+}
+
+/**
+ * How hard real history is squeezing employers in this industry this year: 0 normally (and
+ * always 0 for the present and the future), up to ~3 in a crash that hits the sector.
+ */
+export function layoffPressure(g: GameState, industry: Industry): number {
+  const cid = g.character.countryId
+  const cyc = historicalCycle(cid, g.year, 1)
+  let p = Number.isFinite(cyc) && cyc < 1 ? (1 - cyc) * 6 : 0
+  const mh = marketHistory(cid, g.year)
+  if (mh) {
+    const key = INDUSTRY_SECTOR[industry]
+    const sector = key ? mh.sectors?.[key] : undefined
+    if (typeof sector === 'number' && Number.isFinite(sector) && sector < -0.25) p += Math.min(1.5, -sector * 2)
+    if (mh.crash) p += 0.5
+  }
+  return Math.max(0, Math.min(3, p))
+}
+
+function obsoleteLine(defId: string): string {
+  const lines: Record<string, string> = {
+    lamplighter: 'the city switched the streetlights to electric.',
+    iceman: 'everyone on your route bought an electric refrigerator.',
+    elevator_operator: 'the elevators have buttons now.',
+    telegraph_operator: 'everyone just picks up the telephone.',
+    switchboard_operator: 'the exchange went automatic and the calls connect themselves.',
+    milkman: 'everybody buys milk at the supermarket now.',
+    typist: 'every desk has its own word processor now.',
+    keypunch_operator: 'nobody uses punch cards anymore.',
+    computer_operator: 'the old mainframe was replaced by smaller machines that run themselves.',
+    projectionist: 'the cinema went digital and the projector runs from a hard drive.',
+    photo_lab: 'everyone takes digital photos now.',
+    pt_pinsetter: 'the bowling alley installed automatic pinsetters.',
+    pt_soda_jerk: 'the soda fountain closed to make room for a burger chain.',
+    pt_switchboard: 'the exchange went automatic.',
+    pt_video_store: 'everyone streams their movies now.',
+  }
+  return lines[defId] ?? 'times have changed.'
+}
 
 export function yearlyCareer(g: GameState): void {
   const c = g.character
@@ -1752,6 +1885,7 @@ const jobsMenu: MenuGroup = {
     const market = jobMarket(g)
     const mood = market.score >= 58 ? '\u{1F525}' : market.score >= 43 ? '\u{1F4CA}' : '\u{1F9CA}'
     nodes.push({ type: 'info', id: 'jobs.market', text: `${market.line}. Your CV strength for a typical office job: ${cvScore(g, { kind: 'job', edu: 'bachelor' }).score}/100.`, emoji: mood })
+    if (hiringFreeze(g)) nodes.push({ type: 'info', id: 'jobs.freeze', emoji: '\u{1F9CA}', text: `Hiring freeze: the economy is in a slump and half the usual employers aren't hiring in ${g.year}.` })
     nodes.push({ type: 'heading', id: 'jobs.h', label: `Listings for ${g.year}` })
     for (const l of fullTimeListings(g)) nodes.push(listingAction(l))
     return nodes
@@ -1776,7 +1910,7 @@ const GIG_OUTCOMES: Record<string, { good: string[]; bad: string[] }> = {
   pet_sitter: { good: ['The cat ignored you completely, which is cat for "thank you."', 'The hamster ran 40 miles on its wheel. Thrilling stuff.'], bad: ['The cat knocked everything off every shelf in the house.', 'The parrot learned a new swear word from you.'] },
   lawn_mower: { good: ['You gave the lawn stripes like a baseball field.', 'The neighbors were so impressed they asked for your number.'], bad: ['You mowed over a garden gnome. Rest in pieces.', 'You ran over a hose and soaked yourself.'] },
   tutor: { good: ['Your student finally understood fractions.', "Your student aced their test and gave you all the credit."], bad: ["Your student asked if you were sure you'd passed this class.", 'You spent the whole session confiscating their phone.'] },
-  house_cleaner: { good: ['The house sparkled when you were done.', 'You found $20 under the couch and honestly returned it.'], bad: ['You found three things under the couch you will never speak of.', 'You broke a vase that was "a family heirloom."'] },
+  house_cleaner: { get good() { return ['The house sparkled when you were done.', `You found ${formatMoney(20)} under the couch and honestly returned it.`] }, bad: ['You found three things under the couch you will never speak of.', 'You broke a vase that was "a family heirloom."'] },
   caretaker: { good: ['Grandpa told you stories about the good old days. Some were even true.', 'You played bingo for four hours and loved every second.'], bad: ['Grandpa told you the same story eleven times.', 'Grandma cheated at cards and accused you of cheating.'] },
   handyman: { good: ['You fixed the sink without flooding anything.', 'You built a shelf that is, against all odds, level.'], bad: ['You fixed the sink, then the leak you caused fixing the sink.', 'You hit your thumb with a hammer so hard you saw stars.'] },
 }
@@ -1844,7 +1978,7 @@ const freelanceMenu: MenuGroup = {
         subtitle: `${formatMoney(gig.minRate)}-${formatMoney(gig.maxRate)}/hr • Age ${gig.minAge}+`,
         visible: (g) => g.character.age >= 13,
         disabledReason: (g) => blocked(g) ?? (g.character.age < gig.minAge ? `You must be ${gig.minAge} to work as a ${gig.noun}.` : yearActionsUsed(g, 'gigs') >= 10 ? "You've worked 10 gigs this year." : null),
-        input: { kind: 'number', label: 'Hourly rate ($)', min: gig.minRate, max: gig.maxRate, defaultValue: () => String(Math.round((gig.minRate + gig.maxRate) / 3)) },
+        input: { kind: 'number', money: true, label: 'Hourly rate', min: gig.minRate, max: gig.maxRate, defaultValue: () => String(Math.round((gig.minRate + gig.maxRate) / 3)) },
         run: (g, input) => doGig(g, gig, input),
       }),
     ),

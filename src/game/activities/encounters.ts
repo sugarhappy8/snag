@@ -8,6 +8,7 @@ import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Gender, Json } from '../types'
 import { canRomance, meetPerson, result, say, strangerAge, strangerGender } from './common'
+import { cars, common, eraLines, landline } from '../events/era'
 
 // ---------------------------------------------------------------------------
 // Someone asks you out
@@ -45,14 +46,14 @@ const DATE_SCRIPT = defineScript('act.encounter.date', (g, choice, data) => {
     log(g, `I became friends with ${p.firstName} from the ${where}.`, 'neutral')
     result(g, 'Just Friends', say(g, [
       "You told {name} you'd rather just be friends. {name} took it surprisingly well.",
-      'You and {name} swapped numbers. Strictly platonic. Probably.',
+      landline(g) ? 'You and {name} swapped numbers. Strictly platonic. Probably.' : 'You and {name} swapped addresses. Strictly platonic. Probably.',
     ], { name: p.firstName }), '\u{1F91D}')
   } else {
     log(g, `I turned down a date with ${firstName ?? 'someone'} at the ${where}.`, 'neutral')
     result(g, 'Rejected', say(g, [
       'You turned {name} down. {name} walked away doing that awkward half-wave.',
       'You let {name} down gently. The walk of shame back to the treadmill was all theirs.',
-      "You said no thanks. {name} pretended to get a phone call.",
+      common(g, 'mobilePhone') ? "You said no thanks. {name} pretended to get a phone call." : 'You said no thanks. {name} suddenly remembered an urgent appointment.',
     ], { name: firstName ?? 'them' }), '\u{1F645}')
   }
 })
@@ -247,29 +248,31 @@ const SOS_SCRIPT = defineScript('act.encounter.sos', (g, choice, data) => {
       addHidden(g, 'karma', 8)
       addStat(g, 'happiness', randInt(g, 3, 6))
       log(g, `I saw ${sc.saw} and called for help. They survived.`, 'good')
-      result(g, 'Help Arrived', 'You called emergency services. They arrived just in time, and the stranger is going to make it.', '\u{1F691}', 'good')
+      result(g, 'Help Arrived', `${landline(g) ? 'You called emergency services.' : 'You ran for help.'} They arrived just in time, and the stranger is going to make it.`, '\u{1F691}', 'good')
     } else {
       addStat(g, 'happiness', -randInt(g, 3, 8))
       log(g, `I saw ${sc.saw} and called for help, but it came too late.`, 'bad')
-      result(g, 'Too Late', 'You called emergency services, but by the time they arrived it was too late.', '\u{1F494}', 'bad')
+      result(g, 'Too Late', `${landline(g) ? 'You called emergency services' : 'You ran for help'}, but by the time they arrived it was too late.`, '\u{1F494}', 'bad')
     }
     return
   }
   addHidden(g, 'karma', -6)
   log(g, `I saw ${sc.saw}. I couldn't be bothered to do anything.`, 'bad')
-  result(g, 'Looked Away', pick(g, [
+  result(g, 'Looked Away', pick(g, eraLines(g, [
     'You looked the other way and kept walking. Somebody else will deal with it. Probably.',
-    'You pretended to be very interested in your phone until it was over.',
-  ]), '\u{1F648}', 'bad')
+    '@mobilePhone You pretended to be very interested in your phone until it was over.',
+    '@!mobilePhone You pretended to be very interested in your shoelaces until it was over.',
+  ])), '\u{1F648}', 'bad')
 })
 
 /** Present a random SOS situation for this context. */
 export function presentSos(g: GameState, context: SosContext): void {
-  const options = SOS.filter((s) => s.contexts.includes(context))
+  // A crashed car needs cars on the road.
+  const options = SOS.filter((s) => s.contexts.includes(context) && (s.id !== 'car' || cars(g)))
   const sc = pick(g, options.length ? options : SOS)
   scriptChoice(g, SOS_SCRIPT, 'Emergency!', sc.text, [
     { id: 'rescue', label: 'Attempt a rescue', emoji: '\u{1F9B8}' },
-    { id: 'call', label: 'Call emergency services', emoji: '\u{1F4DE}' },
+    { id: 'call', label: landline(g) ? 'Call emergency services' : 'Run for help', emoji: '\u{1F4DE}' },
     { id: 'ignore', label: 'Look the other way', emoji: '\u{1F648}' },
   ], { emoji: '\u{1F198}', data: { id: sc.id } })
 }

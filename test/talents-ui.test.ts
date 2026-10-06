@@ -33,7 +33,8 @@ const { liveAgainOptions } = await import('../src/ui/screens/DeathScreen')
 const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el)
 
 beforeEach(() => {
-  store.updateSettings({ aiLevel: 'off' })
+  // These tests read dollar amounts: show plain US dollars whatever life was bound last.
+  store.updateSettings({ aiLevel: 'off', money: 'usd', prices: 'today' })
 })
 
 afterEach(() => {

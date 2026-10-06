@@ -8,11 +8,25 @@ import { computerSummary } from '../game/computer'
 import { gameDevSummary } from '../game/special/gamedev'
 import { abuseSummary } from '../game/special/politics'
 import { sportsSummary } from '../game/special/sports'
-import { formatMoney, fullName, lifeStage, netWorth, relationLabel, roleLabel, shortMoney } from '../game/core'
+import {
+  formatMoney,
+  fullName,
+  lifeStage,
+  moneyContextOf,
+  moneyCurrencyLabel,
+  netWorth,
+  relationLabel,
+  roleLabel,
+  shortMoney,
+  showMoney,
+  withMoneyContext,
+} from '../game/core'
 import { cvPromptLines, cvSummary, graduateTarget, jobTarget, rankLabel, rankOf, universityTarget, type CvTarget } from '../game/cv'
 import { getJobDef, type GradKey } from '../game/data/jobs'
 import { localeOf, type LocaleProfile } from '../game/data/locales'
 import { marketOf } from '../game/data/markets'
+import { eraSummary, isNewsLine, techStatus, warsAt } from '../game/history/events'
+import { hasTech, isHistorical, type TechId } from '../game/history/timeline'
 import { investmentsSummary } from '../game/investments'
 import { luxurySummary } from '../game/shops/luxury'
 import { talentsSummary } from '../game/talents'
@@ -48,6 +62,7 @@ export function narratorSystem(settings: Settings): string {
     '- Use real names from the context; invent believable new names that fit their country.',
     '- SETTING: their country (PLACE; the new one after emigrating) and its culture (LOCAL LIFE) for places, schools, institutions, holidays, food, weather, faith and money. Nothing American unless they live in the US.',
     '- Never contradict the facts in the context. Keep it plausible for the character\'s age and situation.',
+    '- ERA: stay true to the year in ERA. Never mention anything invented, popular or said after it (no smartphones in 1995, no TV in 1930, no "group chat" in 1975); money talk stays in that era too.',
     `- ${ratingRule(settings.contentRating)}`,
     'OUTPUT: reply with ONE JSON object only. No markdown, no code fences, no commentary.',
   ].join('\n')
@@ -64,9 +79,41 @@ export const STAGE_RULES: Record<LifeStage | 'prison', string> = {
   prison: 'They are IN PRISON: everything happens inside prison (cellmates, guards, gangs, riots, contraband, the yard, visitors, prison jobs).',
 }
 
-/** The stage rule with the local school words filled in. */
+/** The stage rule with the local school words filled in (and no social media before it existed). */
 export function stageRule(g: GameState, stage: LifeStage | 'prison' = stageOf(g)): string {
-  return STAGE_RULES[stage].replace('{high}', localeOf(g.character.countryId).terms.high || 'school')
+  const rule = STAGE_RULES[stage].replace('{high}', localeOf(g.character.countryId).terms.high || 'school')
+  return isHistorical(g.year) && !hasTech(g, 'socialMedia') ? rule.replace(', social media', '') : rule
+}
+
+/**
+ * Themes that don't fit the year get an era twin: no social media drama in 1975 (gossip instead),
+ * no viral video in 1990, no road rage before cars were everywhere. Modern years: unchanged.
+ */
+const ERA_THEME_SWAPS: readonly { re: RegExp; tech?: TechId; year?: number; alt: string }[] = [
+  { re: /^social media drama$/, tech: 'socialMedia', alt: 'gossip spreading around school' },
+  { re: /^a viral video$/, tech: 'videoSharing', alt: 'a prank the whole town heard about' },
+  { re: /^technology trouble$/, tech: 'homeComputer', alt: 'a newfangled gadget' },
+  { re: /^a road-rage incident$/, year: 1930, alt: 'a runaway horse in the street' },
+  { re: /^a driving lesson$/, year: 1930, alt: 'a bicycle race' },
+  { re: /^a scam phone call$/, year: 1950, alt: 'a traveling con man' },
+  { re: /^(a ride on|a commute on) /, year: 2000, alt: 'the daily commute' },
+  { re: /^hanging out at /, year: 2000, alt: 'hanging out with friends' },
+]
+
+/** The theme as it fits the character's year (the same text in modern years). */
+export function eraTheme(g: GameState, theme: string): string {
+  if (!isHistorical(g.year)) return theme
+  for (const s of ERA_THEME_SWAPS) {
+    if (!s.re.test(theme)) continue
+    if (s.tech && !hasTech(g, s.tech)) return s.alt
+    if (s.year !== undefined && g.year < s.year) return s.alt
+  }
+  return theme
+}
+
+/** A theme list with every theme fitted to the character's year (for the director's pool). */
+export function eraThemes(g: GameState, themes: readonly string[]): string[] {
+  return themes.map((t) => eraTheme(g, t))
 }
 
 /**
@@ -133,6 +180,19 @@ export function situationalThemes(g: GameState): string[] {
   if (c.money > 100_000) out.push('being rich')
   if (c.money < 0 || c.residence.status === 'homeless') out.push('being broke')
   if (c.hidden.fame > 50) out.push('fame')
+  if (isHistorical(g.year)) out.push(...eraSituations(g))
+  return out
+}
+
+/** What everyone was living through that year (historical years only). */
+function eraSituations(g: GameState): string[] {
+  const out: string[] = ['the big news of the year']
+  const y = g.year
+  const wars = warsAt(g.character.countryId, y)
+  if (wars.length) out.push(`life during ${wars[0].name}`)
+  if (y >= 1930 && y <= 1939) out.push('hard times in the Depression')
+  if (y >= 1957 && y <= 1972) out.push('the space race')
+  if (y >= 1947 && y <= 1991 && g.character.age >= 10) out.push('Cold War jitters')
   return out
 }
 
@@ -140,10 +200,22 @@ export function situationalThemes(g: GameState): string[] {
 export function effectsGuide(g: GameState): string {
   const cash = g.character.money
   const typical = Math.max(50, Math.min(25_000, Math.round(Math.abs(cash) * 0.05 + 100)))
+  // Money is shown to the AI in this life's currency and year (Settings › Money), so its answer
+  // is in those units too; the director converts it back (aiMoneyToDollars).
+  const { label, cashText, typicalText, example } = withMoneyContext(moneyContextOf(g), () => {
+    const m = showMoney(typical)
+    const n = Math.round(m.amount)
+    return {
+      label: moneyCurrencyLabel(),
+      cashText: formatMoney(cash),
+      typicalText: formatMoney(typical),
+      example: n >= 10 ? Number(n.toPrecision(2)) : n,
+    }
+  })
   return [
     'EFFECTS (integers, 0 = no change):',
     '- happiness/health/smarts/looks/karma: usually ±2 to ±15 (±20 only for huge moments). fame: 0 unless it would make news.',
-    `- money in dollars: negative = cost/loss, positive = gain. Keep it small relative to their cash (${formatMoney(cash)}); around ±${formatMoney(typical)} is typical. Never cost more than they have.`,
+    `- money in the currency of every amount above, ${label}: negative = cost/loss, positive = gain, as a plain number (e.g. -${example}). Keep it small relative to their cash (${cashText}); around ±${typicalText} is typical. Never cost more than they have.`,
     '- relationships: [{"name","delta"}] only for people listed in PEOPLE (delta ±2 to ±20).',
     '- newPerson.relation "none" unless someone new enters their life (friend, enemy, partner, lover, pet, coworker, classmate); give a first name.',
     '- condition.kind "none" unless they get hurt, sick, addicted or traumatized (severity 5-60).',
@@ -280,6 +352,8 @@ export function describeCharacter(g: GameState): string {
   lines.push(`NAME: ${fullName(c)} (${c.gender}, age ${c.age}, ${stage}${sexuality})${c.alive ? '' : ' — DECEASED'}`)
   const born = c.birthCountryId && c.birthCountryId !== c.countryId ? ` (born in ${getCountry(c.birthCountryId).name})` : ''
   lines.push(`PLACE: ${c.city}, ${country.name}${born} · year ${g.year} · ${c.zodiac}${c.religion ? ` · ${c.religion}` : ''}`)
+  const era = eraSummary(g)
+  if (era) lines.push(era)
   lines.push(localLifeLine(g))
   const s = c.stats
   lines.push(`STATS: Happiness ${s.happiness}, Health ${s.health}, Smarts ${s.smarts}, Looks ${s.looks}`)
@@ -464,12 +538,13 @@ export function describePeople(g: GameState, max = 12, focusId?: string): string
   return `PEOPLE (use these names):\n${lines.join('\n')}${more > 0 ? `\n(+${more} others)` : ''}`
 }
 
-/** The last `max` life-log lines, oldest first, prefixed with the age. */
+/** The last `max` life-log lines, oldest first, prefixed with the age (world news is in ERA instead). */
 export function recentLogLines(g: GameState, max = 15): string[] {
   const out: string[] = []
   for (let y = g.log.length - 1; y >= 0 && out.length < max; y--) {
     const year = g.log[y]
     for (let e = year.entries.length - 1; e >= 0 && out.length < max; e--) {
+      if (isNewsLine(year.entries[e].text)) continue
       out.push(`Age ${year.age}: ${truncate(year.entries[e].text, 110)}`)
     }
   }
@@ -577,7 +652,7 @@ export function yearEventsPrompt(g: GameState, o: YearEventsPromptOptions): stri
       '- "event": one random situation that needs a decision NOW. "text" is second person, 1-3 sentences, ending with a question like "What will you do?". "title" max 4 words, "emoji" one emoji.',
       '- "choices": 2-4 different options, short imperative labels (max 6 words), at least one risky or funny option; "emoji" is "" or one emoji.',
       '- "person": the name of someone from PEOPLE involved in the event, or "".',
-      `- Suggested theme: ${o.theme}.${recent.length ? ` Must differ from recent events: ${recent.join('; ')}.` : ''}`,
+      `- Suggested theme: ${eraTheme(g, o.theme)}.${recent.length ? ` Must differ from recent events: ${recent.join('; ')}.` : ''}`,
       'Reply with JSON like: {"log":["I ..."],"event":{"title":"...","emoji":"<one emoji>","text":"You ... What will you do?","person":"","choices":[{"label":"...","emoji":""},{"label":"...","emoji":""},{"label":"...","emoji":""}]}}',
     )
   } else {
@@ -619,7 +694,7 @@ export function customActionPrompt(g: GameState, action: string): string {
     '',
     'TASK: You are the game master. Decide whether they can do this right now, and what happens.',
     `- Legal ages in ${country.name}: driving ${country.drivingAge}, drinking ${country.drinkingAge}, adult 18.`,
-    `- possible=false if it's impossible for them now: too young (age ${c.age}), ${c.prison ? 'they are locked in prison, ' : ''}can't afford it (${formatMoney(c.money)} cash), physically impossible, or it needs a license/degree they don't have. Then "text" says why, wittily, and all effects are 0.`,
+    `- possible=false if it's impossible for them now: too young (age ${c.age}), ${c.prison ? 'they are locked in prison, ' : ''}can't afford it (${formatMoney(c.money)} cash), physically impossible, ${isHistorical(g.year) ? `it needs something that doesn't exist yet in ${g.year} (see ERA), ` : ''}or it needs a license/degree they don't have. Then "text" says why, wittily, and all effects are 0.`,
     '- If possible: describe the attempt and its immediate result. Not always a success: luck, stats and karma matter. Crimes may get them arrested (arrest). Purchases cost money (negative money).',
     '- The game can only change stats, money, relationships, add one new person, add a condition, arrest them or (rarely) kill them. Never claim other permanent changes (a new job, marriage, a degree, moving home, escaping prison); those happen through the game menus.',
     stageRule(g, stage),
@@ -733,7 +808,8 @@ export function obituaryPrompt(g: GameState): string {
 
 export function narratePrompt(g: GameState, n: NoticeModal, person: Person | undefined): string {
   const c = g.character
-  const lines = [`PLAYER: ${fullName(c)}, ${c.gender}, age ${c.age}, ${roleLabel(g)}. PLACE: ${c.city}, ${getCountry(c.countryId).name}.`]
+  const era = isHistorical(g.year) ? ` YEAR: ${g.year} (nothing from after it).` : ''
+  const lines = [`PLAYER: ${fullName(c)}, ${c.gender}, age ${c.age}, ${roleLabel(g)}. PLACE: ${c.city}, ${getCountry(c.countryId).name}.${era}`]
   if (person) lines.push(`OTHER PERSON: ${describePerson(person, [person]).slice(2)}`)
   lines.push(
     `POPUP TITLE: ${n.title}`,
@@ -764,6 +840,12 @@ function speakerStyle(p: Person): string {
   return `You are ${fullName(p)}, ${p.age} years old.`
 }
 
+/** The year a conversation happens in, for historical lives ("no smartphones, the internet..."). */
+function chatEraLine(g: GameState): string {
+  const missing = techStatus(g.character.countryId, g.year).notYet.slice(0, 4)
+  return `It is ${g.year}: talk like someone from that year and never mention anything invented later${missing.length ? ` (no ${missing.join(', no ')})` : ''}.`
+}
+
 export function chatSystemPrompt(g: GameState, p: Person, settings: Settings): string {
   const c = g.character
   const rel = relationLabel(p)
@@ -771,6 +853,7 @@ export function chatSystemPrompt(g: GameState, p: Person, settings: Settings): s
   return [
     `${speakerStyle(p)} You are ${c.firstName}'s ${rel.toLowerCase()} in the life simulator AnotherLife. ${traits}`,
     p.relation === 'pet' || p.age < 6 ? '' : `You live in ${getCountry(c.countryId).name}: your references (places, food, holidays, money talk) are local, never American unless that is where you live.`,
+    p.relation === 'pet' || !isHistorical(g.year) ? '' : chatEraLine(g),
     `How you feel about ${c.firstName}: relationship ${p.relationship}% (${moodWord(p.relationship)}). Stay in character: warm if close, cold or snippy if not; your traits color everything you say.`,
     `Reply to ${c.firstName}'s latest message in 1-3 short sentences, speaking directly to them. No narration about yourself in third person.`,
     'Also rate how their message landed with you: relationshipDelta from -5 (insulting, creepy, cruel) to +5 (kind, funny, thoughtful); 0 for small talk. mood is one word for how you feel now.',

@@ -3,7 +3,7 @@
 // production run, watch the projection, and approve it (JSON AnnualReportResult) or keep
 // last year's plan ('skip'). The engine (business.ts) clamps whatever comes back again.
 import { useId, useState, type CSSProperties, type ReactNode } from 'react'
-import { formatMoney, shortMoney } from '../../game/core'
+import { formatMoney, moneyWith, shortMoney } from '../../game/core'
 import { HINT_EMOJI } from '../../game/talents'
 import type { AnnualReportResult, Json } from '../../game/types'
 import { cleanHint } from '../components/TalentHint'
@@ -267,12 +267,14 @@ function compactCount(n: number): string {
   return plainCount(n)
 }
 
-/** Unit prices: $3.50 below $100 (or when the price grid works in cents), $1,200 above. */
+/**
+ * Unit prices: $3.50 below $100 (or when the price grid works in cents), $1,200 above. The slider
+ * works in internal dollars; this shows the price in the player's currency and year (¥525).
+ */
 export function formatPrice(n: number, step: number): string {
   const a = Math.abs(n)
   if (a >= 10000 || (a >= 100 && step >= 1)) return formatMoney(n)
-  const sign = n < 0 ? '-' : ''
-  return `${sign}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return moneyWith(n, (x) => x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 }
 
 function shortPrice(n: number, step: number): string {

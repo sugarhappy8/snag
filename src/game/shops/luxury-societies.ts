@@ -4,6 +4,7 @@
 //   'luxury.society'        { id, since, years, rank } while a member
 //   'luxury.societyBanned'  ids of societies that expelled you
 //   'luxury.societyRejected' { id: year } failed initiations (try again next year)
+import { socialMediaExists } from '../special/social'
 import { nicePrice } from '../assets'
 import { addHidden, addStat, count, earnIncome, formatMoney, inPrison, log, netWorth, notice, remember, scriptChoice, shortMoney, spend, useYearAction } from '../core'
 import { localMarket } from '../data/markets'
@@ -122,7 +123,9 @@ export const SOCIETIES: Society[] = [
     exposure: 0.09,
     minWorth: 50_000_000,
     initiation: {
-      text: 'You are locked in a vault with a trading terminal and told to turn $1 million into $2 million before the candle burns out.',
+      get text() {
+        return `You are locked in a vault with a trading terminal and told to turn ${formatMoney(1_000_000)} into ${formatMoney(2_000_000)} before the candle burns out.`
+      },
       options: [
         { id: 'short', label: 'Short something with a cool name', emoji: '📉', pass: 0.6 },
         { id: 'leverage', label: 'Leverage everything 50x', emoji: '🎰', pass: 0.45 },
@@ -382,7 +385,9 @@ function requestAction(s: Society): MenuAction {
         notice(g, s.name, reason, { emoji: s.emoji })
         return
       }
-      const choices: ChoiceOption[] = [...s.initiation.options.map((o) => ({ id: o.id, label: o.label, emoji: o.emoji })), { id: 'flee', label: 'Run for the exit', emoji: '🏃' }]
+      // Before social media, the show-off option is a newspaper photographer instead.
+      const label = (o: { id: string; label: string }) => (o.id === 'post' && !socialMediaExists(g) ? 'Do it, but tip off a newspaper photographer' : o.id === 'selfie' && !socialMediaExists(g) ? 'Stop halfway to pose for a photographer' : o.label)
+      const choices: ChoiceOption[] = [...s.initiation.options.map((o) => ({ id: o.id, label: label(o), emoji: o.id === 'post' && !socialMediaExists(g) ? '📷' : o.emoji })), { id: 'flee', label: 'Run for the exit', emoji: '🏃' }]
       scriptChoice(g, INITIATE, `${s.emoji} The Initiation`, `A black envelope arrived with no stamp. Tonight you were blindfolded and driven somewhere with a lot of candles. ${s.initiation.text}`, choices, { emoji: s.emoji, data: { society: s.id } })
     },
   }

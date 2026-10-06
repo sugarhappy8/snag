@@ -182,6 +182,8 @@ export interface BizState {
   studio?: Json
   /** Deep-tech companies only: R&D, tech level, funding rounds (business/deeptech-state.ts). */
   tech?: Json
+  /** Market position: share, rivals, installed base, antitrust (business/competition-state.ts). */
+  market?: Json
 }
 
 export const BIZ_VERSION = 1
@@ -342,6 +344,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     slump: Math.max(0, num(d.slump)),
     ...(industry === 'gameStudio' && d.studio && typeof d.studio === 'object' && !Array.isArray(d.studio) ? { studio: d.studio } : {}),
     ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
+    ...(d.market && typeof d.market === 'object' && !Array.isArray(d.market) ? { market: d.market } : {}),
   }
 }
 
