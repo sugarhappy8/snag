@@ -530,7 +530,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       lose: (x) => (lvl(x.t, 3), 'Every landing attempt ended as a crater. Still expendable, for now.'),
     },
     {
-      id: 'sats', label: (t) => `Satellite Constellation Batch ${t.sats + 1}`, emoji: '\u{1F310}', blurb: 'Your own satellites in orbit: internet from space, paid monthly.',
+      id: 'sats', label: (t) => `Satellite Constellation Batch ${t.sats + 1}`, emoji: '\u{1F310}', blurb: 'Your own satellites in orbit: internet from space, paid monthly. Each batch lasts about six years.',
       years: 1, cost: fixed(50_000_000), odds: fixed(0.9), capex: true,
       gate: (t) => (t.stage < 3 ? 'Needs an operational rocket.' : t.sats >= 12 ? 'Twelve batches: astronomers already hate you.' : null),
       win: (x) => ((x.t.sats += 1), lvl(x.t, 2), `Batch ${x.t.sats} is in orbit. Subscribers can see your satellites trail across the night sky.`),

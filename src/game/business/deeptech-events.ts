@@ -15,6 +15,7 @@ import { stepDown, managerCandidate, managerName } from './career'
 import { conglomerate } from './flavor'
 import { RESTRICTED, aiRegulator, bestModel, defenseBuyer, drugRegulator, spaceAgency } from './deeptech-data'
 import { dtInd, earnTech, payTech, rdScale, revalue, runwayYears, techFunds, techOf, unitRevenue } from './deeptech-core'
+import { stopPrograms } from './deeptech-rd'
 import type { TechState } from './deeptech-state'
 import { sellBusiness } from './exit'
 import { industryDef } from './industries'
@@ -337,7 +338,7 @@ const EVENTS: DtEvent[] = [
         x.b.brand = clampN(x.b.brand - 3, 0, 100)
         tell(x.g, 'Price Hike', `Customers paid up, muttering. They'll remember this when the shortage ends.`, '\u{1F4C8}')
       } else if (choice === 'broker') {
-        const n = earnTech(x.b, num(x.d.cash))
+        const n = earnTech(x.b, x.t, num(x.d.cash))
         x.b.brand = clampN(x.b.brand - 6, 0, 100)
         tell(x.g, 'Quick Money', `Brokers paid ${formatMoney(n)} for a batch and resold it at triple the price. Your regular customers noticed.`, '\u{1F4B0}')
       } else {
@@ -553,10 +554,10 @@ const EVENTS: DtEvent[] = [
         }
         upfront = Math.round(upfront * 1.4)
       }
-      earnTech(x.b, upfront)
+      earnTech(x.b, x.t, upfront)
       d.partner = pharma
       d.royalty = 0.15
-      x.t.programs = x.t.programs.filter((p) => !(p.id === 'trial' && p.target === d.id))
+      stopPrograms(x.g, x.b, x.t, (p) => p.id === 'trial' && p.target === d.id)
       remember(x.g, `Licensed ${d.name} to ${pharma}.`)
       tell(x.g, 'Licensed', `${pharma} paid ${formatMoney(upfront)} for ${d.name}. Their trials, their bills; your 15% royalty if it's approved.`, '\u{1F91D}', 'good')
     },
@@ -581,7 +582,7 @@ const EVENTS: DtEvent[] = [
         p.progress = Math.max(0, p.progress - 0.5)
         tell(x.g, 'Paused', `The volunteer recovered fully. The trial restarts after a review, about six months late.`, '\u{23F8}\u{FE0F}')
       } else if (choice === 'stop') {
-        x.t.programs = x.t.programs.filter((y) => y.key !== p.key)
+        stopPrograms(x.g, x.b, x.t, (y) => y.key === p.key)
         tell(x.g, 'Trial Stopped', `You stopped the trial. The drug isn't dead, but it's back on the shelf.`, '\u{1F6D1}')
       } else {
         p.odds = clampN(p.odds - 0.08, 0.03, 0.95)
@@ -651,7 +652,7 @@ const EVENTS: DtEvent[] = [
         tell(x.g, 'Declined', `You declined. The pop star wrote a breakup song about your company. It went platinum.`, '\u{1F6AB}')
         return
       }
-      const fee = earnTech(x.b, num(x.d.fee))
+      const fee = earnTech(x.b, x.t, num(x.d.fee))
       x.t.hype = clampN(x.t.hype + 15, 0, 100)
       if (chance(x.g, 0.15)) {
         x.b.brand = clampN(x.b.brand - 5, 0, 100)
@@ -880,7 +881,7 @@ const EVENTS: DtEvent[] = [
         addHidden(x.g, 'karma', 4)
         tell(x.g, 'Responsible Disclosure', `The vendor patched it in two weeks and thanked your team by name. Every security conference wants your researchers on stage.`, '\u{1F6E1}\u{FE0F}', 'good')
       } else if (choice === 'gov') {
-        const n = earnTech(x.b, num(x.d.gov))
+        const n = earnTech(x.b, x.t, num(x.d.gov))
         addHidden(x.g, 'karma', -3)
         if (chance(x.g, 0.2)) {
           x.b.brand = clampN(x.b.brand - 12, 0, 100)
@@ -893,7 +894,7 @@ const EVENTS: DtEvent[] = [
           tell(x.g, 'Busted', `The broker was an undercover agent. They seized the money and came for you.`, '\u{1F6A8}', 'bad')
           arrestPlayer(x.g, 'Trafficking in Cyberweapons', 3, { evidence: 0.75, noResist: true, context: 'Federal agents arrested you for selling a software exploit to a criminal broker.' })
         } else {
-          const n = earnTech(x.b, num(x.d.broker))
+          const n = earnTech(x.b, x.t, num(x.d.broker))
           tell(x.g, 'Dark Money', `The broker paid ${formatMoney(n)} in untraceable installments. You try not to read the news about ransomware.`, '\u{1F576}\u{FE0F}')
         }
       }

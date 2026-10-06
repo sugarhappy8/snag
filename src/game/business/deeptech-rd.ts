@@ -5,6 +5,7 @@ import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
 import { DEEP_TECH, PROGRAMS, TRIALS, drugRegulator, maxStage, programDef, type ProgramDef } from './deeptech-data'
 import { dtInd, paceOf, rdScale, runwayYears, syncBiotechStage, techSkill } from './deeptech-core'
+import { repayGrants } from './deeptech-funding'
 import { timesDone, type Drug, type TechProgram, type TechState } from './deeptech-state'
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money } from './util'
@@ -203,13 +204,24 @@ function resolveTrial(g: GameState, b: BizState, t: TechState, p: TechProgram, o
   }
 }
 
-/** Cancel a program: the money spent so far is gone (some know-how stays). */
-export function cancelProgram(t: TechState, key: string): TechProgram | null {
+/**
+ * Cancel a program: the money spent so far is gone (some know-how stays), and grant money it
+ * hadn't spent yet goes back to the agency. Returns the program and what was repaid.
+ */
+export function cancelProgram(g: GameState, b: BizState, t: TechState, key: string): { program: TechProgram; repaid: number } | null {
   const p = t.programs.find((x) => x.key === key)
   if (!p) return null
+  const repaid = repayGrants(g, b, t, p)
   t.programs = t.programs.filter((x) => x.key !== key)
   t.ipBook += p.spent * 0.15
-  return p
+  return { program: p, repaid }
+}
+
+/** Stop every program that matches (a dropped drug, a licensed one...), repaying unspent grants. */
+export function stopPrograms(g: GameState, b: BizState, t: TechState, match: (p: TechProgram) => boolean): number {
+  let repaid = 0
+  for (const p of t.programs.filter(match)) repaid += cancelProgram(g, b, t, p.key)?.repaid ?? 0
+  return repaid
 }
 
 // ---------------------------------------------------------------------------

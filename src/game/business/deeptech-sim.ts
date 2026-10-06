@@ -87,7 +87,9 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
 
   // Costs.
   // A rocket that blows up still had to be built.
-  const cogs = def.perishable >= 1 ? plan.unitCost * (flown * 0.7 + produced * 0.3) : plan.unitCost * produced
+  const productCogs = def.perishable >= 1 ? plan.unitCost * (flown * 0.7 + produced * 0.3) : plan.unitCost * produced
+  // Contracts, satellites, foundry customers and licences cost money to deliver too.
+  const cogs = productCogs + side.cost
   const employees = headCount(b, t, produced)
   let wageSum = 0
   let rent = 0
@@ -115,7 +117,9 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const compute = computeRent(b, t)
   const creditRate = clampN(RD_CREDIT[b.countryId] ?? 0, 0, 0.5)
   const credit = Math.round(Math.min(50_000_000, rd * creditRate))
-  const grants = t.yearGrant
+  // Grants count as income only as the R&D they pay for is done (the rest stays in the R&D
+  // account for next year's work): a grant can cover R&D, never turn it into a profit.
+  const grants = Math.round(Math.min(t.yearGrant, Math.max(0, rd + compute - credit)))
   const spent = t.yearSpent
 
   const costs = cogs + overhead + keyStaff + marketing + interest + insurance + rd + compute
@@ -157,9 +161,13 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   if (side.parts.length) notes.push(`\u{1F4B5} Other revenue: ${side.parts.join(', ')} (${money(side.total)}).`)
   // Investors count breakthroughs as progress; work still underway buys patience, nothing doesn't.
   t.stuck = rd0.wins > 0 || rd0.stageUp ? 0 : t.programs.length > 0 ? t.stuck : t.stuck + 1
-  t.last = { year, rd, compute, side: side.total, grants, credit, fromVenture, notes: notes.slice(0, 12) }
+  const oneOff = Math.round(t.oneOff)
+  t.last = { year, rd, compute, side: side.total, grants, credit, fromVenture, oneOff, notes: notes.slice(0, 12) }
+  // Windfalls and grants are left out of the earnings investors pay a multiple for.
+  t.oneOffs = [...t.oneOffs.filter((x) => x.year !== year && x.year > year - 3), { year, amount: oneOff + grants }].slice(-3)
   t.yearGrant = 0
   t.yearSpent = 0
+  t.oneOff = 0
 
   const stmt: Statement = {
     year,
@@ -233,9 +241,12 @@ function queueRelease(g: GameState, a: Asset, t: TechState, gen: number): void {
   const m = t.models.find((x) => x.gen === gen)
   if (!m) return
   const frontier = frontierScore(g.year)
-  const strong = m.score >= frontier - 5
-  const closedHint = strong ? talentHint(g, 'Business', 'Best money: a model this good earns the most behind a paywall.') : ''
-  const openHint = !strong ? talentHint(g, 'Business', 'Best move: a model behind the frontier earns more as free publicity than as a product.') : ''
+  // Open weights only cost sales when they are the lab's best model and it has paying API
+  // customers (their demand drops by a quarter); otherwise they are free hype and talent.
+  const best = bestModel(t)
+  const costsSales = t.stage >= 2 && (!best || best.gen === m.gen || best.score <= m.score)
+  const closedHint = costsSales ? talentHint(g, 'Business', 'Keep it closed: it is your best model, and open weights would cut your API sales by about a quarter.') : ''
+  const openHint = !costsSales ? talentHint(g, 'Business', t.stage < 2 ? 'Open it: you have no paying API customers to lose yet, and the hype and talent help your next round.' : 'Open it: your customers use a better model, so giving this one away costs no sales and wins hype and talent.') : ''
   const choices: ChoiceOption[] = [
     { id: 'closed', label: 'Closed release: sell it through the API', emoji: '\u{1F512}', ...(closedHint ? { hint: closedHint } : {}) },
     { id: 'open', label: 'Open weights: give it to the world', emoji: '\u{1F513}', ...(openHint ? { hint: openHint } : {}) },
@@ -300,6 +311,15 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
   t.ipBook = Math.round(t.ipBook * 0.9)
   t.plantBook = Math.round(t.plantBook * 0.93)
   t.safety = Math.round(clampN(t.safety - 1, 0, 100))
+  // Satellites wear out and burn up after about six years in orbit.
+  if (t.sats > 0) {
+    let retired = 0
+    for (let i = 0; i < t.sats; i++) if (chance(g, 1 / 6)) retired++
+    if (retired > 0) {
+      t.sats -= retired
+      log(g, `${a.name} retired ${plural(retired, 'old satellite batch', 'old satellite batches')}; ${t.sats > 0 ? `${plural(t.sats, 'batch', 'batches')} still in orbit` : 'none are left in orbit'}.`)
+    }
+  }
   // Investors on the board get impatient when milestones slip and the money runs low.
   if (!b.public && t.series >= 1) {
     const runway = runwayYears(g, a, b, t)
@@ -393,7 +413,8 @@ export function techStatementLines(b: BizState, t: TechState, s: Statement): Ann
   lines.push(line('Company cash', signed(b.cash), b.cash >= 0 ? 'neutral' : 'bad'))
   if (t.venture > 0) lines.push(line('R&D account (investor & grant money)', money(t.venture)))
   if (b.debt > 0) lines.push(line('Company debt', money(b.debt), 'bad'))
-  lines.push(line(b.public ? `Market cap (${b.exchange})` : 'Valuation', money(b.valuation)))
+  if (!b.public && t.raised > 0) lines.push(line('Investors’ money (paid back first in a sale)', money(t.raised)))
+  lines.push(line(b.public ? `Market cap (${b.exchange})` : t.raised > 0 ? 'Valuation (after investors’ preference)' : 'Valuation', money(b.valuation)))
   if (b.share < 1) lines.push(line(`Your ${pct(b.share)} stake`, money(stakeValue(b))))
   lines.push(line('Tech level · Stage', `${Math.round(t.level)}/100 · ${stageName(dtInd(b), t.stage)}`))
   return lines

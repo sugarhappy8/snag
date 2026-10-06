@@ -58,8 +58,8 @@ function startRow(g: GameState, industry: string): MenuAction {
 describe('probe', () => {
   it('seed -> R&D -> sell loop', () => {
     const rows: string[] = []
-    for (const ind of ['software', 'ecommerce', 'marketing', 'cybersecurity']) {
-      for (const cc of ['us']) {
+    for (const ind of ['aiLab', 'cybersecurity', 'robotics', 'semiconductor', 'quantum', 'biotech', 'spaceTech', 'electricVehicles']) {
+      for (const cc of ['us', 'in']) {
         let total = 0
         let n = 0
         for (let seed = 1; seed <= 12; seed++) {

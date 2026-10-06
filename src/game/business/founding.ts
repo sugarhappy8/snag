@@ -12,10 +12,10 @@ import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuN
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { talentHint } from '../talents'
 import { becomeCeo, installManager, managerCandidate } from './career'
-import { localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
+import { industryHint, localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
 import { refreshTechValue } from './deeptech-core'
 import { DEEP_TECH } from './deeptech-data'
-import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, expertHire, expertSalary, hasBackground, industryHintText, initTech, seedOffer } from './deeptech-found'
+import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
 import { isDeepTechIndustry, type DeepTechIndustry } from './deeptech-state'
 import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
@@ -662,7 +662,10 @@ function industryRow(industry: Industry): MenuAction {
     hint: (g) => {
       const c = g.character
       if (!isIndustryLegal(c.countryId, industry)) return null
-      const text = industryHintText(c.countryId, homeCity(g), industry)
+      // Classic rows: the industries that pay back fastest here, simulated with the same model
+      // the company will run on. Deep tech: the real hubs (investors, talent, customers).
+      if (!deep) return industryHint(g, industry, c.countryId, homeCity(g))
+      const text = deepHubHint(c.countryId, industry)
       return text ? talentHint(g, 'Business', text) || null : null
     },
     disabledReason: (g) => {

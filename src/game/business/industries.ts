@@ -415,9 +415,9 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   cybersecurity: {
     id: 'cybersecurity', label: 'Cybersecurity Company', emoji: '\u{1F6E1}\u{FE0F}', unit: 'enterprise contracts', unitOne: 'enterprise contract', site: 'office', sitePlural: 'offices',
     blurb: 'Stop the hackers before they stop your clients. Paranoia as a service.',
-    price: 100_000, unitCost: 15_000, localShare: 0.3, tradable: 0.8, demand: 160, elasticity: 1.1, incomeSens: 0.5,
-    capital: 150_000, capitalLocal: 0.6, staff: 20, wage: 140_000, staffScale: 0.55, rent: 200_000, maint: 0.12, capMult: 1,
-    multiple: 14, growth: 1, perMillion: 0.8, taxShare: 0, perishable: 1, marketingShare: 0.05,
+    price: 60_000, unitCost: 12_000, localShare: 0.3, tradable: 0.8, demand: 160, elasticity: 1.1, incomeSens: 0.5,
+    capital: 150_000, capitalLocal: 0.6, staff: 30, wage: 140_000, staffScale: 0.55, rent: 200_000, maint: 0.12, capMult: 1,
+    multiple: 14, growth: 1, perMillion: 0.8, taxShare: 0, perishable: 1, marketingShare: 0.15,
     roles: [r('Chief Security Researcher', 'quality', 250_000), r('Red Team Lead', 'quality', 200_000), r('Head of Sales', 'sales', 210_000), r('SOC Director', 'ops', 190_000), r('CFO', 'finance', 220_000)],
     products: ['Threat Intelligence Feed', 'Phishing Simulator', 'Managed Detection Plan', 'Compliance Toolkit', 'Small Business Edition'],
     suffixes: ['Security', 'Cyber', 'Defense', 'Shield', 'Sentinel'],

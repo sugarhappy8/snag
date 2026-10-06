@@ -7,7 +7,7 @@ import { bell, chance, rand, uid } from '../rng'
 import { hasTalent } from '../talents'
 import type { GameState } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
-import { localEcon, localPay } from './economy'
+import { localPay } from './economy'
 import { DEEP_TECH, DRUG_AREAS, drugName, vcDepth } from './deeptech-data'
 import { ecosystem, founderSkill, hasBackground, rdScale } from './deeptech-core'
 import { isDeepTechIndustry, readTech, type DeepTechIndustry, type TechState } from './deeptech-state'
@@ -123,46 +123,31 @@ export function initTech(g: GameState, b: BizState, opts: { cofounder?: string; 
 }
 
 // ---------------------------------------------------------------------------
-// The Business talent: the best industries to start in this market
+// The Business talent: the deep-tech industries this market is a real hub for
 
-const bestCache = new Map<string, { classic: Industry[]; deep: Industry[] }>()
+const hubCache = new Map<string, Industry[]>()
 
-/** Top classic and deep-tech industries for a market (pure; cached per country and city). */
-export function bestIndustries(countryId: string, city: string): { classic: Industry[]; deep: Industry[] } {
-  const key = `${countryId}|${city}`
-  const hit = bestCache.get(key)
+/**
+ * The (at most two) deep-tech industries a market is a real hub for: strong local demand and the
+ * investors and talent to back it (the same ecosystem score that sizes seeds and rounds). Pure.
+ */
+export function deepHubs(countryId: string): Industry[] {
+  const hit = hubCache.get(countryId)
   if (hit) return hit
-  const classic: { id: Industry; score: number }[] = []
   const deep: { id: Industry; score: number }[] = []
   for (const id of INDUSTRY_IDS) {
-    if (!isIndustryLegal(countryId, id)) continue
-    if (isDeepTechIndustry(id)) {
-      // Only real hubs get the nod: a market with no deep-tech scene to speak of gets no hint.
-      const d = marketOf(countryId).demand[id]
-      if (d !== undefined && d >= 1.2) deep.push({ id, score: ecosystem(countryId, id) * d })
-      continue
-    }
-    if (id === 'gameStudio') continue
-    const def = industryDef(id)
-    const e = localEcon(id, countryId, city)
-    const margin = e.baseDemand * (e.goingPrice / (1 + e.taxRate) - e.unitCost)
-    const fixed = def.staff * e.wage + e.rent + e.capital * def.maint
-    const roi = (margin * 0.85 - fixed) / Math.max(1, e.capital)
-    classic.push({ id, score: roi * Math.min(1.6, e.demandMult) })
+    if (!isDeepTechIndustry(id) || !isIndustryLegal(countryId, id)) continue
+    // A market with no deep-tech scene to speak of gets no hint.
+    const d = marketOf(countryId).demand[id]
+    if (d !== undefined && d >= 1.2) deep.push({ id, score: ecosystem(countryId, id) * d })
   }
-  const out = {
-    classic: classic.sort((a, b) => b.score - a.score).slice(0, 3).map((x) => x.id),
-    deep: deep.sort((a, b) => b.score - a.score).slice(0, 2).map((x) => x.id),
-  }
-  bestCache.set(key, out)
+  const out = deep.sort((a, b) => b.score - a.score).slice(0, 2).map((x) => x.id)
+  hubCache.set(countryId, out)
   return out
 }
 
-/** The purple hint text for a Start a Business row ('' when it isn't one of the best). */
-export function industryHintText(countryId: string, city: string, id: Industry): string {
-  const best = bestIndustries(countryId, city)
-  const country = getCountry(countryId).name
-  if (best.classic.includes(id)) return `One of the best bets in ${country} right now: strong demand and healthy margins for the money.`
-  if (best.deep.includes(id)) return `${country} is a hub for this: deep-pocketed investors, the right talent and hungry customers.`
-  return ''
+/** The purple hint text for a deep-tech Start a Business row ('' when this market isn't a hub). */
+export function deepHubHint(countryId: string, id: Industry): string {
+  if (!deepHubs(countryId).includes(id)) return ''
+  return `${getCountry(countryId).name} is a hub for this: deep-pocketed investors, the right talent and hungry customers.`
 }

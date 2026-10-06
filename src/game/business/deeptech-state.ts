@@ -72,6 +72,8 @@ export interface GrantRec {
   id: string
   year: number
   amount: number
+  /** Paid back so far (a program it funded was cancelled before the money was spent). */
+  repaid?: number
 }
 
 /** A drug candidate (biotech). phase: 0 preclinical, 1-3 trials, 4 under review, 5 approved. */
@@ -120,6 +122,8 @@ export interface TechYear {
   grants: number
   credit: number
   fromVenture: number
+  /** One-off income booked this year (licensing upfronts, celebrity seats, broker sales...). */
+  oneOff: number
   notes: string[]
 }
 
@@ -187,13 +191,21 @@ export interface TechState {
   contract: TechContract | null
   /** Anchor-customer supply deal (semiconductors/robotics/EVs). */
   deal: TechContract | null
-  /** Cached extra company value (deepTechValue), refreshed by the deep-tech yearly code. */
+  /**
+   * Cached deep-tech adjustment to the company's valuation (deepTechValue), refreshed by the
+   * deep-tech code: what turns valuationOf's profit-based number into the deep-tech valuation.
+   * Negative when one-off income inflated the profit-based number.
+   */
   value: number
   last: TechYear | null
   /** This year's grants (P&L income; the cash went into `venture`). */
   yearGrant: number
   /** This year's one-off deep-tech costs paid from `venture` (P&L cost). */
   yearSpent: number
+  /** This year's one-off income so far (paid into company cash). */
+  oneOff: number
+  /** One-off income of recent fiscal years (left out of the earnings investors pay a multiple for). */
+  oneOffs: { year: number; amount: number }[]
   /** Next id for drugs and models. */
   seq: number
 }
@@ -246,7 +258,14 @@ function readRound(x: Record<string, Json>): RoundRec | null {
 
 function readGrant(x: Record<string, Json>): GrantRec | null {
   const id = str(x.id)
-  return id ? { id, year: num(x.year), amount: Math.max(0, num(x.amount)) } : null
+  if (!id) return null
+  const amount = Math.max(0, num(x.amount))
+  const repaid = clampN(num(x.repaid), 0, amount)
+  return repaid > 0 ? { id, year: num(x.year), amount, repaid } : { id, year: num(x.year), amount }
+}
+
+function readOneOff(x: Record<string, Json>): { year: number; amount: number } | null {
+  return typeof x.year === 'number' ? { year: x.year, amount: Math.max(0, num(x.amount)) } : null
 }
 
 function readDrug(x: Record<string, Json>): Drug | null {
@@ -297,6 +316,7 @@ function readYear(v: Json | undefined): TechYear | null {
     grants: Math.max(0, num(x.grants)),
     credit: Math.max(0, num(x.credit)),
     fromVenture: Math.max(0, num(x.fromVenture)),
+    oneOff: Math.max(0, num(x.oneOff)),
     notes: Array.isArray(x.notes) ? x.notes.filter((n): n is string => typeof n === 'string').slice(0, 12) : [],
   }
 }
@@ -344,10 +364,12 @@ export function readTech(v: Json | undefined): TechState {
     logical: clampN(Math.round(num(d.logical)), 0, 1000),
     contract: readContract(d.contract),
     deal: readContract(d.deal),
-    value: clampN(num(d.value), 0, MAX_TECH_VALUE),
+    value: clampN(num(d.value), -MAX_TECH_VALUE, MAX_TECH_VALUE),
     last: readYear(d.last),
     yearGrant: Math.max(0, num(d.yearGrant)),
     yearSpent: Math.max(0, num(d.yearSpent)),
+    oneOff: Math.max(0, num(d.oneOff)),
+    oneOffs: list(d.oneOffs, readOneOff, 4),
     seq: Math.max(0, Math.round(num(d.seq))),
   }
 }
@@ -365,10 +387,14 @@ export function timesDone(t: TechState, id: string): number {
 /** Cap on the deep-tech part of a valuation (keeps every number finite and sane). */
 export const MAX_TECH_VALUE = 3e12
 
-/** Extra company value from IP, patents and the R&D pipeline (added to valuationOf). */
+/**
+ * The deep-tech part of a valuation (added to valuationOf): patents, the R&D pipeline, revenue
+ * multiples, investor money net of their liquidation preference, minus any one-off income that
+ * valuationOf's profit multiple would otherwise capitalize. Can be negative.
+ */
 export function deepTechValue(tech: Json | undefined): number {
   const v = num(rec(tech)?.value)
-  return clampN(v, 0, MAX_TECH_VALUE)
+  return clampN(v, -MAX_TECH_VALUE, MAX_TECH_VALUE)
 }
 
 /** Profit route to a listing for deep tech (exchanges also list on milestones; see below). */

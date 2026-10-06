@@ -43,8 +43,8 @@ import {
   techView,
 } from './deeptech-core'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
-import { bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, lastPost, makeTermSheet, nextRoundNeed, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, startProgram, startTrial, trialBlock, trialCost, trialName, trialOdds } from './deeptech-rd'
+import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
+import { bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
@@ -52,6 +52,14 @@ import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
 import { clampN, money, num, pct, plural, rec, str, toJson, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, t: TechState, input?: string) => void
+
+/** Why the player can't make deep-tech decisions right now (prison, death, an heir too young). */
+function dtBlock(g: GameState, a: Asset): string | null {
+  const block = manageBlock(g, a)
+  if (block) return block
+  if (g.character.age < 18) return 'You must be 18 to run a company. Its general manager makes these calls until then.'
+  return null
+}
 
 /** A deep-tech action that re-reads the live business before running. */
 function dtAct(a: Asset, key: string, label: string, emoji: string, opts: {
@@ -72,7 +80,7 @@ function dtAct(a: Asset, key: string, label: string, emoji: string, opts: {
     visible: opts.visible,
     hint: opts.hint,
     disabledReason: (g) => {
-      const block = manageBlock(g, a)
+      const block = dtBlock(g, a)
       if (block) return block
       if (!opts.disabled) return null
       const b = readBiz(g, a)
@@ -82,7 +90,7 @@ function dtAct(a: Asset, key: string, label: string, emoji: string, opts: {
     input: opts.input,
     run: (g, input) => {
       const cur = findBusiness(g, a.id)
-      if (!cur || manageBlock(g, cur)) return
+      if (!cur || dtBlock(g, cur)) return
       const b = bizOf(g, cur)
       opts.run(g, cur, b, techOf(b), input)
     },
@@ -138,7 +146,7 @@ function labMenu(a: Asset): MenuGroup {
       const { t } = view(g, a)
       return `Tech level ${Math.round(t.level)}/100 · ${plural(t.programs.length, 'program')} running · ${money(rdBudget(t))}/yr`
     },
-    disabledReason: (g) => manageBlock(g, a),
+    disabledReason: (g) => dtBlock(g, a),
     header: (g) => {
       const { b, t } = view(g, a)
       const ind = dtInd(b)
@@ -159,12 +167,16 @@ function labMenu(a: Asset): MenuGroup {
         nodes.push(
           dtAct(a, `cancel.${p.key}`, p.name, p.emoji, {
             subtitle: `${programLine(p)} · tap to cancel`,
-            confirm: () => `Cancel ${p.name}? The ${money(p.spent)} spent so far is gone.`,
-            run: (gg, cur, _bb, tt) => {
-              const gone = cancelProgram(tt, p.key)
+            confirm: (gg) => {
+              const owed = grantsOwed(gg, b, t, p).reduce((sum, x) => sum + x.amount, 0)
+              return `Cancel ${p.name}? The ${money(p.spent)} spent so far is gone.${owed > 0 ? ` Grant money it hasn't spent yet (${money(owed)}) goes back to the agency.` : ''}`
+            },
+            run: (gg, cur, bb, tt) => {
+              const gone = cancelProgram(gg, bb, tt, p.key)
               if (!gone) return
-              log(gg, `${cur.name} cancelled ${gone.name}.`)
-              notice(gg, 'Program Cancelled', `${gone.name} is shelved. The team moves on, a little wiser and a lot sadder.`, { emoji: '\u{1F5D1}\u{FE0F}' })
+              revalue(gg, cur, bb, tt)
+              log(gg, `${cur.name} cancelled ${gone.program.name}.`)
+              notice(gg, 'Program Cancelled', `${gone.program.name} is shelved. The team moves on, a little wiser and a lot sadder.${gone.repaid > 0 ? ` ${formatMoney(gone.repaid)} of unspent grant money went back to the agency.` : ''}`, { emoji: '\u{1F5D1}\u{FE0F}' })
             },
           }),
         )
@@ -269,7 +281,7 @@ function fundingMenu(a: Asset): MenuGroup {
       const { b, t } = view(g, a)
       return `${SERIES[t.series]} · you own ${pct(b.share)} · R&D account ${money(t.venture)}`
     },
-    disabledReason: (g) => manageBlock(g, a),
+    disabledReason: (g) => dtBlock(g, a),
     header: (g) => {
       const { b, t } = view(g, a)
       const need = nextRoundNeed(b, t)
@@ -330,10 +342,7 @@ function fundingMenu(a: Asset): MenuGroup {
               useYearAction(gg, grantKey(cur, gr), 1)
               const amount = grantAmount(bb, tt, gr)
               if (chance(gg, grantOdds(gg, cur, bb, tt, gr))) {
-                tt.venture += amount
-                tt.yearGrant += amount
-                tt.grants.push({ id: gr.id, year: gg.year, amount })
-                if (tt.grants.length > 40) tt.grants.splice(0, tt.grants.length - 40)
+                awardGrant(gg, tt, gr, amount)
                 revalue(gg, cur, bb, tt)
                 log(gg, `${cur.name} won a ${gr.name} worth ${money(amount)}.`, 'good')
                 notice(gg, 'Grant Awarded!', `${cur.name} won a ${gr.name}: ${formatMoney(amount)} into the R&D account. The paperwork was 140 pages. Worth it.`, { emoji: '\u{1F3DB}\u{FE0F}', tone: 'good' })
@@ -422,8 +431,9 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
   nodes.push(
     dtAct(a, 'enterprise', 'Pitch a Giant Corporation', '\u{1F3E2}', {
       subtitle: 'A multi-year enterprise AI deal, if your models are good enough',
-      disabled: (gg, _bb, tt) => (tt.stage < 3 ? 'Big corporations only sign with an enterprise platform.' : tt.deal ? `You already have ${tt.deal.name} running.` : (gg.yearActions[`dt.enterprise.${a.id}`] ?? 0) >= 1 ? 'You already pitched a big customer this year.' : null),
-      hint: (gg) => (competitiveness(t, gg.year) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier to win this.') : null),
+      disabled: (gg, _bb, tt) => enterpriseBlock(gg, a, tt),
+      // Only on a pitch you can make: the odds are 15% + 45% of competitiveness (55%+ here).
+      hint: (gg) => (!enterpriseBlock(gg, a, t) && competitiveness(t, gg.year) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier that you will probably win it, and the contract is worth far more than the pitch.') : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.enterprise.${cur.id}`, 1)) return tooBusy(gg, 'pitched a big customer')
         const cost = payTech(bb, tt, Math.round(300_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
@@ -444,13 +454,21 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
   return nodes
 }
 
+function enterpriseBlock(g: GameState, a: Asset, t: TechState): string | null {
+  if (t.stage < 3) return 'Big corporations only sign with an enterprise platform.'
+  if (t.deal) return `You already have ${t.deal.name} running.`
+  if ((g.yearActions[`dt.enterprise.${a.id}`] ?? 0) >= 1) return 'You already pitched a big customer this year.'
+  return null
+}
+
 function robotNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNode[] {
   return [
     infoNode(a, 'robots', `${stageName('robotics', t.stage)} · ${plural(t.plant, 'production line')} · safety record ${Math.round(t.safety)}/100`, '\u{1F9BE}'),
     dtAct(a, 'demo', 'Live Demo Day', '\u{1F3A5}', {
       subtitle: 'Show the robot to the world, live. What could go wrong?',
-      disabled: (_gg, _bb, tt) => (tt.level < 20 ? 'Your robot can’t do anything worth filming yet.' : null),
-      hint: (gg) => (t.level >= 55 ? talentHint(gg, 'Business', 'Go for it: your robot is good enough that a live demo should land.') : null),
+      disabled: (gg, _bb, tt) => (tt.level < 20 ? 'Your robot can’t do anything worth filming yet.' : (gg.yearActions[`dt.demo.${a.id}`] ?? 0) >= 1 ? 'You already held a demo day this year.' : null),
+      // At tech level 55+ the demo lands at least 61% of the time (30% + level/180 + safety/400).
+      hint: (gg) => (t.level >= 55 && (gg.yearActions[`dt.demo.${a.id}`] ?? 0) < 1 ? talentHint(gg, 'Business', 'Go for it: your robot is good enough that a live demo will probably land.') : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.demo.${cur.id}`, 1)) return tooBusy(gg, `held a demo day for ${cur.name}`)
         const cost = payTech(bb, tt, Math.round(250_000 * (0.5 + (localEcon(bb.industry, bb.countryId, bb.city).level))))
@@ -532,12 +550,13 @@ function drugMenu(a: Asset, d0: Drug): MenuGroup {
           dtAct(a, `drop.${d.id}`, 'Drop the Program', '\u{1F5D1}\u{FE0F}', {
             subtitle: 'Stop developing it for good',
             confirm: () => `Drop ${d.name}? Any trial running for it stops.`,
-            run: (gg, cur, _bb, tt) => {
+            run: (gg, cur, bb, tt) => {
               const dd = tt.drugs.find((x) => x.id === d.id)
               if (!dd) return
               dd.failed = true
-              tt.programs = tt.programs.filter((p) => !(p.id === 'trial' && p.target === dd.id))
-              notice(gg, 'Program Dropped', `${dd.name} is shelved. Somewhere, a chemist is quietly crying.`, { emoji: '\u{1F5D1}\u{FE0F}' })
+              const repaid = stopPrograms(gg, bb, tt, (p) => p.id === 'trial' && p.target === dd.id)
+              revalue(gg, cur, bb, tt)
+              notice(gg, 'Program Dropped', `${dd.name} is shelved. Somewhere, a chemist is quietly crying.${repaid > 0 ? ` ${formatMoney(repaid)} of unspent grant money went back to the agency.` : ''}`, { emoji: '\u{1F5D1}\u{FE0F}' })
               log(gg, `${cur.name} dropped ${dd.name}.`)
             },
           }),
@@ -564,7 +583,7 @@ function spaceNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNo
   const nodes: MenuNode[] = [
     infoNode(a, 'rocket', `${stageName('spaceTech', t.stage)} · ${plural(t.tests, 'test flight')}, ${plural(t.wins, 'success', 'successes')}, ${plural(t.booms, 'explosion')}`, '\u{1F680}'),
   ]
-  if (t.sats > 0) nodes.push(infoNode(a, 'sats', `${plural(t.sats, 'satellite batch', 'satellite batches')} in orbit selling internet from space`, '\u{1F310}'))
+  if (t.sats > 0) nodes.push(infoNode(a, 'sats', `${plural(t.sats, 'satellite batch', 'satellite batches')} in orbit selling internet from space (each lasts about six years)`, '\u{1F310}'))
   if (t.contract) nodes.push(infoNode(a, 'contract', `${t.contract.name}: ${money(t.contract.perYear)}/yr for ${plural(t.contract.years, 'more year')}`, '\u{1F3DB}\u{FE0F}'))
   nodes.push(
     dtAct(a, 'testflight', t.stage >= 3 ? 'Fly a Demonstration Mission' : 'Attempt a Test Flight', '\u{1F680}', {
@@ -572,10 +591,10 @@ function spaceNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNo
         const v = view(gg, a)
         return `About ${money(testFlightCost(v.b))} per rocket · ${Math.round(testOdds(gg, a, v.b, v.t) * 100)}% chance it reaches orbit`
       },
-      disabled: (_gg, _bb, tt) => (tt.stage < 2 ? 'You need a finished rocket on the pad (R&D Lab: Orbital Rocket).' : null),
+      disabled: (gg, _bb, tt) => (tt.stage < 2 ? 'You need a finished rocket on the pad (R&D Lab: Orbital Rocket).' : (gg.yearActions[`dt.flight.${a.id}`] ?? 0) >= 2 ? 'You already flew two missions this year.' : null),
       hint: (gg) => {
         const v = view(gg, a)
-        return v.t.stage === 2 ? talentHint(gg, 'Business', 'Fly it: nothing else in this company makes money until you reach orbit.') : null
+        return v.t.stage === 2 && (gg.yearActions[`dt.flight.${a.id}`] ?? 0) < 2 ? talentHint(gg, 'Business', 'Fly it: nothing else in this company makes money until you reach orbit.') : null
       },
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.flight.${cur.id}`, 2)) return tooBusy(gg, `flown two test missions for ${cur.name}`)
@@ -737,7 +756,7 @@ function screenMenu(a: Asset, b0: BizState): MenuGroup {
       const { b, t } = view(g, a)
       return stageName(dtInd(b), t.stage)
     },
-    disabledReason: (g) => manageBlock(g, a),
+    disabledReason: (g) => dtBlock(g, a),
     header: () => sc.header,
     children: (g) => {
       const { b, t } = view(g, a)

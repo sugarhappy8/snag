@@ -6,7 +6,7 @@ import { chance } from '../rng'
 import type { Asset, GameState } from '../types'
 import { PROGRAMS, programDef } from './deeptech-data'
 import { bestTechPlan, burnRate, dtInd, revalue, runwayYears, sellable, techFunds, techOf } from './deeptech-core'
-import { bestGrant, bridgeBlock, closeRound, grantAmount, grantKey, grantOdds, makeTermSheet, roundBlock } from './deeptech-funding'
+import { awardGrant, bestGrant, bridgeBlock, closeRound, grantAmount, grantKey, grantOdds, makeTermSheet, roundBlock } from './deeptech-funding'
 import { bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialCost } from './deeptech-rd'
 import { SERIES } from './deeptech-state'
 import { testFlightAuto } from './deeptech-menu'
@@ -68,9 +68,7 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
     g.yearActions[grantKey(a, gr)] = (g.yearActions[grantKey(a, gr)] ?? 0) + 1
     const amount = grantAmount(b, t, gr)
     if (amount > 0 && chance(g, grantOdds(g, a, b, t, gr))) {
-      t.venture += amount
-      t.yearGrant += amount
-      t.grants.push({ id: gr.id, year: g.year, amount })
+      awardGrant(g, t, gr, amount)
       log(g, `${a.name} won a ${gr.name} worth ${money(amount)}.`, 'good')
     }
   }

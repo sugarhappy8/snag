@@ -6,9 +6,9 @@ import { marketOf } from '../data/markets'
 import { rand } from '../rng'
 import type { Asset, GameState } from '../types'
 import { valuationOf } from './economy'
-import { DEEP_TECH, GRANT_COOLDOWN, MAX_GRANT_AWARDS, NATIONAL_GRANT, grantsFor, maxStage, programDef, vcDepth, type GrantDef } from './deeptech-data'
-import { dtInd, industryCycle, rdBudget, rdScale, revalue, runwayYears, techSkill } from './deeptech-core'
-import { MAX_SERIES, SERIES, type TechState } from './deeptech-state'
+import { DEEP_TECH, GRANTS, GRANT_COOLDOWN, MAX_GRANT_AWARDS, NATIONAL_GRANT, grantsFor, maxStage, programDef, vcDepth, type GrantDef } from './deeptech-data'
+import { dtInd, industryCycle, payTech, rdBudget, rdScale, revalue, runwayYears, techSkill } from './deeptech-core'
+import { MAX_SERIES, SERIES, type TechProgram, type TechState } from './deeptech-state'
 import { investorFirm } from './flavor'
 import { type BizState } from './state'
 import { clampN, money } from './util'
@@ -224,4 +224,59 @@ export function bestGrant(g: GameState, a: Asset, b: BizState, t: TechState): Gr
     }
   }
   return best
+}
+
+/** Win a grant: the money goes into the R&D account and counts as income as the R&D is done. */
+export function awardGrant(g: GameState, t: TechState, gr: GrantDef, amount: number): void {
+  const n = Math.max(0, Math.round(amount))
+  t.venture += n
+  t.yearGrant += n
+  t.grants.push({ id: gr.id, year: g.year, amount: n })
+  if (t.grants.length > 40) t.grants.splice(0, t.grants.length - 40)
+}
+
+function grantDef(id: string): GrantDef | undefined {
+  return id === NATIONAL_GRANT.id ? NATIONAL_GRANT : GRANTS.find((x) => x.id === id)
+}
+
+/**
+ * Grant money that has to go back when a program it paid for stops early: a capital grant returns
+ * its share of the part of the project that won't be built; a research grant won this year
+ * returns its share of the program's budget for the year. One entry per grant affected.
+ */
+export function grantsOwed(g: GameState, b: BizState, t: TechState, p: TechProgram): { index: number; amount: number }[] {
+  const capex = p.id !== 'trial' && isCapex(b, p.id)
+  const out: { index: number; amount: number }[] = []
+  t.grants.forEach((rec, index) => {
+    const def = grantDef(rec.id)
+    if (!def || !!def.capex !== capex) return
+    const open = rec.amount - (rec.repaid ?? 0)
+    if (open <= 0) return
+    const due = capex ? (rec.year >= p.started ? def.share * Math.max(0, p.years - p.progress) * p.cost : 0) : rec.year === g.year ? def.share * p.cost : 0
+    const amount = Math.round(Math.min(open, due))
+    if (amount > 0) out.push({ index, amount })
+  })
+  return out
+}
+
+/**
+ * Pay back the grant money a stopped program no longer needs: from the R&D account first, then
+ * company cash. This year's awards simply stop counting as income; older ones are a cost now.
+ */
+export function repayGrants(g: GameState, b: BizState, t: TechState, p: TechProgram): number {
+  let total = 0
+  for (const { index, amount } of grantsOwed(g, b, t, p)) {
+    const rec = t.grants[index]
+    rec.repaid = (rec.repaid ?? 0) + amount
+    if (rec.year === g.year) {
+      const fresh = Math.min(amount, t.yearGrant)
+      t.yearGrant -= fresh
+      const fromVenture = Math.min(Math.max(0, t.venture), fresh)
+      t.venture -= fromVenture
+      b.cash -= fresh - fromVenture
+      if (amount > fresh) payTech(b, t, amount - fresh)
+    } else payTech(b, t, amount)
+    total += amount
+  }
+  return total
 }

@@ -620,7 +620,7 @@ describe('deep tech', () => {
           })
           const b = bizOf(g, a)
           b.last = { year: g.year - 1, demand: 100, sold: 90, produced: 95, spoiled: 0, price: 10, revenue: 2_000_000, salesTax: 0, netRevenue: 2_000_000, cogs: 500_000, wages: 900_000, keyStaff: 0, rent: 100_000, marketing: 50_000, interest: 0, upkeep: 50_000, other: 3_000_000, otherIncome: 100_000, ownerPay: 0, pbt: -2_500_000, corpTax: 0, net: -2_500_000, cashErosion: 0, cycle: 1, openFraction: 1, employees: 12 }
-          techOf(b).last = { year: g.year - 1, rd: 2_000_000, compute: 500_000, side: 100_000, grants: 50_000, credit: 20_000, fromVenture: 1_000_000, notes: ['A note.'] }
+          techOf(b).last = { year: g.year - 1, rd: 2_000_000, compute: 500_000, side: 100_000, grants: 50_000, credit: 20_000, fromVenture: 1_000_000, oneOff: 0, notes: ['A note.'] }
           const before = JSON.stringify(g)
           const rng = g.rng
           const text: string[] = []

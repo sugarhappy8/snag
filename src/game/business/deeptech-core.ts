@@ -7,8 +7,8 @@ import { marketOf, industryDemand } from '../data/markets'
 import { codingSkill } from '../computer/skills'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
-import { appealOf, ceoSkill, costFactor, cycleOf, localEcon, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
-import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, vcDepth } from './deeptech-data'
+import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
+import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { runsIt, totalOutlets, type BizState } from './state'
@@ -339,30 +339,38 @@ export function bestTechPlan(g: GameState, b: BizState, t: TechState, cycle?: nu
 // ---------------------------------------------------------------------------
 // Side revenue: contracts, satellites, foundry services, royalties, licences
 
-export function sideRevenue(b: BizState, t: TechState, year: number): { total: number; parts: string[] } {
+/**
+ * Yearly revenue besides the main product, and what it costs to deliver: contracts need people
+ * and parts, foundry customers need wafers, satellites need ground stations, licences need sales
+ * and support. Only royalties come in (almost) free.
+ */
+export function sideRevenue(b: BizState, t: TechState, year: number): { total: number; cost: number; parts: string[] } {
   const ind = dtInd(b)
   const parts: string[] = []
   let total = 0
-  const add = (n: number, what: string) => {
+  let cost = 0
+  const add = (n: number, costShare: number, what: string) => {
     if (!(n > 0)) return
     total += n
+    cost += n * costShare
     parts.push(what)
   }
   const scale = revenueScale(b)
-  if (t.contract) add(t.contract.perYear, t.contract.name)
-  if (t.deal) add(t.deal.perYear, t.deal.name)
-  if (ind === 'semiconductor' && t.plant > 0) add(t.plant * 20_000_000 * scale * (0.6 + t.level / 150), 'foundry services')
+  if (t.contract) add(t.contract.perYear, 0.6, t.contract.name)
+  if (t.deal) add(t.deal.perYear, 0.65, t.deal.name)
+  if (ind === 'semiconductor' && t.plant > 0) add(t.plant * 20_000_000 * scale * (0.6 + t.level / 150), 0.55, 'foundry services')
   if (ind === 'spaceTech') {
-    add(t.sats * 25_000_000 * scale * (0.6 + t.level / 150), 'satellite internet')
-    if (timesDone(t, 'smallsat') > 0) add(6_000_000 * scale, 'satellite building')
+    add(t.sats * 25_000_000 * scale * (0.6 + t.level / 150), 0.45, 'satellite internet')
+    if (timesDone(t, 'smallsat') > 0) add(6_000_000 * scale, 0.75, 'satellite building')
   }
-  if (ind === 'quantum' && timesDone(t, 'pqc') > 0) add(3_000_000 * scale, 'encryption licences')
+  if (ind === 'quantum' && timesDone(t, 'pqc') > 0) add(3_000_000 * scale, 0.45, 'encryption licences')
   if (ind === 'biotech') {
     let units = 0
     for (const d of t.drugs) if (!d.failed && d.phase >= 4 && d.partner) units += d.peak * drugCurve(d.filed, d.approved, year) * d.royalty
-    add(units * unitRevenue(b), 'drug royalties')
+    add(units * unitRevenue(b), 0.05, 'drug royalties')
   }
-  return { total: Number.isFinite(total) ? Math.round(total) : 0, parts }
+  const ok = Number.isFinite(total) && Number.isFinite(cost)
+  return { total: ok ? Math.round(total) : 0, cost: ok ? Math.round(cost) : 0, parts }
 }
 
 // ---------------------------------------------------------------------------
@@ -422,40 +430,101 @@ export function runwayYears(g: GameState, a: Asset, b: BizState, t: TechState): 
 // ---------------------------------------------------------------------------
 // Valuation
 
-/** Recompute the cached deep-tech value (IP, pipeline, plants, revenue multiple, investor money). */
-export function refreshTechValue(g: GameState, b: BizState, t: TechState): void {
+interface BookYear {
+  year: number
+  revenue: number
+  profit: number
+}
+
+/** The yearly records as valuationOf will see them once the year just simulated is recorded. */
+function bookedYears(b: BizState): BookYear[] {
+  const h: BookYear[] = b.history.map((r) => ({ year: r.year, revenue: r.revenue, profit: r.profit }))
+  const s = b.last
+  if (s && (h.length === 0 || h[h.length - 1].year < s.year)) h.push({ year: s.year, revenue: s.revenue, profit: s.net })
+  return h.slice(-3)
+}
+
+/** What valuationOf counts before the deep-tech part: max(profit multiple, asset floor). */
+function classicPart(b: BizState): number {
+  const booked = bookedYears(b)
+  const last = b.history[b.history.length - 1]
+  const history = booked.map((r) => ({ ...(last ?? { tax: 0, units: 0, price: 0, staff: 0, valuation: 0, outlets: 0 }), year: r.year, revenue: r.revenue, profit: r.profit }))
+  const v = valuationOf({ ...b, history, tech: { value: 0 }, cash: 0, debt: 0, cooked: 0 })
+  return Number.isFinite(v) ? v : 0
+}
+
+/**
+ * What the whole company is worth (before cash, debt and investor money), the deep-tech way: the
+ * best of a profit multiple on its recurring earnings (one-off windfalls left out), a revenue
+ * multiple that rewards a commercial stage and healthy margins (a consultancy that loses money
+ * isn't a platform), and its patents and drug pipeline; plus its plants and its equipment.
+ */
+export function operatingValue(g: GameState, b: BizState, t: TechState): number {
   const ind = dtInd(b)
   const def = industryDef(ind)
   const d = DEEP_TECH[ind]
   const cyc = industryCycle(g, ind, g.year).value
   const hypeMult = (0.6 + t.hype / 150) * cyc
-  const h = b.history
-  const revenue = b.last ? b.last.revenue : 0
-  const prev = h.length >= 1 ? h[h.length - 1].revenue : 0
-  const growth = prev > 0 && revenue > 0 ? clampN(1 + (revenue / prev - 1) * 0.5, 0.6, 1.6) : 1
-  const revValue = revenue * d.salesMult * hypeMult * growth
+  const years = bookedYears(b)
+  const cur = years[years.length - 1]
+  const prev = years.length >= 2 ? years[years.length - 2] : null
+  const revenue = Math.max(0, cur?.revenue ?? 0)
+  const tax = clampN(marketOf(b.countryId).corporateTax, 0, 0.6)
+  const oneOff = (year: number) => t.oneOffs.filter((x) => x.year === year).reduce((sum, x) => sum + x.amount, 0)
+  const core = years.map((r) => r.profit - oneOff(r.year) * (1 - tax))
+  const weights = core.length === 3 ? [0.2, 0.3, 0.5] : core.length === 2 ? [0.4, 0.6] : [1]
+  const avgCore = core.reduce((sum, p, i) => sum + p * weights[i], 0)
+  const growth = prev && prev.revenue > 0 && revenue > 0 ? clampN(revenue / prev.revenue - 1, -0.3, 0.6) : 0
+  const profitValue = Math.max(0, avgCore) * def.multiple * (1 + growth) * (0.85 + b.brand / 333)
+
+  // Revenue multiple: investors pay up for growth at a real stage with margins that work once R&D
+  // stops (R&D itself is an investment, not a running cost).
+  const s = b.last
+  const x = t.last && s && t.last.year === s.year ? t.last : null
+  const rdBack = x ? x.rd + x.compute - x.credit - x.grants : 0
+  const operating = s ? s.pbt - (x ? x.oneOff : 0) + rdBack : 0
+  const margin = revenue > 0 ? operating / revenue : -1
+  const quality = clampN(0.3 + 1.75 * margin, 0.08, 1.2)
+  const stageMult = 0.35 + 0.65 * (t.stage / Math.max(1, maxStage(ind)))
+  const growthMult = clampN(1 + growth * 0.5, 0.85, 1.3)
+  const revValue = revenue * d.salesMult * quality * stageMult * hypeMult * growthMult
+
   const ip = t.ipBook * (0.7 + t.level / 200) * hypeMult
   let pipeline = 0
   if (ind === 'biotech') {
     const unit = unitRevenue(b)
-    for (const x of t.drugs) {
-      if (x.failed || x.phase >= 4) continue
-      const odds = APPROVAL_ODDS[Math.max(0, Math.min(4, x.phase))] * (0.75 + x.quality / 200)
-      pipeline += x.peak * unit * odds * x.royalty
+    for (const drug of t.drugs) {
+      if (drug.failed || drug.phase >= 4) continue
+      const odds = APPROVAL_ODDS[Math.max(0, Math.min(4, drug.phase))] * (0.75 + drug.quality / 200)
+      pipeline += drug.peak * unit * odds * drug.royalty
     }
     pipeline *= hypeMult
   }
-  const target = Math.max(revValue, ip + pipeline) + t.plantBook * 0.8
-  const profits = [b.last ? b.last.net : 0, ...h.slice(-2).map((r) => r.profit)]
-  const avgProfit = profits.reduce((s, x) => s + x, 0) / profits.length
-  const ev = Math.max(0, avgProfit) * def.multiple
-  const add = clampN(target - ev, 0, MAX_TECH_VALUE)
-  // Investor money in the R&D account counts toward the company's value only as far as the
-  // investors' liquidation preference leaves room for the founder (1x non-participating).
-  t.value = add
-  const base = valuationOf(b)
-  const credit = b.public ? t.venture : Math.min(t.venture, base * (1 / Math.max(0.01, b.share) - 1))
-  t.value = clampN(Math.round(add + Math.max(0, credit)), 0, MAX_TECH_VALUE)
+  const unitCost = localEcon(ind, b.countryId, b.city).unitCost
+  const floor = 0.55 * equipmentValue(b) + Math.max(0, b.inventory) * unitCost * 0.5
+  // Plants and equipment back the IP; a profit or revenue multiple already prices them in.
+  const v = Math.max(profitValue, revValue, ip + pipeline + t.plantBook * 0.8 + floor)
+  return Number.isFinite(v) ? clampN(v, 0, MAX_TECH_VALUE) : 0
+}
+
+/**
+ * Recompute the cached deep-tech part of the valuation. Investors hold preferred stock with a 1x
+ * liquidation preference: in a sale they get their money back first (or convert, if their share
+ * is worth more), so the money they put in, spent or not, comes off what the founder's stake is
+ * worth. Grant money is never the owner's. A listing converts the preferred stock.
+ */
+export function refreshTechValue(g: GameState, b: BizState, t: TechState): void {
+  const ev = operatingValue(g, b, t)
+  const net = b.cash - b.debt
+  let value: number
+  if (b.public) value = ev + net + t.venture
+  else {
+    const total = ev + net + Math.min(t.venture, t.raised)
+    const share = clampN(b.share, 0.01, 1)
+    const founder = Math.min(share * total, Math.max(0, total - t.raised))
+    value = Math.max(0, founder) / share
+  }
+  t.value = clampN(Math.round(value - classicPart(b) - net), -MAX_TECH_VALUE, MAX_TECH_VALUE)
 }
 
 /** Refresh the cached value and push the new valuation into the asset. */
@@ -490,10 +559,15 @@ export function payTech(b: BizState, t: TechState, amount: number): number {
   return n
 }
 
-/** Income that lands in company cash this year (licensing upfronts, settlements). */
-export function earnTech(b: BizState, amount: number): number {
+/**
+ * One-off income that lands in company cash this year (licensing upfronts, a celebrity's seat, a
+ * broker's money). Booked as income, and remembered as a one-off so the valuation doesn't pay a
+ * profit multiple for a windfall.
+ */
+export function earnTech(b: BizState, t: TechState, amount: number): number {
   const n = Math.max(0, Math.round(amount))
   b.cash += n
   b.yearIncome += n
+  t.oneOff += n
   return n
 }
