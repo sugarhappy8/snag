@@ -41,6 +41,7 @@ import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
 import { boardAllows, boardNodes, hasBoard, needsVote, passOdds, vote, type Proposal } from './board'
+import { nepoNodes } from './nepo'
 import { briefNodes, capexCaption, passHint, payDividend } from './board-menu'
 import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
 import { debtComfort, lowerFirst, oddsText, payableCash, payCap, refusedThisYear, sustainablePayout } from './board-vote'
@@ -1931,7 +1932,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
-  nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a))
+  nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
   nodes.push({ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' })
   nodes.push(...exitNodes(a, g))
   return nodes

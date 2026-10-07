@@ -75,6 +75,8 @@ import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
 import { cashShare, moneyStatus, wealthNodes } from './events/wealth-menu'
+import { nepoPersonNodes } from './business/nepo'
+import { familyUseNodes } from './shops/luxury-family'
 import { noteCashGift } from './events/wealth-core'
 import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, Person, RelationKind } from './types'
 
@@ -3638,5 +3640,7 @@ export function personActions(g: GameState, person: Person): MenuNode[] {
   for (const def of defsFor(g, p)) nodes.push(build(def, p.id))
   // Money Matters: allowance, loans, big gifts and what they've asked you for (events/wealth-menu.ts).
   nodes.push(...wealthNodes(g, p))
+  // Their job at your company (business/nepo.ts) and which of your luxury things they may use (shops/luxury-family.ts).
+  nodes.push(...nepoPersonNodes(g, p), ...familyUseNodes(g, p))
   return nodes
 }

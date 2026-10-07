@@ -9,6 +9,9 @@ import { bindMoneyContext, currentLogYear, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
 import { yearlyWealth } from './events/wealth'
+import { yearlyWillFeuds } from './events/will-feud'
+import { yearlyNepo } from './business/nepo'
+import { yearlyFamilyUse } from './shops/luxury-family'
 import { yearlyFinance } from './finance'
 import { checkDeath, yearlyHealth } from './health'
 import { yearlyHistory } from './history'
@@ -34,6 +37,9 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['computer', yearlyComputer],
   ['finance', yearlyFinance],
   ['wealth', yearlyWealth],
+  ['familyUse', yearlyFamilyUse],
+  ['nepo', yearlyNepo],
+  ['willFeuds', yearlyWillFeuds],
   ['immigration', yearlyImmigration],
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],

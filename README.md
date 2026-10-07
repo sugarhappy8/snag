@@ -31,6 +31,12 @@ There is no server and no account: the game never sends anything anywhere.
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or
 > endorsed by Candywriter, and it uses no BitLife names, art or assets.
 
+> The game names real brands, companies, products and places, because that is what a life is made
+> of. All of them are trademarks of their respective owners and are used only to identify them.
+> AnotherLife is a simulation, not a statement about any company: prices, market shares and what
+> happens to a brand in your life are made up by the game, are not facts, and no brand, company or
+> person named here has endorsed, sponsored or is affiliated with this project.
+
 ## Play it
 
 AnotherLife is a static website hosted on Cloudflare. Open the game at its Cloudflare URL (see
