@@ -114,7 +114,7 @@ describe('built-in tasks', () => {
     setQueue([{ kind: 'aiTask', id: 'task1', task: { type: 'yearEvents' } }])
     expect(offline.resolve).toHaveBeenCalledTimes(1)
     expect(tasksLeft()).toEqual([])
-    expect(store.getApp().ai).toBeNull()
+    expect('ai' in store.getApp()).toBe(false)
     // Whatever the year brought is ordinary popups and log lines.
     for (const m of game().queue) expect(['notice', 'choice', 'input', 'minigame']).toContain(m.kind)
   })

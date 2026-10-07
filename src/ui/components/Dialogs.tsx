@@ -340,6 +340,8 @@ export interface InputDialogProps {
   max?: number
   /** Sliders: distance between values (default 1). */
   step?: number
+  /** Sliders: a unit written after the number ('%'). */
+  unit?: string
   /** Sliders: the live caption for a value (pure; null for none). */
   preview?: (value: number) => string | null
   multiline?: boolean
@@ -356,7 +358,7 @@ export function InputDialog(props: InputDialogProps) {
 }
 
 /** A slider in a dialog: the value it hands back is a string, exactly like a number field's. */
-function SliderDialog({ title, emoji, label, defaultValue, min, max, step, preview, submitLabel = 'Confirm', money = false, onSubmit, onCancel }: InputDialogProps & { min: number; max: number }) {
+function SliderDialog({ title, emoji, label, defaultValue, min, max, step, unit, preview, submitLabel = 'Confirm', money = false, onSubmit, onCancel }: InputDialogProps & { min: number; max: number }) {
   const s = useSliderScale(min, max, step, money)
   const [value, setValue] = useState(() => sliderStart(s, defaultValue))
   useEscape(onCancel)
@@ -373,7 +375,7 @@ function SliderDialog({ title, emoji, label, defaultValue, min, max, step, previ
       <h2 className="popup-title">{title}</h2>
       <div className="popup-field">
         <span className="popup-field-label">{label}</span>
-        <SliderField label={label} min={min} max={max} step={step} money={money} value={value} onChange={setValue} onSubmit={submit} preview={preview} autoFocus />
+        <SliderField label={label} min={min} max={max} step={step} unit={unit} money={money} value={value} onChange={setValue} onSubmit={submit} preview={preview} autoFocus />
       </div>
       <div className="popup-actions">
         <button className="btn btn-primary btn-block" onClick={submit}>

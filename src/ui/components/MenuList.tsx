@@ -227,6 +227,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
         min={input.min}
         max={input.max}
         step={input.step}
+        unit={input.unit}
         preview={preview}
         money={input.money === true && input.kind !== 'text'}
         multiline={isMultiline(action)}

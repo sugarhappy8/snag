@@ -8,6 +8,7 @@ export function manageBlock(g: GameState, a: Asset): string | null {
   const c = g.character
   if (!c.alive) return 'You are no longer alive.'
   if (c.prison) return "You can't run a company from a prison cell. Your general manager is handling it."
+  if (c.age < 18) return 'You must be 18 to run a company. Its general manager makes these calls until then.'
   if (!findBusiness(g, a.id)) return 'You no longer own this business.'
   return null
 }

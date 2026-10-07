@@ -58,6 +58,7 @@ const DATA_STATS: [string, string, string][] = [
   ['diligence', 'Diligence', '📚'],
   ['loyalty', 'Loyalty', '🤝'],
   ['obedience', 'Obedience', '🦮'],
+  ['entitlement', 'Entitlement', '👑'],
   ['respect', 'Respect', '🫡'],
   ['toughness', 'Toughness', '🥊'],
 ]

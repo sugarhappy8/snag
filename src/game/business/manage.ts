@@ -41,7 +41,7 @@ import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
 import { boardAllows, boardNodes, hasBoard, needsVote, passOdds, vote, type Proposal } from './board'
-import { briefNodes, passHint, payDividend } from './board-menu'
+import { briefNodes, capexCaption, passHint, payDividend } from './board-menu'
 import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
 import { debtComfort, lowerFirst, oddsText, payableCash, payCap, refusedThisYear, sustainablePayout } from './board-vote'
 import { manageBlock, noCash, tooBusy } from './gate'
@@ -49,7 +49,7 @@ import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
 import { industryDef, lineOf } from './industries'
 import { complexityShare, PRODUCT_LIFE, productIdeas, productLift, rangeBoost } from './products'
-import { bestRdBudget, rdBase, rdCrowding, rdMinBudget, rdProjects, rdQuote, retireLines, retireOrder, roundBudget, startRd } from './rd'
+import { bestRdBudget, rdBase, rdBlock, rdCrowding, rdMinBudget, rdProjects, rdQuote, rdValue, retireLines, retireOrder, roundBudget, startRd } from './rd'
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
@@ -374,6 +374,7 @@ function marketingMenu(a: Asset): MenuGroup {
           input: {
             kind: 'slider',
             label: 'Marketing budget (% of a normal spend)',
+            unit: '%',
             min: 0,
             max: 300,
             step: 5,
@@ -414,7 +415,7 @@ function rdPreview(g: GameState, a: Asset, budget: number): string {
   const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, `${Math.round(q.odds * 100)}% odds`, `+${Math.round(q.boost * 100)}% demand while fresh if it works`]
   const dev = rdProjects(b).length
   if (dev) parts.push(dev === 1 ? 'the project already in development stretches the team' : `${dev} projects already in development stretch the team`)
-  return parts.join(' · ')
+  return parts.join(' · ') + capexCaption(g, live(g, a), b, budget, Math.max(0, (rdValue(g, b, budget).value + budget) / 5))
 }
 
 /** The Business talent's best R&D budget for this company (cached per company state). */
@@ -431,7 +432,7 @@ function ideaAction(a: Asset, b0: BizState, idea: string, first: boolean): MenuA
       const cur = live(gg, a)
       if (!first || !hinting(gg, cur)) return null
       const best = bestBudgetFor(gg, cur)
-      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, worth about ${money(best.value)} on average)` : 'Hold off on R&D: no budget would earn back what it costs right now')
+      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, worth about ${money(best.value)} on average)` : 'Hold off on R&D: no budget would earn back what it costs while leaving the company a cash cushion')
     },
     subtitle: `Normal R&D budget about ${money(normal)}`,
     disabled: (_g, bb) => (bb.cash < rdMinBudget(bb) ? `Needs at least ${money(rdMinBudget(bb))} of company cash.` : null),
@@ -446,6 +447,11 @@ function ideaAction(a: Asset, b0: BizState, idea: string, first: boolean): MenuA
     },
     run: (gg, cur, bb, input) => {
       const budget = Math.round(clampN(Number(input) || normal, rdMinBudget(bb), Math.max(rdMinBudget(bb), bb.cash)))
+      // Past this year's capital budget, a company with a board votes on it first (business/board.ts).
+      if (rdBlock(bb, idea, budget) === null && bb.cash >= budget) {
+        const v = rdValue(gg, bb, budget)
+        if (!boardAllows(gg, cur, bb, { kind: 'capex', by: 'owner', amount: budget, gain: Math.max(0, (v.value + budget) / 5), label: `Fund R&D on ${idea} (${money(budget)})` })) return
+      }
       startRd(gg, cur, bb, idea, budget)
     },
   })
@@ -473,7 +479,7 @@ function productsMenu(a: Asset): MenuGroup {
       const trim = linesToRetire(g, b)
       if (trim > 0) return talentHint(g, 'Business', `Retire your ${trim === 1 ? 'most faded line' : `${trim} most faded lines`}: they cost more to run than they sell`)
       const best = bestBudgetFor(g, cur)
-      return talentHint(g, 'Business', best ? `Fund a project: about ${money(best.budget)} is the best budget (${Math.round(best.odds * 100)}% odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: a new line would cost more than it earns right now')
+      return talentHint(g, 'Business', best ? `Fund a project: about ${money(best.budget)} is the best budget (${Math.round(best.odds * 100)}% odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: a new line would cost more than it earns, or eat the company’s cash cushion')
     },
     header: (g) => {
       const b = readBiz(g, a)
@@ -792,7 +798,7 @@ function openPreview(g: GameState, a: Asset, countryId: string, city: string, n:
     parts.push(`room for ${plural(maxPrograms(withOutlets(b, countryId, city, k, g.year), techView(b)), 'R&D program')} at once`)
   }
   if (here + k > cs) parts.push(`${city} is crowded: each one sells less and rents climb`)
-  return parts.join(' · ')
+  return parts.join(' · ') + capexCaption(g, cur, b, expansionCost(b, countryId, city, k), priceAndOutput(b) ? expansionGain(g, cur, countryId, city, k) : 0)
 }
 
 /** Most years a new location may take to pay back and still be worth suggesting. */
@@ -853,6 +859,8 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
       }
       const cost = expansionCost(b, countryId, city, n)
       if (b.cash < cost) return noCash(g, cur, cost, `${plural(n, 'new location')}`)
+      const gain = expansionGain(g, cur, countryId, city, n)
+      if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Open ${plural(n, `new ${industryDef(b.industry).site}`, `new ${industryDef(b.industry).sitePlural}`)} in ${city} for ${money(cost)}` })) return
       b.cash -= cost
       const existing = b.outlets.find((o) => o.countryId === countryId && o.city === city)
       if (existing) existing.count += n
@@ -1079,13 +1087,15 @@ function buildLinesAction(a: Asset, b0: BizState): MenuAction {
           `+${units(add)} ${def.unit} a year (capacity now ${units(plan.capacity)}, demand about ${units(plan.demand)})`,
           `${money(lineCost(b, n))} up front, about ${money(upkeep)} a year to run`,
           gain > 0 ? `pays back in ${yearsText(lineCost(b, n) / gain)}` : plan.demand <= plan.capacity ? 'would sit idle: you can already make what you sell' : 'would lose money: the extra output doesn’t cover what the lines cost',
-        ].join(' · ')
+        ].join(' · ') + capexCaption(g, cur, b, lineCost(b, n), gain)
       },
     },
     run: (g, cur, b, input) => {
       const n = Math.round(clampN(Number(input) || 1, 1, MAX_OPEN_AT_ONCE))
       const cost = lineCost(b, n)
       if (b.cash < cost) return noCash(g, cur, cost, plural(n, line.one, line.many))
+      const gain = linesGain(g, cur, n)
+      if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Build ${plural(n, line.one, line.many)} for ${money(cost)}` })) return
       b.cash -= cost
       b.lines = linesOf(b) + n
       b.valuation = valuationOf(b)

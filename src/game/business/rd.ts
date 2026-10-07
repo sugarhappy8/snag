@@ -110,18 +110,22 @@ export function rdValue(g: GameState, b: BizState, budget: number, w: Worth = bi
 /** Budgets the Business talent compares, as multiples of a normal one. */
 const BUDGET_GRID = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16]
 
-/** The budget with the best expected value that the company can pay now (null: none pays). */
+/** The budget with the best expected value the company can pay now and keep a cash reserve (null: none). */
 export function bestRdBudget(g: GameState, b: BizState): (RdQuote & { budget: number; value: number }) | null {
   const w = bizWorth(g, b)
   const base = rdBase(b) * rdCrowding(b)
   // The grid, plus the budgets where a project gets a year shorter (time comes in whole years).
   const y0 = baseYears(b.industry)
   const steps = [1, 2, 3].map((y) => Math.pow(y0 / y, 2)).filter((m) => m > 0.05)
+  // Keep about three months of running costs in the bank: the best bet isn't worth a cash crunch.
+  const s = b.last
+  const reserve = s ? Math.max(0, (s.cogs + s.wages + s.keyStaff + s.rent + s.upkeep + s.marketing + s.interest) / 4) : 0
+  const room = Math.max(0, b.cash - reserve)
   let best: (RdQuote & { budget: number; value: number }) | null = null
   for (const m of [...BUDGET_GRID, ...steps]) {
     // Rounded up, so a nice number never slips under one of those thresholds.
     const budget = niceBudget(base * m)
-    if (budget > Math.max(0, b.cash) || budget < rdMinBudget(b)) continue
+    if (budget > room || budget < rdMinBudget(b)) continue
     const v = rdValue(g, b, budget, w)
     if (v.value > 0 && (!best || v.value > best.value)) best = { ...v, budget }
   }

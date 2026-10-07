@@ -722,6 +722,7 @@ function marketNodes(groupId: string, grp: Group): MenuNode[] {
       input: {
         kind: 'slider',
         label: 'Percent of your group shares to sell',
+        unit: '%',
         min: 1,
         max: 100,
         step: 1,

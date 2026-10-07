@@ -19,6 +19,13 @@ Every part of the story is built in and runs on your device:
   your CV and the local job market;
 - your obituary is written from the life you actually lived.
 
+Money changes your life too. Once you're rich, your kids want pocket money, cars, vacations and
+a house, and friends and family come asking for loans. Companies grow without hard caps: unlimited
+R&D and product lines, as many stores, offices and factory lines as the market and your cash
+allow, picked with sliders. Hire a CEO to run them (the best ones above skill 75 optimize like
+real executives and write you a yearly letter), answer to a board of directors once outsiders
+own part of the company, and merge your companies into a conglomerate.
+
 There is no server and no account: the game never sends anything anywhere.
 
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or

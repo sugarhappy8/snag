@@ -75,11 +75,6 @@ export interface AppState {
   previousScreen: Screen
   game: GameState | null
   settings: Settings
-  /**
-   * Always null: there is no background work any more (tasks resolve instantly). Kept only until
-   * GameScreen stops reading it for the Age button's old busy state; then delete it.
-   */
-  ai: null
   /** The menu to go back to after an action closed a sheet (see ReturnPoint). */
   returnPoint: ReturnPoint | null
   /** Start-of-year snapshots of the current life the Time Machine can go back to, oldest first. */
@@ -95,7 +90,6 @@ let state: AppState = {
   previousScreen: 'home',
   game: null,
   settings: loadSettings(),
-  ai: null,
   returnPoint: null,
   timeStops: NO_STOPS,
   timeTravel: IDLE_TRAVEL,

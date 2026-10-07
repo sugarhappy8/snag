@@ -210,6 +210,7 @@ function limitAction(a: Asset, key: keyof Limits, viaBoard: boolean): MenuAction
     input: {
       kind: 'slider',
       label: x.ask,
+      unit: x.scale === 100 ? '%' : '',
       min: Math.round(LIMIT_BOUNDS[key].min * x.scale),
       max: Math.round(LIMIT_BOUNDS[key].max * x.scale),
       step: x.step,

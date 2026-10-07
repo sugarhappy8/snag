@@ -549,6 +549,7 @@ function payPolicyAction(a: Asset): MenuAction {
     input: {
       kind: 'slider',
       label: 'Pay (% of the going local wage)',
+      unit: '%',
       min: 70,
       max: 150,
       step: 5,

@@ -6,7 +6,7 @@ import { baseLoanRate } from '../finance'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
-import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
+import type { AnnualReportData, Asset, ChoiceOption, GameState, NoticeModal } from '../types'
 import { getCountry } from '../world'
 import { boardYear } from './board'
 import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
@@ -387,6 +387,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   const list = businessAssets(g)
   if (list.length === 0) return
   const fiscal = g.year - 1
+  const queued = g.queue.length
   let eventQueued = false
   for (const a of list) {
     if (!findBusiness(g, a.id)) continue
@@ -455,4 +456,29 @@ export function yearlyBusinessImpl(g: GameState): void {
   }
   // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
   yearlyConglomerates(g)
+  bundleCeoLetters(g, queued)
+}
+
+const LETTER_SUFFIX = ': Letter from the CEO'
+/** More CEO letters than this in one year are read as one bundle (an empire shouldn't mean ten popups). */
+const LETTERS_APART = 2
+/** Lines kept per company in the bundle (the company screen shows its last letter too). */
+const BUNDLE_LINES = 3
+
+/** Fold this year's CEO letters (career.ceoLetter) into one popup when there are many. */
+export function bundleCeoLetters(g: GameState, from: number): void {
+  const letters = g.queue.slice(from).filter((m): m is NoticeModal => m.kind === 'notice' && m.title.endsWith(LETTER_SUFFIX))
+  if (letters.length <= LETTERS_APART) return
+  const sections = letters.map((m) => {
+    const name = m.title.slice(0, -LETTER_SUFFIX.length)
+    const bullets = m.text.split('\n').filter((x) => x.startsWith('\u{2022}'))
+    const more = bullets.length - BUNDLE_LINES
+    const sign = m.text.split('\n').find((x) => x.startsWith('\u{2014}'))
+    return `${name}${sign ? ` \u{00B7} ${sign.replace(/^\u{2014}\s*/u, '')}` : ''}:\n${bullets.slice(0, BUNDLE_LINES).join('\n')}${more > 0 ? `\n\u{2022} \u{2026}and ${plural(more, 'more change')}` : ''}`
+  })
+  const at = g.queue.indexOf(letters[0])
+  const drop = new Set<string>(letters.map((m) => m.id))
+  const bundle: NoticeModal = { ...letters[0], title: 'Letters from Your CEOs', text: `Dear ${g.character.firstName}, here's what your CEOs did this year.\n\n${sections.join('\n\n')}`, emoji: '\u{1F4EC}' }
+  g.queue = g.queue.filter((m) => !drop.has(m.id))
+  g.queue.splice(Math.min(at, g.queue.length), 0, bundle)
 }

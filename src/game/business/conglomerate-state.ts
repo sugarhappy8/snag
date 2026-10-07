@@ -11,6 +11,7 @@
 // multiplier (`mult`: the conglomerate discount, or the market's price for a listed group)
 // applies to each division's operating value through state.stakeValue, so net worth counts each
 // company once.
+import { onBusinessGone } from '../assetHooks'
 import { log } from '../core'
 import type { Asset, GameState, Json } from '../types'
 import { registerGroupBoard, type Mandate } from './board-state'
@@ -465,6 +466,9 @@ export function afterMemberGone(g: GameState, b: { group?: Json }, name: string)
   }
   log(g, `${name} is no longer part of ${m.core.name}.`, 'neutral')
 }
+
+// Seizure, repossession and divorce remove companies outside the business screens (assetHooks.ts).
+onBusinessGone((g, a) => afterMemberGone(g, a.details, a.name))
 
 // ---------------------------------------------------------------------------
 // Boards: a member of a live group always has a board; the group's people fill the owner's seats.

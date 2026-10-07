@@ -16,6 +16,8 @@ export interface SliderFieldProps {
   step?: number
   /** Internal dollars shown in the player's currency. */
   money?: boolean
+  /** A unit written after the number ('%'); ignored for money. */
+  unit?: string
   value: number
   onChange: (value: number) => void
   /** Enter on the slider confirms. */
@@ -26,11 +28,11 @@ export interface SliderFieldProps {
 }
 
 /** A slider value as the player reads it: compact money, whole units for counts. */
-export function sliderText(value: number, money: boolean, step = 1, compact = true): string {
-  if (!Number.isFinite(value)) return money ? formatMoney(0) : '0'
+export function sliderText(value: number, money: boolean, step = 1, compact = true, unit = ''): string {
+  if (!Number.isFinite(value)) return money ? formatMoney(0) : `0${unit}`
   if (money) return compact ? shortMoney(value) : formatMoney(value)
   const digits = step >= 1 || !Number.isFinite(step) ? 0 : Math.min(4, Math.max(0, -Math.floor(Math.log10(step))))
-  return value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  return `${value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })}${unit}`
 }
 
 /** The scale a slider uses (money sliders snap to round numbers in the display currency). */
@@ -42,7 +44,7 @@ export function useSliderScale(min: number, max: number, step: number | undefine
 const REPEAT_DELAY = 380
 const REPEAT_EVERY = 70
 
-export function SliderField({ label, min, max, step, money = false, value, onChange, onSubmit, preview, autoFocus }: SliderFieldProps) {
+export function SliderField({ label, min, max, step, money = false, unit = '', value, onChange, onSubmit, preview, autoFocus }: SliderFieldProps) {
   const s = useSliderScale(min, max, step, money)
   const v = sliderClamp(s, value)
   const valueRef = useRef(v)
@@ -124,7 +126,7 @@ export function SliderField({ label, min, max, step, money = false, value, onCha
   const fill = s.notches > 0 ? (notch / s.notches) * 100 : 100
   const fixed = s.max <= s.min
   const caption = useMemo(() => (preview ? preview(v) : null), [preview, v])
-  const full = sliderText(v, money, s.step, false)
+  const full = sliderText(v, money, s.step, false, unit)
   const style = { '--slider-fill': `${fill}%` } as CSSProperties
 
   const stepButton = (dir: 1 | -1) => {
@@ -163,7 +165,7 @@ export function SliderField({ label, min, max, step, money = false, value, onCha
   return (
     <div className="slider-field">
       <output className="slider-value" aria-hidden>
-        {sliderText(v, money, s.step)}
+        {sliderText(v, money, s.step, true, unit)}
       </output>
       <div className="slider-row">
         {stepButton(-1)}
@@ -188,8 +190,8 @@ export function SliderField({ label, min, max, step, money = false, value, onCha
         {stepButton(1)}
       </div>
       <div className="slider-bounds" aria-hidden>
-        <span>{sliderText(s.min, money, s.step)}</span>
-        <span>{sliderText(s.max, money, s.step)}</span>
+        <span>{sliderText(s.min, money, s.step, true, unit)}</span>
+        <span>{sliderText(s.max, money, s.step, true, unit)}</span>
       </div>
       {caption ? (
         <p className="slider-preview" aria-live="polite">

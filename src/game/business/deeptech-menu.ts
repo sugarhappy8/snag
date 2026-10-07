@@ -137,6 +137,7 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
     input: {
       kind: 'slider',
       label: 'Budget (% of the plan)',
+      unit: '%',
       min: BUDGET_MIN * 100,
       max: BUDGET_MAX * 100,
       step: 10,
@@ -831,7 +832,7 @@ export function deepTechInfoImpl(g: GameState, a: Asset): string {
   return parts.join(' · ')
 }
 
-/** One clause for the AI prompt. */
+/** One clause for businessSummary (the profile's Business line). */
 export function deepTechSummaryImpl(g: GameState, a: Asset): string {
   const b = readBiz(g, a)
   const t = techView(b)

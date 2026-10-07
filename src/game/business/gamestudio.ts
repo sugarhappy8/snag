@@ -2174,14 +2174,4 @@ export function studioAssets(g: GameState): Asset[] {
   return g.assets.filter((a) => a.kind === 'business' && a.details?.industry === 'gameStudio')
 }
 
-/** One-line summary for the AI context. */
-export function studioSummary(g: GameState, a: Asset): string {
-  const st = studioOf(a)
-  const b = readBiz(g, a)
-  const dev = devGames(st)
-  const live = st.games.filter((x) => x.stage === 'live')
-  const best = [...live].sort((x, y) => y.critic - x.critic)[0]
-  return `${a.name} (game studio, ${b.employees} devs, ${dev.length} in development${best ? `, best game "${best.title}" ${best.critic}` : ''}${b.public ? ', publicly traded' : ''}; ${runsIt(g, a) ? 'CEO' : 'owner'})`
-}
-
 export const studioInternals = { EVENT, IDLE_SCRIPT, GL_SCOPE, GL_GENRE, GL_PLATFORM, GL_ENGINE, GL_NAME, PUB, GROW, hireDevs, layOff, addGame, ensureCatalog }

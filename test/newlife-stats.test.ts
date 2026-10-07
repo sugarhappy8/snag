@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createNewLife } from '../src/game/life'
 
 const mock = vi.hoisted(() => ({
-  state: { screen: 'newLife', previousScreen: 'home', game: null as unknown, settings: {}, ai: null, aiStatus: 'online', aiMessage: '' },
+  state: { screen: 'newLife', previousScreen: 'home', game: null as unknown, settings: {} },
 }))
 
 vi.mock('../src/ui/store', () => ({

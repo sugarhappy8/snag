@@ -713,6 +713,8 @@ export interface MenuInput {
   money?: boolean
   /** Sliders: distance between values (default 1). */
   step?: number
+  /** Sliders: a unit written after the number ('%', ' yrs'); ignored for money. */
+  unit?: string
   /**
    * Sliders: a live caption for the value under the thumb, e.g. '12 trucks · $340K up front ·
    * pays back in ~3 years'. Must be pure (no state changes, no game RNG).

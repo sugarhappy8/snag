@@ -11,6 +11,7 @@ import { hasTech } from './history/timeline'
 import { chance, pick, randInt, uid } from './rng'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry, randomFirstName } from './world'
+import { businessGone } from './assetHooks'
 
 // ---------------------------------------------------------------------------
 // Income tax
@@ -703,6 +704,7 @@ function repossessFinancedAsset(g: GameState, loan: Loan): boolean {
   c.loans = c.loans.filter((l) => l.id !== loan.id)
   clearLoanMisses(g, loan.id)
   g.assets = g.assets.filter((a) => a.id !== asset.id)
+  businessGone(g, asset)
   const how =
     asset.kind === 'boat'
       ? `a repo crew showed up at the marina and towed your ${asset.name.toLowerCase()} away. The seagulls seemed pleased.`
@@ -798,6 +800,7 @@ function seizeAssetsForDebt(g: GameState): void {
     const owed = (a.mortgage?.balance ?? 0) + (loan?.balance ?? 0)
     const proceeds = Math.round(a.value * 0.7) - owed
     g.assets = g.assets.filter((x) => x.id !== a.id)
+    businessGone(g, a)
     if (loan) c.loans = c.loans.filter((l) => l !== loan)
     addMoney(g, proceeds)
     seized.push(a.name)

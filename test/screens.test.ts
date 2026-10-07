@@ -17,7 +17,6 @@ const mock = vi.hoisted(() => ({
     previousScreen: 'home',
     game: null as unknown,
     settings: {} as Record<string, unknown>,
-    ai: null,
   },
   calls: [] as string[],
 }))

@@ -81,6 +81,14 @@ src/
                          count as income only up to the year's R&D spend and are repaid on cancellation.
                          invest/engine lists deep-tech companies as extra slots after each hub exchange's
                          classic plan (classicSlots()). Missing deep-tech demand defaults by income
+    business/rd.ts products.ts  Product R&D with no yearly cap (BizState.rd projects, endless era-gated
+                         ideas) and the product range economics (see "Business growth" below)
+    business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
+    business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
+    events/wealth*.ts    Being rich: money requests from kids, family and friends, allowances, loans,
+                         the "Money Matters" person section (see "Being rich, felt" below)
+    assetHooks.ts        businessGone(g, a): low-level code that removes a company (seizure,
+                         repossession, divorce) notifies the business modules without importing them
     invest/instinct.ts   Investing talent: marketInstinct(g), an honest ~80% gut read of next year's
                          deterministic engine moves (per character + year, never rerolls)
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange
@@ -221,7 +229,9 @@ src/
 `casinoLosses`, `moneyGambled`, `lotteryTickets`, `lotteryWins`, `vacations`, `emigrations`,
 `surgeries`, `doctorVisits`, `donated`, `fights`, `pranks`, `insults`, `compliments`, `nightlife`,
 `drugs`, `rehab`, `fameActions`, `albums`, `movies`, `housesBought`, `carsBought`, `purchases`,
-`studied`, `skippedSchool`, `diseases`, `lawsuitsWon`, `customActions`. (Old saves may still hold
+`studied`, `skippedSchool`, `diseases`, `lawsuitsWon`, `customActions`, `wealthGifts`,
+`wealthRefusals`, `wealthLoans`, `scammed`, `conglomerates`, `groupMergers`, `spinOffs`, `groupIpos`,
+`groupAcquisitions`. (Old saves may still hold
 `aiEvents`, from the retired AI narrator; nothing reads it.)
 Add new keys freely, but use these names for these concepts.
 
@@ -295,6 +305,121 @@ any unpaid personal balance remains owed after the company is gone.
 Status is optional on old saves and advances from visa to permanent residence to citizenship.
 Golden-visa investments stay locked; quitting a route or moving again must settle the lock.
 Eligibility uses nationality, year, net worth, CV, education and family ties, not just cash.
+
+## Sliders and business growth
+
+Sliders and unlimited growth. MenuInput/InputModal kind 'slider' render components/Slider.tsx (SliderField; menus use it through Dialogs.InputDialog, queued prompts through SliderCard.SliderInputCard). The pure math lives in menuModel.ts: sliderScale/sliderValueAt/sliderNotchOf/sliderNudge/sliderClamp/sliderOutput/sliderStart/canSlide, plus sliderPreview, a safe wrapper for MenuInput.preview. Ranges with more than 400 steps use a log curve over 1,000 notches. Money sliders snap to two significant digits in the display currency. Values are always exact and inside [min, max], and run() and scripts get a string exactly like a number field's (money in whole internal dollars). A slider without finite min/max falls back to a number field. A slider dialog closes only with Cancel or Escape (no tap-outside). Previews are called with the committed state and must be pure (tested). Styles are in styles/slider.css.
+
+Business growth has no hard caps; costs and diminishing returns are the limits. Product R&D (business/rd.ts): projects in BizState.rd (optional, so old saves load) are paid up front from company cash and booked as yearCosts. rdQuote(budget) gives odds, whole years (1-4) and boost; a bigger budget means likelier, faster and stronger with diminishing returns, and each running project crowds the team (rdCrowding). Projects advance and resolve in economy.evolve → advanceRd: a launched line gets launched = year + 1. There is no yearly cap. Product ideas come from business/products.ts productIdeas: an endless, era-filtered stream of classics, then variants, then next generations. Range economics: rangeBoost (each line adds less; the ceiling rises with log2 of the range), complexityShare(n) = 0.002·n·(1+n/20) of net sales booked inside the Upkeep line, rangeBrand(n) capped at 16 brand points, lines retire after PRODUCT_LIFE = 15 years. Storage guards: 400 products, 120 projects.
+
+Outlets: open and close are sliders up to what company cash pays for (manage.maxAffordable), with no per-year limit. economy.planFor applies city crowding (citySaturation = country saturation × city weight: 0.12 for the first-listed city, 0.07 for the next two, 0.04 otherwise, minimum 6; demand per outlet × (cs/n)^0.5). bookYear adds densityRent (1 + 0.35·sqrt(n/cs − 1)) and head-office overhead headOffice(n) = 0.015·log2(1 + n/8) of running costs. The deep-tech sim applies the same density rent, head office and range costs. Capacity lines (industries.CAPACITY_LINES; BizState.lines, optional; read with economy.linesOf): each adds LINE_CAP = 0.5 of a home site's capacity for LINE_CAPEX = 0.45 of its capital, plus upkeep and LINE_RENT. They count in equipmentValue (insurance, valuation floor, credit) and sell back for 35%.
+
+Repeatable levers: equipment upgrades and training cost (1 + 0.5k) times as much and gain 1/(1 + 0.5k) as much, where k = times already done this year. Key-staff interviews have no cap; each round costs a headhunter fee (6% of the role's pay, ×(1 + 0.5k)). Marketing budget (0–300%) and pay (70–150%) are continuous sliders; a pay cut cancels that year's raiseYear credit.
+
+Deep tech: deeptech-rd.maxPrograms = 2 + floor(log2(sites)) + (Series B or later) + (listed), clamped to 2–8 (readTech stores 8). programTerms(k) funds a program at 0.5–3× its plan: years ÷ k^0.55, failure odds × k^−0.35, cost × k. Every industry has a 'nextgen' program, open at the top stage, costing 1.35^n more each time with shrinking gains and ipShare 0.3. On success, patents book min(spent, planned budget) × ipShare (1.2 by default), so crash budgets can't pump the valuation. Fabs, GPU clusters, gigafactories, gigalines, biologics plants and SOCs have no count caps (rising cost, PLANT_MAX 200). AI training continues past 10 generations (modelGens). Satellites go up to SAT_MAX 40 with saturating revenue (satUnits).
+
+Studios: gamestudio.maxPipeline(b) = max(4, floor(developers / 12)) games in development at once; team size, hiring and layoffs are sliders.
+
+Business-talent hints: rd.bestRdBudget (grid plus the budgets where a project gets a year shorter, rounded up), manage bestCount (outlets maximizing 5-year gain minus cost), bestLines, linesToRetire, the best marketing level, staff.bestPay. All are computed with bestPlan/bizWorth and never consume g's RNG.
+
+`MenuInput.unit` writes a unit after a non-money slider's number ('%' for budget and pay sliders).
+
+Spending past the board's yearly budget (opening sites, capacity lines, product R&D) goes through
+`board.boardAllows` with a `capex` proposal, and the sliders' captions add `board-menu.capexCaption`.
+
+## Boards and hired CEOs (business/board*.ts)
+
+- **When a company has a board.** When anyone else owns part of it (BizState.share < 0.999), when it is listed, or when a conglomerate claims it. Groups register through board-state.registerGroupBoard; their people fill the owner's seats.
+
+- **Where the state lives.** Governance is plain JSON in BizState.board. Use board-state.readBoard for menus and boardOf for actions and yearly hooks; old saves get defaults. It holds:
+  - directors, each with a seeded local name and stance (growth/profit/caution) and loyalty. Seats follow ownership through seatPlan/syncSeats, which never touch g.rng: owner seats ≈ share, investor directors, and at least two independents once listed;
+  - the mandate (growth/balanced/profit/cash);
+  - the limits: a yearly capex+R&D budget as a share of company value, a cash reserve in months of running costs, and a CEO pay cap as a multiple of career.ceoPayNorm;
+  - recent votes, patience/misses/warnings, CEO churn, the CEO's last letter, and any rogue scheme.
+
+- **Votes (board-vote.ts).**
+  - Proposals: ownerPay, bonus, ceoPay, dividend, capex, debt, sell, ipo, merge, close, fire, hire, takeOver, mandate, limits.
+  - assess() gives the merit to all shareholders and how much the proposal favours the owner (self-dealing); each director gets a yes probability from that, their stance and their loyalty.
+  - passOdds() is the exact probability vote() rolls; the Business hints use it.
+  - needsVote()/boardAllows() gate actions. The player is held to the same limits as a hired CEO.
+  - On a listed company the independents veto blatant self-dealing, and minority shareholders can sue over self-dealing that passes (the excess goes back to the company).
+  - Payouts never exceed payableCash: cash minus debt minus earmarked game money.
+
+- **Smart hired CEOs (board-ceo.ts).** Above career.SMART_SKILL (75), a hired CEO:
+  - plans with economy.bestPlan, with mistakes of ±0.06×(100−skill)%;
+  - tunes pay, marketing and supplier by value, one notch a year;
+  - hires and lets go key staff;
+  - retires faded lines and funds R&D (rd.ts);
+  - closes loss-making sites and opens sites or capacity at the mandate's payback and growth pace, within the budget and reserve;
+  - repays expensive debt and pays dividends under the cash/profit mandates;
+  - writes one letter a year (career.ceoLetter).
+
+  At 75 or below they keep yearly.autoPlan, tilted by style. Deep-tech managers (deeptech-manager.ts) and studio managers (gamestudio.studioManagerTurn) have their own versions of the upgrade. The what-if evaluators (bestOpening, bestLines, bestClosure, bestRdWithin, outlook, mandateScores) are pure and shared with the hints.
+
+- **Yearly review (board.boardYear).** Runs after each company's year in yearly.ts and covers:
+  - patience vs the mandate, warnings, director turnover;
+  - the hired CEO's bonus within the pay policy;
+  - raise requests: a popup when the owner can decide, otherwise a board vote, or trustees for minors and prisoners;
+  - poaching of stars, and rare rogue-CEO schemes caught according to the board's oversight;
+  - firing: the owner-CEO when they don't control the board (this absorbs the old public-slump rule and the deep-tech investor-pressure rule), and hired CEOs after missed years.
+
+- **Replacing the CEO has no yearly cap.**
+  - career.handOver pays career.ceoSeverance: half the pay left on a 3-year contract, or a tenure payout of up to two years' pay. There is none when the CEO is fired for cause or poached.
+  - Churn costs morale and raises asking pay.
+  - Each shortlist costs career.headhunterFee, +50% per search that year. Executive searches always include an 85-95 star.
+  - career.ceoValue adds the optimizer's gain (career.optimizerGain) for candidates above 75.
+
+- **Menus.** board-menu.boardMenuNodes (Leadership › Board of Directors) and briefNodes (the owner's brief when there is no board). manage.ts Money/CEO/Leadership/Exit rows go through boardAllows. board-menu.capexCaption is the pure "needs the board" caption for spending sliders.
+
+Once the board rejects an owner proposal of a kind (or a court blocks it), the owner can't put that
+kind again that year: `BoardState.refused`; `board-vote.refusedThisYear` for menus; `passOdds`
+returns 0. Minority shareholders can sue over approved self-dealing pay (owner pay, bonus, raising
+the pay policy while you're CEO): a judge blocks it before money moves and the owner pays legal
+costs, and `passOdds` includes those odds so hints match `vote()`. `bestMandate` is null for
+companies the planner doesn't model (studios, deep tech).
+
+## Conglomerates (business/conglomerate*.ts)
+
+`business/conglomerate*.ts`: conglomerates (groups of the player's companies). There is no group asset. Every member keeps its membership plus a full copy of the group record in `BizState.group` (plain JSON). Writes go through `saveGroup`, which bumps `rev`, copies the record to every member and refreshes asset values. Reads (`groupsOf`, `groupById`, `liveGroup`) take the copy with the highest `rev`, so the group survives any member being sold, closed, seized or inherited, and a damaged copy falls back to the member's own stake. Ownership: the group owns `own` of each division (1 unless the division raised outside money after joining) and the player owns `share` S of the group. Each division's `BizState.share` is therefore the look-through stake S×own, and every existing payout path (dividends, sale proceeds, investor preferences) pays the player exactly that. The group's value multiplier `mult` (1 − the conglomerate discount, or the market's price for a listed group) applies to each division's operating value through `state.stakeValue`; cash and debt count at face value. Net worth sums the divisions once. A listed group's share price is always derived from the divisions (`sharePriceOf`); the stored price is only a display copy. Members of a live group always have a board (`registerGroupBoard` in conglomerate-state.ts), with the group's people in the owner's seats. The group itself has a board only when it has outside shareholders or is listed. That board is a synthetic consolidated company (`groupBiz`) voted on with `board.vote`, and its state is kept in `core.board`. Merging: value-weighted S at fair value (`mergeTerms`), investor preferences convert, a listed joiner hands its listing to the group (new shares go out at the market price), fees are `dealFee` (about 1.2% of value, with a local minimum), and integration (`integrationCost`) is charged in the first booked year. Synergies (`synergyPlan`, pure, weighted by the group CEO's capture): a shared back office credited as other income, cross-selling and purchasing applied as next year's `demandShock`/`costShock` (undone if the company leaves early), and complexity charged. The discount (`conglomerateDiscount`) counts only fully unrelated pairs and shrinks with strong results. The yearly step is `yearlyConglomerates` → conglomerate-year.ts: integration, synergies, the group CEO's pay and turn (above SMART_SKILL: debt paydown, mandates with hysteresis, one division CEO upgrade a year), the group board's review of the group CEO, the listing price and history. `yearly.ts` calls `groupRescue` before a division's cash crunch. Spin-offs keep S×own, and a listed group's spin-off lists at the group's market factor. A group of one dissolves (`dissolveIfAlone`); exit.ts calls `afterMemberGone` whenever a company is removed. Menus are pure and hints use the same functions as the actions. `manage.ts` `makeOffers` now applies buyers' premiums only to operating value; net cash is priced at face value.
+
+Merging credits each newcomer at its value after the fees it pays from its own cash (a listed one
+at its market price); the player's share S is value-weighted on those values (`mergeTerms`,
+`planJoin` shows the same number). Group reads (`assemble`) reconcile each division's `own` from its
+`BizState.share`, so outside money a division raises after joining is never written back to the
+player. Group acquisitions count sister divisions in the same market for antitrust
+(`groupAcquireBlock`). Purchasing and cross-selling synergies grow linearly with sister size (no
+gain from splitting into shells). Companies removed outside exit.ts (debt seizure, repossession,
+divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
+
+## Being rich, felt (events/wealth*.ts)
+
+`yearlyWealth` (aging.ts YEARLY_HOOKS, after finance) runs these steps in order:
+- Pays the allowances the player set. A payment only goes out if cash covers it plus the year's upkeep and mortgage payments still due. Two missed years, disowning or death stops an allowance.
+- Collects loan repayments, never more than was lent. A borrower who doesn't repay may start avoiding you.
+- Settles funded ventures and tips. Success pays 1.25×, a partial outcome 0.5×, otherwise nothing; expected return is always below 1×.
+- Ages kids' entitlement, lets gifted cars crash, and asks once (one "All Grown Up" popup) whether to keep paying kids who turned 18.
+- Queues this year's money requests.
+
+**Wealth tiers.** Requests need an adult player and tier >= 1. Tier comes from `wealth-core.wealthTier`: net worth ÷ `typicalIncome` (45,000 × country wealth × history realWealthFactor). Tiers start at 25, 80, 400 and 4,000 years of income: comfortable, rich, very rich, ultra rich. `TIER_RATE` sets how many asks a year each tier gets, and `TIER_POPUP_CAP` caps the popups at 1, 2 or 3 (`WEALTH_POPUP_CAP`). In prison the rate is ×0.25 and the cap is 1, and requests arrive as letters. Small asks are bundled into one "Everybody Wants Something" popup.
+
+**The catalog.** Entries are `AskDef`s (wealth-ask.ts) in wealth-kids, wealth-family and wealth-world, registered in wealth-catalog. Each entry has who asks, minTier, cooldown, era/age gates, weight and build. A built `Ask` is plain JSON in the popup's data. wealth-resolve.ts turns it into honest options:
+- give
+- a cheaper alternative
+- give less (a money slider capped at cash)
+- lend (tracked per person)
+- say no
+- set boundaries (no asks from that person for 5 years)
+- custom extras: allowance set/fair/pick, postnup, scam report, gate the door, charity tiers
+
+Money only leaves through spend(). Amounts use local price multipliers (goods, electronics, luxury, car and housing scales) and are capped at a share of net worth. Items are era-gated through hasTech, era.ts cars/flights/landline and computer/era.
+
+**Per-person state.**
+- `Person.data.w` (`WealthTies`, read with `readTies` and written with `updateTies`) holds allowance, owes, given, yes/no counts, boundaries, marks, the gifted car and the last few asks. It is stamped with the character id, so heirs start clean.
+- `Person.data.entitlement` (0-100) is how spoiled the person is. The 'spoiled' trait shows at 60 and above. It raises ask sizes, lowers gratitude, makes refusals sting more and costs smarts. Fair parenting (a 30–80% yes rate) gives a small smarts and relationship bonus.
+
+**Game flags.** `wealth.pending` (ventures, keyed by investor), `wealth.cd` (cooldowns for outsiders), `wealth.donated` (per character, for diminishing karma and fame) and `wealth.bound.door|strangers|charity`.
+
+**Person menu.** relationships.ts `personActions` appends `wealthNodes` (wealth-menu.ts): a "Money Matters" group for family and friends while the player is an adult. It has an allowance slider with a live caption, lend, ask to be paid back, forgive, buy a car, pay for a vacation, help with a house, and fund their idea. The Business talent hint shows the same odds the payout rolls. statusInfo shows the allowance and what they owe.
 
 ## Built-in tasks (offline resolution)
 
