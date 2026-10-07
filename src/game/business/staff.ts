@@ -8,6 +8,7 @@ import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuN
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { bizWorth, fxValue, LASTING_YEARS, localEcon, localPay, staffNet, TALENT_HIRE, talentCeo, type Worth } from './economy'
 import { laborProtection, localOuting, severanceMonths, STAFF_TRAITS, traitOf, unionStrength } from './flavor'
+import { roleTitle, sameRole } from './era'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { industryDef, type RoleDef } from './industries'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
@@ -87,7 +88,7 @@ export function bestRole(g: GameState, b: BizState): { role: RoleDef; value: num
   const w = bizWorth(g, b)
   let best: { role: RoleDef; value: number } | null = null
   for (const role of industryDef(b.industry).roles) {
-    if (b.staff.some((x) => x.role === role.title)) continue
+    if (b.staff.some((x) => sameRole(x.role, role.title))) continue
     const value = roleValue(g, b, w, role)
     if (value > 0 && (!best || value > best.value)) best = { role, value }
   }
@@ -132,11 +133,11 @@ const HIRE = defineScript('business.hire', (g, choice, data) => {
   )
 })
 
-function interviewAction(a: Asset, role: RoleDef): MenuAction {
+function interviewAction(a: Asset, role: RoleDef, g0: GameState): MenuAction {
   return {
     type: 'action',
     id: `biz.hire.${a.id}.${role.title}`,
-    label: role.title,
+    label: roleTitle(g0, readBiz(g0, a).countryId, role.title),
     emoji: role.focus === 'quality' ? '\u{1F9D1}\u{200D}\u{1F373}' : role.focus === 'sales' ? '\u{1F4E3}' : role.focus === 'finance' ? '\u{1F9EE}' : '\u{1F4CB}',
     subtitle: (g) => {
       const b = readBiz(g, a)
@@ -147,7 +148,7 @@ function interviewAction(a: Asset, role: RoleDef): MenuAction {
       if (block) return block
       const b = readBiz(g, a)
       if (b.staff.length >= maxKeyStaff(b)) return `Your leadership team is full (${maxKeyStaff(b)}). Open more locations or let someone go.`
-      if (b.staff.some((s) => s.role === role.title)) return `You already have a ${role.title}.`
+      if (b.staff.some((s) => sameRole(s.role, role.title))) return `You already have a ${roleTitle(g, b.countryId, role.title)}.`
       return null
     },
     hint: (g) => {
@@ -175,9 +176,10 @@ function interviewAction(a: Asset, role: RoleDef): MenuAction {
           id === 'none' ? 'Best move: none of them would earn their salary' : `Best hire: worth about ${money(values[Number(id.slice(1))] / LASTING_YEARS)} a year after pay${margin < 500 ? ' (a close call)' : ''}`,
         )
       }
-      scriptChoice(g, HIRE, `Hiring a ${role.title}`, `You interviewed ${list.length} candidates in ${b.city}:\n${lines.join('\n')}`, choices, {
+      const title = roleTitle(g, b.countryId, role.title)
+      scriptChoice(g, HIRE, `Hiring a ${title}`, `You interviewed ${list.length} candidates in ${b.city}:\n${lines.join('\n')}`, choices, {
         emoji: '\u{1F4BC}',
-        data: { assetId: cur.id, role: role.title, focus: role.focus, candidates: toJson(list) },
+        data: { assetId: cur.id, role: title, focus: role.focus, candidates: toJson(list) },
       })
     },
   }
@@ -199,7 +201,7 @@ export function hireMenu(a: Asset): MenuGroup {
       const b = readBiz(g, a)
       if (b.staff.length >= maxKeyStaff(b)) return null
       const best = bestRole(g, b)
-      return talentHint(g, 'Business', best ? `Start with a ${best.role.title}` : 'No open role would earn its salary right now')
+      return talentHint(g, 'Business', best ? `Start with a ${roleTitle(g, b.countryId, best.role.title)}` : 'No open role would earn its salary right now')
     },
     header: (g) => {
       const b = readBiz(g, a)
@@ -208,7 +210,7 @@ export function hireMenu(a: Asset): MenuGroup {
     },
     children: (g) => {
       const b = readBiz(g, a)
-      return industryDef(b.industry).roles.map((r) => interviewAction(a, r))
+      return industryDef(b.industry).roles.map((r) => interviewAction(a, r, g))
     },
   }
 }

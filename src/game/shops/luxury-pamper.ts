@@ -3,6 +3,7 @@
 // labor costs; event tickets follow the local luxury price level.
 import { addHidden, addMoney, addStat, count, formatMoney, log, netWorth, notice, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { nicePrice } from '../assets'
+import { hasTech } from '../history/timeline'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, StatKey } from '../types'
@@ -137,7 +138,9 @@ export function haveTreatment(g: GameState, id: string): boolean {
   }
   for (const [key, range] of Object.entries(t.effects) as [StatKey, [number, number]][]) addStat(g, key, randInt(g, range[0], range[1]))
   log(g, `I treated myself to a ${t.label.toLowerCase()} at a luxury spa.`, 'good')
-  notice(g, t.label, pick(g, t.text), { emoji: t.emoji, tone: 'good' })
+  // Credit cards and sound baths are recent; older spa-goers left feeling like a newborn with a checkbook.
+  const line = pick(g, t.text)
+  notice(g, t.label, !hasTech(g, 'creditCards') ? line.replace('a newborn with a credit card', 'a newborn with a checkbook') : line, { emoji: t.emoji, tone: 'good' })
   return true
 }
 

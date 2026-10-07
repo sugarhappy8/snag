@@ -31,9 +31,9 @@ import {
   inHistory,
   sovereignDefault,
 } from '../history/markets'
-import { PRESENT_YEAR } from '../history/timeline'
+import { HISTORY_START, PRESENT_YEAR } from '../history/timeline'
 import { COUNTRIES, getCountry } from '../world'
-import { eraPennyKind, eraSector, exchangeNameFor, historySector, indexFundSince, indexNameFor, lateEraPennyKind, MODERN_PENNY_SINCE, TRUST_FEE } from './era'
+import { eraPennyKind, eraSector, exchangeNameFor, historySector, indexFundSince, indexNameFor, lateEraPennyKind, MODERN_PENNY_SECTOR, MODERN_PENNY_SINCE, TRUST_FEE } from './era'
 
 // ---------------------------------------------------------------------------
 // Small math helpers
@@ -158,6 +158,11 @@ export function worldYear(fam: string, year: number): WorldYear {
     const lr = Math.log(Math.max(0.05, 1 + us))
     return { z: clampNum((lr - 0.065) / 0.17, -3, 3), crash: us <= -0.25, boom: us >= 0.3 }
   }
+  return syntheticWorldYear(fam, year)
+}
+
+/** The procedural world economy for (family, year), ignoring real history. */
+function syntheticWorldYear(fam: string, year: number): WorldYear {
   const r = seeded(`${fam}|world|${year}`)
   const z = normal(r)
   const crash = r.next() < WORLD_CRASH
@@ -184,9 +189,17 @@ export function indexYield(info: ExInfo): number {
 /** This year's move of an exchange's index. Depends only on (family, exchange, year). */
 export function indexMove(fam: string, info: ExInfo, year: number): IndexMove {
   if (inHistory(year)) return historicalIndexMove(info, year)
+  return syntheticIndexMove(fam, info, year)
+}
+
+/**
+ * The procedural index move for (family, exchange, year), ignoring real history: the future's
+ * market, and the distribution option pricing samples from (any year gives a fresh draw).
+ */
+export function syntheticIndexMove(fam: string, info: ExInfo, year: number): IndexMove {
   const vol = exVol(info.ex)
   const drift = exDrift(info.ex)
-  const w = worldYear(fam, year)
+  const w = syntheticWorldYear(fam, year)
   const r = seeded(`${fam}|ix|${info.key}|${year}`)
   const zl = normal(r)
   const uc = r.next()
@@ -220,6 +233,9 @@ function historicalIndexMove(info: ExInfo, year: number): IndexMove {
   return { logRet, ret, crash, boom, regime: regimeFor(ret, crash, boom) }
 }
 
+/** A typical real (log) market year in history: betas amplify moves around it. */
+const HIST_MEAN_LOG = 0.05
+
 /** True for years the engine follows real history (before PRESENT_YEAR). */
 export function isHistoryYear(year: number): boolean {
   return inHistory(year)
@@ -243,6 +259,15 @@ export function indexName(info: ExInfo, year: number): string {
 /** The exchange's name in `year` (the Paris Bourse before Euronext...). */
 export function exchangeName(info: ExInfo, year: number): string {
   return exchangeNameFor(info.home, year, info.ex.name)
+}
+
+/**
+ * The local index fund as it was sold in `year`: before index funds existed (1976 in the US), the
+ * closest thing was a managed investment trust, which is what the fund slot is called then.
+ */
+export function fundName(info: ExInfo, year: number): { name: string; trust: boolean } {
+  if (inHistory(year) && year < indexFundSince(info.home)) return { name: `${localWords(info.home)[0]} Investment Trust`, trust: true }
+  return { name: `${indexName(info, year)} Index Fund`, trust: false }
 }
 
 // ---------------------------------------------------------------------------
@@ -763,7 +788,15 @@ function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: n
     return { id: next.id, slot: prev.slot, gen: prev.gen + 1, price: next.ipoPrice, ret: 0, event: 'ipo', payout: 0, ended: { id: def.id, kind: 'bankrupt', perUnit: 0, premium: -1 } }
   }
   const marketDev = idx.logRet - Math.log(1 + drift)
-  let logTotal = excess !== null ? idx.logRet + excess + def.tilt + def.idio * 0.6 * z : Math.log(1 + drift + def.tilt) + def.beta * marketDev + def.idio * z
+  let logTotal: number
+  if (inHistory(year)) {
+    // History: the sector's real story when there is one, else the market's real move amplified
+    // by the company's beta. Company noise is mean-neutral (most single stocks trail the index,
+    // a few win big), so a basket of stocks does what its sectors really did.
+    const k = excess !== null ? 0.6 : 0.8
+    const noise = def.idio * k * z - 0.5 * (def.idio * k) ** 2
+    logTotal = excess !== null ? idx.logRet + excess + def.tilt + noise : idx.logRet + (def.beta - 1) * (idx.logRet - HIST_MEAN_LOG) + def.tilt + noise
+  } else logTotal = Math.log(1 + drift + def.tilt) + def.beta * marketDev + def.idio * z
   let event: SecEvent | undefined
   if (uJump < 0.02) {
     logTotal += Math.log(0.45 + 0.3 * uSize)
@@ -794,15 +827,30 @@ function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: n
   return { id: def.id, slot: prev.slot, gen: prev.gen, price, ret: priceRet, event, ratio, payout }
 }
 
-function nextPenny(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng): SecYear {
+/** The sector a penny stock's theme rode in `year` (1999's dot-coms, 1980's oil explorers), or null. */
+function pennySector(def: SecurityDef, year: number): SectorId | null {
+  const k = def.kindIndex ?? 0
+  const old = eraPennyKind(year, k)
+  if (old) return old.as ?? null
+  const modern = PENNY_KINDS[Math.abs(Math.round(k)) % PENNY_KINDS.length]
+  const since = MODERN_PENNY_SINCE[modern.noun]
+  if (since !== undefined && year < since) return lateEraPennyKind(k).as ?? null
+  return MODERN_PENNY_SECTOR[modern.noun] ?? null
+}
+
+function nextPenny(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: number): SecYear {
   const def = pennyDef(info, prev.slot, prev.gen)
   const drift = exDrift(info.ex)
   const z = normal(r)
   const uZero = r.next()
   const uMoon = r.next()
   const uSize = r.next()
-  const pZero = idx.crash ? 0.16 : 0.08
-  let logRet = -0.34 + 1.5 * (idx.logRet - Math.log(1 + drift)) + 0.6 * z
+  // History: tiny companies ride their theme's real story, harder (the dot-coms of 1999, then 2000).
+  const hist = inHistory(year)
+  const sector = hist ? pennySector(def, year) : null
+  const excess = sector ? historicalSectorExcess(info.home, sector, year) : null
+  const pZero = (idx.crash ? 0.16 : 0.08) * (excess !== null && excess < -0.35 ? 2 : 1)
+  let logRet = hist ? -0.34 + 1.5 * (idx.logRet - HIST_MEAN_LOG) + 1.2 * (excess ?? 0) + 0.6 * z : -0.34 + 1.5 * (idx.logRet - Math.log(1 + drift)) + 0.6 * z
   let event: SecEvent | undefined
   if (uMoon < 0.03) {
     logRet += Math.log(4 + 8 * uSize)
@@ -859,7 +907,7 @@ function nextExYear(fam: string, info: ExInfo, prev: ExYear, year: number): ExYe
     }
   }
   const stocks = prev.stocks.map((s) => nextStock(info, s, idx, s.slot < classic ? r : rd, year))
-  const pennies = prev.pennies.map((s) => nextPenny(info, s, idx, r))
+  const pennies = prev.pennies.map((s) => nextPenny(info, s, idx, r, year))
   // The index fund tracks the index (price) minus its yearly fee.
   const fundRet = Math.max(-0.99, (1 + idx.ret) * (1 - fundFee(info, year)) - 1)
   let fundPrice = Math.max(0.01, prev.fund.price * (1 + fundRet))
@@ -906,7 +954,9 @@ function remember<T>(cache: Map<string, T>, key: string, value: T): void {
 }
 
 function effectiveAnchor(anchor: number, year: number): number {
-  const a = Number.isFinite(anchor) ? Math.round(anchor) : year
+  let a = Number.isFinite(anchor) ? Math.round(anchor) : year
+  // A family older than recorded history starts its market where history starts.
+  if (year >= HISTORY_START) a = Math.max(a, HISTORY_START)
   return Math.max(Math.min(a, year), year - MAX_SPAN)
 }
 
@@ -1087,11 +1137,11 @@ export function goldYear(fam: string, anchor: number, year: number): { price: nu
     years = [{ price: hist !== null ? hist : Math.round(seeded(`${fam}|gold0`).float(1_800, 2_800)), ret: 0 }]
     remember(goldCache, ck, years)
   }
-  // After real history, gold's long-run trend starts from its last real price.
-  const baseAt = a < PRESENT_YEAR ? PRESENT_YEAR - 1 - a : 0
   while (years.length <= y - a) {
     const yr = a + years.length
     const prev = years[years.length - 1]
+    // After real history, gold's long-run trend starts from its last real price.
+    const baseAt = yr >= PRESENT_YEAR && a < PRESENT_YEAR ? PRESENT_YEAR - 1 - a : 0
     const hist = historicalGoldPrice(yr)
     if (hist !== null) {
       years.push({ price: hist, ret: prev.price > 0 ? hist / prev.price - 1 : 0 })

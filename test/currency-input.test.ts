@@ -43,6 +43,11 @@ describe('typing amounts', () => {
     expect(parseMoneyInput('2 million')).toBe(2_000_000)
     expect(parseMoneyInput('1 500 kr')).toBe(1_500)
     expect(parseMoneyInput('-$20')).toBe(-20)
+    // A multiplier is a whole word: "Kč" is Czech crowns, not thousands.
+    expect(parseMoneyInput('500 Kč')).toBe(500)
+    expect(parseMoneyInput('100 krónur')).toBe(100)
+    expect(parseMoneyInput('2.5 million yen')).toBe(2_500_000)
+    expect(parseMoneyInput('5 quadrillion ℳ')).toBe(5e15)
     expect(parseMoneyInput('lots')).toBeNull()
     expect(parseMoneyInput('')).toBeNull()
   })
@@ -77,6 +82,13 @@ describe('typing amounts', () => {
     expect(moneyDefault('100')).toBe('5.3')
     expect(normalizeInput('number', '$5.30', true, 1)).toBe('100')
     expect(validateInput('number', '0.04', 1, undefined, true)).toBe('The minimum is $0.05.')
+  })
+
+  it('writes hyperinflation amounts out in full', () => {
+    show('hu', 1946)
+    const v = moneyFieldValue(1_000)
+    expect(v).toMatch(/^\d{25,}$/)
+    expect(normalizeInput('number', v, true, 1, 5_000)).toBe('1000')
   })
 
   it('leaves non-money inputs and plain dollars as they were', () => {

@@ -3,7 +3,7 @@
 // the little warp the game screen plays when you arrive. Rules live in game/timeMachine.ts;
 // snapshots and travel in the store.
 import { useEffect, useState } from 'react'
-import { bindMoneyContext, currentMoneyContext, formatMoney, type MoneyContext } from '../../game/core'
+import { formatMoney, withMoneyContext } from '../../game/core'
 import {
   availableStops,
   isRestart,
@@ -36,23 +36,12 @@ export interface TimeMachineRow {
   disabled: string
 }
 
-/** A stand-in life that only carries a money context (all bindMoneyContext reads). */
-function contextLife(ctx: MoneyContext): GameState {
-  return { year: ctx.year, character: { countryId: ctx.countryId } } as unknown as GameState
-}
-
 /**
  * A stop's balance as you saw it back then: that year's prices, in the money of the country you
  * lived in (a 1990 balance in 1990 yen, not 2000 yen; pesos before you emigrated, not dollars).
  */
 export function moneyThen(g: GameState, stop: TimeStop): string {
-  const prev = currentMoneyContext()
-  bindMoneyContext(contextLife({ countryId: stop.countryId || g.character.countryId, year: stop.year }))
-  try {
-    return formatMoney(stop.money)
-  } finally {
-    bindMoneyContext(prev ? contextLife(prev) : null)
-  }
+  return withMoneyContext({ countryId: stop.countryId || g.character.countryId, year: stop.year }, () => formatMoney(stop.money))
 }
 
 /** One row per year you can go back to, newest first. */

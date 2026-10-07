@@ -913,12 +913,12 @@ export function moneyPattern(g: GameState): RegExp {
   const m = showMoneyIn(1, moneyContextOf(g))
   if (m.symbol === '$' && !m.suffix) return MONEY_RE
   const sym = escapeRe(m.symbol)
-  const num = '\\d[\\d,]*(?:\\.\\d+)?(?:\\s?(?:K|M|B|T|Qa|Qi)\\b)?'
+  const num = '\\d[\\d,]*(?:\\.\\d+)?(?:\\s?(?:K|M|B|T)\\b|\\s(?:quadr|quint|sext|sept|oct|non)illion\\b)?'
   return m.suffix ? new RegExp(`-?${num}\\s?${sym}`, 'g') : new RegExp(`-?${sym}\\s?${num}`, 'g')
 }
 
 function digitsOf(s: string): string {
-  return s.replace(/[^\d.KMBTQai-]/g, '')
+  return s.replace(/[^\d.KMBTa-z-]/g, '')
 }
 
 /** Throw SchemaError if a rewrite dropped an amount of money or the person's name. */

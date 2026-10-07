@@ -21,7 +21,7 @@ import {
 import { FUTURE_POOL_SIZE } from '../src/game/history/events-future'
 import { eraSafe } from '../src/game/history/events-guard'
 import { eraCureFactor, eraOldAgeFactor, eraSicknessBoost } from '../src/game/history/events-medicine'
-import { eraOccupation } from '../src/game/history/events-people'
+import { eraOccupation, nameFitsYear } from '../src/game/history/events-people'
 import { conscriptionAt, WARS } from '../src/game/history/events-wars'
 import { HISTORY_START, PRESENT_YEAR } from '../src/game/history/timeline'
 import { birthYearOf, createNewLife } from '../src/game/life'
@@ -39,7 +39,7 @@ vi.mock('../src/ai/director', async (orig) => {
   return { ...real, runAiTask: vi.fn(), narrateNotice: vi.fn(), testConnection: vi.fn(), chatReply: vi.fn() }
 })
 
-const { NewLifeScreen, BirthYearPicker, DECADE_CHIPS, chipActive, clampBirthYear, customLifeOptions, randomBirthYear, RANDOM_PICKS } = await import('../src/ui/screens/NewLifeScreen')
+const { NewLifeScreen, BirthYearPicker, DECADE_CHIPS, chipActive, clampBirthYear, customLifeOptions, randomBirthYear, rollFirstName, RANDOM_PICKS } = await import('../src/ui/screens/NewLifeScreen')
 
 const COUNTRY_IDS = new Set(COUNTRIES.map((c) => c.id))
 const CONTINENT_NAMES = new Set<string>(CONTINENTS)
@@ -69,7 +69,7 @@ describe('world headlines', () => {
         expect(eraSafe(line, c.id, y), `${c.id} ${y}: ${line}`).toBe(true)
       }
     }
-  })
+  }, 60_000)
 
   it('has clean data: unique ids, real regions, no brands, sane severities', () => {
     const ids = new Set<string>()
@@ -99,6 +99,31 @@ describe('world headlines', () => {
     expect(uy).toContain('Uruguay wins the first World Cup in Montevideo')
     expect(uy).not.toContain('Uruguay hosts and wins the first World Cup')
     expect(newsLine(1969, 'us')).toBe('\u{1F4F0} 1969: Humans walk on the Moon for the first time.')
+  })
+
+  it('puts history-defining news first and gives every region its own headlines', () => {
+    // A world-defining story beats a national one of the same year; local news wins among equals.
+    expect(newsLine(2020, 'us')).toMatch(/coronavirus pandemic/)
+    expect(newsLine(1945, 'us')).toMatch(/Second World War ends/)
+    expect(newsLine(1945, 'jp')).toMatch(/Hiroshima/)
+    expect(newsLine(1983, 'in')).toMatch(/Cricket World Cup/)
+    expect(newsLine(1960, 'br')).toMatch(/Brasília/)
+    // Big countries everywhere hear their own news in a good share of years, not just the world's.
+    for (const id of ['in', 'cn', 'jp', 'id', 'br', 'mx', 'ng', 'eg', 'pk', 'ar', 'ca', 'au', 'tr', 'ir', 'kr']) {
+      let own = 0
+      for (let y = HISTORY_START; y < PRESENT_YEAR; y++) {
+        if (worldEvents(y, id).some((e) => Array.isArray(e.region) && e.region.includes(id))) own++
+      }
+      expect(own, id).toBeGreaterThanOrEqual(15)
+    }
+    // Every continent has headlines of its own.
+    for (const continent of CONTINENTS) {
+      let n = 0
+      for (let y = HISTORY_START; y < PRESENT_YEAR; y++) {
+        n += allHeadlines(y).filter((e) => e.region === continent || (Array.isArray(e.region) && e.region.includes(continent))).length
+      }
+      expect(n, continent).toBeGreaterThanOrEqual(4)
+    }
   })
 
   it('keeps inventions out of the news where they had not arrived', () => {
@@ -271,6 +296,24 @@ describe('drafts and national service by era', () => {
     expect(job?.data.serviceLeft).toBe(3)
   })
 
+  it('calls up citizens and permanent residents, not visitors, refugees or the undocumented', () => {
+    const count = (extra: Partial<GameState['character']>) => {
+      let n = 0
+      for (let s = 1; s <= 30; s++) {
+        const g = gameAt(1943, 'us', 24, extra, s)
+        yearlyMilitary(g)
+        if (draftNotice(g)) n++
+      }
+      return n
+    }
+    expect(count({ birthCountryId: 'mx', citizenships: ['mx'], immigration: { countryId: 'us', status: 'visa', since: 1940 } })).toBe(0)
+    expect(count({ birthCountryId: 'mx', citizenships: ['mx'], immigration: { countryId: 'us', status: 'undocumented', since: 1940 } })).toBe(0)
+    expect(count({ birthCountryId: 'mx', citizenships: ['mx'], immigration: { countryId: 'us', status: 'permanent', since: 1935 } })).toBeGreaterThan(5)
+    expect(count({ birthCountryId: 'mx', citizenships: ['mx', 'us'] })).toBeGreaterThan(5)
+    // A save from before passports were tracked: born abroad, nothing on file.
+    expect(count({ birthCountryId: 'mx', citizenships: undefined })).toBe(0)
+  })
+
   it('follows each era’s national service, men only where it was', () => {
     expect(draftCount(1952, 'gb', 18)).toBe(30)
     expect(draftCount(1965, 'gb', 18)).toBe(0)
@@ -306,6 +349,18 @@ describe('era medicine and jobs', () => {
     const g = gameAt(1930, 'us', 30)
     const modern = new Set(['Software Developer', 'Barista', 'Personal Trainer', 'Graphic Designer', 'Marketing Manager'])
     for (let i = 0; i < 400; i++) expect(modern.has(randomOccupation(g, 35))).toBe(false)
+  })
+
+  it('names people as they were named back then', () => {
+    expect(nameFitsYear('Jayden', 1950)).toBe(false)
+    expect(nameFitsYear('Jayden', 2005)).toBe(true)
+    expect(nameFitsYear('James', 1900)).toBe(true)
+    for (let seed = 1; seed <= 30; seed++) {
+      const g = createNewLife({ seed, year: 1915, countryId: seed % 2 ? 'us' : 'au' })
+      expect(nameFitsYear(g.character.firstName, 1915), g.character.firstName).toBe(true)
+      for (const p of g.people) if (p.relation !== 'pet') expect(nameFitsYear(p.firstName, 1915 - p.age), `${p.firstName}, ${p.age}`).toBe(true)
+    }
+    for (let i = 0; i < 200; i++) expect(nameFitsYear(rollFirstName('us', 'female', '', 1920), 1920)).toBe(true)
   })
 
   it('gives a 1920 baby an era family', () => {

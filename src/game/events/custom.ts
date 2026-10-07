@@ -784,13 +784,14 @@ export function resolveCustomAction(g: GameState, text: string): void {
     return out(g, 'Indecisive', "You thought long and hard about doing something, then didn't. A bold choice.", null, {}, 'neutral', '🤷')
   }
   const a: Act = { raw, low: raw.toLowerCase(), phrase: toPhrase(raw) }
+  // "Post a selfie" in 1950: the thing hasn't been invented here yet (checked first, so no
+  // reply ever repeats the modern words back at the player).
+  if (anachronismsIn(raw, g.year, [c.countryId]).length) return tooEarly(g)
   const rule = matchRule(g, a)
   if (c.age < 3 && rule?.id !== 'rest') return tooYoung(g, a, rule?.minAge ?? 5)
   if (rule && inPrison(g) && !rule.prison) {
     return out(g, pick(g, ['Behind bars', 'Not in here']), pick(g, [`You'd love to ${you(a.phrase)}, but you're in prison. You stared at the wall instead.`, `You can't ${you(a.phrase)} from a prison cell. A guard told you to keep dreaming.`]), null, { happiness: -1 }, 'neutral', '🔒')
   }
-  // "Post a selfie" in 1950: the thing hasn't been invented here yet.
-  if (anachronismsIn(raw, g.year, [c.countryId]).length) return tooEarly(g)
   if (!rule) return generic(g, a)
   if (rule.minAge !== undefined && c.age < rule.minAge) return tooYoung(g, a, rule.minAge)
   rule.run(g, a)
@@ -798,6 +799,12 @@ export function resolveCustomAction(g: GameState, text: string): void {
 
 /** The player asked for something that doesn't exist yet in their year and country. */
 function tooEarly(g: GameState): void {
+  if (g.character.age < 3) {
+    return out(g, ['Goo goo', 'Baby genius'], `You babbled about something nobody in ${g.year} has ever heard of. Your parents blamed teething.`, 'I babbled about the future.', { happiness: 1 }, 'neutral', '👶')
+  }
+  if (inPrison(g)) {
+    return out(g, ['Ahead of your time', 'Not invented yet'], `You explained your idea to the other inmates. Nobody in ${g.year} has the faintest idea what you're talking about, and the guards think you're planning an escape.`, 'I had an idea way ahead of its time.', { happiness: 1, smarts: 1 }, 'neutral', '🕰️')
+  }
   const instead = v(g, ['@radio listened to the radio', 'read the newspaper cover to cover', 'played cards with a neighbor', 'went for a long walk', '@landline called a friend', '@!landline wrote a letter to a friend', '@1910 went to the pictures'])
   out(
     g,

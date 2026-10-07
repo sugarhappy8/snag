@@ -1476,7 +1476,7 @@ function driftRelationships(g: GameState): void {
 
 // --- Partner drama ---------------------------------------------------------
 
-const CHEAT_WITH = ['a coworker', 'their personal trainer', 'your neighbor', 'their ex', 'a barista', 'someone from the gym', 'a dentist', 'their yoga instructor']
+const CHEAT_WITH = ['a coworker', '@1985 their personal trainer', 'your neighbor', 'their ex', '@1990 a barista', '@-1960 the milkman', '@1950 someone from the gym', 'a dentist', '@1975 their yoga instructor', '@-1975 their dance instructor']
 
 /** True (and stamped) when this person hasn't been in this kind of drama for `years` years. */
 function dramaReady(g: GameState, p: Person, key: string, years: number): boolean {
@@ -1513,7 +1513,7 @@ function partnerDrama(g: GameState): void {
       g,
       'rel.partner.cheated',
       'Cheater!',
-      `You caught ${yourRel(p)} cheating on you with ${pick(g, CHEAT_WITH).replace('their', pr(p).his)} named ${name}!`,
+      `You caught ${yourRel(p)} cheating on you with ${eraPick(g, CHEAT_WITH).replace('their', pr(p).his)} named ${name}!`,
       [
         { id: 'forgive', label: 'Forgive them', emoji: '\u{1F54A}\u{FE0F}' },
         { id: 'yell', label: 'Yell at them', emoji: '\u{1F620}' },
@@ -2484,7 +2484,7 @@ const ATTACKS: { id: string; label: string; emoji: string; verb: string; dmg: [n
   { id: 'wedgie', label: 'Wedgie', emoji: '\u{1FA72}', verb: 'gave {him} a wedgie', dmg: [5, 15], noPart: true },
 ]
 const BODY_PARTS = ['nose', 'chin', 'shin', 'stomach', 'arm', 'ear', 'forehead', 'kneecap', 'elbow', 'shoulder', 'cheek', 'back', 'eyebrow', 'jaw']
-const WEAPONS = ['a frying pan', 'a rolling pin', 'a TV remote', 'a shoe', 'an umbrella', 'a lamp', 'a rubber chicken', 'a baguette']
+const WEAPONS = ['a frying pan', 'a rolling pin', '@tv,1980 a TV remote', '@-1950 a walking cane', 'a shoe', 'an umbrella', 'a lamp', 'a rubber chicken', 'a baguette']
 
 function canBrawl(g: GameState, p: Person): string | null {
   const c = g.character
@@ -2544,7 +2544,7 @@ function performAssault(g: GameState, p: Person, first: (typeof ATTACKS)[number]
   if (chance(g, fightBack)) {
     const hurt = randInt(g, 5, 18)
     addStat(g, 'health', -hurt)
-    text += `\n\n${x.He} fought back and hit you with ${pick(g, WEAPONS)}!`
+    text += `\n\n${x.He} fought back and hit you with ${eraPick(g, WEAPONS)}!`
   }
   if (p.relation === 'cellmate' && c.prison) {
     const won = total >= 30

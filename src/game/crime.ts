@@ -1105,6 +1105,8 @@ interface Store {
   items: [string, number][]
   /** First year this kind of shop exists. */
   since?: number
+  /** Era gates (events/era.ts gateHolds, ',' = and): the radio shop needs radios to sell. */
+  gate?: string
   /** The older name ('Radio Shop' before electronics stores). */
   oldName?: [number, string]
 }
@@ -1118,6 +1120,7 @@ const STORES: Store[] = [
     emoji: '\u{1F4FA}',
     security: 0.3,
     since: 1922,
+    gate: '+radio',
     oldName: [1970, 'Radio Shop'],
     items: [
       ['@2001 a pair of earbuds', 150],
@@ -1247,7 +1250,7 @@ const shopliftMenu: MenuGroup = {
   subtitle: 'Five-finger discount',
   disabledReason: ageGate(8),
   header: (g) => `Pick a store. Pricier loot draws more attention, and beware of the ${mallCop(g)}.`,
-  children: (g) => STORES.filter((s) => g.year >= (s.since ?? 0)).map((s) => shopliftStore(g, s)),
+  children: (g) => STORES.filter((s) => g.year >= (s.since ?? 0) && (s.gate ?? '').split(',').every((t) => gateHolds(g, t.trim()))).map((s) => shopliftStore(g, s)),
 }
 
 // ---------------------------------------------------------------------------

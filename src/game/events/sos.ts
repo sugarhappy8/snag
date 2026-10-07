@@ -302,7 +302,7 @@ export const SOS_EVENTS = defineEvents([
         const r = randInt(g, 1, 100)
         const filming = x.data.film === undefined || x.n('film') === 1
         const doing = filming ? 'filming' : 'watching'
-        if (r <= 3) return say(g, x, filming ? 'Final upload' : 'Too close', filming ? `You got the shot of a lifetime. It was also your last.` : `You had the best view in town. It was also your last.`, `I died ${doing} ${aKind(x.s('kind'))}.`, { death: `${uc(x.s('kind'))}` }, 'bad', '🪦')
+        if (r <= 3) return say(g, x, filming ? (common(g, 'socialMedia') ? 'Final upload' : 'Final footage') : 'Too close', filming ? `You got the shot of a lifetime. It was also your last.` : `You had the best view in town. It was also your last.`, `I died ${doing} ${aKind(x.s('kind'))}.`, { death: `${uc(x.s('kind'))}` }, 'bad', '🪦')
         if (r <= 25) return say(g, x, 'Bad idea', `You got too close ${doing} the ${x.s('kind')} and were hit by flying debris.`, `I got hurt ${doing} ${aKind(x.s('kind'))}.`, { health: -15, condition: { name: 'Concussion', kind: 'injury', severity: 15 } }, 'bad')
         if (!filming) return say(g, x, 'Eyewitness', `You watched the whole ${x.s('kind')} from the rooftop. The newspaper quoted you on the front page!`, `I was an eyewitness to ${aKind(x.s('kind'))} and was quoted in the newspaper.`, { fame: 2, happiness: 6, karma: -2 }, 'good', '📰')
         const viral = common(g, 'socialMedia')

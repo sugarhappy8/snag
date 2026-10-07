@@ -583,3 +583,109 @@ describe('review fixes', () => {
     expect(tm.travelBlock(g, stop, false)).toMatch(/on screen/)
   })
 })
+
+describe('adversarial review fixes', () => {
+  it('storage that stops answering never leaves the Time Machine spinning, and snapshots recover', async () => {
+    await live(3)
+    // A stuck IndexedDB transaction: reads never come back.
+    const stuck: import('../src/game/save').SnapshotBackend = {
+      name: 'local',
+      get: () => new Promise(() => {}),
+      put: async () => {},
+      remove: async () => {},
+      keys: async () => [],
+    }
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      save.setSnapshotBackend(stuck)
+      const trip = store.travelBack(1)
+      expect(store.getApp().timeTravel.busy).toBe(true)
+      await vi.advanceTimersByTimeAsync(store.TRAVEL_TIMEOUT_MS + 10)
+      expect(await trip).toBe(false)
+      expect(store.getApp().timeTravel).toMatchObject({ busy: false })
+      expect(store.getApp().timeTravel.error).toMatch(/stalled on the way to 1981/)
+      // A slow year isn't a missing one: it stays on offer, and nothing about the life changed.
+      expect(stopAges()).toContain(1)
+      expect(game().character.age).toBe(3)
+      // The stuck operation is given up on, so the queue behind it moves again.
+      await vi.advanceTimersByTimeAsync(save.SNAPSHOT_OP_TIMEOUT_MS)
+    } finally {
+      vi.useRealTimers()
+      save.setSnapshotBackend(null)
+    }
+    await settle()
+    store.clearTimeTravelError()
+    expect(await store.travelBack(1)).toBe(true)
+    expect(game().character.age).toBe(1)
+    await live(1)
+    expect(stopAges()).toEqual([0, 1, 2])
+  }, 30_000)
+
+  it("a jump that can't be saved is called off and leaves the grave and ribbon alone", async () => {
+    await live(4)
+    const lifeId = game().lifeId
+    store.act((g) => killCharacter(g, 'Falling Piano'))
+    drain()
+    const dead = game()
+    expect(dead.flags.deathRecorded).toBe(true)
+    const ribbons = save.loadRibbons()
+    const graves = save.loadGraveyard()
+    expect(graves.some((e) => e.lifeId === lifeId)).toBe(true)
+    // The browser refuses the main save (even after the Time Machine gives back its room).
+    const setItem = localStorage.setItem.bind(localStorage)
+    const refuse = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (k === 'anotherlife.save.v1') throw new Error('QuotaExceededError')
+      setItem(k, v)
+    })
+    try {
+      expect(await store.travelBack(2)).toBe(false)
+    } finally {
+      refuse.mockRestore()
+    }
+    expect(store.getApp().timeTravel.error).toMatch(/couldn't save your trip to 1982/)
+    // Still dead, in memory and on disk, with the death still on record: a reload can't bring
+    // back a dead life whose grave and ribbon were already taken back.
+    expect(game()).toBe(dead)
+    expect(save.loadGame()?.character.alive).toBe(false)
+    expect(save.loadRibbons()).toEqual(ribbons)
+    expect(save.loadGraveyard()).toEqual(graves)
+  }, 30_000)
+
+  it('bulldozing your own grave before jumping still takes the ribbon back', async () => {
+    await live(3)
+    const lifeId = game().lifeId
+    const before = save.loadRibbons()
+    store.act((g) => killCharacter(g, 'Falling Piano'))
+    drain()
+    const ribbon = game().ribbon
+    expect(ribbon).toBeTruthy()
+    expect(save.loadRibbons()[ribbon!]).toBe((before[ribbon!] ?? 0) + 1)
+    save.removeFromGraveyard(lifeId)
+    expect(await store.travelBack(2)).toBe(true)
+    expect(save.loadRibbons()).toEqual(before)
+    expect(save.loadGraveyard().some((e) => e.lifeId === lifeId)).toBe(false)
+  }, 30_000)
+
+  it('outcomeTag re-rolls the year you land in for results only settled when it ends', () => {
+    const g = makeTestGame(2, { age: 40 })
+    g.year = 2020
+    // Never jumped: nothing changes (old saves and present-day lives keep their seeds).
+    expect(tm.outcomeTag(g, 2019)).toBe('')
+    expect(tm.outcomeTag(g, 2020)).toBe('')
+    g.flags.timelineForks = [
+      { year: 2010, salt: 'a1' },
+      { year: 2012, salt: 'b2' },
+    ]
+    // Fiscal 2009 was booked at the 2010 birthday, before the first jump's snapshot: kept.
+    expect(tm.outcomeTag(g, 2009)).toBe('')
+    // 2010 was never booked in the first timeline before the jump: new dice from the first fork.
+    expect(tm.outcomeTag(g, 2010)).toBe('~a1')
+    // 2011 was booked (at the 2012 birthday) in the first fork's timeline, then the second jump.
+    expect(tm.outcomeTag(g, 2011)).toBe('~a1')
+    expect(tm.outcomeTag(g, 2012)).toBe('~b2')
+    expect(tm.outcomeTag(g, 2030)).toBe('~b2')
+    // Prices keep the year you land in (they're on screen the moment it starts).
+    expect(tm.timelineTag(g, 2012)).toBe('~a1')
+    expect(tm.outcomeTag(g, Number.NaN)).toBe('')
+  })
+})

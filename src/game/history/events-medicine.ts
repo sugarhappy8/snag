@@ -6,11 +6,11 @@
 import { getCountry } from '../world'
 import { PRESENT_YEAR } from './timeline'
 
-/** How many years behind the richest countries a country's medicine ran (0 rich … ~22 poorest). */
+/** How many years behind the richest countries a country's medicine ran (0 rich … ~18 poorest). */
 function medicalLag(countryId: string): number {
   const w = getCountry(countryId).wealth ?? 1
   const laggard = Math.max(0, Math.min(1, 1 - Math.max(0.05, Math.min(1, w))))
-  return laggard * 22
+  return laggard * 18
 }
 
 /** The year whose medicine this country and year had (the calendar minus the country's lag). */
@@ -60,7 +60,8 @@ const BACTERIAL = new Set([
 export function eraCureFactor(countryId: string, year: number, disease: string, cancer: boolean): number {
   if (year >= PRESENT_YEAR) return 1
   const m = medicalYear(countryId, year)
-  if (disease === 'Tuberculosis') return curve([[1946, 0.2], [1952, 0.6], [1960, 0.9], [1970, 1]], m)
+  // Before streptomycin (1946) a sanatorium's rest and fresh air saved some patients, not most.
+  if (disease === 'Tuberculosis') return curve([[1946, 0.3], [1952, 0.6], [1960, 0.9], [1970, 1]], m)
   if (disease === 'HIV') return m < 1996 ? 0 : 1
   if (BACTERIAL.has(disease)) return curve([[1935, 0.35], [1944, 0.55], [1950, 0.85], [1960, 1]], m)
   if (cancer) return curve([[1900, 0.3], [1950, 0.45], [1975, 0.65], [1995, 0.85], [2015, 0.97], [PRESENT_YEAR, 1]], m)
@@ -87,7 +88,8 @@ export function eraDiseaseWeight(countryId: string, year: number, disease: strin
     case 'Mumps':
       return curve([[1967, 3], [1980, 1]], m)
     case 'Tuberculosis':
-      return curve([[1920, 6], [1950, 3], [1970, 1.5], [1990, 1]], m)
+      // Common, but not so common that most lives of the era end with it.
+      return curve([[1920, 3], [1950, 2], [1970, 1.4], [1990, 1]], m)
     case 'Pneumonia':
       return curve([[1930, 2], [1960, 1.3], [1990, 1]], m)
     case 'HIV':

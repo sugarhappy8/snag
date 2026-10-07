@@ -86,8 +86,27 @@ export function marketKey(b: { industry: string; countryId: string }): string {
   return marketDef(b.industry).scope === 'world' ? 'world' : b.countryId
 }
 
-/** A company's stored market state, read-only (null for a company that never booked a year in it). */
+/** Parsed market states by stored object (saveMarket always stores a new object, so no stale reads). */
+const stateCache = new WeakMap<object, { key: string; st: MarketState | null }>()
+
+/**
+ * A company's stored market state, READ-ONLY: it is shared with every other read of the same
+ * stored data (the planner reads it on every what-if). Null for a company that never booked a
+ * year in its market. To change it, take a copy with freshMarketState and save it back.
+ */
 export function marketStateOf(b: { industry: string; countryId: string; market?: Json }): MarketState | null {
+  const raw = b.market
+  const key = marketKey(b)
+  if (!raw || typeof raw !== 'object') return readMarket(raw, key)
+  const hit = stateCache.get(raw)
+  if (hit && hit.key === key) return hit.st
+  const st = readMarket(raw, key)
+  stateCache.set(raw, { key, st })
+  return st
+}
+
+/** A private, mutable copy of the stored market state (null when there is none). */
+export function freshMarketState(b: { industry: string; countryId: string; market?: Json }): MarketState | null {
   return readMarket(b.market, marketKey(b))
 }
 

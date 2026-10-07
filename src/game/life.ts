@@ -30,7 +30,7 @@ import { isNewsLine, logNews } from './history/events'
 import { eraOccupation, familyWeights, homemakerShare, realWealthFactor, sameSexAdoptionShare, siblingWeights } from './history/events-people'
 import { WARS, type WarDef } from './history/events-wars'
 import { hasTech, HISTORY_START, isHistorical, PRESENT_YEAR, techOdds } from './history/timeline'
-import { createPerson, notePerson, randomOccupation } from './people'
+import { createPerson, eraName, notePerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import { MAX_START_TALENTS, normalizeTalents, pickedTalents, type TalentId } from './talents'
@@ -649,6 +649,12 @@ function familyWarLines(g: GameState, father: Person | undefined, mother: Person
   return out
 }
 
+/** The player's random first name, one that fits the birth year (modern years: one plain roll). */
+function eraFirstName(g: GameState, countryId: string, gender: Gender, city: string, year: number): string {
+  const name = randomFirstName(g, countryId, gender, city)
+  return isHistorical(year) ? eraName(g, name, countryId, gender, year) : name
+}
+
 /** A usable calendar year of birth: PRESENT_YEAR by default, never before HISTORY_START. */
 export function birthYearOf(year: number | undefined): number {
   if (typeof year !== 'number' || !Number.isFinite(year)) return PRESENT_YEAR
@@ -687,7 +693,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   const gender: Gender = opts.gender ?? (chance(g, 0.5) ? 'male' : 'female')
   const city = opts.city?.trim() || randomCity(g, country)
   const lastName = opts.lastName?.trim() || randomLastName(g, country.id, city)
-  const firstName = opts.firstName?.trim() || randomFirstName(g, country.id, gender, city)
+  const firstName = opts.firstName?.trim() || eraFirstName(g, country.id, gender, city, year)
   const sexuality = opts.sexuality ?? randomSexuality(g)
   const birthday = randomBirthday(g)
   const avatar = randomAvatar(g, country)

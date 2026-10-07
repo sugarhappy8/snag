@@ -167,13 +167,13 @@ export const HEADLINES_1946: readonly HeadlineRow[] = [
   [1963, 'politics', 0, 'world', 'A hotline links Washington and Moscow'],
   [1963, 'health', 1, 'world', 'A measles vaccine is licensed'],
   // 1964
-  [1964, 'politics', 2, 'us', 'The Civil Rights Act outlaws segregation in the US'],
+  [1964, 'politics', 3, 'us', 'The Civil Rights Act outlaws segregation in the US'],
   [1964, 'sport', 1, 'world,-jp', 'Tokyo hosts the first Olympics in Asia'],
   [1964, 'sport', 2, 'jp', 'Tokyo hosts the Olympics and the bullet train opens'],
   [1964, 'war', 2, 'us,vn', 'The Gulf of Tonkin incident pulls the US deeper into Vietnam'],
   [1964, 'war', 1, 'world', 'China tests its first atomic bomb'],
   [1964, 'politics', 2, 'za', 'Nelson Mandela is sentenced to life in prison'],
-  [1964, 'politics', 2, 'pa,us', 'Riots over the Panama Canal Zone flag'],
+  [1964, 'politics', 2, 'pa', 'Riots break out over the US flag in the Panama Canal Zone'],
   // 1965
   [1965, 'war', 2, 'us,vn', 'US combat troops arrive in Vietnam'],
   [1965, 'war', 1, 'world,-us,-vn', 'The US sends combat troops to Vietnam'],

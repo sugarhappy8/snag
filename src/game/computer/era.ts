@@ -28,12 +28,27 @@ function techList(gate: EraGate): readonly TechId[] {
   return gate.tech === undefined ? [] : typeof gate.tech === 'string' ? [gate.tech] : gate.tech
 }
 
+// Menus ask the same "does X exist here this year" question hundreds of times per render. The
+// answer depends only on static country data, so it's memoized (a cache, never game state).
+const techHereCache = new Map<string, boolean>()
+
+function techHere(countryId: string, tech: TechId, year: number): boolean {
+  const key = `${countryId}|${tech}|${year}`
+  let v = techHereCache.get(key)
+  if (v === undefined) {
+    if (techHereCache.size > 20_000) techHereCache.clear()
+    v = techAdoption(countryId, tech, year) >= 0.02
+    techHereCache.set(key, v)
+  }
+  return v
+}
+
 /** True when the gate is open in that country and year (pure; for data tables). */
 export function eraOpenAt(countryId: string, gate: EraGate | undefined, year: number): boolean {
   if (!gate) return true
   if (gate.from !== undefined && year < gate.from) return false
   if (gate.until !== undefined && year > gate.until) return false
-  for (const t of techList(gate)) if (techAdoption(countryId, t, year) < 0.02) return false
+  for (const t of techList(gate)) if (!techHere(countryId, t, year)) return false
   return true
 }
 
@@ -170,9 +185,11 @@ export function classifiedsName(g: GameState, year = g.year): string {
 export function noComputerText(g: GameState, year = g.year): string {
   const era = computerEra(g, year)
   if (era === 'none') {
+    // Worded without "computer": before home computers the word itself was rare (and the
+    // anachronism lint in events/era.ts is right to flag it).
     return year < 1975
-      ? `Computers in ${year} fill whole rooms at universities and banks. Nobody has one at home.`
-      : `Home computers haven't reached ${countryLabel(g.character.countryId)} yet. The few that exist are in offices and universities.`
+      ? `It's ${year}. The only calculating machines fill whole rooms at universities and banks. Nobody has one at home.`
+      : `Home computing hasn't reached ${countryLabel(g.character.countryId)} yet. The few machines that exist are in offices and universities.`
   }
   if (era === 'micro') return "You don't have a computer. Home computers are new, pricey and rare: ask your parents, or save up for one at the Electronics Store (Activities › Shopping)."
   if (era === 'pc') return "You don't have a computer. A desktop PC costs a small fortune: ask your parents, or save up for one at the Electronics Store (Activities › Shopping)."
@@ -182,7 +199,7 @@ export function noComputerText(g: GameState, year = g.year): string {
 /** Menu subtitle for Activities › Computer when you don't own one. */
 export function noComputerSubtitle(g: GameState, year = g.year): string {
   const era = computerEra(g, year)
-  if (era === 'none') return 'No home computers yet'
+  if (era === 'none') return 'Not invented yet'
   if (era === 'modern') return 'Get a laptop or gaming PC to unlock'
   return 'Get a home computer to unlock'
 }

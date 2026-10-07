@@ -286,6 +286,8 @@ describe('queueFallbackYearEvents', () => {
         drainEvents(g, (m) => m.choices[m.choices.length - 1].id)
         g.queue = []
         g.character.stats.health = 90
+        // Not always (filming the tornado is the last option): a freak death mustn't end the check early.
+        g.character.alive = true
       }
       for (const [id, ages] of Object.entries(fired)) {
         const ev = EVENT_LIBRARY.find((e) => e.id === id)!
@@ -319,7 +321,7 @@ describe('queueFallbackYearEvents', () => {
   })
 
   it('flavor pools are large and use only known tokens', () => {
-    const known = new Set(['mom', 'dad', 'sib', 'sibRel', 'friend', 'partner', 'pet', 'petSpecies', 'kid', 'kidRel', 'adultKid', 'adultKidRel', 'grandkid', 'cellmate', 'school', 'company', 'city', 'country', 'food', 'show', 'hobby', 'radioShow', 'kidPrize', 'movieKind'])
+    const known = new Set(['mom', 'dad', 'sib', 'sibRel', 'friend', 'partner', 'pet', 'petSpecies', 'kid', 'kidRel', 'adultKid', 'adultKidRel', 'grandkid', 'cellmate', 'school', 'company', 'city', 'country', 'food', 'show', 'hobby', 'radioShow', 'kidPrize', 'movieKind', 'textbookPrice', 'valetTip'])
     let total = 0
     for (const [key, lines] of Object.entries(FLAVOR_POOLS)) {
       expect(lines.length, key).toBeGreaterThanOrEqual(4)

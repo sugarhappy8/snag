@@ -38,6 +38,7 @@ import {
   MID_WORDS,
   QA_PAY,
   scopeDef,
+  teamScale,
   TIER_INFO,
   TIER_LABEL,
   titleFor,
@@ -248,7 +249,7 @@ const INTERVIEW = defineScript('gamedev.job.interview', (g, choice, data) => {
   const bar = l.level === 0 ? 34 : 50
   if (score < bar) {
     log(g, `I interviewed at ${l.studio} for ${l.title} and didn't get it.`, 'bad')
-    say(g, 'Not This Time', `${answer.reply}\n\n${l.studio} went with another candidate. ${pick(g, ['They promised to "keep your CV on file," which is a large file nobody opens.', 'The rejection email had your name spelled wrong.', 'They said you were "a strong candidate," which is what they say to everyone.'])}`, '\u{1F4E7}', 'bad')
+    say(g, 'Not This Time', `${answer.reply}\n\n${l.studio} went with another candidate. ${pick(g, ['They promised to "keep your CV on file," which is a large file nobody opens.', `The rejection ${g.year >= 1997 && hasTech(g, 'internet') ? 'email' : 'letter'} had your name spelled wrong.`, 'They said you were "a strong candidate," which is what they say to everyone.'])}`, '\u{1F4E7}', 'bad')
     return
   }
   takeJob(g, l, answer.reply)
@@ -285,7 +286,8 @@ export function takeJob(g: GameState, l: Listing, intro = ''): void {
   log(g, `I got a job as ${l.title} at ${l.studio}.`, 'good')
   remember(g, `Hired as ${l.title} at ${l.studio}, a ${TIER_LABEL[l.tier]}.`)
   const proj = d.proj
-  const team = proj ? ` You're on the team making "${proj.title}", ${articleNoun(genreDef(proj.genre).noun)}.` : ''
+  const crew = proj ? Math.max(2, Math.round(scopeDef(proj.scope).team * teamScale(g.year))) : 0
+  const team = proj ? ` You're one of ${crew} people making "${proj.title}", ${articleNoun(genreDef(proj.genre).noun)}.` : ''
   say(g, "You're Hired!", `${intro ? `${intro}\n\n` : ''}${l.studio} hired you as ${l.title} for ${money(l.salary)} a year.${team}${quitNote(quit)}`, '\u{1F3AE}', 'good')
 }
 
@@ -689,7 +691,7 @@ export function yearlyGameJob(g: GameState, budget: number): number {
     remember(g, `Laid off from ${studio}${mood === 'downturn' ? ' in an industry-wide layoff wave' : ''}.`)
     if (used < budget) {
       used++
-      say(g, 'Laid Off', `${mood === 'downturn' ? 'The whole industry is shedding jobs, and' : 'After a rough year,'} ${studio} laid off ${pick(g, ['a fifth of the staff', '200 people', 'the entire team you were on', 'everyone whose name starts with a vowel, apparently'])}, including you. ${sev > 0 ? `Severance: ${money(sev)}.` : 'No severance.'} The CEO posted about "difficult decisions" from a yacht.`, '\u{1F4E6}', 'bad')
+      say(g, 'Laid Off', `${mood === 'downturn' ? 'The whole industry is shedding jobs, and' : 'After a rough year,'} ${studio} laid off ${pick(g, ['a fifth of the staff', '200 people', 'the entire team you were on', 'everyone whose name starts with a vowel, apparently'])}, including you. ${sev > 0 ? `Severance: ${money(sev)}.` : 'No severance.'} The CEO ${hasTech(g, 'socialMedia') ? 'posted' : 'sent a memo'} about "difficult decisions" from a yacht.`, '\u{1F4E6}', 'bad')
     }
     return used
   }
@@ -832,7 +834,7 @@ function quitJob(g: GameState): void {
   const title = job.title
   leave(g, 'quit')
   log(g, `I quit my job as ${title} at ${d.studio}.`)
-  say(g, 'Quit', `You quit your job as ${title} at ${d.studio}. Your farewell message in the team chat got ${randInt(g, 20, 140)} emoji reactions and one "who?"`, '\u{1F6AA}')
+  say(g, 'Quit', hasTech(g, 'smartphone') ? `You quit your job as ${title} at ${d.studio}. Your farewell message in the team chat got ${randInt(g, 20, 140)} emoji reactions and one "who?"` : `You quit your job as ${title} at ${d.studio}. Your farewell card got ${randInt(g, 12, 60)} signatures and one "who?"`, '\u{1F6AA}')
 }
 
 function retireJob(g: GameState): void {

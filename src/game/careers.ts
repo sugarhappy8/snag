@@ -28,10 +28,10 @@ import {
 import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
 import { codeFreelanceMenu } from './computer/dev-freelance'
 import { catchEmbellishment, caughtLine, caughtLying, cvFields, cvMenu, cvScore, embellishedEntries, fitContext, jobFit, jobMarket, jobScreenChance, screeningReason, screeningThoroughness, type JobMarket } from './cv'
-import { COMPANY_WORDS, ERA_FULLTIME_JOBS, ERA_PARTTIME_JOBS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, jobInEra, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
+import { COMPANY_WORDS, COMPANY_WORDS_BEFORE, companyWordsIn, ERA_FULLTIME_JOBS, ERA_PARTTIME_JOBS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, jobInEra, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
 import { historicalCycle, marketHistory } from './history/markets'
 import { hasTech } from './history/timeline'
-import { anachronistic } from './events/era'
+import { anachronistic, eraPick } from './events/era'
 import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation, presentAdmissionsInterview, screenedOut } from './education'
 import { createPerson, notePerson } from './people'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
@@ -109,10 +109,13 @@ export function companyName(g: GameState, industry: Industry, r: () => number): 
   const pool = NAME_POOLS[getCountry(g.character.countryId).names] ?? NAME_POOLS.anglo
   const city = g.character.city
   const W = COMPANY_WORDS
-  if (industry === 'corporate') return `${rPick(r, W.corpPrefix)} ${rPick(r, W.corpSuffix)}`
-  if (industry === 'tech') return `${rPick(r, W.corpPrefix)} ${rPick(r, W.techSuffix)}`
-  if (industry === 'finance') return `${rPick(r, W.corpPrefix)} ${rPick(r, W.financeSuffix)}`
-  const templates: readonly string[] = W[industry]
+  // Words of the era only (today's lists are unchanged, so today's names are too).
+  const w = (list: readonly string[]) => companyWordsIn(list, g.year, g.character.countryId)
+  if (industry === 'corporate') return `${rPick(r, w(W.corpPrefix))} ${rPick(r, w(W.corpSuffix))}`
+  if (industry === 'tech') return `${rPick(r, w(W.corpPrefix))} ${rPick(r, w(W.techSuffix))}`
+  if (industry === 'finance') return `${rPick(r, w(W.corpPrefix))} ${rPick(r, w(W.financeSuffix))}`
+  const before = COMPANY_WORDS_BEFORE[industry]
+  const templates: readonly string[] = before && g.year < before[0] ? before[1] : w(W[industry])
   const tpl = rPick(r, templates)
   return tpl
     .replace('{city}', city)
@@ -1018,21 +1021,21 @@ const FIRE_REASONS = [
   'No explanation was given as to why you have been let go.',
   "They say it's because you are not reliable.",
   "They say it's because everyone in the office got food poisoning from the food you brought to the potluck.",
-  "They say it's because they're tired of seeing you complain about management on social media.",
+  "@socialMedia They say it's because they're tired of seeing you complain about management on social media.",
   "They tell you it's because they believe you have been stealing office supplies.",
   "They tell you it's because you are always late.",
   "They tell you it's because you're too apathetic, but you don't really care.",
-  'They tell you it\'s because you say "YOLO" too much.',
+  '@2011 They tell you it\'s because you say "YOLO" too much.',
   "They tell you it's not you, it's them.",
   'They tell you that you ask too many questions, to which you reply, "How many questions are too many?"',
   "They say something about you not being a good listener, but you weren't really paying attention.",
   "You are told it's because you spend too much time in the bathroom.",
   'You are told that they want to go in a different direction.',
   "You suspect it's because you took the last cup of coffee and didn't brew a new pot.",
-  "You suspect it's because you destroyed the copy machine.",
+  "@1960 You suspect it's because you destroyed the copy machine.",
   "You suspect it's because you keep clogging the only toilet.",
   "You are told it's because your performance just isn't up to the organization's standards.",
-  "They tell you it's because you waste too much time messing around on your phone.",
+  "@mobilePhone They tell you it's because you waste too much time messing around on your phone.",
   "You suspect it's because you have been working on your resume at work.",
   "They tell you it's because the office was robbed after you forgot to lock the door.",
   "You are told it's because you cry at work too much.",
@@ -1237,7 +1240,7 @@ function yearForJob(g: GameState, slot: Slot): void {
 
   // Fired for poor performance.
   if (job.performance < 25 && chance(g, job.performance < 15 ? 0.6 : 0.3)) {
-    fire(g, slot, pick(g, FIRE_REASONS))
+    fire(g, slot, eraPick(g, FIRE_REASONS))
     return
   }
   // Lies on your CV can surface years later.
@@ -1326,13 +1329,14 @@ function yearForJob(g: GameState, slot: Slot): void {
 }
 
 // Occasional offline workplace events (the AI director writes most job events).
-const TEAM_ACTIVITIES = ['an escape room', 'a trust-fall workshop', 'a paintball match', 'a cooking class', 'a ropes course', 'karaoke night', 'a corporate retreat in the woods']
+// Era tags (events/era.ts): escape rooms are a 2010s thing; before the 1970s it's the company picnic.
+const TEAM_ACTIVITIES = ['@2010 an escape room', '@1975 a trust-fall workshop', '@1985 a paintball match', 'a cooking class', '@1975 a ropes course', '@1985 karaoke night', 'a corporate retreat in the woods', '@-1975 a company picnic with a three-legged race', '@-1975 a bowling night']
 
 function maybeJobEvent(g: GameState): void {
   const job = g.character.job
   if (!job || job.category !== 'fulltime' || !chance(g, 0.1)) return
   if (chance(g, 0.5)) {
-    const activity = pick(g, TEAM_ACTIVITIES)
+    const activity = eraPick(g, TEAM_ACTIVITIES)
     scriptChoice(g, JOB_EVENT, 'Team Building', `${job.company} is doing ${activity} as a team-building exercise. Will you participate?`, [
       { id: 'yes', label: 'Participate', emoji: '\u{1F91D}' },
       { id: 'no', label: 'Refuse', emoji: '\u{1F645}' },
@@ -1485,7 +1489,7 @@ function workHarder(g: GameState, slot: Slot): void {
   const job = g.character[slot]
   if (!job) return
   if (!useYearAction(g, `workHarder:${slot}`, 3)) {
-    notice(g, 'Work Harder', pick(g, ["You're already working as hard as humanly possible. Any harder and you'll burst a blood vessel.", 'You tried to work even harder but mostly just stared at your screen. Try again next year.']), { emoji: '\u{1F4A6}' })
+    notice(g, 'Work Harder', pick(g, ["You're already working as hard as humanly possible. Any harder and you'll burst a blood vessel.", `You tried to work even harder but mostly just stared at ${g.year >= 1985 ? 'your screen' : 'the clock'}. Try again next year.`]), { emoji: '\u{1F4A6}' })
     return
   }
   job.performance = Math.round(clamp(job.performance + randInt(g, 3, 7) * (suitsTalent(g, job.defId) ? 1.4 : 1)))
@@ -1639,12 +1643,14 @@ function setHours(g: GameState, input?: string): void {
 const HR_GRIPES = [
   'stealing your lunch from the fridge',
   'taking credit for your work',
-  'microwaving fish in the break room',
+  '@1975 microwaving fish in the break room',
   'yelling at you in front of everyone',
   'spreading rumors about you',
   'constantly showing up late and leaving you to cover',
-  'hogging the printer for personal projects',
-  'replying-all to every single email',
+  '@1985 hogging the printer for personal projects',
+  '@+internet,1995 replying-all to every single email',
+  '@-1985 hogging the typewriter for personal letters',
+  '@-1975 reheating fish on the office hot plate',
 ]
 
 function hrTargets(g: GameState, job: Job): Person[] {
@@ -1657,7 +1663,7 @@ function reportToHR(g: GameState, personId: string): void {
   const target = getPerson(g, personId)
   if (!c.alive || c.prison || !job || !target || !target.alive || target.contextId !== job.company) return
   if (!useYearAction(g, 'hr', 3)) {
-    notice(g, 'Human Resources', "HR has stopped answering your emails for the rest of the year. Their out-of-office reply is just a picture of a shrug.", { emoji: '\u{1F4C1}' })
+    notice(g, 'Human Resources', g.year >= 1995 && hasTech(g, 'internet') ? "HR has stopped answering your emails for the rest of the year. Their out-of-office reply is just a picture of a shrug." : 'HR has stopped answering your memos for the rest of the year. Their door now has a sign that just says "OUT."', { emoji: '\u{1F4C1}' })
     return
   }
   const name = `${target.firstName} ${target.lastName}`
@@ -1679,7 +1685,7 @@ function reportToHR(g: GameState, personId: string): void {
     notice(g, 'Human Resources', `HR asked what exactly ${name} did wrong. You stared at the ceiling for a while and couldn't come up with anything. They told you to get back to work.`, { emoji: '\u{1F4C1}' })
     return
   }
-  const gripe = pick(g, HR_GRIPES)
+  const gripe = eraPick(g, HR_GRIPES)
   notePerson(target, 'Was reported to HR by the player.')
   const roll = rand(g)
   if (roll < 0.35) {
@@ -1905,11 +1911,12 @@ const partTimeMenu: MenuGroup = {
 }
 
 const GIG_OUTCOMES: Record<string, { good: string[]; bad: string[] }> = {
-  babysitter: { good: ['The kids went to bed on time and you watched cable all night.', 'You taught the kids a card game and they actually listened to you.'], bad: ['The kids locked you out of the house and ate an entire cake.', 'The baby screamed for six straight hours. Your ears are still ringing.'] },
+  // Era tags (events/era.ts): cable TV, phones and phone numbers only once they exist.
+  babysitter: { good: ['@tv,1980 The kids went to bed on time and you watched cable all night.', '@-1980 The kids went to bed on time and you raided the cookie jar in peace.', 'You taught the kids a card game and they actually listened to you.'], bad: ['The kids locked you out of the house and ate an entire cake.', 'The baby screamed for six straight hours. Your ears are still ringing.'] },
   dog_walker: { good: ['The dog was a very good boy.', 'You and the pup made a lap around the park. Ten out of ten.'], bad: ['The dog slipped its leash and chased a squirrel across three neighborhoods.', 'The dog rolled in something unspeakable. Twice.'] },
   pet_sitter: { good: ['The cat ignored you completely, which is cat for "thank you."', 'The hamster ran 40 miles on its wheel. Thrilling stuff.'], bad: ['The cat knocked everything off every shelf in the house.', 'The parrot learned a new swear word from you.'] },
-  lawn_mower: { good: ['You gave the lawn stripes like a baseball field.', 'The neighbors were so impressed they asked for your number.'], bad: ['You mowed over a garden gnome. Rest in pieces.', 'You ran over a hose and soaked yourself.'] },
-  tutor: { good: ['Your student finally understood fractions.', "Your student aced their test and gave you all the credit."], bad: ["Your student asked if you were sure you'd passed this class.", 'You spent the whole session confiscating their phone.'] },
+  lawn_mower: { good: ['You gave the lawn stripes like a baseball field.', '@landline The neighbors were so impressed they asked for your number.', '@!landline The neighbors were so impressed they asked you to come back every Saturday.'], bad: ['You mowed over a garden gnome. Rest in pieces.', 'You ran over a hose and soaked yourself.'] },
+  tutor: { good: ['Your student finally understood fractions.', "Your student aced their test and gave you all the credit."], bad: ["Your student asked if you were sure you'd passed this class.", '@mobilePhone You spent the whole session confiscating their phone.', '@!mobilePhone,1935 You spent the whole session confiscating their comic books.', '@-1935 You spent the whole session confiscating their slingshot.'] },
   house_cleaner: { get good() { return ['The house sparkled when you were done.', `You found ${formatMoney(20)} under the couch and honestly returned it.`] }, bad: ['You found three things under the couch you will never speak of.', 'You broke a vase that was "a family heirloom."'] },
   caretaker: { good: ['Grandpa told you stories about the good old days. Some were even true.', 'You played bingo for four hours and loved every second.'], bad: ['Grandpa told you the same story eleven times.', 'Grandma cheated at cards and accused you of cheating.'] },
   handyman: { good: ['You fixed the sink without flooding anything.', 'You built a shelf that is, against all odds, level.'], bad: ['You fixed the sink, then the leak you caused fixing the sink.', 'You hit your thumb with a hammer so hard you saw stars.'] },
@@ -1945,7 +1952,7 @@ function doGig(g: GameState, gig: GigDef, input?: string): void {
   if (roll < 0.1) {
     addStat(g, 'happiness', -5)
     log(g, `${client} refused to pay me for ${gig.noun} work.`, 'bad')
-    notice(g, 'Stiffed!', `You worked ${hours} hours as a ${gig.noun} for ${client}. ${pick(g, outcomes.bad)} Then ${client} refused to pay you, claiming you did a terrible job.`, { emoji: gig.emoji, tone: 'bad' })
+    notice(g, 'Stiffed!', `You worked ${hours} hours as a ${gig.noun} for ${client}. ${eraPick(g, outcomes.bad)} Then ${client} refused to pay you, claiming you did a terrible job.`, { emoji: gig.emoji, tone: 'bad' })
     return
   }
   let pay = rate * hours
@@ -1955,7 +1962,7 @@ function doGig(g: GameState, gig: GigDef, input?: string): void {
   addMoney(g, pay)
   addStat(g, 'happiness', roll > 0.4 ? 2 : -1)
   log(g, `I ${gig.verbed} ${client} for ${hours} hours and earned ${formatMoney(pay)}.`, 'good')
-  const flavor = roll > 0.4 ? pick(g, outcomes.good) : pick(g, outcomes.bad)
+  const flavor = roll > 0.4 ? eraPick(g, outcomes.good) : eraPick(g, outcomes.bad)
   notice(g, gig.label, `${client} hired you as a ${gig.noun} for ${hours} hours at ${formatMoney(rate)} an hour. ${flavor} You earned ${formatMoney(pay)}${tip ? ` (including a ${formatMoney(tip)} tip)` : ''}.`, { emoji: gig.emoji, tone: 'good' })
 }
 

@@ -12,6 +12,7 @@
 // The home computer's old indie-game projects and indie-game ventures show up here too.
 import { businessView } from '../business/manage'
 import { hasTech } from '../history/timeline'
+import { getCountry } from '../world'
 import { foundingProblem, startFounding } from '../business/founding'
 import { offerStudioGrowth, studioAssets, studioOf, studioSummary, ventureStudioBlock } from '../business/gamestudio'
 import { devGames } from '../business/gamestudio-state'
@@ -203,11 +204,12 @@ export const gameIndustryMenu: MenuGroup = {
     if (studios.length) return `${studios.length === 1 ? studios[0].name : `${studios.length} studios`} · make games, run the studio`
     const p = gdPeek(g)
     if (p && (p.projects.length || p.games.length)) return `${p.projects.length} in development · ${p.games.filter((x) => !x.free).length} released`
-    return industryHere(g) ? 'Make games, work at studios, start your own' : 'No video game industry yet'
+    return industryHere(g) ? 'Make games, work at studios, start your own' : 'Not invented yet'
   },
   visible: (g) => g.character.alive && !g.character.prison,
   header: (g) => {
     const c = g.character
+    if (!industryHere(g) && !gdPeek(g)) return ''
     if (c.age < 6) return 'You are a little young to make games. You are, however, the perfect age to play them.'
     const p = gdView(g)
     return `${newsLine(g)}\nCoding ${trackSkill(g, 'code', p)} · design ${trackSkill(g, 'design', p)} · art ${trackSkill(g, 'art', p)} · gamer fame ${p.gamerFame}`
@@ -215,7 +217,10 @@ export const gameIndustryMenu: MenuGroup = {
   children: (g): MenuNode[] => {
     const c = g.character
     if (!industryHere(g) && !gdPeek(g)) {
-      return [{ type: 'info', id: 'gamedev.noIndustry', emoji: '\u{1F579}\u{FE0F}', text: `It's ${g.year}. Video games are a curiosity in university labs; the first arcade machines and home consoles won't arrive until the 1970s. Come back then.` }]
+      const text = gameIndustryExists(g.year)
+        ? `It's ${g.year}. Arcade machines and home consoles haven't reached ${getCountry(g.character.countryId).name} yet. Come back when they do.`
+        : `It's ${g.year}. Nobody has built an arcade machine or a home console yet; the first ones arrive in the early 1970s. Come back then.`
+      return [{ type: 'info', id: 'gamedev.noIndustry', emoji: '\u{1F579}\u{FE0F}', text }]
     }
     if (c.age < 6) return [{ type: 'info', id: 'gamedev.young', emoji: '\u{1F476}', text: 'Come back when you can hold a controller the right way up.' }]
     const nodes: MenuNode[] = []

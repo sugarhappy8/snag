@@ -644,6 +644,7 @@ function historicalServiceDue(g: GameState): boolean {
   const c = g.character
   const country = getCountry(c.countryId)
   if (!conscriptionAt(c.countryId, g.year, country.conscription)) return false
+  if (!liableForService(g)) return false
   if (c.gender === 'female' && !womenConscriptedAt(c.countryId, g.year)) return false
   // Wartime call-ups take over while a war is on.
   if (warDraftAt(c.countryId, g.year)) return false
@@ -661,6 +662,18 @@ function historicalServiceDue(g: GameState): boolean {
   return true
 }
 
+/**
+ * Call-ups reach the country's citizens and permanent residents, not people there on a visa, as
+ * refugees or without papers. Lives from before passports were tracked count their birth country.
+ */
+function liableForService(g: GameState): boolean {
+  const c = g.character
+  const imm = c.immigration
+  if (imm && imm.countryId === c.countryId) return imm.status === 'citizen' || imm.status === 'permanent'
+  if (Array.isArray(c.citizenships) && c.citizenships.length > 0) return c.citizenships.includes(c.countryId)
+  return (c.birthCountryId ?? c.countryId) === c.countryId
+}
+
 function warKey(war: WarDef): string {
   return `warDraft.${war.id}`
 }
@@ -674,7 +687,7 @@ function maybeWarDraft(g: GameState): void {
   const { war, rule } = found
   if (c.age < rule.minAge || c.age > rule.maxAge) return
   if (c.gender === 'female' && !rule.women) return
-  if (ownFlag(g, warKey(war)) !== undefined) return
+  if (ownFlag(g, warKey(war)) !== undefined || !liableForService(g)) return
   if (militaryJob(g)) {
     setOwnFlag(g, warKey(war), 'serving')
     return

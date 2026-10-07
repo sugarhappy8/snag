@@ -113,7 +113,7 @@ const bookAction: MenuAction = {
   id: 'fame.book',
   label: 'Book',
   emoji: '\u{1F4D6}',
-  subtitle: `Write a book (${money(BOOK_COST)} for editing)`,
+  subtitle: () => `Write a book (${money(BOOK_COST)} for editing)`,
   disabledReason: needFame(FAMOUS),
   input: {
     kind: 'text',
@@ -148,7 +148,7 @@ const bookAction: MenuAction = {
       fameDelta >= 5
         ? pick(g, ['Bookstores can\'t keep it on the shelves.', 'Book clubs everywhere are arguing about chapter 7.', 'Even your harshest critics bought two copies.'])
         : fameDelta >= 2
-          ? pick(g, ['Readers seem to genuinely like it.', 'A few talk shows mentioned it favorably.', 'Your mom bought fifty copies, but so did strangers.'])
+          ? pick(g, ['Readers seem to genuinely like it.', `A few ${tvEra(g) ? 'talk shows' : radioEra(g) ? 'radio hosts' : 'newspaper critics'} mentioned it favorably.`, 'Your mom bought fifty copies, but so did strangers.'])
           : pick(g, ['Most copies are being used to level wobbly tables.', 'The reviews were... words were used.', 'Your publisher has stopped returning your calls.'])
     say(g, 'Book', `Your book "${title}" was ${verdict}. ${flavor} You earned ${money(earned)}.`, '\u{1F4D6}', fameDelta >= 2 ? 'good' : fameDelta < 0 ? 'bad' : 'neutral')
   },
@@ -297,7 +297,7 @@ const photoScript = defineScript('special.fame.photo', (g, choice, data) => {
   }
   log(g, `I posed for a ${offer.kind} photo shoot in ${offer.magazine}.`, good ? 'good' : 'neutral')
   const reception = good
-    ? pick(g, ['Readers couldn\'t stop talking about how stunning you looked.', 'The issue flew off the newsstands.', 'Fashion bloggers declared it the shoot of the year.'])
+    ? pick(g, ['Readers couldn\'t stop talking about how stunning you looked.', 'The issue flew off the newsstands.', online(g) && g.year >= 2004 ? 'Fashion bloggers declared it the shoot of the year.' : 'Fashion columnists declared it the shoot of the year.'])
     : pick(g, ['A few readers said the lighting did you no favors.', 'The photos were airbrushed so much your own mother didn\'t recognize you.', 'The reception was polite at best.'])
   say(g, 'Photo Shoot', `You posed for a ${offer.kind} shoot in ${offer.magazine} and earned ${money(offer.pay)}. ${reception}${extra}`, '\u{1F4F8}', good ? 'good' : 'neutral')
 })
@@ -468,18 +468,25 @@ const autographAction: MenuAction = {
 // ---------------------------------------------------------------------------
 // Merchandise
 
-const MERCH: { id: string; label: string; emoji: string; cost: number }[] = [
-  { id: 'tshirts', label: 'T-Shirts', emoji: '\u{1F455}', cost: 5_000 },
-  { id: 'hoodies', label: 'Hoodies', emoji: '\u{1F9E5}', cost: 10_000 },
-  { id: 'bobbleheads', label: 'Bobbleheads', emoji: '\u{1F5FF}', cost: 8_000 },
+/** `from`: the first year fans could buy it (no energy drinks in 1950, no hoodies in 1920). */
+const MERCH: { id: string; label: string; emoji: string; cost: number; from?: number; until?: number }[] = [
+  { id: 'tshirts', label: 'T-Shirts', emoji: '\u{1F455}', cost: 5_000, from: 1960 },
+  { id: 'hoodies', label: 'Hoodies', emoji: '\u{1F9E5}', cost: 10_000, from: 1975 },
+  { id: 'bobbleheads', label: 'Bobbleheads', emoji: '\u{1F5FF}', cost: 8_000, from: 1960 },
   { id: 'plush', label: 'Plush Toys', emoji: '\u{1F9F8}', cost: 12_000 },
   { id: 'perfume', label: 'Signature Fragrance', emoji: '\u{1F338}', cost: 25_000 },
-  { id: 'drink', label: 'Energy Drink', emoji: '\u{26A1}', cost: 40_000 },
+  { id: 'drink', label: 'Energy Drink', emoji: '\u{26A1}', cost: 40_000, from: 1987 },
+  // Older merchandise (appended so today's list is unchanged).
+  { id: 'postcards', label: 'Signed Postcards', emoji: '\u{1F4EE}', cost: 3_000, until: 1959 },
 ]
+
+function merchNow(g: GameState) {
+  return MERCH.filter((m) => g.year >= (m.from ?? 0) && g.year <= (m.until ?? Infinity))
+}
 
 const merchScript = defineScript('special.fame.merch', (g, choice) => {
   if (choice === 'cancel') return
-  const item = MERCH.find((m) => m.id === choice)
+  const item = merchNow(g).find((m) => m.id === choice)
   if (!item) return
   if (!spend(g, item.cost)) {
     g.yearActions['fame.merch'] = 0
@@ -529,7 +536,7 @@ const merchAction: MenuAction = {
       merchScript,
       'Merchandise',
       'What kind of merchandise do you want to sell with your face on it?',
-      [...MERCH.map((m) => ({ id: m.id, label: `${m.label} (${money(m.cost)})`, emoji: m.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+      [...merchNow(g).map((m) => ({ id: m.id, label: `${m.label} (${money(m.cost)})`, emoji: m.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
       { emoji: '\u{1F6CD}\u{FE0F}' },
     )
   },

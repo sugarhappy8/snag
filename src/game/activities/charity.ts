@@ -24,7 +24,7 @@ interface Charity {
 const CHARITIES: Charity[] = [
   { id: 'shelter', name: 'Paws & Whiskers Animal Rescue', emoji: '\u{1F43E}', cause: 'rescue animals', thanks: ['The shelter sent you a photo of a three-legged dog wearing a thank-you bandana.', 'A volunteer said your money will feed every cat in the building for a month.'] },
   { id: 'hospital', name: "Hope Children's Hospital", emoji: '\u{1F3E5}', cause: 'sick kids', thanks: ['The kids made you a giant card covered in glitter. It will never leave your house.', 'A nurse called to thank you personally and accidentally made you cry.'] },
-  { id: 'food', name: 'Community Food Bank', emoji: '\u{1F96B}', cause: 'feeding families', thanks: ['Your donation will put a lot of meals on a lot of tables.', 'The food bank posted a thank-you on its bulletin board. Your name is next to the canned peaches.'] },
+  { id: 'food', name: 'Community Food Bank', emoji: '\u{1F96B}', cause: 'feeding families', thanks: ['Your donation will put a lot of meals on a lot of tables.', 'The food bank pinned a thank-you note to its bulletin board. Your name is next to the canned peaches.'] },
   { id: 'ocean', since: 1990, name: 'Clean Oceans Initiative', emoji: '\u{1F30A}', cause: 'cleaning up the oceans', thanks: ['Somewhere, a sea turtle is a little less tangled thanks to you.', 'They sent you a certificate printed on recycled seaweed. It smells.'] },
   { id: 'cancer', name: 'Cancer Research Fund', emoji: '\u{1F397}\u{FE0F}', cause: 'cancer research', thanks: ['Your money is going straight into a lab full of very smart people.', 'The foundation sent you a pin. You wear it proudly.'] },
   { id: 'homeless', name: 'Safe Harbor Homeless Shelter', emoji: '\u{1F3E0}', cause: 'people experiencing homelessness', thanks: ['The shelter can keep its doors open all winter now.', 'The director hugged you so hard your back cracked.'] },
@@ -88,7 +88,7 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
     log(g, `I donated ${money(amount)} to a charity that turned out to be a scam.`, 'bad')
     addStat(g, 'happiness', -happy - randInt(g, 3, 8))
     result(g, 'Scammed!', pick(g, [
-      `You donated ${money(amount)} to "${ch.name}". A week later, its founder was arrested for fraud. Your money is now a jet ski.`,
+      `You donated ${money(amount)} to "${ch.name}". A week later, its founder was arrested for fraud. Your money is now ${g.year >= 1975 ? 'a jet ski' : g.year >= 1925 ? 'a speedboat' : 'a racehorse'}.`,
       common(g, 'internet') ? `The "${ch.name}" you gave ${money(amount)} to was a fake website run out of a basement. The police are looking into it.` : `The "${ch.name}" you gave ${money(amount)} to was a fake office with a rented typewriter. The police are looking into it.`,
     ]), '\u{1F6A8}', 'bad')
     return

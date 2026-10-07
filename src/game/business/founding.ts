@@ -14,6 +14,7 @@ import { talentHint } from '../talents'
 import { becomeCeo, installManager, managerCandidate } from './career'
 import { industryHint, localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
 import { industryEraBlock, marketDef } from './competition-data'
+import { eraNote } from './era'
 import { refreshTechValue } from './deeptech-core'
 import { DEEP_TECH } from './deeptech-data'
 import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
@@ -32,7 +33,7 @@ export function industryProblem(g: GameState, industry: Industry): string | null
   const c = g.character
   const country = getCountry(c.countryId)
   const def = industryDef(industry)
-  if (!isIndustryLegal(c.countryId, industry)) return `Not allowed in ${country.name}. ${marketOf(c.countryId).businessNote}`
+  if (!isIndustryLegal(c.countryId, industry)) return `Not allowed in ${country.name}. ${eraNote(g, c.countryId, marketOf(c.countryId).businessNote)}`.trim()
   const era = industryEraBlock(industry, c.countryId, g.year)
   if (era) return era
   if (def.needs === 'drinking' && c.age < country.drinkingAge) return `You must be ${country.drinkingAge} to hold a liquor license in ${country.name}.`
@@ -739,9 +740,11 @@ export const startBusinessMenu: MenuGroup = {
     const country = getCountry(g.character.countryId)
     return [
       `Doing business in ${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, registration in about ${m.startupDays} ${m.startupDays === 1 ? 'day' : 'days'} for ${formatMoney(m.startupFee)}, business loans from ${pct(offeredRate(g, 'business'), 1)}.`,
-      m.businessNote,
+      eraNote(g, g.character.countryId, m.businessNote),
       `You have ${formatMoney(g.character.money)}.`,
-    ].join('\n')
+    ]
+      .filter((x) => x)
+      .join('\n')
   },
   children: (): MenuNode[] => [
     { type: 'heading', id: 'biz.start.classicH', label: 'Classic Businesses' },

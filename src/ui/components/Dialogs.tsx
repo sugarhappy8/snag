@@ -140,6 +140,12 @@ const MULTIPLIERS: Record<string, number> = {
   billion: 1e9,
   t: 1e12,
   trillion: 1e12,
+  quadrillion: 1e15,
+  quintillion: 1e18,
+  sextillion: 1e21,
+  septillion: 1e24,
+  octillion: 1e27,
+  nonillion: 1e30,
 }
 
 /**
@@ -154,7 +160,8 @@ export function parseMoneyInput(raw: string, wholeUnits = false): number | null 
   const prefix = s.slice(0, core.index)
   const suffix = s.slice(core.index + core[0].length)
   if (!/^[^\d]{0,8}$/.test(prefix)) return null
-  const tail = /^\s*([a-z]+)?\.?\s*([^\d]{0,8})$/i.exec(suffix)
+  // A multiplier is a whole word ("2.5M", "3 million"), never the start of a symbol ("500 Kč").
+  const tail = /^\s*(?:([a-z]+)(?!\p{L}))?\.?\s*([^\d]{0,12})$/iu.exec(suffix)
   if (!tail) return null
   let mult = 1
   let currencyWord = tail[2]
@@ -192,6 +199,8 @@ function wholeCurrency(): boolean {
 export function moneyFieldValue(internal: number): string {
   if (!Number.isFinite(internal)) return ''
   const d = internal * moneyScale()
+  // Hyperinflation amounts (1946 pengő) are written out in full, never as '1e+30'.
+  if (Math.abs(d) >= 1e21) return BigInt(Math.round(d)).toString()
   if (Math.abs(d) >= 100 || wholeCurrency()) return String(Math.round(d))
   return String(Math.round(d * 100) / 100)
 }
@@ -293,7 +302,7 @@ export function InputField({ kind, value, onChange, onSubmit, placeholder, multi
       value={value}
       placeholder={placeholder}
       aria-label={money && label ? `${label} (${showMoney(1).code})` : label}
-      maxLength={kind === 'number' ? (money ? 28 : 18) : 120}
+      maxLength={kind === 'number' ? (money ? 48 : 18) : 120}
       autoFocus
       autoComplete="off"
       onChange={(e) => onChange(e.target.value)}

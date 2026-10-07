@@ -196,22 +196,31 @@ function eraSituations(g: GameState): string[] {
   return out
 }
 
+/**
+ * A round example amount written out in full ('100000', '17000000000', '0.18'): never '1.4e+28',
+ * which hyperinflation money (1923 marks, 1946 pengő) would otherwise print.
+ */
+function exampleAmount(a: number): string {
+  if (!Number.isFinite(a) || a <= 0) return '0'
+  if (a < 1) return a.toFixed(2)
+  if (a < 10) return String(Math.round(a))
+  const e = Math.floor(Math.log10(a))
+  const lead = Math.round(a / 10 ** (e - 1))
+  return `${lead}${'0'.repeat(e - 1)}`
+}
+
 /** Guidance for the effects object (shared by outcome-style tasks). */
 export function effectsGuide(g: GameState): string {
   const cash = g.character.money
   const typical = Math.max(50, Math.min(25_000, Math.round(Math.abs(cash) * 0.05 + 100)))
   // Money is shown to the AI in this life's currency and year (Settings › Money), so its answer
   // is in those units too; the director converts it back (aiMoneyToDollars).
-  const { label, cashText, typicalText, example } = withMoneyContext(moneyContextOf(g), () => {
-    const m = showMoney(typical)
-    const n = Math.round(m.amount)
-    return {
-      label: moneyCurrencyLabel(),
-      cashText: formatMoney(cash),
-      typicalText: formatMoney(typical),
-      example: n >= 10 ? Number(n.toPrecision(2)) : n,
-    }
-  })
+  const { label, cashText, typicalText, example } = withMoneyContext(moneyContextOf(g), () => ({
+    label: moneyCurrencyLabel(),
+    cashText: formatMoney(cash),
+    typicalText: formatMoney(typical),
+    example: exampleAmount(showMoney(typical).amount),
+  }))
   return [
     'EFFECTS (integers, 0 = no change):',
     '- happiness/health/smarts/looks/karma: usually ±2 to ±15 (±20 only for huge moments). fame: 0 unless it would make news.',

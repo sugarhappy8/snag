@@ -26,7 +26,7 @@ import { defineScript } from '../scripts'
 import { isAlcoholic, locale } from '../data/locales'
 import { randomFirstName, randomLastName } from '../world'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
-import { common, declined, eraLines, eraPick, landline, prohibition } from '../events/era'
+import { common, declined, eraLines, eraPick, landline, prohibition, venueExists } from '../events/era'
 import {
   addCondition,
   addGrievance,
@@ -754,7 +754,7 @@ const BAR_ORDER = defineScript('act.night.barOrder', (g, choice, data) => {
 function barName(g: GameState): string {
   if (prohibition(g)) return `the speakeasy behind ${pick(g, ['the barbershop', 'the laundromat', 'a funeral parlor', 'the soda fountain'])}`
   if (g.character.countryId === 'us') return pick(g, BAR_NAMES)
-  const local = locale(g).hangouts.filter((h) => /\b(?:bars?|pubs?|cantina|boteco|kneipe|kafana|izakaya|tavern|beer garden|heuriger|brewery|shebeen|rumshop|bodega|taberna|wine)\b/i.test(h))
+  const local = locale(g).hangouts.filter((h) => /\b(?:bars?|pubs?|cantina|boteco|kneipe|kafana|izakaya|tavern|beer garden|heuriger|brewery|shebeen|rumshop|bodega|taberna|wine)\b/i.test(h) && venueExists(g, h))
   return local.length && chance(g, 0.6) ? pick(g, local) : pick(g, BAR_NAMES)
 }
 

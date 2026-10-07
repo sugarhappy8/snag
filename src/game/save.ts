@@ -132,8 +132,9 @@ export function unrecordDeath(g: GameState): void {
   if (legacy || g.flags.recordedGrave === true) {
     const all = loadGraveyard()
     const graves = all.filter((e) => e.lifeId !== g.lifeId)
-    // Old graves this death pushed out come back, unless the graveyard was cleared since
-    // (Settings → Danger zone): then this grave is gone too and nothing should reappear.
+    // Old graves this death pushed out come back, unless its grave is already gone (the
+    // graveyard was cleared, or the grave bulldozed): then nothing should reappear. The ribbon
+    // is taken back either way, so bulldozing your own grave can't keep it.
     const stillThere = graves.length < all.length
     const bumped = stillThere && Array.isArray(g.flags.bumpedGraves) ? (g.flags.bumpedGraves as unknown as GraveyardEntry[]) : []
     for (const old of bumped) if (old && typeof old.lifeId === 'string' && !graves.some((e) => e.lifeId === old.lifeId)) graves.push(old)
@@ -451,8 +452,35 @@ export function setSnapshotBackend(b: SnapshotBackend | null): void {
 
 let chain: Promise<unknown> = Promise.resolve()
 
+/**
+ * A storage operation still running after this long is given up on, so storage that stops
+ * answering (a stuck IndexedDB transaction) can't hold every later snapshot and jump forever.
+ */
+export const SNAPSHOT_OP_TIMEOUT_MS = 20_000
+
+function limited<T>(p: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      // The stuck operation may still finish later: a write then gives up instead of listing a
+      // year whose pieces were swept meanwhile.
+      epoch++
+      reject(new Error('Snapshot storage timed out'))
+    }, SNAPSHOT_OP_TIMEOUT_MS)
+    p.then(
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 function enqueue<T>(op: () => Promise<T>, fallback: T): Promise<T> {
-  const run = chain.then(op).catch(() => fallback)
+  const run = chain.then(() => limited(op())).catch(() => fallback)
   chain = run
   return run
 }
@@ -693,6 +721,8 @@ function evictLocalSnapshot(): boolean {
   const keep = local ? liveKeys() : new Set<string>()
   const drop = stored.filter((k) => !keep.has(k))
   if (drop.length === 0) return false
+  // A snapshot being written here right now may have just lost its chunks: let it give up cleanly.
+  if (local) epoch++
   localRemove(drop)
   saveIndex()
   for (const l of listeners) l()

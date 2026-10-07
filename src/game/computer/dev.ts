@@ -140,7 +140,7 @@ const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, da
   notice(
     g,
     taken ? 'Confiscated!' : `${titleWord(g)} Fight`,
-    choice === 'earnings' ? `You proudly showed ${who} the ${money(earned)} you've made online. "That's ${pick(g, ['about two hours of my salary', 'not even the electricity bill', 'adorable'])}." They were not impressed.${taken}` : `You argued that coding is basically homework. ${Who} pointed out your grades.${taken || ' You won this round. Barely.'}`,
+    choice === 'earnings' ? `You proudly showed ${who} the ${money(earned)} you've made ${online(g) ? 'online' : 'with the computer'}. "That's ${pick(g, ['about two hours of my salary', 'not even the electricity bill', 'adorable'])}." They were not impressed.${taken}` : `You argued that coding is basically homework. ${Who} pointed out your grades.${taken || ' You won this round. Barely.'}`,
     { emoji: taken ? '\u{1F512}' : '\u{1F4A2}', tone: 'bad' },
   )
 })

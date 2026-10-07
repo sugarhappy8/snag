@@ -264,7 +264,7 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
     capital: 100_000, capitalLocal: 0.7, staff: 14, wage: 66_000, staffScale: 0.8, rent: 96_000, maint: 0.12, capMult: 2,
     multiple: 6, growth: 0.6, perMillion: 3, taxShare: 0, perishable: 1, marketingShare: 0.02,
     roles: [r('Creative Director', 'quality', 120_000), r('Account Director', 'sales', 110_000), r('Head of Strategy', 'quality', 115_000), r('Operations Manager', 'ops', 85_000), r('Finance Director', 'finance', 105_000)],
-    products: ['Influencer Network', 'Data & Analytics Unit', 'Video Production', 'Crisis PR Desk', 'TikTok Studio', 'B2B Lead Generation'],
+    products: ['Influencer Network', 'Data & Analytics Unit', 'Video Production', 'Crisis PR Desk', 'Short-Video Studio', 'B2B Lead Generation'],
     suffixes: ['Media', 'Marketing', 'Creative', 'Agency', 'Collective'],
   },
   clinic: {
@@ -393,14 +393,14 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
     suffixes: ['Aerospace', 'Space', 'Orbital', 'Rocketworks', 'Launch'],
   },
   electricVehicles: {
-    id: 'electricVehicles', label: 'Electric Car Maker', emoji: '\u{1F699}', unit: 'cars', unitOne: 'car', site: 'R&D center', sitePlural: 'R&D centers',
+    id: 'electricVehicles', label: 'Electric Vehicle Maker', emoji: '\u{1F699}', unit: 'cars', unitOne: 'car', site: 'R&D center', sitePlural: 'R&D centers',
     blurb: 'Build the car of the future. Survive production hell first.',
     price: 45_000, unitCost: 37_000, localShare: 0.35, priceCat: 'car', tradable: 0.8, demand: 2_500, elasticity: 1.6, incomeSens: 0.7,
     capital: 1_200_000, capitalLocal: 0.35, staff: 40, wage: 95_000, staffScale: 0.6, rent: 400_000, maint: 0.08, capMult: 1,
     multiple: 15, growth: 1, perMillion: 0.05, taxShare: 1, perishable: 0.05, marketingShare: 0.02,
     roles: [r('Chief Engineer', 'quality', 260_000), r('Battery Lead', 'quality', 230_000), r('Head of Sales', 'sales', 220_000), r('Production Chief', 'ops', 210_000), r('CFO', 'finance', 240_000)],
     products: ['Performance Edition', 'Electric Pickup', 'Long-Range Battery Pack', 'Premium Connectivity', 'Fleet Leasing', 'Home Charger Bundle'],
-    suffixes: ['Motors', 'EV', 'Automotive', 'Electric', 'Mobility'],
+    suffixes: ['Motors', 'Autoworks', 'Automotive', 'Electric', 'Mobility'],
   },
   quantum: {
     id: 'quantum', label: 'Quantum Computing Company', emoji: '\u{269B}\u{FE0F}', unit: 'compute contracts', unitOne: 'compute contract', site: 'lab', sitePlural: 'labs',

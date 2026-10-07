@@ -139,7 +139,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     req: { majors: ['Engineering', 'Physics'], kinds: ['mba'], smarts: 75, text: 'an engineering or physics degree, an MBA (or smarts 75+)' },
     expert: 'Chief Engineer',
     screen: { label: 'Factory Floor', emoji: '\u{1F3ED}', header: 'Batteries, factories and the long road through production hell.' },
-    cycle: { amp: 0.12, up: 'EV boom', down: 'EV slowdown', name: 'EV market' },
+    cycle: { amp: 0.12, up: 'electric-vehicle boom', down: 'electric-vehicle slowdown', name: 'electric-vehicle market' },
   },
   quantum: {
     stages: [
@@ -450,7 +450,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       win: (x) => (prem(x.t, 0.15), lvl(x.t, 7), 'Your robot hands can now crack an egg into a bowl. Customers pay more for that.'),
     },
     {
-      id: 'humanoid', label: () => 'Humanoid Robot', emoji: '\u{1F6B6}', blurb: 'Two legs, two arms, one viral video away from fame.',
+      id: 'humanoid', label: () => 'Humanoid Robot', emoji: '\u{1F6B6}', blurb: 'Two legs, two arms, one good demo away from fame.',
       years: 2, cost: fixed(12_000_000), odds: fixed(0.5),
       gate: (t) => once(t, 'humanoid') ?? (!done(t, 'proto') ? 'Needs a working prototype.' : t.level < 40 ? 'Needs tech level 40+.' : null),
       win: (x) => (prem(x.t, 0.2), boost(x.t, 0.25), hype(x.t, 25), lvl(x.t, 8), 'Your humanoid walks, talks and loads a dishwasher. The internet lost its mind.'),
@@ -530,7 +530,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       lose: (x) => (lvl(x.t, 3), 'Every landing attempt ended as a crater. Still expendable, for now.'),
     },
     {
-      id: 'sats', label: (t) => `Satellite Constellation Batch ${t.sats + 1}`, emoji: '\u{1F310}', blurb: 'Your own satellites in orbit: internet from space, paid monthly. Each batch lasts about six years.',
+      id: 'sats', label: (t) => `Satellite Constellation Batch ${t.sats + 1}`, emoji: '\u{1F310}', blurb: 'Your own satellites in orbit, beaming data down to paying customers every month. Each batch lasts about six years.',
       years: 1, cost: fixed(50_000_000), odds: fixed(0.9), capex: true,
       gate: (t) => (t.stage < 3 ? 'Needs an operational rocket.' : t.sats >= 12 ? 'Twelve batches: astronomers already hate you.' : null),
       win: (x) => ((x.t.sats += 1), lvl(x.t, 2), `Batch ${x.t.sats} is in orbit. Subscribers can see your satellites trail across the night sky.`),
@@ -583,11 +583,11 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       lose: (x) => (lvl(x.t, 2), 'The line still jams every hour. Production hell continues.'),
     },
     {
-      id: 'selfdrive', label: (t) => `Self-Driving Level ${t.autonomy + 2}`, emoji: '\u{1F9ED}', blurb: 'Teach the car to drive itself. Regulators will be watching.',
+      id: 'selfdrive', label: (t) => `Autopilot Level ${t.autonomy + 2}`, emoji: '\u{1F9ED}', blurb: 'Teach the car to drive itself. Regulators will be watching.',
       years: 2, cost: fixed(20_000_000), odds: fixed(0.5),
       gate: (t) => (t.autonomy >= 3 ? 'Your cars already drive themselves.' : t.level < 45 ? 'Needs tech level 45+.' : null),
-      win: (x) => ((x.t.autonomy += 1), prem(x.t, 0.06), hype(x.t, 15), lvl(x.t, 6), `Your cars now handle Level ${x.t.autonomy + 1} driving. Owners post videos of themselves "not driving".`),
-      lose: (x) => (lvl(x.t, 2), 'The self-driving system kept mistaking plastic bags for pedestrians. Back to training.'),
+      win: (x) => ((x.t.autonomy += 1), prem(x.t, 0.06), hype(x.t, 15), lvl(x.t, 6), `Your cars now handle Level ${x.t.autonomy + 1} driving. Owners brag about "not driving" to anyone who will listen.`),
+      lose: (x) => (lvl(x.t, 2), 'The autopilot kept mistaking plastic bags for pedestrians. Back to training.'),
     },
     {
       id: 'budget', label: () => 'Budget Model', emoji: '\u{1F4B8}', blurb: 'A car normal people can afford.',
@@ -617,7 +617,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       win: (x) => ((x.t.safety = Math.min(100, x.t.safety + 25)), lvl(x.t, 4), 'Your new fridges hold 10 millikelvin for months. Downtime is nearly gone.'),
     },
     {
-      id: 'cloud', label: () => 'Quantum Cloud Platform', emoji: '\u{2601}\u{FE0F}', blurb: 'Let companies rent time on your machine over the internet.',
+      id: 'cloud', label: () => 'Quantum Cloud Platform', emoji: '\u{2601}\u{FE0F}', blurb: 'Let companies rent time on your machine from anywhere.',
       years: 1, cost: fixed(3_000_000), odds: fixed(0.85),
       gate: (t) => once(t, 'cloud') ?? (t.qubits < 20 ? 'Needs at least 20 qubits.' : null),
       win: (x) => (stageAtLeast(x.t, 2), lvl(x.t, 3), 'Your quantum computer is on the cloud. Banks and drug companies are experimenting.'),
@@ -846,7 +846,7 @@ export const GRANTS: GrantDef[] = [
   { id: 'us-chips', name: 'CHIPS Act Incentive', where: ['us'], who: ['semiconductor'], max: 500_000_000, share: 0.3, odds: 0.5, capex: true, blurb: 'Federal money for fabs built on home soil.' },
   { id: 'us-darpa', name: 'DARPA Research Contract', where: ['us'], who: ['aiLab', 'robotics', 'quantum', 'spaceTech', 'cybersecurity'], max: 8_000_000, share: 0.6, odds: 0.25, blurb: 'Weird, ambitious research the military might need one day.' },
   { id: 'us-nih', name: 'NIH Research Grant', where: ['us'], who: ['biotech'], max: 3_000_000, share: 0.5, odds: 0.3, blurb: 'Public money for early medical research.' },
-  { id: 'us-doe', name: 'DOE Advanced Manufacturing Grant', where: ['us'], who: ['electricVehicles'], max: 150_000_000, share: 0.25, odds: 0.4, capex: true, blurb: 'Help building battery and EV factories.' },
+  { id: 'us-doe', name: 'DOE Advanced Manufacturing Grant', where: ['us'], who: ['electricVehicles'], max: 150_000_000, share: 0.25, odds: 0.4, capex: true, blurb: 'Help building battery and electric-vehicle factories.' },
   { id: 'eu-eic', name: 'EIC Accelerator', where: 'eu', who: ALL_DT, max: 2_700_000, share: 0.7, odds: 0.18, blurb: 'Europe’s flagship grant for breakthrough startups.' },
   { id: 'eu-ipcei', name: 'IPCEI Strategic Project Aid', where: 'eu', who: ['semiconductor', 'electricVehicles'], max: 300_000_000, share: 0.3, odds: 0.45, capex: true, blurb: 'State aid for projects of common European interest.' },
   { id: 'eu-horizon', name: 'Horizon Europe Research Grant', where: 'eu', who: ['quantum', 'biotech', 'aiLab', 'spaceTech', 'robotics'], max: 4_000_000, share: 0.6, odds: 0.25, blurb: 'Europe’s big research budget.' },

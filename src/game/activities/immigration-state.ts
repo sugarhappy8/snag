@@ -6,6 +6,7 @@
 import { cvEntries } from '../cv'
 import {
   BLOCS,
+  ENGLISH_WORKPLACES,
   CRISES,
   EXIT_REGIMES,
   SCHENGEN,
@@ -19,7 +20,7 @@ import {
   type ExitWindow,
   type Union,
 } from '../data/immigration'
-import { COUNTRIES, getCountry, type Continent } from '../world'
+import { COUNTRIES, countryLabel, getCountry, type Continent, type Country } from '../world'
 import type { Character, GameState, ImmigrationStatus, Json, Person } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -98,6 +99,8 @@ export interface ImmState {
   citizenAsk?: number
   /** Last year an exit visa was granted (valid that year). */
   exitPermit?: number
+  /** An exit visa stays good until this year for an application filed while it was valid. */
+  exitUntil?: number
   /** Countries whose working holiday was used (once each). */
   whvUsed: string[]
   /** Unions whose break-up was processed. */
@@ -143,6 +146,7 @@ export function immState(g: GameState): ImmState {
     deportAfterRelease: r.deportAfterRelease === true || undefined,
     citizenAsk: optNum(r.citizenAsk),
     exitPermit: optNum(r.exitPermit),
+    exitUntil: optNum(r.exitUntil),
     whvUsed: strList(r.whvUsed),
     unions: strList(r.unions),
     dualDone: r.dualDone === true || undefined,
@@ -172,6 +176,7 @@ export function saveImm(g: GameState, s: ImmState): void {
     ['deportAfterRelease', s.deportAfterRelease],
     ['citizenAsk', s.citizenAsk],
     ['exitPermit', s.exitPermit],
+    ['exitUntil', s.exitUntil],
     ['dualDone', s.dualDone],
     ['degreesAtVisa', s.degreesAtVisa],
     ['prDeferred', s.prDeferred],
@@ -388,6 +393,17 @@ export function exitRegime(countryId: string, year: number): ExitRegime | null {
   return EXIT_REGIMES.find((r) => r.countries.includes(countryId) && year >= r.from && year <= r.to) ?? null
 }
 
+/** Holds a valid exit visa this year (granted this year, or kept alive by a pending application). */
+export function hasExitPermit(g: GameState): boolean {
+  const st = immState(g)
+  return st.exitPermit === g.year || (st.exitUntil !== undefined && st.exitUntil >= g.year)
+}
+
+/** Can't leave without an exit visa (and doesn't have one). */
+export function exitBlocked(g: GameState): boolean {
+  return !!exitRegime(g.character.countryId, g.year) && !hasExitPermit(g)
+}
+
 export function exitWindow(r: ExitRegime, year: number): ExitWindow | null {
   return r.windows?.find((w) => year >= w.from && year <= w.to) ?? null
 }
@@ -414,6 +430,8 @@ export function languageLevel(g: GameState, lang: string): number {
   let best = 0
   if (lawOf(c.birthCountryId || c.countryId).lang === lang) return 3
   for (const id of citizenshipsOf(g)) if (lawOf(id).lang === lang) best = Math.max(best, 2)
+  // Where English is the language of school and work (India, Nigeria, the Philippines...), people grow up with it.
+  if (lang === 'English' && [c.birthCountryId, ...citizenshipsOf(g)].some((id) => !!id && ENGLISH_WORKPLACES.includes(id))) best = Math.max(best, 2)
   if (lawOf(c.countryId).lang === lang) {
     const yrs = yearsHere(g)
     if (yrs >= 6) best = Math.max(best, 3)
@@ -430,6 +448,20 @@ export function languageLevel(g: GameState, lang: string): number {
 
 // ---------------------------------------------------------------------------
 // Words
+
+/** A country as it reads mid-sentence: "the United States", "France". */
+export function place(country: Country): string {
+  return countryLabel(country)
+}
+
+/** "an investor visa", "a Ukrainian citizen", "an American". */
+export function an(word: string): string {
+  return `${/^[aeiou]/i.test(word) && !/^(eu|uk|ug|ur|uni|use)/i.test(word) ? 'an' : 'a'} ${word}`
+}
+
+export function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s
+}
 
 export const VISA_LABELS: Record<string, string> = {
   work: 'work visa',

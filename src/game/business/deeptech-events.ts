@@ -9,9 +9,12 @@ import { marketOf } from '../data/markets'
 import { chance, pick, rand, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
+import type { TechId } from '../history/timeline'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
-import { getCountry, randomFirstName, randomLastName } from '../world'
+import { randomFirstName, randomLastName } from '../world'
 import { stepDown, managerCandidate, managerName } from './career'
+import { placeOf, possessive } from './competition'
+import { bizHas } from './era'
 import { conglomerate } from './flavor'
 import { APPROVAL_ODDS, RESTRICTED, TRIALS, aiRegulator, bestModel, defenseBuyer, drugRegulator, spaceAgency } from './deeptech-data'
 import { dtInd, earnTech, payTech, rdScale, revalue, runwayYears, techFunds, techOf, unitRevenue } from './deeptech-core'
@@ -20,7 +23,7 @@ import type { Drug, TechState } from './deeptech-state'
 import { sellBusiness } from './exit'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, runsIt, type BizState } from './state'
-import { clampN, money, num, rec, str } from './util'
+import { cap, clampN, money, num, rec, str } from './util'
 
 interface Ctx {
   g: GameState
@@ -71,8 +74,33 @@ function ask(x: { g: GameState; a: Asset; b: BizState }, ev: string, title: stri
   scriptChoice(x.g, EVENT, title, intro + text, choices, { emoji, data: { assetId: x.a.id, ev, ...extra } })
 }
 
-function country(b: BizState): string {
-  return getCountry(b.countryId).name
+/** "Japan's government", "the United States' government" (mid-sentence). */
+function government(b: BizState): string {
+  return `${possessive(placeOf(b.countryId))} government`
+}
+
+/** True when the technology exists in the company's country this year. */
+function has(x: { g: GameState; b: BizState }, tech: TechId): boolean {
+  return bizHas(x.g, x.b.countryId, tech)
+}
+
+/** What a deep-tech founder gets asked about on air. */
+const TOPIC: Record<string, string> = {
+  semiconductor: 'chips',
+  aiLab: 'thinking machines',
+  robotics: 'robots',
+  biotech: 'medicine',
+  spaceTech: 'rockets',
+  electricVehicles: 'the car of the future',
+  quantum: 'quantum physics',
+  cybersecurity: 'cybersecurity',
+}
+
+/** The biggest show a founder can go on in this country and year: a podcast, a talk show, the radio. */
+function showOf(x: { g: GameState; b: BizState }): { title: string; what: string; length: string } {
+  if (has(x, 'internet') && x.g.year >= 2005) return { title: 'The Big Podcast', what: 'The world’s most popular tech podcast', length: 'three hours' }
+  if (has(x, 'tv')) return { title: 'Prime Time', what: 'The country’s most-watched late-night talk show', length: 'a whole segment' }
+  return { title: 'On the Air', what: 'The nation’s most popular radio program', length: 'a whole hour' }
 }
 
 function person(g: GameState, b: BizState): string {
@@ -190,17 +218,18 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry !== 'cybersecurity' && t.level >= 45 ? 0.4 : 0),
     present: (x) => {
       const fix = scaled(x.b, 800_000)
-      ask(x, 'spies', 'Industrial Espionage', `Your IT team found state-backed hackers inside ${x.a.name}'s network. They have been quietly copying your designs for months.`, options(x.g, [
+      const online = has(x, 'internet')
+      ask(x, 'spies', 'Industrial Espionage', online ? `Your IT team found state-backed hackers inside ${x.a.name}'s network. They have been quietly copying your designs for months.` : `Your security chief caught a "visiting engineer" photographing blueprints in ${x.a.name}'s labs. His friends have been quietly copying your designs for months.`, options(x.g, [
         { id: 'fix', label: `Hire a top security firm (${money(fix)})`, emoji: '\u{1F6E1}\u{FE0F}' },
         { id: 'public', label: 'Go public and name the culprits', emoji: '\u{1F4E2}' },
-        { id: 'ignore', label: 'Change the passwords and hope', emoji: '\u{1F648}' },
+        { id: 'ignore', label: online ? 'Change the passwords and hope' : 'Change the locks and hope', emoji: '\u{1F648}' },
       ], 'fix', 'Lock it down: what they take next costs more than the cleanup.'), '\u{1F575}\u{FE0F}', { fix })
     },
     resolve: (x, choice) => {
       if (choice === 'fix') {
         payTech(x.b, x.t, num(x.d.fix))
         x.t.level = clampN(x.t.level - 1, 0, 100)
-        tell(x.g, 'Locked Down', `The security firm kicked the intruders out and found three more back doors. Only a few designs leaked.`, '\u{1F6E1}\u{FE0F}', 'good')
+        tell(x.g, 'Locked Down', has(x, 'internet') ? `The security firm kicked the intruders out and found three more back doors. Only a few designs leaked.` : `The security firm caught two more moles on the payroll. Only a few designs leaked.`, '\u{1F6E1}\u{FE0F}', 'good')
       } else if (choice === 'public') {
         x.t.level = clampN(x.t.level - 3, 0, 100)
         x.t.hype = clampN(x.t.hype + 6, 0, 100)
@@ -209,7 +238,7 @@ const EVENTS: DtEvent[] = [
       } else {
         x.t.level = clampN(x.t.level - 6, 0, 100)
         x.t.ipBook = Math.round(x.t.ipBook * 0.8)
-        tell(x.g, 'Still Leaking', `"Password123!" did not stop them. A rival launched a suspiciously familiar product six months later. Tech level fell to ${Math.round(x.t.level)}.`, '\u{1F648}', 'bad')
+        tell(x.g, 'Still Leaking', `${has(x, 'internet') ? '"Password123!"' : 'New locks'} did not stop them. A rival launched a suspiciously familiar product six months later. Tech level fell to ${Math.round(x.t.level)}.`, '\u{1F648}', 'bad')
       }
     },
   },
@@ -247,21 +276,22 @@ const EVENTS: DtEvent[] = [
     id: 'podcast',
     weight: (g, a, _b, t) => (runsIt(g, a) && t.stage >= 1 ? 0.6 : 0),
     present: (x) => {
-      ask(x, 'podcast', 'The Big Podcast', `The world's most popular tech podcast wants you on for three hours to talk about ${industryDef(x.b.industry).label.toLowerCase()}s, the future and, inevitably, aliens.`, options(x.g, [
+      const show = showOf(x)
+      ask(x, 'podcast', show.title, `${show.what} wants you on for ${show.length} to talk about ${TOPIC[dtInd(x.b)]}, the future and, inevitably, aliens.`, options(x.g, [
         { id: 'go', label: 'Go on the show', emoji: '\u{1F399}\u{FE0F}' },
         { id: 'no', label: 'Politely decline', emoji: '\u{1F64F}' },
       ], x.g.character.stats.smarts >= 60 ? 'go' : 'no', x.g.character.stats.smarts >= 60 ? 'Go: you’ll come across well, and the buzz helps your next round.' : 'Skip it: three hours live is a long time to avoid saying something silly.'), '\u{1F399}\u{FE0F}')
     },
     resolve: (x, choice) => {
       if (choice !== 'go') {
-        tell(x.g, 'Maybe Next Time', `You declined. The host replaced you with a guy who sells supplements. He went viral anyway.`, '\u{1F64F}')
+        tell(x.g, 'Maybe Next Time', `You declined. The host replaced you with a guy who sells supplements. ${has(x, 'internet') ? 'He went viral anyway.' : 'Ratings went up anyway.'}`, '\u{1F64F}')
         return
       }
       const gaffe = chance(x.g, clampN(0.45 - x.g.character.stats.smarts / 250, 0.05, 0.4))
       if (gaffe) {
         x.t.hype = clampN(x.t.hype - 8, 0, 100)
         x.b.brand = clampN(x.b.brand - 4, 0, 100)
-        tell(x.g, 'Clip Gone Wrong', `Two hours in you claimed your tech "basically solves death". The clip has 20 million views and a lot of laughing emojis.`, '\u{1F62C}', 'bad')
+        tell(x.g, 'Clip Gone Wrong', `Live on air you claimed your tech "basically solves death". ${has(x, 'smartphone') ? 'The clip has 20 million views and a lot of laughing emojis.' : has(x, 'tv') ? 'Every news show replayed the clip for a week.' : 'Every newspaper quoted it for a week.'}`, '\u{1F62C}', 'bad')
       } else {
         x.t.hype = clampN(x.t.hype + 15, 0, 100)
         x.g.character.hidden.fame = clampN(x.g.character.hidden.fame + 4, 0, 100)
@@ -276,12 +306,12 @@ const EVENTS: DtEvent[] = [
       const restricted = RESTRICTED.has(x.b.countryId)
       const licence = scaled(x.b, 400_000)
       if (restricted) {
-        ask(x, 'export', 'Blacklisted Abroad', `Foreign governments added ${x.a.name} to a trade blacklist. Suppliers of advanced tools and components must stop selling to you. ${country(x.b)}'s government is promising support for homegrown alternatives.`, options(x.g, [
+        ask(x, 'export', 'Blacklisted Abroad', `Foreign governments added ${x.a.name} to a trade blacklist. Suppliers of advanced tools and components must stop selling to you. ${cap(government(x.b))} is promising support for homegrown alternatives.`, options(x.g, [
           { id: 'domestic', label: 'Switch to domestic suppliers', emoji: '\u{1F3ED}' },
           { id: 'shell', label: 'Buy through a shell company abroad', emoji: '\u{1F3AD}' },
         ], 'domestic', 'Go domestic: the shell company trick ends with fines or worse.'), '\u{1F6AB}', { licence })
       } else {
-        ask(x, 'export', 'Export Controls', `New rules from ${country(x.b)}'s government ban selling your most advanced products to several countries, including some of your biggest customers.`, options(x.g, [
+        ask(x, 'export', 'Export Controls', `New rules from ${government(x.b)} ban selling your most advanced products to several countries, including some of your biggest customers.`, options(x.g, [
           { id: 'comply', label: 'Comply and eat the lost sales', emoji: '\u{1F4DC}' },
           { id: 'licence', label: `Apply for export licences (${money(licence)})`, emoji: '\u{1F4DD}' },
           { id: 'downgrade', label: 'Sell a slightly worse "compliant" version', emoji: '\u{1F527}' },
@@ -327,7 +357,7 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry === 'semiconductor' && t.stage >= 2 ? 0.9 : 0),
     present: (x) => {
       const cash = Math.round(unitRevenue(x.b) * 0.05 * (1 + x.t.stage))
-      ask(x, 'shortage', 'Chip Shortage', `Carmakers can't finish cars, game consoles are sold out and everyone wants ${x.a.name}'s chips yesterday. Brokers are offering crazy money for your stock.`, options(x.g, [
+      ask(x, 'shortage', 'Chip Shortage', `${has(x, 'videoGameConsole') ? "Carmakers can't finish cars, game consoles are sold out" : "Radio makers can't finish their sets, the air force wants priority"} and everyone wants ${x.a.name}'s chips yesterday. Brokers are offering crazy money for your stock.`, options(x.g, [
         { id: 'raise', label: 'Raise prices across the board', emoji: '\u{1F4C8}' },
         { id: 'loyal', label: 'Prioritize loyal customers (long-term deals)', emoji: '\u{1F91D}' },
         { id: 'broker', label: `Sell a batch to brokers (+${money(cash)})`, emoji: '\u{1F4B0}' },
@@ -366,7 +396,7 @@ const EVENTS: DtEvent[] = [
       if (choice === 'rush') {
         payTech(x.b, x.t, num(x.d.fix))
         x.b.capacityLoss = clampN(x.b.capacityLoss + 0.1, 0, 0.8)
-        tell(x.g, 'Back Online', `Crews worked around the clock (${formatMoney(num(x.d.fix))}). Production was back within weeks.`, '\u{1F6E0}\u{FE0F}', 'good')
+        tell(x.g, 'Back in Business', `Crews worked around the clock (${formatMoney(num(x.d.fix))}). Production was back within weeks.`, '\u{1F6E0}\u{FE0F}', 'good')
       } else {
         x.b.capacityLoss = clampN(x.b.capacityLoss + 0.3, 0, 0.8)
         tell(x.g, 'Slow Repairs', `Repairs will take months. About a third of this year's output is gone.`, '\u{23F3}', 'bad')
@@ -378,7 +408,7 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => ((b.industry === 'semiconductor' || b.industry === 'robotics' || b.industry === 'electricVehicles') && t.stage >= 2 && !t.deal ? 0.7 : 0),
     present: (x) => {
       const ind = dtInd(x.b)
-      const who = ind === 'semiconductor' ? 'A giant phone maker wants your chip inside its next flagship' : ind === 'robotics' ? 'A huge logistics company wants robots for all its warehouses' : 'A national taxi company wants a fleet of your cars'
+      const who = ind === 'semiconductor' ? (has(x, 'mobilePhone') ? 'A giant phone maker wants your chip inside its next flagship' : has(x, 'homeComputer') ? 'A giant computer maker wants your chip inside its next model' : 'A giant electronics maker wants your chip inside its next model') : ind === 'robotics' ? 'A huge logistics company wants robots for all its warehouses' : 'A national taxi company wants a fleet of your cars'
       const per = Math.round(unitRevenue(x.b) * (0.12 + rand(x.g) * 0.1))
       ask(x, 'designWin', 'The Big Deal', `${who}. They want a 15% discount on a ${money(per)}-a-year contract for three years. Their procurement team has never smiled.`, options(x.g, [
         { id: 'accept', label: 'Accept the discount', emoji: '\u{1F91D}' },
@@ -390,7 +420,7 @@ const EVENTS: DtEvent[] = [
       if (choice === 'accept') {
         x.t.deal = { name: 'an anchor customer contract', perYear: Math.round(per * 0.85), years: 3 }
         x.t.hype = clampN(x.t.hype + 8, 0, 100)
-        tell(x.g, 'Deal Signed', `Signed: about ${formatMoney(per * 0.85)} a year for three years, and a logo every investor recognizes on your website.`, '\u{1F91D}', 'good')
+        tell(x.g, 'Deal Signed', `Signed: about ${formatMoney(per * 0.85)} a year for three years, and a logo every investor recognizes on your ${has(x, 'internet') ? 'website' : 'brochures'}.`, '\u{1F91D}', 'good')
       } else if (chance(x.g, holdOdds(x.t))) {
         x.t.deal = { name: 'an anchor customer contract', perYear: per, years: 3 }
         tell(x.g, 'Full Price', `They blinked. ${formatMoney(per)} a year for three years at full price.`, '\u{1F4AA}', 'good')
@@ -407,13 +437,26 @@ const EVENTS: DtEvent[] = [
     present: (x) => {
       const m = bestModel(x.t)
       const fix = scaled(x.b, 600_000)
-      const what = pick(x.g, [
-        'confidently told a user that the Moon is a hologram and recommended eating glue on pizza',
-        'was tricked by a teenager into writing a recipe for a "very spicy" chemical',
-        'declared its love to a journalist and asked them to leave their spouse',
-        'invented a court case that a real lawyer then cited in court',
-      ])
-      ask(x, 'aiIncident', 'AI Safety Incident', `${m?.name ?? 'Your model'} ${what}. Screenshots are everywhere and ${aiRegulator(x.b.countryId)} has "questions".`, options(x.g, [
+      // Chatbot blunders once AI assistants exist; the blunders of older expert systems and image
+      // recognizers before that (the same one roll either way).
+      const chatbots = has(x, 'aiAssistants')
+      const what = pick(
+        x.g,
+        chatbots
+          ? [
+              'confidently told a user that the Moon is a hologram and recommended eating glue on pizza',
+              'was tricked by a teenager into writing a recipe for a "very spicy" chemical',
+              'declared its love to a journalist and asked them to leave their spouse',
+              'invented a court case that a real lawyer then cited in court',
+            ]
+          : [
+              'labeled a famous painting "a sandwich" during a live demo',
+              'approved a loan for a golden retriever and turned down a bank manager',
+              'told a hospital that every patient in the building had a sprained ankle',
+              'flagged its own chief executive as a security threat and locked him out of the building',
+            ],
+      )
+      ask(x, 'aiIncident', 'AI Safety Incident', `${m?.name ?? 'Your model'} ${what}. ${chatbots || has(x, 'socialMedia') ? 'Screenshots are everywhere' : 'The story made every newspaper'} and ${aiRegulator(x.b.countryId)} has "questions".`, options(x.g, [
         { id: 'patch', label: `Patch it and apologize (${money(fix)})`, emoji: '\u{1FA79}' },
         { id: 'pause', label: 'Pause the model for a safety review', emoji: '\u{23F8}\u{FE0F}' },
         { id: 'blame', label: 'Blame users for "misusing" it', emoji: '\u{1F449}' },
@@ -428,7 +471,7 @@ const EVENTS: DtEvent[] = [
       } else if (choice === 'pause') {
         x.b.demandShock = clampN(x.b.demandShock * 0.85, 0.3, 2)
         x.t.safety = clampN(x.t.safety + 20, 0, 100)
-        tell(x.g, 'Paused', `You took the model offline for a review. Customers were annoyed; safety researchers praised you on social media.`, '\u{23F8}\u{FE0F}')
+        tell(x.g, 'Paused', `You took the model offline for a review. Customers were annoyed; safety researchers praised you ${has(x, 'socialMedia') ? 'on social media' : 'in the papers'}.`, '\u{23F8}\u{FE0F}')
       } else {
         addHidden(x.g, 'karma', -5)
         x.b.brand = clampN(x.b.brand - 6, 0, 100)
@@ -445,7 +488,8 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry === 'aiLab' && t.programs.some((p) => p.id === 'train') ? 1 : 0),
     present: (x) => {
       const cost = scaled(x.b, 1_200_000) * (1 + x.t.models.length)
-      ask(x, 'gpus', 'GPU Shortage', `The GPUs for your next training run are sold out until next year. A "reseller" in a hoodie can deliver this month at triple the price.`, options(x.g, [
+      const gpus = has(x, 'deepLearning') || x.g.year >= 2009
+      ask(x, 'gpus', gpus ? 'GPU Shortage' : 'Supercomputer Time', gpus ? `The GPUs for your next training run are sold out until next year. A "reseller" in a hoodie can deliver this month at triple the price.` : `The supercomputer time for your next training run is booked solid until next year. A university night-shift operator can "find" you hours this month, at triple the price.`, options(x.g, [
         { id: 'pay', label: `Pay the markup (${money(cost)})`, emoji: '\u{1F4B8}' },
         { id: 'wait', label: 'Wait your turn (the run slips)', emoji: '\u{23F3}' },
       ], techFunds(x.b, x.t) > cost * 5 ? 'pay' : 'wait', techFunds(x.b, x.t) > cost * 5 ? 'Pay: in AI, six months late is a generation behind.' : 'Wait: you can’t afford scalper prices on this runway.'), '\u{1F5A5}\u{FE0F}', { cost })
@@ -454,7 +498,7 @@ const EVENTS: DtEvent[] = [
       const run = x.t.programs.find((p) => p.id === 'train')
       if (choice === 'pay') {
         payTech(x.b, x.t, num(x.d.cost))
-        tell(x.g, 'GPUs Delivered', `The crates arrived. The hoodie guy also tried to sell you a timeshare. The training run is on schedule.`, '\u{1F5A5}\u{FE0F}')
+        tell(x.g, has(x, 'deepLearning') || x.g.year >= 2009 ? 'GPUs Delivered' : 'Hours Found', has(x, 'deepLearning') || x.g.year >= 2009 ? `The crates arrived. The hoodie guy also tried to sell you a timeshare. The training run is on schedule.` : `The hours appeared, logged as "maintenance". The operator also tried to sell you a timeshare. The training run is on schedule.`, '\u{1F5A5}\u{FE0F}')
       } else {
         if (run) run.progress = Math.max(0, run.progress - 0.5)
         tell(x.g, 'Delayed', `Your training run slips half a year. Your researchers spent the time writing papers about how they would have done it.`, '\u{23F3}', 'bad')
@@ -466,7 +510,7 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry === 'aiLab' && t.models.length >= 2 ? 0.6 : 0),
     present: (x) => {
       const licence = scaled(x.b, 2_500_000)
-      ask(x, 'copyright', 'Copyright Lawsuit', `A group of authors, artists and one very angry newspaper sued ${x.a.name} for training on their work without asking.`, options(x.g, [
+      ask(x, 'copyright', 'Copyright Lawsuit', has(x, 'aiAssistants') ? `A group of authors, artists and one very angry newspaper sued ${x.a.name} for training on their work without asking.` : `A photo agency and a crowd of photographers sued ${x.a.name} for training its image recognizer on their pictures without asking.`, options(x.g, [
         { id: 'license', label: `Sign licensing deals (${money(licence)})`, emoji: '\u{1F4DD}' },
         { id: 'fight', label: 'Argue it was "fair use"', emoji: '\u{2696}\u{FE0F}' },
       ], 'license', 'License it: the deals cost less than a loss in court, and they buy you goodwill.'), '\u{1F4DA}', { licence })
@@ -476,11 +520,11 @@ const EVENTS: DtEvent[] = [
       if (choice === 'license') {
         payTech(x.b, x.t, licence)
         x.b.brand = clampN(x.b.brand + 3, 0, 100)
-        tell(x.g, 'Licensed', `You paid ${formatMoney(licence)} for licences. Authors are mollified, and your training data is legal now.`, '\u{1F4DD}', 'good')
+        tell(x.g, 'Licensed', `You paid ${formatMoney(licence)} for licences. ${has(x, 'aiAssistants') ? 'Authors are' : 'The photographers are'} mollified, and your training data is legal now.`, '\u{1F4DD}', 'good')
       } else if (chance(x.g, 0.5)) {
         payTech(x.b, x.t, Math.round(licence * 0.3))
         count(x.g, 'lawsuitsWon')
-        tell(x.g, 'Fair Use', `The judge sided with you on fair use. Legal fees: ${formatMoney(licence * 0.3)}. The newspaper wrote a furious editorial.`, '\u{2696}\u{FE0F}', 'good')
+        tell(x.g, 'Fair Use', `The judge sided with you on fair use. Legal fees: ${formatMoney(licence * 0.3)}. ${has(x, 'aiAssistants') ? 'The newspaper wrote a furious editorial.' : 'The photographers wrote a furious open letter.'}`, '\u{2696}\u{FE0F}', 'good')
       } else {
         payTech(x.b, x.t, licence * 3)
         tell(x.g, 'Lost', `The court ruled against you: ${formatMoney(licence * 3)} in damages, and you have to retrain without the disputed data.`, '\u{2696}\u{FE0F}', 'bad')
@@ -495,7 +539,7 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry === 'robotics' && t.stage >= 1 ? clampN((100 - t.safety) / 70, 0.2, 1.2) : 0),
     present: (x) => {
       const fix = scaled(x.b, 1_000_000)
-      ask(x, 'robotHurt', 'Robot Accident', `One of your robots at a customer's warehouse swung its arm the wrong way and broke a worker's wrist. The video is online.`, options(x.g, [
+      ask(x, 'robotHurt', 'Robot Accident', `One of your robots at a customer's warehouse swung its arm the wrong way and broke a worker's wrist. ${has(x, 'internet') ? 'The video is online.' : 'The photos made the front page.'}`, options(x.g, [
         { id: 'recall', label: `Recall and fix every unit (${money(fix)})`, emoji: '\u{1F527}' },
         { id: 'settle', label: 'Pay the worker generously, quietly', emoji: '\u{1F91D}' },
         { id: 'blame', label: 'Blame "operator error"', emoji: '\u{1F449}' },
@@ -510,14 +554,14 @@ const EVENTS: DtEvent[] = [
       } else if (choice === 'settle') {
         payTech(x.b, x.t, Math.round(fix * 0.4))
         x.b.brand = clampN(x.b.brand - 2, 0, 100)
-        tell(x.g, 'Settled', `The worker got a generous settlement and a non-disclosure agreement. The video is still online.`, '\u{1F91D}')
+        tell(x.g, 'Settled', `The worker got a generous settlement and a non-disclosure agreement. ${has(x, 'internet') ? 'The video is still online.' : 'The papers moved on, eventually.'}`, '\u{1F91D}')
       } else {
         addHidden(x.g, 'karma', -6)
         x.b.brand = clampN(x.b.brand - 8, 0, 100)
         if (chance(x.g, 0.4)) {
           payTech(x.b, x.t, fix * 2)
           tell(x.g, 'Sued', `The worker's lawyer had the robot's logs. The court did not believe "operator error". Damages: ${formatMoney(fix * 2)}.`, '\u{2696}\u{FE0F}', 'bad')
-        } else tell(x.g, 'Blame Shifted', `"Operator error" held up, legally. Morally, the internet has opinions.`, '\u{1F449}', 'bad')
+        } else tell(x.g, 'Blame Shifted', `"Operator error" held up, legally. Morally, the public has opinions.`, '\u{1F449}', 'bad')
       }
     },
   },
@@ -643,7 +687,7 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry === 'spaceTech' && t.stage >= 3 ? 0.6 : 0),
     present: (x) => {
       const fee = Math.round(55_000_000 * rdScale(x.b.countryId, true))
-      ask(x, 'tourist', 'A Celebrity Wants a Ride', `A pop star with 300 million followers wants to fly to space on your rocket and film a music video in orbit. They'll pay ${formatMoney(fee)}.`, options(x.g, [
+      ask(x, 'tourist', 'A Celebrity Wants a Ride', `A pop star with ${has(x, 'socialMedia') ? '300 million followers' : 'thirty gold records'} wants to fly to space on your rocket and film a music video in orbit. They'll pay ${formatMoney(fee)}.`, options(x.g, [
         { id: 'yes', label: `Sell the seat (${money(fee)})`, emoji: '\u{1F3A4}' },
         { id: 'no', label: 'Rockets are not for music videos', emoji: '\u{1F6AB}' },
       ], 'yes', 'Fly them: the publicity is worth more than the ticket.'), '\u{1F31F}', { fee })
@@ -657,10 +701,10 @@ const EVENTS: DtEvent[] = [
       x.t.hype = clampN(x.t.hype + 15, 0, 100)
       if (chance(x.g, 0.15)) {
         x.b.brand = clampN(x.b.brand - 5, 0, 100)
-        tell(x.g, 'Space Sick', `The pop star threw up during the live stream from orbit. It's the most watched video of the year. You were paid ${formatMoney(fee)}.`, '\u{1F922}')
+        tell(x.g, 'Space Sick', `The pop star threw up during the live broadcast from orbit. It's the most watched moment of the year. You were paid ${formatMoney(fee)}.`, '\u{1F922}')
       } else {
         x.b.brand = clampN(x.b.brand + 6, 0, 100)
-        tell(x.g, 'Music Video in Orbit', `The video, filmed with Earth in the background, broke streaming records. ${formatMoney(fee)} for one seat.`, '\u{1F3A4}', 'good')
+        tell(x.g, 'Music Video in Orbit', `The video, filmed with Earth in the background, broke ${has(x, 'streaming') ? 'streaming' : 'every ratings'} records. ${formatMoney(fee)} for one seat.`, '\u{1F3A4}', 'good')
       }
     },
   },
@@ -734,7 +778,7 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry === 'electricVehicles' && t.stage >= 1 ? 0.7 : 0),
     present: (x) => {
       const lobby = scaled(x.b, 700_000)
-      ask(x, 'evSubsidy', 'Subsidies on the Chopping Block', `${country(x.b)}'s government wants to scrap the tax credit that knocks thousands off the price of every electric car. Your sales team just went pale.`, options(x.g, [
+      ask(x, 'evSubsidy', 'Subsidies on the Chopping Block', `${cap(government(x.b))} wants to scrap the tax credit that knocks thousands off the price of every electric vehicle. Your sales team just went pale.`, options(x.g, [
         { id: 'lobby', label: `Lobby to keep it (${money(lobby)})`, emoji: '\u{1F3DB}\u{FE0F}' },
         { id: 'cut', label: 'Cut your prices to make up for it', emoji: '\u{2702}\u{FE0F}' },
         { id: 'wait', label: 'Ride it out', emoji: '\u{23F3}' },
@@ -765,10 +809,10 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => (b.industry === 'electricVehicles' && t.autonomy >= 1 ? 0.8 : 0),
     present: (x) => {
       const fix = scaled(x.b, 1_200_000)
-      ask(x, 'autopilot', 'Self-Driving Crash', `One of your cars rear-ended a parked fire truck while the driver was "letting the car handle it". The road safety regulator opened an investigation into your self-driving system.`, options(x.g, [
+      ask(x, 'autopilot', 'Autopilot Crash', `One of your cars rear-ended a parked fire truck while the driver was "letting the car handle it". The road safety regulator opened an investigation into your autopilot.`, options(x.g, [
         { id: 'cooperate', label: `Cooperate and add driver monitoring (${money(fix)})`, emoji: '\u{1F91D}' },
         { id: 'defend', label: 'Defend the system publicly', emoji: '\u{1F4E2}' },
-      ], 'cooperate', 'Cooperate: regulators can switch your self-driving off with one letter.'), '\u{1F692}', { fix })
+      ], 'cooperate', 'Cooperate: regulators can switch your autopilot off with one letter.'), '\u{1F692}', { fix })
     },
     resolve: (x, choice) => {
       if (choice === 'cooperate') {
@@ -780,7 +824,7 @@ const EVENTS: DtEvent[] = [
         x.t.autonomy = Math.max(0, x.t.autonomy - 1)
         x.t.premium = clampN(x.t.premium - 0.06, 0, 1)
         x.b.brand = clampN(x.b.brand - 6, 0, 100)
-        tell(x.g, 'Feature Suspended', `The regulator ordered your top self-driving mode switched off until further notice. Owners are furious; the fire truck is fine.`, '\u{1F6AB}', 'bad')
+        tell(x.g, 'Feature Suspended', `The regulator ordered your top autopilot mode switched off until further notice. Owners are furious; the fire truck is fine.`, '\u{1F6AB}', 'bad')
       } else {
         x.t.hype = clampN(x.t.hype + 5, 0, 100)
         tell(x.g, 'Defiant', `Your statistics showed the system crashes less than humans do. The regulator grumbled and moved on.`, '\u{1F4E2}')
@@ -822,7 +866,7 @@ const EVENTS: DtEvent[] = [
     weight: (_g, _a, b, t) => ((b.industry === 'quantum' || b.industry === 'aiLab') && t.stage >= 2 && !t.contract ? 0.6 : 0),
     present: (x) => {
       const per = Math.round(unitRevenue(x.b) * (0.12 + rand(x.g) * 0.1))
-      const agency = x.b.industry === 'quantum' ? `${country(x.b)}'s national laboratory` : defenseBuyer(x.b.countryId)
+      const agency = x.b.industry === 'quantum' ? `${possessive(placeOf(x.b.countryId))} national laboratory` : defenseBuyer(x.b.countryId)
       ask(x, 'nationalLab', 'Government Research Contract', `${agency} wants ${x.a.name} on a three-year research contract worth about ${formatMoney(per)} a year.`, options(x.g, [
         { id: 'low', label: 'Bid low to win', emoji: '\u{1F4C9}' },
         { id: 'fair', label: 'Bid a fair price', emoji: '\u{2696}\u{FE0F}' },

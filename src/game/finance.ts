@@ -7,6 +7,7 @@
 import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember } from './core'
 import { hasMarketData, marketOf } from './data/markets'
 import { historicalInflation, historicalMortgageRate, inHistory, investingBlocked } from './history/markets'
+import { hasTech } from './history/timeline'
 import { chance, pick, randInt, uid } from './rng'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry, randomFirstName } from './world'
@@ -612,11 +613,12 @@ function erodeMortgages(g: GameState, factor: number): void {
   for (const a of g.assets) {
     const m = a.mortgage
     if (!m) continue
+    const before = m.balance
     m.balance = erode(m.balance, factor)
     m.yearlyPayment = Math.max(m.balance > 0 ? 1 : 0, erode(m.yearlyPayment, factor))
     if (m.balance < 1) {
       delete a.mortgage
-      log(g, `Inflation wiped out what was left of the mortgage on my ${a.name.toLowerCase()}.`, 'good')
+      if (before >= 100) log(g, `Inflation wiped out what was left of the mortgage on my ${a.name.toLowerCase()}.`, 'good')
     }
   }
 }
@@ -629,14 +631,18 @@ function yearlyLoans(g: GameState): void {
   for (const loan of [...c.loans]) {
     if (!c.loans.includes(loan)) continue
     if (factor !== 1) {
+      const before = loan.balance
       loan.balance = erode(loan.balance, factor)
       loan.yearlyPayment = Math.max(loan.balance > 0 ? 1 : 0, erode(loan.yearlyPayment, factor))
       if (loan.balance < 1) {
         c.loans = c.loans.filter((l) => l !== loan)
         delete misses[loan.id]
-        const what = loanLabel(loan.kind).toLowerCase()
-        log(g, `Hyperinflation turned my ${what} into pocket change, and I paid it off.`, 'good')
-        notice(g, 'Inflated Away', `Prices rose so fast that the ${what} you owe ${loan.lender} is now worth less than a loaf of bread. You paid it off with the change in your pocket.`, { emoji: '💸', tone: 'good' })
+        // Only a real debt melting away in a hyperinflation makes the news.
+        if (before >= 100 && factor < 0.7) {
+          const what = loanLabel(loan.kind).toLowerCase()
+          log(g, `Hyperinflation turned my ${what} into pocket change, and I paid it off.`, 'good')
+          notice(g, 'Inflated Away', `Prices rose so fast that the ${what} you owe ${loan.lender} is now worth less than a loaf of bread. You paid it off with the change in your pocket.`, { emoji: '💸', tone: 'good' })
+        }
         continue
       }
     }
@@ -740,7 +746,9 @@ function handleDebt(g: GameState): void {
   const lastCalled = num(g.flags.collectorsAge, -99)
   if (c.age - lastCalled >= 5 || lastCalled > c.age) {
     g.flags.collectorsAge = c.age
-    const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', collectorName(g))
+    // No voicemail before mobile phones (the lines keep their order, so today's picks are unchanged).
+    const mobile = hasTech(g, 'mobilePhone')
+    const text = pick(g, COLLECTOR_TEXTS.filter((t) => mobile || !/voicemail/i.test(t))).replace('{debt}', debt).replace('{name}', collectorName(g))
     notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
     log(
       g,
@@ -751,7 +759,7 @@ function handleDebt(g: GameState): void {
         'I let another unknown number go to voicemail. It was the collectors again.',
         `My ${debt} of debt followed me around like a cloud.`,
         'I learned the first names of every debt collector in town.',
-      ]),
+      ].filter((t) => mobile || !/voicemail/i.test(t))),
       'bad',
     )
   }

@@ -357,6 +357,7 @@ export const WARS: readonly WarDef[] = [
     draft: { sy: d(2011, 2024, 18, 42, 0.6, harsh) }, fronts: { '*': ['Aleppo', 'Homs', 'the eastern desert', 'Idlib'] }, homeFront: ['sy'],
   },
   { id: 'isis', name: 'the war against the Islamic State', from: 2014, to: 2017, countries: ['iq', 'sy', 'us', 'gb', 'fr', 'au'], fronts: { '*': ['Mosul', 'Raqqa', 'Ramadi'] }, homeFront: ['iq'] },
+  { id: 'tigray', name: 'the Tigray war', from: 2020, to: 2022, countries: ['et'], fronts: { '*': ['Tigray', 'the Amhara highlands', 'the Afar border'] } },
   {
     id: 'donbas', name: 'the war in Donbas', from: 2014, to: 2021, countries: ['ua', 'ru'],
     draft: { ua: d(2014, 2015, 20, 50, 0.3) }, fronts: { '*': ['the Donbas', 'Debaltseve', 'Ilovaisk'] }, homeFront: ['ua'],

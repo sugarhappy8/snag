@@ -263,12 +263,16 @@ export const PRISON_EVENTS = defineEvents([
     maxAge: 120,
     where: 'prison',
     cooldown: 15,
-    setup: () => ({
+    // Chakras and "getting swole" are later vocabulary; earlier inmates stretched and did calisthenics.
+    setup: (g) => ({
       text: "You've been thrown into solitary confinement for a week for something you didn't do. How will you pass the time?",
-      choices: [ch('yoga', 'Align my chakras', '🧘'), ch('swole', 'Get swole', '💪'), ch('meditate', 'Clear my mind', '😌'), ch('walls', 'Talk to the walls', '🗣️')],
+      choices: [ch('yoga', g.year >= 1970 ? 'Align my chakras' : 'Stretch like a circus acrobat', '🧘'), ch('swole', g.year >= 2000 ? 'Get swole' : 'Do push-ups until I drop', '💪'), ch('meditate', 'Clear my mind', '😌'), ch('walls', 'Talk to the walls', '🗣️')],
     }),
     resolve: {
-      yoga: (g) => say(g, null, 'Namaste', 'You did yoga all week. Your chakras have never been more aligned, and the cell has never smelled worse.', 'I did yoga all day to keep busy while serving a stint in the hole.', { happiness: 4, health: 3, behavior: 3 }, 'good', '🧘'),
+      yoga: (g) =>
+        g.year >= 1970
+          ? say(g, null, 'Namaste', 'You did yoga all week. Your chakras have never been more aligned, and the cell has never smelled worse.', 'I did yoga all day to keep busy while serving a stint in the hole.', { happiness: 4, health: 3, behavior: 3 }, 'good', '🧘')
+          : say(g, null, 'Limber', 'You stretched all week until you could touch your toes with your nose. The guard who checked on you screamed a little.', 'I stretched all day to keep busy while serving a stint in the hole.', { happiness: 4, health: 3, behavior: 3 }, 'good', '🤸'),
       swole: (g) => say(g, null, 'Prison gains', 'You did push-ups and sit-ups until you lost count. You came out of the hole noticeably bigger.', 'I did push-ups and sit-ups all day while serving a stint in the hole.', { health: 4, looks: 2, athleticism: 3, respect: 3, behavior: 2 }, 'good', '💪'),
       meditate: (g) => say(g, null, 'Inner peace', 'You meditated in the darkness and came out calmer than you went in.', 'I meditated all day while serving a stint in the hole.', { happiness: 6, behavior: 3, count: 'meditate' }, 'good', '😌'),
       walls: (g) => say(g, null, 'Good listeners', 'You had long talks with the walls. One of them, Gary, really gets you.', 'I talked to the walls while I was in solitary confinement.', { happiness: -3, craziness: 6 }, 'bad', '🧱'),

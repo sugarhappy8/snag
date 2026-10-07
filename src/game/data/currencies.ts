@@ -1370,25 +1370,105 @@ export function unitsPerDollar(countryId: string, year: number, nominal = true):
   return unitsTable(countryId)[Math.max(HISTORY_START, y) - HISTORY_START]
 }
 
+/** Units of the year's currency per US dollar of that year at purchasing-power parity. */
+function pppRate(countryId: string, year: number): number {
+  const y = Math.max(HISTORY_START, Math.round(year))
+  return unitsPerDollar(countryId, y) / priceLevel(y)
+}
+
 /**
- * Units of the year's currency per US dollar of that year (purchasing-power based): 1980 Japan →
- * about 380 yen. Flavor for exchange-rate talk; prices themselves use unitsPerDollar.
+ * Market exchange rates for the big currencies: units of the currency in use that year per US
+ * dollar, rough yearly averages (official rates under fixed or Soviet-style regimes), a few per
+ * decade. Euro countries get EURO_FX from the year they switched.
+ */
+const MARKET: Record<string, readonly [number, number][]> = {
+  jp: [[1950, 360], [1971, 350], [1973, 272], [1980, 227], [1985, 238], [1988, 128], [1990, 145], [1995, 94], [2000, 108], [2005, 110], [2010, 88], [2012, 80], [2015, 121], [2020, 107], [2022, 131], [2024, 152]],
+  de: [[1900, 4.2], [1913, 4.2], [1920, 57], [1922, 190], [1925, 4.2], [1938, 2.49], [1950, 4.2], [1961, 4], [1970, 3.65], [1973, 2.67], [1980, 1.82], [1985, 2.94], [1990, 1.62], [1995, 1.43], [2000, 2.12], [2001, 2.18]],
+  fr: [[1900, 5.18], [1913, 5.18], [1920, 14.5], [1926, 31], [1928, 25.5], [1936, 15], [1945, 50], [1949, 330], [1950, 350], [1958, 420], [1960, 4.94], [1969, 5.19], [1970, 5.55], [1975, 4.29], [1980, 4.23], [1985, 8.99], [1990, 5.45], [1995, 4.99], [2000, 7.12], [2001, 7.33]],
+  it: [[1950, 625], [1960, 621], [1970, 625], [1975, 653], [1980, 856], [1985, 1909], [1990, 1198], [1995, 1629], [2000, 2116], [2001, 2163]],
+  es: [[1960, 60], [1970, 70], [1975, 57.4], [1980, 71.7], [1985, 170], [1990, 101.9], [1995, 124.7], [2000, 180.6], [2001, 185.5]],
+  nl: [[1950, 3.8], [1961, 3.62], [1970, 3.62], [1980, 1.99], [1985, 3.32], [1990, 1.82], [1995, 1.61], [2000, 2.39], [2001, 2.45]],
+  gb: [[1900, 0.205], [1920, 0.27], [1925, 0.206], [1932, 0.29], [1935, 0.204], [1940, 0.248], [1949, 0.27], [1950, 0.357], [1967, 0.36], [1968, 0.417], [1972, 0.4], [1976, 0.553], [1980, 0.43], [1985, 0.77], [1990, 0.563], [1995, 0.634], [2000, 0.66], [2005, 0.55], [2010, 0.647], [2015, 0.654], [2020, 0.78], [2022, 0.81], [2024, 0.78]],
+  ca: [[1950, 1.09], [1955, 0.99], [1960, 0.97], [1962, 1.07], [1970, 1.04], [1975, 1.02], [1980, 1.17], [1985, 1.37], [1990, 1.17], [1995, 1.37], [2000, 1.49], [2002, 1.57], [2005, 1.21], [2010, 1.03], [2015, 1.28], [2020, 1.34], [2024, 1.37]],
+  au: [[1950, 0.446], [1965, 0.446], [1966, 0.893], [1970, 0.9], [1975, 0.76], [1980, 0.88], [1985, 1.43], [1990, 1.28], [1995, 1.35], [2000, 1.72], [2005, 1.31], [2010, 1.09], [2015, 1.33], [2020, 1.45], [2024, 1.52]],
+  ch: [[1950, 4.3], [1960, 4.37], [1970, 4.32], [1975, 2.58], [1980, 1.68], [1985, 2.46], [1990, 1.39], [1995, 1.18], [2000, 1.69], [2005, 1.25], [2010, 1.04], [2015, 0.96], [2020, 0.94], [2024, 0.88]],
+  se: [[1950, 5.18], [1970, 5.17], [1975, 4.15], [1980, 4.23], [1985, 8.6], [1990, 5.92], [1995, 7.13], [2000, 9.16], [2005, 7.47], [2010, 7.21], [2015, 8.43], [2020, 9.21], [2024, 10.6]],
+  cn: [[1980, 1.5], [1985, 2.94], [1990, 4.78], [1994, 8.62], [2000, 8.28], [2005, 8.19], [2010, 6.77], [2015, 6.23], [2020, 6.9], [2024, 7.19]],
+  in: [[1950, 4.76], [1966, 7.5], [1970, 7.5], [1975, 8.4], [1980, 7.86], [1985, 12.4], [1990, 17.5], [1995, 32.4], [2000, 44.9], [2005, 44.1], [2010, 45.7], [2015, 64.2], [2020, 74.1], [2024, 83.7]],
+  kr: [[1970, 310], [1975, 484], [1980, 607], [1985, 870], [1990, 708], [1995, 771], [1998, 1401], [2000, 1131], [2005, 1024], [2010, 1156], [2015, 1131], [2020, 1180], [2024, 1364]],
+  mx: [[1955, 12.5], [1976, 15.4], [1977, 22.6], [1980, 23], [1982, 57], [1985, 257], [1987, 1378], [1990, 2813], [1992, 3095], [1993, 3.12], [1995, 6.42], [2000, 9.46], [2005, 10.9], [2010, 12.6], [2015, 15.9], [2020, 21.5], [2024, 18.3]],
+  br: [[1995, 0.92], [2000, 1.83], [2002, 2.92], [2005, 2.43], [2010, 1.76], [2015, 3.33], [2020, 5.16], [2024, 5.39]],
+  ru: [[1961, 0.9], [1980, 0.65], [1990, 0.59], [1993, 992], [1995, 4559], [1997, 5785], [1999, 24.6], [2000, 28.1], [2005, 28.3], [2010, 30.4], [2014, 38.4], [2015, 61], [2020, 72.1], [2022, 68.5], [2024, 92.6]],
+  tr: [[1980, 76], [1985, 522], [1990, 2609], [1995, 45_845], [2000, 625_219], [2004, 1_425_000], [2005, 1.34], [2010, 1.5], [2015, 2.72], [2018, 4.83], [2020, 7], [2022, 16.6], [2024, 32.8]],
+  za: [[1950, 0.357], [1960, 0.357], [1961, 0.71], [1970, 0.71], [1975, 0.74], [1980, 0.78], [1985, 2.19], [1990, 2.59], [1995, 3.63], [2000, 6.94], [2002, 10.5], [2005, 6.36], [2010, 7.32], [2015, 12.76], [2020, 16.46], [2024, 18.3]],
+  id: [[1971, 415], [1978, 625], [1980, 627], [1985, 1111], [1990, 1843], [1995, 2249], [1998, 10_014], [2000, 8422], [2005, 9705], [2010, 9090], [2015, 13_389], [2020, 14_582], [2024, 15_855]],
+  ng: [[1960, 0.357], [1972, 0.33], [1973, 0.66], [1975, 0.62], [1980, 0.55], [1985, 0.89], [1990, 8.04], [1995, 21.9], [2000, 101.7], [2005, 131], [2010, 150.3], [2015, 192], [2020, 358.8], [2023, 645], [2024, 1480]],
+}
+
+/** Euros per US dollar since the notes and coins arrived. */
+const EURO_FX: readonly [number, number][] = [[2002, 1.06], [2005, 0.8], [2008, 0.68], [2010, 0.755], [2015, 0.9], [2020, 0.877], [2022, 0.95], [2024, 0.924]]
+
+/** [year, market rate / purchasing-power rate], oldest first, ending at PRESENT_YEAR (ratio 1). */
+const marketCache = new Map<string, [number, number][]>()
+
+function marketRatios(countryId: string): [number, number][] {
+  const hit = marketCache.get(countryId)
+  if (hit) return hit
+  const m = moneyOf(countryId)
+  const anchors = [...(MARKET[countryId] ?? [])]
+  const eras = m.eras ?? []
+  if (m.cur.code === 'EUR' && anchors.length + eras.length > 0) {
+    const from = eras.length ? eras[eras.length - 1].until : HISTORY_START
+    anchors.push(...EURO_FX.filter(([y]) => y >= from))
+  }
+  const out: [number, number][] = []
+  for (const [y, rate] of anchors) {
+    if (y < HISTORY_START || y >= PRESENT_YEAR) continue
+    const ratio = rate / pppRate(countryId, y)
+    if (Number.isFinite(ratio) && ratio > 0) out.push([y, ratio])
+  }
+  out.sort((a, b) => a[0] - b[0])
+  if (out.length) out.push([PRESENT_YEAR, 1])
+  marketCache.set(countryId, out)
+  return out
+}
+
+/**
+ * Units of the year's currency per US dollar of that year: 1980 Japan → about 227 yen, 1990
+ * Germany → about 1.6 Deutsche Marks. Market rates (interpolated between yearly anchors) for the
+ * big currencies, purchasing-power rates for the rest. Flavor for exchange-rate talk; prices
+ * themselves use unitsPerDollar.
  */
 export function exchangeRate(countryId: string, year: number = PRESENT_YEAR): number {
-  return unitsPerDollar(countryId, year) / priceLevel(Math.min(PRESENT_YEAR, Math.max(HISTORY_START, year)))
+  const y = Number.isFinite(year) ? Math.max(HISTORY_START, Math.round(year)) : PRESENT_YEAR
+  const ppp = pppRate(countryId, y)
+  const ratios = marketRatios(countryId)
+  if (!ratios.length || y >= PRESENT_YEAR) return ppp
+  if (y <= ratios[0][0]) return ppp * ratios[0][1]
+  for (let i = 1; i < ratios.length; i++) {
+    const [y1, r1] = ratios[i]
+    if (y > y1) continue
+    const [y0, r0] = ratios[i - 1]
+    // Geometric interpolation: currencies drift by percentages.
+    return ppp * r0 * Math.pow(r1 / r0, (y - y0) / (y1 - y0))
+  }
+  return ppp
 }
 
 // ---------------------------------------------------------------------------
 // The converter
 
 function shown(n: number, c: CurrencyDef, factor: number): ShownMoney {
+  // A unit worth more than today's dollar had small change in its day (sen, pfennig, kopeks):
+  // a 1920 yen or a 1900 mark is written with cents even though today's yen has none.
+  const decimals = c.decimals === 0 && factor < 1 ? 2 : (c.decimals ?? 2)
   return {
     amount: n * factor,
     symbol: c.symbol,
     code: c.code,
     suffix: c.suffix,
     space: c.space,
-    decimals: c.decimals ?? 2,
+    decimals,
     name: c.name,
     converted: !(c.code === 'USD' && factor === 1),
   }

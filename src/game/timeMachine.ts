@@ -181,6 +181,18 @@ export function timelineTag(g: GameState, year: number): string {
 }
 
 /**
+ * timelineTag for a roll whose result only shows once `year` is over: the business cycle a
+ * company's fiscal `year` is booked with at the next birthday, or a hidden trend of `year` that
+ * decides how this year's attempts turn out. Unlike prices (on screen the moment the year
+ * starts), these were never seen at the start of the year you jumped back to, so that year
+ * rolls new dice too; otherwise a jump would tell you how the year ends. '' for lives that
+ * never jumped, and for every year that ended before the latest jump.
+ */
+export function outcomeTag(g: GameState, year: number): string {
+  return Number.isFinite(year) ? forkTag(timelineForks(g), year + 1) : ''
+}
+
+/**
  * The family seed (`base`, e.g. the lifeId without its generation) with this timeline's forks
  * encoded, for engines that take a family string and roll many years from it. `base` itself
  * when there are no forks. Inside such an engine, seed each year with familyAt(fam, year).

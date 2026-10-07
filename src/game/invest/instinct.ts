@@ -15,7 +15,8 @@ import { seeded } from '../assets'
 import { hasTalent } from '../talents'
 import type { GameState } from '../types'
 import { goldBan, investingBlocked } from '../history/markets'
-import { coinDef, coinListed, companyDef, cryptoYear, eraIdentity, exchangeInfo, exchangeStatus, exchangeYear, goldHedge, goldYear, indexName, pennyDef, type ExInfo, type SecYear } from './engine'
+import { coinDef, coinListed, companyDef, cryptoYear, eraIdentity, exchangeInfo, exchangeStatus, exchangeYear, fundName, goldHedge, goldYear, indexName, isHistoryYear, pennyDef, type ExInfo, type SecYear } from './engine'
+import { reitSince } from './era'
 import { indexShockFactor, shockFactor } from './shocks'
 
 export type GutKind = 'stock' | 'penny' | 'index' | 'reit' | 'gold' | 'crypto'
@@ -128,9 +129,11 @@ function candidates(g: GameState, cryptoOk: boolean): { list: Candidate[]; info:
     }
     if (next.fund.id === now.fund.id) {
       const ret = Math.max(-1, (1 + next.fund.ret) * (indexShockFactor(g, info.key, y + 1) / indexShockFactor(g, info.key, y)) - 1)
-      list.push({ secId: now.fund.id, kind: 'index', name: `${indexName(info, y)} Index Fund`, symbol: indexName(info, y), ret, sigma: vol * 0.85 })
+      list.push({ secId: now.fund.id, kind: 'index', name: fundName(info, y).name, symbol: indexName(info, y), ret, sigma: vol * 0.85 })
     }
-    if (next.reit.id === now.reit.id) list.push({ secId: now.reit.id, kind: 'reit', name: 'the local property fund', symbol: 'REIT', ret: next.reit.ret, sigma: Math.sqrt(0.06 ** 2 + (0.5 * vol * 0.85) ** 2 + 0.05 ** 2) })
+    // Listed property trusts only exist from their era on (1960 in the US).
+    const reitsExist = !isHistoryYear(y) || y >= reitSince(info.home)
+    if (reitsExist && next.reit.id === now.reit.id) list.push({ secId: now.reit.id, kind: 'reit', name: 'the local property fund', symbol: 'REIT', ret: next.reit.ret, sigma: Math.sqrt(0.06 ** 2 + (0.5 * vol * 0.85) ** 2 + 0.05 ** 2) })
   }
   if (!goldBan(cid, y) && !investingBlocked(cid, y)) {
     const gold = goldYear(f, an, y + 1)
@@ -210,7 +213,7 @@ export function gutLikes(inst: Instinct | null, secId: string): boolean {
 export function pickLabel(p: GutPick): string {
   if (p.kind === 'gold') return 'gold'
   if (p.kind === 'reit') return 'the local property fund (REIT)'
-  if (p.kind === 'index') return `the ${p.symbol} index fund`
+  if (p.kind === 'index') return p.name.endsWith('Investment Trust') ? `the ${p.name}` : `the ${p.symbol} index fund`
   return `${p.name} (${p.symbol})`
 }
 

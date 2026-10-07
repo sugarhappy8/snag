@@ -3,7 +3,7 @@
 // decisions on applications that take years (resolved by the yearly clock). Mutates the draft.
 import { arrestPlayer } from '../crime'
 import { addStat, count, endJob, log, notice, scriptChoice } from '../core'
-import { borderControl, strictness } from '../data/immigration'
+import { borderControl, strictness, type InvestKind } from '../data/immigration'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -11,14 +11,16 @@ import { getCountry } from '../world'
 import type { GameState, Json } from '../types'
 import { brokeNotice, money, result } from './common'
 import { acquireCitizenship, createLock, relocate, relocationCost, type Arrival } from './immigration-move'
-import { countryName, exitTaxDue, findRoute, type RouteEval } from './immigration-routes'
+import { countryName, exitTaxDue, findRoute, investKindWord, type RouteEval } from './immigration-routes'
 import {
+  an,
   bestPassport,
   exitRegime,
   exitWindow,
-  immState,
+  hasExitPermit,
   inSchengen,
   isBanned,
+  place,
   updateImm,
   type PendingApp,
 } from './immigration-state'
@@ -52,7 +54,7 @@ export function applyRoute(g: GameState, dest: string, key: string): void {
   const country = getCountry(dest)
   const r = findRoute(g, dest, key)
   if (!r) {
-    notice(g, 'Not Available', `That way into ${country.name} isn't open to you anymore.`, { emoji: '\u{1F6AB}' })
+    notice(g, 'Not Available', `That way into ${place(country)} isn't open to you anymore.`, { emoji: '\u{1F6AB}' })
     return
   }
   if (!r.ok) {
@@ -60,12 +62,12 @@ export function applyRoute(g: GameState, dest: string, key: string): void {
     return
   }
   if (appliedThisYear(g, dest, r)) {
-    notice(g, 'Already Applied', `${country.name} already has your paperwork this year.`, { emoji: '\u{1F4C2}' })
+    notice(g, 'Already Applied', `${cap(place(country))} already has your paperwork this year.`, { emoji: '\u{1F4C2}' })
     return
   }
   if (c.wantedLevel > 0 && r.id !== 'citizen') {
     g.yearActions[applyKey(dest, r)] = 1
-    log(g, `My request to emigrate to ${country.name} was denied.`, 'bad')
+    log(g, `My request to emigrate to ${place(country)} was denied.`, 'bad')
     offerSneak(g, dest, 'Request Denied', 'Your background check flagged an outstanding warrant.')
     return
   }
@@ -81,16 +83,19 @@ export function applyRoute(g: GameState, dest: string, key: string): void {
   // Decided later: file it.
   if (r.wait > 0 || !r.moves) {
     const decide = g.year + Math.max(1, r.wait)
+    const underPermit = !!exitRegime(c.countryId, g.year) && hasExitPermit(g)
     updateImm(g, (s) => {
       s.apps = s.apps.filter((a) => !(a.dest === dest && a.key === key))
       s.apps.push({ id: `${dest}:${key}:${g.year}`, dest, key, label: r.noun, filed: g.year, decide, odds: r.odds })
+      // The exit visa holds until this application is decided (and the year you'd move).
+      if (underPermit) s.exitUntil = Math.max(s.exitUntil ?? 0, decide)
     })
     if (r.id === 'lottery') {
       log(g, `I entered the ${r.noun}.`, 'neutral')
       notice(g, r.label, `You entered the ${r.noun}. Winners are drawn in ${decide}. Your odds: about ${Math.max(1, Math.round(r.odds * 100))} in 100.`, { emoji: r.emoji })
     } else {
-      log(g, `I applied for ${article(r.noun)} ${r.noun} to ${country.name}.`, 'neutral')
-      notice(g, 'Application Filed', `You filed your ${r.noun} application with ${country.name}${r.fee > 0 ? ` and paid ${money(r.fee)} in fees` : ''}. A decision is expected in ${decide}.`, { emoji: '\u{1F4E8}' })
+      log(g, `I applied for ${article(r.noun)} ${r.noun} to ${place(country)}.`, 'neutral')
+      notice(g, 'Application Filed', `You filed your ${r.noun} application with ${place(country)}${r.fee > 0 ? ` and paid ${money(r.fee)} in fees` : ''}. A decision is expected in ${decide}.`, { emoji: '\u{1F4E8}' })
     }
     return
   }
@@ -115,33 +120,32 @@ export function approve(g: GameState, r: RouteEval, feePaid: number): void {
   const reloc = relocationCost(g, country)
   const cash = Math.max(0, c.money)
   const invest = Math.min(r.invest, cash)
-  c.money = Math.round(c.money - invest - Math.min(reloc, Math.max(0, c.money - invest)))
+  c.money = Math.round(c.money - invest)
+  // The stake is yours from day one: it counts toward the exit tax on the way out, like the estimate said.
+  const lock = invest > 0 && r.investKind && r.investKind !== 'fee' ? createLock(g, { program: r.program ?? r.key, name: `${r.label} stake`, emoji: r.emoji, kind: r.investKind, amount: invest, years: r.lockYears, country: r.dest }) : null
+  c.money = Math.round(c.money - Math.min(reloc, Math.max(0, c.money)))
   const paid = r.fee + feePaid + invest + reloc
-  const extra: string[] = []
   if (r.id === 'whv') updateImm(g, (s) => s.whvUsed.push(r.dest))
   relocate(g, r.dest, 'legal', arrivalOf(r), {
-    title: r.result === 'citizen' && r.id !== 'citizen' ? `${country.demonym} Citizen!` : `Welcome to ${country.name}!`,
-    opener: approvalOpener(r, paid, country.name),
-    extra,
+    title: r.result === 'citizen' && r.id !== 'citizen' ? `${country.demonym} Citizen!` : `Welcome to ${place(country)}!`,
+    opener: approvalOpener(r, paid, place(country)),
+    extra: lock ? [`${money(lock.value)} is locked in ${investKindWord(r.investKind as InvestKind)} until ${lock.details.until}. Pull it out early and the visa goes with it.`] : [],
   })
-  if (r.invest > 0 && r.investKind) {
-    if (r.investKind === 'fee') {
-      log(g, `I paid ${money(invest)} for my ${r.noun}.`, 'neutral')
-    } else {
-      const a = createLock(g, { program: r.program ?? r.key, name: `${r.label} stake`, emoji: r.emoji, kind: r.investKind, amount: invest, years: r.lockYears, country: r.dest })
-      updateImm(g, (s) => (s.program = r.program ?? s.program))
-      log(g, `I locked ${money(a.value)} into ${country.name} for my visa.`, 'neutral')
-    }
+  if (lock) {
+    updateImm(g, (s) => (s.program = r.program ?? s.program))
+    log(g, `I locked ${money(lock.value)} into ${place(country)} for my visa.`, 'neutral')
+  } else if (invest > 0 && r.investKind === 'fee') {
+    log(g, `I paid ${money(invest)} for my ${r.noun}.`, 'neutral')
   }
   if (r.result === 'citizen' && r.id !== 'citizen') {
-    const res = acquireCitizenship(g, r.dest, false)
+    const res = acquireCitizenship(g, r.dest)
     count(g, 'naturalizations')
     if (res.lost.length) notice(g, 'Passport Lost', `Taking ${country.demonym} citizenship cost you your ${res.lost.map((id) => getCountry(id).demonym).join(' and ')} citizenship: ${res.lost.length > 1 ? 'those countries don\'t' : 'that country doesn\'t'} allow dual citizenship.${res.tax > 0 ? ` ${cap(res.taxName)} took ${money(res.tax)}.` : ''}`, { emoji: '\u{1F6C2}' })
   }
 }
 
 function approvalOpener(r: RouteEval, paid: number, name: string): string {
-  const what = r.id === 'citizen' ? `You moved to ${name}` : `Your ${r.noun} was approved! You moved to ${name}`
+  const what = r.id === 'citizen' ? `You moved to ${name}` : r.id === 'lottery' ? `You won the ${r.noun}! You moved to ${name}` : `Your ${r.noun} was approved! You moved to ${name}`
   const cost = paid > 0 ? ` and paid ${money(paid)} in fees${r.invest > 0 ? ', investment' : ''} and moving costs` : ''
   const status =
     r.result === 'citizen'
@@ -166,7 +170,7 @@ const DENIALS = [
 function deny(g: GameState, r: RouteEval): void {
   const country = getCountry(r.dest)
   const crimes = g.character.criminalRecord.filter((x) => x.convicted).length
-  log(g, `My ${r.noun} application to ${country.name} was denied.`, 'bad')
+  log(g, `My ${r.noun} application to ${place(country)} was denied.`, 'bad')
   const reason =
     crimes > 0
       ? 'Immigration officials took one look at your criminal record and stamped your application DENIED.'
@@ -174,7 +178,7 @@ function deny(g: GameState, r: RouteEval): void {
         ? `Your sponsor's paperwork for the ${r.sponsor.title} job didn't make it through the visa office.`
         : r.id === 'student'
           ? 'The universities you applied to said no, and so did the visa office.'
-          : pick(g, DENIALS).replace('{country}', country.name)
+          : pick(g, DENIALS).replace('{country}', cap(place(country)))
   offerSneak(g, r.dest, 'Application Denied', reason)
 }
 
@@ -206,8 +210,8 @@ function arriveForAsylum(g: GameState, r: RouteEval): void {
   relocate(g, r.dest, 'asylum', { status: 'asylum', visa: protectedNow ? 'protection' : 'pending' }, {
     title: protectedNow ? 'Safe' : 'Seeking Safety',
     opener: protectedNow
-      ? `You reached ${country.name} and were granted protection on arrival.`
-      : `You reached ${country.name} and claimed asylum. You can stay while your claim is decided (expected in ${decide}).`,
+      ? `You reached ${place(country)} and were granted protection on arrival.`
+      : `You reached ${place(country)} and claimed asylum. You can stay while your claim is decided (expected in ${decide}).`,
     emoji: '\u{1F54A}\u{FE0F}',
   })
   if (!protectedNow) updateImm(g, (s) => {
@@ -232,7 +236,7 @@ export interface SneakOdds {
 export function sneakOdds(g: GameState, dest: string): SneakOdds {
   const home = g.character.countryId
   const regime = exitRegime(home, g.year)
-  if (regime && immState(g).exitPermit !== g.year) return { odds: 0, overstay: false, blocked: true }
+  if (regime && !hasExitPermit(g)) return { odds: 0, overstay: false, blocked: true }
   const pass = bestPassport(g).strength
   const overstay = pass >= 70 && strictness(dest, g.year) < 0.85 && !isBanned(g, dest)
   let p = overstay ? 0.85 : Math.max(0.05, 1 - borderControl(dest, g.year) * 0.9)
@@ -252,7 +256,7 @@ export function sneakIn(g: GameState, dest: string): void {
   if (dest === g.character.countryId) return
   const s = sneakOdds(g, dest)
   if (s.blocked) {
-    notice(g, 'Sealed Border', `You'd have to get out of ${getCountry(g.character.countryId).name} first.`, { emoji: '\u{1F6A7}' })
+    notice(g, 'Sealed Border', `You'd have to get out of ${place(getCountry(g.character.countryId))} first.`, { emoji: '\u{1F6A7}' })
     return
   }
   g.yearActions[`imm.sneak.${dest}`] = 1
@@ -261,26 +265,26 @@ export function sneakIn(g: GameState, dest: string): void {
     relocate(g, dest, 'illegal', { status: 'undocumented', entry: s.overstay ? 'overstay' : 'border' }, {
       title: 'You Made It!',
       opener: s.overstay
-        ? `You flew into ${country.name} as a tourist and simply never left. Try not to get caught.`
-        : `You slipped across the border undetected and started a new life in ${country.name}. Try not to get caught.`,
+        ? `You flew into ${place(country)} as a tourist and simply never left. Try not to get caught.`
+        : `You slipped across the border undetected and started a new life in ${place(country)}. Try not to get caught.`,
     })
     return
   }
   g.flags.deported = (typeof g.flags.deported === 'number' ? g.flags.deported : 0) + 1
   updateImm(g, (st) => (st.bans[dest] = g.year + 4))
   if (!s.overstay && chance(g, 0.45)) {
-    log(g, `I was caught trying to sneak into ${country.name}.`, 'bad')
-    notice(g, 'Caught!', `Border agents caught you trying to sneak into ${country.name}. They handed you over to the police.`, { emoji: '\u{1F6A8}', tone: 'bad' })
+    log(g, `I was caught trying to sneak into ${place(country)}.`, 'bad')
+    notice(g, 'Caught!', `Border agents caught you trying to sneak into ${place(country)}. They handed you over to the police.`, { emoji: '\u{1F6A8}', tone: 'bad' })
     arrestPlayer(g, 'Illegal Border Crossing', 1)
     return
   }
   addStat(g, 'happiness', -randInt(g, 5, 10))
   if (s.overstay) {
-    log(g, `I was turned away at the airport in ${country.name}.`, 'bad')
-    result(g, 'Refused Entry', `The border officer in ${country.name} didn't believe your "two-week vacation" with four suitcases. You were put on the next flight back and banned for five years.`, '\u{1F6EC}', 'bad')
+    log(g, `I was turned away at the airport in ${place(country)}.`, 'bad')
+    result(g, 'Refused Entry', `The border officer in ${place(country)} didn't believe your "two-week vacation" with four suitcases. You were put on the next flight back and banned for five years.`, '\u{1F6EC}', 'bad')
   } else {
-    log(g, `I was caught sneaking into ${country.name} and deported.`, 'bad')
-    result(g, 'Deported', `You made it ${randInt(g, 2, 40)} miles past the border before you were caught and sent back. You're banned from ${country.name} for five years.`, '\u{1F6EC}', 'bad')
+    log(g, `I was caught sneaking into ${place(country)} and deported.`, 'bad')
+    result(g, 'Deported', `You made it as far as ${pick(g, ['the first village', 'a bus stop', 'a roadside café', "a farmer's field"])} past the border before you were caught and sent back. You're banned from ${place(country)} for five years.`, '\u{1F6EC}', 'bad')
   }
 }
 
@@ -290,7 +294,7 @@ export const ILLEGAL = defineScript('act.emigrate.illegal', (g, choice, data) =>
   const id = typeof d.country === 'string' ? d.country : ''
   if (!id || id === g.character.countryId || !getCountry(id) || getCountry(id).id !== id) return
   if (choice !== 'sneak') {
-    log(g, `I gave up on moving to ${getCountry(id).name}.`, 'neutral')
+    log(g, `I gave up on moving to ${place(getCountry(id))}.`, 'neutral')
     return
   }
   sneakIn(g, id)
@@ -329,7 +333,7 @@ export function requestExitPermit(g: GameState): void {
   if (c.job && c.job.category !== 'special' && chance(g, 0.3)) {
     const title = c.job.title
     endJob(g, 'job', 'fired')
-    text += ` Worse, your employer found out you'd asked to leave and fired you as a ${title}.`
+    text += ` Worse, your employer found out you'd asked to leave and fired you as ${an(title)}.`
     log(g, 'I was fired for applying to emigrate.', 'bad')
   }
   addStat(g, 'happiness', -randInt(g, 3, 8))
@@ -345,6 +349,11 @@ export function escapeOdds(g: GameState, dest: string): number {
   return Math.max(0.02, Math.min(0.9, p))
 }
 
+export function escapeHint(g: GameState, dest: string): string {
+  if (!exitRegime(g.character.countryId, g.year)) return ''
+  return talentHint(g, 'Crime', `Your odds of getting out: about ${Math.round(escapeOdds(g, dest) * 100)}%.`)
+}
+
 export function attemptEscape(g: GameState, dest: string): void {
   const c = g.character
   const regime = exitRegime(c.countryId, g.year)
@@ -352,18 +361,18 @@ export function attemptEscape(g: GameState, dest: string): void {
   const country = getCountry(dest)
   g.yearActions[`imm.escape.${dest}`] = 1
   if (chance(g, escapeOdds(g, dest))) {
-    count(g, 'escapes')
+    count(g, 'borderEscapes')
     const welcome = (strictness(dest, g.year) < 0.95 && country.wealth >= 0.5) || dest === 'us'
     relocate(g, dest, 'escape', welcome ? { status: 'asylum', visa: 'refugee' } : { status: 'undocumented', entry: 'border' }, {
       title: 'Escaped!',
       opener: welcome
-        ? `You got out of ${regime.name} and made it to ${country.name}, which granted you refugee status.`
-        : `You got out of ${regime.name} and made it to ${country.name}, though nobody there gave you papers.`,
+        ? `You got out of ${regime.name} and made it to ${place(country)}, which granted you refugee status.`
+        : `You got out of ${regime.name} and made it to ${place(country)}, though nobody there gave you papers.`,
       emoji: '\u{1F3C3}',
     })
     return
   }
-  log(g, `I was caught trying to escape from ${getCountry(c.countryId).name}.`, 'bad')
+  log(g, `I was caught trying to escape from ${place(getCountry(c.countryId))}.`, 'bad')
   notice(g, 'Caught at the Border', `Border guards caught you trying to get out of ${regime.name}. You were arrested.`, { emoji: '\u{1F6A8}', tone: 'bad' })
   arrestPlayer(g, regime.id.startsWith('soviet') || ['poland', 'czechoslovakia', 'hungary', 'romania'].includes(regime.id) ? 'Attempted Defection' : 'Illegal Border Crossing', 3)
 }
@@ -378,8 +387,8 @@ export function resolvePending(g: GameState, app: PendingApp): void {
   if (app.dest === g.character.countryId) return
   const r = findRoute(g, app.dest, app.key)
   if (!r || !r.ok) {
-    log(g, `My ${app.label} application to ${country.name} fell through.`, 'bad')
-    notice(g, 'Application Closed', `Your ${app.label} application to ${country.name} was closed${r ? `: ${r.why}` : ' because the program no longer exists'}.`, { emoji: '\u{1F4ED}' })
+    log(g, `My ${app.label} application to ${place(country)} fell through.`, 'bad')
+    notice(g, 'Application Closed', `Your ${app.label} application to ${place(country)} was closed${r ? `: ${r.why}` : ' because the program no longer exists'}.`, { emoji: '\u{1F4ED}' })
     return
   }
   if (!chance(g, app.odds)) {
@@ -387,16 +396,16 @@ export function resolvePending(g: GameState, app: PendingApp): void {
       log(g, `I didn't win the ${app.label}.`, 'neutral')
       notice(g, app.label, `Your number didn't come up in the ${app.label}. There's always next year.`, { emoji: '\u{1F3B0}' })
     } else {
-      log(g, `My ${app.label} application to ${country.name} was denied.`, 'bad')
-      notice(g, 'Application Denied', `After ${g.year - app.filed} year${g.year - app.filed === 1 ? '' : 's'} of waiting, ${country.name} denied your ${app.label} application.`, { emoji: '\u{1F4ED}', tone: 'bad' })
+      log(g, `My ${app.label} application to ${place(country)} was denied.`, 'bad')
+      notice(g, 'Application Denied', `After ${g.year - app.filed} year${g.year - app.filed === 1 ? '' : 's'} of waiting, ${place(country)} denied your ${app.label} application.`, { emoji: '\u{1F4ED}', tone: 'bad' })
     }
     return
   }
   const fee = lottery ? 330 : 0
   const total = r.invest + relocationCost(g, country) + exitTaxDue(g).due + fee
-  log(g, lottery ? `I won the ${app.label}!` : `My ${app.label} application to ${country.name} was approved.`, 'good')
-  scriptChoice(g, APPROVED, lottery ? 'You Won!' : 'Visa Approved!', `${country.flag} ${lottery ? `Your number came up in the ${app.label}!` : `${country.name} approved your ${app.label} application.`} Moving there will cost about ${money(total)}${r.invest > 0 ? ' including the investment' : ''}.`, [
-    { id: 'move', label: `Move to ${country.name}`, emoji: country.flag },
+  log(g, lottery ? `I won the ${app.label}!` : `My ${app.label} application to ${place(country)} was approved.`, 'good')
+  scriptChoice(g, APPROVED, lottery ? 'You Won!' : 'Visa Approved!', `${country.flag} ${lottery ? `Your number came up in the ${app.label}!` : `${cap(place(country))} approved your ${app.label} application.`} Moving there will cost about ${money(total)}${r.invest > 0 ? ' including the investment' : ''}.`, [
+    { id: 'move', label: `Move to ${place(country)}`, emoji: country.flag },
     { id: 'decline', label: 'Turn it down', emoji: '\u{270B}' },
   ], { emoji: lottery ? '\u{1F3B0}' : '\u{1F4EC}', data: { dest: app.dest, key: app.key, fee } })
 }
@@ -409,18 +418,18 @@ export const APPROVED = defineScript('imm.approved', (g, choice, data) => {
   if (!dest || !key || dest === g.character.countryId || !g.character.alive || g.character.prison) return
   const country = getCountry(dest)
   if (choice !== 'move') {
-    log(g, `I turned down my visa to ${country.name}.`, 'neutral')
+    log(g, `I turned down my visa to ${place(country)}.`, 'neutral')
     return
   }
   const r = findRoute(g, dest, key)
   if (!r || !r.ok) {
-    notice(g, 'Visa Lapsed', `The visa to ${country.name} fell through: ${r ? r.why : 'the program is gone'}`, { emoji: '\u{1F4ED}' })
+    notice(g, 'Visa Lapsed', `The visa to ${place(country)} fell through: ${r ? r.why : 'the program is gone'}`, { emoji: '\u{1F4ED}' })
     return
   }
   const total = r.invest + relocationCost(g, country) + exitTaxDue(g).due + fee
   if (g.character.money < total) {
     brokeNotice(g, total, `moving to ${countryName(dest)}`)
-    log(g, `I couldn't afford to use my visa to ${country.name}.`, 'bad')
+    log(g, `I couldn't afford to use my visa to ${place(country)}.`, 'bad')
     return
   }
   g.character.money = Math.round(g.character.money - fee)

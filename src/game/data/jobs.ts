@@ -693,6 +693,50 @@ export const GIGS: GigDef[] = [
 // ---------------------------------------------------------------------------
 // Company names (combined with a seeded picker in careers.ts)
 
+/** First year a company-name word makes sense (no "Apex Apps" in 1976, no malls in 1930). */
+export const COMPANY_WORD_FROM: Record<string, number> = {
+  Apps: 2008,
+  Cloud: 2008,
+  Digital: 1985,
+  Networks: 1985,
+  Software: 1970,
+  Data: 1960,
+  Technologies: 1950,
+  Dynamics: 1940,
+  Solutions: 1960,
+  Synergy: 1970,
+  'Jet Set Getaways': 1958,
+  'Jetstream Air': 1952,
+  'Hair Force One': 1960,
+  'Deadliest Catch Fisheries': 2005,
+  '{city} Mall': 1956,
+  'Galleria Mall': 1956,
+  'Sunset Plaza Mall': 1956,
+  'MegaMall of {city}': 1985,
+  'Splash Zone': 1980,
+  'Planet Pecs': 1980,
+  'Sweat Shop Fitness': 1975,
+  'Club Neon': 1930,
+}
+
+/** Older names for a whole industry before its modern form existed (a 1930 "mall" job is at a bazaar). */
+export const COMPANY_WORDS_BEFORE: Partial<Record<keyof typeof COMPANY_WORDS, readonly [number, readonly string[]]>> = {
+  mall: [1956, ['The {city} Arcade', 'The {city} Bazaar', "{last} Brothers' Department Store", 'The {city} Picture House']],
+}
+
+/** Company-name words that also need a technology where the company is ("Apps" needs smartphones). */
+export const COMPANY_WORD_TECH: Record<string, TechId> = { Apps: 'smartphone', Cloud: 'internet', Networks: 'internet' }
+
+/** The words of a company-name list that exist in `year` (and country, when given; the whole list if none would). */
+export function companyWordsIn(list: readonly string[], year: number, countryId?: string): readonly string[] {
+  const ok = list.filter((w) => {
+    if (year < (COMPANY_WORD_FROM[w] ?? 0)) return false
+    const tech = COMPANY_WORD_TECH[w]
+    return !tech || !countryId || techAdoption(countryId, tech, year) >= 0.02
+  })
+  return ok.length ? ok : list
+}
+
 export const COMPANY_WORDS = {
   corpPrefix: ['Apex', 'Summit', 'Pinnacle', 'Bluefin', 'Nimbus', 'Ironclad', 'Evergreen', 'Quantum', 'Starlight', 'Interstellar', 'Golden Goose', 'Velvet', 'Crimson', 'Northwind', 'Silverline', 'Brightpath', 'Redwood', 'Cobalt', 'Lucky Duck', 'Sunny Side', 'Paperclip', 'Moonbeam', 'Granite', 'Hollow Oak', 'Wobbly Llama', 'Big Cheese', 'Meridian', 'Synergy', 'Vortex', 'Horizon'],
   corpSuffix: ['Holdings', 'Group', 'Partners', 'Industries', 'Solutions', 'Dynamics', 'Enterprises', 'Systems', 'Corp', 'Inc.', 'Worldwide', 'Consolidated', 'Ventures', 'International'],

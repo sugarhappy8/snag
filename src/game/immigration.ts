@@ -7,7 +7,7 @@
 // golden-visa money, and the family's passports. State helpers live in
 // activities/immigration-state.ts; routes in immigration-routes.ts; moves in immigration-move.ts.
 import { addMoney, addStat, count, currentPartner, endJob, log, notice, remember, scriptChoice } from './core'
-import { AMNESTIES, GUEST_PROGRAMS, INVESTOR_PROGRAMS, REMOTE_PROGRAMS, RETIRE_PROGRAMS, UNIONS, dualRule, enforcement, lawOf, real, type InvestKind } from './data/immigration'
+import { AMNESTIES, GUEST_PROGRAMS, INVESTOR_PROGRAMS, REMOTE_PROGRAMS, RETIRE_PROGRAMS, UNIONS, dualRule, enforcement, lawOf, type InvestKind } from './data/immigration'
 import { bell, chance, randInt } from './rng'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
@@ -15,7 +15,7 @@ import { getCountry } from './world'
 import type { Asset, GameState, ImmigrationStatus, Json } from './types'
 import { money } from './activities/common'
 import { resolvePending } from './activities/immigration-apply'
-import { COLLAPSE_KEEP, LOCK_DRIFT, backlogYears, destWealth, investKindWord, natzYearsFor, remoteJobIncome } from './activities/immigration-routes'
+import { COLLAPSE_KEEP, LOCK_DRIFT, RETIRE_DEPOSIT_YEARS, backlogYears, programMoney, destWealth, investKindWord, natzYearsFor, remoteJobIncome } from './activities/immigration-routes'
 import {
   acquireCitizenship,
   deport,
@@ -24,10 +24,13 @@ import {
   inflationErosion,
   leaveFor,
   lockAssets,
+  passportsLostBy,
   stampFamily,
 } from './activities/immigration-move'
 import {
+  an,
   blocAccess,
+  cap,
   citizenshipsOf,
   exitRegime,
   expandCitizenships,
@@ -37,6 +40,7 @@ import {
   isCitizenOf,
   languageLevel,
   personCitizenships,
+  place,
   setStatus,
   statusLabel,
   statusOf,
@@ -46,7 +50,7 @@ import {
   type ImmState,
 } from './activities/immigration-state'
 
-export { citizenshipsOf, grantCitizenship, heirCitizenships, isCitizenOf, statusOf }
+export { citizenshipsOf, grantCitizenship, heirCitizenships, isCitizenOf, passportsLostBy, statusOf }
 
 function num(v: Json | undefined, fallback = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
@@ -105,15 +109,15 @@ function dissolveUnions(g: GameState): void {
     if (u.zeroOption?.[c.countryId] === false && c.birthCountryId !== c.countryId) {
       setStatus(g, { status: 'permanent', since: g.year })
       updateImm(g, (s) => (s.prSince = g.year))
-      notice(g, 'A New Country', `When ${name} broke apart, ${country.name} only gave citizenship to people with roots there. You became a permanent resident with a "non-citizen" passport.`, { emoji: country.flag })
-      log(g, `After ${name} broke up, I became a non-citizen resident of ${country.name}.`, 'event')
+      notice(g, 'A New Country', `When ${name} broke apart, ${place(country)} only gave citizenship to people with roots there. You became a permanent resident with a "non-citizen" passport.`, { emoji: country.flag })
+      log(g, `After ${name} broke up, I became a non-citizen resident of ${place(country)}.`, 'event')
       continue
     }
     grantCitizenship(g, c.countryId)
     setStatus(g, { status: 'citizen', since: g.year })
-    notice(g, 'A New Passport', `When ${name} broke apart, you became a citizen of ${country.name}, where you lived.`, { emoji: country.flag })
-    log(g, `After ${name} broke up, I became a ${country.demonym} citizen.`, 'event')
-    remember(g, `Became a citizen of ${country.name} when ${name} broke up.`)
+    notice(g, 'A New Passport', `When ${name} broke apart, you became a citizen of ${place(country)}, where you lived.`, { emoji: country.flag })
+    log(g, `After ${name} broke up, I became ${an(country.demonym)} citizen.`, 'event')
+    remember(g, `Became a citizen of ${place(country)} when ${name} broke up.`)
   }
 }
 
@@ -175,12 +179,12 @@ function noteConvictions(g: GameState): boolean {
   const country = getCountry(c.countryId)
   const p = s.status === 'permanent' ? 0.6 : s.status === 'asylum' && s.visa !== 'pending' ? 0.35 : 1
   if (!chance(g, p)) {
-    notice(g, 'Close Call', `After your conviction, ${country.name} tried to deport you, but an immigration judge let you keep your status. Barely.`, { emoji: '\u{2696}\u{FE0F}' })
+    notice(g, 'Close Call', `After your conviction, ${place(country)} tried to deport you, but an immigration judge let you keep your status. Barely.`, { emoji: '\u{2696}\u{FE0F}' })
     return false
   }
   if (c.prison) {
     updateImm(g, (st2) => (st2.deportAfterRelease = true))
-    notice(g, 'Deportation Order', `Because of your conviction, ${country.name} will deport you as soon as your sentence ends.`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
+    notice(g, 'Deportation Order', `Because of your conviction, ${place(country)} will deport you as soon as your sentence ends.`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
     return true
   }
   deport(g, 'After your conviction, an immigration judge ordered you removed.', 10)
@@ -289,12 +293,13 @@ function renewal(g: GameState, s: ImmigrationStatus, st: ImmState): Renewal {
     }
     case 'retire': {
       const p = RETIRE_PROGRAMS.find((x) => x.id === st.program)
-      const need = p ? real(p.income, g.year) : 0
+      const need = p ? programMoney(p.income, g.year) : 0
+      if (p?.deposit && (st.visaSince ?? s.since) + RETIRE_DEPOSIT_YEARS > g.year && !lockAssets(g).some((a) => a.details.program === p.id)) return { ok: false, reason: 'You withdrew the bank deposit your retirement visa required.' }
       return c.pension >= need || netWorthish(g) >= need * 15 ? { ok: true, term: 1 } : { ok: false, reason: 'You no longer meet the income requirement for your retirement visa.' }
     }
     case 'remote': {
       const p = REMOTE_PROGRAMS.find((x) => x.id === st.program)
-      const need = p ? real(p.income, g.year) : 0
+      const need = p ? programMoney(p.income, g.year) : 0
       if (capped) return { ok: false, reason: 'Your remote-worker visa reached its maximum length.' }
       return remoteJobIncome(g) >= need ? { ok: true, term: p?.term ?? 1 } : { ok: false, reason: 'Without a remote job paying enough, your remote-worker visa lapsed.' }
     }
@@ -327,10 +332,10 @@ function grantPr(g: GameState, why: string): void {
     s.maxUntil = undefined
   })
   count(g, 'permanentResidencies')
-  log(g, `I became a permanent resident of ${country.name}.`, 'good')
-  remember(g, `Became a permanent resident of ${country.name}.`)
+  log(g, `I became a permanent resident of ${place(country)}.`, 'good')
+  remember(g, `Became a permanent resident of ${place(country)}.`)
   addStat(g, 'happiness', randInt(g, 3, 7))
-  notice(g, 'Permanent Resident!', `${why} You're now a permanent resident of ${country.name}: no more renewals, and citizenship is the next step.`, { emoji: '\u{1FAAA}', tone: 'good' })
+  notice(g, 'Permanent Resident!', `${why} You're now a permanent resident of ${place(country)}: no more renewals, and citizenship is the next step.`, { emoji: '\u{1FAAA}', tone: 'good' })
 }
 
 function visaClock(g: GameState, s: ImmigrationStatus, st: ImmState): void {
@@ -353,7 +358,7 @@ function visaClock(g: GameState, s: ImmigrationStatus, st: ImmState): void {
       notice(g, 'Permanent Residency', `You qualify for permanent residency, but you couldn't pay the ${money(fee)} application fee. Try again next year.`, { emoji: '\u{1F4B8}' })
     } else {
       if (fee > 0 && c.age >= 18) c.money = Math.round(c.money - fee)
-      grantPr(g, free ? `After ${years} years of living there, the right to stay became permanent.` : `After ${years} years on a ${visaLabel(s.visa)}, your application${fee > 0 ? ` (${money(fee)})` : ''} was approved.`)
+      grantPr(g, free ? `After ${years} years of living there, the right to stay became permanent.` : `After ${years} years on ${an(visaLabel(s.visa))}, your application${fee > 0 ? ` (${money(fee)})` : ''} was approved.`)
       return
     }
   }
@@ -363,15 +368,38 @@ function visaClock(g: GameState, s: ImmigrationStatus, st: ImmState): void {
     return
   }
   const r = renewal(g, s, st)
+  if (!r.ok && s.visa !== 'spouse' && s.visa !== 'fiance' && married(g) && isCitizenOfCountry(g, c.countryId)) {
+    spouseSponsors(g, s)
+    return
+  }
   if (r.ok) {
     const visa = r.visa ?? s.visa
     setStatus(g, { status: 'visa', visa, since: r.restart ? g.year : s.since, expires: g.year + (r.term ?? 2) })
     if (r.restart) updateImm(g, (x) => (x.visaSince = g.year))
-    log(g, r.visa && r.visa !== s.visa ? `My ${visaLabel(s.visa)} became a ${visaLabel(r.visa)}.` : `I renewed my ${visaLabel(visa)}.`, 'neutral')
-    if (r.visa && r.visa !== s.visa) notice(g, 'Visa Upgraded', `Your ${visaLabel(s.visa)} became a ${visaLabel(r.visa)}, valid until ${g.year + (r.term ?? 2)}.`, { emoji: '\u{1F6C2}', tone: 'good' })
+    log(g, r.visa && r.visa !== s.visa ? `My ${visaLabel(s.visa)} became ${an(visaLabel(r.visa))}.` : `I renewed my ${visaLabel(visa)}.`, 'neutral')
+    if (r.visa && r.visa !== s.visa) notice(g, 'Visa Upgraded', `Your ${visaLabel(s.visa)} became ${an(visaLabel(r.visa))}, valid until ${g.year + (r.term ?? 2)}.`, { emoji: '\u{1F6C2}', tone: 'good' })
     return
   }
   lapse(g, r.reason ?? 'Your visa ran out.')
+}
+
+/** A visa that couldn't be renewed, rescued by a citizen spouse's sponsorship. */
+function spouseSponsors(g: GameState, s: ImmigrationStatus): void {
+  const c = g.character
+  const p = currentPartner(g)
+  const name = p ? p.firstName : 'your spouse'
+  if (['us', 'pr', 'ca', 'nz'].includes(c.countryId)) {
+    grantPr(g, `When your ${visaLabel(s.visa)} ran out, ${name} sponsored you as a spouse.`)
+    return
+  }
+  setStatus(g, { status: 'visa', visa: 'spouse', since: g.year, expires: g.year + 2 })
+  updateImm(g, (x) => {
+    x.visaSince = g.year
+    x.program = undefined
+    x.maxUntil = undefined
+  })
+  log(g, `${name} sponsored me for a spouse visa when my ${visaLabel(s.visa)} ran out.`, 'neutral')
+  notice(g, 'Spouse Visa', `Your ${visaLabel(s.visa)} couldn't be renewed, but ${name} sponsored you: you're now on a spouse visa, valid until ${g.year + 2}.`, { emoji: '\u{1F48D}', tone: 'good' })
 }
 
 /** The visa is gone: leave, or stay without papers (the character is undocumented until they go). */
@@ -384,9 +412,9 @@ function lapse(g: GameState, reason: string): void {
     s.entry = 'overstay'
     s.program = undefined
   })
-  log(g, `I lost my legal status in ${country.name}.`, 'bad')
-  scriptChoice(g, LAPSE, 'Visa Expired', `${country.flag} ${reason}\n\nYou can go home to ${getCountry(home).name}, or stay in ${country.name} without papers (no legal job, and the risk of deportation every year).`, [
-    { id: 'leave', label: `Move to ${getCountry(home).name}`, emoji: getCountry(home).flag },
+  log(g, `I lost my legal status in ${place(country)}.`, 'bad')
+  scriptChoice(g, LAPSE, 'Visa Expired', `${country.flag} ${reason}\n\nYou can go home to ${place(getCountry(home))}, or stay in ${place(country)} without papers (no legal job, and the risk of deportation every year).`, [
+    { id: 'leave', label: `Move to ${place(getCountry(home))}`, emoji: getCountry(home).flag },
     { id: 'stay', label: 'Stay without papers', emoji: '\u{1F648}' },
   ], { emoji: '\u{1F6C2}', data: { home } })
 }
@@ -397,27 +425,13 @@ const LAPSE = defineScript('imm.lapse', (g, choice, data) => {
   const c = g.character
   if (!c.alive || c.prison || home === c.countryId) return
   if (choice === 'leave') {
-    leaveFor(g, home, `You left ${getCountry(c.countryId).name} before anyone made you.`)
+    leaveFor(g, home, `You left ${place(getCountry(c.countryId))} before anyone made you.`)
     return
   }
-  log(g, `I stayed in ${getCountry(c.countryId).name} without papers.`, 'bad')
+  log(g, `I stayed in ${place(getCountry(c.countryId))} without papers.`, 'bad')
 })
 
 // --- citizenship -------------------------------------------------------------
-
-/** Passports you'd give up by naturalizing in `dest` this year. */
-export function passportsLostBy(g: GameState, dest: string): string[] {
-  const year = g.year
-  const held = citizenshipsOf(g).filter((id) => id !== dest)
-  const destRule = dualRule(dest, year)
-  const shares = (id: string) => blocAccess([id], dest, year).length > 0
-  return held.filter((id) => {
-    if (destRule === 'no') return true
-    if (destRule === 'limited' && !shares(id)) return true
-    const own = dualRule(id, year)
-    return own === 'no' || (own === 'limited' && !shares(id))
-  })
-}
 
 export function citizenshipTestOdds(g: GameState, studied: boolean): number {
   const c = g.character
@@ -465,7 +479,7 @@ export function offerCitizenship(g: GameState): void {
   const lost = passportsLostBy(g, c.countryId)
   const fee = citizenshipFee(g)
   const warn = lost.length ? `\n\nHeads up: taking ${country.demonym} citizenship means giving up your ${lost.map(demonymOf).join(' and ')} passport${lost.length > 1 ? 's' : ''}.` : ''
-  scriptChoice(g, CITIZENSHIP, 'Citizenship', `${country.flag} You've lived in ${country.name} long enough to become a citizen. Pass the citizenship test and take the oath. The application costs ${money(fee)}.${warn}`, [
+  scriptChoice(g, CITIZENSHIP, 'Citizenship', `${country.flag} You've lived in ${place(country)} long enough to become a citizen. Pass the citizenship test and take the oath. The application costs ${money(fee)}.${warn}`, [
     { id: 'study', label: 'Study hard and take the test', emoji: '\u{1F4DA}', hint: talentHint(g, 'Academics', `Your odds of passing: about ${Math.round(citizenshipTestOdds(g, true) * 100)}%.`) || undefined },
     { id: 'wing', label: 'Wing it', emoji: '\u{1F3B2}' },
     { id: 'later', label: 'Not now', emoji: '\u{23F3}' },
@@ -521,19 +535,14 @@ function takeOath(g: GameState): void {
   const c = g.character
   const dest = c.countryId
   const country = getCountry(dest)
-  const lost = passportsLostBy(g, dest)
-  const res = acquireCitizenship(g, dest, false)
-  for (const id of lost) if (!res.lost.includes(id) && citizenshipsOf(g).length > 1 && citizenshipsOf(g).includes(id)) {
-    c.citizenships = citizenshipsOf(g).filter((x) => x !== id)
-    res.lost.push(id)
-  }
+  const res = acquireCitizenship(g, dest)
   setStatus(g, { status: 'citizen', since: g.year })
   const fam = familyNaturalizes(g, dest)
   count(g, 'naturalizations')
   addStat(g, 'happiness', randInt(g, 5, 10))
-  log(g, `I took the oath and became a ${country.demonym} citizen.`, 'good')
-  remember(g, `Became a naturalized citizen of ${country.name}.`)
-  const lines = [`You raised your right hand, took the oath and walked out a ${country.demonym} citizen, passport and all.`]
+  log(g, `I took the oath and became ${an(country.demonym)} citizen.`, 'good')
+  remember(g, `Became a naturalized citizen of ${place(country)}.`)
+  const lines = [`You raised your right hand, took the oath and walked out ${an(country.demonym)} citizen, passport and all.`]
   if (res.lost.length) lines.push(`You gave up your ${res.lost.map(demonymOf).join(' and ')} citizenship.`)
   if (res.tax > 0) lines.push(`${res.taxName[0].toUpperCase()}${res.taxName.slice(1)} took ${money(res.tax)} on the way out.`)
   lines.push(...fam)
@@ -559,11 +568,11 @@ function asylumClock(g: GameState, s: ImmigrationStatus, st: ImmState): void {
         x.asylumOdds = undefined
       })
       count(g, 'asylumGranted')
-      log(g, `My asylum claim in ${country.name} was accepted.`, 'good')
-      notice(g, 'Asylum Granted', `${country.name} recognized you as a refugee. You can stay, work, and eventually settle for good.`, { emoji: '\u{1F54A}\u{FE0F}', tone: 'good' })
+      log(g, `My asylum claim in ${place(country)} was accepted.`, 'good')
+      notice(g, 'Asylum Granted', `${cap(place(country))} recognized you as a refugee. You can stay, work, and eventually settle for good.`, { emoji: '\u{1F54A}\u{FE0F}', tone: 'good' })
       return
     }
-    lapse(g, `${country.name} rejected your asylum claim.`)
+    lapse(g, `${cap(place(country))} rejected your asylum claim.`)
     return
   }
   const toPr = prYearsFor(g, s, st)
@@ -582,7 +591,7 @@ function undocClock(g: GameState, st: ImmState): void {
   const am = AMNESTIES.find((a) => a.country === c.countryId && a.year === g.year && yrs >= a.minYears && (!a.origins || a.origins.some((o) => held.includes(o))) && (a.arrivedUnder === undefined || (st.arrivalAge ?? 99) < a.arrivedUnder))
   if (am) {
     const fee = nice(500 * destWealth(c.countryId))
-    scriptChoice(g, AMNESTY, 'Amnesty!', `${country.flag} ${country.name} announced ${am.label}. People like you can come forward and get papers for ${money(fee)}.`, [
+    scriptChoice(g, AMNESTY, 'Amnesty!', `${country.flag} ${cap(place(country))} announced ${am.label}. People like you can come forward and get papers for ${money(fee)}.`, [
       { id: 'apply', label: 'Come forward and apply', emoji: '\u{1F4DD}' },
       { id: 'hide', label: 'Stay in the shadows', emoji: '\u{1F648}' },
     ], { emoji: '\u{1F4DC}', data: { result: am.result, label: am.label, fee, daca: am.arrivedUnder !== undefined } })
@@ -621,7 +630,7 @@ const AMNESTY = defineScript('imm.amnesty', (g, choice, data) => {
   if (!c.alive || c.prison || statusOf(g).status !== 'undocumented') return
   const country = getCountry(c.countryId)
   if (choice !== 'apply') {
-    log(g, `I stayed hidden instead of applying for the amnesty in ${country.name}.`, 'neutral')
+    log(g, `I stayed hidden instead of applying for the amnesty in ${place(country)}.`, 'neutral')
     return
   }
   const fee = Math.max(0, num(d.fee))
@@ -641,7 +650,7 @@ const AMNESTY = defineScript('imm.amnesty', (g, choice, data) => {
     s.visaSince = g.year
     s.entry = undefined
   })
-  log(g, `I got papers in ${country.name} through ${label}.`, 'good')
+  log(g, `I got papers in ${place(country)} through ${label}.`, 'good')
   notice(g, 'Papers at Last', `Thanks to ${label}, you have a residence permit${daca ? ' and a work permit (renewable every two years, though no path to a green card)' : ''}. No more looking over your shoulder.`, { emoji: '\u{1F4DC}', tone: 'good' })
 })
 
@@ -658,7 +667,7 @@ function adultDualChoice(g: GameState, st: ImmState): void {
   if (c.age < deadline) return
   updateImm(g, (s) => (s.dualDone = true))
   const others = held.filter((id) => id !== strict).slice(0, 3)
-  scriptChoice(g, DUAL, 'Pick a Passport', `${getCountry(strict).flag} ${getCountry(strict).name} doesn't let adults keep two citizenships. Which passport do you keep?`, [
+  scriptChoice(g, DUAL, 'Pick a Passport', `${getCountry(strict).flag} ${cap(place(getCountry(strict)))} doesn't let adults keep two citizenships. Which passport do you keep?`, [
     { id: strict, label: `${getCountry(strict).demonym} (give up the rest)`, emoji: getCountry(strict).flag },
     ...others.map((id) => ({ id, label: `${getCountry(id).demonym} (give up ${getCountry(strict).demonym})`, emoji: getCountry(id).flag })),
   ], { emoji: '\u{1F6C2}', data: { strict } })
@@ -682,7 +691,6 @@ const DUAL = defineScript('imm.dual', (g, choice, data) => {
 
 /** Yearly hook (aging.ts, after finance): visas expire or renew, residency → citizenship. */
 export function yearlyImmigration(g: GameState): void {
-  if (process.env.IMM_OFF) return
   const c = g.character
   migrate(g)
   if (!c.alive) return
@@ -737,14 +745,14 @@ export function immigrationSummary(g: GameState): string {
   const parts: string[] = []
   const born = c.birthCountryId || held[0]
   if (held.length > 1 || s.status !== 'citizen' || born !== c.countryId) parts.push(`${held.map(demonymOf).join(' and ')} passport${held.length > 1 ? 's' : ''}`)
-  if (s.status === 'citizen' && born !== c.countryId && held.includes(c.countryId)) parts.push(`naturalized in ${here.name}`)
-  else if (s.status === 'visa') parts.push(`lives in ${here.name} on a ${statusLabel(s)}`)
+  if (s.status === 'citizen' && born !== c.countryId && held.includes(c.countryId)) parts.push(`naturalized in ${place(here)}`)
+  else if (s.status === 'visa') parts.push(`lives in ${place(here)} on ${an(statusLabel(s))}`)
   else if (s.status === 'permanent') {
     const y = yearsToCitizenship(g)
-    parts.push(`permanent resident of ${here.name}${y === null ? ' (citizenship closed to foreigners)' : y > 0 ? ` (citizenship possible in ${y} yr)` : ''}`)
-  } else if (s.status === 'asylum') parts.push(s.visa === 'pending' ? `asylum seeker in ${here.name}, awaiting a decision` : `refugee in ${here.name}`)
-  else if (s.status === 'undocumented') parts.push(`lives in ${here.name} without papers since ${st.arrived} (can't work legally, risks deportation)`)
-  if (st.apps.length) parts.push(`waiting on: ${st.apps.map((a) => `${a.label} to ${getCountry(a.dest).name} (${a.decide})`).join(', ')}`)
+    parts.push(`permanent resident of ${place(here)}${y === null ? ' (citizenship closed to foreigners)' : y > 0 ? ` (citizenship possible in ${y} yr)` : ''}`)
+  } else if (s.status === 'asylum') parts.push(s.visa === 'pending' ? `asylum seeker in ${place(here)}, awaiting a decision` : `refugee in ${place(here)}`)
+  else if (s.status === 'undocumented') parts.push(`lives in ${place(here)} without papers since ${st.arrived} (can't work legally, risks deportation)`)
+  if (st.apps.length) parts.push(`waiting on: ${st.apps.map((a) => `${a.label} to ${place(getCountry(a.dest))} (${a.decide})`).join(', ')}`)
   const regime = exitRegime(c.countryId, g.year)
   if (regime) parts.push(`${regime.name} forbids leaving without an exit visa`)
   const locks = lockAssets(g)

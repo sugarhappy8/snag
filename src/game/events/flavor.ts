@@ -1,12 +1,12 @@
 // Offline flavor lines for the life log: the little first-person one-liners that make a
 // year feel lived in ("I said my first word: 'potato'."), chosen to fit the character's
 // age and situation, with real family names filled in and no repeats for a long while.
-import { children as childrenOf, currentPartner, inPrison, log, peopleBy } from '../core'
+import { children as childrenOf, currentPartner, formatMoney, inPrison, log, peopleBy } from '../core'
 import { chance, pick, randInt, shuffle } from '../rng'
 import { locale, localPick, localSoftDrink } from '../data/locales'
 import type { GameState, Json, Person, Tone } from '../types'
 import { country, friends, grandkids, inUniversity, mother, father, pets, playSport, siblings } from './helpers'
-import { anachronistic, eraOk, eraStrip, kidPrize, movieKind, radioShow, showName } from './era'
+import { anachronistic, eraOk, eraStrip, kidPrize, movieKind, radioShow, showName, venueExists } from './era'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
 
@@ -160,6 +160,8 @@ const TEEN = [
   '@1975,-2004 I made {friend} a mixtape and agonized over the song order.',
   '@1988,-2003 I got a pager and felt incredibly important.',
   '@internet,!smartphone I spent hours in internet chat rooms pretending to be older.',
+  '@internet,!smartphone,1997 I spent whole evenings on instant messenger and agonized over my away message.',
+  '@internet,-2007 I got kicked off the dial-up every time somebody needed the phone.',
   '@tv,!streaming I stayed up late watching {show} with the volume way down.',
   '@-1950 I left school to help support the family and felt very grown up about it.',
   '@1955,-1985 I spent the summer cruising around town with {friend}.',
@@ -196,7 +198,7 @@ const UNIVERSITY = [
   'I fell asleep in the library.',
   'I went to a campus party and left early.',
   'I skipped my 8 AM lecture way too many times.',
-  'I bought a textbook for $300 and never opened it.',
+  'I bought a textbook for {textbookPrice} and never opened it.',
   'I joined an intramural dodgeball team.',
   '@1960 I spent spring break sleeping.',
   'I got lost on campus during my first week.',
@@ -245,6 +247,10 @@ const ADULT = [
   '@-1960 I wore a hat every time I left the house, like a respectable person.',
   '@1950,-1975 I threw a fondue party and burned the bread.',
   '@1980,-1995 I bought a pair of shoulder pads I had no business wearing.',
+  '@1988,-2002 My pager went off in the middle of a movie and the whole row turned around.',
+  '@cars,landline,-2005 My car broke down and I fed my last coins into a payphone to call for help.',
+  '@cars,1934,-1985 I went to the drive-in and spent the whole movie fighting with the window speaker.',
+  '@1915,-1965 I caught the newsreel before the picture and finally learned what was going on in the world.',
 ]
 
 const WORKER = [
@@ -394,7 +400,7 @@ const RICH = [
   '@-1958 I sailed first class on an ocean liner and dressed for dinner every night.',
   'I hired someone to organize my closets.',
   'I got invited to a fancy charity gala.',
-  '@cars I tipped a valet $100 just to see his face.',
+  '@cars I tipped a valet {valetTip} just to see his face.',
 ]
 
 const BROKE = [
@@ -484,6 +490,9 @@ function tokens(g: GameState): Record<string, string | undefined> {
   t.kidPrize = kidPrize(g)
   t.movieKind = movieKind(g)
   t.hobby = pick(g, HOBBIES)
+  // Amounts in the player's money and year (Settings › Money).
+  t.textbookPrice = formatMoney(300)
+  t.valetTip = formatMoney(100)
   return t
 }
 
@@ -501,7 +510,7 @@ function localizeLine(g: GameState, line: string): string {
   }
   if (line.includes('lemonade stand') && c.countryId !== 'ca') return `I set up a stand selling iced ${localSoftDrink(g).replace(/^iced /i, '')} and made a little pocket money.`
   if (line.includes('the mall with')) {
-    const shops = locale(g).hangouts.filter((h) => /mall|market|bazaar|souk|shopping|plaza|arcade/i.test(h))
+    const shops = locale(g).hangouts.filter((h) => /mall|market|bazaar|souk|shopping|plaza|arcade/i.test(h) && venueExists(g, h))
     return line.replace('the mall', shops.length ? pick(g, shops) : 'the market')
   }
   if (line.includes('mall-walking group')) return line.replace('mall-walking group', 'morning walking group')

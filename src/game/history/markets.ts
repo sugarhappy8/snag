@@ -477,7 +477,7 @@ function usSectorExcess(sector: string, year: number): number | null {
 
 /**
  * A sector's excess log return over its local market in `year` (e.g. tech in 2000: about -0.4),
- * or null when the sector simply moved with the market. Pure; never null-safe for the future.
+ * or null when the sector simply moved with the market (and always for the future).
  */
 export function historicalSectorExcess(countryId: string, sector: string, year: number): number | null {
   if (!inHistory(year)) return null
@@ -530,6 +530,12 @@ export function exchangeState(homeCountryId: string, year: number): ExchangeStat
   if (y < rules.opened || inRanges(rules.none, y)) return { status: 'none', expropriated: false, opened }
   if (inRanges(rules.closed, y)) return { status: 'closed', expropriated: false, opened }
   return { status: 'open', expropriated: false, opened }
+}
+
+/** Why `homeCountryId`'s exchange was shut in `year` (a clause like 'civil war has split the country.'), or null. */
+export function exchangeClosedReason(homeCountryId: string, year: number): string | null {
+  if (exchangeState(homeCountryId, year).status !== 'closed') return null
+  return EXCHANGE_RULES[homeCountryId]?.closedWhy ?? null
 }
 
 /** Why residents of `countryId` couldn't invest privately in `year` (null when they could). */

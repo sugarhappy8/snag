@@ -2,15 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('../src/game/crime', () => ({ arrestPlayer: vi.fn() }))
 import { emigrateMenu } from '../src/game/activities/emigrate'
 import { applyRoute, requestExitPermit, resolvePending, sneakIn } from '../src/game/activities/immigration-apply'
+import { earlyExitShare, visaLockView, withdrawEarly } from '../src/game/activities/immigration-lock'
 import { lockAssets } from '../src/game/activities/immigration-move'
 import { expectedLockValue, findRoute, routesTo, type RouteEval } from '../src/game/activities/immigration-routes'
 import { citizenshipsOf, heirCitizenships, immState, statusOf, updateImm } from '../src/game/activities/immigration-state'
 import { counter } from '../src/game/core'
 import { passportStrength } from '../src/game/data/immigration'
-import { immigrationSummary, legalWorkProblem, yearlyImmigration } from '../src/game/immigration'
+import { immigrationSummary, legalWorkProblem, passportsLostBy, yearlyImmigration } from '../src/game/immigration'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
-import type { GameState, MenuGroup, ModalItem } from '../src/game/types'
+import type { GameState, MenuAction, MenuGroup, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
 // ---------------------------------------------------------------------------
@@ -440,5 +441,142 @@ describe('menus', () => {
     expect(routesTo(g, 'pt').some((r) => r.id === 'investor')).toBe(false)
     expect(routesTo(g, 'pt').some((r) => r.id === 'remote')).toBe(false)
     expect(findRoute(g, 'us', 'lottery:us-dv')).toBeNull()
+  })
+})
+
+describe('more of the clock', () => {
+  it('lets a citizen spouse rescue a visa that runs out', () => {
+    const g = adult({ country: 'in', year: 2010, seed: 5 })
+    expect(applyUntilMoved(g, 'gb', 'work')).toBe(true)
+    const sp = createPerson(g, { relation: 'spouse', age: 30, relationship: 90 })
+    sp.data.citizenships = ['gb']
+    sp.data.countryId = 'gb'
+    g.character.job = null
+    for (let i = 0; i < 4; i++) nextYear(g, (m) => (m.choices.some((c) => c.id === 'stay') ? 'stay' : m.choices[0].id))
+    expect(g.character.countryId).toBe('gb')
+    expect(statusOf(g)).toMatchObject({ status: 'visa', visa: 'spouse' })
+  })
+
+  it('keeps an exit visa alive for an application filed under it', () => {
+    let g: GameState | null = null
+    for (let seed = 1; seed <= 300 && !g; seed++) {
+      const x = adult({ country: 'pl', year: 1985, seed })
+      requestExitPermit(x)
+      if (immState(x).exitPermit === 1985) g = x
+    }
+    expect(g).not.toBeNull()
+    const work = route(g!, 'de', 'work')
+    expect(work.ok).toBe(true)
+    // A weak communist-era passport means the decision takes a year.
+    expect(work.wait).toBeGreaterThan(0)
+    applyRoute(g!, 'de', 'work')
+    expect(immState(g!).apps).toHaveLength(1)
+    updateImm(g!, (s) => (s.apps[0].odds = 1))
+    g!.year += 1
+    resolvePending(g!, immState(g!).apps[0])
+    expect(g!.queue.some((m) => m.kind === 'choice' && m.title === 'Visa Approved!')).toBe(true)
+    choose(g!, () => 'move')
+    expect(g!.character.countryId).toBe('de')
+  })
+
+  it('closes every route while serving in the military', () => {
+    const g = adult({ country: 'us', year: 2010 })
+    g.character.job = { defId: 'army', title: 'Private', company: 'Army', salary: 30_000, category: 'military', yearsAtCompany: 1, performance: 50, level: 0, data: {} } as never
+    const routes = routesTo(g, 'ca')
+    expect(routes.every((r) => !r.ok)).toBe(true)
+    expect(routes.find((r) => r.id === 'work')!.why).toMatch(/military/)
+  })
+
+  it('leaves exotic pets behind when moving', () => {
+    const g = adult({ country: 'us', year: 2010 })
+    const tiger = createPerson(g, { relation: 'pet', age: 3 })
+    tiger.species = 'Tiger'
+    const dog = createPerson(g, { relation: 'pet', age: 3 })
+    dog.species = 'Dog'
+    expect(applyUntilMoved(g, 'ca', 'work')).toBe(true)
+    expect(dog.data.countryId).toBe('ca')
+    expect(tiger.data.countryId).toBe('us')
+  })
+
+  it('has no student visas before visas existed', () => {
+    expect(routesTo(adult({ country: 'it', year: 1905 }), 'us').some((r) => r.id === 'student')).toBe(false)
+    expect(routesTo(adult({ country: 'it', year: 1905 }), 'us').some((r) => r.ok && r.id === 'settler')).toBe(true)
+  })
+
+  it('reads countries naturally mid-sentence', () => {
+    const g = adult({ country: 'mx', year: 2010 })
+    const us = route(g, 'us', 'work')
+    expect(us.ok).toBe(true)
+    applyUntilMoved(g, 'us', 'work')
+    const texts = g.log.flatMap((y) => y.entries.map((e) => e.text)).join(' ')
+    expect(texts).toMatch(/the United States/)
+    expect(texts).not.toMatch(/to United States/)
+  })
+})
+
+describe('locked visa money', () => {
+  it('lets you pull a golden-visa stake out early, at a cost, and then revokes the visa', () => {
+    const g = adult({ country: 'cn', year: 2016, money: 3_000_000 })
+    expect(applyUntilMoved(g, 'gr', 'investor:gr-golden')).toBe(true)
+    const lock = lockAssets(g)[0]
+    const share = earlyExitShare(lock)!
+    expect(share).toBeGreaterThan(0.5)
+    expect(share).toBeLessThan(1)
+    const view = visaLockView(g, lock)
+    const pull = view.find((n) => n.type === 'action') as MenuAction
+    expect(pull.disabledReason!(g)).toBeNull()
+    expect(pull.confirm!(g)).toMatch(/revoked/)
+    const before = g.character.money
+    withdrawEarly(g, lock.id)
+    expect(lockAssets(g)).toHaveLength(0)
+    expect(g.character.money).toBe(before + Math.round(lock.value * share))
+    nextYear(g, (m) => (m.choices.some((c) => c.id === 'stay') ? 'stay' : m.choices[0].id))
+    expect(statusOf(g).status).toBe('undocumented')
+  })
+
+  it("won't release interest-free loans or citizenship-by-investment stakes early", () => {
+    const g = adult({ country: 'ir', year: 2020, money: 2_000_000 })
+    expect(applyUntilMoved(g, 'tr', 'investor:tr-cbi')).toBe(true)
+    const lock = lockAssets(g)[0]
+    expect(earlyExitShare(lock)).toBeNull()
+    const pull = visaLockView(g, lock).find((n) => n.type === 'action') as MenuAction
+    expect(pull.disabledReason!(g)).toMatch(/passport/)
+    withdrawEarly(g, lock.id)
+    expect(lockAssets(g)).toHaveLength(1)
+  })
+
+  it('shows the details and the road to citizenship before you apply', () => {
+    const g = adult({ country: 'cn', year: 2015, money: 3_000_000 })
+    const europe = emigrateMenu.children(g).find((n) => n.id === 'emigrate.cont.Europe') as MenuGroup
+    const pt = europe.children(g).find((n) => n.id === 'emigrate.pt') as MenuGroup
+    const golden = pt.children(g).find((n) => n.id === 'emigrate.pt.investor:pt-golden') as MenuAction
+    const text = golden.confirm!(g)!
+    expect(text).toMatch(/locked in property for 5 years/)
+    expect(text).toMatch(/Permanent residency after about 5 years; citizenship after about \d+ years\./)
+  })
+})
+
+describe('dual citizenship and the expatriation tax', () => {
+  it('makes a rich American who naturalizes in Germany give up the US passport and pay the exit tax', () => {
+    const g = adult({ country: 'us', year: 2015, money: 6_000_000 })
+    g.character.countryId = 'de'
+    g.character.immigration = { countryId: 'de', status: 'permanent', since: 2005 }
+    updateImm(g, (s) => {
+      s.arrived = 2005
+      s.prSince = 2009
+    })
+    expect(passportsLostBy(g, 'de')).toEqual(['us'])
+    const before = g.character.money
+    nextYear(g, (m) => (m.choices.some((c) => c.id === 'study') ? 'study' : m.choices.some((c) => c.id === 'oath') ? 'oath' : m.choices[0].id))
+    for (let i = 0; i < 4 && statusOf(g).status !== 'citizen'; i++) nextYear(g, (m) => (m.choices.some((c) => c.id === 'study') ? 'study' : m.choices.some((c) => c.id === 'oath') ? 'oath' : m.choices[0].id))
+    expect(citizenshipsOf(g)).toEqual(['de'])
+    // Far more than the citizenship fee: the expatriation tax.
+    expect(before - g.character.money).toBeGreaterThan(100_000)
+  })
+
+  it('lets an EU citizen keep their passport when naturalizing in Germany', () => {
+    const g = adult({ country: 'fr', year: 2015 })
+    g.character.countryId = 'de'
+    expect(passportsLostBy(g, 'de')).toEqual([])
   })
 })

@@ -237,13 +237,15 @@ export function formatMoney(n: number): string {
   return joinMoney(sign, Math.abs(Math.round(m.amount)).toLocaleString('en-US'), m)
 }
 
+// Past a trillion only hyperinflations get here (Weimar 1923, Hungary 1946, Zimbabwe 2008), so
+// the units are spelled out: '2.5 quadrillion ℳ' reads better than '2.5Qa ℳ'.
 const BIG_UNITS: readonly [number, string][] = [
-  [1e30, 'No'],
-  [1e27, 'Oc'],
-  [1e24, 'Sp'],
-  [1e21, 'Sx'],
-  [1e18, 'Qi'],
-  [1e15, 'Qa'],
+  [1e30, ' nonillion'],
+  [1e27, ' octillion'],
+  [1e24, ' septillion'],
+  [1e21, ' sextillion'],
+  [1e18, ' quintillion'],
+  [1e15, ' quadrillion'],
   [1e12, 'T'],
   [1e9, 'B'],
   [1e6, 'M'],
@@ -252,14 +254,17 @@ const BIG_UNITS: readonly [number, string][] = [
 function compactMoney(m: ShownMoney): string {
   const a = Math.abs(m.amount)
   const sign = m.amount < 0 ? '-' : ''
-  if (a >= 1e33) return joinMoney(sign, a.toExponential(1).replace('e+', 'e'), m)
+  if (a >= 1e33) {
+    const k = a / 1e30
+    return joinMoney(sign, `${k < 1e15 ? Math.round(k).toLocaleString('en-US') : k.toExponential(1).replace('e+', 'e')} nonillion`, m)
+  }
   for (const [v, s] of BIG_UNITS) {
     if (a >= v) return joinMoney(sign, `${(a / v).toFixed(a >= v * 10 ? 0 : 1)}${s}`, m)
   }
   return joinMoney(sign, `${Math.round(a / 1e3)}K`, m)
 }
 
-/** Compact money: $1.2M, $45K (thousands, millions, billions, trillions, then Qa, Qi...). */
+/** Compact money: $1.2M, $45K (thousands, millions, billions, trillions, then quadrillions...). */
 export function shortMoney(n: number): string {
   const m = showMoney(n)
   if (!Number.isFinite(m.amount)) return joinMoney('', '0', m)

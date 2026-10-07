@@ -5,12 +5,13 @@ import { electronicsStoreMenu, localGoodsMult, nicePrice, seeded, yearKey } from
 import { ownsComputer } from '../computer'
 import { addHidden, addRelationship, addStat, count, formatMoney, log, notice, pronouns, remember, spend, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
+import { eraLines } from '../events/era'
 import { createPerson } from '../people'
 import { chance, pick, randFloat, randInt, uid } from '../rng'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
-import { BOOTCAMP_GATE, SAAS_GATE, classifiedsName, computerEra, computerModel, computersExist, eraOpen, eraReason, familyComputerName, homeComputerOdds, online, ONLINE_COURSE_GATE, type EraGate } from './era'
+import { BOOTCAMP_GATE, SAAS_GATE, noComputerText, classifiedsName, computerEra, computerModel, computersExist, eraOpen, eraReason, familyComputerName, homeComputerOdds, online, ONLINE_COURSE_GATE, type EraGate } from './era'
 import { ageBlock, computerBlock, earnNow, firstReason, guardians, lifeBlock, paidLine, parentWord, payFor, taxLine, useComputer } from './dev-common'
 import { between, localFee, localNameWords, onlinePrice, withDev, type DevAward } from './dev-state'
 import {
@@ -23,6 +24,7 @@ import {
   getLanguage,
   kidLanguage,
   knownLanguages,
+  languageBlurb,
   languageInEra,
   languageLevel,
   languagesInEra,
@@ -103,7 +105,7 @@ function eraInfo(g: GameState): MenuNode {
       ? `It's ${g.year}. Programs come on cassette tapes and in the back pages of computer magazines, and the computer boots straight into BASIC.`
       : online(g)
         ? `It's ${g.year}. The web is new: a few tutorials exist, but most people still learn from fat books with CDs in the back.`
-        : `It's ${g.year}. You learn from fat books, night classes and whoever at school knows the most. The internet hasn't arrived here yet.`,
+        : `It's ${g.year}. You learn from fat books, night classes and whoever at school knows the most. No modem in town can dial anywhere useful yet.`,
   }
 }
 
@@ -113,7 +115,8 @@ function eraInfo(g: GameState): MenuNode {
 /** Free learning: web tutorials once the internet is here, library books and magazines before. */
 function tutorialEra(g: GameState): { label: string; header: string; sites: string[]; lines: string[]; log: (lang: string) => string } {
   if (online(g) && g.year >= 1998) {
-    return { label: 'Free Online Tutorials', header: 'Pick a language. Free, slow and occasionally out of date.', sites: TUTORIAL_SITES, lines: TUTORIAL_LINES, log: (l) => `I learned some ${l} from free online tutorials.` }
+    // Era tags: video tutorials need video sites, to-do list apps need phones that run apps.
+    return { label: 'Free Online Tutorials', header: 'Pick a language. Free, slow and occasionally out of date.', sites: eraLines(g, TUTORIAL_SITES), lines: eraLines(g, TUTORIAL_LINES), log: (l) => `I learned some ${l} from free online tutorials.` }
   }
   return {
     label: 'Library Books & Magazines',
@@ -143,7 +146,7 @@ function fillSites(g: GameState, sites: string[]): string[] {
 // ---------------------------------------------------------------------------
 // Tutorials, courses, bootcamp, camp
 
-const TUTORIAL_SITES = ['CodeCub', 'ByteSized', 'CodeCove', 'a video series by a guy who types very loudly', 'a free course with a suspiciously cheerful narrator']
+const TUTORIAL_SITES = ['CodeCub', 'ByteSized', 'CodeCove', '@+videoSharing a video series by a guy who types very loudly', 'a free course with a suspiciously cheerful narrator']
 const COURSE_SITES = ['LearnLoop', 'SkillShelf', 'CourseCrate']
 
 const TUTORIAL_LINES = [
@@ -151,12 +154,19 @@ const TUTORIAL_LINES = [
   'You spent three hours on a missing semicolon. You will never forget that semicolon.',
   'You copied the code exactly, it broke, and fixing it taught you more than the tutorial did.',
   'The tutorial was eight years old. Half of it no longer exists. You learned resilience.',
-  'You built a to-do list app. You have nothing to do. It was still satisfying.',
+  '@+smartphone You built a to-do list app. You have nothing to do. It was still satisfying.',
 ]
 
 const COURSE_QUIT_LINES = [
-  'You watched the first video, then forty videos about cats. Your progress bar is at 3%.',
+  '@+videoSharing You watched the first video, then forty videos about cats. Your progress bar is at 3%.',
   'You bought the course, felt very productive about buying the course, and never opened it.',
+]
+
+/** Quitting a night class or a correspondence course, before courses moved online. */
+const NIGHT_QUIT_LINES = [
+  'You went to the first two classes. Then the bowling league moved to the same night.',
+  'The correspondence lessons piled up unopened on the hall table. Your mother dusts around them.',
+  'You fell asleep at the back of the room three weeks running. The instructor stopped waking you.',
 ]
 
 function studyTutorial(g: GameState, langId: string): void {
@@ -204,7 +214,7 @@ function takeCourse(g: GameState, langId: string): void {
   if (chance(g, between(0.3 - c.hidden.discipline / 300, 0.04, 0.3))) {
     const gains = practice(g, 1.5, lang.id, 1.5)
     log(g, `I signed up for a ${lang.label} course and mostly didn't do it.`, 'bad')
-    notice(g, 'Course Abandoned', `${pick(g, COURSE_QUIT_LINES)}${paidLine(who, cost)}\n\n${skillLine(g, before, lang, gains)}`, { emoji: lang.emoji, tone: 'bad' })
+    notice(g, 'Course Abandoned', `${pick(g, era.online ? eraLines(g, COURSE_QUIT_LINES) : NIGHT_QUIT_LINES)}${paidLine(who, cost)}\n\n${skillLine(g, before, lang, gains)}`, { emoji: lang.emoji, tone: 'bad' })
     return
   }
   const gains = practice(g, 7, lang.id)
@@ -362,7 +372,7 @@ function langAction(lang: CodingLanguage, prefix: string, run: (g: GameState, id
     id: `${prefix}.${lang.id}`,
     label: lang.label,
     emoji: lang.emoji,
-    subtitle: (g) => `${languageLevel(g, lang.id) > 0 ? `Level ${languageLevel(g, lang.id)}` : 'New'} · ${lang.good}${cost ? ` · ${formatMoney(cost(g))}` : ''}`,
+    subtitle: (g) => `${languageLevel(g, lang.id) > 0 ? `Level ${languageLevel(g, lang.id)}` : 'New'} · ${languageBlurb(g, lang)}${cost ? ` · ${formatMoney(cost(g))}` : ''}`,
     visible: (g) => g.character.age >= lang.minAge && (lang.maxAge === undefined || g.character.age <= lang.maxAge) && languageInEra(g, lang.id),
     disabledReason: (g) => firstReason(computerBlock(g), langReason(g, lang)),
     run: (g) => run(g, lang.id),
@@ -444,7 +454,7 @@ export const learnMenu: MenuGroup = {
         label: 'Coding Camp for Kids',
         emoji: '\u{1F3D5}\u{FE0F}',
         subtitle: (gg) => `${formatMoney(campCost(gg))} · ages 8-15 · ${gg.year >= 2005 ? 'robots, games, snacks' : 'shared computers, floppy disks, snacks'}`,
-        visible: (gg) => gg.character.age <= 15 && gg.year >= 1980,
+        visible: (gg) => gg.character.age <= 15 && gg.year >= 1980 && computersExist(gg),
         disabledReason: computerBlock,
         run: codingCamp,
       },
@@ -747,7 +757,7 @@ export function getAComputerNodes(g: GameState): MenuNode[] {
   const c = g.character
   const nodes: MenuNode[] = []
   if (!computersExist(g)) {
-    nodes.push({ type: 'info', id: 'computer.dev.noneYet', emoji: '\u{1F5C4}\u{FE0F}', text: (gg) => `It's ${gg.year}. Home computers ${gg.year < 1977 ? "haven't been invented yet" : "haven't reached your country yet"}. Programmers punch cards for room-sized machines at banks and universities.` })
+    nodes.push({ type: 'info', id: 'computer.dev.noneYet', emoji: '\u{1F5C4}\u{FE0F}', text: (gg) => noComputerText(gg) })
     return nodes
   }
   if (c.age < 18 && guardians(g).length > 0) {

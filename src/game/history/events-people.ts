@@ -100,3 +100,31 @@ export function realWealthFactor(year: number): number {
   }
   return 1
 }
+
+// ---------------------------------------------------------------------------
+// Names of their time
+
+/**
+ * First names in the name pools that were coined or only caught on later (mostly English-language
+ * trends), with the first birth year they fit. A 1910 baby isn't a Jayden; a 1960 one isn't a
+ * Nevaeh. Names not listed are timeless (James, Mary, Wei, Fatima...).
+ */
+const NAME_FROM: Readonly<Record<string, number>> = {
+  // Boys
+  Jayden: 1994, Brayden: 1994, Kayden: 1994, Aiden: 1993, Mason: 1990, Hunter: 1978, Logan: 1978, Wyatt: 1988,
+  Tyler: 1972, Brandon: 1962, Austin: 1978, Dylan: 1975, Connor: 1980, Caleb: 1978, Kevin: 1945, Justin: 1962,
+  Ryan: 1952, Shawn: 1958, Darren: 1955, Kelvin: 1950, Callum: 1970, Rhys: 1968, Alfie: 1988, Finley: 1994,
+  Hudson: 2004, Cooper: 1994, Riley: 1988, Bailey: 1988, Lachlan: 1972, Harrison: 1978, Mitchell: 1962,
+  Yadiel: 1995, 'Jan Carlos': 1985, Kobe: 1997, Senne: 1990, Robbe: 1990, Seppe: 1990, Tibo: 1990, Wout: 1980,
+  // Girls
+  Nevaeh: 2001, Madison: 1985, Harper: 2004, Avery: 1995, Scarlett: 1998, Hailey: 1985, Taylor: 1982,
+  Brittany: 1975, Ashley: 1965, Jennifer: 1955, Jessica: 1962, Megan: 1972, Lauren: 1962, Chloe: 1982,
+  Zoe: 1980, Mia: 1988, Ava: 1990, Isla: 1998, Freya: 1993, Poppy: 1993, Evie: 1993, Millie: 1988, Bethany: 1978,
+  Katie: 1962, Imogen: 1975, Holly: 1962, Kimberly: 1955, Tiffany: 1965, Destiny: 1990, Jasmine: 1975,
+}
+
+/** True when this first name fits someone born in `birthYear` (unlisted names always do). */
+export function nameFitsYear(name: string, birthYear: number): boolean {
+  const from = NAME_FROM[name]
+  return from === undefined || birthYear >= from
+}

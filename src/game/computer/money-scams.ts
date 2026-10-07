@@ -5,6 +5,7 @@
 // corruption is low) can knock at any time. Parents who catch a kid at it take the computer.
 import { arrestPlayer } from '../crime'
 import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, useYearAction } from '../core'
+import { eraPick } from '../events/era'
 import { chance, pick, rand, randInt } from '../rng'
 import { totalFollowers } from '../special/social'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -71,7 +72,8 @@ const SCAMS: ScamDef[] = [
       (v, a) => `${v.full}, ${v.age}, spent ${a} on a birthday present for ${v.his} kid from your store. ${cap(v.he)} is still refreshing the tracking page.`,
       (v) => `${v.full}, ${v.age}, saved up for months for those sneakers. ${cap(v.he)} left a one-star review that just says "why."`,
     ],
-    fails: ['Nobody bought anything. Your store looked like it was designed in 2003 by a raccoon.', 'A payment processor took one look at your shop and shut it down before lunch.'],
+    // Era tags (events/era.ts): no jokes about 2003 web design in 1999.
+    fails: ['@2008 Nobody bought anything. Your store looked like it was designed in 2003 by a raccoon.', '@-2008 Nobody bought anything. Your store looked like a ransom note with a shopping cart.', 'A payment processor took one look at your shop and shut it down before lunch.'],
   },
   {
     id: 'giveaway',
@@ -164,14 +166,14 @@ const SCAMS: ScamDef[] = [
     reach: 'looks',
     victimAge: [35, 75],
     did: [
-      'You built a dating profile around a handsome stranger\'s vacation photos and a tragic story about being "stuck overseas."',
+      'You built a lonely-hearts profile around a handsome stranger\'s vacation photos and a tragic story about being "stuck overseas."',
       'You spent weeks sweet-talking a lonely stranger online, then mentioned a sudden "emergency."',
     ],
     victims: [
       (v) => `${v.full}, ${v.age}, had already picked out a song for the wedding. ${cap(v.he)} is still waiting at the airport arrivals board in ${v.his} head.`,
       (v, a) => `${v.full}, ${v.age}, sent ${a} of ${v.his} savings to someone ${v.he} thought loved ${v.his} laugh.`,
     ],
-    fails: ['Your match asked for a video call. You do not look like a 6-foot-4 surgeon.', 'Your match turned out to be another scammer. You spent a month scamming each other and both went home broke.'],
+    fails: ['@2006 Your match asked for a video call. You do not look like a 6-foot-4 surgeon.', '@-2006 Your match asked for a recent photo. You sent one of a 6-foot-4 surgeon, and your match recognized him from the local paper.', 'Your match turned out to be another scammer. You spent a month scamming each other and both went home broke.'],
   },
   {
     id: 'charity',
@@ -266,7 +268,7 @@ function runScam(g: GameState, def: ScamDef): void {
   st.scams += 1
   st.scamKinds[def.id] = (st.scamKinds[def.id] ?? 0) + 1
   count(g, 'scams')
-  const did = pick(g, def.did)
+  const did = eraPick(g, def.did)
 
   if (!chance(g, scamSuccessChance(g, def, st.heat))) {
     addHidden(g, 'karma', -2)
@@ -280,7 +282,7 @@ function runScam(g: GameState, def: ScamDef): void {
       return
     }
     log(g, `I tried an online scam and it flopped.`, 'bad')
-    notice(g, 'Flopped', `${did}\n\n${pick(g, def.fails)}${banned ? ' The platform banned your account, too.' : ''}`, { emoji: '\u{1F926}', tone: 'bad' })
+    notice(g, 'Flopped', `${did}\n\n${eraPick(g, def.fails)}${banned ? ' The platform banned your account, too.' : ''}`, { emoji: '\u{1F926}', tone: 'bad' })
     return
   }
 

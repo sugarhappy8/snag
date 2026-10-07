@@ -6,6 +6,7 @@ import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { chance, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
+import type { TechId } from '../history/timeline'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
 import { becomeCeo, ceoPayNorm, installManager, managerCandidate, managerName, maxOwnerSalary, stepDown } from './career'
@@ -33,6 +34,7 @@ import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellS
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
+import { bizHas, eraFits, eraNote } from './era'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
@@ -133,33 +135,83 @@ function adCost(b: BizState, usBase: number): number {
 
 interface Campaign {
   id: string
-  label: (b: BizState) => string
-  emoji: string
+  /** The campaign's name in this company's country and year (no social media in 1950). */
+  label: (g: GameState, b: BizState) => string
+  emoji: (g: GameState, b: BizState) => string
+  /** First-person log line: 'ran newspaper ads for'. */
+  did: (g: GameState, b: BizState) => string
   base: number
   boost: number
   brand: number
 }
 
+/** Era checks for the company's own country. */
+const has = (g: GameState, b: BizState, tech: TechId) => bizHas(g, b.countryId, tech)
+
+// The same six slots in every era (same costs and odds, so the talent's numbers hold); only what
+// they're called and how they're done follows the year: newspaper ads before web banners before
+// social media, cinema ads before television, a celebrity endorsement before influencers.
 const CAMPAIGNS: Campaign[] = [
-  { id: 'social', label: () => 'Social Media Blitz', emoji: '\u{1F4F1}', base: 4_000, boost: 0.05, brand: 3 },
-  { id: 'radio', label: () => 'Radio Spots', emoji: '\u{1F4FB}', base: 12_000, boost: 0.05, brand: 3 },
-  { id: 'billboards', label: () => 'Billboards', emoji: '\u{1FAA7}', base: 22_000, boost: 0.07, brand: 4 },
-  { id: 'influencers', label: () => 'Influencer Campaign', emoji: '\u{1F933}', base: 18_000, boost: 0.08, brand: 5 },
-  { id: 'tv', label: () => 'TV Commercial', emoji: '\u{1F4FA}', base: 110_000, boost: 0.13, brand: 8 },
-  { id: 'sponsor', label: (b) => `Sponsor the Local ${localSport(b.countryId).replace(/\b\w/g, (x) => x.toUpperCase())}`, emoji: '\u{1F3DF}\u{FE0F}', base: 60_000, boost: 0.06, brand: 10 },
+  {
+    id: 'social',
+    label: (g, b) => (has(g, b, 'socialMedia') ? 'Social Media Blitz' : has(g, b, 'internet') ? 'Web Banner Ads' : 'Newspaper Ads'),
+    emoji: (g, b) => (has(g, b, 'socialMedia') ? '\u{1F4F1}' : has(g, b, 'internet') ? '\u{1F5B1}\u{FE0F}' : '\u{1F4F0}'),
+    did: (g, b) => (has(g, b, 'socialMedia') ? 'ran a social media blitz for' : has(g, b, 'internet') ? 'bought web banner ads for' : 'took out newspaper ads for'),
+    base: 4_000,
+    boost: 0.05,
+    brand: 3,
+  },
+  {
+    id: 'radio',
+    label: (g, b) => (has(g, b, 'radio') ? 'Radio Spots' : 'Posters & Handbills'),
+    emoji: (g, b) => (has(g, b, 'radio') ? '\u{1F4FB}' : '\u{1F4C3}'),
+    did: (g, b) => (has(g, b, 'radio') ? 'bought radio spots for' : 'plastered the town with posters for'),
+    base: 12_000,
+    boost: 0.05,
+    brand: 3,
+  },
+  { id: 'billboards', label: () => 'Billboards', emoji: () => '\u{1FAA7}', did: () => 'put up billboards for', base: 22_000, boost: 0.07, brand: 4 },
+  {
+    id: 'influencers',
+    label: (g, b) => (has(g, b, 'smartphone') ? 'Influencer Campaign' : 'Celebrity Endorsement'),
+    emoji: (g, b) => (has(g, b, 'smartphone') ? '\u{1F933}' : '\u{1F31F}'),
+    did: (g, b) => (has(g, b, 'smartphone') ? 'paid influencers to post about' : 'signed a celebrity to endorse'),
+    base: 18_000,
+    boost: 0.08,
+    brand: 5,
+  },
+  {
+    id: 'tv',
+    label: (g, b) => (has(g, b, 'tv') ? 'TV Commercial' : 'Cinema Advertisement'),
+    emoji: (g, b) => (has(g, b, 'tv') ? '\u{1F4FA}' : '\u{1F39E}\u{FE0F}'),
+    did: (g, b) => (has(g, b, 'tv') ? 'ran a TV commercial for' : 'ran an advertisement in the cinemas for'),
+    base: 110_000,
+    boost: 0.13,
+    brand: 8,
+  },
+  {
+    id: 'sponsor',
+    label: (_g, b) => `Sponsor the Local ${localSport(b.countryId).replace(/\b\w/g, (x) => x.toUpperCase())}`,
+    emoji: () => '\u{1F3DF}\u{FE0F}',
+    did: (_g, b) => `sponsored the local ${localSport(b.countryId)} for`,
+    base: 60_000,
+    boost: 0.06,
+    brand: 10,
+  },
 ]
 
-const CAMPAIGN_TEXT: Record<string, (name: string) => string> = {
-  social: (n) => `${n}'s posts got shared, stitched and meme'd.`,
-  radio: (n) => `${n}'s jingle is now stuck in every commuter's head. Sorry, commuters.`,
-  billboards: (n) => `${n}'s billboards went up along the busiest roads in town.`,
-  influencers: (n) => `A dozen influencers unboxed, tasted or reviewed ${n} with suspicious enthusiasm.`,
-  tv: (n) => `${n}'s commercial aired in prime time. Your mom called to say she saw it.`,
-  sponsor: (n) => `${n}'s logo is on the jerseys now. The fans chant your name. Well, the team's.`,
+const CAMPAIGN_TEXT: Record<string, (g: GameState, b: BizState, name: string) => string> = {
+  social: (g, b, n) =>
+    has(g, b, 'socialMedia') ? `${n}'s posts got shared, stitched and meme'd.` : has(g, b, 'internet') ? `${n}'s banner ads blinked away on every website people in ${b.city} actually visit.` : `${n}'s ads ran in every newspaper in ${b.city}, right next to the crossword.`,
+  radio: (g, b, n) => (has(g, b, 'radio') ? `${n}'s jingle is now stuck in every commuter's head. Sorry, commuters.` : `${n}'s posters went up on every wall and lamppost in ${b.city}, and boys handed out handbills on every corner.`),
+  billboards: (_g, _b, n) => `${n}'s billboards went up along the busiest roads in town.`,
+  influencers: (g, b, n) => (has(g, b, 'smartphone') ? `A dozen influencers unboxed, tasted or reviewed ${n} with suspicious enthusiasm.` : `A famous face now smiles out of ${n}'s ads, swearing by it with suspicious enthusiasm.`),
+  tv: (g, b, n) => (has(g, b, 'tv') ? `${n}'s commercial aired in prime time. Your mom called to say she saw it.` : `${n}'s advertisement played before every picture at the local cinema. Your mom went twice to see it.`),
+  sponsor: (_g, _b, n) => `${n}'s logo is on the jerseys now. The fans chant your name. Well, the team's.`,
 }
 
-function campaignAction(a: Asset, c: Campaign, b0: BizState): MenuAction {
-  return act(a, `campaign.${c.id}`, c.label(b0), c.emoji, {
+function campaignAction(a: Asset, c: Campaign, b0: BizState, g0: GameState): MenuAction {
+  return act(a, `campaign.${c.id}`, c.label(g0, b0), c.emoji(g0, b0), {
     hint: (g) => {
       if (!hinting(g, live(g, a))) return null
       const best = bestCampaign(g, live(g, a))
@@ -174,16 +226,18 @@ function campaignAction(a: Asset, c: Campaign, b0: BizState): MenuAction {
       b.yearCosts += cost
       if (c.id === 'influencers' && chance(g, INFLUENCER_FAIL)) {
         b.brand = clampN(b.brand - 6, 0, 100)
-        notice(g, 'Influencer Fail', `One of your influencers posted the ad with the brief still in the caption ("say it's life-changing lol"). The internet noticed. Brand down to ${b.brand}%.`, { emoji: '\u{1F926}', tone: 'bad' })
+        if (has(g, b, 'smartphone')) notice(g, 'Influencer Fail', `One of your influencers posted the ad with the brief still in the caption ("say it's life-changing lol"). The internet noticed. Brand down to ${b.brand}%.`, { emoji: '\u{1F926}', tone: 'bad' })
+        else notice(g, 'Endorsement Fail', `Your celebrity was photographed happily using a rival's product the week your ads came out. The papers loved it. Brand down to ${b.brand}%.`, { emoji: '\u{1F926}', tone: 'bad' })
         return
       }
       const viral = c.id === 'social' && chance(g, VIRAL_P)
       const boost = c.boost * (0.8 + rand(g) * 0.4) * (viral ? 2.5 : 1)
       b.campaignBoost = clampN(b.campaignBoost + boost, 0, 0.6)
       b.brand = clampN(b.brand + c.brand + (viral ? 6 : 0), 0, 100)
-      log(g, `I ran a ${c.label(b).toLowerCase()} for ${cur.name}.`)
-      notice(g, viral ? 'Gone Viral!' : 'Campaign Launched', `${CAMPAIGN_TEXT[c.id]?.(cur.name) ?? ''} Cost: ${formatMoney(cost)}. Expect about ${Math.round(boost * 100)}% more customers this year; brand is up to ${b.brand}%.`, {
-        emoji: c.emoji,
+      log(g, `I ${c.did(g, b)} ${cur.name}.`)
+      const hit = has(g, b, 'internet') ? 'Gone Viral!' : 'Talk of the Town!'
+      notice(g, viral ? hit : 'Campaign Launched', `${CAMPAIGN_TEXT[c.id]?.(g, b, cur.name) ?? ''} Cost: ${formatMoney(cost)}. Expect about ${Math.round(boost * 100)}% more customers this year; brand is up to ${b.brand}%.`, {
+        emoji: c.emoji(g, b),
         tone: 'good',
       })
     },
@@ -278,7 +332,7 @@ function marketingMenu(a: Asset): MenuGroup {
       const b = readBiz(g, a)
       const def = industryDef(b.industry)
       const nodes: MenuNode[] = [{ type: 'heading', id: `biz.campH.${a.id}`, label: 'Campaigns (2 a year)' }]
-      for (const c of CAMPAIGNS) nodes.push(campaignAction(a, c, b))
+      for (const c of CAMPAIGNS) nodes.push(campaignAction(a, c, b, g))
       nodes.push({ type: 'heading', id: `biz.budgetH.${a.id}`, label: 'Yearly budget' })
       for (const x of BUDGETS) {
         nodes.push(
@@ -378,7 +432,9 @@ function productsMenu(a: Asset): MenuGroup {
         }
       }
       nodes.push({ type: 'heading', id: `biz.launchH.${a.id}`, label: 'Launch a new product' })
-      const ideas = def.products.filter((x) => !b.products.some((p) => p.name === x))
+      // Ideas the year allows (no fitness app before smartphones, no online delivery before the web).
+      const ideas = def.products.filter((x) => !b.products.some((p) => p.name === x) && eraFits(g, b.countryId, x))
+      if (!ideas.length) nodes.push({ type: 'info', id: `biz.launchNone.${a.id}`, text: 'Nothing new on the drawing board that the world is ready for yet.', emoji: '\u{1F4AD}' })
       for (const idea of ideas) {
         nodes.push(
           act(a, `launch.${idea}`, idea, '\u{1F680}', {
@@ -629,9 +685,9 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
     },
     disabledReason: (g) => {
       const b = readBiz(g, a)
-      return isIndustryLegal(countryId, b.industry) ? null : `${industryDef(b.industry).label}s are not allowed in ${country.name}. ${marketOf(countryId).businessNote}`
+      return isIndustryLegal(countryId, b.industry) ? null : `${industryDef(b.industry).label}s are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
     },
-    header: () => marketOf(countryId).businessNote,
+    header: (g) => eraNote(g, countryId, marketOf(countryId).businessNote),
     hint: (g) => {
       const cur = live(g, a)
       if (!hinting(g, cur) || !priceAndOutput(readBiz(g, cur))) return null
@@ -1226,7 +1282,7 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
     rows.push(b.openFraction < 1 ? `Opening soon: registration took a while, so this first year is short.` : 'First year of trading. Results come with the Annual Report.')
   }
   rows.push(`${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 ? ` (your stake ${money(b.valuation * b.share)})` : ''} · cash ${money(b.cash)}${b.debt > 0 ? ` · debt ${money(b.debt)}` : ''}`)
-  rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${m.businessNote}`)
+  rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${eraNote(g, b.countryId, m.businessNote)}`.trim())
   const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3C6}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
   return rows.map((text, i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji: emojis[i] ?? '\u{2139}\u{FE0F}' }))
 }

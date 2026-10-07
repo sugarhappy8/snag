@@ -336,6 +336,13 @@ export function abandonLife(): void {
 let travelSeq = 0
 
 /**
+ * How long a jump waits for its snapshot. Storage that stops answering must never leave the
+ * Time Machine spinning forever (save.ts gives up on the stuck operation a little later).
+ */
+export const TRAVEL_TIMEOUT_MS = 15_000
+const STALLED = 'stalled'
+
+/**
  * Go back to the start of age `age` of the current life: the snapshot is restored exactly
  * (plus a log line, the jump counted and fresh dice), any AI work is dropped, the "Back to"
  * chip is cleared, and a death that happened since is taken off the graveyard and ribbons.
@@ -352,16 +359,35 @@ export async function travelBack(age: number): Promise<boolean> {
     return false
   }
   setState({ timeTravel: { ...state.timeTravel, busy: true, error: '' } })
-  let snapshot: GameState | null = null
+  let snapshot: GameState | null | typeof STALLED = null
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    snapshot = await loadSnapshot(g.lifeId, age)
+    snapshot = await Promise.race([
+      loadSnapshot(g.lifeId, age),
+      new Promise<typeof STALLED>((resolve) => {
+        timer = setTimeout(() => resolve(STALLED), TRAVEL_TIMEOUT_MS)
+      }),
+    ])
   } catch {
     snapshot = null
+  } finally {
+    clearTimeout(timer)
   }
   // The life may have moved on while the snapshot loaded: travel from where it is now.
   const now = state.game
   if (!now || now.lifeId !== g.lifeId) {
     setState({ timeTravel: { ...state.timeTravel, busy: false } })
+    return false
+  }
+  if (snapshot === STALLED) {
+    // Not missing, just slow: keep the year and let the player try again.
+    setState({
+      timeTravel: {
+        ...state.timeTravel,
+        busy: false,
+        error: `The Time Machine stalled on the way to ${stop.year}: this browser's storage isn't answering. Try again in a moment.`,
+      },
+    })
     return false
   }
   if (!snapshot) {
@@ -380,10 +406,23 @@ export async function travelBack(age: number): Promise<boolean> {
     setState({ timeTravel: { ...state.timeTravel, busy: false, error: stillBlocked } })
     return false
   }
+  const arrived = arriveInPast(now, snapshot)
+  // Save the trip before anything else changes. If even that fails (storage full), the jump is
+  // called off: otherwise a reload would bring back a dead life whose grave and ribbon were
+  // already taken back, and a second jump would take another life's ribbon.
+  if (!saveGame(arrived)) {
+    setState({
+      timeTravel: {
+        ...state.timeTravel,
+        busy: false,
+        error: `The Time Machine couldn't save your trip to ${stop.year}: this browser's storage is full. Free some space and try again.`,
+      },
+    })
+    return false
+  }
   abortRunning()
   // The death you're escaping never happened: take it back off the graveyard and ribbons.
   unrecordDeath(now)
-  const arrived = arriveInPast(now, snapshot)
   forgetFuture(now.lifeId, age)
   commit(arrived)
   setState({

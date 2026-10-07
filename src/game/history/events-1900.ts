@@ -190,7 +190,7 @@ export const HEADLINES_1900: readonly HeadlineRow[] = [
   [1924, 'politics', 1, 'tr', 'Turkey abolishes the caliphate'],
   // 1925
   [1925, 'politics', 1, 'us', 'A Tennessee teacher is put on trial for teaching evolution'],
-    [1925, 'politics', 1, 'ir', 'A new dynasty takes the throne in Persia'],
+  [1925, 'politics', 1, 'ir', 'A new dynasty takes the throne in Persia'],
   [1925, 'culture', 0, 'world', 'A novel about a mysterious millionaire on Long Island captures the Jazz Age'],
   [1925, 'war', 1, 'sy,lb', 'The Great Syrian Revolt rises against French rule'],
   [1925, 'culture', 0, 'fr', 'Paris hosts the Art Deco exhibition'],
@@ -340,9 +340,9 @@ export const HEADLINES_1900: readonly HeadlineRow[] = [
   [1944, 'war', 2, 'nl', "The Netherlands' 'Hunger Winter' begins"],
   // 1945
   [1945, 'war', 3, 'world', 'The Second World War ends'],
-  [1945, 'war', 3, 'world', 'Atomic bombs destroy Hiroshima and Nagasaki'],
+  [1945, 'war', 2, 'world,-jp', 'Atomic bombs destroy Hiroshima and Nagasaki'],
   [1945, 'war', 2, 'Europe,us,ca,au,nz', 'Victory in Europe: crowds celebrate in the streets'],
-  [1945, 'war', 3, 'world', 'The liberation of the concentration camps reveals the horror of the Holocaust'],
+  [1945, 'war', 2, 'world', 'The liberation of the concentration camps reveals the horror of the Holocaust'],
   [1945, 'politics', 2, 'world', 'The United Nations is founded'],
   [1945, 'politics', 2, 'kr', 'Korea is freed from Japanese rule and divided in two'],
   [1945, 'politics', 2, 'id', 'Indonesia declares independence'],

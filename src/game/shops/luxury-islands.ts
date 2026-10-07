@@ -227,8 +227,11 @@ export function islandListings(g: GameState): IslandListing[] {
     const region = r.weighted(pool, (x) => x.weight).region
     const acres = Math.max(2, Math.round(Math.exp(r.float(Math.log(2), Math.log(3_000)))))
     const style = r.pick(region.names)
-    let name = style.pattern.replace('{X}', r.pick(style.words))
-    for (let k = 0; k < 4 && names.has(name); k++) name = style.pattern.replace('{X}', r.pick(style.words))
+    // Jokey modern names (Selfie, Wifi, Hashtag) only once those words exist.
+    const modern = style.words.filter((w) => g.year >= 2008 || !/selfie|wi-?fi|hashtag/i.test(w))
+    const words = modern.length ? modern : style.words
+    let name = style.pattern.replace('{X}', r.pick(words))
+    for (let k = 0; k < 4 && names.has(name); k++) name = style.pattern.replace('{X}', r.pick(words))
     if (names.has(name)) name = `${name} ${['II', 'Minor', 'Major', 'North'][i % 4]}`
     names.add(name)
     const allowed = ISLAND_FEATURES.filter((f) => featureAllowed(f, region, acres))

@@ -115,62 +115,86 @@ export function historySector(sector: SectorId, year: number): SectorId {
 export interface EraPennyKind {
   noun: string
   pitch: string
+  /** The sector whose real story these tiny companies rode (dot-coms in 1999-2002...). */
+  as?: SectorId
 }
 
 const PENNY_ERAS: readonly { until: number; kinds: readonly EraPennyKind[] }[] = [
   {
     until: 1929,
     kinds: [
-      { noun: 'Gold Mines', pitch: 'Has a map, a mule and a very confident prospector.' },
-      { noun: 'Rubber Plantations', pitch: 'Every motor car needs tyres, and it owns a lot of trees. Somewhere.' },
-      { noun: 'Oil Wells', pitch: "Drilling in a farmer's back pasture. Smells promising." },
+      { noun: 'Gold Mines', pitch: 'Has a map, a mule and a very confident prospector.', as: 'mining' },
+      { noun: 'Rubber Plantations', pitch: 'Every motor car needs tyres, and it owns a lot of trees. Somewhere.', as: 'agri' },
+      { noun: 'Oil Wells', pitch: "Drilling in a farmer's back pasture. Smells promising.", as: 'oil' },
       { noun: 'Radium Tonics', pitch: "Sells glowing health water. Doctors are 'looking into it'." },
       { noun: 'Flying Machines', pitch: 'Has built an aeroplane. It has flown twice.' },
-      { noun: 'Motor Carriages', pitch: 'Builds horseless carriages, one at a time, by hand.' },
+      { noun: 'Motor Carriages', pitch: 'Builds horseless carriages, one at a time, by hand.', as: 'automakers' },
     ],
   },
   {
     until: 1949,
     kinds: [
-      { noun: 'Gold Mines', pitch: 'Has a map, a mule and a very confident prospector.' },
-      { noun: 'Oil Wells', pitch: "Drilling in a farmer's back pasture. Smells promising." },
-      { noun: 'Television Laboratories', pitch: 'Promises moving pictures in every home. Has one working set, in the lab.' },
+      { noun: 'Gold Mines', pitch: 'Has a map, a mule and a very confident prospector.', as: 'mining' },
+      { noun: 'Oil Wells', pitch: "Drilling in a farmer's back pasture. Smells promising.", as: 'oil' },
+      { noun: 'Television Laboratories', pitch: 'Promises moving pictures in every home. Has one working set, in the lab.', as: 'electronics' },
       { noun: 'Synthetic Rubber', pitch: 'Makes tyres out of chemistry. The war department is interested.' },
-      { noun: 'Aircraft Parts', pitch: 'Makes propellers in a garage and dreams of a factory.' },
+      { noun: 'Aircraft Parts', pitch: 'Makes propellers in a garage and dreams of a factory.', as: 'industrials' },
       { noun: 'Frozen Foods', pitch: 'Freezes peas. Believes this is the future. Might be right.' },
     ],
   },
   {
     until: 1969,
     kinds: [
-      { noun: 'Uranium Mines', pitch: 'Bought a Geiger counter and a lot of desert.' },
-      { noun: 'Electronics', pitch: "Added '-tronics' to its name. The stock tripled." },
+      { noun: 'Uranium Mines', pitch: 'Bought a Geiger counter and a lot of desert.', as: 'mining' },
+      { noun: 'Electronics', pitch: "Added '-tronics' to its name. The stock tripled.", as: 'electronics' },
       { noun: 'Bowling Alleys', pitch: 'Plans an automatic bowling alley in every town.' },
       { noun: 'Rocket Fuels', pitch: 'Mixes rocket fuel in a barn. The neighbours have complained.' },
       { noun: 'Drive-In Diners', pitch: 'Burgers served on roller skates, coming soon to a highway near you.' },
-      { noun: 'Computer Leasing', pitch: 'Rents out mainframes it hasn\'t bought yet.' },
+      { noun: 'Computer Leasing', pitch: 'Rents out mainframes it hasn\'t bought yet.', as: 'tech' },
+    ],
+  },
+  {
+    until: 1979,
+    kinds: [
+      { noun: 'Oil & Gas Exploration', pitch: 'The price of oil just quadrupled and it has a drilling permit. What could go wrong?', as: 'oil' },
+      { noun: 'Gold Explorers', pitch: 'Gold is finally allowed to float, and it owns a hole in the ground.', as: 'mining' },
+      { noun: 'Pocket Calculators', pitch: 'Its calculator does square roots and costs a month\'s wages.', as: 'electronics' },
+      { noun: 'CB Radios', pitch: 'Sells CB radios to truckers and everyone who wants to talk like one, good buddy.', as: 'electronics' },
+      { noun: 'Fast Food Franchises', pitch: 'Plans a drive-thru on every corner, starting with the one corner it has.', as: 'food' },
+      { noun: 'Solar Panels', pitch: 'The energy crisis made solar power the future. The future is taking a while.' },
     ],
   },
   {
     until: 1989,
     kinds: [
-      { noun: 'Oil & Gas Exploration', pitch: 'Oil is $35 a barrel and it has a drilling permit. What could go wrong?' },
-      { noun: 'Gold Explorers', pitch: 'Gold is soaring and it owns a hole in the ground.' },
-      { noun: 'Home Computers', pitch: 'Its computer has 4K of memory and a cassette drive.' },
-      { noun: 'Biotech', pitch: 'Gene-splicing pioneers with one lab, zero revenue and a CEO who is "very excited".' },
+      { noun: 'Oil & Gas Exploration', pitch: 'Oil is $35 a barrel and it has a drilling permit. What could go wrong?', as: 'oil' },
+      { noun: 'Gold Explorers', pitch: 'Gold is soaring and it owns a hole in the ground.', as: 'mining' },
+      { noun: 'Home Computers', pitch: 'Its computer has 4K of memory and a cassette drive.', as: 'tech' },
+      { noun: 'Biotech', pitch: 'Gene-splicing pioneers with one lab, zero revenue and a CEO who is "very excited".', as: 'biotech' },
       { noun: 'Video Rentals', pitch: 'Plans a video rental shop on every corner. Be kind, rewind.' },
       { noun: 'Solar Panels', pitch: 'The energy crisis made solar power the future. The future is taking a while.' },
     ],
   },
   {
+    until: 1994,
+    kinds: [
+      { noun: 'Biotech', pitch: 'One drug candidate, zero revenue and a CEO who is "very excited".', as: 'biotech' },
+      { noun: 'Gold Explorers', pitch: 'Has been about to strike gold since the gold rush.', as: 'mining' },
+      { noun: 'Cellular Phones', pitch: 'Sells car phones the size of a brick. Executives love them.', as: 'telecom' },
+      { noun: 'CD-ROM Multimedia', pitch: 'Puts a whole encyclopedia on a shiny disc. The future of learning, apparently.', as: 'tech' },
+      { noun: 'Video Game Cartridges', pitch: 'One hit game, a mascot with attitude and a sequel promised for Christmas.', as: 'games' },
+      { noun: 'Virtual Reality', pitch: 'Its headset makes you feel slightly sick in three whole dimensions.', as: 'electronics' },
+    ],
+  },
+  {
     until: 2008,
     kinds: [
-      { noun: 'Dot-Com', pitch: 'A website, a sock-puppet mascot and no revenue.' },
-      { noun: 'Biotech', pitch: 'One drug candidate, zero revenue and a CEO who is "very excited".' },
-      { noun: 'Internet Telephony', pitch: 'Free phone calls over the internet, once the dial-up connects.' },
-      { noun: 'Gold Explorers', pitch: 'Has been about to strike gold for years.' },
+      { noun: 'Dot-Com', pitch: 'A website, a sock-puppet mascot and no revenue.', as: 'ecommerce' },
+      { noun: 'Biotech', pitch: 'One drug candidate, zero revenue and a CEO who is "very excited".', as: 'biotech' },
+      { noun: 'Internet Telephony', pitch: 'Free phone calls over the internet, once the dial-up connects.', as: 'telecom' },
+      { noun: 'Gold Explorers', pitch: 'Has been about to strike gold for years.', as: 'mining' },
       { noun: 'Fuel Cells', pitch: 'Promises hydrogen cars by next year, definitely.' },
-      { noun: 'Online Pet Supplies', pitch: 'Ships 40-pound bags of dog food for free. Losing money on every bag.' },
+      { noun: 'Online Pet Supplies', pitch: 'Ships 40-pound bags of dog food for free. Losing money on every bag.', as: 'ecommerce' },
     ],
   },
 ]
@@ -180,6 +204,12 @@ export function eraPennyKind(year: number, index: number): EraPennyKind | null {
   if (!Number.isFinite(year) || year >= PRESENT_YEAR) return null
   for (const e of PENNY_ERAS) if (year <= e.until) return e.kinds[Math.abs(Math.round(index)) % e.kinds.length]
   return null
+}
+
+/** The sectors today's penny-stock themes ride in real history (for the years before PRESENT_YEAR). */
+export const MODERN_PENNY_SECTOR: Readonly<Record<string, SectorId>> = {
+  'Lithium Ventures': 'mining', Biotech: 'biotech', 'Gold Explorers': 'mining', 'AI Labs': 'ai', 'Rare Earths': 'mining',
+  'Quantum Holdings': 'quantum', 'Space Mining': 'space', Hydrogen: 'ev', 'Drone Delivery': 'robotics',
 }
 
 /** Modern penny kinds that only make sense from a certain year (else the 2000s list stands in). */

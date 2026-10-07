@@ -381,7 +381,7 @@ describe('the yearly market', () => {
       const cagrs: number[] = []
       for (let s = 0; s < 150; s++) {
         let total = 0
-        for (let y = 2001; y <= 2040; y++) total += indexMove(`fam${s}`, info, y).logRet
+        for (let y = 2031; y <= 2070; y++) total += indexMove(`fam${s}`, info, y).logRet
         cagrs.push(Math.exp(total / 40) - 1)
       }
       cagrs.sort((a, b) => a - b)

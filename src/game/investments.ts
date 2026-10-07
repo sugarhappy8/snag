@@ -17,8 +17,8 @@
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
 import { incomeTax, taxAdditionalIncome } from './finance'
-import { goldBan, investingBlocked, marketNote } from './history/markets'
-import { brokerEraMult, indexFundSince, reitSince } from './invest/era'
+import { exchangeClosedReason, exchangeState, goldBan, investingBlocked, marketNote } from './history/markets'
+import { brokerEraMult, reitSince } from './invest/era'
 import {
   bankCrisisChance,
   bondRate,
@@ -39,6 +39,7 @@ import {
   exchangeYear,
   expectedDepreciation,
   fundFee,
+  fundName,
   fxYear,
   goldHedge,
   goldYear,
@@ -195,19 +196,17 @@ function stockMarketBlock(g: GameState, info: ExInfo): string | null {
   const status = exchangeStatus(info, y)
   if (status === 'open') return null
   const name = exchangeName(info, y)
-  if (status === 'closed') return `The ${name} is closed${marketNote(info.home, y) ? `: ${lowerFirst(marketNote(info.home, y))}` : '.'} Nobody can trade until it reopens.`
-  if (exchangeExpropriated(info, y) || y >= exchangeOpened(info)) return `There is no stock market in ${theCountry(info.home)} anymore: the state took over the companies.`
+  if (status === 'closed') {
+    const why = exchangeClosedReason(info.home, y)
+    return `The ${name} is closed${why ? `: ${why}` : '.'} Nobody can trade until it reopens.`
+  }
+  if (exchangeExpropriated(info, y) || y >= exchangeState(info.home, y).opened) return `There is no stock market in ${theCountry(info.home)} anymore: the state took over the companies.`
   return `${countryName(info.home)} doesn't have a stock exchange yet.`
 }
 
-/** The first year this exchange ever traded (or the far past when unknown). */
-function exchangeOpened(info: ExInfo): number {
-  for (let y = 1900; y <= 2026; y++) if (exchangeStatus(info, y) !== 'none') return y
-  return 1900
-}
-
-function lowerFirst(s: string): string {
-  return s ? s.charAt(0).toLowerCase() + s.slice(1) : s
+/** True when there's no stock market to trade on at all this year (none yet, abolished, or banned). */
+function noStockMarket(g: GameState, info: ExInfo): boolean {
+  return !!investingBlocked(g.character.countryId, g.year) || exchangeStatus(info, g.year) === 'none'
 }
 
 /** Why gold can't be bought here this year (null when it can). */
@@ -222,10 +221,6 @@ function reitBlock(g: GameState, info: ExInfo): string | null {
   return isHistoryYear(g.year) && g.year < since ? `Listed property trusts don't exist here yet (the first ones arrive around ${since}).` : null
 }
 
-/** True when an index fund (rather than an old-style investment trust) is on offer. */
-function indexFundsExist(g: GameState, info: ExInfo): boolean {
-  return !isHistoryYear(g.year) || g.year >= indexFundSince(info.home)
-}
 
 // ---------------------------------------------------------------------------
 // The Investing talent's gut feeling (invest/instinct.ts): purple hints on what looks set to rise
@@ -557,12 +552,13 @@ function listing(g: GameState): Listing {
   const pennies = ey.pennies.map((s) => stockQuote(info, s, true, y, marketBlock))
   const fundId = ey.fund.id
   // Before index funds existed (1976 in the US), the closest thing was a pricey investment trust.
-  const realFund = indexFundsExist(g, info)
+  const fn = fundName(info, y)
+  const realFund = !fn.trust
   const fee = fundFee(info, y)
   const fund: Quote = {
     type: 'index',
     secId: fundId,
-    name: realFund ? `${index} Index Fund` : `${homeWord} Investment Trust`,
+    name: fn.name,
     symbol: `${info.ex.code.replace(/[^A-Z0-9]/gi, '').slice(0, 4).toUpperCase()}X`,
     emoji: TYPE_EMOJI.index,
     price: ey.fund.price,
@@ -757,7 +753,11 @@ function holdingMarketBlock(g: GameState, a: Asset): string | null {
   const info = holdingExchange(a)
   const status = exchangeStatus(info, g.year)
   if (status === 'open') return null
-  return status === 'closed' ? `The ${exchangeName(info, g.year)} is closed. Nobody can trade until it reopens.` : `There is no stock market to trade on right now.`
+  if (status === 'closed') {
+    const why = exchangeClosedReason(info.home, g.year)
+    return `The ${exchangeName(info, g.year)} is closed${why ? `: ${why}` : '.'} Nobody can trade until it reopens.`
+  }
+  return 'There is no stock market to trade on right now.'
 }
 
 /** Why a holding can't be sold right now (null when it can). */
@@ -1311,7 +1311,8 @@ const stocksMenu: MenuGroup = {
   emoji: '📈',
   subtitle: (g) => {
     const info = exchangeInfo(g.character.countryId)
-    return `Companies listed on the ${info.ex.code}`
+    if (noStockMarket(g, info)) return 'No stock market here right now'
+    return `Companies listed on the ${info.ex.code}${exchangeStatus(info, g.year) === 'closed' ? ' (closed)' : ''}`
   },
   hint: (g) => gutGroupHint(g, ['stock']),
   header: (g) => {
@@ -1322,6 +1323,7 @@ const stocksMenu: MenuGroup = {
   },
   children: (g) => {
     const l = listing(g)
+    if (noStockMarket(g, l.info)) return [{ type: 'info', id: 'inv-stocks-none', text: stockMarketBlock(g, l.info) ?? 'There is no stock market here right now.', emoji: '🚫' }]
     return l.stocks.map((q) => offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
   },
 }
@@ -1332,6 +1334,7 @@ const pennyMenu: MenuGroup = {
   label: 'Penny Stocks',
   emoji: '🎟️',
   subtitle: 'Tiny companies, huge swings',
+  visible: (g) => !noStockMarket(g, exchangeInfo(g.character.countryId)),
   hint: (g) => gutGroupHint(g, ['penny']),
   header: (g) => {
     const info = exchangeInfo(g.character.countryId)
@@ -1397,12 +1400,15 @@ const bondsMenu: MenuGroup = {
 
 function fundNode(g: GameState): MenuGroup {
   const l = listing(g)
-  return offerNode(g, l.fund, [historyLine(g, l.info) || 'A brand-new fund: no history yet.', `Index level: ${Math.round(l.year.level).toLocaleString('en-US')} points.`])
+  const node = offerNode(g, l.fund, [historyLine(g, l.info) || 'A brand-new fund: no history yet.', `Index level: ${Math.round(l.year.level).toLocaleString('en-US')} points.`])
+  return { ...node, visible: (gg) => !noStockMarket(gg, exchangeInfo(gg.character.countryId)) }
 }
 
 function reitNode(g: GameState): MenuGroup {
   const l = listing(g)
-  return offerNode(g, l.reit, [`Local house prices ${l.year.year === anchor(g) ? 'are holding steady' : `moved ${pct(l.year.housing, 0)} this year`}.`])
+  const node = offerNode(g, l.reit, [`Local house prices ${l.year.year === anchor(g) ? 'are holding steady' : `moved ${pct(l.year.housing, 0)} this year`}.`])
+  // Property trusts appear only once they've been invented here.
+  return { ...node, visible: (gg) => !noStockMarket(gg, exchangeInfo(gg.character.countryId)) && !reitBlock(gg, exchangeInfo(gg.character.countryId)) }
 }
 
 function goldNode(g: GameState): MenuGroup {
@@ -1795,7 +1801,12 @@ function marketNews(g: GameState, held: Asset[]): News | null {
   if (crypto.length) {
     const cy = cryptoYear(fam(g), anchor(g), g.year)
     if (cy.winter) return { priority: 62, title: 'Crypto Winter', text: `The crypto market fell ${absPct(cy.ret)} this year. ${isHistoryYear(g.year) && g.year < 2020 ? 'Early believers say they are "just holding" and have stopped checking the price.' : 'Laser-eyed profile pictures are being quietly changed back.'}`, emoji: '🥶', tone: 'bad', log: 'A crypto winter hammered my coins.' }
-    if (cy.mania) return { priority: 52, title: 'Crypto Mania', text: `The crypto market rose ${absPct(cy.ret)} this year. Your barber asked if you've heard of ${pick(g, ['Corgicoin', 'Bitbuck', 'Aetherium'])}.`, emoji: '🤑', tone: 'good', log: 'Crypto went wild this year and my coins soared.' }
+    if (cy.mania) {
+      // Only coins that exist yet (no Aetherium before 2015).
+      const live = listedCoins(cy).map((c) => coinDef(c.slot, c.gen)).filter((d) => !d.stable).map((d) => d.name)
+      const names = isHistoryYear(g.year) ? (live.length ? live : ['Bitbuck']) : ['Corgicoin', 'Bitbuck', 'Aetherium']
+      return { priority: 52, title: 'Crypto Mania', text: `The crypto market rose ${absPct(cy.ret)} this year. Your barber asked if you've heard of ${pick(g, names)}.`, emoji: '🤑', tone: 'good', log: 'Crypto went wild this year and my coins soared.' }
+    }
   }
   return null
 }
@@ -1805,6 +1816,19 @@ const CRYPTO_EXCHANGES = ['CoinVault', 'BlockBarn', 'HODLHub', 'Satoshi Safe', '
 /** A stock or penny stock holding takes its company's name for the new era (logged once). */
 function renameForEra(g: GameState, a: Asset): void {
   const t = typeOf(a)
+  if (t === 'index') {
+    // The fund follows its index's new name (the Dow gives way to the S&P 500 in 1957), and the
+    // old investment trusts turn into cheap index funds once those are invented.
+    const info = holdingExchange(a)
+    if (str(a.details.secId) !== `${info.key}#fund`) return
+    const fn = fundName(info, g.year)
+    if (fn.name === a.name) return
+    log(g, str(a.details.sector) === 'Investment trust' && !fn.trust ? `My ${a.name} cut its fees and became the ${fn.name}.` : `My ${a.name} is now called the ${fn.name}.`)
+    a.name = fn.name
+    a.details.market = indexName(info, g.year)
+    a.details.sector = fn.trust ? 'Investment trust' : 'Index fund'
+    return
+  }
   if (t !== 'stock' && t !== 'penny') return
   const info = holdingExchange(a)
   const slot = Math.round(num(a.details.slot, -1))
@@ -2010,5 +2034,7 @@ export function investmentsSummary(g: GameState): string {
   const cryptoValue = by('crypto').reduce((sum, a) => sum + a.value, 0)
   if (by('crypto').length) parts.push(cryptoValue > s.value * 0.5 ? 'mostly crypto' : 'some crypto')
   const year = s.year !== null ? `; ${s.year >= 0 ? 'up' : 'down'} ${absPct(s.year)} this year` : ''
-  return `Portfolio ${shortMoney(s.value)}: ${parts.slice(0, 6).join(', ')}${year}`
+  // In the past, the year's real market story (the dot-com bust, 2008...) for the narrator.
+  const note = isHistoryYear(g.year) ? marketNote(exchangeInfo(g.character.countryId).home, g.year) : ''
+  return `Portfolio ${shortMoney(s.value)}: ${parts.slice(0, 6).join(', ')}${year}${note ? `. Market news: ${note}` : ''}`
 }

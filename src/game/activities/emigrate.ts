@@ -17,6 +17,7 @@ import {
   appliedThisYear,
   applyRoute,
   attemptEscape,
+  escapeHint,
   escapeOdds,
   exitPermitOdds,
   requestExitPermit,
@@ -28,19 +29,24 @@ import {
 import { deport, homeCountryFor, leaveFor, lockAssets, movingFamily, relocationCost } from './immigration-move'
 import { bestRoute, bestRouteHint, investHint, investKindWord, natzYearsFor, routesTo, type RouteEval } from './immigration-routes'
 import {
+  an,
   bestPassport,
+  cap,
   citizenshipsOf,
+  exitBlocked,
   exitRegime,
   exitWindow,
+  expandCitizenships,
+  hasExitPermit,
   immState,
   isBanned,
   isCitizenOf,
   personCitizenships,
+  place,
   setStatus,
   statusLabel,
   statusOf,
   updateImm,
-  expandCitizenships,
 } from './immigration-state'
 import { currentPartner, log, notice } from '../core'
 
@@ -137,17 +143,32 @@ function confirmText(g: GameState, r: RouteEval): string {
   const cost = upfrontCost(g, r)
   const lines: string[] = []
   if (r.wait > 0 || !r.moves) {
-    lines.push(`${r.id === 'lottery' ? `Enter the ${r.noun}` : `Apply for ${article(r.noun)} ${r.noun} to ${country.name}`}?${r.fee > 0 ? ` Fees: ${money(r.fee)} (non-refundable).` : ''} The decision comes in ${g.year + Math.max(1, r.wait)}; if approved, you'll be asked whether to move.`)
+    lines.push(`${r.id === 'lottery' ? `Enter the ${r.noun}` : `Apply for ${article(r.noun)} ${r.noun} to ${place(country)}`}?${r.fee > 0 ? ` Fees: ${money(r.fee)} (non-refundable).` : ''} The decision comes in ${g.year + Math.max(1, r.wait)}; if approved, you'll be asked whether to move.`)
   } else if (r.id === 'asylum') {
-    lines.push(`Travel to ${country.name} and claim asylum? Getting there costs about ${money(cost.reloc)}. You'll wait there for the decision.`)
+    lines.push(`Travel to ${place(country)} and claim asylum? Getting there costs about ${money(cost.reloc)}. You'll wait there for the decision.`)
   } else {
-    lines.push(`${r.id === 'citizen' ? `Move to ${country.name}` : `Apply for ${article(r.noun)} ${r.noun} to ${country.name}`}? Odds: ${pct(r.odds)}.`)
+    lines.push(`${r.id === 'citizen' ? `Move to ${place(country)}` : `Apply for ${article(r.noun)} ${r.noun} to ${place(country)}`}? Odds: ${pct(r.odds)}.`)
     const parts = [r.fee > 0 ? `${money(r.fee)} in fees (non-refundable)` : '', r.invest > 0 ? `${money(r.invest)} ${r.investKind === 'fee' ? 'payment' : `locked in ${investKindWord(r.investKind as InvestKind)} for ${r.lockYears} years`}` : '', `${money(cost.reloc)} to move`, cost.tax > 0 ? `${money(cost.tax)} in exit tax` : ''].filter(Boolean)
     lines.push(`If approved you pay ${parts.join(', ')}.`)
   }
-  if (r.proof > 0) lines.push(`You must show ${money(r.proof)} in the bank (you keep it).`)
+  if (r.proof > 0) lines.push(`You must show ${money(r.proof)} in the bank${r.id === 'student' ? ' for a year of fees and living costs' : ''} (you keep it).`)
   if (!r.keepJob && (g.character.job || g.character.partTimeJob) && r.moves) lines.push('Moving ends your current job.')
-  return lines.join(' ')
+  const notes = r.notes.filter((n) => n.length > 0).slice(0, 5)
+  return [lines.join(' '), notes.map((n) => `\u{2022} ${n}`).join('\n'), roadText(r)].filter(Boolean).join('\n\n')
+}
+
+/** The road from this route to a passport, in one line. */
+function roadText(r: RouteEval): string {
+  if (r.result === 'citizen') return r.id === 'citizen' ? '' : 'You become a citizen on arrival.'
+  const pr = r.toPr === 0 ? 'Permanent residency on arrival' : r.toPr === null ? 'No path to permanent residency on this route' : `Permanent residency after about ${r.toPr} year${r.toPr === 1 ? '' : 's'}`
+  const cz = r.toCitizen === null ? 'no path to citizenship' : r.toCitizen === 0 ? 'citizenship right away' : `citizenship after about ${r.toCitizen} year${r.toCitizen === 1 ? '' : 's'}`
+  return `${pr}; ${cz}.`
+}
+
+/** Why a route is closed, with the program's one-line story when it has one. */
+function closedText(r: RouteEval): string {
+  const note = r.notes.find((n) => n.length > 0 && !r.why.includes(n))
+  return note && ['investor', 'retire', 'remote', 'guest', 'settler', 'lottery', 'free', 'points'].includes(r.id) ? `${r.why}\n\n${note}` : r.why
 }
 
 /** The best open route and a one-line summary for the country row. */
@@ -170,7 +191,7 @@ function countryFacts(g: GameState, country: Country): MenuNode[] {
   const dual = expandCitizenships(citizenshipsOf(g), year).includes(country.id)
     ? ''
     : natz === null
-      ? `${country.name} practically never naturalizes foreigners.`
+      ? `${cap(place(country))} practically never naturalizes foreigners.`
       : `Citizenship after about ${natz} year${natz === 1 ? '' : 's'}${law.natzFrom === 'pr' ? ' as a permanent resident' : ' of residence'}; dual citizenship ${dualWord(country.id, year)}.`
   if (dual) nodes.push({ type: 'info', id: `imm.facts.${country.id}.natz`, emoji: '\u{1F5F3}\u{FE0F}', text: dual })
   return nodes
@@ -195,8 +216,8 @@ function routeAction(dest: string, r: RouteEval): MenuAction {
     disabledReason: (s) => {
       const cur = routeFor(s, dest, key)
       if (!cur) return 'Not available anymore.'
-      if (!cur.ok) return cur.why
-      if (appliedThisYear(s, dest, cur)) return `${getCountry(dest).name} already reviewed your application this year.`
+      if (!cur.ok) return closedText(cur)
+      if (appliedThisYear(s, dest, cur)) return `${cap(place(getCountry(dest)))} already reviewed your application this year.`
       return null
     },
     hint: (s) => {
@@ -226,7 +247,7 @@ function sneakAction(dest: string): MenuAction {
     },
     disabledReason: (s) => ((s.yearActions[`imm.sneak.${dest}`] ?? 0) > 0 ? "You've already tried that this year." : null),
     hint: (s) => sneakHint(s, dest) || null,
-    confirm: () => `Try to get into ${country.name} without permission? You'd live there undocumented: no legal job, the risk of deportation every year, and a ban if you're caught.`,
+    confirm: () => `Try to get into ${place(country)} without permission? You'd live there undocumented: no legal job, the risk of deportation every year, and a ban if you're caught.`,
     run: (d) => sneakIn(d, dest),
   }
 }
@@ -241,13 +262,10 @@ function escapeAction(dest: string): MenuAction {
     visible: (s) => exitBlocked(s) && !isCitizenOf(s, dest),
     subtitle: (s) => `About ${pct(escapeOdds(s, dest))} · if caught, you're arrested`,
     disabledReason: (s) => ((s.yearActions[`imm.escape.${dest}`] ?? 0) > 0 ? "You've already tried to escape this year." : null),
-    confirm: () => `Try to escape to ${country.name}? Getting caught at the border means prison.`,
+    hint: (s) => escapeHint(s, dest) || null,
+    confirm: () => `Try to escape to ${place(country)}? Getting caught at the border means prison.`,
     run: (d) => attemptEscape(d, dest),
   }
-}
-
-function exitBlocked(g: GameState): boolean {
-  return !!exitRegime(g.character.countryId, g.year) && immState(g).exitPermit !== g.year
 }
 
 function countryNode(country: Country): MenuGroup {
@@ -261,7 +279,7 @@ function countryNode(country: Country): MenuGroup {
     header: (s) => {
       const fam = movingFamily(s)
       const bits = [fam.partner ? fam.partner.firstName : '', fam.kids.length ? `${fam.kids.length} kid${fam.kids.length > 1 ? 's' : ''}` : ''].filter(Boolean)
-      return `${country.flag} Every way into ${country.name} for you in ${s.year}. Moving costs about ${money(relocationCost(s, country))}${bits.length ? ` (with ${bits.join(' and ')})` : ''}.`
+      return `${country.flag} Every way into ${place(country)} for you in ${s.year}. Moving costs about ${money(relocationCost(s, country))}${bits.length ? ` (with ${bits.join(' and ')})` : ''}.`
     },
     children: (s) => {
       const routes = routesFor(s, country.id)
@@ -272,7 +290,7 @@ function countryNode(country: Country): MenuGroup {
       for (const r of open) nodes.push(routeAction(country.id, r))
       if (shut.length) nodes.push({ type: 'heading', id: `imm.h.shut.${country.id}`, label: 'Closed to You (and Why)' })
       for (const r of shut) nodes.push(routeAction(country.id, r))
-      if (!routes.length) nodes.push({ type: 'info', id: `imm.none.${country.id}`, emoji: '\u{1F6AB}', text: `No legal route into ${country.name} applies to you right now.` })
+      if (!routes.length) nodes.push({ type: 'info', id: `imm.none.${country.id}`, emoji: '\u{1F6AB}', text: `No legal route into ${place(country)} applies to you right now.` })
       nodes.push({ type: 'heading', id: `imm.h.other.${country.id}`, label: 'Other Ways In' })
       nodes.push(sneakAction(country.id), escapeAction(country.id))
       return nodes
@@ -292,15 +310,15 @@ function statusNodes(g: GameState): MenuNode[] {
   const nodes: MenuNode[] = []
   const passLine = held.map((id) => `${getCountry(id).flag} ${getCountry(id).demonym} (${passportStrength(id, g.year)}/100)`).join(', ')
   nodes.push({ type: 'info', id: 'imm.st.pass', emoji: '\u{1F6C2}', text: `Passport${held.length > 1 ? 's' : ''}: ${passLine}` })
-  nodes.push({ type: 'info', id: 'imm.st.status', emoji: '\u{1F4CD}', text: `In ${here.name}: ${statusLabel(s)}${s.status !== 'citizen' ? ` since ${s.status === 'undocumented' ? st.arrived : s.since}` : ''}. You pay taxes here (taxes follow where you live).` })
+  nodes.push({ type: 'info', id: 'imm.st.status', emoji: '\u{1F4CD}', text: `In ${place(here)}: ${statusLabel(s)}${s.status !== 'citizen' ? ` since ${s.status === 'undocumented' ? st.arrived : s.since}` : ''}. You pay taxes here (taxes follow where you live).` })
   if (s.status !== 'citizen') {
     const y = yearsToCitizenship(g)
-    nodes.push({ type: 'info', id: 'imm.st.natz', emoji: '\u{1F5F3}\u{FE0F}', text: y === null ? (s.status === 'undocumented' ? 'No path to citizenship without papers.' : `${here.name} offers you no path to citizenship on this status.`) : y === 0 ? 'You can apply for citizenship now.' : `Citizenship possible in about ${y} year${y === 1 ? '' : 's'}.` })
+    nodes.push({ type: 'info', id: 'imm.st.natz', emoji: '\u{1F5F3}\u{FE0F}', text: y === null ? (s.status === 'undocumented' ? 'No path to citizenship without papers.' : `${cap(place(here))} offers you no path to citizenship on this status.`) : y === 0 ? 'You can apply for citizenship now.' : `Citizenship possible in about ${y} year${y === 1 ? '' : 's'}.` })
   }
   if (s.status === 'undocumented') nodes.push({ type: 'info', id: 'imm.st.undoc', emoji: '\u{26A0}\u{FE0F}', text: 'Without papers you can only work cash-in-hand jobs, and immigration agents could catch up with you any year.' })
-  for (const a of st.apps) nodes.push({ type: 'info', id: `imm.st.app.${a.id}`, emoji: '\u{1F4E8}', text: `${a.label} → ${getCountry(a.dest).name}: decision in ${a.decide}.` })
+  for (const a of st.apps) nodes.push({ type: 'info', id: `imm.st.app.${a.id}`, emoji: '\u{1F4E8}', text: `${a.label} → ${place(getCountry(a.dest))}: decision in ${a.decide}.` })
   for (const a of lockAssets(g)) nodes.push({ type: 'info', id: `imm.st.lock.${a.id}`, emoji: '\u{1F512}', text: `${a.name}: worth ${money(a.value)}, unlocks in ${typeof a.details.until === 'number' ? a.details.until : g.year}.` })
-  for (const [id, until] of Object.entries(st.bans)) if (until >= g.year) nodes.push({ type: 'info', id: `imm.st.ban.${id}`, emoji: '\u{26D4}', text: `Banned from ${getCountry(id).name} until ${until + 1}.` })
+  for (const [id, until] of Object.entries(st.bans)) if (until >= g.year) nodes.push({ type: 'info', id: `imm.st.ban.${id}`, emoji: '\u{26D4}', text: `Banned from ${place(getCountry(id))} until ${until + 1}.` })
   const partner = currentPartner(g)
   if (partner && partner.alive) nodes.push({ type: 'info', id: 'imm.st.partner', emoji: '\u{1F491}', text: `${partner.firstName}: ${personCitizenships(g, partner).map((id) => getCountry(id).demonym).join(' and ')} citizen.` })
 
@@ -330,12 +348,12 @@ function statusNodes(g: GameState): MenuNode[] {
   nodes.push({
     type: 'action',
     id: 'imm.st.leave',
-    label: `Go home to ${getCountry(homeCountryFor(g)).name}`,
+    label: `Go home to ${place(getCountry(homeCountryFor(g)))}`,
     emoji: '\u{1F9F3}',
     visible: (x) => statusOf(x).status !== 'citizen' && homeCountryFor(x) !== x.character.countryId,
     confirm: (x) => {
       const ban = overstayBan(x)
-      return `Leave ${getCountry(x.character.countryId).name} and move to ${getCountry(homeCountryFor(x)).name}?${ban > 0 ? ` After your time without papers, you'll be banned from coming back for ${ban} years.` : ''}`
+      return `Leave ${place(getCountry(x.character.countryId))} and move to ${place(getCountry(homeCountryFor(x)))}?${ban > 0 ? ` After your time without papers, you'll be banned from coming back for ${ban} years.` : ''}`
     },
     run: (d) => {
       const home = homeCountryFor(d)
@@ -388,15 +406,15 @@ function legalizeByMarriage(g: GameState): void {
       s.visaSince = g.year
       if (direct) s.prSince = g.year
     })
-    log(g, `I got legal status in ${country.name} through my marriage.`, 'good')
-    notice(g, 'Papers at Last', direct ? `Your marriage-based application was approved: you're a permanent resident of ${country.name}.` : `Your marriage-based application was approved: you have a spouse visa.`, { emoji: '\u{1F48D}', tone: 'good' })
+    log(g, `I got legal status in ${place(country)} through my marriage.`, 'good')
+    notice(g, 'Papers at Last', direct ? `Your marriage-based application was approved: you're a permanent resident of ${place(country)}.` : `Your marriage-based application was approved: you have a spouse visa.`, { emoji: '\u{1F48D}', tone: 'good' })
     return
   }
   if (chance(g, 0.25)) {
     deport(g, 'Your marriage-based application was denied, and the denial came with a removal order.', 10)
     return
   }
-  log(g, `My marriage-based application in ${country.name} was denied.`, 'bad')
+  log(g, `My marriage-based application in ${place(country)} was denied.`, 'bad')
   notice(g, 'Application Denied', 'Your marriage-based application was denied. At least they didn\'t come knocking. Yet.', { emoji: '\u{1F4ED}', tone: 'bad' })
 }
 
@@ -412,7 +430,7 @@ function exitNodes(g: GameState): MenuNode[] {
   const regime = exitRegime(g.character.countryId, g.year)
   if (!regime) return []
   const w = exitWindow(regime, g.year)
-  const permit = immState(g).exitPermit === g.year
+  const permit = hasExitPermit(g)
   const nodes: MenuNode[] = [{ type: 'info', id: 'imm.exit.note', emoji: permit ? '\u{2705}' : '\u{1F6A7}', text: permit ? 'Your exit visa is good for this year. Apply to move abroad before it runs out.' : `${regime.note}${w ? ` ${w.note}` : ''}` }]
   if (!permit) {
     nodes.push({
@@ -454,7 +472,7 @@ export const emigrateMenu: MenuGroup = {
     const fam = movingFamily(g)
     const bits = [fam.partner ? `${fam.partner.firstName}` : '', fam.kids.length ? `${fam.kids.length} kid${fam.kids.length > 1 ? 's' : ''}` : ''].filter(Boolean)
     const held = citizenshipsOf(g).map((id) => getCountry(id).demonym).join(' and ')
-    return `Pick a country to see every way in for a ${held} passport holder in ${g.year}: the odds, the costs and the wait. Moving ends your job${bits.length ? ` and includes ${bits.join(' and ')}` : ''}.`
+    return `Pick a country to see every way in for ${an(held)} passport holder in ${g.year}: the odds, the costs and the wait. Moving ends your job${bits.length ? ` and includes ${bits.join(' and ')}` : ''}.`
   },
   children: (g): MenuNode[] => {
     const nodes: MenuNode[] = []
@@ -464,7 +482,7 @@ export const emigrateMenu: MenuGroup = {
         id: 'emigrate.status',
         label: 'Your Status',
         emoji: '\u{1F4C7}',
-        subtitle: (x) => `${statusLabel(statusOf(x))} in ${getCountry(x.character.countryId).name}`,
+        subtitle: (x) => `${statusLabel(statusOf(x))} in ${place(getCountry(x.character.countryId))}`,
         children: statusNodes,
       })
     }

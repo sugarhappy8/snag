@@ -12,12 +12,14 @@ import { getCountry, randomCity, type Country } from '../world'
 import type { Asset, GameState, ImmigrationStatus, Person } from '../types'
 import { isAbroad, money, niceRound, pushFlagString, stableRng } from './common'
 import {
+  blocAccess,
   citizenshipsOf,
   expandCitizenships,
   grantCitizenship,
   isCitizenOf,
   loseCitizenship,
   personCitizenships,
+  place,
   setStatus,
   stampPerson,
   updateImm,
@@ -33,6 +35,13 @@ export function movingFamily(g: GameState): { partner?: Person; kids: Person[]; 
   const kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild') && p.age < 18 && (p.livesWithPlayer || (partner && p.otherParentId === partner.id)) && !isAbroad(g, p))
   const pets = g.people.filter((p) => p.alive && p.relation === 'pet' && !isAbroad(g, p))
   return { partner: partner && !isAbroad(g, partner) ? partner : undefined, kids, pets }
+}
+
+/** Animals no country lets you bring in as a pet. */
+const EXOTIC_PETS = ['Tiger', 'Lion', 'Monkey', 'Wolf', 'Gorilla', 'Bear', 'Alligator', 'Crocodile', 'Leopard', 'Cheetah', 'Jaguar', 'Hyena', 'Kangaroo', 'Panther', 'Komodo Dragon', 'Elephant', 'Shark']
+
+export function isExoticPet(p: Person): boolean {
+  return p.relation === 'pet' && !!p.species && EXOTIC_PETS.includes(p.species)
 }
 
 function wealthOf(country: Country): number {
@@ -59,30 +68,40 @@ export function stampFamily(g: GameState): void {
 // ---------------------------------------------------------------------------
 // Citizenship changes
 
+/** Passports you'd give up by naturalizing in `dest` this year (its rules and theirs on dual citizenship). */
+export function passportsLostBy(g: GameState, dest: string): string[] {
+  const year = g.year
+  const held = citizenshipsOf(g).filter((id) => id !== dest)
+  const destRule = dualRule(dest, year)
+  const shares = (id: string) => blocAccess([id], dest, year).length > 0
+  return held.filter((id) => {
+    if (destRule === 'no') return true
+    if (destRule === 'limited' && !shares(id)) return true
+    const own = dualRule(id, year)
+    return own === 'no' || (own === 'limited' && !shares(id))
+  })
+}
+
 /**
- * Take a new citizenship (mutates). Countries that forbid dual citizenship take theirs back when
- * you naturalize elsewhere; when `renounceOthers`, every other passport is given up. Returns the
- * passports lost and any expatriation tax paid.
+ * Take a new citizenship (mutates), giving up the passports the dual-citizenship rules on either
+ * side won't let you keep (passportsLostBy, worked out before the new one is added). Renouncing
+ * can trigger an expatriation tax. Returns the passports lost and the tax paid.
  */
-export function acquireCitizenship(g: GameState, dest: string, renounceOthers: boolean): { lost: string[]; tax: number; taxName: string } {
-  const before = citizenshipsOf(g)
+export function acquireCitizenship(g: GameState, dest: string): { lost: string[]; tax: number; taxName: string } {
+  const renounce = passportsLostBy(g, dest)
   grantCitizenship(g, dest)
   const lost: string[] = []
   let tax = 0
   let taxName = ''
-  for (const id of before) {
-    if (id === dest) continue
-    if (renounceOthers || dualRule(id, g.year) === 'no') {
-      const t = exitTaxDue(g, 'renounce', id)
-      if (loseCitizenship(g, id)) {
-        lost.push(id)
-        if (t.due > 0) {
-          const paid = Math.min(t.due, Math.max(0, g.character.money))
-          if (paid > 0) spend(g, paid)
-          tax += paid
-          taxName = t.name
-        }
-      }
+  for (const id of renounce) {
+    const t = exitTaxDue(g, 'renounce', id)
+    if (!loseCitizenship(g, id)) continue
+    lost.push(id)
+    if (t.due > 0) {
+      const paid = Math.min(t.due, Math.max(0, g.character.money))
+      if (paid > 0) spend(g, paid)
+      tax += paid
+      taxName = t.name
     }
   }
   return { lost, tax, taxName }
@@ -136,7 +155,7 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
   const c = g.character
   const country = getCountry(dest)
   const oldId = c.countryId
-  const oldName = getCountry(oldId).name
+  const oldName = place(getCountry(oldId))
   stampFamily(g)
   const fam = movingFamily(g)
   const lines: string[] = [...(text.extra ?? [])]
@@ -165,7 +184,7 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
       partnerCame = true
       p.data.countryId = dest
       p.livesWithPlayer = true
-      notePerson(p, `Moved to ${country.name} with the player.`)
+      notePerson(p, `Moved to ${place(country)} with the player.`)
       lines.push(fromThere ? `${p.firstName} was thrilled to be going home.` : forced ? `${p.firstName} stuck by you and came along.` : `${p.firstName} happily packed up and came with you.`)
     } else if (forced) {
       p.data.countryId = oldId
@@ -179,8 +198,8 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
       p.livesWithPlayer = false
       p.data.countryId = oldId
       if (wasSpouse) count(g, 'divorces')
-      notePerson(p, `Refused to move to ${country.name} and ended the relationship.`)
-      log(g, `${p.firstName} refused to move to ${country.name} with me, so we broke up.`, 'bad')
+      notePerson(p, `Refused to move to ${place(country)} and ended the relationship.`)
+      log(g, `${p.firstName} refused to move to ${place(country)} with me, so we broke up.`, 'bad')
       addStat(g, 'happiness', -randInt(g, 5, 12))
       lines.push(`${p.firstName} refused to leave ${oldName} and ${wasSpouse ? 'filed for divorce' : 'broke up with you'}.`)
     }
@@ -191,9 +210,13 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
     k.livesWithPlayer = true
   }
   if (kids.length) lines.push(kids.length === 1 ? `${kids[0].firstName} came along.` : 'Your kids came along.')
-  const pets = how === 'escape' || how === 'deported' ? [] : fam.pets
+  // Pets come along, except on the run and except the ones no customs officer will wave through.
+  const pets = how === 'escape' || how === 'deported' ? [] : fam.pets.filter((p) => !isExoticPet(p))
   for (const pet of pets) pet.data.countryId = dest
   if (pets.length) lines.push(pets.length === 1 ? `${pets[0].firstName} the ${(pets[0].species ?? 'pet').toLowerCase()} came too.` : 'Your pets came too.')
+  const banned = how === 'escape' || how === 'deported' ? [] : fam.pets.filter(isExoticPet)
+  for (const pet of banned) notePerson(pet, `Stayed behind in ${oldName} when the player moved abroad.`)
+  if (banned.length) lines.push(banned.length === 1 ? `Customs wouldn't let ${banned[0].firstName} the ${(banned[0].species ?? 'pet').toLowerCase()} into ${place(country)}, so ${banned[0].firstName} stayed behind in ${oldName}.` : `Customs wouldn't let your exotic pets into ${place(country)}, so they stayed behind in ${oldName}.`)
 
   // Everyone else stays where they are.
   const movers = new Set<string>([...kids.map((k) => k.id), ...pets.map((p) => p.id), ...(partnerCame && fam.partner ? [fam.partner.id] : [])])
@@ -214,7 +237,7 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
     if (c.partTimeJob) endJob(g, 'partTimeJob', 'quit')
     if (jobTitle) lines.push(`You had to quit your job as ${/^[aeiou]/i.test(jobTitle) ? 'an' : 'a'} ${jobTitle}.`)
   } else if (c.job) {
-    lines.push(`You kept your job as ${/^[aeiou]/i.test(c.job.title) ? 'an' : 'a'} ${c.job.title}, now from ${country.name}.`)
+    lines.push(`You kept your job as ${/^[aeiou]/i.test(c.job.title) ? 'an' : 'a'} ${c.job.title}, now from ${place(country)}.`)
   }
 
   c.countryId = dest
@@ -259,19 +282,19 @@ export function relocate(g: GameState, dest: string, how: MoveHow, arrival: Arri
   count(g, 'emigrations')
   pushFlagString(g, 'countriesLived', country.name)
   const verb = how === 'illegal' ? 'Snuck' : how === 'deported' ? 'Was deported' : how === 'escape' ? 'Escaped' : how === 'asylum' ? 'Fled' : how === 'leave' ? 'Moved back' : 'Emigrated'
-  remember(g, `${verb} from ${oldName} to ${country.name} (${c.city}).`)
+  remember(g, `${verb} from ${oldName} to ${place(country)} (${c.city}).`)
   const logLine =
     how === 'illegal'
-      ? `I snuck into ${country.name} and settled in ${c.city}.`
+      ? `I snuck into ${place(country)} and settled in ${c.city}.`
       : how === 'deported'
-        ? `I was deported from ${oldName} to ${country.name}.`
+        ? `I was deported from ${oldName} to ${place(country)}.`
         : how === 'escape'
-          ? `I escaped from ${oldName} to ${country.name}.`
+          ? `I escaped from ${oldName} to ${place(country)}.`
           : how === 'asylum'
-            ? `I fled to ${country.name} and claimed asylum.`
+            ? `I fled to ${place(country)} and claimed asylum.`
             : how === 'leave'
-              ? `I left ${oldName} and moved to ${country.name}.`
-              : `I emigrated to ${country.name} and settled in ${c.city}.`
+              ? `I left ${oldName} and moved to ${place(country)}.`
+              : `I emigrated to ${place(country)} and settled in ${c.city}.`
   log(g, logLine, how === 'deported' ? 'bad' : 'event')
   if (how === 'deported') addStat(g, 'happiness', -randInt(g, 6, 14))
   else addStat(g, 'happiness', randInt(g, 3, 8))
@@ -303,7 +326,7 @@ export function deport(g: GameState, reason: string, banYears: number): void {
   count(g, 'deportations')
   g.flags.deported = (typeof g.flags.deported === 'number' ? g.flags.deported : 0) + 1
   const country = getCountry(home)
-  relocate(g, home, 'deported', { status: 'citizen' }, { title: 'Deported', opener: `${reason} You were put on a flight to ${country.name}${banYears > 0 ? ` and banned from ${getCountry(from).name} until ${g.year + banYears}` : ''}.`, emoji: '\u{1F6EC}' })
+  relocate(g, home, 'deported', { status: 'citizen' }, { title: 'Deported', opener: `${reason} You were put on a flight to ${place(country)}${banYears > 0 ? ` and banned from ${place(getCountry(from))} until ${g.year + banYears}` : ''}.`, emoji: '\u{1F6EC}' })
 }
 
 /** Go home of your own accord (mutates). Long overstays still earn a ban in some countries. */
@@ -311,7 +334,7 @@ export function leaveFor(g: GameState, dest: string, why: string, banYears = 0):
   const from = g.character.countryId
   if (banYears > 0) updateImm(g, (s) => (s.bans[from] = g.year + banYears - 1))
   const country = getCountry(dest)
-  relocate(g, dest, 'leave', { status: isCitizenOf(g, dest) ? 'citizen' : 'permanent' }, { title: 'Moving On', opener: `${why} You packed up and moved to ${country.name}.${banYears > 0 ? ` Overstaying earned you a ban from ${getCountry(from).name} until ${g.year + banYears}.` : ''}`, emoji: '\u{1F9F3}' })
+  relocate(g, dest, 'leave', { status: isCitizenOf(g, dest) ? 'citizen' : 'permanent' }, { title: 'Moving On', opener: `${why} You packed up and moved to ${place(country)}.${banYears > 0 ? ` Overstaying earned you a ban from ${place(getCountry(from))} until ${g.year + banYears}.` : ''}`, emoji: '\u{1F9F3}' })
 }
 
 // ---------------------------------------------------------------------------

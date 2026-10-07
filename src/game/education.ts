@@ -8,7 +8,7 @@
 // "Lincoln Elementary School", takes the SATs and goes to prom. Internal level ids
 // ('elementary' | 'middle' | 'high' ...) never change.
 import { techAdoption, type TechId } from './history/timeline'
-import { anachronistic } from './events/era'
+import { anachronistic, eraPick, venueExists } from './events/era'
 import {
   addHidden,
   addRelationship,
@@ -1553,7 +1553,7 @@ const SCHOOL_MOMENTS: SchoolMoment[] = [
   {
     id: 'campusFood',
     when: (_g, cur) => isPost(cur),
-    lines: () => ['I survived a whole semester on instant noodles and stubbornness.', 'I learned to cook exactly one dish. I ate it every day for a year.'],
+    lines: (g) => [g.year >= 1965 ? 'I survived a whole semester on instant noodles and stubbornness.' : 'I survived a whole semester on bread, soup and stubbornness.', 'I learned to cook exactly one dish. I ate it every day for a year.'],
   },
   {
     id: 'campusLife',
@@ -2151,6 +2151,10 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
   const block = postSecondaryBlocker(g)
   if (block) {
     notice(g, 'University', block, { emoji: '\u{1F3DB}\u{FE0F}' })
+    return
+  }
+  if ((MAJORS as readonly string[]).includes(major) && !majorsInEra(g.year, c.countryId).includes(major)) {
+    notice(g, 'University', `Nobody teaches ${major} as a degree yet. It's ${g.year}.`, { emoji: '\u{1F3DB}\u{FE0F}' })
     return
   }
   if (hasDegree(g, 'bachelor', major)) {
@@ -2814,14 +2818,15 @@ function studyHarder(g: GameState): void {
   )
 }
 
-const SKIP_ACTIVITIES = ['went to the arcade', 'watched cartoons all day', 'hung out at the mall', 'slept until noon', 'went to the beach', 'played video games for nine hours straight', 'went to the movies', 'wandered around downtown']
+// Era tags (events/era.ts): cartoons need a TV at home, video games a console, malls the 1960s.
+const SKIP_ACTIVITIES = ['went to the arcade', '@tv watched cartoons all day', '@1962 hung out at the mall', 'slept until noon', 'went to the beach', '@videoGameConsole played video games for nine hours straight', 'went to the movies', 'wandered around downtown']
 /** Everywhere else: the local hangouts and date spots instead of the American mall. */
-const LOCAL_SKIP_ACTIVITIES = ['went to the arcade', 'watched cartoons all day', 'hung out at {hangout}', 'slept until noon', 'went to {dateSpot}', 'played video games for nine hours straight', 'went to the cinema', 'wandered around {city}']
+const LOCAL_SKIP_ACTIVITIES = ['went to the arcade', '@tv watched cartoons all day', 'hung out at {hangout}', 'slept until noon', 'went to {dateSpot}', '@videoGameConsole played video games for nine hours straight', 'went to the cinema', 'wandered around {city}']
 
 function skipActivity(g: GameState): string {
-  if (isUS(g)) return pick(g, SKIP_ACTIVITIES)
-  const text = fillLocal(g, pick(g, LOCAL_SKIP_ACTIVITIES))
-  return /\{\w+\}/.test(text) ? 'slept until noon' : text
+  if (isUS(g)) return eraPick(g, SKIP_ACTIVITIES)
+  const text = fillLocal(g, eraPick(g, LOCAL_SKIP_ACTIVITIES))
+  return /\{\w+\}/.test(text) || !venueExists(g, text) ? 'slept until noon' : text
 }
 
 function skipSchool(g: GameState): void {
@@ -3673,6 +3678,8 @@ function universityGroup(o: UniversityOption, i: number): MenuGroup {
           label: m,
           emoji: MAJOR_EMOJI[m] ?? '\u{1F4D8}',
           subtitle: (g) => (hasDegree(g, 'bachelor', m) ? 'Already earned' : gradPathsFor(m)),
+          // Majors of later decades (no computer science degrees in 1950).
+          visible: (g) => majorsInEra(g.year, g.character.countryId).includes(m),
           disabledReason: (g) => postSecondaryBlocker(g) ?? (hasDegree(g, 'bachelor', m) ? `You already have a degree in ${m}.` : null),
           confirm: quitJobConfirm,
           run: (g) => applyToUniversity(g, m, { school: o.name }),

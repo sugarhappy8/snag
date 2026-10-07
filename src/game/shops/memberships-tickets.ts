@@ -4,6 +4,7 @@
 // ticket is a one-off purchase (no asset): pick a seat tier, maybe bring someone, and see what
 // happens. Per-year limits stop spam; kids go with a parent, who usually pays.
 import { hasTech } from '../history/timeline'
+import { anachronistic, common } from '../events/era'
 import { addCondition, companionCandidates, payingParents } from '../activities/common'
 import { globalGoodsMult, nicePrice, salesTaxNote, seeded, yearKey, type SRng } from '../assets'
 import {
@@ -526,6 +527,112 @@ const GENRES: Record<string, GenreDef> = {
 
 const GLOBAL_GENRES = ['pop', 'rock', 'hiphop', 'edm', 'indie', 'metal', 'jazz', 'classical']
 
+/** First year a genre filled concert halls (no hip-hop tours in 1960, no K-pop before the 1990s). */
+const GENRE_FROM: Record<string, number> = {
+  pop: 1955,
+  rock: 1956,
+  hiphop: 1980,
+  edm: 1992,
+  indie: 1985,
+  metal: 1972,
+  jazz: 1918,
+  country: 1930,
+  kpop: 1996,
+  jpop: 1990,
+  cpop: 1980,
+  cantopop: 1975,
+  afrobeats: 2005,
+  highlife: 1925,
+  amapiano: 2015,
+  reggaeton: 1995,
+  salsa: 1965,
+  bachata: 1962,
+  reggae: 1968,
+  kompa: 1956,
+  soca: 1972,
+  techno: 1988,
+  europop: 1975,
+  grime: 2003,
+  bollywood: 1950,
+  discopolo: 1985,
+  russianpop: 1970,
+  arabicpop: 1960,
+  rai: 1975,
+  turkishpop: 1975,
+  persianpop: 1960,
+  rumba: 1950,
+  kizomba: 1985,
+  gengetone: 2018,
+  ethiojazz: 1968,
+  dangdut: 1970,
+  opm: 1975,
+  thaipop: 1990,
+  vpop: 1995,
+  qpop: 2015,
+  mongolrock: 2016,
+  pacific: 1980,
+  balkan: 1985,
+  enka: 1950,
+  trot: 1930,
+  schlager: 1920,
+}
+
+function genreInEra(g: GameState, id: string): boolean {
+  return g.year >= (GENRE_FROM[id] ?? 0)
+}
+
+/** First year a festival or park was a thing (music festivals from the late 1960s, water parks from 1977). */
+const EVENT_FROM: Record<string, number> = {
+  'Dustbowl Music Festival': 1969,
+  'Sunset Valley Fest': 1969,
+  '{city} Jazz & Blues Weekend': 1954,
+  'Cape Jazz Festival': 2000,
+  'Desert Music Festival': 2009,
+  'Harbour Lights Festival': 2009,
+  'Lantern Festival by the Bay': 1990,
+  'Desert Lights Festival': 2010,
+  'Festival of Light in the Old City': 2009,
+  'Desert Winter Festival': 2000,
+  'Mud Festival': 1998,
+  'Tomato-Throwing Festival': 1945,
+  'Gnawa Music Festival': 1998,
+  'Reggae Beach Weekend': 1978,
+  'Havana Jazz Festival': 1980,
+  'Summer Festival in the Temple Ruins': 1956,
+  'Festival in the Ruins of Jerash': 1981,
+  '{w} Adventure Kingdom': 1955,
+  'Galaxy Coaster World': 1960,
+  'Splash Lagoon Water Park': 1977,
+  'Dino Valley Family Park': 1960,
+  'Sound & Light Show at the Pyramids': 1961,
+  'Irish Dance Spectacular: River of Feet': 1995,
+  'Bollywood Stage Spectacular': 1990,
+  'Cirque des Étoiles (acrobatics)': 1985,
+}
+
+function eventInEra(g: GameState, name: string): boolean {
+  return g.year >= (EVENT_FROM[name] ?? 0)
+}
+
+/** Amusement parks before the age of theme parks (appended: only listed before 1955). */
+const OLD_PARKS = ['{w} Pleasure Gardens', 'The {w} Pier Amusements']
+
+/** Special moments that need their era: jumbotrons and kiss cams, mosh pits, half-court contests. */
+const MOMENT_FROM: Record<string, number> = {
+  BIG_SCREEN: 1985,
+  MOSH: 1980,
+  HALF_COURT: 1980,
+  MUD: 1969,
+  'The biggest coaster had a 90-meter drop. You screamed the whole way. Your on-ride photo is legendary.': 1990,
+  'You threw up on the spinning teacups. Classic.': 1955,
+  'A costumed mascot hugged you and you weren\'t ready for how much you needed it.': 1955,
+}
+
+/** The moments that fit this year (and nothing that mentions things that don't exist yet). */
+function momentsInEra(g: GameState, list: readonly string[]): string[] {
+  return list.filter((m) => g.year >= (MOMENT_FROM[m] ?? 0) && !anachronistic(g, m) && (!/\bphone rang\b/.test(m) || common(g, 'mobilePhone')) && (!/\breplay\b/.test(m) || hasTech(g, 'tv')))
+}
+
 const COUNTRY_GENRES: Record<string, string[]> = {
   us: ['country', 'hiphop'],
   ca: ['indie', 'country'],
@@ -812,12 +919,13 @@ function alcoholOk(g: GameState): boolean {
 }
 
 function concertLineup(g: GameState, r: SRng): TicketEvent[] {
-  const local = (COUNTRY_GENRES[g.character.countryId] ?? []).filter((x) => GENRES[x])
+  const local = (COUNTRY_GENRES[g.character.countryId] ?? []).filter((x) => GENRES[x] && genreInEra(g, x))
+  const global = GLOBAL_GENRES.filter((x) => genreInEra(g, x))
   const out: TicketEvent[] = []
   const used = new Set<string>()
   const n = r.int(4, 6)
   for (let i = 0; out.length < n && i < 20; i++) {
-    const genreId = local.length && r.chance(0.55) ? r.pick(local) : r.pick(GLOBAL_GENRES)
+    const genreId = local.length && r.chance(0.55) ? r.pick(local) : r.pick(global)
     const genre = GENRES[genreId]
     const city = nearbyCity(g, r)
     const artist = r.pick(genre.artists).replace('{city}', city)
@@ -882,8 +990,8 @@ function sportsLineup(g: GameState, r: SRng): TicketEvent[] {
 }
 
 function theaterLineup(g: GameState, r: SRng): TicketEvent[] {
-  const local = LOCAL_SHOWS[g.character.countryId] ?? []
-  const pool = [...SHOWS]
+  const local = (LOCAL_SHOWS[g.character.countryId] ?? []).filter((x) => eventInEra(g, x.title))
+  const pool = SHOWS.filter((x) => eventInEra(g, x.title))
   const picks: ShowDef[] = [...local]
   while (picks.length < 5 && pool.length) picks.push(pool.splice(r.int(0, pool.length - 1), 1)[0])
   return picks.map((s, i) => {
@@ -924,7 +1032,7 @@ function comedyLineup(g: GameState, r: SRng): TicketEvent[] {
 
 function festivalLineup(g: GameState, r: SRng): TicketEvent[] {
   const local = LOCAL_FESTIVALS[g.character.countryId] ?? []
-  const pool = [...local, ...MUSIC_FESTIVALS].filter((f) => !f.alcohol || alcoholOk(g))
+  const pool = [...local, ...MUSIC_FESTIVALS].filter((f) => (!f.alcohol || alcoholOk(g)) && eventInEra(g, f.name))
   const picks = pool.slice(0, Math.min(4, pool.length))
   return picks.map((f, i) => {
     const city = nearbyCity(g, r)
@@ -944,7 +1052,7 @@ function festivalLineup(g: GameState, r: SRng): TicketEvent[] {
 }
 
 function themeParkLineup(g: GameState, r: SRng): TicketEvent[] {
-  const pool = [...THEME_PARKS]
+  const pool = [...THEME_PARKS, ...(g.year < 1955 ? OLD_PARKS : [])].filter((x) => eventInEra(g, x))
   const out: TicketEvent[] = []
   for (let i = 0; i < 3 && pool.length; i++) {
     const name = pool.splice(r.int(0, pool.length - 1), 1)[0].replace('{w}', localWord(g, r))
@@ -953,7 +1061,7 @@ function themeParkLineup(g: GameState, r: SRng): TicketEvent[] {
       id: `${g.year}:themepark:${i}`,
       kind: 'themepark',
       title: name,
-      where: water ? 'Water park · slides, wave pool, lazy river' : 'Theme park · coasters, rides and churros',
+      where: water ? 'Water park · slides, wave pool, lazy river' : g.year < 1955 ? 'Amusement park · a wooden coaster, a carousel and candy floss' : 'Theme park · coasters, rides and churros',
       emoji: water ? '🌊' : '🎢',
       minAge: 4,
       tiers: tiers(g, r, water ? 45 : 70, ['Day Pass', 'Two-Day Pass', 'Fast-Track Pass', 'VIP Guided Tour']),
@@ -1073,7 +1181,7 @@ function fillMoment(g: GameState, ev: TicketEvent, m: string, companion: Person 
       }
       return pick(g, ['You ended up on the big screen mid-bite. You waved with a mouth full of nachos.', 'The camera found you dancing on the big screen. You did not stop. Legend.'])
     case 'CATCH_SIX':
-      return 'A huge six sailed into your stand and you caught it one-handed. The crowd gave you a standing ovation and the TV replayed it three times.'
+      return `A huge six sailed into your stand and you caught it one-handed. The crowd gave you a standing ovation${hasTech(g, 'tv') ? ' and the TV replayed it three times' : ' and the papers mentioned you the next morning'}.`
     case 'HAKA':
       return c.countryId === 'nz' ? 'The pre-match haka gave you goosebumps all the way down your spine.' : c.countryId === 'ws' ? 'The pre-match siva tau war dance gave you chills.' : 'The crowd sang the anthem so loud you felt it in your chest.'
     case 'ZABUTON':
@@ -1163,7 +1271,8 @@ export function goToEvent(g: GameState, ev: TicketEvent, tierIndex: number, comp
   }
 
   // A moment to remember.
-  if (ev.moments.length && chance(g, 0.6)) parts.push(fillMoment(g, ev, pick(g, ev.moments), companion))
+  const moments = momentsInEra(g, ev.moments)
+  if (moments.length && chance(g, 0.6)) parts.push(fillMoment(g, ev, pick(g, moments), companion))
 
   // VIP perks.
   if (tierIndex === 3) {

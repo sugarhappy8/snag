@@ -216,13 +216,29 @@ describe('prices as they were', () => {
 
   it('shows hyperinflations without breaking the formatter', () => {
     show('de', 1923, 'local', true)
-    expect(shortMoney(1_000)).toMatch(/^[\d.]+(B|T|Qa) ℳ$/)
+    expect(shortMoney(1_000)).toMatch(/^[\d.]+(B|T| quadrillion) ℳ$/)
     show('hu', 1946, 'local', true)
     expect(shortMoney(10)).toMatch(/pengő$/)
     expect(formatMoney(10)).not.toMatch(/NaN|Infinity|e\+/)
+    // Past trillions the units are spelled out, never 'Qa' or '1e+30'.
+    expect(formatMoney(10)).toMatch(/^[\d.]+ (quadr|quint|sext|sept|oct|non)illion pengő$/)
+    expect(formatMoney(1e12)).toMatch(/^[\d,]+ nonillion pengő$/)
     show('zw', 2008, 'local', true)
     expect(formatMoney(4)).toMatch(/^Z\$/)
-    expect(shortMoney(40_000)).toMatch(/^Z\$[\d.]+(T|Qa|Qi)$/)
+    expect(shortMoney(40_000)).toMatch(/^Z\$[\d.]+(T| quadrillion| quintillion)$/)
+  })
+
+  it('keeps the small change of currencies that were worth more than today’s dollar', () => {
+    // A 1920 yen had 100 sen and a 1900 mark 100 pfennig, though today's yen has no cents.
+    show('jp', 1920, 'local', true)
+    expect(formatMoney(5)).toMatch(/^¥0\.\d\d$/)
+    expect(showMoney(1).decimals).toBe(2)
+    show('de', 1900, 'local', true)
+    expect(formatMoney(3)).toMatch(/^0\.\d\d ℳ$/)
+    // Units worth less than a dollar stay whole.
+    show('jp', 1980, 'local', true)
+    expect(showMoney(1).decimals).toBe(0)
+    expect(formatMoney(5)).toMatch(/^¥\d+$/)
   })
 
   it('carries on into the future with today’s currency and US-style inflation', () => {
@@ -247,6 +263,34 @@ describe('currency data', () => {
       }
       expect(unitsPerDollar(c.id, PRESENT_YEAR)).toBe(unitsPerDollar(c.id, 1990, false))
     }
+  })
+
+  it('knows the market exchange rates of the big currencies', () => {
+    const near = (id: string, y: number, fx: number) => {
+      const r = exchangeRate(id, y) / fx
+      expect(r, `${id} ${y}: ${exchangeRate(id, y)} vs ${fx}`).toBeGreaterThan(0.97)
+      expect(r, `${id} ${y}: ${exchangeRate(id, y)} vs ${fx}`).toBeLessThan(1.03)
+    }
+    near('jp', 1960, 360)
+    near('jp', 1980, 227)
+    near('jp', 2000, 108)
+    near('de', 1990, 1.62)
+    near('de', 2010, 0.755)
+    near('fr', 2010, 0.755)
+    near('gb', 1980, 0.43)
+    near('in', 2010, 45.7)
+    near('ru', 2000, 28.1)
+    near('tr', 1990, 2609)
+    near('tr', 2010, 1.5)
+    near('mx', 1990, 2813)
+    near('mx', 2000, 9.46)
+    // Between anchors it moves smoothly; today and in the future it is today's rate.
+    const mid = exchangeRate('jp', 1975)
+    expect(mid).toBeLessThan(360)
+    expect(mid).toBeGreaterThan(227)
+    expect(exchangeRate('jp', PRESENT_YEAR)).toBeCloseTo(unitsPerDollar('jp', PRESENT_YEAR), 6)
+    expect(exchangeRate('jp', PRESENT_YEAR + 30)).toBeCloseTo(unitsPerDollar('jp', PRESENT_YEAR), 6)
+    expect(exchangeRate('ch', PRESENT_YEAR + 5)).toBeCloseTo(exchangeRate('ch', PRESENT_YEAR), 6)
   })
 
   it('stays close to real exchange rates for big currencies', () => {

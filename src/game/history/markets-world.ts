@@ -84,6 +84,8 @@ export interface ExchangeRules {
   opened: number
   /** Years trading was suspended (wars, occupations): prices move on, but nobody can trade. */
   closed?: readonly (readonly [number, number])[]
+  /** Why it was shut (a clause for "The exchange is closed: ..."). */
+  closedWhy?: string
   /** Years a revolution nationalized every listed company (shareholders got nothing). */
   expropriated?: readonly number[]
   /** Years after an expropriation with no stock market at all, until it reopened. */
@@ -92,15 +94,15 @@ export interface ExchangeRules {
 
 /** Stock exchanges by home country (countries with no exchange use their region's hub). */
 export const EXCHANGE_RULES: Readonly<Record<string, ExchangeRules>> = {
-  us: { opened: 1792 }, gb: { opened: 1801 }, jp: { opened: 1878, closed: [[1946, 1948]] }, de: { opened: 1585 }, fr: { opened: 1724 },
-  ca: { opened: 1861 }, au: { opened: 1871 }, hk: { opened: 1891, closed: [[1942, 1945]] }, in: { opened: 1875 },
-  cn: { opened: 1891, closed: [[1942, 1945]], expropriated: [1949], none: [[1950, 1990]] },
+  us: { opened: 1792 }, gb: { opened: 1801 }, jp: { opened: 1878, closed: [[1945, 1948]], closedWhy: 'the war is over, but the occupation authorities keep it shut.' }, de: { opened: 1585 }, fr: { opened: 1724 },
+  ca: { opened: 1861 }, au: { opened: 1871 }, hk: { opened: 1891, closed: [[1942, 1945]], closedWhy: 'Hong Kong is under wartime occupation.' }, in: { opened: 1875 },
+  cn: { opened: 1891, closed: [[1942, 1945]], closedWhy: 'Shanghai is under wartime occupation.', expropriated: [1949], none: [[1950, 1990]] },
   kr: { opened: 1956 }, tw: { opened: 1962 }, za: { opened: 1887 }, br: { opened: 1890 }, mx: { opened: 1894 },
   ru: { opened: 1703, expropriated: [1918], none: [[1919, 1994]] },
-  ar: { opened: 1854 }, tr: { opened: 1986 }, it: { opened: 1808 }, es: { opened: 1831, closed: [[1936, 1939]] }, nl: { opened: 1602 },
+  ar: { opened: 1854 }, tr: { opened: 1986 }, it: { opened: 1808 }, es: { opened: 1831, closed: [[1936, 1939]], closedWhy: 'civil war has split the country.' }, nl: { opened: 1602 },
   be: { opened: 1801 }, ch: { opened: 1850 }, at: { opened: 1771 }, se: { opened: 1863 }, dk: { opened: 1808 }, no: { opened: 1819 },
-  fi: { opened: 1912 }, ie: { opened: 1793 }, pt: { opened: 1769, closed: [[1974, 1976]] }, gr: { opened: 1876, closed: [[1941, 1944]] },
-  pl: { opened: 1817, closed: [[1939, 1944]], expropriated: [1946], none: [[1947, 1990]] },
+  fi: { opened: 1912 }, ie: { opened: 1793 }, pt: { opened: 1769, closed: [[1974, 1976]], closedWhy: 'a revolution has turned the country upside down.' }, gr: { opened: 1876, closed: [[1941, 1944]], closedWhy: 'Greece is under wartime occupation.' },
+  pl: { opened: 1817, closed: [[1939, 1944]], closedWhy: 'Poland is under wartime occupation.', expropriated: [1946], none: [[1947, 1990]] },
   hu: { opened: 1864, expropriated: [1948], none: [[1949, 1989]] },
   cz: { opened: 1871, expropriated: [1948], none: [[1949, 1992]] },
   ro: { opened: 1882, expropriated: [1948], none: [[1949, 1994]] },
@@ -110,12 +112,12 @@ export const EXCHANGE_RULES: Readonly<Record<string, ExchangeRules>> = {
   eg: { opened: 1883, expropriated: [1961], none: [[1962, 1991]] },
   ma: { opened: 1929 }, ng: { opened: 1961 }, ke: { opened: 1954 }, tn: { opened: 1969 }, ug: { opened: 1997 }, zw: { opened: 1896 },
   ir: { opened: 1967, expropriated: [1979], none: [[1980, 1988]] },
-  iq: { opened: 1992, closed: [[2003, 2003]] }, il: { opened: 1953 }, jo: { opened: 1978 },
-  kw: { opened: 1977, closed: [[1990, 1992]] }, lb: { opened: 1920, closed: [[1983, 1995]] }, qa: { opened: 1997 }, sa: { opened: 1985 },
+  iq: { opened: 1992, closed: [[2003, 2003]], closedWhy: 'war has come to Baghdad.' }, il: { opened: 1953 }, jo: { opened: 1978 },
+  kw: { opened: 1977, closed: [[1990, 1992]], closedWhy: 'the invasion wrecked the market, and rebuilding it takes time.' }, lb: { opened: 1920, closed: [[1983, 1995]], closedWhy: 'civil war has torn Beirut apart.' }, qa: { opened: 1997 }, sa: { opened: 1985 },
   ae: { opened: 2000 }, sy: { opened: 2009 }, bd: { opened: 1954 }, pk: { opened: 1947 }, np: { opened: 1994 }, vn: { opened: 2000 },
   kz: { opened: 1993 }, mn: { opened: 1991 },
-  id: { opened: 1912, closed: [[1942, 1951]], expropriated: [1958], none: [[1959, 1976]] },
-  th: { opened: 1975 }, my: { opened: 1960 }, ph: { opened: 1927, closed: [[1942, 1945]] }, sg: { opened: 1960 }, nz: { opened: 1870 },
+  id: { opened: 1912, closed: [[1942, 1951]], closedWhy: 'war, occupation and the fight for independence come first.', expropriated: [1958], none: [[1959, 1976]] },
+  th: { opened: 1975 }, my: { opened: 1960 }, ph: { opened: 1927, closed: [[1942, 1945]], closedWhy: 'the islands are under wartime occupation.' }, sg: { opened: 1960 }, nz: { opened: 1870 },
   jm: { opened: 1968 }, bs: { opened: 2000 }, pa: { opened: 1990 }, pe: { opened: 1860 }, cl: { opened: 1893 }, co: { opened: 1928 }, ve: { opened: 1947 },
 }
 

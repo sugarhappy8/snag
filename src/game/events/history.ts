@@ -2,8 +2,9 @@
 // rationing and air raids, the Moon landing on the family TV (or the radio, or the newspaper),
 // the Cuban Missile Crisis, Woodstock, the Berlin Wall, Y2K, September 11, the pandemic
 // lockdown... Called by history/events.ts yearlyHistory for years before PRESENT_YEAR only, so
-// lives in the present are untouched. At most one popup a year (plus a few quiet log lines);
-// each moment happens once per character. Tragedies are told with tact: headlines, feelings and
+// lives in the present are untouched. At most two popups a year, only one of them a choice (plus a
+// few quiet log lines); each moment happens once per character (air raids, the Depression and wars
+// at home may come back). Tragedies are told with tact: headlines, feelings and
 // choices, never graphic detail. Wartime drafts live in special/military.ts.
 import { addHidden, addMoney, addStat, endJob, earnIncome, formatMoney, inPrison, log, notice, parents, remember, scriptChoice, spend } from '../core'
 import { contractCondition } from '../health'
@@ -182,7 +183,8 @@ function quietMoments(g: GameState): void {
     if (!warId) continue
     if (warsAt(id, g.year).some((w) => w.id === warId)) continue
     delete p.data.atWar
-    p.livesWithPlayer = p.data.homeBeforeWar === true || p.livesWithPlayer
+    // Back under the same roof only if I still live at home.
+    p.livesWithPlayer = (p.data.homeBeforeWar === true && g.character.residence.status === 'parents') || p.livesWithPlayer
     delete p.data.homeBeforeWar
     log(g, `My ${p.gender === 'male' ? 'father' : 'mother'} came home from the war.`, 'good')
     addStat(g, 'happiness', randInt(g, 4, 8))
@@ -760,7 +762,8 @@ const WALL = defineScript('history.berlinWall', (g, choice) => {
 const CUBA = defineScript('history.cuba', (g, choice) => {
   if (!g.character.alive) return
   if (choice === 'shelter') {
-    const cost = Math.round(3000 * wealth(g))
+    // About $1,500 at the time (money is in today's dollars).
+    const cost = Math.round(15_000 * wealth(g))
     if (spend(g, cost)) {
       addStat(g, 'happiness', -1)
       notice(g, 'Fallout Shelter', `You spent ${formatMoney(cost)} on a concrete shelter in the backyard. Thirteen days later the crisis was over. It makes an excellent root cellar.`, { emoji: '\u{1F3D7}\u{FE0F}' })
@@ -817,7 +820,8 @@ const RAID = defineScript('history.raid', (g, choice) => {
 const WAR_WORK = defineScript('history.warWork', (g, choice) => {
   if (!g.character.alive) return
   if (choice === 'factory') {
-    const pay = Math.round(14_000 * wealth(g))
+    // A war-plant wage, about $2,000 a year at the time.
+    const pay = Math.round(32_000 * wealth(g))
     earnIncome(g, pay)
     addStat(g, 'smarts', 2)
     addStat(g, 'happiness', 2)

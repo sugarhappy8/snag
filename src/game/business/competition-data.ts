@@ -148,10 +148,13 @@ export const MARKETS: Record<Industry, MarketDef> = {
     legacy: { count: 3, pull: 25, fadeFrom: 2004, fadeTo: 2016, label: 'state rocket works' },
   },
   electricVehicles: {
-    scope: 'world', noun: 'electric car', ref: 3.5, field: 30, fringe: 0.2, network: 4, named: 16, emerging: true,
-    curve: [[1900, 0.01], [1912, 0.03], [1920, 0.004], [1930, 0.0005], [1990, 0.0005], [1997, 0.002], [2008, 0.004], [2010, 0.01], [2012, 0.025], [2015, 0.04], [2018, 0.1], [2020, 0.2], [2022, 0.55], [2024, 0.85], [2026, 1], [2030, 1.6], [2035, 2.4], [2045, 3.2], [2060, 3.6]],
+    scope: 'world', noun: 'electric vehicle', ref: 3.5, field: 30, fringe: 0.2, network: 4, named: 16, emerging: true,
+    // The electric cars of 1900-1915 lost to gasoline; the modern industry restarts with
+    // California's zero-emission mandate and the first lithium cars of the late 1990s.
+    from: 1996, notYet: 'Gasoline won the car wars back in the 1920s. Battery cars are golf carts and milk floats now, and no investor will touch one.',
+    curve: [[1996, 0.0015], [1997, 0.002], [2008, 0.004], [2010, 0.01], [2012, 0.025], [2015, 0.04], [2018, 0.1], [2020, 0.2], [2022, 0.55], [2024, 0.85], [2026, 1], [2030, 1.6], [2035, 2.4], [2045, 3.2], [2060, 3.6]],
     hubs: [['cn', 35], ['us', 22], ['de', 12], ['jp', 8], ['kr', 7], ['fr', 5], ['gb', 3], ['se', 3], ['in', 3], ['vn', 2]],
-    names: { pre: ['Voltara', 'Coilworth', 'Sparkline', 'Fluxdrive', 'Ohmway', 'Kilowatt', 'Currento', 'Lumivolt', 'Torqua', 'Glidepath'], post: ['Motors', 'EV', 'Automotive', 'Electric', 'Mobility'] },
+    names: { pre: ['Voltara', 'Coilworth', 'Sparkline', 'Fluxdrive', 'Ohmway', 'Kilowatt', 'Currento', 'Lumivolt', 'Torqua', 'Glidepath'], post: ['Motors', 'Autoworks', 'Automotive', 'Electric', 'Mobility'] },
   },
   quantum: {
     scope: 'world', noun: 'quantum computing', ref: 6, field: 25, fringe: 0.2, network: 6, named: 12, emerging: true,
@@ -162,7 +165,8 @@ export const MARKETS: Record<Industry, MarketDef> = {
   },
   cybersecurity: {
     scope: 'world', noun: 'cybersecurity', ref: 2, field: 60, fringe: 0.3, network: 5, named: 16, emerging: true,
-    from: 1975, notYet: 'There is barely a network to break into yet.',
+    // Security as a business arrives with the internet (antivirus floppies came a few years before).
+    from: 1991, notYet: 'There is barely a network to break into yet.',
     curve: [[1975, 0.001], [1985, 0.005], [1990, 0.015], [1995, 0.04], [2000, 0.1], [2005, 0.18], [2010, 0.3], [2015, 0.5], [2020, 0.72], [2026, 1], [2040, 2], [2060, 2.6]],
     hubs: [['us', 40], ['il', 18], ['gb', 8], ['cn', 6], ['de', 5], ['ru', 5], ['fr', 4], ['in', 4], ['ca', 4], ['jp', 3], ['kr', 3]],
     names: { pre: ['Bastion', 'Sentinelle', 'Rampart', 'Cipherion', 'Watchtower', 'Bulwark', 'Portcullis', 'Moatline', 'Keyward', 'Tripwire'], post: ['Security', 'Cyber', 'Defense', 'Shield', 'Labs'] },

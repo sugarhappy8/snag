@@ -146,7 +146,8 @@ function generate(fam: string, industry: string, scopeKey: string): Roster {
   const add = (r: Omit<Rival, 'id' | 'name' | 'quality' | 'tech'>, nameTries = 6): void => {
     let name = ''
     for (let i = 0; i < nameTries && (!name || names.has(name)); i++) name = rivalName(s, industry, d, r.hq)
-    if (names.has(name)) name = `${name} ${getCountry(r.hq).demonym}`
+    // A clash after six tries: the second company of that name sets itself apart.
+    if (names.has(name)) name = national ? `New ${name}` : `${name} International`
     if (names.has(name)) return
     names.add(name)
     const lp = Math.log2(1 + r.pot)

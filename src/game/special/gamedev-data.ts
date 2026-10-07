@@ -557,6 +557,22 @@ export function scopesIn(year: number): ScopeDef[] {
   return SCOPES.filter((x) => scopeOpen(x.id, year))
 }
 
+/**
+ * The platform a studio's leads pick for a game of this scope in that year: everything at once
+ * for blockbusters (from 1995), consoles for AA, PC for smaller games, falling back to whatever
+ * takes releases that year (no "every platform" launches in 1985). Today: multi / console / pc.
+ */
+export function studioPlatformFor(scopeIndex: number, year: number): PlatformId {
+  const want: PlatformId[] = scopeIndex >= 4 ? ['multi', 'console', 'pc'] : scopeIndex >= 3 ? ['console', 'pc'] : ['pc', 'console']
+  return want.find((id) => platformOpen(id, year)) ?? 'console'
+}
+
+/** The engine a studio's leads pick for that scope and year (licensed engines arrived in the late 1990s). */
+export function studioEngineFor(scopeIndex: number, year: number): EngineId {
+  const want: EngineId[] = scopeIndex >= 3 ? ['titan', 'cobalt', 'homebrew'] : ['cobalt', 'homebrew']
+  return want.find((id) => engineOpen(id, year)) ?? 'homebrew'
+}
+
 /** The platform's name in that year ("PC (PixelPantry)" today, "PC (boxed & shareware)" in 1993). */
 export function platformLabel(id: PlatformId, year: number): string {
   const d = platformDef(id)
@@ -571,12 +587,12 @@ export function storeIn(year: number): string {
   return year >= 2004 ? STORE : 'shop shelves'
 }
 
-/** Typical team size multiplier for that year (a 1985 "big" game had a dozen people). */
+/** Typical team size multiplier for that year (a 1985 "big" game had a dozen people, a 2020 one hundreds). */
 export function teamScale(year: number): number {
   if (year >= 2010) return 1
   if (year >= 2000) return 0.55
-  if (year >= 1990) return 0.2
-  return 0.08
+  if (year >= 1990) return 0.25
+  return 0.1
 }
 
 /** A line of era color for the Game Industry menu ('' for the modern day). */

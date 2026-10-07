@@ -3,6 +3,7 @@
 // closer to global rates than local wages), clients can be from hell, and some never pay.
 import { addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
+import { eraOk, eraPick, eraStrip } from '../events/era'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
@@ -59,7 +60,7 @@ const CLIENTS: [string, boolean][] = [
   ['a local {sport} club', false],
   ['a real-estate agent with very white teeth', true],
   ['a restaurant that serves {food}', false],
-  ['a pet influencer (the pet is the influencer)', true],
+  ['@socialMedia a pet influencer (the pet is the influencer)', true],
   ['a wedding photographer', true],
   ['a man who wants to "disrupt" lawn care', false],
   ['a yoga studio near {hangout}', false],
@@ -68,11 +69,13 @@ const CLIENTS: [string, boolean][] = [
 ]
 
 const HELL = [
+  // Era tags (events/era.ts): no voice notes before smartphones, no social networks before 2004.
   'The client wants "one tiny change": a complete redesign, for no extra money.',
   'The client asked you to "make it pop." Then "pop it less." Then "the first pop, but different."',
   'The client says their nephew could have done it in an hour and wants a discount.',
-  'The client wants it "like the big social networks, but better." Their budget has not changed.',
-  'The client sent 47 voice notes at 2 AM, each one a new feature.',
+  '@socialMedia The client wants it "like the big social networks, but better." Their budget has not changed.',
+  '@smartphone The client sent 47 voice notes at 2 AM, each one a new feature.',
+  '@!smartphone The client sent 47 emails at 2 AM, each one a new feature.',
 ]
 
 const REVIEWS: Record<number, string[]> = {
@@ -85,8 +88,8 @@ const REVIEWS: Record<number, string[]> = {
 
 function clientName(g: GameState): string {
   const c = g.character
-  const [text, person] = pick(g, CLIENTS)
-  const who = fillLocal(g, text).replace(/\{\w+\}/g, 'local')
+  const [tagged, person] = pick(g, CLIENTS.filter(([t]) => eraOk(g, t)))
+  const who = fillLocal(g, eraStrip(tagged)).replace(/\{\w+\}/g, 'local')
   return person && chance(g, 0.6) ? `${randomFirstName(g, c.countryId, chance(g, 0.5) ? 'male' : 'female')} ${randomLastName(g, c.countryId)}, ${who}` : who
 }
 
@@ -190,7 +193,7 @@ export function doCodeGig(g: GameState, gig: CodeGig): void {
       g,
       HELL_SCRIPT,
       'Client From Hell',
-      `You took a job on ${platform} for ${client}: ${gig.label.toLowerCase()}, ${hours} hours at ${formatMoney(rate)}/hour (${formatMoney(pay)}). ${pick(g, HELL)}`,
+      `You took a job on ${platform} for ${client}: ${gig.label.toLowerCase()}, ${hours} hours at ${formatMoney(rate)}/hour (${formatMoney(pay)}). ${eraPick(g, HELL)}`,
       [
         { id: 'comply', label: 'Do it anyway, for free', emoji: '\u{1F64F}' },
         { id: 'charge', label: 'Bill them for the extra work', emoji: '\u{1F9FE}' },
@@ -250,7 +253,7 @@ export const codeFreelanceMenu: MenuGroup = {
   subtitle: (g) => {
     const s = devState(g)
     const r = freelanceRating(s)
-    return s.freelance.gigs > 0 ? `${s.freelance.gigs} jobs · ${r > 0 ? `${r.toFixed(1)}\u{2B50}` : 'no reviews'} · ${yearActionsUsed(g, 'computer.dev.gig')}/${GIG_LIMIT} this year` : 'Websites, logos, scripts and apps for paying clients'
+    return s.freelance.gigs > 0 ? `${s.freelance.gigs} jobs · ${r > 0 ? `${r.toFixed(1)}\u{2B50}` : 'no reviews'} · ${yearActionsUsed(g, 'computer.dev.gig')}/${GIG_LIMIT} this year` : `Websites, logos, scripts and ${gigsNow(g).some((x) => x.id === 'app') ? 'apps' : 'business software'} for paying clients`
   },
   visible: (g) => g.character.age >= 13 && eraOpen(g, FREELANCE_GATE),
   disabledReason: (g) => firstReason(computerBlock(g), ageBlock(g, 13, 'freelance')),

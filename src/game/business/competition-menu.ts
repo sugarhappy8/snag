@@ -10,7 +10,7 @@ import { getCountry } from '../world'
 import { marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
 import { TIERS } from './competition-data'
 import { marketOwner, marketViewOf, shareLine, shareText, type MarketView } from './competition'
-import { acquireRival, acquisitionQuote, lobby, lobbyCost, lobbyOdds, offensiveValue, OFFENSIVE_CUT, priceOffensive, raidCost, raidValue, talentRaid } from './competition-moves'
+import { acquireRival, acquisitionQuote, lobby, type AcquisitionQuote, lobbyCost, lobbyOdds, offensiveValue, OFFENSIVE_CUT, priceOffensive, raidCost, raidValue, talentRaid } from './competition-moves'
 import { manageBlock } from './gate'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
@@ -22,7 +22,7 @@ import { money, pct, priceCapOf, stars } from './util'
 const cache = new Map<string, unknown>()
 
 function cached<T>(g: GameState, a: Asset, what: string, make: () => T): T {
-  const key = `${what}|${g.lifeId}|${a.id}|${g.year}|${g.character.stats.smarts}|${hasTalent(g, 'Business') ? 1 : 0}|${JSON.stringify(a.details)}`
+  const key = `${what}|${g.lifeId}|${a.id}|${g.year}|${g.character.stats.smarts}|${hasTalent(g, 'Business') ? 1 : 0}|${priceCapOf(g, a.id) ?? '-'}|${JSON.stringify(a.details)}`
   if (cache.has(key)) return cache.get(key) as T
   const v = make()
   cache.set(key, v)
@@ -35,6 +35,33 @@ function cached<T>(g: GameState, a: Asset, what: string, make: () => T): T {
 
 function live(g: GameState, a: Asset): Asset {
   return findBusiness(g, a.id) ?? a
+}
+
+// The moves' numbers, computed once per company state (the planner behind them is not cheap).
+function quoteOf(g: GameState, a: Asset, rivalId: string): AcquisitionQuote | null {
+  const cur = live(g, a)
+  return cached(g, cur, `quote.${rivalId}`, () => acquisitionQuote(g, readBiz(g, cur), rivalId))
+}
+
+function offenseOf(g: GameState, a: Asset): number {
+  const cur = live(g, a)
+  return cached(g, cur, 'offense', () => offensiveValue(g, readBiz(g, cur)))
+}
+
+function raidOf(g: GameState, a: Asset): number {
+  const cur = live(g, a)
+  return cached(g, cur, 'raid', () => raidValue(g, readBiz(g, cur)))
+}
+
+/** Expected fines a lobbying push saves, minus its bill (Business talent). */
+function lobbyOf(g: GameState, a: Asset): number {
+  const cur = live(g, a)
+  return cached(g, cur, 'lobby', () => {
+    const b = readBiz(g, cur)
+    const at = marketViewOf(g, b).antitrust
+    const fine = Math.max(0, b.last?.revenue ?? 0) * at.regime.fine * 0.6
+    return at.p * 0.6 * 3 * fine * lobbyOdds(g, b) - lobbyCost(b)
+  })
 }
 
 function hinting(g: GameState, a: Asset): boolean {
@@ -117,10 +144,10 @@ function bestMove(g: GameState, a: Asset): BestMove | null {
     const b = readBiz(g, a)
     const v = marketViewOf(g, b)
     const moves: BestMove[] = []
-    if (priced(b) && priceCapOf(g, a.id) === null) moves.push({ id: 'offense', value: offensiveValue(g, b), text: 'A price offensive pays this year' })
-    if (v.rivals.some((r) => !r.legacy)) moves.push({ id: 'raid', value: raidValue(g, b), text: `Raid ${v.rivals[0]?.name ?? 'the top rival'}'s talent` })
-    for (const r of v.rivals.slice(0, 6)) {
-      const q = acquisitionQuote(g, b, r.id)
+    if (priced(b) && priceCapOf(g, a.id) === null) moves.push({ id: 'offense', value: offenseOf(g, a), text: 'A price offensive pays this year' })
+    if (v.rivals.some((r) => !r.legacy)) moves.push({ id: 'raid', value: raidOf(g, a), text: `Raid ${v.rivals[0]?.name ?? 'the top rival'}'s talent` })
+    for (const r of v.rivals.filter((x) => !x.legacy).slice(0, 6)) {
+      const q = quoteOf(g, a, r.id)
       if (q && !q.block && q.price <= Math.max(0, b.cash)) moves.push({ id: `buy.${r.id}`, value: q.value, text: `Buy out ${r.name}` })
     }
     const best = moves.filter((m) => Number.isFinite(m.value) && m.value > 500).sort((x, y) => y.value - x.value)[0]
@@ -205,25 +232,25 @@ function acquireMenu(a: Asset): MenuGroup {
       return list.map((r) =>
         mAct(a, `buy.${r.id}`, r.name, getCountry(r.hq).flag, {
           subtitle: (gg) => {
-            const q = acquisitionQuote(gg, readBiz(gg, a), r.id)
+            const q = quoteOf(gg, a, r.id)
             return q ? `${money(q.price)} · ${shareText(r.share)} of the market${q.outlets > 0 ? ` · ${q.outlets} ${q.outlets === 1 ? industryDef(b.industry).site : industryDef(b.industry).sitePlural}` : ''}` : 'Not for sale'
           },
           hint: (gg) => {
             const cur = live(gg, a)
             if (!hinting(gg, cur)) return null
-            const q = cached(gg, cur, `quote.${r.id}`, () => acquisitionQuote(gg, readBiz(gg, cur), r.id))
+            const q = quoteOf(gg, cur, r.id)
             if (!q || q.block) return null
             return talentHint(gg, 'Business', q.value > 0 ? `A good buy: about ${money(q.value)} more than it costs over the years` : `Overpriced: about ${money(-q.value)} more than it will ever earn you`)
           },
           disabled: (gg, bb) => {
-            const q = acquisitionQuote(gg, bb, r.id)
+            const q = quoteOf(gg, a, r.id)
             if (!q) return `${r.name} isn't for sale.`
             if (q.block) return q.block
             if (bb.cash < q.price) return `${a.name} has ${money(Math.max(0, bb.cash))} in cash; this deal needs ${money(q.price)}.`
             return null
           },
           confirm: (gg) => {
-            const q = acquisitionQuote(gg, readBiz(gg, a), r.id)
+            const q = quoteOf(gg, a, r.id)
             return q ? `Buy ${r.name} for ${money(q.price)} of ${a.name}'s cash?` : null
           },
           run: (gg, cur, bb) => {
@@ -245,7 +272,7 @@ function moveRows(g: GameState, a: Asset, v: MarketView): MenuNode[] {
         hint: (gg) => {
           const cur = live(gg, a)
           if (!hinting(gg, cur)) return null
-          const val = cached(gg, cur, 'offense', () => offensiveValue(gg, readBiz(gg, cur)))
+          const val = offenseOf(gg, cur)
           return talentHint(gg, 'Business', val > 0 ? `Worth it: about ${money(val)} better over two years` : `Not worth it: the cut costs about ${money(-val)} more than the customers it wins`)
         },
         disabled: (gg) => (priceCapOf(gg, a.id) !== null ? 'You already promised to hold your prices this year.' : null),
@@ -261,7 +288,7 @@ function moveRows(g: GameState, a: Asset, v: MarketView): MenuNode[] {
         hint: (gg) => {
           const cur = live(gg, a)
           if (!hinting(gg, cur)) return null
-          const val = cached(gg, cur, 'raid', () => raidValue(gg, readBiz(gg, cur)))
+          const val = raidOf(gg, cur)
           return talentHint(gg, 'Business', val > 0 ? `Worth it: about ${money(val)} more than the bonuses` : 'Not worth it: the bonuses cost more than the talent adds')
         },
         disabled: (_g, bb) => (bb.cash < raidCost(bb) ? `${a.name} needs ${money(raidCost(bb))} in cash for the signing bonuses.` : null),
@@ -277,11 +304,7 @@ function moveRows(g: GameState, a: Asset, v: MarketView): MenuNode[] {
         hint: (gg) => {
           const cur = live(gg, a)
           if (!hinting(gg, cur)) return null
-          const bb = readBiz(gg, cur)
-          const vv = marketViewOf(gg, bb)
-          const fine = Math.max(0, bb.last?.revenue ?? 0) * vv.antitrust.regime.fine * 0.6
-          const saved = vv.antitrust.p * 0.6 * 3 * fine * lobbyOdds(gg, bb)
-          const val = saved - lobbyCost(bb)
+          const val = lobbyOf(gg, cur)
           return talentHint(gg, 'Business', val > 0 ? `Worth it: it should save about ${money(val)} in expected fines` : 'Not worth it: the expected fines it saves are smaller than the bill')
         },
         disabled: (_g, bb) => (bb.cash < lobbyCost(bb) ? `${a.name} needs ${money(lobbyCost(bb))} in cash.` : null),

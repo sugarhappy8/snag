@@ -9,7 +9,7 @@ import { marketOf } from '../data/markets'
 import type { Statement } from './state'
 import type { Asset, GameState } from '../types'
 import { COUNTRIES, getCountry } from '../world'
-import { dominanceFrom, marketDemand, marketKey, marketStateOf, type MarketCtx, type MarketPick } from './competition-core'
+import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf, type MarketCtx, type MarketPick } from './competition-core'
 import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, tierFor, type Regime, type TierId } from './competition-data'
 import { familyId, pickHub, rawPull, rivalName, rosterOf } from './competition-roster'
 import { emptyMarket, type ExtraRival, type MarketState } from './competition-state'
@@ -23,7 +23,7 @@ import { clampN, money as moneyShort, toJson } from './util'
 
 /** The company's market state, normalized (a fresh one when it never booked a year). */
 export function marketOfBiz(b: BizState): MarketState {
-  return marketStateOf(b) ?? emptyMarket(marketKey(b))
+  return freshMarketState(b) ?? emptyMarket(marketKey(b))
 }
 
 /** Write a changed market state back (bumps the revision the planner caches on). */
@@ -43,7 +43,7 @@ export function saveMarket(b: BizState, st: MarketState): void {
  * before evolve(). Idempotent per year.
  */
 export function refreshMarket(g: GameState, a: Asset, b: BizState, year: number, stmt: Statement, pick: (MarketPick & { bu: number; capacity?: number }) | null): void {
-  const prev = marketStateOf(b)
+  const prev = freshMarketState(b)
   if (prev && prev.year >= year) return
   const st = prev ?? emptyMarket(marketKey(b))
   const ctx = marketCtxFor(g, b, year)
@@ -162,7 +162,8 @@ export interface MarketView {
   history: { year: number; share: number }[]
 }
 
-function placeOf(key: string): string {
+/** 'the world', 'Japan', 'the United States' (a market key or a country id, as it reads mid-sentence). */
+export function placeOf(key: string): string {
   if (key === 'world') return 'the world'
   const c = getCountry(key)
   return /^(United |Czech Republic|Dominican Republic|DR Congo|Netherlands|Philippines|Bahamas)/.test(c.name) ? `the ${c.name}` : c.name

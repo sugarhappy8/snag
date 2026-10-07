@@ -3,7 +3,8 @@
 // on the family TV...), and the era context the AI narrator gets so it never mentions a
 // smartphone in 1985.
 //
-// Data: events-1900/1946/1990.ts (real headlines HISTORY_START-PRESENT_YEAR), events-future.ts
+// Data: events-1900/1946/1990.ts (real headlines HISTORY_START-PRESENT_YEAR, world first),
+// events-regional.ts (each continent's and the bigger countries' own news), events-future.ts
 // (the procedural future), events-wars.ts (wars, drafts, national service), events-medicine.ts
 // (era health), events-people.ts (era jobs and families), events-era.ts (flavor lines, tech
 // status), events-guard.ts (anachronism guard). The era popups themselves live in
@@ -17,6 +18,7 @@ import { CONTINENTS, getCountry, type Continent } from '../world'
 import { HEADLINES_1900 } from './events-1900'
 import { HEADLINES_1946 } from './events-1946'
 import { HEADLINES_1990 } from './events-1990'
+import { HEADLINES_REGIONAL } from './events-regional'
 import { eraBlurb, techStatus } from './events-era'
 import { futureHeadlines } from './events-future'
 import { eraSafe } from './events-guard'
@@ -84,7 +86,7 @@ function toEvent(row: HeadlineRow, used: Set<string>): WorldEvent {
 const BY_YEAR: ReadonlyMap<number, readonly WorldEvent[]> = (() => {
   const used = new Set<string>()
   const map = new Map<number, WorldEvent[]>()
-  for (const row of [...HEADLINES_1900, ...HEADLINES_1946, ...HEADLINES_1990]) {
+  for (const row of [...HEADLINES_1900, ...HEADLINES_1946, ...HEADLINES_1990, ...HEADLINES_REGIONAL]) {
     const ev = toEvent(row, used)
     const list = map.get(ev.year) ?? []
     list.push(ev)
@@ -116,12 +118,17 @@ function reach(ev: WorldEvent, countryId: string): number {
   return ev.region.includes(continent) ? 1 : 0
 }
 
-/** Higher = more worth telling this player about. */
+/**
+ * Higher = more worth telling this player about. Severity leads (a world war or the pandemic beats
+ * a national story of the same year), and closeness breaks ties within a severity: the country's
+ * own news, then its continent's, then the world's. The tie-break jitter (< 0.9) never crosses a
+ * full point, so a severity-2 home story always beats a severity-1 world one.
+ */
 function relevance(ev: WorldEvent, countryId: string): number {
   const r = reach(ev, countryId)
   if (r === 0) return -1
-  const local = r === 2 ? 3 : r === 1 ? 1.5 : 0
-  return ev.severity * 2 + local
+  const local = r === 2 ? 2 : r === 1 ? 1 : 0
+  return ev.severity * 3 + local
 }
 
 /** A stable 0-1 number for tie-breaks (so neighbors don't all read the same trivia). */
@@ -143,9 +150,17 @@ export function worldEvents(year: number, countryId: string): WorldEvent[] {
     .map((x) => x.ev)
 }
 
-/** Headlines a person living here and then would actually have heard (no TV news before TV). */
-export function headlinesFor(year: number, countryId: string): WorldEvent[] {
-  return worldEvents(year, countryId).filter((ev) => eraSafe(ev.headline, countryId, year))
+/**
+ * Headlines a person living here and then would actually have heard (no TV news before TV), most
+ * relevant first; `max` stops early (the anachronism check is the costly part).
+ */
+export function headlinesFor(year: number, countryId: string, max = Infinity): WorldEvent[] {
+  const out: WorldEvent[] = []
+  for (const ev of worldEvents(year, countryId)) {
+    if (out.length >= max) break
+    if (eraSafe(ev.headline, countryId, year)) out.push(ev)
+  }
+  return out
 }
 
 function sentence(text: string): string {
@@ -154,7 +169,7 @@ function sentence(text: string): string {
 
 /** The "📰 1969: Humans walk on the Moon for the first time." line ('' if there is no news). */
 export function newsLine(year: number, countryId: string): string {
-  const top = headlinesFor(year, countryId)[0]
+  const top = headlinesFor(year, countryId, 1)[0]
   return top ? `${NEWS_EMOJI} ${year}: ${sentence(top.headline)}` : ''
 }
 
@@ -197,17 +212,13 @@ function truncate(text: string, max: number): string {
 export function eraSummary(g: GameState): string {
   const year = g.year
   const countryId = g.character.countryId
-  const news = headlinesFor(year, countryId)
-    .slice(0, 3)
-    .map((ev) => truncate(ev.headline, 90))
+  const news = headlinesFor(year, countryId, 3).map((ev) => truncate(ev.headline, 90))
   const newsText = news.length ? ` News this year: ${news.join('; ')}.` : ''
   if (year > PRESENT_YEAR) {
     return `ERA: ${year}, the future: everything that exists today (smartphones, the internet, AI assistants) still does; new inventions stay modest and believable.${newsText}`
   }
-  const era = eraOf(year)
-  const label = year === PRESENT_YEAR ? 'the present day' : era.label
   const tech = techStatus(countryId, year)
-  const parts: string[] = [`ERA: ${year}, ${label} (${eraBlurb(year)}).`]
+  const parts: string[] = [year === PRESENT_YEAR ? `ERA: ${year}, the present day.` : `ERA: ${year}, ${eraOf(year).label} (${eraBlurb(year)}).`]
   if (tech.common.length) parts.push(`Common here: ${listOf(tech.common.slice(-6), 6)}.`)
   if (tech.rare.length) parts.push(`Rare: ${listOf(tech.rare, 5)}.`)
   if (tech.notYet.length) parts.push(`Not here yet: ${listOf(tech.notYet, 9)}. Never mention anything invented after ${year}.`)

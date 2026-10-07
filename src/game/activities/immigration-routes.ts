@@ -32,20 +32,23 @@ import {
   type InvestorProgram,
 } from '../data/immigration'
 import { FULLTIME_JOBS, getJobDef, type JobDef } from '../data/jobs'
+import { localTerm } from '../data/locales'
 import { priceLevel } from '../history/timeline'
 import { hasTalent, talentHint } from '../talents'
-import { getCountry } from '../world'
+import { countryLabel, getCountry } from '../world'
 import type { GameState, ImmigrationStatus, Person } from '../types'
 import {
+  an,
   bestPassport,
   blocAccess,
   blocName,
   citizenshipsOf,
   continentOf,
   crisisIn,
-  expandCitizenships,
   exitRegime,
   exitWindow,
+  expandCitizenships,
+  hasExitPermit,
   immState,
   isBanned,
   isCitizenOf,
@@ -145,8 +148,14 @@ function niceFee(n: number): number {
   return Math.max(0, Math.round(n / step) * step)
 }
 
+/** A program's money rule (nominal dollars of the year it was set) in today's money this year, rounded. */
+export function programMoney(nominal: number, year: number): number {
+  return niceFee(real(nominal, year))
+}
+
+/** A country's name as it reads mid-sentence ("the Netherlands", "France"). */
 export function countryName(id: string): string {
-  return getCountry(id).name
+  return countryLabel(getCountry(id))
 }
 
 function convictions(g: GameState): { count: number; serious: boolean } {
@@ -283,6 +292,9 @@ export const LOCK_DRIFT: Record<InvestKind, { lo: number; hi: number; fail?: num
   fee: { lo: 0, hi: 0 },
 }
 
+/** Years a retirement visa's bank deposit stays locked. */
+export const RETIRE_DEPOSIT_YEARS = 5
+
 /** Share of a business stake kept when the project collapses. */
 export const COLLAPSE_KEEP = 0.4
 
@@ -404,7 +416,7 @@ function citizenRoute(x: Ctx): RouteEval {
   const home = x.g.character.countryId
   const u = unionBetween(home, x.dest, x.year)
   const ownPassport = x.held.includes(x.dest)
-  const label = u && !ownPassport ? `Move within ${unionName(u, x.year)}` : ownPassport ? (x.birth === x.dest ? 'Move back home' : `Move as a ${getCountry(x.dest).demonym} citizen`) : `Move as a citizen (${unionName(u ?? { id: '', names: [[1900, x.destName]], members: [] }, x.year)})`
+  const label = u && !ownPassport ? `Move within ${unionName(u, x.year)}` : ownPassport ? (x.birth === x.dest ? 'Move back home' : `Move as ${an(getCountry(x.dest).demonym)} citizen`) : `Move as a citizen (${unionName(u ?? { id: '', names: [[1900, x.destName]], members: [] }, x.year)})`
   const r = base(x, 'citizen', 'citizen', label, '\u{1F3E0}')
   r.odds = 1
   r.result = 'citizen'
@@ -424,7 +436,7 @@ function freeRoutes(x: Ctx, out: RouteEval[]): void {
     r.notes.push(b.note)
     if (acc.limitedUntil) {
       x.transitional = true
-      out.push(closed(r, `${x.destName} keeps transitional limits on workers from ${countryName(acc.via)} until ${acc.limitedUntil}. A work visa is easier for you meanwhile.`))
+      out.push(closed(r, `${capital(x.destName)} keeps transitional limits on workers from ${countryName(acc.via)} until ${acc.limitedUntil}. A work visa is easier for you meanwhile.`))
       continue
     }
     r.odds = b.odds
@@ -565,7 +577,7 @@ function quotaRoute(x: Ctx, out: RouteEval[]): void {
     const def = cont === 'Europe' ? 0.2 : cont === 'Asia' ? 0.02 : cont === 'Oceania' ? 0.3 : 0.05
     r.odds = US_QUOTA_ODDS[x.birth] ?? def
     r.wait = r.odds < 0.1 ? 6 : r.odds < 0.3 ? 3 : 0
-    r.notes.push(`The 1924 quotas favored northern and western Europe: your country's quota gives you ${pct(r.odds)} odds.`)
+    r.notes.push(r.odds < 0.3 ? `The 1924 quotas favored northern and western Europe; ${countryName(x.birth)}'s quota is tiny and oversubscribed.` : 'The 1924 quotas favored northern and western Europe, and your country has plenty of numbers.')
   }
   out.push(r)
 }
@@ -627,7 +639,7 @@ function workRoute(x: Ctx, out: RouteEval[]): void {
   }
   const sponsor = sponsorOf(x)
   if (!sponsor) {
-    out.push(closed(r, 'No employer would sponsor you: you need at least a high-school diploma and a CV that fits a skilled job.'))
+    out.push(closed(r, `No employer would sponsor you: you need at least a ${localTerm(g, 'high')} diploma and a CV that fits a skilled job.`))
     return
   }
   r.sponsor = sponsor
@@ -701,7 +713,8 @@ function guestRoutes(x: Ctx, out: RouteEval[]): void {
 function studentRoute(x: Ctx, out: RouteEval[]): void {
   const g = x.g
   const c = g.character
-  if (c.age > 45) return
+  // Before passports and visas were the norm (the 1920s), students simply went.
+  if (c.age > 45 || x.year < 1920) return
   const r = base(x, 'student', 'student', 'Student visa', '\u{1F393}')
   r.visa = 'student'
   r.term = 1
@@ -709,7 +722,7 @@ function studentRoute(x: Ctx, out: RouteEval[]): void {
   r.proof = niceFee((getCountry(x.dest).freeUniversity ? 10_000 : 28_000) * x.w)
   r.notes.push('Enroll at a university there within a year. Part-time work only; a degree there opens a graduate work visa.')
   if (!g.character.education.degrees.some((d) => d.kind === 'highschool' || d.kind === 'ged')) {
-    out.push(closed(r, 'Universities abroad want a high-school diploma first.'))
+    out.push(closed(r, `Universities abroad want a ${localTerm(g, 'high')} diploma first.`))
     return
   }
   if (c.age > 40) {
@@ -719,7 +732,6 @@ function studentRoute(x: Ctx, out: RouteEval[]): void {
   const uni = cvScore(g, { kind: 'university' }).score
   r.odds = (0.35 + (0.35 * uni) / 100 + (0.25 * c.stats.smarts) / 100) * (1 - 0.35 * x.strict) * passFactor(x, 0.3)
   r.wait = weakPassWait(x)
-  r.notes.push(`Show ${formatMoney(r.proof)} for a year of fees and living costs (you keep it).`)
   out.push(r)
 }
 
@@ -876,11 +888,12 @@ function investorRoutes(x: Ctx, out: RouteEval[]): void {
       out.push(closed(r, `The program closed in ${end + 1}.`))
       continue
     }
-    const amount = real(investorTier(p, x.year), x.year)
+    const amount = programMoney(investorTier(p, x.year), x.year)
     r.invest = amount
     r.investKind = p.kind
     r.lockYears = p.lock
-    r.fee = niceFee(real(p.fee, x.year))
+    // Fees track inflation (they're written in today's dollars).
+    r.fee = niceFee(p.fee)
     r.result = p.result
     r.toPr = p.result === 'visa' ? (p.prYears === undefined ? lawOf(x.dest).pr : p.prYears) : 0
     if (p.result === 'citizen') r.toCitizen = 0
@@ -889,8 +902,7 @@ function investorRoutes(x: Ctx, out: RouteEval[]): void {
       r.term = 5
     }
     r.wait = (p.wait ?? 0) + Math.max(0, ...(p.backlog ?? []).filter(([o, y]) => o === x.birth && x.year >= y).map(([, , n]) => n))
-    r.notes.push(p.kind === 'fee' ? `${formatMoney(amount)} one-off payment.` : `${formatMoney(amount)} locked in ${investKindWord(p.kind)} for ${p.lock} years.`)
-    const need = Math.round(amount * p.worth)
+    const need = niceFee(amount * p.worth)
     if (x.worth < need) {
       out.push(closed(r, `Needs a net worth of at least ${formatMoney(need)} (yours: ${formatMoney(Math.max(0, x.worth))}).`))
       continue
@@ -922,17 +934,16 @@ function retireRoutes(x: Ctx, out: RouteEval[]): void {
       out.push(closed(r, `The program closed in ${end + 1}.`))
       continue
     }
-    const income = real(p.income, x.year)
+    const income = programMoney(p.income, x.year)
     r.fee = niceFee(1_500 * x.w)
     r.result = p.result
     r.visa = p.result === 'visa' ? 'retire' : undefined
     r.term = p.result === 'visa' ? 1 : undefined
     r.toPr = p.result === 'permanent' ? 0 : (p.prYears ?? null)
     if (p.deposit) {
-      r.invest = real(p.deposit, x.year)
+      r.invest = programMoney(p.deposit, x.year)
       r.investKind = 'deposit'
-      r.lockYears = 5
-      r.notes.push(`${formatMoney(r.invest)} kept in a local bank deposit.`)
+      r.lockYears = RETIRE_DEPOSIT_YEARS
     }
     if (c.age < p.minAge) {
       out.push(closed(r, `Only for people ${p.minAge} and older.`))
@@ -970,7 +981,7 @@ function remoteRoutes(x: Ctx, out: RouteEval[]): void {
     r.keepJob = true
     r.fee = niceFee(800 * x.w)
     r.notes.push('Keep your remote job and live there.', p.maxYears ? `At most ${p.maxYears === 1 ? 'one year' : `${p.maxYears} years`}.` : 'Renewable.')
-    const need = real(p.income, x.year)
+    const need = programMoney(p.income, x.year)
     const have = remoteJobIncome(x.g)
     if (have < need) {
       out.push(closed(r, have > 0 ? `Your remote job pays ${formatMoney(have)}; it needs ${formatMoney(need)}/yr.` : `Needs a remote-friendly job (tech, office, finance, design...) paying ${formatMoney(need)}/yr.`))
@@ -995,7 +1006,7 @@ function asylumRoute(x: Ctx, out: RouteEval[]): void {
   r.notes.push(`You'd be fleeing ${fleeing.crisis.label} in ${countryName(fleeing.id)}.`)
   const gen = asylumGenerosity(x.dest, x.year)
   if (gen === null) {
-    out.push(closed(r, `${x.destName} doesn't take in refugees.`))
+    out.push(closed(r, `${capital(x.destName)} doesn't take in refugees.`))
     return
   }
   const euProtection = fleeing.id === 'ua' && x.year >= 2022 && blocAccess(['de'], x.dest, x.year).some((a) => a.bloc.id === 'eu')
@@ -1007,8 +1018,9 @@ function asylumRoute(x: Ctx, out: RouteEval[]): void {
     r.toPr = 5
     r.notes.push('The EU grants Ukrainians protection on arrival.')
   } else {
-    const sev = fleeing.crisis.severity === 3 ? 1 : fleeing.crisis.severity === 2 ? 0.7 : 0.35
-    r.odds = Math.max(0.02, gen * sev)
+    // Claims from the worst wars almost always succeed where there's a working asylum system.
+    const sev = fleeing.crisis.severity === 3 ? 1.6 : fleeing.crisis.severity === 2 ? 0.9 : 0.4
+    r.odds = Math.max(0.02, Math.min(0.95, gen * sev))
     r.wait = 0
     r.toPr = Math.min(lawOf(x.dest).pr ?? 5, 5)
     r.notes.push('You move now and wait in the country for the decision (a year or two).')
@@ -1034,7 +1046,7 @@ function lotteryRoutes(x: Ctx, out: RouteEval[]): void {
       continue
     }
     if (p.diploma && eduRank(x.g) < 1) {
-      out.push(closed(r, 'Entrants need a high-school diploma.'))
+      out.push(closed(r, `Entrants need a ${localTerm(x.g, 'high')} diploma.`))
       continue
     }
     if ((p.minAge && c.age < p.minAge) || (p.maxAge && c.age > p.maxAge)) {
@@ -1059,11 +1071,16 @@ function finalize(x: Ctx, routes: RouteEval[]): RouteEval[] {
   const g = x.g
   const home = g.character.countryId
   const regime = exitRegime(home, x.year)
-  const permit = immState(g).exitPermit === x.year
+  const permit = hasExitPermit(g)
   const window = regime ? exitWindow(regime, x.year) : null
   const banned = isBanned(g, x.dest)
+  const soldier = g.character.job?.category === 'military'
   for (const r of routes) {
     if (!r.ok) continue
+    if (soldier) {
+      closed(r, "You're serving in the military. Leave the service first: desertion isn't a great look on an application.")
+      continue
+    }
     if (r.id !== 'citizen') {
       if (regime && !permit && !unionBetween(home, x.dest, x.year)) {
         closed(r, `${capital(regime.name)} won't let you leave without an exit visa.${window && window.note ? ` ${window.note}` : ''}`)
@@ -1188,21 +1205,27 @@ export function bestRouteHint(g: GameState, routes: RouteEval[]): string {
 
 /** Investing talent: what a locked golden-visa stake is likely to be worth when it unlocks. */
 export function investHint(g: GameState, r: RouteEval): string {
-  if (!r.investKind || r.invest <= 0 || !hasTalent(g, 'Investing')) return ''
-  if (r.investKind === 'fee') return talentHint(g, 'Investing', `That ${formatMoney(r.invest)} is a price, not an investment: you never see it again.`)
-  const back = expectedLockValue(r.investKind, r.invest, r.lockYears, g.year)
-  const change = back / r.invest - 1
+  if (!r.investKind || r.invest <= 0) return ''
+  return lockHint(g, r.investKind, r.invest, r.lockYears)
+}
+
+/** Investing talent: what `amount` locked in `kind` for `years` is likely to be worth (same model as the clock). */
+export function lockHint(g: GameState, kind: InvestKind, amount: number, years: number): string {
+  if (amount <= 0 || !hasTalent(g, 'Investing')) return ''
+  if (kind === 'fee') return talentHint(g, 'Investing', `That ${formatMoney(amount)} is a price, not an investment: you never see it again.`)
+  const back = expectedLockValue(kind, amount, years, g.year)
+  const change = back / amount - 1
   const why =
-    r.investKind === 'loan' || r.investKind === 'deposit'
-      ? 'the same number of dollars comes back, minus what inflation eats'
-      : r.investKind === 'bonds'
+    kind === 'loan' || kind === 'deposit'
+      ? 'the same sum comes back, minus what inflation eats'
+      : kind === 'bonds'
         ? 'bonds roughly keep pace with inflation'
-        : r.investKind === 'business'
-          ? 'and a real chance the project goes bust'
-          : r.investKind === 'fund'
+        : kind === 'business'
+          ? 'with a real chance the project goes bust'
+          : kind === 'fund'
             ? 'with big swings either way'
             : 'property tends to hold its value'
-  return talentHint(g, 'Investing', `Expect about ${formatMoney(back)} back after ${r.lockYears} years (${change >= 0 ? '+' : ''}${Math.round(change * 100)}% in today's money): ${why}.`)
+  return talentHint(g, 'Investing', `Expect about ${formatMoney(back)} back after ${years} year${years === 1 ? '' : 's'} (${change >= 0 ? '+' : ''}${Math.round(change * 100)}% in today's money): ${why}.`)
 }
 
 export function oddsText(r: RouteEval): string {

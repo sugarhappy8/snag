@@ -126,7 +126,7 @@ export function buildProject(g: GameState, kind: ProjectKind): void {
   const verdict = hit
     ? `It was a hit! ${kind.great}`
     : q >= 80
-      ? pick(g, ["It's genuinely great. The internet hasn't noticed yet.", 'It is the best thing you have ever made. Twelve people agree.'])
+      ? pick(g, [`It's genuinely great. ${online(g) ? 'The internet' : 'The world'} hasn't noticed yet.`, 'It is the best thing you have ever made. Twelve people agree.'])
       : q >= 65
         ? pick(g, ['It turned out really well.', 'People actually like it. Strangers, even.'])
         : q >= 45

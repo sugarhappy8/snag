@@ -169,9 +169,10 @@ export function prized(g: GameState): string {
   return 'bicycle'
 }
 
-/** What gets taken away as a punishment: 'screen time', 'TV privileges', 'radio privileges', 'dessert'. */
+/** What gets taken away as a punishment: 'screen time', 'video games', 'TV privileges', 'radio privileges', 'dessert'. */
 export function privileges(g: GameState): string {
-  if (common(g, 'smartphone') || common(g, 'videoGameConsole')) return 'screen time'
+  if (common(g, 'smartphone')) return 'screen time'
+  if (common(g, 'videoGameConsole')) return 'video games'
   if (common(g, 'tv')) return 'TV privileges'
   if (common(g, 'radio')) return 'radio privileges'
   return 'dessert'
@@ -325,9 +326,9 @@ const VENUE_SINCE: readonly [RegExp, number][] = [
   [/\bthe Pearl\b|Global Village|Kite Beach|Marina Crescent|Tabiat Bridge|Hatirjheel|Magic Water Circuit|TelefériQo|Paseo Cayalá|Cinta Costera|V&A Waterfront|Aker Brygge|Tel Aviv Port|Mall at Marathon|Siam Square/i, 2000],
 ]
 
-/** Did this venue exist in the player's year? (no malls in 1930, no bubble tea before the late 1980s) */
+/** Did this venue exist in the player's year? (no malls in 1930, no bubble tea before the late 1980s, no internet cafés before the internet) */
 export function venueExists(g: GameState, place: string): boolean {
-  return VENUE_SINCE.every(([re, year]) => g.year >= year || !re.test(place))
+  return VENUE_SINCE.every(([re, year]) => g.year >= year || !re.test(place)) && !anachronistic(g, place)
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +361,7 @@ export const ERA_RULES: readonly EraRule[] = [
   { id: 'email', re: /\be-?mails?\b|\be-?mailed\b|\be-?mailing\b/i, tech: 'internet' },
   { id: 'meme', re: /\bmemes?\b|\bwent viral\b|\bgone viral\b|\bgoes viral\b|\bviral (video|post|clip|dance|challenge|sensation)\b|\btrolling\b/i, tech: 'internet' },
   { id: 'wifi', re: /\bwi-?fi\b/i, tech: 'internet', year: 2000 },
-  { id: 'social media', re: /\bsocial media\b|\bfollowers\b|\bhashtags?\b|\binfluencers?\b|\btweet(s|ed)?\b|\bunfriend|\bprofile pic|\bposted (it|a|about|photos?|pictures?|that|the video)\b|\bwent live\b|\bfeed was\b/i, tech: 'socialMedia' },
+  { id: 'social media', re: /\bsocial media\b|\bfollowers\b|\bhashtags?\b|\binfluencers?\b|\btweet(s|ed)?\b|\bunfriend|\bprofile pic|\bposted (it|about|photos?|pictures?|that|the video)\b|\bposted an? (photo|picture|video|selfie|status|story|pic|clip|meme|update|rant|review)\b|\bwent live\b|\bfeed was\b/i, tech: 'socialMedia' },
   { id: 'video sharing', re: /\bvlogs?\b|\bvlogg|\byoutubers?\b|\bcontent creators?\b|\blivestream|\blive-stream|\bviews\b(?= (and|on|in))/i, tech: 'videoSharing' },
   { id: 'streaming', re: /\bstreaming\b|\bstreamers?\b|\bbinge[- ]?watch/i, tech: 'streaming' },
   { id: 'dating app', re: /\bswip(e|ed|ing) (left|right)\b|\bonline dating\b|\bdating profiles?\b/i, tech: 'datingApps' },
@@ -386,7 +387,7 @@ export const ERA_RULES: readonly EraRule[] = [
   { id: 'microwave', re: /\bmicrowav/i, year: 1967 },
   { id: 'vcr', re: /\bVCRs?\b|\bVHS\b|\bvideo ?tapes?\b|\bcamcorders?\b/i, year: 1978 },
   { id: 'dvd', re: /\bDVDs?\b|\bblu-?rays?\b/i, year: 1997 },
-  { id: 'cd', re: /\bCDs?\b|\bcompact discs?\b/, year: 1983 },
+  { id: 'cd', re: /\bCDs?\b(?! [A-ZÀ-Ý])|\bcompact discs?\b/, year: 1983 },
   { id: 'cassette', re: /\bcassettes?\b|\bmix-?tapes?\b|\bboomboxe?s?\b/i, year: 1965 },
   { id: 'pager', re: /\bpagers?\b|\bbeepers?\b/i, year: 1980 },
   { id: 'vape', re: /\bvap(e|es|ed|ing)\b|\be-?cigs?\b|\be-?cigarettes?\b/i, year: 2007 },
@@ -396,12 +397,13 @@ export const ERA_RULES: readonly EraRule[] = [
   { id: 'skateboard', re: /\bskateboard|\bBMX\b/i, year: 1960 },
   { id: 'rollerblade', re: /\brollerblad|\binline skat/i, year: 1980 },
   { id: 'jet ski', re: /\bjet ?skis?\b/i, year: 1972 },
-  { id: 'trendy diet', re: /\bketo\b|\bpaleo\b|\bintermittent fasting\b|\bjuice cleanse\b|\bgluten-?free\b|\bcrossfit\b|\boat milk\b|\bavocado toast\b|\bkombucha\b|\bspin class/i, year: 2005 },
+  { id: 'trendy diet', re: /\bketo\b|\bpaleo\b|\bintermittent fasting\b|\bjuice cleanse\b|\bgluten-?free\b|\bcrossfit\b|\boat milk\b|\bavocado toast\b|\bkombucha\b/i, year: 2005 },
+  { id: 'spin class', re: /\bspin class/i, year: 1993 },
   { id: 'cosmetic', re: /\bbotox\b|\blip fillers?\b|\blash extensions?\b|\bmicroblad|\bspray tan|\bBBL\b|\blaser hair/i, year: 1995 },
   { id: 'mma', re: /\bMMA\b|\bmixed martial arts\b|\bcage fight/i, year: 1993 },
-  { id: 'modern slang', re: /\brizz\b|\bno cap\b|\byeet\b|\bok boomer\b|\bFOMO\b|\bsimp(s|ing)?\b|\bvibe check\b|\bghost(ed|ing) (me|him|her|them|you)\b|\bbestie\b|\bsituationship\b|\bGen Z\b|\bmillennials?\b|\bmain character\b|\bgaslight/i, year: 2010 },
-  { id: 'jet travel', re: /\bjets?\b(?!-black| black| ski)|\bjet lag\b|\bjet-?set/i, year: 1958 },
-  { id: 'air travel', re: /\bairports?\b|\bairlines?\b|\bflights?\b(?! of (stairs|steps|fancy))|\bflew (to|home|back|in|out|first|economy|business)\b|\bboarding pass|\blayovers?\b/i, year: 1925 },
+  { id: 'modern slang', re: /\brizz\b|\bno cap\b|\byeet\b|\bok boomer\b|\bFOMO\b|\bsimp(s|ing)?\b|\bvibe check\b|\bghost(ed|ing) (me|him|her|them|you)\b|\bbestie\b|\bsituationship\b|\bGen Z\b|\bmillennials?\b|\bmain character (energy|syndrome|vibes?)\b|^main character\b|\bgaslight/i, year: 2010 },
+  { id: 'jet travel', re: /\bjets?\b(?!-black| black| ski| d'Eau)|\bjet lag\b|\bjet-?set/i, year: 1958 },
+  { id: 'air travel', re: /\bairports?\b|\bairlines?\b|\bflights?\b(?! of (stairs|steps|fancy)| (school|hours?|instructors?|lessons?|training|simulators?|suits?)\b)|\bflew (to|home|back|first class|economy|business class|in from|out to)\b|\bboarding pass|\blayovers?\b/i, year: 1925 },
   { id: 'nuclear', re: /\bnuclear\b|\batomic bomb|\bA-bomb/i, year: 1945 },
   { id: 'plastic', re: /\bplastic (bags?|bottles?|cups?|straws?|toys?|chairs?|wrap|forks?|tubs?)\b/i, year: 1955 },
   { id: 'drive-thru', re: /\bdrive-?thrus?\b|\bdrive-?through\b/i, year: 1948 },

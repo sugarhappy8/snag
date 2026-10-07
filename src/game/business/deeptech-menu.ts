@@ -586,7 +586,7 @@ function spaceNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNo
   const nodes: MenuNode[] = [
     infoNode(a, 'rocket', `${stageName('spaceTech', t.stage)} · ${plural(t.tests, 'test flight')}, ${plural(t.wins, 'success', 'successes')}, ${plural(t.booms, 'explosion')}`, '\u{1F680}'),
   ]
-  if (t.sats > 0) nodes.push(infoNode(a, 'sats', `${plural(t.sats, 'satellite batch', 'satellite batches')} in orbit selling internet from space (each lasts about six years)`, '\u{1F310}'))
+  if (t.sats > 0) nodes.push(infoNode(a, 'sats', `${plural(t.sats, 'satellite batch', 'satellite batches')} in orbit selling data links from space (each lasts about six years)`, '\u{1F310}'))
   if (t.contract) nodes.push(infoNode(a, 'contract', `${t.contract.name}: ${money(t.contract.perYear)}/yr for ${plural(t.contract.years, 'more year')}`, '\u{1F3DB}\u{FE0F}'))
   nodes.push(
     dtAct(a, 'testflight', t.stage >= 3 ? 'Fly a Demonstration Mission' : 'Attempt a Test Flight', '\u{1F680}', {
@@ -654,7 +654,7 @@ function testFlight(g: GameState, a: Asset, b: BizState, t: TechState, quiet = f
 
 function evNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNode[] {
   return [
-    infoNode(a, 'cars', `${stageName('electricVehicles', t.stage)} · ${plural(t.plant, 'factory unit')} · self-driving level ${t.autonomy + 1} · safety ${Math.round(t.safety)}/100`, '\u{1F697}'),
+    infoNode(a, 'cars', `${stageName('electricVehicles', t.stage)} · ${plural(t.plant, 'factory unit')} · autopilot level ${t.autonomy + 1} · safety ${Math.round(t.safety)}/100`, '\u{1F697}'),
     dtAct(a, 'unveil', 'Unveil a New Model', '\u{1F3AC}', {
       subtitle: (gg) => `About ${money(unveilCost(view(gg, a).b))} for the show · preorders this year`,
       disabled: (_gg, _bb, tt) => (tt.stage < 1 ? 'Unveil a car you can actually build first.' : null),

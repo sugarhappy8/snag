@@ -1,9 +1,9 @@
 // Generating NPCs. Every module that adds someone to the player's life uses createPerson.
 import { clamp } from './core'
-import { eraOccupation, oldTradeShare, OLD_TRADES } from './history/events-people'
+import { eraOccupation, nameFitsYear, oldTradeShare, OLD_TRADES } from './history/events-people'
 import { isHistorical } from './history/timeline'
 import { bell, chance, pick, rand, randInt, uid } from './rng'
-import { getCountry, randomFirstName, randomLastName } from './world'
+import { getCountry, namePoolOf, randomFirstName, randomLastName } from './world'
 import type { GameState, Gender, Json, Person, RelationKind, StatKey } from './types'
 
 export const TRAITS = [
@@ -170,7 +170,7 @@ export function createPerson(g: GameState, opts: PersonOptions): Person {
   const stat = (key: StatKey, lo: number, hi: number) => clamp(Math.round(opts.stats?.[key] ?? bell(g, lo, hi)))
   const person: Person = {
     id: uid(g, 'p'),
-    firstName: opts.firstName ?? randomFirstName(g, countryId, gender),
+    firstName: opts.firstName ?? firstNameFor(g, countryId, gender, opts.age, opts.relation),
     lastName: opts.relation === 'pet' ? '' : (opts.lastName ?? randomLastName(g, countryId)),
     gender,
     age: Math.max(0, Math.round(opts.age)),
@@ -200,12 +200,30 @@ export function createPerson(g: GameState, opts: PersonOptions): Person {
   // (two "Carmen Medina" classmates, a sibling named exactly like you).
   if (opts.relation !== 'pet' && (opts.firstName === undefined || opts.lastName === undefined)) {
     for (let i = 0; i < 5 && nameTaken(g, person); i++) {
-      if (opts.firstName === undefined) person.firstName = randomFirstName(g, countryId, gender)
+      if (opts.firstName === undefined) person.firstName = firstNameFor(g, countryId, gender, opts.age, opts.relation)
       else person.lastName = randomLastName(g, countryId)
     }
   }
   g.people.push(person)
   return person
+}
+
+/**
+ * A random first name that fits the person's birth year: in historical years a 1920 grandmother
+ * isn't a Madison (history/events-people.ts). Modern years roll exactly once, as before.
+ */
+function firstNameFor(g: GameState, countryId: string, gender: Gender, age: number, relation: RelationKind): string {
+  const name = randomFirstName(g, countryId, gender)
+  if (!isHistorical(g.year) || relation === 'pet') return name
+  return eraName(g, name, countryId, gender, g.year - Math.max(0, Math.round(age)))
+}
+
+/** `name` if it fits someone born in `born`, otherwise a pick among the pool's names that do. */
+export function eraName(g: GameState, name: string, countryId: string, gender: Gender, born: number): string {
+  if (nameFitsYear(name, born)) return name
+  const pool = namePoolOf(countryId)
+  const fits = (gender === 'male' ? pool.male : pool.female).filter((n) => nameFitsYear(n, born))
+  return fits.length ? pick(g, fits) : name
 }
 
 function nameTaken(g: GameState, person: Person): boolean {

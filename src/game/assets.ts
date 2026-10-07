@@ -48,6 +48,7 @@ import {
 } from './finance'
 import { computerUsd } from './computer/era'
 import { hasTech, type TechId } from './history/timeline'
+import { eraPick } from './events/era'
 import { createPerson } from './people'
 import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
@@ -1440,34 +1441,41 @@ interface VehicleModel {
   license: string | null
   rare?: boolean
   upkeepRate: number
+  /** First year it's for sale (no jet skis in 1960, no business jets before the 1960s). */
+  from?: number
+  /** Last year it's for sale new. */
+  until?: number
 }
 
 const BOATS: VehicleModel[] = [
   { label: 'Kayak', emoji: '🛶', min: 600, max: 2_000, license: null, upkeepRate: 0.02 },
   { label: 'Canoe', emoji: '🛶', min: 700, max: 2_200, license: null, upkeepRate: 0.02 },
   { label: 'Paddle Boat', emoji: '🦢', min: 1_500, max: 4_000, license: null, upkeepRate: 0.03 },
-  { label: 'Jet Ski', emoji: '🚤', min: 9_000, max: 18_000, license: 'boating', upkeepRate: 0.08 },
+  { label: 'Jet Ski', emoji: '🚤', min: 9_000, max: 18_000, license: 'boating', upkeepRate: 0.08, from: 1973 },
   { label: 'Fishing Boat', emoji: '🚤', min: 25_000, max: 60_000, license: 'boating', upkeepRate: 0.07 },
-  { label: 'Pontoon Boat', emoji: '⛴️', min: 30_000, max: 70_000, license: 'boating', upkeepRate: 0.07 },
-  { label: 'Speedboat', emoji: '🚤', min: 60_000, max: 180_000, license: 'boating', upkeepRate: 0.08 },
+  { label: 'Pontoon Boat', emoji: '⛴️', min: 30_000, max: 70_000, license: 'boating', upkeepRate: 0.07, from: 1952 },
+  { label: 'Speedboat', emoji: '🚤', min: 60_000, max: 180_000, license: 'boating', upkeepRate: 0.08, from: 1915 },
   { label: 'Sailboat', emoji: '⛵', min: 80_000, max: 300_000, license: 'boating', upkeepRate: 0.06 },
   { label: 'Houseboat', emoji: '🛥️', min: 150_000, max: 450_000, license: 'boating', upkeepRate: 0.06 },
-  { label: 'Catamaran', emoji: '⛵', min: 350_000, max: 1_200_000, license: 'boating', upkeepRate: 0.07 },
+  { label: 'Catamaran', emoji: '⛵', min: 350_000, max: 1_200_000, license: 'boating', upkeepRate: 0.07, from: 1960 },
   { label: 'Tugboat', emoji: '⛴️', min: 600_000, max: 1_500_000, license: 'boating', upkeepRate: 0.06 },
   { label: 'Yacht', emoji: '🛥️', min: 2_500_000, max: 18_000_000, license: 'boating', upkeepRate: 0.1 },
-  { label: 'Superyacht', emoji: '🛳️', min: 60_000_000, max: 300_000_000, license: 'boating', rare: true, upkeepRate: 0.1 },
+  { label: 'Superyacht', emoji: '🛳️', min: 60_000_000, max: 300_000_000, license: 'boating', rare: true, upkeepRate: 0.1, from: 1980 },
 ]
 
 const AIRCRAFT: VehicleModel[] = [
-  { label: 'Hot Air Balloon', emoji: '🎈', min: 40_000, max: 90_000, license: 'pilot', upkeepRate: 0.06 },
-  { label: 'Ultralight', emoji: '🛩️', min: 25_000, max: 70_000, license: 'pilot', upkeepRate: 0.06 },
-  { label: 'Vintage Biplane', emoji: '🛩️', min: 150_000, max: 400_000, license: 'pilot', upkeepRate: 0.06 },
-  { label: 'Single-Engine Prop Plane', emoji: '🛩️', min: 200_000, max: 600_000, license: 'pilot', upkeepRate: 0.06 },
-  { label: 'Seaplane', emoji: '🛩️', min: 500_000, max: 1_400_000, license: 'pilot', upkeepRate: 0.07 },
-  { label: 'Helicopter', emoji: '🚁', min: 1_200_000, max: 5_000_000, license: 'pilot', upkeepRate: 0.08 },
-  { label: 'Decommissioned Fighter Jet', emoji: '✈️', min: 3_000_000, max: 9_000_000, license: 'pilot', upkeepRate: 0.1 },
-  { label: 'Business Jet', emoji: '✈️', min: 9_000_000, max: 35_000_000, license: 'pilot', upkeepRate: 0.08 },
-  { label: 'Private Airliner', emoji: '✈️', min: 80_000_000, max: 130_000_000, license: 'pilot', rare: true, upkeepRate: 0.08 },
+  { label: 'Hot Air Balloon', emoji: '🎈', min: 40_000, max: 90_000, license: 'pilot', upkeepRate: 0.06, from: 1960 },
+  { label: 'Ultralight', emoji: '🛩️', min: 25_000, max: 70_000, license: 'pilot', upkeepRate: 0.06, from: 1975 },
+  { label: 'Vintage Biplane', emoji: '🛩️', min: 150_000, max: 400_000, license: 'pilot', upkeepRate: 0.06, from: 1955 },
+  { label: 'Single-Engine Prop Plane', emoji: '🛩️', min: 200_000, max: 600_000, license: 'pilot', upkeepRate: 0.06, from: 1912 },
+  { label: 'Seaplane', emoji: '🛩️', min: 500_000, max: 1_400_000, license: 'pilot', upkeepRate: 0.07, from: 1914 },
+  { label: 'Helicopter', emoji: '🚁', min: 1_200_000, max: 5_000_000, license: 'pilot', upkeepRate: 0.08, from: 1947 },
+  { label: 'Decommissioned Fighter Jet', emoji: '✈️', min: 3_000_000, max: 9_000_000, license: 'pilot', upkeepRate: 0.1, from: 1965 },
+  { label: 'Business Jet', emoji: '✈️', min: 9_000_000, max: 35_000_000, license: 'pilot', upkeepRate: 0.08, from: 1964 },
+  { label: 'Private Airliner', emoji: '✈️', min: 80_000_000, max: 130_000_000, license: 'pilot', rare: true, upkeepRate: 0.08, from: 1970 },
+  // Earlier aircraft (appended so today's hangar is unchanged): sold new in their day.
+  { label: 'Biplane', emoji: '🛩️', min: 120_000, max: 350_000, license: 'pilot', upkeepRate: 0.07, from: 1910, until: 1954 },
+  { label: 'Gas Balloon', emoji: '🎈', min: 30_000, max: 80_000, license: 'pilot', upkeepRate: 0.06, until: 1959 },
 ]
 
 export interface VehicleListing {
@@ -1484,9 +1492,10 @@ export interface VehicleListing {
 
 export function vehicleListings(g: GameState, kind: 'boat' | 'aircraft'): VehicleListing[] {
   const r = seeded(yearKey(g, `vehicles:${kind}`))
-  const pool = kind === 'boat' ? BOATS : AIRCRAFT
+  const pool = (kind === 'boat' ? BOATS : AIRCRAFT).filter((m) => g.year >= (m.from ?? 0) && g.year <= (m.until ?? Infinity))
   const mult = globalGoodsMult(g)
   const out: VehicleListing[] = []
+  if (pool.length === 0) return out
   const n = kind === 'boat' ? 7 : 6
   for (let i = 0; i < n; i++) {
     const m = r.weighted(pool, (x) => (x.rare ? 0.2 : 1))
@@ -1601,7 +1610,7 @@ function vehicleDealerMenu(g: GameState, kind: 'boat' | 'aircraft'): MenuGroup {
     id: kind === 'boat' ? 'boatDealer' : 'aircraftDealer',
     label: kind === 'boat' ? localStoreName(g, 'marine', '{w} Marine', 'Harborside Marine') : localStoreName(g, 'aviation', '{w} Aviation', 'Skyline Aviation'),
     emoji: kind === 'boat' ? '⛵' : '✈️',
-    subtitle: kind === 'boat' ? 'Boats, from kayaks to yachts' : 'Planes, helicopters and jets',
+    subtitle: kind === 'boat' ? 'Boats, from kayaks to yachts' : g.year >= 1964 ? 'Planes, helicopters and jets' : g.year >= 1947 ? 'Planes and helicopters' : 'Flying machines of every kind',
     disabledReason: (gg) => adultReason(gg, kind === 'boat' ? 'buy a boat' : 'buy an aircraft'),
     header: (gg) =>
       `${
@@ -1874,6 +1883,28 @@ const ARTISTS = ['Vera Lindqvist', 'Marco Bellini', 'Ade Okafor', 'Yuki Tanabe',
 const ART_TITLES = ['Blue Dog at Dusk', 'Composition No. 7', 'Sad Pear', 'The Tax Collector', 'Untitled (Again)', 'Morning Over the Parking Lot', 'Self-Portrait as a Croissant', 'Chaos in Teal', 'Woman With Umbrella', 'Still Life With Remote Control', 'The Last Bus Home', 'Abstract Feelings #4', 'Melting Calendar', 'Pigeon Royalty', 'Red Square on Beige', 'Grandmother\'s Kitchen']
 const ART_MEDIUMS = ['Oil on canvas', 'Acrylic on canvas', 'Watercolor', 'Bronze sculpture', 'Mixed media', 'Charcoal sketch']
 
+/**
+ * First year a gallery title, medium or collectible makes sense (no remote controls in a 1912
+ * still life, no moon rocks before the Moon landing). Anything not listed has always been around.
+ */
+const COLLECT_FROM: Record<string, number> = {
+  'Still Life With Remote Control': 1975,
+  'Acrylic on canvas': 1955,
+  'Mixed media': 1915,
+  'Rare Comic Book': 1960,
+  'Vintage Baseball Card': 1930,
+  'Signed Electric Guitar': 1955,
+  'Movie Prop Sword': 1930,
+  'Vintage Arcade Cabinet': 1995,
+  'Holographic Trading Card': 1990,
+  'First-Pressing Vinyl Record': 1965,
+  'Moon Rock (Certified)': 1970,
+}
+
+function collectInEra<T>(g: GameState, list: readonly T[], name: (x: T) => string): T[] {
+  return list.filter((x) => g.year >= (COLLECT_FROM[name(x)] ?? 0))
+}
+
 const COLLECTIBLES: [string, string, number, number][] = [
   ['Rare Comic Book', '📚', 500, 60_000],
   ['Vintage Baseball Card', '⚾', 200, 90_000],
@@ -1907,12 +1938,12 @@ export function collectibleListings(g: GameState, store: 'art' | 'collectibles')
   for (let i = 0; i < 6; i++) {
     if (store === 'art') {
       const artist = artistName(r, g)
-      const title = r.pick(ART_TITLES)
+      const title = r.pick(collectInEra(g, ART_TITLES, (x) => x))
       const fame = r.int(1, 100)
       const price = nicePrice((2_000 + 2_000_000 * Math.pow(r.next(), 4) * (fame / 100)) * mult)
-      out.push({ id: `${g.year}:art-${i}`, kind: 'collectible', category: 'art', name: `"${title}" by ${artist}`, emoji: r.pick(['🖼️', '🎨', '🗿']), price, value: nicePrice(price * 0.8), condition: r.int(70, 100), isNew: false, details: { category: 'art', artist, title, medium: r.pick(ART_MEDIUMS), artistFame: fame } })
+      out.push({ id: `${g.year}:art-${i}`, kind: 'collectible', category: 'art', name: `"${title}" by ${artist}`, emoji: r.pick(['🖼️', '🎨', '🗿']), price, value: nicePrice(price * 0.8), condition: r.int(70, 100), isNew: false, details: { category: 'art', artist, title, medium: r.pick(collectInEra(g, ART_MEDIUMS, (x) => x)), artistFame: fame } })
     } else {
-      const [label, emoji, lo, hi] = r.pick(COLLECTIBLES)
+      const [label, emoji, lo, hi] = r.pick(collectInEra(g, COLLECTIBLES, (x) => x[0]))
       const condition = r.int(30, 100)
       const price = nicePrice((lo + (hi - lo) * Math.pow(r.next(), 3)) * (0.5 + 0.5 * (condition / 100)) * mult)
       out.push({ id: `${g.year}:coll-${i}`, kind: 'collectible', category: 'collectible', name: label, emoji, price, value: nicePrice(price * 0.85), condition, isNew: false, details: { category: 'collectible' } })
@@ -2002,7 +2033,7 @@ function itemAction(item: ItemListing, minAge: number): MenuAction {
   }
 }
 
-function storeMenu(id: string, label: string, emoji: string, subtitle: string, minAge: number, list: (g: GameState) => ItemListing[], header?: string): MenuGroup {
+function storeMenu(id: string, label: string, emoji: string, subtitle: string | ((g: GameState) => string), minAge: number, list: (g: GameState) => ItemListing[], header?: string): MenuGroup {
   return {
     type: 'menu',
     id,
@@ -2064,7 +2095,16 @@ export const jewelersMenu: MenuGroup = {
 }
 
 export const instrumentStoreMenu = storeMenu('instrumentStore', 'Music Store', '🎸', 'Instruments, new and used', 10, instrumentListings, 'From kazoos to grand pianos.')
-export const electronicsStoreMenu = storeMenu('electronicsStore', 'Electronics Store', '📱', 'Phones, laptops, consoles and gadgets', 12, electronicsListings, "This year's gadgets.")
+/** What the electronics store sells this year, in a few words. */
+function electronicsBlurb(g: GameState): string {
+  if (hasTech(g, 'smartphone')) return 'Phones, laptops, consoles and gadgets'
+  if (hasTech(g, 'homeComputer')) return `Computers, ${hasTech(g, 'videoGameConsole') ? 'game consoles, ' : ''}TVs and gadgets`
+  if (hasTech(g, 'tv')) return 'Radios, TVs, record players and gadgets'
+  if (hasTech(g, 'radio')) return 'Radios, phonographs and gadgets'
+  return 'Phonographs, cameras and electric gadgets'
+}
+
+export const electronicsStoreMenu = storeMenu('electronicsStore', 'Electronics Store', '📱', electronicsBlurb, 12, electronicsListings, "This year's gadgets.")
 export const luxuryStoreMenu = storeMenu('luxuryStore', 'Luxury Boutique', '👜', 'Designer bags, watches and fashion', 18, luxuryListings, 'The security guard is watching you.')
 
 export const collectiblesMenu: MenuGroup = {
@@ -2213,6 +2253,58 @@ export const HEIRLOOMS: HeirloomDef[] = [
   hl('galileo', "Galileo's Telescope", '🔭', 'And yet it moves.', 5_019_683, 483_790, 'Super Rare', { play: true }),
 ]
 
+/**
+ * The first year an heirloom could be gathering dust in an attic (no 1993 pager in 1950, no
+ * moonwalker's boot before 1970). Heirlooms not listed are timeless.
+ */
+const HEIRLOOM_FROM: Record<string, number> = {
+  paint: 1960,
+  console: 1995,
+  chopsticks: 1988,
+  tent: 1980,
+  skateboard: 1975,
+  vhs: 1985,
+  chimes: 1993,
+  yoyo: 1930,
+  briefcase: 1975,
+  rocketModel: 1958,
+  phone: 1930,
+  bicycle: 1988,
+  tradingCards: 1950,
+  soap: 2000,
+  flag: 1912,
+  gasPump: 1975,
+  pager: 1994,
+  plasma: 1985,
+  watch: 1950,
+  scooter: 1963,
+  bags: 1960,
+  proSkateboard: 2000,
+  slotMachine: 1940,
+  soccer: 2011,
+  trophy: 2008,
+  baseball: 1970,
+  wine: 1962,
+  rookieCard: 1987,
+  telescope: 2000,
+  disco: 1980,
+  stratocaster: 1970,
+  filmReel: 1940,
+  lock: 1910,
+  painting: 1930,
+  doodle: 1915,
+  radio: 1961,
+  newspaper: 2000,
+  sword: 2012,
+  whip: 1982,
+  bell: 1961,
+  meteorite: 1939,
+  bootSpace: 1970,
+  testTube: 1910,
+  anchor: 1913,
+  trumpet: 1930,
+}
+
 const RARITY_WEIGHT: Record<HeirloomRarity, number> = { Common: 72, Rare: 20, 'Very Rare': 7.6, 'Super Rare': 0.4 }
 
 export function isHeirloom(a: Asset): boolean {
@@ -2238,7 +2330,8 @@ function atticAccess(g: GameState): 'family' | 'own' | null {
 }
 
 const ATTIC_NOTHING = [
-  'You searched the attic with a flashlight and found nothing but dust bunnies, a dead moth and a box of tax returns from 1994.',
+  '@1995 You searched the attic with a flashlight and found nothing but dust bunnies, a dead moth and a box of tax returns from 1994.',
+  '@-1995 You searched the attic with a flashlight and found nothing but dust bunnies, a dead moth and a box of receipts nobody can read.',
   'You spent an hour in the attic. You found cobwebs, a broken lamp and a strong suspicion that something lives up there.',
   'The attic was empty except for a mannequin that you are 90% sure moved.',
   'You searched every corner of the attic and found exactly nothing worth keeping. A spider watched you the whole time.',
@@ -2266,12 +2359,12 @@ export function searchAttic(g: GameState): Asset | null {
     return null
   }
   if (roll < 0.47) {
-    notice(g, 'Attic', pick(g, ATTIC_NOTHING), { emoji: '🔦' })
+    notice(g, 'Attic', eraPick(g, ATTIC_NOTHING), { emoji: '🔦' })
     log(g, pick(g, ['I searched the attic but found nothing.', 'I rummaged through the attic. Nothing but dust.']))
     return null
   }
   const owned = new Set(g.assets.filter(isHeirloom).map((a) => str(a.details.heirloomId)))
-  const pool = HEIRLOOMS.filter((x) => !owned.has(x.id))
+  const pool = HEIRLOOMS.filter((x) => !owned.has(x.id) && g.year >= (HEIRLOOM_FROM[x.id] ?? 0))
   if (pool.length === 0) {
     notice(g, 'Attic', "You've already found every treasure this attic has to offer.", { emoji: '🔦' })
     return null
@@ -2576,7 +2669,7 @@ export function giftAsset(g: GameState, assetId: string, personId: string): bool
     const delta = a.value >= 100_000 ? randInt(g, 25, 45) : a.value >= 5_000 ? randInt(g, 15, 30) : randInt(g, 5, 15)
     addRelationship(p, delta)
     addHidden(g, 'karma', 3)
-    text = `You gave your ${a.name.toLowerCase()} to your ${relationLabel(p).toLowerCase()} ${p.firstName}. ${pick(g, [`${p.firstName} was speechless.`, `${p.firstName} hugged you so hard your back cracked.`, `${p.firstName} cried happy tears.`, `${p.firstName} immediately posted about it online.`])}`
+    text = `You gave your ${a.name.toLowerCase()} to your ${relationLabel(p).toLowerCase()} ${p.firstName}. ${eraPick(g, [`${p.firstName} was speechless.`, `${p.firstName} hugged you so hard your back cracked.`, `${p.firstName} cried happy tears.`, `@socialMedia ${p.firstName} immediately posted about it online.`, `@!socialMedia ${p.firstName} immediately told the whole street.`])}`
     log(g, `I gave my ${a.name.toLowerCase()} to my ${relationLabel(p).toLowerCase()} ${p.firstName}.`, 'good')
   }
   if (wasHome) text += ` ${relocateAfterLosingHome(g, a.id)}`

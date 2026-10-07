@@ -1291,7 +1291,7 @@ function storeNote(g: GameState, storeId: StoreId): string {
       if ((SNOW as readonly string[]).includes(cid) && (SURF_NATIONS as readonly string[]).includes(cid)) return 'Skis on one wall, surfboards on the other. Indecision is a lifestyle here.'
       if ((SNOW as readonly string[]).includes(cid)) return 'The ski wall is the first thing you see.'
       if ((SURF_NATIONS as readonly string[]).includes(cid)) return 'The surf report is chalked up next to the register.'
-      if ((CRICKET as readonly string[]).includes(cid)) return 'A cricket match is on the TV behind the counter and nobody is working.'
+      if ((CRICKET as readonly string[]).includes(cid)) return `A cricket match is on the ${hasTech(g, 'tv') ? 'TV' : 'radio'} behind the counter and nobody is working.`
       return 'It smells like new rubber and good intentions.'
     case 'furniture':
       return 'Every sofa is a showroom nap waiting to happen.'

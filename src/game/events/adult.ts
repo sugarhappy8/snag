@@ -20,6 +20,7 @@ import {
   defineEvents,
   dollars,
   friends,
+  hangout,
   hasCar,
   hasJob,
   livesWithParents,
@@ -1278,7 +1279,7 @@ export const ADULT_EVENTS = defineEvents([
         say(g, x, ['Happily ever after', 'Open bar'], `You danced all night at ${x.p?.firstName ?? 'your friend'}'s wedding. Your gift was a hit.`, `I went to my friend ${x.p?.firstName ?? ''}'s wedding.`, { money: -gift, happiness: 10, rel: 15 }, 'good', '🥂')
       },
       attend: (g, x) => say(g, x, 'Free dinner', 'You went without a gift. You hoped nobody noticed. Someone noticed.', `I went to my friend ${x.p?.firstName ?? ''}'s wedding without a gift.`, { happiness: 6, rel: 2 }),
-      skip: (g, x) => say(g, x, 'No-show', `You told ${x.p?.firstName ?? 'your friend'} you had food poisoning. They saw you at ${isUS(g) && g.year >= 1962 ? 'the mall' : lp(g, 'hangout', 'the market')} that day.`, `I skipped my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -15 }, 'bad'),
+      skip: (g, x) => say(g, x, 'No-show', `You told ${x.p?.firstName ?? 'your friend'} you had food poisoning. They saw you at ${isUS(g) && g.year >= 1962 ? 'the mall' : hangout(g)} that day.`, `I skipped my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -15 }, 'bad'),
       object: (g, x) => say(g, x, ['Speak now...', 'Chaos'], `When the officiant asked if anyone objected, you stood up and said "the cake is dry." You were escorted out.`, `I objected at my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -40, craziness: 6, happiness: 4 }, 'bad', '😱'),
     },
   },
@@ -1337,7 +1338,7 @@ export const ADULT_EVENTS = defineEvents([
         if (r <= 10 + smart / 10) {
           const prize = dollars(g, 25000, 100000)
           addMoney(g, prize)
-          say(g, null, ['Grand prize!', 'Winner!'], `You answered the final question correctly and won ${money(prize)}! Confetti everywhere.`, `I won ${money(prize)} on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: 20, fame: 4, memory: `Won ${money(prize)} on a game show.` }, 'good', '🏆')
+          say(g, null, ['Grand prize!', 'Winner!'], `You answered the final question correctly and won ${money(prize)}! Confetti everywhere.`, `I won ${money(prize)} on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: 20, fame: 4, memory: `Won ${money(prize)} on a ${common(g, 'tv') ? 'game' : 'quiz'} show.` }, 'good', '🏆')
         } else if (r <= 55) {
           const prize = dollars(g, 500, 5000)
           addMoney(g, prize)
@@ -1346,7 +1347,7 @@ export const ADULT_EVENTS = defineEvents([
           say(g, null, 'Lovely parting gifts', `You froze on the first question and went home with a coupon for ${g.year >= 1950 ? 'a car wash' : 'a free shoeshine'}.`, `I lost on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: -6, fame: 1 }, 'bad')
         }
       },
-      no: (g) => say(g, null, 'Missed opportunity', common(g, 'tv') ? 'You declined. You watched the episode at home and knew every answer.' : 'You declined. You listened to the broadcast at home and knew every answer.', 'I turned down a chance to be on a game show.', {}),
+      no: (g) => say(g, null, 'Missed opportunity', common(g, 'tv') ? 'You declined. You watched the episode at home and knew every answer.' : 'You declined. You listened to the broadcast at home and knew every answer.', `I turned down a chance to be on a ${common(g, 'tv') ? 'game' : 'quiz'} show.`, {}),
     },
   },
   {

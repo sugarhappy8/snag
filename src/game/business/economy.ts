@@ -348,13 +348,24 @@ export interface Plan {
  * trades (outlets per million people, scaled by spending power and local demand).
  */
 export function marketScale(industry: Industry, countryId: string): { dRef: number; fieldP: number } {
+  const key = `${industry}|${countryId}`
+  const hit = scaleCache.get(key)
+  if (hit) return { ...hit }
   const d = marketDef(industry)
   const def = industryDef(industry)
-  if (d.scope === 'world') return { dRef: def.demand * d.ref, fieldP: d.field }
-  const e = localEcon(industry, countryId, '')
-  const fieldP = Math.max(4, d.field * Math.max(0.3, e.m.populationM) * Math.max(0.05, e.demandMult) * e.income)
-  return { dRef: Math.max(1, e.baseDemand), fieldP }
+  let out: { dRef: number; fieldP: number }
+  if (d.scope === 'world') out = { dRef: def.demand * d.ref, fieldP: d.field }
+  else {
+    const e = localEcon(industry, countryId, '')
+    const fieldP = Math.max(4, d.field * Math.max(0.3, e.m.populationM) * Math.max(0.05, e.demandMult) * e.income)
+    out = { dRef: Math.max(1, e.baseDemand), fieldP }
+  }
+  scaleCache.set(key, out)
+  return { ...out }
 }
+
+/** marketScale only reads fixed country data, so it is computed once per industry and country. */
+const scaleCache = new Map<string, { dRef: number; fieldP: number }>()
 
 /** The competitive situation of a company's market in `year` (pure; cached). */
 export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx {

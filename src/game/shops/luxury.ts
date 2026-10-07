@@ -45,7 +45,7 @@ export const luxuryLifestyleMenu: MenuGroup = {
   header: (g) => {
     const worth = netWorth(g)
     const dipped = worth < LUXURY_NET_WORTH ? ` Your net worth has dipped below ${formatMoney(LUXURY_NET_WORTH)}, so the dealers won't take your calls, but you can still manage what you own.` : ''
-    return `Enjoy the perks of being a VIP. Net worth: ${formatMoney(worth)}.${dipped} Islands, yachts and jets trade worldwide in US dollars; spa treatments and staff wages follow local prices.`
+    return `Enjoy the perks of being a VIP. Net worth: ${formatMoney(worth)}.${dipped} Islands, yachts and ${g.year >= 1960 ? 'jets' : 'aircraft'} trade worldwide in US dollars; spa treatments and staff wages follow local prices.`
   },
   children: (g): MenuNode[] => [
     ...holdingNodes(g),
