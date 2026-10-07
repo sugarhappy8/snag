@@ -14,6 +14,8 @@
 // funds, REITs and crypto only appear when they were invented, exchanges close in wars and
 // vanish after revolutions, gold was illegal to hoard in some places, and savings and bonds pay
 // the nominal rates of the day while inflation eats them (engine money is constant dollars).
+import { currencyOf } from './data/currencies'
+import { timelineFamily } from './timeMachine'
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
 import { incomeTax, taxAdditionalIncome } from './finance'
@@ -165,7 +167,7 @@ function isType(v: string): v is InvestType {
 
 /** The family's market seed: stays the same across generations so heirs see the same market. */
 function fam(g: GameState): string {
-  return (g.lifeId || 'life').replace(/-g\d+$/, '')
+  return timelineFamily(g, (g.lifeId || 'life').replace(/-g\d+$/, ''))
 }
 
 /** The first year the family's market history starts from. */
@@ -605,11 +607,11 @@ function listing(g: GameState): Listing {
     yield: br,
     ret: null,
     sector: 'Government bond',
-    blurb: `A loan to the government of ${theCountry(cid)}, paid back in the local currency (${m.currencyName}). Default risk: ${defaultRiskLabel(pDef)}.`,
+    blurb: `A loan to the government of ${theCountry(cid)}, paid back in the local currency (${currencyOf(g.character.countryId, g.year).name}). Default risk: ${defaultRiskLabel(pDef)}.`,
     blocked: null,
     details: {},
   }
-  bond.details = { type: 'bond', secId: bond.secId, symbol: bond.symbol, risk: bond.risk, yield: br, sector: bond.sector, blurb: bond.blurb, country: cid, currency: m.currencyName, maturity: y + BOND_YEARS }
+  bond.details = { type: 'bond', secId: bond.secId, symbol: bond.symbol, risk: bond.risk, yield: br, sector: bond.sector, blurb: bond.blurb, country: cid, currency: currencyOf(g.character.countryId, g.year).name, maturity: y + BOND_YEARS }
   const bank = bankName(cid)
   const sr = savingsRate(cid, y)
   const insured = depositInsurance(cid, y)
@@ -628,7 +630,7 @@ function listing(g: GameState): Listing {
     blocked: null,
     details: {},
   }
-  savings.details = { type: 'savings', product: 'savings', secId: savings.secId, symbol: '', risk: savings.risk, yield: sr, sector: 'Savings', blurb: savings.blurb, country: cid, bank, currency: m.currencyName }
+  savings.details = { type: 'savings', product: 'savings', secId: savings.secId, symbol: '', risk: savings.risk, yield: sr, sector: 'Savings', blurb: savings.blurb, country: cid, bank, currency: currencyOf(g.character.countryId, g.year).name }
   const tr = termRate(cid, y)
   const term: Quote = {
     ...savings,
@@ -656,7 +658,7 @@ function listing(g: GameState): Listing {
     sector: 'Precious metals',
     blurb:
       hedge > 0
-        ? `Priced in dollars worldwide, so it doesn't care when the ${m.currencyName} loses value. With inflation here at ${rateText(m.inflation)}, local gold has been beating the world price by about ${rateText(hedge)} a year.`
+        ? `Priced in dollars worldwide, so it doesn't care when the ${currencyOf(g.character.countryId, g.year).name} loses value. With inflation here at ${rateText(m.inflation)}, local gold has been beating the world price by about ${rateText(hedge)} a year.`
         : 'Priced in dollars worldwide. It pays nothing, but it tends to hold up when stock markets panic.',
     blocked: goldBlock(g),
     details: {},
@@ -1054,7 +1056,7 @@ function localNote(g: GameState): string {
     return lines.join(' ')
   }
   const dep = expectedDepreciation(cid)
-  if (dep >= 0.05) lines.push(`The ${m.currencyName} loses about ${rateText(dep)} a year against the dollar, so local bonds and savings shrink in dollar terms.`)
+  if (dep >= 0.05) lines.push(`The ${currencyOf(g.character.countryId, g.year).name} loses about ${rateText(dep)} a year against the dollar, so local bonds and savings shrink in dollar terms.`)
   else if (m.interestRate < m.inflation) lines.push('Interest here is below inflation, so cash in the bank slowly loses buying power.')
   return lines.join(' ')
 }
@@ -1202,7 +1204,7 @@ function holdingInfo(g: GameState, a: Asset): string[] {
       rows.push(`Interest: ${rateText(rate)} a year${income > 0 ? ` · Earned ${formatMoney(income)}` : ''}`)
       rows.push(`Inflation runs about ${inflationText(infl)}, so your real return is roughly ${pct(Math.max(-1, real))} a year. ${insured > 0 ? `Insured up to ${formatMoney(insured)}.` : 'Not insured.'}`)
       const dep = expectedDepreciation(cid, g.year)
-      if (!isHistoryYear(g.year) && dep >= 0.03) rows.push(`The balance is kept in ${m.currencyName}, which tends to lose about ${rateText(dep)} a year against the dollar, so it shrinks in dollar terms while the interest piles up.`)
+      if (!isHistoryYear(g.year) && dep >= 0.03) rows.push(`The balance is kept in ${currencyOf(g.character.countryId, g.year).name}, which tends to lose about ${rateText(dep)} a year against the dollar, so it shrinks in dollar terms while the interest piles up.`)
       if (str(d.product) === 'term') {
         const mat = num(d.maturity)
         rows.push(g.year >= mat ? 'Matured: you can withdraw without a penalty. It keeps rolling over until you do.' : `Matures in ${mat}. Withdrawing earlier costs a year of interest.`)
@@ -1471,7 +1473,6 @@ function newsLines(g: GameState): string[] {
     const ban = goldBan(g.character.countryId, y)
     lines.push(`🥇 Gold ${pct(gy.ret, 0)} to ${formatMoney(gy.price)} an ounce.${ban ? ' (Private gold dealing is restricted here.)' : ''}`)
     const fx = fxYear(f, g.character.countryId, y)
-    const m = localMarket(g)
     if (fx.defaulted) lines.push(`🏛️ The government of ${theCountry(g.character.countryId)} defaulted on its bonds.`)
     if (fx.bankCrisis) lines.push(`🏦 A banking crisis hit ${theCountry(g.character.countryId)}: deposits were frozen.`)
     if (isHistoryYear(y)) {
@@ -1479,7 +1480,7 @@ function newsLines(g: GameState): string[] {
       if (infl >= 0.5) lines.push(`💸 Hyperinflation: prices rose ${inflationText(infl)} this year.`)
       else if (infl >= 0.1) lines.push(`💸 Inflation ran at ${rateText(infl)} this year.`)
       else if (infl <= -0.02) lines.push(`📉 Prices fell ${rateText(-infl)} this year: deflation.`)
-    } else if (fx.dep >= 0.1) lines.push(`💱 The ${m.currencyName} lost ${rateText(fx.dep)} against the dollar.`)
+    } else if (fx.dep >= 0.1) lines.push(`💱 The ${currencyOf(g.character.countryId, g.year).name} lost ${rateText(fx.dep)} against the dollar.`)
   }
   // An analyst call about next year: right about two times in three.
   const tip = seededTip(g, l.info)

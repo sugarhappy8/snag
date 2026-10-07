@@ -409,7 +409,9 @@ export function contractCondition(
 function announceCondition(g: GameState, cond: Condition): void {
   const def = defFor(cond)
   const label = conditionLabel(cond.name)
-  const symptom = pick(g, def.symptoms)
+  const symptom = cond.name === 'Schizophrenia' && !hasTech(g, 'tv')
+    ? 'You have been hearing voices that nobody else can hear.'
+    : pick(g, def.symptoms)
   if (cond.diagnosed) {
     if (cond.severity < 15) {
       log(g, fill(freshLine(g, 'caught', ['I came down with {name}.', 'I caught {name}.', "I've been dealing with {name}.", 'I spent a miserable week with {name}.']), { name: label }), 'bad')
@@ -911,7 +913,7 @@ function eyesight(g: GameState): void {
             g,
             EYE_EXAM,
             'Eye Exam',
-            `Your ${parentWord(parent)} noticed you squinting at the TV and took you to the optometrist for an eye exam. The optometrist points at a chart full of tiny letters. What will you do?`,
+            `Your ${parentWord(parent)} noticed you squinting at ${hasTech(g, 'tv') ? 'the TV' : 'a book'} and took you to the optometrist for an eye exam. The optometrist points at a chart full of tiny letters. What will you do?`,
             [
               { id: 'honest', label: 'Read the chart honestly', emoji: '\u{1F440}' },
               { id: 'squint', label: 'Squint really hard', emoji: '\u{1F611}' },

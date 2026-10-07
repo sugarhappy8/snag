@@ -1,6 +1,7 @@
 // Scripted business events: a few per company per decade, never every year. Each one is a
 // choice with real consequences, flavored by the market the company operates in (inspectors who
 // expect envelopes, unions that strike, currencies that melt, hurricanes and earthquakes).
+import { currencyOf } from '../data/currencies'
 import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice } from '../core'
 import { arrestPlayer } from '../crime'
 import { marketOf } from '../data/markets'
@@ -554,7 +555,6 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
   const x = ctx(g, data)
   if (!x) return
   const { b } = x
-  const m = marketOf(b.countryId)
   b.costShock = Math.max(b.costShock, 1.1)
   if (choice === 'raise') {
     b.brand = clampN(b.brand - 3, 0, 100)
@@ -567,12 +567,11 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
   } else {
     const fee = pay(b, Math.max(0, b.cash) * 0.03)
     b.costShock = Math.max(1, b.costShock - 0.05)
-    tell(g, 'Into Hard Currency', `You moved the company's ${m.currencyName} cash into dollars (${formatMoney(fee)} in fees and "fees"). Your cash should hold its value better.`, '\u{1F4B5}', 'good')
+    tell(g, 'Into Hard Currency', `You moved the company's ${currencyOf(b.countryId, g.year).name} cash into dollars (${formatMoney(fee)} in fees and "fees"). Your cash should hold its value better.`, '\u{1F4B5}', 'good')
   }
 })
 
 function presentCurrency(g: GameState, a: Asset, b: BizState): void {
-  const m = marketOf(b.countryId)
   const choices: ChoiceOption[] = [
     { id: 'raise', label: 'Raise prices immediately', emoji: '\u{1F3F7}\u{FE0F}' },
     { id: 'hold', label: 'Hold prices to win loyalty', emoji: '\u{1F6E1}\u{FE0F}' },
@@ -588,7 +587,7 @@ function presentCurrency(g: GameState, a: Asset, b: BizState): void {
     g,
     CURRENCY,
     'Currency Crash',
-    `The ${m.currencyName} lost ${randInt(g, 15, 40)}% of its value in a week. Imported inputs cost more, shoppers are panic-buying and ${a.name}'s price tags are already out of date.`,
+    `The ${currencyOf(b.countryId, g.year).name} lost ${randInt(g, 15, 40)}% of its value in a week. Imported inputs cost more, shoppers are panic-buying and ${a.name}'s price tags are already out of date.`,
     choices,
     { emoji: '\u{1F4C9}', data: { assetId: a.id } },
   )

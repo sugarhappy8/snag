@@ -31,12 +31,13 @@ function removeBusiness(g: GameState, a: Asset): void {
 }
 
 /** Pay off the founding loan linked to this business from the proceeds, if any. */
-function settleFoundingLoan(g: GameState, b: BizState): number {
+function settleFoundingLoan(g: GameState, b: BizState, proceeds: number): number {
   if (!b.loanId) return 0
   const loan = g.character.loans.find((l) => l.id === b.loanId)
   if (!loan) return 0
-  const paid = loan.balance
-  g.character.loans = g.character.loans.filter((l) => l.id !== loan.id)
+  const paid = Math.min(loan.balance, Math.max(0, proceeds))
+  loan.balance -= paid
+  if (loan.balance === 0) g.character.loans = g.character.loans.filter((l) => l.id !== loan.id)
   return paid
 }
 
@@ -54,7 +55,7 @@ export function ownerProceeds(b: BizState, total: number): number {
 export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number, buyer: string): void {
   const gross = ownerProceeds(b, price)
   const tax = capitalGainsTax(g, gross, b.invested)
-  const loan = settleFoundingLoan(g, b)
+  const loan = settleFoundingLoan(g, b, gross - tax)
   const net = gross - tax - loan
   addMoney(g, net)
   removeBusiness(g, a)
@@ -65,7 +66,9 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   const stake = b.share < 1 ? ` for your ${pct(b.share)} stake` : ''
   let text = `You sold ${a.name} to ${buyer}${stake}: ${formatMoney(gross)}.`
   if (tax > 0) text += ` Capital gains tax took ${formatMoney(tax)}.`
-  if (loan > 0) text += ` ${formatMoney(loan)} went to pay off the business loan you took to start it.`
+  if (loan > 0) text += ` ${formatMoney(loan)} went toward the business loan you took to start it.`
+  const remaining = g.character.loans.find((l) => l.id === b.loanId)?.balance ?? 0
+  if (remaining > 0) text += ` You still owe ${formatMoney(remaining)} on that personal loan.`
   text += ` You walked away with ${formatMoney(net)}.`
   if (profit > 0) text += ` Not bad for a company you put ${formatMoney(b.invested)} into.`
   else if (profit < 0) text += ` You put ${formatMoney(b.invested)} into it, so this one is a lesson, not a payday.`

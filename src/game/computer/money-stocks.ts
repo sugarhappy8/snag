@@ -565,6 +565,7 @@ function askSize(g: GameState, t: BetTarget, kind: StockBet['kind'], strike: 'at
     emoji: '\u{1F4B5}',
     text: `${what} ${sizeText(g)}`,
     input: 'number',
+    money: true,
     min: lo,
     max: hi,
     defaultValue: String(Math.max(lo, Math.round(hi / 10))),

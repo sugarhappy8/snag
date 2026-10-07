@@ -1,117 +1,75 @@
-# AnotherLife: handoff (year system round, unfinished)
+# AnotherLife: year system handoff
 
-This repo is **AnotherLife**: a BitLife-style life simulator in the browser where the player's own AI narrates, with offline fallbacks. Vite + React 19 + TypeScript + Vitest. The pure engine is in `src/game`, the UI is in `src/ui` and the AI layer is in `src/ai`. **Read `docs/ARCHITECTURE.md` first**: it has the golden rules and module contract.
+The year-system continuation is integrated on `claude/fervent-cerf-1iuzn5`, draft PR **#6**
+against `main`. Read `docs/ARCHITECTURE.md` for the module contracts and golden rules.
+The last released version remains **v1.4.0**; no version bump or merge was performed.
 
-- Repo: `sugarhappy8/snag`. Work branch: `claude/fervent-cerf-1iuzn5`. Draft PR: **#6** (base `main`).
-- Live site: https://snag.sugarhappy8069.workers.dev. The last release is **v1.4.0** (talents + deep tech), and `main` is that release.
-- **Deploy gotcha:** Cloudflare's Git integration deploys **every push to the PR branch to production**. Until the work is finished and verified, put `[skip ci]` in the commit message so it doesn't deploy. Pushes to `main` deploy through `.github/workflows/deploy.yml`.
-- **Release:** squash-merge the PR with a `(#N)` title, bump `package.json` and `package-lock.json` (the next version is **1.5.0**), then run the `release.yml` workflow (`workflow_dispatch` with inputs `tag`, `target` = merge SHA, `notes` = Markdown).
+## Completed in this continuation
 
-## What the user asked for (this round)
+- Connected Time Machine settings, sandbox persistence, market-family forks, business fiscal
+  outcomes and special-career stable rolls. Heirs retain their family timeline but start a new
+  snapshot history and jump allowance.
+- Connected monetary script inputs to local-currency parsing, bounds and defaults. AI effect
+  validation preserves decimals and very large historical denominations before conversion.
+  Currency names follow the year; currency changeovers log once without consuming RNG/IDs.
+  Ancestors and graves retain their country, and money context follows the mutable action draft.
+- Added immigration status to the AI context; business summaries already include competition.
+- Finished era-sensitive CV projects/internships, campaigns, auditions, sports, sponsors,
+  business blurbs and health text found by historical-life play tests.
+- Fixed options premium sampling to use the procedural return distribution. Fixed loss-making
+  deep-tech revenue valuations that added all research and compute expenses back as profit;
+  patent/pipeline asset values remain separate. Grant diagnostics respect the current-year limit.
+- Fixed company sales that subtracted more personal founding debt than the sale proceeds:
+  unpaid personal debt remains owed, and the player’s cash stays nonnegative.
+- Fixed competition cache collisions between cloned saves with the same revision but different
+  rivals, market moves or first-mover advantages.
+- Corrected two test-context errors without removing assertions: history text is checked against
+  the country where it was produced; the biotech pipeline test advances the real business clock
+  instead of stalling after an unrelated accidental death in the general life simulation.
+- Updated architecture documentation and added six cross-feature regressions plus heir-fork
+  coverage. No tests were skipped or removed.
 
-> "Add a year system, for example if I set that I was born in 1980 then I grew up and invested my money into different shares and index's then the dot com bubble wiped me out in 2000. Things like that that are all historical. Also like if I was born then then my parents wouldn't have bought me a pc and I wouldn't know how to code and like a year context sense. Also if in 2005 I start a quantum or ai business and it works I basically have a monopoly. Business now shows users global competition and world wide market dominance/share."
+## Verification
 
-Plus three items they kept from a suggestion list:
-- **(6) Money in local currency** (rupiah, yen…; dollars stay internal).
-- **(9) A Time Machine** to rewind a few years, like BitLife.
-- **(11) Immigration** based on net worth and where you're from: passports, free-movement blocs and routes (work/CV, student, spouse, golden visa by net worth, retirement, asylum, lottery, sneaking in). Status goes visa → permanent residency → citizenship, with dual citizenship, deportation and exit tax.
+- TypeScript: clean (`npm run build` includes `tsc --noEmit`).
+- Full Vitest suite: **1,490 passed, 0 failed**.
+- `ANACHRONISM_LIVES=120 npx vitest run test/anachronism.test.ts`: **6 passed**;
+  120 historical lives, with the existing modern-content checks retained.
+- `npm run build`: passed. Vite still warns about the large main bundle (~4.83 MB minified).
+- Existing passing feature tests cover the 1999–2002 tech crash, era-dependent childhood
+  computers/coding, early vs present-day AI market share, antitrust, golden-visa locks,
+  historical migration rules, currency input/display, old saves and Time Machine failure recovery.
+- **Browser playthrough remains unverified.** Attempted `scripts/e2e-play.mjs` with seeds 7 and 19,
+  AI off, against a local production preview. Chromium 134 downloaded, but launch failed with
+  `process_singleton_posix.cc: socket() failed: Operation not permitted`. This is a workspace
+  restriction before the page loads, not a recorded game error. No live AI-provider test ran.
 
-## Contract already in the tree (keep these exports)
+## Next action before deployment
 
-- **`src/game/history/timeline.ts`** (real data):
-  - `PRESENT_YEAR = 2026`: history before it is real, after it is the procedural future.
-  - `HISTORY_START = 1900`.
-  - `priceLevel(year)`: US CPI relative to 2026.
-  - `TECH` adoption table, `techAdoption(countryId, tech, year)`, `hasTech(g, tech)`, `techOdds(g, tech)`.
-  - `ERAS` / `eraOf`.
-  - **Engine money is always constant 2026 US dollars.**
-- **`src/game/history/events.ts`** (history core): `worldEvents`, `yearlyHistory` (the first yearly hook in `aging.ts`) and `eraSummary` (the AI line).
-- **`src/game/history/markets.ts`** (markets): `marketHistory`, `historicalCycle`. `business/economy.ts` `cycleOf` already calls the latter.
-- **`src/game/core.ts` money display:**
-  - `formatMoney` / `shortMoney` go through a converter registered by `data/currencies.ts`.
-  - `setMoneyDisplay`, `bindMoneyContext(g)`, `showMoney`, `moneyScale`, `moneyFromInput`.
-  - The default is plain USD, so tests are unaffected.
-- **`types.ts`:** `MenuInput.money?`, `Character.citizenships?`, `Character.immigration?` (`ImmigrationStatus`).
-- **`src/game/immigration.ts`:** `citizenshipsOf`, `yearlyImmigration` (yearly hook after finance), `immigrationSummary`.
+Run the browser checks in an environment that permits Chromium:
 
-## Status when work stopped
+```sh
+npm ci
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium
+npm run build
+npx vite preview --host 127.0.0.1 --port 4199
+# In another terminal:
+node scripts/e2e-play.mjs http://127.0.0.1:4199/ --ai off --seed 7
+node scripts/e2e-play.mjs http://127.0.0.1:4199/ --ai off --seed 19
+```
 
-Eight features were built in parallel. Two builders finished; the other six ran out of time partway (a usage limit, then the user stopped the session). **Everything is committed on the branch as is.**
+Expect `errorCount: 0`. Also check the Born in picker, currency amount inputs, Settings →
+Time Machine sandbox switch, rewinding from life/death, and a historical life in the browser.
 
-- `npx tsc --noEmit`: **clean**.
-- `npx vitest run`: **1476 passed, 8 failed** (failures listed below).
+## Deployment and release
 
-| Feature | State | Main files |
-|---|---|---|
-| Time Machine | **Built** (reviewer pass cut off) + 5 pending shared changes below | `src/game/timeMachine.ts`, `src/game/save.ts`, `src/ui/store.ts`, `src/ui/components/TimeMachine*.tsx`, `src/ui/screens/DeathScreen.tsx`, `GameScreen.tsx`, `test/time-machine.test.ts` |
-| Local currency | **Built** (reviewer pass cut off) + 9 pending shared changes below | `src/game/data/currencies.ts`, `src/game/core.ts`, `src/settings.ts`, `src/ui/components/Dialogs.tsx`, `src/ai/director.ts`, `test/currency*.test.ts` |
-| History core | Partial, far along: events data 1900–2026, wars/drafts, medicine, Born-in picker, AI era line | `src/game/history/events*.ts`, `src/ui/screens/NewLifeScreen.tsx`, `src/ai/prompts.ts`, `src/game/special/military.ts`, `src/game/health.ts`, `test/history.test.ts` |
-| Historical markets | Partial, far along: index/sector/gold/housing/crypto/inflation/rates data, engine overlay, finance rates | `src/game/history/markets*.ts`, `src/game/invest/*.ts`, `src/game/investments.ts`, `src/game/finance.ts`, `test/history-markets.test.ts` |
-| Era features | Partial: computers/coding/social/gamedev/shops/love/careers gated by era | `src/game/computer/**` (incl. `computer/era.ts`), `special/social.ts`, `fame.ts`, `gamedev*.ts`, `sports-esports.ts`, `shops/**`, `assets.ts`, `love.ts`, `careers.ts`, `data/jobs.ts`, `education.ts`, `test/era-features*.test.ts` |
-| Anachronism sweep | Partial: era variants in events/activities; lint test still failing | `src/game/events/**` (incl. `events/era.ts`), `src/game/activities/**`, `relationships.ts`, `crime.ts`, `prison.ts`, `test/anachronism.test.ts` |
-| Global competition | Partial, far along: roster, shares, era curves, moves, menu | `src/game/business/competition*.ts`, `business/era.ts`, `business/*.ts`, `test/competition*.test.ts` |
-| Immigration | Partial, far along: blocs/countries/programs data, routes, apply/move/lock, status clock | `src/game/immigration.ts`, `src/game/data/immigration*.ts`, `src/game/activities/emigrate.ts`, `activities/immigration-*.ts`, `test/immigration*.test.ts` |
-
-### Failing tests (8)
-
-1. `test/anachronism.test.ts`: never mentions things before they existed. The anachronism sweep isn't finished.
-2. `test/history.test.ts`: history popups and news never mention things before their time.
-3. `test/computer-money.test.ts`: options: every strike can actually pay, and is a losing bet for buyers and sellers. This is the markets overlay vs options pricing.
-4. `test/deeptech.test.ts` ×2: grant limits; biotech pipeline. Likely affected by competition/era changes in `business/*`.
-5. `test/deeptech-review.test.ts`: the founder can't blitz R&D on investor money and flip in 3 years.
-6. `test/gamedev.test.ts`: random Game Industry play for 25 years never breaks numbers. Era-gated gamedev.
-7. `test/talent-business.test.ts`: popup hints point at the best choice under the resolvers' odds. Competition changed event resolvers; keep hints honest.
-
-Fix the root cause in each; **never** weaken or skip a test. Each test exists because an earlier reviewer found a real bug or exploit.
-
-### Pending shared changes from the finished Time Machine builder
-- 1. src/settings.ts (currency agent / lead): add `sandboxTimeMachine: boolean` to `Settings` with a doc comment ('Sandbox: unlimited Time Machine jumps'). Add `sandboxTimeMachine: false` to DEFAULT_SETTINGS, and `sandboxTimeMachine: bool(raw.sandboxTimeMachine, d.sandboxTimeMachine)` in normalizeSettings. Until this is done the toggle works only for the current session, because normalizeSettings drops the unknown field on reload. game/timeMachine.ts `sandboxTimeMachine(settings)` already reads it defensively.
-- 2. src/ui/screens/SettingsScreen.tsx: render the Time Machine section. Add `import { TimeMachineSettingsSection } from '../components/TimeMachineSettings'` and put `<TimeMachineSettingsSection />` right after the Money section (before Advanced). It is self-contained: it reads `useApp(s => s.settings)` and calls `updateSettings(sandboxPatch(on))`, using the existing al-card / set-section / set-toggle-row / set-switch classes.
-- 3. Timeline forks, so a jump re-rolls the seeded future instead of replaying it as a crystal ball for stocks and crypto. Real history stays the same in every timeline. Helpers in src/game/timeMachine.ts: `timelineFamily(g, base)`, `familyAt(fam, year?)`, `timelineTag(g, year)`. All of them return their input unchanged for a life that never jumped, so old saves and PRESENT_YEAR lives keep identical seeds. (a) src/game/investments.ts:167, src/game/invest/instinct.ts:63 and src/game/computer/money-common.ts:582: `fam(g)` returns `timelineFamily(g, (g.lifeId || 'life').replace(/-g\d+$/, ''))`. All three must change together. (b) src/game/invest/engine.ts: every `${fam}|...|${year}` seed uses `${familyAt(fam, year)}|...`; this covers world:166, ix:203, house:872, ex/exdt:890-891, crypto:1025, coins:1080 (yr), gold:1149 (yr) and fx:1276. The year-less seeds use `${familyAt(fam)}|...`: init/initdt:739-741, coin0:1038, gold0:1135. The cache keys at 965/1062/1131 keep the full `fam`. Every `${fam}|` seed must be converted, otherwise the encoded forks would change past years too. (c) Optional, same idea: special/common.ts stableRoll seed `${g.lifeId}${timelineTag(g, g.year)}|${g.year}|${key}`, plus business/economy.ts:196 bizcycle, economy.ts:781 bizexchange and business/deeptech-core.ts:145 dtcycle seeds, each with `${g.lifeId}${timelineTag(g, year)}|...`.
-- 4. src/game/life.ts continueAsChild (around line 1349, next to marketShocks): keep the family's timeline for the heir with `...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {})`. This only matters once change 3 is applied. Do NOT carry `flags.timeMachine` (jumps are per life), nor deathRecorded / recordedRibbon / recordedGrave / bumpedGraves.
-- 5. docs/ARCHITECTURE.md: add a Time Machine entry. (a) game/timeMachine.ts: rules (TIME_MACHINE_STOPS = 10, TIME_MACHINE_JUMPS = 3, arriveInPast, the timeline-fork helpers); per-life state in g.flags.timeMachine {used} and g.flags.timelineForks. (b) save.ts: snapshot API (startTimeline / resumeTimeline / clearTimeline / expectSnapshot / snapshotIfDue / loadSnapshot / forgetFuture / timeStops / subscribeTimeStops / setSnapshotBackend / snapshotWritesSettled; IndexedDB, else localStorage within LOCAL_SNAPSHOT_BUDGET, else memory) plus recordDeath / unrecordDeath. (c) UI contract: store exports travelBack(age) and clearTimeTravelError(); AppState.timeStops and AppState.timeTravel.
-
-### Pending shared changes from the finished currency builder
-- MUST (money pop-ups opened from scripts): src/game/types.ts, interface InputModal: add `/** True when the number is an amount of money: min/max/defaultValue/placeholder stay internal dollars; the UI shows and accepts the display currency and submits internal dollars. */ money?: boolean`.
-- MUST (same fix, UI side): src/ui/components/ModalHost.tsx, InputCard. (1) Import `moneyDefault` from './Dialogs'. (2) First line: `const money = modal.money === true && modal.input === 'number'`. (3) Initial state: `useState(() => (money ? moneyDefault(modal.defaultValue) : (modal.defaultValue ?? '')))`. (4) `validateInput(modal.input, value, modal.min, modal.max, money)`. (5) `submitInput(modal.id, normalizeInput(modal.input, value, money, modal.min, modal.max))`. (6) `rangeHint(modal.input, modal.min, modal.max, money)`. (7) On <InputField>: `placeholder={money ? moneyDefault(modal.placeholder) : modal.placeholder}` and `money={money}`.
-- MUST (after the two changes above): add `money: true,` right after `input: 'number',` in these five money pop-ups: src/game/special/politics.ts ~line 1762 (crony bet), src/game/computer/money-stocks.ts ~567, src/game/computer/money-options.ts ~442, ~461 and ~585. Until then a yen or rupiah player who types an amount there has it read as dollars, and min/max are checked in dollars.
-- SHOULD: src/ai/schemas.ts line ~459, `money: int(v.money, -1e9, 1e9)`. AI money is now in display units, so raise the limit to ±1e40; otherwise hyperinflation lives (1923 marks, 2008 Zimbabwe dollars) get AI amounts cut to almost nothing. Better still, accept decimals (a NUM schema, no rounding) so 1900 pounds or 1925 dollars can be fractional; the director already rounds after converting to dollars. Also, int()'s string pattern only skips '$' between the sign and the digits: allow any short symbol, e.g. `/([-+−]?)\s*[^\d\s+-]{0,4}\s*(\d[\d,]*(?:\.\d+)?)\s*([kKmMbB])?/`, so '-¥75,000' stays negative.
-- SHOULD: docs/ARCHITECTURE.md golden rule 11 is out of date. Replace it with: 'Money is kept in constant PRESENT_YEAR US dollars; the player sees local currency and the prices of the year (Settings › Money). Always use formatMoney/shortMoney/formatCents/formatPrice/moneyWith, never build money strings by hand or at module load (test/currency-static.test.ts), and mark money inputs `money: true`.' Add `data/currencies.ts` (CurrencyDef, currencyOf, currencyChangeAt, unitsPerDollar, exchangeRate, convertMoney; registered when settings.ts is imported) to the layout list.
-- SHOULD: the graveyard and the family-tree ancestors show net worth in whatever life is currently on screen. Add `countryId?: string` to AncestorSummary in types.ts and fill it where summaries are built. Then in GraveyardScreen.tsx (lines ~127, ~163, ~174) and ProfileSheet.tsx (~670) format with `withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear } : null, () => shortMoney(e.netWorth))`.
-- SHOULD: in historical years, use the currency of that year in prose, not today's (no 'the Euro lost 40%' in 1985 Germany). Replace `marketOf(cid).currencyName` with `currencyOf(cid, g.year).name` (import from game/data/currencies) in: src/ai/prompts.ts LOCAL ECONOMY line (~425), src/game/business/events.ts (~533, ~554), src/game/investments.ts (~612, 663, 1057, 1476).
-- NICE: history/events.ts yearlyHistory(g): announce currency changeovers in the life log, e.g. `const ch = currencyChangeAt(g.character.countryId, g.year); if (ch) log(g, `💱 The ${ch.to.name} replaced the ${ch.from.name}${ch.per !== 1 ? ` (${ch.per.toLocaleString('en-US')} old for 1 new)` : ''}.`, 'neutral')`. Example: Germany 2002, 1.95583 DM for 1 €.
-- NICE: src/ui/store.ts, in the helper that clones the game and runs a menu action or popup answer: call `bindMoneyContext(draft)` before the mutation, so text written in the same action after an emigration uses the new country's money. commit() already rebinds afterwards.
-
-## What to do next (in order)
-
-1. **Finish each partial feature against its spec** (appendix), one at a time, reading its files first.
-   - **History core:** make the history popup/news lint pass. Wire `immigrationSummary`, the competition share line and the currency changeover log line into `prompts.ts` / `yearlyHistory`.
-   - **Markets:** make the options test pass. Check that a 1999 US tech-heavy portfolio loses about 70%+ by 2002, that there is no crypto before 2009, that real rates are about 0 in 1980, and that Investing-talent honesty holds.
-   - **Era features:** fix the gamedev monkey test; check that kids born in 1980 rarely get a PC or code, and that kids born in 2000 often do.
-   - **Anachronism sweep:** make `test/anachronism.test.ts` pass (lives born 1900–1995 never see smartphones, apps, the internet and so on before their years).
-   - **Competition:**
-     - Fix the deeptech and talent-business tests.
-     - An AI lab founded in 2005 in the US and run well should reach >50% world share by about 2020.
-     - The same lab founded in 2026 should rarely pass 10%.
-     - Antitrust should trigger at dominance.
-     - The "Market & Competition" screen should be on every company.
-   - **Immigration:** finish routes, the status clock and tests (EU free movement only after 1993; Eastern Bloc exit restrictions before 1989; a golden visa needs net worth and locks the money).
-2. **Apply the pending shared changes** above: Time Machine settings and timeline forks; currency `InputModal.money`, AI schema limits and the old currency in prose.
-3. **Update `docs/ARCHITECTURE.md`** for history/, currencies, timeMachine, immigration and competition.
-4. **Verify:**
-   - `npx tsc --noEmit`, `npx vitest run` (all green) and `npm run build`.
-   - A headless playthrough: `npm i --no-save playwright && npx vite preview --port 4199 &` then `node scripts/e2e-play.mjs http://localhost:4199/ --ai off --seed 7`. Expect `errorCount: 0`; try a few seeds.
-   - Manually play a life born in 1980 in the US: buy tech stocks in 1999 and watch 2000–02; try a PC as a kid; start an AI company in 2005.
-   - Check a life born in 2026: it should play like v1.4.0, plus local currency and the news line.
-5. **Push without `[skip ci]`** (this deploys to the live site), update PR #6's description, then merge and release v1.5.0 when the user asks.
-
-## Ground rules (from `docs/ARCHITECTURE.md`)
-
-- **State:** plain-JSON `GameState`. All randomness goes through `rng.ts` with `g`. Menus must be pure (use `seeded()`; never consume `g`'s RNG or mutate state while building a menu).
-- **Reporting:** `log` / `notice` / `scriptChoice` / `minigame`. Per-year limits use `useYearAction`.
-- **Content:** no real brands, companies or living private people. Teen-rated, with tact for wars and tragedies.
-- **Saves and money:** old saves must keep working. Hunt for infinite-money exploits. Purple talent hints must be honest (computed from the same math the resolver uses).
-- **Money strings:** only via `formatMoney` / `shortMoney` (never hand-built, never at module load). Mark money inputs `money: true`.
+Cloudflare’s Git integration can deploy a push to this PR branch to production. This continuation
+uses **`[skip ci]`** and keeps the PR draft while the browser check is outstanding.
+Live site: https://snag.sugarhappy8069.workers.dev.
+When the user requests release: complete browser verification, squash-merge with a `(#N)` title,
+bump `package.json` and `package-lock.json` to **1.5.0**, then run `release.yml` with `tag`,
+`target` (merge SHA) and Markdown `notes`. Main deploys through `.github/workflows/deploy.yml`.
 
 ## Appendix: original specs given to the builders
 

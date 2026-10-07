@@ -1,6 +1,7 @@
 // Shared helpers for special careers, fame, social media and the military.
 // Persistent per-career data (skills, discography, medals...) lives in g.flags under
 // "special.<key>" so it survives quitting a career; the current gig lives in Job.data.
+import { outcomeTag } from '../timeMachine'
 import { addHidden, article, count, endJob, formatMoney, notice, shortMoney } from '../core'
 import { createPerson } from '../people'
 import { nextRandom, pick, rand } from '../rng'
@@ -66,7 +67,7 @@ export function dropList(g: GameState, key: string): void {
  * is safe in menu code; used for hidden "what's hot this year" facts that talent hints reveal.
  */
 export function stableRoll(g: GameState, key: string): number {
-  const s = `${g.lifeId}|${g.year}|${key}`
+  const s = `${g.lifeId}${outcomeTag(g, g.year)}|${g.year}|${key}`
   let h = 2166136261
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i)

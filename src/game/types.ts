@@ -579,6 +579,8 @@ export interface InputModal {
   emoji?: string
   text: string
   input: 'text' | 'number'
+  /** Money bounds/defaults stay internal dollars; the UI displays and accepts local units. */
+  money?: boolean
   placeholder?: string
   defaultValue?: string
   min?: number
@@ -629,6 +631,8 @@ export type AiTask =
 // Whole-game state
 
 export interface AncestorSummary {
+  /** Country at death, used with diedYear to display historical local money. */
+  countryId?: string
   generation: number
   name: string
   gender: Gender

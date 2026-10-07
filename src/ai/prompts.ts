@@ -3,6 +3,8 @@
 // Local models have small context windows, so everything here is terse: the whole
 // prompt (system + context + task) stays well under ~2,500 tokens. Nothing in this file
 // mutates the game state — it only reads the frozen snapshot from the store.
+import { immigrationSummary } from '../game/immigration'
+import { currencyOf } from '../game/data/currencies'
 import { businessSummary } from '../game/business'
 import { computerSummary } from '../game/computer'
 import { gameDevSummary } from '../game/special/gamedev'
@@ -415,6 +417,8 @@ export function describeCharacter(g: GameState): string {
     const assets = [...g.assets].sort((a, b) => b.value - a.value).slice(0, 5)
     lines.push(`ASSETS: ${assets.map((a) => `${a.name} (${shortMoney(a.value)})`).join(', ')}`)
   }
+  const immigration = immigrationSummary(g)
+  if (immigration) lines.push(`IMMIGRATION: ${immigration}`)
   const business = businessSummary(g)
   if (business) lines.push(`BUSINESS: ${business}`)
   const portfolio = investmentsSummary(g)
@@ -431,7 +435,7 @@ export function describeCharacter(g: GameState): string {
   if (luxury) lines.push(`LUXURY LIFESTYLE: ${luxury}`)
   if (c.age >= 16 && !c.prison) {
     const m = marketOf(c.countryId)
-    lines.push(`LOCAL ECONOMY: ${m.currencyName}, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, inflation ${Math.round(m.inflation * 100)}%. ${m.businessNote}`)
+    lines.push(`LOCAL ECONOMY: ${currencyOf(c.countryId, g.year).name}, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, inflation ${Math.round(m.inflation * 100)}%. ${m.businessNote}`)
   }
   if (c.criminalRecord.length) {
     const crimes = c.criminalRecord.slice(-3).map((r) => `${r.crime}${r.convicted ? ' (convicted)' : r.caught ? ' (arrested)' : ''}`)

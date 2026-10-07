@@ -8,6 +8,7 @@
 // brand, marketing, products, staff morale, the country's business cycle (shared by every firm
 // in that country), competition and market saturation. Costs follow local wages (never below
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
+import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
 import { corporateTax, exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
 import { historicalCycle } from '../history/markets'
@@ -193,7 +194,7 @@ export function openFractionFor(days: number): number {
 // The business cycle: one boom or recession per country per year, shared by every firm.
 
 function shock(g: GameState, countryId: string, year: number): number {
-  const s = seeded(`${g.lifeId}|bizcycle|${countryId}|${year}`)
+  const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|bizcycle|${countryId}|${year}`)
   let z = (s.next() + s.next() + s.next() - 1.5) * 2
   if (s.chance(0.08)) z -= 1.6 // recession
   if (s.chance(0.06)) z += 1.2 // boom
@@ -789,7 +790,7 @@ export function recordYear(b: BizState, stmt: Statement): YearRecord {
 /** Stock exchange move for a listed company's market, shared by everything on that exchange. */
 export function exchangeMove(g: GameState, countryId: string, year: number): number {
   const ex = exchangeFor(countryId)
-  const s = seeded(`${g.lifeId}|bizexchange|${ex.code}|${year}`)
+  const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|bizexchange|${ex.code}|${year}`)
   const z = (s.next() + s.next() + s.next() - 1.5) * 2
   return clampN(ex.drift + ex.volatility * z, -0.6, 1.2)
 }

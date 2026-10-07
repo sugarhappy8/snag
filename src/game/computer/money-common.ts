@@ -1,6 +1,7 @@
 // Shared helpers for the risky side of the home computer (computer/money*.ts): the saved state,
 // local regulators and brokers, how hard the authorities look, parents finding out, and small
 // number utilities. Everything stored lives in g.flags.computerMoney as plain JSON.
+import { timelineFamily } from '../timeMachine'
 import { seeded } from '../assets'
 import { canUseComputer } from '../computer'
 import { addLoan, offeredRate } from '../finance'
@@ -580,7 +581,7 @@ export function paidText(amount: number, financed: number, lender: string): stri
 // Family market seed (same as the Investments menu, so options settle on the moves it shows)
 
 export function fam(g: GameState): string {
-  return (g.lifeId || 'life').replace(/-g\d+$/, '')
+  return timelineFamily(g, (g.lifeId || 'life').replace(/-g\d+$/, ''))
 }
 
 export function anchor(g: GameState): number {

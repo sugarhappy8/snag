@@ -1,6 +1,7 @@
 // Settings: AI narration level, the AI connection (provider picker + connection form shared
 // with the first-run setup screen), advanced model options and the danger zone. Also exports
 // the small screen header / confirm dialog / toast pieces the other out-of-game screens share.
+import { TimeMachineSettingsSection } from '../components/TimeMachineSettings'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { providerFor } from '../../ai/providers'
 import { formatMoney, moneyContextOf, withMoneyContext } from '../../game/core'
@@ -449,6 +450,8 @@ export function SettingsScreen() {
           {moneyPreview(game)}
         </p>
       </section>
+
+      <TimeMachineSettingsSection />
 
       {/* Advanced */}
       <section className="al-card">

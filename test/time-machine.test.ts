@@ -407,6 +407,7 @@ describe('travelling', () => {
     await live(25)
     const parentId = game().lifeId
     store.act((g) => {
+      g.flags.timelineForks = [{ year: g.year - 2, salt: 'abc123' }]
       createPerson(g, { relation: 'child', age: 3, lastName: g.character.lastName, relationship: 80 })
       killCharacter(g, 'Old Age')
     })
@@ -418,6 +419,7 @@ describe('travelling', () => {
     const g = game()
     expect(g.lifeId).not.toBe(parentId)
     expect(stopAges()).toEqual([g.character.age])
+    expect(g.flags.timelineForks).toEqual([{ year: g.year - 2, salt: 'abc123' }])
     expect(save.timeStops(parentId)).toHaveLength(0)
     expect([...storage.data.keys()].some((k) => k.startsWith(TM_PREFIX) && k.includes(parentId + '|'))).toBe(false)
     expect(tm.jumpsUsed(g)).toBe(0)

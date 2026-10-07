@@ -11,6 +11,7 @@
 // game/events/history*.ts. Nothing here consumes the game's RNG except the era popups, which
 // only run for years before PRESENT_YEAR: a life lived in the present plays exactly as before
 // plus one news line a year.
+import { currencyChangeAt } from '../data/currencies'
 import { currentLogYear } from '../core'
 import { eraMoments } from '../events/history'
 import type { GameState } from '../types'
@@ -193,6 +194,15 @@ export function logNews(g: GameState): void {
 export function yearlyHistory(g: GameState): void {
   if (!g.character.alive) return
   logNews(g)
+  const change = currencyChangeAt(g.character.countryId, g.year)
+  if (change) {
+    const entries = currentLogYear(g).entries
+    const id = `currency-${g.generation}-${g.year}-${g.character.countryId}`
+    if (!entries.some((entry) => entry.id === id)) {
+      const ratio = change.per !== 1 ? ` (${change.per.toLocaleString('en-US', { maximumFractionDigits: 8 })} old for 1 new)` : ''
+      entries.push({ id, text: `💱 The ${change.to.name} replaced the ${change.from.name}${ratio}.`, tone: 'neutral' })
+    }
+  }
   // Era popups only for real history: the present and the future play exactly as before.
   if (isHistorical(g.year) && g.year >= HISTORY_START) eraMoments(g)
 }

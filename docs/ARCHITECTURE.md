@@ -52,7 +52,7 @@ src/
     death.ts             killCharacter(g, cause)                                                       [foundation]
     aging.ts             ageUp(g): runs yearly hooks in order, then queues the yearEvents AI task     [foundation]
     menus.ts             Top-level Activities menu assembly                                           [foundation]
-    save.ts              localStorage saves, ribbon collection, graveyard                             [foundation]
+    save.ts              localStorage saves, ribbon collection, graveyard, separate Time Machine snapshots                             [foundation]
     life.ts health.ts ribbons.ts                                          [life agent]
     education.ts careers.ts data/jobs.ts                                  [career agent]
     special.ts                                                            [special-careers agent]
@@ -179,7 +179,12 @@ src/
     appropriate), jobs at 18 (part-time 14+), driving test at the country's driving age,
     alcohol/nightlife at the drinking age, crime from ~11-14 depending on the crime. Prisoners only
     see prison activities. Dead characters can do nothing.
-11. Money is shown in dollars everywhere (like BitLife). Use `formatMoney` / `shortMoney`.
+11. **Money stays in constant 2026 US dollars inside the engine.** Display with `formatMoney` /
+    `shortMoney` only, at render/action time. The settings select local currency or USD and nominal
+    year prices or today's prices. Mark both `MenuInput` and `InputModal` money amounts with
+    `money: true`; their bounds/defaults stay internal dollars and the UI converts exactly once.
+    Never cache formatted strings at module load. Use `withMoneyContext` for another person's
+    year/country (ancestors, graves, time stops); old entries with no country fall back to USD.
 12. Keep text tasteful for a teen rating by default: dark humor is fine (BitLife-style), nothing sexually explicit, no slurs.
 
 ## Cross-module contract (exact exports)
@@ -187,7 +192,7 @@ src/
 | File | Exports (must exist with these signatures) |
 |------|---------------------------------------------|
 | `world.ts` | `COUNTRIES: Country[]`, `NAME_POOLS`, `getCountry(id)`, `randomCountry(g)`, `randomCity(g, country)`, `randomFirstName(g, countryId, gender)`, `randomLastName(g, countryId)`, `randomSkinTone(g, country)` |
-| `life.ts` | `interface NewLifeOptions { firstName?; lastName?; gender?: Gender; countryId?; city?; sexuality?: Sexuality; seed?: number; year?: number; stats?: Partial<Stats> }` (stats = "Customize stats" on the New Life screen, keys in `START_STAT_KEYS`, clamped 0-100) (year = calendar year of birth; the UI passes the real current year), `createNewLife(opts: NewLifeOptions): GameState`, `continueAsChild(g: GameState, childId: string): GameState`, `yearlyMilestones(g): void` |
+| `life.ts` | `interface NewLifeOptions { firstName?; lastName?; gender?: Gender; countryId?; city?; sexuality?: Sexuality; seed?: number; year?: number; stats?: Partial<Stats> }` (stats = "Customize stats" on the New Life screen, keys in `START_STAT_KEYS`, clamped 0-100) (year = calendar year of birth, clamped to HISTORY_START–PRESENT_YEAR; defaults to PRESENT_YEAR), `createNewLife(opts: NewLifeOptions): GameState`, `continueAsChild(g: GameState, childId: string): GameState`, `yearlyMilestones(g): void` |
 | `health.ts` | `yearlyHealth(g)`, `checkDeath(g)` (old age / health 0 → `killCharacter`), `doctorMenu: MenuGroup` |
 | `ribbons.ts` | `interface RibbonDef { id; name; emoji; description }`, `RIBBONS: RibbonDef[]`, `getRibbon(id): RibbonDef \| undefined`, `computeRibbon(g): string \| null` |
 | `education.ts` | `yearlyEducation(g)`, `educationMenuNodes(g): MenuNode[]` (school / university section of the Occupation menu), `hasDegree(g, kind: DegreeKind, major?: string): boolean`, `highestEducationLabel(g): string` |
@@ -248,6 +253,71 @@ Relationships UI: `relationshipGroups(g)` returns ordered groups (Parents, Sibli
 Children, Grandchildren, Friends, Classmates, Coworkers, Exes, Pets, ...). Tapping a person shows
 `personActions(g, person)`.
 
+## Calendar, history and shared feature contracts
+
+`history/timeline.ts` owns `HISTORY_START = 1900`, `PRESENT_YEAR = 2026`, `ERAS`,
+`eraOf`, `priceLevel`, and country-specific `TECH` adoption through `techAdoption`, `hasTech`
+and `techOdds`. Historical prices are presentation; do not deflate or inflate engine balances.
+Use calendar year as well as age when unlocking technology, careers, stores or activities.
+`events/era.ts` supplies tagged text (`eraPick`, `byEra`) and the anachronism lint. Gate both a
+menu and its outcomes; hiding a label alone does not make the resolver era-safe.
+
+`history/events.ts` provides `worldEvents`, `newsLine`, `eraSummary`, `yearlyHistory` and war
+queries. `aging.ts` calls `yearlyHistory` first. Headlines cover every country/year and continue
+procedurally after the present; historical life events live in `events/history*.ts`. News and
+currency-change log IDs are stable and consume neither game RNG nor normal IDs. Era popups
+only run before PRESENT_YEAR. `events-medicine.ts` adjusts historical medicine and mortality;
+`events-people.ts` supplies occupations and names. The AI prompt includes era, immigration and
+business-share summaries.
+
+`history/markets*.ts` overlays real historical index/sector crashes, gold, housing, inflation,
+rates, exchange closures and expropriation on `invest/engine.ts`. Procedural markets start in
+the present. Historical facts stay fixed across seeds and Time Machine jumps. Options premium
+sampling must use the procedural distribution, not a mix of fixed historical years. Investing
+hints and settlement must use the same family seed, timeline and shock data.
+
+`data/currencies.ts` registers the money converter and owns historical denominations, exchange
+scales and `currencyChangeAt`. `core.ts` exposes `bindMoneyContext`, `withMoneyContext`,
+`showMoney`, `moneyScale`, `moneyFromInput`, `moneyToInput` and display settings. The UI store
+binds its mutable draft before actions (including emigration), then binds committed state.
+`Dialogs.tsx`, `ModalHost.tsx` and Annual Report fields convert inputs; AI effects are converted
+in `director.ts`, after schema validation preserves fractional and hyperinflated amounts.
+Ancestors and graveyard entries store an optional country for historical currency display.
+
+`timeMachine.ts` is pure: `stopOf`, `availableStops`, `travelBlock`, `arriveInPast`, jump counters
+and timeline helpers. A life keeps 10 birthday stops and gets 3 jumps, or unlimited jumps when
+`Settings.sandboxTimeMachine` is true. Snapshots are taken only after birthday popups finish.
+`save.ts` stores them separately from the main save: IndexedDB first, bounded localStorage
+fallback (1,500,000 characters), then memory. Its lifecycle APIs are `startTimeline`,
+`resumeTimeline`, `clearTimeline`, `expectSnapshot`, `snapshotIfDue`, `loadSnapshot`,
+`forgetFuture`, `timeStops` and `subscribeTimeStops`; tests can inject `setSnapshotBackend` and
+await `snapshotWritesSettled`. Failed travel leaves the current life intact; undoing death
+removes that life’s grave and ribbon. Heirs start a fresh snapshot history and jump allowance.
+
+Rewinding changes `g.rng` and records `flags.timelineForks`. Heirs retain these family forks.
+Per-year market seeds use `timelineFamily` and `familyAt`: prices through the restored birthday
+stay unchanged, later prices reroll. Business fiscal outcomes and hidden career rolls use
+`outcomeTag(g, year)`, which also rerolls the unfinished year. `timelineTag` is for prices
+already visible at the start of a year. No fork means the original seed is returned unchanged.
+
+`business/competition*.ts` owns deterministic rival rosters, era-dependent market sizes,
+market share, installed-base effects, acquisitions and antitrust. `competition-state.ts` reads
+old/malformed `BizState.market` safely. Classic businesses, studios and deep tech share
+`buildCtx`/`marketDemand`; `refreshMarket` books actual sales before yearly evolution resets
+plans. Cache keys must include every market-state input, since cloned alternatives can share
+a revision. Early entrants can dominate growing markets; present-day entrants face a crowded
+field. Every business exposes Market & Competition. Deep-tech revenue valuation uses margins
+after research/compute spending; patent and pipeline value is accounted for separately.
+Business sale proceeds service personal founding loans only up to available after-tax proceeds;
+any unpaid personal balance remains owed after the company is gone.
+
+`immigration.ts` owns `citizenshipsOf`, `yearlyImmigration` and `immigrationSummary`.
+`data/immigration*.ts` provides era-aware borders, blocs and destination programs;
+`activities/immigration-*.ts` handles route eligibility, applications, deposits and relocation.
+Status is optional on old saves and advances from visa to permanent residence to citizenship.
+Golden-visa investments stay locked; quitting a route or moving again must settle the lock.
+Eligibility uses nationality, year, net worth, CV, education and family ties, not just cash.
+
 ## AI tasks & the director
 
 `ModalItem` of kind `aiTask` holds a serializable `AiTask`. When one reaches the head of the queue
@@ -285,7 +355,7 @@ references are resolved by name to existing ids, and malformed JSON falls back o
   `resumeSavedGame()`, `hasSavedGame()`, `continueAs(childId)`, `abandonLife()`, `ageUpAction()`,
   `runMenuAction(action, input?)`, `dismissNotice(id)`, `chooseOption(id, choiceId)`,
   `submitInput(id, value)`, `finishMinigame(id, result)`, `skipAi()`, `act(mutator)`,
-  `updateSettings(patch)`, `checkAi()`. Screens: `'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'`.
+  `updateSettings(patch)`, `checkAi()`, `travelBack(age)`, `clearTimeTravelError()`. Screens: `'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'`.
 - Purple talent hints: `components/TalentHint.tsx` renders them; `menuModel` `nodeHint` reads
   `MenuBase.hint` safely and `cleanHint` strips a leading 🔮 and caps at `HINT_MAX` (220 chars).
   CSS tokens `--hint-text`, `--hint-bg`, `--hint-border`, `--hint-ring`. The Death screen's

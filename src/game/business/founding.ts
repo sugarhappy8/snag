@@ -1,6 +1,7 @@
 // Starting a company (industry → name → city → funding → registration) and buying one that is
 // for sale. Everything is priced in the player's local market: capital, fees, permits,
 // registration days, loan rates, and in some countries an official's "facilitation fee".
+import { hasTech } from '../history/timeline'
 import { seeded, yearKey } from '../assets'
 import { addHidden, addStat, count, formatMoney, fullName, log, notice, remember, scriptChoice, scriptInput, spend } from '../core'
 import { arrestPlayer } from '../crime'
@@ -716,7 +717,7 @@ function industryRow(industry: Industry): MenuAction {
       scriptInput(g, {
         title: `Name Your ${def.label}`,
         emoji: def.emoji,
-        text: `${def.blurb} What will you call it?`,
+        text: `${industry === 'cafe' && (!hasTech(g, 'homeComputer') || g.year < 1990) ? 'Coffee, pastries and customers who never leave.' : industry === 'grocery' && g.year < 1955 ? 'Everybody eats. Margins thinner than the paper bags.' : def.blurb} What will you call it?`,
         input: 'text',
         placeholder: defaultName(g, industry),
         defaultValue: defaultName(g, industry),

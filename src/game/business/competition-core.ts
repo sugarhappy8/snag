@@ -124,7 +124,9 @@ const ctxCache = new Map<string, MarketCtx>()
  */
 export function buildCtx(lifeId: string, industry: string, key: string, year: number, state: MarketState | null, dRef: number, fieldP: number): MarketCtx {
   const fam = familyId(lifeId)
-  const cacheKey = `${fam}|${industry}|${key}|${year}|${state ? `${state.rev}:${state.year}:${state.base}` : '-'}|${Math.round(dRef * 100)}|${Math.round(fieldP * 100)}`
+  // Cloned saves and alternative plans can share a revision while holding different rivals,
+  // remedies or first-mover edges. Cache all inputs, never just the revision counter.
+  const cacheKey = `${fam}|${industry}|${key}|${year}|${state ? JSON.stringify(state) : '-'}|${dRef}|${fieldP}`
   const hit = ctxCache.get(cacheKey)
   if (hit) return hit
   const d = marketDef(industry)

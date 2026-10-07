@@ -418,6 +418,7 @@ function inputValue(m: Extract<ModalItem, { kind: 'input' }>, d: Driver): string
 }
 
 interface Seen {
+  countryId: string
   year: number
   title: string
   text: string
@@ -428,9 +429,9 @@ function drain(g: GameState, d: Driver, texts: Seen[]): void {
     if (guard > 300) throw new Error(`queue never drains: ${JSON.stringify(g.queue[0]).slice(0, 200)}`)
     const m = g.queue.shift()!
     const before = g.queue.length
-    if (m.kind === 'notice') texts.push({ year: g.year, title: m.title, text: m.text })
+    if (m.kind === 'notice') texts.push({ countryId: g.character.countryId, year: g.year, title: m.title, text: m.text })
     else if (m.kind === 'choice') {
-      texts.push({ year: g.year, title: m.title, text: [m.text, ...m.choices.map((c) => c.label)].join(' | ') })
+      texts.push({ countryId: g.character.countryId, year: g.year, title: m.title, text: [m.text, ...m.choices.map((c) => c.label)].join(' | ') })
       const choice = d.pick(m.choices)
       if (m.source === 'script') runScript(g, m.scriptId!, choice.id, m.data, m)
       else applyFallback(g, { type: 'resolveChoice', event: m, choiceId: choice.id })
@@ -465,10 +466,11 @@ function check(g: GameState): void {
 }
 
 /** Plays a whole life from `year`; returns every popup text and the final state. */
-function playFrom(seed: number, year: number, countryId: string): { g: GameState; texts: Seen[] } {
+function playFrom(seed: number, year: number, countryId: string): { g: GameState; texts: Seen[]; newsCountries: Map<number, string> } {
   const d = driver(seed * 31 + year)
   const g = createNewLife({ seed, year, countryId })
   const texts: Seen[] = []
+  const newsCountries = new Map([[g.year, countryId]])
   try {
     drain(g, d, texts)
     while (g.character.alive) {
@@ -489,6 +491,7 @@ function playFrom(seed: number, year: number, countryId: string): { g: GameState
         check(g)
       }
       if (!g.character.alive) break
+      newsCountries.set(g.year + 1, g.character.countryId)
       ageUp(g)
       drain(g, d, texts)
       check(g)
@@ -496,7 +499,7 @@ function playFrom(seed: number, year: number, countryId: string): { g: GameState
   } catch (err) {
     throw new Error(`seed ${seed}, born ${year} in ${countryId}, age ${g.character.age} (${g.year}): ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`)
   }
-  return { g, texts }
+  return { g, texts, newsCountries }
 }
 
 describe('lives in the past', () => {
@@ -522,13 +525,13 @@ describe('lives in the past', () => {
     const ours = /^(The Flu|Flu Season|Lockdown|Rationing|Air Raid|All Clear|Hit|Evacuated|One Small Step|Duck and Cover|Missile Crisis|Draft Notice|In Hiding|War at Home|Hard Times|Laid Off|The War Is Over!|Armistice|Partition|Gas Lines|The War Effort|Factory Work|Farm Work|Volunteer Nurse|The Home Front|Conscientious Objector|Medical Exemption|Caught Faking|Objection Rejected|Y2K)$/
     let checked = 0
     for (const [i, [year, country]] of ([[1905, 'gb'], [1925, 'us'], [1935, 'de'], [1945, 'in'], [1955, 'eg'], [1915, 'ru'], [1960, 'vn']] as [number, string][]).entries()) {
-      const { g, texts } = playFrom(100 + i, year, country)
+      const { g, texts, newsCountries } = playFrom(100 + i, year, country)
       for (const y of g.log) {
-        for (const e of y.entries) if (isNewsLine(e.text)) expect(eraSafe(e.text, country, y.year), e.text).toBe(true)
+        for (const e of y.entries) if (isNewsLine(e.text)) expect(eraSafe(e.text, newsCountries.get(y.year)!, y.year), e.text).toBe(true)
       }
       for (const t of texts.filter((x) => ours.test(x.title))) {
         checked++
-        expect(eraSafe(t.text, country, t.year), `${t.year} ${t.title}: ${t.text}`).toBe(true)
+        expect(eraSafe(t.text, t.countryId, t.year), `${t.year} ${t.title}: ${t.text}`).toBe(true)
       }
     }
     expect(checked).toBeGreaterThan(3)

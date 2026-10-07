@@ -14,6 +14,7 @@
 // banks follow real inflation, defaults and banking crises. Exchanges that were shut or hadn't
 // opened yet stand still. Still deterministic and RNG-free; future years stay procedural, and a
 // family whose history starts at PRESENT_YEAR or later gets exactly the old procedural market.
+import { familyAt } from '../timeMachine'
 import { seeded, type SRng } from '../assets'
 import { DEEP_TECH_IDS, exchangeFor, marketOf, type Industry, type MarketProfile, type StockExchange } from '../data/markets'
 import {
@@ -163,7 +164,7 @@ export function worldYear(fam: string, year: number): WorldYear {
 
 /** The procedural world economy for (family, year), ignoring real history. */
 function syntheticWorldYear(fam: string, year: number): WorldYear {
-  const r = seeded(`${fam}|world|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|world|${year}`)
   const z = normal(r)
   const crash = r.next() < WORLD_CRASH
   const boom = !crash && r.next() < WORLD_BOOM
@@ -200,7 +201,7 @@ export function syntheticIndexMove(fam: string, info: ExInfo, year: number): Ind
   const vol = exVol(info.ex)
   const drift = exDrift(info.ex)
   const w = syntheticWorldYear(fam, year)
-  const r = seeded(`${fam}|ix|${info.key}|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|ix|${info.key}|${year}`)
   const zl = normal(r)
   const uc = r.next()
   const ub = r.next()
@@ -736,9 +737,9 @@ function splitRatio(price: number): number {
 }
 
 function initialExYear(fam: string, info: ExInfo, year: number): ExYear {
-  const r = seeded(`${fam}|init|${info.key}`)
+  const r = seeded(`${familyAt(fam)}|init|${info.key}`)
   // Deep-tech extras draw from their own stream so the classic listings keep their old prices.
-  const rd = seeded(`${fam}|initdt|${info.key}`)
+  const rd = seeded(`${familyAt(fam)}|initdt|${info.key}`)
   const classic = classicSlots(info)
   const stocks = slotPlan(info).map((_, slot): SecYear => {
     const def = companyDef(info, slot, 0)
@@ -869,7 +870,7 @@ function nextPenny(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: n
 function housingMove(fam: string, info: ExInfo, year: number, idx: IndexMove): number {
   if (inHistory(year)) return clampNum(historicalHousing(info.home, year) ?? 0, -0.4, 0.4)
   const m = marketOf(info.home)
-  const r = seeded(`${fam}|house|${info.home}|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|house|${info.home}|${year}`)
   const base = 0.03 - 0.5 * Math.max(0, m.interestRate - 0.05) * 0.2
   return clampNum(base + 0.06 * normal(r) + (idx.crash ? -0.1 : 0) + (idx.boom ? 0.04 : 0), -0.4, 0.4)
 }
@@ -887,8 +888,8 @@ function nationalized(s: SecYear, next: SecurityDef): SecYear {
 function nextExYear(fam: string, info: ExInfo, prev: ExYear, year: number): ExYear {
   const idx = indexMove(fam, info, year)
   const dyIdx = indexYield(info)
-  const r = seeded(`${fam}|ex|${info.key}|${year}`)
-  const rd = seeded(`${fam}|exdt|${info.key}|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|ex|${info.key}|${year}`)
+  const rd = seeded(`${familyAt(fam, year)}|exdt|${info.key}|${year}`)
   const classic = classicSlots(info)
   // History: no exchange (not yet open, or abolished after a revolution) means nothing moves;
   // the year of a revolution wipes every listing out.
@@ -1024,7 +1025,7 @@ const CRYPTO_MU = 0.18
 const CRYPTO_TREND = 0.05
 
 function cryptoMarket(fam: string, year: number): { logRet: number; winter: boolean; mania: boolean } {
-  const r = seeded(`${fam}|crypto|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|crypto|${year}`)
   const z = normal(r)
   const u = r.next()
   const s = r.next()
@@ -1037,7 +1038,7 @@ const cryptoCache = new Map<string, CryptoYear[]>()
 
 function coinStartPrice(fam: string, slot: number, gen: number): number {
   const b = COIN_SLOTS[slot % COIN_SLOTS.length].base
-  const r = seeded(`${fam}|coin0|${slot}|${gen}`)
+  const r = seeded(`${familyAt(fam)}|coin0|${slot}|${gen}`)
   return b[0] === b[1] ? b[0] : Math.round(r.float(b[0], b[1]) * 10000) / 10000
 }
 
@@ -1079,7 +1080,7 @@ export function cryptoYear(fam: string, anchor: number, year: number): CryptoYea
       continue
     }
     const mk = cryptoMarket(fam, yr)
-    const r = seeded(`${fam}|coins|${yr}`)
+    const r = seeded(`${familyAt(fam, yr)}|coins|${yr}`)
     const coins = prev.coins.map((c): SecYear => {
       const def = coinDef(c.slot, c.gen)
       const z = normal(r)
@@ -1134,7 +1135,7 @@ export function goldYear(fam: string, anchor: number, year: number): { price: nu
   let years = goldCache.get(ck)
   if (!years) {
     const hist = historicalGoldPrice(a)
-    years = [{ price: hist !== null ? hist : Math.round(seeded(`${fam}|gold0`).float(1_800, 2_800)), ret: 0 }]
+    years = [{ price: hist !== null ? hist : Math.round(seeded(`${familyAt(fam)}|gold0`).float(1_800, 2_800)), ret: 0 }]
     remember(goldCache, ck, years)
   }
   while (years.length <= y - a) {
@@ -1148,7 +1149,7 @@ export function goldYear(fam: string, anchor: number, year: number): { price: nu
       continue
     }
     const w = worldYear(fam, yr)
-    const r = seeded(`${fam}|gold|${yr}`)
+    const r = seeded(`${familyAt(fam, yr)}|gold|${yr}`)
     const z = (0.75 * normal(r) - 0.45 * w.z) / 0.875
     // Gold wanders, but not forever: it drifts back toward a slowly rising long-run price.
     const trend = Math.log(years[baseAt].price) + 0.035 * (yr - (a + baseAt))
@@ -1275,7 +1276,7 @@ export interface FxYear {
 
 export function fxYear(fam: string, countryId: string, year: number): FxYear {
   if (inHistory(year)) return historicalFx(countryId, year)
-  const r = seeded(`${fam}|fx|${countryId}|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|fx|${countryId}|${year}`)
   const e = expectedDepreciation(countryId)
   const noise = normal(r) * (0.02 + 0.3 * Math.max(0, e))
   const uDef = r.next()

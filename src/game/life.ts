@@ -1094,6 +1094,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     age: old.age,
     causeOfDeath: cause,
     netWorth: netWorth(n),
+    countryId: old.countryId,
     occupation,
     ribbon: n.ribbon,
   }
@@ -1353,6 +1354,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(typeof n.flags.heirOccupation === 'string' ? { heirOccupation: n.flags.heirOccupation } : {}),
     // Market shocks are world state (a banned company stays banned), not the old character's.
     ...(Array.isArray(n.flags.marketShocks) ? { marketShocks: n.flags.marketShocks } : {}),
+    ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
   }
   if (age < 12 && !heir.talent && chance(n, 0.3)) {
     n.flags.latentTalent = weightedPick(n, TALENTS, (t) => t.weight).id
@@ -1676,7 +1678,7 @@ const MIDLIFE = defineScript('life.midlife', (g, choice) => {
     const cost = Math.min(want, Math.max(0, c.money))
     if (cost < 300) {
       addStat(g, 'happiness', randInt(g, 1, 4))
-      notice(g, 'Mid-Life Crisis', 'You wanted to jet off somewhere exotic, but your bank balance said "staycation." You bought some fancy sunglasses instead.', { emoji: '\u{1F576}\u{FE0F}' })
+      notice(g, 'Mid-Life Crisis', `You wanted to ${g.year >= 1958 ? 'jet' : 'head'} off somewhere exotic, but your bank balance said "staycation." You bought some fancy sunglasses instead.`, { emoji: '\u{1F576}\u{FE0F}' })
       log(g, 'I had a mid-life crisis on a budget.')
       return
     }

@@ -136,7 +136,7 @@ const PENNY_ERAS: readonly { until: number; kinds: readonly EraPennyKind[] }[] =
     kinds: [
       { noun: 'Gold Mines', pitch: 'Has a map, a mule and a very confident prospector.', as: 'mining' },
       { noun: 'Oil Wells', pitch: "Drilling in a farmer's back pasture. Smells promising.", as: 'oil' },
-      { noun: 'Television Laboratories', pitch: 'Promises moving pictures in every home. Has one working set, in the lab.', as: 'electronics' },
+      { noun: 'Electrical Laboratories', pitch: 'Promises moving pictures in every home. Has one working set, in the lab.', as: 'electronics' },
       { noun: 'Synthetic Rubber', pitch: 'Makes tyres out of chemistry. The war department is interested.' },
       { noun: 'Aircraft Parts', pitch: 'Makes propellers in a garage and dreams of a factory.', as: 'industrials' },
       { noun: 'Frozen Foods', pitch: 'Freezes peas. Believes this is the future. Might be right.' },

@@ -5,6 +5,7 @@
 // School Board Director → Mayor → Governor → President / Prime Minister. From Mayor up you can
 // also abuse the office: market-moving announcements, insider trades and the fallout (see
 // "Abuse of power" below).
+import { hasTech } from '../history/timeline'
 import { cryptoBanned, enforcement, local, readState as readMoney, regulator } from '../computer/money-common'
 import { caseProfit, coinTargets, findTarget, freezeBets, maxBet, minBet, openBetsOn, placeBet, priceLabel, stockTargets, tagBets, type BetTarget } from '../computer/money-stocks'
 import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, spend, useYearAction, yearActionsUsed } from '../core'
@@ -705,6 +706,8 @@ const TRAIL: { id: string; label: string; emoji: string }[] = [
 
 /** US campaign stops stay American (corn dogs, diners); elsewhere it's the market and the café. */
 function trailLabel(g: GameState, id: string, label: string): string {
+  if (id === 'tv' && !hasTech(g, 'tv')) return 'Give a newspaper interview'
+  if (id === 'social' && !hasTech(g, 'socialMedia')) return 'Distribute campaign leaflets'
   if (g.character.countryId === 'us') return label
   if (id === 'fair') return 'Eat street food at the market'
   if (id === 'diner') return 'Shake hands at a local café'
@@ -723,14 +726,14 @@ function voterMood(g: GameState, camp: Campaign): string {
 /** Expected poll swing of a stop for this candidate (no randomness: safe for hints). */
 function expectedSwing(g: GameState, camp: Campaign, id: string): number {
   const c = g.character
-  const followers = c.social?.followers ?? 0
+  const followers = hasTech(g, 'socialMedia') ? (c.social?.followers ?? 0) : 0
   const base: Record<string, number> = {
     debate: (c.stats.smarts - 50) / 6,
     rally: 2,
     babies: 1,
     attack: 1,
     doors: 2,
-    tv: (c.stats.looks - 50) / 8,
+    tv: ((hasTech(g, 'tv') ? c.stats.looks : c.stats.smarts) - 50) / 8,
     social: 0.5 + (followers > 100_000 ? 3 : followers > 5_000 ? 1 : 0),
     fair: 1,
     townhall: (c.stats.smarts - 50) / 10 + 0.5,
@@ -781,7 +784,7 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
     }
     case 'babies': {
       const d = randInt(g, -3, 5)
-      return { delta: d, text: d >= 1 ? pick(g, ['You kissed a baby and it giggled on camera. Polls love a giggling baby.', 'You held a baby like a pro. Parents swooned.']) : pick(g, ['The baby screamed the moment you picked it up. The photo went viral for all the wrong reasons.', 'A baby sneezed directly into your mouth. You smiled through it.']) }
+      return { delta: d, text: d >= 1 ? pick(g, ['You kissed a baby and it giggled on camera. Polls love a giggling baby.', 'You held a baby like a pro. Parents swooned.']) : pick(g, [hasTech(g, 'internet') ? 'The baby screamed the moment you picked it up. The photo went viral for all the wrong reasons.' : 'The baby screamed the moment you picked it up. The photo made the front page for all the wrong reasons.', 'A baby sneezed directly into your mouth. You smiled through it.']) }
     }
     case 'attack': {
       addHidden(g, 'karma', -2)
@@ -793,11 +796,19 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
       return { delta: d, text: pick(g, ['You knocked on hundreds of doors. Most people pretended not to be home, but some listened.', 'You went door-to-door and only got chased by one dog. A good day.', 'You learned a lot about your neighbors by knocking on their doors. Some of it you wish you could forget.']) }
     }
     case 'tv': {
+      if (!hasTech(g, 'tv')) {
+        const d = Math.round((c.stats.smarts - 50) / 8 + randInt(g, -5, 5))
+        return { delta: d, text: d >= 2 ? 'Your newspaper interview won over readers. The editor printed your best line.' : 'The newspaper printed your least convincing answer in enormous letters.' }
+      }
       const d = Math.round((c.stats.looks - 50) / 8 + randInt(g, -5, 5))
       return { delta: d, text: d >= 2 ? pick(g, ['You looked confident and camera-ready. The anchor practically endorsed you.', 'Your TV interview was charming. Your approval among grandmas skyrocketed.']) : pick(g, ['You had spinach in your teeth for the entire interview.', 'The interviewer asked about your platform and you blanked on what it was.']) }
     }
     case 'social': {
-      const followers = c.social?.followers ?? 0
+      if (!hasTech(g, 'socialMedia')) {
+        const d = randInt(g, -3, 4)
+        return { delta: d, text: d >= 2 ? 'Volunteers handed out your campaign leaflets. People stopped to read them.' : 'A gust of wind carried your campaign leaflets into a puddle. The opposition enjoyed that.' }
+      }
+      const followers = hasTech(g, 'socialMedia') ? (c.social?.followers ?? 0) : 0
       const d = randInt(g, -3, 4) + (followers > 100_000 ? 3 : followers > 5_000 ? 1 : 0)
       return { delta: d, text: d >= 2 ? pick(g, ['Your campaign video went viral. Even teenagers shared it, ironically.', 'Your meme game was strong. The youth vote noticed.']) : pick(g, ['You posted an old meme and got roasted in the replies.', 'An intern tweeted from your account by mistake. "lol who even votes"']) }
     }
@@ -1760,6 +1771,7 @@ defineScript(CRONY_DIR_SCRIPT, (g, choice, data) => {
     emoji: '\u{1F4BC}',
     text: `How much cash do you slip ${name} for ${coin ? (kind === 'short' ? `a 2x short on ${t.name}` : `a long bet on ${t.name}`) : `${kind}s on ${t.name}`}? ${name} keeps ${Math.round(CRONY_CUT * 100)}% of any profit. You can hand over ${money(minBet(g))} to ${money(hi)}.`,
     input: 'number',
+    money: true,
     min: minBet(g),
     max: hi,
     defaultValue: String(Math.max(minBet(g), Math.round(hi / 10))),

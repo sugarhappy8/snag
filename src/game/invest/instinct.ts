@@ -11,6 +11,7 @@
 // menu never rerolls it, an heir gets a gut of their own, and nothing here touches g.rng or the
 // state. Calibrated so picks rise about four times in five: a real edge, never a sure thing
 // (test/talent-investing.test.ts; following it beats the index by roughly ten points a year).
+import { timelineFamily } from '../timeMachine'
 import { seeded } from '../assets'
 import { hasTalent } from '../talents'
 import type { GameState } from '../types'
@@ -61,7 +62,7 @@ export const MAX_PICKS = 3
 
 /** The family market seed and history anchor (the same as investments.ts and computer/money-common.ts). */
 function fam(g: GameState): string {
-  return (g.lifeId || 'life').replace(/-g\d+$/, '')
+  return timelineFamily(g, (g.lifeId || 'life').replace(/-g\d+$/, ''))
 }
 
 function anchor(g: GameState): number {

@@ -4,6 +4,7 @@
 // embrace) doping and bribes, get traded, retire, and maybe reach the Hall of Fame.
 import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
+import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -574,7 +575,7 @@ const fanScript = defineScript('special.athlete.fans', (g, choice) => {
   } else if (choice === 'selfie') {
     p.respect = clamp100(p.respect + 3)
     addFame(g, 1)
-    text = 'You posed for a hundred selfies. One of them has more likes than your team page.'
+    text = hasTech(g, 'smartphone') ? 'You posed for a hundred selfies. One of them has more likes than your team page.' : 'You posed for a hundred photographs. Everyone wanted a copy for their mantelpiece.'
   } else if (choice === 'heckler') {
     p.respect = clamp100(p.respect - 8)
     addFame(g, 1)
@@ -705,7 +706,7 @@ export function athleteJobNodes(g: GameState): MenuNode[] {
           'A crowd of fans is waiting for you outside the stadium.',
           [
             { id: 'sign', label: 'Sign autographs', emoji: '\u{270D}\u{FE0F}' },
-            { id: 'selfie', label: 'Take selfies', emoji: '\u{1F933}' },
+            { id: 'selfie', label: hasTech(gg, 'smartphone') ? 'Take selfies' : 'Pose for photographs', emoji: '\u{1F933}' },
             { id: 'heckler', label: 'Roast a heckler', emoji: '\u{1F525}' },
             { id: 'ignore', label: 'Ignore them', emoji: '\u{1F610}' },
           ],

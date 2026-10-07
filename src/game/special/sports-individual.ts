@@ -7,6 +7,7 @@
 // Job (defId 'sports.ind') holding the circuit, ranking points, prize money and season results.
 // Players can enter the marquee events of the calendar themselves (with a decisive-moment
 // choice); everything they skip is simulated at the end of the season.
+import { hasTech } from '../history/timeline'
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { chance, pick, rand, randInt, bell } from '../rng'
 import { defineScript } from '../scripts'
@@ -168,7 +169,12 @@ export function indRating(g: GameState, sport: IndSport, rec: IndRecord, job?: J
 // ---------------------------------------------------------------------------
 // Where a sport can be played
 
+export function sportEraAvailable(g: GameState, sport: IndSport): boolean {
+  return g.year >= (sport.id === 'skate' ? 1960 : sport.id === 'snowboard' ? 1965 : 1900)
+}
+
 export function placeReason(g: GameState, sport: IndSport): string | null {
+  if (!sportEraAvailable(g, sport)) return 'This sport has not been invented yet.'
   if (sport.needs === 'snow' && !hasSnowHere(g)) return `There's no snow in ${countryName(g)}. Move somewhere with real winters to train for ${sport.name.toLowerCase()}.`
   if (sport.needs === 'coast' && !hasCoast(g)) return `${countryName(g)} has no coastline. Surfers need waves; move somewhere by the sea.`
   if (sport.needs === 'rink' && !hasRink(g)) return `There are no proper ice rinks near you in ${countryName(g)}. Move somewhere colder or richer to skate.`
@@ -864,7 +870,7 @@ const dopeAction: MenuAction = {
     addHidden(g, 'karma', -5)
     addStat(g, 'health', -3)
     log(g, 'I started taking performance enhancers.', 'bad')
-    say(g, 'Performance Enhancers', pick(g, ['A "sports nutritionist" with no website sold you a fridge full of tiny bottles. You feel incredible.', 'You started a "recovery protocol" your federation would not approve of.']), '\u{1F489}', 'bad')
+    say(g, 'Performance Enhancers', pick(g, [`A "sports nutritionist" with no ${hasTech(g, 'internet') ? 'website' : 'credentials'} sold you a case full of tiny bottles. You feel incredible.`, 'You started a "recovery protocol" your federation would not approve of.']), '\u{1F489}', 'bad')
   },
 }
 
@@ -961,6 +967,7 @@ export function sportMenu(sport: IndSport): MenuGroup {
     type: 'menu',
     id: `sports.ind.${sport.id}`,
     label: sport.name,
+    visible: (g) => sportEraAvailable(g, sport),
     emoji: sport.emoji,
     subtitle: (g) => {
       const j = indJob(g)

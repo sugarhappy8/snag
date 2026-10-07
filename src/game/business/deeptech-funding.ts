@@ -201,11 +201,11 @@ export function grantAmount(b: BizState, t: TechState, gr: GrantDef): number {
 
 /** Why the company can't apply for this grant now (null when it can). */
 export function grantBlock(g: GameState, a: Asset, b: BizState, t: TechState, gr: GrantDef): string | null {
+  if ((g.yearActions[grantKey(a, gr)] ?? 0) >= 1) return 'You already applied this year. The committee meets again next year.'
   const awards = t.grants.filter((x) => x.id === gr.id)
   if (awards.length >= MAX_GRANT_AWARDS) return 'You have had this grant twice already. Let someone else have a turn.'
   const lastAward = awards[awards.length - 1]
   if (lastAward && g.year - lastAward.year < GRANT_COOLDOWN) return `You won this grant in ${lastAward.year}. You can apply again in ${lastAward.year + GRANT_COOLDOWN}.`
-  if ((g.yearActions[grantKey(a, gr)] ?? 0) >= 1) return 'You already applied this year. The committee meets again next year.'
   if (grantAmount(b, t, gr) <= 0) return gr.capex ? 'Only for a big capital project that is being built.' : 'Only for R&D programs that are running. Start one first.'
   return null
 }

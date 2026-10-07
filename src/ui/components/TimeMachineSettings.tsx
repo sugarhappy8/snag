@@ -6,7 +6,7 @@ import { updateSettings, useApp } from '../store'
 
 /** The settings patch for the Sandbox switch (the field may be missing from older Settings). */
 export function sandboxPatch(on: boolean): Partial<Settings> {
-  return { sandboxTimeMachine: on } as unknown as Partial<Settings>
+  return { sandboxTimeMachine: on }
 }
 
 export function TimeMachineSettingsSection() {

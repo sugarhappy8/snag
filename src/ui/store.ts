@@ -471,6 +471,7 @@ function finalizeIfDead(g: GameState): void {
     age: c.age,
     causeOfDeath: c.causeOfDeath ?? 'Unknown',
     netWorth: netWorth(g),
+    countryId: c.countryId,
     occupation: typeof g.flags.finalOccupation === 'string' ? g.flags.finalOccupation : 'Unknown',
     ribbon: g.ribbon,
     obituary: g.obituary,
@@ -482,7 +483,13 @@ export function act(mutator: (g: GameState) => void): void {
   const current = state.game
   if (!current) return
   const draft = structuredClone(current)
-  mutator(draft)
+  bindMoneyContext(draft)
+  try {
+    mutator(draft)
+  } catch (err) {
+    bindMoneyContext(current)
+    throw err
+  }
   commit(draft)
   processQueue()
 }

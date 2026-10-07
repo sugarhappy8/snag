@@ -2,6 +2,7 @@
 // TechState inside a BizState, local cost scales, founder and team skill, the industry boom/bust
 // cycles, the demand/capacity model (stage, tech level, R&D premiums, compute, plants) and the
 // valuation cache that economy.valuationOf reads through deepTechValue().
+import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
 import { marketOf, industryDemand } from '../data/markets'
 import { codingSkill } from '../computer/skills'
@@ -142,7 +143,7 @@ export interface IndustryCycle {
 }
 
 function cycleZ(g: GameState, ind: DeepTechIndustry, year: number): number {
-  const s = seeded(`${g.lifeId}|dtcycle|${ind}|${year}`)
+  const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|dtcycle|${ind}|${year}`)
   return (s.next() + s.next() + s.next() - 1.5) * 2
 }
 
@@ -483,12 +484,12 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const growth = prev && prev.revenue > 0 && revenue > 0 ? clampN(revenue / prev.revenue - 1, -0.3, 0.6) : 0
   const profitValue = Math.max(0, avgCore) * def.multiple * (1 + growth) * (0.85 + b.brand / 333)
 
-  // Revenue multiple: investors pay up for growth at a real stage with margins that work once R&D
-  // stops (R&D itself is an investment, not a running cost).
+  // Revenue multiples require sustainable margins. Research and rented compute still cost
+  // money in a growing lab; adding them all back prices a loss-making blitz as pure profit.
+  // Completed research retains its value through the separate patent/pipeline floor below.
   const s = b.last
   const x = t.last && s && t.last.year === s.year ? t.last : null
-  const rdBack = x ? x.rd + x.compute - x.credit - x.grants : 0
-  const operating = s ? s.pbt - (x ? x.oneOff : 0) + rdBack : 0
+  const operating = s ? s.pbt - (x ? x.oneOff : 0) : 0
   const margin = revenue > 0 ? operating / revenue : -1
   const quality = clampN(0.3 + 1.75 * margin, 0.08, 1.2)
   const stageMult = 0.35 + 0.65 * (t.stage / Math.max(1, maxStage(ind)))

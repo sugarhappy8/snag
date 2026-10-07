@@ -16,6 +16,8 @@
 // (business cycle + industry demand + local conditions), and the "Your CV" menu.
 //
 // This module must not import education.ts or careers.ts (they import it).
+import { eraPick } from './events/era'
+import { hasTech } from './history/timeline'
 import { cycleLabel, cycleOf } from './business/economy'
 import { devCvEntries } from './computer/dev-cv'
 import { codingSkill } from './computer/skills'
@@ -1190,12 +1192,12 @@ const CAUGHT_LINES = [
   'A background check found that "{title}" never happened. They were not amused.',
   'They called {org} to verify "{title}". {org} had never heard of you.',
   'Someone on the panel actually knew about "{title}". It was not you.',
-  'They googled "{title}". The only result was your CV.',
+  '@internet They googled "{title}". The only result was your CV.',
 ]
 
 /** Why you were caught (for the rejection popup). */
 export function caughtLine(g: GameState, e: CvEntry): string {
-  return pick(g, CAUGHT_LINES)
+  return eraPick(g, CAUGHT_LINES)
     .replace(/\{title\}/g, e.title)
     .replace(/\{org\}/g, e.org || 'the organizer')
 }
@@ -1219,7 +1221,7 @@ export function screeningReason(g: GameState, app: ScreeningApp, invite: boolean
     const crowded = /~([\d,]+) applicants/.exec(market)
     const n = crowded ? Number(crowded[1].replace(/,/g, '')) : 0
     if (n >= 60 && chance(g, 0.6)) return `With ~${n.toLocaleString('en-US')} applicants per opening, your CV didn't make the shortlist.`
-    if (app.fit < 30) return pick(g, ["Your CV didn't show enough relevant experience.", 'Their applicant-tracking robot rejected you in 0.4 seconds.', 'Your CV was mostly white space and optimism.'])
+    if (app.fit < 30) return pick(g, ["Your CV didn't show enough relevant experience.", hasTech(g, 'internet') ? 'Their applicant-tracking robot rejected you in 0.4 seconds.' : 'The clerk put your application at the bottom of the pile.', 'Your CV was mostly white space and optimism.'])
     return pick(g, ['They went with someone with more relevant experience.', 'A stronger candidate applied about five minutes before you did.', 'They "decided to move forward with other candidates." Ouch.'])
   }
   if (app.fit < 30) return pick(g, ['The committee wanted to see more clubs, leadership, volunteering or projects.', 'Your grades were fine, but your CV said "spent four years on the couch."'])
@@ -1406,11 +1408,11 @@ const PROJECTS: ProjectDef[] = [
     talents: ['Academics'],
     base: (g) => g.character.stats.smarts * 0.8 + g.character.hidden.discipline * 0.2,
     make: (g, q) => ({
-      title: `Research paper: ${pick(g, ['the effect of music on plant growth', 'sleep and test scores', 'microplastics in tap water', 'why cats knock things over', 'traffic patterns in ' + g.character.city, 'the economics of school lunches'])}`,
+      title: `Research paper: ${pick(g, ['the effect of music on plant growth', 'sleep and test scores', g.year >= 2004 ? 'microplastics in tap water' : 'particles in tap water', 'why cats knock things over', 'traffic patterns in ' + g.character.city, 'the economics of school lunches'])}`,
       org: g.character.education.current?.school ?? 'Independent research',
       detail: popularity(q, [g.character.age >= 22 ? 'Published in a peer-reviewed journal' : 'Published in a national student journal', 'Presented at a student conference', 'Read by your teacher (and, reluctantly, your mom)']),
     }),
-    flops: ['Your "research" turned out to be one Wikipedia article and a lot of confidence.', 'Your data got eaten by the dog. Literally: it was on paper.'],
+    flops: ['Your "research" turned out to be one encyclopedia article and a lot of confidence.', 'Your data got eaten by the dog. Literally: it was on paper.'],
     great: 'A real scientist emailed you about it.',
   },
   {
@@ -1442,9 +1444,9 @@ const PROJECTS: ProjectDef[] = [
     talents: ['Acting', 'Comedy', 'Writing'],
     base: (g) => 25 + g.character.stats.smarts * 0.3 + g.character.hidden.discipline * 0.25 + g.character.stats.looks * 0.1,
     make: (g, q) => ({
-      title: `Short film: "${pick(g, ['The Last Bus', 'Leftovers', 'Static', 'Grandma vs. the Wi-Fi', 'Night Shift', 'Paper Planes'])}"`,
+      title: `Short film: "${pick(g, ['The Last Bus', 'Leftovers', 'Static', hasTech(g, 'internet') && g.year >= 2000 ? 'Grandma vs. the Wi-Fi' : 'Grandma vs. the Postman', 'Night Shift', 'Paper Planes'])}"`,
       org: 'Writer & director',
-      detail: popularity(q, [fillLocal(g, 'Screened at the {city} Film Festival'), `${randInt(g, 2, 40)}K views online`, 'Watched by the cast, twice']),
+      detail: popularity(q, [fillLocal(g, 'Screened at the {city} Film Festival'), hasTech(g, 'videoSharing') ? `${randInt(g, 2, 40)}K views online` : `${randInt(g, 2, 40)} screenings at local clubs`, 'Watched by the cast, twice']),
     }),
     flops: ['Your lead actor quit halfway through filming to go to a birthday party.', 'You forgot to press record. For the whole shoot.'],
     great: 'It won the audience award.',
@@ -1461,7 +1463,7 @@ const PROJECTS: ProjectDef[] = [
     talents: ['Academics'],
     base: (g) => g.character.stats.smarts * 0.7 + g.character.hidden.discipline * 0.3,
     make: (g, q) => ({
-      title: `Science fair: ${pick(g, ['a potato battery that charges a phone', 'testing which soda dissolves a tooth fastest', 'a homemade water filter', 'a solar oven', 'teaching mold to grow in shapes'])}`,
+      title: `Science fair: ${pick(g, [hasTech(g, 'mobilePhone') ? 'a potato battery that charges a phone' : 'a potato battery that lights a bulb', 'testing which soda dissolves a tooth fastest', 'a homemade water filter', 'a solar oven', 'teaching mold to grow in shapes'])}`,
       org: g.character.education.current?.school ?? 'Regional science fair',
       detail: popularity(q, ['1st place, regional science fair', 'Honorable mention', 'Participation ribbon']),
     }),
@@ -1480,7 +1482,7 @@ const PROJECTS: ProjectDef[] = [
     talents: ['Programming'],
     base: (g) => g.character.stats.smarts * 0.7 + g.character.hidden.discipline * 0.3,
     make: (g, q) => ({
-      title: `Open-source contributor to ${pick(g, ['a popular web framework', 'a map app', 'a game engine', 'a translation tool', 'a privacy browser extension'])}`,
+      title: `Open-source contributor to ${pick(g, ['a popular web framework', hasTech(g, 'smartphone') ? 'a map app' : 'a mapping tool', 'a game engine', 'a translation tool', 'a privacy browser extension'])}`,
       org: 'Open source',
       detail: popularity(q, ['Became a core maintainer', `${randInt(g, 5, 30)} merged pull requests`, 'One merged typo fix']),
     }),
@@ -1552,9 +1554,9 @@ const PROJECTS: ProjectDef[] = [
     talents: ['Business', 'Investing'],
     base: (g) => g.character.stats.smarts * 0.55 + g.character.hidden.discipline * 0.25 + g.character.hidden.willpower * 0.2,
     make: (g, q) => ({
-      title: `Business plan: ${pick(g, ['a dog-walking app', 'subscription socks', 'a late-night study café', 'electric scooter repair', 'meal-prep for students'])}`,
+      title: `Business plan: ${pick(g, [hasTech(g, 'smartphone') ? 'a dog-walking app' : 'a dog-walking service', 'subscription socks', 'a late-night study café', g.year >= 2015 ? 'electric scooter repair' : 'bicycle repair', 'meal-prep for students'])}`,
       org: 'Personal project',
-      detail: popularity(q, ['Shortlisted by a startup incubator', 'Forty pages with real spreadsheets', 'A napkin, but a detailed one']),
+      detail: popularity(q, ['Shortlisted by a startup incubator', hasTech(g, 'homeComputer') ? 'Forty pages with real spreadsheets' : 'Forty pages with real accounts', 'A napkin, but a detailed one']),
     }),
     flops: ['Your financial projections assumed every human on Earth would buy one.', 'You realized halfway through that your idea already exists. And is free.'],
   },
@@ -1573,7 +1575,7 @@ const PROJECTS: ProjectDef[] = [
       org: 'Author',
       detail: popularity(q, ['Picked up by a small publisher', `Self-published, ${randInt(g, 300, 3000).toLocaleString('en-US')} copies sold`, 'Read by three friends, one of whom finished it']),
     }),
-    flops: ['You wrote the first sentence 200 times and then took a nap.', 'Your laptop died and took chapter one through nine with it.'],
+    flops: ['You wrote the first sentence 200 times and then took a nap.', '@homeComputer,1990 Your laptop died and took chapter one through nine with it.'],
   },
   {
     id: 'music',
@@ -1588,15 +1590,23 @@ const PROJECTS: ProjectDef[] = [
     make: (g, q) => ({
       title: `Recorded the EP "${pick(g, ['Bedroom Tapes', 'Late Bus Home', 'Static Hearts', 'Neighbors Complained', 'Lo-Fi Homework'])}"`,
       org: 'Independent musician',
-      detail: popularity(q, ['Played on local radio', `${randInt(g, 2, 50)}K streams`, `${randInt(g, 8, 90)} streams`]),
+      detail: popularity(q, [hasTech(g, 'radio') ? 'Played on local radio' : 'Played at local music halls', hasTech(g, 'streaming') ? `${randInt(g, 2, 50)}K streams` : `${randInt(g, 2, 50)} local performances`, hasTech(g, 'streaming') ? `${randInt(g, 8, 90)} streams` : `${randInt(g, 8, 90)} listeners`]),
     }),
     flops: ['The neighbors called the police twice during recording.', 'You recorded the whole EP with the microphone unplugged.'],
   },
 ]
 
+function projectAvailable(g: GameState, def: ProjectDef): boolean {
+  if (def.id === 'app') return hasTech(g, 'smartphone') && hasTech(g, 'internet')
+  if (def.id === 'opensource') return hasTech(g, 'internet')
+  if (def.id === 'channel') return hasTech(g, 'videoSharing')
+  if (def.id === 'robotics') return hasTech(g, 'homeComputer')
+  return true
+}
+
 function doProject(g: GameState, def: ProjectDef): void {
   const c = g.character
-  if (blocked(g)) return
+  if (blocked(g) || !projectAvailable(g, def)) return
   if (!useYearAction(g, 'cv.project', 2)) {
     notice(g, 'Projects', "You've already started two projects this year. Even geniuses need to sleep.", { emoji: def.emoji })
     return
@@ -1614,7 +1624,7 @@ function doProject(g: GameState, def: ProjectDef): void {
   if (q < 35) {
     addStat(g, 'happiness', -randInt(g, 2, 5))
     log(g, `I tried to ${def.label.toLowerCase()}. It flopped.`, 'bad')
-    notice(g, 'It Flopped', `${pick(g, def.flops)}${paidLine(who, cost)} Nothing to put on your CV this time.`, { emoji: def.emoji, tone: 'bad' })
+    notice(g, 'It Flopped', `${eraPick(g, def.flops)}${paidLine(who, cost)} Nothing to put on your CV this time.`, { emoji: def.emoji, tone: 'bad' })
     return
   }
   const made = def.make(g, q)
@@ -1625,7 +1635,7 @@ function doProject(g: GameState, def: ProjectDef): void {
   addHidden(g, 'discipline', 1)
   let extra = ''
   if (q >= 88) {
-    if (def.great) extra = ` ${def.great}`
+    if (def.great) extra = ` ${def.id === 'research' && !hasTech(g, 'internet') ? 'A real scientist wrote to you about it.' : def.great}`
     if (def.id === 'channel') addHidden(g, 'fame', randInt(g, 1, 4))
     if (def.id === 'sciencefair' || def.id === 'robotics') {
       addCvEntry(g, { kind: 'award', title: def.id === 'robotics' ? 'Regional Robotics Champion' : '1st Place, Regional Science Fair', org: '', startAge: c.age, endAge: c.age, detail: 'Beat every other team in the region', strength: 6, tags: def.tags, source: 'built' })
@@ -1893,12 +1903,12 @@ interface InternshipDef {
 }
 
 const INTERNSHIPS: InternshipDef[] = [
-  { id: 'tech', label: 'Tech Startup', emoji: '\u{1F4BB}', tags: ['tech'], orgs: ['{word} Labs', '{word}ly', '{city} Code Works'], tasks: ['fixed bugs nobody else wanted to touch', 'wrote tests for code that had none', 'refilled the kombucha tap'] },
-  { id: 'finance', label: 'Bank or Finance Firm', emoji: '\u{1F3E6}', tags: ['finance', 'business'], orgs: ['{word} Capital', '{word} & Partners', '{city} Savings Bank'], tasks: ['built spreadsheets until you dreamed in cells', 'fetched coffee for people who manage millions', 'learned what EBITDA means (sort of)'] },
-  { id: 'law', label: 'Law Firm', emoji: '\u{2696}\u{FE0F}', tags: ['law', 'writing'], orgs: ['{word}, {word2} & Associates', '{city} Legal Aid'], tasks: ['photocopied 9,000 pages', 'summarized contracts nobody will read', 'sat in on a real trial'] },
+  { id: 'tech', label: 'Tech Startup', emoji: '\u{1F4BB}', tags: ['tech'], orgs: ['{word} Labs', '{word}ly', '{city} Code Works'], tasks: ['fixed bugs nobody else wanted to touch', 'wrote tests for code that had none', '@2005 refilled the kombucha tap'] },
+  { id: 'finance', label: 'Bank or Finance Firm', emoji: '\u{1F3E6}', tags: ['finance', 'business'], orgs: ['{word} Capital', '{word} & Partners', '{city} Savings Bank'], tasks: ['@homeComputer built spreadsheets until you dreamed in cells', 'balanced accounts until you dreamed in columns', 'fetched coffee for people who manage millions', 'learned what EBITDA means (sort of)'] },
+  { id: 'law', label: 'Law Firm', emoji: '\u{2696}\u{FE0F}', tags: ['law', 'writing'], orgs: ['{word}, {word2} & Associates', '{city} Legal Aid'], tasks: ['copied 9,000 pages', 'summarized contracts nobody will read', 'sat in on a real trial'] },
   { id: 'media', label: 'Newspaper or TV Station', emoji: '\u{1F4F0}', tags: ['media', 'writing'], orgs: ['The {city} Daily', '{city} Morning News', '{word} Media'], tasks: ['wrote three articles that actually ran', 'fact-checked a horoscope', 'held a boom mic until your arms shook'] },
-  { id: 'health', label: 'Hospital or Clinic', emoji: '\u{1F3E5}', tags: ['health', 'science'], orgs: ['{city} General Hospital', '{word} Health Clinic'], tasks: ['shadowed doctors on their rounds', 'organized a supply closet from the 1990s', 'learned to sleep standing up'] },
-  { id: 'government', label: 'Government Office', emoji: '\u{1F3DB}\u{FE0F}', tags: ['government', 'law'], orgs: ['Ministry of {ministry}', '{city} City Hall'], tasks: ['stamped forms in triplicate', 'answered phone calls from very angry citizens', 'wrote a speech someone else got credit for'] },
+  { id: 'health', label: 'Hospital or Clinic', emoji: '\u{1F3E5}', tags: ['health', 'science'], orgs: ['{city} General Hospital', '{word} Health Clinic'], tasks: ['shadowed doctors on their rounds', 'organized a supply closet nobody had touched in decades', 'learned to sleep standing up'] },
+  { id: 'government', label: 'Government Office', emoji: '\u{1F3DB}\u{FE0F}', tags: ['government', 'law'], orgs: ['Ministry of {ministry}', '{city} City Hall'], tasks: ['stamped forms in triplicate', 'answered questions from very angry citizens', 'wrote a speech someone else got credit for'] },
   { id: 'ngo', label: 'Charity or NGO', emoji: '\u{1F30D}', tags: ['service'], orgs: ['{word} Foundation', '{city} Community Trust'], tasks: ['organized a fundraiser', 'wrote grant applications', 'carried boxes of donations up four flights of stairs'] },
   { id: 'lab', label: 'Research Lab', emoji: '\u{1F9EA}', tags: ['science', 'academic'], orgs: ['{word} Research Institute', '{city} University Lab'], tasks: ['washed approximately one million test tubes', 'ran an experiment that worked on the fourth try', 'named a lab mouse after yourself'] },
   { id: 'design', label: 'Design Studio', emoji: '\u{1F58C}\u{FE0F}', tags: ['arts', 'media'], orgs: ['Studio {word}', '{word} Creative'], tasks: ['designed a logo the client hated', 'made 40 versions of the same poster', 'picked fonts for a living'] },
@@ -1918,6 +1928,10 @@ function orgName(g: GameState, template: string): string {
       .replace('{word}', pick(g, pool))
       .replace('{ministry}', pick(g, MINISTRIES)),
   )
+}
+
+function internshipLabel(g: GameState, def: InternshipDef): string {
+  return def.id === 'media' && !hasTech(g, 'tv') ? 'Newspaper' : def.label
 }
 
 function doInternship(g: GameState, def: InternshipDef): void {
@@ -1945,12 +1959,12 @@ function doInternship(g: GameState, def: InternshipDef): void {
   if (pay > 0) earnIncome(g, pay)
   const prestige = chance(g, 0.15 + fit / 400)
   const strength = between(4 + (prestige ? 1 : 0) + (fit >= 60 ? 1 : 0), 3, 7)
-  addCvEntry(g, { kind: 'experience', title: `Intern, ${def.label}`, org, startAge: c.age, endAge: c.age, detail: `${pick(g, def.tasks)}${paid ? '' : ' • unpaid'}`, strength, tags: def.tags, source: 'built' })
+  addCvEntry(g, { kind: 'experience', title: `Intern, ${internshipLabel(g, def)}`, org, startAge: c.age, endAge: c.age, detail: `${eraPick(g, def.tasks)}${paid ? '' : ' • unpaid'}`, strength, tags: def.tags, source: 'built' })
   count(g, 'internships')
   addStat(g, 'happiness', paid ? randInt(g, 1, 4) : -randInt(g, 0, 2))
   log(g, `I did ${paid ? 'a paid' : 'an unpaid'} internship at ${org}.`, 'good')
   const payLine = paid ? ` They even paid you ${formatMoney(pay)}.` : ' It was unpaid. You were paid in "experience" and free pens.'
-  notice(g, 'Internship', `You spent the summer interning at ${org}. You ${pick(g, def.tasks)}.${payLine}\n\nAdded to your CV (strength ${strength}/10).`, { emoji: def.emoji, tone: 'good' })
+  notice(g, 'Internship', `You spent the summer interning at ${org}. You ${eraPick(g, def.tasks)}.${payLine}\n\nAdded to your CV (strength ${strength}/10).`, { emoji: def.emoji, tone: 'good' })
 }
 
 // Leadership ----------------------------------------------------------------
@@ -2005,10 +2019,10 @@ function volunteerLeadership(g: GameState, entryId: string): void {
   }
   const p = between(0.35 + c.hidden.discipline / 200 + entry.strength / 20, 0.2, 0.9)
   if (!chance(g, p)) {
-    notice(g, 'Not This Time', `${entry.org} gave the coordinator role to someone who has been there since 1987.`, { emoji: '\u{1F9ED}' })
+    notice(g, 'Not This Time', `${entry.org} gave the coordinator role to someone who has been there for decades.`, { emoji: '\u{1F9ED}' })
     return
   }
-  addCvEntry(g, { kind: 'leadership', title, org: entry.org, startAge: c.age, detail: 'Runs the schedule, the group chat and the snack table', strength: 5, tags: entry.tags ?? ['service'], source: 'built' })
+  addCvEntry(g, { kind: 'leadership', title, org: entry.org, startAge: c.age, detail: hasTech(g, 'smartphone') ? 'Runs the schedule, the group chat and the snack table' : 'Runs the schedule, the noticeboard and the snack table', strength: 5, tags: entry.tags ?? ['service'], source: 'built' })
   addHidden(g, 'karma', 2)
   log(g, `I became volunteer coordinator at ${entry.org}.`, 'good')
   notice(g, 'Volunteer Coordinator', `You now coordinate the volunteers at ${entry.org}. Power has never been this unpaid.`, { emoji: '\u{1F9ED}', tone: 'good' })
@@ -2140,11 +2154,11 @@ const projectsMenu: MenuGroup = {
   id: 'cv.projects',
   label: 'Do a Project',
   emoji: '\u{1F6E0}\u{FE0F}',
-  subtitle: 'Apps, papers, films, portfolios...',
+  subtitle: (g) => hasTech(g, 'smartphone') ? 'Apps, papers, films, portfolios...' : 'Papers, films, portfolios...',
   header: (g) => `Projects take time and sometimes money. Quality depends on your smarts, discipline and talent — and they can flop. Projects this year: ${yearActionsUsed(g, 'cv.project')}/2.`,
   disabledReason: blocked,
   children: (g) =>
-    PROJECTS.filter((p) => p.maxAge === undefined || g.character.age <= p.maxAge).map(
+    PROJECTS.filter((p) => projectAvailable(g, p) && (p.maxAge === undefined || g.character.age <= p.maxAge)).map(
       (p): MenuAction => ({
         type: 'action',
         id: `cv.project.${p.id}`,
@@ -2262,12 +2276,12 @@ const internshipsMenu: MenuGroup = {
   visible: (g) => g.character.age >= 15,
   disabledReason: chain(ageGate(16), limitGate('cv.internship', 1, 'internships')),
   header: (g) => `Internships want a decent CV (yes, really) and the job market matters. ${jobMarket(g).line}.`,
-  children: () =>
-    INTERNSHIPS.map(
+  children: (g) =>
+    INTERNSHIPS.filter((d) => d.id !== 'tech' || hasTech(g, 'homeComputer')).map(
       (d): MenuAction => ({
         type: 'action',
         id: `cv.internship.${d.id}`,
-        label: d.label,
+        label: internshipLabel(g, d),
         emoji: d.emoji,
         subtitle: 'One summer • may be unpaid',
         disabledReason: chain(ageGate(16), limitGate('cv.internship', 1, 'internships')),

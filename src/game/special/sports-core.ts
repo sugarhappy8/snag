@@ -2,6 +2,7 @@
 // the sports profile (medals, sponsors, head trauma, anti-doping bans, retired careers, trophy
 // cabinet), local popularity, fees parents pay for kids, the Olympic calendar, endorsements and
 // the long-term brain-injury risk of contact sports.
+import { anachronistic } from '../events/era'
 import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, spend, useYearAction } from '../core'
 import { addCvEntry } from '../cv'
 import { localeOf } from '../data/locales'
@@ -399,7 +400,7 @@ interface SponsorOffer {
 function offerFor(g: GameState, sport: string, appeal: number): SponsorOffer | null {
   const p = sportsProfile(g)
   const taken = new Set(p.sponsors.map((s) => s.brand))
-  const free = BRANDS.filter(([b]) => !taken.has(b))
+  const free = BRANDS.filter(([b, product]) => !taken.has(b) && !anachronistic(g, product))
   if (!free.length) return null
   const [brand, product] = pick(g, free)
   const fame = g.character.hidden.fame

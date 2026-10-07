@@ -74,6 +74,8 @@ export interface Settings {
   money: MoneySetting
   /** Whether amounts are in the money of the year being lived or in today's money. */
   prices: PricesSetting
+  /** Sandbox: unlimited Time Machine jumps. */
+  sandboxTimeMachine: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -93,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showAiBadges: true,
   money: 'local',
   prices: 'nominal',
+  sandboxTimeMachine: false,
 }
 
 /** A fresh config for a provider: its default URL and model, no key. */
@@ -207,6 +210,7 @@ export function normalizeSettings(raw: unknown): Settings {
     showAiBadges: bool(raw.showAiBadges, d.showAiBadges),
     money: oneOf(raw.money, MONEY_SETTINGS, d.money),
     prices: oneOf(raw.prices, PRICES_SETTINGS, d.prices),
+    sandboxTimeMachine: bool(raw.sandboxTimeMachine, d.sandboxTimeMachine),
   }
 }
 
