@@ -3,17 +3,21 @@
 // (money-scams.ts). computer.ts assembles the menu and calls the yearly hook; shared state and
 // helpers live in money-common.ts (g.flags.computerMoney).
 import type { GameState, MenuNode } from '../types'
+import { BROKERAGE_GATE, CRYPTO_GATE, eraOpen, online } from './era'
 import { cap, clampNum, isRecord, moneyState, readState, SHARP_FADE, SHARP_MAX, STATE_KEY, type News } from './money-common'
 import { coinProbeNews, cryptoMenu, cryptoSummary } from './money-crypto'
 import { compulsiveTrading, optionsMenu, optionsSummary, settleOptions } from './money-options'
-import { coolHeat, scamNews, SCAMS_MIN_AGE, scamsMenu, scamsSummary } from './money-scams'
+import { coolHeat, scamDefs, scamNews, SCAMS_MIN_AGE, scamsMenu, scamsSummary } from './money-scams'
 import { betsSummary, settleBets } from './money-stocks'
 
 /** Menu rows for Activities › Computer (crypto, options, scams...). */
 export function moneyNodes(g: GameState): MenuNode[] {
   const c = g.character
   if (!c.alive || c.prison || c.age < SCAMS_MIN_AGE) return []
-  return [{ type: 'heading', id: 'computer.money.heading', label: 'Risky Business' }, cryptoMenu(), optionsMenu(), scamsMenu()]
+  // Each scheme needs its invention: crypto, online brokerages, the internet itself.
+  const menus = [eraOpen(g, CRYPTO_GATE) ? cryptoMenu() : null, eraOpen(g, BROKERAGE_GATE) ? optionsMenu() : null, online(g) && scamDefs().some((d) => eraOpen(g, d.era)) ? scamsMenu() : null].filter((m) => m !== null)
+  if (menus.length === 0) return []
+  return [{ type: 'heading', id: 'computer.money.heading', label: 'Risky Business' }, ...menus]
 }
 
 /**

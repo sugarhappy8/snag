@@ -18,10 +18,12 @@ import {
   say,
   siblings,
   strangerName,
+  v,
 } from './helpers'
 import { hasSnow, locale, localSoftDrink } from '../data/locales'
+import { cars, common, indoorGame, landline, prized, privileges } from './era'
 
-const BROKEN_ITEMS = ['favorite vase', 'flat-screen TV', 'antique clock', 'reading glasses', 'wedding photo frame', 'coffee maker', 'laptop', 'porcelain cat statue']
+const BROKEN_ITEMS = ['favorite vase', '@2006 flat-screen TV', 'antique clock', 'reading glasses', 'wedding photo frame', '@1972 coffee maker', '@1995,homeComputer laptop', 'porcelain cat statue', '@-1960 gramophone record']
 const PETS = [
   { species: 'Dog', names: ['Buddy', 'Max', 'Biscuit', 'Daisy', 'Rocky', 'Luna'] },
   { species: 'Cat', names: ['Whiskers', 'Mittens', 'Shadow', 'Pumpkin', 'Oreo', 'Cleo'] },
@@ -50,7 +52,7 @@ export const KID_EVENTS = defineEvents([
     weight: 18,
     when: (g) => !!aParent(g),
     setup: (g) => {
-      const item = pick(g, BROKEN_ITEMS)
+      const item = v(g, BROKEN_ITEMS)
       const sib = siblings(g).find((s) => s.age >= 3 && s.age < 18)
       return {
         text: `You broke your parents' ${item} while you were playing. What will you do?`,
@@ -93,17 +95,19 @@ export const KID_EVENTS = defineEvents([
     setup: (g) => {
       const p = aParent(g)
       const city = pick(g, country(g).cities)
+      // A road trip once families have cars; a long train ride before that.
+      const trip = cars(g) ? 'road trip' : 'train trip'
       return {
-        text: `Your parents want to take you on a road trip to visit relatives in ${city}. How will you behave?`,
+        text: `Your parents want to take you on a ${trip} to visit relatives in ${city}. How will you behave?`,
         choices: [ch('happy', 'Be appreciative'), ch('complain', 'Complain but go'), ch('refuse', 'Refuse to go')],
         person: p,
-        data: { city },
+        data: { city, trip },
       }
     },
     resolve: {
-      happy: (g, x) => say(g, x, ['Vacay', 'It was great'], `You thanked your parents and had a wonderful time in ${x.s('city')}. Your aunt pinched your cheeks 41 times.`, `I went on a road trip with my family to visit relatives in ${x.s('city')}. I was very appreciative.`, { happiness: 12, rels: [...parentMad(g, 6)] }, 'good'),
-      complain: (g, x) => say(g, x, 'Are we there yet?', `You whined the whole way to ${x.s('city')}. It was actually kind of fun once you got there.`, `I complained the whole way to ${x.s('city')} on a family road trip.`, { happiness: 4, rels: parentMad(g, -3) }),
-      refuse: (g, x) => say(g, x, ['Home alone', 'I might not leave, ever'], `You refused to go. You spent the weekend at a neighbor's house eating microwave dinners.`, `I refused to go with my family on a road trip to ${x.s('city')}.`, { happiness: -4, rels: parentMad(g, -8) }, 'bad'),
+      happy: (g, x) => say(g, x, ['Vacay', 'It was great'], `You thanked your parents and had a wonderful time in ${x.s('city')}. Your aunt pinched your cheeks 41 times.`, `I went on a ${x.s('trip') || 'road trip'} with my family to visit relatives in ${x.s('city')}. I was very appreciative.`, { happiness: 12, rels: [...parentMad(g, 6)] }, 'good'),
+      complain: (g, x) => say(g, x, 'Are we there yet?', `You whined the whole way to ${x.s('city')}. It was actually kind of fun once you got there.`, `I complained the whole way to ${x.s('city')} on a family ${x.s('trip') || 'road trip'}.`, { happiness: 4, rels: parentMad(g, -3) }),
+      refuse: (g, x) => say(g, x, ['Home alone', 'I might not leave, ever'], `You refused to go. You spent the weekend at a neighbor's house eating ${g.year >= 1985 ? 'microwave dinners' : 'cold leftovers'}.`, `I refused to go with my family on a ${x.s('trip') || 'road trip'} to ${x.s('city')}.`, { happiness: -4, rels: parentMad(g, -8) }, 'bad'),
     },
   },
   {
@@ -137,7 +141,8 @@ export const KID_EVENTS = defineEvents([
     title: 'Favorite Fast Food',
     minAge: 3,
     maxAge: 9,
-    when: (g) => !!aParent(g),
+    // Burger chains spread through the US in the fifties and most of the world from the eighties.
+    when: (g) => !!aParent(g) && g.year >= (g.character.countryId === 'us' ? 1958 : 1985),
     setup: () => ({
       text: 'Your parents are taking you out for dinner and want to know which fast food place is your favorite. What will you tell them?',
       choices: [ch('pizza', 'Pizza Palace', '🍕'), ch('burger', 'Burger Barn', '🍔'), ch('chicken', "Cluckin' Chicken", '🍗'), ch('none', "I don't like fast food", '🥦')],
@@ -145,7 +150,7 @@ export const KID_EVENTS = defineEvents([
     resolve: {
       pizza: (g) => say(g, null, 'Pizza party', 'You picked Pizza Palace and ate four slices.', 'I told my parents that Pizza Palace is my favorite fast food place.', { happiness: 6, health: -2 }),
       burger: (g) => say(g, null, 'Kids meal', 'You picked Burger Barn. The toy in your kids meal broke in the parking lot.', 'I told my parents that Burger Barn is my favorite fast food place.', { happiness: 4, health: -2 }),
-      chicken: (g) => say(g, null, 'Finger lickin\'', "You picked Cluckin' Chicken and got grease on the car seats.", "I told my parents that Cluckin' Chicken is my favorite fast food place.", { happiness: 6, health: -2 }),
+      chicken: (g) => say(g, null, 'Finger lickin\'', cars(g) ? "You picked Cluckin' Chicken and got grease on the car seats." : "You picked Cluckin' Chicken and got grease all over your good shirt.", "I told my parents that Cluckin' Chicken is my favorite fast food place.", { happiness: 6, health: -2 }),
       none: (g) => say(g, null, ['Health nut', 'Refined palate'], 'You told your parents fast food tastes fake. They were stunned and a little proud.', "I told my parents that I don't like fast food because it tastes fake.", { smarts: 16, health: 4 }, 'good'),
     },
   },
@@ -172,8 +177,8 @@ export const KID_EVENTS = defineEvents([
     minAge: 5,
     maxAge: 11,
     setup: (g) => ({
-      text: `You've been invited to perform at a children's talent show at ${g.character.countryId === 'us' ? 'the mall' : 'the community hall'}. What will you do?`,
-      choices: [ch('joke', 'Tell a joke'), ch('sing', englishSchooling(g) ? 'Sing the ABCs' : 'Sing a nursery rhyme'), ch('dance', 'Break dance'), ch('decline', 'Decline')],
+      text: `You've been invited to perform at a children's talent show at ${g.character.countryId === 'us' && g.year >= 1962 ? 'the mall' : 'the community hall'}. What will you do?`,
+      choices: [ch('joke', 'Tell a joke'), ch('sing', englishSchooling(g) ? 'Sing the ABCs' : 'Sing a nursery rhyme'), ch('dance', g.year >= 1982 ? 'Break dance' : 'Tap dance'), ch('decline', 'Decline')],
     }),
     resolve: {
       joke: (g) => {
@@ -183,7 +188,8 @@ export const KID_EVENTS = defineEvents([
       sing: (g) => say(g, null, 'Next big star?', englishSchooling(g) ? 'You sang the ABCs with heartfelt emotion. You forgot the letters between K and P.' : 'You sang a nursery rhyme with heartfelt emotion. You forgot the second verse and hummed it.', englishSchooling(g) ? 'I sang the ABCs at a kiddie talent show.' : 'I sang a nursery rhyme at a kiddie talent show.', { happiness: 6, looks: 2 }),
       dance: (g) => {
         const hit = chance(g, 0.5)
-        say(g, null, hit ? 'Crowd favorite' : 'Wipeout', hit ? `You spun on your head like a pro. You won a ${money(dollars(g, 10, 10))} ${g.character.countryId === 'us' ? 'food court gift card' : 'toy store voucher'}!` : 'You attempted a headspin and landed on a judge.', 'I break danced at a talent show.', hit ? { happiness: 12, health: 2, money: 10 } : { happiness: -4, health: -4 }, hit ? 'good' : 'bad', '🕺')
+        const breaking = g.year >= 1982
+        say(g, null, hit ? 'Crowd favorite' : 'Wipeout', hit ? `${breaking ? 'You spun on your head like a pro.' : 'You tapped so fast your shoes smoked.'} You won a ${money(dollars(g, 10, 10))} ${g.character.countryId === 'us' && g.year >= 1962 ? 'food court gift card' : 'toy store voucher'}!` : breaking ? 'You attempted a headspin and landed on a judge.' : 'You attempted a big finish, slipped and landed on a judge.', breaking ? 'I break danced at a talent show.' : 'I tap danced at a talent show.', hit ? { happiness: 12, health: 2, money: 10 } : { happiness: -4, health: -4 }, hit ? 'good' : 'bad', '🕺')
       },
       decline: (g) => say(g, null, 'Stage fright', 'You politely declined. The spotlight can wait.', 'I declined an invitation to perform at a talent show.', { happiness: -2 }),
     },
@@ -198,13 +204,16 @@ export const KID_EVENTS = defineEvents([
     when: (g) => !!aParent(g),
     setup: (g) => ({
       text: `You are asked what theme you'd like for your ${ordinal(g.character.age)} birthday party. What will you choose?`,
-      choices: [ch('dino', 'Dinosaurs', '🦖'), ch('hero', 'Superheroes', '🦸'), ch('unicorn', 'Unicorns', '🦄'), ch('baby', 'A toddler TV show', '📺')],
+      choices: [ch('dino', 'Dinosaurs', '🦖'), g.year >= 1940 ? ch('hero', 'Superheroes', '🦸') : ch('hero', 'Pirates', '🏴‍☠️'), ch('unicorn', 'Unicorns', '🦄'), common(g, 'tv') ? ch('baby', 'A toddler TV show', '📺') : ch('baby', 'A nursery rhyme', '🐑')],
     }),
     resolve: {
       dino: (g) => say(g, null, 'Rawr', `You had a dinosaur party. A kid named ${strangerName(g, 'male').first} cried when the piñata T. rex lost its head.`, 'I had a dinosaur-themed birthday party.', { happiness: 10 }, 'good'),
-      hero: (g) => say(g, null, 'Super party', 'You had a superhero party. Everyone fought over who got to be the strongest one.', 'I had a superhero-themed birthday party.', { happiness: 10 }, 'good'),
+      hero: (g) => (g.year >= 1940 ? say(g, null, 'Super party', 'You had a superhero party. Everyone fought over who got to be the strongest one.', 'I had a superhero-themed birthday party.', { happiness: 10 }, 'good') : say(g, null, 'Yo ho ho', 'You had a pirate party. Everyone fought over who got to be the captain.', 'I had a pirate-themed birthday party.', { happiness: 10 }, 'good')),
       unicorn: (g) => say(g, null, 'Magical', 'You had a unicorn party with a rainbow cake. Glitter will be found in the carpet for years.', 'I had a unicorn-themed birthday party.', { happiness: 10 }, 'good'),
-      baby: (g) => say(g, null, ['Awkward', 'Too old for this'], 'You had a party themed after a show for toddlers. You were the only one who dressed up.', "I had a toddler-show-themed birthday party, but I was the only one who dressed up.", { happiness: -4, smarts: -8 }, 'bad'),
+      baby: (g) =>
+        common(g, 'tv')
+          ? say(g, null, ['Awkward', 'Too old for this'], 'You had a party themed after a show for toddlers. You were the only one who dressed up.', "I had a toddler-show-themed birthday party, but I was the only one who dressed up.", { happiness: -4, smarts: -8 }, 'bad')
+          : say(g, null, ['Awkward', 'Too old for this'], 'You had a nursery-rhyme party. You came dressed as a sheep. Nobody else did.', 'I had a nursery-rhyme birthday party, but I was the only one who dressed up.', { happiness: -4, smarts: -8 }, 'bad'),
     },
   },
   {
@@ -397,7 +406,7 @@ export const KID_EVENTS = defineEvents([
     setup: (g) => {
       const sib = anyOf(g, siblings(g).filter((s) => s.age >= 4))
       if (!sib) return null
-      const topic = pick(g, ['who gets the front seat', 'whose turn it is to pick the TV show', 'who ate the last cookie', 'who started it', 'who mom loves more', 'whether a hot dog is a sandwich', 'who gets the bigger bedroom'])
+      const topic = v(g, ['@cars who gets the front seat', '@tv whose turn it is to pick the TV show', '@radio,!tv whose turn it is to pick the radio station', 'who ate the last cookie', 'who started it', 'who mom loves more', 'whether a hot dog is a sandwich', 'who gets the bigger bedroom', '@videoGameConsole whose turn it is on the game console'])
       return {
         text: `You and ${yourSib(sib)} are feuding about ${topic}. What will you do?`,
         choices: [ch('apologize', 'Apologize'), ch('agree', 'Agree to disagree'), ch('complain', 'Complain to parents'), ch('insult', 'Insult them'), ch('assault', 'Assault them')],
@@ -446,7 +455,7 @@ export const KID_EVENTS = defineEvents([
         const works = chance(g, 0.4)
         say(g, x, works ? 'Strategic incompetence' : 'Do it again', works ? "You did such a bad job that they decided it's faster to do it themselves. Mission accomplished." : 'You did a terrible job, so you had to do it all again. Twice.', `I deliberately did a bad job when I was asked to ${x.s('chore')}.`, works ? { rel: -4, smarts: 2 } : { rel: -4, happiness: -4 })
       },
-      refuse: (g, x) => say(g, x, ['Grounded', 'Rebel'], `You flat-out refused. ${x.p?.firstName ?? 'Your parent'} took away your screen time for a week.`, `I refused to ${x.s('chore')} and was grounded.`, { rel: -10, happiness: -6 }, 'bad'),
+      refuse: (g, x) => say(g, x, ['Grounded', 'Rebel'], `You flat-out refused. ${x.p?.firstName ?? 'Your parent'} took away your ${privileges(g)} for a week.`, `I refused to ${x.s('chore')} and was grounded.`, { rel: -10, happiness: -6 }, 'bad'),
     },
   },
   {
@@ -522,7 +531,7 @@ export const KID_EVENTS = defineEvents([
       if (hasSnow(g)) {
         return {
           text: "School's canceled! It's a snow day. How will you spend it?",
-          choices: [ch('snowman', 'Build a snowman', '⛄'), ch('fight', 'Have a snowball fight', '❄️'), ch('sled', 'Go sledding', '🛷'), ch('games', 'Play video games', '🎮')],
+          choices: [ch('snowman', 'Build a snowman', '⛄'), ch('fight', 'Have a snowball fight', '❄️'), ch('sled', 'Go sledding', '🛷'), ch('games', indoorGame(g).label, '🎮')],
         }
       }
       const climate = locale(g).climate
@@ -530,7 +539,7 @@ export const KID_EVENTS = defineEvents([
         return {
           title: 'Flood Day',
           text: "School's canceled! The streets flooded after a huge downpour. How will you spend the day?",
-          choices: [ch('puddles', 'Splash in the puddles', '💦'), ch('boats', 'Race paper boats', '⛵'), ch('help', 'Help the neighbors clear the drains', '🧹'), ch('games', 'Play video games', '🎮')],
+          choices: [ch('puddles', 'Splash in the puddles', '💦'), ch('boats', 'Race paper boats', '⛵'), ch('help', 'Help the neighbors clear the drains', '🧹'), ch('games', indoorGame(g).label, '🎮')],
           data: { day: 'flood day' },
         }
       }
@@ -538,14 +547,14 @@ export const KID_EVENTS = defineEvents([
         return {
           title: 'Sandstorm Day',
           text: "School's canceled! A sandstorm turned the sky orange. How will you spend the day?",
-          choices: [ch('fort', 'Build a blanket fort', '🏰'), ch('watch', 'Watch the storm from the window', '🌪️'), ch('sneak', 'Sneak outside to look', '😷'), ch('games', 'Play video games', '🎮')],
+          choices: [ch('fort', 'Build a blanket fort', '🏰'), ch('watch', 'Watch the storm from the window', '🌪️'), ch('sneak', 'Sneak outside to look', '😷'), ch('games', indoorGame(g).label, '🎮')],
           data: { day: 'sandstorm day' },
         }
       }
       return {
         title: 'Day Off',
         text: "School's canceled! The teachers are on strike. How will you spend the day?",
-        choices: [ch('park', 'Play outside all day', '⚽'), ch('help', 'Help out at home', '🧹'), ch('picket', "Join the teachers' picket line", '🪧'), ch('games', 'Play video games', '🎮')],
+        choices: [ch('park', 'Play outside all day', '⚽'), ch('help', 'Help out at home', '🧹'), ch('picket', "Join the teachers' picket line", '🪧'), ch('games', indoorGame(g).label, '🎮')],
         data: { day: 'day off' },
       }
     },
@@ -570,7 +579,7 @@ export const KID_EVENTS = defineEvents([
       sneak: (g) => say(g, null, 'Sandblasted', 'You stepped outside for ten seconds and came back with sand in places sand should never be.', 'I snuck out into a sandstorm. Bad idea.', { happiness: -2, health: -3 }, 'bad'),
       park: (g) => say(g, null, 'Freedom', 'You played outside from breakfast until the streetlights came on.', 'I played outside all day when the teachers went on strike.', { happiness: 10, health: 2 }, 'good'),
       picket: (g) => say(g, null, 'Solidarity', 'You made your own sign and marched with the teachers. Your favorite teacher teared up.', "I joined my teachers' picket line.", { happiness: 6, karma: 4 }, 'good'),
-      games: (g, x) => say(g, x, 'Cozy', 'You stayed in your pajamas and gamed for 11 hours straight.', `I played video games all day on a ${x.s('day') || 'snow day'}.`, { happiness: 6, health: -2 }),
+      games: (g, x) => say(g, x, 'Cozy', indoorGame(g).text, `I ${indoorGame(g).did} all day on a ${x.s('day') || 'snow day'}.`, { happiness: 6, health: -2 }),
     },
   },
   {
@@ -601,17 +610,40 @@ export const KID_EVENTS = defineEvents([
     title: 'Sleepover',
     minAge: 8,
     maxAge: 13,
-    setup: () => ({
-      text: "At a sleepover, your friends put on a horror movie that's definitely rated for adults. What will you do?",
-      choices: [ch('watch', 'Watch the whole thing'), ch('eyes', 'Watch through my fingers'), ch('home', 'Call my parents to pick me up')],
-    }),
+    setup: (g) => {
+      // A rented horror tape from the eighties, the late movie on TV before that, and ghost
+      // stories by flashlight before anyone had a TV.
+      const mode = g.year >= 1982 && common(g, 'tv') ? 'tape' : common(g, 'tv') ? 'tv' : 'ghost'
+      const call = landline(g)
+      return {
+        text:
+          mode === 'tape'
+            ? "At a sleepover, your friends put on a horror movie that's definitely rated for adults. What will you do?"
+            : mode === 'tv'
+              ? 'At a sleepover, your friends sneak downstairs to watch the late-night horror movie on TV. What will you do?'
+              : 'At a sleepover, your friends turn off the lamps and start telling ghost stories by flashlight. What will you do?',
+        choices:
+          mode === 'ghost'
+            ? [ch('watch', 'Listen to every word'), ch('eyes', 'Hide under the blanket'), ch('home', call ? 'Call my parents to pick me up' : 'Run home in the dark')]
+            : [ch('watch', 'Watch the whole thing'), ch('eyes', 'Watch through my fingers'), ch('home', call ? 'Call my parents to pick me up' : 'Run home in the dark')],
+        data: { mode, call: call ? 1 : 0 },
+      }
+    },
     resolve: {
-      watch: (g) => {
+      watch: (g, x) => {
         const scared = chance(g, 0.5)
-        say(g, null, scared ? 'Nightmares' : 'Fearless', scared ? "You watched the whole thing. You haven't slept with the lights off since." : 'You watched it without flinching. Your friends now think you might be a robot.', 'I watched a scary movie at a sleepover.', scared ? { happiness: -6, craziness: 2 } : { happiness: 6 }, scared ? 'bad' : 'good')
+        const ghost = x.s('mode') === 'ghost'
+        say(g, x, scared ? 'Nightmares' : 'Fearless', scared ? (ghost ? "You listened to every word. You haven't slept with the lights off since." : "You watched the whole thing. You haven't slept with the lights off since.") : ghost ? 'You listened without flinching and told a scarier one. Your friends now think you might be haunted.' : 'You watched it without flinching. Your friends now think you might be a robot.', ghost ? 'I sat through the scariest ghost stories at a sleepover.' : 'I watched a scary movie at a sleepover.', scared ? { happiness: -6, craziness: 2 } : { happiness: 6 }, scared ? 'bad' : 'good')
       },
-      eyes: (g) => say(g, null, 'Peekaboo', 'You watched the entire movie through your fingers. You saw roughly 30% of it.', 'I watched a scary movie through my fingers at a sleepover.', { happiness: 2 }),
-      home: (g) => say(g, null, 'Early exit', 'You called your parents at 10 PM to come get you. Your friends will never let this go.', 'I left a sleepover early because of a scary movie.', { happiness: -6 }, 'bad'),
+      eyes: (g, x) =>
+        x.s('mode') === 'ghost'
+          ? say(g, x, 'Peekaboo', 'You hid under the blanket and heard roughly 30% of every story.', 'I hid under a blanket during ghost stories at a sleepover.', { happiness: 2 })
+          : say(g, x, 'Peekaboo', 'You watched the entire movie through your fingers. You saw roughly 30% of it.', 'I watched a scary movie through my fingers at a sleepover.', { happiness: 2 }),
+      home: (g, x) => {
+        const why = x.s('mode') === 'ghost' ? 'ghost stories' : 'a scary movie'
+        if (x.data.call !== undefined && x.n('call') === 0) say(g, x, 'Early exit', 'You ran all the way home in the dark, which was somehow scarier. Your friends will never let this go.', `I left a sleepover early because of ${why}.`, { happiness: -6 }, 'bad')
+        else say(g, x, 'Early exit', 'You called your parents at 10 PM to come get you. Your friends will never let this go.', `I left a sleepover early because of ${why}.`, { happiness: -6 }, 'bad')
+      },
     },
   },
   {
@@ -637,18 +669,18 @@ export const KID_EVENTS = defineEvents([
     title: 'Ice Cream Truck',
     minAge: 4,
     maxAge: 10,
-    setup: () => ({
-      text: 'You hear the jingle of the ice cream truck coming down the street! What will you do?',
+    setup: (g) => ({
+      text: `You hear the jingle of the ice cream ${g.year >= 1930 ? 'truck' : 'cart'} coming down the street! What will you do?`,
       choices: [ch('beg', 'Beg my parents for money'), ch('chase', 'Chase it down the street'), ch('savings', 'Use my piggy bank savings'), ch('ignore', 'Ignore it')],
     }),
     resolve: {
       beg: (g) => {
         const yes = chance(g, 0.6)
-        say(g, null, yes ? 'Brain freeze' : 'No dice', yes ? g.character.countryId === 'us' ? 'Your parents caved and gave you a few bucks. You got a rocket pop.' : 'Your parents caved and gave you some coins. You got a rainbow ice pop.' : 'Your parents said you already had dessert. The jingle faded into the distance.', yes ? 'I begged my parents for ice cream money and got a rocket pop.' : "My parents wouldn't give me money for the ice cream truck.", yes ? { happiness: 8 } : { happiness: -4 })
+        say(g, null, yes ? 'Brain freeze' : 'No dice', yes ? g.character.countryId === 'us' ? `Your parents caved and gave you a few ${g.year >= 1940 ? 'bucks' : 'nickels'}. You got ${g.year >= 1955 ? 'a rocket pop' : 'a frozen custard'}.` : 'Your parents caved and gave you some coins. You got a rainbow ice pop.' : 'Your parents said you already had dessert. The jingle faded into the distance.', yes ? 'I begged my parents for ice cream money and got a treat.' : "My parents wouldn't give me money for ice cream.", yes ? { happiness: 8 } : { happiness: -4 })
       },
       chase: (g) => {
         const fell = chance(g, 0.2)
-        say(g, null, fell ? 'Skinned knee' : 'Cardio', fell ? 'You sprinted after the truck, tripped and skinned both knees. The truck kept going.' : 'You chased the truck for three blocks and finally caught it. The driver gave you a free cone for effort.', fell ? 'I chased the ice cream truck and skinned my knees.' : 'I chased down the ice cream truck and got a free cone.', fell ? { health: -4, happiness: -4 } : { happiness: 8, health: 2 }, fell ? 'bad' : 'good')
+        say(g, null, fell ? 'Skinned knee' : 'Cardio', fell ? `You sprinted after the ${g.year >= 1930 ? 'truck' : 'cart'}, tripped and skinned both knees. It kept going.` : `You chased the ${g.year >= 1930 ? 'truck' : 'cart'} for three blocks and finally caught it. The ${g.year >= 1930 ? 'driver' : 'vendor'} gave you a free cone for effort.`, fell ? `I chased the ice cream ${g.year >= 1930 ? 'truck' : 'cart'} and skinned my knees.` : `I chased down the ice cream ${g.year >= 1930 ? 'truck' : 'cart'} and got a free cone.`, fell ? { health: -4, happiness: -4 } : { happiness: 8, health: 2 }, fell ? 'bad' : 'good')
       },
       savings: (g) => {
         if (g.character.money < 3) {
@@ -657,7 +689,7 @@ export const KID_EVENTS = defineEvents([
           say(g, null, 'Treat yourself', 'You cracked open the piggy bank and bought the biggest ice cream on the menu.', 'I spent my savings on ice cream.', { money: -3, happiness: 8 }, 'good')
         }
       },
-      ignore: (g) => say(g, null, 'Self control', 'You let the ice cream truck pass. Your dentist would be proud.', 'I ignored the ice cream truck.', { health: 2 }),
+      ignore: (g) => say(g, null, 'Self control', `You let the ice cream ${g.year >= 1930 ? 'truck' : 'cart'} pass. Your dentist would be proud.`, `I ignored the ice cream ${g.year >= 1930 ? 'truck' : 'cart'}.`, { health: 2 }),
     },
   },
   {
@@ -714,7 +746,7 @@ export const KID_EVENTS = defineEvents([
     },
     resolve: {
       read: (g, x) => say(g, x, 'Mutually assured destruction', `You found ${x.p?.firstName ?? 'their'}'s diary and read the juiciest parts at dinner. Nobody won.`, `I got revenge on my sibling for reading my diary.`, { rel: -12, happiness: 4 }),
-      parents: (g, x) => say(g, x, 'Justice', `Your parents confiscated ${x.p?.firstName ?? 'their'}'s phone for a week.`, 'I told my parents my sibling read my diary.', { rel: -6, happiness: 2 }),
+      parents: (g, x) => say(g, x, 'Justice', `Your parents confiscated ${x.p?.firstName ?? 'their'}'s ${prized(g)} for a week.`, 'I told my parents my sibling read my diary.', { rel: -6, happiness: 2 }),
       cry: (g, x) => say(g, x, 'Mortified', 'You locked yourself in your room and cried. Your deepest secrets are now public knowledge.', 'My sibling read my diary to their friends.', { happiness: -10, rel: -6 }, 'bad'),
       laugh: (g, x) => say(g, x, 'Unbothered', 'You laughed along. Hard to embarrass someone who has no shame.', 'I laughed it off when my sibling read my diary out loud.', { happiness: 4, rel: 4 }, 'good'),
     },
@@ -765,7 +797,7 @@ export const KID_EVENTS = defineEvents([
       }
     },
     resolve: {
-      flip: (g, x) => say(g, x, ['Sore loser', 'Table flip'], 'You flipped the board. Little plastic houses are still being found under the couch.', `I flipped the board after losing a game to ${x.p?.firstName ?? 'my family'}.`, { rel: -8, happiness: 2, craziness: 2 }, 'bad'),
+      flip: (g, x) => say(g, x, ['Sore loser', 'Table flip'], g.year >= 1955 ? 'You flipped the board. Little plastic houses are still being found under the couch.' : 'You flipped the board. Little wooden houses are still being found under the couch.', `I flipped the board after losing a game to ${x.p?.firstName ?? 'my family'}.`, { rel: -8, happiness: 2, craziness: 2 }, 'bad'),
       congrats: (g, x) => say(g, x, 'Good sport', 'You congratulated them graciously. Character growth!', `I lost a board game to ${x.p?.firstName ?? 'my family'} and was a good sport.`, { rel: 6, karma: 2 }, 'good'),
       rematch: (g, x) => {
         const won = chance(g, 0.5)

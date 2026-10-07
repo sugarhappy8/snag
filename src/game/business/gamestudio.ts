@@ -55,6 +55,8 @@ import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Statement } from './state'
 import { assignedDevs, devGames, normalizeStudio, studioLine, trimStudioGames, type StudioGame, type StudioPolicy, type StudioState } from './gamestudio-state'
 import { clampN, dollars, markBest, money, pct, round2, toJson } from './util'
+import { studioMarketFactor, studioPick } from './competition'
+import { bizHas } from './era'
 
 export const DEVS_PER_OFFICE = 120
 
@@ -165,6 +167,9 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   ensureCatalog(g, b, st, year)
   const m = marketOf(b.countryId)
   const iy = industryYear(g, year)
+  // The market: tiny in the arcade era, crashing in 1983, crowded today (business/competition.ts).
+  // It scales launches; a game's long tail follows from how its launch went.
+  const mf = studioMarketFactor(g, b, year)
   const speed = st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1
   const ops = 1 + 0.08 * staffPower(b, 'ops')
   const open = (1 - b.capacityLoss) * b.openFraction
@@ -268,6 +273,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
         (1 + b.campaignBoost) *
         b.demandShock *
         (1 - b.pressure) *
+        mf *
         knack,
     )
     // The last milestone comes with the launch, if the publisher thinks it's any good.
@@ -400,7 +406,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     employees: b.employees,
   }
   b.last = stmt
-  return { stmt, inventoryEnd: 0, wantedStaff: b.employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay) }
+  return { stmt, inventoryEnd: 0, wantedStaff: b.employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), market: studioPick(g, b, year, copiesTotal) }
 }
 
 /** The owner's name goes in the credits (and gamers notice a hit). */
@@ -965,13 +971,13 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
       if (choice === 'embrace') {
         x.hype = clampN(x.hype + 18, 0, 100)
         b.brand = clampN(b.brand + 2, 0, 100)
-        notice(g, 'Leaked!', `You posted "well, that's awkward" with a winking emoji and released the official trailer early. Hype for "${x.title}" went through the roof.`, { emoji: '\u{1F648}', tone: 'good' })
+        notice(g, 'Leaked!', bizHas(g, b.countryId, 'smartphone') ? `You posted "well, that's awkward" with a winking emoji and released the official trailer early. Hype for "${x.title}" went through the roof.` : `You joked about it in the magazines and showed the real thing early. Hype for "${x.title}" went through the roof.`, { emoji: '\u{1F648}', tone: 'good' })
       } else if (choice === 'lawyers') {
         const cost = Math.round(devCost(b) * 0.6)
         b.cash -= cost
         b.yearCosts += cost
         b.morale = clampN(b.morale - 3, 0, 100)
-        notice(g, 'Takedowns', `Your lawyers sent ${randInt(g, 200, 4_000)} takedown notices (${formatMoney(cost)}). The internet now shares the leak out of spite.`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
+        notice(g, 'Takedowns', `Your lawyers sent ${randInt(g, 200, 4_000)} ${bizHas(g, b.countryId, 'internet') ? 'takedown notices' : 'cease-and-desist letters'} (${formatMoney(cost)}). ${bizHas(g, b.countryId, 'internet') ? 'The internet now shares the leak out of spite.' : 'Every kid with a disk drive now copies the leak out of spite.'}`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
       } else {
         x.hype = clampN(x.hype + 6, 0, 100)
         b.morale = clampN(b.morale - 4, 0, 100)
@@ -1024,7 +1030,7 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
         b.cash -= cost
         b.yearCosts += cost
         x.tail = whole(x.tail * 1.6)
-        notice(g, 'Sponsored', `You sponsored the streamer's next three sessions (${formatMoney(cost)}). "${x.title}" sales are climbing again.`, { emoji: '\u{1F3A5}', tone: 'good' })
+        notice(g, 'Sponsored', bizHas(g, b.countryId, 'streaming') ? `You sponsored the streamer's next three sessions (${formatMoney(cost)}). "${x.title}" sales are climbing again.` : `You bought the magazine's next three back covers (${formatMoney(cost)}). "${x.title}" sales are climbing again.`, { emoji: bizHas(g, b.countryId, 'streaming') ? '\u{1F3A5}' : '\u{1F4F0}', tone: 'good' })
       } else {
         x.tail = whole(x.tail * 1.25)
         notice(g, 'Free Publicity', `You sent a thank-you note and a plushie. Sales of "${x.title}" picked up anyway.`, { emoji: '\u{1F9F8}', tone: 'good' })
@@ -1056,7 +1062,11 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
   if (big) options.push(['exclusive', 0.8, big])
   const hyped = dev.find((x) => x.progress >= 40)
   if (hyped) options.push(['leak', 0.6, hyped])
-  if (live.length) options.push(['bomb', 0.5, pick(g, live)], ['streamer', 0.7, pick(g, live)])
+  // Review bombs need the internet; before streamers, a magazine cover does the same job.
+  if (live.length) {
+    if (bizHas(g, b.countryId, 'internet')) options.push(['bomb', 0.5, pick(g, live)])
+    options.push(['streamer', 0.7, pick(g, live)])
+  }
   if (st.policy === 'crunch' && dev.length) options.push(['expose', 0.4 + st.crunchYears * 0.25, undefined])
   if (!options.length) return false
   const total = options.reduce((s, o) => s + o[1], 0)
@@ -1131,7 +1141,8 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'embrace' ? 'Best move: free hype is still hype' : undefined,
         )
       }
-      scriptChoice(g, EVENT, 'Leaked Build', `An early build of "${x.title}" leaked online. People are streaming it. Someone already found the placeholder boss: a gray cube labeled "BOSS TODO".`, choices, { emoji: '\u{1F4E1}', data: base })
+      const leakWhere = bizHas(g, b.countryId, 'streaming') ? 'leaked online. People are streaming it' : bizHas(g, b.countryId, 'internet') ? 'leaked online and is all over the message boards' : 'was copied onto floppy disks and is being swapped in every schoolyard'
+      scriptChoice(g, EVENT, 'Leaked Build', `An early build of "${x.title}" ${leakWhere}. Someone already found the placeholder boss: a gray cube labeled "BOSS TODO".`, choices, { emoji: '\u{1F4E1}', data: base })
       return true
     }
     case 'bomb': {
@@ -1181,7 +1192,9 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
           id === 'sponsor' ? 'Best move: the extra buyers are worth more than the sponsorship' : 'Best move: the free buzz is enough',
         )
       }
-      scriptChoice(g, EVENT, 'Streamer Spotlight', `A huge streamer played "${x.title}" for nine hours straight and called it "${pick(g, ['the best game nobody is talking about', 'my new obsession', 'the reason I have not slept'])}". Clips are everywhere.`, choices, { emoji: '\u{1F3A5}', data: base })
+      const quote = pick(g, ['the best game nobody is talking about', 'my new obsession', 'the reason I have not slept'])
+      if (bizHas(g, b.countryId, 'streaming')) scriptChoice(g, EVENT, 'Streamer Spotlight', `A huge streamer played "${x.title}" for nine hours straight and called it "${quote}". Clips are everywhere.`, choices, { emoji: '\u{1F3A5}', data: base })
+      else scriptChoice(g, EVENT, 'Magazine Cover', `The biggest gaming magazine put "${x.title}" on its cover and called it "${quote}". Kids are photocopying the review.`, choices.map((c) => (c.id === 'sponsor' ? { ...c, label: 'Buy more ad pages', emoji: '\u{1F4F0}' } : c)), { emoji: '\u{1F4F0}', data: base })
       return true
     }
   }

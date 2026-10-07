@@ -21,7 +21,9 @@ import {
   siblings,
   yourRel,
   type Ctx,
+  v,
 } from './helpers'
+import { cars, common, landline, prized } from './era'
 import { hasSnow, locale } from '../data/locales'
 import { feastHoliday } from './adult'
 
@@ -53,7 +55,7 @@ export const FAMILY_EVENTS = defineEvents([
       const p = anyOf(g, askers(g))
       if (!p) return null
       const amt = Math.max(100, Math.round(dollars(g, 200, 3000) / 50) * 50)
-      const why = pick(g, ['pay their rent', 'fix their car', 'pay off a gambling debt', 'start a food truck', 'cover a medical bill', 'buy a "sure thing" stock', 'pay for a vacation they already booked'])
+      const why = v(g, ['pay their rent', '@cars fix their car', 'pay off a gambling debt', '@2008 start a food truck', '@-2008 open a lunch counter', 'cover a medical bill', 'buy a "sure thing" stock', 'pay for a vacation they already booked'])
       return {
         text: `${uc(yourRel(p))}, is asking to borrow ${money(amt)} to ${why}. What will you do?`,
         choices: [ch('give', 'Give it to them'), ch('lend', 'Lend it, but expect it back'), ch('less', 'Offer half'), ch('refuse', 'Refuse')],
@@ -102,7 +104,7 @@ export const FAMILY_EVENTS = defineEvents([
       const what = pick(g, ['a minor heart attack', 'a bad fall', 'pneumonia', 'a kidney stone the size of a marble', 'a scary dizzy spell'])
       return {
         text: `${uc(yourRel(p))}, was rushed to the hospital after ${what}. ${pr(p).He} is stable for now. What will you do?`,
-        choices: [ch('visit', 'Rush to the hospital'), ch('flowers', 'Send flowers'), ch('call', 'Give them a call'), ch('nothing', 'Do nothing')],
+        choices: [ch('visit', 'Rush to the hospital'), ch('flowers', 'Send flowers'), ch('call', landline(g) ? 'Give them a call' : 'Write them a letter'), ch('nothing', 'Do nothing')],
         person: p,
         data: { what },
       }
@@ -113,7 +115,10 @@ export const FAMILY_EVENTS = defineEvents([
         say(g, x, 'By their side', `You rushed to the hospital and stayed by ${nm(x)}'s side. ${x.p ? pr(x.p).He : 'They'} squeezed your hand and cried.`, `I visited ${myRelOf(x.p)} in the hospital after ${x.s('what')}.`, { rel: 20, karma: 4, happiness: -2 }, 'good', '❤️')
       },
       flowers: (g: GameState, x: Ctx) => say(g, x, 'Thoughtful', `You sent a big bouquet. ${nm(x)} said the nurses were very impressed.`, `I sent flowers to ${myRelOf(x.p)} in the hospital.`, { rel: 8, money: -Math.min(Math.max(0, g.character.money), 60) }),
-      call: (g: GameState, x: Ctx) => say(g, x, 'Checked in', `You called ${nm(x)}, who insisted they were "totally fine" while monitors beeped in the background.`, `I called ${myRelOf(x.p)} in the hospital.`, { rel: 4 }),
+      call: (g: GameState, x: Ctx) =>
+        landline(g)
+          ? say(g, x, 'Checked in', `You called ${nm(x)}, who insisted they were "totally fine" while ${g.year >= 1965 ? 'monitors beeped' : 'nurses bustled'} in the background.`, `I called ${myRelOf(x.p)} in the hospital.`, { rel: 4 })
+          : say(g, x, 'Checked in', `You wrote ${nm(x)} a long letter. They wrote back that they were "totally fine," in very shaky handwriting.`, `I wrote to ${myRelOf(x.p)} in the hospital.`, { rel: 4 }),
       nothing: (g: GameState, x: Ctx) => say(g, x, 'Absent', `You didn't reach out. ${nm(x)} noticed.`, `I didn't reach out when ${myRelOf(x.p)} was in the hospital.`, { rel: -20, karma: -6 }, 'bad'),
     },
   },
@@ -138,7 +143,7 @@ export const FAMILY_EVENTS = defineEvents([
       heartfelt: (g: GameState, x: Ctx) => say(g, x, 'Not a dry eye', `Your toast had the whole room in tears. ${nm(x)} hugged you for a full minute.`, `I gave a heartfelt toast at ${myRelOf(x.p)}'s wedding.`, { rel: 18, happiness: 8 }, 'good', '🥂'),
       roast: (g: GameState, x: Ctx) => {
         const hit = chance(g, 0.5)
-        say(g, x, hit ? 'Comedy gold' : 'Bombed', hit ? 'Your roast killed. Even the grandparents were wheezing.' : 'Your roast bombed. A cousin booed. The DJ started playing music to drown you out.', `I roasted ${myRelOf(x.p)} at their wedding.`, hit ? { rel: 10, happiness: 8 } : { rel: -12, happiness: -8 }, hit ? 'good' : 'bad', '🎤')
+        say(g, x, hit ? 'Comedy gold' : 'Bombed', hit ? 'Your roast killed. Even the grandparents were wheezing.' : g.year >= 1975 ? 'Your roast bombed. A cousin booed. The DJ started playing music to drown you out.' : 'Your roast bombed. A cousin booed. The band struck up a song to drown you out.', `I roasted ${myRelOf(x.p)} at their wedding.`, hit ? { rel: 10, happiness: 8 } : { rel: -12, happiness: -8 }, hit ? 'good' : 'bad', '🎤')
       },
       stories: (g: GameState, x: Ctx) => say(g, x, 'Mortifying', `You told the story about ${nm(x)} getting stuck in a doggy door. The new in-laws will never look at them the same.`, `I told embarrassing stories at ${myRelOf(x.p)}'s wedding.`, { rel: -8, happiness: 6 }),
       decline: (g: GameState, x: Ctx) => say(g, x, 'Stage fright', `You declined to speak. ${nm(x)} said it was fine. It was not fine.`, `I declined to give a toast at ${myRelOf(x.p)}'s wedding.`, { rel: -10 }),
@@ -155,7 +160,7 @@ export const FAMILY_EVENTS = defineEvents([
     setup: (g: GameState) => {
       const k = anyOf(g, kids(g, 4, 16))
       if (!k) return null
-      const act = k.age < 10 ? pick(g, ['drew on the walls with permanent marker', 'bit a kid at school', 'flushed your car keys down the toilet', 'told the neighbor they smell like feet', 'cut the cat\'s whiskers']) : pick(g, ['got caught cheating on a test', 'was suspended for fighting', 'snuck out at 2 AM', 'dyed the dog blue', 'racked up $400 in mobile game purchases on your card'])
+      const act = k.age < 10 ? v(g, ['@1955 drew on the walls with permanent marker', '@-1955 drew on the walls with crayon', 'bit a kid at school', '@cars flushed your car keys down the toilet', 'told the neighbor they smell like feet', 'cut the cat\'s whiskers']) : v(g, ['got caught cheating on a test', 'was suspended for fighting', 'snuck out at 2 AM', 'dyed the dog blue', `@smartphone racked up ${money(400)} in mobile game purchases on your card`, '@-1990 broke a neighbor\'s window with a baseball'])
       return {
         text: `Your ${relWord(k)}, ${k.firstName}, ${act}. What will you do?`,
         choices: [ch('nothing', 'Do nothing'), ch('ground', 'Ground them'), ch('talk', 'Have a talk with them'), ch('yell', 'Yell at them')],
@@ -224,18 +229,18 @@ export const FAMILY_EVENTS = defineEvents([
       const subject = pick(g, ['math', 'science', 'history', 'English', 'art'])
       return {
         text: good ? `Your ${relWord(k)}, ${k.firstName}, brought home a report card with straight A's, including a perfect score in ${subject}! What will you do?` : `Your ${relWord(k)}, ${k.firstName}, brought home a report card with a big fat F in ${subject}. What will you do?`,
-        choices: good ? [ch('reward', 'Reward them with $20'), ch('praise', 'Praise them'), ch('expect', 'Say "I expect nothing less"')] : [ch('tutor', 'Hire a tutor'), ch('help', 'Help them study'), ch('punish', 'Take away their phone'), ch('shrug', 'Shrug it off')],
+        choices: good ? [ch('reward', `Reward them with ${money(20)}`), ch('praise', 'Praise them'), ch('expect', 'Say "I expect nothing less"')] : [ch('tutor', 'Hire a tutor'), ch('help', 'Help them study'), ch('punish', `Take away their ${prized(g)}`), ch('shrug', 'Shrug it off')],
         person: k,
         data: { subject },
       }
     },
     resolve: {
-      reward: (g: GameState, x: Ctx) => say(g, x, 'Proud parent', `You gave ${nm(x)} $20. They are already asking about next semester's rates.`, `I rewarded my child, ${nm(x)}, for a great report card.`, { money: -Math.min(Math.max(0, g.character.money), 20), rel: 12, happiness: 6 }, 'good'),
+      reward: (g: GameState, x: Ctx) => say(g, x, 'Proud parent', `You gave ${nm(x)} ${money(20)}. They are already asking about next semester's rates.`, `I rewarded my child, ${nm(x)}, for a great report card.`, { money: -Math.min(Math.max(0, g.character.money), 20), rel: 12, happiness: 6 }, 'good'),
       praise: (g: GameState, x: Ctx) => say(g, x, 'Gold star', `You told ${nm(x)} how proud you are. They beamed for the rest of the week.`, `I praised my child, ${nm(x)}, for a great report card.`, { rel: 10, happiness: 6 }, 'good'),
       expect: (g: GameState, x: Ctx) => say(g, x, 'Tough crowd', `${nm(x)} looked crushed. Straight A's and not even a smile.`, `I told my child, ${nm(x)}, that I expect nothing less than straight A's.`, { rel: -8 }),
       tutor: (g: GameState, x: Ctx) => {
         const cost = dollars(g, 200, 800)
-        if (g.character.money < cost) return say(g, x, "Can't afford it", `Tutors cost ${money(cost)}. You can't swing it, so you watched some videos together instead.`, null, { rel: 4 })
+        if (g.character.money < cost) return say(g, x, "Can't afford it", `Tutors cost ${money(cost)}. You can't swing it, so you ${common(g, 'videoSharing') ? 'watched some videos together' : 'went through the textbook together'} instead.`, null, { rel: 4 })
         if (x.p) x.p.stats.smarts = Math.min(100, x.p.stats.smarts + 8)
         say(g, x, 'Investment', `You hired a tutor for ${money(cost)}. ${nm(x)}'s ${x.s('subject')} grade jumped to a B!`, `I hired a tutor for my child, ${nm(x)}.`, { money: -cost, rel: 4 }, 'good')
       },
@@ -243,7 +248,10 @@ export const FAMILY_EVENTS = defineEvents([
         if (x.p) x.p.stats.smarts = Math.min(100, x.p.stats.smarts + 5)
         say(g, x, 'Homework helper', `You sat with ${nm(x)} every night. You both relearned ${x.s('subject')} and their grade improved.`, `I helped my child, ${nm(x)}, study ${x.s('subject')}.`, { rel: 12, smarts: 2 }, 'good')
       },
-      punish: (g: GameState, x: Ctx) => say(g, x, 'Phone jail', `You confiscated ${nm(x)}'s phone until the grade improves. They acted like you took a kidney.`, `I took my child's phone away over a bad grade.`, { rel: -10 }),
+      punish: (g: GameState, x: Ctx) => {
+        const thing = prized(g)
+        say(g, x, thing === 'phone' ? 'Phone jail' : 'Confiscated', `You confiscated ${nm(x)}'s ${thing} until the grade improves. They acted like you took a kidney.`, `I took my child's ${thing} away over a bad grade.`, { rel: -10 })
+      },
       shrug: (g: GameState, x: Ctx) => say(g, x, 'Chill parent', `You told ${nm(x)} that ${x.s('subject')} is overrated anyway. They agreed enthusiastically.`, "I shrugged off my child's bad grade.", { rel: 6 }),
     },
   },
@@ -267,7 +275,7 @@ export const FAMILY_EVENTS = defineEvents([
     resolve: {
       ground: (g: GameState, x: Ctx) => say(g, x, 'Lockdown', `${nm(x)} is grounded for a month. The silent treatment has begun.`, `I grounded my child, ${nm(x)}, for sneaking out.`, { rel: -10 }),
       talk: (g: GameState, x: Ctx) => {
-        const where = pick(g, ['a party', 'a concert', "their friend's house playing video games", 'a 24-hour diner', 'a stargazing spot with friends'])
+        const where = v(g, ['a party', 'a concert', "@videoGameConsole their friend's house playing video games", '@1950 a 24-hour diner', 'a stargazing spot with friends'])
         say(g, x, 'Honest answer', `${nm(x)} admitted they were at ${where}. You had a long, surprisingly good talk.`, `I talked with my child, ${nm(x)}, after they snuck out.`, { rel: 8 }, 'good')
       },
       pretend: (g: GameState, x: Ctx) => say(g, x, 'Plausible deniability', 'You quietly went back to bed. Some battles aren\'t worth fighting at 3 AM.', 'I pretended not to see my child sneaking back in.', { rel: 2 }),
@@ -286,7 +294,7 @@ export const FAMILY_EVENTS = defineEvents([
       const k = anyOf(g, kids(g, 18, 70))
       if (!k) return null
       const amt = Math.round(dollars(g, 500, 8000) / 100) * 100
-      const why = pick(g, ['a down payment on a house', country(g).freeUniversity ? 'their university books' : 'their student loans', 'a new car', 'their wedding', 'a business idea involving artisanal ice', 'rent this month'])
+      const why = v(g, ['a down payment on a house', country(g).freeUniversity || g.year < 1970 ? 'their university books' : 'their student loans', '@cars a new car', 'their wedding', '@2010 a business idea involving artisanal ice', '@-2010 a business idea involving door-to-door encyclopedias', 'rent this month'])
       return {
         text: `Your ${relWord(k)}, ${k.firstName}, is asking for ${money(amt)} to help with ${why}. What will you do?`,
         choices: [ch('give', 'Give it to them'), ch('loan', 'Make it a loan'), ch('no', 'Tell them to figure it out')],
@@ -336,7 +344,7 @@ export const FAMILY_EVENTS = defineEvents([
         createPerson(g, { relation: 'pet', age: randInt(g, 0, 6), firstName: name, species: x.s('species'), relationship: 70, livesWithPlayer: true })
         say(g, x, 'Fur baby', `You adopted a ${x.s('species').toLowerCase()} named ${name}! ${nm(x)} cried happy tears.`, `${uc(myRelOf(x.p))} and I adopted a ${x.s('species').toLowerCase()} named ${name}.`, { rel: 12, happiness: 10, count: ['pets', 'adoptions'] }, 'good', '🐾')
       },
-      no: (g: GameState, x: Ctx) => say(g, x, 'Not yet', `You said you weren't ready. ${nm(x)} sent you shelter photos every day for a month.`, `I told ${myRelOf(x.p)} I wasn't ready for a pet.`, { rel: -6 }),
+      no: (g: GameState, x: Ctx) => say(g, x, 'Not yet', common(g, 'smartphone') ? `You said you weren't ready. ${nm(x)} sent you shelter photos every day for a month.` : `You said you weren't ready. ${nm(x)} left shelter flyers on your pillow every day for a month.`, `I told ${myRelOf(x.p)} I wasn't ready for a pet.`, { rel: -6 }),
     },
   },
   {
@@ -352,7 +360,7 @@ export const FAMILY_EVENTS = defineEvents([
       if (!p) return null
       return {
         text: `${uc(yourRel(p))}, has started snoring like a chainsaw. You haven't slept properly in weeks. What will you do?`,
-        choices: [ch('earplugs', 'Buy earplugs'), ch('nudge', 'Nudge them all night'), ch('couch', 'Sleep on the couch'), ch('record', 'Record it as evidence')],
+        choices: [ch('earplugs', 'Buy earplugs'), ch('nudge', 'Nudge them all night'), ch('couch', 'Sleep on the couch'), ch('record', g.year >= 1965 ? 'Record it as evidence' : 'Keep a snoring diary as evidence')],
         person: p,
       }
     },
@@ -362,7 +370,8 @@ export const FAMILY_EVENTS = defineEvents([
       couch: (g: GameState, x: Ctx) => say(g, x, 'Couch life', `You moved to the couch. ${nm(x)} was hurt you left.`, 'I started sleeping on the couch because of the snoring.', { rel: -6, health: 2 }),
       record: (g: GameState, x: Ctx) => {
         const funny = chance(g, 0.6)
-        say(g, x, funny ? 'Exhibit A' : 'Offended', funny ? `You played the recording. ${nm(x)} laughed until they cried and booked a doctor's appointment.` : `You played the recording. ${nm(x)} insisted it was "doctored" and didn't speak to you for a day.`, "I recorded my partner's snoring as evidence.", funny ? { rel: 4, happiness: 4 } : { rel: -8 })
+        const tape = g.year >= 1965
+        say(g, x, funny ? 'Exhibit A' : 'Offended', funny ? `You ${tape ? 'played the recording' : 'read your snoring diary aloud'}. ${nm(x)} laughed until they cried and booked a doctor's appointment.` : `You ${tape ? 'played the recording' : 'read your snoring diary aloud'}. ${nm(x)} insisted it was "${tape ? 'doctored' : 'exaggerated'}" and didn't speak to you for a day.`, tape ? "I recorded my partner's snoring as evidence." : "I kept a diary of my partner's snoring as evidence.", funny ? { rel: 4, happiness: 4 } : { rel: -8 })
       },
     },
   },
@@ -472,7 +481,7 @@ export const FAMILY_EVENTS = defineEvents([
       sleep: (g: GameState, x: Ctx) => say(g, x, 'Zzz', `You fell asleep. ${nm(x)} kept talking for twenty more minutes before noticing.`, `I fell asleep while my ${x.p ? relWord(x.p) : 'grandparent'} told a story.`, { rel: -4, health: 2 }),
       money: (g: GameState, x: Ctx) => {
         const amt = chance(g, 0.6) ? randInt(g, 5, 50) : 0
-        say(g, x, amt ? 'Cha-ching' : 'Nope', amt ? `${nm(x)} chuckled and slipped you $${amt}. "Don't tell your parents."` : `${nm(x)} said "money doesn't grow on trees" and started a new story about trees.`, amt ? `My ${x.p ? relWord(x.p) : 'grandparent'} gave me $${amt}.` : null, amt ? { money: amt, rel: -2, happiness: 4 } : { rel: -4 })
+        say(g, x, amt ? 'Cha-ching' : 'Nope', amt ? `${nm(x)} chuckled and slipped you ${money(amt)}. "Don't tell your parents."` : `${nm(x)} said "money doesn't grow on trees" and started a new story about trees.`, amt ? `My ${x.p ? relWord(x.p) : 'grandparent'} gave me ${money(amt)}.` : null, amt ? { money: amt, rel: -2, happiness: 4 } : { rel: -4 })
       },
       correct: (g: GameState, x: Ctx) => say(g, x, 'Fact checker', `You pointed out that you can't walk uphill both ways. ${nm(x)} said "you weren't there."`, `I pointed out the plot holes in my ${x.p ? relWord(x.p) : 'grandparent'}'s story.`, { rel: -6, smarts: 2 }),
     },
@@ -529,7 +538,7 @@ export const FAMILY_EVENTS = defineEvents([
       look: (g: GameState, x: Ctx) => {
         const r = randInt(g, 1, 10)
         if (r <= 7) {
-          const where = pick(g, ['hiding in a bush', "napping on a neighbor's porch", 'begging for food at a pizza place', 'sitting in a stranger\'s car', 'chasing squirrels in the park'])
+          const where = v(g, ['hiding in a bush', "napping on a neighbor's porch", '@1950 begging for food at a pizza place', '@-1950 begging for scraps at the butcher\'s', '@cars sitting in a stranger\'s car', 'chasing squirrels in the park'])
           say(g, x, ['Phew', 'Thank goodness'], `You found ${nm(x)} ${where}!`, `My pet, ${nm(x)}, escaped. I found it ${where}.`, { rel: 6, happiness: 6 }, 'good')
         } else if (r <= 9) {
           say(g, x, ['No luck', 'Looked everywhere'], `You weren't able to find ${nm(x)} anywhere. Maybe it will turn up.`, `My pet, ${nm(x)}, escaped and I couldn't find it.`, { happiness: -10 }, 'bad')
@@ -545,7 +554,7 @@ export const FAMILY_EVENTS = defineEvents([
       },
       posters: (g: GameState, x: Ctx) => {
         const ok = chance(g, 0.75)
-        say(g, x, ok ? 'Found!' : 'Still missing', ok ? `A stranger called after seeing your poster. ${nm(x)} is home safe!` : `You put up 200 posters. Nobody has called yet.`, ok ? `A stranger returned my pet, ${nm(x)}, after seeing my posters.` : `I put up posters for my missing pet, ${nm(x)}.`, ok ? { happiness: 8, karma: 2 } : { happiness: -10 }, ok ? 'good' : 'bad')
+        say(g, x, ok ? 'Found!' : 'Still missing', ok ? landline(g) ? `A stranger called after seeing your poster. ${nm(x)} is home safe!` : `A stranger knocked on your door after seeing your poster. ${nm(x)} is home safe!` : `You put up 200 posters. Nobody has called yet.`, ok ? `A stranger returned my pet, ${nm(x)}, after seeing my posters.` : `I put up posters for my missing pet, ${nm(x)}.`, ok ? { happiness: 8, karma: 2 } : { happiness: -10 }, ok ? 'good' : 'bad')
       },
       wait: (g: GameState, x: Ctx) => {
         const ok = chance(g, 0.6)
@@ -574,14 +583,14 @@ export const FAMILY_EVENTS = defineEvents([
     resolve: {
       talk: (g: GameState, x: Ctx) => {
         const ok = chance(g, 0.6)
-        say(g, x, ok ? 'Breakthrough' : 'Old wounds', ok ? `You and ${nm(x)} talked for hours. It turns out they just missed you.` : `The talk turned into a fight about who Mom loved more in 1998.`, `I talked with ${myRelOf(x.p)} about their jealousy.`, ok ? { rel: 15 } : { rel: -8 }, ok ? 'good' : 'bad')
+        say(g, x, ok ? 'Breakthrough' : 'Old wounds', ok ? `You and ${nm(x)} talked for hours. It turns out they just missed you.` : `The talk turned into a fight about who Mom loved more in ${g.year - g.character.age + 10}.`, `I talked with ${myRelOf(x.p)} about their jealousy.`, ok ? { rel: 15 } : { rel: -8 }, ok ? 'good' : 'bad')
       },
       help: (g: GameState, x: Ctx) => {
         const amt = Math.min(Math.max(0, g.character.money), dollars(g, 500, 3000))
         if (x.p) x.p.money += amt
         say(g, x, 'Big heart', amt > 0 ? `You offered ${nm(x)} ${money(amt)} and some career advice. They were stunned, then grateful.` : `You offered ${nm(x)} some career advice. They were grateful.`, `I helped out ${myRelOf(x.p)}.`, { money: -amt, rel: 12, karma: 5 }, 'good')
       },
-      flaunt: (g: GameState, x: Ctx) => say(g, x, 'Petty', `You showed up to the next family dinner in a rented limo. ${nm(x)} left early.`, `I flaunted my success in front of ${myRelOf(x.p)}.`, { rel: -15, happiness: 4 }),
+      flaunt: (g: GameState, x: Ctx) => say(g, x, 'Petty', `You showed up to the next family dinner in a ${cars(g) ? 'rented limo' : 'hired carriage'}. ${nm(x)} left early.`, `I flaunted my success in front of ${myRelOf(x.p)}.`, { rel: -15, happiness: 4 }),
       ignore: (g: GameState, x: Ctx) => say(g, x, 'Above it', 'You ignored the comments. They lost their sting eventually.', `I ignored ${myRelOf(x.p)}'s snide comments.`, { rel: -2 }),
     },
   },

@@ -2,13 +2,14 @@
 // Investors (rounds, bridges, grants, IPO readiness) and each industry's own screen (fabs,
 // compute and models, robot demos, the drug pipeline, launch control, the factory floor, the
 // qubit lab, the threat center). Menu builders only read state; actions re-read the business.
-import { addStat, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
+import { addStat, formatCents, formatMoney, log, notice, remember, scriptChoice, useYearAction } from '../core'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import { localEcon } from './economy'
+import { shareSummary } from './competition'
 import {
   DEEP_TECH,
   DRUG_AREAS,
@@ -585,7 +586,7 @@ function spaceNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNo
   const nodes: MenuNode[] = [
     infoNode(a, 'rocket', `${stageName('spaceTech', t.stage)} · ${plural(t.tests, 'test flight')}, ${plural(t.wins, 'success', 'successes')}, ${plural(t.booms, 'explosion')}`, '\u{1F680}'),
   ]
-  if (t.sats > 0) nodes.push(infoNode(a, 'sats', `${plural(t.sats, 'satellite batch', 'satellite batches')} in orbit selling internet from space (each lasts about six years)`, '\u{1F310}'))
+  if (t.sats > 0) nodes.push(infoNode(a, 'sats', `${plural(t.sats, 'satellite batch', 'satellite batches')} in orbit selling data links from space (each lasts about six years)`, '\u{1F310}'))
   if (t.contract) nodes.push(infoNode(a, 'contract', `${t.contract.name}: ${money(t.contract.perYear)}/yr for ${plural(t.contract.years, 'more year')}`, '\u{1F3DB}\u{FE0F}'))
   nodes.push(
     dtAct(a, 'testflight', t.stage >= 3 ? 'Fly a Demonstration Mission' : 'Attempt a Test Flight', '\u{1F680}', {
@@ -653,7 +654,7 @@ function testFlight(g: GameState, a: Asset, b: BizState, t: TechState, quiet = f
 
 function evNodes(_g: GameState, a: Asset, _b: BizState, t: TechState): MenuNode[] {
   return [
-    infoNode(a, 'cars', `${stageName('electricVehicles', t.stage)} · ${plural(t.plant, 'factory unit')} · self-driving level ${t.autonomy + 1} · safety ${Math.round(t.safety)}/100`, '\u{1F697}'),
+    infoNode(a, 'cars', `${stageName('electricVehicles', t.stage)} · ${plural(t.plant, 'factory unit')} · autopilot level ${t.autonomy + 1} · safety ${Math.round(t.safety)}/100`, '\u{1F697}'),
     dtAct(a, 'unveil', 'Unveil a New Model', '\u{1F3AC}', {
       subtitle: (gg) => `About ${money(unveilCost(view(gg, a).b))} for the show · preorders this year`,
       disabled: (_gg, _bb, tt) => (tt.stage < 1 ? 'Unveil a car you can actually build first.' : null),
@@ -798,7 +799,7 @@ export function deepTechInfoImpl(g: GameState, a: Asset): string {
   const def = industryDef(ind)
   const parts = [`Tech level ${Math.round(t.level)}/100`, stageName(ind, t.stage), b.public ? `listed on the ${b.exchange}` : SERIES[t.series]]
   parts.push(`R&D account ${money(t.venture)}`, runwayText(runwayYears(g, a, b, t)))
-  if (sellable(g, b, t)) parts.push(`price ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} per ${def.unitOne}, plan ${units(b.production)} ${def.unit}`)
+  if (sellable(g, b, t)) parts.push(`price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne}, plan ${units(b.production)} ${def.unit}`)
   return parts.join(' · ')
 }
 
@@ -822,5 +823,7 @@ export function deepTechSummaryImpl(g: GameState, a: Asset): string {
   if (t.programs.length) parts.push(`working on ${t.programs.map((p) => p.name).slice(0, 2).join(' and ')}`)
   const r = runwayYears(g, a, b, t)
   if (r < 1) parts.push('running out of money')
+  const share = shareSummary(g, b)
+  if (share) parts.push(share)
   return parts.join(', ')
 }

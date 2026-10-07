@@ -219,6 +219,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
         defaultValue={pending.defaultValue}
         min={input.min}
         max={input.max}
+        money={input.money === true && input.kind === 'number'}
         multiline={isMultiline(action)}
         submitLabel={action.id === 'doAnything' ? 'Do it' : 'Done'}
         onCancel={() => setPending(null)}

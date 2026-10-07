@@ -1,6 +1,6 @@
 // The yearly business loop: simulate every company in its own market, pay the owner, update the
 // valuation, then hand the CEO the Annual Report (price + production for next year).
-import { addMoney, addStat, count, earnIncome, formatMoney, log, minigame, notice, scriptChoice } from '../core'
+import { addMoney, addStat, count, earnIncome, formatCents, formatMoney, log, minigame, notice, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
 import { chance, rand } from '../rng'
@@ -27,6 +27,8 @@ import {
   valuationOf,
 } from './economy'
 import { declareBankruptcy, ipoThreshold } from './exit'
+import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
+import { maybeAntitrust } from './competition-events'
 import { maybeBusinessEvent } from './events'
 import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
@@ -135,7 +137,7 @@ export function statementLines(b: BizState, s: Statement): AnnualReportData['lin
   return lines
 }
 
-function marketNote(b: BizState, lastCycle: number): string {
+function marketNote(g: GameState, b: BizState, lastCycle: number): string {
   const m = marketOf(b.countryId)
   const def = industryDef(b.industry)
   const e = localEcon(b.industry, b.countryId, b.city)
@@ -143,8 +145,12 @@ function marketNote(b: BizState, lastCycle: number): string {
   const parts = [`${country}'s economy is ${cycleLabel(lastCycle)}.`]
   if (e.demandMult >= 1.3) parts.push(`${def.label}s are in hot demand here.`)
   else if (e.demandMult > 0 && e.demandMult <= 0.7) parts.push(`Demand for ${def.label.toLowerCase()}s is thin here.`)
-  parts.push(`Locals typically pay about ${e.goingPrice >= 100 ? money(e.goingPrice) : `$${e.goingPrice.toFixed(2)}`} per ${def.unitOne}.`)
+  parts.push(`Locals typically pay about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)} per ${def.unitOne}.`)
   if (m.inflation >= 0.15) parts.push(`Inflation runs ${Math.round(m.inflation * 100)}% a year: reprice every year or your prices go stale.`)
+  const v = marketViewOf(g, b)
+  if (v.booked && v.share > 0 && (v.scope === 'world' || v.share >= 0.005)) {
+    parts.push(`You hold ${shareText(v.share)} of ${marketOwner(v.place)} ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year` : ''}.`)
+  }
   return parts.join(' ')
 }
 
@@ -175,7 +181,7 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
     maxProduction: maxProd,
     inventory: Math.max(0, Math.round(b.inventory)),
     expectedDemand: Math.max(0, Math.round(expected)),
-    marketNote: marketNote(b, lastCycle) + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
+    marketNote: marketNote(g, b, lastCycle) + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
     lines,
     ...(hasTalent(g, 'Business') ? { talentHint: planHint(g, a, b) } : {}),
   }
@@ -207,7 +213,7 @@ export const REPORT = defineScript('business.annualReport', (g, choice, data) =>
   const b = bizOf(g, a)
   const plan = parsePlan(g, b, choice, a.id)
   applyPlan(b, plan)
-  if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${plan.price >= 100 ? money(plan.price) : `$${plan.price.toFixed(2)}`} and planned ${units(plan.production)} ${industryDef(b.industry).unit} for the year.`)
+  if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${plan.price >= 100 ? money(plan.price) : formatCents(plan.price)} and planned ${units(plan.production)} ${industryDef(b.industry).unit} for the year.`)
 })
 
 export function queueReport(g: GameState, a: Asset, b: BizState): void {
@@ -366,6 +372,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     const s = res.stmt
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     const lastCycle = s.cycle
+    // Who sold what in its market this year (share, rivals, newcomers): before evolve() resets the year.
+    refreshMarket(g, a, b, fiscal, s, res.market ?? null)
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
     if (tech) afterDeepTechYear(g, a, b)
@@ -414,6 +422,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     // would still get a report.)
     if (plans) queueReport(g, a, b)
     if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
+    // Regulators come for dominant companies on their own schedule (not the random-event roll).
+    maybeAntitrust(g, a, b, fiscal, managed)
     if (!plans) {
       if (studio) studioManagerTurn(g, a, b)
       // A deep-tech manager plans price and output with the tech model; the generic autoPlan can't see it.

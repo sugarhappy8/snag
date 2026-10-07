@@ -1,6 +1,12 @@
 // Small centered dialogs used by the menus (confirm / input / locked-row reasons) and the
 // popup frame shared with ModalHost.
+//
+// Money inputs (MenuInput.money / InputModal.money): the engine gives min/max/default in internal
+// dollars; the player sees and types the display currency (yen, rupiah, 1980 dollars...), and the
+// value handed back is converted to internal dollars again (core.ts moneyScale/moneyFromInput),
+// rounded and clamped to the engine's bounds so no rounding can ever exceed them.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { formatMoney, moneyFromInput, moneyScale, showMoney } from '../../game/core'
 
 export interface PopupFrameProps {
   children: ReactNode
@@ -122,10 +128,114 @@ export function parseNumberInput(raw: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-/** Returns an error message for an invalid value, or null when OK. */
-export function validateInput(kind: 'text' | 'number', raw: string, min?: number, max?: number): string | null {
+const MULTIPLIERS: Record<string, number> = {
+  k: 1e3,
+  thousand: 1e3,
+  m: 1e6,
+  mn: 1e6,
+  mil: 1e6,
+  million: 1e6,
+  b: 1e9,
+  bn: 1e9,
+  billion: 1e9,
+  t: 1e12,
+  trillion: 1e12,
+  quadrillion: 1e15,
+  quintillion: 1e18,
+  sextillion: 1e21,
+  septillion: 1e24,
+  octillion: 1e27,
+  nonillion: 1e30,
+}
+
+/**
+ * Parse a typed amount of money in display units: "¥1,500", "Rp 2.5M", "1.500.000", "12,50 €",
+ * "45k". `wholeUnits` (yen, rupiah...): a single "1.500" means fifteen hundred. null when it
+ * isn't an amount.
+ */
+export function parseMoneyInput(raw: string, wholeUnits = false): number | null {
+  const s = raw.trim()
+  const core = /\d(?:[\d.,\s'_]*\d)?/.exec(s)
+  if (!core) return null
+  const prefix = s.slice(0, core.index)
+  const suffix = s.slice(core.index + core[0].length)
+  if (!/^[^\d]{0,8}$/.test(prefix)) return null
+  // A multiplier is a whole word ("2.5M", "3 million"), never the start of a symbol ("500 Kč").
+  const tail = /^\s*(?:([a-z]+)(?!\p{L}))?\.?\s*([^\d]{0,12})$/iu.exec(suffix)
+  if (!tail) return null
+  let mult = 1
+  let currencyWord = tail[2]
+  if (tail[1]) {
+    const m = MULTIPLIERS[tail[1].toLowerCase()]
+    if (m) mult = m
+    else currencyWord = tail[1] + tail[2]
+  }
+  if (/\d/.test(currencyWord)) return null
+  let d = core[0].replace(/[\s'_]/g, '')
+  const lastDot = d.lastIndexOf('.')
+  const lastComma = d.lastIndexOf(',')
+  if (lastDot >= 0 && lastComma >= 0) {
+    // Both marks: the later one is the decimal point (1,234.50 or 1.234,50).
+    d = lastDot > lastComma ? d.replace(/,/g, '') : d.replace(/\./g, '').replace(',', '.')
+  } else if (lastComma >= 0) {
+    const parts = d.split(',')
+    // "12,50" is twelve and a half; "1,500" and "1,500,000" are thousands.
+    d = parts.length === 2 && parts[1].length <= 2 ? parts.join('.') : parts.join('')
+  } else if (lastDot >= 0) {
+    const parts = d.split('.')
+    if (parts.length > 2 || (wholeUnits && parts[1].length === 3)) d = parts.join('')
+  }
+  const n = Number(d) * mult
+  if (!Number.isFinite(n)) return null
+  return /-/.test(prefix) ? -n : n
+}
+
+/** True when the display currency has no cents (yen, won, rupiah, lira...). */
+function wholeCurrency(): boolean {
+  return showMoney(1).decimals === 0
+}
+
+/** An internal amount as the number a money field should show ("225000", "12.5"). */
+export function moneyFieldValue(internal: number): string {
+  if (!Number.isFinite(internal)) return ''
+  const d = internal * moneyScale()
+  // Hyperinflation amounts (1946 pengő) are written out in full, never as '1e+30'.
+  if (Math.abs(d) >= 1e21) return BigInt(Math.round(d)).toString()
+  if (Math.abs(d) >= 100 || wholeCurrency()) return String(Math.round(d))
+  return String(Math.round(d * 100) / 100)
+}
+
+/** A prefilled value or placeholder from the engine (internal dollars) for a money field. */
+export function moneyDefault(raw: string | undefined): string {
+  if (raw === undefined || raw === '') return raw ?? ''
+  const n = Number(raw)
+  return Number.isFinite(n) ? moneyFieldValue(n) : raw
+}
+
+/** The typed amount in internal dollars (null when it isn't a number). */
+function moneyTyped(raw: string): number | null {
+  const n = parseMoneyInput(raw, wholeCurrency())
+  return n === null ? null : moneyFromInput(n)
+}
+
+/** Half a unit of what the field shows, in internal dollars: rounding the shown bound is never an error. */
+function moneySlack(bound: number): number {
+  const shown = Math.abs(bound * moneyScale())
+  const unit = shown >= 100 || wholeCurrency() ? 1 : 0.01
+  return moneyFromInput(unit / 2) + Math.abs(bound) * 1e-9
+}
+
+/** Returns an error message for an invalid value, or null when OK. Money bounds are internal dollars. */
+export function validateInput(kind: 'text' | 'number', raw: string, min?: number, max?: number, money = false): string | null {
   if (kind === 'text') {
     return raw.trim() ? null : 'Please type something first.'
+  }
+  if (money) {
+    const n = moneyTyped(raw)
+    if (n === null) return 'Please enter an amount.'
+    if (min !== undefined && n < min - moneySlack(min)) return `The minimum is ${formatMoney(min)}.`
+    if (max !== undefined && n > max + moneySlack(max)) return `The maximum is ${formatMoney(max)}.`
+    return null
   }
   const n = parseNumberInput(raw)
   if (n === null) return 'Please enter a number.'
@@ -134,9 +244,20 @@ export function validateInput(kind: 'text' | 'number', raw: string, min?: number
   return null
 }
 
-/** Normalizes the value handed to scripts/menu actions (numbers without commas or $). */
-export function normalizeInput(kind: 'text' | 'number', raw: string): string {
+/**
+ * Normalizes the value handed to scripts/menu actions (numbers without commas or $). Money:
+ * converted back to whole internal dollars and kept inside [min, max].
+ */
+export function normalizeInput(kind: 'text' | 'number', raw: string, money = false, min?: number, max?: number): string {
   if (kind === 'text') return raw.trim()
+  if (money) {
+    const n = moneyTyped(raw)
+    if (n === null) return ''
+    let v = Math.round(n)
+    if (max !== undefined) v = Math.min(v, Math.floor(max))
+    if (min !== undefined) v = Math.max(v, Math.ceil(min))
+    return String(v)
+  }
   const n = parseNumberInput(raw)
   return n === null ? '' : String(Math.round(n))
 }
@@ -149,10 +270,12 @@ export interface InputFieldProps {
   placeholder?: string
   multiline?: boolean
   label?: string
+  /** An amount of money (the keyboard offers a decimal point and the currency is shown). */
+  money?: boolean
 }
 
 /** Text / number field that submits on Enter (Shift+Enter makes a newline in multiline mode). */
-export function InputField({ kind, value, onChange, onSubmit, placeholder, multiline, label }: InputFieldProps) {
+export function InputField({ kind, value, onChange, onSubmit, placeholder, multiline, label, money }: InputFieldProps) {
   if (kind === 'text' && multiline) {
     return (
       <textarea
@@ -175,11 +298,11 @@ export function InputField({ kind, value, onChange, onSubmit, placeholder, multi
   return (
     <input
       type="text"
-      inputMode={kind === 'number' ? 'numeric' : 'text'}
+      inputMode={kind === 'number' ? (money ? 'decimal' : 'numeric') : 'text'}
       value={value}
       placeholder={placeholder}
-      aria-label={label}
-      maxLength={kind === 'number' ? 18 : 120}
+      aria-label={money && label ? `${label} (${showMoney(1).code})` : label}
+      maxLength={kind === 'number' ? (money ? 48 : 18) : 120}
       autoFocus
       autoComplete="off"
       onChange={(e) => onChange(e.target.value)}
@@ -193,9 +316,10 @@ export function InputField({ kind, value, onChange, onSubmit, placeholder, multi
   )
 }
 
-export function rangeHint(kind: 'text' | 'number', min?: number, max?: number): string | null {
+export function rangeHint(kind: 'text' | 'number', min?: number, max?: number, money = false): string | null {
   if (kind !== 'number') return null
-  const f = (n: number) => n.toLocaleString('en-US')
+  if (money && min === undefined && max === undefined) return `Amount in ${showMoney(1).name ?? 'dollars'} (${showMoney(1).symbol})`
+  const f = (n: number) => (money ? formatMoney(n) : n.toLocaleString('en-US'))
   if (min !== undefined && max !== undefined) return `Between ${f(min)} and ${f(max)}`
   if (min !== undefined) return `At least ${f(min)}`
   if (max !== undefined) return `At most ${f(max)}`
@@ -213,6 +337,8 @@ export interface InputDialogProps {
   max?: number
   multiline?: boolean
   submitLabel?: string
+  /** min/max/defaultValue/placeholder are internal dollars; the player types the display currency. */
+  money?: boolean
   onSubmit: (value: string) => void
   onCancel: () => void
 }
@@ -228,21 +354,23 @@ export function InputDialog({
   max,
   multiline,
   submitLabel = 'Done',
+  money = false,
   onSubmit,
   onCancel,
 }: InputDialogProps) {
-  const [value, setValue] = useState(defaultValue ?? '')
+  const isMoney = money && kind === 'number'
+  const [value, setValue] = useState(() => (isMoney ? moneyDefault(defaultValue) : (defaultValue ?? '')))
   const [error, setError] = useState<string | null>(null)
   useEscape(onCancel)
   const submit = () => {
-    const err = validateInput(kind, value, min, max)
+    const err = validateInput(kind, value, min, max, isMoney)
     if (err) {
       setError(err)
       return
     }
-    onSubmit(normalizeInput(kind, value))
+    onSubmit(normalizeInput(kind, value, isMoney, min, max))
   }
-  const hint = rangeHint(kind, min, max)
+  const hint = rangeHint(kind, min, max, isMoney)
   return (
     <PopupFrame dialog onBackdrop={onCancel} label={title}>
       {emoji ? (
@@ -261,9 +389,10 @@ export function InputDialog({
             if (error) setError(null)
           }}
           onSubmit={submit}
-          placeholder={placeholder}
+          placeholder={isMoney ? moneyDefault(placeholder) : placeholder}
           multiline={multiline}
           label={label}
+          money={isMoney}
         />
         {error ? <span className="popup-error">{error}</span> : hint ? <span className="popup-hint">{hint}</span> : null}
       </div>

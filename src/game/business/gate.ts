@@ -1,5 +1,5 @@
 // Shared gating and small notices for business menus.
-import { notice } from '../core'
+import { formatMoney, notice } from '../core'
 import type { Asset, GameState } from '../types'
 import { findBusiness } from './state'
 
@@ -33,5 +33,5 @@ export function noCash(g: GameState, a: Asset, need: number, what: string): void
 }
 
 function formatNeed(n: number): string {
-  return `$${Math.round(n).toLocaleString('en-US')}`
+  return formatMoney(n)
 }

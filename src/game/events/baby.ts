@@ -3,7 +3,8 @@
 import { locale, localPick } from '../data/locales'
 import { chance, pick } from '../rng'
 import type { GameState, Person } from '../types'
-import { aParent, ch, defineEvents, mother, say, siblings } from './helpers'
+import { aParent, ch, defineEvents, mother, say, siblings, v } from './helpers'
+import { cars, common, landline } from './era'
 
 /** "your mother" / "your caretaker" for baby events. */
 function carer(g: GameState): { p: Person | undefined; word: string } {
@@ -12,10 +13,10 @@ function carer(g: GameState): { p: Person | undefined; word: string } {
   return { p: m, word: m.gender === 'female' ? 'mother' : 'father' }
 }
 
-const FOODS = ['mashed avocado', 'puréed peas', 'strained spinach', 'mushy carrots', 'beet purée', 'pumpkin mush']
+const FOODS = ['@1985 mashed avocado', 'puréed peas', 'strained spinach', 'mushy carrots', 'beet purée', 'pumpkin mush']
 const SNACKS = ['candy bar', 'bag of chips', 'lollipop', 'giant cookie', 'box of gummy bears', 'chocolate egg']
 /** Free samples anyone might hand out at a supermarket (no pork by default). */
-const SAMPLES = ['mini pizza bites', 'cheese cubes', 'chocolate brownies', 'cookies', 'fruit slices']
+const SAMPLES = ['@1970 mini pizza bites', 'cheese cubes', 'chocolate brownies', 'cookies', 'fruit slices']
 const COLORS = ['red', 'purple', 'green', 'blue', 'orange', 'pink']
 
 export const BABY_EVENTS = defineEvents([
@@ -55,7 +56,7 @@ export const BABY_EVENTS = defineEvents([
     maxAge: 3,
     setup: (g) => {
       const c = carer(g)
-      const food = pick(g, FOODS)
+      const food = v(g, FOODS)
       return {
         text: `It's dinner time and, once again, your ${c.word} is swirling a spoonful of ${food} through the air like an airplane. The spoon approaches your lips. What will you do?`,
         choices: [ch('eat', 'Eat it'), ch('cry', 'Cry'), ch('slap', 'Slap the spoon')],
@@ -149,16 +150,33 @@ export const BABY_EVENTS = defineEvents([
       const c = carer(g)
       return {
         text: "Your gums hurt and you're looking for something within reach to chew on. What will you grab?",
-        choices: [ch('marker', 'A permanent marker'), ch('remote', 'The TV remote'), ch('phone', `My ${c.word}'s phone`), ch('ring', 'A rubber chew ring')],
+        choices: [
+          ch('marker', g.year >= 1955 ? 'A permanent marker' : 'A crayon'),
+          g.year >= 1980 && common(g, 'tv') ? ch('remote', 'The TV remote') : ch('remote', 'A wooden spoon'),
+          common(g, 'mobilePhone') ? ch('phone', `My ${c.word}'s phone`) : ch('phone', `My ${c.word}'s house keys`),
+          ch('ring', g.year >= 1950 ? 'A rubber chew ring' : 'A teething rusk'),
+        ],
         person: c.p,
         data: { word: c.word },
       }
     },
     resolve: {
-      marker: (g) => say(g, null, 'Blue mouth', 'You chewed on a permanent marker. Your tongue will be blue for a week.', 'I chewed on a permanent marker to soothe my gums.', { health: -4, looks: -2 }, 'bad', '🖊️'),
-      remote: (g) => say(g, null, 'Channel surfer', 'You gnawed the TV remote and somehow ordered a pay-per-view boxing match.', 'I chewed on the TV remote to soothe my gums.', { happiness: 4 }),
-      phone: (g, x) => say(g, x, 'Drool proof?', `You slobbered all over your ${x.s('word')}'s phone. It now only works when held at an angle.`, `I chewed on my ${x.s('word')}'s phone to soothe my gums.`, { happiness: 4, rel: -3 }),
-      ring: (g) => say(g, null, 'Sweet relief', 'You chomped on the chew ring. Ahhh, much better.', 'I chewed on a rubber chew ring to soothe my gums.', { happiness: 6, health: 2 }, 'good'),
+      marker: (g) => {
+        const tool = g.year >= 1955 ? 'permanent marker' : 'crayon'
+        say(g, null, 'Blue mouth', `You chewed on a ${tool}. Your tongue will be blue for a week.`, `I chewed on a ${tool} to soothe my gums.`, { health: -4, looks: -2 }, 'bad', '🖍️')
+      },
+      remote: (g) =>
+        g.year >= 1980 && common(g, 'tv')
+          ? say(g, null, 'Channel surfer', 'You gnawed the TV remote and somehow ordered a pay-per-view boxing match.', 'I chewed on the TV remote to soothe my gums.', { happiness: 4 })
+          : say(g, null, 'Drummer', 'You gnawed the wooden spoon, then used it to drum on every pot in the kitchen.', 'I chewed on a wooden spoon to soothe my gums.', { happiness: 4 }),
+      phone: (g, x) =>
+        common(g, 'mobilePhone')
+          ? say(g, x, 'Drool proof?', `You slobbered all over your ${x.s('word')}'s phone. It now only works when held at an angle.`, `I chewed on my ${x.s('word')}'s phone to soothe my gums.`, { happiness: 4, rel: -3 })
+          : say(g, x, 'Jingle jangle', `You gnawed your ${x.s('word')}'s house keys. They were sticky for a week.`, `I chewed on my ${x.s('word')}'s house keys to soothe my gums.`, { happiness: 4, rel: -2 }),
+      ring: (g) =>
+        g.year >= 1950
+          ? say(g, null, 'Sweet relief', 'You chomped on the chew ring. Ahhh, much better.', 'I chewed on a rubber chew ring to soothe my gums.', { happiness: 6, health: 2 }, 'good')
+          : say(g, null, 'Sweet relief', 'You gummed a teething rusk into a soggy paste. Ahhh, much better.', 'I chewed on a teething rusk to soothe my gums.', { happiness: 6, health: 2 }, 'good'),
     },
   },
   {
@@ -304,7 +322,7 @@ export const BABY_EVENTS = defineEvents([
     }),
     resolve: {
       well: (g) => say(g, null, 'Squeaky clean', 'You brushed thoroughly for two whole minutes.', 'I brushed my teeth thoroughly before bed.', { smarts: 4, looks: 8 }, 'good'),
-      pass: (g) => say(g, null, 'Cavity club', 'You finished your juice box and went to bed without brushing.', 'I went to bed without brushing my teeth even though I was told to.', { looks: -4, health: -2 }, 'bad'),
+      pass: (g) => say(g, null, 'Cavity club', g.year >= 1980 ? 'You finished your juice box and went to bed without brushing.' : 'You finished your glass of milk and went to bed without brushing.', 'I went to bed without brushing my teeth even though I was told to.', { looks: -4, health: -2 }, 'bad'),
       mouthwash: (g) => say(g, null, 'Shortcut', 'You swished some mouthwash, spat most of it on the mirror, and called it a night.', 'I just rinsed with mouthwash instead of brushing.', { smarts: -4, looks: -4 }),
       floss: (g) => say(g, null, ['Pearly whites', 'Model patient'], 'You brushed AND flossed. Your smile is blinding.', 'I brushed and flossed my teeth to keep my pearly whites shining.', { happiness: 8, smarts: 8, looks: 16 }, 'good', '✨'),
     },
@@ -328,7 +346,7 @@ export const BABY_EVENTS = defineEvents([
       }
     },
     resolve: {
-      steal: (g, x) => say(g, x, ['Tiny criminal', 'Five-finger discount'], `You secretly stuffed the ${x.s('snack')} into your pocket and ate it in the car. Delicious crime.`, `I secretly stole and ate a ${x.s('snack')} at the grocery store.`, { happiness: 4, karma: -4 }, 'neutral', '🍫'),
+      steal: (g, x) => say(g, x, ['Tiny criminal', 'Five-finger discount'], `You secretly stuffed the ${x.s('snack')} into your pocket and ate it ${cars(g) ? 'in the car' : 'on the way home'}. Delicious crime.`, `I secretly stole and ate a ${x.s('snack')} at the grocery store.`, { happiness: 4, karma: -4 }, 'neutral', '🍫'),
       tantrum: (g, x) => say(g, x, 'Aisle 5 meltdown', `You threw yourself on the floor kicking and screaming. You still didn't get the ${x.s('snack')}.`, `I threw a tantrum because I didn't get the ${x.s('snack')} I wanted. I still didn't get it.`, { happiness: -8, rel: -4 }, 'bad'),
       cool: (g, x) => say(g, x, 'Mature', 'You kept your composure. Your parent was so impressed they bought you a sticker.', `I kept my composure when I didn't get the ${x.s('snack')} I wanted.`, { smarts: 4, rel: 4 }, 'good'),
     },
@@ -339,12 +357,13 @@ export const BABY_EVENTS = defineEvents([
     title: 'Free Samples',
     minAge: 2,
     maxAge: 5,
-    when: (g) => !!aParent(g),
+    // Supermarkets with shopping carts: the US from the forties, most places decades later.
+    when: (g) => !!aParent(g) && g.year >= (g.character.countryId === 'us' ? 1940 : 1965),
     setup: (g) => {
       const p = aParent(g)
       if (!p) return null
       const local = localPick(g, 'food')
-      const food = local && chance(g, 0.5) ? local : pick(g, SAMPLES)
+      const food = local && chance(g, 0.5) ? local : v(g, SAMPLES)
       return {
         text: `You're riding in the cart at the supermarket when you pass a lady handing out free samples of ${food}. You want some, but your parent says no and keeps walking. How will you react?`,
         choices: [ch('kick', 'Kick and scream'), ch('again', 'Ask again, and again'), ch('cry', 'Cry'), ch('nothing', 'Say nothing')],
@@ -400,15 +419,21 @@ export const BABY_EVENTS = defineEvents([
     title: 'Pretending',
     minAge: 3,
     maxAge: 6,
-    setup: () => ({
+    setup: (g) => ({
       text: "Pretending to do things is a lot of fun, but you're not sure which game is the best. What will you choose?",
-      choices: [ch('house', 'Playing house'), ch('cook', 'Cooking food'), ch('drive', 'Driving a car'), ch('phone', 'Talking on the phone')],
+      choices: [ch('house', 'Playing house'), ch('cook', 'Cooking food'), ch('drive', g.year >= 1920 ? 'Driving a car' : 'Driving a horse and cart'), ch('phone', landline(g) ? 'Talking on the phone' : 'Delivering the mail')],
     }),
     resolve: {
       house: (g) => say(g, null, 'Homemaker', 'You set up an elaborate pretend household. The stuffed animals pay rent.', 'I decided that playing house is the most fun thing to do.', { happiness: 4, smarts: 2 }),
-      cook: (g) => say(g, null, 'Little chef', 'You served your parents a five-course meal of plastic vegetables. They said it was delicious.', 'I decided that pretending to cook is the most fun thing to do.', { happiness: 4, smarts: 4 }, 'good'),
-      drive: (g) => say(g, null, 'Road rage', 'You "drove" a cardboard box across the living room, honking at the cat.', 'I decided that pretending to drive a car is the most fun thing to do.', { happiness: 6 }),
-      phone: (g) => say(g, null, 'Very busy', 'You held important business calls on a banana all afternoon.', 'I decided that pretending to talk on the phone is the most fun thing to do.', { happiness: 4, smarts: 2 }),
+      cook: (g) => say(g, null, 'Little chef', `You served your parents a five-course meal of ${g.year >= 1955 ? 'plastic vegetables' : 'mud pies'}. They said it was delicious.`, 'I decided that pretending to cook is the most fun thing to do.', { happiness: 4, smarts: 4 }, 'good'),
+      drive: (g) =>
+        g.year >= 1920
+          ? say(g, null, 'Road rage', 'You "drove" a cardboard box across the living room, honking at the cat.', 'I decided that pretending to drive a car is the most fun thing to do.', { happiness: 6 })
+          : say(g, null, 'Giddy-up', 'You "drove" a broomstick horse around the yard, shouting at imaginary traffic.', 'I decided that pretending to drive a horse and cart is the most fun thing to do.', { happiness: 6 }),
+      phone: (g) =>
+        landline(g)
+          ? say(g, null, 'Very busy', 'You held important business calls on a banana all afternoon.', 'I decided that pretending to talk on the phone is the most fun thing to do.', { happiness: 4, smarts: 2 })
+          : say(g, null, 'Very busy', 'You delivered important letters to every room in the house. Most of them were blank.', 'I decided that pretending to be a mail carrier is the most fun thing to do.', { happiness: 4, smarts: 2 }),
     },
   },
   {
@@ -454,17 +479,17 @@ export const BABY_EVENTS = defineEvents([
     setup: (g) => {
       const color = pick(g, COLORS)
       return {
-        text: `You found a ${color} marker and there's a big, beautiful, empty white wall in the hallway. What will you do?`,
+        text: `You found a ${color} ${g.year >= 1955 ? 'marker' : 'crayon'} and there's a big, beautiful, empty white wall in the hallway. What will you do?`,
         choices: [ch('draw', 'Create a masterpiece'), ch('paper', 'Ask for some paper'), ch('sibling', siblings(g).length ? 'Draw on my sibling' : 'Draw on the dog')],
-        data: { color },
+        data: { color, tool: g.year >= 1955 ? 'marker' : 'crayon' },
       }
     },
     resolve: {
-      draw: (g, x) => say(g, x, ['Crowning achievement', 'Art critic'], `You drew a sprawling ${x.s('color')} mural across the hallway. Your parents did not appreciate the vision.`, `I created my crowning achievement on the walls of my home with a ${x.s('color')} marker.`, { happiness: 8, smarts: 2, rels: [{ p: aParent(g), d: -4 }] }),
+      draw: (g, x) => say(g, x, ['Crowning achievement', 'Art critic'], `You drew a sprawling ${x.s('color')} mural across the hallway. Your parents did not appreciate the vision.`, `I created my crowning achievement on the walls of my home with a ${x.s('color')} ${x.s('tool') || 'marker'}.`, { happiness: 8, smarts: 2, rels: [{ p: aParent(g), d: -4 }] }),
       paper: (g) => say(g, null, 'Responsible artist', 'You asked for paper like a civilized person. Your drawing went straight onto the fridge.', 'I asked for paper instead of drawing on the wall. My drawing went on the fridge.', { smarts: 4, happiness: 4, rels: [{ p: aParent(g), d: 3 }] }, 'good'),
       sibling: (g, x) => {
         const sib = siblings(g)[0]
-        say(g, x, 'Body art', sib ? `You drew a ${x.s('color')} mustache on ${sib.firstName} while ${sib.gender === 'male' ? 'he' : 'she'} napped.` : `You drew ${x.s('color')} spots on the dog. The dog seemed fine with it.`, sib ? `I drew a mustache on my sibling, ${sib.firstName}, with a marker.` : 'I drew spots on the dog with a marker.', { happiness: 8, rels: [{ p: sib, d: -5 }] })
+        say(g, x, 'Body art', sib ? `You drew a ${x.s('color')} mustache on ${sib.firstName} while ${sib.gender === 'male' ? 'he' : 'she'} napped.` : `You drew ${x.s('color')} spots on the dog. The dog seemed fine with it.`, sib ? `I drew a mustache on my sibling, ${sib.firstName}, with a ${x.s('tool') || 'marker'}.` : `I drew spots on the dog with a ${x.s('tool') || 'marker'}.`, { happiness: 8, rels: [{ p: sib, d: -5 }] })
       },
     },
   },
@@ -500,7 +525,7 @@ export const BABY_EVENTS = defineEvents([
     }),
     resolve: {
       cry: (g) => say(g, null, 'Found', 'You wailed until a crowd formed and your parent came sprinting over.', 'I got lost at a department store and cried until my parent found me.', { happiness: -6 }),
-      guard: (g) => say(g, null, ['Smart cookie', 'Attention shoppers'], 'You found a security guard, who announced your name over the loudspeaker. Your family picked you up in minutes.', 'I got lost at a department store and found a security guard to help me.', { smarts: 8 }, 'good', '👮'),
+      guard: (g) => say(g, null, ['Smart cookie', 'Attention shoppers'], g.year >= 1930 ? 'You found a security guard, who announced your name over the loudspeaker. Your family picked you up in minutes.' : 'You found a store detective, who marched you to the front desk. Your family picked you up in minutes.', 'I got lost at a department store and found a security guard to help me.', { smarts: 8 }, 'good', '👮'),
       hide: (g) => say(g, null, 'Hide and seek champion', 'You hid in a clothes rack for an hour while half the store searched for you. When they finally found you, you were asleep.', 'I hid in a clothes rack after getting lost at a department store.', { happiness: 4, rels: [{ p: aParent(g), d: -3 }] }),
     },
   },

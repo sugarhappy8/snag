@@ -18,18 +18,22 @@ import { defineScript } from '../scripts'
 import type { Asset, GameState, MenuNode } from '../types'
 import { guardians, parentWord } from './dev-common'
 import { codeFreelanceMenu } from './dev-freelance'
-import { competitionsMenu, getAComputerNodes, languagesPhrase, learnMenu, nagParent } from './dev-learn'
+import { competitionsMenu, familyComputerYear, getAComputerNodes, languagesPhrase, learnMenu, nagParent, tinkerYear } from './dev-learn'
 import { projectsMenu, yearlyProjects } from './dev-projects'
 import { between, cap as capitalizeFirst, devState, freelanceRating, localFee, money, ventureAssets, withDev } from './dev-state'
 import { startVentureMenu, ventureLine, ventureSubtitle, ventureView, yearlyVentures } from './dev-venture'
-import { addCodingSkill, addLanguageXp, codingLanguages, codingSkill, lastCodedAge, markCoded, screenTime, SCREEN_LIMIT } from './skills'
+import { VENTURE_DEFS } from './dev-kinds'
+import { eraOpen, FREELANCE_GATE, online } from './era'
+import { hasTech } from '../history/timeline'
+import { addCodingSkill, addLanguageXp, codingLanguages, codingSkill, languageInEra, lastCodedAge, markCoded, screenTime, SCREEN_LIMIT } from './skills'
 
 /** Menu rows for Activities › Computer (learn to code, projects, freelancing, ventures...). */
 export function devNodes(g: GameState): MenuNode[] {
   const c = g.character
   const nodes: MenuNode[] = [{ type: 'heading', id: 'computer.dev.h.code', label: 'Coding' }, learnMenu, projectsMenu, competitionsMenu]
   const ventures = ventureAssets(g)
-  if (c.age >= 12 || ventures.length) {
+  const bizEra = eraOpen(g, FREELANCE_GATE) || (['saas', 'app', 'store'] as const).some((t) => eraOpen(g, VENTURE_DEFS[t].era))
+  if ((c.age >= 12 && bizEra) || ventures.length) {
     nodes.push({ type: 'heading', id: 'computer.dev.h.biz', label: 'Online Business' })
     nodes.push(codeFreelanceMenu, startVentureMenu)
     for (const a of ventures) {
@@ -59,7 +63,7 @@ export function devNodes(g: GameState): MenuNode[] {
       type: 'info',
       id: 'computer.dev.screen',
       emoji: screen > SCREEN_LIMIT ? '\u{1F635}\u{200D}\u{1F4AB}' : '\u{23F1}\u{FE0F}',
-      text: screen > SCREEN_LIMIT ? `Screen time this year: ${screen} sessions. Your eyes, grades and ${c.age < 18 ? 'parents' : 'posture'} are not happy.` : `Screen time this year: ${screen} of ~${SCREEN_LIMIT} healthy sessions.`,
+      text: screen > SCREEN_LIMIT ? `${capitalizeFirst(screenWord(g))} this year: ${screen} sessions. Your eyes, grades and ${c.age < 18 ? 'parents' : 'posture'} are not happy.` : `${capitalizeFirst(screenWord(g))} this year: ${screen} of ~${SCREEN_LIMIT} healthy sessions.`,
     })
   }
   return nodes
@@ -77,7 +81,7 @@ function skillYear(g: GameState): void {
   const csStudent = !!cur && (cur.level === 'university' || cur.level === 'community' || cur.level === 'graduate') && ['Computer Science', 'Information Systems', 'Mathematics', 'Engineering'].includes(cur.major ?? '')
   if (def?.industry === 'tech' || csStudent) {
     addCodingSkill(g, randInt(g, 1, csStudent ? 3 : 2))
-    const main = Object.entries(codingLanguages(g)).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'python'
+    const main = Object.entries(codingLanguages(g)).sort((a, b) => b[1] - a[1])[0]?.[0] ?? (['python', 'java', 'c', 'pascal', 'basic'].find((id) => languageInEra(g, id)) ?? 'python')
     addLanguageXp(g, main, randInt(g, 1, 3))
     markCoded(g)
     return
@@ -88,6 +92,16 @@ function skillYear(g: GameState): void {
   addCodingSkill(g, -randInt(g, 1, 3))
   for (const id of Object.keys(codingLanguages(g))) if (chance(g, 0.5)) addLanguageXp(g, id, -randInt(g, 1, 2))
   if (chance(g, 0.35)) log(g, pick(g, ["My coding skills are getting rusty. I forgot what a for loop is for.", "I opened my old code and couldn't understand a word of it. I wrote it."]), 'neutral')
+}
+
+/** "screen time" once phones are everywhere; before that, parents fought about "computer time". */
+function screenWord(g: GameState): string {
+  return hasTech(g, 'smartphone') ? 'screen time' : 'computer time'
+}
+
+/** "Screen Time" / "Computer Time" for popup titles. */
+function titleWord(g: GameState): string {
+  return hasTech(g, 'smartphone') ? 'Screen Time' : 'Computer Time'
 }
 
 const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, data) => {
@@ -111,12 +125,12 @@ const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, da
     addStat(g, 'happiness', -randInt(g, 1, 3))
     if (p) addRelationship(p, randInt(g, 2, 5))
     g.flags.devScreenPromise = c.age
-    notice(g, 'Pinky Promise', `You promised ${who} you'd cut back on screen time and do your homework first. ${Who} said "We'll see." It sounded like a threat.`, { emoji: '\u{1F91E}' })
+    notice(g, 'Pinky Promise', `You promised ${who} you'd cut back on ${screenWord(g)} and do your homework first. ${Who} said "We'll see." It sounded like a threat.`, { emoji: '\u{1F91E}' })
     return
   }
   if (choice === 'earnings' && earned >= localFee(g, 500)) {
     if (p) addRelationship(p, randInt(g, 3, 7))
-    notice(g, 'Show Me the Money', `You showed ${who} that you've earned ${money(earned)} at the computer. ${Who} went quiet, then asked if you could build a website for ${pick(g, ['their friend\'s bakery', 'the church bake sale', 'their book club'])}. Screen time: negotiable. Grades: still not.`, { emoji: '\u{1F4B0}', tone: 'good' })
+    notice(g, 'Show Me the Money', `You showed ${who} that you've earned ${money(earned)} at the computer. ${Who} went quiet, then asked if you could ${online(g) ? 'build a website' : 'make a newsletter on the computer'} for ${pick(g, ['their friend\'s bakery', 'the church bake sale', 'their book club'])}. ${capitalizeFirst(screenWord(g))}: negotiable. Grades: still not.`, { emoji: '\u{1F4B0}', tone: 'good' })
     return
   }
   if (p) addRelationship(p, -randInt(g, 5, 10))
@@ -125,8 +139,8 @@ const PARENT_SCRIPT = defineScript('computer.dev.parents.screen', (g, choice, da
   const taken = chance(g, odds) ? confiscate(1) : ''
   notice(
     g,
-    taken ? 'Confiscated!' : 'Screen Time Fight',
-    choice === 'earnings' ? `You proudly showed ${who} the ${money(earned)} you've made online. "That's ${pick(g, ['about two hours of my salary', 'not even the electricity bill', 'adorable'])}." They were not impressed.${taken}` : `You argued that coding is basically homework. ${Who} pointed out your grades.${taken || ' You won this round. Barely.'}`,
+    taken ? 'Confiscated!' : `${titleWord(g)} Fight`,
+    choice === 'earnings' ? `You proudly showed ${who} the ${money(earned)} you've made ${online(g) ? 'online' : 'with the computer'}. "That's ${pick(g, ['about two hours of my salary', 'not even the electricity bill', 'adorable'])}." They were not impressed.${taken}` : `You argued that coding is basically homework. ${Who} pointed out your grades.${taken || ' You won this round. Barely.'}`,
     { emoji: taken ? '\u{1F512}' : '\u{1F4A2}', tone: 'bad' },
   )
 })
@@ -157,7 +171,7 @@ function parentsYear(g: GameState, budget: number): number {
       scriptChoice(
         g,
         PARENT_SCRIPT,
-        'Screen Time Talk',
+        `${titleWord(g)} Talk`,
         `${p ? capitalizeFirst(parentWord(p)) : 'Your parents'} sat you down. "You were on that computer ${last * 3 + randInt(g, 0, 8)} days in a row and your grades are ${Math.round(grades)}%. ${broken ? 'You PROMISED.' : 'This stops now.'}"`,
         [
           { id: 'promise', label: 'Promise to cut back', emoji: '\u{1F91E}' },
@@ -168,13 +182,13 @@ function parentsYear(g: GameState, budget: number): number {
       )
       return 1
     }
-    if (chance(g, 0.5)) log(g, pick(g, ['My parents complained that I live on the computer.', 'My parents change the Wi-Fi password at 10 PM. Every night.', 'My parents threatened to throw my computer in the lake.']), 'neutral')
+    if (chance(g, 0.5)) log(g, pick(g, ['My parents complained that I live on the computer.', online(g) && g.year >= 2003 ? 'My parents change the Wi-Fi password at 10 PM. Every night.' : 'My parents unplug the computer at 10 PM. Every night.', 'My parents threatened to throw my computer in the lake.']), 'neutral')
     return 0
   }
   if (codingSkill(g) >= 40 && (grades ?? 0) >= 75 && chance(g, 0.25)) {
     const p = pick(g, guardians(g))
     addRelationship(p, 2)
-    log(g, `${capitalizeFirst(parentWord(p)).replace(/^Your/, 'My')} bragged to the neighbors that I'm "basically a hacker."`, 'good')
+    log(g, `${capitalizeFirst(parentWord(p)).replace(/^Your/, 'My')} bragged to the neighbors that I'm ${online(g) ? '"basically a hacker."' : 'a "computer whiz."'}`, 'good')
   }
   return 0
 }
@@ -186,6 +200,8 @@ export function yearlyDev(g: GameState): void {
   skillYear(g)
   yearlyProjects(g)
   let budget = 1
+  budget -= familyComputerYear(g, budget)
+  tinkerYear(g)
   budget -= parentsYear(g, budget)
   yearlyVentures(g, between(budget, 0, 1))
 }

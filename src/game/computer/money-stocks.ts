@@ -8,7 +8,7 @@
 // fair bet always loses a little on average. Inside knowledge is another matter, which is why
 // politicians also get a "crony" route (special/politics.ts): a friend's account, cash back,
 // minus the friend's cut, and a paper trail the regulator may or may not follow.
-import { addMoney, count, formatMoney, log, notice, scriptChoice, scriptInput, shortMoney, useYearAction, yearActionsUsed } from '../core'
+import { addMoney, count, formatMoney, log, moneyWith, notice, scriptChoice, scriptInput, shortMoney, useYearAction, yearActionsUsed } from '../core'
 import { coinDef, companyDef, cryptoYear, exchangeByKey, exchangeInfo, exchangeYear, indexMove, SECTORS, type ExInfo, type SecurityDef } from '../invest/engine'
 import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
 import { shockFactor } from '../invest/shocks'
@@ -43,6 +43,7 @@ import {
 } from './money-common'
 import { bankGain, markup, maybeTradingAddiction } from './money-options'
 import { addScreenTime } from './skills'
+import { CRYPTO_GATE, eraOpen } from './era'
 
 export const MAX_BETS = 6
 export const BETS_PER_YEAR = 3
@@ -129,10 +130,10 @@ export function coinTargets(g: GameState): BetTarget[] {
 
 /** '$45,210', '$8.17', '$0.031'. */
 export function priceLabel(p: number): string {
-  if (!Number.isFinite(p) || p <= 0) return '$0'
+  if (!Number.isFinite(p) || p <= 0) return formatMoney(0)
   if (p >= 1_000) return formatMoney(p)
-  if (p >= 1) return `$${p.toFixed(2)}`
-  return `$${p.toPrecision(2)}`
+  if (p >= 1) return moneyWith(p, (x) => x.toFixed(2))
+  return moneyWith(p, (x) => x.toPrecision(2))
 }
 
 export function findTarget(g: GameState, secId: string): BetTarget | undefined {
@@ -530,7 +531,7 @@ defineScript(DIR_SCRIPT, (g, choice, data) => {
   const def = companyDef(inf, t.slot, m ? Number(m[2]) : 0)
   const st = readState(g)
   const otm = stockStrike(inf, def, 'otm')
-  const lines = (['atm', 'otm'] as const).map((s) => `${s === 'atm' ? 'At the money' : `Out of the money (needs ${choice === 'call' ? 'a rise' : 'a drop'} of more than ${absPct(otm, 0)})`}: $1 controls about ${shortMoney(1 / stockOptionPrice(inf, def, choice, s, st.skill, sharpSpread(st)))} of ${t.symbol}.`)
+  const lines = (['atm', 'otm'] as const).map((s) => `${s === 'atm' ? 'At the money' : `Out of the money (needs ${choice === 'call' ? 'a rise' : 'a drop'} of more than ${absPct(otm, 0)})`}: ${formatMoney(1)} controls about ${shortMoney(1 / stockOptionPrice(inf, def, choice, s, st.skill, sharpSpread(st)))} of ${t.symbol}.`)
   scriptChoice(g, STRIKE_SCRIPT, 'Pick a Strike', `${t.name} (${t.symbol}) trades at ${priceLabel(t.price)}. Cheaper options need a bigger move to pay off.\n\n${lines.join('\n')}`, [
     { id: 'atm', label: 'At the money', emoji: '\u{1F3AF}' },
     { id: 'otm', label: 'Out of the money', emoji: '\u{1F3B2}' },
@@ -564,6 +565,7 @@ function askSize(g: GameState, t: BetTarget, kind: StockBet['kind'], strike: 'at
     emoji: '\u{1F4B5}',
     text: `${what} ${sizeText(g)}`,
     input: 'number',
+    money: true,
     min: lo,
     max: hi,
     defaultValue: String(Math.max(lo, Math.round(hi / 10))),
@@ -637,13 +639,18 @@ function targetAction(t: BetTarget): MenuAction {
   }
 }
 
+/** Coins can be shorted here this year (crypto exists and isn't banned). */
+function coinsHere(g: GameState): boolean {
+  return !cryptoBanned(g.character.countryId) && eraOpen(g, CRYPTO_GATE)
+}
+
 export function stockBetsMenu(): MenuGroup {
   return {
     type: 'menu',
     id: 'computer.stockbets',
     label: 'Single Stocks & Coins',
     emoji: '\u{1F3AF}',
-    subtitle: (g) => `Puts and calls on one company${cryptoBanned(g.character.countryId) ? '' : ', coin shorts'} · ${readState(g).bets.length} open`,
+    subtitle: (g) => `Puts and calls on one company${coinsHere(g) ? ', coin shorts' : ''} · ${readState(g).bets.length} open`,
     visible: (g) => g.character.alive && g.character.age >= 18,
     disabledReason: (g) => blockReason(g, 18) ?? (readState(g).broker ? null : 'Open a brokerage account first.'),
     hint: (g) => {
@@ -653,7 +660,7 @@ export function stockBetsMenu(): MenuGroup {
     },
     header: (g) => {
       const inf = info(g)
-      return `Bet on one company on the ${inf.ex.code}${cryptoBanned(g.character.countryId) ? '' : ', or on one coin'}. Everything settles when the year ends on the real price, news included. ${BETS_PER_YEAR - Math.min(BETS_PER_YEAR, yearActionsUsed(g, LIMIT_KEY))} of ${BETS_PER_YEAR} bets left this year.`
+      return `Bet on one company on the ${inf.ex.code}${coinsHere(g) ? ', or on one coin' : ''}. Everything settles when the year ends on the real price, news included. ${BETS_PER_YEAR - Math.min(BETS_PER_YEAR, yearActionsUsed(g, LIMIT_KEY))} of ${BETS_PER_YEAR} bets left this year.`
     },
     children: (g) => {
       const st = readState(g)
@@ -662,7 +669,7 @@ export function stockBetsMenu(): MenuGroup {
         { type: 'heading', id: 'computer.stockbets.h.stocks', label: `Stocks on the ${info(g).ex.code}` },
         ...stockTargets(g).map(targetAction),
       ]
-      if (!cryptoBanned(g.character.countryId)) {
+      if (coinsHere(g)) {
         nodes.push({ type: 'heading', id: 'computer.stockbets.h.coins', label: 'Coins' })
         nodes.push(...coinTargets(g).map(targetAction))
       }

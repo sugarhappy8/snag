@@ -1,13 +1,20 @@
 // The military: enlist or commission as an officer in one of five branches, climb the ranks,
 // survive deployments (a choose-your-path minefield), earn medals, retire with a pension or
 // leave with a discharge. Conscription countries draft 18 year olds.
+//
+// History (history/events-wars.ts): in past years national service follows the era (Britain's
+// ended in 1960, America's draft ran 1940-1973, men only almost everywhere) and wars call up
+// whole age groups: serve, object, ask for a medical exemption or flee into hiding. Units at war
+// deploy more often, to that war's real fronts. From PRESENT_YEAR on everything works as before.
 import { addHidden, addMoney, addRelationship, addStat, count, earnIncome, getPerson, log, remember, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
+import { conscriptionAt, getWar, serviceOddsAt, studentsDeferredAt, warDraftAt, warFronts, warsAt, womenConscriptedAt, type WarDef } from '../history/events-wars'
+import { isHistorical } from '../history/timeline'
 import { chance, pick, rand, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
-import { hasTalent } from '../talents'
-import type { GameState, Job, MenuAction, MenuGroup, MenuNode } from '../types'
+import { hasTalent, talentHint } from '../talents'
+import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry } from '../world'
 import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
 
@@ -163,6 +170,7 @@ function rejectReason(g: GameState, track: Track): string | null {
   const c = g.character
   const p = peek<MilProfile>(g, 'military')
   if (ownFlag(g, 'deserter') === true) return 'deserter'
+  if (isHistorical(g.year) && g.year < 1940 && c.gender === 'female') return "The recruiter laughed you out of the office: women can't enlist yet. He suggested nursing instead."
   if (p?.discharge === 'Dishonorable') return 'The recruiter looked up your record and saw your dishonorable discharge. They told you never to come back.'
   if (track === 'enlisted' && !hasHighSchool(g)) return c.countryId === 'us' ? 'The recruiter told you to come back once you have a high school diploma or GED.' : 'The recruiter told you to come back once you have finished school.'
   if (track === 'officer' && !hasCollegeDegree(g)) return 'Officer candidates need a university degree.'
@@ -426,12 +434,14 @@ const deployScript = defineScript('special.mil.deploy', (g, choice, raw) => {
   queueMineStep(g, { step: 1, total, place: d.place, sea: d.sea })
 })
 
-function offerDeployment(g: GameState, job: Job): void {
+function offerDeployment(g: GameState, job: Job, war: WarDef | null = null): void {
   const b = branchOf(data(job).branch)
   const sea = b.sea && chance(g, 0.75)
   // Not the same spot as last time ("a remote mountain pass" two years running reads like a bug).
   const last = g.flags['special.mil.lastPlace']
-  const place = pick(g, (sea ? SEA_PLACES : LAND_PLACES).filter((x) => x !== last))
+  // In a real war, soldiers go to that war's fronts.
+  const fronts = war && !sea ? warFronts(war, g.character.countryId).filter((x) => x !== last) : []
+  const place = pick(g, fronts.length ? fronts : (sea ? SEA_PLACES : LAND_PLACES).filter((x) => x !== last))
   g.flags['special.mil.lastPlace'] = place
   scriptChoice(
     g,
@@ -481,7 +491,9 @@ const draftScript = defineScript('special.mil.draft', (g, choice) => {
 function maybeDraft(g: GameState): void {
   const c = g.character
   if (c.age < 18 || c.age > 20 || c.prison || ownFlag(g, 'drafted') === true) return
-  if (!getCountry(c.countryId).conscription) return
+  if (isHistorical(g.year)) {
+    if (!historicalServiceDue(g)) return
+  } else if (!getCountry(c.countryId).conscription) return
   if (militaryJob(g)) {
     setOwnFlag(g, 'drafted', true)
     return
@@ -533,6 +545,11 @@ export function yearlyMilitary(g: GameState): void {
     arrestPlayer(g, 'Desertion', 3)
     if (!c.alive || c.prison) return
   }
+  if (isHistorical(g.year)) {
+    warEvaderCheck(g)
+    if (!c.alive || c.prison) return
+    maybeWarDraft(g)
+  }
   maybeDraft(g)
   const job = militaryJob(g)
   if (!job || c.prison) return
@@ -540,10 +557,17 @@ export function yearlyMilitary(g: GameState): void {
   const b = branchOf(md.branch)
   syncTenure(g, job)
   earnIncome(g, job.salary)
+  // A war this country is fighting right now (never in the present or the future).
+  const war = isHistorical(g.year) ? (warsAt(c.countryId, g.year).find((w) => (w.fronts && Object.keys(w.fronts).length > 0)) ?? null) : null
 
   if (md.conscript) {
     md.serviceLeft -= 1
     bump(job, randInt(g, -5, 8))
+    // Wartime conscripts get sent to the front too.
+    if (war && md.serviceLeft > 0 && deploymentDue(g) && chance(g, 0.45)) {
+      g.flags['special.mil.lastOrder'] = c.age
+      offerDeployment(g, job, war)
+    }
     if (md.serviceLeft <= 0) {
       scriptChoice(
         g,
@@ -590,11 +614,221 @@ export function yearlyMilitary(g: GameState): void {
   }
 
   // A deployment order every year or two at most (not the same popup every single year).
-  const lastOrder = g.flags['special.mil.lastOrder']
-  if ((typeof lastOrder !== 'number' || lastOrder > c.age || c.age - lastOrder >= 2) && chance(g, b.deployChance)) {
+  // Units at war are sent out far more often.
+  if (deploymentDue(g) && chance(g, war ? Math.min(0.6, b.deployChance * 2.5) : b.deployChance)) {
     g.flags['special.mil.lastOrder'] = c.age
-    offerDeployment(g, job)
+    offerDeployment(g, job, war)
   }
+}
+
+function deploymentDue(g: GameState): boolean {
+  const lastOrder = g.flags['special.mil.lastOrder']
+  const age = g.character.age
+  return typeof lastOrder !== 'number' || lastOrder > age || age - lastOrder >= 2
+}
+
+// ---------------------------------------------------------------------------
+// History: national service by era and wartime call-ups
+
+function inUniversity(g: GameState): boolean {
+  const cur = g.character.education.current
+  return !!cur && (cur.level === 'university' || cur.level === 'graduate' || cur.level === 'community')
+}
+
+/**
+ * Peacetime national service in a past year: was there any, did it take women, were students
+ * deferred, and did this 18-year-old's number come up in the ballot? Consumes a roll only for
+ * ballots, and only once per character.
+ */
+function historicalServiceDue(g: GameState): boolean {
+  const c = g.character
+  const country = getCountry(c.countryId)
+  if (!conscriptionAt(c.countryId, g.year, country.conscription)) return false
+  if (!liableForService(g)) return false
+  if (c.gender === 'female' && !womenConscriptedAt(c.countryId, g.year)) return false
+  // Wartime call-ups take over while a war is on.
+  if (warDraftAt(c.countryId, g.year)) return false
+  if (studentsDeferredAt(c.countryId, g.year) && inUniversity(g)) return false
+  const odds = serviceOddsAt(c.countryId, g.year)
+  if (odds < 1 && ownFlag(g, 'ballot') === undefined) {
+    const picked = chance(g, odds)
+    setOwnFlag(g, 'ballot', picked)
+    if (!picked) {
+      setOwnFlag(g, 'drafted', true)
+      log(g, pick(g, ["My number didn't come up in the national service ballot.", 'I was not selected for national service. My mother cried with relief.']))
+      return false
+    }
+  }
+  return true
+}
+
+/**
+ * Call-ups reach the country's citizens and permanent residents, not people there on a visa, as
+ * refugees or without papers. Lives from before passports were tracked count their birth country.
+ */
+function liableForService(g: GameState): boolean {
+  const c = g.character
+  const imm = c.immigration
+  if (imm && imm.countryId === c.countryId) return imm.status === 'citizen' || imm.status === 'permanent'
+  if (Array.isArray(c.citizenships) && c.citizenships.length > 0) return c.citizenships.includes(c.countryId)
+  return (c.birthCountryId ?? c.countryId) === c.countryId
+}
+
+function warKey(war: WarDef): string {
+  return `warDraft.${war.id}`
+}
+
+/** A war is calling up this character's age group: a draft notice with four ways to respond. */
+function maybeWarDraft(g: GameState): void {
+  const c = g.character
+  if (!c.alive || c.prison) return
+  const found = warDraftAt(c.countryId, g.year)
+  if (!found) return
+  const { war, rule } = found
+  if (c.age < rule.minAge || c.age > rule.maxAge) return
+  if (c.gender === 'female' && !rule.women) return
+  if (ownFlag(g, warKey(war)) !== undefined || !liableForService(g)) return
+  if (militaryJob(g)) {
+    setOwnFlag(g, warKey(war), 'serving')
+    return
+  }
+  if (rule.studentsDeferredUntil !== undefined && g.year <= rule.studentsDeferredUntil && inUniversity(g)) return
+  if (!chance(g, rule.odds)) return
+  setOwnFlag(g, warKey(war), 'called')
+  const unfit = medicallyUnfit(g)
+  const choices: ChoiceOption[] = [
+    { id: 'serve', label: 'Report for duty', emoji: '\u{1FA96}' },
+    { id: 'objector', label: 'Apply as a conscientious objector', emoji: '\u{1F54A}\u{FE0F}' },
+    {
+      id: 'medical',
+      label: 'Ask for a medical exemption',
+      emoji: '\u{1FA7A}',
+      ...withHintText(unfit ? '' : talentHint(g, 'Acting', 'Your acting could sell the army doctors a very convincing limp. Better odds, not a sure thing.')),
+    },
+    { id: 'flee', label: 'Flee and go into hiding', emoji: '\u{1F3C3}', ...withHintText(talentHint(g, 'Crime', 'You know how to disappear: hiding out is likelier to work for you.')) },
+  ]
+  const text = rule.harsh
+    ? `${capFirst(war.name)} needs soldiers, and your call-up papers have arrived. Refusing is not really an option here. What will you do?`
+    : `${capFirst(war.name)} needs soldiers, and your call-up papers have arrived: report to the recruiting office within the week. What will you do?`
+  scriptChoice(g, warDraftScript, 'Draft Notice', text, choices, { emoji: '\u{1F4DC}', data: { war: war.id } as Json })
+}
+
+function withHintText(text: string): { hint?: string } {
+  return text ? { hint: text } : {}
+}
+
+function capFirst(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
+/** Genuinely unfit for service: poor health or a serious physical condition. */
+function medicallyUnfit(g: GameState): boolean {
+  const c = g.character
+  return c.stats.health < 45 || c.conditions.some((x) => x.kind !== 'addiction' && x.kind !== 'mental' && x.severity >= 20)
+}
+
+/** Drafted for a war: a conscript for as long as the war lasts (one to six years). */
+function wartimeEnlist(g: GameState, war: WarDef): void {
+  enlist(g, branchOf('army'), 'enlisted', true)
+  const job = militaryJob(g)
+  if (!job) return
+  const md = data(job)
+  md.serviceLeft = Math.max(1, Math.min(6, war.to - g.year + 1))
+  job.data.war = war.id
+  setOwnFlag(g, warKey(war), 'served')
+  remember(g, `Drafted to fight in ${war.name}.`)
+}
+
+const warDraftScript = defineScript('special.mil.wardraft', (g, choice, raw) => {
+  const c = g.character
+  if (!c.alive) return
+  const war = getWar(String((raw as { war?: string } | undefined)?.war ?? ''))
+  const rule = war?.draft?.[c.countryId]
+  if (!war || !rule) return
+  const harshRule = rule.harsh === true
+  if (choice === 'serve') {
+    wartimeEnlist(g, war)
+    return
+  }
+  if (choice === 'objector') {
+    const p = harshRule ? 0.05 : 0.45 + (c.hidden.religiousness >= 60 ? 0.2 : 0)
+    if (chance(g, p)) {
+      setOwnFlag(g, warKey(war), 'objector')
+      addHidden(g, 'karma', 3)
+      log(g, `I was granted conscientious objector status in ${war.name}.`)
+      remember(g, `Conscientious objector in ${war.name}.`)
+      say(g, 'Conscientious Objector', 'The tribunal accepted your objection. You spent the war driving ambulances and digging potatoes instead of carrying a rifle.', '\u{1F54A}\u{FE0F}', 'good')
+      return
+    }
+    if (harshRule && chance(g, 0.5)) {
+      log(g, 'I refused to fight and was arrested.', 'bad')
+      tell(g, 'Objection Rejected', 'The tribunal rejected your objection and called you a coward and a traitor. The police were waiting outside.', '\u{1F6A8}')
+      arrestPlayer(g, 'Refusing Military Service', 2)
+      return
+    }
+    say(g, 'Objection Rejected', 'The tribunal rejected your objection. You were drafted anyway.', '\u{1F4DC}', 'bad')
+    wartimeEnlist(g, war)
+    return
+  }
+  if (choice === 'medical') {
+    if (medicallyUnfit(g)) {
+      setOwnFlag(g, warKey(war), 'exempt')
+      log(g, 'The army doctors declared me unfit for service.')
+      say(g, 'Medical Exemption', 'The army doctors took one look at you and stamped your papers "unfit for service".', '\u{1FA7A}')
+      return
+    }
+    const p = 0.15 + (hasTalent(g, 'Acting') ? 0.35 : 0) + c.hidden.craziness / 400
+    if (chance(g, p)) {
+      setOwnFlag(g, warKey(war), 'exempt')
+      addHidden(g, 'karma', -3)
+      log(g, 'I faked my way to a medical exemption from the draft.')
+      say(g, 'Medical Exemption', 'You limped, wheezed and squinted your way through the medical exam so convincingly that they sent you home. The neighbors are suspicious.', '\u{1FA7A}')
+      return
+    }
+    addHidden(g, 'karma', -2)
+    if (harshRule && chance(g, 0.4)) {
+      log(g, 'I was arrested for faking an illness to dodge the draft.', 'bad')
+      tell(g, 'Caught Faking', 'The army doctor saw straight through your act and called the military police.', '\u{1F6A8}')
+      arrestPlayer(g, 'Draft Evasion', 2)
+      return
+    }
+    say(g, 'Caught Faking', 'The army doctor watched you "limp" into the room and then jog down the stairs afterward. You were drafted on the spot.', '\u{1FA7A}', 'bad')
+    wartimeEnlist(g, war)
+    return
+  }
+  // Flee into hiding.
+  const p = 0.5 + (hasTalent(g, 'Crime') ? 0.2 : 0) - (harshRule ? 0.1 : 0)
+  if (chance(g, p)) {
+    setOwnFlag(g, warKey(war), 'evader')
+    setOwnFlag(g, 'warEvader', war.id)
+    addStat(g, 'happiness', -4)
+    addHidden(g, 'karma', -3)
+    log(g, 'I fled and went into hiding to avoid the draft.', 'bad')
+    remember(g, `Went into hiding to dodge the draft in ${war.name}.`)
+    say(g, 'In Hiding', 'You slipped out of town before dawn and found a hiding place far from home. Now you just have to stay out of sight until the war is over.', '\u{1F3C3}')
+    return
+  }
+  log(g, 'I was caught trying to dodge the draft.', 'bad')
+  tell(g, 'Caught', "Military police caught you before you'd made it out of town.", '\u{1F6A8}')
+  arrestPlayer(g, 'Draft Evasion', harshRule ? 3 : 2)
+})
+
+/** Hiding from a war's draft: the police may come knocking until the war ends. */
+function warEvaderCheck(g: GameState): void {
+  const c = g.character
+  const warId = ownFlag(g, 'warEvader')
+  if (typeof warId !== 'string' || !warId) return
+  const war = getWar(warId)
+  if (!war || !warsAt(c.countryId, g.year).some((w) => w.id === warId)) {
+    setOwnFlag(g, 'warEvader', '')
+    log(g, 'The war was over, so I came out of hiding.')
+    return
+  }
+  if (c.prison || !chance(g, 0.12)) return
+  setOwnFlag(g, 'warEvader', '')
+  log(g, 'The police finally found me hiding from the draft.', 'bad')
+  tell(g, 'Found', 'The police tracked down your hiding place and arrested you for draft evasion.', '\u{1F6A8}')
+  arrestPlayer(g, 'Draft Evasion', 2)
 }
 
 // ---------------------------------------------------------------------------

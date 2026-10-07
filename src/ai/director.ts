@@ -11,7 +11,7 @@
 // dropped), effects go through applyEffects (which caps every swing), age-inappropriate
 // consequences are filtered out, and unusable replies fall back to the offline library.
 import { applyScreening, fallbackInterviewQuestion, presentInterview } from '../game/careers'
-import { count, formatMoney, fullName, getPerson, log, notice, useYearAction, yearActionsUsed } from '../game/core'
+import { count, formatMoney, fullName, getPerson, log, moneyContextOf, moneyFromInput, notice, showMoneyIn, useYearAction, yearActionsUsed } from '../game/core'
 import { offlineScreen } from '../game/cv'
 import { applyEffects } from '../game/effects'
 import { fallbackChoiceOutcome, fallbackCustomAction, fallbackObituary, foreignToLocale, queueFallbackYearEvents } from '../game/events'
@@ -247,6 +247,12 @@ function splitName(name: string): { firstName?: string; lastName?: string } {
   return { firstName: cap(parts[0]), lastName: parts.length > 1 ? cap(parts.slice(1).join(' ')) : undefined }
 }
 
+/** An amount the AI gave in the money it was shown (this life's currency and year) in internal dollars. */
+export function aiMoneyToDollars(g: GameState, amount: number): number {
+  if (!Number.isFinite(amount) || amount === 0) return 0
+  return moneyFromInput(amount, moneyContextOf(g))
+}
+
 /**
  * Convert validated AI effects into engine effects for the current draft. The log line is kept
  * unless it repeats (or nearly repeats) a line from this year or the `lookbackYears` before it;
@@ -263,8 +269,11 @@ export function toGameEffects(g: GameState, e: AiEffects, logLine = '', lookback
   if (e.karma) out.karma = e.karma
   if (e.fame) out.fame = e.fame
   if (e.money) {
+    // The AI sees money in the player's display currency (yen, 1980 dollars...) and answers in
+    // it: back to internal dollars before any limit, so ¥50,000 never pays out $50,000.
+    const dollars = aiMoneyToDollars(g, e.money)
     const limit = age < 6 ? 25 : age < 13 ? 400 : age < 18 ? 5_000 : Infinity
-    const m = clampN(e.money, -limit, limit)
+    const m = Math.round(clampN(dollars, -limit, limit))
     if (m) out.money = m
   }
 
@@ -743,7 +752,7 @@ function applyCustomAction(draft: GameState, r: AiCustomAction): void {
     notice(draft, r.title || 'Not Happening', r.text, { emoji: r.emoji || '\u{1F6AB}', tone: 'neutral' })
     return
   }
-  const cost = -r.effects.money
+  const cost = -aiMoneyToDollars(draft, r.effects.money)
   const cash = Math.max(0, c.money)
   if (cost > 50 && cost > cash) {
     const price = formatMoney(cost)
@@ -899,15 +908,24 @@ export function applyFallback(g: GameState, task: AiTask): void {
 
 const MONEY_RE = /-?\$\s?\d[\d,]*(?:\.\d+)?(?:\s?[KMB]\b)?/g
 
+/** Amounts of money as written for this life ('$1,200', '¥3.5M', '1,200 kr'). */
+export function moneyPattern(g: GameState): RegExp {
+  const m = showMoneyIn(1, moneyContextOf(g))
+  if (m.symbol === '$' && !m.suffix) return MONEY_RE
+  const sym = escapeRe(m.symbol)
+  const num = '\\d[\\d,]*(?:\\.\\d+)?(?:\\s?(?:K|M|B|T)\\b|\\s(?:quadr|quint|sext|sept|oct|non)illion\\b)?'
+  return m.suffix ? new RegExp(`-?${num}\\s?${sym}`, 'g') : new RegExp(`-?${sym}\\s?${num}`, 'g')
+}
+
 function digitsOf(s: string): string {
-  return s.replace(/[^\d.KMB-]/g, '')
+  return s.replace(/[^\d.KMBTa-z-]/g, '')
 }
 
 /** Throw SchemaError if a rewrite dropped an amount of money or the person's name. */
-function checkFacts(text: string, n: NoticeModal, person: Person | undefined): void {
+function checkFacts(text: string, n: NoticeModal, person: Person | undefined, re: RegExp = MONEY_RE): void {
   const facts = n.ai?.facts || n.text
-  const have = new Set((text.match(MONEY_RE) ?? []).map(digitsOf))
-  for (const amount of facts.match(MONEY_RE) ?? []) {
+  const have = new Set((text.match(re) ?? []).map(digitsOf))
+  for (const amount of facts.match(re) ?? []) {
     if (!have.has(digitsOf(amount))) throw new SchemaError(`keep the exact amount ${amount.trim()}`)
   }
   if (person && (facts.includes(person.firstName) || n.text.includes(person.firstName)) && !text.includes(person.firstName)) {
@@ -932,7 +950,7 @@ export async function narrateNotice(g: GameState, n: NoticeModal, settings: Sett
         schema: SCHEMAS.narrate,
         validate: (v) => {
           const t = validateNarration(v)
-          checkFacts(t.text, n, person)
+          checkFacts(t.text, n, person, moneyPattern(g))
           return t
         },
       },

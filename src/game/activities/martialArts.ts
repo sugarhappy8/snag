@@ -1,4 +1,7 @@
-// Mind & Body > Martial Arts: train a style, earn belts, learn moves.
+// Mind & Body > Martial Arts: train a style, earn belts, learn moves. Styles reach each country
+// when they did historically: judo spread abroad in the twenties, karate and taekwondo after the
+// war, kung fu with the seventies film craze, Brazilian jiu-jitsu worldwide from 1993. Boxing
+// is always on offer.
 // Progress lives in g.flags.martialArts = { [styleId]: { belt, progress } } and the learned
 // moves in g.flags['martialArts.moves'] (string[]) so person interactions can use them.
 import { addHidden, addStat, count, log, remember, useYearAction } from '../core'
@@ -14,15 +17,27 @@ interface Style {
   /** One move learned per promotion (index = new belt index - 1). */
   moves: string[]
   sash?: boolean
+  /** Ranks are titles rather than belts (boxing). */
+  ranks?: boolean
+  /** First year the style is taught here (by country; '*' for everywhere else). */
+  since?: Record<string, number>
 }
 
 export const STYLES: Style[] = [
-  { id: 'jiujitsu', name: 'Jiu-Jitsu', emoji: '\u{1F94B}', belts: ['White', 'Blue', 'Purple', 'Brown', 'Black'], moves: ['Armbar', 'Triangle Choke', 'Kimura', 'Rear Naked Choke'] },
-  { id: 'judo', name: 'Judo', emoji: '\u{1F94B}', belts: ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Brown', 'Black'], moves: ['Foot Sweep', 'Hip Throw', 'Side Kick', 'Shoulder Throw', 'Arm Lock', 'Sacrifice Throw'] },
-  { id: 'karate', name: 'Karate', emoji: '\u{1F94B}', belts: ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown', 'Black'], moves: ['Front Kick', 'Knife-Hand Strike', 'Elbow Strike', 'Roundhouse Kick', 'Hammer Fist', 'Crescent Kick', 'Spinning Back Kick'] },
-  { id: 'kungfu', name: 'Kung Fu', emoji: '\u{1F409}', sash: true, belts: ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Brown', 'Black'], moves: ['Monkey Strike', 'Crane Kick', 'Snake Fist', 'Tiger Claw', 'Mantis Fist', 'Dragon Palm'] },
-  { id: 'taekwondo', name: 'Taekwondo', emoji: '\u{1F94B}', belts: ['White', 'Yellow', 'Green', 'Blue', 'Red', 'Black'], moves: ['Axe Kick', 'Knife Hand', 'Eagle Strike', 'Flying Side Kick', 'Spinning Hook Kick'] },
+  { id: 'jiujitsu', name: 'Jiu-Jitsu', emoji: '\u{1F94B}', belts: ['White', 'Blue', 'Purple', 'Brown', 'Black'], moves: ['Armbar', 'Triangle Choke', 'Kimura', 'Rear Naked Choke'], since: { jp: 0, br: 1925, '*': 1993 } },
+  { id: 'judo', name: 'Judo', emoji: '\u{1F94B}', belts: ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Brown', 'Black'], moves: ['Foot Sweep', 'Hip Throw', 'Side Kick', 'Shoulder Throw', 'Arm Lock', 'Sacrifice Throw'], since: { jp: 0, '*': 1925 } },
+  { id: 'karate', name: 'Karate', emoji: '\u{1F94B}', belts: ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Purple', 'Brown', 'Black'], moves: ['Front Kick', 'Knife-Hand Strike', 'Elbow Strike', 'Roundhouse Kick', 'Hammer Fist', 'Crescent Kick', 'Spinning Back Kick'], since: { jp: 1922, '*': 1955 } },
+  { id: 'kungfu', name: 'Kung Fu', emoji: '\u{1F409}', sash: true, belts: ['White', 'Yellow', 'Orange', 'Green', 'Blue', 'Brown', 'Black'], moves: ['Monkey Strike', 'Crane Kick', 'Snake Fist', 'Tiger Claw', 'Mantis Fist', 'Dragon Palm'], since: { cn: 0, hk: 0, tw: 0, sg: 0, my: 0, '*': 1970 } },
+  { id: 'taekwondo', name: 'Taekwondo', emoji: '\u{1F94B}', belts: ['White', 'Yellow', 'Green', 'Blue', 'Red', 'Black'], moves: ['Axe Kick', 'Knife Hand', 'Eagle Strike', 'Flying Side Kick', 'Spinning Hook Kick'], since: { kr: 1955, '*': 1965 } },
+  { id: 'boxing', name: 'Boxing', emoji: '\u{1F94A}', ranks: true, belts: ['Novice', 'Amateur', 'Club Fighter', 'Contender', 'Champion'], moves: ['Jab', 'Uppercut', 'Left Hook', 'Haymaker'] },
 ]
+
+/** Is this style taught where the player lives this year? */
+export function styleAvailable(g: GameState, style: Style): boolean {
+  const s = style.since
+  if (!s) return true
+  return g.year >= (s[g.character.countryId] ?? s['*'] ?? 0)
+}
 
 const FLAG = 'martialArts'
 const MOVES_FLAG = 'martialArts.moves'
@@ -44,7 +59,8 @@ function saveProgress(g: GameState, styleId: string, belt: number, progress: num
 }
 
 function beltName(style: Style, belt: number): string {
-  return `${style.belts[Math.min(belt, style.belts.length - 1)]} ${style.sash ? 'Sash' : 'Belt'}`
+  const rank = style.belts[Math.min(belt, style.belts.length - 1)]
+  return style.ranks ? rank : `${rank} ${style.sash ? 'Sash' : 'Belt'}`
 }
 
 const CLASS_LINES = [
@@ -54,6 +70,13 @@ const CLASS_LINES = [
   'You practiced katas in the mirror and felt incredibly cool.',
   'Your instructor said your form was "almost acceptable." High praise.',
   'You did 200 kicks, 200 punches and 1 accidental split.',
+]
+
+const BOXING_LINES = [
+  'You spent the session working the heavy bag until your arms felt like noodles.',
+  'Your trainer held the pads and yelled "{move}!" about four hundred times.',
+  'You skipped rope for half an hour and only tripped twice. Progress!',
+  'You sparred three rounds and only saw stars once.',
 ]
 
 function takeClass(g: GameState, style: Style): void {
@@ -97,6 +120,11 @@ function takeClass(g: GameState, style: Style): void {
   }
 
   if (belt >= maxBelt) {
+    if (style.ranks) {
+      log(g, `I trained ${style.name} as the gym's champion.`, 'neutral')
+      result(g, style.name, pick(g, ['You mostly helped the trainer coach the new kids. They call you "champ" now.', 'You sparred with the best in the gym. Nobody landed a clean punch on you all day.']), style.emoji, 'good')
+      return
+    }
     log(g, `I trained ${style.name} as a black belt.`, 'neutral')
     result(g, style.name, pick(g, [
       `As a ${beltName(style, belt).toLowerCase()}, you mostly helped teach the beginners. They call you "sensei" now.`,
@@ -116,7 +144,11 @@ function takeClass(g: GameState, style: Style): void {
     const move = style.moves[next - 1]
     if (move) pushFlagString(g, MOVES_FLAG, move)
     const name = beltName(style, next)
-    if (next >= maxBelt) {
+    if (next >= maxBelt && style.ranks) {
+      remember(g, `Became the ${style.name.toLowerCase()} champion of my gym.`)
+      log(g, `I became the champion of my ${style.name.toLowerCase()} gym!`, 'good')
+      result(g, 'Champion!', `You won the gym's championship bout! Years of sweat paid off. You learned the ${move}.`, '\u{1F3C6}', 'good')
+    } else if (next >= maxBelt) {
       count(g, 'blackBelts')
       remember(g, `Earned a black belt in ${style.name}.`)
       log(g, `I earned my black belt in ${style.name}!`, 'good')
@@ -129,7 +161,8 @@ function takeClass(g: GameState, style: Style): void {
   }
   saveProgress(g, style.id, belt, newProgress)
   log(g, `I took a ${style.name} class.`, 'neutral')
-  result(g, `${style.name} Class`, pick(g, CLASS_LINES).replace('{move}', moveHint ?? 'basic').replace('{style}', style.name), style.emoji)
+  const lines = style.ranks ? BOXING_LINES : CLASS_LINES
+  result(g, `${style.name} Class`, pick(g, lines).replace('{move}', moveHint ?? 'basic').replace('{style}', style.name), style.emoji)
 }
 
 export const martialArtsMenu: MenuGroup = {
@@ -143,7 +176,7 @@ export const martialArtsMenu: MenuGroup = {
   header: (g) =>
     `Classes cost ${money(g.character.age < 18 ? localPrice(g, 25) : localPrice(g, 40))}${g.character.age < 18 ? ' (your parents pay if they can)' : ''}. You can train up to ${TOTAL_PER_YEAR} times a year.`,
   children: (g): MenuNode[] =>
-    STYLES.map((style): MenuAction => {
+    STYLES.filter((style) => styleAvailable(g, style) || styleProgress(g, style.id).belt > 0 || styleProgress(g, style.id).progress > 0).map((style): MenuAction => {
       const { belt, progress } = styleProgress(g, style.id)
       const maxed = belt >= style.belts.length - 1
       return {

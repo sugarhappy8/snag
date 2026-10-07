@@ -1,7 +1,8 @@
 // The main game screen: header, life log, bottom bar with the "+ Age" button and the
 // stat bars. Menus open as bottom sheets; popups from the queue show above everything.
 // After an action closes a sheet, a "↩ Back to <menu>" chip reopens it where you left off.
-import { useEffect, useState } from 'react'
+// Once there's a past year to go back to, a ⏳ button opens the Time Machine.
+import { useEffect, useRef, useState } from 'react'
 import type { MenuSpot } from '../components/MenuList'
 import { BottomBar, type BottomTab } from '../components/BottomBar'
 import { Header } from '../components/Header'
@@ -12,6 +13,7 @@ import { ProfileSheet } from '../components/ProfileSheet'
 import { RelationshipsSheet } from '../components/RelationshipsSheet'
 import { MENU_SHEETS, openingClearsReturn, resolveReturnPoint, ReturnChip, type ResolvedReturn } from '../components/ReturnChip'
 import { StatPanel } from '../components/StatPanel'
+import { canOfferTimeMachine, TimeMachineButton, TimeMachineSheet, TimeTravelArrival } from '../components/TimeMachine'
 import { ageUpAction, clearReturnPoint, goTo, returnChipVisible, returnPointLive, setReturnPoint, useApp, type ReturnSheet } from '../store'
 import { DeathScreen } from './DeathScreen'
 
@@ -24,14 +26,29 @@ export function GameScreen() {
   const g = useApp((s) => s.game)
   const busy = useApp((s) => s.ai !== null)
   const returnPoint = useApp((s) => s.returnPoint)
+  const timeStops = useApp((s) => s.timeStops)
+  const arrived = useApp((s) => s.timeTravel?.arrived ?? null)
   const [sheet, setSheet] = useState<OpenSheet>(null)
+  const [timeMachineOpen, setTimeMachineOpen] = useState(false)
+  const [warp, setWarp] = useState<{ id: number; year: number; age: number } | null>(null)
+  const seenArrival = useRef(arrived?.id ?? 0)
   const lifeId = g?.lifeId
   const alive = g?.character.alive ?? false
 
   // A new life (or continuing as your child) starts with everything closed.
   useEffect(() => {
     setSheet(null)
+    setTimeMachineOpen(false)
   }, [lifeId])
+
+  // Just arrived from the Time Machine: play the warp once.
+  useEffect(() => {
+    if (arrived && arrived.id !== seenArrival.current) {
+      seenArrival.current = arrived.id
+      setSheet(null)
+      setWarp(arrived)
+    }
+  }, [arrived])
 
   // Dying closes the menus (the profile can stay open).
   useEffect(() => {
@@ -67,6 +84,8 @@ export function GameScreen() {
   const remember = (kind: ReturnSheet) => (spot: MenuSpot) => setReturnPoint({ sheet: kind, path: spot.path, scrolls: spot.scrolls })
 
   const target = !sheet && !showDeath && returnChipVisible(returnPoint, g) ? resolveReturnPoint(g, returnPoint) : null
+  // The ⏳ button: alive, nothing on screen, and a past year to go back to.
+  const showTimeMachine = !showDeath && g.character.alive && !queueBusy && canOfferTimeMachine(g, timeStops)
   const goBackThere = () => {
     if (!target) return
     clearReturnPoint()
@@ -86,9 +105,10 @@ export function GameScreen() {
         </div>
       ) : (
         <>
-          <LifeLog key={g.lifeId} log={g.log} reserveBottom={target !== null} />
-          <div className="return-dock">
+          <LifeLog key={g.lifeId} log={g.log} reserveBottom={target !== null || showTimeMachine} />
+          <div className={showTimeMachine ? 'return-dock has-tm' : 'return-dock'}>
             {target ? <ReturnChip key={`${target.sheet}:${target.personId ?? ''}`} target={target} onReturn={goBackThere} onDismiss={clearReturnPoint} /> : null}
+            {showTimeMachine ? <TimeMachineButton g={g} onOpen={() => setTimeMachineOpen(true)} /> : null}
           </div>
           <BottomBar disabled={queueBusy || !g.character.alive} busy={busy} onOpen={open} onAge={ageUpAction} />
           <StatPanel character={g.character} />
@@ -106,6 +126,8 @@ export function GameScreen() {
         />
       ) : null}
       {kind === 'profile' ? <ProfileSheet onClose={close} /> : null}
+      {timeMachineOpen && !showDeath ? <TimeMachineSheet g={g} onClose={() => setTimeMachineOpen(false)} /> : null}
+      {warp ? <TimeTravelArrival key={warp.id} year={warp.year} age={warp.age} /> : null}
 
       <ModalHost />
     </div>

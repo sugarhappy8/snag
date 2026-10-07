@@ -5,6 +5,7 @@ import { addHidden, addStat, count, log, netWorth, remember, spend } from '../co
 import { chance, pick, randInt } from '../rng'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, gate, money, result, stablePick, usesLeft } from './common'
+import { common } from '../events/era'
 
 const DONATIONS_PER_YEAR = 6
 const KEY = 'act.donate'
@@ -16,27 +17,29 @@ interface Charity {
   cause: string
   /** Past-tense flavor for big gifts: "fund a new wing". */
   thanks: string[]
+  /** First year the cause had charities (ocean cleanups are an eighties idea). */
+  since?: number
 }
 
 const CHARITIES: Charity[] = [
   { id: 'shelter', name: 'Paws & Whiskers Animal Rescue', emoji: '\u{1F43E}', cause: 'rescue animals', thanks: ['The shelter sent you a photo of a three-legged dog wearing a thank-you bandana.', 'A volunteer said your money will feed every cat in the building for a month.'] },
   { id: 'hospital', name: "Hope Children's Hospital", emoji: '\u{1F3E5}', cause: 'sick kids', thanks: ['The kids made you a giant card covered in glitter. It will never leave your house.', 'A nurse called to thank you personally and accidentally made you cry.'] },
-  { id: 'food', name: 'Community Food Bank', emoji: '\u{1F96B}', cause: 'feeding families', thanks: ['Your donation will put a lot of meals on a lot of tables.', 'The food bank posted a thank-you on its bulletin board. Your name is next to the canned peaches.'] },
-  { id: 'ocean', name: 'Clean Oceans Initiative', emoji: '\u{1F30A}', cause: 'cleaning up the oceans', thanks: ['Somewhere, a sea turtle is a little less tangled thanks to you.', 'They sent you a certificate printed on recycled seaweed. It smells.'] },
+  { id: 'food', name: 'Community Food Bank', emoji: '\u{1F96B}', cause: 'feeding families', thanks: ['Your donation will put a lot of meals on a lot of tables.', 'The food bank pinned a thank-you note to its bulletin board. Your name is next to the canned peaches.'] },
+  { id: 'ocean', since: 1990, name: 'Clean Oceans Initiative', emoji: '\u{1F30A}', cause: 'cleaning up the oceans', thanks: ['Somewhere, a sea turtle is a little less tangled thanks to you.', 'They sent you a certificate printed on recycled seaweed. It smells.'] },
   { id: 'cancer', name: 'Cancer Research Fund', emoji: '\u{1F397}\u{FE0F}', cause: 'cancer research', thanks: ['Your money is going straight into a lab full of very smart people.', 'The foundation sent you a pin. You wear it proudly.'] },
   { id: 'homeless', name: 'Safe Harbor Homeless Shelter', emoji: '\u{1F3E0}', cause: 'people experiencing homelessness', thanks: ['The shelter can keep its doors open all winter now.', 'The director hugged you so hard your back cracked.'] },
-  { id: 'wildlife', name: 'Global Wildlife Fund', emoji: '\u{1F43C}', cause: 'endangered species', thanks: ['You officially adopted a panda. It does not know who you are.', 'They named a baby rhino after you. Sort of. It is called "Donor 4471".'] },
-  { id: 'disaster', name: 'Disaster Relief Network', emoji: '\u{1F6D1}', cause: 'disaster relief', thanks: ['Your donation helped families rebuild after a terrible flood.', 'Relief workers sent a thank-you video from the field.'] },
+  { id: 'wildlife', since: 1961, name: 'Global Wildlife Fund', emoji: '\u{1F43C}', cause: 'endangered species', thanks: ['You officially adopted a panda. It does not know who you are.', 'They named a baby rhino after you. Sort of. It is called "Donor 4471".'] },
+  { id: 'disaster', name: 'Disaster Relief Network', emoji: '\u{1F6D1}', cause: 'disaster relief', thanks: ['Your donation helped families rebuild after a terrible flood.', 'Relief workers sent a thank-you letter from the field, with a photo of the new houses.'] },
   { id: 'library', name: 'Public Library Foundation', emoji: '\u{1F4DA}', cause: 'public libraries', thanks: ['The library forgave all your late fees. All of them.', 'They put a little bookplate with your name in a book about tax law. An honor.'] },
   { id: 'veterans', name: 'Veterans Support Alliance', emoji: '\u{1F396}\u{FE0F}', cause: 'veterans', thanks: ['A veteran wrote you a handwritten thank-you letter.', 'Your gift will pay for counseling and job training.'] },
   { id: 'arts', name: 'Young Artists Fund', emoji: '\u{1F3A8}', cause: 'arts education', thanks: ['A kid painted your portrait as a thank-you. It looks nothing like you. You love it.'] },
   { id: 'clean', name: 'Clean Water Project', emoji: '\u{1F6B0}', cause: 'clean drinking water', thanks: ['Your donation will help build a well for an entire village.'] },
   { id: 'school', name: 'Books for Every Kid', emoji: '\u{1F392}', cause: 'school supplies', thanks: ['Your money will fill a lot of backpacks this fall.'] },
-  { id: 'trees', name: 'Plant a Million Trees', emoji: '\u{1F333}', cause: 'reforestation', thanks: ['Somewhere, a forest is a little bigger because of you.'] },
+  { id: 'trees', since: 1970, name: 'Plant a Million Trees', emoji: '\u{1F333}', cause: 'reforestation', thanks: ['Somewhere, a forest is a little bigger because of you.'] },
 ]
 
 export function charitiesThisYear(g: GameState): Charity[] {
-  return stablePick(g, 'charities', CHARITIES, 6)
+  return stablePick(g, 'charities', CHARITIES.filter((c) => g.year >= (c.since ?? 0)), 6)
 }
 
 /** Parse a typed amount like "1,000" or "$500". */
@@ -85,8 +88,8 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
     log(g, `I donated ${money(amount)} to a charity that turned out to be a scam.`, 'bad')
     addStat(g, 'happiness', -happy - randInt(g, 3, 8))
     result(g, 'Scammed!', pick(g, [
-      `You donated ${money(amount)} to "${ch.name}". A week later, its founder was arrested for fraud. Your money is now a jet ski.`,
-      `The "${ch.name}" you gave ${money(amount)} to was a fake website run out of a basement. The police are looking into it.`,
+      `You donated ${money(amount)} to "${ch.name}". A week later, its founder was arrested for fraud. Your money is now ${g.year >= 1975 ? 'a jet ski' : g.year >= 1925 ? 'a speedboat' : 'a racehorse'}.`,
+      common(g, 'internet') ? `The "${ch.name}" you gave ${money(amount)} to was a fake website run out of a basement. The police are looking into it.` : `The "${ch.name}" you gave ${money(amount)} to was a fake office with a rented typewriter. The police are looking into it.`,
     ]), '\u{1F6A8}', 'bad')
     return
   }
@@ -99,7 +102,7 @@ function donate(g: GameState, ch: Charity, input: string | undefined): void {
   log(g, `I donated ${money(amount)} to ${ch.name}.`, 'good')
   let text = `You donated ${money(amount)} to ${ch.name} to support ${ch.cause}. ${pick(g, ch.thanks)}`
   if (amount >= 10_000_000) {
-    text += `\n\nThey're naming a building after you: the ${c.lastName} Center. The ribbon-cutting made the evening news.`
+    text += `\n\nThey're naming a building after you: the ${c.lastName} Center. The ribbon-cutting made ${common(g, 'tv') ? 'the evening news' : 'the front page'}.`
   } else if (big) {
     text += '\n\nYour gift made the local news. Strangers keep calling you a hero.'
   } else if (share >= 0.5) {
@@ -119,6 +122,7 @@ function charityAction(ch: Charity): MenuAction {
       g.character.money < 1 ? "You don't have any money to donate." : usesLeft(g, KEY, DONATIONS_PER_YEAR) === 0 ? "You've already donated plenty this year." : null,
     input: {
       kind: 'number',
+      money: true,
       label: 'How much do you want to donate?',
       placeholder: 'Amount',
       min: 1,

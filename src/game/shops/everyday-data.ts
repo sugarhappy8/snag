@@ -1,6 +1,7 @@
 // Catalogs for the everyday stores (shops/everyday.ts): bikes, sporting goods, furniture & decor,
 // clothing, toys, garden & hardware and pet supplies. Prices are what the item costs in an average
 // US city, in dollars; everyday.ts scales them for the player's market and rolls a per-year stock.
+import { techAdoption, type TechId } from '../history/timeline'
 import type { Gender } from '../types'
 
 /**
@@ -84,6 +85,91 @@ export interface ItemDef {
   solar?: boolean
   /** Shown in the listing subtitle. */
   note?: string
+}
+
+// ---------------------------------------------------------------------------
+// Eras: the first year an item is in the shops (no e-scooters in 1990, no smart speakers in 2005).
+// Items not listed have been around for as long as the game's history goes back.
+
+export const ITEM_FROM: Record<string, number> = {
+  // Bikes, boards and gear
+  balance: 2003,
+  bmx: 1971,
+  folding: 1975,
+  hardtail: 1985,
+  fullsus: 1990,
+  carbon: 1990,
+  gravel: 2015,
+  ebike: 2010,
+  emtb: 2012,
+  cargo: 2012,
+  kick: 1999,
+  escooter: 2017,
+  inline: 1980,
+  skateboard: 1960,
+  snowboard: 1980,
+  sup: 2005,
+  climb: 1975,
+  trampoline: 1960,
+  treadmill: 1970,
+  rower: 1975,
+  spinbike: 2014,
+  homegym: 1975,
+  // Home
+  smarthome: 2015,
+  massage: 1960,
+  theater: 1995,
+  desk: 2010,
+  bed: 1992,
+  beanbag: 1969,
+  recliner: 1930,
+  // Clothes
+  hoodie: 1975,
+  jeans: 2005,
+  puffer: 1980,
+  tracksuit: 1970,
+  runners: 2017,
+  dhoodie: 2010,
+  dsneakers: 2000,
+  flipflops: 1960,
+  // Toys
+  drone: 2014,
+  rccar: 1966,
+  blaster: 1990,
+  slime: 1990,
+  cards: 1993,
+  yoyo: 1990,
+  handheld: 1989,
+  console: 1977,
+  bricks: 1958,
+  castle: 1978,
+  figure: 1964,
+  dinos: 1985,
+  // Garden and tools
+  drill: 1980,
+  washer: 1950,
+  grill: 1960,
+  rider: 1950,
+  snowblower: 1950,
+  hottub: 1970,
+  solar: 2005,
+  // Pets
+  gps: 2005,
+  litter: 1999,
+  laser: 1990,
+  uvlamp: 1990,
+  agility: 1980,
+}
+
+/** Items that also need a technology where the player lives (game consoles, GPS). */
+export const ITEM_TECH: Record<string, TechId> = { handheld: 'videoGameConsole', console: 'videoGameConsole', gps: 'mobilePhone' }
+
+/** True when the item is in the shops in that year (and country, for technology). */
+export function itemInEra(key: string, year: number, countryId?: string): boolean {
+  const from = ITEM_FROM[key]
+  if (from !== undefined && year < from) return false
+  const tech = ITEM_TECH[key]
+  return !tech || !countryId || techAdoption(countryId, tech, year) >= 0.02
 }
 
 // ---------------------------------------------------------------------------

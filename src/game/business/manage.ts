@@ -1,11 +1,12 @@
 // Management actions on an owned business: marketing, products, quality, expansion, money,
 // leadership and the exits. Each action re-reads the business from state when it runs.
-import { addHidden, addMoney, addStat, earnIncome, formatMoney, log, notice, scriptChoice, useYearAction } from '../core'
+import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { chance, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
+import type { TechId } from '../history/timeline'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
 import { becomeCeo, ceoPayNorm, installManager, managerCandidate, managerName, maxOwnerSalary, stepDown } from './career'
@@ -33,8 +34,10 @@ import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellS
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
+import { bizHas, eraFits, eraNote } from './era'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
+import { marketInfoLine, marketMenu } from './competition-menu'
 import { industryDef } from './industries'
 import { bizOf, ceoJob, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
@@ -132,33 +135,83 @@ function adCost(b: BizState, usBase: number): number {
 
 interface Campaign {
   id: string
-  label: (b: BizState) => string
-  emoji: string
+  /** The campaign's name in this company's country and year (no social media in 1950). */
+  label: (g: GameState, b: BizState) => string
+  emoji: (g: GameState, b: BizState) => string
+  /** First-person log line: 'ran newspaper ads for'. */
+  did: (g: GameState, b: BizState) => string
   base: number
   boost: number
   brand: number
 }
 
+/** Era checks for the company's own country. */
+const has = (g: GameState, b: BizState, tech: TechId) => bizHas(g, b.countryId, tech)
+
+// The same six slots in every era (same costs and odds, so the talent's numbers hold); only what
+// they're called and how they're done follows the year: newspaper ads before web banners before
+// social media, cinema ads before television, a celebrity endorsement before influencers.
 const CAMPAIGNS: Campaign[] = [
-  { id: 'social', label: () => 'Social Media Blitz', emoji: '\u{1F4F1}', base: 4_000, boost: 0.05, brand: 3 },
-  { id: 'radio', label: () => 'Radio Spots', emoji: '\u{1F4FB}', base: 12_000, boost: 0.05, brand: 3 },
-  { id: 'billboards', label: () => 'Billboards', emoji: '\u{1FAA7}', base: 22_000, boost: 0.07, brand: 4 },
-  { id: 'influencers', label: () => 'Influencer Campaign', emoji: '\u{1F933}', base: 18_000, boost: 0.08, brand: 5 },
-  { id: 'tv', label: () => 'TV Commercial', emoji: '\u{1F4FA}', base: 110_000, boost: 0.13, brand: 8 },
-  { id: 'sponsor', label: (b) => `Sponsor the Local ${localSport(b.countryId).replace(/\b\w/g, (x) => x.toUpperCase())}`, emoji: '\u{1F3DF}\u{FE0F}', base: 60_000, boost: 0.06, brand: 10 },
+  {
+    id: 'social',
+    label: (g, b) => (has(g, b, 'socialMedia') ? 'Social Media Blitz' : has(g, b, 'internet') ? 'Web Banner Ads' : 'Newspaper Ads'),
+    emoji: (g, b) => (has(g, b, 'socialMedia') ? '\u{1F4F1}' : has(g, b, 'internet') ? '\u{1F5B1}\u{FE0F}' : '\u{1F4F0}'),
+    did: (g, b) => (has(g, b, 'socialMedia') ? 'ran a social media blitz for' : has(g, b, 'internet') ? 'bought web banner ads for' : 'took out newspaper ads for'),
+    base: 4_000,
+    boost: 0.05,
+    brand: 3,
+  },
+  {
+    id: 'radio',
+    label: (g, b) => (has(g, b, 'radio') ? 'Radio Spots' : 'Posters & Handbills'),
+    emoji: (g, b) => (has(g, b, 'radio') ? '\u{1F4FB}' : '\u{1F4C3}'),
+    did: (g, b) => (has(g, b, 'radio') ? 'bought radio spots for' : 'plastered the town with posters for'),
+    base: 12_000,
+    boost: 0.05,
+    brand: 3,
+  },
+  { id: 'billboards', label: () => 'Billboards', emoji: () => '\u{1FAA7}', did: () => 'put up billboards for', base: 22_000, boost: 0.07, brand: 4 },
+  {
+    id: 'influencers',
+    label: (g, b) => (has(g, b, 'smartphone') ? 'Influencer Campaign' : 'Celebrity Endorsement'),
+    emoji: (g, b) => (has(g, b, 'smartphone') ? '\u{1F933}' : '\u{1F31F}'),
+    did: (g, b) => (has(g, b, 'smartphone') ? 'paid influencers to post about' : 'signed a celebrity to endorse'),
+    base: 18_000,
+    boost: 0.08,
+    brand: 5,
+  },
+  {
+    id: 'tv',
+    label: (g, b) => (has(g, b, 'tv') ? 'TV Commercial' : 'Cinema Advertisement'),
+    emoji: (g, b) => (has(g, b, 'tv') ? '\u{1F4FA}' : '\u{1F39E}\u{FE0F}'),
+    did: (g, b) => (has(g, b, 'tv') ? 'ran a TV commercial for' : 'ran an advertisement in the cinemas for'),
+    base: 110_000,
+    boost: 0.13,
+    brand: 8,
+  },
+  {
+    id: 'sponsor',
+    label: (_g, b) => `Sponsor the Local ${localSport(b.countryId).replace(/\b\w/g, (x) => x.toUpperCase())}`,
+    emoji: () => '\u{1F3DF}\u{FE0F}',
+    did: (_g, b) => `sponsored the local ${localSport(b.countryId)} for`,
+    base: 60_000,
+    boost: 0.06,
+    brand: 10,
+  },
 ]
 
-const CAMPAIGN_TEXT: Record<string, (name: string) => string> = {
-  social: (n) => `${n}'s posts got shared, stitched and meme'd.`,
-  radio: (n) => `${n}'s jingle is now stuck in every commuter's head. Sorry, commuters.`,
-  billboards: (n) => `${n}'s billboards went up along the busiest roads in town.`,
-  influencers: (n) => `A dozen influencers unboxed, tasted or reviewed ${n} with suspicious enthusiasm.`,
-  tv: (n) => `${n}'s commercial aired in prime time. Your mom called to say she saw it.`,
-  sponsor: (n) => `${n}'s logo is on the jerseys now. The fans chant your name. Well, the team's.`,
+const CAMPAIGN_TEXT: Record<string, (g: GameState, b: BizState, name: string) => string> = {
+  social: (g, b, n) =>
+    has(g, b, 'socialMedia') ? `${n}'s posts got shared, stitched and meme'd.` : has(g, b, 'internet') ? `${n}'s banner ads blinked away on every website people in ${b.city} actually visit.` : `${n}'s ads ran in every newspaper in ${b.city}, right next to the crossword.`,
+  radio: (g, b, n) => (has(g, b, 'radio') ? `${n}'s jingle is now stuck in every commuter's head. Sorry, commuters.` : `${n}'s posters went up on every wall and lamppost in ${b.city}, and boys handed out handbills on every corner.`),
+  billboards: (_g, _b, n) => `${n}'s billboards went up along the busiest roads in town.`,
+  influencers: (g, b, n) => (has(g, b, 'smartphone') ? `A dozen influencers unboxed, tasted or reviewed ${n} with suspicious enthusiasm.` : `A famous face now smiles out of ${n}'s ads, swearing by it with suspicious enthusiasm.`),
+  tv: (g, b, n) => (has(g, b, 'tv') ? `${n}'s commercial aired in prime time. Your mom called to say she saw it.` : `${n}'s advertisement played before every picture at the local cinema. Your mom went twice to see it.`),
+  sponsor: (_g, _b, n) => `${n}'s logo is on the jerseys now. The fans chant your name. Well, the team's.`,
 }
 
-function campaignAction(a: Asset, c: Campaign, b0: BizState): MenuAction {
-  return act(a, `campaign.${c.id}`, c.label(b0), c.emoji, {
+function campaignAction(a: Asset, c: Campaign, b0: BizState, g0: GameState): MenuAction {
+  return act(a, `campaign.${c.id}`, c.label(g0, b0), c.emoji(g0, b0), {
     hint: (g) => {
       if (!hinting(g, live(g, a))) return null
       const best = bestCampaign(g, live(g, a))
@@ -173,16 +226,18 @@ function campaignAction(a: Asset, c: Campaign, b0: BizState): MenuAction {
       b.yearCosts += cost
       if (c.id === 'influencers' && chance(g, INFLUENCER_FAIL)) {
         b.brand = clampN(b.brand - 6, 0, 100)
-        notice(g, 'Influencer Fail', `One of your influencers posted the ad with the brief still in the caption ("say it's life-changing lol"). The internet noticed. Brand down to ${b.brand}%.`, { emoji: '\u{1F926}', tone: 'bad' })
+        if (has(g, b, 'smartphone')) notice(g, 'Influencer Fail', `One of your influencers posted the ad with the brief still in the caption ("say it's life-changing lol"). The internet noticed. Brand down to ${b.brand}%.`, { emoji: '\u{1F926}', tone: 'bad' })
+        else notice(g, 'Endorsement Fail', `Your celebrity was photographed happily using a rival's product the week your ads came out. The papers loved it. Brand down to ${b.brand}%.`, { emoji: '\u{1F926}', tone: 'bad' })
         return
       }
       const viral = c.id === 'social' && chance(g, VIRAL_P)
       const boost = c.boost * (0.8 + rand(g) * 0.4) * (viral ? 2.5 : 1)
       b.campaignBoost = clampN(b.campaignBoost + boost, 0, 0.6)
       b.brand = clampN(b.brand + c.brand + (viral ? 6 : 0), 0, 100)
-      log(g, `I ran a ${c.label(b).toLowerCase()} for ${cur.name}.`)
-      notice(g, viral ? 'Gone Viral!' : 'Campaign Launched', `${CAMPAIGN_TEXT[c.id]?.(cur.name) ?? ''} Cost: ${formatMoney(cost)}. Expect about ${Math.round(boost * 100)}% more customers this year; brand is up to ${b.brand}%.`, {
-        emoji: c.emoji,
+      log(g, `I ${c.did(g, b)} ${cur.name}.`)
+      const hit = has(g, b, 'internet') ? 'Gone Viral!' : 'Talk of the Town!'
+      notice(g, viral ? hit : 'Campaign Launched', `${CAMPAIGN_TEXT[c.id]?.(g, b, cur.name) ?? ''} Cost: ${formatMoney(cost)}. Expect about ${Math.round(boost * 100)}% more customers this year; brand is up to ${b.brand}%.`, {
+        emoji: c.emoji(g, b),
         tone: 'good',
       })
     },
@@ -277,7 +332,7 @@ function marketingMenu(a: Asset): MenuGroup {
       const b = readBiz(g, a)
       const def = industryDef(b.industry)
       const nodes: MenuNode[] = [{ type: 'heading', id: `biz.campH.${a.id}`, label: 'Campaigns (2 a year)' }]
-      for (const c of CAMPAIGNS) nodes.push(campaignAction(a, c, b))
+      for (const c of CAMPAIGNS) nodes.push(campaignAction(a, c, b, g))
       nodes.push({ type: 'heading', id: `biz.budgetH.${a.id}`, label: 'Yearly budget' })
       for (const x of BUDGETS) {
         nodes.push(
@@ -377,7 +432,9 @@ function productsMenu(a: Asset): MenuGroup {
         }
       }
       nodes.push({ type: 'heading', id: `biz.launchH.${a.id}`, label: 'Launch a new product' })
-      const ideas = def.products.filter((x) => !b.products.some((p) => p.name === x))
+      // Ideas the year allows (no fitness app before smartphones, no online delivery before the web).
+      const ideas = def.products.filter((x) => !b.products.some((p) => p.name === x) && eraFits(g, b.countryId, x))
+      if (!ideas.length) nodes.push({ type: 'info', id: `biz.launchNone.${a.id}`, text: 'Nothing new on the drawing board that the world is ready for yet.', emoji: '\u{1F4AD}' })
       for (const idea of ideas) {
         nodes.push(
           act(a, `launch.${idea}`, idea, '\u{1F680}', {
@@ -628,9 +685,9 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
     },
     disabledReason: (g) => {
       const b = readBiz(g, a)
-      return isIndustryLegal(countryId, b.industry) ? null : `${industryDef(b.industry).label}s are not allowed in ${country.name}. ${marketOf(countryId).businessNote}`
+      return isIndustryLegal(countryId, b.industry) ? null : `${industryDef(b.industry).label}s are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
     },
-    header: () => marketOf(countryId).businessNote,
+    header: (g) => eraNote(g, countryId, marketOf(countryId).businessNote),
     hint: (g) => {
       const cur = live(g, a)
       if (!hinting(g, cur) || !priceAndOutput(readBiz(g, cur))) return null
@@ -809,7 +866,7 @@ function consultantAction(a: Asset): MenuAction {
       notice(
         g,
         'Consultant’s Report',
-        `For ${formatMoney(fee)}, a consultant in a very expensive suit studied ${cur.name}. They reckon the sweet spot is about ${best.price >= 100 ? money(best.price) : `$${best.price.toFixed(2)}`} per ${def.unitOne}, selling roughly ${units(best.units)} ${def.unit} this year. ${tip}`,
+        `For ${formatMoney(fee)}, a consultant in a very expensive suit studied ${cur.name}. They reckon the sweet spot is about ${best.price >= 100 ? money(best.price) : formatCents(best.price)} per ${def.unitOne}, selling roughly ${units(best.units)} ${def.unit} this year. ${tip}`,
         { emoji: '\u{1F4CA}' },
       )
     },
@@ -888,7 +945,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'inject', 'Invest My Own Money', '\u{1F4E5}', {
       subtitle: 'Move savings into company cash',
       disabled: (gg) => (gg.character.money <= 0 ? "You don't have any money to put in." : null),
-      input: { kind: 'number', label: 'How much?', min: 1, max: Math.max(1, Math.round(g.character.money)), defaultValue: (gg) => String(Math.max(1, Math.round(Math.min(gg.character.money, Math.max(1_000, -b.cash))))) },
+      input: { kind: 'number', money: true, label: 'How much?', min: 1, max: Math.max(1, Math.round(g.character.money)), defaultValue: (gg) => String(Math.max(1, Math.round(Math.min(gg.character.money, Math.max(1_000, -b.cash))))) },
       run: (gg, cur, bb, input) => {
         const n = amount(input, gg.character.money)
         if (n <= 0) return
@@ -902,7 +959,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'dividend', b.share < 1 ? 'Pay a Dividend' : 'Withdraw Profits', '\u{1F4E4}', {
       subtitle: earmarkedCash(a) > 0 ? `Taxed as income · ${money(earmarkedCash(a))} of advances and pledges is set aside for unreleased games` : b.share < 1 ? `You get ${pct(b.share)} of any payout (taxed as income)` : 'Taxed as income',
       disabled: (_gg, bb) => payoutBlocked(a, bb),
-      input: { kind: 'number', label: 'Total payout', min: 1, max: Math.max(1, Math.round(payable(a, b))), defaultValue: () => String(Math.max(1, Math.round(payable(a, b) * 0.25))) },
+      input: { kind: 'number', money: true, label: 'Total payout', min: 1, max: Math.max(1, Math.round(payable(a, b))), defaultValue: () => String(Math.max(1, Math.round(payable(a, b) * 0.25))) },
       run: (gg, cur, bb, input) => {
         const n = amount(input, payable(cur, bb))
         if (n <= 0) return
@@ -921,7 +978,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
         return `Up to ${money(companyCreditLimit(bb))} at ${pct(companyLoanRate(bb), 1)} (${getCountry(bb.countryId).name} rates)`
       },
       disabled: (_gg, bb) => (companyCreditLimit(bb) < 1_000 ? 'No bank will lend this company more right now.' : null),
-      input: { kind: 'number', label: 'How much?', min: 1, max: Math.max(1, companyCreditLimit(b)), defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b) / 2))) },
+      input: { kind: 'number', money: true, label: 'How much?', min: 1, max: Math.max(1, companyCreditLimit(b)), defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b) / 2))) },
       run: (gg, cur, bb, input) => {
         if (!useYearAction(gg, `biz.borrow.${cur.id}`, 2)) return tooBusy(gg, `asked the bank for money twice for ${cur.name}`)
         const n = amount(input, companyCreditLimit(bb))
@@ -939,7 +996,7 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
       act(a, 'repay', 'Repay Company Debt', '\u{1F4B3}', {
         subtitle: `${money(b.debt)} owed at ${pct(b.debtRate, 1)}`,
         disabled: (_gg, bb) => (bb.cash <= 0 ? 'The company has no cash to repay with.' : null),
-        input: { kind: 'number', label: 'Repay how much?', min: 1, max: Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash))))) },
+        input: { kind: 'number', money: true, label: 'Repay how much?', min: 1, max: Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(b.debt, Math.max(0, b.cash))))) },
         run: (gg, cur, bb, input) => {
           const n = amount(input, Math.min(bb.debt, Math.max(0, bb.cash)))
           if (n <= 0) return
@@ -960,7 +1017,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
   return [
     act(a, 'salary', 'Set My Salary', '\u{1F4B5}', {
       subtitle: `Now ${money(b.ownerSalary)}/yr · typical here ${money(ceoPayNorm(b))}`,
-      input: { kind: 'number', label: 'Yearly salary', min: 0, max: maxOwnerSalary(b), defaultValue: () => String(b.ownerSalary) },
+      input: { kind: 'number', money: true, label: 'Yearly salary', min: 0, max: maxOwnerSalary(b), defaultValue: () => String(b.ownerSalary) },
       run: (gg, cur, bb, input) => {
         const n = amount(input, maxOwnerSalary(bb))
         bb.ownerSalary = n
@@ -972,7 +1029,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'bonus', 'Take a Bonus', '\u{1F911}', {
       subtitle: 'A one-off payout to yourself (taxed as income)',
       disabled: (_gg, bb) => payoutBlocked(a, bb),
-      input: { kind: 'number', label: 'Bonus amount', min: 1, max: Math.max(1, Math.round(Math.min(payable(a, b), maxOwnerSalary(b)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(payable(a, b) * 0.1, maxOwnerSalary(b) / 4)))) },
+      input: { kind: 'number', money: true, label: 'Bonus amount', min: 1, max: Math.max(1, Math.round(Math.min(payable(a, b), maxOwnerSalary(b)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(payable(a, b) * 0.1, maxOwnerSalary(b) / 4)))) },
       run: (gg, cur, bb, input) => {
         if (!useYearAction(gg, `biz.bonus.${cur.id}`, 1)) return tooBusy(gg, 'taken a bonus')
         const n = amount(input, Math.min(payable(cur, bb), maxOwnerSalary(bb)))
@@ -1166,7 +1223,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
   } else {
     nodes.push(
       act(a, 'sellShares', 'Sell Shares', '\u{1F4C8}', {
-        subtitle: `$${b.sharePrice.toFixed(2)}/share · your stake ${money(b.valuation * b.share)}`,
+        subtitle: `${moneyWith(b.sharePrice, (x) => x.toFixed(2))}/share · your stake ${money(b.valuation * b.share)}`,
         input: { kind: 'number', label: 'Percent of your shares to sell', min: 1, max: 100, defaultValue: () => '10' },
         run: (gg, cur, bb, input) => {
           if (!useYearAction(gg, `biz.shares.${cur.id}`, 2)) return tooBusy(gg, 'sold shares twice')
@@ -1206,16 +1263,17 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   rows.push(`${def.label} · ${b.city}, ${country.name} · ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`)
   if (runsIt(g, a)) rows.push(`Run by you, the CEO · salary ${money(b.ownerSalary)}/yr`)
   else rows.push(b.manager ? `Run by ${managerName(b.manager)} (general manager, skill ${b.manager.skill}/100, ${money(b.manager.salary)}/yr)` : 'No one is running it day to day.')
-  rows.push(b.public ? `Listed on the ${b.exchange} at $${b.sharePrice.toFixed(2)} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')
+  rows.push(b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')
   rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
   rows.push(isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
+  rows.push(marketInfoLine(g, a))
   if (isStudio(b)) rows.push(studioInfo(g, a))
   else {
     if (isDeepTech(b)) {
       const tech = deepTechInfo(g, a)
       if (tech) rows.push(tech)
     }
-    rows.push(`Price ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : `$${e.goingPrice.toFixed(2)}`}) · plan ${units(b.production)} ${def.unit}`)
+    rows.push(`Price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)}) · plan ${units(b.production)} ${def.unit}`)
   }
   const s = b.last
   if (s) {
@@ -1224,8 +1282,8 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
     rows.push(b.openFraction < 1 ? `Opening soon: registration took a while, so this first year is short.` : 'First year of trading. Results come with the Annual Report.')
   }
   rows.push(`${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 ? ` (your stake ${money(b.valuation * b.share)})` : ''} · cash ${money(b.cash)}${b.debt > 0 ? ` · debt ${money(b.debt)}` : ''}`)
-  rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${m.businessNote}`)
-  const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
+  rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${eraNote(g, b.countryId, m.businessNote)}`.trim())
+  const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3C6}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
   return rows.map((text, i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji: emojis[i] ?? '\u{2139}\u{FE0F}' }))
 }
 
@@ -1235,7 +1293,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   if (isStudio(readBiz(g, a))) {
     // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
     nodes.push(...studioNodes(g, a))
-    nodes.push(staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))
   } else {
     nodes.push(
       act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
@@ -1254,7 +1312,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     )
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
-    nodes.push(staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))

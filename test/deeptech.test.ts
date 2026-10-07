@@ -2,6 +2,7 @@
 // rounds and grants (and why they can't be farmed), clinical trials, AI training runs, rocket
 // test flights, milestone IPOs, companies that run themselves, old saves, and the Business
 // talent's purple hints.
+import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/ai/director'
 import { ageUp } from '../src/game/aging'
@@ -23,6 +24,7 @@ import { runScript } from '../src/game/scripts'
 import { HINT_EMOJI } from '../src/game/talents'
 import type { AnnualReportData, Asset, ChoiceModal, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
+import { PRESENT_YEAR } from '../src/game/history/timeline'
 
 function adultIn(countryId: string, money: number, seed = 3, smarts = 90): GameState {
   const g = createNewLife({ seed, year: 2000, countryId })
@@ -329,6 +331,7 @@ describe('deep tech', () => {
     const t = techOf(b)
     t.drugs.push({ id: 'd1', name: 'Zoravatinib', area: 'rare', phase: 0, quality: 95, peak: 2, filed: g.year, approved: 0, royalty: 1, partner: '', failed: false })
     t.seq = 1
+    // Exercise the business clock directly: a random accidental death is unrelated to trials.
     let approvedYear = 0
     let sawTrial = false
     for (let y = 0; y < 30 && !approvedYear; y++) {
@@ -346,7 +349,10 @@ describe('deep tech', () => {
         sawTrial = true
         expect(tt.stage).toBeGreaterThanOrEqual(Math.min(3, phase + 1))
       }
-      ageUp(g)
+      g.year += 1
+      g.character.age += 1
+      g.yearActions = {}
+      yearlyBusinessImpl(g)
       drain(g, YEAR_PREFS)
       const after = bizOf(g, a)
       const ta = techOf(after)
@@ -357,7 +363,10 @@ describe('deep tech', () => {
     expect(approvedYear, 'a strong rare-disease drug gets approved within 30 years').toBeGreaterThan(0)
     const b2 = bizOf(g, a)
     expect(sellable(g, b2, techOf(b2))).toBe(true)
-    ageUp(g)
+    g.year += 1
+    g.character.age += 1
+    g.yearActions = {}
+    yearlyBusinessImpl(g)
     drain(g, YEAR_PREFS)
     expect(readBiz(g, a).last!.revenue).toBeGreaterThan(0)
   })
@@ -392,6 +401,9 @@ describe('deep tech', () => {
 
   it('flies test rockets that explode or reach orbit; the first success makes it operational', () => {
     const g = adultIn('us', 1_000_000, 16)
+    // Today's launch market: before private spaceflight opened up (~2002-08), state-backed
+    // launch providers took almost every customer (business/competition-data.ts).
+    g.year = PRESENT_YEAR
     const a = company(g, 'spaceTech', { venture: 2_000_000_000, series: 3, stage: 2, level: 50, done: ['engine', 'rocket'] })
     let flights = 0
     for (let y = 0; y < 8 && techView(readBiz(g, a)).wins === 0; y++) {

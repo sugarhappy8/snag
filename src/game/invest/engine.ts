@@ -6,9 +6,35 @@
 // without consuming randomness, every holding on an exchange shares that market's health, and
 // the same life always replays the same market. Paths are computed year by year from the
 // family's anchor year and memoized in a small module-level cache (never stored in the state).
+//
+// History: for years before PRESENT_YEAR the market follows real history (history/markets.ts):
+// each exchange's index makes its country's real (inflation-adjusted) return, sectors follow
+// their real stories (tech in 2000-02, banks in 2008, oil in 1973...) with company-specific
+// noise on top, gold and the crypto coins follow their real prices, and currencies, bonds and
+// banks follow real inflation, defaults and banking crises. Exchanges that were shut or hadn't
+// opened yet stand still. Still deterministic and RNG-free; future years stay procedural, and a
+// family whose history starts at PRESENT_YEAR or later gets exactly the old procedural market.
+import { familyAt } from '../timeMachine'
 import { seeded, type SRng } from '../assets'
 import { DEEP_TECH_IDS, exchangeFor, marketOf, type Industry, type MarketProfile, type StockExchange } from '../data/markets'
+import {
+  bankingCrisis,
+  exchangeState,
+  historicalCoin,
+  historicalCryptoReturn,
+  historicalDepositInsurance,
+  historicalGoldPrice,
+  historicalHousing,
+  historicalIndexReturn,
+  historicalInflation,
+  historicalPolicyRate,
+  historicalSectorExcess,
+  inHistory,
+  sovereignDefault,
+} from '../history/markets'
+import { HISTORY_START, PRESENT_YEAR } from '../history/timeline'
 import { COUNTRIES, getCountry } from '../world'
+import { eraPennyKind, eraSector, exchangeNameFor, historySector, indexFundSince, indexNameFor, lateEraPennyKind, MODERN_PENNY_SECTOR, MODERN_PENNY_SINCE, TRUST_FEE } from './era'
 
 // ---------------------------------------------------------------------------
 // Small math helpers
@@ -127,7 +153,18 @@ export interface WorldYear {
 }
 
 export function worldYear(fam: string, year: number): WorldYear {
-  const r = seeded(`${fam}|world|${year}`)
+  // History: the world economy did what it did (the US market as its barometer).
+  if (inHistory(year)) {
+    const us = historicalIndexReturn('us', year) ?? 0
+    const lr = Math.log(Math.max(0.05, 1 + us))
+    return { z: clampNum((lr - 0.065) / 0.17, -3, 3), crash: us <= -0.25, boom: us >= 0.3 }
+  }
+  return syntheticWorldYear(fam, year)
+}
+
+/** The procedural world economy for (family, year), ignoring real history. */
+function syntheticWorldYear(fam: string, year: number): WorldYear {
+  const r = seeded(`${familyAt(fam, year)}|world|${year}`)
   const z = normal(r)
   const crash = r.next() < WORLD_CRASH
   const boom = !crash && r.next() < WORLD_BOOM
@@ -152,10 +189,19 @@ export function indexYield(info: ExInfo): number {
 
 /** This year's move of an exchange's index. Depends only on (family, exchange, year). */
 export function indexMove(fam: string, info: ExInfo, year: number): IndexMove {
+  if (inHistory(year)) return historicalIndexMove(info, year)
+  return syntheticIndexMove(fam, info, year)
+}
+
+/**
+ * The procedural index move for (family, exchange, year), ignoring real history: the future's
+ * market, and the distribution option pricing samples from (any year gives a fresh draw).
+ */
+export function syntheticIndexMove(fam: string, info: ExInfo, year: number): IndexMove {
   const vol = exVol(info.ex)
   const drift = exDrift(info.ex)
-  const w = worldYear(fam, year)
-  const r = seeded(`${fam}|ix|${info.key}|${year}`)
+  const w = syntheticWorldYear(fam, year)
+  const r = seeded(`${familyAt(fam, year)}|ix|${info.key}|${year}`)
   const zl = normal(r)
   const uc = r.next()
   const ub = r.next()
@@ -172,6 +218,57 @@ export function indexMove(fam: string, info: ExInfo, year: number): IndexMove {
   else logRet = mu + vol * 0.85 * (0.5 * w.z + 0.866 * zl)
   const ret = toRet(logRet - Math.log(1 + indexYield(info)))
   return { logRet, ret, crash, boom, regime: regimeFor(ret, crash, boom) }
+}
+
+/** A historical year: the home country's real return (flat while the exchange didn't exist). */
+function historicalIndexMove(info: ExInfo, year: number): IndexMove {
+  const dy = Math.log(1 + indexYield(info))
+  if (exchangeState(info.home, year).status === 'none') {
+    return { logRet: dy, ret: 0, crash: false, boom: false, regime: regimeFor(0) }
+  }
+  const real = historicalIndexReturn(info.home, year) ?? 0
+  const logRet = Math.log(Math.max(0.03, 1 + real))
+  const crash = real <= -0.25
+  const boom = real >= 0.3
+  const ret = toRet(logRet - dy)
+  return { logRet, ret, crash, boom, regime: regimeFor(ret, crash, boom) }
+}
+
+/** A typical real (log) market year in history: betas amplify moves around it. */
+const HIST_MEAN_LOG = 0.05
+
+/** True for years the engine follows real history (before PRESENT_YEAR). */
+export function isHistoryYear(year: number): boolean {
+  return inHistory(year)
+}
+
+/** The exchange's trading status in `year`: 'open', 'closed' (war, occupation) or 'none'. */
+export function exchangeStatus(info: ExInfo, year: number): 'open' | 'closed' | 'none' {
+  return exchangeState(info.home, year).status
+}
+
+/** True when a revolution nationalized every company listed on this exchange in `year`. */
+export function exchangeExpropriated(info: ExInfo, year: number): boolean {
+  return exchangeState(info.home, year).expropriated
+}
+
+/** The headline index's name in `year` (the Dow before 1957, the FT 30 before 1984...). */
+export function indexName(info: ExInfo, year: number): string {
+  return indexNameFor(info.home, year, info.ex.index)
+}
+
+/** The exchange's name in `year` (the Paris Bourse before Euronext...). */
+export function exchangeName(info: ExInfo, year: number): string {
+  return exchangeNameFor(info.home, year, info.ex.name)
+}
+
+/**
+ * The local index fund as it was sold in `year`: before index funds existed (1976 in the US), the
+ * closest thing was a managed investment trust, which is what the fund slot is called then.
+ */
+export function fundName(info: ExInfo, year: number): { name: string; trust: boolean } {
+  if (inHistory(year) && year < indexFundSince(info.home)) return { name: `${localWords(info.home)[0]} Investment Trust`, trust: true }
+  return { name: `${indexName(info, year)} Index Fund`, trust: false }
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +493,10 @@ export interface SecurityDef {
   tilt: number
   risk: number
   ipoPrice: number
+  /** The local word in the name ('Sakura' in 'Sakura Motors'), for era renames. */
+  word?: string
+  /** Penny stocks: which kind of tiny company it is (index into the kinds of each era). */
+  kindIndex?: number
 }
 
 export function riskFromVol(v: number): number {
@@ -412,6 +513,7 @@ interface Identity {
   sector: SectorDef
   name: string
   symbol: string
+  word: string
 }
 
 /** Local words in a stable per-exchange order, so gen-0 companies use distinct words. */
@@ -436,7 +538,7 @@ function rawIdentity(info: ExInfo, slot: number, gen: number): Identity {
   const word = gen === 0 ? words[slot % words.length] : r.pick(words)
   const name = r.pick(sector.names).replace('{w}', word)
   const symbol = gen === 0 ? tickerFor(name, 4) : tickerFor(name, 3) + String.fromCharCode(65 + ((gen * 7 + slot) % 26))
-  return { sector, name, symbol }
+  return { sector, name, symbol, word }
 }
 
 const symbolCache = new Map<string, string[]>()
@@ -485,6 +587,7 @@ export function companyDef(info: ExInfo, slot: number, gen: number): SecurityDef
     tilt,
     risk: riskFromVol(Math.sqrt((beta * vol) ** 2 + idio ** 2)),
     ipoPrice: Math.round(r.float(8, 120) * 100) / 100,
+    word: ident.word,
   }
   defCache.set(id, def)
   return def
@@ -512,7 +615,8 @@ export function pennyDef(info: ExInfo, slot: number, gen: number): SecurityDef {
   const hit = defCache.get(id)
   if (hit) return hit
   const r = seeded(`penny|${id}`)
-  const kind = PENNY_KINDS[(seeded(`pk|${info.key}`).int(0, PENNY_KINDS.length - 1) + slot * 5 + gen * 3) % PENNY_KINDS.length]
+  const kindIndex = seeded(`pk|${info.key}`).int(0, PENNY_KINDS.length - 1) + slot * 5 + gen * 3
+  const kind = PENNY_KINDS[kindIndex % PENNY_KINDS.length]
   const word = r.pick(localWords(info.home))
   const name = `${word} ${kind.noun}`
   const def: SecurityDef = {
@@ -529,9 +633,46 @@ export function pennyDef(info: ExInfo, slot: number, gen: number): SecurityDef {
     tilt: 0,
     risk: 5,
     ipoPrice: Math.round(r.float(0.2, 3) * 100) / 100,
+    word,
+    kindIndex,
   }
   defCache.set(id, def)
   return def
+}
+
+export interface EraIdentity {
+  name: string
+  /** Sector label, e.g. 'Office Machines' in 1925, 'Technology' today. */
+  label: string
+  emoji: string
+  blurb: string
+}
+
+function stableIndex(key: string, n: number): number {
+  let h = 7
+  for (let i = 0; i < key.length; i++) h = (Math.imul(h, 31) + key.charCodeAt(i)) | 0
+  return Math.abs(h) % Math.max(1, n)
+}
+
+/**
+ * How a listed company looked in `year`: a 1925 'tech' slot is a tabulating-machine maker, a 1985
+ * e-commerce slot a mail-order catalog, 1999's penny stocks are dot-coms. The present (and each
+ * sector's modern era) returns the company's own name and blurb unchanged.
+ */
+export function eraIdentity(def: SecurityDef, year: number): EraIdentity {
+  if (def.sector === 'penny') {
+    const modernNoun = PENNY_KINDS[(def.kindIndex ?? 0) % PENNY_KINDS.length]
+    const old = eraPennyKind(year, def.kindIndex ?? 0)
+    const since = modernNoun ? MODERN_PENNY_SINCE[modernNoun.noun] : undefined
+    const kind = old ?? (since !== undefined && year < since && year < PRESENT_YEAR ? lateEraPennyKind(def.kindIndex ?? 0) : null)
+    if (!kind || !def.word) return { name: def.name, label: 'Penny stock', emoji: '🎟️', blurb: def.blurb }
+    return { name: `${def.word} ${kind.noun}`, label: 'Penny stock', emoji: '🎟️', blurb: kind.pitch }
+  }
+  const sector = SECTORS[def.sector]
+  const era = eraSector(def.sector, year)
+  if (!era) return { name: def.name, label: sector.label, emoji: sector.emoji, blurb: def.blurb }
+  const name = era.names && def.word ? era.names[stableIndex(def.id, era.names.length)].replace('{w}', def.word) : def.name
+  return { name, label: era.label, emoji: era.emoji, blurb: era.blurbs[stableIndex(`${def.id}|b`, era.blurbs.length)] }
 }
 
 // ---------------------------------------------------------------------------
@@ -554,6 +695,10 @@ export interface SecYear {
   payout: number
   /** Year this listing started (coins revert toward a trend that starts then). */
   since?: number
+  /** Coins: the price the hype-fading trend starts from (the last real price, after history). */
+  base?: number
+  /** Coins: not trading yet (before the coin launched, or after a collapse until the next one). */
+  unlisted?: boolean
   /** The previous company in this slot ended this year (holders get `perUnit` per unit). */
   ended?: { id: string; kind: 'bankrupt' | 'acquired'; perUnit: number; premium: number }
 }
@@ -571,14 +716,19 @@ export interface ExYear {
   housing: number
 }
 
-/** Yearly fee of the local index fund (cheaper in deep, developed markets). */
-export function fundFee(info: ExInfo): number {
+/**
+ * Yearly fee of the local index fund (cheaper in deep, developed markets). Before index funds
+ * existed (1976 in the US), the closest thing was an investment trust charging far more.
+ */
+export function fundFee(info: ExInfo, year?: number): number {
+  if (year !== undefined && inHistory(year) && year < indexFundSince(info.home)) return TRUST_FEE
   const ease = clampNum(marketOf(info.home).easeOfBusiness, 0, 100)
   return Math.round((0.001 + 0.006 * (1 - ease / 100)) * 10000) / 10000
 }
 
-export function reitYield(info: ExInfo): number {
-  return clampNum(0.035 + 0.25 * marketOf(info.home).interestRate, 0.035, 0.09)
+export function reitYield(info: ExInfo, year?: number): number {
+  const hist = year !== undefined ? historicalPolicyRate(info.home, year) : null
+  return clampNum(0.035 + 0.25 * (hist !== null ? Math.min(0.2, hist) : marketOf(info.home).interestRate), 0.035, 0.09)
 }
 
 function splitRatio(price: number): number {
@@ -587,9 +737,9 @@ function splitRatio(price: number): number {
 }
 
 function initialExYear(fam: string, info: ExInfo, year: number): ExYear {
-  const r = seeded(`${fam}|init|${info.key}`)
+  const r = seeded(`${familyAt(fam)}|init|${info.key}`)
   // Deep-tech extras draw from their own stream so the classic listings keep their old prices.
-  const rd = seeded(`${fam}|initdt|${info.key}`)
+  const rd = seeded(`${familyAt(fam)}|initdt|${info.key}`)
   const classic = classicSlots(info)
   const stocks = slotPlan(info).map((_, slot): SecYear => {
     const def = companyDef(info, slot, 0)
@@ -611,7 +761,16 @@ function initialExYear(fam: string, info: ExInfo, year: number): ExYear {
   }
 }
 
-function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng): SecYear {
+/**
+ * A sector's real story this year (log return over the market, e.g. tech in 2000), or null when
+ * it moved with the market or the year is the procedural future.
+ */
+function sectorExcess(info: ExInfo, def: SecurityDef, year: number): number | null {
+  if (def.sector === 'penny' || !inHistory(year)) return null
+  return historicalSectorExcess(info.home, historySector(def.sector, year), year)
+}
+
+function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: number): SecYear {
   const def = companyDef(info, prev.slot, prev.gen)
   const drift = exDrift(info.ex)
   // Always draw the same numbers so one event never shifts another company's randomness.
@@ -620,13 +779,25 @@ function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng): SecYea
   const uAcq = r.next()
   const uJump = r.next()
   const uSize = r.next()
-  const pBank = [0, 0.001, 0.002, 0.004, 0.008, 0.015][def.risk] * (idx.crash ? 3 : 1)
+  // History: a sector's real story (tech in 2000-02, banks in 2008), with company-specific noise.
+  const excess = sectorExcess(info, def, year)
+  // A collapsing sector takes its weakest companies with it (the dot-com bust, 2008's banks).
+  const bust = excess !== null && excess < -0.35 ? 2.5 : 1
+  const pBank = [0, 0.001, 0.002, 0.004, 0.008, 0.015][def.risk] * (idx.crash ? 3 : 1) * bust
   if (uBank < pBank) {
     const next = companyDef(info, prev.slot, prev.gen + 1)
     return { id: next.id, slot: prev.slot, gen: prev.gen + 1, price: next.ipoPrice, ret: 0, event: 'ipo', payout: 0, ended: { id: def.id, kind: 'bankrupt', perUnit: 0, premium: -1 } }
   }
   const marketDev = idx.logRet - Math.log(1 + drift)
-  let logTotal = Math.log(1 + drift + def.tilt) + def.beta * marketDev + def.idio * z
+  let logTotal: number
+  if (inHistory(year)) {
+    // History: the sector's real story when there is one, else the market's real move amplified
+    // by the company's beta. Company noise is mean-neutral (most single stocks trail the index,
+    // a few win big), so a basket of stocks does what its sectors really did.
+    const k = excess !== null ? 0.6 : 0.8
+    const noise = def.idio * k * z - 0.5 * (def.idio * k) ** 2
+    logTotal = excess !== null ? idx.logRet + excess + def.tilt + noise : idx.logRet + (def.beta - 1) * (idx.logRet - HIST_MEAN_LOG) + def.tilt + noise
+  } else logTotal = Math.log(1 + drift + def.tilt) + def.beta * marketDev + def.idio * z
   let event: SecEvent | undefined
   if (uJump < 0.02) {
     logTotal += Math.log(0.45 + 0.3 * uSize)
@@ -657,15 +828,30 @@ function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng): SecYea
   return { id: def.id, slot: prev.slot, gen: prev.gen, price, ret: priceRet, event, ratio, payout }
 }
 
-function nextPenny(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng): SecYear {
+/** The sector a penny stock's theme rode in `year` (1999's dot-coms, 1980's oil explorers), or null. */
+function pennySector(def: SecurityDef, year: number): SectorId | null {
+  const k = def.kindIndex ?? 0
+  const old = eraPennyKind(year, k)
+  if (old) return old.as ?? null
+  const modern = PENNY_KINDS[Math.abs(Math.round(k)) % PENNY_KINDS.length]
+  const since = MODERN_PENNY_SINCE[modern.noun]
+  if (since !== undefined && year < since) return lateEraPennyKind(k).as ?? null
+  return MODERN_PENNY_SECTOR[modern.noun] ?? null
+}
+
+function nextPenny(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: number): SecYear {
   const def = pennyDef(info, prev.slot, prev.gen)
   const drift = exDrift(info.ex)
   const z = normal(r)
   const uZero = r.next()
   const uMoon = r.next()
   const uSize = r.next()
-  const pZero = idx.crash ? 0.16 : 0.08
-  let logRet = -0.34 + 1.5 * (idx.logRet - Math.log(1 + drift)) + 0.6 * z
+  // History: tiny companies ride their theme's real story, harder (the dot-coms of 1999, then 2000).
+  const hist = inHistory(year)
+  const sector = hist ? pennySector(def, year) : null
+  const excess = sector ? historicalSectorExcess(info.home, sector, year) : null
+  const pZero = (idx.crash ? 0.16 : 0.08) * (excess !== null && excess < -0.35 ? 2 : 1)
+  let logRet = hist ? -0.34 + 1.5 * (idx.logRet - HIST_MEAN_LOG) + 1.2 * (excess ?? 0) + 0.6 * z : -0.34 + 1.5 * (idx.logRet - Math.log(1 + drift)) + 0.6 * z
   let event: SecEvent | undefined
   if (uMoon < 0.03) {
     logRet += Math.log(4 + 8 * uSize)
@@ -682,22 +868,49 @@ function nextPenny(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng): SecYea
 
 /** Local house prices: rates above ~5% weigh on them, crashes drag them down. */
 function housingMove(fam: string, info: ExInfo, year: number, idx: IndexMove): number {
+  if (inHistory(year)) return clampNum(historicalHousing(info.home, year) ?? 0, -0.4, 0.4)
   const m = marketOf(info.home)
-  const r = seeded(`${fam}|house|${info.home}|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|house|${info.home}|${year}`)
   const base = 0.03 - 0.5 * Math.max(0, m.interestRate - 0.05) * 0.2
   return clampNum(base + 0.06 * normal(r) + (idx.crash ? -0.1 : 0) + (idx.boom ? 0.04 : 0), -0.4, 0.4)
+}
+
+/** A listing that stands still for a year (no exchange to trade on). */
+function frozen(s: SecYear): SecYear {
+  return { id: s.id, slot: s.slot, gen: s.gen, price: s.price, ret: 0, payout: 0 }
+}
+
+/** A revolution nationalizes the company: holders get nothing, and the slot waits for a new listing. */
+function nationalized(s: SecYear, next: SecurityDef): SecYear {
+  return { id: next.id, slot: s.slot, gen: s.gen + 1, price: next.ipoPrice, ret: 0, event: 'ipo', payout: 0, ended: { id: s.id, kind: 'bankrupt', perUnit: 0, premium: -1 } }
 }
 
 function nextExYear(fam: string, info: ExInfo, prev: ExYear, year: number): ExYear {
   const idx = indexMove(fam, info, year)
   const dyIdx = indexYield(info)
-  const r = seeded(`${fam}|ex|${info.key}|${year}`)
-  const rd = seeded(`${fam}|exdt|${info.key}|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|ex|${info.key}|${year}`)
+  const rd = seeded(`${familyAt(fam, year)}|exdt|${info.key}|${year}`)
   const classic = classicSlots(info)
-  const stocks = prev.stocks.map((s) => nextStock(info, s, idx, s.slot < classic ? r : rd))
-  const pennies = prev.pennies.map((s) => nextPenny(info, s, idx, r))
+  // History: no exchange (not yet open, or abolished after a revolution) means nothing moves;
+  // the year of a revolution wipes every listing out.
+  const state = inHistory(year) ? exchangeState(info.home, year) : null
+  if (state && state.status === 'none') {
+    const wipe = state.expropriated
+    return {
+      year,
+      index: idx,
+      level: prev.level,
+      stocks: prev.stocks.map((s) => (wipe ? nationalized(s, companyDef(info, s.slot, s.gen + 1)) : frozen(s))),
+      pennies: prev.pennies.map((s) => (wipe ? nationalized(s, pennyDef(info, s.slot, s.gen + 1)) : frozen(s))),
+      fund: frozen(prev.fund),
+      reit: frozen(prev.reit),
+      housing: inHistory(year) ? clampNum(historicalHousing(info.home, year) ?? 0, -0.4, 0.4) : 0,
+    }
+  }
+  const stocks = prev.stocks.map((s) => nextStock(info, s, idx, s.slot < classic ? r : rd, year))
+  const pennies = prev.pennies.map((s) => nextPenny(info, s, idx, r, year))
   // The index fund tracks the index (price) minus its yearly fee.
-  const fundRet = Math.max(-0.99, (1 + idx.ret) * (1 - fundFee(info)) - 1)
+  const fundRet = Math.max(-0.99, (1 + idx.ret) * (1 - fundFee(info, year)) - 1)
   let fundPrice = Math.max(0.01, prev.fund.price * (1 + fundRet))
   let fundRatio: number | undefined
   if (fundPrice > 1000) {
@@ -705,7 +918,7 @@ function nextExYear(fam: string, info: ExInfo, prev: ExYear, year: number): ExYe
     fundPrice /= fundRatio
   }
   const housing = housingMove(fam, info, year, idx)
-  const dyR = reitYield(info)
+  const dyR = reitYield(info, year)
   const zr = normal(r)
   const reitLog = Math.log(1 + housing) + 0.5 * (idx.logRet - Math.log(1 + exDrift(info.ex))) + 0.05 * zr - 0.004
   const reitRet = toRet(reitLog)
@@ -742,7 +955,9 @@ function remember<T>(cache: Map<string, T>, key: string, value: T): void {
 }
 
 function effectiveAnchor(anchor: number, year: number): number {
-  const a = Number.isFinite(anchor) ? Math.round(anchor) : year
+  let a = Number.isFinite(anchor) ? Math.round(anchor) : year
+  // A family older than recorded history starts its market where history starts.
+  if (year >= HISTORY_START) a = Math.max(a, HISTORY_START)
   return Math.max(Math.min(a, year), year - MAX_SPAN)
 }
 
@@ -810,7 +1025,7 @@ const CRYPTO_MU = 0.18
 const CRYPTO_TREND = 0.05
 
 function cryptoMarket(fam: string, year: number): { logRet: number; winter: boolean; mania: boolean } {
-  const r = seeded(`${fam}|crypto|${year}`)
+  const r = seeded(`${familyAt(fam, year)}|crypto|${year}`)
   const z = normal(r)
   const u = r.next()
   const s = r.next()
@@ -823,8 +1038,25 @@ const cryptoCache = new Map<string, CryptoYear[]>()
 
 function coinStartPrice(fam: string, slot: number, gen: number): number {
   const b = COIN_SLOTS[slot % COIN_SLOTS.length].base
-  const r = seeded(`${fam}|coin0|${slot}|${gen}`)
+  const r = seeded(`${familyAt(fam)}|coin0|${slot}|${gen}`)
   return b[0] === b[1] ? b[0] : Math.round(r.float(b[0], b[1]) * 10000) / 10000
+}
+
+/** A historical crypto year: every coin at its real price (none at all before 2009). */
+function historicalCryptoYear(yr: number, prev: CryptoYear | null): CryptoYear {
+  const coins = COIN_SLOTS.map((_, slot): SecYear => {
+    const h = historicalCoin(slot, yr)
+    const gen = h?.gen ?? 0
+    const def = coinDef(slot, gen)
+    const price = Math.max(0.000001, h?.price ?? 1)
+    const ended = h?.collapsed !== undefined ? { id: coinDef(slot, h.collapsed).id, kind: 'bankrupt' as const, perUnit: 0, premium: -1 } : undefined
+    if (!h?.listed) return { id: def.id, slot, gen, price, ret: 0, payout: 0, since: yr, base: price, unlisted: true, ended }
+    const before = prev?.coins[slot]
+    const ret = before && before.id === def.id && !before.unlisted && before.price > 0 ? price / before.price - 1 : 0
+    return { id: def.id, slot, gen, price, ret, event: h.ipo ? 'ipo' : undefined, payout: def.yield, since: yr, base: price, ended }
+  })
+  const ret = historicalCryptoReturn(yr) ?? 0
+  return { year: yr, ret, winter: ret <= -0.5, mania: ret >= 1.5, coins }
 }
 
 export function cryptoYear(fam: string, anchor: number, year: number): CryptoYear {
@@ -833,34 +1065,62 @@ export function cryptoYear(fam: string, anchor: number, year: number): CryptoYea
   const ck = `${fam}|${a}`
   let years = cryptoCache.get(ck)
   if (!years) {
-    const coins = COIN_SLOTS.map((_, slot): SecYear => ({ id: coinDef(slot, 0).id, slot, gen: 0, price: coinStartPrice(fam, slot, 0), ret: 0, payout: COIN_SLOTS[slot].yield, since: a }))
-    years = [{ year: a, ret: 0, winter: false, mania: false, coins }]
+    if (inHistory(a)) years = [historicalCryptoYear(a, null)]
+    else {
+      const coins = COIN_SLOTS.map((_, slot): SecYear => ({ id: coinDef(slot, 0).id, slot, gen: 0, price: coinStartPrice(fam, slot, 0), ret: 0, payout: COIN_SLOTS[slot].yield, since: a }))
+      years = [{ year: a, ret: 0, winter: false, mania: false, coins }]
+    }
     remember(cryptoCache, ck, years)
   }
   while (years.length <= y - a) {
     const prev = years[years.length - 1]
     const yr = a + years.length
+    if (inHistory(yr)) {
+      years.push(historicalCryptoYear(yr, prev))
+      continue
+    }
     const mk = cryptoMarket(fam, yr)
-    const r = seeded(`${fam}|coins|${yr}`)
+    const r = seeded(`${familyAt(fam, yr)}|coins|${yr}`)
     const coins = prev.coins.map((c): SecYear => {
       const def = coinDef(c.slot, c.gen)
       const z = normal(r)
       const uz = r.next()
+      // A coin still waiting for its launch when history ends lists now.
+      if (c.unlisted) return { id: def.id, slot: c.slot, gen: c.gen, price: c.price, ret: 0, event: 'ipo', payout: def.yield, since: yr, base: c.price }
       if (uz < def.pZero * (mk.winter ? 2 : 1)) {
         const next = coinDef(c.slot, c.gen + 1)
         return { id: next.id, slot: c.slot, gen: c.gen + 1, price: coinStartPrice(fam, c.slot, c.gen + 1), ret: 0, event: 'ipo', payout: next.yield, since: yr, ended: { id: def.id, kind: 'bankrupt', perUnit: 0, premium: -1 } }
       }
       // Hype fades: coins drift back toward a slowly rising trend, so manias and winters alternate
-      // instead of compounding into billion-dollar coins.
+      // instead of compounding into billion-dollar coins. After real history the trend starts
+      // from the coin's last real price.
       const since = c.since ?? a
-      const trend = Math.log(coinStartPrice(fam, c.slot, c.gen)) + CRYPTO_TREND * (yr - since)
+      const trend = Math.log(c.base ?? coinStartPrice(fam, c.slot, c.gen)) + CRYPTO_TREND * (yr - since)
       const pull = -0.2 * (Math.log(Math.max(1e-9, c.price)) - trend)
       const ret = def.stable ? 0 : toRet(CRYPTO_MU * (1 - def.beta) + def.beta * mk.logRet + def.idio * z + pull)
-      return { id: def.id, slot: c.slot, gen: c.gen, price: Math.max(0.000001, c.price * (1 + ret)), ret, payout: def.yield, since }
+      const next: SecYear = { id: def.id, slot: c.slot, gen: c.gen, price: Math.max(0.000001, c.price * (1 + ret)), ret, payout: def.yield, since }
+      if (c.base !== undefined) next.base = c.base
+      return next
     })
     years.push({ year: yr, ret: toRet(mk.logRet), winter: mk.winter, mania: mk.mania, coins })
   }
   return years[y - a]
+}
+
+/** True when a coin trades this year (false before it launched, or after a collapse until the next). */
+export function coinListed(c: SecYear | undefined): boolean {
+  return !!c && !c.unlisted
+}
+
+/** The coins that trade this year (before 2009 there are none). */
+export function listedCoins(cy: CryptoYear): SecYear[] {
+  return cy.coins.filter((c) => !c.unlisted)
+}
+
+/** How much of a coin the market could absorb in a historical year (null = no limit). */
+export function coinMarketCap(slot: number, year: number): number | null {
+  const h = inHistory(year) ? historicalCoin(slot, year) : null
+  return h ? h.marketCap : null
 }
 
 // ---------------------------------------------------------------------------
@@ -874,17 +1134,25 @@ export function goldYear(fam: string, anchor: number, year: number): { price: nu
   const ck = `${fam}|${a}`
   let years = goldCache.get(ck)
   if (!years) {
-    years = [{ price: Math.round(seeded(`${fam}|gold0`).float(1_800, 2_800)), ret: 0 }]
+    const hist = historicalGoldPrice(a)
+    years = [{ price: hist !== null ? hist : Math.round(seeded(`${familyAt(fam)}|gold0`).float(1_800, 2_800)), ret: 0 }]
     remember(goldCache, ck, years)
   }
   while (years.length <= y - a) {
     const yr = a + years.length
-    const w = worldYear(fam, yr)
-    const r = seeded(`${fam}|gold|${yr}`)
-    const z = (0.75 * normal(r) - 0.45 * w.z) / 0.875
     const prev = years[years.length - 1]
+    // After real history, gold's long-run trend starts from its last real price.
+    const baseAt = yr >= PRESENT_YEAR && a < PRESENT_YEAR ? PRESENT_YEAR - 1 - a : 0
+    const hist = historicalGoldPrice(yr)
+    if (hist !== null) {
+      years.push({ price: hist, ret: prev.price > 0 ? hist / prev.price - 1 : 0 })
+      continue
+    }
+    const w = worldYear(fam, yr)
+    const r = seeded(`${familyAt(fam, yr)}|gold|${yr}`)
+    const z = (0.75 * normal(r) - 0.45 * w.z) / 0.875
     // Gold wanders, but not forever: it drifts back toward a slowly rising long-run price.
-    const trend = Math.log(years[0].price) + 0.035 * (yr - a)
+    const trend = Math.log(years[baseAt].price) + 0.035 * (yr - (a + baseAt))
     const pull = -0.08 * (Math.log(Math.max(1, prev.price)) - trend)
     const logRet = Math.log(1.035) + 0.14 * z + (w.crash ? 0.05 + 0.15 * r.next() : 0) - (w.boom ? 0.05 : 0) + pull
     const ret = toRet(logRet)
@@ -894,55 +1162,103 @@ export function goldYear(fam: string, anchor: number, year: number): { price: nu
 }
 
 /** Extra yearly return of gold bought where inflation is high: it holds value while the currency melts. */
-export function goldHedge(countryId: string): number {
+export function goldHedge(countryId: string, year?: number): number {
+  // History is already in real terms: local inflation shows up in savings, not as a gold bonus.
+  if (year !== undefined && inHistory(year)) return 0
   return Math.min(0.06, 0.2 * Math.max(0, marketOf(countryId).inflation - 0.05))
 }
 
 // ---------------------------------------------------------------------------
 // Currencies, government bonds and banks (per country)
 
+/** Inflation in `countryId` (historical in past years, today's figure otherwise). */
+export function inflationRate(countryId: string, year?: number): number {
+  const hist = year !== undefined ? historicalInflation(countryId, year) : null
+  return hist !== null ? hist : marketOf(countryId).inflation
+}
+
+/** The central bank's policy rate (historical in past years, today's figure otherwise). */
+export function policyRate(countryId: string, year?: number): number {
+  const hist = year !== undefined ? historicalPolicyRate(countryId, year) : null
+  return hist !== null ? hist : marketOf(countryId).interestRate
+}
+
+/** Rates of the hyperinflation years, kept readable (Germany 1923, Zimbabwe 2008). */
+function tameRate(r: number): number {
+  if (!Number.isFinite(r)) return 0
+  if (r <= 10) return r
+  return Math.min(50, 10 + 0.05 * (r - 10))
+}
+
 /** 0 (stable, clean) - 1 (hyperinflation, rampant corruption). */
-export function countryStress(countryId: string): number {
+export function countryStress(countryId: string, year?: number): number {
   const m = marketOf(countryId)
-  return clamp01(clamp01((m.inflation - 0.05) / 0.5) * 0.6 + clamp01((m.corruption - 40) / 50) * 0.4)
+  const inf = year !== undefined && inHistory(year) ? Math.min(10, inflationRate(countryId, year)) : m.inflation
+  return clamp01(clamp01((inf - 0.05) / 0.5) * 0.6 + clamp01((m.corruption - 40) / 50) * 0.4)
 }
 
-export function defaultChance(countryId: string): number {
-  const p = 0.12 * countryStress(countryId) ** 2
+export function defaultChance(countryId: string, year?: number): number {
+  const p = 0.12 * countryStress(countryId, year) ** 2
   return p < 0.002 ? 0 : p
 }
 
-export function bankCrisisChance(countryId: string): number {
-  const p = 0.05 * countryStress(countryId) ** 2
+export function bankCrisisChance(countryId: string, year?: number): number {
+  const p = 0.05 * countryStress(countryId, year) ** 2
   return p < 0.002 ? 0 : p
 }
 
-/** Expected yearly loss of the local currency against the dollar (negative = it gains). */
-export function expectedDepreciation(countryId: string): number {
+/**
+ * Expected yearly loss of the local currency's value (negative = it gains). Today: against the
+ * dollar. In history (real terms): against the shops, i.e. what that year's inflation took.
+ */
+export function expectedDepreciation(countryId: string, year?: number): number {
+  if (year !== undefined && inHistory(year)) {
+    const inf = Math.min(1e7, inflationRate(countryId, year))
+    return clampNum(inf / (1 + inf), -0.3, 0.999999)
+  }
   const inf = Math.max(-0.05, marketOf(countryId).inflation)
   return clampNum(1 - 1.025 / (1 + inf), -0.03, 0.85)
 }
 
-export function bondRate(countryId: string): number {
+/** A government bond's coupon: the nominal rate of the day in past years. */
+export function bondRate(countryId: string, year?: number): number {
+  if (year !== undefined && inHistory(year)) {
+    const p = tameRate(Math.max(0, policyRate(countryId, year)))
+    return Math.round(clampNum(p + 0.01 + 0.06 * countryStress(countryId, year), 0.001, 60) * 1000) / 1000
+  }
   const m = marketOf(countryId)
   return Math.round(clampNum(Math.max(0, m.interestRate) + 0.005 + 0.06 * countryStress(countryId), 0.001, 2) * 1000) / 1000
 }
 
-export function savingsRate(countryId: string): number {
+/** A savings account's interest: the nominal rate of the day in past years (1981 US: about 15%). */
+export function savingsRate(countryId: string, year?: number): number {
+  if (year !== undefined && inHistory(year)) {
+    const p = tameRate(Math.max(0, policyRate(countryId, year)))
+    return Math.round(clampNum(p * 0.9 - 0.003, 0, 50) * 1000) / 1000
+  }
   const m = marketOf(countryId)
   return Math.round(clampNum(Math.max(0, m.interestRate) * 0.7 - 0.002, 0, 2) * 1000) / 1000
 }
 
-export function termRate(countryId: string): number {
+export function termRate(countryId: string, year?: number): number {
+  if (year !== undefined && inHistory(year)) {
+    const p = tameRate(Math.max(0, policyRate(countryId, year)))
+    return Math.round(clampNum(p * 0.95 + 0.003, 0.001, 50) * 1000) / 1000
+  }
   const m = marketOf(countryId)
   return Math.round(clampNum(Math.max(0, m.interestRate) * 0.95 + 0.003, 0.001, 2) * 1000) / 1000
 }
 
-/** Deposits the government guarantees if a bank fails (rich countries guarantee more). */
-export function depositInsurance(countryId: string): number {
+/**
+ * Deposits the government guarantees if a bank fails (rich countries guarantee more). In past
+ * years: what was guaranteed then (nothing before deposit insurance existed).
+ */
+export function depositInsurance(countryId: string, year?: number): number {
   const m = marketOf(countryId)
   const raw = 250_000 * clampNum(m.gdpPerCapita / 80_000, 0.01, 1) * (1 - countryStress(countryId) * 0.8)
-  return Math.max(500, Math.round(raw / 500) * 500)
+  const present = Math.max(500, Math.round(raw / 500) * 500)
+  const hist = year !== undefined ? historicalDepositInsurance(countryId, year, present) : null
+  return hist !== null ? Math.max(0, Math.round(hist / 100) * 100) : present
 }
 
 export interface FxYear {
@@ -959,7 +1275,8 @@ export interface FxYear {
 }
 
 export function fxYear(fam: string, countryId: string, year: number): FxYear {
-  const r = seeded(`${fam}|fx|${countryId}|${year}`)
+  if (inHistory(year)) return historicalFx(countryId, year)
+  const r = seeded(`${familyAt(fam, year)}|fx|${countryId}|${year}`)
   const e = expectedDepreciation(countryId)
   const noise = normal(r) * (0.02 + 0.3 * Math.max(0, e))
   const uDef = r.next()
@@ -976,5 +1293,23 @@ export function fxYear(fam: string, countryId: string, year: number): FxYear {
     bankCrisis,
     recovery: 0.2 + 0.4 * rec,
     bondMove,
+  }
+}
+
+/**
+ * A historical year for local money (real terms): inflation eats savings and bonds, bond prices
+ * move against interest-rate changes, and the real defaults and banking crises happen.
+ */
+function historicalFx(countryId: string, year: number): FxYear {
+  const haircut = sovereignDefault(countryId, year)
+  const recovery = bankingCrisis(countryId, year)
+  const dRate = tameRate(Math.max(0, policyRate(countryId, year))) - tameRate(Math.max(0, policyRate(countryId, year - 1)))
+  return {
+    dep: expectedDepreciation(countryId, year),
+    defaulted: haircut !== null,
+    haircut: haircut ?? 0,
+    bankCrisis: recovery !== null,
+    recovery: recovery ?? 1,
+    bondMove: clampNum(-4 * dRate, -0.3, 0.3),
   }
 }

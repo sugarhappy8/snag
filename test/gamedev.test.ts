@@ -841,7 +841,8 @@ describe('monkey tests', () => {
         invariants(g, -1)
       }
     }
-  })
+    // Every year runs the whole year system (history, markets, immigration...): give it room.
+  }, 60_000)
 
   it('random studio management for 12 years never breaks numbers', () => {
     for (let seed = 1; seed <= 6; seed++) {
@@ -869,5 +870,6 @@ describe('monkey tests', () => {
         invariants(g, -1)
       }
     }
-  })
+    // Every year runs the whole year system (history, markets, immigration...): give it room.
+  }, 60_000)
 })

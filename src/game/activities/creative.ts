@@ -13,6 +13,7 @@ import { stableChoice, withHint } from '../special/common'
 import { hasTalent, talentHint, talentMult, type TalentId } from '../talents'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { brokeNotice, gate, localPrice, money, payFor, result, stablePick } from './common'
+import { aiOrUpsideDown, common } from '../events/era'
 
 // ---------------------------------------------------------------------------
 // Skills
@@ -105,7 +106,7 @@ const WRITE_SCRIPT = defineScript('act.creative.write', (g, choice) => {
   const form = FORMS.find((f) => f.id === choice)
   if (!form || g.character.age < form.minAge) return
   if (craftSkill(g, 'writing') < form.minSkill) {
-    return result(g, 'Write', `You opened a blank document for ${form.label.toLowerCase()}, stared at it for three hours and wrote "Chapter One". You need writing skill ${form.minSkill}% for that. Short stories and poems are great practice.`, form.emoji)
+    return result(g, 'Write', `You ${common(g, 'homeComputer') ? 'opened a blank document' : 'rolled a blank page into the typewriter'} for ${form.label.toLowerCase()}, stared at it for three hours and wrote "Chapter One". You need writing skill ${form.minSkill}% for that. Short stories and poems are great practice.`, form.emoji)
   }
   if (yearActionsUsed(g, 'act.write') >= WRITE_MAX) {
     return result(g, 'Write', 'You have writer’s block. Every sentence you start ends in a sigh. Try again next year.', '\u{1F636}')
@@ -191,7 +192,7 @@ const WRITE_SCRIPT = defineScript('act.creative.write', (g, choice) => {
     return result(g, form.label.replace(/^(A|An) /, ''), `${pick(g, [`You wrote ${form.label.toLowerCase()} that's genuinely good. You read it out loud to your pet, who seemed moved.`, `Your ${form.noun} came together nicely. A few lines are honestly beautiful.`, `You finished your ${form.noun} and only deleted it twice.`])}\n\n${skill}`, form.emoji, 'good')
   }
   log(g, `I wrote ${form.label.toLowerCase()}. It was not my best work.`, 'neutral')
-  return result(g, form.label.replace(/^(A|An) /, ''), `${pick(g, [`You wrote ${form.label.toLowerCase()}. It rhymed "heart" with "heart" four times.`, `Your ${form.noun} was so bad that autocorrect gave up halfway through.`, `You wrote ${form.label.toLowerCase()}, read it back the next morning and quietly hid it in a drawer.`])}\n\n${skill}`, form.emoji)
+  return result(g, form.label.replace(/^(A|An) /, ''), `${pick(g, [`You wrote ${form.label.toLowerCase()}. It rhymed "heart" with "heart" four times.`, g.year >= 1995 ? `Your ${form.noun} was so bad that autocorrect gave up halfway through.` : `Your ${form.noun} was so bad that your pencil snapped halfway through, possibly on purpose.`, `You wrote ${form.label.toLowerCase()}, read it back the next morning and quietly hid it in a drawer.`])}\n\n${skill}`, form.emoji)
 })
 
 const writeAction: MenuAction = {
@@ -357,6 +358,11 @@ const VENUES: Venue[] = [
   { id: 'gallery', label: 'A gallery', emoji: '\u{1F5BC}\u{FE0F}', mult: 2.5 },
 ]
 
+/** Where art can be sold this year: online shops only once people shop online. */
+function venuesNow(g: GameState): Venue[] {
+  return VENUES.filter((v) => v.id !== 'online' || common(g, 'onlineShopping'))
+}
+
 /** The asking price of a piece at a venue (local dollars). */
 function piecePrice(g: GameState, p: Piece, v: Venue): number {
   const fame = Math.max(0, g.character.hidden.fame)
@@ -401,7 +407,7 @@ const SELL_VENUE_SCRIPT = defineScript('act.creative.sellVenue', (g, choice, dat
   const price = piecePrice(g, p, v)
   if (!chance(g, saleOdds(g, p, v))) {
     log(g, `I tried to sell "${p.title}", but nobody bought it.`, 'neutral')
-    return result(g, 'No Sale', `${v.id === 'fair' ? 'People walked past your table all day. One man asked if you sold hot dogs.' : v.id === 'online' ? 'Your listing got 400 views and one comment asking if it was AI.' : 'The gallery hung your piece for a month. Lots of nodding, no buyers.'} "${p.title}" is still yours.`, '\u{1F3A8}')
+    return result(g, 'No Sale', `${v.id === 'fair' ? 'People walked past your table all day. One man asked if you sold hot dogs.' : v.id === 'online' ? `Your listing got 400 views and one comment asking if it was ${aiOrUpsideDown(g)}.` : 'The gallery hung your piece for a month. Lots of nodding, no buyers.'} "${p.title}" is still yours.`, '\u{1F3A8}')
   }
   list.splice(idx, 1)
   savePieces(g, list)
@@ -419,14 +425,15 @@ const SELL_SCRIPT = defineScript('act.creative.sell', (g, choice) => {
   const p = pieces(g)[idx]
   if (!p) return
   // Art talent: you know which room this piece belongs in (best expected take after fees).
-  const best = VENUES.reduce((a, b) => (venueValue(g, p, b) > venueValue(g, p, a) ? b : a))
+  const venues = venuesNow(g)
+  const best = venues.reduce((a, b) => (venueValue(g, p, b) > venueValue(g, p, a) ? b : a))
   scriptChoice(
     g,
     SELL_VENUE_SCRIPT,
     'Sell Art',
     `Where will you try to sell "${p.title}" (quality ${p.q}/100)?`,
     [
-      ...VENUES.map((v) => ({
+      ...venues.map((v) => ({
         id: v.id,
         label: `${v.label} · asking ${money(piecePrice(g, p, v))}${v.id === 'gallery' ? ' (quality 60+, age 16+)' : v.id === 'fair' ? ` (table ${money(localPrice(g, 25))})` : ''}`,
         emoji: v.emoji,
@@ -509,7 +516,7 @@ const COOK_SCRIPT = defineScript('act.creative.cook', (g, choice, data) => {
   const menu = Array.isArray(d.menu) ? d.menu.filter((x): x is string => typeof x === 'string') : []
   const dish = choice === 'experiment' ? 'something experimental' : menu[Number(choice)]
   if (!dish) return
-  if (!useYearAction(g, 'act.cook', COOK_MAX)) return result(g, 'Cook', 'The kitchen has seen enough of you this year. So has the smoke alarm.', '\u{1F373}')
+  if (!useYearAction(g, 'act.cook', COOK_MAX)) return result(g, 'Cook', g.year >= 1975 ? 'The kitchen has seen enough of you this year. So has the smoke alarm.' : 'The kitchen has seen enough of you this year. So has the fire brigade.', '\u{1F373}')
   count(g, 'mealsCooked')
   const gain = train(g, 'cooking', 3, 7)
   const signature = dish === signatureDish(g)
@@ -520,7 +527,7 @@ const COOK_SCRIPT = defineScript('act.creative.cook', (g, choice, data) => {
     if (chance(g, 0.3)) addStat(g, 'health', -randInt(g, 2, 5))
     for (const p of eaters) addRelationship(p, -randInt(g, 1, 3))
     log(g, `I cooked ${dish}. It was a disaster.`, 'bad')
-    return result(g, 'Kitchen Disaster', `${pick(g, [`You tried to make ${dish} and set off every smoke alarm in the building.`, `Your ${dish} came out a color that food should never be.`, `You cooked ${dish}. The dog wouldn't eat it, and the dog eats socks.`])}\n\n${skill}`, '\u{1F525}', 'bad')
+    return result(g, 'Kitchen Disaster', `${pick(g, [g.year >= 1975 ? `You tried to make ${dish} and set off every smoke alarm in the building.` : `You tried to make ${dish} and smoked out the whole building.`, `Your ${dish} came out a color that food should never be.`, `You cooked ${dish}. The dog wouldn't eat it, and the dog eats socks.`])}\n\n${skill}`, '\u{1F525}', 'bad')
   }
   const good = q >= 60
   if (good) addStat(g, 'health', 1)
@@ -554,7 +561,7 @@ const cookAction: MenuAction = {
   subtitle: (g) => `Cook a meal · Cooking ${craftSkill(g, 'cooking')}% · ${yearActionsUsed(g, 'act.cook')}/${COOK_MAX} this year`,
   disabledReason: (g) => gate(g, { minAge: 8 }),
   run: (g) => {
-    if (yearActionsUsed(g, 'act.cook') >= COOK_MAX) return result(g, 'Cook', 'The kitchen has seen enough of you this year. So has the smoke alarm.', '\u{1F373}')
+    if (yearActionsUsed(g, 'act.cook') >= COOK_MAX) return result(g, 'Cook', g.year >= 1975 ? 'The kitchen has seen enough of you this year. So has the smoke alarm.' : 'The kitchen has seen enough of you this year. So has the fire brigade.', '\u{1F373}')
     const menu = dishes(g)
     scriptChoice(g, COOK_SCRIPT, 'Cook', `What are you making? Your cooking skill is ${craftSkill(g, 'cooking')}%.`, dishChoices(g, menu, 'Your signature dish. You could make it blindfolded.'), { emoji: '\u{1F373}', data: { menu } })
   },
@@ -636,8 +643,9 @@ function crowdMood(g: GameState): string {
 function stage(g: GameState): { name: string; pay: [number, number] } {
   const skill = craftSkill(g, 'comedy')
   if (skill >= 70) return { name: `a sold-out theater in ${g.character.city}`, pay: [1_500, 6_000] }
-  if (skill >= 35) return { name: `a comedy club in ${g.character.city}`, pay: [100, 500] }
-  return { name: 'an open mic night', pay: [0, 40] }
+  // Comedy clubs and open mics date from the sixties; before that, variety halls and amateur nights.
+  if (skill >= 35) return { name: g.year >= 1960 ? `a comedy club in ${g.character.city}` : `a variety hall in ${g.character.city}`, pay: [100, 500] }
+  return { name: g.year >= 1960 ? 'an open mic night' : 'an amateur night', pay: [0, 40] }
 }
 
 const STANDUP_SCRIPT = defineScript('act.creative.standup', (g, choice) => {
@@ -661,7 +669,7 @@ const STANDUP_SCRIPT = defineScript('act.creative.standup', (g, choice) => {
     if (c.hidden.fame < 80) addHidden(g, 'fame', comic ? 2 : 1)
     addStat(g, 'happiness', 8)
     log(g, `I killed it at ${where.name}.`, 'good')
-    return result(g, 'You Killed!', `${pick(g, ['The crowd laughed so hard someone fell off a bar stool.', 'You got an applause break in the middle of a joke. That never happens.', 'A heckler tried to interrupt and you destroyed him so politely he asked for a selfie afterward.'])} You played ${where.name}${pay > 0 ? ` and got paid ${money(pay)}` : ''}.\n\n${skill}`, style.emoji, 'good')
+    return result(g, 'You Killed!', `${pick(g, ['The crowd laughed so hard someone fell off a bar stool.', 'You got an applause break in the middle of a joke. That never happens.', `A heckler tried to interrupt and you destroyed him so politely he asked for ${common(g, 'smartphone') ? 'a selfie' : 'an autograph'} afterward.`])} You played ${where.name}${pay > 0 ? ` and got paid ${money(pay)}` : ''}.\n\n${skill}`, style.emoji, 'good')
   }
   if (perf >= 40) {
     const pay = earn(g, where.pay[1] > 0 ? localPrice(g, randInt(g, Math.max(1, where.pay[0]), where.pay[1]) * fameScale * 0.5) : 0)

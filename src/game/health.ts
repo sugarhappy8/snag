@@ -19,6 +19,8 @@ import {
   yearActionsUsed,
 } from './core'
 import { localeOf, localTerm } from './data/locales'
+import { ERA_DISEASES, eraCureFactor, eraDiseaseWeight, eraOldAgeFactor, eraSicknessBoost } from './history/events-medicine'
+import { hasTech, isHistorical } from './history/timeline'
 import { isIndustryLegal } from './data/markets'
 import { killCharacter } from './death'
 import { hasTalent } from './talents'
@@ -201,7 +203,19 @@ export const DISEASES: DiseaseDef[] = [
   { name: 'Syphilis', kind: 'std', sev: [10, 18], tier: 2, cure: 0.85, self: 0, ages: [16, 130], weight: 0.4, sti: true, progress: 4, symptoms: ['A painless sore appeared, followed by a rash on your palms.'] },
   { name: 'HIV', kind: 'std', sev: [15, 25], tier: 4, cure: 0.02, self: 0, ages: [16, 130], weight: 0.15, sti: true, deadly: 'HIV', progress: 3, symptoms: ["You've had a fever and swollen glands that just won't quit."] },
   { name: 'Hepatitis B', kind: 'std', sev: [10, 20], tier: 3, cure: 0.3, self: 0.05, ages: [16, 130], weight: 0.3, sti: true, deadly: 'Hepatitis B', progress: 3, symptoms: ["Your skin has taken on a yellowish tint and you're always tired."] },
+  // Illnesses of the past (history/events-medicine.ts): weight 0 here, only rolled in the years
+  // they were around, and the great pandemics only through their era popups (events/history.ts).
+  { name: 'Polio', kind: 'disease', sev: [15, 35], tier: 3, cure: 0.3, self: 0.4, ages: [1, 30], weight: 0, deadly: 'Polio', progress: 6, symptoms: ['You woke up with a fever, a stiff neck and legs that feel strangely weak.'] },
+  { name: 'Smallpox', kind: 'disease', sev: [25, 40], tier: 3, cure: 0.3, self: 0.5, ages: [0, 130], weight: 0, obvious: true, deadly: 'Smallpox', progress: 10, looks: 6, symptoms: ['A high fever was followed by a rash of blisters spreading across your face and hands.'] },
+  { name: 'Diphtheria', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.8, self: 0.3, ages: [0, 15], weight: 0, deadly: 'Diphtheria', progress: 12, symptoms: ['Your throat is so swollen and gray that it hurts to breathe.'] },
+  { name: 'Typhoid Fever', kind: 'disease', sev: [18, 32], tier: 2, cure: 0.8, self: 0.35, ages: [2, 130], weight: 0, deadly: 'Typhoid Fever', progress: 10, symptoms: ['A fever has been climbing for days and you broke out in rose-colored spots.'] },
+  { name: 'Cholera', kind: 'disease', sev: [20, 35], tier: 2, cure: 0.85, self: 0.4, ages: [0, 130], weight: 0, obvious: true, deadly: 'Cholera', progress: 15, symptoms: ['You have been violently ill since drinking water from the pump.'] },
+  { name: 'Pandemic Influenza', kind: 'disease', sev: [15, 35], tier: 2, cure: 0.5, self: 0.6, ages: [0, 130], weight: 0, obvious: true, deadly: 'Pandemic Influenza', progress: 12, symptoms: ['A fever hit you like a train, and your lips have turned a frightening shade of blue.'] },
+  { name: 'Novel Coronavirus', kind: 'disease', sev: [5, 15], tier: 2, cure: 0.85, self: 0.75, ages: [0, 130], weight: 0, obvious: true, deadly: 'Novel Coronavirus', progress: 6, symptoms: ["You've lost your sense of taste and smell, and you can't stop coughing."] },
 ]
+
+/** Catalog illnesses that only exist in historical years (rolled with their era weight). */
+const ERA_ONLY = new Set(['Polio', 'Smallpox', 'Diphtheria', 'Typhoid Fever', 'Cholera', 'Pandemic Influenza', 'Novel Coronavirus'])
 
 const DEF_BY_NAME = new Map(DISEASES.map((d) => [d.name.toLowerCase(), d]))
 
@@ -395,7 +409,9 @@ export function contractCondition(
 function announceCondition(g: GameState, cond: Condition): void {
   const def = defFor(cond)
   const label = conditionLabel(cond.name)
-  const symptom = pick(g, def.symptoms)
+  const symptom = cond.name === 'Schizophrenia' && !hasTech(g, 'tv')
+    ? 'You have been hearing voices that nobody else can hear.'
+    : pick(g, def.symptoms)
   if (cond.diagnosed) {
     if (cond.severity < 15) {
       log(g, fill(freshLine(g, 'caught', ['I came down with {name}.', 'I caught {name}.', "I've been dealing with {name}.", 'I spent a miserable week with {name}.']), { name: label }), 'bad')
@@ -409,22 +425,21 @@ function announceCondition(g: GameState, cond: Condition): void {
     log(g, freshLine(g, 'underWeather', ["I've been feeling a bit under the weather.", "I haven't been feeling like myself lately.", "Something's been off with my health.", "I've been dragging myself through the days.", "My body has been sending me strongly worded complaints."]), 'bad')
     return
   }
+  // Before the internet, people looked their symptoms up in a book (or asked Grandma).
+  const web: ChoiceOption = noInternetYet(g) ? { id: 'web', label: 'Look it up in a medical book', emoji: '\u{1F4D6}' } : { id: 'web', label: 'Search the internet', emoji: '\u{1F4BB}' }
   const choices: ChoiceOption[] =
     g.character.age < 18
-      ? [
-          { id: 'doctor', label: 'Tell my parents', emoji: '\u{1FA7A}' },
-          { id: 'web', label: 'Search the internet', emoji: '\u{1F4BB}' },
-          { id: 'ignore', label: 'Ignore it', emoji: '\u{1F648}' },
-        ]
-      : [
-          { id: 'doctor', label: 'Visit the doctor', emoji: '\u{1FA7A}' },
-          { id: 'web', label: 'Search the internet', emoji: '\u{1F4BB}' },
-          { id: 'ignore', label: 'Ignore it', emoji: '\u{1F648}' },
-        ]
+      ? [{ id: 'doctor', label: 'Tell my parents', emoji: '\u{1FA7A}' }, web, { id: 'ignore', label: 'Ignore it', emoji: '\u{1F648}' }]
+      : [{ id: 'doctor', label: 'Visit the doctor', emoji: '\u{1FA7A}' }, web, { id: 'ignore', label: 'Ignore it', emoji: '\u{1F648}' }]
   scriptChoice(g, SYMPTOMS, 'Symptoms', `You've been feeling sick lately… ${symptom}`, choices, {
     emoji: '\u{1F915}',
     data: { conditionId: cond.id },
   })
+}
+
+/** A historical year with no internet here yet (modern years always have it). */
+function noInternetYet(g: GameState): boolean {
+  return isHistorical(g.year) && !hasTech(g, 'internet')
 }
 
 function removeCondition(g: GameState, id: string): void {
@@ -443,6 +458,8 @@ function sicknessChance(g: GameState): number {
   if (c.stats.health < 50) p += (50 - c.stats.health) * 0.004
   if (c.hidden.karma < 25) p += 0.03
   if (inPrison(g)) p += 0.04
+  // Before modern medicine, infections were everywhere (0 from PRESENT_YEAR on).
+  if (isHistorical(g.year)) p += eraSicknessBoost(c.countryId, g.year, a)
   return Math.min(0.45, p)
 }
 
@@ -460,13 +477,25 @@ function eligibleDiseases(g: GameState): DiseaseDef[] {
     if (c.age < d.ages[0] || c.age > d.ages[1]) return false
     if (d.gender && d.gender !== c.gender) return false
     if (d.sti && (!hadPartners || c.age < 16)) return false
+    if (ERA_ONLY.has(d.name) && eraOnlyWeight(g, d.name) <= 0) return false
     return !c.conditions.some((x) => x.name === d.name)
   })
 }
 
+/** Weight of an illness of the past this year (0 in modern years and once vaccinated). */
+function eraOnlyWeight(g: GameState, name: string): number {
+  if (!isHistorical(g.year)) return 0
+  if (name === 'Polio' && g.flags['history.polioVaccinated'] === true) return 0
+  const era = ERA_DISEASES.find((d) => d.name === name)
+  return era ? era.weight(g.character.countryId, g.year) : 0
+}
+
 function diseaseWeight(g: GameState, d: DiseaseDef): number {
   const c = g.character
+  if (ERA_ONLY.has(d.name)) return eraOnlyWeight(g, d.name) * ageWeight(d, c.age)
   let w = d.weight * ageWeight(d, c.age)
+  // Vaccines and discoveries changed what people caught (exactly 1 in modern years).
+  if (isHistorical(g.year)) w *= eraDiseaseWeight(c.countryId, g.year, d.name)
   const idle = c.age > 25 && Object.values(g.counters).reduce((s, n) => s + n, 0) < 10
   if (d.odd && idle) w *= 3
   // Mosquito- and tick-borne illnesses follow the climate: no malaria in Norway, no Lyme in the Sahara.
@@ -745,9 +774,23 @@ const SYMPTOMS = defineScript('health.symptoms', (g, choice, data) => {
   }
   if (choice === 'web') {
     const real = cond ? conditionLabel(cond.name) : 'nothing serious'
-    const decoys = DISEASES.filter((d) => d.name !== cond?.name && !d.sti && d.ages[0] <= g.character.age).map((d) => conditionLabel(d.name))
+    const decoys = DISEASES.filter((d) => d.name !== cond?.name && !d.sti && d.ages[0] <= g.character.age && (!ERA_ONLY.has(d.name) || eraOnlyWeight(g, d.name) > 0)).map((d) => conditionLabel(d.name))
     const guesses = [chance(g, 0.5) ? real : pick(g, decoys), pick(g, decoys), pick(g, decoys)]
     const unique = [...new Set(guesses)]
+    if (noInternetYet(g)) {
+      notice(
+        g,
+        'Home Diagnosis',
+        pick(g, [
+          `According to a dusty medical encyclopedia, you either have ${listJoin(unique)}. Very reassuring.`,
+          `After an evening with the family medical book, you've concluded you have ${listJoin(unique)}. Possibly all at once.`,
+          `The medical book says it's either ${listJoin(unique)}. Your grandmother suggests a mustard plaster.`,
+        ]),
+        { emoji: '\u{1F4D6}' },
+      )
+      log(g, freshLine(g, 'readSymptoms', ['I looked up my symptoms in a medical book and scared myself half to death.', 'I diagnosed myself with the family medical encyclopedia. It did not go well.', 'I asked the whole family about my symptoms and got five different diagnoses.']))
+      return
+    }
     notice(
       g,
       'Internet Diagnosis',
@@ -870,7 +913,7 @@ function eyesight(g: GameState): void {
             g,
             EYE_EXAM,
             'Eye Exam',
-            `Your ${parentWord(parent)} noticed you squinting at the TV and took you to the optometrist for an eye exam. The optometrist points at a chart full of tiny letters. What will you do?`,
+            `Your ${parentWord(parent)} noticed you squinting at ${hasTech(g, 'tv') ? 'the TV' : 'a book'} and took you to the optometrist for an eye exam. The optometrist points at a chart full of tiny letters. What will you do?`,
             [
               { id: 'honest', label: 'Read the chart honestly', emoji: '\u{1F440}' },
               { id: 'squint', label: 'Squint really hard', emoji: '\u{1F611}' },
@@ -1156,7 +1199,9 @@ export function checkDeath(g: GameState): void {
       }
     }
   }
-  if (chance(g, oldAgeHazard(c.age, c.stats.health, c.stats.happiness))) {
+  const hazard = oldAgeHazard(c.age, c.stats.health, c.stats.happiness)
+  // Shorter lives before modern medicine, gently (exactly today's odds from PRESENT_YEAR on).
+  if (chance(g, isHistorical(g.year) ? Math.min(0.9, hazard * eraOldAgeFactor(c.countryId, g.year)) : hazard)) {
     killCharacter(g, 'Old Age')
     return
   }
@@ -1372,6 +1417,8 @@ const TREAT = defineScript('health.doctor.treat', (g, choice, data) => {
   if (cost > 0 && !spend(g, cost)) return tooBroke(g, `the treatment for ${conditionLabel(cond.name)}`, cost)
   const def = defFor(cond)
   let p = def.cure * qualityFactor(d.quality ?? 3)
+  // No antibiotics before the 1940s, weaker cancer care for decades (1 in modern years).
+  if (isHistorical(g.year)) p *= eraCureFactor(g.character.countryId, g.year, def.name, def.cancer === true)
   if (cond.kind === 'mental') p *= 0.6
   if (def.cancer) p *= Math.max(0.4, 1 - Math.max(0, cond.severity - 50) / 100)
   attemptCure(g, cond, p, doc)

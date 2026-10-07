@@ -8,33 +8,54 @@
 // deterministic market engine in invest/engine.ts. Taxes: dividends, coupons and interest are
 // taxable income (earnIncome, taxed by yearlyFinance); realized capital gains are taxed as income
 // too, right away when you sell (taxAdditionalIncome), with losses carried forward.
-import { addMoney, count, earnIncome, formatMoney, inPrison, log, notice, shortMoney, spend } from './core'
+//
+// History: a life lived in the past trades in the past. The engine follows real market history
+// (the 1929 crash, the dot-com bust, 2008...), companies wear the names of their era, index
+// funds, REITs and crypto only appear when they were invented, exchanges close in wars and
+// vanish after revolutions, gold was illegal to hoard in some places, and savings and bonds pay
+// the nominal rates of the day while inflation eats them (engine money is constant dollars).
+import { currencyOf } from './data/currencies'
+import { timelineFamily } from './timeMachine'
+import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
 import { incomeTax, taxAdditionalIncome } from './finance'
+import { exchangeClosedReason, exchangeState, goldBan, investingBlocked, marketNote } from './history/markets'
+import { brokerEraMult, reitSince } from './invest/era'
 import {
   bankCrisisChance,
   bondRate,
   coinDef,
+  coinListed,
+  coinMarketCap,
   companyDef,
   countryStress,
   cryptoYear,
   defaultChance,
   depositInsurance,
+  eraIdentity,
   exchangeByKey,
+  exchangeExpropriated,
   exchangeInfo,
+  exchangeName,
+  exchangeStatus,
   exchangeYear,
   expectedDepreciation,
   fundFee,
+  fundName,
   fxYear,
   goldHedge,
   goldYear,
   hasOwnExchange,
+  indexName,
   indexYield,
+  inflationRate,
+  isHistoryYear,
+  listedCoins,
   localWords,
   pennyDef,
+  policyRate,
   reitYield,
   savingsRate,
-  SECTORS,
   termRate,
   type ExInfo,
   type ExYear,
@@ -113,15 +134,11 @@ function change(x: number): string {
 
 function rateText(r: number): string {
   const v = Math.max(0, r) * 100
-  return `${v >= 10 ? Math.round(v) : Math.round(v * 10) / 10}%`
+  return `${v >= 10 ? Math.round(v).toLocaleString('en-US') : Math.round(v * 10) / 10}%`
 }
 
 function priceText(p: number): string {
-  if (!Number.isFinite(p) || p <= 0) return '$0'
-  if (p >= 1_000) return formatMoney(p)
-  if (p >= 1) return `$${p.toFixed(2)}`
-  if (p >= 0.01) return `$${p.toFixed(3)}`
-  return `$${p.toPrecision(2)}`
+  return formatPrice(p)
 }
 
 function unitsText(u: number): string {
@@ -150,7 +167,7 @@ function isType(v: string): v is InvestType {
 
 /** The family's market seed: stays the same across generations so heirs see the same market. */
 function fam(g: GameState): string {
-  return (g.lifeId || 'life').replace(/-g\d+$/, '')
+  return timelineFamily(g, (g.lifeId || 'life').replace(/-g\d+$/, ''))
 }
 
 /** The first year the family's market history starts from. */
@@ -169,6 +186,43 @@ function theCountry(id: string): string {
   const n = countryName(id)
   return /^(United|Netherlands|Philippines|Bahamas|Czech|Dominican|Central African|Democratic|Republic|Maldives|Gambia|Solomon|Marshall)/.test(n) ? `the ${n}` : n
 }
+
+// ---------------------------------------------------------------------------
+// What a year's world lets you trade (history: closed exchanges, banned gold, no crypto yet)
+
+/** Why the local stock market can't be traded this year (null when it can). */
+function stockMarketBlock(g: GameState, info: ExInfo): string | null {
+  const y = g.year
+  const blocked = investingBlocked(g.character.countryId, y)
+  if (blocked) return blocked
+  const status = exchangeStatus(info, y)
+  if (status === 'open') return null
+  const name = exchangeName(info, y)
+  if (status === 'closed') {
+    const why = exchangeClosedReason(info.home, y)
+    return `The ${name} is closed${why ? `: ${why}` : '.'} Nobody can trade until it reopens.`
+  }
+  if (exchangeExpropriated(info, y) || y >= exchangeState(info.home, y).opened) return `There is no stock market in ${theCountry(info.home)} anymore: the state took over the companies.`
+  return `${countryName(info.home)} doesn't have a stock exchange yet.`
+}
+
+/** True when there's no stock market to trade on at all this year (none yet, abolished, or banned). */
+function noStockMarket(g: GameState, info: ExInfo): boolean {
+  return !!investingBlocked(g.character.countryId, g.year) || exchangeStatus(info, g.year) === 'none'
+}
+
+/** Why gold can't be bought here this year (null when it can). */
+function goldBlock(g: GameState): string | null {
+  const ban = goldBan(g.character.countryId, g.year)
+  return ban ? ban.note : investingBlocked(g.character.countryId, g.year)
+}
+
+/** Why a listed property trust can't be bought this year (null when it can). */
+function reitBlock(g: GameState, info: ExInfo): string | null {
+  const since = reitSince(info.home)
+  return isHistoryYear(g.year) && g.year < since ? `Listed property trusts don't exist here yet (the first ones arrive around ${since}).` : null
+}
+
 
 // ---------------------------------------------------------------------------
 // The Investing talent's gut feeling (invest/instinct.ts): purple hints on what looks set to rise
@@ -281,8 +335,10 @@ function brokerMin(countryId: string): number {
 
 function feePlan(g: GameState, type: InvestType): FeePlan {
   const cid = g.character.countryId
-  const rate = brokerRate(cid)
-  const min = brokerMin(cid)
+  // Brokers charged fixed commissions until the mid-1970s, and a lot more than today until online trading.
+  const era = brokerEraMult(g.year)
+  const rate = Math.min(0.025, Math.round(brokerRate(cid) * era * 10000) / 10000)
+  const min = Math.round(brokerMin(cid) * Math.min(3, era))
   switch (type) {
     case 'savings':
       return { rate: 0, min: 0, label: 'No fees' }
@@ -387,12 +443,12 @@ interface Quote {
   details: Record<string, Json>
 }
 
-function exDetails(info: ExInfo): Record<string, Json> {
+function exDetails(info: ExInfo, year: number): Record<string, Json> {
   return {
     exKey: info.key,
     exchange: info.ex.code,
-    exName: info.ex.name,
-    market: info.ex.index,
+    exName: exchangeName(info, year),
+    market: indexName(info, year),
     exVol: info.ex.volatility,
     exDrift: info.ex.drift,
     exHome: info.home,
@@ -414,23 +470,25 @@ function holdingExchange(a: Asset): ExInfo {
   }
 }
 
-function stockQuote(info: ExInfo, s: SecYear, penny: boolean): Quote {
+function stockQuote(info: ExInfo, s: SecYear, penny: boolean, year: number, blocked: string | null): Quote {
   const def = penny ? pennyDef(info, s.slot, s.gen) : companyDef(info, s.slot, s.gen)
-  const sector = def.sector === 'penny' ? 'Penny stock' : SECTORS[def.sector].label
+  // The company as it looked that year (a 1925 'tech' company makes tabulating machines).
+  const era = eraIdentity(def, year)
+  const sector = era.label
   return {
     type: penny ? 'penny' : 'stock',
     secId: def.id,
-    name: def.name,
+    name: era.name,
     symbol: def.symbol,
-    emoji: penny ? TYPE_EMOJI.penny : def.sector === 'penny' ? TYPE_EMOJI.stock : SECTORS[def.sector].emoji,
+    emoji: penny ? TYPE_EMOJI.penny : era.emoji,
     price: s.price,
     risk: def.risk,
     yield: def.dy,
     ret: s.event === 'ipo' ? null : s.ret,
     sector,
-    blurb: def.blurb,
-    blocked: null,
-    details: { type: penny ? 'penny' : 'stock', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.dy, sector, blurb: def.blurb, slot: s.slot, gen: s.gen, beta: def.beta, vol: def.idio, country: info.home, ...exDetails(info) },
+    blurb: era.blurb,
+    blocked,
+    details: { type: penny ? 'penny' : 'stock', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.dy, sector, blurb: era.blurb, slot: s.slot, gen: s.gen, beta: def.beta, vol: def.idio, country: info.home, ...exDetails(info, year) },
   }
 }
 
@@ -454,8 +512,8 @@ function defaultRiskLabel(p: number): string {
   return 'very high'
 }
 
-function bondRisk(countryId: string): number {
-  return Math.max(1, Math.min(5, 1 + Math.round(countryStress(countryId) * 4)))
+function bondRisk(countryId: string, year?: number): number {
+  return Math.max(1, Math.min(5, 1 + Math.round(countryStress(countryId, year) * 4)))
 }
 
 /** A quote with any market shock applied (a ban, a state contract, a presidential endorsement...). */
@@ -481,33 +539,43 @@ interface Listing {
 
 function listing(g: GameState): Listing {
   const cid = g.character.countryId
+  const y = g.year
   const m = localMarket(g)
   const info = exchangeInfo(cid)
   const f = fam(g)
   const an = anchor(g)
-  const ey = exchangeYear(f, an, info, g.year)
+  const ey = exchangeYear(f, an, info, y)
   const country = countryName(cid)
   const homeWord = localWords(info.home)[0]
-  const stocks = ey.stocks.map((s) => withShock(g, stockQuote(info, s, false), shockFactor(g, companyDef(info, s.slot, s.gen).id, g.year), shockFactor(g, companyDef(info, s.slot, s.gen).id, g.year - 1)))
-  const pennies = ey.pennies.map((s) => stockQuote(info, s, true))
+  const index = indexName(info, y)
+  const marketBlock = stockMarketBlock(g, info)
+  const blocked = investingBlocked(cid, y)
+  const stocks = ey.stocks.map((s) => withShock(g, stockQuote(info, s, false, y, marketBlock), shockFactor(g, companyDef(info, s.slot, s.gen).id, y), shockFactor(g, companyDef(info, s.slot, s.gen).id, y - 1)))
+  const pennies = ey.pennies.map((s) => stockQuote(info, s, true, y, marketBlock))
   const fundId = ey.fund.id
+  // Before index funds existed (1976 in the US), the closest thing was a pricey investment trust.
+  const fn = fundName(info, y)
+  const realFund = !fn.trust
+  const fee = fundFee(info, y)
   const fund: Quote = {
     type: 'index',
     secId: fundId,
-    name: `${info.ex.index} Index Fund`,
+    name: fn.name,
     symbol: `${info.ex.code.replace(/[^A-Z0-9]/gi, '').slice(0, 4).toUpperCase()}X`,
     emoji: TYPE_EMOJI.index,
     price: ey.fund.price,
     risk: info.ex.volatility >= 0.3 ? 3 : 2,
     yield: indexYield(info),
     ret: ey.year === an ? null : ey.fund.ret,
-    sector: 'Index fund',
-    blurb: `Owns every company in the ${info.ex.index} in one go. Yearly fee: ${rateText(fundFee(info))}.`,
-    blocked: null,
+    sector: realFund ? 'Index fund' : 'Investment trust',
+    blurb: realFund
+      ? `Owns every company in the ${index} in one go. Yearly fee: ${rateText(fee)}.`
+      : `Owns shares in most of the big companies on the ${exchangeName(info, y)}. Index funds haven't been invented yet, so a manager charges ${rateText(fee)} a year to do roughly the same thing.`,
+    blocked: marketBlock,
     details: {},
   }
-  fund.details = { type: 'index', secId: fundId, symbol: fund.symbol, risk: fund.risk, yield: fund.yield, sector: fund.sector, blurb: fund.blurb, country: info.home, ...exDetails(info) }
-  Object.assign(fund, withShock(g, fund, indexShockFactor(g, info.key, g.year), indexShockFactor(g, info.key, g.year - 1)))
+  fund.details = { type: 'index', secId: fundId, symbol: fund.symbol, risk: fund.risk, yield: fund.yield, sector: fund.sector, blurb: fund.blurb, country: info.home, ...exDetails(info, y) }
+  Object.assign(fund, withShock(g, fund, indexShockFactor(g, info.key, y), indexShockFactor(g, info.key, y - 1)))
   const reitName = `${homeWord} Property Trust`
   const reit: Quote = {
     type: 'reit',
@@ -517,35 +585,36 @@ function listing(g: GameState): Listing {
     emoji: TYPE_EMOJI.reit,
     price: ey.reit.price,
     risk: 3,
-    yield: reitYield(info),
+    yield: reitYield(info, y),
     ret: ey.year === an ? null : ey.reit.ret,
     sector: 'Real estate',
     blurb: `Owns malls, offices and apartment blocks in ${theCountry(info.home)} and pays out most of the rent. It rises and falls with local house prices.`,
-    blocked: null,
+    blocked: marketBlock ?? reitBlock(g, info),
     details: {},
   }
-  reit.details = { type: 'reit', secId: reit.secId, symbol: reit.symbol, risk: reit.risk, yield: reit.yield, sector: reit.sector, blurb: reit.blurb, country: info.home, ...exDetails(info) }
+  reit.details = { type: 'reit', secId: reit.secId, symbol: reit.symbol, risk: reit.risk, yield: reit.yield, sector: reit.sector, blurb: reit.blurb, country: info.home, ...exDetails(info, y) }
 
-  const br = bondRate(cid)
-  const pDef = defaultChance(cid)
+  const br = bondRate(cid, y)
+  const pDef = defaultChance(cid, y)
   const bond: Quote = {
     type: 'bond',
-    secId: `bond:${cid}:${g.year}`,
-    name: `${country} Government Bond (due ${g.year + BOND_YEARS})`,
+    secId: `bond:${cid}:${y}`,
+    name: `${country} Government Bond (due ${y + BOND_YEARS})`,
     symbol: `${cid.toUpperCase()}10Y`,
     emoji: TYPE_EMOJI.bond,
     price: 1_000,
-    risk: bondRisk(cid),
+    risk: bondRisk(cid, y),
     yield: br,
     ret: null,
     sector: 'Government bond',
-    blurb: `A loan to the government of ${theCountry(cid)}, paid back in the local currency (${m.currencyName}). Default risk: ${defaultRiskLabel(pDef)}.`,
+    blurb: `A loan to the government of ${theCountry(cid)}, paid back in the local currency (${currencyOf(g.character.countryId, g.year).name}). Default risk: ${defaultRiskLabel(pDef)}.`,
     blocked: null,
     details: {},
   }
-  bond.details = { type: 'bond', secId: bond.secId, symbol: bond.symbol, risk: bond.risk, yield: br, sector: bond.sector, blurb: bond.blurb, country: cid, currency: m.currencyName, maturity: g.year + BOND_YEARS }
+  bond.details = { type: 'bond', secId: bond.secId, symbol: bond.symbol, risk: bond.risk, yield: br, sector: bond.sector, blurb: bond.blurb, country: cid, currency: currencyOf(g.character.countryId, g.year).name, maturity: y + BOND_YEARS }
   const bank = bankName(cid)
-  const sr = savingsRate(cid)
+  const sr = savingsRate(cid, y)
+  const insured = depositInsurance(cid, y)
   const savings: Quote = {
     type: 'savings',
     secId: `savings:${cid}`,
@@ -553,29 +622,29 @@ function listing(g: GameState): Listing {
     symbol: '',
     emoji: TYPE_EMOJI.savings,
     price: 1,
-    risk: Math.max(1, Math.min(4, 1 + Math.round(countryStress(cid) * 3))),
+    risk: Math.max(1, Math.min(4, 1 + Math.round(countryStress(cid, y) * 3))),
     yield: sr,
     ret: null,
     sector: 'Savings',
-    blurb: `Interest follows the central bank's rate. Withdraw anytime. Deposits are insured up to ${formatMoney(depositInsurance(cid))}.`,
+    blurb: `Interest follows the central bank's rate. Withdraw anytime. ${insured > 0 ? `Deposits are insured up to ${formatMoney(insured)}.` : "Deposits aren't insured: if the bank fails, you join the queue with everyone else."}`,
     blocked: null,
     details: {},
   }
-  savings.details = { type: 'savings', product: 'savings', secId: savings.secId, symbol: '', risk: savings.risk, yield: sr, sector: 'Savings', blurb: savings.blurb, country: cid, bank, currency: m.currencyName }
-  const tr = termRate(cid)
+  savings.details = { type: 'savings', product: 'savings', secId: savings.secId, symbol: '', risk: savings.risk, yield: sr, sector: 'Savings', blurb: savings.blurb, country: cid, bank, currency: currencyOf(g.character.countryId, g.year).name }
+  const tr = termRate(cid, y)
   const term: Quote = {
     ...savings,
-    secId: `term:${cid}:${g.year}`,
+    secId: `term:${cid}:${y}`,
     name: `${TERM_YEARS}-Year Term Deposit (${bank})`,
     yield: tr,
     sector: 'Term deposit',
     blurb: `A fixed ${rateText(tr)} for ${TERM_YEARS} years. Take the money out early and you give back a year of interest.`,
     details: {},
   }
-  term.details = { ...savings.details, product: 'term', secId: term.secId, yield: tr, sector: 'Term deposit', blurb: term.blurb, maturity: g.year + TERM_YEARS }
+  term.details = { ...savings.details, product: 'term', secId: term.secId, yield: tr, sector: 'Term deposit', blurb: term.blurb, maturity: y + TERM_YEARS }
 
-  const gy = goldYear(f, an, g.year)
-  const hedge = goldHedge(cid)
+  const gy = goldYear(f, an, y)
+  const hedge = goldHedge(cid, y)
   const gold: Quote = {
     type: 'gold',
     secId: `gold:${cid}`,
@@ -585,20 +654,21 @@ function listing(g: GameState): Listing {
     price: gy.price,
     risk: 2,
     yield: 0,
-    ret: g.year === an ? null : gy.ret,
+    ret: y === an ? null : gy.ret,
     sector: 'Precious metals',
     blurb:
       hedge > 0
-        ? `Priced in dollars worldwide, so it doesn't care when the ${m.currencyName} loses value. With inflation here at ${rateText(m.inflation)}, local gold has been beating the world price by about ${rateText(hedge)} a year.`
+        ? `Priced in dollars worldwide, so it doesn't care when the ${currencyOf(g.character.countryId, g.year).name} loses value. With inflation here at ${rateText(m.inflation)}, local gold has been beating the world price by about ${rateText(hedge)} a year.`
         : 'Priced in dollars worldwide. It pays nothing, but it tends to hold up when stock markets panic.',
-    blocked: null,
+    blocked: goldBlock(g),
     details: {},
   }
   gold.details = { type: 'gold', secId: gold.secId, symbol: 'XAU', risk: 2, yield: 0, sector: gold.sector, blurb: gold.blurb, country: cid }
 
-  const cy = cryptoYear(f, an, g.year)
-  const banned = CRYPTO_BANNED.has(cid) ? `Crypto trading is banned in ${theCountry(cid)}.` : null
-  const crypto = cy.coins.map((c): Quote => {
+  const cy = cryptoYear(f, an, y)
+  const banned = blocked ?? (CRYPTO_BANNED.has(cid) ? `Crypto trading is banned in ${theCountry(cid)}.` : null)
+  // Only coins that exist this year (none before 2009; later coins appear in their eras).
+  const crypto = listedCoins(cy).map((c): Quote => {
     const def = coinDef(c.slot, c.gen)
     return withShock(g, {
       type: 'crypto',
@@ -609,12 +679,12 @@ function listing(g: GameState): Listing {
       price: c.price,
       risk: def.risk,
       yield: def.yield,
-      ret: c.event === 'ipo' || g.year === an ? null : c.ret,
+      ret: c.event === 'ipo' || y === an ? null : c.ret,
       sector: def.stable ? 'Stablecoin' : 'Cryptocurrency',
       blurb: def.blurb,
       blocked: banned,
       details: { type: 'crypto', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.yield, sector: def.stable ? 'Stablecoin' : 'Cryptocurrency', blurb: def.blurb, slot: c.slot, gen: c.gen, country: cid },
-    }, shockFactor(g, def.id, g.year), shockFactor(g, def.id, g.year - 1))
+    }, shockFactor(g, def.id, y), shockFactor(g, def.id, y - 1))
   })
   return { info, year: ey, stocks, pennies, fund, reit, bond, savings, term, gold, crypto }
 }
@@ -657,7 +727,7 @@ function holdingQuote(g: GameState, a: Asset): Quote {
         ? `Crypto trading is banned in ${theCountry(g.character.countryId)}.`
         : closedIssue(a)
           ? 'This issue is closed to new money. Buy a new one instead.'
-          : null,
+          : holdingMarketBlock(g, a),
     closed: closedIssue(a),
     details: { ...a.details },
   }
@@ -674,6 +744,47 @@ function tradeBlock(g: GameState): string | null {
   return null
 }
 
+/** Exchange-traded holdings can't be traded while their exchange is shut. */
+function isListed(t: InvestType): boolean {
+  return t === 'stock' || t === 'penny' || t === 'index' || t === 'reit'
+}
+
+/** Why this holding's market is shut this year (null when it trades). */
+function holdingMarketBlock(g: GameState, a: Asset): string | null {
+  if (!isListed(typeOf(a))) return null
+  const info = holdingExchange(a)
+  const status = exchangeStatus(info, g.year)
+  if (status === 'open') return null
+  if (status === 'closed') {
+    const why = exchangeClosedReason(info.home, g.year)
+    return `The ${exchangeName(info, g.year)} is closed${why ? `: ${why}` : '.'} Nobody can trade until it reopens.`
+  }
+  return 'There is no stock market to trade on right now.'
+}
+
+/** Why a holding can't be sold right now (null when it can). */
+function sellBlock(g: GameState, a: Asset): string | null {
+  return tradeBlock(g) ?? holdingMarketBlock(g, a)
+}
+
+/** Most of a coin you can buy in a historical year: the early crypto market was tiny. */
+function cryptoRoom(g: GameState, q: Quote): number | null {
+  if (q.type !== 'crypto' || !isHistoryYear(g.year)) return null
+  const cap = coinMarketCap(Math.round(num(q.details.slot, -1)), g.year)
+  if (cap === null) return null
+  const raw = g.flags.cryptoBuys
+  const rec = raw && typeof raw === 'object' && !Array.isArray(raw) && raw.year === g.year ? raw : null
+  const used = rec ? num(rec[q.secId]) : 0
+  return Math.max(0, Math.floor(cap * 0.02 - used))
+}
+
+function noteCryptoBuy(g: GameState, secId: string, amount: number): void {
+  const raw = g.flags.cryptoBuys
+  const rec: Record<string, Json> = raw && typeof raw === 'object' && !Array.isArray(raw) && raw.year === g.year ? raw : { year: g.year }
+  rec[secId] = num(rec[secId]) + Math.max(0, Math.round(amount))
+  g.flags.cryptoBuys = rec
+}
+
 function buyBlock(g: GameState, q: Quote): string | null {
   const b = tradeBlock(g)
   if (b) return b
@@ -681,6 +792,8 @@ function buyBlock(g: GameState, q: Quote): string | null {
   const min = minTrade(g)
   if (g.character.money < min) return `You need at least ${formatMoney(min)} in the bank to invest.`
   if (!(q.price > 0)) return 'This security is not trading right now.'
+  const room = cryptoRoom(g, q)
+  if (room !== null && room < min) return `Hardly anyone trades ${q.name} yet: the whole market is a few hobbyists on internet forums, and nobody is selling more this year.`
   return null
 }
 
@@ -705,6 +818,11 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   }
   if (amt > g.character.money) {
     notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank.`, { emoji: '💸', tone: 'bad' })
+    return false
+  }
+  const room = cryptoRoom(g, q)
+  if (room !== null && amt > room) {
+    notice(g, 'Not Enough Sellers', `The ${q.name} market is still tiny: about ${formatMoney(room)} more is all anyone will sell you this year.`, { emoji: '🪙' })
     return false
   }
   const fee = feeFor(feePlan(g, q.type), amt)
@@ -743,6 +861,7 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   }
   count(g, 'investTrades')
   count(g, 'moneyInvested', amt)
+  if (room !== null) noteCryptoBuy(g, q.secId, amt)
   const what = q.type === 'savings' ? `put ${formatMoney(invested)} into a ${q.sector.toLowerCase()}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
   const feeLine = fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''
   notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine} Your position is now worth ${formatMoney(a.value)}.`, { emoji: q.emoji, tone: 'good' })
@@ -793,7 +912,7 @@ function gainLine(r: Realized): string {
 export function sellHolding(g: GameState, assetId: string, amount: number | 'all'): boolean {
   const a = g.assets.find((x) => x.id === assetId && x.kind === 'investment')
   if (!a) return false
-  const block = tradeBlock(g)
+  const block = sellBlock(g, a)
   if (block) {
     notice(g, 'Order Rejected', block, { emoji: '🚫' })
     return false
@@ -821,8 +940,13 @@ export function liquidatePortfolio(g: GameState): boolean {
     notice(g, 'Order Rejected', block, { emoji: '🚫' })
     return false
   }
-  const list = investmentHoldings(g)
-  if (!list.length) return false
+  // Holdings on a shut exchange stay put until it reopens.
+  const list = investmentHoldings(g).filter((a) => !holdingMarketBlock(g, a))
+  const stuck = investmentHoldings(g).length - list.length
+  if (!list.length) {
+    if (stuck) notice(g, 'Order Rejected', 'Your stock market is shut, so none of your holdings can be sold right now.', { emoji: '🚫' })
+    return false
+  }
   let gross = 0
   let fees = 0
   let net = 0
@@ -838,7 +962,8 @@ export function liquidatePortfolio(g: GameState): boolean {
     tax += r.realized.tax
   }
   const result = gain > 0 ? `Overall profit: ${formatMoney(gain)}${tax > 0 ? `, and ${formatMoney(tax)} of tax on it` : ''}.` : gain < 0 ? `Overall loss: ${formatMoney(-gain)}, which will offset tax on future profits.` : 'You broke even.'
-  notice(g, 'Portfolio Liquidated', `You sold everything for ${formatMoney(gross)}. Fees and penalties: ${formatMoney(fees)}. ${formatMoney(net)} landed in your bank account. ${result}`, { emoji: '💰', tone: gain >= 0 ? 'good' : 'bad' })
+  const stuckLine = stuck ? ` ${stuck === 1 ? 'One holding is' : `${stuck} holdings are`} stuck on a closed exchange.` : ''
+  notice(g, 'Portfolio Liquidated', `You sold ${stuck ? 'what you could' : 'everything'} for ${formatMoney(gross)}. Fees and penalties: ${formatMoney(fees)}. ${formatMoney(net)} landed in your bank account. ${result}${stuckLine}`, { emoji: '💰', tone: gain >= 0 ? 'good' : 'bad' })
   log(g, 'I sold my entire investment portfolio.', gain >= 0 ? 'good' : 'bad')
   return true
 }
@@ -870,11 +995,31 @@ function portfolioStats(g: GameState): PortfolioStats {
   return { value, basis: cost, year: start > 0 ? moved / start : null }
 }
 
+/**
+ * An index's move the way the news reported it: in past years the nominal change of the day (when
+ * inflation was tame), with the real change alongside when inflation made a difference.
+ */
+function reportedMove(info: ExInfo, year: number, ret: number): { pct: number; real: number | null; afterInflation: boolean } {
+  if (!isHistoryYear(year)) return { pct: ret, real: null, afterInflation: false }
+  const infl = inflationRate(info.home, year)
+  if (!(infl < 0.25)) return { pct: ret, real: null, afterInflation: true }
+  const nominal = (1 + ret) * (1 + infl) - 1
+  return { pct: nominal, real: Math.abs(nominal - ret) >= 0.03 ? ret : null, afterInflation: false }
+}
+
+/** '12.3%' / '12.3% after inflation' / '10.1% (13% after inflation)'. */
+function moveText(m: { pct: number; real: number | null; afterInflation: boolean }, digits = 1): string {
+  if (m.afterInflation) return `${absPct(m.pct, digits)} after inflation`
+  return m.real !== null ? `${absPct(m.pct, digits)} (${pct(m.real, 0)} after inflation)` : absPct(m.pct, digits)
+}
+
 function marketLine(info: ExInfo, ey: ExYear): string {
-  const r = ey.index.ret
+  const m = reportedMove(info, ey.year, ey.index.ret)
+  const r = m.pct
   const verb = r >= 0.005 ? 'up' : r <= -0.005 ? 'down' : 'flat'
-  const amount = verb === 'flat' ? '' : ` ${absPct(r, 1)}`
-  return `${ey.index.regime.emoji} ${info.ex.index} ${verb}${amount} this year · ${ey.index.regime.label}`
+  const amount = verb === 'flat' ? '' : ` ${moveText(m)}`
+  if (isHistoryYear(ey.year) && exchangeStatus(info, ey.year) === 'none') return `🚫 No stock market trades here this year`
+  return `${ey.index.regime.emoji} ${indexName(info, ey.year)} ${verb}${amount} this year · ${ey.index.regime.label}`
 }
 
 function historyLine(g: GameState, info: ExInfo): string {
@@ -882,7 +1027,11 @@ function historyLine(g: GameState, info: ExInfo): string {
   const an = anchor(g)
   const from = Math.max(an + 1, g.year - 4)
   const parts: string[] = []
-  for (let y = from; y <= g.year; y++) parts.push(`'${String(y).slice(-2)} ${pct(exchangeYear(f, an, info, y).index.ret, 0)}`)
+  for (let y = from; y <= g.year; y++) {
+    if (isHistoryYear(y) && exchangeStatus(info, y) === 'none') continue
+    const m = reportedMove(info, y, exchangeYear(f, an, info, y).index.ret)
+    parts.push(`'${String(y).slice(-2)} ${pct(m.pct, 0)}`)
+  }
   return parts.length ? `Recent years: ${parts.join(' · ')}` : ''
 }
 
@@ -890,14 +1039,32 @@ function localNote(g: GameState): string {
   const cid = g.character.countryId
   const m = localMarket(g)
   const info = exchangeInfo(cid)
+  const y = g.year
   const lines: string[] = []
-  if (!hasOwnExchange(cid)) lines.push(`${countryName(cid)} has no stock exchange of its own, so your broker trades on the ${info.ex.name} (${info.ex.code}).`)
-  else lines.push(`You trade on the ${info.ex.name} (${info.ex.code}).`)
-  lines.push(`Policy rate ${rateText(m.interestRate)}, inflation ${rateText(m.inflation)}.`)
+  const exName = exchangeName(info, y)
+  if (!hasOwnExchange(cid)) lines.push(`${countryName(cid)} has no stock exchange of its own, so your broker trades on the ${exName} (${info.ex.code}).`)
+  else lines.push(`You trade on the ${exName} (${info.ex.code}).`)
+  const block = stockMarketBlock(g, info)
+  if (block) lines.push(block)
+  const rate = policyRate(cid, y)
+  const infl = inflationRate(cid, y)
+  lines.push(`Policy rate ${rateText(rate)}, inflation ${inflationText(infl)}.`)
+  if (isHistoryYear(y)) {
+    if (infl >= 0.5) lines.push(`Prices are rising so fast that money in the bank loses value by the week.`)
+    else if (rate < infl) lines.push('Interest here is below inflation, so cash in the bank slowly loses buying power.')
+    else if (rate - infl >= 0.04) lines.push('Interest rates are well above inflation: a good time to be a saver, a hard one to be a borrower.')
+    return lines.join(' ')
+  }
   const dep = expectedDepreciation(cid)
-  if (dep >= 0.05) lines.push(`The ${m.currencyName} loses about ${rateText(dep)} a year against the dollar, so local bonds and savings shrink in dollar terms.`)
+  if (dep >= 0.05) lines.push(`The ${currencyOf(g.character.countryId, g.year).name} loses about ${rateText(dep)} a year against the dollar, so local bonds and savings shrink in dollar terms.`)
   else if (m.interestRate < m.inflation) lines.push('Interest here is below inflation, so cash in the bank slowly loses buying power.')
   return lines.join(' ')
+}
+
+/** Inflation as text, readable even in a hyperinflation. */
+function inflationText(infl: number): string {
+  if (!Number.isFinite(infl) || infl >= 1000) return 'astronomical (prices double every few days)'
+  return infl < 0 ? `${rateText(-infl)} deflation` : rateText(infl)
 }
 
 const TAX_NOTE = 'Dividends, coupons and interest are taxed as income each year. Profits are taxed when you sell, at your income tax rate; losses carry forward against future profits.'
@@ -932,7 +1099,8 @@ function buyAction(g: GameState, q: Quote, held: boolean): MenuAction {
     disabledReason: (gg) => buyBlock(gg, q),
     input: {
       kind: 'number',
-      label: `How many dollars? You have ${formatMoney(cash)}.`,
+      money: true,
+      label: `How much? You have ${formatMoney(cash)}.`,
       placeholder: String(Math.max(min, suggestion)),
       min,
       max: Math.max(min, cash),
@@ -958,8 +1126,8 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       emoji: '💸',
       subtitle: `${feePlan(g, t).label}${earlyPenalty(g, a, 100) > 0 ? ' · Early withdrawal penalty' : ''}`,
       visible: () => value > 1,
-      disabledReason: (gg) => tradeBlock(gg),
-      input: { kind: 'number', label: `How many dollars' worth? It's worth ${formatMoney(value)}.`, placeholder: String(Math.round(value / 2)), min, max: Math.max(min, value), defaultValue: () => String(Math.max(min, Math.round(value / 2))) },
+      disabledReason: (gg) => sellBlock(gg, a),
+      input: { kind: 'number', money: true, label: `How much of it? It's worth ${formatMoney(value)}.`, placeholder: String(Math.round(value / 2)), min, max: Math.max(min, value), defaultValue: () => String(Math.max(min, Math.round(value / 2))) },
       stayOpen: true,
       run: (gg, input) => {
         sellHolding(gg, a.id, Number(input))
@@ -971,7 +1139,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       label: deposit ? 'Close Account' : 'Sell All',
       emoji: '💰',
       subtitle: `About ${formatMoney(Math.max(0, value - feeFor(feePlan(g, t), value) - earlyPenalty(g, a, value)))} after fees`,
-      disabledReason: (gg) => tradeBlock(gg),
+      disabledReason: (gg) => sellBlock(gg, a),
       confirm: (gg) => {
         const cur = gg.assets.find((x) => x.id === a.id)
         if (!cur) return null
@@ -1017,21 +1185,26 @@ function holdingInfo(g: GameState, a: Asset): string[] {
   const cid = str(d.country, g.character.countryId)
   switch (t) {
     case 'bond': {
-      const p = defaultChance(cid)
+      const p = defaultChance(cid, g.year)
       rows.push(`Coupon: ${rateText(y)} a year · Default risk: ${defaultRiskLabel(p)}${income > 0 ? ` · Collected ${formatMoney(income)}` : ''}`)
-      const dep = expectedDepreciation(cid)
-      if (dep >= 0.03) rows.push(`The ${str(d.currency, 'local currency')} tends to lose about ${rateText(dep)} a year against the dollar, which eats into the coupon.`)
+      const dep = expectedDepreciation(cid, g.year)
+      if (isHistoryYear(g.year)) {
+        const infl = inflationRate(cid, g.year)
+        if (infl >= 0.03) rows.push(`Inflation runs about ${inflationText(infl)}, which eats into what the coupon and the face value will buy.`)
+      } else if (dep >= 0.03) rows.push(`The ${str(d.currency, 'local currency')} tends to lose about ${rateText(dep)} a year against the dollar, which eats into the coupon.`)
       if (num(d.maturity) > 0) rows.push(`Matures in ${num(d.maturity)}, when the government pays back the face value (in ${str(d.currency, 'the local currency')}).`)
       break
     }
     case 'savings': {
       const m = marketOf(cid)
-      const rate = str(d.product) === 'term' ? y : savingsRate(cid)
-      const real = rate - m.inflation
+      const rate = str(d.product) === 'term' ? y : savingsRate(cid, g.year)
+      const infl = inflationRate(cid, g.year)
+      const real = isHistoryYear(g.year) ? (1 + rate) / (1 + Math.min(1e7, infl)) - 1 : rate - m.inflation
+      const insured = depositInsurance(cid, g.year)
       rows.push(`Interest: ${rateText(rate)} a year${income > 0 ? ` · Earned ${formatMoney(income)}` : ''}`)
-      rows.push(`Inflation runs about ${rateText(m.inflation)}, so your real return is roughly ${pct(real)} a year. Insured up to ${formatMoney(depositInsurance(cid))}.`)
-      const dep = expectedDepreciation(cid)
-      if (dep >= 0.03) rows.push(`The balance is kept in ${m.currencyName}, which tends to lose about ${rateText(dep)} a year against the dollar, so it shrinks in dollar terms while the interest piles up.`)
+      rows.push(`Inflation runs about ${inflationText(infl)}, so your real return is roughly ${pct(Math.max(-1, real))} a year. ${insured > 0 ? `Insured up to ${formatMoney(insured)}.` : 'Not insured.'}`)
+      const dep = expectedDepreciation(cid, g.year)
+      if (!isHistoryYear(g.year) && dep >= 0.03) rows.push(`The balance is kept in ${currencyOf(g.character.countryId, g.year).name}, which tends to lose about ${rateText(dep)} a year against the dollar, so it shrinks in dollar terms while the interest piles up.`)
       if (str(d.product) === 'term') {
         const mat = num(d.maturity)
         rows.push(g.year >= mat ? 'Matured: you can withdraw without a penalty. It keeps rolling over until you do.' : `Matures in ${mat}. Withdrawing earlier costs a year of interest.`)
@@ -1106,7 +1279,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       const rows: string[] = []
       if (q.type !== 'savings' && q.type !== 'bond') rows.push(`Price: ${priceText(q.price)}${q.ret !== null ? ` (${change(q.ret)} this year)` : ''}`)
       rows.push(`${q.sector} · ${riskText(q.risk)}`)
-      if (q.type === 'bond') rows.push(`Coupon: ${rateText(q.yield)} a year, paid as taxable income. Sold in $1,000 bonds.`)
+      if (q.type === 'bond') rows.push(`Coupon: ${rateText(q.yield)} a year, paid as taxable income. Sold in ${formatMoney(1_000)} bonds.`)
       else if (q.type === 'savings') rows.push(`Interest: ${rateText(q.yield)} a year, added to the balance and taxed as income.`)
       else if (q.yield > 0) rows.push(`${q.type === 'crypto' ? 'Rewards' : q.type === 'reit' ? 'Payout' : 'Dividend'}: ${rateText(q.yield)} a year, taxed as income.`)
       rows.push(...extraInfo)
@@ -1128,7 +1301,7 @@ function stockHistory(g: GameState, info: ExInfo, slot: number, gen: number, pen
     if (!s || s.gen !== gen || s.event === 'ipo') continue
     const id = penny ? '' : companyDef(info, slot, gen).id
     const ret = id ? (shockedMove(1, s.ret, shockFactor(g, id, y), shockFactor(g, id, y - 1)).ret ?? s.ret) : s.ret
-    parts.push(`'${String(y).slice(-2)} ${pct(ret, 0)}`)
+    parts.push(`'${String(y).slice(-2)} ${pct(reportedMove(info, y, ret).pct, 0)}`)
   }
   return parts.length ? `Recent years: ${parts.join(' · ')}` : 'Recently listed: no track record yet.'
 }
@@ -1140,15 +1313,19 @@ const stocksMenu: MenuGroup = {
   emoji: '📈',
   subtitle: (g) => {
     const info = exchangeInfo(g.character.countryId)
-    return `Companies listed on the ${info.ex.code}`
+    if (noStockMarket(g, info)) return 'No stock market here right now'
+    return `Companies listed on the ${info.ex.code}${exchangeStatus(info, g.year) === 'closed' ? ' (closed)' : ''}`
   },
   hint: (g) => gutGroupHint(g, ['stock']),
   header: (g) => {
     const l = listing(g)
-    return `${marketLine(l.info, l.year)}\n${l.info.ex.name} (${l.info.ex.code}): the biggest companies in ${theCountry(l.info.home)}. Prices move once a year, and every stock rides the market's mood.`
+    const block = stockMarketBlock(g, l.info)
+    const note = isHistoryYear(g.year) && !block ? marketNote(l.info.home, g.year) : ''
+    return `${marketLine(l.info, l.year)}${note ? `\n📰 ${note}` : ''}\n${exchangeName(l.info, g.year)} (${l.info.ex.code}): the biggest companies in ${theCountry(l.info.home)}. Prices move once a year, and every stock rides the market's mood.${block ? `\n🚫 ${block}` : ''}`
   },
   children: (g) => {
     const l = listing(g)
+    if (noStockMarket(g, l.info)) return [{ type: 'info', id: 'inv-stocks-none', text: stockMarketBlock(g, l.info) ?? 'There is no stock market here right now.', emoji: '🚫' }]
     return l.stocks.map((q) => offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
   },
 }
@@ -1159,6 +1336,7 @@ const pennyMenu: MenuGroup = {
   label: 'Penny Stocks',
   emoji: '🎟️',
   subtitle: 'Tiny companies, huge swings',
+  visible: (g) => !noStockMarket(g, exchangeInfo(g.character.countryId)),
   hint: (g) => gutGroupHint(g, ['penny']),
   header: (g) => {
     const info = exchangeInfo(g.character.countryId)
@@ -1176,10 +1354,13 @@ const cryptoMenu: MenuGroup = {
   label: 'Crypto',
   emoji: '🪙',
   subtitle: (g) => (CRYPTO_BANNED.has(g.character.countryId) ? `Banned in ${theCountry(g.character.countryId)}` : 'Coins that trade worldwide, 24/7'),
+  // Crypto doesn't exist before 2009 (unless you somehow still hold some).
+  visible: (g) => listedCoins(cryptoYear(fam(g), anchor(g), g.year)).length > 0 || investmentHoldings(g).some((a) => typeOf(a) === 'crypto'),
   hint: (g) => gutGroupHint(g, ['crypto']),
   header: (g) => {
     const cy = cryptoYear(fam(g), anchor(g), g.year)
-    const mood = cy.winter ? 'A crypto winter wiped out most of the market this year.' : cy.mania ? 'Crypto mania: everyone and their dentist bought coins this year.' : `The crypto market moved ${pct(cy.ret, 0)} this year.`
+    const young = isHistoryYear(g.year) && g.year <= 2012
+    const mood = cy.winter ? 'A crypto winter wiped out most of the market this year.' : cy.mania ? (young ? 'Crypto mania: a magic internet money nobody had heard of a year ago is suddenly worth real money.' : 'Crypto mania: everyone and their dentist bought coins this year.') : young && cy.ret === 0 ? 'A new kind of internet money that a handful of programmers trade on forums.' : `The crypto market moved ${pct(cy.ret, 0)} this year.`
     const ban = CRYPTO_BANNED.has(g.character.countryId) ? ` Crypto trading is banned in ${theCountry(g.character.countryId)}, so you can only sell coins you already own.` : ''
     return `${mood} Crypto isn't insured or regulated, and a bad year can wipe out 70% or more. Exchange fee: 1.5%.${ban}`
   },
@@ -1191,23 +1372,28 @@ const bondsMenu: MenuGroup = {
   id: 'inv-bonds',
   label: 'Bonds & Savings',
   emoji: '🏛️',
-  subtitle: (g) => `Bonds ${rateText(bondRate(g.character.countryId))} · Savings ${rateText(savingsRate(g.character.countryId))}`,
+  subtitle: (g) => `Bonds ${rateText(bondRate(g.character.countryId, g.year))} · Savings ${rateText(savingsRate(g.character.countryId, g.year))}`,
   header: (g) => {
     const cid = g.character.countryId
-    const m = localMarket(g)
-    const bits = [`The central bank's rate in ${theCountry(cid)} is ${rateText(m.interestRate)} and inflation runs about ${rateText(m.inflation)}.`]
-    if (m.interestRate < m.inflation) bits.push('Savings pay less than inflation, so they lose buying power over time.')
-    if (defaultChance(cid) >= 0.01) bits.push('High yields here come with a real chance the government defaults.')
-    if (bankCrisisChance(cid) >= 0.005) bits.push(`Banks have been known to freeze deposits; only ${formatMoney(depositInsurance(cid))} per account is guaranteed.`)
+    const rate = policyRate(cid, g.year)
+    const infl = inflationRate(cid, g.year)
+    const insured = depositInsurance(cid, g.year)
+    const bits = [`The central bank's rate in ${theCountry(cid)} is ${rateText(rate)} and inflation runs about ${inflationText(infl)}.`]
+    if (rate < infl) bits.push('Savings pay less than inflation, so they lose buying power over time.')
+    if (defaultChance(cid, g.year) >= 0.01) bits.push('High yields here come with a real chance the government defaults.')
+    if (insured <= 0) bits.push('Bank deposits aren\'t insured yet: if a bank fails, depositors get back whatever is left.')
+    else if (bankCrisisChance(cid, g.year) >= 0.005) bits.push(`Banks have been known to freeze deposits; only ${formatMoney(insured)} per account is guaranteed.`)
     return bits.join(' ')
   },
   children: (g) => {
     const l = listing(g)
     const cid = g.character.countryId
     const m = localMarket(g)
-    const real = (r: number) => `After ${rateText(m.inflation)} inflation, that's a real return of about ${pct(r - m.inflation)} a year.`
+    const infl = isHistoryYear(g.year) ? Math.min(1e7, inflationRate(cid, g.year)) : m.inflation
+    const realOf = (r: number) => (isHistoryYear(g.year) ? Math.max(-1, (1 + r) / (1 + infl) - 1) : r - m.inflation)
+    const real = (r: number) => `After ${inflationText(infl)} inflation, that's a real return of about ${pct(realOf(r))} a year.`
     return [
-      offerNode(g, l.bond, [real(l.bond.yield), `Default risk: ${defaultRiskLabel(defaultChance(cid))}.`]),
+      offerNode(g, l.bond, [real(l.bond.yield), `Default risk: ${defaultRiskLabel(defaultChance(cid, g.year))}.`]),
       offerNode(g, l.savings, [real(l.savings.yield)]),
       offerNode(g, l.term, [real(l.term.yield)]),
     ]
@@ -1216,12 +1402,15 @@ const bondsMenu: MenuGroup = {
 
 function fundNode(g: GameState): MenuGroup {
   const l = listing(g)
-  return offerNode(g, l.fund, [historyLine(g, l.info) || 'A brand-new fund: no history yet.', `Index level: ${Math.round(l.year.level).toLocaleString('en-US')} points.`])
+  const node = offerNode(g, l.fund, [historyLine(g, l.info) || 'A brand-new fund: no history yet.', `Index level: ${Math.round(l.year.level).toLocaleString('en-US')} points.`])
+  return { ...node, visible: (gg) => !noStockMarket(gg, exchangeInfo(gg.character.countryId)) }
 }
 
 function reitNode(g: GameState): MenuGroup {
   const l = listing(g)
-  return offerNode(g, l.reit, [`Local house prices ${l.year.year === anchor(g) ? 'are holding steady' : `moved ${pct(l.year.housing, 0)} this year`}.`])
+  const node = offerNode(g, l.reit, [`Local house prices ${l.year.year === anchor(g) ? 'are holding steady' : `moved ${pct(l.year.housing, 0)} this year`}.`])
+  // Property trusts appear only once they've been invented here.
+  return { ...node, visible: (gg) => !noStockMarket(gg, exchangeInfo(gg.character.countryId)) && !reitBlock(gg, exchangeInfo(gg.character.countryId)) }
 }
 
 function goldNode(g: GameState): MenuGroup {
@@ -1239,43 +1428,59 @@ function newsLines(g: GameState): string[] {
   const f = fam(g)
   const an = anchor(g)
   const ey = l.year
+  const y = g.year
   const lines: string[] = [marketLine(l.info, ey)]
+  const note = isHistoryYear(y) ? marketNote(l.info.home, y) : ''
+  if (note) lines.push(`📰 ${note}`)
+  const marketOpen = !isHistoryYear(y) || exchangeStatus(l.info, y) !== 'none'
+  const nameOf = (slot: number, gen: number) => eraIdentity(companyDef(l.info, slot, gen), y).name
   if (ey.year > an) {
-    const movers = ey.stocks.filter((s) => s.event !== 'ipo').map((s) => ({ s, def: companyDef(l.info, s.slot, s.gen) }))
+    const movers = marketOpen ? ey.stocks.filter((s) => s.event !== 'ipo').map((s) => ({ s, def: companyDef(l.info, s.slot, s.gen) })) : []
     if (movers.length) {
       const best = movers.reduce((a, b) => (b.s.ret > a.s.ret ? b : a))
       const worst = movers.reduce((a, b) => (b.s.ret < a.s.ret ? b : a))
-      lines.push(`🏆 Top performer: ${best.def.name} (${best.def.symbol}) ${pct(best.s.ret, 0)}`)
-      if (worst.s.ret < 0) lines.push(`🧯 Worst performer: ${worst.def.name} (${worst.def.symbol}) ${pct(worst.s.ret, 0)}`)
+      lines.push(`🏆 Top performer: ${nameOf(best.s.slot, best.s.gen)} (${best.def.symbol}) ${pct(best.s.ret, 0)}`)
+      if (worst.s.ret < 0) lines.push(`🧯 Worst performer: ${nameOf(worst.s.slot, worst.s.gen)} (${worst.def.symbol}) ${pct(worst.s.ret, 0)}`)
     }
     for (const sh of shocksThisYear(g)) lines.push(shockHeadline(sh))
+    const takenOver = isHistoryYear(y) && exchangeExpropriated(l.info, y)
+    if (takenOver) lines.push(`🏛️ The new government nationalized every listed company. Shareholders got nothing.`)
     for (const s of ey.stocks) {
       const def = companyDef(l.info, s.slot, s.gen)
+      if (takenOver) break
       if (s.ended) {
         const old = s.ended.id.match(/s(\d+)g(\d+)$/)
-        const prev = old ? companyDef(l.info, Number(old[1]), Number(old[2])) : null
-        if (prev) lines.push(s.ended.kind === 'bankrupt' ? `💀 ${prev.name} went bankrupt. Its shares are worthless.` : `🤝 ${prev.name} was bought out at a ${Math.round(s.ended.premium * 100)}% premium.`)
-        lines.push(`🔔 New listing: ${def.name} (${def.symbol}) went public.`)
-      } else if (s.event === 'split' && s.ratio) lines.push(`✂️ ${def.name} did a ${s.ratio}-for-1 stock split.`)
-      else if (s.event === 'scandal') lines.push(`🚨 ${def.name} plunged after an accounting scandal.`)
-      else if (s.event === 'surge') lines.push(`🚀 ${def.name} soared on a blockbuster product launch.`)
+        const prev = old ? eraIdentity(companyDef(l.info, Number(old[1]), Number(old[2])), y).name : null
+        if (prev) lines.push(s.ended.kind === 'bankrupt' ? `💀 ${prev} went bankrupt. Its shares are worthless.` : `🤝 ${prev} was bought out at a ${Math.round(s.ended.premium * 100)}% premium.`)
+        lines.push(`🔔 New listing: ${nameOf(s.slot, s.gen)} (${def.symbol}) went public.`)
+      } else if (s.event === 'split' && s.ratio) lines.push(`✂️ ${nameOf(s.slot, s.gen)} did a ${s.ratio}-for-1 stock split.`)
+      else if (s.event === 'scandal') lines.push(`🚨 ${nameOf(s.slot, s.gen)} plunged after an accounting scandal.`)
+      else if (s.event === 'surge') lines.push(`🚀 ${nameOf(s.slot, s.gen)} soared on a blockbuster product launch.`)
     }
-    const cy = cryptoYear(f, an, g.year)
-    lines.push(cy.winter ? `🥶 Crypto winter: the crypto market fell ${absPct(cy.ret)}.` : cy.mania ? `🤑 Crypto mania: the crypto market rose ${absPct(cy.ret)}.` : `🪙 Crypto market ${pct(cy.ret, 0)} this year.`)
+    const cy = cryptoYear(f, an, y)
+    if (listedCoins(cy).length || cy.coins.some((c) => c.ended)) {
+      if (cy.coins.some((c) => c.event === 'ipo' && c.slot === 0 && !c.unlisted && isHistoryYear(y))) lines.push('🪙 A mysterious programmer launches a new internet currency. Almost nobody notices.')
+      else lines.push(cy.winter ? `🥶 Crypto winter: the crypto market fell ${absPct(cy.ret)}.` : cy.mania ? `🤑 Crypto mania: the crypto market rose ${absPct(cy.ret)}.` : `🪙 Crypto market ${pct(cy.ret, 0)} this year.`)
+    }
     for (const c of cy.coins) {
       if (c.ended) {
         const old = c.ended.id.match(/c(\d+)g(\d+)$/)
         const prev = old ? coinDef(Number(old[1]), Number(old[2])) : null
-        if (prev) lines.push(`💥 ${prev.name} (${prev.symbol}) collapsed to zero. ${coinDef(c.slot, c.gen).name} launched in its place.`)
+        if (prev) lines.push(coinListed(c) ? `💥 ${prev.name} (${prev.symbol}) collapsed to zero. ${coinDef(c.slot, c.gen).name} launched in its place.` : `💥 ${prev.name} (${prev.symbol}) collapsed to zero.`)
       }
     }
-    const gy = goldYear(f, an, g.year)
-    lines.push(`🥇 Gold ${pct(gy.ret, 0)} to ${formatMoney(gy.price)} an ounce.`)
-    const fx = fxYear(f, g.character.countryId, g.year)
-    const m = localMarket(g)
+    const gy = goldYear(f, an, y)
+    const ban = goldBan(g.character.countryId, y)
+    lines.push(`🥇 Gold ${pct(gy.ret, 0)} to ${formatMoney(gy.price)} an ounce.${ban ? ' (Private gold dealing is restricted here.)' : ''}`)
+    const fx = fxYear(f, g.character.countryId, y)
     if (fx.defaulted) lines.push(`🏛️ The government of ${theCountry(g.character.countryId)} defaulted on its bonds.`)
     if (fx.bankCrisis) lines.push(`🏦 A banking crisis hit ${theCountry(g.character.countryId)}: deposits were frozen.`)
-    if (fx.dep >= 0.1) lines.push(`💱 The ${m.currencyName} lost ${rateText(fx.dep)} against the dollar.`)
+    if (isHistoryYear(y)) {
+      const infl = inflationRate(g.character.countryId, y)
+      if (infl >= 0.5) lines.push(`💸 Hyperinflation: prices rose ${inflationText(infl)} this year.`)
+      else if (infl >= 0.1) lines.push(`💸 Inflation ran at ${rateText(infl)} this year.`)
+      else if (infl <= -0.02) lines.push(`📉 Prices fell ${rateText(-infl)} this year: deflation.`)
+    } else if (fx.dep >= 0.1) lines.push(`💱 The ${currencyOf(g.character.countryId, g.year).name} lost ${rateText(fx.dep)} against the dollar.`)
   }
   // An analyst call about next year: right about two times in three.
   const tip = seededTip(g, l.info)
@@ -1310,6 +1515,7 @@ function seededTip(g: GameState, info: ExInfo): string | null {
   const an = anchor(g)
   const now = exchangeYear(f, an, info, g.year)
   const next = exchangeYear(f, an, info, g.year + 1)
+  if (stockMarketBlock(g, info)) return null
   const key = `${f}|tip|${info.key}|${g.year}`
   let h = 0
   for (let i = 0; i < key.length; i++) h = (h * 33 + key.charCodeAt(i)) >>> 0
@@ -1317,11 +1523,12 @@ function seededTip(g: GameState, info: ExInfo): string | null {
   if (!candidates.length) return null
   const s = candidates[h % candidates.length]
   const def = companyDef(info, s.slot, s.gen)
+  const name = eraIdentity(def, g.year).name
   const up = next.stocks[s.slot].ret > 0
   const right = (h >>> 8) % 3 !== 0
   const bullish = right ? up : !up
   const firm = ANALYST_FIRMS[(h >>> 4) % ANALYST_FIRMS.length]
-  return bullish ? `📣 ${firm} rates ${def.name} (${def.symbol}) a strong buy for next year.` : `📣 ${firm} warns that ${def.name} (${def.symbol}) is overvalued going into next year.`
+  return bullish ? `📣 ${firm} rates ${name} (${def.symbol}) a strong buy for next year.` : `📣 ${firm} warns that ${name} (${def.symbol}) is overvalued going into next year.`
 }
 
 const newsMenu: MenuGroup = {
@@ -1415,7 +1622,7 @@ interface YearlyMove {
   /** Income as a share of the start-of-year value. */
   payout: number
   /** The security ended: holders receive `perUnit` per unit (0 = wiped out). */
-  ended?: { kind: 'bankrupt' | 'acquired' | 'delisted' | 'matured'; perUnit: number; premium: number }
+  ended?: { kind: 'bankrupt' | 'acquired' | 'delisted' | 'matured' | 'nationalized' | 'recalled'; perUnit: number; premium: number }
   /** Interest credited into the holding itself, as a share of the start-of-year value. */
   compound?: number
   event?: string
@@ -1454,6 +1661,8 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
     case 'index':
     case 'reit': {
       const info = holdingExchange(a)
+      // A revolution nationalized every listed company: shareholders get nothing.
+      if (isHistoryYear(g.year) && exchangeExpropriated(info, g.year)) return { price: 0, ratio: 1, ret: -1, payout: 0, ended: { kind: 'nationalized', perUnit: 0, premium: -1 } }
       const ey = exchangeYear(f, an, info, g.year)
       if (t === 'index') return shockMove(pathMove(ey.fund.id === str(d.secId) ? ey.fund : undefined, a, price), indexShockFactor(g, info.key, g.year), indexShockFactor(g, info.key, g.year - 1))
       if (t === 'reit') return pathMove(ey.reit.id === str(d.secId) ? ey.reit : undefined, a, price)
@@ -1467,14 +1676,22 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
       return shockMove(pathMove(cy.coins[Math.round(num(d.slot, -1))], a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
     }
     case 'gold': {
+      const cid = str(d.country, g.character.countryId)
+      // A gold ban's first year: private gold must be sold to the state at the official price.
+      const ban = goldBan(cid, g.year)
+      if (ban?.recall) {
+        news.push({ priority: 93, title: 'Gold Recalled', text: `${ban.note} Your ${a.name} was bought from you at last year's price.`, emoji: '🥇', tone: 'bad', log: 'The government made me hand in my gold.' })
+        return { price, ratio: 1, ret: 0, payout: 0, ended: { kind: 'recalled', perUnit: price, premium: 0 } }
+      }
       const gy = goldYear(f, an, g.year)
-      const ret = (1 + gy.ret) * (1 + goldHedge(str(d.country, g.character.countryId))) - 1
+      const ret = (1 + gy.ret) * (1 + goldHedge(cid, g.year)) - 1
       return { price: Math.max(0.01, price * (1 + ret)), ratio: 1, ret, payout: 0 }
     }
     case 'bond': {
       const cid = str(d.country, g.character.countryId)
       const fx = fxYear(f, cid, g.year)
-      const coupon = Math.max(0, num(d.yield)) * (1 - Math.max(0, fx.dep) / 2)
+      // History is in real terms: the coupon is paid in money that lost `dep` of its value this year.
+      const coupon = Math.max(0, num(d.yield)) * (isHistoryYear(g.year) ? 1 - Math.max(0, fx.dep) : 1 - Math.max(0, fx.dep) / 2)
       let ret = (1 - fx.dep) * (1 + fx.bondMove) - 1
       if (fx.defaulted) {
         ret = (1 + ret) * (1 - fx.haircut) - 1
@@ -1496,11 +1713,21 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
     case 'savings': {
       const cid = str(d.country, g.character.countryId)
       const fx = fxYear(f, cid, g.year)
-      const rate = str(d.product) === 'term' ? Math.max(0, num(d.yield)) : savingsRate(cid)
+      const rate = str(d.product) === 'term' ? Math.max(0, num(d.yield)) : savingsRate(cid, g.year)
       if (str(d.product) !== 'term') d.yield = rate
       // Interest is credited to the account in local money, so the balance compounds while the
-      // currency's slide shrinks it in dollar terms.
+      // currency's slide (in history: that year's inflation) shrinks it in real terms.
       const ret = -fx.dep
+      if (isHistoryYear(g.year) && fx.dep >= 0.3 && price > 0) {
+        news.push({
+          priority: 94,
+          title: 'Hyperinflation',
+          text: `Prices rose ${inflationText(inflationRate(cid, g.year))} this year. The money in your ${str(d.product) === 'term' ? 'term deposit' : 'savings account'} at ${str(d.bank, 'the bank')} buys ${absPct(fx.dep)} less than it did in January, interest and all.`,
+          emoji: '💸',
+          tone: 'bad',
+          log: 'Inflation ate my savings this year.',
+        })
+      }
       return { price: Math.max(0.0001, price * (1 + ret)), ratio: 1, ret, payout: 0, compound: rate * (1 - Math.max(0, fx.dep)) }
     }
   }
@@ -1529,6 +1756,8 @@ function eventNews(a: Asset, mv: YearlyMove, valueBefore: number): News | null {
         return { priority: 35, title: 'Bond Matured', text: `Your ${a.name} matured, and the government paid back ${formatMoney(valueBefore * (1 + mv.ret))}.`, emoji: '🏛️', tone: 'neutral', log: `My ${a.name} matured and paid me back ${formatMoney(valueBefore * (1 + mv.ret))}.` }
       case 'delisted':
         return { priority: 30, title: 'Delisted', text: `${label} was delisted, and your shares were paid out at their last price.`, emoji: '📤', tone: 'neutral', log: `${a.name} was delisted and my shares were paid out.` }
+      case 'nationalized':
+        return { priority: 99, title: 'Nationalized', text: `The new government nationalized every company on the stock exchange, ${label} included. Shareholders got nothing: your ${formatMoney(valueBefore)} stake is gone.`, emoji: '🏛️', tone: 'bad', log: `The government nationalized ${a.name} and my shares became worthless.` }
       default:
         return null
     }
@@ -1557,21 +1786,65 @@ function marketNews(g: GameState, held: Asset[]): News | null {
     const { info, ey } = best
     const r = ey.index.ret
     const up = r > 0
+    const hist = isHistoryYear(g.year)
+    const idx = indexName(info, g.year)
+    const m = reportedMove(info, g.year, r)
+    const note = hist ? marketNote(info.home, g.year) : ''
+    const lead = note ? `${note} ` : ''
+    const upQuips = hist && g.year < 2005 ? ['Shoeshine boys are giving stock tips again.', 'Everyone at work suddenly thinks they are a genius investor.', 'Analysts who predicted a crash have gone very quiet.'] : ['Taxi drivers are giving stock tips again.', 'Everyone at work suddenly thinks they are a genius investor.', 'Analysts who predicted a crash are quietly deleting their posts.']
+    const downQuips = hist && g.year < 1960 ? ['Investors are selling everything that isn\'t nailed down.', 'The newspapers are printing their gloomiest headlines in their biggest type.', 'Somewhere, a man who keeps his savings in a mattress feels very smug.'] : ['Investors are selling everything that isn\'t nailed down.', 'Financial TV hosts are wearing their serious ties.', 'Somewhere, a man who keeps his savings in a mattress feels very smug.']
     const text = up
-      ? `${ey.index.boom ? 'Euphoria on the trading floor: the' : 'The'} ${info.ex.index} rose ${absPct(r)} this year. ${pick(g, ['Taxi drivers are giving stock tips again.', 'Everyone at work suddenly thinks they are a genius investor.', 'Analysts who predicted a crash are quietly deleting their posts.'])}`
-      : `${ey.index.crash ? 'Panic on the trading floor: the' : 'The'} ${info.ex.index} fell ${absPct(r)} this year. ${pick(g, ['Investors are selling everything that isn\'t nailed down.', 'Financial TV hosts are wearing their serious ties.', 'Somewhere, a man who keeps his savings in a mattress feels very smug.'])}`
-    return { priority: up ? 50 : 60, title: 'Financial News', text, emoji: '📰', tone: up ? 'good' : 'bad', log: up ? `The ${info.ex.index} had a great year (${pct(r, 0)}).` : `The ${info.ex.index} had a terrible year (${pct(r, 0)}).` }
+      ? `${lead}${ey.index.boom ? 'Euphoria on the trading floor: the' : 'The'} ${idx} rose ${moveText(m)} this year. ${pick(g, upQuips)}`
+      : `${lead}${ey.index.crash ? 'Panic on the trading floor: the' : 'The'} ${idx} fell ${moveText(m)} this year. ${pick(g, downQuips)}`
+    return { priority: up ? 50 : 60, title: 'Financial News', text, emoji: '📰', tone: up ? 'good' : 'bad', log: up ? `The ${idx} had a great year (${pct(m.pct, 0)}).` : `The ${idx} had a terrible year (${pct(m.pct, 0)}).` }
   }
   const crypto = held.filter((a) => typeOf(a) === 'crypto')
   if (crypto.length) {
     const cy = cryptoYear(fam(g), anchor(g), g.year)
-    if (cy.winter) return { priority: 62, title: 'Crypto Winter', text: `The crypto market fell ${absPct(cy.ret)} this year. Laser-eyed profile pictures are being quietly changed back.`, emoji: '🥶', tone: 'bad', log: 'A crypto winter hammered my coins.' }
-    if (cy.mania) return { priority: 52, title: 'Crypto Mania', text: `The crypto market rose ${absPct(cy.ret)} this year. Your barber asked if you've heard of ${pick(g, ['Corgicoin', 'Bitbuck', 'Aetherium'])}.`, emoji: '🤑', tone: 'good', log: 'Crypto went wild this year and my coins soared.' }
+    if (cy.winter) return { priority: 62, title: 'Crypto Winter', text: `The crypto market fell ${absPct(cy.ret)} this year. ${isHistoryYear(g.year) && g.year < 2020 ? 'Early believers say they are "just holding" and have stopped checking the price.' : 'Laser-eyed profile pictures are being quietly changed back.'}`, emoji: '🥶', tone: 'bad', log: 'A crypto winter hammered my coins.' }
+    if (cy.mania) {
+      // Only coins that exist yet (no Aetherium before 2015).
+      const live = listedCoins(cy).map((c) => coinDef(c.slot, c.gen)).filter((d) => !d.stable).map((d) => d.name)
+      const names = isHistoryYear(g.year) ? (live.length ? live : ['Bitbuck']) : ['Corgicoin', 'Bitbuck', 'Aetherium']
+      return { priority: 52, title: 'Crypto Mania', text: `The crypto market rose ${absPct(cy.ret)} this year. Your barber asked if you've heard of ${pick(g, names)}.`, emoji: '🤑', tone: 'good', log: 'Crypto went wild this year and my coins soared.' }
+    }
   }
   return null
 }
 
 const CRYPTO_EXCHANGES = ['CoinVault', 'BlockBarn', 'HODLHub', 'Satoshi Safe', 'CryptoCastle', 'MoonBase Exchange']
+
+/** A stock or penny stock holding takes its company's name for the new era (logged once). */
+function renameForEra(g: GameState, a: Asset): void {
+  const t = typeOf(a)
+  if (t === 'index') {
+    // The fund follows its index's new name (the Dow gives way to the S&P 500 in 1957), and the
+    // old investment trusts turn into cheap index funds once those are invented.
+    const info = holdingExchange(a)
+    if (str(a.details.secId) !== `${info.key}#fund`) return
+    const fn = fundName(info, g.year)
+    if (fn.name === a.name) return
+    log(g, str(a.details.sector) === 'Investment trust' && !fn.trust ? `My ${a.name} cut its fees and became the ${fn.name}.` : `My ${a.name} is now called the ${fn.name}.`)
+    a.name = fn.name
+    a.details.market = indexName(info, g.year)
+    a.details.sector = fn.trust ? 'Investment trust' : 'Index fund'
+    return
+  }
+  if (t !== 'stock' && t !== 'penny') return
+  const info = holdingExchange(a)
+  const slot = Math.round(num(a.details.slot, -1))
+  const gen = Math.round(num(a.details.gen, -1))
+  if (slot < 0 || gen < 0) return
+  const def = t === 'penny' ? pennyDef(info, slot, gen) : companyDef(info, slot, gen)
+  if (def.id !== str(a.details.secId)) return
+  const era = eraIdentity(def, g.year)
+  if (era.name === a.name) return
+  log(g, `${a.name} renamed itself ${era.name}.`)
+  a.name = era.name
+  a.details.sector = era.label
+  a.details.blurb = era.blurb
+  if (t === 'stock') a.emoji = era.emoji
+}
 
 /**
  * Forget market shocks that have faded out or whose company / coin stopped trading before this
@@ -1618,8 +1891,11 @@ export function yearlyInvestments(g: GameState): void {
     if (c.age >= 18 && !inPrison(g)) {
       const info = exchangeInfo(c.countryId)
       const ey = exchangeYear(fam(g), anchor(g), info, g.year)
-      if (ey.index.crash) log(g, `The ${info.ex.index} crashed ${absPct(ey.index.ret)} this year. Good thing I had nothing in it.`)
-      else if (ey.index.boom) log(g, `The ${info.ex.index} boomed ${absPct(ey.index.ret)} this year. I wish I had invested.`)
+      const idx = indexName(info, g.year)
+      const m = reportedMove(info, g.year, ey.index.ret)
+      if (stockMarketBlock(g, info)) return
+      if (ey.index.crash) log(g, `The ${idx} crashed ${moveText(m, 0)} this year. Good thing I had nothing in it.`)
+      else if (ey.index.boom) log(g, `The ${idx} boomed ${moveText(m, 0)} this year. I wish I had invested.`)
     }
     return
   }
@@ -1643,10 +1919,12 @@ export function yearlyInvestments(g: GameState): void {
       const proceeds = Math.max(0, Math.round(u * mv.ended.perUnit))
       realize(g, proceeds, proceeds - basis(a), false)
       cashOut += proceeds
-      if (mv.ended.kind === 'bankrupt') count(g, 'investWipeouts')
+      if (mv.ended.kind === 'bankrupt' || mv.ended.kind === 'nationalized') count(g, 'investWipeouts')
       g.assets = g.assets.filter((x) => x.id !== a.id)
       continue
     }
+    // Companies take the names of their era (a tabulating firm becomes a computer company).
+    renameForEra(g, a)
     d.yearStart = before
     d.updatedYear = g.year
     d.lastChange = Math.round((Number.isFinite(mv.ret) ? mv.ret : 0) * 10000) / 10000
@@ -1746,7 +2024,7 @@ export function investmentsSummary(g: GameState): string {
   const s = portfolioStats(g)
   const by = (t: InvestType) => held.filter((a) => typeOf(a) === t)
   const parts: string[] = []
-  for (const a of by('index')) parts.push(`${str(a.details.market, a.name)} index fund`)
+  for (const a of by('index')) parts.push(str(a.details.sector) === 'Investment trust' ? a.name : `${str(a.details.market, a.name)} index fund`)
   const stocks = by('stock').length
   if (stocks) parts.push(stocks === 1 ? `${by('stock')[0].name} stock` : `${stocks} stocks`)
   if (by('bond').length) parts.push('government bonds')
@@ -1757,5 +2035,7 @@ export function investmentsSummary(g: GameState): string {
   const cryptoValue = by('crypto').reduce((sum, a) => sum + a.value, 0)
   if (by('crypto').length) parts.push(cryptoValue > s.value * 0.5 ? 'mostly crypto' : 'some crypto')
   const year = s.year !== null ? `; ${s.year >= 0 ? 'up' : 'down'} ${absPct(s.year)} this year` : ''
-  return `Portfolio ${shortMoney(s.value)}: ${parts.slice(0, 6).join(', ')}${year}`
+  // In the past, the year's real market story (the dot-com bust, 2008...) for the narrator.
+  const note = isHistoryYear(g.year) ? marketNote(exchangeInfo(g.character.countryId).home, g.year) : ''
+  return `Portfolio ${shortMoney(s.value)}: ${parts.slice(0, 6).join(', ')}${year}${note ? `. Market news: ${note}` : ''}`
 }

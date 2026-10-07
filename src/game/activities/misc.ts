@@ -20,6 +20,7 @@ import {
 import { chance, pick, randInt, uid } from '../rng'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, gate, localPrice, money, result, usesLeft } from './common'
+import { common, eraLines } from '../events/era'
 import { randomFirstName } from '../world'
 
 // ---------------------------------------------------------------------------
@@ -264,7 +265,8 @@ export const prayMenu: MenuGroup = {
 
 const SWEEP_MAX = 5
 const SWEEP_KEY = 'act.sweepstakes'
-const PRIZE_CARS = ['Convertible', 'Sports Car', 'Electric SUV', 'Pickup Truck', 'Luxury Sedan']
+// Era tags (see events/era.ts): no electric SUVs in 1960.
+const PRIZE_CARS = ['Convertible', '@1950 Sports Car', '@2015 Electric SUV', 'Pickup Truck', 'Luxury Sedan', '@-1960 Roadster']
 const DUD_PRIZES = [
   'a year’s supply of pickles',
   'a novelty toaster that burns a smiley face into bread',
@@ -290,7 +292,7 @@ function enterSweepstakes(g: GameState): void {
   if (roll <= 2) {
     count(g, 'sweepstakesWins')
     if (chance(g, 0.5)) {
-      const model = pick(g, PRIZE_CARS)
+      const model = pick(g, eraLines(g, PRIZE_CARS))
       const value = localPrice(g, randInt(g, 28_000, 65_000))
       const asset: Asset = {
         id: uid(g, 'a'),
@@ -308,7 +310,7 @@ function enterSweepstakes(g: GameState): void {
       addStat(g, 'happiness', 20)
       remember(g, `Won a ${model.toLowerCase()} in a sweepstakes.`)
       log(g, `I won a brand-new ${model.toLowerCase()} in a sweepstakes!`, 'good')
-      result(g, 'You Won!', `Your $1 sweepstakes entry won the grand prize: a brand-new ${model.toLowerCase()} worth ${money(value)}! A guy with a giant novelty key showed up at your door.`, '\u{1F389}', 'good')
+      result(g, 'You Won!', `Your ${money(1)} sweepstakes entry won the grand prize: a brand-new ${model.toLowerCase()} worth ${money(value)}! A guy with a giant novelty key showed up at your door.`, '\u{1F389}', 'good')
       return
     }
     const cash = localPrice(g, pick(g, [25_000, 50_000, 100_000, 250_000]))
@@ -316,7 +318,7 @@ function enterSweepstakes(g: GameState): void {
     addStat(g, 'happiness', 20)
     remember(g, `Won ${money(cash)} in a sweepstakes.`)
     log(g, `I won ${money(cash)} in a sweepstakes!`, 'good')
-    result(g, 'You Won!', `Your $1 sweepstakes entry won the grand prize of ${money(cash)}! They handed you a check the size of a door.`, '\u{1F389}', 'good')
+    result(g, 'You Won!', `Your ${money(1)} sweepstakes entry won the grand prize of ${money(cash)}! They handed you a check the size of a door.`, '\u{1F389}', 'good')
     return
   }
   if (roll <= 40) {
@@ -324,8 +326,9 @@ function enterSweepstakes(g: GameState): void {
       const card = localPrice(g, pick(g, [25, 50, 100, 250, 500]))
       addMoney(g, card)
       addStat(g, 'happiness', 4)
-      log(g, `I won a ${money(card)} gift card in a sweepstakes.`, 'good')
-      result(g, 'Sweepstakes', `You won a ${money(card)} gift card! Not life-changing, but definitely lunch-changing.`, '\u{1F381}', 'good')
+      const voucher = g.year >= 1995 ? 'gift card' : 'store voucher'
+      log(g, `I won a ${money(card)} ${voucher} in a sweepstakes.`, 'good')
+      result(g, 'Sweepstakes', `You won a ${money(card)} ${voucher}! Not life-changing, but definitely lunch-changing.`, '\u{1F381}', 'good')
       return
     }
     const dud = pick(g, DUD_PRIZES)
@@ -337,7 +340,7 @@ function enterSweepstakes(g: GameState): void {
   log(g, 'I entered a sweepstakes and lost.', 'neutral')
   const winner = g.character.countryId === 'us' ? 'Gary' : randomFirstName(g, g.character.countryId, 'male')
   result(g, 'Sweepstakes', pick(g, [
-    'You entered the sweepstakes. A few weeks later you got an email: "Unfortunately..." You stopped reading there.',
+    common(g, 'internet') ? 'You entered the sweepstakes. A few weeks later you got an email: "Unfortunately..." You stopped reading there.' : 'You entered the sweepstakes. A few weeks later you got a letter: "Unfortunately..." You stopped reading there.',
     'You did not win the sweepstakes. You did, however, get signed up for 14 newsletters.',
     `Your sweepstakes entry lost. The winner was someone named ${winner}. You hate ${winner} now.`,
     'No luck this time. The odds were roughly the same as getting struck by lightning while being bitten by a shark.',
@@ -349,7 +352,7 @@ export const sweepstakesAction: MenuAction = {
   id: 'sweepstakes',
   label: 'Sweepstakes',
   emoji: '\u{1F39F}\u{FE0F}',
-  subtitle: (g) => `Enter the sweepstakes · $1 · ${usesLeft(g, SWEEP_KEY, SWEEP_MAX)} entries left this year`,
+  subtitle: (g) => `Enter the sweepstakes · ${money(1)} · ${usesLeft(g, SWEEP_KEY, SWEEP_MAX)} entries left this year`,
   disabledReason: (g) => gate(g, { minAge: 18 }),
   run: enterSweepstakes,
 }

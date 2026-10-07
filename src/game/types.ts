@@ -251,6 +251,13 @@ export interface Character {
    * Always test talents with talents.ts hasTalent(g, id), which also counts `talent`.
    */
   talents?: string[]
+  /**
+   * Countries whose passport the character holds (birth country first). Missing on old saves:
+   * treat it as [the birth/current country] via immigration.ts citizenshipsOf.
+   */
+  citizenships?: string[]
+  /** Legal status where the character lives now (immigration.ts). Missing = citizen. */
+  immigration?: ImmigrationStatus
   /** Short notable life events, oldest first, used as long-term memory for the AI. */
   memories: string[]
   /** Person ids named in the will; empty = split among children. */
@@ -572,6 +579,8 @@ export interface InputModal {
   emoji?: string
   text: string
   input: 'text' | 'number'
+  /** Money bounds/defaults stay internal dollars; the UI displays and accepts local units. */
+  money?: boolean
   placeholder?: string
   defaultValue?: string
   min?: number
@@ -622,6 +631,8 @@ export type AiTask =
 // Whole-game state
 
 export interface AncestorSummary {
+  /** Country at death, used with diedYear to display historical local money. */
+  countryId?: string
   generation: number
   name: string
   gender: Gender
@@ -666,6 +677,19 @@ export interface GameState {
 // ---------------------------------------------------------------------------
 // Menus (not stored in state; built from functions of state)
 
+/** A character's legal status in the country they live in (immigration.ts, data/immigration.ts). */
+export interface ImmigrationStatus {
+  /** Country this status applies to (where the character lives). */
+  countryId: string
+  status: 'citizen' | 'permanent' | 'visa' | 'asylum' | 'undocumented'
+  /** Visa/route id while status is 'visa' (e.g. 'work', 'student', 'investor', 'spouse'). */
+  visa?: string
+  /** Calendar year the status began. */
+  since: number
+  /** Calendar year a visa lapses unless renewed or upgraded. */
+  expires?: number
+}
+
 export interface MenuInput {
   kind: 'text' | 'number'
   label: string
@@ -673,6 +697,12 @@ export interface MenuInput {
   min?: number
   max?: number
   defaultValue?: (g: GameState) => string
+  /**
+   * True when the number is an amount of money. min/max/defaultValue stay in internal dollars;
+   * the UI shows and accepts them in the player's display currency (core.ts moneyScale) and
+   * hands run() the amount converted back to internal dollars.
+   */
+  money?: boolean
 }
 
 interface MenuBase {

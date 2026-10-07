@@ -5,10 +5,12 @@
 // corruption is low) can knock at any time. Parents who catch a kid at it take the computer.
 import { arrestPlayer } from '../crime'
 import { addHidden, addMoney, addStat, count, formatMoney, log, notice, remember, useYearAction } from '../core'
+import { eraPick } from '../events/era'
 import { chance, pick, rand, randInt } from '../rng'
 import { totalFollowers } from '../special/social'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addScreenTime, codingSkill } from './skills'
+import { eraOpen, type EraGate } from './era'
 import { blockReason, canAct, cap, clampNum, cyberUnit, dollars, enforcement, minorBusted, moneyState, parentsCatch, readState, scale, seizeComputer, stranger, type MoneyState, type News } from './money-common'
 
 export const SCAMS_MIN_AGE = 12
@@ -42,11 +44,14 @@ interface ScamDef {
   did: string[]
   victims: ((v: Victim, amount: string) => string)[]
   fails: string[]
+  /** When this con is possible (fake web shops need online shopping, giveaways need social media). */
+  era?: EraGate
 }
 
 const SCAMS: ScamDef[] = [
   {
     id: 'store',
+    era: { tech: ['internet', 'onlineShopping'], from: 1996 },
     label: 'Fake Online Store',
     emoji: '\u{1F6CD}\u{FE0F}',
     subtitle: 'Sell sneakers that will never ship',
@@ -67,10 +72,12 @@ const SCAMS: ScamDef[] = [
       (v, a) => `${v.full}, ${v.age}, spent ${a} on a birthday present for ${v.his} kid from your store. ${cap(v.he)} is still refreshing the tracking page.`,
       (v) => `${v.full}, ${v.age}, saved up for months for those sneakers. ${cap(v.he)} left a one-star review that just says "why."`,
     ],
-    fails: ['Nobody bought anything. Your store looked like it was designed in 2003 by a raccoon.', 'A payment processor took one look at your shop and shut it down before lunch.'],
+    // Era tags (events/era.ts): no jokes about 2003 web design in 1999.
+    fails: ['@2008 Nobody bought anything. Your store looked like it was designed in 2003 by a raccoon.', '@-2008 Nobody bought anything. Your store looked like a ransom note with a shopping cart.', 'A payment processor took one look at your shop and shut it down before lunch.'],
   },
   {
     id: 'giveaway',
+    era: { tech: 'socialMedia' },
     label: 'Fake Giveaway',
     emoji: '\u{1F381}',
     subtitle: 'A prize nobody will ever win',
@@ -95,6 +102,7 @@ const SCAMS: ScamDef[] = [
   },
   {
     id: 'suspended',
+    era: { tech: 'internet', from: 1997 },
     label: '"Account Suspended" Messages',
     emoji: '\u{1F4E7}',
     subtitle: 'Scare strangers about their accounts',
@@ -119,6 +127,7 @@ const SCAMS: ScamDef[] = [
   },
   {
     id: 'techsupport',
+    era: { tech: 'internet', from: 2000 },
     label: 'Fake Tech Support',
     emoji: '\u{260E}\u{FE0F}',
     subtitle: "Call grandparents about a 'virus'",
@@ -143,6 +152,7 @@ const SCAMS: ScamDef[] = [
   },
   {
     id: 'romance',
+    era: { tech: 'internet', from: 1996 },
     label: 'Romance Scam',
     emoji: '\u{1F494}',
     subtitle: 'Catfish lonely hearts for "travel money"',
@@ -156,17 +166,18 @@ const SCAMS: ScamDef[] = [
     reach: 'looks',
     victimAge: [35, 75],
     did: [
-      'You built a dating profile around a handsome stranger\'s vacation photos and a tragic story about being "stuck overseas."',
+      'You built a lonely-hearts profile around a handsome stranger\'s vacation photos and a tragic story about being "stuck overseas."',
       'You spent weeks sweet-talking a lonely stranger online, then mentioned a sudden "emergency."',
     ],
     victims: [
       (v) => `${v.full}, ${v.age}, had already picked out a song for the wedding. ${cap(v.he)} is still waiting at the airport arrivals board in ${v.his} head.`,
       (v, a) => `${v.full}, ${v.age}, sent ${a} of ${v.his} savings to someone ${v.he} thought loved ${v.his} laugh.`,
     ],
-    fails: ['Your match asked for a video call. You do not look like a 6-foot-4 surgeon.', 'Your match turned out to be another scammer. You spent a month scamming each other and both went home broke.'],
+    fails: ['@2006 Your match asked for a video call. You do not look like a 6-foot-4 surgeon.', '@-2006 Your match asked for a recent photo. You sent one of a 6-foot-4 surgeon, and your match recognized him from the local paper.', 'Your match turned out to be another scammer. You spent a month scamming each other and both went home broke.'],
   },
   {
     id: 'charity',
+    era: { tech: 'socialMedia' },
     label: 'Fake Charity Drive',
     emoji: '\u{1F397}\u{FE0F}',
     subtitle: "Raise money for a cause that doesn't exist",
@@ -187,7 +198,9 @@ const SCAMS: ScamDef[] = [
       (v, a) => `${v.full}, a ${v.age}-year-old retiree, gave ${a} out of a pension that barely covers groceries, because ${v.he} once had a sad puppy too.`,
       (v) => `${v.full}, ${v.age}, shared your fundraiser with ${v.his} whole church group. They prayed for the puppies.`,
     ],
-    fails: ['Your fundraiser raised $0 and one comment asking what "sad puppies" means.', 'A real charity spotted your fake one and reported it within the hour.'],
+    get fails() {
+      return [`Your fundraiser raised ${formatMoney(0)} and one comment asking what "sad puppies" means.`, 'A real charity spotted your fake one and reported it within the hour.']
+    },
   },
 ]
 
@@ -242,7 +255,7 @@ function recordScam(g: GameState, st: MoneyState, crime: string): number {
 
 function runScam(g: GameState, def: ScamDef): void {
   const c = g.character
-  if (!canAct(g) || c.age < def.minAge) return
+  if (!canAct(g) || c.age < def.minAge || !eraOpen(g, def.era)) return
   if (!useYearAction(g, 'computer.scam', 3)) {
     notice(g, 'Lie Low', pick(g, ["You've run enough scams this year. Your inbox is 90% angry people. Lie low until next year.", 'Every platform you use has flagged you this year. Wait it out.', 'Even scammers need a vacation. Try again next year.']), { emoji: '\u{1FAE3}' })
     return
@@ -255,7 +268,7 @@ function runScam(g: GameState, def: ScamDef): void {
   st.scams += 1
   st.scamKinds[def.id] = (st.scamKinds[def.id] ?? 0) + 1
   count(g, 'scams')
-  const did = pick(g, def.did)
+  const did = eraPick(g, def.did)
 
   if (!chance(g, scamSuccessChance(g, def, st.heat))) {
     addHidden(g, 'karma', -2)
@@ -269,7 +282,7 @@ function runScam(g: GameState, def: ScamDef): void {
       return
     }
     log(g, `I tried an online scam and it flopped.`, 'bad')
-    notice(g, 'Flopped', `${did}\n\n${pick(g, def.fails)}${banned ? ' The platform banned your account, too.' : ''}`, { emoji: '\u{1F926}', tone: 'bad' })
+    notice(g, 'Flopped', `${did}\n\n${eraPick(g, def.fails)}${banned ? ' The platform banned your account, too.' : ''}`, { emoji: '\u{1F926}', tone: 'bad' })
     return
   }
 
@@ -396,6 +409,7 @@ function scamAction(def: ScamDef): MenuAction {
     label: def.label,
     emoji: def.emoji,
     subtitle: def.subtitle,
+    visible: (g) => eraOpen(g, def.era),
     disabledReason: (g) => blockReason(g, def.minAge),
     run: (g) => runScam(g, def),
   }

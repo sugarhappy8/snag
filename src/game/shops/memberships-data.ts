@@ -1,6 +1,7 @@
 // Membership & subscription plans (shops/memberships.ts). Fees are yearly, in US dollars for an
 // average US city; memberships.ts scales them for the player's market (gyms and clubs follow local
 // wages and rents, streaming follows regional pricing, wine follows local alcohol prices...).
+import type { TechId } from '../history/timeline'
 
 /** How a plan's fee moves between countries. */
 export type FeeBasis = 'service' | 'club' | 'digital' | 'food' | 'alcohol' | 'goods' | 'global'
@@ -35,6 +36,8 @@ export interface PlanDef {
   /** Use action label and emoji. */
   useLabel: string
   useEmoji: string
+  /** When this kind of plan exists (no streaming bundles in 1995). */
+  era?: { from?: number; tech?: TechId }
 }
 
 export const PLANS: PlanDef[] = [
@@ -161,6 +164,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'cowork',
+    era: { from: 2005 },
     names: ['HiveDesk {city}', '{w} Coworking'],
     fallback: 'HiveDesk Coworking',
     emoji: '💼',
@@ -178,6 +182,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'streaming',
+    era: { tech: 'streaming' },
     names: ['StreamStack Bundle'],
     fallback: 'StreamStack Bundle',
     emoji: '📺',
@@ -195,6 +200,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'music',
+    era: { tech: 'streaming', from: 2008 },
     names: ['Tunely'],
     fallback: 'Tunely',
     emoji: '🎧',
@@ -212,6 +218,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'games',
+    era: { tech: 'internet', from: 2002 },
     names: ['GameVault+'],
     fallback: 'GameVault+',
     emoji: '🎮',
@@ -228,6 +235,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'mealkit',
+    era: { tech: 'onlineShopping', from: 2012 },
     names: ['ChefCrate'],
     fallback: 'ChefCrate',
     emoji: '🥘',
@@ -276,6 +284,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'warehouse',
+    era: { from: 1976 },
     names: ['BulkBarn Warehouse Club'],
     fallback: 'BulkBarn Warehouse Club',
     emoji: '🛒',
@@ -292,6 +301,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'jet',
+    era: { from: 1986 },
     names: ['AeroCard Private Jet Card'],
     fallback: 'AeroCard Private Jet Card',
     emoji: '🛩️',
@@ -309,6 +319,7 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'dating',
+    era: { tech: 'datingApps' },
     names: ['Kindling Premium'],
     fallback: 'Kindling Premium',
     emoji: '🔥',

@@ -136,7 +136,10 @@ describe('New Life screen', () => {
     expect(html).toContain('Customize stats')
     expect(html).toContain('All random')
     expect(html).toMatch(/aria-expanded="false"/)
-    expect(html).not.toContain('type="range"')
+    // Only the "Born in" slider; the stat sliders stay hidden while the section is collapsed.
+    const ranges = html.match(/<input[^>]*type="range"[^>]*>/g) ?? []
+    expect(ranges).toHaveLength(1)
+    expect(ranges[0]).toContain('Birth year slider')
     expect(html).toContain('Looks, smarts and family are up to fate')
   })
 

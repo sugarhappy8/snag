@@ -5,6 +5,7 @@
 // contract, a seat, or a place in a sumo stable. School teams in the same sport help.
 import { addHidden, addStat, count, log, scriptChoice, useYearAction } from '../core'
 import { enrollmentClubs } from '../cv'
+import { hasTech } from '../history/timeline'
 import { bell, chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentMult } from '../talents'
@@ -12,7 +13,7 @@ import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addFame, money, ordinal, peek, prof, say, short, tell } from './common'
 import { academyClub, localTeamSports, offerYouthContract, teamSportList } from './athlete'
 import { recordYouthBout, youthFightTrain } from './sports-fight'
-import { juniorLevel, offerTurnPro, placeReason, youthTrain } from './sports-individual'
+import { juniorLevel, offerTurnPro, placeReason, sportEraAvailable, youthTrain } from './sports-individual'
 import { IND_SPORTS, indSport } from './sports-data'
 import { inviteToStable, sumoReason } from './sports-sumo'
 import { countryName, honor, localFee, logistic, payFee, payerNote, playingJob, popularity } from './sports-core'
@@ -89,10 +90,10 @@ function programs(g: GameState): Program[] {
     if (t.id === 'netball' && g.character.gender === 'male') continue
     out.push({ id: `team.${t.id}`, kind: 'team', sport: t.id, name: `${t.name} Academy`, emoji: t.emoji, minAge: TEAM_MIN_AGE[t.id] ?? 6, fee: localFee(g, t.id === 'football' || t.id === 'hockey' ? 900 : 500), trial: true })
   }
-  for (const s of IND_SPORTS) {
+  for (const s of IND_SPORTS.filter((s) => sportEraAvailable(g, s))) {
     out.push({ id: `ind.${s.id}`, kind: 'individual', sport: s.id, name: `${IND_PROGRAM[s.id] ?? `Junior ${s.name}`}`, emoji: s.emoji, minAge: Math.max(4, s.juniorAge), fee: s.id === 'motor' ? localFee(g, 12_000) : localFee(g, Math.max(300, s.costs * 0.04)), trial: false })
   }
-  for (const c of COMBAT) out.push({ id: `combat.${c.id}`, kind: 'combat', sport: c.disc, name: c.name, emoji: c.emoji, minAge: c.minAge, fee: localFee(g, 400), trial: false })
+  for (const c of COMBAT.filter((c) => c.id !== 'mma' || g.year >= 1993)) out.push({ id: `combat.${c.id}`, kind: 'combat', sport: c.disc, name: c.name, emoji: c.emoji, minAge: c.minAge, fee: localFee(g, 400), trial: false })
   if (g.character.countryId === 'jp') out.push({ id: 'sumo', kind: 'sumo', sport: 'sumo', name: 'Junior Sumo Club', emoji: '\u{1F3EF}', minAge: 6, fee: localFee(g, 200), trial: false })
   const score = (p: Program) => {
     if (p.kind === 'team') {
@@ -215,7 +216,7 @@ function train(g: GameState): void {
     extra += ' You also twisted an ankle. It’ll heal.'
   }
   log(g, `I trained hard at the ${y.club}.`)
-  say(g, 'Training', `${pick(g, ['Drills, drills and more drills. Then orange slices.', 'Your coach made you run until you saw colors.', 'You stayed after practice to work on your weakest skill.', 'You practiced in the rain while your friends played video games.'])}${extra} Level: ${y.level}%.`, p.emoji, 'good')
+  say(g, 'Training', `${pick(g, ['Drills, drills and more drills. Then orange slices.', 'Your coach made you run until you saw colors.', 'You stayed after practice to work on your weakest skill.', hasTech(g, 'videoGameConsole') ? 'You practiced in the rain while your friends played video games.' : 'You practiced in the rain while your friends played cards.'])}${extra} Level: ${y.level}%.`, p.emoji, 'good')
 }
 
 function juniorEvent(g: GameState): void {
@@ -284,7 +285,7 @@ function joinKindAction(kind: 'team' | 'individual' | 'combat'): MenuAction {
     id: `sports.youth.join.${kind}`,
     label: meta.label,
     emoji: meta.emoji,
-    subtitle: meta.sub,
+    subtitle: (g) => kind === 'combat' && g.year < 1993 ? 'Boxing, Muay Thai, sumo' : meta.sub,
     disabledReason: (g) => {
       const c = g.character
       if (!c.alive) return 'You are no longer alive.'

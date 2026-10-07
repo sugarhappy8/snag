@@ -4,7 +4,8 @@ import { peopleBy } from '../core'
 import { releaseFromPrison } from '../prison'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
-import { anyOf, ch, defineEvents, isUS, relWord, say, strangerName, term, type Ctx } from './helpers'
+import { anyOf, ch, defineEvents, isUS, relWord, say, strangerName, term, v, type Ctx } from './helpers'
+import { common } from './era'
 
 /** The GED in the US; a school-leaving equivalency elsewhere. */
 function equivalency(g: GameState): { classes: string; exam: string; name: string; line: string } {
@@ -46,8 +47,9 @@ function cm(x: Ctx): string {
   return x.p ? x.p.firstName : 'your cellmate'
 }
 
-const GAMES = ['chess', 'checkers', 'dominoes', 'spades', 'gin rummy', 'Connect Four']
-const SONGS = ['a bubblegum pop song from the 90s', 'a boy-band ballad', 'the theme song from a kids cartoon', 'a disco classic', 'a sea shanty']
+const GAMES = ['chess', 'checkers', 'dominoes', '@1935 spades', 'gin rummy', '@1975 four-in-a-row']
+// Era tags (see era.ts): no nineties pop in a 1940s yard.
+const SONGS = ['@2000 a bubblegum pop song from the 90s', '@1995 a boy-band ballad', '@1960 the theme song from a kids cartoon', '@1978 a disco classic', 'a sea shanty', 'an old work song', '@1955 a doo-wop number']
 const CELLMATE_CRIMES = [
   'robbed {n} armored trucks dressed as a clown',
   'stole {n} prize-winning pumpkins',
@@ -98,6 +100,8 @@ export const PRISON_EVENTS = defineEvents([
     minAge: 14,
     maxAge: 120,
     where: 'prison',
+    // Over-the-counter caffeine pills date from the fifties.
+    when: (g) => g.year >= 1960,
     setup: () => ({
       text: 'The commissary is out of coffee, so a group of inmates is snorting crushed-up caffeine pills. They offer you a line. What will you do?',
       choices: [ch('snort', "I'll snort that", '👃'), ch('wait', "I'll wait until the brew is in", '⏳'), ch('swallow', "Maybe I'll just swallow them", '💊')],
@@ -121,17 +125,25 @@ export const PRISON_EVENTS = defineEvents([
       const p = anyOf(g, cellmates(g))
       if (!p) return null
       const crime = pick(g, CELLMATE_CRIMES).replace('{n}', String(randInt(g, 3, 14)))
+      // The rec-room TV, or the newspaper before prisons had one.
+      const tv = common(g, 'tv')
       return {
-        text: `While watching the news with your cellmate ${p.firstName}, a story comes on about a criminal who ${crime}. It's definitely ${p.firstName}. What will you do?`,
-        choices: [ch('congrats', 'Congratulate them', '👏'), ch('dumb', 'Play dumb', '😶'), ch('channel', 'What else is on?', '📺')],
+        emoji: tv ? '📺' : '📰',
+        text: tv
+          ? `While watching the news with your cellmate ${p.firstName}, a story comes on about a criminal who ${crime}. It's definitely ${p.firstName}. What will you do?`
+          : `While reading the newspaper with your cellmate ${p.firstName}, you spot a story about a criminal who ${crime}. It's definitely ${p.firstName}. What will you do?`,
+        choices: [ch('congrats', 'Congratulate them', '👏'), ch('dumb', 'Play dumb', '😶'), ch('channel', tv ? 'What else is on?' : 'Turn the page', tv ? '📺' : '📰')],
         person: p,
-        data: { crime },
+        data: { crime, tv: tv ? 1 : 0 },
       }
     },
     resolve: {
-      congrats: (g, x) => say(g, x, 'Fan club', `You slow-clapped. ${cm(x)} took a bow and told you the parts the news left out.`, `I congratulated my cellmate ${cm(x)} after seeing them on the news.`, { rel: 8, behavior: -2 }, 'neutral', '👏'),
-      dumb: (g, x) => say(g, x, 'Poker face', `You pretended not to recognize ${cm(x)} on TV. ${x.p ? pr(x.p).He : 'They'} looked relieved.`, `While watching the news with my cellmate, I pretended not to notice they were the subject of the story.`, { rel: 3 }),
-      channel: (g, x) => say(g, x, 'Channel surfing', `You changed the channel to a cooking show. ${cm(x)} seemed a little disappointed nobody was impressed.`, 'I changed the channel when my cellmate showed up on the news.', { rel: -2 }),
+      congrats: (g, x) => say(g, x, 'Fan club', `You slow-clapped. ${cm(x)} took a bow and told you the parts the ${x.n('tv') || x.data.tv === undefined ? 'news' : 'paper'} left out.`, `I congratulated my cellmate ${cm(x)} after seeing them in the news.`, { rel: 8, behavior: -2 }, 'neutral', '👏'),
+      dumb: (g, x) => say(g, x, 'Poker face', `You pretended not to recognize ${cm(x)} ${x.n('tv') || x.data.tv === undefined ? 'on TV' : 'in the paper'}. ${x.p ? pr(x.p).He : 'They'} looked relieved.`, `While reading the news with my cellmate, I pretended not to notice they were the subject of the story.`, { rel: 3 }),
+      channel: (g, x) =>
+        x.n('tv') || x.data.tv === undefined
+          ? say(g, x, 'Channel surfing', `You changed the channel to a cooking show. ${cm(x)} seemed a little disappointed nobody was impressed.`, 'I changed the channel when my cellmate showed up on the news.', { rel: -2 })
+          : say(g, x, 'Next page', `You turned to the crossword. ${cm(x)} seemed a little disappointed nobody was impressed.`, 'I turned the page when my cellmate showed up in the newspaper.', { rel: -2 }),
     },
   },
   {
@@ -251,12 +263,16 @@ export const PRISON_EVENTS = defineEvents([
     maxAge: 120,
     where: 'prison',
     cooldown: 15,
-    setup: () => ({
+    // Chakras and "getting swole" are later vocabulary; earlier inmates stretched and did calisthenics.
+    setup: (g) => ({
       text: "You've been thrown into solitary confinement for a week for something you didn't do. How will you pass the time?",
-      choices: [ch('yoga', 'Align my chakras', '🧘'), ch('swole', 'Get swole', '💪'), ch('meditate', 'Clear my mind', '😌'), ch('walls', 'Talk to the walls', '🗣️')],
+      choices: [ch('yoga', g.year >= 1970 ? 'Align my chakras' : 'Stretch like a circus acrobat', '🧘'), ch('swole', g.year >= 2000 ? 'Get swole' : 'Do push-ups until I drop', '💪'), ch('meditate', 'Clear my mind', '😌'), ch('walls', 'Talk to the walls', '🗣️')],
     }),
     resolve: {
-      yoga: (g) => say(g, null, 'Namaste', 'You did yoga all week. Your chakras have never been more aligned, and the cell has never smelled worse.', 'I did yoga all day to keep busy while serving a stint in the hole.', { happiness: 4, health: 3, behavior: 3 }, 'good', '🧘'),
+      yoga: (g) =>
+        g.year >= 1970
+          ? say(g, null, 'Namaste', 'You did yoga all week. Your chakras have never been more aligned, and the cell has never smelled worse.', 'I did yoga all day to keep busy while serving a stint in the hole.', { happiness: 4, health: 3, behavior: 3 }, 'good', '🧘')
+          : say(g, null, 'Limber', 'You stretched all week until you could touch your toes with your nose. The guard who checked on you screamed a little.', 'I stretched all day to keep busy while serving a stint in the hole.', { happiness: 4, health: 3, behavior: 3 }, 'good', '🤸'),
       swole: (g) => say(g, null, 'Prison gains', 'You did push-ups and sit-ups until you lost count. You came out of the hole noticeably bigger.', 'I did push-ups and sit-ups all day while serving a stint in the hole.', { health: 4, looks: 2, athleticism: 3, respect: 3, behavior: 2 }, 'good', '💪'),
       meditate: (g) => say(g, null, 'Inner peace', 'You meditated in the darkness and came out calmer than you went in.', 'I meditated all day while serving a stint in the hole.', { happiness: 6, behavior: 3, count: 'meditate' }, 'good', '😌'),
       walls: (g) => say(g, null, 'Good listeners', 'You had long talks with the walls. One of them, Gary, really gets you.', 'I talked to the walls while I was in solitary confinement.', { happiness: -3, craziness: 6 }, 'bad', '🧱'),
@@ -270,7 +286,7 @@ export const PRISON_EVENTS = defineEvents([
     maxAge: 120,
     where: 'prison',
     setup: (g) => {
-      const song = pick(g, SONGS)
+      const song = v(g, SONGS)
       return {
         text: `While you're hanging out in the yard, a group of very large inmates suddenly starts singing ${song}. What will you do?`,
         choices: [ch('watch', 'Watch and listen intently', '👂'), ch('belt', 'Belt it out', '🎤'), ch('own', 'Do my own thing', '🚶')],
@@ -353,7 +369,7 @@ export const PRISON_EVENTS = defineEvents([
     maxAge: 120,
     where: 'prison',
     setup: (g) => {
-      const game = pick(g, GAMES)
+      const game = v(g, GAMES)
       const name = strangerName(g, g.character.gender).first
       return {
         text: `While playing ${game} with ${name}, an absolutely enormous inmate, you're told that "bad things happen" when ${name} loses. What will you do?`,
@@ -410,7 +426,7 @@ export const PRISON_EVENTS = defineEvents([
         if (chance(g, 0.35)) return say(g, x, 'Mistake', `You ate the candy. You spent the next two days regretting every decision that led you here.`, 'I ate smuggled candy in prison and got sick.', { health: -6, happiness: -2, behavior: -2 }, 'bad', '🤢')
         say(g, x, 'Sweet', `You ate the candy. It tasted like freedom. And a little like something else.`, 'I ate some candy that was smuggled into prison.', { happiness: 4, behavior: -2 })
       },
-      trade: (g, x) => say(g, x, 'Entrepreneur', `You traded the candy for two packs of ramen and a pencil. Business is booming.`, 'I traded smuggled candy for commissary goods.', { happiness: 3, respect: 3, behavior: -2 }),
+      trade: (g, x) => say(g, x, 'Entrepreneur', `You traded the candy for ${g.year >= 1975 ? 'two packs of ramen' : 'a pack of cigarettes'} and a pencil. Business is booming.`, 'I traded smuggled candy for commissary goods.', { happiness: 3, respect: 3, behavior: -2 }),
     },
   },
   {
@@ -519,7 +535,7 @@ export const PRISON_EVENTS = defineEvents([
     setup: (g) => {
       const design = pick(g, ['a teardrop', 'a spider web on your elbow', 'your mom’s name', 'a skull wearing a crown', 'a very wobbly dolphin', 'your prisoner number'])
       return {
-        text: `An inmate with a homemade tattoo gun built from a guitar string and a cassette motor offers to give you ${design}. What will you do?`,
+        text: g.year >= 1970 ? `An inmate with a homemade tattoo gun built from a guitar string and a cassette motor offers to give you ${design}. What will you do?` : `An inmate with a sewing needle and a jar of soot ink offers to give you ${design}. What will you do?`,
         choices: [ch('ink', 'Get the tattoo', '🖋️'), ch('decline', 'No way', '🙅')],
         data: { design },
       }
@@ -539,7 +555,8 @@ export const PRISON_EVENTS = defineEvents([
     minAge: 10,
     maxAge: 19,
     where: 'prison',
-    when: juvenile,
+    // Inmate payphones (and refrigerators to run after) arrived mid-century.
+    when: (g) => juvenile(g) && g.year >= 1950,
     setup: () => ({
       text: "You're allowed one 20-minute phone call per week, and you usually spend it on family and your lawyer. This week you want to have a little fun. What will you do?",
       choices: [ch('prank', 'Prank call someone', '😜'), ch('missing', 'Report myself missing', '🔍'), ch('pizza', 'Order a pizza', '🍕')],
@@ -589,7 +606,7 @@ export const PRISON_EVENTS = defineEvents([
     }),
     resolve: {
       join: (g) => say(g, null, 'Caught in four minutes', 'You climbed into the laundry truck. It never left the parking lot. The guards found you under a pile of towels.', 'I tried to escape juvie in a laundry truck and was caught in minutes.', { behavior: -12, happiness: -4, count: 'escapeAttempts' }, 'bad', '🚨'),
-      report: (g) => say(g, null, 'Teacher’s pet', 'You told a counselor. The plan was foiled and you got extra TV time. The other kids now call you "the Narc".', 'I told a counselor about an escape plan in juvie.', { behavior: 8, respect: -8 }),
+      report: (g) => say(g, null, 'Teacher’s pet', `You told a counselor. The plan was foiled and you got extra ${common(g, 'tv') ? 'TV time' : 'time in the yard'}. The other kids now call you "the Narc".`, 'I told a counselor about an escape plan in juvie.', { behavior: 8, respect: -8 }),
       stay: (g) => say(g, null, 'Not worth it', 'You stayed in bed. The next morning, everyone involved was in solitary.', 'I stayed out of a doomed juvie escape plan.', { behavior: 2 }),
     },
   },

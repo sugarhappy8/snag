@@ -108,10 +108,11 @@ describe('birth backstories', () => {
     births[id] = lines.join('\n')
   }
 
+  // Millions of checks (every birth now also logs that year's news line): give it room on busy CI.
   it('never puts American places or weather in a non-American birth', () => {
     for (const id of NON_US) expectClean(births[id].split('\n'), id)
     expectClean(births.us.split('\n'), 'us')
-  })
+  }, 30_000)
 
   it('sends eloping parents somewhere local', () => {
     expect(births.us).toMatch(/eloped to Las Vegas/)

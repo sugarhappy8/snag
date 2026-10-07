@@ -1,33 +1,39 @@
 // Offline flavor lines for the life log: the little first-person one-liners that make a
 // year feel lived in ("I said my first word: 'potato'."), chosen to fit the character's
 // age and situation, with real family names filled in and no repeats for a long while.
-import { children as childrenOf, currentPartner, inPrison, log, peopleBy } from '../core'
+import { children as childrenOf, currentPartner, formatMoney, inPrison, log, peopleBy } from '../core'
 import { chance, pick, randInt, shuffle } from '../rng'
 import { locale, localPick, localSoftDrink } from '../data/locales'
 import type { GameState, Json, Person, Tone } from '../types'
 import { country, friends, grandkids, inUniversity, mother, father, pets, playSport, siblings } from './helpers'
+import { anachronistic, eraOk, eraStrip, kidPrize, movieKind, radioShow, showName, venueExists } from './era'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
 
 const FIRST_WORDS = ['potato', 'no', 'cookie', 'dada', 'mama', 'uh-oh', 'doggy', 'ball', 'nope', 'banana', 'taxes', 'meow', 'more', 'why', 'pizza', 'bye-bye']
 const FOODS = ['chicken nuggets', 'pizza', 'pancakes', 'spaghetti', 'dumplings', 'noodles', 'fried rice', 'soup']
-const SHOWS = ['a cooking competition show', 'a true-crime documentary', 'a reality dating show', 'a cartoon about talking vegetables', 'a nature documentary about otters', 'a soap opera', 'a show about people buying houses', 'an anime about volleyball']
+/** Foods that didn't exist (or weren't kid staples) yet: chicken nuggets are an eighties invention. */
+const FOOD_SINCE: Record<string, number> = { 'chicken nuggets': 1983, pizza: 1950 }
 const HOBBIES = ['knitting', 'birdwatching', 'chess', 'baking sourdough', 'woodworking', 'gardening', 'crossword puzzles', 'jigsaw puzzles', 'photography', 'model trains', 'pottery', 'astronomy']
+
+// Lines may carry era tags ("@tv ...", "@-1960 ...", see events/era.ts): a line only shows up in
+// the years (and countries) where it makes sense, so a 1930s childhood gets the radio and the
+// picture house and a 2020s one gets the phone. Every pool keeps untagged lines for any year.
 
 const BABY = [
   'I spent the year chewing on everything I could reach.',
   'I learned that my feet belong to me.',
   'I threw up on a stranger at the grocery store.',
-  'I screamed through an entire airplane flight.',
+  '@flights I screamed through an entire airplane flight.',
   'I discovered I could make my parents jump by dropping my spoon.',
   'I pulled the cat’s tail. The cat has not forgiven me.',
   'I figured out how to clap.',
   'I sneezed in the middle of eating mashed peas.',
-  'I spent a lot of time staring at the ceiling fan.',
+  '@1925 I spent a lot of time staring at the ceiling fan.',
   'I grabbed a fistful of my own hair and screamed about it.',
   'I fell asleep in my high chair with my face in my food.',
   'I learned to blow raspberries.',
-  'I cried every time the vacuum turned on.',
+  '@1930 I cried every time the vacuum turned on.',
   'I ate a crayon. It was blue.',
   'I giggled every time someone said "boop."',
   'I tried my first lemon. I did not care for it.',
@@ -37,6 +43,9 @@ const BABY = [
   'I grabbed my mother {mom}’s glasses and threw them on the floor.',
   'I learned to wave bye-bye.',
   'I unrolled an entire roll of toilet paper.',
+  '@-1950 I slept in a dresser drawer lined with a blanket. It was very cozy.',
+  '@radio,!tv I fell asleep every evening to the hum of the family radio.',
+  '@-1960 I was wheeled around the neighborhood in an enormous pram.',
 ]
 
 const TODDLER = [
@@ -46,7 +55,7 @@ const TODDLER = [
   'I drew on the living room wall with a marker.',
   'I asked "why?" about four thousand times.',
   'I hid my vegetables under my plate.',
-  'I learned all the words to a song about a baby shark.',
+  '@2016 I learned all the words to a song about a baby shark.',
   'I fell down the stairs, but I was okay.',
   'I insisted on wearing my rain boots every single day.',
   'I named a rock "Steve" and carried it everywhere.',
@@ -62,9 +71,12 @@ const TODDLER = [
   'I refused to eat anything that wasn’t {food}.',
   'I followed my {sibRel}, {sib}, around all year.',
   'I chased pigeons at the park.',
-  'I started preschool and cried on the first day.',
+  '@1950 I started preschool and cried on the first day.',
   'I licked a frozen pole. It was a mistake.',
   'I made my {petSpecies}, {pet}, wear a hat.',
+  'I learned all the words to a nursery rhyme and sang it at every meal.',
+  '@-1955 I played with a wooden horse my grandfather carved for me.',
+  '@tv I tried to climb inside the TV to meet the puppets.',
 ]
 
 const CHILD = [
@@ -88,29 +100,39 @@ const CHILD = [
   'I built a treehouse with my father, {dad}.',
   'I baked cookies with my mother, {mom}.',
   'I got into a pillow fight with my {sibRel}, {sib}.',
-  'I fought with my {sibRel}, {sib}, over the TV remote.',
+  'I fought with my {sibRel}, {sib}, over {kidPrize}.',
   'My best friend {friend} and I built a secret clubhouse.',
-  'I played video games with {friend} all weekend.',
+  '@videoGameConsole I played video games with {friend} all weekend.',
   'I started a rock collection.',
   'I got a gold star for my spelling test.',
-  'I made a volcano out of baking soda and vinegar.',
+  '@1950 I made a volcano out of baking soda and vinegar.',
   'I learned all the countries in Europe.',
   'I tried to teach my {petSpecies}, {pet}, to fetch.',
-  'I went on a family road trip and asked "are we there yet?" every five minutes.',
-  'I watched {show} way too much.',
+  '@cars I went on a family road trip and asked "are we there yet?" every five minutes.',
+  '@tv I watched {show} way too much.',
   'I tried {food} for the first time and loved it.',
   'I hit a home run at a neighborhood baseball game.',
   'I set up a lemonade stand and made three dollars.',
+  'I played marbles with the kids on my street until it got dark.',
+  '@-1940 I raced a wooden hoop down the street with a stick.',
+  '@-1950 I traded picture cards from cigarette packs with my friends.',
+  '@radio,!tv I never missed {radioShow} on the family radio.',
+  '@tv,!colorTv I watched cartoons on the family’s black-and-white TV every Saturday morning.',
+  '@1978,-1998 I spent every coin I could find at the arcade.',
+  '@1910 I saw my first {movieKind} at the cinema and talked about it for a week.',
+  '@-1965 I read comic books under the covers until my eyes hurt.',
+  '@homeComputer,!smartphone I played computer games on the family computer until I was kicked off.',
+  '@smartphone I begged for screen time every single day.',
 ]
 
 const TEEN = [
   'I grew three inches this year.',
-  'I spent hours scrolling on my phone every night.',
-  'I got braces.',
+  '@smartphone I spent hours scrolling on my phone every night.',
+  '@1950 I got braces.',
   'I had a huge pimple on picture day.',
-  'I dyed my hair a color I regret.',
+  '@1955 I dyed my hair a color I regret.',
   'I started keeping a journal.',
-  'I stayed up all night playing video games.',
+  '@videoGameConsole I stayed up all night playing video games.',
   'I learned to play three chords on the guitar.',
   'I got really into a band nobody has heard of.',
   'I spent the summer working on my tan.',
@@ -118,19 +140,31 @@ const TEEN = [
   'I slammed my bedroom door at least once a week.',
   'I told my father, {dad}, that he just doesn’t understand me.',
   'I borrowed my {sibRel} {sib}’s clothes without asking.',
-  'I went to the mall with {friend} and bought nothing.',
-  'I stayed up all night texting {friend}.',
-  'I binge-watched {show}.',
+  '@1962 I went to the mall with {friend} and bought nothing.',
+  '@texting I stayed up all night texting {friend}.',
+  '@streaming I binge-watched {show}.',
   'I tried to grow a mustache. It was a disappointing mustache.',
   'I learned to cook {food}.',
-  'I got lost in a rabbit hole of conspiracy videos.',
-  'I went through an emo phase.',
-  'I spent my birthday money on sneakers.',
-  'I got my first pair of designer sunglasses.',
+  '@videoSharing I got lost in a rabbit hole of conspiracy videos.',
+  '@2002,-2012 I went through an emo phase.',
+  '@1925 I spent my birthday money on sneakers.',
+  '@1950 I got my first pair of designer sunglasses.',
   'I went to my first concert.',
-  'I memorized every line of my favorite movie.',
-  'I took a selfie every single day this year.',
+  '@1930 I memorized every line of my favorite movie.',
+  '@smartphone I took a selfie every single day this year.',
   'I spent the summer at the public pool.',
+  '@landline,!texting I tied up the family telephone for hours talking to {friend}.',
+  '@-1965 I wrote long letters to a pen pal overseas.',
+  '@1955,-1975 I danced to rock and roll records until my parents banged on the wall.',
+  '@1930,-1960 I saved up my pocket money for the Saturday picture show.',
+  '@1975,-2004 I made {friend} a mixtape and agonized over the song order.',
+  '@1988,-2003 I got a pager and felt incredibly important.',
+  '@internet,!smartphone I spent hours in internet chat rooms pretending to be older.',
+  '@internet,!smartphone,1997 I spent whole evenings on instant messenger and agonized over my away message.',
+  '@internet,-2007 I got kicked off the dial-up every time somebody needed the phone.',
+  '@tv,!streaming I stayed up late watching {show} with the volume way down.',
+  '@-1950 I left school to help support the family and felt very grown up about it.',
+  '@1955,-1985 I spent the summer cruising around town with {friend}.',
 ]
 
 const GRADE_SCHOOL = [
@@ -138,34 +172,40 @@ const GRADE_SCHOOL = [
   'I got a perfect score on a math quiz.',
   'I fell asleep in class.',
   'I got detention for talking in class.',
-  'I sat at the back of the bus all year.',
+  '@1930 I sat at the back of the bus all year.',
   'I got picked last in gym class.',
   'I won a class spelling bee.',
   'I made the honor roll at {school}.',
   'I passed notes in class all year.',
-  'I got caught chewing gum in class.',
+  '@1910 I got caught chewing gum in class.',
   'I joined a club at {school}.',
   'I ate lunch alone in the library a few times.',
   'I had a substitute teacher who cried.',
   'I studied for a test for once.',
-  'I forgot my locker combination for an entire week.',
+  '@1940 I forgot my locker combination for an entire week.',
   'I got food poisoning from the {school} cafeteria.',
+  '@-1960 I got ink all over my sleeves from my fountain pen.',
+  '@-1950 I got my knuckles rapped with a ruler for talking in class.',
+  '@-1930 I practiced my letters on a slate until my arm hurt.',
+  '@homeComputer I got to use the computer lab once a week and felt like a genius.',
 ]
 
 const UNIVERSITY = [
   'I pulled an all-nighter before finals.',
-  'I lived on instant noodles for a whole semester.',
+  '@1972 I lived on instant noodles for a whole semester.',
+  '@-1972 I lived on bread and cheap soup for a whole semester.',
   'I changed my mind about my major at least twice.',
   'I fell asleep in the library.',
   'I went to a campus party and left early.',
   'I skipped my 8 AM lecture way too many times.',
-  'I bought a textbook for $300 and never opened it.',
+  'I bought a textbook for {textbookPrice} and never opened it.',
   'I joined an intramural dodgeball team.',
-  'I spent spring break sleeping.',
+  '@1960 I spent spring break sleeping.',
   'I got lost on campus during my first week.',
   'I accidentally shrank all my laundry.',
   'I wrote a ten-page paper the night before it was due.',
   'I visited my professor’s office hours. It actually helped.',
+  '@-1985 I typed my thesis on a typewriter and ran out of correction fluid.',
 ]
 
 const ADULT = [
@@ -173,46 +213,63 @@ const ADULT = [
   'I paid my bills on time all year.',
   'I spent a weekend reorganizing my closet.',
   'I bought a houseplant. It died.',
-  'I tried to learn a new language on my phone.',
-  'I binge-watched {show}.',
+  '@smartphone I tried to learn a new language on my phone.',
+  '@1965,!smartphone I tried to learn a new language from a set of tapes.',
+  '@streaming I binge-watched {show}.',
   'I took up {hobby}.',
   'I went on a long hike.',
   'I learned to make {food} from scratch.',
-  'I got a parking ticket.',
+  '@1935 I got a parking ticket.',
   'I spent way too much money on takeout.',
   'I went to a friend’s wedding and cried during the speeches.',
   'I tried a new hairstyle.',
-  'I did my taxes three hours before the deadline.',
-  'I got food poisoning from a sketchy food truck.',
+  '@1920 I did my taxes three hours before the deadline.',
+  '@2008 I got food poisoning from a sketchy food truck.',
   'I adopted a sourdough starter.',
-  'I ran a 5K and walked most of it.',
+  '@1975 I ran a 5K and walked most of it.',
   'I spent a weekend at the beach.',
-  'I got lost driving around {city}.',
-  'I got really into true-crime podcasts.',
-  'I went to a music festival.',
+  '@cars I got lost driving around {city}.',
+  '@2006 I got really into true-crime podcasts.',
+  '@1967 I went to a music festival.',
   'I threw a dinner party that went surprisingly well.',
   'I got stuck in an elevator for an hour.',
-  'I called my mother, {mom}, every Sunday.',
+  '@landline I called my mother, {mom}, every Sunday.',
+  '@!landline I wrote to my mother, {mom}, every week.',
   'My father, {dad}, taught me how to change a tire.',
   'I went to brunch with {friend}.',
   'I helped {friend} move apartments.',
-  'I had a long phone call with my {sibRel}, {sib}.',
+  '@landline I had a long phone call with my {sibRel}, {sib}.',
   'I visited a museum in {city}.',
   'I spent a weekend doing absolutely nothing.',
+  '@radio,!tv I listened to the radio every evening after supper.',
+  '@1930,-1965 I went to the pictures every Saturday night.',
+  '@tv,!streaming I watched {show} every week without fail.',
+  '@-1960 I wore a hat every time I left the house, like a respectable person.',
+  '@1950,-1975 I threw a fondue party and burned the bread.',
+  '@1980,-1995 I bought a pair of shoulder pads I had no business wearing.',
+  '@1988,-2002 My pager went off in the middle of a movie and the whole row turned around.',
+  '@cars,landline,-2005 My car broke down and I fed my last coins into a payphone to call for help.',
+  '@cars,1934,-1985 I went to the drive-in and spent the whole movie fighting with the window speaker.',
+  '@1915,-1965 I caught the newsreel before the picture and finally learned what was going on in the world.',
 ]
 
 const WORKER = [
   'I worked late more nights than I’d like to admit.',
-  'I fixed the office printer and became a legend at {company}.',
-  'I sat through a meeting that could have been an email.',
-  'I microwaved fish in the break room at {company}. People were upset.',
+  '@1985 I fixed the office printer and became a legend at {company}.',
+  '@-1985 I fixed the office typewriter and became a legend at {company}.',
+  '@internet I sat through a meeting that could have been an email.',
+  '@!internet I sat through a meeting that could have been a memo.',
+  '@1980 I microwaved fish in the break room at {company}. People were upset.',
   'I had a work nightmare about being late to a meeting.',
   'I got a "Best Attitude" certificate at {company}.',
-  'I accidentally replied-all to a company-wide email.',
-  'I spent my lunch breaks reading in my car.',
+  '@internet I accidentally replied-all to a company-wide email.',
+  '@!internet I sent a memo to the whole office with the boss’s name misspelled.',
+  '@cars I spent my lunch breaks reading in my car.',
+  '@!cars I spent my lunch breaks reading on a park bench.',
   'I went to the {company} holiday party.',
   'My boss at {company} called me by the wrong name for a month.',
-  'I took a week of vacation and checked my email every day.',
+  '@internet I took a week of vacation and checked my email every day.',
+  '@landline,!internet I took a week of vacation and called the office every day.',
   'I trained a new hire at {company}.',
   'I complained about my commute to anyone who would listen.',
   'I organized the office birthday cards at {company}.',
@@ -220,24 +277,27 @@ const WORKER = [
 
 const UNEMPLOYED = [
   'I sent out dozens of job applications.',
-  'I spent too much time watching daytime TV.',
-  'I slept in until noon most days.',
-  'I tried to start a podcast. Nobody listened.',
+  '@tv I spent too much time watching daytime TV.',
+  '@radio,!tv I spent too much time listening to the radio.',
+  '@2006 I tried to start a podcast. Nobody listened.',
   'I perfected my résumé for the hundredth time.',
   'I spent a lot of time thinking about what I want to do with my life.',
   'I reorganized my sock drawer by color.',
+  '@-1990 I circled job ads in the newspaper every morning.',
 ]
 
 const PARTNERED = [
   '{partner} and I had a lovely date night.',
   '{partner} and I argued about whose turn it was to do the dishes.',
-  '{partner} and I binge-watched {show} together.',
+  '@streaming {partner} and I binge-watched {show} together.',
+  '@tv,!streaming {partner} and I watched {show} together every week.',
   '{partner} and I went on a weekend getaway.',
   '{partner} and I cooked {food} together.',
   '{partner} surprised me with breakfast in bed.',
   '{partner} and I adopted a houseplant together and named it Gerald.',
   '{partner} and I took a dance class together.',
   '{partner} snored all year. I barely slept.',
+  '@radio,!tv {partner} and I danced in the kitchen to the radio.',
 ]
 
 const PARENT = [
@@ -250,10 +310,12 @@ const PARENT = [
   'I stepped on one of my {kidRel} {kid}’s toys in the dark.',
   'I taught my {kidRel}, {kid}, how to ride a bike.',
   'I watched my {kidRel} {kid}’s soccer game and yelled too much.',
+  '@smartphone I argued with my {kidRel}, {kid}, about screen time.',
 ]
 
 const ADULT_KIDS = [
-  'My {kidRel}, {kid}, called me for advice.',
+  '@landline My {kidRel}, {kid}, called me for advice.',
+  '@!landline My {kidRel}, {kid}, wrote to me for advice.',
   'My {kidRel}, {kid}, came home for the holidays.',
   'I sent my {kidRel}, {kid}, a care package.',
   'My {kidRel}, {kid}, forgot my birthday. I didn’t forget.',
@@ -279,21 +341,27 @@ const ELDER = [
   'I wrote letters to old friends.',
   'I did a crossword puzzle every day.',
   'I mixed up my grandkids’ names more than once.',
-  'I got my flu shot early.',
+  '@1960 I got my flu shot early.',
   'I organized my old photo albums.',
   'I couldn’t find my glasses. They were on my head.',
-  'I joined a mall-walking group.',
-  'I watched the evening news every night and disagreed with it.',
-  'My grandchild, {grandkid}, taught me how to use emojis.',
+  '@1975 I joined a mall-walking group.',
+  '@tv I watched the evening news every night and disagreed with it.',
+  '@radio,!tv I listened to the news on the radio every night and disagreed with it.',
+  '@smartphone My grandchild, {grandkid}, taught me how to use emojis.',
+  '@internet,!smartphone My grandchild, {grandkid}, taught me how to send an email.',
+  '@!internet My grandchild, {grandkid}, taught me a dance I absolutely could not do.',
   'I baked cookies with my grandchild, {grandkid}.',
   'I went to the doctor for my annual checkup.',
   'I started going to bed at 8 PM.',
+  '@internet I explained to anyone who would listen that we used to manage just fine without the internet.',
+  '@tv I told my grandkids we didn’t even have TV when I was little. They didn’t believe me.',
 ]
 
 const RETIREE = [
   'I enjoyed another year of retirement.',
   'I didn’t set an alarm all year.',
-  'I spent the year traveling with my pension money.',
+  '@flights I spent the year traveling with my pension money.',
+  '@!flights I spent the year taking trains to visit old friends.',
   'I spent a lot of time in my garden.',
   'I went fishing every week.',
   'I volunteered at the local library.',
@@ -303,14 +371,15 @@ const PRISONER = [
   'I did push-ups in my cell every morning.',
   'I read every book on the prison library cart.',
   'I counted the days until my release.',
-  'I traded ramen for stamps in the yard.',
+  '@1975 I traded ramen for stamps in the yard.',
+  '@-1975 I traded cigarettes for stamps in the yard.',
   'I wrote letters to people on the outside.',
   'I played cards with my cellmate, {cellmate}, every night.',
   'My cellmate, {cellmate}, snored all year.',
   'I learned to make a cake out of commissary snacks.',
   'I kept my head down and stayed out of trouble.',
   'I spent a lot of time staring at the ceiling.',
-  'I watched the same movie in the rec room eleven times.',
+  '@1980 I watched the same movie in the rec room eleven times.',
   'I lost a game of chess to a guard.',
   'I got really good at handball in the yard.',
   'I complained about the prison food every single day.',
@@ -327,18 +396,22 @@ const JUVIE = [
 
 const RICH = [
   'I bought a ridiculously expensive bottle of wine and couldn’t taste the difference.',
-  'I flew first class and got a warm towel.',
+  '@1958 I flew first class and got a warm towel.',
+  '@-1958 I sailed first class on an ocean liner and dressed for dinner every night.',
   'I hired someone to organize my closets.',
   'I got invited to a fancy charity gala.',
-  'I tipped a valet $100 just to see his face.',
+  '@cars I tipped a valet {valetTip} just to see his face.',
 ]
 
 const BROKE = [
-  'I ate instant noodles for most of the year.',
+  '@1972 I ate instant noodles for most of the year.',
+  '@-1972 I ate beans and bread for most of the year.',
   'I checked my bank balance with one eye closed.',
   'I cut coupons every Sunday.',
-  'I sold some old stuff online to make rent.',
-  'I walked everywhere to save on gas.',
+  '@internet I sold some old stuff online to make rent.',
+  '@!internet I sold some old stuff at a flea market to make rent.',
+  '@cars I walked everywhere to save on gas.',
+  '@!cars I walked everywhere to save on bus fare.',
 ]
 
 const HOMELESS = [
@@ -410,9 +483,16 @@ function tokens(g: GameState): Record<string, string | undefined> {
   t.city = c.city
   t.country = country(g).name
   // Half the time something universal, half the time a local dish ('nasi goreng', 'injera', 'mac and cheese' in the US).
-  t.food = chance(g, 0.5) ? pick(g, FOODS) : localPick(g, 'food') || pick(g, FOODS)
-  t.show = pick(g, SHOWS)
+  const foods = FOODS.filter((f) => g.year >= (FOOD_SINCE[f] ?? 0))
+  t.food = chance(g, 0.5) ? pick(g, foods) : localPick(g, 'food') || pick(g, foods)
+  t.show = showName(g)
+  t.radioShow = radioShow(g)
+  t.kidPrize = kidPrize(g)
+  t.movieKind = movieKind(g)
   t.hobby = pick(g, HOBBIES)
+  // Amounts in the player's money and year (Settings › Money).
+  t.textbookPrice = formatMoney(300)
+  t.valetTip = formatMoney(100)
   return t
 }
 
@@ -430,7 +510,7 @@ function localizeLine(g: GameState, line: string): string {
   }
   if (line.includes('lemonade stand') && c.countryId !== 'ca') return `I set up a stand selling iced ${localSoftDrink(g).replace(/^iced /i, '')} and made a little pocket money.`
   if (line.includes('the mall with')) {
-    const shops = locale(g).hangouts.filter((h) => /mall|market|bazaar|souk|shopping|plaza|arcade/i.test(h))
+    const shops = locale(g).hangouts.filter((h) => /mall|market|bazaar|souk|shopping|plaza|arcade/i.test(h) && venueExists(g, h))
     return line.replace('the mall', shops.length ? pick(g, shops) : 'the market')
   }
   if (line.includes('mall-walking group')) return line.replace('mall-walking group', 'morning walking group')
@@ -536,8 +616,10 @@ export function addFlavorLines(g: GameState): void {
     ).filter((o) => !recent.includes(o.key))
     let chosen: { text: string; key: string } | null = null
     for (const o of options) {
-      const filled = fill(o.line, t)
+      if (!eraOk(g, o.line)) continue
+      const filled = fill(eraStrip(o.line), t)
       const text = filled ? localizeLine(g, filled) : null
+      if (text && anachronistic(g, text)) continue
       if (text) {
         chosen = { text, key: o.key }
         break

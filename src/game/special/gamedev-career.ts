@@ -16,13 +16,17 @@ import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
+import { hasTech } from '../history/timeline'
+import { anachronistic } from '../events/era'
 import { addColleague, addFame, blocked, hire, leave, money, ownFlag, promote, quitNote, say, setOwnFlag, setRole, syncTenure, tell } from './common'
 import { addGamerFame, copiesLabel, firstYearCopies, gamePay, gameTitle, homeReach, industryYear, reviewScores, sequelTitle, trainArt, trainDesign } from './gamedev-core'
 import {
   CONVENTION,
   GIANTS,
   genreDef,
-  GENRES,
+  gameIndustryExists,
+  genreOpen,
+  genresIn,
   HUBS,
   INDIE_SUFFIX,
   INDIE_WORDS,
@@ -34,12 +38,17 @@ import {
   MID_WORDS,
   QA_PAY,
   scopeDef,
+  teamScale,
   TIER_INFO,
   TIER_LABEL,
   titleFor,
   TRACK_LABEL,
   type GenreId,
+  platformOpen,
+  platformsIn,
+  scopeOpen,
   type PlatformId,
+  type ScopeId,
   type Tier,
   type Track,
 } from './gamedev-data'
@@ -166,6 +175,7 @@ function sceneSize(countryId: string): number {
  */
 export function jobListings(g: GameState): Listing[] {
   const c = g.character
+  if (!gameIndustryExists(g.year) || !hasTech(g, 'videoGameConsole')) return []
   const s = seeded(yearKey(g, 'gamedev.jobs'))
   const scene = sceneSize(c.countryId)
   const mood = industryYear(g).mood
@@ -177,7 +187,8 @@ export function jobListings(g: GameState): Listing[] {
     const tiers: [Tier, number][] = [
       ['indie', 0.45],
       ['mid', 0.35 * Math.min(1.3, scene)],
-      ['aaa', scene >= 1.2 ? 0.3 : scene >= 0.6 ? 0.08 : 0],
+      // Blockbuster publishers with offices everywhere are a 1990s-and-later thing.
+      ['aaa', g.year < 1993 ? 0 : scene >= 1.2 ? 0.3 : scene >= 0.6 ? 0.08 : 0],
     ]
     const tier = s.weighted(
       tiers.filter((t) => t[1] > 0),
@@ -238,7 +249,7 @@ const INTERVIEW = defineScript('gamedev.job.interview', (g, choice, data) => {
   const bar = l.level === 0 ? 34 : 50
   if (score < bar) {
     log(g, `I interviewed at ${l.studio} for ${l.title} and didn't get it.`, 'bad')
-    say(g, 'Not This Time', `${answer.reply}\n\n${l.studio} went with another candidate. ${pick(g, ['They promised to "keep your CV on file," which is a large file nobody opens.', 'The rejection email had your name spelled wrong.', 'They said you were "a strong candidate," which is what they say to everyone.'])}`, '\u{1F4E7}', 'bad')
+    say(g, 'Not This Time', `${answer.reply}\n\n${l.studio} went with another candidate. ${pick(g, ['They promised to "keep your CV on file," which is a large file nobody opens.', `The rejection ${g.year >= 1997 && hasTech(g, 'internet') ? 'email' : 'letter'} had your name spelled wrong.`, 'They said you were "a strong candidate," which is what they say to everyone.'])}`, '\u{1F4E7}', 'bad')
     return
   }
   takeJob(g, l, answer.reply)
@@ -275,7 +286,8 @@ export function takeJob(g: GameState, l: Listing, intro = ''): void {
   log(g, `I got a job as ${l.title} at ${l.studio}.`, 'good')
   remember(g, `Hired as ${l.title} at ${l.studio}, a ${TIER_LABEL[l.tier]}.`)
   const proj = d.proj
-  const team = proj ? ` You're on the team making "${proj.title}", ${articleNoun(genreDef(proj.genre).noun)}.` : ''
+  const crew = proj ? Math.max(2, Math.round(scopeDef(proj.scope).team * teamScale(g.year))) : 0
+  const team = proj ? ` You're one of ${crew} people making "${proj.title}", ${articleNoun(genreDef(proj.genre).noun)}.` : ''
   say(g, "You're Hired!", `${intro ? `${intro}\n\n` : ''}${l.studio} hired you as ${l.title} for ${money(l.salary)} a year.${team}${quitNote(quit)}`, '\u{1F3AE}', 'good')
 }
 
@@ -290,7 +302,7 @@ function applyTo(g: GameState, l: Listing): void {
   if (!useYearAction(g, 'gamedev.apply', 4)) return tell(g, 'Application Fatigue', "You've sent four applications this year. Your cover letter template is starting to sound desperate.", '\u{1F4E7}')
   const pool = INTERVIEWS.map((q, i) => [q, i] as const).filter(([q]) => q.track === l.track || (q.track === 'any' && l.level > 0))
   const [q, qi] = pick(g, pool)
-  scriptChoice(g, INTERVIEW, `Interview at ${l.studio}`, `${l.title} · ${TIER_LABEL[l.tier]}${l.tier === 'aaa' ? ` (${l.city} office)` : ` in ${l.city}`}\n\n${q.text}`, q.answers.map((a) => ({ id: a.id, label: a.label, emoji: a.emoji })), {
+  scriptChoice(g, INTERVIEW, `Interview at ${l.studio}`, `${l.title} · ${TIER_LABEL[l.tier]}${l.tier === 'aaa' ? ` (${l.city} office)` : ` in ${l.city}`}\n\n${q.text}`, q.answers.filter((a) => !anachronistic(g, a.label)).map((a) => ({ id: a.id, label: a.label, emoji: a.emoji })), {
     emoji: '\u{1F3AE}',
     data: { listing: JSON.parse(JSON.stringify(l)) as Json, q: qi },
   })
@@ -341,16 +353,33 @@ export const studioJobsMenu: MenuGroup = {
 // ---------------------------------------------------------------------------
 // The studio's game
 
+/** The genres a studio makes this year (a giant's own genres when they exist yet). */
+function studioGenres(g: GameState, giant: { genres: GenreId[] } | undefined): GenreId[] {
+  const own = giant ? giant.genres.filter((x) => genreOpen(x, g.year)) : []
+  return own.length ? own : genresIn(g.year).map((x) => x.id)
+}
+
 function studioGenre(g: GameState, l: { studio: string; tier: Tier }): GenreId {
   const giant = GIANTS.find((x) => x.name === l.studio)
-  return giant ? pick(g, giant.genres) : pick(g, GENRES).id
+  return pick(g, studioGenres(g, giant))
+}
+
+/** A platform of the era for a scope (no phone games in 1995, no "every platform" in 1985). */
+function studioPlatform(g: GameState, scope: ScopeId): PlatformId {
+  const open = (xs: PlatformId[]) => xs.filter((x) => platformOpen(x, g.year))
+  const options = scope === 'aaa' ? open(['multi']) : scope === 'aa' ? open(['console', 'multi']) : open(['pc', 'pc', 'handheld', 'mobile'])
+  // A single option costs no roll (keeps today's games identical to before the year system).
+  if (options.length === 1) return options[0]
+  if (options.length) return pick(g, options)
+  return platformsIn(g.year)[0]?.id ?? 'pc'
 }
 
 function newStudioProject(g: GameState, d: GdJobData, genre?: GenreId): GdJobProject {
   const giant = GIANTS.find((x) => x.name === d.studio)
-  const scope = pick(g, TIER_INFO[d.tier].scopes)
-  const gen = genre ?? (giant ? pick(g, giant.genres) : pick(g, GENRES).id)
-  const platform: PlatformId = scope === 'aaa' ? 'multi' : scope === 'aa' ? pick(g, ['console', 'multi'] as PlatformId[]) : pick(g, ['pc', 'pc', 'handheld', 'mobile'] as PlatformId[])
+  const scopes = TIER_INFO[d.tier].scopes.filter((x) => scopeOpen(x, g.year))
+  const scope = scopes.length ? pick(g, scopes) : 'small'
+  const gen = genre ?? pick(g, studioGenres(g, giant))
+  const platform: PlatformId = studioPlatform(g, scope)
   const title = giant && chance(g, 0.45) ? sequelTitle(giant.franchise, randInt(g, 2, 9)) : gameTitle(g, gen, new Set(gdView(g).games.map((x) => x.title)))
   return { title, genre: gen, scope, platform, progress: randInt(g, 0, 40), quality: d.craft, crunch: 0, started: g.year }
 }
@@ -662,7 +691,7 @@ export function yearlyGameJob(g: GameState, budget: number): number {
     remember(g, `Laid off from ${studio}${mood === 'downturn' ? ' in an industry-wide layoff wave' : ''}.`)
     if (used < budget) {
       used++
-      say(g, 'Laid Off', `${mood === 'downturn' ? 'The whole industry is shedding jobs, and' : 'After a rough year,'} ${studio} laid off ${pick(g, ['a fifth of the staff', '200 people', 'the entire team you were on', 'everyone whose name starts with a vowel, apparently'])}, including you. ${sev > 0 ? `Severance: ${money(sev)}.` : 'No severance.'} The CEO posted about "difficult decisions" from a yacht.`, '\u{1F4E6}', 'bad')
+      say(g, 'Laid Off', `${mood === 'downturn' ? 'The whole industry is shedding jobs, and' : 'After a rough year,'} ${studio} laid off ${pick(g, ['a fifth of the staff', '200 people', 'the entire team you were on', 'everyone whose name starts with a vowel, apparently'])}, including you. ${sev > 0 ? `Severance: ${money(sev)}.` : 'No severance.'} The CEO ${hasTech(g, 'socialMedia') ? 'posted' : 'sent a memo'} about "difficult decisions" from a yacht.`, '\u{1F4E6}', 'bad')
     }
     return used
   }
@@ -779,12 +808,13 @@ function pitchIdea(g: GameState): void {
   const p = gdMut(g)
   const design = designSkill(g, p)
   const odds = clampN(0.1 + design / 200 + job.level * 0.05 + p.gamerFame / 300, 0.05, 0.8)
-  const genre = pick(g, GENRES)
+  const genre = pick(g, genresIn(g.year))
   if (chance(g, odds)) {
     const title = gameTitle(g, genre.id, new Set(p.games.map((x) => x.title)))
-    const scope = pick(g, TIER_INFO[d.tier].scopes)
+    const scopes = TIER_INFO[d.tier].scopes.filter((x) => scopeOpen(x, g.year))
+    const scope = scopes.length ? pick(g, scopes) : 'small'
     // Your pitch becomes the studio's next game (or replaces a project that barely started).
-    if (!d.proj || d.proj.progress < 25) d.proj = { title, genre: genre.id, scope, platform: scope === 'aaa' ? 'multi' : 'pc', progress: 5, quality: Math.min(98, d.craft + Math.max(0, (design - 50) / 5)), crunch: 0, started: g.year }
+    if (!d.proj || d.proj.progress < 25) d.proj = { title, genre: genre.id, scope, platform: scope === 'aaa' && platformOpen('multi', g.year) ? 'multi' : platformOpen('pc', g.year) ? 'pc' : 'console', progress: 5, quality: Math.min(98, d.craft + Math.max(0, (design - 50) / 5)), crunch: 0, started: g.year }
     job.performance = Math.round(clampN(job.performance + 8, 0, 100))
     addGamerFame(p, 2)
     trainDesign(g, p, 2)
@@ -804,7 +834,7 @@ function quitJob(g: GameState): void {
   const title = job.title
   leave(g, 'quit')
   log(g, `I quit my job as ${title} at ${d.studio}.`)
-  say(g, 'Quit', `You quit your job as ${title} at ${d.studio}. Your farewell message in the team chat got ${randInt(g, 20, 140)} emoji reactions and one "who?"`, '\u{1F6AA}')
+  say(g, 'Quit', hasTech(g, 'smartphone') ? `You quit your job as ${title} at ${d.studio}. Your farewell message in the team chat got ${randInt(g, 20, 140)} emoji reactions and one "who?"` : `You quit your job as ${title} at ${d.studio}. Your farewell card got ${randInt(g, 12, 60)} signatures and one "who?"`, '\u{1F6AA}')
 }
 
 function retireJob(g: GameState): void {

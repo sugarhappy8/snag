@@ -16,7 +16,8 @@ import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
 import { applyEffects } from '../effects'
-import { canDrink, dollars, friends, grandkids, inGradeSchool, kids, money, pets, say, siblings, type Fx } from './helpers'
+import { canDrink, dollars, friends, grandkids, inGradeSchool, kids, money, pets, say, siblings, v, type Fx } from './helpers'
+import { anachronismsIn, cars, common, flights, prohibition } from './era'
 
 interface Rule {
   id: string
@@ -201,7 +202,10 @@ const RULES: Rule[] = [
     minAge: 18,
     run: (g) => {
       const p = currentPartner(g)
-      if (!p) return out(g, 'Rejected', "You don't have a partner, so you proposed to a stranger at the mall. They said no, then asked security to escort you out.", 'I proposed to a stranger at the mall. It did not go well.', { happiness: -6, craziness: 2 }, 'bad', '💔')
+      if (!p) {
+        const where = g.year >= 1962 ? 'the mall' : 'the town square'
+        return out(g, 'Rejected', `You don't have a partner, so you proposed to a stranger at ${where}. They said no, then asked ${g.year >= 1962 ? 'security' : 'a policeman'} to escort you away.`, `I proposed to a stranger at ${where}. It did not go well.`, { happiness: -6, craziness: 2 }, 'bad', '💔')
+      }
       if (p.relation === 'spouse') {
         addRelationship(p, randInt(g, 4, 8))
         return out(g, 'Still yes', `You got down on one knee and proposed to your ${relTo(p)}, ${p.firstName}, all over again. ${p.firstName} laughed and said yes. Again.`, `I re-proposed to my ${relTo(p)}, ${p.firstName}.`, { happiness: 6 }, 'good', '💍')
@@ -214,10 +218,10 @@ const RULES: Rule[] = [
         addRelationship(p, randInt(g, 6, 12))
         count(g, 'engagements')
         remember(g, `Got engaged to ${p.firstName} ${p.lastName}.`)
-        return out(g, ['Engaged!', 'They said yes!'], `You proposed to ${p.firstName} with a ring made from a twist tie. ${p.firstName} said YES! Time to start planning a wedding.`, `I proposed to ${p.firstName} and ${p.gender === 'male' ? 'he' : 'she'} said yes!`, { happiness: 15 }, 'good', '💍')
+        return out(g, ['Engaged!', 'They said yes!'], `You proposed to ${p.firstName} with a ring made from ${g.year >= 1960 ? 'a twist tie' : 'a piece of string'}. ${p.firstName} said YES! Time to start planning a wedding.`, `I proposed to ${p.firstName} and ${p.gender === 'male' ? 'he' : 'she'} said yes!`, { happiness: 15 }, 'good', '💍')
       }
       addRelationship(p, -randInt(g, 8, 15))
-      out(g, 'Not ready', `You proposed to ${p.firstName}, who said "I'm not ready for that." The car ride home was very quiet.`, `I proposed to ${p.firstName} and got turned down.`, { happiness: -10 }, 'bad', '💔')
+      out(g, 'Not ready', `You proposed to ${p.firstName}, who said "I'm not ready for that." The ${cars(g) ? 'car ride' : 'walk'} home was very quiet.`, `I proposed to ${p.firstName} and got turned down.`, { happiness: -10 }, 'bad', '💔')
     },
   },
   {
@@ -329,7 +333,11 @@ const RULES: Rule[] = [
     minAge: 12,
     prison: true,
     run: (g) => {
-      if (inPrison(g)) return out(g, 'Prison wine', 'You drank some toilet wine fermented from fruit cups. It tasted like regret and feet.', 'I drank homemade prison wine.', { health: -4, happiness: 4, behavior: -4 }, 'neutral', '🍷')
+      if (inPrison(g)) return out(g, 'Prison wine', `You drank some toilet wine fermented from ${g.year >= 1980 ? 'fruit cups' : 'bread and raisins'}. It tasted like regret and feet.`, 'I drank homemade prison wine.', { health: -4, happiness: 4, behavior: -4 }, 'neutral', '🍷')
+      if (prohibition(g) && canDrink(g)) {
+        if (chance(g, 0.12)) return out(g, 'Raided', 'You whispered the password at a speakeasy, ordered a bathtub gin, and the place was raided before you finished it.', 'I was caught in a speakeasy raid.', { happiness: -4, arrest: { crime: 'Violating Prohibition', severity: 1 } }, 'bad', '🚓')
+        return out(g, ['Speakeasy', 'Cheers!'], 'You whispered the password at a speakeasy and drank bathtub gin while a jazz band played.', 'I drank at a speakeasy.', { happiness: 7, health: -2 }, 'good', '🍸')
+      }
       if (!canDrink(g)) {
         const parent = peopleBy(g, ['parent', 'stepparent'])
         if (parent.length && chance(g, 0.35)) return out(g, 'Busted', 'You snuck some alcohol from the cabinet and got caught by your parents. You are grounded until the heat death of the universe.', 'My parents caught me drinking.', { happiness: -6, rels: parent.map((p) => ({ p, d: -8 })) }, 'bad', '🍺')
@@ -346,7 +354,7 @@ const RULES: Rule[] = [
     run: (g) => {
       const adult = canDrink(g)
       if (adult) count(g, 'nightlife')
-      if (chance(g, 0.15)) return out(g, 'Party foul', adult ? 'You went out partying and lost your phone, your wallet and your dignity.' : 'You went to a party that the police shut down after twenty minutes.', 'I went to a party that went off the rails.', { happiness: -3, health: -2 }, 'bad', '🎉')
+      if (chance(g, 0.15)) return out(g, 'Party foul', adult ? `You went out partying and lost your ${common(g, 'mobilePhone') ? 'phone' : 'hat'}, your wallet and your dignity.` : 'You went to a party that the police shut down after twenty minutes.', 'I went to a party that went off the rails.', { happiness: -3, health: -2 }, 'bad', '🎉')
       out(g, ['Party animal', 'What a night'], adult ? 'You partied until sunrise and danced on a table.' : 'You went to a party, danced badly and had a great time.', adult ? 'I partied all night.' : 'I went to a party with friends.', { happiness: randInt(g, 5, 10), health: -randInt(g, 1, 3) }, 'good', '🪩')
     },
   },
@@ -388,8 +396,9 @@ const RULES: Rule[] = [
       const cost = dollars(g, has(a, /cruise|europe|asia|tokyo|paris|london|rome|japan|italy|france|spain/) ? 1200 : 300, 3000)
       if (c.money < cost) return out(g, 'Staycation', `You couldn't afford a ${money(cost)} trip, so you pitched a tent in your living room and called it camping.`, 'I had a staycation because I was broke.', { happiness: 2 }, 'neutral', '⛺')
       count(g, 'vacations')
-      if (chance(g, 0.12)) return out(g, 'Travel nightmare', `You spent ${money(cost)} on a trip, the airline lost your luggage, and it rained every day.`, `I took a ${money(cost)} trip that was a total disaster.`, { money: -cost, happiness: -3 }, 'bad', '🌧️')
-      out(g, ['Bon voyage', 'Wanderlust'], `You spent ${money(cost)} on a trip and had the time of your life. You took 800 photos and will look at none of them.`, `I spent ${money(cost)} on a great trip.`, { money: -cost, happiness: randInt(g, 8, 14), health: 2 }, 'good', '✈️')
+      if (chance(g, 0.12)) return out(g, 'Travel nightmare', `You spent ${money(cost)} on a trip, the ${flights(g) ? 'airline' : 'railway'} lost your luggage, and it rained every day.`, `I took a ${money(cost)} trip that was a total disaster.`, { money: -cost, happiness: -3 }, 'bad', '🌧️')
+      const snaps = g.year >= 2003 ? 'You took 800 photos and will look at none of them.' : g.year >= 1930 ? 'You shot three rolls of film and will look at none of them.' : 'You sent home a dozen postcards.'
+      out(g, ['Bon voyage', 'Wanderlust'], `You spent ${money(cost)} on a trip and had the time of your life. ${snaps}`, `I spent ${money(cost)} on a great trip.`, { money: -cost, happiness: randInt(g, 8, 14), health: 2 }, 'good', flights(g) ? '✈️' : '🚂')
     },
   },
   {
@@ -462,7 +471,7 @@ const RULES: Rule[] = [
       p.livesWithPlayer = false
       addRelationship(p, -randInt(g, 15, 30))
       remember(g, `Broke up with ${name}.`)
-      out(g, pick(g, ['Broken up', "It's over"]), pick(g, [`You broke up with ${p.firstName}. ${p.gender === 'male' ? 'He' : 'She'} threw your hoodie out the window.`, `You told ${p.firstName} it's not them, it's you. ${p.firstName} agreed it was you.`]), `I broke up with ${name}.`, { happiness: -4 }, 'neutral', '💔')
+      out(g, pick(g, ['Broken up', "It's over"]), pick(g, [`You broke up with ${p.firstName}. ${p.gender === 'male' ? 'He' : 'She'} threw your ${g.year >= 1975 ? 'hoodie' : 'sweater'} out the window.`, `You told ${p.firstName} it's not them, it's you. ${p.firstName} agreed it was you.`]), `I broke up with ${name}.`, { happiness: -4 }, 'neutral', '💔')
     },
   },
   {
@@ -487,7 +496,7 @@ const RULES: Rule[] = [
         }
         if (met) return out(g, 'New friend', `You put yourself out there and met ${met.firstName}. No sparks, but you became friends.`, `I made a new friend, ${met.firstName}, while looking for love.`, { happiness: 4 }, 'good', '🤝')
       }
-      out(g, ['Rejected', 'Swing and a miss'], pick(g, ['You asked someone out and they said they were "focusing on themselves" while texting someone else.', 'You flirted with a stranger at the coffee shop. They asked if you were okay.', 'You tried a pickup line. It did not work. It never works.']), 'I tried to find love and struck out.', { happiness: -4 }, 'bad', '💔')
+      out(g, ['Rejected', 'Swing and a miss'], v(g, ['@texting You asked someone out and they said they were "focusing on themselves" while texting someone else.', '@!texting You asked someone out and they said they were "washing their hair" that night. Every night.', 'You flirted with a stranger at the coffee shop. They asked if you were okay.', 'You tried a pickup line. It did not work. It never works.']), 'I tried to find love and struck out.', { happiness: -4 }, 'bad', '💔')
     },
   },
   {
@@ -544,8 +553,9 @@ const RULES: Rule[] = [
     run: (g) => {
       if (!g.character.education.current) return out(g, 'No school', "You're not in school, so you skipped nothing. You took a nap in honor of the idea.", null, { happiness: 1 }, 'neutral', '😴')
       count(g, 'skippedSchool')
-      if (chance(g, 0.3)) return out(g, 'Caught', 'You skipped class and ran straight into the principal at the mall. Detention for a month.', 'I got caught skipping school.', { grades: -4, happiness: -4 }, 'bad', '🏫')
-      out(g, 'Freedom', 'You skipped class and spent the day at the arcade. Totally worth it. Probably.', 'I skipped school.', { grades: -3, happiness: 5 }, 'neutral', '🕹️')
+      if (chance(g, 0.3)) return out(g, 'Caught', `You skipped class and ran straight into the principal at ${g.year >= 1962 ? 'the mall' : 'the market'}. Detention for a month.`, 'I got caught skipping school.', { grades: -4, happiness: -4 }, 'bad', '🏫')
+      const spot = g.year >= 1978 && g.year < 2000 ? 'the arcade' : g.year >= 1910 ? 'the movies' : 'the swimming hole'
+      out(g, 'Freedom', `You skipped class and spent the day at ${spot}. Totally worth it. Probably.`, 'I skipped school.', { grades: -3, happiness: 5 }, 'neutral', '🕹️')
     },
   },
   {
@@ -565,7 +575,7 @@ const RULES: Rule[] = [
     minAge: 6,
     run: (g) => {
       const c = g.character
-      if (c.age >= 18) return out(g, 'Fresh start', 'You looked at apartments online for an hour and felt very independent. (Housing is in the Assets menu.)', 'I daydreamed about moving somewhere new.', { happiness: 1 }, 'neutral', '🏠')
+      if (c.age >= 18) return out(g, 'Fresh start', `You looked at apartments ${common(g, 'internet') ? 'online' : 'in the classifieds'} for an hour and felt very independent. (Housing is in the Assets menu.)`, 'I daydreamed about moving somewhere new.', { happiness: 1 }, 'neutral', '🏠')
       const ps = peopleBy(g, ['parent', 'stepparent'])
       out(g, 'Runaway', pick(g, ['You packed a backpack with snacks and ran away. You made it to the end of the block before getting hungry and coming home.', 'You ran away and spent the night at a friend’s house. Your parents were frantic.']), 'I ran away from home, briefly.', { happiness: 2, rels: ps.map((p) => ({ p, d: -6 })) }, 'neutral', '🎒')
     },
@@ -620,7 +630,7 @@ const RULES: Rule[] = [
     re: /\b(cook|bake|grill|recipe|make (dinner|lunch|breakfast|a cake|cookies|pizza|soup))\b/,
     minAge: 6,
     run: (g, a) => {
-      if (chance(g, 0.08)) return out(g, 'Kitchen disaster', 'You set off every smoke alarm in the building. Dinner was cereal.', 'I nearly burned down the kitchen while cooking.', { happiness: -3, health: -1 }, 'bad', '🔥')
+      if (chance(g, 0.08)) return out(g, 'Kitchen disaster', g.year >= 1975 ? 'You set off every smoke alarm in the building. Dinner was cereal.' : 'You filled the whole building with smoke. Dinner was bread and butter.', 'I nearly burned down the kitchen while cooking.', { happiness: -3, health: -1 }, 'bad', '🔥')
       out(g, ['Chef’s kiss', 'Delicious'], `You decided to ${you(a.phrase)}. It turned out ${pick(g, ['delicious', 'surprisingly edible', 'restaurant quality, if you ask yourself', 'a little burnt, but full of love'])}.`, `I decided to ${a.phrase}.`, { happiness: randInt(g, 2, 5), health: 1 }, 'good', '🍳')
     },
   },
@@ -631,7 +641,10 @@ const RULES: Rule[] = [
     prison: true,
     run: (g, a) => {
       const c = g.character
-      if (c.age >= 13 && !inPrison(g) && chance(g, 0.05)) return out(g, 'Viral!', `Someone filmed you as you decided to ${you(a.phrase)} and it went viral!`, 'A video of me went viral.', { happiness: 8, fame: 3 }, 'good', '🌟')
+      if (c.age >= 13 && !inPrison(g) && chance(g, 0.05)) {
+        if (common(g, 'videoSharing')) return out(g, 'Viral!', `Someone filmed you as you decided to ${you(a.phrase)} and it went viral!`, 'A video of me went viral.', { happiness: 8, fame: 3 }, 'good', '🌟')
+        return out(g, 'Local star', `A newspaper reporter saw you ${you(a.phrase)} and wrote a whole article about you!`, 'I was written up in the local paper.', { happiness: 8, fame: 3 }, 'good', '🌟')
+      }
       if (has(a, /danc/)) return out(g, ['Dancing queen', 'Moves'], pick(g, [`You decided to ${you(a.phrase)}. You danced like nobody was watching. Several people were watching.`, `You decided to ${you(a.phrase)} and busted out moves you didn't know you had.`]), `I decided to ${a.phrase}.`, { happiness: randInt(g, 3, 6), health: 1 }, 'good', '💃')
       out(g, ['Music to my ears', 'Encore'], pick(g, [`You decided to ${you(a.phrase)}. It sounded ${pick(g, ['incredible', 'mostly in tune', 'like a cat in a dryer, but you had fun'])}.`, `You decided to ${you(a.phrase)} and lost track of time.`]), `I decided to ${a.phrase}.`, { happiness: randInt(g, 3, 6) }, 'good', '🎵')
     },
@@ -662,7 +675,10 @@ const RULES: Rule[] = [
     run: (g, a) => {
       const c = g.character
       const ink = has(a, /tattoo|piercing/)
-      if (ink && c.age < 16) return out(g, 'Too young', 'No tattoo parlor would let you in. You drew one on with a marker instead.', 'I drew a fake tattoo on my arm with a marker.', { happiness: 2 }, 'neutral', '🖊️')
+      if (ink && c.age < 16) {
+        const pen = g.year >= 1955 ? 'a marker' : 'a fountain pen'
+        return out(g, 'Too young', `No tattoo parlor would let you in. You drew one on with ${pen} instead.`, `I drew a fake tattoo on my arm with ${pen}.`, { happiness: 2 }, 'neutral', '🖊️')
+      }
       const cost = affordable(g, c.age < 18 ? 0 : dollars(g, 30, ink ? 300 : 150))
       if (chance(g, 0.15)) return out(g, 'Regret', ink ? 'Your tattoo is misspelled. It is permanent.' : 'It did not turn out the way you pictured. At all.', ink ? 'I got a tattoo I regret.' : 'I got a makeover I regret.', { money: -cost, looks: -2, happiness: -4 }, 'bad', '😬')
       out(g, ['Glow up', 'Looking good'], `You decided to ${you(a.phrase)}${cost ? ` and spent ${money(cost)}` : ''}. You look great.`, `I decided to ${a.phrase}.`, { money: -cost, looks: randInt(g, 1, 3), happiness: 3 }, 'good', '💇')
@@ -697,13 +713,15 @@ const RULES: Rule[] = [
     re: /\b(video games?|gaming|play games|tv|television|netflix|movie|movies|cinema|stream|youtube|anime|cartoons?)\b/,
     minAge: 3,
     prison: true,
-    run: (g, a) => out(g, ['Screen time', 'Entertained'], `You decided to ${you(a.phrase)}. ${pick(g, ['Hours vanished.', 'You told yourself "just one more."', 'It was the highlight of your week.'])}`, `I decided to ${a.phrase}.`, { happiness: randInt(g, 2, 5), smarts: chance(g, 0.3) ? -1 : 0 }, 'good', '🎮'),
+    run: (g, a) => out(g, common(g, 'smartphone') ? ['Screen time', 'Entertained'] : ['Entertained', 'Good times'], `You decided to ${you(a.phrase)}. ${pick(g, ['Hours vanished.', 'You told yourself "just one more."', 'It was the highlight of your week.'])}`, `I decided to ${a.phrase}.`, { happiness: randInt(g, 2, 5), smarts: chance(g, 0.3) ? -1 : 0 }, 'good', '🎮'),
   },
   {
     id: 'social',
     re: /\b(post|selfie|instagram|tiktok|social media|vlog|influencer|tweet|go viral)\b/,
     minAge: 10,
     run: (g) => {
+      // "Post" before social media means the mail.
+      if (!common(g, 'socialMedia')) return out(g, 'Sent', 'You posted a long letter to an old friend. They wrote back two weeks later with even more news.', 'I wrote a long letter to an old friend.', { happiness: 2 }, 'good', '✉️')
       if (chance(g, 0.06)) return out(g, 'Viral!', 'Your post blew up overnight. Thousands of strangers now have opinions about you.', 'One of my posts went viral.', { happiness: 6, fame: 3 }, 'good', '📈')
       out(g, ['Posted', 'Likes'], pick(g, ['You posted online and got eleven likes, four of them from relatives.', 'You posted a selfie. Your aunt commented "beautiful!!!"', 'You posted something clever. Nobody got it.']), 'I posted on social media.', { happiness: 2 }, 'neutral', '📱')
     },
@@ -749,7 +767,7 @@ function tooYoung(g: GameState, a: Act, minAge: number): void {
   if (age < 3) {
     return out(g, pick(g, ['Goo goo', 'Baby business', 'Nap time']), pick(g, [`You tried to ${you(a.phrase)}, but you're a baby. You ${pick(g, ['drooled on a blanket', 'fell asleep mid-thought', 'ate a sock', 'cried until someone brought a bottle'])} instead.`, `You had big plans to ${you(a.phrase)}. Then you remembered you can't hold your own head up.`]), 'I had big ambitions for a baby.', { happiness: 1 }, 'neutral', '👶')
   }
-  out(g, 'Too young', pick(g, [`You're only ${age}. You can ${you(a.phrase)} when you're ${minAge}. For now, you ${pick(g, ['played with blocks', 'colored outside the lines', 'watched cartoons', 'built a pillow fort'])} instead.`, `Your parents laughed when you announced you'd ${you(a.phrase)}. Maybe when you're older.`]), null, { happiness: 1 }, 'neutral', '🧸')
+  out(g, 'Too young', pick(g, [`You're only ${age}. You can ${you(a.phrase)} when you're ${minAge}. For now, you ${pick(g, ['played with blocks', 'colored outside the lines', common(g, 'tv') ? 'watched cartoons' : 'spun a wooden top', 'built a pillow fort'])} instead.`, `Your parents laughed when you announced you'd ${you(a.phrase)}. Maybe when you're older.`]), null, { happiness: 1 }, 'neutral', '🧸')
 }
 
 function matchRule(g: GameState, a: Act): Rule | undefined {
@@ -766,6 +784,9 @@ export function resolveCustomAction(g: GameState, text: string): void {
     return out(g, 'Indecisive', "You thought long and hard about doing something, then didn't. A bold choice.", null, {}, 'neutral', '🤷')
   }
   const a: Act = { raw, low: raw.toLowerCase(), phrase: toPhrase(raw) }
+  // "Post a selfie" in 1950: the thing hasn't been invented here yet (checked first, so no
+  // reply ever repeats the modern words back at the player).
+  if (anachronismsIn(raw, g.year, [c.countryId]).length) return tooEarly(g)
   const rule = matchRule(g, a)
   if (c.age < 3 && rule?.id !== 'rest') return tooYoung(g, a, rule?.minAge ?? 5)
   if (rule && inPrison(g) && !rule.prison) {
@@ -774,6 +795,26 @@ export function resolveCustomAction(g: GameState, text: string): void {
   if (!rule) return generic(g, a)
   if (rule.minAge !== undefined && c.age < rule.minAge) return tooYoung(g, a, rule.minAge)
   rule.run(g, a)
+}
+
+/** The player asked for something that doesn't exist yet in their year and country. */
+function tooEarly(g: GameState): void {
+  if (g.character.age < 3) {
+    return out(g, ['Goo goo', 'Baby genius'], `You babbled about something nobody in ${g.year} has ever heard of. Your parents blamed teething.`, 'I babbled about the future.', { happiness: 1 }, 'neutral', '👶')
+  }
+  if (inPrison(g)) {
+    return out(g, ['Ahead of your time', 'Not invented yet'], `You explained your idea to the other inmates. Nobody in ${g.year} has the faintest idea what you're talking about, and the guards think you're planning an escape.`, 'I had an idea way ahead of its time.', { happiness: 1, smarts: 1 }, 'neutral', '🕰️')
+  }
+  const instead = v(g, ['@radio listened to the radio', 'read the newspaper cover to cover', 'played cards with a neighbor', 'went for a long walk', '@landline called a friend', '@!landline wrote a letter to a friend', '@1910 went to the pictures'])
+  out(
+    g,
+    ['Ahead of your time', 'Not invented yet'],
+    pick(g, [`You had a brilliant idea that the world isn't ready for yet. It's ${g.year}. You ${instead} instead.`, `Nobody in ${g.year} has the faintest idea what you're talking about. You ${instead} instead.`]),
+    'I had an idea way ahead of its time.',
+    { happiness: 1, smarts: 1 },
+    'neutral',
+    '🕰️',
+  )
 }
 
 /** Exposed for tests. */

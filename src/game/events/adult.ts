@@ -20,6 +20,7 @@ import {
   defineEvents,
   dollars,
   friends,
+  hangout,
   hasCar,
   hasJob,
   livesWithParents,
@@ -29,7 +30,9 @@ import {
   strangerName,
   type Ctx,
   type EventDef,
+  v,
 } from './helpers'
+import { cars, common, declined, eraLines, landline, texting } from './era'
 
 // ---------------------------------------------------------------------------
 // Local color
@@ -171,43 +174,47 @@ function carName(a: Asset | undefined): string {
   return a ? a.name : 'car'
 }
 
+// Era tags ("@1965 ...", see era.ts) keep each list to things that existed that year.
 const CAR_PROBLEMS = [
   'a bird flew into your fender and dented it',
   'someone slashed one of your tires',
   'you left your headlights on all night and drained the battery',
   'it has a bad spark plug',
-  'the catalytic converter was stolen in the night',
-  'the timing belt snapped',
+  '@2005 the catalytic converter was stolen in the night',
+  '@1965 the timing belt snapped',
   'a rock cracked the windshield on the highway',
   'the fuel pump died',
-  'the power steering pump is failing',
+  '@1955 the power steering pump is failing',
   'the engine is making a noise like a dying walrus',
+  '@-1960 the radiator boiled over',
 ]
 
-const STRANGERS = ['a hipster', 'a tourist', 'a jogger', 'a businessman', 'a skateboarder', 'a little old lady', 'a cyclist', 'a street magician', 'a construction worker', 'a mime', 'a tech bro']
-const US_STRANGERS = ['a mall cop', 'a college kid']
+const STRANGERS = ['@2005 a hipster', 'a tourist', '@1970 a jogger', 'a businessman', '@1962 a skateboarder', 'a little old lady', 'a cyclist', 'a street magician', 'a construction worker', 'a mime', '@2012 a tech bro', '@-1960 a newsboy', '@-1950 a chimney sweep']
+const US_STRANGERS = ['@1965 a mall cop', 'a college kid']
 const WORLD_STRANGERS = ['a university student', 'a street vendor', 'a parking attendant']
 
 /** A random stranger on the street ("a mall cop" only in the US). */
 function stranger(g: GameState): string {
-  return pick(g, [...STRANGERS, ...(isUS(g) ? US_STRANGERS : WORLD_STRANGERS)])
+  return pick(g, eraLines(g, [...STRANGERS, ...(isUS(g) ? US_STRANGERS : WORLD_STRANGERS)]))
 }
 
-const INSULTS = ['a dork', 'a nincompoop', 'a walking participation trophy', 'a potato', 'a clown', 'a goblin', 'a buffoon', 'a dingus', 'a waste of oxygen', 'a soggy waffle']
+const INSULTS = ['a dork', 'a nincompoop', '@2005 a walking participation trophy', 'a potato', 'a clown', 'a goblin', 'a buffoon', 'a dingus', 'a waste of oxygen', 'a soggy waffle', 'a numbskull']
 
 function crimesWitnessed(g: GameState) {
-  return [
-    { act: 'littering a whole bag of fast food wrappers', crime: 'littering' },
-    { act: 'shoplifting a stack of video games', crime: 'shoplifting' },
-    { act: `spray painting a mural of themselves on ${isUS(g) ? 'a church' : 'the town hall'}`, crime: 'vandalism' },
-    { act: 'keying a parked car', crime: 'vandalism' },
+  const all = [
+    { since: 1955, act: 'littering a whole bag of fast food wrappers', crime: 'littering' },
+    { tech: 'videoGameConsole' as const, act: 'shoplifting a stack of video games', crime: 'shoplifting' },
+    { since: 1950, act: `spray painting a mural of themselves on ${isUS(g) ? 'a church' : 'the town hall'}`, crime: 'vandalism' },
+    { since: 1925, act: 'keying a parked car', crime: 'vandalism' },
     { act: 'pickpocketing a tourist', crime: 'pickpocketing' },
-    { act: 'stealing a package off a porch', crime: 'theft' },
-    { act: 'kicking a vending machine until it paid out', crime: 'vandalism' },
+    { tech: 'onlineShopping' as const, act: 'stealing a package off a porch', crime: 'theft' },
+    { since: 1930, act: 'kicking a vending machine until it paid out', crime: 'vandalism' },
+    { act: 'snatching a purse off a park bench', crime: 'theft' },
   ]
+  return all.filter((c) => (c.since === undefined || g.year >= c.since) && (c.tech === undefined || common(g, c.tech)))
 }
 
-const JURY_CRIMES = ['tax fraud', 'burglary', 'stealing 400 garden gnomes', 'arson', 'running an illegal pet casino', 'identity theft', 'assault with a deadly baguette']
+const JURY_CRIMES = ['tax fraud', 'burglary', 'stealing 400 garden gnomes', 'arson', 'running an illegal pet casino', '@internet identity theft', 'assault with a deadly baguette', '@-1934 bootlegging']
 
 /** What a night-time intruder turns out to be, by country. */
 function nightCritter(g: GameState): { what: string; emoji: string } {
@@ -242,12 +249,13 @@ function neighborParty(g: GameState): { invite: string; event: string; cooking: 
   return { invite: `Your neighbors invited you over for a big ${holiday} feast. What will you do?`, event: `${holiday} feast`, cooking: 'cooking', food: lp(g, 'food', 'stew'), dish, emoji: '🍲' }
 }
 
-/** How phone scammers want to be paid here. */
+/** How phone scammers want to be paid here (and in this year: no Bitcoin before it existed). */
 function scamPayment(g: GameState): { pay: string; unit: string } {
   const id = g.character.countryId
-  if (['us', 'ca', 'gb', 'ie', 'au', 'nz', 'pr'].includes(id)) return { pay: 'in gift cards', unit: 'gift cards' }
-  if (['ke', 'ug', 'zw', 'cd', 'ng', 'et'].includes(id)) return { pay: 'by mobile money', unit: 'mobile money transfers' }
-  return { pay: 'in Bitcoin', unit: 'Bitcoin' }
+  if (['us', 'ca', 'gb', 'ie', 'au', 'nz', 'pr'].includes(id) && g.year >= 2008) return { pay: 'in gift cards', unit: 'gift cards' }
+  if (['ke', 'ug', 'zw', 'cd', 'ng', 'et'].includes(id) && g.year >= 2010 && common(g, 'mobilePhone')) return { pay: 'by mobile money', unit: 'mobile money transfers' }
+  if (g.year >= 2015 && common(g, 'crypto', 0.05)) return { pay: 'in Bitcoin', unit: 'Bitcoin' }
+  return { pay: 'by wire transfer', unit: 'wire transfers' }
 }
 
 export const ADULT_EVENTS = defineEvents([
@@ -274,8 +282,8 @@ export const ADULT_EVENTS = defineEvents([
       cash: (g, x) => say(g, x, 'Finder\'s fee', `You pocketed the ${money(x.n('cash'))} and mailed the empty wallet back. ${x.s('first')} will never know. Probably.`, `I kept ${money(x.n('cash'))} from a wallet I found and returned the rest.`, { money: x.n('cash'), karma: -8 }, 'neutral', '💵'),
       keep: (g, x) => {
         const caught = g.character.age >= 16 && chance(g, 0.08)
-        if (caught) say(g, x, 'Caught on camera', `A security camera caught you taking the wallet. ${x.s('first')} pressed charges.`, `I kept a wallet I found and got caught.`, { karma: -15, count: 'crimes', arrest: { crime: 'Theft', severity: 1 } }, 'bad', '🚓')
-        else say(g, x, 'Finders keepers', `You kept the whole thing, including ${money(x.n('cash'))} and a punch card that's one coffee away from a free one.`, `I kept a wallet I found on the sidewalk.`, { money: x.n('cash'), karma: -15 }, 'neutral', '💰')
+        if (caught) say(g, x, 'Caught on camera', g.year >= 1990 ? `A security camera caught you taking the wallet. ${x.s('first')} pressed charges.` : `A shopkeeper saw you pocket the wallet. ${x.s('first')} pressed charges.`, `I kept a wallet I found and got caught.`, { karma: -15, count: 'crimes', arrest: { crime: 'Theft', severity: 1 } }, 'bad', '🚓')
+        else say(g, x, 'Finders keepers', `You kept the whole thing, including ${money(x.n('cash'))} and ${g.year >= 1985 ? "a punch card that's one coffee away from a free one" : 'a faded photograph of somebody’s mother'}.`, `I kept a wallet I found on the sidewalk.`, { money: x.n('cash'), karma: -15 }, 'neutral', '💰')
       },
       leave: (g) => say(g, null, 'Not my problem', 'You left it where it was. Someone else will deal with it.', 'I walked past a lost wallet on the sidewalk.', { karma: -2 }),
     },
@@ -331,7 +339,7 @@ export const ADULT_EVENTS = defineEvents([
     resolve: {
       serve: (g, x) => {
         const s = strangerName(g)
-        const crime = pick(g, [...JURY_CRIMES, isUS(g) ? 'grand theft auto' : 'car theft'])
+        const crime = v(g, [...JURY_CRIMES, `@cars ${isUS(g) ? 'grand theft auto' : 'car theft'}`])
         const strong = chance(g, 0.6)
         const lay = x.n('lay') === 1
         ask(g, x, {
@@ -374,7 +382,7 @@ export const ADULT_EVENTS = defineEvents([
     maxAge: 95,
     when: (g) => !livesWithParents(g) && g.character.residence.status !== 'homeless',
     setup: (g) => {
-      const noise = pick(g, ['blasting polka music at 2 AM', 'hosting a drum circle every night', 'letting their dog bark for hours', 'doing karaoke until sunrise', 'running a leaf blower at 6 AM'])
+      const noise = v(g, ['@1925 blasting polka music at 2 AM', 'hosting a drum circle every night', 'letting their dog bark for hours', '@1985 doing karaoke until sunrise', '@1980 running a leaf blower at 6 AM', '@-1960 practicing the trombone at midnight'])
       return {
         text: `Your neighbors have been ${noise}. What will you do?`,
         choices: [ch('ask', 'Ask them nicely to stop'), ch('police', 'File a noise complaint'), ch('revenge', 'Blast my own music back'), ch('earplugs', 'Buy earplugs')],
@@ -393,7 +401,7 @@ export const ADULT_EVENTS = defineEvents([
         }
       },
       police: (g) => say(g, null, 'Complaint filed', 'The police paid them a visit. It worked, but they glare at you every morning now.', 'I filed a noise complaint against my neighbors.', { happiness: 2 }),
-      revenge: (g) => say(g, null, 'Sound war', 'You aimed your speakers at their wall and played the same song on repeat for six hours. Nobody won.', 'I started a noise war with my neighbors.', { happiness: 2, craziness: 3, karma: -2 }),
+      revenge: (g) => say(g, null, 'Sound war', g.year >= 1960 ? 'You aimed your speakers at their wall and played the same song on repeat for six hours. Nobody won.' : 'You put your gramophone against their wall and played the same record for six hours. Nobody won.', 'I started a noise war with my neighbors.', { happiness: 2, craziness: 3, karma: -2 }),
       earplugs: (g) => say(g, null, 'Zen', 'You bought industrial earplugs. You now sleep like a baby and miss every alarm.', 'I bought earplugs to deal with my noisy neighbors.', { happiness: 2, money: -Math.min(Math.max(0, g.character.money), 15) }),
     },
   },
@@ -469,7 +477,7 @@ export const ADULT_EVENTS = defineEvents([
     setup: (g) => {
       const a = car(g)
       if (!a) return null
-      const problem = pick(g, CAR_PROBLEMS)
+      const problem = v(g, CAR_PROBLEMS)
       const cost = Math.max(80, Math.round(Math.min(Math.max(a.value * 0.08, 150), 2500)))
       return {
         text: `Bad news: ${problem}. The mechanic says fixing your ${carName(a)} will cost ${money(cost)}. What will you do?`,
@@ -498,7 +506,7 @@ export const ADULT_EVENTS = defineEvents([
         const a = g.assets.find((v) => v.id === x.s('assetId'))
         const ok = chance(g, 0.3 + g.character.stats.smarts / 300)
         if (a) a.condition = ok ? Math.min(100, a.condition + 10) : Math.max(0, a.condition - 20)
-        say(g, x, ok ? 'Grease monkey' : 'Made it worse', ok ? `You watched three online tutorials and fixed it yourself for the price of a wrench!` : `You took the engine apart and now have six extra parts and no idea where they go.`, ok ? `I fixed my ${x.s('car')} myself.` : `I tried to fix my ${x.s('car')} myself and made it worse.`, ok ? { money: -Math.min(Math.max(0, g.character.money), 30), smarts: 4, happiness: 6 } : { money: -Math.min(Math.max(0, g.character.money), 30), happiness: -6 }, ok ? 'good' : 'bad', '🔧')
+        say(g, x, ok ? 'Grease monkey' : 'Made it worse', ok ? common(g, 'videoSharing') ? `You watched three online tutorials and fixed it yourself for the price of a wrench!` : `You read the repair manual cover to cover and fixed it yourself for the price of a wrench!` : `You took the engine apart and now have six extra parts and no idea where they go.`, ok ? `I fixed my ${x.s('car')} myself.` : `I tried to fix my ${x.s('car')} myself and made it worse.`, ok ? { money: -Math.min(Math.max(0, g.character.money), 30), smarts: 4, happiness: 6 } : { money: -Math.min(Math.max(0, g.character.money), 30), happiness: -6 }, ok ? 'good' : 'bad', '🔧')
       },
     },
   },
@@ -521,7 +529,7 @@ export const ADULT_EVENTS = defineEvents([
       pay: (g, x) => say(g, x, 'Paid', `You paid the ${money(x.n('fine'))} fine. Annoying, but done.`, `I paid a ${money(x.n('fine'))} parking ticket.`, { money: -x.n('fine'), happiness: -2 }),
       contest: (g, x) => {
         const won = chance(g, 0.35 + g.character.stats.smarts / 400)
-        say(g, x, won ? 'Dismissed!' : 'Upheld', won ? 'You argued the sign was hidden behind a tree. The judge agreed. Ticket dismissed!' : 'The judge was not moved by your PowerPoint presentation. Pay up, plus court fees.', won ? 'I contested a parking ticket and won.' : 'I contested a parking ticket and lost.', won ? { happiness: 8, smarts: 2 } : { money: -Math.round(x.n('fine') * 1.5), happiness: -6 }, won ? 'good' : 'bad', '⚖️')
+        say(g, x, won ? 'Dismissed!' : 'Upheld', won ? 'You argued the sign was hidden behind a tree. The judge agreed. Ticket dismissed!' : g.year >= 1992 ? 'The judge was not moved by your slideshow presentation. Pay up, plus court fees.' : 'The judge was not moved by your hand-drawn diagram. Pay up, plus court fees.', won ? 'I contested a parking ticket and won.' : 'I contested a parking ticket and lost.', won ? { happiness: 8, smarts: 2 } : { money: -Math.round(x.n('fine') * 1.5), happiness: -6 }, won ? 'good' : 'bad', '⚖️')
       },
       ignore: (g, x) => {
         const later = chance(g, 0.6)
@@ -539,7 +547,7 @@ export const ADULT_EVENTS = defineEvents([
     setup: (g) => {
       const speed = randInt(g, 12, 35)
       return {
-        text: `Red and blue lights flash in your mirror. You were going ${speed} over the speed limit. What will you do?`,
+        text: g.year >= 1965 ? `Red and blue lights flash in your mirror. You were going ${speed} over the speed limit. What will you do?` : `A police siren wails behind you. You were going ${speed} over the speed limit. What will you do?`,
         choices: [ch('polite', 'Pull over and be polite'), ch('argue', 'Argue with the officer'), ch('cry', 'Cry'), ch('flee', 'Floor it')],
         data: { speed },
       }
@@ -560,8 +568,8 @@ export const ADULT_EVENTS = defineEvents([
       },
       flee: (g, x) => {
         const escaped = chance(g, 0.3)
-        if (escaped) say(g, x, ['Getaway driver', 'Fast and Furious'], 'You floored it and lost them in a maze of side streets. Your heart is still pounding.', 'I fled from the police during a traffic stop and got away.', { happiness: 6, karma: -10, notoriety: 4, count: 'crimes' }, 'neutral', '💨')
-        else say(g, x, 'Spike strips', 'You floored it, ran over spike strips and were surrounded by six squad cars.', 'I fled from the police during a traffic stop and got caught.', { karma: -10, count: 'crimes', arrest: { crime: 'Evading Police', severity: 2 } }, 'bad', '🚓')
+        if (escaped) say(g, x, ['Getaway driver', 'Lead foot'], 'You floored it and lost them in a maze of side streets. Your heart is still pounding.', 'I fled from the police during a traffic stop and got away.', { happiness: 6, karma: -10, notoriety: 4, count: 'crimes' }, 'neutral', '💨')
+        else say(g, x, g.year >= 1990 ? 'Spike strips' : 'Roadblock', g.year >= 1990 ? 'You floored it, ran over spike strips and were surrounded by six squad cars.' : 'You floored it, swerved into a police roadblock and were surrounded by six squad cars.', 'I fled from the police during a traffic stop and got caught.', { karma: -10, count: 'crimes', arrest: { crime: 'Evading Police', severity: 2 } }, 'bad', '🚓')
       },
     },
   },
@@ -571,6 +579,8 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Urgent Call',
     minAge: 22,
     maxAge: 99,
+    // The fake tax-agency robocall is a twenty-first-century con.
+    when: (g) => g.year >= 2005 && landline(g),
     setup: (g) => {
       const amt = dollars(g, 900, 5000)
       const { pay, unit } = scamPayment(g)
@@ -588,7 +598,7 @@ export const ADULT_EVENTS = defineEvents([
         say(g, x, ['Scammed!', giftCards ? 'Gift card fiasco' : 'Transfer fiasco'], lost > 0 ? (giftCards ? `You bought ${money(lost)} in gift cards and read the numbers over the phone. The "tax agency" hung up. It was a scam.` : `You sent ${money(lost)} in ${unit}. The "tax agency" hung up. It was a scam.`) : `You didn't have enough money for the ${unit}. The scammer called you broke and hung up.`, lost > 0 ? `I lost ${money(lost)} to a phone scammer posing as the tax agency.` : 'A phone scammer tried to get money from me, but I was too broke.', { money: -lost, happiness: lost > 0 ? -16 : -2, smarts: -4 }, 'bad', '😱')
       },
       hang: (g, x) => say(g, null, 'Nice try', `You hung up. The tax agency does not take ${x.s('unit') || 'gift cards'}.`, 'I hung up on a phone scammer.', { smarts: 2 }, 'good'),
-      waste: (g, x) => say(g, null, ['Scam the scammer', 'Hero of the people'], (x.s('unit') || 'gift cards') === 'gift cards' ? 'You kept them on the line for 47 minutes, pretending your gift card was "in the other pants." They eventually cried.' : 'You kept them on the line for 47 minutes, pretending your banking app was "still loading." They eventually cried.', 'I wasted a phone scammer\'s time for almost an hour.', { happiness: 10, smarts: 2 }, 'good', '😈'),
+      waste: (g, x) => say(g, null, ['Scam the scammer', 'Hero of the people'], (x.s('unit') || 'gift cards') === 'gift cards' ? 'You kept them on the line for 47 minutes, pretending your gift card was "in the other pants." They eventually cried.' : common(g, 'smartphone') ? 'You kept them on the line for 47 minutes, pretending your banking app was "still loading." They eventually cried.' : 'You kept them on the line for 47 minutes, pretending you couldn\'t find your bank card. They eventually cried.', 'I wasted a phone scammer\'s time for almost an hour.', { happiness: 10, smarts: 2 }, 'good', '😈'),
       report: (g) => say(g, null, 'Reported', 'You reported the number to the police. They said there are thousands of these, but thanked you.', 'I reported a phone scam to the police.', { karma: 4 }, 'good'),
     },
   },
@@ -598,17 +608,39 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Royal Inheritance',
     minAge: 18,
     maxAge: 99,
-    setup: (g) => ({
-      text: `An email from "${g.character.countryId === 'ng' ? 'Baron Heinrich von Goldbach of the Royal Swiss Treasury' : 'Prince Adewale of the Royal Treasury'}" says he needs to transfer $25 million into your bank account and will give you 20% for your trouble. He just needs your account details first. What will you do?`,
-      choices: [ch('send', 'Send my bank details'), ch('delete', 'Delete it'), ch('troll', 'Reply with a meme')],
-    }),
+    // The inbox prince of the internet age; before email, the century-old "Spanish prisoner"
+    // letter: a rich captive abroad who needs a little money to free his fortune.
+    setup: (g) => {
+      const email = common(g, 'internet')
+      const prince = g.character.countryId === 'ng' ? 'Baron Heinrich von Goldbach of the Royal Swiss Treasury' : 'Prince Adewale of the Royal Treasury'
+      return {
+        title: email ? 'Royal Inheritance' : 'A Letter From Abroad',
+        emoji: email ? '📧' : '✉️',
+        text: email
+          ? `An email from "${prince}" says he needs to transfer ${money(25_000_000)} into your bank account and will give you 20% for your trouble. He just needs your account details first. What will you do?`
+          : `A letter arrives from a "nobleman" imprisoned abroad. He swears he will share his ${money(25_000_000)} fortune with you, if you just send a little money to bribe his jailers first. What will you do?`,
+        choices: email ? [ch('send', 'Send my bank details'), ch('delete', 'Delete it'), ch('troll', 'Reply with a meme')] : [ch('send', 'Send the money'), ch('delete', 'Throw it in the fire'), ch('troll', 'Reply with a rude drawing')],
+        data: { email: email ? 1 : 0 },
+      }
+    },
     resolve: {
-      send: (g) => {
+      send: (g, x) => {
+        const email = x.data.email === undefined || x.n('email') === 1
         const lost = Math.min(Math.max(0, g.character.money), dollars(g, 500, 8000))
-        say(g, null, 'Royally scammed', lost > 0 ? `Your bank account was emptied of ${money(lost)} by the next morning. The prince has stopped replying.` : 'They tried to drain your account and found nothing in it. The prince unsubscribed from you.', lost > 0 ? `I lost ${money(lost)} to an email scam.` : 'I fell for an email scam, but I had nothing to steal.', { money: -lost, smarts: -6, happiness: lost > 0 ? -16 : -2 }, 'bad', '😱')
+        if (!email) {
+          say(g, x, 'Swindled', lost > 0 ? `You sent ${money(lost)}. The nobleman wrote back asking for more. Then he stopped writing altogether.` : 'You had nothing to send. The nobleman wrote back calling you a disappointment.', lost > 0 ? `I lost ${money(lost)} to a swindler's letter.` : 'A swindler wrote to me, but I had nothing to send.', { money: -lost, smarts: -6, happiness: lost > 0 ? -16 : -2 }, 'bad', '😱')
+          return
+        }
+        say(g, x, 'Royally scammed', lost > 0 ? `Your bank account was emptied of ${money(lost)} by the next morning. The prince has stopped replying.` : 'They tried to drain your account and found nothing in it. The prince unsubscribed from you.', lost > 0 ? `I lost ${money(lost)} to an email scam.` : 'I fell for an email scam, but I had nothing to steal.', { money: -lost, smarts: -6, happiness: lost > 0 ? -16 : -2 }, 'bad', '😱')
       },
-      delete: (g) => say(g, null, 'Spam filter', 'You deleted it. Your 20% of $25 million will have to wait.', 'I deleted an obvious email scam.', { smarts: 2 }, 'good'),
-      troll: (g) => say(g, null, 'Lol', "You replied with a picture of a dog in sunglasses. The prince never wrote back.", 'I trolled an email scammer.', { happiness: 4 }),
+      delete: (g, x) =>
+        x.data.email === undefined || x.n('email') === 1
+          ? say(g, x, 'Spam filter', `You deleted it. Your 20% of ${money(25_000_000)} will have to wait.`, 'I deleted an obvious email scam.', { smarts: 2 }, 'good')
+          : say(g, x, 'Into the fire', 'You tossed the letter into the fire. The nobleman will have to bribe his own jailers.', "I burned a swindler's letter.", { smarts: 2 }, 'good'),
+      troll: (g, x) =>
+        x.data.email === undefined || x.n('email') === 1
+          ? say(g, x, 'Lol', "You replied with a picture of a dog in sunglasses. The prince never wrote back.", 'I trolled an email scammer.', { happiness: 4 })
+          : say(g, x, 'Pen pal', 'You mailed back a drawing of the nobleman in a very small cell. He never wrote again.', 'I sent a swindler a rude drawing.', { happiness: 4 }),
     },
   },
   {
@@ -617,8 +649,8 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Feeling Lucky?',
     minAge: 18,
     maxAge: 99,
-    // Gambling is banned or frowned upon in most Muslim-majority countries.
-    when: (g) => !muslimMajority(g),
+    // Gambling is banned or frowned upon in most Muslim-majority countries. Scratch-offs date from the seventies.
+    when: (g) => !muslimMajority(g) && g.year >= 1975,
     setup: (g) => {
       const price = cash(g, 5)
       return {
@@ -639,11 +671,12 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Roadside',
     minAge: 18,
     maxAge: 85,
+    when: cars,
     setup: (g) => {
       const s = strangerName(g)
       return {
         text: `A ${s.gender === 'male' ? 'man' : 'woman'} named ${s.first} is stranded on the side of the road with a flat tire and no spare. What will you do?`,
-        choices: [ch('help', 'Help them out'), ch('ride', 'Offer them a ride'), ch('tow', 'Call a tow truck for them'), ch('drive', 'Keep driving')],
+        choices: [ch('help', 'Help them out'), ch('ride', 'Offer them a ride'), ch('tow', common(g, 'mobilePhone') ? 'Call a tow truck for them' : 'Fetch a tow truck for them'), ch('drive', 'Keep driving')],
         data: { first: s.first, last: s.last, gender: s.gender },
       }
     },
@@ -656,9 +689,9 @@ export const ADULT_EVENTS = defineEvents([
         const friend = chance(g, 0.35)
         if (friend) createPerson(g, { relation: 'friend', age: g.character.age + randInt(g, -8, 8), firstName: x.s('first'), lastName: x.s('last'), gender: x.s('gender') === 'male' ? 'male' : 'female', relationship: 65 })
         const weird = !friend && chance(g, 0.25)
-        say(g, x, friend ? 'New friend' : weird ? 'Awkward ride' : 'Good deed', friend ? `You gave ${x.s('first')} a ride and talked the whole way. You exchanged numbers!` : weird ? `${x.s('first')} spent the entire ride explaining their theory that birds aren't real.` : `You drove ${x.s('first')} to the nearest gas station. Good deed done.`, `I gave a stranded driver named ${x.s('first')} a ride.`, { karma: 8, happiness: friend ? 6 : 2 }, 'good')
+        say(g, x, friend ? 'New friend' : weird ? 'Awkward ride' : 'Good deed', friend ? `You gave ${x.s('first')} a ride and talked the whole way. You exchanged ${landline(g) ? 'numbers' : 'addresses'}!` : weird ? `${x.s('first')} spent the entire ride explaining their theory that ${g.year >= 2017 ? "birds aren't real" : g.year >= 1970 ? 'the moon landing was staged' : 'the Earth is hollow'}.` : `You drove ${x.s('first')} to the nearest gas station. Good deed done.`, `I gave a stranded driver named ${x.s('first')} a ride.`, { karma: 8, happiness: friend ? 6 : 2 }, 'good')
       },
-      tow: (g, x) => say(g, x, 'Helpful', `You called a tow truck for ${x.s('first')} and waited with them until it arrived.`, 'I called a tow truck for a stranded driver.', { karma: 5 }, 'good'),
+      tow: (g, x) => say(g, x, 'Helpful', common(g, 'mobilePhone') ? `You called a tow truck for ${x.s('first')} and waited with them until it arrived.` : `You drove to the nearest garage and sent a tow truck back for ${x.s('first')}.`, 'I called a tow truck for a stranded driver.', { karma: 5 }, 'good'),
       drive: (g) => say(g, null, 'Not my problem', 'You kept driving. Somebody else will stop. Probably.', 'I drove past a stranded driver.', { karma: -4 }),
     },
   },
@@ -696,12 +729,12 @@ export const ADULT_EVENTS = defineEvents([
     minAge: 10,
     maxAge: 99,
     setup: (g) => ({
-      text: `While waiting for the bus, ${stranger(g)} runs up to you, wild-eyed, and asks if you believe in aliens. What will you say?`,
+      text: `While waiting for the ${g.year >= 1920 ? 'bus' : 'streetcar'}, ${stranger(g)} runs up to you, wild-eyed, and asks if you believe in ${g.year >= 1947 ? 'aliens' : 'Martians'}. What will you say?`,
       choices: [ch('yes', 'Without a doubt'), ch('no', 'No way'), ch('away', 'Get away from me')],
     }),
     resolve: {
-      yes: (g) => say(g, null, 'The truth is out there', 'You said absolutely. They handed you a pamphlet and a tinfoil hat. You kept both.', 'I told a stranger that I believe in aliens.', { craziness: 3, happiness: 2 }),
-      no: (g) => say(g, null, 'Skeptic', 'You said no. They looked at you with deep pity and whispered, "They\'re already here."', "I told a stranger I don't believe in aliens.", { smarts: 2 }),
+      yes: (g) => say(g, null, 'The truth is out there', 'You said absolutely. They handed you a pamphlet and a tinfoil hat. You kept both.', `I told a stranger that I believe in ${g.year >= 1947 ? 'aliens' : 'Martians'}.`, { craziness: 3, happiness: 2 }),
+      no: (g) => say(g, null, 'Skeptic', 'You said no. They looked at you with deep pity and whispered, "They\'re already here."', `I told a stranger I don't believe in ${g.year >= 1947 ? 'aliens' : 'Martians'}.`, { smarts: 2 }),
       away: (g) => say(g, null, 'Personal space', 'You told them to get away from you. They saluted and ran off.', 'I told a crazy person to get away from me.', {}),
     },
   },
@@ -730,12 +763,13 @@ export const ADULT_EVENTS = defineEvents([
     when: (g) => !livesWithParents(g),
     setup: (g) => {
       const what = pick(g, [
-        { item: 'a magazine subscription', price: 40 },
-        { item: 'a "revolutionary" vacuum cleaner', price: 600 },
-        { item: 'a set of steak knives', price: 120 },
-        { item: 'solar panels', price: 9000 },
-        { item: 'a security system', price: 300 },
-      ])
+        { item: 'a magazine subscription', price: 40, since: 0 },
+        { item: 'a "revolutionary" vacuum cleaner', price: 600, since: 1915 },
+        { item: 'a set of steak knives', price: 120, since: 0 },
+        { item: 'solar panels', price: 9000, since: 2008 },
+        { item: 'a security system', price: 300, since: 1980 },
+        { item: 'a complete set of encyclopedias', price: 900, since: 0 },
+      ].filter((w) => g.year >= w.since))
       const price = dollars(g, what.price, Math.round(what.price * 1.3))
       return {
         text: `A very persistent salesperson is at your door trying to sell you ${what.item} for ${money(price)}. What will you do?`,
@@ -746,7 +780,7 @@ export const ADULT_EVENTS = defineEvents([
     resolve: {
       buy: (g, x) => {
         const price = x.n('price')
-        if (g.character.money < price) return say(g, x, 'Declined', 'Your card was declined. The salesperson looked at you with pity and left.', null, { happiness: -2 }, 'bad')
+        if (g.character.money < price) return say(g, x, 'Declined', `${declined(g)} The salesperson looked at you with pity and left.`, null, { happiness: -2 }, 'bad')
         say(g, x, 'Sold!', `You bought ${x.s('item')} for ${money(price)}. You may have been played.`, `I bought ${x.s('item')} from a door-to-door salesperson.`, { money: -price, happiness: 2, count: 'purchases' })
       },
       haggle: (g, x) => {
@@ -765,7 +799,7 @@ export const ADULT_EVENTS = defineEvents([
     minAge: 10,
     maxAge: 99,
     setup: (g) => {
-      const inst = pick(g, ['kazoo', 'accordion', 'bucket drums', 'bagpipes', 'spoons', 'a saw played with a violin bow'])
+      const inst = v(g, ['kazoo', 'accordion', '@1980 bucket drums', 'bagpipes', 'spoons', 'a saw played with a violin bow', 'a barrel organ with a monkey'])
       return {
         text: `A street performer wants to play you a song on ${inst}. What will you do?`,
         choices: [ch('tip', 'Listen and tip them'), ch('feedback', 'Listen and give feedback'), ch('dance', 'Dance along'), ch('ignore', 'Ignore them')],
@@ -780,7 +814,7 @@ export const ADULT_EVENTS = defineEvents([
       },
       feedback: (g, x) => say(g, x, 'Music critic', 'You offered detailed notes on timbre and phrasing. They did not ask for notes.', `I gave a street performer feedback on their ${x.s('inst')} playing.`, { smarts: 2 }),
       dance: (g) => say(g, null, 'Street party', 'You danced along and a small crowd joined in. It was a beautiful moment.', 'I danced along to a street performer.', { happiness: 8, health: 2 }, 'good', '🕺'),
-      ignore: (g) => say(g, null, 'Busy', 'You walked past with your headphones in.', null, {}),
+      ignore: (g) => say(g, null, 'Busy', g.year >= 1980 ? 'You walked past with your headphones in.' : 'You walked past, pretending to be late for something.', null, {}),
     },
   },
   {
@@ -789,12 +823,13 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Business Opportunity',
     minAge: 20,
     maxAge: 65,
-    when: (g) => friends(g).length > 0,
+    // Home-party direct selling took off in the fifties.
+    when: (g) => g.year >= 1950 && friends(g).length > 0,
     setup: (g) => {
       const f = anyOf(g, friends(g))
       if (!f) return null
       const buyIn = dollars(g, 300, 1500)
-      const product = pick(g, ['essential oils', 'leggings', 'protein shakes', 'kitchen knives', 'anti-aging cream', 'crypto courses'])
+      const product = v(g, ['@1990 essential oils', '@1985 leggings', '@1980 protein shakes', 'kitchen knives', '@1960 anti-aging cream', '@+crypto crypto courses', '@-1990 plastic food containers', '@-1975 cosmetics'])
       return {
         text: `Your friend ${f.firstName} says they're "their own boss" now and wants you to join their ${product} business. The starter kit is only ${money(buyIn)}! What will you do?`,
         choices: [ch('join', "I'm in!"), ch('decline', 'Politely decline'), ch('expose', 'Tell them it\'s a pyramid scheme')],
@@ -810,7 +845,7 @@ export const ADULT_EVENTS = defineEvents([
         say(g, x, profit ? 'Boss babe' : 'Garage full of product', profit ? `Against all odds, you actually made money selling ${x.s('product')}!` : `You now have a garage full of ${x.s('product')} that nobody will buy, and three fewer friends.`, `I joined my friend's ${x.s('product')} business.`, profit ? { money: buyIn, happiness: 6, rel: 8 } : { money: -buyIn, happiness: -10, rel: 4 }, profit ? 'good' : 'bad')
       },
       decline: (g, x) => say(g, x, 'Not for me', `You politely declined. ${x.p?.firstName ?? 'Your friend'} said "your loss, hun."`, `I declined to join my friend's ${x.s('product')} business.`, { rel: -3 }),
-      expose: (g, x) => say(g, x, 'Truth bomb', `You told ${x.p?.firstName ?? 'your friend'} it's a pyramid scheme. They called it a "reverse funnel system" and unfollowed you.`, `I told my friend their ${x.s('product')} business was a pyramid scheme.`, { rel: -15, smarts: 2 }),
+      expose: (g, x) => say(g, x, 'Truth bomb', `You told ${x.p?.firstName ?? 'your friend'} it's a pyramid scheme. They called it a "reverse funnel system" and ${common(g, 'socialMedia') ? 'unfollowed you' : 'stopped inviting you to things'}.`, `I told my friend their ${x.s('product')} business was a pyramid scheme.`, { rel: -15, smarts: 2 }),
     },
   },
   {
@@ -819,10 +854,11 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Fraud Alert',
     minAge: 18,
     maxAge: 99,
-    when: (g) => g.character.money > 200,
+    // Banks phoning about strange card charges is a card-era thing.
+    when: (g) => g.character.money > 200 && g.year >= 1990 && common(g, 'creditCards'),
     setup: (g) => {
       const amt = dollars(g, 60, 900)
-      const what = pick(g, ['a jet ski rental in another country', '40 pizzas', 'a premium dating app subscription', 'a vintage lava lamp', 'an online course on becoming a pirate'])
+      const what = v(g, ['a jet ski rental in another country', '40 pizzas', '@datingApps a premium dating app subscription', 'a vintage lava lamp', '@internet an online course on becoming a pirate', 'a mail-order course on becoming a pirate'])
       return {
         text: `Your bank flagged a suspicious ${money(amt)} charge for ${what}. What will you do?`,
         choices: [ch('dispute', 'Dispute the charge'), ch('ignore', 'Ignore it'), ch('mine', 'Wait... that was me')],
@@ -874,7 +910,7 @@ export const ADULT_EVENTS = defineEvents([
     maxAge: 80,
     cooldown: 15,
     weight: 4,
-    when: hasJob,
+    when: (g) => hasJob(g) && g.year >= 1915,
     setup: () => ({
       text: "You've been selected for a random tax audit. What will you do?",
       choices: [ch('cooperate', 'Cooperate fully'), ch('accountant', 'Hire an accountant'), ch('shred', 'Shred my receipts'), ch('ignore', 'Ignore the letters')],
@@ -911,7 +947,7 @@ export const ADULT_EVENTS = defineEvents([
       const critter = nightCritter(g)
       return {
         text: 'You hear a loud crash downstairs at 3 AM. What will you do?',
-        choices: [ch('investigate', `Investigate with ${weapon}`), ch('police', 'Call the police'), ch('hide', 'Hide under the covers')],
+        choices: [ch('investigate', `Investigate with ${weapon}`), ch('police', landline(g) ? 'Call the police' : 'Run for a constable'), ch('hide', 'Hide under the covers')],
         data: { weapon, critter: critter.what, critterEmoji: critter.emoji },
       }
     },
@@ -920,13 +956,13 @@ export const ADULT_EVENTS = defineEvents([
         const r = randInt(g, 1, 10)
         const critter = x.s('critter') || 'a stray cat'
         if (r <= 6) say(g, x, 'False alarm', `You crept downstairs, ${(x.s('weapon') || 'a broom').replace(/^an? /, '')} raised... and found ${critter} eating your bread. It hissed at you.`, `I investigated a noise at night. It was ${critter}.`, { happiness: 2 }, 'neutral', x.s('critterEmoji') || '🐈')
-        else if (r <= 9) say(g, null, ['Home defender', 'Burglar busted'], 'You surprised a burglar, who dropped your TV and fled out the window!', 'I scared off a burglar in the middle of the night.', { happiness: 8, karma: 2 }, 'good', '🦹')
-        else say(g, null, 'Ambushed', 'A burglar knocked you down and escaped with your laptop.', 'A burglar knocked me down and stole my laptop.', { health: -12, happiness: -10, condition: { name: 'Bruised Ribs', kind: 'injury', severity: 12 } }, 'bad', '🦹')
+        else if (r <= 9) say(g, null, ['Home defender', 'Burglar busted'], `You surprised a burglar, who dropped your ${common(g, 'tv') ? 'TV' : 'silverware'} and fled out the window!`, 'I scared off a burglar in the middle of the night.', { happiness: 8, karma: 2 }, 'good', '🦹')
+        else say(g, null, 'Ambushed', `A burglar knocked you down and escaped with your ${loot(g)}.`, `A burglar knocked me down and stole my ${loot(g)}.`, { health: -12, happiness: -10, condition: { name: 'Bruised Ribs', kind: 'injury', severity: 12 } }, 'bad', '🦹')
       },
       police: (g) => say(g, null, 'Better safe', 'The police checked the house. A picture frame had fallen off the wall. They were very polite about it.', 'I called the police about a noise at night. A picture frame had fallen.', { happiness: -2 }),
       hide: (g) => {
         const robbed = chance(g, 0.25)
-        say(g, null, robbed ? 'Robbed' : 'Survived the night', robbed ? 'In the morning, you discovered your TV and your car keys were gone.' : 'You hid under the covers until sunrise. It was the cat.', robbed ? 'My home was robbed while I hid under the covers.' : 'I hid under the covers after hearing a noise at night. It was the cat.', robbed ? { money: -Math.min(Math.max(0, g.character.money), dollars(g, 200, 1200)), happiness: -10 } : { happiness: -2 }, robbed ? 'bad' : 'neutral')
+        say(g, null, robbed ? 'Robbed' : 'Survived the night', robbed ? `In the morning, you discovered your ${common(g, 'tv') ? 'TV' : 'silverware'} and your ${cars(g) ? 'car keys' : 'pocket watch'} were gone.` : 'You hid under the covers until sunrise. It was the cat.', robbed ? 'My home was robbed while I hid under the covers.' : 'I hid under the covers after hearing a noise at night. It was the cat.', robbed ? { money: -Math.min(Math.max(0, g.character.money), dollars(g, 200, 1200)), happiness: -10 } : { happiness: -2 }, robbed ? 'bad' : 'neutral')
       },
     },
   },
@@ -936,8 +972,10 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Flu Season',
     minAge: 16,
     maxAge: 99,
-    setup: () => ({
-      text: "It's flu season and everyone around you is coughing. The pharmacy is offering free flu shots. What will you do?",
+    // Flu vaccines reached the public after the Second World War.
+    when: (g) => g.year >= 1950,
+    setup: (g) => ({
+      text: `It's flu season and everyone around you is coughing. ${g.year >= 1995 ? 'The pharmacy' : 'The local clinic'} is offering free flu shots. What will you do?`,
       choices: [ch('shot', 'Get the flu shot'), ch('vitamins', 'Load up on vitamins instead'), ch('skip', "I'll take my chances")],
     }),
     resolve: {
@@ -1014,20 +1052,49 @@ export const ADULT_EVENTS = defineEvents([
     minAge: 18,
     maxAge: 80,
     when: (g) => peopleBy(g, ['ex', 'exSpouse']).length > 0,
+    // A midnight text in the phone era; a late-night call or a long letter before it.
     setup: (g) => {
       const ex = anyOf(g, peopleBy(g, ['ex', 'exSpouse']))
       if (!ex) return null
+      const mode = texting(g) ? 'text' : landline(g) ? 'call' : 'letter'
+      const smart = common(g, 'smartphone')
       return {
-        text: `Your ex, ${ex.firstName}, texted you at midnight: "hey... I've been thinking about you." What will you do?`,
-        choices: [ch('reply', 'Reply warmly'), ch('ignore', 'Ignore it'), ch('block', 'Block them'), ch('screenshot', 'Screenshot it to my friends')],
+        emoji: mode === 'letter' ? '💌' : mode === 'call' ? '☎️' : '📱',
+        text:
+          mode === 'text'
+            ? `Your ex, ${ex.firstName}, texted you at midnight: "hey... I've been thinking about you." What will you do?`
+            : mode === 'call'
+              ? `Your ex, ${ex.firstName}, called you at midnight: "Hi... I've been thinking about you." What will you do?`
+              : `A letter arrived from your ex, ${ex.firstName}: "I can't stop thinking about you." What will you do?`,
+        choices: [
+          ch('reply', mode === 'letter' ? 'Write back warmly' : 'Reply warmly'),
+          ch('ignore', 'Ignore it'),
+          ch('block', mode === 'text' && smart ? 'Block them' : mode === 'call' ? 'Hang up on them' : mode === 'letter' ? 'Burn the letter' : 'Delete their number'),
+          ch('screenshot', smart ? 'Screenshot it to my friends' : mode === 'letter' ? 'Read it aloud to my friends' : 'Tell my friends everything'),
+        ],
         person: ex,
+        data: { mode },
       }
     },
     resolve: {
-      reply: (g, x) => say(g, x, 'Rekindled?', `You and ${x.p?.firstName ?? 'your ex'} texted until 3 AM. Old feelings are stirring.`, `My ex, ${x.p?.firstName ?? ''}, reached out and we talked all night.`, { happiness: 6, rel: 15 }, 'neutral', '💬'),
-      ignore: (g, x) => say(g, x, 'Left on read', 'You left them on read. Growth.', `I ignored a late-night text from my ex.`, { rel: -5, smarts: 2 }),
-      block: (g, x) => say(g, x, 'Blocked', `You blocked ${x.p?.firstName ?? 'your ex'}. Some doors should stay closed.`, 'I blocked my ex after they texted me.', { rel: -25, happiness: 2 }),
-      screenshot: (g, x) => say(g, x, 'Group chat gold', 'Your friends roasted the text mercilessly. You laughed until you cried.', 'I shared my ex\'s late-night text with my friends.', { happiness: 6, rel: -8, karma: -2 }),
+      reply: (g, x) => {
+        const mode = x.s('mode') || 'text'
+        const how = mode === 'text' ? 'texted until 3 AM' : mode === 'call' ? 'talked on the phone until 3 AM' : 'wrote each other long letters for weeks'
+        say(g, x, 'Rekindled?', `You and ${x.p?.firstName ?? 'your ex'} ${how}. Old feelings are stirring.`, `My ex, ${x.p?.firstName ?? ''}, reached out and we ${mode === 'letter' ? 'wrote to each other for weeks' : 'talked all night'}.`, { happiness: 6, rel: 15 }, 'neutral', '💬')
+      },
+      ignore: (g, x) => {
+        const mode = x.s('mode') || 'text'
+        say(g, x, mode === 'text' && common(g, 'smartphone') ? 'Left on read' : 'No reply', mode === 'text' && common(g, 'smartphone') ? 'You left them on read. Growth.' : 'You never answered. Growth.', mode === 'text' ? 'I ignored a late-night text from my ex.' : mode === 'call' ? 'I ignored a late-night call from my ex.' : 'I ignored a letter from my ex.', { rel: -5, smarts: 2 })
+      },
+      block: (g, x) => {
+        const mode = x.s('mode') || 'text'
+        const did = mode === 'text' ? (common(g, 'smartphone') ? 'blocked' : 'deleted the number of') : mode === 'call' ? 'hung up on' : 'burned the letter from'
+        say(g, x, mode === 'letter' ? 'Up in smoke' : 'Blocked', `You ${did} ${x.p?.firstName ?? 'your ex'}. Some doors should stay closed.`, mode === 'text' ? 'I blocked my ex after they texted me.' : mode === 'call' ? 'I hung up on my ex.' : 'I burned a letter from my ex.', { rel: -25, happiness: 2 })
+      },
+      screenshot: (g, x) => {
+        const mode = x.s('mode') || 'text'
+        say(g, x, common(g, 'smartphone') ? 'Group chat gold' : 'Story time', mode === 'letter' ? 'You read the letter aloud to your friends in your most dramatic voice. They laughed until they cried.' : 'Your friends roasted it mercilessly. You laughed until you cried.', mode === 'text' ? 'I shared my ex\'s late-night text with my friends.' : 'I told my friends all about my ex reaching out.', { happiness: 6, rel: -8, karma: -2 })
+      },
     },
   },
   {
@@ -1037,12 +1104,12 @@ export const ADULT_EVENTS = defineEvents([
     minAge: 16,
     maxAge: 99,
     setup: (g) => {
-      const cause = pick(g, ['children\'s hospital', 'animal shelter', 'food bank', 'clean ocean project', 'disaster relief fund', 'local library'])
+      const cause = v(g, ['children\'s hospital', 'animal shelter', '@1965 food bank', '@1990 clean ocean project', 'disaster relief fund', 'local library', '@-1950 orphans\' home'])
       const small = cash(g, 20)
       const big = cash(g, 200)
       return {
         text: `A volunteer collecting for the ${cause} asks if you'd like to donate. What will you do?`,
-        choices: [ch('small', `Donate ${money(small)}`), ch('big', `Donate ${money(big)}`), ch('sign', 'Just sign the petition'), ch('ignore', 'Pretend I\'m on the phone')],
+        choices: [ch('small', `Donate ${money(small)}`), ch('big', `Donate ${money(big)}`), ch('sign', 'Just sign the petition'), ch('ignore', common(g, 'mobilePhone') ? 'Pretend I\'m on the phone' : 'Pretend I didn\'t hear them')],
         data: { cause, small, big },
       }
     },
@@ -1050,7 +1117,10 @@ export const ADULT_EVENTS = defineEvents([
       small: (g, x) => donate(g, x.s('cause'), x.n('small') || 20, false),
       big: (g, x) => donate(g, x.s('cause'), x.n('big') || 200, true),
       sign: (g, x) => say(g, x, 'Signed', `You signed the ${x.s('cause')} petition. Every little bit helps.`, `I signed a petition for the ${x.s('cause')}.`, { karma: 2 }),
-      ignore: (g) => say(g, null, 'Very busy', 'You pretended to be on an important phone call. Your phone rang mid-call.', 'I pretended to be on the phone to avoid a charity volunteer.', { karma: -3, happiness: -2 }),
+      ignore: (g) =>
+        common(g, 'mobilePhone')
+          ? say(g, null, 'Very busy', 'You pretended to be on an important phone call. Your phone rang mid-call.', 'I pretended to be on the phone to avoid a charity volunteer.', { karma: -3, happiness: -2 })
+          : say(g, null, 'Very busy', 'You pretended not to hear them. They followed you for half a block, rattling the tin.', 'I pretended not to hear a charity volunteer.', { karma: -3, happiness: -2 }),
     },
   },
   {
@@ -1107,7 +1177,7 @@ export const ADULT_EVENTS = defineEvents([
       },
       broom: (g) => say(g, null, 'Bang bang', 'You banged on the ceiling. They banged back. A rhythm has developed.', 'I banged on the ceiling with a broom.', { happiness: 2, craziness: 2 }),
       complain: (g) => say(g, null, 'Paperwork', 'The landlord said they would "look into it." They did not.', 'I complained to my landlord about my upstairs neighbor.', { happiness: -2 }),
-      ignore: (g) => say(g, null, 'White noise', 'You bought a white noise machine. Now you hear ocean waves AND elephants.', 'I ignored my noisy upstairs neighbor.', { happiness: -2 }),
+      ignore: (g) => say(g, null, 'White noise', g.year >= 1990 ? 'You bought a white noise machine. Now you hear ocean waves AND elephants.' : 'You stuffed cotton wool in your ears. Now you hear muffled elephants.', 'I ignored my noisy upstairs neighbor.', { happiness: -2 }),
     },
   },
   {
@@ -1131,9 +1201,9 @@ export const ADULT_EVENTS = defineEvents([
       },
       brag: (g) => {
         const rich = g.character.money > 100000 || g.character.job !== null
-        say(g, null, rich ? 'Main character' : 'Exposed', rich ? 'You casually mentioned your success roughly 40 times. Your old bully looked miserable.' : 'You bragged about your "investments." Someone asked what you do for work. Silence.', `I went to my ${lt(g, 'high', 'high school')} reunion and bragged.`, rich ? { happiness: 10, karma: -2 } : { happiness: -8 }, rich ? 'good' : 'bad')
+        say(g, null, rich ? (g.year >= 2015 ? 'Main character' : 'Big shot') : 'Exposed', rich ? 'You casually mentioned your success roughly 40 times. Your old bully looked miserable.' : 'You bragged about your "investments." Someone asked what you do for work. Silence.', `I went to my ${lt(g, 'high', 'high school')} reunion and bragged.`, rich ? { happiness: 10, karma: -2 } : { happiness: -8 }, rich ? 'good' : 'bad')
       },
-      skip: (g) => say(g, null, 'Moving on', 'You skipped it. You saw the photos online. Everyone looks old.', `I skipped my ${lt(g, 'high', 'high school')} reunion.`, {}),
+      skip: (g) => say(g, null, 'Moving on', common(g, 'socialMedia') ? 'You skipped it. You saw the photos online. Everyone looks old.' : 'You skipped it. A friend showed you the photos. Everyone looks old.', `I skipped my ${lt(g, 'high', 'high school')} reunion.`, {}),
     },
   },
   {
@@ -1144,19 +1214,19 @@ export const ADULT_EVENTS = defineEvents([
     maxAge: 55,
     once: true,
     weight: 6,
-    setup: () => ({
+    setup: (g) => ({
       text: "You looked in the mirror this morning and realized you're not getting any younger. How will you handle this?",
-      choices: [ch('tattoo', 'Get a tattoo'), ch('guitar', 'Learn the electric guitar'), ch('marathon', 'Train for a marathon'), ch('therapy', 'See a therapist')],
+      choices: [ch('tattoo', 'Get a tattoo'), ch('guitar', g.year >= 1955 ? 'Learn the electric guitar' : 'Learn the banjo'), ch('marathon', 'Train for a marathon'), ch('therapy', 'See a therapist')],
     }),
     resolve: {
       tattoo: (g) => {
-        const design = pick(g, ['a flaming eagle', 'a dragon wrapped around a sword', "my own name, in case I forget", 'a misspelled inspirational quote', 'a tribal armband'])
+        const design = v(g, ['a flaming eagle', 'a dragon wrapped around a sword', "my own name, in case I forget", 'a misspelled inspirational quote', '@1990 a tribal armband', '@-1960 an anchor with "Mother" on it'])
         say(g, null, 'Inked', `You got ${design} tattooed on your arm. Your kids are mortified.`, `I got a tattoo of ${design} during a midlife crisis.`, { happiness: 8, looks: chance(g, 0.5) ? 4 : -4, money: -Math.min(Math.max(0, g.character.money), 250) })
       },
-      guitar: (g) => say(g, null, 'Rock star dreams', 'You bought a guitar and an amp. You can now play the first four notes of three songs. Loudly.', 'I learned the electric guitar during a midlife crisis.', { happiness: 10, smarts: 2, money: -Math.min(Math.max(0, g.character.money), 600) }, 'good', '🎸'),
+      guitar: (g) => say(g, null, 'Rock star dreams', g.year >= 1955 ? 'You bought a guitar and an amp. You can now play the first four notes of three songs. Loudly.' : 'You bought a banjo. You can now play the first four notes of three songs. Loudly.', g.year >= 1955 ? 'I learned the electric guitar during a midlife crisis.' : 'I learned the banjo during a midlife crisis.', { happiness: 10, smarts: 2, money: -Math.min(Math.max(0, g.character.money), 600) }, 'good', '🎸'),
       marathon: (g) => {
         const ok = chance(g, 0.6)
-        say(g, null, ok ? 'Finisher' : 'DNF', ok ? 'You trained for months and finished the marathon! Your knees have filed a formal complaint.' : 'You pulled a hamstring at mile 4 and were driven to the finish line in a golf cart.', ok ? 'I ran a marathon during my midlife crisis.' : 'I tried to run a marathon and pulled a hamstring.', ok ? { health: 10, happiness: 10, looks: 4 } : { health: -6, happiness: -4 }, ok ? 'good' : 'bad', '🏃')
+        say(g, null, ok ? 'Finisher' : 'DNF', ok ? 'You trained for months and finished the marathon! Your knees have filed a formal complaint.' : g.year >= 1955 ? 'You pulled a hamstring at mile 4 and were driven to the finish line in a golf cart.' : 'You pulled a hamstring at mile 4 and were carried to the finish line on a stretcher.', ok ? 'I ran a marathon during my midlife crisis.' : 'I tried to run a marathon and pulled a hamstring.', ok ? { health: 10, happiness: 10, looks: 4 } : { health: -6, happiness: -4 }, ok ? 'good' : 'bad', '🏃')
       },
       therapy: (g) => say(g, null, 'Self-care', "You saw a therapist and talked it through. Turns out you're doing fine.", 'I saw a therapist during my midlife crisis.', { happiness: 10, smarts: 2, money: -Math.min(Math.max(0, g.character.money), 300) }, 'good', '🛋️'),
     },
@@ -1167,6 +1237,8 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Blackout',
     minAge: 8,
     maxAge: 99,
+    // Needs a city on the electric grid.
+    when: (g) => landline(g),
     setup: () => ({
       text: 'A massive storm knocked out power across the whole city for two days. What will you do?',
       choices: [ch('candles', 'Light candles and play board games'), ch('hotel', 'Check into a hotel'), ch('complain', 'Complain to the power company'), ch('sleep', 'Sleep through it')],
@@ -1207,7 +1279,7 @@ export const ADULT_EVENTS = defineEvents([
         say(g, x, ['Happily ever after', 'Open bar'], `You danced all night at ${x.p?.firstName ?? 'your friend'}'s wedding. Your gift was a hit.`, `I went to my friend ${x.p?.firstName ?? ''}'s wedding.`, { money: -gift, happiness: 10, rel: 15 }, 'good', '🥂')
       },
       attend: (g, x) => say(g, x, 'Free dinner', 'You went without a gift. You hoped nobody noticed. Someone noticed.', `I went to my friend ${x.p?.firstName ?? ''}'s wedding without a gift.`, { happiness: 6, rel: 2 }),
-      skip: (g, x) => say(g, x, 'No-show', `You told ${x.p?.firstName ?? 'your friend'} you had food poisoning. They saw you at ${isUS(g) ? 'the mall' : lp(g, 'hangout', 'the market')} that day.`, `I skipped my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -15 }, 'bad'),
+      skip: (g, x) => say(g, x, 'No-show', `You told ${x.p?.firstName ?? 'your friend'} you had food poisoning. They saw you at ${isUS(g) && g.year >= 1962 ? 'the mall' : hangout(g)} that day.`, `I skipped my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -15 }, 'bad'),
       object: (g, x) => say(g, x, ['Speak now...', 'Chaos'], `When the officiant asked if anyone objected, you stood up and said "the cake is dry." You were escorted out.`, `I objected at my friend ${x.p?.firstName ?? ''}'s wedding.`, { rel: -40, craziness: 6, happiness: 4 }, 'bad', '😱'),
     },
   },
@@ -1220,8 +1292,8 @@ export const ADULT_EVENTS = defineEvents([
     setup: (g) => {
       const name = pick(g, ['Biscuit', 'Captain', 'Pickles', 'Duchess', 'Waffles', 'Bear'])
       return {
-        text: `You found a friendly lost dog with a collar that says "${name}." There's a phone number on the tag. What will you do?`,
-        choices: [ch('return', 'Call the owner'), ch('keep', 'Keep it'), ch('shelter', 'Drop it off at a shelter'), ch('ignore', 'Ignore it')],
+        text: `You found a friendly lost dog with a collar that says "${name}." There's ${landline(g) ? 'a phone number' : 'an address'} on the tag. What will you do?`,
+        choices: [ch('return', landline(g) ? 'Call the owner' : 'Walk it home'), ch('keep', 'Keep it'), ch('shelter', 'Drop it off at a shelter'), ch('ignore', 'Ignore it')],
         data: { name },
       }
     },
@@ -1237,7 +1309,7 @@ export const ADULT_EVENTS = defineEvents([
         createPerson(g, { relation: 'pet', age: randInt(g, 1, 8), firstName: x.s('name'), species: 'Dog', relationship: 70, livesWithPlayer: true })
         say(g, x, 'Finders keepers', `You kept ${x.s('name')}. Somewhere, a family is putting up posters.`, `I kept a lost dog named ${x.s('name')}.`, { karma: -10, happiness: 10, count: 'pets' }, 'neutral', '🐕')
       },
-      shelter: (g, x) => say(g, x, 'Responsible', `You dropped ${x.s('name')} off at the shelter, where they scanned the microchip and called the owner.`, 'I took a lost dog to the shelter.', { karma: 5 }, 'good'),
+      shelter: (g, x) => say(g, x, 'Responsible', g.year >= 1995 ? `You dropped ${x.s('name')} off at the shelter, where they scanned the microchip and called the owner.` : `You dropped ${x.s('name')} off at the shelter, where the owner showed up the next morning in tears.`, 'I took a lost dog to the shelter.', { karma: 5 }, 'good'),
       ignore: (g, x) => say(g, x, 'Cold heart', `You walked away. ${x.s('name')} followed you for two blocks, then gave up.`, 'I ignored a lost dog.', { karma: -6, happiness: -2 }),
     },
   },
@@ -1249,8 +1321,14 @@ export const ADULT_EVENTS = defineEvents([
     maxAge: 90,
     once: true,
     weight: 2,
+    // A TV game show once TV is everywhere; a radio quiz show before that.
+    when: (g) => common(g, 'radio'),
     setup: (g) => ({
-      text: `You've been randomly selected to be a contestant on the TV game show "${pick(g, ['Spin That Wheel!', 'Know-It-All', 'Price Is Close Enough', country(g).currency === '$' ? 'Million Dollar Toss' : 'The Million Toss'])}". What will you do?`,
+      title: common(g, 'tv') ? 'Game Show' : 'Quiz Show',
+      emoji: common(g, 'tv') ? '📺' : '📻',
+      text: common(g, 'tv')
+        ? `You've been randomly selected to be a contestant on the TV game show "${pick(g, ['Spin That Wheel!', 'Know-It-All', 'Price Is Close Enough', country(g).currency === '$' ? 'Million Dollar Toss' : 'The Million Toss'])}". What will you do?`
+        : `You've been picked from the studio audience to compete on the radio quiz show "${pick(g, ['Know-It-All', 'Brains Trust', 'Double or Nothing'])}". What will you do?`,
       choices: [ch('go', "Let's play!"), ch('no', 'I get stage fright')],
     }),
     resolve: {
@@ -1260,16 +1338,16 @@ export const ADULT_EVENTS = defineEvents([
         if (r <= 10 + smart / 10) {
           const prize = dollars(g, 25000, 100000)
           addMoney(g, prize)
-          say(g, null, ['Grand prize!', 'Winner!'], `You answered the final question correctly and won ${money(prize)}! Confetti everywhere.`, `I won ${money(prize)} on a TV game show.`, { happiness: 20, fame: 4, memory: `Won ${money(prize)} on a game show.` }, 'good', '🏆')
+          say(g, null, ['Grand prize!', 'Winner!'], `You answered the final question correctly and won ${money(prize)}! Confetti everywhere.`, `I won ${money(prize)} on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: 20, fame: 4, memory: `Won ${money(prize)} on a ${common(g, 'tv') ? 'game' : 'quiz'} show.` }, 'good', '🏆')
         } else if (r <= 55) {
           const prize = dollars(g, 500, 5000)
           addMoney(g, prize)
-          say(g, null, 'Consolation prize', `You won ${money(prize)} and a jet ski you have nowhere to put.`, `I won ${money(prize)} on a TV game show.`, { happiness: 10, fame: 2 }, 'good', '📺')
+          say(g, null, 'Consolation prize', `You won ${money(prize)} and ${g.year >= 1975 ? 'a jet ski' : 'a complete set of encyclopedias'} you have nowhere to put.`, `I won ${money(prize)} on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: 10, fame: 2 }, 'good', '📺')
         } else {
-          say(g, null, 'Lovely parting gifts', 'You froze on the first question and went home with a coupon for a car wash.', 'I lost on a TV game show.', { happiness: -6, fame: 1 }, 'bad')
+          say(g, null, 'Lovely parting gifts', `You froze on the first question and went home with a coupon for ${g.year >= 1950 ? 'a car wash' : 'a free shoeshine'}.`, `I lost on a ${common(g, 'tv') ? 'TV game show' : 'radio quiz show'}.`, { happiness: -6, fame: 1 }, 'bad')
         }
       },
-      no: (g) => say(g, null, 'Missed opportunity', 'You declined. You watched the episode at home and knew every answer.', 'I turned down a chance to be on a game show.', {}),
+      no: (g) => say(g, null, 'Missed opportunity', common(g, 'tv') ? 'You declined. You watched the episode at home and knew every answer.' : 'You declined. You listened to the broadcast at home and knew every answer.', `I turned down a chance to be on a ${common(g, 'tv') ? 'game' : 'quiz'} show.`, {}),
     },
   },
   {
@@ -1283,9 +1361,9 @@ export const ADULT_EVENTS = defineEvents([
     setup: (g) => {
       const e = anyOf(g, peopleBy(g, ['enemy']))
       if (!e) return null
-      const weapon = pick(g, ['a baseball bat', 'a tire iron', 'a lead pipe', 'a broken bottle', 'nunchucks'])
+      const weapon = v(g, ['a baseball bat', '@cars a tire iron', 'a lead pipe', 'a broken bottle', '@1972 nunchucks'])
       return {
-        text: `Your enemy ${e.firstName} ${e.lastName} cornered you in a parking lot holding ${weapon}. What will you do?`,
+        text: `Your enemy ${e.firstName} ${e.lastName} cornered you in ${g.year >= 1940 ? 'a parking lot' : 'a back alley'} holding ${weapon}. What will you do?`,
         choices: [ch('argue', 'Argue with them'), ch('beg', 'Beg for forgiveness'), ch('reason', 'Reason with them'), ch('run', 'Run away')],
         person: e,
         data: { weapon },
@@ -1298,7 +1376,7 @@ export const ADULT_EVENTS = defineEvents([
       },
       beg: (g, x) => {
         const ok = chance(g, 0.5)
-        say(g, x, ok ? 'Forgiven' : 'Not today', ok ? `You begged for forgiveness. ${x.p?.firstName ?? 'They'} lowered the weapon and said, "We're done here."` : `${x.p?.firstName ?? 'They'} laughed at your begging and smashed your car window on the way out.`, `I begged my enemy, ${x.p?.firstName ?? ''}, for forgiveness.`, ok ? { rel: 20, happiness: -2 } : { happiness: -10, rel: -5 }, ok ? 'neutral' : 'bad')
+        say(g, x, ok ? 'Forgiven' : 'Not today', ok ? `You begged for forgiveness. ${x.p?.firstName ?? 'They'} lowered the weapon and said, "We're done here."` : `${x.p?.firstName ?? 'They'} laughed at your begging and smashed your ${cars(g) ? 'car window' : 'front window'} on the way out.`, `I begged my enemy, ${x.p?.firstName ?? ''}, for forgiveness.`, ok ? { rel: 20, happiness: -2 } : { happiness: -10, rel: -5 }, ok ? 'neutral' : 'bad')
       },
       reason: (g, x) => {
         const ok = chance(g, 0.35 + g.character.stats.smarts / 300)
@@ -1322,8 +1400,8 @@ export const ADULT_EVENTS = defineEvents([
     maxAge: 99,
     setup: (g) => {
       const who = stranger(g)
-      const insult = pick(g, INSULTS)
-      const place = pick(g, ['While waiting in line for coffee', 'While walking down the street', 'While pumping gas', 'While shopping for groceries', 'While waiting for the bus'])
+      const insult = v(g, INSULTS)
+      const place = v(g, ['While waiting in line for coffee', 'While walking down the street', '@cars While pumping gas', 'While shopping for groceries', '@1920 While waiting for the bus'])
       return {
         text: `${place}, ${who} calls you ${insult}! What will you do?`,
         choices: [ch('forgive', 'Forgive them'), ch('insult', 'Insult them back'), ch('assault', 'Assault them'), ch('language', 'Beg them to watch their language')],
@@ -1333,7 +1411,7 @@ export const ADULT_EVENTS = defineEvents([
     resolve: {
       forgive: (g, x) => say(g, x, 'Bigger person', 'You shrugged it off. You are better than this.', `${uc(x.s('who'))} called me ${x.s('insult')}. I forgave them.`, { karma: 4, happiness: -2 }),
       insult: (g, x) => {
-        const back = pick(g, INSULTS)
+        const back = v(g, INSULTS)
         say(g, x, ['Burn', 'Roasted'], `You called ${x.s('who')} ${back}. Bystanders said "ooooh."`, `${uc(x.s('who'))} called me ${x.s('insult')}, so I called them ${back}.`, { happiness: 4, count: 'insults' })
       },
       assault: (g, x) => {
@@ -1381,7 +1459,8 @@ export const ADULT_EVENTS = defineEvents([
     title: 'Free Breakfast',
     minAge: 30,
     maxAge: 90,
-    when: (g) => g.character.money > 1000,
+    // Timeshares are a seventies invention.
+    when: (g) => g.character.money > 1000 && g.year >= 1975,
     setup: () => ({
       text: 'You were lured into a "free breakfast" that turned out to be a 4-hour timeshare presentation. The salesperson won\'t let you leave. What will you do?',
       choices: [ch('buy', 'Buy the timeshare'), ch('no', 'Keep saying no'), ch('escape', 'Fake a medical emergency')],
@@ -1438,5 +1517,13 @@ function donate(g: GameState, cause: string, amt: number, big: boolean): void {
 
 function uc(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
+}
+
+/** What a burglar grabs on the way out: the laptop, the TV, the radio or the family silver. */
+function loot(g: GameState): string {
+  if (g.year >= 1995 && common(g, 'homeComputer')) return 'laptop'
+  if (common(g, 'tv')) return 'TV'
+  if (common(g, 'radio')) return 'radio'
+  return 'silverware'
 }
 

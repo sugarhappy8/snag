@@ -25,6 +25,9 @@ import { fillLocal, locale, localTerm, type LocaleProfile } from '../data/locale
 import { pick, randInt, rand } from '../rng'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import type { ChoiceOption, GameEffects, GameState, Gender, Json, Person, Tone } from '../types'
+import { anachronistic, eraOk, eraStrip, venueExists } from './era'
+
+export { venueExists }
 
 /** Every offline random event is resolved by this one script; data.eventId says which. */
 export const EVENT_SCRIPT = 'events.random'
@@ -83,9 +86,25 @@ export interface EventDef {
   resolve: Record<string, Resolver>
 }
 
-/** Identity helper so event files get type checking and inference. */
+/**
+ * Type-checks an event file's list. Each setup also gets an era backstop: a popup that would
+ * mention something that doesn't exist yet where the player lives (texting in 1950, an app in
+ * 1990) returns null, so the picker chooses another event. Era-aware events still write their
+ * own variants (see era.ts); this only catches what slips through.
+ */
 export function defineEvents(list: EventDef[]): EventDef[] {
-  return list
+  return list.map((ev) => {
+    const setup = ev.setup
+    return {
+      ...ev,
+      setup: (g: GameState) => {
+        const s = setup(g)
+        if (!s) return s
+        const shown = [s.title ?? ev.title, s.text, ...s.choices.map((c) => c.label)].join(' \n ')
+        return anachronistic(g, shown) ? null : s
+      },
+    }
+  })
 }
 
 export function ch(id: string, label: string, emoji?: string): ChoiceOption {
@@ -178,9 +197,21 @@ export interface Res {
   fx?: Fx
 }
 
+/**
+ * One of several variants (or the only one). String lists may carry era tags ("@smartphone ...",
+ * see era.ts): lines that don't fit this year are skipped and tags never reach the screen.
+ */
 export function v<T>(g: GameState, items: T | readonly T[]): T {
-  if (Array.isArray(items)) return pick(g, items as readonly T[])
-  return items as T
+  if (Array.isArray(items)) {
+    const list = items as readonly T[]
+    if (list.length && typeof list[0] === 'string') {
+      const ok = (list as readonly string[]).filter((l) => eraOk(g, l))
+      const from = ok.length ? ok : (list as readonly string[])
+      return eraStrip(pick(g, from)) as T
+    }
+    return pick(g, list)
+  }
+  return (typeof items === 'string' ? eraStrip(items) : items) as T
 }
 
 /**
@@ -504,18 +535,19 @@ export function kidSafeVenue(place: string): boolean {
   return KID_FRIENDLY_VENUE.test(place) || !GROWN_UP_VENUE.test(place)
 }
 
+/** Places that didn't exist yet in earlier decades (malls, bubble tea, karaoke, new landmarks). */
 /** A local hangout ('the night market', 'the plaza', 'the mall'); no bars before drinking age. */
 export function hangout(g: GameState): string {
-  const all = locale(g).hangouts
+  const all = locale(g).hangouts.filter((p) => venueExists(g, p))
   const ok = canDrink(g) ? all : all.filter(kidSafeVenue)
   return ok.length ? pick(g, ok) : 'the park'
 }
 
 /** A local spot for a cheap date ('the boardwalk', 'a bubble tea shop'); no bars before drinking age. */
 export function dateSpot(g: GameState): string {
-  const all = locale(g).dateSpots
+  const all = locale(g).dateSpots.filter((p) => venueExists(g, p))
   const ok = canDrink(g) ? all : all.filter(kidSafeVenue)
-  return ok.length ? pick(g, ok) : 'the cinema'
+  return ok.length ? pick(g, ok) : g.year >= 1910 ? 'the cinema' : 'the park'
 }
 
 const ALCOHOL = /beer|wine|tequila|mezcal|\brum\b|vodka|soju|sake|whisk|\bgin\b|ouzo|rak[iı]|cacha[cç]a|pisco|chicha|arak|baijiu|makgeolli|brandy|cider|schnapps|aquavit|akvavit|grappa|p[aá]linka|rakija|\btej\b|lager|stout|michelada|caipirinha|aperol|spritz|cerveza|cava|prosecco|champagne|toddy|tuak|arrack|feni|chang|tuba|lambanog|absinthe|jenever|pastis|sangria|liqueur|bourbon|moonshine|kvass|horilka|sambuca|limoncello|retsina|tsipouro|slivovitz|vermouth|punch/i

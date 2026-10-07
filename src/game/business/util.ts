@@ -1,5 +1,5 @@
 // Small helpers shared by the business modules (numbers, JSON, text).
-import { formatMoney, shortMoney } from '../core'
+import { formatCents, formatMoney, shortMoney, showMoney } from '../core'
 import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Json } from '../types'
 
@@ -32,14 +32,17 @@ export function dollars(n: number): number {
 
 /** Money for unit prices: $3.50 for small amounts, $1,200 for big ones. */
 export function unitMoney(n: number): string {
-  if (!Number.isFinite(n)) return '$0'
-  if (Math.abs(n) < 100) return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`
-  return formatMoney(n)
+  if (!Number.isFinite(n)) return formatMoney(0)
+  return formatCents(n)
 }
 
-/** $1.2M / $45K / $812: compact but exact enough for reports. */
+/**
+ * $1.2M / $45K / $812: compact but exact enough for reports. The cut-off is in the currency the
+ * player reads (¥7.5M, not ¥7,456,560).
+ */
 export function money(n: number): string {
-  return Math.abs(n) >= 100_000 ? shortMoney(n) : formatMoney(n)
+  if (!Number.isFinite(n)) return formatMoney(0)
+  return Math.abs(showMoney(n).amount) >= 100_000 ? shortMoney(n) : formatMoney(n)
 }
 
 export function pct(n: number, digits = 0): string {

@@ -8,6 +8,43 @@ import { localStreetName } from '../data/locales'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
+import { eraOpen, online, PODCAST_GATE } from '../computer/era'
+import { hasTech } from '../history/timeline'
+import { socialMediaExists } from './social'
+
+// ---------------------------------------------------------------------------
+// Fame by era: TV and radio, newspapers and magazines before the internet; podcasts and viral
+// clips after. Today's copy is unchanged; earlier years get period-correct words.
+
+/** Television exists here (talk shows and commercials are on TV; before that, radio). */
+function tvEra(g: GameState): boolean {
+  return hasTech(g, 'tv')
+}
+
+/** Where buzz spreads: "the internet" once it's everywhere, "the papers" before. */
+function buzz(g: GameState): string {
+  return online(g) && g.year >= 2000 ? 'the internet' : tvEra(g) ? 'the tabloids' : 'the papers'
+}
+
+/** Radio exists here (before it, fame runs through newspapers, magazines and lecture halls). */
+function radioEra(g: GameState): boolean {
+  return hasTech(g, 'radio')
+}
+
+/** Podcasts from 2005; before that a show on the radio; before radio, a newspaper column. */
+function podcastWord(g: GameState): string {
+  return eraOpen(g, PODCAST_GATE) ? 'podcast' : radioEra(g) ? 'radio show' : 'newspaper column'
+}
+
+/** Popup title for the interview show of the era. */
+function talkTitle(g: GameState): string {
+  return tvEra(g) ? 'Talk Show' : radioEra(g) ? 'Radio Interview' : 'Newspaper Interview'
+}
+
+/** Where the famous advertise: TV, radio, or the newspapers. */
+function adWord(g: GameState): string {
+  return tvEra(g) ? 'TV commercial' : radioEra(g) ? 'radio advertisement' : 'newspaper advertisement'
+}
 
 interface Book {
   title: string
@@ -76,7 +113,7 @@ const bookAction: MenuAction = {
   id: 'fame.book',
   label: 'Book',
   emoji: '\u{1F4D6}',
-  subtitle: `Write a book (${money(BOOK_COST)} for editing)`,
+  subtitle: () => `Write a book (${money(BOOK_COST)} for editing)`,
   disabledReason: needFame(FAMOUS),
   input: {
     kind: 'text',
@@ -111,7 +148,7 @@ const bookAction: MenuAction = {
       fameDelta >= 5
         ? pick(g, ['Bookstores can\'t keep it on the shelves.', 'Book clubs everywhere are arguing about chapter 7.', 'Even your harshest critics bought two copies.'])
         : fameDelta >= 2
-          ? pick(g, ['Readers seem to genuinely like it.', 'A few talk shows mentioned it favorably.', 'Your mom bought fifty copies, but so did strangers.'])
+          ? pick(g, ['Readers seem to genuinely like it.', `A few ${tvEra(g) ? 'talk shows' : radioEra(g) ? 'radio hosts' : 'newspaper critics'} mentioned it favorably.`, 'Your mom bought fifty copies, but so did strangers.'])
           : pick(g, ['Most copies are being used to level wobbly tables.', 'The reviews were... words were used.', 'Your publisher has stopped returning your calls.'])
     say(g, 'Book', `Your book "${title}" was ${verdict}. ${flavor} You earned ${money(earned)}.`, '\u{1F4D6}', fameDelta >= 2 ? 'good' : fameDelta < 0 ? 'bad' : 'neutral')
   },
@@ -178,7 +215,7 @@ const commercialScript = defineScript('special.fame.commercial', (g, choice, dat
     addFame(g, 1)
     addStat(g, 'happiness', -4)
     text = pick(g, [
-      'It became a meme for all the wrong reasons.',
+      online(g) && g.year >= 2005 ? 'It became a meme for all the wrong reasons.' : 'Comedians did impressions of it for a whole year.',
       'Late-night hosts spent a week mocking your acting in it.',
       'People said you looked like a hostage reading a script.',
     ])
@@ -192,7 +229,7 @@ const commercialAction: MenuAction = {
   id: 'fame.commercial',
   label: 'Commercial',
   emoji: '\u{1F4FA}',
-  subtitle: 'Do a TV commercial',
+  subtitle: (g) => `Do a ${adWord(g)}`,
   disabledReason: needFame(FAMOUS),
   run: (g) => {
     if (!useYearAction(g, 'fame.commercial', 1)) return tooBusy(g, 'looked for commercial deals')
@@ -204,13 +241,14 @@ const commercialAction: MenuAction = {
     const tier = COMMERCIAL_TIERS[tierIdx]
     const within = Math.min(1, Math.max(0, (f - 20 - tierIdx * 20) / 20)) * 0.6 + rand(g) * 0.4
     const pay = Math.round((tier.min + (tier.max - tier.min) * within) / 500) * 500
-    const [brand, type] = pick(g, BRANDS)
+    // Phone carriers and energy drinks only advertise once they exist.
+    const [brand, type] = pick(g, BRANDS.filter(([, t]) => (t !== 'phone carrier' || g.year >= 1985) && (t !== 'energy drink' || g.year >= 1987)))
     const offer: CommercialOffer = { brand, type, kind: tier.kind, pay }
     scriptChoice(
       g,
       commercialScript,
       'Commercial',
-      `${brand}, a ${type}, wants you to star in a ${tier.kind} TV commercial. They're offering ${money(pay)}.`,
+      `${brand}, a ${type}, wants you to star in a ${tier.kind} ${adWord(g)}. They're offering ${money(pay)}.`,
       [
         { id: 'accept', label: 'Accept', emoji: '\u{2705}' },
         { id: 'decline', label: 'Decline', emoji: '\u{274C}' },
@@ -259,7 +297,7 @@ const photoScript = defineScript('special.fame.photo', (g, choice, data) => {
   }
   log(g, `I posed for a ${offer.kind} photo shoot in ${offer.magazine}.`, good ? 'good' : 'neutral')
   const reception = good
-    ? pick(g, ['Readers couldn\'t stop talking about how stunning you looked.', 'The issue flew off the newsstands.', 'Fashion bloggers declared it the shoot of the year.'])
+    ? pick(g, ['Readers couldn\'t stop talking about how stunning you looked.', 'The issue flew off the newsstands.', online(g) && g.year >= 2004 ? 'Fashion bloggers declared it the shoot of the year.' : 'Fashion columnists declared it the shoot of the year.'])
     : pick(g, ['A few readers said the lighting did you no favors.', 'The photos were airbrushed so much your own mother didn\'t recognize you.', 'The reception was polite at best.'])
   say(g, 'Photo Shoot', `You posed for a ${offer.kind} shoot in ${offer.magazine} and earned ${money(offer.pay)}. ${reception}${extra}`, '\u{1F4F8}', good ? 'good' : 'neutral')
 })
@@ -339,7 +377,7 @@ const talkTopicScript = defineScript('special.fame.talkTopic', (g, choice, data)
     addStat(g, 'happiness', 8)
     tone = 'good'
     text = pick(g, [
-      `You made a great impression on the viewers of ${show}. Clips of your interview are everywhere.`,
+      online(g) && g.year >= 2005 ? `You made a great impression on the viewers of ${show}. Clips of your interview are everywhere.` : `You made a great impression on ${show}. Everyone at work was quoting you the next morning.`,
       `The audience on ${show} gave you a standing ovation. The host asked you to come back next season.`,
       `You were the funniest guest ${show} has had in years.`,
     ])
@@ -357,21 +395,21 @@ const talkTopicScript = defineScript('special.fame.talkTopic', (g, choice, data)
     tone = 'bad'
     text =
       choice === 'stunt'
-        ? `Your live stunt on ${show} went horribly wrong. You fell into the house band's drum kit on national TV.`
+        ? `Your live stunt on ${show} went horribly wrong. You fell into the house band's drum kit${tvEra(g) ? ' on national TV' : radioEra(g) ? ' live on air' : ' in front of everyone'}.`
         : pick(g, [
             `You embarrassed yourself on ${show}. You froze up and answered a question nobody asked.`,
-            `You called the host by the wrong name three times on ${show}. It's trending.`,
+            online(g) && g.year >= 2006 ? `You called the host by the wrong name three times on ${show}. It's trending.` : `You called the host by the wrong name three times on ${show}. The newspapers printed all three.`,
             `You laughed at your own joke for an uncomfortably long time on ${show}.`,
           ])
     if (choice === 'stunt') addStat(g, 'health', -5)
   }
   log(g, `I went on ${show}.`, tone)
-  say(g, 'Talk Show', text, '\u{1F399}\u{FE0F}', tone)
+  say(g, talkTitle(g), text, '\u{1F399}\u{FE0F}', tone)
 })
 
 const talkShowScript = defineScript('special.fame.talkShow', (g, choice, data) => {
   const show = String((data as { show?: string } | undefined)?.show ?? 'the show')
-  if (choice !== 'accept') return say(g, 'Talk Show', `You declined the invitation to ${show}. The producers booked a ventriloquist instead.`, '\u{1F399}\u{FE0F}')
+  if (choice !== 'accept') return say(g, talkTitle(g), `You declined the invitation to ${show}. The producers booked a ventriloquist instead.`, '\u{1F399}\u{FE0F}')
   const base = talkBase(g)
   const best = TALK_TOPICS.reduce((a, b) => ((base[b.id] ?? 0) > (base[a.id] ?? 0) ? b : a)).id
   const hint = talentHint(g, 'Comedy', 'You can read this room: this bit will play best.')
@@ -383,7 +421,7 @@ const talkShowAction: MenuAction = {
   id: 'fame.talkShow',
   label: 'Talk Show',
   emoji: '\u{1F399}\u{FE0F}',
-  subtitle: 'Go on a talk show',
+  subtitle: (g) => (tvEra(g) ? 'Go on a talk show' : radioEra(g) ? 'Go on a radio interview show' : 'Give an interview to a big newspaper'),
   disabledReason: needFame(FAMOUS),
   run: (g) => {
     if (!useYearAction(g, 'fame.talkShow', 1)) return tooBusy(g, 'been on a talk show')
@@ -391,7 +429,7 @@ const talkShowAction: MenuAction = {
     scriptChoice(
       g,
       talkShowScript,
-      'Talk Show',
+      talkTitle(g),
       `The producers of "${show}" invited you on as a guest.`,
       [
         { id: 'accept', label: 'Go on the show', emoji: '\u{2705}' },
@@ -430,18 +468,25 @@ const autographAction: MenuAction = {
 // ---------------------------------------------------------------------------
 // Merchandise
 
-const MERCH: { id: string; label: string; emoji: string; cost: number }[] = [
-  { id: 'tshirts', label: 'T-Shirts', emoji: '\u{1F455}', cost: 5_000 },
-  { id: 'hoodies', label: 'Hoodies', emoji: '\u{1F9E5}', cost: 10_000 },
-  { id: 'bobbleheads', label: 'Bobbleheads', emoji: '\u{1F5FF}', cost: 8_000 },
+/** `from`: the first year fans could buy it (no energy drinks in 1950, no hoodies in 1920). */
+const MERCH: { id: string; label: string; emoji: string; cost: number; from?: number; until?: number }[] = [
+  { id: 'tshirts', label: 'T-Shirts', emoji: '\u{1F455}', cost: 5_000, from: 1960 },
+  { id: 'hoodies', label: 'Hoodies', emoji: '\u{1F9E5}', cost: 10_000, from: 1975 },
+  { id: 'bobbleheads', label: 'Bobbleheads', emoji: '\u{1F5FF}', cost: 8_000, from: 1960 },
   { id: 'plush', label: 'Plush Toys', emoji: '\u{1F9F8}', cost: 12_000 },
   { id: 'perfume', label: 'Signature Fragrance', emoji: '\u{1F338}', cost: 25_000 },
-  { id: 'drink', label: 'Energy Drink', emoji: '\u{26A1}', cost: 40_000 },
+  { id: 'drink', label: 'Energy Drink', emoji: '\u{26A1}', cost: 40_000, from: 1987 },
+  // Older merchandise (appended so today's list is unchanged).
+  { id: 'postcards', label: 'Signed Postcards', emoji: '\u{1F4EE}', cost: 3_000, until: 1959 },
 ]
+
+function merchNow(g: GameState) {
+  return MERCH.filter((m) => g.year >= (m.from ?? 0) && g.year <= (m.until ?? Infinity))
+}
 
 const merchScript = defineScript('special.fame.merch', (g, choice) => {
   if (choice === 'cancel') return
-  const item = MERCH.find((m) => m.id === choice)
+  const item = merchNow(g).find((m) => m.id === choice)
   if (!item) return
   if (!spend(g, item.cost)) {
     g.yearActions['fame.merch'] = 0
@@ -491,7 +536,7 @@ const merchAction: MenuAction = {
       merchScript,
       'Merchandise',
       'What kind of merchandise do you want to sell with your face on it?',
-      [...MERCH.map((m) => ({ id: m.id, label: `${m.label} (${money(m.cost)})`, emoji: m.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
+      [...merchNow(g).map((m) => ({ id: m.id, label: `${m.label} (${money(m.cost)})`, emoji: m.emoji })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
       { emoji: '\u{1F6CD}\u{FE0F}' },
     )
   },
@@ -505,10 +550,10 @@ const startPodcastAction: MenuAction = {
   id: 'fame.podcast.start',
   label: 'Podcast',
   emoji: '\u{1F3A7}',
-  subtitle: 'Start a podcast',
+  subtitle: (g) => (eraOpen(g, PODCAST_GATE) ? 'Start a podcast' : radioEra(g) ? 'Host your own radio show' : 'Write a weekly newspaper column'),
   visible: (g) => !peek<FameProfile>(g, 'fame')?.podcast,
   disabledReason: needFame(FAMOUS),
-  input: { kind: 'text', label: 'Name your podcast', placeholder: 'e.g. Unplugged', defaultValue: (g) => `${g.character.firstName} Unplugged` },
+  input: { kind: 'text', label: 'Name your show', placeholder: 'e.g. Unplugged', defaultValue: (g) => `${g.character.firstName} Unplugged` },
   run: (g, input) => {
     const p = fameProfile(g)
     if (p.podcast) return
@@ -517,8 +562,20 @@ const startPodcastAction: MenuAction = {
     p.podcast = { name, listeners, episodes: 0, startedAge: g.character.age }
     count(g, 'fameActions')
     addFame(g, 1)
-    log(g, `I launched a podcast called "${name}".`, 'good')
-    say(g, 'Podcast', `You launched "${name}". ${listeners.toLocaleString('en-US')} people tuned in to your first episode, which you recorded in a closet full of coats for the acoustics.`, '\u{1F3A7}', 'good')
+    const radio = !eraOpen(g, PODCAST_GATE) && radioEra(g)
+    const column = !eraOpen(g, PODCAST_GATE) && !radioEra(g)
+    log(g, `I launched a ${podcastWord(g)} called "${name}".`, 'good')
+    say(
+      g,
+      column ? 'Newspaper Column' : radio ? 'Radio Show' : 'Podcast',
+      column
+        ? `You launched "${name}", a weekly column in the biggest paper in town. ${listeners.toLocaleString('en-US')} readers turned to it first thing on Sunday.`
+        : radio
+          ? `You launched "${name}" on a local radio station. ${listeners.toLocaleString('en-US')} people tuned in to your first broadcast, live from a tiny studio that smells of old coffee.`
+          : `You launched "${name}". ${listeners.toLocaleString('en-US')} people tuned in to your first episode, which you recorded in a closet full of coats for the acoustics.`,
+      column ? '\u{1F4F0}' : radio ? '\u{1F4FB}' : '\u{1F3A7}',
+      'good',
+    )
   },
 }
 
@@ -548,15 +605,15 @@ const recordEpisodeAction: MenuAction = {
       p.listeners = Math.max(50, p.listeners - lost)
       addFame(g, -1)
       addHidden(g, 'notoriety', 2)
-      text = `Your episode about ${topic} sparked a controversy. ${lost.toLocaleString('en-US')} listeners unsubscribed in protest.`
+      text = `Your ${radioEra(g) ? 'episode' : 'column'} about ${topic} sparked a controversy. ${lost.toLocaleString('en-US')} ${radioEra(g) ? 'listeners' : 'readers'} ${eraOpen(g, PODCAST_GATE) ? 'unsubscribed' : radioEra(g) ? 'switched stations' : 'cancelled their subscriptions'} in protest.`
     } else {
       const gained = Math.round(p.listeners * (0.03 + rand(g) * 0.15) + fameOf(g) * 20)
       p.listeners += gained
       if (chance(g, 0.4)) addFame(g, 1)
-      text = `You recorded an episode about ${topic}. It picked up ${gained.toLocaleString('en-US')} new listeners.`
+      text = radioEra(g) ? `You recorded an episode about ${topic}. It picked up ${gained.toLocaleString('en-US')} new listeners.` : `You wrote a column about ${topic}. It picked up ${gained.toLocaleString('en-US')} new readers.`
     }
     count(g, 'fameActions')
-    log(g, `I recorded a podcast episode about ${topic}.`)
+    log(g, radioEra(g) ? `I recorded a ${podcastWord(g)} episode about ${topic}.` : `I wrote a newspaper column about ${topic}.`)
     say(g, p.name, text, '\u{1F3A7}', roll < 0.15 ? 'bad' : 'good')
   },
 }
@@ -564,17 +621,17 @@ const recordEpisodeAction: MenuAction = {
 const endPodcastAction: MenuAction = {
   type: 'action',
   id: 'fame.podcast.end',
-  label: 'End Podcast',
+  label: 'End Your Show',
   emoji: '\u{1F6D1}',
   visible: (g) => !!peek<FameProfile>(g, 'fame')?.podcast,
-  confirm: (g) => `Are you sure you want to end "${peek<FameProfile>(g, 'fame')?.podcast?.name ?? 'your podcast'}"?`,
+  confirm: (g) => `Are you sure you want to end "${peek<FameProfile>(g, 'fame')?.podcast?.name ?? `your ${podcastWord(g)}`}"?`,
   run: (g) => {
     const p = fameProfile(g)
     if (!p.podcast) return
     const name = p.podcast.name
     p.podcast = null
-    log(g, `I ended my podcast "${name}".`)
-    say(g, 'Podcast', `You recorded a tearful final episode of "${name}" and hung up your headphones for good.`, '\u{1F3A7}')
+    log(g, `I ended my ${podcastWord(g)} "${name}".`)
+    say(g, eraOpen(g, PODCAST_GATE) ? 'Podcast' : 'Radio Show', `You recorded a tearful final episode of "${name}" and hung up your headphones for good.`, '\u{1F3A7}')
   },
 }
 
@@ -601,7 +658,9 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
   switch (choice) {
     case 'feud':
       text = win
-        ? `You picked a fake fight with ${celeb} online. The internet took sides and both of you trended for a week.`
+        ? online(g) && g.year >= 2006
+          ? `You picked a fake fight with ${celeb} online. The internet took sides and both of you trended for a week.`
+          : `You picked a fake fight with ${celeb} in the gossip columns. ${buzz(g) === 'the papers' ? 'The papers' : 'The tabloids'} took sides for a week.`
         : `You tried to start a feud with ${celeb}, who simply replied "who?" Ouch.`
       break
     case 'haircut':
@@ -629,7 +688,7 @@ const stuntScript = defineScript('special.fame.stunt', (g, choice) => {
       break
     }
     default:
-      text = win ? `You rode a llama down ${g.character.countryId === 'us' ? 'Main Street' : localStreetName(g)}. It became the most-shared video of the week.` : 'The llama spat on you, then a news crew, then the mayor.'
+      text = win ? `You rode a llama down ${g.character.countryId === 'us' ? 'Main Street' : localStreetName(g)}. ${online(g) && g.year >= 2006 ? 'It became the most-shared video of the week.' : tvEra(g) ? 'It led the evening news.' : 'It made the front page.'}` : 'The llama spat on you, then a news crew, then the mayor.'
   }
   addFame(g, win ? randInt(g, 3, 6) : -randInt(g, 1, 3))
   addStat(g, 'happiness', win ? 6 : -5)
@@ -658,17 +717,18 @@ export const fameMenu: MenuGroup = {
   subtitle: 'Manage your fame',
   visible: fameMenuVisible,
   header: (g) => `Fame: ${fameOf(g)}%${fameOf(g) < FAMOUS ? ' — you are not famous enough for most offers yet.' : ''}`,
-  children: (): MenuNode[] => [
+  children: (g): MenuNode[] => [
     autographAction,
     bookAction,
     commercialAction,
     merchAction,
     photoAction,
-    startPodcastAction,
-    recordEpisodeAction,
+    // Labels follow the media of the day: a podcast today, a radio show in 1960, a column in 1910.
+    { ...startPodcastAction, label: eraOpen(g, PODCAST_GATE) ? 'Podcast' : radioEra(g) ? 'Radio Show' : 'Newspaper Column' },
+    { ...recordEpisodeAction, label: radioEra(g) ? 'Record an Episode' : 'Write a Column' },
     endPodcastAction,
     stuntAction,
-    talkShowAction,
+    { ...talkShowAction, label: tvEra(g) ? 'Talk Show' : radioEra(g) ? 'Radio Interview' : 'Newspaper Interview' },
   ],
 }
 
@@ -691,7 +751,7 @@ const paparazziScript = defineScript('special.fame.paparazzi', (g, choice) => {
     if (fine > 0) spend(g, fine)
     addHidden(g, 'notoriety', 4)
     addFame(g, 2)
-    text = `You smashed a photographer's camera. ${fine > 0 ? `You paid ${money(fine)} to settle the lawsuit. ` : ''}The video went viral.`
+    text = `You smashed a photographer's camera. ${fine > 0 ? `You paid ${money(fine)} to settle the lawsuit. ` : ''}${online(g) && g.year >= 2006 ? 'The video went viral.' : 'It made every front page.'}`
     tone = 'bad'
   } else {
     text = 'You ignored the paparazzi and kept walking. Boring photos make boring headlines.'
@@ -739,7 +799,7 @@ const insultScript = defineScript('special.fame.insult', (g, choice, data) => {
   if (choice === 'back') {
     const win = chance(g, 0.5)
     addFame(g, win ? 3 : -2)
-    text = win ? `You fired back at ${celeb} with a perfect comeback. The internet declared you the winner.` : `You insulted ${celeb} back, but your comeback fell flat. Even your fans cringed.`
+    text = win ? `You fired back at ${celeb} with a perfect comeback. ${buzz(g) === 'the internet' ? 'The internet' : buzz(g) === 'the tabloids' ? 'The tabloids' : 'The papers'} declared you the winner.` : `You insulted ${celeb} back, but your comeback fell flat. Even your fans cringed.`
     tone = win ? 'good' : 'bad'
   } else if (choice === 'boxing') {
     const win = chance(g, 0.35 + g.character.hidden.athleticism / 200)
@@ -760,7 +820,7 @@ const fanScript = defineScript('special.fame.fan', (g, choice) => {
   let text: string
   if (choice === 'selfie') {
     addStat(g, 'happiness', 4)
-    text = 'You took a selfie with the fan. They posted it and called it the best day of their life.'
+    text = hasTech(g, 'smartphone') ? 'You took a selfie with the fan. They posted it and called it the best day of their life.' : 'You posed for a photo with the fan. They had it framed and called it the best day of their life.'
   } else if (choice === 'sign') {
     addStat(g, 'happiness', 3)
     text = 'You signed the fan\'s arm. They swore they would get it tattooed.'
@@ -829,7 +889,7 @@ function celebrityScenario(g: GameState): void {
       g,
       insultScript,
       'Celebrity Feud',
-      `${celeb} ${pick(g, ['mocked your outfit on live TV', 'called you "a total nobody" in an interview', 'made fun of your work on social media'])}.`,
+      `${celeb} ${pick(g, [tvEra(g) ? 'mocked your outfit on live TV' : radioEra(g) ? 'mocked your outfit on the radio' : 'mocked your outfit in the society pages', 'called you "a total nobody" in an interview', socialMediaExists(g) ? 'made fun of your work on social media' : 'made fun of your work in a magazine column'])}.`,
       [
         { id: 'ignore', label: 'Ignore them', emoji: '\u{1F610}' },
         { id: 'back', label: 'Insult them back', emoji: '\u{1F92C}' },
@@ -844,7 +904,7 @@ function celebrityScenario(g: GameState): void {
       'Fan Encounter',
       'A fan recognized you at the grocery store and burst into tears.',
       [
-        { id: 'selfie', label: 'Take a selfie', emoji: '\u{1F933}' },
+        { id: 'selfie', label: hasTech(g, 'smartphone') ? 'Take a selfie' : 'Pose for a photo', emoji: hasTech(g, 'smartphone') ? '\u{1F933}' : '\u{1F4F7}' },
         { id: 'sign', label: 'Sign their arm', emoji: '\u{270D}\u{FE0F}' },
         { id: 'run', label: 'Run away', emoji: '\u{1F3C3}' },
       ],
@@ -872,7 +932,7 @@ export function yearlyFame(g: GameState): void {
       const income = Math.round(pod.listeners * (0.4 + rand(g) * 0.5))
       if (income > 0 && !c.prison) {
         earnIncome(g, income)
-        log(g, `My podcast "${pod.name}" earned ${money(income)} from ads.`)
+        log(g, `My ${podcastWord(g)} "${pod.name}" earned ${money(income)} from ads.`)
       }
     }
   }

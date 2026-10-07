@@ -21,6 +21,7 @@ import {
   notice,
   remember,
   scriptChoice,
+  shortMoney,
   spend,
   useYearAction,
 } from '../core'
@@ -33,6 +34,7 @@ import { defineScript } from '../scripts'
 import type { Asset, GameState, Json, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
 import { PLANS, SPA_STYLE, type FeeBasis, type PlanDef, type TierDef } from './memberships-data'
+import { hasTech } from '../history/timeline'
 
 export { ticketsMenu } from './memberships-tickets'
 
@@ -147,10 +149,20 @@ function alcoholLegal(g: GameState): boolean {
 
 const NET_WORTH_FLOOR: Record<string, number> = { country: 8, golf: 4, yacht: 3, private: 4 }
 
+/** True when this kind of plan exists where the player lives this year. */
+export function planInEra(g: GameState, plan: PlanDef): boolean {
+  const e = plan.era
+  if (!e) return true
+  if (e.from !== undefined && g.year < e.from) return false
+  return !e.tech || hasTech(g, e.tech)
+}
+
 /** Is the plan offered to this player at all (hidden otherwise)? */
 function planVisible(g: GameState, plan: PlanDef): boolean {
   const c = g.character
   if (c.age < plan.minAge - 3) return false
+  // Plans of later eras (streaming, meal kits, coworking) appear when they exist; members keep theirs.
+  if (!planInEra(g, plan) && !membershipFor(g, plan.id)) return false
   if (plan.id === 'wine' && !alcoholLegal(g)) return false
   if (plan.id === 'jet' && netWorth(g) < 1_000_000 && !membershipFor(g, 'jet')) return false
   if (plan.id === 'dating' && c.age < 18) return false
@@ -162,13 +174,14 @@ export function joinReason(g: GameState, plan: PlanDef): string | null {
   const b = blockReason(g)
   if (b) return b
   const c = g.character
+  if (!planInEra(g, plan) && !membershipFor(g, plan.id)) return `Nothing like that exists in ${g.year}.`
   if (c.age < plan.minAge) return `You must be at least ${plan.minAge} to join.`
   if (plan.id === 'wine') {
     if (!alcoholLegal(g)) return `Alcohol is illegal in ${getCountry(c.countryId).name}.`
     if (c.age < drinkingAge(g)) return `You must be at least ${drinkingAge(g)} (the drinking age here) to join a wine club.`
   }
   if (plan.id === 'yacht' && !g.assets.some((a) => a.kind === 'boat')) return 'You need a boat to join a yacht club.'
-  if (plan.id === 'jet' && netWorth(g) < 5_000_000) return 'AeroCard only takes clients worth $5M or more.'
+  if (plan.id === 'jet' && netWorth(g) < 5_000_000) return `AeroCard only takes clients worth ${shortMoney(5_000_000)} or more.`
   if (plan.id === 'dating') {
     const p = currentPartner(g)
     if (p) return `You're in a relationship with ${p.firstName}.`
@@ -374,7 +387,7 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
         return { title: 'Ouch!', text: `You tried to lift what the guy next to you was lifting and got a ${injury.toLowerCase()}.`, log: `I got a ${injury.toLowerCase()} at the gym.` }
       }
       let text = pick(g, [
-        tier.id === 'boutique' ? 'Your trainer yelled encouraging things over thumping music. You have never sweated this much in a room this pretty.' : 'You lifted, you ran, you took a mirror selfie. A productive session.',
+        tier.id === 'boutique' ? 'Your trainer yelled encouraging things over thumping music. You have never sweated this much in a room this pretty.' : hasTech(g, 'smartphone') ? 'You lifted, you ran, you took a mirror selfie. A productive session.' : 'You lifted, you ran, you flexed in the mirror. A productive session.',
         'You did a spin class and briefly saw your ancestors.',
         'You finally used the gym membership you\'re paying for. Your bank account sighed with relief.',
         'Someone was hogging the squat rack, so you did 40 minutes of "core." You lay on a mat.',
@@ -840,6 +853,6 @@ export function yearlyMemberships(g: GameState): void {
     const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
     for (const a of lapsed) log(g, `My ${a.name} membership lapsed because I couldn't pay.`, 'bad')
     addStat(g, 'happiness', -randInt(g, 1, 3))
-    notice(g, 'Membership Lapsed', `Your card was declined at renewal, so your ${list} ${lapsed.length === 1 ? 'membership has' : 'memberships have'} lapsed. You can rejoin when your finances recover.`, { emoji: '💳', tone: 'bad' })
+    notice(g, 'Membership Lapsed', `${hasTech(g, 'creditCards') ? 'Your card was declined at renewal' : "Your renewal check bounced"}, so your ${list} ${lapsed.length === 1 ? 'membership has' : 'memberships have'} lapsed. You can rejoin when your finances recover.`, { emoji: '💳', tone: 'bad' })
   }
 }

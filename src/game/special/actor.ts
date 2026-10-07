@@ -1,6 +1,7 @@
 // Special career: Actor. Take acting classes, hire a talent agent, audition for film and TV
 // roles (extra -> supporting -> lead), develop your character, deal with co-stars, stage
 // publicity stunts, win awards and collect residuals for the rest of your life.
+import { hasTech } from '../history/timeline'
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
@@ -142,7 +143,7 @@ function genListings(g: GameState): Listing[] {
     const r = rand(g) + agentQ / 250 + (gifted ? 0.15 : 0)
     if (leadReady && r > 0.7) role = 'Lead'
     else if ((p.credits.length > 0 || actingSkill(g) >= (gifted ? 35 : 45) || f >= 25) && r > 0.35) role = 'Supporting'
-    const kind: Kind = chance(g, 0.6) ? 'film' : 'tv'
+    const kind: Kind = chance(g, 0.6) || !hasTech(g, 'tv') ? 'film' : 'tv'
     let genre = kind === 'film' ? pick(g, FILM_GENRES) : pick(g, TV_GENRES)
     if (g.character.countryId === 'in' && kind === 'film' && chance(g, 0.5)) genre = 'Bollywood'
     if (LATIN.includes(g.character.countryId) && kind === 'tv' && chance(g, 0.5)) genre = 'Telenovela'
@@ -243,7 +244,7 @@ const auditionScript = defineScript('special.actor.audition', (g, choice, data) 
       'Audition',
       pick(g, [
         `The casting director for "${l.title}" thanked you for your time and said they were "going in a different direction".`,
-        `You auditioned for "${l.title}". Halfway through your monologue, the director started checking emails.`,
+        `You auditioned for "${l.title}". Halfway through your monologue, the director started ${hasTech(g, 'internet') ? 'checking emails' : 'reading the newspaper'}.`,
         `You didn't get the part in "${l.title}". They cast someone with a famous parent instead.`,
         `You forgot your lines at the "${l.title}" audition and tried to improvise. It did not work.`,
       ]),
@@ -631,7 +632,7 @@ const auditionAction: MenuAction = {
   id: 'actor.audition',
   label: 'Auditions',
   emoji: '\u{1F3AC}',
-  subtitle: 'Audition for film and TV roles',
+  subtitle: (g) => hasTech(g, 'tv') ? 'Audition for film and TV roles' : 'Audition for film roles',
   visible: (g) => {
     const job = actorJob(g)
     return !job || !project(job)

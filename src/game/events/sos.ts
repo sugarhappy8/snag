@@ -6,6 +6,13 @@ import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
 import { anyOf, ch, defineEvents, dollars, money, ownsHome, pets, relWord, say, type Ctx } from './helpers'
 import { locale, localPick, localTerm } from '../data/locales'
+import { cars, common, landline } from './era'
+
+/** "Call 911 for an ambulance" once emergency numbers exist; a call or a runner before that. */
+function ambulanceChoice(g: GameState): string {
+  if (g.year >= 1970) return `Call ${localTerm(g, 'emergencyNumber')} for an ambulance`
+  return landline(g) ? 'Call for an ambulance' : 'Send for a doctor'
+}
 
 /** "a flood", "an earthquake". */
 function aKind(kind: string): string {
@@ -28,6 +35,8 @@ interface Sos {
   saved: string
   /** Emergency service to call. */
   service: string
+  /** Only when this holds (crashed cars need cars). */
+  when?: (g: GameState) => boolean
 }
 
 const SOS: Sos[] = [
@@ -74,6 +83,8 @@ const SOS: Sos[] = [
     text: 'An elderly woman collapses in the grocery store and is not breathing!',
     seen: 'a woman collapse in the grocery store',
     rescue: 'Perform CPR',
+    // CPR was taught to the public from the sixties.
+    when: (g) => g.year >= 1962,
     cause: 'Freak Accident',
     death: 'Mid-CPR, a towering display of canned beans collapsed on top of you.',
     saved: 'You performed CPR until she gasped back to life. The whole store applauded.',
@@ -122,6 +133,7 @@ const SOS: Sos[] = [
     text: 'A man is trapped inside a crashed car that is leaking fuel!',
     seen: 'a man trapped in a crashed car leaking fuel',
     rescue: 'Pull him out',
+    when: cars,
     cause: 'Explosion',
     death: 'You almost had him out when the car exploded.',
     saved: 'You smashed the window and pulled him out seconds before the car burst into flames!',
@@ -141,6 +153,13 @@ const SOS: Sos[] = [
   },
 ]
 
+/** The emergency service to call, or running for help before there's a telephone around. */
+function serviceChoice(g: GameState, s: Sos): string {
+  if (s.service === 'Call an ambulance') return ambulanceChoice(g)
+  if (s.service === 'Call the railroad emergency line' && g.year < 1990) return 'Wave down the train'
+  return landline(g) ? s.service : 'Run for help'
+}
+
 function sosEvent(s: Sos) {
   return {
     id: s.id,
@@ -150,9 +169,10 @@ function sosEvent(s: Sos) {
     maxAge: 85,
     weight: 2,
     cooldown: 12,
+    when: s.when,
     setup: (g: GameState) => ({
       text: `${s.text} What will you do?`,
-      choices: [ch('rescue', s.rescue), ch('call', s.service === 'Call an ambulance' ? `Call ${localTerm(g, 'emergencyNumber')} for an ambulance` : s.service), ch('ignore', 'Look the other way')],
+      choices: [ch('rescue', s.rescue), ch('call', serviceChoice(g, s)), ch('ignore', 'Look the other way')],
     }),
     resolve: {
       rescue: (g: GameState, x: Ctx) => {
@@ -192,6 +212,22 @@ const DISASTERS = [
   { kind: 'hurricane', emoji: '🌀', text: 'A Category {n} hurricane is making landfall near your city!' },
   { kind: 'wildfire', emoji: '🔥', text: 'A wildfire is raging out of control in the hills near your home!' },
 ]
+
+/** Older wording before the Richter scale (1935), tornado sirens (1950s) and hurricane categories (1971). */
+function disasterText(g: GameState, kind: string, text: string): string {
+  if (kind === 'earthquake' && g.year < 1935) return 'A violent earthquake is shaking your city! Buildings are swaying.'
+  if (kind === 'tornado' && g.year < 1955) return 'Church bells are ringing the alarm and a massive funnel cloud is heading straight for your town!'
+  if (kind === 'hurricane' && g.year < 1971) return 'A ferocious hurricane is making landfall near your city!'
+  if (kind === 'typhoon' && g.year < 1970) return 'A monstrous typhoon is barreling toward your city!'
+  return text
+}
+
+/** How you'd record a disaster: for social media, for the local news (camcorders), or not at all. */
+function filmChoice(g: GameState): string {
+  if (common(g, 'socialMedia')) return 'Film it for social media'
+  if (g.year >= 1985) return 'Film it for the local news'
+  return 'Watch it from the rooftop'
+}
 
 const QUAKE_ZONES = new Set(['jp', 'id', 'tr', 'ir', 'mx', 'cl', 'pe', 'it', 'gr', 'nz', 'ph', 'cn', 'tw', 'np', 'pk', 'af', 'ec', 'gt', 'sv', 'cr', 'ni', 'us', 'co', 've', 'ro', 'in', 'kz', 'mn', 'pg', 'ws', 'al', 'ge', 'dz', 'ma', 'bo', 'ar', 'pa', 'ht', 'do', 'pr', 'jm', 'hr', 'rs'])
 const TORNADO_ZONES = new Set(['us', 'ca', 'bd', 'ar'])
@@ -241,10 +277,10 @@ export const SOS_EVENTS = defineEvents([
       const d = pick(g, localDisasters(g))
       const mag = d.kind === 'earthquake' ? `${randInt(g, 6, 8)}.${randInt(g, 0, 9)}` : d.kind === 'typhoon' ? String(randInt(g, 18, 25)) : String(randInt(g, 3, 5))
       return {
-        text: `${d.text.replace('{n}', mag)} What will you do?`,
-        choices: [ch('shelter', 'Take shelter'), ch('evacuate', 'Evacuate'), ch('help', 'Help my neighbors'), ch('film', 'Film it for social media')],
+        text: `${disasterText(g, d.kind, d.text).replace('{n}', mag)} What will you do?`,
+        choices: [ch('shelter', 'Take shelter'), ch('evacuate', 'Evacuate'), ch('help', 'Help my neighbors'), ch('film', filmChoice(g))],
         emoji: d.emoji,
-        data: { kind: d.kind },
+        data: { kind: d.kind, film: g.year >= 1985 ? 1 : 0 },
       }
     },
     resolve: {
@@ -264,9 +300,13 @@ export const SOS_EVENTS = defineEvents([
       },
       film: (g, x) => {
         const r = randInt(g, 1, 100)
-        if (r <= 3) return say(g, x, 'Final upload', `You got the shot of a lifetime. It was also your last.`, `I died filming ${aKind(x.s('kind'))}.`, { death: `${uc(x.s('kind'))}` }, 'bad', '🪦')
-        if (r <= 25) return say(g, x, 'Bad idea', `You got too close filming the ${x.s('kind')} and were hit by flying debris.`, `I got hurt filming ${aKind(x.s('kind'))}.`, { health: -15, condition: { name: 'Concussion', kind: 'injury', severity: 15 } }, 'bad')
-        say(g, x, ['Gone viral', 'Storm chaser'], `Your footage of the ${x.s('kind')} went viral and was picked up by the national news!`, `My footage of ${aKind(x.s('kind'))} went viral.`, { fame: 4, happiness: 8, karma: -2 }, 'good', '📹')
+        const filming = x.data.film === undefined || x.n('film') === 1
+        const doing = filming ? 'filming' : 'watching'
+        if (r <= 3) return say(g, x, filming ? (common(g, 'socialMedia') ? 'Final upload' : 'Final footage') : 'Too close', filming ? `You got the shot of a lifetime. It was also your last.` : `You had the best view in town. It was also your last.`, `I died ${doing} ${aKind(x.s('kind'))}.`, { death: `${uc(x.s('kind'))}` }, 'bad', '🪦')
+        if (r <= 25) return say(g, x, 'Bad idea', `You got too close ${doing} the ${x.s('kind')} and were hit by flying debris.`, `I got hurt ${doing} ${aKind(x.s('kind'))}.`, { health: -15, condition: { name: 'Concussion', kind: 'injury', severity: 15 } }, 'bad')
+        if (!filming) return say(g, x, 'Eyewitness', `You watched the whole ${x.s('kind')} from the rooftop. The newspaper quoted you on the front page!`, `I was an eyewitness to ${aKind(x.s('kind'))} and was quoted in the newspaper.`, { fame: 2, happiness: 6, karma: -2 }, 'good', '📰')
+        const viral = common(g, 'socialMedia')
+        say(g, x, viral ? ['Gone viral', 'Storm chaser'] : 'Storm chaser', viral ? `Your footage of the ${x.s('kind')} went viral and was picked up by the national news!` : `Your home video of the ${x.s('kind')} was aired on the national news!`, viral ? `My footage of ${aKind(x.s('kind'))} went viral.` : `My footage of ${aKind(x.s('kind'))} was shown on the national news.`, { fame: 4, happiness: 8, karma: -2 }, 'good', '📹')
       },
     },
   },
@@ -285,7 +325,7 @@ export const SOS_EVENTS = defineEvents([
       const food = pick(g, g.character.countryId === 'us' ? ['a chunk of steak', 'a grape', 'a piece of hard candy', 'a hot dog', 'a meatball', 'a pretzel'] : ['a chunk of meat', 'a grape', 'a piece of hard candy', 'a fish bone', 'a meatball', `a mouthful of ${localPick(g, 'food') || 'rice'}`])
       return {
         text: `Your ${relWord(p)}, ${p.firstName}, is choking on ${food} and turning blue! What will you do?`,
-        choices: [ch('heimlich', 'Perform the Heimlich maneuver'), ch('ambulance', `Call ${localTerm(g, 'emergencyNumber')} for an ambulance`), ch('nothing', 'Do nothing')],
+        choices: [ch('heimlich', g.year >= 1975 ? 'Perform the Heimlich maneuver' : 'Whack them on the back'), ch('ambulance', ambulanceChoice(g)), ch('nothing', 'Do nothing')],
         person: p,
         data: { food },
       }
@@ -295,10 +335,11 @@ export const SOS_EVENTS = defineEvents([
         const ok = chance(g, 0.75)
         if (ok) {
           count(g, 'livesSaved')
-          if (x.p) notePerson(x.p, 'The player saved their life with the Heimlich maneuver.')
-          say(g, x, ['Lifesaver', 'Hero'], `You performed the Heimlich maneuver and ${x.s('food')} shot across the room. ${x.p?.firstName ?? 'They'} hugged you and wouldn't let go.`, `I saved ${relName(x.p)} from choking with the Heimlich maneuver.`, { rel: 25, karma: 10, happiness: 10 }, 'good', '🦸')
+          const heimlich = g.year >= 1975
+          if (x.p) notePerson(x.p, heimlich ? 'The player saved their life with the Heimlich maneuver.' : 'The player saved them from choking.')
+          say(g, x, ['Lifesaver', 'Hero'], `You ${heimlich ? 'performed the Heimlich maneuver' : 'whacked them on the back with all your might'} and ${x.s('food')} shot across the room. ${x.p?.firstName ?? 'They'} hugged you and wouldn't let go.`, heimlich ? `I saved ${relName(x.p)} from choking with the Heimlich maneuver.` : `I saved ${relName(x.p)} from choking.`, { rel: 25, karma: 10, happiness: 10 }, 'good', '🦸')
         } else {
-          say(g, x, 'Close call', `Your Heimlich didn't work, but the paramedics arrived just in time. ${x.p?.firstName ?? 'They'} spent the night in the hospital and will be okay.`, `${uc(relName(x.p))} nearly choked to death. The paramedics saved them.`, { rel: 5, happiness: -8 }, 'bad', '🚑')
+          say(g, x, 'Close call', `${g.year >= 1975 ? 'Your Heimlich' : 'Your back slaps'} didn't work, but ${g.year >= 1930 ? 'the paramedics' : 'the doctor'} arrived just in time. ${x.p?.firstName ?? 'They'} spent the night in the hospital and will be okay.`, `${uc(relName(x.p))} nearly choked to death. The paramedics saved them.`, { rel: 5, happiness: -8 }, 'bad', '🚑')
           if (x.p) x.p.stats.health = Math.max(5, x.p.stats.health - 20)
         }
       },

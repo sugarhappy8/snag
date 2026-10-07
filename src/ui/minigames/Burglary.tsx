@@ -4,6 +4,7 @@
 // {"loot": number, "caught": boolean, "rooms": string[], "by"?: "owner" | "dog" | "alarm"}.
 import { useEffect, useRef, useState } from 'react'
 import { burglaryCatcher, burglaryRisk, type BurglaryData, type BurglaryLoot, type BurglaryRoom } from '../../game/crime'
+import { formatMoney } from '../../game/core'
 import type { Json } from '../../game/types'
 import type { MinigameProps } from './types'
 
@@ -59,10 +60,6 @@ export function readBurglaryHouse(data: Json): BurglaryData | null {
     riskStep: Math.min(0.5, Math.max(0, numOr(data.riskStep, 0.05))),
     rolls: (Array.isArray(data.rolls) ? data.rolls : []).map((r) => numOr(r, 0.5)),
   }
-}
-
-function formatMoney(n: number): string {
-  return `$${Math.round(n).toLocaleString('en-US')}`
 }
 
 function capitalize(s: string): string {

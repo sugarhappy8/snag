@@ -35,6 +35,14 @@ interface Procedure {
   result: string
 }
 
+/** First year each procedure was offered by cosmetic surgeons (missing: always). */
+const PROCEDURE_SINCE: Record<string, number> = { botox: 2002, butt: 2000, breast: 1962, chin: 1950, eyelid: 1930, facelift: 1920, gender: 1960, lipo: 1982, tummy: 1960 }
+
+/** Was this procedure available yet? */
+export function procedureAvailable(g: GameState, id: string): boolean {
+  return g.year >= (PROCEDURE_SINCE[id] ?? 0)
+}
+
 export const PROCEDURES: Procedure[] = [
   { id: 'botox', name: 'Botox', emoji: '\u{1F489}', price: 600, gain: [2, 6], limit: Infinity, result: 'Your forehead is now smoother than a freshly zambonied ice rink.' },
   { id: 'butt', name: 'Brazilian Butt Lift', emoji: '\u{1F351}', price: 9000, gain: [3, 10], limit: 3, gender: 'female', result: 'Your new curves are turning heads. And necks. Possibly causing injuries.' },
@@ -220,5 +228,5 @@ export const plasticSurgeryMenu: MenuGroup = {
   emoji: '\u{1F489}',
   subtitle: 'Go under the knife',
   disabledReason: (g) => gate(g, { minAge: 18 }),
-  children: (g): MenuNode[] => PROCEDURES.filter((p) => !p.gender || p.gender === g.character.gender).map(procedureMenu),
+  children: (g): MenuNode[] => PROCEDURES.filter((p) => (!p.gender || p.gender === g.character.gender) && procedureAvailable(g, p.id)).map(procedureMenu),
 }

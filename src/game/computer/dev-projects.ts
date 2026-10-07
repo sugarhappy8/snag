@@ -17,6 +17,7 @@ export { getProjectKind, PROJECT_KINDS, projectDetail, type ProjectKind } from '
 import { between, cap, devState, money, num, plural, priceLevel, saveDev, shortCount, str, type DevProject } from './dev-state'
 import { canStartVenture, spinOffVenture } from './dev-venture'
 import { bestLanguageFor, codingSkill, getLanguage } from './skills'
+import { eraOpen, eraReason, online } from './era'
 
 function projectName(g: GameState, kind: ProjectKind): string {
   const used = new Set(devState(g).projects.map((p) => p.name))
@@ -50,7 +51,7 @@ function trendingKind(g: GameState): string {
   return stableChoice(
     g,
     'computer.dev.trend',
-    PROJECT_KINDS.filter((k) => !GAME_KINDS.has(k.id)).map((k) => k.id),
+    PROJECT_KINDS.filter((k) => !GAME_KINDS.has(k.id) && eraOpen(g, k.era)).map((k) => k.id),
   )
 }
 
@@ -80,7 +81,7 @@ const SPIN = defineScript('computer.dev.spinoff', (g, choice, data) => {
 /** Build a project now. */
 export function buildProject(g: GameState, kind: ProjectKind): void {
   const c = g.character
-  const reason = firstReason(computerBlock(g), ageBlock(g, kind.minAge, `build a ${kind.label.toLowerCase()}`))
+  const reason = firstReason(computerBlock(g), ageBlock(g, kind.minAge, `build a ${kind.label.toLowerCase()}`), eraReason(g, kind.era, `${kind.noun}s`))
   if (reason) return notice(g, kind.label, reason, { emoji: kind.emoji })
   if (codingSkill(g) < kind.minSkill) {
     return notice(g, kind.label, `You need coding skill ${kind.minSkill} to build a ${kind.label.toLowerCase()} (you have ${codingSkill(g)}). Try Learn to Code first.`, { emoji: kind.emoji })
@@ -125,13 +126,13 @@ export function buildProject(g: GameState, kind: ProjectKind): void {
   const verdict = hit
     ? `It was a hit! ${kind.great}`
     : q >= 80
-      ? pick(g, ["It's genuinely great. The internet hasn't noticed yet.", 'It is the best thing you have ever made. Twelve people agree.'])
+      ? pick(g, [`It's genuinely great. ${online(g) ? 'The internet' : 'The world'} hasn't noticed yet.`, 'It is the best thing you have ever made. Twelve people agree.'])
       : q >= 65
         ? pick(g, ['It turned out really well.', 'People actually like it. Strangers, even.'])
         : q >= 45
           ? pick(g, ['Not bad! Not great. Solidly not bad.', 'It works, which is more than most first drafts can say.'])
           : 'It turned out... fine. Fine counts.'
-  const earn = income > 0 ? ` It should bring in about ${formatMoney(income)} a year in ${kind.income === 'sales' ? 'sales' : kind.income === 'premium' ? 'premium upgrades' : kind.income === 'donations' ? 'donations' : 'ad revenue'}, at least until people move on.` : ''
+  const earn = income > 0 ? ` It should bring in about ${formatMoney(income)} a year in ${kind.id === 'listing' ? 'magazine fees and reprints' : kind.id === 'shareware' ? 'registration checks' : kind.income === 'sales' ? 'sales' : kind.income === 'premium' ? 'premium upgrades' : kind.income === 'donations' ? 'donations' : 'ad revenue'}, at least until people move on.` : ''
   const how = lang ? ` Written in ${lang.label}.` : ''
   const meh = tired < 1 ? ` People have seen a lot of your ${kind.noun}s lately; this one got less attention.` : ''
   notice(g, kind.label, `You built ${quoted}. ${verdict} ${cap(plural(users, kind.unit))} so far.${meh}${earn}${how}\n\nQuality ${q}/100 · added to your CV.`, { emoji: kind.emoji, tone: 'good' })
@@ -172,14 +173,16 @@ export const projectsMenu: MenuGroup = {
   emoji: '\u{1F6E0}\u{FE0F}',
   subtitle: (g) => {
     const s = devState(g)
-    return `Websites, bots, extensions, apps · ${s.shipped} shipped · ${yearActionsUsed(g, 'computer.dev.project')}/2 this year`
+    const kinds = PROJECT_KINDS.filter((k) => !GAME_KINDS.has(k.id) && eraOpen(g, k.era)).map((k) => `${k.label.replace(/ \(.*\)$/, '').toLowerCase()}s`)
+    const what = kinds.join() === 'websites,chat bots,browser extensions,mobile apps' ? 'Websites, bots, extensions, apps' : kinds.length ? cap(kinds.slice(0, 4).join(', ')) : 'Programs'
+    return `${what} · ${s.shipped} shipped · ${yearActionsUsed(g, 'computer.dev.project')}/2 this year`
   },
   disabledReason: computerBlock,
   header: (g) => {
     const s = devState(g)
     const earning = s.projects.filter((p) => p.income > 0)
     const total = earning.reduce((sum, p) => sum + p.income, 0)
-    return `Coding skill ${codingSkill(g)}/100. ${earning.length ? `Your projects bring in about ${money(total)} a year.` : 'Build something. Ship it. Let the internet judge it.'}`
+    return `Coding skill ${codingSkill(g)}/100. ${earning.length ? `Your projects bring in about ${money(total)} a year.` : online(g) ? 'Build something. Ship it. Let the internet judge it.' : 'Build something. Mail it off, pass it around on floppy disks, and let the world judge it.'}`
   },
   children: (): MenuNode[] => [
     ...PROJECT_KINDS.filter((k) => !GAME_KINDS.has(k.id)).map(
@@ -194,7 +197,7 @@ export const projectsMenu: MenuGroup = {
           return `Skill ${k.minSkill}+${lang ? ` · you'd use ${lang}` : ''}${k.income !== 'none' ? ' · can earn money' : ''}`
         },
         hint: (g) => (k.id === trendingKind(g) ? talentHint(g, 'Programming', `${k.label}s are having a moment this year: expect a bigger audience.`) || null : null),
-        visible: (g) => g.character.age >= k.minAge && (k.maxAge === undefined || g.character.age <= k.maxAge),
+        visible: (g) => g.character.age >= k.minAge && (k.maxAge === undefined || g.character.age <= k.maxAge) && eraOpen(g, k.era),
         disabledReason: (g) => firstReason(computerBlock(g), codingSkill(g) < k.minSkill ? `You need coding skill ${k.minSkill} (you have ${codingSkill(g)}).` : null),
         run: (g) => buildProject(g, k),
       }),

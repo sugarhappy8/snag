@@ -1,8 +1,11 @@
 // New life: a big "Random Life" button and a "Custom Life" form (name, gender, country, city,
-// sexuality, and optionally the starting stats and up to three special talents). Names and
-// rolled stats use Math.random (UI only; the engine itself is seeded).
+// birth year, sexuality, and optionally the starting stats and up to three special talents).
+// Names, rolled stats and random eras use Math.random (UI only; the engine itself is seeded).
 import { useId, useMemo, useState } from 'react'
 import { avatarEmoji } from '../../game/core'
+import { eraPreview } from '../../game/history/events'
+import { nameFitsYear } from '../../game/history/events-people'
+import { HISTORY_START, PRESENT_YEAR } from '../../game/history/timeline'
 import { START_STAT_KEYS, type NewLifeOptions, type StartStatKey } from '../../game/life'
 import { loadGame } from '../../game/save'
 import { isTalentId, MAX_START_TALENTS, normalizeTalents, SPECIAL_TALENTS, specialTalent, type TalentId } from '../../game/talents'
@@ -25,11 +28,15 @@ function poolFor(countryId: string) {
   return NAME_POOLS[getCountry(countryId).names] ?? NAME_POOLS.anglo
 }
 
-/** A random first name from the country's pool, different from `avoid` when possible. */
-export function rollFirstName(countryId: string, gender: Gender, avoid = ''): string {
+/**
+ * A random first name from the country's pool, different from `avoid` when possible, and one that
+ * fits the birth year (no Jayden born in 1910).
+ */
+export function rollFirstName(countryId: string, gender: Gender, avoid = '', year = PRESENT_YEAR): string {
   const pool = poolFor(countryId)
   const list = (gender === 'male' ? pool.male : pool.female).filter((n) => n !== avoid)
-  return randomItem(list) ?? (gender === 'male' ? 'Alex' : 'Sam')
+  const fitting = list.filter((n) => nameFitsYear(n, year))
+  return randomItem(fitting.length ? fitting : list) ?? (gender === 'male' ? 'Alex' : 'Sam')
 }
 
 export function rollLastName(countryId: string, avoid = ''): string {
@@ -248,6 +255,140 @@ export function StatCustomizer({ picks, onChange, open, onToggle }: StatCustomiz
 }
 
 // ---------------------------------------------------------------------------
+// Birth year ("Born in")
+
+/** A whole year between HISTORY_START and PRESENT_YEAR (anything weird becomes the present). */
+export function clampBirthYear(n: number): number {
+  if (!Number.isFinite(n)) return PRESENT_YEAR
+  return Math.max(HISTORY_START, Math.min(PRESENT_YEAR, Math.round(n)))
+}
+
+/** Random Life › Random era: any year of history, today included. */
+export function randomBirthYear(random: () => number = Math.random): number {
+  return clampBirthYear(HISTORY_START + Math.floor(random() * (PRESENT_YEAR - HISTORY_START + 1)))
+}
+
+export interface DecadeChip {
+  label: string
+  /** The year the chip jumps to. */
+  year: number
+}
+
+/** Quick jumps for the birth year. */
+export const DECADE_CHIPS: readonly DecadeChip[] = [
+  { label: '1900s', year: 1900 },
+  { label: '1920s', year: 1920 },
+  { label: '1950s', year: 1950 },
+  { label: '1980s', year: 1980 },
+  { label: '2000s', year: 2000 },
+  { label: 'Today', year: PRESENT_YEAR },
+]
+
+/** Is this chip the one the year falls under? ('Today' only for the present itself.) */
+export function chipActive(chip: DecadeChip, year: number): boolean {
+  if (chip.year === PRESENT_YEAR) return year === PRESENT_YEAR
+  return year !== PRESENT_YEAR && year >= chip.year && year < chip.year + 10
+}
+
+/** "1980: no home internet yet; the Cold War; disco's hangover" for the year and country picked. */
+export function birthYearPreview(year: number, countryId: string): string {
+  return eraPreview(clampBirthYear(year), countryId)
+}
+
+export interface BirthYearPickerProps {
+  year: number
+  countryId: string
+  onChange: (year: number) => void
+}
+
+/** The Custom Life "Born in" control: stepper, slider, a typed year, decade chips and an era preview. */
+export function BirthYearPicker({ year, countryId, onChange }: BirthYearPickerProps) {
+  const labelId = useId()
+  const previewId = useId()
+  // What's typed in the box until it's a usable year ("19" on the way to "1985").
+  const [typed, setTyped] = useState<string | null>(null)
+  const set = (n: number) => {
+    setTyped(null)
+    onChange(clampBirthYear(n))
+  }
+  const fill = ((year - HISTORY_START) / Math.max(1, PRESENT_YEAR - HISTORY_START)) * 100
+  return (
+    <div className="al-field nl-born" role="group" aria-labelledby={labelId} aria-describedby={previewId}>
+      {/* The label and the typed year share a row so the slider gets the full width on phones. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <span className="al-label" id={labelId}>
+          Born in
+        </span>
+        <input
+          className="al-input"
+          type="number"
+          inputMode="numeric"
+          min={HISTORY_START}
+          max={PRESENT_YEAR}
+          value={typed ?? String(year)}
+          aria-label="Birth year"
+          style={{ flex: 'none', width: '5.4em', minHeight: 40, padding: '6px 8px', textAlign: 'center', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}
+          onChange={(e) => {
+            const v = e.target.value
+            setTyped(v)
+            const n = Number(v)
+            if (/^\d{4}$/.test(v) && n >= HISTORY_START && n <= PRESENT_YEAR) onChange(n)
+          }}
+          onBlur={() => {
+            // A full year is kept (clamped into range); anything half-typed snaps back.
+            if (typed !== null && /^\d{4}$/.test(typed.trim())) set(Number(typed))
+            else setTyped(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || typed === null) return
+            e.preventDefault()
+            if (/^\d{4}$/.test(typed.trim())) set(Number(typed))
+            else setTyped(null)
+          }}
+        />
+      </div>
+      <div className="nl-stat-controls">
+        <button type="button" className="nl-step" aria-label="One year earlier" disabled={year <= HISTORY_START} onClick={() => set(year - 1)}>
+          −
+        </button>
+        <input
+          type="range"
+          className="nl-stat-range"
+          min={HISTORY_START}
+          max={PRESENT_YEAR}
+          step={1}
+          value={year}
+          aria-label="Birth year slider"
+          aria-valuetext={year === PRESENT_YEAR ? `${year}, today` : String(year)}
+          style={{ ['--fill' as string]: `${fill}%`, ['--fill-color' as string]: 'var(--blue, #1d6fd8)' }}
+          onChange={(e) => set(Number(e.target.value))}
+        />
+        <button type="button" className="nl-step" aria-label="One year later" disabled={year >= PRESENT_YEAR} onClick={() => set(year + 1)}>
+          +
+        </button>
+      </div>
+      <div className="al-seg" role="group" aria-label="Jump to a decade" style={{ flexWrap: 'wrap' }}>
+        {DECADE_CHIPS.map((chip) => (
+          <button
+            key={chip.label}
+            type="button"
+            aria-pressed={chipActive(chip, year)}
+            style={{ flex: '1 0 28%', minHeight: 36 }}
+            onClick={() => set(chip.year)}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
+      <p className="al-muted al-small" id={previewId} aria-live="polite" style={{ margin: 0, lineHeight: 1.4 }}>
+        <span aria-hidden="true">📜 </span>
+        {birthYearPreview(year, countryId)}
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Special talents (picked before birth)
 
 /** Tap a talent: unpick it, or pick it when there's room (never more than `max`). */
@@ -368,7 +509,7 @@ export interface CustomLifeForm {
 
 /** What Start Life passes to createNewLife: blank names are rolled, unset choices left to fate. */
 export function customLifeOptions(f: CustomLifeForm): NewLifeOptions {
-  const first = cleanName(f.firstName) || rollFirstName(f.countryId, f.gender)
+  const first = cleanName(f.firstName) || rollFirstName(f.countryId, f.gender, '', f.year)
   const last = cleanName(f.lastName, false) || rollLastName(f.countryId)
   const opts: NewLifeOptions = { firstName: first, lastName: last, gender: f.gender, countryId: f.countryId, year: f.year }
   if (f.city) opts.city = f.city
@@ -396,6 +537,9 @@ export function NewLifeScreen() {
   const [statsOpen, setStatsOpen] = useState(false)
   const [talents, setTalents] = useState<TalentId[]>([])
   const [talentsOpen, setTalentsOpen] = useState(false)
+  const [year, setYear] = useState(PRESENT_YEAR)
+  // Random Life is born today unless the player asks for a random era.
+  const [randomEra, setRandomEra] = useState(false)
   const chosenTalents = talentsOption(talents)
 
   const country = getCountry(countryId)
@@ -408,19 +552,25 @@ export function NewLifeScreen() {
   const preview = useMemo(() => {
     const name = `${cleanName(firstName) || '???'} ${cleanName(lastName, false) || '???'}`
     const place = city ? `in ${city}, ${country.name}` : `somewhere in ${countryPhrase(country.name)}`
-    return { name, place }
-  }, [firstName, lastName, city, country.name])
+    return { name, place: year === PRESENT_YEAR ? place : `${place} in ${year}` }
+  }, [firstName, lastName, city, country.name, year])
 
   const changeGender = (next: Gender) => {
     if (next === gender) return
     setGender(next)
-    if (firstAuto) setFirstName(rollFirstName(countryId, next))
+    if (firstAuto) setFirstName(rollFirstName(countryId, next, '', year))
+  }
+
+  // A rolled name that didn't exist yet in the chosen year is re-rolled (typed names are kept).
+  const changeYear = (next: number) => {
+    setYear(next)
+    if (firstAuto && !nameFitsYear(firstName, next)) setFirstName(rollFirstName(countryId, gender, '', next))
   }
 
   const changeCountry = (id: string) => {
     setCountryId(id)
     setCity('')
-    if (firstAuto) setFirstName(rollFirstName(id, gender))
+    if (firstAuto) setFirstName(rollFirstName(id, gender, '', year))
     if (lastAuto) setLastName(rollLastName(id))
   }
 
@@ -429,10 +579,9 @@ export function NewLifeScreen() {
     else startNewLife(opts)
   }
 
-  const randomLife = () => begin({ year: new Date().getFullYear() })
+  const randomLife = () => begin({ year: randomEra ? randomBirthYear() : PRESENT_YEAR })
 
-  const customLife = () =>
-    begin(customLifeOptions({ firstName, lastName, gender, countryId, city, sexuality, picks, talents, year: new Date().getFullYear() }))
+  const customLife = () => begin(customLifeOptions({ firstName, lastName, gender, countryId, city, sexuality, picks, talents, year }))
 
   return (
     <div className="al-screen new-life">
@@ -444,9 +593,17 @@ export function NewLifeScreen() {
         </span>
         <span className="al-bigbtn-text">
           <span>Random Life</span>
-          <span className="al-bigbtn-sub">Random name, family, country and looks</span>
+          <span className="al-bigbtn-sub">{randomEra ? 'Random name, family, country, looks and era' : 'Random name, family, country and looks'}</span>
         </span>
       </button>
+      <div className="al-seg nl-random-era" role="group" aria-label="Random Life era">
+        <button type="button" aria-pressed={!randomEra} onClick={() => setRandomEra(false)}>
+          <span aria-hidden="true">📅 </span>Born in {PRESENT_YEAR}
+        </button>
+        <button type="button" aria-pressed={randomEra} onClick={() => setRandomEra(true)}>
+          <span aria-hidden="true">🕰️ </span>Random era
+        </button>
+      </div>
 
       <p className="al-section-title">Custom Life</p>
       <form
@@ -493,7 +650,7 @@ export function NewLifeScreen() {
                 aria-label="Random first name"
                 title="Random first name"
                 onClick={() => {
-                  setFirstName(rollFirstName(countryId, gender, firstName))
+                  setFirstName(rollFirstName(countryId, gender, firstName, year))
                   setFirstAuto(true)
                 }}
               >
@@ -567,6 +724,8 @@ export function NewLifeScreen() {
             </select>
           </label>
         </div>
+
+        <BirthYearPicker year={year} countryId={countryId} onChange={changeYear} />
 
         <label className="al-field">
           <span className="al-label">Sexuality (optional)</span>

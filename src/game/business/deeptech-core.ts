@@ -2,12 +2,14 @@
 // TechState inside a BizState, local cost scales, founder and team skill, the industry boom/bust
 // cycles, the demand/capacity model (stage, tech level, R&D premiums, compute, plants) and the
 // valuation cache that economy.valuationOf reads through deepTechValue().
+import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
 import { marketOf, industryDemand } from '../data/markets'
 import { codingSkill } from '../computer/skills'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
-import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
+import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
+import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
@@ -141,7 +143,7 @@ export interface IndustryCycle {
 }
 
 function cycleZ(g: GameState, ind: DeepTechIndustry, year: number): number {
-  const s = seeded(`${g.lifeId}|dtcycle|${ind}|${year}`)
+  const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|dtcycle|${ind}|${year}`)
   return (s.next() + s.next() + s.next() - 1.5) * 2
 }
 
@@ -267,6 +269,8 @@ export interface TechPlan {
   capacity: number
   unitCost: number
   taxRate: number
+  /** The world market (competition-core): bottom-up units and what competition left of them. */
+  market: (MarketPick & { bu: number }) | null
 }
 
 export interface TechPlanOptions {
@@ -292,14 +296,16 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
   const shock = calm ? 1 : b.demandShock
   const pressure = calm ? b.pressure * 0.5 : b.pressure
   const scale = demandScale(b, t, year)
-  const demand =
-    scale > 0
-      ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * cycleEffect * ic * (1 - pressure) * shock * (opts.noise ?? 1) * open
-      : 0
+  // Customers before competition and the economy, then what the world market leaves of them (an
+  // early lab in a tiny market sells little; a dominant one keeps its customers at higher prices).
+  const bu = scale > 0 ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
+  const mctx = marketCtxFor(g, b, year)
+  const pick = bu > 0 && Number.isFinite(bu) ? marketDemand(mctx, bu) : null
+  const demand = pick ? pick.units * cycleEffect * ic : 0
   const ops = 1 + 0.08 * staffPower(b, 'ops')
   const loss = calm ? 0 : b.capacityLoss
   const capacity = capacityUnits(b, t, year) * home.baseDemand * ops * (1 - loss) * open
-  const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm)
+  const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm) * (1 - SCALE_SAVING * mctx.dominance)
   return {
     price,
     going: round2(going),
@@ -308,6 +314,7 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
     capacity: Number.isFinite(capacity) ? Math.max(0, capacity) : 0,
     unitCost: round2(unitCost),
     taxRate: home.taxRate,
+    market: pick ? { ...pick, bu } : null,
   }
 }
 
@@ -477,12 +484,12 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const growth = prev && prev.revenue > 0 && revenue > 0 ? clampN(revenue / prev.revenue - 1, -0.3, 0.6) : 0
   const profitValue = Math.max(0, avgCore) * def.multiple * (1 + growth) * (0.85 + b.brand / 333)
 
-  // Revenue multiple: investors pay up for growth at a real stage with margins that work once R&D
-  // stops (R&D itself is an investment, not a running cost).
+  // Revenue multiples require sustainable margins. Research and rented compute still cost
+  // money in a growing lab; adding them all back prices a loss-making blitz as pure profit.
+  // Completed research retains its value through the separate patent/pipeline floor below.
   const s = b.last
   const x = t.last && s && t.last.year === s.year ? t.last : null
-  const rdBack = x ? x.rd + x.compute - x.credit - x.grants : 0
-  const operating = s ? s.pbt - (x ? x.oneOff : 0) + rdBack : 0
+  const operating = s ? s.pbt - (x ? x.oneOff : 0) : 0
   const margin = revenue > 0 ? operating / revenue : -1
   const quality = clampN(0.3 + 1.75 * margin, 0.08, 1.2)
   const stageMult = 0.35 + 0.65 * (t.stage / Math.max(1, maxStage(ind)))

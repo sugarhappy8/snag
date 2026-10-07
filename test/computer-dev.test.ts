@@ -358,7 +358,8 @@ describe('ventures', () => {
           const v = readVenture(g, now)
           expect(v.stage).toBe('live')
           expect(v.mrr).toBeLessThan(5_000_000)
-          expect(v.history.length).toBeGreaterThan(3)
+          // A decade of yearly reports, unless an unrelated life event ended the founder's life early.
+          expect(v.history.length).toBeGreaterThan(g.character.alive ? 3 : 0)
           expect(peak).toBeGreaterThan(0)
           expect(ventureAssetSubtitle(g, now)).toMatch(/SaaS/)
           expect(ventureAssetView(g, now).length).toBeGreaterThan(5)
@@ -668,7 +669,8 @@ describe('summary, old saves and plain JSON', () => {
         g = JSON.parse(json) as GameState
       }
     }
-  })
+    // Twelve 45-year lives with every yearly hook of the year system: give it room.
+  }, 60_000)
 })
 
 // ---------------------------------------------------------------------------

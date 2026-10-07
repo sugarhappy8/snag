@@ -2,7 +2,7 @@
 // R&D programs that progress and cost money; grants, R&D tax credits and side revenue; then the
 // company's cash, with the R&D account (investor money) covering any shortfall. Replaces
 // economy.simulateYear for deep-tech companies (it never runs both). Plus the yearly reports.
-import { addStat, count, log, minigame, notice, remember, scriptChoice } from '../core'
+import { addStat, count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { corporateTax, marketOf } from '../data/markets'
 import { bell, chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -33,6 +33,7 @@ import {
 import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
 import { milestoneListingBlock, SERIES, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
+import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
 import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
 
@@ -201,7 +202,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
 
   // Tell the CEO what the lab did; managed companies just get a line in the log.
   afterResearch(g, a, b, t, rd0.headlines, rd0.newModel, stageBefore, runs)
-  return { stmt, inventoryEnd, wantedStaff: employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay) }
+  return { stmt, inventoryEnd, wantedStaff: employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), market: plan.market ? { ...plan.market, capacity: plan.capacity } : null }
 }
 
 function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headlines: string[], newModel: number, stageBefore: number, runs: boolean): void {
@@ -434,6 +435,8 @@ function techMarketNote(g: GameState, b: BizState, t: TechState): string {
   if (ind === 'spaceTech' && t.stage >= 3) parts.push(`${plural(t.wins, 'successful flight')} so far; customers trust a track record.`)
   const e = localEcon(ind, b.countryId, b.city)
   parts.push(`A typical ${def.unitOne} sells for about ${money(e.goingPrice)} here; your tech earns ${money(techPriceBounds(g, b, t).going)}.`)
+  const v = marketViewOf(g, b)
+  if (v.booked && v.share > 0) parts.push(`You hold ${shareText(v.share)} of the world ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year: more ${def.sitePlural} or compute would keep them` : ''}.`)
   return parts.join(' ')
 }
 
@@ -486,7 +489,7 @@ export function techReportData(g: GameState, a: Asset, b: BizState): AnnualRepor
       data.talentHint = {
         price,
         production: Math.round(clampN(best.production, 0, maxProd)),
-        text: talentHint(g, 'Business', `Your gut says ${price >= 100 ? money(price) : `$${price.toFixed(2)}`} per ${def.unitOne} and ${units(best.production)} ${def.unit} earns the most next year.`),
+        text: talentHint(g, 'Business', `Your gut says ${price >= 100 ? money(price) : formatCents(price)} per ${def.unitOne} and ${units(best.production)} ${def.unit} earns the most next year.`),
       }
     }
   }
@@ -516,7 +519,7 @@ export const TECH_REPORT = defineScript('deeptech.report', (g, choice, data) => 
   }
   b.price = round2(clampN(price, bounds.min, bounds.max))
   b.production = Math.round(clampN(production, 0, maxProd))
-  if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${b.price >= 100 ? money(b.price) : `$${b.price.toFixed(2)}`} and planned ${units(b.production)} ${industryDef(b.industry).unit} for the year.`)
+  if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${b.price >= 100 ? money(b.price) : formatCents(b.price)} and planned ${units(b.production)} ${industryDef(b.industry).unit} for the year.`)
 })
 
 function paceChoices(g: GameState, a: Asset, b: BizState, t: TechState, hinted = true): ChoiceOption[] {

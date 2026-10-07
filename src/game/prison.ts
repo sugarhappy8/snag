@@ -33,6 +33,7 @@ import { createPerson, notePerson } from './people'
 import { chance, pick, rand, randInt, shuffle } from './rng'
 import { defineScript } from './scripts'
 import { fillLocal } from './data/locales'
+import { eraPick } from './events/era'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import type {
   ChoiceOption,
@@ -315,18 +316,25 @@ function gangNames(g: GameState): string[] {
   return out
 }
 
+// Era tags (events/era.ts): no card fraud before credit cards, no identity thieves or hackers
+// before the internet, horse thieves and bootleggers in the old days.
 const INMATE_CRIMES = [
   'Armed Robbery',
-  'Grand Theft Auto',
+  '@1920 Grand Theft Auto',
+  '@-1940 Horse Theft',
   'Tax Evasion',
   'Arson',
   'Burglary',
   'Fraud',
   'Assault',
-  'Drug Trafficking',
+  '@1960 Drug Trafficking',
   'Murder',
-  'Identity Theft',
-  'Aggravated Twerking',
+  '@+internet Identity Theft',
+  '@creditCards Credit Card Fraud',
+  '@+internet Computer Fraud',
+  '@2013 Aggravated Twerking',
+  '@-2013 Disorderly Conduct',
+  '@1920,-1934 Bootlegging',
   'Counterfeiting',
   'Racketeering',
   'Smuggling',
@@ -334,7 +342,7 @@ const INMATE_CRIMES = [
   'Bank Robbery',
 ]
 
-const JUVIE_CRIMES = ['Vandalism', 'Shoplifting', 'Joyriding', 'Graffiti', 'Fighting', 'Breaking and Entering', 'Pickpocketing', 'Criminal Mischief']
+const JUVIE_CRIMES = ['Vandalism', 'Shoplifting', '@1920 Joyriding', 'Graffiti', 'Fighting', 'Breaking and Entering', 'Pickpocketing', 'Criminal Mischief']
 
 const INMATE_TYPES = [
   'a scrawny check forger',
@@ -344,7 +352,8 @@ const INMATE_TYPES = [
   'a washed-up boxer',
   'a chatty car thief',
   'a toothless old-timer',
-  'a jittery hacker',
+  '@+internet a jittery hacker',
+  '@-1950 a mustachioed safecracker',
   'a bodybuilder who never stops counting reps',
   'a former mob accountant',
   'a guy who claims he is innocent',
@@ -367,7 +376,7 @@ function cellmates(g: GameState): Person[] {
 function createCellmate(g: GameState, prisonNameStr: string, juvenile: boolean): Person {
   const c = g.character
   const age = juvenile ? randInt(g, 13, 17) : Math.max(18, c.age + randInt(g, -12, 15))
-  const crime = pick(g, juvenile ? JUVIE_CRIMES : INMATE_CRIMES)
+  const crime = eraPick(g, juvenile ? JUVIE_CRIMES : INMATE_CRIMES)
   const person = createPerson(g, {
     relation: 'cellmate',
     age,
@@ -1012,7 +1021,7 @@ function prisonEvent(g: GameState): void {
     const story = pick(g, [
       `My cellmate ${m.firstName} told me the whole story of how ${pronouns(m.gender).he} got caught. Twice.`,
       `${m.firstName} snored all year. I counted ceiling cracks instead of sheep.`,
-      `${m.firstName} taught me how to make a cake out of vending machine snacks.`,
+      g.year >= 1960 ? `${m.firstName} taught me how to make a cake out of vending machine snacks.` : `${m.firstName} taught me how to make a cake out of stale bread and jam.`,
       `${m.firstName} and I played about four hundred games of cards.`,
     ])
     log(g, story, 'neutral')
@@ -1717,7 +1726,7 @@ const libraryAction: MenuAction = {
       'a self-help book called "Finding Freedom Within"',
       'a history of famous prison escapes (the guards confiscated it halfway through)',
       'a dictionary, front to back',
-      'a cookbook full of recipes you can make with a microwave and ramen',
+      g.year >= 1985 ? 'a cookbook full of recipes you can make with a microwave and ramen' : 'a cookbook full of recipes you can make with a hot plate and canned beans',
     ])
     log(g, `I read ${book} in the prison library.`, 'good')
     notice(g, 'Prison Library', `You spent a quiet afternoon reading ${book}.`, { emoji: '\u{1F4D6}', tone: 'good' })
@@ -1802,7 +1811,7 @@ function gangNodes(g: GameState): MenuNode[] {
           const cut = Math.round(randInt(gg, 100, 900) * moneyScale(gg))
           addMoney(gg, cut)
           pp.respect = clamp(pp.respect + randInt(gg, 3, 7))
-          const goods = pick(gg, ['cigarettes', 'instant coffee', 'contraband phones', 'hot sauce', 'smuggled snacks', 'romance novels'])
+          const goods = pick(gg, ['cigarettes', 'instant coffee', gg.year >= 2000 ? 'contraband phones' : 'jailhouse moonshine', 'hot sauce', 'smuggled snacks', 'romance novels'])
           log(gg, `I smuggled ${goods} for the ${gang} and made ${formatMoney(cut)}.`, 'event')
           notice(gg, 'Smuggling Run', `You moved a shipment of ${goods} through the laundry for the ${gang}. Your cut: ${formatMoney(cut)}.`, { emoji: '\u{1F4E6}' })
         },
@@ -1987,7 +1996,7 @@ function assaultNodes(g: GameState): MenuNode[] {
         tired(gg, 'Too Hot', "The guards are watching you too closely. Wait until next year.")
         return
       }
-      fightInmate(gg, inmateName(gg, c.gender), pick(gg, INMATE_TYPES), null)
+      fightInmate(gg, inmateName(gg, c.gender), eraPick(gg, INMATE_TYPES), null)
     },
   })
   return nodes

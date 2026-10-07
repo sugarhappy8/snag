@@ -1,5 +1,9 @@
 // Nightlife: nightclubs (with bouncers), bars and house parties. A night out can bring
 // drinks, drugs (with real consequences), fights and romance.
+//
+// The night out follows the decade: jazz-age dance halls, speakeasies during US Prohibition
+// (1920-1933), big-band supper clubs, sixties discotheques, seventies discos, then today's
+// nightclubs with DJs. Cocktails, drugs, karaoke and pub trivia only appear once they existed.
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
 import {
@@ -22,6 +26,7 @@ import { defineScript } from '../scripts'
 import { isAlcoholic, locale } from '../data/locales'
 import { randomFirstName, randomLastName } from '../world'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
+import { common, declined, eraLines, eraPick, landline, prohibition, venueExists } from '../events/era'
 import {
   addCondition,
   addGrievance,
@@ -94,7 +99,7 @@ const CLUB_NAMES = [
   'Night Owl',
   'The Loft',
   'Club Hypnotic',
-  'Velvet Underground',
+  'The Velvet Cellar',
   'The Gilded Cage',
   'Strobe',
   'Club Nova',
@@ -103,6 +108,17 @@ const CLUB_NAMES = [
 interface Club {
   name: string
   tier: 1 | 2 | 3
+}
+
+/** What a night on the town was called this year, and what made the noise. */
+function scene(g: GameState): { heading: string; kind: string; music: string } {
+  const y = g.year
+  if (prohibition(g)) return { heading: 'Speakeasies', kind: 'speakeasy', music: 'the jazz band' }
+  if (y < 1930) return { heading: 'Dance Halls', kind: 'dance hall', music: 'the jazz band' }
+  if (y < 1960) return { heading: 'Nightclubs', kind: 'supper club', music: 'the big band' }
+  if (y < 1975) return { heading: 'Discotheques', kind: 'discotheque', music: 'the band' }
+  if (y < 1986) return { heading: 'Discos', kind: 'disco', music: 'the DJ' }
+  return { heading: 'Nightclubs', kind: 'club', music: 'the DJ' }
 }
 
 function clubsThisYear(g: GameState): Club[] {
@@ -120,7 +136,7 @@ function bouncerSaysNo(g: GameState, club: Club): string | null {
   if (c.hidden.fame >= 50) return null
   if (club.tier === 3 && (c.stats.looks < 60 || c.age > 40)) {
     return c.age > 40
-      ? 'The bouncer took one look at you and asked if you were lost. "This is a club, not a bingo hall." Ouch.'
+      ? `The bouncer took one look at you and asked if you were lost. "This is a ${scene(g).kind}, not a bingo hall." Ouch.`
       : 'The bouncer looked you up and down and said "Not tonight." You heard someone in line snicker.'
   }
   if (club.tier === 2 && (c.stats.looks < 35 || c.age > 55)) {
@@ -132,9 +148,10 @@ function bouncerSaysNo(g: GameState, club: Club): string | null {
 // ---------------------------------------------------------------------------
 // Drinks
 
-const DRINKS = ['Beer', 'Wine', 'Vodka Soda', 'Margarita', 'Mojito', 'Tequila Shot', 'Gin & Tonic', 'Whiskey Sour', 'Cosmopolitan', 'Long Island Iced Tea', 'Piña Colada', 'Moscow Mule', 'Champagne', 'Rum & Coke']
+// Era tags (see events/era.ts): the Cosmopolitan is an eighties drink, bathtub gin a twenties one.
+const DRINKS = ['Beer', 'Wine', '@1950 Vodka Soda', '@1938 Margarita', 'Mojito', 'Tequila Shot', 'Gin & Tonic', 'Whiskey Sour', '@1988 Cosmopolitan', '@1972 Long Island Iced Tea', '@1954 Piña Colada', '@1941 Moscow Mule', 'Champagne', 'Rum & Coke', '@-1934 Bathtub Gin', '@-1960 Sidecar']
 
-const BLACKOUT_PLACES = ['in a bathtub', 'on a stranger’s couch', 'at a 24-hour diner holding a waffle', 'in the back of a taxi', 'in your neighbor’s yard', 'wearing someone else’s jacket']
+const BLACKOUT_PLACES = ['in a bathtub', 'on a stranger’s couch', '@1950 at a 24-hour diner holding a waffle', '@1915 in the back of a taxi', 'in your neighbor’s yard', 'wearing someone else’s jacket']
 
 /** Drink alcohol: fun now, consequences later (may kill a very unhealthy drinker). */
 function drinkAlcohol(g: GameState, drink: string, venue: string): void {
@@ -157,7 +174,8 @@ function drinkAlcohol(g: GameState, drink: string, venue: string): void {
   }
   const addicted = rollAddiction(g, 'Alcoholism', 0.06)
   if (chance(g, 0.07)) {
-    const place = pick(g, g.character.countryId === 'us' ? BLACKOUT_PLACES : BLACKOUT_PLACES.map((p) => (p.includes('diner') ? 'at a 24-hour food stall holding a skewer' : p)))
+    const places = eraLines(g, BLACKOUT_PLACES)
+    const place = pick(g, g.character.countryId === 'us' ? places : places.map((p) => (p.includes('diner') ? 'at a 24-hour food stall holding a skewer' : p)))
     addStat(g, 'health', -2)
     log(g, `I blacked out at ${venue} and woke up ${place}.`, 'bad')
     result(g, 'Blackout', `You had one ${drink.toLowerCase()} too many and blacked out. You woke up ${place} with no memory of how you got there.${addicted ? '\n\nYou realize you may be drinking a little too often.' : ''}`, '\u{1F635}\u{200D}\u{1F4AB}', 'bad')
@@ -192,6 +210,9 @@ const DRINK_OFFER = defineScript('act.night.drinkOffer', (g, choice, data) => {
 
 interface DrugDef {
   name: string
+  /** Years it was around on the party scene. */
+  since?: number
+  until?: number
   addiction: number
   overdose: number
   enlighten: number
@@ -201,11 +222,17 @@ interface DrugDef {
 
 const DRUGS: DrugDef[] = [
   { name: 'Marijuana', addiction: 0.05, overdose: 0, enlighten: 0.3, health: [-3, 0], happiness: [1, 5] },
-  { name: 'Magic Mushrooms', addiction: 0.02, overdose: 0.002, enlighten: 0.35, health: [-4, -1], happiness: [-6, 6] },
-  { name: 'Ecstasy', addiction: 0.12, overdose: 0.008, enlighten: 0, health: [-7, -2], happiness: [-2, 6] },
+  { name: 'Magic Mushrooms', addiction: 0.02, overdose: 0.002, enlighten: 0.35, health: [-4, -1], happiness: [-6, 6], since: 1960 },
+  { name: 'Ecstasy', addiction: 0.12, overdose: 0.008, enlighten: 0, health: [-7, -2], happiness: [-2, 6], since: 1985 },
   { name: 'Cocaine', addiction: 0.2, overdose: 0.012, enlighten: 0, health: [-9, -3], happiness: [-2, 5] },
-  { name: 'Acid', addiction: 0.03, overdose: 0.004, enlighten: 0.25, health: [-5, -1], happiness: [-8, 6] },
+  { name: 'Acid', addiction: 0.03, overdose: 0.004, enlighten: 0.25, health: [-5, -1], happiness: [-8, 6], since: 1962 },
+  { name: 'Opium', addiction: 0.18, overdose: 0.01, enlighten: 0.1, health: [-8, -2], happiness: [-3, 6], until: 1950 },
+  { name: 'Pep Pills', addiction: 0.1, overdose: 0.004, enlighten: 0, health: [-5, -1], happiness: [0, 5], since: 1945, until: 1975 },
 ]
+
+function drugsNow(g: GameState): DrugDef[] {
+  return DRUGS.filter((d) => g.year >= (d.since ?? 0) && g.year < (d.until ?? 99999))
+}
 
 function useDrug(g: GameState, drug: DrugDef, venue: string): void {
   const c = g.character
@@ -264,7 +291,7 @@ const DRUG_OFFER = defineScript('act.night.drugOffer', (g, choice, data) => {
     if (chance(g, 0.75)) {
       addHidden(g, 'karma', 4)
       log(g, `I reported a drug dealer at ${venue}.`, 'good')
-      result(g, 'Snitch', 'You told security. They dragged the dealer out by the collar. The DJ gave you a shout-out.', '\u{1F46E}', 'good')
+      result(g, 'Snitch', `You told security. They dragged the dealer out by the collar. ${g.year >= 1975 ? 'The DJ' : 'The bandleader'} gave you a shout-out.`, '\u{1F46E}', 'good')
     } else {
       addStat(g, 'health', -randInt(g, 4, 10))
       addGrievance(g, { kind: 'assailant', name: `A drug dealer at ${venue}`, strength: 55, detail: 'beat you up for reporting them' })
@@ -376,7 +403,7 @@ const FLIRT = defineScript('act.night.flirt', (g, choice, data) => {
     const cost = localPrice(g, 15)
     if (g.character.money < cost) {
       log(g, `I tried to buy ${name} a drink but couldn't afford it.`, 'bad')
-      result(g, 'Embarrassing', `Your card was declined when you tried to buy ${name} a drink. ${name} paid for their own and walked away.`, '\u{1F4B3}', 'bad')
+      result(g, 'Embarrassing', `${declined(g)} You couldn't buy ${name} a drink. ${name} paid for their own and walked away.`, '\u{1F4B3}', 'bad')
       return
     }
     addMoney(g, -cost)
@@ -394,7 +421,7 @@ const FLIRT = defineScript('act.night.flirt', (g, choice, data) => {
   const choices = partner
     ? [
         { id: 'home', label: `Go home with ${him} (cheat on ${partner.firstName})`, emoji: '\u{1F525}' },
-        { id: 'number', label: `Get ${d.gender === 'male' ? 'his' : 'her'} number as a friend`, emoji: '\u{1F4F1}' },
+        { id: 'number', label: `Get ${d.gender === 'male' ? 'his' : 'her'} ${landline(g) ? 'number' : 'address'} as a friend`, emoji: '\u{1F4F1}' },
         { id: 'bye', label: 'Say goodnight', emoji: '\u{1F44B}' },
       ]
     : [
@@ -423,8 +450,9 @@ const FLIRT2 = defineScript('act.night.flirt2', (g, choice, data) => {
   }
   if (choice === 'number') {
     const p = meetPerson(g, 'friend', venue, { gender, age, firstName, lastName })
-    log(g, `I swapped numbers with ${p.firstName} at ${venue}.`, 'neutral')
-    result(g, 'New Friend', `You swapped numbers with ${p.firstName}. Strictly as friends. You're spoken for, after all.`, '\u{1F4F1}')
+    const swap = landline(g) ? 'numbers' : 'addresses'
+    log(g, `I swapped ${swap} with ${p.firstName} at ${venue}.`, 'neutral')
+    result(g, 'New Friend', `You swapped ${swap} with ${p.firstName}. Strictly as friends. You're spoken for, after all.`, '\u{1F4F1}')
     return
   }
   if (choice === 'date') {
@@ -522,11 +550,11 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
         case 'celebrity':
           return kind === 'club' ? 5 : 0
         case 'karaoke':
-          return kind === 'bar' ? 14 : 0
+          return kind === 'bar' && g.year >= 1985 ? 14 : 0
         case 'trivia':
-          return kind === 'bar' ? 10 : 0
+          return kind === 'bar' && g.year >= 1975 ? 10 : 0
         case 'raid':
-          return kind === 'party' ? 10 : 0
+          return kind === 'party' ? 10 : prohibition(g) ? 8 : 0
       }
     },
   )
@@ -535,7 +563,7 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
   switch (event) {
     case 'drink': {
       const local = locale(g).drinks.filter(isAlcoholic)
-      const drink = local.length && chance(g, 0.5) ? pick(g, local) : pick(g, DRINKS)
+      const drink = local.length && chance(g, 0.5) && !prohibition(g) ? pick(g, local) : eraPick(g, DRINKS)
       scriptChoice(g, DRINK_OFFER, 'Free Drink', `${intro}\n\n${s.name}, a friendly stranger, offered to buy you a ${drink.toLowerCase()}.`, [
         { id: 'accept', label: 'Accept the drink', emoji: '\u{1F378}' },
         { id: 'decline', label: 'Decline', emoji: '\u{1F645}' },
@@ -543,13 +571,13 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
       return
     }
     case 'drugs': {
-      const drug = pick(g, DRUGS)
+      const drug = pick(g, drugsNow(g))
       const choices = [
         { id: 'try', label: `Try the ${drug.name.toLowerCase()}`, emoji: '\u{1F48A}' },
         { id: 'decline', label: 'Decline', emoji: '\u{1F645}' },
       ]
       if (kind === 'club') choices.push({ id: 'report', label: 'Report them to security', emoji: '\u{1F46E}' })
-      scriptChoice(g, DRUG_OFFER, 'Shady Offer', `${intro}\n\nSomeone in a hoodie pulled you aside and offered you some ${drug.name.toLowerCase()}.`, choices, {
+      scriptChoice(g, DRUG_OFFER, 'Shady Offer', `${intro}\n\nSomeone in ${g.year >= 1975 ? 'a hoodie' : 'a dark overcoat'} pulled you aside and offered you some ${drug.name.toLowerCase()}.`, choices, {
         emoji: '\u{1F48A}',
         data: { venue, drug: drug.name },
       })
@@ -590,9 +618,11 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
     }
     case 'celebrity': {
       addStat(g, 'happiness', randInt(g, 3, 6))
-      const who = pick(g, ['a famous rapper', 'a reality TV star', 'a pro basketball player', 'a pop star', 'a movie star'])
-      log(g, `I partied in the VIP section with ${who} at ${venue}.`, 'good')
-      result(g, 'Celebrity Sighting', `${intro}\n\nYou spotted ${who} in the VIP section and somehow talked your way in. You got a selfie!`, '\u{1F31F}', 'good')
+      const who = eraPick(g, ['@1985 a famous rapper', '@2002 a reality TV star', '@1950 a pro basketball player', '@1960 a pop star', 'a movie star', '@-1965 a famous bandleader', '@-1940 a vaudeville comedian'])
+      const vip = g.year >= 1985 ? 'the VIP section' : 'the best table in the house'
+      const keepsake = common(g, 'smartphone') ? 'You got a selfie!' : 'You got an autograph on a cocktail napkin!'
+      log(g, `I partied at ${vip} with ${who} at ${venue}.`, 'good')
+      result(g, 'Celebrity Sighting', `${intro}\n\nYou spotted ${who} at ${vip} and somehow talked your way in. ${keepsake}`, '\u{1F31F}', 'good')
       return
     }
     case 'karaoke': {
@@ -622,6 +652,17 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
       return
     }
     case 'raid': {
+      if (prohibition(g) && kind !== 'party') {
+        if (chance(g, 0.25)) {
+          log(g, `Prohibition agents raided ${venue} and arrested me.`, 'bad')
+          notice(g, 'Raid!', `${intro}\n\nWhistles blew and Prohibition agents stormed in, smashing barrels. You didn't make it out the back door.`, { emoji: '\u{1F6A8}', tone: 'bad' })
+          arrestPlayer(g, 'Violating Prohibition', 1)
+          return
+        }
+        log(g, `I escaped a Prohibition raid at ${venue}.`, 'neutral')
+        result(g, 'Raid!', `${intro}\n\nWhistles blew and Prohibition agents stormed in. You slipped out through the coal chute with your drink still in your hand.`, '\u{1F6A8}')
+        return
+      }
       if (chance(g, 0.15)) {
         const fine = Math.min(Math.max(0, c.money), localPrice(g, 200))
         addMoney(g, -fine)
@@ -638,12 +679,12 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
         addStat(g, 'happiness', -2)
         addStat(g, 'looks', -1)
         log(g, `I slipped and fell on the dance floor at ${venue}.`, 'bad')
-        result(g, 'Wipeout', `${intro}\n\nYou attempted a spin move, slipped in a puddle of something and ate the floor. Several people filmed it.`, '\u{1F92D}', 'bad')
+        result(g, 'Wipeout', `${intro}\n\nYou attempted a spin move, slipped in a puddle of something and ate the floor. ${common(g, 'smartphone') ? 'Several people filmed it.' : 'Several people will never let you forget it.'}`, '\u{1F92D}', 'bad')
         return
       }
       addStat(g, 'happiness', randInt(g, 3, 7))
       log(g, `I owned the dance floor at ${venue}.`, 'good')
-      result(g, 'Dance Floor', `${intro}\n\n${pick(g, ['You owned the dance floor. A circle formed around you.', 'You danced until your feet hurt and your shirt was soaked.', 'The DJ played your favorite song and you lost your mind.'])}`, '\u{1F57A}', 'good')
+      result(g, 'Dance Floor', `${intro}\n\n${pick(g, ['You owned the dance floor. A circle formed around you.', 'You danced until your feet hurt and your shirt was soaked.', `${uc(scene(g).music)} played your favorite song and you lost your mind.`])}`, '\u{1F57A}', 'good')
       return
     }
     case 'quiet':
@@ -676,9 +717,9 @@ function goClubbing(g: GameState, club: Club): void {
   addStat(g, 'happiness', randInt(g, 2, 5))
   const intro = say(g, [
     'You paid the {cover} cover and headed into {club}.',
-    'You made it past the bouncer at {club}. The bass was so loud you could feel it in your teeth.',
+    prohibition(g) ? 'You whispered the password through the slot in the door at {club}. The jazz was so loud you could feel it in your teeth.' : g.year >= 1975 ? 'You made it past the bouncer at {club}. The bass was so loud you could feel it in your teeth.' : 'You made it past the doorman at {club}. {music} was so loud you could feel it in your teeth.',
     'You hit {club} with your best outfit on.',
-  ], { cover: money(cover), club: club.name })
+  ], { cover: money(cover), club: club.name, music: uc(scene(g).music) })
   nightEvent(g, 'club', club.name, intro)
 }
 
@@ -690,13 +731,13 @@ const BAR_ORDER = defineScript('act.night.barOrder', (g, choice, data) => {
   const price = localPrice(g, choice === 'shots' ? 20 : choice === 'cocktail' ? 14 : 8)
   if (choice !== 'soda' && g.character.money < price) {
     log(g, `I couldn't afford a drink at ${venue}.`, 'bad')
-    result(g, 'Tab Declined', "The bartender ran your card. Declined. You nursed a glass of tap water for the rest of the night.", '\u{1F4B3}', 'bad')
+    result(g, 'Tab Declined', common(g, 'creditCards', 0.3) ? 'The bartender ran your card. Declined. You nursed a glass of tap water for the rest of the night.' : 'You came up short at the bar. You nursed a glass of tap water for the rest of the night.', '\u{1F4B3}', 'bad')
     return
   }
   const intro = choice === 'soda' ? 'You ordered a soda and people-watched.' : `You ordered ${choice === 'shots' ? 'a round of shots' : choice === 'cocktail' ? 'a fancy cocktail' : choice === 'wine' ? 'a glass of wine' : 'a cold beer'}.`
   if (choice !== 'soda') {
     addMoney(g, -price)
-    const drink = choice === 'shots' ? 'Tequila Shot' : choice === 'cocktail' ? pick(g, ['Margarita', 'Mojito', 'Cosmopolitan', 'Whiskey Sour']) : choice === 'wine' ? 'Wine' : 'Beer'
+    const drink = choice === 'shots' ? 'Tequila Shot' : choice === 'cocktail' ? eraPick(g, ['@1938 Margarita', 'Mojito', '@1988 Cosmopolitan', 'Whiskey Sour', '@-1934 Bathtub Gin']) : choice === 'wine' ? 'Wine' : 'Beer'
     count(g, 'drinks')
     addStat(g, 'happiness', randInt(g, 1, 4))
     addStat(g, 'health', -randInt(g, 0, choice === 'shots' ? 3 : 1))
@@ -711,8 +752,9 @@ const BAR_ORDER = defineScript('act.night.barOrder', (g, choice, data) => {
 
 /** A local grown-up venue (an izakaya, a boteco, a kafana) or a classic bar name. */
 function barName(g: GameState): string {
+  if (prohibition(g)) return `the speakeasy behind ${pick(g, ['the barbershop', 'the laundromat', 'a funeral parlor', 'the soda fountain'])}`
   if (g.character.countryId === 'us') return pick(g, BAR_NAMES)
-  const local = locale(g).hangouts.filter((h) => /\b(?:bars?|pubs?|cantina|boteco|kneipe|kafana|izakaya|tavern|beer garden|heuriger|brewery|shebeen|rumshop|bodega|taberna|wine)\b/i.test(h))
+  const local = locale(g).hangouts.filter((h) => /\b(?:bars?|pubs?|cantina|boteco|kneipe|kafana|izakaya|tavern|beer garden|heuriger|brewery|shebeen|rumshop|bodega|taberna|wine)\b/i.test(h) && venueExists(g, h))
   return local.length && chance(g, 0.6) ? pick(g, local) : pick(g, BAR_NAMES)
 }
 
@@ -753,7 +795,7 @@ function goToBar(g: GameState): void {
   if (tooHungover(g)) return
   count(g, 'nightlife')
   const venue = barName(g)
-  scriptChoice(g, BAR_ORDER, venue, `You grabbed a stool at ${venue}. The bartender asks what you're having.`, [
+  scriptChoice(g, BAR_ORDER, uc(venue.replace(/^the /, '')), `You grabbed a stool at ${venue}. The bartender asks what you're having.`, [
     { id: 'beer', label: `Beer (${money(localPrice(g, 8))})`, emoji: '\u{1F37A}' },
     { id: 'wine', label: `Wine (${money(localPrice(g, 8))})`, emoji: '\u{1F377}' },
     { id: 'cocktail', label: `Cocktail (${money(localPrice(g, 14))})`, emoji: '\u{1F379}' },
@@ -795,7 +837,7 @@ export const nightlifeMenu: MenuGroup = {
   header: (g) => `You can go out ${Math.max(0, NIGHT_MAX - (g.yearActions['act.nightlife'] ?? 0))} more times this year.`,
   children: (g): MenuNode[] => {
     const clubs = clubsThisYear(g)
-    const nodes: MenuNode[] = [{ type: 'heading', id: 'night.clubs', label: 'Nightclubs' }]
+    const nodes: MenuNode[] = [{ type: 'heading', id: 'night.clubs', label: scene(g).heading }]
     for (const club of clubs) {
       const action: MenuAction = {
         type: 'action',
@@ -811,9 +853,9 @@ export const nightlifeMenu: MenuGroup = {
     nodes.push({
       type: 'action',
       id: 'night.bar',
-      label: dryCountry(g) ? 'Go to a Café' : 'Go to a Bar',
+      label: dryCountry(g) ? 'Go to a Café' : prohibition(g) ? 'Find a Speakeasy' : 'Go to a Bar',
       emoji: dryCountry(g) ? '\u{2615}' : '\u{1F37B}',
-      subtitle: dryCountry(g) ? 'Tea, juice and shisha until late' : 'Grab a drink at a local bar',
+      subtitle: dryCountry(g) ? 'Tea, juice and shisha until late' : prohibition(g) ? 'Liquor is illegal. Bring the password.' : 'Grab a drink at a local bar',
       run: goToBar,
     })
     nodes.push({

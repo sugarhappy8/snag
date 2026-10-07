@@ -26,6 +26,7 @@ import {
   remember,
   scriptChoice,
   scriptInput,
+  shortMoney,
   spend,
   useYearAction,
 } from './core'
@@ -35,6 +36,9 @@ import { bell, chance, pick, randFloat, randInt, uid } from './rng'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
+import { DATING_SITE_GATE, eraOpen } from './computer/era'
+import { hasTech } from './history/timeline'
+import { eraPick, landline, texting } from './events/era'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
@@ -256,19 +260,20 @@ export interface Candidate {
   onBirthControl: boolean
 }
 
+// Era tags (events/era.ts): no airline captains in 1912, no tech founders before home computers.
 const RICH_JOBS = [
   'Surgeon',
   'Investment Banker',
   'Corporate Lawyer',
-  'Tech Founder',
+  '@1976 Tech Founder',
   'Orthodontist',
-  'Hedge Fund Manager',
-  'Movie Producer',
-  'Airline Captain',
+  '@1975 Hedge Fund Manager',
+  '@1915 Movie Producer',
+  '@1930 Airline Captain',
   'Real Estate Developer',
   'Anesthesiologist',
   'Chief Executive',
-  'Software Architect',
+  '@1985 Software Architect',
 ]
 
 export type WealthFilter = 'any' | 'comfortable' | 'rich' | 'loaded'
@@ -286,7 +291,7 @@ export function makeCandidate(
   let occupation = randomOccupation(g, age)
   let worth = randomWealth(g, age, occupation)
   if (age >= 22 && wealth !== 'any') {
-    occupation = pick(g, RICH_JOBS)
+    occupation = eraPick(g, RICH_JOBS)
     if (wealth === 'comfortable') worth = randInt(g, 100_000, 950_000)
     else if (wealth === 'rich') worth = randInt(g, 1_000_000, 9_500_000)
     else worth = randInt(g, 10_000_000, 250_000_000)
@@ -395,7 +400,7 @@ const ASK_OUT_NO = [
   '{He} laughed in your face.',
   '{He} said {he} only sees you as a friend.',
   "{He} said {he}'d rather date a cactus.",
-  '{He} pretended {he} got a phone call and walked away.',
+  '@landline {He} pretended {he} got a phone call and walked away.',
   '{He} said {he} is focusing on {him}self right now.',
   '{He} said no, then told everyone about it.',
 ]
@@ -438,7 +443,7 @@ export function askOut(g: GameState, p: Person): void {
     addRelationship(p, -randInt(g, 4, 10))
     addStat(g, 'happiness', -randInt(g, 3, 8))
     log(g, `I asked ${p.firstName} out and got rejected.`, 'bad')
-    notice(g, 'Ask Out', `You asked ${p.firstName} out. ${fillPronouns(pick(g, ASK_OUT_NO), p.gender)}`, { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, 'Ask Out', `You asked ${p.firstName} out. ${fillPronouns(eraPick(g, ASK_OUT_NO), p.gender)}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
 }
 
@@ -450,12 +455,25 @@ function dateCandidate(g: GameState): Candidate {
   return makeCandidate(g, { minAge: lo, maxAge: hi })
 }
 
+/** How you met: before the apps, at dances, through friends of friends, at church or the soda fountain. */
+function meetLine(g: GameState, k: Candidate): string {
+  if (hasTech(g, 'datingApps')) return "You've met someone!"
+  const places =
+    g.year < 1960
+      ? ['at a Saturday night dance', 'at the soda fountain', 'through a friend of a friend', 'at a church social', 'at the county fair']
+      : g.year < 1985
+        ? ['at a disco', 'through a friend of a friend', 'at a house party', 'at the roller rink', 'at a friend\'s wedding']
+        : ['at a club', 'through a friend of a friend', 'at a house party', 'at a friend\'s wedding', 'at the video store']
+  // A stable pick (no dice in a popup's wording).
+  return `You met someone ${places[(k.firstName.length + k.age) % places.length]}!`
+}
+
 function showDateCandidate(g: GameState, k: Candidate): void {
   scriptChoice(
     g,
     'love.date.pick',
     'Date',
-    `You've met someone!\n\n${candidateSummary(k)}\n\nWould you like to ask ${pronouns(k.gender).him} out?`,
+    `${meetLine(g, k)}\n\n${candidateSummary(k)}\n\nWould you like to ask ${pronouns(k.gender).him} out?`,
     [
       { id: 'ask', label: 'Ask them out', emoji: '\u{1F498}', hint: talentHint(g, 'Comedy', `Open with a joke: about ${Math.round(attractionOdds(g, k) * 100)}% they say yes.`) || undefined },
       { id: 'next', label: 'Find someone else', emoji: '\u{1F504}' },
@@ -477,7 +495,7 @@ defineScript('love.date.pick', (g, choice, data) => {
   if (!k || choice === 'cancel') return
   if (choice === 'next') {
     if (!useYearAction(g, 'love.dateSearch', 8)) {
-      notice(g, 'Date', "You've swiped through everyone in town this year. Try again next year.", { emoji: '\u{1F648}' })
+      notice(g, 'Date', hasTech(g, 'datingApps') ? "You've swiped through everyone in town this year. Try again next year." : "You've met everyone at every dance in town this year. Try again next year.", { emoji: '\u{1F648}' })
       return
     }
     showDateCandidate(g, dateCandidate(g))
@@ -498,7 +516,7 @@ defineScript('love.date.pick', (g, choice, data) => {
   } else {
     addStat(g, 'happiness', -randInt(g, 2, 6))
     log(g, `I asked ${k.firstName} out but got turned down.`, 'bad')
-    notice(g, 'Date', `You asked ${k.firstName} out. ${fillPronouns(pick(g, ASK_OUT_NO), k.gender)}`, { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, 'Date', `You asked ${k.firstName} out. ${fillPronouns(eraPick(g, ASK_OUT_NO), k.gender)}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
 })
 
@@ -506,6 +524,33 @@ defineScript('love.date.pick', (g, choice, data) => {
 // Dating app ("Kindling")
 
 const APP_NAME = 'Kindling'
+
+/** How strangers find each other this year: the app, a dating website, or the newspaper's personal ads. */
+interface DatingService {
+  kind: 'app' | 'site' | 'ads'
+  /** Popup title. */
+  name: string
+  /** Menu labels. */
+  label: string
+  goldLabel: string
+  /** "per swipe", "per message", "per ad". */
+  unit: string
+  again: string
+  close: string
+  /** Where you met, for the relationship record. */
+  via: string
+  emoji: string
+}
+
+function datingService(g: GameState): DatingService {
+  if (hasTech(g, 'datingApps')) {
+    return { kind: 'app', name: APP_NAME, label: `${APP_NAME} (Dating App)`, goldLabel: `${APP_NAME} Gold`, unit: 'swipe', again: 'Swipe again', close: 'Close the app', via: `the ${APP_NAME} app`, emoji: '\u{1F525}' }
+  }
+  if (eraOpen(g, DATING_SITE_GATE)) {
+    return { kind: 'site', name: 'LoveLink', label: 'LoveLink (Dating Website)', goldLabel: 'LoveLink Premium', unit: 'message', again: 'Browse more profiles', close: 'Log off', via: 'the LoveLink dating website', emoji: '\u{1F4BB}' }
+  }
+  return { kind: 'ads', name: 'Personal Ads', label: 'Personal Ad (Newspaper)', goldLabel: 'Boxed Personal Ad (Front Page)', unit: 'ad', again: 'Read more replies', close: 'Put the paper down', via: 'a personal ad in the newspaper', emoji: '\u{1F4F0}' }
+}
 const APP_PRICE = 100
 const APP_GOLD_PRICE = 1000
 
@@ -534,7 +579,7 @@ function startDatingApp(g: GameState, gold: boolean): void {
     scriptChoice(
       g,
       'love.app.gender',
-      APP_NAME,
+      datingService(g).name,
       'Who would you like to see?',
       [
         { id: 'female', label: 'Women', emoji: '\u{1F469}' },
@@ -552,7 +597,7 @@ function askAppAge(g: GameState, f: AppFilters): void {
   scriptChoice(
     g,
     'love.app.age',
-    APP_NAME,
+    datingService(g).name,
     'What age range are you looking for?',
     APP_AGE_RANGES.map((r) => ({ id: r.id, label: r.label })),
     { emoji: '\u{1F525}', data: asJson(f) },
@@ -572,13 +617,13 @@ defineScript('love.app.age', (g, choice, data) => {
   scriptChoice(
     g,
     'love.app.worth',
-    APP_NAME,
+    datingService(g).name,
     'Any preference on their net worth?',
     [
       { id: 'any', label: "Doesn't matter", emoji: '\u{1F937}' },
-      { id: 'comfortable', label: '$100K+', emoji: '\u{1F4B5}' },
-      { id: 'rich', label: '$1M+', emoji: '\u{1F4B0}' },
-      { id: 'loaded', label: '$10M+', emoji: '\u{1F48E}' },
+      { id: 'comfortable', label: `${shortMoney(100_000)}+`, emoji: '\u{1F4B5}' },
+      { id: 'rich', label: `${shortMoney(1_000_000)}+`, emoji: '\u{1F4B0}' },
+      { id: 'loaded', label: `${shortMoney(10_000_000)}+`, emoji: '\u{1F48E}' },
     ],
     { emoji: '\u{1F525}', data: asJson(next) },
   )
@@ -586,13 +631,14 @@ defineScript('love.app.age', (g, choice, data) => {
 
 function appSwipe(g: GameState, f: AppFilters): void {
   const price = f.gold ? APP_GOLD_PRICE : APP_PRICE
+  const svc = datingService(g)
   if (!spend(g, price)) {
-    notice(g, APP_NAME, `You can't afford ${f.gold ? `${APP_NAME} Gold` : 'another swipe'} (${money(price)}).`, { emoji: '\u{1F4B8}' })
+    notice(g, svc.name, `You can't afford ${f.gold ? svc.goldLabel : `another ${svc.unit}`} (${money(price)}).`, { emoji: '\u{1F4B8}' })
     return
   }
   if (!useYearAction(g, 'love.appSwipe', 12)) {
     addMoney(g, price)
-    notice(g, APP_NAME, "You've run out of matches in your area this year. Try again next year.", { emoji: '\u{1F648}' })
+    notice(g, svc.name, svc.kind === 'ads' ? 'Nobody else answered your ad this year. Try again next year.' : "You've run out of matches in your area this year. Try again next year.", { emoji: '\u{1F648}' })
     return
   }
   const gender: Gender = f.gender === 'any' ? (chance(g, 0.5) ? 'male' : 'female') : f.gender
@@ -605,18 +651,19 @@ function appSwipe(g: GameState, f: AppFilters): void {
     quality: f.gold ? 'premium' : 'normal',
     wealth: wealthHit ? f.wealth : 'any',
   })
-  const miss = wealthHit ? '' : "\n\n(The app couldn't find anyone that wealthy, so here's the next best thing.)"
+  const miss = wealthHit ? '' : svc.kind === 'ads' ? "\n\n(Nobody that wealthy answered, so here's the best reply in the pile.)" : `\n\n(${svc.kind === 'app' ? 'The app' : 'The site'} couldn't find anyone that wealthy, so here's the next best thing.)`
+  const intro = svc.kind === 'app' ? `${APP_NAME}${f.gold ? ' Gold' : ''} matched you with:` : svc.kind === 'site' ? `${f.gold ? 'LoveLink Premium' : 'LoveLink'} suggested a profile:` : `A letter arrived in reply to your${f.gold ? ' front-page' : ''} personal ad:`
   scriptChoice(
     g,
     'love.app.match',
-    APP_NAME,
-    `${APP_NAME}${f.gold ? ' Gold' : ''} matched you with:\n\n${candidateSummary(k)}${miss}`,
+    svc.name,
+    `${intro}\n\n${candidateSummary(k)}${miss}`,
     [
       { id: 'date', label: 'Go on a date', emoji: '\u{1F377}' },
-      { id: 'again', label: `Swipe again (${money(price)})`, emoji: '\u{1F449}' },
-      { id: 'close', label: 'Close the app', emoji: '\u{274C}' },
+      { id: 'again', label: `${svc.again} (${money(price)})`, emoji: '\u{1F449}' },
+      { id: 'close', label: svc.close, emoji: '\u{274C}' },
     ],
-    { emoji: '\u{1F525}', data: asJson({ filters: f, candidate: k }) },
+    { emoji: svc.emoji, data: asJson({ filters: f, candidate: k }) },
   )
 }
 
@@ -636,24 +683,26 @@ defineScript('love.app.match', (g, choice, data) => {
     return
   }
   const partner = currentPartner(g)
+  const svc = datingService(g)
   if (partner) {
-    notice(g, APP_NAME, `You're already in a relationship with ${partner.firstName}.`, { emoji: '\u{1F6AB}' })
+    notice(g, svc.name, `You're already in a relationship with ${partner.firstName}.`, { emoji: '\u{1F6AB}' })
     return
   }
   if (chance(g, 0.12)) {
     addStat(g, 'happiness', -randInt(g, 3, 8))
-    log(g, `My ${APP_NAME} date stood me up.`, 'bad')
-    notice(g, APP_NAME, pick(g, [`${k.firstName} never showed up. You ate breadsticks alone for two hours.`, `${k.firstName} looked nothing like ${pronouns(k.gender).his} pictures, and you both knew it.`, `${k.firstName} unmatched you five minutes before the date.`]), { emoji: '\u{1F494}', tone: 'bad' })
+    log(g, svc.kind === 'app' ? `My ${APP_NAME} date stood me up.` : 'My blind date stood me up.', 'bad')
+    const third = svc.kind === 'app' ? `${k.firstName} unmatched you five minutes before the date.` : svc.kind === 'site' ? `${k.firstName} logged off forever five minutes before the date.` : `${k.firstName} sent a letter saying ${pronouns(k.gender).he} had "met someone at the bowling alley."`
+    notice(g, svc.name, pick(g, [`${k.firstName} never showed up. You ate breadsticks alone for two hours.`, `${k.firstName} looked nothing like ${pronouns(k.gender).his} ${svc.kind === 'ads' ? 'description' : 'pictures'}, and you both knew it.`, third]), { emoji: '\u{1F494}', tone: 'bad' })
     return
   }
   if (chance(g, attractionOdds(g, k, 0.2))) {
-    const p = startDating(g, k, `the ${APP_NAME} app`)
-    log(g, `The dating app paired me with ${article2(k.occupation)} named ${k.firstName}.`)
+    const p = startDating(g, k, svc.via)
+    log(g, svc.kind === 'app' ? `The dating app paired me with ${article2(k.occupation)} named ${k.firstName}.` : svc.kind === 'site' ? `A dating website paired me with ${article2(k.occupation)} named ${k.firstName}.` : `My personal ad brought me ${article2(k.occupation)} named ${k.firstName}.`)
     addStat(g, 'happiness', randInt(g, 6, 12))
-    notice(g, APP_NAME, `You went on a date with ${k.firstName} and hit it off! You're now dating ${fullName(p)}.`, { emoji: '\u{1F496}', tone: 'good' })
+    notice(g, svc.name, `You went on a date with ${k.firstName} and hit it off! You're now dating ${fullName(p)}.`, { emoji: '\u{1F496}', tone: 'good' })
   } else {
     addStat(g, 'happiness', -randInt(g, 2, 5))
-    notice(g, APP_NAME, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pick(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`])}`, { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, svc.name, `You went on a date with ${k.firstName}, but ${pronouns(k.gender).he} wasn't feeling it. ${pick(g, ['The conversation died before the appetizers did.', 'You talked about your ex for forty minutes. Mistake.', `${pronouns(k.gender).He} said you were "a lot".`])}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
 })
 
@@ -703,7 +752,7 @@ const HOOKUP_AFTER = [
   '{He} fell asleep halfway through.',
   '{He} asked if this makes you a couple.',
   "{He} said {he}'ll call you. {He} won't.",
-  '{He} talked about {his} fantasy {sport} team the entire time.',
+  '@1985 {He} talked about {his} fantasy {sport} team the entire time.',
   "{His} roommate walked in on you. Everyone's still recovering.",
   "{His} dog watched the whole thing and judged you.",
   'You broke the bed. Somebody owes somebody a bed frame.',
@@ -714,7 +763,7 @@ const HOOKUP_AFTER = [
   '{He} cried as you parted ways.',
   'You threw out your back giving it your best.',
   '{He} told you {he} lives in {his} mother\'s basement.',
-  '{He} invited you to play video games afterwards.',
+  '@videoGameConsole {He} invited you to play video games afterwards.',
 ]
 
 function hookupCandidate(g: GameState): Candidate {
@@ -743,7 +792,7 @@ defineScript('love.hookup.pick', (g, choice, data) => {
   if (!k || choice === 'cancel') return
   if (choice === 'next') {
     if (!useYearAction(g, 'love.hookupSearch', 6)) {
-      notice(g, 'Hook Up', "Nobody else is answering your texts this year. Try again next year.", { emoji: '\u{1F648}' })
+      notice(g, 'Hook Up', `Nobody else is ${texting(g) ? 'answering your texts' : landline(g) ? 'returning your calls' : 'giving you a second look'} this year. Try again next year.`, { emoji: '\u{1F648}' })
       return
     }
     showHookupCandidate(g, hookupCandidate(g))
@@ -780,7 +829,7 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
   notePerson(p, `Hooked up with the player at age ${c.age}.`)
   count(g, 'hookups')
   addStat(g, 'happiness', randInt(g, 3, 10))
-  const lines = [`You hooked up with ${name}. \u{1F525}`, '', `Your enjoyment: ${yours}%`, `${name}'s enjoyment: ${theirs}%`, '', fillPronouns(pick(g, HOOKUP_AFTER), p.gender).replace('{sport}', teamSport(g))]
+  const lines = [`You hooked up with ${name}. \u{1F525}`, '', `Your enjoyment: ${yours}%`, `${name}'s enjoyment: ${theirs}%`, '', fillPronouns(eraPick(g, HOOKUP_AFTER), p.gender).replace('{sport}', teamSport(g))]
   log(g, `I hooked up with ${fullName(p)}.`)
 
   // STDs
@@ -807,7 +856,10 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
   const babyOdds = cand ? (cand.onBirthControl ? 0.015 : 0.06) : 0.05
   if (!conceptionBlocker(g, p) && chance(g, babyOdds)) {
     conceive(g, p, 1, 'natural')
-    lines.push('', c.gender === 'female' ? 'A few weeks later, you took a pregnancy test. It was positive. \u{1F633}' : `A few weeks later, ${name} called. ${pronouns(p.gender).He}'s pregnant, and you're the father. \u{1F633}`)
+    // Home pregnancy tests arrived in the late 1970s; before that, the doctor told you.
+    const found = g.year >= 1978 ? 'you took a pregnancy test. It was positive.' : 'the doctor confirmed it: you are pregnant.'
+    const told = landline(g) ? 'called' : 'turned up at your door'
+    lines.push('', c.gender === 'female' ? `A few weeks later, ${found} \u{1F633}` : `A few weeks later, ${name} ${told}. ${pronouns(p.gender).He}'s pregnant, and you're the father. \u{1F633}`)
   }
 
   notice(g, 'Hook Up', lines.join('\n'), { emoji: '\u{1F48B}' })
@@ -836,7 +888,7 @@ const BREAKUP_PLAYER = [
   '{He} threw your stuff out the window.',
   '{He} said {he} saw it coming.',
   '{He} said "Fine. I was going to dump you anyway."',
-  '{He} changed {his} relationship status before you got home.',
+  '@socialMedia {He} changed {his} relationship status before you got home.',
   '{He} asked for {his} hoodie back.',
 ]
 const BREAKUP_THEM = [
@@ -870,7 +922,7 @@ export function breakUp(g: GameState, p: Person, by: 'player' | 'them', reason?:
     addStat(g, 'happiness', fondness > 50 ? -randInt(g, 3, 10) : randInt(g, 2, 6))
     log(g, `I broke up with ${fullName(p)}.`, 'bad')
     notePerson(p, `The player broke up with them at age ${c.age}.`)
-    notice(g, wasEngaged ? 'Engagement Over' : 'Break Up', `You broke up with ${p.firstName}. ${fillPronouns(pick(g, BREAKUP_PLAYER), p.gender)}${wasEngaged && p.data.ring ? `\n\n${He} kept the ring.` : ''}`, {
+    notice(g, wasEngaged ? 'Engagement Over' : 'Break Up', `You broke up with ${p.firstName}. ${fillPronouns(eraPick(g, BREAKUP_PLAYER), p.gender)}${wasEngaged && p.data.ring ? `\n\n${He} kept the ring.` : ''}`, {
       emoji: '\u{1F494}',
     })
   } else {
@@ -1155,7 +1207,7 @@ const WEDDING_FLAVOR = [
   'Your uncle gave a 40-minute toast that nobody asked for.',
   'The ring bearer tried to eat the ring. It was recovered.',
   'It rained, and everyone agreed it was good luck (it was not).',
-  'The DJ played the chicken dance four times.',
+  '@1980 The DJ played the chicken dance four times.',
   'Your grandmother cried through the whole ceremony.',
   'Someone objected. It was a joke. Mostly.',
   'The cake was taller than the groomsmen.',
@@ -1172,7 +1224,7 @@ function theDish(food: string): string {
 function weddingFlavor(g: GameState): string {
   const lines = [...WEDDING_FLAVOR, `${cap(theDish(localFood(g)))} ran out before the second cousins even sat down.`, `Half the guests only came for ${theDish(localFood(g))}. They said so.`]
   if (drinkingCulture(g)) lines.push('The open bar ran dry in an hour. Your uncle took it personally.')
-  return pick(g, lines)
+  return eraPick(g, lines)
 }
 
 export function weddingProblem(g: GameState, p: Person): string | null {
@@ -1309,7 +1361,8 @@ const HONEYMOON_LINES = [
   'You got the worst sunburn of your life.',
   'You barely left the hotel room. The minibar bill was astonishing.',
   'You lost your luggage but found each other. Aww.',
-  'You took 600 photos. You will look at four of them again.',
+  '@2003 You took 600 photos. You will look at four of them again.',
+  '@-2003 You shot six rolls of film. Two came out.',
   'You had your first married argument, about directions. You both still think you were right.',
 ]
 
@@ -1342,7 +1395,7 @@ export function performWedding(g: GameState, p: Person, o: { venue: string; pren
     const trip = /^(in|on|at|to) /i.test(o.honeymoon) ? o.honeymoon : `in ${o.honeymoon}`
     addStat(g, 'happiness', randInt(g, 4, 8))
     addStat(g, 'health', randInt(g, 1, 4))
-    text += `\n\nYou honeymooned ${trip}. ${pick(g, HONEYMOON_LINES)}`
+    text += `\n\nYou honeymooned ${trip}. ${eraPick(g, HONEYMOON_LINES)}`
     log(g, `We honeymooned ${trip}.`)
   }
   const steps = addStepchildren(g, p)
@@ -1436,7 +1489,7 @@ export function elope(g: GameState, p: Person): void {
   if (chance(g, clamp(odds, 0.05, 0.85))) {
     const where = localGetaway(g)
     performWedding(g, p, { venue: 'eloped', prenup: false, honeymoon: null, place: `a secret ceremony in ${where}` })
-    log(g, pick(g, ['We eloped!', 'We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
+    log(g, eraPick(g, ['We eloped!', '@socialMedia We eloped! Our families found out from social media.', `We ran off to ${where} and told nobody until it was done.`, 'We eloped. My mother is still not over it.']))
   } else {
     addRelationship(p, -randInt(g, 5, 12))
     notice(g, 'Elope', `${p.firstName} refused to elope. "${pick(g, ['My mother would never forgive me.', 'I want a real wedding with a cake taller than me.', 'Are you trying to avoid paying for a wedding?'])}"`, { emoji: '\u{1F645}' })
@@ -1683,14 +1736,14 @@ export function announcePregnancy(g: GameState, p: Person, babies: number): void
 const MAKE_LOVE_LINES = [
   'You and {name} made love. \u{1F495}',
   'You and {name} had a romantic night in. \u{1F495}',
-  'You and {name} turned off your phones and made love. \u{1F495}',
+  '@mobilePhone You and {name} turned off your phones and made love. \u{1F495}',
 ]
 const MAKE_LOVE_AFTER = [
   '{He} said it was the best night of {his} life.',
   '{He} fell asleep immediately afterwards.',
   'You broke the bed. Again.',
   'The neighbors banged on the wall. Twice.',
-  '{He} asked if you wanted to cuddle and watch documentaries.',
+  '@tv {He} asked if you wanted to cuddle and watch documentaries.',
   '{He} said "that was nice" in a way you will be thinking about for weeks.',
   'Neither of you will ever look the neighbors in the eye again.',
 ]
@@ -1738,7 +1791,7 @@ export function makeLove(g: GameState, p: Person): void {
   }
   addRelationship(p, randInt(g, 3, 8))
   addStat(g, 'happiness', randInt(g, 4, 10))
-  const lines = [pick(g, MAKE_LOVE_LINES).replace('{name}', p.firstName), '', fillPronouns(pick(g, MAKE_LOVE_AFTER), p.gender)]
+  const lines = [eraPick(g, MAKE_LOVE_LINES).replace('{name}', p.firstName), '', fillPronouns(eraPick(g, MAKE_LOVE_AFTER), p.gender)]
   log(g, `${fullName(p)} and I made love.`)
   const partner = currentPartner(g)
   if (p.relation === 'lover' && partner) {
@@ -1957,21 +2010,40 @@ defineScript('love.baby.name', (g, value, data) => {
 // Fertility clinic
 
 
+// The fertility clinic by era: the pill from 1960, donor sperm banks from the 1970s, the first IVF
+// baby in 1978, gestational surrogacy from the mid-1980s, reversible vasectomies from the 1970s.
+// Poorer countries got each a few years later.
+const CLINIC_FROM = { pill: 1960, sterilize: 1930, reverse: 1975, insemination: 1972, donate: 1972, ivf: 1978, surrogate: 1986 } as const
+type ClinicService = keyof typeof CLINIC_FROM
+
+/** The first year a service is offered where the player lives (rich countries first). */
+function clinicFrom(g: GameState, what: ClinicService): number {
+  // Up to a dozen years later in the poorest countries.
+  const w = getCountry(g.character.countryId).wealth
+  const wealth = typeof w === 'number' && Number.isFinite(w) ? Math.max(0, Math.min(1, w)) : 1
+  return CLINIC_FROM[what] + Math.round((1 - wealth) * 12)
+}
+
+function clinicOpen(g: GameState, what: ClinicService): boolean {
+  return g.year >= clinicFrom(g, what)
+}
+
 function fertilityNodes(): MenuNode[] {
   const bc: MenuAction = {
     type: 'action',
     id: 'birthControl',
     label: 'Birth Control',
     emoji: '\u{1F48A}',
-    subtitle: (g) => (g.flags.birthControl === true ? 'You are on birth control' : 'You are not on birth control'),
+    subtitle: (g) => `${g.flags.birthControl === true ? 'You are on birth control' : 'You are not on birth control'}${clinicOpen(g, 'pill') ? '' : ' (no pill yet: diaphragms and good intentions)'}`,
     visible: (g) => g.character.gender === 'female',
     disabledReason: (g) => tooYoungReason(g, 14) ?? (g.character.age > 55 ? "You don't need birth control anymore." : null),
     run: (g) => {
       const on = g.flags.birthControl === true
       g.flags.birthControl = !on
       const partner = currentPartner(g)
-      log(g, on ? 'I stopped taking birth control.' : 'I started taking birth control.')
-      let text = on ? 'You stopped taking birth control.' : 'You started taking birth control.'
+      const pill = clinicOpen(g, 'pill')
+      log(g, on ? (pill ? 'I stopped taking birth control.' : 'I stopped using contraception.') : pill ? 'I started taking birth control.' : 'I started using contraception.')
+      let text = on ? (pill ? 'You stopped taking birth control.' : 'You stopped using contraception.') : pill ? 'You started taking birth control.' : `You started using contraception. It is not exactly reliable in ${g.year}, but it beats nothing.`
       if (on && partner && partner.gender === 'male' && chance(g, 0.3)) {
         addRelationship(partner, -randInt(g, 3, 8))
         text += ` ${partner.firstName} found out and isn't thrilled you didn't talk to ${pronouns(partner.gender).him} first.`
@@ -1985,7 +2057,7 @@ function fertilityNodes(): MenuNode[] {
     label: 'Sterilization',
     emoji: '\u{2702}\u{FE0F}',
     subtitle: (g) => (g.character.gender === 'male' ? `Vasectomy (${money(900)})` : `Tubal ligation (${money(3500)})`),
-    visible: (g) => g.flags.sterile !== true,
+    visible: (g) => g.flags.sterile !== true && clinicOpen(g, 'sterilize'),
     disabledReason: (g) => tooYoungReason(g, 18),
     confirm: () => 'Are you sure? This is meant to be permanent.',
     run: (g) => {
@@ -2011,8 +2083,9 @@ function fertilityNodes(): MenuNode[] {
     id: 'reverse',
     label: 'Reverse Procedure',
     emoji: '\u{1F504}',
-    subtitle: `Undo your sterilization (${money(12000)})`,
+    subtitle: (g) => (clinicOpen(g, 'reverse') ? `Undo your sterilization (${money(12000)})` : 'No surgeon can undo it yet'),
     visible: (g) => g.flags.sterile === true,
+    disabledReason: (g) => (clinicOpen(g, 'reverse') ? null : `Reversals aren't possible yet. It's ${g.year}.`),
     run: (g) => {
       if (!spend(g, 12000)) {
         notice(g, 'Fertility', `You can't afford the reversal (${money(12000)}).`, { emoji: '\u{1F4B8}' })
@@ -2032,6 +2105,7 @@ function fertilityNodes(): MenuNode[] {
     label: 'IVF',
     emoji: '\u{1F9EB}',
     subtitle: `In vitro fertilization with your partner (${money(15000)})`,
+    visible: (g) => clinicOpen(g, 'ivf'),
     disabledReason: (g) => {
       const young = tooYoungReason(g, 18)
       if (young) return young
@@ -2074,7 +2148,7 @@ function fertilityNodes(): MenuNode[] {
     label: 'Artificial Insemination',
     emoji: '\u{1F489}',
     subtitle: `Use a sperm donor (${money(5000)})`,
-    visible: (g) => g.character.gender === 'female',
+    visible: (g) => g.character.gender === 'female' && clinicOpen(g, 'insemination'),
     disabledReason: (g) => tooYoungReason(g, 18) ?? (g.character.age > 50 ? "You're too old for artificial insemination." : playerPregnancy(g) ? "You're already pregnant!" : g.flags.sterile === true ? 'Your tubal ligation is doing its job.' : null),
     run: (g) => {
       if (!useYearAction(g, 'love.insemination', 1)) {
@@ -2108,7 +2182,7 @@ function fertilityNodes(): MenuNode[] {
     label: 'Sperm Donation',
     emoji: '\u{1F9EA}',
     subtitle: 'Get paid to help others start a family',
-    visible: (g) => g.character.gender === 'male',
+    visible: (g) => g.character.gender === 'male' && clinicOpen(g, 'donate'),
     disabledReason: (g) => tooYoungReason(g, 18) ?? (g.flags.sterile === true ? 'Your vasectomy makes this pointless.' : null),
     run: (g) => {
       const c = g.character
@@ -2134,6 +2208,7 @@ function fertilityNodes(): MenuNode[] {
     label: 'Surrogate',
     emoji: '\u{1F930}',
     subtitle: 'Hire a surrogate to carry your baby',
+    visible: (g) => clinicOpen(g, 'surrogate'),
     disabledReason: (g) => tooYoungReason(g, 18) ?? (playerPregnancy(g) ? 'You already have a baby on the way.' : null),
     run: (g) => {
       const options = Array.from({ length: 3 }, () => ({
@@ -2156,7 +2231,7 @@ function fertilityNodes(): MenuNode[] {
 }
 
 defineScript('love.fertility.surrogate', (g, choice, data) => {
-  if (choice === 'cancel') return
+  if (choice === 'cancel' || !clinicOpen(g, 'surrogate')) return
   const list = rec(data).options
   if (!Array.isArray(list)) return
   const o = rec(list[Number(choice)] ?? null)
@@ -2192,7 +2267,7 @@ export const fertilityMenu: MenuGroup = {
   id: 'fertility',
   label: 'Fertility',
   emoji: '\u{1F37C}',
-  subtitle: 'Visit the fertility clinic',
+  subtitle: (g) => (clinicOpen(g, 'ivf') ? 'Visit the fertility clinic' : 'See the family doctor about family planning'),
   visible: (g) => g.character.age >= 14,
   disabledReason: (g) => blockedReason(g),
   header: (g) => {
@@ -2225,30 +2300,37 @@ const dateAction: MenuAction = {
   },
 }
 
-const appAction: MenuAction = {
-  type: 'action',
-  id: 'datingApp',
-  label: `${APP_NAME} (Dating App)`,
-  emoji: '\u{1F525}',
-  subtitle: `Find love on the dating app (${money(APP_PRICE)} per swipe)`,
-  disabledReason: (g) => {
-    const p = currentPartner(g)
-    return tooYoungReason(g, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
-  },
-  run: (g) => startDatingApp(g, false),
+/** The dating service of the era: the app today, a website around 2000, personal ads before. */
+function appAction(g: GameState): MenuAction {
+  const svc = datingService(g)
+  return {
+    type: 'action',
+    id: 'datingApp',
+    label: svc.label,
+    emoji: svc.emoji,
+    subtitle: () => (svc.kind === 'app' ? `Find love on the dating app (${money(APP_PRICE)} per swipe)` : svc.kind === 'site' ? `Find love on a dating website (${money(APP_PRICE)} per message)` : `Lonely hearts column: "SWF, 28, likes long walks..." (${money(APP_PRICE)} per ad)`),
+    disabledReason: (gg) => {
+      const p = currentPartner(gg)
+      return tooYoungReason(gg, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
+    },
+    run: (gg) => startDatingApp(gg, false),
+  }
 }
 
-const appGoldAction: MenuAction = {
-  type: 'action',
-  id: 'datingAppGold',
-  label: `${APP_NAME} Gold`,
-  emoji: '\u{1F31F}',
-  subtitle: `Premium matches with better-looking people (${money(APP_GOLD_PRICE)} per swipe)`,
-  disabledReason: (g) => {
-    const p = currentPartner(g)
-    return tooYoungReason(g, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
-  },
-  run: (g) => startDatingApp(g, true),
+function appGoldAction(g: GameState): MenuAction {
+  const svc = datingService(g)
+  return {
+    type: 'action',
+    id: 'datingAppGold',
+    label: svc.goldLabel,
+    emoji: '\u{1F31F}',
+    subtitle: () => `Premium matches with better-looking people (${money(APP_GOLD_PRICE)} per ${svc.unit})`,
+    disabledReason: (gg) => {
+      const p = currentPartner(gg)
+      return tooYoungReason(gg, 18) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
+    },
+    run: (gg) => startDatingApp(gg, true),
+  }
 }
 
 const matchmakerAction: MenuAction = {
@@ -2256,7 +2338,7 @@ const matchmakerAction: MenuAction = {
   id: 'matchmaker',
   label: 'Matchmaker',
   emoji: '\u{1F3F9}',
-  subtitle: `A professional finds your perfect match (${money(MATCHMAKER_FEE)})`,
+  subtitle: () => `A professional finds your perfect match (${money(MATCHMAKER_FEE)})`,
   disabledReason: (g) => {
     const p = currentPartner(g)
     return tooYoungReason(g, 21) ?? (p ? `You're already in a relationship with ${p.firstName}.` : null)
@@ -2397,7 +2479,7 @@ export const loveMenu: MenuGroup = {
     if (!p) return g.character.age < 18 ? 'Looking for a crush?' : 'Single and ready to mingle.'
     return `You're with ${fullName(p)}.`
   },
-  children: (g) => [dateAction, appAction, appGoldAction, matchmakerAction, hookupAction, fertilityMenu, ...partnerShortcuts(g)],
+  children: (g) => [dateAction, appAction(g), appGoldAction(g), matchmakerAction, hookupAction, fertilityMenu, ...partnerShortcuts(g)],
 }
 
 // ---------------------------------------------------------------------------

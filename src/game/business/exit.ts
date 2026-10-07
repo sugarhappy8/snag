@@ -1,5 +1,5 @@
 // Leaving a business: selling it, listing it on a stock exchange, selling shares, going bankrupt.
-import { addMoney, addStat, count, endJob, formatMoney, log, notice, remember } from '../core'
+import { addMoney, addStat, count, endJob, formatMoney, log, moneyWith, notice, remember } from '../core'
 import { exchangeFor, marketOf } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
@@ -31,12 +31,13 @@ function removeBusiness(g: GameState, a: Asset): void {
 }
 
 /** Pay off the founding loan linked to this business from the proceeds, if any. */
-function settleFoundingLoan(g: GameState, b: BizState): number {
+function settleFoundingLoan(g: GameState, b: BizState, proceeds: number): number {
   if (!b.loanId) return 0
   const loan = g.character.loans.find((l) => l.id === b.loanId)
   if (!loan) return 0
-  const paid = loan.balance
-  g.character.loans = g.character.loans.filter((l) => l.id !== loan.id)
+  const paid = Math.min(loan.balance, Math.max(0, proceeds))
+  loan.balance -= paid
+  if (loan.balance === 0) g.character.loans = g.character.loans.filter((l) => l.id !== loan.id)
   return paid
 }
 
@@ -54,7 +55,7 @@ export function ownerProceeds(b: BizState, total: number): number {
 export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number, buyer: string): void {
   const gross = ownerProceeds(b, price)
   const tax = capitalGainsTax(g, gross, b.invested)
-  const loan = settleFoundingLoan(g, b)
+  const loan = settleFoundingLoan(g, b, gross - tax)
   const net = gross - tax - loan
   addMoney(g, net)
   removeBusiness(g, a)
@@ -65,7 +66,9 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   const stake = b.share < 1 ? ` for your ${pct(b.share)} stake` : ''
   let text = `You sold ${a.name} to ${buyer}${stake}: ${formatMoney(gross)}.`
   if (tax > 0) text += ` Capital gains tax took ${formatMoney(tax)}.`
-  if (loan > 0) text += ` ${formatMoney(loan)} went to pay off the business loan you took to start it.`
+  if (loan > 0) text += ` ${formatMoney(loan)} went toward the business loan you took to start it.`
+  const remaining = g.character.loans.find((l) => l.id === b.loanId)?.balance ?? 0
+  if (remaining > 0) text += ` You still owe ${formatMoney(remaining)} on that personal loan.`
   text += ` You walked away with ${formatMoney(net)}.`
   if (profit > 0) text += ` Not bad for a company you put ${formatMoney(b.invested)} into.`
   else if (profit < 0) text += ` You put ${formatMoney(b.invested)} into it, so this one is a lesson, not a payday.`
@@ -149,7 +152,7 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   refreshValue(a, b)
   count(g, 'businessIpos')
   addStat(g, 'happiness', 15)
-  const text = `${a.name} rang the opening bell on the ${ex.name} (${ex.code}). The IPO raised ${money(raise)} for the company (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at $${b.sharePrice.toFixed(2)}. Your ${pct(b.share)} stake is worth ${money(stakeValue(b))}.`
+  const text = `${a.name} rang the opening bell on the ${ex.name} (${ex.code}). The IPO raised ${money(raise)} for the company (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))}. Your ${pct(b.share)} stake is worth ${money(stakeValue(b))}.`
   log(g, `I took ${a.name} public on the ${ex.code}.`, 'good')
   remember(g, `Took ${a.name} public on the ${ex.name}.`)
   notice(g, 'IPO Day!', text, { emoji: '\u{1F514}', tone: 'good', ai: { when: 'full', facts: text } })
@@ -183,7 +186,7 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   notice(
     g,
     'Shares Sold',
-    `You sold ${pct(sold, 1)} of ${a.name} for ${formatMoney(gross)}${tax ? `; capital gains tax took ${formatMoney(tax)}` : ''}. The share price dipped to $${b.sharePrice.toFixed(2)} on the news. You still own ${pct(b.share, 1)}.`,
+    `You sold ${pct(sold, 1)} of ${a.name} for ${formatMoney(gross)}${tax ? `; capital gains tax took ${formatMoney(tax)}` : ''}. The share price dipped to ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} on the news. You still own ${pct(b.share, 1)}.`,
     { emoji: '\u{1F4C8}', tone: 'good' },
   )
 }

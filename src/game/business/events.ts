@@ -1,6 +1,7 @@
 // Scripted business events: a few per company per decade, never every year. Each one is a
 // choice with real consequences, flavored by the market the company operates in (inspectors who
 // expect envelopes, unions that strike, currencies that melt, hurricanes and earthquakes).
+import { currencyOf } from '../data/currencies'
 import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice } from '../core'
 import { arrestPlayer } from '../crime'
 import { marketOf } from '../data/markets'
@@ -10,6 +11,9 @@ import { hasTalent } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { bizWorth, ceoSkill, equipmentValue, expectedFx, LASTING_YEARS, localEcon, redTape, staffNet, staffPower, type BizFx, type Worth } from './economy'
+import { marketViewOf, shareText } from './competition'
+import { bizHas, eraFits } from './era'
+import { COMPETITION_EVENTS } from './competition-events'
 import { sellBusiness } from './exit'
 import { conglomerate, investorFirm, laborProtection, traitOf, unionStrength } from './flavor'
 import { industryDef } from './industries'
@@ -345,12 +349,13 @@ const VIRAL = defineScript('business.ev.viral', (g, choice, data) => {
   if (!x) return
   const { a, b } = x
   const good = x.d.good === true
+  const w = reviewWords(g, b)
   if (good) {
     if (choice === 'ride') {
       const cost = pay(b, scaled(b, 5_000))
       b.brand = clampN(b.brand + 9, 0, 100)
       b.demandShock = Math.max(b.demandShock, 1.16)
-      tell(g, 'Riding the Wave', `You spent ${formatMoney(cost)} on ads around the viral video. Lines out the door, and the brand is hot.`, '\u{1F525}', 'good')
+      tell(g, 'Riding the Wave', `You spent ${formatMoney(cost)} on ads around ${w.theRave}. Lines out the door, and the brand is hot.`, '\u{1F525}', 'good')
     } else {
       b.brand = clampN(b.brand + 5, 0, 100)
       b.demandShock = Math.max(b.demandShock, 1.08)
@@ -361,29 +366,63 @@ const VIRAL = defineScript('business.ev.viral', (g, choice, data) => {
   if (choice === 'apologize') {
     b.brand = clampN(b.brand - 2, 0, 100)
     b.demandShock = Math.min(b.demandShock, 0.97)
-    tell(g, 'Public Apology', `Your heartfelt apology got almost as many views as the complaint. Most people moved on.`, '\u{1F64F}')
+    tell(g, 'Public Apology', w.apology, '\u{1F64F}')
   } else if (choice === 'fight') {
     if (chance(g, VIRAL_CLAPBACK)) {
       b.brand = clampN(b.brand + 6, 0, 100)
-      tell(g, 'Clapback Won', `Your savage reply went even more viral than the original review. The internet is on your side. For now.`, '\u{1F525}', 'good')
+      tell(g, 'Clapback Won', w.won, '\u{1F525}', 'good')
     } else {
       b.brand = clampN(b.brand - 14, 0, 100)
       b.demandShock = Math.min(b.demandShock, 0.88)
-      tell(g, 'Clapback Backfired', `You argued with a customer online. You lost. ${a.name} is now a meme, and not the good kind.`, '\u{1F4A9}', 'bad')
+      tell(g, 'Clapback Backfired', w.lost(a.name), '\u{1F4A9}', 'bad')
     }
   } else {
     b.brand = clampN(b.brand - 6, 0, 100)
     b.demandShock = Math.min(b.demandShock, 0.94)
-    tell(g, 'Ignored It', `You ignored the review. The comment section did not ignore it.`, '\u{1F648}', 'bad')
+    tell(g, 'Ignored It', w.ignored, '\u{1F648}', 'bad')
   }
 })
+
+/**
+ * How a review spreads in the company's country and year: social media, review websites before
+ * that, the newspapers before the internet. Same odds and stakes in every era.
+ */
+function reviewWords(g: GameState, b: BizState) {
+  const social = bizHas(g, b.countryId, 'socialMedia')
+  const web = bizHas(g, b.countryId, 'internet')
+  return {
+    titleGood: web ? 'Gone Viral!' : 'Rave Review!',
+    titleBad: web ? 'Viral Review' : 'Scathing Review',
+    emoji: web ? '\u{1F4F1}' : '\u{1F4F0}',
+    good: (name: string, praise: string) =>
+      social
+        ? `A food-and-lifestyle creator with millions of followers posted a glowing review of ${name}. "${praise}," apparently.`
+        : web
+          ? `A popular review website gave ${name} five stars and a gushing write-up. "${praise}," apparently.`
+          : `The most-read critic in the papers raved about ${name} in the Sunday edition. "${praise}," apparently.`,
+    bad: (name: string, quote: string) =>
+      social
+        ? `Someone posted a furious review of ${name} that went viral: "${quote}."`
+        : web
+          ? `A furious review of ${name} is the top result on every review website: "${quote}."`
+          : `A newspaper columnist tore ${name} apart in print: "${quote}."`,
+    theRave: social ? 'the viral video' : web ? 'the five-star review' : 'the rave review',
+    fight: web ? 'Fire back online' : 'Write a furious letter to the editor',
+    winning: web ? 'winning the internet' : 'winning over the town',
+    apology: web ? 'Your heartfelt apology got almost as many views as the complaint. Most people moved on.' : 'Your heartfelt apology ran in the next day’s paper. Most people moved on.',
+    won: web ? 'Your savage reply went even more viral than the original review. The internet is on your side. For now.' : 'Your furious letter to the editor was the talk of the town. Readers took your side. For now.',
+    lost: (name: string) => (web ? `You argued with a customer online. You lost. ${name} is now a meme, and not the good kind.` : `You picked a fight with a newspaper. You lost. ${name} is now the punchline of every column in town.`),
+    ignored: web ? 'You ignored the review. The comment section did not ignore it.' : 'You ignored the review. The letters page did not ignore it.',
+  }
+}
 
 function presentViral(g: GameState, a: Asset, b: BizState): void {
   const good = chance(g, clampN(b.quality / 100, 0.15, 0.85))
   const def = industryDef(b.industry)
+  const w = reviewWords(g, b)
   const text = good
-    ? `A food-and-lifestyle creator with millions of followers posted a glowing review of ${a.name}. "${pick(g, ['Best', 'Most underrated', 'Most life-changing'])} ${def.unitOne} in ${b.city}," apparently.`
-    : `Someone posted a furious review of ${a.name} that went viral: "${pick(g, ['Worst experience of my life', 'Rude staff and a smell I cannot describe', 'I want my money AND my time back', 'Zero stars if I could'])}."`
+    ? w.good(a.name, `${pick(g, ['Best', 'Most underrated', 'Most life-changing'])} ${def.unitOne} in ${b.city}`)
+    : w.bad(a.name, pick(g, ['Worst experience of my life', 'Rude staff and a smell I cannot describe', 'I want my money AND my time back', 'Zero stars if I could']))
   const choices: ChoiceOption[] = good
     ? [
         { id: 'ride', label: 'Pour money into ads while it’s hot', emoji: '\u{1F4E3}' },
@@ -391,7 +430,7 @@ function presentViral(g: GameState, a: Asset, b: BizState): void {
       ]
     : [
         { id: 'apologize', label: 'Apologize publicly', emoji: '\u{1F64F}' },
-        { id: 'fight', label: 'Fire back online', emoji: '\u{1F525}' },
+        { id: 'fight', label: w.fight, emoji: '\u{1F525}' },
         { id: 'ignore', label: 'Ignore it', emoji: '\u{1F648}' },
       ]
   markBest(g, choices, scorer(g, b, () => ({
@@ -403,8 +442,8 @@ function presentViral(g: GameState, a: Asset, b: BizState): void {
       { p: 1 - VIRAL_CLAPBACK, fx: { brand: -14, demandTo: 0.88 } },
     ],
     ignore: [{ p: 1, fx: { brand: -6, demandTo: 0.94 } }],
-  })), (id) => (id === 'fight' ? `Best move: ${aPct(VIRAL_CLAPBACK)} shot at winning the internet` : undefined))
-  scriptChoice(g, VIRAL, good ? 'Gone Viral!' : 'Viral Review', text, choices, { emoji: '\u{1F4F1}', data: { assetId: a.id, good } })
+  })), (id) => (id === 'fight' ? `Best move: ${aPct(VIRAL_CLAPBACK)} shot at ${w.winning}` : undefined))
+  scriptChoice(g, VIRAL, good ? w.titleGood : w.titleBad, text, choices, { emoji: w.emoji, data: { assetId: a.id, good } })
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +555,6 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
   const x = ctx(g, data)
   if (!x) return
   const { b } = x
-  const m = marketOf(b.countryId)
   b.costShock = Math.max(b.costShock, 1.1)
   if (choice === 'raise') {
     b.brand = clampN(b.brand - 3, 0, 100)
@@ -529,12 +567,11 @@ const CURRENCY = defineScript('business.ev.currency', (g, choice, data) => {
   } else {
     const fee = pay(b, Math.max(0, b.cash) * 0.03)
     b.costShock = Math.max(1, b.costShock - 0.05)
-    tell(g, 'Into Hard Currency', `You moved the company's ${m.currencyName} cash into dollars (${formatMoney(fee)} in fees and "fees"). Your cash should hold its value better.`, '\u{1F4B5}', 'good')
+    tell(g, 'Into Hard Currency', `You moved the company's ${currencyOf(b.countryId, g.year).name} cash into dollars (${formatMoney(fee)} in fees and "fees"). Your cash should hold its value better.`, '\u{1F4B5}', 'good')
   }
 })
 
 function presentCurrency(g: GameState, a: Asset, b: BizState): void {
-  const m = marketOf(b.countryId)
   const choices: ChoiceOption[] = [
     { id: 'raise', label: 'Raise prices immediately', emoji: '\u{1F3F7}\u{FE0F}' },
     { id: 'hold', label: 'Hold prices to win loyalty', emoji: '\u{1F6E1}\u{FE0F}' },
@@ -550,7 +587,7 @@ function presentCurrency(g: GameState, a: Asset, b: BizState): void {
     g,
     CURRENCY,
     'Currency Crash',
-    `The ${m.currencyName} lost ${randInt(g, 15, 40)}% of its value in a week. Imported inputs cost more, shoppers are panic-buying and ${a.name}'s price tags are already out of date.`,
+    `The ${currencyOf(b.countryId, g.year).name} lost ${randInt(g, 15, 40)}% of its value in a week. Imported inputs cost more, shoppers are panic-buying and ${a.name}'s price tags are already out of date.`,
     choices,
     { emoji: '\u{1F4C9}', data: { assetId: a.id } },
   )
@@ -617,7 +654,7 @@ function presentCelebrity(g: GameState, a: Asset, b: BizState): void {
 const CLAIMS: Record<string, string[]> = {
   food: ['says they found a tooth in their sandwich (not theirs)', 'slipped on a freshly mopped floor and is "never walking the same again"', 'claims your hot sauce was "unreasonably hot"'],
   gym: ['dropped a dumbbell on their own foot and blames the lighting', 'says the treadmill "launched" them'],
-  software: ['says a bug deleted their entire business', 'claims your app leaked their data'],
+  software: ['says a bug deleted their entire business', 'claims your software leaked their data'],
   default: ['says your product ruined their wedding', 'claims your sign fell on their car', 'slipped on the entrance mat and lawyered up'],
 }
 
@@ -742,7 +779,7 @@ function presentEmbezzle(g: GameState, a: Asset, b: BizState): void {
     g,
     EMBEZZLE,
     'Embezzler!',
-    `An audit of the accounts revealed that ${who} has been quietly skimming money: ${formatMoney(amount)} so far, mostly spent on ${pick(g, ['a jet ski', 'crypto that went to zero', 'designer sneakers', 'a racehorse named after themselves'])}.`,
+    `An audit of the accounts revealed that ${who} has been quietly skimming money: ${formatMoney(amount)} so far, mostly spent on ${pick(g, [eraFits(g, b.countryId, 'a jet ski') ? 'a jet ski' : 'a speedboat', eraFits(g, b.countryId, 'crypto') ? 'crypto that went to zero' : 'a can’t-lose stock tip that lost', g.year >= 1980 ? 'designer sneakers' : 'tailored suits', 'a racehorse named after themselves'])}.`,
     choices,
     { emoji: '\u{1F4B0}', data: { assetId: a.id, amount, staffId: s?.id ?? '', who: s ? `${s.firstName} ${s.lastName}` : 'the supervisor' } },
   )
@@ -909,8 +946,9 @@ const POACHED = defineScript('business.ev.poached', (g, choice, data) => {
     tell(g, 'Counteroffer', `${s.firstName} stays, now at ${formatMoney(s.salary)} a year. Loyalty has a price, and that's it.`, '\u{1F4B5}', 'good')
   } else {
     b.staff = b.staff.filter((y) => y.id !== s.id)
-    log(g, `${s.firstName} ${s.lastName} left ${a.name} for a competitor.`, 'neutral')
-    tell(g, 'Gone', `${s.firstName} ${s.lastName} left for the competition. You wished them well through gritted teeth.`, '\u{1F44B}')
+    const rival = str(x.d.rival)
+    log(g, `${s.firstName} ${s.lastName} left ${a.name} for ${rival || 'a competitor'}.`, 'neutral')
+    tell(g, 'Gone', `${s.firstName} ${s.lastName} left for ${rival || 'the competition'}. You wished them well through gritted teeth.`, '\u{1F44B}')
   }
 })
 
@@ -924,7 +962,10 @@ function presentPoached(g: GameState, a: Asset, b: BizState): void {
     counter: [{ p: 1, fx: { value: keepValue(g, b, w, s, { salary: Math.round(s.salary * 1.25), morale: clampN(s.morale + 12, 0, 100) }) } }],
     letGo: [],
   })), (id) => (id === 'counter' ? `Best move: ${s.firstName} is worth more than the raise` : `Best move: ${s.firstName} isn't worth ${money(s.salary * 1.25)} a year`))
-  scriptChoice(g, POACHED, 'Poaching Attempt', `A competitor offered ${s.firstName} ${s.lastName}, your ${s.role}, 25% more money to jump ship.`, choices, { emoji: '\u{1F3A3}', data: { assetId: a.id, staffId: s.id } })
+  // The poacher is a real rival from the company's market (Market & Competition), when it has one.
+  const rival = marketViewOf(g, b).rivals.find((r) => !r.legacy)
+  const who = rival ? `${rival.name}, ${rival.share >= 0.05 ? `with ${shareText(rival.share)} of the market,` : 'a competitor,'}` : 'A competitor'
+  scriptChoice(g, POACHED, 'Poaching Attempt', `${who} offered ${s.firstName} ${s.lastName}, your ${s.role}, 25% more money to jump ship.`, choices, { emoji: '\u{1F3A3}', data: { assetId: a.id, staffId: s.id, rival: rival?.name ?? '' } })
 }
 
 // ---------------------------------------------------------------------------
@@ -952,6 +993,8 @@ const EVENTS: BizEvent[] = [
   { id: 'disaster', weight: (_g, b) => (QUAKE.has(b.countryId) || STORM.has(b.countryId) ? 0.3 : 0.2), present: presentDisaster },
   { id: 'tacos', weight: (_g, b) => (b.employees + b.staff.length >= 4 ? 0.3 : 0), present: presentTacos },
   { id: 'poached', weight: (_g, b) => (b.staff.length > 0 ? 0.35 : 0), present: presentPoached },
+  // Rivals in the company's market: takeover bids, copycats, price wars, scandals, newcomers.
+  ...COMPETITION_EVENTS,
 ]
 
 /**

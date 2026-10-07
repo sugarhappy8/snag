@@ -6,6 +6,8 @@
 // a credit score, marginal tax on extra income and "where do I live now" logic.
 import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, notice, parents, pronouns, relationLabel, remember } from './core'
 import { hasMarketData, marketOf } from './data/markets'
+import { historicalInflation, historicalMortgageRate, inHistory, investingBlocked } from './history/markets'
+import { hasTech } from './history/timeline'
 import { chance, pick, randInt, uid } from './rng'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry, randomFirstName } from './world'
@@ -227,8 +229,22 @@ const LOAN_PRICING: Record<'mortgage' | LoanKind, { mult: number; spread: number
   business: { mult: 1.2, spread: 0.045, min: 0.025, max: 0.32 },
 }
 
-/** A lender's base rate for this kind of loan in a country, before the borrower's credit. */
-export function baseLoanRate(countryId: string, kind: 'mortgage' | LoanKind): number {
+/**
+ * What lenders charged on top of a typical home loan in past years (nominal): car loans a little
+ * more, unsecured personal loans and credit a lot more.
+ */
+const HISTORIC_SPREAD: Record<'mortgage' | LoanKind, number> = { mortgage: 0, car: 0.015, student: -0.005, personal: 0.05, business: 0.025 }
+
+/**
+ * A lender's base rate for this kind of loan in a country, before the borrower's credit. With a
+ * past `year`: the nominal rate of that era (a US mortgage was about 17% in 1981, 3% in 2021).
+ */
+export function baseLoanRate(countryId: string, kind: 'mortgage' | LoanKind, year?: number): number {
+  const hist = year !== undefined ? historicalMortgageRate(countryId, year) : null
+  if (hist !== null) {
+    const r = hist + (HISTORIC_SPREAD[kind] ?? HISTORIC_SPREAD.personal)
+    return Math.round(Math.min(10, Math.max(0.01, r)) * 10000) / 10000
+  }
   const p0 = marketOf(countryId).interestRate
   const p = Number.isFinite(p0) ? Math.max(0, p0) : 0.05
   const pass = p <= 0.06 ? p : 0.06 + 0.6 * (p - 0.06)
@@ -239,11 +255,68 @@ export function baseLoanRate(countryId: string, kind: 'mortgage' | LoanKind): nu
 /** Interest rate a lender offers for this kind of loan given the local market and the borrower's credit. */
 export function offeredRate(g: GameState, kind: 'mortgage' | LoanKind): number {
   const score = creditScore(g)
-  const base = baseLoanRate(g.character.countryId, kind)
+  const base = baseLoanRate(g.character.countryId, kind, g.year)
   const credit = score >= 760 ? -0.012 : score >= 700 ? -0.004 : score >= 640 ? 0.008 : score >= 580 ? 0.02 : 0.035
   // Prime borrowers can't get much below the bank's own funding cost.
   const floor = Math.min(base, Math.max(0.004, base * 0.6))
   return Math.round(Math.max(floor, base + credit) * 10000) / 10000
+}
+
+/**
+ * The real (after-inflation) cost of borrowing in `year`: the era's nominal rate minus that year's
+ * inflation (engine money is constant dollars). Outside history: the usual base rate. For code
+ * that charges interest itself instead of going through character loans (e.g. company debt).
+ */
+export function realBaseLoanRate(countryId: string, kind: 'mortgage' | LoanKind, year: number): number {
+  const infl = historicalInflation(countryId, year)
+  const nominal = baseLoanRate(countryId, kind, year)
+  if (infl === null) return nominal
+  return Math.max(-0.99, (1 + nominal) / (1 + Math.min(1e7, infl)) - 1)
+}
+
+/** What borrowing looked like in an era: whether a lender would even write this loan, and on what terms. */
+export interface LendingEra {
+  available: boolean
+  /** Why not, or the era's catch (shown on the loan screens). */
+  reason: string
+  /** Longest term lenders offered. */
+  maxYears: number
+  /** Smallest down payment lenders accepted (home and car loans). */
+  minDown: number
+}
+
+/** Borrowing in the year being lived (always open in the present and future). */
+export function lendingEra(g: GameState, kind: 'mortgage' | LoanKind): LendingEra {
+  const y = g.year
+  const cid = g.character.countryId
+  const open: LendingEra = { available: true, reason: '', maxYears: 30, minDown: 0 }
+  if (!inHistory(y)) return open
+  if (investingBlocked(cid, y) && kind !== 'student') {
+    return { available: false, reason: kind === 'mortgage' ? 'There are no private mortgages here: the state allocates housing.' : 'Private lending barely exists here: the state bank decides who gets credit.', maxYears: 0, minDown: 1 }
+  }
+  const rich = (getCountry(cid).wealth ?? 0.5) >= 0.6
+  if (kind === 'mortgage') {
+    if (cid === 'cn' && y < 1998) return { available: false, reason: 'Banks here don\'t write home loans to individuals yet.', maxYears: 0, minDown: 1 }
+    if (cid === 'us') {
+      if (y < 1934) return { available: true, reason: 'Banks lend for five to ten years, want half the price up front, and expect the rest in one big final payment.', maxYears: 10, minDown: 0.5 }
+      if (y < 1954) return { available: true, reason: 'New government-backed loans run for up to 20 years with 20% down.', maxYears: 20, minDown: 0.2 }
+      return open
+    }
+    if (rich) {
+      if (y < 1950) return { available: true, reason: 'Home loans are short and banks want a big deposit.', maxYears: 15, minDown: 0.4 }
+      if (y < 1980) return { available: true, reason: 'Banks want a solid deposit and lend for up to 25 years.', maxYears: 25, minDown: 0.2 }
+      return open
+    }
+    if (y < 1990) return { available: true, reason: 'Few banks here lend for homes, and those that do want half up front.', maxYears: 10, minDown: 0.5 }
+    if (y < 2005) return { available: true, reason: 'Home loans are short and expensive, with a big deposit.', maxYears: 15, minDown: 0.3 }
+    return open
+  }
+  if (kind === 'car') {
+    if (y < 1919) return { available: false, reason: 'Nobody lends money for motor cars yet: you pay cash.', maxYears: 0, minDown: 1 }
+    if (y < 1960) return { available: true, reason: 'Dealers finance cars for a couple of years with a third down.', maxYears: 2, minDown: 0.33 }
+    return open
+  }
+  return open
 }
 
 export interface NewLoan {
@@ -492,8 +565,10 @@ export function yearlyFinance(g: GameState): void {
     }
   }
 
-  // 4. Loans: interest, payments, missed payments, payoff.
+  // 4. Loans: interest, payments, missed payments, payoff. In past years inflation also erodes
+  // what's owed (mortgages too: assets.ts charges their interest after this).
   yearlyLoans(g)
+  erodeMortgages(g, inflationFactor(g))
 
   // 5. Life on the street.
   if (c.residence.status === 'homeless' && !c.prison && c.age >= 18) {
@@ -517,12 +592,60 @@ export function yearlyFinance(g: GameState): void {
   if (!g.flags.missedThisYear && num(g.flags.missedPayments) > 0) g.flags.missedPayments = num(g.flags.missedPayments) - 1
 }
 
+/**
+ * Past years are lived in constant dollars, but loans are fixed in the money of the day: each
+ * year's inflation shrinks what's owed and the fixed payment in real terms (the 1970s were kind to
+ * borrowers), and deflation grows them (the 1930s were not). Returns the factor applied (1 = none).
+ */
+function inflationFactor(g: GameState): number {
+  const infl = historicalInflation(g.character.countryId, g.year)
+  if (infl === null || !Number.isFinite(infl)) return 1
+  return 1 / (1 + Math.max(-0.5, Math.min(1e7, infl)))
+}
+
+function erode(n: number, factor: number): number {
+  return Math.max(0, Math.round(n * factor))
+}
+
+/** Inflation erodes every mortgage (runs before assets.ts charges mortgage interest at its nominal rate). */
+function erodeMortgages(g: GameState, factor: number): void {
+  if (factor === 1) return
+  for (const a of g.assets) {
+    const m = a.mortgage
+    if (!m) continue
+    const before = m.balance
+    m.balance = erode(m.balance, factor)
+    m.yearlyPayment = Math.max(m.balance > 0 ? 1 : 0, erode(m.yearlyPayment, factor))
+    if (m.balance < 1) {
+      delete a.mortgage
+      if (before >= 100) log(g, `Inflation wiped out what was left of the mortgage on my ${a.name.toLowerCase()}.`, 'good')
+    }
+  }
+}
+
 function yearlyLoans(g: GameState): void {
   const c = g.character
   const misses = loanMisses(g)
   let paidTotal = 0
+  const factor = inflationFactor(g)
   for (const loan of [...c.loans]) {
     if (!c.loans.includes(loan)) continue
+    if (factor !== 1) {
+      const before = loan.balance
+      loan.balance = erode(loan.balance, factor)
+      loan.yearlyPayment = Math.max(loan.balance > 0 ? 1 : 0, erode(loan.yearlyPayment, factor))
+      if (loan.balance < 1) {
+        c.loans = c.loans.filter((l) => l !== loan)
+        delete misses[loan.id]
+        // Only a real debt melting away in a hyperinflation makes the news.
+        if (before >= 100 && factor < 0.7) {
+          const what = loanLabel(loan.kind).toLowerCase()
+          log(g, `Hyperinflation turned my ${what} into pocket change, and I paid it off.`, 'good')
+          notice(g, 'Inflated Away', `Prices rose so fast that the ${what} you owe ${loan.lender} is now worth less than a loaf of bread. You paid it off with the change in your pocket.`, { emoji: '💸', tone: 'good' })
+        }
+        continue
+      }
+    }
     const interest = Math.max(0, Math.round(loan.balance * loan.rate))
     loan.balance = Math.round(loan.balance + interest)
     // Student loans are deferred while you're still in school.
@@ -623,7 +746,9 @@ function handleDebt(g: GameState): void {
   const lastCalled = num(g.flags.collectorsAge, -99)
   if (c.age - lastCalled >= 5 || lastCalled > c.age) {
     g.flags.collectorsAge = c.age
-    const text = pick(g, COLLECTOR_TEXTS).replace('{debt}', debt).replace('{name}', collectorName(g))
+    // No voicemail before mobile phones (the lines keep their order, so today's picks are unchanged).
+    const mobile = hasTech(g, 'mobilePhone')
+    const text = pick(g, COLLECTOR_TEXTS.filter((t) => mobile || !/voicemail/i.test(t))).replace('{debt}', debt).replace('{name}', collectorName(g))
     notice(g, 'Debt Collectors', text, { emoji: '📞', tone: 'bad' })
     log(
       g,
@@ -634,7 +759,7 @@ function handleDebt(g: GameState): void {
         'I let another unknown number go to voicemail. It was the collectors again.',
         `My ${debt} of debt followed me around like a cloud.`,
         'I learned the first names of every debt collector in town.',
-      ]),
+      ].filter((t) => mobile || !/voicemail/i.test(t))),
       'bad',
     )
   }

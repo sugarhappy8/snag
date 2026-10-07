@@ -2,6 +2,7 @@
 // platforms, scopes, engines, the studios you can work for, the job ladder, awards and the
 // interview questions. Every studio, store, console, engine and award is invented.
 // No game-logic imports here, so the light readers (gamedev-state, the CV) can use it too.
+import { shortMoney } from '../core'
 
 // ---------------------------------------------------------------------------
 // Genres
@@ -321,8 +322,8 @@ export interface EngineDef {
 
 export const ENGINES: EngineDef[] = [
   { id: 'blocks', label: 'Kiddo Blocks', emoji: '\u{1F9F1}', speed: 1.35, bonus: -6, bigBonus: -20, royalty: 0, minSkill: 0, maxScope: 1, note: 'Drag-and-drop blocks. Perfect for kids, limiting for everyone else' },
-  { id: 'cobalt', label: 'Cobalt Engine', emoji: '\u{1F537}', speed: 1.15, bonus: 1, bigBonus: 1, royalty: 0.03, minSkill: 15, maxScope: 4, note: 'Friendly and popular; 3% royalty past $1M' },
-  { id: 'titan', label: 'Titan Engine', emoji: '\u{1F5FF}', speed: 0.95, bonus: 2, bigBonus: 7, royalty: 0.05, minSkill: 40, maxScope: 4, note: 'Gorgeous graphics, steep learning curve; 5% royalty past $1M' },
+  { id: 'cobalt', label: 'Cobalt Engine', emoji: '\u{1F537}', speed: 1.15, bonus: 1, bigBonus: 1, royalty: 0.03, minSkill: 15, maxScope: 4, get note() { return `Friendly and popular; 3% royalty past ${shortMoney(1_000_000)}` } },
+  { id: 'titan', label: 'Titan Engine', emoji: '\u{1F5FF}', speed: 0.95, bonus: 2, bigBonus: 7, royalty: 0.05, minSkill: 40, maxScope: 4, get note() { return `Gorgeous graphics, steep learning curve; 5% royalty past ${shortMoney(1_000_000)}` } },
   { id: 'homebrew', label: 'Your Own Engine', emoji: '\u{1F527}', speed: 0.75, bonus: 0, bigBonus: 0, royalty: 0, minSkill: 55, maxScope: 4, note: 'No royalties, all the bragging rights, twice the bugs' },
 ]
 
@@ -456,6 +457,154 @@ export const AWARDS = {
 export const JOYPAD_CATEGORIES = ['Best Art Direction', 'Best Narrative', 'Best Game Design', 'Best Soundtrack', 'Best Performance', 'Most Innovative']
 
 export const JAM_THEMES = ['Only One Button', 'It Grows', 'Out of Control', 'Small World', 'You Are the Villain', 'Upside Down', 'Delivery', 'Too Many Cats', 'Running Out of Time', 'Opposites Attract']
+
+// ---------------------------------------------------------------------------
+// The game industry by era (pure: everything takes the calendar year)
+//
+// Arcades and the first home consoles in the 70s, home computers and cartridges in the 80s, CDs
+// and 3D in the 90s, digital stores in the 2000s, phones from 2008, VR headsets from 2016. Team
+// sizes grew from one bedroom coder to hundreds. A studio can't ship a phone game in 1995.
+
+/** The first year anyone made video games for money (arcades). */
+export const GAME_INDUSTRY_FROM = 1972
+
+/** First year each platform takes releases. */
+export const PLATFORM_FROM: Record<PlatformId, number> = { console: 1977, pc: 1981, handheld: 1989, multi: 1995, mobile: 2008, vr: 2016 }
+
+/** First year each engine is around (licensed engines came in the late 90s; drag-and-drop kits later). */
+export const ENGINE_FROM: Record<EngineId, number> = { homebrew: GAME_INDUSTRY_FROM, cobalt: 1998, titan: 2005, blocks: 2007 }
+
+/** First year a genre exists as a genre (battle royales are a 2017 thing; cozy games later still). */
+export const GENRE_FROM: Record<GenreId, number> = {
+  sports: 1972,
+  racing: 1974,
+  adventure: 1976,
+  shooter: 1978,
+  rpg: 1980,
+  strategy: 1980,
+  roguelike: 1980,
+  platformer: 1981,
+  puzzle: 1984,
+  sim: 1989,
+  fighting: 1987,
+  horror: 1992,
+  party: 1998,
+  cozy: 2016,
+  battleRoyale: 2017,
+}
+
+/** First year each scope is realistic (no 160-person blockbusters in 1985; game jams need the internet). */
+export const SCOPE_FROM: Record<ScopeId, number> = { small: GAME_INDUSTRY_FROM, indie: 1980, aa: 1990, aaa: 1998, jam: 2002 }
+
+/** Business models and community features by year. */
+export const GAMEDEV_FEATURE_FROM = {
+  /** Patches downloaded over the internet. */
+  patch: 1997,
+  /** Developer blogs and trailers people share online. */
+  devlog: 2004,
+  /** Digital storefront discounts. */
+  sale: 2005,
+  /** Downloadable content. */
+  dlc: 2006,
+  /** Crowdfunding platforms. */
+  crowdfund: 2009,
+  /** Livestreaming your development. */
+  stream: 2011,
+  /** Paid early access. */
+  earlyAccess: 2013,
+} as const
+
+export type GamedevFeature = keyof typeof GAMEDEV_FEATURE_FROM
+
+export function gameIndustryExists(year: number): boolean {
+  return year >= GAME_INDUSTRY_FROM
+}
+
+export function gamedevFeatureOpen(feature: GamedevFeature, year: number): boolean {
+  return year >= GAMEDEV_FEATURE_FROM[feature]
+}
+
+export function platformOpen(id: PlatformId, year: number): boolean {
+  return year >= PLATFORM_FROM[id]
+}
+
+export function engineOpen(id: EngineId, year: number): boolean {
+  return year >= ENGINE_FROM[id]
+}
+
+export function genreOpen(id: GenreId, year: number): boolean {
+  return year >= GENRE_FROM[id]
+}
+
+export function scopeOpen(id: ScopeId, year: number): boolean {
+  return year >= SCOPE_FROM[id]
+}
+
+/** Platforms that take releases this year (a studio menu should offer only these). */
+export function platformsIn(year: number): PlatformDef[] {
+  return PLATFORMS.filter((x) => platformOpen(x.id, year))
+}
+
+export function enginesIn(year: number): EngineDef[] {
+  return ENGINES.filter((x) => engineOpen(x.id, year))
+}
+
+export function genresIn(year: number): GenreDef[] {
+  return GENRES.filter((x) => genreOpen(x.id, year))
+}
+
+export function scopesIn(year: number): ScopeDef[] {
+  return SCOPES.filter((x) => scopeOpen(x.id, year))
+}
+
+/**
+ * The platform a studio's leads pick for a game of this scope in that year: everything at once
+ * for blockbusters (from 1995), consoles for AA, PC for smaller games, falling back to whatever
+ * takes releases that year (no "every platform" launches in 1985). Today: multi / console / pc.
+ */
+export function studioPlatformFor(scopeIndex: number, year: number): PlatformId {
+  const want: PlatformId[] = scopeIndex >= 4 ? ['multi', 'console', 'pc'] : scopeIndex >= 3 ? ['console', 'pc'] : ['pc', 'console']
+  return want.find((id) => platformOpen(id, year)) ?? 'console'
+}
+
+/** The engine a studio's leads pick for that scope and year (licensed engines arrived in the late 1990s). */
+export function studioEngineFor(scopeIndex: number, year: number): EngineId {
+  const want: EngineId[] = scopeIndex >= 3 ? ['titan', 'cobalt', 'homebrew'] : ['cobalt', 'homebrew']
+  return want.find((id) => engineOpen(id, year)) ?? 'homebrew'
+}
+
+/** The platform's name in that year ("PC (PixelPantry)" today, "PC (boxed & shareware)" in 1993). */
+export function platformLabel(id: PlatformId, year: number): string {
+  const d = platformDef(id)
+  if (id === 'pc' && year < 2004) return year < 1990 ? 'Home Computers (cassettes & floppies)' : 'PC (boxed & shareware)'
+  if (id === 'console' && year < 1995) return year < 1985 ? 'Home Consoles (cartridges)' : 'Home Consoles (Orbit & KBox cartridges)'
+  if (id === 'multi' && year < 2005) return 'Every Platform (boxed in stores)'
+  return d.label
+}
+
+/** Where games are sold that year: the digital store, or boxes on shop shelves. */
+export function storeIn(year: number): string {
+  return year >= 2004 ? STORE : 'shop shelves'
+}
+
+/** Typical team size multiplier for that year (a 1985 "big" game had a dozen people, a 2020 one hundreds). */
+export function teamScale(year: number): number {
+  if (year >= 2010) return 1
+  if (year >= 2000) return 0.55
+  if (year >= 1990) return 0.25
+  return 0.1
+}
+
+/** A line of era color for the Game Industry menu ('' for the modern day). */
+export function industryEraLine(year: number): string {
+  if (year < GAME_INDUSTRY_FROM) return ''
+  if (year < 1983) return 'Arcades are booming and the first home consoles plug into the family TV.'
+  if (year < 1990) return 'Games ship on cartridges, cassettes and floppy disks; one programmer can make a hit.'
+  if (year < 1998) return 'CD-ROMs and 3D graphics are changing everything. Teams are growing fast.'
+  if (year < 2008) return 'Big-budget console games rule; indies sell shareware and the first digital stores open.'
+  if (year < 2013) return 'Phones are the new gold rush, and digital stores let small teams sell worldwide.'
+  return ''
+}
 
 // ---------------------------------------------------------------------------
 // Interview questions (offline; one is asked per application)

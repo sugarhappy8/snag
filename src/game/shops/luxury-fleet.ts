@@ -38,15 +38,26 @@ interface YachtClass {
   len: [number, number]
   price: [number, number]
   blurb: string
+  /** First and last year shipyards build this kind (steam yachts before the war, gigayachts lately). */
+  from?: number
+  until?: number
 }
 
 const YACHT_CLASSES: YachtClass[] = [
-  { id: 'superyacht', label: 'Superyacht', len: [40, 55], price: [18_000_000, 42_000_000], blurb: 'Entry-level enormous.' },
-  { id: 'explorer', label: 'Explorer Yacht', len: [50, 78], price: [38_000_000, 95_000_000], blurb: 'Ice-class hull, for billionaires who want to see a penguin.' },
-  { id: 'sailing', label: 'Sailing Megayacht', len: [55, 90], price: [45_000_000, 150_000_000], blurb: 'Masts taller than most apartment buildings.' },
-  { id: 'mega', label: 'Megayacht', len: [70, 110], price: [95_000_000, 320_000_000], blurb: 'Two pools, a cinema and a crew that never makes eye contact.' },
-  { id: 'giga', label: 'Gigayacht', len: [110, 180], price: [300_000_000, 700_000_000], blurb: 'Technically a small country.' },
+  { id: 'superyacht', label: 'Superyacht', len: [40, 55], price: [18_000_000, 42_000_000], blurb: 'Entry-level enormous.', from: 1975 },
+  { id: 'explorer', label: 'Explorer Yacht', len: [50, 78], price: [38_000_000, 95_000_000], blurb: 'Ice-class hull, for billionaires who want to see a penguin.', from: 1995 },
+  { id: 'sailing', label: 'Sailing Megayacht', len: [55, 90], price: [45_000_000, 150_000_000], blurb: 'Masts taller than most apartment buildings.', from: 1985 },
+  { id: 'mega', label: 'Megayacht', len: [70, 110], price: [95_000_000, 320_000_000], blurb: 'Two pools, a cinema and a crew that never makes eye contact.', from: 1985 },
+  { id: 'giga', label: 'Gigayacht', len: [110, 180], price: [300_000_000, 700_000_000], blurb: 'Technically a small country.', from: 2005 },
+  // Earlier decades (appended so today's dealership is unchanged).
+  { id: 'steam', label: 'Steam Yacht', len: [40, 90], price: [15_000_000, 80_000_000], blurb: 'Coal-fired, mahogany-paneled and staffed like a small hotel.', until: 1939 },
+  { id: 'motor', label: 'Motor Yacht', len: [35, 65], price: [12_000_000, 45_000_000], blurb: 'Diesel engines, a teak deck and a cocktail hour that starts at noon.', from: 1925, until: 1984 },
+  { id: 'schooner', label: 'Grand Schooner', len: [40, 60], price: [10_000_000, 35_000_000], blurb: 'Three masts, acres of canvas and a crew that sings while it works.', until: 1984 },
 ]
+
+function yachtClassesNow(g: GameState): YachtClass[] {
+  return YACHT_CLASSES.filter((c) => g.year >= (c.from ?? 0) && g.year <= (c.until ?? Infinity))
+}
 
 const SHIPYARDS = ['Marchetti Cantieri', 'Van der Hoek Jachtbouw', 'Kronwerft Bremen', 'Halvorsen Yards', 'Océanique', 'Bosphorus Marine', 'Tasman Superyachts', 'Viareggio Royale']
 
@@ -63,17 +74,28 @@ interface JetClass {
   trip: number
   emoji: string
   blurb: string
+  /** First and last year it's for sale (business jets from the 1960s, flying boats before). */
+  from?: number
+  until?: number
 }
 
 const JET_CLASSES: JetClass[] = [
-  { id: 'midsize', label: 'Super-Midsize Jet', models: ['Stratoline G-350', 'Falconetti 6X', 'Bombastique Challenger 400'], price: [18_000_000, 32_000_000], seats: [8, 10], range: 3_500, crew: 600_000, trip: 30_000, emoji: '✈️', blurb: 'Coast to coast without stopping for snacks.' },
-  { id: 'amphib', label: 'Amphibious Seajet', models: ['Halcyon SeaJet 4', 'Halcyon SeaJet 6'], price: [26_000_000, 45_000_000], seats: [6, 10], range: 2_400, crew: 550_000, trip: 35_000, emoji: '🛩️', blurb: 'Lands on runways, lagoons and the occasional swimming pool.' },
-  { id: 'largeCabin', label: 'Large-Cabin Jet', models: ['Stratoline G-650', 'Falconetti 10X', 'Bombastique Global 6500'], price: [48_000_000, 72_000_000], seats: [12, 16], range: 6_500, crew: 900_000, trip: 60_000, emoji: '✈️', blurb: 'A living room that does Mach 0.9.' },
-  { id: 'ultraLong', label: 'Ultra-Long-Range Jet', models: ['Stratoline G-950', 'Bombastique Global 9000'], price: [72_000_000, 92_000_000], seats: [14, 19], range: 7_700, crew: 1_100_000, trip: 90_000, emoji: '✈️', blurb: 'Sydney to New York nonstop, with a nap in an actual bed.' },
-  { id: 'supersonic', label: 'Supersonic Business Jet', models: ['Mach Royale SST', 'Concordia Neo'], price: [150_000_000, 220_000_000], seats: [8, 12], range: 4_250, crew: 1_500_000, trip: 180_000, emoji: '🚀', blurb: 'London to New York in three and a half hours. The boom is extra.' },
-  { id: 'airliner', label: 'VIP Narrowbody Airliner', models: ['Skybridge 7-Max VIP', 'Aerostar 320 Prestige'], price: [100_000_000, 140_000_000], seats: [19, 50], range: 6_000, crew: 2_200_000, trip: 140_000, emoji: '✈️', blurb: 'An airliner with exactly one passenger who matters.' },
-  { id: 'widebody', label: 'VIP Widebody Airliner', models: ['Skybridge 8-Heavy VIP', 'Aerostar 350 Palace'], price: [250_000_000, 450_000_000], seats: [40, 90], range: 9_500, crew: 4_500_000, trip: 320_000, emoji: '✈️', blurb: 'Bedrooms, a dining room and a staircase. On a plane.' },
+  { id: 'midsize', label: 'Super-Midsize Jet', models: ['Stratoline G-350', 'Falconetti 6X', 'Bombastique Challenger 400'], price: [18_000_000, 32_000_000], seats: [8, 10], range: 3_500, crew: 600_000, trip: 30_000, emoji: '✈️', blurb: 'Coast to coast without stopping for snacks.', from: 1975 },
+  { id: 'amphib', label: 'Amphibious Seajet', models: ['Halcyon SeaJet 4', 'Halcyon SeaJet 6'], price: [26_000_000, 45_000_000], seats: [6, 10], range: 2_400, crew: 550_000, trip: 35_000, emoji: '🛩️', blurb: 'Lands on runways, lagoons and the occasional swimming pool.', from: 1965 },
+  { id: 'largeCabin', label: 'Large-Cabin Jet', models: ['Stratoline G-650', 'Falconetti 10X', 'Bombastique Global 6500'], price: [48_000_000, 72_000_000], seats: [12, 16], range: 6_500, crew: 900_000, trip: 60_000, emoji: '✈️', blurb: 'A living room that does Mach 0.9.', from: 1968 },
+  { id: 'ultraLong', label: 'Ultra-Long-Range Jet', models: ['Stratoline G-950', 'Bombastique Global 9000'], price: [72_000_000, 92_000_000], seats: [14, 19], range: 7_700, crew: 1_100_000, trip: 90_000, emoji: '✈️', blurb: 'Sydney to New York nonstop, with a nap in an actual bed.', from: 1997 },
+  { id: 'supersonic', label: 'Supersonic Business Jet', models: ['Mach Royale SST', 'Concordia Neo'], price: [150_000_000, 220_000_000], seats: [8, 12], range: 4_250, crew: 1_500_000, trip: 180_000, emoji: '🚀', blurb: 'London to New York in three and a half hours. The boom is extra.', from: 2020 },
+  { id: 'airliner', label: 'VIP Narrowbody Airliner', models: ['Skybridge 7-Max VIP', 'Aerostar 320 Prestige'], price: [100_000_000, 140_000_000], seats: [19, 50], range: 6_000, crew: 2_200_000, trip: 140_000, emoji: '✈️', blurb: 'An airliner with exactly one passenger who matters.', from: 1960 },
+  { id: 'widebody', label: 'VIP Widebody Airliner', models: ['Skybridge 8-Heavy VIP', 'Aerostar 350 Palace'], price: [250_000_000, 450_000_000], seats: [40, 90], range: 9_500, crew: 4_500_000, trip: 320_000, emoji: '✈️', blurb: 'Bedrooms, a dining room and a staircase. On a plane.', from: 1970 },
+  // Earlier decades (appended so today's brokerage is unchanged).
+  { id: 'flyingBoat', label: 'Luxury Flying Boat', models: ['Halcyon Clipper 30', 'Marchetti Idrovolante'], price: [6_000_000, 15_000_000], seats: [10, 24], range: 2_500, crew: 350_000, trip: 20_000, emoji: '🛩️', blurb: 'A hotel with wings that lands in harbors.', from: 1930, until: 1952 },
+  { id: 'propliner', label: 'Executive Propliner', models: ['Stratoline Constellation', 'Aerostar Clipper'], price: [8_000_000, 20_000_000], seats: [12, 30], range: 3_000, crew: 400_000, trip: 25_000, emoji: '🛩️', blurb: 'Four roaring propellers, a cocktail bar and a steward in white gloves.', from: 1946, until: 1965 },
+  { id: 'tourer', label: 'Private Touring Biplane', models: ['Halcyon Tourer', 'Falconetti Aero 2'], price: [800_000, 2_500_000], seats: [2, 4], range: 500, crew: 120_000, trip: 4_000, emoji: '🛩️', blurb: 'Open cockpit, leather goggles and a scarf that will not stop flapping.', from: 1919, until: 1945 },
 ]
+
+function jetClassesNow(g: GameState): JetClass[] {
+  return JET_CLASSES.filter((c) => g.year >= (c.from ?? 0) && g.year <= (c.until ?? Infinity))
+}
 
 export interface Interior {
   id: string
@@ -85,15 +107,17 @@ export interface Interior {
   /** Only on hulls / cabins at least this big (meters for yachts, seats for jets). */
   minSize?: number
   note: string
+  /** First year it can be fitted (no satellite Wi-Fi in 1970). */
+  from?: number
 }
 
 export const YACHT_INTERIORS: Interior[] = [
   { id: 'classic', label: 'Classic teak & brass', emoji: '🪵', mult: 1, note: 'Timeless. Your grandfather would approve, if he could afford it.' },
   { id: 'minimal', label: 'Minimalist Scandinavian', emoji: '🤍', mult: 1.03, note: 'So minimalist there is nowhere to put a drink down.' },
-  { id: 'nightclub', label: 'Floating nightclub', emoji: '🪩', mult: 1.07, note: 'A dance floor, a DJ booth and a bar that rises out of the deck.' },
-  { id: 'helipad', label: 'Twin helipads & beach club', emoji: '🚁', mult: 1.06, minSize: 50, note: 'Fold-down beach club at the stern, helicopters on top.' },
-  { id: 'eco', label: 'Hybrid-electric eco refit', emoji: '🌱', mult: 1.08, upkeep: -0.015, note: 'Silent electric cruising. Activists still yell, but more quietly.' },
-  { id: 'sub', label: 'Submarine garage', emoji: '🐠', mult: 1.15, minSize: 60, note: 'A two-person submarine in the hull for looking at fish and shipwrecks.' },
+  { id: 'nightclub', label: 'Floating nightclub', emoji: '🪩', mult: 1.07, note: 'A dance floor, a DJ booth and a bar that rises out of the deck.', from: 1975 },
+  { id: 'helipad', label: 'Twin helipads & beach club', emoji: '🚁', mult: 1.06, minSize: 50, note: 'Fold-down beach club at the stern, helicopters on top.', from: 1965 },
+  { id: 'eco', label: 'Hybrid-electric eco refit', emoji: '🌱', mult: 1.08, upkeep: -0.015, note: 'Silent electric cruising. Activists still yell, but more quietly.', from: 2008 },
+  { id: 'sub', label: 'Submarine garage', emoji: '🐠', mult: 1.15, minSize: 60, note: 'A two-person submarine in the hull for looking at fish and shipwrecks.', from: 1990 },
   { id: 'gold', label: 'Gold-plated everything', emoji: '🪙', mult: 1.12, upkeep: 0.005, note: 'Gold taps, gold rails, a gold toilet. The crew wears sunglasses indoors.' },
 ]
 
@@ -101,7 +125,7 @@ export const JET_INTERIORS: Interior[] = [
   { id: 'boardroom', label: 'Flying boardroom', emoji: '💼', mult: 1, note: 'A conference table, satellite Wi-Fi and a whiteboard nobody uses.' },
   { id: 'suite', label: 'Master bedroom suite', emoji: '🛏️', mult: 1.04, note: 'A king bed at 45,000 feet. Seat belts are optional, sort of.' },
   { id: 'spa', label: 'Sky spa with rain shower', emoji: '🚿', mult: 1.05, note: 'A steam shower in the sky. The pilots asked you to keep it under ten minutes.' },
-  { id: 'cinema', label: 'Cinema & cocktail lounge', emoji: '🍸', mult: 1.04, note: 'A 90-inch screen and a bartender who flies with you.' },
+  { id: 'cinema', label: 'Cinema & cocktail lounge', emoji: '🍸', mult: 1.04, note: 'A 90-inch screen and a bartender who flies with you.', from: 2005 },
   { id: 'pets', label: 'Pet lounge', emoji: '🐕', mult: 1.02, note: 'Heated dog beds, a scratching tower and one fire hydrant.' },
   { id: 'gym', label: 'Onboard gym', emoji: '🏋️', mult: 1.03, minSize: 14, note: 'A rowing machine at cruising altitude. The flight attendants think you are showing off.' },
   { id: 'gold', label: 'Gold-plated everything', emoji: '🪙', mult: 1.1, note: 'Even the seat belts. Especially the seat belts.' },
@@ -146,8 +170,10 @@ function jetClass(id: string): JetClass | undefined {
 export function yachtListings(g: GameState): YachtListing[] {
   const r = seeded(yearKey(g, 'luxury:yachts'))
   const out: YachtListing[] = []
+  const classes = yachtClassesNow(g)
+  if (classes.length === 0) return out
   for (let i = 0; i < 5; i++) {
-    const cls = i < YACHT_CLASSES.length ? YACHT_CLASSES[i] : r.pick(YACHT_CLASSES)
+    const cls = i < classes.length ? classes[i] : r.pick(classes)
     const lengthM = r.int(cls.len[0], cls.len[1])
     const t = (lengthM - cls.len[0]) / Math.max(1, cls.len[1] - cls.len[0])
     const price = nicePrice((cls.price[0] + (cls.price[1] - cls.price[0]) * Math.pow(t, 1.2)) * r.float(0.92, 1.08))
@@ -171,8 +197,8 @@ export function yachtListings(g: GameState): YachtListing[] {
 export function jetListings(g: GameState): JetListing[] {
   const r = seeded(yearKey(g, 'luxury:jets'))
   const out: JetListing[] = []
-  const order = [...JET_CLASSES]
-  for (let i = 0; i < 5; i++) {
+  const order = jetClassesNow(g)
+  for (let i = 0; i < 5 && order.length > 0; i++) {
     const cls = order.splice(r.int(0, order.length - 1), 1)[0]
     const price = nicePrice(r.float(cls.price[0], cls.price[1]))
     const l: JetListing = {
@@ -192,8 +218,10 @@ export function jetListings(g: GameState): JetListing[] {
   return out.sort((a, b) => a.price - b.price)
 }
 
-export function interiorsFor(kind: 'megayacht' | 'jet', size: number): Interior[] {
-  return (kind === 'megayacht' ? YACHT_INTERIORS : JET_INTERIORS).filter((x) => !x.minSize || size >= x.minSize)
+export function interiorsFor(kind: 'megayacht' | 'jet', size: number, year = Infinity): Interior[] {
+  const fits = (kind === 'megayacht' ? YACHT_INTERIORS : JET_INTERIORS).filter((x) => !x.minSize || size >= x.minSize)
+  const now = fits.filter((x) => year >= (x.from ?? 0))
+  return now.length ? now : fits
 }
 
 function interiorById(kind: 'megayacht' | 'jet', id: string): Interior | undefined {
@@ -237,7 +265,7 @@ export function buyYacht(g: GameState, l: YachtListing, interiorId: string): Ass
     notice(g, 'Sold!', 'An oligarch put down a deposit on that hull this morning. In cash. In a duffel bag.', { emoji: '🏷️' })
     return null
   }
-  const interior = interiorsFor('megayacht', l.lengthM).find((x) => x.id === interiorId) ?? YACHT_INTERIORS[0]
+  const interior = interiorsFor('megayacht', l.lengthM, g.year).find((x) => x.id === interiorId) ?? YACHT_INTERIORS[0]
   const price = buildPrice(l.price, interior)
   if (!spend(g, price)) {
     cantAfford(g, price, `a ${l.lengthM} m ${l.label.toLowerCase()}`)
@@ -302,11 +330,11 @@ export function buyJet(g: GameState, l: JetListing, interiorId: string): Asset |
     return null
   }
   if (isListingBought(g, l.id)) {
-    notice(g, 'Sold!', 'A tech founder bought that airframe five minutes ago so he could tweet about it.', { emoji: '🏷️' })
+    notice(g, 'Sold!', g.year >= 2008 ? 'A tech founder bought that airframe five minutes ago so he could tweet about it.' : 'An oil baron bought that airframe five minutes ago so he could tell his club about it.', { emoji: '🏷️' })
     return null
   }
   const cls = jetClass(l.classId)
-  const interior = interiorsFor('jet', l.seats).find((x) => x.id === interiorId) ?? JET_INTERIORS[0]
+  const interior = interiorsFor('jet', l.seats, g.year).find((x) => x.id === interiorId) ?? JET_INTERIORS[0]
   const price = buildPrice(l.price, interior)
   if (!spend(g, price)) {
     cantAfford(g, price, `the ${l.model}`)
@@ -351,9 +379,13 @@ export function buyJet(g: GameState, l: JetListing, interiorId: string): Asset |
   const pilot = hasLicense(g, 'pilot')
     ? "With your pilot's license you can take the left seat yourself; a copilot and cabin crew come with it."
     : `You don't have a pilot's license, so a full crew flies it for about ${formatMoney(jetCrewCost(g, asset))} a year.`
-  remember(g, `Bought a custom ${l.model} jet (${l.label.toLowerCase()}) called ${name} for ${formatMoney(price)}.`)
-  log(g, `I bought a custom ${l.model} jet for ${formatMoney(price)} and named it ${name}.`, 'good')
-  notice(g, 'Wheels Up!', `Your ${l.model} rolled out of the hangar with ${name} painted on the tail and a ${interior.label.toLowerCase()} inside. ${interior.note} ${pilot} All-in running costs: about ${formatMoney(asset.upkeep)} a year.`, { emoji: asset.emoji, tone: 'good' })
+  // Flying boats and propliners are planes, not jets.
+  const craft = (cls?.from ?? 1960) >= 1960 ? 'jet' : 'plane'
+  remember(g, `Bought a custom ${l.model} ${craft} (${l.label.toLowerCase()}) called ${name} for ${formatMoney(price)}.`)
+  log(g, `I bought a custom ${l.model} ${craft} for ${formatMoney(price)} and named it ${name}.`, 'good')
+  // Before satellite internet, the flying boardroom had a radio telephone.
+  const note = g.year < 2005 ? interior.note.replace('satellite Wi-Fi', 'a radio telephone') : interior.note
+  notice(g, 'Wheels Up!', `Your ${l.model} rolled out of the hangar with ${name} painted on the tail and a ${interior.label.toLowerCase()} inside. ${note} ${pilot} All-in running costs: about ${formatMoney(asset.upkeep)} a year.`, { emoji: asset.emoji, tone: 'good' })
   return asset
 }
 
@@ -369,8 +401,8 @@ const BUY_JET = defineScript('luxury.jet.buy', (g, choice, data) => {
   buyJet(g, l, choice)
 })
 
-function interiorChoices(kind: 'megayacht' | 'jet', size: number, base: number): ChoiceOption[] {
-  const opts: ChoiceOption[] = interiorsFor(kind, size).map((x) => ({ id: x.id, label: `${x.label} (${formatMoney(buildPrice(base, x))})`, emoji: x.emoji }))
+function interiorChoices(kind: 'megayacht' | 'jet', size: number, base: number, year: number): ChoiceOption[] {
+  const opts: ChoiceOption[] = interiorsFor(kind, size, year).map((x) => ({ id: x.id, label: `${x.label} (${formatMoney(buildPrice(base, x))})`, emoji: x.emoji }))
   opts.push({ id: 'cancel', label: 'Keep browsing', emoji: '✖️' })
   return opts
 }
@@ -392,7 +424,7 @@ function yachtListingAction(l: YachtListing): MenuAction {
         `🧾 Running costs: about ${Math.round(l.upkeepRate * 100)}% of the price a year (${formatMoney(nicePrice(l.price * l.upkeepRate))}): crew, fuel, berths, insurance-grade paranoia.`,
         `No boating license needed: your captain drives. Pick the interior:`,
       ].join('\n')
-      scriptChoice(g, BUY_YACHT, `🛥️ ${l.lengthM} m ${l.label}`, text, interiorChoices('megayacht', l.lengthM, l.price), { emoji: '🛥️', data: { listing: toJson(l) } })
+      scriptChoice(g, BUY_YACHT, `🛥️ ${l.lengthM} m ${l.label}`, text, interiorChoices('megayacht', l.lengthM, l.price, g.year), { emoji: '🛥️', data: { listing: toJson(l) } })
     },
   }
 }
@@ -416,7 +448,7 @@ function jetListingAction(l: JetListing): MenuAction {
         hasLicense(g, 'pilot') ? `👨‍✈️ You can fly it yourself; a copilot and cabin crew cost about ${formatMoney(crew)} a year.` : `👨‍✈️ No pilot's license: a full crew costs about ${formatMoney(crew)} a year.`,
         'Pick the interior:',
       ].join('\n')
-      scriptChoice(g, BUY_JET, `${cls?.emoji ?? '✈️'} ${l.model}`, text, interiorChoices('jet', l.seats, l.price), { emoji: cls?.emoji ?? '✈️', data: { listing: toJson(l) } })
+      scriptChoice(g, BUY_JET, `${cls?.emoji ?? '✈️'} ${l.model}`, text, interiorChoices('jet', l.seats, l.price, g.year), { emoji: cls?.emoji ?? '✈️', data: { listing: toJson(l) } })
     },
   }
 }
@@ -426,7 +458,7 @@ export const megayachtDealerMenu: MenuGroup = {
   id: 'luxuryYachts',
   label: 'Luxury Boat Dealership',
   emoji: '🛥️',
-  subtitle: 'Custom megayachts, 40 to 180 meters',
+  subtitle: (g) => (g.year >= 2005 ? 'Custom megayachts, 40 to 180 meters' : g.year >= 1975 ? 'Custom superyachts, 40 to 110 meters' : 'Custom yachts, built to order'),
   disabledReason: luxuryReason,
   header: (g) => `"If you have to ask about the fuel bill, this is the wrong dealership." Every hull is built to order with the interior of your choice and priced in US dollars worldwide. You have ${formatMoney(g.character.money)}.`,
   children: (g) => {
@@ -440,9 +472,9 @@ export const jetBrokerMenu: MenuGroup = {
   id: 'luxuryJets',
   label: 'Luxury Aircraft Brokerage',
   emoji: '🛩️',
-  subtitle: 'Custom jets and VIP airliners',
+  subtitle: (g) => (g.year >= 1970 ? 'Custom jets and VIP airliners' : g.year >= 1960 ? 'Private planes and the first business jets' : g.year >= 1919 ? 'Private planes and flying boats' : 'Nothing that flies is for sale yet'),
   disabledReason: luxuryReason,
-  header: (g) => `"We don't sell planes. We sell never waiting in line again." ${hasLicense(g, 'pilot') ? "You have a pilot's license, so you can fly yourself." : "Without a pilot's license, a crew comes with every jet."} You have ${formatMoney(g.character.money)}.`,
+  header: (g) => `"We don't sell planes. We sell never waiting in line again." ${hasLicense(g, 'pilot') ? "You have a pilot's license, so you can fly yourself." : `Without a pilot's license, a crew comes with every ${g.year >= 1960 ? 'jet' : 'plane'}.`} You have ${formatMoney(g.character.money)}.`,
   children: (g) => {
     const list = jetListings(g)
     return list.length ? list.map(jetListingAction) : [{ type: 'info', id: 'lux-jet-none', text: 'The broker has nothing left to sell you this year.', emoji: '🛬' }]

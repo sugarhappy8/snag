@@ -2,6 +2,7 @@
 // animates five horses down the track for ~5 seconds so the predetermined winner
 // crosses the line first, then reports 'done'.
 import { useEffect, useRef, useState } from 'react'
+import { formatMoney } from '../../game/core'
 import type { Json } from '../../game/types'
 import type { MinigameProps } from './types'
 
@@ -98,10 +99,6 @@ function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd']
   const v = n % 100
   return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
-}
-
-function formatMoney(n: number): string {
-  return `$${Math.round(n).toLocaleString('en-US')}`
 }
 
 const HORSE_W = 34

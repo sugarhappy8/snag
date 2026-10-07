@@ -1,7 +1,7 @@
 // Graveyard: every past life with its ribbon, years, cause of death and net worth. Tap a grave
 // to read the obituary; sort like the original's cemetery; bulldoze graves you'd rather forget.
 import { useMemo, useState } from 'react'
-import { formatMoney, shortMoney } from '../../game/core'
+import { formatMoney, shortMoney, withMoneyContext } from '../../game/core'
 import { getRibbon } from '../../game/ribbons'
 import { loadGraveyard, removeFromGraveyard, type GraveyardEntry } from '../../game/save'
 import { goBack, goTo } from '../store'
@@ -66,6 +66,7 @@ export function readGraves(): GraveyardEntry[] {
       age: num(e.age),
       causeOfDeath: typeof e.causeOfDeath === 'string' && e.causeOfDeath ? e.causeOfDeath : 'Unknown causes',
       netWorth: num(e.netWorth),
+      countryId: typeof e.countryId === 'string' ? e.countryId : undefined,
       occupation: typeof e.occupation === 'string' ? e.occupation : '',
       ribbon: typeof e.ribbon === 'string' ? e.ribbon : null,
       obituary: typeof e.obituary === 'string' ? e.obituary : null,
@@ -124,7 +125,7 @@ export function GraveyardScreen() {
               <span>oldest age</span>
             </div>
             <div>
-              <strong>{stats.richest ? shortMoney(stats.richest.netWorth) : '–'}</strong>
+              <strong>{stats.richest ? withMoneyContext(stats.richest.countryId ? { countryId: stats.richest.countryId, year: stats.richest.diedYear } : null, () => shortMoney(stats.richest!.netWorth)) : '–'}</strong>
               <span>richest</span>
             </div>
           </section>
@@ -160,7 +161,7 @@ export function GraveyardScreen() {
                         {e.bornYear}–{e.diedYear} · age {e.age} · {e.causeOfDeath}
                       </span>
                     </span>
-                    <span className={`grave-worth ${e.netWorth < 0 ? 'neg' : ''}`}>{shortMoney(e.netWorth)}</span>
+                    <span className={`grave-worth ${e.netWorth < 0 ? 'neg' : ''}`}>{withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear } : null, () => shortMoney(e.netWorth))}</span>
                   </button>
                   {isOpen ? (
                     <div className="grave-body">
@@ -171,7 +172,7 @@ export function GraveyardScreen() {
                           </span>
                         ) : null}
                         <span className="grave-tag">💼 {e.occupation || 'Unemployed'}</span>
-                        <span className="grave-tag">💰 {formatMoney(e.netWorth)}</span>
+                        <span className="grave-tag">💰 {withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear } : null, () => formatMoney(e.netWorth))}</span>
                         {e.generation > 1 ? <span className="grave-tag">🌳 Generation {e.generation}</span> : null}
                       </div>
                       <p className="grave-obit">{e.obituary?.trim() || `${e.name} died of ${e.causeOfDeath.toLowerCase()} at ${e.age}. No obituary was written.`}</p>

@@ -37,7 +37,7 @@ export const effectsSchema: JsonSchema = object({
   looks: INT,
   karma: INT,
   fame: INT,
-  money: INT,
+  money: { type: 'number' },
   relationships: { type: 'array', maxItems: 4, items: object({ name: STR, delta: INT }) },
   newPerson: object({
     relation: { type: 'string', enum: [...NEW_PERSON_RELATIONS] },
@@ -241,18 +241,23 @@ export function str(v: unknown, max = 400): string {
 
 /** Integer from a number or numeric text ("+10", "-$1,500", "5%"), clamped. */
 export function int(v: unknown, lo: number, hi: number, def = 0): number {
+  return Math.round(numeric(v, lo, hi, def))
+}
+
+/** Display money can be fractional in old years or very large during hyperinflation. */
+function numeric(v: unknown, lo: number, hi: number, def = 0): number {
   let n: number | undefined
   if (typeof v === 'number' && Number.isFinite(v)) n = v
   else if (typeof v === 'string') {
-    const m = /([-+]?)\s*\$?\s*(\d[\d,]*(?:\.\d+)?)\s*([kKmM])?/.exec(v)
+    const m = /([-+−]?)\s*[^\d\s+−-]{0,4}\s*(\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*([kKmMbB](?=\s|$))?/.exec(v)
     if (m) {
       n = Number(m[2].replace(/,/g, ''))
-      if (m[3]) n *= m[3].toLowerCase() === 'k' ? 1_000 : 1_000_000
-      if (m[1] === '-') n = -n
+      if (m[3]) n *= m[3].toLowerCase() === 'k' ? 1_000 : m[3].toLowerCase() === 'm' ? 1_000_000 : 1_000_000_000
+      if (m[1] === '-' || m[1] === '−') n = -n
     }
   }
   if (n === undefined || !Number.isFinite(n)) return def
-  return Math.round(Math.max(lo, Math.min(hi, n)))
+  return Math.max(lo, Math.min(hi, n))
 }
 
 function bool(v: unknown, def: boolean): boolean {
@@ -456,7 +461,7 @@ export function validateEffects(v: unknown): AiEffects {
     looks: int(v.looks, -20, 20),
     karma: int(v.karma, -25, 25),
     fame: int(v.fame, -15, 15),
-    money: int(v.money, -1e9, 1e9),
+    money: numeric(v.money, -1e40, 1e40),
     relationships,
     newPerson: newPerson(v.newPerson ?? v.new_person),
     condition,

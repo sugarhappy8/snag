@@ -7,6 +7,7 @@
 // - g.flags.screenTime: { age, hours } computer sessions this year (parents notice; grades suffer).
 //   Anything done at the computer (either side) can call addScreenTime.
 import type { GameState, Json } from '../types'
+import { eraOpen, type EraGate } from './era'
 
 const KEY = 'codingSkill'
 const LANGS_KEY = 'codingLangs'
@@ -59,19 +60,58 @@ export interface CodingLanguage {
   good: string
   /** What it unlocks: 'web', 'apps', 'games', 'data', 'systems', 'mods', 'kids'. */
   uses: string[]
+  /** When you can learn it at home (BASIC on an 80s micro, Swift once phones run apps...). */
+  era?: EraGate
+  /** The blurb before phones ran apps (JavaScript was for web pages, Java for applets). */
+  goodBeforeApps?: string
 }
 
 export const CODING_LANGUAGES: CodingLanguage[] = [
-  { id: 'scratch', label: 'Scratch', emoji: '\u{1F431}', minAge: 8, maxAge: 14, difficulty: 0.05, good: 'Drag-and-drop blocks and a cartoon cat', uses: ['kids'] },
-  { id: 'html', label: 'HTML & CSS', emoji: '\u{1F310}', minAge: 9, difficulty: 0.15, good: 'Websites (technically not programming, says everyone)', uses: ['web'] },
-  { id: 'python', label: 'Python', emoji: '\u{1F40D}', minAge: 9, difficulty: 0.3, good: 'Scripts, bots, data and nearly everything', uses: ['data', 'web', 'bots'] },
-  { id: 'javascript', label: 'JavaScript', emoji: '\u{1F7E8}', minAge: 10, difficulty: 0.4, good: 'Web apps, browser extensions, chaos', uses: ['web', 'apps', 'bots', 'browser'] },
-  { id: 'lua', label: 'Lua', emoji: '\u{1F319}', minAge: 10, difficulty: 0.3, good: 'Game mods and scripting', uses: ['mods', 'games'] },
-  { id: 'sql', label: 'SQL', emoji: '\u{1F5C4}\u{FE0F}', minAge: 12, difficulty: 0.35, good: 'Databases (every business runs on one)', uses: ['data'] },
-  { id: 'swift', label: 'Swift', emoji: '\u{1F426}', minAge: 12, difficulty: 0.5, good: 'Phone apps', uses: ['apps'] },
-  { id: 'cpp', label: 'C++', emoji: '\u{2699}\u{FE0F}', minAge: 13, difficulty: 0.75, good: 'Games and engines (and segfaults)', uses: ['games', 'systems'] },
-  { id: 'rust', label: 'Rust', emoji: '\u{1F980}', minAge: 14, difficulty: 0.85, good: 'Fast, safe systems code; you will mention it often', uses: ['systems', 'web'] },
+  { id: 'scratch', label: 'Scratch', emoji: '\u{1F431}', minAge: 8, maxAge: 14, difficulty: 0.05, good: 'Drag-and-drop blocks and a cartoon cat', uses: ['kids'], era: { tech: 'internet', from: 2007 } },
+  { id: 'html', label: 'HTML & CSS', emoji: '\u{1F310}', minAge: 9, difficulty: 0.15, good: 'Websites (technically not programming, says everyone)', uses: ['web'], era: { tech: 'internet', from: 1993 } },
+  { id: 'python', label: 'Python', emoji: '\u{1F40D}', minAge: 9, difficulty: 0.3, good: 'Scripts, bots, data and nearly everything', uses: ['data', 'web', 'bots'], era: { tech: 'internet', from: 1995 } },
+  { id: 'javascript', label: 'JavaScript', emoji: '\u{1F7E8}', minAge: 10, difficulty: 0.4, good: 'Web apps, browser extensions, chaos', goodBeforeApps: 'Web pages that blink, pop up and occasionally work', uses: ['web', 'apps', 'bots', 'browser'], era: { tech: 'internet', from: 1996 } },
+  { id: 'lua', label: 'Lua', emoji: '\u{1F319}', minAge: 10, difficulty: 0.3, good: 'Game mods and scripting', uses: ['mods', 'games'], era: { from: 2003 } },
+  { id: 'sql', label: 'SQL', emoji: '\u{1F5C4}\u{FE0F}', minAge: 12, difficulty: 0.35, good: 'Databases (every business runs on one)', uses: ['data'], era: { from: 1986 } },
+  { id: 'swift', label: 'Swift', emoji: '\u{1F426}', minAge: 12, difficulty: 0.5, good: 'Phone apps', uses: ['apps'], era: { tech: 'smartphone', from: 2014 } },
+  { id: 'cpp', label: 'C++', emoji: '\u{2699}\u{FE0F}', minAge: 13, difficulty: 0.75, good: 'Games and engines (and segfaults)', uses: ['games', 'systems'], era: { from: 1987 } },
+  { id: 'rust', label: 'Rust', emoji: '\u{1F980}', minAge: 14, difficulty: 0.85, good: 'Fast, safe systems code; you will mention it often', uses: ['systems', 'web'], era: { from: 2015 } },
+  // The languages of earlier home computers (appended so old saves keep their ids).
+  { id: 'basic', label: 'BASIC', emoji: '\u{1F4DF}', minAge: 8, difficulty: 0.1, good: 'Type-in games from magazines; 10 PRINT "HELLO"', uses: ['kids', 'games'], era: { tech: 'homeComputer', until: 1999 } },
+  { id: 'logo', label: 'Logo', emoji: '\u{1F422}', minAge: 7, maxAge: 13, difficulty: 0.05, good: 'Steer a little turtle that draws shapes', uses: ['kids'], era: { tech: 'homeComputer', from: 1980, until: 2006 } },
+  { id: 'pascal', label: 'Pascal', emoji: '\u{1F4D8}', minAge: 12, difficulty: 0.4, good: 'Tidy, structured programs (your teacher insists)', uses: ['systems', 'data'], era: { tech: 'homeComputer', until: 2005 } },
+  { id: 'assembly', label: 'Assembly', emoji: '\u{1F9EE}', minAge: 13, difficulty: 0.8, good: 'Talking straight to the chip: fast games, demos, headaches', uses: ['games', 'systems'], era: { tech: 'homeComputer', until: 1998 } },
+  { id: 'c', label: 'C', emoji: '\u{1F523}', minAge: 13, difficulty: 0.7, good: 'Operating systems, games and pointers to pointers', uses: ['systems', 'games', 'data'], era: { tech: 'homeComputer', from: 1980 } },
+  { id: 'java', label: 'Java', emoji: '\u{2615}', minAge: 13, difficulty: 0.5, good: 'Business software, phone apps, enterprise everything', goodBeforeApps: 'Business software, web applets, enterprise everything', uses: ['apps', 'web', 'data'], era: { from: 1996 } },
 ]
+
+/** What a language is good for, in words of the year (no "phone apps" in 1998). */
+export function languageBlurb(g: GameState, lang: CodingLanguage, year = g.year): string {
+  return lang.goodBeforeApps && !eraOpen(g, { tech: 'smartphone' }, year) ? lang.goodBeforeApps : lang.good
+}
+
+/** Languages a beginner could pick up at home in that year (the rest are on the CODING_LANGUAGES list for old skills). */
+export function languagesInEra(g: GameState, year = g.year): CodingLanguage[] {
+  return CODING_LANGUAGES.filter((l) => eraOpen(g, l.era, year))
+}
+
+/** True when the language can be learned at home this year. */
+export function languageInEra(g: GameState, id: string, year = g.year): boolean {
+  const l = getLanguage(id)
+  return !!l && eraOpen(g, l.era, year)
+}
+
+/** The language a curious kid starts with at home this year (BASIC in 1984, HTML in 1999, Scratch in 2015). */
+export function kidLanguage(g: GameState, year = g.year): string {
+  const ok = (id: string) => languageInEra(g, id, year)
+  if (ok('scratch')) return 'scratch'
+  if (year >= 1997 && ok('html')) return 'html'
+  if (ok('basic')) return 'basic'
+  if (ok('html')) return 'html'
+  if (ok('logo')) return 'logo'
+  if (ok('python')) return 'python'
+  return languagesInEra(g, year)[0]?.id ?? 'scratch'
+}
 
 export function getLanguage(id: string): CodingLanguage | undefined {
   return CODING_LANGUAGES.find((l) => l.id === id)

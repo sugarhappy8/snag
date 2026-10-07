@@ -7,6 +7,7 @@ import { defineScript } from '../scripts'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
 import { brokeNotice, countryOf, flagNumber, gate, localPrice, money, payingParents, result } from './common'
 import { localTerm } from '../data/locales'
+import { anachronistic } from '../events/era'
 
 function uc(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
@@ -17,6 +18,8 @@ interface Question {
   a: string
   wrong: [string, string]
   emoji?: string
+  /** First year the question makes sense (transponders arrived in the sixties). */
+  since?: number
 }
 
 const ROAD_SIGNS: Question[] = [
@@ -74,8 +77,9 @@ const AVIATION: Question[] = [
   { emoji: '\u{1F6D1}', q: 'In flight, a steady red light from the tower means:', a: 'Give way to other aircraft and keep circling', wrong: ['Cleared to land', 'Leave the area permanently'] },
   { emoji: '⚪', q: 'On the ground, a flashing white light from the tower means:', a: 'Return to your starting point on the airport', wrong: ['Cleared for takeoff', 'Shut down your engine'] },
   { emoji: '\u{1F6A8}', q: 'Alternating red and green lights from the tower mean:', a: 'Exercise extreme caution', wrong: ['Happy holidays', 'Cleared to taxi'] },
-  { emoji: '\u{1F4DF}', q: 'Setting your transponder to 7700 tells air traffic control:', a: 'You have an emergency', wrong: ['You are bored', 'You need fuel prices'] },
-  { emoji: '\u{1F4CB}', q: 'Before every flight you must:', a: 'Complete the preflight checklist', wrong: ['Take a cockpit selfie', "Skip it if you're running late"] },
+  { emoji: '\u{1F4DF}', q: 'Setting your transponder to 7700 tells air traffic control:', a: 'You have an emergency', wrong: ['You are bored', 'You need fuel prices'], since: 1965 },
+  { emoji: '\u{1F4CB}', q: 'Before every flight you must:', a: 'Complete the preflight checklist', wrong: ['Take a cockpit selfie', "Skip it if you're running late"], since: 2012 },
+  { emoji: '\u{1F4CB}', q: 'Before every flight you must:', a: 'Complete the preflight checklist', wrong: ['Polish your goggles', "Skip it if you're running late"] },
   { emoji: '\u{1F4CF}', q: 'Which instrument shows your altitude?', a: 'The altimeter', wrong: ['The tachometer', 'The compass'] },
 ]
 
@@ -110,10 +114,19 @@ const BANKS_LOCAL: Record<'us' | 'intl', Question[][]> = {
   intl: [[...ROAD_SIGNS.filter((x) => !US_ROADS.test(x.q)), ...INTL_SIGNS], [...ROAD_RULES.filter((x) => !US_ROADS.test(x.q)), ...INTL_RULES]],
 }
 
+/** Does a question fit this year (no texting-while-driving questions in 1950)? */
+function questionFits(g: GameState, q: Question): boolean {
+  if (q.since !== undefined && g.year < q.since) return false
+  return !anachronistic(g, [q.q, q.a, ...q.wrong].join(' \n '))
+}
+
 /** The question banks for a test where the player lives (American road signs only in the US). */
 function banksFor(g: GameState, kind: LicenseKind): Question[][] {
-  if (kind !== 'driver') return BANKS[kind]
-  return BANKS_LOCAL[g.character.countryId === 'us' ? 'us' : 'intl']
+  const banks = kind !== 'driver' ? BANKS[kind] : BANKS_LOCAL[g.character.countryId === 'us' ? 'us' : 'intl']
+  return banks.map((bank) => {
+    const fits = bank.filter((q) => questionFits(g, q))
+    return fits.length ? fits : bank
+  })
 }
 
 
@@ -352,6 +365,8 @@ export const pilotMenu: MenuGroup = {
   label: "Pilot's License",
   emoji: '✈\u{FE0F}',
   subtitle: (g) => (hasLicense(g, 'pilot') ? 'Licensed ✔' : `Flight hours: ${flagNumber(g, FLIGHT_HOURS)} of ${REQUIRED_HOURS}`),
+  // Pilot licensing began after the First World War.
+  visible: (g) => g.year >= 1920 || hasLicense(g, 'pilot'),
   disabledReason: (g) => gate(g, { minAge: 18 }),
   header: (g) =>
     hasLicense(g, 'pilot')
@@ -458,5 +473,5 @@ export const licensesMenu: MenuGroup = {
     const held = g.character.licenses
     return held.length ? `Licenses held: ${held.map((l) => (l === 'driver' ? "Driver's" : l.charAt(0).toUpperCase() + l.slice(1))).join(', ')}` : "You don't have any licenses yet."
   },
-  children: (): MenuNode[] => [driverTestAction, boatingTestAction, pilotMenu, firearmAction],
+  children: (g): MenuNode[] => [driverTestAction, boatingTestAction, pilotMenu, firearmAction].filter((n) => !n.visible || n.visible(g)),
 }

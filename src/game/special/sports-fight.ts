@@ -1464,7 +1464,7 @@ function gymOptions(g: GameState, d: Discipline): GymOption[] {
   const proRec = p?.pro[d.id]
   const elite = d.id === 'boxing' ? 'Iron Fist Boxing Camp' : d.id === 'muaythai' ? 'Siam Tiger Camp' : d.id === 'kickboxing' ? 'Golden Shin Kickboxing' : 'Altitude Fight Lab'
   const opts: GymOption[] = [
-    { name: d.id === 'boxing' ? `${city} Boxing Club` : d.id === 'muaythai' ? `${city} Muay Thai` : `${city} Strip-Mall MMA`, tier: 1, fee: localFee(g, 900) },
+    { name: d.id === 'boxing' ? `${city} Boxing Club` : d.id === 'muaythai' ? `${city} Muay Thai` : d.id === 'mma' ? `${city} Strip-Mall MMA` : `${city} Kickboxing Club`, tier: 1, fee: localFee(g, 900) },
     { name: d.id === 'boxing' ? `${city} Boxing Academy` : `${city} Combat Academy`, tier: 2, fee: localFee(g, 3_500) },
   ]
   if (proRec && proRec.w >= 3) opts.push({ name: elite, tier: 3, fee: tidy(22_000) })
@@ -1706,6 +1706,7 @@ const proScript = defineScript('sports.fight.turnPro', (g, choice, data) => {
 })
 
 export function turnProReason(g: GameState, disc: DiscId): string | null {
+  if (disc === 'mma' && g.year < 1993) return 'This combat sport is not organized professionally yet.'
   const gate = sportsGate(g, 18)
   if (gate) return gate
   const job = fighterJob(g)
@@ -1854,6 +1855,7 @@ export function disciplineMenu(disc: DiscId): MenuGroup {
   return {
     type: 'menu',
     id: `sports.${disc}`,
+    visible: (g) => disc !== 'mma' || g.year >= 1993,
     label: d.name,
     emoji: d.emoji,
     subtitle: (g) => {

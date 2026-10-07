@@ -9,6 +9,7 @@ import {
   netWorth,
   roleLabel,
   shortMoney,
+  withMoneyContext,
 } from '../../game/core'
 import { businessSummary } from '../../game/business'
 import { agesLabel, cvEntries, cvScore, KIND_META, rankLabel, rankOf, rankShort, strengthStars, universityTarget } from '../../game/cv'
@@ -667,7 +668,7 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
                     {a.bornYear}–{a.diedYear} (age {a.age}) · {a.occupation} · {a.causeOfDeath}
                   </span>
                   <span className="li-sub">
-                    Net worth {shortMoney(a.netWorth)}
+                    Net worth {withMoneyContext(a.countryId ? { countryId: a.countryId, year: a.diedYear } : null, () => shortMoney(a.netWorth))}
                     {ribbon ? ` · ${ribbon}` : ''}
                   </span>
                 </li>

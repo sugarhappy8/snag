@@ -15,7 +15,7 @@ import {
   useApp,
 } from '../store'
 import type { AiLevel } from '../../settings'
-import { InputField, normalizeInput, PopupFrame, rangeHint, validateInput } from './Dialogs'
+import { InputField, moneyDefault, normalizeInput, PopupFrame, rangeHint, validateInput } from './Dialogs'
 import { personName } from './PersonSheet'
 import { cleanHint, TalentHint } from './TalentHint'
 
@@ -187,17 +187,18 @@ export function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
 }
 
 function InputCard({ modal }: { modal: InputModal }) {
-  const [value, setValue] = useState(modal.defaultValue ?? '')
+  const money = modal.money === true && modal.input === 'number'
+  const [value, setValue] = useState(() => money ? moneyDefault(modal.defaultValue) : (modal.defaultValue ?? ''))
   const [error, setError] = useState<string | null>(null)
   const submit = () => {
-    const err = validateInput(modal.input, value, modal.min, modal.max)
+    const err = validateInput(modal.input, value, modal.min, modal.max, money)
     if (err) {
       setError(err)
       return
     }
-    submitInput(modal.id, normalizeInput(modal.input, value))
+    submitInput(modal.id, normalizeInput(modal.input, value, money, modal.min, modal.max))
   }
-  const hint = rangeHint(modal.input, modal.min, modal.max)
+  const hint = rangeHint(modal.input, modal.min, modal.max, money)
   return (
     <PopupFrame label={modal.title}>
       {modal.emoji ? (
@@ -211,7 +212,8 @@ function InputCard({ modal }: { modal: InputModal }) {
         <InputField
           kind={modal.input}
           value={value}
-          placeholder={modal.placeholder}
+          placeholder={money ? moneyDefault(modal.placeholder) : modal.placeholder}
+          money={money}
           label={modal.title}
           onChange={(v) => {
             setValue(v)

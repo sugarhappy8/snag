@@ -3,6 +3,7 @@
 // g.rng use while rendering), prices scaled for the player's market, local-flavor items where
 // people actually buy them, and Use actions for what you own (ride the bike, hit the slopes,
 // host a BBQ). Bought items are Asset kind 'other' with details.category / details.store.
+import { hasTech } from '../history/timeline'
 import { addCondition, companionCandidates, payingParents } from '../activities/common'
 import { findAsset, goodsMult, localGoodsMult, nicePrice, pricesIncludeTax, salesTaxNote, seeded, yearKey } from '../assets'
 import {
@@ -37,6 +38,7 @@ import {
   CRICKET,
   FURNITURE,
   GARDEN,
+  itemInEra,
   LOCAL_CLOTHES,
   PET_SUPPLIES,
   petGroup,
@@ -339,7 +341,7 @@ function listingFor(g: GameState, storeId: StoreId | 'pet', d: ItemDef): Everyda
 export function everydayListings(g: GameState, storeId: StoreId): EverydayListing[] {
   const store = STORES[storeId]
   const cid = g.character.countryId
-  const pool = store.items().filter((d) => soldIn(cid, d) && eligible(g, store, d))
+  const pool = store.items().filter((d) => soldIn(cid, d) && eligible(g, store, d) && itemInEra(d.key, g.year, cid))
   // Every item gets a stable random rank for the year; local specialties jump the queue.
   const ranked = pool
     .map((d) => ({ d, rank: seeded(yearKey(g, `everyday:${storeId}:${d.key}:rank`)).next() - (d.only ? 0.6 : 0) }))
@@ -440,7 +442,8 @@ function completePurchase(g: GameState, l: EverydayListing, d: ItemDef, paidBy: 
   count(g, 'purchases')
   addStat(g, 'happiness', joyFor(g, l.price, l.store))
   if (l.store === 'clothing') clothingBump(g, d)
-  const quip = pick(g, QUIPS[l.store])
+  // Before smartphones, nobody took mirror selfies in the fitting room.
+  const quip = pick(g, QUIPS[l.store]).replace('You took 40 mirror selfies. One was usable.', hasTech(g, 'smartphone') ? 'You took 40 mirror selfies. One was usable.' : 'You twirled in front of the mirror for ten minutes.')
   if (paidBy) {
     addRelationship(paidBy, 1)
     log(g, `My ${relationLabel(paidBy).toLowerCase()} bought me ${withArticle(l.name)}.`, 'good')
@@ -483,7 +486,7 @@ function cantAfford(g: GameState, l: EverydayListing): void {
     'Insufficient Funds',
     pick(g, [
       `You can't afford ${withArticle(l.name)}. It costs ${formatMoney(l.price)} and you have ${formatMoney(Math.max(0, g.character.money))}.`,
-      `Your card was declined. ${withArticle(l.name).replace(/^./, (c) => c.toUpperCase())} costs ${formatMoney(l.price)}.`,
+      hasTech(g, 'creditCards') ? `Your card was declined. ${withArticle(l.name).replace(/^./, (c) => c.toUpperCase())} costs ${formatMoney(l.price)}.` : `You emptied your wallet on the counter. ${withArticle(l.name).replace(/^./, (c) => c.toUpperCase())} costs ${formatMoney(l.price)}.`,
       `You stared at the ${formatMoney(l.price)} price tag, then at your bank balance, then put ${lower(l.name)} back.`,
     ]),
     { emoji: '💸', tone: 'bad' },
@@ -1288,7 +1291,7 @@ function storeNote(g: GameState, storeId: StoreId): string {
       if ((SNOW as readonly string[]).includes(cid) && (SURF_NATIONS as readonly string[]).includes(cid)) return 'Skis on one wall, surfboards on the other. Indecision is a lifestyle here.'
       if ((SNOW as readonly string[]).includes(cid)) return 'The ski wall is the first thing you see.'
       if ((SURF_NATIONS as readonly string[]).includes(cid)) return 'The surf report is chalked up next to the register.'
-      if ((CRICKET as readonly string[]).includes(cid)) return 'A cricket match is on the TV behind the counter and nobody is working.'
+      if ((CRICKET as readonly string[]).includes(cid)) return `A cricket match is on the ${hasTech(g, 'tv') ? 'TV' : 'radio'} behind the counter and nobody is working.`
       return 'It smells like new rubber and good intentions.'
     case 'furniture':
       return 'Every sofa is a showroom nap waiting to happen.'
@@ -1350,7 +1353,7 @@ export function livingPets(g: GameState): Person[] {
 
 export function petSupplyListings(g: GameState, pet: Person): EverydayListing[] {
   const group = petGroup(pet.species)
-  return PET_SUPPLIES.filter((d) => d.groups.includes(group))
+  return PET_SUPPLIES.filter((d) => d.groups.includes(group) && itemInEra(d.key, g.year, g.character.countryId))
     .map((d) => {
       const l = listingFor(g, 'pet', d)
       return { ...l, id: `${l.id}:${pet.id}` }

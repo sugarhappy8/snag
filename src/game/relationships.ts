@@ -72,6 +72,8 @@ import { chance, pick, rand, randFloat, randInt, uid, weightedPick } from './rng
 import { defineScript } from './scripts'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import { locale, localeOf } from './data/locales'
+import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, venueExists } from './events/era'
+import type { TechId } from './history/timeline'
 import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, NoticeAi, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
@@ -141,6 +143,11 @@ function money(n: number): string {
   return formatMoney(n)
 }
 
+/** Inmates get phone calls once phones are everywhere (from about 1960); before that, letters. */
+function prisonPhone(g: GameState): boolean {
+  return g.year >= 1960 && landline(g)
+}
+
 const TIRED_LINES = [
   "You've already done that with {name} enough this year. Give it a rest.",
   '{name} needs a break from you. Try again next year.',
@@ -175,48 +182,67 @@ function aiFacts(g: GameState, p: Person, what: string, outcome: string): Notice
 // ---------------------------------------------------------------------------
 // Content lists (original jokes in the classic life-sim style)
 
+// Lines may carry era tags ("@tv ", "@1975 ", "@smartphone ") - see events/era.ts. Every list keeps
+// untagged lines so a life in 1905 and one in 2026 both have something to say.
 const TOPICS_KID = [
   'why the sky is blue',
   'whether monsters live under the bed',
-  'how scary the toilet is when it flushes',
-  'whether Santa uses a GPS',
+  '@1925 how scary the toilet is when it flushes',
+  '@+mobilePhone,2000 whether Santa uses a GPS',
+  "@-2000 how Santa's reindeer find every chimney in the dark",
   'why vegetables exist',
   'what dogs dream about',
   'which dinosaur would make the best pet',
   'whether the tooth fairy is running a business',
-  'their favorite cartoon',
+  '@1935 their favorite cartoon',
+  'their favorite fairy tale',
   'what clouds taste like',
 ]
 const TOPICS = [
   'whether a hot dog is a sandwich',
-  'the best pizza toppings',
-  'whether pineapple belongs on pizza',
+  '@1950 the best pizza toppings',
+  '@1965 whether pineapple belongs on pizza',
   'who would win in a fight between a shark and a gorilla',
   'whether cats are better than dogs',
   'the meaning of life',
   "whose turn it is to do the dishes",
   'which season is the best',
-  'the correct way to squeeze toothpaste',
+  '@1920 the correct way to squeeze toothpaste',
   'whether aliens have already visited Earth',
   'what they would do with a million dollars',
   'whether cereal counts as soup',
-  'how pigeons are probably government drones',
-  'the best way to survive a zombie apocalypse',
+  '@2012 how pigeons are probably government drones',
+  '@1970 the best way to survive a zombie apocalypse',
   'who the greatest athlete of all time is',
   'their dream vacation',
   'how fast time flies',
-  'the plot of a movie neither of them remembers',
+  '@1915 the plot of a movie neither of them remembers',
   'the weather',
-  'which superhero has the most useless power',
+  '@1940 which superhero has the most useless power',
   'how many ducks it would take to defeat a horse',
-  'whether a straw has one hole or two',
+  '@1950 whether a straw has one hole or two',
   'the price of eggs these days',
-  'the best reality TV show of all time',
-  'whether it is acceptable to recline your seat on a plane',
+  '@tv,2002 the best reality TV show of all time',
+  '@flights whether it is acceptable to recline your seat on a plane',
   'the worst haircut they ever had',
+  '@-1930 whether the motorcar is here to stay',
+  '@-1969 whether anyone will ever walk on the moon',
+  '@-1950 the newest dance craze',
+  "@-1960 the scandalous length of this year's hemlines",
 ]
 const TOPICS_SPICY = ['politics', 'religion', 'who should pay for dinner', 'how to raise kids', 'money', 'whose family is more annoying']
-const TOPICS_ADULT = ['mortgage rates', 'retirement plans', 'their back pain', "the neighbors' new car", 'cryptocurrency', 'the latest office drama', 'their cholesterol', 'property taxes']
+const TOPICS_ADULT = [
+  'mortgage rates',
+  'retirement plans',
+  'their back pain',
+  "@cars the neighbors' new car",
+  "the neighbors' new fence",
+  '@+crypto cryptocurrency',
+  'the latest office drama',
+  '@1960 their cholesterol',
+  'property taxes',
+  '@-1950 the price of coal this winter',
+]
 
 const OPENERS = ['had a conversation with', 'chatted with', 'had a heart-to-heart with', 'talked with', 'had a long talk with']
 
@@ -227,7 +253,8 @@ const ACT_TODDLER = [
   'finger painted',
   'fed ducks at the pond',
   'stacked blocks',
-  'watched cartoons',
+  '@tv watched cartoons',
+  '@!tv sang nursery rhymes',
   'played in the sandbox',
 ]
 const ACT_KID = [
@@ -235,58 +262,69 @@ const ACT_KID = [
   'went to the zoo',
   'played catch',
   'built a sandcastle',
-  'went to the arcade',
+  '@1975 went to the arcade',
   'played board games',
   'caught butterflies',
-  'went to the water park',
+  '@1980 went to the water park',
   'baked cookies',
-  'had a water gun fight',
+  '@1950 had a water gun fight',
   'went to the carnival',
-  'played video games',
+  '@videoGameConsole played video games',
   'had a snowball fight',
   'went to the aquarium',
   'jumped in a pile of leaves',
+  '@-1965 played marbles in the yard',
+  '@-1950 rolled hoops down the street',
+  '@radio,-1960 listened to an adventure serial on the radio',
 ]
 const ACT_TEEN = [
   'went bowling',
-  'went to an escape room',
+  '@2012 went to an escape room',
   'went hiking',
-  'went axe throwing',
-  'played laser tag',
+  '@2016 went axe throwing',
+  '@1986 played laser tag',
   'went to the beach',
-  'tried a goat yoga class',
-  'went to a food festival',
+  '@2016 tried a goat yoga class',
+  '@1980 went to a food festival',
   'went stargazing',
   'went to a baseball game',
-  'played mini golf',
-  'went thrift shopping',
-  'did karaoke',
+  '@1930 played mini golf',
+  '@1970 went thrift shopping',
+  '@1985 did karaoke',
   'went kayaking',
   'visited an art museum',
-  'went to a trampoline park',
-  'went people watching at the mall',
+  '@2005 went to a trampoline park',
+  '@1962 went people watching at the mall',
   'took a cooking class',
-  'rode bumper cars',
+  '@1925 rode bumper cars',
   'went to an amusement park',
-  'went paintballing',
+  '@1985 went paintballing',
+  'went roller skating',
+  '@-1965 went to a dance at the town hall',
+  '@-1970 shared a soda at the soda fountain',
 ]
 const ACT_ADULT = [
-  'went to a wine tasting',
-  'went to a comedy club',
-  'went to a jazz bar',
+  '@1975 went to a wine tasting',
+  '@1975 went to a comedy club',
+  '@1920 went to a jazz bar',
   'went antiquing',
   'played golf',
   'went to a farmers market',
   'went to a concert',
-  'went whale watching',
-  'went to a cooking class',
-  'went white water rafting',
+  '@1955 went whale watching',
+  '@1975 went to a cooking class',
+  '@1970 went white water rafting',
+  '@-1960 went to the opera',
+  '@-1965 went to a dance hall',
+  'went to the races',
 ]
 const ACT_ELDER = [
-  'played bingo at the community center',
+  '@1935 played bingo at the community center',
   'fed pigeons at the park',
-  'did a jigsaw puzzle',
-  'watched old game shows',
+  '@1930 did a jigsaw puzzle',
+  '@tv,1970 watched old game shows',
+  '@radio,!tv listened to the radio together',
+  'played cards on the porch',
   'went for a slow walk around the block',
   'looked through old photo albums',
 ]
@@ -297,22 +335,29 @@ const INVITES_KID: [string, string][] = [
   ['bake cookies', 'baked cookies'],
   ['go to the aquarium', 'went to the aquarium'],
   ['play board games', 'played board games'],
-  ['go to the water park', 'went to the water park'],
+  ['@1980 go to the water park', 'went to the water park'],
   ['feed the ducks at the pond', 'fed the ducks at the pond'],
 ]
 const INVITES_TEEN: [string, string][] = [
   ['go to a baseball game', 'went to a baseball game'],
   ['go hiking', 'went hiking'],
   ['go bowling', 'went bowling'],
-  ['try a cooking class', 'took a cooking class'],
+  ['@1975 try a cooking class', 'took a cooking class'],
   ['go to the farmers market', 'went to the farmers market'],
-  ['go see a movie', 'saw a movie'],
+  ['@1910 go see a movie', 'saw a movie'],
   ['go fishing', 'went fishing'],
   ['visit an art museum', 'visited an art museum'],
 ]
 
 const SPEND_GOOD = ['{He} had a great time!', '{He} loved it!', 'You both had a blast.', '{He} said it was the best day {he} has had in months.', 'You two laughed the whole time.']
-const SPEND_MEH = ['It was fine.', "{He} spent most of it on {his} phone.", 'It was a little awkward.', '{He} seemed distracted.', "{He} said it was \"okay\", which you're choosing to take as a compliment."]
+const SPEND_MEH = [
+  'It was fine.',
+  '@smartphone {He} spent most of it on {his} phone.',
+  '@!smartphone {He} kept checking the clock.',
+  'It was a little awkward.',
+  '{He} seemed distracted.',
+  "{He} said it was \"okay\", which you're choosing to take as a compliment.",
+]
 
 const COMPLIMENTS = [
   'a total legend',
@@ -337,13 +382,13 @@ const COMPLIMENTS = [
   'one of a kind',
   'the life of the party',
   'a smooth operator',
-  'a certified snack',
+  '@2012 a certified snack',
   'top tier',
 ]
 
 const INSULTS = [
   'a soggy waffle',
-  'a human participation trophy',
+  '@1990 a human participation trophy',
   'a walking typo',
   'dumber than a bag of hammers',
   'a knock-off of a knock-off',
@@ -363,7 +408,7 @@ const INSULTS = [
   'an airhead',
   'a pumpkinhead',
   'smellier than a gym sock',
-  'a buffering video in human form',
+  '@streaming a buffering video in human form',
   'a snollygoster',
   'a troglodyte',
 ]
@@ -371,51 +416,58 @@ const INSULTS = [
 const PRANKS = [
   'replaced the cream in {his} cookies with toothpaste',
   'put a rubber spider in {his} shoe',
-  'toilet papered {his} house',
+  '@1950 toilet papered {his} house',
   'signed {him} up for a llama enthusiast magazine',
-  'set seven alarms on {his} phone for 4 AM',
+  '@smartphone set seven alarms on {his} phone for 4 AM',
+  '@!smartphone,1950 hid seven wind-up alarm clocks in {his} room, all set for 4 AM',
   'swapped {his} sugar with salt',
-  'hid a whoopee cushion on {his} chair',
-  'mailed {him} a glitter bomb',
+  '@1930 hid a whoopee cushion on {his} chair',
+  '@1990 mailed {him} a glitter bomb',
   'replaced all of {his} family photos with pictures of yourself',
   'jumped out of a closet dressed as a clown',
-  'wrapped {his} car in plastic wrap',
-  'covered {his} desk in sticky notes',
-  'put googly eyes on everything in {his} fridge',
-  'posted {his} phone number online as a free puppy giveaway',
+  '@cars,1955 wrapped {his} car in plastic wrap',
+  '@1980 covered {his} desk in sticky notes',
+  '@1965 put googly eyes on everything in {his} fridge',
+  '@internet posted {his} phone number online as a free puppy giveaway',
+  '@landline,!internet put {his} phone number in the newspaper classifieds as a free puppy giveaway',
+  'sewed the legs of {his} trousers shut',
 ]
 
 const RUMORS = [
   'is afraid of ducks',
-  'still sleeps with a night-light',
+  '@1920 still sleeps with a night-light',
   'once ate an entire stick of butter on a dare',
   'has a secret collection of porcelain dolls',
   'was raised by a family of raccoons',
-  'cries at car commercials',
-  'thinks the moon landing was filmed in a parking garage',
+  '@tv cries at car commercials',
+  '@1970 thinks the moon landing was filmed in a parking garage',
   'is secretly a foreign spy',
   'has never washed {his} bedsheets',
   'talks to {his} houseplants and they talk back',
   'got lost in a revolving door for an hour',
-  'is related to a famous cartoon character',
+  '@1935 is related to a famous cartoon character',
+  'once lost a staring contest to a goat',
 ]
 
+/** Made-up films, from the nickelodeon to the multiplex. */
 const MOVIES = [
-  'Fast & Furious 23: Parking Lot',
-  'Toy Tale 7',
-  'The Avocados: Endgame Again',
-  'Sharkicane',
-  'A Very Long Musical',
-  'Haunted Spreadsheet',
-  'The Notebook 2: The Laptop',
-  'Kung Fu Hamster',
-  'Space Lawyers',
+  '@1975 Speedy & Angry 23: Parking Lot',
+  '@1995 Toy Tale 7',
+  '@2012 The Avocados: Endgame Again',
+  '@1990 Sharkicane',
+  '@1930 A Very Long Musical',
+  '@1985 Haunted Spreadsheet',
+  '@2005 The Notebook 2: The Laptop',
+  '@1972 Kung Fu Hamster',
+  '@1950 Space Lawyers',
   'Grandma Goes Rogue',
-  'Explosion Man IV',
+  '@1980 Explosion Man IV',
   'The Quiet Penguin',
+  '@-1935 The Perils of Prudence Pumpernickel',
+  '@-1945 The Singing Cowpoke Rides Again',
+  '@1950,-1965 Attack of the Fifty-Foot Librarian',
+  '@-1960 Moonlight Over Monte Carlo',
 ]
-
-const BANDS = ['The Velvet Tadpoles', 'Mumble Rap Grandpas', 'Neon Lobster', 'Taylor Quick', 'The Screaming Toasters', 'DJ Sandwich', 'Kanye East', 'The Polite Punks', 'Lil Spreadsheet', 'Coldbrew']
 
 const CHANNELS = [
   'a guy who reviews gas station sushi',
@@ -430,31 +482,43 @@ const CHANNELS = [
   'a guy who buys every item in a store',
 ]
 
-const PARTIES_TEEN = ['a pizza party', 'a sleepover party', 'a pool party', 'a birthday bash', 'a costume party', 'a video game tournament party', 'a bonfire party']
-const PARTIES_ADULT = ['a toga party', 'a tailgate party', 'a rooftop party', 'a masquerade ball', 'a karaoke party', 'a backyard barbecue', 'a murder mystery dinner party']
+const PARTIES_TEEN = ['@1960 a pizza party', 'a sleepover party', 'a pool party', 'a birthday bash', 'a costume party', '@videoGameConsole a video game tournament party', 'a bonfire party', '@-1960 a barn dance']
+const PARTIES_ADULT = ['a toga party', '@cars,1950 a tailgate party', 'a rooftop party', 'a masquerade ball', '@1985 a karaoke party', 'a backyard barbecue', '@1935 a murder mystery dinner party', '@-1960 a cocktail party']
 
-const DATE_VENUES_TEEN = ['shared a milkshake at the diner', 'went to the mall food court', 'went ice skating', 'watched the sunset from the park', 'went to a carnival and won a giant stuffed banana']
+const DATE_VENUES_TEEN = [
+  '@1925 shared a milkshake at the diner',
+  '@1970 went to the mall food court',
+  'went ice skating',
+  'watched the sunset from the park',
+  'went to a carnival and won a giant stuffed banana',
+  '@-1965 went to a dance at the town hall',
+  '@1910 sat in the back row at the cinema',
+]
 const DATE_VENUES_ADULT = [
   { text: 'went to a fancy Italian restaurant', cost: 180 },
   { text: 'had a candlelit picnic in the park', cost: 60 },
   { text: 'took a sunset dinner cruise', cost: 260 },
-  { text: 'went to a cozy wine bar', cost: 90 },
-  { text: 'took a pottery class together', cost: 120 },
+  { text: '@1934 went to a cozy wine bar', cost: 90 },
+  { text: '@1965 took a pottery class together', cost: 120 },
   { text: 'went dancing downtown', cost: 80 },
   { text: 'had a five-course tasting menu', cost: 400 },
+  { text: '@-1960 went to a supper club with a live orchestra', cost: 150 },
 ]
 
-const VACATIONS = [
+/** Getaways for two; far-flung beaches opened up with cheap flights. */
+const VACATIONS: { place: string; cost: number; since?: number; flights?: boolean; cars?: boolean }[] = [
   { place: 'Paris', cost: 4500 },
-  { place: 'Tokyo', cost: 6000 },
-  { place: 'Cancún', cost: 2800 },
+  { place: 'Tokyo', cost: 6000, flights: true },
+  { place: 'Cancún', cost: 2800, since: 1975 },
   { place: 'Rome', cost: 4200 },
-  { place: 'Hawaii', cost: 5000 },
-  { place: 'a ski lodge in the Alps', cost: 5500 },
+  { place: 'Hawaii', cost: 5000, since: 1935 },
+  { place: 'a ski lodge in the Alps', cost: 5500, since: 1925 },
   { place: 'a beach cabin', cost: 1500 },
-  { place: 'a national park road trip', cost: 1200 },
-  { place: 'Bali', cost: 4800 },
-  { place: 'an all-inclusive cruise', cost: 3500 },
+  { place: 'a national park road trip', cost: 1200, cars: true },
+  { place: 'Bali', cost: 4800, since: 1970, flights: true },
+  { place: 'an all-inclusive cruise', cost: 3500, since: 1970 },
+  { place: 'a seaside hotel', cost: 1400 },
+  { place: 'a spa town in the mountains', cost: 1800 },
 ]
 
 // ---------------------------------------------------------------------------
@@ -476,7 +540,7 @@ function noDrinking(g: GameState): boolean {
 
 /** A grown-up date spot or hangout, or a kid-safe one for teens. */
 function localSpot(g: GameState, kind: 'dateSpots' | 'hangouts', teen: boolean): string {
-  const all = locale(g)[kind]
+  const all = locale(g)[kind].filter((x) => venueExists(g, x))
   const ok = teen || noDrinking(g) ? all.filter((x) => !/\b(?:bars?|pubs?|club|wine|beer|izakaya|tavern|cantina|boteco|kneipe|kafana|brewery|cocktail|lounge|casino)\b/i.test(x)) : all
   return ok.length ? pick(g, ok) : 'the park'
 }
@@ -491,9 +555,10 @@ function localize(g: GameState, line: string): string {
     .replace('went to the mall food court', `went to ${localSpot(g, 'hangouts', true)}`)
 }
 
+/** The lines of a list that fit the local climate, customs and year (era tags stripped). */
 function localActs(g: GameState, list: string[]): string[] {
   const loc = locale(g)
-  return list.filter((a) => {
+  return eraLines(g, list).filter((a) => {
     if (/snowball|ice skating|sledding/.test(a)) return loc.snow
     if (/pile of leaves/.test(a)) return loc.climate !== 'tropical' && loc.climate !== 'arid'
     if (/wine|jazz bar|beer/.test(a)) return !noDrinking(g)
@@ -509,27 +574,47 @@ function holidayParty(g: GameState): string {
 }
 
 function localParties(g: GameState, adult: boolean): string[] {
-  if (g.character.countryId === 'us') return adult ? PARTIES_ADULT : PARTIES_TEEN
+  const list = eraLines(g, adult ? PARTIES_ADULT : PARTIES_TEEN)
+  if (g.character.countryId === 'us') return list
   const swap: Record<string, string> = {
     'a tailgate party': holidayParty(g),
     'a toga party': 'a house party',
     'a backyard barbecue': 'a garden party',
     'a pool party': localeOf(g.character.countryId).climate === 'tropical' || localeOf(g.character.countryId).climate === 'mediterranean' ? 'a pool party' : 'a picnic in the park',
   }
-  return (adult ? PARTIES_ADULT : PARTIES_TEEN).map((x) => swap[x] ?? x)
+  return list.map((x) => swap[x] ?? x)
 }
 
 /** Getaways for two: the classics plus the domestic spots couples here actually go to. */
 function localVacations(g: GameState): typeof VACATIONS {
-  if (g.character.countryId === 'us') return VACATIONS
-  const home = locale(g).getaways.filter((x) => x !== g.character.city).slice(0, 5).map((place) => ({ place, cost: 900 }))
-  const abroad = VACATIONS.filter((v) => !/Hawaii/.test(v.place))
+  const open = VACATIONS.filter((v) => g.year >= (v.since ?? 0) && (!v.flights || flights(g)) && (!v.cars || cars(g)))
+  if (g.character.countryId === 'us') return open
+  const home = locale(g).getaways.filter((x) => x !== g.character.city && venueExists(g, x)).slice(0, 5).map((place) => ({ place, cost: 900 }))
+  const abroad = open.filter((v) => !/Hawaii/.test(v.place))
   return [...home, ...abroad]
 }
 
-const SQUABBLES = ['who gets the front seat', 'the TV remote', 'whose turn it is to feed the dog', 'who Mom loves more', 'the last slice of pizza', 'who broke the lamp', 'who used all the hot water']
+/** What siblings fight over: the front seat, the last cookie, and whatever the family screen is this decade. */
+function squabbleTopics(g: GameState): string[] {
+  return [
+    ...eraLines(g, ['@cars who gets the front seat', 'whose turn it is to feed the dog', 'who Mom loves more', '@1950 the last slice of pizza', 'the last cookie', 'who broke the lamp', '@1930 who used all the hot water', '@-1960 who gets the top bunk']),
+    kidPrize(g),
+  ]
+}
 
-const STORIES = ['The Very Hungry Platypus', 'Where the Mild Things Are', 'Goodnight Spoon', 'The Little Engine That Could Not Be Bothered', 'Green Eggs and Spam', 'The Cat in the Hoodie', 'Llama Llama Overdue Library Book']
+/** Bedtime-story parodies (tagged with the year the book they spoof came out) and old fairy tales. */
+const STORIES = [
+  '@1970 The Very Hungry Platypus',
+  '@1964 Where the Mild Things Are',
+  '@1948 Goodnight Spoon',
+  '@1931 The Little Engine That Could Not Be Bothered',
+  '@1961 Green Eggs and Spam',
+  '@1990 The Cat in the Hoodie',
+  '@2006 Llama Llama Overdue Library Book',
+  'Goldilocks and the Three Bears',
+  'The Three Little Pigs',
+  '@1902 The Tale of Peter Rabbit',
+]
 
 // ---------------------------------------------------------------------------
 // Gifts
@@ -540,71 +625,97 @@ interface Gift {
   appeal: number
   romantic?: boolean
   adult?: boolean
+  /** First year it makes sense as a present. */
+  since?: number
+  /** Last year it makes sense as a present (old-fashioned after that). */
+  until?: number
+  /** Only once this is common where you live (a laptop needs home computers). */
+  tech?: TechId
 }
 
 const KID_GIFTS: Gift[] = [
   { name: 'a hand-drawn card', price: 0, appeal: 75 },
-  { name: 'a macaroni necklace', price: 0, appeal: 65 },
+  { name: 'a macaroni necklace', price: 0, appeal: 65, since: 1950 },
   { name: 'a pet rock', price: 0, appeal: 45 },
-  { name: 'a friendship bracelet', price: 0, appeal: 70 },
+  { name: 'a friendship bracelet', price: 0, appeal: 70, since: 1970 },
   { name: 'a bouquet of dandelions', price: 0, appeal: 60 },
   { name: 'a lumpy clay bowl you made in art class', price: 0, appeal: 55 },
   { name: 'a coupon for one free hug', price: 0, appeal: 72 },
-  { name: 'a drawing of them as a superhero', price: 0, appeal: 80 },
+  { name: 'a drawing of them as a superhero', price: 0, appeal: 80, since: 1940 },
+  { name: 'a pressed flower in a homemade frame', price: 0, appeal: 62 },
 ]
 const CHEAP_GIFTS: Gift[] = [
   { name: 'a box of chocolates', price: 15, appeal: 70 },
   { name: 'a scented candle', price: 20, appeal: 55 },
   { name: 'a bouquet of tulips', price: 30, appeal: 65, romantic: true },
   { name: 'a single red rose', price: 5, appeal: 50, romantic: true },
-  { name: 'a "World\'s Okayest" mug', price: 12, appeal: 45 },
-  { name: 'a pair of fuzzy socks', price: 10, appeal: 55 },
-  { name: 'a stress ball', price: 6, appeal: 35 },
+  { name: 'a "World\'s Okayest" mug', price: 12, appeal: 45, since: 2005 },
+  { name: 'a pair of fuzzy socks', price: 10, appeal: 55, since: 1960 },
+  { name: 'a stress ball', price: 6, appeal: 35, since: 1985 },
   { name: 'a can opener', price: 8, appeal: 15 },
-  { name: 'a yodeling pickle toy', price: 15, appeal: 40 },
-  { name: 'a kitten calendar', price: 14, appeal: 45 },
-  { name: 'a jar of mouthwash', price: 7, appeal: 5 },
+  { name: 'a yodeling pickle toy', price: 15, appeal: 40, since: 2005 },
+  { name: 'a kitten calendar', price: 14, appeal: 45, since: 1950 },
+  { name: 'a jar of mouthwash', price: 7, appeal: 5, since: 1915 },
   { name: 'a garden gnome', price: 35, appeal: 40 },
-  { name: 'a fake desk cactus', price: 9, appeal: 20 },
-  { name: 'a nose hair trimmer', price: 25, appeal: 15 },
-  { name: 'a self-help book', price: 18, appeal: 30 },
+  { name: 'a fake desk cactus', price: 9, appeal: 20, since: 1970 },
+  { name: 'a nose hair trimmer', price: 25, appeal: 15, since: 1980 },
+  { name: 'a self-help book', price: 18, appeal: 30, since: 1937 },
+  { name: 'a set of embroidered handkerchiefs', price: 12, appeal: 40, until: 1975 },
+  { name: 'a tin of fancy biscuits', price: 14, appeal: 55 },
+  { name: 'a record of their favorite song', price: 12, appeal: 60, since: 1910, until: 1990 },
 ]
 const MID_GIFTS: Gift[] = [
-  { name: 'a Bluetooth speaker', price: 80, appeal: 70 },
+  { name: 'a Bluetooth speaker', price: 80, appeal: 70, since: 2010 },
   { name: 'a fruit basket', price: 60, appeal: 60 },
   { name: 'a fluffy bathrobe', price: 70, appeal: 68 },
   { name: 'a bottle of fancy perfume', price: 120, appeal: 72, romantic: true },
-  { name: 'a box of gourmet steaks', price: 150, appeal: 74 },
-  { name: 'noise-cancelling headphones', price: 250, appeal: 82 },
-  { name: 'a smart watch', price: 300, appeal: 80 },
-  { name: 'a spa day voucher', price: 200, appeal: 85 },
-  { name: 'a camera drone', price: 280, appeal: 70 },
+  { name: 'a box of gourmet steaks', price: 150, appeal: 74, since: 1960 },
+  { name: 'noise-cancelling headphones', price: 250, appeal: 82, since: 2005 },
+  { name: 'a smart watch', price: 300, appeal: 80, since: 2015, tech: 'smartphone' },
+  { name: 'a spa day voucher', price: 200, appeal: 85, since: 1980 },
+  { name: 'a camera drone', price: 280, appeal: 70, since: 2014 },
   { name: 'a bottle of champagne', price: 90, appeal: 68, adult: true },
   { name: 'a bottle of aged whiskey', price: 110, appeal: 62, adult: true },
   { name: 'a framed family photo', price: 50, appeal: 72 },
-  { name: 'a cooking class voucher', price: 120, appeal: 60 },
-  { name: 'a video game console', price: 500, appeal: 85 },
+  { name: 'a cooking class voucher', price: 120, appeal: 60, since: 1975 },
+  { name: 'a video game console', price: 500, appeal: 85, tech: 'videoGameConsole' },
+  { name: 'a fountain pen', price: 90, appeal: 60, until: 1980 },
+  { name: 'a silk scarf', price: 80, appeal: 66 },
+  { name: 'a pocket watch', price: 150, appeal: 70, until: 1950 },
+  { name: 'a transistor radio', price: 120, appeal: 78, since: 1955, until: 1980 },
+  { name: 'a portable cassette player', price: 150, appeal: 80, since: 1980, until: 2000 },
 ]
 const BIG_GIFTS: Gift[] = [
-  { name: 'a laptop', price: 1200, appeal: 88 },
+  { name: 'a laptop', price: 1200, appeal: 88, since: 1995, tech: 'homeComputer' },
   { name: 'a designer handbag', price: 2000, appeal: 86 },
-  { name: 'a high-end camera', price: 1800, appeal: 80 },
+  { name: 'a high-end camera', price: 1800, appeal: 80, since: 1930 },
   { name: 'a weekend getaway', price: 1500, appeal: 90 },
   { name: 'diamond earrings', price: 3500, appeal: 90, romantic: true },
   { name: 'a gold watch', price: 5000, appeal: 88 },
   { name: 'an Italian leather sofa', price: 4000, appeal: 70 },
+  { name: 'a gramophone', price: 900, appeal: 82, since: 1905, until: 1950 },
+  { name: 'a television set', price: 1500, appeal: 88, tech: 'tv', until: 1975 },
 ]
 const LUXURY_GIFTS: Gift[] = [
-  { name: 'a jet ski', price: 12000, appeal: 85 },
+  { name: 'a jet ski', price: 12000, appeal: 85, since: 1975 },
   { name: 'a luxury watch', price: 25000, appeal: 92 },
-  { name: 'a vintage sports car', price: 90000, appeal: 96 },
+  { name: 'a vintage sports car', price: 90000, appeal: 96, since: 1975 },
+  { name: 'a mink coat', price: 15000, appeal: 80, until: 1990 },
+  { name: 'a sailboat', price: 40000, appeal: 88 },
 ]
+
+/** Does this present exist (and still make sense) this year? */
+function giftInEra(g: GameState, x: Gift): boolean {
+  if (x.since !== undefined && g.year < x.since) return false
+  if (x.until !== undefined && g.year > x.until) return false
+  return !x.tech || common(g, x.tech)
+}
 
 function giftOptions(g: GameState, p: Person): Gift[] {
   const c = g.character
   // Booze gifts only for adults, and not as a default where most people don't drink.
   const hindu = (() => { const r = getCountry(c.countryId).religions; return r.filter((x) => x === 'Hinduism').length * 2 > r.length })()
-  const ok = (x: Gift) => (!x.adult || (c.age >= 18 && p.age >= 21 && !noDrinking(g))) && !(hindu && /steak/.test(x.name))
+  const ok = (x: Gift) => giftInEra(g, x) && (!x.adult || (c.age >= 18 && p.age >= 21 && !noDrinking(g) && !prohibition(g))) && !(hindu && /steak/.test(x.name))
   const take = (list: Gift[], n: number) => {
     const pool = list.filter(ok)
     const out: Gift[] = []
@@ -654,6 +765,12 @@ interface DeathCause {
   cause: string
   text: string
   sudden: boolean
+  /** Only from this year (no hoverboards in 1950). */
+  since?: number
+  /** Only up to this year (tuberculosis and polio became rare). */
+  until?: number
+  /** Needs family cars to be common here. */
+  cars?: boolean
 }
 
 const OLD_AGE: DeathCause[] = [
@@ -680,21 +797,27 @@ const DISEASES: (DeathCause & { minAge?: number; gender?: Gender })[] = [
   { cause: 'Breast Cancer', text: 'died from breast cancer', sudden: false, minAge: 35 },
   { cause: 'Prostate Cancer', text: 'died from prostate cancer', sudden: false, minAge: 55, gender: 'male' },
   { cause: 'Emphysema', text: 'died from emphysema', sudden: false, minAge: 55 },
+  { cause: 'Tuberculosis', text: 'died from tuberculosis', sudden: false, until: 1955 },
+  { cause: 'Diphtheria', text: 'died from diphtheria', sudden: false, until: 1945 },
+  { cause: 'Scarlet Fever', text: 'died from scarlet fever', sudden: false, until: 1940 },
 ]
 const SUDDEN: DeathCause[] = [
-  { cause: 'Car Accident', text: 'died in a car crash', sudden: true },
+  { cause: 'Car Accident', text: 'died in a car crash', sudden: true, since: 1915 },
+  { cause: 'Carriage Accident', text: 'was thrown from a runaway carriage', sudden: true, until: 1925 },
+  { cause: 'Streetcar Accident', text: 'was hit by a streetcar', sudden: true, until: 1950 },
   { cause: 'Choking', text: 'choked on an olive', sudden: true },
   { cause: 'Lightning Strike', text: 'was struck by lightning on a golf course', sudden: true },
   { cause: 'Fall', text: 'fell off a ladder while cleaning the gutters', sudden: true },
   { cause: 'Bee Stings', text: 'had an allergic reaction after being attacked by a swarm of bees', sudden: true },
   { cause: 'Drowning', text: 'drowned in a rip current', sudden: true },
-  { cause: 'Skydiving Accident', text: "died when {his} parachute didn't open", sudden: true },
+  { cause: 'Skydiving Accident', text: "died when {his} parachute didn't open", sudden: true, since: 1960 },
   { cause: 'Crocodile Attack', text: 'was eaten by a crocodile on vacation', sudden: true },
-  { cause: 'Food Poisoning', text: 'got food poisoning from gas station sushi', sudden: true },
-  { cause: 'Bus Accident', text: 'was hit by a bus while jaywalking', sudden: true },
+  { cause: 'Food Poisoning', text: 'got food poisoning from gas station sushi', sudden: true, since: 1990 },
+  { cause: 'Food Poisoning', text: 'got food poisoning from a bad batch of oysters', sudden: true },
+  { cause: 'Bus Accident', text: 'was hit by a bus while jaywalking', sudden: true, since: 1925 },
   { cause: 'Falling Icicle', text: 'was struck by a falling icicle', sudden: true },
   { cause: 'Stampede', text: 'was trampled by fans at a stadium', sudden: true },
-  { cause: 'Electrocution', text: 'dropped a hair dryer into the bathtub', sudden: true },
+  { cause: 'Electrocution', text: 'dropped a hair dryer into the bathtub', sudden: true, since: 1950 },
   { cause: 'Hippo Attack', text: 'was charged by a hippo on safari', sudden: true },
   { cause: 'House Fire', text: 'died in a house fire', sudden: true },
   { cause: 'Spider Bite', text: 'was bitten by a venomous spider', sudden: true },
@@ -709,17 +832,27 @@ const SUDDEN: DeathCause[] = [
   { cause: 'Fall', text: 'fell down a flight of stairs', sudden: true },
   { cause: 'Bull Stampede', text: 'was trampled at the Running of the Bulls', sudden: true },
   { cause: 'Surgical Complications', text: 'died from complications after a minor surgery', sudden: true },
-  { cause: 'Hoverboard Accident', text: 'was hit by a car while riding a hoverboard', sudden: true },
+  { cause: 'Hoverboard Accident', text: 'was hit by a car while riding a hoverboard', sudden: true, since: 2016 },
   { cause: 'Falling Tree', text: 'was crushed when a tree fell on the house', sudden: true },
-  { cause: 'Carbon Monoxide Poisoning', text: 'left the car running in the garage', sudden: true },
-  { cause: 'Bungee Jumping Accident', text: 'was killed when the bungee cord snapped', sudden: true },
+  { cause: 'Carbon Monoxide Poisoning', text: 'left the car running in the garage', sudden: true, cars: true },
+  { cause: 'Carbon Monoxide Poisoning', text: 'was overcome by fumes from a coal stove', sudden: true, until: 1960 },
+  { cause: 'Bungee Jumping Accident', text: 'was killed when the bungee cord snapped', sudden: true, since: 1988 },
   { cause: 'Earthquake', text: 'was killed in an earthquake', sudden: true },
   { cause: 'Snake Bite', text: 'was bitten by a venomous snake', sudden: true },
-  { cause: 'Avalanche', text: 'was caught in an avalanche while snowboarding', sudden: true },
+  { cause: 'Avalanche', text: 'was caught in an avalanche while snowboarding', sudden: true, since: 1985 },
+  { cause: 'Avalanche', text: 'was caught in an avalanche on a mountain pass', sudden: true },
 ]
+
+/** The cause fits the year (no hoverboards in 1950, no runaway carriages in 1990). */
+function causeInEra(g: GameState, d: DeathCause): boolean {
+  if (d.since !== undefined && g.year < d.since) return false
+  if (d.until !== undefined && g.year > d.until) return false
+  return !d.cars || cars(g)
+}
 
 /** Freak accidents that fit where the family lives (no foul balls where nobody plays baseball). */
 function suddenFits(g: GameState, d: DeathCause): boolean {
+  if (!causeInEra(g, d)) return false
   const loc = localeOf(g.character.countryId)
   if (d.cause === 'Foul Ball') return loc.sports.some((x) => /baseball/i.test(x))
   if (d.cause === 'Falling Icicle' || d.cause === 'Avalanche' || d.cause === 'Skiing Accident') return loc.snow
@@ -728,7 +861,7 @@ function suddenFits(g: GameState, d: DeathCause): boolean {
 }
 
 function localSudden(g: GameState, d: DeathCause): DeathCause {
-  if (g.character.countryId === 'us' || d.cause !== 'Food Poisoning') return d
+  if (g.character.countryId === 'us' || d.cause !== 'Food Poisoning' || !/sushi/.test(d.text)) return d
   return { ...d, text: 'got food poisoning from some very questionable street-stall seafood' }
 }
 
@@ -758,7 +891,7 @@ function deathCause(g: GameState, p: Person): DeathCause {
   if (p.age >= 80 && chance(g, 0.5)) return pick(g, OLD_AGE)
   if (p.age >= 65 && chance(g, 0.2)) return pick(g, OLD_AGE)
   if (p.age < 40 ? chance(g, 0.7) : chance(g, 0.12)) return localSudden(g, pick(g, SUDDEN.filter((d) => suddenFits(g, d))))
-  return pick(g, DISEASES.filter((d) => (!d.minAge || p.age >= d.minAge) && (!d.gender || d.gender === p.gender)))
+  return pick(g, DISEASES.filter((d) => causeInEra(g, d) && (!d.minAge || p.age >= d.minAge) && (!d.gender || d.gender === p.gender)))
 }
 
 const PET_DEATHS_OLD = [
@@ -1343,7 +1476,7 @@ function driftRelationships(g: GameState): void {
 
 // --- Partner drama ---------------------------------------------------------
 
-const CHEAT_WITH = ['a coworker', 'their personal trainer', 'your neighbor', 'their ex', 'a barista', 'someone from the gym', 'a dentist', 'their yoga instructor']
+const CHEAT_WITH = ['a coworker', '@1985 their personal trainer', 'your neighbor', 'their ex', '@1990 a barista', '@-1960 the milkman', '@1950 someone from the gym', 'a dentist', '@1975 their yoga instructor', '@-1975 their dance instructor']
 
 /** True (and stamped) when this person hasn't been in this kind of drama for `years` years. */
 function dramaReady(g: GameState, p: Person, key: string, years: number): boolean {
@@ -1380,7 +1513,7 @@ function partnerDrama(g: GameState): void {
       g,
       'rel.partner.cheated',
       'Cheater!',
-      `You caught ${yourRel(p)} cheating on you with ${pick(g, CHEAT_WITH).replace('their', pr(p).his)} named ${name}!`,
+      `You caught ${yourRel(p)} cheating on you with ${eraPick(g, CHEAT_WITH).replace('their', pr(p).his)} named ${name}!`,
       [
         { id: 'forgive', label: 'Forgive them', emoji: '\u{1F54A}\u{FE0F}' },
         { id: 'yell', label: 'Yell at them', emoji: '\u{1F620}' },
@@ -1454,7 +1587,7 @@ defineScript('rel.partner.cheated', (g, choice, data) => {
     addRelationship(p, randInt(g, 3, 8))
     addStat(g, 'happiness', -randInt(g, 3, 7))
     log(g, `I forgave ${fullName(p)} for cheating on me.`)
-    notice(g, 'Forgiven', `You forgave ${p.firstName}. ${pr(p).He} swore it will never happen again. ${pick(g, ['You want to believe it.', "You've changed your phone password anyway.", 'Fool me once...'])}`, { emoji: '\u{1F54A}\u{FE0F}' })
+    notice(g, 'Forgiven', `You forgave ${p.firstName}. ${pr(p).He} swore it will never happen again. ${pick(g, ['You want to believe it.', ...(common(g, 'smartphone') ? ["You've changed your phone password anyway."] : []), 'Fool me once...'])}`, { emoji: '\u{1F54A}\u{FE0F}' })
   } else if (choice === 'yell') {
     addRelationship(p, -randInt(g, 10, 20))
     addStat(g, 'happiness', -randInt(g, 2, 5))
@@ -1508,17 +1641,19 @@ defineScript('rel.spouse.money', (g, choice, data) => {
 
 const MISBEHAVIOR = [
   'stuck gum in your hair while you napped',
-  'drew a mural on the living room wall in permanent marker',
-  'flushed your car keys down the toilet',
+  '@1960 drew a mural on the living room wall in permanent marker',
+  '@-1960 drew a mural on the living room wall in crayon',
+  '@cars flushed your car keys down the toilet',
   'started a food fight at dinner',
   'sprayed you with the garden hose',
   'tried to give the dog a haircut',
   'taught the neighbor\'s parrot a rude word',
-  'hid all the TV remotes and refuses to say where',
-  'bit a kid at daycare',
-  'mailed your phone to an unknown address',
+  '@tv,1980 hid all the TV remotes and refuses to say where',
+  '@1960 bit a kid at daycare',
+  '@mobilePhone mailed your phone to an unknown address',
+  'cut the fringe off the good curtains',
 ]
-const SIBLING_ANNOYANCES = ['stole your favorite hoodie', 'read your diary out loud', 'broke your favorite toy', 'ate your leftovers', 'told on you for something you did not do', 'hogged the bathroom for an hour']
+const SIBLING_ANNOYANCES = ['@1975 stole your favorite hoodie', '@-1975 stole your favorite sweater', 'read your diary out loud', 'broke your favorite toy', 'ate your leftovers', 'told on you for something you did not do', 'hogged the bathroom for an hour']
 const PET_MESS = ['chewed up your favorite shoes', 'peed on the couch', 'knocked a vase off the shelf', 'ate an entire birthday cake', 'escaped into the neighbor\'s yard', 'dug up the garden', 'threw up in your bed']
 
 /** Years before the same automatic family/friend popup can feature the same person again. */
@@ -1535,7 +1670,7 @@ function yearlyFamilyEvent(g: GameState): void {
     events.push({ key: 'rel.child.misbehave:' + k.id,
       w: 3,
       run: () =>
-        scriptChoice(g, 'rel.child.misbehave', 'Misbehaving', `${the(k)} ${pick(g, MISBEHAVIOR)}. What will you do?`, [
+        scriptChoice(g, 'rel.child.misbehave', 'Misbehaving', `${the(k)} ${eraPick(g, MISBEHAVIOR)}. What will you do?`, [
           { id: 'yell', label: 'Yell at them', emoji: '\u{1F620}' },
           { id: 'ground', label: 'Ground them', emoji: '\u{1F6AB}' },
           { id: 'talk', label: 'Have a talk', emoji: '\u{1F5E3}\u{FE0F}' },
@@ -1550,7 +1685,7 @@ function yearlyFamilyEvent(g: GameState): void {
     events.push({ key: 'rel.sibling.fight:' + s.id,
       w: 3,
       run: () =>
-        scriptChoice(g, 'rel.sibling.fight', 'Sibling Rivalry', `${the(s)} ${pick(g, SIBLING_ANNOYANCES)}. What will you do?`, [
+        scriptChoice(g, 'rel.sibling.fight', 'Sibling Rivalry', `${the(s)} ${eraPick(g, SIBLING_ANNOYANCES)}. What will you do?`, [
           ...(c.age >= 6 ? [{ id: 'rumble', label: 'Rumble', emoji: '\u{1F44A}' }] : []),
           { id: 'squabble', label: 'Squabble', emoji: '\u{1F5EF}\u{FE0F}' },
           ...(momOrDad ? [{ id: 'tell', label: 'Tell on them', emoji: '\u{1F5E3}\u{FE0F}' }] : []),
@@ -1561,8 +1696,8 @@ function yearlyFamilyEvent(g: GameState): void {
   const ps = alive.filter((p) => PARENTS.includes(p.relation))
   if (c.age >= 6 && c.age < 18 && ps.length) {
     const par = pick(g, ps)
-    const inv0 = pick(g, c.age < 12 ? INVITES_KID : INVITES_TEEN)
-    const inv: [string, string] = [localize(g, inv0[0]), localize(g, inv0[1])]
+    const inv0 = pick(g, (c.age < 12 ? INVITES_KID : INVITES_TEEN).filter((x) => eraOk(g, x[0])))
+    const inv: [string, string] = [localize(g, eraStrip(inv0[0])), localize(g, inv0[1])]
     events.push({ key: 'rel.parent.invite:' + par.id,
       w: 2,
       run: () =>
@@ -1622,7 +1757,7 @@ function yearlyFamilyEvent(g: GameState): void {
     events.push({ key: 'rel.friend.pranked:' + f.id,
       w: 1,
       run: () =>
-        scriptChoice(g, 'rel.friend.pranked', 'Pranked!', `${the(f)} pranked you! ${pr(f).He} ${pick(g, PRANKS).replaceAll('{his}', 'your').replaceAll('{him}', 'you')}.`, [
+        scriptChoice(g, 'rel.friend.pranked', 'Pranked!', `${the(f)} pranked you! ${pr(f).He} ${eraPick(g, PRANKS).replaceAll('{his}', 'your').replaceAll('{him}', 'you')}.`, [
           { id: 'laugh', label: 'Laugh it off', emoji: '\u{1F602}' },
           { id: 'insult', label: 'Insult them', emoji: '\u{1F595}' },
           ...(c.age >= 8 ? [{ id: 'assault', label: 'Assault them', emoji: '\u{1F44A}' }] : []),
@@ -2049,9 +2184,9 @@ function build(def: Def, pid: string): MenuAction {
 
 function activityFor(g: GameState, p: Person): string {
   const youngest = Math.min(g.character.age, p.age)
-  if (youngest < 5) return pick(g, ACT_TODDLER)
+  if (youngest < 5) return eraPick(g, ACT_TODDLER)
   if (youngest < 13) return localize(g, pick(g, localActs(g, ACT_KID)))
-  if (p.age >= 70 && chance(g, 0.5)) return pick(g, ACT_ELDER)
+  if (p.age >= 70 && chance(g, 0.5)) return eraPick(g, ACT_ELDER)
   if (youngest >= 21 && chance(g, 0.35)) return localize(g, pick(g, localActs(g, ACT_ADULT)))
   return localize(g, pick(g, localActs(g, ACT_TEEN)))
 }
@@ -2085,7 +2220,7 @@ function spendTime(g: GameState, p: Person): void {
     const d = randInt(g, -2, 2)
     addRelationship(p, d)
     log(g, `I ${act} with ${myRel(p)}.`)
-    notice(g, 'Spend Time', `You ${act} with ${yourRel(p)}. ${fill(pick(g, SPEND_MEH), p)}`, {
+    notice(g, 'Spend Time', `You ${act} with ${yourRel(p)}. ${fill(eraPick(g, SPEND_MEH), p)}`, {
       emoji: '\u{1F46B}',
       ai: aiFacts(g, p, `${act} (spent time together)`, `it was underwhelming and a bit awkward; ${x.he} wasn't really into it. Relationship ${d >= 0 ? '+' : ''}${d}.`),
     })
@@ -2094,10 +2229,10 @@ function spendTime(g: GameState, p: Person): void {
 
 function pickTopic(g: GameState, p: Person): { topic: string; spicy: boolean } {
   const youngest = Math.min(g.character.age, p.age)
-  if (youngest < 10 && chance(g, 0.6)) return { topic: pick(g, TOPICS_KID), spicy: false }
+  if (youngest < 10 && chance(g, 0.6)) return { topic: eraPick(g, TOPICS_KID), spicy: false }
   if (youngest >= 16 && chance(g, 0.15)) return { topic: pick(g, TOPICS_SPICY), spicy: true }
-  if (youngest >= 30 && chance(g, 0.25)) return { topic: pick(g, TOPICS_ADULT), spicy: false }
-  return { topic: pick(g, TOPICS), spicy: false }
+  if (youngest >= 30 && chance(g, 0.25)) return { topic: eraPick(g, TOPICS_ADULT), spicy: false }
+  return { topic: eraPick(g, TOPICS), spicy: false }
 }
 
 function conversation(g: GameState, p: Person): void {
@@ -2116,7 +2251,7 @@ function conversation(g: GameState, p: Person): void {
   const { topic, spicy } = pickTopic(g, p)
   let disagree = 0.15 + (spicy ? 0.25 : 0) + (p.relationship < 40 ? 0.15 : 0) + (has(p, 'hot-headed', 'arrogant', 'dramatic') ? 0.08 : 0)
   if (p.age < 3) disagree = 0
-  const opener = phone ? 'had a phone call from prison with' : pick(g, OPENERS)
+  const opener = phone ? (prisonPhone(g) ? 'had a phone call from prison with' : 'traded letters from prison with') : pick(g, OPENERS)
   if (chance(g, disagree)) {
     addRelationship(p, -randInt(g, 2, 5))
     const mom = g.people.find((x) => x.alive && x.relation === 'parent' && x.gender === 'female')
@@ -2144,7 +2279,7 @@ function conversation(g: GameState, p: Person): void {
   log(g, `I talked with ${myRel(p)} about ${topic}.`)
   notice(g, 'Conversation', `You ${opener} ${yourRel(p)} about ${topic}. ${fill(pick(g, ['{He} enjoyed it.', 'It was a great chat.', '{He} had a lot to say about it.', 'You both learned something.', '{He} laughed the whole time.']), p)}`, {
     emoji: '\u{1F4AC}',
-    ai: aiFacts(g, p, `had a conversation${phone ? ' (by phone from prison)' : ''} about ${topic}`, `it went well; they enjoyed it. Relationship +${d}, player happiness +${h}.`),
+    ai: aiFacts(g, p, `had a conversation${phone ? (prisonPhone(g) ? ' (by phone from prison)' : ' (by letter from prison)') : ''} about ${topic}`, `it went well; they enjoyed it. Relationship +${d}, player happiness +${h}.`),
   })
 }
 
@@ -2177,7 +2312,8 @@ function compliment(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'compliments')
   const x = pr(p)
-  const comp = pick(g, COMPLIMENTS)
+  const compliments = eraLines(g, COMPLIMENTS)
+  const comp = pick(g, compliments)
   const said = `You told ${yourRel(p)} that ${x.he} is ${comp}.`
   if (p.relation === 'boss') {
     for (const cw of g.people.filter((q) => q.alive && q.relation === 'coworker' && q.contextId === p.contextId)) addRelationship(cw, -randInt(g, 1, 3))
@@ -2188,7 +2324,7 @@ function compliment(g: GameState, p: Person): void {
     if (chance(g, 0.15)) {
       d += randInt(g, 3, 6)
       addStat(g, 'happiness', 8)
-      text += `\n\nIt's mutual! ${p.firstName} told you that you are ${pick(g, COMPLIMENTS.filter((c2) => c2 !== comp))}.`
+      text += `\n\nIt's mutual! ${p.firstName} told you that you are ${pick(g, compliments.filter((c2) => c2 !== comp))}.`
     }
     addRelationship(p, d)
     if (p.relation === 'boss') text += '\n\nYour coworkers noticed you sucking up.'
@@ -2272,7 +2408,8 @@ function doInsult(g: GameState, p: Person, fromArgument = false): void {
   count(g, 'insults')
   addHidden(g, 'karma', -1)
   const x = pr(p)
-  const ins = pick(g, INSULTS)
+  const insults = eraLines(g, INSULTS)
+  const ins = pick(g, insults)
   const said = `You called ${yourRel(p)} ${ins}.`
   const hot = has(p, 'hot-headed', 'dramatic', 'arrogant') ? 0.12 : 0
   const roll = rand(g)
@@ -2285,7 +2422,7 @@ function doInsult(g: GameState, p: Person, fromArgument = false): void {
   } else if (roll < 0.85 || p.age < 6 || p.relation === 'pet') {
     addRelationship(p, -randInt(g, 5, 10))
     addStat(g, 'happiness', -randInt(g, 1, 4))
-    notice(g, 'Insult', `${said} ${x.He} called you ${pick(g, INSULTS.filter((i) => i !== ins))} right back.`, { emoji: '\u{1F620}' })
+    notice(g, 'Insult', `${said} ${x.He} called you ${pick(g, insults.filter((i) => i !== ins))} right back.`, { emoji: '\u{1F620}' })
   } else {
     addRelationship(p, -randInt(g, 10, 15))
     addStat(g, 'health', -randInt(g, 2, 8))
@@ -2319,7 +2456,7 @@ function prank(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'pranks')
   const x = pr(p)
-  const what = `You ${fill(pick(g, PRANKS), p)}.`
+  const what = `You ${fill(eraPick(g, PRANKS), p)}.`
   const likes = 0.3 + (has(p, 'funny', 'outgoing', 'rebellious') ? 0.2 : 0) + p.relationship / 400
   const retaliate = 0.12 + (has(p, 'hot-headed', 'grumpy') ? 0.15 : 0)
   const roll = rand(g)
@@ -2347,7 +2484,7 @@ const ATTACKS: { id: string; label: string; emoji: string; verb: string; dmg: [n
   { id: 'wedgie', label: 'Wedgie', emoji: '\u{1FA72}', verb: 'gave {him} a wedgie', dmg: [5, 15], noPart: true },
 ]
 const BODY_PARTS = ['nose', 'chin', 'shin', 'stomach', 'arm', 'ear', 'forehead', 'kneecap', 'elbow', 'shoulder', 'cheek', 'back', 'eyebrow', 'jaw']
-const WEAPONS = ['a frying pan', 'a rolling pin', 'a TV remote', 'a shoe', 'an umbrella', 'a lamp', 'a rubber chicken', 'a baguette']
+const WEAPONS = ['a frying pan', 'a rolling pin', '@tv,1980 a TV remote', '@-1950 a walking cane', 'a shoe', 'an umbrella', 'a lamp', 'a rubber chicken', 'a baguette']
 
 function canBrawl(g: GameState, p: Person): string | null {
   const c = g.character
@@ -2407,7 +2544,7 @@ function performAssault(g: GameState, p: Person, first: (typeof ATTACKS)[number]
   if (chance(g, fightBack)) {
     const hurt = randInt(g, 5, 18)
     addStat(g, 'health', -hurt)
-    text += `\n\n${x.He} fought back and hit you with ${pick(g, WEAPONS)}!`
+    text += `\n\n${x.He} fought back and hit you with ${eraPick(g, WEAPONS)}!`
   }
   if (p.relation === 'cellmate' && c.prison) {
     const won = total >= 30
@@ -2457,7 +2594,7 @@ function readStory(g: GameState, p: Person): void {
   addRelationship(p, randInt(g, 3, 8))
   addPersonStat(p, 'smarts', randInt(g, 1, 3))
   addStat(g, 'happiness', randInt(g, 1, 4))
-  notice(g, 'Read a Story', `You read "${pick(g, STORIES)}" to ${p.firstName}. ${fill(pick(g, ['{He} fell asleep halfway through.', '{He} made you read it three more times.', '{He} asked a lot of questions about the plot holes.', '{He} did all the voices with you.']), p)}`, { emoji: '\u{1F4D6}', tone: 'good' })
+  notice(g, 'Read a Story', `You read "${eraPick(g, STORIES)}" to ${p.firstName}. ${fill(pick(g, ['{He} fell asleep halfway through.', '{He} made you read it three more times.', '{He} asked a lot of questions about the plot holes.', '{He} did all the voices with you.']), p)}`, { emoji: '\u{1F4D6}', tone: 'good' })
 }
 
 function movie(g: GameState, p: Person): void {
@@ -2469,13 +2606,13 @@ function movie(g: GameState, p: Person): void {
     return
   }
   touch(g, p)
-  const film = pick(g, MOVIES)
+  const film = eraPick(g, MOVIES)
   if (chance(g, mood(p) + 0.1)) {
     const d = randInt(g, 4, 10)
     addRelationship(p, d)
     addStat(g, 'happiness', randInt(g, 3, 6))
     log(g, `I watched ${film} with ${myRel(p)}.`, 'good')
-    notice(g, 'Movie Theater', `You saw "${film}" with ${yourRel(p)}${cost ? ` (${money(cost)})` : ''}. ${fill(pick(g, ['You both loved it.', '{He} cried at the end. So did you.', 'You shared a bucket of popcorn the size of a trash can.']), p)}`, { emoji: '\u{1F3AC}', tone: 'good' })
+    notice(g, 'Movie Theater', `You saw "${film}" with ${yourRel(p)}${cost ? ` (${money(cost)})` : ''}. ${fill(eraPick(g, ['You both loved it.', '{He} cried at the end. So did you.', '@1930 You shared a bucket of popcorn the size of a trash can.', '@-1928 The piano player down front was the real star.']), p)}`, { emoji: '\u{1F3AC}', tone: 'good' })
   } else {
     addRelationship(p, randInt(g, -1, 2))
     notice(g, 'Movie Theater', `You saw "${film}" with ${yourRel(p)}${cost ? ` (${money(cost)})` : ''}. ${fill(pick(g, ['{He} fell asleep.', 'It was terrible. You both agreed on that, at least.', '{He} talked through the whole thing.']), p)}`, { emoji: '\u{1F3AC}' })
@@ -2517,7 +2654,7 @@ defineScript('rel.vacation.pick', (g, choice, data) => {
   addStat(g, 'happiness', randInt(g, 8, 15))
   addStat(g, 'health', randInt(g, 1, 4))
   log(g, `I went on vacation to ${place} with ${myRel(p)}.`, 'good')
-  notice(g, 'Vacation', `You took ${yourRel(p)} to ${place} for ${money(cost)}. ${pick(g, ['It was unforgettable.', 'The airline lost your luggage, but you had the time of your lives anyway.', 'You took 400 photos. 390 of them are blurry.', 'You both came back with matching sunburns.'])}`, { emoji: '\u{1F3D6}\u{FE0F}', tone: 'good' })
+  notice(g, 'Vacation', `You took ${yourRel(p)} to ${place} for ${money(cost)}. ${eraPick(g, ['It was unforgettable.', '@flights The airline lost your luggage, but you had the time of your lives anyway.', '@!flights The train was six hours late, but you had the time of your lives anyway.', '@2003 You took 400 photos. 390 of them are blurry.', '@1925,-2003 You used up six rolls of film. Most of the pictures are of your thumb.', 'You both came back with matching sunburns.'])}`, { emoji: '\u{1F3D6}\u{FE0F}', tone: 'good' })
 })
 
 function askForMoney(g: GameState, p: Person): void {
@@ -2532,7 +2669,7 @@ function askForMoney(g: GameState, p: Person): void {
   if (chance(g, clamp(refuse, 0.05, 0.95))) {
     count(g, 'moneyRefused')
     addRelationship(p, -randInt(g, 2, 5))
-    notice(g, 'Ask for Money', `${the(p)} refused to give you money. "${pick(g, ["Money doesn't grow on trees!", 'Get a job.', 'What happened to the last money I gave you?', 'I am not an ATM.', 'Ask me again when pigs fly.'])}"`, { emoji: '\u{1F645}' })
+    notice(g, 'Ask for Money', `${the(p)} refused to give you money. "${pick(g, ["Money doesn't grow on trees!", 'Get a job.', 'What happened to the last money I gave you?', ...(common(g, 'atm') ? ['I am not an ATM.'] : ["I'm not made of money."]), 'Ask me again when pigs fly.'])}"`, { emoji: '\u{1F645}' })
     return
   }
   let amount: number
@@ -2588,7 +2725,7 @@ function doSquabble(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'arguments')
   addRelationship(p, -randInt(g, 4, 10))
-  const topic = pick(g, SQUABBLES)
+  const topic = pick(g, squabbleTopics(g))
   notice(g, 'Squabble', `You and ${p.firstName} squabbled over ${topic}. ${pick(g, ['Mom had to separate you.', 'You both got sent to your rooms.', 'You won. Barely.', `${p.firstName} won. You demand a rematch.`])}`, { emoji: '\u{1F5EF}\u{FE0F}' })
 }
 
@@ -2640,7 +2777,7 @@ function rumor(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'rumors')
   addHidden(g, 'karma', -3)
-  const r = fill(pick(g, RUMORS), p)
+  const r = fill(eraPick(g, RUMORS), p)
   addRelationship(p, -randInt(g, 8, 15))
   let text = `You started a rumor that ${p.firstName} ${r}. It spread like wildfire.`
   if (chance(g, 0.35)) {
@@ -2671,10 +2808,10 @@ function party(g: GameState, p: Person): void {
   addRelationship(p, randInt(g, 5, 10))
   addStat(g, 'happiness', randInt(g, 5, 10))
   count(g, 'parties')
-  let text = `You went to ${where} with ${yourRel(p)}. ${pick(g, ['It was legendary.', 'You danced until your feet hurt.', 'You made three new friends and forgot all their names.', 'Someone fell into the pool. It was you.'])}`
+  let text = `You went to ${where} with ${yourRel(p)}. ${pick(g, ['It was legendary.', 'You danced until your feet hurt.', 'You made three new friends and forgot all their names.', 'Someone fell into the pool. It was you.', ...(prohibition(g) ? ['Someone brought bootleg gin in a hot water bottle.'] : [])])}`
   if (c.age < 18 && chance(g, 0.05)) {
     addStat(g, 'happiness', -4)
-    text += '\n\nThe cops showed up and broke it up. Your parents got a call.'
+    text += landline(g) ? '\n\nThe cops showed up and broke it up. Your parents got a call.' : '\n\nA constable showed up and broke it up, then walked you home to your parents.'
   } else if (c.age >= 21 && chance(g, 0.06)) {
     addStat(g, 'health', -3)
     text += '\n\nYou woke up the next morning with a mysterious headache and a traffic cone.'
@@ -2691,24 +2828,39 @@ function concert(g: GameState, p: Person): void {
     return
   }
   touch(g, p)
-  const band = pick(g, BANDS)
+  const band = bandName(g)
   addRelationship(p, randInt(g, 5, 11))
   addStat(g, 'happiness', randInt(g, 5, 10))
   log(g, `I saw ${band} in concert with ${myRel(p)}.`, 'good')
-  notice(g, 'Concert', `You saw ${band} live with ${yourRel(p)} (${money(cost)}). ${pick(g, ['You lost your voice from screaming.', 'The lead singer pointed at you. Probably.', 'You spent the whole show filming it on your phone.', 'It was the best night of the year.'])}`, { emoji: '\u{1F3B8}', tone: 'good' })
+  notice(g, 'Concert', `You saw ${band} live with ${yourRel(p)} (${money(cost)}). ${eraPick(g, ['You lost your voice from screaming.', 'The lead singer pointed at you. Probably.', '@smartphone You spent the whole show filming it on your phone.', '@-1960 You bought the sheet music on the way out.', 'It was the best night of the year.'])}`, { emoji: '\u{1F3B8}', tone: 'good' })
+}
+
+type ScreenMode = 'videos' | 'tv' | 'radio' | 'comics'
+const SCREEN_LABEL: Record<ScreenMode, string> = { videos: 'Watch Videos', tv: 'Watch TV', radio: 'Listen to the Radio', comics: 'Read the Funny Pages' }
+const SCREEN_EMOJI: Record<ScreenMode, string> = { videos: '\u{1F4FA}', tv: '\u{1F4FA}', radio: '\u{1F4FB}', comics: '\u{1F4F0}' }
+
+/** What friends kill time with: online videos, the TV, the radio, or the Sunday comics. */
+function screenMode(g: GameState): ScreenMode {
+  if (common(g, 'videoSharing')) return 'videos'
+  if (common(g, 'tv')) return 'tv'
+  if (common(g, 'radio')) return 'radio'
+  return 'comics'
 }
 
 function watchVideos(g: GameState, p: Person): void {
-  if (!limit(g, p, 'videos', 2, 'Watch Videos')) return
+  const m = screenMode(g)
+  const title = SCREEN_LABEL[m]
+  if (!limit(g, p, 'videos', 2, title)) return
   touch(g, p)
-  const ch = pick(g, CHANNELS)
+  const ch = m === 'videos' ? `videos of ${pick(g, CHANNELS)}` : m === 'tv' ? showName(g) : m === 'radio' ? radioShow(g) : 'the comic strips in the Sunday paper'
+  const verb = m === 'radio' ? 'listened to' : m === 'comics' ? 'read' : 'watched'
   if (chance(g, mood(p) + 0.15)) {
     addRelationship(p, randInt(g, 3, 7))
     addStat(g, 'happiness', randInt(g, 2, 4))
-    notice(g, 'Watch Videos', `You watched videos of ${ch} with ${yourRel(p)}. You both lost track of time.`, { emoji: '\u{1F4FA}', tone: 'good' })
+    notice(g, title, `You ${verb} ${ch} with ${yourRel(p)}. You both lost track of time.`, { emoji: SCREEN_EMOJI[m], tone: 'good' })
   } else {
     addRelationship(p, -1)
-    notice(g, 'Watch Videos', `You tried to show ${p.firstName} videos of ${ch}. ${pr(p).He} did not get it.`, { emoji: '\u{1F4FA}' })
+    notice(g, title, m === 'videos' ? `You tried to show ${p.firstName} ${ch}. ${pr(p).He} did not get it.` : `You ${verb} ${ch} with ${p.firstName}. ${pr(p).He} did not get it.`, { emoji: SCREEN_EMOJI[m] })
   }
 }
 
@@ -2719,9 +2871,9 @@ function dateNight(g: GameState, p: Person): void {
   let cost = 0
   if (c.age < 18) text = localize(g, pick(g, localActs(g, DATE_VENUES_TEEN)))
   else {
-    const v = pick(g, DATE_VENUES_ADULT.filter((d) => !noDrinking(g) || !/wine/.test(d.text)))
+    const v = pick(g, DATE_VENUES_ADULT.filter((d) => eraOk(g, d.text) && ((!noDrinking(g) && !prohibition(g)) || !/wine/.test(d.text))))
     cost = v.cost
-    text = v.text
+    text = eraStrip(v.text)
   }
   if (!spend(g, cost)) {
     notice(g, 'Date Night', `You can't afford date night (${money(cost)}). Maybe a walk in the park instead?`, { emoji: '\u{1F4B8}' })
@@ -2736,20 +2888,21 @@ function dateNight(g: GameState, p: Person): void {
     notice(g, 'Date Night', `You and ${p.firstName} ${text}${cost ? ` (${money(cost)})` : ''}. ${fill(pick(g, ['It was magical.', '{He} held your hand the whole time.', 'You talked for hours.', '{He} said it was the best date ever.']), p)}`, { emoji: '\u{1F377}', tone: 'good' })
   } else {
     addRelationship(p, randInt(g, -3, 1))
-    notice(g, 'Date Night', `You and ${p.firstName} ${text}${cost ? ` (${money(cost)})` : ''}. ${fill(pick(g, ['{He} was on {his} phone most of the night.', 'You ran out of things to say by the appetizers.', '{He} spent the whole time talking about {his} ex.']), p)}`, { emoji: '\u{1F377}' })
+    notice(g, 'Date Night', `You and ${p.firstName} ${text}${cost ? ` (${money(cost)})` : ''}. ${fill(eraPick(g, ['@smartphone {He} was on {his} phone most of the night.', '@!smartphone {He} kept glancing at the clock.', 'You ran out of things to say by the appetizers.', '{He} spent the whole time talking about {his} ex.']), p)}`, { emoji: '\u{1F377}' })
   }
 }
 
 const PICKUP_LINES = [
-  "Are you a parking ticket? Because you've got FINE written all over you.",
+  "@cars Are you a parking ticket? Because you've got FINE written all over you.",
   'Do you have a map? I keep getting lost in your eyes.',
   "Are you made of copper and tellurium? Because you're Cu-Te.",
-  "Is your name Wi-Fi? Because I'm feeling a connection.",
+  "@internet,2003 Is your name Wi-Fi? Because I'm feeling a connection.",
+  "@-1990 Are you a telegram? Because you've got me all stirred up and short of words.",
   'Do you believe in love at first sight, or should I walk by again?',
   "If you were a vegetable, you'd be a cute-cumber.",
   "Are you a bank loan? Because you've got my interest.",
   "Are you a campfire? Because you're hot and I want s'more.",
-  "Is it hot in here, or is it just you? (It's the broken AC. But also you.)",
+  "@1950 Is it hot in here, or is it just you? (It's the broken AC. But also you.)",
   'Are you a magician? Because whenever I look at you, everyone else disappears.',
 ]
 
@@ -2759,7 +2912,7 @@ function flirt(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'flirts')
   const x = pr(p)
-  const line = pick(g, PICKUP_LINES)
+  const line = eraPick(g, PICKUP_LINES)
   if (isRomantic(p) || p.relation === 'lover') {
     if (chance(g, mood(p) + 0.15)) {
       const d = randInt(g, 3, 8)
@@ -2768,7 +2921,7 @@ function flirt(g: GameState, p: Person): void {
       notice(g, 'Flirt', `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} blushed and kissed you.', '{He} giggled like it was your first date.', '{He} flirted right back.', '{He} groaned at the line, but {he} was smiling.']), p)}`, { emoji: '\u{1F60F}', tone: 'good' })
     } else {
       addRelationship(p, randInt(g, -1, 1))
-      notice(g, 'Flirt', `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} rolled {his} eyes.', '{He} said "Not now, I\'m watching my show."', '{He} patted you on the head like a puppy.']), p)}`, { emoji: '\u{1F644}' })
+      notice(g, 'Flirt', `You flirted with ${yourRel(p)}: "${line}"\n\n${fill(pick(g, ['{He} rolled {his} eyes.', common(g, 'tv') ? '{He} said "Not now, I\'m watching my show."' : '{He} said "Not now, I\'m reading."', '{He} patted you on the head like a puppy.']), p)}`, { emoji: '\u{1F644}' })
     }
     return
   }
@@ -3000,7 +3153,7 @@ const D = {
   prank: (): Def => ({ id: 'prank', label: 'Prank', emoji: '\u{1F921}', minAge: 8, targetMinAge: 5, run: prank }),
   assault: (label = 'Assault'): Def => ({ id: 'assault', label, emoji: '\u{1F44A}', minAge: 6, targetMinAge: 4, check: canBrawl, run: startAssault }),
   hug: (): Def => ({ id: 'hug', label: 'Hug', emoji: '\u{1F917}', minAge: 2, run: hug }),
-  movie: (): Def => ({ id: 'movie', label: 'Movie Theater', emoji: '\u{1F3AC}', minAge: 6, targetMinAge: 4, subtitle: (g) => (g.character.age >= 18 ? 'Catch a movie together (~$35)' : 'Catch a movie together'), run: movie }),
+  movie: (): Def => ({ id: 'movie', label: 'Movie Theater', emoji: '\u{1F3AC}', minAge: 6, targetMinAge: 4, subtitle: (g) => (g.character.age >= 18 ? `Catch a movie together (~${money(35)})` : 'Catch a movie together'), run: movie }),
   vacation: (): Def => ({ id: 'vacation', label: 'Vacation', emoji: '\u{1F3D6}\u{FE0F}', minAge: 18, subtitle: 'Take them on a trip', run: vacationWith }),
   askMoney: (): Def => ({ id: 'askMoney', label: 'Ask for Money', emoji: '\u{1F4B0}', minAge: 5, prisonOk: true, run: askForMoney }),
   giveMoney: (): Def => ({
@@ -3010,7 +3163,7 @@ const D = {
     minAge: 18,
     subtitle: (g) => `You have ${money(g.character.money)}`,
     check: (g) => (g.character.money <= 0 ? "You don't have any money to give." : null),
-    input: { kind: 'number', label: 'How much?', min: 1, placeholder: '100' },
+    input: { kind: 'number', money: true, label: 'How much?', min: 1, placeholder: '100' },
     run: giveMoney,
   }),
   homework: (): Def => ({
@@ -3025,22 +3178,31 @@ const D = {
   squabble: (): Def => ({ id: 'squabble', label: 'Squabble', emoji: '\u{1F5EF}\u{FE0F}', minAge: 4, targetMinAge: 3, run: (g, p) => (limit(g, p, 'squabble', 2, 'Squabble') ? doSquabble(g, p) : undefined) }),
   befriend: (): Def => ({ id: 'befriend', label: 'Befriend', emoji: '\u{1F91D}', minAge: 3, prisonOk: true, run: befriend }),
   bestFriend: (): Def => ({ id: 'bestFriend', label: 'Best Friend', emoji: '\u{1F46F}', minAge: 4, subtitle: 'Ask them to be your best friend', run: askBestFriend }),
-  unfriend: (): Def => ({
-    id: 'unfriend',
-    label: 'Unfriend',
-    emoji: '\u{1F44B}',
-    prisonOk: true,
-    confirm: (_g, p) => `Unfriend ${p.firstName}? They will be removed from your life.`,
-    run: (g, p) => {
-      removePerson(g, p.id)
-      log(g, `I unfriended ${fullName(p)}.`)
-      notice(g, 'Unfriend', `You unfriended ${p.firstName}. ${pick(g, ['Bold move.', 'They will be sharing passive-aggressive quotes online about this.', 'Out with the old.'])}`, { emoji: '\u{1F44B}' })
-    },
-  }),
+  unfriend: (g: GameState): Def => {
+    // "Unfriend" is a social-media word; before that you simply stopped being friends.
+    const online = common(g, 'socialMedia')
+    const title = online ? 'Unfriend' : 'End Friendship'
+    return {
+      id: 'unfriend',
+      label: title,
+      emoji: '\u{1F44B}',
+      prisonOk: true,
+      confirm: (_g, p) => (online ? `Unfriend ${p.firstName}? They will be removed from your life.` : `Stop being friends with ${p.firstName}? They will be removed from your life.`),
+      run: (g2, p) => {
+        removePerson(g2, p.id)
+        log(g2, online ? `I unfriended ${fullName(p)}.` : `I ended my friendship with ${fullName(p)}.`)
+        const tail = pick(g2, ['Bold move.', online ? 'They will be sharing passive-aggressive quotes online about this.' : 'They will be telling the whole neighborhood about this.', 'Out with the old.'])
+        notice(g2, title, online ? `You unfriended ${p.firstName}. ${tail}` : `You told ${p.firstName} you're done being friends. ${tail}`, { emoji: '\u{1F44B}' })
+      },
+    }
+  },
   rumor: (): Def => ({ id: 'rumor', label: 'Start a Rumor', emoji: '\u{1F92B}', minAge: 12, targetMinAge: 10, run: rumor }),
   party: (): Def => ({ id: 'party', label: 'Party', emoji: '\u{1F389}', minAge: 13, targetMinAge: 13, run: party }),
   concert: (): Def => ({ id: 'concert', label: 'Concert', emoji: '\u{1F3B8}', minAge: 12, targetMinAge: 10, subtitle: 'Buy two tickets to a show', run: concert }),
-  videos: (): Def => ({ id: 'videos', label: 'Watch Videos', emoji: '\u{1F4FA}', minAge: 8, targetMinAge: 6, run: watchVideos }),
+  videos: (g: GameState): Def => {
+    const m = screenMode(g)
+    return { id: 'videos', label: SCREEN_LABEL[m], emoji: SCREEN_EMOJI[m], minAge: 8, targetMinAge: 6, run: watchVideos }
+  },
   askOut: (): Def => ({
     id: 'askOut',
     label: 'Ask Out',
@@ -3108,7 +3270,7 @@ const D = {
     subtitle: (_g, p) => (p.data.birthControl === true ? `Ask ${p.firstName} to stop birth control` : `Ask ${p.firstName} to start birth control`),
     run: (g, p) => (limit(g, p, 'birthControl', 1, 'Birth Control') ? askBirthControl(g, p) : undefined),
   }),
-  counseling: (): Def => ({ id: 'counseling', label: 'Couples Counseling', emoji: '\u{1F6CB}\u{FE0F}', minAge: 18, subtitle: 'Work on your relationship (~$400)', run: (g, p) => (limit(g, p, 'counseling', 1, 'Counseling') ? couplesCounseling(g, p) : undefined) }),
+  counseling: (): Def => ({ id: 'counseling', label: 'Couples Counseling', emoji: '\u{1F6CB}\u{FE0F}', minAge: 18, subtitle: () => `Work on your relationship (~${money(400)})`, run: (g, p) => (limit(g, p, 'counseling', 1, 'Counseling') ? couplesCounseling(g, p) : undefined) }),
   propose: (): Def => ({
     id: 'propose',
     label: 'Propose',
@@ -3150,17 +3312,24 @@ const D = {
     run: (g, p) => divorce(g, p, 'player'),
   }),
   getBack: (): Def => ({ id: 'getBack', label: 'Get Back Together', emoji: '\u{1F496}', minAge: 13, check: datingProblem, subtitle: (_g, p) => (p.data.fling === true ? 'Start dating them for real' : 'Give it another shot'), run: getBackTogether }),
-  deleteContact: (): Def => ({
-    id: 'deleteContact',
-    label: 'Delete Contact',
-    emoji: '\u{1F5D1}\u{FE0F}',
-    prisonOk: true,
-    confirm: (_g, p) => `Delete ${p.firstName} from your contacts forever?`,
-    run: (g, p) => {
-      removePerson(g, p.id)
-      notice(g, 'Delete Contact', `You deleted ${p.firstName}'s number. Growth.`, { emoji: '\u{1F5D1}\u{FE0F}' })
-    },
-  }),
+  deleteContact: (g: GameState): Def => {
+    // Deleting a contact needs a phone with contacts; before that you tore up the address book page or burned the letters.
+    const mode = common(g, 'mobilePhone') ? 'contact' : landline(g) ? 'number' : 'letters'
+    const title = mode === 'contact' ? 'Delete Contact' : mode === 'number' ? 'Tear Up Their Number' : 'Burn Their Letters'
+    return {
+      id: 'deleteContact',
+      label: title,
+      emoji: mode === 'letters' ? '\u{1F525}' : '\u{1F5D1}\u{FE0F}',
+      prisonOk: true,
+      confirm: (_g, p) =>
+        mode === 'contact' ? `Delete ${p.firstName} from your contacts forever?` : mode === 'number' ? `Tear ${p.firstName}'s number out of your address book forever?` : `Burn every letter ${p.firstName} ever wrote you?`,
+      run: (g2, p) => {
+        removePerson(g2, p.id)
+        const what = mode === 'contact' ? `You deleted ${p.firstName}'s number.` : mode === 'number' ? `You tore ${p.firstName}'s number out of your address book.` : `You burned every letter ${p.firstName} ever wrote you.`
+        notice(g2, title, `${what} Growth.`, { emoji: mode === 'letters' ? '\u{1F525}' : '\u{1F5D1}\u{FE0F}' })
+      },
+    }
+  },
   makePeace: (): Def => ({ id: 'makePeace', label: 'Make Peace', emoji: '\u{1F54A}\u{FE0F}', minAge: 4, run: makePeace }),
   endAffair: (): Def => ({
     id: 'endAffair',
@@ -3173,7 +3342,7 @@ const D = {
       p.data.fling = true
       addRelationship(p, -randInt(g, 15, 25))
       log(g, `I ended my affair with ${fullName(p)}.`)
-      notice(g, 'End the Affair', `You told ${p.firstName} it's over. ${pr(p).He} ${pick(g, ['threatened to tell everyone.', 'cried in the parking lot.', 'said "your loss."'])}`, { emoji: '\u{1F6AA}' })
+      notice(g, 'End the Affair', `You told ${p.firstName} it's over. ${pr(p).He} ${pick(g, ['threatened to tell everyone.', cars(g) ? 'cried in the parking lot.' : 'cried all the way down the street.', 'said "your loss."'])}`, { emoji: '\u{1F6AA}' })
     },
   }),
   leaveFor: (): Def => ({
@@ -3213,7 +3382,7 @@ const D = {
       const other = getPerson(g, p.otherParentId)
       if (other && other.alive && isRomantic(other)) addRelationship(other, -randInt(g, 8, 15))
       log(g, `I disowned ${myRel(p)}.`, 'bad')
-      notice(g, 'Disowned', `You disowned ${p.firstName}. The family group chat has gone silent.`, { emoji: '\u{1F6AB}', tone: 'bad' })
+      notice(g, 'Disowned', `You disowned ${p.firstName}. ${common(g, 'smartphone') ? 'The family group chat has gone silent.' : 'Family dinners have gone very quiet.'}`, { emoji: '\u{1F6AB}', tone: 'bad' })
     },
   }),
   reconnect: (): Def => ({
@@ -3240,7 +3409,7 @@ const D = {
   treat: (): Def => ({ id: 'treat', label: 'Treat', emoji: '\u{1F9B4}', minAge: 2, run: petTreat }),
   bathe: (): Def => ({ id: 'bathe', label: 'Bathe', emoji: '\u{1F6C1}', minAge: 6, show: (_g, p) => !['Fish', 'Snake', 'Lizard', 'Turtle', 'Bird', 'Parrot', 'Hamster'].includes(p.species ?? ''), run: petBathe }),
   ride: (): Def => ({ id: 'ride', label: 'Ride', emoji: '\u{1F40E}', minAge: 8, show: (_g, p) => p.species === 'Horse' && p.age >= 3, run: petRide }),
-  vet: (): Def => ({ id: 'vet', label: 'Veterinarian', emoji: '\u{1FA7A}', minAge: 4, subtitle: (g, p) => (pStrData(p, 'sick') ? `${p.firstName} has been acting strange` : g.character.age >= 18 ? 'Checkup ($80-$400)' : 'Checkup'), run: petVet }),
+  vet: (): Def => ({ id: 'vet', label: 'Veterinarian', emoji: '\u{1FA7A}', minAge: 4, subtitle: (g, p) => (pStrData(p, 'sick') ? `${p.firstName} has been acting strange` : g.character.age >= 18 ? `Checkup (${money(80)}-${money(400)})` : 'Checkup'), run: petVet }),
   rename: (): Def => ({
     id: 'rename',
     label: 'Rename',
@@ -3284,7 +3453,7 @@ const D = {
       removePerson(g, p.id)
       addHidden(g, 'karma', exotic ? -6 : -3)
       log(g, `I released my ${labelOf(p)} ${p.firstName} into the wild.`, 'bad')
-      notice(g, 'Released', exotic ? `You released ${p.firstName} into the wild. The local news is now reporting ${pick(g, ['a "large animal" in a shopping mall', 'a mysterious creature eating garden gnomes', 'panic at the dog park'])}.` : `You released ${p.firstName} into the wild. Good luck out there, buddy.`, { emoji: '\u{1F332}' })
+      notice(g, 'Released', exotic ? `You released ${p.firstName} into the wild. The local news is now reporting ${pick(g, [venueExists(g, 'a shopping mall') ? 'a "large animal" in a shopping mall' : 'a "large animal" in the town square', 'a mysterious creature eating garden gnomes', 'panic at the dog park'])}.` : `You released ${p.firstName} into the wild. Good luck out there, buddy.`, { emoji: '\u{1F332}' })
     },
   }),
   // Deceased
@@ -3390,7 +3559,7 @@ function defsFor(g: GameState, p: Person): Def[] {
         D.gift(),
         D.party(),
         D.concert(),
-        D.videos(),
+        D.videos(g),
         D.prank(),
         D.rumor(),
         D.flirt(),
@@ -3399,7 +3568,7 @@ function defsFor(g: GameState, p: Person): Def[] {
         ...(p.relation === 'friend' ? [D.bestFriend()] : []),
         D.insult(),
         D.assault(),
-        D.unfriend(),
+        D.unfriend(g),
       ]
     case 'classmate':
       return [D.befriend(), D.compliment(), D.conversation(), D.spendTime(), D.gift(), D.prank(), D.rumor(), D.flirt(), D.askOut(), D.insult(), D.assault()]
@@ -3411,7 +3580,7 @@ function defsFor(g: GameState, p: Person): Def[] {
       return [{ ...D.compliment(), label: 'Suck Up', emoji: '\u{1F445}' }, D.conversation(), D.befriend(), D.gift(), D.prank(), D.askOut(), D.insult(), D.assault()]
     case 'ex':
     case 'exSpouse':
-      return [D.conversation(), D.compliment(), D.gift(), D.getBack(), ...(p.data.fling === true && c.age >= 18 ? [D.hookUp()] : []), D.insult(), D.deleteContact()]
+      return [D.conversation(), D.compliment(), D.gift(), D.getBack(), ...(p.data.fling === true && c.age >= 18 ? [D.hookUp()] : []), D.insult(), D.deleteContact(g)]
     case 'lover':
       return [D.spendTime(), D.conversation(), D.compliment(), D.flirt(), D.gift(), D.makeLove(), D.leaveFor(), D.endAffair()]
     case 'cellmate':
@@ -3460,7 +3629,7 @@ export function personActions(g: GameState, person: Person): MenuNode[] {
     return nodes
   }
   if (inPrison(g) && p.relation !== 'cellmate' && p.alive) {
-    nodes.push({ type: 'info', id: 'prison', emoji: '\u{1F4DE}', text: "You're in prison. You can only talk on the phone." })
+    nodes.push(prisonPhone(g) ? { type: 'info', id: 'prison', emoji: '\u{1F4DE}', text: "You're in prison. You can only talk on the phone." } : { type: 'info', id: 'prison', emoji: '\u{2709}\u{FE0F}', text: "You're in prison. You can only write letters." })
   }
   for (const def of defsFor(g, p)) nodes.push(build(def, p.id))
   return nodes

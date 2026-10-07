@@ -13,7 +13,7 @@ import { worldYear } from '../invest/engine'
 import { pick, rand, randInt } from '../rng'
 import type { GameState } from '../types'
 import { talentMult } from '../talents'
-import { genreDef, GENRES, NET_PER_PRICE, platformDef, scopeDef, type GenreDef, type GenreId, type PlatformId, type ScopeId } from './gamedev-data'
+import { genreDef, GENRES, genresIn, NET_PER_PRICE, platformDef, scopeDef, type GenreDef, type GenreId, type PlatformId, type ScopeId } from './gamedev-data'
 import { clampN, whole, type GdProfile } from './gamedev-state'
 
 // ---------------------------------------------------------------------------
@@ -56,11 +56,17 @@ export function genreTrend(g: GameState, genre: GenreId, year = g.year): number 
 
 /** The two hottest genres this year. */
 export function hotGenres(g: GameState, year = g.year): GenreDef[] {
-  return [...GENRES].sort((a, b) => genreTrend(g, b.id, year) - genreTrend(g, a.id, year)).slice(0, 2)
+  return eraGenres(year).sort((a, b) => genreTrend(g, b.id, year) - genreTrend(g, a.id, year)).slice(0, 2)
 }
 
 export function coldGenre(g: GameState, year = g.year): GenreDef {
-  return [...GENRES].sort((a, b) => genreTrend(g, a.id, year) - genreTrend(g, b.id, year))[0]
+  return eraGenres(year).sort((a, b) => genreTrend(g, a.id, year) - genreTrend(g, b.id, year))[0]
+}
+
+/** Genres that exist in that year (all of them when the list would be too short to trend). */
+function eraGenres(year: number): GenreDef[] {
+  const list = genresIn(year)
+  return list.length >= 2 ? list : [...GENRES]
 }
 
 export function trendLabel(t: number): string {
