@@ -578,9 +578,12 @@ export interface InputModal {
   title: string
   emoji?: string
   text: string
-  input: 'text' | 'number'
+  /** 'slider' needs min and max; the script receives the chosen number as a string. */
+  input: 'text' | 'number' | 'slider'
   /** Money bounds/defaults stay internal dollars; the UI displays and accepts local units. */
   money?: boolean
+  /** Sliders: distance between values (default 1). */
+  step?: number
   placeholder?: string
   defaultValue?: string
   min?: number
@@ -691,7 +694,12 @@ export interface ImmigrationStatus {
 }
 
 export interface MenuInput {
-  kind: 'text' | 'number'
+  /**
+   * 'slider': a range slider from min to max (both required) in steps of `step`; run() gets the
+   * chosen number as a string. Use it for "how many / how much" choices (outlets, factories,
+   * budgets, allowance) instead of typing a number.
+   */
+  kind: 'text' | 'number' | 'slider'
   label: string
   placeholder?: string
   min?: number
@@ -703,6 +711,13 @@ export interface MenuInput {
    * hands run() the amount converted back to internal dollars.
    */
   money?: boolean
+  /** Sliders: distance between values (default 1). */
+  step?: number
+  /**
+   * Sliders: a live caption for the value under the thumb, e.g. '12 trucks · $340K up front ·
+   * pays back in ~3 years'. Must be pure (no state changes, no game RNG).
+   */
+  preview?: (g: GameState, value: number) => string
 }
 
 interface MenuBase {

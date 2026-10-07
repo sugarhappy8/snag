@@ -1694,7 +1694,6 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     notice(g, 'Graduation', `${pick(g, [`You graduated from ${school}!`, `Caps in the air! You've graduated from ${school}.`, `You walked across the stage and collected your diploma from ${school}.`])}${extra}`, {
       emoji: '\u{1F393}',
       tone: 'good',
-      ai: { when: 'full', facts: `The player graduated from ${school}${honors ? ' with honors' : ''}.` },
     })
     // Athletic scholarship for star athletes (a big American thing; rarer elsewhere).
     // Athletics talent: college scouts notice you sooner.
@@ -1746,7 +1745,6 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     notice(g, 'Graduation', `${pick(g, [`You graduated from ${school} with a bachelor's degree in ${major}!`, `Congratulations! You earned your bachelor's degree in ${major} from ${school}.`])}${honors ? ' You graduated with honors!' : ''}${greekLine}`, {
       emoji: '\u{1F393}',
       tone: 'good',
-      ai: { when: 'full', facts: `The player earned a bachelor's degree in ${major} from ${school}${honors ? ' with honors' : ''}.` },
     })
     const options = GRAD_ORDER.filter((k) => GRAD_ELIGIBILITY[k].includes(major))
     if (options.length > 0) {
@@ -1777,7 +1775,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
       g,
       'Graduation',
       `You graduated from ${school} and earned your ${info.degreeName(major)}!${doctor ? ` You can now insist people call you "Dr. ${c.lastName}".` : ''}`,
-      { emoji: '\u{1F393}', tone: 'good', ai: { when: 'full', facts: `The player graduated from ${school} with a ${info.degreeName(major)}.` } },
+      { emoji: '\u{1F393}', tone: 'good' },
     )
   }
 }
@@ -3076,7 +3074,6 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       notice(g, name, pick(g, [`${name} stayed after class to help you. It actually made sense this time!`, `${name} explained it three different ways until it finally clicked.`]), {
         emoji: '\u{1F4A1}',
         tone: 'good',
-        ai: { when: 'full', facts: `${name}, the player's ${t.occupation}, helped them study. Grades improved.`, personId: t.id },
       })
       return
     }

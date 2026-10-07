@@ -91,7 +91,7 @@ export function stableChoice<T>(g: GameState, key: string, items: readonly T[]):
 
 /** Result popup. In "full" AI mode the director may rewrite it, keeping the facts. */
 export function say(g: GameState, title: string, text: string, emoji?: string, tone: Tone = 'neutral'): void {
-  notice(g, title, text, { emoji, tone, ai: { when: 'full', facts: text } })
+  notice(g, title, text, { emoji, tone })
 }
 
 /** Plain popup that is never rewritten (refusals, rules, menus). */

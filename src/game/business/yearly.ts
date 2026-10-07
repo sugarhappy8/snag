@@ -8,7 +8,9 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
 import { getCountry } from '../world'
+import { boardYear } from './board'
 import { syncCeo, stepDown, managerCandidate } from './career'
+import { yearlyConglomerates } from './conglomerate'
 import {
   bestPlan,
   costFactor,
@@ -392,6 +394,8 @@ export function yearlyBusinessImpl(g: GameState): void {
       if (totalOutlets(b) >= 10 && chance(g, 0.3)) addStat(g, 'health', -1)
     }
     if (s.net > 0) count(g, 'businessProfit', s.net)
+    // The board reviews the year (business/board.ts): CEO pay, mandates, firing.
+    boardYear(g, a, b, s)
 
     // A public company's board loses patience with a CEO who keeps missing.
     if (runs && b.public && b.share < 0.5 && b.slump >= 2 && chance(g, 0.35)) {
@@ -431,4 +435,6 @@ export function yearlyBusinessImpl(g: GameState): void {
       else applyPlan(b, autoPlan(g, b, lastCycle))
     }
   }
+  // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
+  yearlyConglomerates(g)
 }

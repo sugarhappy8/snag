@@ -6,6 +6,7 @@
 // is the public surface the rest of the game imports.
 import { shortMoney } from './core'
 import { shareSummary } from './business/competition'
+import { conglomerateNodes } from './business/conglomerate'
 import { deepTechSummary } from './business/deeptech'
 import { buyBusinessMenu, startBusinessMenu } from './business/founding'
 import { industryDef } from './business/industries'
@@ -36,7 +37,8 @@ function companyNode(g: GameState, a: Asset): MenuGroup {
 function companyNodes(g: GameState): MenuNode[] {
   const list = businessAssets(g)
   if (list.length === 0) return []
-  return [{ type: 'heading', id: 'biz.yoursH', label: `Your Companies (${list.length})` }, ...list.map((a) => companyNode(g, a))]
+  // Conglomerates (business/conglomerate.ts): your groups and "Merge Companies".
+  return [{ type: 'heading', id: 'biz.yoursH', label: `Your Companies (${list.length})` }, ...conglomerateNodes(g), ...list.map((a) => companyNode(g, a))]
 }
 
 function ownedSubtitle(g: GameState, fallback: string): string {

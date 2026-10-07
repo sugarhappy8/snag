@@ -109,7 +109,7 @@ function lieLow(g: GameState, key: string, max: number): boolean {
 
 /** Outcome popup; at the Full AI level the director rewrites it in its own words. */
 function outcome(g: GameState, title: string, text: string, emoji: string, tone: Tone = 'neutral'): void {
-  notice(g, title, text, { emoji, tone, ai: { when: 'full', facts: text } })
+  notice(g, title, text, { emoji, tone })
 }
 
 /** Severity (1-5) of a named crime, for catch-ups and charges. */

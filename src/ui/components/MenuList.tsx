@@ -214,12 +214,12 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
         title={action.label}
         emoji={action.emoji}
         label={input.label}
-        kind={input.kind}
+        kind={input.kind === 'slider' ? 'number' : input.kind}
         placeholder={input.placeholder}
         defaultValue={pending.defaultValue}
         min={input.min}
         max={input.max}
-        money={input.money === true && input.kind === 'number'}
+        money={input.money === true && input.kind !== 'text'}
         multiline={isMultiline(action)}
         submitLabel={action.id === 'doAnything' ? 'Do it' : 'Done'}
         onCancel={() => setPending(null)}

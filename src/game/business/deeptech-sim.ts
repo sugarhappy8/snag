@@ -229,7 +229,6 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
     notice(g, `${a.name}: Lab Results`, `${text}${t.stage > stageBefore ? `\n\n${a.name} is now at "${stageName(ind, t.stage)}". ${DEEP_TECH[ind].stages[t.stage].blurb}` : ''}`, {
       emoji: DEEP_TECH[ind].screen.emoji,
       tone: t.stage > stageBefore ? 'good' : 'neutral',
-      ai: { when: 'full', facts: text },
     })
   }
   if (newModel > 0) queueRelease(g, a, t, newModel)

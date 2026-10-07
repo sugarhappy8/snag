@@ -42,7 +42,7 @@ function pay(b: BizState, amount: number): number {
 }
 
 function tell(g: GameState, title: string, text: string, emoji: string, tone: 'good' | 'bad' | 'neutral' = 'neutral'): void {
-  notice(g, title, text, { emoji, tone, ai: { when: 'full', facts: text } })
+  notice(g, title, text, { emoji, tone })
 }
 
 /** A cost that scales with the size of the company and the local price level. */

@@ -187,18 +187,20 @@ export function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
 }
 
 function InputCard({ modal }: { modal: InputModal }) {
-  const money = modal.money === true && modal.input === 'number'
+  // Sliders fall back to a number field until the slider control lands.
+  const kind = modal.input === 'slider' ? 'number' : modal.input
+  const money = modal.money === true && kind === 'number'
   const [value, setValue] = useState(() => money ? moneyDefault(modal.defaultValue) : (modal.defaultValue ?? ''))
   const [error, setError] = useState<string | null>(null)
   const submit = () => {
-    const err = validateInput(modal.input, value, modal.min, modal.max, money)
+    const err = validateInput(kind, value, modal.min, modal.max, money)
     if (err) {
       setError(err)
       return
     }
-    submitInput(modal.id, normalizeInput(modal.input, value, money, modal.min, modal.max))
+    submitInput(modal.id, normalizeInput(kind, value, money, modal.min, modal.max))
   }
-  const hint = rangeHint(modal.input, modal.min, modal.max, money)
+  const hint = rangeHint(kind, modal.min, modal.max, money)
   return (
     <PopupFrame label={modal.title}>
       {modal.emoji ? (
@@ -210,7 +212,7 @@ function InputCard({ modal }: { modal: InputModal }) {
       {modal.text ? <p className="popup-text">{modal.text}</p> : null}
       <div className="popup-field">
         <InputField
-          kind={modal.input}
+          kind={kind}
           value={value}
           placeholder={money ? moneyDefault(modal.placeholder) : modal.placeholder}
           money={money}

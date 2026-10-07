@@ -536,7 +536,7 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
         `Welcome aboard! ${j.company} hired you as ${article(j.title)} ${j.title}, starting at ${formatMoney(j.salary)} a year.`,
         `${interviewer} called that afternoon: you're the new ${j.title} at ${j.company}! Pay: ${formatMoney(j.salary)} a year.`,
       ]),
-      { emoji: '\u{1F389}', tone: 'good', ai: { when: 'full', facts: `The player was hired as ${j.title} at ${j.company} for ${formatMoney(j.salary)} per year.` } },
+      { emoji: '\u{1F389}', tone: 'good' },
     )
     return
   }
@@ -1172,7 +1172,7 @@ function promote(g: GameState, job: Job, def: JobDef): void {
       `Congratulations! ${job.company} promoted you to ${rung.title}. That comes with a bigger salary (${formatMoney(job.salary)}) and a slightly bigger chair.`,
       `You've been promoted to ${rung.title}! Your new salary is ${formatMoney(job.salary)}. Your coworkers are "so happy for you."`,
     ]),
-    { emoji: '\u{1F389}', tone: 'good', ai: { when: 'full', facts: `The player was promoted from ${oldTitle} to ${rung.title} at ${job.company}; new salary ${formatMoney(job.salary)}.` } },
+    { emoji: '\u{1F389}', tone: 'good' },
   )
 }
 

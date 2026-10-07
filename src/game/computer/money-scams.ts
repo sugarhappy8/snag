@@ -351,7 +351,7 @@ function runScam(g: GameState, def: ScamDef): void {
   if (st.scams === 1) remember(g, `Ran my first online scam (${def.label.toLowerCase()}).`)
   log(g, `I ran a ${def.label.toLowerCase()} and made ${formatMoney(take)}.`, 'event')
   const text = parts.join('\n\n')
-  notice(g, 'Scammed', text, { emoji: def.emoji, tone: 'event', ai: { when: 'full', facts: text } })
+  notice(g, 'Scammed', text, { emoji: def.emoji, tone: 'event' })
 }
 
 // ---------------------------------------------------------------------------

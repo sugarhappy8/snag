@@ -555,7 +555,7 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
   const text = `${p.name} is officially registered in ${country.name}! Your first ${def.site} is opening in ${p.city}. You put in ${formatMoney(personal)} of your own money, including ${formatMoney(fees)} in fees and permits.${funding}${open}${run}${plan}`
   log(g, `I founded ${p.name}, a ${def.label.toLowerCase()} in ${p.city}.`, 'good')
   remember(g, `Founded ${p.name} (${def.label.toLowerCase()}) in ${p.city}, ${country.name}.`)
-  notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good', ai: { when: 'full', facts: text } })
+  notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good' })
 }
 
 function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
@@ -615,7 +615,7 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
   const text = parts.join(' ')
   log(g, `I founded ${p.name}, a ${def.label.toLowerCase()} in ${p.city}.`, 'good')
   remember(g, `Founded ${p.name} (${def.label.toLowerCase()}) in ${p.city}, ${country.name}.`)
-  notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good', ai: { when: 'full', facts: text } })
+  notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good' })
 }
 
 // ---------------------------------------------------------------------------

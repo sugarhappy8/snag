@@ -35,6 +35,7 @@ import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { bizHas, eraFits, eraNote } from './era'
+import { boardNodes } from './board'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
@@ -1317,7 +1318,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
-  nodes.push(...leadershipNodes(a, g))
+  nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a))
   nodes.push({ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' })
   nodes.push(...exitNodes(a, g))
   return nodes

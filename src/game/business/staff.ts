@@ -456,7 +456,6 @@ function teamBuildingAction(a: Asset): MenuAction {
       notice(g, 'Team Building', `You took everyone at ${cur.name} out for ${outing.name} (${formatMoney(cost)} on the company). ${good ? outing.good : outing.bad} Morale is now ${b.morale}%.`, {
         emoji: '\u{1F389}',
         tone: good ? 'good' : 'neutral',
-        ai: { when: 'full', facts: `Team outing: ${outing.name}; ${good ? 'it went well' : 'it went badly'}; morale now ${b.morale}%.` },
       })
     },
   }
