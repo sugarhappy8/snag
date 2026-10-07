@@ -2,7 +2,8 @@
 
 The year-system continuation is integrated on `claude/fervent-cerf-1iuzn5`, draft PR **#6**
 against `main`. Read `docs/ARCHITECTURE.md` for the module contracts and golden rules.
-The last released version remains **v1.4.0**; no version bump or merge was performed.
+The code is prepared as **v1.5.0**. The user requested commit and release on 7 October 2026
+after being informed of the browser-testing limitation below.
 
 ## Completed in this continuation
 
@@ -44,7 +45,7 @@ The last released version remains **v1.4.0**; no version bump or merge was perfo
   `process_singleton_posix.cc: socket() failed: Operation not permitted`. This is a workspace
   restriction before the page loads, not a recorded game error. No live AI-provider test ran.
 
-## Next action before deployment
+## Outstanding browser verification
 
 Run the browser checks in an environment that permits Chromium:
 
@@ -64,12 +65,15 @@ Time Machine sandbox switch, rewinding from life/death, and a historical life in
 
 ## Deployment and release
 
-Cloudflare’s Git integration can deploy a push to this PR branch to production. This continuation
-uses **`[skip ci]`** and keeps the PR draft while the browser check is outstanding.
-Live site: https://snag.sugarhappy8069.workers.dev.
-When the user requests release: complete browser verification, squash-merge with a `(#N)` title,
-bump `package.json` and `package-lock.json` to **1.5.0**, then run `release.yml` with `tag`,
-`target` (merge SHA) and Markdown `notes`. Main deploys through `.github/workflows/deploy.yml`.
+Cloudflare’s Git integration can deploy a push to this PR branch to production. PR-branch
+preparation commits use **`[skip ci]`**; the release squash merge into `main` runs the normal
+production deployment. Live site: https://snag.sugarhappy8069.workers.dev.
+
+The user has authorized version **1.5.0**. Publish tag **v1.5.0** against the merged version-1.5.0
+commit using `release.yml` (`workflow_dispatch`: `tag`, exact `target` SHA, Markdown `notes`).
+Browser verification remains outstanding because of the workspace restriction; do not describe
+it as passed in release notes. Confirm release/tag status on GitHub rather than inferring it
+from this preparation document.
 
 ## Appendix: original specs given to the builders
 
