@@ -2087,20 +2087,6 @@ defineScript(INSIDER_SCRIPT, (g, choice, data) => {
   say(g, 'Insider Trading Scandal', lines.join('\n\n'), '\u{1F4F0}', 'bad')
   arrestPlayer(g, 'Insider Trading', caseSeverity(g, cs), { evidence: Math.max(0.3, Math.min(0.95, cs.evidence)), extraCharges: caseCharges(cs), context: `Agents from ${regulator(cs.countryId)} arrived with a warrant and a very large box for your files.` })
 })
-
-/** One line for the AI context about the player's market meddling ('' when there is none). */
-export function abuseSummary(g: GameState): string {
-  const a = abuseView(g)
-  if (!a.moves && !a.cases.length) return ''
-  const pending = a.cases.filter((c) => c.status === 'pending').length
-  const open = a.cases.filter((c) => c.status === 'open').length
-  const parts = [`${a.moves} market-moving announcement${a.moves === 1 ? '' : 's'} while in office`]
-  if (a.cases.length) parts.push(`${a.cases.length} insider trade${a.cases.length === 1 ? '' : 's'} on them`)
-  if (open) parts.push(`${open} not yet discovered`)
-  if (pending) parts.push(`${pending} insider-trading case${pending === 1 ? '' : 's'} waiting until they leave office`)
-  return `Abuse of power: ${parts.join(', ')}; press heat ${heatLabel(a.heat)}`
-}
-
 /**
  * Yearly: heat cools, open cases may surface, pending cases wait out your immunity, and old cases
  * expire. At most one popup a year from here. Runs in and out of office (charges follow you).

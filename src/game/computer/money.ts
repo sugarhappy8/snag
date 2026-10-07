@@ -4,11 +4,11 @@
 // helpers live in money-common.ts (g.flags.computerMoney).
 import type { GameState, MenuNode } from '../types'
 import { BROKERAGE_GATE, CRYPTO_GATE, eraOpen, online } from './era'
-import { cap, clampNum, isRecord, moneyState, readState, SHARP_FADE, SHARP_MAX, STATE_KEY, type News } from './money-common'
-import { coinProbeNews, cryptoMenu, cryptoSummary } from './money-crypto'
-import { compulsiveTrading, optionsMenu, optionsSummary, settleOptions } from './money-options'
-import { coolHeat, scamDefs, scamNews, SCAMS_MIN_AGE, scamsMenu, scamsSummary } from './money-scams'
-import { betsSummary, settleBets } from './money-stocks'
+import { clampNum, isRecord, moneyState, SHARP_FADE, SHARP_MAX, STATE_KEY, type News } from './money-common'
+import { coinProbeNews, cryptoMenu } from './money-crypto'
+import { compulsiveTrading, optionsMenu, settleOptions } from './money-options'
+import { coolHeat, scamDefs, scamNews, SCAMS_MIN_AGE, scamsMenu } from './money-scams'
+import { settleBets } from './money-stocks'
 
 /** Menu rows for Activities › Computer (crypto, options, scams...). */
 export function moneyNodes(g: GameState): MenuNode[] {
@@ -63,9 +63,3 @@ export function yearlyMoney(g: GameState): void {
   for (const n of rest) n.quiet(g)
 }
 
-/** One compact line for the AI context ('' when nothing to say). */
-export function moneySummary(g: GameState): string {
-  if (!isRecord(g.flags[STATE_KEY])) return ''
-  const st = readState(g)
-  return cap([optionsSummary(st), betsSummary(st), cryptoSummary(st), scamsSummary(st)].filter(Boolean).join('; '))
-}

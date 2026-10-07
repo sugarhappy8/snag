@@ -351,7 +351,7 @@ function runScam(g: GameState, def: ScamDef): void {
   if (st.scams === 1) remember(g, `Ran my first online scam (${def.label.toLowerCase()}).`)
   log(g, `I ran a ${def.label.toLowerCase()} and made ${formatMoney(take)}.`, 'event')
   const text = parts.join('\n\n')
-  notice(g, 'Scammed', text, { emoji: def.emoji, tone: 'event', ai: { when: 'full', facts: text } })
+  notice(g, 'Scammed', text, { emoji: def.emoji, tone: 'event' })
 }
 
 // ---------------------------------------------------------------------------
@@ -434,11 +434,4 @@ export function scamsMenu(): MenuGroup {
     },
     children: (): MenuNode[] => SCAMS.map(scamAction),
   }
-}
-
-/** For the AI summary. */
-export function scamsSummary(st: MoneyState): string {
-  if (!st.scams) return ''
-  const heat = st.heat >= 60 ? 'police closing in' : st.heat >= 30 ? 'heat rising' : 'lying low'
-  return `runs online scams (${st.scams} so far, ${formatMoney(st.scamTake)} taken, ${heat})`
 }

@@ -2,11 +2,11 @@
 // to code, projects, contests, freelancing, ventures (SaaS from idea to a decade of growth),
 // selling, CV entries, the self-taught developer path, parents, prison, death and old saves.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { jobRequirementProblem, occupationMenu } from '../src/game/careers'
-import { computerMenu, computerSummary, ownsComputer } from '../src/game/computer'
-import { devNodes, devSummary, noComputerNodes, ventureAssetSubtitle, ventureAssetView, yearlyDev } from '../src/game/computer/dev'
+import { computerMenu, ownsComputer } from '../src/game/computer'
+import { devNodes, noComputerNodes, ventureAssetSubtitle, ventureAssetView, yearlyDev } from '../src/game/computer/dev'
 import { codingPortfolio, devCvEntries, selfTaughtDev } from '../src/game/computer/dev-cv'
 import { CODE_GIGS, doCodeGig, gigRate } from '../src/game/computer/dev-freelance'
 import { askParentsForComputer, bootcampCost, courseCost, learnInternals, practice } from '../src/game/computer/dev-learn'
@@ -511,7 +511,6 @@ describe('ventures', () => {
     yearlyDev(g)
     drain(g)
     for (const a of ventureAssets(g)) finiteVenture(g, a)
-    expect(() => devSummary(g)).not.toThrow()
   })
 })
 
@@ -609,18 +608,7 @@ describe('parents, prison, death', () => {
   })
 })
 
-describe('summary, old saves and plain JSON', () => {
-  it('summarizes for the AI', () => {
-    const g = adult(23, 'us', 25, 64)
-    expect(devSummary(g)).toMatch(/JavaScript and Python \(skill 64\)/)
-    createVenture(g, 'saas', 'InvoiceSloth', { text: 'Invoicing', key: 'Invoice', mult: 1 }, { live: true, quality: 70, users: 1_200 })
-    const a = ventureAssets(g)[0]
-    a.details.mrr = 8_000
-    expect(devSummary(g)).toMatch(/runs InvoiceSloth, a SaaS with 1\.2K customers, \$8,000 MRR/)
-    expect(computerSummary(g)).toContain('InvoiceSloth')
-    expect(devSummary(makeTestGame(1, { age: 30 }))).toBe('')
-  })
-
+describe('old saves and plain JSON', () => {
   it('survives junk in its flags', () => {
     const g = adult(24)
     g.flags.dev = { projects: 'lol', awards: [null, 3, { title: 5 }], freelance: [], exits: {} } as never

@@ -16,12 +16,14 @@ import { bell, chance, rand } from '../rng'
 import { hasTalent, talentHint, type TalentId } from '../talents'
 import type { Asset, GameState } from '../types'
 import { getCountry } from '../world'
-import { industryDef, type IndustryDef, type StaffFocus } from './industries'
+import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './industries'
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { studioValue } from './gamestudio-state'
+import { complexityCost, PRODUCT_LIFE, rangeBoost, rangeBrand } from './products'
+import { advanceRd } from './rd'
 import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
-import { clampN, dollars, round2 } from './util'
+import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
 import { marketDef } from './competition-data'
 
@@ -280,12 +282,65 @@ function marketingFactor(level: number): number {
   return 0.85 + 0.15 * Math.log(1 + 1.718 * clampN(level, 0, 3))
 }
 
-/** Extra demand from fresh product lines (capped by how far the industry's products can go). */
+/**
+ * Extra demand from the product range: fresh lines pull the most, and every line adds less than
+ * the one before (they cannibalize each other) toward a ceiling a broad range lifts only slowly.
+ */
 export function productsBoost(b: BizState, year: number): number {
-  const def = industryDef(b.industry)
-  let sum = 0
-  for (const p of b.products) sum += p.boost * Math.max(0.25, 1 - 0.1 * Math.max(0, year - p.launched))
-  return Math.min(sum, 0.6 * (0.5 + def.growth))
+  return rangeBoost(b.industry, b.products, year)
+}
+
+// ---------------------------------------------------------------------------
+// Growth limits: crowded cities, rents, head office, capacity lines (no hard caps, honest costs)
+
+/** A city's share of the country's customers (the first-listed city is the biggest). */
+function cityWeight(countryId: string, city: string): number {
+  const idx = getCountry(countryId).cities.indexOf(city)
+  if (idx === 0) return 0.12
+  if (idx === 1 || idx === 2) return 0.07
+  return 0.04
+}
+
+/** Fewest outlets of one company a city takes before it feels crowded. */
+const CITY_MIN = 6
+
+/** How many of your outlets one city supports before they start stealing each other's customers. */
+export function citySaturation(e: LocalEcon, countryId: string, city: string): number {
+  return Math.max(CITY_MIN, e.saturation * cityWeight(countryId, city))
+}
+
+/** Share of each outlet's customers left when a city holds `count` of them (1 until it's crowded). */
+export function cityCrowding(count: number, saturation: number): number {
+  return count > saturation ? Math.pow(saturation / Math.max(1, count), 0.5) : 1
+}
+
+/** Rent multiplier once you crowd a city: every extra site is a worse, dearer spot. */
+export function densityRent(count: number, saturation: number): number {
+  return count > saturation ? 1 + 0.35 * Math.sqrt(count / Math.max(1, saturation) - 1) : 1
+}
+
+/** Head-office overhead (regional managers, systems, audits) as a share of running costs. */
+export function headOffice(outlets: number): number {
+  return 0.015 * Math.log2(1 + Math.max(0, outlets) / 8)
+}
+
+/** One capacity line adds this share of one home site's capacity. */
+export const LINE_CAP = 0.5
+/** One capacity line costs this share of one home site's capital. */
+export const LINE_CAPEX = 0.45
+/** Factory floor space for a line, as a share of one site's rent. */
+export const LINE_RENT = 0.2
+
+/** Capacity lines a company has built (0 on old saves and for industries without them). */
+export function linesOf(b: Pick<BizState, 'lines' | 'industry'>): number {
+  const n = Math.round(num(b.lines))
+  return n > 0 && lineOf(b.industry) ? n : 0
+}
+
+/** Up-front cost of `n` capacity lines at home. */
+export function lineCost(b: BizState, n: number): number {
+  const home = localEcon(b.industry, b.countryId, b.city)
+  return Math.round(Math.max(0, n) * home.capital * LINE_CAPEX)
 }
 
 /** Price customers accept without flinching, given quality and brand. */
@@ -425,7 +480,8 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
     const cyc = opts.cycle ? opts.cycle(o.countryId) : cycleOf(g, o.countryId, year)
     const cycleEffect = 1 + (cyc - 1) * (0.5 + def.incomeSens)
     const n = perCountry[o.countryId] ?? o.count
-    const sat = n > e.saturation ? Math.pow(e.saturation / n, 0.6) : 1
+    // A saturated country, and a city crowded with your own outlets, share the same customers.
+    const sat = (n > e.saturation ? Math.pow(e.saturation / n, 0.6) : 1) * cityCrowding(o.count, citySaturation(e, o.countryId, o.city))
     // Customers before competition and the economy (the business cycle hits every competitor alike).
     const d = o.count * e.baseDemand * priceResponse(p / Math.max(0.01, e.goingPrice * pricePremium), def.elasticity) * appeal * sat * (1 - pressure) * shockD * noise * open
     const cap = o.count * e.capacity * ops * (1 - lossC) * open
@@ -434,6 +490,9 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
     if (inMarket(o)) bu += Math.max(0, d)
     capacity += cap
   }
+  // Capacity lines at home: more output, no more customers.
+  const lines = linesOf(b)
+  if (lines > 0 && home.demandMult > 0) capacity += lines * LINE_CAP * home.capacity * ops * (1 - lossC) * open
   // Competition: what the rivals and the size of the market leave of those customers.
   const pick = bu > 0 ? marketDemand(mctx, bu) : null
   let demand = 0
@@ -551,6 +610,10 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   let upkeep = 0
   let wanted = 0
   const netByCountry: Record<string, number> = {}
+  // Capacity lines let each site produce more than its own floor allows.
+  const lines = linesOf(b)
+  const sites = totalOutlets(b)
+  const perMax = def.capMult * (1 + (LINE_CAP * lines) / Math.max(1, sites))
   for (const l of plan.locs) {
     const e = l.econ
     const soldHere = sold * share(l)
@@ -561,15 +624,22 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
     netByCountry[l.outlet.countryId] = (netByCountry[l.outlet.countryId] ?? 0) + rev - tax
     const prodHere = produced * share(l)
     const perOutlet = l.outlet.count > 0 ? prodHere / (l.outlet.count * def.demand) : 0
-    const need = l.outlet.count * def.staff * Math.pow(clampN(perOutlet, 0.25, def.capMult), def.staffScale)
+    const need = l.outlet.count * def.staff * Math.pow(clampN(perOutlet, 0.25, perMax), def.staffScale)
     wanted += need
     wages += need * e.wage * b.wageLevel * b.openFraction
-    rent += l.outlet.count * e.rent
+    rent += l.outlet.count * e.rent * densityRent(l.outlet.count, citySaturation(e, l.outlet.countryId, l.outlet.city))
     upkeep += l.outlet.count * e.capital * def.maint
+  }
+  if (lines > 0) {
+    const home = localEcon(b.industry, b.countryId, b.city)
+    rent += lines * home.rent * LINE_RENT
+    upkeep += lines * home.capital * LINE_CAPEX * def.maint
   }
   wages *= k.licence
   const employees = Math.max(totalOutlets(b), Math.round(wanted))
   const netRevenue = revenue - salesTax
+  // Running a big range of products, and a big network of sites, costs money of its own.
+  const range = complexityCost(b, netRevenue)
 
   // Services can't stock up: idle capacity costs less than a served customer.
   const cf = k.cf
@@ -580,8 +650,10 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   const insurance = k.insurance
   const finance = k.finance
   const ceoEff = k.ceoEff
-  const overhead = (wages + rent + upkeep) * finance * ceoEff
-  const pbt0 = netRevenue - cogs - overhead - keyStaff - marketing - interest - insurance - b.yearCosts + b.yearIncome
+  const running = (wages + rent + upkeep) * finance * ceoEff
+  const hq = running * headOffice(sites)
+  const overhead = running + hq
+  const pbt0 = netRevenue - cogs - overhead - range - keyStaff - marketing - interest - insurance - b.yearCosts + b.yearIncome
 
   // One-off costs and income (b.yearCosts / b.yearIncome) count toward profit, but the actions
   // that caused them already moved the cash, so they must not move it a second time here.
@@ -628,7 +700,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
     rent: dollars(rent * finance * ceoEff),
     marketing: dollars(marketing),
     interest: dollars(interest),
-    upkeep: dollars(upkeep * finance * ceoEff + insurance),
+    upkeep: dollars(upkeep * finance * ceoEff + insurance + hq + range),
     other: dollars(b.yearCosts),
     otherIncome: dollars(b.yearIncome),
     ownerPay,
@@ -661,15 +733,15 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
 
 /** Yearly business insurance premium (property, liability, interruption). */
 export function insurancePremiumFor(b: BizState): number {
-  let capital = 0
-  for (const o of b.outlets) capital += o.count * localEcon(b.industry, o.countryId, o.city).capital
-  return Math.round(capital * 0.012 + 300)
+  return Math.round(equipmentValue(b) * 0.012 + 300)
 }
 
-/** Total replacement value of the outlets' equipment and fit-out. */
+/** Total replacement value of the outlets' equipment and fit-out, plus any capacity lines. */
 export function equipmentValue(b: BizState): number {
   let capital = 0
   for (const o of b.outlets) capital += o.count * localEcon(b.industry, o.countryId, o.city).capital
+  const lines = linesOf(b)
+  if (lines > 0) capital += lineCost(b, lines)
   return capital
 }
 
@@ -714,7 +786,7 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   const age = Math.max(0, year - b.founded)
   const fame = b.ceo === 'owner' ? g.character.hidden.fame / 10 : 0
   const talent = talentCeo(g, b) ? TALENT_BRAND : 0
-  const bTarget = clampN(10 + b.quality * 0.45 + (b.marketingLevel - 1) * 8 + Math.min(12, age) + b.products.length * 2 + fame + Math.log10(1 + totalOutlets(b)) * 6 + talent, 0, 98)
+  const bTarget = clampN(10 + b.quality * 0.45 + (b.marketingLevel - 1) * 8 + Math.min(12, age) + rangeBrand(b.products.length) + fame + Math.log10(1 + totalOutlets(b)) * 6 + talent, 0, 98)
   b.brand = clampN(Math.round(b.brand + (bTarget - b.brand) * 0.2), 0, 100)
 
   // One-year effects wear off.
@@ -727,7 +799,9 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   b.yearCosts = 0
   b.yearIncome = 0
   // Products fade; very old ones are retired automatically.
-  b.products = b.products.filter((p) => year - p.launched < 15)
+  b.products = b.products.filter((p) => year - p.launched < PRODUCT_LIFE)
+  // Products in development move a year closer (business/rd.ts): new lines launch next year.
+  advanceRd(g, b, year)
   // Prices are set in local currency: inflation makes last year's price stale.
   b.price = round2(b.price / (1 + clampN(m.inflation, 0, 3)))
   if (def.growth < 0) b.price = Math.max(0.01, b.price)

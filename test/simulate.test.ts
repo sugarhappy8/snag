@@ -2,7 +2,7 @@
 // tapping random menu actions and person interactions every year and answering every popup.
 // Catches crashes, stuck queues and broken invariants across all modules at once.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { netWorth } from '../src/game/core'
 import { continueAsChild, createNewLife } from '../src/game/life'

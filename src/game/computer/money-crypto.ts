@@ -511,7 +511,7 @@ function finishCoin(g: GameState, run: CoinRun, outcome: CoinRecord['outcome'], 
   )
   const title = outcome === 'rugged' ? 'Rug Pulled' : outcome === 'dumped' ? 'Dumped' : 'Dumped On'
   const text = parts.join('\n\n')
-  notice(g, title, text, { emoji: outcome === 'rugged' ? '\u{1F9F9}' : outcome === 'dumped' ? '\u{1F4C9}' : '\u{1F62D}', tone: outcome === 'dumpedOn' ? 'bad' : 'event', ai: { when: 'full', facts: text } })
+  notice(g, title, text, { emoji: outcome === 'rugged' ? '\u{1F9F9}' : outcome === 'dumped' ? '\u{1F4C9}' : '\u{1F62D}', tone: outcome === 'dumpedOn' ? 'bad' : 'event' })
 }
 
 function saveCoin(g: GameState, st: MoneyState, run: CoinRun, outcome: CoinRecord['outcome'], take: number, exposed: boolean, countryId: string): void {
@@ -706,7 +706,7 @@ export function coinProbeNews(g: GameState, st: MoneyState): News | null {
       log(gg, `${cap(reg)} fined me over my $${probe.ticker} coin.`, 'bad')
       remember(gg, `Fined by ${reg} for pumping and dumping $${probe.ticker}.`)
       const text = `${cap(reg)} spent ${years(spent)} investigating your $${probe.ticker} pump-and-dump. You agreed to give back ${formatMoney(disgorge)} in profits and pay a ${formatMoney(fine)} fine without admitting wrongdoing (everyone knows). ${how}`.trim()
-      notice(gg, 'Regulators', text, { emoji: '\u{1F3DB}\u{FE0F}', tone: 'bad', ai: { when: 'full', facts: text } })
+      notice(gg, 'Regulators', text, { emoji: '\u{1F3DB}\u{FE0F}', tone: 'bad' })
     },
     quiet: postpone,
   }
@@ -769,17 +769,4 @@ export function cryptoMenu(): MenuGroup {
       return nodes
     },
   }
-}
-
-/** For the AI summary. */
-export function cryptoSummary(st: MoneyState): string {
-  const parts: string[] = []
-  const last = st.coins[st.coins.length - 1]
-  if (last) {
-    const what = last.outcome === 'rugged' ? 'rug-pulled it' : last.outcome === 'dumped' ? 'dumped it on holders' : 'got dumped on'
-    const probe = st.probes.some((p) => p.publicCase) ? ' (under investigation)' : ''
-    parts.push(`launched the $${last.ticker} meme coin and ${what}${last.exposed ? ', exposed online' : ''}${probe}${st.coins.length > 1 ? `; ${st.coins.length} coins launched in all` : ''}`)
-  }
-  if (st.apes >= 2) parts.push(`apes into meme coins (${st.apePnl >= 0 ? 'up' : 'down'} ${shortMoney(Math.abs(st.apePnl))})`)
-  return parts.join('; ')
 }

@@ -1,7 +1,7 @@
 // The anachronism guard for history text: does a headline or era popup mention something that
 // didn't exist yet in that year and country (television in 1930, the web in 1985, a jet in 1950)?
 // World news legitimately reports inventions, but a Nigerian family in 1991 doesn't read about
-// the World Wide Web, so the news line and the AI's era line only use headlines that pass.
+// the World Wide Web, so the news line only uses headlines that pass.
 // Pure: no RNG, no state.
 import { techAdoption, type TechId } from './timeline'
 

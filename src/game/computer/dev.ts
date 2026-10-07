@@ -18,10 +18,10 @@ import { defineScript } from '../scripts'
 import type { Asset, GameState, MenuNode } from '../types'
 import { guardians, parentWord } from './dev-common'
 import { codeFreelanceMenu } from './dev-freelance'
-import { competitionsMenu, familyComputerYear, getAComputerNodes, languagesPhrase, learnMenu, nagParent, tinkerYear } from './dev-learn'
+import { competitionsMenu, familyComputerYear, getAComputerNodes, learnMenu, nagParent, tinkerYear } from './dev-learn'
 import { projectsMenu, yearlyProjects } from './dev-projects'
-import { between, cap as capitalizeFirst, devState, freelanceRating, localFee, money, ventureAssets, withDev } from './dev-state'
-import { startVentureMenu, ventureLine, ventureSubtitle, ventureView, yearlyVentures } from './dev-venture'
+import { between, cap as capitalizeFirst, devState, localFee, money, ventureAssets, withDev } from './dev-state'
+import { startVentureMenu, ventureSubtitle, ventureView, yearlyVentures } from './dev-venture'
 import { VENTURE_DEFS } from './dev-kinds'
 import { eraOpen, FREELANCE_GATE, online } from './era'
 import { hasTech } from '../history/timeline'
@@ -204,36 +204,6 @@ export function yearlyDev(g: GameState): void {
   tinkerYear(g)
   budget -= parentsYear(g, budget)
   yearlyVentures(g, between(budget, 0, 1))
-}
-
-// ---------------------------------------------------------------------------
-// AI context
-
-/** One compact line for the AI context ('' when nothing to say). */
-export function devSummary(g: GameState): string {
-  const parts: string[] = []
-  const skill = codingSkill(g)
-  const langs = languagesPhrase(g)
-  if (skill > 0) parts.push(langs ? `codes in ${langs} (skill ${skill})` : `is learning to code (skill ${skill})`)
-  const ventures = ventureAssets(g)
-  if (ventures.length) {
-    const lines = ventures.slice(0, 2).map((a) => ventureLine(g, a))
-    parts.push(`runs ${lines.join(' and ')}${ventures.length > 2 ? ` and ${ventures.length - 2} more` : ''}`)
-  }
-  const s = devState(g)
-  if (s.exits.length) parts.push(`sold ${s.exits.length === 1 ? `${s.exits[0].name} for ${money(s.exits[0].amount)}` : `${s.exits.length} startups`}`)
-  if (s.freelance.gigs >= 3) {
-    const r = freelanceRating(s)
-    parts.push(`freelances online (${s.freelance.gigs} jobs${r > 0 ? `, ${r.toFixed(1)} stars` : ''})`)
-  }
-  const earning = s.projects.filter((p) => p.income > 0)
-  if (earning.length) parts.push(`side projects earn ${money(earning.reduce((sum, p) => sum + p.income, 0))}/yr`)
-  const locked = computerLocked(g)
-  if (locked && ownsComputer(g)) parts.push(`computer confiscated until ${g.flags.computerLockedUntil}`)
-  else if (screenTime(g) > SCREEN_LIMIT) parts.push('spends way too much time at the computer')
-  if (parts.length === 0) return ''
-  const text = capitalizeFirst(parts.join('; '))
-  return text.length > 300 ? `${text.slice(0, 297)}…` : text
 }
 
 // ---------------------------------------------------------------------------

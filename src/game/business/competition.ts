@@ -1,6 +1,6 @@
 // Market share and competition for every company: the yearly booking of who sold what (the
 // player, its named rivals and the long tail), newcomers drawn in by fat margins, the read-only
-// views the Market & Competition screen, the company info rows and the AI summary use, antitrust
+// views the Market & Competition screen, the company info rows and the profile summary use, antitrust
 // risk, and the dollar values the Business talent's hints put on competitive moves. The demand
 // model itself is competition-core.ts (pure, shared with planFor and techPlan).
 import { seeded } from '../assets'
@@ -110,7 +110,7 @@ function lureNewcomer(g: GameState, a: Asset, b: BizState, st: MarketState, stmt
 }
 
 // ---------------------------------------------------------------------------
-// Read-only views (menus, info rows, the AI summary)
+// Read-only views (menus, info rows, the profile summary)
 
 export interface RivalView {
   id: string
@@ -349,7 +349,7 @@ export function shareLine(g: GameState, b: BizState): string {
   return `${shareText(v.share)} of ${where} ${v.noun} market · #${v.rank} · ${TIER_WORDS[v.tier]}`
 }
 
-/** A clause for the AI prompt: 'holds 7% of the world AI market (#3, contender; biggest rival X with 31%)'. */
+/** A clause for businessSummary: 'holds 7% of the world AI market (#3, contender; biggest rival X with 31%)'. */
 export function shareSummary(g: GameState, b: BizState): string {
   const v = marketViewOf(g, b)
   if (!v.booked) return ''

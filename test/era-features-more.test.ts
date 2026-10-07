@@ -3,7 +3,7 @@
 // the era-gated menus never mention things that didn't exist yet (checked with the shared
 // anachronism detector from events/era.ts). Lives in PRESENT_YEAR keep everything.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { searchAttic, vehicleListings, electronicsStoreMenu } from '../src/game/assets'
 import { companyName, fullTimeListings, hiringFreeze, layoffPressure, occupationMenu, partTimeListings } from '../src/game/careers'
 import { computerMenu } from '../src/game/computer'

@@ -74,7 +74,9 @@ import { getCountry, randomFirstName, randomLastName } from './world'
 import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
-import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, NoticeAi, Person, RelationKind } from './types'
+import { cashShare, moneyStatus, wealthNodes } from './events/wealth-menu'
+import { noteCashGift } from './events/wealth-core'
+import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
 // Relation categories
@@ -167,16 +169,6 @@ function limit(g: GameState, p: Person, key: string, max: number, title: string)
   if (useYearAction(g, `rel.${key}.${p.id}`, max)) return true
   notice(g, title, fill(pick(g, TIRED_LINES), p), { emoji: '\u{23F3}' })
   return false
-}
-
-function aiFacts(g: GameState, p: Person, what: string, outcome: string): NoticeAi {
-  const c = g.character
-  const traits = p.traits.length ? `, personality: ${p.traits.join(' and ')}` : ''
-  return {
-    when: 'balanced',
-    personId: p.id,
-    facts: `${fullName(c)} (the player, age ${c.age}) ${what} with their ${labelOf(p)} ${fullName(p)} (age ${p.age}, ${p.occupation}${traits}, relationship ${p.relationship}%). Outcome: ${outcome}`,
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -750,7 +742,7 @@ export function yearlyRelationships(g: GameState): void {
   cleanupPeople(g)
 }
 
-/** Fill in bookkeeping for people other modules (or the AI) added without it. */
+/** Fill in bookkeeping for people other modules (or event outcomes) added without it. */
 function normalizePeople(g: GameState): void {
   const c = g.character
   for (const p of g.people) {
@@ -2195,12 +2187,10 @@ function spendTime(g: GameState, p: Person): void {
   if (!limit(g, p, 'spendTime', 3, 'Spend Time')) return
   touch(g, p)
   count(g, 'timeSpent')
-  const x = pr(p)
   if (p.relationship < 25 && chance(g, 0.5)) {
     addRelationship(p, -randInt(g, 1, 3))
     notice(g, 'Spend Time', `${the(p)} didn't want to spend time with you. "${pick(g, ['I\'m busy.', 'Maybe some other time.', 'Hard pass.', 'I have to wash my hair. All year.'])}"`, {
       emoji: '\u{1F645}',
-      ai: aiFacts(g, p, 'asked to spend time', `${p.firstName} refused because they don't like the player much right now. Relationship dropped slightly.`),
     })
     return
   }
@@ -2214,7 +2204,6 @@ function spendTime(g: GameState, p: Person): void {
     notice(g, 'Spend Time', `You ${act} with ${yourRel(p)}. ${fill(pick(g, SPEND_GOOD), p)}`, {
       emoji: '\u{1F46B}',
       tone: 'good',
-      ai: aiFacts(g, p, `${act} (spent time together)`, `they had a great time. Relationship +${d}, player happiness +${h}.`),
     })
   } else {
     const d = randInt(g, -2, 2)
@@ -2222,7 +2211,6 @@ function spendTime(g: GameState, p: Person): void {
     log(g, `I ${act} with ${myRel(p)}.`)
     notice(g, 'Spend Time', `You ${act} with ${yourRel(p)}. ${fill(eraPick(g, SPEND_MEH), p)}`, {
       emoji: '\u{1F46B}',
-      ai: aiFacts(g, p, `${act} (spent time together)`, `it was underwhelming and a bit awkward; ${x.he} wasn't really into it. Relationship ${d >= 0 ? '+' : ''}${d}.`),
     })
   }
 }
@@ -2244,7 +2232,6 @@ function conversation(g: GameState, p: Person): void {
     addRelationship(p, -randInt(g, 1, 4))
     notice(g, 'Conversation', `${the(p)} walked away while you were talking. Rude.`, {
       emoji: '\u{1F6B6}',
-      ai: aiFacts(g, p, 'tried to start a conversation', `${p.firstName} walked away mid-sentence because the relationship is bad. Relationship dropped slightly.`),
     })
     return
   }
@@ -2279,7 +2266,6 @@ function conversation(g: GameState, p: Person): void {
   log(g, `I talked with ${myRel(p)} about ${topic}.`)
   notice(g, 'Conversation', `You ${opener} ${yourRel(p)} about ${topic}. ${fill(pick(g, ['{He} enjoyed it.', 'It was a great chat.', '{He} had a lot to say about it.', 'You both learned something.', '{He} laughed the whole time.']), p)}`, {
     emoji: '\u{1F4AC}',
-    ai: aiFacts(g, p, `had a conversation${phone ? (prisonPhone(g) ? ' (by phone from prison)' : ' (by letter from prison)') : ''} about ${topic}`, `it went well; they enjoyed it. Relationship +${d}, player happiness +${h}.`),
   })
 }
 
@@ -2701,6 +2687,8 @@ function giveMoney(g: GameState, p: Person, input?: string): void {
   touch(g, p)
   count(g, 'gaveMoney')
   p.money += amount
+  // Counted in Money Matters; a big handout spoils a kid (events/wealth-core.ts).
+  noteCashGift(g, p, amount)
   const d = Math.round(clamp(Math.log10(amount) * 4 - 4, 0, 25))
   addRelationship(p, d)
   log(g, `I gave ${myRel(p)} ${money(amount)}.`)
@@ -3156,16 +3144,30 @@ const D = {
   movie: (): Def => ({ id: 'movie', label: 'Movie Theater', emoji: '\u{1F3AC}', minAge: 6, targetMinAge: 4, subtitle: (g) => (g.character.age >= 18 ? `Catch a movie together (~${money(35)})` : 'Catch a movie together'), run: movie }),
   vacation: (): Def => ({ id: 'vacation', label: 'Vacation', emoji: '\u{1F3D6}\u{FE0F}', minAge: 18, subtitle: 'Take them on a trip', run: vacationWith }),
   askMoney: (): Def => ({ id: 'askMoney', label: 'Ask for Money', emoji: '\u{1F4B0}', minAge: 5, prisonOk: true, run: askForMoney }),
-  giveMoney: (): Def => ({
-    id: 'giveMoney',
-    label: 'Give Money',
-    emoji: '\u{1F4B5}',
-    minAge: 18,
-    subtitle: (g) => `You have ${money(g.character.money)}`,
-    check: (g) => (g.character.money <= 0 ? "You don't have any money to give." : null),
-    input: { kind: 'number', money: true, label: 'How much?', min: 1, placeholder: '100' },
-    run: giveMoney,
-  }),
+  giveMoney: (g: GameState): Def => {
+    // A slider from a token amount up to all your cash (the bounds are read when the menu is built).
+    const cash = Math.max(1, Math.floor(g.character.money))
+    return {
+      id: 'giveMoney',
+      label: 'Give Money',
+      emoji: '\u{1F4B5}',
+      minAge: 18,
+      subtitle: (x) => `You have ${money(x.character.money)}`,
+      check: (x) => (x.character.money <= 0 ? "You don't have any money to give." : null),
+      input: {
+        kind: 'slider',
+        money: true,
+        label: 'How much?',
+        min: 1,
+        max: cash,
+        step: 1,
+        // Starts at a modest gift (a twentieth of your cash, at most $10K), not a fortune.
+        defaultValue: () => String(Math.max(1, Math.min(cash, Math.round(Math.min(cash / 20, 10_000))))),
+        preview: (x, v) => cashShare(x, v),
+      },
+      run: giveMoney,
+    }
+  },
   homework: (): Def => ({
     id: 'homework',
     label: 'Homework Help',
@@ -3493,13 +3495,13 @@ function defsFor(g: GameState, p: Person): Def[] {
   switch (p.relation) {
     case 'parent':
     case 'stepparent':
-      return [D.askMoney(), D.homework(), D.compliment(), D.conversation(), D.gift(), D.giveMoney(), D.hug(), D.movie(), D.prank(), D.spendTime(), D.vacation(), D.argue(), D.insult(), D.assault()]
+      return [D.askMoney(), D.homework(), D.compliment(), D.conversation(), D.gift(), D.giveMoney(g), D.hug(), D.movie(), D.prank(), D.spendTime(), D.vacation(), D.argue(), D.insult(), D.assault()]
     case 'grandparent':
-      return [D.askMoney(), D.compliment(), D.conversation(), D.gift(), D.giveMoney(), D.hug(), D.movie(), D.prank(), D.spendTime(), D.vacation(), D.insult(), D.assault()]
+      return [D.askMoney(), D.compliment(), D.conversation(), D.gift(), D.giveMoney(g), D.hug(), D.movie(), D.prank(), D.spendTime(), D.vacation(), D.insult(), D.assault()]
     case 'sibling':
     case 'halfSibling':
     case 'stepsibling':
-      return [D.compliment(), D.conversation(), D.gift(), D.giveMoney(), D.hug(), D.movie(), D.prank(), D.spendTime(), D.vacation(), D.squabble(), D.insult(), D.assault('Rumble')]
+      return [D.compliment(), D.conversation(), D.gift(), D.giveMoney(g), D.hug(), D.movie(), D.prank(), D.spendTime(), D.vacation(), D.squabble(), D.insult(), D.assault('Rumble')]
     case 'child':
     case 'stepchild':
       return [
@@ -3510,7 +3512,7 @@ function defsFor(g: GameState, p: Person): Def[] {
         D.hug(),
         D.story(),
         ...(p.age >= 18 ? [D.askMoney()] : []),
-        D.giveMoney(),
+        D.giveMoney(g),
         D.movie(),
         D.vacation(),
         D.prank(),
@@ -3520,7 +3522,7 @@ function defsFor(g: GameState, p: Person): Def[] {
         D.disown(),
       ]
     case 'grandchild':
-      return [D.spendTime(), D.conversation(), D.compliment(), D.gift(), D.giveMoney(), D.hug(), D.story(), D.movie(), D.insult()]
+      return [D.spendTime(), D.conversation(), D.compliment(), D.gift(), D.giveMoney(g), D.hug(), D.story(), D.movie(), D.insult()]
     case 'partner':
     case 'fiance':
     case 'spouse':
@@ -3531,7 +3533,7 @@ function defsFor(g: GameState, p: Person): Def[] {
         D.compliment(),
         D.flirt(),
         D.gift(),
-        D.giveMoney(),
+        D.giveMoney(g),
         D.makeLove(),
         D.tryBaby(),
         D.birthControl(),
@@ -3611,6 +3613,8 @@ function statusInfo(g: GameState, p: Person): MenuInfo | null {
   if (p.data.disowned === true) parts.push('Disowned')
   if (p.data.adopted === true) parts.push('Adopted')
   if (p.data.married === true && typeof p.data.spouseName === 'string' && !isRomantic(p)) parts.push(`Married to ${p.data.spouseName}`)
+  const moneyLine = moneyStatus(g, p)
+  if (moneyLine) parts.push(moneyLine)
   // "Lives with you" is shown as a chip in the person sheet header, so it isn't repeated here.
   if (!parts.length) return null
   return { type: 'info', id, emoji: '\u{2139}\u{FE0F}', text: parts.join(' · ') }
@@ -3632,5 +3636,7 @@ export function personActions(g: GameState, person: Person): MenuNode[] {
     nodes.push(prisonPhone(g) ? { type: 'info', id: 'prison', emoji: '\u{1F4DE}', text: "You're in prison. You can only talk on the phone." } : { type: 'info', id: 'prison', emoji: '\u{2709}\u{FE0F}', text: "You're in prison. You can only write letters." })
   }
   for (const def of defsFor(g, p)) nodes.push(build(def, p.id))
+  // Money Matters: allowance, loans, big gifts and what they've asked you for (events/wealth-menu.ts).
+  nodes.push(...wealthNodes(g, p))
   return nodes
 }

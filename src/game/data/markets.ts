@@ -129,7 +129,7 @@ export interface MarketProfile {
    * alcohol it is a typical grocery basket / a beer vs the US.
    */
   priceMult: Partial<Record<PriceCategory, number>>
-  /** One short sentence about doing business here, shown in business menus and AI context. */
+  /** One short sentence about doing business here, shown in business menus. */
   businessNote: string
   /** Words that make company names sound local, e.g. ['Sakura', 'Fuji', 'Nippon', 'Yamato']. */
   nameWords: string[]

@@ -24,7 +24,6 @@ type OpenSheet = { kind: SheetKind; reopen?: ResolvedReturn } | null
 
 export function GameScreen() {
   const g = useApp((s) => s.game)
-  const busy = useApp((s) => s.ai !== null)
   const returnPoint = useApp((s) => s.returnPoint)
   const timeStops = useApp((s) => s.timeStops)
   const arrived = useApp((s) => s.timeTravel?.arrived ?? null)
@@ -110,7 +109,7 @@ export function GameScreen() {
             {target ? <ReturnChip key={`${target.sheet}:${target.personId ?? ''}`} target={target} onReturn={goBackThere} onDismiss={clearReturnPoint} /> : null}
             {showTimeMachine ? <TimeMachineButton g={g} onOpen={() => setTimeMachineOpen(true)} /> : null}
           </div>
-          <BottomBar disabled={queueBusy || !g.character.alive} busy={busy} onOpen={open} onAge={ageUpAction} />
+          <BottomBar disabled={queueBusy || !g.character.alive} onOpen={open} onAge={ageUpAction} />
           <StatPanel character={g.character} />
         </>
       )}

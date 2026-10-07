@@ -338,7 +338,7 @@ export function readTech(v: Json | undefined): TechState {
     hype: clampN(num(d.hype, 15), 0, 100),
     pace,
     programs: list(d.programs, readProgram, 8),
-    done: Array.isArray(d.done) ? d.done.filter((x): x is string => typeof x === 'string').slice(-80) : [],
+    done: Array.isArray(d.done) ? trimDone(d.done.filter((x): x is string => typeof x === 'string')) : [],
     fails: Math.max(0, Math.round(num(d.fails))),
     series: clampN(Math.round(num(d.series)), 0, MAX_SERIES),
     rounds: list(d.rounds, readRound, 12),
@@ -378,6 +378,33 @@ export function readTech(v: Json | undefined): TechState {
     oneOffs: list(d.oneOffs, readOneOff, 4),
     seq: Math.max(0, Math.round(num(d.seq))),
   }
+}
+
+/** Most completed-program entries kept (R&D never ends, so the list must not grow forever). */
+const DONE_CAP = 1000
+
+/**
+ * Keep the completed-program log bounded: the first completion of every program always stays (so
+ * once-only programs never look startable again), then the most recent entries up to DONE_CAP.
+ */
+function trimDone(list: string[]): string[] {
+  if (list.length <= DONE_CAP) return list
+  const keep = new Array<boolean>(list.length).fill(false)
+  const seen = new Set<string>()
+  list.forEach((id, i) => {
+    if (!seen.has(id)) {
+      seen.add(id)
+      keep[i] = true
+    }
+  })
+  let room = DONE_CAP - seen.size
+  for (let i = list.length - 1; i >= 0 && room > 0; i--) {
+    if (!keep[i]) {
+      keep[i] = true
+      room--
+    }
+  }
+  return list.filter((_, i) => keep[i])
 }
 
 /** How many times a program has been completed. */

@@ -2,7 +2,7 @@
 // revenue and investors; purple hints that have to follow the game's own math; and owners who
 // are too young to run a lab.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { businessAssetView, businessCareerMenu } from '../src/game/business'
 import { earnTech, operatingValue, refreshTechValue, revalue, techOf, techView } from '../src/game/business/deeptech-core'

@@ -417,9 +417,3 @@ export function yearlyYouth(g: GameState): void {
     inviteToStable(g, 'A sumo stable scout watched you win at the junior tournament. ')
   }
 }
-
-export function youthSummary(g: GameState): string {
-  const y = viewYp(g)
-  if (!y?.program) return ''
-  return `${y.club} (youth, level ${y.level}%)`
-}

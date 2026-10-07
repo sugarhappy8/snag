@@ -8,8 +8,8 @@
 // special careers, businesses, charity, fame, social media and licenses.
 //
 // cvScore(g, target) rates a CV 0-100 for a university, a graduate program or a job; university
-// admissions (education.ts) and job screening (careers.ts) use it, and the AI director gets it as
-// guidance when it screens an application (task 'screenApplication').
+// admissions (education.ts) and job screening (careers.ts, offlineScreen for the queued
+// 'screenApplication' task) use it.
 //
 // Also here: deterministic national school rankings (every school, from preschool to graduate
 // school, is "#37 of 4,100 secondary schools in Indonesia"), the job market per country and year
@@ -1134,26 +1134,6 @@ export function jobFit(g: GameState, def: JobDef, ctx: FitContext = fitContext(g
     relevance,
   }
 }
-
-/** One compact line about the CV for the AI's character context. */
-export function cvSummary(g: GameState, max = 6): string {
-  // Degrees, the current school and jobs are already in the character sheet.
-  const entries = cvEntries(g).filter((e) => e.kind !== 'education' && !e.id.startsWith('d:job') && e.id !== 'd:job' && e.id !== 'd:partTimeJob')
-  if (!entries.length) return ''
-  const parts = entries.slice(0, max).map((e) => `${e.title}${e.org ? (e.kind === 'experience' ? ` at ${e.org}` : ` (${e.org})`) : ''}${e.embellished ? ' [made up]' : ''}`)
-  const text = parts.join('; ')
-  return text.length > 300 ? `${text.slice(0, 297)}…` : text
-}
-
-/** Top entries as prompt lines (no embellished flags: the screener can't tell). */
-export function cvPromptLines(g: GameState, target: CvTarget, max = 8): string[] {
-  return cvEntries(g)
-    .map((e) => ({ e, pts: entryPoints(g, e, target) }))
-    .sort((a, b) => b.pts - a.pts)
-    .slice(0, max)
-    .map(({ e }) => `- [${e.strength}/10] ${e.title}${e.org ? ` — ${e.org}` : ''} (${agesLabel(e)})${e.detail ? `: ${e.detail}` : ''}`)
-}
-
 // ---------------------------------------------------------------------------
 // Screening (offline decision, background checks, plain-JSON app data)
 

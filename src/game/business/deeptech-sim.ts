@@ -2,14 +2,14 @@
 // R&D programs that progress and cost money; grants, R&D tax credits and side revenue; then the
 // company's cash, with the R&D account (investor money) covering any shortfall. Replaces
 // economy.simulateYear for deep-tech companies (it never runs both). Plus the yearly reports.
-import { addStat, count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
+import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { corporateTax, marketOf } from '../data/markets'
 import { bell, chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
-import { stepDown, managerCandidate } from './career'
-import { ceoSkill, cycleOf, insurancePremiumFor, localEcon, staffPower, valuationOf, type YearResult } from './economy'
+import { ceoSkill, citySaturation, cycleOf, densityRent, headOffice, insurancePremiumFor, localEcon, staffPower, valuationOf, type YearResult } from './economy'
+import { complexityCost } from './products'
 import { DEEP_TECH, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
 import {
   PACES,
@@ -98,7 +98,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   for (const o of b.outlets) {
     const e = localEcon(ind, o.countryId, o.city)
     wageSum += o.count * e.wage
-    rent += o.count * e.rent
+    // A city crowded with your own sites gets dearer per site (economy.densityRent).
+    rent += o.count * e.rent * densityRent(o.count, citySaturation(e, o.countryId, o.city))
     upkeep += o.count * e.capital * def.maint
   }
   const avgWage = wageSum / Math.max(1, totalOutlets(b))
@@ -110,7 +111,11 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const insurance = b.insured ? insurancePremiumFor(b) : 0
   const finance = 1 - 0.025 * staffPower(b, 'finance')
   const ceoEff = 1.05 - ceoSkill(g, b) / 1000
-  const overhead = (wages + rent + upkeep) * finance * ceoEff
+  const running = (wages + rent + upkeep) * finance * ceoEff
+  // Head office for a big network of sites, and the cost of running a big product range.
+  const hq = running * headOffice(totalOutlets(b))
+  const range = complexityCost(b, revenue - salesTax)
+  const overhead = running + hq
 
   // R&D: progress, spending, breakthroughs.
   const rd0 = advancePrograms(g, a, b, t, year)
@@ -123,7 +128,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const grants = Math.round(Math.min(t.yearGrant, Math.max(0, rd + compute - credit)))
   const spent = t.yearSpent
 
-  const costs = cogs + overhead + keyStaff + marketing + interest + insurance + rd + compute
+  const costs = cogs + overhead + range + keyStaff + marketing + interest + insurance + rd + compute
   const delta = netRevenue + credit - costs
   const pbt0 = delta - b.yearCosts - spent + b.yearIncome + grants
   // Investors pay a founder a normal engineer's salary at most; anything above that has to come
@@ -186,7 +191,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     rent: dollars(rent * finance * ceoEff),
     marketing: dollars(marketing),
     interest: dollars(interest),
-    upkeep: dollars(upkeep * finance * ceoEff + insurance),
+    upkeep: dollars(upkeep * finance * ceoEff + insurance + hq + range),
     other: dollars(b.yearCosts + spent + rd + compute),
     otherIncome: dollars(b.yearIncome + grants + credit),
     ownerPay,
@@ -229,7 +234,6 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
     notice(g, `${a.name}: Lab Results`, `${text}${t.stage > stageBefore ? `\n\n${a.name} is now at "${stageName(ind, t.stage)}". ${DEEP_TECH[ind].stages[t.stage].blurb}` : ''}`, {
       emoji: DEEP_TECH[ind].screen.emoji,
       tone: t.stage > stageBefore ? 'good' : 'neutral',
-      ai: { when: 'full', facts: text },
     })
   }
   if (newModel > 0) queueRelease(g, a, t, newModel)
@@ -333,25 +337,9 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
     t.raised = 0
   }
   refreshTechValue(g, b, t)
-  boardCheck(g, a, b, t)
+  // Investors who control the board and run out of patience (t.pressure) replace the CEO in the
+  // board's yearly review (business/board.ts boardYear), with everything else the board weighs.
   ipoCheck(g, a, b, t)
-}
-
-/** With investors in control of the board, a stuck CEO can be replaced. */
-function boardCheck(g: GameState, a: Asset, b: BizState, t: TechState): void {
-  if (b.public || b.share >= 0.5 || !runsIt(g, a) || t.pressure < 80) return
-  if (!chance(g, 0.35)) return
-  const mgr = managerCandidate(g, b)
-  stepDown(g, a, b, mgr)
-  const c = g.character
-  const job = c.careerHistory[c.careerHistory.length - 1]
-  if (job) job.reason = 'fired'
-  count(g, 'fired')
-  addStat(g, 'happiness', -12)
-  t.pressure = 30
-  log(g, `${a.name}'s investors voted me out as CEO.`, 'bad')
-  remember(g, `Was pushed out as CEO of ${a.name} by its investors.`)
-  notice(g, 'Pushed Out', `Your investors control the board, and after ${t.stuck} years without a milestone they ran out of patience. ${mgr.firstName} ${mgr.lastName} is the new CEO of ${a.name}. You still own ${pct(b.share)} of the company, which stings a little less.`, { emoji: '\u{1FA91}', tone: 'bad' })
 }
 
 function ipoCheck(g: GameState, a: Asset, b: BizState, t: TechState): void {

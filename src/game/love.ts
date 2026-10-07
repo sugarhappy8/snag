@@ -40,6 +40,7 @@ import { DATING_SITE_GATE, eraOpen } from './computer/era'
 import { hasTech } from './history/timeline'
 import { eraPick, landline, texting } from './events/era'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
+import { businessGone } from './assetHooks'
 
 // ---------------------------------------------------------------------------
 // Small shared helpers (also used by relationships.ts)
@@ -1585,6 +1586,7 @@ export function divorce(g: GameState, p: Person, by: 'player' | 'them'): void {
       if (remaining <= 0) break
       if (equity <= 0) continue
       g.assets = g.assets.filter((x) => x.id !== a.id)
+      businessGone(g, a)
       p.money += equity
       remaining -= equity
       taken.push(a.name)

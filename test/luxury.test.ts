@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { yearlyAssets } from '../src/game/assets'
 import { netWorth } from '../src/game/core'
 import { runScript } from '../src/game/scripts'
-import { luxuryLifestyleMenu, luxurySummary, yearlyLuxury } from '../src/game/shops/luxury'
+import { luxuryLifestyleMenu, yearlyLuxury } from '../src/game/shops/luxury'
 import { LUXURY_NET_WORTH, luxuryAssets, luxuryBlock, luxuryReason, wealthLock } from '../src/game/shops/luxury-common'
 import { buyJet, buyYacht, interiorsFor, jetCrewCost, jetListings, yachtListings, yearlyFleet, YACHT_INTERIORS } from '../src/game/shops/luxury-fleet'
 import { buyIsland, ISLAND_MAX_PRICE, ISLAND_MIN_PRICE, ISLAND_PLANS, islandListings, regionsFor } from '../src/game/shops/luxury-islands'
@@ -412,18 +412,6 @@ describe('Every country and age', () => {
       yearlyLuxury(g)
       expect(Number.isFinite(g.character.money), country.id).toBe(true)
     }
-  })
-
-  it('summarizes the luxury life for the AI', () => {
-    const g = rich(500_000_000)
-    expect(luxurySummary(g)).toBeNull()
-    buyIsland(g, islandListings(g)[0], null)
-    buyYacht(g, yachtListings(g)[0], 'classic')
-    joinSociety(g, societyById('velvet') ?? SOCIETIES[0])
-    const line = luxurySummary(g) ?? ''
-    expect(line).toContain('private island')
-    expect(line).toContain('megayacht')
-    expect(line).toContain('Velvet Rope Lodge')
   })
 
   it('does nothing for the dead and stays quiet for kids', () => {

@@ -322,7 +322,7 @@ describe('personActions', () => {
     expect(personActions(g, mom).every((n) => n.type === 'info')).toBe(true)
   })
 
-  it('Spend Time changes the relationship, writes an AI-ready notice and is limited per year', () => {
+  it('Spend Time changes the relationship, names the person in its notice and is limited per year', () => {
     const g = makeTestGame(7, { age: 20 })
     const { mom } = family(g)
     const st = action(g, mom, 'spendTime')
@@ -330,10 +330,9 @@ describe('personActions', () => {
     st.run(g)
     const n = notices(g)[0]
     expect(n.title).toBe('Spend Time')
-    expect(n.ai?.when).toBe('balanced')
-    expect(n.ai?.facts).toContain(mom.firstName)
-    expect(n.ai?.facts).toMatch(/mother/)
-    expect(n.ai?.facts).toMatch(/Relationship/)
+    expect(n.text).toContain(mom.firstName)
+    // Plain notices: no narration request rides along any more.
+    expect('ai' in n).toBe(false)
     expect(mom.relationship).not.toBe(start - 100) // sanity
     expect(mom.data.lastInteractionAge).toBe(20)
     st.run(g)
@@ -356,7 +355,7 @@ describe('personActions', () => {
       const f = family(convo)
       action(convo, f.dad, 'conversation').run(convo)
       const notice = convo.queue.find((m) => m.kind === 'notice') as NoticeModal | undefined
-      if (notice) expect(notice.ai?.facts).toContain(f.dad.firstName)
+      if (notice) expect(notice.text).toContain(f.dad.firstName)
       else expect(convo.queue.some((m) => m.kind === 'choice' && m.scriptId === 'rel.convo.argue')).toBe(true)
     }
     expect(up).toBeGreaterThan(4)

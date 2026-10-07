@@ -832,8 +832,3 @@ export function yearlyIslands(g: GameState, budget: PopupBudget, extra: Candidat
 }
 
 export type { Candidate as LuxuryEventCandidate }
-
-/** A short plain-JSON description of an owned island (name, acres, place). */
-export function islandSummary(a: Asset): { name: string; acres: number; place: string } {
-  return { name: islandName(a), acres: num(a.details.acres), place: str(a.details.city) }
-}

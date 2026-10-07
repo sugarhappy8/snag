@@ -5,8 +5,6 @@ export type BottomTab = 'occupation' | 'assets' | 'relationships' | 'activities'
 export interface BottomBarProps {
   /** A popup is waiting (the queue isn't empty) — nothing can be tapped. */
   disabled: boolean
-  /** The AI is working: the Age button shows a spinner. */
-  busy: boolean
   onOpen: (tab: BottomTab) => void
   onAge: () => void
 }
@@ -21,7 +19,7 @@ const RIGHT: { tab: BottomTab; label: string; emoji: string }[] = [
   { tab: 'activities', label: 'Activities', emoji: '⭐' },
 ]
 
-export function BottomBar({ disabled, busy, onOpen, onAge }: BottomBarProps) {
+export function BottomBar({ disabled, onOpen, onAge }: BottomBarProps) {
   const tabButton = ({ tab, label, emoji }: { tab: BottomTab; label: string; emoji: string }) => (
     <button key={tab} type="button" className="bb-btn" disabled={disabled} onClick={() => onOpen(tab)} aria-label={label}>
       <span className={`bb-icon c-${tab}`} aria-hidden>
@@ -33,16 +31,11 @@ export function BottomBar({ disabled, busy, onOpen, onAge }: BottomBarProps) {
   return (
     <nav className="bottombar" aria-label="Main menu">
       {LEFT.map(tabButton)}
-      <button
-        type="button"
-        className={busy ? 'bb-age is-busy' : 'bb-age'}
-        disabled={disabled || busy}
-        onClick={onAge}
-        aria-label={busy ? 'The AI is writing your year' : 'Age up one year'}
-        aria-busy={busy || undefined}
-      >
-        {busy ? <span className="bb-spinner" aria-hidden /> : <span className="bb-age-plus" aria-hidden>+</span>}
-        <span className="bb-age-label">{busy ? 'AI…' : 'Age'}</span>
+      <button type="button" className="bb-age" disabled={disabled} onClick={onAge} aria-label="Age up one year">
+        <span className="bb-age-plus" aria-hidden>
+          +
+        </span>
+        <span className="bb-age-label">Age</span>
       </button>
       {RIGHT.map(tabButton)}
     </nav>

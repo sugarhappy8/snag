@@ -1,8 +1,9 @@
 // Special talents (talents.ts + life.ts): picked before birth, active from day one, each with its
-// own childhood discovery moment; a parent's pick may run in the family; CV and AI see them all.
+// own childhood discovery moment; a parent's pick may run in the family; the CV and the obituary
+// see them all.
 import { describe, expect, it } from 'vitest'
-import { describeCharacter, obituaryPrompt } from '../src/ai/prompts'
 import { cvEntries } from '../src/game/cv'
+import { fallbackObituary } from '../src/game/events'
 import { continueAsChild, createNewLife, getTalent, yearlyMilestones } from '../src/game/life'
 import { createPerson } from '../src/game/people'
 import {
@@ -17,7 +18,6 @@ import {
   talentEmoji,
   talentHint,
   talentMult,
-  talentsSummary,
 } from '../src/game/talents'
 import type { GameState, NoticeModal } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -75,7 +75,6 @@ describe('talents.ts helpers', () => {
     expect('talents' in g.character).toBe(false)
     expect(characterTalents(g)).toEqual([])
     expect(hasTalent(g, 'Business')).toBe(false)
-    expect(talentsSummary(g)).toBe('')
 
     g.character.talent = 'Music'
     expect(hasTalent(g, 'Music')).toBe(true)
@@ -88,7 +87,6 @@ describe('talents.ts helpers', () => {
     expect(hasTalent(g, 'Acting')).toBe(false)
     expect(characterTalents(g)).toEqual(['Business', 'Investing', 'Music'])
     expect(pickedTalents(g)).toEqual(['Business', 'Investing'])
-    expect(talentsSummary(g)).toBe('Special talents: Business, Investing, Music')
 
     // A hand-edited or corrupted save never crashes and never double counts.
     g.character.talents = 'Business' as unknown as string[]
@@ -322,13 +320,14 @@ describe('talents on the CV and in the AI context', () => {
     expect(entries.find((e) => e.title.endsWith('Business'))!.detail).toBe('A gift since birth')
   })
 
-  it('tells the AI about every talent', () => {
+  it('remembers every talent in the obituary', () => {
     const g = makeTestGame(1, { age: 25, talents: ['Investing', 'Leadership'], talent: 'Art' })
-    expect(describeCharacter(g)).toContain('Special talents: Investing, Leadership, Art')
     g.character.alive = false
     g.character.causeOfDeath = 'Old Age'
-    expect(obituaryPrompt(g)).toContain('Special talents: Investing, Leadership, Art')
+    expect(fallbackObituary(g)).toContain('a real gift for investing, leadership and art')
     const plain = makeTestGame(1, { age: 25 })
-    expect(describeCharacter(plain)).not.toContain('Special talents')
+    plain.character.alive = false
+    plain.character.causeOfDeath = 'Old Age'
+    expect(fallbackObituary(plain)).not.toContain('a real gift')
   })
 })

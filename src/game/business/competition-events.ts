@@ -36,7 +36,7 @@ function ctxOf(g: GameState, data: Json | undefined): Ctx | null {
 }
 
 function tell(g: GameState, title: string, text: string, emoji: string, tone: 'good' | 'bad' | 'neutral' = 'neutral'): void {
-  notice(g, title, text, { emoji, tone, ai: { when: 'full', facts: text } })
+  notice(g, title, text, { emoji, tone })
 }
 
 /** Pay from company cash as a cost of the year (it may go negative; the year-end review deals with that). */

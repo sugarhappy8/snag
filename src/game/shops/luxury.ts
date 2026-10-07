@@ -10,11 +10,11 @@
 import { formatMoney, inPrison, netWorth } from '../core'
 import type { GameState, MenuGroup, MenuNode } from '../types'
 import { LUXURY_NET_WORTH, luxuryAssets, luxuryBlock, luxuryKind, type PopupBudget, wealthLock } from './luxury-common'
-import { fleetEventCandidates, fleetHoldingNode, jetBrokerMenu, megayachtDealerMenu, vesselSummary, yearlyFleet } from './luxury-fleet'
-import { islandHoldingNode, islandRealtorMenu, islandSummary, yearlyIslands } from './luxury-islands'
+import { fleetEventCandidates, fleetHoldingNode, jetBrokerMenu, megayachtDealerMenu, yearlyFleet } from './luxury-fleet'
+import { islandHoldingNode, islandRealtorMenu, yearlyIslands } from './luxury-islands'
 import { luxurySpaMenu, vipEventsMenu } from './luxury-pamper'
-import { membership, secretSocietiesMenu, societySummary, yearlySocieties } from './luxury-societies'
-import { hasStaff, personalStaffMenu, staffSummary, yearlyStaff } from './luxury-staff'
+import { membership, secretSocietiesMenu, yearlySocieties } from './luxury-societies'
+import { hasStaff, personalStaffMenu, yearlyStaff } from './luxury-staff'
 
 /** Owns something from the Luxury Lifestyle that still needs managing (even below $5M). */
 export function hasLuxuryHoldings(g: GameState): boolean {
@@ -71,26 +71,4 @@ export function yearlyLuxury(g: GameState): void {
   yearlySocieties(g, budget)
   yearlyFleet(g)
   if (c.age >= 18 && !inPrison(g) && luxuryAssets(g).length > 0) yearlyIslands(g, budget, fleetEventCandidates(g))
-}
-
-/**
- * One line for the AI's context (null when the player has none of it): islands, yachts, jets,
- * society and household staff, e.g. "Private island Little Tax Shelter Cay (4 acres, the Exumas,
- * Bahamas); megayacht Overdraft (78 m explorer yacht); Initiate of The Order of the Gilded Walrus".
- */
-export function luxurySummary(g: GameState): string | null {
-  const parts: string[] = []
-  for (const a of luxuryAssets(g)) {
-    const kind = luxuryKind(a)
-    if (kind === 'island') {
-      const s = islandSummary(a)
-      parts.push(`private island ${s.name} (${s.acres.toLocaleString('en-US')} acres, ${s.place || 'somewhere tropical'})`)
-    } else if (kind === 'megayacht') parts.push(`megayacht ${vesselSummary(a)}`)
-    else if (kind === 'jet') parts.push(`private jet ${vesselSummary(a)}`)
-  }
-  const society = societySummary(g)
-  if (society) parts.push(society)
-  const staff = staffSummary(g)
-  if (staff) parts.push(`household staff: ${staff}`)
-  return parts.length ? parts.join('; ') : null
 }

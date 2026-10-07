@@ -48,7 +48,6 @@
   --tone-good: #1d8a45;
   --tone-bad: #c8352f;
   --tone-event: #6b3fc4;
-  --tone-ai: #1b2230;
   --age-heading: #1d6fd8;
 
   /* Purple talent hints (🔮): text, soft fill and outline. */
@@ -97,7 +96,6 @@
     --tone-good: #5fd38a;
     --tone-bad: #ff7d75;
     --tone-event: #b79bff;
-    --tone-ai: #edf1f6;
     --age-heading: #6aaeff;
 
     --hint-text: #d4b8ff;
@@ -456,8 +454,8 @@ label {
   animation: al-fade-in 0.2s ease both;
 }
 
-/* A sheet opened on top of another sheet (person over the relationships list, chat over
-   a person) slides over it without darkening the screen twice. */
+/* A sheet opened on top of another sheet (a person over the relationships list) slides over
+   it without darkening the screen twice. */
 .sheet-backdrop ~ .sheet-backdrop {
   background: transparent;
   animation: none;
@@ -713,54 +711,6 @@ label {
   opacity: 0.8;
 }
 
-.hdr-ai {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.hdr-ai:hover {
-  background: rgba(255, 255, 255, 0.26);
-}
-
-.ai-dot {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #b7c2d0;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
-}
-
-.ai-dot.is-online {
-  background: #4ff08a;
-}
-
-.ai-dot.is-offline {
-  background: #ff7a6f;
-}
-
-.ai-dot.is-checking,
-.ai-dot.is-busy {
-  background: #ffd84d;
-  animation: al-blink 0.9s ease-in-out infinite;
-}
-
-.ai-dot.is-off {
-  background: #b7c2d0;
-}
-
 .hdr-icon {
   flex: none;
   width: 32px;
@@ -960,21 +910,8 @@ label {
   color: var(--tone-event);
 }
 
-.lifelog-entry.tone-ai {
-  color: var(--tone-ai);
-}
-
 .lifelog-entry.is-new {
   animation: al-entry-in 0.35s ease both;
-}
-
-.ai-spark {
-  display: inline-block;
-  margin-left: 4px;
-  font-size: 11px;
-  vertical-align: super;
-  line-height: 0;
-  opacity: 0.85;
 }
 
 .lifelog-empty {
@@ -1110,20 +1047,6 @@ label {
   font-weight: 900;
   letter-spacing: 0.4px;
   text-transform: uppercase;
-}
-
-.bb-spinner {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 4px solid rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
-  animation: al-spin 0.8s linear infinite;
-}
-
-.bb-age.is-busy .bb-age-label {
-  margin-top: 3px;
-  font-size: 10px;
 }
 
 /* "Back to …" chip (components/ReturnChip.tsx) ------------------------------ */
@@ -1485,24 +1408,6 @@ label {
   overflow-wrap: anywhere;
 }
 
-.popup-choice-ai {
-  flex: none;
-  font-size: 12px;
-  opacity: 0.9;
-}
-
-.popup-tag {
-  display: flex;
-  justify-content: center;
-  margin: -4px 0 10px;
-}
-
-.popup-tag .pill {
-  font-size: 11.5px;
-  padding: 2px 9px;
-  color: var(--muted);
-}
-
 .popup-field {
   display: flex;
   flex-direction: column;
@@ -1533,83 +1438,6 @@ label {
 
 .popup.tone-bad .popup-title {
   color: var(--tone-bad);
-}
-
-/* AI "thinking" card */
-
-.thinking {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 8px;
-  padding: 26px 20px 20px;
-}
-
-.thinking-orb {
-  position: relative;
-  width: 76px;
-  height: 76px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 6px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #8fc2ff, var(--blue) 60%, var(--purple));
-  font-size: 34px;
-  animation: al-pulse 1.6s ease-in-out infinite;
-}
-
-.thinking-orb::after {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  border: 3px solid color-mix(in srgb, var(--blue) 45%, transparent);
-  animation: al-ring 1.6s ease-out infinite;
-}
-
-.thinking-label {
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.thinking-sub {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.thinking-dots span {
-  display: inline-block;
-  animation: al-dot 1.2s infinite both;
-}
-
-.thinking-dots span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.thinking-dots span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-.thinking-elapsed {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.thinking-skip {
-  min-height: 40px;
-  margin-top: 6px;
-  min-width: 150px;
-}
-
-.thinking-skip-slot {
-  min-height: 46px;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
 }
 
 /* Toast */
@@ -1707,16 +1535,16 @@ label {
 
 .menu-row + .menu-row,
 .menu-row + .menu-info,
+.menu-info + .menu-row,
+.menu-info + .menu-info {
+  border-top: 1px solid var(--hairline);
+}
+
 /* Talent hint info rows (e.g. the Investing talent's market instinct) read as purple hints. */
 .menu-info.menu-info-hint {
   color: var(--hint-text);
   background: var(--hint-bg);
   font-weight: 600;
-}
-
-.menu-info + .menu-row,
-.menu-info + .menu-info {
-  border-top: 1px solid var(--hairline);
 }
 
 .menu-row:hover {
@@ -1919,10 +1747,6 @@ label {
 }
 
 .person-section {
-  margin-top: 14px;
-}
-
-.person-talk {
   margin-top: 14px;
 }
 
@@ -2147,50 +1971,6 @@ label {
   to {
     opacity: 1;
     transform: none;
-  }
-}
-
-@keyframes al-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes al-blink {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@keyframes al-pulse {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
-}
-
-@keyframes al-ring {
-  from {
-    opacity: 0.9;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 0;
-    transform: scale(1.35);
-  }
-}
-
-@keyframes al-dot {
-  0%,
-  80%,
-  100% {
-    opacity: 0.2;
-  }
-  40% {
-    opacity: 1;
   }
 }
 

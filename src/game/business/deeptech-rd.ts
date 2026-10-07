@@ -10,14 +10,47 @@ import { timesDone, type Drug, type TechProgram, type TechState } from './deepte
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money } from './util'
 
-/** How many programs the lab can run at once. */
-export function maxPrograms(b: BizState, t: TechState): number {
-  return clampN(2 + (t.series >= 2 ? 1 : 0) + (totalOutlets(b) >= 3 ? 1 : 0), 2, 4)
+/**
+ * Most programs stored on a company (deeptech-state readTech keeps eight): the lab grows into it
+ * as it opens more sites.
+ */
+export const MAX_PARALLEL = 8
+
+/** How many programs the lab can run at once: more sites (lab space), a bigger round, a listing. */
+export function maxPrograms(b: Pick<BizState, 'outlets' | 'public'>, t: TechState): number {
+  const sites = Math.max(1, totalOutlets(b as BizState))
+  return clampN(2 + Math.floor(Math.log2(sites)) + (t.series >= 2 ? 1 : 0) + (b.public ? 1 : 0), 2, MAX_PARALLEL)
 }
 
 /** Local yearly cost of a program at a steady pace. */
 export function programCost(b: BizState, t: TechState, def: ProgramDef): number {
   return Math.round(def.cost(t) * rdScale(b.countryId, !!def.capex))
+}
+
+/** Budget multipliers a program can be funded at (1 = as planned). */
+export const BUDGET_MIN = 0.5
+export const BUDGET_MAX = 3
+
+/**
+ * What funding a program at `k` times its plan buys: faster (but not proportionally), likelier
+ * to work (diminishing), and dearer in total. Pure.
+ */
+export function programTerms(b: BizState, t: TechState, def: ProgramDef, k = 1): { cost: number; years: number; odds: number } {
+  const m = clampN(Number.isFinite(k) ? k : 1, BUDGET_MIN, BUDGET_MAX)
+  const years = Math.round(clampN(def.years / Math.pow(m, 0.55), 0.5, 10) * 100) / 100
+  const odds = clampN(1 - (1 - def.odds(t)) * Math.pow(m, -0.35), 0.02, 0.98)
+  return { cost: Math.round(programCost(b, t, def) * m), years, odds }
+}
+
+/**
+ * Booked years a program of `years` really takes at a pace of `speed` progress a year: progress
+ * moves a whole pace step at every year-end (advancePrograms), so a 1.1-year rush still needs
+ * two steady years. The menus quote this, never the fractional plan.
+ */
+export function wholeYears(years: number, speed = 1): number {
+  const y = Number.isFinite(years) ? Math.max(0, years) : 1
+  const s = Number.isFinite(speed) && speed > 0 ? speed : 1
+  return Math.max(1, Math.ceil(y / s - 1e-9))
 }
 
 /** Why this program can't start right now (null when it can). */
@@ -33,10 +66,14 @@ function newProgram(g: GameState, key: string, def: { id: string; name: string; 
   return { id: def.id, key, name: def.name, emoji: def.emoji, years: def.years, progress: 0, cost: def.cost, odds: def.odds, started: g.year, spent: 0, target }
 }
 
-/** Start an R&D program (costs are paid every year from the R&D account, then company cash). */
-export function startProgram(g: GameState, b: BizState, t: TechState, def: ProgramDef): TechProgram | null {
+/**
+ * Start an R&D program (costs are paid every year from the R&D account, then company cash).
+ * `budget` funds it at a multiple of its plan (0.5-3): see programTerms.
+ */
+export function startProgram(g: GameState, b: BizState, t: TechState, def: ProgramDef, budget = 1): TechProgram | null {
   if (programBlock(b, t, def)) return null
-  const p = newProgram(g, `${def.id}:${timesDone(t, def.id) + 1}`, { id: def.id, name: def.label(t), emoji: def.emoji, years: def.years, cost: programCost(b, t, def), odds: def.odds(t) })
+  const terms = programTerms(b, t, def, budget)
+  const p = newProgram(g, `${def.id}:${timesDone(t, def.id) + 1}`, { id: def.id, name: def.label(t), emoji: def.emoji, years: terms.years, cost: terms.cost, odds: terms.odds })
   t.programs.push(p)
   return p
 }
@@ -147,12 +184,15 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
     const ctx = { t, countryId: b.countryId, year, roll: () => rand(g), company: a.name }
     const modelsBefore = t.models.length
     if (ok) {
+      // Patents count what the plan was worth, not a crash budget on top (no valuation pump);
+      // endless next-generation work mostly pays through better products, not the books.
+      const nominal = programCost(b, t, def) * def.years
       t.done.push(p.id)
       const line = def.win(ctx)
       out.wins += 1
       out.notes.push(`\u{2705} ${line}`)
       if (def.capex) t.plantBook += p.spent * 0.85
-      else t.ipBook += p.spent * 1.2
+      else t.ipBook += Math.min(p.spent, Math.max(0, nominal)) * (def.ipShare ?? 1.2)
       if (t.models.length > modelsBefore) out.newModel = t.models[t.models.length - 1].gen
       if (p.years >= 2 || def.capex) out.headlines.push(line)
     } else {
@@ -277,8 +317,9 @@ export function bestTrial(b: BizState, t: TechState, funds: number): Drug | null
 
 /** One line describing a running program. */
 export function programLine(p: TechProgram): string {
-  const left = Math.max(0, p.years - p.progress)
-  return `${Math.round((p.progress / Math.max(0.01, p.years)) * 100)}% done · ${left <= 0 ? 'finishing' : `${left} yr${left === 1 ? '' : 's'} left at a steady pace`} · ${money(p.cost)}/yr · ${Math.round(p.odds * 100)}% base odds`
+  const rest = Math.max(0, p.years - p.progress)
+  const left = rest <= 1e-9 ? 0 : wholeYears(rest)
+  return `${Math.round(Math.min(1, p.progress / Math.max(0.01, p.years)) * 100)}% done · ${left <= 0 ? 'finishing' : `${left} yr${left === 1 ? '' : 's'} left at a steady pace`} · ${money(p.cost)}/yr · ${Math.round(p.odds * 100)}% base odds`
 }
 
 /** The deep-tech stage names, for summaries. */

@@ -51,7 +51,7 @@ export interface MarketYear {
   inflation?: number
   /** Central bank policy rate that year. */
   rate?: number
-  /** Short note for news and the AI, e.g. 'The dot-com bubble bursts.' */
+  /** Short note for the news, e.g. 'The dot-com bubble bursts.' */
   note?: string
 }
 

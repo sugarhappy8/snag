@@ -10,7 +10,7 @@ import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
 import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
 import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
-import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, vcDepth } from './deeptech-data'
+import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
 import { runsIt, totalOutlets, type BizState } from './state'
@@ -367,7 +367,8 @@ export function sideRevenue(b: BizState, t: TechState, year: number): { total: n
   if (t.deal) add(t.deal.perYear, 0.65, t.deal.name)
   if (ind === 'semiconductor' && t.plant > 0) add(t.plant * 20_000_000 * scale * (0.6 + t.level / 150), 0.55, 'foundry services')
   if (ind === 'spaceTech') {
-    add(t.sats * 25_000_000 * scale * (0.6 + t.level / 150), 0.45, 'satellite internet')
+    // The first dozen batches sell in full; more of them saturate the subscriber market.
+    add(satUnits(t.sats) * 25_000_000 * scale * (0.6 + t.level / 150), 0.45, 'satellite internet')
     if (timesDone(t, 'smallsat') > 0) add(6_000_000 * scale, 0.75, 'satellite building')
   }
   if (ind === 'quantum' && timesDone(t, 'pqc') > 0) add(3_000_000 * scale, 0.45, 'encryption licences')

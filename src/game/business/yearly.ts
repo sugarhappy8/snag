@@ -6,9 +6,12 @@ import { baseLoanRate } from '../finance'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
-import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
+import type { AnnualReportData, Asset, ChoiceOption, GameState, NoticeModal } from '../types'
 import { getCountry } from '../world'
-import { syncCeo, stepDown, managerCandidate } from './career'
+import { boardYear } from './board'
+import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
+import { styleOf, syncCeo } from './career'
+import { groupRescue, inGroup, yearlyConglomerates } from './conglomerate'
 import {
   bestPlan,
   costFactor,
@@ -34,7 +37,7 @@ import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, may
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
 import { industryDef } from './industries'
 import { staffTurnover } from './staff'
-import { bizCountryName, bizOf, businessAssets, ceoJob, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
+import { bizCountryName, bizOf, businessAssets, ceoJob, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
 
 // ---------------------------------------------------------------------------
@@ -79,16 +82,41 @@ export function parsePlan(g: GameState, b: BizState, raw: string, assetId = ''):
   }
 }
 
-/** What a general manager decides for next year. */
+/** How a hired manager's style tilts their production run (growers build stock, cost-cutters run lean). */
+const STYLE_OUTPUT: Record<CeoStyle, number> = { grower: 1.04, costCutter: 0.97, steady: 1, visionary: 1.02 }
+
+/**
+ * What a general manager of skill 75 or below decides for next year (and what the owner's plan
+ * defaults to): the going price and production to demand, sloppier the less skilled they are.
+ * Smarter managers plan with the optimizer instead (business/board-ceo.ts smartManagerTurn).
+ */
 export function autoPlan(g: GameState, b: BizState, lastCycle: number): PlanChoice {
   const bounds = priceBounds(b)
   const skill = b.manager?.skill ?? 50
   const sloppiness = (1 - skill / 100) * 0.12
+  const tilt = b.ceo === 'manager' && b.manager ? STYLE_OUTPUT[styleOf(b.manager)] : 1
   const suggested = planFor(g, b, g.year, { calm: true }).suggested
   const price = round2(clampN(suggested * (1 + (rand(g) - 0.5) * 2 * sloppiness), bounds.min, bounds.max))
   const plan = planFor(g, b, g.year, { price, calm: true, cycle: () => lastCycle })
-  const production = Math.round(clampN(plan.demand * (1.02 + (rand(g) - 0.5) * sloppiness) - b.inventory, 0, maxProduction(g, b)))
+  const production = Math.round(clampN(plan.demand * (1.02 + (rand(g) - 0.5) * sloppiness) * tilt - b.inventory, 0, maxProduction(g, b)))
   return { price, production }
+}
+
+/**
+ * The hired CEO's turn for a price-and-production company: above SMART_SKILL they run it like a
+ * real executive (board-ceo.ts); at 75 and below they set the sloppy autoPlan and say so.
+ */
+export function managerTurn(g: GameState, a: Asset, b: BizState, lastCycle: number): void {
+  if (smartCeo(b)) {
+    smartManagerTurn(g, a, b)
+    return
+  }
+  const plan = autoPlan(g, b, lastCycle)
+  applyPlan(b, plan)
+  if (b.ceo === 'manager' && b.manager) {
+    const def = industryDef(b.industry)
+    ceoLetter(g, a, b, [`Kept things ticking over: ${unitMoney(plan.price)} per ${def.unitOne} and ${units(plan.production)} ${plan.production === 1 ? def.unitOne : def.unit} planned for next year.`], false)
+  }
 }
 
 export function applyPlan(b: BizState, p: PlanChoice): void {
@@ -359,6 +387,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   const list = businessAssets(g)
   if (list.length === 0) return
   const fiscal = g.year - 1
+  const queued = g.queue.length
   let eventQueued = false
   for (const a of list) {
     if (!findBusiness(g, a.id)) continue
@@ -392,24 +421,18 @@ export function yearlyBusinessImpl(g: GameState): void {
       if (totalOutlets(b) >= 10 && chance(g, 0.3)) addStat(g, 'health', -1)
     }
     if (s.net > 0) count(g, 'businessProfit', s.net)
+    // The board reviews the year (business/board.ts): the CEO's pay and bonus, warnings, firing a
+    // CEO who keeps missing (the owner too, when they don't control the board), rogue CEOs.
+    boardYear(g, a, b, s)
 
-    // A public company's board loses patience with a CEO who keeps missing.
-    if (runs && b.public && b.share < 0.5 && b.slump >= 2 && chance(g, 0.35)) {
-      const mgr = managerCandidate(g, b)
-      stepDown(g, a, b, mgr)
-      const job = c.careerHistory[c.careerHistory.length - 1]
-      if (job) job.reason = 'fired'
-      count(g, 'fired')
-      addStat(g, 'happiness', -10)
-      log(g, `The board of ${a.name} fired me as CEO.`, 'bad')
-      notice(g, 'Ousted!', `After ${b.slump} straight years of falling profits, ${a.name}'s board voted to replace you as CEO with ${mgr.firstName} ${mgr.lastName}. You still own ${pct(b.share)} of the company, which is some comfort, and a lot of money.`, { emoji: '\u{1FA91}', tone: 'bad' })
-    }
-
-    if (!b.public && s.net >= ipoThreshold(b) && g.flags[`biz.ipoHint.${a.id}`] !== true) {
+    // A group's division lists with the whole group (the group step has its own hint).
+    if (!b.public && !inGroup(g, b) && s.net >= ipoThreshold(b) && g.flags[`biz.ipoHint.${a.id}`] !== true) {
       g.flags[`biz.ipoHint.${a.id}`] = true
       notice(g, 'Ready for Wall Street?', `${a.name} made ${money(s.net)} last year. That's big enough to list on a stock exchange: bankers keep calling about an IPO. You can go public from the company's screen.`, { emoji: '\u{1F514}', tone: 'good' })
     }
 
+    // A group's treasury covers a division's cash hole from its sisters' spare cash first.
+    if (b.cash < 0) groupRescue(g, a, b)
     if (b.cash < 0) {
       queueCrunch(g, a, b)
       continue
@@ -428,7 +451,34 @@ export function yearlyBusinessImpl(g: GameState): void {
       if (studio) studioManagerTurn(g, a, b)
       // A deep-tech manager plans price and output with the tech model; the generic autoPlan can't see it.
       else if (tech) deepTechManagerTurn(g, a, b)
-      else applyPlan(b, autoPlan(g, b, lastCycle))
+      else managerTurn(g, a, b, lastCycle)
     }
   }
+  // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
+  yearlyConglomerates(g)
+  bundleCeoLetters(g, queued)
+}
+
+const LETTER_SUFFIX = ': Letter from the CEO'
+/** More CEO letters than this in one year are read as one bundle (an empire shouldn't mean ten popups). */
+const LETTERS_APART = 2
+/** Lines kept per company in the bundle (the company screen shows its last letter too). */
+const BUNDLE_LINES = 3
+
+/** Fold this year's CEO letters (career.ceoLetter) into one popup when there are many. */
+export function bundleCeoLetters(g: GameState, from: number): void {
+  const letters = g.queue.slice(from).filter((m): m is NoticeModal => m.kind === 'notice' && m.title.endsWith(LETTER_SUFFIX))
+  if (letters.length <= LETTERS_APART) return
+  const sections = letters.map((m) => {
+    const name = m.title.slice(0, -LETTER_SUFFIX.length)
+    const bullets = m.text.split('\n').filter((x) => x.startsWith('\u{2022}'))
+    const more = bullets.length - BUNDLE_LINES
+    const sign = m.text.split('\n').find((x) => x.startsWith('\u{2014}'))
+    return `${name}${sign ? ` \u{00B7} ${sign.replace(/^\u{2014}\s*/u, '')}` : ''}:\n${bullets.slice(0, BUNDLE_LINES).join('\n')}${more > 0 ? `\n\u{2022} \u{2026}and ${plural(more, 'more change')}` : ''}`
+  })
+  const at = g.queue.indexOf(letters[0])
+  const drop = new Set<string>(letters.map((m) => m.id))
+  const bundle: NoticeModal = { ...letters[0], title: 'Letters from Your CEOs', text: `Dear ${g.character.firstName}, here's what your CEOs did this year.\n\n${sections.join('\n\n')}`, emoji: '\u{1F4EC}' }
+  g.queue = g.queue.filter((m) => !drop.has(m.id))
+  g.queue.splice(Math.min(at, g.queue.length), 0, bundle)
 }

@@ -1694,7 +1694,6 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     notice(g, 'Graduation', `${pick(g, [`You graduated from ${school}!`, `Caps in the air! You've graduated from ${school}.`, `You walked across the stage and collected your diploma from ${school}.`])}${extra}`, {
       emoji: '\u{1F393}',
       tone: 'good',
-      ai: { when: 'full', facts: `The player graduated from ${school}${honors ? ' with honors' : ''}.` },
     })
     // Athletic scholarship for star athletes (a big American thing; rarer elsewhere).
     // Athletics talent: college scouts notice you sooner.
@@ -1746,7 +1745,6 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
     notice(g, 'Graduation', `${pick(g, [`You graduated from ${school} with a bachelor's degree in ${major}!`, `Congratulations! You earned your bachelor's degree in ${major} from ${school}.`])}${honors ? ' You graduated with honors!' : ''}${greekLine}`, {
       emoji: '\u{1F393}',
       tone: 'good',
-      ai: { when: 'full', facts: `The player earned a bachelor's degree in ${major} from ${school}${honors ? ' with honors' : ''}.` },
     })
     const options = GRAD_ORDER.filter((k) => GRAD_ELIGIBILITY[k].includes(major))
     if (options.length > 0) {
@@ -1777,7 +1775,7 @@ function finishLevel(g: GameState, sys: SchoolSystem, cur: Enrollment): void {
       g,
       'Graduation',
       `You graduated from ${school} and earned your ${info.degreeName(major)}!${doctor ? ` You can now insist people call you "Dr. ${c.lastName}".` : ''}`,
-      { emoji: '\u{1F393}', tone: 'good', ai: { when: 'full', facts: `The player graduated from ${school} with a ${info.degreeName(major)}.` } },
+      { emoji: '\u{1F393}', tone: 'good' },
     )
   }
 }
@@ -2002,8 +2000,7 @@ function enrollCommunityCollege(g: GameState): void {
 // the locale data first, then local-style names), each with a national rank, a tier, an admit rate
 // and tuition. Acceptance depends on smarts, grades, the final exam, the high school's rank and
 // the CV (clubs, leadership, volunteering, projects and awards really matter). Selective schools
-// (Elite / Top) screen the CV first — the AI director decides when it's on — and then hold an
-// admissions interview.
+// (Elite / Top) screen the CV first (cv.ts offlineScreen) and then hold an admissions interview.
 
 export interface UniversityOption {
   name: string
@@ -2189,7 +2186,7 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
   const tuition = picked ? opt.tuition : free ? 0 : roundMoney(UNIVERSITY_TUITION * wealthScale(g) * TIER_TUITION[opt.rank.tier])
   const app: ScreeningApp = { kind: 'university', org: opt.name, major, rankLabel: rankLabel(opt.rank), tier: opt.rank.tier, tuition, years: UNIVERSITY_YEARS, fit, chance: p, admit: 1 }
   if (picked && opt.selective) {
-    // Selective schools read the CV first (the AI director when it's on), then interview.
+    // Selective schools read the CV first (cv.ts offlineScreen), then interview.
     const invite = clamp(p * 1.6 + 0.05, 0.03, 0.95)
     app.chance = invite
     app.admit = clamp(p / invite, 0.05, 0.95)
@@ -2319,7 +2316,7 @@ function cleanQuestion(q: InterviewQuestion | undefined): InterviewQuestion | nu
   return answers.length >= 2 ? { question: q.question.trim().slice(0, 300), answers } : null
 }
 
-/** The admissions interview after a CV screening invite (question from the AI or the offline pool). */
+/** The admissions interview after a CV screening invite (the screener's question or the question pool). */
 export function presentAdmissionsInterview(g: GameState, app: ScreeningApp, q?: InterviewQuestion): void {
   const c = g.character
   if (!c.alive || c.prison) return
@@ -3076,7 +3073,6 @@ function teacherAction(g: GameState, personId: string, kind: 'help' | 'complimen
       notice(g, name, pick(g, [`${name} stayed after class to help you. It actually made sense this time!`, `${name} explained it three different ways until it finally clicked.`]), {
         emoji: '\u{1F4A1}',
         tone: 'good',
-        ai: { when: 'full', facts: `${name}, the player's ${t.occupation}, helped them study. Grades improved.`, personId: t.id },
       })
       return
     }

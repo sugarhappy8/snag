@@ -1,7 +1,7 @@
 // Wars and conscription by era: which countries were at war in which years, who was drafted
 // (ages, how likely, how harshly refusal was treated), where troops were sent, and when a
 // country had peacetime national service. special/military.ts reads it for wartime drafts and
-// national service; history/events.ts for the home front and the AI's era line. Real history
+// national service; history/events.ts for the home front. Real history
 // only: nothing after PRESENT_YEAR (the future has no scripted wars). Pure data + lookups.
 import { PRESENT_YEAR } from './timeline'
 

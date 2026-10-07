@@ -3,7 +3,7 @@
 // crypto, apps, dating apps, esports, data science...) only exist once their technology does.
 // Lives born in PRESENT_YEAR keep every feature they had before the year system.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { electronicsListings, carListings } from '../src/game/assets'
 import { computerMenu, ownsComputer } from '../src/game/computer'

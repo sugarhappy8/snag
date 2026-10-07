@@ -14,7 +14,7 @@ import { businessView } from '../business/manage'
 import { hasTech } from '../history/timeline'
 import { getCountry } from '../world'
 import { foundingProblem, startFounding } from '../business/founding'
-import { offerStudioGrowth, studioAssets, studioOf, studioSummary, ventureStudioBlock } from '../business/gamestudio'
+import { offerStudioGrowth, studioAssets, studioOf, ventureStudioBlock } from '../business/gamestudio'
 import { devGames } from '../business/gamestudio-state'
 import { bizOf } from '../business/state'
 import { getProjectKind } from '../computer/dev-kinds'
@@ -358,36 +358,4 @@ export function yearlyGameDev(g: GameState): void {
   budget -= awardSeason(g, budget)
   budget -= ventureOffers(g, budget)
   fameDrift(g)
-}
-
-// ---------------------------------------------------------------------------
-// AI context
-
-/** One compact line for the AI context ('' when nothing to say). */
-export function gameDevSummary(g: GameState): string {
-  const parts: string[] = []
-  const job = gameJob(g)
-  if (job) {
-    const d = readJobData(job)
-    parts.push(`works as ${job.title} at ${d.studio} (${TIER_LABEL[d.tier]})${d.proj ? `, making "${d.proj.title}" (${Math.round(d.proj.progress)}%)` : ''}`)
-  }
-  const p = gdPeek(g)
-  if (p) {
-    const shipped = p.games.filter((x) => !x.free)
-    if (shipped.length) {
-      const best = [...shipped].sort((a, b) => b.critic - a.critic)[0]
-      parts.push(`${shipped.length} game${shipped.length === 1 ? '' : 's'} shipped (best: "${best.title}", ${genreDef(best.genre).label}, critics ${best.critic})`)
-    } else if (p.jams) parts.push(`${p.jams} game jam${p.jams === 1 ? '' : 's'}`)
-    for (const pr of p.projects.slice(0, 2)) parts.push(`developing "${pr.title}" (${Math.round(pr.progress)}%${pr.publisher ? `, signed to ${pr.publisher}` : ''}${pr.backers ? `, ${pr.backers.toLocaleString('en-US')} backers waiting` : ''})`)
-    if (p.awards.length) parts.push(`${p.awards.length} award${p.awards.length === 1 ? '' : 's'}`)
-    if (p.gamerFame >= 10) parts.push(`gamer fame ${p.gamerFame}/100`)
-    if (p.burnout >= 70) parts.push('badly burned out')
-    if (p.layoffs) parts.push(`laid off ${p.layoffs} time${p.layoffs === 1 ? '' : 's'}`)
-  }
-  for (const a of studioAssets(g).slice(0, 2)) parts.push(`owns ${studioSummary(g, a)}`)
-  const ventures = gameVentures(g)
-  if (ventures.length) parts.push(`runs the indie game venture${ventures.length === 1 ? '' : 's'} ${ventures.map((a) => a.name).join(', ')}`)
-  if (!parts.length) return ''
-  const text = parts.join('; ')
-  return text.length > 320 ? `${text.slice(0, 317)}…` : text
 }

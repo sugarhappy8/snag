@@ -3,7 +3,7 @@
 // computers), a market that doesn't exist yet can't be entered, and the numbers stay sane in
 // the early, tiny markets of the 1900s-1980s.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { businessAssetView } from '../src/game/business'
 import { marketViewOf } from '../src/game/business/competition'
 import { industryEraBlock } from '../src/game/business/competition-data'

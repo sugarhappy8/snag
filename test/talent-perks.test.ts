@@ -555,7 +555,7 @@ describe('whole lives with special talents', () => {
 
   it('plays lives with every talent without errors, NaN money or broken saves', async () => {
     const { ageUp } = await import('../src/game/aging')
-    const { applyFallback } = await import('../src/ai/director')
+    const { applyFallback } = await import('../src/game/offline')
     const { createNewLife } = await import('../src/game/life')
     const { activitiesMenu, occupationMenu } = await import('../src/game/menus')
     const all: TalentId[] = ['Acting', 'Music', 'Athletics', 'Art', 'Writing', 'Comedy', 'Academics', 'Modeling', 'Cooking', 'Crime', 'Programming', 'Leadership', 'Gaming', 'Business', 'Investing']

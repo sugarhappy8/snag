@@ -4,6 +4,7 @@ import { exchangeFor, marketOf } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
 import type { Asset, GameState } from '../types'
+import { afterMemberGone } from './conglomerate-state'
 import { deepTechIpoThreshold } from './deeptech-state'
 import { refreshValue, valuationOf } from './economy'
 import { industryDef } from './industries'
@@ -28,6 +29,8 @@ export function capitalGainsTax(g: GameState, proceeds: number, basis: number): 
 function removeBusiness(g: GameState, a: Asset): void {
   g.assets = g.assets.filter((x) => x.id !== a.id)
   if (ceoJob(g, a.id)) endJob(g, 'job', 'other')
+  // A group carries on without it, or winds up when only one company is left.
+  afterMemberGone(g, a.details, a.name)
 }
 
 /** Pay off the founding loan linked to this business from the proceeds, if any. */
@@ -74,7 +77,7 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   else if (profit < 0) text += ` You put ${formatMoney(b.invested)} into it, so this one is a lesson, not a payday.`
   log(g, `I sold my company, ${a.name}, for ${money(gross)}.`, profit >= 0 ? 'good' : 'neutral')
   remember(g, `Sold ${a.name} (${industryDef(b.industry).label.toLowerCase()}) for ${money(gross)}.`)
-  notice(g, 'Company Sold!', text, { emoji: '\u{1F91D}', tone: profit >= 0 ? 'good' : 'neutral', ai: { when: 'full', facts: text } })
+  notice(g, 'Company Sold!', text, { emoji: '\u{1F91D}', tone: profit >= 0 ? 'good' : 'neutral' })
 }
 
 /** The company goes under: closed, debts wiped (limited liability), personal guarantees stay. */
@@ -91,7 +94,7 @@ export function declareBankruptcy(g: GameState, a: Asset, b: BizState, why: stri
   text += ' Your credit score took a beating.'
   log(g, `My company, ${a.name}, went bankrupt.`, 'bad')
   remember(g, `${a.name} went bankrupt.`)
-  notice(g, 'Bankrupt', text, { emoji: '\u{1F4C9}', tone: 'bad', ai: { when: 'full', facts: text } })
+  notice(g, 'Bankrupt', text, { emoji: '\u{1F4C9}', tone: 'bad' })
 }
 
 /** Close the business in an orderly way: sell off equipment, pay debts, keep what is left. */
@@ -155,7 +158,7 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   const text = `${a.name} rang the opening bell on the ${ex.name} (${ex.code}). The IPO raised ${money(raise)} for the company (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))}. Your ${pct(b.share)} stake is worth ${money(stakeValue(b))}.`
   log(g, `I took ${a.name} public on the ${ex.code}.`, 'good')
   remember(g, `Took ${a.name} public on the ${ex.name}.`)
-  notice(g, 'IPO Day!', text, { emoji: '\u{1F514}', tone: 'good', ai: { when: 'full', facts: text } })
+  notice(g, 'IPO Day!', text, { emoji: '\u{1F514}', tone: 'good' })
 }
 
 /** Sell a fraction (0-1) of the owner's shares on the market. */
@@ -176,6 +179,7 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   if (f >= 0.999 || b.share < 0.005) {
     g.assets = g.assets.filter((x) => x.id !== a.id)
     if (ceoJob(g, a.id)) endJob(g, 'job', 'quit')
+    afterMemberGone(g, a.details, a.name)
     log(g, `I sold the last of my ${a.name} shares.`, 'good')
     notice(g, 'Sold Out', `You sold all your remaining shares of ${a.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. It's somebody else's company now.`, { emoji: '\u{1F4B8}', tone: 'good' })
     count(g, 'businessesSold')

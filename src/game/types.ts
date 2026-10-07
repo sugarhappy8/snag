@@ -258,7 +258,7 @@ export interface Character {
   citizenships?: string[]
   /** Legal status where the character lives now (immigration.ts). Missing = citizen. */
   immigration?: ImmigrationStatus
-  /** Short notable life events, oldest first, used as long-term memory for the AI. */
+  /** Short notable life events, oldest first (the profile's Memories list). */
   memories: string[]
   /** Person ids named in the will; empty = split among children. */
   willBeneficiaries: string[]
@@ -298,7 +298,7 @@ export interface CvEntry {
   source?: string
 }
 
-/** What a CV is screened for. Plain JSON: it travels inside AI tasks and script data. */
+/** What a CV is screened for. Plain JSON: it travels inside queued tasks and script data. */
 export interface ScreeningApp {
   kind: 'job' | 'university' | 'graduate'
   /** The job (kind 'job'); the regular interview flow continues with it. */
@@ -330,7 +330,7 @@ export interface ScreeningApp {
 export interface ScreeningDecision {
   invite: boolean
   reason: string
-  /** Admissions interview question (schools; AI-written, optional). */
+  /** Admissions interview question (schools; optional). */
   question?: InterviewQuestion
 }
 
@@ -379,7 +379,7 @@ export interface Person {
   money: number
   /** Job title or status, e.g. "Plumber", "Student", "Retired", "Unemployed". */
   occupation: string
-  /** Personality descriptors (feed the AI): e.g. ['generous', 'hot-headed']. */
+  /** Personality descriptors shown on their profile and used by interactions: e.g. ['generous', 'hot-headed']. */
   traits: string[]
   /** For pets: 'Dog', 'Cat', 'Horse'... */
   species?: string
@@ -394,7 +394,7 @@ export interface Person {
   /** Years the player has known this person. */
   yearsKnown: number
   livesWithPlayer: boolean
-  /** Short notes about shared history with this person (AI memory). */
+  /** Short notes about shared history with this person (the profile's "Shared history"). */
   notes: string[]
   /** Free-form data (e.g. 'metAt', 'engagementRing', 'cheating'). */
   data: Record<string, Json>
@@ -451,7 +451,12 @@ export interface Asset {
 // ---------------------------------------------------------------------------
 // The life log (main feed)
 
-export type Tone = 'good' | 'bad' | 'neutral' | 'event' | 'ai'
+/**
+ * How a log line or popup is colored. Older saves may still hold log entries with the retired
+ * tone 'ai' (lines from the old AI narrator): save.ts turns them into 'neutral' and the UI draws
+ * any unknown tone as a plain line.
+ */
+export type Tone = 'good' | 'bad' | 'neutral' | 'event'
 
 export interface LogEntry {
   id: string
@@ -479,15 +484,6 @@ export interface ChoiceOption {
   hint?: string
 }
 
-/** Optional AI rewrite of a notice's text (see ai/director narrate). */
-export interface NoticeAi {
-  /** 'balanced' = rewrite whenever AI is on; 'full' = only at the Full narration level. */
-  when: 'balanced' | 'full'
-  /** Ground-truth facts the rewrite must preserve (outcome, numbers, names). */
-  facts: string
-  personId?: string
-}
-
 export interface NoticeModal {
   kind: 'notice'
   id: string
@@ -495,7 +491,6 @@ export interface NoticeModal {
   emoji?: string
   text: string
   tone?: Tone
-  ai?: NoticeAi
 }
 
 export interface ChoiceModal {
@@ -506,8 +501,9 @@ export interface ChoiceModal {
   text: string
   choices: ChoiceOption[]
   /**
-   * 'script': resolved synchronously by the script registry (scriptId).
-   * 'ai': resolved by the AI director (resolveChoice task), falling back to a generic outcome.
+   * 'script': resolved by the script registry (scriptId); every popup the engine shows today.
+   * 'ai': an event written by the old AI narrator, still queued in an older save; the store
+   * resolves it with the generic offline outcome (offline.ts → events.ts fallbackChoiceOutcome).
    */
   source: 'script' | 'ai'
   scriptId?: string
@@ -578,9 +574,12 @@ export interface InputModal {
   title: string
   emoji?: string
   text: string
-  input: 'text' | 'number'
+  /** 'slider' needs min and max; the script receives the chosen number as a string. */
+  input: 'text' | 'number' | 'slider'
   /** Money bounds/defaults stay internal dollars; the UI displays and accepts local units. */
   money?: boolean
+  /** Sliders: distance between values (default 1). */
+  step?: number
   placeholder?: string
   defaultValue?: string
   min?: number
@@ -589,7 +588,11 @@ export interface InputModal {
   data?: Json
 }
 
-/** Work for the AI director; the UI runs it (with a spinner) when it reaches the head of the queue. */
+/**
+ * A built-in task (see AiTask) the store resolves offline, instantly, when it reaches the head of
+ * the queue (src/game/offline.ts). Never shown to the player. The kind keeps its historical name
+ * so saves with a queued task keep loading.
+ */
 export interface AiTaskModal {
   kind: 'aiTask'
   id: string
@@ -612,19 +615,19 @@ export interface InterviewJob {
   category: JobCategory
 }
 
-/** Serializable descriptions of AI work. See src/ai/director.ts. */
+/** Serializable task descriptions, resolved offline by src/game/offline.ts (applyFallback / resolveTask). */
 export type AiTask =
-  /** Generate this year's flavor log lines and maybe one interactive event. */
+  /** This year's flavor log lines and maybe one random-event popup (events.ts). */
   | { type: 'yearEvents' }
-  /** Narrate the outcome + effects of the player's choice on an AI-sourced event. */
+  /** The outcome of a choice on a legacy narrator event (source 'ai') from an older save. */
   | { type: 'resolveChoice'; event: ChoiceModal; choiceId: string }
-  /** "Do anything": the player typed a free-form action. */
+  /** "Do Anything": the player typed a free-form action (events/custom.ts keyword resolver). */
   | { type: 'customAction'; text: string }
-  /** Generate a job-interview question with scored answers. */
+  /** A job-interview question with scored answers (careers.ts question pool). */
   | { type: 'interview'; job: InterviewJob }
-  /** Write the obituary shown on the death screen. */
+  /** Write the obituary shown on the death screen (events/obituary.ts). */
   | { type: 'obituary' }
-  /** Read the CV for a job / university / graduate school and decide on an interview. */
+  /** Read the CV for a job / university / graduate school and decide on an interview (cv.ts offlineScreen). */
   | { type: 'screenApplication'; app: ScreeningApp }
 
 // ---------------------------------------------------------------------------
@@ -691,7 +694,12 @@ export interface ImmigrationStatus {
 }
 
 export interface MenuInput {
-  kind: 'text' | 'number'
+  /**
+   * 'slider': a range slider from min to max (both required) in steps of `step`; run() gets the
+   * chosen number as a string. Use it for "how many / how much" choices (outlets, factories,
+   * budgets, allowance) instead of typing a number.
+   */
+  kind: 'text' | 'number' | 'slider'
   label: string
   placeholder?: string
   min?: number
@@ -703,6 +711,15 @@ export interface MenuInput {
    * hands run() the amount converted back to internal dollars.
    */
   money?: boolean
+  /** Sliders: distance between values (default 1). */
+  step?: number
+  /** Sliders: a unit written after the number ('%', ' yrs'); ignored for money. */
+  unit?: string
+  /**
+   * Sliders: a live caption for the value under the thumb, e.g. '12 trucks · $340K up front ·
+   * pays back in ~3 years'. Must be pure (no state changes, no game RNG).
+   */
+  preview?: (g: GameState, value: number) => string
 }
 
 interface MenuBase {
@@ -760,7 +777,7 @@ export type MenuNode = MenuAction | MenuGroup | MenuInfo | MenuHeading
 export type ScriptHandler = (g: GameState, choice: string, data: Json | undefined, modal: ModalItem) => void
 
 // ---------------------------------------------------------------------------
-// Effects vocabulary (used by AI outcomes and scripted events)
+// Effects vocabulary (used by scripted event outcomes and "Do Anything")
 
 export type NewPersonRelation = 'friend' | 'enemy' | 'partner' | 'lover' | 'pet' | 'coworker' | 'classmate'
 
@@ -793,7 +810,7 @@ export interface GameEffects {
   arrest?: { crime: string; severity: number }
   /** The player dies (only honored when the engine agrees it is plausible). */
   death?: string
-  /** One-line long-term memory for the AI. */
+  /** One-line entry for the Memories list. */
   memory?: string
   /** One-line entry for the life log. */
   log?: string

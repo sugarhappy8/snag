@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
 import { canUseComputer, computerLocked } from '../src/game/computer'
-import { moneyNodes, moneySummary, yearlyMoney } from '../src/game/computer/money'
+import { moneyNodes, yearlyMoney } from '../src/game/computer/money'
 import { anchor, brokerName, enforcement, fam, moneyState, readState, regulator, STATE_KEY } from '../src/game/computer/money-common'
 import { apeMultiple, cleanCoinName, tickerFor } from '../src/game/computer/money-crypto'
 import { fairValue, optionPrice, positionPayoff, strikeOffset, yoloMultiple } from '../src/game/computer/money-options'
@@ -811,7 +811,6 @@ describe('yearly hook and saves', () => {
     const g = game(1, 30, 1_000)
     nextYear(g)
     expect(g.flags[STATE_KEY]).toBeUndefined()
-    expect(moneySummary(g)).toBe('')
     expect(g.queue).toHaveLength(0)
   })
 
@@ -857,21 +856,6 @@ describe('yearly hook and saves', () => {
       expect(g.queue.length).toBeLessThanOrEqual(1)
       roundTrips(g)
     }
-  })
-
-  it('summarizes the risky side for the AI', () => {
-    const g = adultTrader(1, 100_000)
-    launchCoin(g, 'Llama Cash')
-    answer(g, 'computer.money.coin.pump', 'rug')
-    const st = moneyState(g)
-    st.trades = 3
-    st.pnl = 12_000
-    st.probes.push({ id: 'p', kind: 'rug', ticker: 'LLAMA', take: 1, dueAge: 99, startAge: 30, countryId: 'us', evidence: 0.5, publicCase: true, recordIndex: -1 })
-    const s = moneySummary(g)
-    expect(s).toMatch(/^Trades index options \(up \$12K lifetime\)/)
-    expect(s).toContain('$LLAMA')
-    expect(s).toContain('rug-pulled')
-    expect(s).toContain('under investigation')
   })
 
   it('names local regulators and brokers without real brands', () => {

@@ -365,7 +365,7 @@ function jobJson(job: InterviewJob): Json {
   return { defId: job.defId, title: job.title, company: job.company, salary: job.salary, category: job.category }
 }
 
-/** Show an interview question (from the AI director or the offline pool). */
+/** Show an interview question (from the question pool, or an admissions screener's question). */
 export function presentInterview(g: GameState, job: InterviewJob, q: InterviewQuestion): void {
   const c = g.character
   if (!c.alive) return
@@ -536,7 +536,7 @@ const INTERVIEW = defineScript('career.interview', (g, choice, data) => {
         `Welcome aboard! ${j.company} hired you as ${article(j.title)} ${j.title}, starting at ${formatMoney(j.salary)} a year.`,
         `${interviewer} called that afternoon: you're the new ${j.title} at ${j.company}! Pay: ${formatMoney(j.salary)} a year.`,
       ]),
-      { emoji: '\u{1F389}', tone: 'good', ai: { when: 'full', facts: `The player was hired as ${j.title} at ${j.company} for ${formatMoney(j.salary)} per year.` } },
+      { emoji: '\u{1F389}', tone: 'good' },
     )
     return
   }
@@ -566,10 +566,10 @@ function rejectFor(g: GameState, job: InterviewJob): void {
 // ---------------------------------------------------------------------------
 // CV screening (before the interview)
 //
-// Full-time applications go to the AI director (task 'screenApplication'), which reads the CV
-// against the job and the job market and decides on an interview; offline, cvScore + the market
-// decide. Part-time jobs are screened on the spot. University and graduate school screenings
-// (education.ts) come back through here too.
+// Full-time applications are queued as a 'screenApplication' task (offline.ts), where cv.ts
+// offlineScreen reads the CV against the job and the job market (cvScore + the market) and
+// decides on an interview. Part-time jobs are screened on the spot. University and graduate
+// school screenings (education.ts) come back through here too.
 
 /** The screener's decision is in: background check, then an interview or a polite no. */
 export function applyScreening(g: GameState, app: ScreeningApp, decision: ScreeningDecision): void {
@@ -754,7 +754,7 @@ function applyForListing(g: GameState, listing: JobListing): void {
 // explains what's missing for the jobs just out of reach, and pitches you to employers.
 //
 // Matches are derived from a yearly seed (stable within a year, no state changes). A pitch goes
-// through the regular CV screening (AI or offline) with the recruiter's referral boosting the
+// through the regular CV screening with the recruiter's referral boosting the
 // odds; when the odds are already excellent the recruiter's contact skips straight to the
 // interview. Strong, relevant CVs get better jobs, better odds and a little more money.
 
@@ -1172,7 +1172,7 @@ function promote(g: GameState, job: Job, def: JobDef): void {
       `Congratulations! ${job.company} promoted you to ${rung.title}. That comes with a bigger salary (${formatMoney(job.salary)}) and a slightly bigger chair.`,
       `You've been promoted to ${rung.title}! Your new salary is ${formatMoney(job.salary)}. Your coworkers are "so happy for you."`,
     ]),
-    { emoji: '\u{1F389}', tone: 'good', ai: { when: 'full', facts: `The player was promoted from ${oldTitle} to ${rung.title} at ${job.company}; new salary ${formatMoney(job.salary)}.` } },
+    { emoji: '\u{1F389}', tone: 'good' },
   )
 }
 
@@ -1328,7 +1328,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   }
 }
 
-// Occasional offline workplace events (the AI director writes most job events).
+// Occasional workplace events (the event library in events/work.ts has most job events).
 // Era tags (events/era.ts): escape rooms are a 2010s thing; before the 1970s it's the company picnic.
 const TEAM_ACTIVITIES = ['@2010 an escape room', '@1975 a trust-fall workshop', '@1985 a paintball match', 'a cooking class', '@1975 a ropes course', '@1985 karaoke night', 'a corporate retreat in the woods', '@-1975 a company picnic with a three-legged race', '@-1975 a bowling night']
 

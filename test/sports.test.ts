@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { runScript } from '../src/game/scripts'
 import { specialCareersMenu, specialJobNodes, yearlySpecial } from '../src/game/special'
 import { hire, ownerKey } from '../src/game/special/common'
-import { sportsCareerMenu, sportsJobNodes, sportsSummary, yearlySports } from '../src/game/special/sports'
-import { addHeadTrauma, gamesSeason, rankFromPoints, sponsorCall, yearlyBrain } from '../src/game/special/sports-core'
+import { sportsCareerMenu, sportsJobNodes, yearlySports } from '../src/game/special/sports'
+import { addHeadTrauma, gamesSeason, rankFromPoints, sponsorCall, viewSports, yearlyBrain } from '../src/game/special/sports-core'
 import { DISCIPLINES, fightInternals } from '../src/game/special/sports-fight'
 import type { Asset, Character, GameState, Json, MenuAction, MenuNode, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -301,7 +301,6 @@ describe('MMA: amateur to title fight', () => {
     expect(r.w).toBeGreaterThan(3)
     expect(r.ko + r.sub + r.dec).toBe(r.w)
     expect(Number.isFinite(prof.earnings) && prof.earnings > 0).toBe(true)
-    expect(sportsSummary(g)).toMatch(/MMA fighter/)
     checkSane(g)
   })
 
@@ -373,7 +372,6 @@ describe('individual sports', () => {
     expect(rank!).toBeLessThanOrEqual(100)
     expect(g.character.job?.company).toBe('Pro Tennis Tour')
     expect(g.counters.sportsTitles ?? 0).toBeGreaterThan(0)
-    expect(sportsSummary(g)).toMatch(/Tennis/)
   })
 
   it('ranking points map to world rankings monotonically', () => {
@@ -594,13 +592,13 @@ describe('Olympics, sponsors and the brain', () => {
       nextYear(g)
     }
     expect(g.character.conditions.some((c) => c.name === 'Dementia' && c.curable === false)).toBe(true)
-    expect(sportsSummary(g)).toMatch(/CTE/)
+    expect(viewSports(g).cte).toBe(true)
   })
 })
 
 describe('random sports lives', () => {
   it('survive random sports actions from birth to old age (full engine, AI off)', async () => {
-    const { applyFallback } = await import('../src/ai/director')
+    const { applyFallback } = await import('../src/game/offline')
     const { ageUp } = await import('../src/game/aging')
     const { createNewLife } = await import('../src/game/life')
     const collect = (g: GameState, nodes: MenuNode[], out: MenuAction[] = [], d = 0): MenuAction[] => {

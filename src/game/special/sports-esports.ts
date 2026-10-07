@@ -728,10 +728,3 @@ export function yearlyEsports(g: GameState): void {
     )
   }
 }
-
-export function esportsSummary(g: GameState): string {
-  const job = esportsJob(g)
-  if (!job) return ''
-  const d = ej(job)
-  return `esports pro (${game(d.game).name}) for ${d.team}${d.tier === 0 ? ' Academy' : ''}`
-}

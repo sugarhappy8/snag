@@ -1,11 +1,9 @@
 // A person's profile (family, friends, partners, pets, coworkers...) with their stats and
-// the interactions from personActions(), plus an AI chat button.
-import { useState } from 'react'
+// the interactions from personActions().
 import { fullName, personAvatar, relationLabel, shortMoney } from '../../game/core'
 import { personActions } from '../../game/relationships'
 import type { GameState, MenuNode, Person } from '../../game/types'
 import { useApp } from '../store'
-import { ChatSheet } from './ChatSheet'
 import { groupChildren, groupHeader, MenuRows, resolveTrail, useMenuNav, useMenuRunner, useSheetEscape, type MenuSpot } from './MenuList'
 import { Sheet } from './Sheet'
 import { StatBar } from './StatBar'
@@ -60,15 +58,10 @@ const DATA_STATS: [string, string, string][] = [
   ['diligence', 'Diligence', '📚'],
   ['loyalty', 'Loyalty', '🤝'],
   ['obedience', 'Obedience', '🦮'],
+  ['entitlement', 'Entitlement', '👑'],
   ['respect', 'Respect', '🫡'],
   ['toughness', 'Toughness', '🥊'],
 ]
-
-function talkBlockedReason(g: GameState, p: Person): string | null {
-  if (g.character.age < 3) return "You're too young for a real conversation. Try babbling at them."
-  if (p.relation !== 'pet' && p.age < 2) return `${p.firstName} can't talk yet.`
-  return null
-}
 
 export function PersonDetails({ g, person }: { g: GameState; person: Person }) {
   const p = person
@@ -172,7 +165,6 @@ export function PersonDetails({ g, person }: { g: GameState; person: Person }) {
 
 export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: PersonSheetProps) {
   const g = useApp((s) => s.game)
-  const [chatOpen, setChatOpen] = useState(false)
   const person = g?.people.find((p) => p.id === personId)
   const rootNodes = g && person ? safeActions(g, person) : []
   const nav = useMenuNav((path) => (g ? resolveTrail(g, rootNodes, path) : []), initial)
@@ -202,23 +194,6 @@ export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: Per
   const current = inGroup ? nav.trail[nav.trail.length - 1] : null
   const nodes = current ? groupChildren(current, g) : rootNodes
   const header = current ? groupHeader(current, g) : null
-  const canTalk = person.alive && g.character.alive
-  const blocked = canTalk ? talkBlockedReason(g, person) : null
-
-  const footer =
-    !inGroup && canTalk ? (
-      <button
-        className="btn btn-primary btn-block"
-        aria-disabled={blocked ? true : undefined}
-        style={blocked ? { opacity: 0.55 } : undefined}
-        onClick={() => {
-          if (blocked) runner.toast(blocked)
-          else if (g.queue.length === 0) setChatOpen(true)
-        }}
-      >
-        💬 Talk (AI chat)
-      </button>
-    ) : undefined
 
   return (
     <>
@@ -227,7 +202,6 @@ export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: Per
         emoji={current ? current.emoji : undefined}
         onClose={onClose}
         onBack={inGroup ? nav.pop : onBack}
-        footer={footer}
       >
         <div ref={nav.anchorRef}>
           {inGroup ? (
@@ -262,7 +236,6 @@ export function PersonSheet({ personId, onClose, onBack, initial, onLeave }: Per
         </div>
       </Sheet>
       {runner.overlay}
-      {chatOpen ? <ChatSheet personId={person.id} onClose={() => setChatOpen(false)} /> : null}
     </>
   )
 }

@@ -1,21 +1,20 @@
 // Headless playthrough of AnotherLife in Chromium.
-//   npm i --no-save playwright && npm run build && npx vite preview --port 4199
-//   node scripts/e2e-play.mjs <url> [--ai mock|off] [--years 120] [--shots dir] [--direct http://localhost:1299/v1]
-// Plays a random life: answers every popup, opens menus and taps random rows, ages up until
-// death, then continues as a child if possible. Fails on page errors / console errors.
+//   npm i --no-save playwright && npm run build && npx vite preview --port 4341 --strictPort
+//   PW_CHROMIUM=/path/to/chromium node scripts/e2e-play.mjs http://localhost:4341/ [--years 120] [--seed 1] [--shots dir]
+// Plays a random life: answers every popup, opens menus and taps random rows, and ages up until
+// death. Fails on page errors, console errors and any network request that leaves the page's
+// own origin (the game must never call out).
 import { chromium } from 'playwright'
 import fs from 'node:fs'
 
 const args = process.argv.slice(2)
-const url = args[0] ?? 'http://localhost:5199/'
+const url = args[0] ?? 'http://localhost:4341/'
 const opt = (n, d) => {
   const i = args.indexOf(n)
   return i >= 0 ? args[i + 1] : d
 }
-const AI = opt('--ai', 'off')
 const YEARS = Number(opt('--years', '130'))
 const SHOTS = opt('--shots', null)
-const DIRECT = opt('--direct', null)
 const SEED = Number(opt('--seed', '1'))
 let rs = SEED * 2654435761 >>> 0 || 1
 const rnd = () => ((rs = (rs * 1664525 + 1013904223) >>> 0) / 4294967296)
@@ -28,21 +27,20 @@ const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, de
 const page = await ctx.newPage()
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
 page.on('console', (m) => {
-  if (m.type() === 'error' && !/Failed to load resource|ERR_CONNECTION_REFUSED|net::/.test(m.text())) errors.push(`console: ${m.text()}`)
+  if (m.type() === 'error') errors.push(`console: ${m.text()}`)
+})
+// Everything runs in the browser: any request to another origin is a bug.
+const origin = new URL(url).origin
+page.on('request', (r) => {
+  const u = r.url()
+  if (!u.startsWith(origin) && !u.startsWith('data:') && !u.startsWith('blob:')) errors.push(`network: ${r.method()} ${u}`)
 })
 
-await page.addInitScript(
-  ([ai, direct]) => {
-    if (sessionStorage.getItem('e2e-init')) return
-    sessionStorage.setItem('e2e-init', '1')
-    localStorage.clear()
-    // setupDone: skip the first-run "Choose your AI" screen.
-    const s = { aiLevel: ai === 'off' ? 'off' : 'balanced', timeoutSec: 30, setupDone: true }
-    if (direct) s.baseUrl = direct
-    localStorage.setItem('anotherlife.settings.v1', JSON.stringify(s))
-  },
-  [AI, DIRECT],
-)
+await page.addInitScript(() => {
+  if (sessionStorage.getItem('e2e-init')) return
+  sessionStorage.setItem('e2e-init', '1')
+  localStorage.clear()
+})
 
 let shot = 0
 async function snap(name) {
@@ -60,25 +58,24 @@ await page.getByText('Random Life', { exact: false }).first().click()
 await page.waitForTimeout(300)
 await snap('born')
 
-const stats = { popups: 0, choices: 0, menuActions: 0, years: 0, minigames: 0, aiTasks: 0, lives: 1 }
+const stats = { popups: 0, choices: 0, menuActions: 0, years: 0, minigames: 0, lives: 1 }
+
+/** Answer a prompt's field: type into text/number inputs, nudge sliders with the keyboard. */
+async function fillField(field, text, number) {
+  const type = await field.getAttribute('type')
+  if (type === 'range') {
+    await field.focus().catch(() => {})
+    await field.press(pick(['Home', 'End', 'ArrowRight', 'ArrowLeft', 'PageUp'])).catch(() => {})
+    return
+  }
+  await field.fill(type === 'number' ? number : text)
+}
 
 /** Resolve whatever popup is open. Returns true if something was handled. */
 async function handlePopup() {
-  const thinking = page.locator('.thinking')
-  if (await thinking.count()) {
-    stats.aiTasks++
-    // Wait for the AI (mock) or press Skip after a while.
-    for (let i = 0; i < 60 && (await thinking.count()); i++) {
-      const skip = page.locator('.thinking-skip')
-      if (i > 20 && (await skip.count())) await skip.first().click().catch(() => {})
-      await page.waitForTimeout(250)
-    }
-    return true
-  }
   const field = page.locator('.popup-field input, .popup-field textarea')
   if (await field.count()) {
-    const type = await field.first().getAttribute('type')
-    await field.first().fill(type === 'number' ? '100' : 'Alex')
+    await fillField(field.first(), 'Alex', '100')
     await page.locator('.popup-actions button').first().click()
     stats.popups++
     return true
@@ -145,10 +142,7 @@ async function randomMenuAction() {
     await page.waitForTimeout(120)
     // A text/number prompt or confirm dialog from the menu (rendered with the popup classes).
     const dlgInput = page.locator('.popup-field input, .popup-field textarea')
-    if (await dlgInput.count()) {
-      const type = await dlgInput.first().getAttribute('type')
-      await dlgInput.first().fill(type === 'number' ? '50' : pick(['Go jogging', 'Bake a cake', 'Learn guitar']))
-    }
+    if (await dlgInput.count()) await fillField(dlgInput.first(), pick(['Go jogging', 'Bake a cake', 'Learn guitar']), '50')
     const dlgBtn = page.locator('.popup-actions .btn-primary')
     if (await dlgBtn.count()) await dlgBtn.first().click().catch(() => {})
     if (!(await page.locator('.sheet').count())) break
@@ -164,7 +158,7 @@ async function randomMenuAction() {
   await drain()
 }
 
-const ageBtn = page.locator('button[aria-label="Age up one year"], button[aria-label="The AI is writing your year"]')
+const ageBtn = page.locator('button[aria-label="Age up one year"]')
 for (let year = 0; year < YEARS; year++) {
   await drain()
   if (await page.locator('.death-tomb').count()) break

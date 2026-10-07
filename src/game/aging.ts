@@ -1,6 +1,6 @@
 // The "+ Age" button. Advances one year and runs every subsystem's yearly hook in
-// a fixed order, then asks the AI director (or the offline library) for this
-// year's flavor lines and random event.
+// a fixed order, then queues this year's flavor lines and random event from the event
+// library (a 'yearEvents' task the store resolves right away, see offline.ts).
 import { yearlyAssets } from './assets'
 import { yearlyBusiness } from './business'
 import { yearlyCareer } from './careers'
@@ -8,6 +8,7 @@ import { yearlyComputer } from './computer'
 import { bindMoneyContext, currentLogYear, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
+import { yearlyWealth } from './events/wealth'
 import { yearlyFinance } from './finance'
 import { checkDeath, yearlyHealth } from './health'
 import { yearlyHistory } from './history'
@@ -32,6 +33,7 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['shops', yearlyShops],
   ['computer', yearlyComputer],
   ['finance', yearlyFinance],
+  ['wealth', yearlyWealth],
   ['immigration', yearlyImmigration],
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],
@@ -59,6 +61,6 @@ export function ageUp(g: GameState): void {
   checkDeath(g)
   if (!c.alive) return
 
-  // Flavor lines + a random event: AI when enabled, otherwise the offline library.
+  // Flavor lines + a random event from the event library (resolved by offline.ts).
   queueAi(g, { type: 'yearEvents' })
 }

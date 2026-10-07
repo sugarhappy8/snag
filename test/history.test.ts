@@ -1,17 +1,14 @@
-// The history core: world headlines for every year (and the procedural future), the era line the
-// AI gets, the anachronism guard, era moments, wartime drafts and national service by era, era
-// medicine and jobs, the New Life "Born in" control, and whole lives born in 1900 and 1950.
+// The history core: world headlines for every year (and the procedural future), the anachronism
+// guard, era moments, wartime drafts and national service by era, era medicine and jobs, the New
+// Life "Born in" control, and whole lives born in 1900 and 1950.
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
-import { applyFallback } from '../src/ai/director'
-import { describeCharacter, eraTheme, recentLogLines, stageRule } from '../src/ai/prompts'
+import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
 import { netWorth } from '../src/game/core'
 import { eraMoments } from '../src/game/events/history'
 import {
   allHeadlines,
-  eraSummary,
   isNewsLine,
   newsLine,
   warDraftAt,
@@ -26,6 +23,7 @@ import { conscriptionAt, WARS } from '../src/game/history/events-wars'
 import { HISTORY_START, PRESENT_YEAR } from '../src/game/history/timeline'
 import { birthYearOf, createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
+import { applyFallback } from '../src/game/offline'
 import { randomOccupation } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
@@ -33,11 +31,6 @@ import { militaryJob, yearlyMilitary } from '../src/game/special/military'
 import { STAT_KEYS, type AnnualReportData, type ChoiceModal, type GameState, type MenuAction, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
 import { COUNTRIES, CONTINENTS } from '../src/game/world'
 import { makeTestGame } from './helpers'
-
-vi.mock('../src/ai/director', async (orig) => {
-  const real = await orig<typeof import('../src/ai/director')>()
-  return { ...real, runAiTask: vi.fn(), narrateNotice: vi.fn(), testConnection: vi.fn(), chatReply: vi.fn() }
-})
 
 const { NewLifeScreen, BirthYearPicker, DECADE_CHIPS, chipActive, clampBirthYear, customLifeOptions, randomBirthYear, rollFirstName, RANDOM_PICKS } = await import('../src/ui/screens/NewLifeScreen')
 
@@ -148,37 +141,6 @@ describe('world headlines', () => {
     }
     expect(newsLine(2028, 'us')).toMatch(/Los Angeles/)
     expect(newsLine(PRESENT_YEAR + 200, 'id').length).toBeGreaterThan(10)
-  })
-})
-
-// ---------------------------------------------------------------------------
-
-describe('the era line for the AI', () => {
-  it('describes what exists and what does not yet', () => {
-    const s85 = eraSummary(gameAt(1985, 'us', 20))
-    expect(s85).toMatch(/^ERA: 1985, the eighties/)
-    expect(s85).toMatch(/Rare: [^.]*home computers/)
-    expect(s85).toMatch(/Not here yet: [^.]*the internet[^.]*smartphones/)
-    expect(s85).toMatch(/Never mention anything invented after 1985/)
-    expect(eraSummary(gameAt(1925, 'us', 20))).toMatch(/Not here yet: television/)
-    expect(eraSummary(gameAt(2015, 'us', 20))).toMatch(/Common here: [^.]*smartphones/)
-    expect(eraSummary(gameAt(1942, 'gb', 20))).toMatch(/At war: the Second World War/)
-    expect(eraSummary(gameAt(1969, 'us', 20))).toMatch(/News this year: Humans walk on the Moon/)
-    expect(eraSummary(gameAt(PRESENT_YEAR + 10, 'us', 20))).toMatch(/the future/)
-    expect(eraSummary(gameAt(PRESENT_YEAR, 'us', 20))).not.toMatch(/Not here yet: [^.]*smartphones/)
-  })
-
-  it('goes into the character sheet, and themes and stage rules fit the year', () => {
-    const old = gameAt(1975, 'us', 15)
-    const now = gameAt(PRESENT_YEAR, 'us', 15)
-    expect(describeCharacter(old)).toMatch(/\nERA: 1975/)
-    expect(stageRule(old, 'teen')).not.toMatch(/social media/)
-    expect(stageRule(now, 'teen')).toMatch(/social media/)
-    expect(eraTheme(old, 'social media drama')).toBe('gossip spreading around school')
-    expect(eraTheme(old, 'a viral video')).toBe('a prank the whole town heard about')
-    expect(eraTheme(now, 'social media drama')).toBe('social media drama')
-    old.log[0].entries.push({ id: 'n1', text: '\u{1F4F0} 1975: Saigon falls.', tone: 'neutral' }, { id: 'n2', text: 'I fell off my bike.', tone: 'neutral' })
-    expect(recentLogLines(old)).toEqual(['Age 15: I fell off my bike.'])
   })
 })
 

@@ -8,7 +8,7 @@ import { expectedLockValue, findRoute, routesTo, type RouteEval } from '../src/g
 import { citizenshipsOf, heirCitizenships, immState, statusOf, updateImm } from '../src/game/activities/immigration-state'
 import { counter } from '../src/game/core'
 import { passportStrength } from '../src/game/data/immigration'
-import { immigrationSummary, legalWorkProblem, passportsLostBy, yearlyImmigration } from '../src/game/immigration'
+import { legalWorkProblem, passportsLostBy, yearlyImmigration } from '../src/game/immigration'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import type { GameState, MenuAction, MenuGroup, ModalItem } from '../src/game/types'
@@ -297,7 +297,6 @@ describe('the status clock', () => {
     expect(inside).toBe(true)
     expect(statusOf(g).status).toBe('undocumented')
     expect(legalWorkProblem(g, { category: 'fulltime', edu: 'bachelor' })).toMatch(/papers/)
-    expect(immigrationSummary(g)).toMatch(/without papers/)
     g.character.criminalRecord.push({ crime: 'Grand Theft Auto', age: g.character.age, caught: true, convicted: true, sentenceYears: 2 })
     nextYear(g)
     expect(g.character.countryId).toBe('mx')
@@ -412,7 +411,6 @@ describe('old saves', () => {
     const before = JSON.stringify(g.character)
     yearlyImmigration(g)
     expect(g.queue).toHaveLength(0)
-    expect(immigrationSummary(g)).toBe('')
     expect(JSON.stringify({ ...g.character, citizenships: undefined })).toBe(JSON.stringify({ ...JSON.parse(before), citizenships: undefined }))
     expect(JSON.parse(JSON.stringify(g))).toEqual(g)
   })

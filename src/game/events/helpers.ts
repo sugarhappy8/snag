@@ -178,7 +178,7 @@ export interface Fx {
   arrest?: { crime: string; severity: number }
   /** Kill the player with this cause (e.g. 'Drowning'). */
   death?: string
-  /** Long-term memory line for the AI. */
+  /** Line for the character's Memories list. */
   memory?: string
   /** Shared-history note added to x.p. */
   note?: string

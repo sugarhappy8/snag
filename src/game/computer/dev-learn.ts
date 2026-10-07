@@ -896,10 +896,3 @@ export function nagParent(g: GameState): Person | undefined {
   const ps = guardians(g).filter((p) => p.livesWithPlayer || g.character.residence.status === 'parents')
   return ps.length ? ps.reduce((a, b) => (b.relationship < a.relationship ? b : a)) : undefined
 }
-
-/** For devSummary: "Python and JavaScript". */
-export function languagesPhrase(g: GameState, max = 2): string {
-  const langs = knownLanguages(g).slice(0, max)
-  if (langs.length <= 1) return langs[0] ?? ''
-  return `${langs.slice(0, -1).join(', ')} and ${langs[langs.length - 1]}`
-}

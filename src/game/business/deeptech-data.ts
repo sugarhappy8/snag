@@ -279,6 +279,8 @@ export interface ProgramDef {
   win: (x: ProgCtx) => string
   /** Apply a failure; returns a short line. */
   lose?: (x: ProgCtx) => string
+  /** Share of the spend booked as patents on success (default 1.2; endless programs book less). */
+  ipShare?: number
 }
 
 const fixed = (n: number) => () => n
@@ -349,9 +351,9 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       win: (x) => (prem(x.t, 0.1), lvl(x.t, 4), 'Your chiplets-on-silicon packaging works. Premium customers noticed.'),
     },
     {
-      id: 'fab', label: (t) => (t.plant > 0 ? 'Build Another Fab' : 'Build Your Own Fab'), emoji: '\u{1F3D7}\u{FE0F}', blurb: 'Stop renting foundry capacity: build a fab. Cleanrooms are not cheap.',
-      years: 3, cost: fixed(180_000_000), odds: fixed(0.88), capex: true,
-      gate: (t) => (t.stage < 2 ? 'Needs chips in volume production.' : t.plant >= 3 ? 'Three fabs is plenty to run.' : null),
+      id: 'fab', label: (t) => (t.plant > 0 ? 'Build Another Fab' : 'Build Your Own Fab'), emoji: '\u{1F3D7}\u{FE0F}', blurb: 'Stop renting foundry capacity: build a fab. Cleanrooms are not cheap, and every extra fab is harder to fill.',
+      years: 3, cost: (t) => 180_000_000 * (1 + 0.35 * t.plant), odds: fixed(0.88), capex: true,
+      gate: (t) => (t.stage < 2 ? 'Needs chips in volume production.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
       win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 3), cut(x.t, 0.08), lvl(x.t, 6), 'The fab is running. Your own chips, your own capacity, and foundry customers too.'),
       lose: (x) => (lvl(x.t, 1), 'Construction overran and the cleanroom failed certification. The fab has to be redone.'),
     },
@@ -372,9 +374,9 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
   ],
   aiLab: [
     {
-      id: 'train', label: (t) => (t.models.length === 0 ? 'Train Your First Model' : `Train ${modelFamily(t, '')} ${t.models.length + 1}`), emoji: '\u{1F9E0}', blurb: 'A training run: weeks of GPUs crunching data. Bigger runs, better models.',
-      years: 1, cost: (t) => 1_500_000 * Math.pow(2.6, t.models.length) * (1 - Math.min(0.45, t.plant * 0.12)), odds: fixed(0.82),
-      gate: (t) => (t.models.length >= 10 ? 'Ten generations is a whole family tree.' : t.models.length >= 3 && t.rented + t.plant < 1 ? 'Runs this big need GPU compute: rent or build a cluster.' : t.models.length >= 5 && t.plant < 1 ? 'Frontier-scale runs need your own GPU cluster.' : null),
+      id: 'train', label: (t) => (t.models.length === 0 ? 'Train Your First Model' : `Train ${modelFamily(t, '')} ${modelGens(t) + 1}`), emoji: '\u{1F9E0}', blurb: 'A training run: weeks of GPUs crunching data. Bigger runs, better models, and every generation costs far more than the last.',
+      years: 1, cost: (t) => 1_500_000 * Math.pow(2.6, Math.min(9, modelGens(t))) * Math.pow(1.6, Math.max(0, modelGens(t) - 9)) * (1 - Math.min(0.45, t.plant * 0.12)), odds: fixed(0.82),
+      gate: (t) => (modelGens(t) >= 3 && t.rented + t.plant < 1 ? 'Runs this big need GPU compute: rent or build a cluster.' : modelGens(t) >= 5 && t.plant < 1 ? 'Frontier-scale runs need your own GPU cluster.' : null),
       win: (x) => trainWin(x),
       lose: (x) => (lvl(x.t, 1), 'The training run diverged halfway through. The loss curve looks like a seismograph.'),
     },
@@ -393,7 +395,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'cluster', label: (t) => (t.plant > 0 ? 'Build Another GPU Cluster' : 'Build a GPU Cluster'), emoji: '\u{1F5A5}\u{FE0F}', blurb: 'Own the compute instead of renting it: cheaper training and more capacity.',
       years: 2, cost: (t) => 40_000_000 * (1 + t.plant * 0.25), odds: fixed(0.9), capex: true,
-      gate: (t, cid) => (t.models.length === 0 ? 'Train a first model before buying a data center.' : t.plant >= 6 ? 'Six clusters: the power company already calls you by name.' : RESTRICTED.has(cid) && t.plant >= 2 ? 'Export controls limit how many top GPUs you can buy.' : null),
+      gate: (t, cid) => (t.models.length === 0 ? 'Train a first model before buying a data center.' : RESTRICTED.has(cid) && t.plant >= 2 ? 'Export controls limit how many top GPUs you can buy.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
       win: (x) => ((x.t.plant += 1), lvl(x.t, 3), 'Your GPU cluster is online. The electricity bill is a war crime.'),
     },
     {
@@ -463,10 +465,10 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       win: (x) => (cut(x.t, 0.12), lvl(x.t, 2), 'The redesign cut the bill of materials sharply.'),
     },
     {
-      id: 'gigaline', label: () => 'Mass Production Gigaline', emoji: '\u{1F3D7}\u{FE0F}', blurb: 'A factory that builds robots by the thousand.',
-      years: 3, cost: fixed(40_000_000), odds: fixed(0.82), capex: true,
-      gate: (t) => once(t, 'gigaline') ?? (t.stage < 2 ? 'Needs a production line first.' : null),
-      win: (x) => ((x.t.plant += 2), stageAtLeast(x.t, 3), lvl(x.t, 5), 'The gigaline is open. Robots are now a mass-market product.'),
+      id: 'gigaline', label: (t) => (done(t, 'gigaline') ? 'Another Gigaline' : 'Mass Production Gigaline'), emoji: '\u{1F3D7}\u{FE0F}', blurb: 'A factory that builds robots by the thousand. Each one after the first costs more to fill.',
+      years: 3, cost: (t) => 40_000_000 * (1 + 0.35 * timesDone(t, 'gigaline')), odds: fixed(0.82), capex: true,
+      gate: (t) => (t.stage < 2 ? 'Needs a production line first.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
+      win: (x) => ((x.t.plant += 2), stageAtLeast(x.t, 3), lvl(x.t, 5), timesDone(x.t, 'gigaline') > 1 ? 'Another gigaline is open and humming.' : 'The gigaline is open. Robots are now a mass-market product.'),
     },
     {
       id: 'brain', label: () => 'Robot Foundation Model', emoji: '\u{1F9E0}', blurb: 'One AI brain that can learn any task from a few demonstrations.',
@@ -490,10 +492,16 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       win: (x) => { lvl(x.t, 12); hype(x.t, 10); for (const d of x.t.drugs) if (!d.failed && d.phase < 4) d.quality = Math.min(100, d.quality + 8); return 'Your platform works: every candidate in the pipeline just got better.' },
     },
     {
-      id: 'manufacturing', label: () => 'Biologics Plant', emoji: '\u{1F3ED}', blurb: 'Make your own medicines instead of paying a contract manufacturer.',
-      years: 2, cost: fixed(35_000_000), odds: fixed(0.85), capex: true,
-      gate: (t) => once(t, 'manufacturing') ?? (!t.drugs.some((d) => !d.failed && d.phase >= 3 && d.royalty >= 1) ? 'Needs a drug of your own past Phase III.' : null),
-      win: (x) => ((x.t.plant += 1), cut(x.t, 0.3), lvl(x.t, 3), 'Your biologics plant passed inspection. Production costs fell by a third.'),
+      id: 'manufacturing', label: (t) => (done(t, 'manufacturing') ? 'Another Biologics Plant' : 'Biologics Plant'), emoji: '\u{1F3ED}', blurb: 'Make your own medicines instead of paying a contract manufacturer. Extra plants add capacity and smaller savings.',
+      years: 2, cost: (t) => 35_000_000 * (1 + 0.35 * timesDone(t, 'manufacturing')), odds: fixed(0.85), capex: true,
+      gate: (t) => (!t.drugs.some((d) => !d.failed && d.phase >= 3 && d.royalty >= 1) ? 'Needs a drug of your own past Phase III.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
+      win: (x) => {
+        const n = timesDone(x.t, 'manufacturing')
+        x.t.plant += 1
+        cut(x.t, 0.3 / Math.max(1, n))
+        lvl(x.t, 3)
+        return n > 1 ? 'Another biologics plant passed inspection: more capacity, a little cheaper per dose.' : 'Your biologics plant passed inspection. Production costs fell by a third.'
+      },
     },
     {
       id: 'diagnostics', label: () => 'Companion Diagnostic', emoji: '\u{1F9EB}', blurb: 'A test that finds the patients your drug works best on.',
@@ -531,8 +539,8 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'sats', label: (t) => `Satellite Constellation Batch ${t.sats + 1}`, emoji: '\u{1F310}', blurb: 'Your own satellites in orbit, beaming data down to paying customers every month. Each batch lasts about six years.',
-      years: 1, cost: fixed(50_000_000), odds: fixed(0.9), capex: true,
-      gate: (t) => (t.stage < 3 ? 'Needs an operational rocket.' : t.sats >= 12 ? 'Twelve batches: astronomers already hate you.' : null),
+      years: 1, cost: (t) => 50_000_000 * (1 + 0.15 * Math.max(0, t.sats - 11)), odds: fixed(0.9), capex: true,
+      gate: (t) => (t.stage < 3 ? 'Needs an operational rocket.' : t.sats >= SAT_MAX ? 'Forty batches: the regulators won’t license a single extra orbital slot.' : null),
       win: (x) => ((x.t.sats += 1), lvl(x.t, 2), `Batch ${x.t.sats} is in orbit. Subscribers can see your satellites trail across the night sky.`),
     },
     {
@@ -571,8 +579,8 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'giga', label: (t) => (t.stage >= 2 ? 'Another Gigafactory' : 'Gigafactory'), emoji: '\u{1F3ED}', blurb: 'A factory big enough to see from space.',
-      years: 3, cost: fixed(150_000_000), odds: fixed(0.85), capex: true,
-      gate: (t) => (t.stage < 1 ? 'Needs low-volume production first.' : timesDone(t, 'giga') >= 3 ? 'Three gigafactories is an empire.' : null),
+      years: 3, cost: (t) => 150_000_000 * (1 + 0.3 * timesDone(t, 'giga')), odds: fixed(0.85), capex: true,
+      gate: (t) => (t.stage < 1 ? 'Needs low-volume production first.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
       win: (x) => ((x.t.plant += 3), stageAtLeast(x.t, 2), lvl(x.t, 4), x.t.stage === 2 ? 'The gigafactory is open. Welcome to production hell.' : 'Another gigafactory is open and running.'),
     },
     {
@@ -688,11 +696,76 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     },
     {
       id: 'soc', label: (t) => (t.plant > 0 ? 'Another Security Operations Center' : '24/7 Security Operations Center'), emoji: '\u{1F5A5}\u{FE0F}', blurb: 'Analysts watching client networks around the clock.',
-      years: 1, cost: fixed(6_000_000), odds: fixed(0.85), capex: true,
-      gate: (t) => (t.stage < 1 ? 'Needs a first product.' : t.plant >= 4 ? 'You already follow the sun.' : null),
-      win: (x) => ((x.t.plant += 1), boost(x.t, 0.15), lvl(x.t, 2), 'Your new SOC watches client networks around the clock.'),
+      years: 1, cost: (t) => 6_000_000 * (1 + 0.3 * t.plant), odds: fixed(0.85), capex: true,
+      gate: (t) => (t.stage < 1 ? 'Needs a first product.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
+      win: (x) => ((x.t.plant += 1), boost(x.t, 0.15 / (1 + 0.5 * Math.max(0, x.t.plant - 1))), lvl(x.t, 2), x.t.plant > 4 ? 'Another SOC is online. You already followed the sun; now you shadow it.' : 'Your new SOC watches client networks around the clock.'),
     },
   ],
+}
+
+// ---------------------------------------------------------------------------
+// Endless next-generation R&D: once a company reaches the top of its ladder it can keep going,
+// one generation at a time. Each costs 35% more than the last and gains less (better margins,
+// a little more demand, a better tech level); the patents it books are a small share of the
+// spend, so the payoff comes from selling better products, never from the books.
+
+/** Plants a company can hold (deeptech-state stores up to 200); rising costs stop growth long before. */
+export const PLANT_MAX = 200
+export const PLANT_FULL = 'Your plants already cover every site regulators will ever permit.'
+/** Satellite batches deeptech-state stores (and orbital slots regulators license). */
+export const SAT_MAX = 40
+
+/** Satellite batches in revenue terms: the first dozen sell in full, more saturate the subscriber market. */
+export function satUnits(sats: number): number {
+  const n = Math.max(0, sats)
+  return n <= 12 ? n : 12 + 12 * Math.log(1 + (n - 12) / 12)
+}
+
+/** AI model generations trained so far (the stored list keeps only the latest ten). */
+export function modelGens(t: TechState): number {
+  let gen = 0
+  for (const m of t.models) gen = Math.max(gen, m.gen)
+  return Math.max(gen, t.models.length)
+}
+
+const NEXT_GEN: Record<DeepTechIndustry, { name: (k: number) => string; emoji: string; usd: number; years: number; blurb: string }> = {
+  semiconductor: { name: (k) => `Chip Architecture Gen ${k}`, emoji: '\u{1F9EE}', usd: 20_000_000, years: 2, blurb: 'A new core design: faster, cooler, cheaper to make. Each generation is harder to beat.' },
+  aiLab: { name: (k) => `Inference Platform Gen ${k}`, emoji: '\u{2699}\u{FE0F}', usd: 25_000_000, years: 2, blurb: 'Faster serving, smarter routing, cheaper tokens. Each generation is harder to beat.' },
+  robotics: { name: (k) => `Robot Platform Mk ${k}`, emoji: '\u{1F9BE}', usd: 10_000_000, years: 2, blurb: 'A new generation of robots: stronger, cheaper, fewer dramatic falls.' },
+  biotech: { name: (k) => `Next-Generation Formulation ${k}`, emoji: '\u{1F48A}', usd: 8_000_000, years: 2, blurb: 'Better versions of your approved drugs: fewer doses, fewer side effects, longer patents.' },
+  spaceTech: { name: (k) => `Launch Vehicle Block ${k}`, emoji: '\u{1F680}', usd: 30_000_000, years: 2, blurb: 'A bigger, more reusable rocket. Each block is harder to improve on.' },
+  electricVehicles: { name: (k) => `Vehicle Platform Gen ${k}`, emoji: '\u{1F699}', usd: 25_000_000, years: 2, blurb: 'A new platform: more range, lower cost, nicer cupholders.' },
+  quantum: { name: (k) => `Processor Generation ${k}`, emoji: '\u{269B}\u{FE0F}', usd: 15_000_000, years: 2, blurb: 'Cleaner qubits and better control electronics. Each generation is harder to beat.' },
+  cybersecurity: { name: (k) => `Security Platform v${k}`, emoji: '\u{1F6E1}\u{FE0F}', usd: 5_000_000, years: 1, blurb: 'A rebuilt platform for the next wave of attacks.' },
+}
+
+/** The industry's endless next-generation program. */
+function nextGenDef(ind: DeepTechIndustry): ProgramDef {
+  const d = NEXT_GEN[ind]
+  const n = (t: TechState) => timesDone(t, 'nextgen')
+  return {
+    id: 'nextgen',
+    label: (t) => d.name(n(t) + 2),
+    emoji: d.emoji,
+    blurb: d.blurb,
+    years: d.years,
+    cost: (t) => d.usd * Math.pow(1.35, n(t)),
+    odds: fixed(0.72),
+    ipShare: 0.3,
+    gate: (t) => (t.stage < maxStage(ind) ? `Reach the top of the ladder first (${stageName(ind, maxStage(ind))}).` : null),
+    win: (x) => {
+      // done already counts this one: the first next generation is k = 1.
+      const k = Math.max(1, timesDone(x.t, 'nextgen'))
+      const fade = 1 / (1 + 0.3 * (k - 1))
+      lvl(x.t, Math.max(1, Math.round(6 / (1 + 0.25 * (k - 1)))))
+      prem(x.t, 0.06 * fade)
+      boost(x.t, 0.08 * fade)
+      cut(x.t, 0.03 / (1 + 0.4 * (k - 1)))
+      hype(x.t, 6)
+      return `${d.name(k + 1)} is done: better margins and a bit more demand. The next one will cost more and gain less.`
+    },
+    lose: (x) => (lvl(x.t, 2), `${d.name(timesDone(x.t, 'nextgen') + 2)} missed its targets. Back to the whiteboard.`),
+  }
 }
 
 /** The lab's model family name: kept from its first model, else picked from the company name. */
@@ -707,7 +780,7 @@ function modelFamily(t: TechState, company: string): string {
 
 function trainWin(x: ProgCtx): string {
   const t = x.t
-  const gen = t.models.length + 1
+  const gen = modelGens(t) + 1
   const frontier = frontierScore(x.year)
   const compute = Math.min(12, t.plant * 2 + t.rented * 0.8)
   const score = Math.round(Math.max(5, Math.min(99, frontier - 38 + t.level * 0.35 + gen * 2 + compute + (x.roll() - 0.5) * 16)))
@@ -739,6 +812,8 @@ export function nextQubits(q: number): number {
   for (const n of ladder) if (n > q) return n
   return Math.min(1_000_000, q * 2)
 }
+
+for (const ind of Object.keys(PROGRAMS) as DeepTechIndustry[]) PROGRAMS[ind].push(nextGenDef(ind))
 
 export function programDef(ind: DeepTechIndustry, id: string): ProgramDef | undefined {
   return PROGRAMS[ind].find((p) => p.id === id)

@@ -1,9 +1,6 @@
-// Money the player types and the AI writes is in the display currency: it must come back to
-// internal dollars exactly once (Dialogs.tsx inputs, director.ts AI effects, settings.ts).
+// Money the player types is in the display currency: it must come back to internal dollars
+// exactly once (Dialogs.tsx inputs, settings.ts).
 import { afterEach, describe, expect, it } from 'vitest'
-import { aiMoneyToDollars, moneyPattern, toGameEffects } from '../src/ai/director'
-import { effectsGuide } from '../src/ai/prompts'
-import { NEUTRAL_EFFECTS } from '../src/ai/schemas'
 import { bindMoneyContext, formatMoney, moneyDisplay, moneyFromInput, moneyScale, moneyToInput, setMoneyDisplay } from '../src/game/core'
 import { applyEffects } from '../src/game/effects'
 import type { GameState } from '../src/game/types'
@@ -103,58 +100,28 @@ describe('typing amounts', () => {
   })
 })
 
-describe('AI money', () => {
-  it('reads the AI’s yen as yen, not dollars', () => {
+describe('effect money', () => {
+  it('shows what an outcome paid in the player’s money', () => {
     const g = show('jp', 2026)
-    expect(aiMoneyToDollars(g, -150_000)).toBe(-1_000)
-    const eff = toGameEffects(g, { ...NEUTRAL_EFFECTS, money: 75_000 })
-    expect(eff.money).toBe(500)
     const before = g.character.money
-    const changes = applyEffects(g, eff)
+    const changes = applyEffects(g, { money: 500 })
     expect(g.character.money - before).toBe(500)
     expect(changes).toContain('+¥75,000')
   })
 
-  it('applies age limits after converting', () => {
-    const g = show('id', 2026)
-    g.character.age = 10
-    // Rp 50,000,000 is ~$3,000: a 10-year-old's windfall is capped at $400.
-    expect(toGameEffects(g, { ...NEUTRAL_EFFECTS, money: 50_000_000 }).money).toBe(400)
-    expect(toGameEffects(g, { ...NEUTRAL_EFFECTS, money: 165_000 }).money).toBe(10)
-  })
-
   it('reads old money in old money', () => {
-    const g = show('de', 1990)
+    show('de', 1990)
     const perDollar = moneyScale()
-    expect(aiMoneyToDollars(g, 1_000)).toBeCloseTo(1_000 / perDollar, 6)
+    expect(moneyFromInput(1_000)).toBeCloseTo(1_000 / perDollar, 6)
     expect(perDollar).toBeLessThan(1.5)
     expect(perDollar).toBeGreaterThan(0.5)
   })
 
   it('is unchanged in plain US dollars', () => {
     const g = show('us', 2026, 'usd', false)
-    expect(toGameEffects(g, { ...NEUTRAL_EFFECTS, money: -350 }).money).toBe(-350)
     expect(applyEffects(g, { money: -0 })).toEqual([])
     g.character.money = 10_000
     expect(applyEffects(g, { money: -500 })).toEqual(['-$500'])
-  })
-
-  it('tells the AI which money it is using', () => {
-    const g = show('jp', 1980)
-    const guide = effectsGuide(g)
-    expect(guide).toContain('money in the currency of every amount above, Japanese yen (¥)')
-    expect(guide).toMatch(/around ±¥[\d,]+ is typical/)
-    const us = show('us', 2026, 'usd', false)
-    expect(effectsGuide(us)).toContain('money in the currency of every amount above, US dollar ($)')
-  })
-
-  it('checks narrations for amounts in the shown currency', () => {
-    const g = show('se', 2026)
-    expect('You paid 1,500 kr and got 2.5M kr back.'.match(moneyPattern(g))).toEqual(['1,500 kr', '2.5M kr'])
-    const jp = show('jp', 2026)
-    expect('It cost ¥15,000.'.match(moneyPattern(jp))).toEqual(['¥15,000'])
-    const us = show('us', 2026, 'usd', false)
-    expect('It cost $15,000.'.match(moneyPattern(us))).toEqual(['$15,000'])
   })
 })
 

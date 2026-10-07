@@ -7,6 +7,8 @@
 // rounded and clamped to the engine's bounds so no rounding can ever exceed them.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { formatMoney, moneyFromInput, moneyScale, showMoney } from '../../game/core'
+import { canSlide, sliderOutput, sliderStart } from './menuModel'
+import { SliderField, useSliderScale } from './Slider'
 
 export interface PopupFrameProps {
   children: ReactNode
@@ -330,11 +332,18 @@ export interface InputDialogProps {
   title: string
   emoji?: string
   label: string
-  kind: 'text' | 'number'
+  /** 'slider' needs finite min and max; without them it falls back to a number field. */
+  kind: 'text' | 'number' | 'slider'
   placeholder?: string
   defaultValue?: string
   min?: number
   max?: number
+  /** Sliders: distance between values (default 1). */
+  step?: number
+  /** Sliders: a unit written after the number ('%'). */
+  unit?: string
+  /** Sliders: the live caption for a value (pure; null for none). */
+  preview?: (value: number) => string | null
   multiline?: boolean
   submitLabel?: string
   /** min/max/defaultValue/placeholder are internal dollars; the player types the display currency. */
@@ -343,7 +352,44 @@ export interface InputDialogProps {
   onCancel: () => void
 }
 
-export function InputDialog({
+export function InputDialog(props: InputDialogProps) {
+  if (props.kind === 'slider' && canSlide(props.min, props.max)) return <SliderDialog {...props} min={props.min!} max={props.max!} />
+  return <FieldDialog {...props} kind={props.kind === 'slider' ? 'number' : props.kind} />
+}
+
+/** A slider in a dialog: the value it hands back is a string, exactly like a number field's. */
+function SliderDialog({ title, emoji, label, defaultValue, min, max, step, unit, preview, submitLabel = 'Confirm', money = false, onSubmit, onCancel }: InputDialogProps & { min: number; max: number }) {
+  const s = useSliderScale(min, max, step, money)
+  const [value, setValue] = useState(() => sliderStart(s, defaultValue))
+  useEscape(onCancel)
+  const submit = () => onSubmit(sliderOutput(s, value, money))
+  // No tap-outside-to-close: a drag that ends past the card's edge would land on the backdrop
+  // and throw the choice away. Cancel and Escape still close it.
+  return (
+    <PopupFrame dialog label={title}>
+      {emoji ? (
+        <span className="popup-emoji" aria-hidden>
+          {emoji}
+        </span>
+      ) : null}
+      <h2 className="popup-title">{title}</h2>
+      <div className="popup-field">
+        <span className="popup-field-label">{label}</span>
+        <SliderField label={label} min={min} max={max} step={step} unit={unit} money={money} value={value} onChange={setValue} onSubmit={submit} preview={preview} autoFocus />
+      </div>
+      <div className="popup-actions">
+        <button className="btn btn-primary btn-block" onClick={submit}>
+          {submitLabel === 'Done' ? 'Confirm' : submitLabel}
+        </button>
+        <button className="btn btn-ghost btn-block" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </PopupFrame>
+  )
+}
+
+function FieldDialog({
   title,
   emoji,
   label,
@@ -357,7 +403,7 @@ export function InputDialog({
   money = false,
   onSubmit,
   onCancel,
-}: InputDialogProps) {
+}: InputDialogProps & { kind: 'text' | 'number' }) {
   const isMoney = money && kind === 'number'
   const [value, setValue] = useState(() => (isMoney ? moneyDefault(defaultValue) : (defaultValue ?? '')))
   const [error, setError] = useState<string | null>(null)

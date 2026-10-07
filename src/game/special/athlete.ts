@@ -1139,7 +1139,7 @@ export function localTeamSports(countryId: string): string[] {
   return localSports(countryId)
 }
 
-/** The current team-sport career, for the Olympics and the AI. */
+/** The current team-sport career, for the Olympics. */
 export function teamStatus(g: GameState): { sportId: string; sportName: string; greatness: number; team: string; league: string } | null {
   const job = athleteJob(g)
   if (!job) return null

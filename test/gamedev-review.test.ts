@@ -2,7 +2,7 @@
 // spam, release spam, fame-scaled crowdfunding), studio advances paid out as dividends, the
 // convention referral, popups for a job you just lost, and smaller ladder/menu bugs.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { startFounding } from '../src/game/business/founding'
 import { earmarkedCash, simulateStudioYear, startGreenlight, studioAssets, studioInternals, studioOf } from '../src/game/business/gamestudio'
 import { devGames } from '../src/game/business/gamestudio-state'

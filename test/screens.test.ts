@@ -1,5 +1,5 @@
-// Out-of-game screens + AI chat sheet: pure helpers and server-render smoke tests.
-// The store and the AI director are mocked so these tests only exercise the UI modules.
+// Out-of-game screens: pure helpers and server-render smoke tests.
+// The store is mocked so these tests only exercise the UI modules.
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -17,9 +17,6 @@ const mock = vi.hoisted(() => ({
     previousScreen: 'home',
     game: null as unknown,
     settings: {} as Record<string, unknown>,
-    ai: null,
-    aiStatus: 'online',
-    aiMessage: 'Connected to LM Studio.',
   },
   calls: [] as string[],
 }))
@@ -35,31 +32,15 @@ vi.mock('../src/ui/store', () => ({
   continueAs: (id: string) => mock.calls.push(`continueAs:${id}`),
   abandonLife: () => mock.calls.push('abandonLife'),
   updateSettings: () => mock.calls.push('updateSettings'),
-  saveAiConnection: (c: { provider: string }) => mock.calls.push(`saveAiConnection:${c.provider}`),
-  settingsWithConnection: (s: Record<string, unknown>, c: Record<string, unknown>) => ({ ...s, ...c }),
-  finishAiSetup: (c: { provider: string } | null) => mock.calls.push(`finishAiSetup:${c ? c.provider : 'none'}`),
-  closeAiSetup: () => mock.calls.push('closeAiSetup'),
-  checkAi: async () => {
-    mock.calls.push('checkAi')
-  },
   act: (fn: (g: unknown) => void) => fn(mock.state.game),
 }))
 
-vi.mock('../src/ai/director', () => ({
-  chatReply: async () => ({ reply: 'Hi!', relationshipDelta: 3 }),
-  testConnection: async () => ({ ok: true, message: 'ok', models: ['test-model'] }),
-}))
-
-const { applyChatExchange, chatBlockReason, chatKey, cleanReply, CHAT_LIMIT, ChatSheet } = await import('../src/ui/components/ChatSheet')
 const { deathFacts, heirsOf, highestEducation, mournersLine, legacyRows, DeathScreen } = await import('../src/ui/screens/DeathScreen')
 const { ribbonTiles, RibbonsScreen } = await import('../src/ui/screens/RibbonsScreen')
 const { sortGraves, graveStats, bulldozeGrave, GraveyardScreen } = await import('../src/ui/screens/GraveyardScreen')
 const { guessCountryId, cleanName, rollFirstName, rollLastName, NewLifeScreen } = await import('../src/ui/screens/NewLifeScreen')
 const { HomeScreen, summarizeLife } = await import('../src/ui/screens/HomeScreen')
 const { SettingsScreen } = await import('../src/ui/screens/SettingsScreen')
-const { AiSetupScreen } = await import('../src/ui/screens/AiSetupScreen')
-const aiForm = await import('../src/ui/components/AiProviderForm')
-const { getProvider } = await import('../src/ai/providers')
 
 // Minimal in-memory localStorage for node.
 function installStorage(): Map<string, string> {
@@ -101,104 +82,7 @@ beforeEach(() => {
   mock.calls.length = 0
   mock.state.settings = { ...DEFAULT_SETTINGS }
   mock.state.game = null
-  mock.state.aiStatus = 'online'
-  mock.state.aiMessage = 'Connected to LM Studio.'
   installStorage()
-})
-
-// ---------------------------------------------------------------------------
-
-describe('chat rules', () => {
-  it('blocks the dead, the missing, babies and over-limit chats', () => {
-    const g = adult()
-    const mom = createPerson(g, { relation: 'parent', age: 55, gender: 'female' })
-    expect(chatBlockReason(g, mom.id)).toBeNull()
-    expect(chatBlockReason(g, 'nobody')).toMatch(/no longer/)
-
-    mom.alive = false
-    expect(chatBlockReason(g, mom.id)).toMatch(/passed away/)
-    mom.alive = true
-
-    const baby = createPerson(g, { relation: 'child', age: 1 })
-    expect(chatBlockReason(g, baby.id)).toMatch(/too young to talk back/)
-
-    const pet = createPerson(g, { relation: 'pet', age: 1, species: 'Dog' })
-    expect(chatBlockReason(g, pet.id)).toBeNull()
-
-    g.yearActions[chatKey(mom.id)] = CHAT_LIMIT
-    expect(chatBlockReason(g, mom.id)).toMatch(/ear off/)
-
-    const tiny = makeTestGame(1, { age: 2 })
-    const dad = createPerson(tiny, { relation: 'parent', age: 30 })
-    expect(chatBlockReason(tiny, dad.id)).toMatch(/too young/)
-
-    g.character.alive = false
-    expect(chatBlockReason(g, pet.id)).toMatch(/dead/)
-  })
-
-  it('only lets prisoners reach family, partners and cellmates', () => {
-    const g = adult()
-    g.character.prison = {
-      name: 'State Pen',
-      security: 'medium',
-      crime: 'Burglary',
-      sentenceYears: 4,
-      yearsServed: 1,
-      respect: 30,
-      appealed: false,
-      escapeAttempts: 0,
-    }
-    const friend = createPerson(g, { relation: 'friend', age: 30 })
-    const sister = createPerson(g, { relation: 'sibling', age: 28 })
-    const cellie = createPerson(g, { relation: 'cellmate', age: 40 })
-    expect(chatBlockReason(g, friend.id)).toMatch(/prison/)
-    expect(chatBlockReason(g, sister.id)).toBeNull()
-    expect(chatBlockReason(g, cellie.id)).toBeNull()
-  })
-
-  it('applies an exchange: uses a chat, clamps the delta, counts, logs once a year', () => {
-    const g = adult()
-    const friend = createPerson(g, { relation: 'friend', age: 30, relationship: 50 })
-    const d1 = applyChatExchange(g, friend.id, 'How are you?', 'Great!', 99)
-    expect(d1).toBe(10)
-    expect(friend.relationship).toBe(60)
-    expect(g.yearActions[chatKey(friend.id)]).toBe(1)
-    expect(g.counters.conversations).toBe(1)
-    const lines = () => g.log[g.log.length - 1].entries.length
-    expect(lines()).toBe(1)
-    expect(friend.notes.length).toBe(1)
-
-    const d2 = applyChatExchange(g, friend.id, "You're annoying", 'Wow. Rude.', -40)
-    expect(d2).toBe(-15)
-    expect(friend.relationship).toBe(45)
-    expect(lines()).toBe(1) // logged once per person per year
-    expect(friend.notes.length).toBe(2) // big swings are remembered
-
-    applyChatExchange(g, friend.id, 'ok', 'ok', 1)
-    expect(friend.notes.length).toBe(2) // small talk isn't
-
-    expect(applyChatExchange(g, friend.id, 'x', 'y', Number.NaN)).toBe(0)
-    expect(JSON.parse(JSON.stringify(g))).toEqual(g) // still plain JSON
-  })
-
-  it('stops counting at the yearly limit and ignores the dead', () => {
-    const g = adult()
-    const p = createPerson(g, { relation: 'friend', age: 30, relationship: 50 })
-    for (let i = 0; i < CHAT_LIMIT; i++) applyChatExchange(g, p.id, 'hi', 'hi', 1)
-    const rel = p.relationship
-    expect(applyChatExchange(g, p.id, 'hi', 'hi', 5)).toBe(0)
-    expect(p.relationship).toBe(rel)
-    expect(g.counters.conversations).toBe(CHAT_LIMIT)
-    p.alive = false
-    expect(applyChatExchange(g, p.id, 'hi', 'hi', 5)).toBe(0)
-  })
-
-  it('cleans model replies', () => {
-    expect(cleanReply('  "Hello there!"  ')).toBe('Hello there!')
-    expect(cleanReply('')).toBe('…')
-    expect(cleanReply(undefined)).toBe('…')
-    expect(cleanReply('x'.repeat(2000)).length).toBeLessThanOrEqual(700)
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -282,72 +166,6 @@ describe('death screen helpers', () => {
 
 // ---------------------------------------------------------------------------
 
-describe('AI provider form helpers', () => {
-  it('offers listed models, else cloud suggestions, keeping the current pick', () => {
-    const openai = getProvider('openai')
-    const lm = getProvider('lmstudio')
-    expect(aiForm.modelChoices(lm, [], '')).toEqual([])
-    expect(aiForm.modelChoices(lm, ['a', 'b'], 'c')).toEqual(['c', 'a', 'b'])
-    expect(aiForm.modelChoices(openai, [], '')).toEqual(openai.suggestedModels)
-    expect(aiForm.modelChoices(openai, ['x'], 'x')).toEqual(['x'])
-    expect(aiForm.autoModelLabel(lm)).toBe('Auto: use the loaded model')
-    expect(aiForm.autoModelLabel(getProvider('anthropic'))).toBe(`Auto: ${getProvider('anthropic').defaultModel}`)
-  })
-
-  it('cleans URLs and reads per-provider connections', () => {
-    const ollama = getProvider('ollama')
-    expect(aiForm.cleanBaseUrl(ollama, ' http://pc:11434/v1/ ')).toBe('http://pc:11434/v1')
-    expect(aiForm.cleanBaseUrl(ollama, '   ')).toBe('http://localhost:11434/v1')
-    const s = { ...DEFAULT_SETTINGS, providerConfigs: { groq: { baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gsk', model: 'm' } } }
-    expect(aiForm.connectionFor(s)).toMatchObject({ provider: 'lmstudio', baseUrl: DEFAULT_SETTINGS.baseUrl })
-    expect(aiForm.connectionFor(s, 'groq')).toEqual({ provider: 'groq', baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gsk', model: 'm' })
-    expect(aiForm.connectionFor(s, 'openai')).toMatchObject({ provider: 'openai', apiKey: '', baseUrl: 'https://api.openai.com/v1' })
-    expect(aiForm.keyPrivacyNote(getProvider('groq'))).toContain('sent only to Groq')
-    expect(aiForm.keyPrivacyNote(getProvider('customCloud'))).toContain('the API URL above')
-  })
-})
-
-describe('AI provider form', () => {
-  const form = (provider: string, baseUrl: string, models: string[] = []) =>
-    renderToStaticMarkup(
-      createElement(aiForm.ProviderConfigForm, {
-        conn: { provider: provider as never, baseUrl, apiKey: '', model: '' },
-        onChange: () => {},
-        test: { status: models.length ? 'done' : 'idle', ok: models.length > 0, message: models.length ? 'Connected' : '', models },
-        onTest: () => {},
-        stepsOpen: true,
-      }),
-    )
-
-  it('local servers on the hosted site mention local-network access and Safari', () => {
-    const html = form('lmstudio', 'http://localhost:1234/v1')
-    expect(html).toContain('Server URL')
-    expect(html).toContain('API token (optional)')
-    expect(html).toContain('Enable CORS')
-    expect(html).toContain('local network')
-    expect(html).toContain('Safari')
-    // The dev proxy needs neither.
-    expect(form('lmstudio', '/lmstudio/v1')).not.toContain('Safari')
-  })
-
-  it('cloud providers ask for a key, link to it and say where it goes', () => {
-    const html = form('groq', 'https://api.groq.com/openai/v1', ['llama-3.3-70b-versatile', 'gemma2-9b-it'])
-    expect(html).toContain('Groq API key')
-    expect(html).toContain('type="password"')
-    expect(html).toContain('Get a key from Groq')
-    expect(html).toContain('stored only in this browser and is sent only to Groq')
-    expect(html).toContain('<option value="llama-3.3-70b-versatile">')
-    expect(html).not.toContain('Safari')
-  })
-
-  it('the provider picker lists local and cloud providers', () => {
-    const html = renderToStaticMarkup(createElement(aiForm.ProviderPicker, { selected: 'openai', onPick: () => {} }))
-    expect(html).toContain('On my computer')
-    expect(html).toContain('Claude (Anthropic)')
-    expect(html).toContain('aria-pressed="true"')
-  })
-})
-
 describe('ribbons, graveyard, new life helpers', () => {
   it('hides secret ribbons until earned', () => {
     const secret = RIBBONS.find((r) => r.secret)
@@ -401,7 +219,7 @@ describe('ribbons, graveyard, new life helpers', () => {
 describe('screens render', () => {
   const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(el)
 
-  it('home shows the menu and AI status', () => {
+  it('home shows the menu and nothing about an AI', () => {
     const html = render(createElement(HomeScreen))
     expect(html).toContain('AnotherLife')
     expect(html).toContain('New Life')
@@ -409,10 +227,7 @@ describe('screens render', () => {
     expect(html).toContain('Graveyard')
     expect(html).toContain('Settings')
     expect(html).not.toContain('Continue Life')
-    expect(html).toContain('AI narrator is ready')
-
-    mock.state.aiStatus = 'offline'
-    expect(render(createElement(HomeScreen))).toContain('Start Server')
+    expect(html).not.toMatch(/\bAI\b|API key|narrat|provider|LM Studio/i)
 
     mock.state.game = adult()
     expect(render(createElement(HomeScreen))).toContain('Continue Life')
@@ -427,60 +242,12 @@ describe('screens render', () => {
     for (const c of COUNTRIES) expect(html).toContain(c.name)
   })
 
-  it('settings shows every section', () => {
+  it('settings shows money, the Time Machine and the danger zone, and no AI', () => {
     const html = render(createElement(SettingsScreen))
-    for (const text of [
-      'AI Narration',
-      'Balanced',
-      'AI Connection',
-      'AI provider',
-      'Server URL',
-      'Test connection',
-      'Auto: use the loaded model',
-      'How to set up LM Studio',
-      'Change AI provider / run setup again',
-      'Advanced',
-      'Danger Zone',
-    ]) {
+    for (const text of ['Money', 'Currency', 'Prices', 'Time Machine', 'Danger Zone', 'Abandon current life']) {
       expect(html).toContain(text)
     }
-    expect(html).not.toContain('LM Studio Connection')
-  })
-
-  it('settings and the home card name the active provider', () => {
-    mock.state.settings = { ...DEFAULT_SETTINGS, provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test', model: 'gpt-4.1-mini' }
-    mock.state.aiMessage = 'Connected to OpenAI · 3 models — using gpt-4.1-mini.'
-    const settingsHtml = render(createElement(SettingsScreen))
-    expect(settingsHtml).toContain('Connected to OpenAI')
-    expect(settingsHtml).toContain('OpenAI API key')
-    expect(settingsHtml).toContain('sent only to OpenAI')
-    expect(settingsHtml).toContain('https://platform.openai.com/api-keys')
-    expect(settingsHtml).not.toContain('LM Studio')
-
-    mock.state.aiStatus = 'offline'
-    mock.state.aiMessage = "Can't reach it."
-    const home = render(createElement(HomeScreen))
-    expect(home).toContain('Can’t reach OpenAI')
-    expect(home).toContain('gpt-4.1-mini')
-    expect(home).toContain('Change AI')
-    expect(home).not.toContain('LM Studio')
-
-    mock.state.settings = { ...DEFAULT_SETTINGS, provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '' }
-    expect(render(createElement(HomeScreen))).toContain('OpenAI isn’t set up yet')
-    mock.state.settings = { ...DEFAULT_SETTINGS, aiLevel: 'off' }
-    expect(render(createElement(HomeScreen))).toContain('Choose an AI')
-  })
-
-  it('AI setup welcome offers local, cloud and no AI', () => {
-    mock.state.settings = { ...DEFAULT_SETTINGS }
-    const html = render(createElement(AiSetupScreen))
-    for (const text of ['Choose your AI', 'AI on my computer', 'AI service with my own API key', 'Play without AI', 'obituary']) {
-      expect(html).toContain(text)
-    }
-    // First run: no way back past the setup.
-    expect(html).not.toContain('aria-label="Back"')
-    mock.state.settings = { ...DEFAULT_SETTINGS, setupDone: true }
-    expect(render(createElement(AiSetupScreen))).toContain('aria-label="Back"')
+    expect(html).not.toMatch(/\bAI\b|API key|narrat|provider|LM Studio|temperature|Advanced/i)
   })
 
   it('ribbons and graveyard render (empty and full)', () => {
@@ -501,8 +268,11 @@ describe('screens render', () => {
     g.character.causeOfDeath = 'Heart Attack'
     g.ribbon = RIBBONS[0].id
     g.obituary = 'Test Player loved soup.'
+    // An old save whose obituary the AI narrator wrote: shown like any other, no badge.
+    g.flags.obituarySource = 'ai'
     const kid = createPerson(g, { relation: 'child', age: 40, firstName: 'Junie' })
     const html = render(createElement(DeathScreen, { game: g }))
+    expect(html).not.toMatch(/AI-written|\bAI\b/)
     expect(html).toContain('Here lies')
     expect(html).toContain('R.I.P.')
     expect(html).toContain('Heart Attack')
@@ -511,27 +281,5 @@ describe('screens render', () => {
     expect(html).toContain('Continue as Junie')
     expect(html).toContain(`${g.year - 70} – ${g.year}`)
     expect(kid.alive).toBe(true)
-  })
-
-  it('chat sheet: AI off note, blocked note and normal chat', () => {
-    const g = adult()
-    const mom = createPerson(g, { relation: 'parent', age: 58, gender: 'female', firstName: 'Linda' })
-    mock.state.game = g
-    let html = render(createElement(ChatSheet, { personId: mom.id, onClose: () => {} }))
-    expect(html).toContain('Message Linda')
-    expect(html).toContain('Can I borrow money?')
-    expect(html).toContain(`${CHAT_LIMIT} messages left this year`)
-
-    mock.state.settings = { ...DEFAULT_SETTINGS, aiLevel: 'off' }
-    html = render(createElement(ChatSheet, { personId: mom.id, onClose: () => {} }))
-    expect(html).toContain('Live chat needs the AI narrator')
-
-    mock.state.settings = { ...DEFAULT_SETTINGS }
-    g.yearActions[chatKey(mom.id)] = CHAT_LIMIT
-    html = render(createElement(ChatSheet, { personId: mom.id, onClose: () => {} }))
-    expect(html).toContain('ear off')
-
-    html = render(createElement(ChatSheet, { personId: 'ghost', onClose: () => {} }))
-    expect(html).toContain('no longer part of your life')
   })
 })

@@ -59,7 +59,7 @@ function scaled(b: BizState, usBase: number): number {
 }
 
 function tell(g: GameState, title: string, text: string, emoji: string, tone: 'good' | 'bad' | 'neutral' = 'neutral'): void {
-  notice(g, title, text, { emoji, tone, ai: { when: 'full', facts: text } })
+  notice(g, title, text, { emoji, tone })
 }
 
 /** Choices with a purple Business hint on the best one. */

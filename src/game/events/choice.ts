@@ -1,6 +1,7 @@
-// Generic outcome for an AI-written choice popup when the AI fails before narrating the
-// result: reads the chosen label's wording (risky, kind, aggressive, avoidant...) and
-// produces a plausible small outcome with a popup and a life-log line.
+// Generic outcome for a choice popup without a script of its own (an event the old AI narrator
+// wrote, still queued in an older save) or an event whose script failed: reads the chosen
+// label's wording (risky, kind, aggressive, avoidant...) and produces a plausible small outcome
+// with a popup and a life-log line.
 import { getPerson, inPrison, pronouns } from '../core'
 import { chance, pick, randInt } from '../rng'
 import type { ChoiceModal, GameState, Person, Tone } from '../types'
@@ -108,7 +109,7 @@ function outcomeFor(g: GameState, kind: Kind, label: string, p: Person | undefin
   }
 }
 
-/** Resolve an AI-written choice popup offline. */
+/** Resolve a choice popup from its label alone. */
 export function resolveGenericChoice(g: GameState, event: ChoiceModal, choiceId: string): void {
   if (!g.character.alive) return
   const choice = event.choices.find((c) => c.id === choiceId) ?? event.choices[0]

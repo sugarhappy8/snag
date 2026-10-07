@@ -205,7 +205,7 @@ export interface Probe {
   startAge: number
   countryId: string
   evidence: number
-  /** Known publicly (sleuths exposed you): the AI context may mention it. */
+  /** Known publicly (sleuths exposed you). */
   publicCase: boolean
   /** Index of the criminal-record entry (rug pulls), -1 when none. */
   recordIndex: number

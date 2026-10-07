@@ -6,7 +6,7 @@
 //
 // Deeper local run: ANACHRONISM_LIVES=400 npx vitest run test/anachronism.test.ts
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'

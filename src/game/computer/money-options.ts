@@ -1007,11 +1007,3 @@ const PARENT_SCRIPT = defineScript('computer.money.opt.parent', (g, choice, data
   if (choice === 'yolo') startYolo(g, f)
   else startIndexTrade(g, f)
 })
-
-/** For the AI summary. */
-export function optionsSummary(st: MoneyState): string {
-  const parts: string[] = []
-  if (st.trades > 0) parts.push(`trades index options (${st.pnl >= 0 ? 'up' : 'down'} ${shortMoney(Math.abs(st.pnl))} lifetime${st.positions.length ? `, ${st.positions.length} open` : ''})`)
-  else if (st.paperPnl !== 0 || st.positions.some((p) => p.mode === 'paper')) parts.push(`paper-trades options (skill ${Math.round(st.skill)}/100)`)
-  return parts.join('')
-}

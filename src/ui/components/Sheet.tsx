@@ -11,7 +11,7 @@ export interface SheetProps {
   footer?: ReactNode
 }
 
-/** Bottom sheet over the game screen, used for menus, people, profile, chat. */
+/** Bottom sheet over the game screen, used for menus, people and the profile. */
 export function Sheet({ title, emoji, onClose, onBack, children, footer }: SheetProps) {
   return (
     <div className="sheet-backdrop" onClick={onClose}>

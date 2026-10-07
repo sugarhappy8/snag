@@ -2034,15 +2034,4 @@ export function recordYouthBout(g: GameState, disc: DiscId, won: boolean): strin
   p.lastFightAge = g.character.age
   return fmt(rec)
 }
-
-export function fighterSummary(g: GameState): string {
-  const job = fighterJob(g)
-  const p = viewFighter(g)
-  if (!job || !p) return ''
-  const j = fj(job)
-  const d = discipline(j.disc)
-  const r = p.pro[d.id]
-  return `${d.name} fighter, ${j.promotion}, ${rankText(job)}, record ${r ? fmt(r) : '0-0'}${j.belts.length ? `, holds ${j.belts.join(', ')}` : ''}${p.rivals[0] ? `, rival ${p.rivals[0].name}` : ''}`
-}
-
 export const fightInternals = { exchange, judge, makeOpp, buildOffers }

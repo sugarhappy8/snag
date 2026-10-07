@@ -243,7 +243,7 @@ export function gamesName(year: number): string {
 // Trophy cabinet & CV
 
 /**
- * Record an achievement: trophy cabinet line, memory for the AI, and (when `cvTitle` is given)
+ * Record an achievement: trophy cabinet line, a memory, and (when `cvTitle` is given)
  * an Awards entry on the CV. Repeat wins of the same honor update one CV line instead of
  * adding a new one each year.
  */

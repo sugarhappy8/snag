@@ -1,13 +1,12 @@
 // World history as the character lives it: the headlines of each year (wars, crashes, firsts,
 // pandemics, elections, sport), era-appropriate life events (drafts, rationing, the Moon landing
-// on the family TV...), and the era context the AI narrator gets so it never mentions a
-// smartphone in 1985.
+// on the family TV...).
 //
 // Data: events-1900/1946/1990.ts (real headlines HISTORY_START-PRESENT_YEAR, world first),
 // events-regional.ts (each continent's and the bigger countries' own news), events-future.ts
 // (the procedural future), events-wars.ts (wars, drafts, national service), events-medicine.ts
 // (era health), events-people.ts (era jobs and families), events-era.ts (flavor lines, tech
-// status), events-guard.ts (anachronism guard). The era popups themselves live in
+// phrase), events-guard.ts (anachronism guard). The era popups themselves live in
 // game/events/history*.ts. Nothing here consumes the game's RNG except the era popups, which
 // only run for years before PRESENT_YEAR: a life lived in the present plays exactly as before
 // plus one news line a year.
@@ -20,15 +19,13 @@ import { HEADLINES_1900 } from './events-1900'
 import { HEADLINES_1946 } from './events-1946'
 import { HEADLINES_1990 } from './events-1990'
 import { HEADLINES_REGIONAL } from './events-regional'
-import { eraBlurb, techStatus } from './events-era'
 import { futureHeadlines } from './events-future'
 import { eraSafe } from './events-guard'
 import type { HeadlineRow, WorldEventKind } from './events-types'
-import { warsAt } from './events-wars'
-import { eraOf, HISTORY_START, isHistorical, PRESENT_YEAR } from './timeline'
+import { HISTORY_START, isHistorical, PRESENT_YEAR } from './timeline'
 
 export type { WorldEventKind } from './events-types'
-export { eraBlurb, eraPreview, techPhrase, techStatus } from './events-era'
+export { eraBlurb, eraPreview, techPhrase } from './events-era'
 export { getWar, warDraftAt, warsAt, type DraftRule, type WarDef } from './events-wars'
 
 export interface WorldEvent {
@@ -205,34 +202,4 @@ export function yearlyHistory(g: GameState): void {
   }
   // Era popups only for real history: the present and the future play exactly as before.
   if (isHistorical(g.year) && g.year >= HISTORY_START) eraMoments(g)
-}
-
-// ---------------------------------------------------------------------------
-// The AI's era line
-
-function listOf(items: readonly string[], max: number): string {
-  return items.slice(0, max).join(', ')
-}
-
-function truncate(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`
-}
-
-/** One line for the AI prompt: the year, the era and what the world is like ('' = nothing to add). */
-export function eraSummary(g: GameState): string {
-  const year = g.year
-  const countryId = g.character.countryId
-  const news = headlinesFor(year, countryId, 3).map((ev) => truncate(ev.headline, 90))
-  const newsText = news.length ? ` News this year: ${news.join('; ')}.` : ''
-  if (year > PRESENT_YEAR) {
-    return `ERA: ${year}, the future: everything that exists today (smartphones, the internet, AI assistants) still does; new inventions stay modest and believable.${newsText}`
-  }
-  const tech = techStatus(countryId, year)
-  const parts: string[] = [year === PRESENT_YEAR ? `ERA: ${year}, the present day.` : `ERA: ${year}, ${eraOf(year).label} (${eraBlurb(year)}).`]
-  if (tech.common.length) parts.push(`Common here: ${listOf(tech.common.slice(-6), 6)}.`)
-  if (tech.rare.length) parts.push(`Rare: ${listOf(tech.rare, 5)}.`)
-  if (tech.notYet.length) parts.push(`Not here yet: ${listOf(tech.notYet, 9)}. Never mention anything invented after ${year}.`)
-  const wars = warsAt(countryId, year)
-  if (wars.length) parts.push(`At war: ${wars.map((w) => w.name).join(', ')}.`)
-  return parts.join(' ') + newsText
 }

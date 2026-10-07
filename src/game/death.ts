@@ -1,5 +1,5 @@
 // Ending a life. Called from anywhere the character can die (health, executions,
-// accidents, AI outcomes). The death screen appears once the modal queue drains.
+// accidents, event outcomes). The death screen appears once the modal queue drains.
 import { endJob, log, queueAi, remember, roleLabel } from './core'
 import { computeRibbon } from './ribbons'
 import type { GameState } from './types'

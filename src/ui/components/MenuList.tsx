@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../../game/types'
 import { getApp, runMenuAction } from '../store'
 import { ConfirmDialog, InputDialog, Toast } from './Dialogs'
-import { confirmText, infoText, isMultiline, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report } from './menuModel'
+import { confirmText, infoText, isMultiline, nodeDisabled, nodeHint, nodeSubtitle, nodeVisible, report, sliderPreview } from './menuModel'
 import { TalentHint } from './TalentHint'
 import { HINT_EMOJI } from '../../game/talents'
 
@@ -208,6 +208,13 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
   if (pending?.stage === 'input') {
     const { action } = pending
     const input = action.input!
+    // The caption reads the committed state (never a draft) and must not change it.
+    const preview = input.kind === 'slider' && typeof input.preview === 'function'
+      ? (value: number) => {
+          const g = getApp().game
+          return g ? sliderPreview(input, g, value) : null
+        }
+      : undefined
     dialog = (
       <InputDialog
         key={`in-${action.id}`}
@@ -219,7 +226,10 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
         defaultValue={pending.defaultValue}
         min={input.min}
         max={input.max}
-        money={input.money === true && input.kind === 'number'}
+        step={input.step}
+        unit={input.unit}
+        preview={preview}
+        money={input.money === true && input.kind !== 'text'}
         multiline={isMultiline(action)}
         submitLabel={action.id === 'doAnything' ? 'Do it' : 'Done'}
         onCancel={() => setPending(null)}

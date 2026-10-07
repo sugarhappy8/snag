@@ -467,14 +467,6 @@ export function inviteToStable(g: GameState, intro: string): void {
   const names = [0, 1, 2].map(() => `${pick(g, PRE)}${pick(g, POST)}`)
   scriptChoice(g, joinScript, stable, `${intro}The master of ${stable} agreed to take you in. He offers you a ring name (shikona):`, [...names.map((n) => ({ id: n, label: n, emoji: '\u{1F3EF}' })), { id: 'cancel', label: 'Not now', emoji: '\u{274C}' }], { emoji: '\u{1F3EF}', data: { stable, names } as unknown as Json })
 }
-
-export function sumoSummary(g: GameState): string {
-  const job = sumoJob(g)
-  if (!job) return ''
-  const d = sj(job)
-  return `sumo wrestler ${d.shikona} (${rankName(d.div, d.num)}) at ${d.stable}`
-}
-
 /** Highest rank reached (for coaching as a stable elder). */
 export function sumoBestDiv(g: GameState): number {
   return viewSumo(g)?.bestDiv ?? 0

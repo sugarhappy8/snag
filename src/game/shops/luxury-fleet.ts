@@ -967,9 +967,3 @@ export function fleetEventCandidates(g: GameState): FleetCandidate[] {
   }
   return out
 }
-
-/** For the AI and tests: a short description of a yacht or jet. */
-export function vesselSummary(a: Asset): string {
-  const d = a.details
-  return d.luxury === 'jet' ? `${vesselName(a)} (${a.name}, ${str(d.classLabel, 'private jet').toLowerCase()})` : `${vesselName(a)} (${num(d.lengthM)} m ${str(yachtClass(str(d.classId))?.label, 'yacht').toLowerCase()})`
-}

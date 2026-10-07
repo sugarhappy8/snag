@@ -424,6 +424,28 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
   },
 }
 
+/**
+ * Industries that make goods can add production capacity without opening another outlet
+ * (business/manage.ts "Build Capacity"): each unit adds half of one site's capacity at the home
+ * site for a bit under half a site's equipment. Services, shops and deep tech (which builds its
+ * own plants in the R&D Lab) grow by opening sites instead.
+ */
+export const CAPACITY_LINES: Partial<Record<Industry, { one: string; many: string }>> = {
+  bakery: { one: 'oven line', many: 'oven lines' },
+  brewery: { one: 'fermentation cellar', many: 'fermentation cellars' },
+  fashion: { one: 'sewing line', many: 'sewing lines' },
+  beauty: { one: 'filling line', many: 'filling lines' },
+  ecommerce: { one: 'packing line', many: 'packing lines' },
+  manufacturing: { one: 'production line', many: 'production lines' },
+  farm: { one: 'greenhouse block', many: 'greenhouse blocks' },
+  energy: { one: 'generating unit', many: 'generating units' },
+}
+
+/** The capacity unit an industry can build (null: it grows by opening sites). */
+export function lineOf(industry: string): { one: string; many: string } | null {
+  return (CAPACITY_LINES as Record<string, { one: string; many: string }>)[industry] ?? null
+}
+
 export function industryDef(id: string): IndustryDef {
   return (INDUSTRIES as Record<string, IndustryDef>)[id] ?? INDUSTRIES.restaurant
 }

@@ -1,7 +1,7 @@
 // Special Careers › Game Industry: studio jobs, making your own games, owned game studios
 // (business system), the home computer's old game ventures, money sanity, prison and death.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { canIpo, goPublic, sellBusiness } from '../src/game/business/exit'
 import { startFounding } from '../src/game/business/founding'
@@ -10,7 +10,7 @@ import { devGames, normalizeStudio, studioValue } from '../src/game/business/gam
 import { newBiz } from '../src/game/business/founding'
 import { bizOf, readBiz } from '../src/game/business/state'
 import { valuationOf } from '../src/game/business/economy'
-import { devNodes, devSummary, yearlyDev } from '../src/game/computer/dev'
+import { devNodes, yearlyDev } from '../src/game/computer/dev'
 import { codingPortfolio } from '../src/game/computer/dev-cv'
 import { projectsMenu } from '../src/game/computer/dev-projects'
 import { allVentureAssets, devState, readVenture, saveDev, ventureAssets } from '../src/game/computer/dev-state'
@@ -21,7 +21,7 @@ import { killCharacter } from '../src/game/death'
 import { sendToPrison } from '../src/game/prison'
 import { runScript } from '../src/game/scripts'
 import { specialCareersMenu, specialJobNodes } from '../src/game/special'
-import { gameDevJobNodes, gameDevSummary, gameIndustryMenu, yearlyGameDev } from '../src/game/special/gamedev'
+import { gameDevJobNodes, gameIndustryMenu, yearlyGameDev } from '../src/game/special/gamedev'
 import { careerInternals, jobListings, requirementProblem, salaryFor, takeJob, type Listing } from '../src/game/special/gamedev-career'
 import { netPerCopy } from '../src/game/special/gamedev-core'
 import { gameJam, makeInternals, publisherOffers, releaseGame, settleReceipts, startGame, workOnGame, yearlyMakeGames } from '../src/game/special/gamedev-make'
@@ -251,7 +251,6 @@ describe('studio jobs: ladder and requirements', () => {
     const rows = ids(g, gameDevJobNodes(g))
     expect(rows).toEqual(expect.arrayContaining(['gamedev.job.status', 'gamedev.job.work', 'gamedev.job.quit', 'gamedev.job.switch']))
     expect(ids(g, specialJobNodes(g))).toContain('gamedev.job.work')
-    expect(gameDevSummary(g)).toMatch(/Junior Programmer/)
   })
 
   it('years at a studio ship games, earn credits, and steady people get promoted', () => {
@@ -578,7 +577,6 @@ describe('owned game studios', () => {
       }
       // The owner is credited.
       expect(gdView(g).games.some((x) => /Founder|Producer/.test(x.role))).toBe(true)
-      expect(gameDevSummary(g)).toBeTruthy()
     }
   })
 
@@ -653,8 +651,6 @@ describe("the home computer's game projects and ventures", () => {
     yearlyDev(g)
     drain(g)
     expect(readVenture(g, a).users).toBeGreaterThanOrEqual(users)
-    expect(devSummary(g)).not.toMatch(/Coo Quest/)
-    expect(gameDevSummary(g)).toMatch(/Coo Quest/)
     expect(cvEntries(g).some((e) => e.org === 'Coo Quest')).toBe(true)
   })
 
@@ -728,7 +724,6 @@ describe('prison and death', () => {
     const r = yearlyMakeGames(g)
     expect(r.paid).toBeGreaterThanOrEqual(0)
     finiteMoney(g)
-    expect(() => gameDevSummary(g)).not.toThrow()
   })
 
   it('the dead make no games', () => {

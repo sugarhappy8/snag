@@ -1,6 +1,5 @@
 // Cross-feature contracts completed after the independent year-system modules landed.
 import { afterEach, describe, expect, it } from 'vitest'
-import { validateEffects } from '../src/ai/schemas'
 import { buildCtx } from '../src/game/business/competition-core'
 import { emptyMarket } from '../src/game/business/competition-state'
 import { sellBusiness } from '../src/game/business/exit'
@@ -18,16 +17,6 @@ afterEach(() => {
 })
 
 describe('year-system integration', () => {
-  it('keeps fractional, negative and hyperinflated AI amounts until currency conversion', () => {
-    expect(validateEffects({ money: 0.125 }).money).toBe(0.125)
-    expect(validateEffects({ money: '-¥1,500.25' }).money).toBe(-1500.25)
-    expect(validateEffects({ money: 'Rp 2.5M' }).money).toBe(2_500_000)
-    expect(validateEffects({ money: 9e25 }).money).toBe(9e25)
-    expect(validateEffects({ money: '-1.25e20' }).money).toBe(-1.25e20)
-    expect(validateEffects({ money: '500 Kč' }).money).toBe(500)
-    expect(validateEffects({ money: Infinity }).money).toBe(0)
-  })
-
   it('normalizes the sandbox setting without turning old saves into unlimited games', () => {
     expect(normalizeSettings({}).sandboxTimeMachine).toBe(false)
     expect(normalizeSettings({ sandboxTimeMachine: 'true' }).sandboxTimeMachine).toBe(false)

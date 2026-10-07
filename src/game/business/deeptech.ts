@@ -57,7 +57,7 @@ export function deepTechInfo(g: GameState, a: Asset): string {
   return deepTechInfoImpl(g, a)
 }
 
-/** One clause for businessSummary / the AI prompt ('' for none). */
+/** One clause for businessSummary ('' for none). */
 export function deepTechSummary(g: GameState, a: Asset): string {
   if (!isDeepTech(readBiz(g, a))) return ''
   return deepTechSummaryImpl(g, a)

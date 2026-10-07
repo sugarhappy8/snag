@@ -42,6 +42,32 @@ export interface Product {
   boost: number
 }
 
+/**
+ * A product in development (business/rd.ts): its whole budget is paid when it starts; it is
+ * finished after `years` booked years and then works (a new product line) or flops.
+ */
+export interface RdProject {
+  id: string
+  /** The product idea being developed. */
+  name: string
+  /** Dollars spent on it (paid up front). */
+  budget: number
+  /** Booked years of work it needs (1-4). */
+  years: number
+  /** Booked years done so far. */
+  progress: number
+  /** Chance it works when it is done (fixed when it starts). */
+  odds: number
+  /** Demand boost of the product line if it works (fixed when it starts). */
+  boost: number
+  /** Calendar year it started. */
+  started: number
+}
+
+/** Storage guards only (the economics stop growth long before): newest lines and projects are kept. */
+export const MAX_STORED_PRODUCTS = 400
+export const MAX_STORED_PROJECTS = 120
+
 export interface YearRecord {
   year: number
   revenue: number
@@ -84,6 +110,14 @@ export interface Statement {
   employees: number
 }
 
+/**
+ * How a hired CEO leans when choices are close (business/board-ceo.ts): growers build, cost-cutters
+ * trim, steady hands keep what works, visionaries bet on new products and new markets.
+ */
+export type CeoStyle = 'grower' | 'costCutter' | 'steady' | 'visionary'
+
+export const CEO_STYLES: readonly CeoStyle[] = ['grower', 'costCutter', 'steady', 'visionary']
+
 export interface Manager {
   firstName: string
   lastName: string
@@ -91,6 +125,14 @@ export interface Manager {
   skill: number
   salary: number
   since: number
+  /** Missing on old saves (read it with career.styleOf: 'steady'). */
+  style?: CeoStyle
+  /** 0-100, how straight they play (rogue-CEO risk). Missing on old saves (career.integrityOf: 70). */
+  integrity?: number
+  /** Last profit bonus paid (dollars). */
+  bonus?: number
+  /** Calendar year they last asked for a raise. */
+  asked?: number
 }
 
 export type Supplier = 'budget' | 'standard' | 'premium'
@@ -138,7 +180,14 @@ export interface BizState {
   /** One-year demand boost from campaigns run this year. */
   campaignBoost: number
   products: Product[]
+  /** Products in development (missing on old saves: read it with rd.ts rdProjects). */
+  rd?: RdProject[]
   outlets: Outlet[]
+  /**
+   * Extra production capacity at the home site: production lines, ovens, sewing lines,
+   * greenhouse blocks... (industries with IndustryDef.line). Missing on old saves (0).
+   */
+  lines?: number
   history: YearRecord[]
   last: Statement | null
   /** Equity value of the whole company (dollars). */
@@ -178,12 +227,22 @@ export interface BizState {
   loanId: string
   /** Consecutive years the profit fell (board patience when public). */
   slump: number
+  /**
+   * Governance (business/board-state.ts readBoard): the board of directors when the company has
+   * one, the hired CEO's mandate and limits, recent votes and CEO churn. Missing on old saves.
+   */
+  board?: Json
   /** Game studios only: the pipeline and back catalog (business/gamestudio-state.ts). */
   studio?: Json
   /** Deep-tech companies only: R&D, tech level, funding rounds (business/deeptech-state.ts). */
   tech?: Json
   /** Market position: share, rivals, installed base, antitrust (business/competition-state.ts). */
   market?: Json
+  /**
+   * Conglomerate membership and a copy of the group's record (business/conglomerate-state.ts
+   * readMembership). Missing for a company that stands alone (and on old saves).
+   */
+  group?: Json
 }
 
 export const BIZ_VERSION = 1
@@ -241,6 +300,27 @@ function readProduct(x: Record<string, Json>): Product | null {
   return { name, launched: num(x.launched), boost: clampN(num(x.boost, 0.05), 0, 0.5) }
 }
 
+function readProject(x: Record<string, Json>): RdProject | null {
+  const name = str(x.name)
+  if (!name) return null
+  const years = Math.round(clampN(num(x.years, 1), 1, 4))
+  return {
+    id: str(x.id, `rd.${name}`),
+    name,
+    budget: Math.max(0, num(x.budget)),
+    years,
+    progress: clampN(num(x.progress), 0, years),
+    odds: clampN(num(x.odds, 0.5), 0.02, 0.98),
+    boost: clampN(num(x.boost, 0.05), 0, 0.5),
+    started: num(x.started),
+  }
+}
+
+/** R&D projects stored on a business (old saves have none). */
+export function readProjects(v: Json | undefined): RdProject[] {
+  return arr(v, readProject).slice(-MAX_STORED_PROJECTS)
+}
+
 function readRecord(x: Record<string, Json>): YearRecord | null {
   if (typeof x.year !== 'number') return null
   return {
@@ -270,6 +350,7 @@ function readStatement(v: Json | undefined): Statement | null {
 
 function readManager(v: Json | undefined): Manager | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+  const style = CEO_STYLES.find((x) => x === v.style)
   return {
     firstName: str(v.firstName, 'Pat'),
     lastName: str(v.lastName, 'Morgan'),
@@ -277,6 +358,10 @@ function readManager(v: Json | undefined): Manager | null {
     skill: clampN(num(v.skill, 55), 0, 100),
     salary: Math.max(0, num(v.salary)),
     since: num(v.since),
+    ...(style ? { style } : {}),
+    ...(typeof v.integrity === 'number' ? { integrity: clampN(num(v.integrity, 70), 0, 100) } : {}),
+    ...(num(v.bonus) > 0 ? { bonus: Math.round(num(v.bonus)) } : {}),
+    ...(typeof v.asked === 'number' ? { asked: num(v.asked) } : {}),
   }
 }
 
@@ -315,8 +400,10 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     inventory: Math.max(0, Math.round(num(d.inventory))),
     marketingLevel: clampN(num(d.marketingLevel, 1), 0, 3),
     campaignBoost: clampN(num(d.campaignBoost), 0, 0.6),
-    products: arr(d.products, readProduct),
+    products: arr(d.products, readProduct).slice(-MAX_STORED_PRODUCTS),
+    ...(Array.isArray(d.rd) ? { rd: readProjects(d.rd) } : {}),
     outlets,
+    ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
     history: arr(d.history, readRecord).slice(-12),
     last: readStatement(d.last),
     valuation: Math.max(0, num(d.valuation)),
@@ -342,9 +429,11 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     lastEvent: num(d.lastEvent),
     loanId: str(d.loanId),
     slump: Math.max(0, num(d.slump)),
+    ...(d.board && typeof d.board === 'object' && !Array.isArray(d.board) ? { board: d.board } : {}),
     ...(industry === 'gameStudio' && d.studio && typeof d.studio === 'object' && !Array.isArray(d.studio) ? { studio: d.studio } : {}),
     ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
     ...(d.market && typeof d.market === 'object' && !Array.isArray(d.market) ? { market: d.market } : {}),
+    ...(d.group && typeof d.group === 'object' && !Array.isArray(d.group) && typeof d.group.id === 'string' && d.group.id ? { group: d.group } : {}),
   }
 }
 
@@ -379,9 +468,26 @@ export function bizLocation(b: BizState): string {
   return `${b.city}, ${bizCountryName(b.countryId)}`
 }
 
-/** The owner's stake of the valuation, which is what the asset is worth to them. */
+/**
+ * The group's value multiplier for a member company (the conglomerate discount, or what the
+ * market pays for a listed group): 1 for a company that stands alone.
+ */
+export function groupMultOf(b: Pick<BizState, 'group'>): number {
+  const d = b.group
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return 1
+  const core = d.core
+  const m = core && typeof core === 'object' && !Array.isArray(core) ? core.mult : undefined
+  return typeof m === 'number' && Number.isFinite(m) ? clampN(m, 0.3, 3) : 1
+}
+
+/**
+ * The owner's stake of the valuation, which is what the asset is worth to them. In a group the
+ * group's multiplier applies to the company's operating value (cash and debt count at face value).
+ */
 export function stakeValue(b: BizState): number {
-  const v = Math.round(b.valuation * b.share)
+  const mult = groupMultOf(b)
+  const operating = mult === 1 ? 0 : Math.max(0, b.valuation - (b.cash - b.debt))
+  const v = Math.round((b.valuation + (mult - 1) * operating) * b.share)
   return Number.isFinite(v) ? Math.max(0, v) : 0
 }
 

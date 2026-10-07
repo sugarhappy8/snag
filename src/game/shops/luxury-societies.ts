@@ -646,10 +646,3 @@ export function yearlySocieties(g: GameState, budget: PopupBudget): void {
     ], { emoji: s.emoji, data: { society: s.id } })
   }
 }
-
-/** One-line description for the AI context and tests. */
-export function societySummary(g: GameState): string | null {
-  const m = membership(g)
-  const s = currentSociety(g)
-  return m && s ? `${rankName(m)} of ${s.name}` : null
-}

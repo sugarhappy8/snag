@@ -1,9 +1,9 @@
 {
   "name": "anotherlife",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
-  "description": "An AI-narrated life simulator powered by your own AI: a local model (LM Studio, Ollama, llama.cpp...) or a cloud API key (Claude, OpenAI, Gemini...).",
+  "description": "A BitLife-style life simulator that runs entirely in the browser: live a whole life one year at a time.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -13,7 +13,6 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.131.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

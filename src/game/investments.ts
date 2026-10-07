@@ -2015,9 +2015,9 @@ export function yearlyInvestments(g: GameState): void {
 }
 
 // ---------------------------------------------------------------------------
-// AI summary
+// Profile summary
 
-/** One line for the AI prompt about the player's portfolio ('' when none). */
+/** One line about the player's portfolio for the profile ('' when none). */
 export function investmentsSummary(g: GameState): string {
   const held = investmentHoldings(g)
   if (!held.length) return ''
@@ -2035,7 +2035,7 @@ export function investmentsSummary(g: GameState): string {
   const cryptoValue = by('crypto').reduce((sum, a) => sum + a.value, 0)
   if (by('crypto').length) parts.push(cryptoValue > s.value * 0.5 ? 'mostly crypto' : 'some crypto')
   const year = s.year !== null ? `; ${s.year >= 0 ? 'up' : 'down'} ${absPct(s.year)} this year` : ''
-  // In the past, the year's real market story (the dot-com bust, 2008...) for the narrator.
+  // In the past, the year's real market story (the dot-com bust, 2008...).
   const note = isHistoryYear(g.year) ? marketNote(exchangeInfo(g.character.countryId).home, g.year) : ''
   return `Portfolio ${shortMoney(s.value)}: ${parts.slice(0, 6).join(', ')}${year}${note ? `. Market news: ${note}` : ''}`
 }
