@@ -2,20 +2,18 @@
 //
 // The game state is immutable from React's point of view: every change goes through
 // act(), which clones the state, mutates the clone, saves it and notifies subscribers.
-// Popups live in g.queue and are shown one at a time. When the head of the queue is
-// an AI task, processQueue() runs it against the player's chosen AI provider (or the offline
-// fallback).
+// Popups live in g.queue and are shown one at a time. A built-in task at the head of the queue
+// (this year's events, an interview, application screening, "Do Anything", the obituary: the
+// 'aiTask' modal kind) is never shown: processQueue() resolves it on the spot with the offline
+// systems (game/offline.ts). Nothing here talks to a server.
 //
 // Time Machine: commit() snapshots the life at the start of every year (save.ts keeps the last
 // few outside the main save) and travelBack() restores one (game/timeMachine.ts has the rules).
 import { useSyncExternalStore } from 'react'
-import { applyFallback, narrateNotice, runAiTask, testConnection } from '../ai/director'
-import { resetAiSession } from '../ai/lmstudio'
-import { providerFor } from '../ai/providers'
 import { ageUp } from '../game/aging'
 import { bindMoneyContext, netWorth } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
-import { uid } from '../game/rng'
+import { resolveTask } from '../game/offline'
 import {
   clearSave,
   clearTimeline,
@@ -36,21 +34,9 @@ import {
 import { runScript } from '../game/scripts'
 import { arriveInPast, sandboxTimeMachine, travelBlock, type TimeStop } from '../game/timeMachine'
 import type { GameState, MenuAction, ModalItem } from '../game/types'
-import { loadSettings, saveSettings, switchProvider, type ProviderConfig, type ProviderId, type Settings } from '../settings'
+import { loadSettings, normalizeSettings, saveSettings, type Settings } from '../settings'
 
-export type Screen = 'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard' | 'aiSetup'
-
-/** A provider plus the URL/key/model to use with it (what the setup screen and Settings edit). */
-export interface AiConnection extends ProviderConfig {
-  provider: ProviderId
-}
-
-export interface AiActivity {
-  /** Modal being worked on (aiTask, or a notice being rewritten). */
-  modalId: string
-  label: string
-  startedAt: number
-}
+export type Screen = 'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'
 
 /** Sheets that can be reopened from the "Back to …" chip. */
 export type ReturnSheet = 'occupation' | 'assets' | 'activities' | 'relationships'
@@ -87,13 +73,13 @@ export interface AppState {
   screen: Screen
   /** Screen to return to from settings/ribbons/graveyard. */
   previousScreen: Screen
-  /** Screen the "Choose your AI" setup was opened from (where it returns when finished). */
-  setupReturn: Screen
   game: GameState | null
   settings: Settings
-  ai: AiActivity | null
-  aiStatus: 'unknown' | 'checking' | 'online' | 'offline'
-  aiMessage: string
+  /**
+   * Always null: there is no background work any more (tasks resolve instantly). Kept only until
+   * GameScreen stops reading it for the Age button's old busy state; then delete it.
+   */
+  ai: null
   /** The menu to go back to after an action closed a sheet (see ReturnPoint). */
   returnPoint: ReturnPoint | null
   /** Start-of-year snapshots of the current life the Time Machine can go back to, oldest first. */
@@ -107,12 +93,9 @@ const NO_STOPS: readonly TimeStop[] = []
 let state: AppState = {
   screen: 'home',
   previousScreen: 'home',
-  setupReturn: 'home',
   game: null,
   settings: loadSettings(),
   ai: null,
-  aiStatus: 'unknown',
-  aiMessage: '',
   returnPoint: null,
   timeStops: NO_STOPS,
   timeTravel: IDLE_TRAVEL,
@@ -149,12 +132,6 @@ export function useApp<T>(selector: (s: AppState) => T): T {
 // Navigation & settings
 
 export function goTo(screen: Screen): void {
-  // The AI setup screen remembers where it was opened from and leaves previousScreen alone,
-  // so Settings → setup → Settings → Back still returns to the game.
-  if (screen === 'aiSetup') {
-    if (state.screen !== 'aiSetup') setState({ screen, setupReturn: state.screen })
-    return
-  }
   const overlay = screen === 'settings' || screen === 'ribbons' || screen === 'graveyard'
   setState({ screen, previousScreen: overlay ? (isOverlay(state.screen) ? state.previousScreen : state.screen) : screen })
 }
@@ -202,86 +179,10 @@ export function returnChipVisible(point: ReturnPoint | null, g: GameState | null
 }
 
 export function updateSettings(patch: Partial<Settings>): void {
-  const prev = state.settings
-  const settings = { ...prev, ...patch }
+  // Only known fields are kept (normalizeSettings), so nothing stray is ever saved.
+  const settings = normalizeSettings({ ...state.settings, ...patch })
   saveSettings(settings)
   setState({ settings })
-  // A different provider, server or model invalidates the auto-picked model and the
-  // structured-output fallbacks learned so far.
-  if (
-    settings.provider !== prev.provider ||
-    settings.baseUrl !== prev.baseUrl ||
-    settings.model !== prev.model ||
-    settings.apiKey !== prev.apiKey
-  ) {
-    resetAiSession()
-  }
-}
-
-/** `settings` with `conn` as the active AI (the previous provider's URL/key/model are remembered). Pure. */
-export function settingsWithConnection(settings: Settings, conn: AiConnection): Settings {
-  return { ...switchProvider(settings, conn.provider), baseUrl: conn.baseUrl, apiKey: conn.apiKey, model: conn.model }
-}
-
-/** Make `conn` the active AI connection and save it, plus any `extra` settings. */
-export function saveAiConnection(conn: AiConnection, extra: Partial<Settings> = {}): void {
-  updateSettings({ ...settingsWithConnection(state.settings, conn), ...extra })
-}
-
-/**
- * Finish the "Choose your AI" screen. With `conn`: use that AI (turning narration on if it was
- * off) and check the connection. Without: play with the built-in stories only (AI off).
- * A first run continues to a new life (or the main menu when a life is saved); a later run
- * returns where setup was opened from.
- */
-export function finishAiSetup(conn: AiConnection | null): void {
-  const firstRun = !state.settings.setupDone
-  if (conn) {
-    saveAiConnection(conn, { aiLevel: state.settings.aiLevel === 'off' ? 'balanced' : state.settings.aiLevel, setupDone: true })
-  } else {
-    updateSettings({ aiLevel: 'off', setupDone: true })
-  }
-  void checkAi()
-  if (firstRun) setState({ screen: conn && !hasSavedGame() ? 'newLife' : 'home', previousScreen: 'home' })
-  else closeAiSetup()
-}
-
-/** Leave the setup screen without changing anything (only offered once setup was done before). */
-export function closeAiSetup(): void {
-  const back = state.setupReturn === 'aiSetup' ? 'home' : state.setupReturn
-  setState({ screen: back === 'game' && !state.game ? 'home' : back })
-}
-
-/** How long the Settings / startup connection check waits for the AI provider. */
-const CHECK_TIMEOUT_MS = 20_000
-
-export async function checkAi(): Promise<void> {
-  if (state.settings.aiLevel === 'off') {
-    setState({ aiStatus: 'offline', aiMessage: 'AI is turned off in settings.' })
-    return
-  }
-  const def = providerFor(state.settings)
-  setState({ aiStatus: 'checking', aiMessage: `Connecting to ${def.name}…` })
-  // A fetch can hang (e.g. while the browser's local-network permission prompt is open):
-  // never leave the status stuck on "Connecting…".
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), CHECK_TIMEOUT_MS)
-  try {
-    const res = await testConnection(state.settings, ctrl.signal)
-    if (ctrl.signal.aborted) {
-      setState({
-        aiStatus: 'offline',
-        aiMessage:
-          def.kind === 'local'
-            ? `${def.name} didn't answer within ${CHECK_TIMEOUT_MS / 1000} s — make sure its server is running, and if your browser is asking whether this site may access your local network, choose Allow and test again.`
-            : `${def.name} didn't answer within ${CHECK_TIMEOUT_MS / 1000} s — check your internet connection and try again.`,
-      })
-    } else setState({ aiStatus: res.ok ? 'online' : 'offline', aiMessage: res.message })
-  } catch (err) {
-    setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,7 +203,6 @@ export function resumeSavedGame(): boolean {
 }
 
 export function startNewLife(opts: NewLifeOptions = {}): void {
-  abortRunning()
   const g = createNewLife(opts)
   // A new timeline: the previous life's snapshots go, this one's birth is the first stop.
   startTimeline(g.lifeId, g.character.age)
@@ -314,7 +214,6 @@ export function startNewLife(opts: NewLifeOptions = {}): void {
 export function continueAs(childId: string): void {
   const g = state.game
   if (!g) return
-  abortRunning()
   const next = continueAsChild(g, childId)
   // The heir's life is a new timeline: the parent's snapshots can't be gone back to.
   if (next !== g) startTimeline(next.lifeId, next.character.age)
@@ -324,7 +223,6 @@ export function continueAs(childId: string): void {
 }
 
 export function abandonLife(): void {
-  abortRunning()
   clearSave()
   clearTimeline()
   setState({ game: null, screen: 'home', previousScreen: 'home', returnPoint: null, timeStops: NO_STOPS, timeTravel: IDLE_TRAVEL })
@@ -344,8 +242,7 @@ const STALLED = 'stalled'
 
 /**
  * Go back to the start of age `age` of the current life: the snapshot is restored exactly
- * (plus a log line, the jump counted and fresh dice), any AI work is dropped, the "Back to"
- * chip is cleared, and a death that happened since is taken off the graveyard and ribbons.
+ * (plus a log line, the jump counted and fresh dice), the "Back to" chip is cleared, and a death that happened since is taken off the graveyard and ribbons.
  * Resolves true once you've arrived; false (with timeTravel.error set) when you can't go.
  */
 export async function travelBack(age: number): Promise<boolean> {
@@ -420,7 +317,6 @@ export async function travelBack(age: number): Promise<boolean> {
     })
     return false
   }
-  abortRunning()
   // The death you're escaping never happened: take it back off the graveyard and ribbons.
   unrecordDeath(now)
   forgetFuture(now.lifeId, age)
@@ -563,7 +459,9 @@ export function chooseOption(id: string, choiceId: string): void {
     if (modal.source === 'script' && modal.scriptId) {
       runScript(g, modal.scriptId, choiceId, modal.data, modal)
     } else {
-      g.queue.push({ kind: 'aiTask', id: uid(g, 'm'), task: { type: 'resolveChoice', event: modal, choiceId } })
+      // An event without a script (written by the old AI narrator, from an older save): the
+      // generic offline outcome, right away.
+      resolveTask(g, { type: 'resolveChoice', event: modal, choiceId })
     }
   })
 }
@@ -581,123 +479,32 @@ export function finishMinigame(id: string, result: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// AI processing
+// Built-in tasks
 
-let running: { modalId: string; controller: AbortController; skip: () => void } | null = null
+/** Tasks resolved in one go before handing back (a safety valve; the next call carries on). */
+const MAX_TASKS_PER_PASS = 50
 
-function abortRunning(): void {
-  running?.controller.abort()
-  running = null
-  if (state.ai) setState({ ai: null })
-}
+let resolving = false
 
 /**
- * Skip the AI work in progress and use the offline fallback instead. Finishes right away
- * rather than waiting for the request to notice the abort, so Skip always works.
+ * Resolve the built-in tasks ('aiTask' modals) at the head of the queue, synchronously and
+ * offline (game/offline.ts), so the player never sees them: the popups they produce take their
+ * place. Safe to call any time, from anywhere, as often as you like (React StrictMode's double
+ * effects included): each task is looked up by id in the latest state and removed in the same
+ * commit that applies it, so it can't be resolved twice; a task that throws is dropped (the
+ * modal can never get stuck); calls made while a pass is running are folded into it.
  */
-export function skipAi(): void {
-  const r = running
-  if (!r) return
-  r.controller.abort()
-  r.skip()
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
-}
-
-const TASK_LABELS: Record<string, string> = {
-  yearEvents: 'Living through the year…',
-  resolveChoice: 'Seeing what happens…',
-  customAction: 'Seeing what happens…',
-  interview: 'Preparing your interview…',
-  screenApplication: 'Reading your CV…',
-  obituary: 'Writing your obituary…',
-}
-
-/** Seconds to wait for the AI before falling back (guards against a blank/garbled setting). */
-function timeoutMs(settings: Settings): number {
-  const sec = Number(settings.timeoutSec)
-  return (Number.isFinite(sec) && sec > 0 ? Math.min(Math.max(sec, 5), 900) : 120) * 1000
-}
-
-/** Start AI work for the head of the queue if needed. Safe to call any time. */
 export function processQueue(): void {
-  const g = state.game
-  if (!g || running) return
-  const head = g.queue[0]
-  if (!head) return
-  const settings = state.settings
-
-  if (head.kind === 'aiTask') {
-    const fallback = (draft: GameState) => applyFallback(draft, head.task)
-    if (settings.aiLevel === 'off') {
-      handleModal(head.id, fallback)
-      return
+  if (resolving) return
+  resolving = true
+  try {
+    for (let i = 0; i < MAX_TASKS_PER_PASS; i++) {
+      const head = state.game?.queue[0]
+      if (!head || head.kind !== 'aiTask') return
+      const task = head.task
+      handleModal(head.id, (draft) => resolveTask(draft, task))
     }
-    const controller = new AbortController()
-    let timedOut = false
-    running = { modalId: head.id, controller, skip: () => finishAi(head.id, fallback) }
-    setState({ ai: { modalId: head.id, label: TASK_LABELS[head.task.type] ?? 'Thinking…', startedAt: Date.now() } })
-    const timer = setTimeout(() => {
-      timedOut = true
-      controller.abort()
-    }, timeoutMs(settings))
-    runAiTask(g, head.task, settings, controller.signal)
-      .then((apply) => {
-        if (!controller.signal.aborted && state.aiStatus !== 'online') {
-          setState({ aiStatus: 'online', aiMessage: `Connected to ${providerFor(settings).name}.` })
-        }
-        // No-op if Skip (or a new life) already finished this task.
-        finishAi(head.id, apply, fallback)
-      })
-      .catch((err) => {
-        if (timedOut) {
-          const def = providerFor(settings)
-          const faster = def.kind === 'local' ? 'try a smaller model' : 'try a faster model'
-          setState({
-            aiMessage: `${def.name} took longer than ${Math.round(timeoutMs(settings) / 1000)} s, so the built-in story was used — ${faster} or raise the timeout in Settings.`,
-          })
-        } else if (!controller.signal.aborted) setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
-        finishAi(head.id, fallback)
-      })
-      .finally(() => clearTimeout(timer))
-    return
+  } finally {
+    resolving = false
   }
-
-  if (head.kind === 'notice' && head.ai) {
-    const wanted = settings.aiLevel === 'full' || (settings.aiLevel === 'balanced' && head.ai.when === 'balanced')
-    if (!wanted) return
-    const controller = new AbortController()
-    running = { modalId: head.id, controller, skip: () => finishNarration(head.id, null) }
-    setState({ ai: { modalId: head.id, label: 'Thinking…', startedAt: Date.now() } })
-    const timer = setTimeout(() => controller.abort(), timeoutMs(settings))
-    narrateNotice(g, head, settings, controller.signal)
-      .then((text) => finishNarration(head.id, controller.signal.aborted ? null : text))
-      .catch((err) => {
-        if (!controller.signal.aborted) setState({ aiStatus: 'offline', aiMessage: errorMessage(err) })
-        finishNarration(head.id, null)
-      })
-      .finally(() => clearTimeout(timer))
-  }
-}
-
-function finishAi(modalId: string, apply: (g: GameState) => void, fallback?: (g: GameState) => void): void {
-  if (running?.modalId !== modalId) return
-  running = null
-  setState({ ai: null })
-  handleModal(modalId, (draft) => apply(draft), fallback && ((draft) => fallback(draft)))
-}
-
-function finishNarration(modalId: string, text: string | null): void {
-  if (running?.modalId !== modalId) return
-  running = null
-  setState({ ai: null })
-  act((g) => {
-    const m = g.queue.find((x) => x.id === modalId)
-    if (!m || m.kind !== 'notice') return
-    if (text && text.trim()) m.text = text.trim()
-    delete m.ai
-  })
 }

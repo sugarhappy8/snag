@@ -1,6 +1,6 @@
 // Key staff: interviews, hiring, raises, team-building, yelling and firing. General staff are
 // hired to match the production plan automatically; you control their pay policy and morale.
-import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice, useYearAction } from '../core'
+import { addHidden, addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { bell, chance, pick, rand, randInt, uid, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -133,6 +133,14 @@ const HIRE = defineScript('business.hire', (g, choice, data) => {
   )
 })
 
+/**
+ * A headhunter's fee for one round of interviews: 6% of the role's local pay, half as much again
+ * for every round already held this year (k), so interviewing all day is possible but dear.
+ */
+export function interviewFee(b: BizState, role: RoleDef, k: number): number {
+  return Math.round(localPay(b.countryId, role.pay) * 0.06 * (1 + 0.5 * Math.max(0, k)))
+}
+
 function interviewAction(a: Asset, role: RoleDef, g0: GameState): MenuAction {
   return {
     type: 'action',
@@ -141,7 +149,7 @@ function interviewAction(a: Asset, role: RoleDef, g0: GameState): MenuAction {
     emoji: role.focus === 'quality' ? '\u{1F9D1}\u{200D}\u{1F373}' : role.focus === 'sales' ? '\u{1F4E3}' : role.focus === 'finance' ? '\u{1F9EE}' : '\u{1F4CB}',
     subtitle: (g) => {
       const b = readBiz(g, a)
-      return `${role.focus === 'quality' ? 'Raises quality' : role.focus === 'sales' ? 'Brings in customers' : role.focus === 'finance' ? 'Cuts costs and keeps the books clean' : 'More capacity, lower unit costs'} · about ${money(localPay(b.countryId, role.pay))}/yr`
+      return `${role.focus === 'quality' ? 'Raises quality' : role.focus === 'sales' ? 'Brings in customers' : role.focus === 'finance' ? 'Cuts costs and keeps the books clean' : 'More capacity, lower unit costs'} · about ${money(localPay(b.countryId, role.pay))}/yr · headhunter ${money(interviewFee(b, role, yearActionsUsed(g, `biz.interview.${a.id}`)))}`
     },
     disabledReason: (g) => {
       const block = manageBlock(g, a)
@@ -160,9 +168,15 @@ function interviewAction(a: Asset, role: RoleDef, g0: GameState): MenuAction {
     },
     run: (g) => {
       const cur = findBusiness(g, a.id)
-      if (!cur) return
-      if (!useYearAction(g, `biz.interview.${a.id}`, 4)) return tooBusy(g, 'held all the interviews your calendar allows')
+      if (!cur || manageBlock(g, cur)) return
       const b = bizOf(g, cur)
+      if (b.staff.length >= maxKeyStaff(b) || b.staff.some((s) => sameRole(s.role, role.title))) return
+      // No calendar cap: every round costs a headhunter's fee, dearer each time this year.
+      const fee = interviewFee(b, role, yearActionsUsed(g, `biz.interview.${a.id}`))
+      if (b.cash < fee) return noCash(g, cur, fee, 'a headhunter')
+      useYearAction(g, `biz.interview.${a.id}`, Number.MAX_SAFE_INTEGER)
+      b.cash -= fee
+      b.yearCosts += fee
       const list = candidatesFor(g, b, role)
       const lines = list.map((c) => `• ${c.firstName} ${c.lastName}, ${c.age}: skill ${c.skill}/100, asks ${formatMoney(c.salary)}, ${traitOf(c.trait).label.toLowerCase()}.`)
       const choices: ChoiceOption[] = [
@@ -402,7 +416,7 @@ export function staffMenu(a: Asset): MenuGroup {
       for (const s of b.staff) nodes.push(staffGroup(a, s))
       nodes.push(hireMenu(a))
       nodes.push({ type: 'heading', id: `biz.teamH.${a.id}`, label: 'Everyone' })
-      nodes.push(teamBuildingAction(a), raiseAllAction(a), payPolicyMenu(a))
+      nodes.push(teamBuildingAction(a), raiseAllAction(a), payPolicyAction(a))
       return nodes
     },
   }
@@ -414,8 +428,7 @@ const OUTING_GOOD = 0.82
 /** Morale value of a pay level (immediate mood swing plus the lasting change), for the hints. */
 function payValue(g: GameState, b: BizState, w: Worth, level: number): number {
   const prev = b.wageLevel
-  const mood = level < prev ? -Math.round((prev - level) * 60) : level > prev ? Math.round((level - prev) * 40) : 0
-  return fxValue(g, b, w, { wage: level - prev, morale: mood })
+  return fxValue(g, b, w, { wage: level - prev, morale: payMood(prev, level) })
 }
 
 function teamBuildingAction(a: Asset): MenuAction {
@@ -491,52 +504,86 @@ function raiseAllAction(a: Asset): MenuAction {
   }
 }
 
-function payPolicyMenu(a: Asset): MenuGroup {
+/** Pay levels the Business talent compares (the slider allows anything from 70% to 150%). */
+const PAY_GRID = [0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.4, 1.5]
+
+/** The pay level worth the most to this company (morale against the wage bill), for the hint. */
+export function bestPay(g: GameState, b: BizState): number {
+  const w = bizWorth(g, b)
+  let best = b.wageLevel
+  let top = payValue(g, b, w, b.wageLevel)
+  for (const level of PAY_GRID) {
+    // Within half a slider step of today's pay is "keep it" (the slider can't land there).
+    if (Math.abs(level - b.wageLevel) < 0.025) continue
+    const v = payValue(g, b, w, level)
+    if (v > top + 1) {
+      top = v
+      best = level
+    }
+  }
+  return best
+}
+
+/** Morale swing of moving pay from `prev` to `level` (cuts sting more than raises please). */
+function payMood(prev: number, level: number): number {
+  return level < prev ? -Math.round((prev - level) * 60) : level > prev ? Math.round((level - prev) * 40) : 0
+}
+
+function payPolicyAction(a: Asset): MenuAction {
   return {
-    type: 'menu',
+    type: 'action',
     id: `biz.pay.${a.id}`,
     label: 'Pay Policy',
     emoji: '\u{1F9FE}',
-    subtitle: (g) => `${payLabel(readBiz(g, a).wageLevel)} pay`,
-    disabledReason: (g) => manageBlock(g, a),
-    header: () => 'How much do you pay compared with other employers in town? Pay drives morale, and morale drives service, quality and strikes.',
-    children: (g) => {
+    subtitle: (g) => {
       const b = readBiz(g, a)
-      let best: number | null = null
-      if (hasTalent(g, 'Business')) {
-        const w = bizWorth(g, b)
-        let top = -Infinity
-        for (const p of PAY_LEVELS) {
-          const v = payValue(g, b, w, p.level)
-          if (v > top + 1) {
-            top = v
-            best = p.level
-          }
-        }
-      }
-      return PAY_LEVELS.map(
-        (p): MenuAction => ({
-          type: 'action',
-          id: `biz.pay.${a.id}.${p.level}`,
-          label: `${p.label}${payLabel(b.wageLevel) === p.label ? ' (current)' : ''}`,
-          emoji: p.level < 1 ? '\u{1FA99}' : p.level > 1.2 ? '\u{1F48E}' : p.level > 1 ? '\u{1F4B5}' : '\u{2696}\u{FE0F}',
-          subtitle: p.note,
-          hint: (gg) => (best === p.level ? talentHint(gg, 'Business', payLabel(b.wageLevel) === p.label ? 'Best pay level: keep it here' : 'Best pay level for this company right now') : null),
-          run: (gg) => {
-            const cur = findBusiness(gg, a.id)
-            if (!cur) return
-            const bb = bizOf(gg, cur)
-            const prev = bb.wageLevel
-            bb.wageLevel = p.level
-            if (p.level < prev) bb.morale = clampN(bb.morale - Math.round((prev - p.level) * 60), 0, 100)
-            else if (p.level > prev) {
-              bb.morale = clampN(bb.morale + Math.round((p.level - prev) * 40), 0, 100)
-              bb.raiseYear = gg.year
-            }
-            notice(gg, 'Pay Policy', `${cur.name} now pays ${p.label.toLowerCase()} wages. ${p.note}`, { emoji: '\u{1F9FE}' })
-          },
-        }),
-      )
+      return `${payLabel(b.wageLevel)} pay (${Math.round(b.wageLevel * 100)}% of the going rate)`
+    },
+    disabledReason: (g) => manageBlock(g, a),
+    hint: (g) => {
+      if (!hasTalent(g, 'Business') || manageBlock(g, a)) return null
+      const b = readBiz(g, a)
+      const best = bestPay(g, b)
+      return talentHint(g, 'Business', Math.abs(best - b.wageLevel) < 0.001 ? 'Best pay level: keep it here' : `Best pay level for this company right now: about ${Math.round(best * 100)}% of the going rate`)
+    },
+    input: {
+      kind: 'slider',
+      label: 'Pay (% of the going local wage)',
+      min: 70,
+      max: 150,
+      step: 5,
+      defaultValue: (g) => String(Math.round(readBiz(g, a).wageLevel * 100)),
+      preview: (g, v) => {
+        const b = readBiz(g, a)
+        const level = clampN(Math.round(v) / 100, 0.7, 1.5)
+        const e = localEcon(b.industry, b.countryId, b.city)
+        const mood = payMood(b.wageLevel, level)
+        const bill = (b.employees * e.wage * (level - b.wageLevel))
+        const label = PAY_LEVELS.find((p) => p.label === payLabel(level))
+        return [
+          `${Math.round(level * 100)}% of the going rate (${payLabel(level).toLowerCase()}): about ${money(e.wage * level)} per employee a year`,
+          bill !== 0 && b.employees > 0 ? `${bill > 0 ? '+' : '-'}${money(Math.abs(bill))} a year on the wage bill` : '',
+          mood !== 0 ? `morale ${mood > 0 ? '+' : ''}${mood} now` : '',
+          label?.note ?? '',
+        ].filter(Boolean).join(' · ')
+      },
+    },
+    run: (g, input) => {
+      const cur = findBusiness(g, a.id)
+      if (!cur || manageBlock(g, cur)) return
+      const bb = bizOf(g, cur)
+      const level = clampN(Math.round(clampN(Number(input) || bb.wageLevel * 100, 70, 150) / 5) * 0.05, 0.7, 1.5)
+      const next = Math.round(level * 100) / 100
+      const prev = bb.wageLevel
+      // Events can leave pay off the slider's 5% grid (a 108% raise): confirming the slider where
+      // it opened (snapped to 110%) is not a decision to change pay.
+      if (Math.abs(next - prev) < 0.025) return
+      bb.wageLevel = next
+      bb.morale = clampN(bb.morale + payMood(prev, next), 0, 100)
+      // A raise keeps up with inflation this year; a cut takes that back (no raise-then-cut trick).
+      if (next > prev) bb.raiseYear = g.year
+      else if (bb.raiseYear >= g.year) bb.raiseYear = g.year - 1
+      notice(g, 'Pay Policy', `${cur.name} now pays ${payLabel(next).toLowerCase()} wages (${Math.round(next * 100)}% of the going rate). ${PAY_LEVELS.find((p) => p.label === payLabel(next))?.note ?? ''}`.trim(), { emoji: '\u{1F9FE}' })
     },
   }
 }

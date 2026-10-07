@@ -8,14 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChoiceModal, GameState, Json, MenuAction, MenuGroup, MinigameModal } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
-const director = vi.hoisted(() => ({
-  runAiTask: vi.fn(),
-  applyFallback: vi.fn(),
-  narrateNotice: vi.fn(),
-  testConnection: vi.fn(),
-  chatReply: vi.fn(),
-}))
-vi.mock('../src/ai/director', () => director)
+// Built-in tasks (year events, interviews...) resolve to nothing here, so only what a test
+// queues itself shows up.
+const offline = vi.hoisted(() => {
+  const resolve = vi.fn()
+  return { applyFallback: resolve, resolveTask: resolve, MAX_CUSTOM_ACTIONS_PER_YEAR: 5, CUSTOM_ACTION_KEY: 'doAnything' }
+})
+vi.mock('../src/game/offline', () => offline)
 
 const store = await import('../src/ui/store')
 const { MAX_START_TALENTS, SPECIAL_TALENTS, HINT_EMOJI } = await import('../src/game/talents')
@@ -34,7 +33,7 @@ const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStati
 
 beforeEach(() => {
   // These tests read dollar amounts: show plain US dollars whatever life was bound last.
-  store.updateSettings({ aiLevel: 'off', money: 'usd', prices: 'today' })
+  store.updateSettings({ money: 'usd', prices: 'today' })
 })
 
 afterEach(() => {

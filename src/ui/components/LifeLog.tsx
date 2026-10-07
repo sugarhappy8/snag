@@ -1,8 +1,7 @@
 // The life feed: "Age: N years" headers followed by first-person lines, newest at the
 // bottom, auto-scrolling as the story grows.
 import { memo, useLayoutEffect, useRef } from 'react'
-import type { LogYear } from '../../game/types'
-import { useApp } from '../store'
+import type { LogYear, Tone } from '../../game/types'
 
 export interface LifeLogProps {
   log: LogYear[]
@@ -14,15 +13,24 @@ export function ageHeading(age: number): string {
   return age === 1 ? 'Age: 1 year' : `Age: ${age} years`
 }
 
+const TONES: readonly Tone[] = ['good', 'bad', 'neutral', 'event']
+
+/**
+ * The CSS class for a line's tone. Anything unknown (the retired 'ai' tone of older saves, junk)
+ * is drawn as a plain line.
+ */
+export function toneClass(tone: unknown): string {
+  return `tone-${typeof tone === 'string' && (TONES as readonly string[]).includes(tone) ? tone : 'neutral'}`
+}
+
 interface YearProps {
   year: LogYear
-  showBadges: boolean
   /** Index of the first entry added since the last render (entries.length = none new). */
   freshFrom: number
 }
 
 const YearBlock = memo(
-  function YearBlock({ year, showBadges, freshFrom }: YearProps) {
+  function YearBlock({ year, freshFrom }: YearProps) {
     return (
       <section className="lifelog-year" aria-label={ageHeading(year.age)}>
         <h3 className="lifelog-age">
@@ -30,20 +38,14 @@ const YearBlock = memo(
           <span className="lifelog-calyear">{year.year}</span>
         </h3>
         {year.entries.map((e, i) => (
-          <p key={e.id} className={`lifelog-entry tone-${e.tone}${i >= freshFrom ? ' is-new' : ''}`}>
+          <p key={e.id} className={`lifelog-entry ${toneClass(e.tone)}${i >= freshFrom ? ' is-new' : ''}`}>
             {e.text}
-            {e.tone === 'ai' && showBadges ? (
-              <span className="ai-spark" title="Written by your AI" aria-label="AI">
-                ✨
-              </span>
-            ) : null}
           </p>
         ))}
       </section>
     )
   },
   (a, b) =>
-    a.showBadges === b.showBadges &&
     a.freshFrom === b.freshFrom &&
     a.year.age === b.year.age &&
     a.year.year === b.year.year &&
@@ -56,7 +58,6 @@ const YearBlock = memo(
 const CHIP_ROOM = 56
 
 export function LifeLog({ log, reserveBottom = false }: LifeLogProps) {
-  const showBadges = useApp((s) => s.settings.showAiBadges)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const total = log.reduce((n, y) => n + y.entries.length, 0)
   const signature = `${log.length}:${total}`
@@ -93,7 +94,7 @@ export function LifeLog({ log, reserveBottom = false }: LifeLogProps) {
         const start = index
         index += year.entries.length
         const freshFrom = Math.min(year.entries.length, Math.max(0, seen - start))
-        return <YearBlock key={`${year.age}-${year.year}`} year={year} showBadges={showBadges} freshFrom={freshFrom} />
+        return <YearBlock key={`${year.age}-${year.year}`} year={year} freshFrom={freshFrom} />
       })}
     </div>
   )

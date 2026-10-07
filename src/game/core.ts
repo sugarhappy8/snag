@@ -12,7 +12,6 @@ import type {
   Json,
   LifeStage,
   MinigameKind,
-  NoticeAi,
   Person,
   RelationKind,
   StatKey,
@@ -90,8 +89,7 @@ export function canAfford(g: GameState, amount: number): boolean {
 // Never format money by hand ('$' + n, toLocaleString): use formatMoney / shortMoney, formatCents
 // (unit prices with cents), formatPrice (share and coin quotes) or moneyWith (custom digits).
 // Amounts the player types are in display units: mark the input `money: true` (MenuInput or
-// InputModal) and the UI converts them back with moneyFromInput before the engine sees them. The
-// AI is shown money the same way, and the director converts its answers back (aiMoneyToDollars).
+// InputModal) and the UI converts them back with moneyFromInput before the engine sees them.
 
 export type MoneyMode = 'usd' | 'local'
 
@@ -116,7 +114,7 @@ export interface ShownMoney {
   space?: boolean
   /** Digits after the decimal point the currency uses (0 for yen, won, rupiah...). Default 2. */
   decimals?: number
-  /** The currency's name for prose and the AI ('Japanese yen', 'US dollars'). */
+  /** The currency's name for prose ('Japanese yen', 'US dollars'). */
   name?: string
   /**
    * True when the amount was converted (another currency, or another year's prices): small
@@ -195,12 +193,12 @@ export function moneyScale(): number {
   return scaleOf(showMoney(1_000_000), 1_000_000)
 }
 
-/** Display units per internal dollar for a given life (AI replies are converted with this). */
+/** Display units per internal dollar for a given life. */
 export function moneyScaleFor(ctx: MoneyContext | null): number {
   return scaleOf(showMoneyIn(1_000_000, ctx), 1_000_000)
 }
 
-/** A number the player (or the AI) gave in display units, back to internal dollars. */
+/** A number the player gave in display units, back to internal dollars. */
 export function moneyFromInput(displayAmount: number, ctx?: MoneyContext | null): number {
   if (!Number.isFinite(displayAmount)) return 0
   return displayAmount / (ctx === undefined ? moneyScale() : moneyScaleFor(ctx))
@@ -307,7 +305,7 @@ export function formatPrice(n: number): string {
   return joinMoney('', a.toPrecision(2), m)
 }
 
-/** The currency money is shown in right now, for prose and the AI: 'Japanese yen (¥)'. */
+/** The currency money is shown in right now, for prose: 'Japanese yen (¥)'. */
 export function moneyCurrencyLabel(): string {
   const m = showMoney(1)
   const name = m.name ?? (m.code === 'USD' ? 'US dollars' : m.code)
@@ -341,7 +339,7 @@ export function log(g: GameState, text: string, tone: Tone = 'neutral'): void {
   currentLogYear(g).entries.push({ id: uid(g, 'l'), text: t, tone })
 }
 
-/** Remember a notable event for the AI's long-term context (kept short). */
+/** Remember a notable event (the profile's Memories list; kept short). */
 export function remember(g: GameState, text: string): void {
   const t = text.trim()
   if (!t) return
@@ -379,12 +377,11 @@ export function yearActionsUsed(g: GameState, key: string): number {
 export interface NoticeOptions {
   emoji?: string
   tone?: Tone
-  ai?: NoticeAi
 }
 
 /** Show a popup with an OK button. */
 export function notice(g: GameState, title: string, text: string, opts: NoticeOptions = {}): void {
-  g.queue.push({ kind: 'notice', id: uid(g, 'm'), title, text, emoji: opts.emoji, tone: opts.tone, ai: opts.ai })
+  g.queue.push({ kind: 'notice', id: uid(g, 'm'), title, text, emoji: opts.emoji, tone: opts.tone })
 }
 
 /** Show a popup with choices resolved by a registered script (see scripts.ts). */
@@ -418,6 +415,11 @@ export function minigame(g: GameState, game: MinigameKind, title: string, script
   g.queue.push({ kind: 'minigame', id: uid(g, 'm'), game, title, scriptId, data })
 }
 
+/**
+ * Queue a built-in task (this year's events, an interview, application screening, the obituary,
+ * "Do Anything"). The store resolves it offline (src/game/offline.ts) as soon as it reaches the
+ * head of the queue. The name and the 'aiTask' modal kind are historical: old saves use them.
+ */
 export function queueAi(g: GameState, task: AiTask): void {
   g.queue.push({ kind: 'aiTask', id: uid(g, 'm'), task })
 }

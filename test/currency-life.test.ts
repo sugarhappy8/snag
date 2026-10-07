@@ -1,7 +1,7 @@
 // Whole lives through the real engine with the currency converter: plain US dollars must read
 // exactly as before, and a local-currency life must never leak a dollar amount.
 import { afterEach, describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { bindMoneyContext, registerMoneyConverter, setMoneyDisplay } from '../src/game/core'
 import { convertMoney } from '../src/game/data/currencies'

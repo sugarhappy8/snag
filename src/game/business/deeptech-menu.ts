@@ -45,7 +45,7 @@ import {
 } from './deeptech-core'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds } from './deeptech-rd'
+import { BUDGET_MAX, BUDGET_MIN, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
 import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
@@ -110,6 +110,11 @@ function runwayText(years: number): string {
 // ---------------------------------------------------------------------------
 // R&D Lab
 
+function yrs(n: number): string {
+  const v = Math.round(n * 10) / 10
+  return `${v} year${v === 1 ? '' : 's'}`
+}
+
 function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
   return dtAct(a, `rd.${def.id}`, def.label(t0), def.emoji, {
     subtitle: (g) => {
@@ -126,13 +131,35 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
       const { b, t } = view(g, a)
       const cost = programCost(b, t, def)
       const funds = techFunds(b, t)
-      return funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year. Start it anyway and find the money by year-end?` : null
+      return funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year at the planned budget. Start it anyway and find the money by year-end?` : null
     },
-    run: (g, cur, b, t) => {
-      const p = startProgram(g, b, t, def)
+    // Fund it lean, as planned or flat out: faster and likelier, dearer in total (diminishing returns).
+    input: {
+      kind: 'slider',
+      label: 'Budget (% of the plan)',
+      min: BUDGET_MIN * 100,
+      max: BUDGET_MAX * 100,
+      step: 10,
+      defaultValue: () => '100',
+      preview: (g, v) => {
+        const { b, t } = view(g, a)
+        const terms = programTerms(b, t, def, v / 100)
+        // What it really costs and takes at the lab's current pace: progress moves a whole pace
+        // step at every year-end, and each year is billed at the pace's cost.
+        const pace = PACES.find((x) => x.id === t.pace) ?? PACES[1]
+        const n = wholeYears(terms.years, pace.speed)
+        const yearly = terms.cost * pace.cost
+        const funds = techFunds(b, t)
+        const short = yearly > funds ? ` · more than the ${money(funds)} in the R&D account and cash covers` : ''
+        return `${money(yearly)} a year for ${yrs(n)} at a ${pace.label.toLowerCase()} pace (${money(yearly * n)} in all) · ${Math.round(terms.odds * 100)}% base odds${short}`
+      },
+    },
+    run: (g, cur, b, t, input) => {
+      const k = input === undefined || input === '' ? 1 : clampN(Number(input) / 100, BUDGET_MIN, BUDGET_MAX)
+      const p = startProgram(g, b, t, def, Number.isFinite(k) ? k : 1)
       if (!p) return
       log(g, `${cur.name} started an R&D program: ${p.name}.`)
-      notice(g, 'Program Started', `${p.name} is underway at ${cur.name}. ${def.blurb} At a steady pace it takes ${plural(def.years, 'year')} and about ${money(p.cost)} a year, paid from the R&D account first.`, { emoji: def.emoji })
+      notice(g, 'Program Started', `${p.name} is underway at ${cur.name}. ${def.blurb} At a steady pace it takes ${yrs(wholeYears(p.years))} and about ${money(p.cost)} a year, paid from the R&D account first.`, { emoji: def.emoji })
     },
   })
 }
@@ -157,6 +184,7 @@ function labMenu(a: Asset): MenuGroup {
         `Tech level ${Math.round(t.level)}/100 (70 is as good as anyone on Earth; standing still means falling behind). Pace: ${t.pace}.`,
         `R&D budget ${money(rdBudget(t))}/yr · R&D account ${money(t.venture)} · company cash ${money(b.cash)} · ${runwayText(runwayYears(g, a, b, t))}.`,
         `Programs are paid every year from the R&D account, then company cash. Finished programs succeed or fail; failures still teach you something.`,
+        `The lab runs ${maxPrograms(b, t)} programs at once; open more sites (Locations) to make room for more. At the top of the ladder, next-generation work never runs out: it just costs more and gains less every time.`,
       ].join('\n')
     },
     children: (g) => {
@@ -399,7 +427,7 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
         const v = view(gg, a)
         return `About ${money(computeRent({ ...v.b }, { ...v.t, rented: 1 }))}/yr each · more capacity, bigger training runs`
       },
-      disabled: (_gg, bb, tt) => (tt.rented >= 12 ? 'The cloud provider says you are their biggest customer already.' : RESTRICTED.has(bb.countryId) && tt.rented >= 2 ? 'Export controls limit how much top-end compute you can rent.' : null),
+      disabled: (_gg, bb, tt) => (tt.rented >= 40 ? 'The cloud provider has no more top-end GPUs to rent you. Build your own clusters in the R&D Lab.' : RESTRICTED.has(bb.countryId) && tt.rented >= 2 ? 'Export controls limit how much top-end compute you can rent.' : null),
       run: (gg, cur, bb, tt) => {
         tt.rented += 1
         notice(gg, 'More Compute', `${cur.name} now rents ${plural(tt.rented, 'GPU cluster')} (${formatMoney(computeRent(bb, tt))} a year, billed at year-end).`, { emoji: '\u{2601}\u{FE0F}' })

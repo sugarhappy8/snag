@@ -677,9 +677,3 @@ export function stockBetsMenu(): MenuGroup {
     },
   }
 }
-
-/** For the AI summary. */
-export function betsSummary(st: MoneyState): string {
-  if (!st.bets.length) return ''
-  return `${st.bets.length} open single-stock/coin bet${st.bets.length === 1 ? '' : 's'}`
-}

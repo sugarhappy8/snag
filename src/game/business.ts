@@ -6,7 +6,7 @@
 // is the public surface the rest of the game imports.
 import { shortMoney } from './core'
 import { shareSummary } from './business/competition'
-import { conglomerateNodes } from './business/conglomerate'
+import { conglomerateNodes, groupOfCompany, groupsOf, inGroup } from './business/conglomerate'
 import { deepTechSummary } from './business/deeptech'
 import { buyBusinessMenu, startBusinessMenu } from './business/founding'
 import { industryDef } from './business/industries'
@@ -37,8 +37,10 @@ function companyNode(g: GameState, a: Asset): MenuGroup {
 function companyNodes(g: GameState): MenuNode[] {
   const list = businessAssets(g)
   if (list.length === 0) return []
-  // Conglomerates (business/conglomerate.ts): your groups and "Merge Companies".
-  return [{ type: 'heading', id: 'biz.yoursH', label: `Your Companies (${list.length})` }, ...conglomerateNodes(g), ...list.map((a) => companyNode(g, a))]
+  // Conglomerates (business/conglomerate.ts): your groups (their divisions are on the group's
+  // screen) and "Form a Conglomerate", then the companies that stand alone.
+  const solo = list.filter((a) => !inGroup(g, a.details))
+  return [{ type: 'heading', id: 'biz.yoursH', label: `Your Companies (${list.length})` }, ...conglomerateNodes(g), ...solo.map((a) => companyNode(g, a))]
 }
 
 function ownedSubtitle(g: GameState, fallback: string): string {
@@ -85,7 +87,8 @@ export function businessAssetView(g: GameState, a: Asset): MenuNode[] {
 
 export function businessAssetSubtitle(g: GameState, a: Asset): string {
   const b = readBiz(g, a)
-  return `${industryDef(b.industry).label} · ${b.city} · ${shortMoney(a.value)}`
+  const group = groupOfCompany(g, a)
+  return `${industryDef(b.industry).label} · ${b.city} · ${shortMoney(a.value)}${group ? ` · ${group.core.name}` : ''}`
 }
 
 /** Yearly hook (aging.ts, after special careers, before finance). */
@@ -93,10 +96,12 @@ export function yearlyBusiness(g: GameState): void {
   yearlyBusinessImpl(g)
 }
 
-/** One line for the AI prompt about the player's companies ('' when none). */
+/** One line about the player's companies for the profile ('' when none). */
 export function businessSummary(g: GameState): string {
   const list = businessAssets(g)
   if (list.length === 0) return ''
+  const groups = groupsOf(g)
+  const chairs = groups.length ? ` Controls ${groups.map((x) => `${x.core.name} (a group of ${x.members.length} companies${x.core.listing ? `, listed on the ${x.core.listing.exchange}` : ''})`).join(' and ')}.` : ''
   const parts = list.slice(0, 3).map((a) => {
     const b = readBiz(g, a)
     const def = industryDef(b.industry)
@@ -107,5 +112,5 @@ export function businessSummary(g: GameState): string {
     const share = tech ? '' : shareSummary(g, b)
     return `${a.name} (${def.label.toLowerCase()}, ${b.city}, ${totalOutlets(b)} ${totalOutlets(b) === 1 ? def.site : def.sitePlural}, ${b.employees + b.staff.length} staff, ${profit}${share ? `, ${share}` : ''}${tech ? `; ${tech}` : ''}; ${role})`
   })
-  return `Owns ${parts.join('; ')}${list.length > 3 ? ` and ${list.length - 3} more` : ''}`
+  return `Owns ${parts.join('; ')}${list.length > 3 ? ` and ${list.length - 3} more` : ''}${chairs ? `.${chairs}` : ''}`
 }

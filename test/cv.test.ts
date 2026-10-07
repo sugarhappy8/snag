@@ -1,7 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyFallback, runAiTask } from '../src/ai/director'
-import { screenApplicationPrompt } from '../src/ai/prompts'
-import { validateScreening } from '../src/ai/schemas'
+import { describe, expect, it } from 'vitest'
 import { applyScreening, occupationMenu, yearlyCareer } from '../src/game/careers'
 import {
   catchEmbellishment,
@@ -9,7 +6,6 @@ import {
   cvInternals,
   cvMenu,
   cvScore,
-  cvSummary,
   embellishedEntries,
   jobMarket,
   jobScreenChance,
@@ -20,11 +16,11 @@ import {
 } from '../src/game/cv'
 import { getJobDef } from '../src/game/data/jobs'
 import { admissionChance, applyToGraduateSchool, applyToUniversity, educationInternals, educationMenuNodes, universityOptions, yearlyEducation } from '../src/game/education'
+import { applyFallback } from '../src/game/offline'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import { getCountry } from '../src/game/world'
 import type { ChoiceModal, GameState, MenuAction, MenuGroup, MenuNode, NoticeModal, ScreeningApp } from '../src/game/types'
-import { DEFAULT_SETTINGS, type Settings } from '../src/settings'
 import { makeTestGame } from './helpers'
 
 // ---------------------------------------------------------------------------
@@ -514,70 +510,20 @@ describe('job market and screening', () => {
     }
   })
 
-  it('applies the AI screener decision and reason through the director', async () => {
-    const settings: Settings = { ...DEFAULT_SETTINGS, baseUrl: 'http://lm.test/v1', model: 'test-model', disableThinking: false }
-    const replies = [
-      { invite: false, reason: 'Your robotics captaincy is great, but we need three years of accounting.' },
-      { invite: true, reason: 'Your olympiad medal stood out.', question: 'What would you build first in our lab?', answers: [{ label: 'Something useful for students', score: 88 }, { label: 'A robot that does my homework', score: 20 }, { label: 'Not sure yet', score: 45 }] },
-    ]
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input)
-        if (url.endsWith('/chat/completions')) {
-          const body = replies.shift()
-          return new Response(JSON.stringify({ id: 'x', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify(body) }, finish_reason: 'stop' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-        }
-        if (url.endsWith('/v1/models')) return new Response(JSON.stringify({ object: 'list', data: [{ id: 'test-model', object: 'model' }] }), { status: 200 })
-        return new Response('{}', { status: 404 })
-      }),
-    )
+  it('applies a screening decision: the reason on a rejection, the question at an admissions interview', () => {
     const g = graduateAdult('us', 2)
     const job = { defId: 'accountant', title: 'Jr. Accountant', company: 'Apex', salary: 50000, category: 'fulltime' as const }
     const jobApp: ScreeningApp = { kind: 'job', job, org: 'Apex', fit: 30, chance: 0.4, market: jobMarket(g).line }
-    const apply = await runAiTask(g, { type: 'screenApplication', app: jobApp }, settings, new AbortController().signal)
-    const draft = structuredClone(g)
-    apply(draft)
-    expect(notices(draft).at(-1)!.text).toContain('we need three years of accounting')
+    applyScreening(g, jobApp, { invite: false, reason: 'Your robotics captaincy is great, but we need three years of accounting.' })
+    expect(notices(g).at(-1)!.text).toContain('we need three years of accounting')
 
     const kid = senior('us', 3, 90)
     const uni = universityOptions(kid)[0]
     const uniApp: ScreeningApp = { kind: 'university', org: uni.name, major: 'Computer Science', tier: uni.rank.tier, rankLabel: rankLabel(uni.rank), tuition: uni.tuition, years: 4, fit: 60, chance: 0.6, admit: 0.6 }
-    const apply2 = await runAiTask(kid, { type: 'screenApplication', app: uniApp }, settings, new AbortController().signal)
-    const d2 = structuredClone(kid)
-    apply2(d2)
-    const iv = choices(d2, 'school.admissionsInterview')[0]
+    const question = { question: 'What would you build first in our lab?', answers: [{ label: 'Something useful for students', score: 88 }, { label: 'A robot that does my homework', score: 20 }, { label: 'Not sure yet', score: 45 }] }
+    applyScreening(kid, uniApp, { invite: true, reason: 'Your olympiad medal stood out.', question })
+    const iv = choices(kid, 'school.admissionsInterview')[0]
     expect(iv.text).toContain('What would you build first in our lab?')
     expect(iv.choices).toHaveLength(3)
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-})
-
-describe('AI layer', () => {
-  it('validates screening replies leniently', () => {
-    expect(validateScreening({ invite: 'yes', reason: 'Nice CV.' })).toEqual({ invite: true, reason: 'Nice CV.' })
-    expect(validateScreening({ decision: 'rejected', why: 'Too many applicants.' }).invite).toBe(false)
-    expect(() => validateScreening({ reason: 'hmm' })).toThrow()
-    const withQ = validateScreening({ invite: true, reason: 'ok', question: 'Why our school, really?', answers: [{ label: 'A', score: 90 }, { label: 'B', score: 10 }, { label: 'C', score: 50 }] })
-    expect(withQ.question?.answers).toHaveLength(3)
-    expect(validateScreening({ invite: true, reason: 'ok', question: '', answers: [] }).question).toBeUndefined()
-  })
-
-  it('builds a compact screening prompt from the CV, target and market (never revealing fake flags)', () => {
-    const g = graduateAdult('id', 4)
-    strongCv(g)
-    cvInternals.embellish(g, cvInternals.FAKES[0])
-    const app: ScreeningApp = { kind: 'job', job: { defId: 'computer_programmer', title: 'Jr. Computer Programmer', company: 'Byte', salary: 20000, category: 'fulltime' }, org: 'Byte', fit: 55, chance: 0.5, market: jobMarket(g).line }
-    const prompt = screenApplicationPrompt(g, app)
-    expect(prompt).toContain('PlantPal')
-    expect(prompt).toContain('Job market:')
-    expect(prompt).toContain('CV fit 55/100')
-    expect(prompt).toMatch(/never invent CV items/)
-    expect(prompt).not.toMatch(/embellish|fake|made up/i)
-    expect(prompt.length).toBeLessThan(4000)
-    expect(cvSummary(g)).toContain('Club President, Robotics Club')
   })
 })

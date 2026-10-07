@@ -2000,8 +2000,7 @@ function enrollCommunityCollege(g: GameState): void {
 // the locale data first, then local-style names), each with a national rank, a tier, an admit rate
 // and tuition. Acceptance depends on smarts, grades, the final exam, the high school's rank and
 // the CV (clubs, leadership, volunteering, projects and awards really matter). Selective schools
-// (Elite / Top) screen the CV first — the AI director decides when it's on — and then hold an
-// admissions interview.
+// (Elite / Top) screen the CV first (cv.ts offlineScreen) and then hold an admissions interview.
 
 export interface UniversityOption {
   name: string
@@ -2187,7 +2186,7 @@ export function applyToUniversity(g: GameState, major: string, opts: { athletic?
   const tuition = picked ? opt.tuition : free ? 0 : roundMoney(UNIVERSITY_TUITION * wealthScale(g) * TIER_TUITION[opt.rank.tier])
   const app: ScreeningApp = { kind: 'university', org: opt.name, major, rankLabel: rankLabel(opt.rank), tier: opt.rank.tier, tuition, years: UNIVERSITY_YEARS, fit, chance: p, admit: 1 }
   if (picked && opt.selective) {
-    // Selective schools read the CV first (the AI director when it's on), then interview.
+    // Selective schools read the CV first (cv.ts offlineScreen), then interview.
     const invite = clamp(p * 1.6 + 0.05, 0.03, 0.95)
     app.chance = invite
     app.admit = clamp(p / invite, 0.05, 0.95)
@@ -2317,7 +2316,7 @@ function cleanQuestion(q: InterviewQuestion | undefined): InterviewQuestion | nu
   return answers.length >= 2 ? { question: q.question.trim().slice(0, 300), answers } : null
 }
 
-/** The admissions interview after a CV screening invite (question from the AI or the offline pool). */
+/** The admissions interview after a CV screening invite (the screener's question or the question pool). */
 export function presentAdmissionsInterview(g: GameState, app: ScreeningApp, q?: InterviewQuestion): void {
   const c = g.character
   if (!c.alive || c.prison) return

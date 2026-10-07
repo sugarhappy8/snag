@@ -4,7 +4,7 @@
 // popups are dealt with) and save.ts keeps the last TIME_MACHINE_STOPS of them outside the main
 // save. Travelling restores one of those snapshots exactly (people, money, flags, log, queue)
 // with three deliberate differences:
-//   - a log line and a memory say you came back (so the AI can play along);
+//   - a log line and a memory say you came back;
 //   - the jump is counted (TIME_MACHINE_JUMPS per life unless Sandbox mode is on);
 //   - the dice are re-stirred, otherwise pressing "+ Age" would replay the very same disaster.
 //     That covers g.rng; the engine's per-year seeded rolls (stock and crypto years, business

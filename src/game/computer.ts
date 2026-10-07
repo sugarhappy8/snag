@@ -2,8 +2,8 @@
 // or one your parents buy you), Activities › Computer opens at-home ways to learn and earn,
 // even before 18: learn to code, build a SaaS, freelance (computer/dev.ts), and the riskier side,
 // crypto pump-and-dumps, options trading and online scams (computer/money.ts).
-import { devNodes, devSummary, noComputerNodes, yearlyDev } from './computer/dev'
-import { moneyNodes, moneySummary, yearlyMoney } from './computer/money'
+import { devNodes, noComputerNodes, yearlyDev } from './computer/dev'
+import { moneyNodes, yearlyMoney } from './computer/money'
 import { codingSkill } from './computer/skills'
 import type { Asset, GameState, MenuGroup } from './types'
 
@@ -77,7 +77,3 @@ export function yearlyComputer(g: GameState): void {
   yearlyMoney(g)
 }
 
-/** One line for the AI context ('' when nothing to say). */
-export function computerSummary(g: GameState): string {
-  return [devSummary(g), moneySummary(g)].filter(Boolean).join('; ')
-}

@@ -32,7 +32,6 @@ import {
   blocAccess,
   cap,
   citizenshipsOf,
-  exitRegime,
   expandCitizenships,
   grantCitizenship,
   heirCitizenships,
@@ -42,7 +41,6 @@ import {
   personCitizenships,
   place,
   setStatus,
-  statusLabel,
   statusOf,
   unionName,
   updateImm,
@@ -733,29 +731,4 @@ export function legalWorkProblem(g: GameState, job: { category: string; edu?: st
   if (s.visa === 'student') return full ? 'Your student visa only allows part-time work.' : null
   if (s.visa === 'retire') return 'Your retirement visa doesn\'t allow you to work here.'
   return null
-}
-
-/** One line for the AI prompt about passports and status ('' when a plain citizen at home). */
-export function immigrationSummary(g: GameState): string {
-  const c = g.character
-  const held = citizenshipsOf(g)
-  const s = statusOf(g)
-  const st = immState(g)
-  const here = getCountry(c.countryId)
-  const parts: string[] = []
-  const born = c.birthCountryId || held[0]
-  if (held.length > 1 || s.status !== 'citizen' || born !== c.countryId) parts.push(`${held.map(demonymOf).join(' and ')} passport${held.length > 1 ? 's' : ''}`)
-  if (s.status === 'citizen' && born !== c.countryId && held.includes(c.countryId)) parts.push(`naturalized in ${place(here)}`)
-  else if (s.status === 'visa') parts.push(`lives in ${place(here)} on ${an(statusLabel(s))}`)
-  else if (s.status === 'permanent') {
-    const y = yearsToCitizenship(g)
-    parts.push(`permanent resident of ${place(here)}${y === null ? ' (citizenship closed to foreigners)' : y > 0 ? ` (citizenship possible in ${y} yr)` : ''}`)
-  } else if (s.status === 'asylum') parts.push(s.visa === 'pending' ? `asylum seeker in ${place(here)}, awaiting a decision` : `refugee in ${place(here)}`)
-  else if (s.status === 'undocumented') parts.push(`lives in ${place(here)} without papers since ${st.arrived} (can't work legally, risks deportation)`)
-  if (st.apps.length) parts.push(`waiting on: ${st.apps.map((a) => `${a.label} to ${place(getCountry(a.dest))} (${a.decide})`).join(', ')}`)
-  const regime = exitRegime(c.countryId, g.year)
-  if (regime) parts.push(`${regime.name} forbids leaving without an exit visa`)
-  const locks = lockAssets(g)
-  if (locks.length) parts.push(`${money(locks.reduce((t, a) => t + a.value, 0))} locked in a visa investment`)
-  return parts.length ? `IMMIGRATION: ${parts.join('; ')}` : ''
 }

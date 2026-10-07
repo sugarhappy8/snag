@@ -1,7 +1,7 @@
 // Business: founding through the real menus and popups, then years of trading in very
 // different markets via the yearly hook and the Annual Report.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { businessAssetView, businessCareerMenu, businessSummary } from '../src/game/business'
 import { bizOf, businessAssets, readBiz } from '../src/game/business/state'

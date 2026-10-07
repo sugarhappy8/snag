@@ -1,12 +1,11 @@
 import { expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { createNewLife } from '../src/game/life'
 import { emigrateMenu } from '../src/game/activities/emigrate'
 import { visaLockView } from '../src/game/activities/immigration-lock'
 import { lockAssets } from '../src/game/activities/immigration-move'
 import { citizenshipsOf, statusOf } from '../src/game/activities/immigration-state'
-import { immigrationSummary } from '../src/game/immigration'
 import { runScript } from '../src/game/scripts'
 import type { GameState, MenuAction, MenuNode } from '../src/game/types'
 
@@ -90,7 +89,6 @@ it('keeps random emigrating lives consistent across eras', () => {
         if (c.immigration && citizenshipsOf(g).includes(c.countryId)) bad.push(`${country} ${year} ${seed}: citizen with a status record ${JSON.stringify(c.immigration)}`)
         for (const a of lockAssets(g)) if (!Number.isFinite(a.value) || a.value < 0) bad.push(`${country} ${year} ${seed}: lock ${a.value}`)
         statusOf(g)
-        texts.push(immigrationSummary(g))
       }
       for (const y of g.log) for (const e of y.entries) texts.push(e.text)
       for (const t of texts) if (/undefined|NaN|\[object|null\b/.test(t)) bad.push(`${country} ${year} ${seed}: ${t.slice(0, 200)}`)

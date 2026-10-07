@@ -274,7 +274,10 @@ function RibbonAward({ ribbonId }: { ribbonId: string | null }) {
   )
 }
 
-function Journal({ g, showAi }: { g: GameState; showAi: boolean }) {
+/** Journal line colors; anything else (the retired 'ai' tone of older saves) is a plain line. */
+const JOURNAL_TONES = new Set(['good', 'bad', 'neutral', 'event'])
+
+function Journal({ g }: { g: GameState }) {
   const years = g.log.filter((y) => y.entries.length > 0)
   if (years.length === 0) return <p className="al-muted">The pages are blank. It was a quiet life.</p>
   return (
@@ -285,7 +288,7 @@ function Journal({ g, showAi }: { g: GameState; showAi: boolean }) {
             Age {y.age} <span className="al-muted al-small">({y.year})</span>
           </div>
           {y.entries.map((e) => (
-            <p key={e.id} className={`journal-entry ${e.tone === 'ai' && !showAi ? '' : e.tone}`}>
+            <p key={e.id} className={JOURNAL_TONES.has(e.tone) ? `journal-entry ${e.tone}` : 'journal-entry'}>
               {e.text}
             </p>
           ))}
@@ -305,9 +308,6 @@ export interface DeathScreenProps {
 
 export function DeathScreen({ game: gameProp }: DeathScreenProps) {
   const storeGame = useApp((s) => s.game)
-  const aiLevel = useApp((s) => s.settings.aiLevel)
-  const showAiBadges = useApp((s) => s.settings.showAiBadges)
-  const aiStatus = useApp((s) => s.aiStatus)
   const [journalOpen, setJournalOpen] = useState(false)
   const [timeMachineOpen, setTimeMachineOpen] = useState(false)
   const g = gameProp ?? storeGame
@@ -328,8 +328,6 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
   const cause = c.causeOfDeath ?? 'Unknown causes'
   const his = pronouns(c.gender).his
 
-  const source = g.flags.obituarySource
-  const aiObituary = source === 'ai' || (source === undefined && aiLevel !== 'off' && aiStatus === 'online')
   const obituary =
     g.obituary?.trim() ||
     stablePick(g.lifeId + 'obit', [
@@ -372,7 +370,6 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
       <section className="al-card">
         <div className="death-obit-head">
           <h3>📰 Obituary</h3>
-          {aiObituary && showAiBadges && g.obituary ? <span className="al-ai-badge">✨ AI-written</span> : null}
         </div>
         <p className="death-obit">{obituary}</p>
         <p className="death-mourners">🕯️ {view.mourners}</p>
@@ -421,7 +418,7 @@ export function DeathScreen({ game: gameProp }: DeathScreenProps) {
         <button type="button" className="al-btn ghost block" onClick={() => setJournalOpen((v) => !v)} aria-expanded={journalOpen}>
           📖 {journalOpen ? 'Close the journal' : `Read ${c.firstName}'s journal`}
         </button>
-        {journalOpen ? <Journal g={g} showAi={showAiBadges} /> : null}
+        {journalOpen ? <Journal g={g} /> : null}
       </section>
 
       {/* Only shown when this life has a past year saved to go back to. */}

@@ -1993,13 +1993,4 @@ export const startVentureMenu: MenuGroup = {
 /** Where game making lives now. */
 export const GAMES_POINTER = 'Indie games: make, crowdfund and sell them in Occupation › Special Careers › Game Industry. At 18 a hit can grow into a real game studio.'
 
-/** For devSummary and the CV. */
-export function ventureLine(g: GameState, a: Asset): string {
-  const v = readVenture(g, a)
-  const d = def(v)
-  if (v.stage === 'building') return `${a.name}, ${d.noun} still being built (${Math.round(v.progress)}%)`
-  const money2 = v.type === 'saas' ? `${money(v.mrr)} MRR` : `${money(v.revenue)} a year`
-  return `${a.name}, ${d.noun} with ${unitWord(v, v.users)}, ${money2}`
-}
-
 export const ventureInternals = { stepVenture, valuationOf, marketCap, custPrice, fireEvent, eligibleEvents, EVENT_SCRIPT, IDEA_SCRIPT, BUILD_SCRIPT, NAME_SCRIPT, SELL_SCRIPT, sellOffers, workOn, fixDebt, setTier, setAds, hire, sell, shutDown, makeDlc, promote }

@@ -12,7 +12,7 @@ import {
   schoolWarning,
   yearlyEducation,
 } from '../src/game/education'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { runScript } from '../src/game/scripts'
 import type { ChoiceModal, GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'

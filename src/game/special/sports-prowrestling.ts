@@ -571,11 +571,3 @@ export function yearlyWrestler(g: GameState): void {
   say(g, 'Wrestling Year', lines.join(' '), '\u{1F93C}', 'neutral')
   if (c.age >= 50 || (c.age >= 42 && c.stats.health < 40)) retireWrestler(g)
 }
-
-export function wrestlerSummary(g: GameState): string {
-  const job = wrestlerJob(g)
-  const p = viewWp(g)
-  if (!job || !p) return ''
-  const j = wj(job)
-  return `pro wrestler "${p.ringName}" (${p.align}) in ${TIERS[j.tier]}, popularity ${p.popularity}%${j.belt ? `, ${j.belt}` : ''}`
-}

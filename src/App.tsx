@@ -1,15 +1,13 @@
-// App shell: routes between screens and checks the AI connection once at startup. Until the
-// player has finished (or skipped) the first-run "Choose your AI" screen, that screen is all
-// they see: no life can be started or continued before it.
+// App shell: routes between screens. Everything runs on the device: there is no setup step and
+// nothing to connect to, so the main menu is the first thing a player sees.
 import { Component, useEffect, type ErrorInfo, type ReactNode } from 'react'
-import { AiSetupScreen } from './ui/screens/AiSetupScreen'
 import { GameScreen } from './ui/screens/GameScreen'
 import { GraveyardScreen } from './ui/screens/GraveyardScreen'
 import { HomeScreen } from './ui/screens/HomeScreen'
 import { NewLifeScreen } from './ui/screens/NewLifeScreen'
 import { RibbonsScreen } from './ui/screens/RibbonsScreen'
 import { SettingsScreen } from './ui/screens/SettingsScreen'
-import { checkAi, getApp, goTo, hasSavedGame, useApp, type Screen } from './ui/store'
+import { getApp, goTo, hasSavedGame, useApp, type Screen } from './ui/store'
 
 let started = false
 
@@ -17,24 +15,13 @@ let started = false
 function startup(): void {
   if (started) return
   started = true
-  const app = getApp()
-  // First run (or settings saved before providers existed): choose an AI before anything else.
-  // Don't contact any server yet; on the hosted site that could pop up the browser's
-  // local-network permission prompt before the player has picked anything.
-  if (!app.settings.setupDone) {
-    goTo('aiSetup')
-    return
-  }
   // A saved life is offered as "Continue" on the home screen rather than auto-resumed.
-  if (hasSavedGame() && app.screen !== 'home') goTo('home')
-  void checkAi()
+  if (hasSavedGame() && getApp().screen !== 'home') goTo('home')
 }
 
 export function App() {
-  const setupDone = useApp((s) => s.settings.setupDone)
-  const current = useApp((s) => s.screen)
+  const screen: Screen = useApp((s) => s.screen)
   const hasGame = useApp((s) => s.game !== null)
-  const screen: Screen = setupDone ? current : 'aiSetup'
 
   useEffect(() => {
     startup()
@@ -66,8 +53,8 @@ function renderScreen(screen: Screen, hasGame: boolean): ReactNode {
       return <RibbonsScreen />
     case 'graveyard':
       return <GraveyardScreen />
-    case 'aiSetup':
-      return <AiSetupScreen />
+    default:
+      return <HomeScreen />
   }
 }
 

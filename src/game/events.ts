@@ -1,12 +1,10 @@
-// The offline event library: what the player sees when the AI narrator is off,
-// unreachable or skipped. Every year gets one or two first-person flavor lines and,
-// most years, one classic random-event popup chosen by weighted, condition-aware
+// The event library: the story of every year. Each year gets one or two first-person flavor
+// lines and, most years, one classic random-event popup chosen by weighted, condition-aware
 // selection (age, school, job, family, prison, money) that never repeats too soon:
 // each event has a cooldown, related events share one (EVENT_KINDS), the same person
 // can't star in the same kind of event for a few years. Events play out in the player's own
 // country (a flood day in Jakarta, the leavers' ball in Leeds, a drink stand in Mumbai);
-// foreignToLocale stays as a backstop that skips any American-only scene that slips through
-// (it also screens the AI narrator's lines).
+// foreignToLocale stays as a backstop that skips any American-only scene that slips through.
 //
 // Contract exports: queueFallbackYearEvents, fallbackChoiceOutcome, fallbackCustomAction,
 // fallbackObituary. The event data lives in src/game/events/*.ts.
@@ -94,9 +92,9 @@ export function eventKind(id: string): string {
 }
 
 /**
- * g.flags.eventMemory: the last popups shown (AI and offline), newest last. The AI director
- * (src/ai/prompts.ts EventMemo) reads and writes the same shape, so the narrator knows which
- * offline events just happened and neither side repeats the other.
+ * g.flags.eventMemory: the last popups shown, newest last (the same person doesn't star in the
+ * same kind of event again too soon). Older saves may also hold entries the old AI narrator
+ * wrote ({ source: 'ai' }); they are read like any other.
  */
 export const EVENT_MEMORY_FLAG = 'eventMemory'
 const EVENT_MEMORY_MAX = 16
@@ -108,7 +106,6 @@ interface EventMemo {
   personId: string
   person: string
   kind: string
-  source: 'ai' | 'offline'
   /** g.generation when it fired (memories of a parent's life don't count for the child). */
   gen: number
 }
@@ -126,7 +123,6 @@ function eventMemory(g: GameState): EventMemo[] {
       personId: typeof v.personId === 'string' ? v.personId : '',
       person: typeof v.person === 'string' ? v.person : '',
       kind: typeof v.kind === 'string' ? v.kind : '',
-      source: v.source === 'ai' ? 'ai' : 'offline',
       gen: g.generation,
     })
   }
@@ -136,9 +132,6 @@ function eventMemory(g: GameState): EventMemo[] {
 function rememberEvent(g: GameState, memo: EventMemo): void {
   const kept = eventMemory(g).filter((m) => m.age <= g.character.age)
   g.flags[EVENT_MEMORY_FLAG] = [...kept, memo].slice(-EVENT_MEMORY_MAX)
-  // The narrator's title list (shown to the AI as "recent events").
-  const titles = Array.isArray(g.flags.aiRecentEvents) ? g.flags.aiRecentEvents.filter((x): x is string => typeof x === 'string') : []
-  g.flags.aiRecentEvents = [...titles, memo.title].slice(-12)
 }
 
 /** Was this person the subject of the same kind of event within PERSON_COOLDOWN years? */
@@ -181,7 +174,7 @@ export function lastFired(g: GameState, id: string): number | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Locale guard: the library and the narrator were written with an American childhood in mind.
+// Locale guard: much of the library was first written with an American childhood in mind.
 // A scene that only makes sense in the US (prom, the SATs, the DMV, a lemonade stand,
 // Thanksgiving, a snow day in the tropics) is skipped for players elsewhere, unless their
 // country's locale says it fits (Indonesia has prom night, Canada has Thanksgiving, Mexico
@@ -218,8 +211,7 @@ const AMERICAN_MARKERS: Marker[] = [
 
 /**
  * True when a text paints an American scene that doesn't belong in the player's country
- * (always false for US players). Used for offline events and flavor lines here and for the AI
- * narrator's lines and events in the director.
+ * (always false for US players). Screens events and flavor lines.
  */
 export function foreignToLocale(g: GameState, text: string, countryId = g.character.countryId): boolean {
   if (countryId === 'us' || !text) return false
@@ -311,7 +303,6 @@ export function queueRandomEvent(g: GameState): string | null {
       personId: setup.person?.id ?? '',
       person: setup.person?.firstName ?? '',
       kind,
-      source: 'offline',
       gen: g.generation,
     })
     bumpEventCounter(g)
@@ -392,31 +383,25 @@ defineScript(EVENT_SCRIPT, handleEvent)
 // ---------------------------------------------------------------------------
 // Contract exports
 
-export interface FallbackYearOptions {
-  /** Write the year's flavor lines (default true; false when the AI already wrote them). */
-  flavor?: boolean
-  /** 'roll' (default): most years bring a popup. 'always': queue one now (replacing an AI event). */
-  event?: 'roll' | 'always'
-}
-
-/** Offline year: 1-2 flavor log lines and, most years, one random event popup. */
-export function queueFallbackYearEvents(g: GameState, opts: FallbackYearOptions = {}): void {
+/** The year's story: 1-2 flavor log lines and, most years, one random event popup. */
+export function queueFallbackYearEvents(g: GameState): void {
   if (!g.character.alive) return
-  if (opts.flavor !== false) {
-    const last = g.log[g.log.length - 1]
-    const before = last && last.age === g.character.age ? last.entries.length : 0
-    safe(() => addFlavorLines(g), undefined)
-    // Drop flavor lines from somebody else's country (a snow day in Jakarta).
-    const year = g.log[g.log.length - 1]
-    if (year && year.age === g.character.age && year.entries.length > before) {
-      const fresh = year.entries.slice(before).filter((e) => !foreignToLocale(g, e.text))
-      year.entries.splice(before, year.entries.length - before, ...fresh)
-    }
+  const last = g.log[g.log.length - 1]
+  const before = last && last.age === g.character.age ? last.entries.length : 0
+  safe(() => addFlavorLines(g), undefined)
+  // Drop flavor lines from somebody else's country (a snow day in Jakarta).
+  const year = g.log[g.log.length - 1]
+  if (year && year.age === g.character.age && year.entries.length > before) {
+    const fresh = year.entries.slice(before).filter((e) => !foreignToLocale(g, e.text))
+    year.entries.splice(before, year.entries.length - before, ...fresh)
   }
-  if (opts.event === 'always' || chance(g, eventChance(g))) queueRandomEvent(g)
+  if (chance(g, eventChance(g))) queueRandomEvent(g)
 }
 
-/** Resolve an AI-sourced choice popup when the AI fails before narrating the outcome. */
+/**
+ * Resolve a choice popup that has no script of its own: an event the old AI narrator wrote,
+ * still queued in an older save. A generic outcome that fits the option picked.
+ */
 export function fallbackChoiceOutcome(g: GameState, event: ChoiceModal, choiceId: string): void {
   if (!g.character.alive) return
   resolveGenericChoice(g, event, choiceId)

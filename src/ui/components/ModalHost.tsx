@@ -1,38 +1,27 @@
-// Shows the head of the modal queue above everything: notices, choices, inputs,
-// minigames and the AI "thinking" card.
+// Shows the head of the modal queue above everything: notices, choices, inputs and minigames.
+// Built-in tasks ('aiTask' modals) are never shown: the store resolves them on the spot.
 import { useEffect, useRef, useState } from 'react'
 import { getPerson, personAvatar, relationLabel } from '../../game/core'
-import type { ChoiceModal, GameState, InputModal, MinigameModal, ModalItem, NoticeModal, Tone } from '../../game/types'
+import type { ChoiceModal, GameState, InputModal, MinigameModal, NoticeModal, Tone } from '../../game/types'
 import { MINIGAMES } from '../minigames'
 import {
   chooseOption,
   dismissNotice,
   finishMinigame,
-  getApp,
   processQueue,
-  skipAi,
   submitInput,
   useApp,
 } from '../store'
-import type { AiLevel } from '../../settings'
 import { InputField, moneyDefault, normalizeInput, PopupFrame, rangeHint, validateInput } from './Dialogs'
 import { personName } from './PersonSheet'
 import { cleanHint, TalentHint } from './TalentHint'
+import { canSlide } from './menuModel'
+import { SliderInputCard } from './SliderCard'
 
 const TONE_EMOJI: Partial<Record<Tone, string>> = {
   good: '😄',
   bad: '😟',
   event: '📣',
-  ai: '✨',
-}
-
-/** Seconds after which the Skip button appears on the thinking card. */
-const SKIP_AFTER = 3
-
-/** Mirrors the store: will this notice be rewritten by the AI before it is shown? */
-function narrationWanted(m: NoticeModal, level: AiLevel): boolean {
-  if (!m.ai) return false
-  return level === 'full' || (level === 'balanced' && m.ai.when === 'balanced')
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -44,23 +33,17 @@ function isTyping(target: EventTarget | null): boolean {
 export function ModalHost() {
   const head = useApp((s) => s.game?.queue[0] ?? null)
   const game = useApp((s) => s.game)
-  const ai = useApp((s) => s.ai)
-  const aiLevel = useApp((s) => s.settings.aiLevel)
-  const aiForHead = ai !== null && head !== null && ai.modalId === head.id
+  const taskAtHead = head !== null && head.kind === 'aiTask'
 
-  const thinking =
-    head !== null && (head.kind === 'aiTask' || (head.kind === 'notice' && (aiForHead || narrationWanted(head, aiLevel))))
-
-  // Make sure AI work at the head of the queue is running (e.g. right after loading a save).
+  // The store resolves built-in tasks as soon as they reach the head of the queue. Should one
+  // ever be left there (a save loaded some other way), resolve it now. Idempotent: running twice
+  // (StrictMode) finds the task already gone.
   useEffect(() => {
-    if (!thinking || aiForHead) return
-    const t = setTimeout(() => processQueue(), 60)
-    return () => clearTimeout(t)
-  }, [thinking, aiForHead, head?.id])
+    if (taskAtHead) processQueue()
+  }, [taskAtHead, head?.id])
 
-  if (!head || !game) return null
-
-  if (thinking) return <ThinkingCard key={head.id} modal={head} />
+  // Nothing to draw for a task: it's replaced by whatever it produces in the same moment.
+  if (!head || !game || taskAtHead) return null
 
   switch (head.kind) {
     case 'notice':
@@ -111,9 +94,7 @@ function NoticeCard({ modal }: { modal: NoticeModal }) {
 }
 
 export function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
-  const showBadges = useApp((s) => s.settings.showAiBadges)
   const person = getPerson(g, modal.personId)
-  const fromAi = modal.source === 'ai'
 
   // Desktop shortcut: number keys pick a choice (1 = first).
   useEffect(() => {
@@ -135,11 +116,6 @@ export function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
         </span>
       ) : null}
       <h2 className="popup-title">{modal.title}</h2>
-      {fromAi && showBadges ? (
-        <div className="popup-tag">
-          <span className="pill">✨ AI event</span>
-        </div>
-      ) : null}
       {person ? (
         <div className="popup-person">
           <span className="popup-person-avatar" aria-hidden>
@@ -167,11 +143,6 @@ export function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
                 <span className="popup-choice-label">{c.label}</span>
                 {hint ? <TalentHint text={hint} className="popup-choice-hint" /> : null}
               </span>
-              {fromAi && showBadges ? (
-                <span className="popup-choice-ai" aria-hidden>
-                  ✨
-                </span>
-              ) : null}
             </button>
           )
         })}
@@ -187,7 +158,12 @@ export function ChoiceCard({ modal, g }: { modal: ChoiceModal; g: GameState }) {
 }
 
 function InputCard({ modal }: { modal: InputModal }) {
-  // Sliders fall back to a number field until the slider control lands.
+  // A slider needs finite bounds; without them it falls back to a number field.
+  if (modal.input === 'slider' && canSlide(modal.min, modal.max)) return <SliderInputCard modal={modal} />
+  return <FieldInputCard modal={modal} />
+}
+
+function FieldInputCard({ modal }: { modal: InputModal }) {
   const kind = modal.input === 'slider' ? 'number' : modal.input
   const money = modal.money === true && kind === 'number'
   const [value, setValue] = useState(() => money ? moneyDefault(modal.defaultValue) : (modal.defaultValue ?? ''))
@@ -255,86 +231,6 @@ function MinigameCard({ modal }: { modal: MinigameModal }) {
           </button>
         </div>
       )}
-    </PopupFrame>
-  )
-}
-
-// ---------------------------------------------------------------------------
-
-function useSecondsSince(startedAt: number): number {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500)
-    return () => clearInterval(t)
-  }, [])
-  return Math.max(0, Math.floor((now - startedAt) / 1000))
-}
-
-const FALLBACK_LABELS: Record<string, string> = {
-  yearEvents: 'Living through the year…',
-  resolveChoice: 'Seeing what happens…',
-  customAction: 'Seeing what happens…',
-  interview: 'Preparing your interview…',
-  screenApplication: 'Reading your CV…',
-  obituary: 'Writing your obituary…',
-}
-
-const SUBTITLES = [
-  'Your AI is writing what happens next',
-  'The AI is dreaming up your life',
-  'Consulting the narrator',
-]
-
-function ThinkingCard({ modal }: { modal: ModalItem }) {
-  const ai = useApp((s) => s.ai)
-  const model = useApp((s) => s.settings.model)
-  const active = ai !== null && ai.modalId === modal.id
-  // Count from when this card appeared if the task hasn't started yet.
-  const [mountedAt] = useState(() => Date.now())
-  const seconds = useSecondsSince(active ? ai.startedAt : mountedAt)
-  // A notice being rewritten shows its own title ("Small talk…"); AI tasks show what's happening.
-  const label =
-    modal.kind === 'notice'
-      ? `${modal.title}…`
-      : active
-        ? ai.label
-        : modal.kind === 'aiTask'
-          ? (FALLBACK_LABELS[modal.task.type] ?? 'Thinking…')
-          : 'Thinking…'
-  const [randomSub] = useState(() => SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)])
-  const sub = modal.kind === 'notice' ? 'Your AI is telling it in its own words' : randomSub
-  const orb = modal.kind === 'notice' && modal.emoji ? modal.emoji : '✨'
-
-  const skip = () => {
-    if (getApp().ai?.modalId === modal.id) skipAi()
-    else processQueue()
-  }
-
-  return (
-    <PopupFrame label={label}>
-      <div className="thinking" aria-live="polite">
-        <div className="thinking-orb" aria-hidden>
-          {orb}
-        </div>
-        <div className="thinking-label">{label}</div>
-        <div className="thinking-sub">
-          {sub}
-          {model ? ` (${model})` : ''}
-          <span className="thinking-dots" aria-hidden>
-            <span>.</span>
-            <span>.</span>
-            <span>.</span>
-          </span>
-        </div>
-        <div className="thinking-elapsed">{seconds}s</div>
-        <div className="thinking-skip-slot">
-          {seconds >= SKIP_AFTER ? (
-            <button className="btn btn-small thinking-skip" onClick={skip}>
-              Skip (use offline story)
-            </button>
-          ) : null}
-        </div>
-      </div>
     </PopupFrame>
   )
 }

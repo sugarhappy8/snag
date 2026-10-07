@@ -770,16 +770,3 @@ export function cryptoMenu(): MenuGroup {
     },
   }
 }
-
-/** For the AI summary. */
-export function cryptoSummary(st: MoneyState): string {
-  const parts: string[] = []
-  const last = st.coins[st.coins.length - 1]
-  if (last) {
-    const what = last.outcome === 'rugged' ? 'rug-pulled it' : last.outcome === 'dumped' ? 'dumped it on holders' : 'got dumped on'
-    const probe = st.probes.some((p) => p.publicCase) ? ' (under investigation)' : ''
-    parts.push(`launched the $${last.ticker} meme coin and ${what}${last.exposed ? ', exposed online' : ''}${probe}${st.coins.length > 1 ? `; ${st.coins.length} coins launched in all` : ''}`)
-  }
-  if (st.apes >= 2) parts.push(`apes into meme coins (${st.apePnl >= 0 ? 'up' : 'down'} ${shortMoney(Math.abs(st.apePnl))})`)
-  return parts.join('; ')
-}

@@ -4,6 +4,7 @@ import { exchangeFor, marketOf } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
 import type { Asset, GameState } from '../types'
+import { afterMemberGone } from './conglomerate-state'
 import { deepTechIpoThreshold } from './deeptech-state'
 import { refreshValue, valuationOf } from './economy'
 import { industryDef } from './industries'
@@ -28,6 +29,8 @@ export function capitalGainsTax(g: GameState, proceeds: number, basis: number): 
 function removeBusiness(g: GameState, a: Asset): void {
   g.assets = g.assets.filter((x) => x.id !== a.id)
   if (ceoJob(g, a.id)) endJob(g, 'job', 'other')
+  // A group carries on without it, or winds up when only one company is left.
+  afterMemberGone(g, a.details, a.name)
 }
 
 /** Pay off the founding loan linked to this business from the proceeds, if any. */
@@ -176,6 +179,7 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   if (f >= 0.999 || b.share < 0.005) {
     g.assets = g.assets.filter((x) => x.id !== a.id)
     if (ceoJob(g, a.id)) endJob(g, 'job', 'quit')
+    afterMemberGone(g, a.details, a.name)
     log(g, `I sold the last of my ${a.name} shares.`, 'good')
     notice(g, 'Sold Out', `You sold all your remaining shares of ${a.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. It's somebody else's company now.`, { emoji: '\u{1F4B8}', tone: 'good' })
     count(g, 'businessesSold')

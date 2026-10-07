@@ -2,57 +2,41 @@
 
 AnotherLife is a browser life simulator that mirrors BitLife's gameplay (stat bars, yearly
 "+ Age" loop, Occupation / Assets / Relationships / Activities menus, popups with choices,
-crime & prison, ribbons, generations) with an original name and emoji art. An **LLM the
-player brings** writes the year-by-year story: random events with choices, outcomes,
-conversations, interview questions, free-form "Do Anything" actions and obituaries. It can be a
-local server (LM Studio, Ollama, llama.cpp, KoboldCpp, Jan, any OpenAI-compatible server) or a
-cloud API with the player's own key (Claude, OpenAI, Gemini, OpenRouter, Groq, Mistral,
-DeepSeek, xAI, Together, any OpenAI-compatible API). Everything also works offline from a
-built-in event library.
+crime & prison, ribbons, generations) with an original name and emoji art. Everything is built
+in and runs in the player's browser: the year-by-year story comes from the event library
+(`events.ts` + `events/*.ts`), "Do Anything" from a keyword resolver (`events/custom.ts`),
+interviews from a scored question pool, application screening from the CV model (`cv.ts`) and
+the obituary from the life that was lived. There is no AI narrator, no backend and no network call.
 
 Stack: Vite + React 19 + TypeScript (strict), Vitest. No other runtime deps.
 
 Hosting: a static site on the Cloudflare Worker `snag` (Workers Builds deploys every push to its
-production branch; `wrangler.jsonc` runs `npm run build` and serves `dist/`). There is no
-backend: the browser talks **directly** to the provider the player chose.
+production branch; `wrangler.jsonc` runs `npm run build` and serves `dist/`).
 
-- **Local servers** (`kind: 'local'`) are reached at their own address, e.g. LM Studio at
-  `http://localhost:1234/v1`. From the hosted https page that needs the server's CORS setting
-  ("Enable CORS", `OLLAMA_ORIGINS`, ...) and the browser's local-network-access permission;
-  Safari may refuse https → `http://localhost` altogether.
-- **Cloud APIs** (`kind: 'cloud'`) are called with the player's API key. The key lives only in
-  this browser's localStorage (`settings.ts`) and is sent only to that provider.
-- **Dev convenience only:** under `npm run dev`, LM Studio's default URL is `/lmstudio/v1`,
-  which the Vite server proxies to LM Studio (no CORS needed; `vite preview` has the same proxy
-  if you type that URL). Every other provider, and the hosted site, uses direct URLs.
-
-UI copy and error messages must name the active provider (`providerFor(settings).name`), never
-assume LM Studio, and explain both the local and the cloud case.
-
-**First run:** until `settings.setupDone` is true, `App.tsx` shows only the "Choose your AI"
-screen (`ui/screens/AiSetupScreen.tsx`): local server / cloud API with own key / play without AI
-→ pick a provider → URL, key, setup steps, Test connection, model → Start playing (or Save
-anyway). No AI server is contacted before the player chooses one. The same provider picker and
-connection form (`ui/components/AiProviderForm.tsx`) power Settings → AI Connection.
+The app opens on the main menu (no setup step). Old installs: `settings.ts` drops every setting
+it doesn't know (the old AI provider, URLs, API keys, models) and rewrites the stored copy on the
+first start, and `save.ts` `migrateLegacyAi` cleans saves from the AI-narrator days.
 
 ## Layout
 
 ```
 src/
-  settings.ts            Settings (provider, per-provider URL/key/model, AI level, setupDone...) in localStorage [foundation]
+  settings.ts            Settings (money display, prices, Time Machine sandbox) in localStorage          [foundation]
   game/                  Pure TypeScript engine — no React, no fetch
     types.ts             ALL shared types (GameState, Character, Person, Job, Asset, ModalItem, MenuNode...) [foundation]
     rng.ts               Seeded RNG: rand, randInt, chance, pick, weightedPick, shuffle, bell, uid    [foundation]
     core.ts              Helpers: addStat, addMoney, spend, log, notice, scriptChoice, minigame,
-                         queueAi, endJob, people lookups, relationLabel, formatMoney, avatarEmoji... [foundation]
+                         queueAi (built-in tasks), endJob, people lookups, relationLabel, formatMoney... [foundation]
     scripts.ts           defineScript / runScript registry for choice/input/minigame modals          [foundation]
     people.ts            createPerson(g, opts), TRAITS, notePerson                                    [foundation]
     world.ts             Countries, cities, name pools                                                [world agent]
-    effects.ts           applyEffects(g, GameEffects) with caps (AI + scripted outcomes)              [foundation]
+    effects.ts           applyEffects(g, GameEffects) with caps (scripted outcomes, Do Anything)      [foundation]
     death.ts             killCharacter(g, cause)                                                       [foundation]
-    aging.ts             ageUp(g): runs yearly hooks in order, then queues the yearEvents AI task     [foundation]
+    aging.ts             ageUp(g): runs yearly hooks in order, then queues the yearEvents task        [foundation]
+    offline.ts           applyFallback / resolveTask: resolves every queued task offline (see "Built-in tasks") [foundation]
     menus.ts             Top-level Activities menu assembly                                           [foundation]
-    save.ts              localStorage saves, ribbon collection, graveyard, separate Time Machine snapshots                             [foundation]
+    save.ts              localStorage saves (+ migrateLegacyAi for old saves), ribbon collection, graveyard,
+                         separate Time Machine snapshots                                              [foundation]
     life.ts health.ts ribbons.ts                                          [life agent]
     education.ts careers.ts data/jobs.ts                                  [career agent]
     special.ts                                                            [special-careers agent]
@@ -66,7 +50,7 @@ src/
     talents.ts           Special talents picked before birth (New Life › Special Talents, max 3) plus the
                          one discovered in childhood. ALWAYS test with hasTalent(g, id) (never
                          c.talent). Helpers: characterTalents, pickedTalents, normalizeTalents,
-                         talentMult, talentHint (purple 🔮 hint text), talentEmoji, talentsSummary.
+                         talentMult, talentHint (purple 🔮 hint text), talentEmoji.
                          Purple hints reach the UI through ChoiceOption.hint, MenuBase.hint and
                          AnnualReportData.talentHint; hints must be honest (computed from the same
                          math the resolver uses, never consuming g's RNG in menus) and never make
@@ -103,8 +87,8 @@ src/
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
                          cvScore for admissions/jobs, national school rankings, the job market, and
-                         the "Your CV" menu. Applications go through the 'screenApplication' AI task
-                         (AI reads the CV + market and decides on an interview; offline fallback).
+                         the "Your CV" menu. Applications go through the 'screenApplication' task
+                         (offlineScreen reads the CV + market and decides on an interview).
                          jobFit(g, def) scores how well a job suits the CV; the careers recruiter
                          ("Best Matches" / "Within Reach") sorts openings by it
     computer.ts computer/*.ts   The home computer (needs an owned computer asset): learn to code, side
@@ -113,7 +97,7 @@ src/
     invest/shocks.ts     Market shocks (g.flags.marketShocks): a company/coin banned or hyped by a
                          head of state; investments and options read the price hit. Kept across heirs
     special/*.ts         Special careers split by section: politics.ts (incl. Abuse of Power:
-                         market-moving announcements + insider trades, abuseSummary for the AI),
+                         market-moving announcements + insider trades),
                          sports*.ts (Special Careers > Sports: team sports, MMA/UFC, boxing, tennis,
                          golf, racing, esports...), gamedev*.ts (Game Industry: dev jobs, making games,
                          founding a game studio via business/gamestudio*.ts)
@@ -128,18 +112,12 @@ src/
                          advances/pledges for unreleased games are earmarkedCash and can't be paid out.
                          Indie game ventures moved from the Computer menu to Game Industry:
                          computer/dev-state ventureAssets() excludes them, allVentureAssets() doesn't
-  ai/                    Provider clients + "director"                    [ai agent]
-    providers.ts         Provider registry (local servers + cloud APIs), defaults, setup steps
-    client.ts            Routes requests to openai-compat.ts or anthropic.ts; JSON parse/validate/retry
-    openai-compat.ts anthropic.ts errors.ts lmstudio.ts (compat re-exports)
-    json.ts prompts.ts schemas.ts director.ts
   ui/
-    store.ts             App store + modal-queue game loop + AI task runner                         [foundation]
+    store.ts             App store + modal-queue game loop (resolves built-in tasks offline)      [foundation]
     components/Sheet.tsx components/StatBar.tsx                                                      [foundation]
     minigames/index.ts minigames/types.ts                                                            [foundation]
     minigames/Blackjack.tsx HorseRace.tsx Slots.tsx                       [money agent]
     minigames/Burglary.tsx PrisonEscape.tsx Pickpocket.tsx                [crime agent]
-    screens/AiSetupScreen.tsx components/AiProviderForm.tsx   first-run "Choose your AI" + shared provider form
     everything else in ui/ + main.tsx, App.tsx, styles                    [ui agents]
 ```
 
@@ -160,7 +138,8 @@ src/
      `'crime.burglary.result'`, `'school.bully'`.
    - `scriptInput(g, {...})` — ask for text/number (e.g. name the baby), result goes to a script.
    - `minigame(g, kind, title, scriptId, data)` — show a minigame; its result string goes to the script.
-   - `queueAi(g, task)` — hand work to the AI director (see "AI tasks").
+   - `queueAi(g, task)` — queue a built-in task (year events, interview, screening, obituary...);
+     the store resolves it offline the moment it reaches the head of the queue (see "Built-in tasks").
    Anything a handler queues is shown right after the current popup (the store moves it to the front).
 5. **Per-year limits**: BitLife stops spam ("You're too tired to go to the gym again this year").
    Use `useYearAction(g, key, max)`; when it returns false show a notice instead.
@@ -207,7 +186,7 @@ src/
 | `prison.ts` | `prisonMenu: MenuGroup`, `sendToPrison(g, crime: string, years: number, opts?: { life?: boolean; deathRow?: boolean }): void`, `releaseFromPrison(g, reason: string): void` |
 | `activities.ts` | `mindBodyMenu`, `nightlifeMenu`, `vacationMenu`, `emigrateMenu`, `licensesMenu`, `moviesMenu` (all `MenuGroup`), `miscActivities: MenuNode[]` |
 | `events.ts` | `queueFallbackYearEvents(g): void`, `fallbackChoiceOutcome(g, event: ChoiceModal, choiceId: string): void`, `fallbackCustomAction(g, text: string): void`, `fallbackObituary(g): string` |
-| `ai/director.ts` | see below |
+| `offline.ts` | `applyFallback(g, task: AiTask): void`, `resolveTask` (the same function), `MAX_CUSTOM_ACTIONS_PER_YEAR`, `CUSTOM_ACTION_KEY` |
 
 ### Money flow (who pays what)
 
@@ -242,7 +221,8 @@ src/
 `casinoLosses`, `moneyGambled`, `lotteryTickets`, `lotteryWins`, `vacations`, `emigrations`,
 `surgeries`, `doctorVisits`, `donated`, `fights`, `pranks`, `insults`, `compliments`, `nightlife`,
 `drugs`, `rehab`, `fameActions`, `albums`, `movies`, `housesBought`, `carsBought`, `purchases`,
-`studied`, `skippedSchool`, `diseases`, `lawsuitsWon`, `aiEvents`, `customActions`.
+`studied`, `skippedSchool`, `diseases`, `lawsuitsWon`, `customActions`. (Old saves may still hold
+`aiEvents`, from the retired AI narrator; nothing reads it.)
 Add new keys freely, but use these names for these concepts.
 
 Occupation menu composition (careers agent): school/university section from `educationMenuNodes(g)`,
@@ -262,13 +242,12 @@ Use calendar year as well as age when unlocking technology, careers, stores or a
 `events/era.ts` supplies tagged text (`eraPick`, `byEra`) and the anachronism lint. Gate both a
 menu and its outcomes; hiding a label alone does not make the resolver era-safe.
 
-`history/events.ts` provides `worldEvents`, `newsLine`, `eraSummary`, `yearlyHistory` and war
+`history/events.ts` provides `worldEvents`, `newsLine`, `yearlyHistory` and war
 queries. `aging.ts` calls `yearlyHistory` first. Headlines cover every country/year and continue
 procedurally after the present; historical life events live in `events/history*.ts`. News and
 currency-change log IDs are stable and consume neither game RNG nor normal IDs. Era popups
 only run before PRESENT_YEAR. `events-medicine.ts` adjusts historical medicine and mortality;
-`events-people.ts` supplies occupations and names. The AI prompt includes era, immigration and
-business-share summaries.
+`events-people.ts` supplies occupations and names.
 
 `history/markets*.ts` overlays real historical index/sector crashes, gold, housing, inflation,
 rates, exchange closures and expropriation on `invest/engine.ts`. Procedural markets start in
@@ -280,8 +259,7 @@ hints and settlement must use the same family seed, timeline and shock data.
 scales and `currencyChangeAt`. `core.ts` exposes `bindMoneyContext`, `withMoneyContext`,
 `showMoney`, `moneyScale`, `moneyFromInput`, `moneyToInput` and display settings. The UI store
 binds its mutable draft before actions (including emigration), then binds committed state.
-`Dialogs.tsx`, `ModalHost.tsx` and Annual Report fields convert inputs; AI effects are converted
-in `director.ts`, after schema validation preserves fractional and hyperinflated amounts.
+`Dialogs.tsx`, `ModalHost.tsx` and Annual Report fields convert inputs.
 Ancestors and graveyard entries store an optional country for historical currency display.
 
 `timeMachine.ts` is pure: `stopOf`, `availableStops`, `travelBlock`, `arriveInPast`, jump counters
@@ -311,51 +289,53 @@ after research/compute spending; patent and pipeline value is accounted for sepa
 Business sale proceeds service personal founding loans only up to available after-tax proceeds;
 any unpaid personal balance remains owed after the company is gone.
 
-`immigration.ts` owns `citizenshipsOf`, `yearlyImmigration` and `immigrationSummary`.
+`immigration.ts` owns `citizenshipsOf` and `yearlyImmigration`.
 `data/immigration*.ts` provides era-aware borders, blocs and destination programs;
 `activities/immigration-*.ts` handles route eligibility, applications, deposits and relocation.
 Status is optional on old saves and advances from visa to permanent residence to citizenship.
 Golden-visa investments stay locked; quitting a route or moving again must settle the lock.
 Eligibility uses nationality, year, net worth, CV, education and family ties, not just cash.
 
-## AI tasks & the director
+## Built-in tasks (offline resolution)
 
-`ModalItem` of kind `aiTask` holds a serializable `AiTask`. When one reaches the head of the queue
-the store calls the director and shows a "thinking" card with a **Skip** button (skip/timeout/error →
-offline fallback). Tasks:
+`ModalItem` of kind `aiTask` (the historical name, kept so saves with a queued task still load)
+holds a serializable `AiTask`. Engine code queues one with `queueAi(g, task)`. It is never shown:
+when it reaches the head of the queue, `store.processQueue()` resolves it synchronously with
+`offline.ts` `resolveTask(draft, task)` (= `applyFallback`) inside the normal `act()` commit, so
+the popups it produces take its place at the same position. There is no spinner and no busy
+state. `processQueue` is idempotent and re-entrancy safe (calls made during a pass fold into it;
+a task is found by id in the latest state and removed in the same commit, so React StrictMode's
+double effects can't resolve it twice); a resolver that throws drops the task instead of
+leaving the queue stuck. `ModalHost` renders nothing for a task at the head and calls
+`processQueue()` in an effect as a safety net.
 
-| Task | AI does | Offline fallback (events.ts / careers.ts) |
-|------|---------|-------------------------------------------|
-| `yearEvents` | 1-3 first-person log lines for the year + optionally one event popup with 2-4 choices (`source: 'ai'`) | `queueFallbackYearEvents(g)` |
-| `resolveChoice` | outcome text + `GameEffects` for the chosen option | `fallbackChoiceOutcome(g, event, choiceId)` |
-| `customAction` | decides what happens when the player "Does Anything": outcome text + `GameEffects` (may arrest, injure...) | `fallbackCustomAction(g, text)` |
-| `interview` | one interview question with 3-4 scored answers → `presentInterview(g, job, q)` | `presentInterview(g, job, fallbackInterviewQuestion(g, job))` |
-| `obituary` | a short obituary stored in `g.obituary` | `g.obituary = fallbackObituary(g)` |
+| Task | Resolved by |
+|------|-------------|
+| `yearEvents` | `events.ts` `queueFallbackYearEvents(g)`: 1-2 flavor lines and, most years, one event popup |
+| `resolveChoice` | `events.ts` `fallbackChoiceOutcome(g, event, choiceId)`: a generic outcome from the option's wording. Only events written by the old AI narrator (`ChoiceModal.source === 'ai'`, older saves) have no script; `store.chooseOption` resolves them directly |
+| `customAction` | "Do Anything": `events/custom.ts` keyword resolver, at most `MAX_CUSTOM_ACTIONS_PER_YEAR` (5) a year (`useYearAction(g, 'doAnything')`; the menu row is greyed out once they're used, and a task that still arrives gets an "Exhausted" notice) |
+| `interview` | `careers.ts` `presentInterview(g, job, fallbackInterviewQuestion(g, job))` |
+| `screenApplication` | `careers.ts` `applyScreening(g, app, cv.offlineScreen(g, app))` |
+| `obituary` | `g.obituary = fallbackObituary(g)` (`events/obituary.ts`) |
 
-Notices may carry `ai: { when: 'balanced' | 'full', facts }`; the store asks the director to rewrite
-the text in its own words while keeping the facts (used for conversations and other interactions).
+A dead character only gets the obituary; every other task is a no-op once the life is over, and
+an unknown task type (a future or broken save) is a no-op too.
 
-`src/ai/director.ts` exports:
-
-```ts
-runAiTask(g: GameState, task: AiTask, settings: Settings, signal: AbortSignal): Promise<(draft: GameState) => void>
-applyFallback(g: GameState, task: AiTask): void
-narrateNotice(g: GameState, notice: NoticeModal, settings: Settings, signal: AbortSignal): Promise<string>
-interface ChatTurn { from: 'player' | 'npc'; text: string }
-chatReply(g: GameState, personId: string, history: ChatTurn[], message: string, settings: Settings, signal: AbortSignal): Promise<{ reply: string; relationshipDelta: number }>
-testConnection(settings: Settings, signal?: AbortSignal): Promise<{ ok: boolean; message: string; models: string[] }>
-```
-
-AI output is never trusted: effects go through `applyEffects` (caps money and stat swings), person
-references are resolved by name to existing ids, and malformed JSON falls back offline.
+Old saves: `save.ts` `migrateLegacyAi` (run by `loadGame` and `loadSnapshot`, idempotent) drops
+the `ai` narration request from queued notices, turns log entries with the retired tone `'ai'`
+into `'neutral'`, deletes the narrator-only flags `aiRecentEvents` and `obituarySource`, and
+drops queue entries that aren't popups at all (not an object with an id and a known kind: nothing
+could show or close them, so the life would be stuck behind them). `LifeLog` and the death
+screen's journal draw any unknown tone as a plain line.
 
 ## UI contract
 
 - `src/ui/store.ts`: `useApp(selector)`, `goTo(screen)`, `goBack()`, `startNewLife(opts)`,
   `resumeSavedGame()`, `hasSavedGame()`, `continueAs(childId)`, `abandonLife()`, `ageUpAction()`,
   `runMenuAction(action, input?)`, `dismissNotice(id)`, `chooseOption(id, choiceId)`,
-  `submitInput(id, value)`, `finishMinigame(id, result)`, `skipAi()`, `act(mutator)`,
-  `updateSettings(patch)`, `checkAi()`, `travelBack(age)`, `clearTimeTravelError()`. Screens: `'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'`.
+  `submitInput(id, value)`, `finishMinigame(id, result)`, `processQueue()`, `act(mutator)`,
+  `updateSettings(patch)` (keeps only known fields), `travelBack(age)`, `clearTimeTravelError()`.
+  Screens: `'home' | 'newLife' | 'game' | 'settings' | 'ribbons' | 'graveyard'`.
 - Purple talent hints: `components/TalentHint.tsx` renders them; `menuModel` `nodeHint` reads
   `MenuBase.hint` safely and `cleanHint` strips a leading 🔮 and caps at `HINT_MAX` (220 chars).
   CSS tokens `--hint-text`, `--hint-bg`, `--hint-border`, `--hint-ring`. The Death screen's

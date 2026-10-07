@@ -6,8 +6,9 @@ import { businessAssetSubtitle, businessAssetView, businessesMenu } from './busi
 import { occupationMenu } from './careers'
 import { computerMenu } from './computer'
 import { ventureAssetSubtitle, ventureAssetView } from './computer/dev'
-import { inPrison, queueAi } from './core'
+import { inPrison, queueAi, yearActionsUsed } from './core'
 import { investmentAssetSubtitle, investmentAssetView, investmentsMenu } from './investments'
+import { CUSTOM_ACTION_KEY, MAX_CUSTOM_ACTIONS_PER_YEAR } from './offline'
 import { crimeMenu } from './crime'
 import { casinoMenu, lotteryMenu } from './gambling'
 import { doctorMenu } from './health'
@@ -56,14 +57,23 @@ export const shoppingMenu: MenuGroup = {
   ],
 }
 
-/** The AI-native activity: type anything and the local model decides what happens. */
+/**
+ * Type anything: the built-in keyword resolver (events/custom.ts) works out what happens, within
+ * the rules for age, prison and money. A few a year (offline.ts): once they're used up the row
+ * says so, instead of asking for an action that can't happen.
+ */
 export const doAnythingAction: MenuAction = {
   type: 'action',
   id: 'doAnything',
   label: 'Do Anything',
   emoji: '\u{2728}',
-  subtitle: 'Describe any action and the AI decides what happens',
-  disabledReason: (g) => (g.character.age < 4 ? 'You are too young to do that.' : null),
+  subtitle: 'Type any action and see how it plays out',
+  disabledReason: (g) =>
+    g.character.age < 4
+      ? 'You are too young to do that.'
+      : yearActionsUsed(g, CUSTOM_ACTION_KEY) >= MAX_CUSTOM_ACTIONS_PER_YEAR
+        ? "You've done enough wild things for one year. Age up and try again."
+        : null,
   input: { kind: 'text', label: 'What do you want to do?', placeholder: 'e.g. Start a garage band with my best friend' },
   run: (g, input) => {
     const text = (input ?? '').trim()

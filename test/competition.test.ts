@@ -3,7 +3,7 @@
 // compete locally, antitrust comes for the dominant, rivals are deterministic, menus are pure,
 // old saves load, and every number stays finite for decades in very different markets.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { businessAssetView, businessSummary } from '../src/game/business'
 import { acquisitionQuote, acquireRival } from '../src/game/business/competition-moves'
 import { buildCtx, marketDemand, marketStateOf } from '../src/game/business/competition-core'

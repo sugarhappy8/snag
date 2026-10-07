@@ -435,10 +435,3 @@ export function scamsMenu(): MenuGroup {
     children: (): MenuNode[] => SCAMS.map(scamAction),
   }
 }
-
-/** For the AI summary. */
-export function scamsSummary(st: MoneyState): string {
-  if (!st.scams) return ''
-  const heat = st.heat >= 60 ? 'police closing in' : st.heat >= 30 ? 'heat rising' : 'lying low'
-  return `runs online scams (${st.scams} so far, ${formatMoney(st.scamTake)} taken, ${heat})`
-}

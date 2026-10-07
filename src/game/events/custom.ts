@@ -1,6 +1,6 @@
-// Offline "Do Anything": keyword rules that turn the player's free-form text into a
-// sensible little outcome (popup + life-log line + small stat changes), respecting age,
-// prison and money. Used when the AI narrator is off, unreachable or skipped.
+// "Do Anything": keyword rules that turn the player's free-form text into a sensible little
+// outcome (popup + life-log line + small stat changes), respecting age, prison and money.
+// Resolved instantly on the device (offline.ts customAction task).
 import {
   addHidden,
   addRelationship,

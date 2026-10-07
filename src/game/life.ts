@@ -630,7 +630,7 @@ function warsFor(countryId: string, born: number, before: number): WarDef[] {
 
 /**
  * Family history for a life born in the past: a father who served in a war before you were
- * born, a grandfather from an older one. Flavor lines plus a note on the father for the AI.
+ * born, a grandfather from an older one. Flavor lines plus a note on the father.
  */
 function familyWarLines(g: GameState, father: Person | undefined, mother: Person | undefined, year: number): string[] {
   const out: string[] = []
@@ -1644,7 +1644,7 @@ const SEXUALITY = defineScript('life.sexuality', (g, choice) => {
 function midlifeCrisis(g: GameState): void {
   const c = g.character
   if (g.flags.midlifeCrisis || c.age < 40 || c.age > 55 || inPrison(g)) return
-  // One per life: skip if the event library or the AI already gave us one.
+  // One per life: skip if the event library already gave us one.
   if (g.log.some((y) => y.entries.some((e) => /mid-?life crisis/i.test(e.text)))) {
     g.flags.midlifeCrisis = true
     return
@@ -1725,7 +1725,7 @@ function grandparenthood(g: GameState): void {
   const fresh = grandkids.filter((p) => !seen.includes(p.id))
   if (fresh.length === 0) return
   // The relationships module usually announces births itself; only fill the gaps
-  // (grandchildren added by events, the AI or other modules).
+  // (grandchildren added by events or other modules).
   const entries = currentLogYear(g).entries
   let first = seen.length === 0 && g.flags.hadGrandchild !== true
   for (const kid of fresh) {

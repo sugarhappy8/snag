@@ -1,31 +1,34 @@
 // Management actions on an owned business: marketing, products, quality, expansion, money,
 // leadership and the exits. Each action re-reads the business from state when it runs.
-import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, useYearAction } from '../core'
+import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { chance, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { TechId } from '../history/timeline'
-import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
+import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
-import { becomeCeo, ceoPayNorm, installManager, managerCandidate, managerName, maxOwnerSalary, stepDown } from './career'
+import { baseManagerValue, becomeCeo, ceoPayNorm, ceoSeverance, ceoValue, handOver, headhunterFee, managerName, maxOwnerSalary, optimizerGain, ownerTakesOver, shortlist, SMART_SKILL, STYLE_INFO, styleOf, type SearchKind } from './career'
 import {
   bestPlan,
   bizWorth,
   ceoSkill,
+  citySaturation,
+  densityRent,
   equipmentValue,
   fxValue,
   insurancePremiumFor,
   LASTING_YEARS,
+  LINE_RENT,
+  lineCost,
+  linesOf,
   localEcon,
   maxProduction,
   planFor,
   priceBounds,
-  productsBoost,
   refreshValue,
   startupCost,
-  staffPower,
   valuationOf,
   type Worth,
 } from './economy'
@@ -33,16 +36,24 @@ import { eventChance } from './events'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
-import { earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
-import { bizHas, eraFits, eraNote } from './era'
-import { boardNodes } from './board'
+import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
+import { techView } from './deeptech-core'
+import { maxPrograms } from './deeptech-rd'
+import { bizHas, eraNote } from './era'
+import { boardAllows, boardNodes, hasBoard, needsVote, passOdds, vote, type Proposal } from './board'
+import { briefNodes, passHint, payDividend } from './board-menu'
+import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
+import { debtComfort, lowerFirst, oddsText, payableCash, payCap, refusedThisYear, sustainablePayout } from './board-vote'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
-import { industryDef } from './industries'
-import { bizOf, ceoJob, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Manager, type Supplier } from './state'
+import { industryDef, lineOf } from './industries'
+import { complexityShare, PRODUCT_LIFE, productIdeas, productLift, rangeBoost } from './products'
+import { bestRdBudget, rdBase, rdCrowding, rdMinBudget, rdProjects, rdQuote, retireLines, retireOrder, roundBudget, startRd } from './rd'
+import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
+import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
-import { aPct, clampN, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
+import { clampN, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -94,7 +105,8 @@ function cachedHint<T>(g: GameState, a: Asset, what: string, make: () => T): T {
   if (hintCache.has(key)) return hintCache.get(key) as T
   const v = make()
   hintCache.set(key, v)
-  if (hintCache.size > 64) {
+  // Room for a whole Locations screen of what-ifs (payback per city, best counts) per company.
+  if (hintCache.size > 256) {
     const first = hintCache.keys().next().value
     if (first !== undefined) hintCache.delete(first)
   }
@@ -273,15 +285,18 @@ function bestCampaign(g: GameState, a: Asset): { id: string; value: number } | n
   })
 }
 
+/** Marketing budgets the Business talent compares (multiples of the industry's normal spend). */
+const BUDGET_LEVELS = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3]
+
 /** Next year's expected profit at each marketing budget, plus the brand each builds for later. */
 function budgetValues(g: GameState, a: Asset): Record<string, number> {
   return cachedHint(g, a, 'budget', () => {
     const b = readBiz(g, a)
     const w = bizWorth(g, b)
     const out: Record<string, number> = {}
-    for (const x of BUDGETS) {
-      const p = bestPlan(g, { ...b, marketingLevel: x.level }, { fast: true })
-      out[String(x.level)] = p.profit + (x.level - b.marketingLevel) * 8 * w.brand * TARGET_SHARE
+    for (const level of [...new Set([...BUDGET_LEVELS, b.marketingLevel])]) {
+      const p = bestPlan(g, { ...b, marketingLevel: level }, { fast: true })
+      out[String(level)] = p.profit + (level - b.marketingLevel) * 8 * w.brand * TARGET_SHARE
     }
     return out
   })
@@ -291,8 +306,18 @@ function bestBudget(g: GameState, a: Asset): { level: number; gain: number } {
   const v = budgetValues(g, a)
   const cur = readBiz(g, a).marketingLevel
   let level = cur
-  for (const x of BUDGETS) if ((v[String(x.level)] ?? -Infinity) > (v[String(level)] ?? -Infinity) + 1) level = x.level
+  for (const x of BUDGET_LEVELS) if ((v[String(x)] ?? -Infinity) > (v[String(level)] ?? -Infinity) + 1) level = x
   return { level, gain: (v[String(level)] ?? 0) - (v[String(cur)] ?? v[String(level)] ?? 0) }
+}
+
+/** The live caption under the marketing budget slider (percent of a normal spend). */
+function budgetPreview(g: GameState, a: Asset, pctOfNormal: number): string {
+  const b = readBiz(g, live(g, a))
+  const def = industryDef(b.industry)
+  const level = clampN(pctOfNormal / 100, 0, 3)
+  const revenue = Math.max(0, b.last?.revenue ?? 0)
+  const spend = revenue * def.marketingShare * level
+  return `${Math.round(level * 100)}% of a normal spend (${budgetLabel(level).toLowerCase()}) · ${pct(def.marketingShare * level, 1)} of sales${revenue > 0 ? ` · about ${money(spend)} a year at last year's sales` : ''}${level > b.marketingLevel ? ' · builds the brand' : level < b.marketingLevel ? ' · the brand will drift down' : ''}`
 }
 
 const BUDGETS: { level: number; label: string }[] = [
@@ -335,24 +360,33 @@ function marketingMenu(a: Asset): MenuGroup {
       const nodes: MenuNode[] = [{ type: 'heading', id: `biz.campH.${a.id}`, label: 'Campaigns (2 a year)' }]
       for (const c of CAMPAIGNS) nodes.push(campaignAction(a, c, b, g))
       nodes.push({ type: 'heading', id: `biz.budgetH.${a.id}`, label: 'Yearly budget' })
-      for (const x of BUDGETS) {
-        nodes.push(
-          act(a, `budget.${x.level}`, `${x.label}${budgetLabel(b.marketingLevel) === x.label ? ' (current)' : ''}`, x.level === 0 ? '\u{1F507}' : x.level >= 2 ? '\u{1F4E2}' : '\u{1F509}', {
-            subtitle: `${pct(def.marketingShare * x.level, 1)} of sales`,
-            hint: (gg) => {
-              const cur = live(gg, a)
-              if (!hinting(gg, cur) || !priceAndOutput(readBiz(gg, cur))) return null
-              const best = bestBudget(gg, cur)
-              if (best.level !== x.level) return null
-              return talentHint(gg, 'Business', best.level === readBiz(gg, cur).marketingLevel ? 'Best budget: keep it here' : `Best budget: about ${money(best.gain)} more profit a year, brand included`)
-            },
-            run: (gg, cur, bb) => {
-              bb.marketingLevel = x.level
-              notice(gg, 'Marketing Budget', `${cur.name} will now spend ${pct(def.marketingShare * x.level, 1)} of its sales on marketing.`, { emoji: '\u{1F4E3}' })
-            },
-          }),
-        )
-      }
+      nodes.push(
+        act(a, 'budget', 'Set the Yearly Budget', b.marketingLevel <= 0 ? '\u{1F507}' : b.marketingLevel >= 2 ? '\u{1F4E2}' : '\u{1F509}', {
+          subtitle: `${budgetLabel(b.marketingLevel)} (${Math.round(b.marketingLevel * 100)}% of a normal spend) · ${pct(def.marketingShare * b.marketingLevel, 1)} of sales`,
+          hint: (gg) => {
+            const cur = live(gg, a)
+            if (!hinting(gg, cur) || !priceAndOutput(readBiz(gg, cur))) return null
+            const best = bestBudget(gg, cur)
+            const now = readBiz(gg, cur).marketingLevel
+            if (Math.abs(best.level - now) < 0.01 || best.gain < 500) return talentHint(gg, 'Business', 'Best budget: keep it about here')
+            return talentHint(gg, 'Business', `Best budget: about ${Math.round(best.level * 100)}% of a normal spend (${budgetLabel(best.level).toLowerCase()}), about ${money(best.gain)} more profit a year, brand included`)
+          },
+          input: {
+            kind: 'slider',
+            label: 'Marketing budget (% of a normal spend)',
+            min: 0,
+            max: 300,
+            step: 5,
+            defaultValue: () => String(Math.round(b.marketingLevel * 100)),
+            preview: (gg, v) => budgetPreview(gg, a, v),
+          },
+          run: (gg, cur, bb, input) => {
+            const level = Math.round(clampN(Number(input), 0, 300) / 5) * 0.05
+            bb.marketingLevel = clampN(Math.round(level * 100) / 100, 0, 3)
+            notice(gg, 'Marketing Budget', `${cur.name} will now spend ${pct(def.marketingShare * bb.marketingLevel, 1)} of its sales on marketing (${budgetLabel(bb.marketingLevel).toLowerCase()}).`, { emoji: '\u{1F4E3}' })
+          },
+        }),
+      )
       return nodes
     },
   }
@@ -361,34 +395,60 @@ function marketingMenu(a: Asset): MenuGroup {
 // ---------------------------------------------------------------------------
 // Products
 
-function rdCost(b: BizState): number {
-  const e = localEcon(b.industry, b.countryId, b.city)
-  return Math.round(Math.max(e.capital * 0.12, Math.max(0, b.last?.revenue ?? 0) * 0.05))
+/** Chance a project at a normal budget works (business/rd.ts). */
+export { launchP } from './rd'
+
+/** Lines shown one by one in the products menu; the rest are summarized. */
+const TOP_LINES = 6
+/** Ideas on the drawing board at a time (launch one and the next appears). */
+const IDEAS_SHOWN = 5
+
+function yearsWord(n: number): string {
+  return n <= 1 ? 'about a year' : `about ${n} years`
 }
 
-/** Chance a launch works (the same odds launchProduct rolls). */
-export function launchP(g: GameState, b: BizState): number {
-  return clampN(0.25 + ceoSkill(g, b) / 250 + b.quality / 300 + 0.1 * staffPower(b, 'quality'), 0.1, 0.9)
+/** The live caption under an R&D budget slider (pure). */
+function rdPreview(g: GameState, a: Asset, budget: number): string {
+  const b = readBiz(g, live(g, a))
+  const q = rdQuote(g, b, budget)
+  const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, `${Math.round(q.odds * 100)}% odds`, `+${Math.round(q.boost * 100)}% demand while fresh if it works`]
+  const dev = rdProjects(b).length
+  if (dev) parts.push(dev === 1 ? 'the project already in development stretches the team' : `${dev} projects already in development stretch the team`)
+  return parts.join(' · ')
 }
 
-/** A hit (15% of launches) is 1.8x the boost and 8 brand instead of 3. */
-const HIT_P = 0.15
+/** The Business talent's best R&D budget for this company (cached per company state). */
+function bestBudgetFor(g: GameState, a: Asset): ReturnType<typeof bestRdBudget> {
+  return cachedHint(g, a, 'rdBudget', () => bestRdBudget(g, readBiz(g, a)))
+}
 
-/**
- * Expected value of launching a product now: the extra demand while it's fresh (fading 10% a
- * year, capped across all lines) and the brand, against the R&D bill and the odds of a flop.
- */
-function launchValue(g: GameState, b: BizState): { value: number; p: number } {
-  const def = industryDef(b.industry)
-  const w = bizWorth(g, b)
-  const p = launchP(g, b)
-  const boost = 0.1 * (0.6 + def.growth) * (1 + HIT_P * 0.8)
-  const now = productsBoost(b, g.year)
-  const after = productsBoost({ ...b, products: [...b.products, { name: '·', launched: g.year, boost }] }, g.year)
-  const lifetime = 3.3
-  const win = (after - now) * w.contrib * lifetime + fxValue(g, b, w, { brand: 3 * (1 - HIT_P) + 8 * HIT_P })
-  const value = p * win + (1 - p) * fxValue(g, b, w, { brand: -2 }) - rdCost(b)
-  return { value, p }
+function ideaAction(a: Asset, b0: BizState, idea: string, first: boolean): MenuAction {
+  const min = rdMinBudget(b0)
+  const max = Math.max(min, Math.floor(Math.max(0, b0.cash)))
+  const normal = roundBudget(rdBase(b0) * rdCrowding(b0))
+  return act(a, `launch.${idea}`, idea, '\u{1F9EA}', {
+    hint: (gg) => {
+      const cur = live(gg, a)
+      if (!first || !hinting(gg, cur)) return null
+      const best = bestBudgetFor(gg, cur)
+      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, worth about ${money(best.value)} on average)` : 'Hold off on R&D: no budget would earn back what it costs right now')
+    },
+    subtitle: `Normal R&D budget about ${money(normal)}`,
+    disabled: (_g, bb) => (bb.cash < rdMinBudget(bb) ? `Needs at least ${money(rdMinBudget(bb))} of company cash.` : null),
+    input: {
+      kind: 'slider',
+      money: true,
+      label: `R&D budget for ${idea}`,
+      min,
+      max,
+      defaultValue: () => String(Math.min(max, Math.max(min, normal))),
+      preview: (gg, v) => rdPreview(gg, a, v),
+    },
+    run: (gg, cur, bb, input) => {
+      const budget = Math.round(clampN(Number(input) || normal, rdMinBudget(bb), Math.max(rdMinBudget(bb), bb.cash)))
+      startRd(gg, cur, bb, idea, budget)
+    },
+  })
 }
 
 function productsMenu(a: Asset): MenuGroup {
@@ -398,31 +458,44 @@ function productsMenu(a: Asset): MenuGroup {
     label: 'Products',
     emoji: '\u{1F9EA}',
     subtitle: (g) => {
-      const n = readBiz(g, a).products.length
-      return n ? `${plural(n, 'product line')}` : 'Launch something new'
+      const b = readBiz(g, a)
+      const n = b.products.length
+      const dev = rdProjects(b).length
+      const parts = [n ? plural(n, 'product line') : 'No lines yet']
+      if (dev) parts.push(`${dev} in development`)
+      return parts.join(' · ')
     },
     disabledReason: (g) => manageBlock(g, a),
     hint: (g) => {
       const cur = live(g, a)
       if (!hinting(g, cur)) return null
       const b = readBiz(g, cur)
-      if (b.products.length >= 6) return talentHint(g, 'Business', 'Retire your most faded line to make room for a fresh one')
-      const v = cachedHint(g, cur, 'launch', () => launchValue(g, b))
-      return talentHint(g, 'Business', v.value > 0 ? `Launch something this year: about ${aPct(v.p)} chance it works, worth ${money(v.value)} on average` : 'Hold off on launches: the R&D would cost more than a new line earns')
+      const trim = linesToRetire(g, b)
+      if (trim > 0) return talentHint(g, 'Business', `Retire your ${trim === 1 ? 'most faded line' : `${trim} most faded lines`}: they cost more to run than they sell`)
+      const best = bestBudgetFor(g, cur)
+      return talentHint(g, 'Business', best ? `Fund a project: about ${money(best.budget)} is the best budget (${Math.round(best.odds * 100)}% odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: a new line would cost more than it earns right now')
     },
-    header: (g) => `${isDeepTech(readBiz(g, a)) ? 'Launching a product line' : 'R&D for a launch'} costs about ${money(rdCost(readBiz(g, a)))}. Success depends on whoever runs the company, product quality and your quality team. Fresh products draw customers; old ones fade.`,
+    header: (g) => {
+      const b = readBiz(g, a)
+      const share = complexityShare(b.products.length)
+      return [
+        `${b.products.length ? `${plural(b.products.length, 'line')} on sale.` : 'No product lines on sale yet.'} Fresh lines draw customers; each one adds a bit less than the last (they compete with each other), they fade with age and retire after ${PRODUCT_LIFE} years.`,
+        `${share > 0 ? `Running this range costs about ${pct(share, 1)} of sales a year (packaging, stock, shelf space); more lines cost more each.` : 'A big range costs money to run: packaging, stock and shelf space.'}`,
+        `Fund as many projects as you can pay for: a bigger budget is faster, likelier to work and makes a stronger product, with diminishing returns. A normal budget here is about ${money(roundBudget(rdBase(b) * rdCrowding(b)))}.`,
+      ].join('\n')
+    },
     children: (g) => {
       const b = readBiz(g, a)
-      const def = industryDef(b.industry)
       const nodes: MenuNode[] = []
       if (b.products.length) {
-        nodes.push({ type: 'heading', id: `biz.prodH.${a.id}`, label: 'Current lines' })
-        const faded = [...b.products].sort((x, y) => x.boost * Math.max(0.25, 1 - 0.1 * (g.year - x.launched)) - y.boost * Math.max(0.25, 1 - 0.1 * (g.year - y.launched)))[0]
-        for (const p of b.products) {
+        nodes.push({ type: 'heading', id: `biz.prodH.${a.id}`, label: `On sale (${b.products.length})` })
+        const order = retireOrder(b.products, g.year)
+        const faded = order[0]
+        const top = [...b.products].sort((x, y) => productLift(y, g.year) - productLift(x, g.year) || y.launched - x.launched).slice(0, TOP_LINES)
+        for (const p of top) {
           nodes.push(
             act(a, `retire.${p.name}`, p.name, '\u{1F4E6}', {
-              hint: (gg) => (b.products.length >= 6 && faded?.name === p.name && hinting(gg, live(gg, a)) ? talentHint(gg, 'Business', 'Retire this one to make room: it barely moves demand now') : null),
-              subtitle: `Launched ${p.launched} · +${Math.round(p.boost * Math.max(0.25, 1 - 0.1 * Math.max(0, g.year - p.launched)) * 100)}% demand · tap to retire`,
+              subtitle: `Launched ${p.launched} · +${Math.round(productLift(p, g.year) * 100)}% demand now · tap to retire`,
               confirm: () => `Retire the ${p.name} line?`,
               run: (gg, cur, bb) => {
                 bb.products = bb.products.filter((x) => x.name !== p.name)
@@ -431,55 +504,81 @@ function productsMenu(a: Asset): MenuGroup {
             }),
           )
         }
+        if (b.products.length > top.length) nodes.push({ type: 'info', id: `biz.prodMore.${a.id}`, text: `…and ${plural(b.products.length - top.length, 'more line')}. The most faded: ${faded?.name ?? '-'}.`, emoji: '\u{1F4DA}' })
+        nodes.push(retireAction(a, b))
       }
-      nodes.push({ type: 'heading', id: `biz.launchH.${a.id}`, label: 'Launch a new product' })
-      // Ideas the year allows (no fitness app before smartphones, no online delivery before the web).
-      const ideas = def.products.filter((x) => !b.products.some((p) => p.name === x) && eraFits(g, b.countryId, x))
+      const dev = rdProjects(b)
+      if (dev.length) {
+        nodes.push({ type: 'heading', id: `biz.devH.${a.id}`, label: `In development (${dev.length})` })
+        for (const p of dev.slice(0, TOP_LINES)) {
+          const left = Math.max(0, p.years - p.progress)
+          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${Math.round(p.odds * 100)}% odds · ${money(p.budget)} budget` })
+        }
+        if (dev.length > TOP_LINES) nodes.push({ type: 'info', id: `biz.devMore.${a.id}`, emoji: '\u{1F52C}', text: `…and ${plural(dev.length - TOP_LINES, 'more project')}.` })
+      }
+      nodes.push({ type: 'heading', id: `biz.launchH.${a.id}`, label: 'Develop a new product' })
+      // An endless stream the year allows (no fitness app before smartphones, no web shop before the web).
+      const ideas = productIdeas(g, b, IDEAS_SHOWN)
       if (!ideas.length) nodes.push({ type: 'info', id: `biz.launchNone.${a.id}`, text: 'Nothing new on the drawing board that the world is ready for yet.', emoji: '\u{1F4AD}' })
-      for (const idea of ideas) {
-        nodes.push(
-          act(a, `launch.${idea}`, idea, '\u{1F680}', {
-            hint: (gg) => {
-              const cur = live(gg, a)
-              if (idea !== ideas[0] || !hinting(gg, cur)) return null
-              const bb = readBiz(gg, cur)
-              if (bb.products.length >= 6) return null
-              const v = cachedHint(gg, cur, 'launch', () => launchValue(gg, bb))
-              return v.value > 0 ? talentHint(gg, 'Business', `Launch this one next: about ${aPct(v.p)} chance it works, worth ${money(v.value)} on average`) : null
-            },
-            subtitle: `R&D about ${money(rdCost(b))}`,
-            disabled: (_g, bb) => (bb.products.length >= 6 ? 'Six product lines is plenty. Retire one first.' : null),
-            run: (gg, cur, bb) => launchProduct(gg, cur, bb, idea),
-          }),
-        )
-      }
+      ideas.forEach((idea, i) => nodes.push(ideaAction(a, b, idea, i === 0)))
       return nodes
     },
   }
 }
 
-function launchProduct(g: GameState, a: Asset, b: BizState, idea: string): void {
-  if (!useYearAction(g, `biz.launch.${a.id}`, 1)) return tooBusy(g, `launched a product at ${a.name}`)
-  const cost = rdCost(b)
-  if (b.cash < cost) return noCash(g, a, cost, 'the R&D')
-  b.cash -= cost
-  b.yearCosts += cost
-  const def = industryDef(b.industry)
-  const p = launchP(g, b)
-  if (!chance(g, p)) {
-    b.brand = clampN(b.brand - 2, 0, 100)
-    log(g, `${a.name}'s ${idea} flopped.`, 'bad')
-    notice(g, 'Flop', `${idea} launched to a deafening silence. ${formatMoney(cost)} of R&D, gone. The warehouse is full of merch nobody wants.`, { emoji: '\u{1F4A5}', tone: 'bad' })
-    return
+/**
+ * How many of the most faded lines cost more to keep than they bring in (the complexity they add
+ * against the demand they still pull), for the Business talent. Pure.
+ */
+function linesToRetire(g: GameState, b: BizState): number {
+  if (b.products.length < 2 || !priceAndOutput(b)) return 0
+  const w = bizWorth(g, b)
+  const order = retireOrder(b.products, g.year)
+  let keep = [...b.products]
+  let n = 0
+  for (const p of order) {
+    const without = keep.filter((x) => x !== p)
+    const lost = (rangeBoost(b.industry, keep, g.year) - rangeBoost(b.industry, without, g.year)) * w.contrib
+    const saved = (complexityShare(keep.length) - complexityShare(without.length)) * Math.max(0, w.revenue)
+    if (saved <= lost) break
+    keep = without
+    n += 1
   }
-  const hit = chance(g, HIT_P)
-  const boost = Math.round((0.05 + rand(g) * 0.1) * (0.6 + def.growth) * (hit ? 1.8 : 1) * 1000) / 1000
-  b.products.push({ name: idea, launched: g.year, boost })
-  b.brand = clampN(b.brand + (hit ? 8 : 3), 0, 100)
-  log(g, `${a.name} launched ${idea}${hit ? ' and it was a smash hit' : ''}.`, 'good')
-  notice(g, hit ? 'Smash Hit!' : 'Product Launched', `${idea} is out (${formatMoney(cost)} in R&D). ${hit ? 'Customers are lining up around the block.' : 'Early reviews are solid.'} Expect about ${Math.round(boost * 100)}% more demand while it's fresh.`, {
-    emoji: hit ? '\u{1F525}' : '\u{1F680}',
-    tone: 'good',
+  return n
+}
+
+function retireAction(a: Asset, b0: BizState): MenuAction {
+  const max = Math.max(1, b0.products.length)
+  return act(a, 'retireMany', 'Retire Faded Lines', '\u{1F5D1}\u{FE0F}', {
+    subtitle: 'The most faded go first',
+    hint: (gg) => {
+      const cur = live(gg, a)
+      if (!hinting(gg, cur)) return null
+      const n = linesToRetire(gg, readBiz(gg, cur))
+      return n > 0 ? talentHint(gg, 'Business', `Retire ${plural(n, 'line')}: ${n === 1 ? 'it costs' : 'they cost'} more to run than ${n === 1 ? 'it sells' : 'they sell'}`) : null
+    },
+    input: {
+      kind: 'slider',
+      label: 'How many lines to retire?',
+      min: 1,
+      max,
+      defaultValue: () => '1',
+      preview: (gg, v) => {
+        const b = readBiz(gg, live(gg, a))
+        const n = Math.max(0, Math.min(b.products.length, Math.round(v)))
+        const gone = retireOrder(b.products, gg.year).slice(0, n)
+        const saved = complexityShare(b.products.length) - complexityShare(b.products.length - n)
+        const names = gone.slice(0, 3).map((p) => p.name).join(', ')
+        return `${names}${n > 3 ? ` and ${n - 3} more` : ''} · saves about ${pct(saved, 1)} of sales in running costs`
+      },
+    },
+    run: (gg, cur, bb, input) => {
+      const n = Math.round(clampN(Number(input) || 1, 1, bb.products.length))
+      const gone = retireLines(bb, n, gg.year)
+      if (!gone.length) return
+      log(gg, `${cur.name} retired ${plural(gone.length, 'product line')}.`)
+      notice(gg, 'Lines Retired', `${cur.name} discontinued ${gone.slice(0, 4).join(', ')}${gone.length > 4 ? ` and ${gone.length - 4} more` : ''}. The warehouse has room again, and a few loyal fans are writing angry letters.`, { emoji: '\u{1F5D1}\u{FE0F}' })
+    },
   })
 }
 
@@ -494,6 +593,24 @@ const SUPPLIERS: { id: Supplier; label: string; note: string }[] = [
 
 const SUPPLIER_COST: Record<Supplier, number> = { budget: 0.86, standard: 1, premium: 1.18 }
 const SUPPLIER_QUALITY: Record<Supplier, number> = { budget: -12, standard: 0, premium: 12 }
+
+/** The k-th repeat of an upgrade or program in a year costs more (k = done already this year). */
+function repeatCost(k: number): number {
+  return 1 + 0.5 * Math.max(0, k)
+}
+
+/** ...and gets less out of it (diminishing returns). */
+function repeatGain(k: number): number {
+  return 1 / (1 + 0.5 * Math.max(0, k))
+}
+
+function upgradeCost(b: BizState, k: number): number {
+  return Math.round(equipmentValue(b) * 0.12 * repeatCost(k))
+}
+
+function trainingCost(b: BizState, k: number): number {
+  return Math.round(Math.max(1, b.employees) * 450 * localEcon(b.industry, b.countryId, b.city).level * repeatCost(k))
+}
 
 /** What switching supplier is worth over a few years: cheaper inputs against where quality settles. */
 function supplierValue(b: BizState, w: Worth, s: Supplier): number {
@@ -512,8 +629,10 @@ function qualityMenu(a: Asset): MenuGroup {
     header: () => 'Better quality lets you charge more and keeps customers coming back. It drifts toward what your suppliers, staff and morale can sustain.',
     children: (g) => {
       const b = readBiz(g, a)
-      const upgrade = Math.round(equipmentValue(b) * 0.12)
-      const training = Math.round(Math.max(1, b.employees) * 450 * localEcon(b.industry, b.countryId, b.city).level)
+      const ups = yearActionsUsed(g, `biz.upgrade.${a.id}`)
+      const trains = yearActionsUsed(g, `biz.training.${a.id}`)
+      const upgrade = upgradeCost(b, ups)
+      const training = trainingCost(b, trains)
       const worth = (gg: GameState, fx: Parameters<typeof fxValue>[3]) => {
         const bb = readBiz(gg, live(gg, a))
         return fxValue(gg, bb, bizWorth(gg, bb), fx)
@@ -534,31 +653,33 @@ function qualityMenu(a: Asset): MenuGroup {
       }
       const nodes: MenuNode[] = [
         act(a, 'upgrade', 'Upgrade Equipment', '\u{1F6E0}\u{FE0F}', {
-          hint: (gg) => (hinting(gg, live(gg, a)) ? worthIt(gg, worth(gg, { cash: -upgrade, quality: 8.5 })) : null),
-          subtitle: `About ${money(upgrade)}`,
+          hint: (gg) => (hinting(gg, live(gg, a)) ? worthIt(gg, worth(gg, { cash: -upgrade, quality: 8.5 * repeatGain(ups) })) : null),
+          subtitle: `About ${money(upgrade)}${ups > 0 ? ` · upgrade ${ups + 1} this year: dearer, smaller gains` : ''}`,
           run: (gg, cur, bb) => {
-            if (!useYearAction(gg, `biz.upgrade.${cur.id}`, 1)) return tooBusy(gg, `upgraded ${cur.name}'s equipment`)
-            const cost = Math.round(equipmentValue(bb) * 0.12)
+            const k = yearActionsUsed(gg, `biz.upgrade.${cur.id}`)
+            const cost = upgradeCost(bb, k)
             if (bb.cash < cost) return noCash(gg, cur, cost, 'new equipment')
+            useYearAction(gg, `biz.upgrade.${cur.id}`, Number.MAX_SAFE_INTEGER)
             bb.cash -= cost
             bb.yearCosts += cost
-            const gain = randInt(gg, 6, 11)
+            const gain = Math.max(1, Math.round(randInt(gg, 6, 11) * repeatGain(k)))
             bb.quality = clampN(bb.quality + gain, 0, 100)
-            notice(gg, 'Upgraded', `Shiny new equipment at ${cur.name} (${formatMoney(cost)}). Quality is up to ${bb.quality}%.`, { emoji: '\u{1F6E0}\u{FE0F}', tone: 'good' })
+            notice(gg, 'Upgraded', `Shiny new equipment at ${cur.name} (${formatMoney(cost)}). Quality is up to ${bb.quality}%.${k > 0 ? ' Each extra upgrade this year buys a little less.' : ''}`, { emoji: '\u{1F6E0}\u{FE0F}', tone: 'good' })
           },
         }),
         act(a, 'training', 'Staff Training Program', '\u{1F393}', {
-          hint: (gg) => (hinting(gg, live(gg, a)) ? worthIt(gg, worth(gg, { cash: -training, quality: 4.5, morale: 3.5 })) : null),
-          subtitle: `About ${money(training)}`,
+          hint: (gg) => (hinting(gg, live(gg, a)) ? worthIt(gg, worth(gg, { cash: -training, quality: 4.5 * repeatGain(trains), morale: 3.5 * repeatGain(trains) })) : null),
+          subtitle: `About ${money(training)}${trains > 0 ? ` · program ${trains + 1} this year: dearer, smaller gains` : ''}`,
           run: (gg, cur, bb) => {
-            if (!useYearAction(gg, `biz.training.${cur.id}`, 1)) return tooBusy(gg, `run a training program at ${cur.name}`)
-            const cost = Math.round(Math.max(1, bb.employees) * 450 * localEcon(bb.industry, bb.countryId, bb.city).level)
+            const k = yearActionsUsed(gg, `biz.training.${cur.id}`)
+            const cost = trainingCost(bb, k)
             if (bb.cash < cost) return noCash(gg, cur, cost, 'the training')
+            useYearAction(gg, `biz.training.${cur.id}`, Number.MAX_SAFE_INTEGER)
             bb.cash -= cost
             bb.yearCosts += cost
-            bb.quality = clampN(bb.quality + randInt(gg, 3, 6), 0, 100)
-            bb.morale = clampN(bb.morale + randInt(gg, 2, 5), 0, 100)
-            notice(gg, 'Training Done', `Everyone at ${cur.name} sat through a training program (${formatMoney(cost)}). Quality ${bb.quality}%, morale ${bb.morale}%.`, { emoji: '\u{1F393}', tone: 'good' })
+            bb.quality = clampN(bb.quality + Math.max(1, Math.round(randInt(gg, 3, 6) * repeatGain(k))), 0, 100)
+            bb.morale = clampN(bb.morale + Math.max(0, Math.round(randInt(gg, 2, 5) * repeatGain(k))), 0, 100)
+            notice(gg, 'Training Done', `Everyone at ${cur.name} sat through a training program (${formatMoney(cost)}). Quality ${bb.quality}%, morale ${bb.morale}%.${k > 0 ? ' The staff are starting to recognize the slides.' : ''}`, { emoji: '\u{1F393}', tone: 'good' })
           },
         }),
         { type: 'heading', id: `biz.supH.${a.id}`, label: 'Supplier contract' },
@@ -590,18 +711,88 @@ export function expansionCost(b: BizState, countryId: string, city: string, n: n
   return Math.round(cost.capital * n + (newCountry ? cost.fee + cost.permits : Math.round(cost.fee * 0.2)))
 }
 
-/** Years one more location in a city takes to pay for itself (Infinity: never), from the planner. */
-function payback(g: GameState, a: Asset, countryId: string, city: string): number {
-  return cachedHint(g, a, `payback.${countryId}.${city}`, () => {
+/** Most outlets one purchase can open (repeat it as often as the cash allows). */
+const MAX_OPEN_AT_ONCE = 100_000
+
+/** Most outlets the company's cash pays for in a city right now (fees included). */
+export function maxAffordable(b: BizState, countryId: string, city: string): number {
+  const each = startupCost(b.industry, countryId, city).capital
+  if (!(each > 0)) return 0
+  const n = Math.floor((Math.max(0, b.cash) - expansionCost(b, countryId, city, 0)) / each)
+  return Math.round(clampN(n, 0, MAX_OPEN_AT_ONCE))
+}
+
+/** The company with `n` more outlets in a city (a copy for what-ifs). */
+function withOutlets(b: BizState, countryId: string, city: string, n: number, year: number): BizState {
+  const outlets = b.outlets.some((o) => o.countryId === countryId && o.city === city)
+    ? b.outlets.map((o) => (o.countryId === countryId && o.city === city ? { ...o, count: o.count + n } : o))
+    : [...b.outlets, { countryId, city, count: n, opened: year }]
+  return { ...b, outlets: outlets.filter((o) => o.count > 0) }
+}
+
+/** Next year's expected profit change from `n` more outlets in a city (the planner, no RNG). */
+function expansionGain(g: GameState, a: Asset, countryId: string, city: string, n: number): number {
+  return cachedHint(g, a, `gain.${countryId}.${city}.${n}`, () => {
     const b = readBiz(g, a)
-    if (!isIndustryLegal(countryId, b.industry)) return Infinity
+    if (!isIndustryLegal(countryId, b.industry)) return -Infinity
     const base = cachedHint(g, a, 'payback.base', () => bestPlan(g, b, { fast: true }).profit)
-    const outlets = b.outlets.some((o) => o.countryId === countryId && o.city === city)
-      ? b.outlets.map((o) => (o.countryId === countryId && o.city === city ? { ...o, count: o.count + 1 } : o))
-      : [...b.outlets, { countryId, city, count: 1, opened: g.year }]
-    const gain = bestPlan(g, { ...b, outlets }, { fast: true }).profit - base
-    return gain > 0 ? expansionCost(b, countryId, city, 1) / gain : Infinity
+    return bestPlan(g, withOutlets(b, countryId, city, n, g.year), { fast: true }).profit - base
   })
+}
+
+/** Years `n` more locations in a city take to pay for themselves (Infinity: never), from the planner. */
+function payback(g: GameState, a: Asset, countryId: string, city: string, n = 1): number {
+  const gain = expansionGain(g, a, countryId, city, n)
+  return gain > 0 ? expansionCost(readBiz(g, a), countryId, city, n) / gain : Infinity
+}
+
+/** Years a marginal outlet must pay back within to be worth opening (the best-count hint). */
+const MARGIN_YEARS = 5
+
+/** Counts the best-count search tries (then the affordable maximum). */
+const COUNT_GRID = [1, 2, 3, 5, 8, 12, 20, 30, 50, 80, 120, 200, 300, 500, 800, 1_200, 2_000, 3_000, 5_000, 8_000, 12_000, 20_000]
+
+/**
+ * The number of new outlets in a city that adds the most value (profit over MARGIN_YEARS minus
+ * what they cost), among those the company can pay for. Null when even one wouldn't pay.
+ */
+function bestCount(g: GameState, a: Asset, countryId: string, city: string): { n: number; years: number } | null {
+  return cachedHint(g, a, `bestCount.${countryId}.${city}`, () => {
+    const b = readBiz(g, a)
+    const max = Math.max(1, maxAffordable(b, countryId, city))
+    const tries = [...new Set([...COUNT_GRID.filter((n) => n <= max), max])]
+    let best: { n: number; years: number; value: number } | null = null
+    for (const n of tries) {
+      const gain = expansionGain(g, a, countryId, city, n)
+      const cost = expansionCost(b, countryId, city, n)
+      const value = gain * MARGIN_YEARS - cost
+      if (gain > 0 && value > 0 && (!best || value > best.value)) best = { n, years: cost / gain, value }
+    }
+    return best ? { n: best.n, years: best.years } : null
+  })
+}
+
+/** The live caption under the "how many outlets" slider (pure: the planner never rolls dice). */
+function openPreview(g: GameState, a: Asset, countryId: string, city: string, n: number): string {
+  const cur = live(g, a)
+  const b = readBiz(g, cur)
+  const def = industryDef(b.industry)
+  const k = Math.max(1, Math.round(n))
+  const e = localEcon(b.industry, countryId, city)
+  const here = b.outlets.find((o) => o.countryId === countryId && o.city === city)?.count ?? 0
+  const cs = citySaturation(e, countryId, city)
+  const rent = (here + k) * e.rent * densityRent(here + k, cs) - here * e.rent * densityRent(here, cs)
+  const parts = [`${plural(k, def.site, def.sitePlural)}: ${money(expansionCost(b, countryId, city, k))} up front`, `rent about ${money(rent)} a year`]
+  if (priceAndOutput(b)) {
+    const years = payback(g, cur, countryId, city, k)
+    parts.push(Number.isFinite(years) ? `pays back in ${yearsText(years)}` : here + k > cs ? 'would lose money: the market there can’t take that many' : 'would lose money there')
+  } else if (isStudio(b)) {
+    parts.push(`desks for ${plural(k * DEVS_PER_OFFICE, 'more developer')}`)
+  } else if (isDeepTech(b)) {
+    parts.push(`room for ${plural(maxPrograms(withOutlets(b, countryId, city, k, g.year), techView(b)), 'R&D program')} at once`)
+  }
+  if (here + k > cs) parts.push(`${city} is crowded: each one sells less and rents climb`)
+  return parts.join(' · ')
 }
 
 /** Most years a new location may take to pay back and still be worth suggesting. */
@@ -622,7 +813,9 @@ function bestHomeCity(g: GameState, a: Asset): { city: string; years: number } |
   return best
 }
 
-function openAction(a: Asset, countryId: string, city: string): MenuAction {
+function openAction(a: Asset, b0: BizState, countryId: string, city: string): MenuAction {
+  const def0 = industryDef(b0.industry)
+  const max = Math.max(1, maxAffordable(b0, countryId, city))
   return act(a, `open.${countryId}.${city}`, city, '\u{1F4CD}', {
     hint: (g) => {
       const cur = live(g, a)
@@ -630,7 +823,10 @@ function openAction(a: Asset, countryId: string, city: string): MenuAction {
       const b = readBiz(g, cur)
       if (countryId === b.countryId) {
         const best = bestHomeCity(g, cur)
-        return best && best.city === city ? talentHint(g, 'Business', `Best place to expand: a new location here pays for itself in ${yearsText(best.years)}`) : null
+        if (!best || best.city !== city) return null
+        const many = bestCount(g, cur, countryId, city)
+        if (many && many.n > 1) return talentHint(g, 'Business', `Best place to expand: about ${plural(many.n, `new ${def0.site}`, `new ${def0.sitePlural}`)} here pay for themselves in ${yearsText(many.years)}`)
+        return talentHint(g, 'Business', `Best place to expand: a new location here pays for itself in ${yearsText(best.years)}`)
       }
       const years = payback(g, cur, countryId, city)
       return years <= PAYBACK_MAX ? talentHint(g, 'Business', `Pays for itself in ${yearsText(years)}`) : null
@@ -638,16 +834,23 @@ function openAction(a: Asset, countryId: string, city: string): MenuAction {
     subtitle: (g) => {
       const b = readBiz(g, a)
       const here = b.outlets.find((o) => o.countryId === countryId && o.city === city)?.count ?? 0
-      return `${money(expansionCost(b, countryId, city, 1))} each${here ? ` · ${here} here now` : ''}`
+      return `${money(expansionCost(b, countryId, city, 1))} each${here ? ` · ${units(here)} here now` : ''}`
     },
-    input: { kind: 'number', label: 'How many new locations?', min: 1, max: 25, defaultValue: () => '1' },
+    disabled: (_g, b) => (maxAffordable(b, countryId, city) < 1 && isIndustryLegal(countryId, b.industry) ? `Not enough company cash: one new ${industryDef(b.industry).site} here costs ${money(expansionCost(b, countryId, city, 1))}.` : null),
+    input: {
+      kind: 'slider',
+      label: `How many new ${def0.sitePlural} in ${city}?`,
+      min: 1,
+      max,
+      defaultValue: () => '1',
+      preview: (g, v) => openPreview(g, a, countryId, city, v),
+    },
     run: (g, cur, b, input) => {
-      const n = Math.round(clampN(Number(input) || 1, 1, 25))
+      const n = Math.round(clampN(Number(input) || 1, 1, MAX_OPEN_AT_ONCE))
       if (!isIndustryLegal(countryId, b.industry)) {
         notice(g, 'Not Allowed', `${industryDef(b.industry).label}s aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
         return
       }
-      if (!useYearAction(g, `biz.expand.${cur.id}`, 3)) return tooBusy(g, `expanded ${cur.name} three times`)
       const cost = expansionCost(b, countryId, city, n)
       if (b.cash < cost) return noCash(g, cur, cost, `${plural(n, 'new location')}`)
       b.cash -= cost
@@ -695,7 +898,10 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
       const best = bestAbroad(g, cur)
       return best && best.countryId === countryId ? talentHint(g, 'Business', `Best market abroad: a location in ${best.city} pays for itself in ${yearsText(best.years)}`) : null
     },
-    children: () => country.cities.slice(0, 8).map((city) => openAction(a, countryId, city)),
+    children: (g) => {
+      const b = readBiz(g, a)
+      return country.cities.slice(0, 8).map((city) => openAction(a, b, countryId, city))
+    },
   }
 }
 
@@ -755,14 +961,38 @@ function abroadMenu(a: Asset): MenuGroup {
   }
 }
 
-function closeOutletAction(a: Asset, countryId: string, city: string): MenuAction {
+function closeOutletAction(a: Asset, b0: BizState, countryId: string, city: string): MenuAction {
+  const here0 = b0.outlets.find((x) => x.countryId === countryId && x.city === city)?.count ?? 0
+  const max = Math.max(1, Math.min(here0, totalOutlets(b0) - 1))
   return act(a, `closeOutlet.${countryId}.${city}`, `Close in ${city}`, '\u{1F6AB}', {
     subtitle: (g) => {
       const o = readBiz(g, a).outlets.find((x) => x.countryId === countryId && x.city === city)
-      return `${o?.count ?? 0} here · sell off the fit-out for about 35% of cost`
+      return `${units(o?.count ?? 0)} here · sell off the fit-out for about 35% of cost`
     },
     disabled: (_g, b) => (totalOutlets(b) <= 1 ? 'This is your last location. Close the whole business instead.' : null),
-    input: { kind: 'number', label: 'How many to close?', min: 1, max: 100, defaultValue: () => '1' },
+    input: {
+      kind: 'slider',
+      label: `How many to close in ${city}?`,
+      min: 1,
+      max,
+      defaultValue: () => '1',
+      preview: (g, v) => {
+        const b = readBiz(g, live(g, a))
+        const o = b.outlets.find((x) => x.countryId === countryId && x.city === city)
+        if (!o) return ''
+        const n = Math.round(clampN(v, 1, Math.max(1, Math.min(o.count, totalOutlets(b) - 1))))
+        const e = localEcon(b.industry, countryId, city)
+        const cs = citySaturation(e, countryId, city)
+        const rent = o.count * e.rent * densityRent(o.count, cs) - (o.count - n) * e.rent * densityRent(o.count - n, cs)
+        const parts = [`fit-out sells for about ${money(e.capital * n * 0.35)}`, `saves about ${money(rent)} a year in rent`]
+        if (priceAndOutput(b)) {
+          const kept = withOutlets(b, countryId, city, -n, g.year)
+          const change = cachedHint(g, live(g, a), `close.${countryId}.${city}.${n}`, () => bestPlan(g, kept, { fast: true }).profit - bestPlan(g, b, { fast: true }).profit)
+          parts.push(change >= 0 ? `profit up about ${money(change)} a year` : `profit down about ${money(-change)} a year`)
+        }
+        return parts.join(' · ')
+      },
+    },
     run: (g, cur, b, input) => {
       const o = b.outlets.find((x) => x.countryId === countryId && x.city === city)
       if (!o) return
@@ -778,6 +1008,125 @@ function closeOutletAction(a: Asset, countryId: string, city: string): MenuActio
       refreshValue(cur, b)
       log(g, `${cur.name} closed ${plural(n, 'location')} in ${city}.`, 'neutral')
       notice(g, 'Closed', `${cur.name} shut ${plural(n, 'location')} in ${city} and sold the fit-out for ${formatMoney(refund)}. The remaining staff are nervously updating their résumés.`, { emoji: '\u{1F6AB}' })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Capacity lines (industries that make goods): more output without another storefront
+
+/** Most capacity lines company cash pays for now. */
+function maxLines(b: BizState): number {
+  const each = lineCost(b, 1)
+  return each > 0 ? Math.round(clampN(Math.floor(Math.max(0, b.cash) / each), 0, MAX_OPEN_AT_ONCE)) : 0
+}
+
+/** Next year's expected profit change from `n` more capacity lines (negative n: selling them). */
+function linesGain(g: GameState, a: Asset, n: number): number {
+  return cachedHint(g, a, `lines.${n}`, () => {
+    const b = readBiz(g, a)
+    const base = cachedHint(g, a, 'payback.base', () => bestPlan(g, b, { fast: true }).profit)
+    return bestPlan(g, { ...b, lines: Math.max(0, linesOf(b) + n) }, { fast: true }).profit - base
+  })
+}
+
+/** The number of new lines that adds the most value over MARGIN_YEARS (null: none pays). */
+function bestLines(g: GameState, a: Asset): { n: number; years: number } | null {
+  return cachedHint(g, a, 'bestLines', () => {
+    const b = readBiz(g, a)
+    const max = Math.max(1, maxLines(b))
+    let best: { n: number; years: number; value: number } | null = null
+    for (const n of [...new Set([...COUNT_GRID.filter((x) => x <= max), max])]) {
+      const gain = linesGain(g, a, n)
+      const cost = lineCost(b, n)
+      const value = gain * MARGIN_YEARS - cost
+      if (gain > 0 && value > 0 && (!best || value > best.value)) best = { n, years: cost / gain, value }
+    }
+    return best ? { n: best.n, years: best.years } : null
+  })
+}
+
+function buildLinesAction(a: Asset, b0: BizState): MenuAction {
+  const line = lineOf(b0.industry) ?? { one: 'production line', many: 'production lines' }
+  const max = Math.max(1, maxLines(b0))
+  return act(a, 'lines', `Build ${titleCase(line.many)}`, '\u{1F3ED}', {
+    subtitle: (g) => `${money(lineCost(readBiz(g, a), 1))} each · each adds half a ${industryDef(b0.industry).site}'s output, no new customers`,
+    hint: (g) => {
+      const cur = live(g, a)
+      if (!hinting(g, cur) || !priceAndOutput(readBiz(g, cur))) return null
+      const best = bestLines(g, cur)
+      if (best) return talentHint(g, 'Business', `Build about ${plural(best.n, line.one, line.many)}: they pay for themselves in ${yearsText(best.years)}`)
+      const plan = planFor(g, readBiz(g, cur), g.year, { calm: true })
+      return talentHint(g, 'Business', plan.demand <= plan.capacity ? 'Not needed: you can already make everything you can sell' : 'Not worth it: the extra output wouldn’t earn back what the lines cost')
+    },
+    disabled: (_g, b) => (maxLines(b) < 1 ? `Not enough company cash: one ${line.one} costs ${money(lineCost(b, 1))}.` : null),
+    input: {
+      kind: 'slider',
+      label: `How many ${line.many}?`,
+      min: 1,
+      max,
+      defaultValue: () => '1',
+      preview: (g, v) => {
+        const cur = live(g, a)
+        const b = readBiz(g, cur)
+        const def = industryDef(b.industry)
+        const n = Math.max(1, Math.round(v))
+        const plan = planFor(g, b, g.year, { calm: true })
+        const add = planFor(g, { ...b, lines: linesOf(b) + n }, g.year, { calm: true }).capacity - plan.capacity
+        const upkeep = lineCost(b, n) * def.maint + n * localEcon(b.industry, b.countryId, b.city).rent * LINE_RENT
+        const gain = linesGain(g, cur, n)
+        return [
+          `+${units(add)} ${def.unit} a year (capacity now ${units(plan.capacity)}, demand about ${units(plan.demand)})`,
+          `${money(lineCost(b, n))} up front, about ${money(upkeep)} a year to run`,
+          gain > 0 ? `pays back in ${yearsText(lineCost(b, n) / gain)}` : plan.demand <= plan.capacity ? 'would sit idle: you can already make what you sell' : 'would lose money: the extra output doesn’t cover what the lines cost',
+        ].join(' · ')
+      },
+    },
+    run: (g, cur, b, input) => {
+      const n = Math.round(clampN(Number(input) || 1, 1, MAX_OPEN_AT_ONCE))
+      const cost = lineCost(b, n)
+      if (b.cash < cost) return noCash(g, cur, cost, plural(n, line.one, line.many))
+      b.cash -= cost
+      b.lines = linesOf(b) + n
+      b.valuation = valuationOf(b)
+      refreshValue(cur, b)
+      log(g, `${cur.name} built ${plural(n, line.one, line.many)}.`, 'good')
+      notice(g, 'Capacity Added', `${cur.name} built ${plural(n, `new ${line.one}`, `new ${line.many}`)} for ${formatMoney(cost)}. You can now make up to ${units(maxProduction(g, b))} ${industryDef(b.industry).unit} a year: raise production in the Annual Report to use it.`, { emoji: '\u{1F3ED}', tone: 'good' })
+    },
+  })
+}
+
+function sellLinesAction(a: Asset, b0: BizState): MenuAction {
+  const line = lineOf(b0.industry) ?? { one: 'production line', many: 'production lines' }
+  const max = Math.max(1, linesOf(b0))
+  return act(a, 'sellLines', `Sell ${titleCase(line.many)}`, '\u{1F4E4}', {
+    subtitle: 'The equipment sells for about 35% of its cost',
+    disabled: (_g, b) => (linesOf(b) < 1 ? `You have no ${line.many} to sell.` : null),
+    input: {
+      kind: 'slider',
+      label: `How many ${line.many} to sell?`,
+      min: 1,
+      max,
+      defaultValue: () => '1',
+      preview: (g, v) => {
+        const cur = live(g, a)
+        const b = readBiz(g, cur)
+        const n = Math.round(clampN(v, 1, Math.max(1, linesOf(b))))
+        const change = linesGain(g, cur, -n)
+        return `sells for about ${money(lineCost(b, n) * 0.35)} · ${change >= 0 ? `profit up about ${money(change)} a year` : `profit down about ${money(-change)} a year`}`
+      },
+    },
+    run: (g, cur, b, input) => {
+      const n = Math.round(clampN(Number(input) || 1, 1, linesOf(b)))
+      if (n < 1) return
+      const refund = Math.round(lineCost(b, n) * 0.35)
+      b.lines = linesOf(b) - n
+      b.cash += refund
+      b.production = Math.min(b.production, maxProduction(g, b))
+      b.valuation = valuationOf(b)
+      refreshValue(cur, b)
+      log(g, `${cur.name} sold ${plural(n, line.one, line.many)}.`, 'neutral')
+      notice(g, 'Equipment Sold', `${cur.name} sold ${plural(n, line.one, line.many)} for ${formatMoney(refund)}.`, { emoji: '\u{1F4E4}' })
     },
   })
 }
@@ -810,11 +1159,17 @@ function expansionMenu(a: Asset): MenuGroup {
       const b = readBiz(g, a)
       const home = getCountry(b.countryId)
       const nodes: MenuNode[] = [{ type: 'heading', id: `biz.expandH.${a.id}`, label: `Open in ${home.name}` }]
-      for (const city of home.cities.slice(0, 10)) nodes.push(openAction(a, b.countryId, city))
+      for (const city of home.cities.slice(0, 10)) nodes.push(openAction(a, b, b.countryId, city))
       nodes.push({ type: 'heading', id: `biz.abroadH.${a.id}`, label: 'Go international' }, abroadMenu(a))
+      const line = lineOf(b.industry)
+      if (line && priceAndOutput(b)) {
+        nodes.push({ type: 'heading', id: `biz.capH.${a.id}`, label: `Production capacity (${plural(linesOf(b), line.one, line.many)})` })
+        nodes.push(buildLinesAction(a, b))
+        if (linesOf(b) > 0) nodes.push(sellLinesAction(a, b))
+      }
       if (totalOutlets(b) > 1) {
         nodes.push({ type: 'heading', id: `biz.closeH.${a.id}`, label: 'Close locations' })
-        for (const o of b.outlets) nodes.push(closeOutletAction(a, o.countryId, o.city))
+        for (const o of b.outlets) nodes.push(closeOutletAction(a, b, o.countryId, o.city))
       }
       return nodes
     },
@@ -823,6 +1178,11 @@ function expansionMenu(a: Asset): MenuGroup {
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+/** 'fermentation cellars' → 'Fermentation Cellars' (menu row labels). */
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (x) => x.toUpperCase())
 }
 
 // ---------------------------------------------------------------------------
@@ -930,7 +1290,7 @@ function insuranceAction(a: Asset): MenuAction {
  * owner keep the loan, so lenders (and the game) don't allow it.
  */
 function payable(a: Asset, b: BizState): number {
-  return Math.max(0, b.cash - earmarkedCash(a) - b.debt)
+  return payableCash(a, b)
 }
 
 function payoutBlocked(a: Asset, b: BizState): string | null {
@@ -938,6 +1298,29 @@ function payoutBlocked(a: Asset, b: BizState): string | null {
   if (b.cash - earmarkedCash(a) <= 0) return 'Its cash is advances and pledges for games still in development. That money funds the games; it is not profit yet.'
   if (payable(a, b) <= 0) return `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
   return null
+}
+
+/**
+ * The largest amount in [lo, hi] a proposal still passes with even odds (the board's odds fall as
+ * the amount grows). Pure: the Business talent's read on the board.
+ */
+function maxPassing(g: GameState, a: Asset, b: BizState, make: (v: number) => Proposal, lo: number, hi: number): number {
+  if (!(hi > lo) || passOdds(g, a, b, make(lo)) < 0.5) return lo
+  if (passOdds(g, a, b, make(hi)) >= 0.5) return hi
+  let x = lo
+  let y = hi
+  for (let i = 0; i < 18 && y - x > Math.max(1, hi * 0.005); i++) {
+    const mid = (x + y) / 2
+    if (passOdds(g, a, b, make(mid)) >= 0.5) x = mid
+    else y = mid
+  }
+  return Math.round(x)
+}
+
+/** ' · needs the board (🔮 about 70% to pass)' for a slider caption. */
+function boardCaption(g: GameState, a: Asset, b: BizState, p: Proposal): string {
+  if (!needsVote(g, a, b, p)) return ''
+  return ` \u{00B7} needs the board${hasTalent(g, 'Business') ? ` (\u{1F52E} ${oddsText(passOdds(g, a, b, p))} to pass)` : ''}`
 }
 
 function moneyNodes(a: Asset, g: GameState): MenuNode[] {
@@ -958,32 +1341,67 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
       },
     }),
     act(a, 'dividend', b.share < 1 ? 'Pay a Dividend' : 'Withdraw Profits', '\u{1F4E4}', {
-      subtitle: earmarkedCash(a) > 0 ? `Taxed as income · ${money(earmarkedCash(a))} of advances and pledges is set aside for unreleased games` : b.share < 1 ? `You get ${pct(b.share)} of any payout (taxed as income)` : 'Taxed as income',
+      subtitle: (gg) => {
+        const bb = readBiz(gg, live(gg, a))
+        const parts = [earmarkedCash(a) > 0 ? `${money(earmarkedCash(a))} of advances and pledges is set aside for unreleased games` : bb.share < 1 ? `You get ${pct(bb.share)} of any payout` : '', 'taxed as income']
+        if (hasBoard(gg, bb)) parts.push(`above ${money(sustainablePayout(live(gg, a), bb, boardView(gg, live(gg, a), bb)))} the board votes`)
+        return cap(parts.filter(Boolean).join(' \u{00B7} '))
+      },
+      hint: (gg) => {
+        const cur = live(gg, a)
+        if (!hinting(gg, cur)) return null
+        const bb = readBiz(gg, cur)
+        return payable(cur, bb) > 0 ? passHint(gg, cur, bb, { kind: 'dividend', by: 'owner', amount: payable(cur, bb), label: '' }) : null
+      },
       disabled: (_gg, bb) => payoutBlocked(a, bb),
-      input: { kind: 'number', money: true, label: 'Total payout', min: 1, max: Math.max(1, Math.round(payable(a, b))), defaultValue: () => String(Math.max(1, Math.round(payable(a, b) * 0.25))) },
+      input: {
+        kind: 'slider',
+        money: true,
+        label: 'Total payout',
+        min: 1,
+        max: Math.max(2, Math.round(payable(a, b))),
+        defaultValue: (gg) => {
+          const cur = live(gg, a)
+          const bb = readBiz(gg, cur)
+          const spare = hasBoard(gg, bb) ? sustainablePayout(cur, bb, boardView(gg, cur, bb)) : payable(cur, bb) * 0.25
+          return String(Math.max(1, Math.round(spare > 0 ? spare : payable(cur, bb) * 0.25)))
+        },
+        preview: (gg, v) => {
+          const cur = live(gg, a)
+          const bb = readBiz(gg, cur)
+          return `${bb.share < 1 ? `your ${pct(bb.share)}: ${money(v * bb.share)}` : `${money(v)} to you`} (taxed as income) \u{00B7} ${money(Math.max(0, bb.cash - v))} left in the company${boardCaption(gg, cur, bb, { kind: 'dividend', by: 'owner', amount: v, label: '' })}`
+        },
+      },
       run: (gg, cur, bb, input) => {
         const n = amount(input, payable(cur, bb))
         if (n <= 0) return
-        bb.cash -= n
-        const mine = Math.round(n * bb.share)
-        earnIncome(gg, mine)
-        bb.valuation = valuationOf(bb)
-        refreshValue(cur, bb)
-        log(gg, `I paid myself ${money(mine)} from ${cur.name}.`, 'good')
-        notice(gg, 'Payday', `${cur.name} paid out ${formatMoney(n)}${bb.share < 1 ? `; your ${pct(bb.share)} share is ${formatMoney(mine)}` : ''}. It will be taxed as income at the end of the year.`, { emoji: '\u{1F4E4}', tone: 'good' })
+        payDividend(gg, cur, bb, n)
       },
     }),
     act(a, 'borrow', 'Take a Company Loan', '\u{1F3E6}', {
       subtitle: (gg) => {
         const bb = readBiz(gg, a)
-        return `Up to ${money(companyCreditLimit(bb))} at ${pct(companyLoanRate(bb), 1)} (${getCountry(bb.countryId).name} rates)`
+        return `Up to ${money(companyCreditLimit(bb))} at ${pct(companyLoanRate(bb), 1)} (${getCountry(bb.countryId).name} rates)${hasBoard(gg, bb) ? ` \u{00B7} past ${money(debtComfort(bb))} of debt the board votes` : ''}`
       },
       disabled: (_gg, bb) => (companyCreditLimit(bb) < 1_000 ? 'No bank will lend this company more right now.' : null),
-      input: { kind: 'number', money: true, label: 'How much?', min: 1, max: Math.max(1, companyCreditLimit(b)), defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b) / 2))) },
+      input: {
+        kind: 'slider',
+        money: true,
+        label: 'How much?',
+        min: 1,
+        max: Math.max(2, companyCreditLimit(b)),
+        defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b) / 2))),
+        preview: (gg, v) => {
+          const cur = live(gg, a)
+          const bb = readBiz(gg, cur)
+          return `about ${money(v * companyLoanRate(bb))} a year in interest \u{00B7} company debt ${money(bb.debt + v)}${boardCaption(gg, cur, bb, { kind: 'debt', by: 'owner', amount: v, label: '' })}`
+        },
+      },
       run: (gg, cur, bb, input) => {
         if (!useYearAction(gg, `biz.borrow.${cur.id}`, 2)) return tooBusy(gg, `asked the bank for money twice for ${cur.name}`)
         const n = amount(input, companyCreditLimit(bb))
         if (n <= 0) return
+        if (!boardAllows(gg, cur, bb, { kind: 'debt', by: 'owner', amount: n, label: `Borrow ${money(n)}` })) return
         const rate = companyLoanRate(bb)
         bb.debtRate = bb.debt > 0 ? (bb.debtRate * bb.debt + rate * n) / (bb.debt + n) : rate
         bb.debt += n
@@ -1015,12 +1433,41 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
 function ceoNodes(a: Asset, g: GameState): MenuNode[] {
   const b = readBiz(g, a)
   if (!runsIt(g, a)) return []
+  const payP = (v: number): Proposal => ({ kind: 'ownerPay', by: 'owner', amount: v, label: `Raise your own salary to ${money(v)} a year` })
+  const bonusP = (v: number): Proposal => ({ kind: 'bonus', by: 'owner', amount: v, label: `Pay yourself a ${money(v)} bonus` })
   return [
     act(a, 'salary', 'Set My Salary', '\u{1F4B5}', {
-      subtitle: `Now ${money(b.ownerSalary)}/yr · typical here ${money(ceoPayNorm(b))}`,
-      input: { kind: 'number', money: true, label: 'Yearly salary', min: 0, max: maxOwnerSalary(b), defaultValue: () => String(b.ownerSalary) },
+      subtitle: (gg) => {
+        const cur = live(gg, a)
+        const bb = readBiz(gg, cur)
+        return `Now ${money(bb.ownerSalary)}/yr \u{00B7} typical here ${money(ceoPayNorm(bb))}${hasBoard(gg, bb) ? ` \u{00B7} above ${money(payCap(bb, boardView(gg, cur, bb)))} the board votes` : ''}`
+      },
+      hint: (gg) => {
+        const cur = live(gg, a)
+        if (!hinting(gg, cur)) return null
+        const bb = readBiz(gg, cur)
+        if (!hasBoard(gg, bb)) return null
+        const capNow = payCap(bb, boardView(gg, cur, bb))
+        const top = maxPassing(gg, cur, bb, payP, capNow, maxOwnerSalary(bb))
+        return talentHint(gg, 'Business', top > capNow ? `The board would likely approve up to about ${money(top)} a year` : `Above ${money(capNow)} a year the board will likely say no`)
+      },
+      input: {
+        kind: 'slider',
+        money: true,
+        label: 'Yearly salary',
+        min: 0,
+        max: Math.max(1, maxOwnerSalary(b)),
+        defaultValue: () => String(b.ownerSalary),
+        preview: (gg, v) => {
+          const cur = live(gg, a)
+          const bb = readBiz(gg, cur)
+          return `${pct(v / Math.max(1, ceoPayNorm(bb)))} of the going rate for a CEO here${v > ceoPayNorm(bb) * 2 ? ' \u{00B7} the staff will notice' : ''}${v > bb.ownerSalary ? boardCaption(gg, cur, bb, payP(v)) : ''}`
+        },
+      },
       run: (gg, cur, bb, input) => {
         const n = amount(input, maxOwnerSalary(bb))
+        if (n === bb.ownerSalary) return
+        if (n > bb.ownerSalary && !boardAllows(gg, cur, bb, payP(n))) return
         bb.ownerSalary = n
         const job = ceoJob(gg, cur.id)
         if (job) job.salary = n
@@ -1028,13 +1475,40 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
       },
     }),
     act(a, 'bonus', 'Take a Bonus', '\u{1F911}', {
-      subtitle: 'A one-off payout to yourself (taxed as income)',
+      subtitle: (gg) => {
+        const cur = live(gg, a)
+        const bb = readBiz(gg, cur)
+        return `A one-off payout to yourself (taxed as income)${hasBoard(gg, bb) ? ` \u{00B7} the board votes past ${money(Math.max(0, payCap(bb, boardView(gg, cur, bb)) - bb.ownerSalary))}` : ''}`
+      },
+      hint: (gg) => {
+        const cur = live(gg, a)
+        if (!hinting(gg, cur)) return null
+        const bb = readBiz(gg, cur)
+        if (!hasBoard(gg, bb)) return null
+        const room = Math.max(0, payCap(bb, boardView(gg, cur, bb)) - bb.ownerSalary)
+        const max = Math.min(payable(cur, bb), maxOwnerSalary(bb))
+        const top = maxPassing(gg, cur, bb, bonusP, Math.min(room, max), max)
+        return talentHint(gg, 'Business', top > room ? `The board would likely approve a bonus of up to about ${money(top)}` : room > 0 ? `Keep it under ${money(room)}: above that the board will likely say no` : 'Any bonus now will likely be voted down')
+      },
       disabled: (_gg, bb) => payoutBlocked(a, bb),
-      input: { kind: 'number', money: true, label: 'Bonus amount', min: 1, max: Math.max(1, Math.round(Math.min(payable(a, b), maxOwnerSalary(b)))), defaultValue: () => String(Math.max(1, Math.round(Math.min(payable(a, b) * 0.1, maxOwnerSalary(b) / 4)))) },
+      input: {
+        kind: 'slider',
+        money: true,
+        label: 'Bonus amount',
+        min: 1,
+        max: Math.max(2, Math.round(Math.min(payable(a, b), maxOwnerSalary(b)))),
+        defaultValue: () => String(Math.max(1, Math.round(Math.min(payable(a, b) * 0.1, maxOwnerSalary(b) / 4)))),
+        preview: (gg, v) => {
+          const cur = live(gg, a)
+          const bb = readBiz(gg, cur)
+          return `${money(Math.max(0, bb.cash - v))} left in the company${bb.last && bb.last.net < 0 ? ' \u{00B7} after a losing year: the staff will be furious' : ''}${boardCaption(gg, cur, bb, bonusP(v))}`
+        },
+      },
       run: (gg, cur, bb, input) => {
         if (!useYearAction(gg, `biz.bonus.${cur.id}`, 1)) return tooBusy(gg, 'taken a bonus')
         const n = amount(input, Math.min(payable(cur, bb), maxOwnerSalary(bb)))
         if (n <= 0) return
+        if (!boardAllows(gg, cur, bb, bonusP(n))) return
         bb.cash -= n
         earnIncome(gg, n)
         const greedy = bb.last && bb.last.net < 0
@@ -1053,89 +1527,165 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
 // ---------------------------------------------------------------------------
 // Leadership
 
-const MANAGER_PICK = defineScript('business.manager', (g, choice, data) => {
-  const d = rec(data)
-  const a = findBusiness(g, str(d?.assetId))
-  if (!a || !d || choice === 'cancel') return
-  const b = bizOf(g, a)
-  const list = Array.isArray(d.candidates) ? d.candidates : []
-  const raw = rec(list[Number(choice.replace('m', ''))])
-  if (!raw) return
-  const m: Manager = {
+function readCandidate(g: GameState, raw: Record<string, Json>): Manager {
+  const style = CEO_STYLES.find((x) => x === raw.style)
+  return {
     firstName: str(raw.firstName, 'Pat'),
     lastName: str(raw.lastName, 'Morgan'),
     gender: raw.gender === 'female' ? 'female' : 'male',
     skill: clampN(num(raw.skill, 55), 0, 100),
     salary: Math.max(0, num(raw.salary)),
     since: g.year,
+    ...(style ? { style } : {}),
+    integrity: clampN(num(raw.integrity, 70), 0, 100),
   }
+}
+
+const MANAGER_PICK = defineScript('business.manager', (g, choice, data) => {
+  const d = rec(data)
+  const a = findBusiness(g, str(d?.assetId))
+  if (!a || !d || choice === 'cancel' || manageBlock(g, a)) return
+  const b = bizOf(g, a)
+  const flow = str(d.flow) === 'stepDown' ? 'stepDown' : 'replace'
+  if (choice === 'again' || choice === 'exec') {
+    pickManager(g, a, b, choice === 'exec' ? 'executive' : 'standard', flow)
+    return
+  }
+  const list = Array.isArray(d.candidates) ? d.candidates : []
+  const raw = rec(list[Number(choice.replace('m', ''))])
+  if (!raw) return
+  const m = readCandidate(g, raw)
+  if (!boardAllows(g, a, b, { kind: 'hire', by: 'owner', amount: m.salary, skill: m.skill, label: `Hire ${managerName(m)} as CEO at ${money(m.salary)} a year` })) return
   const wasCeo = runsIt(g, a)
-  if (wasCeo) stepDown(g, a, b, m)
-  else installManager(g, b, m)
-  log(g, `${managerName(m)} became general manager of ${a.name}.`)
+  const h = handOver(g, a, b, m)
+  const style = STYLE_INFO[styleOf(m)]
+  log(g, `${managerName(m)} became CEO of ${a.name}.`)
   notice(
     g,
-    'New General Manager',
-    `${managerName(m)} (skill ${m.skill}/100, ${formatMoney(m.salary)} a year) now runs ${a.name} day to day.${wasCeo ? ' You stepped down as CEO but still own the company, so you are free to take another job.' : ''}`,
-    { emoji: '\u{1F9D1}\u{200D}\u{1F4BC}' },
+    'New CEO',
+    `${managerName(m)} (skill ${m.skill}/100, ${style.label.toLowerCase()}, ${formatMoney(m.salary)} a year) now runs ${a.name} day to day.${wasCeo ? ' You stepped down as CEO but still own the company, so you are free to take another job.' : ''}${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}${h.moraleHit > 0 ? ` Yet another new boss: staff morale fell ${h.moraleHit} points.` : ''}${m.skill > SMART_SKILL ? ' Expect a yearly letter on what they change and why.' : ''}`,
+    { emoji: '\u{1F9D1}\u{200D}\u{1F4BC}', tone: 'good' },
   )
 })
 
 /**
  * A general manager's yearly worth: their skill lifts sales (customers notice a well-run place),
- * trims overhead and sets the mood, against their salary.
+ * trims overhead and sets the mood, against their salary. (career.ceoValue adds what the
+ * optimizer earns for a CEO above 75.)
  */
 export function managerValue(w: Worth, m: Manager): number {
-  return m.skill * (w.contrib / 1500 + w.overhead / 1000 + w.moraleTarget / 12 / LASTING_YEARS) - m.salary
+  return baseManagerValue(w, m)
 }
 
-function pickManager(g: GameState, a: Asset, b: BizState): void {
-  const list = [managerCandidate(g, b, randInt(g, 38, 58)), managerCandidate(g, b, randInt(g, 55, 75)), managerCandidate(g, b, randInt(g, 72, 95))]
-  const choices: ChoiceOption[] = [...list.map((m, i) => ({ id: `m${i}`, label: `${managerName(m)} · ${m.skill}/100 · ${money(m.salary)}`, emoji: m.gender === 'female' ? '\u{1F469}\u{200D}\u{1F4BC}' : '\u{1F468}\u{200D}\u{1F4BC}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' }]
+/** Pay a headhunter: from company cash, or the owner's own pocket when the company is short. */
+function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' {
+  if (b.cash < fee && g.character.money >= fee) {
+    addMoney(g, -fee)
+    b.invested += fee
+    return 'owner'
+  }
+  b.cash -= fee
+  b.yearCosts += fee
+  return 'company'
+}
+
+/**
+ * A fresh shortlist from a headhunter (no limit: every search this year costs half as much
+ * again). The popup offers another search, an executive search for stars, or keeping the CEO.
+ */
+function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow: 'replace' | 'stepDown'): void {
+  const key = `biz.headhunt.${a.id}`
+  const fee = headhunterFee(b, kind, yearActionsUsed(g, key))
+  useYearAction(g, key, Number.MAX_SAFE_INTEGER)
+  const by = payFee(g, b, fee)
+  const list = shortlist(g, b, kind)
+  const used = yearActionsUsed(g, key)
+  const cur = b.ceo === 'manager' && b.manager ? b.manager : null
+  const sev = cur ? ceoSeverance(cur, g.year) : 0
+  const face = (m: Manager) => (m.gender === 'female' ? '\u{1F469}\u{200D}\u{1F4BC}' : '\u{1F468}\u{200D}\u{1F4BC}')
+  const choices: ChoiceOption[] = [
+    ...list.map((m, i) => ({ id: `m${i}`, label: `${managerName(m)} \u{00B7} ${m.skill}/100 \u{00B7} ${STYLE_INFO[styleOf(m)].label} \u{00B7} ${money(m.salary)}`, emoji: m.skill >= 85 ? '\u{2B50}' : face(m) })),
+    { id: 'again', label: `Another shortlist (${money(headhunterFee(b, 'standard', used))})`, emoji: '\u{1F504}' },
+    { id: 'exec', label: `Executive search for a star (${money(headhunterFee(b, 'executive', used))})`, emoji: '\u{1F31F}' },
+    { id: 'cancel', label: cur ? `Keep ${managerName(cur)}` : 'Never mind', emoji: '\u{2716}\u{FE0F}' },
+  ]
   if (hasTalent(g, 'Business')) {
     const w = bizWorth(g, b)
-    const values = list.map((m) => managerValue(w, m))
-    markBest(g, choices, (id) => (id.startsWith('m') ? (values[Number(id.slice(1))] ?? null) : null), () => 'Best pick: the most company for the money')
+    const gain = optimizerGain(g, b)
+    // A year of each candidate's value; replacing someone also costs their severance (spread over the years it counts for).
+    const values = list.map((m) => ceoValue(w, m, gain) - sev / LASTING_YEARS)
+    const keep = cur ? ceoValue(w, cur, gain) : null
+    markBest(g, choices, (id) => (id === 'cancel' ? keep : id.startsWith('m') ? (values[Number(id.slice(1))] ?? null) : null), (id) =>
+      id === 'cancel' ? 'Best move: nobody here beats your CEO by enough to pay the severance' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year for the company after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they plan with the numbers' : ''}`,
+    )
   }
-  scriptChoice(
-    g,
-    MANAGER_PICK,
-    'Hire a General Manager',
-    `A headhunter in ${b.city} sent over three candidates to run ${a.name}:\n${list.map((m) => `• ${managerName(m)}: skill ${m.skill}/100, wants ${formatMoney(m.salary)} a year`).join('\n')}`,
-    choices,
-    { emoji: '\u{1F9D1}\u{200D}\u{1F4BC}', data: { assetId: a.id, candidates: toJson(list) } },
-  )
+  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year`)
+  const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (paid from your own pocket: the company was short)' : ''}.`]
+  if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means buying out the contract: about ${formatMoney(sev)} in severance.`)
+  if (list.some((m) => m.skill > SMART_SKILL)) notes.push('Anyone above 75 runs the company with the numbers, like a real executive.')
+  scriptChoice(g, MANAGER_PICK, flow === 'stepDown' ? 'Hire a CEO' : 'Replace the CEO', `A headhunter in ${b.city} sent over ${list.length} candidates to run ${a.name}:\n${lines.join('\n')}\n${notes.join(' ')}`, choices, {
+    emoji: '\u{1F9D1}\u{200D}\u{1F4BC}',
+    data: { assetId: a.id, flow, candidates: toJson(list) },
+  })
 }
 
 function leadershipNodes(a: Asset, g: GameState): MenuNode[] {
   const b = readBiz(g, a)
+  const fee = (gg: GameState) => money(headhunterFee(readBiz(gg, live(gg, a)), 'standard', yearActionsUsed(gg, `biz.headhunt.${a.id}`)))
   if (runsIt(g, a)) {
     return [
       act(a, 'stepDown', 'Step Down as CEO', '\u{1FA91}', {
-        subtitle: 'Hire a general manager and become a passive owner',
-        run: (gg, cur, bb) => pickManager(gg, cur, bb),
+        subtitle: (gg) => `Hire a CEO and become a passive owner \u{00B7} headhunter ${fee(gg)}`,
+        run: (gg, cur, bb) => pickManager(gg, cur, bb, 'standard', 'stepDown'),
       }),
     ]
   }
   const job = g.character.job
   const title = b.founderName && b.founderName === `${g.character.firstName} ${g.character.lastName}` && !b.acquired ? 'Founder & CEO' : 'Owner & CEO'
+  const takeP = (gg: GameState, bb: BizState): Proposal => ({ kind: 'takeOver', by: 'owner', skill: ceoSkill(gg, { ...bb, ceo: 'owner' }), label: `Make ${gg.character.firstName} ${gg.character.lastName} CEO` })
+  const fireP = (bb: BizState): Proposal => ({ kind: 'fire', by: 'owner', label: `Replace ${bb.manager ? managerName(bb.manager) : 'the CEO'} as CEO` })
   return [
     act(a, 'takeOver', 'Run It Myself (Become CEO)', '\u{1F454}', {
-      subtitle: b.manager ? `Replace ${managerName(b.manager)} and take charge` : 'Take charge day to day',
+      subtitle: (gg) => {
+        const bb = readBiz(gg, live(gg, a))
+        const m = bb.manager
+        return m && bb.ceo === 'manager' ? `Replace ${managerName(m)} and take charge \u{00B7} severance ${money(ceoSeverance(m, gg.year))}` : 'Take charge day to day'
+      },
+      hint: (gg) => {
+        const cur = live(gg, a)
+        const bb = readBiz(gg, cur)
+        return passHint(gg, cur, bb, takeP(gg, bb))
+      },
+      disabled: (gg, bb) => (needsVote(gg, live(gg, a), bb, takeP(gg, bb)) && refusedThisYear(gg, bb, 'takeOver') ? 'The board already turned you down as CEO this year.' : null),
       confirm: () => (job ? `Become CEO of ${a.name}? You'll leave your job as ${job.title}.` : null),
       run: (gg, cur, bb) => {
+        if (!boardAllows(gg, cur, bb, takeP(gg, bb))) return
+        const h = ownerTakesOver(gg, bb)
         const quit = becomeCeo(gg, cur, bb, title)
         log(gg, `I took over as CEO of ${cur.name}.`, 'good')
-        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you left your job as ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.`, { emoji: '\u{1F454}', tone: 'good' })
+        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you left your job as ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
       },
     }),
-    act(a, 'replaceManager', 'Replace the General Manager', '\u{1F504}', {
-      subtitle: b.manager ? `${managerName(b.manager)} · skill ${b.manager.skill}/100 · ${money(b.manager.salary)}/yr` : 'Hire someone to run it',
+    act(a, 'replaceManager', 'Replace the CEO', '\u{1F504}', {
+      subtitle: (gg) => {
+        const bb = readBiz(gg, live(gg, a))
+        const m = bb.ceo === 'manager' ? bb.manager : null
+        return m ? `${managerName(m)} \u{00B7} skill ${m.skill}/100 \u{00B7} ${STYLE_INFO[styleOf(m)].label} \u{00B7} ${money(m.salary)}/yr \u{00B7} severance ${money(ceoSeverance(m, gg.year))} \u{00B7} headhunter ${fee(gg)}` : `Hire someone to run it \u{00B7} headhunter ${fee(gg)}`
+      },
+      hint: (gg) => {
+        const cur = live(gg, a)
+        const bb = readBiz(gg, cur)
+        return bb.manager ? passHint(gg, cur, bb, fireP(bb)) : null
+      },
+      // Investors who control the board already said no to a change at the top this year.
+      disabled: (gg, bb) => (hasBoard(gg, bb) && !controlsBoard(boardView(gg, live(gg, a), bb)) && (refusedThisYear(gg, bb, 'fire') || refusedThisYear(gg, bb, 'hire')) ? 'The board already turned down a change of CEO this year.' : null),
       run: (gg, cur, bb) => {
-        if (!useYearAction(gg, `biz.mgr.${cur.id}`, 1)) return tooBusy(gg, `reshuffled ${cur.name}'s management`)
-        pickManager(gg, cur, bb)
+        // No yearly cap: severance, the headhunter and morale are the price of every change.
+        if (bb.ceo === 'manager' && bb.manager && needsVote(gg, cur, bb, fireP(bb)) && !vote(gg, cur, bb, fireP(bb)).passed) return
+        pickManager(gg, cur, bb, 'standard', 'replace')
       },
     }),
+    ...briefNodes(g, a),
   ]
 }
 
@@ -1166,61 +1716,92 @@ const SELL = defineScript('business.sell', (g, choice, data) => {
     if (chance(g, 0.5)) arrestPlayer(g, 'Accounting Fraud', 3, { evidence: 0.7, noResist: true, context: `Prosecutors charged you over ${a.name}'s cooked books.` })
     return
   }
+  // With outside owners, selling the whole company is the board's decision too.
+  if (!boardAllows(g, a, b, { kind: 'sell', by: 'owner', amount: num(o.amount), label: `Sell ${a.name} to ${str(o.buyer, 'a buyer')} for ${money(num(o.amount))}` })) return
   sellBusiness(g, a, b, num(o.amount), str(o.buyer, 'a buyer'))
 })
 
 function makeOffers(g: GameState, b: BizState): Offer[] {
-  const v = Math.max(5_000, b.valuation)
+  // Buyers haggle over the business itself; its net cash (cash minus debt) is worth exactly what
+  // it is, so no premium or discount applies to it (moving cash in before a sale gains nothing).
+  const netCash = Number.isFinite(b.cash - b.debt) ? b.cash - b.debt : 0
+  const operating = Math.max(5_000, b.valuation - netCash)
   const def = industryDef(b.industry)
-  const f = (lo: number, hi: number) => Math.round((v * (lo + (hi - lo) * rand(g))) / 100) * 100
+  const f = (lo: number, hi: number) => Math.max(1_000, Math.round((operating * (lo + (hi - lo) * rand(g)) + netCash) / 100) * 100)
   const offers: Offer[] = [
     { buyer: `a rival ${def.label.toLowerCase()} chain`, amount: f(0.78, 1.05) },
     { buyer: `${investorFirm(b.countryId, rand(g), rand(g))} (private equity)`, amount: f(0.88, 1.15) },
   ]
   // A conglomerate pays a premium for a track record; a company with no booked year gets none.
-  if (v >= 2_000_000 || chance(g, 0.4)) offers.push({ buyer: conglomerate(rand(g), rand(g)), amount: b.history.length ? f(0.95, 1.28) : f(0.85, 1) })
+  if (operating + netCash >= 2_000_000 || chance(g, 0.4)) offers.push({ buyer: conglomerate(rand(g), rand(g)), amount: b.history.length ? f(0.95, 1.28) : f(0.85, 1) })
   if (chance(g, 0.5)) offers.push({ buyer: 'a local tycoon', amount: f(0.72, 1.12) })
   return offers.sort((x, y) => y.amount - x.amount)
+}
+
+/**
+ * Shop a company (or a group's division) around: a broker's offers for the whole company, the
+ * board voting on whichever the owner picks (business.sell). Two rounds a year.
+ */
+export function shopCompany(g: GameState, a: Asset, b: BizState): void {
+  if (!useYearAction(g, `biz.sell.${a.id}`, 2)) return tooBusy(g, `shopped ${a.name} around twice`)
+  const offers = makeOffers(g, b)
+  const choices: ChoiceOption[] = [...offers.map((o, i) => ({ id: `o${i}`, label: `${money(o.amount)} from ${o.buyer}`, emoji: '\u{1F4B5}' })), { id: 'keep', label: 'Keep it', emoji: '\u{2716}\u{FE0F}' }]
+  if (hasTalent(g, 'Business')) {
+    // A sale is worth what it beats the company's value by, if the board lets it through;
+    // cooked books can sink it (40%), and half the time the buyer calls the prosecutors.
+    const w = bizWorth(g, b)
+    const board = (amount: number) => (hasBoard(g, b) ? passOdds(g, a, b, { kind: 'sell', by: 'owner', amount, label: '' }) : 1)
+    const sale = (amount: number) =>
+      b.cooked > 0 ? (1 - SALE_COLLAPSE) * board(amount) * (amount - b.valuation) * b.share + SALE_COLLAPSE * fxValue(g, b, w, { brand: -15, arrest: 0.5 * 3 }) : board(amount) * (amount - b.valuation) * b.share
+    markBest(g, choices, (id) => (id === 'keep' ? 0 : id.startsWith('o') ? sale(offers[Number(id.slice(1))]?.amount ?? 0) : null), (id) =>
+      id === 'keep' ? 'Best move: every offer is below what it is worth to you' : `Best offer: the most money above what the company is worth${hasBoard(g, b) ? ` (the board: ${oddsText(board(offers[Number(id.slice(1))]?.amount ?? 0))} to approve)` : ''}`,
+    )
+  }
+  scriptChoice(
+    g,
+    SELL,
+    `Sell ${a.name}`,
+    `Your broker collected offers for the whole company (valued at about ${money(b.valuation)}).${b.share < 1 ? ` You own ${pct(b.share)}, so that's your cut, after the investors' preference.` : ''}${hasBoard(g, b) ? ' The board votes on whichever offer you pick.' : ''}`,
+    choices,
+    { emoji: '\u{1F91D}', data: { assetId: a.id, offers: toJson(offers) } },
+  )
 }
 
 function exitNodes(a: Asset, g: GameState): MenuNode[] {
   const b = readBiz(g, a)
   const nodes: MenuNode[] = []
+  const closeValue = (bb: BizState) => equipmentValue(bb) * 0.35 + bb.inventory * localEcon(bb.industry, bb.countryId, bb.city).unitCost * 0.3
+  const closeP = (bb: BizState): Proposal => ({ kind: 'close', by: 'owner', amount: Math.max(0, closeValue(bb) + bb.cash - bb.debt), label: `Close ${a.name} for good` })
+  const ipoP: Proposal = { kind: 'ipo', by: 'owner', label: `Take ${a.name} public` }
+  // A division of a group sells like any company, never lists on its own (the whole group lists)
+  // and can be spun off (business/conglomerate-division.ts).
+  const group = groupOfCompany(g, a)
   if (!b.public) {
     nodes.push(
-      act(a, 'sell', 'Sell the Company', '\u{1F3F7}\u{FE0F}', {
-        subtitle: `Valued at about ${money(b.valuation)}${b.share < 1 ? ` (your ${pct(b.share)}: ${money(b.valuation * b.share)})` : ''}`,
-        run: (gg, cur, bb) => {
-          if (!useYearAction(gg, `biz.sell.${cur.id}`, 2)) return tooBusy(gg, `shopped ${cur.name} around twice`)
-          const offers = makeOffers(gg, bb)
-          const choices: ChoiceOption[] = [...offers.map((o, i) => ({ id: `o${i}`, label: `${money(o.amount)} from ${o.buyer}`, emoji: '\u{1F4B5}' })), { id: 'keep', label: 'Keep it', emoji: '\u{2716}\u{FE0F}' }]
-          if (hasTalent(gg, 'Business')) {
-            // A sale is worth what it beats the company's value by; cooked books can sink it
-            // (40%), and half the time the buyer calls the prosecutors.
-            const w = bizWorth(gg, bb)
-            const sale = (amount: number) =>
-              bb.cooked > 0 ? (1 - SALE_COLLAPSE) * (amount - bb.valuation) * bb.share + SALE_COLLAPSE * fxValue(gg, bb, w, { brand: -15, arrest: 0.5 * 3 }) : (amount - bb.valuation) * bb.share
-            markBest(gg, choices, (id) => (id === 'keep' ? 0 : id.startsWith('o') ? sale(offers[Number(id.slice(1))]?.amount ?? 0) : null), (id) =>
-              id === 'keep' ? 'Best move: every offer is below what it is worth to you' : 'Best offer: the most money above what the company is worth',
-            )
-          }
-          scriptChoice(
-            gg,
-            SELL,
-            `Sell ${cur.name}`,
-            `Your broker collected offers for the whole company (valued at about ${money(bb.valuation)}).${bb.share < 1 ? ` You own ${pct(bb.share)}, so that's your cut.` : ''}`,
-            choices,
-            { emoji: '\u{1F91D}', data: { assetId: cur.id, offers: toJson(offers) } },
-          )
-        },
-      }),
-      act(a, 'ipo', 'Go Public (IPO)', '\u{1F514}', {
-        subtitle: (gg) => canIpo(readBiz(gg, a)) ?? `List on the ${marketOf(b.countryId).exchange?.code ?? 'regional exchange'}`,
-        disabled: (_gg, bb) => canIpo(bb),
-        confirm: () => `Take ${a.name} public? You'll sell a quarter of the company to the market and answer to shareholders from now on.`,
-        run: (gg, cur, bb) => goPublic(gg, cur, bb),
+      act(a, 'sell', group ? 'Sell This Division' : 'Sell the Company', '\u{1F3F7}\u{FE0F}', {
+        subtitle: `Valued at about ${money(b.valuation)}${b.share < 1 ? ` (your ${pct(b.share)}: ${money(b.valuation * b.share)}) \u{00B7} the board must agree` : ''}${group ? ` \u{00B7} it leaves ${group.core.name}` : ''}`,
+        run: (gg, cur, bb) => shopCompany(gg, cur, bb),
       }),
     )
+    if (group) nodes.push({ type: 'info', id: `biz.ipoGroup.${a.id}`, emoji: '\u{1F514}', text: `${a.name} can't list on its own while it belongs to ${group.core.name}: take the whole group public from its screen.` })
+    else {
+      nodes.push(
+        act(a, 'ipo', 'Go Public (IPO)', '\u{1F514}', {
+          subtitle: (gg) => canIpo(readBiz(gg, a)) ?? `List on the ${marketOf(b.countryId).exchange?.code ?? 'regional exchange'}${hasBoard(gg, readBiz(gg, a)) ? ' \u{00B7} the board must agree' : ''}`,
+          hint: (gg) => {
+            const cur = live(gg, a)
+            const bb = readBiz(gg, cur)
+            return canIpo(bb) ? null : passHint(gg, cur, bb, ipoP)
+          },
+          disabled: (_gg, bb) => canIpo(bb),
+          confirm: () => `Take ${a.name} public? You'll sell a quarter of the company to the market and answer to shareholders (and independent directors) from now on.`,
+          run: (gg, cur, bb) => {
+            if (!boardAllows(gg, cur, bb, ipoP)) return
+            goPublic(gg, cur, bb)
+          },
+        }),
+      )
+    }
   } else {
     nodes.push(
       act(a, 'sellShares', 'Sell Shares', '\u{1F4C8}', {
@@ -1233,14 +1814,23 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
       }),
     )
   }
+  nodes.push(...divisionExitNodes(g, a))
   nodes.push(
     act(a, 'close', 'Close the Business', '\u{1F6AA}', {
       subtitle: 'Sell the equipment, pay the debts, lock the doors',
+      hint: (gg) => {
+        const cur = live(gg, a)
+        const bb = readBiz(gg, cur)
+        return passHint(gg, cur, bb, closeP(bb))
+      },
       confirm: (gg) => {
         const bb = readBiz(gg, a)
-        return `Close ${a.name} for good? The fit-out sells for about ${money(equipmentValue(bb) * 0.35)}; debts of ${money(bb.debt)} get paid first.`
+        return `Close ${a.name} for good? The fit-out sells for about ${money(equipmentValue(bb) * 0.35)}; debts of ${money(bb.debt)} get paid first.${needsVote(gg, live(gg, a), bb, closeP(bb)) ? ' The board votes first.' : ''}`
       },
-      run: (gg, cur, bb) => closeBusiness(gg, cur, bb, equipmentValue(bb) * 0.35 + bb.inventory * localEcon(bb.industry, bb.countryId, bb.city).unitCost * 0.3),
+      run: (gg, cur, bb) => {
+        if (!boardAllows(gg, cur, bb, closeP(bb))) return
+        closeBusiness(gg, cur, bb, closeValue(bb))
+      },
     }),
     act(a, 'bankrupt', 'Declare Bankruptcy', '\u{1F4C9}', {
       subtitle: 'Walk away from the company’s debts (and your credit score)',
@@ -1263,8 +1853,10 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   const rows: string[] = []
   rows.push(`${def.label} · ${b.city}, ${country.name} · ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`)
   if (runsIt(g, a)) rows.push(`Run by you, the CEO · salary ${money(b.ownerSalary)}/yr`)
-  else rows.push(b.manager ? `Run by ${managerName(b.manager)} (general manager, skill ${b.manager.skill}/100, ${money(b.manager.salary)}/yr)` : 'No one is running it day to day.')
-  rows.push(b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')
+  else rows.push(b.manager ? `Run by ${managerName(b.manager)} (CEO, skill ${b.manager.skill}/100, ${STYLE_INFO[styleOf(b.manager)].label.toLowerCase()}, ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''})${b.manager.skill > SMART_SKILL ? ' · runs it with the numbers' : ''}` : 'No one is running it day to day.')
+  // A group's division: the membership line replaces the ownership line (business/conglomerate-division.ts).
+  const division = divisionLine(g, a)
+  rows.push(division ?? (b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%'))
   rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
   rows.push(isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
   rows.push(marketInfoLine(g, a))
@@ -1282,10 +1874,21 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   } else {
     rows.push(b.openFraction < 1 ? `Opening soon: registration took a while, so this first year is short.` : 'First year of trading. Results come with the Annual Report.')
   }
-  rows.push(`${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 ? ` (your stake ${money(b.valuation * b.share)})` : ''} · cash ${money(b.cash)}${b.debt > 0 ? ` · debt ${money(b.debt)}` : ''}`)
+  rows.push(`${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${money(stakeValue(b))}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} · cash ${money(b.cash)}${b.debt > 0 ? ` · debt ${money(b.debt)}` : ''}`)
   rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${eraNote(g, b.countryId, m.businessNote)}`.trim())
   const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3C6}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
-  return rows.map((text, i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji: emojis[i] ?? '\u{2139}\u{FE0F}' }))
+  const nodes = rows.map((text, i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji: emojis[i] ?? '\u{2139}\u{FE0F}' }))
+  // Who the CEO answers to, and the hired CEO's last letter.
+  const st = boardView(g, a, b)
+  if (hasBoard(g, b)) {
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F3DB}\u{FE0F}', text: `Board: ${st.members.length} seats, ${ownerSeats(st)} yours${controlsBoard(st) ? '' : " (you don't control it)"} · mandate ${mandateDef(st.mandate).label}${st.votes.length ? ` · last vote: ${lowerFirst(st.votes[st.votes.length - 1].what)} (${st.votes[st.votes.length - 1].passed ? 'passed' : 'rejected'})` : ''}` })
+  } else if (b.ceo === 'manager' && b.manager) {
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F4CB}', text: `No board: ${managerName(b.manager)} answers to you · mandate ${mandateDef(st.mandate).label}` })
+  }
+  if (b.ceo === 'manager' && b.manager && st.memo.length && st.letter >= g.year - 1) {
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.memo`, emoji: '\u{1F4DD}', text: `${managerName(b.manager)}'s last letter: ${st.memo.slice(0, 3).join(' ')}` })
+  }
+  return nodes
 }
 
 export function businessView(g: GameState, a: Asset): MenuNode[] {

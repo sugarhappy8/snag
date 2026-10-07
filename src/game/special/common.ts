@@ -89,12 +89,12 @@ export function stableChoice<T>(g: GameState, key: string, items: readonly T[]):
 // ---------------------------------------------------------------------------
 // Messages
 
-/** Result popup. In "full" AI mode the director may rewrite it, keeping the facts. */
+/** Result popup. */
 export function say(g: GameState, title: string, text: string, emoji?: string, tone: Tone = 'neutral'): void {
   notice(g, title, text, { emoji, tone })
 }
 
-/** Plain popup that is never rewritten (refusals, rules, menus). */
+/** Plain popup with no tone (refusals, rules, menus). */
 export function tell(g: GameState, title: string, text: string, emoji?: string): void {
   notice(g, title, text, { emoji })
 }

@@ -12,16 +12,16 @@
 // Shared state (medals, sponsors, bans, head trauma, legacy) lives in sports-core.ts.
 import type { GameState, MenuGroup, MenuNode } from '../types'
 import { athleteJob, athleteJobNodes, teamSportsMenu, teamStatus, yearlyAthlete } from './athlete'
-import { localSportNames, endorsementsMenu, playingJob, popularity, viewSports, yearlyBrain, yearlySponsors } from './sports-core'
+import { localSportNames, endorsementsMenu, playingJob, popularity, yearlyBrain, yearlySponsors } from './sports-core'
 import { IND_SPORTS, indSport } from './sports-data'
-import { esportsJob, esportsJobNodes, esportsMenu, esportsSummary, yearlyEsports } from './sports-esports'
-import { disciplineMenu, fighterJob, fighterJobNodes, fighterSummary, yearlyFighter } from './sports-fight'
-import { indJob, individualJobNodes, individualSummary, sportMenu, yearlyIndividual } from './sports-individual'
-import { legacyJobNodes, legacySummary, lifeAfterSportsMenu, trophyCabinetMenu, yearlyLegacy } from './sports-legacy'
+import { esportsJob, esportsJobNodes, esportsMenu, yearlyEsports } from './sports-esports'
+import { disciplineMenu, fighterJob, fighterJobNodes, yearlyFighter } from './sports-fight'
+import { indJob, individualJobNodes, sportMenu, yearlyIndividual } from './sports-individual'
+import { legacyJobNodes, lifeAfterSportsMenu, trophyCabinetMenu, yearlyLegacy } from './sports-legacy'
 import { olympicsMenu, yearlyOlympics } from './sports-olympics'
-import { proWrestlingMenu, wrestlerJob, wrestlerJobNodes, wrestlerSummary, yearlyWrestler } from './sports-prowrestling'
-import { sumoJob, sumoJobNodes, sumoMenu, sumoSummary, yearlySumo } from './sports-sumo'
-import { yearlyYouth, youthSportsMenu, youthSummary } from './sports-youth'
+import { proWrestlingMenu, wrestlerJob, wrestlerJobNodes, yearlyWrestler } from './sports-prowrestling'
+import { sumoJob, sumoJobNodes, sumoMenu, yearlySumo } from './sports-sumo'
+import { yearlyYouth, youthSportsMenu } from './sports-youth'
 
 const individualSportsMenu: MenuGroup = {
   type: 'menu',
@@ -136,22 +136,4 @@ export function yearlySports(g: GameState): void {
   const a = appeal(g)
   yearlySponsors(g, a.sport, a.appeal)
   yearlyBrain(g)
-}
-
-/** One compact line for the AI context ('' when there's nothing sporty to say). */
-export function sportsSummary(g: GameState): string {
-  const parts: string[] = []
-  const team = teamStatus(g)
-  if (team) parts.push(`${team.sportName} player for the ${team.team} (${team.league})`)
-  for (const s of [individualSummary(g), fighterSummary(g), sumoSummary(g), wrestlerSummary(g), esportsSummary(g), legacySummary(g), youthSummary(g)]) if (s) parts.push(s)
-  const p = viewSports(g)
-  const golds = p.medals.filter((m) => m.medal === 'gold').length
-  if (p.medals.length) parts.push(`${p.medals.length} Olympic medal${p.medals.length === 1 ? '' : 's'}${golds ? ` (${golds} gold)` : ''}`)
-  if (p.sponsors.length) parts.push(`sponsored by ${p.sponsors.map((x) => x.brand).join(', ')}`)
-  if (p.careers.length && !playingJob(g)) parts.push(`retired from ${p.careers.map((x) => x.sport).join(', ')}`)
-  if (p.cte) parts.push('suffers from CTE after years of head trauma')
-  else if (p.headTrauma >= 45) parts.push('many concussions')
-  const ban = p.bannedUntil > g.character.age ? `banned from competition until ${p.bannedUntil >= 999 ? 'forever' : `age ${p.bannedUntil}`}` : ''
-  if (ban) parts.push(ban)
-  return parts.join('; ')
 }

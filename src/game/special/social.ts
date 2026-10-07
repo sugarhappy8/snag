@@ -1,7 +1,7 @@
 // Activities > Social Media: accounts on original-named platforms, posting, follower growth,
 // going viral, verification, sponsorships, monetization, trolling, suspensions and hackers.
 // All accounts live in g.flags['special.social']; character.social mirrors the biggest one
-// (so ribbons and the AI see the player's main account).
+// (so ribbons and the profile see the player's main account).
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, relationLabel, remember, scriptChoice, spend, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
@@ -221,7 +221,7 @@ function load(g: GameState): Account[] {
   if (main) {
     const known = p.accounts.find((a) => a.platform === main.platform)
     if (known) {
-      // Another module may have touched the main account (events, AI): respect it.
+      // Another module may have touched the main account (events, fame): respect it.
       known.handle = main.handle
       known.followers = Math.max(0, Math.round(main.followers))
       known.verified = main.verified

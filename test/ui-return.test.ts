@@ -7,14 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
-const director = vi.hoisted(() => ({
-  runAiTask: vi.fn(),
-  applyFallback: vi.fn(),
-  narrateNotice: vi.fn(),
-  testConnection: vi.fn(),
-  chatReply: vi.fn(),
-}))
-vi.mock('../src/ai/director', () => director)
+// Built-in tasks (year events, interviews...) resolve to nothing here, so only what a test
+// queues itself shows up.
+const offline = vi.hoisted(() => {
+  const resolve = vi.fn()
+  return { applyFallback: resolve, resolveTask: resolve, MAX_CUSTOM_ACTIONS_PER_YEAR: 5, CUSTOM_ACTION_KEY: 'doAnything' }
+})
+vi.mock('../src/game/offline', () => offline)
 
 const store = await import('../src/ui/store')
 const { notice } = await import('../src/game/core')
@@ -33,8 +32,7 @@ const render = (el: Parameters<typeof renderToStaticMarkup>[0]) => renderToStati
 
 beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  director.applyFallback.mockReset()
-  store.updateSettings({ aiLevel: 'off' })
+  offline.resolveTask.mockReset()
   store.startNewLife({ seed: 7, year: 2026 })
   store.act((g) => {
     g.queue = []
@@ -250,7 +248,8 @@ describe('reopening renders the right menu', () => {
       personId = createPerson(g, { relation: 'friend', age: 25, firstName: 'Priya', lastName: 'Nair' }).id
     })
     const html = render(createElement(RelationshipsSheet, { onClose: () => {}, initial: { personId, spot: { path: [], scrolls: [0] } } }))
-    expect(html).toContain('Talk (AI chat)')
+    expect(html).toContain('Spend Time')
+    expect(html).not.toMatch(/AI chat|Talk \(/)
     expect(html).toMatch(/<h2 class="sheet-title">.*Priya Nair<\/h2>/)
     const list = render(createElement(RelationshipsSheet, { onClose: () => {}, initial: { personId: 'missing', spot: null } }))
     expect(list).not.toContain('Talk (AI chat)')

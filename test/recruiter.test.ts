@@ -2,7 +2,7 @@
 // CV fits each one, interview odds, reach jobs with a gap analysis, and the pitch flowing into
 // the regular screening / interview flow.
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { fullTimeListings, jobRequirementProblem, occupationMenu, recruiterMatches, requirementGaps } from '../src/game/careers'
 import { cvScore, fitContext, jobFit, jobMarket, jobTarget } from '../src/game/cv'
 import { getJobDef } from '../src/game/data/jobs'

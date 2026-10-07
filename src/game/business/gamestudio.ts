@@ -45,7 +45,8 @@ import { codingSkill } from '../computer/skills'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { becomeCeo, installManager, managerCandidate } from './career'
+import { readBoard } from './board-state'
+import { becomeCeo, ceoLetter, installManager, managerCandidate, SMART_SKILL } from './career'
 import { bizWorth, ceoSkill, equipmentValue, fxValue, insurancePremiumFor, licencePremium, localEcon, managerCost, refreshValue, staffPower, startupCost, TALENT_DEMAND, talentCeo, valuationOf, type YearResult } from './economy'
 import { sellBusiness } from './exit'
 import { severanceMonths } from './flavor'
@@ -457,10 +458,41 @@ export function afterStudioYear(a: Asset, b: BizState): void {
   refreshValue(a, b)
 }
 
-/** A general manager keeps the pipeline full. */
+/**
+ * A general manager keeps the pipeline full. A hired CEO above 75 greenlights the games that earn
+ * the most per year of work (the Business talent's pitch model), as many at once as free
+ * developers, the studio's size and its cash allow; at 75 and below (and the owner's leads) they
+ * start one game when nothing is in development: the biggest scope the team can make, half the
+ * time a sequel to a hit. A hired CEO writes the owner a yearly letter either way.
+ */
 export function studioManagerTurn(g: GameState, a: Asset, b: BizState): void {
   const st = studioOf(a)
-  if (devGames(st).length > 0 || b.employees < 1) return
+  const hired = b.ceo === 'manager' && !!b.manager
+  const lines: string[] = []
+  if (hired && (b.manager?.skill ?? 0) > SMART_SKILL) {
+    // The mandate sets how many new games a year: growth bets on several, cash on one at a time.
+    const mandate = readBoard(b.board).mandate
+    const per = mandate === 'growth' ? 3 : mandate === 'balanced' ? 2 : mandate === 'profit' || devGames(st).length === 0 ? 1 : 0
+    for (let i = 0; i < per && devGames(st).length < maxPipeline(b) && b.employees - assignedDevs(st) >= 1; i++) {
+      const p = bestPitch(g, a, b, st, {})
+      if (!p || p.value <= 0 || p.short > 0) break
+      const hit = st.games.filter((x) => x.stage === 'live' && x.critic >= 75 && x.genre === p.genre).sort((x, y) => y.copies - x.copies)[0]
+      const franchise = hit ? hit.franchise || hit.title : ''
+      const title = hit ? sequelTitle(franchise, st.games.filter((x) => x.franchise === franchise).length + 1) : gameTitle(g, p.genre, new Set(st.games.map((x) => x.title)))
+      const team = pitchTeam(b, st, p.scope)
+      addGame(st, g, { scope: p.scope, genre: p.genre, platform: p.platform, engine: p.engine, title, team, franchise, sequelOf: hit ? hit.id : '' })
+      log(g, `${a.name}'s CEO greenlit "${title}".`, 'neutral')
+      lines.push(`Greenlit "${title}", ${pitchName(p)}, with ${team} developer${team === 1 ? '' : 's'}: it should earn about ${money(p.perYear)} for every year it takes to make.`)
+    }
+    saveStudio(a, st)
+    if (!lines.length) lines.push(devGames(st).length ? `Kept ${devGames(st).length} game${devGames(st).length === 1 ? '' : 's'} in development on track.` : 'Nothing we could make right now would pay back, so the team is prototyping until a pitch does.')
+    ceoLetter(g, a, b, lines, lines.some((x) => x.startsWith('Greenlit')))
+    return
+  }
+  if (devGames(st).length > 0 || b.employees < 1) {
+    if (hired) ceoLetter(g, a, b, [`Kept ${devGames(st).length} game${devGames(st).length === 1 ? '' : 's'} in development on track.`], false)
+    return
+  }
   const scope = [...SCOPES].reverse().find((s) => s.id !== 'jam' && s.minTeam <= b.employees && (s.id !== 'aaa' || b.cash > 0)) ?? SCOPES[1]
   const best = st.games.filter((x) => x.stage === 'live' && x.critic >= 75).sort((x, y) => y.copies - x.copies)[0]
   const genre = best && chance(g, 0.5) ? best.genre : hotGenres(g)[0].id
@@ -471,6 +503,7 @@ export function studioManagerTurn(g: GameState, a: Asset, b: BizState): void {
   addGame(st, g, { scope: scope.id, genre, platform, engine, title, team: Math.min(b.employees, Math.max(1, Math.round(scope.team * 1.2))), franchise: sequel ? best.franchise || best.title : '', sequelOf: sequel ? best.id : '' })
   saveStudio(a, st)
   log(g, `${a.name}'s manager greenlit "${title}".`, 'neutral')
+  if (hired) ceoLetter(g, a, b, [`Greenlit "${title}" to keep the team busy.`], false)
 }
 
 interface NewGame {
@@ -1233,13 +1266,25 @@ function glJson(d: GlDraft): Json {
   return toJson(d)
 }
 
-const MAX_PIPELINE = 4
+/** Games a studio of any size can always have in development. */
+const MIN_PIPELINE = 4
+/** Developers a studio needs per extra project beyond that (big studios split into teams). */
+const DEVS_PER_PROJECT = 12
+
+/**
+ * How many games the studio can develop at once: four for anyone, plus one more parallel team
+ * for every dozen developers. Payroll, not a rule, is what stops a studio from starting more.
+ */
+export function maxPipeline(b: Pick<BizState, 'employees'>): number {
+  return Math.max(MIN_PIPELINE, Math.floor(Math.max(0, b.employees) / DEVS_PER_PROJECT))
+}
 
 function greenlightBlock(g: GameState, a: Asset): string | null {
   const block = manageBlock(g, a)
   if (block) return block
   const st = studioOf(a)
-  if (devGames(st).length >= MAX_PIPELINE) return `${a.name} already has ${MAX_PIPELINE} games in development.`
+  const max = maxPipeline(readBiz(g, a))
+  if (devGames(st).length >= max) return `${a.name} already has ${max} games in development. Hire more developers to run more teams at once.`
   if (readBiz(g, a).employees < 1) return 'Hire some developers first.'
   return null
 }
@@ -1489,6 +1534,33 @@ function layOff(g: GameState, a: Asset, b: BizState, st: StudioState, n: number)
   notice(g, 'Layoffs', `${a.name} laid off ${cut} developer${cut === 1 ? '' : 's'}${sev > 0 ? ` (${formatMoney(sev)} in severance)` : ''}. The remaining ${b.employees} are updating their CVs "just in case".`, { emoji: '\u{1F4E6}', tone: 'bad' })
 }
 
+/**
+ * The live caption under a game's team-size slider: the same progress formula the yearly sim
+ * uses (team vs the ideal for the game's size, shared developers when teams overlap). Pure.
+ */
+function teamPreview(g: GameState, a: Asset, gid: string, v: number): string {
+  const found = findBusiness(g, a.id)
+  if (!found) return ''
+  const b = readBiz(g, found)
+  const st = studioOf(found)
+  const x = st.games.find((y) => y.id === gid && y.stage !== 'live')
+  if (!x) return ''
+  const sc = scopeDef(x.scope)
+  const n = Math.round(clampN(v, 1, Math.max(1, b.employees)))
+  const want = devGames(st).reduce((s, y) => s + (y.id === gid ? 0 : y.team), 0) + n
+  const share = want > b.employees && want > 0 ? b.employees / want : 1
+  const ratio = clampN((n * share) / Math.max(1, sc.team), 0, 3)
+  const speed = st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1
+  const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed
+  const left = Math.max(0, 100 - x.progress)
+  const years = perYear > 0 ? left / perYear : Infinity
+  const parts = [`${n} of ${b.employees} developers (the ideal team for ${an(sc.label)} game is about ${sc.team})`]
+  parts.push(Number.isFinite(years) ? `about ${years <= 1 ? 'a year' : `${Math.round(years * 10) / 10} years`} of work left` : 'no progress')
+  if (share < 1) parts.push(`teams overlap: ${want} seats for ${b.employees} developers, so every game slows down`)
+  if (ratio < 0.6) parts.push('a small team makes a rougher game')
+  return parts.join(' · ')
+}
+
 function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
   const gid = x0.id
   const cur = (g: GameState) => {
@@ -1518,7 +1590,14 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
       const nodes: MenuNode[] = [
         studioAct(a, `team.${gid}`, 'Set Team Size', '\u{1F465}', {
           subtitle: (gg) => `${x.team} assigned · ${readBiz(gg, a).employees} developers in the studio`,
-          input: { kind: 'number', label: 'Developers on this game', min: 1, max: Math.max(1, readBiz(g, a).employees), defaultValue: () => String(Math.max(1, Math.min(readBiz(g, a).employees, sc.team))) },
+          input: {
+            kind: 'slider',
+            label: 'Developers on this game',
+            min: 1,
+            max: Math.max(1, readBiz(g, a).employees),
+            defaultValue: () => String(Math.max(1, Math.min(readBiz(g, a).employees, x.team || sc.team))),
+            preview: (gg, v) => teamPreview(gg, a, gid, v),
+          },
           run: (gg, aa, bb, st, input) => {
             const y = st.games.find((z) => z.id === gid)
             if (!y) return
@@ -1826,7 +1905,7 @@ export function studioNodes(g: GameState, a: Asset): MenuNode[] {
     id: `studio.greenlight.${a.id}`,
     label: 'Greenlight a Game',
     emoji: '\u{1F6A6}',
-    subtitle: `${devGames(st).length}/${MAX_PIPELINE} in development · hot: ${hotGenres(g)
+    subtitle: `${devGames(st).length}/${maxPipeline(b)} in development · hot: ${hotGenres(g)
       .map((x) => x.label)
       .join(', ')}`,
     disabledReason: (gg) => greenlightBlock(gg, a),
@@ -1877,7 +1956,18 @@ export function studioNodes(g: GameState, a: Asset): MenuNode[] {
             return r && r.months < 12 ? talentHint(x, 'Business', `Hold off: the studio's cash covers only ${monthsOf(r.months)} of the team you already have`) : null
           },
           subtitle: `${money(devCost(bb))}/yr each · ${bb.employees}/${maxDevs(bb)}`,
-          input: { kind: 'number', label: 'How many?', min: 1, max: Math.max(1, maxDevs(bb) - bb.employees), defaultValue: () => '5' },
+          input: {
+            kind: 'slider',
+            label: 'How many developers to hire?',
+            min: 1,
+            max: Math.max(1, maxDevs(bb) - bb.employees),
+            defaultValue: () => String(Math.max(1, Math.min(5, maxDevs(bb) - bb.employees))),
+            preview: (x, v) => {
+              const b2 = readBiz(x, a)
+              const n = Math.max(1, Math.round(v))
+              return `${money(Math.round(n * devCost(b2) * 0.08))} in recruiting fees now · about ${money(n * devCost(b2))} a year in salaries · ${b2.employees + n} developers, up to ${maxPipeline({ employees: b2.employees + n })} games at once`
+            },
+          },
           disabled: () => (bb.employees >= maxDevs(bb) ? 'The offices are full.' : null),
           run: (x, aa, b2, _st, input) => hireDevs(x, aa, b2, amountOf(input, maxDevs(b2) - b2.employees)),
         }),
@@ -1889,7 +1979,18 @@ export function studioNodes(g: GameState, a: Asset): MenuNode[] {
               : null
           },
           subtitle: `Severance: ${severanceMonths(bb.countryId)} months' pay`,
-          input: { kind: 'number', label: 'How many?', min: 1, max: Math.max(1, bb.employees - 1), defaultValue: () => '1' },
+          input: {
+            kind: 'slider',
+            label: 'How many developers to lay off?',
+            min: 1,
+            max: Math.max(1, bb.employees - 1),
+            defaultValue: () => '1',
+            preview: (x, v) => {
+              const b2 = readBiz(x, a)
+              const n = Math.max(1, Math.min(Math.round(v), Math.max(1, b2.employees - 1)))
+              return `${money(Math.round((n * devCost(b2) * clampN(severanceMonths(b2.countryId), 0, 12)) / 12))} in severance · saves about ${money(n * devCost(b2))} a year · ${b2.employees - n} developers left`
+            },
+          },
           disabled: () => (bb.employees <= 1 ? 'Nobody left to lay off.' : null),
           run: (x, aa, b2, st2, input) => layOff(x, aa, b2, st2, amountOf(input, b2.employees - 1)),
         }),

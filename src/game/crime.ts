@@ -107,7 +107,7 @@ function lieLow(g: GameState, key: string, max: number): boolean {
   return false
 }
 
-/** Outcome popup; at the Full AI level the director rewrites it in its own words. */
+/** Outcome popup. */
 function outcome(g: GameState, title: string, text: string, emoji: string, tone: Tone = 'neutral'): void {
   notice(g, title, text, { emoji, tone })
 }
@@ -342,7 +342,7 @@ function bribeAmount(g: GameState, severity: number): number {
 /**
  * The police catch the player. Shows the arrest popup (cooperate / run / bribe / insult),
  * then lawyer choice, maybe a plea deal, then the verdict and sentence (prison via sendToPrison).
- * Safe to call at any time (AI outcomes, yearly hooks, while already in prison).
+ * Safe to call at any time (event outcomes, yearly hooks, while already in prison).
  */
 export function arrestPlayer(g: GameState, crime: string, severity: number, opts: ArrestOptions = {}): void {
   const c = g.character

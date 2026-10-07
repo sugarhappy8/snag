@@ -1,0 +1,173 @@
+/* Range sliders for "how many / how much" choices (components/Slider.tsx). Uses the design
+   tokens from global.css, so the light and dark themes come for free. Touch targets are at
+   least 44px; the thumb is 30px with a generous hit area. */
+
+.slider-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.slider-value {
+  display: block;
+  text-align: center;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider-step {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card-2);
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.slider-step:hover:not(:disabled) {
+  border-color: var(--blue);
+}
+
+.slider-step:active:not(:disabled) {
+  background: var(--chip-bg);
+}
+
+.slider-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.slider-step:focus-visible,
+.slider-range:focus-visible {
+  outline: 2px solid var(--blue-light);
+  outline-offset: 2px;
+}
+
+.slider-range:focus {
+  outline: none;
+}
+
+.slider-range:focus-visible {
+  outline: 2px solid var(--blue-light);
+}
+
+.slider-range {
+  --slider-fill: 0%;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  margin: 0;
+  padding: 0 2px;
+  border-radius: 12px;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.slider-range:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.slider-range::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--blue) 0%, var(--blue) var(--slider-fill), var(--stat-track) var(--slider-fill), var(--stat-track) 100%);
+}
+
+.slider-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 3px solid var(--blue);
+  box-shadow: var(--shadow);
+}
+
+.slider-range:active::-webkit-slider-thumb {
+  transform: scale(1.08);
+}
+
+.slider-range::-moz-range-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--stat-track);
+}
+
+.slider-range::-moz-range-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.slider-range::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 3px solid var(--blue);
+  box-shadow: var(--shadow);
+}
+
+.slider-bounds {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 52px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-bounds span:last-child {
+  text-align: right;
+}
+
+.slider-preview {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  border: 1px solid var(--hairline);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slider-range:active::-webkit-slider-thumb {
+    transform: none;
+  }
+}

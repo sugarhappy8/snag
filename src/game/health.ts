@@ -223,7 +223,7 @@ export function getDiseaseDef(name: string): DiseaseDef | undefined {
   return DEF_BY_NAME.get(name.trim().toLowerCase())
 }
 
-/** Definition for any condition, including ones invented by the AI or other modules. */
+/** Definition for any condition, including ones named by event outcomes, other modules or older saves. */
 function defFor(cond: Condition): DiseaseDef {
   const known = getDiseaseDef(cond.name)
   if (known) return known

@@ -381,11 +381,3 @@ export const trophyCabinetMenu: MenuGroup = {
     return nodes.length ? nodes : [{ type: 'info', id: 'sports.trophies.none', emoji: '\u{1F3C6}', text: 'No trophies yet.' }]
   },
 }
-
-export function legacySummary(g: GameState): string {
-  const coach = coachJob(g)
-  if (coach) return `${coach.title} at ${coach.company}`
-  const pundit = punditJob(g)
-  if (pundit) return `${pundit.title} at ${pundit.company}`
-  return ''
-}

@@ -346,9 +346,3 @@ export function yearlyStaff(g: GameState, budget: PopupBudget): void {
     ], { emoji: role.emoji, data: { role: role.id, raise } })
   }
 }
-
-/** One-line description for the AI context. */
-export function staffSummary(g: GameState): string | null {
-  const r = staffRoster(g)
-  return r.length ? r.map((s) => `${s.role.label.toLowerCase()} ${s.member.name}`).join(', ') : null
-}

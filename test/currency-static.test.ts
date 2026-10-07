@@ -13,7 +13,7 @@ it('formats no money while the engine modules load', async () => {
     return convertMoney(n, ctx, display)
   })
   try {
-    const modules = import.meta.glob(['../src/game/**/*.ts', '../src/ai/*.ts'])
+    const modules = import.meta.glob('../src/game/**/*.ts')
     expect(Object.keys(modules).length).toBeGreaterThan(50)
     for (const load of Object.values(modules)) await load()
     expect(calls).toEqual([])

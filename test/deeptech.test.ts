@@ -4,7 +4,7 @@
 // talent's purple hints.
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import { describe, expect, it } from 'vitest'
-import { applyFallback } from '../src/ai/director'
+import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { businessAssetView, businessCareerMenu, businessSummary } from '../src/game/business'
 import { techOf, techView, sellable, runwayYears } from '../src/game/business/deeptech-core'
@@ -480,18 +480,21 @@ describe('deep tech', () => {
       const a = company(g, ind, { venture: 8_000_000, series: 1, rounds: [{ series: 1, year: g.year, raised: 8_000_000, pre: 30_000_000, equity: 0.2, investor: 'Seed', down: false }], lastRoundYear: g.year }, { manager: true })
       g.character.job = null
       if (ind === 'biotech') techOf(bizOf(g, a)).drugs.push({ id: 'd1', name: 'Velozumab', area: 'autoimmune', phase: 0, quality: 70, peak: 2, filed: g.year, approved: 0, royalty: 1, partner: '', failed: false })
+      // R&D the manager ran counts even if the company later fails (cash crunches are the owner's call).
+      let ran = false
       for (let y = 0; y < 12; y++) {
         ageUp(g)
         // Nobody asks the owner for a lab report or a price plan.
         expect(g.queue.some((m) => (m.kind === 'choice' && m.scriptId === 'deeptech.labReport') || (m.kind === 'minigame' && m.game === 'annualReport'))).toBe(false)
         drain(g, YEAR_PREFS)
         finiteBiz(g)
+        const cur = businessAssets(g)[0]
+        if (cur) {
+          const t = techView(readBiz(g, cur))
+          if (t.done.length + t.fails > 0) ran = true
+        }
       }
-      const left = businessAssets(g)[0]
-      if (left) {
-        const t = techView(readBiz(g, left))
-        if (t.done.length + t.fails > 0) progressed++
-      }
+      if (ran) progressed++
     }
     expect(progressed).toBeGreaterThanOrEqual(3)
   })

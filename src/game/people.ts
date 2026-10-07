@@ -241,7 +241,7 @@ export function pickDistinct<T>(g: GameState, items: readonly T[], n: number): T
   return out
 }
 
-/** Add a short shared-history note to a person (AI memory), keeping the list short. */
+/** Add a short shared-history note to a person (their profile's "Shared history"), keeping the list short. */
 export function notePerson(p: Person, text: string): void {
   p.notes.push(text)
   if (p.notes.length > 12) p.notes.splice(0, p.notes.length - 12)

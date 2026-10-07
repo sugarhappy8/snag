@@ -1264,7 +1264,7 @@ export function yearlyIndividual(g: GameState): void {
   }
 }
 
-/** Status for the Olympics and the AI: sport, rating, ranking (or null when not competing). */
+/** Status for the Olympics: sport, rating, ranking (or null when not competing). */
 export function individualStatus(g: GameState): { sport: IndSport; rating: number; rank: number | null; disc: string } | null {
   const job = indJob(g)
   if (!job) return null
@@ -1272,13 +1272,4 @@ export function individualStatus(g: GameState): { sport: IndSport; rating: numbe
   const rec = viewRecord(g, sport.id)
   if (!rec) return null
   return { sport, rating: indRating(g, sport, rec, job), rank: sport.format === 'race' ? null : jd(job).rank, disc: jd(job).disc }
-}
-
-export function individualSummary(g: GameState): string {
-  const job = indJob(g)
-  if (!job) return ''
-  const sport = sportOfJob(job)
-  const d = jd(job)
-  const rec = viewRecord(g, sport.id)
-  return `${sport.name}${d.disc ? ` (${d.disc})` : ''}, ${sport.tiers[d.tier]?.name ?? ''}, ${sport.format === 'race' ? `${d.standing} pts` : rankLabel(d.rank)}${rec ? `, ${plural(rec.titles, 'title')}, ${plural(rec.majors, 'major')}` : ''}`
 }

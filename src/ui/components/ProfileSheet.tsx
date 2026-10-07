@@ -162,7 +162,6 @@ const COUNTER_META: [string, string, string][] = [
   ['fameActions', 'Fame moves', '📸'],
   ['albums', 'Albums', '💿'],
   ['movies', 'Movies', '🎬'],
-  ['aiEvents', 'AI events', '✨'],
   ['customActions', '"Do Anything"s', '🪄'],
 ]
 

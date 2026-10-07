@@ -187,7 +187,7 @@ export function say(g: GameState, templates: readonly string[], vars: Record<str
   return fill(pick(g, templates), vars)
 }
 
-/** Popup for an activity result. At the Full AI level the director may rewrite it (facts preserved). */
+/** Popup for an activity result. */
 export function result(g: GameState, title: string, text: string, emoji: string, tone?: Tone): void {
   notice(g, title, text, { emoji, tone })
 }

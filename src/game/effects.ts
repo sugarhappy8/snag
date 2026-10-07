@@ -1,5 +1,5 @@
-// Applying a GameEffects bundle (from AI outcomes or scripted events) with sane limits,
-// so a local model can never hand out a billion dollars or 500 health.
+// Applying a GameEffects bundle (from scripted event outcomes and "Do Anything") with sane
+// limits, so no outcome can ever hand out a billion dollars or 500 health.
 import { addHidden, addMoney, addRelationship, addStat, attractedTo, clamp, currentPartner, formatMoney, getPerson, log, netWorth, remember } from './core'
 import { arrestPlayer } from './crime'
 import { killCharacter } from './death'
@@ -106,7 +106,7 @@ export function applyEffects(g: GameState, eff: GameEffects): string[] {
     }
   }
 
-  if (eff.log) log(g, eff.log, 'ai')
+  if (eff.log) log(g, eff.log, 'neutral')
   if (eff.memory) remember(g, eff.memory)
 
   if (eff.arrest && eff.arrest.crime) {

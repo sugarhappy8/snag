@@ -2,7 +2,7 @@
 // UI and unit-tested on their own. A bug in one feature menu must not take the UI down,
 // so every callback is wrapped.
 import { HINT_EMOJI } from '../../game/talents'
-import type { GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../../game/types'
+import type { GameState, MenuAction, MenuGroup, MenuInfo, MenuInput, MenuNode } from '../../game/types'
 
 export function report(where: string, err: unknown): void {
   console.error(`[menu] ${where} failed:`, err)
@@ -124,6 +124,173 @@ export function resolveTrail(g: GameState, rootNodes: MenuNode[], path: string[]
     nodes = groupChildren(next, g)
   }
   return trail
+}
+
+// ---------------------------------------------------------------------------
+// Sliders (MenuInput / InputModal kind 'slider'): pure math shared by the Slider component.
+//
+// Narrow ranges are linear: every step is one notch of the native range input. Wide ranges
+// ($1K to $50M, 1 to 5,000 stores) use a log-like curve over 1,000 notches so both ends are
+// reachable with a thumb, and the value under the thumb snaps to a round number in the
+// currency the player reads. Whatever the curve, a value is always exact and inside [min, max].
+
+/** Most notches a linear slider gets before it switches to the log-like curve. */
+export const SLIDER_LINEAR_MAX = 400
+/** Notches of a log-like slider. */
+export const SLIDER_NOTCHES = 1000
+
+export interface SliderScale {
+  min: number
+  max: number
+  step: number
+  /** Log-like curve (wide ranges) instead of one notch per step. */
+  log: boolean
+  /** Notches of the native range input (0..notches). */
+  notches: number
+  /** Display units per internal unit (money: the player's currency; counts: 1). */
+  display: number
+}
+
+function finiteOr(n: number | undefined, d: number): number {
+  return typeof n === 'number' && Number.isFinite(n) ? n : d
+}
+
+/**
+ * The scale of a slider from its bounds. `display` converts internal values to what the player
+ * reads (core.moneyScale() for money) so round numbers are round in their currency.
+ */
+export function sliderScale(min: number, max: number, step = 1, display = 1): SliderScale {
+  const lo = finiteOr(min, 0)
+  const hi = Math.max(lo, finiteOr(max, lo))
+  const st = finiteOr(step, 1) > 0 ? finiteOr(step, 1) : 1
+  const span = hi - lo
+  const steps = span / st
+  const log = steps > SLIDER_LINEAR_MAX
+  return { min: lo, max: hi, step: st, log, notches: log ? SLIDER_NOTCHES : Math.max(0, Math.ceil(steps - 1e-9)), display: finiteOr(display, 1) > 0 ? finiteOr(display, 1) : 1 }
+}
+
+/** Keep a value inside the bounds and on the step grid (the top bound itself always counts). */
+export function sliderClamp(s: SliderScale, value: number): number {
+  const v = finiteOr(value, s.min)
+  if (v <= s.min) return s.min
+  if (v >= s.max) return s.max
+  const k = Math.round((v - s.min) / s.step)
+  const out = s.min + k * s.step
+  // A top bound off the step grid is a value of its own (1, 5, 9 and 10 for 1-10 in fours).
+  if (s.max - v < Math.abs(v - out)) return s.max
+  // Steps like 0.05 drift in floating point: trim to the step's own precision.
+  const digits = Math.min(10, Math.max(0, -Math.floor(Math.log10(s.step)) + 2))
+  const trimmed = Number(out.toFixed(digits))
+  return Math.min(s.max, Math.max(s.min, trimmed))
+}
+
+/** 10^(digits of |d|) / 10: the size of the second significant digit (1 for 10-99, 100 for 1,000-9,999...). */
+function secondDigit(d: number): number {
+  const a = Math.abs(d)
+  if (!(a >= 1)) return 0
+  return Math.pow(10, Math.floor(Math.log10(a)) - 1)
+}
+
+/** Round to two significant digits in display units (12,345 → 12,000), then back. */
+function niceValue(s: SliderScale, v: number): number {
+  const d = v * s.display
+  const mag = secondDigit(d)
+  if (mag <= 0) return v
+  return (Math.round(d / mag) * mag) / s.display
+}
+
+/**
+ * Where a log-like curve is anchored: distances from the bottom of the range are measured in
+ * these units. Anchoring at the bottom value itself makes a range like $100K-$80M geometric
+ * (each stretch of the track multiplies the value by the same factor) instead of spending half
+ * the track between $100K and $109K; a range that starts at 0 or 1 is anchored at a hundred-
+ * thousandth of its span (or its step), so $1K is still a short drag from $0.
+ */
+function logPivot(s: SliderScale): number {
+  const span = s.max - s.min
+  const p = Math.max(s.step, Math.abs(s.min), span / 1e5)
+  return Number.isFinite(p) && p > 0 ? p : 1
+}
+
+/** The value at a notch of the native range input. */
+export function sliderValueAt(s: SliderScale, notch: number): number {
+  const n = Math.max(0, Math.min(s.notches, Math.round(finiteOr(notch, 0))))
+  if (n <= 0) return s.min
+  if (n >= s.notches) return s.max
+  if (!s.log) return sliderClamp(s, s.min + n * s.step)
+  const span = s.max - s.min
+  const t = n / s.notches
+  const c = logPivot(s)
+  const raw = s.min + c * (Math.exp(t * Math.log1p(span / c)) - 1)
+  return sliderClamp(s, niceValue(s, raw))
+}
+
+/** The notch that shows a value. */
+export function sliderNotchOf(s: SliderScale, value: number): number {
+  const v = sliderClamp(s, value)
+  if (s.notches <= 0) return 0
+  if (!s.log) return Math.max(0, Math.min(s.notches, Math.round((v - s.min) / s.step)))
+  const span = s.max - s.min
+  const c = logPivot(s)
+  const t = Math.log1p((v - s.min) / c) / Math.log1p(span / c)
+  return Math.max(0, Math.min(s.notches, Math.round(t * s.notches)))
+}
+
+/**
+ * The next value up (dir 1) or down (dir -1) for the -/+ buttons and arrow keys: one step on a
+ * linear slider, the next round number on a log-like one (12,000 → 13,000; 10,000 → 9,900).
+ */
+export function sliderNudge(s: SliderScale, value: number, dir: 1 | -1): number {
+  const v = sliderClamp(s, value)
+  if (!s.log) return sliderClamp(s, v + dir * s.step)
+  const d = v * s.display
+  // Going down from a round 10,000 the next value is 9,900: size the step from just below.
+  const mag = Math.max(secondDigit(dir > 0 ? d : d * 0.999), s.step * s.display)
+  let next = (Math.round(d / mag) * mag + dir * mag) / s.display
+  next = sliderClamp(s, next)
+  if (next === v) next = sliderClamp(s, v + dir * s.step)
+  return next
+}
+
+/** A value as the string run()/scripts receive, like a number field would hand it over. */
+export function sliderOutput(s: SliderScale, value: number, money = false): string {
+  const v = sliderClamp(s, value)
+  if (money) {
+    const whole = Math.min(Math.floor(s.max), Math.max(Math.ceil(s.min), Math.round(v)))
+    return String(Number.isFinite(whole) ? whole : Math.round(s.min))
+  }
+  if (Number.isInteger(s.step) && Number.isInteger(s.min)) return String(Math.round(v))
+  return String(Number(v.toFixed(6)))
+}
+
+/** The prefilled value of a slider (a default from the engine, else the bottom of the range). */
+export function sliderStart(s: SliderScale, raw: string | undefined): number {
+  const n = raw === undefined || raw.trim() === '' ? NaN : Number(raw)
+  return sliderClamp(s, Number.isFinite(n) ? n : s.min)
+}
+
+/** True when a MenuInput / InputModal can show a slider (it needs finite bounds). */
+export function canSlide(min: number | undefined, max: number | undefined): boolean {
+  return typeof min === 'number' && typeof max === 'number' && Number.isFinite(min) && Number.isFinite(max) && max >= min
+}
+
+/** Longest live caption under a slider. */
+export const PREVIEW_MAX = 240
+
+/** A slider's live caption (MenuInput.preview), safely: null on a crash or an empty caption. */
+export function sliderPreview(input: MenuInput, g: GameState, value: number): string | null {
+  if (typeof input.preview !== 'function') return null
+  try {
+    const raw = input.preview(g, value)
+    if (typeof raw !== 'string') return null
+    const text = raw.replace(/\s+/g, ' ').trim()
+    if (!text) return null
+    const points = Array.from(text)
+    return points.length <= PREVIEW_MAX ? text : `${points.slice(0, PREVIEW_MAX - 1).join('').trimEnd()}…`
+  } catch (err) {
+    report('preview', err)
+    return null
+  }
 }
 
 /** Long-form text inputs (e.g. "Do Anything") get a multi-line field. */

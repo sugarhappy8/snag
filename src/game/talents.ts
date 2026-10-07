@@ -115,9 +115,3 @@ export function talentHint(g: GameState, id: TalentId, text: string): string {
 export function talentEmoji(id: string): string {
   return specialTalent(id)?.emoji ?? '\u{1F31F}'
 }
-
-/** One line for the AI prompt ('' when the character has no talents). */
-export function talentsSummary(g: GameState): string {
-  const list = characterTalents(g)
-  return list.length ? `Special talents: ${list.join(', ')}` : ''
-}

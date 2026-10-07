@@ -1,7 +1,7 @@
 // What a year felt like: a short flavor line per period ("disco, bell-bottoms and oil shocks"),
-// what technology a family had, rarely had or couldn't have yet, and the one-line preview the
-// New Life screen shows under "Born in". Pure: no RNG, no state.
-import { PRESENT_YEAR, TECH, techAdoption, type TechId } from './timeline'
+// the headline technology fact for a family, and the one-line preview the New Life screen shows
+// under "Born in". Pure: no RNG, no state.
+import { PRESENT_YEAR, techAdoption, type TechId } from './timeline'
 
 const BLURBS: readonly (readonly [number, string])[] = [
   [1900, 'horses still outnumber cars; empires rule the map'],
@@ -36,34 +36,6 @@ const BLURBS: readonly (readonly [number, string])[] = [
 export function eraBlurb(year: number): string {
   let out = BLURBS[0][1]
   for (const [from, text] of BLURBS) if (year >= from) out = text
-  return out
-}
-
-/** Technologies worth telling the narrator about, oldest first. */
-const SHOWN: readonly TechId[] = [
-  'radio', 'tv', 'colorTv', 'creditCards', 'atm', 'videoGameConsole', 'homeComputer', 'mobilePhone', 'internet',
-  'onlineShopping', 'socialMedia', 'videoSharing', 'smartphone', 'streaming', 'crypto', 'datingApps', 'rideHailing', 'aiAssistants', 'electricCars',
-]
-
-export interface TechStatus {
-  /** Most households have it (or it's everywhere). */
-  common: string[]
-  /** It exists here but only some people have it. */
-  rare: string[]
-  /** Not invented yet, or not arrived in this country yet. */
-  notYet: string[]
-}
-
-/** What exists for a typical family in this country and year. */
-export function techStatus(countryId: string, year: number): TechStatus {
-  const out: TechStatus = { common: [], rare: [], notYet: [] }
-  for (const id of SHOWN) {
-    const a = techAdoption(countryId, id, year)
-    const label = TECH[id].label
-    if (a < 0.02) out.notYet.push(label)
-    else if (a < 0.35) out.rare.push(label)
-    else out.common.push(label)
-  }
   return out
 }
 

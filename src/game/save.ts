@@ -2,7 +2,7 @@
 // Time Machine's start-of-year snapshots.
 import { GAME_VERSION } from './core'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
-import type { AncestorSummary, GameState, Json } from './types'
+import type { AncestorSummary, GameState, Json, ModalItem } from './types'
 
 const SAVE_KEY = 'anotherlife.save.v1'
 const RIBBONS_KEY = 'anotherlife.ribbons.v1'
@@ -53,7 +53,45 @@ export function saveGame(g: GameState): boolean {
 export function loadGame(): GameState | null {
   const g = read<GameState>(SAVE_KEY)
   if (!g || g.version !== GAME_VERSION || !g.character) return null
+  return migrateLegacyAi(g)
+}
+
+/**
+ * Saves from when the game had an AI narrator can hold a few things only the narrator used:
+ * queued notices with an 'ai' rewrite request, life-log lines with the tone 'ai', and the
+ * narrator's flags. Clean them up in place (idempotent; junk-tolerant). A queued 'aiTask' modal
+ * stays: the store resolves it offline like any other task (offline.ts). A queue entry that isn't
+ * a popup at all (a damaged save) is dropped: nothing could ever show or close it, and the life
+ * would be stuck behind it.
+ */
+export function migrateLegacyAi(g: GameState): GameState {
+  if (!Array.isArray(g.queue)) g.queue = []
+  g.queue = (g.queue as unknown[]).filter(isModal)
+  for (const modal of g.queue as unknown as Record<string, unknown>[]) {
+    if ('ai' in modal) delete modal.ai
+    if (modal.tone === 'ai') modal.tone = 'neutral'
+  }
+  if (Array.isArray(g.log)) {
+    for (const year of g.log as unknown[]) {
+      const entries = year && typeof year === 'object' ? (year as { entries?: unknown }).entries : undefined
+      if (!Array.isArray(entries)) continue
+      for (const e of entries) if (e && typeof e === 'object' && (e as { tone?: unknown }).tone === 'ai') (e as { tone: string }).tone = 'neutral'
+    }
+  }
+  if (g.flags && typeof g.flags === 'object') {
+    delete g.flags.aiRecentEvents
+    delete g.flags.obituarySource
+  }
   return g
+}
+
+const MODAL_KINDS: ReadonlySet<string> = new Set<ModalItem['kind']>(['notice', 'choice', 'input', 'minigame', 'aiTask'])
+
+/** A queue entry the game can show or resolve: an object with an id and a known kind. */
+function isModal(m: unknown): m is ModalItem {
+  if (!m || typeof m !== 'object') return false
+  const { kind, id } = m as { kind?: unknown; id?: unknown }
+  return typeof kind === 'string' && MODAL_KINDS.has(kind) && typeof id === 'string'
 }
 
 export function clearSave(): void {
@@ -690,7 +728,7 @@ export function loadSnapshot(lifeId: string, age: number): Promise<GameState | n
     if (parts.some((p) => p === null)) return null
     g.log = parts.map((p) => JSON.parse(p as string))
     if (g.version !== GAME_VERSION || g.lifeId !== lifeId || !g.character || g.character.age !== age || !g.character.alive) return null
-    return g
+    return migrateLegacyAi(g)
   }, null)
 }
 
