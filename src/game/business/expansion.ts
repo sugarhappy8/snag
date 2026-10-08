@@ -129,12 +129,43 @@ function finishInvention(g: GameState, a: Asset, b: BizState, x: Expansion): voi
   log(g, `I brought ${r.name} to market through ${a.name}.`, 'good')
 }
 
+function patentEligibilityBlock(g: GameState, a: Asset, p: Patent): string | null {
+  return manageBlock(g, a) ?? (!isInventionTier(p.kind) || p.ownerId !== a.id ? 'This company does not own a national patent for this invention.'
+    : g.year < p.launched || g.year > p.launched + 1 ? 'The foreign patent filing window has ended.' : null)
+}
+
 export function patentFilingBlock(g: GameState, a: Asset, p: Patent, country: string): string | null {
-  return manageBlock(g, a) ?? (!COUNTRIES.some(c => c.id === country) ? 'Unknown country.'
-    : !isInventionTier(p.kind) || p.ownerId !== a.id ? 'This company does not own a national patent for this invention.'
+  return patentEligibilityBlock(g, a, p) ?? (!COUNTRIES.some(c => c.id === country) ? 'Unknown country.'
     : p.protections?.some(t => t.country === country) ? 'Already filed in this country.'
-    : g.year < p.launched || g.year > p.launched + 1 ? 'The foreign patent filing window has ended.'
     : readBiz(g, a).cash < nationalPatentLaw(country, g.year).filingCost ? 'Not enough company cash.' : null)
+}
+
+/** Pure, current quote: charge only missing national filings, never previously granted rights. */
+export function allNationsPatentQuote(g: GameState, a: Asset, inventionId: string) {
+  // Menu closures may hold an older asset snapshot after a save load or immutable state update.
+  const current = findBusiness(g, a.id) ?? a
+  const b = readBiz(g, current), p = expansionOf(b).patents.find(p => p.id === inventionId)
+  const filed = new Set(p?.protections?.map(t => t.country) ?? [])
+  const countries = p ? COUNTRIES.filter(c => !filed.has(c.id)) : []
+  const cost = countries.reduce((sum, c) => sum + nationalPatentLaw(c.id, g.year).filingCost, 0)
+  const block = manageBlock(g, a) ?? (!p ? 'This invention is no longer available.' : patentEligibilityBlock(g, a, p)
+    ?? (!countries.length ? 'Already filed in all nations.' : b.cash < cost ? 'Not enough company cash for all remaining national filings.' : null))
+  return { countries, cost, block }
+}
+
+/** One atomic payment and one notice; individual national terms and enforcement still apply. */
+export function fileInventionPatentAllNations(g: GameState, assetId: string, inventionId: string): boolean {
+  const a = findBusiness(g, assetId)
+  if (!a) return false
+  const quote = allNationsPatentQuote(g, a, inventionId)
+  if (quote.block) return false
+  const b = bizOf(g, a), x = expansionOf(b), p = x.patents.find(p => p.id === inventionId)
+  if (!p || !pay(b, quote.cost)) return false
+  p.protections ??= []
+  p.protections.push(...quote.countries.map(c => ({ country: c.id, filed: g.year, expires: p.launched + nationalPatentLaw(c.id, p.launched).term })))
+  saveExpansion(b, x)
+  notice(g, 'Patents Filed in All Nations', `${a.name} paid ${formatMoney(quote.cost)} from company cash to protect ${p.name} in ${quote.countries.length} additional nations. Already-filed countries were not charged again. The invention is now patented in every game nation; each nation's original term and local enforcement still apply. Filing abroad does not restart the patent term.`, { emoji: '🌍', tone: 'good' })
+  return true
 }
 
 /** National grants use the original invention date, so later filings cannot extend a monopoly. */
@@ -202,6 +233,11 @@ function inventionPatentMenu(a: Asset, p: Patent, index: number): MenuGroup {
       { type: 'info', id: `inventor.product.${p.id}`, emoji: '💡', text: `${a.name} owns this ${isInventionTier(p.kind) ? INVENTION_TIERS[p.kind].label.toLowerCase() : p.kind} invention. Technology unlocked in ${p.launched}; no further development is needed. Current demand contribution in ${getCountry(b.countryId).name}: +${pct(productDemand(current, b.countryId, g.year), 1)}. Potential: +${pct(p.demand ?? 0, 1)} before local demand and patent enforcement. Actual sales still require production and staff.` },
       ...territories.map((t): MenuNode => ({ type: 'info', id: `inventor.protection.${p.id}.${t.country}`, emoji: getCountry(t.country).flag, text: `${getCountry(t.country).name}: ${protectedIn(current, t.country, g.year) ? `exclusive to ${a.name} until ${t.expires}` : 'patent expired; competitors may copy'}. Filed ${t.filed}.` })),
       { type: 'info', id: `inventor.foreign.help.${p.id}`, emoji: '🌍', text: `Foreign filing deadline: ${p.launched + 1}. A patent protects only its country. Filing later does not restart the patent term. After expiry, your technology remains available with a smaller demand advantage.` },
+      { type: 'action', id: `inventor.file.all.${p.id}`, label: 'Patent in All Nations', emoji: '🌐',
+        subtitle: gg => { const q = allNationsPatentQuote(gg, a, p.id!); return q.countries.length ? `${q.countries.length} new national filings · ${money(q.cost)} from company cash` : 'Already filed in all nations' },
+        disabledReason: gg => allNationsPatentQuote(gg, a, p.id!).block,
+        confirm: gg => { const q = allNationsPatentQuote(gg, a, p.id!); return `Pay ${money(q.cost)} from ${a.name} to patent ${p.name} in all ${q.countries.length} remaining nations? Already-filed countries are skipped. Each nation's patent term and enforcement still apply; no term is extended.` },
+        run: gg => { fileInventionPatentAllNations(gg, a.id, p.id!) } },
       { type: 'menu', id: `inventor.foreign.${p.id}`, label: 'File Patent in Another Country', emoji: '🌍', children: gg => {
         const bb = readBiz(gg, a), pp = expansionOf(bb).patents.find(candidate => candidate.id === p.id) ?? p
         const present = new Set(bb.outlets.map(o => o.countryId))

@@ -36,6 +36,9 @@ Large stock orders affect execution prices and market quotes, and major company 
 shake national-sector confidence. With the **Inventor** talent, fund risky multi-year research
 into alternate-history technologies: a 15-year head start or a fictional frontier breakthrough
 with 20 years of product exclusivity. Even a monopoly needs cash, staff and production capacity.
+For a completed tier invention, open **Inventor Lab → the invention → Patent in All Nations**
+to file every remaining country at once. The confirmation shows the combined national fees;
+existing filings are skipped, and each country's patent term and enforcement still apply.
 
 There is no server and no account: the game never sends anything anywhere.
 

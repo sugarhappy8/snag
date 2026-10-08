@@ -4,10 +4,11 @@ import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { bizOf, normalizeBiz } from '../src/game/business/state'
 import { becomeCeo } from '../src/game/business/career'
 import { businessEffects, expansionOf, productDemand, protectedIn } from '../src/game/business/dynamics'
-import { fileInventionPatent, inventionYear, inventorMenu, researchQuote, startInvention, studyMarket } from '../src/game/business/expansion'
+import { allNationsPatentQuote, fileInventionPatent, fileInventionPatentAllNations, inventionYear, inventorMenu, researchQuote, startInvention, studyMarket } from '../src/game/business/expansion'
 import { INVENTION_TIERS, nationalPatentLaw, type InventionTier } from '../src/game/business/inventions'
 import { nextRandom } from '../src/game/rng'
-import type { MenuNode } from '../src/game/types'
+import type { MenuAction, MenuNode } from '../src/game/types'
+import { COUNTRIES } from '../src/game/world'
 
 function lab(seed = 45, year = 2026) {
   const g = makeTestGame(seed, { age: 35, money: 1e9, countryId: 'us', talents: ['Inventor'] })
@@ -167,5 +168,158 @@ describe('random Inventor Lab', () => {
     for (const kind of Object.keys(INVENTION_TIERS)) expect(nodes.some(n => n.id === `inventor.start.${a.id}.${kind}`)).toBe(true)
     visit(nodes)
     expect(JSON.stringify(g)).toBe(before)
+  })
+})
+
+describe('all-nations patent filing', () => {
+  it('files every remaining nation once, preserves existing rights, and pays the exact summed fees from company cash', () => {
+    const { g, a, b } = lab()
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!
+    expect(fileInventionPatent(g, a.id, id, 'jp')).toBe(true)
+    const prior = expansionOf(b).patents[0].protections!, cash = b.cash, costs = b.yearCosts, personal = g.character.money, rng = g.rng
+    const remaining = COUNTRIES.filter(c => !['us', 'jp'].includes(c.id))
+    const total = remaining.reduce((sum, c) => sum + nationalPatentLaw(c.id, g.year).filingCost, 0)
+    const quote = allNationsPatentQuote(g, a, id)
+    expect(quote.countries).toEqual(remaining)
+    expect(quote.cost).toBe(total)
+    expect(quote.block).toBeNull()
+    g.queue = []
+    expect(fileInventionPatentAllNations(g, a.id, id)).toBe(true)
+    const p = expansionOf(b).patents[0]
+    expect(p.protections).toHaveLength(COUNTRIES.length)
+    expect(new Set(p.protections!.map(t => t.country)).size).toBe(COUNTRIES.length)
+    expect(p.protections!.filter(t => ['us', 'jp'].includes(t.country))).toEqual(prior)
+    for (const c of COUNTRIES) expect(protectedIn(p, c.id, g.year), c.id).toBe(true)
+    expect(b.cash).toBe(cash - total)
+    expect(b.yearCosts).toBe(costs + total)
+    expect(g.character.money).toBe(personal)
+    expect(g.rng).toBe(rng)
+    expect(g.queue).toHaveLength(1)
+    const after = JSON.stringify(g)
+    expect(fileInventionPatentAllNations(g, a.id, id)).toBe(false)
+    expect(fileInventionPatent(g, a.id, id, 'gb')).toBe(false)
+    expect(allNationsPatentQuote(g, a, id).block).toBe('Already filed in all nations.')
+    expect(JSON.stringify(g)).toBe(after)
+    const restored = expansionOf(normalizeBiz(JSON.parse(JSON.stringify(b)), g.year)).patents[0]
+    expect(restored).toEqual(p)
+    for (const c of COUNTRIES) expect(protectedIn(restored, c.id, g.year), c.id).toBe(true)
+  })
+
+  it('rejects an unaffordable batch without spending or partial filings; individual filing still works', () => {
+    const { g, a, b } = lab()
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!, total = allNationsPatentQuote(g, a, id).cost
+    b.cash = total - 1
+    expect(b.cash).toBeGreaterThan(nationalPatentLaw('jp', g.year).filingCost)
+    const before = JSON.stringify(g)
+    expect(allNationsPatentQuote(g, a, id).block).toContain('Not enough company cash')
+    expect(fileInventionPatentAllNations(g, a.id, id)).toBe(false)
+    expect(JSON.stringify(g)).toBe(before)
+    expect(fileInventionPatent(g, a.id, id, 'jp')).toBe(true)
+    expect(expansionOf(b).patents[0].protections).toHaveLength(2)
+  })
+
+  it('accepts the exact total without an extra home-country fee', () => {
+    const { g, a, b } = lab()
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!
+    b.cash = allNationsPatentQuote(g, a, id).cost
+    expect(fileInventionPatentAllNations(g, a.id, id)).toBe(true)
+    expect(b.cash).toBe(0)
+    expect(expansionOf(b).patents[0].protections).toHaveLength(COUNTRIES.length)
+  })
+
+  it('uses each historical national term from the invention date, not the later bulk-filing date', () => {
+    const { g, a, b } = lab(45, 1980)
+    b.countryId = 'jp'
+    studyMarket(g, a.id, 'jp')
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!, home = expansionOf(b).patents[0].protections![0]
+    g.year++
+    expect(fileInventionPatentAllNations(g, a.id, id)).toBe(true)
+    const p = expansionOf(b).patents[0]
+    expect(p.protections!.find(t => t.country === 'jp')).toEqual(home)
+    expect(p.protections!.find(t => t.country === 'us')).toEqual({ country: 'us', filed: 1981, expires: 1997 })
+    expect(p.protections!.find(t => t.country === 'gb')).toEqual({ country: 'gb', filed: 1981, expires: 2000 })
+    for (const t of p.protections!) expect(t.expires).toBe(p.launched + nationalPatentLaw(t.country, p.launched).term)
+  })
+
+  it.each([-1, 2])('cannot bypass the filing window at launch year %+d', offset => {
+    const { g, a, b } = lab()
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!
+    g.year += offset
+    const before = JSON.stringify(g)
+    expect(allNationsPatentQuote(g, a, id).block).toContain('filing window')
+    expect(fileInventionPatentAllNations(g, a.id, id)).toBe(false)
+    expect(JSON.stringify(g)).toBe(before)
+  })
+
+  it('rejects another company, missing inventions, and lost management authority', () => {
+    const { g, a, b } = lab()
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!
+    const sister = createBusinessAsset(g, 'Sister', newBiz(g, 'solar', 'us', 'Chicago', { cash: 1e8 }), 1e6)
+    g.assets.push(sister)
+    let before = JSON.stringify(g)
+    expect(fileInventionPatentAllNations(g, sister.id, id)).toBe(false)
+    expect(fileInventionPatentAllNations(g, a.id, 'missing-invention')).toBe(false)
+    expect(fileInventionPatentAllNations(g, 'missing-company', id)).toBe(false)
+    expect(JSON.stringify(g)).toBe(before)
+    g.character.age = 13
+    before = JSON.stringify(g)
+    expect(fileInventionPatentAllNations(g, a.id, id)).toBe(false)
+    expect(JSON.stringify(g)).toBe(before)
+  })
+
+  it('offers a pure menu action with a fresh quote after individual filings, and safely disables stale actions', () => {
+    const { g, a, b } = lab()
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!
+    const findAction = (): MenuAction => {
+      const invention = inventorMenu(a).children(g).find(n => n.type === 'menu' && n.id === `inventor.patent.${a.id}.0`)!
+      if (invention.type !== 'menu') throw new Error('Missing invention menu')
+      const action = invention.children(g).find(n => n.id === `inventor.file.all.${id}`)!
+      if (action.type !== 'action') throw new Error('Missing bulk action')
+      return action
+    }
+    const action = findAction(), before = JSON.stringify(g)
+    expect(action.label).toBe('Patent in All Nations')
+    expect(action.disabledReason?.(g)).toBeNull()
+    expect(typeof action.subtitle === 'function' ? action.subtitle(g) : action.subtitle).toContain(`${COUNTRIES.length - 1} new national filings`)
+    expect(action.confirm?.(g)).toContain('Already-filed countries are skipped')
+    findAction()
+    expect(JSON.stringify(g)).toBe(before)
+    const oldCost = allNationsPatentQuote(g, a, id).cost
+    fileInventionPatent(g, a.id, id, 'jp')
+    const quote = allNationsPatentQuote(g, a, id), cash = b.cash
+    expect(quote.cost).toBe(oldCost - nationalPatentLaw('jp', g.year).filingCost)
+    expect(typeof action.subtitle === 'function' ? action.subtitle(g) : action.subtitle).toContain(`${COUNTRIES.length - 2} new national filings`)
+    action.run(g)
+    expect(b.cash).toBe(cash - quote.cost)
+    expect(action.disabledReason?.(g)).toBe('Already filed in all nations.')
+    const after = JSON.stringify(g)
+    action.run(g)
+    expect(JSON.stringify(g)).toBe(after)
+    g.assets = []
+    expect(action.disabledReason?.(g)).toBe('You no longer own this business.')
+  })
+
+  it('quotes the live company rather than a stale menu asset after a save/load round trip', () => {
+    const { g, a, b } = lab()
+    startInvention(g, a.id, 'small')
+    const id = expansionOf(b).patents[0].id!, original = allNationsPatentQuote(g, a, id)
+    const restored = JSON.parse(JSON.stringify(g))
+    expect(fileInventionPatent(restored, a.id, id, 'jp')).toBe(true)
+    const quote = allNationsPatentQuote(restored, a, id)
+    expect(quote.countries).toHaveLength(original.countries.length - 1)
+    expect(quote.cost).toBe(original.cost - nationalPatentLaw('jp', restored.year).filingCost)
+    const live = bizOf(restored, restored.assets.find((candidate: { id: string }) => candidate.id === a.id)!)
+    live.cash = quote.cost - 1
+    expect(allNationsPatentQuote(restored, a, id).block).toContain('Not enough company cash')
+    const before = JSON.stringify(restored)
+    expect(fileInventionPatentAllNations(restored, a.id, id)).toBe(false)
+    expect(JSON.stringify(restored)).toBe(before)
   })
 })
