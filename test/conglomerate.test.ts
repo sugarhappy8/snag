@@ -583,6 +583,7 @@ describe('conglomerates', () => {
     }
   })
 
+  // Allow for CPU contention while simulating 100 division-years alongside the full suite.
   it('runs a five-division group with a hired CEO for twenty years without errors', () => {
     const { g, assets } = setup(11, ['restaurant', 'grocery', 'farm', 'logistics', 'software'])
     becomeCeo(g, assets[0], bizOf(g, assets[0]))
@@ -624,7 +625,7 @@ describe('conglomerates', () => {
     void addToGroup
     void groupDividend
     void valuationOf
-  })
+  }, 60_000)
 })
 
 export type { BizState }

@@ -28,8 +28,10 @@ own part of the company, and merge your companies into a conglomerate.
 
 Choose from 45 company sectors. National demand, input costs and customer tastes change over
 time; study your markets and run up to three local strategy programs per country. Elite CEOs
-bring stronger operating performance and turnaround planning, but want 2–10% equity for
-long-term retention. Group CEOs recruit division leaders at their own rating or higher.
+bring stronger operating performance and turnaround planning, and ask for an initial 2–10%
+equity grant. Any positive company or conglomerate stake prevents voluntary resignation or
+retirement, even after dilution or skill growth; salary and board dismissal still apply.
+Group CEOs recruit division leaders at their own rating or higher.
 Large stock orders affect execution prices and market quotes, and major company declines
 shake national-sector confidence. With the **Inventor** talent, fund risky multi-year research
 into alternate-history technologies: a 15-year head start or a fictional frontier breakthrough

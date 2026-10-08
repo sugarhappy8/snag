@@ -39,7 +39,7 @@ import { ownerAvailable } from './board-ceo'
 import { boardMenuNodes } from './board-menu'
 import { readTech } from './deeptech-state'
 import { bizWorth, niceAmount } from './economy'
-import { bizOf, findBusiness, readBiz, runsIt, type BizState, type Manager, type Statement } from './state'
+import { bizOf, findBusiness, hasExecutiveShares, readBiz, runsIt, type BizState, type Manager, type Statement } from './state'
 import { clampN, markBest, money, num, pct, rec, str } from './util'
 
 export { registerGroupBoard, MANDATES, mandateDef, type BoardState, type Director, type GroupBoardInfo, type Limits, type Mandate } from './board-state'
@@ -173,14 +173,14 @@ function payYear(g: GameState, a: Asset, b: BizState, st: BoardState, s: Stateme
     if (r.passed) {
       m.salary = ask
       log(g, `${a.name}'s board gave ${managerName(m)} a raise to ${money(ask)} a year.`, 'neutral')
-    } else if (chance(g, 0.4)) {
+    } else if (!hasExecutiveShares(m) && chance(g, 0.4)) {
       poached(g, a, b, st, m, 'after the board turned down a raise')
       return
     }
   }
   // Rivals come for the best, and an underpaid star listens.
   const underpaid = m.salary < askingSalary(b, m.skill, 0) * 0.85
-  if (m.skill >= 85 && tenure >= 2 && chance(g, 0.02 + (underpaid ? 0.05 : 0))) poached(g, a, b, st, m, 'by a rival')
+  if (!hasExecutiveShares(m) && m.skill >= 85 && tenure >= 2 && chance(g, 0.02 + (underpaid ? 0.05 : 0))) poached(g, a, b, st, m, 'by a rival')
 }
 
 /** A deputy who steps up when the CEO leaves suddenly: a notch below them, never a star. */
@@ -190,6 +190,8 @@ function interim(g: GameState, b: BizState, m: Manager): Manager {
 
 /** A star CEO leaves for a rival; a deputy keeps the lights on until the owner picks again. */
 function poached(g: GameState, a: Asset, b: BizState, st: BoardState, m: Manager, how: string): void {
+  // Also guard queued raise responses: shares may have been granted after the popup opened.
+  if (hasExecutiveShares(m)) return
   const next = boardExists(g, b) && !controlsBoard(st) ? boardPick(g, b, st) : interim(g, b, m)
   const prev = managerName(m)
   // They resigned: no severance, but the change still costs morale.
@@ -211,7 +213,7 @@ const RAISE = defineScript('business.board.raise', (g, choice, data) => {
     if (boardExists(g, b) && ask > payCap(b, st)) {
       const r = vote(g, a, b, { kind: 'ceoPay', by: 'owner', label: `Raise ${managerName(m)}'s pay to ${money(ask)} a year`, amount: ask, skill: m.skill })
       if (!r.passed) {
-        if (chance(g, 0.4)) poached(g, a, b, st, m, 'after the board turned down the raise you backed')
+        if (!hasExecutiveShares(m) && chance(g, 0.4)) poached(g, a, b, st, m, 'after the board turned down the raise you backed')
         return
       }
     }
@@ -220,12 +222,12 @@ const RAISE = defineScript('business.board.raise', (g, choice, data) => {
     notice(g, 'Raise Granted', `${managerName(m)} will earn ${formatMoney(ask)} a year running ${a.name}. ${m.gender === 'female' ? 'She' : 'He'} promised another record year.`, { emoji: '\u{1F91D}', tone: 'good' })
     return
   }
-  if (chance(g, RAISE_WALK)) {
+  if (!hasExecutiveShares(m) && chance(g, RAISE_WALK)) {
     poached(g, a, b, boardOf(b), m, 'after you said no to a raise')
     return
   }
   log(g, `I turned down ${managerName(m)}'s request for a raise.`, 'neutral')
-  notice(g, 'Raise Refused', `${managerName(m)} grumbled, polished the r\u{E9}sum\u{E9}, took a long lunch with a headhunter and went back to work.`, { emoji: '\u{1F610}' })
+  notice(g, 'Raise Refused', hasExecutiveShares(m) ? `${managerName(m)} was disappointed, but stays committed as a shareholder. Salary remains ${formatMoney(m.salary)} a year.` : `${managerName(m)} grumbled, polished the r\u{E9}sum\u{E9}, took a long lunch with a headhunter and went back to work.`, { emoji: '\u{1F610}' })
 })
 
 /** Chance a CEO who is refused a raise walks out (to a rival who was already calling). */
@@ -238,7 +240,8 @@ function raiseValues(g: GameState, b: BizState, m: Manager, ask: number): { gran
   const stay = ceoValue(w, m, gain)
   // Losing them means an average replacement (skill 60 at the asking pay).
   const typical = ceoValue(w, { skill: 60, salary: askingSalary(b, 60) }, gain)
-  return { grant: ceoValue(w, { ...m, salary: ask }, gain), refuse: (1 - RAISE_WALK) * stay + RAISE_WALK * typical }
+  const walk = hasExecutiveShares(m) ? 0 : RAISE_WALK
+  return { grant: ceoValue(w, { ...m, salary: ask }, gain), refuse: (1 - walk) * stay + walk * typical }
 }
 
 function queueRaise(g: GameState, a: Asset, b: BizState, m: Manager, ask: number): void {
@@ -254,7 +257,7 @@ function queueRaise(g: GameState, a: Asset, b: BizState, m: Manager, ask: number
     g,
     RAISE,
     'Your CEO Wants a Raise',
-    `${managerName(m)} has run ${a.name} for ${g.year - m.since} years and the results are in. ${m.gender === 'female' ? 'She' : 'He'} wants ${formatMoney(ask)} a year (now ${formatMoney(m.salary)}) and hinted that rivals have been calling.`,
+    `${managerName(m)} has run ${a.name} for ${g.year - m.since} years and the results are in. ${m.gender === 'female' ? 'She' : 'He'} wants ${formatMoney(ask)} a year (now ${formatMoney(m.salary)}). ${hasExecutiveShares(m) ? 'As a shareholder, they will stay even if the raise is refused.' : 'They hinted that rivals have been calling.'}`,
     choices,
     { emoji: '\u{1F4BC}', data: { assetId: a.id, who: `${m.firstName} ${m.lastName}`, ask } },
   )

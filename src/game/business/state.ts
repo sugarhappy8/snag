@@ -146,6 +146,11 @@ export interface Manager {
   personId?: string
 }
 
+/** Any actual vested stake secures loyalty; retention credit alone is not ownership. */
+export function hasExecutiveShares(manager: Manager | null | undefined): boolean {
+  return (manager?.equity ?? 0) > 0 || (manager?.groupEquity?.share ?? 0) > 0
+}
+
 export type Supplier = 'budget' | 'standard' | 'premium'
 
 /** New issuance dilutes executives just like the owner's common shares. */

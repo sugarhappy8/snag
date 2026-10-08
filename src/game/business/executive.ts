@@ -9,16 +9,16 @@ import { clearGroupCeoJob } from './conglomerate-job'
 import { executiveEdge } from './dynamics'
 import { bestPlan, refreshValue } from './economy'
 import { manageBlock } from './gate'
-import { bizOf, findBusiness, readBiz, type BizState, type Manager } from './state'
+import { bizOf, findBusiness, hasExecutiveShares, readBiz, type BizState, type Manager } from './state'
 import { pct, priceCapOf } from './util'
 
 export function equityTarget(skill: number): number { return skill >= 95 ? .10 : skill >= 90 ? .05 : skill >= 85 ? .02 : 0 }
 export function equityDue(m: Manager): number {
-  const due = equityTarget(m.skill) - (m.equity ?? 0) - (m.groupEquity?.credit ?? 0)
-  return due > 1e-10 ? due : 0
+  return hasExecutiveShares(m) ? 0 : equityTarget(m.skill)
 }
 export function equityTerms(m: Manager, group = false): string {
-  return equityTarget(m.skill) ? `${pct(equityTarget(m.skill))} ownership-equivalent needed; ${pct(m.equity ?? 0)} ${group ? 'group' : 'company'}${m.groupEquity ? ` + ${pct(m.groupEquity.share, 2)} group shares (${pct(m.groupEquity.credit)} retention credit)` : ' granted'}` : 'Salary-based retention'
+  if (hasExecutiveShares(m)) return `${pct(m.equity ?? 0)} ${group ? 'group' : 'company'}${m.groupEquity ? ` + ${pct(m.groupEquity.share, 2)} group shares` : ' shares'}; shareholder loyalty — will not resign or retire`
+  return equityTarget(m.skill) ? `${pct(equityTarget(m.skill))} initial ownership-equivalent requested for shareholder loyalty` : 'Salary-based retention'
 }
 
 export function grantCeoEquity(g: GameState, id: string, group = false): boolean {
@@ -33,7 +33,7 @@ export function grantCeoEquity(g: GameState, id: string, group = false): boolean
     for (const x of grp.members) x.b.invested *= grp.core.share / before
     syncMembers(grp)
     saveGroup(g, grp)
-    notice(g, 'Group Equity Granted', `${m.firstName} now owns ${pct(m.equity)} of ${grp.core.name}. Your stake is ${pct(grp.core.share)}. Salary is still payable; the equity-retention requirement is satisfied. Granted shares are not returned if the CEO leaves or is fired.`, { emoji: '🤝' })
+    notice(g, 'Group Equity Granted', `${m.firstName} now owns ${pct(m.equity)} of ${grp.core.name}. Your stake is ${pct(grp.core.share)}. Shareholders never resign or retire while they hold shares, even after dilution or a skill increase. Salary is still payable; owner or board dismissal remains possible and does not return the shares.`, { emoji: '🤝' })
     return true
   }
   const a = findBusiness(g, id)
@@ -57,12 +57,13 @@ export function grantCeoEquity(g: GameState, id: string, group = false): boolean
   delete m.equityAsked
   if (grp) saveGroup(g, grp)
   else refreshValue(a, b)
-  notice(g, 'CEO Equity Granted', `${m.firstName} now owns ${pct(m.equity)} of ${a.name}. Your effective stake is ${pct(b.share)}. ${grp ? 'The stake came from the group’s holding in this division. ' : ''}Salary is still payable. Equity satisfies long-term retention, but does not prevent board dismissal. The shares stay granted after departure.`, { emoji: '🤝' })
+  notice(g, 'CEO Equity Granted', `${m.firstName} now owns ${pct(m.equity)} of ${a.name}. Your effective stake is ${pct(b.share)}. ${grp ? 'The stake came from the group’s holding in this division. ' : ''}Shareholders never resign or retire while they hold shares, even after dilution or a skill increase. Salary is still payable. Owner or board dismissal remains possible and does not return the shares.`, { emoji: '🤝' })
   return true
 }
 
 /** Warning at year three, departure two years later. Calling twice cannot accelerate the deadline. */
 function retention(g: GameState, name: string, m: Manager): boolean {
+  if (hasExecutiveShares(m)) { delete m.equityAsked; return false }
   const due = equityDue(m)
   if (!due || g.year - m.since < 3) return false
   if (m.equityAsked === undefined) {
@@ -71,7 +72,7 @@ function retention(g: GameState, name: string, m: Manager): boolean {
     return false
   }
   if (g.year < m.equityAsked + 2) return false
-  notice(g, 'CEO Resigned', `${m.firstName} ${m.lastName} left ${name} after the equity deadline passed. Existing granted shares remain theirs. An interim executive will take over.`, { emoji: '🚪', tone: 'bad' })
+  notice(g, 'CEO Resigned', `${m.firstName} ${m.lastName} left ${name} after the equity deadline passed without receiving shares. An interim executive will take over.`, { emoji: '🚪', tone: 'bad' })
   log(g, `${name}'s CEO resigned over ownership terms.`, 'bad')
   return true
 }
@@ -119,6 +120,6 @@ export function equityMenu(id: string, group = false): MenuNode {
       if ((group ? grp!.core.share : b.share) - equityDue(m) < .01) return 'Not enough ownership to make this grant.'
       return null
     },
-    confirm: g => { const m = current(g); return m ? `Permanently transfer ${pct(equityDue(m))} of the ${group ? 'conglomerate' : 'company'} to this CEO? Your ownership and future dividends fall. Salary continues. These shares will not return if the CEO leaves.` : null },
+    confirm: g => { const m = current(g); return m ? `Permanently transfer ${pct(equityDue(m))} of the ${group ? 'conglomerate' : 'company'} to this CEO? Your ownership and future dividends fall. Salary continues. Any positive stake prevents voluntary resignation or retirement; dismissal is still possible and does not return these shares.` : null },
     run: g => { grantCeoEquity(g, id, group) } }
 }

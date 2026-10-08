@@ -12,6 +12,7 @@ import { earmarkedCash } from './gamestudio'
 import { readJob } from './nepo-job'
 import { ceilingOf, startSkill } from './nepo-model'
 import { isRelative, yourKin } from './nepo-state'
+import { hasExecutiveShares } from './state'
 import { money } from './util'
 
 export function groupFamily(g: GameState, id: string) {
@@ -96,7 +97,8 @@ export function prepareGroupFamily(g: GameState, grp: Group): string[] {
   for (const p of g.people) {
     const job = readGroupJob(p)
     if (!job || job.groupId !== grp.core.id) continue
-    if (!p.alive || p.age > 72 || p.data.disowned === true || isEstranged(g, p) || (job.role === 'ceo' && grp.core.manager?.personId !== p.id)) {
+    const shareholder = job.role === 'ceo' && grp.core.manager?.personId === p.id && hasExecutiveShares(grp.core.manager)
+    if (!p.alive || (!shareholder && (p.age > 72 || p.data.disowned === true || isEstranged(g, p))) || (job.role === 'ceo' && grp.core.manager?.personId !== p.id)) {
       if (grp.core.manager?.personId === p.id) { grp.core.ceo = 'owner'; grp.core.manager = null }
       clearGroupJob(p); lines.push(`${p.firstName} left the ${GROUP_ROLES[job.role].label} position.`); continue
     }

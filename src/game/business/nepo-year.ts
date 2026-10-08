@@ -19,7 +19,7 @@ import { clearJob, readJob, writeJob, writePast, type FamilyJob } from './nepo-j
 import { ABOVE_MARKET, marketPay, rankDef, startingPay, titleFor } from './nepo-roles'
 import { employeesOf, familyOf, isCeoOf, readFamily, successorOf, myKin, type Employee } from './nepo-state'
 import { endJob, handOverToSuccessor, settleReplacedCeo, unearned } from './nepo-actions'
-import { bizOf, businessAssets, findBusiness, runsIt, totalOutlets, type BizState } from './state'
+import { bizOf, businessAssets, findBusiness, hasExecutiveShares, runsIt, totalOutlets, type BizState } from './state'
 import { clampN, rec, str } from './util'
 
 /** Most nepo popups in a year, counting the ask (nepo-asks.ts), the year's one outcome and a life event. */
@@ -457,7 +457,9 @@ function cleanup(g: GameState): void {
       continue
     }
     const b = bizOf(g, a)
-    // Disowned or estranged: nobody stays on the payroll (or in the chair) of a parent they no longer speak to.
+    // A vested shareholder stays employed despite family conflict or moving abroad.
+    if (isCeoOf(b, p) && hasExecutiveShares(b.manager)) continue
+    // Non-shareholders may walk away after estrangement or a move.
     const estranged = isEstranged(g, p)
     if (p.data.disowned === true || estranged) {
       if (isCeoOf(b, p)) {

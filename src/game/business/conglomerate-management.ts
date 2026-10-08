@@ -81,7 +81,7 @@ export function retainDivisionCeo(g: GameState, grp: Group, x: GroupMember): str
   for (const member of grp.members) member.b.invested *= grp.core.share / before
   syncMembers(grp)
   m.groupEquity = { id: grp.core.id, share: (m.groupEquity?.share ?? 0) + shares, credit: (m.groupEquity?.credit ?? 0) + due }; delete m.equityAsked
-  return `Retained ${managerName(m)} at ${x.a.name} with ${pct(shares, 2)} group ownership, worth ${pct(due)} of the group's holding in that division at grant. Your group stake is now ${pct(grp.core.share, 2)}. Shares remain granted after departure; subsidiary cash remains pooled.`
+  return `Retained ${managerName(m)} at ${x.a.name} with ${pct(shares, 2)} group ownership, worth ${pct(due)} of the group's holding in that division at grant. Your group stake is now ${pct(grp.core.share, 2)}. Any positive stake prevents voluntary resignation or retirement. Shares remain granted after dismissal; subsidiary cash remains pooled.`
 }
 /** Review every seat. Headhunting, severance and salaries must all be affordable. */
 export function manageDivisionCeos(g: GameState, grp: Group): string[] {

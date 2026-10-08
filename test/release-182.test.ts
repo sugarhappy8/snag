@@ -89,7 +89,7 @@ describe('v1.8.2 financial regressions', () => {
     expect(withoutBook.cash - withBook.cash).toBeCloseTo(withoutBook.stmt.net - withBook.stmt.net, 0)
   })
 
-  it('dilutes the CEO at IPO and allows a fresh retention top-up', () => {
+  it('dilutes the CEO at IPO without requiring a fresh retention top-up', () => {
     const { g, a, b } = company()
     installManager(g, b, managerCandidate(g, b, 95))
     expect(grantCeoEquity(g, a.id)).toBe(true)
@@ -100,9 +100,9 @@ describe('v1.8.2 financial regressions', () => {
     expect(b.share).toBeCloseTo(.675)
     expect(b.manager!.equity).toBeCloseTo(.075)
     expect(b.share + b.manager!.equity! + .25).toBeCloseTo(1)
-    expect(equityDue(b.manager!)).toBeCloseTo(.025)
+    expect(equityDue(b.manager!)).toBe(0)
     expect(b.manager!.equityAsked).toBeUndefined()
-    expect(grantCeoEquity(g, a.id)).toBe(true)
+    expect(grantCeoEquity(g, a.id)).toBe(false)
     expect(equityDue(b.manager!)).toBe(0)
     expect(b.share + b.manager!.equity! + .25).toBeCloseTo(1)
   })
