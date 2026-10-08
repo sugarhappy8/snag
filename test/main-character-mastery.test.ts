@@ -10,6 +10,14 @@ import { hireForJob } from '../src/game/careers'
 import { codingCeiling, codingSkill, languageLevel } from '../src/game/computer/skills'
 import { practice } from '../src/game/computer/dev-learn'
 import { cvEntries, cvMenu } from '../src/game/cv'
+import { becomeCeo, installManager, syncCeo } from '../src/game/business/career'
+import { chairGroup, formGroup } from '../src/game/business/conglomerate-actions'
+import { ownerCapture } from '../src/game/business/conglomerate-econ'
+import { liveGroup, saveGroup } from '../src/game/business/conglomerate-state'
+import { yearlyGroups } from '../src/game/business/conglomerate-year'
+import { ceoSkill } from '../src/game/business/economy'
+import { createBusinessAsset, newBiz } from '../src/game/business/founding'
+import { OWNER_JOB } from '../src/game/business/state'
 import { createNewLife } from '../src/game/life'
 import { lotteryMenu, settleBlackjack, slotPayout, slotRtp } from '../src/game/gambling'
 import { markup } from '../src/game/computer/money-options'
@@ -20,6 +28,7 @@ import {
   ageCeiling,
   allMasteryTexts,
   bodyCeiling,
+  businessFloor,
   crowdedField,
   experienceCap,
   isMastered,
@@ -411,6 +420,132 @@ describe('martial arts, driving, school and work', () => {
   })
 })
 
+describe('running a business', () => {
+  function company(g: GameState) {
+    const b = newBiz(g, 'restaurant', g.character.countryId, g.character.city)
+    const a = createBusinessAsset(g, 'Test Kitchen', b, 100_000)
+    g.assets.push(a)
+    return { a, b }
+  }
+
+  it('masters business only when the owner takes charge, with a bounded practical skill floor', () => {
+    const g = life(30)
+    const { a, b } = company(g)
+    expect(isMastered(g, 'business.run')).toBe(false)
+    expect(businessFloor(g)).toBe(0)
+
+    const rng = g.rng
+    const money = g.character.money
+    becomeCeo(g, a, b)
+
+    expect(isMastered(g, 'business.run')).toBe(true)
+    expect(businessFloor(g)).toBe(85)
+    expect(ceoSkill(g, b)).toBeGreaterThanOrEqual(85)
+    expect(g.rng).toBe(rng)
+    expect(g.character.money).toBe(money)
+    expect(momentPopups(g)).toHaveLength(1)
+
+    // Taking charge again is upkeep, not a second mastery moment.
+    const logs = lines(g).length
+    becomeCeo(g, a, b, 'Owner & CEO')
+    expect(momentPopups(g)).toHaveLength(1)
+    expect(lines(g)).toHaveLength(logs)
+  })
+
+  it('does not grant the floor or touch mastery for an ordinary owner-CEO', () => {
+    const g = life(30, false)
+    const { a, b } = company(g)
+    const rng = g.rng
+    becomeCeo(g, a, b)
+    expect(isMastered(g, 'business.run')).toBe(false)
+    expect(businessFloor(g)).toBe(0)
+    expect(ceoSkill(g, b)).toBeLessThan(85)
+    expect(g.flags['mcs.mastered']).toBeUndefined()
+    expect(g.rng).toBe(rng)
+  })
+
+  it('repairs a WIP save whose Main Character already runs a company but lacks the record', () => {
+    const g = life(30)
+    const { a, b } = company(g)
+    // Simulate the pre-fix save shape without going through the newly instrumented transition.
+    b.ceo = 'owner'
+    b.manager = null
+    g.character.job = {
+      defId: OWNER_JOB,
+      title: 'Owner & CEO',
+      company: a.name,
+      category: 'special',
+      salary: 0,
+      level: 0,
+      performance: 60,
+      yearsInRole: 2,
+      yearsAtCompany: 2,
+      data: { assetId: a.id, startAge: 28, roleStartAge: 28 },
+    }
+    delete g.flags['mcs.mastered']
+
+    syncCeo(g)
+
+    expect(isMastered(g, 'business.run')).toBe(true)
+    expect(ceoSkill(g, b)).toBeGreaterThanOrEqual(85)
+  })
+
+  it('masters business when first chairing a conglomerate, even if managers ran every division', () => {
+    const g = life(30, true, 23, { stats: { happiness: 70, health: 90, smarts: 20, looks: 60 } })
+    const first = company(g)
+    const second = company(g)
+    second.a.name = 'Second Kitchen'
+    installManager(g, first.b, {
+      firstName: 'Ari', lastName: 'One', gender: 'female', skill: 60, salary: 50_000, since: g.year,
+    })
+    installManager(g, second.b, {
+      firstName: 'Bea', lastName: 'Two', gender: 'female', skill: 60, salary: 50_000, since: g.year,
+    })
+
+    expect(isMastered(g, 'business.run')).toBe(false)
+    expect(ownerCapture(g)).toBeLessThan(0.85)
+    expect(formGroup(g, [first.a.id, second.a.id], 'Kitchen Group')).toBe(true)
+    expect(isMastered(g, 'business.run')).toBe(true)
+    expect(ownerCapture(g)).toBeGreaterThanOrEqual(0.85)
+  })
+
+  it('masters business when taking an existing conglomerate back from its hired CEO', () => {
+    const g = life(30, true, 29, { stats: { happiness: 70, health: 90, smarts: 20, looks: 60 } })
+    const first = company(g)
+    const second = company(g)
+    second.a.name = 'Second Kitchen'
+    expect(formGroup(g, [first.a.id, second.a.id], 'Kitchen Group')).toBe(true)
+    const id = first.b.group && typeof first.b.group === 'object' && !Array.isArray(first.b.group) ? String(first.b.group.id) : ''
+    const grp = liveGroup(g, id)!
+    grp.core.ceo = 'manager'
+    grp.core.manager = {
+      firstName: 'Casey', lastName: 'Chief', gender: 'male', skill: 70, salary: 80_000, since: g.year,
+    }
+    saveGroup(g, grp)
+    delete g.flags['mcs.mastered']
+    g.queue = []
+
+    expect(chairGroup(g, id)).toBe(true)
+    expect(isMastered(g, 'business.run')).toBe(true)
+    expect(ownerCapture(g)).toBeGreaterThanOrEqual(0.85)
+  })
+
+  it('repairs a WIP save whose Main Character already chairs a conglomerate', () => {
+    const g = life(30, true, 31, { stats: { happiness: 70, health: 90, smarts: 20, looks: 60 } })
+    const first = company(g)
+    const second = company(g)
+    second.a.name = 'Second Kitchen'
+    expect(formGroup(g, [first.a.id, second.a.id], 'Legacy Group')).toBe(true)
+    delete g.flags['mcs.mastered']
+    g.queue = []
+
+    yearlyGroups(g)
+
+    expect(isMastered(g, 'business.run')).toBe(true)
+    expect(ownerCapture(g)).toBeGreaterThanOrEqual(0.85)
+  })
+})
+
 describe('luck is not skill', () => {
   function flatten(g: GameState, nodes: MenuNode[], out: MenuAction[] = [], depth = 0): MenuAction[] {
     if (depth > 3) return out
@@ -491,6 +626,16 @@ describe('everyone else and old saves', () => {
     expect(() => masterFirstTime(g, 'y', 'craft', 'y')).not.toThrow()
     g.flags['mcs.mastered'] = { owner: `${g.character.id}:${g.year - g.character.age}`, done: null }
     expect(() => masterFirstTime(g, 'z', 'craft', 'z')).not.toThrow()
+    g.flags['mcs.mastered'] = {
+      owner: `${g.character.id}:${g.year - g.character.age}`,
+      done: Object.assign([], { bogus: 'not an age' }),
+      noticeYear: g.year,
+    }
+    expect(isMastered(g, 'bogus')).toBe(false)
+    expect(() => masterFirstTime(g, 'durable', 'craft', 'durable')).not.toThrow()
+    const roundTrip = structuredClone(g)
+    expect(isMastered(roundTrip, 'durable')).toBe(true)
+    expect(masteredKeys(roundTrip)).toEqual(['durable'])
   })
 
   it('the lifestyle is light: tiny, bounded, no money', () => {

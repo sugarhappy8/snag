@@ -138,6 +138,21 @@ describe('who can abuse power', () => {
     expect(ch.choices.map((c) => c.id)).not.toContain('nationalize')
     expect(ch.choices.map((c) => c.id)).toContain('contract')
   })
+
+  it('refuses negative market moves against registered real companies without spending the action', () => {
+    const g = official('us', 'leader')
+    const real = listedTargets(g).find((t) => t.real)
+    expect(real).toBeDefined()
+    runScript(g, 'special.pol.abuse.announce', 'ban', { secId: real!.secId }, undefined as unknown as ModalItem)
+    expect(marketShocks(g)).toHaveLength(0)
+    expect(g.yearActions['pol.marketMove'] ?? 0).toBe(0)
+    expect(notices(g).at(-1)?.text).toMatch(/legal advisers refused/i)
+    g.queue = []
+    runScript(g, 'special.pol.abuse.announce', 'contract', { secId: real!.secId }, undefined as unknown as ModalItem)
+    expect(marketShocks(g)).toHaveLength(1)
+    expect(marketShocks(g)[0].mult).toBeGreaterThan(1)
+    expect(g.yearActions['pol.marketMove']).toBe(1)
+  })
 })
 
 describe('market shocks', () => {

@@ -12,6 +12,8 @@ import { brandsFor } from '../data/brands'
 import { computerEra, computerModel } from '../computer/era'
 import { bandName, byEra, cars, eraPick, flights, landline } from './era'
 import { channel, folks, mayAsk, priced, scaled, spoiledLine, type Ask, type AskDef } from './wealth-ask'
+import { changeWill, removeHeir } from './will-act'
+import { queueTells } from './will-scenes'
 import { holdsFamilyJob } from '../business/nepo-job'
 import {
   addEntitlement,
@@ -915,13 +917,18 @@ export function cutFromWill(g: GameState, p: Person): void {
     willNotice(g, `${cap(yourOf(p))} is your only child. Cutting ${pr(p).him} out would leave everything to the government.`)
     return
   }
-  // A will that already names people (a spouse, some of the kids) keeps them; an even split among
-  // the kids becomes an even split among the others.
-  const named = g.character.willBeneficiaries.filter((id) => id !== p.id && g.people.some((q) => q.id === id && q.alive))
-  g.character.willBeneficiaries = named.length ? named : others.map((q) => q.id)
+  // changeWill starts an empty will from the default children, while removeHeir preserves anyone
+  // already named (a spouse or selected children) and records the cut for the feud system. If the
+  // target was the sole named beneficiary, explicitly name the other children: leaving the list
+  // empty would mean "divide evenly among every child" and silently put the target back in line.
+  const report = changeWill(g, (gg, w) => {
+    removeHeir(gg, w, p)
+    if (gg.character.willBeneficiaries.length === 0) gg.character.willBeneficiaries = others.map((q) => q.id)
+  })
   const heirs = g.character.willBeneficiaries.map((id) => g.people.find((q) => q.id === id)?.firstName).filter((n): n is string => !!n)
-  p.relationship = Math.max(0, p.relationship - 20)
   addEntitlement(p, -15)
   notePerson(p, `You wrote ${pr(p).him} out of your will.`)
-  willNotice(g, `You rewrote your will: ${heirs.join(' and ')} will inherit; ${p.firstName} won't. ${cap(pr(p).he)} found out within the hour.`)
+  const learned = report.lines.length ? ` ${report.lines.join(' ')}` : ''
+  willNotice(g, `You rewrote your will: ${heirs.join(' and ')} will inherit; ${p.firstName} won't.${learned}`)
+  queueTells(g, report)
 }

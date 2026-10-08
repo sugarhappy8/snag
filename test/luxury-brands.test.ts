@@ -118,6 +118,22 @@ describe('The brand catalog', () => {
     expect(offersFor(g, duesenberg).some((o) => o.channel === 'boutique')).toBe(true)
   })
 
+  it('uses historically accurate product names and commercial release windows', () => {
+    expect(line('rolex-gmt-master')).toMatchObject({ name: 'GMT-Master', from: 1955, until: 1999 })
+    expect(line('rolex-gmt-master-ii')).toMatchObject({ name: 'GMT-Master II', from: 1982 })
+    expect(line('nike-air-jordan-1')).toMatchObject({ name: 'Air Jordan 1', from: 1985 })
+    expect(line('penfolds-grange').from).toBe(1952)
+    expect(line('bollinger-rd').from).toBe(1967)
+
+    const g = rich(5e9, 'us', 40, 3, 1995)
+    const avant = line('bang-olufsen-beovision-avant')
+    expect(avant).toMatchObject({ from: 1995, until: 2005 })
+    expect(offersFor(g, avant).some((o) => o.channel === 'boutique')).toBe(true)
+    g.year = 2007
+    expect(lineOnSale(g, avant)).toBe(true)
+    expect(offersFor(g, avant).some((o) => o.channel === 'boutique')).toBe(false)
+  })
+
   it('gates luxury electronics by technology', () => {
     const g = rich(5e9, 'us', 40, 3, 1975)
     const phone = line('vertu-signature')

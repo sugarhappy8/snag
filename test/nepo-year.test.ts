@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
 import { becomeCeo, ceoPayNorm, syncCeo } from '../src/game/business/career'
+import { businessView } from '../src/game/business/manage'
 import { designateStaff, designateSuccessor, fire, handOverToSuccessor, hireRelative, makeCeo } from '../src/game/business/nepo-actions'
 import { readJob, readPast } from '../src/game/business/nepo-job'
 import { ceilingOf } from '../src/game/business/nepo-model'
@@ -12,8 +13,11 @@ import { bizOf, findBusiness } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import { killCharacter } from '../src/game/death'
 import { incomeTax } from '../src/game/finance'
+import { updateWl } from '../src/game/events/will-core'
 import { continueAsChild } from '../src/game/life'
-import { drain, kid, world } from './nepo-kit'
+import { runScript } from '../src/game/scripts'
+import type { ChoiceModal, MenuAction } from '../src/game/types'
+import { all, drain, kid, world } from './nepo-kit'
 
 function yearOn(g: ReturnType<typeof world>['g']): void {
   g.year += 1
@@ -39,6 +43,24 @@ describe('pay comes out of company cash, honestly', () => {
     expect(p.money).toBe(Math.round(money + net))
     // Money is not created: company cash plus the relative's wealth fell by the tax.
     expect(cur.cash + p.money).toBeLessThan(cash + money)
+  })
+
+  it('uses the demoted salary in the same yearly cleanup when an outside CEO displaced a relative', () => {
+    const { g, a, b } = world(116)
+    const p = kid(g, 40, { smarts: 80 })
+    expect(hireRelative(g, a, b, p, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(makeCeo(g, a, b, p).ok).toBe(true)
+    const formerPay = readJob(p)!.pay
+    const expectedPay = Math.round(Math.min(formerPay, marketPay(b, 4) * 1.5))
+    b.manager = { ...b.manager!, firstName: 'Outside', lastName: 'Hire' }
+    delete b.manager.personId
+    const money = p.money
+
+    yearOn(g)
+    familyYear(g)
+
+    expect(readJob(p)).toMatchObject({ rank: 4, pay: expectedPay, groom: false })
+    expect(p.money).toBe(Math.round(money + expectedPay - incomeTax('us', expectedPay)))
   })
 
   it('pay far above the going rate costs the company its tax deduction too: no cheap way to move money to the kids', () => {
@@ -150,9 +172,78 @@ describe('growing, burning out, leaving', () => {
     expect(readPast(p)?.how).toBe('closed')
     expect(p.occupation).toBe('Unemployed')
   })
+
+  it('an estranged relative leaves the family company and cannot remain the successor', () => {
+    const { g, a, b } = world(115)
+    const p = kid(g, 30, { smarts: 80 })
+    expect(hireRelative(g, a, b, p, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, a, bizOf(g, a), p, { quiet: true }).ok).toBe(true)
+    updateWl(g, p, (w) => {
+      w.estr = true
+    })
+    expect(successorOf(g, a, bizOf(g, a))).toBeNull()
+    yearOn(g)
+    familyYear(g)
+    expect(readJob(p)).toBeNull()
+    expect(p.occupation).toBe('Unemployed')
+  })
 })
 
 describe('succession', () => {
+  it('offers qualified relatives on the normal CEO shortlist and installs the selected relative', () => {
+    const { g, a, b } = world(120)
+    const p = kid(g, 34, { smarts: 88, traits: ['ambitious'] })
+    expect(hireRelative(g, a, b, p, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    const row = all(g, businessView(g, a)).find((n) => n.id === `biz.stepDown.${a.id}`) as MenuAction | undefined
+    expect(row).toBeDefined()
+    row!.run(g)
+    const modal = g.queue.find((m): m is ChoiceModal => m.kind === 'choice' && m.scriptId === 'business.manager')
+    expect(modal).toBeDefined()
+    const saved = JSON.parse(JSON.stringify(modal)) as ChoiceModal
+    const choice = saved.choices.find((c) => c.label.includes(p.firstName) && c.label.includes(p.lastName))
+    expect(choice).toBeDefined()
+    runScript(g, 'business.manager', choice!.id, saved.data, saved)
+    expect(bizOf(g, a).manager?.personId).toBe(p.id)
+    expect(readJob(p)?.rank).toBe(5)
+  })
+
+  it('demotes each outgoing family CEO immediately when the normal shortlist replaces them', () => {
+    const { g, a, b } = world(119)
+    const first = kid(g, 36, { smarts: 82 })
+    const second = kid(g, 34, { smarts: 88 })
+    expect(hireRelative(g, a, b, first, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(hireRelative(g, a, b, second, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(makeCeo(g, a, b, first).ok).toBe(true)
+
+    const replace = () => all(g, businessView(g, a)).find((node) => node.id === `biz.replaceManager.${a.id}`) as MenuAction | undefined
+    const choose = (match: (label: string) => boolean) => {
+      g.queue = []
+      const row = replace()
+      expect(row).toBeDefined()
+      row!.run(g)
+      const modal = g.queue.find((m): m is ChoiceModal => m.kind === 'choice' && m.scriptId === 'business.manager')
+      expect(modal).toBeDefined()
+      const saved = JSON.parse(JSON.stringify(modal)) as ChoiceModal
+      const choice = saved.choices.find((c) => c.id.startsWith('m') && match(c.label))
+      expect(choice).toBeDefined()
+      runScript(g, 'business.manager', choice!.id, saved.data, saved)
+    }
+
+    choose((label) => label.includes(second.firstName) && label.includes(second.lastName))
+    expect(bizOf(g, a).manager?.personId).toBe(second.id)
+    expect(readJob(first)).toMatchObject({ rank: 4, groom: false })
+    expect(readJob(first)?.title).not.toBe('CEO')
+    expect(first.occupation).not.toMatch(/^CEO(?:\s|$)/)
+    expect(readJob(second)?.rank).toBe(5)
+
+    choose((label) => !label.includes(first.firstName) && !label.includes(second.firstName))
+    expect(bizOf(g, a).manager?.personId).toBeUndefined()
+    expect(readJob(second)).toMatchObject({ rank: 4, groom: false })
+    expect(readJob(second)?.title).not.toBe('CEO')
+    expect(second.occupation).not.toMatch(/^CEO(?:\s|$)/)
+    expect(employeesOf(g, a.id).filter((e) => e.job.rank === 5)).toHaveLength(0)
+  })
+
   it('names a kid, and when the owner steps back the kid becomes CEO with their real skill (no random manager)', () => {
     const { g, a, b } = world(121)
     const p = kid(g, 30, { smarts: 85, traits: ['ambitious'] })
@@ -227,6 +318,103 @@ describe('succession', () => {
         expect(findBusiness(n, a.id)).toBeDefined()
       }
     }
+  })
+
+  it('a designated successor inherits the company intact when cash is split with another heir', () => {
+    const { g, a, b } = world(130, { age: 78 })
+    const successor = kid(g, 38, { smarts: 85 })
+    const sibling = kid(g, 35, { smarts: 60 })
+    expect(hireRelative(g, a, b, successor, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, a, bizOf(g, a), successor, { quiet: true }).ok).toBe(true)
+    const succession = all(g, businessView(g, a)).find((n) => n.id === `nepo.${a.id}.succ.info`)
+    expect(succession?.type).toBe('info')
+    if (!succession || succession.type !== 'info') throw new Error('succession copy missing')
+    const successionText = typeof succession.text === 'function' ? succession.text(g) : succession.text
+    expect(successionText).toContain(`as designated successor, ${successor.firstName} would inherit the company intact`)
+    expect(successionText).not.toMatch(/company would be sold/i)
+    a.value = 10_000_000
+    g.character.money = 1_000_000
+    const ownMoney = successor.money
+    killCharacter(g, 'Old Age')
+    const cashAtDeath = g.character.money
+    g.queue = []
+    const n = continueAsChild(g, successor.id)
+    expect(n.assets.some((x) => x.id === a.id)).toBe(true)
+    expect(n.people.some((x) => x.id === sibling.id && /sibling/i.test(x.relation))).toBe(true)
+    expect(n.character.money).toBeLessThanOrEqual(ownMoney + cashAtDeath)
+    expect(n.queue.some((m) => m.kind === 'notice' && /designated successor/i.test(m.text))).toBe(true)
+    const inherited = findBusiness(n, a.id)!
+    expect(bizOf(n, inherited).ceo).toBe('owner')
+    expect(bizOf(n, inherited).manager).toBeNull()
+    expect(readFamily(bizOf(n, inherited).family).succ).toEqual({ kind: '', id: '' })
+    expect(n.character.job?.defId).toBe('business_owner')
+    expect(n.character.job?.data.assetId).toBe(a.id)
+    syncCeo(n)
+    expect(bizOf(n, inherited).ceo).toBe('owner')
+    expect(bizOf(n, inherited).manager).toBeNull()
+    drain(n)
+    ageUp(n)
+    drain(n)
+    const afterYear = findBusiness(n, a.id)!
+    expect(afterYear).toBeDefined()
+    expect(bizOf(n, afterYear).ceo).toBe('owner')
+    expect(bizOf(n, afterYear).manager).toBeNull()
+    expect(n.character.job?.data.assetId).toBe(a.id)
+    expect(JSON.parse(JSON.stringify(n))).toEqual(n)
+  })
+
+  it('gives a designated company only to its successor when a different sole will heir is selected', () => {
+    const { g, a, b } = world(135, { age: 78 })
+    const successor = kid(g, 39, { smarts: 88 })
+    const willHeir = kid(g, 36, { smarts: 65 })
+    expect(hireRelative(g, a, b, successor, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, a, bizOf(g, a), successor, { quiet: true }).ok).toBe(true)
+    g.character.willBeneficiaries = [willHeir.id]
+
+    const succession = all(g, businessView(g, a)).find((node) => node.id === `nepo.${a.id}.succ.info`)
+    expect(succession?.type).toBe('info')
+    if (!succession || succession.type !== 'info') throw new Error('succession copy missing')
+    const text = typeof succession.text === 'function' ? succession.text(g) : succession.text
+    expect(text).toContain(`${willHeir.firstName} would inherit the rest of the estate`)
+    expect(text).toContain(`as designated successor, ${successor.firstName} would inherit the company intact`)
+
+    a.value = 12_000_000
+    g.character.money = 0
+    const successorMoney = successor.money
+    const companyEquity = Math.max(0, Math.round(a.value - (a.mortgage?.balance ?? 0)))
+    killCharacter(g, 'Old Age')
+    g.queue = []
+    const asWillHeir = continueAsChild(g, willHeir.id)
+    const asSuccessor = continueAsChild(g, successor.id)
+    expect(findBusiness(asWillHeir, a.id)).toBeUndefined()
+    expect(findBusiness(asSuccessor, a.id)).toBeDefined()
+    const npcSuccessor = asWillHeir.people.find((p) => p.id === successor.id)
+    expect(npcSuccessor?.occupation).toBe('Business Owner')
+    expect(npcSuccessor?.data.nepo).toBeUndefined()
+    expect(npcSuccessor?.money).toBe(successorMoney + companyEquity)
+    expect(npcSuccessor?.notes.some((note) => /inherited .*designated successor/i.test(note))).toBe(true)
+  })
+
+  it.each(['no longer employed', 'disowned', 'estranged'] as const)('does not let a %s former successor inherit the company from a stale designation', (invalid) => {
+    const { g, a, b } = world(134, { age: 78 })
+    const former = kid(g, 38, { smarts: 85 })
+    kid(g, 35, { smarts: 60 })
+    expect(hireRelative(g, a, b, former, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, a, bizOf(g, a), former, { quiet: true }).ok).toBe(true)
+    if (invalid === 'no longer employed') delete former.data.nepo
+    else if (invalid === 'disowned') former.data.disowned = true
+    else {
+      updateWl(g, former, (w) => {
+        w.estr = true
+      })
+    }
+    expect(readFamily(bizOf(g, a).family).succ).toEqual({ kind: 'person', id: former.id })
+    expect(successorOf(g, a, bizOf(g, a))).toBeNull()
+    killCharacter(g, 'Old Age')
+    g.queue = []
+    const n = continueAsChild(g, former.id)
+    expect(findBusiness(n, a.id)).toBeUndefined()
+    expect(n.queue.some((m) => m.kind === 'notice' && /designated successor/i.test(m.text))).toBe(false)
   })
 
   it('a CEO who dies while in the chair leaves an interim manager, not a ghost', () => {

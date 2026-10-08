@@ -78,7 +78,8 @@ export const WATCH_LINES: LuxLine[] = [
   w('rolex', 'datejust', 'Datejust', 1945, 9500, { cls: 'icon-watch', variants: METALS }),
   w('rolex', 'day-date', 'Day-Date', 1956, 38000, { cls: 'icon-watch', blurb: 'Only ever in precious metal.' }),
   w('rolex', 'submariner', 'Submariner', 1953, 10500, { cls: 'icon-watch', scarce: 2008, variants: METALS, blurb: 'The diver every other diver is compared with.' }),
-  w('rolex', 'gmt-master', 'GMT-Master II', 1954, 11000, { cls: 'icon-watch', scarce: 2010, variants: METALS }),
+  w('rolex', 'gmt-master', 'GMT-Master', 1955, 11000, { until: 1999, cls: 'icon-watch', variants: METALS }),
+  w('rolex', 'gmt-master-ii', 'GMT-Master II', 1982, 11000, { cls: 'icon-watch', scarce: 2010, variants: METALS }),
   w('rolex', 'daytona', 'Cosmograph Daytona', 1963, 16000, { cls: 'icon-watch', scarce: 2000, variants: METALS }),
   w('rolex', 'explorer', 'Explorer', 1953, 8500, { cls: 'icon-watch' }),
   w('rolex', 'sea-dweller', 'Sea-Dweller', 1967, 14500, { cls: 'icon-watch' }),
@@ -211,7 +212,7 @@ export const SNEAKER_LINES: LuxLine[] = [
   s('reebok', 'classic-leather', 'Classic Leather', 1983, 90),
   s('new-balance', '990', '990', 1982, 185),
   s('nike', 'dunk', 'Dunk', 1985, 120, { cls: 'sneaker' }),
-  s('nike', 'air-jordan-1', 'Air Jordan 1 Retro High OG', 1985, 180, { cls: 'grail-sneaker', scarce: 2000, blurb: 'The colorway you have to line up for.' }),
+  s('nike', 'air-jordan-1', 'Air Jordan 1', 1985, 180, { cls: 'grail-sneaker', scarce: 2000, blurb: 'The colorway you have to line up for.' }),
   s('nike', 'air-max-1', 'Air Max 1', 1987, 150),
   s('reebok', 'pump', 'The Pump', 1989, 190),
   s('asics', 'gel-kayano', 'Gel-Kayano', 1993, 160),
@@ -231,11 +232,10 @@ export const TECH_LINES: LuxLine[] = [
   t('hasselblad', 'x1d', 'X1D', 2016, 9000, { tech: 'internet' }),
   t('mcintosh', 'mc275', 'MC275 Amplifier', 1961, 8000, { cls: 'fine', tech: 'radio' }),
   t('bang-olufsen', 'beolab-5', 'BeoLab 5 Loudspeakers', 2002, 17000),
-  t('bang-olufsen', 'beovision-avant', 'BeoVision Avant', 2007, 12000, { tech: 'tv' }),
+  t('bang-olufsen', 'beovision-avant', 'BeoVision Avant', 1995, 12000, { until: 2005, tech: 'tv' }),
   t('vertu', 'signature', 'Signature', 2002, 18000, { until: 2017, tech: 'mobilePhone', blurb: 'A luxury phone in a titanium case with a sapphire screen.' }),
   t('vertu', 'signature-touch', 'Signature Touch', 2013, 9000, { until: 2017, tech: 'smartphone' }),
 ]
 
 /** Everything you wear, carry or put on a shelf. */
 export const GOODS_LINES: LuxLine[] = [...WATCH_LINES, ...BAG_LINES, ...FASHION_LINES, ...EYEWEAR_LINES, ...JEWELRY_LINES, ...PEN_LINES, ...SNEAKER_LINES, ...TECH_LINES]
-

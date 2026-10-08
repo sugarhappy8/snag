@@ -31,11 +31,14 @@ There is no server and no account: the game never sends anything anywhere.
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or
 > endorsed by Candywriter, and it uses no BitLife names, art or assets.
 
-> The game names real brands, companies, products and places, because that is what a life is made
-> of. All of them are trademarks of their respective owners and are used only to identify them.
-> AnotherLife is a simulation, not a statement about any company: prices, market shares and what
-> happens to a brand in your life are made up by the game, are not facts, and no brand, company or
-> person named here has endorsed, sponsored or is affiliated with this project.
+> The game names real brands, companies, products, places, market indices, investment funds and
+> cryptocurrencies (including Bitcoin, Ethereum and Dogecoin), because those names help a life feel
+> grounded in its time. Their names and trademarks belong to their respective owners and are used
+> only for identification. AnotherLife is a fictional simulation, not market data or a statement
+> about any company or asset: every price, return, event, competitor profile, market share and
+> outcome is simulated or modelled for gameplay, is not a quote, fact, forecast or recommendation,
+> and no named brand, company, fund, index, coin or person has endorsed, sponsored or is affiliated
+> with this project.
 
 ## Play it
 

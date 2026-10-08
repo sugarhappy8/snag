@@ -6,6 +6,7 @@
 // a hint is exactly what the year will book (before the economy's own noise).
 import { hasTalent } from '../talents'
 import type { Industry } from '../data/markets'
+import { businessFloor } from '../mastery'
 import type { GameState } from '../types'
 import { performance } from './board-vote'
 import { SMART_SKILL } from './career'
@@ -237,7 +238,8 @@ export function captureOfSkill(skill: number): number {
 
 /** How much the player captures chairing the group themselves (smarts; the Business talent helps). */
 export function ownerCapture(g: GameState): number {
-  return clampN(0.4 + 0.3 * (g.character.stats.smarts / 100) + (hasTalent(g, 'Business') ? 0.15 : 0), 0, 0.9)
+  const learned = 0.4 + 0.3 * (g.character.stats.smarts / 100) + (hasTalent(g, 'Business') ? 0.15 : 0)
+  return clampN(Math.max(learned, businessFloor(g) / 100), 0, 0.9)
 }
 
 export function captureOf(g: GameState, core: GroupCore): number {

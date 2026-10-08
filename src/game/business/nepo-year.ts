@@ -5,6 +5,7 @@
 // the going rate is not tax-deductible, and the relative pays income tax on every dollar.
 import { addRelationship, getPerson, log, notice, scriptChoice, useYearAction } from '../core'
 import { addEntitlement, entitlement, personCountry, typicalIncome } from '../events/wealth-core'
+import { isEstranged } from '../events/will-core'
 import { incomeTax } from '../finance'
 import { hasTech } from '../history/timeline'
 import { marketOf } from '../data/markets'
@@ -17,7 +18,7 @@ import { driveOf, expectedRating, fitOf, nextSkill } from './nepo-model'
 import { clearJob, readJob, writeJob, writePast, type FamilyJob } from './nepo-job'
 import { ABOVE_MARKET, marketPay, rankDef, startingPay, titleFor } from './nepo-roles'
 import { employeesOf, familyOf, isCeoOf, readFamily, successorOf, myKin, type Employee } from './nepo-state'
-import { endJob, handOverToSuccessor, unearned } from './nepo-actions'
+import { endJob, handOverToSuccessor, settleReplacedCeo, unearned } from './nepo-actions'
 import { bizOf, businessAssets, findBusiness, runsIt, totalOutlets, type BizState } from './state'
 import { clampN, rec, str } from './util'
 
@@ -270,26 +271,16 @@ function rescueCeo(g: GameState, a: Asset, b: BizState): void {
   }
 }
 
-/** A relative still holding the CEO title after somebody else took the job (a board decision, a sale). */
-function settleReplaced(g: GameState, a: Asset, b: BizState, e: Employee): void {
-  if (e.job.rank < 5 || isCeoOf(b, e.p)) return
-  const job = e.job
-  job.rank = 4
-  job.title = titleFor(g, e.p, 4, job.focus, 'real')
-  job.pay = Math.min(job.pay, marketPay(b, 4) * 1.5)
-  job.mood = clampN(job.mood - 25, 0, 100)
-  job.groom = false
-  writeJob(e.p, job)
-  addRelationship(e.p, -randInt(g, 4, 9))
-  if (e.p.age >= 18) e.p.occupation = `${job.title} at ${a.name}`
-  log(g, `${e.p.firstName} is no longer CEO of ${a.name}.`, 'neutral')
-}
-
 function companyYear(g: GameState, a: Asset, out: Outcome[]): void {
   const b = bizOf(g, a)
   rescueCeo(g, a, b)
   let emps = employeesOf(g, a.id)
-  for (const e of emps) settleReplaced(g, a, b, e)
+  let settled = false
+  for (const e of emps) settled = settleReplacedCeo(g, a, b, e.p) || settled
+  // settleReplacedCeo reads and writes a fresh normalized job. Reload the employee snapshot so
+  // this year's payroll and performance step use the demoted rank/title/pay rather than the
+  // pre-normalization CEO copy captured above.
+  if (settled) emps = employeesOf(g, a.id)
   const fam = readFamily(b.family)
   if (emps.length === 0 && fam.resent === 0 && fam.label === 0 && !fam.succ.kind) return
   const f = familyOf(b)
@@ -398,7 +389,9 @@ function siblingDrama(g: GameState, a: Asset, b: BizState, emps: readonly Employ
   // An adult child with no job at a company where a sibling is a director or above.
   const senior = kids.find((e) => e.job.rank >= 3)
   if (senior) {
-    const passed = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild') && p.age >= 22 && !readJob(p) && p.data.nepoSelfMade === undefined && p.relationship >= 20 && p.id !== senior.p.id)
+    const passed = g.people.filter(
+      (p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild') && p.age >= 22 && !readJob(p) && p.data.nepoSelfMade === undefined && p.data.disowned !== true && !isEstranged(g, p) && p.relationship >= 20 && p.id !== senior.p.id,
+    )
     if (passed.length > 0 && chance(g, 0.2)) {
       const p = passed[randInt(g, 0, passed.length - 1)]
       addRelationship(p, -randInt(g, 2, 5))
@@ -464,14 +457,15 @@ function cleanup(g: GameState): void {
       continue
     }
     const b = bizOf(g, a)
-    // Disowned in the will menu: nobody stays on the payroll (or in the chair) of a parent who cut them off.
-    if (p.data.disowned === true) {
+    // Disowned or estranged: nobody stays on the payroll (or in the chair) of a parent they no longer speak to.
+    const estranged = isEstranged(g, p)
+    if (p.data.disowned === true || estranged) {
       if (isCeoOf(b, p)) {
         handOver(g, a, b, managerCandidate(g, b, randInt(g, 45, 70)), { forCause: true })
-        log(g, `${p.firstName} was disowned, so ${a.name} named an interim general manager.`, 'neutral')
+        log(g, estranged ? `${p.firstName} cut contact, so ${a.name} named an interim general manager.` : `${p.firstName} was disowned, so ${a.name} named an interim general manager.`, 'neutral')
       }
       endJob(g, a, b, p, 'quit')
-      log(g, `${p.firstName} left ${a.name} after being disowned.`, 'bad')
+      log(g, estranged ? `${p.firstName} left ${a.name} after the family became estranged.` : `${p.firstName} left ${a.name} after being disowned.`, 'bad')
       continue
     }
     // Moved to another country (the family emigrated, or you did and they stayed with you): the job ends.

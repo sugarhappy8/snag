@@ -504,6 +504,8 @@ export function makeCeo(g: GameState, a: Asset, b: BizState, p: Person): HireRes
   const prev = b.ceo === 'manager' && b.manager ? b.manager.firstName + ' ' + b.manager.lastName : null
   const owner = runsIt(g, a)
   const h = handOver(g, a, b, m)
+  const formerFamilyCeo = h.outgoing?.personId ? g.people.find((x) => x.id === h.outgoing?.personId) : undefined
+  if (formerFamilyCeo && formerFamilyCeo.id !== p.id) settleReplacedCeo(g, a, b, formerFamilyCeo)
   const done = readJob(p)
   if (done) {
     promoteToCeo(g, p, done, pay)
@@ -524,6 +526,36 @@ export function makeCeo(g: GameState, a: Asset, b: BizState, p: Person): HireRes
   return { ok: true }
 }
 
+/**
+ * Normalize a relative who still carries the CEO job after somebody else took the chair. The
+ * family-specific replacement action and the ordinary Leadership shortlist both use this path so
+ * a company can never keep two relatives on its books as CEO.
+ */
+function demoteFormerCeo(g: GameState, a: Asset, b: BizState, p: Person, payCap: number): FamilyJob | null {
+  if (isCeoOf(b, p)) return null
+  const job = readJob(p)
+  if (!job || job.assetId !== a.id || job.rank < 5) return null
+  job.rank = 4
+  job.title = titleFor(g, p, 4, job.focus, 'real')
+  job.pay = Math.min(job.pay, payCap)
+  job.rankSince = g.year
+  job.groom = false
+  writeJob(p, job)
+  setOccupation(p, job, a)
+  return job
+}
+
+/** Settle a family CEO displaced outside the family-specific action (board, sale, normal shortlist). */
+export function settleReplacedCeo(g: GameState, a: Asset, b: BizState, p: Person): boolean {
+  const job = demoteFormerCeo(g, a, b, p, marketPay(b, 4) * 1.5)
+  if (!job) return false
+  job.mood = clampN(job.mood - 25, 0, 100)
+  writeJob(p, job)
+  addRelationship(p, -randInt(g, 4, 9))
+  log(g, `${p.firstName} is no longer CEO of ${a.name}.`, 'neutral')
+  return true
+}
+
 /** Replace a relative who is CEO with an outside manager (they stay on as a VP, or leave). */
 export function replaceCeo(g: GameState, a: Asset, b: BizState, p: Person, stay: boolean): HireResult {
   if (!isCeoOf(b, p)) return { ok: false, reason: `${p.firstName} is not the CEO.` }
@@ -531,15 +563,7 @@ export function replaceCeo(g: GameState, a: Asset, b: BizState, p: Person, stay:
   if (!job) return { ok: false, reason: 'They do not work here.' }
   const next = managerCandidate(g, b, randInt(g, 50, 72))
   handOver(g, a, b, next)
-  if (stay) {
-    job.rank = 4
-    job.title = titleFor(g, p, 4, job.focus, 'real')
-    job.pay = Math.min(job.pay, payAt(b, 4, 1.6))
-    job.rankSince = g.year
-    job.groom = false
-    writeJob(p, job)
-    setOccupation(p, job, a)
-  }
+  if (stay) demoteFormerCeo(g, a, b, p, payAt(b, 4, 1.6))
   return { ok: true }
 }
 
@@ -660,6 +684,8 @@ export function handOverToSuccessor(g: GameState, a: Asset, b: BizState): HireRe
   }
   const owner = runsIt(g, a) || !!ceoJob(g, a.id)
   const h = handOver(g, a, b, m)
+  const formerFamilyCeo = h.outgoing?.personId ? g.people.find((x) => x.id === h.outgoing?.personId) : undefined
+  if (formerFamilyCeo && formerFamilyCeo.id !== p?.id) settleReplacedCeo(g, a, b, formerFamilyCeo)
   afterSuccession(g, a, b, m)
   if (p) {
     addRelationship(p, randInt(g, 6, 12))

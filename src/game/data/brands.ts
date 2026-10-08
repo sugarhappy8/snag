@@ -23,6 +23,9 @@
 //    adult luxury goods (wine, champagne, spirits) and only for adults where it is legal.
 //  - Era and place: a brand exists from `founded` (or `sold` for when it reached the player's
 //    country) until `ended`; use `countries` for brands that only trade in some places.
+//  - Stock rows use `founded` for the home-exchange listing year and `ended` for the last year-end
+//    quote. Their `segment` is an investment SectorId; `data.aka` is the oldest-first name history
+//    ending in the current name, and optional `data.payout` records a documented final takeover move.
 import { PRESENT_YEAR } from '../history/timeline'
 import type { GameState } from '../types'
 import { CONSUMER_BRANDS } from './brands-consumer'
@@ -61,10 +64,13 @@ export interface Brand {
   data?: Record<string, import('../types').Json>
 }
 
-const ALL: Brand[] = [...LUXURY_BRANDS, ...RIVAL_BRANDS, ...CONSUMER_BRANDS, ...STOCK_BRANDS]
-
 const BY_ID = new Map<string, Brand>()
-for (const b of ALL) if (!BY_ID.has(b.id)) BY_ID.set(b.id, b)
+for (const b of [...LUXURY_BRANDS, ...RIVAL_BRANDS, ...CONSUMER_BRANDS, ...STOCK_BRANDS]) {
+  // Category files intentionally overlap in subject matter. Keep the first registered record so
+  // a repeated id cannot leak duplicate rows through allBrands()/brandsFor().
+  if (!BY_ID.has(b.id)) BY_ID.set(b.id, b)
+}
+const ALL: Brand[] = [...BY_ID.values()]
 
 /** Every registered brand (do not mutate). */
 export function allBrands(): readonly Brand[] {

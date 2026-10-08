@@ -12,7 +12,7 @@ import { chance, pick, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { namePoolOf } from '../world'
-import { ALL_LINES, eraMult, lineOnSale, lineTitle, tierOpen, tierReason } from './luxury-brands-catalog'
+import { ALL_LINES, alcoholBlock, eraMult, isAlcohol, lineOnSale, lineTitle, tierOpen, tierReason } from './luxury-brands-catalog'
 import { buildAsset, buyBlock, buyQuip, showOffFame, addHeat, type Offer } from './luxury-brands-deal'
 import { STAYS, VOYAGES, type Stay, type Voyage } from './luxury-brands-stays'
 import { conditionFactor, fakeOdds, syncValue, usedMarket } from './luxury-brands-value'
@@ -56,7 +56,7 @@ export function auctionLots(g: GameState): Lot[] {
   if (!hs.length) return []
   const r = seeded(yearKey(g, 'lux:auction'))
   const out: Lot[] = []
-  const pool = ALL_LINES.filter((l) => LOT_CATS.includes(l.cat) && lineOnSale(g, l) && l.usd * eraMult(l, g.year) >= 2_500 && !(l.cat === 'wine' && g.character.age < 18))
+  const pool = ALL_LINES.filter((l) => LOT_CATS.includes(l.cat) && lineOnSale(g, l) && l.usd * eraMult(l, g.year) >= 2_500 && !(isAlcohol(l.cat) && alcoholBlock(g)))
   const taken = new Set<string>()
   for (let i = 0; i < 6 && pool.length > 0; i++) {
     const l = r.weighted(pool, (x) => (x.limited || x.collect !== undefined ? 3 : 1))

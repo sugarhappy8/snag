@@ -9,7 +9,7 @@ import { hasTalent, talentHint } from '../talents'
 import type { TechId } from '../history/timeline'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
-import { baseManagerValue, becomeCeo, ceoPayNorm, ceoSeverance, ceoValue, handOver, headhunterFee, managerName, maxOwnerSalary, optimizerGain, ownerTakesOver, shortlist, SMART_SKILL, STYLE_INFO, styleOf, type SearchKind } from './career'
+import { askingSalary, baseManagerValue, becomeCeo, ceoPayNorm, ceoSeverance, ceoValue, handOver, headhunterFee, managerName, maxOwnerSalary, optimizerGain, ownerTakesOver, shortlist, SMART_SKILL, STYLE_INFO, styleOf, type SearchKind } from './career'
 import {
   bestPlan,
   bizWorth,
@@ -42,6 +42,8 @@ import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
 import { boardAllows, boardNodes, hasBoard, needsVote, passOdds, vote, type Proposal } from './board'
 import { nepoNodes } from './nepo'
+import { settleReplacedCeo } from './nepo-actions'
+import { afterSuccession, familyCandidates } from './nepo-succession'
 import { briefNodes, capexCaption, passHint, payDividend } from './board-menu'
 import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
 import { debtComfort, lowerFirst, oddsText, payableCash, payCap, refusedThisYear, sustainablePayout } from './board-vote'
@@ -1540,6 +1542,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
 
 function readCandidate(g: GameState, raw: Record<string, Json>): Manager {
   const style = CEO_STYLES.find((x) => x === raw.style)
+  const personId = str(raw.personId)
   return {
     firstName: str(raw.firstName, 'Pat'),
     lastName: str(raw.lastName, 'Morgan'),
@@ -1549,6 +1552,7 @@ function readCandidate(g: GameState, raw: Record<string, Json>): Manager {
     since: g.year,
     ...(style ? { style } : {}),
     integrity: clampN(num(raw.integrity, 70), 0, 100),
+    ...(personId ? { personId } : {}),
   }
 }
 
@@ -1569,6 +1573,9 @@ const MANAGER_PICK = defineScript('business.manager', (g, choice, data) => {
   if (!boardAllows(g, a, b, { kind: 'hire', by: 'owner', amount: m.salary, skill: m.skill, label: `Hire ${managerName(m)} as CEO at ${money(m.salary)} a year` })) return
   const wasCeo = runsIt(g, a)
   const h = handOver(g, a, b, m)
+  const formerFamilyCeo = h.outgoing?.personId ? g.people.find((p) => p.id === h.outgoing?.personId) : undefined
+  if (formerFamilyCeo && formerFamilyCeo.id !== m.personId) settleReplacedCeo(g, a, b, formerFamilyCeo)
+  if (m.personId && b.manager) afterSuccession(g, a, b, b.manager)
   const style = STYLE_INFO[styleOf(m)]
   log(g, `${managerName(m)} became CEO of ${a.name}.`)
   notice(
@@ -1609,7 +1616,7 @@ function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow
   const fee = headhunterFee(b, kind, yearActionsUsed(g, key))
   useYearAction(g, key, Number.MAX_SAFE_INTEGER)
   const by = payFee(g, b, fee)
-  const list = shortlist(g, b, kind)
+  const list = [...familyCandidates(g, a, b, (skill) => askingSalary(b, skill, 0)), ...shortlist(g, b, kind)]
   const used = yearActionsUsed(g, key)
   const cur = b.ceo === 'manager' && b.manager ? b.manager : null
   const sev = cur ? ceoSeverance(cur, g.year) : 0
@@ -1937,4 +1944,3 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   nodes.push(...exitNodes(a, g))
   return nodes
 }
-

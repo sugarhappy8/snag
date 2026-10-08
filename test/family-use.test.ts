@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { entitlement, perceivedWealth, showOffHeat } from '../src/game/events/wealth-core'
+import { updateWl } from '../src/game/events/will-core'
 import { netWorth } from '../src/game/core'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
@@ -375,10 +376,17 @@ describe('Family Access: the yearly hook', () => {
     const w = buy(g, 'rolex-datejust')
     const kid = member(g, 'child', 21)
     const sis = member(g, 'sibling', 40)
+    const estranged = member(g, 'sibling', 38)
     grantAccess(g, w, kid)
     grantAccess(g, w, sis)
+    grantAccess(g, w, estranged)
     kid.alive = false
     sis.data.countryId = 'gb'
+    updateWl(g, estranged, (state) => {
+      state.estr = true
+    })
+    expect(eligibleReason(g, estranged, w)).not.toBeNull()
+    expect(familyUseNodes(g, estranged)).toEqual([])
     g.queue = []
     for (let i = 0; i < 10; i++) yearlyFamilyUse(g)
     expect(g.queue).toHaveLength(0)

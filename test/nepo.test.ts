@@ -12,6 +12,7 @@ import { employeesOf, hireBlock, readFamily } from '../src/game/business/nepo-st
 import { COST_CAP, DEMAND_CAP, QUALITY_CAP, companyEffects, familyYear } from '../src/game/business/nepo-year'
 import { nepoNodes, nepoPersonNodes } from '../src/game/business/nepo'
 import { bizOf } from '../src/game/business/state'
+import { updateWl } from '../src/game/events/will-core'
 import type { MenuAction } from '../src/game/types'
 import { all, drain, kid, world } from './nepo-kit'
 
@@ -197,12 +198,16 @@ describe('hiring', () => {
     dead.alive = false
     const disowned = kid(g, 25)
     disowned.data.disowned = true
-    const estranged = kid(g, 25, { relationship: 5 })
+    const estranged = kid(g, 25, { relationship: 70 })
+    updateWl(g, estranged, (w) => {
+      w.estr = true
+    })
     const friend = kid(g, 25)
     friend.relation = 'friend'
     expect(hireBlock(g, b, dead)).not.toBeNull()
     expect(hireBlock(g, b, disowned)).not.toBeNull()
-    expect(hireBlock(g, b, estranged)).not.toBeNull()
+    expect(hireBlock(g, b, estranged)).toMatch(/estranged/)
+    expect(askOdds(g, b, estranged)).toBe(0)
     expect(hireBlock(g, b, friend)).not.toBeNull()
     expect(hireRelative(g, a, b, p, { rank: 1 }, { quiet: true }).ok).toBe(true)
     expect(hireBlock(g, b, p)).toMatch(/already works/)

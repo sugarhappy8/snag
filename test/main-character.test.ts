@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { TALENTS, continueAsChild, createNewLife, getTalent } from '../src/game/life'
 import { ageUp } from '../src/game/aging'
+import { writeObituary } from '../src/game/events/obituary'
 import { talentMatches } from '../src/game/special/common'
 import {
   ALL_TALENT_IDS,
@@ -19,6 +20,7 @@ import {
   shownTalents,
   specialTalent,
   talentEmoji,
+  talentLabel,
   talentHint,
   talentMult,
   HINT_EMOJI,
@@ -88,6 +90,17 @@ describe('the talent', () => {
     expect(talentMatches(makeTestGame(5, { age: 20 }), /athlet/i)).toBe(false)
     // Without the talent nothing changed: picked first, then the discovered one.
     expect(characterTalents(makeTestGame(5, { age: 20, talents: ['Business'], talent: 'Music' }))).toEqual(['Business', 'Music'])
+  })
+
+  it('uses the display label in player-facing prose instead of the raw save id', () => {
+    expect(talentLabel(MAIN_CHARACTER)).toBe('Main Character Syndrome')
+    expect(talentLabel('OldCustomTalent')).toBe('OldCustomTalent')
+    const g = mcs(80)
+    g.character.alive = false
+    g.character.causeOfDeath = 'Old Age'
+    const text = writeObituary(g)
+    expect(text).toContain('a real gift for main character syndrome')
+    expect(text).not.toContain('maincharacter')
   })
 })
 
@@ -167,6 +180,12 @@ describe('the gift can run in the family', () => {
         inherited++
         expect(next.flags.latentTalent).toBeUndefined()
         expect(hasTalent(next, 'Gaming')).toBe(true)
+        const prose = [
+          ...next.queue.map((m) => ('text' in m ? m.text : '')),
+          ...next.log.flatMap((y) => y.entries.map((e) => e.text)),
+        ].join(' ').toLowerCase()
+        expect(prose).toContain('main character syndrome')
+        expect(prose).not.toContain('maincharacter')
       } else plain++
     }
     expect(inherited).toBeGreaterThan(0)

@@ -1839,7 +1839,10 @@ function jewelItem(g: GameState, r: SRng, t: JewelType, id: string, fake: boolea
   price *= mult
   if (fake) price *= r.float(0.03, 0.08)
   const finalPrice = nicePrice(Math.max(20, price))
-  const name = carats ? `${carats}-Carat ${t.label}` : t.label
+  const baseName = carats ? `${carats}-Carat ${t.label}` : t.label
+  // Certified pieces use a real jeweler from the shared, era-gated registry. Costume jewelry
+  // stays generic so the game never attributes a counterfeit to a real house.
+  const name = fake ? baseName : gadgetName(g, { category: 'jewelry', mode: 'prefix' }, `jewel-${id}`, baseName) ?? baseName
   return {
     id,
     kind: 'jewelry',
@@ -1934,12 +1937,32 @@ interface Gadget {
   /** The price in a given year, today's dollars (computers cost a fortune in 1985). */
   price?: (year: number) => number
   /** Real makers and models: the listing is named after one that traded where you live this year. */
-  brand?: GadgetSpec
+  brand?: GadgetSpec | ((year: number) => GadgetSpec)
 }
 
 const LAPTOP_LINES = /t1100|book|thinkpad|portable|satellite|port[eé]g[eé]|lifebook|note|laptop|surface|eee|chromebook|inspiron|xps|aspire|pavilion|spectre|ideapad|legion|zenbook|blade/i
 const TV_MAKERS = ['sony', 'samsung-electronics', 'lg-electronics', 'panasonic', 'philips', 'tcl', 'hisense', 'sharp', 'toshiba', 'hitachi', 'rca', 'zenith', 'philco', 'magnavox', 'grundig', 'telefunken', 'loewe', 'vizio', 'jvc', 'sanyo', 'thomson']
-const CAMERA_MAKERS = ['canon', 'nikon', 'kodak', 'fujifilm', 'olympus', 'pentax', 'minolta', 'polaroid', 'sony', 'panasonic']
+const FILM_CAMERA_MAKERS = ['canon', 'nikon', 'kodak', 'fujifilm', 'olympus', 'pentax', 'minolta', 'polaroid']
+const DIGITAL_CAMERA_MAKERS = [
+  ['fujifilm', 1989],
+  ['kodak', 1991],
+  ['minolta', 1995],
+  ['canon', 1996],
+  ['olympus', 1996],
+  ['polaroid', 1996],
+  ['sony', 1996],
+  ['nikon', 1997],
+  ['pentax', 1997],
+  ['panasonic', 2001],
+] as const
+const MIRRORLESS_CAMERA_MAKERS = [
+  ['panasonic', 2008],
+  ['olympus', 2009],
+  ['sony', 2010],
+  ['nikon', 2011],
+  ['canon', 2012],
+  ['fujifilm', 2012],
+] as const
 const AV_MAKERS = ['sony', 'panasonic', 'philips', 'toshiba', 'pioneer', 'samsung-electronics', 'lg-electronics', 'sharp', 'jvc', 'hitachi', 'sanyo', 'technics', 'aiwa']
 
 // Today's gadgets first (in their original order, so today's store is unchanged), then the
@@ -1963,7 +1986,7 @@ const ELECTRONICS: Gadget[] = [
   { label: 'Camera Drone', emoji: '🛸', base: 800, from: 2014, brand: { category: 'electronics', segment: 'drone', mode: 'model', suffix: 'Drone' } },
   { label: 'Smartwatch', emoji: '⌚', base: 400, from: 2015, brand: { category: 'electronics', segment: 'wearable', mode: 'brand', suffix: 'Smartwatch', already: /watch/i } },
   { label: 'Noise-Canceling Headphones', emoji: '🎧', base: 350, from: 2008, brand: { ids: ['bose', 'sennheiser', 'sony', 'beats', 'jbl', 'panasonic'], mode: 'prefix' } },
-  { label: 'Mirrorless Camera', emoji: '📷', base: 1_500, from: 2010, brand: { ids: ['canon', 'nikon', 'fujifilm', 'olympus', 'sony', 'panasonic'], mode: 'prefix' } },
+  { label: 'Mirrorless Camera', emoji: '📷', base: 1_500, from: 2008, brand: (year) => ({ ids: idsOnSale(year, MIRRORLESS_CAMERA_MAKERS), mode: 'prefix' }) },
   { label: 'E-Reader', emoji: '📖', base: 150, from: 2008, brand: { category: 'electronics', segment: 'ereader', mode: 'brand', suffix: 'E-Reader' } },
   { label: 'Smart Speaker', emoji: '🔊', base: 100, from: 2015, brand: { category: 'electronics', segment: 'speaker', mode: 'brand', suffix: 'Smart Speaker', already: /echo|home|pod/i } },
   { label: 'Robot Vacuum', emoji: '🤖', base: 450, from: 2003, brand: { category: 'electronics', segment: 'vacuum', mode: 'brand', suffix: 'Robot Vacuum' } },
@@ -1975,7 +1998,7 @@ const ELECTRONICS: Gadget[] = [
   { label: 'Color TV', emoji: '📺', base: 2_500, tech: 'colorTv', until: 2004, price: (y) => (y < 1975 ? 4_500 : y < 1990 ? 2_200 : 1_200), brand: { ids: TV_MAKERS, mode: 'prefix' } },
   { label: 'Hi-Fi Record Player', emoji: '🎶', base: 1_200, from: 1955, until: 1995, brand: { ids: ['technics', 'pioneer', 'marantz', 'philips', 'grundig', 'telefunken', 'sony', 'panasonic'], mode: 'prefix' } },
   { label: 'Electric Typewriter', emoji: '⌨️', base: 900, from: 1950, until: 1995, brand: { category: 'electronics', segment: 'typewriter', mode: 'prefix' } },
-  { label: 'Film Camera', emoji: '📷', base: 500, until: 2005, brand: { ids: CAMERA_MAKERS, mode: 'prefix' } },
+  { label: 'Film Camera', emoji: '📷', base: 500, until: 2005, brand: { ids: FILM_CAMERA_MAKERS, mode: 'prefix' } },
   { label: 'Portable Cassette Player', emoji: '📼', base: 250, from: 1979, until: 2002, brand: { ids: ['sony', 'panasonic', 'aiwa', 'toshiba', 'sharp', 'philips'], mode: 'prefix' } },
   { label: 'VCR', emoji: '📼', base: 1_200, from: 1978, until: 2006, price: (y) => (y < 1985 ? 2_500 : y < 1995 ? 700 : 250), brand: { ids: ['jvc', 'sony', 'panasonic', 'philips', 'sharp', 'sanyo', 'hitachi', 'toshiba', 'samsung-electronics', 'lg-electronics'], mode: 'prefix' } },
   { label: 'Camcorder', emoji: '📹', base: 2_000, from: 1984, until: 2012, brand: { ids: ['sony', 'jvc', 'panasonic', 'canon', 'sharp', 'hitachi'], mode: 'prefix' } },
@@ -1985,7 +2008,7 @@ const ELECTRONICS: Gadget[] = [
   { label: 'CD Player', emoji: '💿', base: 600, from: 1983, until: 2008, brand: { ids: ['sony', 'philips', 'technics', 'pioneer', 'panasonic', 'aiwa', 'toshiba', 'marantz'], mode: 'prefix' } },
   { label: 'Portable CD Player', emoji: '💿', base: 250, from: 1985, until: 2005, brand: { ids: ['sony', 'panasonic', 'aiwa', 'philips', 'toshiba'], mode: 'prefix' } },
   { label: 'MP3 Player', emoji: '🎧', base: 350, tech: 'internet', from: 2000, until: 2014, brand: { ids: ['ipod', 'creative-zen', 'sony', 'samsung-electronics', 'philips'], mode: 'prefix' } },
-  { label: 'Digital Camera', emoji: '📷', base: 600, from: 1996, until: 2015, brand: { ids: CAMERA_MAKERS, mode: 'prefix' } },
+  { label: 'Digital Camera', emoji: '📷', base: 600, from: 1996, until: 2015, brand: (year) => ({ ids: idsOnSale(year, DIGITAL_CAMERA_MAKERS), mode: 'prefix' }) },
   { label: 'DVD Player', emoji: '📀', base: 300, from: 1997, until: 2015, brand: { ids: AV_MAKERS, mode: 'prefix' } },
   { label: 'Flat-Screen TV', emoji: '📺', base: 2_500, from: 2000, until: 2013, brand: { ids: TV_MAKERS, mode: 'prefix' } },
   { label: 'Handheld Game Console', emoji: '🎮', base: 300, tech: 'videoGameConsole', from: 1989, until: 2016, brand: { category: 'console', segment: 'handheld', mode: 'model', suffix: 'Handheld Console' } },
@@ -2016,7 +2039,8 @@ export function electronicsListings(g: GameState): ItemListing[] {
     .map((x, i): ItemListing => {
       const price = nicePrice((x.price ? x.price(g.year) : x.base) * mult * r.float(0.85, 1.1))
       const label = x.name ? x.name(g.year) : x.label
-      const real = x.brand ? gadgetName(g, x.brand, `elec-${i}`, label) : undefined
+      const brand = typeof x.brand === 'function' ? x.brand(g.year) : x.brand
+      const real = brand ? gadgetName(g, brand, `elec-${i}`, label) : undefined
       return { id: `${g.year}:elec-${i}`, kind: 'other', category: 'electronics', name: real ?? label, emoji: x.emoji, price, value: nicePrice(price * 0.7), condition: 100, isNew: true, details: { category: 'electronics' } }
     })
     .filter((x) => !isBought(g, x.id))
@@ -2035,13 +2059,50 @@ const LUXURY: [string, string, number, number, string][] = [
   ['Designer Fragrance', '🧴', 200, 600, 'fashion'],
 ]
 
+const LUXURY_FROM: Record<string, number> = {
+  'Designer Handbag': 1892,
+  'Luxury Watch': 1911,
+  'Designer Sunglasses': 1937,
+  'Tailored Suit': 1910,
+  'Designer Gown': 1947,
+  'Cashmere Coat': 1924,
+  'Limited-Edition Sneakers': 1985,
+  'Silk Scarf': 1937,
+  'Diamond Cufflinks': 1900,
+  'Designer Fragrance': 1921,
+}
+
+function idsOnSale(year: number, rows: readonly (readonly [string, number])[]): string[] {
+  return rows.filter(([, from]) => year >= from).map(([id]) => id)
+}
+
+// Keep the legacy one-page boutique, but only name houses once a matching product line existed.
+// The full Luxury Lifestyle catalog owns the exact models; these broad rows deliberately make no
+// model claim. The extra gate prevents founding year alone from creating products decades early.
+function legacyLuxuryBrand(label: string, year: number): GadgetSpec {
+  const rows: Record<string, readonly (readonly [string, number])[]> = {
+    'Designer Handbag': [['goyard', 1892], ['louis-vuitton', 1930], ['coach', 1941], ['gucci', 1947], ['chanel', 1955], ['hermes', 1956], ['bottega-veneta', 1966], ['mulberry', 1971], ['prada', 1984]],
+    'Luxury Watch': [['cartier', 1911], ['rolex', 1926], ['patek-philippe', 1932], ['iwc', 1936], ['omega', 1948], ['longines', 1954], ['breitling', 1952], ['seiko', 1963]],
+    'Designer Sunglasses': [['ray-ban', 1937], ['persol', 1957], ['oakley', 1985]],
+    'Tailored Suit': [['zegna', 1910], ['chanel', 1954], ['saint-laurent', 1966], ['ralph-lauren', 1972], ['armani', 1975], ['alexander-mcqueen', 1992]],
+    'Designer Gown': [['dior', 1947], ['valentino', 1960], ['versace', 1978], ['alexander-mcqueen', 1992]],
+    'Cashmere Coat': [['loro-piana', 1924], ['max-mara', 1951]],
+    'Limited-Edition Sneakers': [['nike', 1985], ['golden-goose', 2000], ['gucci', 2016], ['balenciaga', 2017], ['louis-vuitton', 2018]],
+    'Silk Scarf': [['hermes', 1937], ['dior', 1947], ['gucci', 1953]],
+    'Diamond Cufflinks': [['tiffany-co', 1900], ['cartier', 1900], ['bulgari', 1900], ['chopard', 1900]],
+    'Designer Fragrance': [['chanel', 1921], ['dior', 1947], ['hermes', 1951], ['gucci', 1974], ['prada', 1990]],
+  }
+  return { ids: idsOnSale(year, rows[label] ?? []), mode: 'prefix' }
+}
+
 export function luxuryListings(g: GameState): ItemListing[] {
   const r = seeded(yearKey(g, 'luxury'))
   const mult = localGoodsMult(g, 'luxury')
-  return LUXURY.map(([label, emoji, lo, hi, sub], i): ItemListing => {
+  return LUXURY.filter(([label]) => g.year >= (LUXURY_FROM[label] ?? 1900)).map(([label, emoji, lo, hi, sub], i): ItemListing => {
     const price = nicePrice((lo + (hi - lo) * Math.pow(r.next(), 1.5)) * mult)
     const keep = sub === 'watch' ? 0.85 : sub === 'handbag' ? 0.7 : sub === 'sneakers' ? 0.8 : 0.35
-    return { id: `${g.year}:lux-${i}`, kind: 'other', category: 'luxury', name: label, emoji, price, value: nicePrice(price * keep), condition: 100, isNew: true, details: { category: 'luxury', luxury: sub } }
+    const name = gadgetName(g, legacyLuxuryBrand(label, g.year), `lux-${i}`, label) ?? label
+    return { id: `${g.year}:lux-${i}`, kind: 'other', category: 'luxury', name, emoji, price, value: nicePrice(price * keep), condition: 100, isNew: true, details: { category: 'luxury', luxury: sub } }
   }).filter((x) => !isBought(g, x.id))
 }
 
@@ -2226,7 +2287,7 @@ export const jewelersMenu: MenuGroup = {
     {
       type: 'menu',
       id: 'jewelerReal',
-      label: 'Glitterwell Fine Jewelers',
+      label: 'Fine Jewelry',
       emoji: '💎',
       subtitle: 'Certified real gems',
       header: (g) => `Every stone comes with a certificate. You have ${formatMoney(g.character.money)}. ${pricesIncludeTax(g)}`.trim(),
@@ -2243,7 +2304,7 @@ export const jewelersMenu: MenuGroup = {
     {
       type: 'menu',
       id: 'jewelerFake',
-      label: 'Bling Bros. Discount Jewelry',
+      label: 'Costume Jewelry',
       emoji: '✨',
       subtitle: 'Prices so low they must be... genuine?',
       header: (g) => `Everything here is cubic zirconia and gold paint. Don't tell anyone. You have ${formatMoney(g.character.money)}. ${pricesIncludeTax(g)}`.trim(),
@@ -2271,7 +2332,7 @@ function electronicsBlurb(g: GameState): string {
 }
 
 export const electronicsStoreMenu = storeMenu('electronicsStore', 'Electronics Store', '📱', electronicsBlurb, 12, electronicsListings, "This year's gadgets.")
-export const luxuryStoreMenu = storeMenu('luxuryStore', 'Luxury Boutique', '👜', 'Designer bags, watches and fashion', 18, luxuryListings, 'The security guard is watching you.')
+export const luxuryStoreMenu = storeMenu('luxuryStore', 'Designer Boutiques', '👜', 'Real-brand bags, watches and fashion', 18, luxuryListings, 'The security guard is watching you.')
 
 export const collectiblesMenu: MenuGroup = {
   type: 'menu',
@@ -2281,8 +2342,8 @@ export const collectiblesMenu: MenuGroup = {
   subtitle: 'Paintings, fossils, rare cards and more',
   disabledReason: (g) => ageReason(g, 18, 'buy art and collectibles'),
   children: () => [
-    storeMenu('artGallery', 'Gallery Modern', '🎨', 'Paintings and sculpture', 18, (g) => collectibleListings(g, 'art'), 'Values can soar... or crash.'),
-    storeMenu('collectiblesDealer', 'Curio & Co. Collectibles', '🏺', 'Rare finds and oddities', 18, (g) => collectibleListings(g, 'collectibles'), 'Every item has a story. Some are even true.'),
+    storeMenu('artGallery', 'Art Gallery', '🎨', 'Paintings and sculpture', 18, (g) => collectibleListings(g, 'art'), 'Values can soar... or crash.'),
+    storeMenu('collectiblesDealer', 'Collectibles Dealer', '🏺', 'Rare finds and oddities', 18, (g) => collectibleListings(g, 'collectibles'), 'Every item has a story. Some are even true.'),
   ],
 }
 
@@ -3796,6 +3857,15 @@ function assetInfo(g: GameState, a: Asset): MenuNode[] {
  */
 export const ASSET_KIND_VIEWS: Partial<Record<AssetKind, { subtitle?: (g: GameState, a: Asset) => string; children: (g: GameState, a: Asset) => MenuNode[] }>> = {}
 
+/**
+ * Optional per-holding extensions supplied by feature modules in menus.ts. `view` may replace
+ * the generic holding screen; `extra` appends one row to an otherwise generic screen.
+ */
+export const ASSET_NODE_HOOKS: {
+  view?: (g: GameState, a: Asset) => MenuNode[] | null
+  extra?: (g: GameState, a: Asset) => MenuNode | null
+} = {}
+
 function assetNode(g: GameState, a: Asset): MenuGroup {
   const view = isHeirloom(a) ? undefined : ASSET_KIND_VIEWS[a.kind]
   return {
@@ -3811,6 +3881,8 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
     children: (gg) => {
       const cur = findAsset(gg, a.id)
       if (!cur) return [{ type: 'info', id: 'gone', text: 'You no longer own this.' }]
+      const hookedView = ASSET_NODE_HOOKS.view?.(gg, cur)
+      if (hookedView) return hookedView
       if (view) return view.children(gg, cur)
       const nodes: MenuNode[] = [...assetInfo(gg, cur), { type: 'heading', id: `actions-${cur.id}`, label: 'Actions' }]
       const push = (n: MenuNode | null) => {
@@ -3887,6 +3959,7 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
           push(donateAction(cur))
           push(discardAction(cur))
       }
+      push(ASSET_NODE_HOOKS.extra?.(gg, cur) ?? null)
       return nodes
     },
   }
@@ -4056,6 +4129,7 @@ const CAR_BREAKDOWN = defineScript('assets.carBreakdown', (g, choice, data) => {
 })
 
 function ageAsset(g: GameState, a: Asset, market: number): void {
+  if (a.details.lux === 1) return
   const d = a.details
   if (isHeirloom(a)) {
     // Heirlooms slowly gain value the longer they stay in the family.
@@ -4238,10 +4312,14 @@ function collectRent(g: GameState): number {
 
 function randomAssetEvent(g: GameState): void {
   const c = g.character
-  const houses = g.assets.filter((a) => a.kind === 'house' && !a.rentedOutFor)
-  const cars = g.assets.filter((a) => a.kind === 'car')
-  const craft = g.assets.filter((a) => a.kind === 'boat' || a.kind === 'aircraft')
-  const small = g.assets.filter((a) => a.kind === 'jewelry' || (a.kind === 'other' && str(a.details.category) !== '') || a.kind === 'collectible')
+  // Branded pieces have their own yearly damage, theft/loss and claim rules. In particular,
+  // their luxIns policy is not the generic `insured` policy, so sending one through these
+  // paths would give it a second loss roll with the wrong coverage and payout semantics.
+  const generic = g.assets.filter((a) => a.details.lux !== 1)
+  const houses = generic.filter((a) => a.kind === 'house' && !a.rentedOutFor)
+  const cars = generic.filter((a) => a.kind === 'car')
+  const craft = generic.filter((a) => a.kind === 'boat' || a.kind === 'aircraft')
+  const small = generic.filter((a) => a.kind === 'jewelry' || (a.kind === 'other' && str(a.details.category) !== '') || a.kind === 'collectible')
   const options: string[] = []
   if (houses.length) options.push('pipe', 'termites', 'burglary', 'fire')
   if (houses.some((h) => haunted(h) > 0)) options.push('ghost', 'ghost')

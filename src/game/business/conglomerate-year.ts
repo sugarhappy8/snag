@@ -6,6 +6,7 @@
 // group CEO, and the group's value (the conglomerate discount, or the share price of a listed
 // group). The treasury also covers a division's cash hole before it turns into a crisis.
 import { formatMoney, log, notice } from '../core'
+import { masterBusiness } from '../mastery'
 import { bell, chance } from '../rng'
 import type { Asset, GameState } from '../types'
 import { ownerControls, setMandate, needsVote, vote } from './board'
@@ -118,7 +119,12 @@ function trackOwnership(grp: Group): void {
 /** The player can't chair from a cell or as a child: the group board appoints an interim CEO. */
 function ensureCeo(g: GameState, grp: Group): void {
   if (grp.core.ceo === 'manager' && grp.core.manager) return
-  if (ownerAvailable(g)) return
+  if (ownerAvailable(g)) {
+    // Repair WIP/hand-edited saves that already have the player chairing a group but predate the
+    // business-mastery hook. This runs in the yearly action path, never while rendering a menu.
+    masterBusiness(g)
+    return
+  }
   const m = interimCeo(g, grp)
   grp.core.ceo = 'manager'
   grp.core.manager = { ...m, since: g.year }

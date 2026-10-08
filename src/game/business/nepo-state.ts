@@ -2,6 +2,7 @@
 // yearly step share. A relative's own job lives on the Person (nepo-job.ts).
 import { getPerson } from '../core'
 import { isAbroad, personCountry } from '../events/wealth-core'
+import { isEstranged } from '../events/will-core'
 import type { Asset, GameState, Json, Person } from '../types'
 import { getCountry } from '../world'
 import { readJob, type FamilyJob } from './nepo-job'
@@ -130,6 +131,7 @@ export function hireBlock(g: GameState, b: BizState, p: Person): string | null {
   if (!p.alive) return `${p.firstName} is no longer with us.`
   if (!isRelative(p)) return `${p.firstName} isn't family.`
   if (p.data.disowned === true) return `You disowned ${p.firstName}.`
+  if (isEstranged(g, p)) return `${p.firstName} is estranged from you.`
   if (p.age < 14) return `${p.firstName} is too young to work (14 and up).`
   if (p.age > 72) return `${p.firstName} is enjoying a long retirement.`
   if (p.relationship < 15) return `${p.firstName} and you are barely speaking.`
@@ -203,7 +205,7 @@ export function successorOf(g: GameState, a: Asset, b: BizState): { kind: 'perso
   if (st.succ.kind === 'person') {
     const p = getPerson(g, st.succ.id)
     const job = p && p.alive ? readJob(p) : null
-    if (p && job && job.assetId === a.id) return { kind: 'person', person: p, job }
+    if (p && p.data.disowned !== true && !isEstranged(g, p) && job && job.assetId === a.id) return { kind: 'person', person: p, job }
     return null
   }
   if (st.succ.kind === 'staff') {
@@ -216,7 +218,8 @@ export function successorOf(g: GameState, a: Asset, b: BizState): { kind: 'perso
 /**
  * Who would inherit if the player died now, by the rules life.ts uses: the people named in the will
  * (living children, stepchildren and spouse), or every living child when nobody is named. One heir
- * keeps the company whole; several heirs mean the company is sold and the cash is split.
+ * keeps the company whole; with several heirs, a valid designated child successor keeps it as a
+ * specific bequest and the rest of the estate is split.
  */
 export function heirsOf(g: GameState): Person[] {
   const eligible = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild' || p.relation === 'spouse'))

@@ -79,6 +79,11 @@ export function specialTalent(id: string): SpecialTalentDef | undefined {
   return SPECIAL_TALENTS.find((t) => t.id === id)
 }
 
+/** Player-facing name for a talent id, including ids whose label is not the raw save key. */
+export function talentLabel(id: string): string {
+  return specialTalent(id)?.label ?? id
+}
+
 /**
  * Clean a list of picks (New Life options, an old or hand-edited save): known ids only, no
  * duplicates, at most `max`, in the order given.

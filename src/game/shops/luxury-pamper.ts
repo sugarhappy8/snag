@@ -7,6 +7,7 @@ import { hasTech } from '../history/timeline'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, StatKey } from '../types'
+import { alcoholBlock } from './luxury-brands-catalog'
 import { alcoholMult, cantAfford, localized, luxuryMult, luxuryReason, meetCeleb, rollCeleb, serviceMult, taxLine } from './luxury-common'
 
 // ---------------------------------------------------------------------------
@@ -205,6 +206,10 @@ function eventKey(id: string): string {
 function vipReason(g: GameState, e: VipEvent): string | null {
   const r = luxuryReason(g)
   if (r) return r
+  if (e.priceKind === 'alcohol') {
+    const blocked = alcoholBlock(g)
+    if (blocked) return blocked
+  }
   if (yearActionsUsed(g, eventKey(e.id)) >= 1) return `You already went to a ${e.label.toLowerCase()} this year.`
   return null
 }

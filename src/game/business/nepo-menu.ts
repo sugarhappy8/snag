@@ -14,6 +14,7 @@ import { readJob, readPast, type FamilyJob } from './nepo-job'
 import { fitOf, fitWord, outlookFor, outlookText, ratingWord } from './nepo-model'
 import { ABOVE_MARKET, MAX_PAY_MULT, ageBlock, marketPay, payAt, rankDef, rankTitle } from './nepo-roles'
 import { CEO_MIN_AGE } from './nepo-succession'
+import { successionEstateUnit } from './nepo-inheritance'
 import { employeesOf, employerOf, familyPayroll, heirsOf, hireBlock, isCeoOf, isRelative, readFamily, successorOf, yourKin, eligibleRelatives, kinWord } from './nepo-state'
 import { companyEffects } from './nepo-year'
 import { businessAssets, readBiz, runsIt, type BizState } from './state'
@@ -412,8 +413,34 @@ function successionNodes(a: Asset): MenuNode[] {
       if (!x) return ''
       const s = successorOf(g, x.a, x.b)
       const heirs = heirsOf(g)
-      const will = heirs.length === 0 ? '' : heirs.length === 1 ? ` By your will, ${heirs[0].firstName} would inherit the company whole.` : ` By your will, ${heirs.length} heirs share the estate: if you died now the company would be sold and the cash divided. Leave it to one heir in your will to keep it in the family.`
-      if (!s) return `No successor named. Name a son or daughter, or a key employee, and they take over when you step back.${will}`
+      const unit = successionEstateUnit(g, x.a.id)
+      const recipient = unit?.recipient ?? null
+      const holding = unit?.group ? unit.group.name : 'the company'
+      let will = ''
+      if (unit?.conflict) {
+        const names = unit.designations.map((p) => p.firstName).join(' and ')
+        const result = heirs.length === 0
+          ? ''
+          : heirs.length === 1
+            ? ` By your will, ${heirs[0].firstName} would inherit the group with the rest of the estate.`
+            : ` By your will, ${heirs.length} heirs share the estate, so the group would be sold and the cash divided.`
+        will = ` ${unit.group?.name ?? 'The group'} has conflicting designated family successors (${names}), so no one receives it as a specific bequest.${result}`
+      } else if (recipient) {
+        if (heirs.length === 0) {
+          will = ` As designated successor, ${recipient.firstName} would inherit ${holding} intact.`
+        } else if (heirs.length === 1 && heirs[0].id === recipient.id) {
+          will = ` By your will, ${recipient.firstName} would inherit ${holding} whole.`
+        } else if (heirs.length === 1) {
+          will = ` By your will, ${heirs[0].firstName} would inherit the rest of the estate; as designated successor, ${recipient.firstName} would inherit ${holding} intact.`
+        } else if (heirs.length > 1) {
+          will = ` By your will, ${heirs.length} heirs share the rest of the estate; as designated successor, ${recipient.firstName} would inherit ${holding} intact.`
+        }
+      } else if (heirs.length === 1) {
+        will = ` By your will, ${heirs[0].firstName} would inherit ${holding} whole.`
+      } else if (heirs.length > 1) {
+        will = ` By your will, ${heirs.length} heirs share the estate: if you died now ${holding} would be sold and the cash divided. Name one of your children as successor to keep it in the family.`
+      }
+      if (!s) return `No successor named${unit?.group ? ' for this division' : ''}. Name a son or daughter, or a key employee, and they take over when you step back.${will}`
       const who = s.kind === 'person' ? `${s.person.firstName} ${s.person.lastName}` : s.name
       return `Your successor: ${who}.${will}`
     },

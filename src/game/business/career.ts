@@ -1,6 +1,7 @@
 // Who runs the company: the owner as CEO (a special-category Job) or a hired general manager.
 import { count, endJob, log, notice } from '../core'
 import { marketOf } from '../data/markets'
+import { masterBusiness } from '../mastery'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import type { Asset, GameState, Job } from '../types'
 import { randomFirstName, randomLastName } from '../world'
@@ -258,6 +259,10 @@ export function becomeCeo(g: GameState, a: Asset, b: BizState, title = 'Founder 
   }
   c.job = job
   count(g, 'jobs')
+  // Taking charge is the first hands-on business action for Main Character Syndrome. Keep this
+  // in the central transition so founding, buying and replacing a hired CEO all unlock the same
+  // bounded owner-CEO skill floor without making menu previews mutate state.
+  masterBusiness(g)
   return quit
 }
 
@@ -282,6 +287,9 @@ export function syncCeo(g: GameState): void {
       log(g, `I'm no longer running ${job.company}: it isn't mine anymore.`, 'bad')
     } else {
       job.company = a.name
+      // A WIP/hand-edited save may already have a Main Character owner-CEO but no mastery record.
+      // Repair it at the action-side yearly sync before the company simulation reads ceoSkill.
+      masterBusiness(g)
     }
   }
   for (const a of g.assets) {
@@ -350,4 +358,3 @@ export function ceoLetter(g: GameState, a: Asset, b: BizState, lines: string[], 
   }
   log(g, `${who}'s letter from ${a.name}: ${lines.length > 1 ? lines.slice(0, 2).join(' ') : lines[0] ?? 'business as usual.'}`, 'neutral')
 }
-

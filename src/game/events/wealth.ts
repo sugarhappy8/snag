@@ -18,6 +18,7 @@ import { chance, rand, randFloat, randInt, weightedPick } from '../rng'
 import { askDefs } from './wealth-catalog'
 import { ADULT_SCRIPT, presentAsk, presentBundle } from './wealth-resolve'
 import type { Ask, AskDef } from './wealth-ask'
+import { isEstranged } from './will-core'
 import {
   SUCCESS_RETURN,
   PARTIAL_RETURN,
@@ -102,11 +103,12 @@ function payAllowances(g: GameState): void {
     if (!p.alive || p.relation === 'pet') continue
     const t = readTies(g, p)
     if (t.allowance <= 0) continue
-    if (p.data.disowned === true) {
+    const estranged = isEstranged(g, p)
+    if (p.data.disowned === true || estranged) {
       updateTies(g, p, (x) => {
         x.allowance = 0
       })
-      log(g, `I stopped ${myOf(p)}'s allowance after disowning ${p.gender === 'male' ? 'him' : 'her'}.`)
+      log(g, estranged ? `I stopped ${myOf(p)}'s allowance after we became estranged.` : `I stopped ${myOf(p)}'s allowance after disowning ${p.gender === 'male' ? 'him' : 'her'}.`)
       continue
     }
     const amt = t.allowance

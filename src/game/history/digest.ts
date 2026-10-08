@@ -11,7 +11,7 @@
 // Prices are written in NOMINAL US dollars of that year (a movie ticket in 1985: 3.55) and shown
 // through formatMoney as engine dollars (nominal / priceLevel(year)), so the display currency and
 // the "prices as they were" setting both work.
-import { currentLogYear, formatMoney, log } from '../core'
+import { currentLogYear, formatCents, formatMoney, log } from '../core'
 import type { GameState, MenuNode } from '../types'
 import { CULTURE_EARLY } from './digest-early'
 import { CULTURE_LATE } from './digest-late'
@@ -75,6 +75,12 @@ function cents(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+/** Everyday prices below $10 need cents; the general money formatter intentionally rounds. */
+function digestMoney(n: number): string {
+  const amount = cents(n)
+  return Math.abs(amount) < 10 ? formatCents(amount) : formatMoney(amount)
+}
+
 /** "A movie ticket costs $3.55, a loaf of bread $0.50 and a gallon of gas $1.20." (rotates items by year). */
 export function pricesLine(year: number, count = 3): string {
   const all = pricesOf(year)
@@ -82,7 +88,7 @@ export function pricesLine(year: number, count = 3): string {
   // A different handful each year: start at a spot that moves with the year, wrap around.
   const picked: DigestPrice[] = []
   for (let i = 0; i < Math.min(count, all.length); i++) picked.push(all[(year + i) % all.length])
-  const parts = picked.map((p, i) => `${i === 0 ? p.label.charAt(0).toUpperCase() + p.label.slice(1) : p.label} ${i === 0 ? 'costs ' : ''}${formatMoney(cents(p.engine))}`)
+  const parts = picked.map((p, i) => `${i === 0 ? p.label.charAt(0).toUpperCase() + p.label.slice(1) : p.label} ${i === 0 ? 'costs ' : ''}${digestMoney(p.engine)}`)
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}.` : `${parts[0]}.`
 }
 
@@ -113,7 +119,7 @@ export function thisYearNodes(g: GameState): MenuNode[] {
   const prices = pricesOf(year)
   if (prices.length) {
     nodes.push({ type: 'heading', id: 'year.pricesH', label: `What things cost in ${year}` })
-    for (const p of prices) nodes.push({ type: 'info', id: `year.price.${p.id}`, emoji: '\u{1F3F7}\u{FE0F}', text: `${p.label.charAt(0).toUpperCase()}${p.label.slice(1)}: ${formatMoney(cents(p.engine))}` })
+    for (const p of prices) nodes.push({ type: 'info', id: `year.price.${p.id}`, emoji: '\u{1F3F7}\u{FE0F}', text: `${p.label.charAt(0).toUpperCase()}${p.label.slice(1)}: ${digestMoney(p.engine)}` })
   }
   return nodes
 }

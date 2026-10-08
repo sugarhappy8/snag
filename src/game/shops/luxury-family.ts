@@ -16,6 +16,7 @@
 import { findAsset, isHeirloom } from '../assets'
 import { addHidden, addMoney, addStat, count, formatMoney, getPerson, inPrison, log, notice, pronouns, relationLabel, scriptChoice, shortMoney } from '../core'
 import { addEntitlement, allowanceNorm, entitlement, gratitude, isAbroad, isDescendant, isParent, isPartner, isSibling, traitIn } from '../events/wealth-core'
+import { isEstranged } from '../events/will-core'
 import { hasTech } from '../history/timeline'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
@@ -32,12 +33,12 @@ import { staffRoster } from './luxury-staff'
 const FAMILY = ['partner', 'spouse', 'fiance', 'child', 'stepchild', 'parent', 'stepparent', 'sibling', 'halfSibling', 'stepsibling']
 
 /** Family the player can lend things to: alive, not disowned, not too young, not a pet. */
-export function isFamilyMember(p: Person): boolean {
-  return p.alive && FAMILY.includes(p.relation) && p.data.disowned !== true && p.age >= 5
+export function isFamilyMember(g: GameState, p: Person): boolean {
+  return p.alive && FAMILY.includes(p.relation) && p.data.disowned !== true && !isEstranged(g, p) && p.age >= 5
 }
 
 export function familyMembers(g: GameState): Person[] {
-  return g.people.filter(isFamilyMember)
+  return g.people.filter((p) => isFamilyMember(g, p))
 }
 
 /** A thing worth sharing: valuable, not an heirloom, not a house, not something you drink. */
@@ -92,7 +93,7 @@ function superCar(a: Asset): boolean {
 
 /** Why this person can't be given this thing (null = they can). */
 export function eligibleReason(g: GameState, p: Person, a: Asset): string | null {
-  if (!isFamilyMember(p)) return 'They are not close enough to lend things to.'
+  if (!isFamilyMember(g, p)) return 'They are not close enough to lend things to.'
   if (isAbroad(g, p)) return `${p.firstName} lives abroad.`
   const use = useOf(a)
   const rich = a.value >= 2_000
@@ -185,7 +186,7 @@ export function revokeAccess(g: GameState, a: Asset, p: Person): number {
 export function familyAccessSummary(g: GameState, a: Asset): string | null {
   const names = accessOf(g, a)
     .map((id) => getPerson(g, id))
-    .filter((p): p is Person => !!p && isFamilyMember(p))
+    .filter((p): p is Person => !!p && isFamilyMember(g, p))
     .map((p) => p.firstName)
   return names.length ? `Family may use it: ${names.join(', ')}` : null
 }
@@ -259,7 +260,7 @@ export function familyAccessNode(g: GameState, a: Asset): MenuNode | null {
 
 /** Rows on a family member's sheet: what they may use of yours, grant/revoke permission. [] when n/a. */
 export function familyUseNodes(g: GameState, p: Person): MenuNode[] {
-  if (!g.character.alive || g.character.age < 18 || !isFamilyMember(p) || p.age < 8) return []
+  if (!g.character.alive || g.character.age < 18 || !isFamilyMember(g, p) || p.age < 8) return []
   if (!g.assets.some(shareable)) return []
   return [
     { type: 'heading', id: 'fam-use-h', label: 'Your Things' },
@@ -302,7 +303,7 @@ function pairs(g: GameState): Pair[] {
     const keep: string[] = []
     for (const id of ids) {
       const p = getPerson(g, id)
-      if (!p || !isFamilyMember(p)) continue
+      if (!p || !isFamilyMember(g, p)) continue
       keep.push(id)
       if (!eligibleReason(g, p, a)) out.push({ a, p })
     }
@@ -621,7 +622,7 @@ export function yearlyFamilyUse(g: GameState): void {
     const fame = showOffFame(g)
     addHeat(g, rich ? 0.02 : 0.008)
     if (!envied && chance(g, rich ? 0.35 : 0.18)) {
-      const rival = g.people.find((q) => isFamilyMember(q) && q.id !== p.id && !hasAccess(g, cur, q) && (isSibling(q) || q.relation === 'halfSibling' || q.relation === 'stepsibling' || isParent(q)))
+      const rival = g.people.find((q) => isFamilyMember(g, q) && q.id !== p.id && !hasAccess(g, cur, q) && (isSibling(q) || q.relation === 'halfSibling' || q.relation === 'stepsibling' || isParent(q)))
       if (rival) {
         envied = true
         rival.relationship = Math.max(0, rival.relationship - randInt(g, 1, 3))

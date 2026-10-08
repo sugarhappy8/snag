@@ -64,7 +64,7 @@ function recordOf(g: GameState, create: boolean): MasteryRecord | null {
   const v = g.flags[FLAG] as unknown
   if (v && typeof v === 'object' && !Array.isArray(v)) {
     const r = v as Partial<MasteryRecord>
-    if (r.owner === ownerOf(g) && r.done && typeof r.done === 'object') return r as MasteryRecord
+    if (r.owner === ownerOf(g) && r.done && typeof r.done === 'object' && !Array.isArray(r.done)) return r as MasteryRecord
   }
   if (!create) return null
   const fresh: MasteryRecord = { owner: ownerOf(g), done: {}, noticeYear: -1 }
@@ -74,25 +74,24 @@ function recordOf(g: GameState, create: boolean): MasteryRecord | null {
 
 /** True when this thing was already mastered by the (main) character. Pure; safe in menus. */
 export function isMastered(g: GameState, key: string): boolean {
-  return recordOf(g, false)?.done[key] !== undefined
+  return masteredAt(g, key) !== null
 }
 
 /** The age at which a thing was mastered, or null. Pure. */
 export function masteredAt(g: GameState, key: string): number | null {
   const v = recordOf(g, false)?.done[key]
-  return typeof v === 'number' ? v : null
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
 /** How many things the main character has mastered so far. Pure. */
 export function masteredCount(g: GameState): number {
-  const r = recordOf(g, false)
-  return r ? Object.keys(r.done).length : 0
+  return masteredKeys(g).length
 }
 
 /** The mastered keys (for the profile line and tests). Pure. */
 export function masteredKeys(g: GameState): string[] {
   const r = recordOf(g, false)
-  return r ? Object.keys(r.done) : []
+  return r ? Object.keys(r.done).filter((key) => typeof r.done[key] === 'number' && Number.isFinite(r.done[key])) : []
 }
 
 /** Skills do not rust for a main character once the thing is mastered. Pure. */
@@ -232,7 +231,7 @@ export function masteryLine(family: MasteryFamily, subject: string, key = subjec
 export function masterFirstTime(g: GameState, key: string, family: MasteryFamily, subject: string, opts: { popup?: boolean } = {}): boolean {
   if (!hasMainCharacter(g) || !g.character.alive) return false
   const rec = recordOf(g, true)!
-  if (rec.done[key] !== undefined) return false
+  if (typeof rec.done[key] === 'number' && Number.isFinite(rec.done[key])) return false
   rec.done[key] = g.character.age
   const mine = ME[family]
   if (opts.popup !== false && rec.noticeYear !== g.year) {
@@ -242,7 +241,7 @@ export function masterFirstTime(g: GameState, key: string, family: MasteryFamily
   } else {
     log(g, fill(mine[hashOf(key) % mine.length], subject), 'good')
   }
-  if (Object.keys(rec.done).length === 1) remember(g, `Mastered ${subject} on the very first try.`)
+  if (masteredCount(g) === 1) remember(g, `Mastered ${subject} on the very first try.`)
   return true
 }
 
@@ -276,14 +275,15 @@ export function masteryCap(g: GameState, key: string): number {
   return experienceCap(g, masteredAt(g, key))
 }
 
-/** Main Character Syndrome for running a company: call when the character founds or buys one (business/ owns that flow). */
+/** Main Character Syndrome for running a company: call when the character takes charge of a company or group. */
 export function masterBusiness(g: GameState): void {
   masterFirstTime(g, 'business.run', 'business', 'running a company')
 }
 
 /**
- * The floor a mastered owner-CEO's skill never falls below (0 for everybody else). Pure: safe in
- * menus and previews. Bounded at 85 so a hired star CEO is still better, and a kid's is lower.
+ * The floor a mastered owner-CEO's skill (or group chair's capture) never falls below (0 for
+ * everybody else). Pure: safe in menus and previews. Bounded at 85 so a hired star CEO is still
+ * better, and a kid's is lower.
  */
 export function businessFloor(g: GameState): number {
   if (!hasMainCharacter(g) || !isMastered(g, 'business.run')) return 0

@@ -7,6 +7,7 @@
 import { addMoney, addStat, count, earnIncome, endJob, formatMoney, log, moneyWith, notice, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { exchangeFor } from '../data/markets'
+import { masterBusiness } from '../mastery'
 import { bell, chance, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -517,6 +518,7 @@ export function formGroup(g: GameState, ids: string[], rawName: string): boolean
   const core = newCore(g, name, plan.share)
   const grp: Group = { core, members: [] }
   admit(g, grp, live, worth)
+  masterBusiness(g)
   count(g, 'conglomerates')
   addStat(g, 'happiness', 6)
   const names = live.map((p) => p.a.name)
@@ -875,6 +877,7 @@ export function chairGroup(g: GameState, groupId: string): boolean {
   grp.core.manager = null
   syncMembers(grp)
   saveGroup(g, grp)
+  masterBusiness(g)
   log(g, `I took over ${grp.core.name} myself.`, 'neutral')
   notice(g, 'Chair and CEO', `You run ${grp.core.name} yourself again: the treasury, the mandate and the division CEOs are your call.${sev > 0 ? ` Buying out ${managerName(m)}'s contract cost ${formatMoney(sev)}.` : ''}`, { emoji: '\u{1F454}' })
   return true
@@ -1138,4 +1141,3 @@ export function interimCeo(g: GameState, grp: Group): Manager {
   const gb = groupBiz(g, grp)
   return managerCandidate(g, gb, randInt(g, 50, 72))
 }
-

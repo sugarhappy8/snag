@@ -1947,7 +1947,7 @@ const bankAction: MenuAction = {
     const us = g.character.countryId === 'us'
     const banks: (Bank & { id: string })[] = [
       { id: 'b1', tier: 1, name: us ? `${city} Community Credit Union` : `${city} Savings Bank`, lo: 5000, hi: 40000, difficulty: 0 },
-      { id: 'b2', tier: 2, name: `${pick(g, us ? ['First National', 'Citizens Savings', 'Union Federal', 'Harbor Trust'] : ['National', 'Commercial', 'Merchants', 'Cooperative'])} Bank of ${city}`, lo: 20000, hi: 150000, difficulty: 0.12 },
+      { id: 'b2', tier: 2, name: `${pick(g, us ? ['Copper Lantern', 'Blue Meridian', 'Harbor Ledger', 'Cedar Crown'] : ['Civic Ledger', 'Meridian Trade', 'Harbor Merchants', 'Juniper Cooperative'])} Bank of ${city}`, lo: 20000, hi: 150000, difficulty: 0.12 },
       { id: 'b3', tier: 3, name: `${pick(g, ['Royal', 'Imperial', 'Sovereign', 'Golden Eagle'])} Reserve Vault`, lo: 150000, hi: 1000000, difficulty: 0.3 },
     ]
     scriptChoice(g, BANK_SCRIPT, 'Bank Robbery', 'Which bank will you hit? Bigger vaults, bigger guards.', [

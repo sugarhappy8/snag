@@ -10,7 +10,7 @@
 // career is a Job (defId 'sports.fighter').
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { killCharacter } from '../death'
-import { hasTech } from '../history/timeline'
+import { common } from '../events/era'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
@@ -1650,10 +1650,10 @@ const calloutAction: MenuAction = {
   id: 'sports.fight.socialCallout',
   label: 'Call Someone Out',
   emoji: '\u{1F4E3}',
-  subtitle: (g) => (hasTech(g, 'socialMedia') ? 'Talk trash online to build hype (once a year)' : 'Talk trash to the press to build hype (once a year)'),
+  subtitle: (g) => (common(g, 'socialMedia') && common(g, 'smartphone') ? 'Talk trash online to build hype (once a year)' : 'Talk trash to the press to build hype (once a year)'),
   disabledReason: (g) => sportsGate(g, 0),
   run: (g) => {
-    const online = hasTech(g, 'socialMedia')
+    const online = common(g, 'socialMedia') && common(g, 'smartphone')
     if (!useYearAction(g, 'sports.fight.socialCallout', 1)) return tell(g, 'Call Out', online ? 'Your manager took your phone away for the rest of the year.' : 'Your manager told the press you had no comment for the rest of the year.', '\u{1F4F5}')
     scriptChoice(
       g,
@@ -1671,7 +1671,7 @@ const calloutAction: MenuAction = {
 }
 
 const socialCalloutScript = defineScript('sports.fight.social', (g, choice) => {
-  const online = hasTech(g, 'socialMedia')
+  const online = common(g, 'socialMedia') && common(g, 'smartphone')
   const p = fighter(g)
   const job = fighterJob(g)
   if (!job) return

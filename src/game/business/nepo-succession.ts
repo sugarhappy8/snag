@@ -4,6 +4,7 @@
 // skill, so the hired-CEO model (planning, board reviews, raises, letters) treats a son or a
 // daughter exactly like a stranger. This file imports no career or board code (career imports it).
 import { entitlement } from '../events/wealth-core'
+import { isEstranged } from '../events/will-core'
 import type { Asset, GameState, Person } from '../types'
 import { seeded } from '../assets'
 import { readJob, seedKey, writeJob, type FamilyJob } from './nepo-job'
@@ -70,7 +71,7 @@ export function successorManager(g: GameState, a: Asset, b: BizState, salaryFor:
   if (!s) return null
   if (s.kind === 'person') {
     const { person, job } = s
-    if (person.age < CEO_MIN_AGE || person.data.disowned === true) return null
+    if (person.age < CEO_MIN_AGE || person.data.disowned === true || isEstranged(g, person)) return null
     return managerFromPerson(g, person, job, salaryFor(job.skill))
   }
   const staff = b.staff.find((x) => x.id === s.id)
@@ -93,15 +94,19 @@ export function successorManager(g: GameState, a: Asset, b: BizState, salaryFor:
  */
 export function afterSuccession(g: GameState, a: Asset, b: BizState, m: Manager): void {
   const fam = familyOf(b)
+  const plan = readFamily(b.family).succ
+  let spent = false
   if (m.personId) {
     const p = g.people.find((x) => x.id === m.personId)
     const job = p ? readJob(p) : null
     if (p && job) promoteToCeo(g, p, job, m.salary)
+    spent = plan.kind === 'person' && plan.id === m.personId
   } else {
+    const staff = plan.kind === 'staff' ? b.staff.find((x) => x.id === plan.id) : undefined
+    spent = !!staff && staff.firstName === m.firstName && staff.lastName === m.lastName
     b.staff = b.staff.filter((x) => !(x.firstName === m.firstName && x.lastName === m.lastName))
   }
-  const cur = readFamily(b.family)
-  if (cur.succ.kind) fam.succ = { kind: '', id: '' }
+  if (spent) fam.succ = { kind: '', id: '' }
   void a
 }
 
@@ -111,6 +116,6 @@ export function afterSuccession(g: GameState, a: Asset, b: BizState, m: Manager)
  */
 export function familyCandidates(g: GameState, a: Asset, b: BizState, salaryFor: (skill: number) => number): Manager[] {
   return employeesOf(g, a.id)
-    .filter((e) => e.job.kind === 'real' && e.job.rank >= 1 && e.p.age >= CEO_MIN_AGE && !isCeoOf(b, e.p))
+    .filter((e) => e.job.kind === 'real' && e.job.rank >= 1 && e.p.age >= CEO_MIN_AGE && e.p.data.disowned !== true && !isEstranged(g, e.p) && !isCeoOf(b, e.p))
     .map((e) => managerFromPerson(g, e.p, e.job, salaryFor(e.job.skill)))
 }

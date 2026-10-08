@@ -14,6 +14,9 @@ import { emptyMarket } from '../src/game/business/competition-state'
 import { marketViewOf, saveMarket } from '../src/game/business/competition'
 import { acquisitionQuote } from '../src/game/business/competition-moves'
 import { payDividend } from '../src/game/business/board-menu'
+import { designateStaff, designateSuccessor, hireRelative } from '../src/game/business/nepo-actions'
+import { businessView } from '../src/game/business/manage'
+import { readFamily } from '../src/game/business/nepo-state'
 import { sellBusiness } from '../src/game/business/exit'
 import { marketKey } from '../src/game/business/competition-core'
 import { bestPlan, refreshValue, valuationOf } from '../src/game/business/economy'
@@ -490,6 +493,94 @@ describe('conglomerates', () => {
     expect(inherited!.members.length).toBe(3)
     book(next, 2)
     expect(groupById(next, id)!.members.length).toBe(3)
+  })
+
+  it('keeps a conglomerate whole when one division has a valid designated successor', () => {
+    const { g, assets } = setup(14, ['restaurant', 'software'])
+    const heir = createPerson(g, { relation: 'child', age: 34, lastName: g.character.lastName, relationship: 90, stats: { smarts: 85 } })
+    const sibling = createPerson(g, { relation: 'child', age: 31, lastName: g.character.lastName, relationship: 80 })
+    expect(hireRelative(g, assets[0], bizOf(g, assets[0]), heir, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, assets[0], bizOf(g, assets[0]), heir, { quiet: true }).ok).toBe(true)
+    expect(formGroup(g, assets.map((a) => a.id), 'Succession Group')).toBe(true)
+    drain(g)
+    const id = groupsOf(g)[0].core.id
+    const memberIds = assets.map((a) => a.id).sort()
+    const heirMoney = heir.money
+    const groupEquity = Math.max(0, Math.round(groupById(g, id)!.members.reduce((sum, x) => sum + x.a.value - (x.a.mortgage?.balance ?? 0), 0)))
+    g.character.money = 0
+    g.character.alive = false
+    g.character.causeOfDeath = 'Old Age'
+    const next = continueAsChild(g, heir.id)
+    const inherited = groupById(next, id)
+    expect(inherited).not.toBeNull()
+    expect(inherited!.members.map((x) => x.a.id).sort()).toEqual(memberIds)
+    expect(inherited!.members.every((x) => readMembership(x.b.group)?.id === id)).toBe(true)
+    const storedValue = inherited!.members.reduce((sum, x) => sum + x.a.value, 0)
+    expect(Math.abs(storedValue - groupStake(inherited!))).toBeLessThanOrEqual(inherited!.members.length + 1)
+    const asSibling = continueAsChild(g, sibling.id)
+    expect(groupById(asSibling, id)).toBeNull()
+    expect(asSibling.people.find((p) => p.id === heir.id)?.money).toBe(heirMoney + groupEquity)
+    book(next, 1)
+    expect(groupById(next, id)?.members.map((x) => x.a.id).sort()).toEqual(memberIds)
+  })
+
+  it('gives a group to its one designated child while honoring another division staff successor', () => {
+    const { g, assets } = setup(16, ['restaurant', 'software'])
+    const heir = createPerson(g, { relation: 'child', age: 36, lastName: g.character.lastName, relationship: 90, stats: { smarts: 86 } })
+    expect(hireRelative(g, assets[0], bizOf(g, assets[0]), heir, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, assets[0], bizOf(g, assets[0]), heir, { quiet: true }).ok).toBe(true)
+    bizOf(g, assets[1]).staff.push({ id: 'staff-successor', firstName: 'Una', lastName: 'Key', gender: 'female', age: 44, role: 'General Manager', focus: 'ops', skill: 83, salary: 120_000, trait: 'steady', morale: 78, years: 5 })
+    expect(designateStaff(g, assets[1], bizOf(g, assets[1]), 'staff-successor').ok).toBe(true)
+    expect(formGroup(g, assets.map((a) => a.id), 'Planned Family Group')).toBe(true)
+    drain(g)
+    const id = groupsOf(g)[0].core.id
+
+    g.character.alive = false
+    g.character.causeOfDeath = 'Old Age'
+    const next = continueAsChild(g, heir.id)
+    const inherited = groupById(next, id)
+    expect(inherited).not.toBeNull()
+    expect(inherited?.core.ceo).toBe('owner')
+    const lead = findBusiness(next, assets[0].id)!
+    const other = findBusiness(next, assets[1].id)!
+    expect(bizOf(next, lead).ceo).toBe('owner')
+    expect(bizOf(next, other).ceo).toBe('manager')
+    expect(bizOf(next, other).manager?.firstName).toBe('Una')
+    expect(bizOf(next, other).manager?.lastName).toBe('Key')
+    expect(bizOf(next, other).staff.some((s) => s.id === 'staff-successor')).toBe(false)
+    expect(readFamily(bizOf(next, other).family).succ).toEqual({ kind: '', id: '' })
+    book(next, 1)
+    expect(bizOf(next, findBusiness(next, assets[1].id)!).manager?.firstName).toBe('Una')
+  })
+
+  it('does not let either selected child capture a group whose divisions name conflicting successors', () => {
+    const { g, assets } = setup(15, ['restaurant', 'software'])
+    const first = createPerson(g, { relation: 'child', age: 35, lastName: g.character.lastName, relationship: 90, stats: { smarts: 84 } })
+    const second = createPerson(g, { relation: 'child', age: 33, lastName: g.character.lastName, relationship: 85, stats: { smarts: 82 } })
+    expect(hireRelative(g, assets[0], bizOf(g, assets[0]), first, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(hireRelative(g, assets[1], bizOf(g, assets[1]), second, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, assets[0], bizOf(g, assets[0]), first, { quiet: true }).ok).toBe(true)
+    expect(designateSuccessor(g, assets[1], bizOf(g, assets[1]), second, { quiet: true }).ok).toBe(true)
+    expect(formGroup(g, assets.map((a) => a.id), 'Split Family Group')).toBe(true)
+    drain(g)
+    const id = groupsOf(g)[0].core.id
+
+    const succession = all(g, businessView(g, assets[0])).find((node) => node.id === `nepo.${assets[0].id}.succ.info`)
+    expect(succession?.type).toBe('info')
+    if (!succession || succession.type !== 'info') throw new Error('succession copy missing')
+    const text = typeof succession.text === 'function' ? succession.text(g) : succession.text
+    expect(text).toMatch(/conflicting designated family successors/i)
+    expect(text).toMatch(/group would be sold and the cash divided/i)
+
+    g.character.alive = false
+    g.character.causeOfDeath = 'Old Age'
+    const continuedAsFirst = continueAsChild(g, first.id)
+    const continuedAsSecond = continueAsChild(g, second.id)
+    for (const next of [continuedAsFirst, continuedAsSecond]) {
+      expect(groupById(next, id)).toBeNull()
+      expect(assets.some((asset) => findBusiness(next, asset.id))).toBe(false)
+      expect(next.queue.some((m) => m.kind === 'notice' && /designated successor/i.test(m.text))).toBe(false)
+    }
   })
 
   it('runs a five-division group with a hired CEO for twenty years without errors', () => {
