@@ -12,6 +12,7 @@ import { groupNodes } from './conglomerate-menu'
 import { yearlyGroups } from './conglomerate-year'
 
 export { groupRescue } from './conglomerate-year'
+export { prepareGroupManagement } from './conglomerate-year'
 export { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 export { addToGroup, formGroup, groupBlock, spinOff } from './conglomerate-actions'
 export { groupById, groupsOf, inGroup, type Group } from './conglomerate-state'

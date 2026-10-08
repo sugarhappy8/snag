@@ -14,7 +14,7 @@ import { styleOf, syncCeo } from './career'
 import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
 import { inventionYear } from './expansion'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
-import { groupRescue, inGroup, yearlyConglomerates } from './conglomerate'
+import { groupRescue, inGroup, prepareGroupManagement, yearlyConglomerates } from './conglomerate'
 import {
   bestPlan,
   costFactor,
@@ -386,6 +386,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   syncCeo(g)
+  prepareGroupManagement(g)
   // Last year's price promises end with the year that was just booked.
   prunePricePromises(g)
   const list = businessAssets(g)

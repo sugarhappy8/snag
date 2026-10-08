@@ -629,7 +629,7 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   const m = b.manager
   if (!m || b.ceo !== 'manager') return
   const st = boardOf(b)
-  const err = clampN((100 - m.skill) / 100, 0.01, 0.5)
+  const err = clampN((100 - m.skill) / 100, 0, 0.5)
   const t: Turn = { g, a, b, m, st, judge: (v) => v * (1 + (rand(g) * 2 - 1) * err), lines: [], moved: 0, big: false }
   const startCash = Math.max(0, b.cash)
   staffTurn(t)

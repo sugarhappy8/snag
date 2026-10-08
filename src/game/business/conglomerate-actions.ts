@@ -36,6 +36,7 @@ import {
 } from './conglomerate-econ'
 import {
   detach,
+  diluteGroupEquity,
   dissolveIfAlone,
   fundamental,
   groupIdOf,
@@ -57,7 +58,8 @@ import {
 import { LASTING_YEARS, refreshValue, valuationOf } from './economy'
 import { capitalGainsTax, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
-import { BIZ_VERSION, bizOf, ceoJob, diluteManagerEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
+import { clearGroupCeoJob } from './conglomerate-job'
+import { BIZ_VERSION, bizOf, ceoJob, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
 import { clampN, cleanName, markBest, money, num, pct, rec, round2, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -416,7 +418,7 @@ function admit(g: GameState, grp: Group, joiners: { a: Asset; b: BizState }[], w
     grp.members.push({ a: j.a, b: j.b, m: newMembership(g, core) })
   }
   core.share = clampN(share, 0.001, 1)
-  if (prior > 0 && credited > 0) diluteManagerEquity(core.manager, prior / (prior + credited))
+  if (prior > 0 && credited > 0) diluteGroupEquity(grp, prior / (prior + credited))
   spreadBasis(grp)
   if (core.mandate) for (const j of joiners) if (ownerControls(g, j.a)) setMandate(g, j.a, j.b, core.mandate)
   const d = conglomerateDiscount(inputs(grp))
@@ -812,6 +814,7 @@ const CEO_PICK = defineScript('business.group.ceo', (g, choice, data) => {
   const out = grp.core.ceo === 'manager' ? grp.core.manager : null
   const sev = out ? ceoSeverance(out, g.year) : 0
   if (sev > 0) payGroup(g, grp, sev)
+  clearGroupCeoJob(g, out)
   grp.core.ceo = 'manager'
   grp.core.manager = { ...m, since: g.year }
   grp.core.misses = 0
@@ -821,7 +824,7 @@ const CEO_PICK = defineScript('business.group.ceo', (g, choice, data) => {
   notice(
     g,
     'New Group CEO',
-    `${managerName(m)} (skill ${m.skill}/100, ${style.label.toLowerCase()}, ${formatMoney(m.salary)} a year, paid by the divisions) now runs ${grp.core.name}: the treasury, the back office, the division CEOs.${out && sev > 0 ? ` Buying out ${managerName(out)}'s contract cost ${formatMoney(sev)}.` : ''}${m.skill > SMART_SKILL ? ' Above 75, they work the numbers: paying down expensive debt, matching each division to the right mandate and upgrading weak division CEOs.' : ''}`,
+    `${managerName(m)} (skill ${m.skill}/100, ${style.label.toLowerCase()}, ${formatMoney(m.salary)} a year, paid by the divisions) now runs ${grp.core.name}: the treasury, the back office, the division CEOs.${out && sev > 0 ? ` Buying out ${managerName(out)}'s contract cost ${formatMoney(sev)}.` : ''} Autonomous Management reviews every division each year; higher skill improves capital allocation and execution. ${grp.core.autoEquity !== false ? 'You have authorized permanent, value-weighted group share grants to retain subsidiary executives; disable this under Autonomous Management if desired.' : 'Automatic executive equity grants are disabled.'} The Group CEO must still receive any ownership grant from you; they cannot award themselves shares.`,
     { emoji: face(m), tone: 'good' },
   )
 })
@@ -875,6 +878,7 @@ export function chairGroup(g: GameState, groupId: string): boolean {
   }
   const sev = ceoSeverance(m, g.year)
   if (sev > 0) payGroup(g, grp, sev)
+  clearGroupCeoJob(g, m)
   grp.core.ceo = 'owner'
   grp.core.manager = null
   syncMembers(grp)
@@ -995,7 +999,7 @@ export function groupIpo(g: GameState, groupId: string): boolean {
   if (!t.b.public) t.b.valuation = Math.round(t.b.valuation + raise - fees)
   const post = pre + raise - fees
   grp.core.share = clampN(grp.core.share * 0.75, 0.001, 1)
-  diluteManagerEquity(grp.core.manager, 0.75)
+  diluteGroupEquity(grp, 0.75)
   const sharesOut = Math.max(1000, Math.round(post / 25))
   const sharePrice = round2(clampN((post / sharesOut) * pop, 0.05, 1e7))
   grp.core.listing = { exchange: ex.code, ipoYear: g.year, sharesOut, sharePrice }
@@ -1126,7 +1130,7 @@ export function delistGroup(g: GameState, groupId: string): boolean {
   }
   if (plan.fromYou > 0) addMoney(g, -plan.fromYou)
   grp.core.share = 1
-  diluteManagerEquity(grp.core.manager, 0)
+  diluteGroupEquity(grp, 0)
   grp.core.listing = null
   grp.core.delisted = g.year
   spreadBasis(grp, plan.fromYou)

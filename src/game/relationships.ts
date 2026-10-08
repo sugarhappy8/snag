@@ -75,7 +75,7 @@ import { locale, localeOf } from './data/locales'
 import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, texting, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
 import { cashShare, moneyStatus, wealthNodes } from './events/wealth-menu'
-import { nepoPersonNodes } from './business/nepo'
+import { holdsFamilyJob, nepoPersonNodes } from './business/nepo'
 import { willPersonNodes } from './events/will-amends'
 import { isEstranged, keptAwayBy } from './events/will-core'
 import { familyUseNodes } from './shops/luxury-family'
@@ -1242,6 +1242,9 @@ function checkGuardian(g: GameState): void {
 // --- Life cycle ------------------------------------------------------------
 
 function updateOccupation(g: GameState, p: Person): void {
+  // Company/HQ employment has its own real payroll and retirement handling. Do not
+  // overwrite the role or add the generic NPC earnings on top of that salary.
+  if (holdsFamilyJob(p)) return
   if (['classmate', 'teacher', 'coworker', 'boss', 'cellmate', 'pet'].includes(p.relation)) return
   if (p.age < 18) {
     p.occupation = npcOccupationLabel(p.age)

@@ -9,11 +9,14 @@ import { formatMoney, log, notice } from '../core'
 import { masterBusiness } from '../mastery'
 import { bell, chance } from '../rng'
 import type { Asset, GameState } from '../types'
-import { ownerControls, setMandate, needsVote, vote } from './board'
+import { ownerControls, setMandate } from './board'
 import { boardView, controlsBoard, mandateDef } from './board-state'
 import { payCap, reserveDollars } from './board-vote'
 import { bestMandate, mandateMerit } from './board-ceo'
-import { ceoSeverance, ceoValue, handOver, headhunterFee, managerName, optimizerGain, ownerAvailable, shortlist, SMART_SKILL } from './career'
+import { ceoSeverance, managerName, ownerAvailable, shortlist, SMART_SKILL } from './career'
+import { cleanGroupJobs, familyRoleEdge, payFamilyGroupCeo, prepareGroupFamily } from './conglomerate-family'
+import { allocateGroupCapital, manageDivisionCeos, managementEffectiveness, retainDivisionCeo } from './conglomerate-management'
+import { clearGroupCeoJob } from './conglomerate-job'
 import {
   canGroupIpo,
   groupBiz,
@@ -42,7 +45,7 @@ import {
   type GroupMember,
   type GroupSynergy,
 } from './conglomerate-state'
-import { bizWorth, exchangeMove, LASTING_YEARS, maxProduction, refreshValue } from './economy'
+import { exchangeMove, maxProduction, refreshValue } from './economy'
 import { earmarkedCash } from './gamestudio'
 import { bizOf, businessAssets, runsIt, type BizState, type Manager } from './state'
 import { clampN, money, pct } from './util'
@@ -142,8 +145,8 @@ function paydown(g: GameState, grp: Group, x: GroupMember, share: number): numbe
   const st = boardView(g, x.a, b)
   // Repaying with its own cash keeps the reserve (and money earmarked for unreleased games);
   // sisters chip in what they can spare.
-  const ownSpare = Math.max(0, Math.round(b.cash - earmarkedCash(x.a) - reserveDollars(b, st)))
-  const sisters = x.m.own >= 0.999 ? grp.members.filter((o) => o.a.id !== x.a.id).map((o) => ({ o, spare: movableCash(g, o) })) : []
+  const ownSpare = Math.max(0, Math.floor(b.cash - earmarkedCash(x.a) - reserveDollars(b, st) - (b.manager?.salary ?? 0)))
+  const sisters = x.m.own >= 0.999 ? grp.members.filter((o) => o.a.id !== x.a.id).map((o) => ({ o, spare: Math.max(0, movableCash(g, o) - (o.b.manager?.salary ?? 0)) })) : []
   const avail = ownSpare + sisters.reduce((s, o) => s + o.spare, 0)
   const pay = Math.round(Math.min(b.debt, avail) * clampN(share, 0, 1))
   if (pay < Math.max(5_000, b.debt * 0.02)) return 0
@@ -160,41 +163,16 @@ function paydown(g: GameState, grp: Group, x: GroupMember, share: number): numbe
   return done
 }
 
-/** Replace the weakest hired division CEO when a better one is clearly worth the change. */
-function upgradeCeo(g: GameState, grp: Group): string | null {
-  const weak = grp.members
-    .filter((x) => x.b.ceo === 'manager' && x.b.manager && x.b.manager.skill < Math.max(SMART_SKILL + 1, grp.core.manager?.skill ?? 0) && !runsIt(g, x.a) && x.b.last && ownerControls(g, x.a))
-    .sort((p, q) => (p.b.manager?.skill ?? 0) - (q.b.manager?.skill ?? 0))[0]
-  if (!weak || !weak.b.manager) return null
-  const b = weak.b
-  const cur = weak.b.manager
-  const w = bizWorth(g, b)
-  const gain = optimizerGain(g, b)
-  const kind = (grp.core.manager?.skill ?? 0) >= 85 ? 'executive' : 'standard'
-  const list = shortlist(g, b, kind).filter(m => m.skill >= (grp.core.manager?.skill ?? 0))
-  if (!list.length) return null
-  const best = list.reduce((top, m) => (ceoValue(w, m, gain) > ceoValue(w, top, gain) ? m : top), list[0])
-  const fee = headhunterFee(b, kind, 0)
-  const sev = ceoSeverance(cur, g.year)
-  const better = ceoValue(w, best, gain) - ceoValue(w, cur, gain) - (fee + sev) / LASTING_YEARS
-  if (!(best.skill > cur.skill) || better <= 0) return null
-  const p = { kind: 'hire' as const, by: 'owner' as const, amount: best.salary, skill: best.skill, label: `Hire ${managerName(best)} as CEO of ${weak.a.name}` }
-  if (needsVote(g, weak.a, b, p) && !vote(g, weak.a, b, p, { quiet: true }).passed) return null
-  charge(b, fee)
-  handOver(g, weak.a, b, best)
-  return `Replaced ${managerName(cur)} (skill ${cur.skill}) with ${managerName(best)} (skill ${best.skill}) at ${weak.a.name}: worth about ${money(better)} a year more after pay.`
-}
-
 function ceoTurn(g: GameState, grp: Group): string[] {
   const m = grp.core.manager
   if (grp.core.ceo !== 'manager' || !m) return []
   const smart = m.skill > SMART_SKILL
-  const lines: string[] = []
+  if (grp.core.autonomous === false) return ['Autonomous portfolio management is paused.']
+  const lines: string[] = manageDivisionCeos(g, grp)
   // Expensive debt first: the treasury earns less than the loans cost.
-  const debtors = grp.members.filter((x) => x.b.debt > 0 && x.b.debtRate >= 0.05).sort((p, q) => q.b.debtRate - p.b.debtRate).slice(0, 2)
+  const debtors = grp.members.filter((x) => x.b.debt > 0 && x.b.debtRate >= 0.05).sort((p, q) => q.b.debtRate - p.b.debtRate)
   for (const x of debtors) {
-    if (!smart && !chance(g, 0.5)) continue
-    const paid = paydown(g, grp, x, smart ? 1 : 0.5)
+    const paid = paydown(g, grp, x, managementEffectiveness(g, grp))
     if (paid > 0) lines.push(`Paid down ${money(paid)} of ${x.a.name}'s ${pct(x.b.debtRate, 1)} debt with cash the group didn't need.`)
   }
   if (smart) {
@@ -210,11 +188,32 @@ function ceoTurn(g: GameState, grp: Group): string[] {
         }
       }
     }
-    const up = upgradeCeo(g, grp)
-    if (up) lines.push(up)
   }
+  lines.push(...allocateGroupCapital(g, grp))
+  for (const x of grp.members) { const retention = retainDivisionCeo(g, grp, x); if (retention) lines.push(retention) }
   if (!lines.length) lines.push(smart ? 'Kept the divisions on plan; nothing needed fixing this year.' : 'Kept the divisions ticking over.')
   return lines
+}
+
+/** Runs before division retention and annual operating plans, once per year. */
+function prepareGroup(g: GameState, grp: Group): void {
+  if ((grp.core.managementYear ?? -1) >= g.year) return
+  grp.core.managementYear = g.year
+  grp.core.familyPay = 0
+  // An employed heir is never their own hired group CEO.
+  if (grp.core.manager?.personId === g.character.id) { grp.core.ceo = 'owner'; grp.core.manager = null }
+  const family = prepareGroupFamily(g, grp)
+  ensureCeo(g, grp)
+  grp.core.memo = [...family, ...ceoTurn(g, grp)].slice(0, 100)
+  grp.core.letter = g.year
+  saveGroup(g, grp)
+}
+
+export function prepareGroupManagement(g: GameState): void {
+  if (!g.character.alive) return
+  cleanGroupJobs(g)
+  const ids = [...new Set(businessAssets(g).map(a => groupIdOf(a.details)).filter(Boolean))]
+  for (const id of ids) { const grp = liveGroup(g, id); if (grp && grp.members.length >= 2) prepareGroup(g, grp) }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +244,7 @@ function boardReview(g: GameState, grp: Group): void {
   const out = hired ? grp.core.manager : null
   const sev = out ? ceoSeverance(out, g.year) : 0
   if (sev > 0) charge(treasuryOf(grp).b, sev)
+  clearGroupCeoJob(g, out)
   grp.core.ceo = 'manager'
   grp.core.manager = { ...next, since: g.year }
   grp.core.misses = 0
@@ -279,6 +279,7 @@ function revalue(g: GameState, grp: Group, fiscal: number): void {
 
 function groupYear(g: GameState, grp: Group, fiscal: number): void {
   trackOwnership(grp)
+  prepareGroup(g, grp)
   ensureCeo(g, grp)
   const core = grp.core
   const syn: GroupSynergy = { year: fiscal, backOffice: 0, crossSell: 0, purchasing: 0, complexity: 0, integration: 0, hq: 0 }
@@ -291,7 +292,7 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
     syn.integration += cost
   }
   // Synergies and sprawl (half of them in the year a division joined).
-  const plan = synergyPlan(inputs(grp), captureOf(g, core))
+  const plan = synergyPlan(inputs(grp), clampN(captureOf(g, core) + familyRoleEdge(g, core.id, 'operations'), 0, 1))
   plan.divisions.forEach((d, i) => {
     const x = grp.members[i]
     const part = x.m.joined > fiscal ? 0 : x.m.joined === fiscal ? 0.5 : 1
@@ -313,13 +314,17 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
   })
   // The group CEO's pay, shared by the divisions by sales.
   if (core.ceo === 'manager' && core.manager) {
-    const pay = core.manager.salary
-    const sales = grp.members.map((x) => Math.max(0, x.b.last?.revenue ?? 0))
-    const total = sales.reduce((s, v) => s + v, 0)
-    grp.members.forEach((x, i) => charge(x.b, total > 0 ? (pay * sales[i]) / total : pay / grp.members.length))
-    syn.hq = pay
+    const available = grp.members.map(x => Math.max(0, Math.floor(x.b.cash - earmarkedCash(x.a))))
+    const total = available.reduce((s, v) => s + v, 0)
+    const pay = Math.min(Math.round(core.manager.salary), total)
+    let remaining = pay
+    grp.members.forEach((x, i) => { const part = Math.min(available[i], remaining, i === grp.members.length - 1 ? remaining : Math.floor(pay * available[i] / Math.max(1, total))); charge(x.b, part); remaining -= part })
+    syn.hq = pay - remaining
+    payFamilyGroupCeo(g, grp, syn.hq)
+    if (syn.hq < core.manager.salary) core.memo.push(`Group CEO salary was underpaid: ${money(syn.hq)} of ${money(core.manager.salary)}; project cash was protected.`)
   }
-  const lines = ceoTurn(g, grp)
+  syn.hq += core.familyPay ?? 0
+  const lines = core.memo
   boardReview(g, grp)
   revalue(g, grp, fiscal)
   // The record.
@@ -336,7 +341,7 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
   ].slice(-GROUP_HISTORY)
   core.synergy = syn
   if (core.ceo === 'manager' && core.manager && lines.length) {
-    core.memo = lines.slice(0, 6)
+    core.memo = lines.slice(0, 100)
     core.letter = g.year
     log(g, `${managerName(core.manager)}'s letter from ${core.name}: ${lines.slice(0, 2).join(' ')}`, 'neutral')
   }
@@ -371,6 +376,7 @@ export function yearlyGroups(g: GameState): void {
     if (dissolveIfAlone(g, id)) continue
     const grp = liveGroup(g, id)
     if (!grp || grp.members.length < 2) continue
+    if (grp.core.history.some(h => h.year === fiscal)) continue
     groupYear(g, grp, fiscal)
   }
 }

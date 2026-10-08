@@ -56,6 +56,8 @@ import { oddsText } from './board-vote'
 import { industryDef } from './industries'
 import { businessView, shopCompany } from './manage'
 import { equityMenu } from './executive'
+import { delegationMenu } from './conglomerate-management'
+import { groupFamilyMenu } from './conglomerate-family'
 import { manageBlock, tooBusy } from './gate'
 import { bizOf, businessAssets, findBusiness, readBiz, stakeValue } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -390,7 +392,7 @@ function ceoMenu(groupId: string): MenuGroup {
         ? talentHint(g, 'Business', `A sharp group CEO (about skill 82 at ${money(pay)} a year) would add about ${money(hired - now)} a year after pay`)
         : talentHint(g, 'Business', `The group is too small for a hired group CEO to earn their pay over ${grp.core.ceo === 'manager' ? 'the one you have' : 'you'}`)
     },
-    header: () => 'The group CEO runs the treasury and the back office and keeps the division CEOs in line. The better they are, the more of the synergies they capture and the less the sprawl costs; above skill 75 they also pay down expensive debt, match each division to the right mandate and replace weak division CEOs. Their pay is shared by the divisions. Replace them as often as you like: severance, the headhunter and staff churn are the price.',
+    header: () => 'The group CEO autonomously oversees every division: recruiting CEOs at their own level or higher, retaining them, allocating capital, paying down expensive debt and choosing mandates. Higher skill approaches 100% modeled effectiveness, not guaranteed profits. Reserves, project commitments and minority shareholders remain protected. Automatic value-weighted group equity awards reduce your holdings permanently and can be disabled under Autonomous Management. Family Head Office offers five real positions. The group CEO still needs your own ownership grant; no self-awards.',
     children: (g) => {
       const grp = groupById(g, groupId)
       if (!grp) return []
@@ -846,6 +848,7 @@ export function groupView(g: GameState, groupId: string): MenuNode[] {
   nodes.push({ type: 'heading', id: `biz.group.runH.${groupId}`, label: 'Run the Group' })
   nodes.push(ceoMenu(groupId), mandateMenu(groupId), moveMenu(groupId), dividendAction(groupId, grp, g), acquireMenu(groupId), addMenu(groupId))
   nodes.push(equityMenu(groupId, true))
+  nodes.push(delegationMenu(groupId), groupFamilyMenu(groupId))
   nodes.push({ type: 'heading', id: `biz.group.restructH.${groupId}`, label: 'Restructure' })
   nodes.push(spinMenu(groupId), sellMenu(groupId))
   nodes.push({ type: 'heading', id: `biz.group.marketH.${groupId}`, label: 'Stock Market & Board' })

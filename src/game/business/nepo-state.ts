@@ -6,6 +6,7 @@ import { isEstranged } from '../events/will-core'
 import type { Asset, GameState, Json, Person } from '../types'
 import { getCountry } from '../world'
 import { readJob, type FamilyJob } from './nepo-job'
+import { readGroupJob } from './conglomerate-job'
 import { businessAssets, isBusinessAsset, type BizState } from './state'
 import { clampN, num, rec, str } from './util'
 
@@ -136,6 +137,8 @@ export function hireBlock(g: GameState, b: BizState, p: Person): string | null {
   if (p.age > 72) return `${p.firstName} is enjoying a long retirement.`
   if (p.relationship < 15) return `${p.firstName} and you are barely speaking.`
   if (personCountry(g, p) !== b.countryId) return `${p.firstName} lives in ${getCountry(personCountry(g, p)).name}${isAbroad(g, p) ? ', far from you' : ''}; the company is in ${getCountry(b.countryId).name}.`
+  const hq = readGroupJob(p)
+  if (hq) return `${p.firstName} already works at ${hq.groupName}'s head office.`
   const job = readJob(p)
   if (job) {
     const there = g.assets.find((a) => a.id === job.assetId)

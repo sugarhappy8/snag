@@ -8,6 +8,7 @@
 import type { Json, Person } from '../types'
 import type { StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
+import { readGroupJob } from './conglomerate-job'
 
 /**
  * The key a person's stable rolls (drive, department, made-up title) are drawn from. An in-law or a
@@ -121,7 +122,7 @@ export function clearJob(p: Person): void {
 
 /** True when this person holds a job at one of the player's companies. */
 export function holdsFamilyJob(p: Person): boolean {
-  return readJob(p) !== null
+  return readJob(p) !== null || readGroupJob(p) !== null
 }
 
 /** What a person did before: a job that ended (fired, quit, poached, started a company). */

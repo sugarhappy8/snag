@@ -16,7 +16,7 @@ import { log } from '../core'
 import type { Asset, GameState, Json } from '../types'
 import { registerGroupBoard, type Mandate } from './board-state'
 import { refreshValue } from './economy'
-import { bizOf, businessAssets, CEO_STYLES, readBiz, type BizState, type Manager } from './state'
+import { bizOf, businessAssets, CEO_STYLES, diluteManagerEquity, readBiz, type BizState, type Manager } from './state'
 import { clampN, num, rec, round2, str, toJson } from './util'
 
 export const GROUP_VERSION = 1
@@ -88,6 +88,13 @@ export interface GroupCore {
   misses: number
   /** IPO hint shown. */
   ipoHint: boolean
+  /** A hired CEO manages every division unless the owner explicitly pauses delegation. */
+  autonomous?: boolean
+  /** Allow permanent group equity awards for subsidiary executive retention (never self-awards). */
+  autoEquity?: boolean
+  /** One management/payroll pass per calendar year. */
+  managementYear?: number
+  familyPay?: number
 }
 
 export interface Membership {
@@ -133,6 +140,7 @@ function readManager(v: Json | undefined): Manager | null {
     ...(style ? { style } : {}),
     integrity: Math.round(clampN(num(d.integrity, 70), 0, 100)),
     ...(num(d.bonus) > 0 ? { bonus: Math.round(num(d.bonus)) } : {}),
+    ...(str(d.personId) ? { personId: str(d.personId) } : {}),
   }
 }
 
@@ -187,10 +195,14 @@ export function readCore(v: Json | undefined, fallbackId = '', fallbackShare = 1
     delisted: num(d.delisted),
     history: Array.isArray(d.history) ? d.history.map(readYear).filter((x): x is GroupYear => x !== null).slice(-GROUP_HISTORY) : [],
     synergy: readSynergy(d.synergy),
-    memo: Array.isArray(d.memo) ? d.memo.filter((x): x is string => typeof x === 'string').slice(0, 10) : [],
+    memo: Array.isArray(d.memo) ? d.memo.filter((x): x is string => typeof x === 'string').slice(0, 100) : [],
     letter: num(d.letter),
     misses: Math.max(0, Math.round(num(d.misses))),
     ipoHint: d.ipoHint === true,
+    autonomous: d.autonomous !== false,
+    autoEquity: d.autoEquity !== false,
+    managementYear: num(d.managementYear, -1),
+    familyPay: Math.max(0, num(d.familyPay)),
   }
 }
 
@@ -322,6 +334,19 @@ export function saveGroup(g: GameState, grp: Group): void {
     x.m.core = grp.core
     x.b.group = toJson({ id: grp.core.id, joined: x.m.joined, own: x.m.own, integrated: x.m.integrated, fx: x.m.fx, core: grp.core })
     refreshValue(x.a, x.b)
+  }
+}
+
+/** New group shares dilute every active executive award, not only the head-office CEO. */
+export function diluteGroupEquity(grp: Group, retained: number): void {
+  diluteManagerEquity(grp.core.manager, retained)
+  const ratio = clampN(retained, 0, 1)
+  for (const x of grp.members) {
+    const manager = x.b.manager, award = manager?.groupEquity
+    if (!manager || !award || award.id !== grp.core.id) continue
+    award.share *= ratio; award.credit *= ratio
+    delete manager.equityAsked
+    if (!ratio) delete manager.groupEquity
   }
 }
 

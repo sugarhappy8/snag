@@ -121,6 +121,8 @@ export const CEO_STYLES: readonly CeoStyle[] = ['grower', 'costCutter', 'steady'
 export interface Manager {
   /** Vested fraction granted to this CEO; ownership is deducted when awarded. */
   equity?: number
+  /** Vested group shares awarded instead of subsidiary shares, with company-equivalent credit. */
+  groupEquity?: { id: string; share: number; credit: number }
   /** Year an outstanding equity request was first made. */
   equityAsked?: number
   firstName: string
@@ -382,6 +384,7 @@ function readManager(v: Json | undefined): Manager | null {
     salary: Math.max(0, num(v.salary)),
     since: num(v.since),
     ...(typeof v.equity === 'number' ? { equity: clampN(num(v.equity), 0, .5) } : {}),
+    ...(v.groupEquity && typeof v.groupEquity === 'object' && !Array.isArray(v.groupEquity) && str(v.groupEquity.id) ? { groupEquity: { id: str(v.groupEquity.id), share: clampN(num(v.groupEquity.share), 0, .5), credit: clampN(num(v.groupEquity.credit), 0, .5) } } : {}),
     ...(typeof v.equityAsked === 'number' ? { equityAsked: num(v.equityAsked) } : {}),
     ...(style ? { style } : {}),
     ...(typeof v.integrity === 'number' ? { integrity: clampN(num(v.integrity, 70), 0, 100) } : {}),

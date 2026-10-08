@@ -5,6 +5,7 @@ import { ownerControls } from './board'
 import { installManager } from './career'
 import { allGroups, groupById, groupIdOf, liveGroup, saveGroup, syncMembers } from './conglomerate-state'
 import { interimCeo } from './conglomerate-actions'
+import { clearGroupCeoJob } from './conglomerate-job'
 import { executiveEdge } from './dynamics'
 import { bestPlan, refreshValue } from './economy'
 import { manageBlock } from './gate'
@@ -13,11 +14,11 @@ import { pct, priceCapOf } from './util'
 
 export function equityTarget(skill: number): number { return skill >= 95 ? .10 : skill >= 90 ? .05 : skill >= 85 ? .02 : 0 }
 export function equityDue(m: Manager): number {
-  const due = equityTarget(m.skill) - (m.equity ?? 0)
+  const due = equityTarget(m.skill) - (m.equity ?? 0) - (m.groupEquity?.credit ?? 0)
   return due > 1e-10 ? due : 0
 }
-export function equityTerms(m: Manager): string {
-  return equityTarget(m.skill) ? `${pct(equityTarget(m.skill))} ownership needed for long-term retention; ${pct(m.equity ?? 0)} granted` : 'Salary-based retention'
+export function equityTerms(m: Manager, group = false): string {
+  return equityTarget(m.skill) ? `${pct(equityTarget(m.skill))} ownership-equivalent needed; ${pct(m.equity ?? 0)} ${group ? 'group' : 'company'}${m.groupEquity ? ` + ${pct(m.groupEquity.share, 2)} group shares (${pct(m.groupEquity.credit)} retention credit)` : ' granted'}` : 'Salary-based retention'
 }
 
 export function grantCeoEquity(g: GameState, id: string, group = false): boolean {
@@ -82,7 +83,7 @@ export function groupRetentionYear(g: GameState): void {
   for (const row of allGroups(g)) {
     const grp = liveGroup(g, row.core.id)
     if (!grp || grp.core.ceo !== 'manager' || !grp.core.manager) continue
-    if (retention(g, grp.core.name, grp.core.manager)) grp.core.manager = { ...interimCeo(g, grp), since: g.year }
+    if (retention(g, grp.core.name, grp.core.manager)) { clearGroupCeoJob(g, grp.core.manager); grp.core.manager = { ...interimCeo(g, grp), since: g.year } }
     saveGroup(g, grp)
   }
 }
@@ -104,7 +105,7 @@ export function executiveOperations(g: GameState, b: BizState, year: number, ass
 export function equityMenu(id: string, group = false): MenuNode {
   const current = (g: GameState) => group ? groupById(g, id)?.core.manager : (() => { const a = findBusiness(g, id); return a ? readBiz(g, a).manager : null })()
   return { type: 'action', id: `biz.equity.${group ? 'group.' : ''}${id}`, label: 'CEO Equity', emoji: '🤝',
-    subtitle: g => { const m = current(g); return m ? equityTerms(m) : 'Hire a CEO first' },
+    subtitle: g => { const m = current(g); return m ? equityTerms(m, group) : 'Hire a CEO first' },
     disabledReason: g => {
       const m = current(g), grp = group ? groupById(g, id) : null
       const a = group ? grp?.members[0]?.a : findBusiness(g, id)
