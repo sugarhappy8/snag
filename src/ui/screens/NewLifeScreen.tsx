@@ -8,13 +8,14 @@ import { nameFitsYear } from '../../game/history/events-people'
 import { HISTORY_START, PRESENT_YEAR } from '../../game/history/timeline'
 import { START_STAT_KEYS, type NewLifeOptions, type StartStatKey } from '../../game/life'
 import { loadGame } from '../../game/save'
-import { isTalentId, MAX_START_TALENTS, normalizeTalents, SPECIAL_TALENTS, specialTalent, type TalentId } from '../../game/talents'
+import { isTalentId, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, SPECIAL_TALENTS, specialTalent, type TalentId } from '../../game/talents'
 import type { Gender, Sexuality } from '../../game/types'
 import { COUNTRIES, NAME_POOLS, getCountry } from '../../game/world'
 import { statColor } from '../components/StatBar'
 import { STAT_META } from '../components/StatPanel'
 import { goTo, hasSavedGame, startNewLife, useApp } from '../store'
 import '../styles/screens.css'
+import '../styles/main-character.css'
 import { ConfirmDialog, ScreenHeader } from './SettingsScreen'
 
 const NAME_MAX = 20
@@ -429,6 +430,7 @@ export function TalentPicker({ picks, onChange, open, onToggle }: TalentPickerPr
   const panelId = useId()
   const chosen = normalizeTalents(picks)
   const full = chosen.length >= MAX_START_TALENTS
+  const main = chosen.includes(MAIN_CHARACTER)
 
   return (
     <div className={open ? 'nl-stats nl-talents is-open' : 'nl-stats nl-talents'}>
@@ -446,8 +448,13 @@ export function TalentPicker({ picks, onChange, open, onToggle }: TalentPickerPr
         <div className="nl-stats-panel nl-talents-panel" id={panelId}>
           <p className="al-muted al-small nl-stats-hint">
             Born gifted. Pick up to {MAX_START_TALENTS}: each perk works from day one, and you'll still get that "wait, I'm good at
-            this!" moment as a kid.
+            this!" moment as a kid. Main Character Syndrome counts as one pick.
           </p>
+          {main && chosen.length > 1 ? (
+            <p className="nl-talents-note" role="note">
+              Main Character Syndrome already gives you every talent, so your other picks add nothing. Unpick them to keep your slots free.
+            </p>
+          ) : null}
           <div className="nl-talents-bar">
             <output className={full ? 'nl-talents-count is-full' : 'nl-talents-count'} aria-live="polite">
               {talentCount(chosen)}
@@ -465,7 +472,7 @@ export function TalentPicker({ picks, onChange, open, onToggle }: TalentPickerPr
                 <button
                   key={t.id}
                   type="button"
-                  className={on ? 'nl-talent is-on' : locked ? 'nl-talent is-locked' : 'nl-talent'}
+                  className={`${on ? 'nl-talent is-on' : locked ? 'nl-talent is-locked' : 'nl-talent'}${t.id === MAIN_CHARACTER ? ' is-main' : ''}`}
                   aria-pressed={on}
                   aria-disabled={locked || undefined}
                   title={locked ? `You can pick up to ${MAX_START_TALENTS}. Unpick one first.` : undefined}
@@ -479,6 +486,7 @@ export function TalentPicker({ picks, onChange, open, onToggle }: TalentPickerPr
                   <span className="nl-talent-text">
                     <span className="nl-talent-label">{t.label}</span>
                     <span className="nl-talent-perk">{t.perk}</span>
+                    {t.id === MAIN_CHARACTER ? <span className="nl-talent-badge">Counts as 1 of your {MAX_START_TALENTS} talent slots</span> : null}
                   </span>
                   <span className="nl-talent-check" aria-hidden="true">
                     {on ? '✓' : ''}

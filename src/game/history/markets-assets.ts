@@ -2,10 +2,10 @@
 // moved (nominal US dollars, year-end unless noted). history/markets.ts turns them into the
 // engine's constant PRESENT_YEAR dollars.
 //
-// Crypto is fictional but faithful: the game's first coin follows Bitcoin's real path, its
-// smart-contract coin follows Ethereum (from 2015), its meme coin a famous dog-themed token
-// (from 2013), and its algorithmic "stablecoin" launches in 2020 and collapses in 2022, as one
-// infamously did. There is no crypto at all before 2009.
+// Crypto: the game's first three coins are the real ones (Bitcoin, Ethereum from 2015, Dogecoin from
+// 2013) at their real prices, and there is no crypto at all before 2009. Everything else is made up:
+// the later copycat coins, the pumped meme coins and the algorithmic "stablecoin" that launches in
+// 2020, collapses in 2022 and comes back in 2024 under a new made-up name.
 
 /** Gold, US dollars per troy ounce at year-end, from 1900. */
 export const GOLD_FROM = 1900
@@ -42,7 +42,7 @@ export const OIL_ANCHORS: readonly (readonly [number, number])[] = [
   [2020, 41.8], [2021, 70.9], [2022, 99.0], [2023, 82.5], [2024, 80.5], [2025, 69],
 ]
 
-/** The history of one coin slot of invest/engine.ts (slot order: Bitbuck, Aetherium, Corgicoin, the stablecoin). */
+/** The history of one coin slot of invest/engine.ts (slot order: Bitcoin, Ethereum, Dogecoin, the made-up stablecoin). */
 export interface CoinSlotHistory {
   /** Each generation of the slot: launch year, year-end nominal prices, and the year it collapsed. */
   gens: readonly { launch: number; prices: Readonly<Record<number, number>>; collapsed?: number }[]
@@ -52,8 +52,8 @@ export interface CoinSlotHistory {
 
 export const COIN_HISTORY: readonly CoinSlotHistory[] = [
   {
-    // Bitcoin's path: fractions of a cent in 2009, $1,000 by late 2013, the 2017 mania, the 2018
-    // winter, $47K at the end of 2021, $16.5K after 2022's crash, and $90K+ by 2024.
+    // Bitcoin: fractions of a cent in 2009, $1,000 by late 2013, the 2017 mania, the 2018 winter,
+    // $47K at the end of 2021, $16.5K after 2022's crash, and $90K+ by 2024.
     gens: [
       {
         launch: 2009,

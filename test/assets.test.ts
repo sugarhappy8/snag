@@ -39,6 +39,19 @@ function notices(g: GameState): string[] {
   return g.queue.flatMap((m) => (m.kind === 'notice' ? [m.title] : []))
 }
 
+function cameraMakers(year: number, label: string): Set<string> {
+  const makers = new Set<string>()
+  for (let i = 0; i < 128; i++) {
+    const g = adult(0)
+    g.year = year
+    g.lifeId = `camera-era-${i}`
+    const item = electronicsListings(g).find((x) => x.name.endsWith(label))
+    if (!item) throw new Error(`no ${label} listing in ${year}`)
+    makers.add(item.name.slice(0, -label.length).trim())
+  }
+  return makers
+}
+
 /** Walk every menu node (calling every dynamic function) to catch runtime errors. */
 function walk(g: GameState, nodes: MenuNode[], depth = 0): number {
   let n = 0
@@ -265,6 +278,22 @@ describe('cars', () => {
 })
 
 describe('shopping', () => {
+  it('uses camera makers only after they entered each product category', () => {
+    expect(cameraMakers(2008, 'Mirrorless Camera')).toEqual(new Set(['Panasonic']))
+
+    const eras: [number, string, string[]][] = [
+      [1960, 'Film Camera', ['Canon', 'Nikon', 'Kodak', 'Fujifilm', 'Olympus', 'Pentax', 'Minolta', 'Polaroid']],
+      [1996, 'Digital Camera', ['Fujifilm', 'Kodak', 'Minolta', 'Canon', 'Olympus', 'Polaroid', 'Sony']],
+      [2000, 'Digital Camera', ['Fujifilm', 'Kodak', 'Minolta', 'Canon', 'Olympus', 'Polaroid', 'Sony', 'Nikon', 'Pentax']],
+      [2010, 'Mirrorless Camera', ['Panasonic', 'Olympus', 'Sony']],
+    ]
+    for (const [year, label, allowed] of eras) {
+      const makers = cameraMakers(year, label)
+      expect(makers.size, `${year} ${label}`).toBeGreaterThan(0)
+      for (const maker of makers) expect(allowed, `${year} ${maker} ${label}`).toContain(maker)
+    }
+  })
+
   it('turns purchases into assets with emoji and counts them', () => {
     const g = adult(100_000)
     const item = electronicsListings(g)[0]

@@ -1,7 +1,7 @@
 // Top-level menus for the bottom bar. Each feature module exports its own MenuGroup;
 // this file only arranges them.
 import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, nightlifeMenu, surrenderLifeAction, vacationMenu } from './activities'
-import { ASSET_KIND_VIEWS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
+import { ASSET_KIND_VIEWS, ASSET_NODE_HOOKS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
 import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
 import { occupationMenu } from './careers'
 import { computerMenu } from './computer'
@@ -12,9 +12,12 @@ import { CUSTOM_ACTION_KEY, MAX_CUSTOM_ACTIONS_PER_YEAR } from './offline'
 import { crimeMenu } from './crime'
 import { casinoMenu, lotteryMenu } from './gambling'
 import { doctorMenu } from './health'
+import { thisYearMenu } from './history/digest-menu'
 import { adoptionMenu, loveMenu, petsMenu } from './love'
 import { prisonMenu } from './prison'
 import { everydayStoreMenus, luxuryLifestyleMenu, membershipAssetSubtitle, membershipAssetView, membershipsMenu, ticketsMenu } from './shops'
+import { luxuryAssetNodes } from './shops/luxury-brands-assets'
+import { familyAccessNode } from './shops/luxury-family'
 import { fameMenu, socialMediaMenu } from './special'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from './types'
 
@@ -25,6 +28,8 @@ ASSET_KIND_VIEWS.business = { subtitle: businessAssetSubtitle, children: busines
 ASSET_KIND_VIEWS.investment = { subtitle: investmentAssetSubtitle, children: investmentAssetView }
 ASSET_KIND_VIEWS.membership = { subtitle: membershipAssetSubtitle, children: membershipAssetView }
 ASSET_KIND_VIEWS.venture = { subtitle: ventureAssetSubtitle, children: ventureAssetView }
+ASSET_NODE_HOOKS.view = luxuryAssetNodes
+ASSET_NODE_HOOKS.extra = familyAccessNode
 
 /** Insert `extra` right before the node with id `beforeId` (or at the end if it is missing). */
 function insertBefore(nodes: MenuNode[], beforeId: string, extra: MenuNode[]): MenuNode[] {
@@ -113,6 +118,7 @@ export const activitiesMenu: MenuGroup = {
       petsMenu,
       shoppingMenu,
       socialMediaMenu,
+      thisYearMenu,
       vacationMenu,
       ...miscActivities,
     ]

@@ -12,6 +12,7 @@ import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
 import { corporateTax, exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
 import { historicalCycle } from '../history/markets'
+import { businessFloor } from '../mastery'
 import { bell, chance, rand } from '../rng'
 import { hasTalent, talentHint, type TalentId } from '../talents'
 import type { Asset, GameState } from '../types'
@@ -234,7 +235,7 @@ export function ceoSkill(g: GameState, b: BizState): number {
   s += Math.min(12, Math.max(0, g.year - b.founded))
   if (c.conditions.some((x) => x.kind === 'addiction')) s -= 10
   if (hasTalent(g, 'Business')) s += TALENT_SKILL
-  return clampN(Math.round(s), 5, 100)
+  return clampN(Math.round(Math.max(s, businessFloor(g))), 5, 100)
 }
 
 // ---------------------------------------------------------------------------

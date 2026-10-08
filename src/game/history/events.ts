@@ -16,6 +16,7 @@ import { eraMoments } from '../events/history'
 import type { GameState } from '../types'
 import { CONTINENTS, getCountry, type Continent } from '../world'
 import { HEADLINES_1900 } from './events-1900'
+import { HEADLINES_EXTRA } from './events-1900-more'
 import { HEADLINES_1946 } from './events-1946'
 import { HEADLINES_1990 } from './events-1990'
 import { HEADLINES_REGIONAL } from './events-regional'
@@ -84,7 +85,7 @@ function toEvent(row: HeadlineRow, used: Set<string>): WorldEvent {
 const BY_YEAR: ReadonlyMap<number, readonly WorldEvent[]> = (() => {
   const used = new Set<string>()
   const map = new Map<number, WorldEvent[]>()
-  for (const row of [...HEADLINES_1900, ...HEADLINES_1946, ...HEADLINES_1990, ...HEADLINES_REGIONAL]) {
+  for (const row of [...HEADLINES_1900, ...HEADLINES_1946, ...HEADLINES_1990, ...HEADLINES_REGIONAL, ...HEADLINES_EXTRA]) {
     const ev = toEvent(row, used)
     const list = map.get(ev.year) ?? []
     list.push(ev)

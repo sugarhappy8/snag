@@ -4,6 +4,7 @@
 import { getCountry } from '../world'
 import { randFloat } from '../rng'
 import { landline, texting } from './era'
+import { isEstranged } from './will-core'
 import {
   TIER_MULT,
   cap,
@@ -107,7 +108,7 @@ export interface AskDef {
 
 /** Living people of these relations (or matching the filter) within an age range. */
 export function folks(g: GameState, test: (p: Person) => boolean, minAge = 0, maxAge = 200): Person[] {
-  return g.people.filter((p) => p.alive && p.relation !== 'pet' && p.data.disowned !== true && p.age >= minAge && p.age <= maxAge && test(p))
+  return g.people.filter((p) => p.alive && p.relation !== 'pet' && p.data.disowned !== true && !isEstranged(g, p) && p.age >= minAge && p.age <= maxAge && test(p))
 }
 
 /**
@@ -148,7 +149,7 @@ export function channel(g: GameState, p?: Person): string {
 
 /** True when this person may ask this year (not too soon after their last ask, no boundaries). */
 export function mayAsk(g: GameState, p: Person, gap = 2): boolean {
-  if (!p.alive || p.data.disowned === true) return false
+  if (!p.alive || p.data.disowned === true || isEstranged(g, p)) return false
   const t = readTies(g, p)
   if (t.bound > g.year) return false
   const spoiledGap = entitlement(p) >= 60 ? 1 : gap

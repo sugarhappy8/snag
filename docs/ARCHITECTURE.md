@@ -299,6 +299,137 @@ after research/compute spending; patent and pipeline value is accounted for sepa
 Business sale proceeds service personal founding loans only up to available after-tax proceeds;
 any unpaid personal balance remains owed after the company is gone.
 
+### Era packs and the year digest
+
+The life-event library is split into four calendar packs: `events/era-pack-1900*.ts`,
+`era-pack-1946*.ts`, `era-pack-1980*.ts` and `era-pack-2000*.ts`. Each pack combines flavor pools
+with choice events for the appropriate ages and regions. Early packs share
+`era-pack-where.ts`, `era-pack-kit.ts` and `era-pack-jobs.ts`; late packs share
+`era-late-kit.ts`. Regional, wealth and household predicates belong on the pool, not in invented
+line tags. Every pool needs an untagged fallback, and a dated object needs both a start and end
+gate when the technology or fashion later disappears.
+
+`history/digest-{prices,early,late}.ts` provides a culture line and approximate period prices for
+every year from 1900 through `PRESENT_YEAR`. `history/digest-menu.ts` exposes the read-only
+**This Year** card under Activities. Nominal price rows are converted to constant engine dollars
+with `priceLevel`; display is the only place they become period money, and small values retain
+cents. `householdHas(g, tech)` makes a stable, per-life technology-adoption draw without consuming
+`g.rng`; `ownerPools` reserves first-person ownership lines for households that actually have the
+technology. `activities/pastimes.ts` is the era-aware **Hang Out** menu, while
+`computer/online.ts` owns the BBS, web, dial-up, broadband and app-store progression.
+
+Era rules extend beyond text. Education controls school-leaving ages, discipline, exams and the
+pre-GED equivalency path; careers adds period jobs and only lowers hiring ages for plausible
+school-leaver work; health covers historical treatment; military handles wartime deferment;
+dating and relationship drift use the communication technology available that year. All new
+text must pass the anachronism lint across countries, ages and technology adoption states.
+
+### Real-brand registry, shopping and investments
+
+`data/brands.ts` is the only shared registry for real names. Category files register luxury,
+rival, consumer and stock brands; ids are stable and deduplicated first-wins. A row may record its
+home, founding year, country footprint, sale year, real end year, tier and neutral module data.
+Modules query the registry through `brandById`, `brandAvailable` and `brandsFor`; they do not copy
+ungated display names into generic events. `shops/everyday-brands.ts` interprets consumer
+footprints, embargoes, country exits and model lines. Deterministic selectors are safe in menus;
+`pickBrand` is action-only because it advances `g.rng`. Negative claims use a generic employer or
+fictional company, and scams, penny stocks, brokers, scandals and villains remain fictional.
+
+Real listed companies live in `invest/stocks-*.ts` and are merged by
+`data/brands-stocks.ts`. For these rows, `founded` means first home-exchange trading year and
+`ended` means the last year-end quote. `data.fate = 'bankrupt'` is only for documented historical
+bankruptcies; otherwise a real listing ends through a recorded merger or takeover and is never a
+random victim. `invest/real.ts` builds deterministic exchange slot plans, preserves fictional
+small caps, applies period names and coarse size classes, and keeps real-company paths bounded.
+`invest/funds.ts` supplies era-gated funds; `investments.ts normalizeHoldings` migrates old saves
+without changing their current value. Bitcoin, Ethereum and Dogecoin occupy the named crypto
+slots; later coins, exchanges, analyst firms and market-abuse stories stay fictional. All returns,
+prices, shares and outcomes are simulated gameplay data, never quotes or forecasts.
+
+### Luxury collections and family access
+
+`shops/luxury-brands-*.ts` owns the real-brand catalog, offers, auctions, trips, valuation and
+holding screens. `LuxLine` records a registry id, model, sale years, approximate constant-2026
+price and value class. `lineOnSale` combines brand, country, year and technology gates. Boutique,
+luxury and ultra tiers unlock at $20K, $250K and $5M net worth. The valuation module owns market
+value, condition, service, insurance, loss, bounded appreciation and selling costs; generic asset
+aging must skip `Asset.details.lux === 1`. Unverified pieces are valued for counterfeit risk before
+authentication, certified pre-owned and gray-market condition have floors, and restoration or
+waitlist resale cannot create a risk-free trade.
+
+Luxury state is plain JSON in `Asset.details` and `g.flags`. `ASSET_NODE_HOOKS` routes branded
+holdings to their dedicated screen and appends Family Access to eligible ordinary holdings.
+`shops/luxury-family.ts` stores permission per asset and person, stamped to the current character
+so heirs start clean. Driving age, chauffeurs, crews, relationship and estrangement gates apply.
+`yearlyFamilyUse` allows a bounded number of uses, bundles notable incidents and permits at most
+one decision popup per year. Show-offs add only small, decaying fame and perceived-wealth heat;
+family use never creates money.
+
+### Global market and real rivals
+
+`business/competition-roster.ts` builds a market's real competitors from
+`data/brands-rivals.ts` and the `market-data-*.ts` rows, then adds a deterministic, locally named
+fictional long tail. Each row records founding and market-entry years, price tier, relative pull,
+strength arcs, country footprint and real exits. The roster and post-present drift are pure
+functions of the family seed. Real-company profiles, star ratings and shares are explicitly
+modelled; competition events never assign a fictional scandal, crime or lawsuit to a real rival.
+
+`business/market-reach.ts` folds exports, joint ventures, subsidiaries, campaigns, home defence
+and supplier diversification into the player's competitive pull. Terms ramp, expire and fade;
+tariffs, red tape, currency exposure, capacity and saturation constrain them. Pure quotes in
+`market-strategy.ts` feed the action, scenario table and Business-talent hint from the same math.
+`market-regional.ts` derives country shares and antitrust exposure; `market-view.ts` provides the
+screen's concentration, leaderboard, segments, regions, history and profiles. Optional fields in
+`MarketState` keep old saves valid.
+
+### Nepotism, succession and family employment
+
+Nepo employment is stored on the relative as `Person.data.nepo`; the company-side family record is
+`BizState.family`, read through `business/nepo-state.ts`. Stable per-person seeds drive aptitude,
+department, title, CEO style and integrity without menu RNG. Skill trends toward a bounded ceiling;
+pay is booked once as company cost and taxed as personal income. Family effects on demand, cost
+and quality are deliberately small and shrink with company size. Disowned or estranged relatives
+cannot ask for work and leave payroll on yearly cleanup.
+
+Executive roles, invented jobs and excessive family pay go through a board `familyHire` proposal,
+including minority-shareholder protections. `Family.succ` may name a relative or key employee;
+the same record drives CEO handoff and inheritance, including a designated child inheriting the
+company before the remaining estate is divided. Headhunter searches may include qualified family
+candidates with explicit relationship labels. Counters are `familyHires`, `familyFired` and
+`familyCeos`; popup volume shares the bounded `NEPO_POPUPS` allowance.
+
+### Wills and family feuds
+
+`activities/will.ts` owns the Will & Testament menu. `Character.willBeneficiaries` stores named
+people; `g.flags['will.state']` stores shares, charity, the comparison snapshot and change history;
+`Person.data.wl` stores per-character knowledge, anger, estrangement and repair state. All reads go
+through `will-core.ts`, and every edit goes through `will-act.ts changeWill` plus `queueTells` so
+cut-outs, restorations and discovery are consistent even when another feature changes the will.
+
+`yearlyWillFeuds` handles discovery, anger drift, confrontations, ultimatums and reconciliation.
+Estranged relatives receive no allowances, wealth asks, luxury access or nepo favors. Gifts have
+diminishing relief and restored trust is capped. `will-estate.ts` settles tax, legal fees, court
+awards and rounded-down shares; contests use the same pure odds and award calculations shown in
+the UI. Escrow and a cut-out heir's claim survive into the next generation and return to the estate
+if that heir dies first. A written will that omits an otherwise eligible spouse or child counts as
+cutting them out at the reading.
+
+### Main Character Syndrome and instant mastery
+
+`talents.ts MainCharacter` occupies one of the three starting-talent slots. `hasTalent(g, id)` must
+be used everywhere: it treats Main Character Syndrome as every special and childhood talent while
+the profile, CV and obituary show one readable talent label. Old saves with a single
+`character.talent` remain valid, and inherited picks are normalized before use.
+
+`mastery.ts` stores a character-stamped record in `g.flags['mcs.mastered']`: mastered keys, the age
+of first mastery and the last bundled-notice year. Mutating helpers such as `masterFirstTime`,
+`liftSkill`, `masterJob` and `masterBusiness` run only from actions or yearly hooks—never menu
+renderers. The first real attempt lifts the persistent skill to its practical age/body ceiling and
+later use prevents decay, but it does not bypass access, age, health, money, licensing or equipment
+requirements. It also never changes casino, lottery, capture, contract, opponent or other luck.
+Purple hints continue to use each underlying talent's real resolver math and never promise a
+guaranteed outcome.
+
 `immigration.ts` owns `citizenshipsOf` and `yearlyImmigration`.
 `data/immigration*.ts` provides era-aware borders, blocs and destination programs;
 `activities/immigration-*.ts` handles route eligibility, applications, deposits and relocation.

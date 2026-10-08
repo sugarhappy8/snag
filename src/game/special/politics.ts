@@ -13,6 +13,7 @@ import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
 import { localPick, localSoftDrink } from '../data/locales'
 import { marketOf } from '../data/markets'
+import { common } from '../events/era'
 import { exchangeInfo } from '../invest/engine'
 import { addMarketShock, indexShockFactor, type ShockCause } from '../invest/shocks'
 import { investmentHoldings, revalueHoldings } from '../investments'
@@ -833,9 +834,9 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
       const d = randInt(g, -1, 4)
       if (c.countryId !== 'us') {
         const drink = localSoftDrink(g)
-        return { delta: d, text: pick(g, [`You shook hands with everyone in the café and paid for their ${drink}.`, `You charmed the regulars, then accidentally drank someone else's ${drink}.`, 'The café owner loved you. The cook asked for a selfie.']) }
+        return { delta: d, text: pick(g, [`You shook hands with everyone in the café and paid for their ${drink}.`, `You charmed the regulars, then accidentally drank someone else's ${drink}.`, 'The café owner loved you. The cook asked for a photo together.']) }
       }
-      return { delta: d, text: pick(g, ['You shook hands with everyone in the diner and paid for their coffee.', 'You charmed the diner regulars, then accidentally ate someone else’s pancakes.', 'The diner staff loved you. The cook asked for a selfie.']) }
+      return { delta: d, text: pick(g, ['You shook hands with everyone in the diner and paid for their coffee.', 'You charmed the diner regulars, then accidentally ate someone else’s pancakes.', 'The diner staff loved you. The cook asked for a photo together.']) }
     }
   }
 }
@@ -1666,6 +1667,7 @@ function announce(g: GameState, secId: string, moveId: string): void {
   const t = findTarget(g, secId)
   if (!t) return tell(g, 'Announcement', 'That company no longer trades. Your speechwriters are crushed.', '\u{1F4E2}')
   if (!movesFor(rank, t.asset).some((m) => m.id === move.id)) return tell(g, 'Announcement', `A ${job.title} can't do that. Even you have limits, apparently.`, '\u{1F6AB}')
+  if (t.asset === 'stock' && t.real && move.bearish) return tell(g, 'Announcement', `Your legal advisers refused to invent grounds for a punitive move against ${t.name}.`, '\u{1F6AB}')
   if (!useYearAction(g, 'pol.marketMove', 1)) return tell(g, 'Announcement', "You already moved the markets once this year. Your press secretary has locked the podium.", '\u{1F4E2}')
   const a = abuseData(g)
   const d = pdata(job)
@@ -2341,6 +2343,10 @@ const SCANDALS = [
   'an awkward dance video',
 ]
 
+function scandalsFor(g: GameState): string[] {
+  return common(g, 'smartphone') ? SCANDALS : SCANDALS.filter((x) => x !== 'a leaked group chat')
+}
+
 export function yearlyPolitics(g: GameState): void {
   const c = g.character
   if (!c.alive) return
@@ -2432,7 +2438,7 @@ export function yearlyPolitics(g: GameState): void {
   let modal = false
   if (chance(g, 0.12)) {
     modal = true
-    const what = pick(g, SCANDALS)
+    const what = pick(g, scandalsFor(g))
     scriptChoice(
       g,
       SCANDAL_SCRIPT,

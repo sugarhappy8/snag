@@ -10,6 +10,7 @@
 import { killCharacter } from '../death'
 import { addHidden, addMoney, addRelationship, addStat, count, currentPartner, log, notice, remember, scriptChoice, useYearAction } from '../core'
 import { notePerson } from '../people'
+import { pickBrand } from '../shops/everyday-brands'
 import { chance, pick, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
 import { COUNTRIES, countryLabel, getCountry } from '../world'
@@ -307,6 +308,16 @@ function classesFor(g: GameState, dest: Destination): TravelClass[] {
 /** 'flight', 'voyage' or 'train' for this trip. */
 function legWord(g: GameState, dest: Destination): string {
   return byShip(g, dest) ? 'voyage' : byTrain(g, dest) ? 'train' : 'flight'
+}
+
+/**
+ * The real company behind a good moment of the trip (an upgrade, the captain's table): a cruise line
+ * or airline that trades where you live, else the plain word. Bad moments keep using carrier().
+ */
+function namedCarrier(g: GameState, dest: Destination): string {
+  if (dest.cruise) return pickBrand(g, 'cruise', { tiers: ['budget', 'mass', 'premium'] })?.name ?? 'the cruise line'
+  if (byShip(g, dest) || byTrain(g, dest)) return `the ${carrier(g, dest)}`
+  return pickBrand(g, 'airline', { tiers: ['budget', 'mass', 'premium', 'luxury'] })?.name ?? 'the airline'
 }
 
 /** Who loses your bags: the airline, the steamship line, the railway or the cruise line. */
@@ -651,7 +662,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
       addStat(g, 'happiness', randInt(g, 3, 6))
       const leg = legWord(g, dest)
       log(g, `I got a free upgrade on my ${leg} to ${dest.name}.`, 'good')
-      result(g, title, `The ${carrier(g, dest)} upgraded you to first class for free! ${leg === 'flight' ? 'Warm nuts, real silverware, the works.' : 'Crisp linen, real silverware, the works.'} And ${dest.name} was amazing.${companionLine}`, '\u{1F942}', 'good')
+      result(g, title, `${capitalizeFirst(namedCarrier(g, dest))} upgraded you to first class for free! ${leg === 'flight' ? 'Warm nuts, real silverware, the works.' : 'Crisp linen, real silverware, the works.'} And ${dest.name} was amazing.${companionLine}`, '\u{1F942}', 'good')
       return
     }
     case 'sunburn': {
@@ -685,7 +696,7 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
     case 'captain': {
       addStat(g, 'happiness', randInt(g, 3, 6))
       log(g, `I was invited to dine at the captain's table on the ${dest.name}.`, 'good')
-      result(g, title, `You were invited to dine at the captain's table! The captain told sea stories all night and you got to wear the hat.${companionLine}`, '\u{1F468}\u{200D}✈\u{FE0F}', 'good')
+      result(g, title, `You were invited to dine at the captain's table on your ${namedCarrier(g, dest)} cruise! The captain told sea stories all night and you got to wear the hat.${companionLine}`, '\u{1F468}\u{200D}✈\u{FE0F}', 'good')
       return
     }
     case 'shipwreck': {
@@ -728,6 +739,10 @@ function takeTrip(g: GameState, dest: Destination, cls: TravelClass, companions:
       result(g, title, `${text}${companionLine}`, dest.emoji, 'good')
     }
   }
+}
+
+function capitalizeFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 function counterValue(g: GameState, key: string): number {

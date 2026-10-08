@@ -9,7 +9,7 @@
 // politicians also get a "crony" route (special/politics.ts): a friend's account, cash back,
 // minus the friend's cut, and a paper trail the regulator may or may not follow.
 import { addMoney, count, formatMoney, log, moneyWith, notice, scriptChoice, scriptInput, shortMoney, useYearAction, yearActionsUsed } from '../core'
-import { coinDef, companyDef, cryptoYear, exchangeByKey, exchangeInfo, exchangeYear, indexMove, SECTORS, type ExInfo, type SecurityDef } from '../invest/engine'
+import { coinDef, companyDef, cryptoYear, eraIdentity, exchangeByKey, exchangeInfo, exchangeYear, indexMove, type ExInfo, type SecurityDef } from '../invest/engine'
 import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
 import { shockFactor } from '../invest/shocks'
 import { seeded, type SRng } from '../assets'
@@ -80,30 +80,39 @@ export interface BetTarget {
   /** Typical yearly swing, for the menus. */
   vol: number
   sector: string
+  /** A real listed company (never named in a shock, scandal or fraud: see invest/engine.ts isRealDef). */
+  real?: boolean
 }
 
 function info(g: GameState): ExInfo {
   return exchangeInfo(g.character.countryId)
 }
 
-/** The companies listed on the local exchange, at today's (shocked) prices. */
+/** The made-up companies a politician can move with an announcement (real companies are never banned, probed or nationalized). */
 export function stockTargets(g: GameState): BetTarget[] {
+  return listedTargets(g).filter((t) => !t.real)
+}
+
+/** Every company listed on the local exchange (real and made up), at today's (shocked) prices. */
+export function listedTargets(g: GameState): BetTarget[] {
   const inf = info(g)
   const ey = exchangeYear(fam(g), anchor(g), inf, g.year)
   return ey.stocks.map((s) => {
     const def = companyDef(inf, s.slot, s.gen)
-    const sector = def.sector === 'penny' ? 'Penny stock' : SECTORS[def.sector].label
+    // The company as it is called and described this year (a 1925 'tech' slot is a tabulating-machine maker).
+    const era = eraIdentity(def, g.year)
     return {
       asset: 'stock' as const,
       secId: def.id,
       exKey: inf.key,
       slot: s.slot,
-      name: def.name,
+      name: era.name,
       symbol: def.symbol,
-      emoji: def.sector === 'penny' ? '\u{1F39F}\u{FE0F}' : SECTORS[def.sector].emoji,
+      emoji: def.sector === 'penny' ? '\u{1F39F}\u{FE0F}' : era.emoji,
       price: Math.max(0.01, s.price * shockFactor(g, def.id, g.year)),
       vol: stockVol(inf, def),
-      sector,
+      sector: def.sector === 'penny' ? 'Penny stock' : era.label,
+      real: !!def.real,
     }
   })
 }
@@ -137,7 +146,7 @@ export function priceLabel(p: number): string {
 }
 
 export function findTarget(g: GameState, secId: string): BetTarget | undefined {
-  return [...stockTargets(g), ...coinTargets(g)].find((t) => t.secId === secId)
+  return [...listedTargets(g), ...coinTargets(g)].find((t) => t.secId === secId)
 }
 
 // ---------------------------------------------------------------------------
@@ -189,13 +198,14 @@ function stockSamples(inf: ExInfo, def: SecurityDef): number[] {
     const uBank = r.next()
     const uJump = r.next()
     const uSize = r.next()
-    if (uBank < (BANKRUPT[def.risk] ?? 0.004)) {
+    // Real companies don't go bust or jump at random in this game (they only end when they really did).
+    if (!def.real && uBank < (BANKRUPT[def.risk] ?? 0.004)) {
       xs.push(-1)
       continue
     }
     let lt = Math.log(1 + drift + def.tilt) + def.beta * (idx[i] - Math.log(1 + drift)) + def.idio * z
-    if (uJump < 0.02) lt += Math.log(0.45 + 0.3 * uSize)
-    else if (uJump > 0.98) lt += Math.log(1.3 + 0.5 * uSize)
+    if (!def.real && uJump < 0.02) lt += Math.log(0.45 + 0.3 * uSize)
+    else if (!def.real && uJump > 0.98) lt += Math.log(1.3 + 0.5 * uSize)
     xs.push(Math.exp(clampNum(lt - Math.log(1 + def.dy), -12, 6)) - 1)
   }
   stockCache.set(key, xs)
@@ -209,20 +219,42 @@ export function stockStrike(inf: ExInfo, def: SecurityDef, strike: 'atm' | 'otm'
   return Math.round(clampNum(stockVol(inf, def) * 0.5, 0.05, 0.4) * 1000) / 1000
 }
 
-/** Fair value per $1 of exposure: the average payoff over the company's real move distribution. */
-export function stockFairValue(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put', k: number): number {
+/** How sure the market is, a year ahead, that a real company is about to merge or fail (credit spreads and deal talk give it away). */
+const END_ODDS = 0.85
+
+/**
+ * The move a real company makes in its last year of trading (a documented bankruptcy: everything;
+ * a merger: the takeover premium), as the market sees it coming. Null for everyone else.
+ */
+function endingMove(def: SecurityDef, year: number | undefined): number | null {
+  const co = def.real
+  if (!co || co.end === null || year === undefined || co.end !== year) return null
+  return co.fate === 'bankrupt' ? -1 : co.premium
+}
+
+/**
+ * Fair value per $1 of exposure: the average payoff over the company's real move distribution.
+ * `year` is the year the option is written: a real company in its last year before a merger or a
+ * documented bankruptcy is priced for it, so knowing history never turns a put on Lehman (or a call
+ * on a takeover target) into a sure thing.
+ */
+export function stockFairValue(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put', k: number, year?: number): number {
   const xs = stockSamples(inf, def)
+  const pay = (r: number) => (dir === 'call' ? Math.min(Math.max(0, r - k), CALL_CAP) : Math.max(0, -r - k))
   let sum = 0
-  for (const r of xs) sum += dir === 'call' ? Math.min(Math.max(0, r - k), CALL_CAP) : Math.max(0, -r - k)
-  return Math.max(0.002, sum / xs.length)
+  for (const r of xs) sum += pay(r)
+  let value = sum / xs.length
+  const end = endingMove(def, year)
+  if (end !== null) value = END_ODDS * pay(end) + (1 - END_ODDS) * value
+  return Math.max(0.002, value)
 }
 
 /**
  * What $1 of exposure costs: fair value plus the market maker's markup (single stocks are pricier),
  * plus `extra` for a trader flagged as sharp (money-common sharpSpread).
  */
-export function stockOptionPrice(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put', strike: 'atm' | 'otm', skill: number, extra = 0): number {
-  return stockFairValue(inf, def, dir, stockStrike(inf, def, strike)) * (1 + markup(skill, strike) + 0.03 + Math.max(0, Number.isFinite(extra) ? extra : 0))
+export function stockOptionPrice(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put', strike: 'atm' | 'otm', skill: number, extra = 0, year?: number): number {
+  return stockFairValue(inf, def, dir, stockStrike(inf, def, strike), year) * (1 + markup(skill, strike) + 0.03 + Math.max(0, Number.isFinite(extra) ? extra : 0))
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +370,7 @@ export function settleBets(g: GameState, st: MoneyState): News | null {
     else {
       // A short that owes more than the cash put up: the whole stake plus the bill is a loss.
       st.lossCarry = dollars(st.lossCarry + bet.premium - pay)
-      const financed = payOrBorrow(g, -pay, `${st.broker || brokerName(g.character.countryId)} margin desk`)
+      const financed = payOrBorrow(g, -pay, `${st.broker || brokerName(g.character.countryId, g.year)} margin desk`)
       if (financed > 0) {
         t.margin += financed
         count(g, 'marginCalls')
@@ -430,7 +462,7 @@ export function placeBet(g: GameState, spec: BetSpec): StockBet | null {
     const strike = spec.strike === 'otm' ? 'otm' : 'atm'
     k = stockStrike(inf, def, strike)
     // Cronies trade on their own accounts; only your own broker knows your streak.
-    units = dollars(stake / stockOptionPrice(inf, def, dir, strike, st.skill, own ? sharpSpread(st) : 0))
+    units = dollars(stake / stockOptionPrice(inf, def, dir, strike, st.skill, own ? sharpSpread(st) : 0, g.year))
   }
   const before = g.character.money
   addMoney(g, -(stake + fee))
@@ -531,7 +563,7 @@ defineScript(DIR_SCRIPT, (g, choice, data) => {
   const def = companyDef(inf, t.slot, m ? Number(m[2]) : 0)
   const st = readState(g)
   const otm = stockStrike(inf, def, 'otm')
-  const lines = (['atm', 'otm'] as const).map((s) => `${s === 'atm' ? 'At the money' : `Out of the money (needs ${choice === 'call' ? 'a rise' : 'a drop'} of more than ${absPct(otm, 0)})`}: ${formatMoney(1)} controls about ${shortMoney(1 / stockOptionPrice(inf, def, choice, s, st.skill, sharpSpread(st)))} of ${t.symbol}.`)
+  const lines = (['atm', 'otm'] as const).map((s) => `${s === 'atm' ? 'At the money' : `Out of the money (needs ${choice === 'call' ? 'a rise' : 'a drop'} of more than ${absPct(otm, 0)})`}: ${formatMoney(1)} controls about ${shortMoney(1 / stockOptionPrice(inf, def, choice, s, st.skill, sharpSpread(st), g.year))} of ${t.symbol}.`)
   scriptChoice(g, STRIKE_SCRIPT, 'Pick a Strike', `${t.name} (${t.symbol}) trades at ${priceLabel(t.price)}. Cheaper options need a bigger move to pay off.\n\n${lines.join('\n')}`, [
     { id: 'atm', label: 'At the money', emoji: '\u{1F3AF}' },
     { id: 'otm', label: 'Out of the money', emoji: '\u{1F3B2}' },
@@ -667,7 +699,7 @@ export function stockBetsMenu(): MenuGroup {
       const nodes: MenuNode[] = [
         { type: 'info', id: 'computer.stockbets.open', emoji: '\u{1F9FE}', text: st.bets.length ? `Open bets:\n${st.bets.map(betLabel).join('\n')}` : 'No open bets.' },
         { type: 'heading', id: 'computer.stockbets.h.stocks', label: `Stocks on the ${info(g).ex.code}` },
-        ...stockTargets(g).map(targetAction),
+        ...listedTargets(g).map(targetAction),
       ]
       if (coinsHere(g)) {
         nodes.push({ type: 'heading', id: 'computer.stockbets.h.coins', label: 'Coins' })

@@ -31,12 +31,16 @@ import { catchEmbellishment, caughtLine, caughtLying, cvFields, cvMenu, cvScore,
 import { COMPANY_WORDS, COMPANY_WORDS_BEFORE, companyWordsIn, ERA_FULLTIME_JOBS, ERA_PARTTIME_JOBS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, jobInEra, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
 import { historicalCycle, marketHistory } from './history/markets'
 import { hasTech } from './history/timeline'
+import { EARLY_FULLTIME_JOBS, EARLY_PARTTIME_JOBS, earlyJobDef } from './history/events-jobs'
 import { anachronistic, eraPick } from './events/era'
-import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation, presentAdmissionsInterview, screenedOut } from './education'
+import { admissionsBackgroundCheck, educationMenuNodes, educationRequirementLabel, isStudent, meetsEducation, presentAdmissionsInterview, schoolLeavingAge, screenedOut } from './education'
 import { createPerson, notePerson } from './people'
+import type { BrandTier } from './data/brands'
+import { employerRef, streamBrand } from './shops/everyday-brands'
 import { chance, nextRandom, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
-import { hasTalent, talentHint, type TalentId } from './talents'
+import { masterFirstTime } from './mastery'
+import { hasMainCharacter, hasTalent, talentHint, type TalentId } from './talents'
 import { craftSkill, type CraftId } from './activities/creative'
 import { militaryMenu, specialCareersMenu, specialJobNodes } from './special'
 import { getCountry, NAME_POOLS, randomFirstName, randomLastName } from './world'
@@ -105,9 +109,60 @@ function stringList(v: Json | undefined): string[] {
 // ---------------------------------------------------------------------------
 // Company names
 
+/**
+ * Where the real employers come from: the registry categories a kind of company draws on, and how
+ * often a listing is a real chain (the rest are independents with local-sounding names). A first
+ * job at a burger counter is mostly a real chain where one trades this year.
+ */
+const REAL_EMPLOYERS: Partial<Record<Industry, { categories: readonly string[]; share: number; tiers?: readonly BrandTier[] }>> = {
+  fastfood: { categories: ['fast-food'], share: 0.85 },
+  cafe: { categories: ['coffee'], share: 0.7 },
+  restaurant: { categories: ['restaurant'], share: 0.5 },
+  grocery: { categories: ['supermarket', 'convenience'], share: 0.75 },
+  retail: { categories: ['department-store', 'electronics-retail', 'home-improvement', 'clothing-retail', 'furniture', 'pharmacy', 'sports-retail', 'toy-retail', 'bookstore'], share: 0.75 },
+  bank: { categories: ['bank'], share: 0.8 },
+  airline: { categories: ['airline'], share: 0.9 },
+  hotel: { categories: ['hotel'], share: 0.75 },
+  rideshare: { categories: ['ride-hailing', 'delivery'], share: 0.9 },
+  trucking: { categories: ['logistics'], share: 0.5 },
+  gym: { categories: ['gym'], share: 0.5 },
+  finance: { categories: ['brokerage', 'insurer'], share: 0.35 },
+  tech: { categories: ['software', 'computer', 'phone', 'internet', 'social-media'], share: 0.35 },
+  film: { categories: ['film-studio'], share: 0.6 },
+}
+
+/** Local-sounding independents for the industries above (used where no real chain trades, or for the rest of the listings). */
+const INDEPENDENTS: Partial<Record<Industry, readonly string[]>> = {
+  fastfood: ["{last}'s Burgers", '{city} Fried Chicken', "{last}'s Pizza", '{city} Noodle House', '{city} Sandwich Shop', "{first}'s Taco Stand"],
+  retail: ["{last}'s Department Store", '{city} Trading Co.', '{last} & Sons General Store', '{city} Home & Garden', "{last}'s Hardware"],
+  grocery: ["{last}'s Grocery", 'Corner Market', '{city} Fresh Market', '{last} Family Foods'],
+  airline: ['{city} Air', '{city} Regional Airways', '{last} Air Charter'],
+  cafe: ['{city} Coffee House', "{last}'s Bakery & Cafe", '{city} Tea Room', 'The Corner Cafe'],
+  finance: ['{last} Capital', '{city} Financial Partners', '{last} Wealth Advisors'],
+  rideshare: ['{city} Cab Co.', '{city} Taxi Cooperative', '{city} Courier Service'],
+  trucking: ['{last} Freight', '{city} Haulage', '{last} Trucking Co.'],
+  gym: ['{city} Athletic Club', "{last}'s Gym", '{city} Fitness Center'],
+  hotel: ['The Grand {city} Hotel', '{city} Plaza Hotel', "{last}'s Inn", '{city} Guest House'],
+}
+
 export function companyName(g: GameState, industry: Industry, r: () => number): string {
   const pool = NAME_POOLS[getCountry(g.character.countryId).names] ?? NAME_POOLS.anglo
   const city = g.character.city
+  const real = REAL_EMPLOYERS[industry]
+  // Never a real company in a downturn or a depression: those years write layoffs.
+  if (real && real.categories.length > 0 && r() < real.share && !(g.year >= 1929 && g.year <= 1939)) {
+    const brand = streamBrand(g, real.categories, r, industry === 'tech' || industry === 'corporate' || industry === 'finance' ? { minFame: 4 } : {})
+    if (brand) return brand.name
+  } else if (real) {
+    r()
+  }
+  const own = INDEPENDENTS[industry]
+  if (own && (REAL_EMPLOYERS[industry]?.categories.length ?? 0) > 0) {
+    return rPick(r, own)
+      .replace('{city}', city)
+      .replace('{first}', rPick(r, [...pool.male, ...pool.female]))
+      .replace('{last}', rPick(r, pool.last))
+  }
   const W = COMPANY_WORDS
   // Words of the era only (today's lists are unchanged, so today's names are too).
   const w = (list: readonly string[]) => companyWordsIn(list, g.year, g.character.countryId)
@@ -140,12 +195,96 @@ function hasConviction(g: GameState): boolean {
 
 const LICENSE_NAMES: Record<string, string> = { driver: "a driver's license", pilot: "a pilot's license", boating: 'a boating license' }
 
+/** A job by id: the board's own, or one of the old trades of history/events-jobs.ts. */
+function defOf(id: string): JobDef | undefined {
+  return getJobDef(id) ?? earlyJobDef(id)
+}
+
+/**
+ * Work as it was. Before the 1960s most children left school at the era's leaving age and went
+ * straight to work, so jobs that ask for no degree open at fourteen (never earlier, and never
+ * while still enrolled in school). Jobs with an explicit age keep it; modern years are unchanged.
+ */
+/** Trades and shop work a school-leaver of the day could start in (the rest of the board keeps its adult age). */
+const SCHOOL_LEAVER_INDUSTRIES: ReadonlySet<Industry> = new Set<Industry>(['factory', 'trades', 'farm', 'fishery', 'smallbiz', 'retail', 'grocery', 'restaurant', 'hotel', 'cafe', 'salon', 'mall'])
+/** Clerical and messenger posts that took fourteen-year-olds, by id. */
+const SCHOOL_LEAVER_IDS: ReadonlySet<string> = new Set(['typist', 'switchboard_operator', 'receptionist', 'elevator_operator', 'janitor', 'telegraph_operator', 'stenographer'])
+/** Skilled or professional posts inside those industries that never took children. */
+const NOT_FOR_CHILDREN: ReadonlySet<string> = new Set(['wedding_planner', 'jeweler', 'security_guard', 'beekeeper', 'zookeeper', 'pet_groomer'])
+
+export function eraMinAge(g: GameState, def: JobDef): number {
+  const base = def.minAge ?? (def.category === 'parttime' ? 14 : 18)
+  if (def.minAge !== undefined || def.category === 'parttime' || g.year >= 1960) return base
+  if (def.edu !== 'none' && def.edu !== 'highschool') return base
+  if (NOT_FOR_CHILDREN.has(def.id) || !(SCHOOL_LEAVER_INDUSTRIES.has(def.industry) || SCHOOL_LEAVER_IDS.has(def.id))) return base
+  const cur = g.character.education.current
+  if (cur && (cur.level === 'elementary' || cur.level === 'middle' || cur.level === 'high')) return base
+  return Math.min(base, Math.max(14, schoolLeavingAge(g)))
+}
+
+interface AccessBar {
+  ids: readonly string[]
+  gender: 'female' | 'male'
+  /** Open from this year on. */
+  until: number
+  /** Countries that opened it earlier (or never barred it). */
+  exempt?: readonly string[]
+  reason: string
+}
+
+const STATE_SOCIALIST = ['ru', 'ua', 'ee', 'ge', 'kz', 'cn']
+
+/**
+ * Doors that were closed to women by law or custom, with the year each opened. Told plainly and
+ * without blame in the job's blocking message; approximate and applied everywhere except where the
+ * state opened the door earlier. Years from 1985 on are never barred, so modern lives are untouched.
+ */
+const ACCESS_BARS: readonly AccessBar[] = [
+  { ids: ['pilot'], gender: 'female', until: 1973, exempt: STATE_SOCIALIST, reason: 'Airlines of this era did not yet hire women as pilots.' },
+  { ids: ['police', 'detective'], gender: 'female', until: 1970, exempt: STATE_SOCIALIST, reason: 'Police forces of this era kept women to a few special posts and not the beat.' },
+  { ids: ['firefighter'], gender: 'female', until: 1975, exempt: STATE_SOCIALIST, reason: 'Fire brigades of this era did not yet take women.' },
+  { ids: ['stockbroker', 'investment_banker'], gender: 'female', until: 1967, reason: 'The big stock exchanges of this era did not yet admit women as members.' },
+  { ids: ['bartender'], gender: 'female', until: 1971, reason: 'Many places of this era barred women from tending bar.' },
+  { ids: ['horse_jockey'], gender: 'female', until: 1969, reason: 'Racing authorities of this era did not yet license women jockeys.' },
+  { ids: ['judge'], gender: 'female', until: 1925, reason: 'Courts of this era had not yet seated women on the bench.' },
+  { ids: ['lawyer'], gender: 'female', until: 1915, reason: 'The bar of this era was only beginning to admit women.' },
+]
+
+/** Why this era did not let the player hold this job (null when nothing bars them). */
+export function eraAccessProblem(g: GameState, def: JobDef): string | null {
+  if (g.year >= 1985) return null
+  const c = g.character
+  for (const bar of ACCESS_BARS) {
+    if (bar.gender !== c.gender || g.year >= bar.until || !bar.ids.includes(def.id)) continue
+    if (bar.exempt?.includes(c.countryId)) continue
+    return bar.reason
+  }
+  return null
+}
+
+const BLUE_COLLAR: ReadonlySet<Industry> = new Set<Industry>(['factory', 'trades', 'trucking', 'municipal', 'fire', 'police'])
+const SERVICE_TRADES: ReadonlySet<Industry> = new Set<Industry>(['hotel', 'cafe', 'salon', 'retail', 'grocery', 'restaurant', 'fastfood', 'mall', 'smallbiz'])
+const PROFESSIONS: ReadonlySet<Industry> = new Set<Industry>(['hospital', 'medical', 'dental', 'law', 'bank', 'finance'])
+
+/**
+ * How pay compared across trades in a past year, as a multiplier on the board's pay (1 from 1980 on):
+ * before the war domestic and shop work paid least and the professions most; in the postwar boom
+ * unionized factory, trade and civic jobs out-earned shop and service work.
+ */
+export function eraPayShape(year: number, industry: Industry): number {
+  if (year >= 1980) return 1
+  if (year >= 1946) return BLUE_COLLAR.has(industry) ? 1.12 : SERVICE_TRADES.has(industry) ? 0.9 : 1
+  return SERVICE_TRADES.has(industry) ? 0.85 : PROFESSIONS.has(industry) ? 1.1 : 1
+}
+
 /** Why the player can't be hired for this job (null when qualified). */
 export function jobRequirementProblem(g: GameState, def: JobDef): string | null {
   const c = g.character
   if (!jobInEra(def, g.year, c.countryId)) return def.until !== undefined && g.year > def.until ? 'Nobody hires for that anymore.' : "That job doesn't exist yet."
-  const minAge = def.minAge ?? (def.category === 'parttime' ? 14 : 18)
+  const minAge = eraMinAge(g, def)
   if (c.age < minAge) return `You must be at least ${minAge} years old.`
+  const barred = eraAccessProblem(g, def)
+  if (barred) return barred
   if (def.drinkingAge) {
     const drinking = getCountry(c.countryId).drinkingAge
     if (c.age < drinking) return `You must be at least ${drinking} to serve alcohol.`
@@ -194,7 +333,8 @@ export interface JobListing {
 function makeListing(g: GameState, def: JobDef, r: () => number): JobListing {
   const company = companyName(g, def.industry, r)
   const base = def.ladder[0].salary
-  const salary = def.category === 'parttime' ? round100(base * wealth(g)) : round100(base * wealth(g) * (0.92 + r() * 0.16))
+  const shape = eraPayShape(g.year, def.industry)
+  const salary = def.category === 'parttime' ? round100(base * wealth(g) * shape) : round100(base * wealth(g) * shape * (0.92 + r() * 0.16))
   return { key: `${def.id}@${company}`, def, title: def.ladder[0].title, company, salary }
 }
 
@@ -232,6 +372,8 @@ export function fullTimeListings(g: GameState): JobListing[] {
   const have = picked.filter((d) => !jobRequirementProblem(g, d)).length
   for (let i = 0; i < Math.max(0, 6 - have) && i < qualified.length; i++) picked.push(qualified[i])
   picked.push(...eraExtras(g, ERA_FULLTIME_JOBS, 'ft-era', 3))
+  // The old trades: domestic service, mills and mines, messengers and conductors, in their years.
+  picked.push(...eraExtras(g, EARLY_FULLTIME_JOBS, 'ft-early', g.year < 1960 ? 7 : 2))
   return picked.map((d) => makeListing(g, d, r)).sort((a, b) => a.title.localeCompare(b.title))
 }
 
@@ -242,7 +384,7 @@ export function partTimeListings(g: GameState): JobListing[] {
     PARTTIME_JOBS.filter((d) => !d.studentOnly && jobInEra(d, g.year, g.character.countryId)),
   ).slice(0, 14)
   const campus = isStudent(g, [...STUDENT_LEVELS]) ? rShuffle(r, PARTTIME_JOBS.filter((d) => d.studentOnly)).slice(0, 4) : []
-  const extras = eraExtras(g, ERA_PARTTIME_JOBS, 'pt-era', 2)
+  const extras = [...eraExtras(g, ERA_PARTTIME_JOBS, 'pt-era', 2), ...eraExtras(g, EARLY_PARTTIME_JOBS, 'pt-early', g.year < 1960 ? 3 : 1)]
   return [...regular, ...campus, ...extras].map((d) => makeListing(g, d, r)).sort((a, b) => a.title.localeCompare(b.title))
 }
 
@@ -462,7 +604,7 @@ const JOB_TALENTS: Record<string, TalentId> = {
 export function jobTalent(defId: string): TalentId | null {
   const byId = JOB_TALENTS[defId]
   if (byId) return byId
-  const def = getJobDef(defId)
+  const def = defOf(defId)
   if (!def) return null
   if (def.industry === 'tech') return 'Programming'
   if (def.industry === 'science' || def.industry === 'university') return 'Academics'
@@ -487,7 +629,7 @@ function suitsTalent(g: GameState, defId: string): boolean {
 
 function hireChance(g: GameState, job: InterviewJob, score: number): number {
   const c = g.character
-  const def = getJobDef(job.defId)
+  const def = defOf(job.defId)
   let p = 0.08 + 0.72 * (clamp(score) / 100)
   // A natural for the job stands out; a comedian charms the room.
   if (suitsTalent(g, job.defId)) p += 0.1
@@ -616,7 +758,7 @@ function screeningFor(g: GameState, def: JobDef, job: InterviewJob): ScreeningAp
 /** Give the job a (new) boss: the person you report to, filed under the company. */
 function hireBoss(g: GameState, job: Job): void {
   const c = g.character
-  const def = getJobDef(job.defId)
+  const def = defOf(job.defId)
   const pt = job.category === 'parttime'
   let bossTitle = pt ? 'Shift Supervisor' : 'Manager'
   if (def && !pt) {
@@ -635,7 +777,7 @@ function hireBoss(g: GameState, job: Job): void {
 
 function staffJob(g: GameState, job: Job): void {
   const c = g.character
-  const def = getJobDef(job.defId)
+  const def = defOf(job.defId)
   const pt = job.category === 'parttime'
   hireBoss(g, job)
   const coworkers = pt ? randInt(g, 1, 3) : randInt(g, 2, 4)
@@ -654,7 +796,7 @@ function staffJob(g: GameState, job: Job): void {
 /** Give the player this job (quitting any job in the same slot) and staff it with a boss and coworkers. */
 export function hireForJob(g: GameState, job: InterviewJob): Job {
   const c = g.character
-  const def = getJobDef(job.defId)
+  const def = defOf(job.defId)
   const slot: Slot = job.category === 'parttime' ? 'partTimeJob' : 'job'
   const old = c[slot]
   if (old) {
@@ -669,7 +811,8 @@ export function hireForJob(g: GameState, job: InterviewJob): Job {
     category: job.category,
     salary: Math.max(0, Math.round(job.salary)),
     level,
-    performance: randInt(g, 55, 70),
+    // Main Character Syndrome: day one already looks like a promotion file.
+    performance: hasMainCharacter(g) ? randInt(g, 78, 88) : randInt(g, 55, 70),
     yearsInRole: 0,
     yearsAtCompany: 0,
     data: { industry: def?.industry ?? 'corporate', workedHarder: 0 },
@@ -685,6 +828,7 @@ export function hireForJob(g: GameState, job: InterviewJob): Job {
   count(g, 'jobs')
   log(g, `I was hired as ${article(j.title)} ${j.title} at ${j.company}.`, 'good')
   remember(g, `Hired as ${j.title} at ${j.company}.`)
+  masterFirstTime(g, `job.${j.defId}`, 'job', `${article(j.title)} ${j.title}`)
   return j
 }
 
@@ -792,8 +936,10 @@ function recruiterName(g: GameState): string {
 export function requirementGaps(g: GameState, def: JobDef): string[] {
   const c = g.character
   const out: string[] = []
-  const minAge = def.minAge ?? (def.category === 'parttime' ? 14 : 18)
+  const minAge = eraMinAge(g, def)
   if (c.age < minAge) out.push(`Be at least ${minAge}`)
+  const barred = eraAccessProblem(g, def)
+  if (barred) out.push(barred)
   if (def.drinkingAge && c.age < getCountry(c.countryId).drinkingAge) out.push(`Be at least ${getCountry(c.countryId).drinkingAge} (it serves alcohol)`)
   if (!meetsEducation(g, def.edu, def.majors) && !selfTaughtDev(g, def)) {
     out.push(`${educationRequirementLabel(def.edu, def.majors, g)}${def.industry === 'tech' && ['none', 'highschool', 'community', 'bachelor'].includes(def.edu) ? ' (or coding skill 60+ and a portfolio)' : ''}`)
@@ -835,7 +981,7 @@ export function recruiterMatches(g: GameState): { top: RecruiterMatch[]; reach: 
     return m
   }
   const scored: { m: RecruiterMatch; rank: number; qualified: boolean; relevance: number }[] = []
-  for (const def of [...FULLTIME_JOBS, ...ERA_FULLTIME_JOBS]) {
+  for (const def of [...FULLTIME_JOBS, ...ERA_FULLTIME_JOBS, ...EARLY_FULLTIME_JOBS]) {
     if (!jobInEra(def, g.year, c.countryId)) continue
     if (fired.includes(def.id) || def.id === c.job?.defId) continue
     if (def.gender && def.gender !== c.gender) continue
@@ -844,7 +990,7 @@ export function recruiterMatches(g: GameState): { top: RecruiterMatch[]; reach: 
     const r = seeded(listingSeed(g, `rec|${def.id}`))
     const company = companyName(g, def.industry, r)
     // A good fit is worth a little more at the negotiating table.
-    const salary = round100(def.ladder[0].salary * wealth(g) * (1.0 + r() * 0.08 + Math.max(0, f.fit - 50) / 400))
+    const salary = round100(def.ladder[0].salary * wealth(g) * eraPayShape(g.year, def.industry) * (1.0 + r() * 0.08 + Math.max(0, f.fit - 50) / 400))
     const problem = jobRequirementProblem(g, def)
     const odds = pitchOdds(def, f.fit, market)
     const m: RecruiterMatch = {
@@ -1158,7 +1304,7 @@ function promote(g: GameState, job: Job, def: JobDef): void {
   const oldTitle = job.title
   job.title = rung.title
   job.yearsInRole = 0
-  job.salary = Math.max(round100(job.salary * 1.06), round100(rung.salary * wealth(g) * (0.95 + rand(g) * 0.1)))
+  job.salary = Math.max(round100(job.salary * 1.06), round100(rung.salary * wealth(g) * eraPayShape(g.year, def.industry) * (0.95 + rand(g) * 0.1)))
   job.performance = Math.max(45, job.performance - randInt(g, 5, 12))
   count(g, 'promotions')
   addStat(g, 'happiness', 8)
@@ -1192,7 +1338,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   const c = g.character
   const job = c[slot]
   if (!job) return
-  const def = getJobDef(job.defId)
+  const def = defOf(job.defId)
   // Campus jobs end with your student status.
   if (job.data.studentOnly === true && !isStudent(g, [...STUDENT_LEVELS])) {
     endJob(g, slot, 'graduated')
@@ -1231,6 +1377,8 @@ function yearForJob(g: GameState, slot: Slot): void {
     }
   }
   job.performance = Math.round(clamp(job.performance + (clamp(target) - job.performance) * 0.35 + randInt(g, -8, 8)))
+  // Main Character Syndrome: mastery keeps the work near the top (layoffs, the CV and the market still roll their own dice).
+  if (hasMainCharacter(g)) job.performance = Math.max(job.performance, randInt(g, 76, 90))
 
   if (def?.stress && chance(g, 0.25 * def.stress)) {
     addStat(g, 'health', -randInt(g, 1, def.stress + 1))
@@ -1248,7 +1396,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   if (fakes.length && (job.category === 'fulltime' || job.category === 'parttime') && chance(g, 0.03 * fakes.length)) {
     const fake = pick(g, fakes)
     caughtLying(g, fake)
-    fire(g, slot, `HR re-ran your background check and found that "${fake.title}" never happened. Lying on your CV is a firing offense at ${job.company}.`)
+    fire(g, slot, `HR re-ran your background check and found that "${fake.title}" never happened. Lying on your CV is a firing offense.`)
     return
   }
   if (job.performance < 35 && chance(g, 0.4)) {
@@ -1263,7 +1411,7 @@ function yearForJob(g: GameState, slot: Slot): void {
     addStat(g, 'happiness', -8)
     remember(g, `My job as ${job.title} disappeared when the world moved on.`)
     log(g, `My job as ${job.title} was made obsolete.`, 'bad')
-    notice(g, 'Made Obsolete', `${job.company} doesn't need a ${job.title} anymore: ${obsoleteLine(def.id)} You received ${formatMoney(severance)} in severance and a handshake.`, { emoji: '\u{1F4E6}', tone: 'bad' })
+    notice(g, 'Made Obsolete', `${employerRef(job.company, 'Your employer')} doesn't need a ${job.title} anymore: ${obsoleteLine(def.id)} You received ${formatMoney(severance)} in severance and a handshake.`, { emoji: '\u{1F4E6}', tone: 'bad' })
     return
   }
 
@@ -1274,9 +1422,11 @@ function yearForJob(g: GameState, slot: Slot): void {
     endJob(g, slot, 'laid off')
     earnIncome(g, severance)
     addStat(g, 'happiness', -10)
-    remember(g, `Laid off from ${job.company}.`)
-    log(g, pressure > 0.4 ? `I was laid off from ${job.company} in the downturn.` : `I was laid off from ${job.company}.`, 'bad')
-    const why = pressure > 0.4 ? `The downturn hit ${job.company} hard, and your position as ${job.title} was one of hundreds cut.` : `${job.company} is "restructuring" and your position as ${job.title} was eliminated.`
+    remember(g, `Laid off from my job as ${job.title}.`)
+    // Layoffs are never pinned on a real company: a real brand becomes "the company" in these lines.
+    const firm = employerRef(job.company)
+    log(g, pressure > 0.4 ? `I was laid off in the downturn.` : `I was laid off from my job as ${job.title}.`, 'bad')
+    const why = pressure > 0.4 ? `The downturn hit hard, and your position as ${job.title} was one of many cut.` : `${firm === job.company ? `${job.company} is "restructuring" and` : 'The company is "restructuring" and'} your position as ${job.title} was eliminated.`
     notice(g, 'Laid Off', `${why} You received ${formatMoney(severance)} in severance.`, { emoji: '\u{1F4E6}', tone: 'bad' })
     return
   }
@@ -1553,7 +1703,7 @@ function promotionAskOdds(g: GameState, job: Job): number {
 
 function askPromotion(g: GameState): void {
   const job = g.character.job
-  const def = job ? getJobDef(job.defId) : undefined
+  const def = job ? defOf(job.defId) : undefined
   if (!job || !def) return
   if (job.level >= def.ladder.length - 1) {
     notice(g, 'Promotion', `You're already at the top of the ladder at ${job.company}.`, { emoji: '\u{1F51D}' })
@@ -1762,7 +1912,7 @@ function hrMenu(job: Job): MenuGroup {
 function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
   const job = g.character[slot]
   if (!job) return null
-  const def = getJobDef(job.defId)
+  const def = defOf(job.defId)
   const pt = slot === 'partTimeJob'
   const hours = num(job.data.hours, 0)
   const hourly = num(job.data.hourly, 0)
@@ -1776,7 +1926,7 @@ function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
     children: (gg) => {
       const j = gg.character[slot]
       if (!j) return []
-      const d = getJobDef(j.defId)
+      const d = defOf(j.defId)
       const nodes: MenuNode[] = [
         { type: 'info', id: `${slot}.salary`, text: pt && hourly ? `Pay: ${formatMoney(num(j.data.hourly, hourly))}/hour • ${hours} hours/week (${formatMoney(j.salary)}/yr)` : `Salary: ${formatMoney(j.salary)} a year`, emoji: '\u{1F4B5}' },
         { type: 'info', id: `${slot}.performance`, text: `Performance: ${j.performance}%`, emoji: j.performance >= 60 ? '\u{1F4C8}' : '\u{1F4C9}' },

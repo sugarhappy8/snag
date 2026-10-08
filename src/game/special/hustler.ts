@@ -7,9 +7,10 @@ import { arrestPlayer } from '../crime'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import { localeOf } from '../data/locales'
-import { hasTalent } from '../talents'
+import { hasMainCharacter, hasTalent } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { addFame, blocked, clamp100, hire, instrumentSkill, knownInstruments, leave, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
+import { ageCeiling, liftSkill } from '../mastery'
+import { addFame, blocked, clamp100, hire, instrumentSkill, knownInstruments, leave, masterInstrument, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
 
 // ---------------------------------------------------------------------------
 // Acts
@@ -161,6 +162,23 @@ function hdata(job: Job): HustleData {
 function actSkill(g: GameState, d: Pick<HustleData, 'act' | 'instrument'>): number {
   if (d.act === 'busk') return d.instrument === 'Bucket Drums' ? clamp100(viewHustle(g).skills.bucket ?? 10) : instrumentSkill(g, d.instrument)
   return clamp100(viewHustle(g).skills[d.act] ?? 0)
+}
+
+/**
+ * Main Character Syndrome: the first time you work an act it is already mastery (to the age ceiling);
+ * busking masters the instrument you play. The crowd, the cops and the rivals are still real.
+ */
+function masterAct(g: GameState, d: Pick<HustleData, 'act' | 'instrument'>): void {
+  if (!hasMainCharacter(g)) return
+  const act = actOf(d.act)
+  if (act.kind === 'busk' && d.instrument !== 'Bucket Drums') {
+    masterInstrument(g, d.instrument)
+    return
+  }
+  const key = d.act === 'busk' ? 'bucket' : d.act
+  const p = hustleProfile(g)
+  const top = ageCeiling(g.character.age, { from: 8, full: 17, floor: 40 })
+  p.skills[key] = liftSkill(g, `hustle.${key}`, act.kind === 'scam' ? 'crime' : 'stage', act.kind === 'scam' ? act.label.toLowerCase() : key === 'bucket' ? 'bucket drumming' : act.label.toLowerCase(), p.skills[key] ?? (key === 'bucket' ? 10 : 0), top)
 }
 
 function raiseSkill(g: GameState, d: Pick<HustleData, 'act' | 'instrument'>, by: number): void {
@@ -509,6 +527,7 @@ function workStreet(g: GameState): void {
   if (!job) return
   if (!useYearAction(g, 'hustle.work', 6)) return tell(g, 'Work the Street', "Your feet are killing you. You've hustled as much as you can this year.", '\u{1F971}')
   const d = hdata(job)
+  masterAct(g, d)
   const act = actOf(d.act)
   const skill = clamp100(actSkill(g, d) + streetTalent(g, act))
   const p = hustleProfile(g)
@@ -619,6 +638,7 @@ const practiceAction: MenuAction = {
       return tell(g, 'Practice', `You get better at the ${d.instrument === 'Voice' ? 'singing' : d.instrument.toLowerCase()} by taking lessons under Activities → Mind & Body.`, '\u{1F3B5}')
     }
     if (!useYearAction(g, 'hustle.practice', 2)) return tell(g, 'Practice', "You've practiced enough this year. Time to perform for real.", '\u{1F971}')
+    masterAct(g, d)
     const gain = randInt(g, 4, 9)
     raiseSkill(g, d, gain)
     job.performance = actSkill(g, d)

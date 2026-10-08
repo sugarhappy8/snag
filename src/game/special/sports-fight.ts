@@ -10,9 +10,11 @@
 // career is a Job (defId 'sports.fighter').
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { killCharacter } from '../death'
+import { common } from '../events/era'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
-import { hasTalent, talentMult } from '../talents'
+import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
+import { hasMainCharacter, hasTalent, talentMult } from '../talents'
 import type { GameState, Gender, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import { addFame, blocked, fameToward, hire, leave, money, myJob, ownerKey, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
@@ -354,6 +356,16 @@ function fighter(g: GameState): FProfile {
   const p = prof(g, 'sports.fight', initFighter)
   if (!Array.isArray(p.trained)) p.trained = []
   if (!Array.isArray(p.rivals)) p.rivals = []
+  // Main Character Syndrome: the first time you fight or spar, your skills are at the body's ceiling
+  // for the age (and follow it down later). Chin, the gym, the opponent and the judges stay as they were.
+  if (hasMainCharacter(g)) {
+    masterFirstTime(g, 'fight.ring', 'martial', 'combat sports')
+    const top = bodyCeiling(g, { peakEnd: 32 })
+    p.striking = top
+    p.grappling = top
+    p.cardio = top
+    p.iq = ageCeiling(g.character.age, { from: 10, full: 20, floor: 30 })
+  }
   return p
 }
 
@@ -385,7 +397,8 @@ function level(g: GameState, p: FProfile, d: Discipline): number {
   let r = rating(p, d)
   if (hasTalent(g, 'Athletics')) r += 5
   if (p.doping) r += 5
-  return Math.max(1, Math.min(99, r))
+  // Main Character Syndrome: technique is instant, the level against the field takes years of fights.
+  return Math.max(1, Math.min(99, masteryCap(g, 'fight.ring'), r))
 }
 
 function fmt(r: FightRec): string {
@@ -626,9 +639,10 @@ interface Stats {
   iq: number
 }
 
-function youStats(p: FProfile): Stats {
+function youStats(g: GameState, p: FProfile): Stats {
   const boost = p.doping ? 5 : 0
-  return { s: p.striking + boost, g: p.grappling + boost, c: p.cardio + boost, chin: p.chin, iq: p.iq }
+  const cap = masteryCap(g, 'fight.ring')
+  return { s: Math.min(p.striking, cap) + boost, g: Math.min(p.grappling, cap) + boost, c: Math.min(p.cardio, cap) + boost, chin: p.chin, iq: Math.min(p.iq, cap) }
 }
 
 function oppStats(o: Opp): Stats {
@@ -794,7 +808,7 @@ const roundScript = defineScript('sports.fight.round', (g, choice, data) => {
   const d = discipline(st.disc)
   const p = fighter(g)
   const move = (d.moves.some((m) => m.id === choice) ? choice : 'strike') as Move
-  const me = youStats(p)
+  const me = youStats(g, p)
   const op = oppStats(st.offer.opp)
   const theirMove = oppMove(g, d, st.offer.opp, st)
   const mine = exchange(g, me, st.you, move, op, st.them, theirMove, st.z, me.c, d.finish)
@@ -1636,15 +1650,16 @@ const calloutAction: MenuAction = {
   id: 'sports.fight.socialCallout',
   label: 'Call Someone Out',
   emoji: '\u{1F4E3}',
-  subtitle: 'Talk trash online to build hype (once a year)',
+  subtitle: (g) => (common(g, 'socialMedia') && common(g, 'smartphone') ? 'Talk trash online to build hype (once a year)' : 'Talk trash to the press to build hype (once a year)'),
   disabledReason: (g) => sportsGate(g, 0),
   run: (g) => {
-    if (!useYearAction(g, 'sports.fight.socialCallout', 1)) return tell(g, 'Call Out', 'Your manager took your phone away for the rest of the year.', '\u{1F4F5}')
+    const online = common(g, 'socialMedia') && common(g, 'smartphone')
+    if (!useYearAction(g, 'sports.fight.socialCallout', 1)) return tell(g, 'Call Out', online ? 'Your manager took your phone away for the rest of the year.' : 'Your manager told the press you had no comment for the rest of the year.', '\u{1F4F5}')
     scriptChoice(
       g,
       socialCalloutScript,
       'Call Someone Out',
-      'You open your phone. Who are you going after?',
+      online ? 'You open your phone. Who are you going after?' : 'A reporter holds a microphone under your chin. Who are you going after?',
       [
         { id: 'champ', label: 'The champion', emoji: '\u{1F451}' },
         { id: 'rival', label: 'Your biggest rival', emoji: '\u{1F620}' },
@@ -1656,6 +1671,7 @@ const calloutAction: MenuAction = {
 }
 
 const socialCalloutScript = defineScript('sports.fight.social', (g, choice) => {
+  const online = common(g, 'socialMedia') && common(g, 'smartphone')
   const p = fighter(g)
   const job = fighterJob(g)
   if (!job) return
@@ -1668,15 +1684,15 @@ const socialCalloutScript = defineScript('sports.fight.social', (g, choice) => {
     }
     p.hype = Math.min(100, p.hype + 15)
     addFame(g, 2)
-    return say(g, 'Viral', 'You roasted the promotion’s president for underpaying fighters. Fans loved it. He pretended not to notice, then gave you a main event.', '\u{1F4E3}', 'good')
+    return say(g, online ? 'Viral' : 'Headlines', 'You roasted the promotion’s president for underpaying fighters. Fans loved it. He pretended not to notice, then gave you a main event.', '\u{1F4E3}', 'good')
   }
   p.hype = Math.min(100, p.hype + 10)
   addFame(g, 1)
   if (choice === 'rival' && p.rivals[0]) {
     p.rivals[0].heat = Math.min(100, p.rivals[0].heat + 20)
-    return say(g, 'Call Out', `You posted an edited photo of ${p.rivals[0].name} as a crying baby. It has two million likes. They want to fight you yesterday.`, '\u{1F4E3}')
+    return say(g, 'Call Out', online ? `You posted an edited photo of ${p.rivals[0].name} as a crying baby. It has two million likes. They want to fight you yesterday.` : `You told a reporter that ${p.rivals[0].name} fights like a crying baby. The quote ran on every sports page. They want to fight you yesterday.`, '\u{1F4E3}')
   }
-  say(g, 'Call Out', `You challenged the champion on every platform. ${fj(job).rank !== null && fj(job).rank! <= 5 ? 'The promotion is listening.' : 'People asked who you were. Rude, but fair.'}`, '\u{1F4E3}')
+  say(g, 'Call Out', `You challenged the champion ${online ? 'on every platform' : 'in every newspaper in town'}. ${fj(job).rank !== null && fj(job).rank! <= 5 ? 'The promotion is listening.' : 'People asked who you were. Rude, but fair.'}`, '\u{1F4E3}')
 })
 
 // ---------------------------------------------------------------------------

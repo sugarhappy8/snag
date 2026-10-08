@@ -19,7 +19,8 @@ import {
   yearActionsUsed,
 } from './core'
 import { localeOf, localTerm } from './data/locales'
-import { ERA_DISEASES, eraCureFactor, eraDiseaseWeight, eraOldAgeFactor, eraSicknessBoost } from './history/events-medicine'
+import { eraLines } from './events/era'
+import { ERA_DISEASES, eraCureFactor, eraDiseaseWeight, eraOldAgeFactor, eraSicknessBoost, medicalYear } from './history/events-medicine'
 import { hasTech, isHistorical } from './history/timeline'
 import { isIndustryLegal } from './data/markets'
 import { killCharacter } from './death'
@@ -544,6 +545,25 @@ function isChronic(def: DiseaseDef): boolean {
 const RESOLVED_LINES = ['My {name} cleared up on its own.', 'I finally got over my {name}.', 'My {name} went away by itself.', 'I beat my {name} without seeing a doctor.']
 const RESOLVED_HIDDEN = ["I've been feeling a lot better lately.", 'Whatever was making me sick went away on its own.', 'I finally shook off whatever bug I had.', 'My body sorted itself out without any help from me.', 'I woke up one day and felt like myself again.', 'Whatever I had packed its bags and left.']
 
+/**
+ * Before streptomycin, tuberculosis was treated with the rest cure: months in a sanatorium on a
+ * hill, fresh air, bed and good food, which slowed the disease at the price of isolation. 1 means
+ * no rest cure; below 1 it scales the year's damage. Not behind bars, not in countries too poor to
+ * have sanatoria, and never once effective antibiotics reached the country.
+ */
+function restCureFactor(g: GameState, cond: Condition): number {
+  const c = g.character
+  if (cond.name !== 'Tuberculosis' || !cond.diagnosed || !isHistorical(g.year) || inPrison(g)) return 1
+  if (medicalYear(c.countryId, g.year) >= 1955 || getCountry(c.countryId).wealth < 0.3) return 1
+  const key = `sanatorium.${cond.id}`
+  if (!g.flags[key]) {
+    g.flags[key] = true
+    log(g, 'I was sent to a sanatorium in the hills for the rest cure: fresh air, bed rest and a great deal of boredom.', 'bad')
+  }
+  addStat(g, 'happiness', -3)
+  return 0.5
+}
+
 function progressConditions(g: GameState): void {
   const c = g.character
   for (const cond of [...c.conditions]) {
@@ -559,7 +579,7 @@ function progressConditions(g: GameState): void {
       log(g, cond.diagnosed ? fill(freshLine(g, 'resolved', RESOLVED_LINES), { name: conditionLabel(cond.name) }) : freshLine(g, 'resolvedHidden', RESOLVED_HIDDEN), 'good')
       continue
     }
-    const jitter = randFloat(g, 0.7, 1.3)
+    const jitter = randFloat(g, 0.7, 1.3) * restCureFactor(g, cond)
     // Lifelong illnesses (diabetes, lupus, HIV...) wear you down slowly instead of
     // killing within a few years like an untreated cancer.
     const chronic = isChronic(def)
@@ -665,11 +685,13 @@ function processAddictions(g: GameState): void {
         ]
       : [
           "You've been thinking about a drink all week. Your hands are a little shaky.",
-          'You know a guy who knows a guy who can get you a bottle, strictly off the books. He just texted.',
+          '@texting You know a guy who knows a guy who can get you a bottle, strictly off the books. He just texted.',
+          '@!texting You know a guy who knows a guy who can get you a bottle, strictly off the books. He just left word with a neighbor.',
           'Someone at a private party whispered that there is "something stronger" in the back room.',
         ],
     drug: [
-      `Your body is screaming for ${subject}. Your old supplier just texted "u up?"`,
+      `@texting Your body is screaming for ${subject}. Your old supplier just texted "u up?"`,
+      `@!texting Your body is screaming for ${subject}. Your old supplier is waiting at the usual corner.`,
       `You can't stop thinking about ${subject}. Everything feels gray without it.`,
       `Someone at a party slipped you their number and said they can get ${subject}.`,
     ],
@@ -677,13 +699,14 @@ function processAddictions(g: GameState): void {
       barsLegal
         ? "There's a high-stakes poker night downtown and you have a really good feeling about tonight."
         : "There's an underground card game across town and you have a really good feeling about tonight.",
-      barsLegal ? 'You walked past a casino and heard the slot machines whispering sweet nothings.' : 'You keep refreshing a betting app you swore you deleted.',
+      barsLegal ? 'You walked past a casino and heard the slot machines whispering sweet nothings.' : '@smartphone You keep refreshing a betting app you swore you deleted.',
+      barsLegal ? 'You walked past a bookmaker’s window and felt your pocket twitch.' : '@!smartphone You keep drifting past a backroom bookmaker you swore you would avoid.',
       'Your gut says this is the year you win big. Your gut has said that every year.',
     ],
     nicotine: ["You're fidgety and irritable. You'd trade a kidney for a smoke right now.", 'Everyone on your break is lighting up and the smell is driving you crazy.'],
     other: [`The urge for ${subject} is back and it's stronger than ever.`, `You can't stop thinking about ${subject}.`],
   }
-  const text = freshLine(g, `craving.${kind}`, lines[kind])
+  const text = freshLine(g, `craving.${kind}`, eraLines(g, lines[kind]))
   scriptChoice(
     g,
     CRAVING,
@@ -1310,7 +1333,15 @@ function visitDoctor(g: GameState, doc: DoctorInfo): void {
   spend(g, fee)
   count(g, 'doctorVisits')
   const parent = c.age < 18 ? aliveParent(g) : undefined
-  const intro = parent ? `Your ${parentWord(parent)} took you to see ${doc.title}. ` : ''
+  // Before the 1960s, in countries that had them, the family doctor came to the house with his black bag.
+  const houseCall = doc.place === 'clinic' && isHistorical(g.year) && medicalYear(c.countryId, g.year) < 1965 && getCountry(c.countryId).wealth >= 0.5
+  const intro = houseCall
+    ? parent
+      ? `Your ${parentWord(parent)} sent for ${doc.title}, who came to the house with a black bag. `
+      : `${cap(doc.title)} made a house call, black bag in hand. `
+    : parent
+      ? `Your ${parentWord(parent)} took you to see ${doc.title}. `
+      : ''
 
   const newly: string[] = []
   for (const cond of c.conditions) {

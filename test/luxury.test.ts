@@ -57,21 +57,32 @@ function walk(g: GameState, node: MenuNode, depth = 0, out: string[] = []): stri
 }
 
 describe('Luxury Lifestyle gate', () => {
-  it('locks below $5M net worth and says how much more is needed', () => {
-    const g = rich(4_000_000)
+  it('opens at the boutique tier and says how much more is needed below it', () => {
+    const g = rich(12_000)
     const reason = luxuryLifestyleMenu.disabledReason?.(g)
-    expect(reason).toContain('$1,000,000 more')
+    expect(reason).toContain('$8,000 more')
     expect(luxuryLifestyleMenu.visible?.(g)).toBe(true)
+    g.character.money = 25_000
+    expect(luxuryLifestyleMenu.disabledReason?.(g)).toBeNull()
+  })
+
+  it('keeps the ultra tier (islands, megayachts, jets) at $5M', () => {
+    const g = rich(4_000_000)
+    expect(luxuryLifestyleMenu.disabledReason?.(g)).toBeNull()
+    expect(luxuryReason(g)).toContain('$1,000,000 more')
     g.character.money = LUXURY_NET_WORTH
     expect(netWorth(g)).toBe(LUXURY_NET_WORTH)
-    expect(luxuryLifestyleMenu.disabledReason?.(g)).toBeNull()
+    expect(luxuryReason(g)).toBeNull()
     expect(wealthLock(g)).toBeNull()
   })
 
-  it('counts debts against the threshold', () => {
+  it('counts debts against the thresholds', () => {
     const g = rich(6_000_000)
     g.character.loans.push({ id: 'l1', kind: 'personal', lender: 'Bank', balance: 2_000_000, yearlyPayment: 100_000, rate: 0.05 })
-    expect(luxuryLifestyleMenu.disabledReason?.(g)).toContain('$1,000,000 more')
+    expect(luxuryReason(g)).toContain('$1,000,000 more')
+    const poor = rich(30_000)
+    poor.character.loans.push({ id: 'l2', kind: 'personal', lender: 'Bank', balance: 20_000, yearlyPayment: 2_000, rate: 0.05 })
+    expect(luxuryLifestyleMenu.disabledReason?.(poor)).toContain('$10,000 more')
   })
 
   it('is hidden for kids, prisoners and the dead', () => {

@@ -10,6 +10,7 @@ import { contractorCost } from '../computer/dev-state'
 import { fillLocal } from '../data/locales'
 import { industryDemand, marketOf } from '../data/markets'
 import { worldYear } from '../invest/engine'
+import { liftSkill } from '../mastery'
 import { pick, rand, randInt } from '../rng'
 import type { GameState } from '../types'
 import { talentMult } from '../talents'
@@ -275,20 +276,26 @@ export function skillCeiling(age: number): number {
 
 /** Practice game design: diminishing returns near the ceiling. Returns the gain. */
 export function trainDesign(g: GameState, p: GdProfile, base: number): number {
+  // Main Character Syndrome: the first time you design a game is already mastery (to the age ceiling).
+  const start = p.design
+  p.design = Math.round(clampN(liftSkill(g, 'gamedev.design', 'craft', 'game design', p.design, skillCeiling(g.character.age)), 0, 100))
   const room = Math.max(0, 1 - p.design / 110)
   // Gaming talent: thousands of hours of play turn into design instincts fast.
   const gain = Math.max(0, Math.min(Math.round(base * talentMult(g, 'Gaming', 1.5) * room * (0.8 + rand(g) * 0.5)), skillCeiling(g.character.age) - p.design))
   p.design = Math.round(clampN(p.design + gain, 0, 100))
-  return gain
+  return p.design - start
 }
 
 /** Practice art (an art talent learns faster). Returns the gain. */
 export function trainArt(g: GameState, p: GdProfile, base: number): number {
+  // Main Character Syndrome: the first time you make game art is already mastery (to the age ceiling).
+  const start = p.art
+  p.art = Math.round(clampN(liftSkill(g, 'gamedev.art', 'creative', 'game art', p.art, skillCeiling(g.character.age)), 0, 100))
   const talent = talentMult(g, 'Art', 1.5)
   const room = Math.max(0, 1 - p.art / 110)
   const gain = Math.max(0, Math.min(Math.round(base * talent * room * (0.8 + rand(g) * 0.5)), skillCeiling(g.character.age) - p.art))
   p.art = Math.round(clampN(p.art + gain, 0, 100))
-  return gain
+  return p.art - start
 }
 
 /** Gamer fame moves (0-100); big moves also nudge general fame. */

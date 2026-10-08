@@ -15,6 +15,7 @@ import { BABY_EVENTS } from './events/baby'
 import { resolveGenericChoice } from './events/choice'
 import { resolveCustomAction } from './events/custom'
 import { ELDER_EVENTS } from './events/elder'
+import { ERA_LIFE_EVENTS } from './events/era-life'
 import { FAMILY_EVENTS } from './events/family'
 import { addFlavorLines } from './events/flavor'
 import { FRIEND_EVENTS } from './events/friends'
@@ -45,6 +46,8 @@ export const EVENT_LIBRARY: EventDef[] = [
   ...SOS_EVENTS,
   ...ELDER_EVENTS,
   ...PRISON_EVENTS,
+  // What an ordinary year felt like in each era (events/era-life.ts).
+  ...ERA_LIFE_EVENTS,
 ]
 
 const EVENTS_BY_ID: Record<string, EventDef> = {}

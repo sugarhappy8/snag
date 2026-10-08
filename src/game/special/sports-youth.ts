@@ -8,7 +8,8 @@ import { enrollmentClubs } from '../cv'
 import { hasTech } from '../history/timeline'
 import { bell, chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
-import { hasTalent, talentMult } from '../talents'
+import { bodyCeiling, masterFirstTime } from '../mastery'
+import { hasMainCharacter, hasTalent, talentMult } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addFame, money, ordinal, peek, prof, say, short, tell } from './common'
 import { academyClub, localTeamSports, offerYouthContract, teamSportList } from './athlete'
@@ -163,10 +164,25 @@ const joinScript = defineScript('sports.youth.join', (g, choice) => {
   y.rank = null
   y.joinedAge = c.age
   y.offered = false
+  masterYouth(g, y, p)
   count(g, 'youthSports')
   log(g, `I joined the ${y.club}.`, 'good')
   say(g, 'Welcome!', `You joined the ${y.club}.${payerNote(paid)} ${p.kind === 'team' ? 'Your kit is two sizes too big. You love it.' : p.kind === 'combat' ? 'The coach made you skip rope until your calves cried.' : p.sport === 'motor' ? 'Your first kart is faster than your parents’ car. Your parents are nervous.' : 'Your coach says talent is nice, but practice is everything.'}`, p.emoji, 'good')
 })
+
+/**
+ * Main Character Syndrome: the first time in a youth program the junior level jumps to the best
+ * a kid of that age can be: about the top of the age group, not an unbeatable one (the bracket is
+ * still a roll, other kids are training too). Everybody else is left alone.
+ */
+function masterYouth(g: GameState, y: YouthProfile, p: Program): void {
+  if (!hasMainCharacter(g)) return
+  const c = g.character
+  masterFirstTime(g, `sport.${p.sport}`, 'sport', (indSport(p.sport)?.name ?? p.name).toLowerCase())
+  const field = 18 + (c.age - 8) * 3.5
+  const top = Math.min(bodyCeiling(g, { peakEnd: 40 }), Math.round(field + 18))
+  y.level = Math.max(y.level, top)
+}
 
 function startLevel(g: GameState, p: Program): number {
   const c = g.character
@@ -202,6 +218,7 @@ function train(g: GameState): void {
   if (!useYearAction(g, 'sports.youth.train', 2)) return tell(g, 'Training', "Your coach says you've trained enough this year. Go be a kid.", '\u{1F971}')
   const c = g.character
   const boost = talentMult(g, 'Athletics', 1.5) * (c.age < 14 ? 1.15 : 1)
+  masterYouth(g, y, p)
   const gain = Math.max(1, Math.round(randInt(g, 3, 6) * boost * Math.max(0.2, 1 - y.level / 110)))
   y.level = Math.min(100, y.level + gain)
   let extra = ''
@@ -227,6 +244,7 @@ function juniorEvent(g: GameState): void {
   const c = g.character
   const ageGroup = c.age <= 10 ? 'Under-10' : c.age <= 12 ? 'Under-12' : c.age <= 14 ? 'Under-14' : c.age <= 16 ? 'Under-16' : 'Under-18'
   // Your level against kids your age: by 16 you need a real level to win.
+  masterYouth(g, y, p)
   const field = 18 + (c.age - 8) * 3.5
   const perf = y.level + bell(g, -10, 10)
   const place = Math.max(1, Math.min(32, Math.round(1 + 31 / (1 + Math.exp((perf - field) / 6)))))
@@ -375,6 +393,7 @@ export function yearlyYouth(g: GameState): void {
     return say(g, 'Dropped Out', `Nobody could pay the ${club} fees this year, so you had to leave.`, '\u{1F4B8}', 'bad')
   }
   y.years += 1
+  masterYouth(g, y, p)
   const school = schoolTeamBoost(g, p.sport)
   const grow = randInt(g, 1, 3) + (school ? 2 : 0) + (hasTalent(g, 'Athletics') ? 2 : 0)
   y.level = Math.min(100, y.level + Math.max(1, Math.round(grow * Math.max(0.2, 1 - y.level / 110))))

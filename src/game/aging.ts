@@ -9,9 +9,13 @@ import { bindMoneyContext, currentLogYear, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
 import { yearlyWealth } from './events/wealth'
+import { yearlyWillFeuds } from './events/will-feud'
+import { yearlyNepo } from './business/nepo'
+import { yearlyFamilyUse } from './shops/luxury-family'
 import { yearlyFinance } from './finance'
 import { checkDeath, yearlyHealth } from './health'
 import { yearlyHistory } from './history'
+import { yearlyDigest } from './history/digest'
 import { yearlyImmigration } from './immigration'
 import { yearlyInvestments } from './investments'
 import { yearlyMilestones } from './life'
@@ -23,6 +27,7 @@ import type { GameState } from './types'
 /** Ordered yearly hooks. Each one must be a no-op when it doesn't apply. */
 export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['history', yearlyHistory],
+  ['digest', yearlyDigest],
   ['relationships', yearlyRelationships],
   ['health', yearlyHealth],
   ['education', yearlyEducation],
@@ -34,6 +39,9 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['computer', yearlyComputer],
   ['finance', yearlyFinance],
   ['wealth', yearlyWealth],
+  ['familyUse', yearlyFamilyUse],
+  ['nepo', yearlyNepo],
+  ['willFeuds', yearlyWillFeuds],
   ['immigration', yearlyImmigration],
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],

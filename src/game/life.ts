@@ -33,7 +33,15 @@ import { hasTech, HISTORY_START, isHistorical, PRESENT_YEAR, techOdds } from './
 import { createPerson, eraName, notePerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
-import { MAX_START_TALENTS, normalizeTalents, pickedTalents, type TalentId } from './talents'
+import { planEstate, settleReading } from './events/will-estate'
+import { askingSalary, becomeCeo, installManager } from './business/career'
+import { liveGroup, saveGroup } from './business/conglomerate-state'
+import { successionEstateUnits } from './business/nepo-inheritance'
+import { familyOf } from './business/nepo-state'
+import { afterSuccession, successorManager } from './business/nepo-succession'
+import { bizOf, type Manager } from './business/state'
+import { yearlyMainCharacter } from './mastery'
+import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, talentLabel, type TalentId } from './talents'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
 import type {
   AncestorSummary,
@@ -270,8 +278,21 @@ export const TALENTS: TalentDef[] = [
   },
 ]
 
+/**
+ * Main Character Syndrome has no childhood discovery moment (the character already has every
+ * talent), so it is not in TALENTS; this stand-in lets heirs inherit the gift like any other.
+ */
+const MAIN_CHARACTER_DEF: TalentDef = {
+  id: MAIN_CHARACTER,
+  emoji: '\u{1F31F}',
+  weight: 0,
+  hints: [],
+  discovery: '',
+  apply: () => undefined,
+}
+
 export function getTalent(id: string | null | undefined): TalentDef | undefined {
-  return TALENTS.find((t) => t.id === id)
+  return id === MAIN_CHARACTER ? MAIN_CHARACTER_DEF : TALENTS.find((t) => t.id === id)
 }
 
 /**
@@ -939,6 +960,11 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
       delete g.flags.latentTalent
       delete g.flags.talentAge
     }
+    // Main Character Syndrome already has every talent: no childhood talent to discover.
+    if ((picked as string[]).includes(MAIN_CHARACTER)) {
+      delete g.flags.latentTalent
+      delete g.flags.talentAge
+    }
   }
   // A citizen of the country you're born in (immigration.ts adds passports later).
   c.citizenships = [c.countryId]
@@ -1102,29 +1128,55 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // --- Estate --------------------------------------------------------------------
   const heirlooms = n.assets.filter(isHeirloom)
   const property = n.assets.filter((a) => !isHeirloom(a))
-  const debts = old.loans.reduce((s, l) => s + l.balance, 0)
-  const equity = property.reduce((s, a) => s + a.value - (a.mortgage?.balance ?? 0), 0)
-  const estate = Math.round(old.money + equity - debts)
-  const livingKids = n.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild'))
-  const willed = old.willBeneficiaries.map((id) => n.people.find((p) => p.id === id)).filter((p): p is Person => !!p && p.alive && ['child', 'stepchild', 'spouse'].includes(p.relation))
-  const beneficiaries = willed.length > 0 ? willed : livingKids
-  const heirIncluded = beneficiaries.some((p) => p.id === childId)
-  const shareCount = Math.max(1, beneficiaries.length)
-  const adult = heirP.age >= 18
-  const keepProperty = heirIncluded && shareCount === 1 && adult && property.length > 0 && old.money - debts >= 0
-  const inheritanceLines: string[] = []
-  let cashInherited = 0
-  let estateTax = 0
-  let keptAssets: Asset[] = heirlooms
-  if (keepProperty) {
-    cashInherited = Math.round(old.money - debts)
-    keptAssets = [...property, ...heirlooms]
-  } else if (estate > 0) {
-    estateTax = estate > 10_000_000 ? Math.round((estate - 10_000_000) * 0.25) : 0
-    const share = Math.floor((estate - estateTax) / shareCount)
-    if (heirIncluded) cashInherited = share
-    for (const b of beneficiaries) if (b.id !== childId) b.money = Math.round(b.money + share)
+  // Resolve every designation before choosing what this playable child keeps. A conglomerate is
+  // one economic holding: it is a bequest only when all valid child designations agree. This makes
+  // the result independent of which child the user chooses to continue as.
+  const successionUnits = successionEstateUnits(n)
+  const allocatedUnits = successionUnits.filter((unit) => unit.recipient !== null)
+  const allocatedIds = new Set(allocatedUnits.flatMap((unit) => unit.assets.map((a) => a.id)))
+  const selectedUnits = allocatedUnits.filter((unit) => unit.recipient?.id === childId)
+  const selectedIds = new Set(selectedUnits.flatMap((unit) => unit.assets.map((a) => a.id)))
+  const selectedBequests = property.filter((a) => selectedIds.has(a.id))
+  const divisibleProperty = property.filter((a) => !allocatedIds.has(a.id))
+  // Capture management plans while every old-generation Person still exists. Some relatives do
+  // not remain contacts after the point-of-view change, but their appointment should still stand
+  // (as an ordinary external manager without a dangling personId).
+  const managementPlans = new Map<string, Manager>()
+  for (const a of selectedBequests) {
+    if (a.kind !== 'business') continue
+    const b = bizOf(n, a)
+    const manager = successorManager(n, a, b, (skill) => askingSalary(b, skill, 0))
+    if (manager) managementPlans.set(a.id, manager)
   }
+
+  // NPC-owned companies are no longer player assets, but the designated child remains in the
+  // family as their owner. Drop the old employee-only record so later family-year cleanup cannot
+  // treat ownership as a dangling job at a vanished asset.
+  for (const unit of allocatedUnits) {
+    if (!unit.recipient || unit.recipient.id === childId) continue
+    // NPCs cannot retain Asset records after the point-of-view change. Represent the inherited
+    // holding once in their modeled wealth instead, using the same net-equity basis as the
+    // divisible estate and never turning an underwater holding into a new personal debt.
+    const inheritedEquity = Math.max(0, Math.round(unit.assets.reduce((sum, a) => sum + a.value - (a.mortgage?.balance ?? 0), 0)))
+    unit.recipient.money = Math.round(unit.recipient.money + inheritedEquity)
+    delete unit.recipient.data.nepo
+    unit.recipient.occupation = 'Business Owner'
+  }
+
+  const debts = old.loans.reduce((s, l) => s + l.balance, 0)
+  const divisibleEquity = divisibleProperty.reduce((s, a) => s + a.value - (a.mortgage?.balance ?? 0), 0)
+  const estate = Math.round(old.money + divisibleEquity - debts)
+  const adult = heirP.age >= 18
+  // Who inherits what (the will, charity, contests and probate live in events/will-estate.ts).
+  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0, cashAfterDebts: old.money - debts })
+  const heirIncluded = plan.heirIncluded
+  const shareCount = Math.max(1, plan.ways)
+  const keepProperty = plan.keepProperty
+  const inheritanceLines: string[] = []
+  const cashInherited = plan.heirCash
+  const estateTax = plan.tax
+  const keptProperty = property.filter((a) => selectedIds.has(a.id) || (keepProperty && !allocatedIds.has(a.id)))
+  const keptAssets: Asset[] = [...keptProperty, ...heirlooms]
 
   // --- The heir becomes the player ---------------------------------------------
   const age = heirP.age
@@ -1318,6 +1370,13 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     people.push(reset(pet, 'pet', randInt(n, 40, 80), true))
   }
   n.people = people
+  for (const unit of allocatedUnits) {
+    if (!unit.recipient || unit.recipient.id === childId) continue
+    const recipient = n.people.find((p) => p.id === unit.recipient?.id)
+    if (!recipient) continue
+    const holding = unit.group?.name ?? unit.assets[0]?.name ?? 'the family company'
+    notePerson(recipient, `Inherited ${holding} as the designated successor (age ${recipient.age}).`)
+  }
 
   // --- Home --------------------------------------------------------------------
   let residence: Residence
@@ -1356,13 +1415,51 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(Array.isArray(n.flags.marketShocks) ? { marketShocks: n.flags.marketShocks } : {}),
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
   }
+
+  // A designated heir is no longer a Person employee after becoming the player. Spend their
+  // person-based succession records now, put one directly designated company in the player's CEO
+  // job, and make any inherited group theirs to chair. Without this normalization syncCeo would
+  // fail to find the old Person and replace the heir with a random manager on the next year.
+  if (selectedUnits.length > 0) {
+    for (const unit of selectedUnits) {
+      if (!unit.group) continue
+      const grp = liveGroup(n, unit.group.id)
+      if (!grp) continue
+      grp.core.ceo = 'owner'
+      grp.core.manager = null
+      saveGroup(n, grp)
+    }
+    const inheritedBusinesses = selectedBequests.filter((a) => a.kind === 'business').sort((a, b) => a.id.localeCompare(b.id))
+    for (const a of inheritedBusinesses) {
+      const b = bizOf(n, a)
+      const family = familyOf(b)
+      if (family.succ.kind === 'person' && family.succ.id === childId) family.succ = { kind: '', id: '' }
+    }
+    const leadIds = selectedUnits.map((unit) => unit.leadAssetId).filter((id): id is string => !!id).sort()
+    const lead = inheritedBusinesses.find((a) => a.id === leadIds[0]) ?? inheritedBusinesses[0]
+    if (lead) {
+      for (const a of inheritedBusinesses) {
+        if (a.id === lead.id) continue
+        const b = bizOf(n, a)
+        const captured = managementPlans.get(a.id)
+        const planned = captured?.personId === childId ? null : captured ?? successorManager(n, a, b, (skill) => askingSalary(b, skill, 0))
+        if (planned) {
+          const installed = installManager(n, b, planned)
+          afterSuccession(n, a, b, installed)
+          if (installed.personId && !n.people.some((p) => p.id === installed.personId)) delete installed.personId
+        } else if (b.ceo === 'owner' || b.manager?.personId === childId) installManager(n, b)
+      }
+      becomeCeo(n, lead, bizOf(n, lead), 'Owner & CEO')
+    }
+  }
+
   if (age < 12 && !heir.talent && chance(n, 0.3)) {
     n.flags.latentTalent = weightedPick(n, TALENTS, (t) => t.weight).id
     n.flags.talentAge = Math.max(age + 1, randInt(n, 5, 12))
   }
   // Talents picked before birth aren't handed down whole, but a gift can run in the family.
   const inherited = inheritTalent(n, old, heir)
-  if (inherited && n.flags.latentTalent === inherited.id) {
+  if (inherited && (n.flags.latentTalent === inherited.id || inherited.id === MAIN_CHARACTER)) {
     delete n.flags.latentTalent
     delete n.flags.talentAge
   }
@@ -1372,32 +1469,41 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   log(n, `I am now playing as ${fullName(heir)}, the ${childWord} of ${oldName}.`, 'event')
   log(n, `My ${heirP.relation === 'stepchild' ? `step${oldNoun}` : oldNoun}, ${oldName}, died from ${cause.toLowerCase()} at the age of ${old.age}.`, 'bad')
 
-  if (!heirIncluded && willed.length > 0) {
-    inheritanceLines.push(`${old.gender === 'male' ? 'His' : 'Her'} will left everything to someone else. You didn't get a cent.`)
+  if (!heirIncluded && plan.willed) {
+    inheritanceLines.push(selectedBequests.length > 0 ? `${old.gender === 'male' ? 'His' : 'Her'} will left the rest of the estate to someone else. You didn't inherit any cash.` : `${old.gender === 'male' ? 'His' : 'Her'} will left everything to someone else. You didn't get a cent.`)
     log(n, `I was cut out of my ${oldNoun}'s will.`, 'bad')
   } else if (keepProperty) {
-    const houses = property.filter((a) => a.kind === 'house').length
-    const cars = property.filter((a) => a.kind === 'car').length
-    const bits = [houses > 0 ? `${houses} ${houses === 1 ? 'property' : 'properties'}` : '', cars > 0 ? `${cars} ${cars === 1 ? 'vehicle' : 'vehicles'}` : '', property.length - houses - cars > 0 ? 'other belongings' : ''].filter(Boolean)
+    const houses = divisibleProperty.filter((a) => a.kind === 'house').length
+    const cars = divisibleProperty.filter((a) => a.kind === 'car').length
+    const bits = [houses > 0 ? `${houses} ${houses === 1 ? 'property' : 'properties'}` : '', cars > 0 ? `${cars} ${cars === 1 ? 'vehicle' : 'vehicles'}` : '', divisibleProperty.length - houses - cars > 0 ? 'other belongings' : ''].filter(Boolean)
     inheritanceLines.push(`You inherited ${formatMoney(cashInherited)} in cash${bits.length > 0 ? `, plus ${bits.join(' and ')}` : ''}.`)
     log(n, `I inherited ${formatMoney(cashInherited)} and my ${oldNoun}'s belongings.`, 'good')
   } else if (cashInherited > 0) {
     const split = shareCount > 1 ? ` The estate was split ${shareCount} ways.` : ''
-    const auction = !adult && property.length > 0 ? ` Because you're a minor, the houses and cars were auctioned off.` : ''
+    const auction = !adult && divisibleProperty.length > 0 ? ` Because you're a minor, the houses and cars were auctioned off.` : ''
     const tax = estateTax > 0 ? ` The government took ${formatMoney(estateTax)} in ${old.countryId === 'us' ? 'estate taxes' : 'inheritance tax'}.` : ''
     inheritanceLines.push(`You inherited ${formatMoney(cashInherited)}.${split}${auction}${tax}`)
     log(n, `I inherited ${formatMoney(cashInherited)} from my late ${oldNoun}.`, 'good')
-    if (!adult && property.length > 0) log(n, `My ${oldNoun}'s houses and cars were auctioned off because I'm a minor.`)
-  } else {
+    if (!adult && divisibleProperty.length > 0) log(n, `My ${oldNoun}'s houses and cars were auctioned off because I'm a minor.`)
+  } else if (plan.held > 0) {
+    inheritanceLines.push('Your share is tied up in probate for now.')
+    log(n, `My ${oldNoun}'s estate is tied up in probate.`)
+  } else if (selectedBequests.length === 0) {
     inheritanceLines.push(estate <= 0 ? `${old.gender === 'male' ? 'He' : 'She'} died broke, so there was nothing to inherit.` : 'There was nothing left for you to inherit.')
     log(n, `My ${oldNoun} left me nothing but memories.`)
+  }
+  if (selectedBequests.length > 0) {
+    const names = selectedUnits.map((unit) => unit.group?.name ?? unit.assets[0]?.name).filter((name): name is string => !!name).join(' and ')
+    inheritanceLines.push(`As the designated successor, you inherited ${names} intact.`)
+    log(n, `I inherited ${names} as the designated successor.`, 'good')
   }
   const giftFrom = heirP.relation === 'stepchild' ? `step${oldNoun}` : oldNoun
   if (inherited && age > PICK_REVEAL_BY) {
     // Old enough to have noticed long ago; a younger heir finds out in a childhood moment.
     markRevealed(n, [inherited.id])
-    inheritanceLines.push(`Like your ${giftFrom}, you have a natural gift for ${inherited.id.toLowerCase()}.`)
-    log(n, `Like my ${giftFrom}, I have a natural gift for ${inherited.id.toLowerCase()}.`, 'good')
+    const talentName = talentLabel(inherited.id).toLowerCase()
+    inheritanceLines.push(`Like your ${giftFrom}, you have a natural gift for ${talentName}.`)
+    log(n, `Like my ${giftFrom}, I have a natural gift for ${talentName}.`, 'good')
   }
   if (heirlooms.length > 0) {
     inheritanceLines.push(`You also inherited ${heirlooms.length === 1 ? 'a family heirloom' : `${heirlooms.length} family heirlooms`}: ${heirlooms.map((a) => a.name).join(', ')}.`)
@@ -1412,13 +1518,18 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   if (guardian && age < 18) log(n, `I live with my ${guardian.relation === 'grandparent' ? (guardian.gender === 'male' ? 'grandfather' : 'grandmother') : guardian.relation === 'stepparent' ? (guardian.gender === 'male' ? 'stepfather' : 'stepmother') : parentNoun(guardian.gender)}.`)
 
   heir.memories.push(`Age ${age}: My ${oldNoun} ${oldName} died from ${cause.toLowerCase()} at ${old.age}. I took over as generation ${n.generation} of the ${heir.lastName} family.`)
-  if (inherited && age > PICK_REVEAL_BY) heir.memories.push(`Age ${age}: Inherited my ${giftFrom}'s gift for ${inherited.id.toLowerCase()}.`)
+  if (inherited && age > PICK_REVEAL_BY) {
+    const talentName = talentLabel(inherited.id).toLowerCase()
+    heir.memories.push(`Age ${age}: Inherited my ${giftFrom}'s gift for ${talentName}.`)
+  }
   notice(
     n,
     `Generation ${n.generation}`,
     `You are now playing as ${fullName(heir)}, the ${age}-year-old ${childWord} of the late ${oldName}. ${inheritanceLines.join(' ')}`,
     { emoji: '\u{1F9EC}' },
   )
+  // The reading of the will: reactions, contests, the cut-out heir's choices (events/will-estate.ts).
+  settleReading(n, plan, old, childId)
   return n
 }
 
@@ -1498,7 +1609,7 @@ function pendingPicks(g: GameState): TalentDef[] {
   const revealed = strList(g.flags.talentsRevealed)
   const out: TalentDef[] = []
   for (const id of pickedTalents(g)) {
-    if (revealed.includes(id) || id === g.character.talent) continue
+    if (revealed.includes(id) || id === g.character.talent || id === MAIN_CHARACTER) continue
     const def = getTalent(id)
     if (def) out.push(def)
   }
@@ -1517,6 +1628,8 @@ function markRevealed(g: GameState, ids: string[]): void {
  */
 function talentMilestones(g: GameState): void {
   const c = g.character
+  // Main Character Syndrome: every talent from day one, so nothing is left to discover.
+  if (hasMainCharacter(g)) return
   const latent = typeof g.flags.latentTalent === 'string' && !c.talent ? getTalent(g.flags.latentTalent) : undefined
   const talentAge = typeof g.flags.talentAge === 'number' ? g.flags.talentAge : 8
   const noticeThisYear = () => g.flags.talentNoticeAge === c.age
@@ -1755,6 +1868,7 @@ export function yearlyMilestones(g: GameState): void {
   else if (c.age === 2 && quiet) log(g, pick(g, TODDLER))
 
   talentMilestones(g)
+  yearlyMainCharacter(g)
 
   if (!g.flags.puberty && c.age >= 12) {
     const p = c.age >= 14 ? 1 : c.age === 13 ? 0.6 : 0.35

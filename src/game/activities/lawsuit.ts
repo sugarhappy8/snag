@@ -25,6 +25,7 @@ import {
   type GrievanceKind,
 } from './common'
 import { markSurgeonSued } from './surgery'
+import { employerRef } from '../shops/everyday-brands'
 
 const SUED_KEY = 'lawsuit.sued'
 const EMOJI = '\u{2696}\u{FE0F}'
@@ -118,7 +119,8 @@ export function defendants(g: GameState): Defendant[] {
     out.push({
       key,
       kind: 'employer',
-      name: r.company,
+      // Never sue a real company in a game: a real brand becomes "your former employer".
+      name: employerRef(r.company, 'Your former employer'),
       detail:
         r.reason === 'laid off'
           ? old

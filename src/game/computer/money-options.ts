@@ -13,8 +13,10 @@ import { exchangeByKey, exchangeInfo, indexMove, type ExInfo } from '../invest/e
 import { PRESENT_YEAR } from '../history/timeline'
 import { marketInstinct, type Instinct } from '../invest/instinct'
 import { indexShockFactor } from '../invest/shocks'
+import { liftSkill } from '../mastery'
 import { chance, pick, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
+import { isRealBrandName } from '../shops/everyday-brands'
 import { HINT_EMOJI, talentHint } from '../talents'
 import { stockBetsMenu } from './money-stocks'
 import { addScreenTime } from './skills'
@@ -241,6 +243,9 @@ function openCount(st: MoneyState): number {
 
 function gainSkill(st: MoneyState, lo: number, hi: number, g: GameState): void {
   st.skill = clampNum(st.skill + randInt(g, lo, hi) * (st.skill > 70 ? 0.5 : 1), 0, 100)
+  // Main Character Syndrome: the first trade is already a veteran's decisions (tighter prices from
+  // the market maker). Never past 85, and the prices stay a net cost: no skill makes a market pay.
+  st.skill = clampNum(liftSkill(g, 'trading.options', 'trading', 'options', st.skill, 85), 0, 100)
 }
 
 /**
@@ -413,7 +418,7 @@ defineScript(DIR_SCRIPT, (g, choice, data) => {
     g,
     STRIKE_SCRIPT,
     'Pick a Strike',
-    `${f.side === 'buy' ? 'Cheaper options need a bigger move to pay off.' : 'Further out = smaller premium, but a crash still hurts.'}${extra > 0 ? ` ${st.broker || 'Your broker'} has flagged you as a sharp trader, so its market makers quote you ${Math.round(extra * 100)}% worse prices than usual.` : ''}\n\n${lines.join('\n')}`,
+    `${f.side === 'buy' ? 'Cheaper options need a bigger move to pay off.' : 'Further out = smaller premium, but a crash still hurts.'}${extra > 0 ? ` ${st.broker && !isRealBrandName(st.broker) ? st.broker : 'Your broker'} has flagged you as a sharp trader, so its market makers quote you ${Math.round(extra * 100)}% worse prices than usual.` : ''}\n\n${lines.join('\n')}`,
     [
       ...strikes.map((s) => ({ id: s, label: strikeLabel(inf, choice, s), emoji: s === 'atm' ? '\u{1F3AF}' : s === 'otm' ? '\u{1F3B2}' : '\u{1F39F}\u{FE0F}' })),
       { id: 'cancel', label: 'Never mind', emoji: '\u{1F645}' },
@@ -767,7 +772,7 @@ export function settleOptions(g: GameState, st: MoneyState): News | null {
       if (net >= 0) bankGain(g, st, net, net, false)
       else {
         st.lossCarry = dollars(st.lossCarry - net)
-        const financed = payOrBorrow(g, -net, `${st.broker || brokerName(g.character.countryId)} margin desk`)
+        const financed = payOrBorrow(g, -net, `${st.broker || brokerName(g.character.countryId, g.year)} margin desk`)
         if (financed > 0) {
           t.margin += financed
           count(g, 'marginCalls')
@@ -865,7 +870,7 @@ export function optionsMenu(): MenuGroup {
       if (gut) nodes.push(gut)
       if (c.age >= 18) {
         if (!st.broker) {
-          const name = brokerName(c.countryId)
+          const name = brokerName(c.countryId, g.year)
           nodes.push({
             type: 'action',
             id: 'computer.options.open',
@@ -877,7 +882,7 @@ export function optionsMenu(): MenuGroup {
               if (!canAct(gg) || gg.character.age < 18) return
               const s = moneyState(gg)
               if (s.broker) return
-              s.broker = brokerName(gg.character.countryId)
+              s.broker = brokerName(gg.character.countryId, gg.year)
               log(gg, `I opened a brokerage account at ${s.broker}.`)
               notice(gg, 'Account Open', `Welcome to ${s.broker}! You ticked a box saying you "understand the risks of options trading." You did not read it. Nobody does.`, { emoji: '\u{1F3E6}' })
             },

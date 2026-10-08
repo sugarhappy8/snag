@@ -21,6 +21,7 @@ import { localMarket, marketOf } from './data/markets'
 import { incomeTax, taxAdditionalIncome } from './finance'
 import { exchangeClosedReason, exchangeState, goldBan, investingBlocked, marketNote } from './history/markets'
 import { brokerEraMult, reitSince } from './invest/era'
+import { allFundProviderNames } from './invest/funds'
 import {
   bankCrisisChance,
   bondRate,
@@ -50,12 +51,16 @@ import {
   indexYield,
   inflationRate,
   isHistoryYear,
+  isRealSecId,
   listedCoins,
   localWords,
   pennyDef,
   policyRate,
+  realPlanOf,
   reitYield,
   savingsRate,
+  sizeLabelOf,
+  sizeRankOf,
   termRate,
   type ExInfo,
   type ExYear,
@@ -441,7 +446,17 @@ interface Quote {
   closed?: boolean
   /** Template for a new holding's details. */
   details: Record<string, Json>
+  /** Rough size class of a real listed company ('Large-cap'); empty for everything else. */
+  size?: string
+  /** Menu ordering by size (bigger first). */
+  rank?: number
 }
+
+/**
+ * The market engine's version stamped on a holding's details. Holdings from before real companies
+ * (no stamp) are re-anchored once to today's quotes without changing their value (normalizeHoldings).
+ */
+const ENGINE_V = 2
 
 function exDetails(info: ExInfo, year: number): Record<string, Json> {
   return {
@@ -475,6 +490,7 @@ function stockQuote(info: ExInfo, s: SecYear, penny: boolean, year: number, bloc
   // The company as it looked that year (a 1925 'tech' company makes tabulating machines).
   const era = eraIdentity(def, year)
   const sector = era.label
+  const sized = !penny && realPlanOf(info) !== null
   return {
     type: penny ? 'penny' : 'stock',
     secId: def.id,
@@ -488,7 +504,9 @@ function stockQuote(info: ExInfo, s: SecYear, penny: boolean, year: number, bloc
     sector,
     blurb: era.blurb,
     blocked,
-    details: { type: penny ? 'penny' : 'stock', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.dy, sector, blurb: era.blurb, slot: s.slot, gen: s.gen, beta: def.beta, vol: def.idio, country: info.home, ...exDetails(info, year) },
+    size: sized ? sizeLabelOf(def, year) : undefined,
+    rank: sized ? sizeRankOf(def, year) : undefined,
+    details: { type: penny ? 'penny' : 'stock', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.dy, sector, blurb: era.blurb, slot: s.slot, gen: s.gen, beta: def.beta, vol: def.idio, country: info.home, eng: ENGINE_V, ...exDetails(info, year) },
   }
 }
 
@@ -569,12 +587,12 @@ function listing(g: GameState): Listing {
     ret: ey.year === an ? null : ey.fund.ret,
     sector: realFund ? 'Index fund' : 'Investment trust',
     blurb: realFund
-      ? `Owns every company in the ${index} in one go. Yearly fee: ${rateText(fee)}.`
+      ? `Tracks the ${index}: every company in it in one go. Yearly fee in this game: ${rateText(fee)}.`
       : `Owns shares in most of the big companies on the ${exchangeName(info, y)}. Index funds haven't been invented yet, so a manager charges ${rateText(fee)} a year to do roughly the same thing.`,
     blocked: marketBlock,
     details: {},
   }
-  fund.details = { type: 'index', secId: fundId, symbol: fund.symbol, risk: fund.risk, yield: fund.yield, sector: fund.sector, blurb: fund.blurb, country: info.home, ...exDetails(info, y) }
+  fund.details = { type: 'index', secId: fundId, symbol: fund.symbol, risk: fund.risk, yield: fund.yield, sector: fund.sector, blurb: fund.blurb, country: info.home, eng: ENGINE_V, ...exDetails(info, y) }
   Object.assign(fund, withShock(g, fund, indexShockFactor(g, info.key, y), indexShockFactor(g, info.key, y - 1)))
   const reitName = `${homeWord} Property Trust`
   const reit: Quote = {
@@ -592,7 +610,7 @@ function listing(g: GameState): Listing {
     blocked: marketBlock ?? reitBlock(g, info),
     details: {},
   }
-  reit.details = { type: 'reit', secId: reit.secId, symbol: reit.symbol, risk: reit.risk, yield: reit.yield, sector: reit.sector, blurb: reit.blurb, country: info.home, ...exDetails(info, y) }
+  reit.details = { type: 'reit', secId: reit.secId, symbol: reit.symbol, risk: reit.risk, yield: reit.yield, sector: reit.sector, blurb: reit.blurb, country: info.home, eng: ENGINE_V, ...exDetails(info, y) }
 
   const br = bondRate(cid, y)
   const pDef = defaultChance(cid, y)
@@ -799,6 +817,10 @@ function buyBlock(g: GameState, q: Quote): string | null {
 
 /** Buy `amount` dollars of a security (fees come out of the amount). Returns true on success. */
 export function buySecurity(g: GameState, secId: string, amount: number): boolean {
+  // An old holding may be swapped for its slot's company on the spot: "buy more" follows it.
+  const old = findHolding(g, secId)
+  normalizeHoldings(g)
+  if (old) secId = str(old.details.secId, secId)
   const held = findHolding(g, secId)
   const q = allQuotes(listing(g)).find((x) => x.secId === secId) ?? (held ? holdingQuote(g, held) : undefined)
   if (!q) {
@@ -1278,7 +1300,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       const nodes: MenuNode[] = []
       const rows: string[] = []
       if (q.type !== 'savings' && q.type !== 'bond') rows.push(`Price: ${priceText(q.price)}${q.ret !== null ? ` (${change(q.ret)} this year)` : ''}`)
-      rows.push(`${q.sector} · ${riskText(q.risk)}`)
+      rows.push(`${q.sector} · ${q.size ? `${q.size} (rough) · ` : ''}${riskText(q.risk)}`)
       if (q.type === 'bond') rows.push(`Coupon: ${rateText(q.yield)} a year, paid as taxable income. Sold in ${formatMoney(1_000)} bonds.`)
       else if (q.type === 'savings') rows.push(`Interest: ${rateText(q.yield)} a year, added to the balance and taxed as income.`)
       else if (q.yield > 0) rows.push(`${q.type === 'crypto' ? 'Rewards' : q.type === 'reit' ? 'Payout' : 'Dividend'}: ${rateText(q.yield)} a year, taxed as income.`)
@@ -1321,12 +1343,25 @@ const stocksMenu: MenuGroup = {
     const l = listing(g)
     const block = stockMarketBlock(g, l.info)
     const note = isHistoryYear(g.year) && !block ? marketNote(l.info.home, g.year) : ''
-    return `${marketLine(l.info, l.year)}${note ? `\n📰 ${note}` : ''}\n${exchangeName(l.info, g.year)} (${l.info.ex.code}): the biggest companies in ${theCountry(l.info.home)}. Prices move once a year, and every stock rides the market's mood.${block ? `\n🚫 ${block}` : ''}`
+    const real = realPlanOf(l.info) ? ' Company names are real; the prices are simulated from the market and its sectors, not real quotes.' : ''
+    return `${marketLine(l.info, l.year)}${note ? `\n📰 ${note}` : ''}\n${exchangeName(l.info, g.year)} (${l.info.ex.code}): the biggest companies in ${theCountry(l.info.home)}. Prices move once a year, and every stock rides the market's mood.${real}${block ? `\n🚫 ${block}` : ''}`
   },
   children: (g) => {
     const l = listing(g)
     if (noStockMarket(g, l.info)) return [{ type: 'info', id: 'inv-stocks-none', text: stockMarketBlock(g, l.info) ?? 'There is no stock market here right now.', emoji: '🚫' }]
-    return l.stocks.map((q) => offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
+    // Real listings come biggest first, under their rough size class (approximate, as of this year).
+    const sized = l.stocks.some((q) => q.size)
+    const ordered = sized ? [...l.stocks].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0) || num(a.details.slot) - num(b.details.slot)) : l.stocks
+    const nodes: MenuNode[] = []
+    let last = ''
+    for (const q of ordered) {
+      if (sized && q.size && q.size !== last) {
+        last = q.size
+        nodes.push({ type: 'heading', id: `inv-stocks-h-${q.size}`, label: q.size === 'Small-cap' ? 'Smaller companies' : `${q.size}s (rough size)` })
+      }
+      nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
+    }
+    return nodes
   },
 }
 
@@ -1421,7 +1456,7 @@ function goldNode(g: GameState): MenuGroup {
 // ---------------------------------------------------------------------------
 // Financial news
 
-const ANALYST_FIRMS = ['Goldfinch & Partners', 'Morgan Stanwell', 'Bullhorn Capital', 'Lynch & Merrily', 'Bearington Research', 'Hedgehog Advisors']
+const ANALYST_FIRMS = ['Fairweather Research', 'Northgate Capital', 'Bullhorn Capital', 'Harbor & Pine Securities', 'Bearington Research', 'Hedgehog Advisors']
 
 function newsLines(g: GameState): string[] {
   const l = listing(g)
@@ -1450,9 +1485,10 @@ function newsLines(g: GameState): string[] {
       if (takenOver) break
       if (s.ended) {
         const old = s.ended.id.match(/s(\d+)g(\d+)$/)
-        const prev = old ? eraIdentity(companyDef(l.info, Number(old[1]), Number(old[2])), y).name : null
-        if (prev) lines.push(s.ended.kind === 'bankrupt' ? `💀 ${prev} went bankrupt. Its shares are worthless.` : `🤝 ${prev} was bought out at a ${Math.round(s.ended.premium * 100)}% premium.`)
-        lines.push(`🔔 New listing: ${nameOf(s.slot, s.gen)} (${def.symbol}) went public.`)
+        const prev = old ? eraIdentity(companyDef(l.info, Number(old[1]), Number(old[2])), y - 1).name : null
+        const real = isRealSecId(s.ended.id)
+        if (prev) lines.push(s.ended.kind === 'bankrupt' ? `💀 ${prev} went bankrupt. Its shares are worthless.` : real ? `🤝 ${prev} merged with, or was taken over by, another company.${s.ended.premium < 0 ? ' Its shareholders were paid out at well below the last price.' : ' Its shareholders were paid out.'}` : `🤝 ${prev} was bought out at a ${Math.round(s.ended.premium * 100)}% premium.`)
+        lines.push(`🔔 New listing: ${nameOf(s.slot, s.gen)} (${def.symbol}) joined the market.`)
       } else if (s.event === 'split' && s.ratio) lines.push(`✂️ ${nameOf(s.slot, s.gen)} did a ${s.ratio}-for-1 stock split.`)
       else if (s.event === 'scandal') lines.push(`🚨 ${nameOf(s.slot, s.gen)} plunged after an accounting scandal.`)
       else if (s.event === 'surge') lines.push(`🚀 ${nameOf(s.slot, s.gen)} soared on a blockbuster product launch.`)
@@ -1523,11 +1559,19 @@ function seededTip(g: GameState, info: ExInfo): string | null {
   if (!candidates.length) return null
   const s = candidates[h % candidates.length]
   const def = companyDef(info, s.slot, s.gen)
+  const right = (h >>> 8) % 3 !== 0
+  const firm = ANALYST_FIRMS[(h >>> 4) % ANALYST_FIRMS.length]
+  if (def.real) {
+    // No opinions about real companies: the call is about the company's whole sector on this market.
+    const peers = candidates.filter((c) => companyDef(info, c.slot, c.gen).sector === def.sector)
+    const avg = peers.reduce((sum, c) => sum + next.stocks[c.slot].ret, 0) / Math.max(1, peers.length)
+    const label = eraIdentity(def, g.year).label.toLowerCase()
+    const bullishSector = right ? avg > 0 : !(avg > 0)
+    return bullishSector ? `📣 ${firm} is bullish on ${label} stocks for next year.` : `📣 ${firm} is cautious on ${label} stocks going into next year.`
+  }
   const name = eraIdentity(def, g.year).name
   const up = next.stocks[s.slot].ret > 0
-  const right = (h >>> 8) % 3 !== 0
   const bullish = right ? up : !up
-  const firm = ANALYST_FIRMS[(h >>> 4) % ANALYST_FIRMS.length]
   return bullish ? `📣 ${firm} rates ${name} (${def.symbol}) a strong buy for next year.` : `📣 ${firm} warns that ${name} (${def.symbol}) is overvalued going into next year.`
 }
 
@@ -1751,6 +1795,10 @@ function eventNews(a: Asset, mv: YearlyMove, valueBefore: number): News | null {
           log: `${a.name} went bankrupt and my shares became worthless.`,
         }
       case 'acquired':
+        if (isRealSecId(str(a.details.secId))) {
+          if (mv.ended.premium < 0) return { priority: 80, title: 'Merger', text: `${label} was taken over by another company and stopped trading under its own name. Your shares were cashed out at well below their last price in the deal.`, emoji: '🤝', tone: 'bad', log: `${a.name} was taken over and my shares were cashed out at a loss.` }
+          return { priority: 80, title: 'Merger', text: `${label} merged with, or was taken over by, another company and stopped trading under its own name. Your shares were cashed out in the deal.`, emoji: '🤝', tone: 'good', log: `${a.name} was merged away and my shares were cashed out.` }
+        }
         return { priority: 80, title: 'Buyout!', text: `${label} was bought by a bigger rival at a ${Math.round(mv.ended.premium * 100)}% premium. Your shares were cashed out automatically.`, emoji: '🤝', tone: 'good', log: `${a.name} was bought out and my shares were cashed out at a premium.` }
       case 'matured':
         return { priority: 35, title: 'Bond Matured', text: `Your ${a.name} matured, and the government paid back ${formatMoney(valueBefore * (1 + mv.ret))}.`, emoji: '🏛️', tone: 'neutral', log: `My ${a.name} matured and paid me back ${formatMoney(valueBefore * (1 + mv.ret))}.` }
@@ -1803,16 +1851,16 @@ function marketNews(g: GameState, held: Asset[]): News | null {
     const cy = cryptoYear(fam(g), anchor(g), g.year)
     if (cy.winter) return { priority: 62, title: 'Crypto Winter', text: `The crypto market fell ${absPct(cy.ret)} this year. ${isHistoryYear(g.year) && g.year < 2020 ? 'Early believers say they are "just holding" and have stopped checking the price.' : 'Laser-eyed profile pictures are being quietly changed back.'}`, emoji: '🥶', tone: 'bad', log: 'A crypto winter hammered my coins.' }
     if (cy.mania) {
-      // Only coins that exist yet (no Aetherium before 2015).
+      // Only coins that exist yet (no Ethereum before 2015).
       const live = listedCoins(cy).map((c) => coinDef(c.slot, c.gen)).filter((d) => !d.stable).map((d) => d.name)
-      const names = isHistoryYear(g.year) ? (live.length ? live : ['Bitbuck']) : ['Corgicoin', 'Bitbuck', 'Aetherium']
+      const names = isHistoryYear(g.year) ? (live.length ? live : ['Bitcoin']) : ['Dogecoin', 'Bitcoin', 'Ethereum']
       return { priority: 52, title: 'Crypto Mania', text: `The crypto market rose ${absPct(cy.ret)} this year. Your barber asked if you've heard of ${pick(g, names)}.`, emoji: '🤑', tone: 'good', log: 'Crypto went wild this year and my coins soared.' }
     }
   }
   return null
 }
 
-const CRYPTO_EXCHANGES = ['CoinVault', 'BlockBarn', 'HODLHub', 'Satoshi Safe', 'CryptoCastle', 'MoonBase Exchange']
+const CRYPTO_EXCHANGES = ['Coinucopia', 'BlockBarn', 'HODLHub', 'Satoshi Safe', 'CryptoCastle', 'MoonBase Exchange']
 
 /** A stock or penny stock holding takes its company's name for the new era (logged once). */
 function renameForEra(g: GameState, a: Asset): void {
@@ -1824,7 +1872,10 @@ function renameForEra(g: GameState, a: Asset): void {
     if (str(a.details.secId) !== `${info.key}#fund`) return
     const fn = fundName(info, g.year)
     if (fn.name === a.name) return
-    log(g, str(a.details.sector) === 'Investment trust' && !fn.trust ? `My ${a.name} cut its fees and became the ${fn.name}.` : `My ${a.name} is now called the ${fn.name}.`)
+    // Real fund providers are different products: the holding moves into the new one, it is not a rename.
+    const real = allFundProviderNames()
+    const switched = (real.includes(a.name) || real.includes(fn.name)) && !(a.name.startsWith('Lyxor') && fn.name.startsWith('Amundi'))
+    log(g, switched ? `My ${a.name} holding moved into the ${fn.name}.` : str(a.details.sector) === 'Investment trust' && !fn.trust ? `My ${a.name} cut its fees and became the ${fn.name}.` : `My ${a.name} is now called the ${fn.name}.`)
     a.name = fn.name
     a.details.market = indexName(info, g.year)
     a.details.sector = fn.trust ? 'Investment trust' : 'Index fund'
@@ -1864,10 +1915,53 @@ function pruneShocks(g: GameState): void {
 }
 
 /**
+ * Holdings from before the market named real companies keep their value: the first time they are
+ * touched they are re-anchored to the quote of their exchange (same value, new unit price), and a
+ * stock whose company is no longer in its slot becomes a share of the slot's company, in a share
+ * swap that costs nothing. Holdings bought since carry the engine stamp and are left alone. In the
+ * yearly step the holding is priced as of last year-end, so the coming year's move still applies.
+ */
+function normalizeHoldings(g: GameState, yearly = false): void {
+  const asOf = yearly ? g.year - 1 : g.year
+  for (const a of investmentHoldings(g)) {
+    const t = typeOf(a)
+    if (t !== 'stock' && t !== 'penny' && t !== 'index' && t !== 'reit') continue
+    if (num(a.details.eng) >= ENGINE_V) continue
+    const info = holdingExchange(a)
+    const ey = exchangeYear(fam(g), anchor(g), info, asOf)
+    const id = str(a.details.secId)
+    const value = holdingValue(a)
+    let cur: SecYear | undefined
+    let factor = 1
+    if (t === 'index') {
+      cur = ey.fund
+      factor = indexShockFactor(g, info.key, asOf)
+    } else if (t === 'reit') cur = ey.reit
+    else {
+      cur = (t === 'penny' ? ey.pennies : ey.stocks)[Math.round(num(a.details.slot, -1))]
+      if (cur) factor = shockFactor(g, cur.id, asOf)
+    }
+    if (!cur || !(cur.price > 0) || !(factor > 0)) continue
+    const price = cur.price * factor
+    if (cur.id !== id && (t === 'stock' || t === 'penny')) {
+      const q = stockQuote(info, cur, t === 'penny', asOf, null)
+      const before = a.name
+      a.details = { ...a.details, ...q.details }
+      a.name = q.name
+      a.emoji = q.emoji
+      if (before !== q.name) log(g, `My shares in ${before} were swapped for shares in ${q.name} when the market's listings were reorganised.`)
+    }
+    setPosition(a, value / price, price, basis(a))
+    a.details.eng = ENGINE_V
+  }
+}
+
+/**
  * Re-price the player's stocks, index funds and coins at today's quotes, right after news moved
  * the market mid-year (a ban, a contract...). Unrealized: nothing is taxed or sold.
  */
 export function revalueHoldings(g: GameState): void {
+  normalizeHoldings(g)
   const quotes = allQuotes(listing(g))
   for (const a of investmentHoldings(g)) {
     const t = typeOf(a)
@@ -1885,6 +1979,7 @@ export function yearlyInvestments(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   pruneShocks(g)
+  normalizeHoldings(g, true)
   const held = investmentHoldings(g)
   if (!held.length) {
     // Non-investors only hear about the really big days.

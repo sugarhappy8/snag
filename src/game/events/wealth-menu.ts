@@ -12,6 +12,7 @@ import { getCountry } from '../world'
 import { cars, eraPick, flights } from './era'
 import { addVenture, carLabel, carPrice, setAllowance, ventureOdds, VENTURE_PARTIAL, type CarType } from './wealth-kids'
 import type { Ask } from './wealth-ask'
+import { isEstranged } from './will-core'
 // The money-request popups' scripts (registered on import).
 import './wealth-resolve'
 import {
@@ -59,7 +60,7 @@ function pr(p: Person) {
 
 /** Who gets a Money section: family and friends, while you're an adult. */
 export function hasMoneyMenu(g: GameState, p: Person): boolean {
-  if (!p.alive || p.relation === 'pet' || p.data.disowned === true || g.character.age < 18 || !g.character.alive) return false
+  if (!p.alive || p.relation === 'pet' || p.data.disowned === true || isEstranged(g, p) || g.character.age < 18 || !g.character.alive) return false
   // Babies and toddlers have nothing to ask for or be given yet (pocket money starts at 4).
   if (isDescendant(p)) return p.age >= 4
   return isParent(p) || isSibling(p) || isPartner(p) || isFriend(p) || p.relation === 'grandparent'

@@ -4,6 +4,8 @@
 // crypto pump-and-dumps, options trading and online scams (computer/money.ts).
 import { devNodes, noComputerNodes, yearlyDev } from './computer/dev'
 import { moneyNodes, yearlyMoney } from './computer/money'
+import { cafeAvailable } from './activities/pastimes'
+import { onlineNodes, yearlyOnline } from './computer/online'
 import { codingSkill } from './computer/skills'
 import type { Asset, GameState, MenuGroup } from './types'
 
@@ -63,10 +65,11 @@ export const computerMenu: MenuGroup = {
     if (!ownsComputer(g)) {
       return [
         { type: 'info', id: 'computer.none', emoji: '\u{1F50C}', text: "You don't have a computer. Buy a laptop or gaming PC at the Electronics Store (Activities › Shopping)." },
+        ...(cafeAvailable(g) ? [{ type: 'info' as const, id: 'computer.cafe', emoji: '\u{2615}', text: 'A cyber cafe in town rents computers by the hour (Activities \u203A Hang Out \u203A Cyber Cafe).' }] : []),
         ...noComputerNodes(g),
       ]
     }
-    return [...devNodes(g), ...moneyNodes(g)]
+    return [...devNodes(g), ...moneyNodes(g), ...onlineNodes(g)]
   },
 }
 
@@ -75,5 +78,7 @@ export function yearlyComputer(g: GameState): void {
   yearlyDev(g)
   if (!g.character.alive) return
   yearlyMoney(g)
+  if (!g.character.alive) return
+  yearlyOnline(g)
 }
 

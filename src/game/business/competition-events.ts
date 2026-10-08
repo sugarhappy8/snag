@@ -15,6 +15,8 @@ import { familyId } from './competition-roster'
 import { antitrustOf, edgeValue, marketOfBiz, marketOwner, marketViewOf, saveMarket, shareText } from './competition'
 import { scaledCost } from './competition-moves'
 import { techOf } from './deeptech-core'
+import { hasSupplyChain, SUPPLY_HIT, SUPPLY_SHIELDED } from './market-reach'
+import { placeName } from './market-places'
 import { isDeepTech } from './deeptech-state'
 import { bizWorth, fxValue, localEcon, staffPower, type Worth } from './economy'
 import { sellBusiness } from './exit'
@@ -88,14 +90,14 @@ const BID = defineScript('business.comp.bid', (g, choice, data) => {
   const blockP = num(d.blockP)
   const regulator = str(d.regulator, 'the regulators')
   if (choice === 'decline') {
-    tell(g, 'Not for Sale', `You told ${name} that ${a.name} is not for sale. Their CEO said "we'll see" in a tone you didn't love.`, '\u{1F645}')
+    tell(g, 'Not for Sale', `You told ${name} that ${a.name} is not for sale. They said they would keep an eye on the market.`, '\u{1F645}')
     // Spurned giants compete harder for a while.
     modRival(b, str(d.rivalId), 1.08, g.year + 1)
     return
   }
   const price = choice === 'counter' ? Math.round(offer * 1.2) : offer
   if (choice === 'counter' && !chance(g, BID_COUNTER)) {
-    tell(g, 'They Walked', `${name} called your counteroffer "a fantasy" and walked away.`, '\u{1F6B6}')
+    tell(g, 'They Walked', `${name} passed on your counteroffer and walked away.`, '\u{1F6B6}')
     return
   }
   if (chance(g, blockP)) {
@@ -191,14 +193,25 @@ const COPYCAT = defineScript('business.comp.copycat', (g, choice, data) => {
     const cost = pay(b, innovateCost(b))
     b.quality = clampN(b.quality + 5, 0, 100)
     setEdge(b, 1.06, g.year + 1, g.year)
-    tell(g, 'Out-Innovated', `You spent ${formatMoney(cost)} shipping the next version of ${product} before ${name} finished copying the last one. Quality is up to ${b.quality}%.`, '\u{1F680}', 'good')
+    tell(g, 'Out-Innovated', `You spent ${formatMoney(cost)} shipping the next version of ${product} before ${name} could get its rival product off the ground. Quality is up to ${b.quality}%.`, '\u{1F680}', 'good')
+    return
+  }
+  if (choice === 'market') {
+    const cost = pay(b, marketCost(b))
+    b.brand = clampN(b.brand + 4, 0, 100)
+    setEdge(b, 1.04, g.year + 1, g.year)
+    tell(g, 'Out-Marketed', `You spent ${formatMoney(cost)} reminding everyone why ${product} came first. Brand is up to ${b.brand}%, and ${name}'s launch got a lot less attention than it hoped for.`, '\u{1F4E3}', 'good')
     return
   }
   setEdge(b, 0.9, g.year + 1, g.year)
   const p = b.products.find((y) => y.name === product)
   if (p) p.boost = round2(p.boost * 0.6)
-  tell(g, 'Imitation, Flattery, Etc.', `You let ${name}'s cheaper copy of ${product} slide. Some of your customers did too: straight to them.`, '\u{1F937}', 'bad')
+  tell(g, 'Letting It Slide', `You let ${name}'s rival product slide. Some of your customers did too: straight to them.`, '\u{1F937}', 'bad')
 })
+
+function marketCost(b: BizState): number {
+  return scaledCost(b, 25_000, 0.02)
+}
 
 function presentCopycat(g: GameState, a: Asset, b: BizState): void {
   const v = marketViewOf(g, b)
@@ -206,9 +219,13 @@ function presentCopycat(g: GameState, a: Asset, b: BizState): void {
   if (!pool.length || !b.products.length) return
   const r = pick(g, pool)
   const product = [...b.products].sort((x, y) => y.launched - x.launched)[0].name
+  // Only a fictional challenger can be a "copycat" you could take to court; a real company's
+  // launch is simply competition.
+  const lawsuit = !r.real
   const choices: ChoiceOption[] = [
-    { id: 'sue', label: `Sue them (~${money(suitCost(b))})`, emoji: '\u{2696}\u{FE0F}' },
+    ...(lawsuit ? [{ id: 'sue', label: `Sue them (~${money(suitCost(b))})`, emoji: '\u{2696}\u{FE0F}' }] : []),
     { id: 'innovate', label: `Out-innovate them (~${money(innovateCost(b))})`, emoji: '\u{1F680}' },
+    ...(lawsuit ? [] : [{ id: 'market', label: `Out-market them (~${money(marketCost(b))})`, emoji: '\u{1F4E3}' }]),
     { id: 'ignore', label: 'Let it go', emoji: '\u{1F937}' },
   ]
   markBest(
@@ -218,9 +235,10 @@ function presentCopycat(g: GameState, a: Asset, b: BizState): void {
       const p = suitWinP(b)
       const relief = 1 / Math.max(0.5, 1 - r.share * 0.25)
       return {
-        sue: -suitCost(b) + p * (suitCost(b) * 1.5 + edgeValue(g, b, w, relief, 2)) + (1 - p) * edgeValue(g, b, w, 0.93, 2),
+        ...(lawsuit ? { sue: -suitCost(b) + p * (suitCost(b) * 1.5 + edgeValue(g, b, w, relief, 2)) + (1 - p) * edgeValue(g, b, w, 0.93, 2) } : {}),
         innovate: fxValue(g, b, w, { cash: -innovateCost(b), quality: 5 }) + edgeValue(g, b, w, 1.06, 2),
-        // Letting it slide also takes 40% of the copied line's pull for the rest of its life.
+        ...(lawsuit ? {} : { market: fxValue(g, b, w, { cash: -marketCost(b), brand: 4 }) + edgeValue(g, b, w, 1.04, 2) }),
+        // Letting it slide also takes 40% of the line's pull for the rest of its life.
         ignore: edgeValue(g, b, w, 0.9, 2) - w.contrib * (b.products.find((p) => p.name === product)?.boost ?? 0) * 0.4 * 2.5,
       }
     }),
@@ -229,8 +247,10 @@ function presentCopycat(g: GameState, a: Asset, b: BizState): void {
   scriptChoice(
     g,
     COPYCAT,
-    'Copycat!',
-    `${r.name} (${getCountry(r.hq).name}) just launched a suspiciously familiar version of your ${product}. Same features, same colors, 20% cheaper, and a press release calling it "revolutionary".`,
+    lawsuit ? 'Copycat!' : 'A Rival Launch',
+    lawsuit
+      ? `${r.name} (${placeName(r.hq)}) just launched a suspiciously familiar version of your ${product}. Same features, same colors, 20% cheaper, and a press release calling it "revolutionary".`
+      : `${r.name} (${placeName(r.hq)}) just launched a rival to your ${product}: similar features, 20% cheaper, and a big marketing push behind it. Customers are noticing.`,
     choices,
     { emoji: '\u{1F4CB}', data: { assetId: a.id, rival: r.name, rivalId: r.id, product } },
   )
@@ -262,7 +282,7 @@ const PRICE_WAR = defineScript('business.comp.priceWar', (g, choice, data) => {
     return
   }
   setEdge(b, 0.8, g.year, g.year)
-  tell(g, 'Waiting It Out', `You held your prices and waited for ${name} to run out of money. This year a lot of your customers went bargain hunting with them.`, '\u{231B}', 'bad')
+  tell(g, 'Waiting It Out', `You held your prices and waited for the discount season to pass. This year a lot of your customers went bargain hunting with ${name}.`, '\u{231B}', 'bad')
 })
 
 function presentPriceWar(g: GameState, a: Asset, b: BizState): void {
@@ -287,7 +307,7 @@ function presentPriceWar(g: GameState, a: Asset, b: BizState): void {
     g,
     PRICE_WAR,
     'Price War!',
-    `${r.name}, with ${shareText(r.share)} of the ${v.noun} market, slashed its prices by a fifth overnight. Analysts call it "an attempt to starve out smaller rivals", and they mean you.`,
+    `${r.name}, with ${shareText(r.share)} of the ${v.noun} market, cut its prices by a fifth to win share. Analysts expect the whole market to feel it, and ${a.name} sells in the same aisles.`,
     choices,
     { emoji: '\u{1F4C9}', data: { assetId: a.id, rival: r.name } },
   )
@@ -340,9 +360,14 @@ const SCANDAL = defineScript('business.comp.scandal', (g, choice, data) => {
   tell(g, 'Taking the High Road', `You told reporters you "wish everyone at ${name} the best". It made you look good: brand up to ${b.brand}%.`, '\u{1F607}', 'good')
 })
 
+/** Scandals are only ever about fictional companies: real ones are never accused of anything here. */
+function fictionalPool(v: ReturnType<typeof marketViewOf>): ReturnType<typeof marketViewOf>['rivals'] {
+  return v.rivals.filter((r) => !r.legacy && !r.real).slice(0, 4)
+}
+
 function presentScandal(g: GameState, a: Asset, b: BizState): void {
   const v = marketViewOf(g, b)
-  const pool = v.rivals.filter((r) => !r.legacy).slice(0, 4)
+  const pool = fictionalPool(v)
   if (!pool.length) return
   const r = pick(g, pool)
   // Customers flee the rival whatever you do.
@@ -369,6 +394,107 @@ function presentScandal(g: GameState, a: Asset, b: BizState): void {
     `Your rival ${r.name} is drowning in headlines over ${what}. Its customers are angry and its staff are polishing their résumés. Whatever you do, some of them are coming your way.`,
     choices,
     { emoji: '\u{1F4F0}', data: { assetId: a.id, rival: r.name, rivalId: r.id } },
+  )
+}
+
+// ---------------------------------------------------------------------------
+// A rival makes a big, perfectly ordinary move
+
+const RIVAL_MOVES: { text: (home: boolean) => string; from?: number }[] = [
+  { text: () => 'opened a wave of splashy flagship locations' },
+  { text: () => 'launched a fresh product line aimed straight at your customers' },
+  { text: (home) => (home ? 'announced a big expansion across the whole country' : 'announced a big push into your home market') },
+  { text: () => 'kicked off a huge promotional season' },
+  { text: () => 'signed a distribution partnership that puts it on a lot more shelves', from: 1950 },
+  { text: () => 'rolled out a loyalty program with real rewards', from: 1980 },
+]
+
+function surgeCost(b: BizState): number {
+  return scaledCost(b, 25_000, 0.02)
+}
+
+const RIVAL_MOVE = defineScript('business.comp.rivalMove', (g, choice, data) => {
+  const x = ctxOf(g, data)
+  if (!x) return
+  const { a, b, d } = x
+  const name = str(d.rival, 'a rival')
+  if (choice === 'promote') {
+    const cost = pay(b, surgeCost(b))
+    setEdge(b, 1.06, g.year + 1, g.year)
+    b.brand = clampN(b.brand + 2, 0, 100)
+    tell(g, 'Counter-Programming', `You spent ${formatMoney(cost)} on a promotion of your own the week ${name} made its move. Customers stayed put, mostly.`, '\u{1F4E3}', 'good')
+    return
+  }
+  if (choice === 'match') {
+    b.price = round2(Math.max(0.01, b.price * 0.92))
+    promisePrice(g, a.id, b.price)
+    tell(g, 'Matching the Market', `You trimmed prices 8% and promised to hold them for the year. ${name} brought the customers in; you kept most of them.`, '\u{1F3F7}\u{FE0F}')
+    return
+  }
+  setEdge(b, 0.95, g.year, g.year)
+  tell(g, 'Business as Usual', `You carried on as normal while ${name} soaked up the attention. A few customers went to see what the fuss was about.`, '\u{1F937}', 'bad')
+})
+
+function presentRivalMove(g: GameState, a: Asset, b: BizState): void {
+  const v = marketViewOf(g, b)
+  const pool = v.rivals.filter((r) => !r.legacy).slice(0, 5)
+  if (!pool.length) return
+  const r = pick(g, pool)
+  const moves = RIVAL_MOVES.filter((m) => (m.from ?? 0) <= g.year)
+  const what = pick(g, moves).text(r.hq === b.countryId)
+  // Its customers come from everyone in the market: it gets stronger for a year whatever you do.
+  modRival(b, r.id, 1.08, g.year + 1)
+  const canMatch = b.price > 0 && b.industry !== 'gameStudio'
+  const choices: ChoiceOption[] = [
+    { id: 'promote', label: `Counter with a promotion (~${money(surgeCost(b))})`, emoji: '\u{1F4E3}' },
+    ...(canMatch ? [{ id: 'match', label: 'Trim prices 8%', emoji: '\u{1F3F7}\u{FE0F}' }] : []),
+    { id: 'ignore', label: 'Carry on as usual', emoji: '\u{1F937}' },
+  ]
+  markBest(
+    g,
+    choices,
+    scored(g, b, (w) => ({
+      promote: fxValue(g, b, w, { cash: -surgeCost(b), brand: 2 }) + edgeValue(g, b, w, 1.06, 2),
+      ...(canMatch ? { match: fxValue(g, b, w, { priceCut: 0.08 }) } : {}),
+      ignore: edgeValue(g, b, w, 0.95, 1),
+    })),
+  )
+  scriptChoice(
+    g,
+    RIVAL_MOVE,
+    `${r.name} Makes a Move`,
+    `${r.name} (${placeName(r.hq)}), ${r.share >= 0.05 ? `with ${shareText(r.share)} of the ${v.noun} market,` : 'a competitor,'} just ${what}. Expect it to win customers from everyone in the market, ${a.name} included.`,
+    choices,
+    { emoji: '\u{1F3C1}', data: { assetId: a.id, rival: r.name, rivalId: r.id } },
+  )
+}
+
+// ---------------------------------------------------------------------------
+// A supply-chain disruption
+
+const DISRUPTIONS: { text: string; from?: number }[] = [
+  { text: 'a shipping crunch left containers stuck at the ports', from: 1956 },
+  { text: 'a shortage of a key component held up deliveries' },
+  { text: 'new export controls on a key technology held up suppliers', from: 1949 },
+  { text: 'a surprise round of tariffs hit your suppliers', from: 1900 },
+  { text: 'a fire at a major supplier\u2019s plant held up shipments' },
+]
+
+function presentSupplyShock(g: GameState, a: Asset, b: BizState): void {
+  const st = marketOfBiz(b)
+  const shielded = st.supplyUntil >= g.year
+  const options = DISRUPTIONS.filter((d) => (d.from ?? 0) <= g.year)
+  const what = pick(g, options).text
+  setEdge(b, shielded ? SUPPLY_SHIELDED : SUPPLY_HIT, g.year, g.year)
+  b.costShock = Math.max(b.costShock, shielded ? 1.02 : 1.08)
+  tell(
+    g,
+    'Supply Chain Disruption',
+    shielded
+      ? `${cap(what)}. Because ${a.name} spread its suppliers and routes around the world, the damage was a scratch: a few late deliveries and a slightly higher bill.`
+      : `${cap(what)}. ${a.name} depends on a handful of suppliers and one route, so customers waited and costs rose. Diversifying your supply chain (Market & Competition, Strategy) would have cushioned it.`,
+    '\u{1F6A2}',
+    shielded ? 'neutral' : 'bad',
   )
 }
 
@@ -491,7 +617,9 @@ export const COMPETITION_EVENTS: CompetitionEvent[] = [
     },
     present: presentPriceWar,
   },
-  { id: 'rivalScandal', weight: (g, b) => (booked(b) && marketViewOf(g, b).rivals.some((r) => !r.legacy) ? (worldly(b) ? 0.3 : 0.08) : 0), present: presentScandal },
+  { id: 'rivalScandal', weight: (g, b) => (booked(b) && fictionalPool(marketViewOf(g, b)).length > 0 ? (worldly(b) ? 0.3 : 0.08) : 0), present: presentScandal },
+  { id: 'rivalMove', weight: (g, b) => (booked(b) && marketViewOf(g, b).rivals.some((r) => !r.legacy) ? (worldly(b) ? 0.4 : 0.2) : 0), present: presentRivalMove },
+  { id: 'supplyShock', weight: (_g, b) => (booked(b) && hasSupplyChain(b.industry) && b.industry !== 'gameStudio' ? 0.2 : 0), present: presentSupplyShock },
   {
     id: 'newcomer',
     weight: (g, b) => {
@@ -614,7 +742,7 @@ const ANTITRUST = defineScript('business.comp.antitrust', (g, choice, data) => {
   addHidden(g, 'karma', -4)
   if (chance(g, lobbyWinP(r))) {
     log(g, `${a.name}'s lobbyists made an antitrust case disappear.`, 'neutral')
-    tell(g, 'Case Closed (Quietly)', `${formatMoney(cost)} of lobbying later, ${r.name} decided the case "no longer warranted resources". Nobody can quite say why.`, '\u{1F92B}')
+    tell(g, 'Case Closed (Quietly)', `${formatMoney(cost)} of lobbying later, ${r.name} decided the case "no longer warranted resources".`, '\u{1F92B}')
     return
   }
   const paid = pay(b, fine * 1.2)
@@ -651,7 +779,7 @@ export function maybeAntitrust(g: GameState, a: Asset, b: BizState, year: number
   if (st.antitrust.last > 0 && year - st.antitrust.last < 4) return
   const going = localEcon(b.industry, b.countryId, b.city).goingPrice
   const ratio = going > 0 && b.last ? b.last.price / going : 1
-  const view = antitrustOf(b, Math.max(st.share, st.base), year, ratio)
+  const view = antitrustOf(b, Math.max(st.share, st.base), year, ratio, marketViewOf(g, b).rivals)
   if (view.p <= 0) return
   if (seeded(`${familyId(g.lifeId)}|antitrust|${a.id}|${year}`).next() >= view.p) return
   const r = view.regime

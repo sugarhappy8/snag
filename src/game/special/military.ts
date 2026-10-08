@@ -692,7 +692,15 @@ function maybeWarDraft(g: GameState): void {
     setOwnFlag(g, warKey(war), 'serving')
     return
   }
-  if (rule.studentsDeferredUntil !== undefined && g.year <= rule.studentsDeferredUntil && inUniversity(g)) return
+  if (rule.studentsDeferredUntil !== undefined && g.year <= rule.studentsDeferredUntil && inUniversity(g)) {
+    // The draft-era college: a student's deferment, noted once per war (no dice are rolled either way).
+    const key = `${warKey(war)}.deferred`
+    if (ownFlag(g, key) === undefined) {
+      setOwnFlag(g, key, true)
+      log(g, `My student deferment kept me out of the draft for ${war.name}, for now. Half my class was in college for the same reason.`, 'neutral')
+    }
+    return
+  }
   if (!chance(g, rule.odds)) return
   setOwnFlag(g, warKey(war), 'called')
   const unfit = medicallyUnfit(g)

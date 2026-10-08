@@ -38,7 +38,8 @@ import { hasTalent, talentHint } from './talents'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from './world'
 import { DATING_SITE_GATE, eraOpen } from './computer/era'
 import { hasTech } from './history/timeline'
-import { eraPick, landline, texting } from './events/era'
+import { common, eraPick, landline, texting } from './events/era'
+import { stableRng } from './activities/common'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person, RelationKind } from './types'
 import { businessGone } from './assetHooks'
 
@@ -416,6 +417,21 @@ function fillPronouns(text: string, gender: Gender): string {
     .replaceAll('{his}', p.his)
 }
 
+/**
+ * How the era shifts the odds of asking someone out. A teenager who had to ring the family
+ * landline risked a parent answering (and a sibling listening in); once everybody has a profile
+ * and a feed, a good or bad name travels with you.
+ */
+export function courtshipShift(g: GameState, p: Person): number {
+  const c = g.character
+  let shift = 0
+  if (c.age < 18 && landline(g) && !texting(g) && !common(g, 'internet')) shift -= 0.03
+  if (common(g, 'smartphone') && common(g, 'socialMedia') && ['classmate', 'friend', 'bestFriend', 'coworker'].includes(p.relation)) {
+    shift += clamp((c.hidden.karma - 50) / 500, -0.06, 0.06)
+  }
+  return shift
+}
+
 /** Ask someone already in your life (classmate, coworker, friend, ex) out. */
 export function askOut(g: GameState, p: Person): void {
   const problem = datingProblem(g, p)
@@ -427,6 +443,7 @@ export function askOut(g: GameState, p: Person): void {
   touch(g, p)
   count(g, 'askedOut')
   let odds = 0.25 + p.relationship / 220 + (c.stats.looks - p.stats.looks) / 250
+  odds += courtshipShift(g, p)
   if (hasTrait(p, 'flirty', 'romantic')) odds += 0.1
   if (hasTrait(p, 'shy', 'serious')) odds -= 0.05
   if (p.data.married === true) odds -= 0.25
@@ -464,7 +481,11 @@ function meetLine(g: GameState, k: Candidate): string {
       ? ['at a Saturday night dance', 'at the soda fountain', 'through a friend of a friend', 'at a church social', 'at the county fair']
       : g.year < 1985
         ? ['at a disco', 'through a friend of a friend', 'at a house party', 'at the roller rink', 'at a friend\'s wedding']
-        : ['at a club', 'through a friend of a friend', 'at a house party', 'at a friend\'s wedding', 'at the video store']
+        : g.year < 1996
+          ? ['at a club', 'at the mall', 'through a friend of a friend', 'at a house party', 'at the video store', 'at a friend\'s wedding']
+          : g.year < 2004
+            ? ['at a club', 'at a gig', 'through a friend of a friend', 'at a house party', ...(common(g, 'internet') ? ['in a chat room'] : [])]
+            : ['at a club', 'at a gig', 'through a friend of a friend', 'at a house party', ...(common(g, 'socialMedia') ? ['through a friend\'s page'] : [])]
   // A stable pick (no dice in a popup's wording).
   return `You met someone ${places[(k.firstName.length + k.age) % places.length]}!`
 }
@@ -522,9 +543,25 @@ defineScript('love.date.pick', (g, choice, data) => {
 })
 
 // ---------------------------------------------------------------------------
-// Dating app ("Kindling")
+// Dating apps and sites. The names are the real ones, for the years and places they traded:
+// Match.com (a website from 1995), OkCupid on the first dating phones, Tinder from 2012, Pairs in
+// Japan and Momo in China. Before the internet there were personal ads in the newspaper.
 
-const APP_NAME = 'Kindling'
+export interface AppBrand {
+  name: string
+  gold: string
+  unit: string
+  again: string
+}
+
+export function appBrand(g: GameState): AppBrand {
+  if (g.character.countryId === 'jp' && g.year >= 2012) return { name: 'Pairs', gold: 'Pairs Premium', unit: 'tap', again: 'Browse more profiles' }
+  if (g.character.countryId === 'cn' && g.year >= 2011) return { name: 'Momo', gold: 'Momo VIP', unit: 'tap', again: 'Browse more profiles' }
+  if (g.year >= 2012) return { name: 'Tinder', gold: g.year >= 2017 ? 'Tinder Gold' : g.year >= 2015 ? 'Tinder Plus' : 'Tinder Premium', unit: 'swipe', again: 'Swipe again' }
+  // The first dating phones (2009-2011): OkCupid where it traded (the English-speaking world), Match.com elsewhere.
+  if (['us', 'ca', 'gb', 'ie', 'au', 'nz'].includes(g.character.countryId)) return { name: 'OkCupid', gold: 'OkCupid Premium', unit: 'tap', again: 'Browse more profiles' }
+  return { name: 'Match.com', gold: 'Match.com Premium', unit: 'tap', again: 'Browse more profiles' }
+}
 
 /** How strangers find each other this year: the app, a dating website, or the newspaper's personal ads. */
 interface DatingService {
@@ -545,10 +582,11 @@ interface DatingService {
 
 function datingService(g: GameState): DatingService {
   if (hasTech(g, 'datingApps')) {
-    return { kind: 'app', name: APP_NAME, label: `${APP_NAME} (Dating App)`, goldLabel: `${APP_NAME} Gold`, unit: 'swipe', again: 'Swipe again', close: 'Close the app', via: `the ${APP_NAME} app`, emoji: '\u{1F525}' }
+    const b = appBrand(g)
+    return { kind: 'app', name: b.name, label: `${b.name} (Dating App)`, goldLabel: b.gold, unit: b.unit, again: b.again, close: 'Close the app', via: `the ${b.name} app`, emoji: '\u{1F525}' }
   }
   if (eraOpen(g, DATING_SITE_GATE)) {
-    return { kind: 'site', name: 'LoveLink', label: 'LoveLink (Dating Website)', goldLabel: 'LoveLink Premium', unit: 'message', again: 'Browse more profiles', close: 'Log off', via: 'the LoveLink dating website', emoji: '\u{1F4BB}' }
+    return { kind: 'site', name: 'Match.com', label: 'Match.com (Dating Website)', goldLabel: 'Match.com Premium', unit: 'message', again: 'Browse more profiles', close: 'Log off', via: 'the Match.com dating website', emoji: '\u{1F4BB}' }
   }
   return { kind: 'ads', name: 'Personal Ads', label: 'Personal Ad (Newspaper)', goldLabel: 'Boxed Personal Ad (Front Page)', unit: 'ad', again: 'Read more replies', close: 'Put the paper down', via: 'a personal ad in the newspaper', emoji: '\u{1F4F0}' }
 }
@@ -653,7 +691,7 @@ function appSwipe(g: GameState, f: AppFilters): void {
     wealth: wealthHit ? f.wealth : 'any',
   })
   const miss = wealthHit ? '' : svc.kind === 'ads' ? "\n\n(Nobody that wealthy answered, so here's the best reply in the pile.)" : `\n\n(${svc.kind === 'app' ? 'The app' : 'The site'} couldn't find anyone that wealthy, so here's the next best thing.)`
-  const intro = svc.kind === 'app' ? `${APP_NAME}${f.gold ? ' Gold' : ''} matched you with:` : svc.kind === 'site' ? `${f.gold ? 'LoveLink Premium' : 'LoveLink'} suggested a profile:` : `A letter arrived in reply to your${f.gold ? ' front-page' : ''} personal ad:`
+  const intro = svc.kind === 'app' ? `${f.gold ? svc.goldLabel : svc.name} matched you with:` : svc.kind === 'site' ? `${f.gold ? svc.goldLabel : svc.name} suggested a profile:` : `A letter arrived in reply to your${f.gold ? ' front-page' : ''} personal ad:`
   scriptChoice(
     g,
     'love.app.match',
@@ -691,7 +729,7 @@ defineScript('love.app.match', (g, choice, data) => {
   }
   if (chance(g, 0.12)) {
     addStat(g, 'happiness', -randInt(g, 3, 8))
-    log(g, svc.kind === 'app' ? `My ${APP_NAME} date stood me up.` : 'My blind date stood me up.', 'bad')
+    log(g, svc.kind === 'app' ? `My ${svc.name} date stood me up.` : 'My blind date stood me up.', 'bad')
     const third = svc.kind === 'app' ? `${k.firstName} unmatched you five minutes before the date.` : svc.kind === 'site' ? `${k.firstName} logged off forever five minutes before the date.` : `${k.firstName} sent a letter saying ${pronouns(k.gender).he} had "met someone at the bowling alley."`
     notice(g, svc.name, pick(g, [`${k.firstName} never showed up. You ate breadsticks alone for two hours.`, `${k.firstName} looked nothing like ${pronouns(k.gender).his} ${svc.kind === 'ads' ? 'description' : 'pictures'}, and you both knew it.`, third]), { emoji: '\u{1F494}', tone: 'bad' })
     return
@@ -868,7 +906,7 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
   if (cheating && partner) {
     count(g, 'cheated')
     addHidden(g, 'karma', -3)
-    if (chance(g, 0.25)) {
+    if (chance(g, cheatDetectionOdds(g))) {
       addRelationship(partner, -randInt(g, 25, 45))
       if (partner.relationship < 30 && chance(g, 0.6)) {
         breakUp(g, partner, 'them', `found out you hooked up with ${name}`)
@@ -879,6 +917,19 @@ export function hookUpWith(g: GameState, target: Person | Candidate): void {
       }
     }
   }
+}
+
+/**
+ * The chance a hook-up behind a partner's back comes out. Before everybody carried a phone there
+ * was less to find: no messages, no photographs, no location; with a smartphone and a social
+ * profile everything leaves a trace. The present keeps the long-standing 25%.
+ */
+export function cheatDetectionOdds(g: GameState): number {
+  if (common(g, 'smartphone') && common(g, 'socialMedia')) return 0.25
+  if (common(g, 'smartphone') || texting(g)) return 0.22
+  if (common(g, 'mobilePhone')) return 0.2
+  if (landline(g)) return 0.15
+  return 0.1
 }
 
 // ---------------------------------------------------------------------------
@@ -893,6 +944,10 @@ const BREAKUP_PLAYER = [
   '{He} asked for {his} hoodie back.',
 ]
 const BREAKUP_THEM = [
+  '@smartphone "I think we should see other people." (Sent as a message at 11:58 p.m.)',
+  '@texting,!smartphone "We need to talk." (It was a text message. It was not a talk.)',
+  '@landline,!texting {He} had {his} mother tell you {he} was not home. Four times.',
+  '@!landline {He} sent a short, polite letter and returned the ribbon you gave {him}.',
   '"It\'s not you, it\'s me." (It was you.)',
   '"I think we want different things."',
   '"I need to focus on myself right now."',
@@ -931,9 +986,27 @@ export function breakUp(g: GameState, p: Person, by: 'player' | 'them', reason?:
     addStat(g, 'happiness', -randInt(g, 8, 18))
     log(g, `${fullName(p)} broke up with me.`, 'bad')
     notePerson(p, `Broke up with the player at age ${c.age}${reason ? ` (${reason})` : ''}.`)
-    notice(g, wasEngaged ? 'Engagement Called Off' : 'Dumped', `${p.firstName} broke up with you${reason ? ` because ${pronouns(p.gender).he} ${reason}` : ''}.\n\n${pick(g, BREAKUP_THEM)}`, { emoji: '\u{1F494}', tone: 'bad' })
+    notice(g, wasEngaged ? 'Engagement Called Off' : 'Dumped', `${p.firstName} broke up with you${reason ? ` because ${pronouns(p.gender).he} ${reason}` : ''}.\n\n${fillPronouns(eraPick(g, BREAKUP_THEM), p.gender)}`, { emoji: '\u{1F494}', tone: 'bad' })
   }
   remember(g, `Broke up with ${fullName(p)}.`)
+  breakupFallout(g, p, by)
+}
+
+/**
+ * Break-ups play out in public: the school corridor before social media, the feed after it. A
+ * stable roll (it never touches the game's dice) decides whether this one got around; the cost is a
+ * little more heartache, larger when everybody has a screen.
+ */
+export function breakupFallout(g: GameState, p: Person, by: 'player' | 'them'): void {
+  const c = g.character
+  if (c.age < 13 || c.age > 35) return
+  const online = common(g, 'socialMedia')
+  const odds = (by === 'them' ? 0.3 : 0.2) * (online ? 1.6 : c.age < 19 ? 1 : 0.4)
+  if (stableRng(g, `breakup.${p.id}`)() >= odds) return
+  const hit = online ? 3 : 2
+  addStat(g, 'happiness', -hit)
+  const line = online ? `The break-up with ${p.firstName} was all over the feed by morning.` : c.age < 19 ? `The whole school knew about me and ${p.firstName} by lunchtime.` : `Word of my break-up with ${p.firstName} got around the neighborhood.`
+  log(g, line, 'bad')
 }
 
 /** Turn a fiancé(e) back into a boyfriend/girlfriend. */

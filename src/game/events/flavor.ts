@@ -7,6 +7,7 @@ import { locale, localPick, localSoftDrink } from '../data/locales'
 import type { GameState, Json, Person, Tone } from '../types'
 import { country, friends, grandkids, inUniversity, mother, father, pets, playSport, siblings } from './helpers'
 import { anachronistic, eraOk, eraStrip, kidPrize, movieKind, radioShow, showName, venueExists } from './era'
+import { eraFlavorPools } from './era-life'
 
 type Pool = { key: string; lines: readonly string[]; weight: number; tone?: Tone }
 
@@ -561,6 +562,8 @@ function poolsFor(g: GameState): Pool[] {
     else if (c.money < 500) pools.push({ key: 'broke', lines: BROKE, weight: 3 })
     else if (c.money >= 1_000_000) pools.push({ key: 'rich', lines: RICH, weight: 3 })
   }
+  // The year's own flavor: what an ordinary year felt like in this decade (events/era-life.ts).
+  pools.push(...eraFlavorPools(g))
   return pools
 }
 

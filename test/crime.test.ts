@@ -201,6 +201,24 @@ describe('crime menu', () => {
     if (murder?.type === 'menu') expect(murder.disabledReason?.(teen)).toBeTruthy()
   })
 
+  it('uses plainly fictional bank names for robbery targets', () => {
+    const seen = new Set<string>()
+    for (const countryId of ['us', 'gb']) {
+      for (let seed = 1; seed <= 24; seed++) {
+        const g = adult(seed, 25)
+        g.character.countryId = countryId
+        g.character.city = countryId === 'us' ? 'Chicago' : 'London'
+        action(g, 'crime.bank').run(g)
+        const pick = take(g, 'choice', 'crime.bank.step')
+        for (const choice of pick.choices) if (choice.id !== 'cancel') seen.add(choice.label)
+      }
+    }
+    const names = [...seen].join('\n')
+    expect(names).not.toMatch(/First National|Citizens Savings|Commonwealth Bank/i)
+    expect(names).toMatch(/Copper Lantern|Blue Meridian|Harbor Ledger|Cedar Crown/)
+    expect(names).toMatch(/Civic Ledger|Meridian Trade|Harbor Merchants|Juniper Cooperative/)
+  })
+
   it('burglary: pick a house, search rooms, pocket the loot', () => {
     const g = adult(7)
     action(g, 'crime.burglary').run(g)

@@ -10,6 +10,7 @@ import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
 import { eraOpen, online, PODCAST_GATE } from '../computer/era'
 import { hasTech } from '../history/timeline'
+import { pickBrand } from '../shops/everyday-brands'
 import { socialMediaExists } from './social'
 
 // ---------------------------------------------------------------------------
@@ -157,21 +158,26 @@ const bookAction: MenuAction = {
 // ---------------------------------------------------------------------------
 // Commercial
 
-const BRANDS: [string, string][] = [
-  ['Burger Blast', 'fast food chain'],
-  ['Zoomtastic Motors', 'car company'],
-  ['Volt Rush', 'energy drink'],
-  ['SafeHaven Mutual', 'insurance company'],
-  ["Crunchy O's", 'cereal brand'],
-  ['AirStride', 'sneaker brand'],
-  ['SilkLocks', 'shampoo brand'],
-  ['Ringo Wireless', 'phone carrier'],
-  ['Purrfect Bites', 'cat food brand'],
-  ['SnoozeBarge', 'mattress company'],
-  ['Glint', 'toothpaste brand'],
-  ['Bargain Barn', 'discount store chain'],
-  ['Moo-Moo Farms', 'dairy brand'],
-  ['QuickCash Loans', 'payday lender'],
+/**
+ * What a company asks you to advertise: [registry category, what to call it in the offer]. The brand
+ * itself is a real one from the registry (data/brands-consumer.ts) that trades where you live in
+ * this year; a payday lender stays fictional on purpose.
+ */
+const AD_KINDS: { category: string | null; type: string; segment?: string; fallback?: string }[] = [
+  { category: 'fast-food', type: 'fast food chain' },
+  { category: 'car', type: 'car company' },
+  { category: 'energy-drink', type: 'energy drink' },
+  { category: 'insurer', type: 'insurance company' },
+  { category: 'cereal', type: 'cereal brand' },
+  { category: 'sneakers', type: 'sneaker brand' },
+  { category: 'shampoo', type: 'shampoo brand' },
+  { category: 'telecom', type: 'phone carrier' },
+  { category: 'pet-food', type: 'pet food brand' },
+  { category: 'mattress', type: 'mattress company' },
+  { category: 'toothpaste', type: 'toothpaste brand' },
+  { category: 'department-store', type: 'discount store chain', segment: 'discount' },
+  { category: 'dairy', type: 'dairy brand' },
+  { category: null, type: 'payday lender', fallback: 'QuickCash Loans' },
 ]
 
 const COMMERCIAL_TIERS: { kind: string; min: number; max: number }[] = [
@@ -241,8 +247,15 @@ const commercialAction: MenuAction = {
     const tier = COMMERCIAL_TIERS[tierIdx]
     const within = Math.min(1, Math.max(0, (f - 20 - tierIdx * 20) / 20)) * 0.6 + rand(g) * 0.4
     const pay = Math.round((tier.min + (tier.max - tier.min) * within) / 500) * 500
-    // Phone carriers and energy drinks only advertise once they exist.
-    const [brand, type] = pick(g, BRANDS.filter(([, t]) => (t !== 'phone carrier' || g.year >= 1985) && (t !== 'energy drink' || g.year >= 1987)))
+    // Only brands that trade where you live this year advertise to you (no energy drinks in 1950).
+    const ads = AD_KINDS.map((k) => {
+      if (!k.category) return { type: k.type, name: k.fallback ?? 'QuickCash Loans' }
+      const b = pickBrand(g, k.category, k.segment ? { segment: k.segment } : {})
+      return b ? { type: k.type, name: b.name } : null
+    }).filter((x): x is { type: string; name: string } => x !== null)
+    const ad = pick(g, ads.length ? ads : [{ type: 'local shop', name: 'Corner Shop' }])
+    const brand = ad.name
+    const type = ad.type
     const offer: CommercialOffer = { brand, type, kind: tier.kind, pay }
     scriptChoice(
       g,

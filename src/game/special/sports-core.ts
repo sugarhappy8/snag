@@ -3,6 +3,8 @@
 // cabinet), local popularity, fees parents pay for kids, the Olympic calendar, endorsements and
 // the long-term brain-injury risk of contact sports.
 import { anachronistic } from '../events/era'
+import { allBrands } from '../data/brands'
+import { brandPool, pickBrand } from '../shops/everyday-brands'
 import { addHidden, addStat, count, earnIncome, log, remember, scriptChoice, spend, useYearAction } from '../core'
 import { addCvEntry } from '../cv'
 import { localeOf } from '../data/locales'
@@ -368,25 +370,26 @@ export function yearlyBrain(g: GameState): void {
 // ---------------------------------------------------------------------------
 // Endorsements
 
-const BRANDS: [string, string][] = [
-  ['Stridewell', 'running shoes'],
-  ['Vortex Athletics', 'sportswear'],
-  ['Pulse Energy', 'energy drinks'],
-  ['Glacier Springs', 'bottled water'],
-  ['Summit Chrono', 'luxury watches'],
-  ['Titan Edge', 'razors'],
-  ['Crunch Cola', 'soda'],
-  ['Ironclad Insurance', 'car insurance'],
-  ['Nimbus Audio', 'headphones'],
-  ['FuelUp', 'breakfast cereal'],
-  ['Kinetix', 'sports drinks'],
-  ['Rocket Burger', 'fast food'],
-  ['Lumen Phones', 'smartphones'],
-  ['Heroic Protein', 'protein powder'],
-  ['Marlowe Motors', 'cars'],
-  ['ByteBank', 'banking app'],
-  ['Featherlight', 'deodorant'],
-  ['GrandSlam Gaming Chairs', 'gaming chairs'],
+/** What a brand would pay an athlete to front: [product line in the offer, registry category, segment]. */
+const ENDORSE_KINDS: { product: string; category: string; segment?: string }[] = [
+  { product: 'running shoes', category: 'sneakers' },
+  { product: 'sportswear', category: 'sportswear' },
+  { product: 'energy drinks', category: 'energy-drink' },
+  { product: 'bottled water', category: 'water' },
+  { product: 'luxury watches', category: 'watch' },
+  { product: 'razors', category: 'razor' },
+  { product: 'soda', category: 'soft-drink' },
+  { product: 'car insurance', category: 'insurer' },
+  { product: 'headphones', category: 'electronics', segment: 'audio' },
+  { product: 'breakfast cereal', category: 'cereal' },
+  { product: 'sports drinks', category: 'energy-drink', segment: 'sports' },
+  { product: 'fast food', category: 'fast-food' },
+  { product: 'smartphones', category: 'phone' },
+  { product: 'protein powder', category: 'protein' },
+  { product: 'cars', category: 'car' },
+  { product: 'banking app', category: 'bank' },
+  { product: 'deodorant', category: 'deodorant' },
+  { product: 'gaming chairs', category: 'furniture', segment: 'chair' },
 ]
 
 interface SponsorOffer {
@@ -399,10 +402,15 @@ interface SponsorOffer {
 
 function offerFor(g: GameState, sport: string, appeal: number): SponsorOffer | null {
   const p = sportsProfile(g)
-  const taken = new Set(p.sponsors.map((s) => s.brand))
-  const free = BRANDS.filter(([b, product]) => !taken.has(b) && !anachronistic(g, product))
+  const takenIds = p.sponsors.map((s) => s.brand)
+  // Only real brands that trade where you live this year, and never two deals with the same one.
+  const free = ENDORSE_KINDS.filter((k) => !anachronistic(g, k.product) && brandPool(g, k.category, { ...(k.segment ? { segment: k.segment } : {}), exclude: takenIds.map((n) => allBrands().find((b) => b.name === n)?.id ?? '') }).length > 0)
   if (!free.length) return null
-  const [brand, product] = pick(g, free)
+  const kind = pick(g, free)
+  const real = pickBrand(g, kind.category, { ...(kind.segment ? { segment: kind.segment } : {}), exclude: takenIds.map((n) => allBrands().find((b) => b.name === n)?.id ?? '') })
+  if (!real) return null
+  const brand = real.name
+  const product = kind.product
   const fame = g.character.hidden.fame
   // Superstars get millions per brand; everyone else gets far less (fame matters cubed).
   const base = 4_000 + (fame / 100) ** 3 * 6_000_000 + p.buzz * 3_000

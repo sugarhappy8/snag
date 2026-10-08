@@ -5,11 +5,13 @@
 // of, charity options you couldn't pay for and a Money section for babies.
 import { describe, expect, it } from 'vitest'
 import { askDef } from '../src/game/events/wealth-catalog'
-import { entitlement, readTies, wealthTier } from '../src/game/events/wealth-core'
+import { entitlement, readTies, updateTies, wealthTier } from '../src/game/events/wealth-core'
 import { cutFromWill, setAllowance } from '../src/game/events/wealth-kids'
-import { cashShare, wealthNodes } from '../src/game/events/wealth-menu'
+import { cashShare, hasMoneyMenu, wealthNodes } from '../src/game/events/wealth-menu'
 import { ASK_SCRIPT, BUNDLE_SCRIPT, LESS_SCRIPT, askChoices, presentAsk, presentBundle } from '../src/game/events/wealth-resolve'
-import { requestCandidates } from '../src/game/events/wealth'
+import { folks, mayAsk } from '../src/game/events/wealth-ask'
+import { requestCandidates, yearlyWealth } from '../src/game/events/wealth'
+import { inLineIds, readWl, updateWl } from '../src/game/events/will-core'
 import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { runScript } from '../src/game/scripts'
@@ -62,6 +64,27 @@ describe('wealth review fixes', () => {
     // Keeping it as it is doesn't silently cut it.
     slider.run(g, String(dv))
     expect(readTies(g, kid).allowance).toBe(set)
+  })
+
+  it('treats an estranged child like a disowned child for asks, menus and allowances', () => {
+    const g = richGame(12, 40_000_000)
+    const kid = createPerson(g, { relation: 'child', age: 22, relationship: 80, money: 500 })
+    updateTies(g, kid, (t) => {
+      t.allowance = 25_000
+    })
+    updateWl(g, kid, (w) => {
+      w.estr = true
+    })
+    expect(folks(g, () => true)).not.toContain(kid)
+    expect(mayAsk(g, kid)).toBe(false)
+    expect(hasMoneyMenu(g, kid)).toBe(false)
+    expect(requestCandidates(g, wealthTier(g)).some((c) => c.p?.id === kid.id)).toBe(false)
+    const cash = g.character.money
+    const theirs = kid.money
+    yearlyWealth(g)
+    expect(readTies(g, kid).allowance).toBe(0)
+    expect(g.character.money).toBe(cash)
+    expect(kid.money).toBe(theirs)
   })
 
   it('writes the long-lost relative in the first person in the life log', () => {
@@ -132,10 +155,25 @@ describe('wealth review fixes', () => {
     g.character.willBeneficiaries = [sp.id, a.id, b.id]
     cutFromWill(g, a)
     expect(g.character.willBeneficiaries).toEqual([sp.id, b.id])
+    expect(readWl(g, a).cut).toBe(true)
+    expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'will.tell' && m.personId === a.id)).toBe(true)
     // An even split among the kids becomes an even split among the others.
     g.character.willBeneficiaries = []
     cutFromWill(g, b)
     expect(g.character.willBeneficiaries).toEqual([a.id])
+  })
+
+  it('does not restore a sole named child through the empty-will fallback when cutting them out', () => {
+    const g = richGame(61, 40_000_000, { age: 65 })
+    const target = createPerson(g, { relation: 'child', age: 35, relationship: 60 })
+    const sibling = createPerson(g, { relation: 'child', age: 33, relationship: 60 })
+    g.character.willBeneficiaries = [target.id]
+
+    cutFromWill(g, target)
+
+    expect(g.character.willBeneficiaries).toEqual([sibling.id])
+    expect(inLineIds(g)).toEqual([sibling.id])
+    expect(readWl(g, target).cut).toBe(true)
   })
 
   it('asks from prison arrive as letters that make sense in prison', () => {

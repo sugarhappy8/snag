@@ -8,7 +8,9 @@ import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { randomFirstName, randomLastName } from '../world'
 import { hasTalent, talentHint, talentMult } from '../talents'
-import { actingSkill, addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
+import { brandPool, pickBrand } from '../shops/everyday-brands'
+import { ageCeiling } from '../mastery'
+import { actingSkill, addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, masterFlagSkill, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
 
 type Role = 'Extra' | 'Supporting' | 'Lead'
 type Kind = 'film' | 'tv'
@@ -115,8 +117,22 @@ const ADJ = ['Midnight', 'Silent', 'Broken', 'Golden', 'Last', 'Crimson', 'Elect
 const NOUN = ['Horizon', 'Protocol', 'Kingdom', 'Summer', 'Heist', 'Echo', 'Paradise', 'Witness', 'Storm', 'Frontier', 'Promise', 'Shadows', 'Highway', 'Empire', 'Detour', 'Reunion']
 const FILM_GENRES = ['Action', 'Comedy', 'Drama', 'Horror', 'Romance', 'Sci-Fi', 'Thriller', 'Animated', 'Superhero', 'Musical']
 const TV_GENRES = ['Sitcom', 'Crime Drama', 'Medical Drama', 'Fantasy Series', 'Soap Opera', 'Sci-Fi Series', 'Teen Drama']
-const STUDIOS = ['Paragon Pictures', 'Silverline Studios', 'Big Sky Films', 'Moonlit Entertainment', 'Redwood Studios', 'Golden Hour Films', 'Starling Bros.']
-const NETWORKS = ['Channel Nine Network', 'StreamBox Originals', 'Nightcap TV', 'Prime Eight', 'Couchside Studios', 'Bingeworthy+']
+// Small independent productions stay invented; the big studios, networks and streamers are real.
+const INDIE_STUDIOS = ['Silverline Studios', 'Big Sky Films', 'Moonlit Entertainment', 'Redwood Studios', 'Golden Hour Films', 'Lantern Row Pictures']
+const LOCAL_STUDIOS = ['Paragon Pictures', 'Starling Bros.']
+const LOCAL_NETWORKS = ['Channel Nine Network', 'Prime Eight']
+
+/** Who is making it: a real studio for big films, a real network or streamer for TV (invented ones where none trades). */
+function producer(g: GameState, kind: Kind, budget: string): string {
+  if (kind === 'film') {
+    if (budget === 'indie') return pick(g, INDIE_STUDIOS)
+    const major = pickBrand(g, 'film-studio', budget === 'blockbuster' ? { segment: 'major' } : {})
+    return major?.name ?? pick(g, LOCAL_STUDIOS)
+  }
+  if (budget === 'streaming') return pickBrand(g, 'streaming', { segment: 'video' })?.name ?? pick(g, LOCAL_NETWORKS)
+  const tv = brandPool(g, 'streaming', { segment: 'tv' }).filter((b) => b.data?.drama === true)
+  return tv.length ? pick(g, tv).name : pick(g, LOCAL_NETWORKS)
+}
 const LATIN = ['mx', 'co', 'ar', 'cl', 'pe', 've', 'br']
 
 function genTitle(g: GameState, genre: string): string {
@@ -157,7 +173,7 @@ function genListings(g: GameState): Listing[] {
     if (role === 'Extra') pay = randInt(g, 3, 30) * 100
     else if (role === 'Supporting') pay = Math.round((randInt(g, 15, 200) * 1_000 * (1 + f / 25) * budgetMult * premium) / 1_000) * 1_000
     else pay = Math.round((randInt(g, 80, 1_000) * 1_000 * (1 + (f * f) / 400) * budgetMult * premium) / 1_000) * 1_000
-    out.push({ title: genTitle(g, genre), kind, genre, role, studio: kind === 'film' ? pick(g, STUDIOS) : pick(g, NETWORKS), pay, budget })
+    out.push({ title: genTitle(g, genre), kind, genre, role, studio: producer(g, kind, budget), pay, budget })
   }
   return out
 }
@@ -229,8 +245,14 @@ const FIT: Record<string, string> = {
   Bollywood: 'overTop',
 }
 
+/** Main Character Syndrome: acting for the first time (a lesson, an audition, a shoot) is already mastery for the age. */
+function masterActing(g: GameState): void {
+  masterFlagSkill(g, 'acting', 'stage', 'acting', ageCeiling(g.character.age, { from: 6, full: 17, floor: 30 }))
+}
+
 const auditionScript = defineScript('special.actor.audition', (g, choice, data) => {
   const l = data as unknown as Listing
+  masterActing(g)
   const p = actorProfile(g)
   let fit = 0
   if (choice === FIT[l.genre]) fit = 20
@@ -277,6 +299,8 @@ const pickRoleScript = defineScript('special.actor.pick', (g, choice) => {
 function openAuditions(g: GameState): void {
   const job = actorJob(g)
   if (job && project(job)) return tell(g, 'Auditions', `You're already committed to "${project(job)?.title}". Finish it first.`, '\u{1F3AC}')
+  // Walking into the casting room is doing it: the hint below is computed after the lift.
+  masterActing(g)
   const listings = yearlyList<Listing>(g, 'actor.roles', () => genListings(g))
   if (listings.length === 0) return tell(g, 'Auditions', 'There are no more roles you are right for this year. Your agent says to "stay hungry".', '\u{1F3AC}')
   const best = hasTalent(g, 'Acting') ? bestListing(g, listings) : -1
@@ -434,6 +458,7 @@ const practiceAction: MenuAction = {
   run: (g) => {
     if (!useYearAction(g, 'actor.practice', 2)) return tell(g, 'Practice', "You've rehearsed so much this year that you're starting to talk in monologues. Take a break.", '\u{1F971}')
     const gain = Math.round(randInt(g, 2, 6) * talentMult(g, 'Acting', 1.7))
+    masterActing(g)
     setFlagSkill(g, 'acting', actingSkill(g) + gain)
     log(g, 'I practiced my acting.')
     say(g, 'Practice', `${pick(g, ['You ran lines in front of the bathroom mirror for hours.', 'You studied old movies and copied every facial expression.', 'You practiced accents until your neighbors complained.'])} Your acting skill rose to ${actingSkill(g)}%.`, '\u{1F4D6}', 'good')
@@ -781,6 +806,7 @@ export function yearlyActor(g: GameState): void {
   }
   const job = actorJob(g)
   if (!job || c.prison) return
+  masterActing(g)
   syncTenure(g, job)
   const ap = actorProfile(g)
   const proj = project(job)

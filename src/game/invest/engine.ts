@@ -35,6 +35,8 @@ import {
 import { HISTORY_START, PRESENT_YEAR } from '../history/timeline'
 import { COUNTRIES, getCountry } from '../world'
 import { eraPennyKind, eraSector, exchangeNameFor, historySector, indexFundSince, indexNameFor, lateEraPennyKind, MODERN_PENNY_SECTOR, MODERN_PENNY_SINCE, TRUST_FEE } from './era'
+import { fundProviderName } from './funds'
+import { arcExcess, buildRealPlan, FILLER_STEP, isRealName, REAL_GEN, realIndexAt, realNameAt, realRoster, realStartedBy, SIZE_LABEL, sizeClassAt, sizeScore, type RealCo, type RealPlan } from './real'
 
 // ---------------------------------------------------------------------------
 // Small math helpers
@@ -267,8 +269,8 @@ export function exchangeName(info: ExInfo, year: number): string {
  * closest thing was a managed investment trust, which is what the fund slot is called then.
  */
 export function fundName(info: ExInfo, year: number): { name: string; trust: boolean } {
-  if (inHistory(year) && year < indexFundSince(info.home)) return { name: `${localWords(info.home)[0]} Investment Trust`, trust: true }
-  return { name: `${indexName(info, year)} Index Fund`, trust: false }
+  if (inHistory(year) && year < indexFundSince(info.home)) return { name: fundProviderName(info.home, year, true) ?? `${localWords(info.home)[0]} Investment Trust`, trust: true }
+  return { name: fundProviderName(info.home, year, false) ?? `${indexName(info, year)} Index Fund`, trust: false }
 }
 
 // ---------------------------------------------------------------------------
@@ -353,6 +355,8 @@ const INDUSTRY_SECTOR: Partial<Record<Industry, SectorId>> = {
   foodTruck: 'food', bar: 'brewers', brewery: 'brewers', fashion: 'fashion', beauty: 'cosmetics',
   salon: 'cosmetics', gym: 'leisure', autoShop: 'automakers',
 }
+
+const COMPANY_SUFFIX = ['International', 'Group', 'Holdings', 'Corporation', 'Partners']
 
 const GENERIC_WORDS = ['Pacific', 'Summit', 'Crown', 'Union', 'National', 'Atlas', 'Pioneer', 'Meridian', 'Golden', 'United', 'Royal', 'Continental', 'Horizon', 'Keystone']
 
@@ -448,8 +452,40 @@ export function slotPlan(info: ExInfo): SectorId[] {
   classicCount.set(info.key, plan.length)
   // Deep-tech hubs list their champions too, after (never instead of) the classic companies.
   for (const s of deepSlots(m, plan.length)) if (!plan.includes(s)) plan.push(s)
+  // Real companies: where the registry names an exchange's listed companies, they fill these slots
+  // (more slots are added when more of them were listed at once than the plan has room for).
+  const real = buildRealPlan(info.home, plan)
+  realPlans.set(info.key, real)
+  if (real) {
+    for (const s of real.extraSectors) plan.push(s as SectorId)
+    // The smallest listings stay made up on every exchange with real companies: generic small caps.
+    const rs = seeded(`small|${info.key}`)
+    const all = classicSectors().filter((d) => sectorWeight(m, d) > 0)
+    for (let i = 0; i < SMALL_CAPS && all.length; i++) {
+      const pick = rs.weighted(all, (d) => sectorWeight(m, d) * (plan.slice(-i).includes(d.id) ? 0.1 : 1))
+      plan.push(pick.id)
+      real.queues.push([])
+    }
+  }
   planCache.set(info.key, plan)
   return plan
+}
+
+/** Made-up small-cap slots every exchange with real companies keeps (no real company ever takes them). */
+export const SMALL_CAPS = 4
+
+const realPlans = new Map<string, RealPlan | null>()
+
+/** The real companies of an exchange by slot (null where the registry has none: the classic fictional market). */
+export function realPlanOf(info: ExInfo): RealPlan | null {
+  slotPlan(info)
+  return realPlans.get(info.key) ?? null
+}
+
+/** The real company behind a security definition's slot and generation, if any. */
+function realCoAt(info: ExInfo, slot: number, gen: number): RealCo | null {
+  if (gen < REAL_GEN) return null
+  return realPlanOf(info)?.queues[slot]?.[gen - REAL_GEN] ?? null
 }
 
 function asciiLetters(s: string): string {
@@ -497,6 +533,29 @@ export interface SecurityDef {
   word?: string
   /** Penny stocks: which kind of tiny company it is (index into the kinds of each era). */
   kindIndex?: number
+  /** A real listed company of the registry (data/brands-stocks.ts); fictional fillers and penny stocks have none. */
+  real?: RealCo
+}
+
+/** True when the security is a real registry company (never bankrupted, scandalised or bought out at random). */
+export function isRealDef(def: SecurityDef): boolean {
+  return !!def.real
+}
+
+/** Rough size of a listed company in `year` ('Mega-cap', 'Large-cap', 'Mid-cap'; made-up small caps are 'Small-cap'). Approximate by design. */
+export function sizeLabelOf(def: SecurityDef, year: number): string {
+  return def.real ? SIZE_LABEL[sizeClassAt(def.real, year)] : 'Small-cap'
+}
+
+/** Menu ordering by size in `year` (bigger first); made-up companies come after the real ones. */
+export function sizeRankOf(def: SecurityDef, year: number): number {
+  return def.real ? sizeScore(def.real, year) : 0
+}
+
+/** True for a real company's security id on an exchange ('LSE:FTSE 100#s3g1004'). */
+export function isRealSecId(secId: string): boolean {
+  const m = /#s\d+g(\d+)$/.exec(secId)
+  return !!m && Number(m[1]) >= REAL_GEN
 }
 
 export function riskFromVol(v: number): number {
@@ -531,13 +590,28 @@ function rawIdentity(info: ExInfo, slot: number, gen: number): Identity {
   const m = marketOf(info.home)
   const r = seeded(`id|${info.key}#s${slot}g${gen}`)
   const planned = SECTORS[slotPlan(info)[slot % slotPlan(info).length]]
+  // The first company of a slot (gen 0, or the first filler after a real company) keeps the slot's
+  // sector; later fillers can be of any classic sector.
+  const first = gen % FILLER_STEP === 0
   // A deep-tech slot is always replaced by another company of its sector; classic slots draw
   // from the classic sectors exactly as they always have.
-  const sector = gen === 0 || DEEP_SECTORS.has(planned.id) ? planned : r.weighted(classicSectors(), (d) => sectorWeight(m, d))
+  const sector = first || DEEP_SECTORS.has(planned.id) ? planned : r.weighted(classicSectors(), (d) => sectorWeight(m, d))
   const words = shuffledWords(info)
-  const word = gen === 0 ? words[slot % words.length] : r.pick(words)
-  const name = r.pick(sector.names).replace('{w}', word)
-  const symbol = gen === 0 ? tickerFor(name, 4) : tickerFor(name, 3) + String.fromCharCode(65 + ((gen * 7 + slot) % 26))
+  let word = first ? words[slot % words.length] : r.pick(words)
+  let name = r.pick(sector.names).replace('{w}', word)
+  // Exchanges with many slots reuse their local words: later cycles get a distinct company suffix.
+  const cycle = first ? Math.floor(slot / words.length) : 0
+  if (cycle > 0) {
+    const start = (cycle - 1) % COMPANY_SUFFIX.length
+    const pick = COMPANY_SUFFIX.map((_, i) => COMPANY_SUFFIX[(start + i) % COMPANY_SUFFIX.length]).find((x) => !name.includes(x))
+    if (pick) name += ` ${pick}`
+  }
+  // A made-up company never borrows a real company's name (registry names are real brands).
+  for (let tries = 0; tries < 24 && isRealName(name); tries++) {
+    word = r.pick(words)
+    name = r.pick(sector.names).replace('{w}', word)
+  }
+  const symbol = first ? tickerFor(name, 4) : tickerFor(name, 3) + String.fromCharCode(65 + ((gen * 7 + slot) % 26))
   return { sector, name, symbol, word }
 }
 
@@ -559,10 +633,82 @@ function gen0Symbols(info: ExInfo): string[] {
   return out
 }
 
+/** Idiosyncratic risk of real companies: realistic single-stock swings, never an absurd company-specific path. */
+const REAL_IDIO_BIG = 0.2
+const REAL_IDIO = 0.26
+/** A real company's worst and best single year (log): well-known names don't vanish or multiply tenfold in a year. */
+const REAL_MIN_LOG = Math.log(0.12)
+const REAL_MAX_LOG = Math.log(4)
+
+const realSymbolCache = new Map<string, Map<string, string>>()
+
+/** Derived tickers of an exchange's real companies (unique per exchange; not the real ticker symbols). */
+function realSymbols(info: ExInfo): Map<string, string> {
+  let map = realSymbolCache.get(info.key)
+  if (map) return map
+  map = new Map<string, string>()
+  const used = new Set<string>()
+  for (const co of [...realRoster(info.home)].sort((a, b) => a.id.localeCompare(b.id))) {
+    const base = tickerFor(co.name, 4)
+    let sym = base
+    for (let k = 0; used.has(sym) && k < 52; k++) sym = k < 26 ? base.slice(0, 3) + String.fromCharCode(65 + ((base.charCodeAt(3) - 65 + k + 1) % 26)) : base.slice(0, 2) + String.fromCharCode(65 + (k % 26)) + base.charAt(3)
+    used.add(sym)
+    map.set(co.id, sym)
+  }
+  realSymbolCache.set(info.key, map)
+  return map
+}
+
+/** A fictional filler's ticker on an exchange with real companies: unique by slot, never a real company's. */
+function fillerSymbol(info: ExInfo, name: string, slot: number, gen: number): string {
+  const reserved = new Set(realSymbols(info).values())
+  const a = asciiLetters(name).slice(0, 2).padEnd(2, 'X')
+  const tail = `${String.fromCharCode(65 + (slot % 26))}${String.fromCharCode(65 + (Math.floor(slot / 26) % 26))}`
+  let sym = `${a}${tail}`
+  for (let i = 1; reserved.has(sym) && i <= 26; i++) sym = `${a.charAt(0)}${String.fromCharCode(65 + ((a.charCodeAt(1) - 65 + i + gen) % 26))}${tail}`
+  return sym
+}
+
+function realDef(info: ExInfo, slot: number, gen: number, co: RealCo): SecurityDef {
+  const id = `${info.key}#s${slot}g${gen}`
+  const m = marketOf(info.home)
+  const sector = SECTORS[co.sector as SectorId] ?? SECTORS.industrials
+  const r = seeded(`co|${id}`)
+  const vol = exVol(info.ex)
+  const beta = clampNum(sector.beta * r.float(0.85, 1.15), 0.45, 1.7)
+  const idio = Math.min(sector.idio * r.float(0.8, 1.2), co.fame >= 8 ? REAL_IDIO_BIG : REAL_IDIO)
+  const sampled = Math.round(r.float(sector.dy[0], sector.dy[1]) * 1000) / 1000
+  const dy = co.dy ?? sampled
+  const demand = sector.drivers.length ? sector.drivers.reduce((a, d) => a + demandOf(m, d), 0) / sector.drivers.length : 1
+  const tilt = clampNum(0.02 * (demand - 1), -0.02, 0.02) + r.float(-0.012, 0.012)
+  return {
+    id,
+    slot,
+    gen,
+    name: co.name,
+    symbol: realSymbols(info).get(co.id) ?? tickerFor(co.name, 4),
+    sector: sector.id,
+    blurb: co.blurb || sector.label,
+    beta,
+    idio,
+    dy,
+    tilt,
+    risk: riskFromVol(Math.sqrt((beta * vol) ** 2 + idio ** 2)),
+    ipoPrice: Math.round(r.float(8, 120) * 100) / 100,
+    real: co,
+  }
+}
+
 export function companyDef(info: ExInfo, slot: number, gen: number): SecurityDef {
   const id = `${info.key}#s${slot}g${gen}`
   const hit = defCache.get(id)
   if (hit) return hit
+  const co = realCoAt(info, slot, gen)
+  if (co) {
+    const rd = realDef(info, slot, gen, co)
+    defCache.set(id, rd)
+    return rd
+  }
   const m = marketOf(info.home)
   const ident = rawIdentity(info, slot, gen)
   const sector = ident.sector
@@ -573,12 +719,13 @@ export function companyDef(info: ExInfo, slot: number, gen: number): SecurityDef
   const dy = Math.round(r.float(sector.dy[0], sector.dy[1]) * 1000) / 1000
   const demand = sector.drivers.length ? sector.drivers.reduce((a, d) => a + demandOf(m, d), 0) / sector.drivers.length : 1
   const tilt = clampNum(0.02 * (demand - 1), -0.02, 0.02) + r.float(-0.012, 0.012)
+  const withReal = realPlanOf(info) !== null
   const def: SecurityDef = {
     id,
     slot,
     gen,
     name: ident.name,
-    symbol: gen === 0 ? (gen0Symbols(info)[slot] ?? ident.symbol) : ident.symbol,
+    symbol: withReal ? fillerSymbol(info, ident.name, slot, gen) : gen === 0 ? (gen0Symbols(info)[slot] ?? ident.symbol) : ident.symbol,
     sector: sector.id,
     blurb: r.pick(sector.blurbs),
     beta,
@@ -617,8 +764,13 @@ export function pennyDef(info: ExInfo, slot: number, gen: number): SecurityDef {
   const r = seeded(`penny|${id}`)
   const kindIndex = seeded(`pk|${info.key}`).int(0, PENNY_KINDS.length - 1) + slot * 5 + gen * 3
   const kind = PENNY_KINDS[kindIndex % PENNY_KINDS.length]
-  const word = r.pick(localWords(info.home))
-  const name = `${word} ${kind.noun}`
+  let word = r.pick(localWords(info.home))
+  let name = `${word} ${kind.noun}`
+  // Penny stocks are always made up: never a real company's name.
+  for (let tries = 0; tries < 24 && isRealName(name); tries++) {
+    word = r.pick(localWords(info.home))
+    name = `${word} ${kind.noun}`
+  }
   const def: SecurityDef = {
     id,
     slot,
@@ -660,6 +812,12 @@ function stableIndex(key: string, n: number): number {
  * sector's modern era) returns the company's own name and blurb unchanged.
  */
 export function eraIdentity(def: SecurityDef, year: number): EraIdentity {
+  if (def.real) {
+    // A real company wears the names it really had, under the period's sector label.
+    const sector = SECTORS[def.sector as SectorId] ?? SECTORS.industrials
+    const era = eraSector(sector.id, year)
+    return { name: realNameAt(def.real, year), label: def.real.label ?? era?.label ?? sector.label, emoji: def.real.emoji ?? era?.emoji ?? sector.emoji, blurb: def.blurb }
+  }
   if (def.sector === 'penny') {
     const modernNoun = PENNY_KINDS[(def.kindIndex ?? 0) % PENNY_KINDS.length]
     const old = eraPennyKind(year, def.kindIndex ?? 0)
@@ -741,9 +899,13 @@ function initialExYear(fam: string, info: ExInfo, year: number): ExYear {
   // Deep-tech extras draw from their own stream so the classic listings keep their old prices.
   const rd = seeded(`${familyAt(fam)}|initdt|${info.key}`)
   const classic = classicSlots(info)
+  const plan = realPlanOf(info)
   const stocks = slotPlan(info).map((_, slot): SecYear => {
-    const def = companyDef(info, slot, 0)
-    return { id: def.id, slot, gen: 0, price: Math.round(def.ipoPrice * (slot < classic ? r : rd).float(0.6, 2.5) * 100) / 100, ret: 0, payout: def.dy }
+    // Real exchanges: whoever really occupies the slot in the first year (or a fictional filler).
+    const gen = plan ? slotGenAt(plan, slot, year) : 0
+    const def = companyDef(info, slot, gen)
+    const jitter = (slot < classic ? r : rd).float(0.6, 2.5)
+    return { id: def.id, slot, gen, price: Math.round(def.ipoPrice * jitter * 100) / 100, ret: 0, payout: def.dy }
   })
   const pennies = Array.from({ length: PENNY_SLOTS }, (_, slot): SecYear => {
     const def = pennyDef(info, slot, 0)
@@ -768,6 +930,94 @@ function initialExYear(fam: string, info: ExInfo, year: number): ExYear {
 function sectorExcess(info: ExInfo, def: SecurityDef, year: number): number | null {
   if (def.sector === 'penny' || !inHistory(year)) return null
   return historicalSectorExcess(info.home, historySector(def.sector, year), year)
+}
+
+/** The generation a slot holds in `year`: the real company listed then, else the fictional filler between real ones. */
+function slotGenAt(plan: RealPlan, slot: number, year: number): number {
+  const i = realIndexAt(plan, slot, year)
+  return i >= 0 ? REAL_GEN + i : FILLER_STEP * realStartedBy(plan, slot, year)
+}
+
+/** The generation that takes over a slot in `year` when its company is gone (fictional chains: the next one). */
+function successorGen(plan: RealPlan | null, slot: number, prevGen: number, year: number): number {
+  if (!plan) return prevGen + 1
+  const q = plan.queues[slot] ?? []
+  const k = prevGen >= REAL_GEN ? prevGen - REAL_GEN + 1 : Math.floor(prevGen / FILLER_STEP)
+  if (q[k] && q[k].start <= year) return REAL_GEN + k
+  return prevGen >= REAL_GEN ? FILLER_STEP * k : prevGen + 1
+}
+
+function replaced(info: ExInfo, prev: SecYear, def: SecurityDef, gen: number, kind: 'bankrupt' | 'acquired', premium: number): SecYear {
+  const next = companyDef(info, prev.slot, gen)
+  const perUnit = kind === 'acquired' ? Math.round(prev.price * (1 + premium) * 10000) / 10000 : 0
+  return { id: next.id, slot: prev.slot, gen, price: next.ipoPrice, ret: 0, event: 'ipo', payout: 0, ended: { id: def.id, kind, perUnit, premium: kind === 'acquired' ? premium : -1 } }
+}
+
+/**
+ * One slot's year on an exchange with real companies. A real company trades from its listing year to
+ * its last real year and is never bankrupted, scandalised or bought out at random; a fictional filler
+ * (small cap) behaves like the classic made-up companies and makes way, bought out at a premium, in
+ * the year the next real company of its slot lists. Own random stream per slot: nothing else shifts.
+ */
+function nextRealSlot(fam: string, info: ExInfo, plan: RealPlan, prev: SecYear, idx: IndexMove, year: number): SecYear {
+  const def = companyDef(info, prev.slot, prev.gen)
+  const q = plan.queues[prev.slot] ?? []
+  const r = seeded(`${familyAt(fam, year)}|ex2|${info.key}|${year}|${prev.slot}`)
+  const z = normal(r)
+  const uBank = r.next()
+  const uAcq = r.next()
+  const uJump = r.next()
+  const uSize = r.next()
+  const co = def.real
+  if (co) {
+    // History decides: the company is gone from the year after its last trading year.
+    if (co.end !== null && year > co.end) return replaced(info, prev, def, successorGen(plan, prev.slot, prev.gen, year), co.fate, co.premium)
+  } else {
+    // The next real company of this slot lists: the made-up small cap is bought out to make room.
+    const k = Math.floor(prev.gen / FILLER_STEP)
+    if (q[k] && q[k].start <= year) return replaced(info, prev, def, REAL_GEN + k, 'acquired', 0.15 + 0.2 * uSize)
+  }
+  const drift = exDrift(info.ex)
+  const excess = sectorExcess(info, def, year)
+  const bust = excess !== null && excess < -0.35 ? 2.5 : 1
+  if (!co) {
+    const pBank = [0, 0.001, 0.002, 0.004, 0.008, 0.015][def.risk] * (idx.crash ? 3 : 1) * bust
+    if (uBank < pBank) return replaced(info, prev, def, successorGen(plan, prev.slot, prev.gen, year), 'bankrupt', 0)
+  }
+  const marketDev = idx.logRet - Math.log(1 + drift)
+  let logTotal: number
+  if (inHistory(year)) {
+    const k = excess !== null ? 0.6 : 0.8
+    const noise = def.idio * k * z - 0.5 * (def.idio * k) ** 2
+    const arc = co ? arcExcess(co, year) : 0
+    logTotal = excess !== null ? idx.logRet + excess + def.tilt + noise + arc : idx.logRet + (def.beta - 1) * (idx.logRet - HIST_MEAN_LOG) + def.tilt + noise + arc
+  } else logTotal = Math.log(1 + drift + def.tilt) + def.beta * marketDev + def.idio * z
+  if (co) logTotal = clampNum(logTotal, REAL_MIN_LOG, REAL_MAX_LOG)
+  let event: SecEvent | undefined
+  if (!co) {
+    if (uJump < 0.02) {
+      logTotal += Math.log(0.45 + 0.3 * uSize)
+      event = 'scandal'
+    } else if (uJump > 0.98) {
+      logTotal += Math.log(1.3 + 0.5 * uSize)
+      event = 'surge'
+    }
+  }
+  const priceRet = toRet(logTotal - Math.log(1 + def.dy))
+  if (!co && uAcq < 0.012) return replaced(info, prev, def, successorGen(plan, prev.slot, prev.gen, year), 'acquired', 0.2 + 0.35 * uSize)
+  let price = Math.max(0.01, prev.price * (1 + priceRet))
+  let ratio: number | undefined
+  if (price > 800) {
+    ratio = splitRatio(price)
+    price /= ratio
+    event = event ?? 'split'
+  } else if (price < 1.5) {
+    ratio = 0.1
+    price *= 10
+    if (!co) event = event ?? 'reverseSplit'
+  }
+  const payout = idx.crash ? def.dy * 0.5 : def.dy
+  return { id: def.id, slot: prev.slot, gen: prev.gen, price, ret: priceRet, event, ratio, payout }
 }
 
 function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: number): SecYear {
@@ -881,8 +1131,8 @@ function frozen(s: SecYear): SecYear {
 }
 
 /** A revolution nationalizes the company: holders get nothing, and the slot waits for a new listing. */
-function nationalized(s: SecYear, next: SecurityDef): SecYear {
-  return { id: next.id, slot: s.slot, gen: s.gen + 1, price: next.ipoPrice, ret: 0, event: 'ipo', payout: 0, ended: { id: s.id, kind: 'bankrupt', perUnit: 0, premium: -1 } }
+function nationalized(s: SecYear, next: SecurityDef, gen: number): SecYear {
+  return { id: next.id, slot: s.slot, gen, price: next.ipoPrice, ret: 0, event: 'ipo', payout: 0, ended: { id: s.id, kind: 'bankrupt', perUnit: 0, premium: -1 } }
 }
 
 function nextExYear(fam: string, info: ExInfo, prev: ExYear, year: number): ExYear {
@@ -894,20 +1144,27 @@ function nextExYear(fam: string, info: ExInfo, prev: ExYear, year: number): ExYe
   // History: no exchange (not yet open, or abolished after a revolution) means nothing moves;
   // the year of a revolution wipes every listing out.
   const state = inHistory(year) ? exchangeState(info.home, year) : null
+  const plan = realPlanOf(info)
   if (state && state.status === 'none') {
     const wipe = state.expropriated
     return {
       year,
       index: idx,
       level: prev.level,
-      stocks: prev.stocks.map((s) => (wipe ? nationalized(s, companyDef(info, s.slot, s.gen + 1)) : frozen(s))),
-      pennies: prev.pennies.map((s) => (wipe ? nationalized(s, pennyDef(info, s.slot, s.gen + 1)) : frozen(s))),
+      stocks: prev.stocks.map((s) => (wipe ? nationalized(s, companyDef(info, s.slot, successorGen(plan, s.slot, s.gen, year)), successorGen(plan, s.slot, s.gen, year)) : frozen(s))),
+      pennies: prev.pennies.map((s) => (wipe ? nationalized(s, pennyDef(info, s.slot, s.gen + 1), s.gen + 1) : frozen(s))),
       fund: frozen(prev.fund),
       reit: frozen(prev.reit),
       housing: inHistory(year) ? clampNum(historicalHousing(info.home, year) ?? 0, -0.4, 0.4) : 0,
     }
   }
-  const stocks = prev.stocks.map((s) => nextStock(info, s, idx, s.slot < classic ? r : rd, year))
+  let stocks: SecYear[]
+  if (plan) {
+    // Real exchange: every slot has its own stream. Burn what the classic slots used to draw from
+    // the shared one, so the penny stocks and the property fund behind them move exactly as before.
+    for (let i = 0; i < classic * 10; i++) r.next()
+    stocks = prev.stocks.map((s) => nextRealSlot(fam, info, plan, s, idx, year))
+  } else stocks = prev.stocks.map((s) => nextStock(info, s, idx, s.slot < classic ? r : rd, year))
   const pennies = prev.pennies.map((s) => nextPenny(info, s, idx, r, year))
   // The index fund tracks the index (price) minus its yearly fee.
   const fundRet = Math.max(-0.99, (1 + idx.ret) * (1 - fundFee(info, year)) - 1)
@@ -993,22 +1250,32 @@ export interface CoinDef {
   yield: number
   stable: boolean
   risk: number
+  /** The coin is a real one (Bitcoin, Ethereum, Dogecoin): it never collapses by chance. */
+  real?: boolean
 }
 
-const COIN_SLOTS: { names: [string, string][]; blurb: string; beta: number; idio: number; pZero: number; yield: number; stable: boolean; risk: number; base: [number, number] }[] = [
-  { names: [['Bitbuck', 'BBK'], ['Bitbuck Classic', 'BBKC'], ['Bitbuck Reborn', 'BBKR']], blurb: 'The original coin. Digital gold, according to everyone who owns some.', beta: 1, idio: 0.15, pZero: 0.002, yield: 0, stable: false, risk: 4, base: [15_000, 60_000] },
-  { names: [['Aetherium', 'AETH'], ['Aetherium Two', 'AET2'], ['Aetherium Prime', 'AETP']], blurb: 'Smart contracts, NFTs and forty-page whitepapers nobody reads.', beta: 1.25, idio: 0.3, pZero: 0.004, yield: 0, stable: false, risk: 5, base: [800, 4_000] },
-  { names: [['Corgicoin', 'CORG'], ['Moonpup', 'MPUP'], ['FrogCash', 'FROG'], ['Rocket Hamster', 'RHAM'], ['Shibalord', 'SLRD'], ['Catnip Token', 'NIP']], blurb: 'Started as a joke. Still is, but now it has a market cap.', beta: 1.6, idio: 0.7, pZero: 0.05, yield: 0, stable: false, risk: 5, base: [0.02, 0.4] },
-  { names: [['TerraNova Dollar', 'TNUSD'], ['LunaPeg Dollar', 'LPUSD'], ['Anchorless USD', 'AUSD'], ['TrustMe Dollar', 'TMUSD'], ['Totally Stable Coin', 'TSC']], blurb: 'Pegged to $1 by an algorithm and pays 12% "staking rewards". What could go wrong?', beta: 0, idio: 0, pZero: 0.06, yield: 0.12, stable: true, risk: 5, base: [1, 1] },
+/**
+ * The crypto market. The first three coins are the real ones, at their real historical prices
+ * (history/markets-assets.ts) and, being real, they never collapse to zero in the procedural
+ * future (they can fall a long way). Every later generation, the rug-pulled meme coins and the
+ * algorithmic "stablecoins" that collapse are fictional.
+ */
+const COIN_SLOTS: { names: [string, string, string?][]; blurb: string; beta: number; idio: number; pZero: number; yield: number; stable: boolean; risk: number; base: [number, number] }[] = [
+  { names: [['Bitcoin', 'BTC', 'The first cryptocurrency, launched in 2009. No company behind it, and no dividends.'], ['Bitbuck Classic', 'BBKC'], ['Bitbuck Reborn', 'BBKR']], blurb: 'A copycat of the original coin. Digital gold, according to everyone who owns some.', beta: 1, idio: 0.15, pZero: 0.002, yield: 0, stable: false, risk: 4, base: [15_000, 60_000] },
+  { names: [['Ethereum', 'ETH', 'A smart-contract platform and its coin, launched in 2015. Pays no dividends.'], ['Aetherium Two', 'AET2'], ['Aetherium Prime', 'AETP']], blurb: 'A copycat smart-contract coin: NFTs and forty-page whitepapers nobody reads.', beta: 1.25, idio: 0.3, pZero: 0.004, yield: 0, stable: false, risk: 5, base: [800, 4_000] },
+  { names: [['Dogecoin', 'DOGE', 'A coin that began as an internet joke in 2013 and kept going. Pays no dividends.'], ['Moonpup', 'MPUP'], ['FrogCash', 'FROG'], ['Rocket Hamster', 'RHAM'], ['Shibalord', 'SLRD'], ['Catnip Token', 'NIP']], blurb: 'A meme coin. Started as a joke. Still is, but now it has a market cap.', beta: 1.6, idio: 0.7, pZero: 0.05, yield: 0, stable: false, risk: 5, base: [0.02, 0.4] },
+  { names: [['HarborPeg Dollar', 'HPUSD'], ['Anchorless USD', 'AUSD'], ['TrustMe Dollar', 'TMUSD'], ['Totally Stable Coin', 'TSC']], blurb: 'Pegged to $1 by an algorithm and pays 12% "staking rewards". What could go wrong?', beta: 0, idio: 0, pZero: 0.06, yield: 0.12, stable: true, risk: 5, base: [1, 1] },
 ]
 
 export const COIN_COUNT = COIN_SLOTS.length
 
 export function coinDef(slot: number, gen: number): CoinDef {
   const s = COIN_SLOTS[slot % COIN_SLOTS.length]
-  const [name, symbol] = s.names[gen % s.names.length]
+  const [name, symbol, own] = s.names[gen % s.names.length]
   const suffix = gen >= s.names.length ? ` ${Math.floor(gen / s.names.length) + 1}` : ''
-  return { id: `crypto#c${slot}g${gen}`, slot, gen, name: name + suffix, symbol: symbol + (suffix ? String(Math.floor(gen / s.names.length) + 1) : ''), blurb: s.blurb, beta: s.beta, idio: s.idio, pZero: s.pZero, yield: s.yield, stable: s.stable, risk: s.risk }
+  // The real coins (generation 0 of the first three slots) never go to zero by chance.
+  const real = gen === 0 && !s.stable
+  return { id: `crypto#c${slot}g${gen}`, slot, gen, name: name + suffix, symbol: symbol + (suffix ? String(Math.floor(gen / s.names.length) + 1) : ''), blurb: own ?? s.blurb, beta: s.beta, idio: s.idio, pZero: real ? 0 : s.pZero, yield: s.yield, stable: s.stable, risk: s.risk, real }
 }
 
 export interface CryptoYear {

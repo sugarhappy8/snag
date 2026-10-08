@@ -269,7 +269,10 @@ describe('competition: local trades compete locally', () => {
     expect(v.scope).toBe('national')
     expect(v.place).toBe('the United States')
     expect(v.rivals.length).toBeGreaterThan(3)
-    for (const r of v.rivals) expect(r.hq).toBe('us')
+    // The cast is real companies that really trade in the US (local champions and global chains); the fictional tail is local.
+    expect(v.rivals.filter((r) => r.real).length).toBeGreaterThan(3)
+    for (const r of v.rivals.filter((x) => !x.real)) expect(r.hq).toBe('us')
+    expect(v.rivals.filter((r) => r.real).some((r) => r.hq === 'us')).toBe(true)
     expect(v.share).toBeLessThan(0.001)
     expect(v.worldShare).toBeLessThan(0.0001)
     expect(v.fringe).toBeGreaterThan(0.5)

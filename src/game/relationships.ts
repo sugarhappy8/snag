@@ -72,9 +72,13 @@ import { chance, pick, rand, randFloat, randInt, uid, weightedPick } from './rng
 import { defineScript } from './scripts'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import { locale, localeOf } from './data/locales'
-import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, venueExists } from './events/era'
+import { bandName, cars, common, eraLines, eraOk, eraPick, eraStrip, flights, kidPrize, landline, prohibition, radioShow, showName, texting, venueExists } from './events/era'
 import type { TechId } from './history/timeline'
 import { cashShare, moneyStatus, wealthNodes } from './events/wealth-menu'
+import { nepoPersonNodes } from './business/nepo'
+import { willPersonNodes } from './events/will-amends'
+import { isEstranged, keptAwayBy } from './events/will-core'
+import { familyUseNodes } from './shops/luxury-family'
 import { noteCashGift } from './events/wealth-core'
 import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, Person, RelationKind } from './types'
 
@@ -1442,7 +1446,20 @@ const DRIFT: Partial<Record<RelationKind, [number, number]>> = {
   pet: [1, 4],
 }
 
-function driftRelationships(g: GameState): void {
+/**
+ * How hard it is to stay in touch with someone who does not live under your roof, by era: a
+ * letter and a stamp (1.3), the family landline (1), texting (0.88), a smartphone and a group
+ * chat (0.75). It scales the yearly drift of every relationship, so friends and relatives
+ * you do not see drift apart faster in the age of letters than in the age of the group chat.
+ */
+export function stayInTouchFactor(g: GameState): number {
+  if (common(g, 'smartphone')) return 0.75
+  if (texting(g)) return 0.88
+  if (landline(g)) return 1
+  return 1.3
+}
+
+export function driftRelationships(g: GameState): void {
   const c = g.character
   const prison = inPrison(g)
   for (const p of g.people) {
@@ -1460,6 +1477,7 @@ function driftRelationships(g: GameState): void {
     if (last >= c.age - 1) d *= 0.35
     else if (c.age - last > 3 && p.yearsKnown > 3) d *= 1.4
     if (p.livesWithPlayer) d *= 0.7
+    else if (p.relation !== 'partner' && p.relation !== 'spouse') d *= stayInTouchFactor(g)
     if (c.age < 6 && (PARENTS.includes(p.relation) || p.relation === 'grandparent')) d *= 0.3
     if (prison && p.relation !== 'cellmate') d *= 1.5
     addRelationship(p, -Math.round(d))
@@ -3611,6 +3629,8 @@ function statusInfo(g: GameState, p: Person): MenuInfo | null {
   if (p.data.fling === true) parts.push('Former fling')
   if (p.data.babyParent === true) parts.push('Parent of your child')
   if (p.data.disowned === true) parts.push('Disowned')
+  if (isEstranged(g, p)) parts.push('Estranged')
+  else if (keptAwayBy(g, p)) parts.push('Kept away by their parent')
   if (p.data.adopted === true) parts.push('Adopted')
   if (p.data.married === true && typeof p.data.spouseName === 'string' && !isRomantic(p)) parts.push(`Married to ${p.data.spouseName}`)
   const moneyLine = moneyStatus(g, p)
@@ -3635,8 +3655,15 @@ export function personActions(g: GameState, person: Person): MenuNode[] {
   if (inPrison(g) && p.relation !== 'cellmate' && p.alive) {
     nodes.push(prisonPhone(g) ? { type: 'info', id: 'prison', emoji: '\u{1F4DE}', text: "You're in prison. You can only talk on the phone." } : { type: 'info', id: 'prison', emoji: '\u{2709}\u{FE0F}', text: "You're in prison. You can only write letters." })
   }
-  for (const def of defsFor(g, p)) nodes.push(build(def, p.id))
+  // Someone who cut contact over the will (events/will-feud.ts) isn't there for the usual
+  // interactions, money, a job at your company or your things; only the ways back (below).
+  const away = isEstranged(g, p) || !!keptAwayBy(g, p)
+  if (!away) for (const def of defsFor(g, p)) nodes.push(build(def, p.id))
   // Money Matters: allowance, loans, big gifts and what they've asked you for (events/wealth-menu.ts).
-  nodes.push(...wealthNodes(g, p))
+  if (!away) nodes.push(...wealthNodes(g, p))
+  // Their job at your company (business/nepo.ts) and which of your luxury things they may use (shops/luxury-family.ts).
+  if (!away) nodes.push(...nepoPersonNodes(g, p), ...familyUseNodes(g, p))
+  // Their feelings about your will and the ways to make up (events/will-amends.ts).
+  nodes.push(...willPersonNodes(g, p))
   return nodes
 }

@@ -177,7 +177,7 @@ describe('computers, coding and the computer menu by era', () => {
     expect(ownsComputer(g)).toBe(false)
     const names = electronicsListings(g).map((l) => l.name)
     expect(names.some((n) => /laptop|computer|pc\b|smartphone|tablet/i.test(n))).toBe(false)
-    expect(names).toContain('Black-and-White TV')
+    expect(names.some((n) => /Black-and-White TV/.test(n))).toBe(true)
   })
 
   it('teaches the languages of the time: BASIC in 1984, the web in 1999, apps after smartphones', () => {
@@ -299,13 +299,13 @@ describe('social media, fame, love, games, shops and jobs by era', () => {
     g.year = 2002
     expect(app().label).toMatch(/Dating Website/)
     g.year = 2018
-    expect(app().label).toMatch(/Kindling/)
+    expect(app().label).toMatch(/Tinder/)
     // The flow works in 1975 too.
     g.year = 1975
     app().run(g)
     expect(g.queue.length).toBeGreaterThan(0)
     const words = g.queue.map((m) => (m.kind === 'choice' ? `${m.title} ${m.text} ${m.choices.map((c) => c.label).join(' ')}` : m.kind === 'notice' ? `${m.title} ${m.text}` : '')).join(' ')
-    expect(words).not.toMatch(/swipe|\bapp\b|Kindling/i)
+    expect(words).not.toMatch(/swipe|\bapp\b|Tinder/i)
   })
 
   it('makes games for the platforms of the day', () => {
@@ -328,10 +328,10 @@ describe('social media, fame, love, games, shops and jobs by era', () => {
     const gadgets = electronicsListings(g).map((l) => l.name)
     expect(gadgets).not.toContain('Smartphone')
     expect(gadgets).not.toContain('Tablet')
-    expect(gadgets).toContain('VCR')
+    expect(gadgets.some((n) => /VCR/.test(n))).toBe(true)
     expect(gadgets.some((n) => /Home Computer/.test(n))).toBe(true)
     g.year = 2026
-    expect(electronicsListings(g).map((l) => l.name)).toContain('Smartphone')
+    expect(electronicsListings(g).map((l) => l.name).some((n) => /iPhone|Pixel|Galaxy|Xiaomi|Huawei|OPPO|vivo|Nokia|Motorola|OnePlus|Xperia|HTC|BlackBerry|Smartphone/.test(n))).toBe(true)
     g.year = 1985
     const cars = ['used', 'main', 'prestige', 'exotic'].flatMap((d) => carListings(g, d))
     for (const c of cars) {
@@ -451,8 +451,12 @@ describe('lives born in PRESENT_YEAR keep everything', () => {
     expect(learnInternals.competitionsNow(g).map((c) => c.id)).toEqual(['contest', 'gamejam', 'olympiad', 'hackathon'])
     expect(learnInternals.tracksNow(g).map((t) => t.id)).toEqual(['web', 'mobile', 'data', 'games'])
     const adult = adultIn(PRESENT_YEAR, 25)
-    expect(electronicsListings(adult).map((l) => l.name)).toEqual(['Smartphone', 'Laptop', 'Gaming Console', 'Gaming PC', 'Tablet', '4K Smart TV', 'VR Headset', 'Camera Drone', 'Smartwatch', 'Noise-Canceling Headphones', 'Mirrorless Camera', 'E-Reader', 'Smart Speaker', 'Robot Vacuum'])
-    expect((collect(adult, loveMenu.children(adult)).find((n) => n.id === 'datingApp') as MenuAction).label).toBe('Kindling (Dating App)')
+    // Today's gadgets keep their order; each is named after a real maker and model when one trades here.
+    const today = electronicsListings(adult).map((l) => l.name)
+    const kinds = [/iPhone|Pixel|Galaxy|Xiaomi|Huawei|OPPO|vivo|Nokia|Motorola|OnePlus|Xperia|Smartphone/, /Laptop|MacBook|ThinkPad|Chromebook|Surface/, /Console|PlayStation|Xbox|Switch|Nintendo|Steam/, /Gaming PC/, /iPad|Tab|Fire|Tablet|MatePad/, /TV/, /Quest|VR/, /Drone/, /Watch|Fitbit|Garmin|Smartwatch/, /Headphones/, /Camera/, /Kindle|Kobo|E-Reader/, /Echo|Home|HomePod|Sonos|Speaker/, /Vacuum/]
+    expect(today).toHaveLength(kinds.length)
+    kinds.forEach((re, i) => expect(today[i], `gadget ${i}`).toMatch(re))
+    expect((collect(adult, loveMenu.children(adult)).find((n) => n.id === 'datingApp') as MenuAction).label).toBe('Tinder (Dating App)')
     expect(moneyNodes(kidWithComputer(PRESENT_YEAR, 20)).map((n) => n.id)).toEqual(['computer.money.heading', 'computer.crypto', 'computer.options', 'computer.scams'])
     expect(socialMediaMenu.visible?.(adult)).toBe(true)
     expect(esportsMenu.visible?.(adult)).toBe(true)

@@ -26,7 +26,8 @@ import { ALL_JOBS, INDUSTRY_MARKET, INDUSTRY_TAGS, MAJOR_TAGS, PROGRAM_TAGS, typ
 import { fillLocal, localeOf, localTerm } from './data/locales'
 import { industryDemand, marketOf } from './data/markets'
 import { chance, nextRandom, pick, randInt, uid } from './rng'
-import { characterTalents, hasTalent, isTalentId, talentHint, type TalentId } from './talents'
+import { masterFirstTime } from './mastery'
+import { hasMainCharacter, hasTalent, isTalentId, shownTalents, talentHint, type TalentId } from './talents'
 import { getCountry } from './world'
 import type {
   CvEntry,
@@ -741,19 +742,20 @@ function derivedEntries(g: GameState): CvEntry[] {
   }
   // Talents: picked before birth (or inherited) and the one discovered as a kid. Crime stays off the record.
   const picked = Array.isArray(c.talents) ? c.talents : []
-  for (const t of characterTalents(g)) {
+  for (const t of shownTalents(g)) {
     if (t === 'Crime') continue
     const born = picked.includes(t)
+    const main = t === 'MainCharacter'
     out.push({
       id: born ? `d:talent:${t}` : 'd:talent',
       kind: 'skill',
-      title: `Natural talent: ${t}`,
+      title: main ? 'Natural talent: Main Character Syndrome' : `Natural talent: ${t}`,
       org: '',
       startAge: c.age,
-      detail: born ? 'A gift since birth' : 'Discovered as a kid',
-      strength: 3,
+      detail: main ? 'Good at everything, somehow' : born ? 'A gift since birth' : 'Discovered as a kid',
+      strength: main ? 5 : 3,
       embellished: false,
-      tags: TALENT_TAGS[t] ?? [],
+      tags: main ? [...new Set(Object.values(TALENT_TAGS).flat())] : (TALENT_TAGS[t] ?? []),
     })
   }
   // The home computer: coding skill, shipped projects, ventures, freelance work, contests.
@@ -1851,7 +1853,10 @@ function learnLanguage(g: GameState, language: string): void {
     return
   }
   timeCost(g)
-  const step = c.stats.smarts >= 70 && chance(g, 0.4) ? 2 : chance(g, 0.85) ? 1 : 0
+  // Main Character Syndrome: the first lesson in a language is already fluency.
+  const main = hasMainCharacter(g)
+  if (main) masterFirstTime(g, `language.${language}`, 'language', language, { popup: false })
+  const step = main ? LANGUAGE_LEVELS.length : c.stats.smarts >= 70 && chance(g, 0.4) ? 2 : chance(g, 0.85) ? 1 : 0
   if (step === 0) {
     notice(g, language, `You spent a year on ${language} lessons and can now say "the cat is under the table." That's it.${paidLine(who, cost)}`, { emoji: '\u{1F5E3}\u{FE0F}' })
     return

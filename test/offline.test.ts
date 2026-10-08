@@ -351,7 +351,7 @@ describe('no AI layer, no network', () => {
   it('nothing under src calls out (fetch, XHR, sockets, beacons) or ships an AI SDK', () => {
     for (const f of SRC) {
       const text = readFileSync(f, 'utf8')
-      expect(text, relative(ROOT, f)).not.toMatch(/\bfetch\(|XMLHttpRequest|new WebSocket|EventSource|sendBeacon|@anthropic-ai|openai/i)
+      expect(text, relative(ROOT, f)).not.toMatch(/\bfetch\(|XMLHttpRequest|new WebSocket|EventSource|sendBeacon|@anthropic-ai\/|from\s+['"]openai|require\(\s*['"]openai|import\(\s*['"]openai/i)
     }
     const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> }
     const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })

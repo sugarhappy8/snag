@@ -27,6 +27,8 @@ import {
 } from '../core'
 import { localMarket } from '../data/markets'
 import { createPerson, notePerson } from '../people'
+import { gadgetName, steadyBrand } from './everyday-brands'
+import { ITEM_MAKERS, makerFirstWords } from './everyday-makers'
 import { chance, pick, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
@@ -64,13 +66,22 @@ function str(v: Json | undefined, fallback = ''): string {
 }
 
 function lower(name: string): string {
+  // "Trek Road Bike" keeps its capital: it starts with a real maker's name.
+  if (makerFirstWords().has(name.split(/\s+/)[0])) return name
   return name.charAt(0).toLowerCase() + name.slice(1)
 }
 
+/** The plain product ("Road Bike") for lines that must not blame a real maker (breakage, injuries, wear). */
+function plainName(a: Asset): string {
+  return str(a.details.baseName, a.name.replace(/^Used /, ''))
+}
+
 /** "a road bike", "an e-bike", "the 1,000-piece puzzle" for names starting with a digit. */
-function withArticle(name: string): string {
+export function withArticle(name: string): string {
   if (/^\d/.test(name)) return `a ${name}`
-  return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${lower(name)}`
+  // "a used bike", "a Uniqlo hoodie", "an Adidas hoodie", "an e-bike": a vowel that is pronounced "you" takes "a".
+  const vowel = /^[aeiou]/i.test(name) && !/^(use[ds]?\b|uni|uti|eu|one\b)/i.test(name)
+  return `${vowel ? 'an' : 'a'} ${lower(name)}`
 }
 
 function hashString(s: string): number {
@@ -253,8 +264,24 @@ const STORES: Record<StoreId, StoreDef> = {
   },
 }
 
-/** A store name that sounds local ("Sakura Cycles"), stable per country. */
+/** Which real chains can be the shop (tried in order): registry category and segment. */
+const STORE_CHAINS: Record<StoreId | 'pet', { category: string; segment?: string; notSegment?: string }[]> = {
+  bike: [{ category: 'sports-retail', segment: 'bike' }, { category: 'sports-retail', segment: 'multi' }],
+  sports: [{ category: 'sports-retail', segment: 'multi' }],
+  // Office-chair and design makers (Herman Miller, Steelcase, La-Z-Boy...) make furniture; they are not the shop.
+  furniture: [{ category: 'furniture', notSegment: 'chair' }],
+  clothing: [{ category: 'clothing-retail' }],
+  toy: [{ category: 'toy-retail' }],
+  garden: [{ category: 'home-improvement' }],
+  pet: [{ category: 'pet-retail' }],
+}
+
+/** The shop's name: a real chain that trades where you live (stable for the life), else a local-sounding independent. */
 export function storeName(g: GameState, id: StoreId | 'pet'): string {
+  for (const c of STORE_CHAINS[id]) {
+    const real = steadyBrand(g, c.category, `store:${id}`, { ...(c.segment ? { segment: c.segment } : {}), ...(c.notSegment ? { notSegment: c.notSegment } : {}) })
+    if (real) return real.name
+  }
   const def = id === 'pet' ? PET_STORE : STORES[id]
   const words = localMarket(g).nameWords.filter((w) => typeof w === 'string' && w.trim() !== '')
   if (words.length === 0) return def.fallbackName
@@ -293,6 +320,8 @@ export interface EverydayListing {
   store: StoreId | 'pet'
   key: string
   name: string
+  /** The generic product ('Road Bike') behind a branded name ('Trek Road Bike'). */
+  baseName: string
   emoji: string
   price: number
   value: number
@@ -323,11 +352,14 @@ function listingFor(g: GameState, storeId: StoreId | 'pet', d: ItemDef): Everyda
   const price = nicePrice(d.base * mult * r.float(0.88, 1.14) * (used ? 0.4 + 0.35 * (condition / 100) : 1))
   const value = Math.max(0, nicePrice(price * d.keep * (used ? 1.1 : 1)))
   const upkeep = d.upkeep ? nicePrice(d.upkeep * safe(goodsMult(g))) : 0
+  const spec = ITEM_MAKERS[`${storeId}:${d.key}`]
+  const named = (spec ? gadgetName(g, spec, `item:${storeId}:${d.key}`, d.name) : undefined) ?? d.name
   return {
     id: `${g.year}:${storeId}:${d.key}`,
     store: storeId,
     key: d.key,
-    name: used ? `Used ${d.name}` : d.name,
+    name: used ? `Used ${named}` : named,
+    baseName: d.name,
     emoji: d.emoji,
     price: Math.max(1, price),
     value: Number.isFinite(value) ? value : 0,
@@ -392,6 +424,7 @@ function addItemAsset(g: GameState, l: EverydayListing, d: ItemDef, extra: Recor
     store: l.store,
     itemKey: d.key,
     boughtYear: g.year,
+    baseName: l.baseName,
     isNew: !l.used,
     insured: false,
     ...extra,
@@ -1168,7 +1201,7 @@ export function useEverydayItem(g: GameState, assetId: string): void {
     addCondition(g, injury, 'injury', randInt(g, 6, injury.startsWith('Broken') || injury === 'Torn ACL' || injury === 'Concussion' ? 30 : 14))
     addStat(g, 'health', -randInt(g, 3, 8))
     addStat(g, 'happiness', -randInt(g, 1, 4))
-    log(g, `I got a ${injury.toLowerCase()} ${use === USES.ride ? 'falling off' : 'using'} my ${lower(a.name)}.`, 'bad')
+    log(g, `I got a ${injury.toLowerCase()} ${use === USES.ride ? 'falling off' : 'using'} my ${lower(plainName(a))}.`, 'bad')
     notice(g, 'Ouch!', `${pick(g, ['It was going great until it wasn\'t.', 'You were showing off. Gravity noticed.', 'One wrong move and down you went.'])} You got a ${injury.toLowerCase()}.${feeNote}`, { emoji: '🩹', tone: 'bad' })
     return
   }
@@ -1239,7 +1272,7 @@ export function useEverydayItem(g: GameState, assetId: string): void {
   }
 
   if (a.condition <= 0) {
-    text += str(a.details.category) === 'clothing' ? ` Your ${lower(a.name)} finally gave up. It's worn out.` : ` Your ${lower(a.name)} is broken now.`
+    text += str(a.details.category) === 'clothing' ? ` Your ${lower(plainName(a))} finally gave up. It's worn out.` : ` Your ${lower(plainName(a))} is broken now.`
   }
   log(g, fill(use.log, g, a), 'good')
   notice(g, use.title, `${text}${feeNote}`, { emoji: use.emoji, tone: 'good' })
@@ -1525,7 +1558,7 @@ export function yearlyEveryday(g: GameState): void {
     const store = str(a.details.store)
     if (a.condition > 0 || (store !== 'clothing' && store !== 'toy')) continue
     g.assets = g.assets.filter((x) => x.id !== a.id)
-    log(g, store === 'clothing' ? `I finally threw out my worn-out ${lower(a.name)}.` : `My ${lower(a.name)} fell apart. It was loved to death.`)
+    log(g, store === 'clothing' ? `I finally threw out my worn-out ${lower(plainName(a))}.` : `My ${lower(plainName(a))} fell apart. It was loved to death.`)
   }
 
   if (inPrison(g)) return

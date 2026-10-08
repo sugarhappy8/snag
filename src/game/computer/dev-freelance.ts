@@ -1,9 +1,9 @@
 // Freelancing from the home computer (13+): websites, landing pages, logos, scripts, databases
-// and client apps on invented gig platforms. Pay follows your skill and your reviews (and is
+// and client apps on real freelance marketplaces. Pay follows your skill and your reviews (and is
 // closer to global rates than local wages), clients can be from hell, and some never pay.
 import { addStat, count, formatMoney, log, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { fillLocal } from '../data/locales'
-import { eraOk, eraPick, eraStrip } from '../events/era'
+import { eraLines, eraOk, eraPick, eraStrip } from '../events/era'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent } from '../talents'
@@ -49,7 +49,14 @@ function gigsNow(g: GameState): CodeGig[] {
   return CODE_GIGS.filter((x) => eraOpen(g, x.era))
 }
 
-export const GIG_PLATFORMS = ['Gigly', 'FreelanceFox', 'TaskHive']
+/** Real freelance marketplaces, tagged with the years they traded (Elance and oDesk became Upwork in 2015). */
+export const GIG_PLATFORMS = ['@2000,-2015 Elance', '@2003,-2015 oDesk', '@2009 Freelancer.com', '@2010 Fiverr', '@2015 Upwork']
+
+/** The marketplaces open this year (always at least one: the first ones are untagged for old years). */
+export function gigPlatformsNow(g: GameState): string[] {
+  const now = eraLines(g, GIG_PLATFORMS)
+  return now.length ? now : ['a freelance job board']
+}
 export const GIG_LIMIT = 6
 
 /** [description, is a person (gets a local name)]. */
@@ -135,7 +142,7 @@ const HELL_SCRIPT = defineScript('computer.dev.gig.hell', (g, choice, data) => {
   const pay = whole(num(d.pay))
   const rating = between(num(d.stars, 3), 1, 5)
   const client = str(d.client, 'The client')
-  const platform = str(d.platform, 'Gigly')
+  const platform = str(d.platform, 'a freelance job board')
   if (choice === 'comply') {
     addStat(g, 'happiness', -randInt(g, 2, 5))
     const tax = earnNow(g, pay)
@@ -173,7 +180,7 @@ export function doCodeGig(g: GameState, gig: CodeGig): void {
   if (codingSkill(g) < gig.minSkill) return notice(g, gig.label, `Clients want coding skill ${gig.minSkill}+ for this (you have ${codingSkill(g)}).`, { emoji: gig.emoji })
   if (!useYearAction(g, 'computer.dev.gig', GIG_LIMIT)) return notice(g, 'Freelancing', `You've done ${GIG_LIMIT} freelance jobs this year. Your wrists have filed a complaint.`, { emoji: gig.emoji })
   useComputer(g, 1)
-  const platform = pick(g, GIG_PLATFORMS)
+  const platform = pick(g, gigPlatformsNow(g))
   const client = clientName(g)
   const rate = gigRate(g, gig)
   const hours = randInt(g, gig.hours[0], gig.hours[1])
@@ -206,8 +213,8 @@ export function doCodeGig(g: GameState, gig: CodeGig): void {
   if (roll <= 16) {
     recordGig(g, 0, null, true)
     addStat(g, 'happiness', -randInt(g, 3, 6))
-    log(g, `A freelance client on ${platform} never paid me.`, 'bad')
-    notice(g, 'Ghosted', `You ${gig.done} for ${client} (${hours} hours). They loved it. Then they deleted their account on ${platform} and never paid the ${formatMoney(pay)}.`, { emoji: '\u{1F47B}', tone: 'bad' })
+    log(g, 'A freelance client never paid me.', 'bad')
+    notice(g, 'Ghosted', `You ${gig.done} for ${client} (${hours} hours). They loved it. Then they deleted their account and never paid the ${formatMoney(pay)}.`, { emoji: '\u{1F47B}', tone: 'bad' })
     return
   }
   const tip = rating === 5 && chance(g, 0.3) ? Math.max(5, Math.round(pay * randInt(g, 10, 25) / 100)) : 0
@@ -260,7 +267,7 @@ export const codeFreelanceMenu: MenuGroup = {
   header: (g) => {
     const s = devState(g)
     const r = freelanceRating(s)
-    return `Gig platforms: ${GIG_PLATFORMS.join(', ')}. ${s.freelance.gigs > 0 ? `You've done ${s.freelance.gigs} jobs and earned ${formatMoney(s.freelance.earned)}${r > 0 ? `; rating ${r.toFixed(1)}/5` : ''}.` : 'Better skill and better reviews mean better rates.'}${g.character.age < 18 ? ' Clients pay kids less. Rude, but true.' : ''}`
+    return `Gig platforms: ${gigPlatformsNow(g).join(', ')}. ${s.freelance.gigs > 0 ? `You've done ${s.freelance.gigs} jobs and earned ${formatMoney(s.freelance.earned)}${r > 0 ? `; rating ${r.toFixed(1)}/5` : ''}.` : 'Better skill and better reviews mean better rates.'}${g.character.age < 18 ? ' Clients pay kids less. Rude, but true.' : ''}`
   },
   children: (g) => gigsNow(g).map(gigAction),
 }

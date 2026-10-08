@@ -2,8 +2,10 @@
 // hours of flight school) and firearm license (background check). Each test is a short quiz
 // played through popups; get every question right to pass.
 import { count, hasLicense, log, notice, remember, scriptChoice } from '../core'
+import { masterFirstTime } from '../mastery'
 import { chance, pick, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
+import { hasMainCharacter } from '../talents'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
 import { brokeNotice, countryOf, flagNumber, gate, localPrice, money, payingParents, result } from './common'
 import { localTerm } from '../data/locales'
@@ -281,6 +283,13 @@ function startTest(g: GameState, kind: LicenseKind, fee: number): void {
   g.character.money -= fee
   g.yearActions[`act.license.${kind}`] = (g.yearActions[`act.license.${kind}`] ?? 0) + 1
   count(g, `${kind}Tests`)
+  // Main Character Syndrome: the first time at the wheel (or the helm, or the yoke) is already mastery,
+  // so the test is aced. The age, the fee, the flight hours and the attempts still apply.
+  if (hasMainCharacter(g)) {
+    masterFirstTime(g, `drive.${kind}`, 'driving', kind === 'driver' ? 'driving test' : kind === 'boating' ? 'boating test' : kind === 'pilot' ? "pilot's test" : 'firearm safety test')
+    passTest(g, kind)
+    return
+  }
   ask(g, kind, pickQuestions(g, kind), 0)
 }
 
@@ -349,6 +358,7 @@ function flightLesson(g: GameState, hours: number, usd: number): void {
   const total = flagNumber(g, FLIGHT_HOURS) + hours
   g.flags[FLIGHT_HOURS] = total
   count(g, 'flightSchool')
+  if (hasMainCharacter(g)) masterFirstTime(g, 'drive.pilot', 'driving', 'flight lesson')
   log(g, `I logged ${hours} hours at flight school.`, 'good')
   const line = pick(g, [
     'You practiced takeoffs and landings until you could do them in your sleep. Please do not do them in your sleep.',

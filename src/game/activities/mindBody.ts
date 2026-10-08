@@ -6,7 +6,8 @@ import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, HiddenKey, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { killCharacter } from '../death'
-import { hasTalent, talentMult } from '../talents'
+import { ageCeiling, capAt, liftSkill } from '../mastery'
+import { hasMainCharacter, hasTalent, talentMult } from '../talents'
 import { bookMenu } from './books'
 import { creativeMenu } from './creative'
 import {
@@ -807,7 +808,19 @@ function instrumentLesson(g: GameState, name: string): void {
   const lessonsThisYear = (g.yearActions[perKey] ?? 0) + 1
   g.yearActions[perKey] = lessonsThisYear
   count(g, 'musicLessons')
-  const before = instrumentSkill(g, name)
+  // Main Character Syndrome: the first lesson on an instrument is already mastery (to the age ceiling).
+  const top = ageCeiling(c.age, { from: 5, full: 15, floor: 35 })
+  const prior = instrumentSkill(g, name)
+  const before = liftSkill(g, `instrument.${name}`, 'instrument', name.toLowerCase(), prior, top)
+  if (before !== prior) {
+    setInstrumentSkill(g, name, before)
+    if (before >= 100) {
+      count(g, 'instrumentsMastered')
+      addStat(g, 'happiness', randInt(g, 2, 5))
+      remember(g, `Mastered the ${name.toLowerCase()}.`)
+      return
+    }
+  }
   if (before >= 100) {
     addStat(g, 'happiness', randInt(g, 1, 4))
     log(g, `I played the ${name.toLowerCase()} just for fun.`, 'good')
@@ -816,8 +829,8 @@ function instrumentLesson(g: GameState, name: string): void {
   }
   // Too many lessons in one year and you start getting worse (burnout).
   if (lessonsThisYear > 3) {
-    const loss = randInt(g, 2, 6)
-    setInstrumentSkill(g, name, before - loss)
+    const loss = hasMainCharacter(g) ? 0 : randInt(g, 2, 6)
+    if (loss > 0) setInstrumentSkill(g, name, before - loss)
     addStat(g, 'happiness', -randInt(g, 1, 3))
     log(g, `I practiced the ${name.toLowerCase()} too much and got worse.`, 'bad')
     result(g, 'Burnout', `You've taken too many ${name.toLowerCase()} lessons this year. You're burned out and actually got worse.`, '\u{1F635}', 'bad')
@@ -825,7 +838,7 @@ function instrumentLesson(g: GameState, name: string): void {
   }
   let gain = randInt(g, 4, 12) * (0.6 + c.stats.smarts / 200) * talentMult(g, 'Music', 1.6) * (c.age < 18 ? 1.2 : 1)
   if (name === 'Kazoo' || name === 'Triangle' || name === 'Tambourine') gain *= 1.6
-  const after = Math.min(100, Math.round(before + gain))
+  const after = capAt(g, Math.min(100, Math.round(before + gain)), top, before)
   setInstrumentSkill(g, name, after)
   addStat(g, 'happiness', randInt(g, 1, 3))
   addStat(g, 'smarts', randInt(g, 0, 1))
@@ -947,8 +960,12 @@ function takeLesson(g: GameState, l: LessonDef): void {
   useYearAction(g, `act.lesson.${l.id}`, 3)
   count(g, `${l.id}Lessons`)
   const talented = hasTalent(g, l.id === 'acting' ? 'Acting' : l.id === 'voice' ? 'Music' : 'Modeling')
-  const before = skillLevel(g, l.id)
-  const after = Math.min(100, before + Math.round(randInt(g, 5, 13) * (talented ? 1.7 : 1)))
+  const lessonTop = l.id === 'modeling' ? ageCeiling(g.character.age, { from: 12, full: 18, floor: 45 }) : ageCeiling(g.character.age, { from: 6, full: 17, floor: 30 })
+  const prior = skillLevel(g, l.id)
+  // Main Character Syndrome: the first lesson is already mastery (to the age ceiling).
+  const before = liftSkill(g, `lesson.${l.id}`, 'stage', l.label.replace(/ Lessons?$/, '').toLowerCase(), prior, lessonTop)
+  const grown = Math.min(100, before + Math.round(randInt(g, 5, 13) * (talented ? 1.7 : 1)))
+  const after = capAt(g, grown, lessonTop, before)
   g.flags[`skill.${l.id}`] = after
   addStat(g, 'happiness', randInt(g, 1, 4))
   if (l.id === 'modeling') addStat(g, 'looks', randInt(g, 0, 2))

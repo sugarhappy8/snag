@@ -163,7 +163,8 @@ describe('event library', () => {
     const ids = EVENT_LIBRARY.map((e) => e.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const ev of EVENT_LIBRARY) {
-      expect(ev.id).toMatch(/^[a-z]+\.[A-Za-z0-9]+$/)
+      // 'kid.integrity', or an era popup: 'era.1980s.arcade' (events/era-pack-*.ts).
+      expect(ev.id).toMatch(/^[a-z]+(\.[A-Za-z0-9]+){1,2}$/)
       expect(ev.minAge).toBeLessThanOrEqual(ev.maxAge)
       expect(Object.keys(ev.resolve).length).toBeGreaterThanOrEqual(2)
     }
@@ -186,9 +187,24 @@ describe('event library', () => {
     for (const ev of EVENT_LIBRARY) {
       const ages = [...new Set([Math.min(ev.maxAge, Math.max(ev.minAge, 30)), ev.minAge, Math.min(ev.maxAge, ev.minAge + 3), Math.min(ev.maxAge, 70), ev.maxAge])].filter((a) => a <= 110)
       let presented = false
+      // Era popups only exist in their years (and in some countries): look for one where they do.
+      const eraYears = ev.id.startsWith('era.') ? Array.from({ length: 127 }, (_, i) => 2026 - i) : [undefined]
+      const eraCountries = ev.id.startsWith('era.') ? ['us', 'gb', 'ng', 'br', 'jp', 'in', 'de', 'ru', 'cn'] : [undefined]
       for (const age of ages) {
         for (const [seed, alt] of [[3, false], [11, true], [29, false], [41, true]] as const) {
-          const base = richGame({ age, seed, alt, prison: ev.where === 'prison' })
+          let base = richGame({ age, seed, alt, prison: ev.where === 'prison' })
+          if (ev.id.startsWith('era.')) {
+            const found = eraYears.flatMap((y) => eraCountries.map((c) => [y, c] as const)).find(([y, c]) => {
+              const probe = richGame({ age, seed, alt, prison: ev.where === 'prison' })
+              probe.year = y as number
+              probe.character.countryId = c as string
+              return eventEligible(probe, ev)
+            })
+            if (!found) continue
+            base = richGame({ age, seed, alt, prison: ev.where === 'prison' })
+            base.year = found[0] as number
+            base.character.countryId = found[1] as string
+          }
           if (!eventEligible(base, ev)) continue
           const setup = ev.setup(base)
           if (!setup) continue

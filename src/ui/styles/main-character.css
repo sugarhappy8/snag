@@ -1,0 +1,48 @@
+/* Main Character Syndrome in the New Life talent picker: a gold-edged card that says it takes one slot. */
+
+.nl-talent.is-main {
+  border-color: var(--yellow, #f2b134);
+  background: color-mix(in srgb, var(--yellow, #f2b134) 9%, var(--card, #fff));
+}
+
+.nl-talent.is-main:hover {
+  border-color: var(--orange, #f08a24);
+}
+
+.nl-talent.is-main.is-on {
+  border-color: var(--yellow, #f2b134);
+  background: color-mix(in srgb, var(--yellow, #f2b134) 18%, var(--card, #fff));
+  box-shadow: 0 0 0 1px var(--yellow, #f2b134);
+}
+
+.nl-talent.is-main.is-on .nl-talent-label {
+  color: var(--text, #1b2330);
+}
+
+.nl-talent.is-main.is-on .nl-talent-check {
+  border-color: var(--yellow, #f2b134);
+  background: var(--yellow, #f2b134);
+  color: #1b2330;
+}
+
+.nl-talent-badge {
+  align-self: flex-start;
+  margin-top: 3px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--yellow, #f2b134) 28%, transparent);
+  color: var(--text, #1b2330);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.nl-talents-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--yellow, #f2b134) 14%, transparent);
+  color: var(--text, #1b2330);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}

@@ -10,7 +10,7 @@
 // a scheduled fade is a predictable rebound anyone could buy into the year after, so the
 // announcements in special/politics.ts never fade.) Nothing here touches g.rng.
 import type { GameState, Json } from '../types'
-import { exchangeByKey, slotPlan } from './engine'
+import { exchangeByKey, isRealSecId, slotPlan } from './engine'
 
 export const SHOCKS_KEY = 'marketShocks'
 
@@ -77,13 +77,28 @@ export function marketShocks(g: GameState): MarketShock[] {
   return raw.filter(valid) as unknown as MarketShock[]
 }
 
+/** The causes that hurt a company's price (a ban, an investigation, a nationalization). */
+export function isNegativeCause(cause: ShockCause): boolean {
+  return cause === 'ban' || cause === 'probe' || cause === 'nationalize'
+}
+
+/**
+ * True when a made-up political decision may hit this security. Real companies of the registry are
+ * never banned, probed or nationalized by invented news (their real ups and downs are the market's
+ * own); made-up companies and coins take the whole blow.
+ */
+export function shockable(secId: string, asset: 'stock' | 'coin', cause: ShockCause): boolean {
+  return !(asset === 'stock' && isRealSecId(secId) && isNegativeCause(cause))
+}
+
 /** Record a shock (the price moves at once). Returns it. */
 export function addMarketShock(g: GameState, s: Omit<MarketShock, 'id'>): MarketShock {
   const list = marketShocks(g)
   const shock: MarketShock = {
     ...s,
     id: `shock${g.year}-${list.length}-${s.secId}`,
-    mult: Math.max(0.05, Math.min(5, Number.isFinite(s.mult) ? s.mult : 1)),
+    // A damaging story never sticks to a real company: it has no effect on its price.
+    mult: !shockable(s.secId, s.asset, s.cause) ? 1 : Math.max(0.05, Math.min(5, Number.isFinite(s.mult) ? s.mult : 1)),
     fade: Math.max(0, Math.min(1, Number.isFinite(s.fade) ? s.fade : 0)),
   }
   list.push(shock)

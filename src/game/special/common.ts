@@ -5,7 +5,8 @@ import { outcomeTag } from '../timeMachine'
 import { addHidden, article, count, endJob, formatMoney, notice, shortMoney } from '../core'
 import { createPerson } from '../people'
 import { nextRandom, pick, rand } from '../rng'
-import { characterTalents } from '../talents'
+import { ageCeiling, liftSkill, type MasteryFamily } from '../mastery'
+import { effectiveTalents, hasMainCharacter } from '../talents'
 import type { CareerRecord, DegreeKind, GameState, Gender, Job, JobCategory, Json, Person, Tone } from '../types'
 
 /** Fame (0-100) at which the game treats you as a celebrity. */
@@ -151,7 +152,7 @@ export function hasAddiction(g: GameState): boolean {
  * matches. Prefer talents.ts hasTalent(g, id) in new code.
  */
 export function talentMatches(g: GameState, re: RegExp): boolean {
-  return characterTalents(g).some((t) => re.test(t))
+  return effectiveTalents(g).some((t) => re.test(t))
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +184,8 @@ export function hire(g: GameState, spec: HireSpec): { job: Job; quit: string | n
     category: spec.category ?? 'special',
     salary: Math.max(0, Math.round(spec.salary)),
     level: spec.level ?? 0,
-    performance: spec.performance ?? 60,
+    // Main Character Syndrome starts a special career near the top of the performance scale.
+    performance: hasMainCharacter(g) ? Math.max(spec.performance ?? 60, 78) : (spec.performance ?? 60),
     yearsInRole: 0,
     yearsAtCompany: 0,
     data: { ...(spec.data ?? {}), startAge: c.age, roleStartAge: c.age },
@@ -397,6 +399,26 @@ export function instrumentSkill(g: GameState, name: string): number {
 export function setInstrumentSkill(g: GameState, name: string, value: number): void {
   if (name === 'Voice') return setFlagSkill(g, 'voice', value)
   g.flags.instruments = { ...instrumentRecord(g), [name]: clamp100(value) }
+}
+
+/**
+ * Main Character Syndrome: playing an instrument (or singing) for the first time is already
+ * mastery, to the ceiling of the age. Returns the new skill. Everybody else is untouched.
+ */
+export function masterInstrument(g: GameState, name: string): number {
+  const now = instrumentSkill(g, name)
+  const top = ageCeiling(g.character.age, { from: 5, full: 15, floor: 35 })
+  const next = liftSkill(g, name === 'Voice' ? 'lesson.voice' : `instrument.${name}`, name === 'Voice' ? 'stage' : 'instrument', name === 'Voice' ? 'singing' : name.toLowerCase(), now, top)
+  if (next !== now) setInstrumentSkill(g, name, next)
+  return next
+}
+
+/** Main Character Syndrome for a 0-100 flag skill (acting, modeling, voice...). */
+export function masterFlagSkill(g: GameState, id: string, family: MasteryFamily, subject: string, top: number): number {
+  const now = flagSkill(g, id)
+  const next = liftSkill(g, `lesson.${id}`, family, subject, now, top)
+  if (next !== now) setFlagSkill(g, id, next)
+  return next
 }
 
 /** Instruments the character has any skill in ('Voice' first when they've had voice lessons). */

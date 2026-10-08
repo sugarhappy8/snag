@@ -2,9 +2,10 @@
 // career, family left behind, notable counters and the estate — with varied phrasing.
 import { counter, formatMoney, fullName, netWorth, peopleBy, pronouns, shortMoney } from '../core'
 import { pick, randInt } from '../rng'
-import { characterTalents } from '../talents'
+import { characterTalents, talentLabel } from '../talents'
 import type { GameState, Person } from '../types'
 import { country } from './helpers'
+import { estrangedKids, readWill, readWl, willNameable } from './will-core'
 
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`
@@ -86,7 +87,7 @@ export function writeObituary(g: GameState): string {
   if (n('pets') >= 3) notable.push(`${P.He} adored animals and cared for ${n('pets')} pets over the years.`)
   if (n('casinoWins') + n('casinoLosses') >= 10) notable.push(`${P.He} was a familiar face at the casino.`)
   if (n('fights') >= 10) notable.push(`${P.He} never backed down from a fight, and there were many.`)
-  const gifts = characterTalents(g).map((t) => t.toLowerCase())
+  const gifts = characterTalents(g).map((t) => talentLabel(t).toLowerCase())
   if (gifts.length) notable.push(`${P.He} had a real gift for ${gifts.length > 1 ? `${gifts.slice(0, -1).join(', ')} and ${gifts[gifts.length - 1]}` : gifts[0]}.`)
   if (c.hidden.karma >= 80) notable.push(`Friends remember ${P.him} as one of the kindest people they ever met.`)
   else if (c.hidden.karma <= 15) notable.push(`Few will admit to missing ${P.him}.`)
@@ -116,6 +117,19 @@ export function writeObituary(g: GameState): string {
     const pet = living(['pet'])[0]
     if (pet) sentences.push(`${P.He} is survived by ${P.his} ${(pet.species ?? 'pet').toLowerCase()}, ${pet.firstName}, who is doing about as well as can be expected.`)
     else if (age >= 30) sentences.push(pick(g, [`${P.He} leaves behind no close family.`, `No family members could be reached for comment.`]))
+  }
+
+  // A rift over the will, or a gift to charity (no randomness: it must not shift the phrasing above).
+  if (age >= 18) {
+    const apart = estrangedKids(g)
+    const sore = willNameable(g).filter((p) => {
+      const w = readWl(g, p)
+      return w.cut && w.known && w.anger >= 50 && !w.estr
+    })
+    if (apart.length > 0) sentences.push(`${P.He} had not spoken to ${apart.length === 1 ? `${P.his} ${apart[0].gender === 'male' ? 'son' : 'daughter'}, ${apart[0].firstName}` : `${apart.length} of ${P.his} children`} in years, after a quarrel over the will.`)
+    else if (sore.length > 0) sentences.push('The family is said to be divided over the will.')
+    const share = readWill(g).charity
+    if (share >= 20) sentences.push(`${P.He} left ${share}% of ${P.his} estate to charity.`)
   }
 
   // Estate.

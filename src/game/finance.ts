@@ -12,6 +12,7 @@ import { chance, pick, randInt, uid } from './rng'
 import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry, randomFirstName } from './world'
 import { businessGone } from './assetHooks'
+import { employerRef } from './shops/everyday-brands'
 
 // ---------------------------------------------------------------------------
 // Income tax
@@ -674,7 +675,7 @@ function yearlyLoans(g: GameState): void {
         notice(
           g,
           'Missed Payment',
-          `You couldn't make the ${formatMoney(due)} payment on your ${loanLabel(loan.kind).toLowerCase()} from ${loan.lender}. A ${formatMoney(fee)} late fee was added and your credit score took a beating.`,
+          `You couldn't make the ${formatMoney(due)} payment on your ${loanLabel(loan.kind).toLowerCase()} from ${employerRef(loan.lender, 'your lender')}. A ${formatMoney(fee)} late fee was added and your credit score took a beating.`,
           { emoji: '📉', tone: 'bad' },
         )
         log(g, missed === 1 ? `I missed a payment on my ${loanLabel(loan.kind).toLowerCase()}.` : `I'm still behind on my ${loanLabel(loan.kind).toLowerCase()}.`, 'bad')
@@ -687,7 +688,7 @@ function yearlyLoans(g: GameState): void {
       delete misses[loan.id]
       const what = loanLabel(loan.kind).toLowerCase()
       log(g, `I paid off my ${what}!`, 'good')
-      notice(g, 'Debt Free!', pick(g, [`You made the final payment on your ${what}. ${loan.lender} will have to find someone else to bother.`, `Your ${what} is officially paid off! You celebrated by not opening a single envelope from ${loan.lender}.`]), { emoji: '🎉', tone: 'good' })
+      notice(g, 'Debt Free!', pick(g, [`You made the final payment on your ${what}. ${employerRef(loan.lender, 'Your lender')} will have to find someone else to bother.`, `Your ${what} is officially paid off! You celebrated by not opening a single envelope from ${loan.lender}.`]), { emoji: '🎉', tone: 'good' })
       addStat(g, 'happiness', 6)
       remember(g, `Paid off my ${what}.`)
     }
@@ -711,7 +712,7 @@ function repossessFinancedAsset(g: GameState, loan: Loan): boolean {
       : asset.kind === 'aircraft'
         ? `the lender's pilot flew your ${asset.name.toLowerCase()} out of the hangar while you watched. They didn't even wave.`
         : `a tow truck showed up at 3 AM and repossessed your ${asset.name}. Your neighbors watched from their windows.`
-  notice(g, 'Repossessed!', `You stopped paying ${loan.lender}, so ${how}`, { emoji: asset.kind === 'car' ? '🚛' : asset.emoji, tone: 'bad' })
+  notice(g, 'Repossessed!', `You stopped paying ${employerRef(loan.lender, 'your lender')}, so ${how}`, { emoji: asset.kind === 'car' ? '🚛' : asset.emoji, tone: 'bad' })
   const nm = asset.kind === 'car' ? asset.name : asset.name.toLowerCase()
   log(g, `My ${nm} was repossessed.`, 'bad')
   addStat(g, 'happiness', -10)

@@ -363,7 +363,7 @@ describe('other crashes', () => {
   it('1929-32 wipes out most of a stock portfolio', () => {
     const g = investor(1928, 'us', 3)
     const fund = investmentListing(g).find((q) => q.type === 'index')!
-    expect(fund.name).toMatch(/Investment Trust/)
+    expect(fund.name).toBe('Massachusetts Investors Trust')
     expect(buySecurity(g, fund.secId, 100_000)).toBe(true)
     const cash = g.character.money
     for (let i = 0; i < 4; i++) passYear(g)
@@ -596,20 +596,22 @@ describe('the Investing talent stays honest with history', () => {
 
 describe('the present and the future are unchanged', () => {
   it('a family whose market starts at PRESENT_YEAR sees exactly the old procedural market', () => {
-    // Golden values from the engine as it was before history existed.
+    // Golden values from the engine as it was before history existed. Index funds, penny stocks, REITs,
+    // crypto, gold and currencies are untouched; the listed stocks changed when real companies took the
+    // slots of the made-up ones (invest/real.ts), so their goldens were re-recorded.
     const info = exchangeInfo('us')
     const ey = exchangeYear('golden', 2026, info, 2040)
     expect(ey.fund.price).toBeCloseTo(305.6355561153331, 8)
-    expect(ey.stocks[0].price).toBeCloseTo(216.7221368171653, 8)
-    expect(ey.stocks[3].price).toBeCloseTo(176.14183164955386, 8)
+    expect(ey.stocks[0].price).toBeCloseTo(323.51399036032996, 8)
+    expect(ey.stocks[3].price).toBeCloseTo(395.90574808228274, 8)
     expect(ey.pennies[1].price).toBeCloseTo(0.02305906985078545, 12)
     expect(ey.reit.price).toBeCloseTo(13.34282786181325, 8)
     expect(ey.level).toBeCloseTo(67644.42128137044, 6)
     const ej = exchangeYear('golden', 2030, exchangeInfo('jp'), 2061)
     expect(ej.fund.price).toBeCloseTo(67.43362118998319, 8)
-    expect(ej.stocks[5].price).toBeCloseTo(7.109773422669037, 8)
+    expect(ej.stocks[5].price).toBeCloseTo(15.124793158519653, 8)
     const cy = cryptoYear('golden', 2026, 2045)
-    expect(cy.coins.map((c) => c.id)).toEqual(['crypto#c0g0', 'crypto#c1g0', 'crypto#c2g1', 'crypto#c3g2'])
+    expect(cy.coins.map((c) => c.id)).toEqual(['crypto#c0g0', 'crypto#c1g0', 'crypto#c2g0', 'crypto#c3g2'])
     expect(cy.coins[0].price).toBeCloseTo(968.6694583131491, 8)
     expect(cy.coins[1].price).toBeCloseTo(66.00004254319042, 8)
     expect(goldYear('golden', 2026, 2050).price).toBeCloseTo(6379.695841551205, 6)
@@ -619,7 +621,7 @@ describe('the present and the future are unchanged', () => {
     expect(indexMove('golden', info, 2031).logRet).toBeCloseTo(0.09609433267487785, 12)
     expect(worldYear('golden', 2033).z).toBeCloseTo(-0.5722132268380281, 12)
     expect(savingsRate('us')).toBe(0.026)
-    expect(fundName(info, PRESENT_YEAR).name).toBe(`${info.ex.index} Index Fund`)
+    expect(fundName(info, PRESENT_YEAR).name).toBe('Vanguard 500 Index Fund')
   })
 
   it('future years are procedural even for families whose market started in the past', () => {
@@ -657,7 +659,7 @@ describe('the present and the future are unchanged', () => {
     expect(eraIdentity(def, 1925).label).toBe('Office Machines')
     expect(eraIdentity(def, PRESENT_YEAR).name).toBe(def.name)
     expect(fundName(info, 1950).trust).toBe(true)
-    expect(fundName(info, 1990).name).toMatch(/S&P 500 Index Fund/)
-    expect(fundName(info, 1950).name).toMatch(/Investment Trust/)
+    expect(fundName(info, 1990).name).toBe('Vanguard 500 Index Fund')
+    expect(fundName(info, 1950).name).toBe('Massachusetts Investors Trust')
   })
 })

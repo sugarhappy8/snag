@@ -7,6 +7,7 @@ import { addHidden, addRelationship, addStat, count, formatMoney, log, notice, p
 import { fillLocal } from '../data/locales'
 import { eraLines } from '../events/era'
 import { createPerson } from '../people'
+import { liftSkill } from '../mastery'
 import { chance, pick, randFloat, randInt, uid } from '../rng'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode, Person } from '../types'
@@ -47,9 +48,13 @@ export function aptitude(g: GameState): number {
  */
 export function practice(g: GameState, base: number, langId: string | null, langMult = 2.2): { skill: number; lang: number } {
   const c = g.character
-  const before = codingSkill(g)
+  const start = codingSkill(g)
   const ceiling = codingCeiling(c.age)
   const lang = langId ? getLanguage(langId) : undefined
+  // Main Character Syndrome: the first time you code, and the first time in each language, is already mastery (to the age ceiling).
+  const lifted = liftSkill(g, 'coding', 'coding', 'programming', start, ceiling)
+  if (lifted > start) addCodingSkill(g, lifted - start)
+  const before = codingSkill(g)
   const apt = aptitude(g)
   const room = Math.pow(Math.max(0, 1 - before / 110), 1.3)
   // Scratch teaches the basics; it stops helping once you know them.
@@ -59,7 +64,10 @@ export function practice(g: GameState, base: number, langId: string | null, lang
   const gain = Math.max(0, Math.min(Math.round(raw), Math.max(0, ceiling - before)))
   if (gain > 0) addCodingSkill(g, gain)
   let langGain = 0
+  const langStart = lang ? languageLevel(g, lang.id) : 0
   if (lang) {
+    const langLifted = liftSkill(g, `code.${lang.id}`, 'coding', lang.label, langStart, ceiling + 10)
+    if (langLifted > langStart) addLanguageXp(g, lang.id, langLifted - langStart)
     const lvl = languageLevel(g, lang.id)
     const lroom = Math.max(0, 1 - lvl / 105)
     const lcap = Math.max(0, Math.min(100, ceiling + 10) - lvl)
@@ -68,7 +76,7 @@ export function practice(g: GameState, base: number, langId: string | null, lang
     if (langGain > 0) addLanguageXp(g, lang.id, langGain)
   }
   markCoded(g)
-  return { skill: gain, lang: langGain }
+  return { skill: codingSkill(g) - start, lang: lang ? languageLevel(g, lang.id) - langStart : 0 }
 }
 
 function skillLine(g: GameState, before: number, lang: CodingLanguage | undefined, gains: { skill: number; lang: number }): string {
@@ -135,7 +143,7 @@ function tutorialEra(g: GameState): { label: string; header: string; sites: stri
 
 /** Paid lessons: online courses from 2000, night classes and correspondence courses before. */
 function courseEra(g: GameState): { label: string; header: string; sites: string[]; online: boolean } {
-  if (eraOpen(g, ONLINE_COURSE_GATE)) return { label: 'Paid Online Course', header: 'A structured course with exercises and a certificate.', sites: COURSE_SITES, online: true }
+  if (eraOpen(g, ONLINE_COURSE_GATE)) return { label: 'Paid Online Course', header: 'A structured course with exercises and a certificate.', sites: eraLines(g, COURSE_SITES), online: true }
   return { label: 'Night Class', header: 'Evening classes with a tired instructor, a room of humming terminals and a certificate.', sites: fillSites(g, ['the {city} community college night school', 'a correspondence course (lessons arrive by mail)', 'the {city} Computer Learning Center']), online: false }
 }
 
@@ -146,8 +154,8 @@ function fillSites(g: GameState, sites: string[]): string[] {
 // ---------------------------------------------------------------------------
 // Tutorials, courses, bootcamp, camp
 
-const TUTORIAL_SITES = ['CodeCub', 'ByteSized', 'CodeCove', '@+videoSharing a video series by a guy who types very loudly', 'a free course with a suspiciously cheerful narrator']
-const COURSE_SITES = ['LearnLoop', 'SkillShelf', 'CourseCrate']
+const TUTORIAL_SITES = ['@1998 W3Schools', '@2008 Khan Academy', '@2011 Codecademy', '@2014 freeCodeCamp', '@2008 Stack Overflow', '@+videoSharing a YouTube series by a guy who types very loudly', 'a free course with a suspiciously cheerful narrator']
+const COURSE_SITES = ['Lynda.com', '@2004 Pluralsight', '@2010 Udemy', '@2011 Udacity', '@2012 Coursera']
 
 const TUTORIAL_LINES = [
   'You followed a tutorial step by step. It worked on the first try, which made you deeply suspicious.',
@@ -667,7 +675,7 @@ export function askParentsForComputer(g: GameState): void {
   if (budget >= price * 4 && score >= 0.55) {
     payer.money = Math.round(payer.money - price)
     addRelationship(payer, 2)
-    giveComputer(g, model.name, price, 100, { gift: 'parents' })
+    giveComputer(g, model.displayName, price, 100, { gift: 'parents' })
     g.flags.devParentLaptopAge = c.age
     addStat(g, 'happiness', randInt(g, 8, 14))
     count(g, 'gotComputer')
@@ -723,7 +731,7 @@ export function usedLaptopListing(g: GameState): UsedLaptop {
 
 /** "Used Laptop" today, "Used Desktop PC" in 1995, "Used Home Computer" in 1985. */
 function usedName(g: GameState): string {
-  return `Used ${computerModel(g).name}`
+  return `Used ${computerModel(g).displayName}`
 }
 
 function buyUsedLaptop(g: GameState): void {

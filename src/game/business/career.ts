@@ -1,12 +1,14 @@
 // Who runs the company: the owner as CEO (a special-category Job) or a hired general manager.
 import { count, endJob, log, notice } from '../core'
 import { marketOf } from '../data/markets'
+import { masterBusiness } from '../mastery'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import type { Asset, GameState, Job } from '../types'
 import { randomFirstName, randomLastName } from '../world'
 import { boardOf, readBoard } from './board-state'
 import { bestPlan, LASTING_YEARS, localEcon, maxProduction, niceAmount, planFor, planOutcome, priceBounds, type Worth } from './economy'
 import { isDeepTech } from './deeptech-state'
+import { afterSuccession, successorManager } from './nepo-succession'
 import { CEO_STYLES, ceoJob, OWNER_JOB, readBiz, totalOutlets, type BizState, type CeoStyle, type Manager } from './state'
 import { clampN, round2 } from './util'
 
@@ -257,6 +259,10 @@ export function becomeCeo(g: GameState, a: Asset, b: BizState, title = 'Founder 
   }
   c.job = job
   count(g, 'jobs')
+  // Taking charge is the first hands-on business action for Main Character Syndrome. Keep this
+  // in the central transition so founding, buying and replacing a hired CEO all unlock the same
+  // bounded owner-CEO skill floor without making menu previews mutate state.
+  masterBusiness(g)
   return quit
 }
 
@@ -281,18 +287,39 @@ export function syncCeo(g: GameState): void {
       log(g, `I'm no longer running ${job.company}: it isn't mine anymore.`, 'bad')
     } else {
       job.company = a.name
+      // A WIP/hand-edited save may already have a Main Character owner-CEO but no mastery record.
+      // Repair it at the action-side yearly sync before the company simulation reads ceoSkill.
+      masterBusiness(g)
     }
   }
   for (const a of g.assets) {
-    if (a.kind !== 'business' || a.details.ceo === 'manager') continue
+    if (a.kind !== 'business') continue
+    const d = a.details as unknown as BizState
+    // An heir who was their family company's CEO now owns it and runs it as owner-CEO (nobody is
+    // their own hired manager).
+    if (d.ceo === 'manager' && d.manager?.personId && d.manager.personId === c.id) {
+      const b = readBiz(g, a)
+      if (c.alive && !c.prison && c.age >= 18) {
+        becomeCeo(g, a, d, b.founderName && b.founderName === `${c.firstName} ${c.lastName}` ? 'Founder & CEO' : 'Owner & CEO')
+        log(g, `I took over ${a.name} as its owner and CEO.`, 'good')
+      } else {
+        installManager(g, d, managerCandidate(g, b, randInt(g, 45, 70)))
+        log(g, `${a.name} hired an interim general manager until I can run it.`, 'neutral')
+      }
+      continue
+    }
+    if (d.ceo === 'manager') continue
     if (ceoJob(g, a.id)) continue
     const b = readBiz(g, a)
-    const d = a.details as unknown as BizState
-    const mgr = managerCandidate(g, b, randInt(g, 45, 70))
+    // The successor the owner named in advance (a son or daughter, a key employee) takes over; else a headhunted manager.
+    const heir = c.prison ? null : successorManager(g, a, b, (skill) => askingSalary(b, skill, 0))
+    const mgr = heir ?? managerCandidate(g, b, randInt(g, 45, 70))
     d.ceo = 'manager'
     d.manager = { ...mgr, since: g.year }
+    if (heir) afterSuccession(g, a, d, d.manager)
     const who = `${mgr.firstName} ${mgr.lastName}`
     if (c.prison) log(g, `With me behind bars, ${a.name} hired ${who} as interim general manager.`, 'neutral')
+    else if (heir) log(g, `${who} took over ${a.name} as CEO, as I had planned.`, 'good')
     else log(g, `${who} took over day-to-day management of ${a.name}.`, 'neutral')
   }
 }
@@ -331,4 +358,3 @@ export function ceoLetter(g: GameState, a: Asset, b: BizState, lines: string[], 
   }
   log(g, `${who}'s letter from ${a.name}: ${lines.length > 1 ? lines.slice(0, 2).join(' ') : lines[0] ?? 'business as usual.'}`, 'neutral')
 }
-

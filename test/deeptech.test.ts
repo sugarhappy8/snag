@@ -337,7 +337,7 @@ describe('deep tech', () => {
     for (let y = 0; y < 30 && !approvedYear; y++) {
       const bb = bizOf(g, a)
       const tt = techOf(bb)
-      let d = tt.drugs.find((x) => !x.failed && x.phase < 4)
+      let d = tt.drugs.find((x) => !x.failed && x.phase < 4 && !x.partner)
       if (!d) {
         tt.seq += 1
         tt.drugs.push({ id: `d${tt.seq}`, name: `Candidate ${tt.seq}`, area: 'rare', phase: 0, quality: 95, peak: 2, filed: g.year, approved: 0, royalty: 1, partner: '', failed: false })
@@ -691,7 +691,9 @@ describe('deep tech', () => {
     // Deep-tech companies come after the classic listings, which keep their places.
     const jp = exchangeInfo('jp')
     expect(slotPlan(jp).slice(0, classicSlots(jp))).not.toContain('robotics')
-    expect(slotPlan(exchangeInfo('ng')).slice(classicSlots(exchangeInfo('ng')))).toHaveLength(0)
+    // Poor markets get no deep-tech extras (their extra slots are real companies and made-up small caps).
+    const deepSectors = ['semis', 'ai', 'robotics', 'biotech', 'space', 'ev', 'quantum', 'cyber']
+    expect(slotPlan(exchangeInfo('ng')).slice(classicSlots(exchangeInfo('ng'))).filter((x) => deepSectors.includes(x))).toHaveLength(0)
   })
 
   it('gives founders realistic seeds: less money where venture capital is thin', () => {

@@ -55,10 +55,20 @@ export function typicalIncome(g: GameState, countryId = g.character.countryId, y
   return Math.max(1_000, Math.round(US_TYPICAL_INCOME * Math.min(1.6, countryWealth(countryId)) * realWealthFactor(year)))
 }
 
-/** What people around you think you're worth (net worth, never negative). */
+/**
+ * How much richer you look than you are because of what you flash: the watch at the party, the
+ * supercar at school, the yacht on social media (shops/luxury-family.ts). Fades by half a year,
+ * never more than +35%.
+ */
+export function showOffHeat(g: GameState): number {
+  const h = g.flags['lux.heat']
+  return typeof h === 'number' && Number.isFinite(h) ? Math.min(0.35, Math.max(0, h)) : 0
+}
+
+/** What people around you think you're worth (net worth plus what your show-offs add, never negative). */
 export function perceivedWealth(g: GameState): number {
   const n = netWorth(g)
-  return Number.isFinite(n) ? Math.max(0, n) : 0
+  return Number.isFinite(n) ? Math.max(0, n) * (1 + showOffHeat(g)) : 0
 }
 
 /** Net worth in years of a typical local income. */

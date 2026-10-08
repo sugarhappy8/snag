@@ -70,7 +70,8 @@ import {
 import { createPerson, notePerson } from './people'
 import { bell, chance, pick, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
-import { hasTalent, talentHint, talentMult, type TalentId } from './talents'
+import { masterFirstTime } from './mastery'
+import { hasMainCharacter, hasTalent, talentHint, talentMult, type TalentId } from './talents'
 import { getCountry, randomLastName } from './world'
 import type {
   ChoiceOption,
@@ -162,8 +163,71 @@ export function schoolSystem(countryId: string): SchoolSystem {
   return SYSTEMS[countryId] ?? DEFAULT_SYSTEM
 }
 
+/**
+ * The age a child could legally leave school in a past year (the SchoolSystem value is today's).
+ * Compulsory schooling was shorter for most of the 20th century: fourteen in the 1920s US, twelve
+ * in Edwardian Britain, twelve in prewar Japan, eleven or so in poor countries before the 1960s.
+ * Never above `modern`, and exactly `modern` from 1985 on, so present-day lives are untouched.
+ */
+export function eraDropOutAge(countryId: string, year: number, modern: number): number {
+  if (year >= 1985) return modern
+  const wealth = getCountry(countryId).wealth ?? 1
+  let age: number
+  if (countryId === 'us' || countryId === 'ca') age = year < 1940 ? 14 : year < 1960 ? 15 : 16
+  else if (countryId === 'gb') age = year < 1918 ? 12 : year < 1947 ? 14 : year < 1972 ? 15 : 16
+  else if (countryId === 'ie') age = year < 1972 ? 14 : 15
+  else if (countryId === 'au' || countryId === 'nz') age = year < 1950 ? 14 : year < 1975 ? 15 : 16
+  else if (countryId === 'jp') age = year < 1947 ? 12 : 15
+  else if (countryId === 'cn') age = year < 1990 ? 12 : 15
+  else if (wealth >= 0.6) age = year < 1936 ? 13 : year < 1960 ? 14 : year < 1975 ? 15 : 16
+  else if (wealth >= 0.3) age = year < 1950 ? 12 : year < 1980 ? 14 : 15
+  else age = year < 1960 ? 11 : year < 1985 ? 13 : 14
+  return Math.max(10, Math.min(modern, age))
+}
+
 function systemFor(g: GameState): SchoolSystem {
-  return schoolSystem(g.character.countryId)
+  const sys = schoolSystem(g.character.countryId)
+  if (g.year >= 1985) return sys
+  const dropOutAge = eraDropOutAge(g.character.countryId, g.year, sys.dropOutAge)
+  return dropOutAge === sys.dropOutAge ? sys : { ...sys, dropOutAge }
+}
+
+/** The age a student here and now may leave school (era-aware; today's value in modern years). */
+export function schoolLeavingAge(g: GameState): number {
+  return systemFor(g).dropOutAge
+}
+
+/**
+ * Punishment at school as it was: the ruler, the strap, the cane. Banned at different times
+ * (Britain's state schools 1987, most US states later, much of the world later still), so any
+ * year before 1985 has some. Told plainly and without detail; '' in modern years.
+ */
+export function eraDiscipline(g: GameState): string {
+  if (g.year >= 1985) return ''
+  const id = g.character.countryId
+  const w = getCountry(id).wealth ?? 1
+  if (id === 'jp' && g.year >= 1947) return ''
+  const old = g.year < 1950
+  if (id === 'us' || id === 'ca') return old ? 'The teacher took the strap to your palms.' : g.year < 1975 ? 'You got a swat from the principal’s paddle.' : ''
+  if (id === 'gb' || id === 'ie' || id === 'au' || id === 'nz' || id === 'za') return old ? 'The headmaster gave you the cane.' : 'You got the slipper, and a long lecture to go with it.'
+  if (w < 0.5) return 'The teacher rapped your knuckles with a stick.'
+  return old ? 'The teacher rapped your knuckles with a ruler.' : 'You were made to stand in the corridor for the rest of the day.'
+}
+
+/**
+ * Leave school the way most children did before the 1960s: the family needed a wage. Only for
+ * an enrolled K-12 student old enough to leave under the era's rules; returns false otherwise.
+ */
+export function leaveSchoolToWork(g: GameState): boolean {
+  const c = g.character
+  const cur = c.education.current
+  if (!cur || !isK12(cur.level) || c.age < schoolLeavingAge(g)) return false
+  const school = cur.school
+  c.education.droppedOut.push(cur.level)
+  leaveSchool(g, 'dropped')
+  remember(g, `Left ${school} to go to work.`)
+  log(g, `I left ${school} to go to work.`, 'neutral')
+  return true
 }
 
 /** Age at which a character finishes high school in their country. */
@@ -245,9 +309,29 @@ export function stageTitle(g: GameState, level: SchoolLevel): string {
   return titleCase(stageTerm(g, level))
 }
 
-/** The school-leaving / entrance exam: 'the SATs', 'the gaokao', 'A-levels'. */
-function finalExam(g: GameState): string {
-  return localTerm(g, 'finalExam') || 'the final exams'
+/**
+ * What the school-leaving exam was called before today's name existed ('' keeps the local term):
+ * [first year of the name, name]. The SAT began in 1926, A-levels and O-levels in 1951, the WAEC in
+ * 1952, the gaokao in 1952, the modern Korean exam in 1993. Absent countries keep their local term.
+ */
+const EXAM_ERAS: Readonly<Record<string, readonly (readonly [number, string])[]>> = {
+  us: [[1926, ''], [1901, 'the College Board exams'], [0, 'the college entrance exams']],
+  gb: [[1951, ''], [1918, 'the School Certificate'], [0, 'the matriculation exam']],
+  ie: [[1925, ''], [0, 'the Intermediate Certificate']],
+  ng: [[1952, ''], [0, 'the school certificate exams']],
+  gh: [[1952, ''], [0, 'the school certificate exams']],
+  ke: [[1985, ''], [0, 'the school certificate exams']],
+  cn: [[1952, ''], [0, 'the university entrance exam']],
+  kr: [[1993, ''], [0, 'the national entrance exam']],
+}
+
+/** The school-leaving / entrance exam: 'the SATs', 'the gaokao', 'A-levels' (era-aware before 1985). */
+export function finalExam(g: GameState): string {
+  const local = localTerm(g, 'finalExam') || 'the final exams'
+  const rows = g.year < 1985 ? EXAM_ERAS[g.character.countryId] : undefined
+  if (!rows) return local
+  for (const [from, term] of rows) if (g.year >= from) return term || local
+  return local
 }
 
 /** Where 'valedictorian' and 'summa cum laude' are things people say. */
@@ -278,6 +362,8 @@ function college(g: GameState): { label: string; term: string; degree: string; d
 /** The GED in the US and Canada; a school-leaving equivalency exam elsewhere. */
 function equivalency(g: GameState): { title: string; exam: string; short: string; degree: string; center: string; menu: string } {
   if (g.character.countryId === 'us' || g.character.countryId === 'ca') {
+    // The GED began in 1942 (for returning servicemen); before it, grown-ups finished school at night.
+    if (g.year < 1942) return { title: 'Night School Diploma', exam: 'the night-school examination', short: 'night-school diploma', degree: 'Night School Diploma', center: 'Evening Continuation School', menu: 'Attend Night School' }
     return { title: 'GED', exam: 'the GED exam', short: 'GED', degree: 'GED', center: 'GED Testing Center', menu: 'Get Your GED' }
   }
   return {
@@ -504,6 +590,18 @@ const GRAD_REQ_KIND: Partial<Record<EduReq, DegreeKind>> = {
   veterinary: 'dvm',
 }
 
+/**
+ * Before the 1960s most working people had left school at the leaving age without a diploma, and
+ * clerks, patrolmen and typists were hired on eight grades: past the era's leaving age, with
+ * elementary school finished (or school left behind), that counts as high school for hiring.
+ */
+function eraSchooledEnough(g: GameState): boolean {
+  if (g.year >= 1960) return false
+  const ed = g.character.education
+  if (ed.current || g.character.age < schoolLeavingAge(g)) return false
+  return ed.completed.includes('elementary') || ed.droppedOut.length > 0
+}
+
 /** Does the player meet a job's education requirement (majors = qualifying bachelor's majors)? */
 export function meetsEducation(g: GameState, req: EduReq, majors?: string[]): boolean {
   const degrees = g.character.education.degrees
@@ -512,7 +610,7 @@ export function meetsEducation(g: GameState, req: EduReq, majors?: string[]): bo
     case 'none':
       return true
     case 'highschool':
-      return degrees.length > 0
+      return degrees.length > 0 || eraSchooledEnough(g)
     case 'community':
       return degrees.some((d) => DEGREE_RANK[d.kind] >= 2)
     case 'bachelor':
@@ -782,6 +880,26 @@ interface EnrollOpts {
   avoidName?: string
 }
 
+/** What a main character masters when starting this level ("the first day of university"). */
+function schoolSubject(level: SchoolLevel): string {
+  switch (level) {
+    case 'elementary':
+      return 'elementary school'
+    case 'middle':
+      return 'middle school'
+    case 'high':
+      return 'high school'
+    case 'community':
+      return 'community college'
+    case 'university':
+      return 'university'
+    case 'graduate':
+      return 'graduate school'
+    default:
+      return 'school'
+  }
+}
+
 function enrollIn(g: GameState, level: SchoolLevel, opts: EnrollOpts = {}): Enrollment {
   const c = g.character
   const sys = systemFor(g)
@@ -827,6 +945,11 @@ function enrollIn(g: GameState, level: SchoolLevel, opts: EnrollOpts = {}): Enro
   if (opts.loanId) cur.data.loanId = opts.loanId
   c.education.current = cur
   staffSchool(g, cur)
+  // Main Character Syndrome: the first day at a new kind of school already comes with top marks.
+  if (hasMainCharacter(g) && level !== 'preschool') {
+    masterFirstTime(g, `school.${level}`, 'school', schoolSubject(level))
+    cur.grades = Math.max(cur.grades, randInt(g, 92, 99))
+  }
   if (!opts.quiet) {
     const what = level === 'university' && cur.major ? `${cur.school} to study ${cur.major}` : cur.school
     log(g, pick(g, [`I started attending ${what}.`, `I enrolled at ${what}.`, `My first day at ${what} began.`]), 'neutral')
@@ -895,7 +1018,9 @@ export function schoolWarning(g: GameState, reason: string): void {
     return
   }
   const last = warnings === 2 ? ' This is your final warning.' : ''
-  notice(g, officeTitle(g, cur), `You were sent to ${who}'s office for ${reason}.${last}`, { emoji: '\u{1F6A8}', tone: 'bad' })
+  const rod = isK12(cur.level) ? eraDiscipline(g) : ''
+  if (rod) addStat(g, 'happiness', -2)
+  notice(g, officeTitle(g, cur), `You were sent to ${who}'s office for ${reason}.${rod ? ` ${rod}` : ''}${last}`, { emoji: '\u{1F6A8}', tone: 'bad' })
   log(g, `I was sent to ${who}'s office for ${reason}.`, 'bad')
 }
 
@@ -1400,6 +1525,8 @@ function updateGrades(g: GameState, cur: Enrollment): void {
   target += TIER_GRADE_EDGE[tier]
   target = clamp(target)
   addGrades(cur, (target - cur.grades) * 0.35 + randInt(g, -6, 6))
+  // Main Character Syndrome: the year's marks stay near the top (the exams and admissions still roll their own dice).
+  if (hasMainCharacter(g)) cur.grades = Math.max(cur.grades, randInt(g, 92, 99))
   // Studying keeps your brain in shape.
   if (cur.grades >= 85 && chance(g, hasTalent(g, 'Academics') ? 0.6 : 0.35)) addStat(g, 'smarts', 1)
   if ((tier === 'Elite' && chance(g, 0.35)) || (tier === 'Top' && chance(g, 0.2))) addStat(g, 'smarts', 1)
@@ -1791,7 +1918,7 @@ function sitFinalExam(g: GameState, cur: Enrollment): void {
   g.flags.examScore = score
   const exam = finalExam(g)
   const tone = score >= 65 ? 'good' : score >= 45 ? 'neutral' : 'bad'
-  if (isUS(g)) {
+  if (isUS(g) && g.year >= 1941) {
     const sat = Math.max(400, Math.min(1600, Math.round((400 + score * 12) / 10) * 10))
     log(g, `I took ${exam} and scored ${sat}.${sat >= 1500 ? ' My parents framed the printout.' : sat < 800 ? ' I blame the pencil.' : ''}`, tone)
     return
@@ -1969,7 +2096,7 @@ function postSecondaryBlocker(g: GameState): string | null {
   if (!c.alive) return 'You are dead.'
   if (c.prison) return "You can't apply to school from prison."
   if (c.education.current) return `You're already enrolled at ${c.education.current.school}.`
-  if (!hasHighSchool(g)) return `You need ${isUS(g) ? 'a high school diploma or GED' : `to finish ${stageTerm(g, 'high')} (or pass ${equivalency(g).exam})`} first.`
+  if (!hasHighSchool(g)) return `You need ${isUS(g) ? (g.year < 1942 ? 'a high school diploma' : 'a high school diploma or GED') : `to finish ${stageTerm(g, 'high')} (or pass ${equivalency(g).exam})`} first.`
   if (c.job && c.job.category === 'military') return "You can't go back to school while you're serving in the military."
   return null
 }
@@ -3337,27 +3464,28 @@ function gedCost(g: GameState): number {
 function takeGed(g: GameState): void {
   const c = g.character
   if (hasHighSchool(g)) return
+  const eq = equivalency(g)
   const cost = gedCost(g)
   if (!useYearAction(g, 'ged', 1)) {
-    notice(g, 'GED', "You can only take the GED exam once a year. Study up and try again next year.", { emoji: '\u{1F4DD}' })
+    notice(g, eq.title, `You can only take ${eq.exam} once a year. Study up and try again next year.`, { emoji: '\u{1F4DD}' })
     return
   }
   if (!spend(g, cost)) {
     g.yearActions.ged = 0
-    notice(g, 'GED', `You can't afford the ${formatMoney(cost)} GED exam fee.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    notice(g, eq.title, `You can't afford the ${formatMoney(cost)} fee for ${eq.exam}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
   const p = clamp(0.15 + c.stats.smarts / 100, 0.15, 0.97)
   if (chance(g, p)) {
-    addDegree(g, 'ged', 'GED', 'GED Testing Center')
+    addDegree(g, 'ged', eq.degree, eq.center)
     addStat(g, 'happiness', 8)
-    remember(g, 'Earned a GED.')
-    log(g, 'I passed the GED exam!', 'good')
-    notice(g, 'GED', pick(g, ['You passed the GED exam! Doors that were closed just opened a crack.', 'You aced the GED. Take that, high school!']), { emoji: '\u{1F4DC}', tone: 'good' })
+    remember(g, `Earned a ${eq.short}.`)
+    log(g, `I passed ${eq.exam}!`, 'good')
+    notice(g, eq.title, pick(g, [`You passed ${eq.exam}! Doors that were closed just opened a crack.`, `You aced ${eq.exam}. Take that, school!`]), { emoji: '\u{1F4DC}', tone: 'good' })
   } else {
     addStat(g, 'happiness', -6)
-    log(g, 'I failed the GED exam.', 'bad')
-    notice(g, 'GED', pick(g, ['You failed the GED exam. Hit the books and try again next year.', 'You froze during the math section and failed the GED.']), { emoji: '\u{1F4DD}', tone: 'bad' })
+    log(g, `I failed ${eq.exam}.`, 'bad')
+    notice(g, eq.title, pick(g, [`You failed ${eq.exam}. Hit the books and try again next year.`, `You froze during the math section and failed ${eq.exam}.`]), { emoji: '\u{1F4DD}', tone: 'bad' })
   }
 }
 
@@ -3752,7 +3880,7 @@ function educationGroup(): MenuGroup {
         nodes.push({
           type: 'action',
           id: 'edu.ged',
-          label: 'Get Your GED',
+          label: equivalency(gg).menu,
           emoji: '\u{1F4DD}',
           subtitle: `Exam fee ${formatMoney(gedCost(gg))} • Pass chance depends on your smarts`,
           visible: (x) => x.character.age >= sys.dropOutAge,

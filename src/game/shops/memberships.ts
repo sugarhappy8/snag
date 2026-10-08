@@ -34,6 +34,7 @@ import { defineScript } from '../scripts'
 import type { Asset, GameState, Json, MenuGroup, MenuNode, Person } from '../types'
 import { getCountry } from '../world'
 import { PLANS, SPA_STYLE, type FeeBasis, type PlanDef, type TierDef } from './memberships-data'
+import { isRealBrandName, steadyBrand } from './everyday-brands'
 import { hasTech } from '../history/timeline'
 
 export { ticketsMenu } from './memberships-tickets'
@@ -130,6 +131,10 @@ export function initiationFee(g: GameState, plan: PlanDef): number {
 export function planName(g: GameState, plan: PlanDef): string {
   const cid = g.character.countryId
   if (plan.id === 'spa' && SPA_STYLE[cid]) return SPA_STYLE[cid].name
+  for (const c of plan.chains ?? []) {
+    const real = steadyBrand(g, c.category, `plan:${plan.id}`, { ...(c.segment ? { segment: c.segment } : {}), ...(c.tiers ? { tiers: c.tiers } : {}) })
+    if (real) return real.name
+  }
   const words = localMarket(g).nameWords.filter((w) => typeof w === 'string' && w.trim() !== '')
   const usable = plan.names.filter((n) => !n.includes('{w}') || words.length > 0)
   if (usable.length === 0) return plan.fallback
@@ -318,11 +323,21 @@ const CANCEL_LINES: Record<string, string[]> = {
   dating: ['Your premium badge faded. The algorithm will now show you exclusively people named Steve.'],
 }
 
+/** Cancellation lines that make no claim about how a real company treats its customers. */
+const NEUTRAL_CANCEL_LINES: Record<string, string[]> = {
+  fitness: ['You handed in your key tag and swore you would exercise at home. You will not.', 'Your gym bag spent the next week by the door, looking disappointed.'],
+  subscription: ['Your watchlist stayed behind, still full of things you will never watch.', 'Your evenings are suddenly free. You are not sure what to do with them.'],
+  box: ['The last box was already on its way, so you got a farewell dinner out of it.', 'The fridge magnets stayed. You kept the knife.'],
+  work: ['You took your mug and your plant. The coffee machine will miss you.'],
+  dating: ['Your premium badge faded. Your matches were not informed.'],
+}
+
 export function cancelMembership(g: GameState, assetId: string): boolean {
   const a = findAsset(g, assetId)
   if (!a || a.kind !== 'membership') return false
   g.assets = g.assets.filter((x) => x.id !== a.id)
-  const lines = CANCEL_LINES[str(a.details.category)] ?? CANCEL_LINES.subscription
+  const cat = str(a.details.category)
+  const lines = (isRealBrandName(a.name) ? NEUTRAL_CANCEL_LINES[cat] : undefined) ?? CANCEL_LINES[cat] ?? CANCEL_LINES.subscription
   log(g, `I canceled my ${a.name} membership.`)
   notice(g, 'Canceled', `You canceled your ${a.name} membership. ${pick(g, lines)}`, { emoji: a.emoji })
   return true
@@ -534,19 +549,25 @@ function useOutcome(g: GameState, a: Asset, plan: PlanDef, tier: TierDef, usedBe
 
 // --- Dating app premium: a premium match you can ask out.
 
+/** The dating app's name with its paid tier ('Tinder Premium'). */
+function premiumName(g: GameState): string {
+  const plan = planById('dating')
+  return `${plan ? planName(g, plan) : 'Dating app'} Premium`
+}
+
 const DATING = defineScript('member.dating', (g, choice, data) => {
   if (choice !== 'date') return
   const k = data as unknown as Candidate | undefined
   if (!k || typeof k.firstName !== 'string') return
   const p = currentPartner(g)
   if (p) {
-    notice(g, 'Kindling Premium', `You're already with ${p.firstName}.`, { emoji: '🔥' })
+    notice(g, premiumName(g), `You're already with ${p.firstName}.`, { emoji: '🔥' })
     return
   }
   const c = g.character
   const accept = clamp(0.5 + (c.stats.looks - k.looks) / 200 + (c.stats.happiness - 50) / 400, 0.15, 0.9)
   if (chance(g, accept)) {
-    const partner = startDating(g, k, 'Kindling Premium')
+    const partner = startDating(g, k, premiumName(g))
     addStat(g, 'happiness', randInt(g, 4, 8))
     notice(g, "It's a Date!", `${partner.firstName} said yes! Your first date went so well that you're officially seeing each other.`, { emoji: '💘', tone: 'good' })
   } else {
@@ -561,7 +582,7 @@ function datingMatch(g: GameState, tier: TierDef): void {
   scriptChoice(
     g,
     DATING,
-    'Kindling Premium',
+    premiumName(g),
     `Premium match: ${k.firstName} ${k.lastName}, ${k.age}\n${k.occupation} · Looks ${k.looks}% · Smarts ${k.smarts}%\nPersonality: ${k.traits.join(', ')}`,
     [
       { id: 'date', label: 'Ask them out', emoji: '💘' },

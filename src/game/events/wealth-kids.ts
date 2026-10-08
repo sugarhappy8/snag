@@ -8,9 +8,13 @@ import { chance, pick, randInt, uid } from '../rng'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { localPick, localTerm } from '../data/locales'
 import { hasTech } from '../history/timeline'
+import { brandsFor } from '../data/brands'
 import { computerEra, computerModel } from '../computer/era'
 import { bandName, byEra, cars, eraPick, flights, landline } from './era'
 import { channel, folks, mayAsk, priced, scaled, spoiledLine, type Ask, type AskDef } from './wealth-ask'
+import { changeWill, removeHeir } from './will-act'
+import { queueTells } from './will-scenes'
+import { holdsFamilyJob } from '../business/nepo-job'
 import {
   addEntitlement,
   allowanceMax,
@@ -39,6 +43,11 @@ import {
   yourOf,
 } from './wealth-core'
 import type { GameState, Person } from '../types'
+
+/** A kid with a real job at your company doesn't need rent money from you (their pay is the answer). */
+function onPayroll(p: Person): boolean {
+  return holdsFamilyJob(p) && p.age >= 18
+}
 
 function pr(p: Person) {
   return pronouns(p.gender)
@@ -90,8 +99,21 @@ function wantedCar(tier: number, p: Person): CarType {
   return order[Math.min(3, base + (entitlement(p) >= 60 ? 1 : 0))]
 }
 
+/** A stable pick from the real-brand registry for this kid this year (no randomness, so asks stay reproducible). */
+function houseFor(g: GameState, p: Person, categories: string[]): string | null {
+  const pool = categories.flatMap((c) => brandsFor(g, c)).filter((b) => b.tier !== 'budget' && b.tier !== 'mass')
+  if (!pool.length) return null
+  let h = 0
+  for (const ch of `${p.id}|${g.year}`) h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0
+  return pool[Math.abs(h) % pool.length].name
+}
+
 function phoneItem(g: GameState): { label: string; usd: number } | null {
-  if (hasTech(g, 'smartphone')) return { label: 'the newest smartphone', usd: 1_300 }
+  if (hasTech(g, 'smartphone')) {
+    // A kid asks for a mainstream phone, not a luxury one that costs ten times the ask.
+    const maker = brandsFor(g, 'phone').find((b) => b.tier !== 'luxury' && b.tier !== 'ultra')?.name
+    return { label: maker ? `the newest ${maker} smartphone` : 'the newest smartphone', usd: 1_300 }
+  }
   if (hasTech(g, 'mobilePhone') && g.year >= 1992) return { label: 'a mobile phone of their own', usd: 700 }
   return null
 }
@@ -418,7 +440,9 @@ export const KID_ASKS: AskDef[] = [
     build: (g, tier, p) => {
       if (!p) return null
       const amt = round(Math.min(perceivedWealth(g) * 0.005, 1_500 * luxuryScale(g, personCountry(g, p)) * (tier >= 3 ? 4 : 1.5) * (1 + entitlement(p) / 100)))
-      return { k: 'kid.clothes', pid: p.id, title: 'Fashion Emergency', emoji: '\u{1F45F}', text: `${channel(g, p)}${who(p)} needs designer clothes (${money(amt)}). Nothing ${pr(p).he} owns is "wearable," which is a bold claim about a closet you paid for.${spoiledLine(p)}`, amt, what: 'designer clothes', less: true, small: amt < perceivedWealth(g) * 0.001 }
+      const house = houseFor(g, p, ['fashion', 'sneakers'])
+      const clothes = house ? `${house} clothes` : 'designer clothes'
+      return { k: 'kid.clothes', pid: p.id, title: 'Fashion Emergency', emoji: '\u{1F45F}', text: `${channel(g, p)}${who(p)} needs ${house ? `a whole new ${house} wardrobe` : 'designer clothes'} (${money(amt)}). Nothing ${pr(p).he} owns is "wearable," which is a bold claim about a closet you paid for.${spoiledLine(p)}`, amt, what: clothes, less: true, small: amt < perceivedWealth(g) * 0.001 }
     },
     spoil: 7,
     thanks: 5,
@@ -596,7 +620,7 @@ export const KID_ASKS: AskDef[] = [
     minTier: 1,
     cooldown: 2,
     prison: true,
-    people: (g) => kidsAged(g, 18, 32).filter((p) => !p.livesWithPlayer && (readTies(g, p).marks['gift.house'] ?? 0) === 0),
+    people: (g) => kidsAged(g, 18, 32).filter((p) => !p.livesWithPlayer && (readTies(g, p).marks['gift.house'] ?? 0) === 0 && !onPayroll(p)),
     weight: () => 2,
     build: (g, tier, p) => {
       if (!p) return null
@@ -893,13 +917,18 @@ export function cutFromWill(g: GameState, p: Person): void {
     willNotice(g, `${cap(yourOf(p))} is your only child. Cutting ${pr(p).him} out would leave everything to the government.`)
     return
   }
-  // A will that already names people (a spouse, some of the kids) keeps them; an even split among
-  // the kids becomes an even split among the others.
-  const named = g.character.willBeneficiaries.filter((id) => id !== p.id && g.people.some((q) => q.id === id && q.alive))
-  g.character.willBeneficiaries = named.length ? named : others.map((q) => q.id)
+  // changeWill starts an empty will from the default children, while removeHeir preserves anyone
+  // already named (a spouse or selected children) and records the cut for the feud system. If the
+  // target was the sole named beneficiary, explicitly name the other children: leaving the list
+  // empty would mean "divide evenly among every child" and silently put the target back in line.
+  const report = changeWill(g, (gg, w) => {
+    removeHeir(gg, w, p)
+    if (gg.character.willBeneficiaries.length === 0) gg.character.willBeneficiaries = others.map((q) => q.id)
+  })
   const heirs = g.character.willBeneficiaries.map((id) => g.people.find((q) => q.id === id)?.firstName).filter((n): n is string => !!n)
-  p.relationship = Math.max(0, p.relationship - 20)
   addEntitlement(p, -15)
   notePerson(p, `You wrote ${pr(p).him} out of your will.`)
-  willNotice(g, `You rewrote your will: ${heirs.join(' and ')} will inherit; ${p.firstName} won't. ${cap(pr(p).he)} found out within the hour.`)
+  const learned = report.lines.length ? ` ${report.lines.join(' ')}` : ''
+  willNotice(g, `You rewrote your will: ${heirs.join(' and ')} will inherit; ${p.firstName} won't.${learned}`)
+  queueTells(g, report)
 }

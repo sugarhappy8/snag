@@ -4,9 +4,9 @@
 import { describe, expect, it } from 'vitest'
 import { moneyNodes, yearlyMoney } from '../src/game/computer/money'
 import { anchor, fam, moneyState, readState } from '../src/game/computer/money-common'
-import { BETS_PER_YEAR, betPayoff, coinTargets, placeBet, settlePrice, stockStrike, stockFairValue, stockOptionPrice, stockTargets } from '../src/game/computer/money-stocks'
+import { BETS_PER_YEAR, betPayoff, coinTargets, placeBet, settlePrice, stockStrike, stockFairValue, stockOptionPrice, stockTargets, listedTargets } from '../src/game/computer/money-stocks'
 import { settleMove } from '../src/game/computer/money-options'
-import { companyDef, exchangeInfo, exchangeYear, indexMove } from '../src/game/invest/engine'
+import { companyDef, exchangeInfo, exchangeYear, indexMove, isRealSecId } from '../src/game/invest/engine'
 import { addMarketShock, factorOf, marketShocks, shockFactor } from '../src/game/invest/shocks'
 import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
 import { runScript } from '../src/game/scripts'
@@ -137,6 +137,21 @@ describe('who can abuse power', () => {
     const ch = take(fresh, 'choice', 'special.pol.abuse.announce')
     expect(ch.choices.map((c) => c.id)).not.toContain('nationalize')
     expect(ch.choices.map((c) => c.id)).toContain('contract')
+  })
+
+  it('refuses negative market moves against registered real companies without spending the action', () => {
+    const g = official('us', 'leader')
+    const real = listedTargets(g).find((t) => t.real)
+    expect(real).toBeDefined()
+    runScript(g, 'special.pol.abuse.announce', 'ban', { secId: real!.secId }, undefined as unknown as ModalItem)
+    expect(marketShocks(g)).toHaveLength(0)
+    expect(g.yearActions['pol.marketMove'] ?? 0).toBe(0)
+    expect(notices(g).at(-1)?.text).toMatch(/legal advisers refused/i)
+    g.queue = []
+    runScript(g, 'special.pol.abuse.announce', 'contract', { secId: real!.secId }, undefined as unknown as ModalItem)
+    expect(marketShocks(g)).toHaveLength(1)
+    expect(marketShocks(g)[0].mult).toBeGreaterThan(1)
+    expect(g.yearActions['pol.marketMove']).toBe(1)
   })
 })
 
@@ -619,14 +634,15 @@ describe('review fixes', () => {
       for (let y = base.year; y < base.year + 40 && checked < 2; y++) {
         const ex = exchangeYear(fam(base), anchor(base), inf, y)
         const nxt = exchangeYear(fam(base), anchor(base), inf, y + 1)
-        const slot = nxt.stocks.findIndex((s, i) => s.ended?.kind === 'acquired' && s.ended.id === ex.stocks[i]?.id)
+        // Real companies only end in their real year and can't be shocked: use a made-up company's buyout.
+        const slot = nxt.stocks.findIndex((s, i) => s.ended?.kind === 'acquired' && s.ended.id === ex.stocks[i]?.id && !isRealSecId(s.ended.id))
         if (slot < 0) continue
         const g = structuredClone(base)
         g.character.age += y - g.year
         g.year = y
-        const t = stockTargets(g)[slot]
+        const t = listedTargets(g)[slot]
         addMarketShock(g, { asset: 'stock', secId: t.secId, exKey: t.exKey, slot: t.slot, name: t.name, symbol: t.symbol, cause: 'ban', year: g.year, mult: 0.5, fade: 0, countryId: 'us' })
-        const shocked = stockTargets(g)[slot]
+        const shocked = listedTargets(g)[slot]
         expect(buySecurity(g, t.secId, 100_000)).toBe(true)
         const units = investmentHoldings(g).find((a) => a.details.secId === t.secId)!.details.units as number
         const bet = placeBet(g, { via: 'own', secId: t.secId, kind: 'call', strike: 'atm', stake: 10_000 })!

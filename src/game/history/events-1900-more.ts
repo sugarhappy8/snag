@@ -1,0 +1,43 @@
+// More local headlines for 1900-1979, in the countries whose people the first headline data covered
+// thinly: India, Nigeria, Brazil, China, Japan, Indonesia, South Africa and Britain. Same row format
+// as events-1900.ts (see events-types.ts); worded without brands, with tact around hardship.
+import type { HeadlineRow } from './events-types'
+
+export const HEADLINES_EXTRA: readonly HeadlineRow[] = [
+  [1903, 'politics', 1, 'in', 'A grand durbar in Delhi proclaims a new king-emperor'],
+  [1905, 'politics', 2, 'cn', 'China abolishes the ancient civil service examinations'],
+  [1908, 'politics', 1, 'id', 'Students found the first Indonesian nationalist society'],
+  [1909, 'politics', 2, 'gb', 'Old-age pensions begin in Britain'],
+  [1913, 'politics', 3, 'za', 'A new law restricts where black South Africans may own land'],
+  [1914, 'politics', 2, 'ng', 'North and South Nigeria are merged into a single colony'],
+  [1915, 'culture', 1, 'cn', 'Young writers call for a New Culture in China'],
+  [1915, 'politics', 2, 'in', 'A London-trained lawyer returns from South Africa and the freedom movement gathers pace'],
+  [1919, 'politics', 2, 'cn', 'Students march in Beijing in the May Fourth Movement'],
+  [1922, 'culture', 1, 'br', 'Brazil celebrates a century of independence with a great exposition in Rio'],
+  [1925, 'politics', 1, 'jp', 'Every adult man in Japan wins the vote'],
+  [1927, 'war', 2, 'cn', 'The Nationalists and Communists turn on each other'],
+  [1927, 'tech', 0, 'jp', "Japan's first subway opens in Tokyo"],
+  [1932, 'war', 1, 'br', 'Sao Paulo rises against the federal government'],
+  [1945, 'war', 1, 'br', 'Brazilian soldiers return from the Italian campaign'],
+  [1946, 'politics', 1, 'ng', 'A new constitution gives Nigerians more of a voice'],
+  [1950, 'politics', 2, 'cn', 'Land reform redistributes farms across the countryside'],
+  [1951, 'politics', 1, 'ng', 'Nigerians elect their own representatives under a new constitution'],
+  [1952, 'politics', 2, 'za', 'A defiance campaign challenges the apartheid laws'],
+  [1953, 'economy', 1, 'cn', 'China begins its first Five-Year Plan'],
+  [1953, 'tech', 1, 'jp', 'Television broadcasting begins in Japan'],
+  [1954, 'politics', 2, 'br', "Brazil's president dies in office amid a political crisis"],
+  [1955, 'politics', 2, 'za', 'A Congress of the People adopts a Freedom Charter'],
+  [1956, 'politics', 1, 'in', 'India redraws its states along the lines of language'],
+  [1958, 'culture', 0, 'jp', 'Tokyo Tower opens'],
+  [1959, 'politics', 1, 'jp', 'The crown prince marries a commoner'],
+  [1962, 'sport', 1, 'id', 'Jakarta hosts the Asian Games'],
+  [1964, 'politics', 2, 'za', 'A famous trial sends leaders of the freedom movement to prison'],
+  [1966, 'politics', 2, 'ng', 'Soldiers seize power in Nigeria'],
+  [1969, 'politics', 2, 'gb', 'Troops are deployed on the streets of Northern Ireland'],
+  [1972, 'sport', 1, 'jp', 'Sapporo hosts the Winter Olympics'],
+  [1973, 'economy', 1, 'ng', 'Oil money pours into Nigeria as prices soar'],
+  [1974, 'economy', 2, 'gb', 'Britain goes onto a three-day working week'],
+  [1978, 'economy', 3, 'cn', 'China begins economic reform and opening up'],
+  [1979, 'politics', 1, 'br', 'Brazil passes an amnesty law'],
+  [1979, 'tech', 0, 'jp', 'A pocket stereo that plays cassettes goes on sale in Tokyo'],
+]

@@ -10,7 +10,11 @@ import { taxAdditionalIncome } from '../finance'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
+import { brandsFor } from '../data/brands'
 import { getCountry } from '../world'
+import { lineTitle } from './luxury-brands-catalog'
+import { fleetModels } from './luxury-brands-craft'
+import { familyAccessNode } from './luxury-family'
 import {
   cantAfford,
   cleanName,
@@ -59,12 +63,19 @@ function yachtClassesNow(g: GameState): YachtClass[] {
   return YACHT_CLASSES.filter((c) => g.year >= (c.from ?? 0) && g.year <= (c.until ?? Infinity))
 }
 
-const SHIPYARDS = ['Marchetti Cantieri', 'Van der Hoek Jachtbouw', 'Kronwerft Bremen', 'Halvorsen Yards', 'Océanique', 'Bosphorus Marine', 'Tasman Superyachts', 'Viareggio Royale']
+/** Real yacht builders that existed in `year` (the registry), sailing yards for sailing hulls. */
+const SAILING_YARDS = ['royal-huisman', 'perini-navi', 'camper-nicholsons', 'herreshoff']
+
+function shipyardsFor(g: GameState, classId: string): string[] {
+  const all = brandsFor(g, 'yacht', { segment: 'yacht-builder' })
+  const sailing = classId === 'sailing' || classId === 'schooner'
+  const fit = all.filter((b) => (sailing ? SAILING_YARDS.includes(b.id) : !['royal-huisman', 'perini-navi'].includes(b.id)))
+  return (fit.length ? fit : all).map((b) => b.name)
+}
 
 interface JetClass {
   id: string
   label: string
-  models: string[]
   price: [number, number]
   seats: [number, number]
   range: number
@@ -80,21 +91,23 @@ interface JetClass {
 }
 
 const JET_CLASSES: JetClass[] = [
-  { id: 'midsize', label: 'Super-Midsize Jet', models: ['Stratoline G-350', 'Falconetti 6X', 'Bombastique Challenger 400'], price: [18_000_000, 32_000_000], seats: [8, 10], range: 3_500, crew: 600_000, trip: 30_000, emoji: '✈️', blurb: 'Coast to coast without stopping for snacks.', from: 1975 },
-  { id: 'amphib', label: 'Amphibious Seajet', models: ['Halcyon SeaJet 4', 'Halcyon SeaJet 6'], price: [26_000_000, 45_000_000], seats: [6, 10], range: 2_400, crew: 550_000, trip: 35_000, emoji: '🛩️', blurb: 'Lands on runways, lagoons and the occasional swimming pool.', from: 1965 },
-  { id: 'largeCabin', label: 'Large-Cabin Jet', models: ['Stratoline G-650', 'Falconetti 10X', 'Bombastique Global 6500'], price: [48_000_000, 72_000_000], seats: [12, 16], range: 6_500, crew: 900_000, trip: 60_000, emoji: '✈️', blurb: 'A living room that does Mach 0.9.', from: 1968 },
-  { id: 'ultraLong', label: 'Ultra-Long-Range Jet', models: ['Stratoline G-950', 'Bombastique Global 9000'], price: [72_000_000, 92_000_000], seats: [14, 19], range: 7_700, crew: 1_100_000, trip: 90_000, emoji: '✈️', blurb: 'Sydney to New York nonstop, with a nap in an actual bed.', from: 1997 },
-  { id: 'supersonic', label: 'Supersonic Business Jet', models: ['Mach Royale SST', 'Concordia Neo'], price: [150_000_000, 220_000_000], seats: [8, 12], range: 4_250, crew: 1_500_000, trip: 180_000, emoji: '🚀', blurb: 'London to New York in three and a half hours. The boom is extra.', from: 2020 },
-  { id: 'airliner', label: 'VIP Narrowbody Airliner', models: ['Skybridge 7-Max VIP', 'Aerostar 320 Prestige'], price: [100_000_000, 140_000_000], seats: [19, 50], range: 6_000, crew: 2_200_000, trip: 140_000, emoji: '✈️', blurb: 'An airliner with exactly one passenger who matters.', from: 1960 },
-  { id: 'widebody', label: 'VIP Widebody Airliner', models: ['Skybridge 8-Heavy VIP', 'Aerostar 350 Palace'], price: [250_000_000, 450_000_000], seats: [40, 90], range: 9_500, crew: 4_500_000, trip: 320_000, emoji: '✈️', blurb: 'Bedrooms, a dining room and a staircase. On a plane.', from: 1970 },
-  // Earlier decades (appended so today's brokerage is unchanged).
-  { id: 'flyingBoat', label: 'Luxury Flying Boat', models: ['Halcyon Clipper 30', 'Marchetti Idrovolante'], price: [6_000_000, 15_000_000], seats: [10, 24], range: 2_500, crew: 350_000, trip: 20_000, emoji: '🛩️', blurb: 'A hotel with wings that lands in harbors.', from: 1930, until: 1952 },
-  { id: 'propliner', label: 'Executive Propliner', models: ['Stratoline Constellation', 'Aerostar Clipper'], price: [8_000_000, 20_000_000], seats: [12, 30], range: 3_000, crew: 400_000, trip: 25_000, emoji: '🛩️', blurb: 'Four roaring propellers, a cocktail bar and a steward in white gloves.', from: 1946, until: 1965 },
-  { id: 'tourer', label: 'Private Touring Biplane', models: ['Halcyon Tourer', 'Falconetti Aero 2'], price: [800_000, 2_500_000], seats: [2, 4], range: 500, crew: 120_000, trip: 4_000, emoji: '🛩️', blurb: 'Open cockpit, leather goggles and a scarf that will not stop flapping.', from: 1919, until: 1945 },
+  { id: 'light', label: 'Light Jet or Turboprop', price: [4_000_000, 15_000_000], seats: [4, 9], range: 1_500, crew: 250_000, trip: 8_000, emoji: '✈️', blurb: 'A small jet or turboprop you can fly yourself, with a copilot if you must.' },
+  { id: 'midsize', label: 'Super-Midsize Jet', price: [18_000_000, 32_000_000], seats: [8, 10], range: 3_500, crew: 600_000, trip: 30_000, emoji: '✈️', blurb: 'Coast to coast without stopping for snacks.' },
+  { id: 'amphib', label: 'Amphibious Seajet', price: [26_000_000, 45_000_000], seats: [6, 10], range: 2_400, crew: 550_000, trip: 35_000, emoji: '🛩️', blurb: 'Lands on runways, lagoons and the occasional swimming pool.' },
+  { id: 'largeCabin', label: 'Large-Cabin Jet', price: [48_000_000, 72_000_000], seats: [12, 16], range: 6_500, crew: 900_000, trip: 60_000, emoji: '✈️', blurb: 'A living room that does Mach 0.9.' },
+  { id: 'ultraLong', label: 'Ultra-Long-Range Jet', price: [72_000_000, 92_000_000], seats: [14, 19], range: 7_700, crew: 1_100_000, trip: 90_000, emoji: '✈️', blurb: 'Sydney to New York nonstop, with a nap in an actual bed.' },
+  { id: 'supersonic', label: 'Supersonic Business Jet', price: [150_000_000, 220_000_000], seats: [8, 12], range: 4_250, crew: 1_500_000, trip: 180_000, emoji: '🚀', blurb: 'London to New York in three and a half hours. The boom is extra.', from: 2020 },
+  { id: 'airliner', label: 'VIP Narrowbody Airliner', price: [100_000_000, 140_000_000], seats: [19, 50], range: 6_000, crew: 2_200_000, trip: 140_000, emoji: '✈️', blurb: 'An airliner with exactly one passenger who matters.' },
+  { id: 'widebody', label: 'VIP Widebody Airliner', price: [250_000_000, 450_000_000], seats: [40, 90], range: 9_500, crew: 4_500_000, trip: 320_000, emoji: '✈️', blurb: 'Bedrooms, a dining room and a staircase. On a plane.' },
+  // Earlier decades.
+  { id: 'flyingBoat', label: 'Luxury Flying Boat', price: [6_000_000, 15_000_000], seats: [10, 24], range: 2_500, crew: 350_000, trip: 20_000, emoji: '🛩️', blurb: 'A hotel with wings that lands in harbors.' },
+  { id: 'propliner', label: 'Executive Propliner', price: [8_000_000, 20_000_000], seats: [12, 30], range: 3_000, crew: 400_000, trip: 25_000, emoji: '🛩️', blurb: 'Four roaring propellers, a cocktail bar and a steward in white gloves.' },
+  { id: 'tourer', label: 'Private Touring Biplane', price: [800_000, 2_500_000], seats: [2, 4], range: 500, crew: 120_000, trip: 4_000, emoji: '🛩️', blurb: 'Open cockpit, leather goggles and a scarf that will not stop flapping.' },
 ]
 
+/** A class is for sale when a real airframe of that class is in production (the supersonic jet is still a plan). */
 function jetClassesNow(g: GameState): JetClass[] {
-  return JET_CLASSES.filter((c) => g.year >= (c.from ?? 0) && g.year <= (c.until ?? Infinity))
+  return JET_CLASSES.filter((c) => (c.id === 'supersonic' ? g.year >= (c.from ?? 0) : fleetModels(c.id, g.year).length > 0))
 }
 
 export interface Interior {
@@ -181,7 +194,7 @@ export function yachtListings(g: GameState): YachtListing[] {
       id: `${g.year}:yacht-${i}`,
       classId: cls.id,
       label: cls.label,
-      builder: r.pick(SHIPYARDS),
+      builder: r.pick(shipyardsFor(g, cls.id)),
       lengthM,
       crew: Math.max(8, Math.round(lengthM * r.float(0.3, 0.45))),
       guests: Math.min(36, Math.max(10, Math.round(lengthM / 4))),
@@ -200,13 +213,14 @@ export function jetListings(g: GameState): JetListing[] {
   const order = jetClassesNow(g)
   for (let i = 0; i < 5 && order.length > 0; i++) {
     const cls = order.splice(r.int(0, order.length - 1), 1)[0]
-    const price = nicePrice(r.float(cls.price[0], cls.price[1]))
+    const real = r.pick(fleetModels(cls.id, g.year).length ? fleetModels(cls.id, g.year) : [null])
+    const price = nicePrice(real ? real.usd * r.float(0.92, 1.08) : r.float(cls.price[0], cls.price[1]))
     const l: JetListing = {
       id: `${g.year}:jet-${i}`,
       classId: cls.id,
       label: cls.label,
-      model: r.pick(cls.models),
-      seats: r.int(cls.seats[0], cls.seats[1]),
+      model: real ? lineTitle(real) : 'Supersonic Business Jet',
+      seats: real?.seats ? Math.max(2, real.seats + r.int(-1, 1)) : r.int(cls.seats[0], cls.seats[1]),
       range: cls.range,
       crewCost: nicePrice(cls.crew * r.float(0.9, 1.1)),
       trip: cls.trip,
@@ -380,7 +394,7 @@ export function buyJet(g: GameState, l: JetListing, interiorId: string): Asset |
     ? "With your pilot's license you can take the left seat yourself; a copilot and cabin crew come with it."
     : `You don't have a pilot's license, so a full crew flies it for about ${formatMoney(jetCrewCost(g, asset))} a year.`
   // Flying boats and propliners are planes, not jets.
-  const craft = (cls?.from ?? 1960) >= 1960 ? 'jet' : 'plane'
+  const craft = ['midsize', 'largeCabin', 'ultraLong', 'airliner', 'widebody', 'supersonic'].includes(l.classId) ? 'jet' : l.classId === 'light' ? 'aircraft' : 'plane'
   remember(g, `Bought a custom ${l.model} ${craft} (${l.label.toLowerCase()}) called ${name} for ${formatMoney(price)}.`)
   log(g, `I bought a custom ${l.model} ${craft} for ${formatMoney(price)} and named it ${name}.`, 'good')
   // Before satellite internet, the flying boardroom had a radio telephone.
@@ -803,7 +817,8 @@ export function fleetHoldingNode(a: Asset): MenuGroup {
       const cur = g.assets.find((x) => x.id === a.id)
       if (!cur) return [{ type: 'info', id: 'lux-fleet-gone', text: "You don't own this anymore." }]
       const actions: MenuNode[] = jet ? [flightAction(cur), charterAction(cur), renameAction(cur)] : [cruiseAction(cur), yachtPartyAction(cur), charterAction(cur), renameAction(cur)]
-      return [...fleetInfo(g, cur), { type: 'heading', id: `lux-fleetact-${cur.id}`, label: jet ? 'Flying' : 'On the Water' }, ...actions]
+      const fam = familyAccessNode(g, cur)
+      return [...fleetInfo(g, cur), { type: 'heading', id: `lux-fleetact-${cur.id}`, label: jet ? 'Flying' : 'On the Water' }, ...actions, ...(fam ? [fam] : [])]
     },
   }
 }

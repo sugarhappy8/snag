@@ -11,7 +11,8 @@ import { hasTech } from '../history/timeline'
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { chance, pick, rand, randInt, bell } from '../rng'
 import { defineScript } from '../scripts'
-import { hasTalent, talentMult } from '../talents'
+import { bodyCeiling, experienceCap, masterFirstTime } from '../mastery'
+import { hasMainCharacter, hasTalent, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity, COUNTRIES } from '../world'
 import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view, yearlyList } from './common'
@@ -130,6 +131,13 @@ export function sportRecord(g: GameState, sport: IndSport): IndRecord {
   }
   for (const a of sport.attrs) if (typeof rec.attrs[a] !== 'number') rec.attrs[a] = startingAttr(g, sport)
   if (!Array.isArray(rec.practiced)) rec.practiced = []
+  // Main Character Syndrome: the first time you play a sport its skills are already at the body's
+  // ceiling for the age (and follow that ceiling down later). Fitness, the field and the dice stay as they were.
+  if (hasMainCharacter(g)) {
+    masterFirstTime(g, `sport.${sport.id}`, 'sport', sport.name.toLowerCase())
+    const top = bodyCeiling(g, { peakEnd: sport.peak[1] })
+    for (const a of sport.attrs) rec.attrs[a] = top
+  }
   return rec
 }
 
@@ -163,7 +171,8 @@ export function indRating(g: GameState, sport: IndSport, rec: IndRecord, job?: J
     if (d.injured > 0) r -= 12
   }
   if (c.stats.health < 50) r -= (50 - c.stats.health) / 5
-  return Math.max(1, Math.min(99, Math.round(r)))
+  // Main Character Syndrome: technique is instant, the level shown against the field takes years.
+  return Math.max(1, Math.min(99, experienceCap(g, rec.startAge), Math.round(r)))
 }
 
 // ---------------------------------------------------------------------------
@@ -638,7 +647,7 @@ export function juniorLevel(g: GameState, sportId: string): number {
   const sport = indSport(sportId)
   const rec = viewRecord(g, sportId)
   if (!sport || !rec) return 0
-  return Math.round(avgAttr(sport, rec) * 0.8 + rec.fitness * 0.2)
+  return Math.min(experienceCap(g, rec.startAge), Math.round(avgAttr(sport, rec) * 0.8 + rec.fitness * 0.2))
 }
 
 // ---------------------------------------------------------------------------
