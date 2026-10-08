@@ -10,6 +10,7 @@ import { localeOf } from '../data/locales'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { stableChoice, withHint } from '../special/common'
+import { liftSkill } from '../mastery'
 import { hasTalent, talentHint, talentMult, type TalentId } from '../talents'
 import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { brokeNotice, gate, localPrice, money, payFor, result, stablePick } from './common'
@@ -33,10 +34,24 @@ function ceilingFor(age: number): number {
   return age >= 18 ? 100 : Math.max(30, Math.min(100, 30 + (age - 8) * 6))
 }
 
+const CRAFT_NAMES: Record<CraftId, string> = { writing: 'writing', art: 'art', cooking: 'cooking', comedy: 'stand-up comedy' }
+
+/**
+ * Main character: doing a craft for the first time lifts it to the age ceiling (and keeps it
+ * there); everybody else keeps the skill they have. Call from actions only.
+ */
+function masterCraft(g: GameState, id: CraftId, cap = ceilingFor(g.character.age)): number {
+  const now = craftSkill(g, id)
+  const lifted = liftSkill(g, `craft.${id}`, id === 'cooking' ? 'craft' : id === 'comedy' ? 'stage' : 'creative', CRAFT_NAMES[id], now, cap)
+  if (lifted !== now) g.flags[`skill.${id}`] = lifted
+  return lifted
+}
+
 /** Practice a craft: diminishing returns, capped by age; the matching talent learns ~1.6x faster. */
 function train(g: GameState, id: CraftId, lo: number, hi: number): number {
-  const before = craftSkill(g, id)
   const cap = ceilingFor(g.character.age)
+  // Main Character Syndrome: the first time at a craft is already mastery (to the age ceiling).
+  const before = masterCraft(g, id, cap)
   if (before >= cap) return 0
   const room = Math.max(0.2, 1 - before / 110)
   const raw = randInt(g, lo, hi) * room * talentMult(g, CRAFT_TALENT[id], 1.6)
@@ -105,6 +120,8 @@ const WRITE_SCRIPT = defineScript('act.creative.write', (g, choice) => {
   if (choice === 'cancel' || gate(g, { minAge: 8 })) return
   const form = FORMS.find((f) => f.id === choice)
   if (!form || g.character.age < form.minAge) return
+  // A main character who sits down to write is already a writer (the yearly limits below still apply).
+  if (yearActionsUsed(g, 'act.write') < WRITE_MAX) masterCraft(g, 'writing')
   if (craftSkill(g, 'writing') < form.minSkill) {
     return result(g, 'Write', `You ${common(g, 'homeComputer') ? 'opened a blank document' : 'rolled a blank page into the typewriter'} for ${form.label.toLowerCase()}, stared at it for three hours and wrote "Chapter One". You need writing skill ${form.minSkill}% for that. Short stories and poems are great practice.`, form.emoji)
   }
@@ -655,6 +672,7 @@ const STANDUP_SCRIPT = defineScript('act.creative.standup', (g, choice) => {
   const mood = crowdMood(g)
   if (!useYearAction(g, 'act.standup', STANDUP_MAX)) return result(g, 'Stand-Up', "You've done enough sets this year. Your material needs time to marinate.", '\u{1F3A4}')
   count(g, 'comedySets')
+  masterCraft(g, 'comedy')
   const c = g.character
   const where = stage(g)
   const comic = hasTalent(g, 'Comedy')

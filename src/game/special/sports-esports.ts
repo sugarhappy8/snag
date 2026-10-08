@@ -6,7 +6,8 @@
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
-import { hasTalent, talentHint, talentMult } from '../talents'
+import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
+import { hasMainCharacter, hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity } from '../world'
 import { addFame, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view, yearlyList } from './common'
@@ -149,6 +150,20 @@ function es(g: GameState): EsProfile {
   return prof(g, 'sports.esports', initEs)
 }
 
+/**
+ * Main Character Syndrome: the first time you play a game seriously, every attribute is already
+ * at the ceiling for your age (reflexes follow the body down after the mid-twenties). The
+ * ladder rating, the lobby and the bracket are still earned and still roll.
+ */
+function masterEs(g: GameState, p: EsProfile, gameId: string | null = p.game): void {
+  if (!hasMainCharacter(g)) return
+  const gm = game(gameId)
+  masterFirstTime(g, `esports.${gm.id}`, 'esports', gm.name)
+  const mind = ageCeiling(g.character.age, { from: 8, full: 16, floor: 40 })
+  p.attrs.Mechanics = bodyCeiling(g, { peakEnd: 26 })
+  for (const a of ['Game Sense', 'Teamwork', 'Mental']) p.attrs[a] = mind
+}
+
 function viewEs(g: GameState): EsProfile | null {
   return peek<EsProfile>(g, 'sports.esports')
 }
@@ -168,7 +183,8 @@ function skill(g: GameState, p: EsProfile): number {
   const age = g.character.age
   if (age > 25) s -= (age - 25) * 0.8
   if (hasTalent(g, 'Gaming')) s += 6
-  return Math.max(1, Math.min(99, Math.round(s)))
+  // Main Character Syndrome: instinct is instant, the level against the ladder takes years.
+  return Math.max(1, Math.min(99, masteryCap(g, `esports.${game(p.game).id}`), Math.round(s)))
 }
 
 /** How much each attribute counts toward your overall level (see skill()). */
@@ -218,6 +234,7 @@ const pickGameScript = defineScript('sports.es.pickGame', (g, choice) => {
   if (!gm) return
   const p = es(g)
   p.game = gm.id
+  masterEs(g, p, gm.id)
   if (typeof p.mmr[gm.id] !== 'number') p.mmr[gm.id] = randInt(g, 300, 700)
   log(g, `I started playing ${gm.name} competitively.`)
   say(g, gm.name, `Your main game is now ${gm.name} (${gm.genre}). Current rank: ${tierOf(p.mmr[gm.id])}.`, gm.emoji)
@@ -227,6 +244,7 @@ function grind(g: GameState): void {
   const p = es(g)
   const gm = game(p.game)
   if (!useYearAction(g, 'sports.es.grind', 3)) return tell(g, 'Ranked', "You've played so much this year your mouse has a groove worn into it. Touch grass.", '\u{1F331}')
+  masterEs(g, p)
   const s = skill(g, p)
   const gamer = hasTalent(g, 'Gaming')
   for (const a of ['Mechanics', 'Game Sense'] as const) p.attrs[a] = Math.min(100, (p.attrs[a] ?? 0) + trainGain(g, p.attrs[a] ?? 0, 2, 4, (g.character.age < 22 ? 1.2 : 0.9) * (gamer ? 1.5 : 1)))
@@ -250,6 +268,7 @@ function cup(g: GameState): void {
   const p = es(g)
   const gm = game(p.game)
   if (!useYearAction(g, 'sports.es.cup', 2)) return tell(g, 'Online Cup', 'You already entered enough online cups this year.', '\u{1F3C6}')
+  masterEs(g, p)
   const mmr = p.mmr[gm.id] ?? 0
   const perf = mmr / 35 + bell(g, -10, 10) + (hasTalent(g, 'Gaming') ? 4 : 0)
   const place = Math.max(1, Math.min(64, Math.round(64 / (1 + Math.exp((perf - 62) / 6)))))
@@ -514,6 +533,7 @@ const scrimScript = defineScript('sports.es.scrim', (g, choice) => {
   if (!ATTRS.includes(choice) || !esportsJob(g)) return
   if (!useYearAction(g, `sports.es.scrim.${choice}`, 1)) return tell(g, 'Scrims', `You already focused on ${choice.toLowerCase()} this year.`, '\u{1F971}')
   const p = es(g)
+  masterEs(g, p)
   p.attrs[choice] = Math.min(100, (p.attrs[choice] ?? 0) + trainGain(g, p.attrs[choice] ?? 0, 3, 6, (g.character.age < 23 ? 1.2 : 0.9) * talentMult(g, 'Gaming', 1.5)))
   addStat(g, 'health', -1)
   log(g, `I practiced ${choice.toLowerCase()} in scrims.`)
@@ -680,7 +700,8 @@ export function yearlyEsports(g: GameState): void {
   const p0 = viewEs(g)
   if (p0 && c.age > 24) {
     const p = es(g)
-    p.attrs.Mechanics = Math.max(1, (p.attrs.Mechanics ?? 0) - randInt(g, 0, 2))
+    if (hasMainCharacter(g)) masterEs(g, p)
+    else p.attrs.Mechanics = Math.max(1, (p.attrs.Mechanics ?? 0) - randInt(g, 0, 2))
   }
   const job = esportsJob(g)
   if (!job) return

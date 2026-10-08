@@ -9,7 +9,8 @@
 // (one of those at most). First comes a feeling for the market as a whole: in a year that reads
 // bad, it names nothing but gold. The noise is seeded by the character and the year: reopening a
 // menu never rerolls it, an heir gets a gut of their own, and nothing here touches g.rng or the
-// state. Calibrated so picks rise about four times in five: a real edge, never a sure thing
+// state. Calibrated so picks rise about six times in seven (real companies swing less than the
+// made-up ones did, so the gut needs more noise): a real edge, never a sure thing
 // (test/talent-investing.test.ts; following it beats the index by roughly ten points a year).
 import { timelineFamily } from '../timeMachine'
 import { seeded } from '../assets'
@@ -44,7 +45,7 @@ export interface Instinct {
 }
 
 /** Noise on the gut's feeling for each security (its signal is ±CLARITY: up or down). */
-export const GUT_NOISE = 1.8
+export const GUT_NOISE = 2.8
 /**
  * How clearly the gut reads each kind of asset: the whole market, gold and property move for
  * reasons you can feel; single companies less so; meme coins and penny stocks barely at all.
@@ -214,7 +215,7 @@ export function gutLikes(inst: Instinct | null, secId: string): boolean {
 export function pickLabel(p: GutPick): string {
   if (p.kind === 'gold') return 'gold'
   if (p.kind === 'reit') return 'the local property fund (REIT)'
-  if (p.kind === 'index') return p.name.endsWith('Investment Trust') ? `the ${p.name}` : `the ${p.symbol} index fund`
+  if (p.kind === 'index') return p.name === `${p.symbol} Index Fund` ? `the ${p.symbol} index fund` : `the ${p.name}`
   return `${p.name} (${p.symbol})`
 }
 

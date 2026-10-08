@@ -6,7 +6,8 @@ import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { addFame, blocked, bump, clamp100, fameOf, fameToward, flagSkill, hire, leave, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
+import { ageCeiling } from '../mastery'
+import { addFame, blocked, bump, clamp100, fameOf, fameToward, flagSkill, hire, leave, masterFlagSkill, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
 
 interface Agency {
   name: string
@@ -81,6 +82,11 @@ export function modelJob(g: GameState): Job | null {
 
 function mdata(job: Job): ModelJob {
   return view<ModelJob>(job.data)
+}
+
+/** Main Character Syndrome: modeling for the first time (a casting, a booking, practice) is already mastery for the age. */
+function masterModeling(g: GameState): void {
+  masterFlagSkill(g, 'modeling', 'stage', 'modeling', ageCeiling(g.character.age, { from: 12, full: 18, floor: 45 }))
 }
 
 function modelingSkill(g: GameState): number {
@@ -186,6 +192,7 @@ const freelanceScript = defineScript('special.model.freelance', (g, choice) => {
   if (!gig) return
   if (!useYearAction(g, 'model.freelance', 3)) return tell(g, 'Freelance Gigs', "You've done all the castings you can handle this year.", '\u{1F971}')
   gigs.splice(idx, 1)
+  masterModeling(g)
   const score = marketability(g) + randInt(g, -15, 15) + (hasTalent(g, 'Modeling') ? 8 : 0)
   if (score < gig.req) {
     log(g, `I didn't book the ${gig.name.toLowerCase()} gig.`, 'bad')
@@ -231,6 +238,7 @@ const agencyScript = defineScript('special.model.agency', (g, choice) => {
   if (!useYearAction(g, 'model.agencyApply', 2)) return tell(g, 'Agencies', "You've already sent your book to enough agencies this year.", '\u{1F971}')
   const c = g.character
   const p = modelProfile(g)
+  masterModeling(g)
   if (p.headshot <= 0) return say(g, a.name, `${a.name} asked for your headshots. You don't have any. Get some taken first.`, '\u{1F4F7}', 'bad')
   if (p.rejectedBy.includes(a.name)) return say(g, a.name, `${a.name} already rejected you. Their receptionist recognized your face and locked the door.`, '\u{1F6AA}', 'bad')
   const looksOk = c.stats.looks + randInt(g, -5, 5) >= looksBar(g, a)
@@ -306,6 +314,7 @@ const bookingScript = defineScript('special.model.booking', (g, choice) => {
   const b = BOOKINGS.find((x) => x.id === choice)
   if (!job || !b) return
   if (!useYearAction(g, 'model.booking', 3)) return tell(g, 'Bookings', 'Your agent says your calendar is full for the year.', '\u{1F4C5}')
+  masterModeling(g)
   const score = marketability(g) + job.level * 4 + randInt(g, -20, 20) + (hasTalent(g, 'Modeling') ? 8 : 0)
   const pay = Math.round((job.salary * b.mult * (0.8 + rand(g) * 0.6)) / 50) * 50
   mdata(job).gigsThisYear += 1
@@ -337,6 +346,7 @@ const practiceScript = defineScript('special.model.practice', (g, choice) => {
   if (choice === 'cancel') return
   if (!useYearAction(g, `model.practice.${choice}`, 1)) return tell(g, 'Practice', `You've already practiced your ${choice === 'walk' ? 'walk' : 'poses'} this year.`, '\u{1F971}')
   const gain = Math.round(randInt(g, 3, 7) * talentMult(g, 'Modeling', 1.6))
+  masterModeling(g)
   setFlagSkill(g, 'modeling', flagSkill(g, 'modeling') + gain)
   const job = modelJob(g)
   if (job) bump(job, 3)

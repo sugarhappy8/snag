@@ -8,6 +8,7 @@
 // turns that into the money of the year when the player asks for it; never apply priceLevel here.
 import { hasTech, PRESENT_YEAR, TECH, techAdoption, techOdds, type TechId } from '../history/timeline'
 import type { GameState } from '../types'
+import { seededModel } from '../shops/everyday-brands'
 import { getCountry } from '../world'
 
 export { PRESENT_YEAR }
@@ -141,6 +142,8 @@ export function computerUsd(year: number): number {
 export interface ComputerModel {
   /** Asset name; always matches computer.ts isComputer (contains computer/PC/laptop/desktop). */
   name: string
+  /** What it is called in the shop and on the asset: a real maker and model when one existed ("Commodore 64 Home Computer"). */
+  displayName: string
   /** Mid-sentence: "a home computer". */
   noun: string
   emoji: string
@@ -150,29 +153,59 @@ export interface ComputerModel {
   flavor: string
 }
 
+const COMPUTER_WORD = /\b(laptop|gaming pc|computer|desktop|pc|macbook|workstation|chromebook)\b/i
+
+/** "Dell Dimension" + the era's word, unless the model already says what it is ("IBM PC", "MacBook"). */
+function withKind(model: string, kind: string): string {
+  return COMPUTER_WORD.test(model) ? model : `${model} ${kind}`
+}
+
+/** "a Commodore 64", "an Apple II", "an HP", "an IBM PC", "a Dell". */
+const article = (s: string) => {
+  const first = s.split(/[\s-]/)[0]
+  if (/^[A-Z]{2,5}$/.test(first)) return /^[AEFHILMNORSX]/.test(first) ? 'an' : 'a'
+  return /^[aeiou]/i.test(first) ? 'an' : 'a'
+}
+
+/** Makers of 8-bit and 16-bit home computers (they are never called a "Desktop PC"). */
+const HOME_MICROS = ['commodore', 'sinclair', 'acorn', 'amstrad', 'atari-computers', 'tandy', 'msx', 'cce', 'elektronika', 'robotron', 'didaktik']
+
+const PORTABLE_MODEL = /t1100|book|thinkpad|portable|satellite|port[eé]g[eé]|lifebook|note|laptop|surface|eee|chromebook/i
+
 /** The everyday home computer of the era (the one parents buy, or a kid saves up for). */
 export function computerModel(g: GameState, year = g.year): ComputerModel {
   const era = computerEra(g, year)
   const usd = computerUsd(year)
+  const real = era === 'none' ? undefined : seededModel(g, 'computer', `home-${era}`, { year, needsLine: true, rejectLine: era === 'modern' ? undefined : PORTABLE_MODEL })
   if (era === 'micro' || era === 'none') {
-    return { name: 'Home Computer', noun: 'an 8-bit home computer', emoji: '\u{1F5A5}\u{FE0F}', usd, flavor: 'It plugs into the TV, loads programs from a cassette tape and greets you with a blinking cursor that says READY.' }
+    const display = real ? withKind(real.name, 'Home Computer') : 'Home Computer'
+    const noun = real ? `${article(display)} ${display.replace(/ Home Computer$/, ' home computer')}` : 'an 8-bit home computer'
+    return { name: 'Home Computer', displayName: display, noun, emoji: '\u{1F5A5}\u{FE0F}', usd, flavor: 'It plugs into the TV, loads programs from a cassette tape and greets you with a blinking cursor that says READY.' }
   }
   if (era === 'pc') {
     const cd = year >= 1994
+    const micro = real !== undefined && HOME_MICROS.includes(real.brand.id)
+    const display = real ? withKind(real.name, micro ? 'Home Computer' : 'Desktop PC') : 'Desktop PC'
+    const noun = real ? `${article(display)} ${display.replace(/ Desktop PC$/, ' desktop PC').replace(/ Home Computer$/, ' home computer')}` : cd ? 'a beige multimedia PC' : 'a beige desktop PC'
     return {
       name: 'Desktop PC',
-      noun: cd ? 'a beige multimedia PC' : 'a beige desktop PC',
+      displayName: display,
+      noun,
       emoji: '\u{1F5A5}\u{FE0F}',
       usd,
       flavor: cd ? 'It has a CD-ROM drive, two speakers the size of bricks and a modem that screams like a fax machine in pain.' : 'It has a hard drive with a whole 40 megabytes, a floppy drive and a beige case the size of a suitcase.',
     }
   }
-  return { name: 'Laptop', noun: 'a laptop', emoji: '\u{1F4BB}', usd, flavor: '' }
+  const display = real ? withKind(real.name, 'Laptop') : 'Laptop'
+  const noun = real ? `${article(display)} ${display.replace(/ Laptop$/, ' laptop')}` : 'a laptop'
+  return { name: 'Laptop', displayName: display, noun, emoji: '\u{1F4BB}', usd, flavor: '' }
 }
 
 /** What the family computer is called when it lives in the den and everyone shares it. */
 export function familyComputerName(g: GameState, year = g.year): string {
   const era = computerEra(g, year)
+  const real = computerModel(g, year)
+  if (real.displayName !== real.name) return `Family ${real.displayName}`
   return era === 'modern' ? 'Family Computer' : era === 'pc' ? 'Family Desktop PC' : 'Family Home Computer'
 }
 

@@ -292,7 +292,8 @@ describe('loans follow the local central bank', () => {
     runScript(g, modal.scriptId!, plan.id, modal.data, modal)
     const house = g.assets[0]
     expect(house.mortgage?.rate).toBe(d.rate)
-    expect(house.mortgage?.lender).toMatch(/Sakura|Blue Harbor Bank|Cornerstone Lending/)
+    // A real bank that trades in Japan (home banks first), or a local-sounding last resort.
+    expect(house.mortgage?.lender).toMatch(/Bank|Sakura|savings|building society|credit union|MUFG|Mizuho|SMBC|Resona/i)
   })
 
   it('makes credit matter but never goes below the bank’s floor', () => {

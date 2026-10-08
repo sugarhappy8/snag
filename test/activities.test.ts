@@ -335,8 +335,10 @@ describe('will & testament', () => {
   it('explains when there is nobody to inherit', () => {
     const g = adult()
     const nodes = kids(g, misc('will') as MenuGroup)
-    expect(nodes).toHaveLength(1)
+    // Nobody to name, but a share can still go to charity.
+    expect(nodes).toHaveLength(2)
     expect(nodes[0].type).toBe('info')
+    expect(nodes[1]).toMatchObject({ type: 'action', id: 'will.charity' })
   })
 })
 

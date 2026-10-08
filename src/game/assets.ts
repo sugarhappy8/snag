@@ -47,6 +47,7 @@ import {
   yearlyIncome,
 } from './finance'
 import { computerUsd } from './computer/era'
+import { employerRef, gadgetName, pickBrand, type GadgetSpec } from './shops/everyday-brands'
 import { hasTech, type TechId } from './history/timeline'
 import { eraPick } from './events/era'
 import { createPerson } from './people'
@@ -639,7 +640,8 @@ export const MORTGAGE_PLANS: MortgagePlan[] = [
   { id: 'm50_15', down: 0.5, years: 15 },
 ]
 
-const MORTGAGE_LENDERS = ['First National Bank', 'Liberty Home Loans', 'Keystone Mortgage', 'Summit Savings & Loan', 'Blue Harbor Bank', 'Evergreen Credit Union', 'Cornerstone Lending']
+/** Last-resort lender names when no bank in the registry trades where you live (a village in 1920). */
+const MORTGAGE_LENDERS = ['the local savings bank', 'the town building society', 'the regional bank', 'the credit union']
 
 /** Lenders that sound local where the market has name words ("Sakura Savings Bank"), else the defaults. */
 function localLenders(g: GameState, patterns: string[], neutral: string[], fallback: string[]): string[] {
@@ -649,8 +651,13 @@ function localLenders(g: GameState, patterns: string[], neutral: string[], fallb
   return [...patterns.map((p) => p.replace('{w}', r.pick(words).trim())), ...neutral]
 }
 
+/** A real bank that lends where you live this year (home brands first); the invented names are only a last resort. */
+function realLender(g: GameState, fallback: string[]): string {
+  return pickBrand(g, 'bank', { tiers: ['budget', 'mass', 'premium'] })?.name ?? pick(g, fallback)
+}
+
 function mortgageLender(g: GameState): string {
-  return pick(g, localLenders(g, ['{w} Savings Bank', '{w} Home Finance', 'Bank of {w}'], ['Blue Harbor Bank', 'Cornerstone Lending'], MORTGAGE_LENDERS))
+  return realLender(g, localLenders(g, ['{w} Savings Bank', '{w} Home Finance', 'Bank of {w}'], ['the regional bank', 'the local savings bank'], MORTGAGE_LENDERS))
 }
 
 export interface MortgageDecision {
@@ -1072,6 +1079,8 @@ interface CarModel {
   /** First and last calendar year it was sold new (no Model 3 in 1990, no Model T in 1960). */
   from?: number
   until?: number
+  /** Sold only in these countries (home-market models). */
+  only?: readonly string[]
 }
 
 const CAR_MODELS: CarModel[] = [
@@ -1167,10 +1176,139 @@ const CAR_MODELS: CarModel[] = [
   { make: 'Ferrari', model: 'Testarossa', type: 'supercar', base: 350_000, from: 1984, until: 1996 },
   { make: 'Ferrari', model: 'F40', type: 'supercar', base: 1_100_000, from: 1987, until: 1992, rare: true },
   { make: 'McLaren', model: 'F1', type: 'supercar', base: 2_400_000, from: 1992, until: 1998, rare: true },
+  // More of what people really drove, by era and country (real makers and models; appended so older showrooms keep their order).
+  { make: 'Toyota', model: 'Camry', type: 'economy', base: 28_000, from: 1982 },
+  { make: 'Toyota', model: 'Yaris', type: 'economy', base: 19_000, from: 1999 },
+  { make: 'Toyota', model: 'Starlet', type: 'economy', base: 12_000, from: 1973, until: 1999 },
+  { make: 'Toyota', model: 'Vios', type: 'economy', base: 17_000, from: 2002, only: ['th', 'id', 'ph', 'my', 'vn', 'sg', 'tw', 'cn', 'in', 'sa', 'ae'] },
+  { make: 'Toyota', model: 'Avanza', type: 'economy', base: 16_000, from: 2003, only: ['id', 'ph', 'my', 'th', 'vn', 'za', 'sa', 'ae', 'eg'] },
+  { make: 'Toyota', model: 'Kijang', type: 'suv', base: 15_000, from: 1977, until: 2004, only: ['id', 'ph', 'my'] },
+  { make: 'Toyota', model: 'Kijang Innova', type: 'suv', base: 24_000, from: 2004, only: ['id', 'ph', 'my', 'in', 'ke', 'za'] },
+  { make: 'Toyota', model: 'Land Cruiser', type: 'suv', base: 60_000, from: 1951 },
+  { make: 'Toyota', model: 'Hilux', type: 'truck', base: 30_000, from: 1968 },
+  { make: 'Honda', model: 'Fit', type: 'economy', base: 18_000, from: 2001 },
+  { make: 'Honda', model: 'N-Box', type: 'economy', base: 14_000, from: 2011, only: ['jp'] },
+  { make: 'Honda', model: 'Odyssey', type: 'suv', base: 38_000, from: 1994 },
+  { make: 'Honda', model: 'City', type: 'economy', base: 15_000, from: 1996, only: ['in', 'th', 'id', 'my', 'ph', 'pk', 'bd', 'sa', 'ae', 'eg', 'za', 'ng'] },
+  { make: 'Suzuki', model: 'Alto', type: 'economy', base: 8_000, from: 1979 },
+  { make: 'Suzuki', model: 'Swift', type: 'economy', base: 17_000, from: 1983 },
+  { make: 'Suzuki', model: 'Jimny', type: 'suv', base: 20_000, from: 1970 },
+  { make: 'Suzuki', model: 'Wagon R', type: 'economy', base: 11_000, from: 1993, only: ['jp', 'in', 'id', 'pk', 'gb', 'de', 'it', 'es', 'fr'] },
+  { make: 'Maruti', model: '800', type: 'economy', base: 6_000, from: 1983, until: 2014, only: ['in', 'np', 'bd'] },
+  { make: 'Maruti', model: 'Alto', type: 'economy', base: 7_500, from: 2000, only: ['in', 'np'] },
+  { make: 'Hindustan', model: 'Ambassador', type: 'economy', base: 9_000, from: 1958, until: 2014, only: ['in'] },
+  { make: 'Tata', model: 'Nano', type: 'economy', base: 4_000, from: 2008, until: 2018, only: ['in'] },
+  { make: 'Tata', model: 'Safari', type: 'suv', base: 20_000, from: 1998, only: ['in', 'np', 'bd', 'lk'] },
+  { make: 'Mahindra', model: 'Scorpio', type: 'suv', base: 18_000, from: 2002, only: ['in', 'np', 'bd', 'za', 'au'] },
+  { make: 'Mahindra', model: 'Bolero', type: 'truck', base: 14_000, from: 2000, only: ['in', 'np', 'bd', 'ke', 'za'] },
+  { make: 'Nissan', model: 'Sunny', type: 'economy', base: 14_000, from: 1966 },
+  { make: 'Nissan', model: 'Micra', type: 'economy', base: 14_000, from: 1982 },
+  { make: 'Nissan', model: 'Skyline', type: 'sports', base: 36_000, from: 1957, only: ['jp', 'au', 'gb', 'th', 'my', 'id', 'sg', 'hk'] },
+  { make: 'Nissan', model: 'Tsuru', type: 'economy', base: 8_000, from: 1992, until: 2017, only: ['mx', 'gt', 'sv', 'cr', 'pa'] },
+  { make: 'Mitsubishi', model: 'Lancer', type: 'economy', base: 19_000, from: 1973, until: 2017 },
+  { make: 'Mitsubishi', model: 'Pajero', type: 'suv', base: 38_000, from: 1982, until: 2021 },
+  { make: 'Mitsubishi', model: 'Xpander', type: 'suv', base: 20_000, from: 2017, only: ['id', 'ph', 'th', 'vn', 'my', 'sa', 'ae'] },
+  { make: 'Mazda', model: '323', type: 'economy', base: 14_000, from: 1977, until: 2003 },
+  { make: 'Subaru', model: 'Legacy', type: 'economy', base: 24_000, from: 1989 },
+  { make: 'Daihatsu', model: 'Mira', type: 'economy', base: 9_000, from: 1980, only: ['jp', 'id', 'th', 'my'] },
+  { make: 'Hyundai', model: 'Pony', type: 'economy', base: 8_000, from: 1975, until: 1990 },
+  { make: 'Hyundai', model: 'Sonata', type: 'economy', base: 27_000, from: 1985 },
+  { make: 'Hyundai', model: 'i10', type: 'economy', base: 13_000, from: 2007 },
+  { make: 'Hyundai', model: 'Tucson', type: 'suv', base: 29_000, from: 2004 },
+  { make: 'Kia', model: 'Pride', type: 'economy', base: 7_000, from: 1987, until: 2000 },
+  { make: 'Kia', model: 'Sportage', type: 'suv', base: 28_000, from: 1993 },
+  { make: 'Daewoo', model: 'Matiz', type: 'economy', base: 6_500, from: 1998, until: 2005 },
+  { make: 'Volkswagen', model: 'Passat', type: 'economy', base: 32_000, from: 1973 },
+  { make: 'Volkswagen', model: 'Polo', type: 'economy', base: 19_000, from: 1975 },
+  { make: 'Volkswagen', model: 'Gol', type: 'economy', base: 12_000, from: 1980, until: 2023, only: ['br', 'ar', 'uy', 'py', 'cl', 'pe', 'bo', 'mx', 'co', 've', 'za'] },
+  { make: 'Volkswagen', model: 'Fusca', type: 'economy', base: 8_000, from: 1953, until: 1996, only: ['br'] },
+  { make: 'Volkswagen', model: 'Sedán (Vocho)', type: 'economy', base: 8_000, from: 1954, until: 2003, only: ['mx'] },
+  { make: 'Volkswagen', model: 'Kombi', type: 'suv', base: 22_000, from: 1950, until: 2013, only: ['br', 'ar', 'mx', 'de', 'za', 'au'] },
+  { make: 'Škoda', model: 'Octavia', type: 'economy', base: 24_000, from: 1996 },
+  { make: 'Škoda', model: '105', type: 'economy', base: 7_000, from: 1976, until: 1990, only: ['cz', 'sk', 'pl', 'hu', 'ro', 'ru', 'ua'] },
+  { make: 'SEAT', model: 'Ibiza', type: 'economy', base: 17_000, from: 1984 },
+  { make: 'SEAT', model: '600', type: 'economy', base: 7_000, from: 1957, until: 1973, only: ['es', 'pt'] },
+  { make: 'Renault', model: '4', type: 'economy', base: 8_000, from: 1961, until: 1992 },
+  { make: 'Renault', model: '5', type: 'economy', base: 9_000, from: 1972, until: 1996 },
+  { make: 'Renault', model: 'Clio', type: 'economy', base: 17_000, from: 1990 },
+  { make: 'Renault', model: 'Kwid', type: 'economy', base: 8_500, from: 2015, only: ['in', 'br', 'co', 'ar', 'cl', 'ma', 'ng', 'za'] },
+  { make: 'Peugeot', model: '205', type: 'economy', base: 11_000, from: 1983, until: 1998 },
+  { make: 'Peugeot', model: '206', type: 'economy', base: 14_000, from: 1998, until: 2012 },
+  { make: 'Peugeot', model: '504', type: 'economy', base: 14_000, from: 1968, until: 2006, only: ['ng', 'ke', 'ug', 'zw', 'za', 'eg', 'ma', 'dz', 'tn', 'ar', 'ir', 'cd', 'ao'] },
+  { make: 'Citroën', model: '2CV', type: 'economy', base: 7_000, from: 1948, until: 1990 },
+  { make: 'Citroën', model: 'DS', type: 'luxury', base: 45_000, from: 1955, until: 1975 },
+  { make: 'Opel', model: 'Kadett', type: 'economy', base: 11_000, from: 1962, until: 1991 },
+  { make: 'Opel', model: 'Corsa', type: 'economy', base: 14_000, from: 1982 },
+  { make: 'Fiat', model: '500', type: 'economy', base: 8_000, from: 1957, until: 1975 },
+  { make: 'Fiat', model: 'Panda', type: 'economy', base: 12_000, from: 1980 },
+  { make: 'Fiat', model: 'Uno', type: 'economy', base: 11_000, from: 1983, until: 2013 },
+  { make: 'Fiat', model: 'Palio', type: 'economy', base: 11_000, from: 1996, until: 2017, only: ['br', 'ar', 'mx', 'pl', 'tr', 'in', 'co', 'cl', 'za', 've'] },
+  { make: 'Fiat', model: '126p', type: 'economy', base: 5_000, from: 1973, until: 2000, only: ['pl'] },
+  { make: 'Fiat', model: '147', type: 'economy', base: 7_000, from: 1976, until: 1986, only: ['br'] },
+  { make: 'Fiat', model: 'Punto', type: 'economy', base: 14_000, from: 1993, until: 2018 },
+  { make: 'Chevrolet', model: 'Celta', type: 'economy', base: 8_000, from: 2000, until: 2015, only: ['br'] },
+  { make: 'Chevrolet', model: 'Onix', type: 'economy', base: 14_000, from: 2012, only: ['br', 'ar', 'co', 'cl', 'pe', 'mx', 'ec', 'uy'] },
+  { make: 'Chevrolet', model: 'Opala', type: 'economy', base: 14_000, from: 1968, until: 1992, only: ['br'] },
+  { make: 'Chevrolet', model: 'Chevy', type: 'economy', base: 8_000, from: 1994, until: 2012, only: ['mx'] },
+  { make: 'Ford', model: 'Fiesta', type: 'economy', base: 16_000, from: 1976, until: 2023 },
+  { make: 'Ford', model: 'Cortina', type: 'economy', base: 12_000, from: 1962, until: 1982, only: ['gb', 'ie', 'au', 'nz', 'za', 'ke', 'zw'] },
+  { make: 'Ford', model: 'Capri', type: 'sports', base: 24_000, from: 1969, until: 1986, only: ['gb', 'de', 'ie', 'nl', 'be', 'au', 'za'] },
+  { make: 'Ford', model: 'Mondeo', type: 'economy', base: 24_000, from: 1993, until: 2022 },
+  { make: 'Ford', model: 'Falcon', type: 'economy', base: 18_000, from: 1962, until: 1991, only: ['ar'] },
+  { make: 'Ford', model: 'Ka', type: 'economy', base: 9_000, from: 1996, until: 2021, only: ['br', 'ar', 'mx', 'gb', 'de', 'fr', 'es', 'it', 'pt', 'za', 'cl', 'co'] },
+  { make: 'Ford', model: 'Taurus', type: 'economy', base: 28_000, from: 1986, until: 2019 },
+  { make: 'Ford', model: 'Ranger', type: 'truck', base: 30_000, from: 1983 },
+  { make: 'Ford', model: 'Thunderbird', type: 'sports', base: 40_000, from: 1955, until: 2005 },
+  { make: 'Chevrolet', model: 'Camaro', type: 'sports', base: 40_000, from: 1966, until: 2024 },
+  { make: 'Chevrolet', model: 'Impala', type: 'economy', base: 26_000, from: 1958, until: 2020 },
+  { make: 'Dodge', model: 'Charger', type: 'sports', base: 38_000, from: 1966 },
+  { make: 'Dodge', model: 'Caravan', type: 'suv', base: 30_000, from: 1984, until: 2020 },
+  { make: 'Dodge', model: 'Viper', type: 'sports', base: 90_000, from: 1992, until: 2017 },
+  { make: 'Jeep', model: 'Cherokee', type: 'suv', base: 34_000, from: 1984 },
+  { make: 'Oldsmobile', model: 'Cutlass', type: 'economy', base: 22_000, from: 1961, until: 1999 },
+  { make: 'Buick', model: 'Riviera', type: 'luxury', base: 45_000, from: 1963, until: 1999 },
+  { make: 'Cadillac', model: 'Eldorado', type: 'luxury', base: 55_000, from: 1953, until: 2002 },
+  { make: 'Lincoln', model: 'Town Car', type: 'luxury', base: 50_000, from: 1981, until: 2011 },
+  { make: 'Hummer', model: 'H2', type: 'suv', base: 60_000, from: 2003, until: 2009 },
+  { make: 'Land Rover', model: 'Defender', type: 'suv', base: 45_000, from: 1983, until: 2016 },
+  { make: 'Volvo', model: '240', type: 'economy', base: 22_000, from: 1974, until: 1993 },
+  { make: 'Volvo', model: 'XC90', type: 'luxury', base: 65_000, from: 2002 },
+  { make: 'Saab', model: '900', type: 'luxury', base: 38_000, from: 1978, until: 1998 },
+  { make: 'Mercedes-Benz', model: 'C-Class', type: 'luxury', base: 48_000, from: 1993 },
+  { make: 'BMW', model: '3 Series', type: 'luxury', base: 45_000, from: 1975 },
+  { make: 'Audi', model: 'A4', type: 'luxury', base: 42_000, from: 1994 },
+  { make: 'Alfa Romeo', model: 'Giulia', type: 'sports', base: 45_000, from: 1962, until: 1978 },
+  { make: 'Lada', model: 'Riva', type: 'economy', base: 6_500, from: 1980, until: 2012, only: ['ru', 'ua', 'by', 'kz', 'ge', 'pl', 'cz', 'sk', 'hu', 'ro', 'rs', 'hr', 'ee', 'fi', 'ca', 'eg', 'cu', 'in'] },
+  { make: 'Lada', model: 'Niva', type: 'suv', base: 12_000, from: 1977, only: ['ru', 'ua', 'by', 'kz', 'ge', 'pl', 'cz', 'sk', 'hu', 'ro', 'rs', 'hr', 'ee', 'fi', 'ca', 'fr', 'ch', 'cu', 'eg'] },
+  { make: 'Lada', model: 'Samara', type: 'economy', base: 7_500, from: 1984, until: 2013, only: ['ru', 'ua', 'by', 'kz', 'ge', 'pl', 'cz', 'sk', 'hu', 'ro', 'fi', 'ca'] },
+  { make: 'Moskvitch', model: '412', type: 'economy', base: 7_000, from: 1967, until: 1975, only: ['ru', 'ua', 'by', 'kz', 'ge', 'pl', 'cz', 'bg', 'ro', 'hu', 'fi'] },
+  { make: 'GAZ', model: 'Volga', type: 'luxury', base: 14_000, from: 1956, until: 2010, only: ['ru', 'ua', 'by', 'kz', 'ge'] },
+  { make: 'Trabant', model: '601', type: 'economy', base: 5_000, from: 1964, until: 1990, only: ['de', 'cz', 'hu', 'pl', 'ro', 'sk'] },
+  { make: 'Wartburg', model: '353', type: 'economy', base: 6_000, from: 1966, until: 1988, only: ['de', 'cz', 'hu', 'pl', 'ro', 'sk'] },
+  { make: 'Dacia', model: '1300', type: 'economy', base: 6_000, from: 1969, until: 2004, only: ['ro', 'hu', 'bg', 'pl', 'cz', 'sk', 'rs', 'hr', 'fr'] },
+  { make: 'Dacia', model: 'Logan', type: 'economy', base: 9_000, from: 2004 },
+  { make: 'Dacia', model: 'Duster', type: 'suv', base: 15_000, from: 2010 },
+  { make: 'Zastava', model: 'Yugo 45', type: 'economy', base: 5_000, from: 1980, until: 1992, only: ['rs', 'hr', 'us', 'ca', 'gr', 'hu'] },
+  { make: 'Chery', model: 'QQ', type: 'economy', base: 5_000, from: 2003, until: 2013, only: ['cn', 'ru', 'ua', 'eg', 'ng', 'ke', 'id', 'pk', 'br', 'cl', 'ir', 'in'] },
+  { make: 'BYD', model: 'F3', type: 'economy', base: 8_000, from: 2005, until: 2013, only: ['cn', 'id', 'ru', 'br', 'mx', 'eg', 'ng', 'ke', 'ir', 'pk', 'in'] },
+  { make: 'BYD', model: 'Dolphin', type: 'electric', base: 20_000, from: 2021, only: ['cn', 'br', 'mx', 'th', 'id', 'in', 'au', 'gb', 'de', 'fr', 'es', 'it', 'nl', 'tr', 'jp', 'kr', 'sa', 'ae', 'za', 'co', 'cl', 'pe', 'ar'] },
+  { make: 'BYD', model: 'Han', type: 'electric', base: 38_000, from: 2020, only: ['cn', 'no', 'se', 'nl', 'de', 'gb', 'au', 'th', 'id'] },
+  { make: 'Wuling', model: 'Hongguang Mini EV', type: 'electric', base: 6_000, from: 2020, only: ['cn', 'id', 'th', 'vn', 'ph', 'br', 'mx', 'eg', 'ke'] },
+  { make: 'Geely', model: 'Emgrand', type: 'economy', base: 11_000, from: 2009, only: ['cn', 'ru', 'ua', 'eg', 'ng', 'ke', 'ir', 'br', 'cl', 'id', 'pk'] },
+  { make: 'Haval', model: 'H6', type: 'suv', base: 20_000, from: 2011, only: ['cn', 'ru', 'au', 'br', 'za', 'eg', 'ng', 'ke', 'th', 'id', 'pe', 'cl', 'mx'] },
+  { make: 'Nio', model: 'ES8', type: 'electric', base: 60_000, from: 2018, only: ['cn', 'no', 'de', 'nl', 'dk', 'se'] },
+  { make: 'Iran Khodro', model: 'Paykan', type: 'economy', base: 7_000, from: 1967, until: 2005, only: ['ir', 'iq', 'sy'] },
+  { make: 'Saipa', model: 'Pride', type: 'economy', base: 7_000, from: 1993, until: 2018, only: ['ir', 'iq', 'sy'] },
+  { make: 'Togg', model: 'T10X', type: 'electric', base: 36_000, from: 2023, only: ['tr', 'de'] },
+  { make: 'Tofaş', model: 'Şahin', type: 'economy', base: 8_000, from: 1985, until: 2002, only: ['tr'] },
+  { make: 'Proton', model: 'Saga', type: 'economy', base: 8_000, from: 1985, only: ['my', 'sg', 'gb', 'au', 'id', 'th', 'bd', 'pk', 'in'] },
+  { make: 'Perodua', model: 'Myvi', type: 'economy', base: 11_000, from: 2005, only: ['my', 'bn', 'sg'] },
+  { make: 'Innoson', model: 'IVM G5', type: 'suv', base: 25_000, from: 2013, only: ['ng', 'gh', 'cm'] },
 ]
 
 /** A car on sale new (or as a classic) in that year: model years, classics 20+ years old, EVs once modern EVs exist. */
 function carInEra(g: GameState, m: CarModel, year = g.year): boolean {
+  if (m.only && !m.only.includes(g.character.countryId)) return false
   if (m.year) return year >= m.year + 20
   if (m.from !== undefined && year < m.from) return false
   if (m.until !== undefined && year > m.until) return false
@@ -1222,7 +1360,7 @@ export function carListings(g: GameState, dealerId: string): CarListing[] {
   const out: CarListing[] = []
   if (pool.length === 0) return out
   for (let i = 0; i < dealer.count; i++) {
-    const m = r.weighted(pool, (x) => (x.rare ? 0.15 : 1))
+    const m = r.weighted(pool, (x) => (x.rare ? 0.15 : 1) * (x.only ? 3 : 1))
     let modelYear = g.year
     let condition = 100
     let price: number
@@ -1263,7 +1401,7 @@ function carName(l: { modelYear: number; make: string; model: string }): string 
   return `${l.modelYear} ${l.make} ${l.model}`
 }
 
-const AUTO_LENDERS = ['Speedy Auto Finance', 'First Federal Auto Loans', 'Dealer Financing', 'Open Road Credit']
+const AUTO_LENDERS = ['the dealer finance office', 'the local credit union', 'the regional bank']
 
 /** Yearly running costs of a car of this type here (fuel, servicing, registration). */
 function carUpkeep(g: GameState, type: CarType): number {
@@ -1339,7 +1477,7 @@ export function buyCar(g: GameState, l: CarListing, plan: VehicleFinancePlan | n
       return false
     }
     spend(g, f.down)
-    loanId = addLoan(g, { kind: 'car', lender: pick(g, localLenders(g, ['{w} Auto Finance', '{w} Motor Credit'], ['Dealer Financing', 'Open Road Credit'], AUTO_LENDERS)), principal: f.principal, rate: f.rate, years: plan.years }).id
+    loanId = addLoan(g, { kind: 'car', lender: realLender(g, localLenders(g, ['{w} Auto Finance', '{w} Motor Credit'], ['the dealer finance office', 'the local credit union'], AUTO_LENDERS)), principal: f.principal, rate: f.rate, years: plan.years }).id
   }
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -1542,8 +1680,8 @@ export function buyVehicle(g: GameState, l: VehicleListing, plan: VehicleFinance
       return false
     }
     spend(g, f.down)
-    const lenders = l.kind === 'boat' ? ['Harborview Marine Credit', 'First National Bank'] : ['Skyward Aviation Finance', 'First National Bank']
-    loanId = addLoan(g, { kind: 'personal', lender: pick(g, localLenders(g, ['{w} Savings Bank'], [lenders[0]], lenders)), principal: f.principal, rate: f.rate, years: plan.years }).id
+    const lenders = l.kind === 'boat' ? ['a marine lender', 'the regional bank'] : ['an aviation lender', 'the regional bank']
+    loanId = addLoan(g, { kind: 'personal', lender: realLender(g, localLenders(g, ['{w} Savings Bank'], [lenders[0]], lenders)), principal: f.principal, rate: f.rate, years: plan.years }).id
   }
   const asset: Asset = {
     id: uid(g, 'a'),
@@ -1750,6 +1888,24 @@ const INSTRUMENTS: [string, string, number][] = [
   ['Grand Piano', '🎹', 45_000],
 ]
 
+/** Who made them: real instrument makers that traded in your country and year. */
+const INSTRUMENT_MAKERS: Record<string, string[]> = {
+  'Acoustic Guitar': ['yamaha', 'gibson', 'fender'],
+  'Electric Guitar': ['fender', 'gibson', 'ibanez', 'yamaha'],
+  'Bass Guitar': ['fender', 'ibanez', 'yamaha'],
+  Violin: ['yamaha'],
+  Cello: ['yamaha'],
+  Flute: ['yamaha'],
+  Clarinet: ['yamaha'],
+  Saxophone: ['yamaha'],
+  Trumpet: ['yamaha'],
+  Trombone: ['yamaha'],
+  'Drum Kit': ['pearl-drums', 'yamaha'],
+  Keyboard: ['casio-instruments', 'yamaha', 'roland'],
+  'Upright Piano': ['yamaha', 'steinway'],
+  'Grand Piano': ['steinway', 'yamaha'],
+}
+
 export function instrumentListings(g: GameState): ItemListing[] {
   const r = seeded(yearKey(g, 'instruments'))
   const mult = goodsMult(g)
@@ -1758,7 +1914,7 @@ export function instrumentListings(g: GameState): ItemListing[] {
     const isNew = r.chance(0.6)
     const condition = isNew ? 100 : r.int(35, 90)
     const price = nicePrice(base * mult * (isNew ? r.float(0.95, 1.1) : 0.35 + 0.4 * (condition / 100)))
-    out.push({ id: `${g.year}:inst-${i}`, kind: 'instrument', category: 'instrument', name: `${isNew ? '' : 'Used '}${label}`, emoji, price, value: nicePrice(price * 0.7), condition, isNew, details: { category: 'instrument', instrument: label } })
+    out.push({ id: `${g.year}:inst-${i}`, kind: 'instrument', category: 'instrument', name: `${isNew ? '' : 'Used '}${INSTRUMENT_MAKERS[label] ? gadgetName(g, { ids: INSTRUMENT_MAKERS[label], mode: 'prefix' }, `inst-${i}`, label) ?? label : label}`, emoji, price, value: nicePrice(price * 0.7), condition, isNew, details: { category: 'instrument', instrument: label } })
   })
   return out.filter((x) => !isBought(g, x.id))
 }
@@ -1777,13 +1933,20 @@ interface Gadget {
   name?: (year: number) => string
   /** The price in a given year, today's dollars (computers cost a fortune in 1985). */
   price?: (year: number) => number
+  /** Real makers and models: the listing is named after one that traded where you live this year. */
+  brand?: GadgetSpec
 }
+
+const LAPTOP_LINES = /t1100|book|thinkpad|portable|satellite|port[eé]g[eé]|lifebook|note|laptop|surface|eee|chromebook|inspiron|xps|aspire|pavilion|spectre|ideapad|legion|zenbook|blade/i
+const TV_MAKERS = ['sony', 'samsung-electronics', 'lg-electronics', 'panasonic', 'philips', 'tcl', 'hisense', 'sharp', 'toshiba', 'hitachi', 'rca', 'zenith', 'philco', 'magnavox', 'grundig', 'telefunken', 'loewe', 'vizio', 'jvc', 'sanyo', 'thomson']
+const CAMERA_MAKERS = ['canon', 'nikon', 'kodak', 'fujifilm', 'olympus', 'pentax', 'minolta', 'polaroid', 'sony', 'panasonic']
+const AV_MAKERS = ['sony', 'panasonic', 'philips', 'toshiba', 'pioneer', 'samsung-electronics', 'lg-electronics', 'sharp', 'jvc', 'hitachi', 'sanyo', 'technics', 'aiwa']
 
 // Today's gadgets first (in their original order, so today's store is unchanged), then the
 // gadgets of earlier decades. Prices are real terms: a 1985 VCR at $1,200 of today's money.
 const ELECTRONICS: Gadget[] = [
-  { label: 'Smartphone', emoji: '📱', base: 900, tech: 'smartphone' },
-  { label: 'Laptop', emoji: '💻', base: 1_300, from: 1995, tech: 'homeComputer', price: (y) => (y >= 2010 ? 1_300 : Math.round(computerUsd(y) * 1.4)) },
+  { label: 'Smartphone', emoji: '📱', base: 900, tech: 'smartphone', brand: { category: 'phone', mode: 'model' } },
+  { label: 'Laptop', emoji: '💻', base: 1_300, from: 1995, tech: 'homeComputer', price: (y) => (y >= 2010 ? 1_300 : Math.round(computerUsd(y) * 1.4)), brand: { category: 'computer', mode: 'model', suffix: 'Laptop', accept: LAPTOP_LINES, already: /macbook|chromebook|thinkpad|notebook|zenbook|surface|laptop/i } },
   {
     label: 'Gaming Console',
     emoji: '🎮',
@@ -1791,40 +1954,41 @@ const ELECTRONICS: Gadget[] = [
     tech: 'videoGameConsole',
     name: (y) => (y < 1985 ? 'Cartridge Game Console' : y < 1995 ? '16-Bit Game Console' : y < 2006 ? '3D Game Console' : y < 2013 ? 'HD Game Console' : 'Gaming Console'),
     price: (y) => (y >= 2013 ? 500 : y >= 1995 ? 750 : 900),
+    brand: { category: 'console', segment: 'home', mode: 'model', suffix: 'Console' },
   },
-  { label: 'Gaming PC', emoji: '🖥️', base: 2_200, from: 1997, tech: 'homeComputer', price: (y) => (y >= 2010 ? 2_200 : Math.round(computerUsd(y) * 1.5)) },
-  { label: 'Tablet', emoji: '📲', base: 600, from: 2010 },
-  { label: '4K Smart TV', emoji: '📺', base: 1_100, from: 2014 },
-  { label: 'VR Headset', emoji: '🥽', base: 500, from: 2016 },
-  { label: 'Camera Drone', emoji: '🛸', base: 800, from: 2014 },
-  { label: 'Smartwatch', emoji: '⌚', base: 400, from: 2015 },
-  { label: 'Noise-Canceling Headphones', emoji: '🎧', base: 350, from: 2008 },
-  { label: 'Mirrorless Camera', emoji: '📷', base: 1_500, from: 2010 },
-  { label: 'E-Reader', emoji: '📖', base: 150, from: 2008 },
-  { label: 'Smart Speaker', emoji: '🔊', base: 100, from: 2015 },
-  { label: 'Robot Vacuum', emoji: '🤖', base: 450, from: 2003 },
+  { label: 'Gaming PC', emoji: '🖥️', base: 2_200, from: 1997, tech: 'homeComputer', price: (y) => (y >= 2010 ? 2_200 : Math.round(computerUsd(y) * 1.5)), brand: { ids: ['alienware', 'razer', 'msi', 'asus', 'acer', 'hp', 'lenovo', 'dell'], mode: 'prefix' } },
+  { label: 'Tablet', emoji: '📲', base: 600, from: 2010, brand: { category: 'tablet', mode: 'model' } },
+  { label: '4K Smart TV', emoji: '📺', base: 1_100, from: 2014, brand: { ids: TV_MAKERS, mode: 'prefix' } },
+  { label: 'VR Headset', emoji: '🥽', base: 500, from: 2016, brand: { category: 'electronics', segment: 'vr', mode: 'model' } },
+  { label: 'Camera Drone', emoji: '🛸', base: 800, from: 2014, brand: { category: 'electronics', segment: 'drone', mode: 'model', suffix: 'Drone' } },
+  { label: 'Smartwatch', emoji: '⌚', base: 400, from: 2015, brand: { category: 'electronics', segment: 'wearable', mode: 'brand', suffix: 'Smartwatch', already: /watch/i } },
+  { label: 'Noise-Canceling Headphones', emoji: '🎧', base: 350, from: 2008, brand: { ids: ['bose', 'sennheiser', 'sony', 'beats', 'jbl', 'panasonic'], mode: 'prefix' } },
+  { label: 'Mirrorless Camera', emoji: '📷', base: 1_500, from: 2010, brand: { ids: ['canon', 'nikon', 'fujifilm', 'olympus', 'sony', 'panasonic'], mode: 'prefix' } },
+  { label: 'E-Reader', emoji: '📖', base: 150, from: 2008, brand: { category: 'electronics', segment: 'ereader', mode: 'brand', suffix: 'E-Reader' } },
+  { label: 'Smart Speaker', emoji: '🔊', base: 100, from: 2015, brand: { category: 'electronics', segment: 'speaker', mode: 'brand', suffix: 'Smart Speaker', already: /echo|home|pod/i } },
+  { label: 'Robot Vacuum', emoji: '🤖', base: 450, from: 2003, brand: { category: 'electronics', segment: 'vacuum', mode: 'brand', suffix: 'Robot Vacuum' } },
   // Earlier decades.
-  { label: 'Phonograph', emoji: '🎶', base: 1_500, until: 1950 },
-  { label: 'Tube Radio', emoji: '📻', base: 1_200, tech: 'radio', until: 1960 },
-  { label: 'Transistor Radio', emoji: '📻', base: 300, tech: 'radio', from: 1955, until: 1990 },
-  { label: 'Black-and-White TV', emoji: '📺', base: 3_000, tech: 'tv', until: 1975 },
-  { label: 'Color TV', emoji: '📺', base: 2_500, tech: 'colorTv', until: 2004, price: (y) => (y < 1975 ? 4_500 : y < 1990 ? 2_200 : 1_200) },
-  { label: 'Hi-Fi Record Player', emoji: '🎶', base: 1_200, from: 1955, until: 1995 },
-  { label: 'Electric Typewriter', emoji: '⌨️', base: 900, from: 1950, until: 1995 },
-  { label: 'Film Camera', emoji: '📷', base: 500, until: 2005 },
-  { label: 'Portable Cassette Player', emoji: '📼', base: 250, from: 1979, until: 2002 },
-  { label: 'VCR', emoji: '📼', base: 1_200, from: 1978, until: 2006, price: (y) => (y < 1985 ? 2_500 : y < 1995 ? 700 : 250) },
-  { label: 'Camcorder', emoji: '📹', base: 2_000, from: 1984, until: 2012 },
-  { label: 'Pager', emoji: '📟', base: 250, from: 1985, until: 2002 },
-  { label: 'Mobile Phone', emoji: '📱', base: 4_000, tech: 'mobilePhone', until: 1996, name: (y) => (y < 1992 ? 'Brick Mobile Phone' : 'Mobile Phone') },
-  { label: 'Flip Phone', emoji: '📱', base: 400, tech: 'mobilePhone', from: 1996, until: 2012 },
-  { label: 'CD Player', emoji: '💿', base: 600, from: 1983, until: 2008 },
-  { label: 'Portable CD Player', emoji: '💿', base: 250, from: 1985, until: 2005 },
-  { label: 'MP3 Player', emoji: '🎧', base: 350, tech: 'internet', from: 2000, until: 2014 },
-  { label: 'Digital Camera', emoji: '📷', base: 600, from: 1996, until: 2015 },
-  { label: 'DVD Player', emoji: '📀', base: 300, from: 1997, until: 2015 },
-  { label: 'Flat-Screen TV', emoji: '📺', base: 2_500, from: 2000, until: 2013 },
-  { label: 'Handheld Game Console', emoji: '🎮', base: 300, tech: 'videoGameConsole', from: 1989, until: 2016 },
+  { label: 'Phonograph', emoji: '🎶', base: 1_500, until: 1950, brand: { category: 'electronics', segment: 'phonograph', mode: 'prefix' } },
+  { label: 'Tube Radio', emoji: '📻', base: 1_200, tech: 'radio', until: 1960, brand: { ids: ['philco', 'rca', 'emerson-radio', 'zenith', 'grundig', 'telefunken', 'philips', 'magnavox', 'blaupunkt'], mode: 'prefix' } },
+  { label: 'Transistor Radio', emoji: '📻', base: 300, tech: 'radio', from: 1955, until: 1990, brand: { ids: ['regency-radio', 'sony', 'panasonic', 'sharp', 'philips', 'grundig', 'toshiba', 'hitachi'], mode: 'prefix' } },
+  { label: 'Black-and-White TV', emoji: '📺', base: 3_000, tech: 'tv', until: 1975, brand: { ids: TV_MAKERS, mode: 'prefix' } },
+  { label: 'Color TV', emoji: '📺', base: 2_500, tech: 'colorTv', until: 2004, price: (y) => (y < 1975 ? 4_500 : y < 1990 ? 2_200 : 1_200), brand: { ids: TV_MAKERS, mode: 'prefix' } },
+  { label: 'Hi-Fi Record Player', emoji: '🎶', base: 1_200, from: 1955, until: 1995, brand: { ids: ['technics', 'pioneer', 'marantz', 'philips', 'grundig', 'telefunken', 'sony', 'panasonic'], mode: 'prefix' } },
+  { label: 'Electric Typewriter', emoji: '⌨️', base: 900, from: 1950, until: 1995, brand: { category: 'electronics', segment: 'typewriter', mode: 'prefix' } },
+  { label: 'Film Camera', emoji: '📷', base: 500, until: 2005, brand: { ids: CAMERA_MAKERS, mode: 'prefix' } },
+  { label: 'Portable Cassette Player', emoji: '📼', base: 250, from: 1979, until: 2002, brand: { ids: ['sony', 'panasonic', 'aiwa', 'toshiba', 'sharp', 'philips'], mode: 'prefix' } },
+  { label: 'VCR', emoji: '📼', base: 1_200, from: 1978, until: 2006, price: (y) => (y < 1985 ? 2_500 : y < 1995 ? 700 : 250), brand: { ids: ['jvc', 'sony', 'panasonic', 'philips', 'sharp', 'sanyo', 'hitachi', 'toshiba', 'samsung-electronics', 'lg-electronics'], mode: 'prefix' } },
+  { label: 'Camcorder', emoji: '📹', base: 2_000, from: 1984, until: 2012, brand: { ids: ['sony', 'jvc', 'panasonic', 'canon', 'sharp', 'hitachi'], mode: 'prefix' } },
+  { label: 'Pager', emoji: '📟', base: 250, from: 1985, until: 2002, brand: { ids: ['motorola-pager'], mode: 'brand' } },
+  { label: 'Mobile Phone', emoji: '📱', base: 4_000, tech: 'mobilePhone', until: 1996, name: (y) => (y < 1992 ? 'Brick Mobile Phone' : 'Mobile Phone'), brand: { category: 'phone', mode: 'model', suffix: 'Mobile Phone' } },
+  { label: 'Flip Phone', emoji: '📱', base: 400, tech: 'mobilePhone', from: 1996, until: 2012, brand: { category: 'phone', mode: 'model', suffix: 'Phone' } },
+  { label: 'CD Player', emoji: '💿', base: 600, from: 1983, until: 2008, brand: { ids: ['sony', 'philips', 'technics', 'pioneer', 'panasonic', 'aiwa', 'toshiba', 'marantz'], mode: 'prefix' } },
+  { label: 'Portable CD Player', emoji: '💿', base: 250, from: 1985, until: 2005, brand: { ids: ['sony', 'panasonic', 'aiwa', 'philips', 'toshiba'], mode: 'prefix' } },
+  { label: 'MP3 Player', emoji: '🎧', base: 350, tech: 'internet', from: 2000, until: 2014, brand: { ids: ['ipod', 'creative-zen', 'sony', 'samsung-electronics', 'philips'], mode: 'prefix' } },
+  { label: 'Digital Camera', emoji: '📷', base: 600, from: 1996, until: 2015, brand: { ids: CAMERA_MAKERS, mode: 'prefix' } },
+  { label: 'DVD Player', emoji: '📀', base: 300, from: 1997, until: 2015, brand: { ids: AV_MAKERS, mode: 'prefix' } },
+  { label: 'Flat-Screen TV', emoji: '📺', base: 2_500, from: 2000, until: 2013, brand: { ids: TV_MAKERS, mode: 'prefix' } },
+  { label: 'Handheld Game Console', emoji: '🎮', base: 300, tech: 'videoGameConsole', from: 1989, until: 2016, brand: { category: 'console', segment: 'handheld', mode: 'model', suffix: 'Handheld Console' } },
   {
     label: 'Home Computer',
     emoji: '🖥️',
@@ -1833,8 +1997,9 @@ const ELECTRONICS: Gadget[] = [
     until: 1990,
     name: (y) => (y < 1988 ? '8-Bit Home Computer' : 'Home Computer'),
     price: (y) => computerUsd(y),
+    brand: { category: 'computer', mode: 'model', suffix: 'Home Computer', reject: LAPTOP_LINES },
   },
-  { label: 'Desktop PC', emoji: '🖥️', base: 3_500, tech: 'homeComputer', from: 1985, until: 2012, name: (y) => (y < 1994 ? 'Beige Desktop PC' : y < 2001 ? 'Multimedia Desktop PC' : 'Desktop PC'), price: (y) => computerUsd(y) },
+  { label: 'Desktop PC', emoji: '🖥️', base: 3_500, tech: 'homeComputer', from: 1985, until: 2012, name: (y) => (y < 1994 ? 'Beige Desktop PC' : y < 2001 ? 'Multimedia Desktop PC' : 'Desktop PC'), price: (y) => computerUsd(y), brand: { category: 'computer', mode: 'model', suffix: 'Desktop PC', reject: LAPTOP_LINES } },
 ]
 
 /** True when this gadget is in the shops where the player lives this year. */
@@ -1851,7 +2016,8 @@ export function electronicsListings(g: GameState): ItemListing[] {
     .map((x, i): ItemListing => {
       const price = nicePrice((x.price ? x.price(g.year) : x.base) * mult * r.float(0.85, 1.1))
       const label = x.name ? x.name(g.year) : x.label
-      return { id: `${g.year}:elec-${i}`, kind: 'other', category: 'electronics', name: label, emoji: x.emoji, price, value: nicePrice(price * 0.7), condition: 100, isNew: true, details: { category: 'electronics' } }
+      const real = x.brand ? gadgetName(g, x.brand, `elec-${i}`, label) : undefined
+      return { id: `${g.year}:elec-${i}`, kind: 'other', category: 'electronics', name: real ?? label, emoji: x.emoji, price, value: nicePrice(price * 0.7), condition: 100, isNew: true, details: { category: 'electronics' } }
     })
     .filter((x) => !isBought(g, x.id))
 }
@@ -3990,7 +4156,7 @@ function payMortgage(g: GameState, a: Asset): number {
       addStat(g, 'happiness', 8)
       log(g, `I paid off the mortgage on my ${a.name.toLowerCase()}!`, 'good')
       remember(g, `Paid off the mortgage on my ${a.name.toLowerCase()}.`)
-      notice(g, 'Mortgage Paid Off!', `You made the final payment on your ${a.name.toLowerCase()}. You own it outright! ${m.lender} sent you a form letter of congratulations and nothing else.`, { emoji: '🎉', tone: 'good' })
+      notice(g, 'Mortgage Paid Off!', `You made the final payment on your ${a.name.toLowerCase()}. You own it outright! ${employerRef(m.lender, 'Your lender')} sent you a form letter of congratulations and nothing else.`, { emoji: '🎉', tone: 'good' })
     } else if (m.yearsLeft <= 0) {
       // Missed payments earlier left a balance at the end of the term: refinance it over 3 years.
       m.yearsLeft = 3
@@ -4008,14 +4174,14 @@ function payMortgage(g: GameState, a: Asset): number {
     foreclose(g, a)
     return 0
   }
-  notice(g, 'Missed Mortgage Payment', `You couldn't make the ${formatMoney(due)} mortgage payment on your ${a.name.toLowerCase()}. ${m.lender} added a ${formatMoney(fee)} late fee and a very stern letter. Miss another one and they'll foreclose.`, { emoji: '🏦', tone: 'bad' })
+  notice(g, 'Missed Mortgage Payment', `You couldn't make the ${formatMoney(due)} mortgage payment on your ${a.name.toLowerCase()}. ${employerRef(m.lender, 'Your lender')} added a ${formatMoney(fee)} late fee and a very stern letter. Miss another one and they'll foreclose.`, { emoji: '🏦', tone: 'bad' })
   log(g, `I missed a mortgage payment on my ${a.name.toLowerCase()}.`, 'bad')
   return 0
 }
 
 function foreclose(g: GameState, a: Asset): void {
   const m = a.mortgage
-  const lender = m?.lender ?? 'The bank'
+  const lender = employerRef(m?.lender ?? 'The bank', 'The bank')
   const sale = nicePrice(a.value * 0.75)
   const owed = m?.balance ?? 0
   const leftover = Math.max(0, sale - owed)

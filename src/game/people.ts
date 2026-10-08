@@ -246,3 +246,25 @@ export function notePerson(p: Person, text: string): void {
   p.notes.push(text)
   if (p.notes.length > 12) p.notes.splice(0, p.notes.length - 12)
 }
+
+// ---------------------------------------------------------------------------
+// Person.data readers. `data` is free-form JSON that old saves and other modules fill in, so
+// anything read from it is checked first.
+
+/** A finite number from Person.data (or `def`). */
+export function dataNum(p: Person, key: string, def = 0): number {
+  const v = p.data[key]
+  return typeof v === 'number' && Number.isFinite(v) ? v : def
+}
+
+/** A string from Person.data (or `def`). */
+export function dataStr(p: Person, key: string, def = ''): string {
+  const v = p.data[key]
+  return typeof v === 'string' ? v : def
+}
+
+/** A plain JSON object from Person.data, or null when it is missing or not an object. */
+export function dataObj(p: Person, key: string): Record<string, Json> | null {
+  const v = p.data[key]
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : null
+}

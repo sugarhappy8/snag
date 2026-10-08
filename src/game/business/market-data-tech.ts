@@ -7,7 +7,6 @@ import type { RivalRow } from './market-rows'
 const B = 'budget'
 const M = 'mass'
 const P = 'premium'
-const L = 'luxury'
 
 export const TECH_ROWS: RivalRow[] = [
   // ---- Software --------------------------------------------------------------------------

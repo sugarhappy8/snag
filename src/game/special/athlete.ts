@@ -8,7 +8,8 @@ import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { hasTalent, talentHint, talentMult } from '../talents'
+import { bodyCeiling, crowdedField, masterFirstTime, masteryCap } from '../mastery'
+import { hasMainCharacter, hasTalent, talentHint, talentMult } from '../talents'
 import { localeOf } from '../data/locales'
 import { getCountry } from '../world'
 import { addFame, attendedUniversity, blocked, clamp100, fameToward, hire, leave, money, myJob, ordinal, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
@@ -308,7 +309,25 @@ function ensureSport(g: GameState, sport: Sport): AthleteProfile {
     const base = g.character.hidden.athleticism * 0.45 + (sportsTalent(g) ? 10 : 0)
     for (const s of sport.skills) p.skills[s] = clamp100(base + randInt(g, 0, 12))
   }
+  masterSport(g, sport, p)
   return p
+}
+
+/**
+ * Main Character Syndrome: a sport's skills sit at the body's ceiling for the age from the first
+ * time it is played (and follow that ceiling down in later life: an old master is still old).
+ * The league, the team and the years still have to be earned; the season is still a roll.
+ */
+function masterSport(g: GameState, sport: Sport, p: AthleteProfile): void {
+  if (!hasMainCharacter(g)) return
+  masterFirstTime(g, `sport.${sport.id}`, 'sport', sport.name.toLowerCase())
+  const top = bodyCeiling(g, { peakEnd: 34 })
+  for (const s of sport.skills) p.skills[s] = top
+}
+
+/** The skill every skill of a sport is at for a main character (pure; 0 for everybody else). */
+function masterFloor(g: GameState): number {
+  return hasMainCharacter(g) ? bodyCeiling(g, { peakEnd: 34 }) : 0
 }
 
 function avgSkill(p: AthleteProfile): number {
@@ -404,7 +423,9 @@ function bestTryout(g: GameState, league: League, options: TeamOption[]): number
   const prof0 = viewAthlete(g)
   // A sport you haven't played yet starts from your natural athleticism.
   const p: AthleteProfile =
-    prof0.sport === sport.id ? prof0 : { ...prof0, skills: Object.fromEntries(sport.skills.map((s) => [s, clamp100(g.character.hidden.athleticism * 0.45 + 10 + 6)])) }
+    prof0.sport === sport.id && !hasMainCharacter(g)
+      ? prof0
+      : { ...prof0, skills: Object.fromEntries(sport.skills.map((s) => [s, clamp100(Math.max(masterFloor(g), prof0.sport === sport.id ? (prof0.skills[s] ?? 0) : g.character.hidden.athleticism * 0.45 + 10 + 6))])) }
   let best = -1
   options.forEach((o, i) => {
     if (tryoutBase(g, p, o.strength) >= 38 + 5 && (best < 0 || o.strength > options[best].strength)) best = i
@@ -422,7 +443,8 @@ const tryoutScript = defineScript('special.athlete.tryout', (g, choice, data) =>
   const sport = sportOf(league.sport)
   const p = ensureSport(g, sport)
   const score = tryoutBase(g, p, t.strength) + randInt(g, -15, 15)
-  if (score < 38) {
+  // A master still tries out against other masters: now and then the spot goes to someone else.
+  if (score < 38 || crowdedField(g)) {
     log(g, `I tried out for the ${t.team} but didn't make the team.`, 'bad')
     return say(
       g,
@@ -436,7 +458,8 @@ const tryoutScript = defineScript('special.athlete.tryout', (g, choice, data) =>
       'bad',
     )
   }
-  const greatness = clamp100(avgSkill(p) * 0.6 + p.fitness * 0.25 + 10)
+  // Main Character Syndrome: the level you show against the league grows with the years in the sport.
+  const greatness = Math.min(masteryCap(g, `sport.${sport.id}`), clamp100(avgSkill(p) * 0.6 + p.fitness * 0.25 + 10))
   const years = randInt(g, 1, 4)
   offerContract(g, { league: t.league, team: t.team, strength: t.strength, position: pick(g, sport.positions), years, salary: salaryFor(league, greatness, t.strength) }, `You impressed the ${t.team} at tryouts!`)
 })
@@ -965,15 +988,17 @@ export function yearlyAthlete(g: GameState): void {
   const p = ensureSport(g, sport)
 
   // Skills you didn't practice slip; age catches up after 30.
-  for (const s of sport.skills) {
-    const decay = (d.practiced.includes(s) ? 0 : randInt(g, 1, 3)) + (c.age > 30 ? Math.round((c.age - 30) / 3) : 0)
-    p.skills[s] = clamp100((p.skills[s] ?? 0) - decay)
+  if (!hasMainCharacter(g)) {
+    for (const s of sport.skills) {
+      const decay = (d.practiced.includes(s) ? 0 : randInt(g, 1, 3)) + (c.age > 30 ? Math.round((c.age - 30) / 3) : 0)
+      p.skills[s] = clamp100((p.skills[s] ?? 0) - decay)
+    }
   }
   d.practiced = []
   if (c.age > 30) p.fitness = clamp100(p.fitness - randInt(g, 1, 3))
 
   const doping = d.doping
-  const greatness = clamp100(avgSkill(p) * 0.6 + p.fitness * 0.25 + randInt(g, 0, 15) + (doping ? 8 : 0) + (sportsTalent(g) ? 5 : 0) - (d.injured > 0 ? 15 : 0))
+  const greatness = Math.min(masteryCap(g, `sport.${sport.id}`), clamp100(avgSkill(p) * 0.6 + p.fitness * 0.25 + randInt(g, 0, 15) + (doping ? 8 : 0) + (sportsTalent(g) ? 5 : 0) - (d.injured > 0 ? 15 : 0)))
   p.greatness = greatness
   p.peakGreatness = Math.max(p.peakGreatness, greatness)
   p.seasons += 1

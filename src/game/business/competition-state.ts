@@ -35,6 +35,10 @@ export interface MarketHistory {
   rank: number
   /** Market size that year in dollars. */
   size: number
+  /** The biggest rival's share that year (absent in old saves). */
+  lead?: number
+  /** HHI-style concentration of the named field that year, 0-10000 (absent in old saves). */
+  hhi?: number
 }
 
 export interface AntitrustState {
@@ -47,6 +51,38 @@ export interface AntitrustState {
   remedyUntil: number
   /** Regulators were lobbied: risk is lower until this year. */
   lobbyUntil: number
+}
+
+/** How a company serves a foreign country: sells from home, with a local partner, or through its own subsidiary. */
+export type EntryMode = 'export' | 'jv' | 'sub'
+
+/** A foreign market the company entered through the Market & Competition screen (a term of years). */
+export interface MarketEntry {
+  /** The foreign country. */
+  country: string
+  /** The company's home country when it entered (tariffs depend on the pair). */
+  home: string
+  mode: EntryMode
+  /** Year it set up. */
+  year: number
+  /** Last year of the term; the presence fades over two more years. */
+  until: number
+}
+
+/** A regional brand campaign: a push to win one country's customers (a term of years). */
+export interface MarketCampaign {
+  country: string
+  /** The company's home country when it ran the campaign. */
+  home: string
+  year: number
+  until: number
+}
+
+/** A patent cross-licence with a rival (deep tech): both sides get better, antitrust watches. */
+export interface MarketDeal {
+  rivalId: string
+  year: number
+  until: number
 }
 
 export interface MarketState {
@@ -79,6 +115,16 @@ export interface MarketState {
   antitrust: AntitrustState
   /** Last year a competitive move was made (talent raid, price offensive...). */
   lastMove: number
+  /** Foreign countries entered (export / partner / subsidiary), regional campaigns and licence deals. */
+  entries: MarketEntry[]
+  campaigns: MarketCampaign[]
+  deals: MarketDeal[]
+  /** Supply chains diversified through this year (0 = no). */
+  supplyUntil: number
+  /** Home-market defence in force through this year (0 = no). */
+  defendUntil: number
+  /** Years the company bought out a rival (antitrust watches the pattern). */
+  acquired: number[]
 }
 
 function readExtra(v: Json): ExtraRival | null {
@@ -101,7 +147,10 @@ function readExtra(v: Json): ExtraRival | null {
 function readHistory(v: Json): MarketHistory | null {
   const o = rec(v)
   if (!o || typeof o.year !== 'number') return null
-  return { year: o.year, share: clampN(num(o.share), 0, 1), rank: Math.max(1, Math.round(num(o.rank, 1))), size: Math.max(0, num(o.size)) }
+  const h: MarketHistory = { year: o.year, share: clampN(num(o.share), 0, 1), rank: Math.max(1, Math.round(num(o.rank, 1))), size: Math.max(0, num(o.size)) }
+  if (typeof o.lead === 'number' && Number.isFinite(o.lead)) h.lead = clampN(o.lead, 0, 1)
+  if (typeof o.hhi === 'number' && Number.isFinite(o.hhi)) h.hhi = clampN(o.hhi, 0, 10_000)
+  return h
 }
 
 export function emptyMarket(key: string): MarketState {
@@ -124,7 +173,42 @@ export function emptyMarket(key: string): MarketState {
     extra: [],
     antitrust: { last: 0, cases: 0, fined: 0, remedyUntil: 0, lobbyUntil: 0 },
     lastMove: 0,
+    entries: [],
+    campaigns: [],
+    deals: [],
+    supplyUntil: 0,
+    defendUntil: 0,
+    acquired: [],
   }
+}
+
+const MODES: readonly EntryMode[] = ['export', 'jv', 'sub']
+
+function readEntry(v: Json): MarketEntry | null {
+  const o = rec(v)
+  if (!o) return null
+  const country = str(o.country)
+  const mode = MODES.find((m) => m === o.mode)
+  if (!/^[a-z]{2}$/.test(country) || !mode) return null
+  const year = num(o.year)
+  return { country, home: /^[a-z]{2}$/.test(str(o.home)) ? str(o.home) : 'us', mode, year, until: Math.max(year, num(o.until, year)) }
+}
+
+function readCampaign(v: Json): MarketCampaign | null {
+  const o = rec(v)
+  if (!o) return null
+  const country = str(o.country)
+  if (!/^[a-z]{2}$/.test(country)) return null
+  const year = num(o.year)
+  return { country, home: /^[a-z]{2}$/.test(str(o.home)) ? str(o.home) : country, year, until: Math.max(year, num(o.until, year)) }
+}
+
+function readDeal(v: Json): MarketDeal | null {
+  const o = rec(v)
+  const rivalId = o ? str(o.rivalId) : ''
+  if (!o || !rivalId) return null
+  const year = num(o.year)
+  return { rivalId, year, until: Math.max(year, num(o.until, year)) }
 }
 
 /** A complete, sane MarketState from whatever is stored (null when there is nothing usable). */
@@ -171,7 +255,7 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
     rank: Math.max(0, Math.round(num(o.rank))),
     size: Math.max(0, num(o.size)),
     rivals,
-    history: history.slice(-15),
+    history: history.slice(-20),
     edge: clampN(num(o.edge, 1), 0.3, 3),
     edgeUntil: num(o.edgeUntil),
     mods,
@@ -185,5 +269,20 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
       lobbyUntil: num(at?.lobbyUntil),
     },
     lastMove: num(o.lastMove),
+    entries: readList(o.entries, readEntry).slice(-24),
+    campaigns: readList(o.campaigns, readCampaign).slice(-12),
+    deals: readList(o.deals, readDeal).slice(-6),
+    supplyUntil: num(o.supplyUntil),
+    defendUntil: num(o.defendUntil),
+    acquired: Array.isArray(o.acquired) ? o.acquired.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)).slice(-20) : [],
   }
+}
+
+function readList<T>(v: Json | undefined, read: (x: Json) => T | null): T[] {
+  const out: T[] = []
+  if (Array.isArray(v)) for (const x of v) {
+    const r = read(x)
+    if (r) out.push(r)
+  }
+  return out
 }

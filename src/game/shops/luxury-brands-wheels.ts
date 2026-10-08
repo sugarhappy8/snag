@@ -56,7 +56,7 @@ export const CAR_LINES: LuxLine[] = [
   c('bentley', 'mulsanne', 'Mulsanne', 2010, 320_000, { until: 2020, carType: 'luxury' }),
   c('bentley', 'bentayga', 'Bentayga', 2016, 230_000, { carType: 'luxury' }),
   c('bentley', 'bacalar', 'Bacalar', 2020, 1_900_000, { until: 2022, carType: 'classic', limited: true, cls: 'car-collector' }),
-  c('aston-martin', 'db5', 'DB5', 1963, 126_000, { until: 1965, carType: 'classic', collect: 1_300_000, cls: 'car-collector', blurb: 'The grand tourer with the famous silver paint.' }),
+  c('aston-martin', 'db5', 'DB5', 1963, 126_000, { until: 1965, carType: 'classic', collect: 1_300_000, cls: 'car-collector', blurb: 'A grand tourer for people who go places quickly.' }),
   c('aston-martin', 'db9', 'DB9', 2004, 200_000, { until: 2016, carType: 'sports' }),
   c('aston-martin', 'vantage', 'Vantage', 2018, 160_000, { carType: 'sports' }),
   c('aston-martin', 'db12', 'DB12', 2023, 250_000, { carType: 'sports' }),
@@ -123,7 +123,7 @@ export const MOTO_LINES: LuxLine[] = [
   m('harley-davidson', 'fat-boy', 'Fat Boy', 1990, 22_000, { carType: 'sports' }),
   m('indian-motorcycle', 'chief-classic', 'Chief', 1922, 12_000, { until: 1953, collect: 90_000, cls: 'car-collector', carType: 'classic' }),
   m('indian-motorcycle', 'chief-modern', 'Chief (modern)', 2013, 22_000, { carType: 'sports' }),
-  m('vincent', 'black-shadow', 'Black Shadow', 1948, 16_000, { until: 1955, collect: 250_000, cls: 'car-collector', carType: 'classic', blurb: 'For years it was the fastest production motorcycle in the world.' }),
+  m('vincent', 'black-shadow', 'Black Shadow', 1948, 16_000, { until: 1955, collect: 250_000, cls: 'car-collector', carType: 'classic', blurb: 'Among the fastest production motorcycles of its day.' }),
   m('norton', 'commando', 'Commando', 1967, 12_000, { until: 1977, collect: 20_000, cls: 'car-collector', carType: 'classic' }),
   m('triumph', 'bonneville', 'Bonneville', 1959, 14_000, { carType: 'sports' }),
   m('triumph', 'speed-triple', 'Speed Triple', 1994, 18_000, { carType: 'sports' }),
@@ -137,19 +137,3 @@ export const MOTO_LINES: LuxLine[] = [
   m('mv-agusta', 'f4-serie-oro', 'F4 Serie Oro', 1998, 28_000, { until: 1999, collect: 45_000, cls: 'car-collector', carType: 'classic', limited: true }),
   m('moto-guzzi', 'v7', 'V7', 1967, 10_000, { carType: 'sports' }),
 ]
-
-/** Special-edition names a marque really used, for the "limited edition" variants of current models. */
-export const SPECIAL_EDITIONS: Record<string, string[]> = {
-  ferrari: ['Pista', 'Challenge Stradale', 'Speciale'],
-  lamborghini: ['Performante', 'Superleggera', 'Ultimae'],
-  porsche: ['Sport Classic', 'Turbo S', 'Touring'],
-  'aston-martin': ['Zagato', 'Vanquish Edition'],
-  bentley: ['Mulliner', 'Speed'],
-  'rolls-royce': ['Black Badge', 'Bespoke'],
-  'mercedes-benz': ['Black Series', 'Night Edition'],
-  maserati: ['Trofeo'],
-  mclaren: ['LT', 'Spider'],
-  lotus: ['Sport'],
-  bmw: ['CSL'],
-  audi: ['Performance'],
-}

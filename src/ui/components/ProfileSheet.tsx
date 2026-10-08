@@ -16,7 +16,8 @@ import { agesLabel, cvEntries, cvScore, KIND_META, rankLabel, rankOf, rankShort,
 import { highestEducationLabel } from '../../game/education'
 import { investmentsSummary } from '../../game/investments'
 import { getRibbon } from '../../game/ribbons'
-import { characterTalents, specialTalent, talentEmoji } from '../../game/talents'
+import { masteredCount } from '../../game/mastery'
+import { shownTalents, specialTalent, talentEmoji } from '../../game/talents'
 import { getCountry } from '../../game/world'
 import type {
   CvEntry,
@@ -284,6 +285,8 @@ export interface TalentRow {
   perk: string
   /** How the character got it. */
   origin: string
+  /** An extra line (Main Character Syndrome: how many things were mastered so far). */
+  detail?: string
 }
 
 /** The character's talents for the profile: picked (or inherited) ones first, then the discovered one. */
@@ -291,10 +294,12 @@ export function talentRows(g: GameState): TalentRow[] {
   try {
     const c = g.character
     const picked = Array.isArray(c.talents) ? c.talents : []
-    return characterTalents(g).map((id) => {
+    return shownTalents(g).map((id) => {
       const def = specialTalent(id)
       const origin = picked.includes(id) ? (g.ancestors.length > 0 ? 'Runs in the family' : 'Picked before birth') : 'Discovered as a kid'
-      return { id, emoji: talentEmoji(id), label: def?.label ?? id, perk: def?.perk ?? '', origin }
+      const done = id === 'MainCharacter' ? masteredCount(g) : 0
+      const detail = done > 0 ? `Mastered on the first try so far: ${done}` : undefined
+      return { id, emoji: talentEmoji(id), label: def?.label ?? id, perk: def?.perk ?? '', origin, detail }
     })
   } catch {
     return []
@@ -433,6 +438,7 @@ export function ProfileSheet({ onClose }: ProfileSheetProps) {
                 <span aria-hidden>{t.emoji}</span> <strong>{t.label}</strong>
                 <span className="profile-talent-origin"> · {t.origin}</span>
                 {t.perk ? <span className="li-sub">{t.perk}</span> : null}
+                {t.detail ? <span className="li-sub">{t.detail}</span> : null}
               </li>
             ))}
           </ul>

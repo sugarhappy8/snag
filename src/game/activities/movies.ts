@@ -6,6 +6,7 @@
 // (events/era.ts) so nobody watches a movie about being ghosted in 1952.
 import { addRelationship, addStat, count, log, relationLabel } from '../core'
 import { notePerson } from '../people'
+import { steadyBrand } from '../shops/everyday-brands'
 import { chance, pick, randInt, weightedPick } from '../rng'
 import { randomFirstName, randomLastName } from '../world'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
@@ -171,6 +172,11 @@ function theaterName(g: GameState): string {
   return g.year < 1930 ? 'Picture House' : 'Movie Theater'
 }
 
+/** The cinema chain in town (stable for the life): a real one where one trades, else just "the movie theater". */
+function cinemaChain(g: GameState): string | null {
+  return steadyBrand(g, 'cinema', 'cinema')?.name ?? null
+}
+
 function ticketPrice(g: GameState): number {
   return localPrice(g, 12)
 }
@@ -253,6 +259,9 @@ function watchMovie(g: GameState, genre: GenreDef, companionId: string | null): 
   if (chance(g, 0.12)) {
     addStat(g, 'happiness', -1)
     extra += `\n\n${eraPick(g, MISHAPS)}`
+  } else {
+    const chain = cinemaChain(g)
+    if (chain) extra += `\n\nYou saw it at ${chain}.`
   }
   let withLine = ''
   if (companion) {
@@ -296,7 +305,7 @@ export const moviesMenu: MenuGroup = {
   emoji: '\u{1F3AC}',
   subtitle: (g) => (g.year < 1930 ? `See a ${movieKind(g)}` : 'Go to the movies'),
   disabledReason: (g) => (g.year < CINEMA_SINCE ? 'There are no picture houses in town yet.' : gate(g, { minAge: 6 })),
-  header: (g) => `${theaterName(g)} tickets cost ${money(ticketPrice(g))}. You can see ${usesLeft(g, 'act.movie', MOVIES_PER_YEAR)} more ${g.year < 1930 ? 'pictures' : 'movies'} this year.`,
+  header: (g) => `${cinemaChain(g) ?? theaterName(g)} tickets cost ${money(ticketPrice(g))}. You can see ${usesLeft(g, 'act.movie', MOVIES_PER_YEAR)} more ${g.year < 1930 ? 'pictures' : 'movies'} this year.`,
   children: (g): MenuNode[] =>
     availableGenres(g).map(
       (genre): MenuGroup => ({

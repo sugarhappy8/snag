@@ -51,7 +51,7 @@ export const SPIRIT_LINES: LuxLine[] = [
   s('macallan', '25', '25 Years Old', 1980, 3500),
   s('glenfiddich', '18', '18 Years Old', 1990, 150, { tier: 'boutique' }),
   s('johnnie-walker', 'blue-label', 'Blue Label', 1992, 220),
-  s('yamazaki', '18', '18 Years Old', 1984, 400),
+  s('yamazaki', '12', '12 Years Old', 1984, 180, { blurb: 'Often called the first Japanese single malt.' }),
   s('grey-goose', 'vodka', 'Vodka', 1997, 35, { tier: 'boutique' }),
   s('clase-azul', 'reposado', 'Reposado', 1997, 190),
   s('don-julio', '1942', '1942', 2003, 180),

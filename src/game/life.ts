@@ -33,7 +33,9 @@ import { hasTech, HISTORY_START, isHistorical, PRESENT_YEAR, techOdds } from './
 import { createPerson, eraName, notePerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
-import { MAX_START_TALENTS, normalizeTalents, pickedTalents, type TalentId } from './talents'
+import { planEstate, settleReading } from './events/will-estate'
+import { yearlyMainCharacter } from './mastery'
+import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, type TalentId } from './talents'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
 import type {
   AncestorSummary,
@@ -270,8 +272,21 @@ export const TALENTS: TalentDef[] = [
   },
 ]
 
+/**
+ * Main Character Syndrome has no childhood discovery moment (the character already has every
+ * talent), so it is not in TALENTS; this stand-in lets heirs inherit the gift like any other.
+ */
+const MAIN_CHARACTER_DEF: TalentDef = {
+  id: MAIN_CHARACTER,
+  emoji: '\u{1F31F}',
+  weight: 0,
+  hints: [],
+  discovery: '',
+  apply: () => undefined,
+}
+
 export function getTalent(id: string | null | undefined): TalentDef | undefined {
-  return TALENTS.find((t) => t.id === id)
+  return id === MAIN_CHARACTER ? MAIN_CHARACTER_DEF : TALENTS.find((t) => t.id === id)
 }
 
 /**
@@ -939,6 +954,11 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
       delete g.flags.latentTalent
       delete g.flags.talentAge
     }
+    // Main Character Syndrome already has every talent: no childhood talent to discover.
+    if ((picked as string[]).includes(MAIN_CHARACTER)) {
+      delete g.flags.latentTalent
+      delete g.flags.talentAge
+    }
   }
   // A citizen of the country you're born in (immigration.ts adds passports later).
   c.citizenships = [c.countryId]
@@ -1105,26 +1125,16 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const debts = old.loans.reduce((s, l) => s + l.balance, 0)
   const equity = property.reduce((s, a) => s + a.value - (a.mortgage?.balance ?? 0), 0)
   const estate = Math.round(old.money + equity - debts)
-  const livingKids = n.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild'))
-  const willed = old.willBeneficiaries.map((id) => n.people.find((p) => p.id === id)).filter((p): p is Person => !!p && p.alive && ['child', 'stepchild', 'spouse'].includes(p.relation))
-  const beneficiaries = willed.length > 0 ? willed : livingKids
-  const heirIncluded = beneficiaries.some((p) => p.id === childId)
-  const shareCount = Math.max(1, beneficiaries.length)
   const adult = heirP.age >= 18
-  const keepProperty = heirIncluded && shareCount === 1 && adult && property.length > 0 && old.money - debts >= 0
+  // Who inherits what (the will, charity, contests and probate live in events/will-estate.ts).
+  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: property.length > 0, cashAfterDebts: old.money - debts })
+  const heirIncluded = plan.heirIncluded
+  const shareCount = Math.max(1, plan.ways)
+  const keepProperty = plan.keepProperty
   const inheritanceLines: string[] = []
-  let cashInherited = 0
-  let estateTax = 0
-  let keptAssets: Asset[] = heirlooms
-  if (keepProperty) {
-    cashInherited = Math.round(old.money - debts)
-    keptAssets = [...property, ...heirlooms]
-  } else if (estate > 0) {
-    estateTax = estate > 10_000_000 ? Math.round((estate - 10_000_000) * 0.25) : 0
-    const share = Math.floor((estate - estateTax) / shareCount)
-    if (heirIncluded) cashInherited = share
-    for (const b of beneficiaries) if (b.id !== childId) b.money = Math.round(b.money + share)
-  }
+  const cashInherited = plan.heirCash
+  const estateTax = plan.tax
+  const keptAssets: Asset[] = keepProperty ? [...property, ...heirlooms] : heirlooms
 
   // --- The heir becomes the player ---------------------------------------------
   const age = heirP.age
@@ -1362,7 +1372,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   }
   // Talents picked before birth aren't handed down whole, but a gift can run in the family.
   const inherited = inheritTalent(n, old, heir)
-  if (inherited && n.flags.latentTalent === inherited.id) {
+  if (inherited && (n.flags.latentTalent === inherited.id || inherited.id === MAIN_CHARACTER)) {
     delete n.flags.latentTalent
     delete n.flags.talentAge
   }
@@ -1372,7 +1382,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   log(n, `I am now playing as ${fullName(heir)}, the ${childWord} of ${oldName}.`, 'event')
   log(n, `My ${heirP.relation === 'stepchild' ? `step${oldNoun}` : oldNoun}, ${oldName}, died from ${cause.toLowerCase()} at the age of ${old.age}.`, 'bad')
 
-  if (!heirIncluded && willed.length > 0) {
+  if (!heirIncluded && plan.willed) {
     inheritanceLines.push(`${old.gender === 'male' ? 'His' : 'Her'} will left everything to someone else. You didn't get a cent.`)
     log(n, `I was cut out of my ${oldNoun}'s will.`, 'bad')
   } else if (keepProperty) {
@@ -1388,6 +1398,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     inheritanceLines.push(`You inherited ${formatMoney(cashInherited)}.${split}${auction}${tax}`)
     log(n, `I inherited ${formatMoney(cashInherited)} from my late ${oldNoun}.`, 'good')
     if (!adult && property.length > 0) log(n, `My ${oldNoun}'s houses and cars were auctioned off because I'm a minor.`)
+  } else if (plan.held > 0) {
+    inheritanceLines.push('Your share is tied up in probate for now.')
+    log(n, `My ${oldNoun}'s estate is tied up in probate.`)
   } else {
     inheritanceLines.push(estate <= 0 ? `${old.gender === 'male' ? 'He' : 'She'} died broke, so there was nothing to inherit.` : 'There was nothing left for you to inherit.')
     log(n, `My ${oldNoun} left me nothing but memories.`)
@@ -1419,6 +1432,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     `You are now playing as ${fullName(heir)}, the ${age}-year-old ${childWord} of the late ${oldName}. ${inheritanceLines.join(' ')}`,
     { emoji: '\u{1F9EC}' },
   )
+  // The reading of the will: reactions, contests, the cut-out heir's choices (events/will-estate.ts).
+  settleReading(n, plan, old, childId)
   return n
 }
 
@@ -1498,7 +1513,7 @@ function pendingPicks(g: GameState): TalentDef[] {
   const revealed = strList(g.flags.talentsRevealed)
   const out: TalentDef[] = []
   for (const id of pickedTalents(g)) {
-    if (revealed.includes(id) || id === g.character.talent) continue
+    if (revealed.includes(id) || id === g.character.talent || id === MAIN_CHARACTER) continue
     const def = getTalent(id)
     if (def) out.push(def)
   }
@@ -1517,6 +1532,8 @@ function markRevealed(g: GameState, ids: string[]): void {
  */
 function talentMilestones(g: GameState): void {
   const c = g.character
+  // Main Character Syndrome: every talent from day one, so nothing is left to discover.
+  if (hasMainCharacter(g)) return
   const latent = typeof g.flags.latentTalent === 'string' && !c.talent ? getTalent(g.flags.latentTalent) : undefined
   const talentAge = typeof g.flags.talentAge === 'number' ? g.flags.talentAge : 8
   const noticeThisYear = () => g.flags.talentNoticeAge === c.age
@@ -1755,6 +1772,7 @@ export function yearlyMilestones(g: GameState): void {
   else if (c.age === 2 && quiet) log(g, pick(g, TODDLER))
 
   talentMilestones(g)
+  yearlyMainCharacter(g)
 
   if (!g.flags.puberty && c.age >= 12) {
     const p = c.age >= 14 ? 1 : c.age === 13 ? 0.6 : 0.35

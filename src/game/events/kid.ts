@@ -21,6 +21,7 @@ import {
   v,
 } from './helpers'
 import { hasSnow, locale, localSoftDrink } from '../data/locales'
+import { seededBrandName } from '../shops/everyday-brands'
 import { cars, common, indoorGame, landline, prized, privileges } from './era'
 
 const BROKEN_ITEMS = ['favorite vase', '@2006 flat-screen TV', 'antique clock', 'reading glasses', 'wedding photo frame', '@1972 coffee maker', '@1995,homeComputer laptop', 'porcelain cat statue', '@-1960 gramophone record']
@@ -39,6 +40,12 @@ function addPet(g: GameState, species: string, name: string): Person {
 /** Kid gets caught by a parent: relationship hit with a random parent. */
 function parentMad(g: GameState, d: number): { p: Person | undefined; d: number }[] {
   return [{ p: aParent(g), d }]
+}
+
+/** The kid's pick of a real fast-food chain of a kind that trades where they live this year (stable for the year, no RNG). */
+function fastChain(g: GameState, kind: 'burger' | 'pizza' | 'chicken'): string | undefined {
+  const name = seededBrandName(g, 'fast-food', `kid-${kind}`, '', { segment: kind })
+  return name || undefined
 }
 
 export const KID_EVENTS = defineEvents([
@@ -141,16 +148,16 @@ export const KID_EVENTS = defineEvents([
     title: 'Favorite Fast Food',
     minAge: 3,
     maxAge: 9,
-    // Burger chains spread through the US in the fifties and most of the world from the eighties.
-    when: (g) => !!aParent(g) && g.year >= (g.character.countryId === 'us' ? 1958 : 1985),
-    setup: () => ({
+    // Real chains that trade where you live this year; none yet in a country or year without them.
+    when: (g) => !!aParent(g) && !!fastChain(g, 'burger'),
+    setup: (g) => ({
       text: 'Your parents are taking you out for dinner and want to know which fast food place is your favorite. What will you tell them?',
-      choices: [ch('pizza', 'Pizza Palace', '🍕'), ch('burger', 'Burger Barn', '🍔'), ch('chicken', "Cluckin' Chicken", '🍗'), ch('none', "I don't like fast food", '🥦')],
+      choices: [ch('pizza', fastChain(g, 'pizza') ?? 'The pizza place', '🍕'), ch('burger', fastChain(g, 'burger') ?? 'The burger place', '🍔'), ch('chicken', fastChain(g, 'chicken') ?? 'The chicken place', '🍗'), ch('none', "I don't like fast food", '🥦')],
     }),
     resolve: {
-      pizza: (g) => say(g, null, 'Pizza party', 'You picked Pizza Palace and ate four slices.', 'I told my parents that Pizza Palace is my favorite fast food place.', { happiness: 6, health: -2 }),
-      burger: (g) => say(g, null, 'Kids meal', 'You picked Burger Barn. The toy in your kids meal broke in the parking lot.', 'I told my parents that Burger Barn is my favorite fast food place.', { happiness: 4, health: -2 }),
-      chicken: (g) => say(g, null, 'Finger lickin\'', cars(g) ? "You picked Cluckin' Chicken and got grease on the car seats." : "You picked Cluckin' Chicken and got grease all over your good shirt.", "I told my parents that Cluckin' Chicken is my favorite fast food place.", { happiness: 6, health: -2 }),
+      pizza: (g) => say(g, null, 'Pizza party', `You picked ${fastChain(g, 'pizza') ?? 'the pizza place'} and ate four slices.`, `I told my parents that ${fastChain(g, 'pizza') ?? 'the pizza place'} is my favorite fast food place.`, { happiness: 6, health: -2 }),
+      burger: (g) => say(g, null, 'Kids meal', `You picked ${fastChain(g, 'burger') ?? 'the burger place'}. The toy in your kids meal broke in the parking lot.`, `I told my parents that ${fastChain(g, 'burger') ?? 'the burger place'} is my favorite fast food place.`, { happiness: 4, health: -2 }),
+      chicken: (g) => say(g, null, 'Finger lickin\'', cars(g) ? `You picked ${fastChain(g, 'chicken') ?? 'the chicken place'} and got grease on the car seats.` : `You picked ${fastChain(g, 'chicken') ?? 'the chicken place'} and got grease all over your good shirt.`, `I told my parents that ${fastChain(g, 'chicken') ?? 'the chicken place'} is my favorite fast food place.`, { happiness: 6, health: -2 }),
       none: (g) => say(g, null, ['Health nut', 'Refined palate'], 'You told your parents fast food tastes fake. They were stunned and a little proud.', "I told my parents that I don't like fast food because it tastes fake.", { smarts: 16, health: 4 }, 'good'),
     },
   },

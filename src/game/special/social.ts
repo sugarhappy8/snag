@@ -8,6 +8,7 @@ import { defineScript } from '../scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, SocialMedia } from '../types'
 import { CELEBS, FAMOUS, addFame, blocked, compact, fameOf, money, peek, prof, say, tell } from './common'
 import { eraOpen, type EraGate } from '../computer/era'
+import { brandPool, pickBrand } from '../shops/everyday-brands'
 
 // ---------------------------------------------------------------------------
 // Data
@@ -75,11 +76,14 @@ interface Platform {
   era: EraGate
 }
 
+/** The invented names these platforms had before they became the real ones (old saves may carry them). */
+const LEGACY_NAMES: Record<string, string> = { friendbook: 'Friendbook', snapgram: 'Snapgram', chirper: 'Chirper', clipz: 'Clipz', viewtube: 'ViewTube', glitch: 'Glitch' }
+
 export const PLATFORMS: Platform[] = [
   {
     id: 'friendbook',
     era: { tech: 'socialMedia', from: 2004 },
-    name: 'Friendbook',
+    name: 'Facebook',
     emoji: '\u{1F465}',
     growth: 0.6,
     posts: ['family', 'food', 'meme', 'quote', 'politics', 'poll', 'travel', 'selfie', 'story', 'vlog'],
@@ -96,7 +100,7 @@ export const PLATFORMS: Platform[] = [
   {
     id: 'snapgram',
     era: { tech: ['socialMedia', 'smartphone'], from: 2010 },
-    name: 'Snapgram',
+    name: 'Instagram',
     emoji: '\u{1F4F8}',
     growth: 1,
     posts: ['selfie', 'thirst', 'food', 'travel', 'family', 'meme', 'quote', 'dance', 'challenge', 'celeb'],
@@ -113,7 +117,7 @@ export const PLATFORMS: Platform[] = [
   {
     id: 'chirper',
     era: { tech: 'socialMedia', from: 2006 },
-    name: 'Chirper',
+    name: 'X (Twitter)',
     emoji: '\u{1F426}',
     growth: 0.9,
     posts: ['hottake', 'meme', 'joke', 'politics', 'poll', 'justice', 'quote', 'celeb', 'selfie'],
@@ -125,12 +129,12 @@ export const PLATFORMS: Platform[] = [
     trollSuspends: true,
     stream: false,
     noun: 'followers',
-    postVerb: 'Post a Chirp',
+    postVerb: 'Write a Post',
   },
   {
     id: 'clipz',
-    era: { tech: ['videoSharing', 'smartphone'], from: 2016 },
-    name: 'Clipz',
+    era: { tech: ['videoSharing', 'smartphone'], from: 2017 },
+    name: 'TikTok',
     emoji: '\u{1F3B5}',
     growth: 1.3,
     posts: ['dance', 'challenge', 'skit', 'lipsync', 'prank', 'review', 'vlog', 'politics', 'justice', 'thirst'],
@@ -142,12 +146,12 @@ export const PLATFORMS: Platform[] = [
     trollSuspends: false,
     stream: false,
     noun: 'followers',
-    postVerb: 'Post a Clip',
+    postVerb: 'Post a Video',
   },
   {
     id: 'viewtube',
     era: { tech: 'videoSharing', from: 2005 },
-    name: 'ViewTube',
+    name: 'YouTube',
     emoji: '\u{25B6}\u{FE0F}',
     growth: 0.8,
     posts: ['vlog', 'gaming', 'haul', 'howto', 'unboxing', 'challenge', 'educational', 'review', 'politics', 'reaction'],
@@ -164,7 +168,7 @@ export const PLATFORMS: Platform[] = [
   {
     id: 'glitch',
     era: { tech: 'videoSharing', from: 2011 },
-    name: 'Glitch',
+    name: 'Twitch',
     emoji: '\u{1F3AE}',
     growth: 0.9,
     posts: [],
@@ -227,7 +231,7 @@ function load(g: GameState): Account[] {
       known.verified = main.verified
       known.monetized = main.monetized
     } else {
-      const plat = PLATFORMS.find((x) => x.id === main.platform || x.name === main.platform)
+      const plat = PLATFORMS.find((x) => x.id === main.platform || x.name === main.platform || LEGACY_NAMES[x.id] === main.platform)
       if (plat && !p.accounts.some((a) => a.platform === plat.id)) p.accounts.push(newAccount(g, plat.id, main.handle, main.followers, main.verified, main.monetized))
     }
   }
@@ -514,19 +518,21 @@ const streamCategoryScript = defineScript('special.social.streamCategory', (g, c
 // ---------------------------------------------------------------------------
 // Sponsorships
 
-const PRODUCTS: { name: string; shady: boolean }[] = [
+// Shady products always come from invented companies (nothing sketchy is ever pinned on a real brand);
+// honest ones are sponsored by a real brand from the registry that sells that kind of thing here.
+const PRODUCTS: { name: string; shady: boolean; category?: string; segment?: string; since?: number }[] = [
   { name: 'detox tea', shady: true },
   { name: 'a teeth whitening kit', shady: true },
   { name: 'a brand-new cryptocurrency', shady: true },
   { name: 'miracle hair gummies', shady: true },
-  { name: 'a gaming chair', shady: false },
-  { name: 'running shoes', shady: false },
-  { name: 'a meal kit service', shady: false },
-  { name: 'a language learning app', shady: false },
-  { name: 'noise-canceling headphones', shady: false },
-  { name: 'a sparkling water brand', shady: false },
+  { name: 'a gaming chair', shady: false, category: 'furniture', segment: 'chair' },
+  { name: 'running shoes', shady: false, category: 'sneakers' },
+  { name: 'a meal kit service', shady: false, category: 'meal-kit' },
+  { name: 'a language learning app', shady: false, category: 'app', segment: 'education' },
+  { name: 'noise-canceling headphones', shady: false, category: 'electronics', segment: 'audio' },
+  { name: 'a sparkling water brand', shady: false, category: 'water' },
 ]
-const SPONSORS = ['Glowr', 'Nutri-Zoom', 'Fizzbee', 'PeakPerform', 'Lumen & Co.', 'Snackwise', 'ByteBuddy', 'Velocita', 'Fluffcloud', 'GrindHouse']
+const SHADY_SPONSORS = ['Glowr', 'Nutri-Zoom', 'Fizzbee', 'PeakPerform', 'Snackwise', 'Velocita', 'Fluffcloud', 'GrindHouse']
 
 interface PromoOffer {
   platform: string
@@ -564,9 +570,11 @@ function promote(g: GameState, platformId: string): void {
   if (!acct) return
   if (acct.suspended) return tell(g, plat.name, 'You cannot promote anything while your account is suspended.', '\u{1F6AB}')
   if (!useYearAction(g, `social.promo.${platformId}`, 2)) return tell(g, plat.name, 'No more sponsors are interested in working with you this year.', '\u{1F937}')
-  const product = pick(g, PRODUCTS)
+  const offers = PRODUCTS.filter((x) => x.shady || !x.category || brandPool(g, x.category, x.segment ? { segment: x.segment } : {}).length > 0)
+  const product = pick(g, offers)
   const pay = Math.max(50, Math.round((acct.followers * (0.01 + rand(g) * 0.04) + fameOf(g) * 100) / 10) * 10)
-  const offer: PromoOffer = { platform: platformId, sponsor: pick(g, SPONSORS), product: product.name, shady: product.shady, pay }
+  const real = !product.shady && product.category ? pickBrand(g, product.category, product.segment ? { segment: product.segment } : {}) : undefined
+  const offer: PromoOffer = { platform: platformId, sponsor: real?.name ?? pick(g, SHADY_SPONSORS), product: product.name, shady: product.shady, pay }
   scriptChoice(
     g,
     promoScript,
@@ -764,13 +772,13 @@ const hackScript = defineScript('special.social.hack', (g, choice, data) => {
       }
     } else {
       acct.followers = Math.round(acct.followers * 0.7)
-      text = `You couldn't afford the ransom. The hacker spammed your ${plat.noun} with scam links before support restored your account.`
+      text = `You couldn't afford the ransom. The hacker spammed your ${plat.noun} with scam links before you got your account back.`
     }
   } else if (choice === 'support') {
-    if (chance(g, 0.6)) text = `${plat.name} support restored your account after a few stressful weeks.`
+    if (chance(g, 0.6)) text = `Account recovery finally worked after a few stressful weeks.`
     else {
       acct.followers = Math.round(acct.followers * 0.75)
-      text = `Support took months to respond. By then the hacker had driven away a quarter of your ${plat.noun}.`
+      text = `Recovering the account took months. By then the hacker had driven away a quarter of your ${plat.noun}.`
     }
   } else {
     const p = peek<SocialProfile>(g, 'social')
@@ -862,7 +870,7 @@ function accountMenu(plat: Platform): MenuGroup {
             emoji: '\u{2696}\u{FE0F}',
             disabledReason: accountReason,
             run: (gg) => {
-              if (!useYearAction(gg, `social.appeal.${plat.id}`, 1)) return tell(gg, plat.name, `${plat.name} is ignoring your messages. Try again next year.`, '\u{1F6AB}')
+              if (!useYearAction(gg, `social.appeal.${plat.id}`, 1)) return tell(gg, plat.name, `Nobody is answering your appeal messages. Try again next year.`, '\u{1F6AB}')
               scriptChoice(gg, appealScript, plat.name, `Your account was suspended for ${a.suspended}. How do you want to appeal?`, APPEALS.map((x) => ({ id: x.id, label: x.label, emoji: x.emoji })), {
                 emoji: '\u{2696}\u{FE0F}',
                 data: { platform: plat.id },

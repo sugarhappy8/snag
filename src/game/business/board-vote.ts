@@ -18,6 +18,7 @@ import { readTech } from './deeptech-state'
 import { equipmentValue, localEcon } from './economy'
 import { earmarkedCash } from './gamestudio'
 import { industryDef } from './industries'
+import { ABOVE_MARKET, rankDef } from './nepo-roles'
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, money, pct } from './util'
 
@@ -37,6 +38,7 @@ export type ProposalKind =
   | 'mandate'
   | 'limits'
   | 'ceoPay'
+  | 'familyHire'
 
 export interface Proposal {
   kind: ProposalKind
@@ -57,6 +59,14 @@ export interface Proposal {
    * (mandates, limits, mergers), about -3..3. Hints and votes must pass the same number.
    */
   merit?: number
+  /**
+   * A relative's job or pay (familyHire, business/nepo-actions.ts): `amount` is the yearly pay,
+   * `skill` what the relative can really do, `rank` the job (0 intern ... 5 CEO), `market` what
+   * the job pays on the open market and `cushy` a made-up job with nothing to do.
+   */
+  rank?: number
+  market?: number
+  cushy?: boolean
 }
 
 export interface Assessment {
@@ -184,6 +194,25 @@ function payProposal(b: BizState, st: BoardState, total: number, perf: number, o
   return { merit, self, blatant: owner && r >= cap * 2, why: over > 0 ? `${r.toFixed(1)}x the going rate for a CEO here` : '' }
 }
 
+/**
+ * A relative's job or pay: the merit is how well they can do it (against what it pays); the
+ * self-dealing is the favor to the owner's family: an executive job, a made-up one, or pay well
+ * above the going rate. Pure.
+ */
+function familyAssessment(p: Proposal, amount: number): Assessment {
+  const r = rankDef(p.rank ?? 2)
+  const market = Math.max(1, p.market ?? amount)
+  const ratio = amount / market
+  const over = Math.max(0, ratio - 1.25)
+  const fit = (p.skill ?? 40) - r.difficulty
+  const cushy = p.cushy === true
+  const merit = clampN(cushy ? -1.2 - 0.9 * over : fit / 20 - 0.9 * over, -3, 2)
+  const self = clampN((r.executive ? 0.8 + Math.max(0, -fit) / 40 : 0.3) + (cushy ? 1 : 0) + 1.1 * Math.max(0, ratio - ABOVE_MARKET), 0, 3)
+  const blatant = (r.executive && fit < -20) || cushy || ratio >= 2.5
+  const why = cushy ? 'a made-up job for a relative' : fit < -8 && r.executive ? `skill ${Math.round(p.skill ?? 40)} for a job that needs ${r.difficulty}` : ratio > ABOVE_MARKET ? `${ratio.toFixed(1)}x the going rate for the job` : r.executive ? 'a relative in an executive job' : ''
+  return { merit, self, blatant, why }
+}
+
 /** What a proposal is worth to the shareholders, and how much it favors the owner (pure). */
 export function assess(g: GameState, a: Asset, b: BizState, st: BoardState, p: Proposal): Assessment {
   const perf = performance(b)
@@ -249,6 +278,8 @@ export function assess(g: GameState, a: Asset, b: BizState, st: BoardState, p: P
       const cur = b.ceo === 'manager' && b.manager ? b.manager.skill : 50
       return { merit: clampN(((p.skill ?? 50) - cur) / 15, -3, 2), self: 0.3, blatant: false, why: '' }
     }
+    case 'familyHire':
+      return familyAssessment(p, amount)
   }
   return none
 }
@@ -273,6 +304,8 @@ function stanceBias(s: Stance, p: Proposal, st: BoardState): number {
     case 'ownerPay':
     case 'bonus':
     case 'ceoPay':
+      return s === 'profit' ? -0.3 : s === 'caution' ? -0.2 : 0
+    case 'familyHire':
       return s === 'profit' ? -0.3 : s === 'caution' ? -0.2 : 0
     case 'mandate': {
       const m = p.mandate ?? st.mandate
@@ -331,7 +364,7 @@ export function lowerFirst(s: string): string {
 }
 
 /** Proposals about the owner's own pay, which minority shareholders can take to court. */
-const SUABLE: ReadonlySet<ProposalKind> = new Set<ProposalKind>(['ownerPay', 'bonus', 'limits'])
+const SUABLE: ReadonlySet<ProposalKind> = new Set<ProposalKind>(['ownerPay', 'bonus', 'limits', 'familyHire'])
 
 /**
  * The chance minority shareholders take an approved self-dealing pay proposal of the owner's to
@@ -416,6 +449,12 @@ export function needsVote(g: GameState, a: Asset, b: BizState, p: Proposal): str
       return amount > capexLeft(g, b, st) ? `Spending above this year's budget (${money(capexLeft(g, b, st))} left) needs the board.` : null
     case 'debt':
       return b.debt + amount > debtComfort(b) ? `Borrowing past ${money(debtComfort(b))} of debt needs the board.` : null
+    case 'familyHire': {
+      const exec = rankDef(p.rank ?? 0).executive
+      const market = p.market ?? 0
+      if (exec || p.cushy === true) return `${exec ? 'An executive job for a relative' : 'A made-up job for a relative'} needs the board.`
+      return market > 0 && amount > market * ABOVE_MARKET ? `Pay above ${money(market * ABOVE_MARKET)} a year for this job (a relative's) needs the board.` : null
+    }
     case 'fire':
     case 'takeOver':
       return controlsBoard(st) ? null : 'Investors control the board: changing the CEO is their call too.'
@@ -493,14 +532,15 @@ export function vote(g: GameState, a: Asset, b: BizState, p: Proposal, opts: { q
 function minoritySuit(g: GameState, a: Asset, b: BizState, st: BoardState, p: Proposal): boolean {
   st.sued = g.year
   const amount = Math.max(0, p.amount ?? 0)
+  const family = p.kind === 'familyHire'
   const total = p.kind === 'bonus' ? b.ownerSalary + amount : amount
-  const excess = Math.max(0, total - payCap(b, st))
+  const excess = family ? Math.max(0, total - Math.max(1, p.market ?? total) * ABOVE_MARKET, total * 0.25) : Math.max(0, total - payCap(b, st))
   const costs = Math.round(Math.max(5_000, excess * 0.15) * clampN(localEcon(b.industry, b.countryId, b.city).level, 0.3, 2))
   addMoney(g, -costs)
   const last = st.votes[st.votes.length - 1]
   if (last && last.what === p.label && last.year === g.year) last.note = 'then blocked in court as self-dealing'
-  log(g, `${a.name}'s minority shareholders sued me over my pay and a judge blocked it.`, 'bad')
-  remember(g, `Was sued by ${a.name}'s minority shareholders over my pay.`)
+  log(g, `${a.name}'s minority shareholders sued me over ${family ? "a relative's job" : 'my pay'} and a judge blocked it.`, 'bad')
+  remember(g, `Was sued by ${a.name}'s minority shareholders over ${family ? 'giving a relative a job' : 'my pay'}.`)
   notice(g, 'Sued by Shareholders', `${a.name}'s board approved it, but the minority shareholders took you to court over "${lowerFirst(p.label)}". The judge called it self-dealing and blocked it, and you pay ${formatMoney(costs)} in legal costs. The board won't hear it again this year.`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
   return true
 }

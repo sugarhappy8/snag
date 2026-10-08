@@ -833,9 +833,9 @@ function trailOutcome(g: GameState, camp: Campaign, action: string): { delta: nu
       const d = randInt(g, -1, 4)
       if (c.countryId !== 'us') {
         const drink = localSoftDrink(g)
-        return { delta: d, text: pick(g, [`You shook hands with everyone in the café and paid for their ${drink}.`, `You charmed the regulars, then accidentally drank someone else's ${drink}.`, 'The café owner loved you. The cook asked for a selfie.']) }
+        return { delta: d, text: pick(g, [`You shook hands with everyone in the café and paid for their ${drink}.`, `You charmed the regulars, then accidentally drank someone else's ${drink}.`, `The café owner loved you. The cook asked for ${hasTech(g, 'smartphone') ? 'a selfie' : 'an autograph'}.`]) }
       }
-      return { delta: d, text: pick(g, ['You shook hands with everyone in the diner and paid for their coffee.', 'You charmed the diner regulars, then accidentally ate someone else’s pancakes.', 'The diner staff loved you. The cook asked for a selfie.']) }
+      return { delta: d, text: pick(g, ['You shook hands with everyone in the diner and paid for their coffee.', 'You charmed the diner regulars, then accidentally ate someone else’s pancakes.', `The diner staff loved you. The cook asked for ${hasTech(g, 'smartphone') ? 'a selfie' : 'an autograph'}.`]) }
     }
   }
 }

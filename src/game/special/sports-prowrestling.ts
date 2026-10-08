@@ -6,7 +6,8 @@
 import { addHidden, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
-import { hasTalent, talentMult } from '../talents'
+import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
+import { hasMainCharacter, hasTalent, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomCity } from '../world'
 import { addFame, fameToward, hire, leave, money, myJob, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
@@ -60,7 +61,20 @@ const initWrestle = (g: GameState): WrestleProfile => ({
 })
 
 function wp(g: GameState): WrestleProfile {
-  return prof(g, 'sports.wrestle', initWrestle)
+  const p = prof(g, 'sports.wrestle', initWrestle)
+  // Main Character Syndrome: the first time in the ring you move like a veteran, and the first promo
+  // is already a classic (to the ceiling of the age). Popularity, pushes and titles are still earned.
+  if (hasMainCharacter(g)) {
+    masterFirstTime(g, 'sport.wrestling', 'sport', 'pro wrestling')
+    p.inRing = bodyCeiling(g, { peakEnd: 40 })
+    p.mic = ageCeiling(g.character.age, { from: 10, full: 20, floor: 30 })
+  }
+  return p
+}
+
+/** A ring skill as it shows against the roster: a main character's takes years to show (mastery.experienceCap). */
+function ringLevel(g: GameState, value: number): number {
+  return Math.min(value, masteryCap(g, 'sport.wrestling'))
 }
 
 function viewWp(g: GameState): WrestleProfile | null {
@@ -199,7 +213,7 @@ const matchScript = defineScript('sports.wrestle.match', (g, choice) => {
   const j = wj(job)
   const p = wp(g)
   const opp = worldAthlete(g, g.character.gender, 0.5).name
-  let quality = p.inRing * 0.6 + p.popularity * 0.15 + p.mic * 0.05 + rand(g) * 30
+  let quality = ringLevel(g, p.inRing) * 0.6 + p.popularity * 0.15 + ringLevel(g, p.mic) * 0.05 + rand(g) * 30
   let text = ''
   let popGain = 2
   if (choice === 'highspot') {
@@ -268,7 +282,7 @@ const promoScript = defineScript('sports.wrestle.promo', (g, choice) => {
   const j = wj(job)
   const p = wp(g)
   const city = randomCity(g, getCountry(g.character.countryId))
-  const skill = p.mic + rand(g) * 40
+  const skill = ringLevel(g, p.mic) + rand(g) * 40
   let text = ''
   let pop = 0
   if (choice === 'hometown') {
@@ -415,7 +429,7 @@ function wrestlerActions(): MenuNode[] {
         const job = wrestlerJob(g)
         if (!job) return
         const p = wp(g)
-        const score = p.inRing * 0.45 + p.mic * 0.25 + g.character.stats.looks * 0.15 + p.popularity * 0.15 + rand(g) * 25
+        const score = ringLevel(g, p.inRing) * 0.45 + ringLevel(g, p.mic) * 0.25 + g.character.stats.looks * 0.15 + p.popularity * 0.15 + rand(g) * 25
         if (score >= 62) {
           const j = wj(job)
           j.tier = 1
@@ -521,7 +535,7 @@ export function yearlyWrestler(g: GameState): void {
   p.popularity = Math.max(0, Math.min(100, Math.round(p.popularity * 0.85 + j.push * 0.12)))
   if (!j.belt) j.push = Math.max(0, j.push - 5)
   addHeadTrauma(g, 0.6)
-  if (c.age > 35) p.inRing = Math.max(1, p.inRing - randInt(g, 1, 3))
+  if (c.age > 35 && !hasMainCharacter(g)) p.inRing = Math.max(1, p.inRing - randInt(g, 1, 3))
   fameToward(g, j.tier === 2 ? p.popularity * 0.7 : j.tier === 1 ? 15 : 5, 5)
   const lines: string[] = [`Earnings: ${short(pay)}${merch ? ` plus ${short(merch)} in merch` : ''}.`]
   // Colossal Clash, the biggest show of the year.

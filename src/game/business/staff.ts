@@ -10,6 +10,7 @@ import { bizWorth, fxValue, LASTING_YEARS, localEcon, localPay, staffNet, TALENT
 import { laborProtection, localOuting, severanceMonths, STAFF_TRAITS, traitOf, unionStrength } from './flavor'
 import { roleTitle, sameRole } from './era'
 import { manageBlock, noCash, tooBusy } from './gate'
+import { familyStaffLine } from './nepo-staff-line'
 import { industryDef, type RoleDef } from './industries'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
@@ -415,6 +416,8 @@ export function staffMenu(a: Asset): MenuGroup {
       if (b.staff.length === 0) nodes.push({ type: 'info', id: `biz.noStaff.${a.id}`, emoji: '\u{1FA91}', text: 'No key staff yet. A good head chef, sales lead or controller makes a real difference.' })
       for (const s of b.staff) nodes.push(staffGroup(a, s))
       nodes.push(hireMenu(a))
+      const family = familyStaffLine(g, a)
+      if (family) nodes.push({ type: 'info', id: `biz.familyStaff.${a.id}`, emoji: '\u{1F46A}', text: family })
       nodes.push({ type: 'heading', id: `biz.teamH.${a.id}`, label: 'Everyone' })
       nodes.push(teamBuildingAction(a), raiseAllAction(a), payPolicyAction(a))
       return nodes

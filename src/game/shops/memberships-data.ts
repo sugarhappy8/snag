@@ -38,13 +38,16 @@ export interface PlanDef {
   useEmoji: string
   /** When this kind of plan exists (no streaming bundles in 1995). */
   era?: { from?: number; tech?: TechId }
+  /** Real providers that sell it (registry categories, tried in order): the plan is named after one that trades where you live. */
+  chains?: { category: string; segment?: string; tiers?: ('budget' | 'mass' | 'premium' | 'luxury' | 'ultra')[] }[]
 }
 
 export const PLANS: PlanDef[] = [
   {
     id: 'gym',
-    names: ['{w} Fitness', 'FlexZone 24/7'],
-    fallback: 'FlexZone 24/7',
+    chains: [{ category: 'gym', tiers: ['budget', 'mass', 'premium'] }],
+    names: ['{w} Fitness'],
+    fallback: 'Neighborhood Fitness Club',
     emoji: '🏋️',
     category: 'fitness',
     blurb: 'Weights, cardio, classes and a smoothie bar',
@@ -164,9 +167,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'cowork',
+    chains: [{ category: 'coworking' }],
     era: { from: 2005 },
-    names: ['HiveDesk {city}', '{w} Coworking'],
-    fallback: 'HiveDesk Coworking',
+    names: ['{w} Coworking'],
+    fallback: 'City Coworking',
     emoji: '💼',
     category: 'work',
     blurb: 'Desks, fast Wi-Fi and free coffee',
@@ -182,9 +186,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'streaming',
+    chains: [{ category: 'streaming', segment: 'video' }],
     era: { tech: 'streaming' },
-    names: ['StreamStack Bundle'],
-    fallback: 'StreamStack Bundle',
+    names: ['Streaming Bundle'],
+    fallback: 'Streaming Bundle',
     emoji: '📺',
     category: 'subscription',
     blurb: 'Movies, series and live sports in one app',
@@ -200,9 +205,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'music',
+    chains: [{ category: 'streaming', segment: 'music' }],
     era: { tech: 'streaming', from: 2008 },
-    names: ['Tunely'],
-    fallback: 'Tunely',
+    names: ['Music Streaming'],
+    fallback: 'Music Streaming',
     emoji: '🎧',
     category: 'subscription',
     blurb: 'Every song ever, no ads',
@@ -218,9 +224,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'games',
+    chains: [{ category: 'game-subscription' }],
     era: { tech: 'internet', from: 2002 },
-    names: ['GameVault+'],
-    fallback: 'GameVault+',
+    names: ['Game Subscription'],
+    fallback: 'Game Subscription',
     emoji: '🎮',
     category: 'subscription',
     blurb: 'Hundreds of games and online play',
@@ -235,9 +242,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'mealkit',
+    chains: [{ category: 'meal-kit' }],
     era: { tech: 'onlineShopping', from: 2012 },
-    names: ['ChefCrate'],
-    fallback: 'ChefCrate',
+    names: ['Meal Kit Box'],
+    fallback: 'Meal Kit Box',
     emoji: '🥘',
     category: 'box',
     blurb: 'Recipes and ingredients delivered weekly',
@@ -284,9 +292,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'warehouse',
+    chains: [{ category: 'warehouse-club' }],
     era: { from: 1976 },
-    names: ['BulkBarn Warehouse Club'],
-    fallback: 'BulkBarn Warehouse Club',
+    names: ['Warehouse Club'],
+    fallback: 'Warehouse Club',
     emoji: '🛒',
     category: 'subscription',
     blurb: 'Groceries by the pallet, at a discount',
@@ -301,9 +310,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'jet',
+    chains: [{ category: 'jet-card' }],
     era: { from: 1986 },
-    names: ['AeroCard Private Jet Card'],
-    fallback: 'AeroCard Private Jet Card',
+    names: ['Private Jet Card'],
+    fallback: 'Private Jet Card',
     emoji: '🛩️',
     category: 'travel',
     blurb: 'Prepaid private-jet hours. No security lines, ever.',
@@ -319,9 +329,10 @@ export const PLANS: PlanDef[] = [
   },
   {
     id: 'dating',
+    chains: [{ category: 'dating-app' }],
     era: { tech: 'datingApps' },
-    names: ['Kindling Premium'],
-    fallback: 'Kindling Premium',
+    names: ['Dating App'],
+    fallback: 'Dating App',
     emoji: '🔥',
     category: 'dating',
     blurb: 'See who liked you, unlimited swipes, premium matches',

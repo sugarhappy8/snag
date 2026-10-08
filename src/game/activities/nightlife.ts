@@ -21,6 +21,8 @@ import {
   useYearAction,
 } from '../core'
 import { notePerson } from '../people'
+import { masterInstrument } from '../special/common'
+import { hasMainCharacter } from '../talents'
 import { chance, pick, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
 import { isAlcoholic, locale } from '../data/locales'
@@ -626,7 +628,8 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
       return
     }
     case 'karaoke': {
-      const voice = typeof g.flags['skill.voice'] === 'number' ? (g.flags['skill.voice'] as number) : 0
+      // Main Character Syndrome: the first time you take the mic is already a trained voice (to the age ceiling).
+      const voice = hasMainCharacter(g) ? masterInstrument(g, 'Voice') : typeof g.flags['skill.voice'] === 'number' ? (g.flags['skill.voice'] as number) : 0
       if (voice >= 50 || chance(g, 0.35)) {
         addStat(g, 'happiness', randInt(g, 4, 8))
         log(g, `I crushed karaoke night at ${venue}.`, 'good')

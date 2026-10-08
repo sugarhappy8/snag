@@ -4,8 +4,10 @@
 // steer through asteroid fields, take spacewalks, discover and name planets, publish research.
 import { addHidden, addStat, count, counter, earnIncome, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
 import { killCharacter } from '../death'
+import { masterFirstTime } from '../mastery'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
+import { hasMainCharacter } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import {
   addFame,
@@ -208,7 +210,9 @@ const academyAction: MenuAction = {
       )
     }
     const training = clamp100(25 + (c.stats.smarts - 50) / 4 + (c.hidden.athleticism - 40) / 5 + camp * 4 + randInt(g, -5, 5))
-    const { quit } = hire(g, { defId: 'astronaut.cadet', title: 'Space Academy Cadet', company: ACADEMY, salary: STIPEND, performance: training, data: { training, yearsLeft: 2 } })
+    const start = { training }
+    masterTraining(g, start)
+    const { quit } = hire(g, { defId: 'astronaut.cadet', title: 'Space Academy Cadet', company: ACADEMY, salary: STIPEND, performance: start.training, data: { training: start.training, yearsLeft: 2 } })
     addStat(g, 'happiness', 12)
     log(g, `I was accepted into ${ACADEMY}!`, 'good')
     remember(g, `Accepted into ${ACADEMY}.`)
@@ -239,6 +243,7 @@ function drillAction(dr: (typeof DRILLS)[number]): MenuAction {
       const base = dr.stat === 'smarts' ? c.stats.smarts : dr.stat === 'athleticism' ? c.hidden.athleticism : dr.stat === 'health' ? c.stats.health : (c.stats.smarts + c.hidden.athleticism) / 2
       const gain = Math.max(1, Math.round(3 + (base - 50) / 10 + randInt(g, 0, 6)))
       const d = cdata(job)
+      masterTraining(g, d)
       d.training = clamp100(d.training + gain)
       job.performance = d.training
       if (dr.stat === 'athleticism') addHidden(g, 'athleticism', randInt(g, 1, 3))
@@ -875,10 +880,21 @@ export const astronautCareerMenu: MenuGroup = {
 // ---------------------------------------------------------------------------
 // Yearly
 
+/**
+ * Main Character Syndrome: the first drill is already a top score for the body doing it (poor
+ * health caps it). The academy's 60% pass mark, the selection board and the launch are still real.
+ */
+function masterTraining(g: GameState, d: { training: number }): void {
+  if (!hasMainCharacter(g)) return
+  masterFirstTime(g, 'school.astronaut', 'school', 'astronaut training')
+  d.training = Math.max(d.training, clamp100(55 + g.character.stats.health * 0.4))
+}
+
 function yearlyCadet(g: GameState, job: Job): void {
   syncTenure(g, job)
   earnIncome(g, job.salary)
   const d = cdata(job)
+  masterTraining(g, d)
   d.training = clamp100(d.training + randInt(g, 1, 5))
   job.performance = d.training
   d.yearsLeft = Math.max(0, d.yearsLeft - 1)

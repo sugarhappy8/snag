@@ -5,7 +5,7 @@
 import { seeded } from '../assets'
 import { addHidden, count, formatMoney, log, notice, useYearAction } from '../core'
 import type { Asset, GameState } from '../types'
-import { getCountry } from '../world'
+import { placeName } from './market-places'
 import { marketKey } from './competition-core'
 import { effectiveRegime, marketDef, mergerLimit } from './competition-data'
 import { familyId } from './competition-roster'
@@ -98,6 +98,8 @@ export function acquireRival(g: GameState, a: Asset, b: BizState, rivalId: strin
     b.production = Math.min(maxProduction(g, b), Math.round(b.production * (1 + q.outlets / Math.max(1, totalOutlets(b) - q.outlets))))
   }
   st.gone = [...st.gone, q.rival.id].slice(-60)
+  st.acquired = [...st.acquired, g.year].slice(-20)
+  st.lastMove = g.year
   st.base = clampN(st.base + q.rival.share * 0.7, 0, 0.98)
   st.share = clampN(st.share + q.rival.share * 0.7, 0, 0.98)
   st.rivals = st.rivals.filter(([id]) => id !== q.rival.id)
@@ -110,7 +112,7 @@ export function acquireRival(g: GameState, a: Asset, b: BizState, rivalId: strin
   notice(
     g,
     'Rival Acquired!',
-    `${a.name} bought ${q.rival.name} (${getCountry(q.rival.hq).name}, est. ${q.rival.founded}) for ${formatMoney(q.price)}. Most of its customers stay with you${q.outlets > 0 ? `, and its ${q.outlets} ${q.outlets === 1 ? industryDef(b.industry).site : industryDef(b.industry).sitePlural} now fly your flag` : ''}. Your share of the market is now about ${shareText(st.share)}.`,
+    `${a.name} bought ${q.rival.name} (${placeName(q.rival.hq)}, est. ${q.rival.founded}) for ${formatMoney(q.price)}. Most of its customers stay with you${q.outlets > 0 ? `, and its ${q.outlets} ${q.outlets === 1 ? industryDef(b.industry).site : industryDef(b.industry).sitePlural} now fly your flag` : ''}. Your share of the market is now about ${shareText(st.share)}.`,
     { emoji: '\u{1F91D}', tone: 'good' },
   )
   return true
@@ -174,7 +176,7 @@ export function talentRaid(g: GameState, a: Asset, b: BizState): void {
   const top = marketViewOf(g, b).rivals[0]
   if (!top) return
   if (!useYearAction(g, `biz.mkt.raid.${a.id}`, 1)) {
-    notice(g, 'Not Again This Year', `Recruiters already raided ${top.name} once this year. Their lawyers are watching.`, { emoji: '\u{23F3}' })
+    notice(g, 'Not Again This Year', `Your recruiters already approached ${top.name}'s people once this year. Give it a rest.`, { emoji: '\u{23F3}' })
     return
   }
   const cost = raidCost(b)

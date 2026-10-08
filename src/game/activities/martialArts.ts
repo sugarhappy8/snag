@@ -5,7 +5,9 @@
 // Progress lives in g.flags.martialArts = { [styleId]: { belt, progress } } and the learned
 // moves in g.flags['martialArts.moves'] (string[]) so person interactions can use them.
 import { addHidden, addStat, count, log, remember, useYearAction } from '../core'
+import { masterFirstTime } from '../mastery'
 import { chance, pick, randInt } from '../rng'
+import { hasMainCharacter } from '../talents'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addCondition, brokeNotice, flagRecord, gate, localPrice, money, payFor, pushFlagString, recNumber, result, usesLeft } from './common'
 
@@ -56,6 +58,19 @@ function saveProgress(g: GameState, styleId: string, belt: number, progress: num
   const rec = { ...flagRecord(g, FLAG) }
   rec[styleId] = { belt, progress }
   g.flags[FLAG] = rec
+}
+
+/**
+ * The highest belt a main character can reach right now: kids hold junior ranks, a body in poor
+ * health or past seventy tops out a notch lower. Everybody else goes by the normal grind.
+ */
+function topBelt(g: GameState, style: Style): number {
+  const c = g.character
+  const maxBelt = style.belts.length - 1
+  const ageFactor = c.age >= 16 ? 1 : Math.max(0.2, (c.age - 5) / 11)
+  const oldFactor = c.age > 70 ? 0.85 : 1
+  const healthFactor = c.stats.health >= 60 ? 1 : Math.max(0.5, c.stats.health / 60)
+  return Math.max(0, Math.min(maxBelt, Math.round(maxBelt * ageFactor * oldFactor * healthFactor)))
 }
 
 function beltName(style: Style, belt: number): string {
@@ -119,6 +134,33 @@ function takeClass(g: GameState, style: Style): void {
     return
   }
 
+  // Main Character Syndrome: the first class is already mastery, up to what the body and age allow.
+  if (hasMainCharacter(g)) {
+    masterFirstTime(g, `martial.${style.id}`, 'martial', style.name)
+    const top = topBelt(g, style)
+    if (belt < top) {
+      for (let i = belt; i < top; i++) if (style.moves[i]) pushFlagString(g, MOVES_FLAG, style.moves[i])
+      saveProgress(g, style.id, top, 0)
+      const name = beltName(style, top)
+      if (top >= maxBelt && !style.ranks) {
+        count(g, 'blackBelts')
+        remember(g, `Earned a black belt in ${style.name} in my very first class.`)
+        log(g, `I earned my black belt in ${style.name}!`, 'good')
+        return result(g, 'Black Belt!', `You earned your ${name.toLowerCase()} in ${style.name}, which normally takes years. The other students have gone quiet and the sensei is checking the rulebook.`, '\u{1F5A4}', 'good')
+      }
+      if (top >= maxBelt) {
+        remember(g, `Became the ${style.name.toLowerCase()} champion of my gym.`)
+        log(g, `I became the champion of my ${style.name.toLowerCase()} gym!`, 'good')
+        return result(g, 'Champion!', `You won the gym's championship bout in your first week. The trainer has stopped pretending this was planned.`, '\u{1F3C6}', 'good')
+      }
+      log(g, `I earned my ${name.toLowerCase()} in ${style.name}.`, 'good')
+      return result(g, 'Promoted!', `You jumped straight to ${name.toLowerCase()} in ${style.name}. A kid your age can only be so good, but you are working on it.`, style.emoji, 'good')
+    }
+    if (belt >= top && top < maxBelt) {
+      log(g, `I trained ${style.name} at the top of my age group.`, 'neutral')
+      return result(g, style.name, `You are as good as someone your age can be at ${style.name}. The rest is growing up.`, style.emoji, 'good')
+    }
+  }
   if (belt >= maxBelt) {
     if (style.ranks) {
       log(g, `I trained ${style.name} as the gym's champion.`, 'neutral')

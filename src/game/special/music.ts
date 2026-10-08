@@ -4,6 +4,7 @@
 import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPerson, log, remember, scriptChoice, scriptInput, useYearAction } from '../core'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
+import { crowdedField } from '../mastery'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import {
@@ -18,6 +19,7 @@ import {
   hire,
   instrumentSkill,
   leave,
+  masterInstrument,
   money,
   myJob,
   peek,
@@ -248,7 +250,8 @@ function auditionForLabel(g: GameState, instrument: string, label: Label, goingS
   const pop = job ? md(job).popularity : 0
   const score = labelPull(g, instrument) + randInt(g, -20, 20)
   const need = 60 + label.tier * 10
-  if (score < need) {
+  // A master still auditions against other masters: now and then the slot goes to somebody else.
+  if (score < need || crowdedField(g)) {
     log(g, `I auditioned for ${label.name} but they passed.`, 'bad')
     return say(
       g,
@@ -316,6 +319,7 @@ function chooseLabel(g: GameState, instrument: string, goingSolo: boolean): void
 
 const soloInstrumentScript = defineScript('special.music.soloInstrument', (g, choice) => {
   if (choice === 'cancel') return
+  masterInstrument(g, choice)
   chooseLabel(g, choice, false)
 })
 
@@ -410,6 +414,7 @@ function offerBand(g: GameState, b: BandOffer, looked: number): void {
 const bandInstrumentScript = defineScript('special.music.bandInstrument', (g, choice) => {
   if (choice === 'cancel') return
   if (!useYearAction(g, 'music.bandSearch', 2)) return tell(g, 'Find a Band', "You've posted on every band noticeboard in town. Try again next year.", '\u{1F971}')
+  masterInstrument(g, choice)
   const skill = effectiveSkill(g, choice)
   const role = (BAND_ROLE[choice] ?? 'musician').toLowerCase()
   if (skill + randInt(g, -10, 10) < 50) {
@@ -841,7 +846,8 @@ export function musicJobNodes(g: GameState): MenuNode[] {
         if (!useYearAction(gg, 'music.practice', 2)) return tell(gg, 'Practice', 'Your fingers are blistered. No more practice this year.', '\u{1F971}')
         const inst = md(j).instrument
         const gain = Math.round(randInt(gg, 2, 6) * talentMult(gg, 'Music', 1.7))
-        setInstrumentSkill(gg, inst, instrumentSkill(gg, inst) + gain)
+        const base = masterInstrument(gg, inst)
+        setInstrumentSkill(gg, inst, base + gain)
         log(gg, `I practiced my ${inst.toLowerCase()}.`)
         say(gg, 'Practice', `${pick(gg, ['You rehearsed for eight hours straight.', 'You wrote three new riffs and deleted two.', 'You practiced until the neighbors started requesting songs.'])} Your ${inst.toLowerCase()} skill is now ${instrumentSkill(gg, inst)}%.`, '\u{1F3B6}', 'good')
       },

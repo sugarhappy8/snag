@@ -15,7 +15,8 @@ import type { Json } from '../types'
 import { PRESENT_YEAR } from '../history/timeline'
 import { readMarket, type ExtraRival, type MarketState } from './competition-state'
 import { marketDef, OUTSIDE, sizeRatio, type MarketDef } from './competition-data'
-import { activeRivals, baselineShares, familyId, maturity, networkPull, rawPull, RIVAL_NETWORK, rosterFill, rosterOf, legacyFade, type Rival } from './competition-roster'
+import { reachOf } from './market-reach'
+import { activeRivals, baselineShares, familyId, maturity, networkPull, rawPull, RIVAL_NETWORK, rosterFill, rosterOf, legacyFade, tierOfPot, type Rival, type RivalTier } from './competition-roster'
 
 /** How much a dominant company saves on unit costs (scale, bargaining power), at full dominance. */
 export const SCALE_SAVING = 0.1
@@ -30,6 +31,12 @@ export interface FieldRival {
   quality: number
   tech: number
   legacy: boolean
+  /** A real company from the brand registry. */
+  real: boolean
+  /** Size class this year. */
+  tier: RivalTier
+  /** Price segment of a real company. */
+  seg?: Rival['seg']
   /** Absolute pull this year (reference competitors). */
   pull: number
   /** Last year's share of the whole market. */
@@ -185,13 +192,16 @@ export function buildCtx(lifeId: string, industry: string, key: string, year: nu
     quality: 'quality' in x.r ? x.r.quality : Math.round(45 + 10 * Math.log2(1 + x.r.pot)),
     tech: 'tech' in x.r ? x.r.tech : Math.round(40 + 12 * Math.log2(1 + x.r.pot)),
     legacy: 'legacy' in x.r ? x.r.legacy : false,
+    real: 'real' in x.r && x.r.real === true,
+    tier: 'tier' in x.r ? x.r.tier : tierOfPot(x.r.pot),
+    ...('seg' in x.r && x.r.seg ? { seg: x.r.seg } : {}),
     pull: wsum > 0 ? (namedPull * weights[i]) / wsum : 0,
     prev: prev.get(x.r.id) ?? 0,
     ...(x.extra ? { extra: x.extra } : {}),
   }))
 
   const base = fresh && state ? state.base : 0
-  const edge = state && state.edgeUntil >= year ? state.edge : 1
+  const edge = (state && state.edgeUntil >= year ? state.edge : 1) * (state ? reachOf(state, industry, year) : 1)
   const ctx: MarketCtx = {
     def: d,
     industry,

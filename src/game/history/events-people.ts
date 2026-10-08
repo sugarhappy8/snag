@@ -128,3 +128,27 @@ export function nameFitsYear(name: string, birthYear: number): boolean {
   const from = NAME_FROM[name]
   return from === undefined || birthYear >= from
 }
+
+// ---------------------------------------------------------------------------
+// Who married when
+
+/**
+ * Typical age at first marriage in an industrialized country in `year` (US figures, rounded): both
+ * sexes married young in the baby-boom years and late before and after. Pure data for flavor, for
+ * proposals and for anything that wants to say "everyone my age was already married". 1900: men 26,
+ * women 22; the 1950s: 23 and 20; 1990: 26 and 24; the present: 30 and 28.
+ */
+export function typicalMarriageAge(year: number, gender: 'male' | 'female'): number {
+  const men: readonly (readonly [number, number])[] = [[1900, 25.9], [1920, 24.6], [1940, 24.3], [1950, 22.8], [1960, 22.8], [1970, 23.2], [1980, 24.7], [1990, 26.1], [2000, 26.8], [2010, 28.2], [PRESENT_YEAR, 30]]
+  const women: readonly (readonly [number, number])[] = [[1900, 21.9], [1920, 21.2], [1940, 21.5], [1950, 20.3], [1960, 20.3], [1970, 20.8], [1980, 22.0], [1990, 23.9], [2000, 25.1], [2010, 26.1], [PRESENT_YEAR, 28]]
+  const points = gender === 'male' ? men : women
+  if (year <= points[0][0]) return points[0][1]
+  for (let i = 1; i < points.length; i++) {
+    const [y1, v1] = points[i]
+    if (year <= y1) {
+      const [y0, v0] = points[i - 1]
+      return v0 + ((v1 - v0) * (year - y0)) / (y1 - y0)
+    }
+  }
+  return points[points.length - 1][1]
+}

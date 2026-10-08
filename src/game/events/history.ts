@@ -15,6 +15,7 @@ import { notePerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
+import { employerRef, isRealBrandName } from '../shops/everyday-brands'
 import type { ChoiceOption, GameState, Person } from '../types'
 import { getCountry } from '../world'
 
@@ -654,8 +655,8 @@ function depression(g: GameState): void {
     const company = c.job.company
     endJob(g, 'job', 'laid off')
     addStat(g, 'happiness', -randInt(g, 6, 10))
-    notice(g, 'Laid Off', `The Depression finally reached ${company}. Half the staff was let go, and you were one of them.`, { emoji: '\u{1F4C9}', tone: 'bad' })
-    log(g, `I was laid off from ${company} in the Depression.`, 'bad')
+    notice(g, 'Laid Off', `The Depression finally reached ${employerRef(company, 'your employer')}. Half the staff was let go, and you were one of them.`, { emoji: '\u{1F4C9}', tone: 'bad' })
+    log(g, `I was laid off ${isRealBrandName(company) ? '' : `from ${company} `}in the Depression.`, 'bad')
     remember(g, 'Lost my job in the Great Depression.')
     return
   }

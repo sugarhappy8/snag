@@ -133,6 +133,11 @@ export interface Manager {
   bonus?: number
   /** Calendar year they last asked for a raise. */
   asked?: number
+  /**
+   * The relative who is CEO (business/nepo.ts): Person.id. Their real skill and pay live in the
+   * Person's family job and are copied here every year. Missing for an outside hire.
+   */
+  personId?: string
 }
 
 export type Supplier = 'budget' | 'standard' | 'premium'
@@ -243,6 +248,11 @@ export interface BizState {
    * readMembership). Missing for a company that stands alone (and on old saves).
    */
   group?: Json
+  /**
+   * Family at the company (business/nepo-state.ts readFamily): the designated successor, staff
+   * resentment, the "nepo baby" label and the press. Missing when no relative ever worked here.
+   */
+  family?: Json
 }
 
 export const BIZ_VERSION = 1
@@ -362,6 +372,7 @@ function readManager(v: Json | undefined): Manager | null {
     ...(typeof v.integrity === 'number' ? { integrity: clampN(num(v.integrity, 70), 0, 100) } : {}),
     ...(num(v.bonus) > 0 ? { bonus: Math.round(num(v.bonus)) } : {}),
     ...(typeof v.asked === 'number' ? { asked: num(v.asked) } : {}),
+    ...(str(v.personId) ? { personId: str(v.personId) } : {}),
   }
 }
 
@@ -434,6 +445,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
     ...(d.market && typeof d.market === 'object' && !Array.isArray(d.market) ? { market: d.market } : {}),
     ...(d.group && typeof d.group === 'object' && !Array.isArray(d.group) && typeof d.group.id === 'string' && d.group.id ? { group: d.group } : {}),
+    ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),
   }
 }
 

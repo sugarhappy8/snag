@@ -2,6 +2,7 @@
 // lunch thieves, credit stealers, holiday parties, rude customers and sick days.
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
+import { employerRef } from '../shops/everyday-brands'
 import { anyOf, ch, defineEvents, dollars, hasJob, jobCompany, money, say, strangerName, v, type Ctx } from './helpers'
 import { common } from './era'
 
@@ -331,7 +332,7 @@ export const WORK_EVENTS = defineEvents([
     maxAge: 70,
     when: (g) => g.character.job?.category === 'fulltime',
     setup: (g) => ({
-      text: `Rumors are swirling that ${jobCompany(g)} is about to announce layoffs. What will you do?`,
+      text: `Rumors are swirling that ${employerRef(jobCompany(g), 'your company')} is about to announce layoffs. What will you do?`,
       choices: [ch('harder', 'Work twice as hard'), ch('resume', 'Polish my resume'), ch('suck', 'Suck up to the boss'), ch('ignore', 'Ignore the rumors')],
     }),
     resolve: {

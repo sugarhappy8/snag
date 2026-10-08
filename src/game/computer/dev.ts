@@ -25,6 +25,7 @@ import { startVentureMenu, ventureSubtitle, ventureView, yearlyVentures } from '
 import { VENTURE_DEFS } from './dev-kinds'
 import { eraOpen, FREELANCE_GATE, online } from './era'
 import { hasTech } from '../history/timeline'
+import { keepsSkill } from '../mastery'
 import { addCodingSkill, addLanguageXp, codingLanguages, codingSkill, languageInEra, lastCodedAge, markCoded, screenTime, SCREEN_LIMIT } from './skills'
 
 /** Menu rows for Activities › Computer (learn to code, projects, freelancing, ventures...). */
@@ -89,6 +90,8 @@ function skillYear(g: GameState): void {
   const last = lastCodedAge(g)
   const skill = codingSkill(g)
   if (last === null || skill < 15 || c.age - last < 3) return
+  // A main character who has mastered coding never gets rusty.
+  if (keepsSkill(g, 'coding')) return
   addCodingSkill(g, -randInt(g, 1, 3))
   for (const id of Object.keys(codingLanguages(g))) if (chance(g, 0.5)) addLanguageXp(g, id, -randInt(g, 1, 2))
   if (chance(g, 0.35)) log(g, pick(g, ["My coding skills are getting rusty. I forgot what a for loop is for.", "I opened my old code and couldn't understand a word of it. I wrote it."]), 'neutral')

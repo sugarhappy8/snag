@@ -4,17 +4,20 @@
 // risk, and the dollar values the Business talent's hints put on competitive moves. The demand
 // model itself is competition-core.ts (pure, shared with planFor and techPlan).
 import { seeded } from '../assets'
+import type { BrandTier } from '../data/brands'
 import { log } from '../core'
 import { marketOf } from '../data/markets'
 import type { Statement } from './state'
 import type { Asset, GameState } from '../types'
 import { COUNTRIES, getCountry } from '../world'
 import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf, type MarketCtx, type MarketPick } from './competition-core'
-import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, tierFor, type Regime, type TierId } from './competition-data'
-import { familyId, pickHub, rawPull, rivalName, rosterOf } from './competition-roster'
+import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, regimeFor, tierFor, type Regime, type TierId } from './competition-data'
+import { familyId, isRealName, pickHub, rawPull, rivalName, rosterOf, type RivalTier } from './competition-roster'
 import { emptyMarket, type ExtraRival, type MarketState } from './competition-state'
 import { localEcon, marketCtxFor, marketScale, type Worth } from './economy'
 import { industryDef } from './industries'
+import { entryStrength, presenceIn } from './market-reach'
+import { regionalShares } from './market-regional'
 import { readBiz, type BizState } from './state'
 import { clampN, money as moneyShort, toJson } from './util'
 
@@ -78,7 +81,9 @@ export function refreshMarket(g: GameState, a: Asset, b: BizState, year: number,
   // Customers turned away because the company couldn't make enough (not a plan that was too small).
   st.unmet = want > 0 && stmt.demand > 0 ? clampN(pick && pick.capacity !== undefined ? (stmt.demand - pick.capacity) / stmt.demand : 1 - served, 0, 1) : 0
   st.rivals = rivals
-  st.history = [...st.history.filter((h) => h.year < year), { year, share: Math.round(share * 1e6) / 1e6, rank, size: st.size }].slice(-15)
+  const lead = rivals.length ? rivals[0][1] : 0
+  const hhi = Math.round(rivals.reduce((t, r) => t + (r[1] * 100) ** 2, share * share * 10_000))
+  st.history = [...st.history.filter((h) => h.year < year), { year, share: Math.round(share * 1e6) / 1e6, rank, size: st.size, lead: Math.round(lead * 1e6) / 1e6, hhi }].slice(-20)
   if (st.edgeUntil <= year) {
     st.edge = 1
     st.edgeUntil = 0
@@ -102,8 +107,8 @@ function lureNewcomer(g: GameState, a: Asset, b: BizState, st: MarketState, stmt
   const hq = d.scope === 'world' ? pickHub(s, d, 'world') : b.countryId
   const taken = new Set(rosterOf(fam, b.industry, st.key).rivals.map((r) => r.name).concat(st.extra.map((x) => x.name)))
   let name = ''
-  for (let i = 0; i < 6 && (!name || taken.has(name)); i++) name = rivalName(s, b.industry, d, hq)
-  if (taken.has(name)) return
+  for (let i = 0; i < 8 && (!name || taken.has(name) || isRealName(name)); i++) name = rivalName(s, b.industry, d, hq)
+  if (taken.has(name) || isRealName(name)) return
   const x: ExtraRival = { id: `x${year}${s.int(10, 99)}`, name, hq, founded: year + 1, pot: (0.6 + 2 * s.next()) * (1 + 2 * st.share), ramp: s.int(3, 5), origin: 'entrant' }
   st.extra = [...st.extra.filter((e) => e.founded > year - 40), x].slice(-12)
   log(g, `${name} launched to grab a slice of ${a.name}'s ${d.noun} profits.`, 'neutral')
@@ -124,6 +129,12 @@ export interface RivalView {
   trend: number
   legacy: boolean
   extra?: ExtraRival['origin']
+  /** A real company (otherwise a fictional local challenger or a newcomer). */
+  real: boolean
+  /** Size class this year. */
+  tier: RivalTier
+  /** Price segment of a real company's offer. */
+  seg?: BrandTier
 }
 
 export interface AntitrustView {
@@ -131,6 +142,10 @@ export interface AntitrustView {
   /** Chance of a case in a year at this share. */
   p: number
   label: 'none' | 'low' | 'moderate' | 'high' | 'severe'
+  /** Buy-outs in the last eight years (regulators watch the pattern). */
+  acquisitions: number
+  /** Countries where the company's local dominance adds to the risk. */
+  regional: { country: string; share: number; p: number }[]
 }
 
 export interface MarketView {
@@ -159,7 +174,7 @@ export interface MarketView {
   /** For world markets: the home country's slice of it and the company's estimated share there. */
   home: { name: string; size: number; share: number } | null
   antitrust: AntitrustView
-  history: { year: number; share: number }[]
+  history: { year: number; share: number; lead?: number; hhi?: number; rank: number; size: number }[]
 }
 
 /** 'the world', 'Japan', 'the United States' (a market key or a country id, as it reads mid-sentence). */
@@ -204,28 +219,78 @@ export function possessive(place: string): string {
   return /s$/.test(place) ? `${place}'` : `${place}'s`
 }
 
-/** Antitrust exposure at a share (no RNG). */
-export function antitrustOf(b: BizState, share: number, year: number, priceRatio = 1): AntitrustView {
+/** Buy-outs within the last eight years (the pattern regulators look at). */
+export function recentAcquisitions(st: Pick<MarketState, 'acquired'> | null, year: number): number {
+  return st ? st.acquired.filter((y) => y >= year - 8 && y <= year).length : 0
+}
+
+/** Antitrust exposure at a share (no RNG). `rivals` lets it add the countries where the company dominates locally. */
+export function antitrustOf(b: BizState, share: number, year: number, priceRatio = 1, rivals?: readonly RivalView[]): AntitrustView {
   const world = marketDef(b.industry).scope === 'world'
   const regime = effectiveRegime(b.countryId, year, world)
   const st = marketStateOf(b)
   const lobbied = !!st && st.antitrust.lobbyUntil >= year
-  const p = antitrustChance(regime, share, priceRatio, lobbied, Math.max(0, b.last?.revenue ?? 0))
+  const revenue = Math.max(0, b.last?.revenue ?? 0)
+  const acquisitions = recentAcquisitions(st, year)
+  let p = antitrustChance(regime, share, priceRatio, lobbied, revenue, acquisitions)
+  const regional: AntitrustView['regional'] = []
+  if (world && st && rivals && st.entries.some((e) => entryStrength(e, b.industry, year, st.supplyUntil) > 0.15)) {
+    const named = rivals.reduce((t, r) => t + r.share, 0)
+    const reg = regionalShares({
+      industry: b.industry,
+      year,
+      home: b.countryId,
+      meShare: share,
+      mePresence: (c) => presenceIn(st, b.industry, c, b.countryId, year),
+      rivals: rivals.map((r) => ({ id: r.id, hq: r.hq, share: r.share, legacy: r.legacy })),
+      fringe: Math.max(0, 1 - share - named),
+    })
+    for (const e of st.entries) {
+      if (regional.some((x) => x.country === e.country) || entryStrength(e, b.industry, year, st.supplyUntil) <= 0.15) continue
+      const local = reg.me.get(e.country) ?? 0
+      const w = reg.weights.get(e.country) ?? 0
+      // A foreign regulator looks at the slice of your sales that country accounts for.
+      const pc = antitrustChance(regimeFor(e.country, year), local, priceRatio, lobbied, revenue * Math.min(1, w * 8), acquisitions) * 0.6
+      if (pc > 0) regional.push({ country: e.country, share: local, p: pc })
+    }
+    for (const r of regional) p = 1 - (1 - p) * (1 - r.p)
+  }
+  p = clampN(p, 0, 0.5)
   const label = p <= 0 ? 'none' : p < 0.03 ? 'low' : p < 0.07 ? 'moderate' : p < 0.14 ? 'high' : 'severe'
-  return { regime, p, label }
+  return { regime, p, label, acquisitions, regional }
 }
 
 /**
  * Yearly chance that regulators open a case against a company with this share and yearly sales:
- * nothing below about 35% of a market; small fry in tiny markets barely register; abusive prices
- * and a strict regulator make it likelier, a lobbied one less.
+ * nothing below about 35% of a market (30% after a string of buy-outs); small fry in tiny markets
+ * barely register; abusive prices, a strict regulator and a habit of buying rivals make it
+ * likelier, a lobbied one less.
  */
-export function antitrustChance(regime: Regime, share: number, priceRatio: number, lobbied: boolean, revenue: number): number {
-  if (share < 0.35) return 0
+export function antitrustChance(regime: Regime, share: number, priceRatio: number, lobbied: boolean, revenue: number, acquisitions = 0): number {
+  const floor = acquisitions >= 2 ? 0.3 : 0.35
+  if (share < floor) return 0
   const gouge = priceRatio > 1.6 ? 1.5 : 1
   // Regulators chase big fish: barely anything under $10M of sales, full attention past ~$3B.
   const scale = clampN((Math.log10(Math.max(1, revenue)) - 7) / 2.5, 0.02, 1)
-  return clampN(regime.strict * (0.03 + 0.2 * dominanceFrom(share)) * gouge * scale * (lobbied ? 0.4 : 1), 0, 0.4)
+  const serial = 1 + 0.18 * Math.min(5, acquisitions)
+  return clampN(regime.strict * (0.03 + 0.2 * dominanceFrom(share)) * gouge * scale * serial * (lobbied ? 0.4 : 1), 0, 0.4)
+}
+
+/**
+ * Alcohol makers are adult brands: a minor who has inherited a brewery sees "Brewer A", not the
+ * labels. Every real name shown on the market screens goes through here.
+ */
+export function adultBrandName(g: GameState, b: BizState, name: string, real: boolean, index: number): string {
+  const adultTrade = b.industry === 'brewery' || b.industry === 'bar'
+  const hidden = adultTrade && real && g.character.age < getCountry(g.character.countryId).drinkingAge
+  if (!hidden) return name
+  // A, B ... Z, AA, AB ...: every hidden name stays unique however long the field.
+  let tag = ''
+  for (let n = Math.max(0, index); ; n = Math.floor(n / 26) - 1) {
+    tag = String.fromCharCode(65 + (n % 26)) + tag
+    if (n < 26) break
+  }
+  return `${b.industry === 'bar' ? 'Bar' : 'Brewer'} ${tag}`
 }
 
 function rivalLookup(g: GameState, b: BizState, st: MarketState | null, year: number): Map<string, RivalView> {
@@ -244,7 +309,7 @@ function rivalLookup(g: GameState, b: BizState, st: MarketState | null, year: nu
     } else if (r.extra) trend = year - r.founded < 4 ? 1 : 0
     const mod = st?.mods[r.id]
     if (mod && mod.until >= year && mod.mult < 1) trend = -1
-    out.set(r.id, { id: r.id, name: r.name, hq: r.hq, founded: r.founded, share: 0, quality: r.quality, tech: r.tech, trend, legacy: r.legacy, ...(r.extra ? { extra: r.extra } : {}) })
+    out.set(r.id, { id: r.id, name: adultBrandName(g, b, r.name, r.real, out.size), hq: r.hq, founded: r.founded, share: 0, quality: r.quality, tech: r.tech, trend, legacy: r.legacy, real: r.real, tier: r.tier, ...(r.seg ? { seg: r.seg } : {}), ...(r.extra ? { extra: r.extra } : {}) })
   }
   return out
 }
@@ -318,8 +383,8 @@ export function marketViewOf(g: GameState, b: BizState): MarketView {
     fringe,
     worldShare,
     home,
-    antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio),
-    history: (st?.history ?? []).map((h) => ({ year: h.year, share: h.share })),
+    antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio, rivals),
+    history: (st?.history ?? []).map((h) => ({ year: h.year, share: h.share, rank: h.rank, size: h.size, ...(h.lead !== undefined ? { lead: h.lead } : {}), ...(h.hhi !== undefined ? { hhi: h.hhi } : {}) })),
   }
 }
 

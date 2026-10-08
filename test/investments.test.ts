@@ -112,9 +112,12 @@ describe('menus and access', () => {
     const local = findNode(nodes, 'inv-local')
     expect(local && local.type === 'info' && typeof local.text === 'string' ? local.text : '').toMatch(/Tokyo Stock Exchange/)
     const stocks = findNode(nodes, 'inv-stocks') as MenuGroup
-    const offers = stocks.children(g)
+    // Real companies fill the listing slots (up to 36 on a big exchange), grouped under size headings.
+    const rows = stocks.children(g)
+    expect(rows.some((n) => n.type === 'heading')).toBe(true)
+    const offers = rows.filter((n) => n.type !== 'heading')
     expect(offers.length).toBeGreaterThanOrEqual(8)
-    expect(offers.length).toBeLessThanOrEqual(12)
+    expect(offers.length).toBeLessThanOrEqual(44)
     for (const o of offers) {
       expect(o.type).toBe('menu')
       const sub = typeof (o as MenuGroup).subtitle === 'function' ? ((o as MenuGroup).subtitle as (g: GameState) => string)(g) : (o as MenuGroup).subtitle
@@ -328,7 +331,7 @@ describe('trading', () => {
   it('works through the menu actions', () => {
     const g = adult('jp', 30_000)
     const stocks = findNode(children(g, investmentsMenu), 'inv-stocks') as MenuGroup
-    const offer = stocks.children(g)[0] as MenuGroup
+    const offer = stocks.children(g).find((n) => n.type === 'menu') as MenuGroup
     const buy = offer.children(g).find((n) => n.type === 'action' && n.id.startsWith('inv-buy-')) as MenuAction
     expect(buy.input?.max).toBe(30_000)
     expect(buy.disabledReason?.(g)).toBeNull()

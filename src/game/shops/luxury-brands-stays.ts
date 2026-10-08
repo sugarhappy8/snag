@@ -55,7 +55,7 @@ export interface Voyage {
 }
 
 export const VOYAGES: Voyage[] = [
-  { id: 'liner-cunard', brand: 'cunard', label: 'First-class liner crossing with Cunard', mode: 'sea', from: 1900, until: 1967, base: 9000, blurb: 'Six days across the Atlantic with a captain’s table and a string quartet.' },
+  { id: 'liner-cunard', brand: 'cunard', label: 'First-class liner crossing with Cunard', mode: 'sea', from: 1900, base: 9000, blurb: 'Six days across the Atlantic with a captain’s table and a string quartet.' },
   { id: 'liner-white-star', brand: 'white-star-line', label: 'First-class liner crossing with White Star', mode: 'sea', from: 1900, until: 1934, base: 10000, blurb: 'A suite on a floating palace with a grand staircase.' },
   { id: 'clipper', brand: 'pan-am', label: 'Pan Am Clipper first class', mode: 'air', from: 1939, until: 1991, base: 9000, blurb: 'Sleeper berths and a dining room in the sky.' },
   { id: 'twa-first', brand: 'twa', label: 'TWA first class', mode: 'air', from: 1946, until: 2001, base: 7000, blurb: 'White tablecloths and a lounge over the Atlantic.' },

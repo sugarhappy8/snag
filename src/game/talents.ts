@@ -8,6 +8,8 @@
 //   Athletics / Gaming → faster training, better scouting / esports ranks and better games
 //   Academics / Programming → faster smarts / coding growth, better grades and projects
 //   Cooking / Crime / Leadership → chef and food businesses, crime success, elections and morale
+//   MainCharacter → every talent at once (hasTalent is true for any id) and mastery of anything
+//               after the first time (mastery.ts); it takes one of the MAX_START_TALENTS slots
 // Purple hints are shown with ChoiceOption.hint, MenuBase.hint and AnnualReportData.talentHint.
 import type { GameState } from './types'
 
@@ -27,6 +29,7 @@ export type TalentId =
   | 'Programming'
   | 'Leadership'
   | 'Gaming'
+  | 'MainCharacter'
 
 export interface SpecialTalentDef {
   id: TalentId
@@ -53,7 +56,14 @@ export const SPECIAL_TALENTS: readonly SpecialTalentDef[] = [
   { id: 'Programming', label: 'Programming', emoji: '\u{1F4BB}', perk: 'Coding skill grows faster; better projects, apps and tech jobs.' },
   { id: 'Leadership', label: 'Leadership', emoji: '\u{1F3DB}\u{FE0F}', perk: 'Win elections and promotions more easily; people you manage are happier.' },
   { id: 'Gaming', label: 'Gaming', emoji: '\u{1F3AE}', perk: 'Climb esports ranks faster and make better video games.' },
+  { id: 'MainCharacter', label: 'Main Character Syndrome', emoji: '\u{1F31F}', perk: 'You have every talent, and anything you do once, you master.' },
 ]
+
+/** The id of the talent that counts as every other talent. */
+export const MAIN_CHARACTER: TalentId = 'MainCharacter'
+
+/** Every talent a character can have besides Main Character Syndrome itself. */
+export const ALL_TALENT_IDS: readonly TalentId[] = SPECIAL_TALENTS.filter((t) => t.id !== MAIN_CHARACTER).map((t) => t.id)
 
 /** How many special talents a new life may start with. */
 export const MAX_START_TALENTS = 3
@@ -88,26 +98,58 @@ export function pickedTalents(g: GameState): TalentId[] {
   return normalizeTalents(g.character.talents, SPECIAL_TALENTS.length)
 }
 
-/** Every talent the character has: picked before birth plus the one discovered in childhood. */
-export function characterTalents(g: GameState): string[] {
+/** The talents named on the character: picked before birth plus the one discovered in childhood. */
+function namedTalents(g: GameState): string[] {
   const c = g.character
   const out: string[] = Array.isArray(c.talents) ? c.talents.filter((t): t is string => typeof t === 'string') : []
   if (c.talent && !out.includes(c.talent)) out.push(c.talent)
   return [...new Set(out)]
 }
 
-/** True when the character has this talent (picked before birth or discovered as a kid). */
-export function hasTalent(g: GameState, id: TalentId): boolean {
-  return characterTalents(g).includes(id)
+/** True when the character has Main Character Syndrome: every talent, and mastery of anything done once. */
+export function hasMainCharacter(g: GameState): boolean {
+  return namedTalents(g).includes(MAIN_CHARACTER)
+}
+
+/**
+ * The talents to name in summaries, the profile, the CV and the obituary: picked before birth
+ * plus the one discovered in childhood. Main Character Syndrome stands alone (not 15 chips).
+ */
+export function characterTalents(g: GameState): string[] {
+  const named = namedTalents(g)
+  return named.includes(MAIN_CHARACTER) ? [MAIN_CHARACTER] : named
+}
+
+/** Same as characterTalents (kept for readability where the profile shows chips). */
+export function shownTalents(g: GameState): string[] {
+  return characterTalents(g)
+}
+
+/**
+ * Every talent the character effectively has, for code that matches talents by name: Main
+ * Character Syndrome plus every special talent id.
+ */
+export function effectiveTalents(g: GameState): string[] {
+  const named = namedTalents(g)
+  return named.includes(MAIN_CHARACTER) ? [...new Set([MAIN_CHARACTER, ...ALL_TALENT_IDS, ...named])] : named
+}
+
+/**
+ * True when the character has this talent (picked before birth or discovered as a kid). Main
+ * Character Syndrome has every talent, including childhood ones that are not special talents.
+ */
+export function hasTalent(g: GameState, id: TalentId | string): boolean {
+  const named = namedTalents(g)
+  return named.includes(id) || named.includes(MAIN_CHARACTER)
 }
 
 /** `mult` when the character has the talent, else 1 (for skill growth, odds, prices...). */
-export function talentMult(g: GameState, id: TalentId, mult: number): number {
+export function talentMult(g: GameState, id: TalentId | string, mult: number): number {
   return hasTalent(g, id) ? mult : 1
 }
 
 /** A purple hint string for ChoiceOption.hint / MenuBase.hint ('' when the talent is missing). */
-export function talentHint(g: GameState, id: TalentId, text: string): string {
+export function talentHint(g: GameState, id: TalentId | string, text: string): string {
   return hasTalent(g, id) ? `${HINT_EMOJI} ${text}` : ''
 }
 

@@ -6,6 +6,8 @@ import { seeded } from '../assets'
 import { canUseComputer } from '../computer'
 import { addLoan, offeredRate } from '../finance'
 import { addMoney, addRelationship, addStat, count, formatMoney, log, parents, relationLabel } from '../core'
+import { brandAvailable, brandsInCategory } from '../data/brands'
+import { PRESENT_YEAR } from '../history/timeline'
 import { marketOf } from '../data/markets'
 import { moneyScale } from '../prison'
 import { rand, randInt } from '../rng'
@@ -486,9 +488,17 @@ export function enforcement(countryId: string): number {
 const BROKER_SUFFIX = ['Securities', 'Direct', 'Invest', 'Trade', 'Brokerage', 'Markets']
 const BROKER_FALLBACK = ['Summit', 'Harbor', 'Pioneer', 'Keystone', 'Meridian', 'Lighthouse']
 
-/** A local-sounding online broker for a country (deterministic, invented). */
-export function brokerName(countryId: string): string {
-  const r = seeded(`broker|${countryId}`)
+/**
+ * An online broker for a country and year (deterministic). A real brokerage from the brand registry
+ * that traded there then, home-market ones first; the invented local-sounding name is the fallback.
+ */
+export function brokerName(countryId: string, year: number = PRESENT_YEAR): string {
+  const r = seeded(`broker|${countryId}|${year}`)
+  const real = brandsInCategory('brokerage').filter((b) => brandAvailable(b, countryId, year))
+  if (real.length) {
+    const home = real.filter((b) => b.hq === countryId)
+    return r.pick(home.length && r.next() < 0.75 ? home : real).name
+  }
   const words = marketOf(countryId).nameWords.filter((w) => /^[A-Za-z][A-Za-z' -]{1,14}$/.test(w))
   const word = words.length ? r.pick(words) : r.pick(BROKER_FALLBACK)
   return `${word} ${r.pick(BROKER_SUFFIX)}`

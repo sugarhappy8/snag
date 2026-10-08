@@ -46,7 +46,7 @@ export const WATCH_LINES: LuxLine[] = [
   w('grand-seiko', 'spring-drive', 'Spring Drive', 2004, 9500),
   // Luxury
   w('omega', 'seamaster', 'Seamaster', 1948, 5800, { variants: [['Steel', 1], ['Steel and gold', 1.5]] }),
-  w('omega', 'speedmaster', 'Speedmaster', 1957, 7000, { blurb: 'The chronograph that went to the Moon.', variants: [['Steel', 1], ['Moonwatch Sapphire', 1.25]] }),
+  w('omega', 'speedmaster', 'Speedmaster', 1957, 7000, { blurb: 'A rugged chronograph born on the racetrack.', variants: [['Steel', 1], ['Moonwatch Sapphire', 1.25]] }),
   w('omega', 'constellation', 'Constellation', 1952, 6500),
   w('omega', 'de-ville', 'De Ville', 1960, 4500),
   w('omega', 'planet-ocean', 'Planet Ocean', 2005, 6500),
@@ -136,7 +136,7 @@ export const BAG_LINES: LuxLine[] = [
   h('hermes', 'constance', 'Constance', 1959, 10500, { cls: 'icon-bag', scarce: 2005 }),
   h('hermes', 'birkin', 'Birkin', 1984, 12500, { cls: 'icon-bag', scarce: 1995, variants: [['25', 0.95], ['30', 1], ['35', 1.05], ['Exotic leather', 5]], blurb: 'The bag with a waiting list.' }),
   l('rimowa', 'topas', 'Topas Aluminium Suitcase', 1950, 1700, { cls: 'bag', blurb: 'Grooved aluminium that gets better with scratches.' }),
-  l('tumi', 'alpha', 'Alpha Briefcase', 1975, 650, { cls: 'bag' }),
+  l('tumi', 'alpha', 'Business Briefcase', 1975, 650, { cls: 'bag' }),
 ]
 
 export const FASHION_LINES: LuxLine[] = [
@@ -153,7 +153,7 @@ export const FASHION_LINES: LuxLine[] = [
   f('dior', 'bar-jacket', 'Bar Jacket', 1947, 4800, { blurb: 'The cinched waist of the New Look.' }),
   f('chanel', 'tweed-suit', 'Tweed Suit', 1954, 7500),
   f('saint-laurent', 'le-smoking', 'Le Smoking Tuxedo', 1966, 5500),
-  f('valentino', 'red-gown', 'Valentino Red Gown', 1959, 9000, { blurb: 'A red that became a trademark.' }),
+  f('valentino', 'red-gown', 'Valentino Red Gown', 1960, 9000, { blurb: 'A red that became a trademark.' }),
   f('versace', 'silk-shirt', 'Printed Silk Shirt', 1978, 1100),
   f('maison-margiela', 'tabi', 'Tabi Boots', 1988, 1200),
   f('alexander-mcqueen', 'tailoring', 'Tailored Jacket', 1992, 2900),
@@ -192,7 +192,7 @@ export const PEN_LINES: LuxLine[] = [
   p('parker', 'duofold', 'Duofold', 1921, 550, { blurb: 'The bright red pen with the 25-year nib guarantee.' }),
   p('parker', '51', 'Parker 51', 1941, 450),
   p('pelikan', 'souveran', 'Souverän M800', 1987, 650),
-  p('montblanc', 'meisterstuck', 'Meisterstück 149', 1924, 1000, { blurb: 'A white star on a black pen.' }),
+  p('montblanc', 'meisterstuck', 'Meisterstück', 1924, 1000, { blurb: 'A white star on a black pen.' }),
   fi('wedgwood', 'jasperware', 'Jasperware Vase', 1775, 900),
   fi('meissen', 'blue-onion', 'Blue Onion Dinner Service', 1739, 3500),
   fi('baccarat', 'harcourt', 'Harcourt Glasses', 1841, 1200),

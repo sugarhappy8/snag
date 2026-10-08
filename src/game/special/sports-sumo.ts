@@ -5,7 +5,8 @@
 import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
-import { hasTalent, talentMult } from '../talents'
+import { bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
+import { hasMainCharacter, hasTalent, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuGroup, MenuNode } from '../types'
 import { addFame, attendedUniversity, fameToward, hire, leave, myJob, peek, prof, quitNote, say, short, syncTenure, tell, view } from './common'
 import { addBuzz, addHeadTrauma, honor, injure, logistic, recordCareer, sportsGate, tidy, trainGain } from './sports-core'
@@ -58,7 +59,15 @@ const initSumo = (g: GameState): SumoProfile => ({
 })
 
 function sumoProfile(g: GameState): SumoProfile {
-  return prof(g, 'sports.sumo', initSumo)
+  const p = prof(g, 'sports.sumo', initSumo)
+  // Main Character Syndrome: the first morning at the stable, the technique is already at the body's
+  // ceiling for the age (and follows it down later). Weight, the banzuke and the bouts are still earned.
+  if (hasMainCharacter(g)) {
+    masterFirstTime(g, 'sport.sumo', 'sport', 'sumo')
+    const top = bodyCeiling(g, { peakEnd: 30 })
+    for (const s of SKILLS) p.skills[s] = top
+  }
+  return p
 }
 
 function viewSumo(g: GameState): SumoProfile | null {
@@ -84,7 +93,8 @@ function sumoRating(g: GameState, p: SumoProfile): number {
   const weightBonus = Math.max(-6, Math.min(8, (p.weight - 110) / 7))
   let r = avg * 0.75 + g.character.hidden.athleticism * 0.15 + weightBonus + (hasTalent(g, 'Athletics') ? 5 : 0)
   if (g.character.stats.health < 50) r -= (50 - g.character.stats.health) / 5
-  return Math.max(1, Math.min(99, Math.round(r)))
+  // Main Character Syndrome: technique is instant, the level against the stable takes years.
+  return Math.max(1, Math.min(99, masteryCap(g, 'sport.sumo'), Math.round(r)))
 }
 
 // ---------------------------------------------------------------------------
@@ -403,6 +413,7 @@ export function yearlySumo(g: GameState): void {
   fameToward(g, d.div >= 9 ? 85 : d.div >= 8 ? 65 : d.div >= 5 ? 35 : d.div >= 4 ? 15 : 3, 6)
   // Skills settle; age bites after 30; weight helps until it hurts.
   for (const s of SKILLS) {
+    if (hasMainCharacter(g)) break
     const delta = c.age < 24 ? randInt(g, 1, 2) : c.age > 30 ? -randInt(g, 1, 2) - Math.floor((c.age - 30) / 3) : 0
     p.skills[s] = Math.max(1, Math.min(100, (p.skills[s] ?? 0) + delta))
   }
