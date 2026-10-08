@@ -8,6 +8,7 @@ import { yearlyComputer } from './computer'
 import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
+import { currencyInflation } from './data/currencies'
 import { yearlyWealth } from './events/wealth'
 import { yearlyWillFeuds } from './events/will-feud'
 import { yearlyNepo } from './business/nepo'
@@ -60,6 +61,11 @@ export function ageUp(g: GameState): void {
   // before discarding the old year's income; already-paid tax is credited.
   const closingTax = settleIncomeTax(g)
   if (closingTax > 0) log(g, `I paid ${formatMoney(closingTax)} in remaining income tax for the year.`)
+  // Cash is fixed in local nominal units, unlike wages and real assets. The engine
+  // stores purchasing power: erode the opening balance before any new-year income
+  // arrives, using the same inflation as the currency display. A redenomination
+  // changes display units only and must never be counted as inflation or income.
+  c.money /= 1 + currencyInflation(c.countryId, g.year + 1)
   c.age += 1
   g.year += 1
   g.yearActions = {}

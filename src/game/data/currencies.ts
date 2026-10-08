@@ -1336,6 +1336,21 @@ function rateIn(infl: readonly [number, number | null][], year: number): number 
 }
 
 const cache = new Map<string, number[]>()
+const inflationCache = new Map<string, readonly [number, number | null][]>()
+
+function inflationHistory(countryId: string): readonly [number, number | null][] {
+  const hit = inflationCache.get(countryId)
+  if (hit) return hit
+  const rows = (moneyOf(countryId).infl ?? []).map((x, i) => [x, i] as const)
+    .sort((a, b) => a[0][0] - b[0][0] || a[1] - b[1]).map(([x]) => x)
+  inflationCache.set(countryId, rows)
+  return rows
+}
+
+/** Local price inflation used by the display, excluding currency redenominations. */
+export function currencyInflation(countryId: string, year: number): number {
+  return year > PRESENT_YEAR ? usInflation(year) : rateIn(inflationHistory(countryId), Math.round(year))
+}
 
 /** units[y - HISTORY_START]: display units of the year's currency per internal dollar, prices of the year. */
 function unitsTable(countryId: string): number[] {
@@ -1348,7 +1363,7 @@ function unitsTable(countryId: string): number[] {
   const perAt = new Map<number, number>()
   for (const e of m.eras ?? []) perAt.set(e.until, (perAt.get(e.until) ?? 1) * e.per)
   // Stable sort: when two entries share a year, the later one (an override) wins.
-  const infl = (m.infl ?? []).map((x, i) => [x, i] as const).sort((a, b) => a[0][0] - b[0][0] || a[1] - b[1]).map(([x]) => x)
+  const infl = inflationHistory(countryId)
   for (let y = PRESENT_YEAR; y > HISTORY_START; y--) {
     const i = y - HISTORY_START
     out[i - 1] = (out[i] / (1 + rateIn(infl, y))) * (perAt.get(y) ?? 1)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
 import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
+import { currencyInflation } from '../src/game/data/currencies'
 import { earnIncome } from '../src/game/core'
 import { incomeTax, settleIncomeTax, taxAdditionalIncome } from '../src/game/finance'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
@@ -47,7 +48,7 @@ describe('v1.8.2 financial regressions', () => {
     // Isolate the year boundary from random events and the next year's new earnings.
     const hooks = YEARLY_HOOKS.splice(0)
     try { ageUp(g) } finally { YEARLY_HOOKS.push(...hooks) }
-    expect(g.character.money).toBe(before - (incomeTax('us', 1_120_000) - alreadyPaid))
+    expect(g.character.money).toBe((before - (incomeTax('us', 1_120_000) - alreadyPaid)) / (1 + currencyInflation('us', g.year)))
     expect(g.counters.taxesPaid).toBe(incomeTax('us', 1_120_000))
     expect(g.flags.taxableIncome).toBe(0)
     expect(g.flags.taxesPaid).toBe(0)

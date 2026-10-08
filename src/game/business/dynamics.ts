@@ -3,6 +3,7 @@ import { seeded } from '../assets'
 import { notice } from '../core'
 import type { GameState, Json } from '../types'
 import type { BizState } from './state'
+import { inventionDemand, isInventionTier, isResearchKind, nationalPatentLaw, type PatentProtection, type ResearchKind } from './inventions'
 import { clampN, num, rec, str } from './util'
 
 export const STRATEGIES = [
@@ -18,8 +19,14 @@ export const STRATEGIES = [
   { id: 'efficiency', label: 'Process redesign', brief: 'Reduce waste and improve throughput', demand: 0, cost: -.08, term: 4 },
 ] as const
 
-export interface Patent { name: string; kind: 'early' | 'frontier'; launched: number; expires: number }
-export interface Research { name: string; kind: 'early' | 'frontier'; started: number; years: number; odds: number; budget: number }
+export interface Patent {
+  name: string; kind: ResearchKind; launched: number; expires: number
+  id?: string; ownerId?: string; demand?: number; efficiency?: number; protections?: PatentProtection[]
+}
+export interface Research {
+  name: string; kind: ResearchKind; started: number; years: number; odds: number; budget: number
+  id?: string; demand?: number; efficiency?: number
+}
 export interface Expansion {
   strategies: { id: string; country: string; started: number; expires: number }[]
   studies: { country: string; year: number }[]
@@ -35,10 +42,34 @@ export function expansionOf(b: BizState): Expansion {
   return {
     strategies: rows(d?.strategies).filter(x => STRATEGIES.some(s => s.id === x.id) && typeof x.country === 'string').slice(-1200).map(x => ({ id: str(x.id), country: str(x.country), started: num(x.started), expires: num(x.expires) })),
     studies: rows(d?.studies).slice(-100).map(x => ({ country: str(x.country), year: num(x.year) })),
-    research: r && typeof r.name === 'string' && (r.kind === 'early' || r.kind === 'frontier') ? { name: r.name, kind: r.kind, started: num(r.started), years: clampN(num(r.years, 3), 1, 8), odds: clampN(num(r.odds), 0, 1), budget: Math.max(0, num(r.budget)) } : null,
-    patents: rows(d?.patents).filter(x => typeof x.name === 'string' && (x.kind === 'early' || x.kind === 'frontier')).slice(-40).map(x => ({ name: str(x.name), kind: x.kind as Patent['kind'], launched: num(x.launched), expires: num(x.expires) })),
+    research: r && typeof r.name === 'string' && isResearchKind(r.kind) ? { name: r.name, kind: r.kind, started: num(r.started), years: clampN(num(r.years, 3), 0, 8), odds: clampN(num(r.odds), 0, 1), budget: Math.max(0, num(r.budget)), ...inventionFields(r) } : null,
+    patents: rows(d?.patents).filter(x => typeof x.name === 'string' && isResearchKind(x.kind)).map(x => ({ name: str(x.name), kind: x.kind as Patent['kind'], launched: num(x.launched), expires: num(x.expires), ...inventionFields(x), ...(typeof x.ownerId === 'string' ? { ownerId: x.ownerId } : {}), ...(Array.isArray(x.protections) ? { protections: rows(x.protections).filter(p => typeof p.country === 'string').map(p => ({ country: str(p.country), filed: num(p.filed), expires: num(p.expires) })) } : {}) })),
     lastYear: num(d?.lastYear, -1),
   }
+}
+
+function inventionFields(row: Record<string, Json>) {
+  return {
+    ...(typeof row.id === 'string' ? { id: row.id } : {}),
+    ...(typeof row.demand === 'number' ? { demand: clampN(row.demand, 0, 4) } : {}),
+    ...(typeof row.efficiency === 'number' ? { efficiency: clampN(row.efficiency, 0, .2) } : {}),
+  }
+}
+
+export function protectedIn(p: Patent, country: string, year: number): boolean {
+  if (p.launched > year) return false
+  // Keep the old global grants intact; new inventions require national filings.
+  return isInventionTier(p.kind)
+    ? !!p.protections?.some(t => t.country === country && t.filed <= year && t.expires > year)
+    : p.expires > year
+}
+
+export function productDemand(p: Patent, country: string, year: number): number {
+  if (p.launched > year) return 0
+  if (!isInventionTier(p.kind)) return protectedIn(p, country, year) ? (p.kind === 'frontier' ? .8 : .5) : 0
+  const demand = inventionDemand(p.id ?? p.name, p.demand ?? 0, country, year)
+  // The company keeps its technology after expiry; competing copies erode the monopoly premium.
+  return demand * (.35 + (protectedIn(p, country, year) ? .65 * nationalPatentLaw(country, year).enforcement : 0))
 }
 
 export function saveExpansion(b: BizState, x: Expansion): void { b.expansion = x as unknown as Json }
@@ -80,10 +111,11 @@ export function businessEffects(g: GameState, b: BizState, country: string, year
     if (p.id === 'training' || p.id === 'efficiency') capacity += .08
     if (p.id === 'resilience' && national.demand < 1) demand += (1 - national.demand) * .7
   }
-  const active = x.patents.filter(p => p.launched <= year && p.expires > year)
+  const active = x.patents.filter(p => protectedIn(p, country, year))
   // Exclusivity concerns the invented product, not ownership of the entire national industry.
-  const patent = Math.min(1.5, active.reduce((s, p) => s + (p.kind === 'frontier' ? .8 : .5), 0))
-  return { demand: clampN(demand, .7, 1.65) * (1 + patent), cost: clampN(cost - patent * .06, .65, 1.5), capacity: Math.min(1.4, capacity), patents: active.length }
+  const patent = Math.min(8, x.patents.reduce((s, p) => s + productDemand(p, country, year), 0))
+  const efficiency = x.patents.filter(p => p.launched <= year).reduce((s, p) => s + (isInventionTier(p.kind) ? (p.efficiency ?? 0) : protectedIn(p, country, year) ? (p.kind === 'frontier' ? .8 : .5) * .06 : 0), 0)
+  return { demand: clampN(demand, .7, 1.65) * (1 + patent), cost: clampN(cost - Math.min(.35, efficiency), .65, 1.5), capacity: Math.min(1.4, capacity), patents: active.length }
 }
 
 /** Real operating failures of the player's large company affect confidence in its national sector. */
