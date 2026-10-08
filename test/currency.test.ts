@@ -99,6 +99,18 @@ describe('plain US dollars are unchanged', () => {
 })
 
 describe('local currency (today’s money)', () => {
+  it('distinguishes won from yen and keeps converted amounts in won', () => {
+    show('kr', 2026, 'local', false)
+    expect(showMoney(1)).toMatchObject({ code: 'KRW', symbol: '₩', amount: 1400, decimals: 0 })
+    expect(formatMoney(40_000)).toBe('₩56,000,000')
+    expect(shortMoney(1_000_000)).toBe('₩1.4B')
+    expect(formatCents(3.5)).toBe('₩4,900')
+    expect(formatPrice(3.5)).toBe('₩4,900')
+    expect(formatMoney(-1000)).toBe('-₩1,400,000')
+    show('jp', 2026, 'local', false)
+    expect(formatMoney(1000)).toBe('¥150,000')
+  })
+
   it('shows each country in its own money and magnitude', () => {
     const cases: [string, RegExp, number, number][] = [
       ['jp', /^¥[\d,]+$/, 100, 200],
@@ -255,6 +267,7 @@ describe('currency data', () => {
     for (const c of COUNTRIES) {
       expect(hasCurrencyData(c.id), c.id).toBe(true)
       const cur = presentCurrency(c.id)
+      expect(c.currency, `${c.name} currency symbol`).toBe(cur.symbol)
       if (hasMarketData(c.id)) expect(cur.code, c.id).toBe(marketOf(c.id).currencyCode)
       for (let y = HISTORY_START; y <= PRESENT_YEAR + 60; y += 1) {
         const u = unitsPerDollar(c.id, y)

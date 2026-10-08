@@ -88,7 +88,7 @@ export interface Country {
   demonym: string
   flag: string
   continent: Continent
-  /** Symbol shown next to money in this country ('$', '€' or '£'). */
+  /** Present-day currency symbol; use core's money formatters for converted, year-aware amounts. */
   currency: string
   cities: string[]
   names: NameRegion
@@ -157,7 +157,7 @@ export const COUNTRIES: Country[] = [
 
   // ----- North America & the Caribbean -----
   nation({
-    id: 'aw', name: 'Aruba', demonym: 'Aruban', continent: 'North America', currency: '$',
+    id: 'aw', name: 'Aruba', demonym: 'Aruban', continent: 'North America', currency: 'Afl.',
     cities: ['Oranjestad', 'San Nicolaas', 'Noord', 'Santa Cruz', 'Paradera', 'Savaneta', 'Tanki Leendert', 'Palm Beach', 'Pos Chiquito'],
     names: 'dutch', wealth: 0.6, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -165,7 +165,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 88, None: 8 },
   }),
   nation({
-    id: 'bs', name: 'Bahamas', demonym: 'Bahamian', continent: 'North America', currency: '$',
+    id: 'bs', name: 'Bahamas', demonym: 'Bahamian', continent: 'North America', currency: 'B$',
     cities: ['Nassau', 'Freeport', 'West End', 'Marsh Harbour', 'Spanish Wells', 'George Town', 'Andros Town', 'Alice Town', 'Dunmore Town', 'Matthew Town'],
     names: 'caribbean', wealth: 0.6, drivingAge: 17, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -173,7 +173,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 93, None: 4 },
   }),
   nation({
-    id: 'bz', name: 'Belize', demonym: 'Belizean', continent: 'North America', currency: '$',
+    id: 'bz', name: 'Belize', demonym: 'Belizean', continent: 'North America', currency: 'BZ$',
     cities: ['Belize City', 'Belmopan', 'San Ignacio', 'Orange Walk Town', 'Dangriga', 'Corozal Town', 'San Pedro', 'Punta Gorda', 'Benque Viejo del Carmen', 'Placencia'],
     names: 'caribbean', wealth: 0.28, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -181,7 +181,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 85, None: 15 },
   }),
   nation({
-    id: 'ca', name: 'Canada', demonym: 'Canadian', continent: 'North America', currency: '$',
+    id: 'ca', name: 'Canada', demonym: 'Canadian', continent: 'North America', currency: 'CA$',
     cities: ['Toronto', 'Montreal', 'Vancouver', 'Calgary', 'Edmonton', 'Ottawa', 'Winnipeg', 'Quebec City', 'Halifax', 'Regina', 'Saskatoon', 'Victoria', 'Hamilton', 'Kelowna'],
     names: 'anglo', wealth: 0.9, drivingAge: 16, drinkingAge: 19,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -189,7 +189,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 53, None: 35, Islam: 5, Hinduism: 2, Sikhism: 2, Buddhism: 1, Judaism: 1 },
   }),
   nation({
-    id: 'cr', name: 'Costa Rica', demonym: 'Costa Rican', continent: 'North America', currency: '$',
+    id: 'cr', name: 'Costa Rica', demonym: 'Costa Rican', continent: 'North America', currency: '₡',
     cities: ['San José', 'Alajuela', 'Cartago', 'Heredia', 'Liberia', 'Puntarenas', 'Limón', 'San Isidro de El General', 'Quepos', 'Tamarindo'],
     names: 'hispanic', wealth: 0.42, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -197,7 +197,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 80, None: 18 },
   }),
   nation({
-    id: 'cu', name: 'Cuba', demonym: 'Cuban', continent: 'North America', currency: '$',
+    id: 'cu', name: 'Cuba', demonym: 'Cuban', continent: 'North America', currency: 'CUP',
     cities: ['Havana', 'Santiago de Cuba', 'Camagüey', 'Holguín', 'Santa Clara', 'Guantánamo', 'Bayamo', 'Cienfuegos', 'Pinar del Río', 'Matanzas', 'Trinidad', 'Varadero'],
     names: 'hispanic', wealth: 0.2, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -205,7 +205,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 60, None: 25, Santería: 15 },
   }),
   nation({
-    id: 'do', name: 'Dominican Republic', demonym: 'Dominican', continent: 'North America', currency: '$',
+    id: 'do', name: 'Dominican Republic', demonym: 'Dominican', continent: 'North America', currency: 'RD$',
     cities: ['Santo Domingo', 'Santiago de los Caballeros', 'Puerto Plata', 'Punta Cana', 'La Romana', 'San Pedro de Macorís', 'San Francisco de Macorís', 'La Vega', 'Higüey', 'Barahona', 'Samaná'],
     names: 'hispanic', wealth: 0.35, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -221,7 +221,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 85, None: 14 },
   }),
   nation({
-    id: 'gt', name: 'Guatemala', demonym: 'Guatemalan', continent: 'North America', currency: '$',
+    id: 'gt', name: 'Guatemala', demonym: 'Guatemalan', continent: 'North America', currency: 'Q',
     cities: ['Guatemala City', 'Mixco', 'Villa Nueva', 'Quetzaltenango', 'Antigua Guatemala', 'Escuintla', 'Cobán', 'Petapa', 'Huehuetenango', 'Puerto Barrios', 'Flores'],
     names: 'hispanic', wealth: 0.22, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -229,7 +229,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 87, None: 12 },
   }),
   nation({
-    id: 'ht', name: 'Haiti', demonym: 'Haitian', continent: 'North America', currency: '$',
+    id: 'ht', name: 'Haiti', demonym: 'Haitian', continent: 'North America', currency: 'G',
     cities: ['Port-au-Prince', 'Carrefour', 'Delmas', 'Cap-Haïtien', 'Pétion-Ville', 'Gonaïves', 'Les Cayes', 'Jacmel', 'Saint-Marc', 'Port-de-Paix', 'Jérémie'],
     names: 'haitian', wealth: 0.15, drivingAge: 18, drinkingAge: 16,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -237,7 +237,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 80, Vodou: 10, None: 10 },
   }),
   nation({
-    id: 'jm', name: 'Jamaica', demonym: 'Jamaican', continent: 'North America', currency: '$',
+    id: 'jm', name: 'Jamaica', demonym: 'Jamaican', continent: 'North America', currency: 'J$',
     cities: ['Kingston', 'Montego Bay', 'Spanish Town', 'Portmore', 'Mandeville', 'May Pen', 'Ocho Rios', 'Negril', 'Port Antonio', 'Savanna-la-Mar', 'Falmouth'],
     names: 'caribbean', wealth: 0.28, drivingAge: 17, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: false,
@@ -245,7 +245,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 69, None: 21, Rastafari: 2 },
   }),
   nation({
-    id: 'mx', name: 'Mexico', demonym: 'Mexican', continent: 'North America', currency: '$',
+    id: 'mx', name: 'Mexico', demonym: 'Mexican', continent: 'North America', currency: 'MX$',
     cities: ['Mexico City', 'Guadalajara', 'Monterrey', 'Cancún', 'Tijuana', 'Juárez', 'Mazatlán', 'Puerto Vallarta', 'Cabo San Lucas', 'Nogales', 'Puebla', 'Mérida', 'Oaxaca', 'León', 'Acapulco'],
     names: 'hispanic', wealth: 0.4, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -253,7 +253,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 88, None: 10 },
   }),
   nation({
-    id: 'ni', name: 'Nicaragua', demonym: 'Nicaraguan', continent: 'North America', currency: '$',
+    id: 'ni', name: 'Nicaragua', demonym: 'Nicaraguan', continent: 'North America', currency: 'C$',
     cities: ['Managua', 'León', 'Masaya', 'Granada', 'Matagalpa', 'Chinandega', 'Estelí', 'Jinotega', 'Bluefields', 'San Juan del Sur', 'Rivas'],
     names: 'hispanic', wealth: 0.2, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -261,7 +261,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 83, None: 15 },
   }),
   nation({
-    id: 'pa', name: 'Panama', demonym: 'Panamanian', continent: 'North America', currency: '$',
+    id: 'pa', name: 'Panama', demonym: 'Panamanian', continent: 'North America', currency: 'B/.',
     cities: ['Panama City', 'Colón', 'David', 'San Miguelito', 'La Chorrera', 'Santiago de Veraguas', 'Chitré', 'Bocas del Toro', 'Arraiján', 'Boquete', 'Penonomé'],
     names: 'hispanic', wealth: 0.5, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -279,7 +279,7 @@ export const COUNTRIES: Country[] = [
 
   // ----- South America -----
   nation({
-    id: 'ar', name: 'Argentina', demonym: 'Argentine', continent: 'South America', currency: '$',
+    id: 'ar', name: 'Argentina', demonym: 'Argentine', continent: 'South America', currency: 'AR$',
     cities: ['Buenos Aires', 'Córdoba', 'Rosario', 'Mendoza', 'La Plata', 'Mar del Plata', 'San Miguel de Tucumán', 'Salta', 'Santa Fe', 'Bariloche', 'Ushuaia', 'Neuquén'],
     names: 'hispanic', wealth: 0.4, drivingAge: 17, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -287,7 +287,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 75, None: 19, Islam: 1, Judaism: 1 },
   }),
   nation({
-    id: 'bo', name: 'Bolivia', demonym: 'Bolivian', continent: 'South America', currency: '$',
+    id: 'bo', name: 'Bolivia', demonym: 'Bolivian', continent: 'South America', currency: 'Bs',
     cities: ['La Paz', 'Sucre', 'Santa Cruz de la Sierra', 'Cochabamba', 'El Alto', 'Oruro', 'Potosí', 'Tarija', 'Trinidad', 'Uyuni'],
     names: 'hispanic', wealth: 0.2, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -295,7 +295,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 90, None: 8 },
   }),
   nation({
-    id: 'br', name: 'Brazil', demonym: 'Brazilian', continent: 'South America', currency: '$',
+    id: 'br', name: 'Brazil', demonym: 'Brazilian', continent: 'South America', currency: 'R$',
     cities: ['São Paulo', 'Rio de Janeiro', 'Brasília', 'Salvador', 'Fortaleza', 'Belo Horizonte', 'Manaus', 'Curitiba', 'Recife', 'Porto Alegre', 'Goiânia', 'Santos', 'Florianópolis', 'Natal'],
     names: 'portuguese', wealth: 0.35, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -303,7 +303,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 86, None: 10, Spiritism: 2 },
   }),
   nation({
-    id: 'cl', name: 'Chile', demonym: 'Chilean', continent: 'South America', currency: '$',
+    id: 'cl', name: 'Chile', demonym: 'Chilean', continent: 'South America', currency: 'CL$',
     cities: ['Santiago', 'Valdivia', 'Valparaíso', 'Viña del Mar', 'Concepción', 'Antofagasta', 'La Serena', 'Temuco', 'Puerto Montt', 'Punta Arenas', 'Iquique', 'Arica'],
     names: 'hispanic', wealth: 0.5, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -311,7 +311,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 70, None: 28 },
   }),
   nation({
-    id: 'co', name: 'Colombia', demonym: 'Colombian', continent: 'South America', currency: '$',
+    id: 'co', name: 'Colombia', demonym: 'Colombian', continent: 'South America', currency: 'COL$',
     cities: ['Bogotá', 'Medellín', 'Cali', 'Barranquilla', 'Cartagena', 'Bucaramanga', 'Santa Marta', 'Pereira', 'Manizales', 'Cúcuta', 'Ibagué', 'Pasto'],
     names: 'hispanic', wealth: 0.3, drivingAge: 16, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -327,7 +327,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 90, None: 8 },
   }),
   nation({
-    id: 'gy', name: 'Guyana', demonym: 'Guyanese', continent: 'South America', currency: '$',
+    id: 'gy', name: 'Guyana', demonym: 'Guyanese', continent: 'South America', currency: 'G$',
     cities: ['Georgetown', 'Linden', 'New Amsterdam', 'Anna Regina', 'Bartica', 'Corriverton', 'Rosignol', 'Mahaica', 'Lethem', 'Mabaruma', 'Parika'],
     names: 'caribbean', wealth: 0.4, drivingAge: 17, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -335,7 +335,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 64, Hinduism: 25, Islam: 7, None: 3 },
   }),
   nation({
-    id: 'py', name: 'Paraguay', demonym: 'Paraguayan', continent: 'South America', currency: '$',
+    id: 'py', name: 'Paraguay', demonym: 'Paraguayan', continent: 'South America', currency: '₲',
     cities: ['Asunción', 'Ciudad del Este', 'San Ignacio', 'San Pedro', 'Encarnación', 'Luque', 'San Lorenzo', 'Capiatá', 'Lambaré', 'Fernando de la Mora', 'Pedro Juan Caballero', 'Concepción'],
     names: 'hispanic', wealth: 0.28, drivingAge: 18, drinkingAge: 20,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -343,7 +343,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 96, None: 3 },
   }),
   nation({
-    id: 'pe', name: 'Peru', demonym: 'Peruvian', continent: 'South America', currency: '$',
+    id: 'pe', name: 'Peru', demonym: 'Peruvian', continent: 'South America', currency: 'S/',
     cities: ['Lima', 'Cusco', 'Machu Picchu', 'Arequipa', 'Trujillo', 'Chiclayo', 'Piura', 'Iquitos', 'Huancayo', 'Puno', 'Callao', 'Tacna'],
     names: 'hispanic', wealth: 0.3, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -351,7 +351,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 90, None: 7 },
   }),
   nation({
-    id: 'uy', name: 'Uruguay', demonym: 'Uruguayan', continent: 'South America', currency: '$',
+    id: 'uy', name: 'Uruguay', demonym: 'Uruguayan', continent: 'South America', currency: '$U',
     cities: ['Montevideo', 'Punta del Este', 'Salto', 'Paysandú', 'Las Piedras', 'Rivera', 'Maldonado', 'Tacuarembó', 'Melo', 'Colonia del Sacramento', 'Mercedes'],
     names: 'hispanic', wealth: 0.5, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -359,7 +359,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 55, None: 42, Judaism: 1 },
   }),
   nation({
-    id: 've', name: 'Venezuela', demonym: 'Venezuelan', continent: 'South America', currency: '$',
+    id: 've', name: 'Venezuela', demonym: 'Venezuelan', continent: 'South America', currency: 'Bs.',
     cities: ['Caracas', 'Maracaibo', 'Valencia', 'Barquisimeto', 'Maracay', 'Ciudad Guayana', 'Barcelona', 'Maturín', 'Mérida', 'San Cristóbal', 'Puerto La Cruz', 'Cumaná'],
     names: 'hispanic', wealth: 0.18, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: true,
@@ -401,7 +401,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 91, None: 6, Islam: 1 },
   }),
   nation({
-    id: 'cz', name: 'Czech Republic', demonym: 'Czech', continent: 'Europe', currency: '$',
+    id: 'cz', name: 'Czech Republic', demonym: 'Czech', continent: 'Europe', currency: 'Kč',
     cities: ['Prague', 'Brno', 'Ostrava', 'Plzeň', 'Liberec', 'Olomouc', 'České Budějovice', 'Hradec Králové', 'Pardubice', 'Zlín', 'Karlovy Vary'],
     names: 'west_slavic', wealth: 0.6, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -409,7 +409,7 @@ export const COUNTRIES: Country[] = [
     religions: { None: 70, Christianity: 28 },
   }),
   nation({
-    id: 'dk', name: 'Denmark', demonym: 'Danish', continent: 'Europe', currency: '$',
+    id: 'dk', name: 'Denmark', demonym: 'Danish', continent: 'Europe', currency: 'kr.',
     cities: ['Copenhagen', 'Aarhus', 'Odense', 'Aalborg', 'Esbjerg', 'Randers', 'Kolding', 'Horsens', 'Vejle', 'Roskilde', 'Herning', 'Helsingør'],
     names: 'nordic', wealth: 1, drivingAge: 18, drinkingAge: 16,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: true, conscription: true,
@@ -457,7 +457,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 88, None: 10, Islam: 2 },
   }),
   nation({
-    id: 'hu', name: 'Hungary', demonym: 'Hungarian', continent: 'Europe', currency: '$',
+    id: 'hu', name: 'Hungary', demonym: 'Hungarian', continent: 'Europe', currency: 'Ft',
     cities: ['Budapest', 'Debrecen', 'Szeged', 'Miskolc', 'Pécs', 'Győr', 'Nyíregyháza', 'Kecskemét', 'Székesfehérvár', 'Szombathely', 'Eger', 'Sopron'],
     names: 'hungarian', wealth: 0.55, drivingAge: 17, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -497,7 +497,7 @@ export const COUNTRIES: Country[] = [
     religions: { None: 55, Christianity: 37, Islam: 5 },
   }),
   nation({
-    id: 'no', name: 'Norway', demonym: 'Norwegian', continent: 'Europe', currency: '$',
+    id: 'no', name: 'Norway', demonym: 'Norwegian', continent: 'Europe', currency: 'kr',
     cities: ['Oslo', 'Bergen', 'Trondheim', 'Stavanger', 'Drammen', 'Fredrikstad', 'Kristiansand', 'Tromsø', 'Sandnes', 'Ålesund', 'Bodø', 'Lillehammer'],
     names: 'nordic', wealth: 1.1, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: true, conscription: true,
@@ -505,7 +505,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 70, None: 25, Islam: 3 },
   }),
   nation({
-    id: 'pl', name: 'Poland', demonym: 'Polish', continent: 'Europe', currency: '$',
+    id: 'pl', name: 'Poland', demonym: 'Polish', continent: 'Europe', currency: 'zł',
     cities: ['Warsaw', 'Kraków', 'Poznań', 'Łódź', 'Wrocław', 'Gdańsk', 'Szczecin', 'Lublin', 'Katowice', 'Białystok', 'Bydgoszcz', 'Gdynia', 'Zakopane'],
     names: 'polish', wealth: 0.55, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -521,7 +521,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 84, None: 14 },
   }),
   nation({
-    id: 'ro', name: 'Romania', demonym: 'Romanian', continent: 'Europe', currency: '$',
+    id: 'ro', name: 'Romania', demonym: 'Romanian', continent: 'Europe', currency: 'lei',
     cities: ['Bucharest', 'Cluj-Napoca', 'Timișoara', 'Iași', 'Constanța', 'Craiova', 'Brașov', 'Galați', 'Ploiești', 'Oradea', 'Sibiu', 'Sighișoara'],
     names: 'romanian', wealth: 0.5, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -529,7 +529,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 97, None: 2 },
   }),
   nation({
-    id: 'ru', name: 'Russia', demonym: 'Russian', continent: 'Europe', currency: '$',
+    id: 'ru', name: 'Russia', demonym: 'Russian', continent: 'Europe', currency: '₽',
     cities: ['Moscow', 'St. Petersburg', 'Novosibirsk', 'Yekaterinburg', 'Kazan', 'Nizhny Novgorod', 'Chelyabinsk', 'Samara', 'Omsk', 'Rostov-on-Don', 'Ufa', 'Krasnoyarsk', 'Vladivostok', 'Sochi', 'Murmansk'],
     names: 'slavic', wealth: 0.5, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -537,7 +537,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 63, None: 25, Islam: 10, Buddhism: 1 },
   }),
   nation({
-    id: 'rs', name: 'Serbia', demonym: 'Serbian', continent: 'Europe', currency: '$',
+    id: 'rs', name: 'Serbia', demonym: 'Serbian', continent: 'Europe', currency: 'din.',
     cities: ['Belgrade', 'Novi Sad', 'Niš', 'Kragujevac', 'Subotica', 'Zrenjanin', 'Pančevo', 'Čačak', 'Kraljevo', 'Novi Pazar', 'Smederevo', 'Leskovac'],
     names: 'south_slavic', wealth: 0.4, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -561,7 +561,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 58, None: 38, Islam: 3 },
   }),
   nation({
-    id: 'se', name: 'Sweden', demonym: 'Swedish', continent: 'Europe', currency: '$',
+    id: 'se', name: 'Sweden', demonym: 'Swedish', continent: 'Europe', currency: 'kr',
     cities: ['Stockholm', 'Gothenburg', 'Malmö', 'Halmstad', 'Uppsala', 'Västerås', 'Örebro', 'Linköping', 'Helsingborg', 'Jönköping', 'Norrköping', 'Lund', 'Umeå', 'Kiruna'],
     names: 'nordic', wealth: 0.9, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: true, conscription: true,
@@ -569,7 +569,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 55, None: 37, Islam: 7 },
   }),
   nation({
-    id: 'ch', name: 'Switzerland', demonym: 'Swiss', continent: 'Europe', currency: '$',
+    id: 'ch', name: 'Switzerland', demonym: 'Swiss', continent: 'Europe', currency: 'CHF',
     cities: ['Zurich', 'Geneva', 'Basel', 'Bern', 'Lausanne', 'Lucerne', 'Lugano', 'St. Gallen', 'Winterthur', 'Biel', 'Zug', 'Interlaken', 'Davos'],
     names: 'german', wealth: 1.15, drivingAge: 18, drinkingAge: 16,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -577,7 +577,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 58, None: 33, Islam: 6 },
   }),
   nation({
-    id: 'ua', name: 'Ukraine', demonym: 'Ukrainian', continent: 'Europe', currency: '$',
+    id: 'ua', name: 'Ukraine', demonym: 'Ukrainian', continent: 'Europe', currency: '₴',
     cities: ['Kyiv', 'Kharkiv', 'Odesa', 'Dnipro', 'Donetsk', 'Lviv', 'Zaporizhzhia', 'Kryvyi Rih', 'Mykolaiv', 'Vinnytsia', 'Poltava', 'Chernihiv', 'Uzhhorod'],
     names: 'ukrainian', wealth: 0.25, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -595,7 +595,7 @@ export const COUNTRIES: Country[] = [
 
   // ----- Africa -----
   nation({
-    id: 'dz', name: 'Algeria', demonym: 'Algerian', continent: 'Africa', currency: '$',
+    id: 'dz', name: 'Algeria', demonym: 'Algerian', continent: 'Africa', currency: 'DA',
     cities: ['Algiers', 'Oran', 'Constantine', 'Annaba', 'Blida', 'Batna', 'Sétif', 'Tlemcen', 'Béjaïa', 'Biskra', 'Tizi Ouzou', 'Ghardaïa'],
     names: 'maghrebi', wealth: 0.3, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -603,7 +603,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 97, None: 2, Christianity: 1 },
   }),
   nation({
-    id: 'ao', name: 'Angola', demonym: 'Angolan', continent: 'Africa', currency: '$',
+    id: 'ao', name: 'Angola', demonym: 'Angolan', continent: 'Africa', currency: 'Kz',
     cities: ['Luanda', 'Benguela', 'Lubango', 'Huambo', 'Lobito', 'Cabinda', 'Malanje', 'Namibe', 'Saurimo', 'Kuito', 'Uíge', 'Soyo'],
     names: 'angolan', wealth: 0.2, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: true,
@@ -611,7 +611,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 90, None: 10 },
   }),
   nation({
-    id: 'dj', name: 'Djibouti', demonym: 'Djiboutian', continent: 'Africa', currency: '$',
+    id: 'dj', name: 'Djibouti', demonym: 'Djiboutian', continent: 'Africa', currency: 'Fdj',
     cities: ['Djibouti City', 'Ali Sabieh', 'Tadjourah', 'Obock', 'Dikhil', 'Arta', 'Holhol', 'Dorra', 'Balho', 'Loyada', 'Randa', 'As Eyla'],
     names: 'somali', wealth: 0.2, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -619,7 +619,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 94, Christianity: 6 },
   }),
   nation({
-    id: 'cd', name: 'DR Congo', demonym: 'Congolese', continent: 'Africa', currency: '$',
+    id: 'cd', name: 'DR Congo', demonym: 'Congolese', continent: 'Africa', currency: 'FC',
     cities: ['Kinshasa', 'Lubumbashi', 'Mbuji-Mayi', 'Kisangani', 'Kananga', 'Bukavu', 'Goma', 'Kolwezi', 'Likasi', 'Tshikapa', 'Matadi', 'Mbandaka', 'Kikwit'],
     names: 'congolese', wealth: 0.13, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -627,7 +627,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 92, Islam: 2, None: 3 },
   }),
   nation({
-    id: 'eg', name: 'Egypt', demonym: 'Egyptian', continent: 'Africa', currency: '$',
+    id: 'eg', name: 'Egypt', demonym: 'Egyptian', continent: 'Africa', currency: 'E£',
     cities: ['Cairo', 'Alexandria', 'Giza', 'Luxor', 'Aswan', 'Port Said', 'Suez', 'Sharm El Sheikh', 'Hurghada', 'Mansoura', 'Tanta', 'Ismailia', 'Faiyum'],
     names: 'egyptian', wealth: 0.25, drivingAge: 18, drinkingAge: 21,
     freeUniversity: true, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: true,
@@ -635,7 +635,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 90, Christianity: 10 },
   }),
   nation({
-    id: 'et', name: 'Ethiopia', demonym: 'Ethiopian', continent: 'Africa', currency: '$',
+    id: 'et', name: 'Ethiopia', demonym: 'Ethiopian', continent: 'Africa', currency: 'Br',
     cities: ['Addis Ababa', 'Dire Dawa', 'Mekelle', 'Gondar', 'Bahir Dar', 'Hawassa', 'Adama', 'Jimma', 'Dessie', 'Harar', 'Jijiga', 'Lalibela', 'Axum'],
     names: 'ethiopian', wealth: 0.14, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -643,7 +643,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 67, Islam: 31 },
   }),
   nation({
-    id: 'ke', name: 'Kenya', demonym: 'Kenyan', continent: 'Africa', currency: '$',
+    id: 'ke', name: 'Kenya', demonym: 'Kenyan', continent: 'Africa', currency: 'KSh',
     cities: ['Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Malindi', 'Kitale', 'Garissa', 'Nyeri', 'Machakos', 'Lamu', 'Naivasha'],
     names: 'east_african', wealth: 0.2, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -651,7 +651,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 85, Islam: 11, None: 2 },
   }),
   nation({
-    id: 'ma', name: 'Morocco', demonym: 'Moroccan', continent: 'Africa', currency: '$',
+    id: 'ma', name: 'Morocco', demonym: 'Moroccan', continent: 'Africa', currency: 'DH',
     cities: ['Casablanca', 'Marrakesh', 'Fez', 'Tangier', 'Rabat', 'Agadir', 'Meknes', 'Oujda', 'Kenitra', 'Tetouan', 'Essaouira', 'Chefchaouen'],
     names: 'maghrebi', wealth: 0.22, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: false, deathPenalty: true, monarchy: true, conscription: true,
@@ -659,7 +659,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 98, Judaism: 1 },
   }),
   nation({
-    id: 'ng', name: 'Nigeria', demonym: 'Nigerian', continent: 'Africa', currency: '$',
+    id: 'ng', name: 'Nigeria', demonym: 'Nigerian', continent: 'Africa', currency: '₦',
     cities: ['Lagos', 'Abuja', 'Kano', 'Ibadan', 'Port Harcourt', 'Benin City', 'Kaduna', 'Enugu', 'Jos', 'Abeokuta', 'Onitsha', 'Calabar', 'Owerri', 'Maiduguri'],
     names: 'west_african', wealth: 0.2, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -667,7 +667,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 50, Christianity: 48 },
   }),
   nation({
-    id: 'za', name: 'South Africa', demonym: 'South African', continent: 'Africa', currency: '$',
+    id: 'za', name: 'South Africa', demonym: 'South African', continent: 'Africa', currency: 'R',
     cities: ['Johannesburg', 'Cape Town', 'Durban', 'Soweto', 'Pretoria', 'Gqeberha', 'Bloemfontein', 'East London', 'Polokwane', 'Mbombela', 'Kimberley', 'Pietermaritzburg', 'Stellenbosch'],
     names: 'southern_african', wealth: 0.3, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -675,7 +675,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 80, None: 15, Islam: 2, Hinduism: 1 },
   }),
   nation({
-    id: 'tn', name: 'Tunisia', demonym: 'Tunisian', continent: 'Africa', currency: '$',
+    id: 'tn', name: 'Tunisia', demonym: 'Tunisian', continent: 'Africa', currency: 'DT',
     cities: ['Tunis', 'Sfax', 'Sousse', 'Kairouan', 'Bizerte', 'Gabès', 'Ariana', 'Gafsa', 'Monastir', 'Nabeul', 'Hammamet', 'Djerba'],
     names: 'maghrebi', wealth: 0.25, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -683,7 +683,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 98, None: 2 },
   }),
   nation({
-    id: 'ug', name: 'Uganda', demonym: 'Ugandan', continent: 'Africa', currency: '$',
+    id: 'ug', name: 'Uganda', demonym: 'Ugandan', continent: 'Africa', currency: 'USh',
     cities: ['Kampala', 'Gulu', 'Lira', 'Entebbe', 'Jinja', 'Mbarara', 'Mbale', 'Masaka', 'Arua', 'Fort Portal', 'Kasese', 'Soroti'],
     names: 'east_african', wealth: 0.15, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -691,7 +691,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 84, Islam: 14 },
   }),
   nation({
-    id: 'zw', name: 'Zimbabwe', demonym: 'Zimbabwean', continent: 'Africa', currency: '$',
+    id: 'zw', name: 'Zimbabwe', demonym: 'Zimbabwean', continent: 'Africa', currency: 'ZiG',
     cities: ['Harare', 'Bulawayo', 'Chitungwiza', 'Mutare', 'Gweru', 'Kwekwe', 'Kadoma', 'Masvingo', 'Victoria Falls', 'Marondera', 'Chinhoyi', 'Bindura'],
     names: 'zimbabwean', wealth: 0.15, drivingAge: 16, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -701,7 +701,7 @@ export const COUNTRIES: Country[] = [
 
   // ----- Middle East -----
   nation({
-    id: 'ge', name: 'Georgia', demonym: 'Georgian', continent: 'Middle East', currency: '$',
+    id: 'ge', name: 'Georgia', demonym: 'Georgian', continent: 'Middle East', currency: '₾',
     cities: ['Tbilisi', 'Batumi', 'Kutaisi', 'Rustavi', 'Zugdidi', 'Gori', 'Poti', 'Telavi', 'Mtskheta', 'Borjomi', 'Sighnaghi', 'Kobuleti'],
     names: 'georgian', wealth: 0.35, drivingAge: 17, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -709,7 +709,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 86, Islam: 11, None: 2 },
   }),
   nation({
-    id: 'ir', name: 'Iran', demonym: 'Iranian', continent: 'Middle East', currency: '$',
+    id: 'ir', name: 'Iran', demonym: 'Iranian', continent: 'Middle East', currency: 'IRR',
     cities: ['Tehran', 'Mashhad', 'Isfahan', 'Karaj', 'Shiraz', 'Tabriz', 'Qom', 'Ahvaz', 'Kermanshah', 'Rasht', 'Yazd', 'Kerman', 'Hamadan'],
     names: 'persian', wealth: 0.3, drivingAge: 18, drinkingAge: 21,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -717,7 +717,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 95, None: 3, Christianity: 1 },
   }),
   nation({
-    id: 'iq', name: 'Iraq', demonym: 'Iraqi', continent: 'Middle East', currency: '$',
+    id: 'iq', name: 'Iraq', demonym: 'Iraqi', continent: 'Middle East', currency: 'IQD',
     cities: ['Baghdad', 'Erbil', 'Fallujah', 'Mosul', 'Tikrit', 'Basra', 'Kirkuk', 'Najaf', 'Karbala', 'Sulaymaniyah', 'Duhok', 'Ramadi', 'Nasiriyah'],
     names: 'arabic', wealth: 0.22, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -725,7 +725,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 97, Christianity: 1, None: 1 },
   }),
   nation({
-    id: 'il', name: 'Israel', demonym: 'Israeli', continent: 'Middle East', currency: '$',
+    id: 'il', name: 'Israel', demonym: 'Israeli', continent: 'Middle East', currency: '₪',
     cities: ['Jerusalem', 'Tel Aviv', 'Haifa', 'Rishon LeZion', 'Petah Tikva', 'Ashdod', 'Netanya', 'Beersheba', 'Holon', 'Ramat Gan', 'Eilat', 'Nazareth', 'Herzliya'],
     names: 'hebrew', wealth: 0.85, drivingAge: 17, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -733,7 +733,7 @@ export const COUNTRIES: Country[] = [
     religions: { Judaism: 74, Islam: 18, None: 5, Christianity: 2 },
   }),
   nation({
-    id: 'jo', name: 'Jordan', demonym: 'Jordanian', continent: 'Middle East', currency: '$',
+    id: 'jo', name: 'Jordan', demonym: 'Jordanian', continent: 'Middle East', currency: 'JD',
     cities: ['Amman', 'Zarqa', 'Irbid', 'Aqaba', 'Salt', 'Madaba', 'Jerash', 'Mafraq', 'Karak', 'Russeifa', 'Ajloun', 'Tafilah'],
     names: 'arabic', wealth: 0.25, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: true, conscription: true,
@@ -741,7 +741,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 95, Christianity: 4 },
   }),
   nation({
-    id: 'kw', name: 'Kuwait', demonym: 'Kuwaiti', continent: 'Middle East', currency: '$',
+    id: 'kw', name: 'Kuwait', demonym: 'Kuwaiti', continent: 'Middle East', currency: 'KD',
     cities: ['Kuwait City', 'Al Ahmadi', 'Hawalli', 'Salmiya', 'Al Jahra', 'Farwaniya', 'Fahaheel', 'Mangaf', 'Sabah Al Salem', 'Mubarak Al-Kabeer', 'Al Wafrah', 'Jabriya'],
     names: 'gulf_arabic', wealth: 0.9, drivingAge: 18, drinkingAge: 21,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: true, conscription: true,
@@ -749,7 +749,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 90, Christianity: 6, Hinduism: 3 },
   }),
   nation({
-    id: 'lb', name: 'Lebanon', demonym: 'Lebanese', continent: 'Middle East', currency: '$',
+    id: 'lb', name: 'Lebanon', demonym: 'Lebanese', continent: 'Middle East', currency: 'L£',
     cities: ['Beirut', 'Tripoli', 'Sidon', 'Tyre', 'Jounieh', 'Zahlé', 'Byblos', 'Baalbek', 'Nabatieh', 'Aley', 'Batroun', 'Broummana'],
     names: 'arabic', wealth: 0.28, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -757,7 +757,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 60, Christianity: 34, None: 2 },
   }),
   nation({
-    id: 'qa', name: 'Qatar', demonym: 'Qatari', continent: 'Middle East', currency: '$',
+    id: 'qa', name: 'Qatar', demonym: 'Qatari', continent: 'Middle East', currency: 'QR',
     cities: ['Doha', 'Al Rayyan', 'Al Wakrah', 'Al Khor', 'Lusail', 'Umm Salal', 'Mesaieed', 'Dukhan', 'Al Shamal', 'Al Daayen', 'Al Ruwais', 'Al Shahaniya'],
     names: 'gulf_arabic', wealth: 1.1, drivingAge: 18, drinkingAge: 21,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: true, conscription: true,
@@ -765,7 +765,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 88, Christianity: 8, Hinduism: 4 },
   }),
   nation({
-    id: 'sa', name: 'Saudi Arabia', demonym: 'Saudi', continent: 'Middle East', currency: '$',
+    id: 'sa', name: 'Saudi Arabia', demonym: 'Saudi', continent: 'Middle East', currency: 'SR',
     cities: ['Riyadh', 'Jeddah', 'Mecca', 'Medina', 'Dammam', 'Khobar', 'Dhahran', 'Taif', 'Tabuk', 'Abha', 'Buraidah', 'Hail', 'Jizan', 'AlUla'],
     names: 'gulf_arabic', wealth: 0.7, drivingAge: 18, drinkingAge: 21,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: true, conscription: false,
@@ -773,7 +773,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 98, Christianity: 2 },
   }),
   nation({
-    id: 'sy', name: 'Syria', demonym: 'Syrian', continent: 'Middle East', currency: '$',
+    id: 'sy', name: 'Syria', demonym: 'Syrian', continent: 'Middle East', currency: 'SYP',
     cities: ['Damascus', 'Aleppo', 'Homs', 'Latakia', 'Hama', 'Tartus', 'Deir ez-Zor', 'Raqqa', 'Idlib', 'Daraa', 'Al-Hasakah', 'Qamishli', 'Palmyra'],
     names: 'arabic', wealth: 0.15, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -781,7 +781,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 88, Christianity: 10 },
   }),
   nation({
-    id: 'tr', name: 'Turkey', demonym: 'Turkish', continent: 'Middle East', currency: '$',
+    id: 'tr', name: 'Turkey', demonym: 'Turkish', continent: 'Middle East', currency: '₺',
     cities: ['Istanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya', 'Adana', 'Konya', 'Gaziantep', 'Kayseri', 'Trabzon', 'Eskişehir', 'Bodrum', 'Diyarbakır'],
     names: 'turkish', wealth: 0.45, drivingAge: 18, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -789,7 +789,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 92, None: 6, Christianity: 1 },
   }),
   nation({
-    id: 'ae', name: 'United Arab Emirates', demonym: 'Emirati', continent: 'Middle East', currency: '$',
+    id: 'ae', name: 'United Arab Emirates', demonym: 'Emirati', continent: 'Middle East', currency: 'AED',
     cities: ['Dubai', 'Abu Dhabi', 'Sharjah', 'Al Ain', 'Ajman', 'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain', 'Khor Fakkan', 'Kalba', 'Dibba', 'Ruwais'],
     names: 'gulf_arabic', wealth: 0.95, drivingAge: 18, drinkingAge: 21,
     freeUniversity: true, universalHealthcare: true, deathPenalty: true, monarchy: true, conscription: true,
@@ -799,7 +799,7 @@ export const COUNTRIES: Country[] = [
 
   // ----- Asia -----
   nation({
-    id: 'af', name: 'Afghanistan', demonym: 'Afghan', continent: 'Asia', currency: '$',
+    id: 'af', name: 'Afghanistan', demonym: 'Afghan', continent: 'Asia', currency: 'AFN',
     cities: ['Kabul', 'Kandahar', 'Jalalabad', 'Herat', 'Mazar-i-Sharif', 'Kunduz', 'Ghazni', 'Lashkar Gah', 'Bamyan', 'Khost', 'Taloqan', 'Pul-e-Khumri', 'Faizabad'],
     names: 'afghan', wealth: 0.12, drivingAge: 18, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -807,7 +807,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 100 },
   }),
   nation({
-    id: 'bd', name: 'Bangladesh', demonym: 'Bangladeshi', continent: 'Asia', currency: '$',
+    id: 'bd', name: 'Bangladesh', demonym: 'Bangladeshi', continent: 'Asia', currency: '৳',
     cities: ['Dhaka', 'Chittagong', 'Gazipur', 'Khulna', 'Narayanganj', 'Sylhet', 'Rajshahi', 'Comilla', 'Barisal', 'Rangpur', 'Mymensingh', 'Bogra', 'Jessore'],
     names: 'bengali', wealth: 0.2, drivingAge: 18, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -815,7 +815,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 91, Hinduism: 8, Buddhism: 1 },
   }),
   nation({
-    id: 'cn', name: 'China', demonym: 'Chinese', continent: 'Asia', currency: '$',
+    id: 'cn', name: 'China', demonym: 'Chinese', continent: 'Asia', currency: 'CN¥',
     cities: ['Beijing', 'Shanghai', 'Guangzhou', 'Shenzhen', 'Wuhan', 'Chengdu', 'Chongqing', 'Tianjin', 'Hangzhou', 'Nanjing', 'Suzhou', 'Harbin', 'Qingdao', 'Kunming', 'Xiamen'],
     names: 'chinese', wealth: 0.4, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: false,
@@ -823,7 +823,7 @@ export const COUNTRIES: Country[] = [
     religions: { None: 52, 'Folk Religion': 20, Buddhism: 18, Christianity: 5, Taoism: 2, Islam: 2 },
   }),
   nation({
-    id: 'hk', name: 'Hong Kong', demonym: 'Hongkonger', continent: 'Asia', currency: '$',
+    id: 'hk', name: 'Hong Kong', demonym: 'Hongkonger', continent: 'Asia', currency: 'HK$',
     cities: ['Hong Kong', 'Kowloon', 'Tsuen Wan', 'Sha Tin', 'Tuen Mun', 'Yuen Long', 'Tai Po', 'Tseung Kwan O', 'Mong Kok', 'Causeway Bay', 'Lantau', 'Sai Kung'],
     names: 'cantonese', wealth: 0.9, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -831,7 +831,7 @@ export const COUNTRIES: Country[] = [
     religions: { None: 55, Buddhism: 15, Taoism: 13, Christianity: 12 },
   }),
   nation({
-    id: 'in', name: 'India', demonym: 'Indian', continent: 'Asia', currency: '$',
+    id: 'in', name: 'India', demonym: 'Indian', continent: 'Asia', currency: '₹',
     cities: ['Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Jaipur', 'Srinagar', 'Pune', 'Ahmedabad', 'Lucknow', 'Surat', 'Kochi', 'Varanasi', 'Chandigarh'],
     names: 'south_asian', wealth: 0.25, drivingAge: 18, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -839,7 +839,7 @@ export const COUNTRIES: Country[] = [
     religions: { Hinduism: 79, Islam: 14, Christianity: 2, Sikhism: 2, Buddhism: 1, Jainism: 1 },
   }),
   nation({
-    id: 'id', name: 'Indonesia', demonym: 'Indonesian', continent: 'Asia', currency: '$',
+    id: 'id', name: 'Indonesia', demonym: 'Indonesian', continent: 'Asia', currency: 'Rp',
     cities: ['Jakarta', 'Denpasar', 'Surabaya', 'Bandung', 'Medan', 'Semarang', 'Makassar', 'Palembang', 'Yogyakarta', 'Malang', 'Batam', 'Manado', 'Balikpapan'],
     names: 'indonesian', wealth: 0.28, drivingAge: 17, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: false,
@@ -847,7 +847,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 87, Christianity: 10, Hinduism: 2, Buddhism: 1 },
   }),
   nation({
-    id: 'jp', name: 'Japan', demonym: 'Japanese', continent: 'Asia', currency: '$',
+    id: 'jp', name: 'Japan', demonym: 'Japanese', continent: 'Asia', currency: '¥',
     cities: ['Tokyo', 'Osaka', 'Yokohama', 'Nagoya', 'Sapporo', 'Kobe', 'Kyoto', 'Fukuoka', 'Hiroshima', 'Sendai', 'Kawasaki', 'Nara', 'Naha', 'Kanazawa'],
     names: 'japanese', wealth: 0.85, drivingAge: 18, drinkingAge: 20,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: true, conscription: false,
@@ -855,7 +855,7 @@ export const COUNTRIES: Country[] = [
     religions: { None: 52, Buddhism: 24, Shinto: 22, Christianity: 2 },
   }),
   nation({
-    id: 'kz', name: 'Kazakhstan', demonym: 'Kazakh', continent: 'Asia', currency: '$',
+    id: 'kz', name: 'Kazakhstan', demonym: 'Kazakh', continent: 'Asia', currency: '₸',
     cities: ['Almaty', 'Astana', 'Shymkent', 'Karaganda', 'Aktobe', 'Taraz', 'Pavlodar', 'Oskemen', 'Semey', 'Atyrau', 'Kostanay', 'Aktau'],
     names: 'kazakh', wealth: 0.4, drivingAge: 18, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -863,7 +863,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 69, Christianity: 17, None: 12 },
   }),
   nation({
-    id: 'my', name: 'Malaysia', demonym: 'Malaysian', continent: 'Asia', currency: '$',
+    id: 'my', name: 'Malaysia', demonym: 'Malaysian', continent: 'Asia', currency: 'RM',
     cities: ['Kuala Lumpur', 'George Town', 'Johor Bahru', 'Ipoh', 'Kuching', 'Kota Kinabalu', 'Shah Alam', 'Malacca City', 'Petaling Jaya', 'Kuantan', 'Kota Bharu', 'Alor Setar', 'Putrajaya'],
     names: 'malay', wealth: 0.5, drivingAge: 17, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: true, conscription: false,
@@ -871,7 +871,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 64, Buddhism: 19, Christianity: 9, Hinduism: 6 },
   }),
   nation({
-    id: 'mn', name: 'Mongolia', demonym: 'Mongolian', continent: 'Asia', currency: '$',
+    id: 'mn', name: 'Mongolia', demonym: 'Mongolian', continent: 'Asia', currency: '₮',
     cities: ['Ulaanbaatar', 'Erdenet', 'Darkhan', 'Choibalsan', 'Mörön', 'Khovd', 'Ölgii', 'Bayankhongor', 'Arvaikheer', 'Sükhbaatar', 'Dalanzadgad', 'Kharkhorin'],
     names: 'mongolian', wealth: 0.25, drivingAge: 18, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: true,
@@ -879,7 +879,7 @@ export const COUNTRIES: Country[] = [
     religions: { Buddhism: 52, None: 39, Islam: 3, Shamanism: 3, Christianity: 1 },
   }),
   nation({
-    id: 'np', name: 'Nepal', demonym: 'Nepali', continent: 'Asia', currency: '$',
+    id: 'np', name: 'Nepal', demonym: 'Nepali', continent: 'Asia', currency: 'NRs',
     cities: ['Kathmandu', 'Pokhara', 'Lalitpur', 'Bharatpur', 'Biratnagar', 'Birgunj', 'Dharan', 'Bhaktapur', 'Butwal', 'Hetauda', 'Janakpur', 'Nepalgunj', 'Lumbini'],
     names: 'nepali', wealth: 0.15, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -887,7 +887,7 @@ export const COUNTRIES: Country[] = [
     religions: { Hinduism: 81, Buddhism: 9, Islam: 5, Christianity: 2 },
   }),
   nation({
-    id: 'pk', name: 'Pakistan', demonym: 'Pakistani', continent: 'Asia', currency: '$',
+    id: 'pk', name: 'Pakistan', demonym: 'Pakistani', continent: 'Asia', currency: 'Rs',
     cities: ['Karachi', 'Lahore', 'Islamabad', 'Peshawar', 'Abbottabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Hyderabad', 'Quetta', 'Gujranwala', 'Sialkot', 'Sukkur'],
     names: 'pakistani', wealth: 0.18, drivingAge: 18, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: false, deathPenalty: true, monarchy: false, conscription: false,
@@ -895,7 +895,7 @@ export const COUNTRIES: Country[] = [
     religions: { Islam: 96, Hinduism: 2, Christianity: 2 },
   }),
   nation({
-    id: 'ph', name: 'Philippines', demonym: 'Filipino', continent: 'Asia', currency: '$',
+    id: 'ph', name: 'Philippines', demonym: 'Filipino', continent: 'Asia', currency: '₱',
     cities: ['Manila', 'Quezon City', 'Cebu City', 'Davao City', 'Makati', 'Taguig', 'Pasig', 'Caloocan', 'Zamboanga City', 'Baguio', 'Iloilo City', 'Cagayan de Oro', 'Bacolod'],
     names: 'filipino', wealth: 0.25, drivingAge: 17, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -903,7 +903,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 90, Islam: 6, None: 2 },
   }),
   nation({
-    id: 'sg', name: 'Singapore', demonym: 'Singaporean', continent: 'Asia', currency: '$',
+    id: 'sg', name: 'Singapore', demonym: 'Singaporean', continent: 'Asia', currency: 'S$',
     cities: ['Singapore', 'Jurong East', 'Woodlands', 'Tampines', 'Ang Mo Kio', 'Bedok', 'Toa Payoh', 'Punggol', 'Sengkang', 'Bukit Timah', 'Clementi', 'Yishun', 'Orchard'],
     names: 'singaporean', wealth: 1.1, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -911,7 +911,7 @@ export const COUNTRIES: Country[] = [
     religions: { Buddhism: 31, None: 20, Christianity: 19, Islam: 16, Taoism: 9, Hinduism: 5 },
   }),
   nation({
-    id: 'kr', name: 'South Korea', demonym: 'South Korean', continent: 'Asia', currency: '$',
+    id: 'kr', name: 'South Korea', demonym: 'South Korean', continent: 'Asia', currency: '₩',
     cities: ['Seoul', 'Busan', 'Incheon', 'Daegu', 'Gangnam', 'Daejeon', 'Gwangju', 'Ulsan', 'Suwon', 'Changwon', 'Jeonju', 'Jeju City', 'Gyeongju'],
     names: 'korean', wealth: 0.8, drivingAge: 18, drinkingAge: 19,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -919,7 +919,7 @@ export const COUNTRIES: Country[] = [
     religions: { None: 51, Christianity: 31, Buddhism: 17 },
   }),
   nation({
-    id: 'tw', name: 'Taiwan', demonym: 'Taiwanese', continent: 'Asia', currency: '$',
+    id: 'tw', name: 'Taiwan', demonym: 'Taiwanese', continent: 'Asia', currency: 'NT$',
     cities: ['Taipei', 'New Taipei', 'Kaohsiung', 'Taichung', 'Tainan', 'Taoyuan', 'Hsinchu', 'Keelung', 'Chiayi', 'Hualien', 'Taitung', 'Yilan'],
     names: 'taiwanese', wealth: 0.75, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -927,7 +927,7 @@ export const COUNTRIES: Country[] = [
     religions: { Buddhism: 35, Taoism: 30, None: 20, Christianity: 5 },
   }),
   nation({
-    id: 'th', name: 'Thailand', demonym: 'Thai', continent: 'Asia', currency: '$',
+    id: 'th', name: 'Thailand', demonym: 'Thai', continent: 'Asia', currency: '฿',
     cities: ['Bangkok', 'Phuket', 'Chiang Mai', 'Pattaya', 'Nonthaburi', 'Hat Yai', 'Nakhon Ratchasima', 'Udon Thani', 'Khon Kaen', 'Chiang Rai', 'Ayutthaya', 'Krabi', 'Hua Hin'],
     names: 'thai', wealth: 0.35, drivingAge: 18, drinkingAge: 20,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: true, conscription: true,
@@ -935,7 +935,7 @@ export const COUNTRIES: Country[] = [
     religions: { Buddhism: 93, Islam: 5, Christianity: 1 },
   }),
   nation({
-    id: 'vn', name: 'Vietnam', demonym: 'Vietnamese', continent: 'Asia', currency: '$',
+    id: 'vn', name: 'Vietnam', demonym: 'Vietnamese', continent: 'Asia', currency: '₫',
     cities: ['Ho Chi Minh City', 'Hanoi', 'Da Nang', 'Haiphong', 'Can Tho', 'Bien Hoa', 'Hue', 'Nha Trang', 'Hoi An', 'Vung Tau', 'Da Lat', 'Quy Nhon'],
     names: 'vietnamese', wealth: 0.25, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: true, monarchy: false, conscription: true,
@@ -945,7 +945,7 @@ export const COUNTRIES: Country[] = [
 
   // ----- Oceania -----
   nation({
-    id: 'au', name: 'Australia', demonym: 'Australian', continent: 'Oceania', currency: '$',
+    id: 'au', name: 'Australia', demonym: 'Australian', continent: 'Oceania', currency: 'A$',
     cities: ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Gold Coast', 'Canberra', 'Newcastle', 'Hobart', 'Townsville', 'Wollongong', 'Darwin', 'Cairns', 'Geelong'],
     names: 'british', wealth: 0.95, drivingAge: 17, drinkingAge: 18,
     freeUniversity: true, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -953,7 +953,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 44, None: 39, Islam: 3, Hinduism: 3, Buddhism: 2 },
   }),
   nation({
-    id: 'nz', name: 'New Zealand', demonym: 'New Zealander', continent: 'Oceania', currency: '$',
+    id: 'nz', name: 'New Zealand', demonym: 'New Zealander', continent: 'Oceania', currency: 'NZ$',
     cities: ['Auckland', 'Wellington', 'Christchurch', 'Hamilton', 'Tauranga', 'Dunedin', 'Napier', 'Palmerston North', 'Nelson', 'Rotorua', 'Queenstown', 'New Plymouth', 'Invercargill'],
     names: 'british', wealth: 0.8, drivingAge: 16, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: true, deathPenalty: false, monarchy: false, conscription: false,
@@ -961,7 +961,7 @@ export const COUNTRIES: Country[] = [
     religions: { None: 51, Christianity: 37, Hinduism: 3, Islam: 1, Buddhism: 1 },
   }),
   nation({
-    id: 'pg', name: 'Papua New Guinea', demonym: 'Papua New Guinean', continent: 'Oceania', currency: '$',
+    id: 'pg', name: 'Papua New Guinea', demonym: 'Papua New Guinean', continent: 'Oceania', currency: 'K',
     cities: ['Port Moresby', 'Lae', 'Wewak', 'Mount Hagen', 'Madang', 'Goroka', 'Kokopo', 'Popondetta', 'Arawa', 'Kimbe', 'Alotau', 'Kavieng'],
     names: 'melanesian', wealth: 0.15, drivingAge: 18, drinkingAge: 18,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,
@@ -969,7 +969,7 @@ export const COUNTRIES: Country[] = [
     religions: { Christianity: 95, 'Folk Religion': 3 },
   }),
   nation({
-    id: 'ws', name: 'Samoa', demonym: 'Samoan', continent: 'Oceania', currency: '$',
+    id: 'ws', name: 'Samoa', demonym: 'Samoan', continent: 'Oceania', currency: 'WS$',
     cities: ['Apia', 'Vaitele', 'Faleula', 'Siusega', 'Malie', 'Fasitoo-Uta', 'Leauvaa', 'Salelologa', 'Afega', 'Vailele', 'Lufilufi', 'Asau'],
     names: 'polynesian', wealth: 0.22, drivingAge: 18, drinkingAge: 21,
     freeUniversity: false, universalHealthcare: false, deathPenalty: false, monarchy: false, conscription: false,

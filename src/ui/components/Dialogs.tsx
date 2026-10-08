@@ -185,7 +185,9 @@ export function parseMoneyInput(raw: string, wholeUnits = false): number | null 
     d = parts.length === 2 && parts[1].length <= 2 ? parts.join('.') : parts.join('')
   } else if (lastDot >= 0) {
     const parts = d.split('.')
-    if (parts.length > 2 || (wholeUnits && parts[1].length === 3)) d = parts.join('')
+    // An explicit multiplier makes this a decimal quantity, even for won/yen:
+    // "₩1.400M" is 1.4 million won, not 1.4 billion won.
+    if (parts.length > 2 || (mult === 1 && wholeUnits && parts[1].length === 3)) d = parts.join('')
   }
   const n = Number(d) * mult
   if (!Number.isFinite(n)) return null

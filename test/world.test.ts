@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { presentCurrency } from '../src/game/data/currencies'
 import {
   CONTINENTS,
   COUNTRIES,
@@ -44,7 +45,7 @@ describe('countries', () => {
       expect(c.flag, c.id).toBe(flagEmoji(c.id))
       expect([...c.flag].length, c.id).toBe(2)
       expect(CONTINENTS, c.id).toContain(c.continent)
-      expect(['$', '€', '£'], c.id).toContain(c.currency)
+      expect(c.currency, c.id).toBe(presentCurrency(c.id).symbol)
       expect(REGIONS, c.id).toContain(c.names)
       expect(c.cities.length, c.id).toBeGreaterThanOrEqual(8)
       expect(c.cities.length, c.id).toBeLessThanOrEqual(15)

@@ -60,7 +60,7 @@ export function Header({ g, onProfile }: HeaderProps) {
           </span>
         </button>
         <div className="hdr-money">
-          <div className="hdr-money-label">Bank Balance</div>
+          <div className="hdr-money-label">Bank Balance · {shown.code}</div>
           <div className={c.money < 0 ? 'hdr-money-value is-negative' : 'hdr-money-value'} title={title}>
             {money}
           </div>

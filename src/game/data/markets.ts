@@ -9,6 +9,7 @@
 // Figures are rounded approximations of mid-2020s values, tuned for gameplay; they are flavor,
 // not financial data. Money is in US dollars like the rest of the game.
 import { getCountry } from '../world'
+import { presentCurrency } from './currencies'
 import type { GameState } from '../types'
 import { AFRICA_MIDDLE_EAST_MARKETS } from './markets/africaMiddleEast'
 import { AMERICAS_MARKETS } from './markets/americas'
@@ -149,11 +150,12 @@ const ALL: Record<string, MarketProfile> = {
 /** Rough profile for a country with no data (e.g. one added to world.ts later). */
 function derivedProfile(countryId: string): MarketProfile {
   const c = getCountry(countryId)
+  const currency = presentCurrency(c.id)
   const w = Math.max(0.05, c.wealth ?? 1)
   return {
     countryId,
-    currencyName: c.currency === '€' ? 'Euro' : c.currency === '£' ? 'Pound sterling' : 'Local currency',
-    currencyCode: c.currency === '€' ? 'EUR' : c.currency === '£' ? 'GBP' : 'USD',
+    currencyName: currency.name,
+    currencyCode: currency.code,
     gdpPerCapita: Math.round(70_000 * w),
     populationM: 10,
     corporateTax: 0.25,

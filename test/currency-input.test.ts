@@ -28,6 +28,24 @@ afterEach(() => {
 })
 
 describe('typing amounts', () => {
+  it('keeps decimal multipliers in whole-unit currencies at the right magnitude', () => {
+    for (const [id, symbol, scale] of [['kr', '₩', 1400], ['jp', '¥', 150], ['id', 'Rp ', 16500]] as const) {
+      show(id, 2026, 'local', false)
+      expect(parseMoneyInput(`${symbol}1.400M`, true)).toBe(1_400_000)
+      expect(parseMoneyInput(`${symbol}1.400`, true)).toBe(1400)
+      expect(parseMoneyInput(`${symbol}1.400 million`, true)).toBe(1_400_000)
+      expect(Number(normalizeInput('number', `${symbol}1.400M`, true))).toBe(Math.round(1_400_000 / scale))
+    }
+  })
+
+  it('shows and accepts South Korean won at the same conversion scale', () => {
+    show('kr', 2026, 'local', false)
+    expect(formatMoney(1000)).toBe('₩1,400,000')
+    expect(moneyDefault('1000')).toBe('1400000')
+    expect(normalizeInput('number', '₩1,400,000', true)).toBe('1000')
+    expect(rangeHint('number', undefined, undefined, true)).toBe('Amount in South Korean won (₩)')
+  })
+
   it('parses what people type in any currency', () => {
     expect(parseMoneyInput('¥150,000')).toBe(150_000)
     expect(parseMoneyInput('Rp 2.5M')).toBe(2_500_000)
