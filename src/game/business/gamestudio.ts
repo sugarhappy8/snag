@@ -21,7 +21,6 @@ import { addGamerFame, backerCap, copiesLabel, engineRoyalty, fam, firstYearCopi
 import {
   CRITIC_SITE,
   ENGINES,
-  engineDef,
   GENRES,
   genreDef,
   GIANTS,
@@ -35,7 +34,6 @@ import {
   PUBLISHERS,
   SCOPES,
   scopeDef,
-  type EngineId,
   type GenreId,
   type PlatformId,
   type ScopeId,
@@ -56,6 +54,8 @@ import { foundBlock, manageBlock, noCash, tooBusy } from './gate'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Statement } from './state'
 import { assignedDevs, devGames, normalizeStudio, studioLine, trimStudioGames, type StudioGame, type StudioPolicy, type StudioState } from './gamestudio-state'
+import { availableStudioEngines, engineTier, isStudioEngineId, studioEngineDef, type StudioEngineId } from './gamestudio-engine-state'
+import { simulateStudioEngines, studioEngineMenu } from './gamestudio-engines'
 import { clampN, dollars, markBest, money, pct, round2, toJson } from './util'
 import { studioMarketFactor, studioPick } from './competition'
 import { bizHas } from './era'
@@ -198,11 +198,17 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
 
   // 1) Development.
   const dev = devGames(st)
-  const want = dev.reduce((s, x) => s + x.team, 0)
+  const want = assignedDevs(st)
   const share = want > b.employees && want > 0 ? b.employees / want : 1
+  const engines = simulateStudioEngines(g, st, year, {
+    employees: b.employees, wage, quality: b.quality, leadership: ceoSkill(g, b), brand: b.brand,
+    operations: ops * speed, open, market: iy.mult * mf * nationalMarket(g, b.industry, b.countryId, year).demand,
+  })
+  production += engines.costs
+  notes.push(...engines.notes)
   for (const x of dev) {
     const sc = scopeDef(x.scope)
-    const eng = engineDef(x.engine)
+    const eng = studioEngineDef(st.engines, x.engine)
     const team = x.team * share
     const ratio = clampN(team / sc.team, 0, 3)
     const before = x.progress
@@ -332,7 +338,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     const x = s.game
     const gross = s.copies * s.price * 0.78
     const net = s.copies * netPerCopy(s.price)
-    const royalty = engineRoyalty(engineDef(x.engine).royalty, x.gross, net)
+    const royalty = engineRoyalty(studioEngineDef(st.engines, x.engine).royalty, x.gross, net)
     x.gross = whole(x.gross + net)
     copiesTotal += s.copies
     priced += s.copies * s.price
@@ -349,7 +355,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     }
   }
 
-  revenue += milestones
+  revenue += milestones + engines.revenue
 
   // 5) Money out.
   const finance = 1 - 0.025 * staffPower(b, 'finance')
@@ -379,8 +385,8 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     b.cash -= cashErosion
   }
   b.inventory = 0
-  const idle = devGames(st).length === 0 && b.employees > 0
-  if (st.policy === 'crunch' && dev.length) st.crunchYears += 1
+  const idle = devGames(st).length === 0 && !st.engines.some((x) => x.stage === 'dev' && x.team > 0) && b.employees > 0
+  if (st.policy === 'crunch' && want > 0) st.crunchYears += 1
   st.report = { year, releases: notes, copies: whole(copiesTotal), revenue: dollars(revenue), idle }
   saveStudio(a, st)
   const stmt: Statement = {
@@ -425,7 +431,7 @@ function creditOwner(g: GameState, a: Asset, x: StudioGame, copies: number, runs
     genre: x.genre,
     platform: x.platform,
     scope: x.scope,
-    engine: x.engine,
+    engine: isEngine(x.engine) ? x.engine : 'homebrew',
     role: runs ? 'Studio Founder & CEO' : 'Executive Producer',
     studio: a.name,
     own: false,
@@ -457,7 +463,7 @@ function creditOwner(g: GameState, a: Asset, x: StudioGame, copies: number, runs
 /** After evolve(): crunch grinds morale down, a relaxed studio is a happier one. */
 export function afterStudioYear(a: Asset, b: BizState): void {
   const st = studioOf(a)
-  if (st.policy === 'crunch' && devGames(st).length) b.morale = clampN(b.morale - 9, 0, 100)
+  if (st.policy === 'crunch' && assignedDevs(st) > 0) b.morale = clampN(b.morale - 9, 0, 100)
   else if (st.policy === 'relaxed') b.morale = clampN(b.morale + 4, 0, 100)
   if (st.report?.idle) b.morale = clampN(b.morale - 5, 0, 100)
   refreshValue(a, b)
@@ -502,7 +508,7 @@ export function studioManagerTurn(g: GameState, a: Asset, b: BizState): void {
   const best = st.games.filter((x) => x.stage === 'live' && x.critic >= 75).sort((x, y) => y.copies - x.copies)[0]
   const genre = best && chance(g, 0.5) ? best.genre : hotGenres(g)[0].id
   const platform: PlatformId = scope.index >= 4 ? 'multi' : scope.index >= 3 ? 'console' : 'pc'
-  const engine: EngineId = scope.index >= 3 ? 'titan' : 'cobalt'
+  const engine = leadEngine(st, scope.id)
   const sequel = best && best.genre === genre
   const title = sequel ? sequelTitle(best.franchise || best.title, st.games.filter((x) => x.franchise === (best.franchise || best.title)).length + 1) : gameTitle(g, genre, new Set(st.games.map((x) => x.title)))
   addGame(st, g, { scope: scope.id, genre, platform, engine, title, team: Math.min(b.employees, Math.max(1, Math.round(scope.team * 1.2))), franchise: sequel ? best.franchise || best.title : '', sequelOf: sequel ? best.id : '' })
@@ -515,7 +521,7 @@ interface NewGame {
   scope: ScopeId
   genre: GenreId
   platform: PlatformId
-  engine: EngineId
+  engine: StudioEngineId
   title: string
   team: number
   franchise: string
@@ -599,8 +605,10 @@ export function queueStudioReport(g: GameState, a: Asset, b: BizState): void {
   }
   const dev = devGames(st)
   if (dev.length) lines.push(`\u{1F6E0}\u{FE0F} In development: ${dev.map((x) => `"${x.title}" (${Math.round(x.progress)}%)`).join(', ')}.`)
+  const engineDev = st.engines.filter((x) => x.stage === 'dev')
+  if (engineDev.length) lines.push(`⚙️ Engine development: ${engineDev.map((x) => `${x.name} (${Math.round(x.progress)}%, ${x.team} devs)`).join(', ')}.`)
   lines.push(`\u{1F3F7}\u{FE0F} Valuation ${money(b.valuation)} · cash ${money(b.cash)}.`)
-  if (r?.idle || (!dev.length && b.employees > 0)) {
+  if (r?.idle || (!dev.length && !engineDev.some((x) => x.team > 0) && b.employees > 0)) {
     const choices: ChoiceOption[] = [
       { id: 'mine', label: 'Pitch my own game', emoji: '\u{1F4A1}' },
       { id: 'auto', label: "Let the leads pick (they'll go for what's hot)", emoji: '\u{1F465}' },
@@ -638,7 +646,7 @@ interface Pitch {
   scope: ScopeId
   genre: GenreId
   platform: PlatformId
-  engine: EngineId
+  engine: StudioEngineId
 }
 
 interface PitchOut {
@@ -702,9 +710,9 @@ function pitchTeam(b: BizState, st: StudioState, scope: ScopeId): number {
 /** Gaming talent: quality a founder-CEO who is a gifted gamer adds to every game (matches gamedev-make). */
 export const TALENT_GAMING_QUALITY = 6
 
-function qualityTarget(g: GameState, a: Asset, b: BizState, st: StudioState, genre: GenreId, scope: ScopeId, engine: EngineId, ratio: number, ea = false): number {
+function qualityTarget(g: GameState, a: Asset, b: BizState, st: StudioState, genre: GenreId, scope: ScopeId, engine: StudioEngineId, ratio: number, ea = false): number {
   const sc = scopeDef(scope)
-  const eng = engineDef(engine)
+  const eng = studioEngineDef(st.engines, engine)
   const runs = runsIt(g, a) && !g.character.prison && g.character.alive
   const lead = runs ? Math.max(45, genreSkill(genre, codingSkill(g), artSkill(g), designSkill(g))) : (b.manager?.skill ?? 50)
   const voice = runs ? 0.12 + 0.33 / (1 + b.employees / 6) : 0.12
@@ -764,8 +772,8 @@ function receiptsOf(g: GameState, b: BizState, x: Pitch, l: LaunchGuess): number
 }
 
 /** Royalty an engine takes on a game's lifetime receipts past the first $1M. */
-function royaltyOf(engine: EngineId, receipts: number): number {
-  return engineDef(engine).royalty * Math.max(0, receipts - 1_000_000)
+function royaltyOf(st: StudioState, engine: StudioEngineId, receipts: number): number {
+  return studioEngineDef(st.engines, engine).royalty * Math.max(0, receipts - 1_000_000)
 }
 
 /**
@@ -784,6 +792,11 @@ function studioBurn(g: GameState, b: BizState, st: StudioState): number {
     const sc = scopeDef(x.scope)
     inProduction += sc.extraUsd * Math.min(1.5, clampN(x.team / sc.team, 0, 3)) * scale
   }
+  for (const x of st.engines) {
+    const tier = engineTier(x.tier)
+    if (x.stage === 'dev') inProduction += tier.research * Math.min(1.5, x.team / tier.team)
+    if (x.stage === 'ready' && x.licenses.length) inProduction += x.licenses.length * tier.fee * .18 + tier.research * .15 - x.lastRevenue
+  }
   let catalog = 0
   for (const x of st.games) if (x.stage === 'live' && x.tail > 0) catalog += x.tail * netPerCopy(x.price) * (x.publisher ? x.devShare * (x.recoup > 0 ? 0.6 : 1) : 1)
   const burn = fixed + inProduction - catalog
@@ -793,7 +806,7 @@ function studioBurn(g: GameState, b: BizState, st: StudioState): number {
 /** What greenlighting this game would earn (developers are paid either way, so not counted). */
 function pitchValue(g: GameState, a: Asset, b: BizState, st: StudioState, x: Pitch, franchise = 0, burn = studioBurn(g, b, st)): PitchOut {
   const sc = scopeDef(x.scope)
-  const eng = engineDef(x.engine)
+  const eng = studioEngineDef(st.engines, x.engine)
   const team = pitchTeam(b, st, x.scope)
   const ratio = clampN(team / sc.team, 0.05, 3)
   const speed = (st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1) * studioOperations(g, b) * eng.speed
@@ -808,7 +821,7 @@ function pitchValue(g: GameState, a: Asset, b: BizState, st: StudioState, x: Pit
   const extra = sc.extraUsd * Math.min(1.5, ratio) * scale
   const launch = sc.marketingUsd * b.marketingLevel * scale + platformDef(x.platform).certUsd * scale
   const costs = extra * years + launch
-  const value = receipts - royaltyOf(x.engine, receipts) - costs
+  const value = receipts - royaltyOf(st, x.engine, receipts) - costs
   // Cash needed until launch: every development year's costs, then the launch year's costs
   // less its first year of sales (receiptsOf spreads a game's sales over its tail).
   const firstYear = receipts * Math.max(0.3, 1 - tailKeep(quality, x.scope))
@@ -849,8 +862,18 @@ function platformsFor(scope: ScopeId): PlatformId[] {
   return PLATFORMS.filter((p) => p.minScope <= scopeDef(scope).index).map((p) => p.id)
 }
 
-function enginesFor(scope: ScopeId): EngineId[] {
-  return ENGINES.filter((e) => e.id !== 'blocks' && e.maxScope >= scopeDef(scope).index).map((e) => e.id)
+function enginesFor(st: StudioState, scope: ScopeId): StudioEngineId[] {
+  return [...ENGINES.filter((e) => e.id !== 'blocks' && e.maxScope >= scopeDef(scope).index).map((e) => e.id), ...availableStudioEngines(st.engines, scopeDef(scope).index)]
+}
+
+function leadEngine(st: StudioState, scope: ScopeId): StudioEngineId {
+  const index = scopeDef(scope).index
+  const candidates: StudioEngineId[] = [index >= 3 ? 'titan' : 'cobalt', ...availableStudioEngines(st.engines, index)]
+  const score = (id: StudioEngineId) => {
+    const e = studioEngineDef(st.engines, id)
+    return e.speed * (1 + (index >= 3 ? e.bigBonus : e.bonus) / 100)
+  }
+  return candidates.sort((x, y) => score(y) - score(x))[0]
 }
 
 /** The best game to make next given what's already decided (ranked by profit per year of work). */
@@ -861,7 +884,7 @@ function bestPitch(g: GameState, a: Asset, b: BizState, st: StudioState, fixed: 
   for (const scope of scopes) {
     const genres = fixed.genre ? [fixed.genre] : GENRES.map((x) => x.id)
     const platforms = fixed.platform ? [fixed.platform] : platformsFor(scope)
-    const engines = fixed.engine ? [fixed.engine] : enginesFor(scope)
+    const engines = fixed.engine ? [fixed.engine] : enginesFor(st, scope)
     for (const genre of genres)
       for (const platform of platforms)
         for (const engine of engines) all.push({ scope, genre, platform, engine, ...pitchValue(g, a, b, st, { scope, genre, platform, engine }, franchise, burn) })
@@ -920,7 +943,7 @@ function publishValues(g: GameState, a: Asset, b: BizState, st: StudioState, x: 
   const sc = scopeDef(x.scope)
   const team = Math.max(1, x.team)
   const ratio = clampN(team / sc.team, 0.05, 3)
-  const speed = (st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1) * studioOperations(g, b) * engineDef(x.engine).speed
+  const speed = (st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1) * studioOperations(g, b) * studioEngineDef(st.engines, x.engine).speed
   const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed
   const years = Math.max(1, Math.ceil((100 - x.progress) / Math.max(1, perYear) - 0.05))
   const target = qualityTarget(g, a, b, st, x.genre, x.scope, x.engine, ratio, x.stage === 'ea')
@@ -932,8 +955,8 @@ function publishValues(g: GameState, a: Asset, b: BizState, st: StudioState, x: 
   const pub = receiptsOf(g, b, pitch, { quality, hype: clampN(x.hype + 15, 0, 100) * Math.pow(0.9, years), years, publisher: true, exclusive: !!x.exclusive, franchise })
   const paid = advance * (quality >= 55 ? 1 : 0.8)
   return {
-    self: self - royaltyOf(x.engine, self) - sc.marketingUsd * b.marketingLevel * scale,
-    sign: paid + devShare * Math.max(0, pub - royaltyOf(x.engine, pub) - (advance + sc.marketingUsd)),
+    self: self - royaltyOf(st, x.engine, self) - sc.marketingUsd * b.marketingLevel * scale,
+    sign: paid + devShare * Math.max(0, pub - royaltyOf(st, x.engine, pub) - (advance + sc.marketingUsd)),
   }
 }
 
@@ -941,7 +964,7 @@ function publishValues(g: GameState, a: Asset, b: BizState, st: StudioState, x: 
 function leadsPitch(g: GameState, a: Asset, b: BizState, st: StudioState): PitchOut {
   const scope = [...SCOPES].reverse().find((s) => s.id !== 'jam' && s.minTeam <= b.employees && (s.id !== 'aaa' || b.cash > 0)) ?? SCOPES[1]
   const platform: PlatformId = scope.index >= 4 ? 'multi' : scope.index >= 3 ? 'console' : 'pc'
-  const engine: EngineId = scope.index >= 3 ? 'titan' : 'cobalt'
+  const engine = leadEngine(st, scope.id)
   const best = st.games.filter((x) => x.stage === 'live' && x.critic >= 75).sort((x, y) => y.copies - x.copies)[0]
   const hot = pitchValue(g, a, b, st, { scope: scope.id, genre: hotGenres(g)[0].id, platform, engine })
   if (!best) return hot
@@ -1247,7 +1270,7 @@ interface GlDraft {
   scope: ScopeId
   genre: GenreId
   platform: PlatformId
-  engine: EngineId
+  engine: StudioEngineId
   franchise: string
   sequelOf: string
   title: string
@@ -1260,7 +1283,7 @@ function readGl(v: Json | undefined): GlDraft {
     scope: isScope(d.scope) ? d.scope : 'small',
     genre: isGenre(d.genre) ? d.genre : GENRES[0].id,
     platform: isPlatform(d.platform) ? d.platform : 'pc',
-    engine: isEngine(d.engine) ? d.engine : 'cobalt',
+    engine: isStudioEngineId(d.engine) ? d.engine : 'cobalt',
     franchise: typeof d.franchise === 'string' ? d.franchise : '',
     sequelOf: typeof d.sequelOf === 'string' ? d.sequelOf : '',
     title: typeof d.title === 'string' ? d.title : '',
@@ -1413,9 +1436,9 @@ const GL_PLATFORM = defineScript('gamestudio.gl.platform', (g, choice, data) => 
   const a = findBusiness(g, d.assetId)
   if (!a || greenlightBlock(g, a)) return
   d.platform = choice
-  const sc = scopeDef(d.scope)
+  const st = studioOf(a)
   const choices: ChoiceOption[] = [
-    ...ENGINES.filter((e) => e.id !== 'blocks' && e.maxScope >= sc.index).map((e) => ({ id: e.id, label: `${e.label}: ${e.note}`, emoji: e.emoji })),
+    ...enginesFor(st, d.scope).map((id) => studioEngineDef(st.engines, id)).map((e) => ({ id: e.id, label: `${e.label}: ${e.note}`, emoji: e.emoji })),
     { id: 'cancel', label: 'Never mind', emoji: '\u{2716}\u{FE0F}' },
   ]
   if (hasTalent(g, 'Business')) {
@@ -1423,7 +1446,7 @@ const GL_PLATFORM = defineScript('gamestudio.gl.platform', (g, choice, data) => 
     const st = studioOf(a)
     const franchise = d.sequelOf ? franchisePull(st, d.sequelOf) : 0
     const burn = studioBurn(g, b, st)
-    const per = new Map(choices.filter((c) => isEngine(c.id)).map((c) => [c.id, pitchValue(g, a, b, st, { scope: d.scope, genre: d.genre, platform: choice, engine: c.id as EngineId }, franchise, burn)]))
+    const per = new Map(choices.filter((c) => isStudioEngineId(c.id)).map((c) => [c.id, pitchValue(g, a, b, st, { scope: d.scope, genre: d.genre, platform: choice, engine: c.id as StudioEngineId }, franchise, burn)]))
     const funded = [...per.values()].some((p) => p.short <= 0)
     markBest(g, choices, (id) => {
       const p = per.get(id)
@@ -1437,17 +1460,17 @@ const GL_PLATFORM = defineScript('gamestudio.gl.platform', (g, choice, data) => 
 })
 
 const GL_ENGINE = defineScript('gamestudio.gl.engine', (g, choice, data) => {
-  if (choice === 'cancel' || !isEngine(choice)) return
+  if (choice === 'cancel' || !isStudioEngineId(choice)) return
   const d = readGl(data)
   const a = findBusiness(g, d.assetId)
-  if (!a || greenlightBlock(g, a)) return
+  if (!a || greenlightBlock(g, a) || !enginesFor(studioOf(a), d.scope).includes(choice)) return
   d.engine = choice
   const st = studioOf(a)
   const suggestion = d.title || (d.sequelOf ? sequelTitle(d.franchise, 2) : gameTitle(g, d.genre, new Set(st.games.map((x) => x.title))))
   scriptInput(g, {
     title: 'Name the Game',
     emoji: genreDef(d.genre).emoji,
-    text: `${scopeDef(d.scope).label} ${genreDef(d.genre).label.toLowerCase()} for ${platformDef(d.platform).label}, built in ${engineDef(d.engine).label}. Working title?`,
+    text: `${scopeDef(d.scope).label} ${genreDef(d.genre).label.toLowerCase()} for ${platformDef(d.platform).label}, built in ${studioEngineDef(st.engines, d.engine).label}. Working title?`,
     input: 'text',
     placeholder: 'Title',
     defaultValue: suggestion,
@@ -1462,6 +1485,7 @@ const GL_NAME = defineScript('gamestudio.gl.name', (g, input, data) => {
   if (!a || greenlightBlock(g, a)) return
   const b = bizOf(g, a)
   const st = studioOf(a)
+  if (!enginesFor(st, d.scope).includes(d.engine)) return notice(g, 'Engine Unavailable', 'This engine is no longer owned or suitable for this game. Greenlight the game again with another engine.', { emoji: '⚙️' })
   const title =
     String(input ?? '')
       .replace(/[\u0000-\u001f<>]/g, '')
@@ -1533,7 +1557,10 @@ function layOff(g: GameState, a: Asset, b: BizState, st: StudioState, n: number)
   b.brand = clampN(b.brand - (cut >= 10 ? 3 : 1), 0, 100)
   // Teams shrink with the studio.
   const assigned = assignedDevs(st)
-  if (assigned > b.employees) for (const x of devGames(st)) x.team = Math.max(1, Math.round((x.team * b.employees) / assigned))
+  if (assigned > b.employees) {
+    for (const x of devGames(st)) x.team = Math.max(1, Math.round((x.team * b.employees) / assigned))
+    for (const x of st.engines) if (x.stage === 'dev') x.team = Math.max(0, Math.floor((x.team * b.employees) / assigned))
+  }
   saveStudio(a, st)
   log(g, `${a.name} laid off ${cut} developer${cut === 1 ? '' : 's'}.`, 'bad')
   notice(g, 'Layoffs', `${a.name} laid off ${cut} developer${cut === 1 ? '' : 's'}${sev > 0 ? ` (${formatMoney(sev)} in severance)` : ''}. The remaining ${b.employees} are updating their CVs "just in case".`, { emoji: '\u{1F4E6}', tone: 'bad' })
@@ -1552,11 +1579,11 @@ function teamPreview(g: GameState, a: Asset, gid: string, v: number): string {
   if (!x) return ''
   const sc = scopeDef(x.scope)
   const n = Math.round(clampN(v, 1, Math.max(1, b.employees)))
-  const want = devGames(st).reduce((s, y) => s + (y.id === gid ? 0 : y.team), 0) + n
+  const want = assignedDevs(st) - x.team + n
   const share = want > b.employees && want > 0 ? b.employees / want : 1
   const ratio = clampN((n * share) / Math.max(1, sc.team), 0, 3)
   const speed = st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1
-  const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed * studioOperations(g, b) * engineDef(x.engine).speed
+  const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed * studioOperations(g, b) * studioEngineDef(st.engines, x.engine).speed
   const left = Math.max(0, 100 - x.progress)
   const years = perYear > 0 ? left / perYear : Infinity
   const parts = [`${n} of ${b.employees} developers (the ideal team for ${an(sc.label)} game is about ${sc.team})`]
@@ -1583,7 +1610,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
       const x = cur(g)
       if (!x) return 'This game is no longer in development.'
       return [
-        `${genreDef(x.genre).emoji} "${x.title}": ${scopeDef(x.scope).label} ${genreDef(x.genre).label.toLowerCase()} for ${platformDef(x.platform).label}${x.exclusive ? ` (exclusive to ${x.exclusive})` : ''}, ${engineDef(x.engine).label}.`,
+        `${genreDef(x.genre).emoji} "${x.title}": ${scopeDef(x.scope).label} ${genreDef(x.genre).label.toLowerCase()} for ${platformDef(x.platform).label}${x.exclusive ? ` (exclusive to ${x.exclusive})` : ''}, ${studioEngineDef(studioOf(a).engines, x.engine).label}.`,
         `Progress ${Math.round(x.progress)}% · quality so far ${Math.round(x.quality)} · hype ${Math.round(x.hype)}${x.bugs >= 10 ? ` · bugs ${Math.round(x.bugs)}` : ''} · ${x.team} developers · ${money(x.spent)} spent`,
         `${genreDef(x.genre).label} games are ${trendLabel(genreTrend(g, x.genre))} this year.${x.publisher ? ` Published by ${x.publisher} (recouping ${money(x.recoup)}, then ${Math.round(x.devShare * 100)}% to you).` : ''}${x.backers ? ` ${x.backers.toLocaleString('en-US')} backers are waiting.` : ''}`,
       ].join('\n')
@@ -1905,6 +1932,7 @@ export function studioNodes(g: GameState, a: Asset): MenuNode[] {
   const st = studioOf(a)
   const b = readBiz(g, a)
   const nodes: MenuNode[] = []
+  nodes.push(studioEngineMenu(a))
   nodes.push({
     type: 'action',
     id: `studio.greenlight.${a.id}`,

@@ -40,6 +40,13 @@ For a completed tier invention, open **Inventor Lab → the invention → Patent
 to file every remaining country at once. The confirmation shows the combined national fees;
 existing filings are skipped, and each country's patent term and enforcement still apply.
 
+Game studios can develop their own technology from **Game Engines** on the company screen:
+build an indie, professional, or flagship engine, then select it when greenlighting games for
+royalty-free use. Offer three-year licenses for annual fees or revenue royalties, or sell the
+engine IP outright. Development uses the studio's existing developers and company cash;
+licensing demand follows quality, reputation, engine age, and the market. Selling transfers
+future licensing income and new-game rights while preserving use in existing games.
+
 There is no server and no account: the game never sends anything anywhere.
 
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or

@@ -1,7 +1,7 @@
 {
   "name": "anotherlife",
   "private": true,
-  "version": "1.8.6",
+  "version": "1.8.7",
   "type": "module",
   "description": "A BitLife-style life simulator that runs entirely in the browser: live a whole life one year at a time.",
   "scripts": {

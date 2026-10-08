@@ -2,8 +2,9 @@
 // in development and its back catalog live in Asset.details.studio, next to the normal
 // BizState, so the studio is saved, inherited, sold and listed like any other company.
 // Light on imports on purpose: economy.ts reads studioValue() for the valuation.
-import { genreDef, isEngine, isGenre, isPlatform, isScope, NET_PER_PRICE, scopeDef, type EngineId, type GenreId, type PlatformId, type ScopeId } from '../special/gamedev-data'
+import { genreDef, isGenre, isPlatform, isScope, NET_PER_PRICE, scopeDef, type GenreId, type PlatformId, type ScopeId } from '../special/gamedev-data'
 import type { Json } from '../types'
+import { engineIpValue, isStudioEngineId, normalizeEngines, type StudioEngine, type StudioEngineId } from './gamestudio-engine-state'
 
 export type StudioPolicy = 'relaxed' | 'normal' | 'crunch'
 
@@ -13,7 +14,7 @@ export interface StudioGame {
   genre: GenreId
   platform: PlatformId
   scope: ScopeId
-  engine: EngineId
+  engine: StudioEngineId
   /** dev → (ea) → live. */
   stage: 'dev' | 'ea' | 'live'
   progress: number
@@ -73,6 +74,8 @@ export interface StudioReport {
 export interface StudioState {
   v: number
   games: StudioGame[]
+  engines: StudioEngine[]
+  engineSeq: number
   policy: StudioPolicy
   seq: number
   hits: number
@@ -84,7 +87,7 @@ export interface StudioState {
   report: StudioReport | null
 }
 
-export const STUDIO_VERSION = 1
+export const STUDIO_VERSION = 2
 const MAX_GAMES = 24
 
 function obj(v: Json | undefined): Record<string, Json> {
@@ -119,7 +122,7 @@ export function readStudioGame(v: Json, i: number): StudioGame | null {
     genre: isGenre(o.genre) ? o.genre : 'platformer',
     platform: isPlatform(o.platform) ? o.platform : 'pc',
     scope: isScope(o.scope) ? o.scope : 'small',
-    engine: isEngine(o.engine) ? o.engine : 'cobalt',
+    engine: isStudioEngineId(o.engine) ? o.engine : 'cobalt',
     stage,
     progress: clampN(num(o.progress, stage === 'live' ? 100 : 0), 0, 100),
     quality: clampN(num(o.quality, 50), 0, 100),
@@ -171,6 +174,7 @@ function readReport(v: Json | undefined): StudioReport | null {
 export function normalizeStudio(raw: Json | undefined): StudioState {
   const o = obj(raw)
   const policy = o.policy === 'relaxed' || o.policy === 'crunch' ? o.policy : 'normal'
+  const engines = normalizeEngines(o.engines)
   return {
     v: STUDIO_VERSION,
     games: trimStudioGames(
@@ -178,6 +182,8 @@ export function normalizeStudio(raw: Json | undefined): StudioState {
         .map(readStudioGame)
         .filter((x): x is StudioGame => !!x),
     ),
+    engines,
+    engineSeq: Math.max(whole(clampN(num(o.engineSeq), 0, 999_999_999)), ...engines.map((x) => Number(x.id.slice(6)))),
     policy,
     seq: whole(num(o.seq)),
     hits: whole(num(o.hits)),
@@ -221,9 +227,9 @@ export function liveGames(st: StudioState): StudioGame[] {
   return st.games.filter((x) => x.stage !== 'dev')
 }
 
-/** Developers already assigned to games in development. */
+/** Developers assigned to games AND engines share the same payroll and offices. */
 export function assignedDevs(st: StudioState): number {
-  return devGames(st).reduce((s, x) => s + x.team, 0)
+  return devGames(st).reduce((s, x) => s + x.team, 0) + st.engines.filter((x) => x.stage === 'dev').reduce((s, x) => s + x.team, 0)
 }
 
 /**
@@ -232,7 +238,7 @@ export function assignedDevs(st: StudioState): number {
  */
 export function studioValue(raw: Json | undefined): number {
   const st = normalizeStudio(raw)
-  let v = 0
+  let v = st.engines.reduce((sum, x) => sum + engineIpValue(x), 0)
   for (const x of st.games) {
     if (x.stage !== 'dev' && x.tail > 0) {
       const keep = clampN(0.2 + 0.4 * Math.pow(x.players / 100, 1.5), 0.12, 0.6)
@@ -252,6 +258,9 @@ export function studioLine(st: StudioState): string {
   const live = st.games.filter((x) => x.stage === 'live')
   const best = live.reduce((m, x) => Math.max(m, x.critic), 0)
   const parts = [`${dev.length} in development`, `${live.length} released`]
+  const owned = st.engines.filter((x) => x.stage === 'ready').length
+  const building = st.engines.filter((x) => x.stage === 'dev').length
+  if (owned || building) parts.push(`${owned} engines owned${building ? `, ${building} being built` : ''}`)
   if (best > 0) parts.push(`best critic score ${best}`)
   return parts.join(' · ')
 }
