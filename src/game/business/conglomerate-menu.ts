@@ -55,6 +55,7 @@ import { groupById, groupsOf, groupStake, groupValue, inGroup, sharePriceOf, typ
 import { oddsText } from './board-vote'
 import { industryDef } from './industries'
 import { businessView, shopCompany } from './manage'
+import { equityMenu } from './executive'
 import { manageBlock, tooBusy } from './gate'
 import { bizOf, businessAssets, findBusiness, readBiz, stakeValue } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -844,6 +845,7 @@ export function groupView(g: GameState, groupId: string): MenuNode[] {
   for (const x of grp.members) nodes.push(divisionRow(g, groupId, x.a))
   nodes.push({ type: 'heading', id: `biz.group.runH.${groupId}`, label: 'Run the Group' })
   nodes.push(ceoMenu(groupId), mandateMenu(groupId), moveMenu(groupId), dividendAction(groupId, grp, g), acquireMenu(groupId), addMenu(groupId))
+  nodes.push(equityMenu(groupId, true))
   nodes.push({ type: 'heading', id: `biz.group.restructH.${groupId}`, label: 'Restructure' })
   nodes.push(spinMenu(groupId), sellMenu(groupId))
   nodes.push({ type: 'heading', id: `biz.group.marketH.${groupId}`, label: 'Stock Market & Board' })

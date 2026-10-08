@@ -337,7 +337,9 @@ export function cancelMembership(g: GameState, assetId: string): boolean {
   if (!a || a.kind !== 'membership') return false
   g.assets = g.assets.filter((x) => x.id !== a.id)
   const cat = str(a.details.category)
-  const lines = (isRealBrandName(a.name) ? NEUTRAL_CANCEL_LINES[cat] : undefined) ?? CANCEL_LINES[cat] ?? CANCEL_LINES.subscription
+  const lines = cat === 'subscription' && (g.year < 2010 || !hasTech(g, 'internet'))
+    ? ['You filled out the cancellation form. The paperwork seemed longer than the original application.', 'You declined the renewal offer and kept the receipt.']
+    : (isRealBrandName(a.name) ? NEUTRAL_CANCEL_LINES[cat] : undefined) ?? CANCEL_LINES[cat] ?? CANCEL_LINES.subscription
   log(g, `I canceled my ${a.name} membership.`)
   notice(g, 'Canceled', `You canceled your ${a.name} membership. ${pick(g, lines)}`, { emoji: a.emoji })
   return true

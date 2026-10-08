@@ -26,6 +26,15 @@ allow, picked with sliders. Hire a CEO to run them (the best ones above skill 75
 real executives and write you a yearly letter), answer to a board of directors once outsiders
 own part of the company, and merge your companies into a conglomerate.
 
+Choose from 45 company sectors. National demand, input costs and customer tastes change over
+time; study your markets and run up to three local strategy programs per country. Elite CEOs
+bring stronger operating performance and turnaround planning, but want 2–10% equity for
+long-term retention. Group CEOs recruit division leaders at their own rating or higher.
+Large stock orders affect execution prices and market quotes, and major company declines
+shake national-sector confidence. With the **Inventor** talent, fund risky multi-year research
+into alternate-history technologies: a 15-year head start or a fictional frontier breakthrough
+with 20 years of product exclusivity. Even a monopoly needs cash, staff and production capacity.
+
 There is no server and no account: the game never sends anything anywhere.
 
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or

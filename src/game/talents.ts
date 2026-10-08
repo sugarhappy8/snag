@@ -14,6 +14,7 @@
 import type { GameState } from './types'
 
 export type TalentId =
+  | 'Inventor'
   | 'Business'
   | 'Investing'
   | 'Acting'
@@ -41,6 +42,7 @@ export interface SpecialTalentDef {
 
 /** Every talent the player can pick before birth. Ids match life.ts TALENTS where both exist. */
 export const SPECIAL_TALENTS: readonly SpecialTalentDef[] = [
+  { id: 'Inventor', label: 'Inventor', emoji: '💡', perk: 'Study company markets, develop technology 15 years ahead, and pursue entirely new breakthroughs with temporary exclusivity.' },
   { id: 'Business', label: 'Business', emoji: '\u{1F4BC}', perk: 'Purple hints in every company you run (best price and output, crisis calls, hot industries) and faster growth.' },
   { id: 'Investing', label: 'Investing', emoji: '\u{1F4C8}', perk: 'Purple hints on which stocks, funds and coins look set to rise next year, if any. Gut feelings, not guarantees.' },
   { id: 'Acting', label: 'Acting', emoji: '\u{1F3AD}', perk: 'Acting skill grows much faster and casting directors notice: better auditions and bigger roles.' },

@@ -48,6 +48,7 @@ import { getCountry } from '../world'
 import { readBoard } from './board-state'
 import { becomeCeo, ceoLetter, installManager, managerCandidate, SMART_SKILL } from './career'
 import { bizWorth, ceoSkill, equipmentValue, fxValue, insurancePremiumFor, licencePremium, localEcon, managerCost, refreshValue, staffPower, startupCost, TALENT_DEMAND, talentCeo, valuationOf, type YearResult } from './economy'
+import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { sellBusiness } from './exit'
 import { severanceMonths } from './flavor'
 import { createBusinessAsset, newBiz } from './founding'
@@ -163,6 +164,10 @@ interface Sale {
  * cash. Returns the same YearResult as economy.simulateYear so the rest of the business loop
  * (evolve, valuation, owner pay, cash crunches, events) works unchanged.
  */
+function studioOperations(g: GameState, b: BizState, year = g.year): number {
+  return (1 + .08 * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).capacity
+}
+
 export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number): YearResult {
   const st = studioOf(a)
   ensureCatalog(g, b, st, year)
@@ -172,7 +177,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // It scales launches; a game's long tail follows from how its launch went.
   const mf = studioMarketFactor(g, b, year)
   const speed = st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1
-  const ops = 1 + 0.08 * staffPower(b, 'ops')
+  const ops = studioOperations(g, b, year)
   const open = (1 - b.capacityLoss) * b.openFraction
   const runs = runsIt(g, a) && !g.character.prison && g.character.alive
   // A CEO who isn't a game maker delegates; a great one at the top lifts every game. In a
@@ -242,7 +247,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   }
 
   // 2) Launches. A business-talented founder-CEO sells a little better (TALENT_DEMAND).
-  const knack = talentCeo(g, b) ? TALENT_DEMAND : 1
+  const knack = (talentCeo(g, b) ? TALENT_DEMAND : 1) * businessEffects(g, b, b.countryId, year).demand * nationalMarket(g, b.industry, b.countryId, year).demand * (1 + .45 * executiveEdge(ceoSkill(g, b)))
   const fame = runs ? gdView(g).gamerFame : 0
   const countries = new Set(b.outlets.map((o) => o.countryId)).size
   for (const x of dev) {
@@ -348,7 +353,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
 
   // 5) Money out.
   const finance = 1 - 0.025 * staffPower(b, 'finance')
-  const ceoEff = 1.05 - ceoSkill(g, b) / 1000
+  const ceoEff = (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).cost * nationalMarket(g, b.industry, b.countryId, year).costs
   const wages = b.employees * wage * b.openFraction * licencePremium(g, b)
   let rent = 0
   for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent
@@ -739,7 +744,7 @@ function receiptsOf(g: GameState, b: BizState, x: Pitch, l: LaunchGuess): number
   const marketing = l.publisher ? 1.3 : clampN((0.55 + 0.3 * b.marketingLevel) * (0.75 + b.brand / 200), 0.4, 1.6)
   const reach = homeReach(b.countryId) * (l.publisher ? 1.2 : 0.95) * (1 + Math.min(0.3, (countries - 1) * 0.08))
   const fame = Math.max(runs ? gdView(g).gamerFame : 0, b.brand / 2)
-  const knack = talentCeo(g, b) ? TALENT_DEMAND : 1
+  const knack = (talentCeo(g, b) ? TALENT_DEMAND : 1) * businessEffects(g, b, b.countryId, g.year).demand * nationalMarket(g, b.industry, b.countryId).demand * (1 + .45 * executiveEdge(ceoSkill(g, b)))
   const copies =
     sc.potential *
     platformDef(x.platform).audience *
@@ -771,7 +776,7 @@ function royaltyOf(engine: EngineId, receipts: number): number {
 function studioBurn(g: GameState, b: BizState, st: StudioState): number {
   let rent = 0
   for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent
-  const overhead = (b.employees * devCost(b) * licencePremium(g, b) + rent + equipmentValue(b) * industryDef('gameStudio').maint) * (1 - 0.025 * staffPower(b, 'finance')) * (1.05 - ceoSkill(g, b) / 1000)
+  const overhead = (b.employees * devCost(b) * licencePremium(g, b) + rent + equipmentValue(b) * industryDef('gameStudio').maint) * (1 - 0.025 * staffPower(b, 'finance')) * (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, g.year).cost * nationalMarket(g, b.industry, b.countryId).costs
   const fixed = overhead + b.staff.reduce((t, x) => t + x.salary, 0) + managerCost(b) + (b.insured ? insurancePremiumFor(b) : 0) + b.debt * b.debtRate
   const scale = costScale(b.countryId)
   let inProduction = 0
@@ -791,7 +796,7 @@ function pitchValue(g: GameState, a: Asset, b: BizState, st: StudioState, x: Pit
   const eng = engineDef(x.engine)
   const team = pitchTeam(b, st, x.scope)
   const ratio = clampN(team / sc.team, 0.05, 3)
-  const speed = (st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1) * (1 + 0.08 * staffPower(b, 'ops')) * eng.speed
+  const speed = (st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1) * studioOperations(g, b) * eng.speed
   const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed
   const years = Math.max(1, Math.ceil(100 / Math.max(1, perYear) - 0.05))
   const target = qualityTarget(g, a, b, st, x.genre, x.scope, x.engine, ratio)
@@ -915,7 +920,7 @@ function publishValues(g: GameState, a: Asset, b: BizState, st: StudioState, x: 
   const sc = scopeDef(x.scope)
   const team = Math.max(1, x.team)
   const ratio = clampN(team / sc.team, 0.05, 3)
-  const speed = (st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1) * (1 + 0.08 * staffPower(b, 'ops')) * engineDef(x.engine).speed
+  const speed = (st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1) * studioOperations(g, b) * engineDef(x.engine).speed
   const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed
   const years = Math.max(1, Math.ceil((100 - x.progress) / Math.max(1, perYear) - 0.05))
   const target = qualityTarget(g, a, b, st, x.genre, x.scope, x.engine, ratio, x.stage === 'ea')
@@ -1551,7 +1556,7 @@ function teamPreview(g: GameState, a: Asset, gid: string, v: number): string {
   const share = want > b.employees && want > 0 ? b.employees / want : 1
   const ratio = clampN((n * share) / Math.max(1, sc.team), 0, 3)
   const speed = st.policy === 'crunch' ? 1.25 : st.policy === 'relaxed' ? 0.85 : 1
-  const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed
+  const perYear = (100 / Math.max(1, sc.years)) * Math.pow(ratio, 0.8) * speed * studioOperations(g, b) * engineDef(x.engine).speed
   const left = Math.max(0, 100 - x.progress)
   const years = perYear > 0 ? left / perYear : Infinity
   const parts = [`${n} of ${b.employees} developers (the ideal team for ${an(sc.label)} game is about ${sc.team})`]

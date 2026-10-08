@@ -9,6 +9,7 @@ import { codingSkill } from '../computer/skills'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
 import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
+import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
@@ -127,7 +128,7 @@ export function techSkill(g: GameState, a: Asset, b: BizState, t: TechState): nu
   // A business-minded CEO still runs the place; the lab's own experts do most of the science.
   const base = Math.max(lead, 30 + ceoSkill(g, b) * 0.2)
   const experts = 10 * Math.min(2, staffPower(b, 'quality'))
-  return clampN(Math.round(base * 0.7 + experts + (t.cofounder ? 12 : 0) + t.level * 0.1), 5, 100)
+  return clampN(Math.round(base * 0.7 + experts + (t.cofounder ? 12 : 0) + t.level * 0.1 + 20 * executiveEdge(ceoSkill(g, b))), 5, 100)
 }
 
 // ---------------------------------------------------------------------------
@@ -296,16 +297,19 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
   const shock = calm ? 1 : b.demandShock
   const pressure = calm ? b.pressure * 0.5 : b.pressure
   const scale = demandScale(b, t, year)
+  const effects = businessEffects(g, b, b.countryId, year)
+  const national = nationalMarket(g, b.industry, b.countryId, year)
+  const executive = executiveEdge(ceoSkill(g, b))
   // Customers before competition and the economy, then what the world market leaves of them (an
   // early lab in a tiny market sells little; a dominant one keeps its customers at higher prices).
-  const bu = scale > 0 ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
+  const bu = scale > 0 ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * effects.demand * national.demand * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
   const mctx = marketCtxFor(g, b, year)
   const pick = bu > 0 && Number.isFinite(bu) ? marketDemand(mctx, bu) : null
   const demand = pick ? pick.units * cycleEffect * ic : 0
-  const ops = 1 + 0.08 * staffPower(b, 'ops')
+  const ops = (1 + 0.08 * staffPower(b, 'ops') + .25 * executive) * effects.capacity
   const loss = calm ? 0 : b.capacityLoss
   const capacity = capacityUnits(b, t, year) * home.baseDemand * ops * (1 - loss) * open
-  const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm) * (1 - SCALE_SAVING * mctx.dominance)
+  const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm) * effects.cost * national.costs * (1 - .20 * executive) * (1 - SCALE_SAVING * mctx.dominance)
   return {
     price,
     going: round2(going),

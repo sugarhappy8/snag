@@ -67,7 +67,8 @@ import {
   type SecYear,
 } from './invest/engine'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
-import { indexShockFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
+import { addMarketShock, indexShockFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
+import { buyImpact, saleImpact } from './invest/liquidity'
 import { chance, pick, randFloat, uid } from './rng'
 import { HINT_EMOJI, talentHint } from './talents'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode, Tone } from './types'
@@ -406,16 +407,18 @@ function realize(g: GameState, net: number, gain: number, immediate: boolean): R
 }
 
 /** Estimated tax on selling a holding for `gross` right now. */
-function estimateTax(g: GameState, a: Asset, gross: number): { fee: number; penalty: number; gain: number; tax: number } {
+function estimateTax(g: GameState, a: Asset, gross: number): { fee: number; penalty: number; gain: number; tax: number; impact: number } {
   const v = holdingValue(a)
   const frac = v > 0 ? Math.min(1, gross / v) : 1
   const fee = feeFor(feePlan(g, typeOf(a)), gross)
   const penalty = earlyPenalty(g, a, gross)
-  const gain = Math.round(gross - fee - penalty - basis(a) * frac)
+  const depth = tradingDepth(g, typeOf(a), a.details)
+  const impact = depth ? gross - saleImpact(gross, depth).proceeds : 0
+  const gain = Math.round(gross - impact - fee - penalty - basis(a) * frac)
   const taxable = Math.max(0, gain - Math.min(lossCarry(g), Math.max(0, gain)))
   const before = Math.max(0, num(g.flags.taxableIncome))
   const tax = taxable > 0 ? Math.max(0, incomeTax(g.character.countryId, before + taxable) - incomeTax(g.character.countryId, before)) : 0
-  return { fee, penalty, gain, tax }
+  return { fee, penalty, gain, tax, impact }
 }
 
 function earlyPenalty(g: GameState, a: Asset, gross: number): number {
@@ -569,7 +572,7 @@ function listing(g: GameState): Listing {
   const marketBlock = stockMarketBlock(g, info)
   const blocked = investingBlocked(cid, y)
   const stocks = ey.stocks.map((s) => withShock(g, stockQuote(info, s, false, y, marketBlock), shockFactor(g, companyDef(info, s.slot, s.gen).id, y), shockFactor(g, companyDef(info, s.slot, s.gen).id, y - 1)))
-  const pennies = ey.pennies.map((s) => stockQuote(info, s, true, y, marketBlock))
+  const pennies = ey.pennies.map((s) => withShock(g, stockQuote(info, s, true, y, marketBlock), shockFactor(g, s.id, y), shockFactor(g, s.id, y - 1)))
   const fundId = ey.fund.id
   // Before index funds existed (1976 in the US), the closest thing was a pricey investment trust.
   const fn = fundName(info, y)
@@ -855,7 +858,9 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
     notice(g, 'Order Rejected', 'The order could not be filled.', { emoji: '🚫' })
     return false
   }
-  const newUnits = invested / price
+  const depth = tradingDepth(g, q.type, q.details)
+  const order = depth ? buyImpact(invested, depth) : { value: invested, end: 1 }
+  const newUnits = order.value / price
   let a = held
   if (a) {
     const oldUnits = units(a)
@@ -883,10 +888,11 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   }
   count(g, 'investTrades')
   count(g, 'moneyInvested', amt)
+  if (depth) recordOrderFlow(g, a, order.end)
   if (room !== null) noteCryptoBuy(g, q.secId, amt)
   const what = q.type === 'savings' ? `put ${formatMoney(invested)} into a ${q.sector.toLowerCase()}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
   const feeLine = fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''
-  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine} Your position is now worth ${formatMoney(a.value)}.`, { emoji: q.emoji, tone: 'good' })
+  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${depth ? ' Order-book depth affects your execution price; large orders move the market.' : ''} Your position is now worth ${formatMoney(a.value)}.`, { emoji: q.emoji, tone: 'good' })
   log(g, q.type === 'savings' ? `I put ${formatMoney(amt)} in the bank.` : `I invested ${formatMoney(amt)} in ${q.name}.`)
   return true
 }
@@ -897,6 +903,24 @@ interface SaleResult {
   penalty: number
   net: number
   realized: Realized
+  impact?: number
+}
+
+/** Gameplay liquidity, not a claim about a real exchange's current order book. */
+function tradingDepth(g: GameState, type: InvestType, details: Record<string, Json>): number | null {
+  if (type !== 'stock' && type !== 'penny' && type !== 'crypto') return null
+  const cap = type === 'crypto' ? coinMarketCap(Math.round(num(details.slot, -1)), g.year) : null
+  const base = type === 'penny' ? 5_000_000 : type === 'crypto' ? Math.max(50_000, (cap ?? 1_000_000_000) * .05) : 500_000_000
+  return base * shockFactor(g, str(details.secId), g.year)
+}
+
+function recordOrderFlow(g: GameState, a: Asset, mult: number): void {
+  const d = a.details
+  const before = shockFactor(g, str(d.secId), g.year)
+  addMarketShock(g, { asset: typeOf(a) === 'crypto' ? 'coin' : 'stock', secId: str(d.secId), exKey: str(d.exKey, 'crypto'), slot: num(d.slot), name: a.name, symbol: str(d.symbol), cause: 'liquidity', year: g.year, mult, fade: 0, countryId: str(d.country, g.character.countryId) })
+  // Foreign holdings may not occur in the player's current-country quote list.
+  if (g.assets.includes(a)) setPosition(a, units(a), unitPrice(a) * shockFactor(g, str(d.secId), g.year) / before, basis(a))
+  revalueHoldings(g)
 }
 
 function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | null {
@@ -912,13 +936,16 @@ function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | nul
   const sold = all ? value : gross
   const fee = feeFor(feePlan(g, typeOf(a)), sold)
   const penalty = earlyPenalty(g, a, sold)
-  const net = Math.max(0, sold - fee - penalty)
+  const depth = tradingDepth(g, typeOf(a), a.details)
+  const order = depth ? saleImpact(sold, depth) : { proceeds: sold, end: 1 }
+  const net = Math.max(0, order.proceeds - fee - penalty)
   const basisPart = basis(a) * frac
   if (all) g.assets = g.assets.filter((x) => x.id !== a.id)
   else setPosition(a, units(a) * (1 - frac), unitPrice(a), basis(a) - basisPart)
   const realized = realize(g, net, net - basisPart, true)
+  if (depth) recordOrderFlow(g, a, order.end)
   count(g, 'investTrades')
-  return { gross: sold, fee, penalty, net, realized }
+  return { gross: sold, fee, penalty, net, realized, impact: sold - order.proceeds }
 }
 
 function gainLine(r: Realized): string {
@@ -948,7 +975,7 @@ export function sellHolding(g: GameState, assetId: string, amount: number | 'all
   const res = sellCore(g, a, want)
   if (!res) return false
   const t = typeOf(a)
-  const extra = [res.fee > 0 ? `Fees: ${formatMoney(res.fee)}.` : '', res.penalty > 0 ? `Early withdrawal penalty: ${formatMoney(res.penalty)}.` : ''].filter(Boolean).join(' ')
+  const extra = [res.fee > 0 ? `Fees: ${formatMoney(res.fee)}.` : '', res.penalty > 0 ? `Early withdrawal penalty: ${formatMoney(res.penalty)}.` : '', (res.impact ?? 0) >= 1 ? `Market depth reduced proceeds by ${formatMoney(res.impact!)} and moved the quote. Splitting an order does not avoid the price impact.` : ''].filter(Boolean).join(' ')
   const verb = t === 'savings' ? `withdrew ${formatMoney(res.gross)} from your ${str(a.details.product) === 'term' ? 'term deposit' : 'savings account'}` : `sold ${formatMoney(res.gross)} of ${a.name}`
   notice(g, t === 'savings' ? 'Withdrawal' : 'Order Filled', `You ${verb}. ${extra ? `${extra} ` : ''}${formatMoney(res.net)} landed in your bank account. ${gainLine(res.realized)}`, { emoji: a.emoji, tone: res.realized.gain >= 0 ? 'good' : 'bad' })
   log(g, t === 'savings' ? `I withdrew ${formatMoney(res.gross)} from the bank.` : res.realized.gain >= 0 ? `I sold some ${a.name} at a profit.` : `I sold some ${a.name} at a loss.`, res.realized.gain >= 0 ? 'good' : 'bad')
@@ -1146,7 +1173,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       id: `inv-sell-${a.id}`,
       label: deposit ? 'Withdraw Some' : 'Sell Some',
       emoji: '💸',
-      subtitle: `${feePlan(g, t).label}${earlyPenalty(g, a, 100) > 0 ? ' · Early withdrawal penalty' : ''}`,
+      subtitle: `${feePlan(g, t).label}${earlyPenalty(g, a, 100) > 0 ? ' · Early withdrawal penalty' : ''}${tradingDepth(g, t, a.details) ? ' · Large orders move prices' : ''}`,
       visible: () => value > 1,
       disabledReason: (gg) => sellBlock(gg, a),
       input: { kind: 'number', money: true, label: `How much of it? It's worth ${formatMoney(value)}.`, placeholder: String(Math.round(value / 2)), min, max: Math.max(min, value), defaultValue: () => String(Math.max(min, Math.round(value / 2))) },
@@ -1160,7 +1187,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       id: `inv-sellall-${a.id}`,
       label: deposit ? 'Close Account' : 'Sell All',
       emoji: '💰',
-      subtitle: `About ${formatMoney(Math.max(0, value - feeFor(feePlan(g, t), value) - earlyPenalty(g, a, value)))} after fees`,
+      subtitle: `About ${formatMoney(Math.max(0, value - feeFor(feePlan(g, t), value) - earlyPenalty(g, a, value) - estimateTax(g, a, value).impact))} after fees and price impact, before tax`,
       disabledReason: (gg) => sellBlock(gg, a),
       confirm: (gg) => {
         const cur = gg.assets.find((x) => x.id === a.id)
@@ -1169,6 +1196,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
         const est = estimateTax(gg, cur, v)
         const bits = [`${deposit ? 'Withdraw' : 'Sell'} all of your ${cur.name} for about ${formatMoney(v)}?`]
         if (est.fee > 0) bits.push(`Fees: ${formatMoney(est.fee)}.`)
+        if (est.impact >= 1) bits.push(`Market impact: about ${formatMoney(est.impact)} less in proceeds. Large orders lower the quote for your remaining shares too.`)
         if (est.penalty > 0) bits.push(`It hasn't matured yet, so you'd pay a ${formatMoney(est.penalty)} early withdrawal penalty.`)
         if (est.gain > 0) bits.push(`Estimated tax on your ${formatMoney(est.gain)} profit: ${formatMoney(est.tax)}.`)
         else if (est.gain < 0) bits.push(`You'd lock in a ${formatMoney(-est.gain)} loss.`)
@@ -1531,6 +1559,8 @@ export function shockHeadline(sh: MarketShock): string {
   const move = `${sh.mult >= 1 ? 'jumped' : 'plunged'} ${absPct(sh.mult - 1)}`
   const label = `${sh.name} (${sh.symbol})`
   switch (sh.cause) {
+    case 'liquidity':
+      return `📊 ${label} moved ${absPct(sh.mult - 1)} ${sh.mult >= 1 ? 'up' : 'down'} as your orders used market liquidity.`
     case 'ban':
       return `🚫 ${label} ${move} after the government announced a ban.`
     case 'probe':
@@ -1910,7 +1940,9 @@ function pruneShocks(g: GameState): void {
     if (sh.year >= g.year) return true
     if (sh.asset === 'coin') return cryptoYear(f, an, last).coins[sh.slot]?.id === sh.secId
     const info = exchangeByKey(sh.exKey)
-    return !!info && exchangeYear(f, an, info, last).stocks[sh.slot]?.id === sh.secId
+    if (!info) return false
+    const ey = exchangeYear(f, an, info, last)
+    return ey.stocks[sh.slot]?.id === sh.secId || ey.pennies[sh.slot]?.id === sh.secId
   })
 }
 
@@ -1965,7 +1997,7 @@ export function revalueHoldings(g: GameState): void {
   const quotes = allQuotes(listing(g))
   for (const a of investmentHoldings(g)) {
     const t = typeOf(a)
-    if (t !== 'stock' && t !== 'index' && t !== 'crypto') continue
+    if (t !== 'stock' && t !== 'penny' && t !== 'index' && t !== 'crypto') continue
     const q = quotes.find((x) => x.secId === str(a.details.secId))
     const old = unitPrice(a)
     if (!q || !(q.price > 0) || !(old > 0) || Math.abs(q.price / old - 1) < 1e-9) continue

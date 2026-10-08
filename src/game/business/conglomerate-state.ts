@@ -128,6 +128,8 @@ function readManager(v: Json | undefined): Manager | null {
     skill: Math.round(clampN(num(d.skill, 60), 1, 100)),
     salary: Math.max(0, Math.round(num(d.salary))),
     since: num(d.since),
+    ...(typeof d.equity === 'number' ? { equity: clampN(num(d.equity), 0, .5) } : {}),
+    ...(typeof d.equityAsked === 'number' ? { equityAsked: num(d.equityAsked) } : {}),
     ...(style ? { style } : {}),
     integrity: Math.round(clampN(num(d.integrity, 70), 0, 100)),
     ...(num(d.bonus) > 0 ? { bonus: Math.round(num(d.bonus)) } : {}),

@@ -123,6 +123,12 @@ export interface TalentDef {
 
 export const TALENTS: TalentDef[] = [
   {
+    id: 'Inventor', emoji: '💡', weight: 5,
+    hints: ['I took apart a broken toy and made it work in a completely different way.', 'I filled a notebook with sketches of machines nobody had built yet.'],
+    discovery: 'Your science teacher tried your prototype and stared in disbelief. You have a special talent for inventing! Study company markets to discover research opportunities when you grow up.',
+    apply: g => addStat(g, 'smarts', 5),
+  },
+  {
     id: 'Music',
     emoji: '\u{1F3B5}',
     weight: 15,
@@ -1413,6 +1419,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(typeof n.flags.heirOccupation === 'string' ? { heirOccupation: n.flags.heirOccupation } : {}),
     // Market shocks are world state (a banned company stays banned), not the old character's.
     ...(Array.isArray(n.flags.marketShocks) ? { marketShocks: n.flags.marketShocks } : {}),
+    ...(n.flags['business.confidence'] ? { 'business.confidence': n.flags['business.confidence'], 'business.confidenceYear': n.flags['business.confidenceYear'] ?? 0 } : {}),
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
   }
 

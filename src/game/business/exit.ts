@@ -3,10 +3,12 @@ import { addMoney, addStat, count, endJob, formatMoney, log, moneyWith, notice, 
 import { exchangeFor, marketOf } from '../data/markets'
 import { recordMissedPayment } from '../finance'
 import { bell } from '../rng'
+import { saleImpact } from '../invest/liquidity'
 import type { Asset, GameState } from '../types'
 import { afterMemberGone } from './conglomerate-state'
 import { deepTechIpoThreshold } from './deeptech-state'
 import { refreshValue, valuationOf } from './economy'
+import { recordCompanyShock } from './dynamics'
 import { industryDef } from './industries'
 import { ceoJob, stakeValue, type BizState } from './state'
 import { clampN, money, pct } from './util'
@@ -82,6 +84,7 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
 
 /** The company goes under: closed, debts wiped (limited liability), personal guarantees stay. */
 export function declareBankruptcy(g: GameState, a: Asset, b: BizState, why: string): void {
+  recordCompanyShock(g, b, b.last?.revenue ?? 0, 0, a.id)
   removeBusiness(g, a)
   count(g, 'bankruptcies')
   recordMissedPayment(g)
@@ -167,14 +170,14 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   if (!b.public || f <= 0) return
   const stake = b.share
   const sold = stake * f
-  const impact = clampN(sold * 0.6, 0, 0.25)
-  const gross = Math.round(sold * b.sharesOut * b.sharePrice * (1 - impact))
+  const order = saleImpact(sold, 1)
+  const gross = Math.round(b.sharesOut * b.sharePrice * order.proceeds)
   const basis = b.invested * f
   const tax = capitalGainsTax(g, gross, basis)
   addMoney(g, gross - tax)
   b.invested = Math.round(b.invested * (1 - f))
   b.share = stake - sold
-  b.sharePrice = Math.round(b.sharePrice * (1 - impact / 2) * 100) / 100
+  b.sharePrice = Math.max(.01, Math.round(b.sharePrice * order.end * 100) / 100)
   b.valuation = Math.round(b.sharePrice * b.sharesOut)
   if (f >= 0.999 || b.share < 0.005) {
     g.assets = g.assets.filter((x) => x.id !== a.id)

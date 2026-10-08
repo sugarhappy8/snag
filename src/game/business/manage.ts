@@ -34,6 +34,8 @@ import {
 } from './economy'
 import { eventChance } from './events'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
+import { inventorMenu, nationalStrategyMenu } from './expansion'
+import { equityMenu, equityTerms } from './executive'
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
@@ -1637,7 +1639,7 @@ function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow
       id === 'cancel' ? 'Best move: nobody here beats your CEO by enough to pay the severance' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year for the company after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they plan with the numbers' : ''}`,
     )
   }
-  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year`)
+  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year. ${equityTerms(m)}.`)
   const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (paid from your own pocket: the company was short)' : ''}.`]
   if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means buying out the contract: about ${formatMoney(sev)} in severance.`)
   if (list.some((m) => m.skill > SMART_SKILL)) notes.push('Anyone above 75 runs the company with the numbers, like a real executive.')
@@ -1911,6 +1913,9 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
 
 export function businessView(g: GameState, a: Asset): MenuNode[] {
   const nodes: MenuNode[] = [...infoRows(g, a)]
+  const health = readBiz(g, a)
+  nodes.push({ type: 'info', id: `biz.next.${a.id}`, emoji: '🧭', text: health.cash < 0 ? 'Priority: cover the cash shortfall in Money before expanding.' : health.last && health.last.net < 0 ? 'Losing money? Review price and production, reduce debt, or hire a turnaround CEO. Avoid new expansion until cash is stable.' : 'Next steps: compare national conditions, study a market, then fund a strategy or expansion. Keep cash for payroll and debt.' })
+  nodes.push(nationalStrategyMenu(a), inventorMenu(a))
   nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
   if (isStudio(readBiz(g, a))) {
     // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
@@ -1940,6 +1945,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
   nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
+  nodes.push(equityMenu(a.id))
   nodes.push({ type: 'heading', id: `biz.exitH.${a.id}`, label: 'Exit' })
   nodes.push(...exitNodes(a, g))
   return nodes

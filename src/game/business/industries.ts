@@ -1,4 +1,4 @@
-// The industries you can start a business in (25 classic + 8 deep-tech). Every number is a US baseline for ONE
+// The industries you can start a business in (37 operating sectors + 8 deep-tech). Every number is a US baseline for ONE
 // outlet (a truck, a restaurant, an office, a plant) in a typical city; economy.ts scales it
 // to each market with data/markets.ts (labor cost, rents, local prices, taxes, demand).
 //
@@ -84,7 +84,7 @@ export interface IndustryDef {
 
 const r = (title: string, focus: StaffFocus, pay: number): RoleDef => ({ title, focus, pay })
 
-export const INDUSTRIES: Record<Industry, IndustryDef> = {
+const BASE_INDUSTRIES = {
   foodTruck: {
     id: 'foodTruck', label: 'Food Truck', emoji: '\u{1F69A}', unit: 'meals', unitOne: 'meal', site: 'truck', sitePlural: 'trucks',
     blurb: 'Street food on wheels. Cheap to start, hard on the back.',
@@ -422,6 +422,41 @@ export const INDUSTRIES: Record<Industry, IndustryDef> = {
     products: ['Threat Intelligence Feed', 'Phishing Simulator', 'Managed Detection Plan', 'Compliance Toolkit', 'Small Business Edition'],
     suffixes: ['Security', 'Cyber', 'Defense', 'Shield', 'Sentinel'],
   },
+} satisfies Partial<Record<Industry, IndustryDef>>
+
+/** Related operations share a cost model, with distinct pricing, scale and product markets. */
+const SECTOR_UNITS: Record<string, [string, string, string, string]> = {
+  solar: ['MWh', 'MWh', 'solar farm', 'solar farms'], battery: ['battery packs', 'battery pack', 'factory', 'factories'],
+  water: ['water contracts', 'water contract', 'treatment plant', 'treatment plants'], recycling: ['recovered lots', 'recovered lot', 'recovery plant', 'recovery plants'],
+  telecom: ['subscriptions', 'subscription', 'network office', 'network offices'], dataCenter: ['hosting contracts', 'hosting contract', 'data center', 'data centers'],
+  education: ['enrollments', 'enrollment', 'learning center', 'learning centers'], petCare: ['appointments', 'appointment', 'care center', 'care centers'],
+  homeCare: ['service visits', 'service visit', 'service office', 'service offices'], packaging: ['bulk orders', 'bulk order', 'factory', 'factories'],
+  furniture: ['furniture orders', 'furniture order', 'workshop', 'workshops'], travel: ['bookings', 'booking', 'agency', 'agencies'],
+}
+function sector(base: keyof typeof BASE_INDUSTRIES, id: Industry, label: string, emoji: string, blurb: string, products: string[], scale: number, margin: number): IndustryDef {
+  const b: IndustryDef = BASE_INDUSTRIES[base]
+  const [unit, unitOne, site, sitePlural] = SECTOR_UNITS[id]
+  return { ...b, id, label, emoji, blurb, products, suffixes: [label, 'Group', 'Partners'],
+    unit, unitOne, site, sitePlural,
+    roles: [r('Operations Director', 'ops', b.wage * 2), r('Quality Lead', 'quality', b.wage * 1.8), r('Sales Director', 'sales', b.wage * 1.9), r('Finance Director', 'finance', b.wage * 2)],
+    capital: Math.round(b.capital * scale), price: b.price * scale, unitCost: b.unitCost * scale * margin,
+    wage: Math.round(b.wage * Math.sqrt(scale)), rent: Math.round(b.rent * scale), needs: undefined }
+}
+
+export const INDUSTRIES: Record<Industry, IndustryDef> = {
+  ...BASE_INDUSTRIES,
+  solar: sector('energy', 'solar', 'Solar Energy', '☀️', 'Build solar farms and sell clean power. Capital-heavy with low running costs.', ['Rooftop Arrays', 'Utility Solar', 'Community Microgrids', 'Solar Irrigation'], .7, .7),
+  battery: sector('manufacturing', 'battery', 'Battery Manufacturing', '🔋', 'Storage packs for vehicles, homes and grids.', ['Home Storage', 'Fleet Battery Packs', 'Grid Storage', 'Battery Recycling'], 1.6, .9),
+  water: sector('energy', 'water', 'Water Utilities', '💧', 'Treatment, desalination and reliable water supply.', ['Desalination', 'Industrial Water', 'Smart Metering', 'Reuse Systems'], .45, .8),
+  recycling: sector('manufacturing', 'recycling', 'Recycling', '♻️', 'Recover valuable materials from the waste stream.', ['Metal Recovery', 'Plastic Sorting', 'E-Waste Processing', 'Compost'], .55, .65),
+  telecom: sector('software', 'telecom', 'Telecommunications', '📡', 'Connectivity subscriptions for households and businesses.', ['Fiber Broadband', 'Business Networks', 'Rural Coverage', 'Satellite Backup'], 1.5, 1.2),
+  dataCenter: sector('software', 'dataCenter', 'Data Centers', '🖥️', 'Sell reliable compute and storage to a growing digital economy.', ['Cloud Hosting', 'AI Compute', 'Sovereign Cloud', 'Disaster Recovery'], 2.2, 1.35),
+  education: sector('gym', 'education', 'Education & Training', '🎓', 'Learning centers selling courses and practical skills.', ['Language Courses', 'Coding Bootcamps', 'Exam Preparation', 'Corporate Training'], .85, .9),
+  petCare: sector('salon', 'petCare', 'Pet Care', '🐾', 'Grooming, boarding and everyday care for pets.', ['Grooming', 'Daycare', 'Boarding', 'Training Classes'], .8, 1.05),
+  homeCare: sector('salon', 'homeCare', 'Home Services', '🏠', 'Reliable cleaning and household maintenance teams.', ['Deep Cleaning', 'Maintenance Plans', 'Move-Out Service', 'Garden Care'], 1.1, .85),
+  packaging: sector('manufacturing', 'packaging', 'Packaging', '📦', 'Containers and protective materials for other businesses.', ['Recyclable Cartons', 'Food Containers', 'Protective Packaging', 'Reusable Crates'], .6, .9),
+  furniture: sector('manufacturing', 'furniture', 'Furniture', '🪑', 'Make furniture for homes, hotels and offices.', ['Modular Furniture', 'Office Desks', 'Hotel Furnishings', 'Custom Joinery'], .8, 1.1),
+  travel: sector('marketing', 'travel', 'Travel Services', '🧳', 'Plan and sell holidays, tours and corporate travel.', ['Local Tours', 'Group Travel', 'Adventure Holidays', 'Business Travel'], .7, 1.25),
 }
 
 /**

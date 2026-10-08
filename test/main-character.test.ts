@@ -38,8 +38,8 @@ describe('the talent', () => {
     expect(isTalentId('MainCharacter')).toBe(true)
     expect(SPECIAL_TALENTS.filter((t) => t.id === 'MainCharacter')).toHaveLength(1)
     expect(talentEmoji('MainCharacter')).toBe(def.emoji)
-    // The other fifteen are untouched.
-    expect(ALL_TALENT_IDS).toHaveLength(15)
+    // Inventor joins the existing fifteen gifts.
+    expect(ALL_TALENT_IDS).toHaveLength(16)
     expect(ALL_TALENT_IDS).not.toContain('MainCharacter')
   })
 

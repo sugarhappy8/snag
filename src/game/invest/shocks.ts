@@ -14,9 +14,9 @@ import { exchangeByKey, isRealSecId, slotPlan } from './engine'
 
 export const SHOCKS_KEY = 'marketShocks'
 
-export type ShockCause = 'ban' | 'probe' | 'nationalize' | 'contract' | 'deregulate' | 'endorse'
+export type ShockCause = 'ban' | 'probe' | 'nationalize' | 'contract' | 'deregulate' | 'endorse' | 'liquidity'
 
-export const SHOCK_CAUSES: ShockCause[] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse']
+export const SHOCK_CAUSES: ShockCause[] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse', 'liquidity']
 
 export interface MarketShock {
   id: string
@@ -94,11 +94,18 @@ export function shockable(secId: string, asset: 'stock' | 'coin', cause: ShockCa
 /** Record a shock (the price moves at once). Returns it. */
 export function addMarketShock(g: GameState, s: Omit<MarketShock, 'id'>): MarketShock {
   const list = marketShocks(g)
+  // One order-flow record per listing per year, so repeated trades don't bloat saves.
+  const prior = s.cause === 'liquidity' ? list.find(x => x.cause === 'liquidity' && x.secId === s.secId && x.year === s.year) : undefined
+  if (prior) {
+    prior.mult = Math.max(1e-12, Math.min(1e12, prior.mult * s.mult))
+    g.flags[SHOCKS_KEY] = list as unknown as Json
+    return prior
+  }
   const shock: MarketShock = {
     ...s,
     id: `shock${g.year}-${list.length}-${s.secId}`,
     // A damaging story never sticks to a real company: it has no effect on its price.
-    mult: !shockable(s.secId, s.asset, s.cause) ? 1 : Math.max(0.05, Math.min(5, Number.isFinite(s.mult) ? s.mult : 1)),
+    mult: !shockable(s.secId, s.asset, s.cause) ? 1 : Math.max(s.cause === 'liquidity' ? 1e-12 : .05, Math.min(s.cause === 'liquidity' ? 1e12 : 5, Number.isFinite(s.mult) ? s.mult : 1)),
     fade: Math.max(0, Math.min(1, Number.isFinite(s.fade) ? s.fade : 0)),
   }
   list.push(shock)
@@ -159,8 +166,11 @@ export function pruneMarketShocks(g: GameState, alive: (s: MarketShock) => boole
   const raw = g.flags[SHOCKS_KEY]
   if (raw === undefined) return
   const keep = marketShocks(g)
-    .filter((s) => Math.abs(factorOf(s, g.year) - 1) >= 0.005 && alive(s))
-    .slice(-MAX_SHOCKS)
-  if (keep.length) g.flags[SHOCKS_KEY] = keep as unknown as Json
+    .filter((s) => (s.cause === 'liquidity' || Math.abs(factorOf(s, g.year) - 1) >= 0.005) && alive(s))
+  // Even a tiny permanent order-flow adjustment is part of today's quote. Discarding it
+  // next year would manufacture a predictable rebound. Political-news storage stays bounded.
+  const news = keep.filter(s => s.cause !== 'liquidity').slice(-MAX_SHOCKS)
+  const orders = keep.filter(s => s.cause === 'liquidity')
+  if (keep.length) g.flags[SHOCKS_KEY] = [...news, ...orders] as unknown as Json
   else delete g.flags[SHOCKS_KEY]
 }
