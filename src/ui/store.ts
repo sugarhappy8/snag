@@ -74,6 +74,7 @@ export interface AppState {
   /** Screen to return to from settings/ribbons/graveyard. */
   previousScreen: Screen
   game: GameState | null
+  saveError: boolean
   settings: Settings
   /** The menu to go back to after an action closed a sheet (see ReturnPoint). */
   returnPoint: ReturnPoint | null
@@ -89,6 +90,7 @@ let state: AppState = {
   screen: 'home',
   previousScreen: 'home',
   game: null,
+  saveError: false,
   settings: loadSettings(),
   returnPoint: null,
   timeStops: NO_STOPS,
@@ -187,6 +189,10 @@ export function hasSavedGame(): boolean {
 }
 
 export function resumeSavedGame(): boolean {
+  if (state.saveError && state.game) {
+    goTo('game')
+    return true
+  }
   const g = loadGame()
   if (!g) return false
   bindMoneyContext(g)
@@ -219,7 +225,7 @@ export function continueAs(childId: string): void {
 export function abandonLife(): void {
   clearSave()
   clearTimeline()
-  setState({ game: null, screen: 'home', previousScreen: 'home', returnPoint: null, timeStops: NO_STOPS, timeTravel: IDLE_TRAVEL })
+  setState({ game: null, saveError: false, screen: 'home', previousScreen: 'home', returnPoint: null, timeStops: NO_STOPS, timeTravel: IDLE_TRAVEL })
 }
 
 // ---------------------------------------------------------------------------
@@ -337,11 +343,16 @@ function commit(g: GameState): void {
   // Money text is written in the currency and prices of the life on screen (core.ts display).
   bindMoneyContext(g)
   finalizeIfDead(g)
-  saveGame(g)
+  const saved = saveGame(g)
   // The start of a year (its birthday popups done): keep it for the Time Machine. Best-effort
   // and asynchronous, after the save, so it can never cost the player their game.
-  void snapshotIfDue(g)
-  setState({ game: g, timeStops: timeStops(g.lifeId) })
+  if (saved) void snapshotIfDue(g)
+  setState({ game: g, saveError: !saved, timeStops: timeStops(g.lifeId) })
+}
+
+/** Retry the current in-memory life without replaying its last action. */
+export function retrySave(): void {
+  if (state.game) commit(state.game)
 }
 
 /**

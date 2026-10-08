@@ -57,7 +57,7 @@ import {
 import { LASTING_YEARS, refreshValue, valuationOf } from './economy'
 import { capitalGainsTax, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
-import { BIZ_VERSION, bizOf, ceoJob, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
+import { BIZ_VERSION, bizOf, ceoJob, diluteManagerEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
 import { clampN, cleanName, markBest, money, num, pct, rec, round2, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -416,6 +416,7 @@ function admit(g: GameState, grp: Group, joiners: { a: Asset; b: BizState }[], w
     grp.members.push({ a: j.a, b: j.b, m: newMembership(g, core) })
   }
   core.share = clampN(share, 0.001, 1)
+  if (prior > 0 && credited > 0) diluteManagerEquity(core.manager, prior / (prior + credited))
   spreadBasis(grp)
   if (core.mandate) for (const j of joiners) if (ownerControls(g, j.a)) setMandate(g, j.a, j.b, core.mandate)
   const d = conglomerateDiscount(inputs(grp))
@@ -994,6 +995,7 @@ export function groupIpo(g: GameState, groupId: string): boolean {
   if (!t.b.public) t.b.valuation = Math.round(t.b.valuation + raise - fees)
   const post = pre + raise - fees
   grp.core.share = clampN(grp.core.share * 0.75, 0.001, 1)
+  diluteManagerEquity(grp.core.manager, 0.75)
   const sharesOut = Math.max(1000, Math.round(post / 25))
   const sharePrice = round2(clampN((post / sharesOut) * pop, 0.05, 1e7))
   grp.core.listing = { exchange: ex.code, ipoYear: g.year, sharesOut, sharePrice }
@@ -1124,6 +1126,7 @@ export function delistGroup(g: GameState, groupId: string): boolean {
   }
   if (plan.fromYou > 0) addMoney(g, -plan.fromYou)
   grp.core.share = 1
+  diluteManagerEquity(grp.core.manager, 0)
   grp.core.listing = null
   grp.core.delisted = g.year
   spreadBasis(grp, plan.fromYou)

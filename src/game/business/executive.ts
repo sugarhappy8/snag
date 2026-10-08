@@ -12,7 +12,10 @@ import { bizOf, findBusiness, readBiz, type BizState, type Manager } from './sta
 import { pct, priceCapOf } from './util'
 
 export function equityTarget(skill: number): number { return skill >= 95 ? .10 : skill >= 90 ? .05 : skill >= 85 ? .02 : 0 }
-export function equityDue(m: Manager): number { return Math.max(0, equityTarget(m.skill) - (m.equity ?? 0)) }
+export function equityDue(m: Manager): number {
+  const due = equityTarget(m.skill) - (m.equity ?? 0)
+  return due > 1e-10 ? due : 0
+}
 export function equityTerms(m: Manager): string {
   return equityTarget(m.skill) ? `${pct(equityTarget(m.skill))} ownership needed for long-term retention; ${pct(m.equity ?? 0)} granted` : 'Salary-based retention'
 }
@@ -25,6 +28,7 @@ export function grantCeoEquity(g: GameState, id: string, group = false): boolean
     if (!due || before - due < .01) return false
     grp.core.share -= due
     m.equity = (m.equity ?? 0) + due
+    delete m.equityAsked
     for (const x of grp.members) x.b.invested *= grp.core.share / before
     syncMembers(grp)
     saveGroup(g, grp)
@@ -49,6 +53,7 @@ export function grantCeoEquity(g: GameState, id: string, group = false): boolean
   } else b.share -= due
   b.invested *= b.share / before
   m.equity = (m.equity ?? 0) + due
+  delete m.equityAsked
   if (grp) saveGroup(g, grp)
   else refreshValue(a, b)
   notice(g, 'CEO Equity Granted', `${m.firstName} now owns ${pct(m.equity)} of ${a.name}. Your effective stake is ${pct(b.share)}. ${grp ? 'The stake came from the group’s holding in this division. ' : ''}Salary is still payable. Equity satisfies long-term retention, but does not prevent board dismissal. The shares stay granted after departure.`, { emoji: '🤝' })

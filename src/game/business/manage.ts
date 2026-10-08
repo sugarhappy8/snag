@@ -1525,6 +1525,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
         if (n <= 0) return
         if (!boardAllows(gg, cur, bb, bonusP(n))) return
         bb.cash -= n
+        bb.yearCosts += n
         earnIncome(gg, n)
         const greedy = bb.last && bb.last.net < 0
         if (greedy) {

@@ -959,6 +959,8 @@ function gainLine(r: Realized): string {
 
 /** Sell `amount` dollars of a holding ('all' sells everything). */
 export function sellHolding(g: GameState, assetId: string, amount: number | 'all'): boolean {
+  // Old saves may still contain index NAVs inflated by personal order flow.
+  revalueHoldings(g, true)
   const a = g.assets.find((x) => x.id === assetId && x.kind === 'investment')
   if (!a) return false
   const block = sellBlock(g, a)
@@ -984,6 +986,7 @@ export function sellHolding(g: GameState, assetId: string, amount: number | 'all
 
 /** Sell every holding at once. */
 export function liquidatePortfolio(g: GameState): boolean {
+  revalueHoldings(g, true)
   const block = tradeBlock(g)
   if (block) {
     notice(g, 'Order Rejected', block, { emoji: '🚫' })
@@ -1992,17 +1995,24 @@ function normalizeHoldings(g: GameState, yearly = false): void {
  * Re-price the player's stocks, index funds and coins at today's quotes, right after news moved
  * the market mid-year (a ban, a contract...). Unrealized: nothing is taxed or sold.
  */
-export function revalueHoldings(g: GameState): void {
+export function revalueHoldings(g: GameState, indicesOnly = false): void {
   normalizeHoldings(g)
   const quotes = allQuotes(listing(g))
   for (const a of investmentHoldings(g)) {
     const t = typeOf(a)
+    if (indicesOnly && t !== 'index') continue
     if (t !== 'stock' && t !== 'penny' && t !== 'index' && t !== 'crypto') continue
     const q = quotes.find((x) => x.secId === str(a.details.secId))
+    let price = q?.price
+    if (t === 'index') {
+      const info = holdingExchange(a)
+      const fund = exchangeYear(fam(g), anchor(g), info, g.year).fund
+      if (fund.id === str(a.details.secId)) price = fund.price * indexShockFactor(g, info.key, g.year)
+    }
     const old = unitPrice(a)
-    if (!q || !(q.price > 0) || !(old > 0) || Math.abs(q.price / old - 1) < 1e-9) continue
-    if (num(a.details.updatedYear) === g.year) a.details.lastChange = Math.round(((1 + num(a.details.lastChange)) * (q.price / old) - 1) * 10000) / 10000
-    setPosition(a, units(a), q.price, basis(a))
+    if (!price || !(price > 0) || !(old > 0) || Math.abs(price / old - 1) < 1e-9) continue
+    if (num(a.details.updatedYear) === g.year) a.details.lastChange = Math.round(((1 + num(a.details.lastChange)) * (price / old) - 1) * 10000) / 10000
+    setPosition(a, units(a), price, basis(a))
   }
 }
 

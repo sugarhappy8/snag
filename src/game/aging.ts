@@ -5,14 +5,14 @@ import { yearlyAssets } from './assets'
 import { yearlyBusiness } from './business'
 import { yearlyCareer } from './careers'
 import { yearlyComputer } from './computer'
-import { bindMoneyContext, currentLogYear, queueAi } from './core'
+import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
 import { yearlyWealth } from './events/wealth'
 import { yearlyWillFeuds } from './events/will-feud'
 import { yearlyNepo } from './business/nepo'
 import { yearlyFamilyUse } from './shops/luxury-family'
-import { yearlyFinance } from './finance'
+import { settleIncomeTax, yearlyFinance } from './finance'
 import { checkDeath, yearlyHealth } from './health'
 import { yearlyHistory } from './history'
 import { yearlyDigest } from './history/digest'
@@ -56,10 +56,15 @@ export function ageUp(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   bindMoneyContext(g)
+  // Manual dividends/bonuses arrive after the yearly finance hook. Settle them
+  // before discarding the old year's income; already-paid tax is credited.
+  const closingTax = settleIncomeTax(g)
+  if (closingTax > 0) log(g, `I paid ${formatMoney(closingTax)} in remaining income tax for the year.`)
   c.age += 1
   g.year += 1
   g.yearActions = {}
   g.flags.taxableIncome = 0
+  g.flags.taxesPaid = 0
   currentLogYear(g)
 
   for (const [, hook] of YEARLY_HOOKS) {

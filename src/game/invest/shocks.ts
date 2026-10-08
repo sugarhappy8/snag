@@ -132,12 +132,16 @@ export function shockFactor(g: GameState, secId: string, year: number): number {
  * a company that loses half its value drags the index down by half its weight.
  */
 export function indexShockFactor(g: GameState, exKey: string, year: number): number {
-  const list = marketShocks(g).filter((s) => s.asset === 'stock' && s.exKey === exKey)
+  // An index tracks company fundamentals/news, not the player's temporary execution
+  // pressure in a single order book. Otherwise a tiny stock order pumps an unlimited fund.
+  const list = marketShocks(g).filter((s) => s.asset === 'stock' && s.exKey === exKey && s.cause !== 'liquidity')
   if (!list.length) return 1
   const info = exchangeByKey(exKey)
   const n = Math.max(4, info ? slotPlan(info).length : 10)
+  const companies = new Map<string, number>()
+  for (const s of list) companies.set(s.secId, (companies.get(s.secId) ?? 1) * factorOf(s, year))
   let sum = 0
-  for (const s of list) sum += factorOf(s, year) - 1
+  for (const factor of companies.values()) sum += factor - 1
   return Math.max(0.5, Math.min(1.5, 1 + sum / n))
 }
 

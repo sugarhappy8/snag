@@ -7,7 +7,7 @@ import { HomeScreen } from './ui/screens/HomeScreen'
 import { NewLifeScreen } from './ui/screens/NewLifeScreen'
 import { RibbonsScreen } from './ui/screens/RibbonsScreen'
 import { SettingsScreen } from './ui/screens/SettingsScreen'
-import { getApp, goTo, hasSavedGame, useApp, type Screen } from './ui/store'
+import { getApp, goTo, hasSavedGame, retrySave, useApp, type Screen } from './ui/store'
 
 let started = false
 
@@ -22,6 +22,17 @@ function startup(): void {
 export function App() {
   const screen: Screen = useApp((s) => s.screen)
   const hasGame = useApp((s) => s.game !== null)
+  const saveError = useApp((s) => s.saveError)
+
+  useEffect(() => {
+    if (!saveError) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [saveError])
 
   useEffect(() => {
     startup()
@@ -34,6 +45,10 @@ export function App() {
 
   return (
     <div className="app">
+      {saveError && <aside className="save-warning" role="alert">
+        <p>Progress isn’t saved. Keep this tab open. Free some browser storage or allow site storage, then retry.</p>
+        <button className="btn" onClick={retrySave}>Retry save</button>
+      </aside>}
       <ErrorBoundary screen={screen}>{renderScreen(screen, hasGame)}</ErrorBoundary>
     </div>
   )
@@ -93,7 +108,7 @@ class ErrorBoundary extends Component<BoundaryProps, BoundaryState> {
       <div className="crash">
         <div style={{ fontSize: 56 }}>🫠</div>
         <h2>Well, that wasn't supposed to happen.</h2>
-        <p className="muted">Something broke while drawing this screen. Your life is saved — try again or head back to the main menu.</p>
+        <p className="muted">Something broke while drawing this screen. Try again or head back to the main menu. Keep this tab open if a save warning is showing.</p>
         <pre>{error.message}</pre>
         <div className="row" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
           <button className="btn btn-primary" onClick={() => this.setState({ error: null })}>

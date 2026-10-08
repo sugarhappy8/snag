@@ -53,7 +53,7 @@ const store = await import('../src/ui/store')
 const settingsAfterStartup = storage.get('anotherlife.settings.v1')
 const real = await vi.importActual<typeof import('../src/game/offline')>('../src/game/offline')
 const { defineScript } = await import('../src/game/scripts')
-const { saveGame } = await import('../src/game/save')
+const { saveGame, loadGame, snapshotWritesSettled } = await import('../src/game/save')
 
 function game(): GameState {
   return store.getApp().game as GameState
@@ -87,6 +87,24 @@ afterEach(() => {
 })
 
 describe('startup', () => {
+  it('keeps unsaved progress in memory, warns, and retries without replaying actions', async () => {
+    await snapshotWritesSettled()
+    const before = game().character.money
+    const write = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new DOMException('Full', 'QuotaExceededError') })
+    store.act(g => { g.character.money += 12345 })
+    expect(store.getApp().saveError).toBe(true)
+    expect(game().character.money).toBe(before + 12345)
+    expect(loadGame()!.character.money).toBe(before)
+    store.resumeSavedGame()
+    expect(game().character.money).toBe(before + 12345)
+    store.retrySave()
+    expect(store.getApp().saveError).toBe(true)
+    write.mockRestore()
+    store.retrySave()
+    expect(store.getApp().saveError).toBe(false)
+    expect(loadGame()!.character.money).toBe(before + 12345)
+  })
+
   it('deletes the stored API keys and AI provider settings, keeping the rest', () => {
     expect(settingsAtStartup).toContain('sk-secret-key')
     expect(settingsAfterStartup).toBeDefined()

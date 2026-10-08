@@ -40,7 +40,7 @@ import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, may
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
 import { industryDef } from './industries'
 import { staffTurnover } from './staff'
-import { bizCountryName, bizOf, businessAssets, ceoJob, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
+import { bizCountryName, bizOf, businessAssets, ceoJob, diluteManagerEquity, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
 
 // ---------------------------------------------------------------------------
@@ -305,6 +305,7 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
     const inject = Math.round(need * 1.25)
     const stake = clampN(inject / (b.valuation + inject), 0.05, 0.6)
     b.share = clampN(b.share * (1 - stake), 0.01, 1)
+    diluteManagerEquity(b.manager, 1 - stake)
     b.cash += inject
     log(g, `I sold part of ${a.name} to an investor to cover a cash shortfall.`, 'neutral')
     notice(g, 'New Investor', `An investor put ${formatMoney(inject)} into ${a.name} for ${pct(stake)} of the company. You now own ${pct(b.share)}.`, { emoji: '\u{1F4BC}' })

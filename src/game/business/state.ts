@@ -146,6 +146,13 @@ export interface Manager {
 
 export type Supplier = 'budget' | 'standard' | 'premium'
 
+/** New issuance dilutes executives just like the owner's common shares. */
+export function diluteManagerEquity(manager: Manager | null, retained: number): void {
+  if (!manager?.equity) return
+  manager.equity *= clampN(retained, 0, 1)
+  delete manager.equityAsked
+}
+
 export interface BizState {
   /** Annual national strategy, market studies and inventor projects (dynamics.ts). */
   expansion?: Json

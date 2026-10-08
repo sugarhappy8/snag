@@ -522,6 +522,18 @@ function freshPick<T>(g: GameState, key: string, lines: readonly T[]): T {
   return lines[i]
 }
 
+/** Pay the outstanding tax for this year, crediting amounts already collected. */
+export function settleIncomeTax(g: GameState): number {
+  const due = incomeTax(g.character.countryId, num(g.flags.taxableIncome))
+  const tax = Math.max(0, due - num(g.flags.taxesPaid))
+  if (tax > 0) {
+    addMoney(g, -tax)
+    g.flags.taxesPaid = num(g.flags.taxesPaid) + tax
+    count(g, 'taxesPaid', tax)
+  }
+  return tax
+}
+
 /** Taxes, rent, living costs, loans and the consequences of going broke. Runs after career & special. */
 export function yearlyFinance(g: GameState): void {
   const c = g.character
@@ -529,12 +541,8 @@ export function yearlyFinance(g: GameState): void {
   g.flags.missedThisYear = false
 
   // 1. Income tax on everything earned this year (salary, pension, royalties...).
-  const income = num(g.flags.taxableIncome)
-  const tax = incomeTax(c.countryId, income)
-  g.flags.taxesPaid = tax
+  const tax = settleIncomeTax(g)
   if (tax > 0) {
-    addMoney(g, -tax)
-    count(g, 'taxesPaid', tax)
     // The journal is for the story, not a bank statement: mention taxes the first time and
     // when the bill changes a lot, not every single year.
     if (tax >= 50 && changedALot(g, 'lastTaxLogged', tax)) log(g, pick(g, TAX_LINES)(formatMoney(tax)))
