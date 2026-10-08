@@ -1432,7 +1432,7 @@ interface InsiderCase {
   target: string
   symbol: string
   secId: string
-  cause: ShockCause
+  cause: Exclude<ShockCause, 'liquidity'>
   /** Dollars riding on the move when it was announced. */
   stake: number
   /** 'own' brokerage bets, a 'crony' account, or plain 'shares' / coins in Investments. */
@@ -1538,7 +1538,7 @@ function newspaper(g: GameState, key: string): string {
 }
 
 interface MoveDef {
-  id: ShockCause
+  id: Exclude<ShockCause, 'liquidity'>
   label: string
   emoji: string
   bearish: boolean

@@ -16,6 +16,9 @@ import { ASIA_OCEANIA_MARKETS } from './markets/asiaOceania'
 import { EUROPE_MARKETS } from './markets/europe'
 
 /** The industries you can start a business in: BitLife's 25 plus 8 deep-tech ones. */
+/** New sectors use the procedural rival engine, without invented facts about real companies. */
+export const EXPANSION_INDUSTRY_IDS = ['solar', 'battery', 'water', 'recycling', 'telecom', 'dataCenter', 'education', 'petCare', 'homeCare', 'packaging', 'furniture', 'travel'] as const
+
 export const INDUSTRY_IDS = [
   'foodTruck',
   'restaurant',
@@ -42,6 +45,7 @@ export const INDUSTRY_IDS = [
   'farm',
   'energy',
   'entertainment',
+  ...EXPANSION_INDUSTRY_IDS,
   // Deep tech (business/deeptech*.ts): R&D, funding rounds, breakthroughs and big exits.
   'semiconductor',
   'aiLab',

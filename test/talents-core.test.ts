@@ -44,8 +44,8 @@ function growUp(g: GameState, toAge: number): Map<number, string[]> {
 
 describe('talents.ts helpers', () => {
   it('knows every pickable talent and has a childhood moment for each one', () => {
-    // 15 gifts plus Main Character Syndrome (which has every childhood moment already, so none of its own).
-    expect(SPECIAL_TALENTS.length).toBe(16)
+    // 16 gifts plus Main Character Syndrome (which has every childhood moment already, so none of its own).
+    expect(SPECIAL_TALENTS.length).toBe(17)
     expect(new Set(SPECIAL_TALENTS.map((t) => t.id)).size).toBe(SPECIAL_TALENTS.length)
     for (const t of SPECIAL_TALENTS) {
       expect(isTalentId(t.id)).toBe(true)

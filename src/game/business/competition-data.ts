@@ -57,6 +57,18 @@ function national(noun: string, field: number, extra: Partial<MarketDef> = {}): 
 }
 
 export const MARKETS: Record<Industry, MarketDef> = {
+  solar: national('solar power', 15, { from: 1975, emerging: true, curve: [[1975, .01], [2000, .15], [2026, 1], [2050, 2]] }),
+  battery: national('battery storage', 35, { from: 1900 }),
+  water: national('water treatment', 30),
+  recycling: national('recycling', 120),
+  telecom: national('telecommunications', 45, { from: 1880, network: 3 }),
+  dataCenter: national('data center', 40, { from: 1960, emerging: true, curve: [[1960, .01], [2000, .2], [2026, 1], [2050, 2.5]] }),
+  education: national('private education', 250),
+  petCare: national('pet care', 400),
+  homeCare: national('home services', 700),
+  packaging: national('packaging', 100),
+  furniture: national('furniture', 160),
+  travel: national('travel services', 100),
   foodTruck: national('street food', 100, { from: 1900 }),
   restaurant: national('restaurant', 1_800),
   cafe: national('café', 350),
@@ -347,4 +359,3 @@ export function industryEraBlock(industry: string, countryId: string, year: numb
   if (d.needs && techAdoption(countryId, d.needs, year) < 0.02) return d.notYet ?? 'The technology this business needs hasn’t arrived here yet.'
   return null
 }
-

@@ -119,6 +119,10 @@ export type CeoStyle = 'grower' | 'costCutter' | 'steady' | 'visionary'
 export const CEO_STYLES: readonly CeoStyle[] = ['grower', 'costCutter', 'steady', 'visionary']
 
 export interface Manager {
+  /** Vested fraction granted to this CEO; ownership is deducted when awarded. */
+  equity?: number
+  /** Year an outstanding equity request was first made. */
+  equityAsked?: number
   firstName: string
   lastName: string
   gender: 'male' | 'female'
@@ -143,6 +147,8 @@ export interface Manager {
 export type Supplier = 'budget' | 'standard' | 'premium'
 
 export interface BizState {
+  /** Annual national strategy, market studies and inventor projects (dynamics.ts). */
+  expansion?: Json
   v: number
   industry: Industry
   /** Home market (where it was founded and is registered). */
@@ -368,6 +374,8 @@ function readManager(v: Json | undefined): Manager | null {
     skill: clampN(num(v.skill, 55), 0, 100),
     salary: Math.max(0, num(v.salary)),
     since: num(v.since),
+    ...(typeof v.equity === 'number' ? { equity: clampN(num(v.equity), 0, .5) } : {}),
+    ...(typeof v.equityAsked === 'number' ? { equityAsked: num(v.equityAsked) } : {}),
     ...(style ? { style } : {}),
     ...(typeof v.integrity === 'number' ? { integrity: clampN(num(v.integrity, 70), 0, 100) } : {}),
     ...(num(v.bonus) > 0 ? { bonus: Math.round(num(v.bonus)) } : {}),
@@ -446,6 +454,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.market && typeof d.market === 'object' && !Array.isArray(d.market) ? { market: d.market } : {}),
     ...(d.group && typeof d.group === 'object' && !Array.isArray(d.group) && typeof d.group.id === 'string' && d.group.id ? { group: d.group } : {}),
     ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),
+    ...(d.expansion && typeof d.expansion === 'object' && !Array.isArray(d.expansion) ? { expansion: d.expansion } : {}),
   }
 }
 

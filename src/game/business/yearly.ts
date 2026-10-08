@@ -11,6 +11,9 @@ import { getCountry } from '../world'
 import { boardYear } from './board'
 import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
 import { styleOf, syncCeo } from './career'
+import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
+import { inventionYear } from './expansion'
+import { recordCompanyShock, recoverConfidence } from './dynamics'
 import { groupRescue, inGroup, yearlyConglomerates } from './conglomerate'
 import {
   bestPlan,
@@ -388,6 +391,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   if (list.length === 0) return
   const fiscal = g.year - 1
   const queued = g.queue.length
+  recoverConfidence(g)
   let eventQueued = false
   for (const a of list) {
     if (!findBusiness(g, a.id)) continue
@@ -397,12 +401,15 @@ export function yearlyBusinessImpl(g: GameState): void {
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null
     const studio = isStudio(b)
     const tech = isDeepTech(b)
+    executiveOperations(g, b, fiscal, a.id)
+    const previousRevenue = b.last?.revenue ?? 0
     const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     const lastCycle = s.cycle
     // Who sold what in its market this year (share, rivals, newcomers): before evolve() resets the year.
     refreshMarket(g, a, b, fiscal, s, res.market ?? null)
+    recordCompanyShock(g, b, previousRevenue, s.revenue, a.id)
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
     if (tech) afterDeepTechYear(g, a, b)
@@ -424,6 +431,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     // The board reviews the year (business/board.ts): the CEO's pay and bonus, warnings, firing a
     // CEO who keeps missing (the owner too, when they don't control the board), rogue CEOs.
     boardYear(g, a, b, s)
+    inventionYear(g, a, b)
+    executiveRetentionYear(g, a, b)
 
     // A group's division lists with the whole group (the group step has its own hint).
     if (!b.public && !inGroup(g, b) && s.net >= ipoThreshold(b) && g.flags[`biz.ipoHint.${a.id}`] !== true) {
@@ -456,6 +465,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   }
   // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
   yearlyConglomerates(g)
+  groupRetentionYear(g)
   bundleCeoLetters(g, queued)
 }
 

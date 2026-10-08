@@ -8,11 +8,12 @@
 // same market (1 = a solid reference competitor, a giant is 6-14). Nothing negative about a real
 // brand is ever written here: strength simply rises and falls along an arc.
 import type { Brand, BrandTier } from '../data/brands'
-import type { Industry } from '../data/markets'
+import { EXPANSION_INDUSTRY_IDS, type Industry } from '../data/markets'
 import type { Json } from '../types'
 
 /** Industries fought over one country at a time (the rest are world markets). */
 export const NATIONAL_INDUSTRIES: readonly Industry[] = [
+  ...EXPANSION_INDUSTRY_IDS,
   'foodTruck', 'restaurant', 'cafe', 'bakery', 'bar', 'brewery', 'grocery', 'fashion', 'beauty', 'salon', 'gym',
   'autoShop', 'construction', 'realEstate', 'marketing', 'clinic', 'hotel', 'logistics', 'farm', 'entertainment',
 ]

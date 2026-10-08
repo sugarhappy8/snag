@@ -163,16 +163,18 @@ function paydown(g: GameState, grp: Group, x: GroupMember, share: number): numbe
 /** Replace the weakest hired division CEO when a better one is clearly worth the change. */
 function upgradeCeo(g: GameState, grp: Group): string | null {
   const weak = grp.members
-    .filter((x) => x.b.ceo === 'manager' && x.b.manager && x.b.manager.skill <= SMART_SKILL && !runsIt(g, x.a) && x.b.last && ownerControls(g, x.a))
+    .filter((x) => x.b.ceo === 'manager' && x.b.manager && x.b.manager.skill < Math.max(SMART_SKILL + 1, grp.core.manager?.skill ?? 0) && !runsIt(g, x.a) && x.b.last && ownerControls(g, x.a))
     .sort((p, q) => (p.b.manager?.skill ?? 0) - (q.b.manager?.skill ?? 0))[0]
   if (!weak || !weak.b.manager) return null
   const b = weak.b
   const cur = weak.b.manager
   const w = bizWorth(g, b)
   const gain = optimizerGain(g, b)
-  const list = shortlist(g, b, 'standard')
+  const kind = (grp.core.manager?.skill ?? 0) >= 85 ? 'executive' : 'standard'
+  const list = shortlist(g, b, kind).filter(m => m.skill >= (grp.core.manager?.skill ?? 0))
+  if (!list.length) return null
   const best = list.reduce((top, m) => (ceoValue(w, m, gain) > ceoValue(w, top, gain) ? m : top), list[0])
-  const fee = headhunterFee(b, 'standard', 0)
+  const fee = headhunterFee(b, kind, 0)
   const sev = ceoSeverance(cur, g.year)
   const better = ceoValue(w, best, gain) - ceoValue(w, cur, gain) - (fee + sev) / LASTING_YEARS
   if (!(best.skill > cur.skill) || better <= 0) return null

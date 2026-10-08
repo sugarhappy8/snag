@@ -164,13 +164,14 @@ describe('market shocks', () => {
     expect(buySecurity(g, t.secId, 200_000)).toBe(true)
     expect(buySecurity(g, fund.secId, 200_000)).toBe(true)
     const before = quote().price
+    const orderFactor = shockFactor(g, t.secId, g.year)
     const holding = () => investmentHoldings(g).find((a) => a.details.secId === t.secId)!
     const indexHolding = () => investmentHoldings(g).find((a) => a.details.secId === fund.secId)!
     const v0 = holding().value
     const f0 = indexHolding().value
     g.queue = []
     announce(g, t.secId, 'ban')
-    const shock = marketShocks(g)[0]
+    const shock = marketShocks(g).find(s => s.cause === 'ban')!
     expect(shock.mult).toBeLessThan(0.75)
     expect(quote().price).toBeCloseTo(before * shock.mult, 6)
     expect(holding().value).toBeLessThan(v0 * 0.8)
@@ -187,7 +188,7 @@ describe('market shocks', () => {
     const h = holding()
     const engine = exchangeYear(fam(g), anchor(g), exchangeInfo('jp'), g.year).stocks[t.slot]
     if (h && engine.id === t.secId) expect(h.details.price as number).toBeCloseTo(engine.price * shockFactor(g, t.secId, g.year), 6)
-    expect(shockFactor(g, t.secId, g.year)).toBeCloseTo(shock.mult, 9)
+    expect(shockFactor(g, t.secId, g.year)).toBeCloseTo(shock.mult * orderFactor, 9)
   })
 
   it('index options opened before a ban settle on the dragged-down index', () => {
@@ -644,18 +645,19 @@ describe('review fixes', () => {
         addMarketShock(g, { asset: 'stock', secId: t.secId, exKey: t.exKey, slot: t.slot, name: t.name, symbol: t.symbol, cause: 'ban', year: g.year, mult: 0.5, fade: 0, countryId: 'us' })
         const shocked = listedTargets(g)[slot]
         expect(buySecurity(g, t.secId, 100_000)).toBe(true)
+        const totalFactor = shockFactor(g, t.secId, g.year)
         const units = investmentHoldings(g).find((a) => a.details.secId === t.secId)!.details.units as number
         const bet = placeBet(g, { via: 'own', secId: t.secId, kind: 'call', strike: 'atm', stake: 10_000 })!
         g.queue = []
         nextYear(g)
         const perUnit = nxt.stocks[slot].ended!.perUnit
-        expect(settlePrice(g, bet)).toBeCloseTo(perUnit * 0.5, 6)
-        expect(settlePrice(g, bet) / shocked.price).toBeCloseTo(perUnit / ex.stocks[slot].price, 6)
+        expect(settlePrice(g, bet)).toBeCloseTo(perUnit * totalFactor, 6)
+        expect(settlePrice(g, bet) / shocked.price).toBeCloseTo(perUnit / ex.stocks[slot].price * totalFactor / .5, 6)
         const cash = g.character.money
         yearlyInvestments(g)
         expect(investmentHoldings(g).some((a) => a.details.secId === t.secId)).toBe(false)
-        expect(g.character.money - cash).toBeLessThan(units * perUnit * 0.5 + 2)
-        expect(g.character.money - cash).toBeGreaterThan(units * perUnit * 0.5 * 0.5)
+        expect(g.character.money - cash).toBeLessThan(units * perUnit * totalFactor + 2)
+        expect(g.character.money - cash).toBeGreaterThan(units * perUnit * totalFactor * 0.5)
         // The shock is forgotten the year after its company stopped trading.
         nextYear(g)
         yearlyInvestments(g)

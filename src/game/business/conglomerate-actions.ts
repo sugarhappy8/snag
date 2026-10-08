@@ -8,6 +8,7 @@ import { addMoney, addStat, count, earnIncome, endJob, formatMoney, log, moneyWi
 import { arrestPlayer } from '../crime'
 import { exchangeFor } from '../data/markets'
 import { masterBusiness } from '../mastery'
+import { saleImpact } from '../invest/liquidity'
 import { bell, chance, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
@@ -851,7 +852,7 @@ export function searchGroupCeo(g: GameState, groupId: string, kind: SearchKind):
   markBest(g, choices, (id) => (id === 'cancel' ? keep : id.startsWith('m') ? (values[Number(id.slice(1))] ?? null) : null), (id) =>
     id === 'cancel' ? 'Best move: nobody here captures enough extra synergy to pay for the change' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year of synergies after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they work the numbers' : ''}`,
   )
-  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()}, wants ${formatMoney(m.salary)} a year`)
+  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()}, wants ${formatMoney(m.salary)} a year. ${m.skill >= 85 ? `${m.skill >= 95 ? 10 : m.skill >= 90 ? 5 : 2}% group ownership for long-term retention.` : 'Salary-based retention.'}`)
   const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (from your own pocket: the treasury was short)' : ''}.`]
   if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means about ${formatMoney(sev)} in severance.`)
   notes.push('A group CEO captures the synergies (the better, the more), keeps the sprawl in check and is paid by the divisions; above 75 they also manage the treasury and the division CEOs.')
@@ -1020,7 +1021,7 @@ export function shareSale(g: GameState, grp: Group, fraction: number): { sold: n
   const f = clampN(Number.isFinite(fraction) ? fraction : 0, 0, 1)
   if (!l) return { sold: 0, impact: 0, price: 0, gross: 0, tax: 0 }
   const sold = grp.core.share * f
-  const impact = clampN(sold * 0.6, 0, 0.25)
+  const impact = saleImpact(sold, 1).discount
   const price = sharePriceOf(grp)
   const gross = Math.round(sold * l.sharesOut * price * (1 - impact))
   const basis = grp.members.reduce((s, x) => s + Math.max(0, x.b.invested), 0) * f
@@ -1035,7 +1036,7 @@ export function sellGroupShares(g: GameState, groupId: string, fraction: number)
   const f = clampN(Number.isFinite(fraction) ? fraction : 0, 0, 1)
   if (!grp || !l || f <= 0) return false
   const stake = grp.core.share
-  const { sold, impact, price, gross, tax } = shareSale(g, grp, f)
+  const { sold, price, gross, tax } = shareSale(g, grp, f)
   addMoney(g, gross - tax)
   for (const x of grp.members) x.b.invested = Math.round(x.b.invested * (1 - f))
   grp.core.share = stake - sold
@@ -1051,7 +1052,7 @@ export function sellGroupShares(g: GameState, groupId: string, fraction: number)
     return true
   }
   // The sale weighs on the price.
-  grp.core.mult = multFor(grp, price * (1 - impact / 2) * l.sharesOut)
+  grp.core.mult = multFor(grp, price * saleImpact(sold, 1).end * l.sharesOut)
   syncMembers(grp)
   saveGroup(g, grp)
   log(g, `I sold ${pct(sold, 1)} of ${grp.core.name} on the stock market.`, 'good')

@@ -93,7 +93,7 @@ export type SearchKind = 'standard' | 'executive'
 export function shortlist(g: GameState, b: BizState, kind: SearchKind = 'standard'): Manager[] {
   const bands: [number, number][] = kind === 'executive' ? [[62, 78], [70, 84], [76, 88], [80, 92]] : [[38, 58], [52, 72], [64, 82], [70, 86]]
   const out = bands.map(([lo, hi]) => managerCandidate(g, b, randInt(g, lo, hi)))
-  if (kind === 'executive' || chance(g, 0.12)) out.push(managerCandidate(g, b, 85 + Math.floor(Math.pow(rand(g), 1.6) * 11)))
+  if (kind === 'executive' || chance(g, 0.12)) out.push(managerCandidate(g, b, 85 + Math.floor(Math.pow(rand(g), 2) * 16)))
   return out
 }
 

@@ -27,6 +27,7 @@ import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, typ
 import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
 import { marketDef } from './competition-data'
+import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -365,7 +366,7 @@ export function appealOf(g: GameState, b: BizState, year: number): number {
   const brand = 1 + ((b.brand - 50) / 100) * (0.25 + 0.35 * def.growth)
   const morale = 0.85 + (0.3 * b.morale) / 100
   const sales = 1 + 0.06 * staffPower(b, 'sales')
-  const ceo = 0.97 + ceoSkill(g, b) / 1500
+  const ceo = (0.97 + ceoSkill(g, b) / 1500) * (1 + .45 * executiveEdge(ceoSkill(g, b)))
   const talent = talentCeo(g, b) ? TALENT_DEMAND : 1
   return quality * brand * morale * sales * ceo * talent * marketingFactor(b.marketingLevel) * (1 + productsBoost(b, year)) * (1 + b.campaignBoost)
 }
@@ -427,7 +428,9 @@ const scaleCache = new Map<string, { dRef: number; fieldP: number }>()
 /** The competitive situation of a company's market in `year` (pure; cached). */
 export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx {
   const { dRef, fieldP } = marketScale(b.industry, b.countryId)
-  return buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP)
+  const ctx = buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP)
+  const national = nationalMarket(g, b.industry, b.countryId, year)
+  return { ...ctx, pot: ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1) }
 }
 
 export interface PlanOptions {
@@ -450,7 +453,7 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
   const ratioToGoing = price / homeGoing
   const premium = premiumOf(b)
   const appeal = appealOf(g, b, year)
-  const ops = 1 + 0.08 * staffPower(b, 'ops')
+  const ops = 1 + 0.08 * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))
   const noise = opts.noise ?? 1
   const open = opts.calm ? 1 : b.openFraction
   const shockD = opts.calm ? 1 : b.demandShock
@@ -479,13 +482,15 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
     }
     const p = e.goingPrice * ratioToGoing
     const cyc = opts.cycle ? opts.cycle(o.countryId) : cycleOf(g, o.countryId, year)
-    const cycleEffect = 1 + (cyc - 1) * (0.5 + def.incomeSens)
+    const national = nationalMarket(g, b.industry, o.countryId, year)
+    const effects = businessEffects(g, b, o.countryId, year)
+    const cycleEffect = (1 + (cyc - 1) * (0.5 + def.incomeSens)) * (world || o.countryId !== b.countryId ? national.demand : 1)
     const n = perCountry[o.countryId] ?? o.count
     // A saturated country, and a city crowded with your own outlets, share the same customers.
     const sat = (n > e.saturation ? Math.pow(e.saturation / n, 0.6) : 1) * cityCrowding(o.count, citySaturation(e, o.countryId, o.city))
     // Customers before competition and the economy (the business cycle hits every competitor alike).
-    const d = o.count * e.baseDemand * priceResponse(p / Math.max(0.01, e.goingPrice * pricePremium), def.elasticity) * appeal * sat * (1 - pressure) * shockD * noise * open
-    const cap = o.count * e.capacity * ops * (1 - lossC) * open
+    const d = o.count * e.baseDemand * priceResponse(p / Math.max(0.01, e.goingPrice * pricePremium), def.elasticity) * appeal * effects.demand * sat * (1 - pressure) * shockD * noise * open
+    const cap = o.count * e.capacity * ops * effects.capacity * (1 - lossC) * open
     locs.push({ outlet: o, econ: e, price: round2(p), demand: Math.max(0, d), capacity: cap })
     cycles.push(cycleEffect)
     if (inMarket(o)) bu += Math.max(0, d)
@@ -503,7 +508,9 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
     const d = l.demand * (pick && inMarket(l.outlet) ? pick.factor : 1) * cycles[i]
     l.demand = Math.max(0, Number.isFinite(d) ? d : 0)
     demand += l.demand
-    costW += l.econ.unitCost * costCut * Math.max(1, l.demand)
+    const effects = businessEffects(g, b, l.outlet.countryId, year)
+    const national = nationalMarket(g, b.industry, l.outlet.countryId, year)
+    costW += l.econ.unitCost * costCut * effects.cost * national.costs * (1 - .20 * executiveEdge(ceoSkill(g, b))) * Math.max(1, l.demand)
   })
   const weight = locs.reduce((s, l) => s + (l.demand > 0 ? Math.max(1, l.demand) : 0), 0)
   const unitCost = weight > 0 ? costW / weight : home.unitCost * costCut
@@ -577,7 +584,7 @@ export function yearFixed(g: GameState, b: BizState): YearFixed {
     keyStaff: b.staff.reduce((s, x) => s + x.salary, 0) + managerCost(b),
     insurance: b.insured ? insurancePremiumFor(b) : 0,
     finance: 1 - 0.025 * staffPower(b, 'finance'),
-    ceoEff: 1.05 - ceoSkill(g, b) / 1000,
+    ceoEff: (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))),
   }
 }
 

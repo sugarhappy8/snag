@@ -2,21 +2,23 @@
 // industry has a cast, nothing real ends after the present, and nothing negative is written.
 import { describe, expect, it } from 'vitest'
 import { allBrands, brandExists } from '../src/game/data/brands'
-import { INDUSTRY_IDS } from '../src/game/data/markets'
+import { EXPANSION_INDUSTRY_IDS, INDUSTRY_IDS } from '../src/game/data/markets'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import { marketDef } from '../src/game/business/competition-data'
 import { NATIONAL_INDUSTRIES, rivalIndustry } from '../src/game/business/market-rows'
 import { knownPlace } from '../src/game/business/market-places'
 
 const rivals = allBrands().filter((b) => rivalIndustry(b))
+const curated = INDUSTRY_IDS.filter(id => !(EXPANSION_INDUSTRY_IDS as readonly string[]).includes(id))
 
 describe('real rival data', () => {
   it('knows which industries are fought one country at a time, the same way the market model does', () => {
     for (const ind of INDUSTRY_IDS) expect(NATIONAL_INDUSTRIES.includes(ind), ind).toBe(marketDef(ind).scope === 'national')
   })
 
-  it('covers every industry with a real cast', () => {
-    for (const ind of INDUSTRY_IDS) {
+  it('preserves all 33 curated industries with a real cast', () => {
+    expect(curated).toHaveLength(33)
+    for (const ind of curated) {
       const n = rivals.filter((b) => rivalIndustry(b) === ind).length
       expect(n, ind).toBeGreaterThanOrEqual(15)
     }
@@ -44,7 +46,7 @@ describe('real rival data', () => {
   })
 
   it('never ends a real brand after the present and keeps the present field alive', () => {
-    for (const ind of INDUSTRY_IDS) {
+    for (const ind of curated) {
       const alive = rivals.filter((b) => rivalIndustry(b) === ind && brandExists(b, PRESENT_YEAR))
       expect(alive.length, ind).toBeGreaterThanOrEqual(12)
     }
