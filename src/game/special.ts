@@ -1,7 +1,7 @@
 // Special careers, fame, social media and the military (contract module).
 // The features live in src/game/special/*.ts; this file wires them into the menus and the
 // yearly loop:
-//   Occupation › Special Careers: Actor, Astronaut, Influencer, Model, Musician, Politician,
+//   Occupation › Special Careers: Actor, Astronaut, Author, Influencer, Model, Musician, Politician,
 //                                 Sports, Game Industry, Street Hustler, Business (business.ts)
 //   Occupation › Military:        enlist / commission, ranks, deployments, discharges, draft
 //   Activities › Fame:            celebrity actions (books, commercials, talk shows...)
@@ -10,6 +10,7 @@ import { businessCareerMenu, businessJobNodes } from './business'
 import { endJob, log, notice } from './core'
 import { actorCareerMenu, actorJobNodes, yearlyActor } from './special/actor'
 import { astronautCareerMenu, astronautJobNodes, yearlyAstronaut } from './special/astronaut'
+import { authorCareerMenu, authorJobNodes, yearlyAuthor } from './special/author'
 import { gameDevJobNodes, gameIndustryMenu, yearlyGameDev } from './special/gamedev'
 import { fameMenu, yearlyFame } from './special/fame'
 import { hustlerCareerMenu, hustlerJobNodes, yearlyHustler } from './special/hustler'
@@ -30,6 +31,7 @@ const YEARLY: [string, (g: GameState) => void][] = [
   ['music', yearlyMusic],
   ['sports', yearlySports],
   ['gamedev', yearlyGameDev],
+  ['author', yearlyAuthor],
   ['model', yearlyModel],
   ['politics', yearlyPolitics],
   ['astronaut', yearlyAstronaut],
@@ -70,7 +72,7 @@ export const specialCareersMenu: MenuGroup = {
   id: 'specialCareers',
   label: 'Special Careers',
   emoji: '\u{2B50}',
-  subtitle: 'Actor, athlete, game developer, musician, politician and more',
+  subtitle: 'Actor, author, athlete, game developer, musician, politician and more',
   visible: (g) => g.character.alive && !g.character.prison,
   header: (g) =>
     g.character.age < 16
@@ -79,6 +81,7 @@ export const specialCareersMenu: MenuGroup = {
   children: (): MenuNode[] => [
     actorCareerMenu,
     astronautCareerMenu,
+    authorCareerMenu,
     influencerMenu,
     modelCareerMenu,
     musicCareerMenu,
@@ -100,6 +103,7 @@ export function specialJobNodes(g: GameState): MenuNode[] {
     ...musicJobNodes(g),
     ...sportsJobNodes(g),
     ...gameDevJobNodes(g),
+    ...authorJobNodes(g),
     ...modelJobNodes(g),
     ...politicsJobNodes(g),
     ...astronautJobNodes(g),

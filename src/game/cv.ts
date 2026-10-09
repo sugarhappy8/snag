@@ -27,6 +27,8 @@ import { fillLocal, localeOf, localTerm } from './data/locales'
 import { industryDemand, marketOf } from './data/markets'
 import { chance, nextRandom, pick, randInt, uid } from './rng'
 import { masterFirstTime } from './mastery'
+import { formatDef } from './special/author-data'
+import { authorView } from './special/author-state'
 import { hasMainCharacter, hasTalent, isTalentId, shownTalents, talentHint, type TalentId } from './talents'
 import { getCountry } from './world'
 import type {
@@ -577,6 +579,7 @@ function specialTags(defId: string): string[] {
   if (id === 'politician') return ['government', 'law', 'service']
   if (id === 'astronaut') return ['science', 'tech']
   if (id === 'musician') return ['music', 'arts', 'media']
+  if (id === 'author') return ['writing', 'arts', 'media']
   if (id === 'model') return ['beauty', 'media']
   if (id === 'hustler') return ['business']
   if (/game|studio/.test(id)) return ['tech', 'arts']
@@ -735,6 +738,26 @@ function derivedEntries(g: GameState): CvEntry[] {
   }
   const albums = g.counters.albums ?? 0
   if (albums > 0) out.push({ id: 'd:albums', kind: 'project', title: `Released ${plural(albums, 'album')}`, org: '', startAge: c.age, detail: 'Music career', strength: between(4 + albums, 5, 9), embellished: false, tags: ['music', 'arts'] })
+  // Real publications, not generic counters or unfinished manuscripts. This profile
+  // reader is owner-scoped and pure, so browsing a CV cannot create a career or reroll it.
+  for (const work of authorView(g).works) {
+    if (!['serial', 'published', 'ended'].includes(work.stage) || work.released <= 0 || work.released > g.year) continue
+    const format = formatDef(work.format)
+    const startAge = Math.max(0, c.age - (g.year - work.released))
+    const reach = Math.max(work.copies, work.readers)
+    out.push({
+      id: `d:author:${work.id}`,
+      kind: 'project',
+      title: `Published "${work.title}"`,
+      org: work.publisher || 'Self-published',
+      startAge,
+      ...(work.stage !== 'serial' ? { endAge: startAge } : {}),
+      detail: `${format.label} • ${format.serial ? `${plural(work.chapters, 'chapter')} • ${work.readers.toLocaleString('en-US')} readers` : `${work.copies.toLocaleString('en-US')} copies sold`} • quality ${Math.round(work.quality)}/100`,
+      strength: between(Math.round(3 + work.quality / 35 + Math.log10(1 + reach) * 0.55), 3, 9),
+      embellished: false,
+      tags: ['writing', 'arts', 'media'],
+    })
+  }
   // Licenses and talent.
   for (const lic of c.licenses) {
     const [title, strength, tags] = LICENSE_ENTRIES[lic] ?? [`${titleCase(lic)} license`, 1, []]

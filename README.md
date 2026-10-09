@@ -47,6 +47,15 @@ engine IP outright. Development uses the studio's existing developers and compan
 licensing demand follows quality, reputation, engine age, and the market. Selling transfers
 future licensing income and new-game rights while preserving use in existing games.
 
+Become an **Author & Storyteller** from **Occupation → Special Careers**. Practice writing
+and illustration, then draft novellas, novels, or epic sagas. Japan also offers **Manga**;
+Korea and China offer **Manhwa / Manhua**. Serial creators make a promise to their readers:
+characters, mystery, or spectacle. Cliffhangers attract attention but build story debt;
+payoff arcs earn trust. Balance release schedules, burnout, and hiatuses, then choose a
+satisfying finale. Self-publish or accept a recoupable publisher advance, earn back-catalogue
+royalties, and license successful stories for screen or animated adaptations while retaining
+the original IP. Existing publications keep earning after you leave the career.
+
 There is no server and no account: the game never sends anything anywhere.
 
 > AnotherLife is a fan-made game inspired by BitLife's gameplay. It is not affiliated with or
