@@ -20,6 +20,8 @@ export interface UnderworldState {
 const object = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
 const finite = (v: unknown, fallback = 0, max = 1e12): number => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : fallback
 const roles: Role[] = ['operations', 'distribution', 'controller']
+const MAX_DIRTY_CASH = 1e12
+const MAX_INVENTORY = 1e6
 // A manually traded "lot" is one quote unit. An established enterprise moves batches of those
 // units: regular lots are smaller and turn over faster; premium lots tie up much more capital.
 // These multipliers let skilled staff earn back payroll at useful scale without changing the
@@ -39,7 +41,7 @@ function readCrew(value: unknown): Crew[] {
 export function underworldView(g: GameState): UnderworldState {
   const p = object(peek(g, 'underworld'))
   const rawLastYear = typeof p.lastYear === 'number' && Number.isFinite(p.lastYear) ? Math.round(p.lastYear) : -1
-  return { v: 1, dirtyCash: finite(p.dirtyCash), heat: finite(p.heat, 0, 100), inventory: Math.floor(finite(p.inventory, 0, 1e6)), premiumInventory: Math.floor(finite(p.premiumInventory, 0, 1e6)),
+  return { v: 1, dirtyCash: finite(p.dirtyCash, 0, MAX_DIRTY_CASH), heat: finite(p.heat, 0, 100), inventory: Math.floor(finite(p.inventory, 0, MAX_INVENTORY)), premiumInventory: Math.floor(finite(p.premiumInventory, 0, MAX_INVENTORY)),
     name: typeof p.name === 'string' ? p.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 60) : '', founded: Math.round(finite(p.founded, g.year, g.year)), scale: Math.max(1, Math.floor(finite(p.scale, 1, 10))), segment: p.segment === 'private' ? 'private' : 'street',
     crew: readCrew(p.crew),
     lastYear: Math.max(-1, Math.min(g.year - 1, rawLastYear)),
@@ -58,8 +60,10 @@ export function undergroundQuote(g: GameState, segment: Segment): { buy: number;
 export function tradeUnderground(g: GameState, segment: Segment, buy: boolean): boolean {
   if (block(g) || !['street', 'private'].includes(segment) || (segment === 'private' && privateBlock(g)) || yearActionsUsed(g, 'underworld.trade') >= 6) return false
   const p = underworldView(g), quote = undergroundQuote(g, segment), key = segment === 'private' ? 'premiumInventory' : 'inventory'
+  if (buy && p[key] >= MAX_INVENTORY) return false
   if (buy && p.dirtyCash < quote.buy && g.character.money < quote.buy) return false
   if (!buy && p[key] <= 0) return false
+  if (!buy && p.dirtyCash > MAX_DIRTY_CASH - quote.sell) return false
   if (!useYearAction(g, 'underworld.trade', 6)) return false
   if (buy) {
     if (p.dirtyCash >= quote.buy) p.dirtyCash -= quote.buy
@@ -94,8 +98,8 @@ export function hireUnderworldCrew(g: GameState, role: Role): boolean {
 export function fundUnderground(g: GameState, amount: number): boolean {
   const p = underworldView(g)
   const whole = Math.round(amount)
-  if (block(g) || !p.name || !Number.isFinite(amount) || whole < 1 || whole > 1e9 || !spend(g, whole)) return false
-  p.dirtyCash = Math.min(1e12, p.dirtyCash + whole); save(g, p); return true
+  if (block(g) || !p.name || !Number.isFinite(amount) || whole < 1 || whole > 1e9 || whole > MAX_DIRTY_CASH - p.dirtyCash || !spend(g, whole)) return false
+  p.dirtyCash += whole; save(g, p); return true
 }
 
 /** Current, controlled operating companies with genuine immediately-prior-year sales. */
@@ -155,14 +159,16 @@ export function yearlyUnderworld(g: GameState): void {
     } else {
       const premium = p.segment === 'private', unitCost = premium ? 7_000 : 600
       const batch = annualBatch[p.segment]
-      const lots = Math.min(Math.floor(p.dirtyCash / unitCost), Math.floor(p.scale * (4 + skill('operations') / 4) * batch))
+      const key = premium ? 'premiumInventory' : 'inventory'
+      const lots = Math.min(MAX_INVENTORY - p[key], Math.floor(p.dirtyCash / unitCost), Math.floor(p.scale * (4 + skill('operations') / 4) * batch))
       const cost = lots * unitCost
       p.dirtyCash -= cost; p.lastCosts += cost
-      const key = premium ? 'premiumInventory' : 'inventory'
-      p[key] = Math.min(1e6, p[key] + lots)
+      p[key] += lots
       const demand = Math.floor(p.scale * (5 + skill('distribution') / 3) * (.6 + stableRoll(g, 'underworld.demand') * .8) * batch)
-      const sold = Math.min(p[key], demand), price = undergroundQuote(g, p.segment).sell
-      p[key] -= sold; p.lastRevenue = sold * price; p.dirtyCash = Math.min(1e12, p.dirtyCash + p.lastRevenue)
+      const price = undergroundQuote(g, p.segment).sell
+      const cashCapacity = Math.max(0, Math.floor((MAX_DIRTY_CASH - p.dirtyCash) / price))
+      const sold = Math.min(p[key], demand, cashCapacity)
+      p[key] -= sold; p.lastRevenue = sold * price; p.dirtyCash += p.lastRevenue
       const volumeHeat = sold / (premium ? 40 : 100)
       p.heat = Math.min(100, p.heat + p.scale * 3 + volumeHeat - skill('controller') / 25)
       record(p, `${fiscal}: ${sold} fictional lots sold; receipts ${formatMoney(p.lastRevenue)}, costs ${formatMoney(p.lastCosts)}.`)
@@ -182,7 +188,10 @@ function marketMenu(segment: Segment): MenuGroup {
     disabledReason: g => block(g) ?? (segment === 'private' ? privateBlock(g) : null),
     header: g => { const q = undergroundQuote(g, segment); return `Fictional ${segment === 'private' ? 'Aurora' : 'Nightglass'} lots. Buy ${formatMoney(q.buy)} · sell ${formatMoney(q.sell)}. Quotes change yearly; six shared market trades per year. No consumption or production instructions.` },
     children: g => [true, false].map(buy => ({ type: 'action', id: `underworld.trade.${segment}.${buy ? 'buy' : 'sell'}`, label: `${buy ? 'Buy' : 'Sell'} One Fictional Lot`, emoji: buy ? '📦' : '💵',
-      disabledReason: gg => block(gg) ?? (segment === 'private' ? privateBlock(gg) : null) ?? (yearActionsUsed(gg, 'underworld.trade') >= 6 ? 'All six trades used this year.' : buy ? (underworldView(gg).dirtyCash < undergroundQuote(gg, segment).buy && gg.character.money < undergroundQuote(gg, segment).buy ? 'Not enough money.' : null) : underworldView(gg)[segment === 'private' ? 'premiumInventory' : 'inventory'] <= 0 ? 'No inventory.' : null),
+      disabledReason: gg => {
+        const p = underworldView(gg), q = undergroundQuote(gg, segment), key = segment === 'private' ? 'premiumInventory' : 'inventory'
+        return block(gg) ?? (segment === 'private' ? privateBlock(gg) : null) ?? (yearActionsUsed(gg, 'underworld.trade') >= 6 ? 'All six trades used this year.' : buy ? (p[key] >= MAX_INVENTORY ? 'Inventory is full.' : p.dirtyCash < q.buy && gg.character.money < q.buy ? 'Not enough money.' : null) : p[key] <= 0 ? 'No inventory.' : p.dirtyCash > MAX_DIRTY_CASH - q.sell ? 'Enterprise treasury is full.' : null)
+      },
       run: gg => { tradeUnderground(gg, segment, buy) }, subtitle: `${buy ? 'Cash paid, heat increases' : 'Proceeds remain unlaundered'} · ${g.year}` })) }
 }
 export const underworldMenu: MenuGroup = {
@@ -193,7 +202,7 @@ export const underworldMenu: MenuGroup = {
     const p = underworldView(g), nodes: MenuNode[] = [marketMenu('street'), marketMenu('private')]
     if (!p.name) { nodes.push({ type: 'action', id: 'underworld.found', label: 'Start a Drug Empire', emoji: '🏴', subtitle: `${formatMoney(50_000)} startup capital at risk`, input: { kind: 'text', label: 'Enterprise name', placeholder: 'Fictional enterprise name' }, disabledReason: gg => block(gg) ?? (gg.character.money < 50_000 ? 'Not enough startup capital.' : null), confirm: () => 'Start an abstract fictional criminal business? Staff costs, seizures, imprisonment and financial losses are possible.', run: (gg, input) => { foundUnderground(gg, input ?? '') } }); return nodes }
     nodes.push({ type: 'info', id: 'underworld.operation', text: `Scale ${p.scale}/10 · ${p.segment === 'private' ? 'luxury' : 'regular'} market. Last receipts ${formatMoney(p.lastRevenue)}, costs ${formatMoney(p.lastCosts)}. Crew: ${p.crew.map(c => `${c.role} ${c.skill}/100, ${formatMoney(c.salary)}/year`).join('; ') || 'none—low skill and low capacity'}.`, emoji: '📒' },
-      { type: 'action', id: 'underworld.fund', label: 'Contribute Operating Capital', emoji: '💵', subtitle: 'Moves your own bank money; never creates income', input: { kind: 'number', money: true, label: 'Contribution', min: 1, max: 1e9 }, run: (gg, input) => { fundUnderground(gg, Number(input)) } })
+      { type: 'action', id: 'underworld.fund', label: 'Contribute Operating Capital', emoji: '💵', subtitle: 'Moves your own bank money; never creates income', input: { kind: 'number', money: true, label: 'Contribution', min: 1, max: 1e9 }, disabledReason: gg => underworldView(gg).dirtyCash >= MAX_DIRTY_CASH ? 'Enterprise treasury is full.' : block(gg), run: (gg, input) => { fundUnderground(gg, Number(input)) } })
     for (const role of roles) nodes.push({ type: 'action', id: `underworld.hire.${role}`, label: `Hire ${role}`, emoji: '👤', subtitle: `${formatMoney(5_000)} recruiting + annual wages`, disabledReason: gg => underworldView(gg).crew.some(c => c.role === role) ? 'Position filled.' : underworldView(gg).dirtyCash < 5_000 ? 'Enterprise treasury needs recruiting funds.' : block(gg), run: gg => { hireUnderworldCrew(gg, role) } })
     for (const segment of ['street', 'private'] as const) nodes.push({ type: 'action', id: `underworld.segment.${segment}`, label: `Target the ${segment === 'private' ? 'Ultra-Rich' : 'Regular'} Market`, emoji: '🎯', disabledReason: gg => block(gg) ?? (segment === 'private' ? privateBlock(gg) : null), run: gg => { if (block(gg) || (segment === 'private' && privateBlock(gg))) return; const v = underworldView(gg); v.segment = segment; save(gg, v) } })
     nodes.push({ type: 'action', id: 'underworld.expand', label: 'Expand the Enterprise', emoji: '📈', subtitle: `${formatMoney(30_000)} from enterprise treasury · more capacity and enforcement risk`, disabledReason: gg => block(gg) ?? (underworldView(gg).scale >= 10 ? 'Maximum scale.' : underworldView(gg).dirtyCash < 30_000 ? 'Not enough enterprise funds.' : yearActionsUsed(gg, 'underworld.expand') >= 1 ? 'Already expanded this year.' : null), run: gg => { const v = underworldView(gg); if (block(gg) || v.scale >= 10 || v.dirtyCash < 30_000 || !useYearAction(gg, 'underworld.expand', 1)) return; v.dirtyCash -= 30_000; v.scale++; v.heat = Math.min(100, v.heat + 8); save(gg, v) } })

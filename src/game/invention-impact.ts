@@ -13,7 +13,7 @@ import { addMarketBreakthrough, marketBreakthroughs, publicBusinessShockFactor, 
 import { revalueHoldings } from './investments'
 import { readInventionIp } from './inventor-state'
 import { defineScript } from './scripts'
-import { ownerKey } from './special/common'
+import { ownerKey, ownerMatches } from './special/common'
 import { timelineFamily } from './timeMachine'
 import type { Asset, GameState, Json, MenuNode } from './types'
 import { COUNTRIES, getCountry } from './world'
@@ -152,7 +152,7 @@ export function registerInventionBreakthrough(g: GameState, input: InventionBrea
 export function resolveInventionPressure(g: GameState, id: string, token: string, choice: string): boolean {
   if (blocked(g) || !['security', 'cooperate', 'refuse'].includes(choice)) return false
   const events = inventionImpactView(g), event = events.find(x => x.id === id), p = event?.pending
-  if (!event || !p || p.token !== token || p.owner !== ownerKey(g) || p.year !== g.year) return false
+  if (!event || !p || p.token !== token || !ownerMatches(g, p.owner) || p.year !== g.year) return false
   const owned = target(g, id, p.companyId)
   if (!owned) return false
   const rng = seeded(`${g.lifeId}|invention-pressure-resolution|${token}`)
@@ -189,7 +189,7 @@ const PRESSURE_SCRIPT = defineScript('invention.strategicPressure', (g, choice, 
 export function transferInventionImpact(g: GameState, id: string, companyId: string): boolean {
   if (blocked(g) || !companyId || !target(g, id, companyId)) return false
   const events = inventionImpactView(g), event = events.find(x => x.id === id), p = event?.pending
-  if (!event || !p || p.owner !== ownerKey(g) || p.year !== g.year || p.companyId) return false
+  if (!event || !p || !ownerMatches(g, p.owner) || p.year !== g.year || p.companyId) return false
   p.companyId = companyId
   p.token = `${id}:${g.year}:assignment:${companyId}:${ownerKey(g)}`
   save(g, events)
@@ -207,8 +207,8 @@ export function yearlyInventionImpact(g: GameState): void {
     event.lastYear = fiscal
     const owned = target(g, event.id)
     if (!owned) { event.pending = null; continue }
-    if (event.pending && (event.pending.owner !== ownerKey(g) || event.pending.year < g.year)) {
-      if (event.pending.owner === ownerKey(g) && event.pending.year < g.year) {
+    if (event.pending && (!ownerMatches(g, event.pending.owner) || event.pending.year < g.year)) {
+      if (ownerMatches(g, event.pending.owner) && event.pending.year < g.year) {
         event.leaks.push({ year: g.year, factor: .65, reason: 'Unanswered strategic access request' })
         log(g, `${event.name}: an unanswered strategic request was followed by a damaging knowledge leak.`, 'bad')
       }
@@ -227,7 +227,7 @@ export function yearlyInventionImpact(g: GameState): void {
 export function inventionImpactNodes(g: GameState, id: string, companyAssetId?: string): MenuNode[] {
   const event = inventionImpactView(g).find(x => x.id === id)
   if (!event) return []
-  const p = event.pending, active = !!p && p.year === g.year && p.owner === ownerKey(g)
+  const p = event.pending, active = !!p && p.year === g.year && ownerMatches(g, p.owner)
   const nodes: MenuNode[] = [{ type: 'info', id: `invention.impact.${id}`, emoji: '🌐', text: `Strategic technology: ${event.kind}. Monopoly strength ${Math.round(inventionLeakFactor(g, id, g.year) * 100)}%${event.securityUntil > g.year ? `; defence funded until ${event.securityUntil}` : ''}. Leaks weaken exclusivity without deleting the invention or extending patent terms.${active ? ' A government access request is waiting for your decision.' : ''}` }]
   if (!active || (companyAssetId && p!.companyId && p!.companyId !== companyAssetId)) return nodes
   for (const choice of ['security', 'cooperate', 'refuse']) nodes.push({ type: 'action', id: `invention.pressure.${id}.${choice}`, label: choice === 'security' ? `Fund Technology Defence (${formatMoney(securityCost(event))})` : choice === 'cooperate' ? 'Accept Limited Government Licensing' : 'Refuse Strategic Access', emoji: choice === 'security' ? '🛡️' : choice === 'cooperate' ? '🤝' : '🚪',

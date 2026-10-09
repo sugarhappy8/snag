@@ -99,8 +99,11 @@ export function bestRole(g: GameState, b: BizState): { role: RoleDef; value: num
 const HIRE = defineScript('business.hire', (g, choice, data) => {
   const d = rec(data)
   const a = findBusiness(g, str(d?.assetId))
-  if (!a || !d || choice === 'none') return
+  if (!a || !d || choice === 'none' || manageBlock(g, a)) return
   const b = bizOf(g, a)
+  const requested = str(d.role)
+  const role = industryDef(b.industry).roles.find((r) => sameRole(requested, r.title) || sameRole(requested, roleTitle(g, b.countryId, r.title)))
+  if (!role || b.staff.some((s) => sameRole(s.role, role.title))) return
   const list = Array.isArray(d.candidates) ? d.candidates : []
   const raw = rec(list[Number(choice.replace('c', ''))] as Json)
   if (!raw) return
@@ -108,15 +111,14 @@ const HIRE = defineScript('business.hire', (g, choice, data) => {
     notice(g, 'No Room', `${a.name} already has as many key people as it can use (${maxKeyStaff(b)}). Open more locations to grow the leadership team.`, { emoji: '\u{1FA91}' })
     return
   }
-  const focus = str(d.focus)
   const s: KeyStaff = {
     id: uid(g, 'ks'),
     firstName: str(raw.firstName, 'Alex'),
     lastName: str(raw.lastName, 'Lee'),
     gender: raw.gender === 'female' ? 'female' : 'male',
     age: num(raw.age, 35),
-    role: str(d.role, 'Manager'),
-    focus: focus === 'quality' || focus === 'sales' || focus === 'finance' ? focus : 'ops',
+    role: roleTitle(g, b.countryId, role.title),
+    focus: role.focus,
     skill: clampN(num(raw.skill, 50), 0, 100),
     salary: Math.max(0, num(raw.salary)),
     trait: str(raw.trait, 'steady'),
@@ -307,11 +309,11 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
         notice(g, 'Raise', `${x.firstName} now earns ${formatMoney(x.salary)} a year and has stopped updating their résumé.`, { emoji: '\u{1F4B5}', tone: 'good' })
       }),
       staffAction(a, id, 'train', 'Send to Training', '\u{1F393}', `Course fees about ${formatMoney(Math.round(s.salary * 0.08))}`, (g, b, x) => {
-        if (!useYearAction(g, `biz.train.${id}`, 1)) return tooBusy(g, `sent ${x.firstName} to training`)
         const cost = Math.round(x.salary * 0.08)
         const cur = findBusiness(g, a.id)
         if (!cur) return
         if (b.cash < cost) return noCash(g, cur, cost, 'the course')
+        if (!useYearAction(g, `biz.train.${id}`, 1)) return tooBusy(g, `sent ${x.firstName} to training`)
         b.cash -= cost
         b.yearCosts += cost
         const gain = traitOf(x.trait).id === 'lazy' ? randInt(g, 0, 2) : randInt(g, 3, 8)
@@ -456,10 +458,10 @@ function teamBuildingAction(a: Asset): MenuAction {
     run: (g) => {
       const cur = findBusiness(g, a.id)
       if (!cur) return
-      if (!useYearAction(g, `biz.team.${a.id}`, 1)) return tooBusy(g, 'organized a team outing')
       const b = bizOf(g, cur)
       const cost = teamBuildingCost(b)
       if (b.cash < cost) return noCash(g, cur, cost, 'a team outing')
+      if (!useYearAction(g, `biz.team.${a.id}`, 1)) return tooBusy(g, 'organized a team outing')
       b.cash -= cost
       b.yearCosts += cost
       const outing = localOuting(b.countryId, rand(g))

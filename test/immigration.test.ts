@@ -9,6 +9,7 @@ import { citizenshipsOf, heirCitizenships, immState, statusOf, updateImm } from 
 import { counter } from '../src/game/core'
 import { passportStrength } from '../src/game/data/immigration'
 import { legalWorkProblem, passportsLostBy, yearlyImmigration } from '../src/game/immigration'
+import { assetsMenu } from '../src/game/menus'
 import { createPerson } from '../src/game/people'
 import { runScript } from '../src/game/scripts'
 import type { GameState, MenuAction, MenuGroup, ModalItem } from '../src/game/types'
@@ -524,6 +525,12 @@ describe('locked visa money', () => {
     const pull = view.find((n) => n.type === 'action') as MenuAction
     expect(pull.disabledReason!(g)).toBeNull()
     expect(pull.confirm!(g)).toMatch(/revoked/)
+    const owned = assetsMenu.children(g).find((n) => n.id === `asset-${lock.id}`) as MenuGroup
+    expect(owned.subtitle).toMatch(/locked until/)
+    const ownedIds = owned.children(g).map((n) => n.id)
+    expect(ownedIds).toContain(`imm.lock.${lock.id}.withdraw`)
+    expect(ownedIds).not.toContain(`sell-${lock.id}`)
+    expect(ownedIds).not.toContain(`discard-${lock.id}`)
     const before = g.character.money
     withdrawEarly(g, lock.id)
     expect(lockAssets(g)).toHaveLength(0)

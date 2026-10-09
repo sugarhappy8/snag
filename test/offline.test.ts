@@ -73,9 +73,11 @@ describe('offline resolution of every queued task', () => {
     }
     const queue = runTask(g, { type: 'resolveChoice', event, choiceId: 'a' })
     expect(queue.some((m) => m.kind === 'notice')).toBe(true)
-    // A choice id the event doesn't have still resolves (the first option).
+    // A missing choice id is rejected rather than silently executing a different option.
     const g2 = makeTestGame(2, { age: 30 })
-    expect(runTask(g2, { type: 'resolveChoice', event, choiceId: 'zzz' }).some((m) => m.kind === 'notice')).toBe(true)
+    const before = JSON.stringify(g2)
+    expect(runTask(g2, { type: 'resolveChoice', event, choiceId: 'zzz' })).toEqual([])
+    expect(JSON.stringify(g2)).toBe(before)
     // An empty event can't crash the queue.
     const g3 = makeTestGame(2, { age: 30 })
     expect(() => runTask(g3, { type: 'resolveChoice', event: { ...event, choices: [] }, choiceId: 'ok' })).not.toThrow()

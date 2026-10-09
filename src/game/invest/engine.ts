@@ -49,6 +49,15 @@ function clampNum(n: number, lo: number, hi: number): number {
   return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : lo
 }
 
+function safeOrdinal(value: number, max = 1_000_000): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : 0
+}
+
+/** Normalize untrusted save/input years before using them as cache indexes or loop bounds. */
+function calendarYear(year: number): number {
+  return Number.isFinite(year) ? Math.max(-10_000, Math.min(100_000, Math.round(year))) : PRESENT_YEAR
+}
+
 /** Roughly standard-normal draw (sum of six uniforms). */
 function normal(r: SRng): number {
   let s = 0
@@ -700,6 +709,8 @@ function realDef(info: ExInfo, slot: number, gen: number, co: RealCo): SecurityD
 }
 
 export function companyDef(info: ExInfo, slot: number, gen: number): SecurityDef {
+  slot = safeOrdinal(slot)
+  gen = safeOrdinal(gen)
   const id = `${info.key}#s${slot}g${gen}`
   const hit = defCache.get(id)
   if (hit) return hit
@@ -758,6 +769,8 @@ const PENNY_KINDS: { noun: string; pitch: string }[] = [
 export const PENNY_SLOTS = 4
 
 export function pennyDef(info: ExInfo, slot: number, gen: number): SecurityDef {
+  slot = safeOrdinal(slot, PENNY_SLOTS - 1)
+  gen = safeOrdinal(gen)
   const id = `${info.key}#p${slot}g${gen}`
   const hit = defCache.get(id)
   if (hit) return hit
@@ -1220,7 +1233,7 @@ function effectiveAnchor(anchor: number, year: number): number {
 
 /** One exchange's full state in a year (prices, events, the index). */
 export function exchangeYear(fam: string, anchor: number, info: ExInfo, year: number): ExYear {
-  const y = Math.round(year)
+  const y = calendarYear(year)
   const a = effectiveAnchor(anchor, y)
   const ck = `${fam}|${a}|${info.key}`
   let years = pathCache.get(ck)
@@ -1270,7 +1283,9 @@ const COIN_SLOTS: { names: [string, string, string?][]; blurb: string; beta: num
 export const COIN_COUNT = COIN_SLOTS.length
 
 export function coinDef(slot: number, gen: number): CoinDef {
-  const s = COIN_SLOTS[slot % COIN_SLOTS.length]
+  slot = safeOrdinal(slot, COIN_COUNT - 1)
+  gen = safeOrdinal(gen)
+  const s = COIN_SLOTS[slot]
   const [name, symbol, own] = s.names[gen % s.names.length]
   const suffix = gen >= s.names.length ? ` ${Math.floor(gen / s.names.length) + 1}` : ''
   // The real coins (generation 0 of the first three slots) never go to zero by chance.
@@ -1327,7 +1342,7 @@ function historicalCryptoYear(yr: number, prev: CryptoYear | null): CryptoYear {
 }
 
 export function cryptoYear(fam: string, anchor: number, year: number): CryptoYear {
-  const y = Math.round(year)
+  const y = calendarYear(year)
   const a = effectiveAnchor(anchor, y)
   const ck = `${fam}|${a}`
   let years = cryptoCache.get(ck)
@@ -1396,7 +1411,7 @@ export function coinMarketCap(slot: number, year: number): number | null {
 const goldCache = new Map<string, { price: number; ret: number }[]>()
 
 export function goldYear(fam: string, anchor: number, year: number): { price: number; ret: number } {
-  const y = Math.round(year)
+  const y = calendarYear(year)
   const a = effectiveAnchor(anchor, y)
   const ck = `${fam}|${a}`
   let years = goldCache.get(ck)
@@ -1542,8 +1557,9 @@ export interface FxYear {
 }
 
 export function fxYear(fam: string, countryId: string, year: number): FxYear {
-  if (inHistory(year)) return historicalFx(countryId, year)
-  const r = seeded(`${familyAt(fam, year)}|fx|${countryId}|${year}`)
+  const y = calendarYear(year)
+  if (inHistory(y)) return historicalFx(countryId, y)
+  const r = seeded(`${familyAt(fam, y)}|fx|${countryId}|${y}`)
   const e = expectedDepreciation(countryId)
   const noise = normal(r) * (0.02 + 0.3 * Math.max(0, e))
   const uDef = r.next()

@@ -89,6 +89,7 @@ export interface StudioState {
 
 export const STUDIO_VERSION = 2
 const MAX_GAMES = 24
+export const MAX_STUDIO_SEQUENCE = 999_999_999
 
 function obj(v: Json | undefined): Record<string, Json> {
   return v && typeof v === 'object' && !Array.isArray(v) ? v : {}
@@ -117,7 +118,7 @@ export function readStudioGame(v: Json, i: number): StudioGame | null {
   if (!title) return null
   const stage = o.stage === 'live' || o.stage === 'ea' ? o.stage : 'dev'
   return {
-    id: str(o.id, `sg${i}`),
+    id: str(o.id).trim().slice(0, 80) || `sg${i}`,
     title: title.slice(0, 60),
     genre: isGenre(o.genre) ? o.genre : 'platformer',
     platform: isPlatform(o.platform) ? o.platform : 'pc',
@@ -129,8 +130,8 @@ export function readStudioGame(v: Json, i: number): StudioGame | null {
     team: whole(clampN(num(o.team), 0, 100_000)),
     bugs: clampN(num(o.bugs), 0, 100),
     hype: clampN(num(o.hype), 0, 100),
-    started: num(o.started),
-    released: num(o.released),
+    started: whole(num(o.started)),
+    released: whole(num(o.released)),
     critic: Math.round(clampN(num(o.critic), 0, 100)),
     players: Math.round(clampN(num(o.players), 0, 100)),
     copies: whole(num(o.copies)),
@@ -138,7 +139,7 @@ export function readStudioGame(v: Json, i: number): StudioGame | null {
     price: clampN(num(o.price, scopeDef(str(o.scope)).price), 0, 200),
     gross: whole(num(o.gross)),
     dlcs: whole(clampN(num(o.dlcs), 0, 20)),
-    lastDlc: num(o.lastDlc),
+    lastDlc: whole(num(o.lastDlc)),
     franchise: str(o.franchise).slice(0, 60),
     sequelOf: str(o.sequelOf),
     publisher: str(o.publisher).slice(0, 60),
@@ -160,9 +161,9 @@ export function readStudioGame(v: Json, i: number): StudioGame | null {
 
 function readReport(v: Json | undefined): StudioReport | null {
   const o = obj(v)
-  if (typeof o.year !== 'number') return null
+  if (typeof o.year !== 'number' || !Number.isFinite(o.year)) return null
   return {
-    year: o.year,
+    year: Math.round(o.year),
     releases: Array.isArray(o.releases) ? o.releases.filter((x): x is string => typeof x === 'string').slice(0, 8) : [],
     copies: whole(num(o.copies)),
     revenue: whole(num(o.revenue)),
@@ -175,17 +176,27 @@ export function normalizeStudio(raw: Json | undefined): StudioState {
   const o = obj(raw)
   const policy = o.policy === 'relaxed' || o.policy === 'crunch' ? o.policy : 'normal'
   const engines = normalizeEngines(o.engines)
+  const ids = new Set<string>()
+  const games = trimStudioGames(
+    (Array.isArray(o.games) ? o.games : [])
+      .map(readStudioGame)
+      .filter((x): x is StudioGame => !!x && !ids.has(x.id) && !!ids.add(x.id)),
+  )
+  const savedSeqRaw = whole(num(o.seq))
+  const savedSeq = Number.isSafeInteger(savedSeqRaw) && savedSeqRaw <= MAX_STUDIO_SEQUENCE ? savedSeqRaw : 0
+  const idSeq = games.reduce((max, x) => {
+    const match = /^sg(\d+)$/.exec(x.id)
+    if (!match) return max
+    const value = Number(match[1])
+    return Number.isSafeInteger(value) && value <= MAX_STUDIO_SEQUENCE ? Math.max(max, value) : max
+  }, 0)
   return {
     v: STUDIO_VERSION,
-    games: trimStudioGames(
-      (Array.isArray(o.games) ? o.games : [])
-        .map(readStudioGame)
-        .filter((x): x is StudioGame => !!x),
-    ),
+    games,
     engines,
     engineSeq: Math.max(whole(clampN(num(o.engineSeq), 0, 999_999_999)), ...engines.map((x) => Number(x.id.slice(6)))),
     policy,
-    seq: whole(num(o.seq)),
+    seq: Math.max(savedSeq, idSeq),
     hits: whole(num(o.hits)),
     flops: whole(num(o.flops)),
     crunchYears: whole(num(o.crunchYears)),

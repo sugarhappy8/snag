@@ -15,7 +15,7 @@ import { reserveDollars } from '../src/game/business/board-vote'
 import { hireBlock } from '../src/game/business/nepo-state'
 import { holdsFamilyJob } from '../src/game/business/nepo-job'
 import { bizOf, readBiz } from '../src/game/business/state'
-import type { MenuNode } from '../src/game/types'
+import type { MenuAction, MenuNode } from '../src/game/types'
 
 function world(skill = 100, size = 4) {
   const g = makeTestGame(937, { age: 50, money: 1e9 })
@@ -51,6 +51,22 @@ function walk(g: ReturnType<typeof makeTestGame>, nodes: MenuNode[]): void {
 }
 
 describe('autonomous conglomerate management', () => {
+  it('toggles delegation policies from live state even when the same menu action is replayed', () => {
+    const { g, id } = world()
+    const nodes = delegationMenu(id).children(g)
+    const autonomy = nodes.find((n): n is MenuAction => n.type === 'action' && n.id === `group.delegate.toggle.${id}`)!
+    const equity = nodes.find((n): n is MenuAction => n.type === 'action' && n.id === `group.delegate.equity.${id}`)!
+
+    autonomy.run(g)
+    expect(groupById(g, id)!.core.autonomous).toBe(false)
+    autonomy.run(g)
+    expect(groupById(g, id)!.core.autonomous).toBe(true)
+    equity.run(g)
+    expect(groupById(g, id)!.core.autoEquity).toBe(true)
+    equity.run(g)
+    expect(groupById(g, id)!.core.autoEquity).toBe(false)
+  })
+
   it('reviews and recruits for all four divisions, not only the weakest one, at the leader’s level or higher', () => {
     const { g, id, assets } = world()
     becomeCeo(g, assets[0], bizOf(g, assets[0]))

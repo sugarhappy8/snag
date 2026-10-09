@@ -351,6 +351,12 @@ export function yearlyGameDev(g: GameState): void {
   const job = gameJob(g)
   const p0 = gdPeek(g)
   if (!job && !p0 && !gameVentures(g).length) return
+  const marker = gdMut(g)
+  if (marker.settledYear === g.year && marker.settledAge === c.age) return
+  // Write the marker before any random resolution or payment. Re-entering after a partially
+  // handled popup/save cannot rerun salaries, royalties, sales or layoffs for this same tick.
+  marker.settledYear = Math.max(-10_000, Math.min(100_000, Math.round(g.year)))
+  marker.settledAge = Math.max(-1, Math.min(10_000, Math.round(c.age)))
   let budget = 2
   budget -= yearlyGameJob(g, budget)
   if (!c.alive) return

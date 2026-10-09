@@ -29,6 +29,7 @@ import {
   makeDirector,
   mandateDef,
   syncSeats,
+  takeDirectorKey,
   type BoardState,
   type Director,
   type Limits,
@@ -117,8 +118,7 @@ function directorTurnover(g: GameState, a: Asset, b: BizState, st: BoardState): 
   for (const d of leaving) {
     const i = st.members.findIndex((x) => x.key === d.key)
     if (i < 0) continue
-    const next = makeDirector(g, a, b, d.seat, st.seq)
-    st.seq += 1
+    const next = makeDirector(g, a, b, d.seat, takeDirectorKey(st))
     st.members[i] = next
   }
 }

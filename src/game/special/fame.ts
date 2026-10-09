@@ -7,7 +7,7 @@ import { defineScript } from '../scripts'
 import { localStreetName } from '../data/locales'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
-import { CELEBS, FAMOUS, addFame, blocked, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
+import { CELEBS, FAMOUS, addFame, blocked, claimYearly, cleanName, fameOf, money, ownFlag, peek, prof, say, tell, vary } from './common'
 import { eraOpen, online, PODCAST_GATE } from '../computer/era'
 import { hasTech } from '../history/timeline'
 import { pickBrand } from '../shops/everyday-brands'
@@ -65,8 +65,61 @@ interface FameProfile {
 
 const initFame = (): FameProfile => ({ books: [], podcast: null, merchLines: 0, commercials: 0 })
 
+const MAX_FAME_LEDGER = 1e12
+
+function fameWhole(value: unknown, fallback = 0, max = MAX_FAME_LEDGER): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : fallback
+}
+
+function fameText(value: unknown, fallback: string, max = 80): string {
+  if (typeof value !== 'string') return fallback
+  return value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max) || fallback
+}
+
+/** Normalize old or manually edited profile JSON before menus or yearly royalties use it. */
+function normalizedFame(value: unknown): FameProfile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return initFame()
+  const raw = value as Partial<FameProfile>
+  const books: Book[] = []
+  if (Array.isArray(raw.books)) {
+    for (const value of raw.books.slice(-256)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const book = value as Partial<Book>
+      books.push({
+        title: fameText(book.title, 'Untitled', 60),
+        age: fameWhole(book.age, 0, 10_000),
+        verdict: fameText(book.verdict, 'published', 80),
+        earned: fameWhole(book.earned),
+        royalty: fameWhole(book.royalty),
+      })
+    }
+  }
+  let podcast: FameProfile['podcast'] = null
+  if (raw.podcast && typeof raw.podcast === 'object' && !Array.isArray(raw.podcast)) {
+    const pod = raw.podcast as Partial<NonNullable<FameProfile['podcast']>>
+    podcast = {
+      name: fameText(pod.name, 'Untitled Show', 80),
+      listeners: fameWhole(pod.listeners, 0),
+      episodes: fameWhole(pod.episodes, 0, 1e9),
+      startedAge: fameWhole(pod.startedAge, 0, 10_000),
+    }
+  }
+  return {
+    books,
+    podcast,
+    merchLines: fameWhole(raw.merchLines, 0, 1e9),
+    commercials: fameWhole(raw.commercials, 0, 1e9),
+  }
+}
+
 function fameProfile(g: GameState): FameProfile {
-  return prof(g, 'fame', initFame)
+  const p = prof(g, 'fame', initFame)
+  Object.assign(p, normalizedFame(p))
+  return p
+}
+
+function fameView(g: GameState): FameProfile {
+  return normalizedFame(peek<FameProfile>(g, 'fame'))
 }
 
 /** Careers that keep you in the public eye (their own hooks manage fame). */
@@ -564,7 +617,7 @@ const startPodcastAction: MenuAction = {
   label: 'Podcast',
   emoji: '\u{1F3A7}',
   subtitle: (g) => (eraOpen(g, PODCAST_GATE) ? 'Start a podcast' : radioEra(g) ? 'Host your own radio show' : 'Write a weekly newspaper column'),
-  visible: (g) => !peek<FameProfile>(g, 'fame')?.podcast,
+  visible: (g) => !fameView(g).podcast,
   disabledReason: needFame(FAMOUS),
   input: { kind: 'text', label: 'Name your show', placeholder: 'e.g. Unplugged', defaultValue: (g) => `${g.character.firstName} Unplugged` },
   run: (g, input) => {
@@ -600,10 +653,10 @@ const recordEpisodeAction: MenuAction = {
   label: 'Record an Episode',
   emoji: '\u{1F399}\u{FE0F}',
   subtitle: (g) => {
-    const p = peek<FameProfile>(g, 'fame')?.podcast
+    const p = fameView(g).podcast
     return p ? `"${p.name}" · ${p.listeners.toLocaleString('en-US')} listeners` : ''
   },
-  visible: (g) => !!peek<FameProfile>(g, 'fame')?.podcast,
+  visible: (g) => !!fameView(g).podcast,
   disabledReason: (g) => blocked(g, 0),
   run: (g) => {
     const p = fameProfile(g).podcast
@@ -636,8 +689,8 @@ const endPodcastAction: MenuAction = {
   id: 'fame.podcast.end',
   label: 'End Your Show',
   emoji: '\u{1F6D1}',
-  visible: (g) => !!peek<FameProfile>(g, 'fame')?.podcast,
-  confirm: (g) => `Are you sure you want to end "${peek<FameProfile>(g, 'fame')?.podcast?.name ?? `your ${podcastWord(g)}`}"?`,
+  visible: (g) => !!fameView(g).podcast,
+  confirm: (g) => `Are you sure you want to end "${fameView(g).podcast?.name ?? `your ${podcastWord(g)}`}"?`,
   run: (g) => {
     const p = fameProfile(g)
     if (!p.podcast) return
@@ -930,7 +983,10 @@ function celebrityScenario(g: GameState): void {
 export function yearlyFame(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  const p = peek<FameProfile>(g, 'fame')
+  const stored = peek<FameProfile>(g, 'fame')
+  if (!stored && fameOf(g) <= 0) return
+  if (!claimYearly(g, 'fame')) return
+  const p = stored ? fameProfile(g) : null
   if (p) {
     for (const b of p.books) {
       if (b.royalty >= 50) {

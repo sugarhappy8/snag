@@ -93,7 +93,8 @@ export interface BoardState {
   refused: Record<string, number>
 }
 
-export const BOARD_VERSION = 1
+export const BOARD_VERSION = 2
+const MAX_BOARD_SEQUENCE = 999_999_999
 /** Votes kept on record. */
 export const MAX_VOTES = 8
 
@@ -175,23 +176,24 @@ function readDirector(x: Json): Director | null {
   if (!d) return null
   const seat = SEATS.find((s) => s === d.seat)
   const stance = STANCES.find((s) => s === d.stance)
-  if (!seat || !stance) return null
+  const key = Math.round(num(d.key))
+  if (!seat || !stance || !Number.isSafeInteger(key) || key < 0 || key > MAX_BOARD_SEQUENCE) return null
   return {
-    key: Math.max(0, Math.round(num(d.key))),
+    key,
     firstName: str(d.firstName, 'Alex'),
     lastName: str(d.lastName, 'Morgan'),
     gender: d.gender === 'female' ? 'female' : 'male',
     seat,
     stance,
     loyalty: Math.round(clampN(num(d.loyalty, 50), 0, 100)),
-    since: num(d.since),
+    since: Math.round(num(d.since)),
   }
 }
 
 function readVote(x: Json): VoteRecord | null {
   const d = rec(x)
-  if (!d || typeof d.year !== 'number') return null
-  return { year: d.year, what: str(d.what, 'A proposal'), yes: Math.max(0, Math.round(num(d.yes))), no: Math.max(0, Math.round(num(d.no))), passed: d.passed === true, note: str(d.note) }
+  if (!d || typeof d.year !== 'number' || !Number.isFinite(d.year)) return null
+  return { year: Math.round(d.year), what: str(d.what, 'A proposal'), yes: Math.max(0, Math.round(num(d.yes))), no: Math.max(0, Math.round(num(d.no))), passed: d.passed === true, note: str(d.note) }
 }
 
 function readScheme(x: Json | undefined): Scheme | null {
@@ -199,15 +201,25 @@ function readScheme(x: Json | undefined): Scheme | null {
   if (!d) return null
   const kind = d.kind === 'empire' || d.kind === 'perks' || d.kind === 'books' ? d.kind : null
   if (!kind) return null
-  return { kind, since: num(d.since), taken: Math.max(0, num(d.taken)) }
+  return { kind, since: Math.round(num(d.since)), taken: Math.max(0, num(d.taken)) }
 }
 
 /** A complete, sane board state from whatever is stored (old saves have none). */
 export function readBoard(v: Json | undefined, deepTech = false): BoardState {
   const d = rec(v) ?? {}
   const mandate = MANDATES.find((m) => m.id === d.mandate)?.id ?? (deepTech ? 'growth' : 'balanced')
-  const members = Array.isArray(d.members) ? d.members.map(readDirector).filter((x): x is Director => x !== null) : []
-  const votes = Array.isArray(d.votes) ? d.votes.map(readVote).filter((x): x is VoteRecord => x !== null).slice(-MAX_VOTES) : []
+  const memberKeys = new Set<number>()
+  const members = (Array.isArray(d.members) ? d.members.map(readDirector).filter((x): x is Director => x !== null) : [])
+    .filter(x => !memberKeys.has(x.key) && !!memberKeys.add(x.key)).slice(0, 31)
+  const voteKeys = new Set<string>()
+  const votes: VoteRecord[] = []
+  if (Array.isArray(d.votes)) for (let i = d.votes.length - 1; i >= 0 && votes.length < MAX_VOTES; i--) {
+    const vote = readVote(d.votes[i])
+    const key = vote ? `${vote.year}\u0000${vote.what}` : ''
+    if (!vote || voteKeys.has(key)) continue
+    voteKeys.add(key); votes.push(vote)
+  }
+  votes.reverse()
   const maxKey = members.reduce((m, x) => Math.max(m, x.key + 1), 0)
   return {
     v: BOARD_VERSION,
@@ -219,22 +231,39 @@ export function readBoard(v: Json | undefined, deepTech = false): BoardState {
     warnings: Math.max(0, Math.round(num(d.warnings))),
     misses: Math.max(0, Math.round(num(d.misses))),
     churn: Math.round(clampN(num(d.churn), 0, 20) * 100) / 100,
-    seq: Math.max(maxKey, Math.round(num(d.seq))),
+    seq: Math.min(MAX_BOARD_SEQUENCE, Math.max(maxKey, Math.round(clampN(num(d.seq), 0, MAX_BOARD_SEQUENCE)))),
     spent: Math.max(0, num(d.spent)),
-    spentYear: num(d.spentYear),
-    letter: num(d.letter),
+    spentYear: Math.round(num(d.spentYear)),
+    letter: Math.round(num(d.letter)),
     memo: Array.isArray(d.memo) ? d.memo.filter((x): x is string => typeof x === 'string').slice(0, 12) : [],
     scheme: readScheme(d.scheme),
-    sued: num(d.sued),
+    sued: Math.round(num(d.sued)),
     refused: readRefused(d.refused),
   }
+}
+
+/** Claim a finite unused director key, wrapping safely if a damaged save reached the ceiling. */
+export function takeDirectorKey(st: BoardState): number {
+  const used = new Set(st.members.map((member) => member.key))
+  let key = Number.isSafeInteger(st.seq) && st.seq >= 0 && st.seq <= MAX_BOARD_SEQUENCE ? st.seq : 0
+  for (let i = 0; i <= st.members.length; i++) {
+    const next = key >= MAX_BOARD_SEQUENCE ? 0 : key + 1
+    if (!used.has(key)) {
+      st.seq = next
+      return key
+    }
+    key = next
+  }
+  // Boards are bounded to 31 seats, so a free key must exist in this billion-key space.
+  st.seq = 1
+  return 0
 }
 
 function readRefused(x: Json | undefined): Record<string, number> {
   const d = rec(x)
   const out: Record<string, number> = {}
   if (!d) return out
-  for (const [k, v] of Object.entries(d)) if (typeof v === 'number' && Number.isFinite(v) && /^[a-zA-Z]{1,24}$/.test(k)) out[k] = v
+  for (const [k, v] of Object.entries(d)) if (typeof v === 'number' && Number.isFinite(v) && /^[a-zA-Z]{1,24}$/.test(k)) out[k] = Math.round(v)
   return out
 }
 
@@ -350,8 +379,7 @@ export function syncSeats(g: GameState, a: Asset, b: BizState, st: BoardState): 
       st.members = st.members.filter((d) => !leave.has(d.key))
     }
     for (let i = mine.length; i < want[seat]; i++) {
-      st.members.push(makeDirector(g, a, b, seat, st.seq))
-      st.seq += 1
+      st.members.push(makeDirector(g, a, b, seat, takeDirectorKey(st)))
     }
   }
   const order: Record<Seat, number> = { owner: 0, group: 1, investor: 2, independent: 3 }

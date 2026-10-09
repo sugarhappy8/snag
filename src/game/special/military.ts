@@ -16,7 +16,7 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry } from '../world'
-import { addColleague, blocked, bump, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
+import { addColleague, blocked, bump, claimYearly, convictions, hasAddiction, hasCollegeDegree, hasHighSchool, hire, leave, money, myJob, ownFlag, peek, prof, promote, quitNote, say, setOwnFlag, syncTenure, tell, view } from './common'
 
 // ---------------------------------------------------------------------------
 // Branches & ranks
@@ -538,6 +538,7 @@ const serviceDoneScript = defineScript('special.mil.serviceDone', (g, choice) =>
 export function yearlyMilitary(g: GameState): void {
   const c = g.character
   if (!c.alive) return
+  if (!claimYearly(g, 'military')) return
   if (ownFlag(g, 'deserter') === true && !c.prison && chance(g, 0.12)) {
     setOwnFlag(g, 'deserter', false)
     log(g, 'Military police finally caught up with me for deserting.', 'bad')

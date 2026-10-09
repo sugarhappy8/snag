@@ -338,7 +338,58 @@ function initFighter(g: GameState): FProfile {
 }
 
 function clampN(n: number): number {
-  return Math.max(1, Math.min(100, Math.round(n)))
+  return Number.isFinite(n) ? Math.max(1, Math.min(100, Math.round(n))) : 1
+}
+
+function fightNum(value: unknown, fallback = 0, lo = 0, hi = 1e12): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, Math.round(value))) : fallback
+}
+
+function fightText(value: unknown, fallback = '', max = 120): string {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max) || fallback : fallback
+}
+
+function fightStringList(input: unknown, max = 256): string[] {
+  return Array.isArray(input)
+    ? [...new Set(input.filter((x): x is string => typeof x === 'string').map((x) => fightText(x)).filter(Boolean))].slice(-max)
+    : []
+}
+
+function normalizedFight(g: GameState, value: unknown): FProfile {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<FProfile> : {}
+  const records = (input: unknown): Record<string, FightRec> => {
+    const out: Record<string, FightRec> = {}
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return out
+    for (const d of DISCIPLINES) {
+      const value = (input as Record<string, unknown>)[d.id]
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const r = value as Partial<FightRec>
+      out[d.id] = { w: fightNum(r.w, 0, 0, 1e6), l: fightNum(r.l, 0, 0, 1e6), d: fightNum(r.d, 0, 0, 1e6), nc: fightNum(r.nc, 0, 0, 1e6), ko: fightNum(r.ko, 0, 0, 1e6), sub: fightNum(r.sub, 0, 0, 1e6), dec: fightNum(r.dec, 0, 0, 1e6), koLosses: fightNum(r.koLosses, 0, 0, 1e6) }
+    }
+    return out
+  }
+  const styles: Style[] = ['striker', 'wrestler', 'bjj', 'brawler', 'balanced', 'boxer', 'counter']
+  const rivals: Rival[] = []
+  if (Array.isArray(raw.rivals)) for (const value of raw.rivals.slice(-32)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const r = value as Partial<Rival>
+    rivals.push({
+      name: fightText(r.name, 'Unknown Fighter', 80), flag: fightText(r.flag, '🥊', 16), nick: fightText(r.nick, '', 80),
+      disc: DISCIPLINES.some((d) => d.id === r.disc) ? r.disc as DiscId : 'mma', rating: fightNum(r.rating, 1, 1, 100),
+      style: styles.includes(r.style as Style) ? r.style as Style : 'balanced', beatYou: fightNum(r.beatYou, 0, 0, 1e6),
+      youBeat: fightNum(r.youBeat, 0, 0, 1e6), heat: fightNum(r.heat, 0, 0, 100),
+    })
+  }
+  return {
+    striking: fightNum(raw.striking, 1, 1, 100), grappling: fightNum(raw.grappling, 1, 1, 100), cardio: fightNum(raw.cardio, 1, 1, 100),
+    chin: fightNum(raw.chin, 1, 1, 100), iq: fightNum(raw.iq, 1, 1, 100), natural: fightNum(raw.natural, 0, 0, 32),
+    gym: fightText(raw.gym), gymTier: fightNum(raw.gymTier, 0, 0, 10), gymFee: fightNum(raw.gymFee),
+    amateur: records(raw.amateur), pro: records(raw.pro), belts: fightStringList(raw.belts), hype: fightNum(raw.hype, 0, 0, 100), rivals,
+    peakRank: typeof raw.peakRank === 'number' && Number.isFinite(raw.peakRank) ? fightNum(raw.peakRank, 0, 0, 100) : null,
+    retiredAge: typeof raw.retiredAge === 'number' && Number.isFinite(raw.retiredAge) ? fightNum(raw.retiredAge, 0, 0, 10_000) : null,
+    startAge: fightNum(raw.startAge, fightNum(g.character.age, 0, 0, 10_000), 0, 10_000), earnings: fightNum(raw.earnings),
+    doping: raw.doping === true, trained: fightStringList(raw.trained, 32), lastFightAge: fightNum(raw.lastFightAge, -1, -1, 10_000),
+  }
 }
 
 /** Martial arts belts (Activities › Mind & Body) give fighters a head start. */
@@ -354,8 +405,7 @@ function flagBelts(g: GameState): { strike: number; grapple: number } {
 
 function fighter(g: GameState): FProfile {
   const p = prof(g, 'sports.fight', initFighter)
-  if (!Array.isArray(p.trained)) p.trained = []
-  if (!Array.isArray(p.rivals)) p.rivals = []
+  Object.assign(p, normalizedFight(g, p))
   // Main Character Syndrome: the first time you fight or spar, your skills are at the body's ceiling
   // for the age (and follow it down later). Chin, the gym, the opponent and the judges stay as they were.
   if (hasMainCharacter(g)) {
@@ -370,7 +420,8 @@ function fighter(g: GameState): FProfile {
 }
 
 function viewFighter(g: GameState): FProfile | null {
-  return peek<FProfile>(g, 'sports.fight')
+  const p = peek<FProfile>(g, 'sports.fight')
+  return p ? normalizedFight(g, p) : null
 }
 
 function recOf(p: FProfile, disc: DiscId, amateur: boolean): FightRec {
@@ -384,6 +435,42 @@ export function fighterJob(g: GameState): Job | null {
 }
 
 function fj(job: Job): FJob {
+  const raw = job.data && typeof job.data === 'object' && !Array.isArray(job.data) ? job.data as unknown as Partial<FJob> : {}
+  const disc = DISCIPLINES.some((d) => d.id === raw.disc) ? raw.disc as DiscId : 'mma'
+  const rank = typeof raw.rank === 'number' && Number.isFinite(raw.rank) && raw.rank >= 0 && raw.rank <= 15 ? Math.round(raw.rank) : null
+  const styles: Style[] = ['striker', 'wrestler', 'bjj', 'brawler', 'balanced', 'boxer', 'counter']
+  let champ: Opp | null = null
+  if (raw.champ && typeof raw.champ === 'object' && !Array.isArray(raw.champ) && typeof raw.champ.name === 'string' && raw.champ.name.trim()) {
+    const c = raw.champ as Partial<Opp>
+    const rating = fightNum(c.rating, 60, 1, 100)
+    champ = {
+      name: fightText(c.name, 'Unknown Fighter', 80), nick: fightText(c.nick, '', 80), flag: fightText(c.flag, '🥊', 16),
+      style: styles.includes(c.style as Style) ? c.style as Style : 'balanced', rating,
+      s: fightNum(c.s, rating, 1, 100), g: fightNum(c.g, rating, 1, 100), c: fightNum(c.c, rating, 1, 100),
+      chin: fightNum(c.chin, rating, 1, 100), iq: fightNum(c.iq, rating, 1, 100),
+      w: fightNum(c.w, 0, 0, 1e6), l: fightNum(c.l, 0, 0, 1e6), d: fightNum(c.d, 0, 0, 1e6),
+      rank: typeof c.rank === 'number' && Number.isFinite(c.rank) && c.rank >= 0 && c.rank <= 15 ? Math.round(c.rank) : null,
+      champ: c.champ === true, rival: c.rival === true, belt: fightText(c.belt, '', 120),
+    }
+  }
+  const normalized: FJob = {
+    disc,
+    tier: raw.tier === 'major' ? 'major' : 'regional',
+    promotion: fightText(raw.promotion, fightText(job.company, 'Regional Circuit', 120), 120),
+    cls: fightNum(raw.cls, 0, 0, 100),
+    rank,
+    regionalChamp: raw.regionalChamp === true,
+    belts: fightStringList(raw.belts, 16),
+    defenses: fightNum(raw.defenses, 0, 0, 1e6),
+    champ,
+    fightsLeft: fightNum(raw.fightsLeft, 0, 0, 1e6),
+    streak: fightNum(raw.streak, 0, -1e6, 1e6),
+    promoWins: fightNum(raw.promoWins, 0, 0, 1e6),
+    injured: fightNum(raw.injured, 0, 0, 1e6),
+    earned: fightNum(raw.earned, 0, 0, 1e12),
+  }
+  if (!job.data || typeof job.data !== 'object' || Array.isArray(job.data)) job.data = {}
+  Object.assign(job.data, normalized)
   return view<FJob>(job.data)
 }
 

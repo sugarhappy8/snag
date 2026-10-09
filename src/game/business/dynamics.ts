@@ -35,16 +35,60 @@ export interface Expansion {
   lastYear: number
 }
 
+function uniqueLast<T>(values: T[], key: (value: T) => string): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (let i = values.length - 1; i >= 0; i--) {
+    const k = key(values[i])
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(values[i])
+  }
+  return out.reverse()
+}
+
+function calendar(v: Json | undefined, fallback = 0): number {
+  return Math.round(num(v, fallback))
+}
+
 export function expansionOf(b: BizState): Expansion {
   const d = rec(b.expansion)
   const rows = (v: Json | undefined) => Array.isArray(v) ? v.map(rec).filter((x): x is Record<string, Json> => !!x) : []
   const r = rec(d?.research)
+  const strategies = uniqueLast(
+    rows(d?.strategies)
+      .filter(x => STRATEGIES.some(s => s.id === x.id) && typeof x.country === 'string' && !!x.country)
+      .map(x => ({ id: str(x.id), country: str(x.country), started: calendar(x.started), expires: calendar(x.expires) }))
+      .filter(x => x.expires > x.started)
+      .slice(-1200),
+    x => `${x.country}:${x.id}`,
+  )
+  const studies = uniqueLast(
+    rows(d?.studies).filter(x => typeof x.country === 'string' && !!x.country).map(x => ({ country: str(x.country), year: calendar(x.year) })).slice(-100),
+    x => x.country,
+  )
+  const patents = uniqueLast(
+    rows(d?.patents).filter(x => typeof x.name === 'string' && !!x.name.trim() && isResearchKind(x.kind)).map(x => {
+      const protections = uniqueLast(
+        rows(x.protections)
+          .filter(p => typeof p.country === 'string' && !!p.country)
+          .map(p => ({ country: str(p.country), filed: calendar(p.filed), expires: calendar(p.expires) }))
+          .filter(p => p.expires > p.filed),
+        p => p.country,
+      )
+      return {
+        name: str(x.name).trim().slice(0, 120), kind: x.kind as Patent['kind'], launched: calendar(x.launched), expires: calendar(x.expires),
+        ...inventionFields(x), ...(typeof x.ownerId === 'string' ? { ownerId: x.ownerId } : {}), ...(protections.length ? { protections } : {}),
+      }
+    }),
+    x => x.id ? `id:${x.id}` : `legacy:${x.kind}:${x.name}`,
+  )
   return {
-    strategies: rows(d?.strategies).filter(x => STRATEGIES.some(s => s.id === x.id) && typeof x.country === 'string').slice(-1200).map(x => ({ id: str(x.id), country: str(x.country), started: num(x.started), expires: num(x.expires) })),
-    studies: rows(d?.studies).slice(-100).map(x => ({ country: str(x.country), year: num(x.year) })),
-    research: r && typeof r.name === 'string' && isResearchKind(r.kind) ? { name: r.name, kind: r.kind, started: num(r.started), years: clampN(num(r.years, 3), 0, 8), odds: clampN(num(r.odds), 0, 1), budget: Math.max(0, num(r.budget)), ...inventionFields(r) } : null,
-    patents: rows(d?.patents).filter(x => typeof x.name === 'string' && isResearchKind(x.kind)).map(x => ({ name: str(x.name), kind: x.kind as Patent['kind'], launched: num(x.launched), expires: num(x.expires), ...inventionFields(x), ...(typeof x.ownerId === 'string' ? { ownerId: x.ownerId } : {}), ...(Array.isArray(x.protections) ? { protections: rows(x.protections).filter(p => typeof p.country === 'string').map(p => ({ country: str(p.country), filed: num(p.filed), expires: num(p.expires) })) } : {}) })),
-    lastYear: num(d?.lastYear, -1),
+    strategies,
+    studies,
+    research: r && typeof r.name === 'string' && !!r.name.trim() && isResearchKind(r.kind) ? { name: r.name.trim().slice(0, 120), kind: r.kind, started: calendar(r.started), years: Math.round(clampN(num(r.years, 3), 0, 8)), odds: clampN(num(r.odds), 0, 1), budget: Math.max(0, num(r.budget)), ...inventionFields(r) } : null,
+    patents,
+    lastYear: calendar(d?.lastYear, -1),
   }
 }
 

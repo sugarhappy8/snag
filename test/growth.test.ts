@@ -21,8 +21,9 @@ import { maxPipeline } from '../src/game/business/gamestudio'
 import { anachronismsIn } from '../src/game/events/era'
 import type { Industry } from '../src/game/data/markets'
 import { createNewLife } from '../src/game/life'
+import { runScript } from '../src/game/scripts'
 import { HINT_EMOJI } from '../src/game/talents'
-import type { Asset, GameState, Json, MenuAction, MenuNode } from '../src/game/types'
+import type { Asset, ChoiceModal, GameState, Json, MenuAction, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 
 /** An adult who has run a company for two years (it has a history and a last statement). */
@@ -454,6 +455,18 @@ describe('other sliders: marketing, pay, upgrades, training, interviews', () => 
     expect(fees.every((f) => f > 0)).toBe(true)
     expect(fees[5]).toBeGreaterThan(fees[0])
     expect(readBiz(g, a).cash).toBeLessThan(cash0)
+  })
+
+  it('cannot replay a saved candidate modal to duplicate the same key role', () => {
+    const { g, a } = company(211, 'us', 'restaurant', { cash: 1_000_000 })
+    const row = allNodes(g, businessView(g, a)).find((n) => n.type === 'action' && n.id.startsWith(`biz.hire.${a.id}.`) && !n.disabledReason?.(g)) as MenuAction
+    row.run(g)
+    const modal = g.queue.find((m): m is ChoiceModal => m.kind === 'choice' && m.source === 'script' && m.scriptId === 'business.hire')!
+    expect(modal).toBeDefined()
+    const candidate = modal.choices.find((x) => x.id.startsWith('c'))!
+    runScript(g, modal.scriptId!, candidate.id, modal.data, modal)
+    runScript(g, modal.scriptId!, candidate.id, modal.data, modal)
+    expect(readBiz(g, a).staff).toHaveLength(1)
   })
 })
 

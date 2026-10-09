@@ -3,7 +3,7 @@
 // regulators, space agencies, export controls). Pure data and small pure helpers: no game state
 // is touched here. US dollars at US prices; deeptech-core.ts scales them to each market.
 import type { DegreeKind } from '../types'
-import { MAX_SERIES, timesDone, type DeepTechIndustry, type TechState } from './deeptech-state'
+import { MAX_SERIES, nextDrugId, timesDone, type DeepTechIndustry, type TechState } from './deeptech-state'
 
 // ---------------------------------------------------------------------------
 // Commercial ladders
@@ -798,10 +798,10 @@ function discoveryWin(x: ProgCtx): string {
   const t = x.t
   const area = DRUG_AREAS[Math.floor(x.roll() * DRUG_AREAS.length) % DRUG_AREAS.length]
   const name = drugName(area, x.roll(), x.roll(), x.roll())
-  t.seq += 1
+  const id = nextDrugId(t)
   const quality = Math.round(Math.max(10, Math.min(95, 35 + t.level * 0.4 + (x.roll() - 0.5) * 40 + timesDone(t, 'platform') * 8)))
   const peak = Math.round((area.peak[0] + (area.peak[1] - area.peak[0]) * x.roll()) * 100) / 100
-  t.drugs.push({ id: `d${t.seq}`, name, area: area.id, phase: 0, quality, peak, filed: x.year, approved: 0, royalty: 1, partner: '', failed: false })
+  t.drugs.push({ id, name, area: area.id, phase: 0, quality, peak, filed: x.year, approved: 0, royalty: 1, partner: '', failed: false })
   if (t.drugs.length > 12) t.drugs.splice(0, t.drugs.length - 12)
   t.level = Math.min(100, t.level + 4)
   return `Discovery found ${name}, a candidate for ${area.label} (molecule quality ${quality}/100). It's ready for a Phase I trial.`

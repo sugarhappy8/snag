@@ -114,6 +114,7 @@ function gAct(groupId: string, key: string, label: string, emoji: string, opts: 
     run: (g, input) => {
       const grp = groupById(g, groupId)
       if (!grp || groupBlock(g)) return
+      if (opts.disabled?.(g, grp)) return
       opts.run(g, grp, input)
     },
   }
@@ -738,8 +739,10 @@ function marketNodes(groupId: string, grp: Group): MenuNode[] {
         },
       },
       run: (g, cur, input) => {
+        const fraction = clampN(Number(input) || 0, 0, 100) / 100
+        if (fraction <= 0) return
         if (!useYearAction(g, `biz.group.shares.${cur.core.id}`, 2)) return tooBusy(g, `sold ${cur.core.name} shares twice`)
-        sellGroupShares(g, cur.core.id, clampN(Number(input) || 0, 0, 100) / 100)
+        sellGroupShares(g, cur.core.id, fraction)
       },
     }),
     gAct(groupId, 'delist', 'Take the Group Private', '\u{1F512}', {

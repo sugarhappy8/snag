@@ -6,8 +6,8 @@
 // shares, weighted by the size of the countries, add back up to its world share. Pure: no RNG, no
 // game state.
 import { marketOf } from '../data/markets'
-import { getCountry } from '../world'
 import { demandWeights } from './market-reach'
+import { placeContinent } from './market-places'
 import { goodsShare, otherBarriers, sharedBloc, tariffOn } from './market-trade'
 
 export interface RegionalRival {
@@ -49,7 +49,7 @@ const NEIGHBOUR_ADVANTAGE = 1.5
 export function homeBias(hq: string, c: string, industry: string, year: number, legacy: boolean): number {
   if (hq === c) return HOME_ADVANTAGE
   let h = 1
-  const near = getCountry(hq).continent === getCountry(c).continent || sharedBloc(hq, c, year) !== null
+  const near = placeContinent(hq) === placeContinent(c) || sharedBloc(hq, c, year) !== null
   if (near) h = NEIGHBOUR_ADVANTAGE
   // Selling into a country from abroad: tariffs on the goods and red tape take a bite.
   const bite = Math.min(0.7, tariffOn(hq, c, year) * goodsShare(industry) * 2 + otherBarriers(c, year) * 0.3)
@@ -61,7 +61,7 @@ export function homeBias(hq: string, c: string, industry: string, year: number, 
 
 /** Continent label of a country (for grouping the Regions list). */
 export function continentOf(c: string): string {
-  return getCountry(c).continent
+  return placeContinent(c)
 }
 
 export function regionalShares(inp: RegionalInput): Regional {

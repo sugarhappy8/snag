@@ -343,7 +343,15 @@ export function yearlyAuthor(g: GameState): void {
   const job = myJob(g, AUTHOR_JOB)
   if (!job && !view.works.length) return
   const year = g.year - 1
-  if (year <= view.lastYear) return
+  if (year <= view.lastYear) {
+    if (year === view.lastYear) return
+    // A malformed future marker used to freeze royalties and serial production forever.
+    // Roll only the guard back; never backfill or pay more than the current fiscal year.
+    const repaired = authorMut(g)
+    repaired.lastYear = year - 1
+    for (const work of repaired.works) if (work.lastYear > year) work.lastYear = year - 1
+    saveAuthor(g, repaired)
+  }
   const p = authorMut(g)
   p.lastYear = year
   const working = !!job && !g.character.prison

@@ -24,17 +24,45 @@ export interface MarketBreakthrough {
   businesses: string[]
 }
 
+const MIN_FACTOR = 1e-12
+const MAX_FACTOR = 1e12
+const MAX_MARKET_PRICE = 1e15
+const MAX_READ_SHOCKS = 2048
+const safeYear = (value: number): number => Math.max(-10_000, Math.min(100_000, Math.round(value)))
+const safeGeneration = (value: Json): number | null => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.min(1e9, Math.floor(value)) : null
+const safeText = (value: Json | undefined, max: number): string => typeof value === 'string' ? value.trim().slice(0, max) : ''
+
 export function marketBreakthroughs(g: GameState): MarketBreakthrough[] {
   const raw = g.flags[BREAKTHROUGHS_KEY]
   if (!Array.isArray(raw)) return []
-  return raw.filter(isRecord).filter(r => typeof r.id === 'string' && r.id && finite(r.year) && finite(r.mult) && r.mult >= 1 && Array.isArray(r.exchanges)).map(r => ({
-    id: String(r.id), name: typeof r.name === 'string' ? r.name.slice(0, 100) : 'An invention', year: r.year as number, mult: Math.min(100, r.mult as number),
-    exchanges: (r.exchanges as Json[]).filter(isRecord).filter(x => typeof x.key === 'string' && !!exchangeByKey(x.key) && Array.isArray(x.stocks) && Array.isArray(x.pennies)).map(x => ({
-      key: String(x.key), indexId: typeof x.indexId === 'string' ? x.indexId : '', ends: typeof x.ends === 'number' && Number.isFinite(x.ends) && x.ends > (r.year as number) ? x.ends : 0,
-      stocks: (x.stocks as Json[]).slice(0, 256).map(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null),
-      pennies: (x.pennies as Json[]).slice(0, 256).map(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null),
-    })), businesses: Array.isArray(r.businesses) ? r.businesses.filter((x): x is string => typeof x === 'string').slice(0, 4096) : [],
-  }))
+  const out: MarketBreakthrough[] = [], seen = new Set<string>()
+  for (const r of raw.slice(-MAX_READ_SHOCKS)) {
+    if (!isRecord(r) || !finite(r.year) || !finite(r.mult) || r.mult < 1 || !Array.isArray(r.exchanges)) continue
+    const id = safeText(r.id, 120)
+    if (!id || seen.has(id)) continue
+    const year = safeYear(r.year), exchanges: MarketBreakthrough['exchanges'] = [], exchangeKeys = new Set<string>()
+    for (const value of r.exchanges.slice(0, 256)) {
+      if (!isRecord(value) || !Array.isArray(value.stocks) || !Array.isArray(value.pennies)) continue
+      const key = safeText(value.key, 80)
+      if (!key || exchangeKeys.has(key) || !exchangeByKey(key)) continue
+      exchangeKeys.add(key)
+      exchanges.push({
+        key,
+        indexId: safeText(value.indexId, 160),
+        ends: finite(value.ends) && value.ends > year ? safeYear(value.ends) : 0,
+        stocks: value.stocks.slice(0, 256).map(safeGeneration),
+        pennies: value.pennies.slice(0, 256).map(safeGeneration),
+      })
+    }
+    const businesses: string[] = [], businessIds = new Set<string>()
+    if (Array.isArray(r.businesses)) for (const value of r.businesses.slice(0, 4096)) {
+      const assetId = safeText(value, 160)
+      if (assetId && !businessIds.has(assetId)) { businessIds.add(assetId); businesses.push(assetId) }
+    }
+    seen.add(id)
+    out.push({ id, name: safeText(r.name, 100) || 'An invention', year, mult: Math.min(100, r.mult), exchanges, businesses })
+  }
+  return out
 }
 
 export function addMarketBreakthrough(g: GameState, event: MarketBreakthrough): boolean {
@@ -44,7 +72,14 @@ export function addMarketBreakthrough(g: GameState, event: MarketBreakthrough): 
   return true
 }
 
-const cappedFactor = (n: number): number => Math.max(1, Math.min(1e12, Number.isFinite(n) ? n : 1e12))
+const cappedFactor = (n: number): number => Math.max(1, Math.min(MAX_FACTOR, Number.isFinite(n) ? n : MAX_FACTOR))
+const boundedFactor = (n: number): number => Math.max(MIN_FACTOR, Math.min(MAX_FACTOR, Number.isFinite(n) ? n : 1))
+const multiplyFactor = (a: number, b: number): number => {
+  const left = boundedFactor(a), right = boundedFactor(b)
+  if (left >= MAX_FACTOR / right) return MAX_FACTOR
+  if (left <= MIN_FACTOR / right) return MIN_FACTOR
+  return boundedFactor(left * right)
+}
 
 export function breakthroughStockFactor(g: GameState, secId: string, year: number): number {
   const match = /^(.*)#([sp])(\d+)g(\d+)$/.exec(secId)
@@ -118,30 +153,32 @@ function finite(v: Json | undefined): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
 
-function valid(v: Json): boolean {
-  if (!isRecord(v)) return false
-  return (
-    typeof v.id === 'string' &&
-    (v.asset === 'stock' || v.asset === 'coin') &&
-    typeof v.secId === 'string' &&
-    typeof v.exKey === 'string' &&
-    finite(v.slot) &&
-    typeof v.name === 'string' &&
-    typeof v.symbol === 'string' &&
-    SHOCK_CAUSES.includes(v.cause as ShockCause) &&
-    finite(v.year) &&
-    finite(v.mult) &&
-    v.mult > 0 &&
-    finite(v.fade) &&
-    typeof v.countryId === 'string'
-  )
-}
-
 /** Every shock on record (read-only; safe in menus). */
 export function marketShocks(g: GameState): MarketShock[] {
   const raw = g.flags[SHOCKS_KEY]
   if (!Array.isArray(raw)) return []
-  return raw.filter(valid) as unknown as MarketShock[]
+  const out: MarketShock[] = [], seen = new Set<string>()
+  for (const value of raw.slice(-MAX_READ_SHOCKS)) {
+    if (!isRecord(value) || (value.asset !== 'stock' && value.asset !== 'coin') || !SHOCK_CAUSES.includes(value.cause as ShockCause) || !finite(value.slot) || !finite(value.year) || !finite(value.mult) || value.mult <= 0 || !finite(value.fade)) continue
+    const id = safeText(value.id, 160), secId = safeText(value.secId, 160), exKey = safeText(value.exKey, 80)
+    if (!id || !secId || !exKey || seen.has(id)) continue
+    seen.add(id)
+    out.push({
+      id,
+      asset: value.asset,
+      secId,
+      exKey,
+      slot: Math.max(0, Math.min(255, Math.floor(value.slot))),
+      name: safeText(value.name, 100) || 'Unknown security',
+      symbol: safeText(value.symbol, 20) || '?',
+      cause: value.cause as ShockCause,
+      year: safeYear(value.year),
+      mult: boundedFactor(value.mult),
+      fade: Math.max(0, Math.min(1, value.fade)),
+      countryId: safeText(value.countryId, 80),
+    })
+  }
+  return out
 }
 
 /** The causes that hurt a company's price (a ban, an investigation, a nationalization). */
@@ -161,18 +198,30 @@ export function shockable(secId: string, asset: 'stock' | 'coin', cause: ShockCa
 /** Record a shock (the price moves at once). Returns it. */
 export function addMarketShock(g: GameState, s: Omit<MarketShock, 'id'>): MarketShock {
   const list = marketShocks(g)
+  const secId = typeof s.secId === 'string' ? s.secId.trim().slice(0, 160) : ''
+  const year = Number.isFinite(s.year) ? safeYear(s.year) : safeYear(g.year)
   // One order-flow record per listing per year, so repeated trades don't bloat saves.
-  const prior = s.cause === 'liquidity' ? list.find(x => x.cause === 'liquidity' && x.secId === s.secId && x.year === s.year) : undefined
+  const prior = s.cause === 'liquidity' ? list.find(x => x.cause === 'liquidity' && x.secId === secId && x.year === year) : undefined
   if (prior) {
-    prior.mult = Math.max(1e-12, Math.min(1e12, prior.mult * s.mult))
+    prior.mult = multiplyFactor(prior.mult, s.mult)
     g.flags[SHOCKS_KEY] = list as unknown as Json
     return prior
   }
+  const cause = SHOCK_CAUSES.includes(s.cause) ? s.cause : 'liquidity'
+  const asset = s.asset === 'coin' ? 'coin' : 'stock'
   const shock: MarketShock = {
-    ...s,
-    id: `shock${g.year}-${list.length}-${s.secId}`,
+    asset,
+    secId,
+    exKey: typeof s.exKey === 'string' ? s.exKey.trim().slice(0, 80) : '',
+    slot: Number.isFinite(s.slot) ? Math.max(0, Math.min(255, Math.floor(s.slot))) : 0,
+    name: typeof s.name === 'string' ? s.name.trim().slice(0, 100) || 'Unknown security' : 'Unknown security',
+    symbol: typeof s.symbol === 'string' ? s.symbol.trim().slice(0, 20) || '?' : '?',
+    cause,
+    year,
+    countryId: typeof s.countryId === 'string' ? s.countryId.trim().slice(0, 80) : '',
+    id: `shock${year}-${list.length}-${secId}`,
     // A damaging story never sticks to a real company: it has no effect on its price.
-    mult: !shockable(s.secId, s.asset, s.cause) ? 1 : Math.max(s.cause === 'liquidity' ? 1e-12 : .05, Math.min(s.cause === 'liquidity' ? 1e12 : 5, Number.isFinite(s.mult) ? s.mult : 1)),
+    mult: !shockable(secId, asset, cause) ? 1 : Math.max(cause === 'liquidity' ? MIN_FACTOR : .05, Math.min(cause === 'liquidity' ? MAX_FACTOR : 5, Number.isFinite(s.mult) ? s.mult : 1)),
     fade: Math.max(0, Math.min(1, Number.isFinite(s.fade) ? s.fade : 0)),
   }
   list.push(shock)
@@ -182,16 +231,17 @@ export function addMarketShock(g: GameState, s: Omit<MarketShock, 'id'>): Market
 
 /** One shock's price factor in a calendar year (1 = no effect). */
 export function factorOf(s: MarketShock, year: number): number {
-  if (!Number.isFinite(year) || year < s.year) return 1
-  const fadeYears = Math.max(0, year - s.year - 1)
-  return 1 + (s.mult - 1) * Math.pow(1 - s.fade, fadeYears)
+  if (!Number.isFinite(year) || !Number.isFinite(s.year) || year < s.year) return 1
+  const fadeYears = Math.max(0, Math.min(1e6, safeYear(year) - safeYear(s.year) - 1))
+  const mult = boundedFactor(s.mult), fade = Math.max(0, Math.min(1, Number.isFinite(s.fade) ? s.fade : 0))
+  return boundedFactor(1 + (mult - 1) * Math.pow(1 - fade, fadeYears))
 }
 
 /** Combined price factor of every shock on one security in a year (1 = untouched). */
 export function shockFactor(g: GameState, secId: string, year: number): number {
-  let f = breakthroughStockFactor(g, secId, year)
-  for (const s of marketShocks(g)) if (s.secId === secId) f *= factorOf(s, year)
-  return Number.isFinite(f) && f > 0 ? f : 1
+  let f = boundedFactor(breakthroughStockFactor(g, secId, year))
+  for (const s of marketShocks(g)) if (s.secId === secId) f = multiplyFactor(f, factorOf(s, year))
+  return f
 }
 
 /**
@@ -207,18 +257,20 @@ export function indexShockFactor(g: GameState, exKey: string, year: number, inde
   const info = exchangeByKey(exKey)
   const n = Math.max(4, info ? slotPlan(info).length : 10)
   const companies = new Map<string, number>()
-  for (const s of list) companies.set(s.secId, (companies.get(s.secId) ?? 1) * factorOf(s, year))
+  for (const s of list) companies.set(s.secId, multiplyFactor(companies.get(s.secId) ?? 1, factorOf(s, year)))
   let sum = 0
-  for (const factor of companies.values()) sum += factor - 1
-  return breakthrough * Math.max(0.5, Math.min(1.5, 1 + sum / n))
+  for (const factor of companies.values()) sum = Math.min(MAX_FACTOR, sum + factor - 1)
+  return multiplyFactor(breakthrough, Math.max(0.5, Math.min(1.5, 1 + sum / n)))
 }
 
 /** Adjust an engine price and its yearly change for a factor (this year vs last year). */
 export function shockedMove(price: number, ret: number | null, now: number, before: number): { price: number; ret: number | null } {
-  const p = Number.isFinite(price) ? price * now : price
-  if (ret === null || !Number.isFinite(ret)) return { price: p, ret }
-  const r = (1 + ret) * (now / (before > 0 ? before : 1)) - 1
-  return { price: p, ret: Math.max(-1, r) }
+  const basePrice = Number.isFinite(price) && price > 0 ? Math.min(MAX_MARKET_PRICE, price) : 0
+  const current = boundedFactor(now), prior = boundedFactor(before)
+  const p = Math.min(MAX_MARKET_PRICE, basePrice * Math.min(MAX_FACTOR, current))
+  if (ret === null || !Number.isFinite(ret)) return { price: p, ret: null }
+  const raw = (1 + Math.max(-1, Math.min(MAX_FACTOR - 1, ret))) * Math.min(MAX_FACTOR, current / prior) - 1
+  return { price: p, ret: Number.isFinite(raw) ? Math.max(-1, Math.min(MAX_FACTOR - 1, raw)) : MAX_FACTOR - 1 }
 }
 
 /** Shocks announced this year (for the financial news). */

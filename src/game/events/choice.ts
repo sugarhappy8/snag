@@ -112,7 +112,8 @@ function outcomeFor(g: GameState, kind: Kind, label: string, p: Person | undefin
 /** Resolve a choice popup from its label alone. */
 export function resolveGenericChoice(g: GameState, event: ChoiceModal, choiceId: string): void {
   if (!g.character.alive) return
-  const choice = event.choices.find((c) => c.id === choiceId) ?? event.choices[0]
+  const choice = event.choices.find((c) => c.id === choiceId)
+  if (!choice) return
   const shown = (choice?.label ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)
   const label = clean(shown) || 'go with the flow'
   const kind = classify(label)

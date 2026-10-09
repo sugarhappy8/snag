@@ -58,6 +58,96 @@ function choice(g: GameState, id: string) {
 }
 
 describe('studio engine development', () => {
+  it('repairs duplicate game ids and advances the sequence past recovered saves', () => {
+    const { g } = studio()
+    const st = normalizeStudio(undefined)
+    const game = studioInternals.addGame(st, g, { scope: 'small', genre: 'rpg', platform: 'pc', engine: 'cobalt', title: 'Original', team: 2, franchise: '', sequelOf: '' })
+    const recovered = normalizeStudio({
+      ...st,
+      seq: 0,
+      games: [{ ...game, started: 2020.6, released: 2022.6, lastDlc: 2023.6 }, { ...game, title: 'Duplicate' }],
+    } as unknown as Json)
+    expect(recovered.games).toHaveLength(1)
+    expect(recovered.games[0]).toMatchObject({ id: 'sg1', title: 'Original', started: 2021, released: 2023, lastDlc: 2024 })
+    expect(recovered.seq).toBe(1)
+  })
+
+  it('rebases an unsafe recovered game sequence without reusing its id', () => {
+    const { g } = studio()
+    const st = normalizeStudio(undefined)
+    const old = studioInternals.addGame(st, g, { scope: 'small', genre: 'rpg', platform: 'pc', engine: 'cobalt', title: 'Recovered', team: 2, franchise: '', sequelOf: '' })
+    const unsafe = Number.MAX_SAFE_INTEGER + 1
+    const recovered = normalizeStudio({ ...st, seq: unsafe, games: [{ ...old, id: `sg${unsafe}` }] } as unknown as Json)
+    const next = studioInternals.addGame(recovered, g, { scope: 'small', genre: 'rpg', platform: 'pc', engine: 'cobalt', title: 'Next', team: 2, franchise: '', sequelOf: '' })
+    expect(Number.isSafeInteger(recovered.seq)).toBe(true)
+    expect(next.id).not.toBe(`sg${unsafe}`)
+    expect(new Set(recovered.games.map((game) => game.id)).size).toBe(2)
+  })
+
+  it('makes greenlight and studio-event scripts one-shot and rejects unknown choices', () => {
+    const { g, a } = studio()
+    const greenlight = {
+      assetId: a.id, token: 'pitch-once', scope: 'small', genre: 'rpg', platform: 'pc', engine: 'cobalt',
+      franchise: '', sequelOf: '', title: '',
+    } as unknown as Json
+    const input = { kind: 'input', id: 'greenlight', title: '', text: '', input: 'text', scriptId: 'gamestudio.gl.name' } as ModalItem
+    runScript(g, 'gamestudio.gl.name', 'Replay Proof', greenlight, input)
+    runScript(g, 'gamestudio.gl.name', 'Replay Proof', greenlight, input)
+    expect(studioOf(a).games.map((x) => x.title)).toEqual(['Replay Proof'])
+
+    const st = studioOf(a)
+    st.games[0].stage = 'live'
+    st.games[0].released = g.year
+    st.games[0].tail = 100
+    saveStudio(a, st)
+    const event = { assetId: a.id, ev: 'streamer', gameId: st.games[0].id, token: 'event-once' } as unknown as Json
+    const choice = {
+      kind: 'choice', source: 'script', id: 'event', title: '', text: '',
+      choices: [{ id: 'sponsor', label: 'Sponsor' }, { id: 'thank', label: 'Thank' }], scriptId: 'gamestudio.event',
+    } as ModalItem
+    runScript(g, 'gamestudio.event', 'unknown', event, choice)
+    expect(studioOf(a).games[0].tail).toBe(100)
+    runScript(g, 'gamestudio.event', 'thank', event, choice)
+    runScript(g, 'gamestudio.event', 'thank', event, choice)
+    expect(studioOf(a).games[0].tail).toBe(125)
+
+    const forgedEvent = { assetId: a.id, ev: 'toString', gameId: st.games[0].id, token: 'prototype-event' } as Json
+    expect(() => runScript(g, 'gamestudio.event', 'thank', forgedEvent, { ...choice, id: 'prototype-event' })).not.toThrow()
+    expect(studioOf(a).games[0].tail).toBe(125)
+  })
+
+  it('rechecks live game state before stale crowdfunding and DLC actions spend or create money', () => {
+    const { g, a, b } = studio()
+    const st = studioOf(a)
+    const game = studioInternals.addGame(st, g, { scope: 'small', genre: 'rpg', platform: 'pc', engine: 'cobalt', title: 'State Check', team: 2, franchise: '', sequelOf: '' })
+    game.progress = 20
+    saveStudio(a, st)
+    const crowd = action(g, a, `studio.crowd.${game.id}.${a.id}`)
+
+    let live = studioOf(a)
+    live.games[0].stage = 'live'
+    live.games[0].released = g.year
+    saveStudio(a, live)
+    const beforeCrowd = { cash: b.cash, income: b.yearIncome, rng: g.rng }
+    crowd.run(g)
+    expect({ cash: b.cash, income: b.yearIncome, rng: g.rng }).toEqual(beforeCrowd)
+    expect(studioOf(a).games[0].raised).toBe(0)
+
+    g.year += 2
+    live = studioOf(a)
+    live.games[0].released = g.year - 2
+    live.games[0].dlcs = 7
+    saveStudio(a, live)
+    const dlc = action(g, a, `studio.dlc.${game.id}.${a.id}`)
+    live = studioOf(a)
+    live.games[0].dlcs = 8
+    saveStudio(a, live)
+    const beforeDlc = { cash: b.cash, costs: b.yearCosts, rng: g.rng }
+    dlc.run(g)
+    expect({ cash: b.cash, costs: b.yearCosts, rng: g.rng }).toEqual(beforeDlc)
+    expect(studioOf(a).games[0].dlcs).toBe(8)
+  })
+
   it.each(ENGINE_TIERS)('builds a $label over $years staffed years, then releases developers', tier => {
     const { g, a, b } = studio()
     const cash = b.cash, personal = g.character.money

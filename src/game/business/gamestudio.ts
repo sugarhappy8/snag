@@ -12,8 +12,8 @@
 import { seeded } from '../assets'
 import { readVenture } from '../computer/dev-state'
 import { addHidden, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
-import { corporateTax, marketOf } from '../data/markets'
-import { chance, pick, randFloat, randInt, shuffle } from '../rng'
+import { marketOf } from '../data/markets'
+import { chance, pick, randFloat, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import { hire } from '../special/common'
 import { salaryFor } from '../special/gamedev-career'
@@ -53,7 +53,8 @@ import { createBusinessAsset, newBiz } from './founding'
 import { foundBlock, manageBlock, noCash, tooBusy } from './gate'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, runsIt, totalOutlets, type BizState, type Statement } from './state'
-import { assignedDevs, devGames, normalizeStudio, studioLine, trimStudioGames, type StudioGame, type StudioPolicy, type StudioState } from './gamestudio-state'
+import { allocatedCorporateTax } from './tax'
+import { assignedDevs, devGames, MAX_STUDIO_SEQUENCE, normalizeStudio, studioLine, trimStudioGames, type StudioGame, type StudioPolicy, type StudioState } from './gamestudio-state'
 import { availableStudioEngines, engineTier, isStudioEngineId, studioEngineDef, type StudioEngineId } from './gamestudio-engine-state'
 import { simulateStudioEngines, studioEngineMenu } from './gamestudio-engines'
 import { clampN, dollars, markBest, money, pct, round2, toJson } from './util'
@@ -78,6 +79,32 @@ export function saveStudio(a: Asset, st: StudioState): void {
 
 function whole(n: number): number {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : 0
+}
+
+/** Claim a finite unused local game id, wrapping safely after a malformed extreme save. */
+function nextStudioGameId(st: StudioState): `sg${number}` {
+  const used = new Set(st.games.map((game) => game.id))
+  let seq = Number.isSafeInteger(st.seq) && st.seq >= 0 && st.seq <= MAX_STUDIO_SEQUENCE ? st.seq : 0
+  for (let i = 0; i <= st.games.length; i++) {
+    seq = seq >= MAX_STUDIO_SEQUENCE ? 1 : seq + 1
+    const id = `sg${seq}` as const
+    if (!used.has(id)) {
+      st.seq = seq
+      return id
+    }
+  }
+  // The catalog is capped at 24 games, so a free id must exist in this billion-id space.
+  st.seq = 1
+  return 'sg1'
+}
+
+/** Consume a bounded, save-persistent script token. Queued modals may be submitted twice. */
+function consumeStudioToken(g: GameState, key: string, token: string): boolean {
+  if (!token) return false
+  const previous = Array.isArray(g.flags[key]) ? g.flags[key].filter((x): x is string => typeof x === 'string') : []
+  if (previous.includes(token)) return false
+  g.flags[key] = [...previous.slice(-63), token]
+  return true
 }
 
 function an(noun: string): string {
@@ -107,9 +134,9 @@ function ensureCatalog(g: GameState, b: BizState, st: StudioState, year = g.year
   if (copies <= 0) return
   const price = clampN(b.price > 0 ? b.price : 20, 5, 70)
   const genre = pick(g, GENRES)
-  st.seq += 1
+  const id = nextStudioGameId(st)
   st.games.push({
-    id: `sg${st.seq}`,
+    id,
     title: `${genre.label} Classics Collection`,
     genre: genre.id,
     platform: 'pc',
@@ -166,18 +193,6 @@ interface Sale {
  */
 function studioOperations(g: GameState, b: BizState, year = g.year): number {
   return (1 + .08 * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).capacity
-}
-
-function studioCorporateTax(b: BizState, profit: number, homeRevenue: number, bookedSales: number | Record<string, number>): number {
-  if (!(profit > 0)) return 0
-  const byCountry: Record<string, number> = { [b.countryId]: Math.max(0, Number.isFinite(homeRevenue) ? homeRevenue : 0) }
-  const booked = typeof bookedSales === 'number' ? { [b.countryId]: bookedSales } : bookedSales
-  for (const [country, sales] of Object.entries(booked)) {
-    if (Number.isFinite(sales) && sales > 0) byCountry[country] = (byCountry[country] ?? 0) + sales
-  }
-  const total = Object.values(byCountry).reduce((sum, sales) => sum + Math.max(0, sales), 0)
-  if (!(total > 0)) return corporateTax(b.countryId, profit)
-  return Object.entries(byCountry).reduce((tax, [country, sales]) => tax + corporateTax(country, profit * Math.max(0, sales) / total), 0)
 }
 
 export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number, bookedSales: number | Record<string, number> = 0): YearResult {
@@ -388,7 +403,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // Their profit belongs in tax, but must not be counted twice for salary funds.
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + b.yearCosts - b.yearIncome)))
   const pbt = pbt0 - ownerPay
-  const corpTax = studioCorporateTax(b, pbt, revenue, bookedSales)
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedSales)
   const net = pbt - corpTax
   // One-off costs and income booked during the year already moved the company's cash.
   b.cash = dollars(b.cash + net + b.yearCosts - b.yearIncome)
@@ -543,9 +558,9 @@ interface NewGame {
 }
 
 function addGame(st: StudioState, g: GameState, n: NewGame): StudioGame {
-  st.seq += 1
+  const id = nextStudioGameId(st)
   const x: StudioGame = {
-    id: `sg${st.seq}`,
+    id,
     title: n.title,
     genre: n.genre,
     platform: n.platform,
@@ -996,16 +1011,39 @@ function tailValue(x: StudioGame, players = x.players, tail = x.tail): number {
 // ---------------------------------------------------------------------------
 // Studio events (game-specific; the generic business events still happen too)
 
+type StudioEv = 'bid' | 'exclusive' | 'leak' | 'bomb' | 'expose' | 'streamer'
+
+const EVENT_CHOICES: Record<StudioEv, readonly string[]> = {
+  bid: ['sell', 'stay', 'decline'],
+  exclusive: ['accept', 'decline'],
+  leak: ['embrace', 'lawyers', 'quiet'],
+  bomb: ['patch', 'statement', 'ignore'],
+  expose: ['change', 'deny', 'apologize'],
+  streamer: ['sponsor', 'thank'],
+}
+
 const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
   const d = data && typeof data === 'object' && !Array.isArray(data) ? data : {}
   const a = findBusiness(g, typeof d.assetId === 'string' ? d.assetId : undefined)
-  if (!a || !g.character.alive) return
+  if (!a || manageBlock(g, a)) return
   const b = bizOf(g, a)
   const st = studioOf(a)
-  const ev = typeof d.ev === 'string' ? d.ev : ''
+  const ev = typeof d.ev === 'string' && Object.hasOwn(EVENT_CHOICES, d.ev) ? d.ev as StudioEv : null
+  if (!ev || !EVENT_CHOICES[ev].includes(choice)) return
   const x = st.games.find((y) => y.id === d.gameId)
   const amount = typeof d.amount === 'number' && Number.isFinite(d.amount) ? Math.max(0, Math.round(d.amount)) : 0
   const who = typeof d.who === 'string' ? d.who : 'a big publisher'
+  // Revalidate the exact game/event against the current save before consuming the modal.
+  if (
+    (ev === 'bid' && b.public) ||
+    (ev === 'exclusive' && (!x || x.stage === 'live' || !!x.exclusive)) ||
+    (ev === 'leak' && (!x || x.stage === 'live')) ||
+    ((ev === 'bomb' || ev === 'streamer') && (!x || x.stage !== 'live')) ||
+    (ev === 'expose' && st.policy !== 'crunch')
+  ) return
+  const suppliedToken = typeof d.token === 'string' ? d.token : ''
+  const legacyToken = `legacy:${g.year}:${ev}:${a.id}:${x?.id ?? ''}:${amount}:${who}`
+  if (!consumeStudioToken(g, `studio.script.event.${a.id}`, suppliedToken || legacyToken)) return
   switch (ev) {
     case 'bid': {
       if (choice === 'decline') {
@@ -1015,7 +1053,6 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
         notice(g, 'Not for Sale', `You told ${who} that ${a.name} is not for sale. Your developers cheered. Your accountant quietly wept.`, { emoji: '\u{1F645}' })
         return
       }
-      if (b.public) return
       sellBusiness(g, a, b, amount, who)
       if (choice === 'stay' && g.character.alive && !g.character.prison) {
         hire(g, { defId: GAME_JOB, title: 'Studio Head', company: a.name, salary: salaryFor(g, 6, 'aaa'), level: 6, performance: 70, data: { studio: a.name, tier: 'aaa', track: 'design', craft: Math.round(clampN(b.quality + 10, 50, 90)), hq: b.countryId, city: b.city, proj: null, raiseYear: 0, effort: 0, scare: 0 } })
@@ -1025,7 +1062,7 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
       return
     }
     case 'exclusive': {
-      if (!x || x.stage === 'live') return
+      if (!x) return
       if (choice === 'accept') {
         x.exclusive = who
         x.exclusiveFee = amount
@@ -1116,8 +1153,6 @@ const EVENT = defineScript('gamestudio.event', (g, choice, data) => {
   }
 })
 
-type StudioEv = 'bid' | 'exclusive' | 'leak' | 'bomb' | 'expose' | 'streamer'
-
 function acquirer(g: GameState, b: BizState): string {
   const foreign = GIANTS.filter((x) => x.hq !== b.countryId)
   return pick(g, foreign.length && chance(g, 0.7) ? foreign : GIANTS).name
@@ -1125,7 +1160,7 @@ function acquirer(g: GameState, b: BizState): string {
 
 /** Maybe queue one game-studio event (returns true when one was queued). */
 export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: number, managed: boolean): boolean {
-  if (g.character.prison || !g.character.alive || b.founded >= year) return false
+  if (g.character.prison || !g.character.alive || b.founded >= year || b.lastEvent >= year) return false
   if (!chance(g, managed ? 0.2 : 0.35)) return false
   const st = studioOf(a)
   const options: [StudioEv, number, StudioGame | undefined][] = []
@@ -1156,7 +1191,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
   }
   const [ev, , x] = pickd
   b.lastEvent = year
-  const base = { assetId: a.id, ev, gameId: x?.id ?? '' }
+  const base = { assetId: a.id, ev, gameId: x?.id ?? '', token: uid(g, 'studioEvent') }
   switch (ev) {
     case 'bid': {
       const who = acquirer(g, b)
@@ -1281,6 +1316,7 @@ export function maybeStudioEvent(g: GameState, a: Asset, b: BizState, year: numb
 
 interface GlDraft {
   assetId: string
+  token: string
   scope: ScopeId
   genre: GenreId
   platform: PlatformId
@@ -1294,6 +1330,7 @@ function readGl(v: Json | undefined): GlDraft {
   const d = v && typeof v === 'object' && !Array.isArray(v) ? v : {}
   return {
     assetId: typeof d.assetId === 'string' ? d.assetId : '',
+    token: typeof d.token === 'string' ? d.token : '',
     scope: isScope(d.scope) ? d.scope : 'small',
     genre: isGenre(d.genre) ? d.genre : GENRES[0].id,
     platform: isPlatform(d.platform) ? d.platform : 'pc',
@@ -1373,7 +1410,7 @@ export function startGreenlight(g: GameState, assetId: string, preset: Partial<G
     preset.sequelOf ? `Sequel: ${preset.franchise || 'Untitled'}` : 'Greenlight a Game',
     `${a.name} has ${b.employees} developers (${free} free). How big is the next game?`,
     choices,
-    { emoji: '\u{1F6A6}', data: glJson({ assetId, scope: 'small', genre: preset.genre ?? GENRES[0].id, platform: 'pc', engine: 'cobalt', franchise: preset.franchise ?? '', sequelOf: preset.sequelOf ?? '', title: preset.title ?? '' }) },
+    { emoji: '\u{1F6A6}', data: glJson({ assetId, token: uid(g, 'studioPitch'), scope: 'small', genre: preset.genre ?? GENRES[0].id, platform: 'pc', engine: 'cobalt', franchise: preset.franchise ?? '', sequelOf: preset.sequelOf ?? '', title: preset.title ?? '' }) },
   )
 }
 
@@ -1506,6 +1543,8 @@ const GL_NAME = defineScript('gamestudio.gl.name', (g, input, data) => {
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 48) || (d.sequelOf ? sequelTitle(d.franchise, 2) : gameTitle(g, d.genre, new Set(st.games.map((x) => x.title))))
+  const legacyToken = `legacy:${g.year}:${d.assetId}:${d.scope}:${d.genre}:${d.platform}:${d.engine}:${d.sequelOf}:${title}`
+  if (!consumeStudioToken(g, `studio.script.greenlight.${a.id}`, d.token || legacyToken)) return
   const sc = scopeDef(d.scope)
   const free = b.employees - assignedDevs(st)
   const team = Math.max(1, Math.min(sc.team, free > 0 ? free : Math.max(1, Math.round(b.employees / (devGames(st).length + 1)))))
@@ -1536,6 +1575,7 @@ function studioAct(a: Asset, key: string, label: string, emoji: string, opts: { 
     run: (g, input) => {
       const cur = findBusiness(g, a.id)
       if (!cur || manageBlock(g, cur)) return
+      if (opts.disabled?.(g)) return
       const b = bizOf(g, cur)
       const st = studioOf(cur)
       opts.run(g, cur, b, st, input)
@@ -1645,7 +1685,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
             preview: (gg, v) => teamPreview(gg, a, gid, v),
           },
           run: (gg, aa, bb, st, input) => {
-            const y = st.games.find((z) => z.id === gid)
+            const y = st.games.find((z) => z.id === gid && z.stage !== 'live')
             if (!y) return
             y.team = Math.max(1, amountOf(input, bb.employees))
             saveStudio(aa, st)
@@ -1656,11 +1696,11 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
           subtitle: (gg) => `${money(sc.marketingUsd * 0.12 * costScale(readBiz(gg, a).countryId))} · trailer and showcase slot`,
           disabled: (gg) => (yearActionsUsed(gg, once('hype')) >= 1 ? 'Once a year per game.' : null),
           run: (gg, aa, bb, st) => {
-            const y = st.games.find((z) => z.id === gid)
+            const y = st.games.find((z) => z.id === gid && z.stage !== 'live')
             if (!y) return
-            if (!useYearAction(gg, once('hype'), 1)) return tooBusy(gg, 'run a marketing push for this game')
             const cost = Math.round(sc.marketingUsd * 0.12 * costScale(bb.countryId))
             if (bb.cash < cost) return noCash(gg, aa, cost, 'the trailer')
+            if (!useYearAction(gg, once('hype'), 1)) return tooBusy(gg, 'run a marketing push for this game')
             bb.cash -= cost
             bb.yearCosts += cost
             y.hype = clampN(y.hype + randInt(gg, 15, 25) * (0.8 + bb.brand / 200), 0, 100)
@@ -1676,7 +1716,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
             disabled: () => (x.progress < 10 ? 'Make some progress first.' : null),
             run: (gg, aa, bb, st) => {
               const y = st.games.find((z) => z.id === gid)
-              if (!y || y.raised) return
+              if (!y || y.stage !== 'dev' || y.progress < 10 || y.raised || scopeDef(y.scope).index > 2) return
               const fans = gdView(gg).gamerFame
               const interest = (300 + y.hype * 60 + bb.brand * 80 + fans * 250) * Math.pow(clampN(y.quality, 10, 100) / 55, 1.5) * genreTrend(gg, y.genre) * randFloat(gg, 0.4, 1.6)
               // Backers are a slice of the people who would buy the game, never more.
@@ -1723,9 +1763,9 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
             subtitle: 'Cash now and marketing muscle, for a cut of sales',
             disabled: (gg) => (x.progress < 15 ? 'Publishers want a vertical slice first (15%).' : yearActionsUsed(gg, once('pub')) >= 1 ? 'You already pitched it this year.' : null),
             run: (gg, aa, bb, st) => {
-              if (!useYearAction(gg, once('pub'), 1)) return tooBusy(gg, 'pitched this game to publishers')
               const y = st.games.find((z) => z.id === gid)
-              if (!y) return
+              if (!y || y.stage === 'live' || y.progress < 15) return
+              if (!useYearAction(gg, once('pub'), 1)) return tooBusy(gg, 'pitched this game to publishers')
               const s2 = scopeDef(y.scope)
               const est = s2.potential * platformDef(y.platform).audience * genreDef(y.genre).appeal * genreTrend(gg, y.genre) * qualityFactor(Math.max(y.quality, 55)) * s2.luck[0] * homeReach(bb.countryId)
               const advance = Math.round(clampN(est * netPerCopy(priceOf(y.scope, y.platform)) * randFloat(gg, 0.3, 0.45) * (0.8 + bb.brand / 250), 0, s2.marketingUsd * 2 + s2.extraUsd * s2.years))
@@ -1757,7 +1797,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
             disabled: () => (x.progress < 50 ? 'Needs to be at least 50% done.' : null),
             run: (gg, aa, bb, st) => {
               const y = st.games.find((z) => z.id === gid)
-              if (!y || y.stage !== 'dev') return
+              if (!y || y.stage !== 'dev' || y.progress < 50 || scopeDef(y.scope).index > 2 || (y.platform !== 'pc' && y.platform !== 'vr')) return
               const est = firstYearCopies(gg, { scope: y.scope, genre: y.genre, platform: y.platform, quality: y.quality * 0.9, hype: y.hype, marketing: 0.8, reach: homeReach(bb.countryId), fame: bb.brand / 2, franchise: 0, presold: y.backers })
               y.stage = 'ea'
               y.eaTail = whole(est * 0.35)
@@ -1773,7 +1813,7 @@ function devGameNode(a: Asset, x0: StudioGame): MenuGroup {
         studioAct(a, `cancel.${gid}`, 'Cancel It', '\u{1F5D1}\u{FE0F}', {
           confirm: () => `Cancel "${x.title}"? ${money(x.spent)} of work goes in the bin${x.advanceGot + x.exclusiveFee + (x.raised > 1 ? x.raised : 0) > 0 ? `, and ${money(x.advanceGot + x.exclusiveFee + (x.raised > 1 ? x.raised : 0))} in advances, fees and pledges must be paid back` : ''}.`,
           run: (gg, aa, bb, st) => {
-            const y = st.games.find((z) => z.id === gid)
+            const y = st.games.find((z) => z.id === gid && z.stage !== 'live')
             if (!y) return
             st.games = st.games.filter((z) => z.id !== gid)
             bb.morale = clampN(bb.morale - 8, 0, 100)
@@ -1864,10 +1904,10 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
           disabled: (gg) => (x.released >= gg.year ? 'Give it a year first.' : x.dlcs >= 8 ? 'Eight DLCs. Time for a sequel.' : yearActionsUsed(gg, once('dlc')) >= 1 ? 'One DLC a year.' : null),
           run: (gg, aa, bb, st) => {
             const y = st.games.find((z) => z.id === gid)
-            if (!y) return
-            if (!useYearAction(gg, once('dlc'), 1)) return tooBusy(gg, 'released DLC for this game')
+            if (!y || y.stage !== 'live' || y.released >= gg.year || y.dlcs >= 8) return
             const cost = Math.round(sc.extraUsd * 0.6 * costScale(bb.countryId) + devCost(bb) * Math.max(1, sc.team * 0.15) * 0.5)
             if (bb.cash < cost) return noCash(gg, aa, cost, 'the DLC')
+            if (!useYearAction(gg, once('dlc'), 1)) return tooBusy(gg, 'released DLC for this game')
             bb.cash -= cost
             bb.yearCosts += cost
             const q = clampN(bb.quality * 0.5 + y.critic * 0.4 + staffPower(bb, 'quality') * 5 + randInt(gg, -10, 10), 0, 100)
@@ -1891,10 +1931,10 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
           disabled: (gg) => (yearActionsUsed(gg, once('patch')) >= 1 ? 'Once a year.' : x.players >= x.critic + 12 ? 'Players already love it as much as they will.' : null),
           run: (gg, aa, bb, st) => {
             const y = st.games.find((z) => z.id === gid)
-            if (!y) return
-            if (!useYearAction(gg, once('patch'), 1)) return tooBusy(gg, 'patched this game')
+            if (!y || y.stage !== 'live' || y.players >= y.critic + 12) return
             const cost = Math.round(devCost(bb) * 1.5)
             if (bb.cash < cost) return noCash(gg, aa, cost, 'the patch')
+            if (!useYearAction(gg, once('patch'), 1)) return tooBusy(gg, 'patched this game')
             bb.cash -= cost
             bb.yearCosts += cost
             const up = Math.min(Math.max(0, y.critic + 12 - y.players), randInt(gg, 3, 8))
@@ -1909,7 +1949,7 @@ function liveGameNode(a: Asset, x0: StudioGame): MenuGroup {
           disabled: (gg) => greenlightBlock(gg, a) ?? (x.critic < 50 ? 'It flopped. Nobody wants a sequel.' : null),
           run: (gg, aa, _bb, st) => {
             const y = st.games.find((z) => z.id === gid)
-            if (!y) return
+            if (!y || y.stage !== 'live' || y.critic < 50 || greenlightBlock(gg, aa)) return
             const franchise = y.franchise || y.title
             const nth = st.games.filter((z) => z.franchise === franchise || z.title === franchise).length + 1
             if (!y.franchise) {

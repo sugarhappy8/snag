@@ -148,6 +148,27 @@ describe('fictional underworld state and gates', () => {
     expect(g.character.money + underworldView(g).dirtyCash).toBe(200_000)
   })
 
+  it('rejects transfers and trades that would silently overflow treasury or inventory caps', () => {
+    const g = game(25)
+    found(g)
+    const raw = stateRecord(g)
+    raw.dirtyCash = 1e12
+    raw.inventory = 1e6
+    const bank = g.character.money
+    const full = JSON.stringify(g)
+
+    expect(fundUnderground(g, 1_000)).toBe(false)
+    expect(tradeUnderground(g, 'street', true)).toBe(false)
+    expect(g.character.money).toBe(bank)
+    expect(JSON.stringify(g)).toBe(full)
+
+    raw.inventory = 1
+    const saleBlocked = JSON.stringify(g)
+    expect(tradeUnderground(g, 'street', false)).toBe(false)
+    expect(JSON.stringify(g)).toBe(saleBlocked)
+    expect(g.yearActions['underworld.trade']).toBeUndefined()
+  })
+
   it('revalidates age, life and prison on direct and stale menu actions', () => {
     for (const mode of ['minor', 'dead', 'prison'] as const) {
       const g = game(3)

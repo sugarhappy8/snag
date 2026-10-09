@@ -731,7 +731,8 @@ export function cycleScore(countryId: string, year: number): number {
  * booms) blended with the procedural `synthetic` value, which is returned unchanged for the future.
  */
 export function historicalCycle(countryId: string, year: number, synthetic: number): number {
-  if (!inHistory(year) || !Number.isFinite(synthetic)) return synthetic
+  const safeSynthetic = Number.isFinite(synthetic) ? synthetic : 1
+  if (!inHistory(year)) return safeSynthetic
   const hist = 1 + 0.32 * cycleScore(countryId, year)
-  return clampN(hist + 0.5 * (synthetic - 1), 0.55, 1.4)
+  return clampN(hist + 0.5 * (safeSynthetic - 1), 0.55, 1.4)
 }

@@ -242,6 +242,7 @@ function payFees(g: GameState, parts: { a: Asset; b: BizState; fee: number }[]):
     if (rest > 0) {
       addMoney(g, -rest)
       p.b.invested += rest
+      p.b.yearCosts += rest
       fromOwner += rest
     }
     worth.push(Math.max(0, Math.round(p.b.valuation - (p.b.public ? own : 0))))
@@ -618,6 +619,7 @@ export function spinOff(g: GameState, groupId: string, assetId: string): boolean
   if (left > 0) {
     addMoney(g, -left)
     x.b.invested += left
+    x.b.yearCosts += left
   }
   // A listed group's spin-off trades at the market's mood on its operating value, without the
   // conglomerate discount; what is left keeps the mood (cash counts at face on both sides).
@@ -767,16 +769,26 @@ function face(m: Manager): string {
   return m.gender === 'female' ? '\u{1F469}\u{200D}\u{1F4BC}' : '\u{1F468}\u{200D}\u{1F4BC}'
 }
 
-/** Pay a group expense from the treasury's spendable cash, or the player's pocket when short. */
-function payGroup(g: GameState, grp: Group, n: number): 'group' | 'owner' {
+/** Pay a group expense from treasury cash first, then the player's pocket. Null means unaffordable. */
+function payGroup(g: GameState, grp: Group, n: number): 'group' | 'owner' | 'split' | null {
   const t = treasuryOf(grp)
-  if (spendable(t.a, t.b) < n && g.character.money >= n) {
-    addMoney(g, -n)
-    t.b.invested += n
-    return 'owner'
+  const cost = Math.max(0, Math.round(Number.isFinite(n) ? n : 0))
+  const fromGroup = Math.min(cost, spendable(t.a, t.b))
+  const fromOwner = cost - fromGroup
+  if (fromOwner > Math.max(0, g.character.money)) return null
+  if (fromGroup > 0) charge(t.b, fromGroup)
+  if (fromOwner > 0) {
+    addMoney(g, -fromOwner)
+    t.b.invested += fromOwner
+    t.b.yearCosts += fromOwner
   }
-  charge(t.b, n)
-  return 'group'
+  return fromGroup > 0 && fromOwner > 0 ? 'split' : fromOwner > 0 ? 'owner' : 'group'
+}
+
+function canPayGroup(g: GameState, grp: Group, n: number): boolean {
+  const cost = Math.max(0, Math.round(Number.isFinite(n) ? n : 0))
+  const t = treasuryOf(grp)
+  return spendable(t.a, t.b) + Math.max(0, g.character.money) >= cost
 }
 
 function readCandidate(g: GameState, raw: Record<string, Json>): Manager {
@@ -807,13 +819,20 @@ const CEO_PICK = defineScript('business.group.ceo', (g, choice, data) => {
   const raw = rec(list[Number(choice.replace('m', ''))])
   if (!raw) return
   const m = readCandidate(g, raw)
+  const out = grp.core.ceo === 'manager' ? grp.core.manager : null
+  const sev = out ? ceoSeverance(out, g.year) : 0
+  if (sev > 0 && !canPayGroup(g, grp, sev)) {
+    notice(g, 'Not Enough Cash', `Buying out ${managerName(out!)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
   if (!groupAllows(g, grp, { kind: 'hire', by: 'owner', amount: m.salary, skill: m.skill, label: `Hire ${managerName(m)} as group CEO at ${money(m.salary)} a year` })) {
     saveGroup(g, grp)
     return
   }
-  const out = grp.core.ceo === 'manager' ? grp.core.manager : null
-  const sev = out ? ceoSeverance(out, g.year) : 0
-  if (sev > 0) payGroup(g, grp, sev)
+  if (sev > 0 && !payGroup(g, grp, sev)) {
+    notice(g, 'Not Enough Cash', `Buying out ${managerName(out!)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
   clearGroupCeoJob(g, out)
   grp.core.ceo = 'manager'
   grp.core.manager = { ...m, since: g.year }
@@ -836,8 +855,12 @@ export function searchGroupCeo(g: GameState, groupId: string, kind: SearchKind):
   const gb = groupBiz(g, grp)
   const key = `biz.group.headhunt.${groupId}`
   const fee = headhunterFee(gb, kind, yearActionsUsed(g, key))
-  useYearAction(g, key, Number.MAX_SAFE_INTEGER)
   const by = payGroup(g, grp, fee)
+  if (!by) {
+    notice(g, 'Not Enough Cash', `The headhunter wants ${formatMoney(fee)}. The group's available cash and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
+  useYearAction(g, key, Number.MAX_SAFE_INTEGER)
   syncMembers(grp)
   saveGroup(g, grp)
   const list = shortlist(g, gb, kind)
@@ -857,7 +880,7 @@ export function searchGroupCeo(g: GameState, groupId: string, kind: SearchKind):
     id === 'cancel' ? 'Best move: nobody here captures enough extra synergy to pay for the change' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year of synergies after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they work the numbers' : ''}`,
   )
   const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()}, wants ${formatMoney(m.salary)} a year. ${m.skill >= 85 ? `${m.skill >= 95 ? 10 : m.skill >= 90 ? 5 : 2}% group ownership for long-term retention.` : 'Salary-based retention.'}`)
-  const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (from your own pocket: the treasury was short)' : ''}.`]
+  const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (from your own pocket: the treasury was empty)' : by === 'split' ? ' (split between the treasury and your own pocket)' : ''}.`]
   if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means about ${formatMoney(sev)} in severance.`)
   notes.push('A group CEO captures the synergies (the better, the more), keeps the sprawl in check and is paid by the divisions; above 75 they also manage the treasury and the division CEOs.')
   scriptChoice(g, CEO_PICK, cur ? 'Replace the Group CEO' : 'Hire a Group CEO', `A headhunter sent over ${list.length} candidates to run ${grp.core.name}:\n${lines.join('\n')}\n${notes.join(' ')}`, choices, {
@@ -872,12 +895,19 @@ export function chairGroup(g: GameState, groupId: string): boolean {
   const grp = liveGroup(g, groupId)
   if (!grp || grp.core.ceo !== 'manager' || !grp.core.manager) return false
   const m = grp.core.manager
+  const sev = ceoSeverance(m, g.year)
+  if (sev > 0 && !canPayGroup(g, grp, sev)) {
+    notice(g, 'Not Enough Cash', `Buying out ${managerName(m)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return false
+  }
   if (!groupAllows(g, grp, { kind: 'takeOver', by: 'owner', skill: Math.round(ownerCapture(g) * 100), label: `Make ${g.character.firstName} ${g.character.lastName} chair and CEO of ${grp.core.name}` })) {
     saveGroup(g, grp)
     return false
   }
-  const sev = ceoSeverance(m, g.year)
-  if (sev > 0) payGroup(g, grp, sev)
+  if (sev > 0 && !payGroup(g, grp, sev)) {
+    notice(g, 'Not Enough Cash', `Buying out ${managerName(m)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return false
+  }
   clearGroupCeoJob(g, m)
   grp.core.ceo = 'owner'
   grp.core.manager = null

@@ -6,7 +6,7 @@ import { defineScript } from '../scripts'
 import type { GameState, Json, MenuGroup, MenuNode } from '../types'
 import { workOnAuthorWork, setAuthorFocus } from './author-career'
 import { authorView, authorMut, saveAuthor, AUTHOR_JOB, type AuthorWork } from './author-state'
-import { blocked, myJob, ownerKey, peek, stableChoice } from './common'
+import { blocked, myJob, ownerKey, ownerMatches, peek, stableChoice } from './common'
 
 type SceneFocus = 'characters' | 'world' | 'conflict' | 'payoff'
 interface StoryNotes { protagonist: string; setting: string; beats: string[] }
@@ -52,7 +52,7 @@ export function writeStoryScene(g: GameState, id: string, focus: SceneFocus): bo
 }
 const SCENE_SCRIPT = defineScript('author.scene', (g, choice, data) => {
   const d = object(data)
-  if (typeof d.id !== 'string' || !FOCI.includes(choice as SceneFocus) || d.owner !== ownerKey(g) || d.session !== yearActionsUsed(g, 'author.write') || d.year !== g.year) return
+  if (typeof d.id !== 'string' || !FOCI.includes(choice as SceneFocus) || !ownerMatches(g, d.owner) || d.session !== yearActionsUsed(g, 'author.write') || d.year !== g.year) return
   writeStoryScene(g, d.id, choice as SceneFocus)
 })
 export function chooseStoryScene(g: GameState, id: string): void {

@@ -25,7 +25,7 @@ import {
   marketHistory,
   marketNote,
 } from '../src/game/history/markets'
-import { HISTORY_START, PRESENT_YEAR, priceLevel } from '../src/game/history/timeline'
+import { HISTORY_START, PRESENT_YEAR, eraOf, priceLevel, techAdoption } from '../src/game/history/timeline'
 import {
   bondRate,
   coinDef,
@@ -55,6 +55,31 @@ import { COUNTRIES } from '../src/game/world'
 import { makeTestGame } from './helpers'
 
 const LAST = PRESENT_YEAR - 1
+
+describe('malformed calendar input safety', () => {
+  it('keeps timeline and cached market paths finite for invalid or extreme years', () => {
+    const info = exchangeInfo('us')
+    for (const year of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 1e308, -1e308]) {
+      expect(Number.isFinite(priceLevel(year))).toBe(true)
+      expect(Number.isFinite(techAdoption('us', 'internet', year))).toBe(true)
+      expect(eraOf(year)).toBeTruthy()
+
+      const exchange = exchangeYear('bad-year', Number.NaN, info, year)
+      const crypto = cryptoYear('bad-year', Number.POSITIVE_INFINITY, year)
+      const gold = goldYear('bad-year', Number.NEGATIVE_INFINITY, year)
+      const fx = fxYear('bad-year', 'us', year)
+      expect(exchange && Number.isFinite(exchange.level) && Number.isFinite(exchange.index.ret)).toBe(true)
+      expect(crypto && Number.isFinite(crypto.ret)).toBe(true)
+      expect(Number.isFinite(gold.price) && Number.isFinite(gold.ret)).toBe(true)
+      expect(Object.values(fx).every((value) => typeof value === 'boolean' || Number.isFinite(value))).toBe(true)
+    }
+    expect(() => companyDef(info, Number.NaN, Number.POSITIVE_INFINITY)).not.toThrow()
+    expect(() => pennyDef(info, Number.NEGATIVE_INFINITY, Number.NaN)).not.toThrow()
+    expect(coinDef(Number.NaN, Number.NEGATIVE_INFINITY)).toMatchObject({ slot: 0, gen: 0, name: 'Bitcoin' })
+    expect(historicalCycle('us', 1932, Number.NaN)).toBeGreaterThanOrEqual(0.55)
+    expect(historicalCycle('us', PRESENT_YEAR + 1, Number.POSITIVE_INFINITY)).toBe(1)
+  })
+})
 
 /** Compound real return of a country's market over [from, to] (1 = flat). */
 function cumulative(cid: string, from: number, to: number): number {

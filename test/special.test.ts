@@ -379,5 +379,8 @@ describe('yearlySpecial', () => {
     nextYear(g)
     yearlySpecial(g)
     expect(g.flags.taxableIncome as number).toBeGreaterThanOrEqual(15_000)
+    const settled = JSON.stringify(g)
+    yearlySpecial(g)
+    expect(JSON.stringify(g)).toBe(settled)
   })
 })

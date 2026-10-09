@@ -370,7 +370,7 @@ describe('owned studios', () => {
     startGreenlight(g, a.id)
     drain(g, ['aa', 'console', 'titan'])
     const x = devGames(studioOf(a))[0]
-    runScript(g, 'gamestudio.publisher', 'sign', { assetId: a.id, gameId: x.id, advance: 4_000_000, devShare: 0.5, publisher: 'Northstar Arcade' }, { kind: 'choice', id: 'x', title: '', text: '', choices: [] } as never)
+    runScript(g, 'gamestudio.publisher', 'sign', { assetId: a.id, gameId: x.id, advance: 4_000_000, devShare: 0.5, publisher: 'Northstar Arcade' }, { kind: 'choice', id: 'publisher', title: '', text: '', choices: [{ id: 'sign', label: 'Sign' }] } as never)
     g.queue = []
     expect(earmarkedCash(a)).toBe(1_000_000)
     const cash = bizOf(g, a).cash

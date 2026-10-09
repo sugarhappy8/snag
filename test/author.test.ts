@@ -27,6 +27,7 @@ import {
 } from '../src/game/special/author-career'
 import { AUTHOR_FORMATS, formatAvailable } from '../src/game/special/author-data'
 import { authorMut, authorView, normalizeAuthor, saveAuthor, type AuthorProfile, type AuthorWork } from '../src/game/special/author-state'
+import { ownerKey } from '../src/game/special/common'
 import { authorCareerMenu, authorJobNodes } from '../src/game/special/author'
 import type { GameState, Json, MenuAction, MenuNode, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -506,7 +507,7 @@ describe('manuscript state machine and regional rules', () => {
     publishAuthorWork(g, work.id, 'self')
     expect(authorView(g).works).toEqual([])
     expect(JSON.stringify(g.flags['special.author'])).not.toBe(oldRaw)
-    expect(g.flags['special.author']).toMatchObject({ owner: 'successor:Successor:Player:1996', works: [] })
+    expect(g.flags['special.author']).toMatchObject({ owner: ownerKey(g), works: [] })
   })
 })
 
@@ -734,6 +735,24 @@ describe('yearly author simulation and accounting', () => {
     const snapshot = JSON.stringify(g)
     yearlyAuthor(g)
     expect(JSON.stringify(g)).toBe(snapshot)
+  })
+
+  it('repairs a malformed future settlement marker instead of freezing the catalogue', () => {
+    const g = game(98)
+    const p = authorView(g)
+    p.seq = 1
+    p.lastYear = 100_000
+    p.works = [workPatch({
+      started: 2020, released: 2020, quality: 75, tail: 1_000, copies: 0,
+      gross: 0, earned: 0, lastYear: 100_000,
+    })]
+    saveAuthor(g, p)
+
+    yearlyAuthor(g)
+
+    expect(authorView(g).lastYear).toBe(g.year - 1)
+    expect(authorView(g).works[0].lastYear).toBe(g.year - 1)
+    expect(authorView(g).works[0].copies).toBeGreaterThan(0)
   })
 
   it('recoups a publisher advance from author royalties without negative pay, then pays only the excess', () => {

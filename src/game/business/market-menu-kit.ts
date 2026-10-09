@@ -66,7 +66,9 @@ export function mAct(a: Asset, key: string, label: string, emoji: string, opts: 
     run: (g) => {
       const cur = findBusiness(g, a.id)
       if (!cur || manageBlock(g, cur)) return
-      opts.run(g, cur, bizOf(g, cur))
+      const b = bizOf(g, cur)
+      if (opts.disabled?.(g, b)) return
+      opts.run(g, cur, b)
     },
   }
 }

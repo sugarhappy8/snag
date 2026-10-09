@@ -10,7 +10,7 @@ import { randomFirstName, randomLastName } from '../world'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
 import { ageCeiling } from '../mastery'
-import { actingSkill, addColleague, addFame, blocked, clamp100, dropList, fameOf, fameToward, hire, leave, masterFlagSkill, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
+import { actingSkill, addColleague, addFame, blocked, claimYearly, clamp100, dropList, fameOf, fameToward, hire, leave, masterFlagSkill, money, myJob, peek, prof, quitNote, say, setFlagSkill, setRole, short, syncTenure, tell, view, yearlyList } from './common'
 
 type Role = 'Extra' | 'Supporting' | 'Lead'
 type Kind = 'film' | 'tv'
@@ -83,12 +83,63 @@ const initActor = (): ActorProfile => ({
   dryYears: 0,
 })
 
+function actorNumber(value: unknown, fallback = 0, lo = 0, hi = 1e12): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, Math.round(value))) : fallback
+}
+
+function actorText(value: unknown, fallback: string, max = 100): string {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max) || fallback : fallback
+}
+
+function normalizedActor(value: unknown): ActorProfile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return initActor()
+  const raw = value as Partial<ActorProfile>
+  const credits: Credit[] = []
+  if (Array.isArray(raw.credits)) for (const value of raw.credits.slice(-256)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const credit = value as Partial<Credit>
+    credits.push({
+      title: actorText(credit.title, 'Untitled'),
+      kind: credit.kind === 'tv' ? 'tv' : 'film',
+      role: credit.role === 'Lead' || credit.role === 'Supporting' ? credit.role : 'Extra',
+      genre: actorText(credit.genre, 'Drama', 60),
+      age: actorNumber(credit.age, 0, 0, 10_000),
+      pay: actorNumber(credit.pay),
+      quality: actorNumber(credit.quality, 0, 0, 100),
+      popularity: actorNumber(credit.popularity, 0, 0, 100),
+      seasons: actorNumber(credit.seasons, 1, 1, 100),
+      verdict: actorText(credit.verdict, 'released'),
+      residual: actorNumber(credit.residual),
+    })
+  }
+  let agent: Agent | null = null
+  if (raw.agent && typeof raw.agent === 'object' && !Array.isArray(raw.agent)) {
+    const a = raw.agent as Partial<Agent>
+    agent = {
+      name: actorText(a.name, 'Unknown Agent', 80),
+      firm: actorText(a.firm, 'Independent', 80),
+      quality: actorNumber(a.quality, 0, 0, 100),
+      cut: typeof a.cut === 'number' && Number.isFinite(a.cut) ? Math.max(0, Math.min(0.95, a.cut)) : 0,
+    }
+  }
+  return {
+    reputation: actorNumber(raw.reputation, 50, 0, 100),
+    credits,
+    awards: Array.isArray(raw.awards) ? raw.awards.filter((x): x is string => typeof x === 'string').map((x) => actorText(x, '', 120)).filter(Boolean).slice(-256) : [],
+    nominations: actorNumber(raw.nominations, 0, 0, 1e9),
+    agent,
+    dryYears: actorNumber(raw.dryYears, 0, 0, 10_000),
+  }
+}
+
 function actorProfile(g: GameState): ActorProfile {
-  return prof(g, 'actor', initActor)
+  const p = prof(g, 'actor', initActor)
+  Object.assign(p, normalizedActor(p))
+  return p
 }
 
 function viewActor(g: GameState): ActorProfile {
-  return peek<ActorProfile>(g, 'actor') ?? initActor()
+  return normalizedActor(peek<ActorProfile>(g, 'actor'))
 }
 
 export function actorJob(g: GameState): Job | null {
@@ -96,7 +147,25 @@ export function actorJob(g: GameState): Job | null {
 }
 
 function project(job: Job): Project | null {
-  return view<ActorJobData>(job.data).project ?? null
+  const data = view<ActorJobData>(job.data)
+  const raw = data.project
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const p = raw as Partial<Project>
+  const normalized: Project = {
+    title: actorText(p.title, 'Untitled'),
+    kind: p.kind === 'tv' ? 'tv' : 'film',
+    genre: actorText(p.genre, 'Drama', 60),
+    role: p.role === 'Lead' || p.role === 'Supporting' ? p.role : 'Extra',
+    studio: actorText(p.studio, 'Independent Studio', 80),
+    pay: actorNumber(p.pay),
+    budget: actorText(p.budget, 'indie', 40),
+    developed: actorNumber(p.developed, 0, 0, 100),
+    buzz: actorNumber(p.buzz, 0, 0, 100),
+    season: actorNumber(p.season, 1, 1, 100),
+    costars: Array.isArray(p.costars) ? p.costars.filter((x): x is string => typeof x === 'string').map((x) => actorText(x, '', 80)).filter(Boolean).slice(0, 64) : [],
+  }
+  data.project = normalized
+  return normalized
 }
 
 function actorWord(g: GameState): string {
@@ -789,7 +858,11 @@ function verdictFor(g: GameState, popularity: number, kind: Kind): string {
 export function yearlyActor(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  const p = peek<ActorProfile>(g, 'actor')
+  const stored = peek<ActorProfile>(g, 'actor')
+  const job = actorJob(g)
+  if (!stored && !job) return
+  if (!claimYearly(g, 'actor')) return
+  const p = stored ? actorProfile(g) : null
   if (p) {
     // Residuals keep paying even after you leave the business.
     let residuals = 0
@@ -804,7 +877,6 @@ export function yearlyActor(g: GameState): void {
       log(g, `I received ${money(residuals)} in residuals.`)
     }
   }
-  const job = actorJob(g)
   if (!job || c.prison) return
   masterActing(g)
   syncTenure(g, job)

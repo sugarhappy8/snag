@@ -11,6 +11,7 @@ import { addMarketShock, factorOf, marketShocks, shockFactor } from '../src/game
 import { buySecurity, investmentHoldings, investmentListing, yearlyInvestments } from '../src/game/investments'
 import { runScript } from '../src/game/scripts'
 import { specialJobNodes, yearlySpecial } from '../src/game/special'
+import { ownerKey } from '../src/game/special/common'
 import type { ChoiceModal, GameState, InputModal, Json, MenuAction, MenuGroup, MenuNode, ModalItem, NoticeModal } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
@@ -101,6 +102,32 @@ function hasArrest(g: GameState): boolean {
 }
 
 describe('who can abuse power', () => {
+  it('normalizes malformed saved investigations without duplicate or unbounded cases', () => {
+    const g = official('us', 'leader', 88)
+    const malformed = {
+      id: ' duplicate ', age: 55.4, year: Number.POSITIVE_INFINITY, target: '<Bad\u0000 Target>',
+      symbol: 'X'.repeat(50), secId: 'test#s0g0', cause: 'invalid', stake: 1e300,
+      via: 'invalid', crony: '<Crony>', evidence: 9, status: 'closed', office: 'invalid',
+      title: 'T'.repeat(200), countryId: '', quiet: -5,
+      extra: ['obstruction', 'obstruction', 'x'.repeat(200)], gain: Number.NaN,
+    }
+    g.flags['special.politics'] = {
+      owner: ownerKey(g), abuse: {
+        heat: Number.POSITIVE_INFINITY, moves: 1e300, crony: '<Bad\u0000 Crony>',
+        cases: [malformed, { ...malformed, id: 'duplicate' }],
+      },
+    } as unknown as Json
+
+    yearlySpecial(g)
+
+    const normalized = abuse(g) as unknown as { heat: number; moves: number; crony: string; cases: Array<Record<string, unknown>> }
+    expect(normalized).toMatchObject({ heat: 0, moves: 1_000_000, crony: 'Bad Crony' })
+    expect(normalized.cases).toHaveLength(1)
+    expect(normalized.cases[0]).toMatchObject({ id: 'duplicate', cause: 'probe', via: 'own', office: 'mayor', evidence: 1, quiet: 0, stake: 1e15, gain: 0 })
+    expect(normalized.cases[0].extra).toEqual(['obstruction', 'x'.repeat(100)])
+    roundTrips(g)
+  })
+
   it('non-politicians and school board members have no such menu, and the scripts do nothing', () => {
     const civilian = makeTestGame(1, { age: 40, money: 1_000_000 })
     expect(findNode(civilian, specialJobNodes(civilian), 'pol.abuse')).toBeUndefined()

@@ -10,7 +10,7 @@ import { financeView, saveFinance } from '../src/game/business/finance-firm-stat
 import { attractFinanceClients, financeAlgoBlock, financeAlgoCost, financeEraBlock, financeNodes, financeTeamSkill, researchFinanceAlgorithm, setFinancePolicy, simulateFinanceYear } from '../src/game/business/finance-firm'
 import { bizOf, normalizeBiz, readBiz, type KeyStaff } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
-import type { Industry } from '../src/game/data/markets'
+import { corporateTax, type Industry } from '../src/game/data/markets'
 import type { GameState, Json, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
@@ -95,6 +95,38 @@ describe('dedicated financial institutions', () => {
       simulateFinanceYear(g, b, g.year, 30_000)
       expect(JSON.stringify(b)).toBe(settled)
     }
+  })
+
+  it('allocates prebooked foreign royalty income to the country that earned it', () => {
+    const home = institution('investmentFirm', 'us')
+    const foreign = institution('investmentFirm', 'us')
+    const royalty = 10_000_000
+    for (const x of [home, foreign]) {
+      x.b.openFraction = 0
+      x.b.cash = royalty
+      x.b.yearIncome = royalty
+    }
+    const homeResult = simulateFinanceYear(home.g, home.b, home.g.year, 0, { us: royalty })
+    const foreignResult = simulateFinanceYear(foreign.g, foreign.b, foreign.g.year, 0, { ae: royalty })
+    expect(homeResult.stmt.otherIncome).toBe(royalty)
+    expect(foreignResult.stmt.otherIncome).toBe(royalty)
+    expect(homeResult.stmt.pbt).toBe(foreignResult.stmt.pbt)
+    expect(homeResult.stmt.corpTax).toBe(corporateTax('us', homeResult.stmt.pbt))
+    expect(foreignResult.stmt.corpTax).toBe(corporateTax('ae', foreignResult.stmt.pbt))
+    const settled = JSON.stringify(foreign.b)
+    simulateFinanceYear(foreign.g, foreign.b, foreign.g.year, 0, { ae: royalty })
+    expect(JSON.stringify(foreign.b)).toBe(settled)
+  })
+
+  it('keeps unclassified one-off income at headquarters beside a partial foreign booking', () => {
+    const { g, b } = institution('investmentFirm', 'us')
+    const homeIncome = 10_000_000, foreignIncome = 10_000_000
+    b.openFraction = 0
+    b.cash = homeIncome + foreignIncome
+    b.yearIncome = homeIncome + foreignIncome
+    const result = simulateFinanceYear(g, b, g.year, 0, { ae: foreignIncome })
+    const expected = corporateTax('us', result.stmt.pbt / 2) + corporateTax('ae', result.stmt.pbt / 2)
+    expect(Math.abs(result.stmt.corpTax - Math.round(expected))).toBeLessThanOrEqual(1)
   })
 
   it('has skill-dependent performance and still permits losing market years', () => {
@@ -187,6 +219,12 @@ describe('dedicated financial institutions', () => {
     yearlyBusinessImpl(g)
     expect(g.character.money).toBe(money)
     expect(readBiz(g, a).cash).toBe(cash)
+  })
+
+  it('normalizes finance calendar fields to whole years', () => {
+    const { b } = institution('investmentFirm')
+    b.financeFirm = { algoStarted: 2020.6, algoCompleted: 2022.6, lastYear: 2024.6 } as unknown as Json
+    expect(financeView(b)).toMatchObject({ algoStarted: 2021, algoCompleted: 2023, lastYear: 2025 })
   })
 
   it('never pays client capital out through liquidation, bankruptcy, IPO, shares or group treasury', () => {

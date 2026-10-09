@@ -1,7 +1,7 @@
 // Segregated financial books. Clients' principal never enters b.cash or shareholder valuation.
 import { seeded } from '../assets'
 import { notice, useYearAction, yearActionsUsed } from '../core'
-import { corporateTax, marketOf } from '../data/markets'
+import { marketOf } from '../data/markets'
 import { hasTech } from '../history/timeline'
 import { hasTalent } from '../talents'
 import type { Asset, GameState, MenuNode } from '../types'
@@ -11,6 +11,7 @@ import { manageBlock } from './gate'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type Statement } from './state'
 import { financeView, isFinanceFirm, saveFinance, type FinanceStrategy } from './finance-firm-state'
+import { allocatedCorporateTax } from './tax'
 import { clampN, money, pct } from './util'
 
 export { financeView, isFinanceFirm } from './finance-firm-state'
@@ -92,7 +93,7 @@ export function attractFinanceClients(g: GameState, assetId: string): void {
 }
 
 /** Dedicated simulator: no goods, manufacturing, inventory, or customer principal as revenue. */
-export function simulateFinanceYear(g: GameState, b: BizState, year: number, ownerDraw: number): YearResult {
+export function simulateFinanceYear(g: GameState, b: BizState, year: number, ownerDraw: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
   const f = financeView(b)
   if (f.lastYear >= year && b.last) return { stmt: b.last, inventoryEnd: 0, wantedStaff: b.employees, unpaidSalary: 0, market: null }
   const rng = seeded(`${g.lifeId}|finance|${b.countryId}|${b.city}|${b.founded}|${b.founderName}|${year}`)
@@ -187,7 +188,9 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
   const preSalary = revenue - cogs - wages - keyStaff - rent - marketing - interest - upkeep - b.yearCosts + b.yearIncome
   const booked = b.yearCosts - b.yearIncome
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + preSalary + booked)))
-  const pbt = preSalary - ownerPay, tax = corporateTax(b.countryId, pbt), net = Math.round(pbt - tax)
+  const pbt = preSalary - ownerPay
+  const tax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedHomeSales)
+  const net = Math.round(pbt - tax)
   b.cash = Math.round(b.cash + net + booked)
   b.employees = staffCount; b.production = 0; b.inventory = 0
   f.lastFees = revenue; f.lastYear = year; f.outreach = 0

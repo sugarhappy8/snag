@@ -22,6 +22,7 @@ import { olympicsMenu, yearlyOlympics } from './sports-olympics'
 import { proWrestlingMenu, wrestlerJob, wrestlerJobNodes, yearlyWrestler } from './sports-prowrestling'
 import { sumoJob, sumoJobNodes, sumoMenu, yearlySumo } from './sports-sumo'
 import { yearlyYouth, youthSportsMenu } from './sports-youth'
+import { claimYearly, peek } from './common'
 
 const individualSportsMenu: MenuGroup = {
   type: 'menu',
@@ -127,6 +128,10 @@ function appeal(g: GameState): { sport: string | null; appeal: number } {
 
 /** Yearly hook for every sports career. */
 export function yearlySports(g: GameState): void {
+  if (!g.character.alive) return
+  const profileKeys = ['sports', 'athlete', 'sports.esports', 'sports.fight', 'sports.ind', 'sports.sumo', 'sports.wrestle', 'sports.youth']
+  if (g.character.prison && !playingJob(g) && !profileKeys.some((key) => !!peek(g, key))) return
+  if (!claimYearly(g, 'sports')) return
   const hooks: ((g: GameState) => void)[] = [yearlyAthlete, yearlyIndividual, yearlyFighter, yearlySumo, yearlyWrestler, yearlyEsports, yearlyYouth, yearlyOlympics, yearlyLegacy]
   for (const hook of hooks) {
     if (!g.character.alive) return

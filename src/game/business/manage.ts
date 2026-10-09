@@ -91,7 +91,9 @@ function act(a: Asset, key: string, label: string, emoji: string, opts: {
     run: (g, input) => {
       const cur = findBusiness(g, a.id)
       if (!cur || manageBlock(g, cur)) return
-      opts.run(g, cur, bizOf(g, cur), input)
+      const b = bizOf(g, cur)
+      if (opts.disabled?.(g, b)) return
+      opts.run(g, cur, b, input)
     },
   }
 }
@@ -240,9 +242,9 @@ function campaignAction(a: Asset, c: Campaign, b0: BizState, g0: GameState): Men
     },
     subtitle: (g) => `${money(adCost(readBiz(g, a), c.base))} · +${Math.round(c.boost * 100)}% customers this year`,
     run: (g, cur, b) => {
-      if (!useYearAction(g, `biz.campaign.${cur.id}`, 2)) return tooBusy(g, 'run two campaigns for this company')
       const cost = adCost(b, c.base)
       if (b.cash < cost) return noCash(g, cur, cost, 'the campaign')
+      if (!useYearAction(g, `biz.campaign.${cur.id}`, 2)) return tooBusy(g, 'run two campaigns for this company')
       b.cash -= cost
       b.yearCosts += cost
       if (c.id === 'influencers' && chance(g, INFLUENCER_FAIL)) {
@@ -1225,9 +1227,9 @@ function consultantAction(a: Asset): MenuAction {
   return act(a, 'consultant', 'Hire a Business Consultant', '\u{1F9D1}\u{200D}\u{1F4BC}', {
     subtitle: (g) => `About ${money(adCost(readBiz(g, a), 6_000))} for a frank assessment`,
     run: (g, cur, b) => {
-      if (!useYearAction(g, `biz.consultant.${cur.id}`, 1)) return tooBusy(g, `hired a consultant for ${cur.name}`)
       const fee = adCost(b, 6_000)
       if (b.cash < fee) return noCash(g, cur, fee, 'the consultant')
+      if (!useYearAction(g, `biz.consultant.${cur.id}`, 1)) return tooBusy(g, `hired a consultant for ${cur.name}`)
       b.cash -= fee
       b.yearCosts += fee
       const best = bestPrice(g, b)
@@ -1416,10 +1418,11 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
         },
       },
       run: (gg, cur, bb, input) => {
-        if (!useYearAction(gg, `biz.borrow.${cur.id}`, 2)) return tooBusy(gg, `asked the bank for money twice for ${cur.name}`)
         const n = amount(input, companyCreditLimit(bb))
         if (n <= 0) return
+        if (yearActionsUsed(gg, `biz.borrow.${cur.id}`) >= 2) return tooBusy(gg, `asked the bank for money twice for ${cur.name}`)
         if (!boardAllows(gg, cur, bb, { kind: 'debt', by: 'owner', amount: n, label: `Borrow ${money(n)}` })) return
+        useYearAction(gg, `biz.borrow.${cur.id}`, 2)
         const rate = companyLoanRate(bb)
         bb.debtRate = bb.debt > 0 ? (bb.debtRate * bb.debt + rate * n) / (bb.debt + n) : rate
         bb.debt += n
@@ -1523,10 +1526,11 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
         },
       },
       run: (gg, cur, bb, input) => {
-        if (!useYearAction(gg, `biz.bonus.${cur.id}`, 1)) return tooBusy(gg, 'taken a bonus')
         const n = amount(input, Math.min(payable(cur, bb), maxOwnerSalary(bb)))
         if (n <= 0) return
+        if (yearActionsUsed(gg, `biz.bonus.${cur.id}`) >= 1) return tooBusy(gg, 'taken a bonus')
         if (!boardAllows(gg, cur, bb, bonusP(n))) return
+        useYearAction(gg, `biz.bonus.${cur.id}`, 1)
         bb.cash -= n
         bb.yearCosts += n
         earnIncome(gg, n)
@@ -1576,6 +1580,12 @@ const MANAGER_PICK = defineScript('business.manager', (g, choice, data) => {
   const raw = rec(list[Number(choice.replace('m', ''))])
   if (!raw) return
   const m = readCandidate(g, raw)
+  const outgoing = b.ceo === 'manager' ? b.manager : null
+  const severance = outgoing ? ceoSeverance(outgoing, g.year) : 0
+  if (severance > Math.max(0, b.cash)) {
+    notice(g, 'Not Enough Company Cash', `Replacing ${managerName(outgoing!)} now requires ${formatMoney(severance)} in severance. ${a.name} only has ${formatMoney(Math.max(0, b.cash))}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
   if (!boardAllows(g, a, b, { kind: 'hire', by: 'owner', amount: m.salary, skill: m.skill, label: `Hire ${managerName(m)} as CEO at ${money(m.salary)} a year` })) return
   const wasCeo = runsIt(g, a)
   const h = handOver(g, a, b, m)
@@ -1601,16 +1611,23 @@ export function managerValue(w: Worth, m: Manager): number {
   return baseManagerValue(w, m)
 }
 
-/** Pay a headhunter: from company cash, or the owner's own pocket when the company is short. */
-function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' {
-  if (b.cash < fee && g.character.money >= fee) {
-    addMoney(g, -fee)
-    b.invested += fee
-    return 'owner'
+/** Pay a headhunter from company cash first, then the owner's pocket. Null means unaffordable. */
+function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' | 'split' | null {
+  const cost = Math.max(0, Math.round(Number.isFinite(fee) ? fee : 0))
+  const fromCompany = Math.min(cost, Math.max(0, b.cash))
+  const fromOwner = cost - fromCompany
+  if (fromOwner > Math.max(0, g.character.money)) return null
+  if (fromCompany > 0) {
+    b.cash -= fromCompany
   }
-  b.cash -= fee
-  b.yearCosts += fee
-  return 'company'
+  if (fromOwner > 0) {
+    addMoney(g, -fromOwner)
+    b.invested += fromOwner
+  }
+  // The expense is the whole invoice regardless of whether the company paid it directly or the
+  // owner covered a shortfall. Cash and cost basis above still record who funded it.
+  b.yearCosts += cost
+  return fromCompany > 0 && fromOwner > 0 ? 'split' : fromOwner > 0 ? 'owner' : 'company'
 }
 
 /**
@@ -1620,8 +1637,12 @@ function payFee(g: GameState, b: BizState, fee: number): 'company' | 'owner' {
 function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow: 'replace' | 'stepDown'): void {
   const key = `biz.headhunt.${a.id}`
   const fee = headhunterFee(b, kind, yearActionsUsed(g, key))
-  useYearAction(g, key, Number.MAX_SAFE_INTEGER)
   const by = payFee(g, b, fee)
+  if (!by) {
+    notice(g, 'Not Enough Cash', `The headhunter wants ${formatMoney(fee)}. ${a.name}'s cash and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
+  useYearAction(g, key, Number.MAX_SAFE_INTEGER)
   const list = [...familyCandidates(g, a, b, (skill) => askingSalary(b, skill, 0)), ...shortlist(g, b, kind)]
   const used = yearActionsUsed(g, key)
   const cur = b.ceo === 'manager' && b.manager ? b.manager : null
@@ -1644,7 +1665,7 @@ function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow
     )
   }
   const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year. ${equityTerms(m)}.`)
-  const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (paid from your own pocket: the company was short)' : ''}.`]
+  const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (paid from your own pocket: the company was empty)' : by === 'split' ? ' (split between company cash and your own pocket)' : ''}.`]
   if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means buying out the contract: about ${formatMoney(sev)} in severance.`)
   if (list.some((m) => m.skill > SMART_SKILL)) notes.push('Anyone above 75 runs the company with the numbers, like a real executive.')
   scriptChoice(g, MANAGER_PICK, flow === 'stepDown' ? 'Hire a CEO' : 'Replace the CEO', `A headhunter in ${b.city} sent over ${list.length} candidates to run ${a.name}:\n${lines.join('\n')}\n${notes.join(' ')}`, choices, {
@@ -1832,8 +1853,10 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
         subtitle: `${moneyWith(b.sharePrice, (x) => x.toFixed(2))}/share · your stake ${money(b.valuation * b.share)}`,
         input: { kind: 'number', label: 'Percent of your shares to sell', min: 1, max: 100, defaultValue: () => '10' },
         run: (gg, cur, bb, input) => {
+          const fraction = clampN(Number(input) || 0, 0, 100) / 100
+          if (fraction <= 0) return
           if (!useYearAction(gg, `biz.shares.${cur.id}`, 2)) return tooBusy(gg, 'sold shares twice')
-          sellShares(gg, cur, bb, clampN(Number(input) || 0, 0, 100) / 100)
+          sellShares(gg, cur, bb, fraction)
         },
       }),
     )

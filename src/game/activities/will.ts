@@ -167,6 +167,7 @@ function setShare(g: GameState, personId: string, pct: number): void {
 }
 
 function setCharity(g: GameState, pct: number): void {
+  if (!Number.isFinite(pct)) return
   const report = changeWill(g, (_gg, w) => {
     w.charity = Math.max(0, Math.min(90, Math.round(pct)))
   })

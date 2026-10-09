@@ -395,10 +395,11 @@ describe('fallbackChoiceOutcome', () => {
     expect(up).toBeGreaterThanOrEqual(6)
   })
 
-  it('handles a missing choice id and dead characters', () => {
+  it('rejects a missing choice id and ignores dead characters', () => {
     const g = richGame({ age: 30 })
+    const before = JSON.stringify(g)
     fallbackChoiceOutcome(g, aiModal(g, ['Go along with it']), 'nope')
-    expect(notices(g).length).toBe(1)
+    expect(JSON.stringify(g)).toBe(before)
     const dead = richGame({ age: 30 })
     dead.character.alive = false
     fallbackChoiceOutcome(dead, aiModal(dead, ['Go']), 'c0')

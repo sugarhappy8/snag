@@ -463,6 +463,22 @@ describe('the yearly market', () => {
     sane(g)
   })
 
+  it('uses the guarantee law from the crisis year rather than modern deposit insurance', () => {
+    const g = adult('us', 200_000)
+    g.year = 1929
+    const savings = investmentListing(g).find((q) => q.secId.startsWith('savings:'))
+    expect(savings).toBeTruthy()
+    expect(buySecurity(g, savings!.secId, 100_000)).toBe(true)
+    const before = investmentHoldings(g)[0].value
+
+    passYearKeepQueue(g)
+
+    expect(g.year).toBe(1930)
+    expect(investmentHoldings(g)[0].value).toBeLessThan(before * .9)
+    expect(g.queue.some((m) => m.kind === 'notice' && m.title === 'Bank Collapse' && m.text.includes('$0'))).toBe(true)
+    sane(g)
+  })
+
   it('pays government bonds back at maturity', () => {
     const g = adult('de', 50_000)
     const bond = quote(g, 'bond')
@@ -497,6 +513,88 @@ describe('the yearly market', () => {
     expect(g.character.money).toBe(cash)
     expect(a.details.basis).toBe(20_000 + interest)
     expect(a.value).toBeGreaterThan(20_000)
+  })
+
+  it('repairs a future settlement guard and remains idempotent afterward', () => {
+    const g = adult('us', 50_000)
+    expect(buySecurity(g, quote(g, 'index').secId, 10_000)).toBe(true)
+    g.flags.investmentsSettledYear = 100_000
+
+    yearlyInvestments(g)
+
+    expect(g.flags.investmentsSettledYear).toBe(g.year)
+    sane(g)
+    const settled = JSON.stringify(g)
+    yearlyInvestments(g)
+    expect(JSON.stringify(g)).toBe(settled)
+  })
+
+  it('bounds malformed astronomical positions and rejects oversized orders before spending', () => {
+    const g = adult('us', 1e16)
+    g.assets.push({
+      id: 'malformed-investment', kind: 'investment', name: 'Malformed Savings', emoji: '🏦',
+      purchasePrice: 1e308, value: Number.POSITIVE_INFINITY, condition: 100,
+      purchasedAge: g.character.age, upkeep: 0,
+      details: { type: 'savings', secId: 'savings:us:malformed', country: 'us', product: 'savings', yield: .02, units: 1e308, price: 1e308, basis: 1e308 },
+    })
+    expect(investmentsSummary(g)).not.toMatch(/NaN|Infinity/)
+    yearlyInvestments(g)
+    sane(g)
+
+    const bank = g.character.money
+    expect(buySecurity(g, quote(g, 'index').secId, 1e16)).toBe(false)
+    expect(g.character.money).toBe(bank)
+  })
+
+  it('does not turn an overflowed acquisition settlement into a maximum-size windfall', () => {
+    const g = adult('us', 0, 7)
+    const info = exchangeInfo('us')
+    const acquisitionYear = 2031
+    const acquired = exchangeYear(g.lifeId, g.year - g.character.age, info, acquisitionYear).stocks.find((s) => s.ended?.kind === 'acquired')
+    expect(acquired?.ended).toBeTruthy()
+    if (!acquired?.ended) throw new Error('expected deterministic acquisition')
+
+    g.character.age += acquisitionYear - g.year
+    g.year = acquisitionYear
+    const priorValue = 100_000_000
+    g.assets.push({
+      id: 'malformed-acquisition', kind: 'investment', name: 'Malformed Shares', emoji: '📈',
+      purchasePrice: priorValue, value: priorValue, condition: 100,
+      purchasedAge: g.character.age - 1, upkeep: 0,
+      details: {
+        type: 'stock', secId: acquired.ended.id, country: 'us', eng: 2,
+        exKey: info.key, exchange: info.ex.code, slot: acquired.slot,
+        units: 1e308, price: 1e-300, basis: priorValue,
+      },
+    })
+
+    yearlyInvestments(g)
+
+    const expected = Math.round(priorValue * (1 + acquired.ended.premium))
+    expect(g.character.money).toBe(expected)
+    expect(g.character.money).toBeLessThan(1e15)
+    expect(investmentHoldings(g)).toHaveLength(0)
+
+    // A coherent finite position at the supported cap still receives the capped settlement.
+    const capped = adult('us', 0, 7)
+    capped.character.age += acquisitionYear - capped.year
+    capped.year = acquisitionYear
+    const priorPrice = acquired.ended.perUnit / (1 + acquired.ended.premium)
+    capped.assets.push({
+      id: 'capped-acquisition', kind: 'investment', name: 'Capped Shares', emoji: '📈',
+      purchasePrice: 1e15, value: 1e15, condition: 100,
+      purchasedAge: capped.character.age - 1, upkeep: 0,
+      details: {
+        type: 'stock', secId: acquired.ended.id, country: 'us', eng: 2,
+        exKey: info.key, exchange: info.ex.code, slot: acquired.slot,
+        units: 1e15 / priorPrice, price: priorPrice, basis: 1e15,
+      },
+    })
+
+    yearlyInvestments(capped)
+
+    expect(capped.character.money).toBe(1e15)
+    expect(investmentHoldings(capped)).toHaveLength(0)
   })
 
   it('keeps holdings on their own exchange after emigrating', () => {

@@ -284,13 +284,26 @@ describe('studio jobs: ladder and requirements', () => {
     expect(credits).toBeGreaterThan(8)
   })
 
+  it('settles the Game Industry hook only once for the same year and age', () => {
+    const g = dev(84, 'us', 25, 5_000)
+    takeJob(g, listing(g, 1, 'code'))
+    g.queue = []
+
+    yearlyGameDev(g)
+    const settled = JSON.stringify(g)
+    yearlyGameDev(g)
+
+    expect(JSON.stringify(g)).toBe(settled)
+    expect(gdView(g)).toMatchObject({ settledYear: g.year, settledAge: g.character.age })
+  })
+
   it('crunch, burnout and quitting resolve cleanly', () => {
     const g = dev(30, 'us', 25)
     takeJob(g, listing(g, 2, 'code', 'aaa'))
     g.queue = []
     for (const choice of ['crunch', 'normal', 'organize', 'quit']) {
       const h = structuredClone(g)
-      runScript(h, 'gamedev.job.crunch', choice, undefined, { kind: 'choice', id: 'x', title: '', text: '', choices: [] } as never)
+      runScript(h, 'gamedev.job.crunch', choice, undefined, { kind: 'choice', id: 'x', title: '', text: '', choices: [{ id: choice, label: choice }] } as never)
       drain(h)
       finiteMoney(h)
       expect(gdView(h).burnout).toBeGreaterThanOrEqual(0)
@@ -299,7 +312,7 @@ describe('studio jobs: ladder and requirements', () => {
     gdMut(g).burnout = 90
     for (const choice of ['therapy', 'push', 'leave']) {
       const h = structuredClone(g)
-      runScript(h, 'gamedev.job.burnout', choice, undefined, { kind: 'choice', id: 'x', title: '', text: '', choices: [] } as never)
+      runScript(h, 'gamedev.job.burnout', choice, undefined, { kind: 'choice', id: 'x', title: '', text: '', choices: [{ id: choice, label: choice }] } as never)
       finiteMoney(h)
       if (choice === 'leave') expect(gameJob(h)).toBeNull()
     }
@@ -513,8 +526,8 @@ describe('no money loops', () => {
     x.quality = 70
     a.details.studio = JSON.parse(JSON.stringify(st))
     const cash0 = bizOf(g, a).cash
-    runScript(g, 'gamestudio.publisher', 'sign', { assetId: a.id, gameId: x.id, advance: 4_000_000, devShare: 0.5, publisher: 'Northstar Arcade' }, { kind: 'choice', id: 'x', title: '', text: '', choices: [] } as never)
-    runScript(g, 'gamestudio.event', 'accept', { assetId: a.id, ev: 'exclusive', gameId: x.id, amount: 1_500_000, who: 'Orbis Interactive' }, { kind: 'choice', id: 'x', title: '', text: '', choices: [] } as never)
+    runScript(g, 'gamestudio.publisher', 'sign', { assetId: a.id, gameId: x.id, advance: 4_000_000, devShare: 0.5, publisher: 'Northstar Arcade' }, { kind: 'choice', id: 'publisher', title: '', text: '', choices: [{ id: 'sign', label: 'Sign' }] } as never)
+    runScript(g, 'gamestudio.event', 'accept', { assetId: a.id, ev: 'exclusive', gameId: x.id, amount: 1_500_000, who: 'Orbis Interactive' }, { kind: 'choice', id: 'exclusive', title: '', text: '', choices: [{ id: 'accept', label: 'Accept' }] } as never)
     g.queue = []
     const signed = studioOf(a).games.find((y) => y.id === x.id)!
     expect(signed.advanceGot).toBe(1_000_000)
@@ -608,7 +621,7 @@ describe('owned game studios', () => {
     const b = bizOf(g, a)
     b.valuation = 5_000_000
     g.queue = []
-    runScript(g, 'gamestudio.event', 'stay', { assetId: a.id, ev: 'bid', amount: 7_000_000, who: 'Omnivault Games' }, { kind: 'choice', id: 'x', title: '', text: '', choices: [] } as never)
+    runScript(g, 'gamestudio.event', 'stay', { assetId: a.id, ev: 'bid', amount: 7_000_000, who: 'Omnivault Games' }, { kind: 'choice', id: 'bid', title: '', text: '', choices: [{ id: 'stay', label: 'Stay' }] } as never)
     expect(studioAssets(g)).toHaveLength(0)
     const job = gameJob(g)
     expect(job?.title).toBe('Studio Head')

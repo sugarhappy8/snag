@@ -81,20 +81,80 @@ const initSports = (): SportsProfile => ({
   lastActiveAge: -1,
 })
 
+function sportsNumber(value: unknown, fallback = 0, lo = 0, hi = 1e12): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, Math.round(value))) : fallback
+}
+
+function sportsDecimal(value: unknown, fallback = 0, lo = 0, hi = 1e12): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, value)) : fallback
+}
+
+function sportsText(value: unknown, fallback = '', max = 120): string {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max) || fallback : fallback
+}
+
+function normalizedSports(value: unknown): SportsProfile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return initSports()
+  const raw = value as Partial<SportsProfile>
+  const medals: MedalRec[] = []
+  if (Array.isArray(raw.medals)) for (const value of raw.medals.slice(-256)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const medal = value as Partial<MedalRec>
+    if (medal.medal !== 'gold' && medal.medal !== 'silver' && medal.medal !== 'bronze') continue
+    medals.push({ year: sportsNumber(medal.year, 0, -10_000, 100_000), games: sportsText(medal.games, 'Games'), sport: sportsText(medal.sport, 'Sport'), medal: medal.medal })
+  }
+  const sponsors: SponsorDeal[] = []
+  if (Array.isArray(raw.sponsors)) for (const value of raw.sponsors.slice(-128)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const deal = value as Partial<SponsorDeal>
+    sponsors.push({
+      brand: sportsText(deal.brand, 'Sponsor', 80),
+      product: sportsText(deal.product, 'endorsement', 80),
+      yearly: sportsNumber(deal.yearly),
+      yearsLeft: sportsNumber(deal.yearsLeft, 0, 0, 100),
+      sinceAge: sportsNumber(deal.sinceAge, 0, 0, 10_000),
+    })
+  }
+  const careers: CareerLine[] = []
+  if (Array.isArray(raw.careers)) for (const value of raw.careers.slice(-64)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const career = value as Partial<CareerLine>
+    const kind: SportKind = career.kind === 'individual' || career.kind === 'combat' || career.kind === 'esports' || career.kind === 'entertainment' ? career.kind : 'team'
+    const from = sportsNumber(career.from, 0, 0, 10_000)
+    careers.push({ sport: sportsText(career.sport, 'Sport'), kind, from, to: sportsNumber(career.to, from, from, 10_000), best: sportsText(career.best, ''), legacy: sportsNumber(career.legacy, 0, 0, 100) })
+  }
+  const strings = (input: unknown): string[] => Array.isArray(input)
+    ? [...new Set(input.filter((x): x is string => typeof x === 'string').map((x) => sportsText(x)).filter(Boolean))].slice(-256)
+    : []
+  return {
+    medals,
+    games: Array.isArray(raw.games) ? [...new Set(raw.games.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)).map((x) => sportsNumber(x, 0, -10_000, 100_000)))].slice(-256) : [],
+    sponsors,
+    headTrauma: Math.round(sportsDecimal(raw.headTrauma, 0, 0, 1e6) * 10) / 10,
+    concussions: sportsNumber(raw.concussions, 0, 0, 1e6),
+    brainWarned: sportsNumber(raw.brainWarned, 0, 0, 1e6),
+    cte: raw.cte === true,
+    bannedUntil: sportsNumber(raw.bannedUntil, -1, -1, 10_000),
+    banReason: sportsText(raw.banReason),
+    careers,
+    legacy: sportsNumber(raw.legacy, 0, 0, 100),
+    halls: strings(raw.halls),
+    honors: strings(raw.honors),
+    buzz: sportsNumber(raw.buzz, 0, 0, 40),
+    lastActiveAge: sportsNumber(raw.lastActiveAge, -1, -1, 10_000),
+  }
+}
+
 /** Mutable sports profile (actions and hooks only). */
 export function sportsProfile(g: GameState): SportsProfile {
   const p = prof(g, 'sports', initSports)
-  // Older versions of the profile may miss newer fields.
-  const base = initSports() as unknown as Record<string, Json>
-  const rec = p as unknown as Record<string, Json>
-  for (const k of Object.keys(base)) if (rec[k] === undefined) rec[k] = base[k]
+  Object.assign(p, normalizedSports(p))
   return p
 }
 
 /** Read-only view (menus). */
 export function viewSports(g: GameState): SportsProfile {
-  const p = peek<SportsProfile>(g, 'sports')
-  return p ? { ...initSports(), ...p } : initSports()
+  return normalizedSports(peek<SportsProfile>(g, 'sports'))
 }
 
 // ---------------------------------------------------------------------------

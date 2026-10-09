@@ -21,21 +21,39 @@ export const FAMOUS = 25
  */
 export function ownerKey(g: GameState): string {
   const c = g.character
-  return `${c.id}:${c.firstName}:${c.lastName}:${g.year - c.age}`
+  const generation = Number.isFinite(g.generation) ? Math.max(0, Math.round(g.generation)) : 0
+  return `v2:${generation}:${c.id}`
+}
+
+/**
+ * Match both the stable owner key and the name-based key used by releases through v1.9.1.
+ * The legacy check deliberately ignores the name segment: marriage, divorce and renaming must
+ * not orphan a profile or make a once-per-year settlement payable again.
+ */
+export function ownerMatches(g: GameState, value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  if (value === ownerKey(g)) return true
+  const c = g.character
+  const born = Number.isFinite(g.year) && Number.isFinite(c.age) ? g.year - c.age : null
+  return born !== null && value.startsWith(`${c.id}:`) && value.endsWith(`:${born}`)
 }
 
 /** Read-only profile lookup. Safe in menu render code (never writes). */
 export function peek<T>(g: GameState, key: string): T | null {
   const v = g.flags[`special.${key}`]
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null
-  if (v.owner !== ownerKey(g)) return null
+  if (!ownerMatches(g, v.owner)) return null
   return v as unknown as T
 }
 
 /** Mutable profile, created from `init` on first use. Only call from actions and hooks. */
 export function prof<T extends object>(g: GameState, key: string, init: (g: GameState) => T): T {
   const existing = peek<T>(g, key)
-  if (existing) return existing
+  if (existing) {
+    // Mutable access upgrades a legacy owner key without making read-only menu lookup write.
+    ;(existing as T & { owner: string }).owner = ownerKey(g)
+    return existing
+  }
   const created = { ...init(g), owner: ownerKey(g) }
   g.flags[`special.${key}`] = created as unknown as Json
   return created
@@ -53,7 +71,7 @@ export function view<T>(rec: Record<string, Json>): T {
 export function yearlyList<T>(g: GameState, key: string, gen: () => T[]): T[] {
   const k = `special.list.${key}`
   const v = g.flags[k] as unknown as { age: number; owner: string; items: T[] } | undefined
-  if (v && typeof v === 'object' && v.age === g.character.age && v.owner === ownerKey(g) && Array.isArray(v.items)) return v.items
+  if (v && typeof v === 'object' && v.age === g.character.age && ownerMatches(g, v.owner) && Array.isArray(v.items)) return v.items
   const items = gen()
   g.flags[k] = { age: g.character.age, owner: ownerKey(g), items } as unknown as Json
   return items
@@ -61,6 +79,20 @@ export function yearlyList<T>(g: GameState, key: string, gen: () => T[]): T[] {
 
 export function dropList(g: GameState, key: string): void {
   delete g.flags[`special.list.${key}`]
+}
+
+/**
+ * Claim one yearly-career settlement for this character/year/age tick. The age is included for
+ * old saves and tests that can legitimately advance age before their calendar is repaired.
+ */
+export function claimYearly(g: GameState, key: string): boolean {
+  const flag = `special.yearly.${key}`
+  const raw = g.flags[flag]
+  const year = Number.isFinite(g.year) ? Math.max(-10_000, Math.min(100_000, Math.round(g.year))) : 0
+  const age = Number.isFinite(g.character.age) ? Math.max(0, Math.min(10_000, Math.round(g.character.age))) : 0
+  if (raw && typeof raw === 'object' && !Array.isArray(raw) && ownerMatches(g, raw.owner) && raw.year === year && raw.age === age) return false
+  g.flags[flag] = { owner: ownerKey(g), year, age }
+  return true
 }
 
 /**
@@ -182,10 +214,10 @@ export function hire(g: GameState, spec: HireSpec): { job: Job; quit: string | n
     title: spec.title,
     company: spec.company,
     category: spec.category ?? 'special',
-    salary: Math.max(0, Math.round(spec.salary)),
-    level: spec.level ?? 0,
+    salary: Number.isFinite(spec.salary) ? Math.max(0, Math.min(1e15, Math.round(spec.salary))) : 0,
+    level: Number.isFinite(spec.level) ? Math.max(0, Math.min(1e6, Math.round(spec.level!))) : 0,
     // Main Character Syndrome starts a special career near the top of the performance scale.
-    performance: hasMainCharacter(g) ? Math.max(spec.performance ?? 60, 78) : (spec.performance ?? 60),
+    performance: clamp100(hasMainCharacter(g) ? Math.max(Number.isFinite(spec.performance) ? spec.performance! : 60, 78) : (Number.isFinite(spec.performance) ? spec.performance! : 60)),
     yearsInRole: 0,
     yearsAtCompany: 0,
     data: { ...(spec.data ?? {}), startAge: c.age, roleStartAge: c.age },
@@ -210,17 +242,18 @@ export function myJob(g: GameState, defId: string): Job | null {
 
 /** Recompute tenure from the stored start ages (idempotent, safe if another hook also counts). */
 export function syncTenure(g: GameState, job: Job): void {
-  const age = g.character.age
-  const start = typeof job.data.startAge === 'number' ? job.data.startAge : age - job.yearsAtCompany
-  const role = typeof job.data.roleStartAge === 'number' ? job.data.roleStartAge : start
-  job.yearsAtCompany = Math.max(0, age - start)
-  job.yearsInRole = Math.max(0, age - role)
+  const age = Number.isFinite(g.character.age) ? Math.max(0, Math.min(10_000, g.character.age)) : 0
+  const fallbackYears = Number.isFinite(job.yearsAtCompany) ? Math.max(0, job.yearsAtCompany) : 0
+  const start = typeof job.data.startAge === 'number' && Number.isFinite(job.data.startAge) ? job.data.startAge : age - fallbackYears
+  const role = typeof job.data.roleStartAge === 'number' && Number.isFinite(job.data.roleStartAge) ? job.data.roleStartAge : start
+  job.yearsAtCompany = Math.max(0, Math.min(10_000, Math.round(age - start)))
+  job.yearsInRole = Math.max(0, Math.min(10_000, Math.round(age - role)))
 }
 
 export function setRole(g: GameState, job: Job, title: string, salary: number, level: number): void {
   job.title = title
-  job.salary = Math.max(0, Math.round(salary))
-  job.level = level
+  job.salary = Number.isFinite(salary) ? Math.max(0, Math.min(1e15, Math.round(salary))) : 0
+  job.level = Number.isFinite(level) ? Math.max(0, Math.min(1e6, Math.round(level))) : 0
   job.data.roleStartAge = g.character.age
   job.yearsInRole = 0
 }
@@ -235,30 +268,36 @@ export function leave(g: GameState, reason: CareerRecord['reason']): void {
 }
 
 export function bump(job: Job, delta: number): void {
-  job.performance = Math.round(Math.max(0, Math.min(100, job.performance + delta)))
+  const performance = Number.isFinite(job.performance) ? job.performance : 0
+  job.performance = clamp100(performance + (Number.isFinite(delta) ? delta : 0))
 }
 
 // ---------------------------------------------------------------------------
 // Fame
 
 export function addFame(g: GameState, delta: number): void {
-  addHidden(g, 'fame', Math.round(delta))
-  if (delta > 0) setOwnFlag(g, 'fameActiveAge', g.character.age)
+  if (!Number.isFinite(delta)) return
+  const change = Math.max(-100, Math.min(100, Math.round(delta)))
+  if (!Number.isFinite(g.character.hidden.fame)) g.character.hidden.fame = 0
+  addHidden(g, 'fame', change)
+  if (change > 0) setOwnFlag(g, 'fameActiveAge', g.character.age)
 }
 
 export function fameOf(g: GameState): number {
-  return g.character.hidden.fame
+  return clamp100(g.character.hidden.fame)
 }
 
 export function isFamous(g: GameState): boolean {
-  return g.character.hidden.fame >= FAMOUS
+  return fameOf(g) >= FAMOUS
 }
 
 /** Move fame a step toward a target level (used by careers with their own popularity stat). */
 export function fameToward(g: GameState, target: number, step: number): void {
-  const f = g.character.hidden.fame
-  if (target > f) addFame(g, Math.min(step, target - f))
-  else if (target < f - 5) addHidden(g, 'fame', -Math.min(step / 2, f - target))
+  const f = fameOf(g)
+  if (!Number.isFinite(target) || !Number.isFinite(step) || step <= 0) return
+  const goal = clamp100(target), pace = Math.min(100, step)
+  if (goal > f) addFame(g, Math.min(pace, goal - f))
+  else if (goal < f - 5) addFame(g, -Math.min(pace / 2, f - goal))
 }
 
 // ---------------------------------------------------------------------------
@@ -274,7 +313,7 @@ export function short(n: number): string {
 
 /** 1.2M / 45.3K / 812 for follower counts and record sales. */
 export function compact(n: number): string {
-  const a = Math.abs(Math.round(n))
+  const a = Number.isFinite(n) ? Math.abs(Math.round(n)) : 0
   if (a >= 1e9) return `${(a / 1e9).toFixed(1)}B`
   if (a >= 1e6) return `${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`
   if (a >= 1e3) return `${(a / 1e3).toFixed(a >= 1e4 ? 0 : 1)}K`
@@ -282,12 +321,15 @@ export function compact(n: number): string {
 }
 
 export function clamp100(n: number): number {
-  return Math.round(Math.max(0, Math.min(100, n)))
+  return Number.isFinite(n) ? Math.round(Math.max(0, Math.min(100, n))) : 0
 }
 
 /** n scaled by a random factor in [1 - spread, 1 + spread]. */
 export function vary(g: GameState, n: number, spread = 0.25): number {
-  return Math.round(n * (1 - spread + rand(g) * 2 * spread))
+  const base = Number.isFinite(n) ? n : 0
+  const width = Number.isFinite(spread) ? Math.max(0, Math.min(1, spread)) : .25
+  const value = base * (1 - width + rand(g) * 2 * width)
+  return Number.isFinite(value) ? Math.round(value) : 0
 }
 
 export function either<T>(g: GameState, items: readonly T[]): T {
@@ -434,7 +476,7 @@ export function knownInstruments(g: GameState): string[] {
 
 export function ownFlag(g: GameState, key: string): Json | undefined {
   const v = g.flags[`special.own.${key}`]
-  if (!v || typeof v !== 'object' || Array.isArray(v) || v.owner !== ownerKey(g)) return undefined
+  if (!v || typeof v !== 'object' || Array.isArray(v) || !ownerMatches(g, v.owner)) return undefined
   return v.value
 }
 

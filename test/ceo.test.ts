@@ -215,6 +215,31 @@ describe('smart hired CEOs', () => {
     void a
   })
 
+  it('never overdraws a company for a CEO search and does not consume a failed search', () => {
+    const { g, a } = managed(51, 70)
+    let b = bizOf(g, a)
+    b.cash = 0
+    g.character.money = 0
+    action(g, a, 'biz.replaceManager').run(g)
+    expect(bizOf(g, a).cash).toBe(0)
+    expect(g.character.money).toBe(0)
+    expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'business.manager')).toBe(false)
+    expect(g.queue.some((m) => m.kind === 'notice' && /cannot cover/i.test(m.text))).toBe(true)
+
+    g.queue = []
+    b = bizOf(g, a)
+    const fee = headhunterFee(b, 'standard', 0)
+    const companyPart = Math.floor(fee / 2)
+    const costs = b.yearCosts
+    b.cash = companyPart
+    g.character.money = fee - companyPart
+    action(g, a, 'biz.replaceManager').run(g)
+    expect(bizOf(g, a).cash).toBe(0)
+    expect(g.character.money).toBe(0)
+    expect(bizOf(g, a).yearCosts).toBe(costs + fee)
+    expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'business.manager')).toBe(true)
+  })
+
   it('offers fresh shortlists without limit, dearer each time, with stars in an executive search', () => {
     const { g } = managed(6, 60)
     const a = businessAssets(g)[0]

@@ -1,6 +1,7 @@
 // Top-level menus for the bottom bar. Each feature module exports its own MenuGroup;
 // this file only arranges them.
 import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, nightlifeMenu, surrenderLifeAction, vacationMenu } from './activities'
+import { isVisaLock, visaLockSubtitle, visaLockView } from './activities/immigration-lock'
 import { ASSET_KIND_VIEWS, ASSET_NODE_HOOKS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
 import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
 import { occupationMenu } from './careers'
@@ -31,7 +32,8 @@ ASSET_KIND_VIEWS.investment = { subtitle: investmentAssetSubtitle, children: inv
 ASSET_KIND_VIEWS.membership = { subtitle: membershipAssetSubtitle, children: membershipAssetView }
 ASSET_KIND_VIEWS.venture = { subtitle: ventureAssetSubtitle, children: ventureAssetView }
 ASSET_KIND_VIEWS.invention = { subtitle: () => 'Personally owned invention IP', children: (g, a) => inventionAssetNodes(g, a.id) }
-ASSET_NODE_HOOKS.view = luxuryAssetNodes
+ASSET_NODE_HOOKS.subtitle = (g, a) => (isVisaLock(a) ? visaLockSubtitle(g, a) : null)
+ASSET_NODE_HOOKS.view = (g, a) => (isVisaLock(a) ? visaLockView(g, a) : luxuryAssetNodes(g, a))
 ASSET_NODE_HOOKS.extra = familyAccessNode
 
 /** Insert `extra` right before the node with id `beforeId` (or at the end if it is missing). */

@@ -7,7 +7,7 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { ageCeiling } from '../mastery'
-import { addFame, blocked, bump, clamp100, fameOf, fameToward, flagSkill, hire, leave, masterFlagSkill, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
+import { addFame, blocked, bump, claimYearly, clamp100, fameOf, fameToward, flagSkill, hire, leave, masterFlagSkill, money, myJob, peek, promote, prof, quitNote, say, setFlagSkill, syncTenure, tell, view, withHint, yearlyList } from './common'
 
 interface Agency {
   name: string
@@ -68,12 +68,36 @@ interface ModelJob {
 
 const initModel = (): ModelProfile => ({ headshot: 0, headshotAge: -1, couture: [], gigs: 0, fashionWeeks: 0, rejectedBy: [] })
 
+function modelNumber(value: unknown, fallback = 0, lo = 0, hi = 1e9): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, Math.round(value))) : fallback
+}
+
+function modelList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? [...new Set(value.filter((x): x is string => typeof x === 'string').map((x) => x.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean))].slice(-256)
+    : []
+}
+
+function normalizedModel(value: unknown): ModelProfile {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<ModelProfile> : {}
+  return {
+    headshot: modelNumber(raw.headshot, 0, 0, 100),
+    headshotAge: modelNumber(raw.headshotAge, -1, -1, 10_000),
+    couture: modelList(raw.couture),
+    gigs: modelNumber(raw.gigs),
+    fashionWeeks: modelNumber(raw.fashionWeeks),
+    rejectedBy: modelList(raw.rejectedBy),
+  }
+}
+
 function modelProfile(g: GameState): ModelProfile {
-  return prof(g, 'model', initModel)
+  const p = prof(g, 'model', initModel)
+  Object.assign(p, normalizedModel(p))
+  return p
 }
 
 function viewModel(g: GameState): ModelProfile {
-  return peek<ModelProfile>(g, 'model') ?? initModel()
+  return normalizedModel(peek<ModelProfile>(g, 'model'))
 }
 
 export function modelJob(g: GameState): Job | null {
@@ -81,6 +105,13 @@ export function modelJob(g: GameState): Job | null {
 }
 
 function mdata(job: Job): ModelJob {
+  const raw = view<Partial<ModelJob>>(job.data)
+  const normalized: ModelJob = {
+    tier: modelNumber(raw.tier, 0, 0, AGENCIES.length - 1),
+    gigsThisYear: modelNumber(raw.gigsThisYear, 0, 0, 1e6),
+    sabotaged: modelNumber(raw.sabotaged, 0, 0, 1e6),
+  }
+  Object.assign(job.data, normalized)
   return view<ModelJob>(job.data)
 }
 
@@ -619,9 +650,10 @@ function maybeScouted(g: GameState): void {
 
 export function yearlyModel(g: GameState): void {
   const c = g.character
+  if (!c.alive || !claimYearly(g, 'model')) return
   if (c.alive) maybeScouted(g)
   const job = modelJob(g)
-  if (!c.alive || !job || c.prison) return
+  if (!job || c.prison) return
   syncTenure(g, job)
   const d = mdata(job)
   const agency = AGENCIES.find((a) => a.name === job.company) ?? AGENCIES[d.tier] ?? AGENCIES[0]

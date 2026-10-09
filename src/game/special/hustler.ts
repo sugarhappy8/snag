@@ -10,7 +10,7 @@ import { localeOf } from '../data/locales'
 import { hasMainCharacter, hasTalent } from '../talents'
 import type { ChoiceOption, GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { ageCeiling, liftSkill } from '../mastery'
-import { addFame, blocked, clamp100, hire, instrumentSkill, knownInstruments, leave, masterInstrument, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
+import { addFame, blocked, claimYearly, clamp100, hire, instrumentSkill, knownInstruments, leave, masterInstrument, money, myJob, peek, prof, quitNote, say, syncTenure, tell, view, yearlyList } from './common'
 
 // ---------------------------------------------------------------------------
 // Acts
@@ -801,6 +801,7 @@ export function yearlyHustler(g: GameState): void {
   if (!c.alive || c.prison) return
   const job = hustlerJob(g)
   if (!job) return
+  if (!claimYearly(g, 'hustler')) return
   syncTenure(g, job)
   const d = hdata(job)
   const earned = Math.max(0, Math.round(d.earnedYear || 0))

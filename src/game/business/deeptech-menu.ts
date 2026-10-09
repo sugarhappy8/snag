@@ -93,7 +93,9 @@ function dtAct(a: Asset, key: string, label: string, emoji: string, opts: {
       const cur = findBusiness(g, a.id)
       if (!cur || dtBlock(g, cur)) return
       const b = bizOf(g, cur)
-      opts.run(g, cur, b, techOf(b), input)
+      const t = techOf(b)
+      if (opts.disabled?.(g, b, t)) return
+      opts.run(g, cur, b, t, input)
     },
   }
 }
@@ -275,7 +277,10 @@ const TERM = defineScript('deeptech.term', (g, choice, data) => {
     return
   }
   if (choice !== 'sign') return
-  if (b.public || (!ts.bridge && t.series >= ts.series)) return
+  // A queued modal can survive a save/reload or be submitted twice. Revalidate the live
+  // funding calendar before moving any money or equity, including bridge rounds (whose series
+  // number deliberately does not advance).
+  if (ts.bridge ? bridgeBlock(g, b, t) : b.public || t.series >= ts.series || t.lastRoundYear === g.year) return
   closeRound(g, a, b, t, ts)
   const label = ts.bridge ? 'bridge round' : SERIES[ts.series]
   log(g, `${a.name} raised ${money(ts.amount)} in a ${label}.`, ts.down ? 'neutral' : 'good')

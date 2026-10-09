@@ -30,19 +30,23 @@ export function clamp(n: number, lo = 0, hi = 100): number {
 
 export function addStat(g: GameState, key: StatKey, delta: number): void {
   const c = g.character
+  if (!Number.isFinite(c.stats[key]) || !Number.isFinite(delta)) return
   c.stats[key] = Math.round(clamp(c.stats[key] + delta))
 }
 
 export function addHidden(g: GameState, key: HiddenKey, delta: number): void {
   const c = g.character
+  if (!Number.isFinite(c.hidden[key]) || !Number.isFinite(delta)) return
   c.hidden[key] = Math.round(clamp(c.hidden[key] + delta))
 }
 
 export function addPersonStat(p: Person, key: StatKey, delta: number): void {
+  if (!Number.isFinite(p.stats[key]) || !Number.isFinite(delta)) return
   p.stats[key] = Math.round(clamp(p.stats[key] + delta))
 }
 
 export function addRelationship(p: Person, delta: number): void {
+  if (!Number.isFinite(p.relationship) || !Number.isFinite(delta)) return
   p.relationship = Math.round(clamp(p.relationship + delta))
 }
 
@@ -50,11 +54,14 @@ export function addRelationship(p: Person, delta: number): void {
 // Money
 
 export function addMoney(g: GameState, delta: number): void {
-  g.character.money = Math.round(g.character.money + delta)
+  const next = g.character.money + delta
+  if (!Number.isFinite(g.character.money) || !Number.isFinite(delta) || !Number.isFinite(next)) return
+  g.character.money = Math.round(next)
 }
 
 /** Spend if affordable; returns false (and spends nothing) otherwise. */
 export function spend(g: GameState, amount: number): boolean {
+  if (!Number.isFinite(g.character.money) || !Number.isFinite(amount)) return false
   if (amount <= 0) return true
   if (g.character.money < amount) return false
   g.character.money = Math.round(g.character.money - amount)
@@ -66,14 +73,17 @@ export function spend(g: GameState, amount: number): boolean {
  * g.flags.taxableIncome, which yearlyFinance taxes at the end of the yearly hooks.
  */
 export function earnIncome(g: GameState, amount: number): void {
-  if (amount <= 0) return
-  addMoney(g, amount)
-  const prev = typeof g.flags.taxableIncome === 'number' ? g.flags.taxableIncome : 0
-  g.flags.taxableIncome = Math.round(prev + amount)
+  if (!Number.isFinite(amount) || amount <= 0) return
+  const prev = typeof g.flags.taxableIncome === 'number' && Number.isFinite(g.flags.taxableIncome) ? g.flags.taxableIncome : 0
+  const money = g.character.money + amount
+  const taxable = prev + amount
+  if (!Number.isFinite(g.character.money) || !Number.isFinite(money) || !Number.isFinite(taxable)) return
+  g.character.money = Math.round(money)
+  g.flags.taxableIncome = Math.round(taxable)
 }
 
 export function canAfford(g: GameState, amount: number): boolean {
-  return g.character.money >= amount
+  return Number.isFinite(g.character.money) && Number.isFinite(amount) && amount >= 0 && g.character.money >= amount
 }
 
 // ---------------------------------------------------------------------------
@@ -349,11 +359,15 @@ export function remember(g: GameState, text: string): void {
 }
 
 export function count(g: GameState, key: string, by = 1): void {
-  g.counters[key] = (g.counters[key] ?? 0) + by
+  if (!Number.isFinite(by)) return
+  const current = g.counters[key]
+  const next = (typeof current === 'number' && Number.isFinite(current) ? current : 0) + by
+  if (Number.isFinite(next)) g.counters[key] = next
 }
 
 export function counter(g: GameState, key: string): number {
-  return g.counters[key] ?? 0
+  const value = g.counters[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 /**
@@ -361,14 +375,17 @@ export function counter(g: GameState, key: string): number {
  * else false. Typical use: `if (!useYearAction(g, 'gym', 3)) return tooTired(g)`.
  */
 export function useYearAction(g: GameState, key: string, max: number): boolean {
-  const used = g.yearActions[key] ?? 0
+  if (!Number.isFinite(max) || max <= 0) return false
+  const current = g.yearActions[key]
+  const used = typeof current === 'number' && Number.isFinite(current) && current >= 0 ? Math.floor(current) : 0
   if (used >= max) return false
   g.yearActions[key] = used + 1
   return true
 }
 
 export function yearActionsUsed(g: GameState, key: string): number {
-  return g.yearActions[key] ?? 0
+  const used = g.yearActions[key]
+  return typeof used === 'number' && Number.isFinite(used) && used >= 0 ? Math.floor(used) : 0
 }
 
 // ---------------------------------------------------------------------------

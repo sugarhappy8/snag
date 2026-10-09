@@ -33,7 +33,15 @@ page.on('console', (m) => {
 const origin = new URL(url).origin
 page.on('request', (r) => {
   const u = r.url()
-  if (!u.startsWith(origin) && !u.startsWith('data:') && !u.startsWith('blob:')) errors.push(`network: ${r.method()} ${u}`)
+  if (u.startsWith('data:') || u.startsWith('blob:')) return
+  let requestOrigin = ''
+  try {
+    requestOrigin = new URL(u).origin
+  } catch {
+    errors.push(`network: ${r.method()} ${u}`)
+    return
+  }
+  if (requestOrigin !== origin) errors.push(`network: ${r.method()} ${u}`)
 })
 
 await page.addInitScript(() => {

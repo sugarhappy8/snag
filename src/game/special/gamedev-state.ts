@@ -134,6 +134,9 @@ export interface GdProfile {
   /** Venture asset ids already offered a studio upgrade. */
   offered: string[]
   awardYear: number
+  /** Last yearly hook invocation. The year/age pair prevents save replays from paying twice. */
+  settledYear: number
+  settledAge: number
   /** Next id counter for credits and projects. */
   seq: number
 }
@@ -168,7 +171,7 @@ export function clampN(n: number, lo: number, hi: number): number {
 
 /** A finite, non-negative whole number. */
 export function whole(n: number): number {
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0
+  return Number.isFinite(n) && n > 0 ? Math.min(1e15, Math.round(n)) : 0
 }
 
 function genreOf(v: Json | undefined): GenreId {
@@ -290,6 +293,8 @@ export function normalizeProfile(raw: Json | undefined): GdProfile {
     crunchYears: whole(num(o.crunchYears)),
     offered: strings(o.offered, 12),
     awardYear: num(o.awardYear),
+    settledYear: Math.round(clampN(num(o.settledYear, -1), -10_000, 100_000)),
+    settledAge: Math.round(clampN(num(o.settledAge, -1), -1, 10_000)),
     seq: whole(num(o.seq)),
   }
 }

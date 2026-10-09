@@ -53,7 +53,7 @@ const store = await import('../src/ui/store')
 const settingsAfterStartup = storage.get('anotherlife.settings.v1')
 const real = await vi.importActual<typeof import('../src/game/offline')>('../src/game/offline')
 const { defineScript } = await import('../src/game/scripts')
-const { saveGame, loadGame, snapshotWritesSettled } = await import('../src/game/save')
+const { loadGame, loadGraveyard, loadRibbons, saveGame, snapshotWritesSettled } = await import('../src/game/save')
 
 function game(): GameState {
   return store.getApp().game as GameState
@@ -220,6 +220,14 @@ describe('event choices', () => {
     expect(game().queue.some((m) => m.id === 'legacy')).toBe(false)
   })
 
+  it('does not consume a legacy choice or invent an outcome for an unknown option id', () => {
+    setQueue([{ kind: 'choice', id: 'legacy', title: 'Pick One', text: '?', choices: [{ id: 'a', label: 'A' }], source: 'ai' }])
+    const before = JSON.stringify(game())
+    store.chooseOption('legacy', 'forged')
+    expect(JSON.stringify(game())).toBe(before)
+    expect(offline.resolve).not.toHaveBeenCalled()
+  })
+
   it('closes a script popup whose handler throws', () => {
     defineScript('test.store.boom', () => {
       throw new Error('boom')
@@ -231,6 +239,125 @@ describe('event choices', () => {
 })
 
 describe('old saves', () => {
+  it('rejects malformed save shells and non-finite JSON numbers instead of resuming into a crash', () => {
+    const good = structuredClone(game())
+    storage.set('anotherlife.save.v1', JSON.stringify({ version: 1, character: {} }))
+    expect(loadGame()).toBeNull()
+
+    good.character.money = 123456789
+    const overflow = JSON.stringify(good).replace('123456789', '1e400')
+    storage.set('anotherlife.save.v1', overflow)
+    expect(loadGame()).toBeNull()
+
+    expect(saveGame(good)).toBe(true)
+    expect(loadGame()?.character.money).toBe(123456789)
+  })
+
+  it('rejects malformed nested character and debt records before ordinary game paths dereference them', () => {
+    const mutations: ((g: GameState) => void)[] = [
+      (g) => { g.character.education.degrees = [null] as never },
+      (g) => { g.character.careerHistory = [null] as never },
+      (g) => { g.character.conditions = [null] as never },
+      (g) => { g.character.criminalRecord = [null] as never },
+      (g) => { g.character.loans = [null] as never },
+      (g) => { g.character.residence = {} as never },
+      (g) => { g.character.social = {} as never },
+      (g) => { g.character.causeOfDeath = 7 as never },
+      (g) => { g.assets[0] = { ...g.assets[0], mortgage: {} as never } },
+      (g) => { g.assets[0] = { ...g.assets[0], rentedOutFor: 'free' as never } },
+    ]
+    for (const mutate of mutations) {
+      const damaged = structuredClone(game())
+      if (damaged.assets.length === 0) damaged.assets.push({ id: 'a', kind: 'other', name: 'A', emoji: '', purchasePrice: 0, value: 0, condition: 100, purchasedAge: 0, upkeep: 0, details: {} })
+      mutate(damaged)
+      expect(saveGame(damaged)).toBe(true)
+      expect(loadGame()).toBeNull()
+    }
+  })
+
+  it('rejects unsafe core counters, character ages, and log years at the persistence boundary', () => {
+    const mutations: ((g: GameState) => void)[] = [
+      (g) => { g.nextId = Number.MAX_SAFE_INTEGER },
+      (g) => { g.year = Number.MAX_VALUE },
+      (g) => { g.year = 2026.5 },
+      (g) => { g.generation = Number.MAX_SAFE_INTEGER },
+      (g) => { g.character.age = Number.MAX_SAFE_INTEGER },
+      (g) => { g.log[0].year = Number.MAX_SAFE_INTEGER },
+      (g) => { g.log[0].age = Number.MAX_SAFE_INTEGER },
+    ]
+    for (const mutate of mutations) {
+      const damaged = structuredClone(game())
+      mutate(damaged)
+      expect(saveGame(damaged)).toBe(true)
+      expect(loadGame()).toBeNull()
+    }
+  })
+
+  it('rejects excessive JSON nesting before legacy modal migration or store cloning can overflow', () => {
+    const nestedTask = structuredClone(game())
+    let event: unknown = { kind: 'choice', id: 'event', title: 'Pick', text: '?', choices: [{ id: 'a', label: 'A' }], source: 'ai' }
+    for (let i = 0; i < 256; i++) event = { kind: 'aiTask', id: `nested-${i}`, task: { type: 'resolveChoice', event, choiceId: 'a' } }
+    nestedTask.queue = [event as ModalItem]
+    expect(saveGame(nestedTask)).toBe(true)
+    expect(() => loadGame()).not.toThrow()
+    expect(loadGame()).toBeNull()
+
+    const nestedFlag = structuredClone(game())
+    let deep: unknown = 'bottom'
+    for (let i = 0; i < 256; i++) deep = [deep]
+    nestedFlag.flags.deep = deep as never
+    expect(saveGame(nestedFlag)).toBe(true)
+    expect(loadGame()).toBeNull()
+  })
+
+  it('drops a resolve-choice task whose embedded event is another task instead of recursing into it', () => {
+    const g = structuredClone(game())
+    g.queue = [{
+      kind: 'aiTask', id: 'outer', task: {
+        type: 'resolveChoice', choiceId: 'a',
+        event: { kind: 'aiTask', id: 'inner', task: { type: 'yearEvents' } },
+      },
+    }] as unknown as ModalItem[]
+    expect(saveGame(g)).toBe(true)
+    expect(loadGame()?.queue).toEqual([])
+  })
+
+  it('drops a persisted legacy choice task whose selected option is not in the event', () => {
+    const g = structuredClone(game())
+    const event: Extract<ModalItem, { kind: 'choice' }> = { kind: 'choice', id: 'event', title: 'Pick', text: '?', choices: [{ id: 'real', label: 'Real' }], source: 'ai' }
+    g.queue = [{ kind: 'aiTask', id: 'task', task: { type: 'resolveChoice', event, choiceId: 'forged' } }]
+    expect(saveGame(g)).toBe(true)
+    expect(loadGame()?.queue).toEqual([])
+  })
+
+  it('drops structurally broken popups whose renderers or handlers could never close them', () => {
+    const g = structuredClone(game())
+    g.queue = [
+      { kind: 'choice', id: 'broken-choice', title: 'Broken', text: '?', source: 'script', scriptId: '', choices: [] },
+      { kind: 'input', id: 'broken-input', title: 'Broken', text: '?', input: 'slider', min: 10, max: 1, scriptId: 'x' },
+      { kind: 'notice', id: '', title: 'Broken', text: 'Missing id.' },
+      { kind: 'notice', id: 'safe', title: 'Safe', text: 'Still readable.' },
+      { kind: 'notice', id: 'safe', title: 'Duplicate', text: 'Must not replay.' },
+    ] as ModalItem[]
+    saveGame(g)
+    expect(loadGame()?.queue).toEqual([{ kind: 'notice', id: 'safe', title: 'Safe', text: 'Still readable.' }])
+  })
+
+  it('sanitizes malformed ribbon and graveyard collections from browser storage', () => {
+    storage.set('anotherlife.ribbons.v1', JSON.stringify({ survivor: 2.9, broken: 'many', zero: 0, __proto__: 9 }))
+    expect(loadRibbons()).toEqual({ survivor: 2 })
+
+    const grave = {
+      lifeId: 'life-1', generation: 1, name: 'Safe Person', gender: 'female', bornYear: 1950,
+      diedYear: 2020, age: 70, causeOfDeath: 'Old Age', netWorth: 100, occupation: 'Teacher',
+      ribbon: null, obituary: null,
+    }
+    storage.set('anotherlife.graveyard.v1', JSON.stringify([null, { lifeId: 'broken' }, grave]))
+    expect(loadGraveyard()).toEqual([grave])
+    storage.delete('anotherlife.ribbons.v1')
+    storage.delete('anotherlife.graveyard.v1')
+  })
+
   it('load with a queued task, a narration request and narrator lines, and play on', () => {
     const g = structuredClone(game())
     const legacyNotice = { kind: 'notice', id: 'old-notice', title: 'Spend Time', text: 'You went bowling with your mother.', ai: { when: 'balanced', facts: 'went bowling' } }

@@ -9,7 +9,7 @@ import { continueAsChild, createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
 import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
-import { runScript } from '../src/game/scripts'
+import { hasScript, runScript } from '../src/game/scripts'
 import { STAT_KEYS, type AnnualReportData, type GameState, type MenuAction, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
 
 /** Tiny driver RNG, separate from the game's so the driver doesn't depend on engine rolls. */
@@ -74,16 +74,21 @@ function drain(g: GameState, d: Driver, trail: string[]): void {
         expect(m.choices.length, `choice "${m.title}" has no options`).toBeGreaterThan(0)
         const choice = d.pick(m.choices)
         trail.push(`choice ${m.title} -> ${choice.label}`)
-        if (m.source === 'script') runScript(g, m.scriptId!, choice.id, m.data, m)
+        if (m.source === 'script') {
+          expect(hasScript(m.scriptId!), `missing script handler "${m.scriptId}" for choice "${m.title}"`).toBe(true)
+          runScript(g, m.scriptId!, choice.id, m.data, m)
+        }
         else applyFallback(g, { type: 'resolveChoice', event: m, choiceId: choice.id })
         break
       }
       case 'input':
         trail.push(`input ${m.title}`)
+        expect(hasScript(m.scriptId), `missing script handler "${m.scriptId}" for input "${m.title}"`).toBe(true)
         runScript(g, m.scriptId, inputValue(m, d), m.data, m)
         break
       case 'minigame':
         trail.push(`minigame ${m.game}`)
+        expect(hasScript(m.scriptId), `missing script handler "${m.scriptId}" for minigame "${m.title}"`).toBe(true)
         runScript(g, m.scriptId, minigameResult(m, d), m.data, m)
         break
       case 'aiTask':

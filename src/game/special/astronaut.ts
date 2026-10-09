@@ -14,6 +14,7 @@ import {
   blocked,
   bump,
   clamp100,
+  claimYearly,
   cleanName,
   convictions,
   fameToward,
@@ -929,8 +930,10 @@ export function yearlyAstronaut(g: GameState): void {
   const c = g.character
   if (!c.alive || c.prison) return
   const cadet = cadetJob(g)
-  if (cadet) return yearlyCadet(g, cadet)
   const job = astronautJob(g)
+  if (!cadet && !job) return
+  if (!claimYearly(g, 'astronaut')) return
+  if (cadet) return yearlyCadet(g, cadet)
   if (!job) return
   syncTenure(g, job)
   const d = adata(job)

@@ -31,7 +31,8 @@ export function isDeepTech(b: { industry: Industry | string }): boolean {
 // Types
 
 /** Bumped whenever TechState gains fields, so techOf() re-normalizes states saved before. */
-export const TECH_VERSION = 2
+export const TECH_VERSION = 3
+export const MAX_TECH_SEQUENCE = 999_999_999
 
 /** Funding stages: index = TechState.series. */
 export const SERIES = ['Bootstrapped', 'Seed', 'Series A', 'Series B', 'Series C', 'Series D', 'Series E'] as const
@@ -216,20 +217,52 @@ export interface TechState {
   seq: number
 }
 
+/** Claim a finite unused drug-candidate id, wrapping safely after a malformed extreme save. */
+export function nextDrugId(t: TechState): `d${number}` {
+  const used = new Set(t.drugs.map((drug) => drug.id))
+  let seq = Number.isSafeInteger(t.seq) && t.seq >= 0 && t.seq <= MAX_TECH_SEQUENCE ? t.seq : 0
+  for (let i = 0; i <= t.drugs.length; i++) {
+    seq = seq >= MAX_TECH_SEQUENCE ? 1 : seq + 1
+    const id = `d${seq}` as const
+    if (!used.has(id)) {
+      t.seq = seq
+      return id
+    }
+  }
+  // Drug catalogs are capped at 12 entries, so a free id must exist in this range.
+  t.seq = 1
+  return 'd1'
+}
+
 // ---------------------------------------------------------------------------
 // Reading (never writes)
 
 function list<T>(v: Json | undefined, read: (x: Record<string, Json>) => T | null, max = 60): T[] {
   if (!Array.isArray(v)) return []
   const out: T[] = []
-  for (const x of v) {
+  // State arrays are chronological. Recover the newest valid bounded records, rather than letting
+  // stale or malformed rows at the front crowd current programs and contracts out of a save.
+  for (let i = v.length - 1; i >= 0; i--) {
+    const x = v[i]
     const r = rec(x)
     if (!r) continue
     const t = read(r)
-    if (t) out.push(t)
+    if (t) out.unshift(t)
     if (out.length >= max) break
   }
   return out
+}
+
+function uniqueLast<T>(rows: T[], key: (row: T) => string): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const k = key(rows[i])
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(rows[i])
+  }
+  return out.reverse()
 }
 
 function readProgram(x: Record<string, Json>): TechProgram | null {
@@ -244,7 +277,7 @@ function readProgram(x: Record<string, Json>): TechProgram | null {
     progress: clampN(num(x.progress), 0, 20),
     cost: Math.max(0, num(x.cost)),
     odds: clampN(num(x.odds, 0.5), 0.02, 0.98),
-    started: num(x.started),
+    started: Math.round(num(x.started)),
     spent: Math.max(0, num(x.spent)),
     target: str(x.target),
   }
@@ -253,7 +286,7 @@ function readProgram(x: Record<string, Json>): TechProgram | null {
 function readRound(x: Record<string, Json>): RoundRec | null {
   return {
     series: clampN(Math.round(num(x.series, 1)), 0, MAX_SERIES),
-    year: num(x.year),
+    year: Math.round(num(x.year)),
     raised: Math.max(0, num(x.raised)),
     pre: Math.max(0, num(x.pre)),
     equity: clampN(num(x.equity), 0, 0.9),
@@ -267,11 +300,11 @@ function readGrant(x: Record<string, Json>): GrantRec | null {
   if (!id) return null
   const amount = Math.max(0, num(x.amount))
   const repaid = clampN(num(x.repaid), 0, amount)
-  return repaid > 0 ? { id, year: num(x.year), amount, repaid } : { id, year: num(x.year), amount }
+  return repaid > 0 ? { id, year: Math.round(num(x.year)), amount, repaid } : { id, year: Math.round(num(x.year)), amount }
 }
 
 function readOneOff(x: Record<string, Json>): { year: number; amount: number } | null {
-  return typeof x.year === 'number' ? { year: x.year, amount: Math.max(0, num(x.amount)) } : null
+  return typeof x.year === 'number' && Number.isFinite(x.year) ? { year: Math.round(x.year), amount: Math.max(0, num(x.amount)) } : null
 }
 
 function readDrug(x: Record<string, Json>): Drug | null {
@@ -284,8 +317,8 @@ function readDrug(x: Record<string, Json>): Drug | null {
     phase: clampN(Math.round(num(x.phase)), 0, 5),
     quality: clampN(num(x.quality, 50), 0, 100),
     peak: clampN(num(x.peak, 1), 0, 20),
-    filed: num(x.filed),
-    approved: num(x.approved),
+    filed: Math.round(num(x.filed)),
+    approved: Math.round(num(x.approved)),
     royalty: clampN(num(x.royalty, 1), 0, 1),
     partner: str(x.partner),
     failed: x.failed === true,
@@ -298,7 +331,7 @@ function readModel(x: Record<string, Json>): AiModel | null {
     name: str(x.name, 'Model'),
     score: clampN(num(x.score, 40), 0, 100),
     open: x.open === true,
-    year: num(x.year),
+    year: Math.round(num(x.year)),
   }
 }
 
@@ -313,9 +346,9 @@ function readContract(v: Json | undefined): TechContract | null {
 
 function readYear(v: Json | undefined): TechYear | null {
   const x = rec(v)
-  if (!x || typeof x.year !== 'number') return null
+  if (!x || typeof x.year !== 'number' || !Number.isFinite(x.year)) return null
   return {
-    year: x.year,
+    year: Math.round(x.year),
     rd: Math.max(0, num(x.rd)),
     compute: Math.max(0, num(x.compute)),
     side: Math.max(0, num(x.side)),
@@ -331,21 +364,34 @@ function readYear(v: Json | undefined): TechYear | null {
 export function readTech(v: Json | undefined): TechState {
   const d = rec(v) ?? {}
   const pace = d.pace === 'lean' || d.pace === 'blitz' ? d.pace : 'steady'
+  const programs = uniqueLast(list(d.programs, readProgram, 60), x => x.key).slice(-8)
+  const rounds = uniqueLast(list(d.rounds, readRound, 60), x => `${x.series}:${x.year}:${x.raised}:${x.investor}`).slice(-12)
+  const grants = uniqueLast(list(d.grants, readGrant, 80), x => `${x.id}:${x.year}`).slice(-40)
+  const models = uniqueLast(list(d.models, readModel, 60), x => String(x.gen)).slice(-12)
+  const drugs = uniqueLast(list(d.drugs, readDrug, 60), x => x.id).slice(-12)
+  const oneOffs = uniqueLast(list(d.oneOffs, readOneOff, 20), x => String(x.year)).slice(-4)
+  const drugSeq = drugs.reduce((max, x) => {
+    const match = /^d(\d+)$/.exec(x.id)
+    if (!match) return max
+    const value = Number(match[1])
+    return Number.isSafeInteger(value) && value <= MAX_TECH_SEQUENCE ? Math.max(max, value) : max
+  }, 0)
+  const savedSeq = Math.round(num(d.seq))
   return {
     v: TECH_VERSION,
     level: clampN(num(d.level, 25), 0, 100),
     stage: clampN(Math.round(num(d.stage)), 0, 4),
     hype: clampN(num(d.hype, 15), 0, 100),
     pace,
-    programs: list(d.programs, readProgram, 8),
-    done: Array.isArray(d.done) ? trimDone(d.done.filter((x): x is string => typeof x === 'string')) : [],
+    programs,
+    done: Array.isArray(d.done) ? trimDone(d.done.filter((x): x is string => typeof x === 'string' && !!x)) : [],
     fails: Math.max(0, Math.round(num(d.fails))),
     series: clampN(Math.round(num(d.series)), 0, MAX_SERIES),
-    rounds: list(d.rounds, readRound, 12),
-    lastRoundYear: num(d.lastRoundYear),
+    rounds,
+    lastRoundYear: Math.round(num(d.lastRoundYear)),
     venture: Math.max(0, num(d.venture)),
     raised: Math.max(0, num(d.raised)),
-    grants: list(d.grants, readGrant, 40),
+    grants,
     plant: clampN(num(d.plant), 0, 200),
     plantBook: Math.max(0, num(d.plantBook)),
     ipBook: Math.max(0, num(d.ipBook)),
@@ -358,9 +404,9 @@ export function readTech(v: Json | undefined): TechState {
     node: clampN(Math.round(num(d.node)), 0, 6),
     yieldRate: clampN(num(d.yieldRate, 0.55), 0.3, 0.97),
     rented: clampN(Math.round(num(d.rented)), 0, 40),
-    models: list(d.models, readModel, 12),
+    models,
     safety: clampN(num(d.safety, 40), 0, 100),
-    drugs: list(d.drugs, readDrug, 12),
+    drugs,
     tests: Math.max(0, Math.round(num(d.tests))),
     wins: Math.max(0, Math.round(num(d.wins))),
     booms: Math.max(0, Math.round(num(d.booms))),
@@ -375,8 +421,8 @@ export function readTech(v: Json | undefined): TechState {
     yearGrant: Math.max(0, num(d.yearGrant)),
     yearSpent: Math.max(0, num(d.yearSpent)),
     oneOff: Math.max(0, num(d.oneOff)),
-    oneOffs: list(d.oneOffs, readOneOff, 4),
-    seq: Math.max(0, Math.round(num(d.seq))),
+    oneOffs,
+    seq: Math.max(drugSeq, Number.isSafeInteger(savedSeq) && savedSeq >= 0 && savedSeq <= MAX_TECH_SEQUENCE ? savedSeq : 0),
   }
 }
 

@@ -186,6 +186,10 @@ describe('paid invention industrialization', () => {
     expect(rows[0]).toMatchObject({ fabCapacity: 0, fabInvested: 0, upgradeLevel: 0, upgradeInvested: 0 })
     expect(simulateInventionProducts(g, b, g.year).rows[0].produced).toBe(0)
     expect(Number.isFinite(inventionFabValue(b))).toBe(true)
+    b.inventionProducts = [{ ...p, started: 2020.6, lastYear: 2021.6, expires: 2040.6, protections: [
+      { country: 'us', filed: 2020, expires: 2040 }, { country: 'us', filed: 2021.6, expires: 2041.6 },
+    ] }] as Json
+    expect(inventionProductsOf(b)[0]).toMatchObject({ started: 2021, lastYear: 2022, expires: 2041, protections: [{ country: 'us', filed: 2022, expires: 2042 }] })
   })
 
   it('rejects cashless, unauthorized and expired-licence investment without side effects', () => {

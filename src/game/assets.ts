@@ -3864,6 +3864,7 @@ export const ASSET_KIND_VIEWS: Partial<Record<AssetKind, { subtitle?: (g: GameSt
  * the generic holding screen; `extra` appends one row to an otherwise generic screen.
  */
 export const ASSET_NODE_HOOKS: {
+  subtitle?: (g: GameState, a: Asset) => string | null
   view?: (g: GameState, a: Asset) => MenuNode[] | null
   extra?: (g: GameState, a: Asset) => MenuNode | null
 } = {}
@@ -3875,7 +3876,7 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
     id: `asset-${a.id}`,
     label: a.name,
     emoji: a.emoji,
-    subtitle: view?.subtitle ? view.subtitle(g, a) : assetSubtitle(g, a),
+    subtitle: ASSET_NODE_HOOKS.subtitle?.(g, a) ?? (view?.subtitle ? view.subtitle(g, a) : assetSubtitle(g, a)),
     header: (gg) => {
       const cur = findAsset(gg, a.id)
       return cur ? `${cur.emoji} ${cur.name}${cur.kind === 'house' && cur.details.typeLabel ? ` (${str(cur.details.typeLabel)})` : ''}` : 'This asset is gone.'

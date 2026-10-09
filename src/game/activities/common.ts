@@ -13,6 +13,7 @@ import {
   log,
   notice,
   spend,
+  yearActionsUsed,
 } from '../core'
 import { declined } from '../events/era'
 import { createPerson, notePerson } from '../people'
@@ -503,5 +504,5 @@ export const YEARLY_KEY_PREFIX = 'act.'
 
 /** Uses left this year for a limited action (for subtitles). */
 export function usesLeft(g: GameState, key: string, max: number): number {
-  return Math.max(0, max - (g.yearActions[key] ?? 0))
+  return Number.isFinite(max) ? Math.max(0, max - yearActionsUsed(g, key)) : 0
 }

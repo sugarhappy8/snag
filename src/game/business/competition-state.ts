@@ -137,17 +137,17 @@ function readExtra(v: Json): ExtraRival | null {
     id,
     name,
     hq: str(o.hq, 'us'),
-    founded: num(o.founded),
+    founded: Math.round(num(o.founded)),
     pot: clampN(num(o.pot, 1), 0.05, 40),
-    ramp: clampN(num(o.ramp, 4), 1, 15),
+    ramp: Math.round(clampN(num(o.ramp, 4), 1, 15)),
     origin: o.origin === 'spinoff' ? 'spinoff' : 'entrant',
   }
 }
 
 function readHistory(v: Json): MarketHistory | null {
   const o = rec(v)
-  if (!o || typeof o.year !== 'number') return null
-  const h: MarketHistory = { year: o.year, share: clampN(num(o.share), 0, 1), rank: Math.max(1, Math.round(num(o.rank, 1))), size: Math.max(0, num(o.size)) }
+  if (!o || typeof o.year !== 'number' || !Number.isFinite(o.year)) return null
+  const h: MarketHistory = { year: Math.round(o.year), share: clampN(num(o.share), 0, 1), rank: Math.max(1, Math.round(num(o.rank, 1))), size: Math.max(0, num(o.size)) }
   if (typeof o.lead === 'number' && Number.isFinite(o.lead)) h.lead = clampN(o.lead, 0, 1)
   if (typeof o.hhi === 'number' && Number.isFinite(o.hhi)) h.hhi = clampN(o.hhi, 0, 10_000)
   return h
@@ -190,8 +190,8 @@ function readEntry(v: Json): MarketEntry | null {
   const country = str(o.country)
   const mode = MODES.find((m) => m === o.mode)
   if (!/^[a-z]{2}$/.test(country) || !mode) return null
-  const year = num(o.year)
-  return { country, home: /^[a-z]{2}$/.test(str(o.home)) ? str(o.home) : 'us', mode, year, until: Math.max(year, num(o.until, year)) }
+  const year = Math.round(num(o.year))
+  return { country, home: /^[a-z]{2}$/.test(str(o.home)) ? str(o.home) : 'us', mode, year, until: Math.max(year, Math.round(num(o.until, year))) }
 }
 
 function readCampaign(v: Json): MarketCampaign | null {
@@ -199,16 +199,28 @@ function readCampaign(v: Json): MarketCampaign | null {
   if (!o) return null
   const country = str(o.country)
   if (!/^[a-z]{2}$/.test(country)) return null
-  const year = num(o.year)
-  return { country, home: /^[a-z]{2}$/.test(str(o.home)) ? str(o.home) : country, year, until: Math.max(year, num(o.until, year)) }
+  const year = Math.round(num(o.year))
+  return { country, home: /^[a-z]{2}$/.test(str(o.home)) ? str(o.home) : country, year, until: Math.max(year, Math.round(num(o.until, year))) }
 }
 
 function readDeal(v: Json): MarketDeal | null {
   const o = rec(v)
   const rivalId = o ? str(o.rivalId) : ''
   if (!o || !rivalId) return null
-  const year = num(o.year)
-  return { rivalId, year, until: Math.max(year, num(o.until, year)) }
+  const year = Math.round(num(o.year))
+  return { rivalId, year, until: Math.max(year, Math.round(num(o.until, year))) }
+}
+
+function uniqueLast<T>(rows: T[], key: (row: T) => string): T[] {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const k = key(rows[i])
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(rows[i])
+  }
+  return out.reverse()
 }
 
 /** A complete, sane MarketState from whatever is stored (null when there is nothing usable). */
@@ -217,7 +229,7 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
   if (!o) return null
   // A company that moved its home market (it can't, today) starts that market fresh.
   if (str(o.key) && str(o.key) !== key) return null
-  const rivals: [string, number][] = []
+  let rivals: [string, number][] = []
   if (Array.isArray(o.rivals)) {
     for (const x of o.rivals) {
       if (!Array.isArray(x) || typeof x[0] !== 'string') continue
@@ -225,12 +237,13 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
       if (s > 0) rivals.push([x[0], clampN(s, 0, 1)])
     }
   }
+  rivals = uniqueLast(rivals, x => x[0])
   const mods: Record<string, RivalMod> = {}
   const m = rec(o.mods)
   if (m) {
     for (const [id, x] of Object.entries(m)) {
       const r = rec(x)
-      if (r) mods[id] = { mult: clampN(num(r.mult, 1), 0.1, 5), until: num(r.until) }
+      if (id && r) mods[id] = { mult: clampN(num(r.mult, 1), 0.1, 5), until: Math.round(num(r.until)) }
     }
   }
   const at = rec(o.antitrust)
@@ -248,33 +261,33 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
     v: MARKET_VERSION,
     rev: Math.max(0, Math.round(num(o.rev))),
     key,
-    year: num(o.year),
+    year: Math.round(num(o.year)),
     share: clampN(num(o.share), 0, 1),
     base: clampN(num(o.base), 0, 1),
     unmet: clampN(num(o.unmet), 0, 1),
     rank: Math.max(0, Math.round(num(o.rank))),
     size: Math.max(0, num(o.size)),
     rivals,
-    history: history.slice(-20),
+    history: uniqueLast(history, x => String(x.year)).slice(-20),
     edge: clampN(num(o.edge, 1), 0.3, 3),
-    edgeUntil: num(o.edgeUntil),
+    edgeUntil: Math.round(num(o.edgeUntil)),
     mods,
-    gone: Array.isArray(o.gone) ? o.gone.filter((x): x is string => typeof x === 'string').slice(-60) : [],
-    extra: extra.slice(-12),
+    gone: Array.isArray(o.gone) ? [...new Set(o.gone.filter((x): x is string => typeof x === 'string' && !!x))].slice(-60) : [],
+    extra: uniqueLast(extra, x => x.id).slice(-12),
     antitrust: {
-      last: num(at?.last),
+      last: Math.round(num(at?.last)),
       cases: Math.max(0, Math.round(num(at?.cases))),
       fined: Math.max(0, num(at?.fined)),
-      remedyUntil: num(at?.remedyUntil),
-      lobbyUntil: num(at?.lobbyUntil),
+      remedyUntil: Math.round(num(at?.remedyUntil)),
+      lobbyUntil: Math.round(num(at?.lobbyUntil)),
     },
-    lastMove: num(o.lastMove),
-    entries: readList(o.entries, readEntry).slice(-24),
-    campaigns: readList(o.campaigns, readCampaign).slice(-12),
-    deals: readList(o.deals, readDeal).slice(-6),
-    supplyUntil: num(o.supplyUntil),
-    defendUntil: num(o.defendUntil),
-    acquired: Array.isArray(o.acquired) ? o.acquired.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)).slice(-20) : [],
+    lastMove: Math.round(num(o.lastMove)),
+    entries: uniqueLast(readList(o.entries, readEntry), x => x.country).slice(-24),
+    campaigns: uniqueLast(readList(o.campaigns, readCampaign), x => x.country).slice(-12),
+    deals: uniqueLast(readList(o.deals, readDeal), x => x.rivalId).slice(-6),
+    supplyUntil: Math.round(num(o.supplyUntil)),
+    defendUntil: Math.round(num(o.defendUntil)),
+    acquired: Array.isArray(o.acquired) ? o.acquired.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)).map(Math.round).slice(-20) : [],
   }
 }
 

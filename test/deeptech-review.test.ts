@@ -236,6 +236,20 @@ describe('deep tech review: side revenue and windfalls', () => {
 })
 
 describe('deep tech review: investors are paid back first', () => {
+  it('cannot sign the same queued bridge-round term sheet twice', () => {
+    const g = adultIn('us', 1_000_000, 111)
+    const a = company(g, 'robotics', { series: 1, lastRoundYear: g.year - 2, venture: 0, raised: 10_000_000 }, { share: .8 })
+    const b = bizOf(g, a)
+    const t = techOf(b)
+    const data = { assetId: a.id, series: 1, investor: 'existing investors', amount: 2_000_000, pre: 18_000_000, equity: .1, down: false, bridge: true } as unknown as Json
+    const modal = { kind: 'choice', source: 'script', id: 'term', title: '', text: '', choices: [{ id: 'sign', label: 'Sign' }], scriptId: 'deeptech.term' } as ChoiceModal
+    runScript(g, 'deeptech.term', 'sign', data, modal)
+    const once = { venture: t.venture, raised: t.raised, share: b.share, rounds: t.rounds.length }
+    runScript(g, 'deeptech.term', 'sign', data, modal)
+    expect({ venture: t.venture, raised: t.raised, share: b.share, rounds: t.rounds.length }).toEqual(once)
+    expect(once).toMatchObject({ venture: 2_000_000, raised: 12_000_000, rounds: 1 })
+  })
+
   it("doesn't hand the founder the patents investors paid for", () => {
     const g = adultIn('us', 1_000_000, 12)
     // Investors put in $60M; it all went into R&D that left $30M of patents.

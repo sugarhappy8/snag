@@ -146,8 +146,41 @@ const initEs = (g: GameState): EsProfile => {
   }
 }
 
+function esNum(value: unknown, fallback = 0, lo = 0, hi = 1e12): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, Math.round(value))) : fallback
+}
+
+function esText(value: unknown, fallback = '', max = 120): string {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max) || fallback : fallback
+}
+
+function normalizedEs(g: GameState, value: unknown): EsProfile {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<EsProfile> : {}
+  const numberRecord = (input: unknown, max: number): Record<string, number> => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+    const out: Record<string, number> = {}
+    for (const [key, item] of Object.entries(input).slice(0, 64)) out[esText(key, '', 60)] = esNum(item, 0, 0, max)
+    return out
+  }
+  const attrs = numberRecord(raw.attrs, 100)
+  for (const attr of ATTRS) attrs[attr] = esNum(attrs[attr], 10, 0, 100)
+  const selected = typeof raw.game === 'string' && ES_GAMES.some((x) => x.id === raw.game) ? raw.game : null
+  return {
+    game: selected,
+    mmr: numberRecord(raw.mmr, 1e9),
+    attrs,
+    titles: Array.isArray(raw.titles) ? raw.titles.filter((x): x is string => typeof x === 'string').map((x) => esText(x)).filter(Boolean).slice(-512) : [],
+    earnings: esNum(raw.earnings),
+    startAge: esNum(raw.startAge, esNum(g.character.age, 0, 0, 10_000), 0, 10_000),
+    retiredAge: typeof raw.retiredAge === 'number' && Number.isFinite(raw.retiredAge) ? esNum(raw.retiredAge, 0, 0, 10_000) : null,
+    cups: esNum(raw.cups, 0, 0, 1e9),
+  }
+}
+
 function es(g: GameState): EsProfile {
-  return prof(g, 'sports.esports', initEs)
+  const p = prof(g, 'sports.esports', initEs)
+  Object.assign(p, normalizedEs(g, p))
+  return p
 }
 
 /**
@@ -165,7 +198,8 @@ function masterEs(g: GameState, p: EsProfile, gameId: string | null = p.game): v
 }
 
 function viewEs(g: GameState): EsProfile | null {
-  return peek<EsProfile>(g, 'sports.esports')
+  const p = peek<EsProfile>(g, 'sports.esports')
+  return p ? normalizedEs(g, p) : null
 }
 
 export function esportsJob(g: GameState): Job | null {
@@ -173,6 +207,18 @@ export function esportsJob(g: GameState): Job | null {
 }
 
 function ej(job: Job): EsJob {
+  const raw = view<Partial<EsJob>>(job.data)
+  const normalized: EsJob = {
+    game: typeof raw.game === 'string' && ES_GAMES.some((x) => x.id === raw.game) ? raw.game : ES_GAMES[0].id,
+    team: esText(raw.team, 'Independent', 100),
+    teamStrength: esNum(raw.teamStrength, 30, 0, 100),
+    tier: esNum(raw.tier, 0, 0, 1),
+    contractYears: esNum(raw.contractYears, 0, 0, 100),
+    played: Array.isArray(raw.played) ? raw.played.filter((x): x is string => typeof x === 'string').map((x) => esText(x, '', 80)).filter(Boolean).slice(-128) : [],
+    results: Array.isArray(raw.results) ? raw.results.filter((x): x is string => typeof x === 'string').map((x) => esText(x)).filter(Boolean).slice(-128) : [],
+    earned: esNum(raw.earned),
+  }
+  Object.assign(job.data, normalized)
   return view<EsJob>(job.data)
 }
 

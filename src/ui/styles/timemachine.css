@@ -2,9 +2,9 @@
 /* Time Machine (components/TimeMachine.tsx, TimeMachineSettings.tsx)         */
 
 :root {
-  --tm-from: #7b4be0;
-  --tm-to: #2f8fe0;
-  --tm-glow: rgba(123, 75, 224, 0.35);
+  --tm-from: #6236b4;
+  --tm-to: #185fad;
+  --tm-glow: rgba(98, 54, 180, 0.35);
 }
 
 /* Sheet: dial, blurb and fuel ------------------------------------------------ */
@@ -184,7 +184,7 @@
 }
 
 .tm-fab.is-empty {
-  background: linear-gradient(135deg, #8d8fa0, #6c7184);
+  background: linear-gradient(135deg, #606575, #4f5466);
   box-shadow: 0 4px 10px rgba(20, 30, 50, 0.22);
 }
 
@@ -240,7 +240,7 @@
 }
 
 .al-bigbtn.tm-bigbtn.is-empty {
-  background: linear-gradient(120deg, #8d8fa0, #6c7184);
+  background: linear-gradient(120deg, #606575, #4f5466);
   box-shadow: 0 4px 0 #4f5466;
 }
 

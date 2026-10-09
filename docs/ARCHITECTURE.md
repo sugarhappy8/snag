@@ -62,7 +62,7 @@ src/
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
-    business.ts business/*.ts   Start/buy/run companies in 25 industries; yearly sim + Annual Report.
+    business.ts business/*.ts   Start/buy/run companies in 51 industries; yearly sim + Annual Report.
                          Actions that spend/earn company cash move b.cash AND add to yearCosts/
                          yearIncome (for the P&L); simulateYear must not move that cash twice.
                          Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt).
@@ -134,8 +134,10 @@ src/
 1. **State is plain JSON.** `GameState` is saved to localStorage and cloned with `structuredClone`.
    Never store functions, class instances, Maps or Sets in it. Use `g.flags`, `g.counters`,
    `Enrollment.data`, `Job.data`, `Person.data`, `Asset.details` for module-specific data.
-2. **All randomness goes through `rng.ts`** with the `g` argument (`rand(g)`, `chance(g, 0.3)`,
-   `randInt(g, 1, 6)`, `pick(g, list)`). Never call `Math.random()` or `Date.now()` in `src/game`.
+2. **All gameplay randomness goes through `rng.ts`** with the `g` argument (`rand(g)`,
+   `chance(g, 0.3)`, `randInt(g, 1, 6)`, `pick(g, list)`). Never call `Math.random()` or
+   `Date.now()` in `src/game`; the sole exception is `rng.ts` using `Math.random()` to choose the
+   initial seed for a brand-new life before deterministic play begins.
 3. **Engine code mutates `g` in place.** Menu `run` functions, script handlers and yearly hooks receive
    a mutable draft (the store clones before calling). Do not return new states.
 4. **Report outcomes like BitLife does:**
@@ -589,10 +591,12 @@ an unknown task type (a future or broken save) is a no-op too.
 
 Old saves: `save.ts` `migrateLegacyAi` (run by `loadGame` and `loadSnapshot`, idempotent) drops
 the `ai` narration request from queued notices, turns log entries with the retired tone `'ai'`
-into `'neutral'`, deletes the narrator-only flags `aiRecentEvents` and `obituarySource`, and
-drops queue entries that aren't popups at all (not an object with an id and a known kind: nothing
-could show or close them, so the life would be stuck behind them). `LifeLog` and the death
-screen's journal draw any unknown tone as a plain line.
+into `'neutral'`, and deletes the narrator-only flags `aiRecentEvents` and `obituarySource`.
+The persistence boundary rejects non-finite state and malformed save/snapshot shells, sanitizes
+ribbon and graveyard collections, and keeps only queue entries with the renderer and handler
+fields their modal kind requires (including valid choices, tasks, games, and finite input bounds).
+This prevents damaged browser data from resuming into an unrenderable or unclosable popup.
+`LifeLog` and the death screen's journal draw any unknown tone as a plain line.
 
 ## UI contract
 

@@ -2,13 +2,20 @@
 // Time Machine's start-of-year snapshots.
 import { GAME_VERSION } from './core'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
-import type { AncestorSummary, GameState, Json, ModalItem } from './types'
+import { HIDDEN_KEYS, STAT_KEYS, type AncestorSummary, type GameState, type Json, type ModalItem } from './types'
 
 const SAVE_KEY = 'anotherlife.save.v1'
 const RIBBONS_KEY = 'anotherlife.ribbons.v1'
 const GRAVEYARD_KEY = 'anotherlife.graveyard.v1'
 /** Graves kept (the oldest are bulldozed first). */
 const GRAVEYARD_MAX = 100
+const MAX_JSON_NODES = 500_000
+const MAX_JSON_DEPTH = 128
+const MIN_GAME_YEAR = 1900
+const MAX_GAME_YEAR = 100_000
+const MAX_GAME_AGE = 10_000
+const MAX_GENERATION = 1_000_000
+const MAX_NEXT_ID = 1_000_000_000
 
 function read<T>(key: string): T | null {
   try {
@@ -51,9 +58,10 @@ export function saveGame(g: GameState): boolean {
 }
 
 export function loadGame(): GameState | null {
-  const g = read<GameState>(SAVE_KEY)
-  if (!g || g.version !== GAME_VERSION || !g.character) return null
-  return migrateLegacyAi(g)
+  const raw = read<unknown>(SAVE_KEY)
+  if (!isGameShell(raw)) return null
+  const g = migrateLegacyAi(raw as unknown as GameState)
+  return isLoadableGame(g) ? g : null
 }
 
 /**
@@ -66,7 +74,8 @@ export function loadGame(): GameState | null {
  */
 export function migrateLegacyAi(g: GameState): GameState {
   if (!Array.isArray(g.queue)) g.queue = []
-  g.queue = (g.queue as unknown[]).filter(isModal)
+  const modalIds = new Set<string>()
+  g.queue = (g.queue as unknown[]).filter(isModal).filter((modal) => !modalIds.has(modal.id) && !!modalIds.add(modal.id))
   for (const modal of g.queue as unknown as Record<string, unknown>[]) {
     if ('ai' in modal) delete modal.ai
     if (modal.tone === 'ai') modal.tone = 'neutral'
@@ -86,12 +95,414 @@ export function migrateLegacyAi(g: GameState): GameState {
 }
 
 const MODAL_KINDS: ReadonlySet<string> = new Set<ModalItem['kind']>(['notice', 'choice', 'input', 'minigame', 'aiTask'])
+const MINIGAME_KINDS = new Set(['blackjack', 'horseRace', 'burglary', 'prisonEscape', 'slots', 'pickpocket', 'annualReport'])
 
-/** A queue entry the game can show or resolve: an object with an id and a known kind. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function isBoundedInteger(value: unknown, min: number, max: number): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max
+}
+
+function isGameYear(value: unknown): value is number {
+  return isBoundedInteger(value, MIN_GAME_YEAR, MAX_GAME_YEAR)
+}
+
+function isGameAge(value: unknown): value is number {
+  return isBoundedInteger(value, 0, MAX_GAME_AGE)
+}
+
+function isGeneration(value: unknown): value is number {
+  return isBoundedInteger(value, 1, MAX_GENERATION)
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string')
+}
+
+function validChoice(value: unknown): boolean {
+  return isRecord(value) && typeof value.id === 'string' && value.id.length > 0 && typeof value.label === 'string'
+}
+
+function validChoices(value: unknown): value is { id: string; label: string }[] {
+  if (!Array.isArray(value) || value.length === 0 || !value.every(validChoice)) return false
+  return new Set(value.map((choice) => choice.id)).size === value.length
+}
+
+function validInterviewJob(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.defId === 'string'
+    && typeof value.title === 'string'
+    && typeof value.company === 'string'
+    && typeof value.category === 'string'
+    && isFiniteNumber(value.salary)
+}
+
+function validTask(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.type !== 'string') return false
+  switch (value.type) {
+    case 'yearEvents':
+    case 'obituary':
+      return true
+    case 'customAction':
+      return typeof value.text === 'string'
+    case 'interview':
+      return validInterviewJob(value.job)
+    case 'screenApplication':
+      return isRecord(value.app) && typeof value.app.kind === 'string' && typeof value.app.org === 'string' && isFiniteNumber(value.app.fit) && isFiniteNumber(value.app.chance)
+    case 'resolveChoice': {
+      const event = value.event
+      if (typeof value.choiceId !== 'string' || !isRecord(event) || event.kind !== 'choice' || !isModal(event)) return false
+      const choiceEvent = event as Extract<ModalItem, { kind: 'choice' }>
+      return choiceEvent.choices.some((choice) => choice.id === value.choiceId)
+    }
+    default:
+      return false
+  }
+}
+
+/** A queue entry the game can show or resolve, including every field its renderer needs. */
 function isModal(m: unknown): m is ModalItem {
-  if (!m || typeof m !== 'object') return false
-  const { kind, id } = m as { kind?: unknown; id?: unknown }
-  return typeof kind === 'string' && MODAL_KINDS.has(kind) && typeof id === 'string'
+  if (!isRecord(m)) return false
+  const { kind, id } = m
+  if (typeof kind !== 'string' || !MODAL_KINDS.has(kind) || typeof id !== 'string' || !id) return false
+  switch (kind) {
+    case 'notice':
+      return typeof m.title === 'string' && typeof m.text === 'string'
+    case 'choice':
+      return typeof m.title === 'string'
+        && typeof m.text === 'string'
+        && validChoices(m.choices)
+        && (m.source === 'ai' || (m.source === 'script' && typeof m.scriptId === 'string' && m.scriptId.length > 0))
+    case 'input':
+      return typeof m.title === 'string'
+        && typeof m.text === 'string'
+        && (m.input === 'text' || m.input === 'number' || m.input === 'slider')
+        && typeof m.scriptId === 'string'
+        && m.scriptId.length > 0
+        && (m.min === undefined || isFiniteNumber(m.min))
+        && (m.max === undefined || isFiniteNumber(m.max))
+        && (m.min === undefined || m.max === undefined || m.min <= m.max)
+    case 'minigame':
+      return typeof m.title === 'string' && typeof m.scriptId === 'string' && m.scriptId.length > 0 && typeof m.game === 'string' && MINIGAME_KINDS.has(m.game)
+    case 'aiTask':
+      return validTask(m.task)
+    default:
+      return false
+  }
+}
+
+/** Reject values JSON can parse but the engine cannot safely calculate with (notably `1e400`). */
+function finiteJsonTree(value: unknown): boolean {
+  const stack: [unknown, number][] = [[value, 0]]
+  let seen = 0
+  while (stack.length) {
+    if (++seen > MAX_JSON_NODES) return false
+    const [item, depth] = stack.pop()!
+    if (depth > MAX_JSON_DEPTH) return false
+    if (typeof item === 'number') {
+      if (!Number.isFinite(item)) return false
+    } else if (item && typeof item === 'object') {
+      const values = Array.isArray(item) ? item : Object.values(item as Record<string, unknown>)
+      for (const child of values) stack.push([child, depth + 1])
+    } else if (item !== null && typeof item !== 'string' && typeof item !== 'boolean') {
+      return false
+    }
+  }
+  return true
+}
+
+function validJob(value: unknown): boolean {
+  return value === null || (validInterviewJob(value)
+    && isRecord(value)
+    && isFiniteNumber(value.level)
+    && isFiniteNumber(value.performance)
+    && isFiniteNumber(value.yearsInRole)
+    && isFiniteNumber(value.yearsAtCompany)
+    && isRecord(value.data))
+}
+
+function optionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
+}
+
+function optionalNumber(value: unknown): boolean {
+  return value === undefined || isFiniteNumber(value)
+}
+
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean'
+}
+
+function validDegree(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.kind === 'string'
+    && typeof value.name === 'string'
+    && typeof value.school === 'string'
+    && isFiniteNumber(value.age)
+    && optionalString(value.major)
+    && optionalBoolean(value.honors)
+}
+
+function validCareerRecord(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.title === 'string'
+    && typeof value.company === 'string'
+    && isFiniteNumber(value.startAge)
+    && isFiniteNumber(value.endAge)
+    && typeof value.reason === 'string'
+    && isFiniteNumber(value.salary)
+}
+
+function validCondition(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.kind === 'string'
+    && isFiniteNumber(value.severity)
+    && isFiniteNumber(value.yearsHad)
+    && typeof value.curable === 'boolean'
+    && typeof value.diagnosed === 'boolean'
+    && isFiniteNumber(value.age)
+}
+
+function validCrimeRecord(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.crime === 'string'
+    && isFiniteNumber(value.age)
+    && typeof value.caught === 'boolean'
+    && typeof value.convicted === 'boolean'
+    && optionalNumber(value.sentenceYears)
+}
+
+function validPrison(value: unknown): boolean {
+  return value === null || (isRecord(value)
+    && typeof value.name === 'string'
+    && typeof value.security === 'string'
+    && typeof value.crime === 'string'
+    && isFiniteNumber(value.sentenceYears)
+    && isFiniteNumber(value.yearsServed)
+    && isFiniteNumber(value.respect)
+    && typeof value.appealed === 'boolean'
+    && isFiniteNumber(value.escapeAttempts)
+    && optionalString(value.gang)
+    && optionalBoolean(value.life)
+    && optionalBoolean(value.deathRow))
+}
+
+function validLoan(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.kind === 'string'
+    && typeof value.lender === 'string'
+    && isFiniteNumber(value.balance)
+    && isFiniteNumber(value.yearlyPayment)
+    && isFiniteNumber(value.rate)
+}
+
+function validResidence(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.status === 'string'
+    && optionalString(value.assetId)
+    && optionalNumber(value.rent)
+    && optionalString(value.description)
+}
+
+function validSocial(value: unknown): boolean {
+  return value === null || (isRecord(value)
+    && typeof value.platform === 'string'
+    && typeof value.handle === 'string'
+    && isFiniteNumber(value.followers)
+    && typeof value.verified === 'boolean'
+    && typeof value.monetized === 'boolean')
+}
+
+function validImmigration(value: unknown): boolean {
+  return value === undefined || (isRecord(value)
+    && typeof value.countryId === 'string'
+    && typeof value.status === 'string'
+    && isFiniteNumber(value.since)
+    && optionalString(value.visa)
+    && optionalNumber(value.expires))
+}
+
+function validCvEntry(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.kind === 'string'
+    && typeof value.title === 'string'
+    && typeof value.org === 'string'
+    && isFiniteNumber(value.startAge)
+    && optionalNumber(value.endAge)
+    && typeof value.detail === 'string'
+    && isFiniteNumber(value.strength)
+    && typeof value.embellished === 'boolean'
+    && (value.tags === undefined || isStringArray(value.tags))
+    && optionalString(value.source)
+}
+
+function validMortgage(value: unknown): boolean {
+  return value === undefined || (isRecord(value)
+    && typeof value.lender === 'string'
+    && isFiniteNumber(value.balance)
+    && isFiniteNumber(value.yearlyPayment)
+    && isFiniteNumber(value.yearsLeft)
+    && isFiniteNumber(value.rate))
+}
+
+function validCharacter(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const strings = ['id', 'firstName', 'lastName', 'gender', 'sexuality', 'zodiac', 'countryId', 'city', 'birthCountryId']
+  if (!strings.every((key) => typeof value[key] === 'string')) return false
+  if (!isGameAge(value.age) || typeof value.alive !== 'boolean' || !optionalString(value.causeOfDeath) || !isFiniteNumber(value.money)) return false
+  if (!isRecord(value.birthday) || !isFiniteNumber(value.birthday.month) || !isFiniteNumber(value.birthday.day)) return false
+  if (!isRecord(value.avatar) || !isFiniteNumber(value.avatar.skinTone) || typeof value.avatar.hair !== 'string' || typeof value.avatar.eyes !== 'string') return false
+  const stats = value.stats
+  const hidden = value.hidden
+  if (!isRecord(stats) || !STAT_KEYS.every((key) => isFiniteNumber(stats[key]))) return false
+  if (!isRecord(hidden) || !HIDDEN_KEYS.every((key) => isFiniteNumber(hidden[key]))) return false
+  if (!isRecord(value.education)
+    || !Array.isArray(value.education.degrees)
+    || !value.education.degrees.every(validDegree)
+    || !isStringArray(value.education.completed)
+    || !isStringArray(value.education.droppedOut)
+    || !isFiniteNumber(value.education.expelled)) return false
+  const enrollment = value.education.current
+  if (enrollment !== null && (!isRecord(enrollment)
+    || typeof enrollment.level !== 'string'
+    || typeof enrollment.school !== 'string'
+    || !isFiniteNumber(enrollment.year)
+    || !isFiniteNumber(enrollment.totalYears)
+    || !isFiniteNumber(enrollment.grades)
+    || !isRecord(enrollment.data))) return false
+  return validJob(value.job)
+    && validJob(value.partTimeJob)
+    && Array.isArray(value.careerHistory)
+    && value.careerHistory.every(validCareerRecord)
+    && typeof value.retired === 'boolean'
+    && isFiniteNumber(value.pension)
+    && Array.isArray(value.conditions)
+    && value.conditions.every(validCondition)
+    && isStringArray(value.licenses)
+    && Array.isArray(value.criminalRecord)
+    && value.criminalRecord.every(validCrimeRecord)
+    && validPrison(value.prison)
+    && isFiniteNumber(value.wantedLevel)
+    && validResidence(value.residence)
+    && Array.isArray(value.loans)
+    && value.loans.every(validLoan)
+    && validSocial(value.social)
+    && (value.talent === null || typeof value.talent === 'string')
+    && isStringArray(value.memories)
+    && isStringArray(value.willBeneficiaries)
+    && (value.religion === null || typeof value.religion === 'string')
+    && (value.talents === undefined || isStringArray(value.talents))
+    && (value.citizenships === undefined || isStringArray(value.citizenships))
+    && validImmigration(value.immigration)
+    && (value.cv === undefined || (Array.isArray(value.cv) && value.cv.every(validCvEntry)))
+}
+
+function validPerson(value: unknown): boolean {
+  if (!isRecord(value)) return false
+  const stats = value.stats
+  return isRecord(stats)
+    && typeof value.id === 'string'
+    && typeof value.firstName === 'string'
+    && typeof value.lastName === 'string'
+    && typeof value.gender === 'string'
+    && isFiniteNumber(value.age)
+    && typeof value.alive === 'boolean'
+    && optionalString(value.causeOfDeath)
+    && typeof value.relation === 'string'
+    && isFiniteNumber(value.relationship)
+    && STAT_KEYS.every((key) => isFiniteNumber(stats[key]))
+    && isFiniteNumber(value.money)
+    && typeof value.occupation === 'string'
+    && isStringArray(value.traits)
+    && optionalString(value.species)
+    && optionalString(value.breed)
+    && optionalString(value.otherParentId)
+    && optionalBoolean(value.biological)
+    && optionalString(value.contextId)
+    && optionalBoolean(value.pregnant)
+    && isFiniteNumber(value.yearsKnown)
+    && typeof value.livesWithPlayer === 'boolean'
+    && isStringArray(value.notes)
+    && isRecord(value.data)
+}
+
+function validAsset(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.kind === 'string'
+    && typeof value.name === 'string'
+    && typeof value.emoji === 'string'
+    && isFiniteNumber(value.purchasePrice)
+    && isFiniteNumber(value.value)
+    && isFiniteNumber(value.condition)
+    && isFiniteNumber(value.purchasedAge)
+    && validMortgage(value.mortgage)
+    && isFiniteNumber(value.upkeep)
+    && isRecord(value.details)
+    && optionalNumber(value.rentedOutFor)
+}
+
+function validAncestor(value: unknown): boolean {
+  return isRecord(value)
+    && optionalString(value.countryId)
+    && isGeneration(value.generation)
+    && typeof value.name === 'string'
+    && typeof value.gender === 'string'
+    && isGameYear(value.bornYear)
+    && isGameYear(value.diedYear)
+    && isGameAge(value.age)
+    && typeof value.causeOfDeath === 'string'
+    && isFiniteNumber(value.netWorth)
+    && typeof value.occupation === 'string'
+    && (value.ribbon === null || typeof value.ribbon === 'string')
+}
+
+function validLogYear(value: unknown): boolean {
+  return isRecord(value)
+    && isGameAge(value.age)
+    && isGameYear(value.year)
+    && Array.isArray(value.entries)
+    && value.entries.every((entry) => isRecord(entry) && typeof entry.id === 'string' && typeof entry.text === 'string' && typeof entry.tone === 'string')
+}
+
+/** Cheap shell check before a damaged value is passed to the legacy queue migration. */
+function isGameShell(value: unknown): value is Record<string, unknown> {
+  return isRecord(value)
+    && finiteJsonTree(value)
+    && value.version === GAME_VERSION
+    && isRecord(value.character)
+    && Array.isArray(value.queue)
+    && Array.isArray(value.log)
+    && isRecord(value.flags)
+}
+
+/** Structural boundary for browser persistence. Invalid saves fail closed instead of crashing UI. */
+function isLoadableGame(value: unknown): value is GameState {
+  if (!isRecord(value) || !finiteJsonTree(value) || value.version !== GAME_VERSION || typeof value.lifeId !== 'string' || !value.lifeId) return false
+  if (!isFiniteNumber(value.rng)
+    || !isBoundedInteger(value.nextId, 0, MAX_NEXT_ID)
+    || !isGameYear(value.year)
+    || !isGeneration(value.generation)) return false
+  if (!validCharacter(value.character)) return false
+  if (!Array.isArray(value.people) || !value.people.every(validPerson)) return false
+  if (!Array.isArray(value.assets) || !value.assets.every(validAsset)) return false
+  if (!Array.isArray(value.log) || !value.log.every(validLogYear)) return false
+  if (!Array.isArray(value.queue) || !value.queue.every(isModal)) return false
+  if (!Array.isArray(value.ancestors) || !value.ancestors.every(validAncestor)) return false
+  if (!isRecord(value.counters) || !Object.values(value.counters).every(isFiniteNumber)) return false
+  if (!isRecord(value.yearActions) || !Object.values(value.yearActions).every(isFiniteNumber)) return false
+  if (!isRecord(value.flags)) return false
+  return (value.ribbon === null || typeof value.ribbon === 'string') && (value.obituary === null || typeof value.obituary === 'string')
 }
 
 export function clearSave(): void {
@@ -104,7 +515,14 @@ export function clearSave(): void {
 
 /** Ribbon id -> times earned. */
 export function loadRibbons(): Record<string, number> {
-  return read<Record<string, number>>(RIBBONS_KEY) ?? {}
+  const raw = read<unknown>(RIBBONS_KEY)
+  if (!isRecord(raw)) return {}
+  const out: Record<string, number> = {}
+  for (const [id, count] of Object.entries(raw)) {
+    if (!id || id === '__proto__' || id === 'constructor' || id === 'prototype' || !isFiniteNumber(count) || count <= 0) continue
+    out[id] = Math.floor(count)
+  }
+  return out
 }
 
 /** Count one more earning of a ribbon. False when the browser refused to store it. */
@@ -130,7 +548,29 @@ export interface GraveyardEntry extends AncestorSummary {
 }
 
 export function loadGraveyard(): GraveyardEntry[] {
-  return read<GraveyardEntry[]>(GRAVEYARD_KEY) ?? []
+  const raw = read<unknown>(GRAVEYARD_KEY)
+  if (!Array.isArray(raw)) return []
+  const out: GraveyardEntry[] = []
+  for (const entry of raw) {
+    if (!isRecord(entry)) continue
+    const valid = typeof entry.lifeId === 'string'
+      && typeof entry.name === 'string'
+      && typeof entry.gender === 'string'
+      && isFiniteNumber(entry.generation)
+      && isFiniteNumber(entry.bornYear)
+      && isFiniteNumber(entry.diedYear)
+      && isFiniteNumber(entry.age)
+      && typeof entry.causeOfDeath === 'string'
+      && isFiniteNumber(entry.netWorth)
+      && typeof entry.occupation === 'string'
+      && (entry.ribbon === undefined || entry.ribbon === null || typeof entry.ribbon === 'string')
+      && (entry.obituary === undefined || entry.obituary === null || typeof entry.obituary === 'string')
+      && (entry.countryId === undefined || typeof entry.countryId === 'string')
+    if (!valid) continue
+    out.push({ ...(entry as unknown as GraveyardEntry), ribbon: typeof entry.ribbon === 'string' ? entry.ribbon : null, obituary: typeof entry.obituary === 'string' ? entry.obituary : null })
+    if (out.length >= GRAVEYARD_MAX) break
+  }
+  return out
 }
 
 /**
@@ -727,8 +1167,10 @@ export function loadSnapshot(lifeId: string, age: number): Promise<GameState | n
     const parts = await b.get(ids.map((id: string) => chunkKey(lifeId, id)))
     if (parts.some((p) => p === null)) return null
     g.log = parts.map((p) => JSON.parse(p as string))
-    if (g.version !== GAME_VERSION || g.lifeId !== lifeId || !g.character || g.character.age !== age || !g.character.alive) return null
-    return migrateLegacyAi(g)
+    if (!isGameShell(g)) return null
+    const migrated = migrateLegacyAi(g)
+    if (!isLoadableGame(migrated) || migrated.lifeId !== lifeId || migrated.character.age !== age || !migrated.character.alive) return null
+    return migrated
   }, null)
 }
 

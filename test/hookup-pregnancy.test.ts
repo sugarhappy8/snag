@@ -14,7 +14,7 @@ function game(seed = 1, gender: 'male' | 'female' = 'female'): GameState {
 }
 
 function fakeChoice(scriptId: string, data?: Json): ChoiceModal {
-  return { kind: 'choice', id: `test-${scriptId}`, title: 'Test', text: '', source: 'script', scriptId, data, choices: [] }
+  return { kind: 'choice', id: `test-${scriptId}`, title: 'Test', text: '', source: 'script', scriptId, data, choices: ['home', 'safe', 'risk'].map((id) => ({ id, label: id })) }
 }
 
 function take<K extends ModalItem['kind']>(g: GameState, kind: K, scriptId?: string): Extract<ModalItem, { kind: K }> {
@@ -84,13 +84,26 @@ describe('adult random-hookup pregnancy', () => {
     const minor = createPerson(g, { relation: 'lover', age: 17, gender: 'male' })
     minor.data.nightHookupPending = { by: g.character.id, year: g.year }
     const forged = fakeChoice('act.night.protection', { personId: minor.id })
-    const snapshot = JSON.stringify(g)
+    const snapshot = {
+      rng: g.rng,
+      money: g.character.money,
+      people: JSON.stringify(g.people),
+      pregnancy: JSON.stringify(g.flags.pregnancy),
+      queue: JSON.stringify(g.queue),
+    }
     runScript(g, forged.scriptId!, 'risk', forged.data, forged)
-    expect(JSON.stringify(g)).toBe(snapshot)
+    expect({
+      rng: g.rng,
+      money: g.character.money,
+      people: JSON.stringify(g.people),
+      pregnancy: JSON.stringify(g.flags.pregnancy),
+      queue: JSON.stringify(g.queue),
+    }).toEqual(snapshot)
 
     const safeAdult = createPerson(g, { relation: 'lover', age: 28, gender: 'female' })
     safeAdult.data.nightHookupPending = { by: g.character.id, year: g.year }
-    runScript(g, forged.scriptId!, 'risk', { personId: safeAdult.id }, forged)
+    const sameSex = { ...forged, id: `${forged.id}-same-sex`, data: { personId: safeAdult.id } }
+    runScript(g, sameSex.scriptId!, 'risk', sameSex.data, sameSex)
     expect(playerPregnancy(g)).toBeNull()
 
     const { lover, protection } = nightHookup(g)

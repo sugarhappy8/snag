@@ -27,6 +27,7 @@ import {
   addFame,
   blocked,
   clamp100,
+  claimYearly,
   convictions,
   fameOf,
   fameToward,
@@ -481,12 +482,53 @@ interface PolProfile {
 
 const initPol = (): PolProfile => ({ held: [], wins: 0, losses: 0, party: '', billsPassed: 0, vetoes: 0, impeached: 0, formerLeader: false, formerLeaderTitle: '' })
 
+function polNumber(value: unknown, fallback = 0, lo = 0, hi = 1e9): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, Math.round(value))) : fallback
+}
+
+function polText(value: unknown, fallback = '', max = 120): string {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max) || fallback : fallback
+}
+
+function normalizedPol(value: unknown): PolProfile {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Partial<PolProfile> : {}
+  const held: HeldOffice[] = []
+  if (Array.isArray(raw.held)) for (const value of raw.held.slice(-128)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const item = value as Partial<HeldOffice>
+    if (!OFFICES.some((office) => office.id === item.office)) continue
+    const startAge = polNumber(item.startAge, 0, 0, 10_000)
+    held.push({
+      office: item.office as OfficeId,
+      title: polText(item.title, 'Public Official', 100),
+      place: polText(item.place, 'Public office', 100),
+      startAge,
+      endAge: typeof item.endAge === 'number' && Number.isFinite(item.endAge) ? polNumber(item.endAge, startAge, startAge, 10_000) : null,
+      terms: polNumber(item.terms, 1, 1, 100),
+    })
+  }
+  return {
+    held,
+    wins: polNumber(raw.wins),
+    losses: polNumber(raw.losses),
+    party: polText(raw.party, '', 80),
+    billsPassed: polNumber(raw.billsPassed),
+    vetoes: polNumber(raw.vetoes),
+    impeached: polNumber(raw.impeached),
+    formerLeader: raw.formerLeader === true,
+    formerLeaderTitle: polText(raw.formerLeaderTitle, '', 100),
+    abuse: raw.abuse && typeof raw.abuse === 'object' && !Array.isArray(raw.abuse) ? raw.abuse : undefined,
+  }
+}
+
 function polProfile(g: GameState): PolProfile {
-  return prof(g, 'politics', initPol)
+  const p = prof(g, 'politics', initPol)
+  Object.assign(p, normalizedPol(p))
+  return p
 }
 
 function viewPol(g: GameState): PolProfile {
-  return peek<PolProfile>(g, 'politics') ?? initPol()
+  return normalizedPol(peek<PolProfile>(g, 'politics'))
 }
 
 export function politicianJob(g: GameState): Job | null {
@@ -494,6 +536,43 @@ export function politicianJob(g: GameState): Job | null {
 }
 
 function pdata(job: Job): PolData {
+  const raw = job.data && typeof job.data === 'object' && !Array.isArray(job.data) ? job.data as unknown as Partial<PolData> : {}
+  const office = OFFICES.some((o) => o.id === raw.office) ? raw.office as OfficeId : 'school'
+  const issueIds = new Set(ISSUES.map((issue) => issue.id))
+  const hot = Array.isArray(raw.hot)
+    ? [...new Set(raw.hot.filter((value): value is string => typeof value === 'string' && issueIds.has(value)))].slice(0, 3)
+    : []
+  const effects = new Set(['', 'payRaise', 'holiday', 'space'])
+  const bills: Bill[] = []
+  if (Array.isArray(raw.bills)) for (const value of raw.bills.slice(-32)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const bill = value as Partial<Bill>
+    const name = polText(bill.name, '', 160)
+    if (!name) continue
+    bills.push({
+      name,
+      emoji: polText(bill.emoji, '📝', 16),
+      issue: typeof bill.issue === 'string' && issueIds.has(bill.issue) ? bill.issue : 'economy',
+      support: polNumber(bill.support, 50, 0, 100),
+      effect: typeof bill.effect === 'string' && effects.has(bill.effect) ? bill.effect : '',
+    })
+  }
+  const normalized: PolData = {
+    office,
+    party: PARTIES.some((party) => party.id === raw.party) ? raw.party as string : 'independent',
+    approval: polNumber(raw.approval, polNumber(job.performance, 60, 0, 100), 0, 100),
+    termLeft: polNumber(raw.termLeft, officeOf(office).term, 0, 100),
+    terms: polNumber(raw.terms, 1, 1, 100),
+    hot,
+    newsAge: polNumber(raw.newsAge, -1, -1, 10_000),
+    bills,
+    warChest: polNumber(raw.warChest, 0, 0, 1e15),
+    favors: polNumber(raw.favors, 0, 0, 1e6),
+    scandals: polNumber(raw.scandals, 0, 0, 1e6),
+    termOver: raw.termOver === true,
+  }
+  if (!job.data || typeof job.data !== 'object' || Array.isArray(job.data)) job.data = {}
+  Object.assign(job.data, normalized)
   return view<PolData>(job.data)
 }
 
@@ -1475,24 +1554,57 @@ function freshAbuse(): AbuseData {
 }
 
 function repairAbuse(a: AbuseData): AbuseData {
-  a.heat = Math.max(0, Math.min(100, Number.isFinite(a.heat) ? a.heat : 0))
-  a.moves = Math.max(0, Number.isFinite(a.moves) ? Math.round(a.moves) : 0)
-  if (typeof a.crony !== 'string') a.crony = ''
-  if (!Array.isArray(a.cases)) a.cases = []
-  a.cases = a.cases.filter((c) => c && typeof c.id === 'string' && typeof c.secId === 'string' && ['open', 'pending', 'closed'].includes(c.status) && Number.isFinite(c.age))
-  for (const c of a.cases) {
-    if (!Array.isArray(c.extra)) c.extra = []
-    if (!Number.isFinite(c.evidence)) c.evidence = 0.5
-    if (!Number.isFinite(c.quiet)) c.quiet = 0
-    if (!Number.isFinite(c.stake)) c.stake = 0
-    if (!Number.isFinite(c.gain)) c.gain = 0
+  const raw = a as unknown as Record<string, unknown>
+  const bounded = (value: unknown, fallback: number, lo: number, hi: number): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, value)) : fallback
+  const text = (value: unknown, fallback = '', length = 120): string => typeof value === 'string' ? value.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, length) || fallback : fallback
+  const causes: InsiderCase['cause'][] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse']
+  const vias: InsiderCase['via'][] = ['own', 'crony', 'shares']
+  const offices: OfficeId[] = ['school', 'mayor', 'governor', 'leader']
+  const statuses: InsiderCase['status'][] = ['open', 'pending', 'closed']
+  a.heat = bounded(raw.heat, 0, 0, 100)
+  a.moves = Math.round(bounded(raw.moves, 0, 0, 1_000_000))
+  a.crony = text(raw.crony, '', 80)
+  const cases: InsiderCase[] = [], ids = new Set<string>()
+  const input = Array.isArray(raw.cases) ? raw.cases.slice(-512) : []
+  for (const value of input) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const c = value as unknown as Record<string, unknown>
+    const id = text(c.id, '', 120), secId = text(c.secId, '', 160)
+    const status = statuses.includes(c.status as InsiderCase['status']) ? c.status as InsiderCase['status'] : null
+    if (!id || !secId || !status || ids.has(id) || typeof c.age !== 'number' || !Number.isFinite(c.age)) continue
+    ids.add(id)
+    const extra: string[] = [], extraSeen = new Set<string>()
+    if (Array.isArray(c.extra)) for (const item of c.extra.slice(-20)) {
+      const charge = text(item, '', 100)
+      if (charge && !extraSeen.has(charge)) { extraSeen.add(charge); extra.push(charge) }
+    }
+    cases.push({
+      id,
+      age: Math.round(bounded(c.age, 0, 0, 10_000)),
+      year: Math.round(bounded(c.year, 0, -10_000, 100_000)),
+      target: text(c.target, 'Unknown security', 120),
+      symbol: text(c.symbol, '?', 20),
+      secId,
+      cause: causes.includes(c.cause as InsiderCase['cause']) ? c.cause as InsiderCase['cause'] : 'probe',
+      stake: Math.round(bounded(c.stake, 0, 0, 1e15)),
+      via: vias.includes(c.via as InsiderCase['via']) ? c.via as InsiderCase['via'] : 'own',
+      crony: text(c.crony, '', 80),
+      evidence: bounded(c.evidence, .5, 0, 1),
+      status,
+      office: offices.includes(c.office as OfficeId) ? c.office as OfficeId : 'mayor',
+      title: text(c.title, 'Public official', 100),
+      countryId: text(c.countryId, 'us', 16),
+      quiet: Math.round(bounded(c.quiet, 0, 0, 20)),
+      extra,
+      gain: Math.round(bounded(c.gain, 0, 0, 1e15)),
+    })
   }
-  // Keep every live case, and only the last few closed ones.
-  const closed = a.cases.filter((c) => c.status === 'closed')
-  if (closed.length > 8) {
-    const drop = new Set(closed.slice(0, closed.length - 8).map((c) => c.id))
-    a.cases = a.cases.filter((c) => !drop.has(c.id))
-  }
+  const keep = new Set([
+    ...cases.filter((c) => c.status !== 'closed').slice(-256).map((c) => c.id),
+    ...cases.filter((c) => c.status === 'closed').slice(-8).map((c) => c.id),
+  ])
+  a.cases = cases.filter((c) => keep.has(c.id))
+  // Bound hostile save payloads while retaining every plausible lifetime case and recent history.
   return a
 }
 
@@ -2350,8 +2462,11 @@ function scandalsFor(g: GameState): string[] {
 export function yearlyPolitics(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  const p0 = peek<PolProfile>(g, 'politics')
+  const stored = peek<PolProfile>(g, 'politics')
   const job = politicianJob(g)
+  if (!stored && !job) return
+  if (!claimYearly(g, 'politics')) return
+  const p0 = stored ? viewPol(g) : null
   // Former heads of government collect a pension.
   if (p0?.formerLeader && !job && !c.prison) {
     const pension = Math.round((200_000 * Math.max(0.3, getCountry(c.countryId).wealth || 1)) / 100) * 100

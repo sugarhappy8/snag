@@ -6,7 +6,7 @@ import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPe
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Json, MenuAction, MenuGroup, MenuNode, SocialMedia } from '../types'
-import { CELEBS, FAMOUS, addFame, blocked, compact, fameOf, money, peek, prof, say, tell } from './common'
+import { CELEBS, FAMOUS, addFame, blocked, claimYearly, compact, fameOf, money, peek, prof, say, tell } from './common'
 import { eraOpen, type EraGate } from '../computer/era'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
 
@@ -215,23 +215,76 @@ interface SocialProfile {
 }
 
 const MIN_AGE = 13
+const MAX_SOCIAL_COUNT = 1e12
+
+function boundedWhole(value: unknown, fallback = 0, max = MAX_SOCIAL_COUNT): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(max, Math.round(value))) : fallback
+}
+
+function canonicalPlatform(value: unknown): Platform | undefined {
+  if (typeof value !== 'string') return undefined
+  return PLATFORMS.find((p) => p.id === value || p.name === value || LEGACY_NAMES[p.id] === value)
+}
+
+/** Turn untrusted persisted account data into a small, finite record. */
+function normalizedAccount(g: GameState, value: unknown): Account | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const raw = value as Partial<Account>
+  const plat = canonicalPlatform(raw.platform)
+  if (!plat) return null
+  const posts = boundedWhole(raw.posts, 0, 1e9)
+  const celebrities = Array.isArray(raw.celebFollowers)
+    ? [...new Set(raw.celebFollowers.filter((x): x is string => typeof x === 'string').map((x) => x.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80)).filter(Boolean))].slice(0, 128)
+    : []
+  return {
+    platform: plat.id,
+    handle: cleanHandle(typeof raw.handle === 'string' ? raw.handle : undefined, defaultHandle(g, plat.id)),
+    followers: boundedWhole(raw.followers),
+    verified: raw.verified === true,
+    monetized: raw.monetized === true,
+    posts,
+    postsAtLastYear: Math.min(posts, boundedWhole(raw.postsAtLastYear, 0, 1e9)),
+    lastPostAge: typeof raw.lastPostAge === 'number' && Number.isFinite(raw.lastPostAge)
+      ? Math.max(-1, Math.min(10_000, Math.round(raw.lastPostAge)))
+      : -1,
+    suspended: typeof raw.suspended === 'string' && raw.suspended.trim() ? raw.suspended.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 160) : null,
+    spam: boundedWhole(raw.spam, 0, 1e6),
+    trolls: boundedWhole(raw.trolls, 0, 1e6),
+    celebFollowers: celebrities,
+    createdAge: boundedWhole(raw.createdAge, boundedWhole(g.character.age, 0, 10_000), 10_000),
+  }
+}
+
+function normalizedAccounts(g: GameState, value: unknown): Account[] {
+  if (!Array.isArray(value)) return []
+  const out: Account[] = []
+  const seen = new Set<string>()
+  for (const raw of value.slice(0, 128)) {
+    const acct = normalizedAccount(g, raw)
+    if (!acct || seen.has(acct.platform)) continue
+    seen.add(acct.platform)
+    out.push(acct)
+  }
+  return out
+}
 
 // ---------------------------------------------------------------------------
 // Accounts & syncing with character.social
 
 function load(g: GameState): Account[] {
   const p = prof<SocialProfile>(g, 'social', () => ({ accounts: [] }))
+  p.accounts = normalizedAccounts(g, p.accounts)
   const main = g.character.social
   if (main) {
-    const known = p.accounts.find((a) => a.platform === main.platform)
+    const plat = canonicalPlatform(main.platform)
+    const known = plat ? p.accounts.find((a) => a.platform === plat.id) : undefined
     if (known) {
       // Another module may have touched the main account (events, fame): respect it.
-      known.handle = main.handle
-      known.followers = Math.max(0, Math.round(main.followers))
-      known.verified = main.verified
-      known.monetized = main.monetized
+      known.handle = cleanHandle(typeof main.handle === 'string' ? main.handle : undefined, defaultHandle(g, known.platform))
+      known.followers = boundedWhole(main.followers)
+      known.verified = main.verified === true
+      known.monetized = main.monetized === true
     } else {
-      const plat = PLATFORMS.find((x) => x.id === main.platform || x.name === main.platform || LEGACY_NAMES[x.id] === main.platform)
       if (plat && !p.accounts.some((a) => a.platform === plat.id)) p.accounts.push(newAccount(g, plat.id, main.handle, main.followers, main.verified, main.monetized))
     }
   }
@@ -240,7 +293,8 @@ function load(g: GameState): Account[] {
 
 function sync(g: GameState): void {
   const p = peek<SocialProfile>(g, 'social')
-  const list = p?.accounts ?? []
+  const list = normalizedAccounts(g, p?.accounts)
+  if (p) p.accounts = list
   if (list.length === 0) {
     g.character.social = null
     return
@@ -252,10 +306,10 @@ function sync(g: GameState): void {
 function newAccount(g: GameState, platform: string, handle: string, followers = 0, verified = false, monetized = false): Account {
   return {
     platform,
-    handle,
-    followers: Math.max(0, Math.round(followers)),
-    verified,
-    monetized,
+    handle: cleanHandle(typeof handle === 'string' ? handle : undefined, defaultHandle(g, platform)),
+    followers: boundedWhole(followers),
+    verified: verified === true,
+    monetized: monetized === true,
     posts: 0,
     postsAtLastYear: 0,
     lastPostAge: -1,
@@ -269,7 +323,7 @@ function newAccount(g: GameState, platform: string, handle: string, followers = 
 
 /** Read-only account lookup for menus. */
 function viewAccount(g: GameState, platform: string): Account | undefined {
-  const fromProfile = peek<SocialProfile>(g, 'social')?.accounts.find((a) => a.platform === platform)
+  const fromProfile = normalizedAccounts(g, peek<SocialProfile>(g, 'social')?.accounts).find((a) => a.platform === platform)
   if (fromProfile) return fromProfile
   const main = g.character.social
   if (main && main.platform === platform) return { ...newAccount(g, platform, main.handle, main.followers, main.verified, main.monetized) }
@@ -282,9 +336,9 @@ function account(g: GameState, platform: string): Account | undefined {
 
 /** Total followers across every platform (read-only). */
 export function totalFollowers(g: GameState): number {
-  const list = peek<SocialProfile>(g, 'social')?.accounts
-  if (list && list.length) return list.reduce((s, a) => s + a.followers, 0)
-  return g.character.social?.followers ?? 0
+  const list = normalizedAccounts(g, peek<SocialProfile>(g, 'social')?.accounts)
+  if (list.length) return list.reduce((sum, account) => Math.min(MAX_SOCIAL_COUNT, sum + account.followers), 0)
+  return boundedWhole(g.character.social?.followers)
 }
 
 function defaultHandle(g: GameState, platform: string): string {
@@ -1057,6 +1111,7 @@ export function yearlySocial(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   if (!c.social && !peek<SocialProfile>(g, 'social')) return
+  if (!claimYearly(g, 'social')) return
   const list = load(g)
   const f = fameOf(g)
   let hacked = false

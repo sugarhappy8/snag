@@ -20,6 +20,13 @@
   --pink: #e2557f;
   --teal: #12a4b5;
 
+  /* Filled controls use darker variants so white labels meet WCAG AA at normal text sizes. */
+  --action-blue: #185fad;
+  --action-green: #177638;
+  --action-red: #c5302b;
+  --action-purple: #7840bd;
+  --action-pink: #b83280;
+
   --bg: #eef2f7;
   --page-bg: #d9e1ec;
   --card: #ffffff;
@@ -75,6 +82,11 @@
     --green-dark: #24984a;
     --red: #f0544c;
     --red-dark: #c13a33;
+    --action-blue: #2667be;
+    --action-green: #177638;
+    --action-red: #b72d27;
+    --action-purple: #6b3fc4;
+    --action-pink: #b83280;
 
     --bg: #0f1318;
     --page-bg: #070a0e;
@@ -316,22 +328,22 @@ label {
 }
 
 .btn-primary {
-  background: var(--blue);
-  border-color: var(--blue);
+  background: var(--action-blue);
+  border-color: var(--action-blue);
   color: #fff;
   box-shadow: 0 3px 0 var(--blue-dark);
 }
 
 .btn-success {
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--action-green);
+  border-color: var(--action-green);
   color: #fff;
   box-shadow: 0 3px 0 var(--green-dark);
 }
 
 .btn-danger {
-  background: var(--red);
-  border-color: var(--red);
+  background: var(--action-red);
+  border-color: var(--action-red);
   color: #fff;
   box-shadow: 0 3px 0 var(--red-dark);
 }
@@ -420,7 +432,7 @@ label {
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--red);
+  background: var(--action-red);
   color: #fff;
   font-size: 11px;
   font-weight: 800;
@@ -495,7 +507,7 @@ label {
   justify-content: center;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.18);
   color: #fff;
   font-size: 20px;
   font-weight: 700;
@@ -506,7 +518,7 @@ label {
 }
 
 .sheet-nav:hover {
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(0, 0, 0, 0.28);
 }
 
 .sheet-nav:active {
@@ -720,7 +732,7 @@ label {
   justify-content: center;
   border: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.18);
   font-size: 16px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -734,7 +746,7 @@ label {
 }
 
 .hdr-icon:hover {
-  background: rgba(255, 255, 255, 0.26);
+  background: rgba(0, 0, 0, 0.28);
 }
 
 .hdr-main {
@@ -1013,7 +1025,7 @@ label {
   margin-top: -30px;
   border: 5px solid var(--card);
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #5be08a, var(--green) 55%, var(--green-dark));
+  background: radial-gradient(circle at 35% 30%, #238447, var(--action-green) 55%, #105c2a);
   color: #fff;
   cursor: pointer;
   box-shadow: 0 6px 16px rgba(20, 140, 60, 0.38), 0 4px 0 var(--green-dark);
@@ -1022,7 +1034,7 @@ label {
 }
 
 .bb-age:hover:not(:disabled) {
-  filter: brightness(1.05);
+  filter: saturate(1.08);
 }
 
 .bb-age:active:not(:disabled) {
@@ -1070,7 +1082,7 @@ label {
   width: max-content;
   max-width: calc(100% - 32px);
   border-radius: 999px;
-  background: var(--blue);
+  background: var(--action-blue);
   color: #fff;
   box-shadow: 0 6px 18px rgba(16, 60, 130, 0.32), 0 2px 0 var(--blue-dark);
   animation: return-chip-in 0.28s cubic-bezier(0.2, 0.9, 0.25, 1.2) both;
@@ -1140,13 +1152,13 @@ label {
 
 .return-chip-go:hover,
 .return-chip-x:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.12);
   opacity: 1;
 }
 
 .return-chip-go:active,
 .return-chip-x:active {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .return-chip button:focus-visible {

@@ -120,6 +120,13 @@ describe('will menu', () => {
     expect(JSON.stringify(g)).toBe(before)
   })
 
+  it('ignores a malformed charity slider value without corrupting the saved will', () => {
+    const { g } = setup()
+    act(g, 'will.charity', 'not-a-number')
+    expect(readWill(g).charity).toBe(0)
+    expect(g.queue).toHaveLength(0)
+  })
+
   it('keeps the old rows and phrases: sole heir, divide evenly, spouse and children', () => {
     const { g, spouse, a, b } = setup()
     expect(menu.header!(g)).toMatch(/divided evenly among your 2 children/)

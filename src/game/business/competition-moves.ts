@@ -175,13 +175,13 @@ export function raidValue(g: GameState, b: BizState): number {
 export function talentRaid(g: GameState, a: Asset, b: BizState): void {
   const top = marketViewOf(g, b).rivals[0]
   if (!top) return
-  if (!useYearAction(g, `biz.mkt.raid.${a.id}`, 1)) {
-    notice(g, 'Not Again This Year', `Your recruiters already approached ${top.name}'s people once this year. Give it a rest.`, { emoji: '\u{23F3}' })
-    return
-  }
   const cost = raidCost(b)
   if (b.cash < cost) {
     notice(g, 'Not Enough Company Cash', `Poaching a team costs about ${formatMoney(cost)} in signing bonuses. ${a.name} doesn't have it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
+  if (!useYearAction(g, `biz.mkt.raid.${a.id}`, 1)) {
+    notice(g, 'Not Again This Year', `Your recruiters already approached ${top.name}'s people once this year. Give it a rest.`, { emoji: '\u{23F3}' })
     return
   }
   b.cash -= cost
@@ -213,13 +213,13 @@ export function lobbyOdds(g: GameState, b: BizState): number {
 }
 
 export function lobby(g: GameState, a: Asset, b: BizState): void {
-  if (!useYearAction(g, `biz.mkt.lobby.${a.id}`, 1)) {
-    notice(g, 'Not Again This Year', 'Your lobbyists have already bought every regulator lunch they could this year.', { emoji: '\u{23F3}' })
-    return
-  }
   const cost = lobbyCost(b)
   if (b.cash < cost) {
     notice(g, 'Not Enough Company Cash', `A proper lobbying push costs about ${formatMoney(cost)}.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    return
+  }
+  if (!useYearAction(g, `biz.mkt.lobby.${a.id}`, 1)) {
+    notice(g, 'Not Again This Year', 'Your lobbyists have already bought every regulator lunch they could this year.', { emoji: '\u{23F3}' })
     return
   }
   b.cash -= cost

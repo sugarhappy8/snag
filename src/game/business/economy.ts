@@ -11,7 +11,7 @@
 import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
-import { corporateTax, exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
+import { exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
 import { historicalCycle } from '../history/markets'
 import { businessFloor } from '../mastery'
 import { bell, chance, rand } from '../rng'
@@ -31,6 +31,7 @@ import { marketDef } from './competition-data'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
 import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
+import { allocatedCorporateTax } from './tax'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -672,21 +673,9 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   // The owner's salary is paid if the company can cover it.
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + alreadyBooked)))
   const pbt = pbt0 - ownerPay
-  // Concrete invention sales were already cash-booked through yearIncome. They
-  // still belong in the home nation's share of the corporate taxable profit.
-  const bookedByCountry = typeof bookedHomeSales === 'number' ? { [b.countryId]: bookedHomeSales } : bookedHomeSales
-  for (const [country, sales] of Object.entries(bookedByCountry)) {
-    if (Number.isFinite(sales) && sales > 0) netByCountry[country] = (netByCountry[country] ?? 0) + sales
-  }
-  let corpTax = 0
-  if (pbt > 0) {
-    const totalNet = Object.values(netByCountry).reduce((s, v) => s + Math.max(0, v), 0)
-    for (const [cid, v] of Object.entries(netByCountry)) {
-      const part = totalNet > 0 ? Math.max(0, v) / totalNet : 1 / Object.keys(netByCountry).length
-      corpTax += corporateTax(cid, pbt * part)
-    }
-    if (Object.keys(netByCountry).length === 0) corpTax = corporateTax(b.countryId, pbt)
-  }
+  // Concrete invention sales were already cash-booked through yearIncome. Attributed contracts
+  // follow their market; any other one-off income remains taxable at headquarters.
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, netByCountry, b.yearIncome, bookedHomeSales)
   const net = pbt - corpTax
   let cash = dollars(b.cash + net + alreadyBooked)
 
@@ -738,7 +727,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
  * evolve()). `ownerDraw` is the salary the owner wants this year (0 when not CEO).
  */
 export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
-  if (isFinanceFirm(b)) return simulateFinanceYear(g, b, year, ownerDraw)
+  if (isFinanceFirm(b)) return simulateFinanceYear(g, b, year, ownerDraw, bookedHomeSales)
   const noise = fixedNoise ?? clampN(1 + bell(g, -80, 80) / 1000, 0.9, 1.1)
   const plan = planFor(g, b, year, { noise })
   const k = bookYear(g, b, year, plan, b.production, ownerDraw, yearFixed(g, b), undefined, bookedHomeSales)

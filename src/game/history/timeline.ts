@@ -30,7 +30,13 @@ const CPI: readonly [number, number][] = [
 /** Assumed yearly inflation after PRESENT_YEAR (the future). */
 export const FUTURE_INFLATION = 0.025
 
+/** Keep malformed save years finite without letting exponential future CPI overflow. */
+function calendarYear(year: number): number {
+  return Number.isFinite(year) ? Math.max(-10_000, Math.min(10_000, year)) : PRESENT_YEAR
+}
+
 function cpi(year: number): number {
+  year = calendarYear(year)
   const first = CPI[0]
   const last = CPI[CPI.length - 1]
   if (year <= first[0]) return first[1]
@@ -142,6 +148,8 @@ function laggard(countryId: string): number {
  */
 export function techAdoption(countryId: string, tech: TechId, year: number): number {
   const d = TECH[tech]
+  if (!d) return 0
+  year = calendarYear(year)
   const lag = laggard(countryId) * d.poorLag
   const start = d.invented + lag * 0.5
   if (year < start) return 0
@@ -189,6 +197,7 @@ export const ERAS: readonly EraDef[] = [
 ]
 
 export function eraOf(year: number): EraDef {
+  year = calendarYear(year)
   let e = ERAS[0]
   for (const x of ERAS) if (year >= x.from) e = x
   return e
@@ -196,5 +205,5 @@ export function eraOf(year: number): EraDef {
 
 /** True for years before PRESENT_YEAR (real history), false for the present and the future. */
 export function isHistorical(year: number): boolean {
-  return year < PRESENT_YEAR
+  return calendarYear(year) < PRESENT_YEAR
 }

@@ -12,6 +12,7 @@ import {
   addFame,
   blocked,
   clamp100,
+  claimYearly,
   cleanName,
   compact,
   fameOf,
@@ -134,12 +135,55 @@ interface MusicJob {
 
 const initMusic = (): MusicProfile => ({ stageName: null, discography: [], burnedLabels: [], awards: [], tours: 0, concerts: 0 })
 
+function musicNumber(value: unknown, fallback = 0, lo = 0, hi = 1e12): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, Math.round(value))) : fallback
+}
+
+function musicText(value: unknown, fallback: string, max = 100): string {
+  return typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, max) || fallback : fallback
+}
+
+function normalizedMusic(value: unknown): MusicProfile {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return initMusic()
+  const raw = value as Partial<MusicProfile>
+  const discography: Release[] = []
+  if (Array.isArray(raw.discography)) for (const value of raw.discography.slice(-512)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+    const release = value as Partial<Release>
+    discography.push({
+      title: musicText(release.title, 'Untitled'),
+      type: musicText(release.type, 'Studio Album', 40),
+      genre: musicText(release.genre, 'Pop', 40),
+      subgenre: musicText(release.subgenre, 'Pop', 60),
+      age: musicNumber(release.age, 0, 0, 10_000),
+      sold: musicNumber(release.sold),
+      earned: musicNumber(release.earned),
+      cert: typeof release.cert === 'string' ? musicText(release.cert, '', 40) || null : null,
+      quality: musicNumber(release.quality, 0, 0, 100),
+      royalty: musicNumber(release.royalty),
+    })
+  }
+  const strings = (input: unknown): string[] => Array.isArray(input)
+    ? [...new Set(input.filter((x): x is string => typeof x === 'string').map((x) => musicText(x, '', 120)).filter(Boolean))].slice(-256)
+    : []
+  return {
+    stageName: typeof raw.stageName === 'string' ? musicText(raw.stageName, '', 80) || null : null,
+    discography,
+    burnedLabels: strings(raw.burnedLabels),
+    awards: strings(raw.awards),
+    tours: musicNumber(raw.tours, 0, 0, 1e9),
+    concerts: musicNumber(raw.concerts, 0, 0, 1e9),
+  }
+}
+
 function musicProfile(g: GameState): MusicProfile {
-  return prof(g, 'music', initMusic)
+  const p = prof(g, 'music', initMusic)
+  Object.assign(p, normalizedMusic(p))
+  return p
 }
 
 function viewMusic(g: GameState): MusicProfile {
-  return peek<MusicProfile>(g, 'music') ?? initMusic()
+  return normalizedMusic(peek<MusicProfile>(g, 'music'))
 }
 
 export function musicJob(g: GameState): Job | null {
@@ -147,6 +191,22 @@ export function musicJob(g: GameState): Job | null {
 }
 
 function md(job: Job): MusicJob {
+  const raw = view<Partial<MusicJob>>(job.data)
+  const normalized: MusicJob = {
+    mode: raw.mode === 'band' ? 'band' : 'solo',
+    instrument: musicText(raw.instrument, 'Voice', 40),
+    genre: typeof raw.genre === 'string' && GENRES[raw.genre] ? raw.genre : 'Pop',
+    label: typeof raw.label === 'string' ? musicText(raw.label, '', 80) || null : null,
+    contractYears: musicNumber(raw.contractYears, 0, 0, 100),
+    advancePerYear: musicNumber(raw.advancePerYear),
+    popularity: musicNumber(raw.popularity, 0, 0, 100),
+    bandName: typeof raw.bandName === 'string' ? musicText(raw.bandName, '', 80) || null : null,
+    bandmates: Array.isArray(raw.bandmates) ? [...new Set(raw.bandmates.filter((x): x is string => typeof x === 'string').map((x) => musicText(x, '', 120)).filter(Boolean))].slice(0, 100) : [],
+    members: musicNumber(raw.members, 1, 1, 100),
+    recordedAge: musicNumber(raw.recordedAge, -1, -1, 10_000),
+    lastRelease: musicNumber(raw.lastRelease, -1, -1, 10_000),
+  }
+  Object.assign(job.data, normalized)
   return view<MusicJob>(job.data)
 }
 
@@ -948,7 +1008,11 @@ const contractRenewScript = defineScript('special.music.renew', (g, choice, data
 export function yearlyMusic(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  const p = peek<MusicProfile>(g, 'music')
+  const stored = peek<MusicProfile>(g, 'music')
+  const job = musicJob(g)
+  if (!stored && !job) return
+  if (!claimYearly(g, 'music')) return
+  const p = stored ? musicProfile(g) : null
   if (p) {
     let royalties = 0
     for (const r of p.discography) {
@@ -962,7 +1026,6 @@ export function yearlyMusic(g: GameState): void {
       log(g, `My records earned ${money(royalties)} in royalties.`)
     }
   }
-  const job = musicJob(g)
   if (!job || c.prison) return
   syncTenure(g, job)
   const d = md(job)

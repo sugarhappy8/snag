@@ -99,7 +99,10 @@ describe('owned entertainment venues', () => {
     expect(readBiz(x.g, x.a).cash).toBe(2_000_000)
     expect(venueView(x.a).policy).toBe('welcoming')
     x.g.character.age = 30
-    answer(x, 'listen', event)
+    // The rejected popup itself is one-shot. Reopening Owner Conversations presents the still
+    // pending request with a fresh modal id, which can now be answered in a valid state.
+    visitVenue(x.g, x.a.id, 'guest')
+    answer(x, 'listen')
     expect(venueView(x.a).hospitality).toBeGreaterThan(hospitality)
   })
 
@@ -129,7 +132,8 @@ describe('owned entertainment venues', () => {
     answer(x, 'invest', event)
     expect(readBiz(x.g, x.a).cash).toBe(1)
     expect(venueView(x.a).pending).not.toBeNull()
-    answer(x, 'delegate', event)
+    visitVenue(x.g, x.a.id, 'staff')
+    answer(x, 'delegate')
     expect(venueView(x.a).pending).toBeNull()
   })
 

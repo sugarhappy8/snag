@@ -29,6 +29,17 @@ export const MAX_INVENTION_OUTPUT = 1e9
 const MAX_UPGRADES = 20
 const rec = (value: Json): Record<string, Json> => value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 const num = (value: Json | undefined, fallback = 0, max = 1e15): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback
+function readProtections(value: Json | undefined): PatentProtection[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>(), out: PatentProtection[] = []
+  for (let i = value.length - 1; i >= 0; i--) {
+    const row = rec(value[i]), country = typeof row.country === 'string' ? row.country : ''
+    const filed = Math.round(num(row.filed)), expires = Math.round(num(row.expires))
+    if (!country || seen.has(country) || expires <= filed) continue
+    seen.add(country); out.push({ country, filed, expires })
+  }
+  return out.reverse()
+}
 function affordableUnits(limit: number, cash: number, unitCost: number, wage: number, rate: number): number {
   const ceiling = Math.max(0, Math.floor(Math.min(limit, cash / Math.max(.01, unitCost + wage / rate))))
   const charge = (units: number) => Math.round(units * unitCost) + Math.round(units / rate * wage)
@@ -46,15 +57,18 @@ function affordableUnits(limit: number, cash: number, unitCost: number, wage: nu
 
 export function inventionProductsOf(b: BizState): InventionProduct[] {
   const ids = new Set<string>()
-  return (Array.isArray(b.inventionProducts) ? b.inventionProducts : []).map(rec).filter(d => {
-    if (typeof d.id !== 'string' || !d.id || ids.has(d.id) || typeof d.name !== 'string' || !isInventionField(d.field) || !isResearchKind(d.kind) || !isInventionTier(d.kind)) return false
-    ids.add(d.id)
-    return true
-  }).map(d => ({
-    id: String(d.id), ipId: typeof d.ipId === 'string' ? d.ipId : String(d.id), name: String(d.name), field: d.field as InventionField, kind: d.kind as InventionTier,
-    price: num(d.price, PRODUCT_SPECS[d.kind as InventionTier].price, MAX_INVENTION_PRICE), unitCost: num(d.unitCost, PRODUCT_SPECS[d.kind as InventionTier].cost, 1e9), potential: num(d.potential, 0, MAX_INVENTION_OUTPUT), production: Math.floor(num(d.production, 100, MAX_INVENTION_OUTPUT)), inventory: Math.floor(num(d.inventory, 0, MAX_INVENTION_OUTPUT)), rights: d.rights === 'license' ? 'license' : 'owned', royalty: num(d.royalty, 0, .5), expires: num(d.expires),
-    protections: Array.isArray(d.protections) ? d.protections.map(rec).filter(row => typeof row.country === 'string').map(row => ({ country: String(row.country), filed: num(row.filed), expires: num(row.expires) })) : (expansionOf(b).patents.find(p => p.id === d.id)?.protections ?? []).map(row => ({ ...row })),
-    started: num(d.started), lastYear: typeof d.lastYear === 'number' && Number.isFinite(d.lastYear) ? d.lastYear : -1, sold: num(d.sold), revenue: num(d.revenue), costs: num(d.costs),
+  const rows: Record<string, Json>[] = []
+  const raw = Array.isArray(b.inventionProducts) ? b.inventionProducts : []
+  for (let i = 0; i < raw.length && rows.length < 400; i++) {
+    const d = rec(raw[i])
+    if (typeof d.id !== 'string' || !d.id || ids.has(d.id) || typeof d.name !== 'string' || !d.name.trim() || !isInventionField(d.field) || !isResearchKind(d.kind) || !isInventionTier(d.kind)) continue
+    ids.add(d.id); rows.push(d)
+  }
+  return rows.map(d => ({
+    id: String(d.id), ipId: typeof d.ipId === 'string' && d.ipId ? d.ipId : String(d.id), name: String(d.name).trim().slice(0, 120), field: d.field as InventionField, kind: d.kind as InventionTier,
+    price: num(d.price, PRODUCT_SPECS[d.kind as InventionTier].price, MAX_INVENTION_PRICE), unitCost: num(d.unitCost, PRODUCT_SPECS[d.kind as InventionTier].cost, 1e9), potential: num(d.potential, 0, MAX_INVENTION_OUTPUT), production: Math.floor(num(d.production, 100, MAX_INVENTION_OUTPUT)), inventory: Math.floor(num(d.inventory, 0, MAX_INVENTION_OUTPUT)), rights: d.rights === 'license' ? 'license' : 'owned', royalty: num(d.royalty, 0, .5), expires: Math.round(num(d.expires)),
+    protections: Array.isArray(d.protections) ? readProtections(d.protections) : (expansionOf(b).patents.find(p => p.id === d.id)?.protections ?? []).map(row => ({ ...row })),
+    started: Math.round(num(d.started)), lastYear: typeof d.lastYear === 'number' && Number.isFinite(d.lastYear) ? Math.round(d.lastYear) : -1, sold: num(d.sold), revenue: num(d.revenue), costs: num(d.costs),
     // Rows predating fabs retain only the old 100-unit starter operation. A new
     // product carries explicit zero capacity and must pay to build a factory.
     fabCapacity: Math.floor(num(d.fabCapacity, Object.hasOwn(d, 'fabCapacity') ? 0 : 100, MAX_INVENTION_OUTPUT)),

@@ -134,12 +134,13 @@ function readManager(v: Json | undefined): Manager | null {
     gender: d.gender === 'female' ? 'female' : 'male',
     skill: Math.round(clampN(num(d.skill, 60), 1, 100)),
     salary: Math.max(0, Math.round(num(d.salary))),
-    since: num(d.since),
+    since: Math.round(num(d.since)),
     ...(typeof d.equity === 'number' ? { equity: clampN(num(d.equity), 0, .5) } : {}),
-    ...(typeof d.equityAsked === 'number' ? { equityAsked: num(d.equityAsked) } : {}),
+    ...(typeof d.equityAsked === 'number' ? { equityAsked: Math.round(num(d.equityAsked)) } : {}),
     ...(style ? { style } : {}),
     integrity: Math.round(clampN(num(d.integrity, 70), 0, 100)),
     ...(num(d.bonus) > 0 ? { bonus: Math.round(num(d.bonus)) } : {}),
+    ...(typeof d.asked === 'number' ? { asked: Math.round(num(d.asked)) } : {}),
     ...(str(d.personId) ? { personId: str(d.personId) } : {}),
   }
 }
@@ -150,20 +151,33 @@ function readListing(v: Json | undefined): GroupListing | null {
   const sharesOut = Math.round(num(d.sharesOut))
   const sharePrice = num(d.sharePrice)
   if (!(sharesOut > 0) || !(sharePrice > 0)) return null
-  return { exchange: str(d.exchange, 'NYSE'), ipoYear: num(d.ipoYear), sharesOut, sharePrice: round2(clampN(sharePrice, 0.01, 1e7)) }
+  return { exchange: str(d.exchange, 'NYSE'), ipoYear: Math.round(num(d.ipoYear)), sharesOut, sharePrice: round2(clampN(sharePrice, 0.01, 1e7)) }
 }
 
 function readYear(v: Json): GroupYear | null {
   const d = rec(v)
-  if (!d || typeof d.year !== 'number') return null
-  return { year: d.year, revenue: num(d.revenue), profit: num(d.profit), value: Math.max(0, num(d.value)), divisions: Math.max(0, Math.round(num(d.divisions))) }
+  if (!d || typeof d.year !== 'number' || !Number.isFinite(d.year)) return null
+  return { year: Math.round(d.year), revenue: num(d.revenue), profit: num(d.profit), value: Math.max(0, num(d.value)), divisions: Math.max(0, Math.round(num(d.divisions))) }
 }
 
 function readSynergy(v: Json | undefined): GroupSynergy | null {
   const d = rec(v)
-  if (!d || typeof d.year !== 'number') return null
+  if (!d || typeof d.year !== 'number' || !Number.isFinite(d.year)) return null
   const p = (k: string) => Math.max(0, Math.round(num(d[k])))
-  return { year: d.year, backOffice: p('backOffice'), crossSell: p('crossSell'), purchasing: p('purchasing'), complexity: p('complexity'), integration: p('integration'), hq: p('hq') }
+  return { year: Math.round(d.year), backOffice: p('backOffice'), crossSell: p('crossSell'), purchasing: p('purchasing'), complexity: p('complexity'), integration: p('integration'), hq: p('hq') }
+}
+
+function historyOf(v: Json | undefined): GroupYear[] {
+  if (!Array.isArray(v)) return []
+  const seen = new Set<number>()
+  const out: GroupYear[] = []
+  for (let i = v.length - 1; i >= 0 && out.length < GROUP_HISTORY; i--) {
+    const row = readYear(v[i])
+    if (!row || seen.has(row.year)) continue
+    seen.add(row.year)
+    out.push(row)
+  }
+  return out.reverse()
 }
 
 /**
@@ -183,7 +197,7 @@ export function readCore(v: Json | undefined, fallbackId = '', fallbackShare = 1
     id,
     name: str(d.name, 'The Group').slice(0, 48) || 'The Group',
     rev: Math.max(0, Math.round(num(d.rev))),
-    founded: num(d.founded),
+    founded: Math.round(num(d.founded)),
     share: clampN(num(d.share, fallbackShare), 0.001, 1),
     mult: clampN(num(d.mult, 1), 0.3, 3),
     discount: clampN(num(d.discount), 0, 0.25),
@@ -192,16 +206,16 @@ export function readCore(v: Json | undefined, fallbackId = '', fallbackShare = 1
     mandate: MANDATES.find((m) => m === d.mandate) ?? null,
     ...(rec(d.board) ? { board: d.board } : {}),
     listing: readListing(d.listing),
-    delisted: num(d.delisted),
-    history: Array.isArray(d.history) ? d.history.map(readYear).filter((x): x is GroupYear => x !== null).slice(-GROUP_HISTORY) : [],
+    delisted: Math.round(num(d.delisted)),
+    history: historyOf(d.history),
     synergy: readSynergy(d.synergy),
-    memo: Array.isArray(d.memo) ? d.memo.filter((x): x is string => typeof x === 'string').slice(0, 100) : [],
-    letter: num(d.letter),
+    memo: Array.isArray(d.memo) ? d.memo.filter((x): x is string => typeof x === 'string').slice(-100) : [],
+    letter: Math.round(num(d.letter)),
     misses: Math.max(0, Math.round(num(d.misses))),
     ipoHint: d.ipoHint === true,
     autonomous: d.autonomous !== false,
     autoEquity: d.autoEquity !== false,
-    managementYear: num(d.managementYear, -1),
+    managementYear: Math.round(num(d.managementYear, -1)),
     familyPay: Math.max(0, num(d.familyPay)),
   }
 }
@@ -221,10 +235,10 @@ export function readMembership(v: Json | undefined, memberShare?: number): Membe
   const fx = rec(d.fx)
   return {
     id,
-    joined: num(d.joined),
+    joined: Math.round(num(d.joined)),
     own,
-    integrated: num(d.integrated),
-    fx: fx && typeof fx.year === 'number' ? { year: fx.year, demand: clampN(num(fx.demand), 0, 0.2), cost: clampN(num(fx.cost), 0, 0.2) } : null,
+    integrated: Math.round(num(d.integrated)),
+    fx: fx && typeof fx.year === 'number' && Number.isFinite(fx.year) ? { year: Math.round(fx.year), demand: clampN(num(fx.demand), 0, 0.2), cost: clampN(num(fx.cost), 0, 0.2) } : null,
     core,
   }
 }

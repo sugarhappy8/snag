@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest'
 import { marketViewOf } from '../src/game/business/competition'
 import { concentrationOf, leaderboard, regionsOf, segmentsOf, countryDetail, profileOf, historyOf, spark, bar } from '../src/game/business/market-view'
-import { regionalShares } from '../src/game/business/market-regional'
+import { homeBias, regionalShares } from '../src/game/business/market-regional'
+import { placeContinent } from '../src/game/business/market-places'
 import { scenarioRows } from '../src/game/business/market-menu'
 import { demandWeights } from '../src/game/business/market-reach'
 import { readBiz } from '../src/game/business/state'
@@ -72,6 +73,12 @@ describe('market screen: purity and shape', () => {
 })
 
 describe('market screen: the numbers behind the sections', () => {
+  it('gives off-map rival headquarters their real region instead of the world fallback country', () => {
+    expect(placeContinent('lu')).toBe('Europe')
+    expect(placeContinent('la')).toBe('Asia')
+    expect(homeBias('lu', 'fr', 'software', 1950, false)).toBeGreaterThan(homeBias('lu', 'jp', 'software', 1950, false))
+  })
+
   it('computes concentration, a leaderboard with the player slotted in, segments and history', () => {
     const { g, a } = setup('software')
     const b = readBiz(g, a)

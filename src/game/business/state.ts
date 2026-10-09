@@ -5,6 +5,7 @@ import type { Industry } from '../data/markets'
 import { getCountry } from '../world'
 import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
+import { sameRole } from './era'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, str } from './util'
 
@@ -286,7 +287,7 @@ export interface BizState {
   family?: Json
 }
 
-export const BIZ_VERSION = 1
+export const BIZ_VERSION = 2
 
 export function isBusinessAsset(a: Asset): boolean {
   return a.kind === 'business' && isIndustry(a.details.industry)
@@ -316,14 +317,14 @@ function readStaff(x: Record<string, Json>): KeyStaff | null {
     firstName: str(x.firstName, 'Alex'),
     lastName: str(x.lastName, 'Smith'),
     gender: x.gender === 'female' ? 'female' : 'male',
-    age: clampN(num(x.age, 35), 18, 90),
+    age: Math.round(clampN(num(x.age, 35), 18, 90)),
     role,
     focus: focus === 'quality' || focus === 'sales' || focus === 'finance' || focus === 'ops' ? focus : 'ops',
     skill: clampN(num(x.skill, 50), 0, 100),
     salary: Math.max(0, num(x.salary)),
     trait: str(x.trait, 'steady'),
     morale: clampN(num(x.morale, 60), 0, 100),
-    years: Math.max(0, num(x.years)),
+    years: Math.max(0, Math.round(num(x.years))),
   }
 }
 
@@ -332,13 +333,13 @@ function readOutlet(x: Record<string, Json>): Outlet | null {
   const city = str(x.city)
   const count = Math.round(num(x.count, 1))
   if (!countryId || !city || count <= 0) return null
-  return { countryId, city, count, opened: num(x.opened) }
+  return { countryId, city, count, opened: Math.round(num(x.opened)) }
 }
 
 function readProduct(x: Record<string, Json>): Product | null {
   const name = str(x.name)
   if (!name) return null
-  return { name, launched: num(x.launched), boost: clampN(num(x.boost, 0.05), 0, 0.5) }
+  return { name, launched: Math.round(num(x.launched)), boost: clampN(num(x.boost, 0.05), 0, 0.5) }
 }
 
 function readProject(x: Record<string, Json>): RdProject | null {
@@ -353,7 +354,7 @@ function readProject(x: Record<string, Json>): RdProject | null {
     progress: clampN(num(x.progress), 0, years),
     odds: clampN(num(x.odds, 0.5), 0.02, 0.98),
     boost: clampN(num(x.boost, 0.05), 0, 0.5),
-    started: num(x.started),
+    started: Math.round(num(x.started)),
   }
 }
 
@@ -363,9 +364,9 @@ export function readProjects(v: Json | undefined): RdProject[] {
 }
 
 function readRecord(x: Record<string, Json>): YearRecord | null {
-  if (typeof x.year !== 'number') return null
+  if (typeof x.year !== 'number' || !Number.isFinite(x.year)) return null
   return {
-    year: x.year,
+    year: Math.round(x.year),
     revenue: num(x.revenue),
     profit: num(x.profit),
     tax: num(x.tax),
@@ -383,9 +384,10 @@ const STATEMENT_KEYS: (keyof Statement)[] = [
 ]
 
 function readStatement(v: Json | undefined): Statement | null {
-  if (!v || typeof v !== 'object' || Array.isArray(v) || typeof v.year !== 'number') return null
+  if (!v || typeof v !== 'object' || Array.isArray(v) || typeof v.year !== 'number' || !Number.isFinite(v.year)) return null
   const out = {} as Record<keyof Statement, number>
   for (const k of STATEMENT_KEYS) out[k] = num(v[k])
+  out.year = Math.round(out.year)
   return out as Statement
 }
 
@@ -398,14 +400,14 @@ function readManager(v: Json | undefined): Manager | null {
     gender: v.gender === 'female' ? 'female' : 'male',
     skill: clampN(num(v.skill, 55), 0, 100),
     salary: Math.max(0, num(v.salary)),
-    since: num(v.since),
+    since: Math.round(num(v.since)),
     ...(typeof v.equity === 'number' ? { equity: clampN(num(v.equity), 0, .5) } : {}),
     ...(v.groupEquity && typeof v.groupEquity === 'object' && !Array.isArray(v.groupEquity) && str(v.groupEquity.id) ? { groupEquity: { id: str(v.groupEquity.id), share: clampN(num(v.groupEquity.share), 0, .5), credit: clampN(num(v.groupEquity.credit), 0, .5) } } : {}),
-    ...(typeof v.equityAsked === 'number' ? { equityAsked: num(v.equityAsked) } : {}),
+    ...(typeof v.equityAsked === 'number' ? { equityAsked: Math.round(num(v.equityAsked)) } : {}),
     ...(style ? { style } : {}),
     ...(typeof v.integrity === 'number' ? { integrity: clampN(num(v.integrity, 70), 0, 100) } : {}),
     ...(num(v.bonus) > 0 ? { bonus: Math.round(num(v.bonus)) } : {}),
-    ...(typeof v.asked === 'number' ? { asked: num(v.asked) } : {}),
+    ...(typeof v.asked === 'number' ? { asked: Math.round(num(v.asked)) } : {}),
     ...(str(v.personId) ? { personId: str(v.personId) } : {}),
   }
 }
@@ -417,15 +419,47 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   const countryId = str(d.countryId, 'us')
   const country = getCountry(countryId)
   const city = str(d.city, country.cities[0] ?? 'the capital')
-  let outlets = arr(d.outlets, readOutlet)
-  if (outlets.length === 0) outlets = [{ countryId, city, count: 1, opened: num(d.founded, fallbackYear) }]
+  const outletMap = new Map<string, Outlet>()
+  for (const outlet of arr(d.outlets, readOutlet)) {
+    const key = `${outlet.countryId}\u0000${outlet.city}`
+    const old = outletMap.get(key)
+    if (old) {
+      old.count = Math.min(1_000_000_000, old.count + outlet.count)
+      old.opened = Math.min(old.opened, outlet.opened)
+    } else outletMap.set(key, outlet)
+  }
+  let outlets = [...outletMap.values()]
+  if (outlets.length === 0) outlets = [{ countryId, city, count: 1, opened: Math.round(num(d.founded, fallbackYear)) }]
+  const staffIds = new Set<string>(), staffRoles = new Set<string>()
+  const staff = arr(d.staff, readStaff).filter((person) => {
+    const role = def.roles.find((r) => sameRole(person.role, r.title))?.title ?? person.role
+    if (staffIds.has(person.id) || staffRoles.has(role)) return false
+    staffIds.add(person.id); staffRoles.add(role)
+    return true
+  })
+  const productNames = new Set<string>()
+  const products = arr(d.products, readProduct).filter((product) => !productNames.has(product.name) && !!productNames.add(product.name)).slice(-MAX_STORED_PRODUCTS)
+  const projectIds = new Set<string>(), projectNames = new Set<string>()
+  const projects = readProjects(d.rd).filter((project) => {
+    const duplicate = projectIds.has(project.id) || projectNames.has(project.name)
+    projectIds.add(project.id); projectNames.add(project.name)
+    return !duplicate && !productNames.has(project.name)
+  })
+  const historyByYear = new Map<number, YearRecord>()
+  for (const row of arr(d.history, readRecord)) {
+    // A damaged/replayed save can contain the same fiscal year twice. Keep the newest copy and
+    // its position so valuation and board reviews never count one year more than once.
+    historyByYear.delete(row.year)
+    historyByYear.set(row.year, row)
+  }
+  const history = [...historyByYear.values()].slice(-12)
   const supplier = d.supplier === 'budget' || d.supplier === 'premium' ? d.supplier : 'standard'
   return {
     v: BIZ_VERSION,
     industry,
     countryId,
     city,
-    founded: num(d.founded, fallbackYear),
+    founded: Math.round(num(d.founded, fallbackYear)),
     founderName: str(d.founderName),
     acquired: d.acquired === true,
     share: clampN(num(d.share, 1), 0.01, 1),
@@ -437,7 +471,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     employees: Math.max(0, Math.round(num(d.employees, def.staff))),
     wageLevel: clampN(num(d.wageLevel, 1), 0.7, 1.5),
     morale: clampN(num(d.morale, 65), 0, 100),
-    staff: arr(d.staff, readStaff),
+    staff,
     quality: clampN(num(d.quality, 50), 0, 100),
     brand: clampN(num(d.brand, 25), 0, 100),
     price: Math.max(0, num(d.price)),
@@ -445,18 +479,18 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     inventory: Math.max(0, Math.round(num(d.inventory))),
     marketingLevel: clampN(num(d.marketingLevel, 1), 0, 3),
     campaignBoost: clampN(num(d.campaignBoost), 0, 0.6),
-    products: arr(d.products, readProduct).slice(-MAX_STORED_PRODUCTS),
-    ...(Array.isArray(d.rd) ? { rd: readProjects(d.rd) } : {}),
+    products,
+    ...(Array.isArray(d.rd) ? { rd: projects } : {}),
     outlets,
     ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
-    history: arr(d.history, readRecord).slice(-12),
+    history,
     last: readStatement(d.last),
     valuation: Math.max(0, num(d.valuation)),
     public: d.public === true,
     sharesOut: Math.max(0, num(d.sharesOut)),
     sharePrice: Math.max(0, num(d.sharePrice)),
     exchange: str(d.exchange),
-    ipoYear: num(d.ipoYear),
+    ipoYear: Math.round(num(d.ipoYear)),
     ceo: d.ceo === 'manager' ? 'manager' : 'owner',
     manager: readManager(d.manager),
     ownerSalary: Math.max(0, num(d.ownerSalary)),
@@ -470,8 +504,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     openFraction: clampN(num(d.openFraction, 1), 0, 1),
     yearCosts: Math.max(0, num(d.yearCosts)),
     yearIncome: Math.max(0, num(d.yearIncome)),
-    raiseYear: num(d.raiseYear),
-    lastEvent: num(d.lastEvent),
+    raiseYear: Math.round(num(d.raiseYear)),
+    lastEvent: Math.round(num(d.lastEvent)),
     loanId: str(d.loanId),
     slump: Math.max(0, num(d.slump)),
     ...(d.board && typeof d.board === 'object' && !Array.isArray(d.board) ? { board: d.board } : {}),

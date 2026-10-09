@@ -459,6 +459,8 @@ export function dismissNotice(id: string): void {
 }
 
 export function chooseOption(id: string, choiceId: string): void {
+  const queued = state.game?.queue.find((modal) => modal.id === id)
+  if (!queued || queued.kind !== 'choice' || !queued.choices.some((option) => option.id === choiceId)) return
   handleModal(id, (g, modal) => {
     if (modal.kind !== 'choice') return
     if (modal.source === 'script' && modal.scriptId) {

@@ -289,8 +289,9 @@ export function yearlyLegacy(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   // Halls of Fame (team sports have their own, in the team-sports module).
-  const prof0 = peek<{ careers: CareerLine[]; halls: string[] }>(g, 'sports')
-  if (prof0 && !c.prison) {
+  const storedSports = peek<{ careers: CareerLine[]; halls: string[] }>(g, 'sports')
+  if (storedSports && !c.prison) {
+    const prof0 = viewSports(g)
     for (const career of prof0.careers) {
       if (career.kind === 'team' || career.legacy < 65 || c.age - career.to < 5 || prof0.halls.includes(career.sport)) continue
       if (playingJob(g)) continue

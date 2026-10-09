@@ -5,10 +5,10 @@
 import { describe, expect, it } from 'vitest'
 import { netWorth } from '../src/game/core'
 import { hasBoard } from '../src/game/business/board'
-import { becomeCeo, installManager, managerCandidate } from '../src/game/business/career'
-import { acquireForGroup, acquirePower, addToGroup, canGroupIpo, delistGroup, formGroup, groupDividend, groupIpo, moveCash, movableCash, searchGroupCeo, sellGroupShares, spinOff } from '../src/game/business/conglomerate-actions'
+import { becomeCeo, headhunterFee, installManager, managerCandidate } from '../src/game/business/career'
+import { acquireForGroup, acquirePower, addToGroup, canGroupIpo, chairGroup, delistGroup, formGroup, groupBiz, groupDividend, groupIpo, moveCash, movableCash, searchGroupCeo, sellGroupShares, spinOff, treasuryOf } from '../src/game/business/conglomerate-actions'
 import { antitrustBlock, conglomerateDiscount, mergeTerms, ownerFairValue, synergyPlan } from '../src/game/business/conglomerate-econ'
-import { allGroups, groupById, groupsOf, groupStake, groupValue, liveGroup, readMembership, sharePriceOf } from '../src/game/business/conglomerate-state'
+import { allGroups, groupById, groupsOf, groupStake, groupValue, liveGroup, readMembership, saveGroup, sharePriceOf } from '../src/game/business/conglomerate-state'
 import { conglomerateNodes } from '../src/game/business/conglomerate'
 import { emptyMarket } from '../src/game/business/competition-state'
 import { marketViewOf, saveMarket } from '../src/game/business/competition'
@@ -109,6 +109,57 @@ function finite(n: number): boolean {
 }
 
 describe('conglomerates', () => {
+  it('splits group search costs without overdrawing a division and blocks unaffordable stale actions', () => {
+    const { g, assets } = setup(101, ['restaurant', 'software'])
+    expect(formGroup(g, assets.map((a) => a.id), 'Careful Capital')).toBe(true)
+    drain(g)
+    let grp = liveGroup(g, groupsOf(g)[0].core.id)!
+    const fee = headhunterFee(groupBiz(g, grp), 'standard', 0)
+    for (const x of grp.members) x.b.cash = 0
+    const treasury = treasuryOf(grp)
+    const companyPart = Math.max(1, Math.floor(fee / 2))
+    const costs = treasury.b.yearCosts
+    treasury.b.cash = companyPart
+    g.character.money = fee - companyPart
+
+    searchGroupCeo(g, grp.core.id, 'standard')
+    grp = liveGroup(g, grp.core.id)!
+    expect(grp.members.reduce((sum, x) => sum + x.b.cash, 0)).toBe(0)
+    expect(g.character.money).toBe(0)
+    expect(treasuryOf(grp).b.yearCosts).toBe(costs + fee)
+    expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'business.group.ceo')).toBe(true)
+
+    g.queue = []
+    searchGroupCeo(g, grp.core.id, 'standard')
+    grp = liveGroup(g, grp.core.id)!
+    expect(grp.members.every((x) => x.b.cash >= 0)).toBe(true)
+    expect(g.character.money).toBe(0)
+    expect(g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'business.group.ceo')).toBe(false)
+    expect(g.queue.some((m) => m.kind === 'notice' && /cannot cover/i.test(m.text))).toBe(true)
+  })
+
+  it('checks group CEO severance before a board vote can consume RNG or governance state', () => {
+    const { g, assets } = setup(102, ['restaurant', 'software'])
+    expect(formGroup(g, assets.map((a) => a.id), 'Preflight Group')).toBe(true)
+    drain(g)
+    const id = groupsOf(g)[0].core.id
+    for (const x of liveGroup(g, id)!.members) x.b.cash = 10_000_000
+    searchGroupCeo(g, id, 'executive')
+    drain(g, (choices) => choices.find((choice) => /^m\d/.test(choice.id))?.id ?? choices[0].id)
+    let grp = liveGroup(g, id)!
+    expect(grp.core.ceo).toBe('manager')
+    grp.core.share = 0.5
+    for (const x of grp.members) x.b.cash = 0
+    saveGroup(g, grp)
+    g.character.money = 0
+    grp = liveGroup(g, id)!
+    const before = { rng: g.rng, board: JSON.stringify(grp.core.board), manager: JSON.stringify(grp.core.manager) }
+    expect(chairGroup(g, id)).toBe(false)
+    const after = groupById(g, id)!
+    expect({ rng: g.rng, board: JSON.stringify(after.core.board), manager: JSON.stringify(after.core.manager) }).toEqual(before)
+    expect(g.queue.some((modal) => modal.kind === 'notice' && /cannot cover/i.test(modal.text))).toBe(true)
+  })
+
   it('merges two companies into a group, both keep running and the synergies reach the books', () => {
     const { g, assets } = setup(1, ['restaurant', 'restaurant'])
     const cash0 = assets.map((a) => readBiz(g, a).cash)

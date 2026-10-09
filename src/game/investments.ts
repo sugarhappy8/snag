@@ -105,6 +105,8 @@ const CRYPTO_BANNED = new Set(['cn', 'dz', 'eg', 'np', 'bd', 'af', 'iq', 'qa'])
 
 const TERM_YEARS = 3
 const BOND_YEARS = 10
+/** A defensive cap shared with other durable economy ledgers. */
+const MAX_INVESTMENT_VALUE = 1e15
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -269,32 +271,53 @@ function units(a: Asset): number {
   const u = a.details.units
   if (typeof u === 'number' && Number.isFinite(u)) return Math.max(0, u)
   // A holding saved without positions (older data): one unit worth its recorded value.
-  return a.value > 0 ? 1 : 0
+  return Number.isFinite(a.value) && a.value > 0 ? 1 : 0
 }
 
 function unitPrice(a: Asset): number {
   const u = units(a)
   const p = num(a.details.price)
-  if (p > 0) return p
-  return u > 0 ? Math.max(0, a.value) / u : 0
+  if (p > 0) return Math.min(MAX_INVESTMENT_VALUE, p)
+  return u > 0 && Number.isFinite(a.value) ? Math.min(MAX_INVESTMENT_VALUE, Math.max(0, a.value) / u) : 0
 }
 
 function basis(a: Asset): number {
-  return Math.max(0, num(a.details.basis, a.purchasePrice))
+  return Math.min(MAX_INVESTMENT_VALUE, Math.max(0, num(a.details.basis, a.purchasePrice)))
 }
 
 function holdingValue(a: Asset): number {
-  return Math.max(0, Math.round(units(a) * unitPrice(a)))
+  const u = units(a), p = unitPrice(a)
+  if (!(u > 0) || !(p > 0)) return 0
+  return Math.round(u >= MAX_INVESTMENT_VALUE / p ? MAX_INVESTMENT_VALUE : u * p)
 }
 
 function setPosition(a: Asset, u: number, price: number, cost: number): void {
-  const safeU = Number.isFinite(u) ? Math.max(0, u) : 0
-  const safeP = Number.isFinite(price) ? Math.max(0, price) : 0
+  const safeP = Number.isFinite(price) ? Math.max(0, Math.min(MAX_INVESTMENT_VALUE, price)) : 0
+  const unitCap = safeP > 0 ? MAX_INVESTMENT_VALUE / safeP : MAX_INVESTMENT_VALUE
+  const safeU = Number.isFinite(u) ? Math.max(0, Math.min(unitCap, u)) : 0
   a.details.units = safeU
   a.details.price = safeP
-  a.details.basis = Math.max(0, Math.round(Number.isFinite(cost) ? cost : 0))
+  a.details.basis = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(cost) ? cost : 0)))
   a.purchasePrice = a.details.basis
-  a.value = Math.max(0, Math.round(safeU * safeP))
+  a.value = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(safeU * safeP)))
+}
+
+/**
+ * Cash out a security that stopped trading. A malformed save can contain reciprocal extremes such
+ * as 1e308 units at 1e-300 each: the displayed holding is finite, but multiplying those units by a
+ * takeover price overflows. In that case rebuild the settlement from the bounded pre-event value
+ * and the event return instead of turning arithmetic overflow into a maximum-size windfall.
+ */
+function endedProceeds(a: Asset, before: number, perUnit: number, premium: number): number {
+  const u = units(a)
+  if (!(u > 0) || !(perUnit > 0)) return 0
+  const raw = u * perUnit
+  if (Number.isFinite(raw)) return Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(raw)))
+
+  const prior = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Number.isFinite(before) ? before : 0))
+  const multiple = Number.isFinite(premium) ? Math.max(0, 1 + premium) : 1
+  if (!(prior > 0) || !(multiple > 0)) return 0
+  return Math.round(prior >= MAX_INVESTMENT_VALUE / multiple ? MAX_INVESTMENT_VALUE : prior * multiple)
 }
 
 function findHolding(g: GameState, secId: string): Asset | undefined {
@@ -373,7 +396,7 @@ export function minTrade(g: GameState): number {
 }
 
 function lossCarry(g: GameState): number {
-  return Math.max(0, num(g.flags.investLossCarry))
+  return Math.min(MAX_INVESTMENT_VALUE, Math.max(0, num(g.flags.investLossCarry)))
 }
 
 interface Realized {
@@ -390,10 +413,10 @@ interface Realized {
  */
 function realize(g: GameState, net: number, gain: number, immediate: boolean): Realized {
   const carry = lossCarry(g)
-  const cash = Math.max(0, Math.round(net))
-  const gn = Math.round(gain)
+  const cash = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(net) ? net : 0)))
+  const gn = Math.max(-MAX_INVESTMENT_VALUE, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(gain) ? gain : 0)))
   if (gn <= 0) {
-    g.flags.investLossCarry = Math.round(carry - gn)
+    g.flags.investLossCarry = Math.min(MAX_INVESTMENT_VALUE, Math.round(carry - gn))
     addMoney(g, cash)
     return { gain: gn, taxable: 0, offset: 0, tax: 0 }
   }
@@ -841,6 +864,10 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
     notice(g, 'Order Rejected', `The minimum order is ${formatMoney(min)}.`, { emoji: '🚫' })
     return false
   }
+  if (amt > MAX_INVESTMENT_VALUE || (held && (basis(held) > MAX_INVESTMENT_VALUE - amt || holdingValue(held) > MAX_INVESTMENT_VALUE - amt))) {
+    notice(g, 'Order Rejected', 'That order is too large for one brokerage position.', { emoji: '🚫' })
+    return false
+  }
   if (amt > g.character.money) {
     notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank.`, { emoji: '💸', tone: 'bad' })
     return false
@@ -1036,12 +1063,13 @@ function portfolioStats(g: GameState): PortfolioStats {
   let start = 0
   let moved = 0
   for (const a of investmentHoldings(g)) {
-    value += Math.max(0, a.value)
-    cost += basis(a)
+    value = Math.min(MAX_INVESTMENT_VALUE, value + holdingValue(a))
+    cost = Math.min(MAX_INVESTMENT_VALUE, cost + basis(a))
     if (num(a.details.updatedYear) === g.year) {
-      const s = num(a.details.yearStart)
-      start += s
-      moved += s * num(a.details.lastChange)
+      const s = Math.min(MAX_INVESTMENT_VALUE, Math.max(0, num(a.details.yearStart)))
+      start = Math.min(MAX_INVESTMENT_VALUE, start + s)
+      const contribution = s * num(a.details.lastChange)
+      moved = Math.max(-MAX_INVESTMENT_VALUE, Math.min(MAX_INVESTMENT_VALUE, moved + (Number.isFinite(contribution) ? contribution : 0)))
     }
   }
   return { value, basis: cost, year: start > 0 ? moved / start : null }
@@ -2037,7 +2065,10 @@ export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges 
 export function yearlyInvestments(g: GameState): void {
   const c = g.character
   if (!c.alive) return
-  if (num(g.flags.investmentsSettledYear, -1) >= g.year) return
+  const settled = num(g.flags.investmentsSettledYear, -1)
+  if (settled === g.year) return
+  // A corrupt future marker must not freeze the portfolio forever.
+  if (settled > g.year) g.flags.investmentsSettledYear = g.year - 1
   g.flags.investmentsSettledYear = g.year
   pruneShocks(g)
   normalizeHoldings(g, true)
@@ -2065,17 +2096,18 @@ export function yearlyInvestments(g: GameState): void {
     const before = num(d.marketMarkedYear, -1) === g.year ? Math.max(0, num(d.marketIncomeBase, holdingValue(a))) : holdingValue(a)
     const u = units(a)
     const mv = moveHolding(g, a, news)
-    const pay = Math.max(0, Math.round(before * (Number.isFinite(mv.payout) ? mv.payout : 0)))
+    const rawPay = before * (Number.isFinite(mv.payout) ? mv.payout : 0)
+    const pay = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(rawPay) ? rawPay : 0)))
     if (pay > 0) {
-      income += pay
-      d.income = Math.round(num(d.income) + pay)
+      income = Math.min(MAX_INVESTMENT_VALUE, income + pay)
+      d.income = Math.min(MAX_INVESTMENT_VALUE, Math.round(num(d.income) + pay))
     }
     const ev = eventNews(a, mv, before)
     if (ev) news.push(ev)
     if (mv.ended) {
-      const proceeds = Math.max(0, Math.round(u * mv.ended.perUnit))
+      const proceeds = endedProceeds(a, before, mv.ended.perUnit, mv.ended.premium)
       realize(g, proceeds, proceeds - basis(a), false)
-      cashOut += proceeds
+      cashOut = Math.min(MAX_INVESTMENT_VALUE, cashOut + proceeds)
       if (mv.ended.kind === 'bankrupt' || mv.ended.kind === 'nationalized') count(g, 'investWipeouts')
       g.assets = g.assets.filter((x) => x.id !== a.id)
       continue
@@ -2087,13 +2119,14 @@ export function yearlyInvestments(g: GameState): void {
     delete d.marketMarkedYear; delete d.marketIncomeBase
     d.lastChange = Math.round((Number.isFinite(mv.ret) ? mv.ret : 0) * 10000) / 10000
     setPosition(a, u * (mv.ratio > 0 ? mv.ratio : 1), mv.price, basis(a))
-    const interest = Math.max(0, Math.round(before * (Number.isFinite(mv.compound) ? (mv.compound ?? 0) : 0)))
+    const rawInterest = before * (Number.isFinite(mv.compound) ? (mv.compound ?? 0) : 0)
+    const interest = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(rawInterest) ? rawInterest : 0)))
     if (interest > 0 && mv.price > 0) {
       // Taxed as income this year, but it stays in the account (and joins the cost basis).
       earnIncome(g, interest)
       addMoney(g, -interest)
-      credited += interest
-      d.income = Math.round(num(d.income) + interest)
+      credited = Math.min(MAX_INVESTMENT_VALUE, credited + interest)
+      d.income = Math.min(MAX_INVESTMENT_VALUE, Math.round(num(d.income) + interest))
       setPosition(a, units(a) + interest / mv.price, mv.price, basis(a) + interest)
       if (before > 0) d.lastChange = Math.round((a.value / before - 1) * 10000) / 10000
     }
@@ -2112,8 +2145,8 @@ export function yearlyInvestments(g: GameState): void {
     const fx = fxYear(fam(g), cid, g.year)
     if (!fx.bankCrisis) continue
     // The guarantee is per depositor, so it covers all of your accounts there together.
-    const insured = depositInsurance(cid)
-    const total = deposits.reduce((sum, a) => sum + holdingValue(a), 0)
+    const insured = depositInsurance(cid, g.year)
+    const total = deposits.reduce((sum, a) => Math.min(MAX_INVESTMENT_VALUE, sum + holdingValue(a)), 0)
     const kept = Math.min(total, insured) + Math.max(0, total - insured) * fx.recovery
     const lost = Math.round(total - kept)
     if (total > 0) for (const a of deposits) setPosition(a, units(a) * (kept / total), unitPrice(a), basis(a))
@@ -2134,7 +2167,7 @@ export function yearlyInvestments(g: GameState): void {
   if (coins.length && chance(g, 0.025)) {
     const victim = pick(g, coins)
     const share = Math.round(randFloat(g, 0.3, 1) * 100) / 100
-    const lost = Math.round(victim.value * share)
+    const lost = Math.round(holdingValue(victim) * share)
     const venue = pick(g, CRYPTO_EXCHANGES)
     // Stolen coins count as a realized loss against future gains.
     const stolenBasis = share >= 0.99 ? basis(victim) : basis(victim) * share
@@ -2190,7 +2223,7 @@ export function investmentsSummary(g: GameState): string {
   if (by('gold').length) parts.push('gold')
   if (by('savings').length) parts.push('bank deposits')
   if (by('penny').length) parts.push('penny stocks')
-  const cryptoValue = by('crypto').reduce((sum, a) => sum + a.value, 0)
+  const cryptoValue = by('crypto').reduce((sum, a) => Math.min(MAX_INVESTMENT_VALUE, sum + holdingValue(a)), 0)
   if (by('crypto').length) parts.push(cryptoValue > s.value * 0.5 ? 'mostly crypto' : 'some crypto')
   const year = s.year !== null ? `; ${s.year >= 0 ? 'up' : 'down'} ${absPct(s.year)} this year` : ''
   // In the past, the year's real market story (the dot-com bust, 2008...).
