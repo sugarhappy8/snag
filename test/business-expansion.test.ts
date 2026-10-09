@@ -32,8 +32,8 @@ function fixture(industry: Industry = 'restaurant', seed = 45) {
 }
 
 describe('expanded company markets', () => {
-  it('has 45 complete sectors with finite, playable economic plans', () => {
-    expect(INDUSTRY_IDS).toHaveLength(45)
+  it('has 51 complete sectors with finite, playable economic plans', () => {
+    expect(INDUSTRY_IDS).toHaveLength(51)
     for (const id of INDUSTRY_IDS) {
       expect(INDUSTRIES[id].id).toBe(id)
       expect(MARKETS[id]).toBeDefined()
@@ -132,7 +132,7 @@ describe('Inventor', () => {
     inventionYear(g, a, b)
     const patent = expansionOf(b).patents[0]
     expect(patent.expires).toBe(due + (kind === 'early' ? 15 : 20))
-    expect(businessEffects(g, b, 'us', due).demand).toBeGreaterThan(1)
+    expect(businessEffects(g, b, 'us', due).demand).toBe(1)
     const after = JSON.stringify(g)
     inventionYear(g, a, b)
     expect(JSON.stringify(g)).toBe(after)
@@ -140,7 +140,7 @@ describe('Inventor', () => {
     expect(expansionOf(normalizeBiz(JSON.parse(JSON.stringify(b)), due)).patents[0]).toEqual(patent)
   })
 
-  it('failed research consumes its budget without granting a patent or taking more cash', () => {
+  it('legacy funded research completes without a success roll or taking more cash', () => {
     const { g, a, b } = fixture()
     g.character.talents = ['Inventor']
     studyMarket(g, a.id, 'us')
@@ -152,7 +152,7 @@ describe('Inventor', () => {
     g.year += 3
     inventionYear(g, a, b)
     expect(expansionOf(b).research).toBeNull()
-    expect(expansionOf(b).patents).toHaveLength(0)
+    expect(expansionOf(b).patents).toHaveLength(1)
     expect(b.cash).toBe(cash)
   })
 })

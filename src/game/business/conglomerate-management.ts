@@ -12,6 +12,7 @@ import { captureOfSkill } from './conglomerate-econ'
 import { groupById, groupValue, liveGroup, memberValue, saveGroup, syncMembers, type Group, type GroupMember } from './conglomerate-state'
 import { bizWorth } from './economy'
 import { equityDue } from './executive'
+import { isFinanceFirm } from './finance-firm-state'
 import { earmarkedCash } from './gamestudio'
 import { clampN, money, pct } from './util'
 
@@ -51,7 +52,7 @@ export function allocateGroupCapital(g: GameState, grp: Group): string[] {
   }
   // Evaluate each division as if the treasury could fund it, not only on its currently empty wallet.
   const pool = grp.members.reduce((s, x) => s + movableCash(g, x), 0)
-  const opportunities = grp.members.filter(x => x.m.own >= .999 && ownerControls(g, x.a)).map(x => {
+  const opportunities = grp.members.filter(x => x.m.own >= .999 && ownerControls(g, x.a) && !isFinanceFirm(x.b)).map(x => {
     const view = outlook(g, x.a, { ...x.b, cash: x.b.cash + Math.max(0, pool - movableCash(g, x)) })
     return { x, view }
   }).filter(o => o.view.modeled && o.view.invest > 0 && o.view.cost > 0).sort((a, b) => b.view.invest / b.view.cost - a.view.invest / a.view.cost)

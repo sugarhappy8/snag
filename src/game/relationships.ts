@@ -80,6 +80,7 @@ import { willPersonNodes } from './events/will-amends'
 import { isEstranged, keptAwayBy } from './events/will-core'
 import { familyUseNodes } from './shops/luxury-family'
 import { noteCashGift } from './events/wealth-core'
+import { holdsInfluenceJob } from './special/corruption'
 import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
@@ -173,6 +174,27 @@ function limit(g: GameState, p: Person, key: string, max: number, title: string)
   if (useYearAction(g, `rel.${key}.${p.id}`, max)) return true
   notice(g, title, fill(pick(g, TIRED_LINES), p), { emoji: '\u{23F3}' })
   return false
+}
+
+/** Deliberately generous for players pursuing a pregnancy, but shared across partners. */
+export const TRY_BABY_YEARLY_MAX = 24
+
+function tryBabyProblem(g: GameState, p: Person): string | null {
+  if (currentPartner(g)?.id !== p.id) return 'You can only plan a baby with your current partner.'
+  return intimacyProblem(g, p) ?? conceptionBlocker(g, p)
+}
+
+function tryBabyAction(g: GameState, p: Person): void {
+  const problem = tryBabyProblem(g, p)
+  if (problem) {
+    notice(g, 'Try for a Baby', problem, { emoji: '\u{1F6AB}' })
+    return
+  }
+  if (!useYearAction(g, 'rel.tryBaby', TRY_BABY_YEARLY_MAX)) {
+    notice(g, 'Try for a Baby', `You and ${p.firstName} have tried ${TRY_BABY_YEARLY_MAX} times this year. Give yourselves a rest until next year.`, { emoji: '\u{23F3}' })
+    return
+  }
+  tryForBaby(g, p)
 }
 
 // ---------------------------------------------------------------------------
@@ -1244,7 +1266,7 @@ function checkGuardian(g: GameState): void {
 function updateOccupation(g: GameState, p: Person): void {
   // Company/HQ employment has its own real payroll and retirement handling. Do not
   // overwrite the role or add the generic NPC earnings on top of that salary.
-  if (holdsFamilyJob(p)) return
+  if (holdsFamilyJob(p) || holdsInfluenceJob(g, p)) return
   if (['classmate', 'teacher', 'coworker', 'boss', 'cellmate', 'pet'].includes(p.relation)) return
   if (p.age < 18) {
     p.occupation = npcOccupationLabel(p.age)
@@ -3281,8 +3303,8 @@ const D = {
     emoji: '\u{1F37C}',
     minAge: 18,
     targetMinAge: 18,
-    check: (g, p) => intimacyProblem(g, p) ?? conceptionBlocker(g, p),
-    run: (g, p) => (limit(g, p, 'tryBaby', 2, 'Try for a Baby') ? tryForBaby(g, p) : undefined),
+    check: tryBabyProblem,
+    run: tryBabyAction,
   }),
   birthControl: (): Def => ({
     id: 'birthControl',

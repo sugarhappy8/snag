@@ -20,6 +20,8 @@ import { refreshTechValue } from './deeptech-core'
 import { DEEP_TECH } from './deeptech-data'
 import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
 import { isDeepTechIndustry, type DeepTechIndustry } from './deeptech-state'
+import { financeEraBlock, isFinanceFirm } from './finance-firm'
+import { financeView } from './finance-firm-state'
 import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
 import { industryDef, isIndustry, INDUSTRIES } from './industries'
@@ -34,6 +36,8 @@ export function industryProblem(g: GameState, industry: Industry): string | null
   const c = g.character
   const country = getCountry(c.countryId)
   const def = industryDef(industry)
+  const financialEra = financeEraBlock(g, industry)
+  if (financialEra) return financialEra
   if (!isIndustryLegal(c.countryId, industry)) return `Not allowed in ${country.name}. ${eraNote(g, c.countryId, marketOf(c.countryId).businessNote)}`.trim()
   const era = industryEraBlock(industry, c.countryId, g.year)
   if (era) return era
@@ -463,11 +467,13 @@ export function newBiz(g: GameState, industry: Industry, countryId: string, city
     slump: 0,
     ...opts,
   }
+  if (isFinanceFirm(b)) b.financeFirm = financeView(b) as unknown as Json
   return b
 }
 
 /** Plan production for the coming year at the current price. */
 export function initialProduction(g: GameState, b: BizState): number {
+  if (isFinanceFirm(b)) return 0
   const plan = planFor(g, b, g.year, { cycle: () => 1 })
   return Math.round(clampN(plan.demand, 0, maxProduction(g, b)))
 }
@@ -549,7 +555,9 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
     ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.`
     : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`
   const plan =
-    p.industry === 'gameStudio'
+    isFinanceFirm(b)
+      ? ' Set risk, rates and client policies in Financial Operations. Customer principal is segregated; you earn fees and banking spreads, never free deposits.'
+      : p.industry === 'gameStudio'
       ? ` Greenlight your first game from the company screen: your ${b.employees} developers are waiting for something to make.`
       : " Every year you'll get an Annual Report to set prices and production."
   const text = `${p.name} is officially registered in ${country.name}! Your first ${def.site} is opening in ${p.city}. You put in ${formatMoney(personal)} of your own money, including ${formatMoney(fees)} in fees and permits.${funding}${open}${run}${plan}`
@@ -781,7 +789,7 @@ export function listingsForSale(g: GameState): ForSale[] {
   const s = seeded(yearKey(g, 'biz.forSale'))
   // Deep-tech startups are founded, not bought off the shelf (and leaving them out keeps the
   // classic listings exactly as they were).
-  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i) && !isDeepTechIndustry(i) && !industryEraBlock(i, c.countryId, g.year))
+  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i) && !isDeepTechIndustry(i) && !industryEraBlock(i, c.countryId, g.year) && !financeEraBlock(g, i))
   const out: ForSale[] = []
   const bought = Array.isArray(g.flags['biz.bought']) ? (g.flags['biz.bought'] as Json[]) : []
   const words = marketOf(c.countryId).nameWords
@@ -803,7 +811,7 @@ export function listingsForSale(g: GameState): ForSale[] {
       ceo: 'manager',
       manager: { firstName: 'Interim', lastName: 'Manager', gender: 'female', skill: s.int(40, 70), salary: 0, since: g.year },
     })
-    b.production = Math.round(planFor(g, b, g.year - 1, { calm: true }).demand)
+    b.production = isFinanceFirm(b) ? 0 : Math.round(planFor(g, b, g.year - 1, { calm: true }).demand)
     const clone = JSON.parse(JSON.stringify(b)) as BizState
     const stmt = simulateYear(g, clone, g.year - 1, 0, 1).stmt
     clone.history = [{ year: stmt.year, revenue: stmt.revenue, profit: stmt.net, tax: stmt.corpTax, units: stmt.sold, price: stmt.price, staff: stmt.employees, valuation: 0, outlets }]
@@ -957,4 +965,3 @@ export const buyBusinessMenu: MenuGroup = {
     return list.map(listingRow)
   },
 }
-

@@ -15,10 +15,11 @@ import {
   abandonAuthorWork, authorAdaptationOffer, authorCareerBlock, authorPublisherOffer,
   authorSelfPublishCost, authorWorkBlock, endAuthorSeries, licenseAuthorAdaptation,
   practiceAuthor, publishAuthorWork, quitAuthorCareer, setAuthorFocus, setAuthorPace,
-  startAuthorCareer, startAuthorWork, toggleAuthorHiatus, workOnAuthorWork,
+  startAuthorCareer, startAuthorWork, toggleAuthorHiatus,
 } from './author-career'
 import { AUTHOR_JOB, authorView, type AuthorWork } from './author-state'
 import { blocked, compact, money, myJob, tell } from './common'
+import { chooseStoryScene, storyDesk, storyFeedback } from './author-story'
 
 export { yearlyAuthor } from './author-career'
 
@@ -148,10 +149,10 @@ function draftActions(g: GameState, work: AuthorWork): MenuNode[] {
   const selfCost = authorSelfPublishCost(g, work)
   const offer = authorPublisherOffer(g, work)
   const nodes: MenuNode[] = [{
-    type: 'action', id: `author.work.${id}.write`, label: work.stage === 'ready' ? 'Revise the Manuscript' : formatDef(work.format).serial ? 'Write & Illustrate' : 'Write the Manuscript', emoji: '✍️',
+    type: 'action', id: `author.work.${id}.write`, label: work.stage === 'ready' ? 'Revise a Key Scene' : formatDef(work.format).serial ? 'Storyboard the Next Chapter' : 'Write the Next Scene', emoji: '✍️',
     subtitle: `${yearActionsUsed(g, 'author.write')}/2 work sessions used this year · ${Math.round(work.progress)}% complete`,
     disabledReason: (gg) => workActionBlock(gg, id) ?? (yearActionsUsed(gg, 'author.write') >= 2 ? 'You used both writing and revision sessions this year.' : null),
-    run: (gg) => workOnAuthorWork(gg, id),
+    run: (gg) => chooseStoryScene(gg, id),
   }]
   if (work.stage === 'ready') nodes.push({
     type: 'action', id: `author.work.${id}.publish.self`, label: formatDef(work.format).serial ? 'Self-Publish the Series' : 'Self-Publish', emoji: '📦',
@@ -264,26 +265,15 @@ function workNode(work: AuthorWork): MenuGroup {
     children: (g) => {
       const current = workById(g, id)
       if (!current) return []
-      if (current.stage === 'draft' || current.stage === 'ready') return draftActions(g, current)
+      if (current.stage === 'draft' || current.stage === 'ready') return [
+        { type: 'info', id: `author.feedback.${id}`, text: storyFeedback(g, current), emoji: '💌' },
+        storyDesk(current), ...draftActions(g, current)]
       const nodes: MenuNode[] = current.stage === 'serial' ? serialActions(current) : []
+      nodes.unshift({ type: 'info', id: `author.feedback.${id}`, text: storyFeedback(g, current), emoji: '💌' }, storyDesk(current))
       nodes.push(adaptationAction(g, current))
       return nodes
     },
   }
-}
-
-const guideMenu: MenuGroup = {
-  type: 'menu', id: 'author.guide', label: 'How This Career Works', emoji: '💡', subtitle: 'A promise to readers, not just a publish button',
-  children: () => [{ type: 'info', id: 'author.guide.begin', emoji: '✍️',
-    text: 'Practice writing and illustration from age 8. At 16, writing skill 20 unlocks the Author career. Existing Creative Arts practice builds the same skills. Author practice shares three sessions per year across writing and art.' },
-  { type: 'info', id: 'author.guide.books', emoji: '📚',
-    text: 'Choose a format, genre, reader promise and title. Develop one active work at a time, using two shared writing/revision sessions each year. Publish a completed manuscript yourself, or sign a publisher deal. Publisher advances are paid once; future author royalties recoup the advance before paying more.' },
-  { type: 'info', id: 'author.guide.region', emoji: '🌏',
-    text: 'Prose books are available everywhere. Japan adds Manga; Korea and China add Manhwa (Manhua in China). Both need writing and illustration skills. Your existing catalogue and royalties survive moving countries.' },
-  { type: 'info', id: 'author.guide.serial', emoji: '🤝',
-    text: 'Serials produce chapters on age-up while you work as an Author. Fulfill your promise with character growth, worldbuilding or mysteries that actually get answers. Cliffhangers attract readers but accumulate unresolved story debt. Payoff arcs rebuild trust; crunch increases output and burnout. A hiatus helps you recover, but readers may drift away.' },
-  { type: 'info', id: 'author.guide.legacy', emoji: '🎬',
-    text: 'A series can end after 12 chapters. A satisfying finale needs story debt 30/100 or lower and reader trust at least 55/100. Released books and collected volumes continue earning after you quit or pause work. Successful stories can license one time-limited adaptation without selling the underlying story IP.' }],
 }
 
 const libraryMenu: MenuGroup = {
@@ -333,7 +323,7 @@ export function authorJobNodes(g: GameState): MenuNode[] {
   const active = p.works.filter((work) => ['draft', 'ready', 'serial'].includes(work.stage))
   return [{ type: 'info', id: 'author.job.summary', emoji: '✍️',
     text: `Writing ${craftSkill(g, 'writing')}/100 · illustration ${craftSkill(g, 'art')}/100 · reputation ${Math.round(p.reputation)}/100 · burnout ${Math.round(p.burnout)}/100\n${compact(p.audience)} readers know your name. Earnings come from published work, not a guaranteed salary.` },
-  ...active.map(workNode), createAction, practiceAction('writing'), practiceAction('art'), libraryMenu, guideMenu, quitAction]
+  ...active.map(workNode), createAction, practiceAction('writing'), practiceAction('art'), libraryMenu, quitAction]
 }
 
 export const authorCareerMenu: MenuGroup = {
@@ -346,7 +336,7 @@ export const authorCareerMenu: MenuGroup = {
   header: (g) => `Writing ${craftSkill(g, 'writing')}/100 · illustration ${craftSkill(g, 'art')}/100. Books are available everywhere; illustrated serials follow local traditions. Start the career at age 16 with writing skill 20.`,
   children: (g) => {
     if (myJob(g, AUTHOR_JOB)) return authorJobNodes(g)
-    return [guideMenu, practiceAction('writing'), practiceAction('art'), {
+    return [practiceAction('writing'), practiceAction('art'), {
       type: 'action', id: 'author.start', label: 'Become an Author', emoji: '✍️',
       subtitle: 'Age 16+ · writing skill 20+ · no guaranteed salary',
       disabledReason: authorCareerBlock,

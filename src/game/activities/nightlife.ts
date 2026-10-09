@@ -22,6 +22,7 @@ import {
 } from '../core'
 import { notePerson } from '../people'
 import { masterInstrument } from '../special/common'
+import { hasStaffRole } from '../shops/luxury-staff'
 import { hasMainCharacter } from '../talents'
 import { chance, pick, randInt, weightedPick } from '../rng'
 import { defineScript } from '../scripts'
@@ -29,6 +30,7 @@ import { isAlcoholic, locale } from '../data/locales'
 import { randomFirstName, randomLastName } from '../world'
 import type { GameState, Gender, Json, MenuAction, MenuGroup, MenuNode, Person } from '../types'
 import { common, declined, eraLines, eraPick, landline, prohibition, venueExists } from '../events/era'
+import { announcePregnancy } from '../love'
 import {
   addCondition,
   addGrievance,
@@ -47,6 +49,7 @@ import {
   strangerAge,
   strangerGender,
 } from './common'
+import { tryAdultHookupPregnancy } from './encounters'
 
 const NIGHT_MAX = 4
 
@@ -470,8 +473,10 @@ const FLIRT2 = defineScript('act.night.flirt2', (g, choice, data) => {
     return
   }
   // Go home together.
+  if (choice !== 'home' || !canRomance(g) || age < 18 || !attractedTo(g.character, gender)) return
   const partner = currentPartner(g)
   const p = meetPerson(g, 'lover', venue, { gender, age, firstName, lastName, relationship: randInt(g, 50, 70) })
+  p.data.nightHookupPending = { by: g.character.id, year: g.year }
   count(g, 'hookups')
   notePerson(p, 'Hooked up with the player after a night out.')
   addStat(g, 'happiness', randInt(g, 4, 9))
@@ -499,7 +504,14 @@ const STDS = ['Chlamydia', 'Gonorrhea', 'Herpes', 'Syphilis']
 const PROTECTION = defineScript('act.night.protection', (g, choice, data) => {
   const d = (data ?? {}) as Record<string, Json>
   const p = g.people.find((x) => x.id === d.personId)
-  const name = p?.firstName ?? 'your date'
+  const pending = p?.data.nightHookupPending
+  const validPending = !!p && g.character.alive && !g.character.prison && p.alive && p.age >= 18 && g.character.age >= 18
+    && p.relation === 'lover' && attractedTo(g.character, p.gender)
+    && !!pending && typeof pending === 'object' && !Array.isArray(pending)
+    && pending.by === g.character.id && pending.year === g.year
+  if (!validPending || !p || (choice !== 'safe' && choice !== 'risk')) return
+  delete p.data.nightHookupPending
+  const name = p.firstName
   if (choice === 'safe') {
     result(g, 'Safety First', `You played it safe with ${name}. What happens next is between the two of you.`, '\u{1F319}')
     return
@@ -509,7 +521,9 @@ const PROTECTION = defineScript('act.night.protection', (g, choice, data) => {
     addCondition(g, std, 'std', randInt(g, 10, 25), { curable: std !== 'Herpes', diagnosed: false })
   }
   addHidden(g, 'karma', -1)
-  result(g, 'Living Dangerously', `You threw caution to the wind with ${name}. Let's hope that doesn't come back to haunt you.`, '\u{1F319}')
+  const pregnant = tryAdultHookupPregnancy(g, p)
+  result(g, 'Living Dangerously', pregnant ? `You threw caution to the wind with ${name}. A few weeks later, there was life-changing news.` : `You threw caution to the wind with ${name}. Let's hope that doesn't come back to haunt you.`, '\u{1F319}')
+  if (pregnant) announcePregnancy(g, p, 1)
 })
 
 // ---------------------------------------------------------------------------
@@ -540,7 +554,7 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
         case 'drugs':
           return kind === 'bar' ? 5 : kind === 'party' ? 16 : 14
         case 'confront':
-          return kind === 'bar' ? 18 : 13
+          return hasStaffRole(g, 'bodyguard') ? 7 : kind === 'bar' ? 18 : 13
         case 'romance':
           return romance ? 20 : 0
         case 'dance':
@@ -550,7 +564,7 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
         case 'pickpocket':
           return kind === 'party' ? 0 : 5
         case 'celebrity':
-          return kind === 'club' ? 5 : 0
+          return kind === 'club' ? (hasStaffRole(g, 'concierge') ? 14 : 5) : 0
         case 'karaoke':
           return kind === 'bar' && g.year >= 1985 ? 14 : 0
         case 'trivia':
@@ -586,6 +600,12 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
       return
     }
     case 'confront': {
+      if (hasStaffRole(g, 'bodyguard')) {
+        addStat(g, 'happiness', 1)
+        log(g, `My bodyguard quietly ended a confrontation at ${venue}.`, 'good')
+        result(g, 'Handled', `${intro}\n\n${s.name} started trouble. Your bodyguard stepped between you, said six calm words, and the problem left the building.`, '\u{1F576}\u{FE0F}', 'good')
+        return
+      }
       const reason = say(g, CONFRONT_REASONS, { name: s.name, his })
       scriptChoice(g, CONFRONT, 'Confrontation', `${intro}\n\n${reason}`, [
         { id: 'argue', label: 'Argue back', emoji: '\u{1F5E3}\u{FE0F}' },
@@ -609,6 +629,11 @@ function nightEvent(g: GameState, kind: Venue, venue: string, intro: string): vo
       return
     }
     case 'pickpocket': {
+      if (hasStaffRole(g, 'bodyguard')) {
+        log(g, `My bodyguard stopped a pickpocket at ${venue}.`, 'good')
+        result(g, 'Not Today', `${intro}\n\nA pickpocket reached for your wallet. Your bodyguard caught the wrist without even looking away from the room.`, '\u{1F576}\u{FE0F}', 'good')
+        return
+      }
       const lost = Math.min(Math.max(0, c.money), randInt(g, 20, 200))
       if (lost > 0) {
         addMoney(g, -lost)
@@ -872,4 +897,3 @@ export const nightlifeMenu: MenuGroup = {
     return nodes
   },
 }
-

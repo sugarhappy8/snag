@@ -15,10 +15,11 @@ import { AFRICA_MIDDLE_EAST_MARKETS } from './markets/africaMiddleEast'
 import { AMERICAS_MARKETS } from './markets/americas'
 import { ASIA_OCEANIA_MARKETS } from './markets/asiaOceania'
 import { EUROPE_MARKETS } from './markets/europe'
+import { venueLegal } from '../business/venues-data'
 
-/** The industries you can start a business in: BitLife's 25 plus 8 deep-tech ones. */
+/** The 51 industries you can start, including finance, hospitality and deep tech. */
 /** New sectors use the procedural rival engine, without invented facts about real companies. */
-export const EXPANSION_INDUSTRY_IDS = ['solar', 'battery', 'water', 'recycling', 'telecom', 'dataCenter', 'education', 'petCare', 'homeCare', 'packaging', 'furniture', 'travel'] as const
+export const EXPANSION_INDUSTRY_IDS = ['investmentFirm', 'bank', 'onlineBank', 'casino', 'nightclub', 'stripClub', 'solar', 'battery', 'water', 'recycling', 'telecom', 'dataCenter', 'education', 'petCare', 'homeCare', 'packaging', 'furniture', 'travel'] as const
 
 export const INDUSTRY_IDS = [
   'foodTruck',
@@ -197,7 +198,7 @@ export function hasMarketData(countryId: string): boolean {
 /** Demand multiplier for an industry in a country (0 when it is banned there). */
 export function industryDemand(countryId: string, industry: Industry): number {
   const m = marketOf(countryId)
-  if (m.banned.includes(industry)) return 0
+  if (!isIndustryLegal(countryId, industry)) return 0
   const d = m.demand[industry]
   if (d !== undefined) return d
   // Deep tech needs capital, talent and customers that poorer markets lack: without hand-written
@@ -207,7 +208,8 @@ export function industryDemand(countryId: string, industry: Industry): number {
 }
 
 export function isIndustryLegal(countryId: string, industry: Industry): boolean {
-  return !marketOf(countryId).banned.includes(industry)
+  const m = marketOf(countryId)
+  return !m.banned.includes(industry) && (industry !== 'nightclub' || !m.banned.includes('bar')) && venueLegal(countryId, industry)
 }
 
 /** Local price multiplier for a shop category in the player's country (1 = global baseline). */

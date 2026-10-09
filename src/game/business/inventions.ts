@@ -7,9 +7,9 @@ import { industryDef } from './industries'
 
 export const INVENTION_TIERS = {
   small: { label: 'Small', years: 0, odds: 1, minimum: 5_000, revenueShare: .01, demand: [.08, .12], efficiency: [.005, .01] },
-  middle: { label: 'Middle', years: 1, odds: .95, minimum: 50_000, revenueShare: .05, demand: [.25, .4], efficiency: [.015, .03] },
-  big: { label: 'Big', years: 3, odds: .85, minimum: 500_000, revenueShare: .15, demand: [.8, 1.2], efficiency: [.04, .06] },
-  generational: { label: 'Generational', years: 5, odds: .70, minimum: 5_000_000, revenueShare: .35, demand: [2.5, 4], efficiency: [.08, .12] },
+  middle: { label: 'Middle', years: 1, odds: 1, minimum: 50_000, revenueShare: .05, demand: [.25, .4], efficiency: [.015, .03] },
+  big: { label: 'Big', years: 3, odds: 1, minimum: 500_000, revenueShare: .15, demand: [.8, 1.2], efficiency: [.04, .06] },
+  generational: { label: 'Generational', years: 5, odds: 1, minimum: 5_000_000, revenueShare: .35, demand: [2.5, 4], efficiency: [.08, .12] },
 } as const
 
 export type InventionTier = keyof typeof INVENTION_TIERS
@@ -27,7 +27,7 @@ export function isInventionTier(value: ResearchKind): value is InventionTier { r
  * Historical US grants used 17 years (the game's annual clock rounds the 1995 transition).
  * https://www.uspto.gov/patents/laws/american-inventors-protection-act-1999/patent-term-guarantee-overview
  * Other historical regimes use the modern 20-year baseline as a gameplay approximation.
- * Filing and grant happen together in this game's Inventor Lab. */
+ * Filing and grant happen together in this game's invention workflow. */
 export function nationalPatentLaw(country: string, year: number) {
   const market = marketOf(country)
   return {

@@ -1,3 +1,4 @@
+import { underworldMenu } from './underworld'
 // Crime: the Crime activity menu (petty theft to murder), arrests & trials, organized crime,
 // and the yearly police work (wanted level, fugitives, stolen cars, audits, prison years).
 import {
@@ -3688,6 +3689,7 @@ export const crimeMenu: MenuGroup = {
       hitmanMenu,
       murderMenu,
       organizedCrimeMenu,
+      underworldMenu,
       pickpocketAction,
       porchAction,
       shopliftMenu,

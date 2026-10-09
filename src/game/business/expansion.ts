@@ -1,6 +1,6 @@
 // Actions, menus and yearly progression for national strategy and the Inventor talent.
 import { count, formatMoney, log, notice } from '../core'
-import { chance, pick, randFloat, uid } from '../rng'
+import { pick, randFloat, uid } from '../rng'
 import { hasTalent } from '../talents'
 import type { Asset, GameState, MenuGroup, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
@@ -10,6 +10,8 @@ import { manageBlock } from './gate'
 import { industryDef } from './industries'
 import { bizOf, businessAssets, findBusiness, readBiz, type BizState } from './state'
 import { money, pct } from './util'
+import { inventionProductsOf, newInventionProduct, ownedInventionProductNodes, saveInventionProducts } from './invention-products'
+import type { InventionField } from '../inventor-data'
 
 export function strategyCost(b: BizState): number { return Math.round(Math.max(5_000, (b.last?.revenue ?? 100_000) * .025)) }
 export function studyCost(b: BizState): number { return Math.round(Math.max(2_000, (b.last?.revenue ?? 100_000) * .003)) }
@@ -29,7 +31,7 @@ export function studyMarket(g: GameState, assetId: string, country: string): boo
   saveExpansion(b, x)
   const n = nationalMarket(g, b.industry, country)
   log(g, `I studied the ${industryDef(b.industry).label.toLowerCase()} market in ${getCountry(country).name}.`)
-  notice(g, 'Market Study', `${n.label}. Customers currently favor ${n.taste}. Input costs are ${pct(n.costs - 1, 1)} relative to the normal local level. ${hasTalent(g, 'Inventor') ? 'Your Inventor talent uncovered research directions. Open Inventor Lab to develop one; a study stays useful for three years.' : 'Use National Strategy to choose a response. Each program has an upfront cost and a fixed term.'}`, { emoji: '🔎' })
+  notice(g, 'Market Study', `${n.label}. Customers currently favor ${n.taste}. Input costs are ${pct(n.costs - 1, 1)} relative to the normal local level. Use National Strategy to choose a response. Inventions now begin with personal specific-topic study in Activities > Inventor, funded from personal savings.`, { emoji: '🔎' })
   return true
 }
 
@@ -66,7 +68,7 @@ export function researchQuote(g: GameState, b: BizState, kind: Research['kind'])
   const frontier = kind === 'frontier'
   return { name: researchIdeas(b)[kind], kind, started: g.year, years: frontier ? 5 : 3,
     budget: Math.round(Math.max(frontier ? 500_000 : 100_000, (b.last?.revenue ?? 0) * (frontier ? .35 : .15))),
-    odds: frontier ? .45 : .75 }
+    odds: 1 }
 }
 
 function randomIdeas(g: GameState, b: BizState, kind: InventionTier): string[] {
@@ -104,28 +106,33 @@ export function startInvention(g: GameState, assetId: string, kind: Research['ki
   if (q.years === 0) {
     finishInvention(g, a, b, x)
     saveExpansion(b, x)
-  } else notice(g, 'Research Started', `${q.name}: ${q.years} ${q.years === 1 ? 'year' : 'years'}, ${pct(q.odds)} chance of success. The full ${formatMoney(q.budget)} budget is paid now, including the home patent filing. Success unlocks and launches the technology immediately; failure consumes the budget.`, { emoji: '💡' })
+  } else notice(g, 'Research Started', `${q.name}: ${q.years} ${q.years === 1 ? 'year' : 'years'}, guaranteed completion. This compatibility project keeps its existing paid budget and timeline. New projects begin in Activities > Inventor. Completion creates a concrete product with a manufacturing plan.`, { emoji: '💡' })
   return true
+}
+
+function inventionField(industry: string): InventionField {
+  return /energy|solar|battery|fusion/.test(industry) ? 'energy' : /biotech|pharma|clinic/.test(industry) ? 'health'
+    : /software|semiconductor|aiLab|quantum|robotics|gameStudio|cybersecurity/.test(industry) ? 'computing'
+      : /farm|food|restaurant|cafe|bakery|grocery/.test(industry) ? 'food' : /logistics|autoShop|electricVehicles|spaceTech/.test(industry) ? 'transport' : 'materials'
 }
 
 function finishInvention(g: GameState, a: Asset, b: BizState, x: Expansion): void {
   const r = x.research
   if (!r) return
   x.research = null
-  if (r.odds < 1 && !chance(g, r.odds)) {
-    notice(g, 'Research Failed', `${a.name}'s ${r.name} project did not produce a viable product. The research budget is spent; the lab is ready for another project.`, { emoji: '🧪', tone: 'bad' })
-    return
-  }
   const modern = isInventionTier(r.kind)
   const expires = g.year + (modern ? nationalPatentLaw(b.countryId, g.year).term : r.kind === 'early' ? 15 : 20)
-  const patent: Patent = { name: r.name, kind: r.kind, launched: g.year, expires,
-    ...(modern ? { id: r.id ?? uid(g, 'invention'), ownerId: a.id, demand: r.demand ?? INVENTION_TIERS[r.kind as InventionTier].demand[0], efficiency: r.efficiency ?? 0,
+  const patent: Patent = { id: r.id ?? uid(g, 'invention'), name: r.name, kind: r.kind, launched: g.year, expires,
+    ...(modern ? { ownerId: a.id, demand: r.demand ?? INVENTION_TIERS[r.kind as InventionTier].demand[0], efficiency: r.efficiency ?? 0,
       protections: [{ country: b.countryId, filed: g.year, expires }] } : {}) }
   x.patents.push(patent)
+  const products = inventionProductsOf(b)
+  if (!products.some(p => p.id === patent.id)) products.push(newInventionProduct(patent.id!, r.name, inventionField(b.industry), modern ? r.kind as InventionTier : r.kind === 'early' ? 'big' : 'generational', g.year))
+  saveInventionProducts(b, products)
   count(g, 'inventions')
   notice(g, 'Breakthrough!', modern
-    ? `${a.name} invented ${r.name}. The technology is unlocked and on sale now. Its demand potential is +${pct(patent.demand ?? 0)}, varying by country and year. The patent belongs exclusively to ${a.name} in ${getCountry(b.countryId).name} until ${expires}. File abroad by ${g.year + 1} to protect other countries. After patents expire, you keep the technology but competitors can copy it. Production still needs capacity, staff and cash.`
-    : `${a.name} invented ${r.name}. You alone can commercialize this product until ${expires}. Demand and production efficiency improve while exclusive; you still need capacity, staff and solvent operations. Competitors may use the technology once exclusivity expires.`, { emoji: '💡', tone: 'good' })
+    ? `${a.name} invented ${r.name}. The company now owns a concrete product; set its price and production under Owned Inventions. The patent belongs exclusively to ${a.name} in ${getCountry(b.countryId).name} until ${expires}. File abroad by ${g.year + 1} to protect other countries. After patents expire, you keep the technology but competitors can copy it. No sales occur without manufacturing capacity, staff and cash.`
+    : `${a.name} invented ${r.name}. Your legacy worldwide exclusivity remains in force until ${expires}. The technology is now a concrete company-owned product: set its price and production under Owned Inventions. Staff, production costs and cash limit output; it no longer boosts unrelated sales. Competitors may copy the product after exclusivity expires.`, { emoji: '💡', tone: 'good' })
   log(g, `I brought ${r.name} to market through ${a.name}.`, 'good')
 }
 
@@ -187,6 +194,14 @@ export function inventionYear(g: GameState, a: Asset, b: BizState): void {
   const x = expansionOf(b)
   if (x.lastYear >= g.year) return
   x.lastYear = g.year
+  // Convert existing company technologies to concrete SKUs without charging again
+  // or changing their identifiers, grant dates, territorial rights or expiry.
+  const products = inventionProductsOf(b)
+  for (const patent of x.patents) {
+    patent.id ??= uid(g, 'invention')
+    if (!products.some(product => product.id === patent.id)) products.push(newInventionProduct(patent.id, patent.name, inventionField(b.industry), isInventionTier(patent.kind) ? patent.kind : patent.kind === 'early' ? 'big' : 'generational', patent.launched))
+  }
+  if (products.length) saveInventionProducts(b, products)
   const r = x.research
   if (r && g.year >= r.started + r.years) {
     finishInvention(g, a, b, x)
@@ -230,7 +245,7 @@ function inventionPatentMenu(a: Asset, p: Patent, index: number): MenuGroup {
     const b = readBiz(g, a), current = expansionOf(b).patents.find(candidate => candidate.id === p.id) ?? p
     const territories = current.protections ?? []
     return [
-      { type: 'info', id: `inventor.product.${p.id}`, emoji: '💡', text: `${a.name} owns this ${isInventionTier(p.kind) ? INVENTION_TIERS[p.kind].label.toLowerCase() : p.kind} invention. Technology unlocked in ${p.launched}; no further development is needed. Current demand contribution in ${getCountry(b.countryId).name}: +${pct(productDemand(current, b.countryId, g.year), 1)}. Potential: +${pct(p.demand ?? 0, 1)} before local demand and patent enforcement. Actual sales still require production and staff.` },
+      { type: 'info', id: `inventor.product.${p.id}`, emoji: '💡', text: `${a.name} owns this ${isInventionTier(p.kind) ? INVENTION_TIERS[p.kind].label.toLowerCase() : p.kind} invention. Technology unlocked in ${p.launched}; no further development is needed. ${inventionProductsOf(b).some(product => product.id === p.id) ? 'Its separate product has its own price, production, inventory and sales ledger above; patents protect that product, not unrelated company demand.' : `Legacy demand contribution: +${pct(productDemand(current, b.countryId, g.year), 1)}. It will convert to a concrete product on the next yearly update without losing patent rights.`} Actual sales require manufacturing capacity, staff and cash.` },
       ...territories.map((t): MenuNode => ({ type: 'info', id: `inventor.protection.${p.id}.${t.country}`, emoji: getCountry(t.country).flag, text: `${getCountry(t.country).name}: ${protectedIn(current, t.country, g.year) ? `exclusive to ${a.name} until ${t.expires}` : 'patent expired; competitors may copy'}. Filed ${t.filed}.` })),
       { type: 'info', id: `inventor.foreign.help.${p.id}`, emoji: '🌍', text: `Foreign filing deadline: ${p.launched + 1}. A patent protects only its country. Filing later does not restart the patent term. After expiry, your technology remains available with a smaller demand advantage.` },
       { type: 'action', id: `inventor.file.all.${p.id}`, label: 'Patent in All Nations', emoji: '🌐',
@@ -252,21 +267,11 @@ function inventionPatentMenu(a: Asset, p: Patent, index: number): MenuGroup {
 }
 
 export function inventorMenu(a: Asset): MenuGroup {
-  return { type: 'menu', id: `biz.inventor.${a.id}`, label: 'Inventor Lab', emoji: '💡', subtitle: 'Random inventions · four research tiers · national patents', visible: g => hasTalent(g, 'Inventor'), children: g => {
+  return { type: 'menu', id: `biz.inventor.${a.id}`, label: 'Owned Inventions', emoji: '💡', subtitle: 'Product manufacturing, licensing and national patents', children: g => {
     const b = readBiz(g, a), x = expansionOf(b)
-    const nodes: MenuNode[] = [{ type: 'info', id: `inventor.help.${a.id}`, text: 'Study your home market, then choose a random invention tier. Small: instant, 100% success. Middle: 1 year, 95%. Big: 3 years, 85%. Generational: 5 years, 70%. Successful inventions unlock and launch immediately. Each has its own demand, with larger discoveries attracting more customers. The company owns the technology; national patents protect it where filed. One project at a time; budgets include the home patent.', emoji: '🧪' },
-      { type: 'action', id: `inventor.study.${a.id}`, label: 'Study Home Market', emoji: '🔎', subtitle: `${money(studyCost(b))} · study is valid for three years`,
-        disabledReason: gg => manageBlock(gg, a) ?? (expansionOf(readBiz(gg, a)).studies.some(s => s.country === readBiz(gg, a).countryId && s.year === gg.year) ? 'Already studied this year.' : readBiz(gg, a).cash < studyCost(readBiz(gg, a)) ? 'Not enough company cash.' : null),
-        run: gg => { studyMarket(gg, a.id, readBiz(gg, a).countryId) } }]
-    if (x.research) nodes.push({ type: 'info', id: `inventor.progress.${a.id}`, text: `${x.research.name}: results in ${Math.max(0, x.research.started + x.research.years - g.year)} years. Budget ${money(x.research.budget)} already paid; success chance ${pct(x.research.odds)}.`, emoji: '⏳' })
+    const nodes: MenuNode[] = [{ type: 'info', id: `inventor.help.${a.id}`, text: 'New inventions begin in Activities > Inventor: study a specific topic, pay a personal research budget and complete its required time. Completion is guaranteed. Assign or license the resulting IP to a compatible company. Here, each invention has a separate product price, production plan, inventory and sales ledger; it does not boost unrelated company demand.', emoji: '🧪' }, ...ownedInventionProductNodes(g, a.id)]
+    if (x.research) nodes.push({ type: 'info', id: `inventor.progress.${a.id}`, text: `${x.research.name}: legacy funded project completes in ${Math.max(0, x.research.started + x.research.years - g.year)} years, guaranteed. Budget ${money(x.research.budget)} already paid.`, emoji: '⏳' })
     nodes.push(...x.patents.map((p, i): MenuNode => isInventionTier(p.kind) ? inventionPatentMenu(a, p, i) : ({ type: 'info', id: `inventor.patent.${a.id}.${i}`, text: `${p.name} · ${p.expires > g.year ? `exclusive until ${p.expires}` : 'competitors can now use it'}`, emoji: '📜' })))
-    for (const kind of Object.keys(INVENTION_TIERS) as InventionTier[]) {
-      const q = researchQuote(g, b, kind)
-      const tier = INVENTION_TIERS[kind]
-      nodes.push({ type: 'action', id: `inventor.start.${a.id}.${kind}`, label: `${tier.label} Random Invention`, emoji: '💡', subtitle: `${money(q.budget)} · ${q.years === 0 ? 'instant' : `${q.years} ${q.years === 1 ? 'year' : 'years'}`} · ${pct(q.odds)} success · +${pct(tier.demand[0])}–${pct(tier.demand[1])} demand potential`,
-        disabledReason: gg => { const bb = readBiz(gg, a), xx = expansionOf(bb); return manageBlock(gg, a) ?? (!hasTalent(gg, 'Inventor') ? 'Requires Inventor talent.' : xx.research ? 'Finish your current project first.' : !xx.studies.some(s => s.country === bb.countryId && s.year <= gg.year && gg.year - s.year <= 2) ? 'Study your home market above first.' : xx.patents.some(p => p.name === q.name && p.expires > gg.year) ? 'You already hold this exclusive technology.' : bb.cash < researchQuote(gg, bb, kind).budget ? 'Not enough company cash.' : null) },
-        confirm: gg => `Commit ${money(researchQuote(gg, readBiz(gg, a), kind).budget)} to a random ${tier.label.toLowerCase()} invention? ${q.years === 0 ? 'Guaranteed success, unlocked immediately.' : `${pct(q.odds)} success; results in ${q.years} ${q.years === 1 ? 'year' : 'years'}. Failed research consumes the budget.`}`, run: gg => { startInvention(gg, a.id, kind) } })
-    }
     return nodes
   } }
 }

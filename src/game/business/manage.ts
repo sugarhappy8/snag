@@ -2,6 +2,8 @@
 // leadership and the exits. Each action re-reads the business from state when it runs.
 import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
+import { venueOwnerMenu } from './venues'
+import { isVenue } from './venues-data'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { chance, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
@@ -39,6 +41,7 @@ import { equityMenu, equityTerms } from './executive'
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
+import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
 import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
@@ -134,7 +137,7 @@ function hinting(g: GameState, a: Asset): boolean {
  * (budget, plan, expansion) would mislead there; their own screens carry their hints.
  */
 function priceAndOutput(b: BizState): boolean {
-  return !isStudio(b) && !isDeepTech(b)
+  return !isStudio(b) && !isDeepTech(b) && !isFinanceFirm(b)
 }
 
 /** A permanent shift in brand or quality targets, counted as the points it builds over a few years. */
@@ -1879,9 +1882,10 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   const division = divisionLine(g, a)
   rows.push(division ?? (b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%'))
   rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
-  rows.push(isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
+  rows.push(isFinanceFirm(b) ? `Balance-sheet business · no manufactured product lines · staff skill drives underwriting and portfolio results` : isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
   rows.push(marketInfoLine(g, a))
-  if (isStudio(b)) rows.push(studioInfo(g, a))
+  if (isFinanceFirm(b)) rows.push(financeInfo(g, b))
+  else if (isStudio(b)) rows.push(studioInfo(g, a))
   else {
     if (isDeepTech(b)) {
       const tech = deepTechInfo(g, a)
@@ -1917,8 +1921,11 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   const health = readBiz(g, a)
   nodes.push({ type: 'info', id: `biz.next.${a.id}`, emoji: '🧭', text: health.cash < 0 ? 'Priority: cover the cash shortfall in Money before expanding.' : health.last && health.last.net < 0 ? 'Losing money? Review price and production, reduce debt, or hire a turnaround CEO. Avoid new expansion until cash is stable.' : 'Next steps: compare national conditions, study a market, then fund a strategy or expansion. Keep cash for payroll and debt.' })
   nodes.push(nationalStrategyMenu(a), inventorMenu(a))
+  if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
   nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-  if (isStudio(readBiz(g, a))) {
+  if (isFinanceFirm(health)) {
+    nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
+  } else if (isStudio(readBiz(g, a))) {
     // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
     nodes.push(...studioNodes(g, a))
     nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))

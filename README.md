@@ -26,19 +26,50 @@ allow, picked with sliders. Hire a CEO to run them (the best ones above skill 75
 real executives and write you a yearly letter), answer to a board of directors once outsiders
 own part of the company, and merge your companies into a conglomerate.
 
-Choose from 45 company sectors. National demand, input costs and customer tastes change over
+Choose from 51 company sectors. National demand, input costs and customer tastes change over
 time; study your markets and run up to three local strategy programs per country. Elite CEOs
 bring stronger operating performance and turnaround planning, and ask for an initial 2–10%
 equity grant. Any positive company or conglomerate stake prevents voluntary resignation or
 retirement, even after dilution or skill growth; salary and board dismissal still apply.
 Group CEOs recruit division leaders at their own rating or higher.
 Large stock orders affect execution prices and market quotes, and major company declines
-shake national-sector confidence. With the **Inventor** talent, fund risky multi-year research
-into alternate-history technologies: a 15-year head start or a fictional frontier breakthrough
-with 20 years of product exclusivity. Even a monopoly needs cash, staff and production capacity.
-For a completed tier invention, open **Inventor Lab → the invention → Patent in All Nations**
-to file every remaining country at once. The confirmation shows the combined national fees;
-existing filings are skipped, and each country's patent term and enforcement still apply.
+shake national-sector confidence.
+
+**Investment firms, banks and online banks** have dedicated financial books, not product units.
+Hire specialists, choose portfolio or credit policies, attract clients, manage reserves and
+survive withdrawals and defaults. Client investments and deposits are segregated from company
+cash and shareholder equity. Inventor-talented owners can develop an original market algorithm
+even before computers; its advantage decays and never guarantees returns. Online banks require
+local internet and online-banking technology.
+
+With the **Inventor** talent, visit **Activities → Inventor** to study a specific
+topic at the library, or online from 1995. Fund research from your personal budget: small
+inventions finish instantly; middle, big and generational projects take one, three and five
+active years. Completion is guaranteed. The result is personally owned IP, not an unrelated
+company demand boost. Assign it to a compatible company or license it for a royalty, then set
+the actual product's price and production. Sales require staff, cash and customers. Open the
+owned invention's national-patent screen to file in all remaining nations at once; fees,
+filing windows and national patent terms still apply. Existing company research queues remain
+compatible and complete into manufactured products.
+
+Own a **casino, nightclub, bar or adult entertainment club** where simulated local licensing
+allows it. Visit the floor, hear staff concerns, handle an owner request, support performers,
+book collaborations and invest in safety or hospitality. All adult venues and encounters are
+18+ and consent-gated. **Crime → Drug Markets & Underground Empire** adds fictional regular
+and ultra-rich markets, staff-run abstract production, a separate criminal treasury, and risky
+money-laundering choices through controlled operating companies. These are fictional game
+mechanics, not real substances, recipes or concealment instructions.
+
+Luxury personal staff now include a **secretary**, **estate manager** and **concierge**. A
+secretary can screen requests from children, family, friends and strangers into an approval
+inbox or decline selected categories; they never spend your money without approval. Family
+retreats, patron salons and learning sabbaticals have real relationship, networking and recovery
+effects, with concierge discounts and shared annual limits. Landlords
+can set renewal rents, manage vacancy, hire property managers, resolve repairs, track arrears
+and balance tenant satisfaction against costs. Adults can make up to **24 shared baby attempts
+per year**, and unprotected adult hookups can result in pregnancy. **Activities → Backroom
+Favors** offers fictional, uncertain and criminally risky attempts to obtain jobs for adult
+relatives through political or corporate influence.
 
 Game studios can develop their own technology from **Game Engines** on the company screen:
 build an indie, professional, or flagship engine, then select it when greenlighting games for
@@ -55,6 +86,9 @@ payoff arcs earn trust. Balance release schedules, burnout, and hiatuses, then c
 satisfying finale. Self-publish or accept a recoupable publisher advance, earn back-catalogue
 royalties, and license successful stories for screen or animated adaptations while retaining
 the original IP. Existing publications keep earning after you leave the career.
+The Story Desk lets you name your lead character and setting, choose individual scene beats,
+keep a persistent notebook, host editorial reader workshops, and react to reader feedback.
+The old “How This Career Works” menu has been removed.
 
 There is no server and no account: the game never sends anything anywhere.
 

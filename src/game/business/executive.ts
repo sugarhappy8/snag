@@ -8,6 +8,7 @@ import { interimCeo } from './conglomerate-actions'
 import { clearGroupCeoJob } from './conglomerate-job'
 import { executiveEdge } from './dynamics'
 import { bestPlan, refreshValue } from './economy'
+import { isFinanceFirm } from './finance-firm-state'
 import { manageBlock } from './gate'
 import { bizOf, findBusiness, hasExecutiveShares, readBiz, type BizState, type Manager } from './state'
 import { pct, priceCapOf } from './util'
@@ -96,7 +97,7 @@ export function executiveOperations(g: GameState, b: BizState, year: number, ass
   b.quality = Math.min(100, b.quality + 6 * edge)
   b.morale = Math.min(100, b.morale + 8 * edge)
   b.brand = Math.min(100, b.brand + 4 * edge)
-  if (b.manager.skill >= 90 && b.industry !== 'gameStudio' && !['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity'].includes(b.industry)) {
+  if (b.manager.skill >= 90 && !isFinanceFirm(b) && b.industry !== 'gameStudio' && !['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity'].includes(b.industry)) {
     const plan = bestPlan(g, b, { quick: true, year, maxPrice: priceCapOf(g, assetId) ?? undefined })
     b.price = plan.price
     b.production = plan.production

@@ -9,6 +9,7 @@ import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import { common } from './era'
+import { queueSecretaryRequest } from '../shops/luxury-secretary-state'
 import { askDef } from './wealth-catalog'
 import { POCKET_SCRIPT, setAllowance } from './wealth-kids'
 import { whoOf, type Ask, type AskDef } from './wealth-ask'
@@ -111,14 +112,24 @@ function ventureHint(g: GameState, a: Ask): string | undefined {
   return talentHint(g, 'Business', text) || undefined
 }
 
-/** Queue one ask as a choice popup. */
-export function presentAsk(g: GameState, a: Ask): void {
+/** Queue one ask as a choice popup, bypassing staff screening after explicit inbox review. */
+export function presentAskDirect(g: GameState, a: Ask): void {
   const extra = cashOf(g) < a.amt && a.amt > 0 ? `\n\nYou have ${money(cashOf(g))} in cash right now.` : ''
   scriptChoice(g, ASK_SCRIPT, a.title, a.text + extra, askChoices(g, a), { emoji: a.emoji, data: { ask: askJson(a) }, personId: a.pid })
 }
 
+/** Queue one ask, or let an employed secretary put it in the approval inbox. */
+export function presentAsk(g: GameState, a: Ask): void {
+  const routed = queueSecretaryRequest(g, { pid: a.pid, title: a.title, what: a.what, amount: a.amt, ask: askJson(a) })
+  if (!routed) return presentAskDirect(g, a)
+  if (routed.policy === 'decline') refuse(g, a, 'no', true)
+}
+
 /** Queue several small asks as one popup (one tap answers them all). */
 export function presentBundle(g: GameState, asks: Ask[]): void {
+  // A secretary turns a noisy bundle into individual, attributable inbox items. Policies are
+  // applied per relationship category; nothing is ever paid automatically.
+  if (asks.length && queueThroughSecretary(g, asks)) return
   const total = asks.reduce((s, a) => s + a.amt, 0)
   const family = asks.filter((a) => {
     const p = a.pid ? getPerson(g, a.pid) : undefined
@@ -134,6 +145,20 @@ export function presentBundle(g: GameState, asks: Ask[]): void {
     emoji: '\u{1F4EC}',
     data: { asks: asks.map(askJson) },
   })
+}
+
+function queueThroughSecretary(g: GameState, asks: Ask[]): boolean {
+  // Test employment without mutating state. If the first request is not intercepted there is no
+  // secretary, so the ordinary bundle stays intact.
+  const first = asks[0]
+  const routed = queueSecretaryRequest(g, { pid: first.pid, title: first.title, what: first.what, amount: first.amt, ask: askJson(first) })
+  if (!routed) return false
+  if (routed.policy === 'decline') refuse(g, first, 'no', true)
+  for (const ask of asks.slice(1)) {
+    const next = queueSecretaryRequest(g, { pid: ask.pid, title: ask.title, what: ask.what, amount: ask.amt, ask: askJson(ask) })
+    if (next?.policy === 'decline') refuse(g, ask, 'no', true)
+  }
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +275,7 @@ function refusalCost(g: GameState, a: Ask, def: AskDef, p: Person): number {
   return Math.round(base * (pocketChange ? 1.3 : 1))
 }
 
-function refuse(g: GameState, a: Ask, answer: Answer): void {
+function refuse(g: GameState, a: Ask, answer: Answer, quiet = false): void {
   const def = askDef(a.k)
   const { ok, p } = liveAsker(g, a)
   if (!def || !ok) return gone(g, a)
@@ -297,7 +322,12 @@ function refuse(g: GameState, a: Ask, answer: Answer): void {
   }
   const extra = def.onNo ? def.onNo(g, a, p) : ''
   if (extra) parts.push(extra)
-  notice(g, a.title, parts.join(' '), { emoji: a.emoji })
+  if (!quiet) notice(g, a.title, parts.join(' '), { emoji: a.emoji })
+}
+
+/** Apply the ordinary refusal rules from the secretary inbox without another request popup. */
+export function declineSecretaryAsk(g: GameState, a: Ask): void {
+  refuse(g, a, 'no', true)
 }
 
 defineScript(ASK_SCRIPT, (g, choice, data) => {

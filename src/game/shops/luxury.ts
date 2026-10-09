@@ -21,7 +21,7 @@ import { boutiquesMenu, cellarMenu, wheelsMenu } from './luxury-brands-shop'
 import { LUXURY_NET_WORTH, luxuryAssets, luxuryBlock, luxuryKind, type PopupBudget } from './luxury-common'
 import { fleetEventCandidates, fleetHoldingNode, jetBrokerMenu, megayachtDealerMenu, yearlyFleet } from './luxury-fleet'
 import { islandHoldingNode, islandRealtorMenu, yearlyIslands } from './luxury-islands'
-import { luxurySpaMenu, vipEventsMenu } from './luxury-pamper'
+import { luxuryExperiencesMenu, luxurySpaMenu, vipEventsMenu } from './luxury-pamper'
 import { membership, secretSocietiesMenu, yearlySocieties } from './luxury-societies'
 import { hasStaff, personalStaffMenu, yearlyStaff } from './luxury-staff'
 
@@ -73,7 +73,9 @@ export const luxuryLifestyleMenu: MenuGroup = {
     jetBrokerMenu,
     { type: 'heading', id: 'lux-pamper', label: 'Pamper & Party' },
     luxurySpaMenu,
-    vipEventsMenu,
+    { ...luxuryExperiencesMenu, label: 'Experiences & VIP Events', subtitle: 'Private retreats, patron salons, learning sabbaticals and invitations',
+      header: (gg) => `${luxuryExperiencesMenu.header?.(gg) ?? ''}\nVIP events have their own booking limits, separate from the two bespoke experiences.`,
+      children: (gg) => [...luxuryExperiencesMenu.children(gg), vipEventsMenu] },
     { type: 'heading', id: 'lux-circle', label: 'Inner Circle' },
     personalStaffMenu,
     secretSocietiesMenu,

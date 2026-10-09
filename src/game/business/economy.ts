@@ -28,6 +28,7 @@ import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
 import { marketDef } from './competition-data'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
+import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -602,7 +603,7 @@ export interface Book {
  * sales, costs, taxes and the cash, stock and staff it leaves behind. simulateYear() applies it;
  * the Business talent's planner uses it to test plans against the very same numbers.
  */
-export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, production: number, ownerDraw: number, k: YearFixed = yearFixed(g, b), cycle?: number): Book {
+export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, production: number, ownerDraw: number, k: YearFixed = yearFixed(g, b), cycle?: number, bookedHomeSales = 0): Book {
   const def = industryDef(b.industry)
   const capacity = plan.capacity
   const produced = Math.floor(clampN(Math.min(production, capacity), 0, 1e12))
@@ -669,6 +670,9 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   // The owner's salary is paid if the company can cover it.
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + alreadyBooked)))
   const pbt = pbt0 - ownerPay
+  // Concrete invention sales were already cash-booked through yearIncome. They
+  // still belong in the home nation's share of the corporate taxable profit.
+  if (bookedHomeSales > 0) netByCountry[b.countryId] = (netByCountry[b.countryId] ?? 0) + bookedHomeSales
   let corpTax = 0
   if (pbt > 0) {
     const totalNet = Object.values(netByCountry).reduce((s, v) => s + Math.max(0, v), 0)
@@ -728,10 +732,11 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
  * business (cash, inventory, employees, last statement) but not its quality/brand/morale (see
  * evolve()). `ownerDraw` is the salary the owner wants this year (0 when not CEO).
  */
-export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number): YearResult {
+export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number, bookedHomeSales = 0): YearResult {
+  if (isFinanceFirm(b)) return simulateFinanceYear(g, b, year, ownerDraw)
   const noise = fixedNoise ?? clampN(1 + bell(g, -80, 80) / 1000, 0.9, 1.1)
   const plan = planFor(g, b, year, { noise })
-  const k = bookYear(g, b, year, plan, b.production, ownerDraw)
+  const k = bookYear(g, b, year, plan, b.production, ownerDraw, yearFixed(g, b), undefined, bookedHomeSales)
   b.cash = k.cash
   b.inventory = k.inventoryEnd
   b.employees = k.employees
@@ -1401,7 +1406,7 @@ export function hotIndustries(g: GameState, countryId: string, city: string, n =
   const key = `${g.lifeId}|${g.year}|${countryId}|${city}|${c.stats.smarts}|${c.hidden.discipline}|${c.hidden.fame}|${c.education.degrees.length}|${hasTalent(g, 'Business') ? 1 : 0}|${n}`
   const hit = hotCache.get(key)
   if (hit) return hit
-  const out = INDUSTRY_IDS.filter((id) => id !== 'gameStudio' && !isDeepTechIndustry(id))
+  const out = INDUSTRY_IDS.filter((id) => id !== 'gameStudio' && !isDeepTechIndustry(id) && !isFinanceFirm({ industry: id }))
     .map((industry) => ({ industry, payback: foundingOutlook(g, industry, countryId, city).payback }))
     .filter((x) => x.payback <= HOT_PAYBACK)
     .sort((x, y) => x.payback - y.payback)

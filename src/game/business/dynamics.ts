@@ -113,8 +113,10 @@ export function businessEffects(g: GameState, b: BizState, country: string, year
   }
   const active = x.patents.filter(p => protectedIn(p, country, year))
   // Exclusivity concerns the invented product, not ownership of the entire national industry.
-  const patent = Math.min(8, x.patents.reduce((s, p) => s + productDemand(p, country, year), 0))
-  const efficiency = x.patents.filter(p => p.launched <= year).reduce((s, p) => s + (isInventionTier(p.kind) ? (p.efficiency ?? 0) : protectedIn(p, country, year) ? (p.kind === 'frontier' ? .8 : .5) * .06 : 0), 0)
+  const concreteIds = new Set((Array.isArray(b.inventionProducts) ? b.inventionProducts : []).map(rec).flatMap(row => typeof row?.id === 'string' ? [row.id] : []))
+  const modifiers = x.patents.filter(p => !p.id || !concreteIds.has(p.id))
+  const patent = Math.min(8, modifiers.reduce((s, p) => s + productDemand(p, country, year), 0))
+  const efficiency = modifiers.filter(p => p.launched <= year).reduce((s, p) => s + (isInventionTier(p.kind) ? (p.efficiency ?? 0) : protectedIn(p, country, year) ? (p.kind === 'frontier' ? .8 : .5) * .06 : 0), 0)
   return { demand: clampN(demand, .7, 1.65) * (1 + patent), cost: clampN(cost - Math.min(.35, efficiency), .65, 1.5), capacity: Math.min(1.4, capacity), patents: active.length }
 }
 

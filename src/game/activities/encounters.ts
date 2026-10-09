@@ -2,13 +2,14 @@
 // movies...) and life-or-death "SOS" situations (walks, hikes, the zoo).
 import { arrestPlayer } from '../crime'
 import { killCharacter } from '../death'
-import { addHidden, addStat, count, currentPartner, log, notice, remember, scriptChoice } from '../core'
+import { addHidden, addStat, attractedTo, count, currentPartner, log, notice, remember, scriptChoice } from '../core'
 import { randomFirstName, randomLastName } from '../world'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
-import type { GameState, Gender, Json } from '../types'
+import type { GameState, Gender, Json, Person } from '../types'
 import { canRomance, meetPerson, result, say, strangerAge, strangerGender } from './common'
 import { cars, common, eraLines, landline } from '../events/era'
+import { conceive, conceptionBlocker, fertilityFactor } from '../love'
 
 // ---------------------------------------------------------------------------
 // Someone asks you out
@@ -82,6 +83,19 @@ export function maybeAskedOut(g: GameState, where: string, p: number): boolean {
     emoji: '\u{1F60D}',
     data: { where, gender, age, firstName, lastName },
   })
+  return true
+}
+
+/**
+ * Resolve pregnancy from a consensual, unprotected adult encounter. The caller owns the scene;
+ * this helper owns the hard safety gates and ensures the exact encountered person becomes the
+ * other parent. It is deliberately probabilistic and never bypasses an existing pregnancy.
+ */
+export function tryAdultHookupPregnancy(g: GameState, person: Person, baseOdds = 0.14): boolean {
+  if (!g.character.alive || g.character.prison || g.character.age < 18 || !person.alive || person.age < 18) return false
+  if (!attractedTo(g.character, person.gender) || conceptionBlocker(g, person)) return false
+  if (!chance(g, Math.max(0, Math.min(0.35, baseOdds)) * fertilityFactor(g, person))) return false
+  conceive(g, person, 1, 'natural')
   return true
 }
 

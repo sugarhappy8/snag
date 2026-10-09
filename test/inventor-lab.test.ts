@@ -3,7 +3,8 @@ import { makeTestGame } from './helpers'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { bizOf, normalizeBiz } from '../src/game/business/state'
 import { becomeCeo } from '../src/game/business/career'
-import { businessEffects, expansionOf, productDemand, protectedIn } from '../src/game/business/dynamics'
+import { businessEffects, expansionOf, productDemand, protectedIn, saveExpansion } from '../src/game/business/dynamics'
+import { inventionProductsOf } from '../src/game/business/invention-products'
 import { allNationsPatentQuote, fileInventionPatent, fileInventionPatentAllNations, inventionYear, inventorMenu, researchQuote, startInvention, studyMarket } from '../src/game/business/expansion'
 import { INVENTION_TIERS, nationalPatentLaw, type InventionTier } from '../src/game/business/inventions'
 import { nextRandom } from '../src/game/rng'
@@ -29,7 +30,7 @@ function seedFor(odds: number, succeeds: boolean): number {
 
 describe('random Inventor Lab', () => {
   it.each([
-    ['small', 0, 1], ['middle', 1, .95], ['big', 3, .85], ['generational', 5, .7],
+    ['small', 0, 1], ['middle', 1, 1], ['big', 3, 1], ['generational', 5, 1],
   ] as const)('%s uses exactly %s years and %s success, unlocking on completion', (kind, years, odds) => {
     const { g, a, b } = lab()
     expect(researchQuote(g, b, kind)).toMatchObject({ years, odds })
@@ -54,7 +55,8 @@ describe('random Inventor Lab', () => {
     expect(p.demand).toBeGreaterThanOrEqual(INVENTION_TIERS[kind].demand[0])
     expect(p.demand).toBeLessThan(INVENTION_TIERS[kind].demand[1])
     expect(protectedIn(p, 'us', g.year)).toBe(true)
-    expect(businessEffects(g, b, 'us', g.year).demand).toBeGreaterThan(1)
+    expect(businessEffects(g, b, 'us', g.year).demand).toBe(1)
+    expect(inventionProductsOf(b)).toHaveLength(1)
     expect(b.cash).toBe(before - budget)
     expect(g.counters.inventions).toBe(1)
     inventionYear(g, a, b)
@@ -62,17 +64,21 @@ describe('random Inventor Lab', () => {
     expect(g.counters.inventions).toBe(1)
   })
 
-  it.each(['middle', 'big', 'generational'] as const)('%s can fail at its configured probability and never grants technology on failure', kind => {
+  it.each(['middle', 'big', 'generational'] as const)('%s legacy failure probability no longer destroys a funded project', kind => {
     const { g, a, b } = lab()
     startInvention(g, a.id, kind)
+    const old = expansionOf(b)
+    old.research!.odds = 0
+    saveExpansion(b, old)
     const research = expansionOf(b).research!, paid = b.cash
     g.year += research.years
     g.rng = seedFor(research.odds, false)
     inventionYear(g, a, b)
     expect(expansionOf(b).research).toBeNull()
-    expect(expansionOf(b).patents).toHaveLength(0)
+    expect(expansionOf(b).patents).toHaveLength(1)
+    expect(inventionProductsOf(b)).toHaveLength(1)
     expect(b.cash).toBe(paid)
-    expect(g.queue.some(m => m.kind === 'notice' && m.title === 'Research Failed')).toBe(true)
+    expect(g.queue.some(m => m.kind === 'notice' && m.title === 'Research Failed')).toBe(false)
   })
 
   it('rolls different individual inventions with their own demand, but identical seeds reproduce them', () => {
@@ -153,7 +159,7 @@ describe('random Inventor Lab', () => {
     expect(expansionOf(b).patents).toHaveLength(0)
   })
 
-  it('shows all four tiers and country filings without rerolling or mutating the life', () => {
+  it('replaces the old lab with concrete company products and country filings without mutating the life', () => {
     const { g, a } = lab()
     startInvention(g, a.id, 'small')
     const before = JSON.stringify(g)
@@ -165,7 +171,9 @@ describe('random Inventor Lab', () => {
       }
     }
     const nodes = inventorMenu(a).children(g)
-    for (const kind of Object.keys(INVENTION_TIERS)) expect(nodes.some(n => n.id === `inventor.start.${a.id}.${kind}`)).toBe(true)
+    expect(inventorMenu(a).label).toBe('Owned Inventions')
+    for (const kind of Object.keys(INVENTION_TIERS)) expect(nodes.some(n => n.id === `inventor.start.${a.id}.${kind}`)).toBe(false)
+    expect(nodes.some(n => n.id.startsWith('invention.sku.'))).toBe(true)
     visit(nodes)
     expect(JSON.stringify(g)).toBe(before)
   })

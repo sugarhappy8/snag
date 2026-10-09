@@ -108,7 +108,7 @@ function craftQuality(g: GameState, p: AuthorProfile, w: AuthorWork): number {
     + (hasTalent(g, 'Writing') ? 7 : 0) + (serial && hasTalent(g, 'Art') ? 7 : 0) - p.burnout * .18, 5, 98)
 }
 
-export function workOnAuthorWork(g: GameState, id: string): void {
+export function workOnAuthorWork(g: GameState, id: string, quiet = false): void {
   if (careerActionBlock(g)) return
   const p = authorMut(g), w = p.works.find((x) => x.id === id)
   if (!w || (w.stage !== 'draft' && w.stage !== 'ready')) return
@@ -122,7 +122,7 @@ export function workOnAuthorWork(g: GameState, id: string): void {
   if (w.progress >= 100) w.stage = 'ready'
   p.burnout = clamp(p.burnout + 3)
   saveAuthor(g, p)
-  notice(g, revision ? 'Revised Manuscript' : w.stage === 'ready' ? 'Ready for Readers' : 'Pages Written', `${w.title}: ${Math.round(w.progress)}% complete, quality ${Math.round(w.quality)}. ${w.stage === 'ready' ? 'Revise further, pitch to a publisher, or self-publish.' : 'The next writing session will move the story forward.'}`, { emoji: '✍️' })
+  if (!quiet) notice(g, revision ? 'Revised Manuscript' : w.stage === 'ready' ? 'Ready for Readers' : 'Pages Written', `${w.title}: ${Math.round(w.progress)}% complete, quality ${Math.round(w.quality)}. ${w.stage === 'ready' ? 'Revise further, pitch to a publisher, or self-publish.' : 'The next writing session will move the story forward.'}`, { emoji: '✍️' })
 }
 
 /** Offers are stable for the year; opening a menu cannot improve the deal. */

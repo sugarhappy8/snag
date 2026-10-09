@@ -3,15 +3,16 @@
 // minimum wage) and are paid every birthday; staff quit when the money runs out. State lives in
 // g.flags['luxury.staff'] as plain JSON: { [roleId]: { name, gender, hiredAge, skill, quirk } }.
 import { nicePrice } from '../assets'
-import { addHidden, addStat, count, formatMoney, inPrison, log, notice, pronouns, remember, scriptChoice, spend } from '../core'
+import { addHidden, addMoney, addStat, count, formatMoney, inPrison, log, notice, pronouns, remember, scriptChoice, spend } from '../core'
 import { localMarket } from '../data/markets'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { ChoiceOption, GameState, Gender, MenuAction, MenuGroup, MenuNode, StatKey } from '../types'
 import { randomFirstName, randomLastName } from '../world'
 import { cantAfford, laborMult, luxuryBlock, luxuryReason, num, obj, str, takePopup, type PopupBudget } from './luxury-common'
+import { secretaryDeskMenu } from './luxury-secretary'
 
-export type StaffRoleId = 'butler' | 'chef' | 'chauffeur' | 'bodyguard' | 'trainer'
+export type StaffRoleId = 'butler' | 'chef' | 'chauffeur' | 'bodyguard' | 'trainer' | 'secretary' | 'estateManager' | 'concierge'
 
 export interface StaffRole {
   id: StaffRoleId
@@ -71,6 +72,33 @@ export const STAFF_ROLES: StaffRole[] = [
     perks: { health: 3, looks: 1 },
     quirks: ['yells motivational quotes', 'drinks raw eggs', 'used to train an action star', 'counts reps in a whisper', 'believes carbs are a myth'],
   },
+  {
+    id: 'secretary',
+    label: 'Personal Secretary',
+    emoji: '🗂️',
+    usd: 85_000,
+    perkText: 'Screens every money request and keeps an approval inbox',
+    perks: { happiness: 1 },
+    quirks: ['can end a call with one raised eyebrow', 'labels every folder twice', 'never forgets a promise', 'has a color code for the color codes', 'answers the phone before it rings'],
+  },
+  {
+    id: 'estateManager',
+    label: 'Estate Manager',
+    emoji: '🏡',
+    usd: 125_000,
+    perkText: 'Controls household upkeep and negotiates service bills',
+    perks: { happiness: 2 },
+    quirks: ['knows the square footage of every cupboard', 'gets three quotes for everything', 'has the gardeners on speed dial', 'can smell an inflated invoice', 'runs the house like a quiet navy'],
+  },
+  {
+    id: 'concierge',
+    label: 'Lifestyle Concierge',
+    emoji: '🛎️',
+    usd: 75_000,
+    perkText: 'Finds reservations, invitations and people worth knowing',
+    perks: { happiness: 3, looks: 1 },
+    quirks: ['knows which table is never officially available', 'keeps a suitcase permanently packed', 'can find tickets after "sold out"', 'remembers every maître d’ by name', 'treats impossible as a scheduling problem'],
+  },
 ]
 
 export interface StaffMember {
@@ -112,6 +140,10 @@ export function staffRoster(g: GameState): { role: StaffRole; member: StaffMembe
 
 export function hasStaff(g: GameState): boolean {
   return staffRoster(g).length > 0
+}
+
+export function hasStaffRole(g: GameState, id: StaffRoleId): boolean {
+  return staffRoster(g).some((entry) => entry.role.id === id)
 }
 
 function setStaff(g: GameState, id: StaffRoleId, m: StaffMember | null): void {
@@ -259,6 +291,7 @@ export const personalStaffMenu: MenuGroup = {
     if (roster.length) {
       nodes.push({ type: 'heading', id: 'lux-staff-mine', label: 'Your Staff' })
       for (const s of roster) nodes.push(employeeAction(s.role, s.member))
+      if (roster.some((s) => s.role.id === 'secretary')) nodes.push(secretaryDeskMenu)
     }
     const open = STAFF_ROLES.filter((r) => !roster.some((s) => s.role.id === r.id))
     if (open.length) {
@@ -320,6 +353,16 @@ export function yearlyStaff(g: GameState, budget: PopupBudget): void {
     paid += wage
     for (const [key, amount] of Object.entries(role.perks) as [StatKey, number][]) addStat(g, key, Math.max(1, Math.round(amount * member.skill)))
     if (role.id === 'trainer') addHidden(g, 'athleticism', 1)
+    if (role.id === 'estateManager') {
+      const upkeep = g.assets.reduce((sum, asset) => sum + Math.max(0, asset.upkeep || 0), 0)
+      const saved = nicePrice(Math.min(wage * 0.5, upkeep * (0.06 + member.skill * 0.02)))
+      if (saved > 0) {
+        addMoney(g, saved)
+        count(g, 'estateManagementSavings', saved)
+        log(g, `${member.name}, my estate manager, negotiated ${formatMoney(saved)} off this year's household and property bills.`, 'good')
+      }
+    }
+    if (role.id === 'concierge') count(g, 'conciergeYears')
     if (role.id === 'bodyguard' && c.hidden.fame >= 30 && chance(g, 0.12)) {
       addStat(g, 'happiness', 2)
       log(g, pick(g, [`My bodyguard, ${member.name}, stopped an overexcited fan from climbing my gate.`, `${member.name} body-blocked a paparazzo who jumped out of a hedge at me.`, `My bodyguard spotted a stalker following my car and made them disappear (politely).`]), 'good')

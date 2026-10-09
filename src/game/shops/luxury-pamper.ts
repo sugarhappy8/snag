@@ -1,14 +1,19 @@
 // Luxury Lifestyle › Luxury Spa ("Pamper yourself") and VIP Events (Celebrity Chef Dinner,
 // Celebrity Wedding, Charity Gala, Movie Premiere, VIP Nightclub). Spa prices follow local
 // labor costs; event tickets follow the local luxury price level.
-import { addHidden, addMoney, addStat, count, formatMoney, log, netWorth, notice, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, addRelationship, addStat, count, formatMoney, log, netWorth, notice, remember, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { nicePrice } from '../assets'
 import { hasTech } from '../history/timeline'
+import { createPerson } from '../people'
 import { chance, pick, randInt } from '../rng'
 import { defineScript } from '../scripts'
-import type { ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode, StatKey } from '../types'
+import { authorMut } from '../special/author-state'
+import { gdMut, gdPeek } from '../special/gamedev-state'
+import { peek } from '../special/common'
+import type { ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Person, StatKey } from '../types'
 import { alcoholBlock } from './luxury-brands-catalog'
 import { alcoholMult, cantAfford, localized, luxuryMult, luxuryReason, meetCeleb, rollCeleb, serviceMult, taxLine } from './luxury-common'
+import { hasStaffRole } from './luxury-staff'
 
 // ---------------------------------------------------------------------------
 // Luxury Spa
@@ -170,6 +175,144 @@ export const luxurySpaMenu: MenuGroup = {
         },
       }),
     ),
+}
+
+// ---------------------------------------------------------------------------
+// Bespoke experiences
+
+export type LuxuryExperienceId = 'familyRetreat' | 'patronSalon' | 'learningSabbatical'
+
+interface LuxuryExperience {
+  id: LuxuryExperienceId
+  label: string
+  emoji: string
+  usd: number
+  subtitle: string
+}
+
+export const LUXURY_EXPERIENCES_PER_YEAR = 2
+
+export const LUXURY_EXPERIENCES: LuxuryExperience[] = [
+  { id: 'familyRetreat', label: 'Private Family Retreat', emoji: '🏞️', usd: 80_000, subtitle: 'Bring the family somewhere quiet and repair real bonds' },
+  { id: 'patronSalon', label: 'Host a Patron Salon', emoji: '🥂', usd: 120_000, subtitle: 'Gather artists, founders and thinkers; leave with a wider circle' },
+  { id: 'learningSabbatical', label: 'Curated Learning Sabbatical', emoji: '📚', usd: 160_000, subtitle: 'Private tutors, deep study and room to recover from creative burnout' },
+]
+
+function retreatFamily(g: GameState): Person[] {
+  const family = new Set(['parent', 'stepparent', 'sibling', 'halfSibling', 'stepsibling', 'grandparent', 'child', 'stepchild', 'grandchild', 'spouse', 'partner', 'fiance'])
+  return g.people.filter((person) => person.alive && family.has(person.relation))
+}
+
+export function luxuryExperiencePrice(g: GameState, experience: LuxuryExperience): number {
+  const full = localized(experience.usd, luxuryMult(g))
+  return hasStaffRole(g, 'concierge') ? nicePrice(full * .85) : full
+}
+
+function experienceReason(g: GameState, experience: LuxuryExperience): string | null {
+  const blocked = luxuryReason(g)
+  if (blocked) return blocked
+  if (yearActionsUsed(g, 'luxury.experience') >= LUXURY_EXPERIENCES_PER_YEAR) return `You have already booked ${LUXURY_EXPERIENCES_PER_YEAR} bespoke experiences this year.`
+  if (experience.id === 'familyRetreat' && retreatFamily(g).length === 0) return 'You need a living family member or partner to bring on the retreat.'
+  return null
+}
+
+function recoverCreativeBurnout(g: GameState, amount: number): string[] {
+  const recovered: string[] = []
+  if (peek<Json>(g, 'author')) {
+    const profile = authorMut(g)
+    const before = profile.burnout
+    profile.burnout = Math.max(0, profile.burnout - amount)
+    if (profile.burnout < before) recovered.push(`author burnout −${Math.round(before - profile.burnout)}`)
+  }
+  if (gdPeek(g)) {
+    const profile = gdMut(g)
+    const before = profile.burnout
+    profile.burnout = Math.max(0, profile.burnout - amount)
+    if (profile.burnout < before) recovered.push(`game-development burnout −${Math.round(before - profile.burnout)}`)
+  }
+  return recovered
+}
+
+/** Book one fully revalidated, limited experience. Returns true only after payment and effects. */
+export function attendLuxuryExperience(g: GameState, id: LuxuryExperienceId): boolean {
+  const experience = LUXURY_EXPERIENCES.find((candidate) => candidate.id === id)
+  if (!experience) return false
+  const reason = experienceReason(g, experience)
+  if (reason) {
+    notice(g, experience.label, reason, { emoji: experience.emoji })
+    return false
+  }
+  const price = luxuryExperiencePrice(g, experience)
+  if (g.character.money < price) {
+    cantAfford(g, price, experience.label.toLowerCase())
+    return false
+  }
+  if (!useYearAction(g, 'luxury.experience', LUXURY_EXPERIENCES_PER_YEAR)) return false
+  addMoney(g, -price)
+  count(g, 'luxuryExperiences')
+
+  if (id === 'familyRetreat') {
+    const family = retreatFamily(g)
+    for (const person of family) addRelationship(person, randInt(g, 4, 8))
+    addStat(g, 'happiness', randInt(g, 6, 10))
+    count(g, 'familyRetreats')
+    log(g, `I took ${family.length} family member${family.length === 1 ? '' : 's'} on a private retreat.`, 'good')
+    notice(g, experience.label, `For once, nobody had an agenda. ${family.map((person) => person.firstName).slice(0, 5).join(', ')}${family.length > 5 ? ' and the rest of the family' : ''} ate together, talked honestly and came home closer.`, { emoji: experience.emoji, tone: 'good' })
+    return true
+  }
+
+  if (id === 'patronSalon') {
+    const existing = g.people.filter((person) => person.alive && (person.relation === 'friend' || person.relation === 'bestFriend'))
+    for (const friend of existing.slice(0, 8)) addRelationship(friend, randInt(g, 2, 5))
+    const guest = createPerson(g, {
+      relation: 'friend',
+      age: Math.max(18, Math.min(75, g.character.age + randInt(g, -10, 10))),
+      relationship: randInt(g, 58, 72),
+      occupation: pick(g, ['Gallery Director', 'Architect', 'Publisher', 'Research Fellow', 'Foundation Director', 'Entrepreneur']),
+      data: { metAt: 'a private patron salon' },
+    })
+    addStat(g, 'happiness', randInt(g, 4, 8))
+    addHidden(g, 'fame', 1)
+    count(g, 'patronSalons')
+    log(g, `I hosted a patron salon and became friends with ${guest.firstName} ${guest.lastName}.`, 'good')
+    notice(g, experience.label, `Your home filled with arguments about art, science and what comes next. By dessert, ${guest.firstName}, a ${guest.occupation.toLowerCase()}, had become a genuine new friend.`, { emoji: experience.emoji, tone: 'good' })
+    return true
+  }
+
+  addStat(g, 'smarts', randInt(g, 4, 7))
+  addStat(g, 'happiness', randInt(g, 4, 8))
+  addHidden(g, 'discipline', 2)
+  const recovered = recoverCreativeBurnout(g, 20)
+  count(g, 'learningSabbaticals')
+  log(g, 'I took a curated learning sabbatical with private tutors.', 'good')
+  notice(g, experience.label, `A small faculty built a syllabus around everything you were curious about. You came home sharper and rested${recovered.length ? ` (${recovered.join(', ')})` : ''}.`, { emoji: experience.emoji, tone: 'good' })
+  return true
+}
+
+function luxuryExperienceAction(experience: LuxuryExperience): MenuAction {
+  return {
+    type: 'action',
+    id: `lux-experience-${experience.id}`,
+    label: experience.label,
+    emoji: experience.emoji,
+    subtitle: (g) => `${formatMoney(luxuryExperiencePrice(g, experience))}${hasStaffRole(g, 'concierge') ? ' · concierge rate' : ''} · ${experience.subtitle}`,
+    disabledReason: (g) => experienceReason(g, experience),
+    run: (g) => { attendLuxuryExperience(g, experience.id) },
+  }
+}
+
+export const luxuryExperiencesMenu: MenuGroup = {
+  type: 'menu',
+  id: 'luxuryExperiences',
+  label: 'Bespoke Experiences',
+  emoji: '🗺️',
+  subtitle: 'Family, ideas and restorative time',
+  disabledReason: luxuryReason,
+  header: (g) => {
+    const left = Math.max(0, LUXURY_EXPERIENCES_PER_YEAR - yearActionsUsed(g, 'luxury.experience'))
+    return `Spend on access and time that changes your life rather than another object. ${left} booking${left === 1 ? '' : 's'} left this year.${hasStaffRole(g, 'concierge') ? ' Your concierge negotiated 15% off every itinerary.' : ''} ${taxLine(g)}`.trim()
+  },
+  children: (): MenuNode[] => LUXURY_EXPERIENCES.map(luxuryExperienceAction),
 }
 
 // ---------------------------------------------------------------------------

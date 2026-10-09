@@ -261,6 +261,12 @@ export interface BizState {
   studio?: Json
   /** Deep-tech companies only: R&D, tech level, funding rounds (business/deeptech-state.ts). */
   tech?: Json
+  /** Segregated financial-institution client books (not shareholder cash/equity). */
+  financeFirm?: Json
+  /** Owner conversations and licensed entertainment operations (venues.ts). */
+  venueOwner?: Json
+  /** Individually priced manufactured inventions, separate from industry-wide boosts. */
+  inventionProducts?: Json
   /** Market position: share, rivals, installed base, antitrust (business/competition-state.ts). */
   market?: Json
   /**
@@ -456,7 +462,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     costShock: clampN(num(d.costShock, 1), 0.5, 2),
     demandShock: clampN(num(d.demandShock, 1), 0.3, 2),
     capacityLoss: clampN(num(d.capacityLoss), 0, 0.8),
-    openFraction: clampN(num(d.openFraction, 1), 0.1, 1),
+    openFraction: clampN(num(d.openFraction, 1), 0, 1),
     yearCosts: Math.max(0, num(d.yearCosts)),
     yearIncome: Math.max(0, num(d.yearIncome)),
     raiseYear: num(d.raiseYear),
@@ -466,6 +472,9 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.board && typeof d.board === 'object' && !Array.isArray(d.board) ? { board: d.board } : {}),
     ...(industry === 'gameStudio' && d.studio && typeof d.studio === 'object' && !Array.isArray(d.studio) ? { studio: d.studio } : {}),
     ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
+    ...(d.financeFirm && typeof d.financeFirm === 'object' && !Array.isArray(d.financeFirm) ? { financeFirm: d.financeFirm } : {}),
+    ...(d.venueOwner && typeof d.venueOwner === 'object' && !Array.isArray(d.venueOwner) ? { venueOwner: d.venueOwner } : {}),
+    ...(d.inventionProducts && typeof d.inventionProducts === 'object' ? { inventionProducts: d.inventionProducts } : {}),
     ...(d.market && typeof d.market === 'object' && !Array.isArray(d.market) ? { market: d.market } : {}),
     ...(d.group && typeof d.group === 'object' && !Array.isArray(d.group) && typeof d.group.id === 'string' && d.group.id ? { group: d.group } : {}),
     ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),

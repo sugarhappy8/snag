@@ -1,4 +1,4 @@
-// The industries you can start a business in (37 operating sectors + 8 deep-tech). Every number is a US baseline for ONE
+// The industries you can start a business in (43 operating sectors + 8 deep-tech). Every number is a US baseline for ONE
 // outlet (a truck, a restaurant, an office, a plant) in a typical city; economy.ts scales it
 // to each market with data/markets.ts (labor cost, rents, local prices, taxes, demand).
 //
@@ -6,6 +6,8 @@
 // food truck ~$80K profit on ~$290K sales, restaurant ~$250K on $1.3M, software ~$150K
 // that scales well, energy ~$4M on a $35M plant. Tuned for gameplay, grounded in reality.
 import type { Industry, PriceCategory } from '../data/markets'
+import { FINANCE_INDUSTRIES } from './finance-firm-data'
+import { VENUE_INDUSTRIES } from './venues-data'
 
 export type StaffFocus = 'quality' | 'sales' | 'finance' | 'ops'
 
@@ -17,6 +19,8 @@ export interface RoleDef {
 }
 
 export interface IndustryDef {
+  /** Missing on legacy sectors means the classic product/service engine. */
+  model?: 'finance'
   id: Industry
   label: string
   emoji: string
@@ -445,6 +449,8 @@ function sector(base: keyof typeof BASE_INDUSTRIES, id: Industry, label: string,
 
 export const INDUSTRIES: Record<Industry, IndustryDef> = {
   ...BASE_INDUSTRIES,
+  ...FINANCE_INDUSTRIES,
+  ...VENUE_INDUSTRIES,
   solar: sector('energy', 'solar', 'Solar Energy', '☀️', 'Build solar farms and sell clean power. Capital-heavy with low running costs.', ['Rooftop Arrays', 'Utility Solar', 'Community Microgrids', 'Solar Irrigation'], .7, .7),
   battery: sector('manufacturing', 'battery', 'Battery Manufacturing', '🔋', 'Storage packs for vehicles, homes and grids.', ['Home Storage', 'Fleet Battery Packs', 'Grid Storage', 'Battery Recycling'], 1.6, .9),
   water: sector('energy', 'water', 'Water Utilities', '💧', 'Treatment, desalination and reliable water supply.', ['Desalination', 'Industrial Water', 'Smart Metering', 'Reuse Systems'], .45, .8),

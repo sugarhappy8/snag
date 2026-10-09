@@ -31,14 +31,18 @@ import {
   simulateYear,
   updateSharePrice,
   valuationOf,
+  yearFixed,
 } from './economy'
+import { commitInventionProducts, simulateInventionProducts } from './invention-products'
 import { declareBankruptcy, ipoThreshold } from './exit'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
 import { maybeBusinessEvent } from './events'
 import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
+import { financeManagerTurn, financeView, isFinanceFirm, queueFinanceReport } from './finance-firm'
 import { industryDef } from './industries'
+import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, diluteManagerEquity, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
@@ -248,6 +252,7 @@ export const REPORT = defineScript('business.annualReport', (g, choice, data) =>
 })
 
 export function queueReport(g: GameState, a: Asset, b: BizState): void {
+  if (isFinanceFirm(b)) return queueFinanceReport(g, a, b)
   // Game studios plan games, not prices and production: they get a studio report instead.
   if (isStudio(b)) {
     queueStudioReport(g, a, b)
@@ -398,15 +403,53 @@ export function yearlyBusinessImpl(g: GameState): void {
   for (const a of list) {
     if (!findBusiness(g, a.id)) continue
     const b = bizOf(g, a)
-    if (b.founded > fiscal) continue
+    if (b.founded > fiscal || (b.last && b.last.year >= fiscal)) continue
+    if (isFinanceFirm(b) && financeView(b).lastYear >= fiscal) continue
     const runs = runsIt(g, a)
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null
     const studio = isStudio(b)
     const tech = isDeepTech(b)
+    prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     const previousRevenue = b.last?.revenue ?? 0
-    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
+    // Ordinary companies should not pay the cost of quoting a second workforce
+    // and fiscal model when they have no manufactured inventions at all.
+    const home = Array.isArray(b.inventionProducts) && b.inventionProducts.length ? localEcon(b.industry, b.countryId, b.city) : null
+    const manufactured = home ? (() => {
+      const fixed = yearFixed(g, b)
+      return simulateInventionProducts(g, b, fiscal, home.wage * b.wageLevel * fixed.licence * fixed.finance * fixed.ceoEff)
+    })() : { revenue: 0, cogs: 0, royalties: 0, wages: 0, staffUsed: 0, units: 0, rows: [] }
+    const productRate = home?.taxRate ?? 0
+    const productTax = Math.round(manufactured.revenue * productRate / (1 + productRate))
+    const productNetSales = manufactured.revenue - productTax
+    const productCosts = manufactured.cogs + manufactured.royalties + manufactured.wages
+    const employeesBeforeProducts = b.employees, capacityLossBeforeProducts = b.capacityLoss
+    const availableYear = Math.max(.0001, (1 - b.capacityLoss) * b.openFraction)
+    const reservedStaff = Math.min(b.employees, manufactured.staffUsed / availableYear)
+    if (manufactured.rows.length) {
+      // These cash movements are also classified as booked one-offs before the
+      // normal model runs, so salary and corporate tax see them exactly once.
+      b.cash += productNetSales - productCosts
+      b.yearIncome += productNetSales
+      b.yearCosts += productCosts
+      const share = reservedStaff / Math.max(1, b.employees)
+      b.employees = Math.max(0, b.employees - reservedStaff)
+      b.capacityLoss = 1 - (1 - b.capacityLoss) * (1 - share)
+    }
+    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0, undefined, productNetSales)
     const s = res.stmt
+    if (manufactured.rows.length) {
+      // Reclassify the booked receipts into actual product sales and costs. No
+      // second cash or tax movement occurs here, and ordinary market units stay
+      // separate from the invention's own inventory and sales ledger.
+      s.revenue += manufactured.revenue; s.salesTax += productTax; s.netRevenue += productNetSales
+      s.cogs += manufactured.cogs + manufactured.royalties; s.wages += manufactured.wages
+      s.other -= productCosts; s.otherIncome -= productNetSales
+      b.capacityLoss = capacityLossBeforeProducts
+      b.employees = Math.max(employeesBeforeProducts, Math.ceil(b.employees + reservedStaff))
+      s.employees = b.employees; res.wantedStaff = b.employees
+      commitInventionProducts(g, b, fiscal, manufactured)
+    }
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     const lastCycle = s.cycle
     // Who sold what in its market this year (share, rivals, newcomers): before evolve() resets the year.
@@ -455,13 +498,14 @@ export function yearlyBusinessImpl(g: GameState): void {
     // price cut from a price war would be undone by the report, and a company sold in a buyout
     // would still get a report.)
     if (plans) queueReport(g, a, b)
-    if (!eventQueued && ((studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
+    if (!eventQueued && (maybeVenueOwnerEvent(g, a, b, fiscal, managed) || (studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
     // Regulators come for dominant companies on their own schedule (not the random-event roll).
     maybeAntitrust(g, a, b, fiscal, managed)
     if (!plans) {
       if (studio) studioManagerTurn(g, a, b)
       // A deep-tech manager plans price and output with the tech model; the generic autoPlan can't see it.
       else if (tech) deepTechManagerTurn(g, a, b)
+      else if (isFinanceFirm(b)) financeManagerTurn(g, b)
       else managerTurn(g, a, b, lastCycle)
     }
   }

@@ -157,6 +157,6 @@ describe('real roster: era and place', () => {
         expect(cast.every(r => !r.real), ind).toBe(true)
       } else expect(realBrandsOf(ind).length, ind).toBeGreaterThanOrEqual(15)
     }
-    expect(WORLD.length + NATIONAL.length).toBe(45)
+    expect(WORLD.length + NATIONAL.length).toBe(51)
   })
 })

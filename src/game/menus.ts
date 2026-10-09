@@ -10,6 +10,8 @@ import { inPrison, queueAi, yearActionsUsed } from './core'
 import { investmentAssetSubtitle, investmentAssetView, investmentsMenu } from './investments'
 import { CUSTOM_ACTION_KEY, MAX_CUSTOM_ACTIONS_PER_YEAR } from './offline'
 import { crimeMenu } from './crime'
+import { personalInventorMenu, inventionAssetNodes } from './inventor'
+import { corruptionMenu } from './special/corruption'
 import { casinoMenu, lotteryMenu } from './gambling'
 import { doctorMenu } from './health'
 import { thisYearMenu } from './history/digest-menu'
@@ -28,6 +30,7 @@ ASSET_KIND_VIEWS.business = { subtitle: businessAssetSubtitle, children: busines
 ASSET_KIND_VIEWS.investment = { subtitle: investmentAssetSubtitle, children: investmentAssetView }
 ASSET_KIND_VIEWS.membership = { subtitle: membershipAssetSubtitle, children: membershipAssetView }
 ASSET_KIND_VIEWS.venture = { subtitle: ventureAssetSubtitle, children: ventureAssetView }
+ASSET_KIND_VIEWS.invention = { subtitle: () => 'Personally owned invention IP', children: (g, a) => inventionAssetNodes(g, a.id) }
 ASSET_NODE_HOOKS.view = luxuryAssetNodes
 ASSET_NODE_HOOKS.extra = familyAccessNode
 
@@ -106,6 +109,7 @@ export const activitiesMenu: MenuGroup = {
       casinoMenu,
       computerMenu,
       crimeMenu,
+      corruptionMenu,
       doctorMenu,
       emigrateMenu,
       fameMenu,
@@ -116,6 +120,7 @@ export const activitiesMenu: MenuGroup = {
       moviesMenu,
       nightlifeMenu,
       petsMenu,
+      personalInventorMenu,
       shoppingMenu,
       socialMediaMenu,
       thisYearMenu,

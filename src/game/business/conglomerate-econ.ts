@@ -29,6 +29,8 @@ export const DEAL_YEARS = 5
 type Sector = 'food' | 'hospitality' | 'leisure' | 'retail' | 'consumer' | 'services' | 'health' | 'property' | 'industry' | 'transport' | 'land' | 'tech' | 'media'
 
 const SECTORS: Record<Industry, Sector[]> = {
+  investmentFirm: ['services'], bank: ['services'], onlineBank: ['services', 'tech'],
+  casino: ['services', 'leisure'], nightclub: ['services', 'hospitality', 'leisure'], stripClub: ['services', 'leisure'],
   solar: ['industry'], battery: ['industry'], water: ['industry'], recycling: ['industry'],
   telecom: ['tech', 'services'], dataCenter: ['tech'], education: ['services'], petCare: ['services'],
   homeCare: ['services'], packaging: ['industry'], furniture: ['industry', 'retail'], travel: ['hospitality', 'services'],

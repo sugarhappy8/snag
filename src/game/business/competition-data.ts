@@ -57,6 +57,12 @@ function national(noun: string, field: number, extra: Partial<MarketDef> = {}): 
 }
 
 export const MARKETS: Record<Industry, MarketDef> = {
+  investmentFirm: national('investment management', 100),
+  bank: national('retail banking', 60),
+  onlineBank: national('online banking', 40, { from: 1995 }),
+  casino: national('casino entertainment', 80),
+  nightclub: national('nightlife', 250),
+  stripClub: national('adult entertainment', 100),
   solar: national('solar power', 15, { from: 1975, emerging: true, curve: [[1975, .01], [2000, .15], [2026, 1], [2050, 2]] }),
   battery: national('battery storage', 35, { from: 1900 }),
   water: national('water treatment', 30),

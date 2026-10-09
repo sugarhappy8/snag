@@ -11,7 +11,6 @@ import {
   addRelationship,
   addStat,
   count,
-  earnIncome,
   formatMoney,
   fullName,
   hasLicense,
@@ -41,7 +40,6 @@ import {
   recordMissedPayment,
   relocateAfterLosingHome,
   residenceText,
-  taxAdditionalIncome,
   welcomingParent,
   yearlyDebtPayments,
   yearlyIncome,
@@ -55,6 +53,7 @@ import { bell, chance, nextRandom, pick, rand, randInt, uid, weightedPick } from
 import { defineScript } from './scripts'
 import type { Asset, AssetKind, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode, Mortgage, Person, RelationKind, StatKey } from './types'
 import { getCountry, namePoolOf, randomFirstName, randomLastName } from './world'
+import { beginLandlordLease, endLandlordLease, landlordMenu, yearlyLandlord } from './landlord'
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -739,7 +738,7 @@ function marketValue(a: Asset): number {
   return Math.round(a.value / (condFactor(a.condition) * hauntFactor(haunted(a))))
 }
 
-function refreshHouseValue(a: Asset): void {
+export function refreshHouseValue(a: Asset): void {
   const mv = marketValue(a)
   a.details.marketValue = Math.round(mv)
   a.value = Math.max(1_000, Math.round(mv * condFactor(a.condition) * hauntFactor(haunted(a))))
@@ -3333,7 +3332,8 @@ const RENT_LEVEL = defineScript('assets.rentLevel', (g, choice, data) => {
   const assetId = field<string>(data, 'assetId')
   const market = field<number>(data, 'market')
   const asset = assetId ? findAsset(g, assetId) : undefined
-  if (!asset || !market) return
+  if (!asset || asset.kind !== 'house' || !market || !Number.isFinite(market) || market <= 0 || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord') || !['low', 'market', 'high'].includes(choice)) return
+  if (!useYearAction(g, `landlord.search.${asset.id}`, 2)) return notice(g, 'Rental Search', 'You already ran two applicant searches this year. Try again next year.', { emoji: '🔑' })
   const factor = choice === 'low' ? 0.85 : choice === 'high' ? 1.2 : 1
   const monthly = nicePrice(market * factor)
   const odds = choice === 'low' ? 0.97 : choice === 'high' ? 0.45 : 0.85 * (0.6 + 0.4 * (asset.condition / 100))
@@ -3365,12 +3365,13 @@ const RENT_APPLICANT = defineScript('assets.rentApplicant', (g, choice, data) =>
   const applicants = field<Applicant[]>(data, 'applicants')
   const asset = assetId ? findAsset(g, assetId) : undefined
   const ap = applicants?.[Number(choice.replace('app', ''))]
-  if (!asset || !monthly || !ap || isHome(g, asset)) return
+  if (!asset || asset.kind !== 'house' || !monthly || !Number.isFinite(monthly) || monthly <= 0 || monthly > asset.value * .02 || !ap || typeof ap.name !== 'string' || !Number.isFinite(ap.risk) || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord') || !/^app\d+$/.test(choice)) return
   asset.rentedOutFor = monthly * 12
   asset.details.tenant = ap.name
   asset.details.tenantTrait = ap.trait
   asset.details.tenantRisk = ap.risk
   asset.details.tenantLate = 0
+  beginLandlordLease(g, asset)
   log(g, `I rented out my ${asset.name.toLowerCase()} to ${ap.name}.`, 'good')
   notice(g, 'New Tenant', `${ap.name} signed a lease on your ${asset.name.toLowerCase()} for ${formatMoney(monthly)}/month (${formatMoney(monthly * 12)} a year). Congratulations, you're a landlord!`, { emoji: '🔑', tone: 'good' })
 })
@@ -3383,10 +3384,10 @@ function rentOutAction(a: Asset): MenuAction {
     emoji: '🔑',
     subtitle: 'Find a tenant and collect rent every year',
     visible: (g) => !live(g, a).rentedOutFor && !isHome(g, a),
-    disabledReason: (g) => blockReason(g) ?? (live(g, a).condition < 10 ? "It's in no condition to rent out. Renovate first." : null),
+    disabledReason: (g) => adultReason(g, 'become a landlord') ?? (live(g, a).condition < 10 ? "It's in no condition to rent out. Renovate first." : null),
     run: (g) => {
       const asset = findAsset(g, a.id)
-      if (!asset) return
+      if (!asset || asset.kind !== 'house' || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord')) return
       const market = Math.max(50, nicePrice((asset.value * 0.0045 * (0.7 + 0.3 * (asset.condition / 100))) / 1))
       scriptChoice(
         g,
@@ -3406,6 +3407,7 @@ function rentOutAction(a: Asset): MenuAction {
 }
 
 function endTenancy(a: Asset): void {
+  endLandlordLease(a)
   delete a.rentedOutFor
   delete a.details.tenant
   delete a.details.tenantTrait
@@ -3436,7 +3438,7 @@ function evictAction(a: Asset): MenuAction {
   }
 }
 
-const TENANT_DEFAULT = defineScript('assets.tenantDefault', (g, choice, data) => {
+export const TENANT_DEFAULT = defineScript('assets.tenantDefault', (g, choice, data) => {
   const assetId = field<string>(data, 'assetId')
   const asset = assetId ? findAsset(g, assetId) : undefined
   if (!asset || !asset.rentedOutFor) return
@@ -3904,6 +3906,7 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
           push(enjoyAmenitiesAction(cur))
           push(rentOutAction(cur))
           push(evictAction(cur))
+          push(landlordMenu(cur))
           push(renovateMenu(cur))
           push(amenitiesMenu(cur))
           push(exorciseAction(cur))
@@ -4271,43 +4274,7 @@ function foreclose(g: GameState, a: Asset): void {
 }
 
 function collectRent(g: GameState): number {
-  let total = 0
-  for (const a of g.assets) {
-    if (a.kind !== 'house' || !a.rentedOutFor) continue
-    const tenant = str(a.details.tenant, 'Your tenant')
-    const risk = num(a.details.tenantRisk, 0.08)
-    const late = num(a.details.tenantLate)
-    if (late > 0 && chance(g, 0.5)) {
-      // Still not paying after a second chance.
-      a.details.tenantLate = late + 1
-      scriptChoice(g, TENANT_DEFAULT, 'Deadbeat Tenant', `${tenant} still hasn't paid a cent of rent on your ${a.name.toLowerCase()}. What do you want to do?`, [
-        { id: 'evict', label: 'Evict them', emoji: '🚪' },
-        { id: 'wait', label: 'Give them more time', emoji: '⏳' },
-      ], { emoji: '😤', data: { assetId: a.id } })
-      continue
-    }
-    if (late === 0 && chance(g, risk)) {
-      a.details.tenantLate = 1
-      scriptChoice(g, TENANT_DEFAULT, 'Missed Rent', `${tenant} stopped paying rent on your ${a.name.toLowerCase()}. ${pick(g, ['They say the check is "in the mail."', 'They claim they paid you in "exposure."', "They've started ignoring your texts."])}`, [
-        { id: 'evict', label: 'Evict them', emoji: '🚪' },
-        { id: 'wait', label: 'Give them another chance', emoji: '⏳' },
-      ], { emoji: '🧾', data: { assetId: a.id } })
-      continue
-    }
-    a.details.tenantLate = 0
-    total += a.rentedOutFor
-    if (chance(g, risk * 0.6)) {
-      const dmg = randInt(g, 8, 25)
-      a.condition = Math.max(0, a.condition - dmg)
-      refreshHouseValue(a)
-      notice(g, 'Property Damage', `${tenant} ${pick(g, ['threw a party that got out of hand', 'tried to install a hot tub on the second floor', 'adopted eleven cats', 'started a "home brewery" in the bathroom'])}. Your ${a.name.toLowerCase()} lost ${dmg}% condition.`, { emoji: '🏚️', tone: 'bad' })
-    }
-  }
-  if (total > 0) {
-    earnIncome(g, total)
-    taxAdditionalIncome(g, total)
-  }
-  return total
+  return yearlyLandlord(g)
 }
 
 function randomAssetEvent(g: GameState): void {

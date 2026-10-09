@@ -18,6 +18,9 @@ import { checkDeath, yearlyHealth } from './health'
 import { yearlyHistory } from './history'
 import { yearlyDigest } from './history/digest'
 import { yearlyImmigration } from './immigration'
+import { yearlyInventor } from './inventor'
+import { yearlyUnderworld } from './underworld'
+import { yearlyCorruption } from './special/corruption'
 import { yearlyInvestments } from './investments'
 import { yearlyMilestones } from './life'
 import { yearlyRelationships } from './relationships'
@@ -34,6 +37,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['education', yearlyEducation],
   ['career', yearlyCareer],
   ['special', yearlySpecial],
+  ['inventor', yearlyInventor],
+  ['corruption', yearlyCorruption],
   ['business', yearlyBusiness],
   ['investments', yearlyInvestments],
   ['shops', yearlyShops],
@@ -46,6 +51,7 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['immigration', yearlyImmigration],
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],
+  ['underworld', yearlyUnderworld],
   ['milestones', yearlyMilestones],
 ]
 
