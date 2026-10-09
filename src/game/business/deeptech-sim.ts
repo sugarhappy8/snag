@@ -42,7 +42,19 @@ import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJs
 // The year
 
 /** Replaces simulateYear for deep-tech companies. */
-export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number): YearResult {
+function deepTechCorporateTax(b: BizState, profit: number, homeRevenue: number, bookedSales: number | Record<string, number>): number {
+  if (!(profit > 0)) return 0
+  const byCountry: Record<string, number> = { [b.countryId]: Math.max(0, Number.isFinite(homeRevenue) ? homeRevenue : 0) }
+  const booked = typeof bookedSales === 'number' ? { [b.countryId]: bookedSales } : bookedSales
+  for (const [country, sales] of Object.entries(booked)) {
+    if (Number.isFinite(sales) && sales > 0) byCountry[country] = (byCountry[country] ?? 0) + sales
+  }
+  const total = Object.values(byCountry).reduce((sum, sales) => sum + Math.max(0, sales), 0)
+  if (!(total > 0)) return corporateTax(b.countryId, profit)
+  return Object.entries(byCountry).reduce((tax, [country, sales]) => tax + corporateTax(country, profit * Math.max(0, sales) / total), 0)
+}
+
+export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number, bookedSales: number | Record<string, number> = 0): YearResult {
   const t = techOf(b)
   const ind = dtInd(b)
   const def = industryDef(ind)
@@ -137,7 +149,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const fromInvestors = Math.min(t.venture, localEcon(ind, b.countryId, b.city).wage)
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, Math.max(0, b.cash + delta) + fromInvestors)))
   const pbt = pbt0 - ownerPay
-  const corpTax = pbt > 0 ? corporateTax(b.countryId, pbt) : 0
+  const corpTax = deepTechCorporateTax(b, pbt, netRevenue, bookedSales)
   const net = pbt - corpTax
   b.cash = dollars(b.cash + delta - ownerPay - corpTax)
   // The R&D account covers what company cash can't.

@@ -67,7 +67,7 @@ import {
   type SecYear,
 } from './invest/engine'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
-import { addMarketShock, indexShockFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
+import { addMarketShock, indexShockFactor, marketBreakthroughs, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
 import { chance, pick, randFloat, uid } from './rng'
 import { HINT_EMOJI, talentHint } from './talents'
@@ -596,7 +596,7 @@ function listing(g: GameState): Listing {
     details: {},
   }
   fund.details = { type: 'index', secId: fundId, symbol: fund.symbol, risk: fund.risk, yield: fund.yield, sector: fund.sector, blurb: fund.blurb, country: info.home, eng: ENGINE_V, ...exDetails(info, y) }
-  Object.assign(fund, withShock(g, fund, indexShockFactor(g, info.key, y), indexShockFactor(g, info.key, y - 1)))
+  Object.assign(fund, withShock(g, fund, indexShockFactor(g, info.key, y, fundId), indexShockFactor(g, info.key, y - 1, fundId)))
   const reitName = `${homeWord} Property Trust`
   const reit: Quote = {
     type: 'reit',
@@ -1065,13 +1065,18 @@ function moveText(m: { pct: number; real: number | null; afterInflation: boolean
   return m.real !== null ? `${absPct(m.pct, digits)} (${pct(m.real, 0)} after inflation)` : absPct(m.pct, digits)
 }
 
-function marketLine(info: ExInfo, ey: ExYear): string {
-  const m = reportedMove(info, ey.year, ey.index.ret)
+function indexReturn(g: GameState, info: ExInfo, year: number, ret: number): number {
+  return shockedMove(1, ret, indexShockFactor(g, info.key, year), indexShockFactor(g, info.key, year - 1)).ret ?? ret
+}
+
+function marketLine(g: GameState, info: ExInfo, ey: ExYear): string {
+  const m = reportedMove(info, ey.year, indexReturn(g, info, ey.year, ey.index.ret))
   const r = m.pct
   const verb = r >= 0.005 ? 'up' : r <= -0.005 ? 'down' : 'flat'
   const amount = verb === 'flat' ? '' : ` ${moveText(m)}`
   if (isHistoryYear(ey.year) && exchangeStatus(info, ey.year) === 'none') return `🚫 No stock market trades here this year`
-  return `${ey.index.regime.emoji} ${indexName(info, ey.year)} ${verb}${amount} this year · ${ey.index.regime.label}`
+  const breakthrough = marketBreakthroughs(g).some(event => event.year === ey.year && event.exchanges.some(ex => ex.key === info.key))
+  return `${breakthrough ? '🌐' : ey.index.regime.emoji} ${indexName(info, ey.year)} ${verb}${amount} this year · ${breakthrough ? 'Technology breakthrough' : ey.index.regime.label}`
 }
 
 function historyLine(g: GameState, info: ExInfo): string {
@@ -1081,7 +1086,7 @@ function historyLine(g: GameState, info: ExInfo): string {
   const parts: string[] = []
   for (let y = from; y <= g.year; y++) {
     if (isHistoryYear(y) && exchangeStatus(info, y) === 'none') continue
-    const m = reportedMove(info, y, exchangeYear(f, an, info, y).index.ret)
+    const m = reportedMove(info, y, indexReturn(g, info, y, exchangeYear(f, an, info, y).index.ret))
     parts.push(`'${String(y).slice(-2)} ${pct(m.pct, 0)}`)
   }
   return parts.length ? `Recent years: ${parts.join(' · ')}` : ''
@@ -1375,7 +1380,7 @@ const stocksMenu: MenuGroup = {
     const block = stockMarketBlock(g, l.info)
     const note = isHistoryYear(g.year) && !block ? marketNote(l.info.home, g.year) : ''
     const real = realPlanOf(l.info) ? ' Company names are real; the prices are simulated from the market and its sectors, not real quotes.' : ''
-    return `${marketLine(l.info, l.year)}${note ? `\n📰 ${note}` : ''}\n${exchangeName(l.info, g.year)} (${l.info.ex.code}): the biggest companies in ${theCountry(l.info.home)}. Prices move once a year, and every stock rides the market's mood.${real}${block ? `\n🚫 ${block}` : ''}`
+    return `${marketLine(g, l.info, l.year)}${note ? `\n📰 ${note}` : ''}\n${exchangeName(l.info, g.year)} (${l.info.ex.code}): the biggest companies in ${theCountry(l.info.home)}. Prices move once a year, and every stock rides the market's mood.${real}${block ? `\n🚫 ${block}` : ''}`
   },
   children: (g) => {
     const l = listing(g)
@@ -1468,7 +1473,7 @@ const bondsMenu: MenuGroup = {
 
 function fundNode(g: GameState): MenuGroup {
   const l = listing(g)
-  const node = offerNode(g, l.fund, [historyLine(g, l.info) || 'A brand-new fund: no history yet.', `Index level: ${Math.round(l.year.level).toLocaleString('en-US')} points.`])
+  const node = offerNode(g, l.fund, [historyLine(g, l.info) || 'A brand-new fund: no history yet.', `Index level: ${Math.round(l.year.level * indexShockFactor(g, l.info.key, g.year)).toLocaleString('en-US')} points.`])
   return { ...node, visible: (gg) => !noStockMarket(gg, exchangeInfo(gg.character.countryId)) }
 }
 
@@ -1495,7 +1500,8 @@ function newsLines(g: GameState): string[] {
   const an = anchor(g)
   const ey = l.year
   const y = g.year
-  const lines: string[] = [marketLine(l.info, ey)]
+  const lines: string[] = [marketLine(g, l.info, ey)]
+  for (const event of marketBreakthroughs(g)) if (event.year === y) lines.push(`🌐 World-changing invention: ${event.name}. Open stock markets repriced ${pct(event.mult - 1, 0)} immediately; this is a one-time repricing, not a repeating annual return.`)
   const note = isHistoryYear(y) ? marketNote(l.info.home, y) : ''
   if (note) lines.push(`📰 ${note}`)
   const marketOpen = !isHistoryYear(y) || exchangeStatus(l.info, y) !== 'none'
@@ -1654,7 +1660,7 @@ export const investmentsMenu: MenuGroup = {
     const top = investmentHoldings(g).length
       ? `Portfolio: ${formatMoney(s.value)} · ${gain >= 0 ? 'Gain' : 'Loss'}: ${formatMoney(Math.abs(gain))} (${pct(s.basis > 0 ? gain / s.basis : 0)})`
       : "You don't own any investments yet."
-    return `${top}\n${marketLine(info, ey)}\nCash: ${formatMoney(g.character.money)} · ${feePlan(g, 'stock').label}`
+    return `${top}\n${marketLine(g, info, ey)}\nCash: ${formatMoney(g.character.money)} · ${feePlan(g, 'stock').label}`
   },
   children: (g) => {
     const info = exchangeInfo(g.character.countryId)
@@ -1741,7 +1747,7 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
       // A revolution nationalized every listed company: shareholders get nothing.
       if (isHistoryYear(g.year) && exchangeExpropriated(info, g.year)) return { price: 0, ratio: 1, ret: -1, payout: 0, ended: { kind: 'nationalized', perUnit: 0, premium: -1 } }
       const ey = exchangeYear(f, an, info, g.year)
-      if (t === 'index') return shockMove(pathMove(ey.fund.id === str(d.secId) ? ey.fund : undefined, a, price), indexShockFactor(g, info.key, g.year), indexShockFactor(g, info.key, g.year - 1))
+      if (t === 'index') return shockMove(pathMove(ey.fund.id === str(d.secId) ? ey.fund : undefined, a, price), indexShockFactor(g, info.key, g.year, str(d.secId)), indexShockFactor(g, info.key, g.year - 1, str(d.secId)))
       if (t === 'reit') return pathMove(ey.reit.id === str(d.secId) ? ey.reit : undefined, a, price)
       const list = t === 'penny' ? ey.pennies : ey.stocks
       const id = str(d.secId)
@@ -1861,11 +1867,11 @@ function marketNews(g: GameState, held: Asset[]): News | null {
     if (seen.has(info.key)) continue
     seen.add(info.key)
     const ey = exchangeYear(fam(g), anchor(g), info, g.year)
-    if (!best || Math.abs(ey.index.ret) > Math.abs(best.ey.index.ret)) best = { info, ey }
+    if (!best || Math.abs(indexReturn(g, info, g.year, ey.index.ret)) > Math.abs(indexReturn(g, best.info, g.year, best.ey.index.ret))) best = { info, ey }
   }
-  if (best && Math.abs(best.ey.index.ret) > 0.15) {
+  if (best && Math.abs(indexReturn(g, best.info, g.year, best.ey.index.ret)) > 0.15) {
     const { info, ey } = best
-    const r = ey.index.ret
+    const r = indexReturn(g, info, g.year, ey.index.ret)
     const up = r > 0
     const hist = isHistoryYear(g.year)
     const idx = indexName(info, g.year)
@@ -1970,7 +1976,7 @@ function normalizeHoldings(g: GameState, yearly = false): void {
     let factor = 1
     if (t === 'index') {
       cur = ey.fund
-      factor = indexShockFactor(g, info.key, asOf)
+      factor = indexShockFactor(g, info.key, asOf, cur.id)
     } else if (t === 'reit') cur = ey.reit
     else {
       cur = (t === 'penny' ? ey.pennies : ey.stocks)[Math.round(num(a.details.slot, -1))]
@@ -1995,7 +2001,7 @@ function normalizeHoldings(g: GameState, yearly = false): void {
  * Re-price the player's stocks, index funds and coins at today's quotes, right after news moved
  * the market mid-year (a ban, a contract...). Unrealized: nothing is taxed or sold.
  */
-export function revalueHoldings(g: GameState, indicesOnly = false): void {
+export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges = false): void {
   normalizeHoldings(g)
   const quotes = allQuotes(listing(g))
   for (const a of investmentHoldings(g)) {
@@ -2007,10 +2013,21 @@ export function revalueHoldings(g: GameState, indicesOnly = false): void {
     if (t === 'index') {
       const info = holdingExchange(a)
       const fund = exchangeYear(fam(g), anchor(g), info, g.year).fund
-      if (fund.id === str(a.details.secId)) price = fund.price * indexShockFactor(g, info.key, g.year)
+      if (fund.id === str(a.details.secId)) price = fund.price * indexShockFactor(g, info.key, g.year, fund.id)
+    } else if (allExchanges && (t === 'stock' || t === 'penny')) {
+      // Holdings can be on a foreign exchange after travel or inheritance.
+      // Advancing a foreign quote to today's engine year is explicit for world news;
+      // ordinary order-flow adjusts that holding's already booked quote in place.
+      const info = holdingExchange(a), ey = exchangeYear(fam(g), anchor(g), info, g.year)
+      const cur = (t === 'penny' ? ey.pennies : ey.stocks)[Math.round(num(a.details.slot, -1))]
+      if (cur?.id === str(a.details.secId)) price = cur.price * shockFactor(g, cur.id, g.year)
     }
     const old = unitPrice(a)
     if (!price || !(price > 0) || !(old > 0) || Math.abs(price / old - 1) < 1e-9) continue
+    if (num(a.details.updatedYear, -1) < g.year && num(a.details.marketMarkedYear, -1) !== g.year) {
+      a.details.marketMarkedYear = g.year
+      a.details.marketIncomeBase = holdingValue(a)
+    }
     if (num(a.details.updatedYear) === g.year) a.details.lastChange = Math.round(((1 + num(a.details.lastChange)) * (price / old) - 1) * 10000) / 10000
     setPosition(a, units(a), price, basis(a))
   }
@@ -2020,6 +2037,8 @@ export function revalueHoldings(g: GameState, indicesOnly = false): void {
 export function yearlyInvestments(g: GameState): void {
   const c = g.character
   if (!c.alive) return
+  if (num(g.flags.investmentsSettledYear, -1) >= g.year) return
+  g.flags.investmentsSettledYear = g.year
   pruneShocks(g)
   normalizeHoldings(g, true)
   const held = investmentHoldings(g)
@@ -2029,7 +2048,7 @@ export function yearlyInvestments(g: GameState): void {
       const info = exchangeInfo(c.countryId)
       const ey = exchangeYear(fam(g), anchor(g), info, g.year)
       const idx = indexName(info, g.year)
-      const m = reportedMove(info, g.year, ey.index.ret)
+      const m = reportedMove(info, g.year, indexReturn(g, info, g.year, ey.index.ret))
       if (stockMarketBlock(g, info)) return
       if (ey.index.crash) log(g, `The ${idx} crashed ${moveText(m, 0)} this year. Good thing I had nothing in it.`)
       else if (ey.index.boom) log(g, `The ${idx} boomed ${moveText(m, 0)} this year. I wish I had invested.`)
@@ -2042,7 +2061,8 @@ export function yearlyInvestments(g: GameState): void {
   let cashOut = 0
   for (const a of held) {
     const d = a.details
-    const before = holdingValue(a)
+    if (num(d.updatedYear, -1) >= g.year) continue
+    const before = num(d.marketMarkedYear, -1) === g.year ? Math.max(0, num(d.marketIncomeBase, holdingValue(a))) : holdingValue(a)
     const u = units(a)
     const mv = moveHolding(g, a, news)
     const pay = Math.max(0, Math.round(before * (Number.isFinite(mv.payout) ? mv.payout : 0)))
@@ -2064,6 +2084,7 @@ export function yearlyInvestments(g: GameState): void {
     renameForEra(g, a)
     d.yearStart = before
     d.updatedYear = g.year
+    delete d.marketMarkedYear; delete d.marketIncomeBase
     d.lastChange = Math.round((Number.isFinite(mv.ret) ? mv.ret : 0) * 10000) / 10000
     setPosition(a, u * (mv.ratio > 0 ? mv.ratio : 1), mv.price, basis(a))
     const interest = Math.max(0, Math.round(before * (Number.isFinite(mv.compound) ? (mv.compound ?? 0) : 0)))

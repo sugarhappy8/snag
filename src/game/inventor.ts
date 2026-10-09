@@ -11,9 +11,11 @@ import { INVENTION_TIERS, nationalPatentLaw } from './business/inventions'
 import { expansionOf, saveExpansion } from './business/dynamics'
 import { manageBlock } from './business/gate'
 import { bizOf, businessAssets, findBusiness, readBiz } from './business/state'
-import { inventionProductsOf, newInventionProduct, saveInventionProducts } from './business/invention-products'
+import { inventionMarketDemand, inventionProductsOf, newInventionProduct, saveInventionProducts } from './business/invention-products'
 import { INVENTION_TOPICS, inventionIndustryCompatible, inventionTopic, PRODUCT_SPECS } from './inventor-data'
 import { inventorView, personalInventions, readInventionIp, saveInventor, type PersonalResearch } from './inventor-state'
+import { registerInventionBreakthrough, inventionImpactNodes, transferInventionImpact } from './invention-impact'
+import { externalInventionLicenseNodes, transferExternalInventionLicenses } from './business/invention-licensing'
 
 export function studyInventionTopic(g: GameState, topicId: string, online = false): boolean {
   const topic = inventionTopic(topicId)
@@ -72,8 +74,9 @@ function completePersonalResearch(g: GameState, project: PersonalResearch): void
   p.project = null
   saveInventor(g, p)
   count(g, 'inventions')
+  registerInventionBreakthrough(g, { id: project.id, name: project.name, kind: project.kind, field: topic.field, created: g.year, country: project.country })
   log(g, `I invented ${project.name} and retained the intellectual property.`, 'good')
-  notice(g, 'Invention Completed', `${project.name} is now your personally owned IP. You hold the ${getCountry(project.country).name} patent. Assign it to a compatible company to own and manufacture the product, or license it for five years and receive 5% of actual product sales while retaining ownership. Companies need staff, cash and a production plan; inventing alone creates no sales income. Foreign national or all-nations filings remain available through ${g.year + 1}.`, { emoji: '💡', tone: 'good' })
+  notice(g, 'Invention Completed', `${project.name} is now your personally owned IP. You hold the ${getCountry(project.country).name} patent. Assign it to a compatible company, build fabs and set any price and slider-based output. Or retain ownership and license manufacturing to your companies or outside partners who fund their own fabs. Staff and working capital still limit actual output. Breakthrough demand and monopoly pricing fade as patents count down; technology upgrades do not extend them. Inventing alone creates no sales income. Foreign national or all-nations filings remain available through ${g.year + 1}.`, { emoji: '💡', tone: 'good' })
 }
 
 export function yearlyInventor(g: GameState): void {
@@ -114,7 +117,8 @@ export function assignPersonalInvention(g: GameState, id: string, assetId: strin
   product.price = ip.unitPrice; product.unitCost = ip.unitCost; product.potential = ip.potential
   // Renewal preserves already-paid inventory, the production plan and the sales history.
   const existing = products.find(p => p.id === id)
-  if (existing) Object.assign(product, { price: existing.price, production: existing.production, inventory: existing.inventory, sold: existing.sold, revenue: existing.revenue, costs: existing.costs, lastYear: existing.lastYear })
+  if (existing) Object.assign(product, { price: existing.price, production: existing.production, inventory: existing.inventory, sold: existing.sold, revenue: existing.revenue, costs: existing.costs, lastYear: existing.lastYear,
+    fabCapacity: existing.fabCapacity, fabInvested: existing.fabInvested, upgradeLevel: existing.upgradeLevel, upgradeInvested: existing.upgradeInvested })
   product.rights = license ? 'license' : 'owned'; product.royalty = license ? .05 : 0; product.expires = license ? g.year + 5 : 0
   product.protections = ip.protections.map(t => ({ ...t }))
   saveInventionProducts(b, [...products.filter(p => p.id !== id), product])
@@ -122,9 +126,11 @@ export function assignPersonalInvention(g: GameState, id: string, assetId: strin
     const x = expansionOf(b)
     x.patents.push({ id, name: a.name, kind: ip.kind, launched: ip.created, expires: ip.protections.find(p => p.country === ip.country)?.expires ?? ip.created, ownerId: company.id, demand: 0, efficiency: 0, protections: ip.protections })
     saveExpansion(b, x)
+    transferExternalInventionLicenses(g, a, company, id)
     g.assets = g.assets.filter(candidate => candidate.id !== id)
+    transferInventionImpact(g, id, company.id)
   }
-  notice(g, license ? 'Product Licensed' : 'IP Assigned to Company', `${company.name} can manufacture ${a.name}. ${license ? 'You retain the IP and receive 5% of actual gross product sales for five years.' : 'The company now owns the IP and patent rights; it is no longer a separate personal asset.'} Set its product price and annual production under Owned Inventions. No product units or sales are created by signing this agreement.`, { emoji: '🏭' })
+  notice(g, license ? 'Product Licensed' : 'IP Assigned to Company', `${company.name} can manufacture ${a.name}. ${license ? 'You retain the IP and receive 5% of actual gross product sales for five years.' : 'The company now owns the IP, patent rights and any outside manufacturing contracts; it is no longer a separate personal asset.'} Under Owned Inventions, fund fab capacity, upgrade the technology, set any nonnegative price and plan output with a production slider. No product units or sales are created by signing this agreement.`, { emoji: '🏭' })
   return true
 }
 
@@ -132,13 +138,16 @@ export function inventionAssetNodes(g: GameState, id: string): MenuNode[] {
   const a = personalInventions(g).find(a => a.id === id)
   if (!a) return []
   const ip = readInventionIp(a)!
-  const nodes: MenuNode[] = [{ type: 'info', id: `inventor.ip.info.${id}`, emoji: '💡', text: `${a.name}: personally owned ${ip.field} IP, invented ${ip.created}. Proposed product ${formatMoney(ip.unitPrice)}/unit; manufacturing cost ${formatMoney(ip.unitCost)}/unit; baseline demand ${ip.potential} units/year, varying by price, nation and year. These are estimates, not guaranteed sales. ${ip.protections.length} national patent filings. ${ip.protections.map(t => `${getCountry(t.country).name}: ${t.expires > g.year ? `protected through ${t.expires - 1}` : 'expired'}`).join('; ')}.` },
+  const product = { ...newInventionProduct(id, a.name, ip.field, ip.kind, ip.created), price: ip.unitPrice, unitCost: ip.unitCost, potential: ip.potential }
+  const market = inventionMarketDemand(g, product, ip.country, g.year, ip.protections)
+  const nodes: MenuNode[] = [{ type: 'info', id: `inventor.ip.info.${id}`, emoji: '💡', text: `${a.name}: personally owned ${ip.field} IP, invented ${ip.created}. Initial product price ${formatMoney(ip.unitPrice)}/unit; manufacturing cost ${formatMoney(ip.unitCost)}/unit. Current estimated home-market demand ${market.demand.toLocaleString('en-US')} units/year at that price; monopoly reference price ${formatMoney(market.referencePrice)}. Demand and willingness to pay decline with patent age, competition and leaks. Manufacture with a company and cash-built fabs, or license to outside manufacturers without owning a factory. These are estimates, not guaranteed sales. ${ip.protections.length} national patent filings. ${ip.protections.map(t => `${getCountry(t.country).name}: ${t.expires > g.year ? `protected through ${t.expires - 1}` : 'expired'}`).join('; ')}.` },
     { type: 'action', id: `inventor.ip.patent.all.${id}`, label: 'Patent in All Nations', emoji: '🌐', subtitle: gg => { const q = personalPatentQuote(gg, id, 'all'); return `${q.countries.length} new filings · ${formatMoney(q.cost)} personal funds` }, disabledReason: gg => personalPatentQuote(gg, id, 'all').reason, confirm: gg => `Pay ${formatMoney(personalPatentQuote(gg, id, 'all').cost)} from your savings for every missing national patent? Already-filed countries are skipped; patent terms are not extended.`, run: gg => { filePersonalInventionPatent(gg, id, 'all') } },
     { type: 'menu', id: `inventor.ip.patent.nations.${id}`, label: 'Patent in One Nation', emoji: '🌍', children: () => COUNTRIES.map(c => ({ type: 'action', id: `inventor.ip.patent.${id}.${c.id}`, label: c.name, emoji: c.flag, subtitle: formatMoney(nationalPatentLaw(c.id, g.year).filingCost), disabledReason: gg => personalPatentQuote(gg, id, c.id).reason, run: gg => { filePersonalInventionPatent(gg, id, c.id) } })) }]
   for (const company of businessAssets(g).filter(company => inventionIndustryCompatible(ip.field, readBiz(g, company).industry))) {
     for (const license of [true, false]) nodes.push({ type: 'action', id: `inventor.ip.${license ? 'license' : 'assign'}.${id}.${company.id}`, label: `${license ? 'License to' : 'Assign IP to'} ${company.name}`, emoji: '🏭', subtitle: license ? 'Retain personal IP · five-year licence · 5% of actual product sales' : 'Transfer ownership permanently to this company', disabledReason: gg => { const live = findBusiness(gg, company.id); return blocked(gg, 18) ?? (!personalInventions(gg).some(a => a.id === id) ? 'You no longer own this personal IP.' : !live ? 'This company is no longer yours.' : manageBlock(gg, live) ?? (inventionProductsOf(readBiz(gg, live)).some(p => p.id === id && (p.rights === 'owned' || p.expires > gg.year)) ? 'This company already has active rights.' : !license && businessAssets(gg).some(other => inventionProductsOf(readBiz(gg, other)).some(p => p.ipId === id && p.rights === 'license' && p.expires > gg.year)) ? 'Wait for active company licences to expire before transferring ownership.' : null)) }, confirm: () => license ? `License ${a.name} to ${company.name} for five years at 5% of actual product sales? You retain ownership.` : `Permanently assign ${a.name} and its patents to ${company.name}? The company, not you personally, will own this IP.`, run: gg => { assignPersonalInvention(gg, id, company.id, license) } })
   }
-  if (nodes.length === 3) nodes.push({ type: 'info', id: `inventor.ip.company.${id}`, text: 'Found or acquire a compatible production company to manufacture this invention. Financial firms cannot manufacture products.' })
+  if (nodes.length === 3) nodes.push({ type: 'info', id: `inventor.ip.company.${id}`, text: 'Found or acquire a compatible production company to manufacture this invention, or license to outside manufacturers below without building your own fabs. Financial firms cannot manufacture products.' })
+  nodes.push(...externalInventionLicenseNodes(g, { assetId: id, inventionId: id }), ...inventionImpactNodes(g, id))
   return nodes
 }
 

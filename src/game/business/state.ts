@@ -267,6 +267,11 @@ export interface BizState {
   venueOwner?: Json
   /** Individually priced manufactured inventions, separate from industry-wide boosts. */
   inventionProducts?: Json
+  /** Auto-staffed fab head count, included in employees; prevents cumulative rehiring. */
+  inventionStaff?: number
+  /** Outside manufacturing contracts and their latest corporate tax-location booking. */
+  inventionLicenses?: Json
+  inventionLicenseSettlement?: Json
   /** Market position: share, rivals, installed base, antitrust (business/competition-state.ts). */
   market?: Json
   /**
@@ -475,6 +480,9 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.financeFirm && typeof d.financeFirm === 'object' && !Array.isArray(d.financeFirm) ? { financeFirm: d.financeFirm } : {}),
     ...(d.venueOwner && typeof d.venueOwner === 'object' && !Array.isArray(d.venueOwner) ? { venueOwner: d.venueOwner } : {}),
     ...(d.inventionProducts && typeof d.inventionProducts === 'object' ? { inventionProducts: d.inventionProducts } : {}),
+    ...(typeof d.inventionStaff === 'number' ? { inventionStaff: Math.floor(clampN(num(d.inventionStaff), 0, 1e9)) } : {}),
+    ...(Array.isArray(d.inventionLicenses) ? { inventionLicenses: d.inventionLicenses } : {}),
+    ...(d.inventionLicenseSettlement && typeof d.inventionLicenseSettlement === 'object' && !Array.isArray(d.inventionLicenseSettlement) ? { inventionLicenseSettlement: d.inventionLicenseSettlement } : {}),
     ...(d.market && typeof d.market === 'object' && !Array.isArray(d.market) ? { market: d.market } : {}),
     ...(d.group && typeof d.group === 'object' && !Array.isArray(d.group) && typeof d.group.id === 'string' && d.group.id ? { group: d.group } : {}),
     ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),

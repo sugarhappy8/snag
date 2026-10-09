@@ -52,6 +52,23 @@ owned invention's national-patent screen to file in all remaining nations at onc
 filing windows and national patent terms still apply. Existing company research queues remain
 compatible and complete into manufactured products.
 
+In **Owned Inventions**, build or expand dedicated fabs with company cash, invest in
+technology/fab upgrades, and set annual output with a production slider and live forecast.
+Any nonnegative selling price is allowed, including free, loss-leading or monopoly pricing;
+customers can refuse unreasonable prices. Actual output needs paid capacity, workers and
+working capital. New products start without factories; old saves retain their original small
+starter operation. Personally or company-owned IP can also be licensed to outside manufacturers:
+they fund their own fabs and pay royalties on actual simulated sales in separate customer channels.
+Contracts retain IP ownership and last no more than five years or the remaining patent term.
+
+Generational breakthroughs begin with extraordinary demand and generate world news and a
+one-time **+1,100% stock-market repricing** across then-open listings, rather than a repeated
+annual payout. Existing holdings and quotes agree; buying after the announcement does not
+replay the jump. Governments may seek strategic access, cooperation or stolen technology.
+Security investment and your responses affect leaks. Demand and monopoly pricing erode as
+each nation's patent counts down; expiry allows cheaper competition. Upgrades improve the
+technology and economics but never restart the original patent term.
+
 Own a **casino, nightclub, bar or adult entertainment club** where simulated local licensing
 allows it. Visit the floor, hear staff concerns, handle an owner request, support performers,
 book collaborations and invest in safety or hospitality. All adult venues and encounters are

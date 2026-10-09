@@ -8,7 +8,7 @@ import { becomeCeo } from '../src/game/business/career'
 import { bizOf, findBusiness, normalizeBiz } from '../src/game/business/state'
 import { businessEffects, expansionOf, saveExpansion } from '../src/game/business/dynamics'
 import { inventionYear } from '../src/game/business/expansion'
-import { commitInventionProducts, inventionProductsOf, simulateInventionProducts, setInventionProduction } from '../src/game/business/invention-products'
+import { buildInventionFab, commitInventionProducts, inventionProductsOf, simulateInventionProducts, setInventionProduction } from '../src/game/business/invention-products'
 import { COUNTRIES } from '../src/game/world'
 import { corporateTax } from '../src/game/data/markets'
 import { localEcon, yearFixed } from '../src/game/business/economy'
@@ -150,6 +150,7 @@ describe('owned invention products', () => {
     const ip = personalInventions(g)[0], { a, b } = company(g)
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)
     expect(personalInventions(g)).toHaveLength(1)
+    expect(buildInventionFab(g, a.id, ip.id, 100)).toBe(true)
     b.cash = 55; b.employees = 10; b.quality = 100
     const before = JSON.stringify(g), plan = simulateInventionProducts(g, b, g.year)
     expect(JSON.stringify(g)).toBe(before)
@@ -180,6 +181,7 @@ describe('owned invention products', () => {
     const g = game(); study(g); startPersonalResearch(g, 'heat-recovery')
     const ip = personalInventions(g)[0], { a, b } = company(g)
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)
+    expect(buildInventionFab(g, a.id, ip.id, 100)).toBe(true)
     const plan = simulateInventionProducts(g, b, g.year)
     commitInventionProducts(g, b, g.year, plan)
     setInventionProduction(g, a.id, ip.id, 42)
@@ -195,6 +197,7 @@ describe('owned invention products', () => {
     const ip = personalInventions(g)[0], { a, b } = company(g)
     b.cash = 10_000_000; b.founded = g.year - 2
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)
+    expect(buildInventionFab(g, a.id, ip.id, 100)).toBe(true)
     const heir = createPerson(g, { relation: 'child', age: 35, relationship: 90, stats: { smarts: 90 } })
     createPerson(g, { relation: 'child', age: 32, relationship: 70 })
     expect(hireRelative(g, a, b, heir, { rank: 2 }, { quiet: true }).ok).toBe(true)
@@ -219,6 +222,7 @@ describe('owned invention products', () => {
     const ip = personalInventions(g)[0], { a, b } = company(g)
     b.cash = 10_000_000; b.founded = g.year - 2; b.production = 100_000; b.ownerSalary = 1_000
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)
+    expect(buildInventionFab(g, a.id, ip.id, 100)).toBe(true)
     g.year++; g.character.age++; g.queue = []
     const fixed = yearFixed(g, b), home = localEcon(b.industry, b.countryId, b.city)
     const plan = simulateInventionProducts(g, b, g.year - 1, home.wage * b.wageLevel * fixed.licence * fixed.finance * fixed.ceoEff)

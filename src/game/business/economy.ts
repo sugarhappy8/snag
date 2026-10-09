@@ -9,6 +9,7 @@
 // in that country), competition and market saturation. Costs follow local wages (never below
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
 import { outcomeTag } from '../timeMachine'
+import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
 import { corporateTax, exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
 import { historicalCycle } from '../history/markets'
@@ -29,6 +30,7 @@ import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_PO
 import { marketDef } from './competition-data'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
+import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -603,7 +605,7 @@ export interface Book {
  * sales, costs, taxes and the cash, stock and staff it leaves behind. simulateYear() applies it;
  * the Business talent's planner uses it to test plans against the very same numbers.
  */
-export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, production: number, ownerDraw: number, k: YearFixed = yearFixed(g, b), cycle?: number, bookedHomeSales = 0): Book {
+export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, production: number, ownerDraw: number, k: YearFixed = yearFixed(g, b), cycle?: number, bookedHomeSales: number | Record<string, number> = 0): Book {
   const def = industryDef(b.industry)
   const capacity = plan.capacity
   const produced = Math.floor(clampN(Math.min(production, capacity), 0, 1e12))
@@ -672,7 +674,10 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   const pbt = pbt0 - ownerPay
   // Concrete invention sales were already cash-booked through yearIncome. They
   // still belong in the home nation's share of the corporate taxable profit.
-  if (bookedHomeSales > 0) netByCountry[b.countryId] = (netByCountry[b.countryId] ?? 0) + bookedHomeSales
+  const bookedByCountry = typeof bookedHomeSales === 'number' ? { [b.countryId]: bookedHomeSales } : bookedHomeSales
+  for (const [country, sales] of Object.entries(bookedByCountry)) {
+    if (Number.isFinite(sales) && sales > 0) netByCountry[country] = (netByCountry[country] ?? 0) + sales
+  }
   let corpTax = 0
   if (pbt > 0) {
     const totalNet = Object.values(netByCountry).reduce((s, v) => s + Math.max(0, v), 0)
@@ -732,7 +737,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
  * business (cash, inventory, employees, last statement) but not its quality/brand/morale (see
  * evolve()). `ownerDraw` is the salary the owner wants this year (0 when not CEO).
  */
-export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number, bookedHomeSales = 0): YearResult {
+export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw: number, fixedNoise?: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
   if (isFinanceFirm(b)) return simulateFinanceYear(g, b, year, ownerDraw)
   const noise = fixedNoise ?? clampN(1 + bell(g, -80, 80) / 1000, 0.9, 1.1)
   const plan = planFor(g, b, year, { noise })
@@ -755,6 +760,7 @@ export function equipmentValue(b: BizState): number {
   for (const o of b.outlets) capital += o.count * localEcon(b.industry, o.countryId, o.city).capital
   const lines = linesOf(b)
   if (lines > 0) capital += lineCost(b, lines)
+  capital += inventionFabValue(b)
   return capital
 }
 
@@ -842,7 +848,7 @@ export function valuationOf(b: BizState): number {
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
   const unitCost = localEcon(b.industry, b.countryId, b.city).unitCost
-  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
+  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + inventionInventoryValue(b) + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
   // A game studio is also worth its back catalog and the games in its pipeline.
   const games = b.industry === 'gameStudio' ? studioValue(b.studio) : 0
   // A deep-tech company is also worth its patents, tech lead and R&D pipeline.
@@ -886,10 +892,14 @@ export function exchangeMove(g: GameState, countryId: string, year: number): num
 export function updateSharePrice(g: GameState, b: BizState, year: number): number {
   if (!b.public || b.sharesOut <= 0) return b.valuation
   const fundamental = valuationOf(b) / b.sharesOut
+  const repricing = publicBusinessShockFactor(g, b, g.year)
+  // Registration already marked today's price. At a historical expropriation
+  // sunset, however, last year's quote still carries the old market's factor.
+  const quotedRepricing = Math.max(repricing, publicBusinessShockFactor(g, b, g.year - 1))
   const market = exchangeMove(g, b.countryId, year)
   const own = bell(g, -120, 120) / 1000
-  const next = 0.5 * b.sharePrice * (1 + market + own) + 0.5 * fundamental * (1 + market * 0.5)
-  b.sharePrice = round2(clampN(next, 0.05, 1e7))
+  const next = 0.5 * (b.sharePrice / quotedRepricing) * (1 + market + own) + 0.5 * fundamental * (1 + market * 0.5)
+  b.sharePrice = round2(clampN(next, 0.05, 1e7) * repricing)
   return dollars(b.sharePrice * b.sharesOut)
 }
 

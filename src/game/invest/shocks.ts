@@ -10,9 +10,76 @@
 // a scheduled fade is a predictable rebound anyone could buy into the year after, so the
 // announcements in special/politics.ts never fade.) Nothing here touches g.rng.
 import type { GameState, Json } from '../types'
-import { exchangeByKey, isRealSecId, slotPlan } from './engine'
+import type { BizState } from '../business/state'
+import { exchangeByKey, exchangeInfo, isRealSecId, slotPlan } from './engine'
 
 export const SHOCKS_KEY = 'marketShocks'
+export const BREAKTHROUGHS_KEY = 'marketBreakthroughs'
+
+/** A compact snapshot of the listings actually open when world-changing news broke.
+ * Slot generations stop a later replacement/IPO inheriting an old company's repricing. */
+export interface MarketBreakthrough {
+  id: string; name: string; year: number; mult: number
+  exchanges: { key: string; stocks: (number | null)[]; pennies: (number | null)[]; indexId: string; ends?: number }[]
+  businesses: string[]
+}
+
+export function marketBreakthroughs(g: GameState): MarketBreakthrough[] {
+  const raw = g.flags[BREAKTHROUGHS_KEY]
+  if (!Array.isArray(raw)) return []
+  return raw.filter(isRecord).filter(r => typeof r.id === 'string' && r.id && finite(r.year) && finite(r.mult) && r.mult >= 1 && Array.isArray(r.exchanges)).map(r => ({
+    id: String(r.id), name: typeof r.name === 'string' ? r.name.slice(0, 100) : 'An invention', year: r.year as number, mult: Math.min(100, r.mult as number),
+    exchanges: (r.exchanges as Json[]).filter(isRecord).filter(x => typeof x.key === 'string' && !!exchangeByKey(x.key) && Array.isArray(x.stocks) && Array.isArray(x.pennies)).map(x => ({
+      key: String(x.key), indexId: typeof x.indexId === 'string' ? x.indexId : '', ends: typeof x.ends === 'number' && Number.isFinite(x.ends) && x.ends > (r.year as number) ? x.ends : 0,
+      stocks: (x.stocks as Json[]).slice(0, 256).map(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null),
+      pennies: (x.pennies as Json[]).slice(0, 256).map(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.floor(n) : null),
+    })), businesses: Array.isArray(r.businesses) ? r.businesses.filter((x): x is string => typeof x === 'string').slice(0, 4096) : [],
+  }))
+}
+
+export function addMarketBreakthrough(g: GameState, event: MarketBreakthrough): boolean {
+  const list = marketBreakthroughs(g)
+  if (list.some(x => x.id === event.id)) return false
+  g.flags[BREAKTHROUGHS_KEY] = [...list, event] as unknown as Json
+  return true
+}
+
+const cappedFactor = (n: number): number => Math.max(1, Math.min(1e12, Number.isFinite(n) ? n : 1e12))
+
+export function breakthroughStockFactor(g: GameState, secId: string, year: number): number {
+  const match = /^(.*)#([sp])(\d+)g(\d+)$/.exec(secId)
+  if (!match || !Number.isFinite(year)) return 1
+  let factor = 1
+  for (const event of marketBreakthroughs(g)) {
+    if (event.year > year) continue
+    const ex = event.exchanges.find(x => x.key === match[1])
+    const generations = match[2] === 'p' ? ex?.pennies : ex?.stocks
+    if ((!ex?.ends || year < ex.ends) && generations?.[Number(match[3])] === Number(match[4])) factor = cappedFactor(factor * event.mult)
+  }
+  return factor
+}
+
+/** Explicit index identity avoids exporting a repricing to an exchange that opens later. */
+export function breakthroughIndexFactor(g: GameState, exKey: string, year: number, indexId = `${exKey}#fund`): number {
+  let factor = 1
+  for (const event of marketBreakthroughs(g)) if (event.year <= year) {
+    const ex = event.exchanges.find(x => x.key === exKey)
+    if (ex?.indexId && ex.indexId === indexId && (!ex.ends || year < ex.ends)) factor = cappedFactor(factor * event.mult)
+  }
+  return factor
+}
+
+/** Only companies already public when announced participate; future IPOs cannot replay news. */
+export function publicBusinessShockFactor(g: GameState, b: BizState, year: number): number {
+  const a = g.assets.find(x => x.kind === 'business' && x.details === b as unknown as Record<string, Json>)
+  if (!a) return 1
+  let factor = 1
+  for (const event of marketBreakthroughs(g)) if (event.year <= year && event.businesses.includes(a.id)) {
+    const ex = event.exchanges.find(x => x.key === exchangeInfo(b.countryId).key)
+    if (ex && (!ex.ends || year < ex.ends)) factor = cappedFactor(factor * event.mult)
+  }
+  return factor
+}
 
 export type ShockCause = 'ban' | 'probe' | 'nationalize' | 'contract' | 'deregulate' | 'endorse' | 'liquidity'
 
@@ -122,7 +189,7 @@ export function factorOf(s: MarketShock, year: number): number {
 
 /** Combined price factor of every shock on one security in a year (1 = untouched). */
 export function shockFactor(g: GameState, secId: string, year: number): number {
-  let f = 1
+  let f = breakthroughStockFactor(g, secId, year)
   for (const s of marketShocks(g)) if (s.secId === secId) f *= factorOf(s, year)
   return Number.isFinite(f) && f > 0 ? f : 1
 }
@@ -131,18 +198,19 @@ export function shockFactor(g: GameState, secId: string, year: number): number {
  * Factor on an exchange's index (and its index fund): each listed company is an equal slice, so
  * a company that loses half its value drags the index down by half its weight.
  */
-export function indexShockFactor(g: GameState, exKey: string, year: number): number {
+export function indexShockFactor(g: GameState, exKey: string, year: number, indexId = `${exKey}#fund`): number {
   // An index tracks company fundamentals/news, not the player's temporary execution
   // pressure in a single order book. Otherwise a tiny stock order pumps an unlimited fund.
   const list = marketShocks(g).filter((s) => s.asset === 'stock' && s.exKey === exKey && s.cause !== 'liquidity')
-  if (!list.length) return 1
+  const breakthrough = breakthroughIndexFactor(g, exKey, year, indexId)
+  if (!list.length) return breakthrough
   const info = exchangeByKey(exKey)
   const n = Math.max(4, info ? slotPlan(info).length : 10)
   const companies = new Map<string, number>()
   for (const s of list) companies.set(s.secId, (companies.get(s.secId) ?? 1) * factorOf(s, year))
   let sum = 0
   for (const factor of companies.values()) sum += factor - 1
-  return Math.max(0.5, Math.min(1.5, 1 + sum / n))
+  return breakthrough * Math.max(0.5, Math.min(1.5, 1 + sum / n))
 }
 
 /** Adjust an engine price and its yearly change for a factor (this year vs last year). */

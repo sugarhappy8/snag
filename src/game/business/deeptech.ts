@@ -17,8 +17,8 @@ import { readBiz, type BizState } from './state'
 export { isDeepTech } from './deeptech-state'
 
 /** Replaces simulateYear for deep-tech companies. */
-export function simulateDeepTechYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number): YearResult {
-  return simulateDeepTechYearImpl(g, a, b, year, ownerDraw)
+export function simulateDeepTechYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number, bookedSales: number | Record<string, number> = 0): YearResult {
+  return simulateDeepTechYearImpl(g, a, b, year, ownerDraw, bookedSales)
 }
 
 /** After the year is booked (R&D progress, breakthroughs, round closes...). */

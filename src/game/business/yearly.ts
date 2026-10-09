@@ -33,7 +33,8 @@ import {
   valuationOf,
   yearFixed,
 } from './economy'
-import { commitInventionProducts, simulateInventionProducts } from './invention-products'
+import { commitInventionProducts, prepareInventionWorkforce, simulateInventionProducts } from './invention-products'
+import { inventionLicenseBookedSales } from './invention-licensing'
 import { declareBankruptcy, ipoThreshold } from './exit'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
@@ -415,9 +416,12 @@ export function yearlyBusinessImpl(g: GameState): void {
     // Ordinary companies should not pay the cost of quoting a second workforce
     // and fiscal model when they have no manufactured inventions at all.
     const home = Array.isArray(b.inventionProducts) && b.inventionProducts.length ? localEcon(b.industry, b.countryId, b.city) : null
+    if (!home && (b.inventionStaff ?? 0) > 0) prepareInventionWorkforce(g, b, fiscal, 0)
     const manufactured = home ? (() => {
       const fixed = yearFixed(g, b)
-      return simulateInventionProducts(g, b, fiscal, home.wage * b.wageLevel * fixed.licence * fixed.finance * fixed.ceoEff)
+      const wage = home.wage * b.wageLevel * fixed.licence * fixed.finance * fixed.ceoEff
+      prepareInventionWorkforce(g, b, fiscal, wage)
+      return simulateInventionProducts(g, b, fiscal, wage)
     })() : { revenue: 0, cogs: 0, royalties: 0, wages: 0, staffUsed: 0, units: 0, rows: [] }
     const productRate = home?.taxRate ?? 0
     const productTax = Math.round(manufactured.revenue * productRate / (1 + productRate))
@@ -436,7 +440,9 @@ export function yearlyBusinessImpl(g: GameState): void {
       b.employees = Math.max(0, b.employees - reservedStaff)
       b.capacityLoss = 1 - (1 - b.capacityLoss) * (1 - share)
     }
-    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0, undefined, productNetSales)
+    const bookedSales = inventionLicenseBookedSales(a, fiscal)
+    if (productNetSales > 0) bookedSales[b.countryId] = (bookedSales[b.countryId] ?? 0) + productNetSales
+    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0, bookedSales) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0, bookedSales) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0, undefined, bookedSales)
     const s = res.stmt
     if (manufactured.rows.length) {
       // Reclassify the booked receipts into actual product sales and costs. No

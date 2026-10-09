@@ -19,6 +19,8 @@ import { yearlyHistory } from './history'
 import { yearlyDigest } from './history/digest'
 import { yearlyImmigration } from './immigration'
 import { yearlyInventor } from './inventor'
+import { yearlyInventionImpact } from './invention-impact'
+import { yearlyInventionLicenses } from './business/invention-licensing'
 import { yearlyUnderworld } from './underworld'
 import { yearlyCorruption } from './special/corruption'
 import { yearlyInvestments } from './investments'
@@ -38,6 +40,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['career', yearlyCareer],
   ['special', yearlySpecial],
   ['inventor', yearlyInventor],
+  ['inventionImpact', yearlyInventionImpact],
+  ['inventionLicenses', yearlyInventionLicenses],
   ['corruption', yearlyCorruption],
   ['business', yearlyBusiness],
   ['investments', yearlyInvestments],

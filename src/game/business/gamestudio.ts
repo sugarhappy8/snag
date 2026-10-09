@@ -168,7 +168,19 @@ function studioOperations(g: GameState, b: BizState, year = g.year): number {
   return (1 + .08 * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).capacity
 }
 
-export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number): YearResult {
+function studioCorporateTax(b: BizState, profit: number, homeRevenue: number, bookedSales: number | Record<string, number>): number {
+  if (!(profit > 0)) return 0
+  const byCountry: Record<string, number> = { [b.countryId]: Math.max(0, Number.isFinite(homeRevenue) ? homeRevenue : 0) }
+  const booked = typeof bookedSales === 'number' ? { [b.countryId]: bookedSales } : bookedSales
+  for (const [country, sales] of Object.entries(booked)) {
+    if (Number.isFinite(sales) && sales > 0) byCountry[country] = (byCountry[country] ?? 0) + sales
+  }
+  const total = Object.values(byCountry).reduce((sum, sales) => sum + Math.max(0, sales), 0)
+  if (!(total > 0)) return corporateTax(b.countryId, profit)
+  return Object.entries(byCountry).reduce((tax, [country, sales]) => tax + corporateTax(country, profit * Math.max(0, sales) / total), 0)
+}
+
+export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number, bookedSales: number | Record<string, number> = 0): YearResult {
   const st = studioOf(a)
   ensureCatalog(g, b, st, year)
   const m = marketOf(b.countryId)
@@ -372,9 +384,11 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   const overhead = (wages + rent + upkeep) * finance * ceoEff
   const interest = b.debt * b.debtRate
   const pbt0 = revenue - cogs - overhead - keyStaff - marketing - interest - insurance - b.yearCosts + b.yearIncome
-  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0)))
+  // One-offs (including invention sales/licences) are already in company cash.
+  // Their profit belongs in tax, but must not be counted twice for salary funds.
+  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + b.yearCosts - b.yearIncome)))
   const pbt = pbt0 - ownerPay
-  const corpTax = pbt > 0 ? corporateTax(b.countryId, pbt) : 0
+  const corpTax = studioCorporateTax(b, pbt, revenue, bookedSales)
   const net = pbt - corpTax
   // One-off costs and income booked during the year already moved the company's cash.
   b.cash = dollars(b.cash + net + b.yearCosts - b.yearIncome)

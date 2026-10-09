@@ -12,6 +12,8 @@ import { bizOf, businessAssets, findBusiness, readBiz, type BizState } from './s
 import { money, pct } from './util'
 import { inventionProductsOf, newInventionProduct, ownedInventionProductNodes, saveInventionProducts } from './invention-products'
 import type { InventionField } from '../inventor-data'
+import { registerInventionBreakthrough, inventionImpactNodes } from '../invention-impact'
+import { externalInventionLicenseNodes } from './invention-licensing'
 
 export function strategyCost(b: BizState): number { return Math.round(Math.max(5_000, (b.last?.revenue ?? 100_000) * .025)) }
 export function studyCost(b: BizState): number { return Math.round(Math.max(2_000, (b.last?.revenue ?? 100_000) * .003)) }
@@ -130,6 +132,7 @@ function finishInvention(g: GameState, a: Asset, b: BizState, x: Expansion): voi
   if (!products.some(p => p.id === patent.id)) products.push(newInventionProduct(patent.id!, r.name, inventionField(b.industry), modern ? r.kind as InventionTier : r.kind === 'early' ? 'big' : 'generational', g.year))
   saveInventionProducts(b, products)
   count(g, 'inventions')
+  registerInventionBreakthrough(g, { id: patent.id!, name: r.name, kind: modern ? r.kind as InventionTier : r.kind === 'early' ? 'big' : 'generational', field: inventionField(b.industry), created: g.year, country: b.countryId })
   notice(g, 'Breakthrough!', modern
     ? `${a.name} invented ${r.name}. The company now owns a concrete product; set its price and production under Owned Inventions. The patent belongs exclusively to ${a.name} in ${getCountry(b.countryId).name} until ${expires}. File abroad by ${g.year + 1} to protect other countries. After patents expire, you keep the technology but competitors can copy it. No sales occur without manufacturing capacity, staff and cash.`
     : `${a.name} invented ${r.name}. Your legacy worldwide exclusivity remains in force until ${expires}. The technology is now a concrete company-owned product: set its price and production under Owned Inventions. Staff, production costs and cash limit output; it no longer boosts unrelated sales. Competitors may copy the product after exclusivity expires.`, { emoji: '💡', tone: 'good' })
@@ -269,8 +272,12 @@ function inventionPatentMenu(a: Asset, p: Patent, index: number): MenuGroup {
 export function inventorMenu(a: Asset): MenuGroup {
   return { type: 'menu', id: `biz.inventor.${a.id}`, label: 'Owned Inventions', emoji: '💡', subtitle: 'Product manufacturing, licensing and national patents', children: g => {
     const b = readBiz(g, a), x = expansionOf(b)
-    const nodes: MenuNode[] = [{ type: 'info', id: `inventor.help.${a.id}`, text: 'New inventions begin in Activities > Inventor: study a specific topic, pay a personal research budget and complete its required time. Completion is guaranteed. Assign or license the resulting IP to a compatible company. Here, each invention has a separate product price, production plan, inventory and sales ledger; it does not boost unrelated company demand.', emoji: '🧪' }, ...ownedInventionProductNodes(g, a.id)]
+    const nodes: MenuNode[] = [{ type: 'info', id: `inventor.help.${a.id}`, text: 'New inventions begin in Activities > Inventor with specific-topic study and personal research. Here, fund fabs from company cash, upgrade the technology, choose any nonnegative price and use a slider for annual production. Staff, paid fab capacity and working capital limit output. Outside manufacturers can license company-owned IP and fund their own factories. Breakthrough demand starts enormous but monopoly pricing and profits erode toward territorial patent expiry; upgrades never restart the patent clock. Inventions sell their own products, not unrelated company demand.', emoji: '🧪' }, ...ownedInventionProductNodes(g, a.id)]
     if (x.research) nodes.push({ type: 'info', id: `inventor.progress.${a.id}`, text: `${x.research.name}: legacy funded project completes in ${Math.max(0, x.research.started + x.research.years - g.year)} years, guaranteed. Budget ${money(x.research.budget)} already paid.`, emoji: '⏳' })
+    for (const product of inventionProductsOf(b)) {
+      if (product.rights === 'owned') nodes.push(...externalInventionLicenseNodes(g, { assetId: a.id, inventionId: product.id }))
+      nodes.push(...inventionImpactNodes(g, product.ipId, a.id))
+    }
     nodes.push(...x.patents.map((p, i): MenuNode => isInventionTier(p.kind) ? inventionPatentMenu(a, p, i) : ({ type: 'info', id: `inventor.patent.${a.id}.${i}`, text: `${p.name} · ${p.expires > g.year ? `exclusive until ${p.expires}` : 'competitors can now use it'}`, emoji: '📜' })))
     return nodes
   } }
