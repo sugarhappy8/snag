@@ -12,7 +12,6 @@ import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
 import { exchangeFor, industryDemand, INDUSTRY_IDS, isIndustryLegal, marketOf, type Industry, type MarketProfile } from '../data/markets'
-import { historicalCycle } from '../history/markets'
 import { businessFloor } from '../mastery'
 import { bell, chance, rand } from '../rng'
 import { hasTalent, talentHint, type TalentId } from '../talents'
@@ -29,6 +28,7 @@ import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
 import { marketDef } from './competition-data'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
+import { economicCycle, economyOf } from '../economy'
 import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
 import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 import { allocatedCorporateTax } from './tax'
@@ -201,21 +201,9 @@ export function openFractionFor(days: number): number {
 // ---------------------------------------------------------------------------
 // The business cycle: one boom or recession per country per year, shared by every firm.
 
-function shock(g: GameState, countryId: string, year: number): number {
-  const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|bizcycle|${countryId}|${year}`)
-  let z = (s.next() + s.next() + s.next() - 1.5) * 2
-  if (s.chance(0.08)) z -= 1.6 // recession
-  if (s.chance(0.06)) z += 1.2 // boom
-  return z
-}
-
 /** Demand multiplier from the economy of a country in a year (about 0.6 - 1.35). */
 export function cycleOf(g: GameState, countryId: string, year: number): number {
-  const vol = clampN(exchangeFor(countryId).volatility, 0.05, 0.8)
-  const amp = 0.035 + 0.3 * vol
-  const z = 0.65 * shock(g, countryId, year) + 0.35 * shock(g, countryId, year - 1)
-  // Real history (recessions, booms) where the year has it; the procedural cycle otherwise.
-  return clampN(historicalCycle(countryId, year, clampN(1 + amp * z, 0.55, 1.4)), 0.55, 1.4)
+  return economicCycle(g, countryId, year)
 }
 
 export function cycleLabel(c: number): string {
@@ -638,8 +626,9 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
     const perOutlet = l.outlet.count > 0 ? prodHere / (l.outlet.count * def.demand) : 0
     const need = l.outlet.count * def.staff * Math.pow(clampN(perOutlet, 0.25, perMax), def.staffScale)
     wanted += need
-    wages += need * e.wage * b.wageLevel * b.openFraction
-    rent += l.outlet.count * e.rent * densityRent(l.outlet.count, citySaturation(e, l.outlet.countryId, l.outlet.city))
+    const national = economyOf(g, l.outlet.countryId, year)
+    wages += need * e.wage * b.wageLevel * b.openFraction * national.wages
+    rent += l.outlet.count * e.rent * densityRent(l.outlet.count, citySaturation(e, l.outlet.countryId, l.outlet.city)) * national.rent
     upkeep += l.outlet.count * e.capital * def.maint
   }
   if (lines > 0) {
@@ -675,15 +664,15 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   const pbt = pbt0 - ownerPay
   // Concrete invention sales were already cash-booked through yearIncome. Attributed contracts
   // follow their market; any other one-off income remains taxable at headquarters.
-  const corpTax = allocatedCorporateTax(b.countryId, pbt, netByCountry, b.yearIncome, bookedHomeSales)
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, netByCountry, b.yearIncome, bookedHomeSales, g, year)
   const net = pbt - corpTax
   let cash = dollars(b.cash + net + alreadyBooked)
 
   // Cash held in a currency that inflates faster than deposits pay loses value.
-  const m = marketOf(b.countryId)
+  const m = economyOf(g, b.countryId, year)
   let cashErosion = 0
   if (cash > 0) {
-    const real = clampN((m.inflation - m.interestRate) * 0.35, 0, 0.4)
+    const real = clampN((m.inflation - m.rate) * 0.35, 0, 0.4)
     cashErosion = Math.round(cash * real)
     cash -= cashErosion
   }
@@ -918,7 +907,7 @@ interface Scenario {
 /** Next year's possible business cycles per country (Gauss-Hermite nodes × recession/boom). */
 function cycleScenarios(g: GameState, b: BizState, year: number): Scenario[] {
   const countries = [...new Set(b.outlets.map((o) => o.countryId))]
-  const known = new Map(countries.map((cid) => [cid, shock(g, cid, year - 1)]))
+  const known = new Map(countries.map((cid) => [cid, economicCycle(g, cid, Math.min(g.year, year))]))
   const amp = new Map(countries.map((cid) => [cid, 0.035 + 0.3 * clampN(exchangeFor(cid).volatility, 0.05, 0.8)]))
   const nodes: [number, number][] = [
     [-Math.sqrt(3), 1 / 6],
@@ -936,7 +925,7 @@ function cycleScenarios(g: GameState, b: BizState, year: number): Scenario[] {
   for (const [z0, w0] of nodes) {
     for (const [dz, w1] of extra) {
       const cycle: Record<string, number> = {}
-      for (const cid of countries) cycle[cid] = clampN(1 + (amp.get(cid) ?? 0.1) * (0.65 * (z0 + dz) + 0.35 * (known.get(cid) ?? 0)), 0.55, 1.4)
+      for (const cid of countries) cycle[cid] = clampN((known.get(cid) ?? 1) + (amp.get(cid) ?? .1) * .35 * (z0 + dz), .55, 1.4)
       out.push({ w: w0 * w1, cycle })
     }
   }

@@ -8,6 +8,8 @@
 // "Lincoln Elementary School", takes the SATs and goes to prom. Internal level ids
 // ('elementary' | 'middle' | 'high' ...) never change.
 import { techAdoption, type TechId } from './history/timeline'
+import { householdEffects } from './household'
+import { economyOf } from './economy'
 import { anachronistic, eraPick, venueExists } from './events/era'
 import {
   addHidden,
@@ -1513,6 +1515,7 @@ function updateGrades(g: GameState, cur: Enrollment): void {
   const c = g.character
   // Smarts 30 → D-, 50 → C-, 70 → B-, 90 → A-. (0.75x+15 left most average kids with an F.)
   let target = c.stats.smarts * 0.5 + 45
+  target += householdEffects(g).study + (economyOf(g).services - 1) * 8
   const clique = cliqueOf(cur)
   if (clique === 'brainy' || clique === 'nerds') target += 6
   if (clique === 'troublemakers' || clique === 'popular') target -= 5

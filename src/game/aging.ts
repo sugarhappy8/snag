@@ -8,13 +8,14 @@ import { yearlyComputer } from './computer'
 import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi } from './core'
 import { yearlyCrime } from './crime'
 import { yearlyEducation } from './education'
-import { currencyInflation } from './data/currencies'
+import { economyOf, ensureEconomy, yearlyEconomy } from './economy'
 import { yearlyWealth } from './events/wealth'
 import { yearlyWillFeuds } from './events/will-feud'
 import { yearlyNepo } from './business/nepo'
 import { yearlyFamilyUse } from './shops/luxury-family'
 import { settleIncomeTax, yearlyFinance } from './finance'
 import { checkDeath, yearlyHealth } from './health'
+import { yearlyHousehold } from './household'
 import { yearlyHistory } from './history'
 import { yearlyDigest } from './history/digest'
 import { yearlyImmigration } from './immigration'
@@ -34,6 +35,7 @@ import type { GameState } from './types'
 export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['history', yearlyHistory],
   ['digest', yearlyDigest],
+  ['household', yearlyHousehold],
   ['relationships', yearlyRelationships],
   ['health', yearlyHealth],
   ['education', yearlyEducation],
@@ -75,13 +77,18 @@ export function ageUp(g: GameState): void {
   // stores purchasing power: erode the opening balance before any new-year income
   // arrives, using the same inflation as the currency display. A redenomination
   // changes display units only and must never be counted as inflation or income.
-  c.money /= 1 + currencyInflation(c.countryId, g.year + 1)
+  ensureEconomy(g)
   c.age += 1
   g.year += 1
   g.yearActions = {}
   g.flags.taxableIncome = 0
   g.flags.taxesPaid = 0
   currentLogYear(g)
+
+  // The economic year boundary precedes every income-producing hook, including history.
+  // New-year earnings must not be eroded as though held since the previous birthday.
+  yearlyEconomy(g)
+  c.money /= 1 + economyOf(g).inflation
 
   for (const [, hook] of YEARLY_HOOKS) {
     hook(g)

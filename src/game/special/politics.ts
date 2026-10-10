@@ -1,3 +1,4 @@
+import { billEconomicKind, economicPolicyDescription, enactEconomicPolicy } from '../economy'
 // Special career: Politician. Run for office (party, platform, campaign budget, a three-stop
 // campaign trail, election night), then govern: read the newspaper to learn what voters care
 // about, broadcast speeches, stage rallies, pass or veto bills, dodge (or pocket) political
@@ -1286,6 +1287,8 @@ defineScript(BILL_SCRIPT, (g, choice, data) => {
     count(g, 'billsPassed')
     let delta = Math.round((s - 50) / 6 + randInt(g, -2, 2))
     let extra = ''
+    const economicKind = billEconomicKind(bill.name, bill.issue)
+    if (economicKind) extra = enactEconomicPolicy(g, bill.name, economicKind, officeOf(d.office).rank)
     if (bill.effect === 'payRaise') {
       job.salary = Math.round((job.salary * 1.15) / 100) * 100
       extra = ` Your salary is now ${money(job.salary)}. Voters noticed.`
@@ -1351,7 +1354,7 @@ function billsMenu(): MenuGroup {
             gg,
             BILL_SCRIPT,
             'Legislation',
-            `A bill to "${b.name}" is on your desk. Public support is ${b.support}%. ${lawWords(gg, d.office).ask}`,
+            `A bill to "${b.name}" is on your desk. Public support is ${b.support}%. ${economicPolicyDescription(billEconomicKind(b.name, b.issue))} ${lawWords(gg, d.office).ask}`,
             [
               { id: 'pass', label: lawWords(gg, d.office).pass, emoji: '\u{270D}\u{FE0F}' },
               { id: 'veto', label: lawWords(gg, d.office).block, emoji: '\u{1F6AB}' },

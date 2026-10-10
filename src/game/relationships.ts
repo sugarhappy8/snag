@@ -2,6 +2,8 @@
 // births, new siblings, grandchildren, relationship decay, partner drama, family events)
 // and every interaction on the Relationships screen.
 import { arrestPlayer } from './crime'
+import { householdEffects } from './household'
+import { economyOf } from './economy'
 import {
   addHidden,
   addMoney,
@@ -1282,11 +1284,17 @@ function updateOccupation(g: GameState, p: Person): void {
     if (p.occupation === 'University Student') p.occupation = 'Unemployed'
     return
   }
-  if (p.occupation === 'Unemployed' && p.age < 65 && chance(g, 0.25)) p.occupation = randomOccupation(g, Math.max(23, p.age))
+  const country = typeof p.data.countryId === 'string' ? p.data.countryId : g.character.countryId
+  const e = economyOf(g, country)
+  if (p.age < 65 && !/Retired|Unemployed|Student/.test(p.occupation) && chance(g, Math.max(.003, (e.unemployment - .04) * .3))) {
+    p.data.previousOccupation = p.occupation; p.occupation = 'Unemployed'
+    if (p.livesWithPlayer) log(g, `${p.firstName} lost their job as hiring weakened.`, 'bad')
+  }
+  if (p.occupation === 'Unemployed' && p.age < 65 && chance(g, Math.max(.06, .3 - e.unemployment + (e.mobility - .5) * .2))) p.occupation = typeof p.data.previousOccupation === 'string' ? p.data.previousOccupation : randomOccupation(g, Math.max(23, p.age))
   if (p.occupation !== 'Retired' && p.age >= 65 && (p.age >= 70 || chance(g, 0.25))) p.occupation = 'Retired'
   // Earnings / spending
   if (p.occupation === 'Retired') p.money = Math.max(0, Math.round(p.money * 0.98))
-  else if (p.occupation !== 'Unemployed' && p.occupation !== 'University Student') p.money += randInt(g, 500, 4000)
+  else if (p.occupation !== 'Unemployed' && p.occupation !== 'University Student') p.money += Math.round(randInt(g, 500, 4000) * Math.max(.15, getCountry(country).wealth) * e.wages)
 }
 
 function familyLifeCycle(g: GameState): void {
@@ -1487,6 +1495,7 @@ export function stayInTouchFactor(g: GameState): number {
 export function driftRelationships(g: GameState): void {
   const c = g.character
   const prison = inPrison(g)
+  const routine = householdEffects(g).relationship
   for (const p of g.people) {
     if (!p.alive || p.data.disowned === true) continue
     if (p.relation === 'enemy') {
@@ -1505,6 +1514,7 @@ export function driftRelationships(g: GameState): void {
     else if (p.relation !== 'partner' && p.relation !== 'spouse') d *= stayInTouchFactor(g)
     if (c.age < 6 && (PARENTS.includes(p.relation) || p.relation === 'grandparent')) d *= 0.3
     if (prison && p.relation !== 'cellmate') d *= 1.5
+    if ((FAMILY.includes(p.relation) || p.relation === 'partner' || p.relation === 'friend') && p.relationship > 20) d -= routine
     addRelationship(p, -Math.round(d))
   }
 }

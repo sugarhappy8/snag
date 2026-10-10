@@ -2,6 +2,8 @@
 // a foreign contract stays at headquarters; otherwise a partial foreign booking could
 // accidentally move every other dollar of income into the foreign jurisdiction too.
 import { corporateTax } from '../data/markets'
+import { economyOf } from '../economy'
+import type { GameState } from '../types'
 
 type CountryAmounts = number | Readonly<Record<string, number>>
 
@@ -16,8 +18,11 @@ export function allocatedCorporateTax(
   operatingSales: CountryAmounts,
   yearIncome: number,
   bookedSales: CountryAmounts,
+  game?: GameState,
+  year?: number,
 ): number {
   if (!(profit > 0) || !Number.isFinite(profit)) return 0
+  const taxFor = (country: string, amount: number) => Math.max(0, Math.min(amount, corporateTax(country, amount) + amount * (game ? economyOf(game, country, year ?? game.year).taxShift : 0)))
   // Keep each revenue component separate until allocation. Adding two valid values near
   // Number.MAX_VALUE can overflow even though their relative weights are still well defined.
   const parts: { country: string; value: number }[] = []
@@ -48,12 +53,12 @@ export function allocatedCorporateTax(
   add(homeCountry, Math.max(0, positive(yearIncome) - attributedIncome))
 
   const scale = parts.reduce((max, part) => Math.max(max, part.value), 0)
-  if (!(scale > 0) || !Number.isFinite(scale)) return corporateTax(homeCountry, profit)
+  if (!(scale > 0) || !Number.isFinite(scale)) return taxFor(homeCountry, profit)
   const weights = new Map<string, number>()
   for (const part of parts) weights.set(part.country, (weights.get(part.country) ?? 0) + part.value / scale)
   const total = [...weights.values()].reduce((sum, value) => sum + value, 0)
-  if (!(total > 0) || !Number.isFinite(total)) return corporateTax(homeCountry, profit)
+  if (!(total > 0) || !Number.isFinite(total)) return taxFor(homeCountry, profit)
   let tax = 0
-  for (const [country, weight] of weights) tax += corporateTax(country, profit * (weight / total))
-  return Number.isFinite(tax) ? Math.max(0, tax) : corporateTax(homeCountry, profit)
+  for (const [country, weight] of weights) tax += taxFor(country, profit * (weight / total))
+  return Number.isFinite(tax) ? Math.max(0, tax) : taxFor(homeCountry, profit)
 }

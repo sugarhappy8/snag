@@ -2,6 +2,7 @@
 // car dealers, specialty vehicles, rentals) and Activities → Shopping (jewelers, instruments,
 // electronics, luxury boutique, art & collectibles). The yearly hook handles values,
 // condition, upkeep, mortgages, tenants and the odd burst pipe.
+import { economyOf, lendingConditions } from './economy'
 //
 // Store listings are generated from a seed (life + year + store), so they stay the same all
 // year without touching g.rng — menus are rendered from the read-only state.
@@ -471,7 +472,7 @@ function cityMult(city: string): number {
 export function housingMult(g: GameState): number {
   const rent = localMarket(g).rentCost
   const country = Math.pow(wealthOf(g), 0.66) * Math.pow(Number.isFinite(rent) && rent > 0 ? Math.max(0.08, Math.min(5, rent)) : wealthOf(g), 0.4)
-  return Math.max(0.08, Math.min(4, country)) * cityMult(g.character.city)
+  return Math.max(0.08, Math.min(4, country)) * cityMult(g.character.city) * economyOf(g).housing
 }
 
 /**
@@ -680,11 +681,12 @@ export function mortgageDecision(g: GameState, price: number, plan: MortgagePlan
   if (c.age < 18) return { ok: false, reason: 'Banks don\'t give mortgages to minors. Not even cute ones.', ...base }
   if (c.money < down) return { ok: false, reason: `You need ${formatMoney(down)} for the down payment, and you have ${formatMoney(Math.max(0, c.money))}.`, ...base }
   const score = creditScore(g)
-  const minScore = plan.down < 0.2 ? 620 : 580
+  const terms = lendingConditions(g)
+  const minScore = Math.max(plan.down < 0.2 ? 620 : 580, terms.minScore)
   if (score < minScore) return { ok: false, reason: `The loan officer took one look at your credit score (${score}, ${creditLabel(score).toLowerCase()}) and politely showed you the door.`, ...base }
   const income = yearlyIncome(g) + Math.max(0, c.money - down) / 10
   const dti = income > 0 ? (payment + yearlyDebtPayments(g)) / income : Infinity
-  if (dti > 0.45) {
+  if (dti > terms.maxDti) {
     return {
       ok: false,
       reason: `The bank doesn't think you earn enough to cover payments of ${formatMoney(payment)} a year. ${yearlyIncome(g) === 0 ? 'Having a job would help.' : 'Try a bigger down payment or a cheaper place.'}`,
@@ -770,7 +772,7 @@ export function buyHouse(g: GameState, listing: HouseListing, plan: MortgagePlan
       return false
     }
     spend(g, d.down)
-    mortgage = { lender: mortgageLender(g), balance: d.principal, yearlyPayment: d.payment, yearsLeft: plan.years, rate: d.rate }
+    mortgage = { lender: mortgageLender(g), balance: d.principal, yearlyPayment: d.payment, yearsLeft: plan.years, rate: d.rate, rateType: 'fixed' }
   }
   const name = houseName(listing)
   const asset: Asset = {
@@ -4263,10 +4265,17 @@ function foreclose(g: GameState, a: Asset): void {
   const sale = nicePrice(a.value * 0.75)
   const owed = m?.balance ?? 0
   const leftover = Math.max(0, sale - owed)
+  const shortfall = Math.max(0, owed - sale)
+  g.flags.creditDefaults = (typeof g.flags.creditDefaults === 'number' ? g.flags.creditDefaults : 0) + 1
+  if (shortfall > 0) {
+    const deficiency = addLoan(g, { kind: 'personal', lender: m?.lender ?? 'The bank', principal: shortfall, rate: m?.rate ?? .08, years: 5 })
+    if (typeof a.details.countryId === 'string') deficiency.countryId = a.details.countryId
+  }
   const wasHome = isHome(g, a)
   g.assets = g.assets.filter((x) => x.id !== a.id)
   if (leftover > 0) addMoney(g, leftover)
   let text = `${lender} foreclosed on your ${a.name.toLowerCase()} after you missed two payments in a row. It sold at auction for ${formatMoney(sale)}${leftover > 0 ? ` and you got the ${formatMoney(leftover)} left after the loan was repaid` : ''}.`
+  if (shortfall > 0) text += ` The auction did not cover your debt. You still owe ${formatMoney(shortfall)}, restructured as a five-year loan.`
   if (wasHome) text += ` ${relocateAfterLosingHome(g, a.id)}`
   notice(g, 'Foreclosure', text, { emoji: '🏚️', tone: 'bad' })
   log(g, `The bank foreclosed on my ${a.name.toLowerCase()}.`, 'bad')
@@ -4441,13 +4450,13 @@ export function yearlyAssets(g: GameState): void {
   if (!c.alive || g.assets.length === 0) return
 
   // Housing market: one shared trend per year, plus each property's own luck.
-  const market = bell(g, -60, 90) / 1000
+  const market = economyOf(g).housingReturn
   g.flags.housingMarket = market
   const ownsHouse = g.assets.some((a) => a.kind === 'house')
   if (ownsHouse && market <= -0.04) log(g, 'The housing market took a nosedive this year.', 'bad')
   else if (ownsHouse && market >= 0.07) log(g, 'The housing market was booming this year.', 'good')
 
-  for (const a of [...g.assets]) ageAsset(g, a, market)
+  for (const a of [...g.assets]) ageAsset(g, a, a.kind === 'house' ? economyOf(g, typeof a.details.countryId === 'string' ? a.details.countryId : c.countryId).housingReturn : market)
 
   // Gadgets that died of old age.
   for (const a of [...g.assets]) {

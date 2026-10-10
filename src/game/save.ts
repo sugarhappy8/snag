@@ -303,6 +303,15 @@ function validLoan(value: unknown): boolean {
     && isFiniteNumber(value.balance)
     && isFiniteNumber(value.yearlyPayment)
     && isFiniteNumber(value.rate)
+    && optionalNumber(value.yearsLeft)
+    && optionalString(value.countryId)
+    && validRateTerms(value)
+}
+
+function validRateTerms(value: Record<string, unknown>): boolean {
+  return (value.rateType === undefined || value.rateType === 'fixed' || value.rateType === 'variable')
+    && optionalNumber(value.rateMargin)
+    && (value.rateType !== 'variable' || isFiniteNumber(value.rateMargin))
 }
 
 function validResidence(value: unknown): boolean {
@@ -352,7 +361,8 @@ function validMortgage(value: unknown): boolean {
     && isFiniteNumber(value.balance)
     && isFiniteNumber(value.yearlyPayment)
     && isFiniteNumber(value.yearsLeft)
-    && isFiniteNumber(value.rate))
+    && isFiniteNumber(value.rate)
+    && validRateTerms(value))
 }
 
 function validCharacter(value: unknown): boolean {
@@ -712,6 +722,8 @@ function readStop(v: unknown): StoredStop | null {
     chunks: s.chunks as string[],
   }
   if (typeof s.countryId === 'string' && s.countryId) stop.countryId = s.countryId
+  if (isNum(s.nominalScale) && s.nominalScale > 0) stop.nominalScale = s.nominalScale
+  if (isNum(s.usdNominalScale) && s.usdNominalScale > 0) stop.usdNominalScale = s.usdNominalScale
   return stop
 }
 
@@ -1013,9 +1025,64 @@ function pack(g: GameState): Packed {
     ids.push(id)
     chunks.push([id, json])
   }
-  const record = JSON.stringify({ ...g, log: ids })
+  // The next year's opening world is this year's closing world. Share those large
+  // immutable frames across time stops just like log years, preserving exact JSON.
+  const flags = { ...g.flags }, world = flags.worldEconomy
+  if (isRecord(world) && world.v === 1) {
+    const packed = { ...world }
+    for (const key of ['countries', 'previous']) if (isRecord(packed[key])) {
+      const json = JSON.stringify(packed[key]), id = `world.${hashText(json)}`
+      chunks.push([id, json]); packed[key] = id
+    }
+    if (isRecord(packed.history)) {
+      const frames = new Map<number, Record<string, unknown>>()
+      for (const [country, points] of Object.entries(packed.history)) if (Array.isArray(points)) for (const point of points) if (isRecord(point) && isFiniteNumber(point.year)) {
+        const frame = frames.get(point.year) ?? {}
+        frame[country] = point; frames.set(point.year, frame)
+      }
+      const historyIds = [...frames].sort(([a], [b]) => a - b).map(([, frame]) => {
+        const json = JSON.stringify(frame), id = `history.${hashText(json)}`
+        chunks.push([id, json]); return id
+      })
+      packed.history = { snapshotYears: historyIds, countryOrder: Object.keys(packed.history) }
+    }
+    flags.worldEconomy = packed as typeof world
+  }
+  const record = JSON.stringify({ ...g, log: ids, flags })
   const rec = `${g.character.age}.${hashText(record)}`
   return { lifeId: g.lifeId, age: g.character.age, stop: stopOf(g), record, rec, chunks }
+}
+
+/** Native compression keeps a persistent world from evicting all older time stops.
+ * The main save stays plain JSON. Old snapshot records remain readable unchanged. */
+async function encodeSnapshotRecord(json: string, minimum = 100000): Promise<string> {
+  if (json.length < minimum || typeof CompressionStream === 'undefined') return json
+  try {
+    const stream = new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))
+    const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+    let binary = ''
+    for (let i = 0; i < bytes.length; i += 16384) binary += String.fromCharCode(...bytes.subarray(i, i + 16384))
+    const compressed = `gz1:${btoa(binary)}`
+    return compressed.length < json.length ? compressed : json
+  } catch { return json }
+}
+
+async function decodeSnapshotRecord(value: string): Promise<string> {
+  if (!value.startsWith('gz1:')) return value
+  const bytes = Uint8Array.from(atob(value.slice(4)), c => c.charCodeAt(0))
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader()
+  const decoder = new TextDecoder(), parts: string[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const next = await reader.read()
+      if (next.done) break
+      size += next.value.length
+      if (size > 20_000_000) { await reader.cancel(); throw new Error('Snapshot exceeds safe size') }
+      parts.push(decoder.decode(next.value, { stream: true }))
+    }
+    return parts.join('') + decoder.decode()
+  } finally { reader.releaseLock() }
 }
 
 function referencedChunks(): Set<string> {
@@ -1050,6 +1117,8 @@ function addStop(stop: StoredStop): void {
 }
 
 async function writeSnapshot(p: Packed, at: number): Promise<boolean> {
+  const encodedRecord = await encodeSnapshotRecord(p.record)
+  const encodedChunks = await Promise.all(p.chunks.map(async ([id, json]) => [id, id.startsWith('world.') || id.startsWith('history.') ? await encodeSnapshotRecord(json, 1000) : json] as [string, string]))
   const b = await backend()
   const current = () => epoch === at && index.lifeId === p.lifeId
   if (!current()) return false
@@ -1062,8 +1131,8 @@ async function writeSnapshot(p: Packed, at: number): Promise<boolean> {
   for (;;) {
     if (!current()) return false
     const have = referencedChunks()
-    const entries: [string, string][] = [[recordKey(p.lifeId, p.rec), p.record]]
-    for (const [id, json] of p.chunks) {
+    const entries: [string, string][] = [[recordKey(p.lifeId, p.rec), encodedRecord]]
+    for (const [id, json] of encodedChunks) {
       if (have.has(id)) continue
       have.add(id)
       entries.push([chunkKey(p.lifeId, id), json])
@@ -1161,12 +1230,32 @@ export function loadSnapshot(lifeId: string, age: number): Promise<GameState | n
     if (index.where !== b.name) return null
     const [record] = await b.get([recordKey(lifeId, stop.rec)])
     if (!record) return null
-    const g = JSON.parse(record) as GameState
+    const g = JSON.parse(await decodeSnapshotRecord(record)) as GameState
     const ids: unknown = g.log
     if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) return null
     const parts = await b.get(ids.map((id: string) => chunkKey(lifeId, id)))
     if (parts.some((p) => p === null)) return null
     g.log = parts.map((p) => JSON.parse(p as string))
+    const world = g.flags?.worldEconomy
+    if (isRecord(world) && world.v === 1) {
+      for (const key of ['countries', 'previous']) if (typeof world[key] === 'string' && world[key].startsWith('world.')) {
+        const [frame] = await b.get([chunkKey(lifeId, world[key])])
+        if (!frame) return null
+        world[key] = JSON.parse(await decodeSnapshotRecord(frame))
+      }
+      const history = world.history
+      if (isRecord(history) && Array.isArray(history.snapshotYears) && Array.isArray(history.countryOrder)) {
+        if (!history.snapshotYears.every(id => typeof id === 'string' && id.startsWith('history.')) || !history.countryOrder.every(id => typeof id === 'string')) return null
+        const records = await b.get(history.snapshotYears.map(id => chunkKey(lifeId, id as string)))
+        const restored: Record<string, Json[]> = Object.fromEntries(history.countryOrder.map(id => [id, []]))
+        for (const row of records) {
+          if (!row) return null
+          const frame = JSON.parse(await decodeSnapshotRecord(row)) as Record<string, Json>
+          for (const country of history.countryOrder as string[]) if (frame[country] !== undefined) restored[country].push(frame[country])
+        }
+        world.history = restored
+      }
+    }
     if (!isGameShell(g)) return null
     const migrated = migrateLegacyAi(g)
     if (!isLoadableGame(migrated) || migrated.lifeId !== lifeId || migrated.character.age !== age || !migrated.character.alive) return null

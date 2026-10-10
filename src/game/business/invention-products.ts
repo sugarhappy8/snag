@@ -2,6 +2,7 @@
 // product-specific price. Planning is pure; corporate accounting books it once.
 import { earnIncome, formatMoney, notice } from '../core'
 import { seeded } from '../assets'
+import { recordEconomicActivity } from '../economy'
 import { readInventionIp } from '../inventor-state'
 import { isInventionField, type InventionField, PRODUCT_SPECS } from '../inventor-data'
 import { inventionLeakFactor } from '../invention-impact'
@@ -14,7 +15,7 @@ import { localEcon, refreshValue, valuationOf, yearFixed } from './economy'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 export { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 
-export interface InventionProduct { id: string; ipId: string; name: string; field: InventionField; kind: InventionTier; price: number; unitCost: number; potential: number; production: number; inventory: number; rights: 'owned' | 'license'; royalty: number; expires: number; protections: PatentProtection[]; started: number; lastYear: number; sold: number; revenue: number; costs: number; fabCapacity?: number; fabInvested?: number; upgradeLevel?: number; upgradeInvested?: number }
+export interface InventionProduct { id: string; ipId: string; name: string; field: InventionField; kind: InventionTier; price: number; unitCost: number; potential: number; production: number; inventory: number; rights: 'owned' | 'license'; royalty: number; expires: number; protections: PatentProtection[]; started: number; lastYear: number; sold: number; revenue: number; costs: number; fabCapacity?: number; fabInvested?: number; upgradeLevel?: number; upgradeInvested?: number; marketFit?: number; reliability?: number }
 export interface InventionProductYear { revenue: number; cogs: number; royalties: number; wages: number; staffUsed: number; units: number; rows: { id: string; produced: number; sold: number; inventoryEnd: number; revenue: number; cogs: number; royalties: number; wages: number }[] }
 export interface InventionDemandQuote { demand: number; patentRemaining: number; patentYears: number; referencePrice: number; monopoly: number; launchDemand: number }
 /** Workload, not free labour: larger inventions take more staff time per unit. */
@@ -73,6 +74,7 @@ export function inventionProductsOf(b: BizState): InventionProduct[] {
     // product carries explicit zero capacity and must pay to build a factory.
     fabCapacity: Math.floor(num(d.fabCapacity, Object.hasOwn(d, 'fabCapacity') ? 0 : 100, MAX_INVENTION_OUTPUT)),
     fabInvested: num(d.fabInvested), upgradeLevel: Math.floor(num(d.upgradeLevel, 0, MAX_UPGRADES)), upgradeInvested: num(d.upgradeInvested),
+    marketFit: num(d.marketFit, 1, 2), reliability: num(d.reliability, 1, 1.3),
   }))
 }
 export function saveInventionProducts(b: BizState, products: InventionProduct[]): void { b.inventionProducts = products as unknown as Json }
@@ -111,7 +113,8 @@ export function inventionMarketDemand(g: GameState, p: InventionProduct, country
   const ratio = price / Math.max(.01, referencePrice)
   const elasticity = ratio <= 1 ? Math.min(4, Math.pow(Math.max(.1, ratio), -.65)) : Math.pow(ratio, -(1.4 + 1.6 * (1 - monopoly)))
   const noise = .94 + seeded(`${p.id}|sku|${country}|${year}`).next() * .12
-  const raw = launchDemand * (1 + .08 * upgrade) * noise * nationalMarket(g, industry, country, year).demand * protectedDemand * elasticity
+  const fit = Math.max(.1, Math.min(2, p.marketFit ?? 1))
+  const raw = launchDemand * fit * (1 + .08 * upgrade) * noise * nationalMarket(g, industry, country, year).demand * protectedDemand * elasticity
   return { demand: Math.floor(Math.max(0, Math.min(MAX_INVENTION_OUTPUT, raw))), patentRemaining, patentYears, referencePrice, monopoly, launchDemand }
 }
 
@@ -238,7 +241,7 @@ export function simulateInventionProducts(g: GameState, b: BizState, year: numbe
 }
 
 /** Does not credit company cash: the corporate ledger must book net receipts. */
-export function commitInventionProducts(g: GameState, b: BizState, year: number, result: InventionProductYear): void {
+export function commitInventionProducts(g: GameState, b: BizState, year: number, result: InventionProductYear, companyId: string): void {
   const products = inventionProductsOf(b)
   for (const row of result.rows) {
     const p = products.find(product => product.id === row.id)
@@ -247,6 +250,7 @@ export function commitInventionProducts(g: GameState, b: BizState, year: number,
     const ipAsset = g.assets.find(a => a.id === p.ipId && a.kind === 'invention'), ip = ipAsset ? readInventionIp(ipAsset) : null
     if (p.rights === 'license' && ip) p.protections = ip.protections.map(t => ({ ...t }))
     if (row.royalties > 0 && ip) earnIncome(g, row.royalties)
+    if (row.sold > 0) recordEconomicActivity(g, `deployment:${companyId}:${p.id}:${year}`, b.countryId, p.field, { innovation: Math.min(1, row.sold / 50000) * (p.kind === 'generational' ? .2 : p.kind === 'big' ? .08 : .02) })
   }
   saveInventionProducts(b, products)
 }

@@ -41,7 +41,7 @@ export interface TimeMachineRow {
  * lived in (a 1990 balance in 1990 yen, not 2000 yen; pesos before you emigrated, not dollars).
  */
 export function moneyThen(g: GameState, stop: TimeStop): string {
-  return withMoneyContext({ countryId: stop.countryId || g.character.countryId, year: stop.year }, () => formatMoney(stop.money))
+  return withMoneyContext({ countryId: stop.countryId || g.character.countryId, year: stop.year, nominalScale: stop.nominalScale, usdNominalScale: stop.usdNominalScale }, () => formatMoney(stop.money))
 }
 
 /** One row per year you can go back to, newest first. */

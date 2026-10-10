@@ -4,6 +4,7 @@
 // economy.simulateYear for deep-tech companies (it never runs both). Plus the yearly reports.
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
+import { economyOf } from '../economy'
 import { bell, chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -98,9 +99,9 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   let upkeep = 0
   for (const o of b.outlets) {
     const e = localEcon(ind, o.countryId, o.city)
-    wageSum += o.count * e.wage
+    wageSum += o.count * e.wage * economyOf(g, o.countryId, year).wages
     // A city crowded with your own sites gets dearer per site (economy.densityRent).
-    rent += o.count * e.rent * densityRent(o.count, citySaturation(e, o.countryId, o.city))
+    rent += o.count * e.rent * economyOf(g, o.countryId, year).rent * densityRent(o.count, citySaturation(e, o.countryId, o.city))
     upkeep += o.count * e.capital * def.maint
   }
   const avgWage = wageSum / Math.max(1, totalOutlets(b))
@@ -137,7 +138,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const fromInvestors = Math.min(t.venture, localEcon(ind, b.countryId, b.city).wage)
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, Math.max(0, b.cash + delta) + fromInvestors)))
   const pbt = pbt0 - ownerPay
-  const corpTax = allocatedCorporateTax(b.countryId, pbt, netRevenue, b.yearIncome, bookedSales)
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, netRevenue, b.yearIncome, bookedSales, g, year)
   const net = pbt - corpTax
   b.cash = dollars(b.cash + delta - ownerPay - corpTax)
   // The R&D account covers what company cash can't.
@@ -147,10 +148,10 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     b.cash += fromVenture
     t.venture -= fromVenture
   }
-  const m = marketOf(b.countryId)
+  const economy = economyOf(g, b.countryId, year)
   let cashErosion = 0
   if (b.cash > 0) {
-    const real = clampN((m.inflation - m.interestRate) * 0.35, 0, 0.4)
+    const real = clampN((economy.inflation - economy.rate) * 0.35, 0, 0.4)
     cashErosion = Math.round(b.cash * real)
     b.cash -= cashErosion
   }

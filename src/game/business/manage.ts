@@ -1401,29 +1401,29 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'borrow', 'Take a Company Loan', '\u{1F3E6}', {
       subtitle: (gg) => {
         const bb = readBiz(gg, a)
-        return `Up to ${money(companyCreditLimit(bb))} at ${pct(companyLoanRate(bb), 1)} (${getCountry(bb.countryId).name} rates)${hasBoard(gg, bb) ? ` \u{00B7} past ${money(debtComfort(bb))} of debt the board votes` : ''}`
+        return `Up to ${money(companyCreditLimit(bb, gg))} at ${pct(companyLoanRate(bb, gg), 1)} (${getCountry(bb.countryId).name} rates)${hasBoard(gg, bb) ? ` \u{00B7} past ${money(debtComfort(bb))} of debt the board votes` : ''}`
       },
-      disabled: (_gg, bb) => (companyCreditLimit(bb) < 1_000 ? 'No bank will lend this company more right now.' : null),
+      disabled: (gg, bb) => (companyCreditLimit(bb, gg) < 1_000 ? 'No bank will lend this company more right now.' : null),
       input: {
         kind: 'slider',
         money: true,
         label: 'How much?',
         min: 1,
-        max: Math.max(2, companyCreditLimit(b)),
-        defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b) / 2))),
+        max: Math.max(2, companyCreditLimit(b, g)),
+        defaultValue: () => String(Math.max(1, Math.round(companyCreditLimit(b, g) / 2))),
         preview: (gg, v) => {
           const cur = live(gg, a)
           const bb = readBiz(gg, cur)
-          return `about ${money(v * companyLoanRate(bb))} a year in interest \u{00B7} company debt ${money(bb.debt + v)}${boardCaption(gg, cur, bb, { kind: 'debt', by: 'owner', amount: v, label: '' })}`
+          return `about ${money(v * companyLoanRate(bb, gg))} a year in interest \u{00B7} company debt ${money(bb.debt + v)}${boardCaption(gg, cur, bb, { kind: 'debt', by: 'owner', amount: v, label: '' })}`
         },
       },
       run: (gg, cur, bb, input) => {
-        const n = amount(input, companyCreditLimit(bb))
+        const n = amount(input, companyCreditLimit(bb, gg))
         if (n <= 0) return
         if (yearActionsUsed(gg, `biz.borrow.${cur.id}`) >= 2) return tooBusy(gg, `asked the bank for money twice for ${cur.name}`)
         if (!boardAllows(gg, cur, bb, { kind: 'debt', by: 'owner', amount: n, label: `Borrow ${money(n)}` })) return
         useYearAction(gg, `biz.borrow.${cur.id}`, 2)
-        const rate = companyLoanRate(bb)
+        const rate = companyLoanRate(bb, gg)
         bb.debtRate = bb.debt > 0 ? (bb.debtRate * bb.debt + rate * n) / (bb.debt + n) : rate
         bb.debt += n
         bb.cash += n

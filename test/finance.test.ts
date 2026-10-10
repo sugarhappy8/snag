@@ -98,8 +98,12 @@ describe('yearlyFinance', () => {
     yearlyFinance(g)
     expect(g.character.loans).toHaveLength(1)
     expect(g.flags.missedPayments).toBe(1)
+    const beforeAuction = loan.balance
     yearlyFinance(g)
-    expect(g.character.loans).toHaveLength(0)
+    expect(g.character.loans).toHaveLength(1)
+    expect(loan.balance).toBeGreaterThan(0)
+    expect(loan.balance).toBeLessThan(beforeAuction)
+    expect(g.flags.creditDefaults).toBe(1)
     expect(g.assets).toHaveLength(0)
     expect(g.queue.some((m) => m.kind === 'notice' && m.title === 'Repossessed!')).toBe(true)
   })
@@ -112,7 +116,9 @@ describe('yearlyFinance', () => {
     yearlyFinance(g)
     yearlyFinance(g)
     expect(g.assets).toHaveLength(0)
-    expect(g.character.loans.map((l) => l.id)).toEqual([carLoan.id])
+    expect(g.character.loans.map((l) => l.id)).toEqual([boatLoan.id, carLoan.id])
+    expect(boatLoan.balance).toBeLessThan(50000)
+    expect(carLoan.balance).toBeGreaterThan(20000)
   })
 
   it('evicts broke renters to homelessness after two years of debt', () => {

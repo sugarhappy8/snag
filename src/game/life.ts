@@ -12,6 +12,7 @@ import {
   inPrison,
   log,
   MONTHS,
+  moneyContextOf,
   netWorth,
   notice,
   parents,
@@ -1117,6 +1118,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const occupation = typeof n.flags.finalOccupation === 'string' ? n.flags.finalOccupation : roleLabel(n)
 
   // --- Ancestor record ---------------------------------------------------------
+  const deathMoney = moneyContextOf(n)
   const summary: AncestorSummary = {
     generation: n.generation,
     name: oldName,
@@ -1127,6 +1129,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     causeOfDeath: cause,
     netWorth: netWorth(n),
     countryId: old.countryId,
+    ...(deathMoney.nominalScale ? { nominalScale: deathMoney.nominalScale } : {}),
+    ...(deathMoney.usdNominalScale ? { usdNominalScale: deathMoney.usdNominalScale } : {}),
     occupation,
     ribbon: n.ribbon,
   }
@@ -1422,6 +1426,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(Array.isArray(n.flags.marketBreakthroughs) ? { marketBreakthroughs: n.flags.marketBreakthroughs } : {}),
     ...(n.flags.inventionImpact && typeof n.flags.inventionImpact === 'object' ? { inventionImpact: n.flags.inventionImpact } : {}),
     ...(n.flags['business.confidence'] ? { 'business.confidence': n.flags['business.confidence'], 'business.confidenceYear': n.flags['business.confidenceYear'] ?? 0 } : {}),
+    ...(n.flags.worldEconomy ? { worldEconomy: n.flags.worldEconomy } : {}),
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
   }
 

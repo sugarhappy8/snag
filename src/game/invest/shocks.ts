@@ -12,6 +12,7 @@
 import type { GameState, Json } from '../types'
 import type { BizState } from '../business/state'
 import { exchangeByKey, exchangeInfo, isRealSecId, slotPlan } from './engine'
+import { economyMarketFactor } from '../economy'
 
 export const SHOCKS_KEY = 'marketShocks'
 export const BREAKTHROUGHS_KEY = 'marketBreakthroughs'
@@ -239,7 +240,8 @@ export function factorOf(s: MarketShock, year: number): number {
 
 /** Combined price factor of every shock on one security in a year (1 = untouched). */
 export function shockFactor(g: GameState, secId: string, year: number): number {
-  let f = boundedFactor(breakthroughStockFactor(g, secId, year))
+  const exchange = exchangeByKey(secId.split('#')[0])
+  let f = boundedFactor(breakthroughStockFactor(g, secId, year) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1))
   for (const s of marketShocks(g)) if (s.secId === secId) f = multiplyFactor(f, factorOf(s, year))
   return f
 }
@@ -252,7 +254,8 @@ export function indexShockFactor(g: GameState, exKey: string, year: number, inde
   // An index tracks company fundamentals/news, not the player's temporary execution
   // pressure in a single order book. Otherwise a tiny stock order pumps an unlimited fund.
   const list = marketShocks(g).filter((s) => s.asset === 'stock' && s.exKey === exKey && s.cause !== 'liquidity')
-  const breakthrough = breakthroughIndexFactor(g, exKey, year, indexId)
+  const exchange = exchangeByKey(exKey)
+  const breakthrough = breakthroughIndexFactor(g, exKey, year, indexId) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1)
   if (!list.length) return breakthrough
   const info = exchangeByKey(exKey)
   const n = Math.max(4, info ? slotPlan(info).length : 10)

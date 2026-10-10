@@ -29,7 +29,9 @@ import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
 import { codeFreelanceMenu } from './computer/dev-freelance'
 import { catchEmbellishment, caughtLine, caughtLying, cvFields, cvMenu, cvScore, embellishedEntries, fitContext, jobFit, jobMarket, jobScreenChance, screeningReason, screeningThoroughness, type JobMarket } from './cv'
 import { COMPANY_WORDS, COMPANY_WORDS_BEFORE, companyWordsIn, ERA_FULLTIME_JOBS, ERA_PARTTIME_JOBS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, jobInEra, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
-import { historicalCycle, marketHistory } from './history/markets'
+import { marketHistory } from './history/markets'
+import { economicCycle, economyOf, industryConditions } from './economy'
+import { householdEffects } from './household'
 import { hasTech } from './history/timeline'
 import { EARLY_FULLTIME_JOBS, EARLY_PARTTIME_JOBS, earlyJobDef } from './history/events-jobs'
 import { anachronistic, eraPick } from './events/era'
@@ -334,7 +336,8 @@ function makeListing(g: GameState, def: JobDef, r: () => number): JobListing {
   const company = companyName(g, def.industry, r)
   const base = def.ladder[0].salary
   const shape = eraPayShape(g.year, def.industry)
-  const salary = def.category === 'parttime' ? round100(base * wealth(g) * shape) : round100(base * wealth(g) * shape * (0.92 + r() * 0.16))
+  const wages = economyOf(g).wages
+  const salary = def.category === 'parttime' ? round100(base * wealth(g) * shape * wages) : round100(base * wealth(g) * shape * wages * (0.92 + r() * 0.16))
   return { key: `${def.id}@${company}`, def, title: def.ladder[0].title, company, salary }
 }
 
@@ -345,10 +348,10 @@ function inEra(g: GameState) {
 
 /**
  * A historical slump this year (from history/markets.ts): companies freeze hiring. 1 = normal
- * (always 1 in the present and the future, so today's job board is untouched).
+ * Historical cycles remain anchored; future hiring follows the persistent economy.
  */
 export function hiringClimate(g: GameState): number {
-  const cyc = historicalCycle(g.character.countryId, g.year, 1)
+  const cyc = economicCycle(g, g.character.countryId)
   return Number.isFinite(cyc) ? Math.max(0.5, Math.min(1.5, cyc)) : 1
 }
 
@@ -1358,6 +1361,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   const effort = Math.min(3, num(job.data.workedHarder, 0))
   job.data.workedHarder = 0
   let target = 28 + c.stats.smarts * 0.25 + c.stats.happiness * 0.15 + c.stats.health * 0.1 + effort * 8
+  target += householdEffects(g).work
   // Talent: a natural for the job (a chef who can really cook) shines; leaders get noticed.
   if (suitsTalent(g, job.defId)) target += 8
   if (hasTalent(g, 'Leadership')) target += 4
@@ -1441,12 +1445,12 @@ function yearForJob(g: GameState, slot: Slot): void {
       let p = job.performance >= 85 ? 0.6 : job.performance >= 70 ? 0.35 : job.performance >= 60 ? 0.12 : 0
       if (p > 0 && hasTalent(g, 'Leadership')) p += 0.12
       if (p > 0 && suitsTalent(g, job.defId)) p += 0.08
-      if (chance(g, Math.min(0.85, p))) {
+      if (chance(g, Math.min(0.85, p * Math.max(.35, hiringClimate(g))))) {
         promote(g, job, def)
         promoted = true
       }
     }
-    if (!promoted && job.performance >= 60 && chance(g, top ? 0.35 : 0.3)) {
+    if (!promoted && job.performance >= 60 && !hiringFreeze(g) && chance(g, (top ? 0.35 : 0.3) * Math.min(1.3, hiringClimate(g)))) {
       const pct = randInt(g, 2, top ? 6 : 5)
       job.salary = round100(job.salary * (1 + pct / 100))
       log(g, `I got a ${pct}% raise at ${job.company}.`, 'good')
@@ -1566,7 +1570,7 @@ const INDUSTRY_SECTOR: Partial<Record<Industry, string>> = {
  */
 export function layoffPressure(g: GameState, industry: Industry): number {
   const cid = g.character.countryId
-  const cyc = historicalCycle(cid, g.year, 1)
+  const cyc = economicCycle(g, cid)
   let p = Number.isFinite(cyc) && cyc < 1 ? (1 - cyc) * 6 : 0
   const mh = marketHistory(cid, g.year)
   if (mh) {
@@ -1575,6 +1579,8 @@ export function layoffPressure(g: GameState, industry: Industry): number {
     if (typeof sector === 'number' && Number.isFinite(sector) && sector < -0.25) p += Math.min(1.5, -sector * 2)
     if (mh.crash) p += 0.5
   }
+  const e = economyOf(g, cid), sector = industryConditions(g, industry, cid)
+  p += Math.max(0, e.unemployment - .06) * 10 + sector.disruption * 5 + Math.max(0, 1 - sector.demand) * 2
   return Math.max(0, Math.min(3, p))
 }
 

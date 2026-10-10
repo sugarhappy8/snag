@@ -12,7 +12,7 @@
 //     afresh while every year up to it stays exactly as it was. Real history (eras, crashes,
 //     wars) is the same in every timeline: knowing it is fair game, as in real life.
 // Everything here is pure: no storage, no React, no Math.random.
-import { log, remember, roleLabel } from './core'
+import { log, moneyContextOf, remember, roleLabel } from './core'
 import type { GameState, Json } from './types'
 
 /** How many past years are kept (the start of each of the last N birthdays). */
@@ -30,12 +30,14 @@ export interface TimeStop {
   role: string
   /** Country lived in then, so the balance is shown in that year's money (missing in old indexes). */
   countryId?: string
+  nominalScale?: number
+  usdNominalScale?: number
 }
 
 /** Summary of a start-of-year snapshot, kept in the snapshot index. */
 export function stopOf(g: GameState): TimeStop {
   const money = Number.isFinite(g.character.money) ? Math.round(g.character.money) : 0
-  return { age: g.character.age, year: g.year, money, role: roleLabel(g), countryId: g.character.countryId }
+  return { age: g.character.age, money, role: roleLabel(g), ...moneyContextOf(g) }
 }
 
 /**

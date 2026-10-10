@@ -2,6 +2,7 @@
 // no real substances, production methods, concealment procedures or practical advice.
 import { addHidden, formatMoney, log, netWorth, notice, spend, useYearAction, yearActionsUsed } from './core'
 import { arrestPlayer } from './crime'
+import { economyOf } from './economy'
 import { chance, randInt } from './rng'
 import { ownerKey, peek, stableRoll } from './special/common'
 import { bizOf, businessAssets, readBiz } from './business/state'
@@ -164,7 +165,8 @@ export function yearlyUnderworld(g: GameState): void {
       const cost = lots * unitCost
       p.dirtyCash -= cost; p.lastCosts += cost
       p[key] += lots
-      const demand = Math.floor(p.scale * (5 + skill('distribution') / 3) * (.6 + stableRoll(g, 'underworld.demand') * .8) * batch)
+      const e = economyOf(g)
+      const demand = Math.floor(p.scale * (5 + skill('distribution') / 3) * (.6 + stableRoll(g, 'underworld.demand') * .8) * batch * (premium ? e.spending : Math.max(.7, 1 - e.unemployment)))
       const price = undergroundQuote(g, p.segment).sell
       const cashCapacity = Math.max(0, Math.floor((MAX_DIRTY_CASH - p.dirtyCash) / price))
       const sold = Math.min(p[key], demand, cashCapacity)
@@ -175,7 +177,7 @@ export function yearlyUnderworld(g: GameState): void {
       log(g, `${p.name}: criminal receipts ${formatMoney(p.lastRevenue)}, costs ${formatMoney(p.lastCosts)}; funds remain unlaundered.`, p.lastRevenue >= p.lastCosts ? 'neutral' : 'bad')
     }
   } else p.heat = Math.max(0, p.heat - 8)
-  const exposed = !g.character.prison && p.heat > 0 && chance(g, p.heat / 500)
+  const exposed = !g.character.prison && p.heat > 0 && chance(g, p.heat / 500 * economyOf(g).services)
   if (exposed) {
     const seized = Math.round(p.dirtyCash * .6); p.dirtyCash -= seized; p.inventory = 0; p.premiumInventory = 0; p.heat = Math.max(0, p.heat - 20)
     record(p, `${fiscal}: enforcement seized ${formatMoney(seized)} and all inventory.`)

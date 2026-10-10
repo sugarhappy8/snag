@@ -2,6 +2,7 @@
 import { seeded } from '../assets'
 import { notice, useYearAction, yearActionsUsed } from '../core'
 import { marketOf } from '../data/markets'
+import { economyOf } from '../economy'
 import { hasTech } from '../history/timeline'
 import { hasTalent } from '../talents'
 import type { Asset, GameState, MenuNode } from '../types'
@@ -100,14 +101,15 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
   const investment = b.industry === 'investmentFirm', online = b.industry === 'onlineBank'
   const e = localEcon(b.industry, b.countryId, b.city), m = marketOf(b.countryId), def = industryDef(b.industry)
   const skill = financeTeamSkill(g, b), cycle = cycleOf(g, b.countryId, year)
+  const economy = economyOf(g, b.countryId, year)
   const risk = f.strategy === 'aggressive' ? 1.7 : f.strategy === 'cautious' ? .5 : 1
   const sites = totalOutlets(b), open = clampN(b.openFraction, 0, 1)
   const available = !financeEraBlock(g, b.industry, b.countryId, year)
   const staffCount = Math.max(def.staff, Math.round(def.staff * sites))
   const wage = localPay(b.countryId, def.wage)
-  const wages = staffCount * wage * b.wageLevel * open
+  const wages = staffCount * wage * b.wageLevel * open * economy.wages
   const keyStaff = b.staff.reduce((s, x) => s + x.salary, 0) + (b.ceo === 'manager' ? b.manager?.salary ?? 0 : 0)
-  const rent = e.rent * sites
+  const rent = e.rent * sites * economy.rent
   const controlsCost = localPay(b.countryId, online ? 100_000 : 35_000) * (.4 + f.controls / 80) * sites
   let revenue = 0, cogs = 0
   f.lastDefaults = 0; f.lastWithdrawals = 0; f.lastRun = false
@@ -138,19 +140,19 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
   } else {
     const oldDeposits = f.deposits
     const creditSkill = clampN(skill * .7 + f.controls * .3, 0, 100)
-    const defaultsRate = clampN((.012 + (100 - creditSkill) * .00035) * risk + Math.max(0, 1 - cycle) * .2 + Math.max(0, f.loanRate - .1) * .2, .004, .3)
+    const defaultsRate = clampN((.012 + (100 - creditSkill) * .00035) * risk + Math.max(0, 1 - cycle) * .2 + Math.max(0, f.loanRate - .1) * .2 + Math.max(0, economy.defaults - .025), .004, .3)
     const crisis = rng.chance((100 - creditSkill) / 1600 * risk)
     const losses = f.loanBook * (defaultsRate + (crisis ? rng.float(.03, .15) : 0)) * open
     f.loanBook = Math.max(0, f.loanBook - losses)
     // Shareholders cover credit losses. Segregated customer assets are replenished,
     // and exactly the same loss is charged to company earnings/cash below.
     f.reserves += losses
-    revenue = (f.loanBook * f.loanRate + f.bonds * Math.max(.005, m.interestRate * .75) + oldDeposits * .003) * open
+    revenue = (f.loanBook * f.loanRate + f.bonds * Math.max(.005, economy.rate * .75) + oldDeposits * .003) * open
     cogs = oldDeposits * f.depositRate * open + losses
     f.lastDefaults = losses
     const capitalRatio = Math.max(0, b.cash) / Math.max(1, oldDeposits)
     const liquid = f.reserves / Math.max(1, oldDeposits)
-    const runRisk = clampN((60 - f.confidence) / 300 + Math.max(0, .2 - liquid) * .8 + Math.max(0, .02 - capitalRatio) * 4 + (online ? .015 : 0), .005, .5)
+    const runRisk = clampN((60 - f.confidence) / 300 + Math.max(0, .2 - liquid) * .8 + Math.max(0, .02 - capitalRatio) * 4 + (online ? .015 : 0) + Math.max(0, .23 - economy.liquidity), .005, .5)
     const run = rng.chance(runRisk)
     const withdrawalRate = run ? rng.float(.2, .65) : rng.float(.02, .1)
     const withdrawals = oldDeposits * withdrawalRate
@@ -171,7 +173,7 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
     const capacity = staffCount * (online ? 12_000_000 : 8_000_000) * clampN(getCountry(b.countryId).wealth, .15, 2)
     const inflow = available ? Math.max(0, Math.min(oldDeposits * draw, capacity - f.deposits)) : 0
     f.deposits += inflow; f.reserves += inflow
-    const targetLoans = f.deposits * clampN((1 - f.reserveRatio - .1) * (f.strategy === 'cautious' ? .8 : 1), .1, .8)
+    const targetLoans = f.deposits * clampN((1 - f.reserveRatio - .1) * (f.strategy === 'cautious' ? .8 : 1) * economy.credit, .1, .8)
     const targetBonds = f.deposits * .1
     const allocatable = Math.max(0, f.reserves - f.deposits * f.reserveRatio)
     const newLoans = Math.min(Math.max(0, targetLoans - f.loanBook), allocatable)
@@ -189,7 +191,7 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
   const booked = b.yearCosts - b.yearIncome
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + preSalary + booked)))
   const pbt = preSalary - ownerPay
-  const tax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedHomeSales)
+  const tax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedHomeSales, g, year)
   const net = Math.round(pbt - tax)
   b.cash = Math.round(b.cash + net + booked)
   b.employees = staffCount; b.production = 0; b.inventory = 0

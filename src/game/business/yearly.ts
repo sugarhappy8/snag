@@ -3,6 +3,7 @@
 import { addMoney, addStat, count, earnIncome, formatCents, formatMoney, log, minigame, notice, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
+import { economyOf, lendingConditions, recordEconomicActivity } from '../economy'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -267,14 +268,15 @@ export function queueReport(g: GameState, a: Asset, b: BizState): void {
 // Cash crunch
 
 /** How much the company can still borrow (secured on equipment and revenue). */
-export function companyCreditLimit(b: BizState): number {
+export function companyCreditLimit(b: BizState, g?: GameState): number {
   const revenue = Math.max(0, b.last?.revenue ?? 0)
-  return Math.max(0, Math.round(equipmentValue(b) * 0.6 + revenue * 0.35 + Math.max(0, b.valuation) * 0.2 - b.debt))
+  const credit = g ? economyOf(g, b.countryId).credit : 1
+  return Math.max(0, Math.round((equipmentValue(b) * 0.6 + revenue * 0.35 + Math.max(0, b.valuation) * 0.2) * credit - b.debt))
 }
 
-export function companyLoanRate(b: BizState): number {
+export function companyLoanRate(b: BizState, g?: GameState): number {
   const risk = b.last && b.last.net < 0 ? 0.03 : 0.01
-  return Math.round((baseLoanRate(b.countryId, 'business') + risk) * 10000) / 10000
+  return Math.round(Math.max(.005, baseLoanRate(b.countryId, 'business', g?.year) + risk + (g ? lendingConditions(g, b.countryId).spread : 0)) * 10000) / 10000
 }
 
 const CRUNCH = defineScript('business.crunch', (g, choice, data) => {
@@ -298,10 +300,10 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
     notice(g, 'Bailed Out', `You moved ${formatMoney(need)} from your savings into ${a.name}. Payroll clears; your bank balance winces.`, { emoji: '\u{1F6DF}' })
     return
   }
-  if (choice === 'loan' && companyCreditLimit(b) >= need) {
+  if (choice === 'loan' && companyCreditLimit(b, g) >= Math.round(need * 1.1)) {
     const amount = Math.round(need * 1.1)
     b.debt += amount
-    b.debtRate = companyLoanRate(b)
+    b.debtRate = companyLoanRate(b, g)
     b.cash += amount
     log(g, `${a.name} took an emergency loan.`, 'neutral')
     notice(g, 'Emergency Loan', `The bank lent ${a.name} ${formatMoney(amount)} at ${pct(b.debtRate, 1)}. The company's debt is now ${formatMoney(b.debt)}.`, { emoji: '\u{1F3E6}' })
@@ -324,7 +326,7 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
  * What each way out of a cash crunch is worth to the owner (the owner's stake afterwards, minus
  * their own money put in), from the numbers resolveCrunch uses. Bankruptcy keeps nothing.
  */
-export function crunchValues(b: BizState): Record<string, number> {
+export function crunchValues(b: BizState, g?: GameState): Record<string, number> {
   const need = Math.max(0, -b.cash)
   const filled = valuationOf({ ...b, cash: 0 })
   const loan = Math.round(need * 1.1)
@@ -332,7 +334,7 @@ export function crunchValues(b: BizState): Record<string, number> {
   const stake = clampN(inject / (Math.max(0, b.valuation) + inject), 0.05, 0.6)
   return {
     cover: b.share * filled - need,
-    loan: b.share * (filled - need) - b.share * loan * companyLoanRate(b) * 2,
+    loan: b.share * (filled - need) - b.share * loan * companyLoanRate(b, g) * 2,
     investor: b.share * (1 - stake) * Math.max(0, filled + inject - need),
     bankrupt: 0,
   }
@@ -342,10 +344,10 @@ function queueCrunch(g: GameState, a: Asset, b: BizState): void {
   const need = Math.max(0, -b.cash)
   const choices: ChoiceOption[] = []
   if (g.character.money >= need) choices.push({ id: 'cover', label: `Cover it from my savings (${money(need)})`, emoji: '\u{1F6DF}' })
-  if (companyCreditLimit(b) >= need) choices.push({ id: 'loan', label: `Emergency company loan (${pct(companyLoanRate(b), 1)})`, emoji: '\u{1F3E6}' })
+  if (companyCreditLimit(b, g) >= Math.round(need * 1.1)) choices.push({ id: 'loan', label: `Emergency company loan (${pct(companyLoanRate(b, g), 1)})`, emoji: '\u{1F3E6}' })
   if (b.valuation > need && b.share > 0.2) choices.push({ id: 'investor', label: 'Sell part of the company to an investor', emoji: '\u{1F4BC}' })
   choices.push({ id: 'bankrupt', label: 'Declare bankruptcy', emoji: '\u{1F4C9}' })
-  const values = hasTalent(g, 'Business') ? crunchValues(b) : {}
+  const values = hasTalent(g, 'Business') ? crunchValues(b, g) : {}
   // Ties go to the earlier option (your own money before the bank's, the bank's before a stranger's).
   // A company that keeps losing money is worth saving to sell, not to keep feeding.
   const losses = b.history.slice(-2)
@@ -413,13 +415,14 @@ export function yearlyBusinessImpl(g: GameState): void {
     prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     const previousRevenue = b.last?.revenue ?? 0
+    const previousEmployment = b.last?.employees ?? b.employees
     // Ordinary companies should not pay the cost of quoting a second workforce
     // and fiscal model when they have no manufactured inventions at all.
     const home = Array.isArray(b.inventionProducts) && b.inventionProducts.length ? localEcon(b.industry, b.countryId, b.city) : null
     if (!home && (b.inventionStaff ?? 0) > 0) prepareInventionWorkforce(g, b, fiscal, 0)
     const manufactured = home ? (() => {
       const fixed = yearFixed(g, b)
-      const wage = home.wage * b.wageLevel * fixed.licence * fixed.finance * fixed.ceoEff
+      const wage = home.wage * economyOf(g, b.countryId, fiscal).wages * b.wageLevel * fixed.licence * fixed.finance * fixed.ceoEff
       prepareInventionWorkforce(g, b, fiscal, wage)
       return simulateInventionProducts(g, b, fiscal, wage)
     })() : { revenue: 0, cogs: 0, royalties: 0, wages: 0, staffUsed: 0, units: 0, rows: [] }
@@ -454,13 +457,17 @@ export function yearlyBusinessImpl(g: GameState): void {
       b.capacityLoss = capacityLossBeforeProducts
       b.employees = Math.max(employeesBeforeProducts, Math.ceil(b.employees + reservedStaff))
       s.employees = b.employees; res.wantedStaff = b.employees
-      commitInventionProducts(g, b, fiscal, manufactured)
+      commitInventionProducts(g, b, fiscal, manufactured, a.id)
     }
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     const lastCycle = s.cycle
     // Who sold what in its market this year (share, rivals, newcomers): before evolve() resets the year.
     refreshMarket(g, a, b, fiscal, s, res.market ?? null)
     recordCompanyShock(g, b, previousRevenue, s.revenue, a.id)
+    recordEconomicActivity(g, `company:${a.id}:${fiscal}`, b.countryId, b.industry, {
+      jobs: s.employees - previousEmployment, investment: Math.max(0, b.yearCosts - productCosts),
+      failure: Math.max(0, previousRevenue - s.revenue) + Math.max(0, -b.cash),
+    })
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
     if (tech) afterDeepTechYear(g, a, b)

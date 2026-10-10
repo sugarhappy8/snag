@@ -1,7 +1,7 @@
 // Plays many complete random lives through the real engine (AI off → offline fallbacks),
 // tapping random menu actions and person interactions every year and answering every popup.
 // Catches crashes, stuck queues and broken invariants across all modules at once.
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { netWorth } from '../src/game/core'
@@ -197,24 +197,33 @@ function playLife(seed: number, actionsPerYear: number): { g: GameState; result:
 }
 
 describe('whole-life simulation (offline)', () => {
-  it('plays 40 random lives from birth to death without errors', () => {
+  describe('40 random lives from birth to death', () => {
     const results: LifeResult[] = []
-    for (let seed = 1; seed <= 40; seed++) results.push(playLife(seed, 4).result)
-    const ages = results.map((r) => r.age).sort((a, b) => a - b)
-    const causes: Record<string, number> = {}
-    const ribbons: Record<string, number> = {}
-    for (const r of results) {
-      causes[r.cause] = (causes[r.cause] ?? 0) + 1
-      ribbons[r.ribbon ?? 'none'] = (ribbons[r.ribbon ?? 'none'] ?? 0) + 1
-    }
-    console.log(
-      `lifespans: min ${ages[0]}, median ${ages[Math.floor(ages.length / 2)]}, max ${ages[ages.length - 1]}\n` +
-        `causes: ${JSON.stringify(causes)}\nribbons: ${JSON.stringify(ribbons)}\n` +
-        `net worth median: ${results.map((r) => r.netWorth).sort((a, b) => a - b)[Math.floor(results.length / 2)]}`,
-    )
-    // Most lives should be long ones; a typical median is in the 70s-80s.
-    expect(ages[Math.floor(ages.length / 2)]).toBeGreaterThan(50)
-  }, 120_000)
+    // Keep every life, action and save round-trip, but give each seed its own timeout
+    // and failure report. The persistent world makes the old single 40-life timer
+    // sensitive to other simulation workers running at the same time.
+    it.each(Array.from({ length: 40 }, (_, i) => i + 1))('plays seed %i without errors', seed => {
+      results.push(playLife(seed, 4).result)
+    }, 30_000)
+
+    afterAll(() => {
+      expect(results).toHaveLength(40)
+      const ages = results.map((r) => r.age).sort((a, b) => a - b)
+      const causes: Record<string, number> = {}
+      const ribbons: Record<string, number> = {}
+      for (const r of results) {
+        causes[r.cause] = (causes[r.cause] ?? 0) + 1
+        ribbons[r.ribbon ?? 'none'] = (ribbons[r.ribbon ?? 'none'] ?? 0) + 1
+      }
+      console.log(
+        `lifespans: min ${ages[0]}, median ${ages[Math.floor(ages.length / 2)]}, max ${ages[ages.length - 1]}\n` +
+          `causes: ${JSON.stringify(causes)}\nribbons: ${JSON.stringify(ribbons)}\n` +
+          `net worth median: ${results.map((r) => r.netWorth).sort((a, b) => a - b)[Math.floor(results.length / 2)]}`,
+      )
+      // Most lives should be long ones; a typical median is in the 70s-80s.
+      expect(ages[Math.floor(ages.length / 2)]).toBeGreaterThan(50)
+    })
+  })
 
   it('continues as a child after death', () => {
     for (let seed = 100; seed < 106; seed++) {
@@ -226,6 +235,7 @@ describe('whole-life simulation (offline)', () => {
       expect(next.character.alive).toBe(true)
       expect(next.generation).toBe(g.generation + 1)
       expect(next.ancestors.length).toBe(g.ancestors.length + 1)
+      expect(next.flags.worldEconomy).toEqual(g.flags.worldEconomy)
       checkInvariants(next)
       // The heir can keep living.
       const d = driver(seed)

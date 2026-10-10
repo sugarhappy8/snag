@@ -11,5 +11,7 @@ export default defineConfig({
   build: { chunkSizeWarningLimit: 7000 },
   server: { port: 5173 },
   preview: { port: 4173 },
-  test: { environment: 'node', include: ['test/**/*.test.ts'], testTimeout: 15_000 },
+  // Whole-life and market sweeps are CPU-heavy. Bound default concurrency so
+  // contention does not turn otherwise passing simulation checks into timeouts.
+  test: { environment: 'node', include: ['test/**/*.test.ts'], testTimeout: 15_000, maxWorkers: 2 },
 })

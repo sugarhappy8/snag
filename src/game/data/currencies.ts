@@ -1494,11 +1494,13 @@ export function convertMoney(n: number, ctx: MoneyContext | null, display: Money
   if (!ctx) return shown(n, USD, 1)
   const year = Number.isFinite(ctx.year) ? ctx.year : PRESENT_YEAR
   if (display.mode === 'usd') {
-    const f = display.nominal ? priceLevel(Math.max(HISTORY_START, Math.round(year))) : 1
+    const scale = typeof ctx.usdNominalScale === 'number' && Number.isFinite(ctx.usdNominalScale) && ctx.usdNominalScale > 0 ? ctx.usdNominalScale : 1
+    const f = display.nominal ? priceLevel(Math.max(HISTORY_START, Math.round(year))) * scale : 1
     return shown(n, USD, Number.isFinite(f) && f > 0 ? f : 1)
   }
   const c = display.nominal ? currencyOf(ctx.countryId, year) : presentCurrency(ctx.countryId)
-  const f = unitsPerDollar(ctx.countryId, year, display.nominal)
+  const scale = display.nominal && typeof ctx.nominalScale === 'number' && Number.isFinite(ctx.nominalScale) && ctx.nominalScale > 0 ? ctx.nominalScale : 1
+  const f = unitsPerDollar(ctx.countryId, year, display.nominal) * scale
   return shown(n, c, Number.isFinite(f) && f > 0 ? f : 1)
 }
 

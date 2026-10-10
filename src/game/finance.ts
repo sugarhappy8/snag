@@ -13,6 +13,7 @@ import type { GameState, Json, Loan, LoanKind, Person } from './types'
 import { getCountry, randomFirstName } from './world'
 import { businessGone } from './assetHooks'
 import { employerRef } from './shops/everyday-brands'
+import { bound, economyOf, economyState, lendingConditions } from './economy'
 
 // ---------------------------------------------------------------------------
 // Income tax
@@ -138,6 +139,12 @@ export function effectiveTaxRate(countryId: string, income: number): number {
   return income > 0 ? incomeTax(countryId, income) / income : 0
 }
 
+/** Passed policy affects real disposable income; the static national table remains the baseline. */
+export function gameIncomeTax(g: GameState, income: number): number {
+  if (!Number.isFinite(income) || income <= 0) return 0
+  return Math.round(bound(incomeTax(g.character.countryId, income) + Math.max(0, income - 5000) * economyOf(g).taxShift, 0, income * .8))
+}
+
 function num(v: Json | undefined, fallback = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
 }
@@ -151,7 +158,7 @@ export function taxAdditionalIncome(g: GameState, amount: number): number {
   if (!(amount > 0)) return 0
   const total = num(g.flags.taxableIncome)
   const before = Math.max(0, total - amount)
-  const extra = Math.max(0, incomeTax(g.character.countryId, before + amount) - incomeTax(g.character.countryId, before))
+  const extra = Math.max(0, gameIncomeTax(g, before + amount) - gameIncomeTax(g, before))
   if (extra > 0) {
     addMoney(g, -extra)
     g.flags.taxesPaid = num(g.flags.taxesPaid) + extra
@@ -192,6 +199,8 @@ export function creditScore(g: GameState): number {
   if (c.age < 18) return 0
   let score = 690
   score -= 55 * num(g.flags.missedPayments)
+  score -= Math.min(70, num(g.flags.creditDefaults) * 18)
+  score += Math.min(25, num(g.flags.creditCleanYears) * 3)
   if (c.money < 0) score -= 90
   if (num(g.flags.brokeYears) >= 2) score -= 60
   const income = yearlyIncome(g)
@@ -257,7 +266,7 @@ export function baseLoanRate(countryId: string, kind: 'mortgage' | LoanKind, yea
 /** Interest rate a lender offers for this kind of loan given the local market and the borrower's credit. */
 export function offeredRate(g: GameState, kind: 'mortgage' | LoanKind): number {
   const score = creditScore(g)
-  const base = baseLoanRate(g.character.countryId, kind, g.year)
+  const base = baseLoanRate(g.character.countryId, kind, g.year) + lendingConditions(g).spread
   const credit = score >= 760 ? -0.012 : score >= 700 ? -0.004 : score >= 640 ? 0.008 : score >= 580 ? 0.02 : 0.035
   // Prime borrowers can't get much below the bank's own funding cost.
   const floor = Math.min(base, Math.max(0.004, base * 0.6))
@@ -338,6 +347,8 @@ export function addLoan(g: GameState, l: NewLoan): Loan {
     balance: Math.round(l.principal),
     yearlyPayment: annualPayment(l.principal, l.rate, l.years),
     rate: l.rate,
+    yearsLeft: Math.max(1, Math.round(l.years)), rateType: 'fixed',
+    countryId: g.character.countryId,
   }
   g.character.loans.push(loan)
   return loan
@@ -363,6 +374,58 @@ export function payOffLoan(g: GameState, loanId: string): boolean {
   return true
 }
 
+export interface RefinanceQuote { ok: boolean; reason: string; rate: number; payment: number; fee: number; years: number; oldPayment: number; total: number; stressPayment: number }
+/** Refinance existing principal only. Fees are paid in cash; no cash-out or debt forgiveness. */
+export function refinanceQuote(g: GameState, id: string, mortgage: boolean, variable = false, requestedYears?: number): RefinanceQuote {
+  const a = mortgage ? g.assets.find(a => a.id === id) : undefined
+  const debt = mortgage ? a?.mortgage : g.character.loans.find(l => l.id === id)
+  const years = Math.round(bound(requestedYears ?? (debt && 'yearsLeft' in debt ? debt.yearsLeft ?? 5 : 5), 1, mortgage ? 30 : 10))
+  const kind = mortgage ? 'mortgage' : debt && 'kind' in debt ? debt.kind : 'personal'
+  const rate = bound(offeredRate(g, kind) + (variable ? -.0075 : .0025), .005, .45)
+  const principal = debt?.balance ?? 0, fee = Math.round(Math.max(mortgage ? 200 : 30, principal * (mortgage ? .01 : .005)))
+  const payment = annualPayment(principal, rate, years), oldPayment = debt?.yearlyPayment ?? 0
+  const terms = lendingConditions(g), income = yearlyIncome(g) + Math.max(0, g.character.money - fee) / 10
+  const dti = income > 0 ? (Math.max(0, yearlyDebtPayments(g) - oldPayment) + payment) / income : Infinity
+  const reason = !g.character.alive || g.character.age < 18 || g.character.prison ? 'An adult outside prison must negotiate the loan.'
+    : !debt || principal <= 0 ? 'This debt no longer exists.'
+      : !lendingEra(g, kind).available ? lendingEra(g, kind).reason
+        : years > lendingEra(g, kind).maxYears ? 'Banks do not offer a term this long in this era.'
+          : mortgage && a && typeof a.details.countryId === 'string' && a.details.countryId !== g.character.countryId ? 'Negotiate this mortgage while living in the property’s country.'
+            : (g.yearActions[`refinance.${id}`] ?? 0) > 0 ? 'This debt was already refinanced this year.'
+              : creditScore(g) < terms.minScore ? 'Recent credit problems prevent refinancing; rebuild a clean payment history.'
+                : mortgage && a && principal > a.value * .95 ? 'You need more equity before the bank will refinance.'
+                  : g.character.money < fee ? `You need ${formatMoney(fee)} for the closing fee.`
+                    : dti > terms.maxDti ? `The new payment exceeds the bank’s ${(terms.maxDti * 100).toFixed(0)}% income limit.` : ''
+  return { ok: !reason, reason, rate, payment, fee, years, oldPayment, total: payment * years + fee, stressPayment: annualPayment(principal, rate + .03, years) }
+}
+export function refinanceDebt(g: GameState, id: string, mortgage: boolean, variable = false, years?: number): boolean {
+  const q = refinanceQuote(g, id, mortgage, variable, years)
+  if (!q.ok) return false
+  const debt = mortgage ? g.assets.find(a => a.id === id)?.mortgage : g.character.loans.find(l => l.id === id)
+  if (!debt || g.character.money < q.fee) return false
+  addMoney(g, -q.fee)
+  debt.rate = q.rate; debt.yearlyPayment = q.payment; debt.yearsLeft = q.years
+  debt.rateType = variable ? 'variable' : 'fixed'; debt.rateMargin = q.rate - economyOf(g).rate
+  if ('kind' in debt) debt.countryId = g.character.countryId
+  g.yearActions[`refinance.${id}`] = 1
+  log(g, `I refinanced my ${mortgage ? 'mortgage' : 'loan'} at ${(q.rate * 100).toFixed(2)}% ${debt.rateType} interest; closing cost ${formatMoney(q.fee)}.`)
+  notice(g, 'Refinanced', `Principal is unchanged. Your payment is ${formatMoney(q.payment)}/year for ${q.years} years. ${variable ? `The rate resets annually; a three-point rise would make that ${formatMoney(q.stressPayment)}. ` : 'Your rate is fixed for this term. '}Estimated total payments plus today’s fee: ${formatMoney(q.total)}${variable ? ' if rates do not change' : ''}. A longer term can lower payments while increasing total interest.`, { emoji: '🏦' })
+  return true
+}
+
+function resetVariableDebt(g: GameState): void {
+  const reset = (debt: Loan | import('./types').Mortgage, country: string) => {
+    if (debt.rateType !== 'variable' || typeof debt.rateMargin !== 'number' || !Number.isFinite(debt.rateMargin)) return
+    const old = debt.yearlyPayment
+    debt.rate = bound(economyOf(g, country).rate + debt.rateMargin, .005, .45)
+    debt.yearsLeft = Math.round(bound(debt.yearsLeft ?? 5, 1, 30))
+    debt.yearlyPayment = annualPayment(debt.balance, debt.rate, debt.yearsLeft)
+    if (old > 0 && Math.abs(debt.yearlyPayment / old - 1) >= .1) log(g, `My variable-rate debt payment changed from ${formatMoney(old)} to ${formatMoney(debt.yearlyPayment)} a year as lending rates moved.`, debt.yearlyPayment > old ? 'bad' : 'good')
+  }
+  for (const debt of g.character.loans) reset(debt, debt.countryId ?? g.character.countryId)
+  for (const a of g.assets) if (a.mortgage) reset(a.mortgage, typeof a.details.countryId === 'string' ? a.details.countryId : g.character.countryId)
+}
+
 function loanMisses(g: GameState): Record<string, Json> {
   const m = g.flags.loanMisses
   if (m && typeof m === 'object' && !Array.isArray(m)) return m
@@ -380,6 +443,8 @@ function clearLoanMisses(g: GameState, loanId: string): void {
 export function recordMissedPayment(g: GameState): void {
   g.flags.missedPayments = Math.min(8, num(g.flags.missedPayments) + 1)
   g.flags.missedThisYear = true
+  g.flags.creditCleanYears = 0
+  g.flags.creditLastMiss = g.year
 }
 
 // ---------------------------------------------------------------------------
@@ -499,7 +564,7 @@ export function livingCost(g: GameState): number {
   const independent = status === 'owned' || status === 'renting' || (status === 'parents' && parents(g).length === 0)
   if (!independent) return 0
   const kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild') && p.age < 18 && p.livesWithPlayer).length
-  return Math.round((3_000 + 1_500 * kids) * costOfLiving(c.countryId))
+  return Math.round((3_000 + 1_500 * kids) * costOfLiving(c.countryId) * economyOf(g).sectors.essentials.costs)
 }
 
 /** True (and remembered) when a recurring bill is new or at least 25% off the last amount logged. */
@@ -524,7 +589,7 @@ function freshPick<T>(g: GameState, key: string, lines: readonly T[]): T {
 
 /** Pay the outstanding tax for this year, crediting amounts already collected. */
 export function settleIncomeTax(g: GameState): number {
-  const due = incomeTax(g.character.countryId, num(g.flags.taxableIncome))
+  const due = gameIncomeTax(g, num(g.flags.taxableIncome))
   const tax = Math.max(0, due - num(g.flags.taxesPaid))
   if (tax > 0) {
     addMoney(g, -tax)
@@ -539,6 +604,7 @@ export function yearlyFinance(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   g.flags.missedThisYear = false
+  resetVariableDebt(g)
 
   // 1. Income tax on everything earned this year (salary, pension, royalties...).
   const tax = settleIncomeTax(g)
@@ -578,7 +644,7 @@ export function yearlyFinance(g: GameState): void {
   // 4. Loans: interest, payments, missed payments, payoff. In past years inflation also erodes
   // what's owed (mortgages too: assets.ts charges their interest after this).
   yearlyLoans(g)
-  erodeMortgages(g, inflationFactor(g))
+  erodeMortgages(g)
 
   // 5. Life on the street.
   if (c.residence.status === 'homeless' && !c.prison && c.age >= 18) {
@@ -599,7 +665,14 @@ export function yearlyFinance(g: GameState): void {
   // 6. Debt: collectors, a bail-out from mom, eviction, repossession.
   handleDebt(g)
 
-  if (!g.flags.missedThisYear && num(g.flags.missedPayments) > 0) g.flags.missedPayments = num(g.flags.missedPayments) - 1
+  // Mortgage collection happens later in the annual loop. Its last missed year is retained
+  // rather than being cleared merely because unsecured loans were paid this year.
+  if (c.age >= 18 && num(g.flags.creditReviewedYear, -1) < g.year && !g.flags.missedThisYear && num(g.flags.creditLastMiss, -1) < g.year - 1) {
+    g.flags.creditReviewedYear = g.year
+    g.flags.creditCleanYears = Math.min(100000, num(g.flags.creditCleanYears) + 1)
+    if (num(g.flags.missedPayments) > 0 && num(g.flags.creditCleanYears) % 2 === 0) g.flags.missedPayments = num(g.flags.missedPayments) - 1
+    if (num(g.flags.creditDefaults) > 0 && num(g.flags.creditCleanYears) % 5 === 0) g.flags.creditDefaults = num(g.flags.creditDefaults) - 1
+  }
 }
 
 /**
@@ -607,8 +680,8 @@ export function yearlyFinance(g: GameState): void {
  * year's inflation shrinks what's owed and the fixed payment in real terms (the 1970s were kind to
  * borrowers), and deflation grows them (the 1930s were not). Returns the factor applied (1 = none).
  */
-function inflationFactor(g: GameState): number {
-  const infl = historicalInflation(g.character.countryId, g.year)
+function inflationFactor(g: GameState, country = g.character.countryId): number {
+  const infl = economyState(g) ? economyOf(g, country).inflation : historicalInflation(country, g.year)
   if (infl === null || !Number.isFinite(infl)) return 1
   return 1 / (1 + Math.max(-0.5, Math.min(1e7, infl)))
 }
@@ -618,11 +691,12 @@ function erode(n: number, factor: number): number {
 }
 
 /** Inflation erodes every mortgage (runs before assets.ts charges mortgage interest at its nominal rate). */
-function erodeMortgages(g: GameState, factor: number): void {
-  if (factor === 1) return
+function erodeMortgages(g: GameState): void {
   for (const a of g.assets) {
     const m = a.mortgage
     if (!m) continue
+    const factor = inflationFactor(g, typeof a.details.countryId === 'string' ? a.details.countryId : g.character.countryId)
+    if (factor === 1) continue
     const before = m.balance
     m.balance = erode(m.balance, factor)
     m.yearlyPayment = Math.max(m.balance > 0 ? 1 : 0, erode(m.yearlyPayment, factor))
@@ -637,8 +711,8 @@ function yearlyLoans(g: GameState): void {
   const c = g.character
   const misses = loanMisses(g)
   let paidTotal = 0
-  const factor = inflationFactor(g)
   for (const loan of [...c.loans]) {
+    const factor = inflationFactor(g, loan.countryId ?? g.character.countryId)
     if (!c.loans.includes(loan)) continue
     if (factor !== 1) {
       const before = loan.balance
@@ -660,6 +734,7 @@ function yearlyLoans(g: GameState): void {
     loan.balance = Math.round(loan.balance + interest)
     // Student loans are deferred while you're still in school.
     if (loan.kind === 'student' && c.education.current) continue
+    if (loan.yearsLeft !== undefined) loan.yearsLeft = Math.max(1, loan.yearsLeft - 1)
     const due = Math.min(loan.yearlyPayment, loan.balance)
     if (due <= 0) {
       c.loans = c.loans.filter((l) => l !== loan)
@@ -710,7 +785,17 @@ function repossessFinancedAsset(g: GameState, loan: Loan): boolean {
   const asset = g.assets.find((a) => a.details.loanId === loan.id)
   // Nothing left to take back (sold, stolen, wrecked): the debt stays with you.
   if (!asset) return false
-  c.loans = c.loans.filter((l) => l.id !== loan.id)
+  const sale = Math.round(Math.max(0, asset.value) * .75)
+  const surplus = Math.max(0, sale - loan.balance)
+  loan.balance = Math.max(0, loan.balance - sale)
+  if (surplus > 0) addMoney(g, surplus)
+  if (loan.balance <= 0) c.loans = c.loans.filter((l) => l.id !== loan.id)
+  else {
+    loan.kind = 'personal'
+    loan.yearsLeft = 5
+    loan.yearlyPayment = annualPayment(loan.balance, loan.rate, 5)
+  }
+  g.flags.creditDefaults = num(g.flags.creditDefaults) + 1
   clearLoanMisses(g, loan.id)
   g.assets = g.assets.filter((a) => a.id !== asset.id)
   businessGone(g, asset)
@@ -720,7 +805,7 @@ function repossessFinancedAsset(g: GameState, loan: Loan): boolean {
       : asset.kind === 'aircraft'
         ? `the lender's pilot flew your ${asset.name.toLowerCase()} out of the hangar while you watched. They didn't even wave.`
         : `a tow truck showed up at 3 AM and repossessed your ${asset.name}. Your neighbors watched from their windows.`
-  notice(g, 'Repossessed!', `You stopped paying ${employerRef(loan.lender, 'your lender')}, so ${how}`, { emoji: asset.kind === 'car' ? '🚛' : asset.emoji, tone: 'bad' })
+  notice(g, 'Repossessed!', `You stopped paying ${employerRef(loan.lender, 'your lender')}, so ${how} Auction proceeds of ${formatMoney(sale)} went toward the loan. ${loan.balance > 0 ? `You still owe ${formatMoney(loan.balance)}, restructured over five years.` : `The debt is settled.${surplus > 0 ? ` You received the ${formatMoney(surplus)} surplus.` : ''}`}`, { emoji: asset.kind === 'car' ? '🚛' : asset.emoji, tone: 'bad' })
   const nm = asset.kind === 'car' ? asset.name : asset.name.toLowerCase()
   log(g, `My ${nm} was repossessed.`, 'bad')
   addStat(g, 'happiness', -10)

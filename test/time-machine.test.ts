@@ -279,7 +279,11 @@ describe('snapshots', () => {
     await live(5)
     expect(tmChars()).toBeLessThanOrEqual(save.LOCAL_SNAPSHOT_BUDGET)
     expect(stopAges().length).toBeGreaterThan(0)
-    expect(stopAges().length).toBeLessThan(5)
+    // Repeated text compresses well; bounded storage no longer implies evicting
+    // these stops. The independent quota-failure test still exercises eviction.
+    expect(stopAges().length).toBeLessThanOrEqual(tm.TIME_MACHINE_STOPS)
+    const last = stopAges().at(-1)!
+    expect((await save.loadSnapshot(game().lifeId, last))?.flags.memoir).toBe(huge)
   }, 30_000)
 })
 

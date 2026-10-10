@@ -16,6 +16,8 @@ import { corruptionMenu } from './special/corruption'
 import { casinoMenu, lotteryMenu } from './gambling'
 import { doctorMenu } from './health'
 import { thisYearMenu } from './history/digest-menu'
+import { bankingMenu, economyMenu } from './economy/menu'
+import { lifePrioritiesMenu } from './household'
 import { adoptionMenu, loveMenu, petsMenu } from './love'
 import { prisonMenu } from './prison'
 import { everydayStoreMenus, luxuryLifestyleMenu, membershipAssetSubtitle, membershipAssetView, membershipsMenu, ticketsMenu } from './shops'
@@ -50,6 +52,7 @@ export const assetsMenu: MenuGroup = {
       { type: 'heading', id: 'moneyHeading', label: 'Business & Investments' },
       businessesMenu,
       investmentsMenu,
+      bankingMenu,
     ])
     return [...base, ...everydayStoreMenus, membershipsMenu, ticketsMenu, luxuryLifestyleMenu]
   },
@@ -126,6 +129,8 @@ export const activitiesMenu: MenuGroup = {
       shoppingMenu,
       socialMediaMenu,
       thisYearMenu,
+      economyMenu,
+      lifePrioritiesMenu,
       vacationMenu,
       ...miscActivities,
     ]

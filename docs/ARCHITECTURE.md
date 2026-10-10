@@ -131,6 +131,27 @@ src/
 
 ## Golden rules for every module
 
+### Living-world integration
+
+`game/economy/` owns persistent country/industry aggregates, one synchronous annual transition,
+lagged feedback from real company settlements and optional economic/credit menus. `household.ts`
+owns persistent work/learning/family/recovery priorities. See [LIVING-WORLD.md](LIVING-WORLD.md)
+for the assessment, causal model, tests and remaining scope.
+
+The economic boundary runs before the ordinary yearly hooks. Opening cash and nominal debts
+use the same inflation; new-year income is not retroactively eroded. Historical denominations
+remain authoritative. Future display contexts carry the simulated nominal price scale.
+
+Economy reads are pure and cached by immutable state root. Writers replace that root. Annual
+uncertainty uses stable family/year hashes, never menu reads or iteration order. World state
+survives heirs; household routines and credit history belong to the individual.
+
+Main saves remain plain JSON. Time Machine snapshots share immutable economic frames and
+history years, and use native gzip compression when available. The loader still accepts older
+plain records. Quota failures must never prevent saving the current life.
+
+### Engine contracts
+
 1. **State is plain JSON.** `GameState` is saved to localStorage and cloned with `structuredClone`.
    Never store functions, class instances, Maps or Sets in it. Use `g.flags`, `g.counters`,
    `Enrollment.data`, `Job.data`, `Person.data`, `Asset.details` for module-specific data.

@@ -25,6 +25,7 @@ import { addHidden, addStat, clamp, count, earnIncome, formatMoney, log, notice,
 import { ALL_JOBS, INDUSTRY_MARKET, INDUSTRY_TAGS, MAJOR_TAGS, PROGRAM_TAGS, type GradKey, type Industry as JobIndustry, type JobDef } from './data/jobs'
 import { fillLocal, localeOf, localTerm } from './data/locales'
 import { industryDemand, marketOf } from './data/markets'
+import { economyOf, industryConditions } from './economy'
 import { chance, nextRandom, pick, randInt, uid } from './rng'
 import { masterFirstTime } from './mastery'
 import { formatDef } from './special/author-data'
@@ -298,9 +299,10 @@ export function jobMarket(g: GameState, industry?: JobIndustry, countryId = g.ch
   // Structural: red tape and corruption keep formal jobs scarce; some labor markets are just tight.
   const structural = (m.easeOfBusiness - 60) * 0.25 - (m.corruption - 40) * 0.12 + (unit(`labor|${countryId}`) - 0.5) * 16
   const mi = industry ? INDUSTRY_MARKET[industry] : undefined
-  const demand = mi ? industryDemand(countryId, mi) : 1
+  const e = economyOf(g, countryId)
+  const demand = mi ? industryDemand(countryId, mi) * industryConditions(g, mi, countryId).demand : e.spending
   const industryTerm = mi ? between((demand - 1) * 25, -15, 15) : 0
-  const score = Math.round(between(50 + (cyc - 1) * 150 + structural + industryTerm, 4, 96))
+  const score = Math.round(between(50 + (cyc - 1) * 150 + structural + industryTerm - (e.unemployment - .055) * 180, 4, 96))
   const label: JobMarket['label'] = score >= 72 ? 'hot' : score >= 58 ? 'strong' : score >= 43 ? 'decent' : score >= 28 ? 'tough' : 'brutal'
   const applicants = Math.max(3, niceCount(25 * 2 ** ((50 - score) / 12)))
   const where = cap(countryWithThe(countryId))

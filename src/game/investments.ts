@@ -15,10 +15,11 @@
 // vanish after revolutions, gold was illegal to hoard in some places, and savings and bonds pay
 // the nominal rates of the day while inflation eats them (engine money is constant dollars).
 import { currencyOf } from './data/currencies'
+import { bound, economyMarketFactor, economyOf, economyState, economicRoll, initialCountry } from './economy'
 import { timelineFamily } from './timeMachine'
 import { addMoney, count, earnIncome, formatMoney, formatPrice, inPrison, log, notice, shortMoney, spend } from './core'
 import { localMarket, marketOf } from './data/markets'
-import { incomeTax, taxAdditionalIncome } from './finance'
+import { gameIncomeTax, taxAdditionalIncome } from './finance'
 import { exchangeClosedReason, exchangeState, goldBan, investingBlocked, marketNote } from './history/markets'
 import { brokerEraMult, reitSince } from './invest/era'
 import { allFundProviderNames } from './invest/funds'
@@ -55,7 +56,6 @@ import {
   listedCoins,
   localWords,
   pennyDef,
-  policyRate,
   realPlanOf,
   reitYield,
   savingsRate,
@@ -440,7 +440,7 @@ function estimateTax(g: GameState, a: Asset, gross: number): { fee: number; pena
   const gain = Math.round(gross - impact - fee - penalty - basis(a) * frac)
   const taxable = Math.max(0, gain - Math.min(lossCarry(g), Math.max(0, gain)))
   const before = Math.max(0, num(g.flags.taxableIncome))
-  const tax = taxable > 0 ? Math.max(0, incomeTax(g.character.countryId, before + taxable) - incomeTax(g.character.countryId, before)) : 0
+  const tax = taxable > 0 ? Math.max(0, gameIncomeTax(g, before + taxable) - gameIncomeTax(g, before)) : 0
   return { fee, penalty, gain, tax, impact }
 }
 
@@ -581,6 +581,12 @@ interface Listing {
   crypto: Quote[]
 }
 
+export function liveDepositRate(g: GameState, country: string, product: 'savings' | 'term' | 'bond'): number {
+  const base = product === 'savings' ? savingsRate(country, g.year) : product === 'term' ? termRate(country, g.year) : bondRate(country, g.year)
+  const delta = economyOf(g, country).rate - initialCountry(country, g.year).rate
+  return bound(base + delta * (product === 'savings' ? .7 : .9), 0, isHistoryYear(g.year) ? 10 : .4)
+}
+
 function listing(g: GameState): Listing {
   const cid = g.character.countryId
   const y = g.year
@@ -637,8 +643,9 @@ function listing(g: GameState): Listing {
     details: {},
   }
   reit.details = { type: 'reit', secId: reit.secId, symbol: reit.symbol, risk: reit.risk, yield: reit.yield, sector: reit.sector, blurb: reit.blurb, country: info.home, eng: ENGINE_V, ...exDetails(info, y) }
+  Object.assign(reit, withShock(g, reit, economyMarketFactor(g, info.home, y, true), economyMarketFactor(g, info.home, y - 1, true)))
 
-  const br = bondRate(cid, y)
+  const br = liveDepositRate(g, cid, 'bond')
   const pDef = defaultChance(cid, y)
   const bond: Quote = {
     type: 'bond',
@@ -657,7 +664,7 @@ function listing(g: GameState): Listing {
   }
   bond.details = { type: 'bond', secId: bond.secId, symbol: bond.symbol, risk: bond.risk, yield: br, sector: bond.sector, blurb: bond.blurb, country: cid, currency: currencyOf(g.character.countryId, g.year).name, maturity: y + BOND_YEARS }
   const bank = bankName(cid)
-  const sr = savingsRate(cid, y)
+  const sr = liveDepositRate(g, cid, 'savings')
   const insured = depositInsurance(cid, y)
   const savings: Quote = {
     type: 'savings',
@@ -675,7 +682,7 @@ function listing(g: GameState): Listing {
     details: {},
   }
   savings.details = { type: 'savings', product: 'savings', secId: savings.secId, symbol: '', risk: savings.risk, yield: sr, sector: 'Savings', blurb: savings.blurb, country: cid, bank, currency: currencyOf(g.character.countryId, g.year).name }
-  const tr = termRate(cid, y)
+  const tr = liveDepositRate(g, cid, 'term')
   const term: Quote = {
     ...savings,
     secId: `term:${cid}:${y}`,
@@ -1122,7 +1129,6 @@ function historyLine(g: GameState, info: ExInfo): string {
 
 function localNote(g: GameState): string {
   const cid = g.character.countryId
-  const m = localMarket(g)
   const info = exchangeInfo(cid)
   const y = g.year
   const lines: string[] = []
@@ -1131,8 +1137,8 @@ function localNote(g: GameState): string {
   else lines.push(`You trade on the ${exName} (${info.ex.code}).`)
   const block = stockMarketBlock(g, info)
   if (block) lines.push(block)
-  const rate = policyRate(cid, y)
-  const infl = inflationRate(cid, y)
+  const rate = economyOf(g, cid).rate
+  const infl = economyOf(g, cid).inflation
   lines.push(`Policy rate ${rateText(rate)}, inflation ${inflationText(infl)}.`)
   if (isHistoryYear(y)) {
     if (infl >= 0.5) lines.push(`Prices are rising so fast that money in the bank loses value by the week.`)
@@ -1140,9 +1146,7 @@ function localNote(g: GameState): string {
     else if (rate - infl >= 0.04) lines.push('Interest rates are well above inflation: a good time to be a saver, a hard one to be a borrower.')
     return lines.join(' ')
   }
-  const dep = expectedDepreciation(cid)
-  if (dep >= 0.05) lines.push(`The ${currencyOf(g.character.countryId, g.year).name} loses about ${rateText(dep)} a year against the dollar, so local bonds and savings shrink in dollar terms.`)
-  else if (m.interestRate < m.inflation) lines.push('Interest here is below inflation, so cash in the bank slowly loses buying power.')
+  if (rate < infl) lines.push('Interest here is below inflation, so cash in the bank slowly loses buying power.')
   return lines.join(' ')
 }
 
@@ -1282,15 +1286,12 @@ function holdingInfo(g: GameState, a: Asset): string[] {
       break
     }
     case 'savings': {
-      const m = marketOf(cid)
-      const rate = str(d.product) === 'term' ? y : savingsRate(cid, g.year)
-      const infl = inflationRate(cid, g.year)
-      const real = isHistoryYear(g.year) ? (1 + rate) / (1 + Math.min(1e7, infl)) - 1 : rate - m.inflation
+      const rate = str(d.product) === 'term' ? y : liveDepositRate(g, cid, 'savings')
+      const infl = economyOf(g, cid).inflation
+      const real = (1 + rate) / (1 + Math.min(1e7, infl)) - 1
       const insured = depositInsurance(cid, g.year)
       rows.push(`Interest: ${rateText(rate)} a year${income > 0 ? ` · Earned ${formatMoney(income)}` : ''}`)
       rows.push(`Inflation runs about ${inflationText(infl)}, so your real return is roughly ${pct(Math.max(-1, real))} a year. ${insured > 0 ? `Insured up to ${formatMoney(insured)}.` : 'Not insured.'}`)
-      const dep = expectedDepreciation(cid, g.year)
-      if (!isHistoryYear(g.year) && dep >= 0.03) rows.push(`The balance is kept in ${currencyOf(g.character.countryId, g.year).name}, which tends to lose about ${rateText(dep)} a year against the dollar, so it shrinks in dollar terms while the interest piles up.`)
       if (str(d.product) === 'term') {
         const mat = num(d.maturity)
         rows.push(g.year >= mat ? 'Matured: you can withdraw without a penalty. It keeps rolling over until you do.' : `Matures in ${mat}. Withdrawing earlier costs a year of interest.`)
@@ -1471,25 +1472,24 @@ const bondsMenu: MenuGroup = {
   id: 'inv-bonds',
   label: 'Bonds & Savings',
   emoji: '🏛️',
-  subtitle: (g) => `Bonds ${rateText(bondRate(g.character.countryId, g.year))} · Savings ${rateText(savingsRate(g.character.countryId, g.year))}`,
+  subtitle: (g) => `Bonds ${rateText(liveDepositRate(g, g.character.countryId, 'bond'))} · Savings ${rateText(liveDepositRate(g, g.character.countryId, 'savings'))}`,
   header: (g) => {
     const cid = g.character.countryId
-    const rate = policyRate(cid, g.year)
-    const infl = inflationRate(cid, g.year)
+    const rate = economyOf(g, cid).rate
+    const infl = economyOf(g, cid).inflation
     const insured = depositInsurance(cid, g.year)
     const bits = [`The central bank's rate in ${theCountry(cid)} is ${rateText(rate)} and inflation runs about ${inflationText(infl)}.`]
     if (rate < infl) bits.push('Savings pay less than inflation, so they lose buying power over time.')
     if (defaultChance(cid, g.year) >= 0.01) bits.push('High yields here come with a real chance the government defaults.')
     if (insured <= 0) bits.push('Bank deposits aren\'t insured yet: if a bank fails, depositors get back whatever is left.')
-    else if (bankCrisisChance(cid, g.year) >= 0.005) bits.push(`Banks have been known to freeze deposits; only ${formatMoney(insured)} per account is guaranteed.`)
+    else if (bankCrisisChance(cid, g.year) >= 0.005) bits.push(`Banks have been known to freeze deposits; only ${formatMoney(insured)} per depositor is guaranteed across your accounts.`)
     return bits.join(' ')
   },
   children: (g) => {
     const l = listing(g)
     const cid = g.character.countryId
-    const m = localMarket(g)
-    const infl = isHistoryYear(g.year) ? Math.min(1e7, inflationRate(cid, g.year)) : m.inflation
-    const realOf = (r: number) => (isHistoryYear(g.year) ? Math.max(-1, (1 + r) / (1 + infl) - 1) : r - m.inflation)
+    const infl = Math.min(1e7, economyOf(g, cid).inflation)
+    const realOf = (r: number) => Math.max(-1, (1 + r) / (1 + infl) - 1)
     const real = (r: number) => `After ${inflationText(infl)} inflation, that's a real return of about ${pct(realOf(r))} a year.`
     return [
       offerNode(g, l.bond, [real(l.bond.yield), `Default risk: ${defaultRiskLabel(defaultChance(cid, g.year))}.`]),
@@ -1776,7 +1776,7 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
       if (isHistoryYear(g.year) && exchangeExpropriated(info, g.year)) return { price: 0, ratio: 1, ret: -1, payout: 0, ended: { kind: 'nationalized', perUnit: 0, premium: -1 } }
       const ey = exchangeYear(f, an, info, g.year)
       if (t === 'index') return shockMove(pathMove(ey.fund.id === str(d.secId) ? ey.fund : undefined, a, price), indexShockFactor(g, info.key, g.year, str(d.secId)), indexShockFactor(g, info.key, g.year - 1, str(d.secId)))
-      if (t === 'reit') return pathMove(ey.reit.id === str(d.secId) ? ey.reit : undefined, a, price)
+      if (t === 'reit') return shockMove(pathMove(ey.reit.id === str(d.secId) ? ey.reit : undefined, a, price), economyMarketFactor(g, info.home, g.year, true), economyMarketFactor(g, info.home, g.year - 1, true))
       const list = t === 'penny' ? ey.pennies : ey.stocks
       const id = str(d.secId)
       return shockMove(pathMove(list[Math.round(num(d.slot, -1))], a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
@@ -1802,8 +1802,11 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
       const cid = str(d.country, g.character.countryId)
       const fx = fxYear(f, cid, g.year)
       // History is in real terms: the coupon is paid in money that lost `dep` of its value this year.
-      const coupon = Math.max(0, num(d.yield)) * (isHistoryYear(g.year) ? 1 - Math.max(0, fx.dep) : 1 - Math.max(0, fx.dep) / 2)
-      let ret = (1 - fx.dep) * (1 + fx.bondMove) - 1
+      const live = !isHistoryYear(g.year) && !!economyState(g)
+      const dep = live ? 1 - 1 / (1 + economyOf(g, cid).inflation) : fx.dep
+      const coupon = Math.max(0, num(d.yield)) * (live ? 1 - dep : isHistoryYear(g.year) ? 1 - Math.max(0, dep) : 1 - Math.max(0, dep) / 2)
+      const rateMove = live ? bound((economyOf(g, cid, g.year - 1).rate - economyOf(g, cid).rate) * 2, -.2, .2) : 0
+      let ret = (1 - dep) * (1 + fx.bondMove + rateMove) - 1
       if (fx.defaulted) {
         ret = (1 + ret) * (1 - fx.haircut) - 1
         news.push({
@@ -1824,11 +1827,12 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
     case 'savings': {
       const cid = str(d.country, g.character.countryId)
       const fx = fxYear(f, cid, g.year)
-      const rate = str(d.product) === 'term' ? Math.max(0, num(d.yield)) : savingsRate(cid, g.year)
+      const rate = str(d.product) === 'term' ? Math.max(0, num(d.yield)) : liveDepositRate(g, cid, 'savings')
       if (str(d.product) !== 'term') d.yield = rate
       // Interest is credited to the account in local money, so the balance compounds while the
       // currency's slide (in history: that year's inflation) shrinks it in real terms.
-      const ret = -fx.dep
+      const dep = !isHistoryYear(g.year) && economyState(g) ? 1 - 1 / (1 + economyOf(g, cid).inflation) : fx.dep
+      const ret = -dep
       if (isHistoryYear(g.year) && fx.dep >= 0.3 && price > 0) {
         news.push({
           priority: 94,
@@ -1839,7 +1843,7 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
           log: 'Inflation ate my savings this year.',
         })
       }
-      return { price: Math.max(0.0001, price * (1 + ret)), ratio: 1, ret, payout: 0, compound: rate * (1 - Math.max(0, fx.dep)) }
+      return { price: Math.max(0.0001, price * (1 + ret)), ratio: 1, ret, payout: 0, compound: rate * (1 - dep) }
     }
   }
 }
@@ -2143,18 +2147,21 @@ export function yearlyInvestments(g: GameState): void {
   for (const a of investmentHoldings(g)) if (typeOf(a) === 'savings') banks.set(str(a.details.country, c.countryId), [...(banks.get(str(a.details.country, c.countryId)) ?? []), a])
   for (const [cid, deposits] of banks) {
     const fx = fxYear(fam(g), cid, g.year)
-    if (!fx.bankCrisis) continue
+    const localEconomy = economyOf(g, cid)
+    const systemicRun = !isHistoryYear(g.year) && localEconomy.defaults > .055 && economicRoll(`${fam(g)}|bank-run|${cid}|${g.year}`) < Math.max(0, .25 - localEconomy.liquidity) + (localEconomy.defaults - .055)
+    if (!fx.bankCrisis && !systemicRun) continue
     // The guarantee is per depositor, so it covers all of your accounts there together.
     const insured = depositInsurance(cid, g.year)
     const total = deposits.reduce((sum, a) => Math.min(MAX_INVESTMENT_VALUE, sum + holdingValue(a)), 0)
-    const kept = Math.min(total, insured) + Math.max(0, total - insured) * fx.recovery
+    const recovery = systemicRun ? Math.min(fx.recovery, bound(.95 - localEconomy.defaults * 2, .3, .9)) : fx.recovery
+    const kept = Math.min(total, insured) + Math.max(0, total - insured) * recovery
     const lost = Math.round(total - kept)
     if (total > 0) for (const a of deposits) setPosition(a, units(a) * (kept / total), unitPrice(a), basis(a))
     if (lost >= 1) {
       news.push({
         priority: 96,
         title: 'Bank Collapse',
-        text: `${str(deposits[0].details.bank, 'Your bank')} froze withdrawals and collapsed. The government guaranteed ${formatMoney(insured)} per depositor; you got back ${Math.round(fx.recovery * 100)} cents on the dollar for the rest. You lost ${formatMoney(lost)}.`,
+        text: `${str(deposits[0].details.bank, 'Your bank')} froze withdrawals and collapsed. The government guaranteed ${formatMoney(insured)} per depositor; you got back ${Math.round(recovery * 100)} cents on the dollar for the rest. You lost ${formatMoney(lost)}.`,
         emoji: '🏦',
         tone: 'bad',
         log: `My bank collapsed and I lost ${formatMoney(lost)} of my savings.`,

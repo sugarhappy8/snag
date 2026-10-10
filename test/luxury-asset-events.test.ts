@@ -25,13 +25,12 @@ function noticeTitles(g: GameState): string[] {
 }
 
 describe('branded assets and generic yearly events', () => {
-  it('does not lose a Cartier through the generic seed-13 jewelry event', () => {
+  it('does not lose a Cartier through generic yearly jewelry events', () => {
     const g = rich()
     const cartier = buy(g, 'cartier-love-bracelet')
     cartier.details.luxIns = true
     const money = g.character.money
 
-    // After the housing-market roll, seed 13 enters randomAssetEvent and then lostJewel.
     // The branded yearly hook owns both this piece's loss roll and its luxIns premium.
     g.rng = 13
     yearlyAssets(g)
@@ -51,7 +50,7 @@ describe('branded assets and generic yearly events', () => {
     const money = g.character.money
     const upkeep = asset.upkeep
 
-    // Seed 13 would choose a fender bender for the Ferrari and engine trouble for the Riva.
+    // Generic yearly events must leave branded vehicle condition to its own hook.
     g.rng = 13
     yearlyAssets(g)
 
@@ -69,14 +68,20 @@ describe('branded assets and generic yearly events', () => {
     expect(buyHouse(g, listing, null)).toBe(true)
     const cartier = buy(g, 'cartier-love-bracelet')
 
-    // With this asset order, seed 18 selects burglary both with and without the lux filter.
-    // The empty generic-loot pool should produce a break-in rather than take the Cartier.
-    g.rng = 18
-    yearlyAssets(g)
-
-    expect(g.assets).toContain(cartier)
-    expect(noticeTitles(g)).toContain('Break-In')
-    expect(noticeTitles(g)).not.toContain('Burglary')
+    // Find an actual break-in without relying on unrelated housing RNG consumption.
+    // Every attempted path must preserve the Cartier; removing the branded-loot
+    // filter must fail this test, not merely make it miss the desired event.
+    const original = JSON.stringify(g)
+    let breakIn = false
+    for (let seed = 1; seed <= 256 && !breakIn; seed++) {
+      const trial = JSON.parse(original) as GameState
+      trial.rng = seed
+      yearlyAssets(trial)
+      expect(trial.assets.some(a => a.id === cartier.id)).toBe(true)
+      expect(noticeTitles(trial)).not.toContain('Burglary')
+      breakIn = noticeTitles(trial).includes('Break-In')
+    }
+    expect(breakIn).toBe(true)
   })
 
   it('keeps regular-policy billing coherent for an old branded holding', () => {

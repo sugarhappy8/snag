@@ -174,6 +174,11 @@ export interface Loan {
   yearlyPayment: number
   /** Annual interest rate as a fraction, e.g. 0.05 */
   rate: number
+  yearsLeft?: number
+  rateType?: 'fixed' | 'variable'
+  rateMargin?: number
+  /** The debt's denomination does not change merely because the borrower emigrates. */
+  countryId?: string
 }
 
 export type HomeStatus = 'parents' | 'owned' | 'renting' | 'homeless' | 'dorm' | 'prison' | 'military' | 'partner'
@@ -428,6 +433,8 @@ export interface Mortgage {
   yearlyPayment: number
   yearsLeft: number
   rate: number
+  rateType?: 'fixed' | 'variable'
+  rateMargin?: number
 }
 
 export interface Asset {
@@ -638,6 +645,8 @@ export type AiTask =
 export interface AncestorSummary {
   /** Country at death, used with diedYear to display historical local money. */
   countryId?: string
+  nominalScale?: number
+  usdNominalScale?: number
   generation: number
   name: string
   gender: Gender

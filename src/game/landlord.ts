@@ -1,4 +1,5 @@
 // Rental operations, separate from property appreciation, mortgages and ordinary upkeep.
+import { economyOf } from './economy'
 // Tenants live in the existing Asset.details fields; this optional record adds a save-safe
 // lease, service budget, repair queue, vacancy and manager. Menus never mutate or roll.
 import { seeded, refreshHouseValue } from './assets'
@@ -140,10 +141,11 @@ export function yearlyLandlord(g: GameState): number {
     p.lastYear = year
     if (g.character.residence.status === 'owned' && g.character.residence.assetId === a.id) { save(a, p); continue }
     const rng = seeded(`${g.lifeId}|rental|${a.id}|${year}`), market = rentalMarket(a)
+    const economy = economyOf(g, string(a.details.countryId, g.character.countryId), year)
     let occupied = !!a.rentedOutFor, occupancy = 1, gross = 0, repairs = 0
     if (!occupied && p.listed) {
       p.vacancyYears += 1
-      const fill = Math.max(.05, Math.min(.95, .8 + p.managerSkill / 500 - Math.max(0, p.askingRent / market - 1) * 1.5 - Math.max(0, 60 - a.condition) / 100))
+      const fill = Math.max(.05, Math.min(.95, .8 + p.managerSkill / 500 - Math.max(0, p.askingRent / market - 1) * 1.5 - Math.max(0, 60 - a.condition) / 100 - Math.max(0, economy.unemployment - .06) * 1.5))
       if (p.managerSkill > 0 && a.condition >= 20 && rng.chance(fill)) {
         const countryId = string(a.details.countryId, g.character.countryId), pool = namePoolOf(countryId)
         a.rentedOutFor = p.askingRent
@@ -173,7 +175,7 @@ export function yearlyLandlord(g: GameState): number {
       }
       if (p.issue) a.condition = Math.max(0, a.condition - 4)
       const tenantRisk = finite(a.details.tenantRisk, .08, .6)
-      const risk = Math.max(.005, tenantRisk + Math.max(0, 45 - p.satisfaction) / 200 - p.managerSkill / 1400)
+      const risk = Math.min(.85, Math.max(.005, tenantRisk + Math.max(0, 45 - p.satisfaction) / 200 - p.managerSkill / 1400 + Math.max(0, economy.unemployment - .06) * 1.3))
       const due = Math.round((a.rentedOutFor ?? 0) * occupancy * (p.issue ? .8 : 1))
       const missed = rng.chance(risk)
       gross = missed ? Math.round(due * rng.float(.1, .65)) : due

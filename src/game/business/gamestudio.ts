@@ -12,7 +12,7 @@
 import { seeded } from '../assets'
 import { readVenture } from '../computer/dev-state'
 import { addHidden, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
-import { marketOf } from '../data/markets'
+import { economyOf } from '../economy'
 import { chance, pick, randFloat, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import { hire } from '../special/common'
@@ -198,7 +198,6 @@ function studioOperations(g: GameState, b: BizState, year = g.year): number {
 export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number, bookedSales: number | Record<string, number> = 0): YearResult {
   const st = studioOf(a)
   ensureCatalog(g, b, st, year)
-  const m = marketOf(b.countryId)
   const iy = industryYear(g, year)
   // The market: tiny in the arcade era, crashing in 1983, crowded today (business/competition.ts).
   // It scales launches; a game's long tail follows from how its launch went.
@@ -214,7 +213,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // The Gaming talent: a founder who lives and breathes games lifts every title (gamedev-make's +6).
   const gamer = runs && hasTalent(g, 'Gaming') ? TALENT_GAMING_QUALITY : 0
   const qStaff = staffPower(b, 'quality')
-  const wage = devCost(b)
+  const wage = devCost(b) * economyOf(g, b.countryId, year).wages
   const scale = costScale(b.countryId)
   const sales: Sale[] = []
   const notes: string[] = []
@@ -389,7 +388,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   const ceoEff = (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).cost * nationalMarket(g, b.industry, b.countryId, year).costs
   const wages = b.employees * wage * b.openFraction * licencePremium(g, b)
   let rent = 0
-  for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent
+  for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent * economyOf(g, o.countryId, year).rent
   const upkeep = equipmentValue(b) * industryDef('gameStudio').maint
   const insurance = b.insured ? insurancePremiumFor(b) : 0
   const keyStaff = b.staff.reduce((s, x) => s + x.salary, 0) + managerCost(b)
@@ -403,13 +402,14 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // Their profit belongs in tax, but must not be counted twice for salary funds.
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + b.yearCosts - b.yearIncome)))
   const pbt = pbt0 - ownerPay
-  const corpTax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedSales)
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedSales, g, year)
   const net = pbt - corpTax
   // One-off costs and income booked during the year already moved the company's cash.
   b.cash = dollars(b.cash + net + b.yearCosts - b.yearIncome)
   let cashErosion = 0
   if (b.cash > 0) {
-    const real = clampN((m.inflation - m.interestRate) * 0.35, 0, 0.4)
+    const economy = economyOf(g, b.countryId, year)
+    const real = clampN((economy.inflation - economy.rate) * 0.35, 0, 0.4)
     cashErosion = Math.round(b.cash * real)
     b.cash -= cashErosion
   }
@@ -812,8 +812,8 @@ function royaltyOf(st: StudioState, engine: StudioEngineId, receipts: number): n
  */
 function studioBurn(g: GameState, b: BizState, st: StudioState): number {
   let rent = 0
-  for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent
-  const overhead = (b.employees * devCost(b) * licencePremium(g, b) + rent + equipmentValue(b) * industryDef('gameStudio').maint) * (1 - 0.025 * staffPower(b, 'finance')) * (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, g.year).cost * nationalMarket(g, b.industry, b.countryId).costs
+  for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent * economyOf(g, o.countryId).rent
+  const overhead = (b.employees * devCost(b) * economyOf(g, b.countryId).wages * licencePremium(g, b) + rent + equipmentValue(b) * industryDef('gameStudio').maint) * (1 - 0.025 * staffPower(b, 'finance')) * (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, g.year).cost * nationalMarket(g, b.industry, b.countryId).costs
   const fixed = overhead + b.staff.reduce((t, x) => t + x.salary, 0) + managerCost(b) + (b.insured ? insurancePremiumFor(b) : 0) + b.debt * b.debtRate
   const scale = costScale(b.countryId)
   let inProduction = 0

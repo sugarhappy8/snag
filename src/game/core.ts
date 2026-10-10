@@ -136,6 +136,9 @@ export interface ShownMoney {
 export interface MoneyContext {
   countryId: string
   year: number
+  /** Simulated future price level relative to the historical currency baseline. */
+  nominalScale?: number
+  usdNominalScale?: number
 }
 
 export type MoneyConverter = (n: number, ctx: MoneyContext | null, display: MoneyDisplay) => ShownMoney
@@ -155,7 +158,7 @@ export function moneyDisplay(): MoneyDisplay {
 
 /** Which life money is shown for (its country and year); null = plain US dollars. */
 export function bindMoneyContext(g: GameState | null): void {
-  moneyContext = g ? () => ({ countryId: g.character.countryId, year: g.year }) : () => null
+  moneyContext = g ? () => moneyContextOf(g) : () => null
 }
 
 export function currentMoneyContext(): MoneyContext | null {
@@ -175,7 +178,12 @@ export function withMoneyContext<T>(ctx: MoneyContext | null, fn: () => T): T {
 
 /** The money context of a life (its country and year), without binding it. */
 export function moneyContextOf(g: GameState): MoneyContext {
-  return { countryId: g.character.countryId, year: g.year }
+  const raw = g.flags.worldEconomy as { countries?: Record<string, { year?: number; priceScale?: number }> } | undefined
+  const e = raw?.countries?.[g.character.countryId]
+  const scale = e?.year === g.year && typeof e.priceScale === 'number' && Number.isFinite(e.priceScale) && e.priceScale > 0 ? e.priceScale : 1
+  const us = raw?.countries?.us
+  const usdScale = us?.year === g.year && typeof us.priceScale === 'number' && Number.isFinite(us.priceScale) && us.priceScale > 0 ? us.priceScale : 1
+  return { countryId: g.character.countryId, year: g.year, ...(scale !== 1 ? { nominalScale: scale } : {}), ...(usdScale !== 1 ? { usdNominalScale: usdScale } : {}) }
 }
 
 /** data/currencies.ts installs the real converter (local currency + year prices). */

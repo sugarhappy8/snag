@@ -67,6 +67,8 @@ export function readGraves(): GraveyardEntry[] {
       causeOfDeath: typeof e.causeOfDeath === 'string' && e.causeOfDeath ? e.causeOfDeath : 'Unknown causes',
       netWorth: num(e.netWorth),
       countryId: typeof e.countryId === 'string' ? e.countryId : undefined,
+      nominalScale: num(e.nominalScale, 1),
+      usdNominalScale: num(e.usdNominalScale, 1),
       occupation: typeof e.occupation === 'string' ? e.occupation : '',
       ribbon: typeof e.ribbon === 'string' ? e.ribbon : null,
       obituary: typeof e.obituary === 'string' ? e.obituary : null,
@@ -125,7 +127,7 @@ export function GraveyardScreen() {
               <span>oldest age</span>
             </div>
             <div>
-              <strong>{stats.richest ? withMoneyContext(stats.richest.countryId ? { countryId: stats.richest.countryId, year: stats.richest.diedYear } : null, () => shortMoney(stats.richest!.netWorth)) : '–'}</strong>
+              <strong>{stats.richest ? withMoneyContext(stats.richest.countryId ? { countryId: stats.richest.countryId, year: stats.richest.diedYear, nominalScale: stats.richest.nominalScale, usdNominalScale: stats.richest.usdNominalScale } : null, () => shortMoney(stats.richest!.netWorth)) : '–'}</strong>
               <span>richest</span>
             </div>
           </section>
@@ -161,7 +163,7 @@ export function GraveyardScreen() {
                         {e.bornYear}–{e.diedYear} · age {e.age} · {e.causeOfDeath}
                       </span>
                     </span>
-                    <span className={`grave-worth ${e.netWorth < 0 ? 'neg' : ''}`}>{withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear } : null, () => shortMoney(e.netWorth))}</span>
+                    <span className={`grave-worth ${e.netWorth < 0 ? 'neg' : ''}`}>{withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear, nominalScale: e.nominalScale, usdNominalScale: e.usdNominalScale } : null, () => shortMoney(e.netWorth))}</span>
                   </button>
                   {isOpen ? (
                     <div className="grave-body">
@@ -172,7 +174,7 @@ export function GraveyardScreen() {
                           </span>
                         ) : null}
                         <span className="grave-tag">💼 {e.occupation || 'Unemployed'}</span>
-                        <span className="grave-tag">💰 {withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear } : null, () => formatMoney(e.netWorth))}</span>
+                        <span className="grave-tag">💰 {withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear, nominalScale: e.nominalScale, usdNominalScale: e.usdNominalScale } : null, () => formatMoney(e.netWorth))}</span>
                         {e.generation > 1 ? <span className="grave-tag">🌳 Generation {e.generation}</span> : null}
                       </div>
                       <p className="grave-obit">{e.obituary?.trim() || `${e.name} died of ${e.causeOfDeath.toLowerCase()} at ${e.age}. No obituary was written.`}</p>

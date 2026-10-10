@@ -11,7 +11,7 @@
 // few outside the main save) and travelBack() restores one (game/timeMachine.ts has the rules).
 import { useSyncExternalStore } from 'react'
 import { ageUp } from '../game/aging'
-import { bindMoneyContext, netWorth } from '../game/core'
+import { bindMoneyContext, moneyContextOf, netWorth } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
 import { resolveTask } from '../game/offline'
 import {
@@ -362,6 +362,7 @@ export function retrySave(): void {
 function finalizeIfDead(g: GameState): void {
   if (g.character.alive || g.flags.deathRecorded || g.queue.length > 0) return
   const c = g.character
+  const deathMoney = moneyContextOf(g)
   recordDeath(g, {
     lifeId: g.lifeId,
     generation: g.generation,
@@ -373,6 +374,8 @@ function finalizeIfDead(g: GameState): void {
     causeOfDeath: c.causeOfDeath ?? 'Unknown',
     netWorth: netWorth(g),
     countryId: c.countryId,
+    ...(deathMoney.nominalScale ? { nominalScale: deathMoney.nominalScale } : {}),
+    ...(deathMoney.usdNominalScale ? { usdNominalScale: deathMoney.usdNominalScale } : {}),
     occupation: typeof g.flags.finalOccupation === 'string' ? g.flags.finalOccupation : 'Unknown',
     ribbon: g.ribbon,
     obituary: g.obituary,

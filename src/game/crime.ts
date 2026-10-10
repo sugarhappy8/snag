@@ -1,4 +1,5 @@
 import { underworldMenu } from './underworld'
+import { economyOf } from './economy'
 // Crime: the Crime activity menu (petty theft to murder), arrests & trials, organized crime,
 // and the yearly police work (wanted level, fugitives, stolen cars, audits, prison years).
 import {
@@ -162,7 +163,7 @@ interface CrimeCost {
  * Scales the chance of getting caught (never to zero).
  */
 function caughtMult(g: GameState): number {
-  return hasTalent(g, 'Crime') ? 0.7 : 1
+  return (hasTalent(g, 'Crime') ? 0.7 : 1) * Math.max(.8, Math.min(1.2, economyOf(g).services))
 }
 
 /** Crime talent: extra success odds on a job (as a 0-1 bonus). */

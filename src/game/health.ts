@@ -23,6 +23,7 @@ import { eraLines } from './events/era'
 import { ERA_DISEASES, eraCureFactor, eraDiseaseWeight, eraOldAgeFactor, eraSicknessBoost, medicalYear } from './history/events-medicine'
 import { hasTech, isHistorical } from './history/timeline'
 import { isIndustryLegal } from './data/markets'
+import { economyOf } from './economy'
 import { killCharacter } from './death'
 import { hasTalent } from './talents'
 import { chance, pick, randFloat, randInt, uid, weightedPick } from './rng'
@@ -1448,6 +1449,7 @@ const TREAT = defineScript('health.doctor.treat', (g, choice, data) => {
   if (cost > 0 && !spend(g, cost)) return tooBroke(g, `the treatment for ${conditionLabel(cond.name)}`, cost)
   const def = defFor(cond)
   let p = def.cure * qualityFactor(d.quality ?? 3)
+  p *= Math.max(.75, Math.min(1.15, economyOf(g).services))
   // No antibiotics before the 1940s, weaker cancer care for decades (1 in modern years).
   if (isHistorical(g.year)) p *= eraCureFactor(g.character.countryId, g.year, def.name, def.cancer === true)
   if (cond.kind === 'mental') p *= 0.6

@@ -522,6 +522,14 @@ describe('Comedy in job interviews', () => {
 // Whole lives with talents: every perk path runs through real menus, popups, prison and death.
 
 describe('whole lives with special talents', () => {
+  const frozenWorldObjects = new WeakSet<object>()
+  function freezeWorld(value: unknown): void {
+    if (!value || typeof value !== 'object' || frozenWorldObjects.has(value)) return
+    frozenWorldObjects.add(value)
+    for (const child of Object.values(value)) freezeWorld(child)
+    Object.freeze(value)
+  }
+
   function driver(seed: number) {
     let s = seed >>> 0 || 1
     const next = () => {
@@ -541,10 +549,18 @@ describe('whole lives with special talents', () => {
       if (n.disabledReason && n.disabledReason(g)) continue
       // Menu hints must be pure: rendering them can't roll dice or change the game.
       if (n.hint) {
-        const before = [g.rng, g.nextId, g.queue.length, JSON.stringify(g.flags), JSON.stringify(g.yearActions)].join('|')
+        // A world is ~1 MB. Serializing it twice for each of thousands of hints
+        // tests JSON throughput instead of gameplay. Deep freezing catches every
+        // in-place write; identity checks catch root replacement. Other flags keep
+        // their original exact-serialization check, and full saves are checked below.
+        const world = g.flags.worldEconomy
+        freezeWorld(world)
+        const state = () => [g.rng, g.nextId, g.queue.length, JSON.stringify({ ...g.flags, worldEconomy: undefined }), JSON.stringify(g.yearActions)].join('|')
+        const before = state()
         const h = n.hint(g)
         expect(h === null || typeof h === 'string').toBe(true)
-        expect([g.rng, g.nextId, g.queue.length, JSON.stringify(g.flags), JSON.stringify(g.yearActions)].join('|')).toBe(before)
+        expect(g.flags.worldEconomy).toBe(world)
+        expect(state()).toBe(before)
       }
       if (n.type === 'action' && n.id === 'surrenderLife') continue
       if (n.type === 'action') out.push(n)

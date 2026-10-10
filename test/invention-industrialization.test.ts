@@ -4,6 +4,7 @@ import { becomeCeo } from '../src/game/business/career'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { bizOf, normalizeBiz } from '../src/game/business/state'
 import { expansionOf, saveExpansion } from '../src/game/business/dynamics'
+import { economyState } from '../src/game/economy'
 import { buildInventionFab, commitInventionProducts, effectiveInventionUnitCost, inventionDemandQuote, inventionFabCapacity, inventionFabQuote, inventionFabValue, inventionInventoryValue, inventionMarketDemand, inventionOutputPreview, inventionProductsOf, inventionUpgradeQuote, MAX_INVENTION_PRICE, newInventionProduct, ownedInventionProductNodes, prepareInventionWorkforce, saveInventionProducts, setInventionProduction, simulateInventionProducts, upgradeInventionFab } from '../src/game/business/invention-products'
 import type { InventionTier } from '../src/game/business/inventions'
 import type { Json } from '../src/game/types'
@@ -209,18 +210,36 @@ describe('paid invention industrialization', () => {
   })
 
   it('allocates shared production deterministically by ID and commits stock only once', () => {
-    const { g, b, p } = fixture('small')
+    const { g, a, b, p } = fixture('small')
     const first = { ...p, id: 'a', ipId: 'a', fabCapacity: 100 }, second = { ...p, id: 'z', ipId: 'z', fabCapacity: 100 }
     saveInventionProducts(b, [second, first]); b.cash = 110
     const plan = simulateInventionProducts(g, b, g.year)
     expect(plan.rows[0]).toMatchObject({ id: 'a', produced: 2 })
     saveInventionProducts(b, [first, second])
     expect(simulateInventionProducts(g, b, g.year)).toEqual(plan)
-    commitInventionProducts(g, b, g.year, plan)
+    commitInventionProducts(g, b, g.year, plan, a.id)
     const done = JSON.stringify(b)
-    commitInventionProducts(g, b, g.year, plan)
+    commitInventionProducts(g, b, g.year, plan, a.id)
     expect(JSON.stringify(b)).toBe(done)
     expect(simulateInventionProducts(g, b, g.year).rows).toHaveLength(0)
     expect(inventionInventoryValue(b)).toBe(0)
+  })
+
+  it('counts adoption separately for companies licensing the same product in the same founding year and city', () => {
+    const { g, a, b, p } = fixture('small')
+    saveInventionProducts(b, [{ ...p, rights: 'license', expires: g.year + 5, fabCapacity: 100 }])
+    const second = normalizeBiz(JSON.parse(JSON.stringify(b)), g.year)
+    const other = createBusinessAsset(g, 'Second Manufacturer', second, 1e6)
+    g.assets.push(other)
+    const firstPlan = simulateInventionProducts(g, b, g.year), secondPlan = simulateInventionProducts(g, second, g.year)
+    expect(firstPlan.units).toBeGreaterThan(0)
+    expect(secondPlan.units).toBe(firstPlan.units)
+    commitInventionProducts(g, b, g.year, firstPlan, a.id)
+    const firstAdoption = economyState(g)!.pending.reduce((sum, row) => sum + row.innovation, 0)
+    commitInventionProducts(g, second, g.year, secondPlan, other.id)
+    expect(economyState(g)!.pending.reduce((sum, row) => sum + row.innovation, 0)).toBeCloseTo(firstAdoption * 2)
+    const settled = JSON.stringify(economyState(g))
+    commitInventionProducts(g, second, g.year, secondPlan, other.id)
+    expect(JSON.stringify(economyState(g))).toBe(settled)
   })
 })
