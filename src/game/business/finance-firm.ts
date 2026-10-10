@@ -3,6 +3,7 @@ import { seeded } from '../assets'
 import { notice, useYearAction, yearActionsUsed } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
+import { economicReportSummary } from './economic-report'
 import { hasTech } from '../history/timeline'
 import { hasTalent } from '../talents'
 import type { Asset, GameState, MenuAction, MenuNode } from '../types'
@@ -107,6 +108,7 @@ export function attractFinanceClients(g: GameState, assetId: string): void {
 export function simulateFinanceYear(g: GameState, b: BizState, year: number, ownerDraw: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
   const f = financeView(b)
   if (f.lastYear >= year && b.last) return { stmt: b.last, inventoryEnd: 0, wantedStaff: b.employees, unpaidSalary: 0, market: null }
+  const openingLoans = f.loanBook
   const rng = seeded(`${g.lifeId}|finance|${b.countryId}|${b.city}|${b.founded}|${b.founderName}|${year}`)
   const investment = b.industry === 'investmentFirm', online = b.industry === 'onlineBank'
   const e = localEcon(b.industry, b.countryId, b.city), m = marketOf(b.countryId), def = industryDef(b.industry)
@@ -279,7 +281,11 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
     revenue: Math.round(revenue), salesTax: 0, netRevenue: Math.round(revenue), cogs: Math.round(cogs), wages: Math.round(wages), keyStaff: Math.round(keyStaff), rent: Math.round(rent), marketing: Math.round(marketing), interest: Math.round(interest), upkeep: Math.round(upkeep), other: b.yearCosts, otherIncome: b.yearIncome,
     ownerPay, pbt: Math.round(pbt), corpTax: Math.round(tax), net, cashErosion: 0, cycle, openFraction: open, employees: staffCount }
   b.last = stmt
-  return { stmt, inventoryEnd: 0, wantedStaff: staffCount, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), market: null }
+  // Read the normalized closing client book, not a target allocation. The annual
+  // caller decides whether this is a real settlement; forecast clones emit nothing.
+  const settled = financeView(b)
+  return { stmt, inventoryEnd: 0, wantedStaff: staffCount, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), market: null,
+    ...(!investment ? { bank: { bankLoss: settled.lastDefaults, bankRun: settled.lastRun ? settled.lastWithdrawals : 0, bankLending: settled.loanBook - openingLoans } } : {}) }
 }
 
 export function financeManagerTurn(g: GameState, b: BizState): void {
@@ -308,7 +314,7 @@ export function financeInfo(g: GameState, b: BizState): string {
 
 export function queueFinanceReport(g: GameState, a: Asset, b: BizState): void {
   const f = financeView(b)
-  notice(g, `${a.name}: Financial Institution Report`, `${financeInfo(g, b)}\n${b.last?.year ?? g.year}: fee/interest income ${money(b.last?.revenue ?? 0)}, net ${money(b.last?.net ?? 0)}. Own company cash ${money(b.cash)}.\n${f.lastDefaults > 0 ? `Credit and liquidity losses: ${money(f.lastDefaults)}. ` : ''}${f.lastWithdrawals > 0 ? `Client withdrawals ${money(f.lastWithdrawals)}. ` : ''}Set risk, reserves and rates from Financial Operations. This is not a price-and-production company.`, { emoji: a.emoji, tone: (b.last?.net ?? 0) >= 0 ? 'good' : 'bad' })
+  notice(g, `${a.name}: Financial Institution Report`, `${financeInfo(g, b)}\n${b.last?.year ?? g.year}: fee/interest income ${money(b.last?.revenue ?? 0)}, net ${money(b.last?.net ?? 0)}. Own company cash ${money(b.cash)}.\n${f.lastDefaults > 0 ? `Credit and liquidity losses: ${money(f.lastDefaults)}. ` : ''}${f.lastWithdrawals > 0 ? `Client withdrawals ${money(f.lastWithdrawals)}. ` : ''}${economicReportSummary(b)}\nSet risk, reserves and rates from Financial Operations. This is not a price-and-production company.`, { emoji: a.emoji, tone: (b.last?.net ?? 0) >= 0 ? 'good' : 'bad' })
 }
 
 export function financeNodes(g: GameState, a: Asset): MenuNode[] {

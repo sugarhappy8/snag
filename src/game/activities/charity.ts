@@ -6,6 +6,7 @@ import { chance, pick, randInt } from '../rng'
 import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { brokeNotice, gate, money, result, stablePick, usesLeft } from './common'
 import { common } from '../events/era'
+import { givingFundMenu } from './giving-fund'
 
 const DONATIONS_PER_YEAR = 6
 const KEY = 'act.donate'
@@ -140,5 +141,5 @@ export const charityMenu: MenuGroup = {
   subtitle: 'Donate to a good cause',
   disabledReason: (g) => gate(g, { minAge: 18, minAgeText: 'You must be 18 to donate your own money. Try a lemonade stand fundraiser.' }),
   header: (g) => `Your balance: ${money(Math.max(0, g.character.money))}. You can make ${usesLeft(g, KEY, DONATIONS_PER_YEAR)} more donations this year.`,
-  children: (g): MenuNode[] => charitiesThisYear(g).map(charityAction),
+  children: (g): MenuNode[] => [...charitiesThisYear(g).map(charityAction), givingFundMenu],
 }

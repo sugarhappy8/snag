@@ -13,6 +13,7 @@ import { seeded } from '../assets'
 import { readVenture } from '../computer/dev-state'
 import { addHidden, addStat, count, formatMoney, log, notice, remember, scriptChoice, scriptInput, useYearAction, yearActionsUsed } from '../core'
 import { economyOf } from '../economy'
+import { economicReportSummary } from './economic-report'
 import { chance, pick, randFloat, randInt, shuffle, uid } from '../rng'
 import { defineScript } from '../scripts'
 import { hire } from '../special/common'
@@ -627,6 +628,8 @@ export function queueStudioReport(g: GameState, a: Asset, b: BizState): void {
   const s = b.last
   const r = st.report
   const lines: string[] = []
+  const explanation = economicReportSummary(b)
+  if (explanation) lines.push(explanation)
   if (r && r.releases.length) lines.push(...r.releases.map((x) => `\u{1F680} ${x}.`))
   if (s) {
     lines.push(`\u{1F4B5} ${s.year}: ${copiesLabel(r?.copies ?? s.sold)} sold, ${money(s.revenue)} in sales, ${s.net >= 0 ? `${money(s.net)} profit` : `${money(-s.net)} loss`}.`)

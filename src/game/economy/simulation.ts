@@ -3,6 +3,10 @@ import { marketOf } from '../data/markets'
 import { historicalCycle, historicalHousing, historicalPolicyRate, inHistory } from '../history/markets'
 import { PRESENT_YEAR } from '../history/timeline'
 import { bound, compactCountry, economicRoll, SECTORS, SECTOR_RULES, type CountryEconomy, type EconomicPolicy, type EconomyFeedback, type Sector, type SectorState } from './model'
+import { sectorSupply } from './supply'
+import { countryTrade, sectorTrade, TRADE_INPUTS } from './trade'
+import { advanceCohorts, cohortDemand, cohortSkills } from './cohorts'
+import { budgetPlan, finalizeDebt } from './government'
 
 export interface WorldConditions { growth: number; demand: number; supply: number; rate: number }
 export function worldConditions(countries: Record<string, CountryEconomy>): WorldConditions {
@@ -16,32 +20,44 @@ export function worldConditions(countries: Record<string, CountryEconomy>): Worl
 
 /** One synchronous transition: every country reads the same opening world, never another
  * country's newly computed year. No player money is created by these aggregates. */
-export function advanceCountry(old: CountryEconomy, country: string, year: number, seed: string, world: WorldConditions, feedback: EconomyFeedback[] = [], policies: EconomicPolicy[] = []): CountryEconomy {
+export function advanceCountry(old: CountryEconomy, country: string, year: number, seed: string, world: WorldConditions, feedback: EconomyFeedback[] = [], policies: EconomicPolicy[] = [], opening: Record<string, CountryEconomy> = { [country]: old }): CountryEconomy {
   const m = marketOf(country), historic = inHistory(year)
+  const tradeNetwork = countryTrade(opening, country, year, old.tradeNetwork)
+  const exportDemand = TRADE_INPUTS.reduce((sum, input) => sum + tradeNetwork.inputs[input].exportDemand, 0) / TRADE_INPUTS.length
   const roll = (name: string) => economicRoll(`${seed}|economy|${country}|${year}|${name}`)
   const globalRoll = economicRoll(`${seed}|economy|world|${year}|supply`)
   const neutralRate = bound(m.interestRate, .02, .075)
   const targetInflation = bound(m.inflation, .015, .045)
   const policy = (kind: EconomicPolicy['kind']) => bound(policies.filter(p => p.country === country && p.year < year && p.until >= year && p.kind === kind).reduce((s, p) => s + p.scale, 0), 0, 1.5)
-  const investment = policy('investment'), education = policy('education'), health = policy('health')
-  const taxCut = policy('taxCut'), taxRise = policy('taxRise'), regulation = policy('regulation')
+  const requestedPolicies = { investment: policy('investment'), education: policy('education'), health: policy('health'), taxCut: policy('taxCut'), taxRise: policy('taxRise'), regulation: policy('regulation') }
+  const publicPlan = budgetPlan(old, country, requestedPolicies)
+  const { investment, education, health, regulation } = publicPlan.funded
+  const { taxCut, taxRise } = requestedPolicies
   const own = feedback.filter(f => f.country === country)
   const jobs = bound(own.reduce((s, f) => s + f.jobs, 0), -.05, .05)
   const failures = bound(own.reduce((s, f) => s + f.failure, 0), 0, .12)
   const capex = bound(own.reduce((s, f) => s + f.investment, 0), 0, .08)
-  const creditDrag = (Math.min(.4, old.rate) - neutralRate) * .9 + Math.max(0, old.defaults - .03) * .7
+  const bankLoss = bound(own.reduce((s, f) => s + (f.bankLoss ?? 0), 0), 0, .2)
+  const bankRun = bound(own.reduce((s, f) => s + (f.bankRun ?? 0), 0), 0, .3)
+  const bankLending = bound(own.reduce((s, f) => s + (f.bankLending ?? 0), 0), -.3, .3)
+  const bankStress = bound(old.bankStress * .55 + bankLoss * 5 + bankRun * 1.5 + Math.max(0, -bankLending) * .75, 0, 1)
+  // Settled losses impair lender capital and liquidity. Jobs and spending respond
+  // through credit/output, without a separate banking-crisis penalty on households.
+  const creditDrag = (Math.min(.4, old.rate) - neutralRate) * .9 + Math.max(0, old.defaults - .03) * .7 + bankStress * .22 - Math.max(0, bankLending) * .05
   // Supply incidents are small exogenous inputs. Their effects spread through input costs,
   // inflation, monetary policy and employment rather than rolling each of those separately.
   const incident = globalRoll < .06 ? .12 + globalRoll : roll('supply') < .045 ? .12 : 0
   const supply = bound(old.supply * .55 + world.supply * .15 + incident - old.sectors.energy.adoption * .025, 0, .6)
   const saving = bound(.15 + (1 - old.confidence) * .1 + old.unemployment * .3 + Math.max(0, old.rate - .04) * .4, .05, .4)
   const credit = bound(old.credit * .6 + .4 * (1 - creditDrag * 3 - Math.max(0, .23 - old.liquidity) * 2 - failures - regulation * .035), .25, 1.4)
-  const fiscal = bound(investment * .018 + education * .012 + health * .012 + taxCut * .014 - taxRise * .014
-    + Math.max(0, old.unemployment - .065) * .18 - Math.max(0, old.governmentDebt - 1) * .025, -.06, .08)
+  const fiscal = publicPlan.fiscal
   const taxShift = bound(taxRise * .025 - taxCut * .025, -.05, .06)
-  const trade = bound(.65 * old.trade + .35 * (1 + (world.demand - 1) * .6 - supply * .6 + (old.currency - 1) * .15), .4, 1.5)
-  const spending = bound(.65 * old.spending + .35 * (1 + (old.wages - 1) * .2 - (old.unemployment - .055) * 1.5 + (old.confidence - 1) * .2 + (credit - 1) * .25 - (saving - .15) * .6 - taxShift), .5, 1.5)
-  const demandImpulse = (spending - 1) * .15 + (trade - 1) * .07 + fiscal * .5 - creditDrag * .13 - supply * .08 + capex * .3
+  const trade = bound(.65 * old.trade + .35 * (1 + (world.demand - 1) * .35 + (exportDemand - 1) * .35 - supply * .6 + (old.currency - 1) * .15), .4, 1.5)
+  // Cohort budgets already include wages, joblessness, essential costs and taxes.
+  // Consume their prior-year purchases once, rather than charging those pressures twice.
+  const spending = bound(.65 * old.spending + .35 * (1 + (cohortDemand(old.cohorts) - 1) * .7 + (old.confidence - 1) * .15 + (credit - 1) * .15), .5, 1.5)
+  const missingOutput = SECTORS.reduce((sum, s) => sum + Math.max(0, 1 - old.sectors[s].output / Math.max(.25, old.sectors[s].demand)), 0) / SECTORS.length
+  const demandImpulse = (spending - 1) * .15 + (trade - 1) * .07 + fiscal * .5 - creditDrag * .13 - missingOutput * .06 + capex * .3
   const outputGap = bound(old.outputGap * .65 + demandImpulse - old.outputGap * Math.abs(old.outputGap) * 1.5 + (roll('activity') - .5) * .028, -.3, .22)
   const cycleHistory = historicalCycle(country, year, 1)
   const growth = bound(historic ? .02 + (cycleHistory - 1) * .35 + (outputGap - old.outputGap) * .15 : .018 + (outputGap - old.outputGap) * .5 + outputGap * .25 + (world.growth - .02) * .2, -.18, .14)
@@ -49,6 +65,7 @@ export function advanceCountry(old: CountryEconomy, country: string, year: numbe
   let automation = 0, averageProductivity = 0
   for (const s of SECTORS) {
     const prev = old.sectors[s], rule = SECTOR_RULES[s]
+    const imports = sectorTrade(tradeNetwork, s, year)
     const innovations = bound(own.filter(f => f.sector === s).reduce((sum, f) => sum + f.innovation, 0), 0, .5)
     const background = s === 'technology' || s === 'industry' ? .006 * old.skills : .002 * old.skills
     const adoption = bound(prev.adoption + (innovations + background) * (1 - prev.adoption) * (.4 + old.skills * .6), 0, 1)
@@ -57,26 +74,31 @@ export function advanceCountry(old: CountryEconomy, country: string, year: numbe
     const inputs = Object.entries(rule.inputs).reduce((sum, [input, weight]) => sum + (old.sectors[input as Sector].costs - 1) * weight, 0)
     const demand = bound(1 + (spending - 1) * rule.cycle + (credit - 1) * rule.credit * .22 + (trade - 1) * rule.imports * .35
       + (s === 'care' ? (old.elderly - .17) * 2 + health * .07 : 0) + (s === 'public' ? fiscal * 2 + education * .1 : 0)
-      + (s === 'technology' ? capex * 2 + investment * .08 : 0) - disruption * .2, .3, 1.8)
+      + (s === 'technology' ? capex * 2 + investment * .08 : 0) + (imports.exportDemand - 1) * rule.imports * .12 - disruption * .2, .3, 1.8)
     const financing = Math.max(0, old.rate - neutralRate) * rule.credit
-    const capacity = bound(prev.capacity + (demand - prev.capacity) * .12 * credit + (productivity - prev.productivity) * .3 + capex * .3 - supply * .05 - financing * .06, .4, 2.2)
+    const capacity = bound(prev.capacity + (demand - prev.capacity) * .12 * credit + prev.backlog * .035 * credit + (productivity - prev.productivity) * .3 + capex * .3 - supply * .05 - financing * .06, .4, 2.2)
+    const deliveries = sectorSupply(old, s, demand, capacity, supply, credit, imports)
     const scarcity = Math.max(-.15, demand / capacity - 1)
-    const costs = bound(1 + inputs * .4 + scarcity * .2 + supply * rule.imports + (old.currency - 1) * rule.imports * .25
-      + (old.wages - 1) * (1 - rule.automation * .45) * .25 - (productivity - 1) * .25, .5, 2.2)
+    const costs = bound(1 + inputs * .4 + scarcity * .2 + supply * rule.imports + (imports.cost - 1)
+      + (old.wages - 1) * (1 - rule.automation * .45) * .25 - (productivity - 1) * .25
+      + (1 - deliveries.availability) * .3 + deliveries.backlog * .06, .5, 2.2)
     const competition = bound(prev.competition + (demand - costs) * .015 + (credit - 1) * .03 - failures * .15 + regulation * .008 + (1 - prev.competition) * .003, .18, .9)
-    sectors[s] = { demand, capacity, costs, productivity, competition, adoption, disruption }
+    sectors[s] = { demand, capacity, costs, productivity, competition, adoption, disruption, ...deliveries }
     automation += disruption / SECTORS.length; averageProductivity += productivity / SECTORS.length
   }
   const structuralJobless = bound(.055 + (65 - m.easeOfBusiness) * .0006, .03, .1)
   const unemployment = bound(old.unemployment * .65 + structuralJobless * .35 - (growth - .02) * .5 + automation * .12 + failures * .35 - jobs - education * .002, .02, .35)
   const defaults = bound(.02 + Math.max(0, unemployment - .05) * .3 + Math.max(0, old.rate - neutralRate) * .2 * old.privateDebt + Math.max(0, -old.housingReturn) * .2 + failures * .5, .005, .2)
-  const liquidity = bound(.65 * old.liquidity + .35 * (.28 + saving * .1 - defaults * .6 + regulation * .04 + Math.max(0, .6 - old.credit) * .1), .07, .55)
+  const liquidity = bound(.65 * old.liquidity + .35 * (.28 + saving * .1 - defaults * .6 - bankStress * .12 + regulation * .04 + Math.max(0, .6 - old.credit) * .1), .07, .55)
   const privateDebt = bound(old.privateDebt + (credit - 1) * .045 - defaults * .15 - (old.privateDebt - .8) * .035, .2, 2)
-  const governmentDebt = bound((old.governmentDebt + fiscal + Math.min(.12, old.rate) * old.governmentDebt * .35 - .012) / (1 + growth), .05, 2.5)
-  const services = bound(.85 * old.services + .15 * (1 + education * .13 + health * .18 + investment * .08 - Math.max(0, governmentDebt - 1) * .22), .55, 1.4)
-  const skills = bound(old.skills + education * .008 + (services - 1) * .004 - (old.skills - .65) * .015, .3, .95)
+  const budget = finalizeDebt(publicPlan, old.governmentDebt, growth)
+  const governmentDebt = budget.closingDebt
+  const services = bound(.85 * old.services + .15 * (1 + education * .13 + health * .18 + investment * .08 + (budget.funding - 1) * .65), .55, 1.4)
   const wages = bound(old.wages + (averageProductivity - old.productivity) * .35 + (.06 - unemployment) * .12 - (old.wages - 1) * .025, .6, 2.5)
-  const inflation = historic || year <= PRESENT_YEAR ? currencyInflation(country, year) : bound(old.inflation * .55 + targetInflation * .45 + outputGap * .06 + supply * .12 - (averageProductivity - old.productivity) * .08 - Math.max(0, old.rate - neutralRate) * .05, -.035, .18)
+  const cohorts = advanceCohorts(old, { wages, unemployment, credit, rate: old.rate, taxShift, services, mobility: old.mobility, education, automation })
+  const skills = cohortSkills(cohorts)
+  const inputPriceChange = (sectors.essentials.costs - old.sectors.essentials.costs) * .1 + (sectors.consumer.costs - old.sectors.consumer.costs) * .06 + (sectors.energy.costs - old.sectors.energy.costs) * .04
+  const inflation = historic || year <= PRESENT_YEAR ? currencyInflation(country, year) : bound(old.inflation * .55 + targetInflation * .45 + outputGap * .06 + supply * .08 + inputPriceChange - (averageProductivity - old.productivity) * .08 - Math.max(0, old.rate - neutralRate) * .05, -.035, .18)
   const rateTarget = neutralRate + (inflation - targetInflation) * 1.4 + outputGap * .18 - (unemployment - structuralJobless) * .12
   const rate = historic ? historicalPolicyRate(country, year) ?? neutralRate : bound(old.rate * .55 + rateTarget * .45, .0025, .28)
   const confidence = bound(.65 * old.confidence + .35 * (1 + growth * 2 - (unemployment - .05) * 1.5 - defaults * 1.5 - supply * .35), .3, 1.4)
@@ -93,16 +115,22 @@ export function advanceCountry(old: CountryEconomy, country: string, year: numbe
   const market = bound(old.market * (1 + marketMove), .12, 8)
   const priceScale = year <= PRESENT_YEAR ? 1 : bound(old.priceScale * (1 + inflation) / (1 + currencyInflation(country, year)), 1e-6, 1e6)
   const causes: string[] = []
+  if (bankStress > .08) causes.push(`Bank losses and withdrawals are restricting credit. Stress fades as balance sheets stabilize; debt reduction and cash reserves improve resilience.`)
+  const constrained = SECTORS.filter(s => sectors[s].availability < .9).sort((a,b) => sectors[a].availability - sectors[b].availability)[0]
+  if (constrained) causes.push(`${SECTOR_RULES[constrained].label}: ${Math.round(sectors[constrained].availability * 100)}% input coverage limits output. Recovery needs suppliers or stock buffers.`)
+  const importGap = constrained ? sectorTrade(tradeNetwork, constrained, year).importedGap : 0
+  if (importGap > .08) causes.push(`Foreign suppliers left ${Math.round(importGap * 100)}% of ${SECTOR_RULES[constrained!].label.toLowerCase()} inputs undelivered. Diversification and local capacity help over time.`)
   if (supply > .075) causes.push('Supply shortages are raising production costs.')
   if (rate - neutralRate > .015) causes.push('Expensive credit is slowing borrowing and investment.')
   if (defaults > .05) causes.push('Defaults are tightening bank lending and household budgets.')
   if (growth < -.015) causes.push('Falling demand is putting jobs and business profits under pressure.')
   if (automation > .025) causes.push('New technology is lifting productivity while displacing some jobs.')
   if (investment + education + health > .2) causes.push('Public investment supports services and skills, funded through the budget.')
+  if (budget.unfunded > .01) causes.push('Debt service and limited borrowing have reduced funding for public programmes; services adjust gradually.')
   if (housingReturn < -.04) causes.push('Weaker borrowing power is bringing house prices down.')
   if (!causes.length) causes.push(growth > .03 ? 'Stronger household spending is supporting hiring and expansion.' : 'Spending, lending and employment are adjusting gradually.')
-  return compactCountry({ year, outputGap, growth, inflation, rate, unemployment, wages, productivity: averageProductivity, skills, confidence, spending, saving, credit, liquidity, defaults, privateDebt, governmentDebt, fiscal, taxShift, services, inequality, mobility,
+  return compactCountry({ year, outputGap, growth, inflation, rate, unemployment, wages, productivity: averageProductivity, skills, confidence, spending, saving, credit, liquidity, bankStress, defaults, privateDebt, governmentDebt, fiscal, taxShift, services, inequality, mobility,
     population: bound(old.population * (1 + .006 - (old.elderly - .17) * .035 - (unemployment - .06) * .01), .5, 2.5),
     elderly: bound(old.elderly + .0006 + (services - 1) * .0002 - (old.elderly - .25) * .002, .08, .4),
-    trade, currency, supply, housing, rent, housingReturn, bubble, market, priceScale, sectors, causes: causes.slice(0, 3) })
+    trade, currency, supply, housing, rent, housingReturn, bubble, market, priceScale, sectors, tradeNetwork, cohorts, budget, causes: causes.slice(0, 3).map(cause => cause.slice(0, 160)) })
 }

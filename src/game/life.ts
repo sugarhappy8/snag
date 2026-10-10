@@ -1477,6 +1477,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     adultNotice: age >= 18,
     midlifeCrisis: age > 55,
     previousGeneration: oldName,
+    // Restricted charitable funds are not estate assets. Only stewardship and
+    // already-funded program commitments survive; professional abilities do not.
+    ...(n.flags.givingFund ? { givingFund: n.flags.givingFund } : {}),
     ...(typeof n.flags.heirOccupation === 'string' ? { heirOccupation: n.flags.heirOccupation } : {}),
     // Market shocks are world state (a banned company stays banned), not the old character's.
     ...(Array.isArray(n.flags.marketShocks) ? { marketShocks: n.flags.marketShocks } : {}),

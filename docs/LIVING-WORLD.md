@@ -59,7 +59,10 @@ display consistently; a currency redenomination never awards money. World-level 
 aggregate, not a claim of a closed, penny-perfect national accounts model. Actual player and
 company transfers must still balance.
 
-## Verification and remaining scope
+## v1.10 foundation verification and scope
+
+This section records the earlier release baseline. World Simulation 2.0 below supersedes
+its supply, cohort, competitor, public-finance and performance limitations.
 
 Implemented in v1.10.0:
 
@@ -115,3 +118,204 @@ Specialist career content, minigames, era narratives and regional legality are r
 work should prioritize richer sector substitution/obsolescence, industry-specific strategic
 events, household distribution/cohorts and playtest-based balance tuning. A full redesign of
 each creative/special career remains separate work, rather than an untested replacement here.
+
+## World Simulation 2.0
+
+This extension starts from v1.11.1 and keeps the engine, financial ledgers, historical rules,
+annual ordering and interface above. World schema 2 reads schema 1 without awarding cash,
+inventory or backdated economic activity.
+
+### Supply and production
+
+Each sector now retains delivered-input coverage, a bounded reserve, unfilled demand,
+actual output and workforce availability. Supplier output is read from the opening world,
+so a disruption travels through the input graph over successive years, independently of
+country/sector iteration order. Inventories buffer a shortage, decay and refill gradually;
+credit affects replenishment. Service sectors have no physical stock.
+
+Physical companies hold a small composite basket of critical inputs, in output-equivalent
+units. This is separate from the existing finished-goods inventory. Purchases capitalize
+the actual cost paid, consumption and spoilage enter costs, and storage is an annual expense.
+The settlement cash bridge adds back noncash consumption and deducts current purchases.
+It does not pay for inputs twice or turn changes in input prices into inventory income.
+Extra reserves require spare opening company cash; ordinary just-in-time purchases retain
+the existing annual operating-payables convention. Liquidation uses a conservative haircut.
+
+Classic businesses and deep-tech factories reuse this supply book. Services can be limited
+by qualified workers without storing appointments or subscriptions. Forecasts only return
+the prospective next stock; only an actual annual settlement writes it.
+
+Snapshot normalization preserves valid historical hyperinflation-era policy rates and
+housing crashes. Clipping those values on reload previously both changed the world and
+prevented adjacent Time Machine snapshots from sharing their identical economic frames.
+
+### International trade
+
+Four critical input baskets retain up to three supplier countries each. Opening-year exporter
+output, logistics, historical tariffs/blocs, domestic war disruption and currency exposure
+determine deliveries. Export orders follow importers' prior commitments and demand. Supplier
+weights adjust gradually after settlement; a newly selected route cannot supply the lost
+orders retroactively. Domestic substitution requires prior shortages, spare capacity and credit.
+Historical chip/oil capabilities are era-gated. The network represents relative capacity and
+orders, not a shipment ledger or dollar-denominated trade balance.
+
+The existing paid supplier-diversification action partially reduces imported shortages, not
+domestic outages or missing workers. Premium suppliers trade higher costs for more dependable
+imports. A dependent manufacturer's lost inputs reduce actual production and profit.
+
+### Households and persistent companies
+
+Four household groups track population share, employment, qualifications, real income and
+consumption, debt, savings buffers and retirement. Food/housing costs weigh more heavily on
+lower-income baskets. Consumption feeds next-year demand; education builds qualifications that
+become available to employers in subsequent years. Automation redistributes the existing
+national unemployment burden rather than adding a second aggregate job-loss penalty.
+These groups are indices, not additional NPCs or accounts holding player money.
+
+Existing NPC education and household expenses use the same conditions; managed-family payroll
+and royal appointments retain their authority. Rental affordability affects vacancy/arrears
+through the existing landlord settlement. Ordinary birth-background odds respond to mobility
+and household pressure while the rare wealthy/dynastic tail keeps its prior random probability.
+
+Up to 192 significant canonical competitors retain financial buffers, capacity, adoption,
+strength, outcomes and six annual observations. Retained earnings fund expansion and adoption;
+weak demand, expensive inputs and limited credit can cause retrenchment or failure. The overlay
+modifies the existing roster identity, not a duplicate firm, and failed actors retain bounded
+terminal records until their canonical exit. Historical real brands keep their recorded dates
+and strength arcs. Financial detail for healthy irrelevant firms may be evicted at the cap.
+
+### Banks and public finances
+
+Bank simulations return observations of realized credit/liquidation losses, run-only
+withdrawals and net loan-book changes. Only actual player/NPC settlement queues those
+observations, once per company/year, scaled to the host economy. Forecast copies never
+emit them. Customer deposits and investment-fund principal remain segregated; an already
+reported bank loss is not reported again as generic company failure.
+
+At the following world boundary, bank stress reduces credit and liquidity. Weaker lending
+changes business/household demand and output, then jobs and borrower defaults, rather than
+adding an unrelated crisis penalty to every subsystem. Stress decays as balance sheets
+stabilize. Signed lending changes are combined before the national cap, so expanding and
+contracting banks offset one another independently of settlement order.
+Hiring and layoffs follow the same signed-net rule before the national employment cap,
+including when a save/reload occurs between company settlements.
+
+Each country has a GDP-share public budget: revenue, education, health, infrastructure,
+transfers, other services, interest, borrowing, repayment and unfunded programmes. Existing
+laws supply delayed policy requests. Only funded allocations support services and skills;
+debt service and financing limits can force cuts. Repaid debt can reach zero, excess
+surpluses become an explicit public saving flow, and a debt-cap breach after a GDP collapse
+is shown as an aggregate debt adjustment, not silently erased. This approximate national
+ledger does not collect a second tax from the player or create a spendable treasury account.
+
+Time Machine records use native gzip with a versioned safe-BMP transport, preserving exact
+JSON while using fewer localStorage characters than base64. Original plain and gz1 records
+remain readable; size/alphabet/padding/UTF-8/decompression guards reject damaged records.
+The ten-stop count and 1,500,000-character snapshot budget are unchanged.
+
+### Management and explanations
+
+Existing company Quality menus now expose a 0–50% strategic-input reserve slider and
+three-year fixed-input agreements. Setting a target does not buy anything immediately.
+Delivered reserve purchases use at most 20% of spare opening cash after current input
+commitments, subject to warehouse space. Contracts fix the price of up to 80% of the
+equipment capacity present when signed, at a 3% price premium and a one-time 4% fee.
+They do not guarantee delivery, expand when equipment is added, or avoid supplier-grade
+cost differences. Falling spot prices can make the contract a loss.
+
+The existing paid training and equipment-upgrade actions also build durable qualifications
+and automation. Training addresses measured qualification deficits, not missing people;
+automation covers a bounded part of remaining work, not absent materials. Their effects
+decay by 10% and 3% per year respectively, and repeated programmes have diminishing gains.
+Physical deep-tech production uses these same inputs and policies; services hold no stock.
+
+Classic CEOs rated 90 or higher compare at most six resilience choices against central and
+downside two-year scenarios using the existing production, pricing and cash books. No future
+random events are inspected. Scenario choices respect price caps, headquarters conditions,
+available cash, board reserves and capital budgets. Strategic-stock cash commitments survive
+into actual procurement, rather than being spent again on expansion or distributions.
+Existing specialist deep-tech, finance and studio planners remain authoritative; this new
+resilience search is not a replacement for them.
+
+Every company's Money menu has an optional **Why Profit Changed** view. It reconciles two
+consecutive settled net profits to actual sales, costs, tax, interest and other statement
+lines, including final intercompany service adjustments. Input purchases, stock book value,
+storage, spoilage and missing output are labelled separately. Contract gains/losses refer
+to procurement cost, not instant profit on unsold stock. Opening companies do not get an
+invented comparison. Detailed national Supply & Trade, Households & Work, Government &
+Banking and Company Watch pages sit behind the existing short economy summary.
+
+All these menus, quotes and scenario evaluations are read-only. They cannot spend money,
+advance RNG, seed competitors, write historical outcomes or settle an annual period.
+
+### Verification and limits
+
+The World2 tests cover energy-to-industry propagation, dependent chip imports and route
+substitution, distributional food-cost pressure, paid skill formation, technology adoption
+and displacement, persistent rival expansion/distress/failure, realized bank losses and
+credit recovery, and funded public policies with annual lags. Concrete procurement and
+contract transactions reconcile cash and expense; national quantities remain indices.
+Legacy reads create no retroactive transactions. Menu repetition, annual-hook retries,
+JSON reloads, heirs and Time Machine have explicit deterministic/invariant checks.
+
+Controlled scenario comparisons (against the same seeded world without the shock):
+
+| Change | Verified consequence |
+| --- | --- |
+| Energy production falls to 0.15 of baseline | Manufacturing and transport output fall; costs, backlogs and inflation rise. Food/retail still feel the effect the following year after energy recovers. |
+| Taiwan/Korea technology output stops | A dependent Japanese manufacturer's production, sales and net profit fall. Paid diversification restores only part of the lost production and retains its expense. |
+| Essentials prices double | Working-household consumption loses more than twice as much as wealthy-household consumption; its savings decline and debt rises. |
+| Systemic bank losses settle | Credit and business orders weaken, unemployment/defaults rise, and recovery unfolds through the same state. In the 30-year fixture, stress falls below 0.001 and credit recovers more than 0.05 from its trough. |
+| Education spending increases | Qualifications improve before available workforce; after five transitions, skills/workforce exceed the control while public debt is higher. |
+| Rivals face different financial buffers | Profitable funded rivals expand/adopt; a weak buffer can fail under supply/credit stress while a stronger one survives. Failed identities do not respawn. |
+
+These are causal comparisons within the new model, not claims of measured old-release
+versus new-release profits or guaranteed player outcomes.
+
+A 120-year paired run checks 240 world transitions, bounded histories and generational
+reloads. Ten Time Machine stops with eleven shared economic frames occupy 688,976 of
+1,500,000 snapshot characters (45.9%) in the regression fixture. A separate representative
+workload settles sixteen subsidiaries, sixty contacts and six initial NPC companies for
+five years, across two replay branches and an heir transition; both 85- and 95-rated
+management are covered. Performance figures are machine/workload measurements, not a
+guaranteed mobile-device frame rate.
+
+Final isolated one-worker sampling (ten measured annual branches per fixture):
+
+| Management | World transition | Business settlement | NPC progression | Final JSON save |
+| --- | ---: | ---: | ---: | ---: |
+| 85-rated | 39.8 ms/year | 1,691.2 ms/year | 24.0 ms/year | 1,730,406 characters |
+| 95-rated | 22.5 ms/year | 2,206.0 ms/year | 19.8 ms/year | 1,743,030 characters |
+
+The elite workload executed 100 resilience reviews and selected actual investments.
+Different decisions and warmed caches mean these rows are workload observations, not a
+controlled claim that CEO skill speeds up the world engine. Both retained 135 distinct
+tracked rivals, exact live/reloaded JSON and idempotent annual-hook retries.
+
+Final verification (2026-10-10): the broad two-worker sweep ran 2,665 tests across 167
+files in 20m53s. It passed 2,662 and exposed three failures: the existing 400-childhood
+statistical test exceeded its single two-minute timeout, and two newly added signed-job
+regressions encountered the earlier ±0.08 implementation cached before the in-flight fix.
+The childhood workload is now 400 individually timed cases with all original seeds,
+drivers, years and aggregate thresholds preserved; neither its sample nor assertions were
+reduced and no timeout was raised. A fresh process then passed all 592 tests across the
+18 affected/new-system files, including all childhood samples, World2 tests, save codec,
+Time Machine and living-economy regressions (6m00s). No failures remain in those checks.
+The separate isolated 85/95 benchmark also passed both cases.
+
+`npm run build` passes TypeScript validation and production compilation; `git diff --check`
+is clean. The final JavaScript output is approximately 7.09 MB minified / 2.40 MB gzip,
+with the existing large-chunk warning. No dependency or package-version changes were made.
+
+Browser checks use an isolated local production-build save: a South Korean 1950 birth,
+annual childhood events through age four, the 1953 currency change, saved-life reload,
+the four new economic detail screens, and a Time Machine rewind followed by continued
+play. Business-policy actions and financial effects are exercised by automated integration
+tests, not claimed as a complete manual career playthrough.
+
+The model remains deliberately bounded: four household groups, four traded input baskets,
+three supplier routes per basket, and up to 192 detailed competitors. It does not simulate
+individual shipments, every real firm, national accounts to the penny, or a bilateral FX
+market. New reserve/contract behavior will still benefit from longer balance playtests.
+The existing single JavaScript bundle remains large; the production build reports its
+size warning. No backend, runtime dependency, release tag or deployment is added here.

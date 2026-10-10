@@ -4,8 +4,9 @@ import { historicalCycle, inHistory } from '../history/markets'
 import { outcomeTag } from '../timeMachine'
 import type { GameState } from '../types'
 import { COUNTRIES } from '../world'
+import { advanceRivals } from '../business/economic-actors'
 import { advanceCountry, worldConditions } from './simulation'
-import { bound, economyOf, economyState, initialCountry, pointOf, sectorOf, storeEconomy, type EconomicPolicy, type EconomyFeedback, type EconomyState } from './model'
+import { bound, ECONOMY_VERSION, economyOf, economyState, initialCountry, pointOf, sectorOf, storeEconomy, type EconomicPolicy, type EconomyFeedback, type EconomyState } from './model'
 
 export { bound, ECONOMY_KEY, economicRoll, economyOf, economyState, initialCountry, sectorOf, SECTORS, SECTOR_RULES } from './model'
 export type { CountryEconomy, EconomyState, Sector } from './model'
@@ -14,7 +15,7 @@ export type { CountryEconomy, EconomyState, Sector } from './model'
 export function ensureEconomy(g: GameState): void {
   if (economyState(g)) return
   const countries = Object.fromEntries(COUNTRIES.map(c => [c.id, initialCountry(c.id, g.year)]))
-  storeEconomy(g, { v: 1, year: g.year, countries, previous: {}, history: {}, pending: [], policies: [], receipts: [] })
+  storeEconomy(g, { v: ECONOMY_VERSION, year: g.year, countries, previous: {}, history: {}, pending: [], policies: [], receipts: [], rivals: [], previousRivals: [] })
 }
 
 export function yearlyEconomy(g: GameState): void {
@@ -27,10 +28,10 @@ export function yearlyEconomy(g: GameState): void {
   const opening = prev.year === g.year - 1 ? prev.countries : Object.fromEntries(COUNTRIES.map(c => [c.id, initialCountry(c.id, g.year - 1)]))
   const world = worldConditions(opening)
   const seed = `${g.lifeId.replace(/-g\d+$/, '')}${outcomeTag(g, g.year)}`
-  const next: EconomyState = { v: 1, year: g.year, countries: {}, previous: opening, history: {}, pending: [], policies: prev.policies.filter(p => p.until >= g.year), receipts: [] }
+  const next: EconomyState = { v: ECONOMY_VERSION, year: g.year, countries: {}, previous: opening, history: {}, pending: [], policies: prev.policies.filter(p => p.until >= g.year), receipts: [], rivals: advanceRivals(g, opening, prev.rivals, g.year), previousRivals: prev.rivals }
   for (const c of COUNTRIES) {
     const old = opening[c.id] ?? initialCountry(c.id, g.year - 1)
-    const current = advanceCountry(old, c.id, g.year, seed, world, prev.pending, next.policies)
+    const current = advanceCountry(old, c.id, g.year, seed, world, prev.pending, next.policies, opening)
     next.countries[c.id] = current
     next.history[c.id] = [...(prev.history[c.id] ?? [pointOf(old)]), pointOf(current)].slice(-32)
   }
@@ -69,7 +70,7 @@ export function economyMarketFactor(g: GameState, country: string, year: number,
 
 /** Aggregated feedback is keyed to a settled result, not an action click. Receipts reset only
  * after the next annual transition consumes that year's queue. No settlement-order effects. */
-export function recordEconomicActivity(g: GameState, id: string, country: string, industry: string, changes: { jobs?: number; investment?: number; failure?: number; innovation?: number }): void {
+export function recordEconomicActivity(g: GameState, id: string, country: string, industry: string, changes: { jobs?: number; investment?: number; failure?: number; innovation?: number; bankLoss?: number; bankRun?: number; bankLending?: number }): void {
   if (!COUNTRIES.some(c => c.id === country) || !id) return
   ensureEconomy(g)
   const state = economyState(g)!, token = `${g.year}:${id}`
@@ -79,10 +80,22 @@ export function recordEconomicActivity(g: GameState, id: string, country: string
   const gdp = Math.max(1e9, m.populationM * 1e6 * m.gdpPerCapita)
   const finite = (v: number | undefined) => typeof v === 'number' && Number.isFinite(v) ? v : 0
   const update: EconomyFeedback = { country, sector, jobs: bound(finite(changes.jobs) / workforce, -.04, .04), investment: bound(finite(changes.investment) / gdp, 0, .06), failure: bound(finite(changes.failure) / gdp, 0, .1), innovation: bound(finite(changes.innovation), 0, .3) }
+  if (industry === 'bank' || industry === 'onlineBank') Object.assign(update, {
+    bankLoss: bound(finite(changes.bankLoss) / gdp, 0, .2), bankRun: bound(finite(changes.bankRun) / gdp, 0, .3), bankLending: bound(finite(changes.bankLending) / gdp, -.3, .3),
+  })
   const pending = state.pending.map(p => ({ ...p })), existing = pending.find(p => p.country === country && p.sector === sector)
   if (existing) {
-    existing.jobs = bound(existing.jobs + update.jobs, -.08, .08); existing.investment = bound(existing.investment + update.investment, 0, .08)
+    // Keep signed expansions and layoffs until the shared national transition:
+    // clipping between companies would make employment depend on settlement order.
+    existing.jobs += update.jobs; existing.investment = bound(existing.investment + update.investment, 0, .08)
     existing.failure = bound(existing.failure + update.failure, 0, .12); existing.innovation = bound(existing.innovation + update.innovation, 0, .5)
+    if (update.bankLoss !== undefined) {
+      existing.bankLoss = bound((existing.bankLoss ?? 0) + update.bankLoss, 0, .2)
+      existing.bankRun = bound((existing.bankRun ?? 0) + (update.bankRun ?? 0), 0, .3)
+      // Clamp the combined national signal at consumption, not between banks:
+      // an expanding lender must offset a contracting lender independent of order.
+      existing.bankLending = (existing.bankLending ?? 0) + (update.bankLending ?? 0)
+    }
   } else pending.push(update)
   storeEconomy(g, { ...state, pending, receipts: [...state.receipts, token].slice(-3000) })
 }

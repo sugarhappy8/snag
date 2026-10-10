@@ -14,6 +14,7 @@ import { readJob, readPast, type FamilyJob } from './nepo-job'
 import { fitOf, fitWord, outlookFor, outlookText, ratingWord } from './nepo-model'
 import { ABOVE_MARKET, MAX_PAY_MULT, ageBlock, marketPay, payAt, rankDef, rankTitle } from './nepo-roles'
 import { CEO_MIN_AGE } from './nepo-succession'
+import { successionReviewMenu } from './succession-review'
 import { successionEstateUnit } from './nepo-inheritance'
 import { employeesOf, employerOf, familyPayroll, heirsOf, hireBlock, isCeoOf, isRelative, readFamily, successorOf, yourKin, eligibleRelatives, kinWord } from './nepo-state'
 import { companyEffects } from './nepo-year'
@@ -403,7 +404,7 @@ function offerGroup(a: Asset, p: Person): MenuGroup {
 // Succession
 
 function successionNodes(a: Asset): MenuNode[] {
-  const nodes: MenuNode[] = []
+  const nodes: MenuNode[] = [successionReviewMenu(a)]
   nodes.push({
     type: 'info',
     id: `nepo.${a.id}.succ.info`,

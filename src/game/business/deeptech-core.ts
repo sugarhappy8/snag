@@ -14,6 +14,7 @@ import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
+import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, round2, toJson } from './util'
 
@@ -268,6 +269,8 @@ export interface TechPlan {
   suggested: number
   demand: number
   capacity: number
+  /** Installed capacity before workforce and material delivery limits. */
+  equipmentCapacity: number
   unitCost: number
   taxRate: number
   /** The world market (competition-core): bottom-up units and what competition left of them. */
@@ -315,7 +318,8 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
     going: round2(going),
     suggested: round2(going * premium),
     demand: Number.isFinite(demand) ? Math.max(0, demand) : 0,
-    capacity: Number.isFinite(capacity) ? Math.max(0, capacity) : 0,
+    capacity: supplyCapacity(g, b, year, capacity),
+    equipmentCapacity: Number.isFinite(capacity) ? Math.max(0, capacity) : 0,
     unitCost: round2(unitCost),
     taxRate: home.taxRate,
     market: pick ? { ...pick, bu } : null,
@@ -336,13 +340,20 @@ export function techPriceBounds(g: GameState, b: BizState, t: TechState): { min:
 /** The most profitable plan for next year (the Business talent's hint and the manager's plan). */
 export function bestTechPlan(g: GameState, b: BizState, t: TechState, cycle?: number): { price: number; production: number; profit: number } {
   const bounds = techPriceBounds(g, b, t)
+  const def = industryDef(b.industry), materialShare = supplyProfile(b.industry)?.materialShare ?? 0
   let best = { price: bounds.going, production: 0, profit: -Infinity }
   for (let r = 0.6; r <= 2.01; r += 0.05) {
     const price = round2(clampN(bounds.going * r, bounds.min, bounds.max))
     const plan = techPlan(g, b, t, g.year, { price, calm: true, cycle })
-    const sold = Math.min(plan.demand, plan.capacity)
-    const profit = sold * (price / (1 + plan.taxRate) - plan.unitCost)
-    if (profit > best.profit) best = { price, production: Math.round(Math.max(0, Math.min(plan.capacity, plan.demand - b.inventory))), profit }
+    const production = Math.round(Math.max(0, Math.min(plan.capacity, plan.demand - b.inventory)))
+    const supply = bookSupply(g, b, g.year, plan.equipmentCapacity, production, plan.unitCost)
+    const sold = Math.floor(Math.min(plan.demand, supply.produced + b.inventory))
+    const ordinary = plan.unitCost * (def.perishable >= 1 ? sold * .7 + supply.produced * .3 : supply.produced)
+    const cogs = ordinary * (1 - materialShare) + supply.materialsCost
+    // As before, this is contribution before fixed operating/R&D costs, not a
+    // full-year profit promise. Raw-stock historical cost now matches settlement.
+    const profit = sold * price / (1 + plan.taxRate) - cogs - supply.storageCost
+    if (profit > best.profit) best = { price, production, profit }
   }
   return best
 }
@@ -513,7 +524,7 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
     pipeline *= hypeMult
   }
   const unitCost = localEcon(ind, b.countryId, b.city).unitCost
-  const floor = 0.55 * equipmentValue(b) + Math.max(0, b.inventory) * unitCost * 0.5
+  const floor = 0.55 * equipmentValue(b) + Math.max(0, b.inventory) * unitCost * 0.5 + supplyInventoryValue(b)
   // Plants and equipment back the IP; a profit or revenue multiple already prices them in.
   const v = Math.max(profitValue, revValue, ip + pipeline + t.plantBook * 0.8 + floor)
   return Number.isFinite(v) ? clampN(v, 0, MAX_TECH_VALUE) : 0

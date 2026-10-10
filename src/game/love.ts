@@ -2909,7 +2909,7 @@ export function livingPets(g: GameState): Person[] {
 }
 
 function ownsProperty(g: GameState): boolean {
-  return g.assets.some((a) => a.kind === 'house')
+  return g.assets.some((a) => a.kind === 'house' && a.details.commercial !== true)
 }
 
 function petStoreAction(store: PetStore): MenuAction {

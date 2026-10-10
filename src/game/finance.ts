@@ -490,7 +490,7 @@ export function welcomingParent(g: GameState): Person | undefined {
  */
 export function relocateAfterLosingHome(g: GameState, excludeAssetId?: string): string {
   const c = g.character
-  const other = g.assets.find((a) => a.kind === 'house' && a.id !== excludeAssetId && !a.rentedOutFor)
+  const other = g.assets.find((a) => a.kind === 'house' && a.details.commercial !== true && a.id !== excludeAssetId && !a.rentedOutFor)
   if (other) {
     c.residence = { status: 'owned', assetId: other.id, description: other.name }
     return `You moved into your ${other.name.toLowerCase()}.`

@@ -33,6 +33,9 @@ import { rdBase, rdCrowding, rdMinBudget, rdOf, rdQuote, rdValue, retireLines, r
 import { bestRole, hireValue, interviewFee, maxKeyStaff } from './staff'
 import { totalOutlets, type BizState, type KeyStaff, type Manager, type Supplier } from './state'
 import { clampN, money, plural, priceCapOf, round2, unitMoney, units } from './util'
+import { bestResilienceMove } from './supply-resilience'
+import { inputContractQuote, purchaseEquipmentUpgrade, purchaseInputContract, purchaseTraining } from './supply-policy'
+import { readSupplyPolicy, saveSupplyPolicy } from './supply-policy-state'
 
 /** Years an investment is counted for (the expansion hints use the same yardstick). */
 export const MARGIN_YEARS = 5
@@ -360,10 +363,33 @@ interface Turn {
   /** Money moved this turn (capex, R&D, debt, payouts, closures). */
   moved: number
   big: boolean
+  reserved: number
 }
 
 function spendable(t: Turn): number {
-  return Math.max(0, Math.min(capexLeft(t.g, t.b, t.st), t.b.cash - reserveDollars(t.b, t.st)))
+  return Math.max(0, Math.min(capexLeft(t.g, t.b, t.st), t.b.cash - reserveDollars(t.b, t.st) - t.reserved))
+}
+
+function resilienceTurn(t: Turn): void {
+  if (t.m.skill < 90) return
+  const move = bestResilienceMove(t.g, t.a, t.b, spendable(t))
+  if (!move) return
+  let paid = 0
+  if (move.kind === 'training') paid = purchaseTraining(t.g, t.a, t.b)
+  else if (move.kind === 'automation') paid = purchaseEquipmentUpgrade(t.g, t.a, t.b)
+  else if (move.kind === 'contract') {
+    const quote = inputContractQuote(t.g, t.b)
+    if (!quote || quote.fee > spendable(t) || !purchaseInputContract(t.b, quote)) return
+    paid = quote.fee
+  } else {
+    const p = readSupplyPolicy(t.b); p.target = move.target!
+    p.procurement = { year: t.g.year, limit: move.procurementLimit ?? move.commitment }
+    saveSupplyPolicy(t.b, p); t.reserved += move.commitment
+  }
+  if (move.kind !== 'target' && paid <= 0) return
+  noteSpend(t.g, t.st, paid + move.commitment); t.moved += paid; t.big = true
+  const choice = move.kind === 'target' ? `set the input-reserve target to ${Math.round(move.target! * 100)}%` : move.kind === 'contract' ? 'fixed a capped volume of input prices for three years' : move.kind === 'training' ? 'funded the existing staff training program' : 'upgraded equipment for quality and bounded automation'
+  t.lines.push(`Resilience review: ${choice}; ${money(paid)} paid${move.commitment > 0 ? ` and up to ${money(move.commitment)} extra working cash reserved for actual inputs` : ''}. Two-year forecast changes: central ${money(move.central)}, downside ${money(move.downside)} (25% dearer inputs, fewer deliveries/workers and softer demand). These are scenarios, not guaranteed results.`)
 }
 
 function spend(t: Turn, amount: number, capex: boolean): void {
@@ -591,7 +617,7 @@ function debtTurn(t: Turn): void {
   const style = styleOf(t.m)
   const hurdle = t.st.mandate === 'growth' ? 0.09 : style === 'steady' ? 0.04 : style === 'costCutter' ? 0.05 : 0.065
   if (b.debtRate < hurdle) return
-  const pay = Math.round(Math.min(b.debt, b.cash - reserveDollars(b, t.st)))
+  const pay = Math.round(Math.min(b.debt, b.cash - reserveDollars(b, t.st) - t.reserved))
   if (pay < Math.max(1_000, b.debt * 0.05)) return
   b.debt -= pay
   if (b.debt < 1) b.debt = 0
@@ -606,7 +632,7 @@ function payoutTurn(t: Turn): void {
   const { g, a, b } = t
   const mandate = t.st.mandate
   if (mandate !== 'cash' && mandate !== 'profit') return
-  const free = Math.max(0, payableCash(a, b) - reserveDollars(b, t.st))
+  const free = Math.max(0, payableCash(a, b) - reserveDollars(b, t.st) - t.reserved)
   const payout = Math.round(mandate === 'cash' ? free : Math.min(free, 0.5 * Math.max(0, b.last?.net ?? 0)))
   if (payout < Math.max(1_000, b.valuation * 0.005)) return
   b.cash -= payout
@@ -630,11 +656,12 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   if (!m || b.ceo !== 'manager') return
   const st = boardOf(b)
   const err = clampN((100 - m.skill) / 100, 0, 0.5)
-  const t: Turn = { g, a, b, m, st, judge: (v) => v * (1 + (rand(g) * 2 - 1) * err), lines: [], moved: 0, big: false }
+  const t: Turn = { g, a, b, m, st, judge: (v) => v * (1 + (rand(g) * 2 - 1) * err), lines: [], moved: 0, big: false, reserved: 0 }
   const startCash = Math.max(0, b.cash)
   const baseline = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
   staffTurn(t)
   policyTurn(t)
+  resilienceTurn(t)
   productTurn(t)
   siteTurn(t)
   debtTurn(t)

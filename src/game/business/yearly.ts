@@ -45,6 +45,8 @@ import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, may
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
 import { financeManagerTurn, financeView, isFinanceFirm, queueFinanceReport } from './finance-firm'
 import { industryDef } from './industries'
+import { economicReportSummary, recordEconomicReport } from './economic-report'
+import { readSupply } from './supply'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
@@ -172,6 +174,13 @@ export function statementLines(b: BizState, s: Statement): AnnualReportData['lin
   lines.push(line(b.public ? `Market cap (${b.exchange})` : 'Valuation', money(b.valuation)))
   if (b.share < 1) lines.push(line(`Your ${pct(b.share)} stake`, money(stakeValue(b))))
   lines.push(line('Morale · Quality · Brand', `${b.morale}% · ${b.quality}% · ${b.brand}%`))
+  const supply = readSupply(b)
+  if (supply.last?.year === s.year) {
+    lines.push(line('Critical inputs held (book cost)', money(supply.bookValue)))
+    lines.push(line('Input purchases (cash, not a second expense)', money(supply.last.purchaseCost)))
+    if (supply.last.inputShortfall > 0) lines.push(line('Production lost to missing inputs', units(supply.last.inputShortfall), 'bad'))
+    if (supply.last.workforceShortfall > 0) lines.push(line('Production lost to workforce limits', units(supply.last.workforceShortfall), 'bad'))
+  }
   return lines
 }
 
@@ -219,7 +228,7 @@ export function reportData(g: GameState, a: Asset, b: BizState): AnnualReportDat
     maxProduction: maxProd,
     inventory: Math.max(0, Math.round(b.inventory)),
     expectedDemand: Math.max(0, Math.round(expected)),
-    marketNote: marketNote(g, b, lastCycle) + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
+    marketNote: [marketNote(g, b, lastCycle), economicReportSummary(b)].filter(Boolean).join(' ') + (bounds.cap !== null ? ` You promised to keep prices at or below ${unitMoney(bounds.max)} this year.` : ''),
     lines,
     ...(hasTalent(g, 'Business') ? { talentHint: planHint(g, a, b) } : {}),
   }
@@ -405,11 +414,13 @@ export function yearlyBusinessImpl(g: GameState): void {
   const queued = g.queue.length
   recoverConfidence(g)
   let eventQueued = false
+  const statementBridges = new Map<string, { previous: Statement | null; bookedNet: number }>()
   for (const a of list) {
     if (!findBusiness(g, a.id)) continue
     const b = bizOf(g, a)
     if (b.founded > fiscal || (b.last && b.last.year >= fiscal)) continue
     if (isFinanceFirm(b) && financeView(b).lastYear >= fiscal) continue
+    const previousStatement = b.last ? { ...b.last } : null
     const runs = runsIt(g, a)
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null
     const studio = isStudio(b)
@@ -462,13 +473,18 @@ export function yearlyBusinessImpl(g: GameState): void {
       commitInventionProducts(g, b, fiscal, manufactured, a.id)
     }
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
+    recordEconomicReport(b, previousStatement, s)
+    statementBridges.set(a.id, { previous: previousStatement, bookedNet: s.net })
     const lastCycle = s.cycle
     // Who sold what in its market this year (share, rivals, newcomers): before evolve() resets the year.
     refreshMarket(g, a, b, fiscal, s, res.market ?? null)
     recordCompanyShock(g, b, previousRevenue, s.revenue, a.id)
     recordEconomicActivity(g, `company:${a.id}:${fiscal}`, b.countryId, b.industry, {
       jobs: s.employees - previousEmployment, investment: Math.max(0, b.yearCosts - productCosts),
-      failure: Math.max(0, previousRevenue - s.revenue) + Math.max(0, -b.cash),
+      // Banks report actual client-book losses separately. Revenue fluctuations
+      // are not a second default; only other unfunded costs add generic distress.
+      failure: res.bank ? Math.max(0, -b.cash - res.bank.bankLoss) : Math.max(0, previousRevenue - s.revenue) + Math.max(0, -b.cash),
+      ...res.bank,
     })
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
@@ -526,6 +542,20 @@ export function yearlyBusinessImpl(g: GameState): void {
   }
   // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
   settleInternalServices(g, fiscal)
+  // Internal invoices can amend both divisions' final tax/net statements. Rebuild
+  // attribution from the same opening statement, without recording another payment.
+  for (const [id, bridge] of statementBridges) {
+    const a = findBusiness(g, id)
+    if (!a) continue
+    const b = bizOf(g, a)
+    if (!b.last || b.last.year !== fiscal) continue
+    recordEconomicReport(b, bridge.previous, b.last)
+    if (b.last.net !== bridge.bookedNet) for (const modal of g.queue.slice(queued)) {
+      if ((modal.kind === 'notice' || modal.kind === 'choice') && (modal.title === `${a.name}: Studio Report` || modal.title === `${a.name}: Financial Institution Report`)) {
+        modal.text += `\nFinal accounts after group contracts: sales ${money(b.last.revenue)}, net profit ${money(b.last.net)}. ${economicReportSummary(b)}`
+      }
+    }
+  }
   // Internal procurement closes after all divisions have booked. Refresh already queued
   // statements so the owner sees the final ledger, not the pre-contract numbers.
   for (const modal of Array.isArray(g.flags.groupServiceResults) && g.flags.groupServiceResults.length ? g.queue.slice(queued) : []) {

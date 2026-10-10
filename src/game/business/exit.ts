@@ -12,6 +12,7 @@ import { recordCompanyShock } from './dynamics'
 import { industryDef } from './industries'
 import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state'
 import { clampN, money, pct } from './util'
+import { supplyInventoryValue } from './supply'
 
 /** IPO threshold: last year's net profit, like the original's ~$300M rule. */
 export const IPO_PROFIT = 300_000_000
@@ -100,9 +101,11 @@ export function declareBankruptcy(g: GameState, a: Asset, b: BizState, why: stri
   notice(g, 'Bankrupt', text, { emoji: '\u{1F4C9}', tone: 'bad' })
 }
 
-/** Close the business in an orderly way: sell off equipment, pay debts, keep what is left. */
+/** Close in an orderly way. `liquidation` is the existing equipment/finished-goods
+ * quote; funded raw inputs are recovered separately, once, at their conservative value. */
 export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: number): void {
-  const proceeds = Math.round(Math.max(0, liquidation) + b.cash - b.debt)
+  if (!g.assets.some(x => x.id === a.id)) return
+  const proceeds = Math.round(Math.max(0, liquidation) + supplyInventoryValue(b) + b.cash - b.debt)
   if (proceeds < 0) {
     declareBankruptcy(g, a, b, 'There was not enough left to pay the creditors, so')
     return

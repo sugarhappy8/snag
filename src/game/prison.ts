@@ -599,11 +599,11 @@ function homeAfterPrison(g: GameState, prev: Residence | null): Residence {
   const hasParents = parents(g).length > 0
   if (c.age < 18 && hasParents) return { status: 'parents' }
   if (prev) {
-    if (prev.status === 'owned' && prev.assetId && g.assets.some((a) => a.id === prev.assetId)) return { ...prev }
+    if (prev.status === 'owned' && prev.assetId && g.assets.some((a) => a.id === prev.assetId && a.kind === 'house' && a.details.commercial !== true)) return { ...prev }
     if (prev.status === 'partner' && currentPartner(g)) return { status: 'partner' }
     if ((prev.status === 'parents' || prev.status === 'dorm') && hasParents && c.age < 30) return { status: 'parents' }
   }
-  const home = g.assets.find((a) => a.kind === 'house' && !a.rentedOutFor)
+  const home = g.assets.find((a) => a.kind === 'house' && a.details.commercial !== true && !a.rentedOutFor)
   if (home) return { status: 'owned', assetId: home.id }
   if (currentPartner(g)?.livesWithPlayer) return { status: 'partner' }
   return { status: 'homeless' }

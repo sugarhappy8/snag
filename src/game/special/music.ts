@@ -5,6 +5,7 @@ import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPe
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import { crowdedField } from '../mastery'
+import { musicMastersMenu, yearlyMusicRights } from './music-rights'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import {
@@ -848,6 +849,7 @@ export function musicJobNodes(g: GameState): MenuNode[] {
   if (!job) return []
   const d = md(job)
   const nodes: MenuNode[] = [
+    musicMastersMenu,
     {
       type: 'info',
       id: 'music.status',
@@ -954,9 +956,10 @@ export const musicCareerMenu: MenuGroup = {
     return `${skills.length ? `Your skills: ${skills.join(', ')}.` : 'You haven\'t learned any instruments yet.'} Learn instruments and take voice lessons under Activities → Mind & Body. Labels want 60%+ skill.`
   },
   children: (g): MenuNode[] => {
-    if (musicJob(g)) return [{ type: 'info', id: 'music.already', text: 'You are already a musician. Manage your career from your job.', emoji: '\u{1F3B8}' }]
+    if (musicJob(g)) return [musicMastersMenu, { type: 'info', id: 'music.already', text: 'You are already a musician. Manage your career from your job.', emoji: '\u{1F3B8}' }]
     const confirm = (gg: GameState) => (gg.character.job ? `If you're signed, you'll quit your job as ${gg.character.job.title}. Continue?` : null)
     return [
+      musicMastersMenu,
       {
         type: 'action',
         id: 'music.solo',
@@ -1008,6 +1011,7 @@ const contractRenewScript = defineScript('special.music.renew', (g, choice, data
 export function yearlyMusic(g: GameState): void {
   const c = g.character
   if (!c.alive) return
+  yearlyMusicRights(g)
   const stored = peek<MusicProfile>(g, 'music')
   const job = musicJob(g)
   if (!stored && !job) return

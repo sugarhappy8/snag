@@ -1,6 +1,7 @@
 import { seeded } from './assets'
 import { addMoney, earnIncome, log, notice, useYearAction } from './core'
 import { economyOf, recordEconomicActivity } from './economy'
+import { educationAccess } from './economy/cohorts'
 import { typicalIncome } from './events/wealth-core'
 import { hasTech } from './history/timeline'
 import { eraOccupation } from './history/events-people'
@@ -9,6 +10,7 @@ import { COUNTRIES, getCountry } from './world'
 import { createBusinessAsset, initialProduction, newBiz } from './business/founding'
 import { bestPlan, evolve, recordYear, simulateYear, startupCost, valuationOf, refreshValue } from './business/economy'
 import { industryEraBlock } from './business/competition-data'
+import { refreshMarket } from './business/competition'
 import { readJob } from './business/nepo-job'
 import { readGroupJob } from './business/conglomerate-job'
 import { holdsInfluenceJob } from './special/corruption'
@@ -148,6 +150,8 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
   const employmentBefore = b.employees
   const externalJob = officialAppointment || managedEmployment(g, p)
   const result = simulateYear(g, b, fiscal, externalJob ? 0 : typicalIncome(g, l.country) * .5, 1)
+  // Settlement, not the planner/menu, owns the durable market-share observation.
+  refreshMarket(g, a, b, fiscal, result.stmt, result.market ?? null)
   p.money += result.stmt.ownerPay * .8
   if (!externalJob) l.income = result.stmt.ownerPay
   if (b.cash < 0) {
@@ -158,7 +162,8 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
     delete p.data.npcCompany
     if (!externalJob) { p.occupation = 'Unemployed'; l.employer = '' }
     milestone(g, p, l, `${a.name} failed; the business was liquidated and shareholders recovered ${money(residual)}`)
-    recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: -employmentBefore, investment: 0, failure: Math.max(0, -b.cash) })
+    recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: -employmentBefore, investment: 0,
+      failure: Math.max(0, -b.cash - (result.bank?.bankLoss ?? 0)), ...result.bank })
     return
   }
   const payout = Math.min(Math.max(0, result.stmt.net) * .2, Math.max(0, b.cash - b.debt - typicalIncome(g, l.country)))
@@ -169,7 +174,7 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialApp
   if (expansion) milestone(g, p, l, `${a.name} reinvested ${money(expansion)} in a new operating location`)
   b.valuation = valuationOf(b); refreshValue(a, b)
   if (stake) stake.value = Math.round(b.valuation * playerShare)
-  recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: b.employees - employmentBefore, investment: expansion, failure: 0 })
+  recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: b.employees - employmentBefore, investment: expansion, failure: 0, ...result.bank })
   storeCompany(p, a)
 }
 
@@ -183,12 +188,13 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
   if (l.lastYear >= g.year) return true
   l.lastYear = g.year
   const local = getCountry(l.country), e = economyOf(g, l.country), income = typicalIncome(g, l.country)
+  const learning = educationAccess(e)
   const roll = seeded(`npc-decision|${g.lifeId.replace(/-g\d+$/, '')}|${p.id}|${g.year}`)
   const managedJob = managedEmployment(g, p)
   let appointment = syncRoyalAppointment(g, p, l)
   if (p.age < 18) {
     if (!managedJob) { p.occupation = appointment?.title ?? npcOccupationLabel(p.age); l.income = 0 }
-    l.skill = clampN(l.skill + (p.stats.smarts / 100) * 1.2, 0, 60)
+    l.skill = clampN(l.skill + (p.stats.smarts / 100) * 1.2 * learning, 0, 60)
   } else if (appointment) {
     if (studyForRoyalCareer(g, p, l)) {
       if (!/University Student/.test(p.occupation)) { l.study = 0; milestone(g, p, l, `began studying ${l.field} before taking on senior royal appointments`) }
@@ -199,7 +205,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
         l.education = Math.min(3, l.education + 1); l.study = 0
         const degree = `${['', "Bachelor's", "Master's", 'Doctorate'][l.education]} in ${l.field}`
         l.achievements = [...l.achievements, degree].slice(-12)
-        l.skill = clampN(l.skill + 4 + p.stats.smarts / 25, 0, 97)
+        l.skill = clampN(l.skill + (4 + p.stats.smarts / 25) * learning, 0, 97)
         p.occupation = 'Royal Family Member'; p.data.npcRecruitmentYear = g.year
         milestone(g, p, l, `completed ${degree}; qualified for more senior appointments`)
       }
@@ -209,7 +215,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
     }
     appointment = syncRoyalAppointment(g, p, l)
   } else if (!managedJob && !npcCompany(p, g.year)) {
-    const access = clampN((g.year < 1930 ? .08 : g.year < 1960 ? .18 : .55) * local.wealth + l.ambition / 500 + p.stats.smarts / 600, .02, .9)
+    const access = clampN(((g.year < 1930 ? .08 : g.year < 1960 ? .18 : .55) * local.wealth + l.ambition / 500 + p.stats.smarts / 600) * learning, .02, .9)
     if (p.age === 18 && roll.chance(access) && (local.freeUniversity || p.money >= income * .1 || roll.chance(p.stats.smarts / 200))) {
       p.occupation = 'University Student'; l.study = 0; milestone(g, p, l, `began studying ${l.field}`)
     }
@@ -221,7 +227,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
         l.education = Math.min(3, l.education + 1); l.study = 0
         const degree = `${['', "Bachelor's", "Master's", 'Doctorate'][l.education]} in ${l.field}`
         l.achievements = [...l.achievements, degree].slice(-12)
-        l.skill = clampN(l.skill + 4 + p.stats.smarts / 25, 0, 97)
+        l.skill = clampN(l.skill + (4 + p.stats.smarts / 25) * learning, 0, 97)
         p.occupation = 'Unemployed'; milestone(g, p, l, `completed ${degree}; now looking for relevant work`)
         p.data.npcRecruitmentYear = g.year
       }
@@ -249,7 +255,13 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
   }
   npcBusinessYear(g, p, l, !!appointment)
   if (p.age >= 18 && !managedJob) {
-    const expenses = income * (p.livesWithPlayer ? .25 : .65) * (1 + num(p.data.kids) * .08)
+    // These are real relative prices, not nominal priceScale/display inflation.
+    // Owners pay housing upkeep; only independent non-owners face the rent index.
+    const housingCost = l.housing > 0 ? .6 + e.sectors.housing.costs * .4 : e.rent
+    const basket = clampN(p.livesWithPlayer
+      ? e.sectors.essentials.costs * .65 + e.sectors.consumer.costs * .35
+      : e.sectors.essentials.costs * .45 + e.sectors.consumer.costs * .25 + housingCost * .3, .65, 1.8)
+    const expenses = income * (p.livesWithPlayer ? .25 : .65) * (1 + num(p.data.kids) * .08) * basket
     const due = expenses + l.debt * .06
     const paid = Math.min(Math.max(0, p.money), due); p.money -= paid; l.debt += due - paid
     const repay = Math.min(l.debt, Math.max(0, p.money - income * .2) * .15); p.money -= repay; l.debt -= repay

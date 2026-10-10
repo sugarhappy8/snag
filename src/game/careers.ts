@@ -26,6 +26,7 @@ import {
   yearActionsUsed,
 } from './core'
 import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
+import { professionalMenu } from './professions'
 import { codeFreelanceMenu } from './computer/dev-freelance'
 import { catchEmbellishment, caughtLine, caughtLying, cvFields, cvMenu, cvScore, embellishedEntries, fitContext, jobFit, jobMarket, jobScreenChance, screeningReason, screeningThoroughness, type JobMarket } from './cv'
 import { COMPANY_WORDS, COMPANY_WORDS_BEFORE, companyWordsIn, ERA_FULLTIME_JOBS, ERA_PARTTIME_JOBS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, jobInEra, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
@@ -818,7 +819,7 @@ export function hireForJob(g: GameState, job: InterviewJob): Job {
     performance: hasMainCharacter(g) ? randInt(g, 78, 88) : randInt(g, 55, 70),
     yearsInRole: 0,
     yearsAtCompany: 0,
-    data: { industry: def?.industry ?? 'corporate', workedHarder: 0 },
+    data: { industry: def?.industry ?? 'corporate', workedHarder: 0, appointmentId: `${g.year}:${c.age}:${g.counters.jobs ?? 0}` },
   }
   if (def?.hours) {
     j.data.hours = def.hours
@@ -2189,7 +2190,7 @@ export const occupationMenu: MenuGroup = {
     if (c.retired && !job) working.push({ type: 'info', id: 'occupation.retired', text: `Retired • Pension ${formatMoney(c.pension)} a year`, emoji: '\u{1F3D6}\u{FE0F}' })
     if (working.length) {
       nodes.push({ type: 'heading', id: 'occupation.h.work', label: 'My Work' })
-      nodes.push(...working)
+      nodes.push(...working, professionalMenu)
     }
     if (c.age >= 12) {
       nodes.push({ type: 'heading', id: 'occupation.h.cv', label: 'Your CV' })

@@ -210,6 +210,10 @@ export interface BizState {
   /** Units planned this year. */
   production: number
   inventory: number
+  /** Funded critical-input inventory, separate from already manufactured finished goods. */
+  supply?: Json
+  /** Exact, bounded attribution of the last settled year-on-year profit change. */
+  economicReport?: Json
   /** Marketing budget as a multiple of the industry's normal spend (0 - 3). */
   marketingLevel: number
   /** One-year demand boost from campaigns run this year. */
@@ -277,6 +281,8 @@ export interface BizState {
   financeFirm?: Json
   /** Owner conversations and licensed entertainment operations (venues.ts). */
   venueOwner?: Json
+  /** Opt-in professionally reviewed automatic succession readiness policy. */
+  successionReview?: Json
   /** Individually priced manufactured inventions, separate from industry-wide boosts. */
   inventionProducts?: Json
   /** Auto-staffed fab head count, included in employees; prevents cumulative rehiring. */
@@ -488,6 +494,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     price: Math.max(0, num(d.price)),
     production: Math.max(0, Math.round(num(d.production))),
     inventory: Math.max(0, Math.round(num(d.inventory))),
+    ...(d.supply && typeof d.supply === 'object' && !Array.isArray(d.supply) ? { supply: d.supply } : {}),
+    ...(d.economicReport && typeof d.economicReport === 'object' && !Array.isArray(d.economicReport) ? { economicReport: d.economicReport } : {}),
     marketingLevel: clampN(num(d.marketingLevel, 1), 0, 3),
     campaignBoost: clampN(num(d.campaignBoost), 0, 0.6),
     products,
@@ -521,6 +529,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     loanId: str(d.loanId),
     slump: Math.max(0, num(d.slump)),
     ...(d.board && typeof d.board === 'object' && !Array.isArray(d.board) ? { board: d.board } : {}),
+    ...(d.successionReview && typeof d.successionReview === 'object' && !Array.isArray(d.successionReview) ? { successionReview: d.successionReview } : {}),
     ...(industry === 'gameStudio' && d.studio && typeof d.studio === 'object' && !Array.isArray(d.studio) ? { studio: d.studio } : {}),
     ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
     ...(d.financeFirm && typeof d.financeFirm === 'object' && !Array.isArray(d.financeFirm) ? { financeFirm: d.financeFirm } : {}),

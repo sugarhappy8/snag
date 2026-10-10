@@ -4,6 +4,10 @@
 import { yearlyAssets } from './assets'
 import { yearlyBusiness } from './business'
 import { yearlyCareer } from './careers'
+import { yearlyProfessions } from './professions'
+import { yearlyDevelopment } from './development'
+import { yearlySharedProjects } from './activities/shared-projects'
+import { yearlyGivingFund } from './activities/giving-fund'
 import { yearlyComputer } from './computer'
 import { bindMoneyContext, currentLogYear, formatMoney, log, queueAi } from './core'
 import { yearlyCrime } from './crime'
@@ -39,10 +43,13 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['digest', yearlyDigest],
   ['household', yearlyHousehold],
   ['relationships', yearlyRelationships],
+  ['sharedProjects', yearlySharedProjects],
+  ['givingFund', yearlyGivingFund],
   ['background', yearlyBackground],
   ['royalty', yearlyRoyalty],
   ['health', yearlyHealth],
   ['education', yearlyEducation],
+  ['professions', yearlyProfessions],
   ['career', yearlyCareer],
   ['special', yearlySpecial],
   ['inventor', yearlyInventor],
@@ -50,6 +57,7 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['inventionLicenses', yearlyInventionLicenses],
   ['corruption', yearlyCorruption],
   ['business', yearlyBusiness],
+  ['development', yearlyDevelopment],
   ['investments', yearlyInvestments],
   ['shops', yearlyShops],
   ['computer', yearlyComputer],

@@ -15,6 +15,7 @@ import { getCountry } from '../world'
 import { lineTitle } from './luxury-brands-catalog'
 import { fleetModels } from './luxury-brands-craft'
 import { familyAccessNode } from './luxury-family'
+import { charterMenu, settleCharter } from './fleet-operations'
 import {
   cantAfford,
   cleanName,
@@ -724,31 +725,6 @@ function strFeatures(a: Asset): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 }
 
-function charterAction(a: Asset): MenuAction {
-  return {
-    type: 'action',
-    id: `lux-charter-${a.id}`,
-    label: 'Charter It Out',
-    emoji: '🧾',
-    subtitle: (g) => (live(g, a).details.chartered === true ? 'Listed with a charter agency · tap to stop' : 'Earn charter fees every year (and a little wear and tear)'),
-    disabledReason: (g) => luxuryBlock(g) ?? (live(g, a).details.chartered !== true && live(g, a).condition < 40 ? 'No charter agency will list it in this condition. Get it serviced first.' : null),
-    run: (g) => {
-      const cur = g.assets.find((x) => x.id === a.id)
-      if (!cur) return
-      const name = vesselName(cur)
-      if (cur.details.chartered === true) {
-        cur.details.chartered = false
-        log(g, `I took ${name} off the charter market.`)
-        notice(g, 'Charter', `You took ${name} off the charter market. No more strangers in your bathrobe.`, { emoji: '🧾' })
-        return
-      }
-      cur.details.chartered = true
-      log(g, `I listed ${name} with a charter agency.`)
-      notice(g, 'Charter', `You listed ${name} with a charter agency. Paying guests will rent it for a few weeks a year; the fees, minus the agency's cut, arrive every birthday. Expect some wear and tear and at least one guest who steals the towels.`, { emoji: '🧾', tone: 'good' })
-    },
-  }
-}
-
 const RENAME_VESSEL = defineScript('luxury.fleet.rename', (g, value, data) => {
   const id = field<string>(data, 'assetId')
   const a = id ? g.assets.find((x) => x.id === id) : undefined
@@ -816,7 +792,7 @@ export function fleetHoldingNode(a: Asset): MenuGroup {
     children: (g) => {
       const cur = g.assets.find((x) => x.id === a.id)
       if (!cur) return [{ type: 'info', id: 'lux-fleet-gone', text: "You don't own this anymore." }]
-      const actions: MenuNode[] = jet ? [flightAction(cur), charterAction(cur), renameAction(cur)] : [cruiseAction(cur), yachtPartyAction(cur), charterAction(cur), renameAction(cur)]
+      const actions: MenuNode[] = jet ? [flightAction(cur), charterMenu(cur), renameAction(cur)] : [cruiseAction(cur), yachtPartyAction(cur), charterMenu(cur), renameAction(cur)]
       const fam = familyAccessNode(g, cur)
       return [...fleetInfo(g, cur), { type: 'heading', id: `lux-fleetact-${cur.id}`, label: jet ? 'Flying' : 'On the Water' }, ...actions, ...(fam ? [fam] : [])]
     },
@@ -828,24 +804,10 @@ export function fleetHoldingNode(a: Asset): MenuGroup {
 
 /** Keep jet crew costs in step with the pilot's license and pay out charter fees (taxed income). */
 export function yearlyFleet(g: GameState): void {
-  for (const a of luxuryAssets(g)) {
+  for (const a of g.assets.filter(a => a.kind === 'boat' || a.kind === 'aircraft')) {
     const kind = luxuryKind(a)
-    if (!kind) continue
     if (kind === 'jet') refreshJetUpkeep(g, a)
-    if (kind === 'island' || a.details.chartered !== true) continue
-    if (a.condition < 25) {
-      a.details.chartered = false
-      log(g, `The charter agency dropped ${vesselName(a)} because it's too worn out.`, 'bad')
-      continue
-    }
-    const weeks = kind === 'jet' ? randInt(g, 6, 16) : randInt(g, 4, 14)
-    const weekly = kind === 'jet' ? 0.0035 : 0.008
-    const gross = nicePrice(a.value * weekly * weeks * (0.6 + 0.4 * (a.condition / 100)))
-    if (gross <= 0) continue
-    earnIncome(g, gross)
-    a.condition = Math.max(0, a.condition - randInt(g, 1, kind === 'jet' ? 2 : 4))
-    count(g, 'charterIncome', gross)
-    log(g, `Charter guests rented ${vesselName(a)} for ${weeks} weeks. I made ${formatMoney(gross)} after the agency's cut.`, 'good')
+    settleCharter(g, a)
   }
 }
 

@@ -1,10 +1,12 @@
 // Rental operations, separate from property appreciation, mortgages and ordinary upkeep.
 import { economyOf } from './economy'
+import { householdPressure } from './economy/cohorts'
 // Tenants live in the existing Asset.details fields; this optional record adds a save-safe
 // lease, service budget, repair queue, vacancy and manager. Menus never mutate or roll.
 import { seeded, refreshHouseValue } from './assets'
 import { addMoney, earnIncome, formatMoney, log, notice, spend, useYearAction, yearActionsUsed } from './core'
 import { taxAdditionalIncome } from './finance'
+import { payForAction } from './activities/common'
 import type { Asset, GameState, Json, MenuGroup, MenuNode } from './types'
 import { getCountry, namePoolOf } from './world'
 
@@ -49,7 +51,22 @@ function save(a: Asset, p: LandlordState): void {
 }
 
 export function rentalMarket(a: Asset): number {
-  return Math.round(Math.max(600, a.value * .054 * (.7 + .3 * Math.max(0, Math.min(100, a.condition)) / 100)))
+  return Math.round(Math.max(600, a.value * (a.details.commercial === true ? .072 : .054) * (.7 + .3 * Math.max(0, Math.min(100, a.condition)) / 100)))
+}
+
+/** A commercial fit-out and fixed-term lease use the same landlord books as homes. */
+export function signCommercialLease(g: GameState, id: string, tenant: string): boolean {
+  const a = ownedRental(g, id)
+  if (!a || a.details.commercial !== true || a.rentedOutFor || !['office', 'shop', 'workshop'].includes(tenant) || a.condition < 40) return false
+  const cost = Math.round(a.value * (tenant === 'workshop' ? .05 : .025))
+  if (!payForAction(g, cost)) return false
+  a.rentedOutFor = Math.round(rentalMarket(a) * (tenant === 'workshop' ? 1.15 : tenant === 'office' ? 1 : .9))
+  a.details.tenant = `${tenant === 'office' ? 'Professional office' : tenant === 'shop' ? 'Local retailer' : 'Independent workshop'} tenant`
+  a.details.tenantTrait = 'commercial lease'; a.details.tenantRisk = tenant === 'shop' ? .16 : tenant === 'workshop' ? .12 : .07
+  a.details.commercialTenant = tenant; beginLandlordLease(g, a)
+  const p = landlordView(a); p.leaseUntil = g.year + 5; save(a, p)
+  notice(g, 'Commercial Lease Signed', `${formatMoney(cost)} funded the tenant fit-out. Five-year lease: ${formatMoney(a.rentedOutFor)}/year. Business conditions affect collection; service, repairs, upkeep and secured debt still cost money.`, { emoji: '🏢' })
+  return true
 }
 
 function ownedRental(g: GameState, id: string): Asset | null {
@@ -63,7 +80,7 @@ function ownedRental(g: GameState, id: string): Asset | null {
 export function beginLandlordLease(g: GameState, a: Asset): void {
   const p = landlordView(a)
   p.listed = true; p.askingRent = finite(a.rentedOutFor, rentalMarket(a)); p.satisfaction = 75
-  p.arrears = 0; p.years = 0; p.leaseUntil = g.year + 2; p.vacancyYears = 0
+  p.arrears = 0; p.years = 0; p.leaseUntil = g.year + (a.details.commercial === true ? 5 : 2); p.vacancyYears = 0
   save(a, p)
 }
 
@@ -83,7 +100,7 @@ export function setRentalRent(g: GameState, id: string, annual: number): void {
   const old = a.rentedOutFor ?? p.askingRent
   p.askingRent = Math.round(annual)
   if (a.rentedOutFor) {
-    a.rentedOutFor = p.askingRent; p.leaseUntil = g.year + 2
+    a.rentedOutFor = p.askingRent; p.leaseUntil = g.year + (a.details.commercial === true ? 5 : 2)
     p.satisfaction = Math.max(0, p.satisfaction - Math.max(0, annual / Math.max(1, old) - 1) * 80)
   }
   save(a, p)
@@ -124,8 +141,9 @@ export function repairRental(g: GameState, id: string): void {
 export function listRental(g: GameState, id: string): void {
   const a = ownedRental(g, id)
   if (!a || a.rentedOutFor) return
+  if (a.details.commercial === true && !a.details.commercialTenant) return notice(g, 'Commercial Fit-Out Required', 'Choose and pay for an office, retail or workshop fit-out before advertising the premises.', { emoji: '🏢' })
   const p = landlordView(a); p.listed = !p.listed; save(a, p)
-  notice(g, p.listed ? 'Rental Listed' : 'Listing Paused', p.listed ? 'The home is advertised at your asking rent. A manager can screen and sign a replacement on age-up; without a manager, use Rent Out to choose an applicant yourself.' : 'No new tenant will be sought automatically.', { emoji: '🪧' })
+  notice(g, p.listed ? 'Rental Listed' : 'Listing Paused', p.listed ? `The property is advertised at your asking rent. A manager can screen and sign a replacement on age-up; without a manager, use ${a.details.commercial === true ? 'Fit Out & Lease' : 'Rent Out'} to choose a tenant yourself.` : 'No new tenant will be sought automatically.', { emoji: '🪧' })
 }
 
 /** Returns this year's net operating rental receipts, paying/taxing them exactly once. */
@@ -142,17 +160,20 @@ export function yearlyLandlord(g: GameState): number {
     if (g.character.residence.status === 'owned' && g.character.residence.assetId === a.id) { save(a, p); continue }
     const rng = seeded(`${g.lifeId}|rental|${a.id}|${year}`), market = rentalMarket(a)
     const economy = economyOf(g, string(a.details.countryId, g.character.countryId), year)
+    // Lost work and lower household spending describe the same affordability
+    // shock. Use the stronger signal once rather than charging two penalties.
+    const affordabilityGap = a.details.commercial === true ? Math.max(0, 1 - economy.confidence, 1 - economy.sectors[a.details.commercialTenant === 'workshop' ? 'industry' : 'consumer'].demand) : Math.max(0, 1 - householdPressure(economy), (economy.unemployment - .06) * 2)
     let occupied = !!a.rentedOutFor, occupancy = 1, gross = 0, repairs = 0
     if (!occupied && p.listed) {
       p.vacancyYears += 1
-      const fill = Math.max(.05, Math.min(.95, .8 + p.managerSkill / 500 - Math.max(0, p.askingRent / market - 1) * 1.5 - Math.max(0, 60 - a.condition) / 100 - Math.max(0, economy.unemployment - .06) * 1.5))
-      if (p.managerSkill > 0 && a.condition >= 20 && rng.chance(fill)) {
+      const fill = Math.max(.05, Math.min(.95, .8 + p.managerSkill / 500 - Math.max(0, p.askingRent / market - 1) * 1.5 - Math.max(0, 60 - a.condition) / 100 - affordabilityGap * .75))
+      if (p.managerSkill > 0 && a.condition >= 20 && (a.details.commercial !== true || !!a.details.commercialTenant) && rng.chance(fill)) {
         const countryId = string(a.details.countryId, g.character.countryId), pool = namePoolOf(countryId)
         a.rentedOutFor = p.askingRent
-        a.details.tenant = `${rng.pick(pool.male)} ${rng.pick(pool.last)}`
+        a.details.tenant = a.details.commercial === true ? 'Screened commercial tenant' : `${rng.pick(pool.male)} ${rng.pick(pool.last)}`
         a.details.tenantTrait = 'screened by your property manager'
         a.details.tenantRisk = Math.max(.015, .15 - p.managerSkill / 800)
-        a.details.tenantLate = 0; p.arrears = 0; p.satisfaction = 75; p.leaseUntil = year + 2; p.years = 0
+        a.details.tenantLate = 0; p.arrears = 0; p.satisfaction = 75; p.leaseUntil = year + (a.details.commercial === true ? 5 : 2); p.years = 0
         occupied = true; occupancy = rng.float(.5, .85); p.vacancyYears = 0
         log(g, `My property manager found a new tenant for ${a.name}; rent covers ${Math.round(occupancy * 12)} occupied months.`, 'good')
       }
@@ -175,7 +196,7 @@ export function yearlyLandlord(g: GameState): number {
       }
       if (p.issue) a.condition = Math.max(0, a.condition - 4)
       const tenantRisk = finite(a.details.tenantRisk, .08, .6)
-      const risk = Math.min(.85, Math.max(.005, tenantRisk + Math.max(0, 45 - p.satisfaction) / 200 - p.managerSkill / 1400 + Math.max(0, economy.unemployment - .06) * 1.3))
+      const risk = Math.min(.85, Math.max(.005, tenantRisk + Math.max(0, 45 - p.satisfaction) / 200 - p.managerSkill / 1400 + affordabilityGap * .65))
       const due = Math.round((a.rentedOutFor ?? 0) * occupancy * (p.issue ? .8 : 1))
       const missed = rng.chance(risk)
       gross = missed ? Math.round(due * rng.float(.1, .65)) : due
@@ -216,7 +237,8 @@ export function landlordMenu(a: Asset): MenuGroup {
       const block = (gg: GameState) => ownedRental(gg, a.id) ? null : 'An adult owner must manage this property outside prison.'
       const action = (id: string, label: string, run: (gg: GameState) => void, subtitle?: string): MenuNode => ({ type: 'action', id: `landlord.${a.id}.${id}`, label, emoji: '🏠', subtitle, disabledReason: block, run })
       const nodes: MenuNode[] = [{ type: 'info', id: `landlord.${a.id}.summary`, emoji: '🔑', text: `${live.rentedOutFor ? `Tenant: ${string(live.details.tenant, 'Your tenant')} · satisfaction ${Math.round(p.satisfaction)}/100 · arrears ${formatMoney(p.arrears)} · lease fixed through ${p.leaseUntil}` : `Vacant${p.listed ? ' · listed' : ' · not listed'} · ${p.vacancyYears} vacant years`}.\nAsking rent ${formatMoney(p.askingRent)}/year; comparable ${formatMoney(market)}/year. Manager skill ${p.managerSkill || 'none'}; ${Math.round(p.managerFee * 100)}% of collected rent.\nLast rental year: gross ${formatMoney(p.lastGross)}, operating expenses ${formatMoney(p.lastExpenses)}, net ${formatMoney(p.lastNet)}. Property upkeep and mortgages are separate.` }]
-      if (!live.rentedOutFor) nodes.push(action('listing', p.listed ? 'Pause Rental Listing' : 'Advertise a Rental Vacancy', (gg) => listRental(gg, a.id), 'Managers can fill an advertised vacancy automatically; manual Rent Out lets you choose'))
+      if (!live.rentedOutFor && (live.details.commercial !== true || !!live.details.commercialTenant)) nodes.push(action('listing', p.listed ? 'Pause Rental Listing' : 'Advertise a Rental Vacancy', (gg) => listRental(gg, a.id), 'Managers can fill an advertised, fitted-out vacancy automatically'))
+      if (live.details.commercial === true && !live.rentedOutFor) for (const tenant of ['office', 'shop', 'workshop']) nodes.push(action(`commercial.${tenant}`, `Fit Out & Lease to a ${tenant === 'office' ? 'Professional Office' : tenant === 'shop' ? 'Retailer' : 'Workshop'}`, gg => { signCommercialLease(gg, a.id, tenant) }, `Fit-out ${formatMoney(live.value * (tenant === 'workshop' ? .05 : .025))}; five-year lease; ${tenant === 'workshop' ? 'higher rent, more collection risk' : tenant === 'shop' ? 'lower rent, sensitive to consumer demand' : 'standard rent, lower collection risk'}`))
       for (const multiplier of [.85, 1, 1.2]) nodes.push({ type: 'action', id: `landlord.${a.id}.rent.${multiplier}`, label: `${multiplier < 1 ? 'Affordable' : multiplier > 1 ? 'Premium' : 'Market'} Rent: ${formatMoney(Math.round(market * multiplier / 12))}/month`, emoji: '🔑',
         disabledReason: (gg) => block(gg) ?? (yearActionsUsed(gg, `landlord.rent.${a.id}`) ? 'Rent was already set this year.' : live.rentedOutFor && gg.year < landlordView(live).leaseUntil ? 'The current lease has a fixed rent until renewal.' : null), run: (gg) => { const current = gg.assets.find((x) => x.id === a.id); if (current) setRentalRent(gg, a.id, rentalMarket(current) * multiplier) } })
       for (const policy of ['defer', 'standard', 'proactive'] as const) nodes.push(action(`maintenance.${policy}`, `${policy[0].toUpperCase()}${policy.slice(1)} Rental Service`, (gg) => setRentalMaintenance(gg, a.id, policy), 'Extra rental service, separate from normal property upkeep'))

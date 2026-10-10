@@ -4,34 +4,47 @@ import { marketOf } from '../data/markets'
 import { currencyInflation } from '../data/currencies'
 import { historicalCycle, historicalHousing, historicalPolicyRate } from '../history/markets'
 import { COUNTRIES } from '../world'
+import { compactCohorts, initialCohorts, normalizeCohorts, type Cohorts } from './cohorts'
 import type { GameState, Json } from '../types'
+import { compactTrade, initialTrade, normalizeTrade, type CountryTrade } from './trade'
+import { normalizeRivals, type RivalActor } from './actors-state'
+import { initialBudget, normalizeBudget, type GovernmentBudget } from './government'
 
 export const ECONOMY_KEY = 'worldEconomy'
+export const ECONOMY_VERSION = 2
 export const SECTORS = ['essentials', 'consumer', 'leisure', 'housing', 'finance', 'industry', 'energy', 'logistics', 'technology', 'care', 'public'] as const
 export type Sector = typeof SECTORS[number]
 export interface SectorState {
   demand: number; capacity: number; costs: number; productivity: number
   competition: number; adoption: number; disruption: number
+  /** Delivered critical inputs / annual requirements; aggregate buffers are not company assets. */
+  availability: number; stock: number; backlog: number; output: number; workforce: number
 }
 export interface EconomyPoint { year: number; growth: number; unemployment: number; inflation: number; rate: number; housing: number; market: number; priceScale: number }
 export interface CountryEconomy {
   year: number; outputGap: number; growth: number; inflation: number; rate: number
   unemployment: number; wages: number; productivity: number; skills: number
-  confidence: number; spending: number; saving: number; credit: number; liquidity: number
+  confidence: number; spending: number; saving: number; credit: number; liquidity: number; bankStress: number
   defaults: number; privateDebt: number; governmentDebt: number; fiscal: number; taxShift: number
   services: number; inequality: number; mobility: number; population: number; elderly: number
   trade: number; currency: number; supply: number; housing: number; rent: number; housingReturn: number
   bubble: number; market: number; priceScale: number; sectors: Record<Sector, SectorState>
+  tradeNetwork: CountryTrade
+  cohorts: Cohorts
+  budget: GovernmentBudget
   causes: string[]
 }
 export interface EconomyFeedback {
   country: string; sector: Sector; jobs: number; investment: number; failure: number; innovation: number
+  /** Actual settled bank outcomes, scaled to GDP; principal never becomes revenue. */
+  bankLoss?: number; bankRun?: number; bankLending?: number
 }
 export interface EconomicPolicy { id: string; country: string; year: number; until: number; kind: 'investment' | 'education' | 'health' | 'taxCut' | 'taxRise' | 'regulation'; scale: number }
 export interface EconomyState {
   v: number; year: number; countries: Record<string, CountryEconomy>
   previous: Record<string, CountryEconomy>; history: Record<string, EconomyPoint[]>
   pending: EconomyFeedback[]; policies: EconomicPolicy[]; receipts: string[]
+  rivals: RivalActor[]; previousRivals: RivalActor[]
 }
 export const bound = (n: number, lo: number, hi: number): number => Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : lo
 const record = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {}
@@ -66,6 +79,8 @@ export const SECTOR_RULES: Record<Sector, { label: string; cycle: number; credit
   public: { label: 'Education & public services', cycle: .1, credit: .1, imports: .1, automation: .25, inputs: { technology: .15, energy: .1 } },
 }
 
+export const STOCK_SECTORS: readonly Sector[] = ['essentials', 'consumer', 'housing', 'industry', 'energy', 'technology']
+
 export function initialCountry(country: string, year: number): CountryEconomy {
   const m = marketOf(country)
   const cycle = historicalCycle(country, year, 1)
@@ -73,21 +88,27 @@ export function initialCountry(country: string, year: number): CountryEconomy {
   return { year, outputGap: bound((cycle - 1) * .5, -.25, .2), growth: bound(.02 + (cycle - 1) * .3, -.15, .1),
     inflation: currencyInflation(country, year), rate: historicalPolicyRate(country, year) ?? m.interestRate,
     unemployment, wages: 1, productivity: 1, skills: bound(.55 + m.gdpPerCapita / 240000, .5, .9),
-    confidence: 1, spending: 1, saving: .15, credit: 1, liquidity: .28, defaults: .025,
+    confidence: 1, spending: 1, saving: .15, credit: 1, liquidity: .28, bankStress: 0, defaults: .025,
     privateDebt: .8, governmentDebt: .6, fiscal: 0, taxShift: 0, services: 1,
     inequality: bound(.38 + m.corruption / 700, .3, .55), mobility: .5, population: 1, elderly: .17,
     trade: 1, currency: 1, supply: 0, housing: 1, rent: 1, housingReturn: historicalHousing(country, year) ?? 0,
     bubble: 0, market: 1, priceScale: 1,
-    sectors: Object.fromEntries(SECTORS.map(s => [s, { demand: 1, capacity: 1, costs: 1, productivity: 1, competition: .55, adoption: 0, disruption: 0 }])) as Record<Sector, SectorState>,
+    sectors: Object.fromEntries(SECTORS.map(s => [s, { demand: 1, capacity: 1, costs: 1, productivity: 1, competition: .55, adoption: 0, disruption: 0,
+      availability: 1, stock: STOCK_SECTORS.includes(s) ? .12 : 0, backlog: 0, output: 1, workforce: 1 }])) as Record<Sector, SectorState>,
+    tradeNetwork: initialTrade(country, year),
+    cohorts: initialCohorts(bound(.55 + m.gdpPerCapita / 240000, .5, .9), bound(.38 + m.corruption / 700, .3, .55), unemployment, .17),
+    budget: initialBudget(country, year),
     causes: [],
   }
 }
 
 const RANGES: Partial<Record<keyof CountryEconomy, [number, number]>> = {
-  year: [1900, 100000], outputGap: [-.35, .25], growth: [-.2, .16], inflation: [-.5, 1e7], rate: [0, 10], unemployment: [.015, .4],
+  // Historical hyperinflation-era nominal rates and housing crashes must survive a
+  // reload unchanged. Procedural years use much tighter bounds in simulation.ts.
+  year: [1900, 100000], outputGap: [-.35, .25], growth: [-.2, .16], inflation: [-.5, 1e7], rate: [-.1, 1e5], unemployment: [.015, .4],
   wages: [.5, 3], productivity: [.6, 4], skills: [.2, 1], confidence: [.2, 1.5], spending: [.45, 1.6], saving: [.03, .5], credit: [.2, 1.5], liquidity: [.05, .65], defaults: [.002, .3],
-  privateDebt: [.1, 2.5], governmentDebt: [.05, 2.5], fiscal: [-.08, .1], taxShift: [-.06, .08], services: [.45, 1.5], inequality: [.2, .7], mobility: [.1, .9], population: [.5, 2.5], elderly: [.08, .4],
-  trade: [.4, 1.5], currency: [.5, 1.8], supply: [0, .65], housing: [.4, 4], rent: [.5, 3], housingReturn: [-.3, .2], bubble: [0, .7], market: [.12, 8], priceScale: [1e-6, 1e6],
+  bankStress: [0, 1], privateDebt: [.1, 2.5], governmentDebt: [0, 2.5], fiscal: [-.08, .1], taxShift: [-.06, .08], services: [.45, 1.5], inequality: [.2, .7], mobility: [.1, .9], population: [.5, 2.5], elderly: [.08, .4],
+  trade: [.4, 1.5], currency: [.5, 1.8], supply: [0, .65], housing: [.4, 4], rent: [.5, 3], housingReturn: [-.95, 5], bubble: [0, .7], market: [.12, 8], priceScale: [1e-6, 1e6],
 }
 
 export function normalizeCountry(value: unknown, country: string, year: number): CountryEconomy {
@@ -97,11 +118,16 @@ export function normalizeCountry(value: unknown, country: string, year: number):
     ;(out as unknown as Record<string, unknown>)[key] = numeric(raw[key], out[k] as number, limits[0], limits[1])
   }
   out.year = Math.floor(out.year)
+  out.tradeNetwork = normalizeTrade(raw.tradeNetwork, country, out.year)
+  out.cohorts = normalizeCohorts(raw.cohorts, initialCohorts(out.skills, out.inequality, out.unemployment, out.elderly))
+  out.budget = normalizeBudget(raw.budget, country, out.year, out.governmentDebt)
   const sectors = record(raw.sectors)
   for (const s of SECTORS) {
     const row = record(sectors[s])
     out.sectors[s] = { demand: numeric(row.demand, 1, .25, 2), capacity: numeric(row.capacity, 1, .35, 2.5), costs: numeric(row.costs, 1, .4, 2.5),
-      productivity: numeric(row.productivity, 1, .65, 3), competition: numeric(row.competition, .55, .15, .95), adoption: numeric(row.adoption, 0, 0, 1), disruption: numeric(row.disruption, 0, 0, .7) }
+      productivity: numeric(row.productivity, 1, .65, 3), competition: numeric(row.competition, .55, .15, .95), adoption: numeric(row.adoption, 0, 0, 1), disruption: numeric(row.disruption, 0, 0, .7),
+      availability: numeric(row.availability, 1, .15, 1), stock: STOCK_SECTORS.includes(s) ? numeric(row.stock, .12, 0, .8) : 0,
+      backlog: numeric(row.backlog, 0, 0, 1.5), output: numeric(row.output, 1, 0, 2.5), workforce: numeric(row.workforce, 1, .35, 1.15) }
   }
   out.causes = Array.isArray(raw.causes) ? raw.causes.filter((x): x is string => typeof x === 'string').slice(0, 4).map(x => x.slice(0, 160)) : []
   return out
@@ -112,20 +138,23 @@ export function economyState(g: GameState): EconomyState | null {
   const raw = g.flags[ECONOMY_KEY]
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const r = record(raw)
-  if (r.v !== 1 || typeof r.year !== 'number' || !Number.isFinite(r.year) || r.year > g.year) return null
+  if ((r.v !== 1 && r.v !== ECONOMY_VERSION) || typeof r.year !== 'number' || !Number.isFinite(r.year) || r.year > g.year) return null
   const hit = cache.get(raw)
   if (hit) return hit
   // Writers replace the root, so validate imported country keys once, not on every
   // wage, price, credit or menu read during the same economic year.
   if (!Object.keys(record(r.countries)).some(id => validCountries.has(id))) return null
   const year = Math.floor(numeric(r.year, g.year, 1900, 100000))
-  const out: EconomyState = { v: 1, year, countries: {}, previous: {}, history: {}, pending: [], policies: [], receipts: [] }
+  const out: EconomyState = { v: ECONOMY_VERSION, year, countries: {}, previous: {}, history: {}, pending: [], policies: [], receipts: [], rivals: normalizeRivals(r.rivals, year), previousRivals: normalizeRivals(r.previousRivals, year - 1) }
   for (const [id, row] of Object.entries(record(r.countries))) if (validCountries.has(id)) out.countries[id] = normalizeCountry(row, id, year)
   for (const [id, row] of Object.entries(record(r.previous))) if (validCountries.has(id)) out.previous[id] = normalizeCountry(row, id, year - 1)
   for (const [id, rows] of Object.entries(record(r.history))) if (validCountries.has(id) && Array.isArray(rows)) {
-    out.history[id] = rows.slice(-32).map(record).filter(p => typeof p.year === 'number' && Number.isFinite(p.year)).map(p => ({ year: numeric(p.year, year, 1900, 100000), growth: numeric(p.growth, .02, -.2, .16), unemployment: numeric(p.unemployment, .06, .015, .4), inflation: numeric(p.inflation, .025, -.5, 1e7), rate: numeric(p.rate, .04, 0, 10), housing: numeric(p.housing, 1, .4, 4), market: numeric(p.market, 1, .12, 8), priceScale: numeric(p.priceScale, 1, 1e-6, 1e6) }))
+    out.history[id] = rows.slice(-32).map(record).filter(p => typeof p.year === 'number' && Number.isFinite(p.year)).map(p => ({ year: numeric(p.year, year, 1900, 100000), growth: numeric(p.growth, .02, -.2, .16), unemployment: numeric(p.unemployment, .06, .015, .4), inflation: numeric(p.inflation, .025, -.5, 1e7), rate: numeric(p.rate, .04, -.1, 1e5), housing: numeric(p.housing, 1, .4, 4), market: numeric(p.market, 1, .12, 8), priceScale: numeric(p.priceScale, 1, 1e-6, 1e6) }))
   }
-  if (Array.isArray(r.pending)) out.pending = r.pending.slice(-2200).map(record).filter(p => typeof p.country === 'string' && validCountries.has(p.country) && SECTORS.includes(p.sector as Sector)).map(p => ({ country: String(p.country), sector: p.sector as Sector, jobs: numeric(p.jobs, 0, -.08, .08), investment: numeric(p.investment, 0, 0, .08), failure: numeric(p.failure, 0, 0, .12), innovation: numeric(p.innovation, 0, 0, .5) }))
+  // Signed jobs/lending retain gross accumulated changes across midyear reloads;
+  // annual simulation nets them and applies the much tighter national effect caps.
+  if (Array.isArray(r.pending)) out.pending = r.pending.slice(-2200).map(record).filter(p => typeof p.country === 'string' && validCountries.has(p.country) && SECTORS.includes(p.sector as Sector)).map(p => ({ country: String(p.country), sector: p.sector as Sector, jobs: numeric(p.jobs, 0, -3000, 3000), investment: numeric(p.investment, 0, 0, .08), failure: numeric(p.failure, 0, 0, .12), innovation: numeric(p.innovation, 0, 0, .5),
+    ...(p.bankLoss !== undefined || p.bankRun !== undefined || p.bankLending !== undefined ? { bankLoss: numeric(p.bankLoss, 0, 0, .2), bankRun: numeric(p.bankRun, 0, 0, .3), bankLending: numeric(p.bankLending, 0, -3000, 3000) } : {}) }))
   if (Array.isArray(r.policies)) out.policies = r.policies.slice(-500).map(record).filter(p => typeof p.id === 'string' && validCountries.has(String(p.country)) && ['investment', 'education', 'health', 'taxCut', 'taxRise', 'regulation'].includes(String(p.kind))).map(p => ({ id: String(p.id).slice(0, 180), country: String(p.country), year: numeric(p.year, year, 1900, 100000), until: numeric(p.until, year, 1900, 100000), kind: p.kind as EconomicPolicy['kind'], scale: numeric(p.scale, 0, 0, 1) }))
   if (Array.isArray(r.receipts)) out.receipts = r.receipts.filter((x): x is string => typeof x === 'string').slice(-3000)
   cache.set(raw, out)
@@ -158,9 +187,11 @@ export function pointOf(e: CountryEconomy): EconomyPoint { return { year: e.year
 export function compactCountry(e: CountryEconomy): CountryEconomy {
   for (const key of Object.keys(RANGES) as (keyof CountryEconomy)[]) {
     const value = e[key]
-    if (typeof value === 'number') (e as unknown as Record<string, unknown>)[key] = key === 'priceScale' ? Number(value.toPrecision(10)) : Math.round(value * 1e6) / 1e6
+    if (typeof value === 'number') (e as unknown as Record<string, unknown>)[key] = (key === 'priceScale' ? Number(value.toPrecision(10)) : Math.round(value * 1e6) / 1e6) || 0
   }
   for (const sector of SECTORS) for (const key of Object.keys(e.sectors[sector]) as (keyof SectorState)[]) e.sectors[sector][key] = Math.round(e.sectors[sector][key] * 1e6) / 1e6
+  compactCohorts(e.cohorts)
+  compactTrade(e.tradeNetwork)
   return e
 }
 

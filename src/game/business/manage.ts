@@ -5,7 +5,7 @@ import { arrestPlayer } from '../crime'
 import { venueOwnerMenu } from './venues'
 import { isVenue } from './venues-data'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
-import { chance, rand, randInt } from '../rng'
+import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { TechId } from '../history/timeline'
@@ -57,6 +57,9 @@ import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
 import { industryDef, lineOf } from './industries'
+import { supplyInventoryValue } from './supply'
+import { equipmentUpgradeCost, purchaseEquipmentUpgrade, purchaseTraining, repeatProgramGain, staffTrainingCost, supplyPolicyNodes } from './supply-policy'
+import { economicReportMenu } from './economic-report'
 import { complexityShare, PRODUCT_LIFE, productIdeas, productLift, rangeBoost } from './products'
 import { bestRdBudget, rdBase, rdBlock, rdCrowding, rdMinBudget, rdProjects, rdQuote, rdValue, retireLines, retireOrder, roundBudget, startRd } from './rd'
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
@@ -611,22 +614,17 @@ const SUPPLIERS: { id: Supplier; label: string; note: string }[] = [
 const SUPPLIER_COST: Record<Supplier, number> = { budget: 0.86, standard: 1, premium: 1.18 }
 const SUPPLIER_QUALITY: Record<Supplier, number> = { budget: -12, standard: 0, premium: 12 }
 
-/** The k-th repeat of an upgrade or program in a year costs more (k = done already this year). */
-function repeatCost(k: number): number {
-  return 1 + 0.5 * Math.max(0, k)
-}
-
 /** ...and gets less out of it (diminishing returns). */
 function repeatGain(k: number): number {
-  return 1 / (1 + 0.5 * Math.max(0, k))
+  return repeatProgramGain(k)
 }
 
 function upgradeCost(b: BizState, k: number): number {
-  return Math.round(equipmentValue(b) * 0.12 * repeatCost(k))
+  return equipmentUpgradeCost(b, k)
 }
 
 function trainingCost(b: BizState, k: number): number {
-  return Math.round(Math.max(1, b.employees) * 450 * localEcon(b.industry, b.countryId, b.city).level * repeatCost(k))
+  return staffTrainingCost(b, k)
 }
 
 /** What switching supplier is worth over a few years: cheaper inputs against where quality settles. */
@@ -654,7 +652,7 @@ function qualityMenu(a: Asset): MenuGroup {
         const bb = readBiz(gg, live(gg, a))
         return fxValue(gg, bb, bizWorth(gg, bb), fx)
       }
-      const worthIt = (gg: GameState, v: number) => talentHint(gg, 'Business', v > 0 ? `Worth it: about ${money(v)} more than it costs` : 'Not worth it yet: it costs more than the quality brings in')
+      const worthIt = (gg: GameState, v: number) => talentHint(gg, 'Business', `Quality-only estimate: ${v > 0 ? `about ${money(v)} more than it costs` : 'the quality gain alone does not cover the cost'}. This excludes durable workforce resilience.`)
       let bestSupplier: Supplier | null = null
       if (hinting(g, a)) {
         const w = bizWorth(g, b)
@@ -676,12 +674,8 @@ function qualityMenu(a: Asset): MenuGroup {
             const k = yearActionsUsed(gg, `biz.upgrade.${cur.id}`)
             const cost = upgradeCost(bb, k)
             if (bb.cash < cost) return noCash(gg, cur, cost, 'new equipment')
-            useYearAction(gg, `biz.upgrade.${cur.id}`, Number.MAX_SAFE_INTEGER)
-            bb.cash -= cost
-            bb.yearCosts += cost
-            const gain = Math.max(1, Math.round(randInt(gg, 6, 11) * repeatGain(k)))
-            bb.quality = clampN(bb.quality + gain, 0, 100)
-            notice(gg, 'Upgraded', `Shiny new equipment at ${cur.name} (${formatMoney(cost)}). Quality is up to ${bb.quality}%.${k > 0 ? ' Each extra upgrade this year buys a little less.' : ''}`, { emoji: '\u{1F6E0}\u{FE0F}', tone: 'good' })
+            if (!purchaseEquipmentUpgrade(gg, cur, bb)) return
+            notice(gg, 'Upgraded', `New equipment at ${cur.name} (${formatMoney(cost)}). Quality is up to ${bb.quality}%; bounded automation reduces future labor bottlenecks, not missing materials.${k > 0 ? ' Each extra upgrade this year buys a little less.' : ''}`, { emoji: '\u{1F6E0}\u{FE0F}', tone: 'good' })
           },
         }),
         act(a, 'training', 'Staff Training Program', '\u{1F393}', {
@@ -691,12 +685,8 @@ function qualityMenu(a: Asset): MenuGroup {
             const k = yearActionsUsed(gg, `biz.training.${cur.id}`)
             const cost = trainingCost(bb, k)
             if (bb.cash < cost) return noCash(gg, cur, cost, 'the training')
-            useYearAction(gg, `biz.training.${cur.id}`, Number.MAX_SAFE_INTEGER)
-            bb.cash -= cost
-            bb.yearCosts += cost
-            bb.quality = clampN(bb.quality + Math.max(1, Math.round(randInt(gg, 3, 6) * repeatGain(k))), 0, 100)
-            bb.morale = clampN(bb.morale + Math.max(0, Math.round(randInt(gg, 2, 5) * repeatGain(k))), 0, 100)
-            notice(gg, 'Training Done', `Everyone at ${cur.name} sat through a training program (${formatMoney(cost)}). Quality ${bb.quality}%, morale ${bb.morale}%.${k > 0 ? ' The staff are starting to recognize the slides.' : ''}`, { emoji: '\u{1F393}', tone: 'good' })
+            if (!purchaseTraining(gg, cur, bb)) return
+            notice(gg, 'Training Done', `Everyone at ${cur.name} completed a training program (${formatMoney(cost)}). Quality ${bb.quality}%, morale ${bb.morale}%. Durable qualifications help fill skill gaps, but cannot create workers or materials.${k > 0 ? ' The staff are starting to recognize the slides.' : ''}`, { emoji: '\u{1F393}', tone: 'good' })
           },
         }),
         { type: 'heading', id: `biz.supH.${a.id}`, label: 'Supplier contract' },
@@ -713,6 +703,7 @@ function qualityMenu(a: Asset): MenuGroup {
           }),
         )
       }
+      nodes.push(...supplyPolicyNodes(g, a))
       return nodes
     },
   }
@@ -1818,7 +1809,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
   const b = readBiz(g, a)
   const nodes: MenuNode[] = []
   const closeValue = (bb: BizState) => equipmentValue(bb) * 0.35 + bb.inventory * localEcon(bb.industry, bb.countryId, bb.city).unitCost * 0.3
-  const closeP = (bb: BizState): Proposal => ({ kind: 'close', by: 'owner', amount: Math.max(0, closeValue(bb) + bb.cash - bb.debt), label: `Close ${a.name} for good` })
+  const closeP = (bb: BizState): Proposal => ({ kind: 'close', by: 'owner', amount: Math.max(0, closeValue(bb) + supplyInventoryValue(bb) + bb.cash - bb.debt), label: `Close ${a.name} for good` })
   const ipoP: Proposal = { kind: 'ipo', by: 'owner', label: `Take ${a.name} public` }
   // A division of a group sells like any company, never lists on its own (the whole group lists)
   // and can be spun off (business/conglomerate-division.ts).
@@ -1874,7 +1865,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
       },
       confirm: (gg) => {
         const bb = readBiz(gg, a)
-        return `Close ${a.name} for good? The fit-out sells for about ${money(equipmentValue(bb) * 0.35)}; debts of ${money(bb.debt)} get paid first.${needsVote(gg, live(gg, a), bb, closeP(bb)) ? ' The board votes first.' : ''}`
+        return `Close ${a.name} for good? The fit-out sells for about ${money(equipmentValue(bb) * 0.35)}${supplyInventoryValue(bb) > 0 ? ` and raw inputs recover about ${money(supplyInventoryValue(bb))}` : ''}; debts of ${money(bb.debt)} get paid first.${needsVote(gg, live(gg, a), bb, closeP(bb)) ? ' The board votes first.' : ''}`
       },
       run: (gg, cur, bb) => {
         if (!boardAllows(gg, cur, bb, closeP(bb))) return
@@ -1975,6 +1966,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
+  nodes.push(economicReportMenu(a))
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
   nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', children: gg => { const aa = findBusiness(gg, a.id); return aa ? rescueNodes(gg, aa) : [] } })
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })

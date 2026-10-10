@@ -86,8 +86,10 @@ export function groupRetentionYear(g: GameState): void {
   for (const row of allGroups(g)) {
     const grp = liveGroup(g, row.core.id)
     if (!grp || grp.core.ceo !== 'manager' || !grp.core.manager) continue
+    const before = JSON.stringify(grp.core.manager)
     if (retention(g, grp.core.name, grp.core.manager)) { clearGroupCeoJob(g, grp.core.manager); grp.core.manager = { ...interimCeo(g, grp), since: g.year } }
-    saveGroup(g, grp)
+    // Saving increments the group revision; a repeated annual hook must not write a no-op.
+    if (JSON.stringify(grp.core.manager) !== before) saveGroup(g, grp)
   }
 }
 

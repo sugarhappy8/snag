@@ -32,6 +32,8 @@ import { economicCycle, economyOf } from '../economy'
 import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
 import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 import { allocatedCorporateTax } from './tax'
+import { bookSupply, saveSupply, supplyInventoryValue, supplyProfile, type SupplyBook } from './supply'
+import { applyEconomicRivals } from './economic-actors'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -420,7 +422,7 @@ const scaleCache = new Map<string, { dRef: number; fieldP: number }>()
 /** The competitive situation of a company's market in `year` (pure; cached). */
 export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx {
   const { dRef, fieldP } = marketScale(b.industry, b.countryId)
-  const ctx = buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP)
+  const ctx = applyEconomicRivals(g, buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP))
   const national = nationalMarket(g, b.industry, b.countryId, year)
   return { ...ctx, pot: ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1) }
 }
@@ -538,6 +540,9 @@ export interface YearResult {
   unpaidSalary: number
   /** The year's demand in its market at the price charged, and what the company could make (for the market-share booking). */
   market?: (MarketPick & { bu: number; capacity?: number }) | null
+  /** Actual bank-book changes in dollars. Simulators return observations only;
+   * the annual owner/NPC settlement enqueues them once, never a forecast. */
+  bank?: { bankLoss: number; bankRun: number; bankLending: number }
 }
 
 /** Labor premium when the owner lacks the licence the trade expects. */
@@ -587,6 +592,8 @@ export interface Book {
   inventoryEnd: number
   employees: number
   unpaidSalary: number
+  /** Read-only next input inventory and the matching procurement cash bridge. */
+  supply: SupplyBook
 }
 
 /**
@@ -597,7 +604,8 @@ export interface Book {
 export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, production: number, ownerDraw: number, k: YearFixed = yearFixed(g, b), cycle?: number, bookedHomeSales: number | Record<string, number> = 0): Book {
   const def = industryDef(b.industry)
   const capacity = plan.capacity
-  const produced = Math.floor(clampN(Math.min(production, capacity), 0, 1e12))
+  const supply = bookSupply(g, b, year, capacity, production, plan.unitCost * k.cf)
+  const produced = supply.produced
   const available = produced + b.inventory
   const demand = plan.demand
   const sold = Math.floor(Math.min(demand, available))
@@ -644,7 +652,11 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
 
   // Services can't stock up: idle capacity costs less than a served customer.
   const cf = k.cf
-  const cogs = def.perishable >= 1 ? plan.unitCost * cf * (sold * 0.7 + produced * 0.3) : plan.unitCost * cf * produced
+  const ordinaryCogs = def.perishable >= 1 ? plan.unitCost * cf * (sold * 0.7 + produced * 0.3) : plan.unitCost * cf * produced
+  const materialShare = supplyProfile(b.industry)?.materialShare ?? 0
+  // Finished stock keeps the established production-expense convention. Only raw
+  // input baskets are capitalized until used; consumption is never paid twice.
+  const cogs = ordinaryCogs * (1 - materialShare) + supply.materialsCost
   const keyStaff = k.keyStaff
   const marketing = revenue * def.marketingShare * b.marketingLevel
   const interest = b.debt * b.debtRate
@@ -653,20 +665,20 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   const ceoEff = k.ceoEff
   const running = (wages + rent + upkeep) * finance * ceoEff
   const hq = running * headOffice(sites)
-  const overhead = running + hq
+  const overhead = running + hq + supply.storageCost
   const pbt0 = netRevenue - cogs - overhead - range - keyStaff - marketing - interest - insurance - b.yearCosts + b.yearIncome
 
   // One-off costs and income (b.yearCosts / b.yearIncome) count toward profit, but the actions
   // that caused them already moved the cash, so they must not move it a second time here.
   const alreadyBooked = b.yearCosts - b.yearIncome
   // The owner's salary is paid if the company can cover it.
-  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + alreadyBooked)))
+  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + alreadyBooked + supply.cashAdjustment)))
   const pbt = pbt0 - ownerPay
   // Concrete invention sales were already cash-booked through yearIncome. Attributed contracts
   // follow their market; any other one-off income remains taxable at headquarters.
   const corpTax = allocatedCorporateTax(b.countryId, pbt, netByCountry, b.yearIncome, bookedHomeSales, g, year)
   const net = pbt - corpTax
-  let cash = dollars(b.cash + net + alreadyBooked)
+  let cash = dollars(b.cash + net + alreadyBooked + supply.cashAdjustment)
 
   // Cash held in a currency that inflates faster than deposits pay loses value.
   const m = economyOf(g, b.countryId, year)
@@ -695,7 +707,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
     rent: dollars(rent * finance * ceoEff),
     marketing: dollars(marketing),
     interest: dollars(interest),
-    upkeep: dollars(upkeep * finance * ceoEff + insurance + hq + range),
+    upkeep: dollars(upkeep * finance * ceoEff + insurance + hq + range + supply.storageCost),
     other: dollars(b.yearCosts),
     otherIncome: dollars(b.yearIncome),
     ownerPay,
@@ -707,7 +719,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
     openFraction: b.openFraction,
     employees,
   }
-  return { stmt, cash, inventoryEnd, employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay) }
+  return { stmt, cash, inventoryEnd, employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), supply }
 }
 
 /**
@@ -724,7 +736,8 @@ export function simulateYear(g: GameState, b: BizState, year: number, ownerDraw:
   b.inventory = k.inventoryEnd
   b.employees = k.employees
   b.last = k.stmt
-  return { stmt: k.stmt, inventoryEnd: k.inventoryEnd, wantedStaff: k.employees, unpaidSalary: k.unpaidSalary, market: plan.market ? { ...plan.market, capacity: plan.capacity } : null }
+  if (k.supply.next) saveSupply(b, k.supply.next)
+  return { stmt: k.stmt, inventoryEnd: k.inventoryEnd, wantedStaff: k.employees, unpaidSalary: k.unpaidSalary, market: plan.market ? { ...plan.market, capacity: k.supply.capacity } : null }
 }
 
 /** Yearly business insurance premium (property, liability, interruption). */
@@ -826,7 +839,7 @@ export function valuationOf(b: BizState): number {
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
   const unitCost = localEcon(b.industry, b.countryId, b.city).unitCost
-  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + inventionInventoryValue(b) + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
+  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + inventionInventoryValue(b) + supplyInventoryValue(b) + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
   // A game studio is also worth its back catalog and the games in its pipeline.
   const games = b.industry === 'gameStudio' ? studioValue(b.studio) : 0
   // A deep-tech company is also worth its patents, tech lead and R&D pipeline.

@@ -2,7 +2,7 @@
 // really were, coding follows the computer, and modern features (smartphones, social media,
 // crypto, apps, dating apps, esports, data science...) only exist once their technology does.
 // Lives born in PRESENT_YEAR keep every feature they had before the year system.
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { electronicsListings, carListings } from '../src/game/assets'
@@ -118,23 +118,27 @@ function passiveChildhood(year: number, seed: number): { by13: boolean; computer
 
 // ---------------------------------------------------------------------------
 
-describe('the home computer by era', () => {
-  it('born in 1980, kids rarely get a computer or code; born in 2000 they often do', () => {
-    const run = (year: number) => {
-      let by13 = 0
-      let computer = 0
-      let coded = 0
-      const n = 200
-      for (let seed = 1; seed <= n; seed++) {
-        const r = passiveChildhood(year, seed)
-        if (r.by13) by13++
-        if (r.computer) computer++
-        if (r.coded) coded++
-      }
-      return { by13: by13 / n, computer: computer / n, coded: coded / n }
+describe('the home computer by era', { concurrent: false, shuffle: false }, () => {
+  const n = 200
+  const years = [1980, 2000] as const
+  const samples = years.flatMap(year => Array.from({ length: n }, (_, i) => ({ year, seed: i + 1 })))
+  const results = new Map<number, Map<number, ReturnType<typeof passiveChildhood>>>(years.map(year => [year, new Map()]))
+
+  // Keep every original seed and its separate popup driver. Each childhood has
+  // the normal per-test timeout, so a stalled life is isolated from total sweep time.
+  it.each(samples)('born $year, seed $seed completes the sampled childhood', ({ year, seed }) => {
+    results.get(year)!.set(seed, passiveChildhood(year, seed))
+  })
+
+  afterAll(() => {
+    const rates = (year: number) => {
+      const rows = results.get(year)!
+      expect([...rows.keys()].sort((a, b) => a - b)).toEqual(Array.from({ length: n }, (_, i) => i + 1))
+      const count = (key: keyof ReturnType<typeof passiveChildhood>) => [...rows.values()].filter(row => row[key]).length / n
+      return { by13: count('by13'), computer: count('computer'), coded: count('coded') }
     }
-    const old = run(1980)
-    const young = run(2000)
+    const old = rates(1980)
+    const young = rates(2000)
     console.log(`born 1980: by 13 ${old.by13.toFixed(2)}, by 18 ${old.computer.toFixed(2)}, coded ${old.coded.toFixed(2)} · born 2000: by 13 ${young.by13.toFixed(2)}, by 18 ${young.computer.toFixed(2)}, coded ${young.coded.toFixed(2)}`)
     // A 1980s childhood: a home computer was a rare, pricey novelty (most families got one in the late 90s).
     expect(old.by13).toBeLessThan(0.35)
@@ -148,7 +152,7 @@ describe('the home computer by era', () => {
     expect(young.coded).toBeGreaterThan(0.6)
     expect(young.computer).toBeGreaterThan(old.computer + 0.3)
     expect(young.coded).toBeGreaterThan(old.coded + 0.3)
-  }, 120_000)
+  })
 })
 
 describe('computers, coding and the computer menu by era', () => {

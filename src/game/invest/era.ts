@@ -6,7 +6,7 @@
 // Pure data and functions of (sector/country, year). From PRESENT_YEAR on (and for the modern
 // era of each sector) everything returns the modern identity unchanged, so the present plays
 // exactly as before. invest/engine.ts eraIdentity() applies these to listed companies.
-import { PRESENT_YEAR } from '../history/timeline'
+import { PRESENT_YEAR, techAdoption, type TechId } from '../history/timeline'
 import { getCountry } from '../world'
 import type { SectorId } from './engine'
 
@@ -115,6 +115,7 @@ export function historySector(sector: SectorId, year: number): SectorId {
 export interface EraPennyKind {
   noun: string
   pitch: string
+  tech?: TechId
   /** The sector whose real story these tiny companies rode (dot-coms in 1999-2002...). */
   as?: SectorId
 }
@@ -189,20 +190,29 @@ const PENNY_ERAS: readonly { until: number; kinds: readonly EraPennyKind[] }[] =
   {
     until: 2008,
     kinds: [
-      { noun: 'Dot-Com', pitch: 'A website, a sock-puppet mascot and no revenue.', as: 'ecommerce' },
+      { noun: 'Dot-Com', pitch: 'A website, a sock-puppet mascot and no revenue.', as: 'ecommerce', tech: 'internet' },
       { noun: 'Biotech', pitch: 'One drug candidate, zero revenue and a CEO who is "very excited".', as: 'biotech' },
-      { noun: 'Internet Telephony', pitch: 'Free phone calls over the internet, once the dial-up connects.', as: 'telecom' },
+      { noun: 'Internet Telephony', pitch: 'Free phone calls over the internet, once the dial-up connects.', as: 'telecom', tech: 'internet' },
       { noun: 'Gold Explorers', pitch: 'Has been about to strike gold for years.', as: 'mining' },
       { noun: 'Fuel Cells', pitch: 'Promises hydrogen cars by next year, definitely.' },
-      { noun: 'Online Pet Supplies', pitch: 'Ships 40-pound bags of dog food for free. Losing money on every bag.', as: 'ecommerce' },
+      { noun: 'Online Pet Supplies', pitch: 'Ships 40-pound bags of dog food for free. Losing money on every bag.', as: 'ecommerce', tech: 'internet' },
     ],
   },
 ]
 
 /** The penny-stock kind a listing had in `year` (null in the modern era: use its own). */
-export function eraPennyKind(year: number, index: number): EraPennyKind | null {
+export function eraPennyKind(year: number, index: number, countryId?: string): EraPennyKind | null {
   if (!Number.isFinite(year) || year >= PRESENT_YEAR) return null
-  for (const e of PENNY_ERAS) if (year <= e.until) return e.kinds[Math.abs(Math.round(index)) % e.kinds.length]
+  for (let i = 0; i < PENNY_ERAS.length; i++) {
+    const e = PENNY_ERAS[i]
+    if (year > e.until) continue
+    const kind = e.kinds[Math.abs(Math.round(index)) % e.kinds.length]
+    if (countryId && kind.tech && techAdoption(countryId, kind.tech, year) < .02 && i > 0) {
+      const previous = PENNY_ERAS[i - 1].kinds
+      return previous[Math.abs(Math.round(index)) % previous.length]
+    }
+    return kind
+  }
   return null
 }
 

@@ -3,6 +3,7 @@
 // electronics, luxury boutique, art & collectibles). The yearly hook handles values,
 // condition, upkeep, mortgages, tenants and the odd burst pipe.
 import { economyOf, lendingConditions } from './economy'
+import { charterMenu } from './shops/fleet-operations'
 //
 // Store listings are generated from a seed (life + year + store), so they stay the same all
 // year without touching g.rng — menus are rendered from the read-only state.
@@ -2709,9 +2710,9 @@ function makeOffers(g: GameState, a: Asset): Offer[] {
     case 'house': {
       const offers = [
         { buyer: `${person()} (investor)`, amount: f(0.85, 0.95) },
-        { buyer: `${person()} (first-time buyer)`, amount: f(0.94, 1.03) },
+        { buyer: `${person()} (${a.details.commercial === true ? 'business owner' : 'first-time buyer'})`, amount: f(0.94, 1.03) },
       ]
-      if (a.condition >= 20 && haunted(a) < 60) offers.push({ buyer: `${person()} (relocating family)`, amount: f(1.0, 1.12) })
+      if (a.condition >= 20 && haunted(a) < 60) offers.push({ buyer: `${person()} (${a.details.commercial === true ? 'commercial property fund' : 'relocating family'})`, amount: f(1.0, 1.12) })
       return offers
     }
     case 'car':
@@ -3334,7 +3335,7 @@ const RENT_LEVEL = defineScript('assets.rentLevel', (g, choice, data) => {
   const assetId = field<string>(data, 'assetId')
   const market = field<number>(data, 'market')
   const asset = assetId ? findAsset(g, assetId) : undefined
-  if (!asset || asset.kind !== 'house' || !market || !Number.isFinite(market) || market <= 0 || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord') || !['low', 'market', 'high'].includes(choice)) return
+  if (!asset || asset.kind !== 'house' || asset.details.commercial === true || !market || !Number.isFinite(market) || market <= 0 || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord') || !['low', 'market', 'high'].includes(choice)) return
   if (!useYearAction(g, `landlord.search.${asset.id}`, 2)) return notice(g, 'Rental Search', 'You already ran two applicant searches this year. Try again next year.', { emoji: '🔑' })
   const factor = choice === 'low' ? 0.85 : choice === 'high' ? 1.2 : 1
   const monthly = nicePrice(market * factor)
@@ -3367,7 +3368,7 @@ const RENT_APPLICANT = defineScript('assets.rentApplicant', (g, choice, data) =>
   const applicants = field<Applicant[]>(data, 'applicants')
   const asset = assetId ? findAsset(g, assetId) : undefined
   const ap = applicants?.[Number(choice.replace('app', ''))]
-  if (!asset || asset.kind !== 'house' || !monthly || !Number.isFinite(monthly) || monthly <= 0 || monthly > asset.value * .02 || !ap || typeof ap.name !== 'string' || !Number.isFinite(ap.risk) || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord') || !/^app\d+$/.test(choice)) return
+  if (!asset || asset.kind !== 'house' || asset.details.commercial === true || !monthly || !Number.isFinite(monthly) || monthly <= 0 || monthly > asset.value * .02 || !ap || typeof ap.name !== 'string' || !Number.isFinite(ap.risk) || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord') || !/^app\d+$/.test(choice)) return
   asset.rentedOutFor = monthly * 12
   asset.details.tenant = ap.name
   asset.details.tenantTrait = ap.trait
@@ -3385,11 +3386,11 @@ function rentOutAction(a: Asset): MenuAction {
     label: 'Rent Out',
     emoji: '🔑',
     subtitle: 'Find a tenant and collect rent every year',
-    visible: (g) => !live(g, a).rentedOutFor && !isHome(g, a),
+    visible: (g) => !live(g, a).rentedOutFor && !isHome(g, a) && live(g, a).details.commercial !== true,
     disabledReason: (g) => adultReason(g, 'become a landlord') ?? (live(g, a).condition < 10 ? "It's in no condition to rent out. Renovate first." : null),
     run: (g) => {
       const asset = findAsset(g, a.id)
-      if (!asset || asset.kind !== 'house' || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord')) return
+      if (!asset || asset.kind !== 'house' || asset.details.commercial === true || asset.rentedOutFor || isHome(g, asset) || adultReason(g, 'become a landlord')) return
       const market = Math.max(50, nicePrice((asset.value * 0.0045 * (0.7 + 0.3 * (asset.condition / 100))) / 1))
       scriptChoice(
         g,
@@ -3496,13 +3497,14 @@ function moveInAction(a: Asset): MenuAction {
     id: `movein-${a.id}`,
     label: 'Move In',
     emoji: '📦',
-    visible: (g) => !isHome(g, a) && !live(g, a).rentedOutFor,
+    visible: (g) => !isHome(g, a) && !live(g, a).rentedOutFor && live(g, a).details.commercial !== true,
     disabledReason: (g) => blockReason(g) ?? (g.character.age < 18 ? 'You must be 18 to live on your own.' : null),
     confirm: (g) => (g.character.residence.status === 'renting' ? 'Move in? Your current lease will end.' : null),
     run: (g) => {
       const asset = findAsset(g, a.id)
       if (!asset) return
       const was = g.character.residence.status
+      if (asset.details.commercial === true) return
       g.character.residence = { status: 'owned', assetId: asset.id, description: asset.name }
       addStat(g, 'happiness', 3)
       log(g, `I moved into my ${asset.name.toLowerCase()}.`)
@@ -3832,7 +3834,8 @@ function assetInfo(g: GameState, a: Asset): MenuNode[] {
   const d = a.details
   if (a.kind === 'house') {
     if (d.address) rows.push(`📍 ${str(d.address)}, ${str(d.city, g.character.city)}`)
-    if (d.beds) rows.push(`🛏️ ${num(d.beds)} bed · ${num(d.baths)} bath · ${num(d.sqft).toLocaleString('en-US')} sq ft${num(d.acres) ? ` · ${num(d.acres).toLocaleString('en-US')} acres` : ''}${d.built ? ` · built ${num(d.built)}` : ''}`)
+    if (d.commercial === true) rows.push(`🏢 Commercial premises · ${num(d.sqft).toLocaleString('en-US')} sq ft${d.built ? ` · built ${num(d.built)}` : ''}`)
+    else if (d.beds) rows.push(`🛏️ ${num(d.beds)} bed · ${num(d.baths)} bath · ${num(d.sqft).toLocaleString('en-US')} sq ft${num(d.acres) ? ` · ${num(d.acres).toLocaleString('en-US')} acres` : ''}${d.built ? ` · built ${num(d.built)}` : ''}`)
     if (haunted(a) > 0) rows.push(`👻 Hauntedness: ${haunted(a)}%`)
     if (amenities(a).length) rows.push(`✨ Amenities: ${amenities(a).map((id) => AMENITIES.find((x) => x.id === id)?.label ?? id).join(', ')}`)
     if (a.rentedOutFor) rows.push(`🔑 Rented to ${str(d.tenant, 'a tenant')} (${str(d.tenantTrait, 'tenant')}) for ${formatMoney(Math.round(a.rentedOutFor / 12))}/month`)
@@ -3904,15 +3907,19 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
       }
       switch (cur.kind) {
         case 'house':
-          push(moveInAction(cur))
-          push(partyAction(cur))
-          push(enjoyAmenitiesAction(cur))
-          push(rentOutAction(cur))
+          if (cur.details.commercial !== true) {
+            push(moveInAction(cur))
+            push(partyAction(cur))
+            push(enjoyAmenitiesAction(cur))
+            push(rentOutAction(cur))
+          }
           push(evictAction(cur))
           push(landlordMenu(cur))
           push(renovateMenu(cur))
-          push(amenitiesMenu(cur))
-          push(exorciseAction(cur))
+          if (cur.details.commercial !== true) {
+            push(amenitiesMenu(cur))
+            push(exorciseAction(cur))
+          }
           push(insureAction(cur))
           push(payOffAction(cur))
           push(giftMenu(cur))
@@ -3921,6 +3928,7 @@ function assetNode(g: GameState, a: Asset): MenuGroup {
         case 'car':
         case 'boat':
         case 'aircraft':
+          if (cur.kind !== 'car') push(charterMenu(cur))
           push(driveAction(cur))
           push(maintainAction(cur))
           push(insureAction(cur))
@@ -4293,7 +4301,7 @@ function randomAssetEvent(g: GameState): void {
   // their luxIns policy is not the generic `insured` policy, so sending one through these
   // paths would give it a second loss roll with the wrong coverage and payout semantics.
   const generic = g.assets.filter((a) => a.details.lux !== 1)
-  const houses = generic.filter((a) => a.kind === 'house' && !a.rentedOutFor)
+  const houses = generic.filter((a) => a.kind === 'house' && a.details.commercial !== true && !a.rentedOutFor)
   const cars = generic.filter((a) => a.kind === 'car')
   const craft = generic.filter((a) => a.kind === 'boat' || a.kind === 'aircraft')
   const small = generic.filter((a) => a.kind === 'jewelry' || (a.kind === 'other' && str(a.details.category) !== '') || a.kind === 'collectible')

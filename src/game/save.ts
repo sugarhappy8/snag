@@ -2,6 +2,7 @@
 // Time Machine's start-of-year snapshots.
 import { GAME_VERSION } from './core'
 import { refreshRoyalCareers } from './npc-lives'
+import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
 import { HIDDEN_KEYS, STAT_KEYS, type AncestorSummary, type GameState, type Json, type ModalItem } from './types'
 
@@ -1031,7 +1032,7 @@ function pack(g: GameState): Packed {
   // The next year's opening world is this year's closing world. Share those large
   // immutable frames across time stops just like log years, preserving exact JSON.
   const flags = { ...g.flags }, world = flags.worldEconomy
-  if (isRecord(world) && world.v === 1) {
+  if (isRecord(world) && (world.v === 1 || world.v === 2)) {
     const packed = { ...world }
     for (const key of ['countries', 'previous']) if (isRecord(packed[key])) {
       const json = JSON.stringify(packed[key]), id = `world.${hashText(json)}`
@@ -1054,38 +1055,6 @@ function pack(g: GameState): Packed {
   const record = JSON.stringify({ ...g, log: ids, flags })
   const rec = `${g.character.age}.${hashText(record)}`
   return { lifeId: g.lifeId, age: g.character.age, stop: stopOf(g), record, rec, chunks }
-}
-
-/** Native compression keeps a persistent world from evicting all older time stops.
- * The main save stays plain JSON. Old snapshot records remain readable unchanged. */
-async function encodeSnapshotRecord(json: string, minimum = 100000): Promise<string> {
-  if (json.length < minimum || typeof CompressionStream === 'undefined') return json
-  try {
-    const stream = new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))
-    const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
-    let binary = ''
-    for (let i = 0; i < bytes.length; i += 16384) binary += String.fromCharCode(...bytes.subarray(i, i + 16384))
-    const compressed = `gz1:${btoa(binary)}`
-    return compressed.length < json.length ? compressed : json
-  } catch { return json }
-}
-
-async function decodeSnapshotRecord(value: string): Promise<string> {
-  if (!value.startsWith('gz1:')) return value
-  const bytes = Uint8Array.from(atob(value.slice(4)), c => c.charCodeAt(0))
-  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')).getReader()
-  const decoder = new TextDecoder(), parts: string[] = []
-  let size = 0
-  try {
-    for (;;) {
-      const next = await reader.read()
-      if (next.done) break
-      size += next.value.length
-      if (size > 20_000_000) { await reader.cancel(); throw new Error('Snapshot exceeds safe size') }
-      parts.push(decoder.decode(next.value, { stream: true }))
-    }
-    return parts.join('') + decoder.decode()
-  } finally { reader.releaseLock() }
 }
 
 function referencedChunks(): Set<string> {
@@ -1120,7 +1089,10 @@ function addStop(stop: StoredStop): void {
 }
 
 async function writeSnapshot(p: Packed, at: number): Promise<boolean> {
-  const encodedRecord = await encodeSnapshotRecord(p.record)
+  // World frames are shared separately, so each remaining record is often only
+  // 10–30 KB. Compress these too: ten small repeated family/asset records still
+  // compete with the expanding world for the same fixed browser-storage budget.
+  const encodedRecord = await encodeSnapshotRecord(p.record, 1000)
   const encodedChunks = await Promise.all(p.chunks.map(async ([id, json]) => [id, id.startsWith('world.') || id.startsWith('history.') ? await encodeSnapshotRecord(json, 1000) : json] as [string, string]))
   const b = await backend()
   const current = () => epoch === at && index.lifeId === p.lifeId
@@ -1240,7 +1212,7 @@ export function loadSnapshot(lifeId: string, age: number): Promise<GameState | n
     if (parts.some((p) => p === null)) return null
     g.log = parts.map((p) => JSON.parse(p as string))
     const world = g.flags?.worldEconomy
-    if (isRecord(world) && world.v === 1) {
+    if (isRecord(world) && (world.v === 1 || world.v === 2)) {
       for (const key of ['countries', 'previous']) if (typeof world[key] === 'string' && world[key].startsWith('world.')) {
         const [frame] = await b.get([chunkKey(lifeId, world[key])])
         if (!frame) return null

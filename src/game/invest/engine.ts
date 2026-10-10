@@ -833,7 +833,7 @@ export function eraIdentity(def: SecurityDef, year: number): EraIdentity {
   }
   if (def.sector === 'penny') {
     const modernNoun = PENNY_KINDS[(def.kindIndex ?? 0) % PENNY_KINDS.length]
-    const old = eraPennyKind(year, def.kindIndex ?? 0)
+    const old = eraPennyKind(year, def.kindIndex ?? 0, exchangeByKey(def.id.split('#')[0])?.home)
     const since = modernNoun ? MODERN_PENNY_SINCE[modernNoun.noun] : undefined
     const kind = old ?? (since !== undefined && year < since && year < PRESENT_YEAR ? lateEraPennyKind(def.kindIndex ?? 0) : null)
     if (!kind || !def.word) return { name: def.name, label: 'Penny stock', emoji: '🎟️', blurb: def.blurb }
@@ -1094,7 +1094,7 @@ function nextStock(info: ExInfo, prev: SecYear, idx: IndexMove, r: SRng, year: n
 /** The sector a penny stock's theme rode in `year` (1999's dot-coms, 1980's oil explorers), or null. */
 function pennySector(def: SecurityDef, year: number): SectorId | null {
   const k = def.kindIndex ?? 0
-  const old = eraPennyKind(year, k)
+  const old = eraPennyKind(year, k, exchangeByKey(def.id.split('#')[0])?.home)
   if (old) return old.as ?? null
   const modern = PENNY_KINDS[Math.abs(Math.round(k)) % PENNY_KINDS.length]
   const since = MODERN_PENNY_SINCE[modern.noun]

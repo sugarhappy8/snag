@@ -11,6 +11,7 @@ import { readJob, seedKey, writeJob, type FamilyJob } from './nepo-job'
 import { employeesOf, isCeoOf, readFamily, familyOf, successorOf } from './nepo-state'
 import { CEO_STYLES, type BizState, type CeoStyle, type Manager } from './state'
 import { clampN } from './util'
+import { successionReadiness } from './succession-review'
 
 /** Youngest a relative can be named CEO. */
 export const CEO_MIN_AGE = 21
@@ -67,6 +68,8 @@ export function promoteToCeo(g: GameState, p: Person, job: FamilyJob, salary: nu
  * `salaryFor` is what a CEO of that skill costs here (career.askingSalary). Does not change anything.
  */
 export function successorManager(g: GameState, a: Asset, b: BizState, salaryFor: (skill: number) => number): Manager | null {
+  const review = b.successionReview
+  if (review && typeof review === 'object' && !Array.isArray(review) && review.enabled === true && successionReadiness(g, a, b)) return null
   const s = successorOf(g, a, b)
   if (!s) return null
   if (s.kind === 'person') {

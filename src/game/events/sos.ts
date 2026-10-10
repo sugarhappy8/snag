@@ -255,7 +255,7 @@ function localDisasters(g: GameState): { kind: string; emoji: string; text: stri
 
 function damageHome(g: GameState): string {
   if (!ownsHome(g)) return ''
-  const house = g.assets.find((a) => a.kind === 'house' && a.id === g.character.residence.assetId) ?? g.assets.find((a) => a.kind === 'house')
+  const house = g.assets.find((a) => a.kind === 'house' && a.details.commercial !== true && a.id === g.character.residence.assetId) ?? g.assets.find((a) => a.kind === 'house' && a.details.commercial !== true)
   if (!house || !chance(g, 0.5)) return ''
   const pct = randInt(g, 5, 20)
   house.value = Math.round(house.value * (1 - pct / 100))
@@ -408,4 +408,3 @@ function relName(p: Person | undefined): string {
 function uc(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s
 }
-

@@ -5,6 +5,7 @@
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
+import { economicReportSummary } from './economic-report'
 import { bell, chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -39,6 +40,7 @@ import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
 import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
 import { allocatedCorporateTax } from './tax'
+import { bookSupply, saveSupply, supplyProfile } from './supply'
 
 // ---------------------------------------------------------------------------
 // The year
@@ -62,7 +64,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   }
 
   const plan = techPlan(g, b, t, year, { noise })
-  const produced = Math.floor(clampN(Math.min(b.production, plan.capacity), 0, 1e12))
+  const supply = bookSupply(g, b, year, plan.equipmentCapacity, b.production, plan.unitCost)
+  const produced = supply.produced
   const available = produced + b.inventory
   let sold = Math.floor(Math.min(plan.demand, available))
   const flown = sold
@@ -92,7 +95,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   // A rocket that blows up still had to be built.
   const productCogs = def.perishable >= 1 ? plan.unitCost * (flown * 0.7 + produced * 0.3) : plan.unitCost * produced
   // Contracts, satellites, foundry customers and licences cost money to deliver too.
-  const cogs = productCogs + side.cost
+  const cogs = productCogs * (1 - (supplyProfile(b.industry)?.materialShare ?? 0)) + supply.materialsCost + side.cost
   const employees = headCount(b, t, produced)
   let wageSum = 0
   let rent = 0
@@ -117,7 +120,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   // Head office for a big network of sites, and the cost of running a big product range.
   const hq = running * headOffice(totalOutlets(b))
   const range = complexityCost(b, revenue - salesTax)
-  const overhead = running + hq
+  const overhead = running + hq + supply.storageCost
 
   // R&D: progress, spending, breakthroughs.
   const rd0 = advancePrograms(g, a, b, t, year)
@@ -136,11 +139,11 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   // Investors pay a founder a normal engineer's salary at most; anything above that has to come
   // out of the company's own cash.
   const fromInvestors = Math.min(t.venture, localEcon(ind, b.countryId, b.city).wage)
-  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, Math.max(0, b.cash + delta) + fromInvestors)))
+  const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, Math.max(0, b.cash + delta + supply.cashAdjustment) + fromInvestors)))
   const pbt = pbt0 - ownerPay
   const corpTax = allocatedCorporateTax(b.countryId, pbt, netRevenue, b.yearIncome, bookedSales, g, year)
   const net = pbt - corpTax
-  b.cash = dollars(b.cash + delta - ownerPay - corpTax)
+  b.cash = dollars(b.cash + delta - ownerPay - corpTax + supply.cashAdjustment)
   // The R&D account covers what company cash can't.
   let fromVenture = 0
   if (b.cash < 0 && t.venture > 0) {
@@ -160,6 +163,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const inventoryEnd = Math.floor(leftover * (1 - def.perishable))
   b.inventory = inventoryEnd
   b.employees = employees
+  if (supply.next) saveSupply(b, supply.next)
 
   // Contracts run down.
   if (t.contract) t.contract = t.contract.years > 1 ? { ...t.contract, years: t.contract.years - 1 } : null
@@ -193,7 +197,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     rent: dollars(rent * finance * ceoEff),
     marketing: dollars(marketing),
     interest: dollars(interest),
-    upkeep: dollars(upkeep * finance * ceoEff + insurance + hq + range),
+    upkeep: dollars(upkeep * finance * ceoEff + insurance + hq + range + supply.storageCost),
     other: dollars(b.yearCosts + spent + rd + compute),
     otherIncome: dollars(b.yearIncome + grants + credit),
     ownerPay,
@@ -469,7 +473,7 @@ export function techReportData(g: GameState, a: Asset, b: BizState): AnnualRepor
     maxProduction: maxProd,
     inventory: Math.max(0, Math.round(b.inventory)),
     expectedDemand: Math.max(0, Math.round(expected.demand)),
-    marketNote: techMarketNote(g, b, t),
+    marketNote: [techMarketNote(g, b, t), economicReportSummary(b)].filter(Boolean).join(' '),
     lines: b.last ? techStatementLines(b, t, b.last) : [line('First year', 'Set your launch price and production.')],
   }
   if (hasTalent(g, 'Business')) {

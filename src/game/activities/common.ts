@@ -126,6 +126,20 @@ export const money = formatMoney
 // ---------------------------------------------------------------------------
 // Paying
 
+/** Pure affordability feedback for paid actions and their menu gates. */
+export function paymentBlock(g: GameState, cost: number): string | null {
+  if (!Number.isFinite(cost) || cost < 0 || !Number.isFinite(g.character.money)) return 'This payment amount is invalid.'
+  return cost > 0 && cost > g.character.money ? `You need ${money(cost)}; available cash is ${money(Math.max(0, g.character.money))}.` : null
+}
+
+/** Player-triggered payment only. Failed attempts explain the cost without charging. */
+export function payForAction(g: GameState, cost: number): boolean {
+  const reason = paymentBlock(g, cost)
+  if (!reason && spend(g, cost)) return true
+  notice(g, 'Insufficient Funds', reason ?? 'This payment could not be completed.', { emoji: '💸' })
+  return false
+}
+
 export function brokeNotice(g: GameState, cost: number, what?: string): void {
   const lines = [
     `You can't afford ${what ?? 'that'}. It costs ${money(cost)} and your bank account just laughed at you.`,

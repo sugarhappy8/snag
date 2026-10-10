@@ -2,6 +2,7 @@
 // The implementations live in ./activities/*.ts; this file only assembles the exports
 // that menus.ts arranges into the Activities screen.
 import { charityMenu } from './activities/charity'
+import { sharedProjectsMenu } from './activities/shared-projects'
 import { emigrateMenu } from './activities/emigrate'
 import { identityMenu } from './activities/identity'
 import { lawsuitMenu } from './activities/lawsuit'
@@ -30,6 +31,7 @@ export { surrenderLifeAction }
  */
 export const miscActivities: MenuNode[] = [
   charityMenu,
+  sharedProjectsMenu,
   identityMenu,
   lawsuitMenu,
   pastimesMenu,

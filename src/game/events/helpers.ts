@@ -412,7 +412,7 @@ export function hasCar(g: GameState): boolean {
 }
 
 export function ownsHome(g: GameState): boolean {
-  return g.character.residence.status === 'owned' || g.assets.some((a) => a.kind === 'house')
+  return g.character.residence.status === 'owned' || g.assets.some((a) => a.kind === 'house' && a.details.commercial !== true)
 }
 
 export function livesWithParents(g: GameState): boolean {

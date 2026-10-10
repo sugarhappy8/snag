@@ -114,13 +114,13 @@ export function hasHome(g: GameState): boolean {
 export function ownsHouse(g: GameState): boolean {
   const r = g.character.residence
   if (r.status !== 'owned') return false
-  return g.assets.some((a) => a.kind === 'house' && (r.assetId ? a.id === r.assetId : true))
+  return g.assets.some((a) => a.kind === 'house' && a.details.commercial !== true && (r.assetId ? a.id === r.assetId : true))
 }
 
 function homeAsset(g: GameState): Asset | undefined {
   const r = g.character.residence
   if (r.status !== 'owned') return undefined
-  return g.assets.find((a) => a.kind === 'house' && (r.assetId ? a.id === r.assetId : true))
+  return g.assets.find((a) => a.kind === 'house' && a.details.commercial !== true && (r.assetId ? a.id === r.assetId : true))
 }
 
 // ---------------------------------------------------------------------------

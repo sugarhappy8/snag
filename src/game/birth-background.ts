@@ -1,5 +1,6 @@
 import { addStat, log } from './core'
 import { economyOf } from './economy'
+import { householdPressure } from './economy/cohorts'
 import { typicalIncome } from './events/wealth-core'
 import { rand, randInt } from './rng'
 import type { GameState, Person } from './types'
@@ -11,9 +12,17 @@ import { getCountry } from './world'
 export const BACKGROUNDS = ['Extreme poverty', 'Working class', 'Lower middle class', 'Middle class', 'Upper middle class', 'Wealthy', 'Multimillionaire family', 'Billionaire dynasty'] as const
 /** Relative resources, not modern dollar cutoffs. Approximate country/era game distribution. */
 export function birthBackgroundFor(g: GameState, roll: number): number {
-  const wealth = getCountry(g.character.countryId).wealth, inequality = economyOf(g).inequality
+  const wealth = getCountry(g.character.countryId).wealth, economy = economyOf(g), inequality = economy.inequality
   const poverty = clampN(.015 + (1 - wealth) * .055 + (g.year < 1950 ? .025 : 0), .005, .095)
   const ordinary = [poverty, .18 + (1 - wealth) * .12, .25, .28, .19 * wealth]
+  // Cohort purchasing power shifts ordinary family circumstances, not the rare
+  // wealth lottery or a newborn's cash. Preserve the total ordinary probability.
+  const ordinaryTotal = ordinary.reduce((sum, weight) => sum + weight, 0)
+  const pressure = clampN(1 - householdPressure(economy), -.35, .6)
+  const sensitivity = [2, 1, .3, -.5, -1]
+  for (let i = 0; i < ordinary.length; i++) ordinary[i] *= 1 + pressure * sensitivity[i]
+  const changedTotal = ordinary.reduce((sum, weight) => sum + weight, 0)
+  for (let i = 0; i < ordinary.length; i++) ordinary[i] *= ordinaryTotal / changedTotal
   const rare = [.035 + inequality * .015, .004 + inequality * .003, .00008 + wealth * .00002]
   const sum = [...ordinary, ...rare].reduce((a,b) => a+b, 0)
   let cumulative = 0
