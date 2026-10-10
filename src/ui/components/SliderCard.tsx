@@ -3,12 +3,14 @@
 // internal dollars, exactly like a number field would hand it over.
 import { useState } from 'react'
 import type { InputModal } from '../../game/types'
-import { submitInput } from '../store'
+import { submitInput, useApp } from '../store'
+import { startupCapitalPreview } from '../../game/business/founding'
 import { PopupFrame } from './Dialogs'
 import { sliderOutput, sliderStart } from './menuModel'
 import { SliderField, useSliderScale } from './Slider'
 
 export function SliderInputCard({ modal }: { modal: InputModal }) {
+  const game = useApp(s => s.game)
   const min = modal.min ?? 0
   const max = modal.max ?? min
   const money = modal.money === true
@@ -25,7 +27,7 @@ export function SliderInputCard({ modal }: { modal: InputModal }) {
       <h2 className="popup-title">{modal.title}</h2>
       {modal.text ? <p className="popup-text">{modal.text}</p> : null}
       <div className="popup-field">
-        <SliderField label={modal.title} min={min} max={max} step={modal.step} money={money} value={value} onChange={setValue} onSubmit={submit} autoFocus />
+        <SliderField label={modal.title} min={min} max={max} step={modal.step} money={money} value={value} onChange={setValue} onSubmit={submit} preview={game && modal.scriptId === 'business.found.capital' ? v => startupCapitalPreview(game, modal.data, v) : undefined} autoFocus />
       </div>
       <div className="popup-actions">
         <button className="btn btn-primary btn-block" onClick={submit}>

@@ -143,6 +143,13 @@ export function payAt(b: BizState, rank: number, mult: number): number {
 
 /** The department that suits a person (their temperament; stable, no randomness). */
 export function defaultFocus(p: Person): StaffFocus {
+  const life = p.data.life
+  if (life && typeof life === 'object' && !Array.isArray(life) && typeof life.education === 'number' && life.education > 0) {
+    if (['Finance', 'Mathematics', 'Law'].includes(String(life.field))) return 'finance'
+    if (life.field === 'Marketing') return 'sales'
+    if (['Engineering', 'Computer Science', 'Medicine'].includes(String(life.field))) return 'quality'
+    if (life.field === 'Business') return 'ops'
+  }
   const t = (x: string) => p.traits.includes(x)
   if (t('outgoing') || t('funny') || t('flirty') || t('manipulative')) return 'sales'
   if (t('artistic') || t('perfectionist') || t('romantic')) return 'quality'

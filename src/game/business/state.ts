@@ -7,7 +7,7 @@ import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
-import { clampN, num, str } from './util'
+import { clampN, num, rec, str } from './util'
 
 export interface KeyStaff {
   id: string
@@ -161,6 +161,15 @@ export function diluteManagerEquity(manager: Manager | null, retained: number): 
   delete manager.equityAsked
 }
 
+/** All vested company grants, including former executives, remain outside the sale pool. */
+export function executiveEquity(b: BizState): number {
+  return clampN(Math.max(b.executiveEquity ?? 0, b.manager?.equity ?? 0), 0, 1)
+}
+export function diluteBusinessEquity(b: BizState, retained: number): void {
+  b.executiveEquity = executiveEquity(b) * clampN(retained, 0, 1)
+  diluteManagerEquity(b.manager, retained)
+}
+
 export interface BizState {
   /** Annual national strategy, market studies and inventor projects (dynamics.ts). */
   expansion?: Json
@@ -226,6 +235,8 @@ export interface BizState {
   ipoYear: number
   ceo: 'owner' | 'manager'
   manager: Manager | null
+  /** Vested company shares across current and dismissed executives. */
+  executiveEquity?: number
   /** Salary the owner draws while CEO. */
   ownerSalary: number
   supplier: Supplier
@@ -493,6 +504,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ipoYear: Math.round(num(d.ipoYear)),
     ceo: d.ceo === 'manager' ? 'manager' : 'owner',
     manager: readManager(d.manager),
+    executiveEquity: clampN(num(d.executiveEquity, num(rec(d.manager)?.equity)), 0, 1),
     ownerSalary: Math.max(0, num(d.ownerSalary)),
     supplier,
     insured: d.insured === true,

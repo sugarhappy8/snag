@@ -42,6 +42,20 @@ cash and shareholder equity. Inventor-talented owners can develop an original ma
 even before computers; its advantage decays and never guarantees returns. Online banks require
 local internet and online-banking technology.
 
+Business founding now offers a **starting-capital slider** with working-cash and runway
+previews. **Capital & Ownership** separates buying investor shares, subscribing to new equity,
+and company-funded buybacks. Banking controls have live-preview sliders and exact entry;
+investment firms offer **retail, private/quant, and brokerage** models. Conglomerates can
+assign capacity-limited **internal service contracts**, with intra-group invoices removed
+from consolidated sales.
+
+Important NPCs keep independent education, careers, finances, homes and actual companies.
+Their **Life & Career** profiles support business partnerships, acquisitions and relevant
+recruitment. Eight country/era-weighted family backgrounds affect childhood through real
+parental resources. Extremely rare **royal births** add country-specific dynasty status,
+duties and succession, without turning state wealth into personal cash. See
+[the mechanics and explicit simulation limits](docs/BUSINESS-AND-DYNASTIES.md).
+
 With the **Inventor** talent, visit **Activities → Inventor** to study a specific
 topic at the library, or online from 1995. Fund research from your personal budget: small
 inventions finish instantly; middle, big and generational projects take one, three and five

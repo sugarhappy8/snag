@@ -3,8 +3,25 @@ import { getCountry } from '../world'
 import type { BizState } from './state'
 
 export type FinanceStrategy = 'cautious' | 'balanced' | 'aggressive'
+export type InvestmentModel = 'retail' | 'private' | 'brokerage'
 export interface FinanceFirm {
   v: number
+  model: InvestmentModel
+  lending: number
+  staffing: number
+  marketingBudget: number
+  researchBudget: number
+  technologyBudget: number
+  tradingCapital: number
+  leverage: number
+  computing: number
+  researchQuality: number
+  commission: number
+  accounts: number
+  lastTrades: number
+  lastTrading: number
+  lastResearch: number
+  regulatoryAction: string
   strategy: FinanceStrategy
   /** Segregated client assets; neither client capital nor deposits are company cash. */
   aum: number
@@ -56,7 +73,14 @@ export function financeView(b: Pick<BizState, 'industry' | 'countryId' | 'financ
   } else if (!investment && pool === 0 && deposits > 0) reserves = deposits
   const aum = investment ? cap(x.aum, initialClients) : 0
   return {
-    v: 1, strategy: x.strategy === 'cautious' || x.strategy === 'aggressive' ? x.strategy : 'balanced',
+    v: 2, model: x.model === 'retail' || x.model === 'brokerage' ? x.model : 'private',
+    lending: cap(x.lending, .8, 1), staffing: cap(x.staffing, 1, 2, .5),
+    marketingBudget: cap(x.marketingBudget), researchBudget: cap(x.researchBudget), technologyBudget: cap(x.technologyBudget),
+    tradingCapital: cap(x.tradingCapital), leverage: cap(x.leverage, 1, 3, 1), computing: cap(x.computing, 0, 100),
+    researchQuality: cap(x.researchQuality, 0, 100), commission: cap(x.commission, .002, .02, .0001),
+    accounts: Math.round(cap(x.accounts, 1000, 1e9)), lastTrades: cap(x.lastTrades), lastTrading: cap(x.lastTrading, 0, 1e15, -1e15),
+    lastResearch: cap(x.lastResearch), regulatoryAction: typeof x.regulatoryAction === 'string' ? x.regulatoryAction : '',
+    strategy: x.strategy === 'cautious' || x.strategy === 'aggressive' ? x.strategy : 'balanced',
     aum, highWater: cap(x.highWater, aum), deposits, reserves, loanBook, bonds,
     confidence: cap(x.confidence, 65, 100), reserveRatio: cap(x.reserveRatio, .25, .7, .1),
     feeRate: cap(x.feeRate, .015, .03, .005), depositRate: cap(x.depositRate, .02, .15), loanRate: cap(x.loanRate, .08, .3, .025),

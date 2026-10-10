@@ -18,6 +18,7 @@ import { doctorMenu } from './health'
 import { thisYearMenu } from './history/digest-menu'
 import { bankingMenu, economyMenu } from './economy/menu'
 import { lifePrioritiesMenu } from './household'
+import { royalMenu } from './royalty'
 import { adoptionMenu, loveMenu, petsMenu } from './love'
 import { prisonMenu } from './prison'
 import { everydayStoreMenus, luxuryLifestyleMenu, membershipAssetSubtitle, membershipAssetView, membershipsMenu, ticketsMenu } from './shops'
@@ -130,6 +131,7 @@ export const activitiesMenu: MenuGroup = {
       socialMediaMenu,
       thisYearMenu,
       economyMenu,
+      royalMenu,
       lifePrioritiesMenu,
       vacationMenu,
       ...miscActivities,

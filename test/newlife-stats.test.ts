@@ -18,7 +18,7 @@ vi.mock('../src/ui/store', () => ({
   hasSavedGame: () => false,
 }))
 
-const { NewLifeScreen, StatCustomizer, RANDOM_PICKS, clampPick, pickFromTap, rollStatPicks, startSubtitle, statsOption, statsSummary, stepPick } = await import(
+const { NewLifeScreen, RoyalBirthPicker, customLifeOptions, StatCustomizer, RANDOM_PICKS, clampPick, pickFromTap, rollStatPicks, startSubtitle, statsOption, statsSummary, stepPick } = await import(
   '../src/ui/screens/NewLifeScreen'
 )
 
@@ -127,6 +127,27 @@ describe('customize stats helpers', () => {
 })
 
 describe('New Life screen', () => {
+  it('offers royal status but no selectable wealth tier', () => {
+    const html = render(createElement(RoyalBirthPicker, { countryId: 'gb', year: 2026, value: 'royal', onChange: () => {} }))
+    expect(html).toMatch(/<option value="royal" selected="">/)
+    expect(html).toContain('Family wealth is always random')
+    expect((html.match(/<option /g) ?? [])).toHaveLength(3)
+    expect(html).not.toMatch(/<option[^>]*value="(?:wealthy|billionaire|7)"/)
+    const blocked = render(createElement(RoyalBirthPicker, { countryId: 'np', year: 2008, value: 'royal', onChange: () => {} }))
+    expect(blocked).toMatch(/<option value="royal" disabled="">/)
+    expect(blocked).toMatch(/<option value="random" selected="">/)
+    expect(blocked).toContain('Royal birth is unavailable')
+  })
+
+  it('passes a valid birth choice to the engine and drops stale ineligible selections', () => {
+    const form = { firstName: 'Alex', lastName: 'Smith', gender: 'male' as const, countryId: 'gb', city: '', sexuality: '' as const, picks: RANDOM_PICKS, talents: [], year: 2026, royalty: 'royal' as const }
+    expect(customLifeOptions(form).royalty).toBe('royal')
+    expect(customLifeOptions({ ...form, countryId: 'us' }).royalty).toBeUndefined()
+    expect(customLifeOptions({ ...form, countryId: 'np', year: 2008 }).royalty).toBeUndefined()
+    expect(customLifeOptions({ ...form, royalty: 'nonRoyal' }).royalty).toBe('nonRoyal')
+    expect(customLifeOptions({ ...form, royalty: 'random' }).royalty).toBeUndefined()
+  })
+
   it('has a collapsed "Customize stats" section next to the existing pickers', () => {
     const html = render(createElement(NewLifeScreen))
     expect(html).toContain('Random Life')

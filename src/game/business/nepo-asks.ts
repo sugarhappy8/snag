@@ -9,6 +9,7 @@ import { randomOccupation, notePerson } from '../people'
 import { chance, pick } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
+import { npcLife } from '../npc-state'
 import type { Asset, ChoiceOption, GameState, Json, Person } from '../types'
 import { passOdds, needsVote } from './board'
 import { readJob, readPast } from './nepo-job'
@@ -141,6 +142,9 @@ export function askOdds(g: GameState, b: BizState, p: Person): number {
       base = p.age >= 18 && p.age <= 65 ? 0.04 : 0
       break
     case 'fiance':
+    case 'partner':
+    case 'friend':
+    case 'bestFriend':
       base = 0.02
       break
     case 'parent':
@@ -154,6 +158,12 @@ export function askOdds(g: GameState, b: BizState, p: Person): number {
       base = 0
   }
   if (base <= 0) return 0
+  const life = npcLife(p)
+  if (life && p.data.npcRecruitmentYear === g.year && p.relationship >= 55 && !p.data.npcCompany) {
+    const technical = ['software', 'aiLab', 'robotics', 'semiconductor', 'manufacturing', 'biotech', 'quantum', 'cybersecurity'].includes(b.industry)
+    const relevant = ['Business', 'Law', 'Marketing'].includes(life.field) || (technical && ['Engineering','Mathematics','Computer Science','Medicine'].includes(life.field)) || (['investmentFirm','bank','onlineBank'].includes(b.industry) && ['Finance','Mathematics','Computer Science'].includes(life.field))
+    if (relevant) base = Math.max(base, .4)
+  }
   let m = 1
   if (trait(p, 'ambitious')) m *= 1.8
   if (trait(p, 'lazy')) m *= 0.35
@@ -253,6 +263,8 @@ const SPOUSE = [
 ]
 
 function askLine(g: GameState, k: Asker, p: Person, co: string): string {
+  const life = npcLife(p)
+  if (life && p.data.npcRecruitmentYear === g.year && life.achievements.length) return `"I just completed my ${life.achievements.at(-1)}. Could I put that training to work at ${co}? I would like a relevant role and competitive pay."`
   const par = parentWord(g)
   const pickLine = <T,>(xs: readonly T[]): T => xs[(p.id.length + g.year + p.age) % xs.length]
   if (k.out) return pickLine(OTHER)(co)

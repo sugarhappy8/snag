@@ -10,7 +10,7 @@ import { executiveEdge } from './dynamics'
 import { bestPlan, refreshValue } from './economy'
 import { isFinanceFirm } from './finance-firm-state'
 import { manageBlock } from './gate'
-import { bizOf, findBusiness, hasExecutiveShares, readBiz, type BizState, type Manager } from './state'
+import { bizOf, executiveEquity, findBusiness, hasExecutiveShares, readBiz, type BizState, type Manager } from './state'
 import { pct, priceCapOf } from './util'
 
 export function equityTarget(skill: number): number { return skill >= 95 ? .10 : skill >= 90 ? .05 : skill >= 85 ? .02 : 0 }
@@ -54,6 +54,7 @@ export function grantCeoEquity(g: GameState, id: string, group = false): boolean
     syncMembers(grp)
   } else b.share -= due
   b.invested *= b.share / before
+  b.executiveEquity = executiveEquity(b) + due
   m.equity = (m.equity ?? 0) + due
   delete m.equityAsked
   if (grp) saveGroup(g, grp)

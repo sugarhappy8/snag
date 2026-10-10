@@ -42,6 +42,7 @@ import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
+import { rescueNodes, rescuePosition } from './rescue'
 import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
@@ -1349,7 +1350,8 @@ function moneyNodes(a: Asset, g: GameState): MenuNode[] {
     act(a, 'inject', 'Invest My Own Money', '\u{1F4E5}', {
       subtitle: 'Move savings into company cash',
       disabled: (gg) => (gg.character.money <= 0 ? "You don't have any money to put in." : null),
-      input: { kind: 'number', money: true, label: 'How much?', min: 1, max: Math.max(1, Math.round(g.character.money)), defaultValue: (gg) => String(Math.max(1, Math.round(Math.min(gg.character.money, Math.max(1_000, -b.cash))))) },
+      input: { kind: 'slider', money: true, label: 'How much?', min: 1, max: Math.max(1, Math.floor(g.character.money)), defaultValue: (gg) => String(Math.max(1, Math.round(Math.min(gg.character.money, Math.max(1_000, -b.cash))))),
+        preview: (gg, v) => { const bb = readBiz(gg, live(gg, a)), pos = rescuePosition(bb); return `Personal funds ${money(gg.character.money - v)} · company cash ${money(bb.cash + v)} · ${Math.max(0, (bb.cash + v) / (pos.burn || pos.annual)).toFixed(1)} years of ${pos.burn ? 'losses' : 'base costs'}. Ownership unchanged; not revenue.` } },
       run: (gg, cur, bb, input) => {
         const n = amount(input, gg.character.money)
         if (n <= 0) return
@@ -1974,6 +1976,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
+  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', children: gg => { const aa = findBusiness(gg, a.id); return aa ? rescueNodes(gg, aa) : [] } })
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
   nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
   nodes.push(equityMenu(a.id))

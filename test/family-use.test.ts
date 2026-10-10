@@ -362,6 +362,9 @@ describe('Family Access: the yearly hook', () => {
     run(mover, 1)
     // the following year the family is back at it
     mover.year += 1
+    // Contacts now retain their actual country. Explicitly bring this child abroad
+    // rather than assuming every contact teleports when the player emigrates.
+    for (const p of mover.people.filter(p => p.relation === 'child')) p.data.countryId = 'gb'
     let used = 0
     for (let i = 0; i < 30; i++) {
       mover.queue = []

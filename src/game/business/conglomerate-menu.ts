@@ -58,6 +58,7 @@ import { businessView, shopCompany } from './manage'
 import { equityMenu } from './executive'
 import { delegationMenu } from './conglomerate-management'
 import { groupFamilyMenu } from './conglomerate-family'
+import { groupServicesMenu, internalRevenue } from './group-services'
 import { manageBlock, tooBusy } from './gate'
 import { bizOf, businessAssets, findBusiness, readBiz, stakeValue } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -331,7 +332,7 @@ function summaryRows(g: GameState, grp: Group): MenuNode[] {
   const books = grp.members.filter((x) => x.b.last)
   if (books.length) {
     const year = Math.max(...books.map((x) => x.b.last!.year))
-    const sales = books.reduce((s, x) => s + (x.b.last!.year === year ? x.b.last!.revenue : 0), 0)
+    const sales = Math.max(0, books.reduce((s, x) => s + (x.b.last!.year === year ? x.b.last!.revenue : 0), 0) - internalRevenue(g, id, year))
     const profit = groupProfit(grp)
     rows.push(info(`biz.group.i.${id}.2`, `${year}: sales ${money(sales)} \u{00B7} ${profit >= 0 ? 'profit' : 'loss'} ${money(Math.abs(profit))} \u{00B7} cash ${signed(grp.members.reduce((s, x) => s + x.b.cash, 0))}${grp.members.some((x) => x.b.debt > 0) ? ` \u{00B7} debt ${money(grp.members.reduce((s, x) => s + x.b.debt, 0))}` : ''}`, '\u{1F4CA}'))
   } else rows.push(info(`biz.group.i.${id}.2`, 'No booked year yet: results come at the end of the year.', '\u{1F4CA}'))
@@ -852,6 +853,7 @@ export function groupView(g: GameState, groupId: string): MenuNode[] {
   nodes.push(ceoMenu(groupId), mandateMenu(groupId), moveMenu(groupId), dividendAction(groupId, grp, g), acquireMenu(groupId), addMenu(groupId))
   nodes.push(equityMenu(groupId, true))
   nodes.push(delegationMenu(groupId), groupFamilyMenu(groupId))
+  nodes.push(groupServicesMenu(groupId))
   nodes.push({ type: 'heading', id: `biz.group.restructH.${groupId}`, label: 'Restructure' })
   nodes.push(spinMenu(groupId), sellMenu(groupId))
   nodes.push({ type: 'heading', id: `biz.group.marketH.${groupId}`, label: 'Stock Market & Board' })

@@ -92,7 +92,7 @@ describe('the ask popup', () => {
   it('several askers come as one bundle: all at the bottom, the normal process, one at a time, or none', () => {
     const { g, a, b } = world(420)
     const smart = kid(g, 22, { smarts: 95, traits: ['ambitious', 'serious'] })
-    const dim = kid(g, 22, { smarts: 5, traits: ['lazy'] })
+    const dim = kid(g, 22, { smarts: 5, traits: ['lazy', 'rebellious'], entitlement: 100 })
     const third = kid(g, 19, { smarts: 50 })
     presentAsk(g, a, b, [{ pid: smart.id, want: 1 }, { pid: dim.id, want: 2 }, { pid: third.id, want: 0 }])
     expect(popup(g).title).toBe('The Family Wants In')

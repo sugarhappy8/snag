@@ -10,7 +10,7 @@ import { deepTechIpoThreshold } from './deeptech-state'
 import { refreshValue, valuationOf } from './economy'
 import { recordCompanyShock } from './dynamics'
 import { industryDef } from './industries'
-import { ceoJob, diluteManagerEquity, stakeValue, type BizState } from './state'
+import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state'
 import { clampN, money, pct } from './util'
 
 /** IPO threshold: last year's net profit, like the original's ~$300M rule. */
@@ -149,7 +149,7 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   b.sharePrice = Math.round((post / b.sharesOut) * pop * 100) / 100
   b.cash += raise - fees
   b.share = clampN(b.share * 0.75, 0.01, 1)
-  diluteManagerEquity(b.manager, 0.75)
+  diluteBusinessEquity(b, 0.75)
   // Preferred shares convert to ordinary ones at the listing.
   b.pref = 0
   b.public = true

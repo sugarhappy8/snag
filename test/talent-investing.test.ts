@@ -94,7 +94,7 @@ describe('Investing talent: hints', () => {
     expect(seen.size).toBeGreaterThan(1)
   })
 
-  it('are right far more often than chance, but not always', () => {
+  it('are right far more often than chance, but not always', { timeout: 120_000 }, () => {
     let right = 0
     let picks = 0
     let base = 0

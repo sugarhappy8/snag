@@ -13,6 +13,7 @@ import { boardYear } from './board'
 import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
 import { styleOf, syncCeo } from './career'
 import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
+import { prepareInternalServices, settleInternalServices } from './group-services'
 import { inventionYear } from './expansion'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
 import { groupRescue, inGroup, prepareGroupManagement, yearlyConglomerates } from './conglomerate'
@@ -46,7 +47,7 @@ import { financeManagerTurn, financeView, isFinanceFirm, queueFinanceReport } fr
 import { industryDef } from './industries'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
-import { bizCountryName, bizOf, businessAssets, ceoJob, diluteManagerEquity, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
+import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
 
 // ---------------------------------------------------------------------------
@@ -313,7 +314,7 @@ function resolveCrunch(g: GameState, a: Asset, b: BizState, choice: string): voi
     const inject = Math.round(need * 1.25)
     const stake = clampN(inject / (b.valuation + inject), 0.05, 0.6)
     b.share = clampN(b.share * (1 - stake), 0.01, 1)
-    diluteManagerEquity(b.manager, 1 - stake)
+    diluteBusinessEquity(b, 1 - stake)
     b.cash += inject
     log(g, `I sold part of ${a.name} to an investor to cover a cash shortfall.`, 'neutral')
     notice(g, 'New Investor', `An investor put ${formatMoney(inject)} into ${a.name} for ${pct(stake)} of the company. You now own ${pct(b.share)}.`, { emoji: '\u{1F4BC}' })
@@ -400,6 +401,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   const list = businessAssets(g)
   if (list.length === 0) return
   const fiscal = g.year - 1
+  prepareInternalServices(g, fiscal)
   const queued = g.queue.length
   recoverConfidence(g)
   let eventQueued = false
@@ -523,6 +525,14 @@ export function yearlyBusinessImpl(g: GameState): void {
     }
   }
   // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
+  settleInternalServices(g, fiscal)
+  // Internal procurement closes after all divisions have booked. Refresh already queued
+  // statements so the owner sees the final ledger, not the pre-contract numbers.
+  for (const modal of Array.isArray(g.flags.groupServiceResults) && g.flags.groupServiceResults.length ? g.queue.slice(queued) : []) {
+    if (modal.kind !== 'minigame' || modal.game !== 'annualReport') continue
+    const a = findBusiness(g, str(rec(modal.data)?.assetId))
+    if (a) modal.data = toJson(reportData(g, a, bizOf(g, a)))
+  }
   yearlyConglomerates(g)
   groupRetentionYear(g)
   bundleCeoLetters(g, queued)

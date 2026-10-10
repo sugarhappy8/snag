@@ -194,7 +194,7 @@ export function createPerson(g: GameState, opts: PersonOptions): Person {
     yearsKnown: 0,
     livesWithPlayer: opts.livesWithPlayer ?? false,
     notes: [],
-    data: { ...(opts.data ?? {}), ...(opts.skinTone !== undefined ? { skinTone: opts.skinTone } : {}) },
+    data: { countryId, ...(opts.data ?? {}), ...(opts.skinTone !== undefined ? { skinTone: opts.skinTone } : {}) },
   }
   // A randomly rolled name must not clash with the player or someone already in their life
   // (two "Carmen Medina" classmates, a sibling named exactly like you).

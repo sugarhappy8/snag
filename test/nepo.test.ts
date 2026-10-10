@@ -202,13 +202,16 @@ describe('hiring', () => {
     updateWl(g, estranged, (w) => {
       w.estr = true
     })
-    const friend = kid(g, 25)
-    friend.relation = 'friend'
+    const stranger = kid(g, 25)
+    stranger.relation = 'coworker'
     expect(hireBlock(g, b, dead)).not.toBeNull()
     expect(hireBlock(g, b, disowned)).not.toBeNull()
     expect(hireBlock(g, b, estranged)).toMatch(/estranged/)
     expect(askOdds(g, b, estranged)).toBe(0)
-    expect(hireBlock(g, b, friend)).not.toBeNull()
+    expect(hireBlock(g, b, stranger)).not.toBeNull()
+    const friend = kid(g, 25)
+    friend.relation = 'friend'
+    expect(hireBlock(g, b, friend)).toBeNull()
     expect(hireRelative(g, a, b, p, { rank: 1 }, { quiet: true }).ok).toBe(true)
     expect(hireBlock(g, b, p)).toMatch(/already works/)
     expect(hireRelative(g, a, b, p, { rank: 1 }, { quiet: true }).ok).toBe(false)

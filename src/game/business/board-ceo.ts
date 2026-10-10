@@ -24,7 +24,7 @@ import { ceoLetter, SMART_SKILL, styleOf } from './career'
 import { isDeepTech } from './deeptech-state'
 
 export { ceoLetter, ownerAvailable } from './career'
-import { bestPlan, bizWorth, fxValue, LASTING_YEARS, lineCost, linesOf, localEcon, localPay, maxProduction, priceBounds, refreshValue, startupCost, staffNet, valuationOf, type Worth } from './economy'
+import { bestPlan, bookYear, planFor, bizWorth, fxValue, LASTING_YEARS, lineCost, linesOf, localEcon, localPay, maxProduction, priceBounds, refreshValue, startupCost, staffNet, valuationOf, type Worth } from './economy'
 import { roleTitle } from './era'
 import { laborProtection, severanceMonths, STAFF_TRAITS } from './flavor'
 import { industryDef, lineOf, type RoleDef } from './industries'
@@ -338,7 +338,7 @@ export function limitsMerit(g: GameState, a: Asset, b: BizState, st: BoardState,
 export function smartPlan(g: GameState, a: Asset, b: BizState, skill: number): { price: number; production: number } {
   const cap = priceCapOf(g, a.id)
   const p = bestPlan(g, b, { maxPrice: cap ?? undefined })
-  const err = (clampN(100 - skill, 0, 100) / 100) * 0.06
+  const err = (clampN(100 - skill, 0, 100) / 100) * (skill >= 95 ? .02 : skill >= 90 ? .05 : .1)
   const bounds = priceBounds(b)
   const max = cap === null ? bounds.max : Math.max(bounds.min, Math.min(bounds.max, cap))
   const price = round2(clampN(p.price * (1 + err * (rand(g) * 2 - 1)), bounds.min, max))
@@ -404,7 +404,7 @@ function staffTurn(t: Turn): void {
   }
   // Then the gaps: interview for the role worth most, hire the best candidate if they pay.
   let hired = 0
-  while (hired < 2 && b.staff.length < maxKeyStaff(b)) {
+  while (hired < (t.m.skill >= 95 ? 4 : 2) && b.staff.length < maxKeyStaff(b)) {
     const best = bestRole(g, b)
     if (!best) break
     const role = best.role
@@ -414,7 +414,7 @@ function staffTurn(t: Turn): void {
     b.cash -= fee
     b.yearCosts += fee
     const w2 = bizWorth(g, b)
-    const list = [candidate(g, b, role), candidate(g, b, role), candidate(g, b, role)]
+    const list = Array.from({ length: t.m.skill === 100 ? 8 : t.m.skill >= 95 ? 5 : 3 }, () => candidate(g, b, role))
     const scored = list.map((c) => ({ c, v: t.judge(hireValue(g, b, w2, role.focus, c)) })).sort((x, y) => y.v - x.v)
     hired++
     if (!scored.length || scored[0].v <= 0) {
@@ -478,7 +478,7 @@ function policyTurn(t: Turn): void {
   let level = cur
   let best = 0
   for (const x of MARKETING_LEVELS) {
-    if (Math.abs(x - cur) < 0.01 || Math.abs(x - cur) > 0.5 + 1e-9) continue
+    if (Math.abs(x - cur) < 0.01 || (t.m.skill < 95 && Math.abs(x - cur) > 0.5 + 1e-9)) continue
     const v = t.judge((profitOf(g, { ...b, marketingLevel: x }) - base) * LASTING_YEARS) + (x - cur) * 8 * w.brand * 0.5 + tilt * (x - cur) * w.brand
     if (v > best + Math.max(500, w.contrib * 0.01)) {
       best = v
@@ -632,6 +632,7 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   const err = clampN((100 - m.skill) / 100, 0, 0.5)
   const t: Turn = { g, a, b, m, st, judge: (v) => v * (1 + (rand(g) * 2 - 1) * err), lines: [], moved: 0, big: false }
   const startCash = Math.max(0, b.cash)
+  const baseline = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
   staffTurn(t)
   policyTurn(t)
   productTurn(t)
@@ -641,6 +642,8 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   b.price = plan.price
   b.production = plan.production
   payoutTurn(t)
+  const planned = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
+  t.lines.unshift(`Skill ${m.skill}/100 (${m.skill === 100 ? 'extraordinary' : m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}). Same-market operating forecast: ${money(planned)} versus ${money(baseline)} keeping the old plan; estimated difference ${money(planned - baseline)}. Cash investment commitments are listed separately below. This is not realized or guaranteed profit.`)
   if (!b.public) b.valuation = valuationOf(b)
   refreshValue(a, b)
   const def = industryDef(b.industry)

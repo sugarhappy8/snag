@@ -27,6 +27,8 @@ import { yearlyCorruption } from './special/corruption'
 import { yearlyInvestments } from './investments'
 import { yearlyMilestones } from './life'
 import { yearlyRelationships } from './relationships'
+import { yearlyBackground } from './birth-background'
+import { yearlyRoyalty } from './royalty'
 import { yearlyShops } from './shops'
 import { yearlySpecial } from './special'
 import type { GameState } from './types'
@@ -37,6 +39,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['digest', yearlyDigest],
   ['household', yearlyHousehold],
   ['relationships', yearlyRelationships],
+  ['background', yearlyBackground],
+  ['royalty', yearlyRoyalty],
   ['health', yearlyHealth],
   ['education', yearlyEducation],
   ['career', yearlyCareer],

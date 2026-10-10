@@ -7,6 +7,7 @@ import { addEntitlement, entitlement } from '../events/wealth-core'
 import { notePerson, createPerson } from '../people'
 import { chance, randInt, rand } from '../rng'
 import type { Asset, GameState, Person } from '../types'
+import { npcLife, npcEducationSkill } from '../npc-state'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { boardAllows, needsVote, passOdds, type Proposal } from './board'
 import { askingSalary, handOver, managerCandidate } from './career'
@@ -58,7 +59,7 @@ export function planHire(g: GameState, b: BizState, p: Person, o: HireOpts): Hir
   const part = p.age < 18
   const market = marketPay(b, rank)
   const pay = kind === 'cushy' ? payAt(b, rank, o.payMult ?? CUSHY_PAY_MULT) : part ? startingPay(b, rank, true) : o.payMult ? payAt(b, rank, o.payMult) : startingPay(b, rank, false)
-  const skill = kind === 'cushy' ? Math.min(startSkill(p), 25) : startSkill(p)
+  const skill = kind === 'cushy' ? Math.min(startSkill(p), 25) : clampN(startSkill(p) - npcEducationSkill(p) + npcEducationSkill(p, focus), 3, 99)
   return { rank, kind, focus, title: titleFor(g, p, rank, focus, kind), part, pay, market, skill }
 }
 
@@ -86,6 +87,8 @@ export function planBlock(g: GameState, b: BizState, p: Person, plan: HirePlan):
   } else if (p.age < 18) return `${p.firstName} is too young for a made-up job.`
   if (plan.rank >= 5) return `Use "Make CEO" for the top job.`
   if (p.age < 18 && plan.rank > 0) return `${p.firstName} is still a minor: only a summer job.`
+  const life = npcLife(p)
+  if (life && plan.kind === 'real' && plan.pay < life.income * (p.traits.includes('loyal') && p.relationship >= 65 ? .8 : .95)) return `${p.firstName} declines: the offer is below their current earning expectations (${money(life.income)}/year).`
   return null
 }
 

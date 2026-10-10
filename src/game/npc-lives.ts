@@ -1,0 +1,310 @@
+import { seeded } from './assets'
+import { addMoney, earnIncome, log, notice, useYearAction } from './core'
+import { economyOf, recordEconomicActivity } from './economy'
+import { typicalIncome } from './events/wealth-core'
+import { hasTech } from './history/timeline'
+import { eraOccupation } from './history/events-people'
+import type { Asset, GameState, Json, MenuNode, Person } from './types'
+import { COUNTRIES, getCountry } from './world'
+import { createBusinessAsset, initialProduction, newBiz } from './business/founding'
+import { bestPlan, evolve, recordYear, simulateYear, startupCost, valuationOf, refreshValue } from './business/economy'
+import { industryEraBlock } from './business/competition-data'
+import { readJob } from './business/nepo-job'
+import { readGroupJob } from './business/conglomerate-job'
+import { holdsInfluenceJob } from './special/corruption'
+import { blocAccess, exitRegime, personCitizenships } from './activities/immigration-state'
+import { bestOpening, withOutlets } from './business/board-ceo'
+import { runningCosts } from './business/board-vote'
+import { installManager } from './business/career'
+import { npcOccupationLabel } from './love'
+import { royalRule } from './royalty'
+import { isIndustryLegal, type Industry } from './data/markets'
+import { normalizeBiz, type BizState } from './business/state'
+import { clampN, money, num, pct, rec } from './business/util'
+import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
+
+export { npcLife } from './npc-state'
+const holdsFamilyJob = (p: Person) => !!readJob(p)
+const IMPORTANT = ['parent','stepparent','sibling','halfSibling','stepsibling','child','stepchild','grandchild','grandparent','spouse','partner','fiance','friend','bestFriend','lover']
+export function initializeNpc(g: GameState, p: Person): NpcLife {
+  const existing = npcLife(p)
+  if (existing) return existing
+  const roll = seeded(`npc-life|${p.id}|${g.lifeId.replace(/-g\d+$/, '')}`)
+  const local = typeof p.data.countryId === 'string' ? p.data.countryId : g.character.countryId
+  let field: NpcField = /Finance|Bank|Account|Invest/.test(p.occupation) ? 'Finance' : /Doctor|Nurse|Dentist/.test(p.occupation) ? 'Medicine' : /Engineer|Mechanic/.test(p.occupation) ? 'Engineering' : /Law/.test(p.occupation) ? 'Law' : /Software/.test(p.occupation) ? 'Computer Science' : roll.pick(['Engineering','Finance','Mathematics','Law','Marketing','Business'])
+  if (field === 'Computer Science' && g.year < 1965) field = 'Mathematics'
+  const professional = /Doctor|Engineer|Lawyer|Accountant|Professor|Software|Architect/.test(p.occupation)
+  const life: NpcLife = { v: 1, lastYear: g.year - 1, country: local, city: getCountry(local).cities[0], field, education: p.age >= 23 && professional ? 1 : 0,
+    study: p.occupation === 'University Student' ? Math.min(3, Math.max(0, p.age - 18)) : 0,
+    skill: clampN(p.stats.smarts * .3 + Math.max(0, p.age - 18) * .5, 10, 85), experience: Math.max(0, p.age - (professional ? 22 : 18)), income: 0,
+    debt: 0, investments: 0, housing: 0, ambition: clampN(35 + roll.next() * 40 + (p.traits.includes('ambitious') ? 20 : 0) - (p.traits.includes('lazy') ? 25 : 0), 5, 98), employer: '', history: [], achievements: [], housingQuality: 50 }
+  if (life.education) life.achievements.push(`Bachelor's in ${field}`)
+  saveNpcLife(p, life)
+  return life
+}
+function milestone(g: GameState, p: Person, l: NpcLife, text: string): void {
+  l.history = [...l.history, `${g.year}: ${text}`].slice(-24)
+  if ((p.livesWithPlayer || p.relationship >= 55) && (g.yearActions['npc.news'] ?? 0) < 3) {
+    g.yearActions['npc.news'] = (g.yearActions['npc.news'] ?? 0) + 1
+    log(g, `${p.firstName}: ${text}`)
+  }
+}
+export function npcCompany(p: Person, year: number): { a: Asset; b: BizState } | null {
+  const raw = rec(p.data.npcCompany), d = rec(raw?.details)
+  if (!raw || !d || typeof raw.id !== 'string' || typeof raw.name !== 'string' || raw.kind !== 'business') return null
+  const a = structuredClone(raw) as unknown as Asset
+  const b = normalizeBiz(d, year)
+  a.details = b as unknown as Record<string, Json>
+  return { a, b }
+}
+function storeCompany(p: Person, a: Asset): void { p.data.npcCompany = a as unknown as Json }
+export function startNpcCompany(g: GameState, p: Person, industry?: Industry): boolean {
+  if (!p.alive || p.age < 21 || npcCompany(p, g.year)) return false
+  const l = initializeNpc(g, p), local = getCountry(l.country)
+  const chosen = industry ?? (l.field === 'Computer Science' && hasTech({ ...g, character: { ...g.character, countryId: l.country } }, 'homeComputer') ? 'software' : l.field === 'Marketing' ? 'marketing' : l.field === 'Engineering' ? 'manufacturing' : 'cafe')
+  if (!isIndustryLegal(l.country, chosen) || industryEraBlock(chosen, l.country, g.year)) return false
+  const cost = startupCost(chosen, l.country, local.cities[0])
+  if (p.money < cost.total * 1.5) return false
+  const capital = cost.capital * 1.5
+  p.money -= capital + cost.fee + cost.permits
+  const b = newBiz(g, chosen, l.country, local.cities[0], { founderName: `${p.firstName} ${p.lastName}`, cash: capital - cost.capital * .8, invested: capital, ceo: 'manager', manager: { firstName: p.firstName, lastName: p.lastName, gender: p.gender, skill: l.skill, salary: 0, since: g.year } })
+  b.production = initialProduction(g, b); b.valuation = valuationOf(b)
+  const a = createBusinessAsset(g, `${p.lastName} ${chosen === 'cafe' ? 'Café' : 'Company'}`, b, capital)
+  refreshValue(a, b); storeCompany(p, a)
+  p.occupation = 'Business Owner'; l.employer = a.name
+  milestone(g, p, l, `founded ${a.name} using ${money(capital + cost.fee + cost.permits)} of personal savings`)
+  saveNpcLife(p, l)
+  return true
+}
+function claim(g: GameState, id: string): Asset | undefined { return g.assets.find(a => a.kind === 'investment' && a.details.npcCompanyId === id) }
+/** One affordable, forecast-positive expansion at a time; the same site planner as player CEOs. */
+export function expandNpcCompany(g: GameState, b: BizState, l: NpcLife): number {
+  if (l.skill < 65 || !b.last || b.last.net <= 0 || b.outlets.reduce((n,o) => n + o.count, 0) >= 12) return 0
+  const move = bestOpening(g, b, Math.max(0, b.cash - b.debt - runningCosts(b)), { abroad: false, maxPayback: 3, maxN: 1 })
+  if (!move || move.cost <= 0 || move.cost > b.cash) return 0
+  b.cash -= move.cost
+  b.outlets = withOutlets(b, move.countryId, move.city, move.n, g.year).outlets
+  const plan = bestPlan(g, b, { quick: true }); b.price = plan.price; b.production = plan.production
+  return move.cost
+}
+export function npcBusinessYear(g: GameState, p: Person, l: NpcLife): void {
+  const company = npcCompany(p, g.year)
+  if (!company) return
+  const { a, b } = company, fiscal = g.year - 1
+  if (b.founded > fiscal || (b.last?.year ?? -1) >= fiscal) return
+  const stake = claim(g, a.id)
+  const playerShare = stake ? clampN(num(stake.details.share), 0, 1) : 0
+  if (b.manager) b.manager.skill = l.skill
+  if (l.skill >= 65 && g.year % 3 === 0) { const plan = bestPlan(g, b, { quick: true, year: fiscal }); b.price = plan.price; b.production = plan.production }
+  const employmentBefore = b.employees
+  const result = simulateYear(g, b, fiscal, holdsFamilyJob(p) || readGroupJob(p) || holdsInfluenceJob(g, p) ? 0 : typicalIncome(g, l.country) * .5, 1)
+  p.money += result.stmt.ownerPay * .8
+  l.income = result.stmt.ownerPay
+  if (b.cash < 0) {
+    // Limited liability. Sell the firm's remaining assets; equity can be entirely wiped out.
+    const residual = Math.max(0, valuationOf(b) * .6)
+    if (stake) { addMoney(g, residual * playerShare); g.assets = g.assets.filter(x => x.id !== stake.id) }
+    p.money += residual * b.share
+    delete p.data.npcCompany; p.occupation = 'Unemployed'; l.employer = ''
+    milestone(g, p, l, `${a.name} failed; the business was liquidated and shareholders recovered ${money(residual)}`)
+    recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: -employmentBefore, investment: 0, failure: Math.max(0, -b.cash) })
+    return
+  }
+  const payout = Math.min(Math.max(0, result.stmt.net) * .2, Math.max(0, b.cash - b.debt - typicalIncome(g, l.country)))
+  b.cash -= payout; p.money += payout * b.share * .8
+  if (stake) earnIncome(g, payout * playerShare)
+  evolve(g, b, result.stmt, fiscal); recordYear(b, result.stmt); b.history = b.history.slice(-12)
+  const expansion = g.year % 3 === 0 ? expandNpcCompany(g, b, l) : 0
+  if (expansion) milestone(g, p, l, `${a.name} reinvested ${money(expansion)} in a new operating location`)
+  b.valuation = valuationOf(b); refreshValue(a, b)
+  if (stake) stake.value = Math.round(b.valuation * playerShare)
+  recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: b.employees - employmentBefore, investment: expansion, failure: 0 })
+  storeCompany(p, a)
+}
+
+/** One pass per important contact. Distant work/school acquaintances keep the lightweight model. */
+export function yearlyNpcLife(g: GameState, p: Person): boolean {
+  if (!p.alive || (!IMPORTANT.includes(p.relation) && typeof p.data.kin !== 'string' && !p.data.npcCompany)) return false
+  const l = initializeNpc(g, p)
+  if (typeof p.data.countryId === 'string' && p.data.countryId !== l.country) {
+    l.country = p.data.countryId; l.city = getCountry(l.country).cities[0]
+  }
+  if (l.lastYear >= g.year) return true
+  l.lastYear = g.year
+  const local = getCountry(l.country), e = economyOf(g, l.country), income = typicalIncome(g, l.country)
+  const roll = seeded(`npc-decision|${g.lifeId.replace(/-g\d+$/, '')}|${p.id}|${g.year}`)
+  const managedJob = holdsFamilyJob(p) || !!readGroupJob(p) || holdsInfluenceJob(g, p)
+  const royalCountry = typeof p.data.royalCountry === 'string' ? p.data.royalCountry : l.country
+  const court = p.data.royalSovereign === true ? royalRule(royalCountry, g.year) : null
+  const sovereign = !!court && (court.house === p.data.royalHouse || ['gb','ae'].includes(royalCountry))
+  if (p.data.royalSovereign === true && !sovereign) {
+    p.data.royalSovereign = false; p.occupation = 'Unemployed'
+    milestone(g, p, l, 'lost their official royal role; public allowances ended, with private assets kept separate')
+  }
+  if (p.age < 18) {
+    p.occupation = npcOccupationLabel(p.age)
+    l.skill = clampN(l.skill + (p.stats.smarts / 100) * 1.2, 0, 60)
+  } else if (sovereign) {
+    p.occupation = String(p.data.royalRole)
+    l.employer = `${String(p.data.royalHouse)} court`
+  } else if (!managedJob && !npcCompany(p, g.year)) {
+    const access = clampN((g.year < 1930 ? .08 : g.year < 1960 ? .18 : .55) * local.wealth + l.ambition / 500 + p.stats.smarts / 600, .02, .9)
+    if (p.age === 18 && roll.chance(access) && (local.freeUniversity || p.money >= income * .1 || roll.chance(p.stats.smarts / 200))) {
+      p.occupation = 'University Student'; l.study = 0; milestone(g, p, l, `began studying ${l.field}`)
+    }
+    if (p.occupation === 'University Student') {
+      l.study += 1
+      const tuition = local.freeUniversity ? 0 : income * .18
+      const pay = Math.min(p.money, tuition); p.money -= pay; l.debt += tuition - pay
+      if (l.study >= (l.education === 0 ? 4 : 2)) {
+        l.education = Math.min(3, l.education + 1); l.study = 0
+        const degree = `${['', "Bachelor's", "Master's", 'Doctorate'][l.education]} in ${l.field}`
+        l.achievements = [...l.achievements, degree].slice(-12)
+        l.skill = clampN(l.skill + 4 + p.stats.smarts / 25, 0, 97)
+        p.occupation = 'Unemployed'; milestone(g, p, l, `completed ${degree}; now looking for relevant work`)
+        p.data.npcRecruitmentYear = g.year
+      }
+    } else if (p.age >= 67) p.occupation = 'Retired'
+    else {
+      if (/Student$|^Child$|^None$|Baby|Toddler|Preschooler/.test(p.occupation)) p.occupation = 'Unemployed'
+      if (p.occupation !== 'Unemployed' && roll.chance(e.unemployment * .15)) { l.employer = ''; p.occupation = 'Unemployed'; milestone(g, p, l, 'lost their job during a difficult hiring year') }
+      if (p.occupation === 'Unemployed' && roll.chance(clampN(.45 + l.skill / 250 - e.unemployment * 2, .05, .85))) {
+        const roles: Record<NpcField, string> = { Engineering: 'Engineer', Finance: 'Accountant', Mathematics: 'Research Analyst', Law: 'Legal Clerk', Marketing: 'Marketing Specialist', Medicine: l.education >= 2 ? 'Doctor' : 'Medical Technician', Business: 'Operations Manager', 'Computer Science': 'Software Developer' }
+        p.occupation = eraOccupation(l.education ? roles[l.field] : 'Clerk', g.year)
+        l.employer = `${local.demonym} ${l.field} Services`; milestone(g, p, l, `started work as ${p.occupation}`)
+      }
+      if (p.occupation !== 'Unemployed') {
+        l.experience += 1; l.skill = clampN(l.skill + (p.stats.smarts * .5 + l.ambition * .5 - l.skill) * .07 + .4, 0, 99)
+        if (l.experience % 6 === 0 && l.skill >= 55 && e.growth > -.01) milestone(g, p, l, 'earned a promotion and higher pay')
+        if (l.education >= 1 && l.education < 3 && p.age < 40 && l.ambition > 70 && p.money > income && roll.chance(.08)) { p.occupation = 'University Student'; l.study = 0 }
+      }
+    }
+    if (p.age >= 24 && p.age <= 60 && l.ambition > 65 && roll.chance(.035) && p.money > income * 3) { saveNpcLife(p, l); startNpcCompany(g, p); const updated = npcLife(p); if (updated) { l.history = updated.history; l.employer = updated.employer } }
+  }
+  const owns = !!npcCompany(p, g.year)
+  if (!managedJob && !owns && p.age >= 18) {
+    l.income = sovereign ? l.country === royalCountry ? income * 4 : 0 : p.occupation === 'Retired' ? income * .3 : /Student|Unemployed/.test(p.occupation) ? 0 : income * (.65 + l.skill / 100 + l.education * .18 + Math.min(.5, Math.floor(l.experience / 6) * .08)) * e.wages
+    p.money += l.income * .8
+  }
+  npcBusinessYear(g, p, l)
+  if (p.age >= 18 && !managedJob) {
+    const expenses = income * (p.livesWithPlayer ? .25 : .65) * (1 + num(p.data.kids) * .08)
+    const due = expenses + l.debt * .06
+    const paid = Math.min(Math.max(0, p.money), due); p.money -= paid; l.debt += due - paid
+    const repay = Math.min(l.debt, Math.max(0, p.money - income * .2) * .15); p.money -= repay; l.debt -= repay
+    l.investments = Math.max(0, l.investments * (1 + clampN(e.growth + roll.float(-.1,.13), -.6,.25)))
+    l.housing = Math.max(0, l.housing * (1 + clampN((e.housing - 1) * .06, -.15,.15)))
+    if (p.money > income * 2 && l.debt < income) { const invest = (p.money - income * 2) * .1; p.money -= invest; l.investments += invest }
+    if (!p.livesWithPlayer && l.housing === 0 && p.money > income * 3 && l.debt < income && p.age >= 25) {
+      const price = income * 6, deposit = price * .4
+      p.money -= deposit; l.debt += price - deposit; l.housing = price; l.housingQuality = 60
+      milestone(g, p, l, 'bought a home with savings and a mortgage; repayments now compete with other spending')
+    }
+    l.ambition = clampN(l.ambition + (l.income > income * 1.5 ? .3 : p.occupation === 'Unemployed' ? -.5 : 0), 5, 98)
+    if (l.debt > income * 8 && l.investments + l.housing < l.debt && roll.chance(.12)) {
+      l.debt = 0; l.investments = 0; l.housing = 0; p.money = 0
+      milestone(g, p, l, 'went through personal bankruptcy; creditors took the remaining assets')
+    }
+    if (!sovereign && !p.livesWithPlayer && !owns && p.age < 55 && l.ambition > 65 && l.income < income && p.money > income && roll.chance(.012)) {
+      const passports = personCitizenships(g, p)
+      const abroad = !exitRegime(l.country, g.year) && roll.chance(.25) ? COUNTRIES.filter(c => c.id !== l.country && (passports.includes(c.id) || blocAccess(passports, c.id, g.year).some(a => !a.limitedUntil))) : []
+      const destination = abroad.length ? roll.pick(abroad) : local
+      const cities = destination.cities.filter(c => destination.id !== l.country || c !== l.city)
+      if (cities.length) {
+        p.money -= income * (destination.id === l.country ? .2 : .6)
+        l.employer = ''; p.data.relocated = g.year; p.data.citizenships = passports
+        l.country = destination.id; l.city = roll.pick(cities); p.data.countryId = l.country
+        p.occupation = 'Unemployed'; l.income = 0
+        milestone(g, p, l, `moved to ${l.city}, ${destination.name}, to search for better work${destination.id === local.id ? '' : ' using existing citizenship/free-movement rights'}`)
+      }
+    }
+  }
+  if (p.data.married === true && !['parent','stepparent','spouse','partner','fiance'].includes(p.relation) && roll.chance(.005 + (p.traits.includes('jealous') ? .015 : 0))) { p.data.married = false; milestone(g, p, l, 'divorced; their household split') }
+  saveNpcLife(p, l)
+  return true
+}
+
+export function npcWorth(p: Person, year: number): number {
+  const l = npcLife(p), company = npcCompany(p, year)
+  return Math.max(0, p.money + (l?.investments ?? 0) + (l?.housing ?? 0) - (l?.debt ?? 0) + (company ? company.b.valuation * company.b.share : 0))
+}
+/** Existing relationship events remain authoritative; keep their outcomes in the durable profile. */
+export function recordNpcFamilyHistory(g: GameState): void {
+  for (const p of g.people) {
+    const l = npcLife(p)
+    if (!l || !p.alive) continue
+    const current = { married: p.data.married === true || p.relation === 'spouse' || typeof p.data.spouseId === 'string', kids: num(p.data.kids), home: p.livesWithPlayer }
+    const prev = rec(p.data.npcFamilyRecord)
+    if (prev) {
+      const changes: string[] = []
+      if (current.married && !prev.married) changes.push(`married${p.data.spouseName ? ` ${p.data.spouseName}` : ''}`)
+      if (current.kids > num(prev.kids)) changes.push(`welcomed a child; now has ${current.kids} children`)
+      if (prev.home && !current.home) changes.push('moved out of the family home')
+      if (changes.length) l.history = [...l.history, `${g.year}: ${changes.join('; ')}`].slice(-24)
+    }
+    p.data.npcFamilyRecord = current; saveNpcLife(p, l)
+  }
+}
+/** Assets are sold once into the estate before the existing inheritance split runs. */
+export function liquidateNpcEstate(g: GameState, p: Person): void {
+  const l = npcLife(p), c = npcCompany(p, g.year)
+  if (c) {
+    const a = claim(g, c.a.id), share = a ? num(a.details.share) : 0
+    const realized = Math.max(0, c.b.valuation * .85)
+    p.money += realized * c.b.share
+    if (a) { addMoney(g, realized * share); g.assets = g.assets.filter(x => x.id !== a.id) }
+    delete p.data.npcCompany
+  }
+  if (l) { p.money = Math.max(0, p.money + l.investments + l.housing - l.debt); l.investments = 0; l.housing = 0; l.debt = 0; saveNpcLife(p, l) }
+}
+export function investInNpc(g: GameState, personId: string, amount: number, acquire = false): boolean {
+  const p = g.people.find(x => x.id === personId), company = p && npcCompany(p, g.year)
+  if (!p || !p.alive || !company || !g.character.alive || g.character.prison || g.character.age < 18 || !Number.isFinite(amount) || amount <= 0 || p.relationship < 35) return false
+  amount = Math.round(amount)
+  if (amount < 1) return false
+  const { a, b } = company, holding = claim(g, a.id), current = holding ? num(holding.details.share) : 0
+  const valuation = Math.max(1, b.valuation)
+  const price = acquire ? Math.round(valuation * b.share * (p.traits.includes('loyal') ? 1.05 : 1.15)) : amount
+  if (acquire && b.share + current < .9999) return false // external co-owners must also consent
+  if (g.character.money < price || (acquire && p.traits.includes('ambitious') && b.last && b.last.net > 0 && p.relationship < 80)) return false
+  if (!acquire && amount > valuation * .25) return false
+  if (!useYearAction(g, `npc-invest.${a.id}`, 1)) return false
+  addMoney(g, -price)
+  if (acquire) {
+    p.money += price
+    if (holding) g.assets = g.assets.filter(x => x.id !== holding.id)
+    b.share = 1; b.invested = price + (holding?.purchasePrice ?? 0); b.acquired = true
+    // Buying the firm is not consent to hire its founder; use the existing interim CEO path.
+    installManager(g, b)
+    a.details = b as unknown as Record<string, Json>; refreshValue(a, b); g.assets.push(a)
+    delete p.data.npcCompany
+    if (!holdsFamilyJob(p) && !readGroupJob(p) && !holdsInfluenceJob(g, p)) { p.occupation = 'Unemployed'; const life = npcLife(p); if (life) { life.employer = ''; life.income = 0; saveNpcLife(p, life) } }
+    notice(g, 'Company Acquired', `${a.name} is now in your Businesses list. ${p.firstName} received ${money(price)} for their stake and an interim CEO took over. You can separately recruit the founder or add the company to a conglomerate.`)
+  } else {
+    const share = (current * valuation + amount) / (valuation + amount)
+    b.cash += amount; b.valuation += amount; b.share *= valuation / (valuation + amount)
+    const asset: Asset = holding ?? { id: `npc-stake:${a.id}`, kind: 'investment', name: `${a.name} private stake`, emoji: '🤝', purchasePrice: 0, value: 0, condition: 100, purchasedAge: g.character.age, upkeep: 0, details: {} }
+    asset.purchasePrice += amount; asset.value = b.valuation * share
+    asset.details = { npcCompanyId: a.id, npcPersonId: p.id, share, type: 'npcEquity' }
+    if (!holding) g.assets.push(asset)
+    storeCompany(p, a)
+    notice(g, 'Business Partnership', `${money(amount)} entered ${a.name}, not ${p.firstName}'s wallet. You own ${pct(share, 2)}; profits may fund dividends, and losses can wipe out this investment.`)
+  }
+  return true
+}
+export function npcLifeNodes(g: GameState, p: Person): MenuNode[] {
+  const l = npcLife(p)
+  if (!l || p.relation === 'pet') return []
+  const close = p.relationship >= 35 || p.livesWithPlayer
+  const company = npcCompany(p, g.year)
+  const nodes: MenuNode[] = [{ type: 'info', id: `npc.life.${p.id}`, emoji: '📖', text: `Life & Career — ${p.occupation}${l.employer ? ` at ${l.employer}` : ''}. Lives in ${l.city || getCountry(l.country).cities[0]}, ${getCountry(l.country).name}. ${l.achievements.join('; ') || (l.study > 0 ? `Studying ${l.field}` : 'No known higher qualification')}. ${close ? `Experience ${l.experience} years · professional skill ${Math.round(l.skill)}/100 · approximate net wealth ${money(npcWorth(p, g.year))}.` : 'Private finances are not known to you.'}\n${close ? l.history.slice(-6).join('\n') : ''}` }]
+  if (!company || !p.alive || !close) return nodes
+  const { a, b } = company
+  nodes.push({ type: 'info', id: `npc.company.${p.id}`, emoji: '🏢', text: `${a.name}: revenue ${money(b.last?.revenue ?? 0)}, costs ${money((b.last?.netRevenue ?? 0) - (b.last?.pbt ?? 0))}, net ${money(b.last?.net ?? 0)}, cash ${money(b.cash)}, debt ${money(b.debt)}, valuation ${money(b.valuation)}. Ownership: ${p.firstName} ${pct(b.share, 1)}.` })
+  const block = () => g.character.age < 18 || g.character.prison ? 'Adult business decisions only, outside prison.' : p.relationship < 35 ? 'Build trust first.' : null
+  nodes.push({ type: 'action', id: `npc.invest.${p.id}`, label: 'Invest / Become a Business Partner', emoji: '🤝', disabledReason: block,
+    input: { kind: 'slider', label: 'Subscribe to new shares', money: true, min: 1, max: Math.max(1, Math.floor(Math.min(g.character.money, b.valuation * .25))), preview: (_gg, v) => `${money(v)} into company cash, not personal income. About ${pct(v / (b.valuation + v), 2)} newly issued equity.`, defaultValue: () => String(Math.max(1, Math.floor(Math.min(g.character.money, b.valuation * .05)))) }, run: (gg, input) => { if (!investInNpc(gg, p.id, Number(input))) notice(gg, 'Offer Declined', 'The business, trust, annual offer limit or available funds no longer meets these terms.') } })
+  const cost = b.valuation * (1 - num(claim(g, a.id)?.details.share)) * (p.traits.includes('loyal') ? 1.05 : 1.15)
+  nodes.push({ type: 'action', id: `npc.acquire.${p.id}`, label: 'Propose an Acquisition', emoji: '🏢', subtitle: `Indicative price ${money(cost)}; ambitious profitable founders may refuse`, disabledReason: block, confirm: () => `Offer ${money(cost)} from personal funds for all remaining shares?`, run: gg => { if (!investInNpc(gg, p.id, 1, true)) notice(gg, 'Acquisition Declined', 'The founder declined, you have already negotiated this year, or available funds do not meet the current asking price.') } })
+  return nodes
+}

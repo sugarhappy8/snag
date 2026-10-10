@@ -1,6 +1,12 @@
 // Birth, generations and life milestones: createNewLife builds a fresh GameState with a
 // family, continueAsChild hands the game to a child after death (inheritance included),
 // and yearlyMilestones adds the age-based moments (talents, puberty, adulthood...).
+import { rollBirthBackground, initializeBirthParent, birthIntroduction } from './birth-background'
+import { initializeRoyalBirth, inheritRoyalStatus, royalRule, type RoyalBirthChoice } from './royalty'
+import { npcCompany } from './npc-lives'
+import { npcLife } from './npc-state'
+import { refreshValue } from './business/economy'
+import { heirCitizenships } from './activities/immigration-state'
 import {
   addHidden,
   addStat,
@@ -73,6 +79,8 @@ export interface NewLifeOptions {
   city?: string
   sexuality?: Sexuality
   seed?: number
+  /** Royal status only; ordinary family wealth always remains a seeded random roll. */
+  royalty?: RoyalBirthChoice
   /**
    * Calendar year of birth (New Life › Born in; default PRESENT_YEAR). Years before
    * PRESENT_YEAR are real history: parents, jobs, technology, news and medicine of that era.
@@ -644,6 +652,7 @@ function makeParent(g: GameState, spec: ParentSpec, rich: boolean, wealth: numbe
   const base = rich ? Math.max(p.money, 150_000) * randInt(g, 6, 30) : p.money
   // Real (today's-dollar) savings were smaller in the past (1 from PRESENT_YEAR on).
   p.money = Math.round(base * Math.max(0.2, wealth) * realWealthFactor(g.year))
+  initializeBirthParent(g, p)
   return p
 }
 
@@ -778,8 +787,12 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   const c = g.character
 
   // --- Family -------------------------------------------------------------
-  const family = rollFamilyType(g)
-  const rich = chance(g, 0.05)
+  const rolledFamily = rollFamilyType(g)
+  // A selected dynastic birth needs a biological royal parent. Keep the ordinary wealth
+  // roll independent, and leave unselected/random lives' family generation unchanged.
+  const chosenRoyal = opts.royalty === 'royal' && !!royalRule(country.id, year)
+  const family = chosenRoyal && (rolledFamily === 'adopted' || rolledFamily === 'singleMother') ? 'together' : rolledFamily
+  const rich = rollBirthBackground(g) >= 5
   const wealth = country.wealth
   const motherAge = Math.max(18, Math.min(46, bell(g, 18, 44)))
   const fatherAge = Math.max(18, motherAge + randInt(g, -3, 7))
@@ -945,7 +958,10 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   if (conceptionIdx >= 0) log(g, lines.splice(conceptionIdx, 1)[0])
   log(g, `My birthday is ${MONTHS[birthday.month - 1]} ${birthday.day}. I am ${/^[AEIOU]/.test(c.zodiac) ? 'an' : 'a'} ${c.zodiac}.`)
   log(g, `My name is ${firstName} ${lastName}.`)
-  for (const line of lines) log(g, line)
+  initializeRoyalBirth(g, opts.royalty)
+  for (const line of lines) log(g, father?.data.royalSovereign === true && line.startsWith('My father is ')
+    ? `My father is ${fullName(father)}, a ${father.age} year old ${father.occupation}.` : line)
+  birthIntroduction(g)
   if (isHistorical(year)) for (const line of familyWarLines(g, father, mother, year)) log(g, line)
   // The news the year I was born.
   logNews(g)
@@ -1110,7 +1126,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const n = structuredClone(g)
   const old = n.character
   const heirP = n.people.find((p) => p.id === childId) as Person
-  const country = getCountry(old.countryId)
+  const npcEducation = npcLife(heirP)
+  const country = getCountry(heirP.age >= 18 && typeof heirP.data.countryId === 'string' ? heirP.data.countryId : old.countryId)
+  const passports = heirCitizenships(g, heirPerson)
   const pf = Math.max(0.3, country.wealth)
   const oldName = fullName(old)
   const oldNoun = parentNoun(old.gender)
@@ -1207,18 +1225,18 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   let retired = false
   let pension = 0
   if (age < 18) {
-    const school = schoolForAge(n, age, old.countryId, heirP.stats.smarts)
+    const school = schoolForAge(n, age, country.id, heirP.stats.smarts)
     education = { ...emptyEducation(), completed: school.completed, current: school.current }
   } else {
-    education = adultEducation(n, age, old.countryId, npcOccupation)
+    education = adultEducation(n, age, country.id, npcOccupation)
     if (npcOccupation === 'University Student' && age <= 22) {
       education.current = {
         level: 'university',
-        school: localUniversityName(n, old.countryId),
-        year: Math.max(1, Math.min(4, age - 17)),
+        school: localUniversityName(n, country.id),
+        year: Math.max(1, Math.min(4, npcEducation ? npcEducation.study + 1 : age - 17)),
         totalYears: 4,
         grades: clampStat(heirP.stats.smarts * 0.6 + 30),
-        major: pick(n, MAJORS),
+        major: npcEducation?.field ?? pick(n, MAJORS),
         funding: country.freeUniversity ? 'free' : 'scholarship',
         data: {},
       }
@@ -1232,6 +1250,18 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     }
   }
 
+  if (npcEducation) {
+    // Recorded qualifications are authoritative, including no university degree. A job title
+    // must not fabricate credentials when the player takes over an independent NPC's life.
+    education.degrees = [
+      ...education.degrees.filter(d => d.kind === 'highschool' || d.kind === 'ged'),
+      ...Array.from({ length: npcEducation.education }, (_, i) => ({ kind: (['bachelor', 'master', 'doctorate'] as const)[i], name: `${["Bachelor's", "Master's", 'Doctorate'][i]} in ${npcEducation.field}`, major: npcEducation.field, school: 'Local university', age: Math.min(age, 22 + i * 2) })),
+    ]
+    education.completed = education.completed.filter(level => level !== 'university' && level !== 'graduate')
+    if (npcEducation.education > 0) education.completed.push('university')
+    if (npcEducation.education > 1) education.completed.push('graduate')
+  }
+
   const heir: Character = {
     id: heirP.id,
     firstName: heirP.firstName,
@@ -1240,9 +1270,11 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     sexuality,
     birthday,
     zodiac: zodiacFor(birthday.month, birthday.day),
-    countryId: old.countryId,
-    city: old.city,
+    countryId: country.id,
+    city: npcEducation?.city && country.cities.includes(npcEducation.city) ? npcEducation.city : country.id === old.countryId ? old.city : country.cities[0],
     birthCountryId: old.countryId,
+    citizenships: passports,
+    ...(passports.includes(country.id) ? {} : { immigration: { countryId: country.id, status: 'permanent' as const, since: typeof heirP.data.relocated === 'number' ? heirP.data.relocated : n.year } }),
     age,
     alive: true,
     stats: {
@@ -1306,7 +1338,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
 
   // The late player.
   people.push({
-    id: uid(n, 'p'),
+    id: old.id,
     firstName: old.firstName,
     lastName: old.lastName,
     gender: old.gender,
@@ -1379,6 +1411,14 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   for (const pet of n.people.filter((p) => p.alive && p.relation === 'pet')) {
     people.push(reset(pet, 'pet', randInt(n, 40, 80), true))
   }
+  // Persistent entrepreneurs and known relatives do not disappear when the viewpoint changes.
+  for (const contact of n.people) {
+    if (contact.id === childId || people.some(p => p.id === contact.id) || !npcLife(contact)) continue
+    const kept = reset(contact, 'friend', Math.min(60, contact.relationship), false)
+    kept.notes = contact.notes
+    kept.data.generationConnection = `Known through ${oldName}`
+    people.push(kept)
+  }
   n.people = people
   for (const unit of allocatedUnits) {
     if (!unit.recipient || unit.recipient.id === childId) continue
@@ -1407,6 +1447,21 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   n.ancestors = [...n.ancestors, summary]
   n.character = heir
   n.assets = keptAssets
+  const ownedBeforeInheritance = npcCompany(heirP, n.year)
+  if (ownedBeforeInheritance) {
+    const { a, b } = ownedBeforeInheritance
+    const claim = n.assets.find(x => x.details.npcCompanyId === a.id)
+    if (claim) { b.share = Math.min(1, b.share + (typeof claim.details.share === 'number' ? claim.details.share : 0)); n.assets = n.assets.filter(x => x.id !== claim.id) }
+    installManager(n, b)
+    a.details = b as unknown as Record<string, Json>
+    refreshValue(a, b); n.assets.push(a)
+  }
+  if (npcEducation) {
+    // Realize the heir's own pre-existing portfolio/housing once, not the deceased's estate.
+    n.character.money += Math.max(0, npcEducation.investments + npcEducation.housing - npcEducation.debt)
+    const shortfall = Math.max(0, npcEducation.debt - npcEducation.investments - npcEducation.housing)
+    if (shortfall > 0) n.character.loans.push({ id: `npc-debt:${childId}`, kind: 'personal', lender: 'Existing personal creditors', balance: shortfall, rate: .06, yearsLeft: 10, yearlyPayment: shortfall * .14, countryId: npcEducation.country })
+  }
   n.log = [{ age, year: n.year, entries: [] }]
   n.queue = []
   n.counters = {}
@@ -1427,8 +1482,10 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(n.flags.inventionImpact && typeof n.flags.inventionImpact === 'object' ? { inventionImpact: n.flags.inventionImpact } : {}),
     ...(n.flags['business.confidence'] ? { 'business.confidence': n.flags['business.confidence'], 'business.confidenceYear': n.flags['business.confidenceYear'] ?? 0 } : {}),
     ...(n.flags.worldEconomy ? { worldEconomy: n.flags.worldEconomy } : {}),
+    ...(n.flags.groupServices ? { groupServices: n.flags.groupServices, groupServicesPrepared: n.flags.groupServicesPrepared ?? -1, groupServicesSettled: n.flags.groupServicesSettled ?? -1, groupServiceResults: n.flags.groupServiceResults ?? [] } : {}),
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
   }
+  inheritRoyalStatus(n, heirP)
 
   // A designated heir is no longer a Person employee after becoming the player. Spend their
   // person-based succession records now, put one directly designated company in the player's CEO

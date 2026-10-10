@@ -119,7 +119,7 @@ export function isCeoOf(b: BizState, p: Person): boolean {
 // ---------------------------------------------------------------------------
 // Who could work there
 
-const RELATIVE_RELATIONS = ['child', 'stepchild', 'grandchild', 'sibling', 'halfSibling', 'stepsibling', 'spouse', 'parent', 'stepparent', 'fiance'] as const
+const RELATIVE_RELATIONS = ['child', 'stepchild', 'grandchild', 'sibling', 'halfSibling', 'stepsibling', 'spouse', 'parent', 'stepparent', 'fiance', 'friend', 'bestFriend', 'partner'] as const
 
 /** Family the player can hire: kin in the contact list, or the in-laws and cousins they hired before. */
 export function isRelative(p: Person): boolean {

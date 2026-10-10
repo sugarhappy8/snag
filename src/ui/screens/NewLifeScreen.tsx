@@ -8,6 +8,7 @@ import { nameFitsYear } from '../../game/history/events-people'
 import { HISTORY_START, PRESENT_YEAR } from '../../game/history/timeline'
 import { START_STAT_KEYS, type NewLifeOptions, type StartStatKey } from '../../game/life'
 import { loadGame } from '../../game/save'
+import { royalRule, type RoyalBirthChoice } from '../../game/royalty'
 import { isTalentId, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, SPECIAL_TALENTS, specialTalent, type TalentId } from '../../game/talents'
 import type { Gender, Sexuality } from '../../game/types'
 import { COUNTRIES, NAME_POOLS, getCountry } from '../../game/world'
@@ -513,6 +514,7 @@ export interface CustomLifeForm {
   picks: StatPicks
   talents: readonly string[]
   year: number
+  royalty?: RoyalBirthChoice
 }
 
 /** What Start Life passes to createNewLife: blank names are rolled, unset choices left to fate. */
@@ -522,11 +524,33 @@ export function customLifeOptions(f: CustomLifeForm): NewLifeOptions {
   const opts: NewLifeOptions = { firstName: first, lastName: last, gender: f.gender, countryId: f.countryId, year: f.year }
   if (f.city) opts.city = f.city
   if (f.sexuality) opts.sexuality = f.sexuality
+  if (f.royalty === 'nonRoyal' || (f.royalty === 'royal' && royalRule(f.countryId, f.year))) opts.royalty = f.royalty
   const stats = statsOption(f.picks)
   if (stats) opts.stats = stats
   const talents = talentsOption(f.talents)
   if (talents) opts.talents = talents
   return opts
+}
+
+export function RoyalBirthPicker({ countryId, year, value, onChange }: { countryId: string; year: number; value: RoyalBirthChoice; onChange: (value: RoyalBirthChoice) => void }) {
+  const hintId = useId()
+  const rule = royalRule(countryId, year)
+  return (
+    <div className="al-field">
+      <label>
+        <span className="al-label">Royal birth</span>
+        <select className="al-select" value={value === 'royal' && !rule ? 'random' : value} aria-describedby={hintId} onChange={e => onChange(e.target.value as RoyalBirthChoice)}>
+          <option value="random">🎲 Random — rare chance of royalty</option>
+          <option value="royal" disabled={!rule}>👑 Royal family</option>
+          <option value="nonRoyal">Non-royal family — random wealth</option>
+        </select>
+      </label>
+      <p id={hintId} className="al-muted al-small" aria-live="polite">
+        {rule ? `${rule.house} in ${year}. Royal status can be chosen; rank and succession still depend on the dynasty.` : `Royal birth is unavailable in ${getCountry(countryId).name} in ${year}. Choose a country and year with an eligible monarchy.`}
+        {' '}Family wealth is always random; wealthy or billionaire births cannot be selected.
+      </p>
+    </div>
+  )
 }
 
 export function NewLifeScreen() {
@@ -546,6 +570,7 @@ export function NewLifeScreen() {
   const [talents, setTalents] = useState<TalentId[]>([])
   const [talentsOpen, setTalentsOpen] = useState(false)
   const [year, setYear] = useState(PRESENT_YEAR)
+  const [royalty, setRoyalty] = useState<RoyalBirthChoice>('random')
   // Random Life is born today unless the player asks for a random era.
   const [randomEra, setRandomEra] = useState(false)
   const chosenTalents = talentsOption(talents)
@@ -572,11 +597,13 @@ export function NewLifeScreen() {
   // A rolled name that didn't exist yet in the chosen year is re-rolled (typed names are kept).
   const changeYear = (next: number) => {
     setYear(next)
+    if (royalty === 'royal' && !royalRule(countryId, next)) setRoyalty('random')
     if (firstAuto && !nameFitsYear(firstName, next)) setFirstName(rollFirstName(countryId, gender, '', next))
   }
 
   const changeCountry = (id: string) => {
     setCountryId(id)
+    if (royalty === 'royal' && !royalRule(id, year)) setRoyalty('random')
     setCity('')
     if (firstAuto) setFirstName(rollFirstName(id, gender, '', year))
     if (lastAuto) setLastName(rollLastName(id))
@@ -589,7 +616,7 @@ export function NewLifeScreen() {
 
   const randomLife = () => begin({ year: randomEra ? randomBirthYear() : PRESENT_YEAR })
 
-  const customLife = () => begin(customLifeOptions({ firstName, lastName, gender, countryId, city, sexuality, picks, talents, year }))
+  const customLife = () => begin(customLifeOptions({ firstName, lastName, gender, countryId, city, sexuality, picks, talents, year, royalty }))
 
   return (
     <div className="al-screen new-life">
@@ -735,6 +762,8 @@ export function NewLifeScreen() {
 
         <BirthYearPicker year={year} countryId={countryId} onChange={changeYear} />
 
+        <RoyalBirthPicker countryId={countryId} year={year} value={royalty} onChange={setRoyalty} />
+
         <label className="al-field">
           <span className="al-label">Sexuality (optional)</span>
           <select className="al-select" value={sexuality} onChange={(e) => setSexuality(e.target.value as Sexuality | '')}>
@@ -755,7 +784,7 @@ export function NewLifeScreen() {
           </span>
           <span className="al-bigbtn-text">
             <span>Start Life</span>
-            <span className="al-bigbtn-sub">{startSubtitle(picks, chosenTalents?.length ?? 0)}</span>
+            <span className="al-bigbtn-sub">{royalty === 'royal' ? 'Born royal; family wealth stays random and succession is not guaranteed' : startSubtitle(picks, chosenTalents?.length ?? 0)}</span>
           </span>
         </button>
       </form>

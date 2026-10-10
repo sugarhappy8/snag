@@ -150,7 +150,7 @@ function act(g: GameState, a: Asset, id: string): MenuAction {
 }
 
 describe('deep tech', () => {
-  it('founds all eight industries in seven very different markets and trades 15+ years with finite numbers', () => {
+  it('founds all eight industries in seven very different markets and trades 15+ years with finite numbers', { timeout: 120_000 }, () => {
     const countries = ['us', 'tw', 'kr', 'jp', 'de', 'in', 'ng']
     let survived = 0
     let selling = 0

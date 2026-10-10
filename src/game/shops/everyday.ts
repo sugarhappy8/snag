@@ -401,7 +401,7 @@ const QUIPS: Record<StoreId | 'pet', string[]> = {
   clothing: ['You wore it out of the store.', 'You took 40 mirror selfies. One was usable.', 'The tag said "dry clean only." You will not be dry cleaning it.'],
   toy: ['You tore open the box in the parking lot.', 'Best. Day. Ever.', 'You played with the box for an hour before the toy.'],
   garden: ['You read the manual cover to cover. Twice.', 'Your neighbor came over to look at it. Twice.', 'You feel like a real homeowner now.'],
-  pet: ['It was love at first sniff.', 'They ignored it for a day, then decided it was theirs forever.', 'You took 200 photos of them with it.'],
+  pet: ['It was love at first sniff.', 'They ignored it for a day, then decided it was theirs forever.', 'You proudly showed everyone how much they liked it.'],
 }
 
 const BEG_NO = [

@@ -403,7 +403,7 @@ export const ERA_RULES: readonly EraRule[] = [
   { id: 'mma', re: /\bMMA\b|\bmixed martial arts\b|\bcage fight/i, year: 1993 },
   { id: 'modern slang', re: /\brizz\b|\bno cap\b|\byeet\b|\bok boomer\b|\bFOMO\b|\bsimp(s|ing)?\b|\bvibe check\b|\bghost(ed|ing) (me|him|her|them|you)\b|\bbestie\b|\bsituationship\b|\bGen Z\b|\bmillennials?\b|\bmain character (energy|syndrome|vibes?)\b|^main character\b|\bgaslight/i, year: 2010 },
   { id: 'jet travel', re: /\bjets?\b(?!-black| black| ski| d'Eau)|\bjet lag\b|\bjet-?set/i, year: 1958 },
-  { id: 'air travel', re: /\bairports?\b|\bairlines?\b|\bflights?\b(?! of (stairs|steps|fancy)| (school|hours?|instructors?|lessons?|training|simulators?|suits?)\b)|\bflew (to|home|back|first class|economy|business class|in from|out to)\b|\bboarding pass|\blayovers?\b/i, year: 1925 },
+  { id: 'air travel', re: /\bairports?\b|\bairlines?\b|\bflights?\b(?! of (stairs|steps|fancy)| (cages?|school|hours?|instructors?|lessons?|training|simulators?|suits?)\b)|\bflew (to|home|back|first class|economy|business class|in from|out to)\b|\bboarding pass|\blayovers?\b/i, year: 1925 },
   { id: 'nuclear', re: /\bnuclear\b|\batomic bomb|\bA-bomb/i, year: 1945 },
   { id: 'plastic', re: /\bplastic (bags?|bottles?|cups?|straws?|toys?|chairs?|wrap|forks?|tubs?)\b/i, year: 1955 },
   { id: 'drive-thru', re: /\bdrive-?thrus?\b|\bdrive-?through\b/i, year: 1948 },

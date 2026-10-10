@@ -11,6 +11,7 @@
 import { seeded } from '../assets'
 import { entitlement } from '../events/wealth-core'
 import type { Person } from '../types'
+import { npcEducationSkill } from '../npc-state'
 import { MAX_RANK, seedKey, type FamilyJob } from './nepo-job'
 import { rankDef } from './nepo-roles'
 import { clampN } from './util'
@@ -56,7 +57,7 @@ export function ceilingOf(p: Person): number {
 /** Skill on day one: from aptitude and a little life experience (a self-made kid brings real credentials). */
 export function startSkill(p: Person): number {
   const selfMade = typeof p.data.nepoSelfMade === 'number' ? 10 : 0
-  return Math.round(clampN(aptitudeOf(p) * 0.5 + Math.max(0, p.age - 18) * 0.7 + selfMade, 3, 75))
+  return Math.round(clampN(aptitudeOf(p) * 0.5 + Math.max(0, p.age - 18) * 0.7 + selfMade + npcEducationSkill(p), 3, 95))
 }
 
 /** Skill minus difficulty: how far above (+) or below (-) the job they are. */

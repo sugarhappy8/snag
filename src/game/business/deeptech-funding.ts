@@ -10,7 +10,7 @@ import { DEEP_TECH, GRANTS, GRANT_COOLDOWN, MAX_GRANT_AWARDS, NATIONAL_GRANT, gr
 import { dtInd, industryCycle, payTech, rdBudget, rdScale, revalue, runwayYears, techSkill } from './deeptech-core'
 import { MAX_SERIES, SERIES, type TechProgram, type TechState } from './deeptech-state'
 import { investorFirm } from './flavor'
-import { diluteManagerEquity, type BizState } from './state'
+import { diluteBusinessEquity, type BizState } from './state'
 import { clampN, money } from './util'
 
 // ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ export function closeRound(g: GameState, a: Asset, b: BizState, t: TechState, ts
   const amount = Math.max(0, Math.round(ts.amount))
   const equity = clampN(amount / Math.max(1, ts.pre + amount), 0, 0.6)
   b.share = clampN(Math.round(b.share * (1 - equity) * 10000) / 10000, 0.01, 1)
-  diluteManagerEquity(b.manager, 1 - equity)
+  diluteBusinessEquity(b, 1 - equity)
   t.venture += amount
   t.raised += amount
   if (!ts.bridge) t.series = Math.min(MAX_SERIES, Math.max(t.series, ts.series))

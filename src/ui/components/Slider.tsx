@@ -3,7 +3,7 @@
 // repeat while held, keyboard arrows, and a live caption under it (MenuInput.preview). Money
 // sliders keep internal dollars as their value and show them in the player's display currency
 // with the same helpers the money number field uses. The math lives in menuModel.ts.
-import { useEffect, useMemo, useRef, type CSSProperties, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { formatMoney, moneyScale, shortMoney } from '../../game/core'
 import { sliderClamp, sliderNotchOf, sliderNudge, sliderScale, sliderValueAt, type SliderScale } from './menuModel'
 import '../styles/slider.css'
@@ -47,6 +47,9 @@ const REPEAT_EVERY = 70
 export function SliderField({ label, min, max, step, money = false, unit = '', value, onChange, onSubmit, preview, autoFocus }: SliderFieldProps) {
   const s = useSliderScale(min, max, step, money)
   const v = sliderClamp(s, value)
+  const displayScale = money ? moneyScale() : 1
+  const [exact, setExact] = useState(String(Number((v * displayScale).toPrecision(12))))
+  useEffect(() => setExact(String(Number((v * displayScale).toPrecision(12)))), [v, displayScale])
   const valueRef = useRef(v)
   valueRef.current = v
   const changeRef = useRef(onChange)
@@ -193,6 +196,12 @@ export function SliderField({ label, min, max, step, money = false, unit = '', v
         <span>{sliderText(s.min, money, s.step, true, unit)}</span>
         <span>{sliderText(s.max, money, s.step, true, unit)}</span>
       </div>
+      <label className="al-field">
+        <span>Exact {money ? 'amount (display currency)' : 'value'}</span>
+        <input type="number" aria-label={`Exact ${label}`} min={s.min * (money ? moneyScale() : 1)} max={s.max * (money ? moneyScale() : 1)} step="any"
+          value={exact} onChange={e => setExact(e.target.value)} />
+        <button type="button" className="btn" onClick={() => { const n = Number(exact); if (exact.trim() && Number.isFinite(n)) set(n / displayScale) }}>Apply exact value</button>
+      </label>
       {caption ? (
         <p className="slider-preview" aria-live="polite">
           {caption}

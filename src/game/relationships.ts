@@ -4,6 +4,7 @@
 import { arrestPlayer } from './crime'
 import { householdEffects } from './household'
 import { economyOf } from './economy'
+import { yearlyNpcLife, npcLifeNodes, liquidateNpcEstate, recordNpcFamilyHistory } from './npc-lives'
 import {
   addHidden,
   addMoney,
@@ -764,6 +765,7 @@ export function yearlyRelationships(g: GameState): void {
   npcDeaths(g)
   processPregnancies(g)
   familyLifeCycle(g)
+  recordNpcFamilyHistory(g)
   driftRelationships(g)
   partnerDrama(g)
   yearlyFamilyEvent(g)
@@ -1029,6 +1031,7 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
   }
 
   // Exes and estranged kids pass quietly (you find out in the list).
+  liquidateNpcEstate(g, p)
   if (p.relation === 'ex' || p.relation === 'exSpouse' || p.data.disowned === true) return
 
   const close = isFamily(p) || isRomantic(p) || p.relation === 'bestFriend' || p.relation === 'friend'
@@ -1054,7 +1057,7 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
     }
     if (p.relation === 'parent') {
       const other = g.people.find((x) => x.alive && x.relation === 'parent' && x.id !== p.id && !splitUp(x))
-      if (other && !splitUp(p)) other.money += Math.max(0, p.money - inherited)
+      if (other && !splitUp(p)) { other.money += Math.max(0, p.money - inherited); p.money = inherited }
     }
     p.money = Math.max(0, p.money - inherited)
   }
@@ -1266,6 +1269,7 @@ function checkGuardian(g: GameState): void {
 // --- Life cycle ------------------------------------------------------------
 
 function updateOccupation(g: GameState, p: Person): void {
+  if (yearlyNpcLife(g, p)) return
   // Company/HQ employment has its own real payroll and retirement handling. Do not
   // overwrite the role or add the generic NPC earnings on top of that salary.
   if (holdsFamilyJob(p) || holdsInfluenceJob(g, p)) return
@@ -2112,7 +2116,7 @@ function cleanupPeople(g: GameState): void {
   const deadExes = g.people.filter((p) => !p.alive && (p.relation === 'ex' || p.relation === 'exSpouse')).sort(byDeath)
   const deadPets = g.people.filter((p) => !p.alive && p.relation === 'pet').sort(byDeath)
   const drop = new Set<string>([...deadExes.slice(10), ...deadPets.slice(12)].map((p) => p.id))
-  const liveExes = g.people.filter((p) => p.alive && p.relation === 'ex' && p.data.babyParent !== true)
+  const liveExes = g.people.filter((p) => p.alive && p.relation === 'ex' && p.data.babyParent !== true && !p.data.npcCompany)
   if (liveExes.length > 20) {
     const sorted = [...liveExes].sort((a, b) => (a.data.fling === true ? 0 : 1) - (b.data.fling === true ? 0 : 1) || a.relationship - b.relationship)
     for (const p of sorted.slice(0, liveExes.length - 20)) drop.add(p.id)
@@ -3683,6 +3687,7 @@ export function personActions(g: GameState, person: Person): MenuNode[] {
   const nodes: MenuNode[] = []
   const info = statusInfo(g, p)
   if (info) nodes.push(info)
+  nodes.push(...npcLifeNodes(g, p))
   if (c.age < 2) {
     nodes.push({ type: 'info', id: 'baby', emoji: '\u{1F476}', text: "You're a baby. Your interactions are limited to crying, drooling and staring." })
     return nodes

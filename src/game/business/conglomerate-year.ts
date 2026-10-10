@@ -15,6 +15,7 @@ import { payCap, reserveDollars } from './board-vote'
 import { bestMandate, mandateMerit } from './board-ceo'
 import { ceoSeverance, managerName, ownerAvailable, shortlist, SMART_SKILL } from './career'
 import { cleanGroupJobs, familyRoleEdge, payFamilyGroupCeo, prepareGroupFamily } from './conglomerate-family'
+import { hasInternalServices, internalRevenue } from './group-services'
 import { allocateGroupCapital, manageDivisionCeos, managementEffectiveness, retainDivisionCeo } from './conglomerate-management'
 import { clearGroupCeoJob } from './conglomerate-job'
 import {
@@ -295,6 +296,7 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
   const plan = synergyPlan(inputs(grp), clampN(captureOf(g, core) + familyRoleEdge(g, core.id, 'operations'), 0, 1))
   plan.divisions.forEach((d, i) => {
     const x = grp.members[i]
+    if (hasInternalServices(g, x.a.id)) { d.backOffice = 0; d.purchasing = 0; d.purchasingValue = 0 }
     const part = x.m.joined > fiscal ? 0 : x.m.joined === fiscal ? 0.5 : 1
     if (part > 0) {
       credit(x.b, d.backOffice * part)
@@ -333,7 +335,7 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
     ...core.history.filter((h) => h.year !== fiscal),
     {
       year: fiscal,
-      revenue: Math.round(booked.reduce((s, x) => s + (x.b.last?.revenue ?? 0), 0)),
+      revenue: Math.max(0, Math.round(booked.reduce((s, x) => s + (x.b.last?.revenue ?? 0), 0) - internalRevenue(g, core.id, fiscal))),
       profit: Math.round(booked.reduce((s, x) => s + (x.b.last?.net ?? 0), 0)),
       value: groupValue(grp),
       divisions: grp.members.length,

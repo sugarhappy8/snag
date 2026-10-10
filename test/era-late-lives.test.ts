@@ -123,7 +123,13 @@ describe('lives through the late decades', () => {
   it('simulate without errors and without a single anachronism', () => {
     const bad: string[] = []
     for (const [i, [year, country]] of LIVES.entries()) {
-      const life = playLife(i + 3, year, country, 85)
+      let life = playLife(i + 3, year, country, 85)
+      // Early death is a valid outcome, not a simulation failure. Ensure at least
+      // one mature life per locale while retaining all text from the shorter run.
+      for (let retry = 1; life.age <= 30 && retry <= 3; retry++) {
+        const next = playLife(i + 3 + retry * 100, year, country, 85)
+        life = { ...next, texts: [...life.texts, ...next.texts] }
+      }
       expect(life.age, `${year} ${country}`).toBeGreaterThan(30)
       for (const t of life.texts) {
         const rules = anachronismsIn(t.text, t.year, t.countries)

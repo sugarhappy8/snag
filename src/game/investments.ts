@@ -259,7 +259,7 @@ function gutGroupHint(g: GameState, kinds: string[]): string | null {
 // Holdings
 
 export function investmentHoldings(g: GameState): Asset[] {
-  return g.assets.filter((a) => a.kind === 'investment')
+  return g.assets.filter((a) => a.kind === 'investment' && a.details.type !== 'npcEquity')
 }
 
 function typeOf(a: Asset): InvestType {
@@ -958,6 +958,7 @@ function recordOrderFlow(g: GameState, a: Asset, mult: number): void {
 }
 
 function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | null {
+  if (a.details.type === 'npcEquity') return null
   const value = holdingValue(a)
   if (value <= 0) {
     g.assets = g.assets.filter((x) => x.id !== a.id)
@@ -1315,6 +1316,7 @@ function holdingInfo(g: GameState, a: Asset): string[] {
 
 /** Owned-asset screen for a kind 'investment' asset (registered in menus.ts). */
 export function investmentAssetView(g: GameState, a: Asset): MenuNode[] {
+  if (a.details.type === 'npcEquity') return [{ type: 'info', id: `npc-equity.${a.id}`, emoji: '🤝', text: `${a.name}: ${formatMoney(a.value)} estimated value, ${(num(a.details.share) * 100).toFixed(2)}% ownership. Private, illiquid equity—not an exchange-traded stock. Manage investment or acquisition through the founder's Life & Career profile. Dividends depend on real company profits.` }]
   const nodes: MenuNode[] = holdingInfo(g, a).map((text, i): MenuNode => ({ type: 'info', id: `inv-info-${a.id}-${i}`, text }))
   nodes.push({ type: 'heading', id: `inv-actions-${a.id}`, label: 'Actions' })
   const q = holdingQuote(g, a)
@@ -1324,6 +1326,7 @@ export function investmentAssetView(g: GameState, a: Asset): MenuNode[] {
 }
 
 export function investmentAssetSubtitle(_g: GameState, a: Asset): string {
+  if (a.details.type === 'npcEquity') return `${shortMoney(a.value)} · private company stake`
   const t = typeOf(a)
   const v = holdingValue(a)
   const cost = basis(a)
