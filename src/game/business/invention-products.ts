@@ -4,6 +4,8 @@ import { earnIncome, formatMoney, notice } from '../core'
 import { seeded } from '../assets'
 import { recordEconomicActivity } from '../economy'
 import { readInventionIp } from '../inventor-state'
+import { recordInventorAdoption } from '../inventor-career'
+import { inventionAdoptedUnits } from '../invention-adoption'
 import { isInventionField, type InventionField, PRODUCT_SPECS } from '../inventor-data'
 import { inventionLeakFactor } from '../invention-impact'
 import type { Asset, GameState, Json, MenuNode } from '../types'
@@ -17,7 +19,7 @@ import { localEcon, refreshValue, valuationOf, yearFixed } from './economy'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 export { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 
-export interface InventionProduct { id: string; ipId: string; name: string; field: InventionField; kind: InventionTier; price: number; unitCost: number; potential: number; production: number; inventory: number; rights: 'owned' | 'license'; royalty: number; expires: number; protections: PatentProtection[]; started: number; lastYear: number; sold: number; revenue: number; costs: number; fabCapacity?: number; fabInvested?: number; upgradeLevel?: number; upgradeInvested?: number; marketFit?: number; reliability?: number }
+export interface InventionProduct { id: string; ipId: string; name: string; field: InventionField; kind: InventionTier; price: number; unitCost: number; potential: number; production: number; inventory: number; rights: 'owned' | 'license'; royalty: number; expires: number; protections: PatentProtection[]; started: number; lastYear: number; sold: number; revenue: number; costs: number; fabCapacity?: number; fabInvested?: number; upgradeLevel?: number; upgradeInvested?: number; marketFit?: number; reliability?: number; evidenceBased?: boolean; inventor?: string; contributors?: string }
 export interface InventionProductYear { revenue: number; cogs: number; royalties: number; wages: number; staffUsed: number; units: number; rows: { id: string; produced: number; sold: number; inventoryEnd: number; revenue: number; cogs: number; royalties: number; wages: number }[] }
 export interface InventionDemandQuote { demand: number; patentRemaining: number; patentYears: number; referencePrice: number; monopoly: number; launchDemand: number }
 /** Workload, not free labour: larger inventions take more staff time per unit. */
@@ -76,7 +78,8 @@ export function inventionProductsOf(b: BizState): InventionProduct[] {
     // product carries explicit zero capacity and must pay to build a factory.
     fabCapacity: Math.floor(num(d.fabCapacity, Object.hasOwn(d, 'fabCapacity') ? 0 : 100, MAX_INVENTION_OUTPUT)),
     fabInvested: num(d.fabInvested), upgradeLevel: Math.floor(num(d.upgradeLevel, 0, MAX_UPGRADES)), upgradeInvested: num(d.upgradeInvested),
-    marketFit: num(d.marketFit, 1, 2), reliability: num(d.reliability, 1, 1.3),
+    marketFit: num(d.marketFit, 1, 2), reliability: num(d.reliability, 1, 1.3), evidenceBased: d.evidenceBased === true,
+    inventor: typeof d.inventor === 'string' ? d.inventor.slice(0, 160) : '', contributors: typeof d.contributors === 'string' ? d.contributors.slice(0, 160) : '',
   }))
 }
 export function saveInventionProducts(b: BizState, products: InventionProduct[]): void { b.inventionProducts = products as unknown as Json }
@@ -154,7 +157,8 @@ export function inventionMarketDemand(g: GameState, p: InventionProduct, country
   const monopoly = Math.pow(remaining, .7) * enforcement * inventionLeakFactor(g, p.ipId, year)
   const upgrade = Number.isFinite(p.upgradeLevel) ? Math.max(0, Math.min(MAX_UPGRADES, p.upgradeLevel ?? 0)) : 0
   const referencePrice = PRODUCT_SPECS[p.kind].price * (1 + .035 * upgrade) * (1 + MONOPOLY_PRICE[p.kind] * monopoly)
-  const launchDemand = Math.max(Number.isFinite(p.potential) ? Math.min(MAX_INVENTION_OUTPUT, Math.max(0, p.potential)) : 0, LAUNCH_DEMAND[p.kind])
+  const potential = Number.isFinite(p.potential) ? Math.min(MAX_INVENTION_OUTPUT, Math.max(0, p.potential)) : 0
+  const launchDemand = p.evidenceBased ? potential : Math.max(potential, LAUNCH_DEMAND[p.kind])
   // Copying and competing alternatives grow during the patent, not overnight
   // on expiry. Keeping an old monopoly price eventually destroys most sales.
   const protectedDemand = .025 + .975 * Math.pow(remaining, 1.7) * enforcement * inventionLeakFactor(g, p.ipId, year)
@@ -163,7 +167,12 @@ export function inventionMarketDemand(g: GameState, p: InventionProduct, country
   const elasticity = ratio <= 1 ? Math.min(4, Math.pow(Math.max(.1, ratio), -.65)) : Math.pow(ratio, -(1.4 + 1.6 * (1 - monopoly)))
   const noise = .94 + seeded(`${p.id}|sku|${country}|${year}`).next() * .12
   const fit = Math.max(.1, Math.min(2, p.marketFit ?? 1))
-  const raw = launchDemand * fit * (1 + .08 * upgrade) * noise * nationalMarket(g, industry, country, year).demand * protectedDemand * elasticity
+  // New research starts with early adopters. Wider adoption takes time; a patent
+  // alone does not conjure millions of customers. Existing saved products keep
+  // their established demand model.
+  const deployed = inventionAdoptedUnits(g, p.ipId, year)
+  const adoption = p.evidenceBased ? Math.min(1, .15 + Math.min(.15, Math.max(0, year - origin) * .03) + .7 * Math.pow(Math.min(1, deployed / Math.max(1, potential)), .4)) : 1
+  const raw = launchDemand * adoption * fit * (1 + .08 * upgrade) * noise * nationalMarket(g, industry, country, year).demand * protectedDemand * elasticity
   return { demand: Math.floor(Math.max(0, Math.min(MAX_INVENTION_OUTPUT, raw))), patentRemaining, patentYears, referencePrice, monopoly, launchDemand }
 }
 
@@ -299,6 +308,7 @@ export function commitInventionProducts(g: GameState, b: BizState, year: number,
     const ipAsset = g.assets.find(a => a.id === p.ipId && a.kind === 'invention'), ip = ipAsset ? readInventionIp(ipAsset) : null
     if (p.rights === 'license' && ip) p.protections = ip.protections.map(t => ({ ...t }))
     if (row.royalties > 0 && ip) earnIncome(g, row.royalties)
+    if (row.sold > 0) recordInventorAdoption(g, p.ipId, row.sold, ip ? row.royalties : 0, p.evidenceBased, year)
     if (row.sold > 0) recordEconomicActivity(g, `deployment:${companyId}:${p.id}:${year}`, b.countryId, p.field, { innovation: Math.min(1, row.sold / 50000) * (p.kind === 'generational' ? .2 : p.kind === 'big' ? .08 : .02) })
   }
   saveInventionProducts(b, products)
@@ -336,7 +346,7 @@ export function ownedInventionProductNodes(g: GameState, assetId: string): MenuN
   return products.flatMap((p): MenuNode[] => {
     const q = inventionDemandQuote(g, b, p, g.year), factory = inventionFabQuote(g, assetId, p.id, (p.fabCapacity ?? 0) + 1)
     const liveReason = (gg: GameState) => productNow(gg, assetId, p.id).reason
-    return [{ type: 'info', id: `invention.sku.${assetId}.${p.id}`, emoji: '🏭', text: `${p.name}: ${p.rights === 'owned' ? 'company-owned IP' : `licensed until ${p.expires}; ${Math.round(p.royalty * 100)}% gross royalty`}. Price ${formatMoney(p.price)}; material cost ${formatMoney(effectiveInventionUnitCost(p))}/unit plus workers.\nFab ${inventionFabCapacity(p).toLocaleString('en-US')} units/year · upgrade ${p.upgradeLevel ?? 0}/${MAX_UPGRADES} · capital invested ${formatMoney((p.fabInvested ?? 0) + (p.upgradeInvested ?? 0))}. Target ${p.production.toLocaleString('en-US')} units/year; inventory ${p.inventory.toLocaleString('en-US')}; ${p.sold.toLocaleString('en-US')} sold; lifetime sales ${formatMoney(p.revenue)}.\nCurrent estimated demand ${q.demand.toLocaleString('en-US')} units at your price; market reference ${formatMoney(q.referencePrice)}. Local patent ${q.patentRemaining}/${q.patentYears} years remaining. Demand and monopoly pricing erode throughout the patent; old monopoly prices can stop selling. No sales are guaranteed.` },
+    return [{ type: 'info', id: `invention.sku.${assetId}.${p.id}`, emoji: '🏭', text: `${p.name}: ${p.rights === 'owned' ? 'company-owned IP' : `licensed until ${p.expires}; ${Math.round(p.royalty * 100)}% gross royalty`}.${p.inventor ? ` Invented by ${p.inventor}${p.contributors ? ` with ${p.contributors}` : ''}.` : ''} Price ${formatMoney(p.price)}; material cost ${formatMoney(effectiveInventionUnitCost(p))}/unit plus workers.\nFab ${inventionFabCapacity(p).toLocaleString('en-US')} units/year · upgrade ${p.upgradeLevel ?? 0}/${MAX_UPGRADES} · capital invested ${formatMoney((p.fabInvested ?? 0) + (p.upgradeInvested ?? 0))}. Target ${p.production.toLocaleString('en-US')} units/year; inventory ${p.inventory.toLocaleString('en-US')}; ${p.sold.toLocaleString('en-US')} sold; lifetime sales ${formatMoney(p.revenue)}.\nCurrent estimated demand ${q.demand.toLocaleString('en-US')} units at your price; market reference ${formatMoney(q.referencePrice)}. Local patent ${q.patentRemaining}/${q.patentYears} years remaining. ${p.evidenceBased ? 'Early adoption grows gradually; competition and patent expiry reduce exclusivity.' : 'Demand and monopoly pricing erode throughout the patent.'} Old monopoly prices can stop selling. No sales are guaranteed.` },
       { type: 'action', id: `invention.sku.fab.${assetId}.${p.id}`, label: `${p.fabInvested ? 'Expand' : 'Build'} Fab: ${p.name}`, emoji: '🏗️', subtitle: 'Company-funded equipment capital; does not manufacture stock',
         input: { kind: 'slider', label: 'Base fab capacity (units/year)', min: p.fabCapacity ?? 0, max: factory.maxCapacity, step: 1, defaultValue: gg => { const current = productNow(gg, assetId, p.id).p; if (!current) return '0'; const quote = inventionFabQuote(gg, assetId, p.id, (current.fabCapacity ?? 0) + 100); return String(Math.min(quote.maxCapacity, (current.fabCapacity ?? 0) + 100)) }, preview: (gg, target) => { const quote = inventionFabQuote(gg, assetId, p.id, target); return `${quote.additionalCapacity.toLocaleString('en-US')} additional annual base units · ${formatMoney(quote.cost)} company cash. ${quote.reason ?? 'Materials, staff and annual working capital are separate.'}` } },
         disabledReason: gg => { const current = productNow(gg, assetId, p.id); return current.reason ?? inventionFabQuote(gg, assetId, p.id, (current.p?.fabCapacity ?? 0) + 1).reason },

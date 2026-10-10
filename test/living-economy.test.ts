@@ -7,8 +7,9 @@ import { addLoan, creditScore, refinanceDebt, refinanceQuote, yearlyFinance, off
 import { moneyContextOf } from '../src/game/core'
 import { economyMenu, bankingMenu } from '../src/game/economy/menu'
 import { householdEffects, householdView, lifePrioritiesMenu, setLifePriority, yearlyHousehold } from '../src/game/household'
-import { personalResearchQuote, researchExperiment, startPersonalResearch, studyInventionTopic, yearlyInventor } from '../src/game/inventor'
-import { inventorView, personalInventions, readInventionIp } from '../src/game/inventor-state'
+import { personalResearchQuote, researchExperiment, startPersonalResearch, yearlyInventor } from '../src/game/inventor'
+import { inventorView, personalInventions, readInventionIp, saveInventor } from '../src/game/inventor-state'
+import { prepareInventor } from './inventor-helpers'
 import type { GameState, MenuNode } from '../src/game/types'
 
 function next(g: GameState) { g.year++; g.character.age++; g.yearActions = {}; yearlyEconomy(g) }
@@ -222,12 +223,13 @@ describe('financial and household choices', () => {
   })
 })
 
-describe('research has commercial decisions without removing guaranteed invention', () => {
-  it('offers budget tradeoffs and scarce experiments that affect the resulting product', () => {
+describe('already-funded research keeps its completion contract', () => {
+  it('preserves budget tradeoffs and scarce experiments on legacy projects', () => {
     const g = makeTestGame(42, { age: 30, money: 1e10, talents: ['Inventor'] })
-    studyInventionTopic(g, 'solid-battery'); studyInventionTopic(g, 'solid-battery')
+    prepareInventor(g, 'solid-battery')
     expect(personalResearchQuote(g, 'solid-battery', 'practical')!.budget).toBeLessThan(personalResearchQuote(g, 'solid-battery', 'frontier')!.budget)
     startPersonalResearch(g, 'solid-battery', 'Test Cell', 'frontier')
+    const legacy = inventorView(g); legacy.project!.model = 'legacy'; legacy.project!.years = 3; saveInventor(g, legacy)
     const control = JSON.parse(JSON.stringify(g)) as GameState
     const validation = inventorView(g).project!.validation!
     expect(researchExperiment(g, 'customers')).toBe(true)

@@ -4,6 +4,7 @@ import { seeded } from '../assets'
 import { recordEconomicActivity } from '../economy'
 import { earnIncome, formatMoney, log, notice } from '../core'
 import { personalInventions, readInventionIp } from '../inventor-state'
+import { recordInventorAdoption } from '../inventor-career'
 import { blocked } from '../special/common'
 import type { Asset, GameState, Json, MenuNode } from '../types'
 import { COUNTRIES, getCountry } from '../world'
@@ -53,7 +54,7 @@ function sourceOf(g: GameState, source: InventionLicenseSource): { asset: Asset;
   if (personal) {
     const ip = readInventionIp(personal)!
     const product = newInventionProduct(personal.id, personal.name, ip.field, ip.kind, ip.created)
-    Object.assign(product, { price: ip.unitPrice, unitCost: ip.unitCost, potential: ip.potential, protections: ip.protections, marketFit: ip.marketFit, reliability: ip.reliability })
+    Object.assign(product, { price: ip.unitPrice, unitCost: ip.unitCost, potential: ip.potential, protections: ip.protections, marketFit: ip.marketFit, reliability: ip.reliability, evidenceBased: ip.evidenceBased, inventor: ip.inventor, contributors: ip.contributors })
     return { asset: personal, product, protections: ip.protections, country: ip.country, company: false }
   }
   const company = findBusiness(g, source.assetId)
@@ -123,6 +124,7 @@ export function yearlyInventionLicenses(g: GameState): void {
       // contract: only current IP ownership, term and sales determine settlement.
       const royalty = Math.min(1e15 - total, q.royalties)
       total += royalty; c.units += q.units; c.sales += q.sales; c.royalties += royalty
+      recordInventorAdoption(g, c.inventionId, q.units, a.kind === 'invention' ? royalty : 0, q.product.evidenceBased, fiscal)
       if (q.units > 0) recordEconomicActivity(g, `licence:${c.id}:${fiscal}`, c.country, q.product.field, { innovation: Math.min(1, q.units / 50000) * (q.product.kind === 'generational' ? .2 : q.product.kind === 'big' ? .08 : .02) })
       byCountry[c.country] = (byCountry[c.country] ?? 0) + royalty
     }

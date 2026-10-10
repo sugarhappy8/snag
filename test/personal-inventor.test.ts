@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
 import { assignPersonalInvention, filePersonalInventionPatent, inventionAssetNodes, personalInventorMenu, personalResearchBlock, personalResearchQuote, startPersonalResearch, studyInventionTopic, yearlyInventor } from '../src/game/inventor'
-import { inventorView, personalInventions, readInventionIp } from '../src/game/inventor-state'
+import { inventorView, personalInventions, readInventionIp, saveInventor } from '../src/game/inventor-state'
+import { prepareInventor, finishInventorProject } from './inventor-helpers'
 import { INVENTION_TOPICS } from '../src/game/inventor-data'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { becomeCeo } from '../src/game/business/career'
@@ -24,7 +25,7 @@ function game(year = 2026) {
   return g
 }
 function next(g: GameState) { g.year++; g.character.age++; g.yearActions = {}; yearlyInventor(g) }
-function study(g: GameState, topic = 'heat-recovery') { expect(studyInventionTopic(g, topic)).toBe(true); expect(studyInventionTopic(g, topic)).toBe(true) }
+function study(g: GameState, topic = 'heat-recovery') { prepareInventor(g, topic) }
 function company(g: GameState, industry = 'energy') {
   const a = createBusinessAsset(g, 'Product Company', newBiz(g, industry as 'energy', 'us', 'Chicago', { cash: 100_000 }), 100_000)
   g.assets.push(a)
@@ -53,6 +54,8 @@ describe('personal specific-topic research', () => {
     expect(startPersonalResearch(g, 'heat-recovery')).toBe(false)
     study(g)
     expect(startPersonalResearch(g, 'heat-recovery', 'My Pocket Heat Harvester')).toBe(true)
+    expect(personalInventions(g)).toHaveLength(0)
+    finishInventorProject(g)
     const a = personalInventions(g)[0]
     expect(a.name).toBe('My Pocket Heat Harvester')
     expect(a.kind).toBe('invention')
@@ -63,12 +66,18 @@ describe('personal specific-topic research', () => {
     expect(JSON.stringify(g)).toBe(saved)
   })
 
-  it.each([['heat-recovery', 0], ['solar-film', 1], ['solid-battery', 3], ['cold-fusion', 5]] as const)('%s completes after exactly %s active years with no success gambling', (topic, years) => {
-    const g = game(), original = g.character.money
+  it.each([['heat-recovery', 0], ['solar-film', 1], ['solid-battery', 3], ['cold-fusion', 5]] as const)('preserves the previously funded %s project and its %s-year schedule', (topic, years) => {
+    const g = game()
     study(g, topic)
+    const original = g.character.money
     const budget = personalResearchQuote(g, topic)!.budget
     expect(startPersonalResearch(g, topic)).toBe(true)
-    expect(g.character.money).toBe(original - 20 - budget)
+    const legacy = inventorView(g)
+    legacy.project!.model = 'legacy'; legacy.project!.years = years
+    if (!years) legacy.lastYear = g.year - 1
+    saveInventor(g, legacy)
+    expect(g.character.money).toBe(original - budget)
+    if (!years) yearlyInventor(g)
     for (let i = 0; i < years; i++) {
       expect(personalInventions(g)).toHaveLength(0)
       next(g)
@@ -78,7 +87,7 @@ describe('personal specific-topic research', () => {
     const before = JSON.stringify(g)
     yearlyInventor(g)
     expect(JSON.stringify(g)).toBe(before)
-    expect(g.character.money).toBe(original - 20 - budget)
+    expect(g.character.money).toBe(original - budget)
     expect(g.flags.taxableIncome ?? 0).toBe(0)
   })
 
@@ -110,22 +119,23 @@ describe('personal specific-topic research', () => {
     expect(personalInventions(restored)).toHaveLength(0)
     restored.character.prison = null
     expect(startPersonalResearch(restored, 'solar-film')).toBe(false)
-    next(restored)
+    finishInventorProject(restored)
     expect(personalInventions(restored)).toHaveLength(1)
   })
 
   it('files national and all-nations patents once using personal savings and original terms', () => {
     const g = game(1980)
     study(g); startPersonalResearch(g, 'heat-recovery')
+    finishInventorProject(g)
     const a = personalInventions(g)[0]
-    expect(readInventionIp(a)!.protections[0].expires).toBe(1997)
+    expect(readInventionIp(a)!.protections[0].expires).toBe(g.year + 17)
     expect(filePersonalInventionPatent(g, a.id, 'jp')).toBe(true)
     const before = g.character.money
     expect(filePersonalInventionPatent(g, a.id, 'jp')).toBe(false)
     expect(g.character.money).toBe(before)
     expect(filePersonalInventionPatent(g, a.id, 'all')).toBe(true)
     expect(readInventionIp(a)!.protections).toHaveLength(COUNTRIES.length)
-    expect(readInventionIp(a)!.protections.find(p => p.country === 'jp')!.expires).toBe(2000)
+    expect(readInventionIp(a)!.protections.find(p => p.country === 'jp')!.expires).toBe(g.year + 20)
     const saved = JSON.stringify(g)
     expect(filePersonalInventionPatent(g, a.id, 'all')).toBe(false)
     expect(JSON.stringify(g)).toBe(saved)
@@ -134,7 +144,7 @@ describe('personal specific-topic research', () => {
 
 describe('owned invention products', () => {
   it('assigns concrete IP to a compatible business without boosting unrelated demand', () => {
-    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery')
+    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery'); finishInventorProject(g)
     const ip = personalInventions(g)[0], { a, b } = company(g), cost = readInventionIp(ip)!.unitCost
     expect(assignPersonalInvention(g, ip.id, a.id)).toBe(true)
     expect(personalInventions(g)).toHaveLength(0)
@@ -146,7 +156,7 @@ describe('owned invention products', () => {
   })
 
   it('licenses IP with actual-sales royalties and bounds production by cash and shared staff capacity', () => {
-    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery')
+    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery'); finishInventorProject(g)
     const ip = personalInventions(g)[0], { a, b } = company(g)
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)
     expect(personalInventions(g)).toHaveLength(1)
@@ -169,7 +179,7 @@ describe('owned invention products', () => {
   })
 
   it('rejects unrelated companies and invalid production settings without consuming assets', () => {
-    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery')
+    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery'); finishInventorProject(g)
     const ip = personalInventions(g)[0], { a } = company(g, 'restaurant')
     const before = JSON.stringify(g)
     expect(assignPersonalInvention(g, ip.id, a.id)).toBe(false)
@@ -179,7 +189,7 @@ describe('owned invention products', () => {
   })
 
   it('preserves paid inventory, production settings and lifetime results on licence renewal', () => {
-    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery')
+    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery'); finishInventorProject(g)
     const ip = personalInventions(g)[0], { a, b } = company(g)
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)
     expect(buildInventionFab(g, a.id, ip.id, 100)).toBe(true)
@@ -195,6 +205,7 @@ describe('owned invention products', () => {
   it('honours an inherited company licence when the separate IP is liquidated by the estate', () => {
     const g = game(); g.character.age = 70
     study(g); startPersonalResearch(g, 'heat-recovery')
+    finishInventorProject(g)
     const ip = personalInventions(g)[0], { a, b } = company(g)
     b.cash = 10_000_000; b.founded = g.year - 2
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)
@@ -219,7 +230,7 @@ describe('owned invention products', () => {
   })
 
   it('books actual product sales, wages, consumption and corporate taxes once through the full business year', () => {
-    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery')
+    const g = game(); study(g); startPersonalResearch(g, 'heat-recovery'); finishInventorProject(g)
     const ip = personalInventions(g)[0], { a, b } = company(g)
     b.cash = 10_000_000; b.founded = g.year - 2; b.production = 100_000; b.ownerSalary = 1_000
     expect(assignPersonalInvention(g, ip.id, a.id, true)).toBe(true)

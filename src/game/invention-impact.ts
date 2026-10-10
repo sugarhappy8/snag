@@ -18,7 +18,7 @@ import { timelineFamily } from './timeMachine'
 import type { Asset, GameState, Json, MenuNode } from './types'
 import { COUNTRIES, getCountry } from './world'
 
-export interface InventionBreakthrough { id: string; name: string; kind: InventionTier; field: string; created: number; country: string }
+export interface InventionBreakthrough { id: string; name: string; kind: InventionTier; field: string; created: number; country: string; evidenceBased?: boolean }
 interface Pressure { token: string; year: number; owner: string; companyId: string; country: string }
 export interface InventionImpact extends InventionBreakthrough {
   announced: number; securityUntil: number; lastYear: number
@@ -40,7 +40,7 @@ export function inventionImpactView(g: GameState): InventionImpact[] {
   }).map(r => {
     const p = rec(r.pending)
     return { id: text(r.id), name: text(r.name) || 'An invention', kind: r.kind as InventionTier, field: text(r.field), created: num(r.created, g.year, 100_000), country: text(r.country, 8) || 'us', announced: num(r.announced, g.year, 100_000),
-      securityUntil: num(r.securityUntil, 0, 100_000), lastYear: num(r.lastYear, -1, 100_000, -1),
+      securityUntil: num(r.securityUntil, 0, 100_000), lastYear: num(r.lastYear, -1, 100_000, -1), evidenceBased: r.evidenceBased === true,
       leaks: (Array.isArray(r.leaks) ? r.leaks : []).map(rec).filter(x => typeof x.year === 'number' && Number.isFinite(x.year) && typeof x.factor === 'number' && Number.isFinite(x.factor)).map(x => ({ year: num(x.year, 0, 100_000), factor: num(x.factor, 1, 1, .2), reason: text(x.reason, 180) })),
       pending: text(p.token, 512) && text(p.owner, 256) ? { token: text(p.token, 512), owner: text(p.owner, 256), year: num(p.year, 0, 100_000), companyId: text(p.companyId), country: text(p.country, 8) || 'us' } : null,
     }
@@ -126,7 +126,7 @@ export function registerInventionBreakthrough(g: GameState, input: InventionBrea
   if (events.some(x => x.id === clean.id) || marketBreakthroughs(g).some(x => x.id === clean.id)) return false
   const event: InventionImpact = { ...clean, announced: g.year, securityUntil: 0, lastYear: -1, leaks: [], pending: null }
   events.push(event); save(g, events)
-  if (event.kind === 'generational') {
+  if (event.kind === 'generational' && !event.evidenceBased) {
     // Normalize old holdings before changing quotes; otherwise a legacy unit rebasing
     // could swallow the genuine price jump. Neither mark creates spendable cash.
     revalueHoldings(g, false, true)
@@ -143,8 +143,8 @@ export function registerInventionBreakthrough(g: GameState, input: InventionBrea
     const owned = target(g, clean.id)
     if (owned && !blocked(g)) { queuePressure(g, event, owned); save(g, events); presentPressure(g, event) }
   } else {
-    notice(g, 'Invention Makes the News', `${clean.name} is ready. Its commercial success depends on production, staff, pricing, real demand and territorial patent protection. Larger breakthroughs attract more attention; no guaranteed cash is awarded.`, { emoji: '💡', tone: 'good' })
-    log(g, `My invention ${clean.name} reached the market.`, 'good')
+    notice(g, event.evidenceBased ? 'A Prototype Worth Testing in the Market' : 'Invention Makes the News', `${clean.name} is ready for commercialization. Its success depends on production, staff, pricing, real demand and territorial patent protection. ${event.evidenceBased ? 'Independent testing earned technical credibility. Recognition and economic impact grow when people actually use it; a patent does not automatically raise every stock price.' : 'Larger breakthroughs attract more attention; no guaranteed cash is awarded.'}`, { emoji: '💡', tone: 'good' })
+    log(g, `My invention ${clean.name} is ready to seek customers.`, 'good')
   }
   return true
 }

@@ -134,7 +134,7 @@ export const TALENTS: TalentDef[] = [
   {
     id: 'Inventor', emoji: '💡', weight: 5,
     hints: ['I took apart a broken toy and made it work in a completely different way.', 'I filled a notebook with sketches of machines nobody had built yet.'],
-    discovery: 'Your science teacher tried your prototype and stared in disbelief. You have a special talent for inventing! Study company markets to discover research opportunities when you grow up.',
+    discovery: 'You kept changing your prototype until it worked, and could explain why the earlier attempts failed. Your teacher noticed a special talent for inventing. Visit Activities → Inventor to tinker, keep a notebook and begin learning a field.',
     apply: g => addStat(g, 'smarts', 5),
   },
   {
