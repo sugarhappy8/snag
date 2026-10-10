@@ -125,8 +125,24 @@ receive no royal cash. Reputation, convictions, eligibility, living siblings and
 approval affect succession. Abolition ends official status/allowances; existing private
 property remains separate. Japan's modeled marriage/male-line restrictions apply. Children
 and heir continuation carry appropriate dynastic records, not state property.
-Reigning parents retain their official role instead of being randomly laid off as ordinary
-workers. A dynasty's abolition ends that role and its modeled official income as well.
+Royal parents, consorts, biological siblings and eligible descendants use persistent royal
+career tracks rather than ordinary job rolls. UAE appointments include ministry advisers,
+undersecretaries and ministers, emirate department chairs, diwan advisers, university lecturers,
+qualified deans, university council chairs and charitable foundation chairs. Federal ministry
+roles begin in 1971, domestic university roles in 1976 and female cabinet appointments in 2004.
+Earlier emirate lives use local diwan and patronage roles. British/European constitutional
+families use public duties and patronage, while Japanese relatives use imperial household and
+cultural roles; these paths do not appoint them to political ministries.
+
+Seniority depends on age, skill, experience and education. Initial adult backstories carry their
+qualifications; young royal students spend actual years studying and pay the usual tuition.
+Annual progression retains their career path, with retirement into patronage. Reigning parents
+do not retire automatically. Abolition ends official appointments/income, and living abroad
+does not pay a domestic court salary. Explicit player-company jobs take precedence; private
+business holdings remain separate and do not pay a duplicate owner salary over official pay.
+Validated old saves upgrade living relatives' current profiles without granting money,
+qualifications or assets, or advancing RNG. Newborn saves also correct current parent birth
+descriptions; older diary entries are preserved rather than rewritten with today's job.
 
 Historical references used for the modeled distinctions:
 
@@ -135,6 +151,10 @@ Historical references used for the modeled distinctions:
 - [Japan's Imperial House Law](https://www.kunaicho.go.jp/en/kunaicho/hourei/hourei-01.html).
 - [UAE Federal Supreme Council](https://u.ae/en/about-the-uae/the-uae-government/the-federal-supreme-council)
   and [Constitution](https://www.uaelegislation.gov.ae/en/constitution).
+- [UAE cabinet formation](https://u.ae/en/about-the-uae/the-uae-government/the-uae-cabinet),
+  [UAE University history](https://uaeu.ac.ae/en/about/history-key-achievements.shtml), and
+  [Zayed University biography of the first female minister](https://www.zu.ac.ae/leadership2006/sheikhalubna.aspx).
+- [Working duties of the British royal family](https://www.royal.uk/the-role-of-the-royal-family).
 - [Saudi government mechanism](https://my.gov.sa/en/content/govmechanism).
 - [Nepal presidency and republican transition](https://president.gov.np/history-background/).
 - [Spain's succession order](https://www.casareal.es/EN/corona/Paginas/la-corona-hoy_orden.aspx).
@@ -163,6 +183,12 @@ of dedicated shared-service facilities are not modeled. This conservative restri
 using a domestic tax shortcut for international operations.
 
 ## Verification
+
+Royal-career follow-up: 163 tests across eight files covering engine, save/load, Time Machine,
+historical and birth/UI regressions pass, along with TypeScript validation and the production build. An isolated
+browser life verified UAE minister roles in the birth diary and parent profile (including
+ministry employer and actual qualifications), then successfully advanced a year. This is
+local verification, not a new deployment or a full-suite run.
 
 Royal-birth selector follow-up: 120 relevant tests across six files passed, including 15 new
 selection/eligibility/UI checks. TypeScript validation and the production build passed. Browser

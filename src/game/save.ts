@@ -1,6 +1,7 @@
 // localStorage persistence: the current life, the ribbon collection, the graveyard, and the
 // Time Machine's start-of-year snapshots.
 import { GAME_VERSION } from './core'
+import { refreshRoyalCareers } from './npc-lives'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
 import { HIDDEN_KEYS, STAT_KEYS, type AncestorSummary, type GameState, type Json, type ModalItem } from './types'
 
@@ -61,7 +62,9 @@ export function loadGame(): GameState | null {
   const raw = read<unknown>(SAVE_KEY)
   if (!isGameShell(raw)) return null
   const g = migrateLegacyAi(raw as unknown as GameState)
-  return isLoadableGame(g) ? g : null
+  if (!isLoadableGame(g)) return null
+  refreshRoyalCareers(g)
+  return g
 }
 
 /**
@@ -1259,6 +1262,7 @@ export function loadSnapshot(lifeId: string, age: number): Promise<GameState | n
     if (!isGameShell(g)) return null
     const migrated = migrateLegacyAi(g)
     if (!isLoadableGame(migrated) || migrated.lifeId !== lifeId || migrated.character.age !== age || !migrated.character.alive) return null
+    refreshRoyalCareers(migrated)
     return migrated
   }, null)
 }

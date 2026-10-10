@@ -76,6 +76,29 @@ function titleFor(country: string, gender: Gender, ruler = false, year = 2026, e
 }
 export type RoyalBirthChoice = 'random' | 'royal' | 'nonRoyal'
 
+/** Stamp only documented dynastic relatives, not unrelated step-family or adopted children. */
+export function markRoyalFamily(g: GameState): void {
+  const royal = royalStatus(g)
+  const mark = (p: Person, r: RoyalStatus) => {
+    p.data.royalHouse = r.house; p.data.royalCountry = r.country; p.data.royalTerritory = r.territory
+  }
+  if (royal) {
+    const father = g.people.find(p => p.id === royal.parentId && p.relation === 'parent' && !p.data.adoptive)
+      ?? g.people.find(p => p.relation === 'parent' && !p.data.adoptive && p.data.royalConsort !== true && p.data.royalHouse === royal.house)
+    if (father) {
+      mark(father, royal)
+      for (const p of g.people) {
+        if (p.relation === 'parent' && p.id !== father.id && !p.data.adoptive) { mark(p, royal); p.data.royalConsort = true }
+        if (p.biological !== false && (p.relation === 'sibling' || p.relation === 'halfSibling' && Array.isArray(p.data.parentIds) && p.data.parentIds.includes(father.id))) mark(p, royal)
+      }
+    }
+  }
+  for (const p of g.people) {
+    const own = readRoyal(p.data.royalty)
+    if (own) mark(p, own)
+  }
+}
+
 /** Custom lives may choose royalty; random lives retain the rare seeded roll. */
 export function initializeRoyalBirth(g: GameState, choice: RoyalBirthChoice = 'random'): boolean {
   const country = g.character.birthCountryId, rule = royalRule(country, g.year)
@@ -98,6 +121,7 @@ export function initializeRoyalBirth(g: GameState, choice: RoyalBirthChoice = 'r
     father.data.royalCountry = country
     father.occupation = String(father.data.royalRole)
   }
+  markRoyalFamily(g)
   g.flags.royalPrivateHoldings = 'Family property is private; palaces, public funds and sovereign assets are not personal property.'
   log(g, `I was born into ${r.house}${r.territory ? ` of ${r.territory}` : ''}, a ${direct ? 'close' : 'distant'} branch of a ruling family. My title is ${r.title}. This brings duties and expectations, not ownership of the state's wealth.`, 'event')
   return true
@@ -150,6 +174,7 @@ export function yearlyRoyalty(g: GameState): void {
     }
   }
   r.duties = 0; g.flags.royalty = r as unknown as Json
+  markRoyalFamily(g)
 }
 export function inheritRoyalStatus(g: GameState, p: Person): void {
   const r = readRoyal(p.data.royalty)

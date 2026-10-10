@@ -5,6 +5,7 @@ import { arrestPlayer } from './crime'
 import { householdEffects } from './household'
 import { economyOf } from './economy'
 import { yearlyNpcLife, npcLifeNodes, liquidateNpcEstate, recordNpcFamilyHistory } from './npc-lives'
+import { markRoyalFamily } from './royalty'
 import {
   addHidden,
   addMoney,
@@ -754,6 +755,7 @@ function giftOptions(g: GameState, p: Person): Gift[] {
 // Yearly: aging, deaths, births, life cycle, drift, drama, events, cleanup
 
 export function yearlyRelationships(g: GameState): void {
+  markRoyalFamily(g)
   const c = g.character
   if (!c.alive) return
   for (const p of g.people) {

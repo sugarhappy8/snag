@@ -17,7 +17,8 @@ import { bestOpening, withOutlets } from './business/board-ceo'
 import { runningCosts } from './business/board-vote'
 import { installManager } from './business/career'
 import { npcOccupationLabel } from './love'
-import { royalRule } from './royalty'
+import { markRoyalFamily, royalRule } from './royalty'
+import { initializeRoyalEducation, royalAppointment, royalCourtActive, studyForRoyalCareer, type RoyalAppointment } from './royal-careers'
 import { isIndustryLegal, type Industry } from './data/markets'
 import { normalizeBiz, type BizState } from './business/state'
 import { clampN, money, num, pct, rec } from './business/util'
@@ -25,7 +26,55 @@ import { npcLife, saveNpcLife, type NpcField, type NpcLife } from './npc-state'
 
 export { npcLife } from './npc-state'
 const holdsFamilyJob = (p: Person) => !!readJob(p)
+const managedEmployment = (g: GameState, p: Person) => holdsFamilyJob(p) || !!readGroupJob(p) || holdsInfluenceJob(g, p)
 const IMPORTANT = ['parent','stepparent','sibling','halfSibling','stepsibling','child','stepchild','grandchild','grandparent','spouse','partner','fiance','friend','bestFriend','lover']
+
+function syncRoyalAppointment(g: GameState, p: Person, l: NpcLife): RoyalAppointment | null {
+  const previous = rec(p.data.royalAppointment)
+  const managed = managedEmployment(g, p)
+  if (p.data.royalSovereign === true && typeof p.data.royalCountry !== 'string') p.data.royalCountry = l.country
+  if (p.data.royalSovereign === true && !royalCourtActive(g, p)) {
+    p.data.royalSovereign = false
+    if (!managed && p.occupation === p.data.royalRole) { p.occupation = 'Unemployed'; l.employer = ''; l.income = 0 }
+  }
+  const appointment = managed ? null : royalAppointment(g, p, l)
+  if (appointment) {
+    if (p.data.royalCountry === 'gb') p.data.royalHouse = royalRule('gb', g.year)!.house
+    p.occupation = appointment.title; l.employer = appointment.employer
+    if (previous?.title !== appointment.title || previous?.employer !== appointment.employer) {
+      l.history = [...l.history, `${g.year}: ${appointment.title} at ${appointment.employer}`].slice(-24)
+    }
+    p.data.royalAppointment = { ...appointment }
+  } else if (previous) {
+    delete p.data.royalAppointment
+    if (!managed && p.occupation === previous.title) { p.occupation = 'Unemployed'; l.employer = ''; l.income = 0 }
+    l.history = [...l.history, `${g.year}: official royal appointment ended; public funds remain separate from private assets`].slice(-24)
+  }
+  return appointment
+}
+
+/** Birth and validated-save upgrade: no RNG consumption, salary payment or asset grants. */
+export function refreshRoyalCareers(g: GameState, newBirth = false): void {
+  markRoyalFamily(g)
+  for (const p of g.people) {
+    if (!p.alive || typeof p.data.royalHouse !== 'string') continue
+    const knownLife = npcLife(p)
+    const l = initializeNpc(g, p)
+    if (newBirth) initializeRoyalEducation(g, p, l)
+    else if (!knownLife) { l.education = 0; l.achievements = [] } // An old job label is not proof of a degree.
+    syncRoyalAppointment(g, p, l)
+    saveNpcLife(p, l)
+    // At age zero an old save's birth description still describes the current household.
+    // Do not rewrite decades of historical diary entries with today's appointment.
+    if (g.character.age === 0 && p.relation === 'parent' && p.data.royalAppointment) {
+      const prefix = `My ${p.gender === 'male' ? 'father' : 'mother'} is ${p.firstName} ${p.lastName}, `
+      for (const year of g.log.filter(y => y.age === 0 && y.year === g.year)) {
+        for (const entry of year.entries) if (entry.text.startsWith(prefix)) entry.text = `${prefix}a ${p.age} year old ${p.occupation}.`
+      }
+    }
+  }
+}
+
 export function initializeNpc(g: GameState, p: Person): NpcLife {
   const existing = npcLife(p)
   if (existing) return existing
@@ -87,7 +136,7 @@ export function expandNpcCompany(g: GameState, b: BizState, l: NpcLife): number 
   const plan = bestPlan(g, b, { quick: true }); b.price = plan.price; b.production = plan.production
   return move.cost
 }
-export function npcBusinessYear(g: GameState, p: Person, l: NpcLife): void {
+export function npcBusinessYear(g: GameState, p: Person, l: NpcLife, officialAppointment = false): void {
   const company = npcCompany(p, g.year)
   if (!company) return
   const { a, b } = company, fiscal = g.year - 1
@@ -97,15 +146,17 @@ export function npcBusinessYear(g: GameState, p: Person, l: NpcLife): void {
   if (b.manager) b.manager.skill = l.skill
   if (l.skill >= 65 && g.year % 3 === 0) { const plan = bestPlan(g, b, { quick: true, year: fiscal }); b.price = plan.price; b.production = plan.production }
   const employmentBefore = b.employees
-  const result = simulateYear(g, b, fiscal, holdsFamilyJob(p) || readGroupJob(p) || holdsInfluenceJob(g, p) ? 0 : typicalIncome(g, l.country) * .5, 1)
+  const externalJob = officialAppointment || managedEmployment(g, p)
+  const result = simulateYear(g, b, fiscal, externalJob ? 0 : typicalIncome(g, l.country) * .5, 1)
   p.money += result.stmt.ownerPay * .8
-  l.income = result.stmt.ownerPay
+  if (!externalJob) l.income = result.stmt.ownerPay
   if (b.cash < 0) {
     // Limited liability. Sell the firm's remaining assets; equity can be entirely wiped out.
     const residual = Math.max(0, valuationOf(b) * .6)
     if (stake) { addMoney(g, residual * playerShare); g.assets = g.assets.filter(x => x.id !== stake.id) }
     p.money += residual * b.share
-    delete p.data.npcCompany; p.occupation = 'Unemployed'; l.employer = ''
+    delete p.data.npcCompany
+    if (!externalJob) { p.occupation = 'Unemployed'; l.employer = '' }
     milestone(g, p, l, `${a.name} failed; the business was liquidated and shareholders recovered ${money(residual)}`)
     recordEconomicActivity(g, `npc:${a.id}:${fiscal}`, b.countryId, b.industry, { jobs: -employmentBefore, investment: 0, failure: Math.max(0, -b.cash) })
     return
@@ -133,20 +184,30 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
   l.lastYear = g.year
   const local = getCountry(l.country), e = economyOf(g, l.country), income = typicalIncome(g, l.country)
   const roll = seeded(`npc-decision|${g.lifeId.replace(/-g\d+$/, '')}|${p.id}|${g.year}`)
-  const managedJob = holdsFamilyJob(p) || !!readGroupJob(p) || holdsInfluenceJob(g, p)
-  const royalCountry = typeof p.data.royalCountry === 'string' ? p.data.royalCountry : l.country
-  const court = p.data.royalSovereign === true ? royalRule(royalCountry, g.year) : null
-  const sovereign = !!court && (court.house === p.data.royalHouse || ['gb','ae'].includes(royalCountry))
-  if (p.data.royalSovereign === true && !sovereign) {
-    p.data.royalSovereign = false; p.occupation = 'Unemployed'
-    milestone(g, p, l, 'lost their official royal role; public allowances ended, with private assets kept separate')
-  }
+  const managedJob = managedEmployment(g, p)
+  let appointment = syncRoyalAppointment(g, p, l)
   if (p.age < 18) {
-    p.occupation = npcOccupationLabel(p.age)
+    if (!managedJob) { p.occupation = appointment?.title ?? npcOccupationLabel(p.age); l.income = 0 }
     l.skill = clampN(l.skill + (p.stats.smarts / 100) * 1.2, 0, 60)
-  } else if (sovereign) {
-    p.occupation = String(p.data.royalRole)
-    l.employer = `${String(p.data.royalHouse)} court`
+  } else if (appointment) {
+    if (studyForRoyalCareer(g, p, l)) {
+      if (!/University Student/.test(p.occupation)) { l.study = 0; milestone(g, p, l, `began studying ${l.field} before taking on senior royal appointments`) }
+      p.occupation = 'University Student (Royal Family)'; l.study += 1
+      const tuition = local.freeUniversity ? 0 : income * .18
+      const paid = Math.min(Math.max(0, p.money), tuition); p.money -= paid; l.debt += tuition - paid
+      if (l.study >= (l.education === 0 ? 4 : l.education === 1 ? 2 : 4)) {
+        l.education = Math.min(3, l.education + 1); l.study = 0
+        const degree = `${['', "Bachelor's", "Master's", 'Doctorate'][l.education]} in ${l.field}`
+        l.achievements = [...l.achievements, degree].slice(-12)
+        l.skill = clampN(l.skill + 4 + p.stats.smarts / 25, 0, 97)
+        p.occupation = 'Royal Family Member'; p.data.npcRecruitmentYear = g.year
+        milestone(g, p, l, `completed ${degree}; qualified for more senior appointments`)
+      }
+    } else if (appointment.id !== 'retired' && appointment.id !== 'abroad') {
+      l.experience += 1
+      l.skill = clampN(l.skill + (p.stats.smarts * .5 + l.ambition * .5 - l.skill) * .07 + .4, 0, 99)
+    }
+    appointment = syncRoyalAppointment(g, p, l)
   } else if (!managedJob && !npcCompany(p, g.year)) {
     const access = clampN((g.year < 1930 ? .08 : g.year < 1960 ? .18 : .55) * local.wealth + l.ambition / 500 + p.stats.smarts / 600, .02, .9)
     if (p.age === 18 && roll.chance(access) && (local.freeUniversity || p.money >= income * .1 || roll.chance(p.stats.smarts / 200))) {
@@ -182,11 +243,11 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
     if (p.age >= 24 && p.age <= 60 && l.ambition > 65 && roll.chance(.035) && p.money > income * 3) { saveNpcLife(p, l); startNpcCompany(g, p); const updated = npcLife(p); if (updated) { l.history = updated.history; l.employer = updated.employer } }
   }
   const owns = !!npcCompany(p, g.year)
-  if (!managedJob && !owns && p.age >= 18) {
-    l.income = sovereign ? l.country === royalCountry ? income * 4 : 0 : p.occupation === 'Retired' ? income * .3 : /Student|Unemployed/.test(p.occupation) ? 0 : income * (.65 + l.skill / 100 + l.education * .18 + Math.min(.5, Math.floor(l.experience / 6) * .08)) * e.wages
+  if (!managedJob && (!owns || appointment) && p.age >= 18) {
+    l.income = appointment ? income * appointment.pay : p.occupation === 'Retired' ? income * .3 : /Student|Unemployed/.test(p.occupation) ? 0 : income * (.65 + l.skill / 100 + l.education * .18 + Math.min(.5, Math.floor(l.experience / 6) * .08)) * e.wages
     p.money += l.income * .8
   }
-  npcBusinessYear(g, p, l)
+  npcBusinessYear(g, p, l, !!appointment)
   if (p.age >= 18 && !managedJob) {
     const expenses = income * (p.livesWithPlayer ? .25 : .65) * (1 + num(p.data.kids) * .08)
     const due = expenses + l.debt * .06
@@ -205,7 +266,7 @@ export function yearlyNpcLife(g: GameState, p: Person): boolean {
       l.debt = 0; l.investments = 0; l.housing = 0; p.money = 0
       milestone(g, p, l, 'went through personal bankruptcy; creditors took the remaining assets')
     }
-    if (!sovereign && !p.livesWithPlayer && !owns && p.age < 55 && l.ambition > 65 && l.income < income && p.money > income && roll.chance(.012)) {
+    if (!appointment && !p.livesWithPlayer && !owns && p.age < 55 && l.ambition > 65 && l.income < income && p.money > income && roll.chance(.012)) {
       const passports = personCitizenships(g, p)
       const abroad = !exitRegime(l.country, g.year) && roll.chance(.25) ? COUNTRIES.filter(c => c.id !== l.country && (passports.includes(c.id) || blocAccess(passports, c.id, g.year).some(a => !a.limitedUntil))) : []
       const destination = abroad.length ? roll.pick(abroad) : local

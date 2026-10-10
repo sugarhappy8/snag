@@ -3,7 +3,7 @@
 // and yearlyMilestones adds the age-based moments (talents, puberty, adulthood...).
 import { rollBirthBackground, initializeBirthParent, birthIntroduction } from './birth-background'
 import { initializeRoyalBirth, inheritRoyalStatus, royalRule, type RoyalBirthChoice } from './royalty'
-import { npcCompany } from './npc-lives'
+import { npcCompany, refreshRoyalCareers } from './npc-lives'
 import { npcLife } from './npc-state'
 import { refreshValue } from './business/economy'
 import { heirCitizenships } from './activities/immigration-state'
@@ -958,9 +958,11 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   if (conceptionIdx >= 0) log(g, lines.splice(conceptionIdx, 1)[0])
   log(g, `My birthday is ${MONTHS[birthday.month - 1]} ${birthday.day}. I am ${/^[AEIOU]/.test(c.zodiac) ? 'an' : 'a'} ${c.zodiac}.`)
   log(g, `My name is ${firstName} ${lastName}.`)
-  initializeRoyalBirth(g, opts.royalty)
-  for (const line of lines) log(g, father?.data.royalSovereign === true && line.startsWith('My father is ')
-    ? `My father is ${fullName(father)}, a ${father.age} year old ${father.occupation}.` : line)
+  if (initializeRoyalBirth(g, opts.royalty)) refreshRoyalCareers(g, true)
+  for (const line of lines) {
+    const parent = line.startsWith('My father is ') ? father : line.startsWith('My mother is ') ? mother : undefined
+    log(g, parent?.data.royalHouse ? `My ${parent.gender === 'male' ? 'father' : 'mother'} is ${fullName(parent)}, a ${parent.age} year old ${parent.occupation}.` : line)
+  }
   birthIntroduction(g)
   if (isHistorical(year)) for (const line of familyWarLines(g, father, mother, year)) log(g, line)
   // The news the year I was born.
