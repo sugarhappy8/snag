@@ -1915,25 +1915,61 @@ export function tryForBaby(g: GameState, p: Person): void {
   }
   const c = g.character
   touch(g, p)
-  const willing = (p.relation === 'spouse' ? 0.75 : p.relation === 'fiance' ? 0.55 : 0.35) + (p.relationship - 50) / 200
-  if (!chance(g, clamp(willing, 0.05, 0.95))) {
+  const agreed = p.data.familyPlanWith === c.id && p.relationship >= 30
+  const willing = (p.relation === 'spouse' ? 0.98 : p.relation === 'fiance' ? 0.7 : 0.45) + (p.relationship - 50) / 250
+  if (!agreed && !chance(g, clamp(willing, 0.1, 0.99))) {
     addRelationship(p, -randInt(g, 1, 4))
     notice(g, 'Try for a Baby', `${p.firstName} said ${pronouns(p.gender).he}'s not ready to have kids. ${pick(g, ['"Maybe in a few years."', '"We can barely keep a houseplant alive."', '"Ask me again after the honeymoon phase."'])}`, { emoji: '\u{1F645}' })
     return
   }
+  p.data.familyPlanWith = c.id
+  delete p.data.familyWaitUntil
   if (c.gender === 'female') g.flags.birthControl = false
   else p.data.birthControl = false
   addRelationship(p, randInt(g, 2, 6))
   addStat(g, 'happiness', randInt(g, 2, 6))
-  if (chance(g, 0.45 * fertilityFactor(g, p))) {
+  if (chance(g, 0.7 * fertilityFactor(g, p))) {
     const babies = rollMultiples(g, 0.03)
     conceive(g, p, babies, 'natural')
     announcePregnancy(g, p, babies)
   } else {
     log(g, `${fullName(p)} and I tried for a baby.`)
-    notice(g, 'Try for a Baby', `You and ${p.firstName} tried for a baby. No luck yet. ${pick(g, ['Maybe next year.', 'The fertility app says to "relax". Thanks, app.', 'Your mother keeps asking. Please make her stop.'])}`, { emoji: '\u{1F37C}' })
+    notice(g, 'Try for a Baby', `You and ${p.firstName} are trying for a baby together. No pregnancy yet; you can try again this year. Your family plan is agreed, so there is no need to persuade them again while your relationship is healthy.`, { emoji: '\u{1F37C}' })
   }
 }
+
+/** A spouse can initiate the conversation; pregnancy still requires a player choice. */
+export function yearlyFamilyPlanning(g: GameState): void {
+  const p = currentPartner(g), c = g.character
+  if (!p || p.relation !== 'spouse' || c.age < 18 || p.age < 18 || p.relationship < 50 || intimacyProblem(g, p) || conceptionBlocker(g, p)) return
+  if (pNum(p, 'familyInviteYear', -1) >= g.year || pNum(p, 'familyWaitUntil', -1) > g.year) return
+  const children = g.people.filter(k => k.relation === 'child' && k.otherParentId === p.id)
+  if (children.length >= 3 || children.some(k => k.age < 2)) return
+  p.data.familyInviteYear = g.year
+  scriptChoice(g, 'love.familyPlan', 'Starting a Family', `${p.firstName} says, "I'd love ${children.length ? 'another child' : 'for us to have a child'}. Shall we start trying?"`, [
+    { id: 'try', label: "Yes, let's try for a baby", emoji: '🍼' },
+    { id: 'later', label: 'Give us a couple of years', emoji: '🗓️' },
+    { id: 'no', label: "I don't want to plan children", emoji: '💬' },
+  ], { emoji: '🍼', data: asJson({ pid: p.id, year: g.year }), personId: p.id })
+}
+
+defineScript('love.familyPlan', (g, choice, data) => {
+  const p = getPerson(g, dStr(data, 'pid'))
+  if (!p || currentPartner(g)?.id !== p.id || p.relation !== 'spouse' || !p.alive || !data || typeof data !== 'object' || Array.isArray(data) || data.year !== g.year || p.data.familyInviteYear !== g.year || p.data.familyAnsweredYear === g.year) return
+  if (!['try', 'later', 'no'].includes(choice)) return
+  p.data.familyAnsweredYear = g.year
+  if (choice === 'try') {
+    p.data.familyPlanWith = g.character.id
+    if (intimacyProblem(g, p) || conceptionBlocker(g, p)) return
+    if (!useYearAction(g, 'rel.tryBaby', 24)) return notice(g, 'Family Plans', 'Your family plan is agreed. You have used this year’s 24 attempts; try again next year.', { emoji: '🍼' })
+    tryForBaby(g, p)
+  }
+  else {
+    delete p.data.familyPlanWith
+    p.data.familyWaitUntil = choice === 'later' ? g.year + 2 : 100000
+    notice(g, 'Family Plans', choice === 'later' ? `${p.firstName} agrees to revisit the conversation in two years. You can still choose to try sooner.` : `${p.firstName} respects your decision. You can reopen the plan yourself with Try for a Baby.`, { emoji: '💬' })
+  }
+})
 
 export function askBirthControl(g: GameState, p: Person): void {
   const c = g.character

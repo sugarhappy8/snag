@@ -7,7 +7,7 @@ successful invention simply because the player can afford a budget.
 ## The playable loop
 
 1. From age eight, repair and experiment with borrowed tools for free. Two workshop
-   sessions per year build expertise in one of seven fields. Library study and,
+   sessions per year build expertise in one of eight fields. Library study and,
    from 1995, online study add topic knowledge and field expertise. Relevant degrees
    and occupations accelerate learning, but a self-taught route remains possible.
 2. From sixteen, fund a prepared idea. Small, middle, big and generational projects
@@ -26,8 +26,9 @@ successful invention simply because the player can afford a budget.
    Fabs, staff, working capital, pricing, royalties and territorial patent expiry
    continue to determine commercial results. A patent by itself pays nothing.
 
-There are 34 concrete topics, including six new practical improvements such as a
-repairable fastener, irrigation regulator and assistive grip. Seven field menus
+There are 38 concrete topics, including practical improvements such as a
+repairable fastener, irrigation regulator and assistive grip, plus four private
+financial systems. Eight field menus
 keep the catalogue manageable. Speculative science is clearly labeled and remains
 an alternate-history option with demanding preparation and uncertain results.
 
@@ -38,6 +39,34 @@ They reduce a project's personal contribution; they never become spendable cash,
 taxable personal income, or a refundable balance. Applications are limited to one
 per year. Collaborator fees, extra tests and redesigns require explicit spending.
 The initial program is prepaid; no surprise annual research bill is charged.
+
+From eighteen, each topic also offers **Company-funded Research · You Lead**.
+Choose a compatible company you control and appoint a hired CEO under its
+Leadership menu first. The company pays the initial program, collaborator fees,
+experiments and redesigns from its own cash, booking them as corporate expenses.
+Customer deposits and investment-client assets cannot fund research. You remain
+lead inventor and keep attribution; the completed IP belongs to the sponsor and
+is automatically installed there. Technical leaders improve engineering progress
+and experiments; operations leaders help the project advance. Returning to the
+CEO role, losing control or selling the sponsor pauses the project. Shelving
+never refunds company expenditure to the player.
+
+## Private financial inventions
+
+**Activities → Inventor → Private financial systems** offers a credit/liquidity
+model, execution optimizer, adaptive market model and frontier capital allocation
+engine. These use the normal preparation and research loop, with confidential
+stress tests and validation on unseen data replacing customer trials. They have
+no patent fees, public grants, product manufacturing, external licences or public
+breakthrough announcements. Confidential work does not create public fame.
+
+Personally funded methods can be assigned exclusively to one bank or investment
+firm you control. Company-funded methods deploy directly to their sponsor. Their
+effects improve underwriting, trading research and execution costs inside the
+financial simulation; no income is created merely by finishing an invention.
+Team skill and morale affect deployment. The edge fades as data becomes stale;
+**Financial Operations** offers paid annual revalidation using company cash.
+Trading still has capital-capacity limits and losses remain possible.
 
 A balanced schedule advances one funded research year annually. Intensive work is
 35% faster but adds substantial strain, especially alongside a job. At 80 strain,

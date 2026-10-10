@@ -1,9 +1,13 @@
 // These are fictional, alternate-history research projects, not scientific recipes.
 import type { InventionTier } from './business/inventions'
 
-export type InventionField = 'energy' | 'materials' | 'computing' | 'health' | 'food' | 'transport' | 'consumer'
+export type InventionField = 'energy' | 'materials' | 'computing' | 'health' | 'food' | 'transport' | 'consumer' | 'finance'
 export interface InventionTopic { id: string; name: string; field: InventionField; tier: InventionTier; note: string }
 export const INVENTION_TOPICS: InventionTopic[] = [
+  { id: 'private-risk-model', name: 'Private credit and liquidity model', field: 'finance', tier: 'small', note: 'A confidential underwriting and liquidity system, validated on held-out historical records. Used only inside your own financial institution; never published, licensed or patented.' },
+  { id: 'private-execution', name: 'Closed-loop execution optimizer', field: 'finance', tier: 'middle', note: 'An internal system that reduces trading friction and processing mistakes. Paper methods work in early eras; later infrastructure improves deployment.' },
+  { id: 'private-market-model', name: 'Proprietary adaptive market model', field: 'finance', tier: 'big', note: 'A secret statistical strategy tested on unseen market data. Its edge depends on specialists, capital capacity and continued maintenance.' },
+  { id: 'private-capital-engine', name: 'Self-adapting capital allocation engine', field: 'finance', tier: 'generational', note: 'A fictional frontier financial system that coordinates signals, execution and risk inside one institution. No public disclosure or patent filing.' },
   { id: 'quick-fastener', name: 'Repairable quick-release fastener', field: 'materials', tier: 'small', note: 'Improve an everyday workshop problem through sketches, machining and repeated tests.' },
   { id: 'drip-irrigation', name: 'Low-cost irrigation regulator', field: 'food', tier: 'small', note: 'Work with growers to reduce water waste with a simple mechanical device.' },
   { id: 'assistive-grip', name: 'Adjustable assistive grip', field: 'health', tier: 'small', note: 'Co-design a practical aid with the people who will use it; test comfort and durability.' },
@@ -41,9 +45,10 @@ export const INVENTION_TOPICS: InventionTopic[] = [
 ]
 
 export function inventionTopic(id: string): InventionTopic | undefined { return INVENTION_TOPICS.find(topic => topic.id === id) }
-export function isInventionField(value: unknown): value is InventionField { return typeof value === 'string' && ['energy', 'materials', 'computing', 'health', 'food', 'transport', 'consumer'].includes(value) }
+export function isInventionField(value: unknown): value is InventionField { return typeof value === 'string' && ['energy', 'materials', 'computing', 'health', 'food', 'transport', 'consumer', 'finance'].includes(value) }
 
 export const INVENTION_FIELDS: { id: InventionField; label: string }[] = [
+  { id: 'finance', label: 'Private financial systems' },
   { id: 'energy', label: 'Energy & power' }, { id: 'materials', label: 'Materials & mechanisms' },
   { id: 'computing', label: 'Computing & electronics' }, { id: 'health', label: 'Health & assistive design' },
   { id: 'food', label: 'Food & agriculture' }, { id: 'transport', label: 'Transport' }, { id: 'consumer', label: 'Everyday products' },
@@ -72,9 +77,10 @@ export function inventionResearchRule(topicId: string) {
 
 /** A real production business is needed, not a financial vehicle or unrelated storefront. */
 export function inventionIndustryCompatible(field: InventionField, industry: string): boolean {
+  if (field === 'finance') return /^(bank|onlineBank|investmentFirm)$/.test(industry)
   if (/^(bank|onlineBank|investmentFirm)$/.test(industry)) return false
   if (industry === 'manufacturing') return true
-  const families: Record<InventionField, RegExp> = {
+  const families: Record<Exclude<InventionField, 'finance'>, RegExp> = {
     energy: /energy|solar|battery|fusion|electricVehicles/,
     materials: /construction|fashion|robotics|electricVehicles|spaceTech/,
     computing: /software|semiconductor|aiLab|quantum|robotics|cybersecurity|telecom|dataCenter|gameStudio/,

@@ -193,7 +193,7 @@ interface Sale {
  * (evolve, valuation, owner pay, cash crunches, events) works unchanged.
  */
 function studioOperations(g: GameState, b: BizState, year = g.year): number {
-  return (1 + .08 * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).capacity
+  return (1 + .22 * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).capacity
 }
 
 export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: number, ownerDraw: number, bookedSales: number | Record<string, number> = 0): YearResult {
@@ -243,7 +243,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
     const target = clampN(
       60 +
         (b.quality - 50) * 0.4 +
-        qStaff * 6 +
+        qStaff * 12 +
         ((founder ? Math.max(45, genreSkill(x.genre, founder.code, founder.art, founder.design)) : (b.manager?.skill ?? 50)) - 50) * voice +
         (b.morale - 60) * 0.1 +
         (sc.index >= 3 ? eng.bigBonus : eng.bonus) -
@@ -280,7 +280,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   }
 
   // 2) Launches. A business-talented founder-CEO sells a little better (TALENT_DEMAND).
-  const knack = (talentCeo(g, b) ? TALENT_DEMAND : 1) * businessEffects(g, b, b.countryId, year).demand * nationalMarket(g, b.industry, b.countryId, year).demand * (1 + .45 * executiveEdge(ceoSkill(g, b)))
+  const knack = (talentCeo(g, b) ? TALENT_DEMAND : 1) * businessEffects(g, b, b.countryId, year).demand * nationalMarket(g, b.industry, b.countryId, year).demand * (1 + .45 * executiveEdge(ceoSkill(g, b))) * (1 + .20 * staffPower(b, 'sales'))
   const fame = runs ? gdView(g).gamerFame : 0
   const countries = new Set(b.outlets.map((o) => o.countryId)).size
   for (const x of dev) {
@@ -385,7 +385,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   revenue += milestones + engines.revenue
 
   // 5) Money out.
-  const finance = 1 - 0.025 * staffPower(b, 'finance')
+  const finance = 1 - 0.10 * staffPower(b, 'finance')
   const ceoEff = (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, year).cost * nationalMarket(g, b.industry, b.countryId, year).costs
   const wages = b.employees * wage * b.openFraction * licencePremium(g, b)
   let rent = 0
@@ -753,7 +753,7 @@ function qualityTarget(g: GameState, a: Asset, b: BizState, st: StudioState, gen
     60 +
       gamer +
       (b.quality - 50) * 0.4 +
-      staffPower(b, 'quality') * 6 +
+      staffPower(b, 'quality') * 12 +
       (lead - 50) * voice +
       (b.morale - 60) * 0.1 +
       (sc.index >= 3 ? eng.bigBonus : eng.bonus) -
@@ -784,7 +784,7 @@ function receiptsOf(g: GameState, b: BizState, x: Pitch, l: LaunchGuess): number
   const marketing = l.publisher ? 1.3 : clampN((0.55 + 0.3 * b.marketingLevel) * (0.75 + b.brand / 200), 0.4, 1.6)
   const reach = homeReach(b.countryId) * (l.publisher ? 1.2 : 0.95) * (1 + Math.min(0.3, (countries - 1) * 0.08))
   const fame = Math.max(runs ? gdView(g).gamerFame : 0, b.brand / 2)
-  const knack = (talentCeo(g, b) ? TALENT_DEMAND : 1) * businessEffects(g, b, b.countryId, g.year).demand * nationalMarket(g, b.industry, b.countryId).demand * (1 + .45 * executiveEdge(ceoSkill(g, b)))
+  const knack = (talentCeo(g, b) ? TALENT_DEMAND : 1) * businessEffects(g, b, b.countryId, g.year).demand * nationalMarket(g, b.industry, b.countryId).demand * (1 + .45 * executiveEdge(ceoSkill(g, b))) * (1 + .20 * staffPower(b, 'sales'))
   const copies =
     sc.potential *
     platformDef(x.platform).audience *
@@ -816,7 +816,7 @@ function royaltyOf(st: StudioState, engine: StudioEngineId, receipts: number): n
 function studioBurn(g: GameState, b: BizState, st: StudioState): number {
   let rent = 0
   for (const o of b.outlets) rent += o.count * localEcon('gameStudio', o.countryId, o.city).rent * economyOf(g, o.countryId).rent
-  const overhead = (b.employees * devCost(b) * economyOf(g, b.countryId).wages * licencePremium(g, b) + rent + equipmentValue(b) * industryDef('gameStudio').maint) * (1 - 0.025 * staffPower(b, 'finance')) * (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, g.year).cost * nationalMarket(g, b.industry, b.countryId).costs
+  const overhead = (b.employees * devCost(b) * economyOf(g, b.countryId).wages * licencePremium(g, b) + rent + equipmentValue(b) * industryDef('gameStudio').maint) * (1 - 0.10 * staffPower(b, 'finance')) * (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))) * businessEffects(g, b, b.countryId, g.year).cost * nationalMarket(g, b.industry, b.countryId).costs
   const fixed = overhead + b.staff.reduce((t, x) => t + x.salary, 0) + managerCost(b) + (b.insured ? insurancePremiumFor(b) : 0) + b.debt * b.debtRate
   const scale = costScale(b.countryId)
   let inProduction = 0

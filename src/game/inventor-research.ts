@@ -1,17 +1,20 @@
-import { addStat, formatMoney, log, notice, spend } from './core'
+import { addStat, formatMoney, log, notice } from './core'
 import { bound, economicRoll } from './economy'
 import { inventionResearchRule, inventionTopic } from './inventor-data'
 import { gainInventorExpertise, inventorJournal } from './inventor-career'
 import { inventorView, saveInventor, type InventorProfile, type PersonalResearch, type ResearchPace } from './inventor-state'
 import { blocked } from './special/common'
 import type { GameState, MenuNode } from './types'
+import { payForResearch, researchPayer, researchPaymentBlock } from './inventor-funding'
+import { findBusiness, readBiz } from './business/state'
+import { leadershipPower } from './business/leadership'
 
 export function researchReadiness(g: GameState, project: PersonalResearch, profile = inventorView(g)) {
   const topic = inventionTopic(project.topic)!, rule = inventionResearchRule(topic.id)!
   const expertise = profile.expertise[topic.field] ?? 0
   const engineering = project.engineering ?? 0, validation = project.validation ?? 0
   const odds = bound(.35 + engineering * .0035 + expertise * .003 + validation * .001 - (rule.speculative ? .2 : 0) - (project.approach === 'frontier' ? .08 : 0), .1, .97)
-  const reason = project.revision ? 'A failed test needs a funded redesign.' : project.progress < project.years ? 'The funded research program is still underway.' : engineering < rule.engineering ? `Technical evidence needs ${rule.engineering}/100; test the prototype.` : validation < rule.validation ? `User validation needs ${rule.validation}/100; run a customer trial.` : null
+  const reason = project.revision ? 'A failed test needs a funded redesign.' : project.progress < project.years ? 'The funded research program is still underway.' : engineering < rule.engineering ? `Technical evidence needs ${rule.engineering}/100; test the prototype.` : validation < rule.validation ? `Validation needs ${rule.validation}/100; ${topic.field === 'finance' ? 'test on unseen market data' : 'run a customer trial'}.` : null
   const stage = project.revision ? 'Redesign needed' : project.progress < project.years * .35 ? 'Research & proof of concept' : project.progress < project.years * .8 ? 'Building a prototype' : 'Independent validation'
   return { odds, reason, stage, engineering: rule.engineering, validation: rule.validation }
 }
@@ -28,6 +31,9 @@ export function advanceInventorResearch(g: GameState, p: InventorProfile): boole
   }
   if (project.revision) { p.strain = Math.max(0, p.strain - 8); return false }
   const topic = inventionTopic(project.topic)!, rule = inventionResearchRule(topic.id)!
+  const sponsor = project.sponsorId ? findBusiness(g, project.sponsorId) : null
+  const technical = sponsor ? leadershipPower(readBiz(g, sponsor), 'quality') : 0
+  const operations = sponsor ? leadershipPower(readBiz(g, sponsor), 'ops') : 0
   const working = project.progress < project.years
   if (working) {
     const intensive = project.pace === 'intensive'
@@ -41,8 +47,8 @@ export function advanceInventorResearch(g: GameState, p: InventorProfile): boole
       log(g, `${project.name}: a failed experiment revealed a flaw. I learned from it, but need to revise the design.`, 'neutral')
       return false
     }
-    project.progress = Math.min(project.years, project.progress + (intensive ? 1.35 : 1))
-    project.engineering = Math.min(100, (project.engineering ?? 0) + 8 + (project.collaborator ? 3 : 0))
+    project.progress = Math.min(project.years, project.progress + (intensive ? 1.35 : 1) + operations * .15)
+    project.engineering = Math.min(100, (project.engineering ?? 0) + 8 + technical * 6 + (project.collaborator ? 3 : 0))
     project.validation = Math.min(100, (project.validation ?? 0) + 4)
     project.notes = `${researchReadiness(g, project, p).stage}: the latest experiment was reproducible.`
   }
@@ -52,7 +58,7 @@ export function advanceInventorResearch(g: GameState, p: InventorProfile): boole
   if (economicRoll(`${g.lifeId}|research-review|${project.id}|${project.attempts}`) < review.odds) return true
   project.revision = true; project.setbacks = (project.setbacks ?? 0) + 1; p.setbacks++
   gainInventorExpertise(p, topic.field, 5)
-  project.notes = 'Independent replication failed. No patent-ready invention yet. Revise the design and test again; the notebook and expertise remain yours.'
+  project.notes = 'Independent validation failed. Revise the design and test again; the notebook and expertise are retained.'
   inventorJournal(g, p, `${project.name}: independent replication failed; I gained new field knowledge.`)
   log(g, project.notes, 'neutral')
   return false
@@ -68,27 +74,26 @@ export function setResearchPace(g: GameState, pace: ResearchPace): boolean {
 export function researchSupportQuote(g: GameState, action: 'collaborator' | 'revise') {
   const p = inventorView(g), project = p.project
   const cost = project ? Math.max(250, Math.round(project.budget * (action === 'collaborator' ? .15 : .12))) : 0
-  const reason = blocked(g, 16) ?? (!project || project.model !== 'career' ? 'No active research-career project.' : action === 'collaborator' && project.collaborator ? 'A specialist already joined this project.' : action === 'revise' && !project.revision ? 'The current design does not need a funded redesign.' : g.character.money < cost ? `You need ${formatMoney(cost)} in personal savings.` : null)
+  const reason = blocked(g, 16) ?? (!project || project.model !== 'career' ? 'No active research-career project.' : action === 'collaborator' && project.collaborator ? 'A specialist already joined this project.' : action === 'revise' && !project.revision ? 'The current design does not need a funded redesign.' : researchPaymentBlock(g, project, cost))
   return { cost, reason }
 }
 export function supportPersonalResearch(g: GameState, action: 'collaborator' | 'revise'): boolean {
   if (!['collaborator', 'revise'].includes(action)) return false
   const q = researchSupportQuote(g, action), p = inventorView(g), project = p.project
-  if (q.reason || !project || !spend(g, q.cost)) return false
-  project.personalCost = (project.personalCost ?? project.budget) + q.cost
+  if (q.reason || !project || !payForResearch(g, project, q.cost)) return false
   const topic = inventionTopic(project.topic)!
   if (action === 'collaborator') {
     project.collaborator = `Independent ${topic.field} engineering specialist`
     project.engineering = Math.min(100, (project.engineering ?? 0) + 15); project.validation = Math.min(100, (project.validation ?? 0) + 8)
     gainInventorExpertise(p, topic.field, 5)
-    project.notes = 'A specialist joined on a fixed-fee IP-assignment contract. You retain ownership; their contribution stays credited.'
+    project.notes = `A specialist joined on a fixed-fee confidentiality and IP-assignment contract. ${project.sponsorId ? 'Your sponsor retains ownership' : 'You retain ownership'}; their contribution stays credited.`
   } else {
     project.revision = false; project.progress = Math.min(project.progress, Math.max(0, project.years - 1))
     project.engineering = Math.min(100, (project.engineering ?? 0) + 10); p.strain = Math.min(100, p.strain + 5)
     project.notes = 'Redesign funded, including another research year and a fresh replication attempt.'
   }
   inventorJournal(g, p, `${project.name}: ${project.notes}`); saveInventor(g, p)
-  notice(g, action === 'collaborator' ? 'Research Collaboration' : 'Design Revised', `${project.notes} You paid ${formatMoney(q.cost)} from your savings.`, { emoji: '🔬' })
+  notice(g, action === 'collaborator' ? 'Research Collaboration' : 'Design Revised', `${project.notes} Paid ${formatMoney(q.cost)} from ${researchPayer(g, project)}.`, { emoji: '🔬' })
   return true
 }
 export function shelvePersonalResearch(g: GameState): boolean {
@@ -106,9 +111,9 @@ export function researchManagementNodes(g: GameState): MenuNode[] {
   const nodes: MenuNode[] = []
   if (project.model === 'career') {
     const ready = researchReadiness(g, project)
-    nodes.push({ type: 'info', id: 'inventor.research.evidence', text: `${ready.stage} · engineering ${Math.round(project.engineering ?? 0)}/${ready.engineering} · customer evidence ${Math.round(project.validation ?? 0)}/${ready.validation}. Independent replication: about ${Math.round(ready.odds * 100)}% chance once ready. ${project.notes || ''}` })
+    nodes.push({ type: 'info', id: 'inventor.research.evidence', text: `${ready.stage} · engineering ${Math.round(project.engineering ?? 0)}/${ready.engineering} · ${inventionTopic(project.topic)?.field === 'finance' ? 'unseen-data validation' : 'customer evidence'} ${Math.round(project.validation ?? 0)}/${ready.validation}. Independent validation: about ${Math.round(ready.odds * 100)}% chance once ready. ${project.notes || ''}` })
     nodes.push(...(['balanced', 'intensive', 'rest'] as const).map((pace): MenuNode => ({ type: 'action', id: `inventor.pace.${pace}`, label: pace === 'rest' ? 'Take a Research Break' : pace === 'intensive' ? 'Work Intensively' : 'Keep a Balanced Schedule', emoji: '🗓️', subtitle: pace === project.pace ? 'Current schedule' : pace === 'intensive' ? '35% faster · higher strain, especially alongside a job' : pace === 'rest' ? 'Pause progress · recover 25 strain per year' : 'Normal progress · lower strain', disabledReason: gg => blocked(gg, 16) ?? (!inventorView(gg).project ? 'No active project.' : null), run: gg => { setResearchPace(gg, pace) } })))
-    nodes.push(...(['collaborator', 'revise'] as const).map((action): MenuNode => ({ type: 'action', id: `inventor.support.${action}`, label: action === 'collaborator' ? 'Hire a Research Collaborator' : 'Fund a Redesign', emoji: '🤝', subtitle: `${formatMoney(researchSupportQuote(g, action).cost)} · ${action === 'collaborator' ? 'technical expertise, shared credit; retain IP ownership' : 'learn from the setback and finance another attempt'}`, disabledReason: gg => researchSupportQuote(gg, action).reason, run: gg => { supportPersonalResearch(gg, action) } })))
+    nodes.push(...(['collaborator', 'revise'] as const).map((action): MenuNode => ({ type: 'action', id: `inventor.support.${action}`, label: action === 'collaborator' ? 'Hire a Research Collaborator' : 'Fund a Redesign', emoji: '🤝', subtitle: `${formatMoney(researchSupportQuote(g, action).cost)} from ${researchPayer(g, project)} · ${action === 'collaborator' ? 'technical expertise, shared credit; ownership stays with the funder' : 'learn from the setback and finance another attempt'}`, disabledReason: gg => researchSupportQuote(gg, action).reason, run: gg => { supportPersonalResearch(gg, action) } })))
   }
   nodes.push({ type: 'action', id: 'inventor.shelve', label: 'Shelve This Project', emoji: '📓', subtitle: 'Keep knowledge; spent funding is not refunded', disabledReason: gg => blocked(gg, 16) ?? (!inventorView(gg).project ? 'No active project.' : null), confirm: () => 'Stop this project permanently? Its spent budget is not refunded. Your field expertise and study notes stay with you.', run: gg => { shelvePersonalResearch(gg) } })
   return nodes

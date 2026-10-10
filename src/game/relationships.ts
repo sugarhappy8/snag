@@ -68,6 +68,7 @@ import {
   startDating,
   touch,
   tryForBaby,
+  yearlyFamilyPlanning,
   weddingProblem,
   yourRel,
 } from './love'
@@ -770,6 +771,7 @@ export function yearlyRelationships(g: GameState): void {
   recordNpcFamilyHistory(g)
   driftRelationships(g)
   partnerDrama(g)
+  yearlyFamilyPlanning(g)
   yearlyFamilyEvent(g)
   cleanupPeople(g)
 }

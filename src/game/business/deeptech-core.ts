@@ -17,6 +17,7 @@ import { industryDef } from './industries'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
 import { runsIt, totalOutlets, type BizState } from './state'
 import { clampN, round2, toJson } from './util'
+import { LEADERSHIP } from './leadership'
 
 // ---------------------------------------------------------------------------
 // State access
@@ -128,7 +129,7 @@ export function techSkill(g: GameState, a: Asset, b: BizState, t: TechState): nu
   const lead = runsIt(g, a) && g.character.alive && !g.character.prison ? founderSkill(g, ind) : b.manager ? b.manager.skill * 0.7 : 35
   // A business-minded CEO still runs the place; the lab's own experts do most of the science.
   const base = Math.max(lead, 30 + ceoSkill(g, b) * 0.2)
-  const experts = 10 * Math.min(2, staffPower(b, 'quality'))
+  const experts = 20 * staffPower(b, 'quality')
   return clampN(Math.round(base * 0.7 + experts + (t.cofounder ? 12 : 0) + t.level * 0.1 + 20 * executiveEdge(ceoSkill(g, b))), 5, 100)
 }
 
@@ -309,7 +310,7 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
   const mctx = marketCtxFor(g, b, year)
   const pick = bu > 0 && Number.isFinite(bu) ? marketDemand(mctx, bu) : null
   const demand = pick ? pick.units * cycleEffect * ic : 0
-  const ops = (1 + 0.08 * staffPower(b, 'ops') + .25 * executive) * effects.capacity
+  const ops = (1 + LEADERSHIP.capacity * staffPower(b, 'ops') + .25 * executive) * effects.capacity
   const loss = calm ? 0 : b.capacityLoss
   const capacity = capacityUnits(b, t, year) * home.baseDemand * ops * (1 - loss) * open
   const unitCost = home.unitCost * techCost(b, t) * costFactor(b, calm) * effects.cost * national.costs * (1 - .20 * executive) * (1 - SCALE_SAVING * mctx.dominance)

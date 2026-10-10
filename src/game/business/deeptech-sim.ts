@@ -12,6 +12,7 @@ import { hasTalent, talentHint } from '../talents'
 import type { AnnualReportData, Asset, ChoiceOption, GameState } from '../types'
 import { ceoSkill, citySaturation, cycleOf, densityRent, headOffice, insurancePremiumFor, localEcon, staffPower, valuationOf, type YearResult } from './economy'
 import { executiveEdge } from './dynamics'
+import { LEADERSHIP } from './leadership'
 import { complexityCost } from './products'
 import { DEEP_TECH, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
 import {
@@ -115,7 +116,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const marketing = revenue * def.marketingShare * b.marketingLevel
   const interest = b.debt * b.debtRate
   const insurance = b.insured ? insurancePremiumFor(b) : 0
-  const finance = 1 - 0.025 * staffPower(b, 'finance')
+  const finance = 1 - LEADERSHIP.overhead * staffPower(b, 'finance')
   const ceoEff = (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b)))
   const running = (wages + rent + upkeep) * finance * ceoEff
   // Head office for a big network of sites, and the cost of running a big product range.

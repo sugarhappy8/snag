@@ -53,6 +53,7 @@ function sourceOf(g: GameState, source: InventionLicenseSource): { asset: Asset;
   const personal = personalInventions(g).find(a => a.id === source.assetId && a.id === source.inventionId)
   if (personal) {
     const ip = readInventionIp(personal)!
+    if (ip.closedLoop) return null
     const product = newInventionProduct(personal.id, personal.name, ip.field, ip.kind, ip.created)
     Object.assign(product, { price: ip.unitPrice, unitCost: ip.unitCost, potential: ip.potential, protections: ip.protections, marketFit: ip.marketFit, reliability: ip.reliability, evidenceBased: ip.evidenceBased, inventor: ip.inventor, contributors: ip.contributors })
     return { asset: personal, product, protections: ip.protections, country: ip.country, company: false }

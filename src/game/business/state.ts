@@ -281,6 +281,8 @@ export interface BizState {
   tech?: Json
   /** Segregated financial-institution client books (not shareholder cash/equity). */
   financeFirm?: Json
+  /** Confidential company-owned financial systems, never patents or saleable products. */
+  closedInventions?: Json
   /** Owner conversations and licensed entertainment operations (venues.ts). */
   venueOwner?: Json
   /** Opt-in professionally reviewed automatic succession readiness policy. */
@@ -536,6 +538,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(industry === 'gameStudio' && d.studio && typeof d.studio === 'object' && !Array.isArray(d.studio) ? { studio: d.studio } : {}),
     ...(isDeepTechIndustry(industry) && d.tech && typeof d.tech === 'object' && !Array.isArray(d.tech) ? { tech: d.tech } : {}),
     ...(d.financeFirm && typeof d.financeFirm === 'object' && !Array.isArray(d.financeFirm) ? { financeFirm: d.financeFirm } : {}),
+    ...(Array.isArray(d.closedInventions) ? { closedInventions: d.closedInventions } : {}),
     ...(d.venueOwner && typeof d.venueOwner === 'object' && !Array.isArray(d.venueOwner) ? { venueOwner: d.venueOwner } : {}),
     ...(d.inventionProducts && typeof d.inventionProducts === 'object' ? { inventionProducts: d.inventionProducts } : {}),
     ...(typeof d.inventionStaff === 'number' ? { inventionStaff: Math.floor(clampN(num(d.inventionStaff), 0, 1e9)) } : {}),

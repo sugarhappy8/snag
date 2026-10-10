@@ -34,6 +34,7 @@ import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyInventoryValue, supplyProfile, type SupplyBook } from './supply'
 import { applyEconomicRivals } from './economic-actors'
+import { leadershipPower, individualLeadershipPower, LEADERSHIP } from './leadership'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -263,12 +264,7 @@ export const TALENT_LEADER_MORALE = 6
 
 /** Combined contribution of key staff with a focus (0 = nobody, ~1 = one strong hire). */
 export function staffPower(b: BizState, focus: StaffFocus): number {
-  let p = 0
-  for (const s of b.staff) {
-    if (s.focus !== focus) continue
-    p += (s.skill / 100) * traitOf(s.trait).impact * (0.7 + (0.6 * s.morale) / 100)
-  }
-  return Math.min(2.5, p)
+  return leadershipPower(b, focus)
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +355,7 @@ export function appealOf(g: GameState, b: BizState, year: number): number {
   const quality = 0.75 + b.quality / 200
   const brand = 1 + ((b.brand - 50) / 100) * (0.25 + 0.35 * def.growth)
   const morale = 0.85 + (0.3 * b.morale) / 100
-  const sales = 1 + 0.06 * staffPower(b, 'sales')
+  const sales = 1 + LEADERSHIP.sales * staffPower(b, 'sales')
   const ceo = (0.97 + ceoSkill(g, b) / 1500) * (1 + .45 * executiveEdge(ceoSkill(g, b)))
   const talent = talentCeo(g, b) ? TALENT_DEMAND : 1
   return quality * brand * morale * sales * ceo * talent * marketingFactor(b.marketingLevel) * (1 + productsBoost(b, year)) * (1 + b.campaignBoost)
@@ -447,7 +443,7 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
   const ratioToGoing = price / homeGoing
   const premium = premiumOf(b)
   const appeal = appealOf(g, b, year)
-  const ops = 1 + 0.08 * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))
+  const ops = 1 + LEADERSHIP.capacity * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))
   const noise = opts.noise ?? 1
   const open = opts.calm ? 1 : b.openFraction
   const shockD = opts.calm ? 1 : b.demandShock
@@ -514,7 +510,7 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
 /** Unit-cost multiplier from the supplier contract, key ops staff and shocks. */
 export function costFactor(b: BizState, calm = false): number {
   const sup = b.supplier === 'budget' ? 0.86 : b.supplier === 'premium' ? 1.18 : 1
-  const ops = 1 - 0.03 * staffPower(b, 'ops')
+  const ops = 1 - LEADERSHIP.unitCost * staffPower(b, 'ops')
   return sup * ops * (calm ? 1 : b.costShock)
 }
 
@@ -580,7 +576,7 @@ export function yearFixed(g: GameState, b: BizState): YearFixed {
     licence: licencePremium(g, b),
     keyStaff: b.staff.reduce((s, x) => s + x.salary, 0) + managerCost(b),
     insurance: b.insured ? insurancePremiumFor(b) : 0,
-    finance: 1 - 0.025 * staffPower(b, 'finance'),
+    finance: 1 - LEADERSHIP.overhead * staffPower(b, 'finance'),
     ceoEff: (1.05 - ceoSkill(g, b) / 1000) * (1 - .18 * executiveEdge(ceoSkill(g, b))),
   }
 }
@@ -789,7 +785,7 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   // Quality: suppliers, quality staff, morale, leadership.
   const sup = b.supplier === 'budget' ? -12 : b.supplier === 'premium' ? 12 : 0
   const chef = def.food && ownerTalent(g, b, 'Cooking') ? TALENT_COOKING_QUALITY : 0
-  const qTarget = clampN(45 + sup + 12 * Math.min(2, staffPower(b, 'quality')) + (b.morale - 50) / 6 + (skill - 50) / 10 + chef, 5, 98)
+  const qTarget = clampN(45 + sup + LEADERSHIP.quality * staffPower(b, 'quality') + (b.morale - 50) / 6 + (skill - 50) / 10 + chef, 5, 98)
   b.quality = clampN(Math.round(b.quality + (qTarget - b.quality) * 0.3), 0, 100)
 
   // Brand: quality, marketing, age, products, fame of the founder.
@@ -1349,28 +1345,27 @@ export function expectedFx(g: GameState, b: BizState, w: Worth, branches: { p: n
  */
 export function staffBenefit(g: GameState, b: BizState, w: Worth, focus: StaffFocus, power: number): number {
   const others = staffPower(b, focus)
-  const capOf = focus === 'quality' ? 2 : 2.5
-  const add = Math.max(0, Math.min(capOf, others + power) - Math.min(capOf, others))
+  const add = Math.max(0, (2.5 - others) * (1 - Math.exp(-power / 2.5)))
   if (add <= 0) return 0
   if (b.industry === 'gameStudio') {
     // Studios: quality staff lift every game (≈6 points of game quality each), ops staff ship
     // faster, finance trims overhead. Nobody needs a salesperson to sell a game.
-    if (focus === 'quality') return w.contrib * 0.06 * add
-    if (focus === 'ops') return w.contrib * 0.04 * add
-    if (focus === 'finance') return w.overhead * 0.025 * add
-    return 0
+    if (focus === 'quality') return w.contrib * 0.12 * add
+    if (focus === 'ops') return w.contrib * 0.11 * add
+    if (focus === 'finance') return w.overhead * LEADERSHIP.overhead * add
+    return w.contrib * LEADERSHIP.sales * add
   }
-  if (focus === 'sales') return w.contrib * 0.06 * add
-  if (focus === 'finance') return w.overhead * 0.025 * add * (1.05 - ceoSkill(g, b) / 1000)
-  if (focus === 'ops') return w.cogs * 0.03 * add + w.contrib * 0.08 * add * Math.max(0, w.util - 0.85) * 6
+  if (focus === 'sales') return w.contrib * LEADERSHIP.sales * add
+  if (focus === 'finance') return w.overhead * LEADERSHIP.overhead * add * (1.05 - ceoSkill(g, b) / 1000)
+  if (focus === 'ops') return w.cogs * LEADERSHIP.unitCost * add + w.contrib * LEADERSHIP.capacity * add * Math.max(0, w.util - 0.85) * 6
   // Quality: +12 quality target per unit of power, reached at 30% a year.
-  return 12 * add * (w.quality / QUALITY_YEARS) * 0.6
+  return LEADERSHIP.quality * add * (w.quality / QUALITY_YEARS) * 0.6
 }
 
 /** A key staff member's yearly value to the company (benefit minus salary). */
 export function staffNet(g: GameState, b: BizState, w: Worth, s: { focus: StaffFocus; skill: number; trait: string; morale: number; salary: number; id?: string }): number {
   const without = s.id ? { ...b, staff: b.staff.filter((x) => x.id !== s.id) } : b
-  const power = (s.skill / 100) * traitOf(s.trait).impact * (0.7 + (0.6 * s.morale) / 100)
+  const power = individualLeadershipPower(s)
   const benefit = staffBenefit(g, without, w, s.focus, power)
   const vibe = traitOf(s.trait).morale * w.moraleTarget
   return benefit - s.salary + vibe / LASTING_YEARS

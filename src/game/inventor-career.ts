@@ -15,6 +15,7 @@ export function gainInventorExpertise(p: InventorProfile, field: InventionField,
   p.expertise[field] = bound((p.expertise[field] ?? 0) + amount, 0, 100)
 }
 const BACKGROUNDS: Record<InventionField, RegExp> = {
+  finance: /finance|econom|account|mathematic|statistic|bank|invest|quant/i,
   energy: /electrical|mechanical|energy|physics|electrician|power/i,
   materials: /materials|mechanical|chemistry|chemical|machinist|carpenter/i,
   computing: /computer|software|electronic|program|data|mathematic/i,
@@ -35,15 +36,16 @@ export function tinkerInvention(g: GameState, field: InventionField): boolean {
   const p = inventorView(g)
   useYearAction(g, 'inventor.tinker', 2)
   gainInventorExpertise(p, field, 4); addStat(g, 'smarts', 1)
-  inventorJournal(g, p, `Repaired and studied everyday ${field} equipment; learned from what failed.`)
+  inventorJournal(g, p, field === 'finance' ? 'Practiced probability, bookkeeping and paper portfolios using public historical data.' : `Repaired and studied everyday ${field} equipment; learned from what failed.`)
   saveInventor(g, p)
-  notice(g, 'A Working Notebook', `Using borrowed tools and discarded parts, you learned how a real ${field} problem works. Field expertise +4. This practice is free; it creates knowledge rather than a patent or a sale.`, { emoji: '🛠️' })
+  notice(g, 'A Working Notebook', `${field === 'finance' ? 'Using public records and a paper portfolio, you practiced risk estimation and tested your assumptions without investing real money.' : `Using borrowed tools and discarded parts, you learned how a real ${field} problem works.`} Field expertise +4. This practice is free; it creates knowledge rather than a patent or a sale.`, { emoji: '🛠️' })
   return true
 }
 
 export function inventorGrantQuote(g: GameState, topicId: string) {
   const topic = inventionTopic(topicId), rule = inventionResearchRule(topicId), p = inventorView(g)
   if (!topic || !rule) return null
+  if (topic.field === 'finance') return { amount: 0, odds: 0, reason: 'Closed-loop research stays confidential and uses personal or company funds, without public grants.' }
   const expertise = p.expertise[topic.field] ?? 0, study = p.studies.find(s => s.topic === topicId)
   const amount = Math.round(INVENTION_TIERS[topic.tier].minimum * .65 + nationalPatentLaw(g.character.countryId, g.year).filingCost)
   const odds = bound(.3 + expertise * .004 + p.reputation * .003 - (rule.speculative ? .2 : 0), .1, .9)
@@ -132,9 +134,9 @@ export function yearlyInventorCareer(g: GameState): void {
   if (!blocked(g, 8) && economicRoll(`${g.lifeId}|${ownerKey(g)}|inventor-career|${g.year}`) < .35) {
     const field = Object.entries(p.expertise).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0]?.[0] as InventionField | undefined
     const kinds: InventorEvent['kind'][] = ['mentor']
-    if (p.work.length && g.character.age >= 18) kinds.push('conference', 'promoter')
+    if (p.work.some(w => inventionTopic(w.topic)?.field !== 'finance') && g.character.age >= 18) kinds.push('conference', 'promoter')
     if (p.reputation >= 20 && g.character.age >= 18) kinds.push('consulting')
-    if (p.work.some(w => w.contributors) && g.character.age >= 18) kinds.push('credit')
+    if (p.work.some(w => w.contributors && inventionTopic(w.topic)?.field !== 'finance') && g.character.age >= 18) kinds.push('credit')
     const kind = kinds[Math.floor(economicRoll(`${g.lifeId}|inventor-event-kind|${g.year}`) * kinds.length)]
     p.event = { kind, field: field ?? 'consumer', token: `${ownerKey(g)}:${g.year}:${kind}`, year: g.year }
     notice(g, 'An Inventor’s Opportunity', `${eventText(p.event)} Open Activities → Inventor → Life as an Inventor to respond this year.`, { emoji: '💡' })

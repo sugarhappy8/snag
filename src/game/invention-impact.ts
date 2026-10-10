@@ -119,6 +119,7 @@ function presentPressure(g: GameState, event: InventionImpact): void {
 
 /** Complete once globally, even when the same completion hook is replayed or inherited. */
 export function registerInventionBreakthrough(g: GameState, input: InventionBreakthrough): boolean {
+  if (input?.field === 'finance') return false
   if (!g.character.alive || !input || !isResearchKind(input.kind) || !isInventionTier(input.kind) || !Number.isFinite(input.created) || input.created > g.year) return false
   const clean: InventionBreakthrough = { ...input, id: text(input.id), name: text(input.name), field: text(input.field), country: text(input.country, 8) || g.character.countryId, created: Math.max(0, Math.floor(input.created)) }
   if (!clean.id || !clean.name) return false

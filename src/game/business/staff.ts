@@ -14,6 +14,7 @@ import { familyStaffLine } from './nepo-staff-line'
 import { industryDef, type RoleDef } from './industries'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaff } from './state'
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
+import { leadershipPower, leadershipSummary, LEADERSHIP } from './leadership'
 
 export function maxKeyStaff(b: BizState): number {
   return Math.min(8, 3 + Math.floor(totalOutlets(b) / 3))
@@ -223,7 +224,7 @@ export function hireMenu(a: Asset): MenuGroup {
     header: (g) => {
       const b = readBiz(g, a)
       const e = localEcon(b.industry, b.countryId, b.city)
-      return `Interview candidates for a key role. Salaries follow ${getCountry(b.countryId).name}'s market (a regular employee here costs about ${money(e.wage)} a year${e.m.minWage > 0 ? `; minimum wage is ${money(e.m.minWage)}` : ''}).`
+      return `Interview candidates for a key role. Salaries follow ${getCountry(b.countryId).name}'s market (a regular employee here costs about ${money(e.wage)} a year${e.m.minWage > 0 ? `; minimum wage is ${money(e.m.minWage)}` : ''}).\n\n${leadershipSummary(b)}`
     },
     children: (g) => {
       const b = readBiz(g, a)
@@ -294,7 +295,14 @@ function staffGroup(a: Asset, s: KeyStaff): MenuGroup {
     label: `${s.firstName} ${s.lastName}`,
     emoji: s.gender === 'female' ? '\u{1F469}\u{200D}\u{1F4BC}' : '\u{1F468}\u{200D}\u{1F4BC}',
     subtitle: `${s.role} · skill ${s.skill} · morale ${s.morale}%`,
-    header: () => `${s.firstName} ${s.lastName}, ${s.age} · ${s.role}\nSkill ${s.skill}/100 · ${traitOf(s.trait).label} · Morale ${s.morale}% · ${formatMoney(s.salary)}/yr · ${s.years} ${s.years === 1 ? 'year' : 'years'} here`,
+    header: g => {
+      const b = readBiz(g, a), live = b.staff.find(x => x.id === id)
+      if (!live) return 'This leader no longer works here.'
+      const contribution = leadershipPower(b, live.focus) - leadershipPower({ ...b, staff: b.staff.filter(x => x.id !== id) }, live.focus)
+      const pct = (factor: number) => (100 * contribution * factor).toFixed(1)
+      const impact = live.focus === 'sales' ? `+${pct(LEADERSHIP.sales)} percentage points of customer demand` : live.focus === 'finance' ? `−${pct(LEADERSHIP.overhead)} percentage points of operating overhead` : live.focus === 'ops' ? `+${pct(LEADERSHIP.capacity)} percentage points of capacity and −${pct(LEADERSHIP.unitCost)} of unit costs` : `+${(contribution * LEADERSHIP.quality).toFixed(1)} points toward the quality target`
+      return `${live.firstName} ${live.lastName}, ${live.age} · ${live.role}\nSkill ${live.skill}/100 · ${traitOf(live.trait).label} · Morale ${live.morale}% · ${formatMoney(live.salary)}/yr.\n${b.industry === 'bank' || b.industry === 'onlineBank' || b.industry === 'investmentFirm' ? 'Their specialty directly improves financial operations and the strength of private models.' : `Their current contribution: ${impact}.`} Training and morale improve their contribution.\n\n${leadershipSummary(b)}`
+    },
     children: (): MenuNode[] => [
       staffAction(a, id, 'compliment', 'Compliment', '\u{1F44F}', 'Tell them they are doing great', (g, _b, x) => {
         if (!useYearAction(g, `biz.compliment.${id}`, 1)) return tooBusy(g, `complimented ${x.firstName}`)

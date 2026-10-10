@@ -11,6 +11,7 @@ export interface PersonalResearch {
   approach?: ResearchApproach; engineering?: number; validation?: number; experimentYear?: number
   model?: 'career' | 'legacy'; pace?: ResearchPace; revision?: boolean; attempts?: number; setbacks?: number
   personalCost?: number; grant?: number; collaborator?: string; notes?: string
+  sponsorId?: string; companyCost?: number
 }
 export interface InventorWork { id: string; name: string; topic: string; year: number; units: number; royalties: number; recognition: number; contributors: string }
 export type InventorEventKind = 'mentor' | 'conference' | 'consulting' | 'credit' | 'promoter'
@@ -25,6 +26,7 @@ export interface InventionIp {
   v: number; topic: string; field: InventionField; kind: InventionTier; created: number; country: string; budget: number
   unitPrice: number; unitCost: number; potential: number; protections: PatentProtection[]; marketFit?: number; reliability?: number
   evidenceBased?: boolean; inventor?: string; contributors?: string
+  closedLoop?: boolean
 }
 const rec = (v: unknown): Record<string, Json> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, Json> : {}
 const number = (v: unknown, fallback = 0, max = 1e15): number => typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(0, v)) : fallback
@@ -47,7 +49,7 @@ export function inventorView(g: GameState): InventorProfile {
     project: kind && topic && kind === topic.tier && text(project.id) && text(project.name)
       ? { id: text(project.id), name: text(project.name, 80), topic: topic.id, kind, started: year(project.started, g.year), progress: number(project.progress, 0, 30), years: project.model === 'career' ? Math.max(1, number(project.years, 1, 30)) : INVENTION_TIERS[kind].years, budget: number(project.budget), country: text(project.country, 8) || g.character.countryId,
         approach: project.approach === 'practical' || project.approach === 'frontier' ? project.approach : 'balanced', engineering: number(project.engineering, 0, 100), validation: number(project.validation, 0, 100), experimentYear: year(project.experimentYear),
-        model: project.model === 'career' ? 'career' : 'legacy', pace: project.pace === 'intensive' || project.pace === 'rest' ? project.pace : 'balanced', revision: project.revision === true, attempts: number(project.attempts, 0, 100000), setbacks: number(project.setbacks, 0, 100000), personalCost: number(project.personalCost, number(project.budget)), grant: number(project.grant), collaborator: text(project.collaborator), notes: text(project.notes, 300) } : null,
+        model: project.model === 'career' ? 'career' : 'legacy', pace: project.pace === 'intensive' || project.pace === 'rest' ? project.pace : 'balanced', revision: project.revision === true, attempts: number(project.attempts, 0, 100000), setbacks: number(project.setbacks, 0, 100000), personalCost: number(project.personalCost, number(project.budget)), grant: number(project.grant), collaborator: text(project.collaborator), notes: text(project.notes, 300), sponsorId: text(project.sponsorId), companyCost: number(project.companyCost) } : null,
     lastYear: year(raw.lastYear), lastCareerYear: year(raw.lastCareerYear),
     work: (Array.isArray(raw.work) ? raw.work : []).map(rec).filter(row => { const id = text(row.id); if (!id || workIds.has(id) || !inventionTopic(text(row.topic))) return false; workIds.add(id); return true }).slice(-100).map(row => ({ id: text(row.id), name: text(row.name, 80), topic: text(row.topic), year: year(row.year, 0), units: number(row.units), royalties: number(row.royalties), recognition: number(row.recognition, 0, 3), contributors: text(row.contributors) })),
     journal: (Array.isArray(raw.journal) ? raw.journal : []).map(line => text(line, 300)).filter(Boolean).slice(-12),
@@ -61,5 +63,5 @@ export function personalInventions(g: GameState): Asset[] { return g.assets.filt
 export function readInventionIp(a: Asset): InventionIp | null {
   const d = rec(a.details.inventorIp)
   if (!isInventionField(d.field) || !isResearchKind(d.kind) || !isInventionTier(d.kind)) return null
-  return { v: d.evidenceBased === true ? 3 : 2, topic: text(d.topic), field: d.field, kind: d.kind, created: number(d.created), country: text(d.country, 8) || 'us', budget: number(d.budget), unitPrice: number(d.unitPrice, 1), unitCost: number(d.unitCost, 1), potential: number(d.potential, 0, 1e9), marketFit: number(d.marketFit, 1, 2), reliability: number(d.reliability, 1, 1.3), evidenceBased: d.evidenceBased === true, inventor: text(d.inventor), contributors: text(d.contributors), protections: (Array.isArray(d.protections) ? d.protections : []).map(rec).filter(row => typeof row.country === 'string').map(row => ({ country: String(row.country), filed: number(row.filed), expires: number(row.expires) })) }
+  return { v: d.evidenceBased === true ? 3 : 2, topic: text(d.topic), field: d.field, kind: d.kind, created: number(d.created), country: text(d.country, 8) || 'us', budget: number(d.budget), unitPrice: number(d.unitPrice, 1), unitCost: number(d.unitCost, 1), potential: number(d.potential, 0, 1e9), marketFit: number(d.marketFit, 1, 2), reliability: number(d.reliability, 1, 1.3), evidenceBased: d.evidenceBased === true, inventor: text(d.inventor), contributors: text(d.contributors), closedLoop: d.field === 'finance' || d.closedLoop === true, protections: d.field === 'finance' || d.closedLoop === true ? [] : (Array.isArray(d.protections) ? d.protections : []).map(rec).filter(row => typeof row.country === 'string').map(row => ({ country: String(row.country), filed: number(row.filed), expires: number(row.expires) })) }
 }

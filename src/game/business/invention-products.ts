@@ -17,6 +17,7 @@ import { boardOf } from './board-state'
 import { earmarkedCash } from './gamestudio'
 import { localEcon, refreshValue, valuationOf, yearFixed } from './economy'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
+import { leadershipPower, LEADERSHIP } from './leadership'
 export { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 
 export interface InventionProduct { id: string; ipId: string; name: string; field: InventionField; kind: InventionTier; price: number; unitCost: number; potential: number; production: number; inventory: number; rights: 'owned' | 'license'; royalty: number; expires: number; protections: PatentProtection[]; started: number; lastYear: number; sold: number; revenue: number; costs: number; fabCapacity?: number; fabInvested?: number; upgradeLevel?: number; upgradeInvested?: number; marketFit?: number; reliability?: number; evidenceBased?: boolean; inventor?: string; contributors?: string }
@@ -66,7 +67,7 @@ export function inventionProductsOf(b: BizState): InventionProduct[] {
   const raw = Array.isArray(b.inventionProducts) ? b.inventionProducts : []
   for (let i = 0; i < raw.length && rows.length < 400; i++) {
     const d = rec(raw[i])
-    if (typeof d.id !== 'string' || !d.id || ids.has(d.id) || typeof d.name !== 'string' || !d.name.trim() || !isInventionField(d.field) || !isResearchKind(d.kind) || !isInventionTier(d.kind)) continue
+    if (typeof d.id !== 'string' || !d.id || ids.has(d.id) || typeof d.name !== 'string' || !d.name.trim() || !isInventionField(d.field) || d.field === 'finance' || !isResearchKind(d.kind) || !isInventionTier(d.kind)) continue
     ids.add(d.id); rows.push(d)
   }
   return rows.map(d => ({
@@ -282,9 +283,9 @@ export function simulateInventionProducts(g: GameState, b: BizState, year: numbe
     // A company's paid licence survives the licensor leaving the playable
     // estate. The company still owes royalties, now to an external IP owner.
     if (p.rights === 'license' && p.expires <= year) continue
-    const demand = inventionDemandQuote(g, b, p, year).demand
-    const rate = UNITS_PER_STAFF[p.kind] * Math.max(.2, b.quality / 100) * Math.pow(1.08, p.upgradeLevel ?? 0)
-    const unitCost = effectiveInventionUnitCost(p)
+    const demand = Math.floor(inventionDemandQuote(g, b, p, year).demand * (1 + LEADERSHIP.sales * leadershipPower(b, 'sales')))
+    const rate = UNITS_PER_STAFF[p.kind] * Math.max(.2, b.quality / 100) * Math.pow(1.08, p.upgradeLevel ?? 0) * (1 + LEADERSHIP.capacity * leadershipPower(b, 'ops'))
+    const unitCost = effectiveInventionUnitCost(p) * (1 - LEADERSHIP.unitCost * leadershipPower(b, 'ops'))
     const produced = affordableUnits(Math.min(inventionFabCapacity(p), MAX_INVENTION_OUTPUT - p.inventory, Math.floor(staff * rate), p.production), cash, unitCost, wage, rate)
     const cogs = Math.round(produced * unitCost)
     const staffUsed = produced / rate, wages = Math.round(staffUsed * wage)
