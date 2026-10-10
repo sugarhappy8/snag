@@ -35,7 +35,8 @@ function fixture(skill: number) {
   expect(formGroup(g, ids, 'World Family Holdings')).toBe(true)
   const groupId = groupsOf(g)[0].core.id, group = liveGroup(g, groupId)!
   group.core.ceo = 'manager'; group.core.manager = { ...managerCandidate(g, groupBiz(g, group), skill), equity: .12 }
-  group.core.autonomous = true; group.core.autoEquity = true; saveGroup(g, group)
+  // Keep the benchmark's fixed sixteen-company workload; autonomous creation has its own tests.
+  group.core.autonomous = true; group.core.autoEquity = true; group.core.autoFound = false; saveGroup(g, group)
   let heirId = ''
   for (let i = 0; i < 60; i++) {
     const p = createPerson(g, { relation: i === 0 ? 'child' : 'friend', age: i === 0 ? 28 : 21 + i % 30,

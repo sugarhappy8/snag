@@ -95,6 +95,12 @@ export interface GroupCore {
   /** One management/payroll pass per calendar year. */
   managementYear?: number
   familyPay?: number
+  /** Cash remains on this wholly owned custodian's books, counted exactly once. */
+  treasuryId?: string
+  autoFound?: boolean
+  lastFounded?: number
+  /** Vested awards include former executives, so a buyback cannot confiscate them. */
+  executiveEquity?: number
 }
 
 export interface Membership {
@@ -135,7 +141,7 @@ function readManager(v: Json | undefined): Manager | null {
     skill: Math.round(clampN(num(d.skill, 60), 1, 100)),
     salary: Math.max(0, Math.round(num(d.salary))),
     since: Math.round(num(d.since)),
-    ...(typeof d.equity === 'number' ? { equity: clampN(num(d.equity), 0, .5) } : {}),
+    ...(typeof d.equity === 'number' ? { equity: clampN(num(d.equity), 0, .999) } : {}),
     ...(typeof d.equityAsked === 'number' ? { equityAsked: Math.round(num(d.equityAsked)) } : {}),
     ...(style ? { style } : {}),
     integrity: Math.round(clampN(num(d.integrity, 70), 0, 100)),
@@ -217,6 +223,10 @@ export function readCore(v: Json | undefined, fallbackId = '', fallbackShare = 1
     autoEquity: d.autoEquity !== false,
     managementYear: Math.round(num(d.managementYear, -1)),
     familyPay: Math.max(0, num(d.familyPay)),
+    treasuryId: str(d.treasuryId),
+    autoFound: d.autoFound !== false,
+    lastFounded: Math.round(num(d.lastFounded, num(d.founded))),
+    executiveEquity: clampN(num(d.executiveEquity), 0, .999),
   }
 }
 
@@ -307,6 +317,7 @@ function assemble(list: GroupMember[]): Group {
   const newest = list.reduce((best, x) => (x.m.core.rev > best.m.core.rev ? x : best), list[0])
   const core: GroupCore = JSON.parse(JSON.stringify(newest.m.core)) as GroupCore
   reconcileOwnership(core, list)
+  core.executiveEquity = Math.max(core.executiveEquity ?? 0, (core.manager?.equity ?? 0) + list.reduce((sum, x) => sum + (x.b.manager?.groupEquity?.id === core.id ? x.b.manager.groupEquity.share : 0), 0))
   return { core, members: [...list].sort(byStake) }
 }
 
@@ -353,6 +364,7 @@ export function saveGroup(g: GameState, grp: Group): void {
 
 /** New group shares dilute every active executive award, not only the head-office CEO. */
 export function diluteGroupEquity(grp: Group, retained: number): void {
+  grp.core.executiveEquity = (grp.core.executiveEquity ?? 0) * clampN(retained, 0, 1)
   diluteManagerEquity(grp.core.manager, retained)
   const ratio = clampN(retained, 0, 1)
   for (const x of grp.members) {

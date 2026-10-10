@@ -29,5 +29,5 @@ export function algorithmCapacity(g: GameState, b: BizState, year = g.year): num
   const f = financeView(b), infra = financeInfrastructure(g, b, year)
   const researchers = b.staff.filter(s => s.focus === 'quality' || s.focus === 'finance')
   const expertise = researchers.reduce((sum, s) => sum + s.skill * s.morale / 10000, 0)
-  return (500_000 + expertise * 1_500_000) * (1 + infra.stage) * (1 + f.computing / 25) * (1 + f.researchQuality / 50)
+  return (25_000_000 + expertise * 15_000_000) * (1 + infra.stage) * (1 + f.computing / 25) * (1 + f.researchQuality / 50)
 }

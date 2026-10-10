@@ -12,7 +12,8 @@ import { captureOfSkill } from './conglomerate-econ'
 import { groupById, groupValue, liveGroup, memberValue, saveGroup, syncMembers, type Group, type GroupMember } from './conglomerate-state'
 import { bizWorth } from './economy'
 import { equityDue } from './executive'
-import { isFinanceFirm } from './finance-firm-state'
+import { financeView, isFinanceFirm } from './finance-firm-state'
+import { divisionBuffer, sweepGroupTreasury } from './group-treasury'
 import { earmarkedCash } from './gamestudio'
 import { clampN, money, pct } from './util'
 
@@ -43,10 +44,10 @@ function fund(g: GameState, grp: Group, to: GroupMember, needed: number): number
 }
 /** Fund operating buffers first, then rank profitable investments by their modeled return. */
 export function allocateGroupCapital(g: GameState, grp: Group): string[] {
-  const lines: string[] = [], effectiveness = managementEffectiveness(g, grp)
+  const lines: string[] = sweepGroupTreasury(g, grp), effectiveness = managementEffectiveness(g, grp)
   for (const x of grp.members) {
     if (x.m.own < .999) continue
-    const reserve = earmarkedCash(x.a) + reserveDollars(x.b, boardView(g, x.a, x.b)) + (x.b.manager?.salary ?? 0)
+    const reserve = divisionBuffer(g, x)
     const moved = fund(g, grp, x, Math.max(0, reserve - x.b.cash))
     if (moved) lines.push(`Moved ${money(moved)} to ${x.a.name} for its operating reserve and executive pay.`)
   }
@@ -57,6 +58,13 @@ export function allocateGroupCapital(g: GameState, grp: Group): string[] {
     return { x, view }
   }).filter(o => o.view.modeled && o.view.invest > 0 && o.view.cost > 0).sort((a, b) => b.view.invest / b.view.cost - a.view.invest / a.view.cost)
   let budget = Math.floor(pool * effectiveness)
+  for (const x of grp.members.filter(x => x.m.own >= .999 && isFinanceFirm(x.b) && ownerControls(g, x.a))) {
+    const f = financeView(x.b)
+    const target = divisionBuffer(g, x) + (f.model === 'private' ? Math.max(f.tradingCapital + f.researchBudget + f.technologyBudget, pool * .2 * effectiveness) : pool * .1 * effectiveness)
+    const moved = fund(g, grp, x, Math.min(budget, Math.max(0, target - x.b.cash)))
+    budget -= moved
+    if (moved) lines.push(`Allocated ${money(moved)} of shareholder capital to ${x.a.name} for ${x.b.industry === 'investmentFirm' ? 'research and trading' : 'regulatory capital and lending'}. Customer money remains segregated.`)
+  }
   for (const { x, view } of opportunities) {
     const need = Math.max(0, Math.ceil(view.cost - freeForOperations(g, x)))
     const moved = fund(g, grp, x, Math.min(need, budget))
@@ -79,6 +87,7 @@ export function retainDivisionCeo(g: GameState, grp: Group, x: GroupMember): str
   if (!shares || grp.core.share - shares < .51 || !ownerControls(g, x.a)) return `Could not retain ${managerName(m)} with equity at ${x.a.name}: ownership/control constraints require your decision.`
   const before = grp.core.share
   grp.core.share -= shares
+  grp.core.executiveEquity = (grp.core.executiveEquity ?? 0) + shares
   for (const member of grp.members) member.b.invested *= grp.core.share / before
   syncMembers(grp)
   m.groupEquity = { id: grp.core.id, share: (m.groupEquity?.share ?? 0) + shares, credit: (m.groupEquity?.credit ?? 0) + due }; delete m.equityAsked
@@ -108,7 +117,7 @@ export function manageDivisionCeos(g: GameState, grp: Group): string[] {
         if (!b.public) b.valuation = Math.max(0, b.valuation - fee)
         const worth = bizWorth(g, b), gain = optimizerGain(g, b)
         const best = candidates.filter(m => freeForOperations(g, x) >= severance + m.salary).sort((a, c) => ceoValue(worth, c, gain) - ceoValue(worth, a, gain))[0]
-        if (best && (!current || ceoValue(worth, best, gain) > ceoValue(worth, current, gain) + (fee + severance) / 5)) {
+        if (best && (!current || current.skill < leader.skill || ceoValue(worth, best, gain) > ceoValue(worth, current, gain) + (fee + severance) / 5)) {
           const proposal = { kind: 'hire' as const, by: 'ceo' as const, amount: best.salary, skill: best.skill, label: `Hire ${managerName(best)} as CEO of ${x.a.name}` }
           if (!needsVote(g, x.a, b, proposal) || vote(g, x.a, b, proposal, { quiet: true }).passed) {
             handOver(g, x.a, b, best)
@@ -130,7 +139,8 @@ export function delegationMenu(id: string): MenuGroup {
     if (!grp) return []
     const active = grp.core.autonomous !== false, equity = grp.core.autoEquity !== false
     return [
-      { type: 'info', id: `group.delegate.help.${id}`, emoji: '📋', text: `A hired group CEO reviews every subsidiary, hires CEOs at their own level or higher, retains executives, pays down expensive debt, selects mandates and routes spare capital to viable investments. Skill drives effectiveness: skill 100 reaches 100% modeled capital allocation, not guaranteed profits. Reserves, earmarked projects, board limits and minority ownership are protected. Family appointments are not silently replaced. Your personal bank account is never used. Retention awards transfer value-weighted group shares from your holding and preserve subsidiary cash pooling. Grants are permanent; the group CEO cannot award themselves shares.` },
+      { type: 'info', id: `group.delegate.help.${id}`, emoji: '📋', text: `Your CEO sweeps surplus profits into group cash holdings, allocates division budgets, creates viable new businesses, recruits CEOs at their own rating or higher and handles salary requests. Ratings 85–99 have powerful foresight; 100-rated CEOs guarantee positive annual company net profit through separately reported strategic trading income. This is a game ability, not a real-world investment claim. Operating reserves, commitments and minority shareholders stay protected. Family appointments are not silently replaced. Personal cash is never used. Permanent retention grants come from your shares; the group CEO cannot award themselves equity.` },
+      { type: 'action', id: `group.delegate.found.${id}`, label: grp.core.autoFound === false ? 'Allow CEO to Create Businesses' : 'Pause CEO Business Creation', emoji: '🏗️', subtitle: 'At most one funded division per year; maximum 32 divisions', disabledReason: gg => groupBlock(gg), run: gg => { const cur = liveGroup(gg, id); if (cur && !groupBlock(gg)) { cur.core.autoFound = cur.core.autoFound === false; saveGroup(gg, cur) } } },
       { type: 'action', id: `group.delegate.toggle.${id}`, label: active ? 'Pause Autonomous Management' : 'Enable Autonomous Management', emoji: '🤖', disabledReason: gg => groupBlock(gg), run: gg => { const cur = liveGroup(gg, id); if (cur && !groupBlock(gg)) { cur.core.autonomous = cur.core.autonomous === false; saveGroup(gg, cur) } } },
       { type: 'action', id: `group.delegate.equity.${id}`, label: equity ? 'Disable Automatic CEO Equity' : 'Allow Automatic CEO Equity', emoji: '🤝', disabledReason: gg => groupBlock(gg), confirm: () => equity ? 'Stop future automatic grants? Already granted ownership stays with its recipients.' : 'Authorize the group CEO to permanently transfer value-weighted group shares to retain subsidiary executives? Your future dividends and proceeds decrease.', run: gg => { const cur = liveGroup(gg, id); if (cur && !groupBlock(gg)) { cur.core.autoEquity = cur.core.autoEquity === false; saveGroup(gg, cur); notice(gg, 'Retention Policy', `Automatic group equity for subsidiary CEOs is now ${cur.core.autoEquity === false ? 'disabled' : 'enabled'}. Existing grants remain vested.`, { emoji: '🤝' }) } } },
       ...grp.core.memo.map((text, i) => ({ type: 'info' as const, id: `group.delegate.report.${id}.${i}`, emoji: '📝', text })),

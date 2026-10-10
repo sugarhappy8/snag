@@ -141,7 +141,7 @@ export function nationalMarket(g: GameState, industry: string, country: string, 
 }
 
 /** A 90/95-rated CEO has a material edge, regardless of industry. Bounded, never a profit guarantee. */
-export function executiveEdge(skill: number): number { return Math.pow(clampN((skill - 75) / 25, 0, 1), 1.5) }
+export function executiveEdge(skill: number): number { return skill >= 85 ? .65 + .85 * clampN((skill - 85) / 15, 0, 1) : Math.pow(clampN((skill - 75) / 25, 0, 1), 1.5) }
 
 export function businessEffects(g: GameState, b: BizState, country: string, year: number) {
   if (!b.expansion) return { demand: 1, cost: 1, capacity: 1, patents: 0 }

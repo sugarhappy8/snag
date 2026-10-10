@@ -170,8 +170,11 @@ describe('dedicated financial institutions', () => {
     expect(financeView(live).algoResearching).toBe(false)
     expect(financeView(live).algoEdge).toBeGreaterThan(0)
     expect(financeAlgoBlock(g, live)).toMatch(/six years/)
+    const originalEdge = financeView(live).algoEdge
     for (let y = 2028; y <= 2032; y++) simulateFinanceYear(g, live, y, 0)
-    expect(financeView(live).algoEdge).toBe(0)
+    // The expanded quant model retains a powerful but decaying edge beyond five years.
+    expect(financeView(live).algoEdge).toBeGreaterThan(0)
+    expect(financeView(live).algoEdge).toBeLessThan(originalEdge)
   })
 
   it('cannot turn repeated policy or outreach clicks into earnings and ignores stale actions', () => {

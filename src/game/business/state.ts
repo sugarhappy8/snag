@@ -101,6 +101,8 @@ export interface Statement {
   upkeep: number
   other: number
   otherIncome: number
+  /** Included in otherIncome, never additional cash on reload. */
+  strategicIncome?: number
   ownerPay: number
   pbt: number
   corpTax: number
@@ -404,6 +406,7 @@ function readStatement(v: Json | undefined): Statement | null {
   if (!v || typeof v !== 'object' || Array.isArray(v) || typeof v.year !== 'number' || !Number.isFinite(v.year)) return null
   const out = {} as Record<keyof Statement, number>
   for (const k of STATEMENT_KEYS) out[k] = num(v[k])
+  if (typeof v.strategicIncome === 'number') out.strategicIncome = Math.max(0, num(v.strategicIncome))
   out.year = Math.round(out.year)
   return out as Statement
 }
@@ -419,7 +422,7 @@ function readManager(v: Json | undefined): Manager | null {
     salary: Math.max(0, num(v.salary)),
     since: Math.round(num(v.since)),
     ...(typeof v.equity === 'number' ? { equity: clampN(num(v.equity), 0, .5) } : {}),
-    ...(v.groupEquity && typeof v.groupEquity === 'object' && !Array.isArray(v.groupEquity) && str(v.groupEquity.id) ? { groupEquity: { id: str(v.groupEquity.id), share: clampN(num(v.groupEquity.share), 0, .5), credit: clampN(num(v.groupEquity.credit), 0, .5) } } : {}),
+    ...(v.groupEquity && typeof v.groupEquity === 'object' && !Array.isArray(v.groupEquity) && str(v.groupEquity.id) ? { groupEquity: { id: str(v.groupEquity.id), share: clampN(num(v.groupEquity.share), 0, .999), credit: clampN(num(v.groupEquity.credit), 0, .5) } } : {}),
     ...(typeof v.equityAsked === 'number' ? { equityAsked: Math.round(num(v.equityAsked)) } : {}),
     ...(style ? { style } : {}),
     ...(typeof v.integrity === 'number' ? { integrity: clampN(num(v.integrity, 70), 0, 100) } : {}),

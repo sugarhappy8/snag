@@ -50,6 +50,8 @@ import { exchangeMove, maxProduction, refreshValue } from './economy'
 import { earmarkedCash } from './gamestudio'
 import { bizOf, businessAssets, runsIt, type BizState, type Manager } from './state'
 import { clampN, money, pct } from './util'
+import { sweepGroupTreasury } from './group-treasury'
+import { foundGroupVenture } from './group-ventures'
 
 function inputs(grp: Group): DivisionInput[] {
   return grp.members.map((x) => ({ id: x.a.id, b: x.b, own: x.m.own }))
@@ -169,7 +171,7 @@ function ceoTurn(g: GameState, grp: Group): string[] {
   if (grp.core.ceo !== 'manager' || !m) return []
   const smart = m.skill > SMART_SKILL
   if (grp.core.autonomous === false) return ['Autonomous portfolio management is paused.']
-  const lines: string[] = manageDivisionCeos(g, grp)
+  const lines: string[] = [...sweepGroupTreasury(g, grp), ...manageDivisionCeos(g, grp)]
   // Expensive debt first: the treasury earns less than the loans cost.
   const debtors = grp.members.filter((x) => x.b.debt > 0 && x.b.debtRate >= 0.05).sort((p, q) => q.b.debtRate - p.b.debtRate)
   for (const x of debtors) {
@@ -190,7 +192,7 @@ function ceoTurn(g: GameState, grp: Group): string[] {
       }
     }
   }
-  lines.push(...allocateGroupCapital(g, grp))
+  lines.push(...foundGroupVenture(g, grp), ...allocateGroupCapital(g, grp))
   for (const x of grp.members) { const retention = retainDivisionCeo(g, grp, x); if (retention) lines.push(retention) }
   if (!lines.length) lines.push(smart ? 'Kept the divisions on plan; nothing needed fixing this year.' : 'Kept the divisions ticking over.')
   return lines
@@ -326,6 +328,7 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
     if (syn.hq < core.manager.salary) core.memo.push(`Group CEO salary was underpaid: ${money(syn.hq)} of ${money(core.manager.salary)}; project cash was protected.`)
   }
   syn.hq += core.familyPay ?? 0
+  if (core.ceo === 'manager' && core.autonomous !== false) core.memo.push(...sweepGroupTreasury(g, grp))
   const lines = core.memo
   boardReview(g, grp)
   revalue(g, grp, fiscal)

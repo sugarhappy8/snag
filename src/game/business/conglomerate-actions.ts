@@ -59,7 +59,7 @@ import { LASTING_YEARS, refreshValue, valuationOf } from './economy'
 import { capitalGainsTax, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
 import { clearGroupCeoJob } from './conglomerate-job'
-import { BIZ_VERSION, bizOf, ceoJob, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
+import { BIZ_VERSION, bizOf, ceoJob, executiveEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
 import { clampN, cleanName, markBest, money, num, pct, rec, round2, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ export function groupBoardView(g: GameState, grp: Group) {
 }
 
 /** The gate for the group's decisions: true when it may go ahead (voting when it must). */
-function groupAllows(g: GameState, grp: Group, p: Proposal): boolean {
+export function groupAllows(g: GameState, grp: Group, p: Proposal): boolean {
   if (!groupNeedsVote(g, grp, p)) return true
   return groupVote(g, grp, p).passed
 }
@@ -280,7 +280,7 @@ function pool(g: GameState, grp: Group, to: GroupMember, need: number, from?: { 
 
 /** The division that holds the group's treasury: the biggest one the group fully owns. */
 export function treasuryOf(grp: Group): GroupMember {
-  return grp.members.find((x) => x.m.own >= 0.999) ?? [...grp.members].sort((p, q) => q.m.own - p.m.own)[0]
+  return grp.members.find(x => x.a.id === grp.core.treasuryId && x.m.own >= .999) ?? grp.members.find((x) => x.m.own >= 0.999) ?? [...grp.members].sort((p, q) => q.m.own - p.m.own)[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -420,6 +420,20 @@ function admit(g: GameState, grp: Group, joiners: { a: Asset; b: BizState }[], w
   }
   core.share = clampN(share, 0.001, 1)
   if (prior > 0 && credited > 0) diluteGroupEquity(grp, prior / (prior + credited))
+  // Every outside holder swaps into group shares, including vested executives.
+  // Convert after diluting the existing group so a newcomer's award is not diluted twice.
+  joiners.forEach((j, i) => {
+    const vested = Math.min(Math.max(0, 1 - j.b.share), executiveEquity(j.b))
+    if (!vested) return
+    const weight = value(i) / Math.max(1, prior + credited)
+    core.executiveEquity = (core.executiveEquity ?? 0) + vested * weight
+    const manager = j.b.manager, active = Math.min(vested, manager?.equity ?? 0)
+    if (manager && active > 0) {
+      manager.groupEquity = { id: core.id, share: active * weight, credit: active }
+      delete manager.equity
+    }
+    j.b.executiveEquity = 0
+  })
   spreadBasis(grp)
   if (core.mandate) for (const j of joiners) if (ownerControls(g, j.a)) setMandate(g, j.a, j.b, core.mandate)
   const d = conglomerateDiscount(inputs(grp))

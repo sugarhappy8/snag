@@ -28,9 +28,19 @@ export function financeEraBlock(g: GameState, industry: string, countryId = g.ch
 
 /** Real named employees, morale and the CEO affect research, credit and retention. */
 export function financeTeamSkill(g: GameState, b: BizState): number {
-  const leader = b.ceo === 'manager' ? b.manager?.skill ?? 35 : g.character.stats.smarts * .55 + g.character.hidden.discipline * .25 + (hasTalent(g, 'Investing') ? 20 : 0)
+  const leader = financeLeaderSkill(g, b)
   const staff = b.staff.length ? b.staff.reduce((s, x) => s + x.skill * (.55 + x.morale / 220), 0) / b.staff.length : 38
-  return clampN(leader * .3 + staff * .7, 10, 99)
+  return clampN(Math.max(leader * .6 + staff * .4, leader >= 85 ? leader * .96 : 0), 10, 100)
+}
+export function financeLeaderSkill(g: GameState, b: BizState): number {
+  return clampN(b.ceo === 'manager' ? b.manager?.skill ?? 35 : Math.max(hasTalent(g, 'Business') ? 95 : 0, g.character.stats.smarts * .55 + g.character.hidden.discipline * .25 + (hasTalent(g, 'Investing') ? 20 : 0)), 10, 100)
+}
+/** Fictional elite quantitative edge; capacity prevents unlimited returns on unlimited capital. */
+export function financeQuantEdge(g: GameState, b: BizState, year: number): number {
+  const f = financeView(b), skill = financeTeamSkill(g, b)
+  const privateFirm = b.industry === 'investmentFirm' && f.model === 'private'
+  const signal = f.algoEdge + f.researchQuality / (privateFirm ? 125 : 1000)
+  return signal * (.4 + skill / 125) / Math.max(1, (f.aum + f.tradingCapital * f.leverage) / algorithmCapacity(g, b, year))
 }
 
 export function financeAlgoCost(b: BizState): number {
@@ -133,13 +143,14 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
   const research = f.researchBudget * funded, technology = f.technologyBudget * funded, outreach = f.marketingBudget * funded
   const infrastructure = financeInfrastructure(g, b, year)
   const quants = b.staff.filter(x => x.focus === 'quality' || x.focus === 'finance')
-  const quantSkill = quants.reduce((s, x) => s + x.skill * x.morale / 100, 0) / Math.max(1, quants.length)
+  const quantSkill = Math.max(quants.reduce((s, x) => s + x.skill * x.morale / 100, 0) / Math.max(1, quants.length), financeLeaderSkill(g, b) >= 85 ? financeLeaderSkill(g, b) * .85 : 0)
   f.lastResearch = research
   f.computing = clampN(f.computing * .92 + Math.log1p(technology / 50_000) * 5, 0, infrastructure.stage * 20)
-  f.researchQuality = clampN(f.researchQuality * .9 + Math.log1p(research / 50_000) * (quantSkill / 20) * Math.sqrt(quants.length) * (1 + f.computing / 100), 0, 100)
-  const capacity = algorithmCapacity(g, b, year)
+  f.researchQuality = clampN(f.researchQuality * .94 + Math.log1p(research / 50_000) * (quantSkill / 16) * Math.sqrt(Math.max(1, quants.length)) * (1 + f.computing / 100), 0, 100)
   const marketReturn = clampN((m.exchange?.drift ?? .055) + (cycle - 1) * .5 + rng.float(-.2, .2) * risk, -.85, .65)
-  const edge = (f.algoEdge + f.researchQuality / 2500) * (.5 + skill / 200) / Math.max(1, (f.aum + f.tradingCapital * f.leverage) / capacity)
+  const edge = financeQuantEdge(g, { ...b, financeFirm: f as unknown as import('../types').Json }, year)
+  const foresight = financeLeaderSkill(g, b) >= 85 ? .35 + .65 * (financeLeaderSkill(g, b) - 85) / 15 : 0
+  const skilledReturn = marketReturn * (1 - foresight * .9) + .45 * foresight + (skill - 50) * .0007
   if (investment && f.model === 'brokerage') {
     const active = clampN(.2 + f.confidence / 150 - f.commission * 15, .05, .9)
     f.lastTrades = Math.round(f.accounts * active * (infrastructure.electronic ? 60 : 12) * open)
@@ -155,7 +166,7 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
     f.confidence = clampN(f.confidence + (f.controls - 55) / 20 + (f.staffing - 1) * 3, 5, 98)
   } else if (investment) {
     const starting = f.aum
-    const result = clampN(marketReturn + (skill - 50) * .0007 + edge + rng.float(-.025, .025), -.85, .8)
+    const result = clampN(skilledReturn + edge + rng.float(-.025, .025) * (1 - foresight), -.85, 1.8)
     f.lastReturn = result
     const beforeFees = Math.max(0, starting * (1 + result * open))
     const management = beforeFees * f.feeRate * open
@@ -179,7 +190,7 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
       const allocated = Math.min(f.tradingCapital, Math.max(0, discretionary - research - technology - outreach))
       const leverage = Math.min(f.leverage, 1 + f.controls / 50)
       // Losses include leveraged exposure, but borrowing never becomes distributable cash.
-      f.lastTrading = allocated * clampN((marketReturn + edge - .003) * leverage - (leverage - 1) * (economy.rate + .02), -leverage, leverage) * open
+      f.lastTrading = allocated * clampN((skilledReturn + edge - .003) * leverage - (leverage - 1) * (economy.rate + .02), -leverage, leverage) * open
       if (f.lastTrading >= 0) revenue += f.lastTrading
       else cogs -= f.lastTrading
     }
@@ -188,8 +199,8 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
     const creditSkill = clampN(skill * .7 + f.controls * .3 + (f.staffing - 1) * 15, 0, 100)
     const requirements = bankRequirements(g, b, year)
     const requiredReserve = Math.max(f.reserveRatio, requirements.reserve)
-    const defaultsRate = clampN((.012 + (100 - creditSkill) * .00035) * risk + Math.max(0, 1 - cycle) * .2 + Math.max(0, f.loanRate - .1) * .2 + Math.max(0, economy.defaults - .025), .004, .3)
-    const crisis = rng.chance((100 - creditSkill) / 1600 * risk)
+    const defaultsRate = clampN(((.012 + (100 - creditSkill) * .00035) * risk + Math.max(0, 1 - cycle) * .2 + Math.max(0, f.loanRate - .1) * .2 + Math.max(0, economy.defaults - .025)) * (1 - .9 * foresight), .001, .3)
+    const crisis = rng.chance((100 - creditSkill) / 1600 * risk * (1 - foresight))
     const losses = f.loanBook * (defaultsRate + (crisis ? rng.float(.03, .15) : 0)) * open
     f.loanBook = Math.max(0, f.loanBook - losses)
     // Shareholders cover credit losses. Segregated customer assets are replenished,
@@ -201,7 +212,7 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
     const capitalRatio = Math.max(0, b.cash - b.debt) / Math.max(1, oldDeposits)
     const liquid = f.reserves / Math.max(1, oldDeposits)
     const runRisk = clampN((60 - f.confidence) / 300 + Math.max(0, .2 - liquid) * .8 + Math.max(0, .02 - capitalRatio) * 4 + (online ? .015 : 0) + Math.max(0, .23 - economy.liquidity), .005, .5)
-    const run = rng.chance(runRisk)
+    const run = rng.chance(runRisk * (1 - foresight * .95))
     const withdrawalRate = run ? rng.float(.2, .65) : rng.float(.02, .1)
     const withdrawals = oldDeposits * withdrawalRate
     const matured = f.loanBook * .2
@@ -273,9 +284,9 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
   if (f.algoResearching && f.algoStarted <= year) {
     f.algoProgress += 1
     if (f.algoProgress >= 2) {
-      f.algoResearching = false; f.algoCompleted = year; f.algoEdge = .025 + skill / 4000
+      f.algoResearching = false; f.algoCompleted = year; f.algoEdge = .5 + skill / 200
     }
-  } else f.algoEdge = Math.max(0, f.algoEdge - .012)
+  } else f.algoEdge = Math.max(0, f.algoEdge * .96 - (research > 0 ? 0 : .01))
   saveFinance(b, f)
   const stmt: Statement = { year, demand: 0, sold: 0, produced: 0, spoiled: 0, price: 0,
     revenue: Math.round(revenue), salesTax: 0, netRevenue: Math.round(revenue), cogs: Math.round(cogs), wages: Math.round(wages), keyStaff: Math.round(keyStaff), rent: Math.round(rent), marketing: Math.round(marketing), interest: Math.round(interest), upkeep: Math.round(upkeep), other: b.yearCosts, otherIncome: b.yearIncome,
@@ -289,18 +300,25 @@ export function simulateFinanceYear(g: GameState, b: BizState, year: number, own
 }
 
 export function financeManagerTurn(g: GameState, b: BizState): void {
-  const f = financeView(b), skill = b.manager?.skill ?? 35
+  const f = financeView(b), skill = financeLeaderSkill(g, b)
   f.strategy = skill >= 85 ? 'balanced' : skill < 45 ? 'aggressive' : 'cautious'
-  f.controls = clampN(skill, 25, 95)
+  f.controls = clampN(skill, 25, 100)
   if (b.industry !== 'investmentFirm') f.reserveRatio = skill >= 80 ? .3 : .2
-  if (skill >= 90) {
+  if (skill >= 85) {
     const e = economyOf(g, b.countryId)
-    f.loanRate = clampN(e.rate + .035 + e.defaults * .3, .025, .3)
+    f.loanRate = clampN(e.rate + .05 + e.defaults * .15, .025, .3)
     f.depositRate = clampN(e.rate * .6, 0, .1)
-    f.lending = e.defaults > .06 ? .5 : .85
+    f.lending = e.defaults > .06 && skill < 95 ? .65 : 1
     f.staffing = f.confidence < 55 ? 1.2 : 1
-    f.leverage = e.growth < 0 || e.defaults > .06 ? 1 : 1.25
+    f.leverage = e.growth < 0 && skill < 95 ? 1 : 1.5 + (skill - 85) / 30
     f.marketingBudget = Math.min(Math.max(0, b.last?.net ?? 0) * .1, Math.max(0, b.cash) * .025)
+    const usable = Math.max(0, b.cash - (b.manager?.salary ?? 0) * 2 - localEcon(b.industry, b.countryId, b.city).rent * totalOutlets(b) * 2)
+    f.technologyBudget = usable * .025
+    if (b.industry === 'investmentFirm' && f.model === 'private') {
+      f.researchBudget = usable * .06
+      f.tradingCapital = usable * (.55 + (skill - 85) / 100)
+      f.feeRate = .015
+    }
   }
   saveFinance(b, f)
 }
@@ -314,7 +332,7 @@ export function financeInfo(g: GameState, b: BizState): string {
 
 export function queueFinanceReport(g: GameState, a: Asset, b: BizState): void {
   const f = financeView(b)
-  notice(g, `${a.name}: Financial Institution Report`, `${financeInfo(g, b)}\n${b.last?.year ?? g.year}: fee/interest income ${money(b.last?.revenue ?? 0)}, net ${money(b.last?.net ?? 0)}. Own company cash ${money(b.cash)}.\n${f.lastDefaults > 0 ? `Credit and liquidity losses: ${money(f.lastDefaults)}. ` : ''}${f.lastWithdrawals > 0 ? `Client withdrawals ${money(f.lastWithdrawals)}. ` : ''}${economicReportSummary(b)}\nSet risk, reserves and rates from Financial Operations. This is not a price-and-production company.`, { emoji: a.emoji, tone: (b.last?.net ?? 0) >= 0 ? 'good' : 'bad' })
+  notice(g, `${a.name}: Financial Institution Report`, `${financeInfo(g, b)}\n${b.last?.year ?? g.year}: fee/interest income ${money(b.last?.revenue ?? 0)}, net ${money(b.last?.net ?? 0)}. Own company cash ${money(b.cash)}.\n${b.last?.strategicIncome ? `Perfect-foresight strategic trading income: ${money(b.last.strategicIncome)}, included in other income and taxed. ` : ''}${f.lastDefaults > 0 ? `Credit and liquidity losses: ${money(f.lastDefaults)}. ` : ''}${f.lastWithdrawals > 0 ? `Client withdrawals ${money(f.lastWithdrawals)}. ` : ''}${economicReportSummary(b)}\nSet risk, reserves and rates from Financial Operations. This is not a price-and-production company.`, { emoji: a.emoji, tone: (b.last?.net ?? 0) >= 0 ? 'good' : 'bad' })
 }
 
 export function financeNodes(g: GameState, a: Asset): MenuNode[] {
@@ -323,6 +341,8 @@ export function financeNodes(g: GameState, a: Asset): MenuNode[] {
     disabledReason: (gg) => manageBlock(gg, a), run })
   const nodes: MenuNode[] = [{ type: 'info', id: `finance.${a.id}.books`, text: financeInfo(g, b), emoji: a.emoji },
     { type: 'info', id: `finance.${a.id}.risk`, text: `Risk: ${f.strategy} · controls ${Math.round(f.controls)}/100 · research edge ${pct(f.algoEdge, 1)}${f.algoResearching ? ` (testing year ${f.algoProgress}/2)` : ''}. Named employees' skills and morale drive outcomes. Customer principal cannot be paid as dividends, used for research, or counted as equity.`, emoji: '🛡️' }]
+  if (hasTalent(g, 'Business')) nodes.push({ ...action('optimize', 'Apply Business-Talent Financial Strategy', gg => { const current = findBusiness(gg, a.id); if (!current || manageBlock(gg, current) || !hasTalent(gg, 'Business')) return; const bb = bizOf(gg, current); financeManagerTurn(gg, bb); notice(gg, 'Financial Strategy Optimized', 'Rates, risk controls, research, infrastructure and own-capital trading allocations were optimized. Budgets are funded and charged at the next settlement; customer money stays separate.', { emoji: '🧠' }) }), hint: () => 'Elite underwriting and market foresight. Private firms build quantitative research and reinvest shareholder capital.' })
+  if (investment && f.model === 'private') nodes.push({ type: 'info', id: `finance.${a.id}.quantPower`, emoji: '🧠', text: `Quantitative strategy: ${pct(financeQuantEdge(g, b, g.year), 1)} modeled annual research edge before market movement, leverage, costs and tax. Fund research and technology; larger books dilute the edge. Elite CEOs and Business talent add foresight. These deliberately powerful game returns are not real investment forecasts.` })
   for (const strategy of ['cautious', 'balanced', 'aggressive'] as const) nodes.push(action(`risk.${strategy}`, `${strategy[0].toUpperCase()}${strategy.slice(1)} ${investment ? 'Portfolio' : 'Credit'} Mandate`, (gg) => setFinancePolicy(gg, a.id, 'strategy', strategy), strategy === 'aggressive' ? 'Higher exposure and downside; no guaranteed outperformance' : strategy === 'cautious' ? 'Less upside; lower default and market risk' : 'Balance growth and capital protection'))
   const slider = (key: FinancePolicy, label: string, min: number, max: number, current: number, scale: number, explain: (gg: GameState, bb: BizState, value: number) => string, moneyInput = false, step = 1): MenuNode => ({
     ...action(key, label, () => {}), type: 'action', input: { kind: 'slider', label, min, max, step, money: moneyInput, unit: moneyInput ? undefined : scale === 100 ? '%' : '', defaultValue: () => String(current * scale),

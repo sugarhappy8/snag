@@ -6,11 +6,13 @@ import { recordEconomicActivity } from '../economy'
 import { readInventionIp } from '../inventor-state'
 import { isInventionField, type InventionField, PRODUCT_SPECS } from '../inventor-data'
 import { inventionLeakFactor } from '../invention-impact'
-import type { GameState, Json, MenuNode } from '../types'
+import type { Asset, GameState, Json, MenuNode } from '../types'
 import { isResearchKind, isInventionTier, nationalPatentLaw, type InventionTier, type PatentProtection } from './inventions'
 import { expansionOf, nationalMarket, protectedIn } from './dynamics'
 import { manageBlock } from './gate'
-import { boardAllows } from './board-vote'
+import { boardAllows, capexLeft, noteSpend, reserveDollars } from './board-vote'
+import { boardOf } from './board-state'
+import { earmarkedCash } from './gamestudio'
 import { localEcon, refreshValue, valuationOf, yearFixed } from './economy'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 export { inventionFabValue, inventionInventoryValue } from './invention-fabs'
@@ -78,6 +80,53 @@ export function inventionProductsOf(b: BizState): InventionProduct[] {
   }))
 }
 export function saveInventionProducts(b: BizState, products: InventionProduct[]): void { b.inventionProducts = products as unknown as Json }
+
+/** Assigned IP is an operating product: the CEO prices it, funds fabs and schedules manufacture. */
+export function manageInventionProducts(g: GameState, a: Asset, b: BizState, year: number): void {
+  if (b.ceo !== 'manager' || !b.manager || /^(bank|onlineBank|investmentFirm)$/.test(b.industry)) return
+  const products = inventionProductsOf(b)
+  if (!products.length) return
+  const board = boardOf(b), skill = b.manager.skill
+  const reserve = earmarkedCash(a) + reserveDollars(b, board) + b.manager.salary
+  const efficiency = Math.max(.15, Math.min(1, skill / 100))
+  for (const p of products.sort((a, b) => a.id.localeCompare(b.id))) {
+    if (p.lastYear >= year || p.started > year || p.rights === 'license' && p.expires <= year) continue
+    const cost = effectiveInventionUnitCost(p)
+    const ref = inventionDemandQuote(g, b, p, year).referencePrice
+    const wage = localEcon(b.industry, b.countryId, b.city).wage
+    const staffRate = UNITS_PER_STAFF[p.kind] * Math.max(.2, b.quality / 100) * Math.pow(1.08, p.upgradeLevel ?? 0)
+    const unit = cost + wage / staffRate
+    let best = { price: p.price, demand: 0, profit: -Infinity }
+    for (const ratio of [.65, 1, 1.3, 1.7, 2.3, 3.2]) {
+      const price = Math.min(MAX_INVENTION_PRICE, Math.max(unit * 1.2, ref * ratio))
+      const demand = inventionDemandQuote(g, b, { ...p, price }, year).demand
+      const profit = demand * (price * (1 - p.royalty) - unit)
+      if (profit > best.profit) best = { price, demand, profit }
+    }
+    p.price = Math.round(best.price * 100) / 100
+    const free = Math.max(0, b.cash - reserve)
+    const setup = p.fabInvested ? 0 : FAB_SETUP[p.kind]
+    const budget = Math.min(free * .55 * efficiency, capexLeft(g, b, board))
+    const additional = Math.max(0, Math.min(MAX_INVENTION_OUTPUT - (p.fabCapacity ?? 0), Math.ceil(best.demand - inventionFabCapacity(p)), Math.floor((budget - setup) / FAB_UNIT_CAPEX[p.kind])))
+    if (additional > 0 && best.profit > 0) {
+      const investment = setup + additional * FAB_UNIT_CAPEX[p.kind]
+      if (investment < best.profit * 4) {
+        b.cash -= investment; noteSpend(g, board, investment)
+        p.fabCapacity = (p.fabCapacity ?? 0) + additional
+        p.fabInvested = (p.fabInvested ?? 0) + investment
+      }
+    }
+    // Paid, one-step annual upgrades only when the modeled saving covers their cost.
+    const level = p.upgradeLevel ?? 0
+    const upgradeCost = Math.round(Math.max(5_000, (p.fabCapacity ?? 0) * FAB_UNIT_CAPEX[p.kind] * .2) * Math.pow(1.35, level))
+    if (skill >= 85 && (p.fabInvested ?? 0) > 0 && level < MAX_UPGRADES && upgradeCost <= Math.min(Math.max(0, b.cash - reserve) * .2, capexLeft(g, b, board)) && upgradeCost < Math.min(best.demand, inventionFabCapacity(p)) * unit * .2 * 4) {
+      b.cash -= upgradeCost; noteSpend(g, board, upgradeCost)
+      p.upgradeLevel = level + 1; p.upgradeInvested = (p.upgradeInvested ?? 0) + upgradeCost
+    }
+    p.production = best.profit > 0 ? Math.floor(Math.max(0, Math.min(inventionFabCapacity(p), best.demand * efficiency - p.inventory, Math.max(0, b.cash - reserve) / Math.max(.01, unit)))) : 0
+  }
+  saveInventionProducts(b, products)
+}
 export function newInventionProduct(id: string, name: string, field: InventionField, kind: InventionTier, year: number): InventionProduct {
   const spec = PRODUCT_SPECS[kind]
   return { id, ipId: id, name, field, kind, price: spec.price, unitCost: spec.cost, potential: spec.demand, production: 100, inventory: 0, rights: 'owned', royalty: 0, expires: 0, protections: [], started: year, lastYear: -1, sold: 0, revenue: 0, costs: 0, fabCapacity: 0, fabInvested: 0, upgradeLevel: 0, upgradeInvested: 0 }

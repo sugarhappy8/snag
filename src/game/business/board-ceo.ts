@@ -36,6 +36,7 @@ import { clampN, money, plural, priceCapOf, round2, unitMoney, units } from './u
 import { bestResilienceMove } from './supply-resilience'
 import { inputContractQuote, purchaseEquipmentUpgrade, purchaseInputContract, purchaseTraining } from './supply-policy'
 import { readSupplyPolicy, saveSupplyPolicy } from './supply-policy-state'
+import { inGroup } from './conglomerate-state'
 
 /** Years an investment is counted for (the expansion hints use the same yardstick). */
 export const MARGIN_YEARS = 5
@@ -630,6 +631,8 @@ function debtTurn(t: Turn): void {
 /** Pay spare cash to the shareholders under a cash (or profit) mandate; the owner's share is income. */
 function payoutTurn(t: Turn): void {
   const { g, a, b } = t
+  // Group earnings stay in the corporate treasury. Only an explicit group dividend pays the owner.
+  if (inGroup(g, b)) return
   const mandate = t.st.mandate
   if (mandate !== 'cash' && mandate !== 'profit') return
   const free = Math.max(0, payableCash(a, b) - reserveDollars(b, t.st) - t.reserved)
@@ -655,7 +658,7 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   const m = b.manager
   if (!m || b.ceo !== 'manager') return
   const st = boardOf(b)
-  const err = clampN((100 - m.skill) / 100, 0, 0.5)
+  const err = clampN((100 - m.skill) / (m.skill >= 85 ? 500 : 100), 0, 0.5)
   const t: Turn = { g, a, b, m, st, judge: (v) => v * (1 + (rand(g) * 2 - 1) * err), lines: [], moved: 0, big: false, reserved: 0 }
   const startCash = Math.max(0, b.cash)
   const baseline = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
@@ -670,7 +673,7 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   b.production = plan.production
   payoutTurn(t)
   const planned = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
-  t.lines.unshift(`Skill ${m.skill}/100 (${m.skill === 100 ? 'extraordinary' : m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}). Same-market operating forecast: ${money(planned)} versus ${money(baseline)} keeping the old plan; estimated difference ${money(planned - baseline)}. Cash investment commitments are listed separately below. This is not realized or guaranteed profit.`)
+  t.lines.unshift(`Skill ${m.skill}/100 (${m.skill === 100 ? 'extraordinary' : m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}). Same-market operating forecast: ${money(planned)} versus ${money(baseline)} keeping the old plan; estimated difference ${money(planned - baseline)}. Cash investment commitments are listed separately below. ${m.skill === 100 ? 'The perfect-foresight game ability separately guarantees positive annual net earnings; any additional strategic trading income appears in the accounts and is taxed.' : 'This operating forecast is not realized or guaranteed profit.'}`)
   if (!b.public) b.valuation = valuationOf(b)
   refreshValue(a, b)
   const def = industryDef(b.industry)

@@ -2,7 +2,7 @@
 import { log, notice } from '../core'
 import type { Asset, GameState, MenuNode } from '../types'
 import { ownerControls } from './board'
-import { installManager } from './career'
+import { installManager, managerCandidate } from './career'
 import { allGroups, groupById, groupIdOf, liveGroup, saveGroup, syncMembers } from './conglomerate-state'
 import { interimCeo } from './conglomerate-actions'
 import { clearGroupCeoJob } from './conglomerate-job'
@@ -29,6 +29,7 @@ export function grantCeoEquity(g: GameState, id: string, group = false): boolean
     const due = equityDue(m), before = grp.core.share
     if (!due || before - due < .01) return false
     grp.core.share -= due
+    grp.core.executiveEquity = (grp.core.executiveEquity ?? 0) + due
     m.equity = (m.equity ?? 0) + due
     delete m.equityAsked
     for (const x of grp.members) x.b.invested *= grp.core.share / before
@@ -80,7 +81,11 @@ function retention(g: GameState, name: string, m: Manager): boolean {
 }
 
 export function executiveRetentionYear(g: GameState, a: Asset, b: BizState): void {
-  if (b.ceo === 'manager' && b.manager && retention(g, a.name, b.manager)) installManager(g, b)
+  if (b.ceo === 'manager' && b.manager && retention(g, a.name, b.manager)) {
+    const parent = groupById(g, groupIdOf(b))
+    const leader = parent?.core.ceo === 'manager' && parent.core.autonomous !== false ? parent.core.manager : null
+    installManager(g, b, leader ? managerCandidate(g, b, leader.skill) : undefined)
+  }
 }
 export function groupRetentionYear(g: GameState): void {
   for (const row of allGroups(g)) {
@@ -93,14 +98,14 @@ export function groupRetentionYear(g: GameState): void {
   }
 }
 
-/** Strong executives repair execution gradually, and never receive free cash or guaranteed profits. */
+/** Elite executives anticipate the current fiscal market and repair execution quickly. */
 export function executiveOperations(g: GameState, b: BizState, year: number, assetId = ''): void {
   if (b.ceo !== 'manager' || !b.manager || b.manager.skill < 85) return
   const edge = executiveEdge(b.manager.skill)
-  b.quality = Math.min(100, b.quality + 6 * edge)
-  b.morale = Math.min(100, b.morale + 8 * edge)
-  b.brand = Math.min(100, b.brand + 4 * edge)
-  if (b.manager.skill >= 90 && !isFinanceFirm(b) && b.industry !== 'gameStudio' && !['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity'].includes(b.industry)) {
+  b.quality = Math.min(100, b.quality + 18 * edge)
+  b.morale = Math.min(100, b.morale + 20 * edge)
+  b.brand = Math.min(100, b.brand + 14 * edge)
+  if (!isFinanceFirm(b) && b.industry !== 'gameStudio' && !['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity'].includes(b.industry)) {
     const plan = bestPlan(g, b, { quick: true, year, maxPrice: priceCapOf(g, assetId) ?? undefined })
     b.price = plan.price
     b.production = plan.production

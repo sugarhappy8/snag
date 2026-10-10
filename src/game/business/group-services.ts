@@ -46,6 +46,20 @@ export function toggleService(g: GameState, group: string, provider: string, cus
   notice(g, 'Internal Contract', exists ? 'External procurement restored for this service.' : 'Internal service contracted from next fiscal settlement. Delivery is limited by provider capacity, buyer spending and real delivery cost; generic purchasing/back-office bonuses are excluded for this buyer.')
   return true
 }
+/** Add all eligible missing pairs in one write. Repeating the command never toggles anything off. */
+export function assignAllServices(g: GameState, group: string): number {
+  const grp = groupById(g, group)
+  if (!grp || manageBlock(g, grp.members[0].a) || grp.core.share <= .5 || !grp.members.every(x => ownerControls(g, x.a))) return 0
+  const list = serviceContracts(g), before = list.length
+  for (const p of grp.members) for (const q of grp.members) {
+    const c = { group, provider: p.a.id, customer: q.a.id }
+    if (list.length >= 120 || !valid(g, grp, c) || list.some(x => x.group === group && x.provider === c.provider && x.customer === c.customer)) continue
+    list.push(c)
+  }
+  g.flags.groupServices = list as unknown as Json
+  notice(g, 'Internal Contracts Assigned', `${list.length - before} new eligible internal contracts assigned. Existing contracts were kept. The 120-contract portfolio limit, country rules, provider capacity and delivery costs still apply.`)
+  return list.length - before
+}
 /** Hold back up to 20% of providers' delivery capacity from external customers. */
 export function prepareInternalServices(g: GameState, fiscal: number): void {
   if (num(g.flags.groupServicesPrepared, -1) >= fiscal) return
@@ -113,6 +127,7 @@ export function groupServicesMenu(group: string): MenuNode {
     const grp = groupById(g, group)
     if (!grp) return []
     const rows: MenuNode[] = [{ type: 'info', id: 'group.services.info', emoji: 'ℹ️', text: 'Fully controlled divisions operating only in the same country can share services at delivery cost. Up to 20% of provider capacity is reserved, reducing external sales even if the contract later falls back to an external supplier. Internal invoices are eliminated from consolidated revenue. Disable contracts that are not worthwhile.' }]
+    rows.push({ type: 'action', id: `group.services.assignAll.${group}`, label: 'Assign All', emoji: '✅', subtitle: 'Assign every eligible internal contract; keep existing assignments', disabledReason: gg => { const current = groupById(gg, group); return !current ? 'Group unavailable.' : manageBlock(gg, current.members[0].a) ?? (current.core.share <= .5 || !current.members.every(x => ownerControls(gg, x.a)) ? 'Control the group and each division first.' : null) }, run: gg => { assignAllServices(gg, group) } })
     for (const p of grp.members) for (const q of grp.members) {
       const c = { group, provider: p.a.id, customer: q.a.id }
       const active = serviceContracts(g).some(x => x.provider === p.a.id && x.customer === q.a.id)

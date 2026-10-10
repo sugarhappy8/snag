@@ -13,6 +13,7 @@ import { boardYear } from './board'
 import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
 import { styleOf, syncCeo } from './career'
 import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
+import { settlePerfectForesight } from './executive-foresight'
 import { prepareInternalServices, settleInternalServices } from './group-services'
 import { inventionYear } from './expansion'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
@@ -35,7 +36,7 @@ import {
   valuationOf,
   yearFixed,
 } from './economy'
-import { commitInventionProducts, prepareInventionWorkforce, simulateInventionProducts } from './invention-products'
+import { commitInventionProducts, manageInventionProducts, prepareInventionWorkforce, simulateInventionProducts } from './invention-products'
 import { inventionLicenseBookedSales } from './invention-licensing'
 import { declareBankruptcy, ipoThreshold } from './exit'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
@@ -163,7 +164,8 @@ export function statementLines(b: BizState, s: Statement): AnnualReportData['lin
   if (s.interest > 0) lines.push(line('Interest', signed(-s.interest)))
   lines.push(line('Upkeep & depreciation', signed(-s.upkeep)))
   if (s.other > 0) lines.push(line('One-off costs', signed(-s.other)))
-  if (s.otherIncome > 0) lines.push(line('Other income', money(s.otherIncome), 'good'))
+  if (s.otherIncome - (s.strategicIncome ?? 0) > 0) lines.push(line('Other income', money(s.otherIncome - (s.strategicIncome ?? 0)), 'good'))
+  if (s.strategicIncome) lines.push(line('Perfect foresight · strategic trading income', money(s.strategicIncome), 'good'))
   if (s.ownerPay > 0) lines.push(line('Your salary', signed(-s.ownerPay)))
   lines.push(line('Profit before tax', signed(s.pbt), s.pbt >= 0 ? 'good' : 'bad'))
   if (s.corpTax > 0) lines.push(line(`Corporate tax (${Math.round(m.corporateTax * 100)}%)`, signed(-s.corpTax)))
@@ -427,6 +429,10 @@ export function yearlyBusinessImpl(g: GameState): void {
     const tech = isDeepTech(b)
     prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
+    if (b.ceo === 'manager') {
+      if (isFinanceFirm(b)) financeManagerTurn(g, b)
+      manageInventionProducts(g, a, b, fiscal)
+    }
     const previousRevenue = b.last?.revenue ?? 0
     const previousEmployment = b.last?.employees ?? b.employees
     // Ordinary companies should not pay the cost of quoting a second workforce
@@ -472,6 +478,8 @@ export function yearlyBusinessImpl(g: GameState): void {
       s.employees = b.employees; res.wantedStaff = b.employees
       commitInventionProducts(g, b, fiscal, manufactured, a.id)
     }
+    settlePerfectForesight(g, b, s)
+    if (s.strategicIncome) log(g, `${a.name}'s 100-rated company or group leadership earned ${money(s.strategicIncome)} of strategic trading income through perfect foresight. It is included once in other income and corporate tax; this game ability protects annual net earnings, not the market share price.`, 'good')
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
     recordEconomicReport(b, previousStatement, s)
     statementBridges.set(a.id, { previous: previousStatement, bookedNet: s.net })

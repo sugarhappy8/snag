@@ -42,6 +42,8 @@ import { readTech } from './deeptech-state'
 import { bizWorth, niceAmount } from './economy'
 import { bizOf, findBusiness, hasExecutiveShares, readBiz, runsIt, type BizState, type Manager, type Statement } from './state'
 import { clampN, markBest, money, num, pct, rec, str } from './util'
+import { groupById, groupIdOf } from './conglomerate-state'
+import { treasurySpare } from './group-treasury'
 
 export { registerGroupBoard, MANDATES, mandateDef, type BoardState, type Director, type GroupBoardInfo, type Limits, type Mandate } from './board-state'
 export { boardAllows, needsVote, passOdds, vote, type Proposal, type ProposalKind, type VoteResult } from './board-vote'
@@ -128,7 +130,10 @@ function directorTurnover(g: GameState, a: Asset, b: BizState, st: BoardState): 
  * a quarter past their own pay policy for talent), the better value on a tie of skill bands.
  */
 function boardPick(g: GameState, b: BizState, st: BoardState): Manager {
-  const list = shortlist(g, b, 'standard')
+  const parent = groupById(g, groupIdOf(b))
+  const minimum = parent?.core.ceo === 'manager' && parent.core.autonomous !== false ? parent.core.manager?.skill ?? 0 : 0
+  const list = shortlist(g, b, 'standard').filter(m => m.skill >= minimum)
+  if (!list.length) list.push(managerCandidate(g, b, minimum))
   const w = bizWorth(g, b)
   const gain = optimizerGain(g, b)
   const cap = payCap(b, st) * 1.25
@@ -161,6 +166,16 @@ function payYear(g: GameState, a: Asset, b: BizState, st: BoardState, s: Stateme
     m.asked = g.year
     // At least what the market now pays a CEO of their calibre to run a company this size.
     const ask = niceAmount(Math.max(m.salary * (1.15 + 0.01 * randInt(g, 0, 10)), askingSalary(b, m.skill, 0)))
+    const parent = groupById(g, groupIdOf(b))
+    if (parent?.core.ceo === 'manager' && parent.core.autonomous !== false && controlsBoard(st)) {
+      const spare = parent.members.reduce((sum, x) => sum + treasurySpare(g, x), 0)
+      const affordable = ask - m.salary <= spare && ask <= Math.max(askingSalary(b, m.skill) * 1.5, Math.max(0, s.net) * .2)
+      const proposal = { kind: 'ceoPay' as const, by: 'ceo' as const, label: `Retain ${managerName(m)} at ${money(ask)}/yr`, amount: ask, skill: m.skill }
+      const approved = affordable && vote(g, a, b, proposal, { quiet: true }).passed
+      if (approved) m.salary = ask
+      log(g, `${parent.core.name}'s CEO ${approved ? 'approved' : 'declined'} ${managerName(m)}'s salary request at ${a.name} (${money(ask)}/yr).`, 'neutral')
+      return
+    }
     if (ownerAvailable(g) && (!boardExists(g, b) || controlsBoard(st))) {
       queueRaise(g, a, b, m, ask)
       return
@@ -185,7 +200,9 @@ function payYear(g: GameState, a: Asset, b: BizState, st: BoardState, s: Stateme
 
 /** A deputy who steps up when the CEO leaves suddenly: a notch below them, never a star. */
 function interim(g: GameState, b: BizState, m: Manager): Manager {
-  return managerCandidate(g, b, Math.round(clampN(m.skill - randInt(g, 5, 20), 40, 80)))
+  const parent = groupById(g, groupIdOf(b))
+  const minimum = parent?.core.ceo === 'manager' && parent.core.autonomous !== false ? parent.core.manager?.skill ?? 0 : 0
+  return managerCandidate(g, b, Math.max(minimum, Math.round(clampN(m.skill - randInt(g, 5, 20), 40, 80))))
 }
 
 /** A star CEO leaves for a rival; a deputy keeps the lights on until the owner picks again. */

@@ -85,7 +85,7 @@ export function financeView(b: Pick<BizState, 'industry' | 'countryId' | 'financ
     confidence: cap(x.confidence, 65, 100), reserveRatio: cap(x.reserveRatio, .25, .7, .1),
     feeRate: cap(x.feeRate, .015, .03, .005), depositRate: cap(x.depositRate, .02, .15), loanRate: cap(x.loanRate, .08, .3, .025),
     controls: cap(x.controls, 50, 100), outreach: cap(x.outreach, 0, 1),
-    algoEdge: cap(x.algoEdge, 0, .08), algoStarted: Math.round(cap(x.algoStarted, 0, 100_000)),
+    algoEdge: cap(x.algoEdge, 0, 1.5), algoStarted: Math.round(cap(x.algoStarted, 0, 100_000)),
     algoProgress: cap(x.algoProgress, 0, 2), algoResearching: x.algoResearching === true,
     algoCompleted: Math.round(cap(x.algoCompleted, 0, 100_000)), lastYear: Math.round(cap(x.lastYear, -1, 100_000, -1)),
     lastReturn: cap(x.lastReturn, 0, 2, -1), lastDefaults: cap(x.lastDefaults), lastWithdrawals: cap(x.lastWithdrawals),

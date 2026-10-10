@@ -59,6 +59,9 @@ import { equityMenu } from './executive'
 import { delegationMenu } from './conglomerate-management'
 import { groupFamilyMenu } from './conglomerate-family'
 import { groupServicesMenu, internalRevenue } from './group-services'
+import { groupBuybackNode } from './group-buyback'
+import { treasuryOf } from './conglomerate-actions'
+import { treasurySpare } from './group-treasury'
 import { manageBlock, tooBusy } from './gate'
 import { bizOf, businessAssets, findBusiness, readBiz, stakeValue } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -323,6 +326,8 @@ function summaryRows(g: GameState, grp: Group): MenuNode[] {
   const core = grp.core
   const rows: MenuNode[] = []
   const n = grp.members.length
+  const custodian = treasuryOf(grp)
+  rows.push(info(`biz.group.treasury.${id}`, `Group cash holdings: ${money(grp.members.reduce((sum, x) => sum + treasurySpare(g, x), 0))} available after division operating buffers. Treasury custodian: ${custodian.a.name}. Cash is counted once in division books; profits stay in the group until you request a dividend.`, '🏦'))
   rows.push(info(`biz.group.i.${id}.0`, `${plural(n, 'division')} in ${sectorList(grp.members.map((x) => x.b.industry))} \u{00B7} formed ${core.founded}`, '\u{1F3E2}'))
   const stake = groupStake(grp)
   if (core.listing) {
@@ -857,7 +862,7 @@ export function groupView(g: GameState, groupId: string): MenuNode[] {
   nodes.push({ type: 'heading', id: `biz.group.restructH.${groupId}`, label: 'Restructure' })
   nodes.push(spinMenu(groupId), sellMenu(groupId))
   nodes.push({ type: 'heading', id: `biz.group.marketH.${groupId}`, label: 'Stock Market & Board' })
-  nodes.push(...marketNodes(groupId, grp), boardMenu(groupId))
+  nodes.push(groupBuybackNode(groupId), ...marketNodes(groupId, grp), boardMenu(groupId))
   return nodes
 }
 
