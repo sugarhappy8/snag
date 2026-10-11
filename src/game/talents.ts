@@ -11,7 +11,7 @@
 //   MainCharacter → every talent at once (hasTalent is true for any id) and mastery of anything
 //               after the first time (mastery.ts); it takes one of the MAX_START_TALENTS slots
 // Purple hints are shown with ChoiceOption.hint, MenuBase.hint and AnnualReportData.talentHint.
-import type { GameState } from './types'
+import type { GameState, Person } from './types'
 
 export type TalentId =
   | 'Inventor'
@@ -58,7 +58,7 @@ export const SPECIAL_TALENTS: readonly SpecialTalentDef[] = [
   { id: 'Programming', label: 'Programming', emoji: '\u{1F4BB}', perk: 'Coding skill grows faster; better projects, apps and tech jobs.' },
   { id: 'Leadership', label: 'Leadership', emoji: '\u{1F3DB}\u{FE0F}', perk: 'Win elections and promotions more easily; people you manage are happier.' },
   { id: 'Gaming', label: 'Gaming', emoji: '\u{1F3AE}', perk: 'Climb esports ranks faster and make better video games.' },
-  { id: 'MainCharacter', label: 'Main Character Syndrome', emoji: '\u{1F31F}', perk: 'You have every talent, and anything you do once, you master.' },
+  { id: 'MainCharacter', label: 'Main Character Syndrome', emoji: '\u{1F31F}', perk: 'You have every talent, and anything you do once, you master. Every child inherits it; ambitious children may build rival businesses.' },
 ]
 
 /** The id of the talent that counts as every other talent. */
@@ -116,6 +116,34 @@ function namedTalents(g: GameState): string[] {
 /** True when the character has Main Character Syndrome: every talent, and mastery of anything done once. */
 export function hasMainCharacter(g: GameState): boolean {
   return namedTalents(g).includes(MAIN_CHARACTER)
+}
+
+/** NPC talents are durable, not rolled again when they become the playable heir. */
+export function npcHasMainCharacter(p: Person): boolean {
+  return p.data.talent === MAIN_CHARACTER || normalizeTalents(p.data.talents, SPECIAL_TALENTS.length).includes(MAIN_CHARACTER)
+}
+
+/** Children (including adopted/stepchildren) inherit the gift without an RNG roll. */
+export function inheritFamilyTalent(g: GameState, p: Person): void {
+  if (p.relation === 'pet') return
+  const ids = [p.otherParentId, p.data.parentId, p.data.childOf,
+    ...(Array.isArray(p.data.parentIds) ? p.data.parentIds : [])]
+  const playerChild = (p.relation === 'child' || p.relation === 'stepchild') && hasMainCharacter(g)
+  if (!playerChild && !g.people.some(parent => ids.includes(parent.id) && npcHasMainCharacter(parent))) return
+  p.data.talents = [...new Set([...normalizeTalents(p.data.talents, SPECIAL_TALENTS.length), MAIN_CHARACTER])]
+}
+
+/** Idempotent save upgrade; also propagates through already-born grandchildren. */
+export function refreshFamilyTalents(g: GameState): void {
+  for (let pass = 0; pass < g.people.length; pass++) {
+    let changed = false
+    for (const p of g.people) {
+      if (p.relation === 'pet' || npcHasMainCharacter(p)) continue
+      inheritFamilyTalent(g, p)
+      if (npcHasMainCharacter(p)) changed = true
+    }
+    if (!changed) break
+  }
 }
 
 /**

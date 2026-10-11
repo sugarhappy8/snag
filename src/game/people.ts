@@ -4,6 +4,7 @@ import { eraOccupation, nameFitsYear, oldTradeShare, OLD_TRADES } from './histor
 import { isHistorical } from './history/timeline'
 import { bell, chance, pick, rand, randInt, uid } from './rng'
 import { getCountry, namePoolOf, randomFirstName, randomLastName } from './world'
+import { inheritFamilyTalent } from './talents'
 import type { GameState, Gender, Json, Person, RelationKind, StatKey } from './types'
 
 export const TRAITS = [
@@ -204,6 +205,7 @@ export function createPerson(g: GameState, opts: PersonOptions): Person {
       else person.lastName = randomLastName(g, countryId)
     }
   }
+  inheritFamilyTalent(g, person)
   g.people.push(person)
   return person
 }

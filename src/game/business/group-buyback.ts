@@ -6,13 +6,13 @@ import { spendGroupTreasury, treasurySpare } from './group-treasury'
 import { clampN, money, pct } from './util'
 
 export function groupBuybackQuote(g: GameState, grp: Group, percent: number) {
-  const available = Math.max(0, 1 - grp.core.share - (grp.core.executiveEquity ?? 0))
+  const available = Math.max(0, 1 - grp.core.share - (grp.core.executiveEquity ?? 0) - (grp.core.familyShares ?? []).reduce((s, x) => s + x.share, 0))
   // Retire a fraction of unaffiliated outside holdings, never the owner or vested CEO awards.
   const retired = available * clampN(Number.isFinite(percent) ? percent / 100 : 0, 0, 1)
   const cost = Math.ceil(groupValue(grp) * retired * 1.05)
   const spare = grp.members.reduce((s, x) => s + treasurySpare(g, x), 0)
   const share = retired > 0 ? grp.core.share / (1 - retired) : grp.core.share
-  const block = groupBlock(g) ?? (available <= .000001 ? 'No unaffiliated outside shares remain; vested CEO shares are protected.' : !retired || !cost ? 'Choose a positive buyback amount.' : cost > spare ? `Needs ${money(cost)}; group holdings can spare ${money(spare)} after operating reserves.` : null)
+  const block = groupBlock(g) ?? (grp.core.share <= 0 ? 'You do not own shares in this family holding.' : available <= .000001 ? 'No unaffiliated outside shares remain; inherited family shares and vested CEO shares are protected.' : !retired || !cost ? 'Choose a positive buyback amount.' : cost > spare ? `Needs ${money(cost)}; group holdings can spare ${money(spare)} after operating reserves.` : null)
   return { available, retired, cost, spare, share, block }
 }
 export function buyBackGroupShares(g: GameState, id: string, percent: number): boolean {
@@ -25,6 +25,7 @@ export function buyBackGroupShares(g: GameState, id: string, percent: number): b
   const scale = 1 / (1 - q.retired)
   grp.core.share = q.share
   grp.core.executiveEquity = (grp.core.executiveEquity ?? 0) * scale
+  for (const holder of grp.core.familyShares ?? []) holder.share *= scale
   if (grp.core.manager?.equity) grp.core.manager.equity *= scale
   for (const x of grp.members) if (x.b.manager?.groupEquity?.id === id) x.b.manager.groupEquity.share *= scale
   if (grp.core.listing) grp.core.listing.sharesOut = Math.max(1, grp.core.listing.sharesOut * (1 - q.retired))

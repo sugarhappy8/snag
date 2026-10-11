@@ -8,6 +8,7 @@ import { notePerson, createPerson } from '../people'
 import { chance, randInt, rand } from '../rng'
 import type { Asset, GameState, Person } from '../types'
 import { npcLife, npcEducationSkill } from '../npc-state'
+import { npcHasMainCharacter } from '../talents'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { boardAllows, needsVote, passOdds, type Proposal } from './board'
 import { askingSalary, handOver, managerCandidate } from './career'
@@ -59,7 +60,7 @@ export function planHire(g: GameState, b: BizState, p: Person, o: HireOpts): Hir
   const part = p.age < 18
   const market = marketPay(b, rank)
   const pay = kind === 'cushy' ? payAt(b, rank, o.payMult ?? CUSHY_PAY_MULT) : part ? startingPay(b, rank, true) : o.payMult ? payAt(b, rank, o.payMult) : startingPay(b, rank, false)
-  const skill = kind === 'cushy' ? Math.min(startSkill(p), 25) : clampN(startSkill(p) - npcEducationSkill(p) + npcEducationSkill(p, focus), 3, 99)
+  const skill = kind === 'cushy' ? Math.min(startSkill(p), 25) : npcHasMainCharacter(p) ? startSkill(p) : clampN(startSkill(p) - npcEducationSkill(p) + npcEducationSkill(p, focus), 3, 99)
   return { rank, kind, focus, title: titleFor(g, p, rank, focus, kind), part, pay, market, skill }
 }
 

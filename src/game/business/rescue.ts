@@ -18,7 +18,7 @@ export function rescuePosition(b: BizState) {
 export type EquityTransaction = 'secondary' | 'subscribe' | 'buyback'
 export function equityQuote(g: GameState, a: Asset, b: BizState, kind: EquityTransaction, amount: number) {
   const value = Math.max(1, b.valuation, valuationOf(b))
-  const outside = Math.max(0, 1 - b.share - executiveEquity(b))
+  const outside = Math.max(0, 1 - b.share - executiveEquity(b) - (b.familyShares ?? []).reduce((s, x) => s + x.share, 0))
   const willing = b.public || seeded(`share-offer|${a.id}|${g.year}`).chance(.65)
   const available = willing ? Math.min(.15, outside) : 0
   const price = value * (b.public ? 1.03 : 1.15)
@@ -55,6 +55,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
   } else {
     b.cash -= amount
     b.executiveEquity = executiveEquity(b) / (1 - q.units)
+    for (const holder of b.familyShares ?? []) holder.share /= 1 - q.units
     if (b.manager?.equity) b.manager.equity /= 1 - q.units
     if (b.public) b.sharesOut *= 1 - q.units
     b.pref = (b.pref ?? 0) * (1 - q.units / Math.max(.0001, 1 - b.share))

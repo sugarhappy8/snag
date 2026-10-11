@@ -44,11 +44,12 @@ import { planEstate, settleReading } from './events/will-estate'
 import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
+import { inheritConglomerates } from './business/dynasty-ownership'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
-import { bizOf, type Manager } from './business/state'
+import { bizOf, readBiz, type Manager } from './business/state'
 import { yearlyMainCharacter } from './mastery'
-import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, talentLabel, type TalentId } from './talents'
+import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, refreshFamilyTalents, talentLabel, type TalentId } from './talents'
 import { getCountry, randomCity, randomCountry, randomFirstName, randomLastName, randomSkinTone, type Country } from './world'
 import type {
   AncestorSummary,
@@ -1093,6 +1094,10 @@ const TALENT_INHERIT_CHANCE = 0.4
  * it works like a pick from birth). Consumes no randomness when there was nothing picked.
  */
 function inheritTalent(n: GameState, old: Character, heir: Character): TalentDef | undefined {
+  if (heir.talents?.includes(MAIN_CHARACTER) || old.talents?.includes(MAIN_CHARACTER) || old.talent === MAIN_CHARACTER) {
+    heir.talents = [MAIN_CHARACTER]
+    return getTalent(MAIN_CHARACTER)
+  }
   const picks = normalizeTalents(old.talents, Number.MAX_SAFE_INTEGER).filter((id) => id !== heir.talent)
   if (picks.length === 0 || !chance(n, TALENT_INHERIT_CHANCE)) return undefined
   const id: TalentId = picks.length === 1 ? picks[0] : pick(n, picks)
@@ -1126,6 +1131,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   if (g.character.alive) return g
 
   const n = structuredClone(g)
+  refreshFamilyTalents(n)
   const old = n.character
   const heirP = n.people.find((p) => p.id === childId) as Person
   const npcEducation = npcLife(heirP)
@@ -1162,12 +1168,16 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // one economic holding: it is a bequest only when all valid child designations agree. This makes
   // the result independent of which child the user chooses to continue as.
   const successionUnits = successionEstateUnits(n)
+  // Spun-off divisions with family co-owners remain in-kind holdings too.
+  const groupIds = new Set(successionUnits.filter(u => u.group || u.assets.some(a => Array.isArray(a.details.familyShares) && a.details.familyShares.length > 0)).flatMap(u => u.assets.map(a => a.id)))
+  const groupInheritanceLines = inheritConglomerates(n, childId, successionUnits)
+  const familyOwnerIds = new Set(successionUnits.flatMap(u => u.group ? liveGroup(n, u.group.id)?.core.familyShares?.map(x => x.id) ?? [] : u.assets.flatMap(a => readBiz(n, a).familyShares?.map(x => x.id) ?? [])))
   const allocatedUnits = successionUnits.filter((unit) => unit.recipient !== null)
   const allocatedIds = new Set(allocatedUnits.flatMap((unit) => unit.assets.map((a) => a.id)))
   const selectedUnits = allocatedUnits.filter((unit) => unit.recipient?.id === childId)
   const selectedIds = new Set(selectedUnits.flatMap((unit) => unit.assets.map((a) => a.id)))
   const selectedBequests = property.filter((a) => selectedIds.has(a.id))
-  const divisibleProperty = property.filter((a) => !allocatedIds.has(a.id))
+  const divisibleProperty = property.filter((a) => !allocatedIds.has(a.id) && !groupIds.has(a.id))
   // Capture management plans while every old-generation Person still exists. Some relatives do
   // not remain contacts after the point-of-view change, but their appointment should still stand
   // (as an ordinary external manager without a dangling personId).
@@ -1183,7 +1193,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // family as their owner. Drop the old employee-only record so later family-year cleanup cannot
   // treat ownership as a dangling job at a vanished asset.
   for (const unit of allocatedUnits) {
-    if (!unit.recipient || unit.recipient.id === childId) continue
+    if (unit.assets.some(a => groupIds.has(a.id)) || !unit.recipient || unit.recipient.id === childId) continue
     // NPCs cannot retain Asset records after the point-of-view change. Represent the inherited
     // holding once in their modeled wealth instead, using the same net-equity basis as the
     // divisible estate and never turning an underwater holding into a new personal debt.
@@ -1198,14 +1208,14 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const estate = Math.round(old.money + divisibleEquity - debts)
   const adult = heirP.age >= 18
   // Who inherits what (the will, charity, contests and probate live in events/will-estate.ts).
-  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0, cashAfterDebts: old.money - debts })
+  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0 || groupIds.size > 0, cashAfterDebts: old.money - debts })
   const heirIncluded = plan.heirIncluded
   const shareCount = Math.max(1, plan.ways)
   const keepProperty = plan.keepProperty
   const inheritanceLines: string[] = []
   const cashInherited = plan.heirCash
   const estateTax = plan.tax
-  const keptProperty = property.filter((a) => selectedIds.has(a.id) || (keepProperty && !allocatedIds.has(a.id)))
+  const keptProperty = property.filter((a) => groupIds.has(a.id) || selectedIds.has(a.id) || (keepProperty && !allocatedIds.has(a.id)))
   const keptAssets: Asset[] = [...keptProperty, ...heirlooms]
 
   // --- The heir becomes the player ---------------------------------------------
@@ -1313,6 +1323,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     loans: [],
     social: null,
     talent: talentData ?? (age >= 12 && chance(n, 0.25) ? weightedPick(n, TALENTS, (t) => t.weight).id : null),
+    talents: normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER),
     memories: [],
     willBeneficiaries: [],
     religion: old.religion,
@@ -1356,7 +1367,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     yearsKnown: age,
     livesWithPlayer: false,
     notes: [],
-    data: { skinTone: old.avatar.skinTone, formerPlayer: true },
+    data: { skinTone: old.avatar.skinTone, formerPlayer: true, talents: old.talents ?? [], ...(old.talent ? { talent: old.talent } : {}) },
   })
 
   let guardian: Person | undefined
@@ -1415,7 +1426,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   }
   // Persistent entrepreneurs and known relatives do not disappear when the viewpoint changes.
   for (const contact of n.people) {
-    if (contact.id === childId || people.some(p => p.id === contact.id) || !npcLife(contact)) continue
+    if (contact.id === childId || people.some(p => p.id === contact.id) || (!npcLife(contact) && !familyOwnerIds.has(contact.id))) continue
     const kept = reset(contact, 'friend', Math.min(60, contact.relationship), false)
     kept.notes = contact.notes
     kept.data.generationConnection = `Known through ${oldName}`
@@ -1452,6 +1463,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const ownedBeforeInheritance = npcCompany(heirP, n.year)
   if (ownedBeforeInheritance) {
     const { a, b } = ownedBeforeInheritance
+    delete b.npcOwnerId
     const claim = n.assets.find(x => x.details.npcCompanyId === a.id)
     if (claim) { b.share = Math.min(1, b.share + (typeof claim.details.share === 'number' ? claim.details.share : 0)); n.assets = n.assets.filter(x => x.id !== claim.id) }
     installManager(n, b)
@@ -1491,6 +1503,16 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
   }
   inheritRoyalStatus(n, heirP)
+  // An heir already serving as group CEO keeps that appointment, now as the playable chair.
+  // Do not retain a hired-manager pointer to a Person removed by the generation handoff.
+  for (const unit of successionUnits) {
+    if (!unit.group) continue
+    const grp = liveGroup(n, unit.group.id)
+    if (grp?.core.manager?.personId === childId && grp.core.share > 0 && age >= 18) {
+      grp.core.ceo = 'owner'; grp.core.manager = null
+      saveGroup(n, grp)
+    }
+  }
 
   // A designated heir is no longer a Person employee after becoming the player. Spend their
   // person-based succession records now, put one directly designated company in the player's CEO
@@ -1540,6 +1562,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     delete n.flags.talentAge
   }
   n.flags.grandkidsSeen = n.people.filter((p) => p.relation === 'grandchild').map((p) => p.id)
+  inheritanceLines.push(...groupInheritanceLines)
 
   const childWord = heir.gender === 'male' ? (heirP.relation === 'stepchild' ? 'stepson' : 'son') : heirP.relation === 'stepchild' ? 'stepdaughter' : 'daughter'
   log(n, `I am now playing as ${fullName(heir)}, the ${childWord} of ${oldName}.`, 'event')
@@ -1564,7 +1587,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   } else if (plan.held > 0) {
     inheritanceLines.push('Your share is tied up in probate for now.')
     log(n, `My ${oldNoun}'s estate is tied up in probate.`)
-  } else if (selectedBequests.length === 0) {
+  } else if (selectedBequests.length === 0 && !groupInheritanceLines.length) {
     inheritanceLines.push(estate <= 0 ? `${old.gender === 'male' ? 'He' : 'She'} died broke, so there was nothing to inherit.` : 'There was nothing left for you to inherit.')
     log(n, `My ${oldNoun} left me nothing but memories.`)
   }

@@ -424,7 +424,7 @@ function successionNodes(a: Asset): MenuNode[] {
           ? ''
           : heirs.length === 1
             ? ` By your will, ${heirs[0].firstName} would inherit the group with the rest of the estate.`
-            : ` By your will, ${heirs.length} heirs share the estate, so the group would be sold and the cash divided.`
+            : ` By your will, ${heirs.length} heirs divide your ownership shares; the group and its divisions stay intact.`
         will = ` ${unit.group?.name ?? 'The group'} has conflicting designated family successors (${names}), so no one receives it as a specific bequest.${result}`
       } else if (recipient) {
         if (heirs.length === 0) {
@@ -439,7 +439,9 @@ function successionNodes(a: Asset): MenuNode[] {
       } else if (heirs.length === 1) {
         will = ` By your will, ${heirs[0].firstName} would inherit ${holding} whole.`
       } else if (heirs.length > 1) {
-        will = ` By your will, ${heirs.length} heirs share the estate: if you died now ${holding} would be sold and the cash divided. Name one of your children as successor to keep it in the family.`
+        will = unit?.group
+          ? ` By your will, ${heirs.length} heirs divide your ownership shares in ${holding}. Its divisions, cash and management stay together.`
+          : ` By your will, ${heirs.length} heirs share the estate: if you died now ${holding} would be sold and the cash divided. Name one of your children as successor to keep it in the family.`
       }
       if (!s) return `No successor named${unit?.group ? ' for this division' : ''}. Name a son or daughter, or a key employee, and they take over when you step back.${will}`
       const who = s.kind === 'person' ? `${s.person.firstName} ${s.person.lastName}` : s.name

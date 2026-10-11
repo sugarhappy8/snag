@@ -2,6 +2,7 @@
 // Time Machine's start-of-year snapshots.
 import { GAME_VERSION } from './core'
 import { refreshRoyalCareers } from './npc-lives'
+import { refreshFamilyTalents } from './talents'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
 import { HIDDEN_KEYS, STAT_KEYS, type AncestorSummary, type GameState, type Json, type ModalItem } from './types'
@@ -65,6 +66,7 @@ export function loadGame(): GameState | null {
   const g = migrateLegacyAi(raw as unknown as GameState)
   if (!isLoadableGame(g)) return null
   refreshRoyalCareers(g)
+  refreshFamilyTalents(g)
   return g
 }
 
@@ -1235,6 +1237,7 @@ export function loadSnapshot(lifeId: string, age: number): Promise<GameState | n
     const migrated = migrateLegacyAi(g)
     if (!isLoadableGame(migrated) || migrated.lifeId !== lifeId || migrated.character.age !== age || !migrated.character.alive) return null
     refreshRoyalCareers(migrated)
+    refreshFamilyTalents(migrated)
     return migrated
   }, null)
 }

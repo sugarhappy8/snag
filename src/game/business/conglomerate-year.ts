@@ -116,16 +116,17 @@ export function groupRescue(g: GameState, a: Asset, b: BizState): void {
 /** A division that raised outside money after joining (a funding round, an investor) is owned less by the group. */
 function trackOwnership(grp: Group): void {
   const s = grp.core.share
+  if (s <= 0) return
   for (const x of grp.members) {
     const expected = s * x.m.own
-    if (Math.abs(x.b.share - expected) > 1e-4) x.m.own = clampN(x.b.share / Math.max(0.001, s), 0.001, 1)
+    if (Math.abs(x.b.share - expected) > 1e-4) x.m.own = clampN(x.b.share / s, 0.001, 1)
   }
 }
 
 /** The player can't chair from a cell or as a child: the group board appoints an interim CEO. */
 function ensureCeo(g: GameState, grp: Group): void {
   if (grp.core.ceo === 'manager' && grp.core.manager) return
-  if (ownerAvailable(g)) {
+  if (ownerAvailable(g) && grp.core.share > 0) {
     // Repair WIP/hand-edited saves that already have the player chairing a group but predate the
     // business-mastery hook. This runs in the yearly action path, never while rendering a menu.
     masterBusiness(g)

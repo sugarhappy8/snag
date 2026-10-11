@@ -557,7 +557,6 @@ describe('conglomerates', () => {
     const id = groupsOf(g)[0].core.id
     const memberIds = assets.map((a) => a.id).sort()
     const heirMoney = heir.money
-    const groupEquity = Math.max(0, Math.round(groupById(g, id)!.members.reduce((sum, x) => sum + x.a.value - (x.a.mortgage?.balance ?? 0), 0)))
     g.character.money = 0
     g.character.alive = false
     g.character.causeOfDeath = 'Old Age'
@@ -569,8 +568,9 @@ describe('conglomerates', () => {
     const storedValue = inherited!.members.reduce((sum, x) => sum + x.a.value, 0)
     expect(Math.abs(storedValue - groupStake(inherited!))).toBeLessThanOrEqual(inherited!.members.length + 1)
     const asSibling = continueAsChild(g, sibling.id)
-    expect(groupById(asSibling, id)).toBeNull()
-    expect(asSibling.people.find((p) => p.id === heir.id)?.money).toBe(heirMoney + groupEquity)
+    expect(groupById(asSibling, id)?.core.share).toBe(0)
+    expect(groupById(asSibling, id)?.core.familyShares).toEqual([{ id: heir.id, share: 1 }])
+    expect(asSibling.people.find((p) => p.id === heir.id)?.money).toBe(heirMoney)
     book(next, 1)
     expect(groupById(next, id)?.members.map((x) => x.a.id).sort()).toEqual(memberIds)
   })
@@ -621,15 +621,16 @@ describe('conglomerates', () => {
     if (!succession || succession.type !== 'info') throw new Error('succession copy missing')
     const text = typeof succession.text === 'function' ? succession.text(g) : succession.text
     expect(text).toMatch(/conflicting designated family successors/i)
-    expect(text).toMatch(/group would be sold and the cash divided/i)
+    expect(text).toMatch(/ownership shares; the group and its divisions stay intact/i)
 
     g.character.alive = false
     g.character.causeOfDeath = 'Old Age'
     const continuedAsFirst = continueAsChild(g, first.id)
     const continuedAsSecond = continueAsChild(g, second.id)
     for (const next of [continuedAsFirst, continuedAsSecond]) {
-      expect(groupById(next, id)).toBeNull()
-      expect(assets.some((asset) => findBusiness(next, asset.id))).toBe(false)
+      expect(groupById(next, id)?.core.share).toBe(.5)
+      expect(groupById(next, id)?.members).toHaveLength(2)
+      expect(assets.every((asset) => findBusiness(next, asset.id))).toBe(true)
       expect(next.queue.some((m) => m.kind === 'notice' && /designated successor/i.test(m.text))).toBe(false)
     }
   })

@@ -60,6 +60,7 @@ import { capitalGainsTax, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
 import { clearGroupCeoJob } from './conglomerate-job'
 import { BIZ_VERSION, bizOf, ceoJob, executiveEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
+import { payFamilyGroupDividend } from './dynasty-ownership'
 import { clampN, cleanName, markBest, money, num, pct, rec, round2, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -195,6 +196,7 @@ export function groupBoardView(g: GameState, grp: Group) {
 
 /** The gate for the group's decisions: true when it may go ahead (voting when it must). */
 export function groupAllows(g: GameState, grp: Group, p: Proposal): boolean {
+  if (p.by === 'owner' && grp.core.share <= 0) return false
   if (!groupNeedsVote(g, grp, p)) return true
   return groupVote(g, grp, p).passed
 }
@@ -423,9 +425,15 @@ function admit(g: GameState, grp: Group, joiners: { a: Asset; b: BizState }[], w
   // Every outside holder swaps into group shares, including vested executives.
   // Convert after diluting the existing group so a newcomer's award is not diluted twice.
   joiners.forEach((j, i) => {
+    const weight = value(i) / Math.max(1, prior + credited)
+    for (const holder of j.b.familyShares ?? []) {
+      const existing = (core.familyShares ??= []).find(x => x.id === holder.id)
+      if (existing) existing.share += holder.share * weight
+      else core.familyShares.push({ id: holder.id, share: holder.share * weight })
+    }
+    delete j.b.familyShares
     const vested = Math.min(Math.max(0, 1 - j.b.share), executiveEquity(j.b))
     if (!vested) return
-    const weight = value(i) / Math.max(1, prior + credited)
     core.executiveEquity = (core.executiveEquity ?? 0) + vested * weight
     const manager = j.b.manager, active = Math.min(vested, manager?.equity ?? 0)
     if (manager && active > 0) {
@@ -668,7 +676,7 @@ export function spinOff(g: GameState, groupId: string, assetId: string): boolean
 export function moveCash(g: GameState, groupId: string, fromId: string, toId: string, amount: number): boolean {
   if (groupBlock(g) || fromId === toId) return false
   const grp = liveGroup(g, groupId)
-  if (!grp) return false
+  if (!grp || grp.core.share <= 0) return false
   const from = grp.members.find((m) => m.a.id === fromId)
   const to = grp.members.find((m) => m.a.id === toId)
   if (!from || !to) return false
@@ -710,7 +718,7 @@ export function dividendSplit(g: GameState, grp: Group, amount: number): { n: nu
 export function groupDividend(g: GameState, groupId: string, amount: number): boolean {
   if (groupBlock(g)) return false
   const grp = liveGroup(g, groupId)
-  if (!grp) return false
+  if (!grp || grp.core.share <= 0) return false
   const { n, parts, mine } = dividendSplit(g, grp, amount)
   if (n <= 0) return false
   grp.members.forEach((x, i) => {
@@ -720,6 +728,7 @@ export function groupDividend(g: GameState, groupId: string, amount: number): bo
     if (!x.b.public) x.b.valuation = Math.max(0, Math.round(x.b.valuation - part))
   })
   earnIncome(g, mine)
+  payFamilyGroupDividend(g, grp, parts.reduce((sum, part, i) => sum + part * grp.members[i].m.own, 0))
   // A listed group's price falls by the cash paid out by itself (it is derived from the divisions).
   syncMembers(grp)
   saveGroup(g, grp)
@@ -1042,7 +1051,7 @@ export function groupIpo(g: GameState, groupId: string): boolean {
   t.b.cash += raise - fees
   if (!t.b.public) t.b.valuation = Math.round(t.b.valuation + raise - fees)
   const post = pre + raise - fees
-  grp.core.share = clampN(grp.core.share * 0.75, 0.001, 1)
+  grp.core.share = clampN(grp.core.share * 0.75, 0, 1)
   diluteGroupEquity(grp, 0.75)
   const sharesOut = Math.max(1000, Math.round(post / 25))
   const sharePrice = round2(clampN((post / sharesOut) * pop, 0.05, 1e7))
@@ -1090,7 +1099,7 @@ export function sellGroupShares(g: GameState, groupId: string, fraction: number)
   addMoney(g, gross - tax)
   for (const x of grp.members) x.b.invested = Math.round(x.b.invested * (1 - f))
   grp.core.share = stake - sold
-  if (f >= 0.999 || grp.core.share < 0.01) {
+  if ((f >= 0.999 || grp.core.share < 0.01) && !(grp.core.familyShares?.length)) {
     // Sold out: the group is somebody else's now.
     const ids = new Set(grp.members.map((x) => x.a.id))
     g.assets = g.assets.filter((x) => !ids.has(x.id))
@@ -1129,7 +1138,8 @@ export function delistPlan(g: GameState, grp: Group): { cost: number; fees: numb
   const fromGroup = Math.min(avail, cost + fees)
   const fromYou = cost + fees - fromGroup
   let block: string | null = null
-  if (g.year - l.ipoYear < 2) block = `${grp.core.name} only listed in ${l.ipoYear}: the exchange wants two years before a delisting.`
+  if (grp.core.familyShares?.length) block = 'Family-owned shares require a separate agreement; a delisting cannot confiscate inherited stakes.'
+  else if (g.year - l.ipoYear < 2) block = `${grp.core.name} only listed in ${l.ipoYear}: the exchange wants two years before a delisting.`
   else if (fromYou > g.character.money) block = `Buying out the other shareholders costs ${money(cost + fees)}: the group can spare ${money(fromGroup)} and you have ${money(Math.max(0, g.character.money))}.`
   return { cost, fees, fromGroup, fromYou, block }
 }

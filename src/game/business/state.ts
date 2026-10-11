@@ -8,6 +8,7 @@ import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
+import { readFamilyShares } from './family-share-state'
 
 export interface KeyStaff {
   id: string
@@ -168,6 +169,7 @@ export function executiveEquity(b: BizState): number {
   return clampN(Math.max(b.executiveEquity ?? 0, b.manager?.equity ?? 0), 0, 1)
 }
 export function diluteBusinessEquity(b: BizState, retained: number): void {
+  for (const holder of b.familyShares ?? []) holder.share *= clampN(retained, 0, 1)
   b.executiveEquity = executiveEquity(b) * clampN(retained, 0, 1)
   diluteManagerEquity(b.manager, retained)
 }
@@ -183,6 +185,8 @@ export interface BizState {
   city: string
   founded: number
   founderName: string
+  npcOwnerId?: string
+  familyShares?: import('./family-share-state').FamilyShare[]
   acquired: boolean
   /** The owner's share of the company, 0-1. */
   share: number
@@ -483,8 +487,9 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     city,
     founded: Math.round(num(d.founded, fallbackYear)),
     founderName: str(d.founderName),
+    ...(str(d.npcOwnerId) ? { npcOwnerId: str(d.npcOwnerId) } : {}),
     acquired: d.acquired === true,
-    share: clampN(num(d.share, 1), 0.01, 1),
+    share: clampN(num(d.share, 1), rec(d.group) || Array.isArray(d.familyShares) ? 0 : 0.01, 1),
     invested: Math.max(0, num(d.invested)),
     pref: Math.max(0, num(d.pref)),
     cash: num(d.cash),
@@ -518,6 +523,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ceo: d.ceo === 'manager' ? 'manager' : 'owner',
     manager: readManager(d.manager),
     executiveEquity: clampN(num(d.executiveEquity, num(rec(d.manager)?.equity)), 0, 1),
+    ...(Array.isArray(d.familyShares) ? { familyShares: readFamilyShares(d.familyShares, 1 - clampN(num(d.share, 1), 0, 1) - clampN(num(d.executiveEquity, num(rec(d.manager)?.equity)), 0, 1)) } : {}),
     ownerSalary: Math.max(0, num(d.ownerSalary)),
     supplier,
     insured: d.insured === true,

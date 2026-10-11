@@ -105,6 +105,7 @@ function gAct(groupId: string, key: string, label: string, emoji: string, opts: 
       if (block) return block
       const grp = groupById(g, groupId)
       if (!grp) return 'The group no longer exists.'
+      if (grp.core.share <= 0) return 'You do not own shares in this family holding.'
       return opts.disabled ? opts.disabled(g, grp) : null
     },
     confirm: opts.confirm
@@ -117,7 +118,7 @@ function gAct(groupId: string, key: string, label: string, emoji: string, opts: 
     ...(opts.stayOpen ? { stayOpen: true } : {}),
     run: (g, input) => {
       const grp = groupById(g, groupId)
-      if (!grp || groupBlock(g)) return
+      if (!grp || grp.core.share <= 0 || groupBlock(g)) return
       if (opts.disabled?.(g, grp)) return
       opts.run(g, grp, input)
     },
@@ -330,6 +331,10 @@ function summaryRows(g: GameState, grp: Group): MenuNode[] {
   rows.push(info(`biz.group.treasury.${id}`, `Group cash holdings: ${money(grp.members.reduce((sum, x) => sum + treasurySpare(g, x), 0))} available after division operating buffers. Treasury custodian: ${custodian.a.name}. Cash is counted once in division books; profits stay in the group until you request a dividend.`, '🏦'))
   rows.push(info(`biz.group.i.${id}.0`, `${plural(n, 'division')} in ${sectorList(grp.members.map((x) => x.b.industry))} \u{00B7} formed ${core.founded}`, '\u{1F3E2}'))
   const stake = groupStake(grp)
+  if (core.familyShares?.length) rows.push(info(`biz.group.family.${id}`, `Family ownership: ${core.familyShares.map(x => {
+    const p = g.people.find(p => p.id === x.id)
+    return `${p ? `${p.alive ? '' : 'Estate of '}${p.firstName} ${p.lastName}` : x.id === 'charity' ? 'Charitable trust' : 'Family trust'} ${pct(x.share, 2)}`
+  }).join(' · ')}. Inherited shares are protected from automatic buybacks.`, '👨‍👩‍👧‍👦'))
   if (core.listing) {
     const l = core.listing
     rows.push(info(`biz.group.i.${id}.1`, `Listed on the ${l.exchange} at ${moneyWith(sharePriceOf(grp), (x) => x.toFixed(2))} a share (market cap ${money(groupValue(grp))}) \u{00B7} you own ${pct(core.share, 1)}, worth ${money(stake)}`, '\u{1F4C8}'))

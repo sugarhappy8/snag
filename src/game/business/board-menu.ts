@@ -4,6 +4,7 @@
 // amounts. Without a board, a company with a hired CEO gets the same controls as the owner's brief
 // (no vote: the owner decides). Business talent hints: which proposals pass, and the best mandate.
 import { earnIncome, formatMoney, log, notice } from '../core'
+import { payFamilyBusinessProceeds } from './dynasty-ownership'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuNode } from '../types'
 import {
@@ -112,6 +113,7 @@ export function payDividend(g: GameState, a: Asset, b: BizState, amount: number)
   b.cash -= n
   const mine = Math.round(n * b.share)
   earnIncome(g, mine)
+  payFamilyBusinessProceeds(g, b, n, true)
   if (b.public && b.sharesOut > 0) {
     b.sharePrice = round2(Math.max(0.05, b.sharePrice - n / b.sharesOut))
     b.valuation = Math.round(b.sharePrice * b.sharesOut)

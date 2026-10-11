@@ -34,6 +34,7 @@ import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyInventoryValue, supplyProfile, type SupplyBook } from './supply'
 import { applyEconomicRivals } from './economic-actors'
+import { applyNpcRivals } from './npc-rivals'
 import { leadershipPower, individualLeadershipPower, LEADERSHIP } from './leadership'
 
 // ---------------------------------------------------------------------------
@@ -418,7 +419,7 @@ const scaleCache = new Map<string, { dRef: number; fieldP: number }>()
 /** The competitive situation of a company's market in `year` (pure; cached). */
 export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx {
   const { dRef, fieldP } = marketScale(b.industry, b.countryId)
-  const ctx = applyEconomicRivals(g, buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP))
+  const ctx = applyNpcRivals(g, b, applyEconomicRivals(g, buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP)))
   const national = nationalMarket(g, b.industry, b.countryId, year)
   return { ...ctx, pot: ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1) }
 }

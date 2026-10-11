@@ -25,7 +25,7 @@ export function groupRolePay(g: GameState, grp: Group, p: Person, role: GroupRol
 }
 export function groupFamilyBlock(g: GameState, grp: Group, p: Person, role: GroupRole): string | null {
   const job = readGroupJob(p)
-  return groupBlock(g) ?? (!p.alive ? 'No longer alive.' : !isRelative(p) ? 'Only relatives can take family positions.'
+  return groupBlock(g) ?? (grp.core.share <= 0 ? 'You do not own shares in this family holding.' : !p.alive ? 'No longer alive.' : !isRelative(p) ? 'Only relatives can take family positions.'
     : p.data.disowned === true || isEstranged(g, p) || p.relationship < 15 ? 'This relative is not on speaking terms with you.'
     : p.age < GROUP_ROLES[role].age || p.age > 72 ? `This position requires age ${GROUP_ROLES[role].age}–72.`
     : readJob(p) ? 'Already employed at a subsidiary. End that job first.'
@@ -73,7 +73,7 @@ export function appointGroupRelative(g: GameState, id: string, personId: string,
 }
 export function removeGroupRelative(g: GameState, id: string, personId: string): boolean {
   const grp = liveGroup(g, id), p = g.people.find(p => p.id === personId), job = p && readGroupJob(p)
-  if (!grp || !p || !job || job.groupId !== id || groupBlock(g)) return false
+  if (!grp || grp.core.share <= 0 || !p || !job || job.groupId !== id || groupBlock(g)) return false
   const proposal = { kind: 'fire' as const, by: 'owner' as const, label: `Remove ${p.firstName} from head office` }
   if (groupNeedsVote(g, grp, proposal) && !groupVote(g, grp, proposal).passed) { saveGroup(g, grp); return false }
   if (job.role === 'ceo' && grp.core.manager?.personId === p.id) {

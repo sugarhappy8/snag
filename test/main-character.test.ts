@@ -34,7 +34,8 @@ describe('the talent', () => {
     const def = specialTalent('MainCharacter')!
     expect(def.label).toBe('Main Character Syndrome')
     expect(def.emoji.length).toBeGreaterThan(0)
-    expect(def.perk).toBe('You have every talent, and anything you do once, you master.')
+    expect(def.perk).toContain('You have every talent, and anything you do once, you master.')
+    expect(def.perk).toContain('Every child inherits it')
     expect(isTalentId('MainCharacter')).toBe(true)
     expect(SPECIAL_TALENTS.filter((t) => t.id === 'MainCharacter')).toHaveLength(1)
     expect(talentEmoji('MainCharacter')).toBe(def.emoji)
@@ -160,7 +161,7 @@ describe('no childhood reveal', () => {
 })
 
 describe('the gift can run in the family', () => {
-  it('an heir sometimes inherits it (picks are not handed down whole), without a reveal', () => {
+  it('every heir inherits Main Character Syndrome, without a childhood reveal roll', () => {
     let inherited = 0
     let plain = 0
     for (let seed = 1; seed <= 60; seed++) {
@@ -188,7 +189,7 @@ describe('the gift can run in the family', () => {
         expect(prose).not.toContain('maincharacter')
       } else plain++
     }
-    expect(inherited).toBeGreaterThan(0)
-    expect(plain).toBeGreaterThan(0)
+    expect(inherited).toBe(60)
+    expect(plain).toBe(0)
   })
 })

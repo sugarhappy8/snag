@@ -13,6 +13,7 @@ import { industryDef } from './industries'
 import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state'
 import { clampN, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
+import { payFamilyBusinessProceeds } from './dynasty-ownership'
 
 /** IPO threshold: last year's net profit, like the original's ~$300M rule. */
 export const IPO_PROFIT = 300_000_000
@@ -64,6 +65,7 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   const loan = settleFoundingLoan(g, b, gross - tax)
   const net = gross - tax - loan
   addMoney(g, net)
+  payFamilyBusinessProceeds(g, b, price)
   removeBusiness(g, a)
   count(g, 'businessesSold')
   const profit = gross - b.invested
@@ -112,6 +114,7 @@ export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: 
   }
   const mine = ownerProceeds(b, proceeds)
   addMoney(g, mine)
+  payFamilyBusinessProceeds(g, b, proceeds)
   removeBusiness(g, a)
   log(g, `I closed ${a.name} for good.`, 'neutral')
   notice(
@@ -151,7 +154,7 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   b.sharesOut = Math.max(1000, Math.round(post / 25))
   b.sharePrice = Math.round((post / b.sharesOut) * pop * 100) / 100
   b.cash += raise - fees
-  b.share = clampN(b.share * 0.75, 0.01, 1)
+  b.share = clampN(b.share * 0.75, b.familyShares?.length ? 0 : .01, 1)
   diluteBusinessEquity(b, 0.75)
   // Preferred shares convert to ordinary ones at the listing.
   b.pref = 0
@@ -183,7 +186,7 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   b.share = stake - sold
   b.sharePrice = Math.max(.01, Math.round(b.sharePrice * order.end * 100) / 100)
   b.valuation = Math.round(b.sharePrice * b.sharesOut)
-  if (f >= 0.999 || b.share < 0.005) {
+  if ((f >= 0.999 || b.share < 0.005) && !b.familyShares?.length) {
     g.assets = g.assets.filter((x) => x.id !== a.id)
     if (ceoJob(g, a.id)) endJob(g, 'job', 'quit')
     afterMemberGone(g, a.details, a.name)

@@ -18,6 +18,7 @@ import { registerGroupBoard, type Mandate } from './board-state'
 import { refreshValue } from './economy'
 import { bizOf, businessAssets, CEO_STYLES, diluteManagerEquity, readBiz, type BizState, type Manager } from './state'
 import { clampN, num, rec, round2, str, toJson } from './util'
+import { readFamilyShares, type FamilyShare } from './family-share-state'
 
 export const GROUP_VERSION = 1
 /** Years of group history kept. */
@@ -101,6 +102,7 @@ export interface GroupCore {
   lastFounded?: number
   /** Vested awards include former executives, so a buyback cannot confiscate them. */
   executiveEquity?: number
+  familyShares?: FamilyShare[]
 }
 
 export interface Membership {
@@ -204,7 +206,7 @@ export function readCore(v: Json | undefined, fallbackId = '', fallbackShare = 1
     name: str(d.name, 'The Group').slice(0, 48) || 'The Group',
     rev: Math.max(0, Math.round(num(d.rev))),
     founded: Math.round(num(d.founded)),
-    share: clampN(num(d.share, fallbackShare), 0.001, 1),
+    share: clampN(num(d.share, fallbackShare), 0, 1),
     mult: clampN(num(d.mult, 1), 0.3, 3),
     discount: clampN(num(d.discount), 0, 0.25),
     ceo,
@@ -227,6 +229,7 @@ export function readCore(v: Json | undefined, fallbackId = '', fallbackShare = 1
     autoFound: d.autoFound !== false,
     lastFounded: Math.round(num(d.lastFounded, num(d.founded))),
     executiveEquity: clampN(num(d.executiveEquity), 0, .999),
+    ...(Array.isArray(d.familyShares) ? { familyShares: readFamilyShares(d.familyShares, 1 - clampN(num(d.share, fallbackShare), 0, 1) - clampN(num(d.executiveEquity), 0, .999)) } : {}),
   }
 }
 
@@ -240,7 +243,7 @@ export function readMembership(v: Json | undefined, memberShare?: number): Membe
   const id = str(d.id)
   if (!id) return null
   const own = clampN(num(d.own, 1), 0.001, 1)
-  const core = readCore(d.core, id, memberShare !== undefined && Number.isFinite(memberShare) ? clampN(memberShare / own, 0.001, 1) : 1)
+  const core = readCore(d.core, id, memberShare !== undefined && Number.isFinite(memberShare) ? clampN(memberShare / own, 0, 1) : 1)
   if (!core || core.id !== id) return null
   const fx = rec(d.fx)
   return {
@@ -303,12 +306,13 @@ function collect(g: GameState, mutable: boolean): Map<string, GroupMember[]> {
  * would silently go back to the player. The 1% floor every company record keeps is not drift.
  */
 function reconcileOwnership(core: GroupCore, list: GroupMember[]): void {
-  const s = Math.max(0.001, core.share)
+  if (core.share <= 0) return // No playable stake is not a sale of the group's divisions.
+  const s = core.share
   for (const x of list) {
     const expected = s * x.m.own
     const share = x.b.share
     if (!Number.isFinite(share) || Math.abs(share - expected) <= 1e-4) continue
-    if (expected < 0.01 && share <= 0.01 + 1e-6) continue
+    if (!core.familyShares?.length && expected < .01 && Math.abs(share - .01) <= 1e-6) continue
     x.m.own = clampN(share / s, 0.001, 1)
   }
 }
@@ -364,6 +368,7 @@ export function saveGroup(g: GameState, grp: Group): void {
 
 /** New group shares dilute every active executive award, not only the head-office CEO. */
 export function diluteGroupEquity(grp: Group, retained: number): void {
+  for (const holder of grp.core.familyShares ?? []) holder.share *= clampN(retained, 0, 1)
   grp.core.executiveEquity = (grp.core.executiveEquity ?? 0) * clampN(retained, 0, 1)
   diluteManagerEquity(grp.core.manager, retained)
   const ratio = clampN(retained, 0, 1)
@@ -446,8 +451,8 @@ export function multFor(grp: Group, value: number): number {
 /** Push the player's look-through stake and the multiplier into every member's asset value. */
 export function syncMembers(grp: Group): void {
   for (const x of grp.members) {
-    // Never below the 1% every company record keeps (state.normalizeBiz).
-    x.b.share = clampN(Math.round(grp.core.share * x.m.own * 1e6) / 1e6, 0.01, 1)
+    // Inheritance can create tiny or zero playable stakes; never round those up into new shares.
+    x.b.share = clampN(grp.core.share * x.m.own, 0, 1)
     x.m.core = grp.core
     // stakeValue reads the multiplier from the stored record: write it before refreshing.
     const cur = rec(x.b.group)
@@ -472,7 +477,9 @@ function undoFx(g: GameState, b: BizState, m: Membership | null): void {
  * shareholders hold it pro rata), and with `listing` it trades on its own on the group's exchange.
  */
 export function detach(g: GameState, a: Asset, b: BizState, listing: GroupListing | null, opts: { keepIpoYear?: boolean; mult?: number } = {}): void {
-  undoFx(g, b, readMembership(b.group))
+  const membership = readMembership(b.group)
+  undoFx(g, b, membership)
+  if (membership?.core.familyShares?.length) b.familyShares = membership.core.familyShares.map(x => ({ id: x.id, share: x.share * membership.own }))
   delete b.group
   if (listing && !b.public) {
     // It starts trading at the price the market was paying for it inside the group (its mood, not

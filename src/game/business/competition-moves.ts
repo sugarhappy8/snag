@@ -55,6 +55,7 @@ export interface AcquisitionQuote {
 
 /** What buying out a rival costs and brings (pure). Null for rivals that can't be bought. */
 export function acquisitionQuote(g: GameState, b: BizState, rivalId: string): AcquisitionQuote | null {
+  if (rivalId.startsWith('npc:') || rivalId.startsWith('owned:')) return null // Real companies use their own ownership/negotiation paths.
   const v = marketViewOf(g, b)
   const r = v.rivals.find((x) => x.id === rivalId)
   if (!r || r.legacy || !(r.share > 0)) return null
