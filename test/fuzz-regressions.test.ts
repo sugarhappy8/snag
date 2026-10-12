@@ -5,9 +5,9 @@
 import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
 import { businessAssetView, businessCareerMenu } from '../src/game/business'
-import { ownerProceeds } from '../src/game/business/exit'
-import { newBiz } from '../src/game/business/founding'
-import { businessAssets, readBiz, stakeValue } from '../src/game/business/state'
+import { capitalGainsTax, ownerProceeds, sellBusiness } from '../src/game/business/exit'
+import { listingsForSale, newBiz } from '../src/game/business/founding'
+import { bizOf, businessAssets, readBiz, stakeValue } from '../src/game/business/state'
 import { netWorth } from '../src/game/core'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
@@ -213,5 +213,39 @@ describe("investors' liquidation preference is not the founder's net worth", () 
     expect(readBiz(g, a).cash).toBeGreaterThan(b.cash * 0.9)
     expect(g.character.money).toBeLessThan(before)
     expect(netWorth(g)).toBeLessThanOrEqual(before)
+  })
+})
+
+describe('capital gains are taxed on the real gain', () => {
+  it('a company bought with an acquisition loan has the whole price as its cost basis', () => {
+    // A $120M Mumbai energy company, 65% financed by the bank: sold back for exactly the price.
+    const g = createNewLife({ seed: 24, year: 2026, countryId: 'in' })
+    g.queue = []
+    g.character.age = 40
+    g.character.money = 5e7
+    g.character.residence = { status: 'renting', rent: 0 }
+    const listing = listingsForSale(g).find((l) => l.biz.industry === 'energy')!
+    expect(listing.price).toBeGreaterThan(g.character.money)
+    const buy = businessCareerMenu.children(g).find((n) => n.id === 'biz.buy') as MenuGroup
+    ;(buy.children(g).find((n) => n.id === `biz.buy.${listing.id}`) as MenuAction).run(g)
+    for (let guard = 0; g.queue.length && guard < 20; guard++) {
+      const m = g.queue.shift()!
+      const at = g.queue.length
+      if (m.kind === 'choice') runScript(g, m.scriptId!, m.choices.some((c) => c.id === 'loan') ? 'loan' : m.choices.some((c) => c.id === 'me') ? 'me' : m.choices[0].id, m.data, m)
+      else if (m.kind === 'aiTask') applyFallback(g, m.task)
+      g.queue.unshift(...g.queue.splice(at))
+    }
+    const a = businessAssets(g)[0]
+    const b = bizOf(g, a)
+    const loan = g.character.loans.find((l) => l.id === b.loanId)!
+    expect(loan.balance).toBeGreaterThan(0)
+    // The basis is the price paid (plus the fee), however it was financed.
+    expect(b.invested).toBeGreaterThanOrEqual(listing.price)
+    expect(capitalGainsTax(g, listing.price, b.invested)).toBe(0)
+    const cash = g.character.money
+    const owed = loan.balance
+    sellBusiness(g, a, b, listing.price, 'a test buyer')
+    // No gain, so no tax: the price repays the bank and the rest is the buyer's own money back.
+    expect(g.character.money).toBe(cash + listing.price - owed)
   })
 })

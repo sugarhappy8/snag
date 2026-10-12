@@ -568,7 +568,9 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
   }
   const b = newBiz(g, p.industry, p.countryId, p.city, {
     share: p.funding === 'investors' ? Math.round((1 - p.equity) * 100) / 100 : 1,
-    invested: personal,
+    // The cost basis (capital gains at a sale) is everything the founder put in, including what
+    // they borrowed personally to do it (the sale repays that loan); investors' money is theirs.
+    invested: personal + (p.funding === 'loan' ? p.loan : 0),
     // Investors hold preferred shares: in a sale or closure they get their money back first.
     ...(p.funding === 'investors' && p.investor > 0 ? { pref: Math.round(p.investor) } : {}),
     cash: Math.round(capital - cost.capital * .8),
@@ -630,7 +632,7 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
   if (p.seed > 0) share *= 1 - p.seedEquity
   const b = newBiz(g, ind, p.countryId, p.city, {
     share: Math.round(share * 10000) / 10000,
-    invested: personal,
+    invested: personal + (p.funding === 'loan' ? p.loan : 0),
     cash: Math.round(capital - cost.capital * .8),
     openFraction: openFractionFor(p.days),
     loanId,
@@ -911,7 +913,8 @@ function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
   let loanId = ''
   if (p.funding === 'loan' && p.loan > 0) loanId = addLoan(g, { kind: 'business', lender: p.lender, principal: p.loan, rate: p.rate, years: 8 }).id
   const b = listing.biz
-  b.invested = personal
+  // Cost basis: the whole price (and fee), however much of it the acquisition loan financed.
+  b.invested = personal + (p.funding === 'loan' ? p.loan : 0)
   b.loanId = loanId
   b.founderName = b.founderName || 'a previous owner'
   b.manager = null
