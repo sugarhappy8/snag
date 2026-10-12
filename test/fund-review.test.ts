@@ -108,6 +108,21 @@ describe('venture capital: a hired CEO and the owner', () => {
   })
 })
 
+describe('venture capital: follow-on rounds', () => {
+  it('says up front when a fund can’t cover the pro-rata check (the stake gets diluted anyway)', () => {
+    const { g, a, b } = firm('vc', { year: 2015 })
+    const f = readFund(b)
+    const round = (take: number) => ({ stage: 2, pre: 1e9, size: 4e8, year: 2016, take })
+    f.cos.push({ id: 'big', name: 'Megahub', emoji: '🚀', sector: 'Software', fund: 1, q: 70, stage: 1, val: 2e8, own: .1, cost: 2e6, born: 2012, status: 'live', end: 0, got: 0, how: '', round: round(1), unicorn: false })
+    f.cos.push({ id: 'small', name: 'Tinyhub', emoji: '🚀', sector: 'Software', fund: 1, q: 70, stage: 1, val: 4e6, own: .1, cost: 4e5, born: 2012, status: 'live', end: 0, got: 0, how: '', round: { ...round(1), pre: 8e6, size: 2e6 }, unicorn: false })
+    saveFund(b, f)
+    const text = menuText(g, fundNodes(g, a)).join('\n')
+    expect(text).toMatch(/Megahub is raising\n.*Fund I can’t cover it: diluted/)
+    expect(text).toMatch(/Fund I has only \$[\d.]+M left/)
+    expect(text).toMatch(/Tinyhub is raising\n.*· investing/)
+  })
+})
+
 describe('venture capital: LPs judge what you invested', () => {
   it('a firm that never backs a startup can’t keep raising funds just to collect fees', () => {
     const { g, a } = ownerVc('lazy-vc', 1990, 26, false)

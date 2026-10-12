@@ -215,11 +215,15 @@ function portfolioNodes(g: GameState, a: Asset, act: Act): MenuNode[] {
     if (!c.round) return { type: 'info' as const, id: `fund.${id}.co.${c.id}`, emoji: c.emoji, text: row }
     const round = c.round
     const want = proRata(c, round)
-    const choice = round.take === 1 ? 'investing' : round.take === 0 ? 'passing' : 'auto: invest if the fund can'
+    // The round closes at the next birthday: a fund without the money left gets diluted anyway.
+    const fund = v.f.funds.find(x => x.n === c.fund)
+    const short = !fund || fund.dry < want
+    const choice = round.take === 0 ? 'passing' : short ? `Fund ${roman(c.fund)} can’t cover it: diluted` : round.take === 1 ? 'investing' : 'auto: invest if the fund can'
     return { type: 'menu' as const, id: `fund.${id}.co.${c.id}`, label: `${c.name} is raising`, emoji: c.emoji, subtitle: `${stageLabel(round.stage)} at ${money(round.pre)} · keep our stake for ${money(want)} · ${choice}`,
       header: () => row,
       children: () => [
-        act(`co.${c.id}.in`, `Invest ${money(want)} to keep our stake`, '💰', g2 => { setFollowOn(g2, id, c.id, true) }, { stayOpen: true, hint: g2 => talentRead(g2, `${c.id}|follow`, c.q) || null }),
+        act(`co.${c.id}.in`, `Invest ${money(want)} to keep our stake`, '💰', g2 => { setFollowOn(g2, id, c.id, true) }, { stayOpen: true, hint: g2 => talentRead(g2, `${c.id}|follow`, c.q) || null,
+          ...(short ? { subtitle: `Fund ${roman(c.fund)} has only ${money(fund?.dry ?? 0)} left` } : {}) }),
         act(`co.${c.id}.out`, 'Pass and get diluted', '👋', g2 => { setFollowOn(g2, id, c.id, false) }, { stayOpen: true }),
       ] }
   })
