@@ -1115,9 +1115,14 @@ export async function fuzzBusiness(industry: string, seed: number, log: FailureL
     stats.menuNodes += found.length
     if (y % 3 === 0) stats.swept += sweep(ctx, g, found, d, 80)
     const n = d.int(2, 8)
+    let pool = found.filter((f) => f.path.startsWith('biz:') || f.path.includes('/business/'))
     for (let i = 0; i < n && g.character.alive; i++) {
       bindMoneyContext(g)
-      const pool = found.filter((f) => f.path.startsWith('biz:') || f.path.includes('/business/'))
+      if (i > 0) {
+        // The rows on screen now: built from the latest committed state, like the UI re-renders.
+        pool = []
+        for (const a of businessAssets(g)) walkRoot(ctx, g, { name: `biz:${String(a.details.industry)}`, nodes: () => businessAssetView(g, a) }, { maxDepth: 7, full: false, maxNodes: 20000 }, pool)
+      }
       if (!pool.length) break
       const f = d.pick(pool)
       const nw = netWorth(g)
@@ -1130,7 +1135,6 @@ export async function fuzzBusiness(industry: string, seed: number, log: FailureL
       checkInvariants(ctx, g, `after ${f.path}`)
       noteWindfall(ctx, nw, g, `after ${f.path}`)
       deepFreeze(g)
-      break // the rows were built from the previous state: render again next year
     }
     if (!g.character.alive) break
     ctx.trail.push(`ageUp -> ${g.character.age + 1} (${g.year + 1})`)
