@@ -1229,6 +1229,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const birthday =
     bd && typeof bd === 'object' && !Array.isArray(bd) && typeof bd.month === 'number' && typeof bd.day === 'number' ? { month: bd.month, day: bd.day } : randomBirthday(n)
   const talentData = typeof heirP.data.talent === 'string' ? heirP.data.talent : null
+  // Durable NPC talents (Main Character Syndrome) carry over. Without any, leave `talents` unset
+  // exactly as before: an empty list would read as "inherited a gift" to the heir logic and UI.
+  const npcTalents = normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER)
   const npcOccupation = heirP.occupation
   const grief = randInt(n, 20, 40) * (heirP.relationship >= 50 ? 1 : 0.5)
 
@@ -1323,7 +1326,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     loans: [],
     social: null,
     talent: talentData ?? (age >= 12 && chance(n, 0.25) ? weightedPick(n, TALENTS, (t) => t.weight).id : null),
-    talents: normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER),
+    ...(npcTalents.length ? { talents: npcTalents } : {}),
     memories: [],
     willBeneficiaries: [],
     religion: old.religion,
