@@ -168,6 +168,19 @@ describe('business', () => {
     expect(note).not.toMatch(/\b[A-Z][a-z]+ys\b|Agencys|label/)
   })
 
+  it("doesn't repeat the company's name in a header box under the sheet title", () => {
+    const g = adultIn('us', 400_000)
+    found(g, 'foodTruck')
+    const a = businessAssets(g)[0]
+    const node = businessCareerMenu.children(g).find((n) => n.id === `biz.company.${a.id}`)
+    expect(node?.type).toBe('menu')
+    if (node?.type !== 'menu') return
+    expect(node.label).toBe(a.name)
+    expect(node.header?.(g)).toBeFalsy()
+    g.assets = g.assets.filter((x) => x.id !== a.id)
+    expect(node.header?.(g)).toBe('You no longer own this business.')
+  })
+
   it('feels different by market and respects banned industries', () => {
     const sa = adultIn('sa', 5_000_000)
     expect(startRow(sa, 'bar').disabledReason?.(sa)).toBeTruthy()

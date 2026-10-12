@@ -23,10 +23,8 @@ function companyNode(g: GameState, a: Asset): MenuGroup {
     label: a.name,
     emoji: a.emoji,
     subtitle: businessAssetSubtitle(g, a),
-    header: (gg) => {
-      const cur = findBusiness(gg, a.id)
-      return cur ? `${cur.emoji} ${cur.name}` : 'You no longer own this business.'
-    },
+    // The sheet title already reads "☕ Name": no header box repeating it, unless it's gone.
+    header: (gg) => (findBusiness(gg, a.id) ? '' : 'You no longer own this business.'),
     children: (gg) => {
       const cur = findBusiness(gg, a.id)
       return cur ? businessView(gg, cur) : [{ type: 'info', id: 'biz.gone', text: 'You no longer own this business.' }]
