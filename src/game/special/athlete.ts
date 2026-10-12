@@ -783,7 +783,7 @@ function retire(g: GameState, forced: boolean): void {
   recordCareer(g, { sport: sport.name, kind: 'team', from: typeof job.data.startAge === 'number' ? job.data.startAge : g.character.age - p.seasons, best: p.championships ? plural(p.championships, 'championship') : plural(p.seasons, 'season'), legacy: Math.min(100, p.championships * 10 + p.awards.length * 10 + Math.max(0, p.peakGreatness - 50)) })
   leave(g, 'retired')
   log(g, `I retired from professional sports.`, 'event')
-  remember(g, `Retired from pro sports after ${plural(p.seasons, 'season')} and ${plural(p.championships, 'championship')}.`)
+  remember(g, `Retired from pro sports after ${plural(p.seasons, 'season')}${p.championships ? ` and ${plural(p.championships, 'championship')}` : ' without a championship'}.`)
   say(g, 'Retired', `${forced ? 'No team offered you a contract, so you ' : 'You '}retired after ${p.seasons} season${p.seasons === 1 ? '' : 's'}${p.championships ? ` and ${p.championships} championship${p.championships === 1 ? '' : 's'}` : ''}. The ${team} held a ceremony in your honor.`, '\u{1F3C5}', 'good')
 }
 
