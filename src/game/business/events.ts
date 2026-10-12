@@ -15,6 +15,7 @@ import { marketViewOf, shareText } from './competition'
 import { bizHas, eraFits } from './era'
 import { COMPETITION_EVENTS } from './competition-events'
 import { EXTRA_EVENTS } from './events-extra'
+import { isFinanceFirm } from './finance-firm-state'
 import { sellBusiness } from './exit'
 import { conglomerate, investorFirm, laborProtection, traitOf, unionStrength } from './flavor'
 import { industryDef } from './industries'
@@ -656,6 +657,7 @@ const CLAIMS: Record<string, string[]> = {
   food: ['says they found a tooth in their sandwich (not theirs)', 'slipped on a freshly mopped floor and is "never walking the same again"', 'claims your hot sauce was "unreasonably hot"'],
   gym: ['dropped a dumbbell on their own foot and blames the lighting', 'says the treadmill "launched" them'],
   software: ['says a bug deleted their entire business', 'claims your software leaked their data'],
+  finance: ['says a "sure thing" your adviser sold them lost their savings', 'claims a fee was hidden in the small print', 'slipped on the polished lobby floor and lawyered up'],
   default: ['says your product ruined their wedding', 'claims your sign fell on their car', 'slipped on the entrance mat and lawyered up'],
 }
 
@@ -688,7 +690,7 @@ const LAWSUIT = defineScript('business.ev.lawsuit', (g, choice, data) => {
 
 function presentLawsuit(g: GameState, a: Asset, b: BizState): void {
   const def = industryDef(b.industry)
-  const pool = def.food ? CLAIMS.food : b.industry === 'gym' ? CLAIMS.gym : b.industry === 'software' || b.industry === 'gameStudio' ? CLAIMS.software : CLAIMS.default
+  const pool = def.food ? CLAIMS.food : b.industry === 'gym' ? CLAIMS.gym : b.industry === 'software' || b.industry === 'gameStudio' ? CLAIMS.software : isFinanceFirm(b) ? CLAIMS.finance : CLAIMS.default
   const claim = scaled(b, 30_000)
   const choices: ChoiceOption[] = [
     { id: 'settle', label: `Settle (~${money(claim * 0.5)})`, emoji: '\u{1F4DD}' },
@@ -766,7 +768,7 @@ function presentEmbezzle(g: GameState, a: Asset, b: BizState): void {
   ]
   markBest(g, choices, scorer(g, b, (w) => {
     // A second chance keeps them (now with a shady streak); firing them loses what they add.
-    const weights = EVENTS.reduce((t, e) => t + Math.max(0, e.weight(g, b)), 0) || 1
+    const weights = EVENTS.reduce((t, e) => t + weightFor(g, b, e), 0) || 1
     const extraRisk = s && traitOf(s.trait).risk < 1 ? 0.3 : 0
     const again = 0.3 * (extraRisk / weights) * amount * LASTING_YEARS
     const second = s ? keepValue(g, b, w, s, { trait: 'shady' }) - again : 0
@@ -1001,14 +1003,26 @@ const EVENTS: BizEvent[] = [
 ]
 
 /**
+ * Events that make sense for any company. Banks and investment firms have their own event sets
+ * (business/bank*.ts, fund*.ts), so from this pool they only get these industry-neutral ones.
+ */
+const ANY_COMPANY = new Set(['audit', 'strike', 'lawsuit', 'embezzle', 'disaster', 'tacos', 'poached'])
+
+/** An event's weight for this company (0: it can't happen here). */
+function weightFor(g: GameState, b: BizState, e: BizEvent): number {
+  if (isFinanceFirm(b) && !ANY_COMPANY.has(e.id)) return 0
+  return Math.max(0, e.weight(g, b))
+}
+
+/**
  * Chance a given event hits this company in a year (for the Business talent's what-ifs, such as
  * whether insurance pays): the yearly event roll times the event's share of the weights.
  */
 export function eventChance(g: GameState, b: BizState, id: string, managed = false): number {
-  const total = EVENTS.reduce((t, e) => t + Math.max(0, e.weight(g, b)), 0)
+  const total = EVENTS.reduce((t, e) => t + weightFor(g, b, e), 0)
   const ev = EVENTS.find((e) => e.id === id)
   if (!ev || total <= 0) return 0
-  return (managed ? 0.18 : 0.3) * (Math.max(0, ev.weight(g, b)) / total)
+  return (managed ? 0.18 : 0.3) * (weightFor(g, b, ev) / total)
 }
 
 /** For tests: present a specific event (the hints are checked against the resolvers' odds). */
@@ -1020,6 +1034,8 @@ export const businessEventInternals = {
     return true
   },
   ids: (): string[] => EVENTS.map((e) => e.id),
+  /** Ids of the events that can happen to this company now (weight above 0). */
+  possible: (g: GameState, b: BizState): string[] => EVENTS.filter((e) => weightFor(g, b, e) > 0).map((e) => e.id),
 }
 
 /** Maybe queue one event for this business (returns true when one was queued). */
@@ -1028,9 +1044,9 @@ export function maybeBusinessEvent(g: GameState, a: Asset, b: BizState, year: nu
   if (b.founded >= year) return false
   if (b.lastEvent >= year - 1 && !chance(g, 0.3)) return false
   if (!chance(g, managed ? 0.18 : 0.3)) return false
-  const options = EVENTS.filter((e) => e.weight(g, b) > 0)
+  const options = EVENTS.filter((e) => weightFor(g, b, e) > 0)
   if (options.length === 0) return false
-  const ev = weightedPick(g, options, (e) => e.weight(g, b))
+  const ev = weightedPick(g, options, (e) => weightFor(g, b, e))
   b.lastEvent = year
   ev.present(g, a, b)
   return true

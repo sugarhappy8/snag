@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
 import { bizWorth, evolve, fxValue, recordYear, simulateYear, staffNet, startupCost, valuationOf, LASTING_YEARS, type BizFx } from '../src/game/business/economy'
-import { businessEventInternals, eventChance } from '../src/game/business/events'
+import { businessEventInternals, eventChance, maybeBusinessEvent } from '../src/game/business/events'
 import { EXTRA_EVENTS, equityGain, extraEventInternals, PITCH_PREMIUM_P, stakePrice, trendsFor } from '../src/game/business/events-extra'
 import { franchiseFee, franchiseValue, ONBOARDING, readFranchise } from '../src/game/business/franchise'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
@@ -134,6 +134,28 @@ describe('new business events: availability', () => {
     const seventies = company(22, { id: 'trend', industry: 'restaurant', year: 1972 }, true)
     expect(trendsFor(seventies.g, seventies.b).map((t) => t.label)).toContain('fondue parties')
     expect(trendsFor(seventies.g, seventies.b).map((t) => t.label)).not.toContain('plant-based eating')
+  }, 120_000)
+
+  it('gives banks and investment firms only industry-neutral generic events (they have their own sets)', () => {
+    const neutral = new Set(['audit', 'strike', 'lawsuit', 'embezzle', 'disaster', 'tacos', 'poached'])
+    for (const industry of ['bank', 'onlineBank', 'investmentFirm']) {
+      const { g, a, b } = company(25, { id: 'x', industry, prep: (bb) => { bb.morale = 20; bb.staff.push({ id: 'k1', firstName: 'Robin', lastName: 'Vale', gender: 'female', age: 40, role: 'Risk Officer', focus: 'quality', skill: 60, salary: 90_000, trait: 'shady', morale: 50, years: 2 }) } }, true)
+      const possible = businessEventInternals.possible(g, b)
+      expect(possible.length, industry).toBeGreaterThan(0)
+      for (const id of possible) expect(neutral.has(id), `${industry}: ${id}`).toBe(true)
+      for (const id of ['viral', 'competitor', 'supplier', 'inspection', 'celebrity', 'buyout', 'currency']) expect(eventChance(g, b, id), `${industry}: ${id}`).toBe(0)
+      // The yearly picker itself: whatever it queues comes from the neutral list.
+      for (let i = 0; i < 60; i++) {
+        const g1 = structuredClone(g)
+        g1.rng = 900 + i * 31
+        g1.queue = []
+        const b1 = bizOf(g1, findBusiness(g1, a.id)!)
+        b1.lastEvent = 0
+        if (!maybeBusinessEvent(g1, findBusiness(g1, a.id)!, b1, g1.year - 1, false)) continue
+        const m = lastChoice(g1)
+        expect(m.scriptId?.replace('business.ev.', ''), `${industry}: ${m.title}`).toMatch(/^(audit|strike|lawsuit|embezzle|disaster|tacos|poached)$/)
+      }
+    }
   }, 120_000)
 
   it('keeps the overall popup rate: all event chances still add up to the same yearly roll', () => {
