@@ -77,8 +77,21 @@ large batch of bugs found by fuzzing, browser playthroughs and code review.
 - The right currency from birth; correct articles and plurals ("an AI company", "bakeries");
   anachronisms removed (1950s moon landings, 1948 color TVs and e-bikes); investment percentages
   that agree with each other; slider and Annual Report fixes; texts that no longer cut off on a phone.
+- More money leaks and exploits closed: a dead family co-owner's dividends now reach their heirs
+  (and the will's charity slice is really paid), game engines can't be built and resold for more
+  than they cost, broke players no longer get free repairs, cancelling a development returns unspent
+  money in full, options on a real company's last year are no longer risk-free, buying a company
+  and flipping it straight back out loses money, and your own big orders can't inflate the value of
+  your own stock position.
+- Gifts of luxury goods and the will's make-up actions now actually stick; special-career menus
+  (fighters, politicians, musicians, esports) no longer change the game just by being opened.
+- Investor money no longer inflates the founder's net worth or gets paid straight back out;
+  borrowed money counts in a company's cost basis; royal siblings keep their titles across reloads.
 - A failing year no longer freezes the Age button.
-- Faster yearly simulation (the world economy step is about a quarter cheaper).
+- Faster yearly simulation: the world economy step is about a quarter cheaper and the business
+  planner about three times faster.
+- An optional deep engine fuzzer (`FUZZ=1 npx vitest run test/fuzz-deep.test.ts`) for future bug
+  hunts.
 
 See [INVENTOR-CAREER.md](INVENTOR-CAREER.md) and [ARCHITECTURE.md](ARCHITECTURE.md) for details,
 and `docs/superpowers/specs/2026-10-12-business-finance-inventor-rework-design.md` for the design.
