@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
 import { counter, netWorth } from '../src/game/core'
 import { anachronismsIn } from '../src/game/events/era'
+import { brandById } from '../src/game/data/brands'
 import { runScript } from '../src/game/scripts'
 import { activitiesMenu, assetsMenu } from '../src/game/menus'
 import { ageUp } from '../src/game/aging'
@@ -91,6 +92,10 @@ describe('the catalog', () => {
         expect(anachronismsIn(`${i.name}. ${i.blurb}`, y, ['us']), `${i.id} in ${y}`).toEqual([])
       }
     }
+  })
+
+  it('only names real companies that are in the brand registry', () => {
+    for (const [cat, def] of Object.entries(CATEGORIES)) for (const id of def.buyers) expect(brandById(id), `${cat}: ${id}`).toBeDefined()
   })
 
   it('never names a real inventor', () => {
