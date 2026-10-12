@@ -15,7 +15,7 @@ import { brokerEra, CALLS, exchangeOf, fundSkill, indexLabel, marketYearOf, quan
 import { strategyOutlook, styleOutlook } from './fund-outlook'
 import { readFund, saveFund, type FundState, type FundStyle, type HedgeStrategy, type MacroCall } from './fund-state'
 import { fundLine, inflationNote, newsLine, rankText, signed } from './fund-text'
-import { gutRead, openPitches, readLabel, raiseQuote, roman } from './fund-vc'
+import { gutRead, openPitches, pitchesFor, readLabel, raiseQuote, roman, uniqueName } from './fund-vc'
 import { leadershipPower } from './leadership'
 import { bizOf, findBusiness, type BizState } from './state'
 import { clampN, money, pct, rec, str, units } from './util'
@@ -463,11 +463,13 @@ const EVENTS: FundEvent[] = [
   {
     id: 'fomo',
     weight: (g, _b, f) => f.type === 'vc' && f.funds.some(x => !x.done && g.year - x.vintage < 5 && x.dry > x.size * .1) ? .8 : 0,
-    present: (g, a, _b, f) => {
+    present: (g, a, b, f) => {
       const fund = [...f.funds].reverse().find(x => !x.done && g.year - x.vintage < 5 && x.dry > x.size * .1)!
       const amount = Math.round(Math.min(fund.dry, fund.size * .06) / 10_000) * 10_000
       const q = Math.round(100 * Math.pow(Math.max(0, Math.min(1, randFloat(g, 0, 1))), 1.3))
-      const name = `${pick(g, ['Hype', 'Rocket', 'Moon', 'Turbo', 'Mega'])}${pick(g, ['ly', 'ify', 'Labs', 'Works', 'Hub'])}`
+      // Never the name of a startup the firm already backed or is hearing this year.
+      const taken = new Set([...f.cos.map(c => c.name.toLowerCase()), ...pitchesFor(g, b, f, g.year).map(p => p.name.toLowerCase())])
+      const name = uniqueName(`${pick(g, ['Hype', 'Rocket', 'Moon', 'Turbo', 'Mega'])}${pick(g, ['ly', 'ify', 'Labs', 'Works', 'Hub'])}`, taken)
       const read = gutRead(g, `fomo|${g.year}|${name}`, q)
       ask(g, a, 'fomo', '🔥 Everyone Wants In', `${name} is the hottest startup in town. The founder gives you 24 hours to invest ${money(amount)} at a crazy valuation, or a rival fund gets it.`,
         [choice('invest', `Invest ${money(amount)} from Fund ${roman(fund.n)}`, '💸', talentHint(g, hasTalent(g, 'Business') ? 'Business' : 'Investing', `Your read: ${readLabel(read)}`)), choice('pass', 'Pass on the hype', '🧊')],

@@ -93,14 +93,32 @@ export function sectorsFor(countryId: string, year: number): Sector[] {
   return SECTORS.filter(s => year >= s.from && (s.to === undefined || year <= s.to) && (!s.tech || techAt(countryId, s.tech, year)))
 }
 
-function startupName(r: SRng, year: number): string {
+/** A made-up startup name the firm isn't already using (`taken`: lower-case names). */
+function startupName(r: SRng, year: number, taken: ReadonlySet<string>): string {
   let set = STARTS[0]
   for (const row of STARTS) if (year >= row[0]) set = row
-  const a = r.pick(set[1] as string[])
-  const ends = set[2] as string[]
-  let k = Math.floor(r.next() * ends.length)
-  for (let i = 0; i < ends.length && DENY.has(`${a}${ends[k]}`.toLowerCase()); i++) k = (k + 1) % ends.length
-  return `${a}${ends[k]}`
+  const starts = set[1], ends = set[2]
+  const a0 = Math.floor(r.next() * starts.length), k0 = Math.floor(r.next() * ends.length)
+  // Walk on from the drawn syllables (same stream use, and the same name whenever it is free),
+  // skipping famous real names and names already in this year's pitches or the portfolio.
+  for (let j = 0; j < starts.length; j++) {
+    for (let i = 0; i < ends.length; i++) {
+      const name = `${starts[(a0 + j) % starts.length]}${ends[(k0 + i) % ends.length]}`
+      if (!DENY.has(name.toLowerCase()) && !taken.has(name.toLowerCase())) return name
+    }
+  }
+  return uniqueName(`${starts[a0]}${ends[k0]}`, taken)
+}
+
+/** `base`, or `base 2`, `base 3`... whichever the firm isn't using yet (`taken`: lower-case names). */
+export function uniqueName(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base.toLowerCase())) return base
+  for (let n = 2; ; n++) if (!taken.has(`${base} ${n}`.toLowerCase())) return `${base} ${n}`
+}
+
+/** Lower-case names of the firm's startups from before `year` (fixed all year, so pitches stay put). */
+export function usedNames(f: Pick<FundState, 'cos'>, year: number): Set<string> {
+  return new Set(f.cos.filter(c => c.born < year).map(c => c.name.toLowerCase()))
 }
 
 // ---------------------------------------------------------------------------
@@ -209,9 +227,11 @@ export function pitchesFor(g: GameState, b: Firm, f: FundState, year: number): P
   const count = 3 + Math.floor(look.next() * 3)
   const pool = namePoolOf(b.countryId)
   const out: Pitch[] = []
+  const taken = usedNames(f, year)
   for (let i = 0; i < count; i++) {
     const sector = look.pick(sectors)
-    const name = startupName(look, year)
+    const name = startupName(look, year, taken)
+    taken.add(name.toLowerCase())
     const product = look.pick(sector.products as string[])
     const twist = look.next() < .45 ? ` ${look.pick(TWISTS as string[])}` : ''
     const q = Math.round(100 * Math.pow(fate.next(), 1.7))

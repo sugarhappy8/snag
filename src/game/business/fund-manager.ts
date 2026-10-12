@@ -58,13 +58,20 @@ function vcAutopilot(g: GameState, b: BizState, f: FundState, skill: number): vo
     const read = managerRead(skill, `${key}|${c.id}|${c.round.year}`, c.q)
     c.round.take = read >= 45 && !!fund && fund.dry >= proRata(c, c.round) ? 1 : 0
   }
-  // New checks: diligence the interesting ones, back the best, at most two a year.
+  // A fund that's done investing: raise the next one first, so this year's founders get a look.
+  if (!investingFund(f, g.year)) {
+    const q = raiseQuote(g, b, f, g.year)
+    if (!q.block && q.size > 0) f.funds.push(newVcFund(q.n, q.size, g.year))
+  }
+  // New checks: diligence the interesting ones, back the best, at most three a year. The pitches
+  // the CEO passes on stay open, so an owner who isn't running the firm can still back one.
   if (f.actYear !== g.year) { f.actYear = g.year; f.acted = []; f.dd = [] }
   let made = 0
   const reads = openPitches(g, b, f, g.year).map(p => {
     let read = managerRead(skill, `${key}|${p.id}`, p.q)
     const cost = ddCost(b, p.ask)
-    if (read >= 35 && b.cash - cost > reserveOf(b)) {
+    if (f.dd.includes(p.id)) read = (p.lo + p.hi) / 2
+    else if (read >= 35 && b.cash - cost > reserveOf(b)) {
       b.cash -= cost; b.yearCosts += cost
       f.dd.push(p.id)
       read = (p.lo + p.hi) / 2
@@ -73,15 +80,11 @@ function vcAutopilot(g: GameState, b: BizState, f: FundState, skill: number): vo
   }).sort((x, y) => y.read - x.read)
   for (const { p, read } of reads) {
     const fund = investingFund(f, g.year)
-    if (fund && made < 3 && read >= 38 && fund.dry >= p.ask) {
+    if (fund && fund.n === p.fund && made < 3 && read >= 38 && fund.dry >= p.ask) {
       fund.dry -= p.ask; fund.invested += p.ask
       f.cos.push(newStartup(p, g.year))
+      f.acted.push(p.id)
       made++
     }
-    f.acted.push(p.id)
-  }
-  if (!investingFund(f, g.year)) {
-    const q = raiseQuote(g, b, f, g.year)
-    if (!q.block && q.size > 0) f.funds.push(newVcFund(q.n, q.size, g.year))
   }
 }
