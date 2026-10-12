@@ -175,7 +175,7 @@ export function hedgeBlock(year: number): string | null {
   return year >= 1949 ? null : 'Hedge funds haven’t been invented yet (the first opens in 1949).'
 }
 export function ventureBlock(year: number): string | null {
-  return year >= 1946 ? null : 'Venture capital firms start after 1946.'
+  return year >= 1946 ? null : 'Venture capital firms don’t exist yet (the first opens in 1946).'
 }
 
 /** A macro call's payoff (per 1× of leverage) given the market's real move. */
