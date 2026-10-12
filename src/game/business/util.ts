@@ -81,6 +81,13 @@ export function stars(n: number): string {
   return '\u{2B50}'.repeat(k)
 }
 
+/** An industry label in the plural: 'Breweries', 'Marketing Agencies', 'Bars'; 'Data Centers' stays. */
+export function labelPlural(label: string): string {
+  if (/s$/i.test(label)) return label
+  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`
+  return `${label}s`
+}
+
 export function plural(n: number, word: string, many = `${word}s`): string {
   return `${n.toLocaleString('en-US')} ${n === 1 ? word : many}`
 }

@@ -65,7 +65,7 @@ import { bestRdBudget, rdBase, rdBlock, rdCrowding, rdMinBudget, rdProjects, rdQ
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
-import { clampN, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
+import { clampN, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -856,7 +856,7 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
     run: (g, cur, b, input) => {
       const n = Math.round(clampN(Number(input) || 1, 1, MAX_OPEN_AT_ONCE))
       if (!isIndustryLegal(countryId, b.industry)) {
-        notice(g, 'Not Allowed', `${industryDef(b.industry).label}s aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
+        notice(g, 'Not Allowed', `${labelPlural(industryDef(b.industry).label)} aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
         return
       }
       const cost = expansionCost(b, countryId, city, n)
@@ -899,7 +899,7 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
     },
     disabledReason: (g) => {
       const b = readBiz(g, a)
-      return isIndustryLegal(countryId, b.industry) ? null : `${industryDef(b.industry).label}s are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
+      return isIndustryLegal(countryId, b.industry) ? null : `${labelPlural(industryDef(b.industry).label)} are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
     },
     header: (g) => eraNote(g, countryId, marketOf(countryId).businessNote),
     hint: (g) => {

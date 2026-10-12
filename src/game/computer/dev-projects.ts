@@ -196,7 +196,7 @@ export const projectsMenu: MenuGroup = {
           const lang = best ? getLanguage(best.id)?.label : null
           return `Skill ${k.minSkill}+${lang ? ` · you'd use ${lang}` : ''}${k.income !== 'none' ? ' · can earn money' : ''}`
         },
-        hint: (g) => (k.id === trendingKind(g) ? talentHint(g, 'Programming', `${k.label}s are having a moment this year: expect a bigger audience.`) || null : null),
+        hint: (g) => (k.id === trendingKind(g) ? talentHint(g, 'Programming', `${k.label.replace(/^(.*?)( \(.*\))?$/, '$1s$2')} are having a moment this year: expect a bigger audience.`) || null : null),
         visible: (g) => g.character.age >= k.minAge && (k.maxAge === undefined || g.character.age <= k.maxAge) && eraOpen(g, k.era),
         disabledReason: (g) => firstReason(computerBlock(g), codingSkill(g) < k.minSkill ? `You need coding skill ${k.minSkill} (you have ${codingSkill(g)}).` : null),
         run: (g) => buildProject(g, k),

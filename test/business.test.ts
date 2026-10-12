@@ -6,7 +6,7 @@ import { ageUp } from '../src/game/aging'
 import { businessAssetView, businessCareerMenu, businessSummary } from '../src/game/business'
 import { startupCapitalPreview } from '../src/game/business/founding'
 import { rescueNodes } from '../src/game/business/rescue'
-import { runwayText, units } from '../src/game/business/util'
+import { labelPlural, runwayText, units } from '../src/game/business/util'
 import { bizOf, businessAssets, readBiz } from '../src/game/business/state'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
@@ -147,6 +147,25 @@ describe('business', () => {
       else if (m.kind === 'choice' && m.scriptId) runScript(g, m.scriptId, m.choices[0].id, m.data, m)
     }
     throw new Error('never asked for starting capital')
+  })
+
+  it('names industries in a proper plural ("Marketing Agencies", never "Agencys")', () => {
+    expect(labelPlural('Brewery')).toBe('Breweries')
+    expect(labelPlural('Marketing Agency')).toBe('Marketing Agencies')
+    expect(labelPlural('Bar')).toBe('Bars')
+    expect(labelPlural('Data Centers')).toBe('Data Centers')
+    // Review: a UK marketing agency's Annual Report said "Marketing Agencys are in hot demand here."
+    const g = adultIn('gb', 5_000_000)
+    found(g, 'marketing')
+    let note = ''
+    for (let y = 0; y < 3 && !note; y++) {
+      ageUp(g)
+      const report = g.queue.find((m) => m.kind === 'minigame' && m.game === 'annualReport')
+      if (report && report.kind === 'minigame') note = String((report.data as { marketNote?: string }).marketNote ?? '')
+      drain(g, ['savings', 'pay', 'ignore', 'decline'])
+    }
+    expect(note).toMatch(/economy is/)
+    expect(note).not.toMatch(/\b[A-Z][a-z]+ys\b|Agencys|label/)
   })
 
   it('feels different by market and respects banned industries', () => {
