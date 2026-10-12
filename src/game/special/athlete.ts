@@ -2,7 +2,7 @@
 // (your country's own big sports and home league first), try out for a team, sign contracts,
 // practice your skills and fitness, play seasons, win championships and awards, avoid (or
 // embrace) doping and bribes, get traded, retire, and maybe reach the Hall of Fame.
-import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, useYearAction } from '../core'
+import { addHidden, addMoney, addStat, aThing, count, earnIncome, log, remember, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
@@ -816,12 +816,12 @@ function injure(g: GameState, job: Job): void {
   addStat(g, 'health', -randInt(g, 5, 12))
   ad(job).injured = 1
   if (injury === 'Concussion') addHeadTrauma(g, 4, true)
-  log(g, `I suffered a ${injury.toLowerCase()}.`, 'bad')
+  log(g, `I suffered ${aThing(injury)}.`, 'bad')
   scriptChoice(
     g,
     injuryScript,
     'Injury!',
-    `You suffered a ${injury.toLowerCase()}. How do you want to deal with it?`,
+    `You suffered ${aThing(injury)}. How do you want to deal with it?`,
     [
       { id: 'therapy', label: 'Physical therapy', emoji: '\u{1F9D1}\u{200D}\u{2695}\u{FE0F}' },
       { id: 'surgery', label: 'Surgery', emoji: '\u{1F3E5}' },

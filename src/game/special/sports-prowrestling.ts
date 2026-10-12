@@ -3,7 +3,7 @@
 // the main roster. Pick a ring name and a side (babyface or heel), cut promos, steal shows with
 // risky high spots, feud, win titles, headline Colossal Clash, sell merch, and try not to get
 // fired for going off-script. The outcomes are scripted; the bumps are real.
-import { addHidden, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
+import { addHidden, aThing, count, earnIncome, log, scriptChoice, useYearAction } from '../core'
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import { ageCeiling, bodyCeiling, masterFirstTime, masteryCap } from '../mastery'
@@ -223,7 +223,7 @@ const matchScript = defineScript('sports.wrestle.match', (g, choice) => {
       const inj = pick(g, ['Concussion', 'Broken Ankle', 'Neck Injury', 'Torn Pectoral'])
       injure(g, inj, randInt(g, 12, 30))
       addHeadTrauma(g, /concussion|neck/i.test(inj) ? 4 : 1, /concussion/i.test(inj))
-      text = `You dove off the top of a ladder through a table. The crowd chanted "THIS IS AWESOME". You also got a ${inj.toLowerCase()}.`
+      text = `You dove off the top of a ladder through a table. The crowd chanted "THIS IS AWESOME". You also got ${aThing(inj)}.`
       quality -= 5
     } else text = `You flew off the top rope onto ${opp} on the outside. The crowd chanted "HOLY ****" (it's a family show, so they bleeped it).`
     addHeadTrauma(g, 1)

@@ -8,7 +8,7 @@
 //
 // Skills and records live in the persistent fighter profile ('special.sports.fight'); a pro
 // career is a Job (defId 'sports.fighter').
-import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addStat, aThing, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { killCharacter } from '../death'
 import { common } from '../events/era'
 import { bell, chance, pick, rand, randInt } from '../rng'
@@ -1068,7 +1068,7 @@ function endFight(g: GameState, st: FightState, result: 'win' | 'loss' | 'decisi
     const inj = pick(g, d.id === 'mma' ? ['Broken Hand', 'Torn ACL', 'Orbital Fracture', 'Broken Nose', 'Dislocated Elbow'] : ['Broken Hand', 'Orbital Fracture', 'Broken Nose', 'Cut Above the Eye', 'Cracked Ribs'])
     injure(g, inj, randInt(g, 10, 25))
     if (job) fj(job).injured = 1
-    injuryText = ` You left with a ${inj.toLowerCase()}.`
+    injuryText = ` You left with ${aThing(inj)}.`
   }
 
   // Money.
