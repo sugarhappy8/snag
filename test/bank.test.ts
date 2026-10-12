@@ -395,6 +395,20 @@ describe('Banking 2.0 events', () => {
       }
     }
   })
+
+  it('a run faced on the bank steps, the radio or TV logs what really happened in that era', () => {
+    for (const year of [1905, 1935, 1965, 2012]) {
+      for (let seed = 0; seed < 6; seed++) {
+        const { g, a, b } = bank({ year, seed })
+        g.rng = 500 + seed
+        const book = readBank(b); book.run = { year: year - 1, wave: Math.round(book.deposits * .2), severity: .2 }; saveBank(b, book)
+        resolveRun(g, a, b, 'tv', false)
+        const texts = [...g.log.flatMap(y => y.entries.map(e => e.text)), ...g.queue.flatMap(m => m.kind === 'notice' ? [m.title, m.text] : [])]
+        expect(texts.some(t => /run on/.test(t))).toBe(true)
+        for (const t of texts) expect(anachronismsIn(t, year, ['us']), `${year} ${t}`).toEqual([])
+      }
+    }
+  })
 })
 
 describe('Banking 2.0 products and levers', () => {

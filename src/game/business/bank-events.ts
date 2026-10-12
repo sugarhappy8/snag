@@ -164,14 +164,20 @@ function rescueStake(b: BizState, inject: number, offered: number): { stake: num
   return { stake: clampN(Math.max(offered, fair * 1.25), .1, BAILOUT_MAX_STAKE), fair }
 }
 
+/** Where the owner faces the queue: on TV, on the radio, or (before either) on the bank's steps. */
+function stageOf(countryId: string, year: number): { go: string; did: string; look: string } {
+  if (techHere(countryId, 'tv', year)) return { go: 'Go on TV', did: 'went on TV', look: 'looked into the camera' }
+  if (techHere(countryId, 'radio', year)) return { go: 'Go on the radio', did: 'went on the radio', look: 'spoke calmly into the microphone' }
+  return { go: 'Stand on the bank steps', did: 'stood on the bank steps', look: 'looked the crowd in the eye' }
+}
+
 function queueRun(g: GameState, a: Asset, b: BizState): void {
   const book = readBank(b), run = book.run!, m = bankMarket(g, b.countryId, g.year)
   const wave = Math.min(run.wave, book.deposits)
   const odds = reassureOdds(g, b, book)
   const saleLoss = payWithdrawals(structuredClone(book), wave, m, true)
   const cbCost = wave * penaltyRate(m) * 1.5
-  const stage = techHere(b.countryId, 'tv', g.year) ? 'Go on TV' : techHere(b.countryId, 'radio', g.year) ? 'Go on the radio' : 'Stand on the bank steps'
-  const choices: ChoiceOption[] = [{ id: 'tv', label: `${stage} and promise every saver is safe`, emoji: '🎤' }]
+  const choices: ChoiceOption[] = [{ id: 'tv', label: `${stageOf(b.countryId, g.year).go} and promise every saver is safe`, emoji: '🎤' }]
   if (m.lender) choices.push({ id: 'cb', label: `Borrow ${money(wave)} from the central bank at ${pct(penaltyRate(m), 1)}`, emoji: '💵' })
   choices.push({ id: 'sell', label: `Sell loans at a discount (about ${money(saleLoss)} lost)`, emoji: '🏷️' })
   if (bailoutEligible(g, b, book)) choices.push({ id: 'bailout', label: `Ask the government for a bailout (it takes ${pct(bailoutTerms(g, b, book).stake)} of the bank)`, emoji: '🙏' })
@@ -214,17 +220,18 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
   const m = bankMarket(g, b.countryId, g.year), wave = Math.min(book.run.wave, book.deposits)
   book.run = null
   if (choice === 'tv' && !auto) {
+    const stage = stageOf(b.countryId, g.year)
     if (chance(g, reassureOdds(g, b, book))) {
       adjustTrust(book, 10); addHidden(g, 'fame', 2)
       saveBank(b, book)
-      log(g, `I went on TV and talked down a run on ${a.name}.`, 'good')
-      notice(g, 'Panic Over', `You ${techHere(b.countryId, 'tv', g.year) ? 'looked into the camera' : 'looked the crowd in the eye'} and promised every saver was safe. People believed you. The queue melted away by lunchtime.`, { emoji: '🎤', tone: 'good' })
+      log(g, `I ${stage.did} and talked down a run on ${a.name}.`, 'good')
+      notice(g, 'Panic Over', `You ${stage.look} and promised every saver was safe. People believed you. The queue melted away by lunchtime.`, { emoji: '🎤', tone: 'good' })
       return
     }
     const loss = fireSale(b, book, wave, m)
     adjustTrust(book, -8)
     saveBank(b, book)
-    log(g, `My TV appearance didn't stop the run on ${a.name}.`, 'bad')
+    log(g, `I ${stage.did}, but it didn't stop the run on ${a.name}.`, 'bad')
     notice(g, 'It Got Worse', `${techHere(b.countryId, 'internet', g.year) ? 'Your nervous blinking went viral.' : 'Your nervous stammer made every evening paper.'} Savers pulled ${money(wave)} and ${a.name} sold loans at a loss of ${money(loss)} to pay them.`, { emoji: '📉', tone: 'bad' })
     return
   }
