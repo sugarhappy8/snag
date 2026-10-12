@@ -14,6 +14,7 @@ import { boardYear } from './board'
 import { ceoLetter, smartCeo, smartManagerTurn } from './board-ceo'
 import { styleOf, syncCeo } from './career'
 import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
+import { returnFormerExecutiveShares } from './executive-shares'
 import { settlePerfectForesight } from './executive-foresight'
 import { prepareInternalServices, settleInternalServices } from './group-services'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
@@ -489,6 +490,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     // CEO who keeps missing (the owner too, when they don't control the board), rogue CEOs.
     boardYear(g, a, b, s)
     executiveRetentionYear(g, a, b)
+    // Shares of a CEO who left by any path go back to the founder (groups settle when saved).
+    returnFormerExecutiveShares(g, b)
 
     // A group's division lists with the whole group (the group step has its own hint).
     if (!b.public && !inGroup(g, b) && s.net >= ipoThreshold(b) && g.flags[`biz.ipoHint.${a.id}`] !== true) {

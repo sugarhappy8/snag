@@ -146,11 +146,12 @@ describe('executive skill and ownership', () => {
       if (grant) {
         const cash = b.cash
         expect(grantCeoEquity(g, a.id)).toBe(true)
-        expect(b.share).toBeCloseTo(.9)
-        expect(b.manager!.equity).toBe(.1)
+        // A standalone company's 95-rated CEO asks for 3% (only a conglomerate's CEO reaches 5%).
+        expect(b.share).toBeCloseTo(.97)
+        expect(b.manager!.equity).toBe(.03)
         expect(b.cash).toBe(cash)
         expect(grantCeoEquity(g, a.id)).toBe(false)
-        expect(readBiz(g, a).manager!.equity).toBe(.1)
+        expect(readBiz(g, a).manager!.equity).toBe(.03)
       }
       g.year += 2
       executiveRetentionYear(g, a, b)
@@ -172,17 +173,19 @@ describe('executive skill and ownership', () => {
     grp.core.manager.since = g.year
     saveGroup(g, grp)
     expect(grantCeoEquity(g, id, true)).toBe(true)
-    expect(groupsOf(g)[0].core.share).toBeCloseTo(.9)
-    for (const aa of [a, a2]) expect(readBiz(g, aa).share).toBeCloseTo(.9)
+    // The conglomerate's own 95-rated CEO is the only one who reaches 5%.
+    expect(groupsOf(g)[0].core.share).toBeCloseTo(.95)
+    for (const aa of [a, a2]) expect(readBiz(g, aa).share).toBeCloseTo(.95)
     g.year += 7
     groupRetentionYear(g)
-    expect(groupsOf(g)[0].core.manager!.equity).toBe(.1)
+    expect(groupsOf(g)[0].core.manager!.equity).toBe(.05)
     const div = bizOf(g, a)
     installManager(g, div, managerCandidate(g, div, 90))
+    // A division's 90-rated CEO gets 0.75% of the group's holding in it.
     expect(grantCeoEquity(g, a.id)).toBe(true)
-    expect(readMembership(readBiz(g, a).group)!.own).toBeCloseTo(.95)
-    expect(readBiz(g, a).share).toBeCloseTo(.855)
-    expect(readBiz(g, a2).share).toBeCloseTo(.9)
+    expect(readMembership(readBiz(g, a).group)!.own).toBeCloseTo(.9925, 6)
+    expect(readBiz(g, a).share).toBeCloseTo(.95 * .9925, 6)
+    expect(readBiz(g, a2).share).toBeCloseTo(.95)
   })
 
   it('a group CEO never replaces a division CEO with a lower-rated hire, and unretained group stars get an interim', () => {

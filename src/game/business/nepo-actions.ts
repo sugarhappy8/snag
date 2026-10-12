@@ -22,6 +22,7 @@ import { familyOf, hireBlock, isCeoOf, myKin, readFamily, yourKin } from './nepo
 import { bizOf, ceoJob, findBusiness, runsIt, type BizState } from './state'
 import type { StaffFocus } from './industries'
 import { clampN, money, pct } from './util'
+import { settleAfterCeoChange } from './executive-shares'
 
 // ---------------------------------------------------------------------------
 // Plans (pure): what a job would be
@@ -512,6 +513,7 @@ export function makeCeo(g: GameState, a: Asset, b: BizState, p: Person): HireRes
   const prev = b.ceo === 'manager' && b.manager ? b.manager.firstName + ' ' + b.manager.lastName : null
   const owner = runsIt(g, a)
   const h = handOver(g, a, b, m)
+  settleAfterCeoChange(g, b)
   const formerFamilyCeo = h.outgoing?.personId ? g.people.find((x) => x.id === h.outgoing?.personId) : undefined
   if (formerFamilyCeo && formerFamilyCeo.id !== p.id) settleReplacedCeo(g, a, b, formerFamilyCeo)
   const done = readJob(p)
@@ -571,6 +573,7 @@ export function replaceCeo(g: GameState, a: Asset, b: BizState, p: Person, stay:
   if (!job) return { ok: false, reason: 'They do not work here.' }
   const next = managerCandidate(g, b, randInt(g, 50, 72))
   handOver(g, a, b, next)
+  settleAfterCeoChange(g, b)
   if (stay) demoteFormerCeo(g, a, b, p, payAt(b, 4, 1.6))
   return { ok: true }
 }
@@ -692,6 +695,7 @@ export function handOverToSuccessor(g: GameState, a: Asset, b: BizState): HireRe
   }
   const owner = runsIt(g, a) || !!ceoJob(g, a.id)
   const h = handOver(g, a, b, m)
+  settleAfterCeoChange(g, b)
   const formerFamilyCeo = h.outgoing?.personId ? g.people.find((x) => x.id === h.outgoing?.personId) : undefined
   if (formerFamilyCeo && formerFamilyCeo.id !== p?.id) settleReplacedCeo(g, a, b, formerFamilyCeo)
   afterSuccession(g, a, b, m)

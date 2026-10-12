@@ -351,10 +351,44 @@ export function liveGroup(g: GameState, id: string): Group | null {
 }
 
 /**
+ * Executive shares of people who no longer hold their seat go back to the founder: a division's
+ * own grants return to the group's holding in it, and group shares awarded to the group CEO or a
+ * division CEO who has left return to the player's group stake (with the cost basis that came
+ * with them). Run by every saveGroup, so whichever code path replaced the CEO, the next write of
+ * the group settles it. Shares still held by a sitting CEO are never touched.
+ */
+export function settleGroupExecutives(grp: Group): void {
+  const core = grp.core
+  for (const x of grp.members) {
+    const held = x.b.ceo === 'manager' ? Math.max(0, x.b.manager?.equity ?? 0) : 0
+    const former = Math.max(0, x.b.executiveEquity ?? 0) - held
+    if (!(former > 1e-9)) continue
+    const before = x.b.share
+    x.m.own = clampN(x.m.own + former, 0.001, 1)
+    x.b.executiveEquity = held
+    x.b.share = clampN(core.share * x.m.own, 0, 1)
+    if (before > 0 && x.b.share > before) x.b.invested *= x.b.share / before
+  }
+  const award = (x: GroupMember) => (x.b.ceo === 'manager' && x.b.manager?.groupEquity?.id === core.id ? Math.max(0, x.b.manager.groupEquity.share) : 0)
+  const active = (core.ceo === 'manager' ? Math.max(0, core.manager?.equity ?? 0) : 0) + grp.members.reduce((t, x) => t + award(x), 0)
+  const former = Math.max(0, core.executiveEquity ?? 0) - active
+  if (!(former > 1e-9)) return
+  const before = core.share
+  core.share = clampN(core.share + former, 0, 1)
+  core.executiveEquity = active
+  for (const x of grp.members) {
+    const was = x.b.share
+    x.b.share = clampN(core.share * x.m.own, 0, 1)
+    if (before > 0 && was > 0 && x.b.share > was) x.b.invested *= x.b.share / was
+  }
+}
+
+/**
  * Write the group record (bumped) and each member's membership back to every member, and refresh
  * their asset values (a member's value depends on the group's multiplier).
  */
 export function saveGroup(g: GameState, grp: Group): void {
+  settleGroupExecutives(grp)
   grp.core.rev += 1
   // The stored price is a display copy of the derived one.
   if (grp.core.listing) grp.core.listing.sharePrice = round2(clampN(sharePriceOf(grp), 0.01, 1e7))

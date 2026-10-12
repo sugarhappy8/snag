@@ -94,21 +94,22 @@ describe('autonomous conglomerate management', () => {
     const originalLeaderEquity = grp.core.manager!.equity
     prepareGroupManagement(g)
     grp = liveGroup(g, id)!
+    // A division's top-rated CEO gets 1% of the group's holding in it, paid in group shares.
     for (const x of grp.members) {
-      expect(x.b.manager!.groupEquity!.credit).toBeCloseTo(.1)
+      expect(x.b.manager!.groupEquity!.credit).toBeCloseTo(.01)
       expect(x.b.manager!.equityAsked).toBeUndefined()
       expect(x.m.own).toBe(1)
       const name = x.b.manager!.firstName
       executiveRetentionYear(g, x.a, x.b)
       expect(x.b.manager!.firstName).toBe(name)
     }
-    expect(grp.core.share).toBeCloseTo(.9)
+    expect(grp.core.share).toBeCloseTo(.99)
     expect(grp.members.every(x => x.m.own === 1)).toBe(true)
-    expect(grp.members.reduce((s, x) => s + x.b.manager!.groupEquity!.share, 0)).toBeCloseTo(.1)
+    expect(grp.members.reduce((s, x) => s + x.b.manager!.groupEquity!.share, 0)).toBeCloseTo(.01)
     expect(grp.core.manager!.equity).toBe(originalLeaderEquity)
     expect(grp.core.memo.filter(l => l.startsWith('Retained '))).toHaveLength(4)
     const after = JSON.parse(JSON.stringify(g))
-    expect(groupById(after, id)!.members.every(x => x.b.manager!.groupEquity!.credit === .1)).toBe(true)
+    expect(groupById(after, id)!.members.every(x => x.b.manager!.groupEquity!.credit === .01)).toBe(true)
   })
 
   it('can disable automatic equity, and never grants away control of a subsidiary or group', () => {
@@ -132,7 +133,7 @@ describe('autonomous conglomerate management', () => {
     const award = x.b.manager!.groupEquity!, original = award.share
     diluteGroupEquity(grp, .75)
     expect(award.share).toBeCloseTo(original * .75)
-    expect(award.credit).toBeCloseTo(.075)
+    expect(award.credit).toBeCloseTo(.0075)
     expect(x.m.own).toBe(1)
     diluteGroupEquity(grp, 0)
     expect(x.b.manager!.groupEquity).toBeUndefined()

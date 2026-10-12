@@ -12,6 +12,7 @@ import { captureOfSkill } from './conglomerate-econ'
 import { groupById, groupValue, liveGroup, memberValue, saveGroup, syncMembers, type Group, type GroupMember } from './conglomerate-state'
 import { bizWorth } from './economy'
 import { equityDue } from './executive'
+import { stakeText } from './executive-shares'
 import { isFinanceFirm } from './finance-firm-state'
 import { financeCapitalNeed } from './finance-firm'
 import { divisionBuffer, sweepGroupTreasury } from './group-treasury'
@@ -78,7 +79,7 @@ export function allocateGroupCapital(g: GameState, grp: Group): string[] {
 export function retainDivisionCeo(g: GameState, grp: Group, x: GroupMember): string | null {
   const m = x.b.manager
   if (grp.core.autoEquity === false || !m || x.b.ceo !== 'manager') return null
-  const due = equityDue(m)
+  const due = equityDue(m, 'division')
   if (!due) return null
   if (x.m.own < .999 || m.groupEquity && m.groupEquity.id !== grp.core.id) return `Could not grant group shares to ${managerName(m)} at ${x.a.name}: separate subsidiary investors or an existing outside-group award require your decision.`
   const value = groupValue(grp)
@@ -91,7 +92,7 @@ export function retainDivisionCeo(g: GameState, grp: Group, x: GroupMember): str
   for (const member of grp.members) member.b.invested *= grp.core.share / before
   syncMembers(grp)
   m.groupEquity = { id: grp.core.id, share: (m.groupEquity?.share ?? 0) + shares, credit: (m.groupEquity?.credit ?? 0) + due }; delete m.equityAsked
-  return `Retained ${managerName(m)} at ${x.a.name} with ${pct(shares, 2)} group ownership, worth ${pct(due)} of the group's holding in that division at grant. Your group stake is now ${pct(grp.core.share, 2)}. Any positive stake prevents voluntary resignation or retirement. Shares remain granted after dismissal; subsidiary cash remains pooled.`
+  return `Retained ${managerName(m)} at ${x.a.name} with ${pct(shares, 3)} group ownership, worth ${stakeText(due)} of the group's holding in that division at grant. Your group stake is now ${pct(grp.core.share, 2)}. Any positive stake prevents voluntary resignation or retirement; if they ever leave, the shares come back to you. Subsidiary cash remains pooled.`
 }
 /** Review every seat. Headhunting, severance and salaries must all be affordable. */
 export function manageDivisionCeos(g: GameState, grp: Group): string[] {

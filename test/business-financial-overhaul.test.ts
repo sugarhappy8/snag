@@ -6,6 +6,7 @@ import { loanTotal, readBank, reserveRequirement, saveBank } from '../src/game/b
 import { brokerEra, quantBlock } from '../src/game/business/fund-model'
 import { bizOf, diluteBusinessEquity, executiveEquity, readBiz, type Statement } from '../src/game/business/state'
 import { grantCeoEquity } from '../src/game/business/executive'
+import { becomeCeo } from '../src/game/business/career'
 import { equityQuote, transactEquity } from '../src/game/business/rescue'
 import { formGroup } from '../src/game/business/conglomerate-actions'
 import { groupsOf } from '../src/game/business/conglomerate-state'
@@ -54,16 +55,22 @@ describe('financial institution management', () => {
 })
 
 describe('funding and rescue accounting', () => {
-  it('keeps dismissed executives vested and excludes their shares from buybacks', () => {
+  it('keeps a sitting CEO\'s shares out of buybacks, and returns them to the founder when the CEO leaves', () => {
     const {g,a,b} = company('cafe')
     b.ceo='manager'; b.manager={firstName:'Ada',lastName:'Lee',gender:'female',skill:95,salary:100000,since:2020}
     expect(grantCeoEquity(g,a.id)).toBe(true)
-    const live=bizOf(g,a); live.manager=null; live.public=true
-    expect(executiveEquity(live)).toBeCloseTo(.1)
+    const live=bizOf(g,a); live.public=true
+    expect(executiveEquity(live)).toBeCloseTo(.03)
+    expect(live.share).toBeCloseTo(.97)
     expect(equityQuote(g,a,live,'secondary',1000).available).toBeCloseTo(0)
     diluteBusinessEquity(live,.8);live.share*=.8
-    expect(executiveEquity(readBiz(g,a))).toBeCloseTo(.08)
+    expect(executiveEquity(readBiz(g,a))).toBeCloseTo(.024)
     expect(equityQuote(g,a,live,'secondary',1000).available).toBeGreaterThan(0)
+    // The owner takes over: the departing CEO's shares come straight back.
+    const before = live.share
+    becomeCeo(g,a,live)
+    expect(live.share).toBeCloseTo(before + .024)
+    expect(executiveEquity(live)).toBe(0)
   })
   it('new equity increases cash and dilutes other shares without recording revenue', () => {
     const {g,a,b} = company('cafe'); b.share = .8; b.manager = {firstName:'A',lastName:'B',gender:'male',skill:95,salary:100000,since:2020,equity:.1}
