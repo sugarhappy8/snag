@@ -70,6 +70,13 @@ describe('World Simulation 2.0: settled economic transparency',()=>{
     expect(economicReportDetails(x.b)).toHaveLength(r.drivers.length)
   })
 
+  it('sums the change up in its menu row (no production jargon on a bank or fund)',()=>{
+    const sub=(x:{g:GameState,a:Parameters<typeof economicReportMenu>[0]})=>{const m=economicReportMenu(x.a);return typeof m.subtitle==='function'?m.subtitle(x.g):String(m.subtitle)}
+    expect(sub(company())).toBe('Compares two settled years of accounts')
+    const x=settled(),r=economicReportOf(x.b)!
+    expect(sub(x)).toMatch(new RegExp(`^Net profit (up|down) .+ on ${r.previousYear}$`))
+  })
+
   it('preserves an exact bridge after independent dollar rounding without classifying cash erosion as profit',()=>{
     const x=company(),previous=simulateYear(x.g,x.b,2030,0,1).stmt
     const current:Statement={...previous,year:2031,netRevenue:previous.netRevenue+101,cogs:previous.cogs+27,wages:previous.wages+13,
