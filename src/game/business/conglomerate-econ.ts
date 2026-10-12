@@ -18,7 +18,7 @@ import { ownerProceeds } from './exit'
 import { industryDef } from './industries'
 import { moodOf, operatingValue, type Group, type GroupCore } from './conglomerate-state'
 import type { BizState } from './state'
-import { cap, clampN } from './util'
+import { cap, clampN, industryNoun } from './util'
 
 /** Years a recurring gain or cost is counted for in a deal's value (the expansion hints' yardstick). */
 export const DEAL_YEARS = 5
@@ -352,7 +352,7 @@ export function antitrustBlock(g: GameState, list: BizState[]): string | null {
     const lead = same[0]
     const regime = effectiveRegime(lead.countryId, g.year, marketDef(lead.industry).scope === 'world')
     if (regime.strict >= 0.25 && combined >= mergerLimit(regime)) {
-      return `${cap(regime.name)} would block it: together your ${industryDef(lead.industry).label.toLowerCase()} businesses would hold ${shareText(combined)} of the market.`
+      return `${cap(regime.name)} would block it: together your ${industryNoun(industryDef(lead.industry).label)} businesses would hold ${shareText(combined)} of the market.`
     }
   }
   return null
@@ -369,7 +369,7 @@ export function groupAcquireBlock(g: GameState, b: BizState, sisters: BizState[]
   const combined = Math.min(1, marketViewOf(g, b).share + Math.max(0, rivalShare) + same.reduce((s, x) => s + marketViewOf(g, x).share, 0))
   const regime = effectiveRegime(b.countryId, g.year, marketDef(b.industry).scope === 'world')
   if (regime.strict >= 0.25 && combined >= mergerLimit(regime)) {
-    return `${cap(regime.name)} would block it: with your other ${industryDef(b.industry).label.toLowerCase()} businesses, the group would hold ${shareText(combined)} of the market.`
+    return `${cap(regime.name)} would block it: with your other ${industryNoun(industryDef(b.industry).label)} businesses, the group would hold ${shareText(combined)} of the market.`
   }
   return null
 }

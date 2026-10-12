@@ -209,6 +209,16 @@ export function snap(v: number, min: number, max: number, step: number): number 
   return cents(clamp(min + k * step, min, max))
 }
 
+/**
+ * The native range input's top: the first grid stop at or above `max`. A browser only lets the
+ * thumb land on min + k·step, so with `max` itself off the grid the far right would stop one
+ * step short (scale says Kz 42,999, slider tops out at Kz 42,647); snap() clamps this back to max.
+ */
+export function gridTop(min: number, max: number, step: number): number {
+  if (!(max > min) || !(step > 0)) return max
+  return cents(min + Math.ceil((max - min) / step - 1e-9) * step)
+}
+
 /** Move one step from `v`: off-grid values first land on the neighbouring grid stop. */
 export function nudge(v: number, dir: 1 | -1, min: number, max: number, step: number): number {
   const k = (v - min) / step
@@ -355,7 +365,9 @@ interface PlanSliderProps {
 
 function PlanSlider(props: PlanSliderProps) {
   const { id, label, valueText, min, max, step, value, disabled, marker } = props
-  const pct = sliderPct(value, min, max)
+  // The fill follows the thumb, which the browser places on the native range (up to gridTop).
+  const top = gridTop(min, max, step)
+  const pct = sliderPct(value, min, top)
   // At a limit the nudge stays focusable (aria-disabled) so keyboard focus isn't dropped.
   const atMin = value <= min
   const atMax = value >= max
@@ -389,7 +401,7 @@ function PlanSlider(props: PlanSliderProps) {
             className="ar-range"
             type="range"
             min={min}
-            max={max}
+            max={top}
             step={step}
             value={value}
             disabled={disabled}

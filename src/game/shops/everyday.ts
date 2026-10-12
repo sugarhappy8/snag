@@ -3,6 +3,7 @@
 // g.rng use while rendering), prices scaled for the player's market, local-flavor items where
 // people actually buy them, and Use actions for what you own (ride the bike, hit the slopes,
 // host a BBQ). Bought items are Asset kind 'other' with details.category / details.store.
+import { byEra } from '../events/era'
 import { hasTech } from '../history/timeline'
 import { addCondition, companionCandidates, payingParents } from '../activities/common'
 import { findAsset, goodsMult, localGoodsMult, nicePrice, pricesIncludeTax, salesTaxNote, seeded, yearKey } from '../assets'
@@ -172,6 +173,8 @@ interface StoreDef {
   label: string
   emoji: string
   blurb: string
+  /** Blurbs for later eras, first whose gates hold wins (events/era byEra); `blurb` is the fallback. */
+  eraBlurbs?: readonly (readonly [string, string])[]
   minAge: number
   /** Asset details.category for items bought here. */
   category: string
@@ -188,7 +191,8 @@ const STORES: Record<StoreId, StoreDef> = {
     id: 'bike',
     label: 'Bike Shop',
     emoji: '🚲',
-    blurb: 'Bikes, e-bikes and scooters',
+    blurb: 'Bikes, tricycles and scooters',
+    eraBlurbs: [['2010', 'Bikes, e-bikes and scooters']],
     minAge: 3,
     category: 'bike',
     stock: [9, 13],
@@ -227,7 +231,8 @@ const STORES: Record<StoreId, StoreDef> = {
     id: 'clothing',
     label: 'Clothing & Fashion',
     emoji: '👗',
-    blurb: 'Thrift finds to designer drops',
+    blurb: 'Thrift finds to designer labels',
+    eraBlurbs: [['2010', 'Thrift finds to designer drops']],
     minAge: 10,
     category: 'clothing',
     stock: [11, 15],
@@ -240,7 +245,8 @@ const STORES: Record<StoreId, StoreDef> = {
     id: 'toy',
     label: 'Toy Store',
     emoji: '🧸',
-    blurb: 'Toys, games, puzzles and consoles',
+    blurb: 'Toys, games and puzzles',
+    eraBlurbs: [['videoGameConsole', 'Toys, games, puzzles and consoles']],
     minAge: 3,
     category: 'toy',
     stock: [10, 15],
@@ -253,7 +259,8 @@ const STORES: Record<StoreId, StoreDef> = {
     id: 'garden',
     label: 'Garden & Hardware',
     emoji: '🧰',
-    blurb: 'Tools, grills, mowers, hot tubs and solar',
+    blurb: 'Tools, grills and mowers',
+    eraBlurbs: [['1985', 'Tools, grills, mowers, hot tubs and solar']],
     minAge: 16,
     category: 'garden',
     stock: [8, 12],
@@ -1344,7 +1351,7 @@ function storeMenu(storeId: StoreId): MenuGroup {
     id: `everyday-${storeId}`,
     label: store.label,
     emoji: store.emoji,
-    subtitle: (g) => `${storeName(g, storeId)} · ${store.blurb}`,
+    subtitle: (g) => `${storeName(g, storeId)} · ${byEra(g, store.eraBlurbs ?? [], store.blurb)}`,
     visible: (g) => g.character.age >= Math.max(3, store.minAge - 4),
     disabledReason: (g) => {
       const b = blockReason(g)

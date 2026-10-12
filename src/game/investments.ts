@@ -737,7 +737,10 @@ function listing(g: GameState): Listing {
       details: { type: 'crypto', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.yield, sector: def.stable ? 'Stablecoin' : 'Cryptocurrency', blurb: def.blurb, slot: c.slot, gen: c.gen, country: cid },
     }, shockFactor(g, def.id, y), shockFactor(g, def.id, y - 1))
   })
-  return { info, year: ey, stocks, pennies, fund, reit, bond, savings, term, gold, crypto }
+  // This year's moves read like the index line and "Recent years" beside them: in the money of
+  // the year (reportedMove), not constant dollars ("FTSE 100 up 14.8%" over an ETF "▲10.0%").
+  const shown = (q: Quote): Quote => (q.ret === null ? q : { ...q, ret: reportedMove(info, y, q.ret).pct })
+  return { info, year: ey, stocks: stocks.map(shown), pennies: pennies.map(shown), fund: shown(fund), reit: shown(reit), bond, savings, term, gold: shown(gold), crypto: crypto.map(shown) }
 }
 
 /** What a resident can buy right now (used by tests and tools): id, type, name, ticker, price, risk. */
@@ -1080,7 +1083,8 @@ function portfolioStats(g: GameState): PortfolioStats {
       moved = Math.max(-MAX_INVESTMENT_VALUE, Math.min(MAX_INVESTMENT_VALUE, moved + (Number.isFinite(contribution) ? contribution : 0)))
     }
   }
-  return { value, basis: cost, year: start > 0 ? moved / start : null }
+  // Reported like the market lines: in the money of the year (see reportedMove).
+  return { value, basis: cost, year: start > 0 ? reportedMove(exchangeInfo(g.character.countryId), g.year, moved / start).pct : null }
 }
 
 /**
@@ -1270,7 +1274,11 @@ function holdingInfo(g: GameState, a: Asset): string[] {
   const gain = v - cost
   const gp = cost > 0 ? gain / cost : 0
   rows.push(`Invested: ${formatMoney(cost)}${t !== 'savings' && u > 0 ? ` (avg ${priceText(cost / u)})` : ''} · ${gain >= 0 ? 'Gain' : 'Loss'}: ${formatMoney(Math.abs(gain))} (${pct(gp)})`)
-  if (num(d.updatedYear) === g.year) rows.push(`This year: ${change(num(d.lastChange))}`)
+  if (num(d.updatedYear) === g.year) {
+    // As the listing reports it (nominal in past years), not in constant dollars.
+    const home = t === 'stock' || t === 'penny' || t === 'index' || t === 'reit' ? holdingExchange(a) : exchangeInfo(str(d.country, g.character.countryId))
+    rows.push(`This year: ${change(reportedMove(home, g.year, num(d.lastChange)).pct)}`)
+  }
   const y = num(d.yield)
   const income = num(d.income)
   const cid = str(d.country, g.character.countryId)

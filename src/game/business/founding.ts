@@ -30,7 +30,7 @@ import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
 import { industryDef, isIndustry, INDUSTRIES } from './industries'
 import { BIZ_VERSION, ceoJob, type BizState } from './state'
-import { clampN, cleanName, money, num, pct, rec, stars, str, toJson } from './util'
+import { aIndustry, aYearsOld, clampN, cleanName, industryNoun, money, num, pct, rec, runwayText, stars, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
 // Requirements
@@ -46,7 +46,7 @@ export function industryProblem(g: GameState, industry: Industry): string | null
   const era = industryEraBlock(industry, c.countryId, g.year)
   if (era) return era
   if (def.needs === 'drinking' && c.age < country.drinkingAge) return `You must be ${country.drinkingAge} to hold a liquor license in ${country.name}.`
-  if (def.needs === 'driver' && !c.licenses.includes('driver')) return `You need a driver's license to run a ${def.label.toLowerCase()}.`
+  if (def.needs === 'driver' && !c.licenses.includes('driver')) return `You need a driver's license to run ${aIndustry(def.label)}.`
   return null
 }
 
@@ -211,7 +211,7 @@ export function startupCapitalPreview(g: GameState, data: Json | undefined, amou
   const cash = Math.max(0, amount - cost.capital * .8)
   if (isBank({ industry: p.industry })) return `Fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. ${bankCapitalPreview(p.industry, p.countryId, g.year, cash)}`
   const burn = e.rent + industryDef(p.industry).staff * e.wage
-  return `Equipment/fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. Starting cash ${money(cash)}; roughly ${(cash / Math.max(1, burn)).toFixed(1)} years of base wages/rent before sales and other costs. ${cash < burn ? 'High funding risk.' : 'A cash buffer, not guaranteed profit.'} Personal funds ${money(g.character.money)}. Next: compare loans, investor dilution, or 100% ownership with self-funding.`
+  return `Equipment/fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. Starting cash ${money(cash)}; roughly ${runwayText(cash / Math.max(1, burn))} of base wages/rent before sales and other costs. ${cash < burn ? 'High funding risk.' : 'A cash buffer, not guaranteed profit.'} Personal funds ${money(g.character.money)}. Next: compare loans, investor dilution, or 100% ownership with self-funding.`
 }
 
 function askCapital(g: GameState, p: Plan): void {
@@ -254,7 +254,7 @@ function askBackground(g: GameState, p: Plan): void {
     g,
     BACKGROUND,
     'You Need a Scientist',
-    `Investors only back a ${industryDef(ind).label.toLowerCase()} with a technical founder: ${d.req.text}. You don't have that, so you need someone who does.`,
+    `Investors only back ${aIndustry(industryDef(ind).label)} with a technical founder: ${d.req.text}. You don't have that, so you need someone who does.`,
     choices,
     { emoji: '\u{1F52C}', data: { ...(planJson(p) as Record<string, Json>), cofounderName: co } },
   )
@@ -609,7 +609,7 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
         : ''
   const open = b.openFraction < 0.95 ? ` Paperwork in ${country.name} took about ${p.days} days, so you'll only trade for part of this first year.` : ''
   const run = runIt
-    ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.`
+    ? ` You're the Founder & CEO${quit ? `, and you ${quit}` : ''}.`
     : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`
   const plan =
     isBank(b) ? ' Set savings and loan rates, lending appetite and products in Financial Operations. Deposits belong to your savers; the capital is yours to lose.'
@@ -619,8 +619,8 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
       ? ` Greenlight your first game from the company screen: your ${b.employees} developers are waiting for something to make.`
       : " Every year you'll get an Annual Report to set prices and production."
   const text = `${p.name} is officially registered in ${country.name}! Your first ${def.site} is opening in ${p.city}. You put in ${formatMoney(personal)} of your own money, including ${formatMoney(fees)} in fees and permits.${funding}${open}${run}${plan}`
-  log(g, `I founded ${p.name}, a ${def.label.toLowerCase()} in ${p.city}.`, 'good')
-  remember(g, `Founded ${p.name} (${def.label.toLowerCase()}) in ${p.city}, ${country.name}.`)
+  log(g, `I founded ${p.name}, ${aIndustry(def.label)} in ${p.city}.`, 'good')
+  remember(g, `Founded ${p.name} (${industryNoun(def.label)}) in ${p.city}, ${country.name}.`)
   notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good' })
 }
 
@@ -677,11 +677,11 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
   if (p.cofounder) parts.push(`${p.cofounder} joined as your technical co-founder with ${pct(COFOUNDER_EQUITY)}.`)
   if (expert) parts.push(`You hired ${expert.firstName} ${expert.lastName} as ${expert.role} (${formatMoney(expert.salary)} a year).`)
   if (b.openFraction < 0.95) parts.push(`Paperwork in ${country.name} took about ${p.days} days.`)
-  parts.push(runIt ? `You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.` : `${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`)
+  parts.push(runIt ? `You're the Founder & CEO${quit ? `, and you ${quit}` : ''}.` : `${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`)
   parts.push(`Next: start your first R&D program from the company's R&D Lab. ${DEEP_TECH[ind].stages[0].blurb}`)
   const text = parts.join(' ')
-  log(g, `I founded ${p.name}, a ${def.label.toLowerCase()} in ${p.city}.`, 'good')
-  remember(g, `Founded ${p.name} (${def.label.toLowerCase()}) in ${p.city}, ${country.name}.`)
+  log(g, `I founded ${p.name}, ${aIndustry(def.label)} in ${p.city}.`, 'good')
+  remember(g, `Founded ${p.name} (${industryNoun(def.label)}) in ${p.city}, ${country.name}.`)
   notice(g, 'Open for Business!', text, { emoji: def.emoji, tone: 'good' })
 }
 
@@ -942,9 +942,9 @@ function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
   else installManager(g, b, managerCandidate(g, b))
   addStat(g, 'happiness', 6)
   const def = industryDef(b.industry)
-  const text = `You bought ${listing.name}, a ${listing.years}-year-old ${def.label.toLowerCase()} in ${b.city}, for ${formatMoney(listing.price)}${p.funding === 'loan' ? ` (${p.lender} financed ${formatMoney(p.loan)})` : ''}. ${runIt ? `You're the new Owner & CEO${quit ? `; you quit your job as ${quit}` : ''}.` : 'A general manager runs it for you.'}`
+  const text = `You bought ${listing.name}, ${aYearsOld(listing.years)} ${industryNoun(def.label)} in ${b.city}, for ${formatMoney(listing.price)}${p.funding === 'loan' ? ` (${p.lender} financed ${formatMoney(p.loan)})` : ''}. ${runIt ? `You're the new Owner & CEO${quit ? `; you ${quit}` : ''}.` : 'A general manager runs it for you.'}`
   log(g, `I bought ${listing.name}.`, 'good')
-  remember(g, `Bought ${listing.name} (${def.label.toLowerCase()}) in ${b.city}.`)
+  remember(g, `Bought ${listing.name} (${industryNoun(def.label)}) in ${b.city}.`)
   notice(g, 'Deal Closed!', text, { emoji: def.emoji, tone: 'good' })
 }
 
@@ -1001,7 +1001,7 @@ function listingRow(l: ForSale): MenuAction {
         g,
         BUY,
         `Buy ${listing.name}?`,
-        `${listing.name} is a ${def.label.toLowerCase()} in ${s.city} with ${s.outlets[0]?.count ?? 1} ${(s.outlets[0]?.count ?? 1) === 1 ? def.site : def.sitePlural}. Last year: ${money(listing.revenue)} in sales and ${listing.profit >= 0 ? `${money(listing.profit)} profit` : `a ${money(-listing.profit)} loss`}. Quality ${s.quality}%, brand ${s.brand}%, staff morale ${s.morale}%. Asking price: ${formatMoney(listing.price)}.`,
+        `${listing.name} is ${aIndustry(def.label)} in ${s.city} with ${s.outlets[0]?.count ?? 1} ${(s.outlets[0]?.count ?? 1) === 1 ? def.site : def.sitePlural}. Last year: ${money(listing.revenue)} in sales and ${listing.profit >= 0 ? `${money(listing.profit)} profit` : `a ${money(-listing.profit)} loss`}. Quality ${s.quality}%, brand ${s.brand}%, staff morale ${s.morale}%. Asking price: ${formatMoney(listing.price)}.`,
         choices,
         { emoji: def.emoji, data: planJson(p) },
       )

@@ -5,6 +5,7 @@ import {
   addPersonStat,
   addRelationship,
   addStat,
+  aThing,
   canAfford,
   count,
   counter,
@@ -40,6 +41,21 @@ describe('rng', () => {
 })
 
 describe('core helpers', () => {
+  it('puts the right article before injuries, crimes and ranks', () => {
+    // Review: "arrested you for a assault", "I got a bruised ribs", "I suffered a torn acl", "As a orange belt".
+    expect(aThing('Assault')).toBe('an assault')
+    expect(aThing('Identity Theft')).toBe('an identity theft')
+    expect(aThing('Burglary')).toBe('a burglary')
+    expect(aThing('Torn ACL')).toBe('a torn ACL')
+    expect(aThing('Bruised Ribs')).toBe('bruised ribs')
+    expect(aThing('Shin Splints')).toBe('shin splints')
+    expect(aThing('Road Rash')).toBe('road rash')
+    expect(aThing('Achilles Tendinitis')).toBe('Achilles tendinitis')
+    expect(aThing('Torn Achilles')).toBe('a torn Achilles')
+    expect(aThing('Orange Belt')).toBe('an orange belt')
+    expect(aThing('Concussion')).toBe('a concussion')
+  })
+
   it('clamps stats to 0-100', () => {
     const g = makeTestGame()
     addStat(g, 'health', 500)

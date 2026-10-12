@@ -8,6 +8,7 @@ import {
   addPersonStat,
   addRelationship,
   addStat,
+  aThing,
   canAfford,
   clamp,
   count,
@@ -3236,7 +3237,7 @@ const ASSIGN_SCRIPT = defineScript('crime.mafia.assign', (g, choice) => {
     const cut = Math.round(cash(g, randInt(g, job.lo, job.hi)) * 0.5)
     const got = pocket(g, cut)
     fam.standing = clamp(fam.standing + randInt(g, 2, 5))
-    log(g, `${whoName} pulled off a ${job.crime.toLowerCase()} for me. My cut was ${formatMoney(got)}.`, 'event')
+    log(g, `${whoName} pulled off ${aThing(job.crime)} for me. My cut was ${formatMoney(got)}.`, 'event')
     outcome(g, 'Job Done', `${whoName} pulled off the ${job.crime.toLowerCase()} without a hitch. Your cut: ${formatMoney(cut)}.`, '\u{1F574}\u{FE0F}', 'good')
     return
   }
@@ -3799,7 +3800,7 @@ export function yearlyCrime(g: GameState): void {
           recordIndex: idx,
           evidence: 0.55,
           violent: r.crime === 'Murder' ? 'murder' : r.crime === 'Attempted Murder' ? 'attempted' : undefined,
-          context: `There was a knock at the door. The police finally connected you to a ${r.crime.toLowerCase()} from ${r.age === c.age ? 'earlier this year' : `when you were ${r.age}`}.`,
+          context: `There was a knock at the door. The police finally connected you to ${aThing(r.crime)} from ${r.age === c.age ? 'earlier this year' : `when you were ${r.age}`}.`,
         })
         return
       }
@@ -3815,7 +3816,7 @@ export function yearlyCrime(g: GameState): void {
     arrestPlayer(g, crime, crimeSeverity(crime), {
       evidence: 0.3,
       falseAccusation: true,
-      context: `The police showed up and arrested you for a ${crime.toLowerCase()} you didn't commit! Apparently you match the description of "a person."`,
+      context: `The police showed up and arrested you for ${aThing(crime)} you didn't commit! Apparently you match the description of "a person."`,
     })
   }
 }

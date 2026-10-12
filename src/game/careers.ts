@@ -2047,7 +2047,8 @@ const jobsMenu: MenuGroup = {
     const nodes: MenuNode[] = []
     const market = jobMarket(g)
     const mood = market.score >= 58 ? '\u{1F525}' : market.score >= 43 ? '\u{1F4CA}' : '\u{1F9CA}'
-    nodes.push({ type: 'info', id: 'jobs.market', text: `${market.line}. Your CV strength for a typical office job: ${cvScore(g, { kind: 'job', edu: 'bachelor' }).score}/100.`, emoji: mood })
+    // The market line itself is already in the header right above.
+    nodes.push({ type: 'info', id: 'jobs.market', text: `Your CV strength for a typical office job: ${cvScore(g, { kind: 'job', edu: 'bachelor' }).score}/100.`, emoji: mood })
     if (hiringFreeze(g)) nodes.push({ type: 'info', id: 'jobs.freeze', emoji: '\u{1F9CA}', text: `Hiring freeze: the economy is in a slump and half the usual employers aren't hiring in ${g.year}.` })
     nodes.push({ type: 'heading', id: 'jobs.h', label: `Listings for ${g.year}` })
     for (const l of fullTimeListings(g)) nodes.push(listingAction(l))

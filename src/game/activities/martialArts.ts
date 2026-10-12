@@ -4,7 +4,7 @@
 // is always on offer.
 // Progress lives in g.flags.martialArts = { [styleId]: { belt, progress } } and the learned
 // moves in g.flags['martialArts.moves'] (string[]) so person interactions can use them.
-import { addHidden, addStat, count, log, remember, useYearAction } from '../core'
+import { addHidden, addStat, aThing, count, log, remember, useYearAction } from '../core'
 import { masterFirstTime } from '../mastery'
 import { chance, pick, randInt } from '../rng'
 import { hasMainCharacter } from '../talents'
@@ -129,8 +129,8 @@ function takeClass(g: GameState, style: Style): void {
     const injury = pick(g, ['Sprained Wrist', 'Broken Toe', 'Dislocated Finger', 'Bruised Ribs'])
     addCondition(g, injury, 'injury', randInt(g, 6, 15))
     addStat(g, 'health', -randInt(g, 3, 8))
-    log(g, `I got a ${injury.toLowerCase()} in ${style.name} class.`, 'bad')
-    result(g, 'Injured', `You got a ${injury.toLowerCase()} while sparring in ${style.name} class. Your sparring partner apologized. Sort of.`, '\u{1FA79}', 'bad')
+    log(g, `I got ${aThing(injury)} in ${style.name} class.`, 'bad')
+    result(g, 'Injured', `You got ${aThing(injury)} while sparring in ${style.name} class. Your sparring partner apologized. Sort of.`, '\u{1FA79}', 'bad')
     return
   }
 
@@ -169,7 +169,7 @@ function takeClass(g: GameState, style: Style): void {
     }
     log(g, `I trained ${style.name} as a black belt.`, 'neutral')
     result(g, style.name, pick(g, [
-      `As a ${beltName(style, belt).toLowerCase()}, you mostly helped teach the beginners. They call you "sensei" now.`,
+      `As ${aThing(beltName(style, belt))}, you mostly helped teach the beginners. They call you "sensei" now.`,
       `You trained with the other black belts. Nobody landed a hit on you all day.`,
     ]), style.emoji, 'good')
     return

@@ -474,6 +474,15 @@ describe('job market and screening', () => {
     expect(lines.size).toBeGreaterThan(5)
   })
 
+  it('says the job market once on the Jobs screen (header, not again in the first row)', () => {
+    const g = graduateAdult('in', 1)
+    const jobs = occupationMenu.children(g).find((n) => n.id === 'occupation.jobs') as MenuGroup
+    const infos = jobs.children(g).filter((n) => n.type === 'info').map((n) => (n.type === 'info' ? (typeof n.text === 'string' ? n.text : n.text(g)) : ''))
+    const screen = [jobs.header!(g), ...infos].join('\n')
+    expect(screen.split(jobMarket(g).line).length - 1).toBe(1)
+    expect(infos.join('\n')).toMatch(/CV strength for a typical office job: \d+\/100/)
+  })
+
   it('a tough market lowers the odds of an interview', () => {
     const def = getJobDef('accountant')!
     const g = graduateAdult('us', 1)

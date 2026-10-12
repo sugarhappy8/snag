@@ -20,7 +20,7 @@ import { placeName, placeFlag } from './market-places'
 import { concentrationOf } from './market-view'
 import { isDeepTech } from './deeptech-state'
 import { readBiz, runsIt } from './state'
-import { money, pct, priceCapOf } from './util'
+import { industryNoun, money, pct, priceCapOf } from './util'
 
 // The moves' numbers, computed once per company state (the planner behind them is not cheap).
 function quoteOf(g: GameState, a: Asset, rivalId: string): AcquisitionQuote | null {
@@ -103,7 +103,7 @@ function acquireMenu(a: Asset): MenuGroup {
     },
     header: (g) => {
       const b = readBiz(g, a)
-      return `Prices reflect each rival's sales and what ${industryDef(b.industry).label.toLowerCase()} businesses sell for. Most of their customers stay; their locations become yours. Regulators block deals that would make you too big, and a string of buy-outs raises your antitrust risk.`
+      return `Prices reflect each rival's sales and what ${industryNoun(industryDef(b.industry).label)} businesses sell for. Most of their customers stay; their locations become yours. Regulators block deals that would make you too big, and a string of buy-outs raises your antitrust risk.`
     },
     children: (g) => {
       const b = readBiz(g, a)

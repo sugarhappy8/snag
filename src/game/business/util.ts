@@ -55,18 +55,57 @@ export function aPct(n: number): string {
   return `${/^8/.test(p) || /^1[18]%/.test(p) ? 'an' : 'a'} ${p}`
 }
 
-/** 1,234 / 12.3K / 4.5M for unit counts. */
+/** 1,234 / 12.3K / 50K / 4.5M for unit counts (no "50.0K"). */
 export function units(n: number): string {
   const a = Math.abs(Math.round(n))
-  if (a >= 1e9) return `${(a / 1e9).toFixed(1)}B`
-  if (a >= 1e6) return `${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`
-  if (a >= 1e4) return `${(a / 1e3).toFixed(a >= 1e5 ? 0 : 1)}K`
+  const short = (x: number, digits: number) => x.toFixed(digits).replace(/\.0$/, '')
+  if (a >= 1e9) return `${short(a / 1e9, 1)}B`
+  if (a >= 1e6) return `${short(a / 1e6, a >= 1e7 ? 0 : 1)}M`
+  if (a >= 1e4) return `${short(a / 1e3, a >= 1e5 ? 0 : 1)}K`
   return a.toLocaleString('en-US')
+}
+
+/** How long a cash buffer lasts, readably: 'less than a month', '5 months', '2.5 years', '10,847 years'. */
+export function runwayText(years: number): string {
+  if (!(years * 12 >= 0.5)) return 'less than a month'
+  if (years < 1) {
+    const months = Math.round(years * 12)
+    return months >= 12 ? '1 year' : `${months} ${months === 1 ? 'month' : 'months'}`
+  }
+  if (years < 10) return `${Number(years.toFixed(1))} years`
+  return Number.isFinite(years) ? `${Math.round(years).toLocaleString('en-US')} years` : 'years'
 }
 
 export function stars(n: number): string {
   const k = Math.max(1, Math.min(5, Math.round(n)))
   return '\u{2B50}'.repeat(k)
+}
+
+/** An industry label inside a sentence: 'café', 'AI company', 'e-commerce store' (acronyms keep their capitals). */
+export function industryNoun(label: string): string {
+  return label
+    .split(' ')
+    .map((w) => (/^[A-Z0-9]{2,}$/.test(w) ? w : w.toLowerCase()))
+    .join(' ')
+}
+
+/** The same with its article: 'a café', 'an AI company', 'an energy company'. */
+export function aIndustry(label: string): string {
+  const noun = industryNoun(label)
+  return `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
+}
+
+/** 'a 7-year-old' / 'an 8-year-old' / 'an 11-year-old'. */
+export function aYearsOld(years: number): string {
+  const n = Math.round(years)
+  return `${/^8|^1[18]$|^1[18]\d{2}$/.test(String(n)) ? 'an' : 'a'} ${n}-year-old`
+}
+
+/** An industry label in the plural: 'Breweries', 'Marketing Agencies', 'Bars'; 'Data Centers' stays. */
+export function labelPlural(label: string): string {
+  if (/s$/i.test(label)) return label
+  if (/[^aeiou]y$/i.test(label)) return `${label.slice(0, -1)}ies`
+  return `${label}s`
 }
 
 export function plural(n: number, word: string, many = `${word}s`): string {

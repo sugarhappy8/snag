@@ -65,7 +65,7 @@ import { bestRdBudget, rdBase, rdBlock, rdCrowding, rdMinBudget, rdProjects, rdQ
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
-import { clampN, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
+import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 import { climateLine, dashboardRows } from './dashboard'
 import { franchiseMenu } from './franchise'
 import { milestonesMenu } from './milestones'
@@ -860,7 +860,7 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
     run: (g, cur, b, input) => {
       const n = Math.round(clampN(Number(input) || 1, 1, MAX_OPEN_AT_ONCE))
       if (!isIndustryLegal(countryId, b.industry)) {
-        notice(g, 'Not Allowed', `${industryDef(b.industry).label}s aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
+        notice(g, 'Not Allowed', `${labelPlural(industryDef(b.industry).label)} aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
         return
       }
       const cost = expansionCost(b, countryId, city, n)
@@ -903,7 +903,7 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
     },
     disabledReason: (g) => {
       const b = readBiz(g, a)
-      return isIndustryLegal(countryId, b.industry) ? null : `${industryDef(b.industry).label}s are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
+      return isIndustryLegal(countryId, b.industry) ? null : `${labelPlural(industryDef(b.industry).label)} are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
     },
     header: (g) => eraNote(g, countryId, marketOf(countryId).businessNote),
     hint: (g) => {
@@ -1699,13 +1699,13 @@ function leadershipNodes(a: Asset, g: GameState): MenuNode[] {
         return passHint(gg, cur, bb, takeP(gg, bb))
       },
       disabled: (gg, bb) => (needsVote(gg, live(gg, a), bb, takeP(gg, bb)) && refusedThisYear(gg, bb, 'takeOver') ? 'The board already turned you down as CEO this year.' : null),
-      confirm: () => (job ? `Become CEO of ${a.name}? You'll leave your job as ${job.title}.` : null),
+      confirm: () => (job ? `Become CEO of ${a.name}? You'll leave your job as ${job.title}${job.company ? ` at ${job.company}` : ''}.` : null),
       run: (gg, cur, bb) => {
         if (!boardAllows(gg, cur, bb, takeP(gg, bb))) return
         const h = ownerTakesOver(gg, bb)
         const quit = becomeCeo(gg, cur, bb, title)
         log(gg, `I took over as CEO of ${cur.name}.`, 'good')
-        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you left your job as ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
+        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
       },
     }),
     act(a, 'replaceManager', 'Replace the CEO', '\u{1F504}', {
@@ -1771,7 +1771,7 @@ function makeOffers(g: GameState, b: BizState): Offer[] {
   const def = industryDef(b.industry)
   const f = (lo: number, hi: number) => Math.max(1_000, Math.round((operating * (lo + (hi - lo) * rand(g)) + netCash) / 100) * 100)
   const offers: Offer[] = [
-    { buyer: `a rival ${def.label.toLowerCase()} chain`, amount: f(0.78, 1.05) },
+    { buyer: `a rival ${industryNoun(def.label)} chain`, amount: f(0.78, 1.05) },
     { buyer: `${investorFirm(b.countryId, rand(g), rand(g))} (private equity)`, amount: f(0.88, 1.15) },
   ]
   // A conglomerate pays a premium for a track record; a company with no booked year gets none.

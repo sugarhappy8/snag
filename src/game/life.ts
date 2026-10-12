@@ -786,6 +786,9 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   }
   currentLogYear(g)
   const c = g.character
+  // Money written from here on (a wealthy parent's company, the birth log) is in this life's
+  // currency and year, not whatever life was on screen before.
+  bindMoneyContext(g)
 
   // --- Family -------------------------------------------------------------
   const rolledFamily = rollFamilyType(g)
@@ -994,7 +997,6 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   }
   // A citizen of the country you're born in (immigration.ts adds passports later).
   c.citizenships = [c.countryId]
-  bindMoneyContext(g)
   return g
 }
 
@@ -1459,6 +1461,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   n.lifeId = `${g.lifeId.replace(/-g\d+$/, '')}-g${n.generation}`
   n.ancestors = [...n.ancestors, summary]
   n.character = heir
+  // The inheritance and the heir's first lines are written in the heir's currency (they may
+  // live abroad), not the late parent's.
+  bindMoneyContext(n)
   n.assets = keptAssets
   const ownedBeforeInheritance = npcCompany(heirP, n.year)
   if (ownedBeforeInheritance) {

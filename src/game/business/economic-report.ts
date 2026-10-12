@@ -68,7 +68,12 @@ export function economicReportDetails(b: BizState): string[] {
 
 export function economicReportMenu(a: Asset): MenuGroup {
   return { type: 'menu', id: `biz.economicReport.${a.id}`, label: 'Why Profit Changed', emoji: '🔎',
-    subtitle: 'Settled accounts, production constraints and cash tied up in inputs',
+    // What changed, at a glance (and nothing about production or inputs for a bank or a fund).
+    subtitle: g => {
+      const current = findBusiness(g, a.id)
+      const r = current ? economicReportOf(readBiz(g, current)) : null
+      return r ? `Net profit ${r.delta >= 0 ? 'up' : 'down'} ${money(Math.abs(r.delta))} on ${r.previousYear}` : 'Compares two settled years of accounts'
+    },
     children: g => {
       const current = findBusiness(g, a.id)
       if (!current) return []

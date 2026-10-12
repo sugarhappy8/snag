@@ -225,21 +225,26 @@ export function ownerTakesOver(g: GameState, b: BizState): Handover {
 
 /**
  * Make the player CEO of this business, quitting whatever main job they had (another business
- * they ran gets a general manager). Returns the title of the job they quit, if any.
+ * they ran gets a general manager). Returns what that cost them as a clause to follow "you"
+ * ('quit your job as Barista', 'handed Acme Café to a general manager'), or null.
  */
 export function becomeCeo(g: GameState, a: Asset, b: BizState, title = 'Founder & CEO'): string | null {
   const c = g.character
   let quit: string | null = null
   if (c.job && !(c.job.defId === OWNER_JOB && c.job.data.assetId === a.id)) {
     const prev = c.job
+    quit = `quit your job as ${prev.title}`
     if (prev.defId === OWNER_JOB) {
       const other = g.assets.find((x) => x.id === prev.data.assetId)
       if (other && other.kind === 'business') {
         const ob = other.details as unknown as BizState
-        if (ob && typeof ob === 'object') installManager(g, ob)
+        if (ob && typeof ob === 'object') {
+          installManager(g, ob)
+          // Not a job you quit: the other company you ran carries on under a hired CEO.
+          quit = `handed ${other.name} to a general manager`
+        }
       }
     }
-    quit = prev.title
     endJob(g, 'job', 'quit')
   }
   b.ceo = 'owner'

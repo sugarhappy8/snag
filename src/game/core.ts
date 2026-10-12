@@ -685,6 +685,19 @@ export function article(word: string): string {
   return /^[aeiou]/i.test(word) ? 'an' : 'a'
 }
 
+/**
+ * A named thing (an injury, a crime, a rank) mid-sentence with the article English wants: 'a
+ * broken ankle', 'an assault', 'a torn ACL', 'an orange belt'; plurals and mass nouns go bare
+ * ('shin splints', 'bruised ribs', 'road rash', 'knee tendinitis'). Acronyms keep their capitals.
+ */
+export function aThing(name: string): string {
+  const words = name.trim().split(/\s+/)
+  const text = words.map((w) => (/^[A-Z0-9]{2,}$/.test(w) || w === 'Achilles' ? w : w.toLowerCase())).join(' ')
+  const last = words[words.length - 1] ?? ''
+  const bare = /(itis|rash|everything)$/i.test(last) || (/[^su]s$/i.test(last) && last !== 'Achilles')
+  return bare ? text : `${article(text)} ${text}`
+}
+
 export const MONTHS = [
   'January',
   'February',

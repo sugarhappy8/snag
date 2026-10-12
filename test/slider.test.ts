@@ -29,7 +29,7 @@ const {
   sliderStart,
   sliderValueAt,
 } = await import('../src/ui/components/menuModel')
-const { SliderField, sliderText } = await import('../src/ui/components/Slider')
+const { SliderField, exactText, sliderText } = await import('../src/ui/components/Slider')
 const { InputDialog } = await import('../src/ui/components/Dialogs')
 const { SliderInputCard } = await import('../src/ui/components/SliderCard')
 
@@ -216,6 +216,21 @@ describe('slider markup', () => {
     expect(moneyScale()).toBeGreaterThan(10)
     expect(html).toContain(`aria-valuetext="${formatMoney(10_000)}"`)
     expect(formatMoney(10_000)).not.toContain('$')
+  })
+
+  it('shows the exact amount in the currency’s own cents, never float noise', () => {
+    // Review: the founding capital field read "750978.787879" and "Exact amount (display currency)".
+    const html = render(createElement(SliderField, { label: 'Capital', min: 750_978.787879, max: 5_000_000, money: true, value: 750_978.787879, onChange: () => {} }))
+    expect(html).toContain('value="750978.79"')
+    expect(html).toContain('Exact amount ($)')
+    expect(html).not.toContain('display currency')
+    expect(exactText(2.5, 1, false)).toBe('2.5')
+    const g = makeTestGame(1, { countryId: 'jp', age: 30 })
+    g.year = 2026
+    setMoneyDisplay({ mode: 'local', nominal: true })
+    bindMoneyContext(g)
+    expect(exactText(1_234.567, moneyScale(), true)).toMatch(/^\d+$/)
+    expect(render(createElement(SliderField, { label: 'Capital', min: 1_000, max: 5_000, money: true, value: 1_234.567, onChange: () => {} }))).toContain('Exact amount (¥)')
   })
 
   it('puts the slider in a Confirm/Cancel dialog, and falls back to a number field without bounds', () => {

@@ -139,6 +139,14 @@ describe('New Life screen', () => {
     expect(blocked).toContain('Royal birth is unavailable')
   })
 
+  it('keeps the royal birth choices short enough for a phone-width select', () => {
+    // Review: "🎲 Random — rare chance of royalty" was cut off at 390px.
+    const html = render(createElement(RoyalBirthPicker, { countryId: 'gb', year: 2026, value: 'random', onChange: () => {} }))
+    const labels = [...html.matchAll(/<option[^>]*>([^<]*)<\/option>/g)].map((m) => m[1])
+    expect(labels).toHaveLength(3)
+    for (const label of labels) expect(Array.from(label).length, label).toBeLessThanOrEqual(26)
+  })
+
   it('passes a valid birth choice to the engine and drops stale ineligible selections', () => {
     const form = { firstName: 'Alex', lastName: 'Smith', gender: 'male' as const, countryId: 'gb', city: '', sexuality: '' as const, picks: RANDOM_PICKS, talents: [], year: 2026, royalty: 'royal' as const }
     expect(customLifeOptions(form).royalty).toBe('royal')

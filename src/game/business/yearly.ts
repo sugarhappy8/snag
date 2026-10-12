@@ -196,11 +196,12 @@ function marketNote(g: GameState, b: BizState, lastCycle: number): string {
   const e = localEcon(b.industry, b.countryId, b.city)
   const country = getCountry(b.countryId).name
   const parts = [`${country}'s economy is ${cycleLabel(lastCycle)}.`]
-  if (e.demandMult >= 1.3) parts.push(`${def.label}s are in hot demand here.`)
-  else if (e.demandMult > 0 && e.demandMult <= 0.7) parts.push(`Demand for ${def.label.toLowerCase()}s is thin here.`)
+  const v = marketViewOf(g, b)
+  // The market's own noun, never the label + "s" ("Marketing Agencys", "Bakerys").
+  if (e.demandMult >= 1.3) parts.push(`Demand in the ${v.noun} market here is hot.`)
+  else if (e.demandMult > 0 && e.demandMult <= 0.7) parts.push(`Demand in the ${v.noun} market here is thin.`)
   parts.push(`Locals typically pay about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)} per ${def.unitOne}.`)
   if (m.inflation >= 0.15) parts.push(`Inflation runs ${Math.round(m.inflation * 100)}% a year: reprice every year or your prices go stale.`)
-  const v = marketViewOf(g, b)
   if (v.booked && v.share > 0 && (v.scope === 'world' || v.share >= 0.005)) {
     parts.push(`You hold ${shareText(v.share)} of ${marketOwner(v.place)} ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year` : ''}.`)
   }
