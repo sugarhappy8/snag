@@ -842,6 +842,52 @@ function sweep(ctx: Ctx, g: GameState, found: Found[], d: Driver, max: number): 
   return n
 }
 
+/**
+ * Probe a crafted state: run every enabled action of `roots` (all menus when omitted) on its
+ * own throwaway draft of a frozen copy, drain and check each, and for `depth` 2 do the same again
+ * from a sample of the resulting states (states two steps away). Failures go to `log`; returns
+ * how many actions ran. For targeted, deterministic probes of rare states (a will feud, a board).
+ */
+export function probeActions(g0: GameState, log: FailureLog, seed = 1, opts: { depth?: number; max?: number; roots?: (g: GameState) => MenuNode[] } = {}): number {
+  installStorageShim()
+  const d = driver(seed)
+  const g = structuredClone(g0)
+  const ctx = makeCtx(seed, g.year - g.character.age, g, log)
+  const collect = (s: GameState): Found[] => {
+    const out: Found[] = []
+    const list = opts.roots ? [{ name: 'probe', nodes: () => opts.roots!(s) }] : roots(s)
+    for (const r of list) walkRoot(ctx, s, r, { maxDepth: 7, full: true, maxNodes: 20000 }, out)
+    return out
+  }
+  deepFreeze(g)
+  bindMoneyContext(g)
+  let n = 0
+  const level = (s: GameState, depth: number) => {
+    const found = collect(s).filter((f) => f.action.id !== 'surrenderLife' && !/suicide/i.test(f.action.id))
+    for (const f of found.slice(0, opts.max ?? 400)) {
+      const mark = ctx.trail.length
+      const draft = runAction(ctx, s, f, d)
+      n++
+      if (draft !== s) {
+        ctx.g = draft
+        drain(ctx, draft, d)
+        checkInvariants(ctx, draft, `probe ${f.path}`)
+        if (depth > 1 && d.chance(0.25)) {
+          deepFreeze(draft)
+          bindMoneyContext(draft)
+          level(draft, depth - 1)
+          bindMoneyContext(s)
+        }
+        ctx.g = s
+      }
+      ctx.trail.length = mark
+    }
+  }
+  level(g, opts.depth ?? 1)
+  bindMoneyContext(null)
+  return n
+}
+
 const INDUSTRY_PREFIX = 'biz.start.'
 
 /** Found a company through the real Start a Business rows (the founding popups follow). */
