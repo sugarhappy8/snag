@@ -81,6 +81,26 @@ export function stars(n: number): string {
   return '\u{2B50}'.repeat(k)
 }
 
+/** An industry label inside a sentence: 'café', 'AI company', 'e-commerce store' (acronyms keep their capitals). */
+export function industryNoun(label: string): string {
+  return label
+    .split(' ')
+    .map((w) => (/^[A-Z0-9]{2,}$/.test(w) ? w : w.toLowerCase()))
+    .join(' ')
+}
+
+/** The same with its article: 'a café', 'an AI company', 'an energy company'. */
+export function aIndustry(label: string): string {
+  const noun = industryNoun(label)
+  return `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
+}
+
+/** 'a 7-year-old' / 'an 8-year-old' / 'an 11-year-old'. */
+export function aYearsOld(years: number): string {
+  const n = Math.round(years)
+  return `${/^8|^1[18]$|^1[18]\d{2}$/.test(String(n)) ? 'an' : 'a'} ${n}-year-old`
+}
+
 /** An industry label in the plural: 'Breweries', 'Marketing Agencies', 'Bars'; 'Data Centers' stays. */
 export function labelPlural(label: string): string {
   if (/s$/i.test(label)) return label

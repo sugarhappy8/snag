@@ -11,7 +11,7 @@ import { refreshValue, valuationOf } from './economy'
 import { recordCompanyShock } from './dynamics'
 import { industryDef } from './industries'
 import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state'
-import { clampN, money, pct } from './util'
+import { clampN, industryNoun, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
 import { payFamilyBusinessProceeds } from './dynasty-ownership'
 
@@ -81,7 +81,7 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   if (profit > 0) text += ` Not bad for a company you put ${formatMoney(b.invested)} into.`
   else if (profit < 0) text += ` You put ${formatMoney(b.invested)} into it, so this one is a lesson, not a payday.`
   log(g, `I sold my company, ${a.name}, for ${money(gross)}.`, profit >= 0 ? 'good' : 'neutral')
-  remember(g, `Sold ${a.name} (${industryDef(b.industry).label.toLowerCase()}) for ${money(gross)}.`)
+  remember(g, `Sold ${a.name} (${industryNoun(industryDef(b.industry).label)}) for ${money(gross)}.`)
   notice(g, 'Company Sold!', text, { emoji: '\u{1F91D}', tone: profit >= 0 ? 'good' : 'neutral' })
 }
 

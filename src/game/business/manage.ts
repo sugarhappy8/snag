@@ -65,7 +65,7 @@ import { bestRdBudget, rdBase, rdBlock, rdCrowding, rdMinBudget, rdProjects, rdQ
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
-import { clampN, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
+import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -1767,7 +1767,7 @@ function makeOffers(g: GameState, b: BizState): Offer[] {
   const def = industryDef(b.industry)
   const f = (lo: number, hi: number) => Math.max(1_000, Math.round((operating * (lo + (hi - lo) * rand(g)) + netCash) / 100) * 100)
   const offers: Offer[] = [
-    { buyer: `a rival ${def.label.toLowerCase()} chain`, amount: f(0.78, 1.05) },
+    { buyer: `a rival ${industryNoun(def.label)} chain`, amount: f(0.78, 1.05) },
     { buyer: `${investorFirm(b.countryId, rand(g), rand(g))} (private equity)`, amount: f(0.88, 1.15) },
   ]
   // A conglomerate pays a premium for a track record; a company with no booked year gets none.

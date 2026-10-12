@@ -6,7 +6,7 @@ import { ageUp } from '../src/game/aging'
 import { businessAssetView, businessCareerMenu, businessSummary } from '../src/game/business'
 import { startupCapitalPreview } from '../src/game/business/founding'
 import { rescueNodes } from '../src/game/business/rescue'
-import { labelPlural, runwayText, units } from '../src/game/business/util'
+import { aIndustry, aYearsOld, industryNoun, labelPlural, runwayText, units } from '../src/game/business/util'
 import { bizOf, businessAssets, readBiz } from '../src/game/business/state'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
@@ -166,6 +166,27 @@ describe('business', () => {
     }
     expect(note).toMatch(/economy is/)
     expect(note).not.toMatch(/\b[A-Z][a-z]+ys\b|Agencys|label/)
+  })
+
+  it('writes "an AI company" and "an energy company", never "a ai company"', () => {
+    expect(aIndustry('AI Company')).toBe('an AI company')
+    expect(aIndustry('Energy Company')).toBe('an energy company')
+    expect(aIndustry('Food Truck')).toBe('a food truck')
+    expect(industryNoun('E-Commerce Store')).toBe('e-commerce store')
+    expect(aYearsOld(8)).toBe('an 8-year-old')
+    expect(aYearsOld(11)).toBe('an 11-year-old')
+    expect(aYearsOld(7)).toBe('a 7-year-old')
+    expect(aYearsOld(25)).toBe('a 25-year-old')
+    // Review: "Investors only back a ai company with a technical founder", "I founded Walker AI, a ai company".
+    const g = adultIn('us', 5_000_000)
+    g.character.stats.smarts = 40
+    startRow(g, 'aiLab').run(g)
+    const texts: string[] = []
+    drain(g, ['cofounder', 'savings', 'bootstrap', 'me'], texts)
+    for (const m of g.queue) if (m.kind === 'choice') texts.push(m.text)
+    texts.push(...g.log.flatMap((y) => y.entries.map((e) => e.text)), ...g.character.memories)
+    expect(texts.join('\n')).toMatch(/I founded .+, an AI company in /)
+    expect(texts.join('\n')).not.toMatch(/\b[aA] (ai|AI)\b|\ba energy\b|\(ai company\)/)
   })
 
   it("doesn't repeat the company's name in a header box under the sheet title", () => {

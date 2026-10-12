@@ -12,6 +12,7 @@ import { buyBusinessMenu, startBusinessMenu } from './business/founding'
 import { industryDef } from './business/industries'
 import { businessView } from './business/manage'
 import { businessAssets, ceoJob, findBusiness, readBiz, runsIt, totalOutlets } from './business/state'
+import { industryNoun } from './business/util'
 import { yearlyBusinessImpl } from './business/yearly'
 import type { Asset, GameState, MenuGroup, MenuNode } from './types'
 
@@ -108,7 +109,7 @@ export function businessSummary(g: GameState): string {
     const tech = deepTechSummary(g, a)
     // Deep tech carries its market share in its own clause; everyone else gets it here.
     const share = tech ? '' : shareSummary(g, b)
-    return `${a.name} (${def.label.toLowerCase()}, ${b.city}, ${totalOutlets(b)} ${totalOutlets(b) === 1 ? def.site : def.sitePlural}, ${b.employees + b.staff.length} staff, ${profit}${share ? `, ${share}` : ''}${tech ? `; ${tech}` : ''}; ${role})`
+    return `${a.name} (${industryNoun(def.label)}, ${b.city}, ${totalOutlets(b)} ${totalOutlets(b) === 1 ? def.site : def.sitePlural}, ${b.employees + b.staff.length} staff, ${profit}${share ? `, ${share}` : ''}${tech ? `; ${tech}` : ''}; ${role})`
   })
   return `Owns ${parts.join('; ')}${list.length > 3 ? ` and ${list.length - 3} more` : ''}${chairs ? `.${chairs}` : ''}`
 }

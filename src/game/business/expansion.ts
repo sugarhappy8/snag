@@ -9,7 +9,7 @@ import { INVENTION_TIERS, inventionNames, isInventionTier, isResearchKind, natio
 import { manageBlock } from './gate'
 import { industryDef } from './industries'
 import { bizOf, businessAssets, findBusiness, readBiz, type BizState } from './state'
-import { money, pct } from './util'
+import { industryNoun, money, pct } from './util'
 import { inventionProductsOf, newInventionProduct, ownedInventionProductNodes, saveInventionProducts } from './invention-products'
 import type { InventionField } from '../inventor-data'
 import { registerInventionBreakthrough, inventionImpactNodes } from '../invention-impact'
@@ -32,7 +32,7 @@ export function studyMarket(g: GameState, assetId: string, country: string): boo
   x.studies = [...x.studies.filter(s => s.country !== country), { country, year: g.year }]
   saveExpansion(b, x)
   const n = nationalMarket(g, b.industry, country)
-  log(g, `I studied the ${industryDef(b.industry).label.toLowerCase()} market in ${getCountry(country).name}.`)
+  log(g, `I studied the ${industryNoun(industryDef(b.industry).label)} market in ${getCountry(country).name}.`)
   notice(g, 'Market Study', `${n.label}. Customers currently favor ${n.taste}. Input costs are ${pct(n.costs - 1, 1)} relative to the normal local level. Use National Strategy to choose a response. Inventions now begin with personal specific-topic study in Activities > Inventor, funded from personal savings.`, { emoji: '🔎' })
   return true
 }
