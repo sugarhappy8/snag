@@ -51,13 +51,13 @@ function launchMenu(t: Target, name: string): MenuGroup {
           run: (gg) => { license(gg, t) },
         },
         {
-          type: 'action', id: `ws.pitch.${t.kind}.${t.id}`, label: venue.show ? `Pitch on ${venue.name}` : 'Pitch at the Trade Fair', emoji: venue.emoji, subtitle: 'Cash now for a cut of your royalties. Or public humiliation.',
+          type: 'action', id: `ws.pitch.${t.kind}.${t.id}`, label: venue.show ? `Pitch on ${venue.name}` : 'Pitch at the Invention Fair', emoji: venue.emoji, subtitle: 'Cash now for a cut of your royalties. Or public humiliation.',
           hint: (gg) => { const bb = bench(gg, t); return bb && isGenius(gg) && bb.pitched < 0 ? talentHint(gg, 'Inventor', `${Math.round(pitchOddsFor(gg, bb) * 100)}% chance of an offer`) : null },
           disabledReason: (gg) => pitchBlock(gg, t), run: (gg) => { pitch(gg, t) },
         },
         {
           type: 'action', id: `ws.crowd.${t.kind}.${t.id}`, label: 'Crowdfund It', emoji: '\u{1F3AF}', subtitle: 'Pre-orders fund your own production: a bigger margin',
-          visible: (gg) => gg.year >= 2009, hint: (gg) => quoteHint(gg, readWorkshop(gg), bench(gg, t), 'crowd'),
+          visible: (gg) => gg.year >= 2009 && gg.character.age >= 18, hint: (gg) => quoteHint(gg, readWorkshop(gg), bench(gg, t), 'crowd'),
           disabledReason: (gg) => crowdBlock(gg, t), run: (gg) => startCrowd(gg, t),
         },
       ]
