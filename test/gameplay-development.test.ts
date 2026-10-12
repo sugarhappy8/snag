@@ -45,8 +45,20 @@ describe('development projects', () => {
     const g = adult(), a = startDevelopment(g, 'residential')!
     expect(financeDevelopment(g, a.id)).toBe(true); expect(a.mortgage?.balance).toBeGreaterThan(0)
     expect(financeDevelopment(g, a.id)).toBe(false)
-    const cash = g.character.money, proceeds = Math.round(a.value * .85) - a.mortgage!.balance
+    // The loan's reserve is unspent: it comes back in full; the site sells 15% below its value.
+    const reserve = developmentOf(a)!.escrow
+    const cash = g.character.money, proceeds = reserve + Math.round((a.value - reserve) * .85) - a.mortgage!.balance
     expect(cancelDevelopment(g, a.id)).toBe(true); expect(g.character.money).toBe(cash + proceeds)
+  })
+  it('returns unspent reserves in full on cancellation, as the funding notice promises', () => {
+    const g = adult(), a = startDevelopment(g, 'residential')!, d = developmentOf(a)!
+    expect(fundDevelopment(g, a.id, d.base)).toBe(true)
+    expect(g.queue.some(m => m.kind === 'notice' && m.text.includes('Unspent funds are returned on commissioning or cancellation'))).toBe(true)
+    const reserve = developmentOf(a)!.escrow, site = a.value - reserve, cash = g.character.money
+    expect(reserve).toBe(d.base)
+    expect(cancelDevelopment(g, a.id)).toBe(true)
+    // Only the site and work in place take the 15% distressed discount.
+    expect(g.character.money).toBe(cash + reserve + Math.round(site * .85))
   })
   it('leases completed commercial space through the existing landlord statement once', () => {
     const { g, a } = build('commercial')
