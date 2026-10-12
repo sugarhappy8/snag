@@ -327,7 +327,10 @@ export function accountSize(countryId: string, _year: number): number {
 /** Activity and account growth as a function of the commission against the era's going rate. */
 export function commissionEffect(commission: number, norm: number): { activity: number; growth: number } {
   const ratio = (clampN(commission, 0, .03) + .0005) / (norm + .0005)
-  return { activity: clampN(Math.pow(ratio, -.4), .2, 2.5), growth: clampN(-.12 * Math.log(ratio), -.3, .15) }
+  // Undercutting rivals wins some extra trading and sign-ups. Charging more than they do drives
+  // active traders away fast (moving an account takes an afternoon), so overpricing never pays.
+  const above = ratio > 1
+  return { activity: clampN(Math.pow(ratio, above ? -1.6 : -.4), .02, 2.5), growth: clampN((above ? -.25 : -.12) * Math.log(ratio), -.45, .15) }
 }
 
 /** Payment for order flow per trade once commissions hit zero. */

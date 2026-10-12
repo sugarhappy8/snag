@@ -6,11 +6,11 @@
 import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
 import { createBusinessAsset, listingsForSale, newBiz, startFounding } from '../src/game/business/founding'
-import { fundNodes } from '../src/game/business/fund'
-import { investInPitch, setCall, setHedgeTerms } from '../src/game/business/fund-actions'
+import { fundNodes, simulateFundYear } from '../src/game/business/fund'
+import { investInPitch, setCall, setCommission, setHedgeTerms } from '../src/game/business/fund-actions'
 import { fundYearlyChecks, presentFundEvent, PROBE } from '../src/game/business/fund-events'
-import { quantBlock } from '../src/game/business/fund-model'
-import { hedgeFeeOutlook, strategyOutlook } from '../src/game/business/fund-outlook'
+import { brokerEra, quantBlock } from '../src/game/business/fund-model'
+import { bestCommission, hedgeFeeOutlook, strategyOutlook } from '../src/game/business/fund-outlook'
 import { readFund, saveFund, type FundState, type FundType } from '../src/game/business/fund-state'
 import { fundLine } from '../src/game/business/fund-text'
 import { newVcFund, openPitches, pitchesFor, raiseQuote } from '../src/game/business/fund-vc'
@@ -273,6 +273,37 @@ describe('regulators', () => {
     expect(broke.g.character.money).toBeLessThan(1e6)
     const nothing = fight(0, 0)
     expect(nothing.g.log.flatMap(y => y.entries.map(e => e.text)).join('\n')).toMatch(/couldn't afford the lawyers/)
+  })
+})
+
+describe('brokerage pricing', () => {
+  /** Ten booked years at a fixed commission, summed over a few timelines. */
+  const tenYears = (year: number, commission: number): number => {
+    let total = 0
+    for (let seed = 0; seed < 4; seed++) {
+      const { g, a } = firm('broker', { year, lifeId: `broker-price-${seed}`, cash: 5e6 })
+      setCommission(g, a.id, commission)
+      const b = bizOf(g, a)
+      for (let y = year; y < year + 10; y++) { g.year = y; simulateFundYear(g, b, y, 0); b.yearCosts = 0; b.yearIncome = 0 }
+      total += b.cash - 5e6
+    }
+    return total
+  }
+
+  it('charging far more than rivals loses money over time, even in the zero-commission era', () => {
+    for (const year of [1985, 2000, 2006]) {
+      const norm = brokerEra('us', year).normCommission
+      expect(tenYears(year, norm * 3), `${year}`).toBeLessThan(tenYears(year, norm))
+    }
+    expect(tenYears(2023, .005)).toBeLessThan(tenYears(2023, 0))
+  }, 60_000)
+
+  it('the Business hint never recommends a price the yearly report warns about', () => {
+    for (const year of [1930, 1965, 1985, 2000, 2006, 2015, 2023]) {
+      const { b } = firm('broker', { year })
+      const norm = brokerEra('us', year).normCommission
+      expect(bestCommission(b, readFund(b), year), `${year}`).toBeLessThanOrEqual(norm * 1.5 + .0005)
+    }
   })
 })
 
