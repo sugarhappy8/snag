@@ -130,6 +130,44 @@ describe('menus and access', () => {
     expect(news.children(g).length).toBeGreaterThan(0)
   })
 
+  it('quotes this year’s moves in the same money as the index line and "Recent years"', () => {
+    // Review (2021 Britain): "FTSE 100 up 14.8% (+10% after inflation)" sat over "iShares FTSE 100
+    // ETF ▲10.0% this year", and Shell read "▲19.3% this year" beside "Recent years: … '21 +24%".
+    const g = adult('gb')
+    g.year = 2021
+    const pctOf = (s: string, re: RegExp) => {
+      const m = re.exec(s)
+      expect(m, `${re} in ${s}`).toBeTruthy()
+      return Number(m![2]) * (m![1] === '▼' || m![1] === '-' || m![1] === 'down ' ? -1 : 1)
+    }
+    const header = investmentsMenu.header!(g)
+    const index = pctOf(header, /(up |down )([\d.]+)%/)
+    const nodes = children(g, investmentsMenu)
+    const fund = nodes.find((n) => n.type === 'menu' && /FTSE 100/.test(n.label)) as MenuGroup
+    const sub = typeof fund.subtitle === 'function' ? fund.subtitle(g) : String(fund.subtitle)
+    expect(Math.abs(pctOf(sub, /(▲|▼)([\d.]+)% this year/) - index)).toBeLessThan(1.5)
+    const stocks = (findNode(nodes, 'inv-stocks') as MenuGroup).children(g).filter((n): n is MenuGroup => n.type === 'menu')
+    for (const s of stocks.slice(0, 8)) {
+      const lines = s.children(g).filter((n) => n.type === 'info').map((n) => (n.type === 'info' ? (typeof n.text === 'string' ? n.text : n.text(g)) : ''))
+      const price = lines.find((t) => /this year\)/.test(t))
+      const recent = lines.find((t) => t.startsWith('Recent years'))
+      if (!price || !recent || !/'21 [-+]?\d/.test(recent)) continue
+      const now = pctOf(price, /(▲|▼)([\d.]+)% this year/)
+      const listed = pctOf(recent, /'21 (\+|-)?(\d+)%/)
+      expect(Math.abs(now - listed), `${s.label}: ${price} / ${recent}`).toBeLessThanOrEqual(0.6)
+    }
+    // A holding of that fund reports the same year the same way.
+    const h = adult('gb')
+    h.year = 2020
+    const etf = investmentListing(h).find((q) => q.type === 'index')!
+    expect(buySecurity(h, etf.secId, 100_000)).toBe(true)
+    passYear(h)
+    const held = investmentHoldings(h)[0]
+    const row = investmentAssetView(h, held).map((n) => (n.type === 'info' ? (typeof n.text === 'string' ? n.text : n.text(h)) : '')).find((t) => t.startsWith('This year'))!
+    const heldIndex = pctOf(investmentsMenu.header!(h), /(up |down )([\d.]+)%/)
+    expect(Math.abs(pctOf(row, /(▲|▼)([\d.]+)%/) - heldIndex), `${row} vs ${heldIndex}%`).toBeLessThan(1.5)
+  })
+
   it('renders a risk meter', () => {
     expect(riskMeter(1)).toBe('●○○○○')
     expect(riskMeter(5)).toBe('●●●●●')
