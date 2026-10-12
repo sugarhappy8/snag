@@ -8,10 +8,12 @@ import { removeHeir, changeWill } from '../src/game/events/will-act'
 import { willPersonNodes } from '../src/game/events/will-amends'
 import { readWl, updateWl } from '../src/game/events/will-core'
 import { createPerson } from '../src/game/people'
+import { hire, ownerKey } from '../src/game/special/common'
+import { disciplineMenu, fighterJobNodes } from '../src/game/special/sports-fight'
 import { lineById } from '../src/game/shops/luxury-brands-catalog'
 import { buyOffer } from '../src/game/shops/luxury-brands-deal'
 import { luxuryAssetNodes } from '../src/game/shops/luxury-brands-assets'
-import type { GameState, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
+import type { GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
 function deepFreeze<T>(v: T): T {
@@ -28,6 +30,30 @@ function runLikeStore(committed: GameState, action: MenuAction, input?: string):
   const draft = structuredClone(committed)
   action.run(draft, input)
   return draft
+}
+
+/** Render a menu like the UI does: every visible / text / subtitle / hint / disabled reason / header / children. */
+function render(g: GameState, nodes: MenuNode[], depth = 0): number {
+  let n = 0
+  for (const node of nodes) {
+    n++
+    if (node.visible && !node.visible(g)) continue
+    if (node.type === 'info') {
+      if (typeof node.text === 'function') node.text(g)
+      continue
+    }
+    if (node.type === 'heading') continue
+    if (typeof node.subtitle === 'function') node.subtitle(g)
+    node.hint?.(g)
+    const off = node.disabledReason?.(g)
+    if (node.type === 'action') {
+      if (!off) node.confirm?.(g)
+      continue
+    }
+    node.header?.(g)
+    if (!off && depth < 6) n += render(g, node.children(g), depth + 1)
+  }
+  return n
 }
 
 function child(nodes: MenuNode[], id: string): MenuNode {
@@ -98,3 +124,19 @@ describe('menu actions write to the draft, not the state they were built from', 
     expect(w.anger).toBeLessThan(70)
   })
 })
+
+describe('menus are pure: rendering never writes to the state', () => {
+  it("a pro fighter's Occupation rows and the combat-sport menus render from a frozen state", () => {
+    const g = makeTestGame(11, { age: 26 })
+    g.log = [{ age: 26, year: 2026, entries: [] }]
+    hire(g, { defId: 'sports.fighter', title: 'Professional Nak Muay', company: 'x', salary: 0, data: { disc: 'muaythai', tier: 'major', promotion: 'x', cls: 2, rank: 1, regionalChamp: false, belts: [], defenses: 0, champ: null, fightsLeft: 3, streak: 2, promoWins: 4, injured: 1, earned: 0 } })
+    g.flags['special.sports.fight'] = { striking: 50, grappling: 50, cardio: 50, chin: 60, iq: 50, natural: 2, gym: '', gymTier: 0, gymFee: 0, amateur: {}, pro: { muaythai: { w: 5, l: 2, d: 0, nc: 0, ko: 2, sub: 1, dec: 2, koLosses: 0 } }, belts: [], hype: 5, rivals: [], peakRank: 1, retiredAge: null, startAge: 22, earnings: 1000, doping: false, trained: [], lastFightAge: 26, owner: ownerKey(g) } as unknown as Json
+    g.queue = []
+    const before = JSON.stringify(g)
+    deepFreeze(g)
+    const nodes: MenuNode[] = [...fighterJobNodes(g), disciplineMenu('muaythai'), disciplineMenu('boxing')]
+    expect(render(g, nodes)).toBeGreaterThan(10)
+    expect(JSON.stringify(g)).toBe(before)
+  })
+})
+

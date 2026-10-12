@@ -434,7 +434,8 @@ export function fighterJob(g: GameState): Job | null {
   return myJob(g, 'sports.fighter')
 }
 
-function fj(job: Job): FJob {
+/** The pro fighter's job record, normalized, without touching the job: safe in menus (renders are pure). */
+function fjView(job: Job): FJob {
   const raw = job.data && typeof job.data === 'object' && !Array.isArray(job.data) ? job.data as unknown as Partial<FJob> : {}
   const disc = DISCIPLINES.some((d) => d.id === raw.disc) ? raw.disc as DiscId : 'mma'
   const rank = typeof raw.rank === 'number' && Number.isFinite(raw.rank) && raw.rank >= 0 && raw.rank <= 15 ? Math.round(raw.rank) : null
@@ -469,6 +470,12 @@ function fj(job: Job): FJob {
     injured: fightNum(raw.injured, 0, 0, 1e6),
     earned: fightNum(raw.earned, 0, 0, 1e12),
   }
+  return normalized
+}
+
+/** The pro fighter's job record, normalized in place so actions and hooks can update it. */
+function fj(job: Job): FJob {
+  const normalized = fjView(job)
   if (!job.data || typeof job.data !== 'object' || Array.isArray(job.data)) job.data = {}
   Object.assign(job.data, normalized)
   return view<FJob>(job.data)
@@ -493,7 +500,7 @@ function fmt(r: FightRec): string {
 }
 
 function rankText(job: Job): string {
-  const d = fj(job)
+  const d = fjView(job)
   if (d.tier === 'regional') return d.regionalChamp ? 'regional champion' : 'regional circuit'
   if (d.rank === 0) return 'CHAMPION'
   return d.rank === null ? 'unranked' : `ranked #${d.rank}`
@@ -595,7 +602,7 @@ interface Offer {
 
 function purseFor(g: GameState, d: Discipline, job: Job | null, kind: OfferKind, opp: Opp): { show: number; win: number } {
   if (!job || kind === 'amateur') return { show: 0, win: 0 }
-  const j = fj(job)
+  const j = fjView(job)
   const p = d.purse
   if (j.tier === 'regional') {
     const show = tidy(Math.min(p.regionalCap, (p.regional + j.promoWins * p.regional * 0.35) * Math.max(0.3, wealth(g)) * (kind === 'regionalTitle' ? 2 : 1)))
@@ -1518,8 +1525,8 @@ function fightAction(id: string, disc: DiscId, amateur: boolean): MenuAction {
       if (gate) return gate
       if (g.character.stats.health < 25) return "You're in no shape to fight. See a doctor."
       const job = fighterJob(g)
-      if (!amateur && (!job || fj(job).disc !== disc)) return 'You are not a pro in this sport.'
-      if (job && fj(job).injured > 0) return "You're injured."
+      if (!amateur && (!job || fjView(job).disc !== disc)) return 'You are not a pro in this sport.'
+      if (job && fjView(job).injured > 0) return "You're injured."
       if (amateur && job) return "You're a pro now. Amateur bouts are behind you."
       if (amateur && g.character.age > 40) return 'Amateur commissions stop licensing fighters over 40. Your knees agree with them.'
       const used = yearActionsUsed(g, amateur ? 'sports.fight.amBouts' : 'sports.fight.bouts')
@@ -1716,7 +1723,7 @@ const rehabAction: MenuAction = {
   subtitle: 'Heal up before your next fight',
   visible: (g) => {
     const j = fighterJob(g)
-    return !!j && fj(j).injured > 0
+    return !!j && fjView(j).injured > 0
   },
   disabledReason: (g) => sportsGate(g, 0),
   run: (g) => {
@@ -1813,7 +1820,7 @@ export function turnProReason(g: GameState, disc: DiscId): string | null {
   const gate = sportsGate(g, 18)
   if (gate) return gate
   const job = fighterJob(g)
-  if (job && fj(job).disc === disc) return `You're already a pro ${discipline(disc).fighter.toLowerCase()}.`
+  if (job && fjView(job).disc === disc) return `You're already a pro ${discipline(disc).fighter.toLowerCase()}.`
   const p = viewFighter(g)
   const am = p?.amateur[disc]
   const pro = p?.pro[disc]
@@ -1880,7 +1887,7 @@ function recordMenu(id: string): MenuGroup {
       const job = fighterJob(g)
       const p = viewFighter(g)
       if (!p) return 'No fights yet'
-      const disc = job ? fj(job).disc : 'mma'
+      const disc = job ? fjView(job).disc : 'mma'
       const r = p.pro[disc] ?? p.amateur[disc]
       return r ? `${fmt(r)}${job ? ` · ${rankText(job)}` : ''}` : 'No fights yet'
     },
@@ -1898,7 +1905,7 @@ function recordMenu(id: string): MenuGroup {
       nodes.push({ type: 'info', id: `${id}.hype`, emoji: '\u{1F525}', text: `Hype ${p.hype}% · Career earnings ${short(p.earnings)}${p.peakRank !== null ? ` · peak ${p.peakRank === 0 ? 'champion' : `#${p.peakRank}`}` : ''}` })
       const job = fighterJob(g)
       if (job) {
-        const j = fj(job)
+        const j = fjView(job)
         const d = discipline(j.disc)
         const cls = classList(d, g.character.gender)[Math.min(j.cls, classList(d, g.character.gender).length - 1)]
         nodes.push({ type: 'info', id: `${id}.div`, emoji: '\u{1F3C6}', text: `${j.promotion} · ${cls} · ${rankText(job)}${j.belts.length ? ` · holds ${j.belts.join(', ')}` : ''}${j.champ && j.rank !== 0 ? ` · champion: ${j.champ.name}` : ''}` })
@@ -1913,7 +1920,7 @@ function recordMenu(id: string): MenuGroup {
 export function fighterJobNodes(g: GameState): MenuNode[] {
   const job = fighterJob(g)
   if (!job) return []
-  const j = fj(job)
+  const j = fjView(job)
   const d = discipline(j.disc)
   const p = viewFighter(g)
   const list = classList(d, g.character.gender)
@@ -1963,7 +1970,7 @@ export function disciplineMenu(disc: DiscId): MenuGroup {
     emoji: d.emoji,
     subtitle: (g) => {
       const job = fighterJob(g)
-      if (job && fj(job).disc === disc) return `Pro · ${rankText(job)}`
+      if (job && fjView(job).disc === disc) return `Pro · ${rankText(job)}`
       const p = viewFighter(g)
       const r = p?.pro[disc] ?? p?.amateur[disc]
       if (r) return `${p?.pro[disc] ? 'Pro' : 'Amateur'} record ${fmt(r)}`
@@ -1977,7 +1984,7 @@ export function disciplineMenu(disc: DiscId): MenuGroup {
     },
     children: (g): MenuNode[] => {
       const job = fighterJob(g)
-      if (job && fj(job).disc === disc) return [{ type: 'info', id: `sports.${disc}.pro`, emoji: d.emoji, text: "You're a pro fighter. Manage your career from Occupation › My Work." }, recordMenu(`sports.${disc}.record`)]
+      if (job && fjView(job).disc === disc) return [{ type: 'info', id: `sports.${disc}.pro`, emoji: d.emoji, text: "You're a pro fighter. Manage your career from Occupation › My Work." }, recordMenu(`sports.${disc}.record`)]
       const nodes: MenuNode[] = [gymAction(`sports.${disc}.gym`, disc), trainAction(`sports.${disc}.train`, disc, 14), fightAction(`sports.${disc}.amateur`, disc, true), turnProAction(`sports.${disc}.turnPro`, disc)]
       if (viewFighter(g)) nodes.push(recordMenu(`sports.${disc}.record`))
       return nodes
