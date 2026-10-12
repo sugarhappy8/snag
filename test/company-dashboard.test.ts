@@ -10,7 +10,7 @@ import { businessView } from '../src/game/business/manage'
 import { MILESTONES, milestoneYear, milestonesMenu, nextMilestones, readMilestones } from '../src/game/business/milestones'
 import { COMPARE_SHOWN } from '../src/game/business/national-view'
 import { maxKeyStaff, roleBlurb } from '../src/game/business/staff'
-import { bizOf, normalizeBiz, readBiz, type BizState } from '../src/game/business/state'
+import { bizOf, findBusiness, normalizeBiz, readBiz, type BizState } from '../src/game/business/state'
 import { applyPlan, autoPlan, statementLines, yearlyBusinessImpl } from '../src/game/business/yearly'
 import { industryDef } from '../src/game/business/industries'
 import { createNewLife } from '../src/game/life'
@@ -222,6 +222,41 @@ describe('IPO bar', () => {
     expect(canIpo(short)).toMatch(/\$25M/)
     expect(ipoThreshold({ ...b, industry: 'gameStudio' })).toBe(25_000_000)
     expect(ipoThreshold({ ...b, industry: 'semiconductor' })).not.toBe(IPO_PROFIT)
+  })
+
+  it('underwriters audit the books: cooked books can sink the IPO (they never list unexamined)', () => {
+    const { g, a, b } = company(24, 'restaurant')
+    b.history[b.history.length - 1].profit = 30_000_000
+    const ipo = allNodes(g, businessView(g, a)).find((n) => n.id === `biz.ipo.${a.id}`)
+    expect(ipo?.type).toBe('action')
+    if (ipo?.type !== 'action') return
+    expect(ipo.disabledReason?.(g) ?? null).toBeNull()
+    let pulled = 0
+    let listed = 0
+    for (let i = 0; i < 40; i++) {
+      const g1 = structuredClone(g)
+      g1.rng = 7_000 + i * 104_729
+      g1.queue = []
+      bizOf(g1, findBusiness(g1, a.id)!).cooked = 1
+      expect(ipo.confirm?.(g1)).toMatch(/audit the books/)
+      ipo.run(g1)
+      const b1 = readBiz(g1, findBusiness(g1, a.id)!)
+      if (b1.public) {
+        listed += 1
+        expect(g1.queue.some((m) => m.kind === 'notice' && m.title === 'IPO Day!')).toBe(true)
+      } else {
+        pulled += 1
+        expect(b1.cooked).toBe(0)
+        expect(g1.queue.some((m) => m.kind === 'notice' && m.title === 'IPO Pulled')).toBe(true)
+      }
+    }
+    expect(pulled).toBeGreaterThan(10)
+    expect(listed).toBeGreaterThan(10)
+    // Honest books always list (no board here to say no).
+    const g2 = structuredClone(g)
+    g2.queue = []
+    ipo.run(g2)
+    expect(readBiz(g2, findBusiness(g2, a.id)!).public).toBe(true)
   })
 })
 

@@ -22,6 +22,13 @@ import { payFamilyBusinessProceeds } from './dynasty-ownership'
  */
 export const IPO_PROFIT = 25_000_000
 
+/**
+ * Chance the underwriters' due diligence finds cooked books before a listing (an IPO is audited
+ * harder than a private sale, whose buyers find them 40% of the time). With the bar at $25M this is
+ * what stops "cook the books, then sell a quarter of the company at the inflated price".
+ */
+export const IPO_COLLAPSE = 0.5
+
 /** Capital gains tax rate on selling a business or shares where the owner lives. */
 export function capitalGainsRate(g: GameState): number {
   const m = marketOf(g.character.countryId)
