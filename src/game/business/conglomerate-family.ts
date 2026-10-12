@@ -4,7 +4,7 @@ import { personCountry } from '../events/wealth-core'
 import { isEstranged } from '../events/will-core'
 import { incomeTax } from '../finance'
 import type { GameState, MenuGroup, MenuNode, Person } from '../types'
-import { askingSalary, ceoSeverance, managerCandidate } from './career'
+import { askingSalary, ceoSeverance, managerCandidate, paySeverance } from './career'
 import { groupBiz, groupBlock, groupNeedsVote, groupVote } from './conglomerate-actions'
 import { clearGroupCeoJob, clearGroupJob, GROUP_ROLES, isGroupRole, readGroupJob, writeGroupJob, type GroupRole } from './conglomerate-job'
 import { groupById, liveGroup, saveGroup, type Group } from './conglomerate-state'
@@ -57,7 +57,7 @@ export function appointGroupRelative(g: GameState, id: string, personId: string,
   if (groupNeedsVote(g, grp, proposal) && !groupVote(g, grp, proposal).passed) { saveGroup(g, grp); return false }
   if (old?.role === 'ceo' && grp.core.manager?.personId === p.id) { grp.core.ceo = 'owner'; grp.core.manager = null }
   if (role === 'ceo') {
-    if (grp.core.manager) payrollCharge(grp, ceoSeverance(grp.core.manager, g.year))
+    if (grp.core.manager) paySeverance(g, grp.members[0].b.countryId, grp.core.manager, payrollCharge(grp, ceoSeverance(grp.core.manager, g.year)))
     clearGroupCeoJob(g, grp.core.manager)
     const m = managerCandidate(g, groupBiz(g, grp), skill)
     grp.core.ceo = 'manager'; grp.core.manager = { ...m, firstName: p.firstName, lastName: p.lastName, gender: p.gender, personId: p.id, salary: pay }
@@ -79,7 +79,7 @@ export function removeGroupRelative(g: GameState, id: string, personId: string):
   if (job.role === 'ceo' && grp.core.manager?.personId === p.id) {
     const severance = ceoSeverance(grp.core.manager, g.year)
     if (availablePayroll(grp) < severance) return false
-    payrollCharge(grp, severance)
+    paySeverance(g, grp.members[0].b.countryId, grp.core.manager, payrollCharge(grp, severance))
     grp.core.ceo = 'owner'; grp.core.manager = null
   }
   clearGroupJob(p)

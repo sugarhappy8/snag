@@ -1,6 +1,7 @@
 // Who runs the company: the owner as CEO (a special-category Job) or a hired general manager.
 import { count, endJob, log, notice } from '../core'
 import { marketOf } from '../data/markets'
+import { incomeTax } from '../finance'
 import { masterBusiness } from '../mastery'
 import { bell, chance, pick, rand, randInt } from '../rng'
 import type { Asset, GameState, Job } from '../types'
@@ -119,6 +120,15 @@ export function ceoSeverance(m: Manager, year: number): number {
 }
 
 /**
+ * A relative who ran the company is a real person: the severance the company pays is theirs,
+ * taxed like their pay (a hired outsider's leaves the game with them).
+ */
+export function paySeverance(g: GameState, countryId: string, outgoing: Pick<Manager, 'personId'> | null | undefined, severance: number): void {
+  const p = outgoing?.personId && severance > 0 ? g.people.find((x) => x.id === outgoing.personId && x.alive) : undefined
+  if (p) p.money = Math.round(p.money + Math.max(0, severance - incomeTax(countryId, severance)))
+}
+
+/**
  * A general manager's yearly worth before the optimizer: their skill lifts sales (customers notice
  * a well-run place), trims overhead and sets the mood, against their salary.
  */
@@ -188,6 +198,7 @@ export function handOver(g: GameState, a: Asset, b: BizState, next: Manager, opt
   if (severance > 0) {
     b.cash -= severance
     b.yearCosts += severance
+    paySeverance(g, b.countryId, outgoing, severance)
   }
   const moraleHit = st.churn >= 1 ? Math.round(clampN(2 + 3 * st.churn, 0, 15)) : 0
   b.morale = clampN(b.morale - moraleHit, 0, 100)
@@ -212,6 +223,7 @@ export function ownerTakesOver(g: GameState, b: BizState): Handover {
   if (severance > 0) {
     b.cash -= severance
     b.yearCosts += severance
+    paySeverance(g, b.countryId, outgoing, severance)
   }
   const moraleHit = st.churn >= 1 ? Math.round(clampN(2 + 3 * st.churn, 0, 15)) : 0
   b.morale = clampN(b.morale - moraleHit, 0, 100)

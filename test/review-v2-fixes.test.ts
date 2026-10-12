@@ -16,6 +16,12 @@ import { simulateYear } from '../src/game/business/economy'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import type { Industry } from '../src/game/data/markets'
 import type { GameState, MenuAction, MenuNode } from '../src/game/types'
+import { ceoSeverance } from '../src/game/business/career'
+import { fire, hireRelative, makeCeo, severanceFor } from '../src/game/business/nepo-actions'
+import { readJob } from '../src/game/business/nepo-job'
+import { appointGroupRelative, removeGroupRelative } from '../src/game/business/conglomerate-family'
+import { incomeTax } from '../src/game/finance'
+import { kid, world as nepoWorld } from './nepo-kit'
 
 function group(industries: Industry[], skill: number) {
   const g = makeTestGame(123, { age: 45, money: 1e9 })
@@ -116,5 +122,45 @@ describe('backroom favors', () => {
     yearlyCorruption(g)
     expect(rich.money).toBe(3e9)
     expect(modest.money).toBe(201_000)
+  })
+})
+
+describe('severance reaches a relative', () => {
+  // Company cash that leaves only to pay the relative: nothing vanishes but the income tax.
+  it('a fired relative keeps their severance (and any settlement)', () => {
+    const { g, a, b } = nepoWorld(631)
+    const p = kid(g, 30, { smarts: 70 })
+    expect(hireRelative(g, a, b, p, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    const sev = severanceFor(b, readJob(p)!), cash = bizOf(g, a).cash, money = p.money
+    expect(sev).toBeGreaterThan(0)
+    expect(fire(g, a, bizOf(g, a), p).ok).toBe(true)
+    expect(p.money - money).toBeGreaterThanOrEqual(sev - incomeTax('us', sev))
+    expect(cash - bizOf(g, a).cash - (p.money - money)).toBe(incomeTax('us', sev))
+  })
+
+  it('a relative CEO who is let go gets the contract buyout, like any CEO', () => {
+    const { g, a, b } = nepoWorld(632)
+    const p = kid(g, 40, { smarts: 80 })
+    expect(hireRelative(g, a, b, p, { rank: 2 }, { quiet: true }).ok).toBe(true)
+    expect(makeCeo(g, a, bizOf(g, a), p).ok).toBe(true)
+    const sev = ceoSeverance(bizOf(g, a).manager!, g.year), cash = bizOf(g, a).cash, money = p.money
+    expect(sev).toBeGreaterThan(0)
+    expect(fire(g, a, bizOf(g, a), p).ok).toBe(true)
+    expect(p.money - money).toBeGreaterThanOrEqual(sev - incomeTax('us', sev))
+    expect(cash - bizOf(g, a).cash - (p.money - money)).toBe(incomeTax('us', sev))
+  })
+
+  it('a family Group CEO removed from head office gets the contract buyout', () => {
+    const { g, id } = group(['solar', 'logistics'], 60)
+    const p = createPerson(g, { relation: 'child', age: 45, relationship: 80, stats: { smarts: 95 }, traits: ['ambitious', 'serious', 'honest'], countryId: 'us', occupation: 'Unemployed' })
+    expect(appointGroupRelative(g, id, p.id, 'ceo')).toBe(true)
+    const m = groupsOf(g)[0].core.manager!
+    expect(m.personId).toBe(p.id)
+    const sev = ceoSeverance(m, g.year), cash = () => liveGroup(g, id)!.members.reduce((s, x) => s + x.b.cash, 0)
+    const before = cash(), money = p.money
+    expect(sev).toBeGreaterThan(0)
+    expect(removeGroupRelative(g, id, p.id)).toBe(true)
+    expect(p.money - money).toBe(sev - incomeTax('us', sev))
+    expect(before - cash()).toBe(sev)
   })
 })

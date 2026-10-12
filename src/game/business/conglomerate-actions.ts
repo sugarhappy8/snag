@@ -16,7 +16,7 @@ import { boardAllows, hasBoard, needsVote, ownerControls, passOdds, setMandate, 
 import { boardView, mandateDef } from './board-state'
 import { payableCash, refusedThisYear, reserveDollars, sustainablePayout } from './board-vote'
 import { mandateMerit } from './board-ceo'
-import { ceoSeverance, headhunterFee, managerCandidate, managerName, shortlist, SMART_SKILL, STYLE_INFO, styleOf, type SearchKind } from './career'
+import { ceoSeverance, headhunterFee, managerCandidate, managerName, paySeverance, shortlist, SMART_SKILL, STYLE_INFO, styleOf, type SearchKind } from './career'
 import { acquireRival, acquisitionQuote } from './competition-moves'
 import { marketViewOf } from './competition'
 import {
@@ -856,6 +856,7 @@ const CEO_PICK = defineScript('business.group.ceo', (g, choice, data) => {
     notice(g, 'Not Enough Cash', `Buying out ${managerName(out!)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return
   }
+  paySeverance(g, grp.members[0].b.countryId, out, sev)
   clearGroupCeoJob(g, out)
   grp.core.ceo = 'manager'
   grp.core.manager = { ...m, since: g.year }
@@ -931,6 +932,7 @@ export function chairGroup(g: GameState, groupId: string): boolean {
     notice(g, 'Not Enough Cash', `Buying out ${managerName(m)}'s contract costs ${formatMoney(sev)}. The group and your personal funds cannot cover it.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return false
   }
+  paySeverance(g, grp.members[0].b.countryId, m, sev)
   clearGroupCeoJob(g, m)
   grp.core.ceo = 'owner'
   grp.core.manager = null

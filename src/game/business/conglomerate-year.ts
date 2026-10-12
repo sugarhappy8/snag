@@ -13,7 +13,7 @@ import { ownerControls, setMandate } from './board'
 import { boardView, controlsBoard, mandateDef } from './board-state'
 import { payCap, reserveDollars } from './board-vote'
 import { bestMandate, mandateMerit } from './board-ceo'
-import { ceoSeverance, managerName, ownerAvailable, shortlist, SMART_SKILL } from './career'
+import { ceoSeverance, managerName, ownerAvailable, paySeverance, shortlist, SMART_SKILL } from './career'
 import { cleanGroupJobs, familyRoleEdge, payFamilyGroupCeo, prepareGroupFamily } from './conglomerate-family'
 import { hasInternalServices, internalRevenue } from './group-services'
 import { allocateGroupCapital, manageDivisionCeos, managementEffectiveness, retainDivisionCeo } from './conglomerate-management'
@@ -247,7 +247,10 @@ function boardReview(g: GameState, grp: Group): void {
   const next = boardPick(g, grp)
   const out = hired ? grp.core.manager : null
   const sev = out ? ceoSeverance(out, g.year) : 0
-  if (sev > 0) charge(treasuryOf(grp).b, sev)
+  if (sev > 0) {
+    charge(treasuryOf(grp).b, sev)
+    paySeverance(g, treasuryOf(grp).b.countryId, out, sev)
+  }
   clearGroupCeoJob(g, out)
   grp.core.ceo = 'manager'
   grp.core.manager = { ...next, since: g.year }
