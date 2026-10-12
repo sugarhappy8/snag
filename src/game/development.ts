@@ -139,12 +139,15 @@ export function commissionDevelopment(g: GameState, id: string): boolean {
   }
   notice(g, 'Development Complete', `Inspection paid ${formatMoney(inspection)}. Returned ${formatMoney(d.escrow)} in unused reserves. Total development cost: ${formatMoney(d.spent)}.`, { emoji: '🏗️', tone: 'good' }); return true
 }
+/** Unspent reserves come back in full; only the site and the work in place sell at a 15% discount. */
 export function cancelDevelopment(g: GameState, id: string): boolean {
   const a = payable(g, id)
   if (!a) return false
-  const proceeds = Math.round(a.value * .85) - (a.mortgage?.balance ?? 0)
+  const d = developmentOf(a)!
+  const reserve = Math.min(d.escrow, a.value), site = Math.round((a.value - reserve) * .85)
+  const proceeds = reserve + site - (a.mortgage?.balance ?? 0)
   addMoney(g, proceeds); g.assets = g.assets.filter(x => x.id !== id)
-  notice(g, 'Development Sold', `After distressed-sale costs and repayment of the secured loan, your cash changed by ${formatMoney(proceeds)}. This can be negative for an underwater site.`, { emoji: '🏗️' }); return true
+  notice(g, 'Development Sold', `The site and work in place sold for ${formatMoney(site)} after a 15% distressed discount, and ${formatMoney(reserve)} of unspent reserves came back in full. After repaying the secured loan, your cash changed by ${formatMoney(proceeds)}. This can be negative for an underwater site.`, { emoji: '🏗️' }); return true
 }
 export function developmentNodes(g: GameState, a: Asset): MenuNode[] | null {
   const d = developmentOf(a)
@@ -156,7 +159,7 @@ export function developmentNodes(g: GameState, a: Asset): MenuNode[] | null {
     { type: 'action', id: `development.permit.${a.id}`, label: 'Obtain Planning Permits', emoji: '📋', visible: () => d.stage === 'permits', subtitle: `Fee ${formatMoney(Math.round(d.base * (.01 + (100 - marketOf(d.country).easeOfBusiness) / 5000)))}`, run: gg => { permitDevelopment(gg, a.id) } },
     ...(['economy', 'bonded'] as const).map(contractor => ({ type: 'action' as const, id: `development.contract.${contractor}.${a.id}`, label: `${contractor === 'bonded' ? 'Bonded' : 'Economy'} Contractor`, emoji: '👷', visible: () => d.stage === 'contractor', subtitle: contractor === 'bonded' ? '12% premium; better quality and fewer delays' : '5% discount; more defects and overruns', run: (gg: GameState) => { contractDevelopment(gg, a.id, contractor) } })),
     { type: 'action', id: `development.commission.${a.id}`, label: 'Inspect & Commission', emoji: '✅', visible: () => d.stage === 'commission', subtitle: `Inspection ${formatMoney(d.base * .01)}; unused reserves refunded`, disabledReason: gg => d.kind === 'industrial' && !gg.assets.some(x => x.id === d.company && x.kind === 'business' && readBiz(gg, x).share >= .999 && !readBiz(gg, x).group) ? 'The original standalone, wholly owned company must still be yours. Otherwise sell the site.' : null, run: gg => { commissionDevelopment(gg, a.id) } },
-    { type: 'action', id: `development.cancel.${a.id}`, label: 'Sell Unfinished Development', emoji: '💸', confirm: () => 'Sell the site at a 15% distressed discount and repay its secured debt? Unspent reserves are included in the quoted asset value.', run: gg => { cancelDevelopment(gg, a.id) } },
+    { type: 'action', id: `development.cancel.${a.id}`, label: 'Sell Unfinished Development', emoji: '💸', confirm: () => 'Sell the site at a 15% distressed discount and repay its secured debt? Unspent reserves are returned in full.', run: gg => { cancelDevelopment(gg, a.id) } },
   ]
 }
 export const developmentMenu: MenuGroup = {

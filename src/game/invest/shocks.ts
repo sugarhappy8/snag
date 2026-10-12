@@ -82,11 +82,48 @@ const multiplyFactor = (a: number, b: number): number => {
   return boundedFactor(left * right)
 }
 
+// Read caches. Prices read the shock and breakthrough records for every quote and every holding
+// on every revaluation; parsing and validating the whole record each time made that quadratic.
+// Each stored array is parsed and indexed once. Every writer replaces the array (never edits it
+// in place), so the array itself is the key: a new list, a structuredClone or a reload is a miss.
+// The cached records are internal and read-only; marketShocks()/marketBreakthroughs() still return
+// fresh copies that callers may edit.
+interface ShockIndex { bySec: Map<string, MarketShock[]>; indexNews: Map<string, MarketShock[]> }
+const EMPTY_SHOCKS: ShockIndex = { bySec: new Map(), indexNews: new Map() }
+const shockIndexes = new WeakMap<Json[], { length: number; index: ShockIndex }>()
+const breakthroughLists = new WeakMap<Json[], { length: number; list: MarketBreakthrough[] }>()
+
+function shockIndex(g: GameState): ShockIndex {
+  const raw = g.flags[SHOCKS_KEY]
+  if (!Array.isArray(raw)) return EMPTY_SHOCKS
+  const hit = shockIndexes.get(raw)
+  if (hit && hit.length === raw.length) return hit.index
+  const index: ShockIndex = { bySec: new Map(), indexNews: new Map() }
+  const add = (map: Map<string, MarketShock[]>, key: string, s: MarketShock) => { const list = map.get(key); if (list) list.push(s); else map.set(key, [s]) }
+  for (const s of marketShocks(g)) {
+    add(index.bySec, s.secId, s)
+    // An index tracks company fundamentals/news, not order flow (see indexShockFactor).
+    if (s.asset === 'stock' && s.cause !== 'liquidity') add(index.indexNews, s.exKey, s)
+  }
+  shockIndexes.set(raw, { length: raw.length, index })
+  return index
+}
+
+function breakthroughsRead(g: GameState): MarketBreakthrough[] {
+  const raw = g.flags[BREAKTHROUGHS_KEY]
+  if (!Array.isArray(raw)) return []
+  const hit = breakthroughLists.get(raw)
+  if (hit && hit.length === raw.length) return hit.list
+  const list = marketBreakthroughs(g)
+  breakthroughLists.set(raw, { length: raw.length, list })
+  return list
+}
+
 export function breakthroughStockFactor(g: GameState, secId: string, year: number): number {
   const match = /^(.*)#([sp])(\d+)g(\d+)$/.exec(secId)
   if (!match || !Number.isFinite(year)) return 1
   let factor = 1
-  for (const event of marketBreakthroughs(g)) {
+  for (const event of breakthroughsRead(g)) {
     if (event.year > year) continue
     const ex = event.exchanges.find(x => x.key === match[1])
     const generations = match[2] === 'p' ? ex?.pennies : ex?.stocks
@@ -98,7 +135,7 @@ export function breakthroughStockFactor(g: GameState, secId: string, year: numbe
 /** Explicit index identity avoids exporting a repricing to an exchange that opens later. */
 export function breakthroughIndexFactor(g: GameState, exKey: string, year: number, indexId = `${exKey}#fund`): number {
   let factor = 1
-  for (const event of marketBreakthroughs(g)) if (event.year <= year) {
+  for (const event of breakthroughsRead(g)) if (event.year <= year) {
     const ex = event.exchanges.find(x => x.key === exKey)
     if (ex?.indexId && ex.indexId === indexId && (!ex.ends || year < ex.ends)) factor = cappedFactor(factor * event.mult)
   }
@@ -110,7 +147,7 @@ export function publicBusinessShockFactor(g: GameState, b: BizState, year: numbe
   const a = g.assets.find(x => x.kind === 'business' && x.details === b as unknown as Record<string, Json>)
   if (!a) return 1
   let factor = 1
-  for (const event of marketBreakthroughs(g)) if (event.year <= year && event.businesses.includes(a.id)) {
+  for (const event of breakthroughsRead(g)) if (event.year <= year && event.businesses.includes(a.id)) {
     const ex = event.exchanges.find(x => x.key === exchangeInfo(b.countryId).key)
     if (ex && (!ex.ends || year < ex.ends)) factor = cappedFactor(factor * event.mult)
   }
@@ -242,7 +279,19 @@ export function factorOf(s: MarketShock, year: number): number {
 export function shockFactor(g: GameState, secId: string, year: number): number {
   const exchange = exchangeByKey(secId.split('#')[0])
   let f = boundedFactor(breakthroughStockFactor(g, secId, year) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1))
-  for (const s of marketShocks(g)) if (s.secId === secId) f = multiplyFactor(f, factorOf(s, year))
+  for (const s of shockIndex(g).bySec.get(secId) ?? []) f = multiplyFactor(f, factorOf(s, year))
+  return f
+}
+
+/**
+ * The player's own order flow on one security up to `year`: the product of its 'liquidity' shocks
+ * (only the player's own trades record them). Quotes include it, since that is the order book; the
+ * player's own position is never marked, paid or settled on it (investments.ts selfImpact,
+ * computer/money-stocks.ts settlePrice).
+ */
+export function orderFlowFactor(g: GameState, secId: string, year: number): number {
+  let f = 1
+  for (const s of shockIndex(g).bySec.get(secId) ?? []) if (s.cause === 'liquidity') f = multiplyFactor(f, factorOf(s, year))
   return f
 }
 
@@ -253,7 +302,7 @@ export function shockFactor(g: GameState, secId: string, year: number): number {
 export function indexShockFactor(g: GameState, exKey: string, year: number, indexId = `${exKey}#fund`): number {
   // An index tracks company fundamentals/news, not the player's temporary execution
   // pressure in a single order book. Otherwise a tiny stock order pumps an unlimited fund.
-  const list = marketShocks(g).filter((s) => s.asset === 'stock' && s.exKey === exKey && s.cause !== 'liquidity')
+  const list = shockIndex(g).indexNews.get(exKey) ?? []
   const exchange = exchangeByKey(exKey)
   const breakthrough = breakthroughIndexFactor(g, exKey, year, indexId) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1)
   if (!list.length) return breakthrough

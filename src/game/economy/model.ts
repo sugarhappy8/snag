@@ -51,7 +51,16 @@ const record = (v: unknown): Record<string, unknown> => v && typeof v === 'objec
 const numeric = (v: unknown, fallback: number, lo: number, hi: number) => typeof v === 'number' && Number.isFinite(v) ? bound(v, lo, hi) : fallback
 const validCountries = new Set(COUNTRIES.map(c => c.id))
 
+// Memo of a pure string classification (sectorOf runs for every outlet of every plan trial).
+const sectorMemo = new Map<string, Sector>()
 export function sectorOf(industry: string): Sector {
+  const known = sectorMemo.get(industry)
+  if (known) return known
+  const sector = classifySector(industry)
+  if (sectorMemo.size < 4096) sectorMemo.set(industry, sector)
+  return sector
+}
+function classifySector(industry: string): Sector {
   if (/^(foodTruck|restaurant|cafe|bakery|grocery|farm|agriculture|food|supermarkets)$/.test(industry)) return 'essentials'
   if (/^(construction|realEstate|property|housing)$/.test(industry)) return 'housing'
   if (/bank|Bank|investment|finance|insurance|account/.test(industry)) return 'finance'

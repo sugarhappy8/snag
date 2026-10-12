@@ -9,9 +9,9 @@
 // politicians also get a "crony" route (special/politics.ts): a friend's account, cash back,
 // minus the friend's cut, and a paper trail the regulator may or may not follow.
 import { addMoney, count, formatMoney, log, moneyWith, notice, scriptChoice, scriptInput, shortMoney, useYearAction, yearActionsUsed } from '../core'
-import { coinDef, companyDef, cryptoYear, eraIdentity, exchangeByKey, exchangeInfo, exchangeYear, indexMove, type ExInfo, type SecurityDef } from '../invest/engine'
+import { coinDef, companyDef, cryptoYear, eraIdentity, exchangeByKey, exchangeInfo, exchangeYear, syntheticIndexMove, type ExInfo, type SecurityDef } from '../invest/engine'
 import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
-import { shockFactor } from '../invest/shocks'
+import { orderFlowFactor, shockFactor } from '../invest/shocks'
 import { seeded, type SRng } from '../assets'
 import { chance, pick, uid } from '../rng'
 import { defineScript } from '../scripts'
@@ -170,12 +170,16 @@ function srngNormal(r: SRng): number {
 const SAMPLES = 3000
 const indexCache = new Map<string, number[]>()
 
-/** Many draws of the exchange's yearly log move (same engine, unrelated seeds). */
+/**
+ * Many draws of the exchange's yearly log move (same engine, unrelated seeds), always from the
+ * procedural distribution: historical years are fixed outcomes, the same for every seed, and
+ * repeating them in the sample would price options off a handful of known crashes and booms.
+ */
 function indexLogSamples(inf: ExInfo): number[] {
   let xs = indexCache.get(inf.key)
   if (!xs) {
     xs = []
-    for (let i = 0; i < SAMPLES; i++) xs.push(indexMove(`optpx${i}`, inf, 2000 + (i % 97)).logRet)
+    for (let i = 0; i < SAMPLES; i++) xs.push(syntheticIndexMove(`optpx${i}`, inf, 2000 + (i % 97)).logRet)
     indexCache.set(inf.key, xs)
   }
   return xs
@@ -183,6 +187,11 @@ function indexLogSamples(inf: ExInfo): number[] {
 
 const BANKRUPT = [0, 0.001, 0.002, 0.004, 0.008, 0.015]
 const stockCache = new Map<string, number[]>()
+
+/** A copy of the index draws single-stock options are priced from (tests check the distribution). */
+export function stockIndexSamples(inf: ExInfo): number[] {
+  return [...indexLogSamples(inf)]
+}
 
 /** Draws of one company's yearly price move, the way the market engine moves it. */
 function stockSamples(inf: ExInfo, def: SecurityDef): number[] {
@@ -233,10 +242,12 @@ function endingMove(def: SecurityDef, year: number | undefined): number | null {
 }
 
 /**
- * Fair value per $1 of exposure: the average payoff over the company's real move distribution.
- * `year` is the year the option is written: a real company in its last year before a merger or a
- * documented bankruptcy is priced for it, so knowing history never turns a put on Lehman (or a call
- * on a takeover target) into a sure thing.
+ * Fair value per $1 of exposure: the average payoff over the company's procedural move
+ * distribution, the same in every year. `year` is the year the option is written: a real company
+ * in its last year before a merger or a documented bankruptcy settles on that fixed history, so the
+ * market prices the ending in and never below what it will certainly pay. With the market maker's
+ * markup on top, knowing history never turns a put on Lehman (or a call on a takeover target) into
+ * a risk-free return.
  */
 export function stockFairValue(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put', k: number, year?: number): number {
   const xs = stockSamples(inf, def)
@@ -245,7 +256,7 @@ export function stockFairValue(inf: ExInfo, def: SecurityDef, dir: 'call' | 'put
   for (const r of xs) sum += pay(r)
   let value = sum / xs.length
   const end = endingMove(def, year)
-  if (end !== null) value = END_ODDS * pay(end) + (1 - END_ODDS) * value
+  if (end !== null) value = Math.max(pay(end), END_ODDS * pay(end) + (1 - END_ODDS) * value)
   return Math.max(0.002, value)
 }
 
@@ -275,19 +286,24 @@ function exOf(bet: StockBet): ExInfo {
 /** The price a bet settles at: the security at the end of the year after it was placed. */
 export function settlePrice(g: GameState, bet: StockBet): number {
   const year = bet.year + 1
+  // The quote without the player's own order flow since the bet was placed: buying or dumping the
+  // security yourself never moves your own bet (bets from older saves keep the full quote).
+  const flowNow = orderFlowFactor(g, bet.secId, year)
+  const own = typeof bet.flow === 'number' && bet.flow > 0 && Number.isFinite(bet.flow) && flowNow > 0 ? bet.flow / flowNow : 1
+  const shocked = shockFactor(g, bet.secId, year) * own
   if (bet.asset === 'coin') {
     const c = cryptoYear(fam(g), anchor(g), year).coins[bet.slot]
     if (!c) return bet.openPrice
-    if (c.id === bet.secId) return Math.max(0, c.price * shockFactor(g, bet.secId, year))
+    if (c.id === bet.secId) return Math.max(0, c.price * shocked)
     if (c.ended && c.ended.id === bet.secId) return 0
     return bet.openPrice
   }
   const s = exchangeYear(fam(g), anchor(g), exOf(bet), year).stocks[bet.slot]
   if (!s) return bet.openPrice
   // Undo this year's split so the price compares with the one paid.
-  if (s.id === bet.secId) return Math.max(0, s.price * (s.ratio ?? 1) * shockFactor(g, bet.secId, year))
+  if (s.id === bet.secId) return Math.max(0, s.price * (s.ratio ?? 1) * shocked)
   // Bought out: the takeover premium is paid on the (shocked) market price.
-  if (s.ended && s.ended.id === bet.secId) return s.ended.kind === 'bankrupt' ? 0 : Math.max(0, s.ended.perUnit * shockFactor(g, bet.secId, year))
+  if (s.ended && s.ended.id === bet.secId) return s.ended.kind === 'bankrupt' ? 0 : Math.max(0, s.ended.perUnit * shocked)
   return bet.openPrice
 }
 
@@ -480,6 +496,7 @@ export function placeBet(g: GameState, spec: BetSpec): StockBet | null {
     units,
     premium: stake,
     openPrice: t.price,
+    flow: orderFlowFactor(g, t.secId, g.year),
     year: g.year,
     countryId: g.character.countryId,
     crony: own ? '' : str(spec.crony as Json, 'a friend'),

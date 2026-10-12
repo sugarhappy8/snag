@@ -188,6 +188,12 @@ export interface BizState {
   npcOwnerId?: string
   familyShares?: import('./family-share-state').FamilyShare[]
   acquired: boolean
+  /**
+   * When the player bought it off the market: the calendar year and what the business itself cost
+   * (the price less the net cash it came with). Until it books a year under its new owner, buyers
+   * offer no more than that (manage.ts makeOffers). Missing on companies founded or from old saves.
+   */
+  bought?: { year: number; operating: number }
   /** The owner's share of the company, 0-1. */
   share: number
   /** Money the owner has put in (cost basis for capital gains). */
@@ -495,6 +501,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     founderName: str(d.founderName),
     ...(str(d.npcOwnerId) ? { npcOwnerId: str(d.npcOwnerId) } : {}),
     acquired: d.acquired === true,
+    ...(rec(d.bought) && Number.isFinite(rec(d.bought)!.year) && Number.isFinite(rec(d.bought)!.operating) ? { bought: { year: Math.round(num(rec(d.bought)!.year)), operating: Math.max(0, num(rec(d.bought)!.operating)) } } : {}),
     share: clampN(num(d.share, 1), rec(d.group) || Array.isArray(d.familyShares) ? 0 : 0.01, 1),
     invested: Math.max(0, num(d.invested)),
     pref: Math.max(0, num(d.pref)),

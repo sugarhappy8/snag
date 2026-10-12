@@ -1013,6 +1013,8 @@ function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
   b.ceo = 'owner'
   b.ownerSalary = 0
   b.valuation = valuationOf(b)
+  // What the business itself cost; buyers won't top it until it books a year under its new owner.
+  b.bought = { year: g.year, operating: Math.max(0, listing.price - (b.cash - b.debt)) }
   const a = businessAsset(g, listing.name, b, personal)
   g.assets.push(a)
   refreshValue(a, b)

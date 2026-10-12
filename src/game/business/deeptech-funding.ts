@@ -11,7 +11,8 @@ import { dtInd, industryCycle, payTech, rdBudget, rdScale, revalue, runwayYears,
 import { MAX_SERIES, SERIES, type TechProgram, type TechState } from './deeptech-state'
 import { investorFirm } from './flavor'
 import { diluteBusinessEquity, type BizState } from './state'
-import { clampN, money } from './util'
+import { clampN, money, rec } from './util'
+import { readMembership } from './conglomerate-state'
 
 // ---------------------------------------------------------------------------
 // Rounds
@@ -130,8 +131,17 @@ function bigInvestor(b: BizState, series: number, r1: number, r2: number): strin
 export function closeRound(g: GameState, a: Asset, b: BizState, t: TechState, ts: TermSheet): void {
   const amount = Math.max(0, Math.round(ts.amount))
   const equity = clampN(amount / Math.max(1, ts.pre + amount), 0, 0.6)
-  // An inherited family company can leave the player with no stake; a round must not mint 1%.
-  b.share = clampN(Math.round(b.share * (1 - equity) * 10000) / 10000, b.familyShares?.length ? 0 : 0.01, 1)
+  const membership = readMembership(b.group), stored = rec(b.group)
+  if (membership && stored) {
+    // A group division: the new investors' slice comes out of the group's ownership of it (and so
+    // out of every group shareholder's look-through stake, family co-owners included), even when
+    // the player holds none of the group; the player's look-through stake follows (S x own).
+    stored.own = clampN(membership.own * (1 - equity), 0.001, 1)
+    b.share = clampN(b.share * (1 - equity), 0, 1)
+  } else {
+    // An inherited family company can leave the player with no stake; a round must not mint 1%.
+    b.share = clampN(Math.round(b.share * (1 - equity) * 10000) / 10000, b.familyShares?.length ? 0 : 0.01, 1)
+  }
   diluteBusinessEquity(b, 1 - equity)
   t.venture += amount
   t.raised += amount

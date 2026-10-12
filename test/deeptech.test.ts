@@ -11,6 +11,9 @@ import { techOf, techView, sellable, runwayYears } from '../src/game/business/de
 import { DEEP_TECH, PROGRAMS, frontierScore, grantsFor } from '../src/game/business/deeptech-data'
 import { DEEP_TECH_EVENT_IDS, presentDeepTechEvent } from '../src/game/business/deeptech-events'
 import { closeRound, grantBlock, makeTermSheet, roundBlock } from '../src/game/business/deeptech-funding'
+import { formGroup } from '../src/game/business/conglomerate-actions'
+import { groupsOf, liveGroup, saveGroup, syncMembers } from '../src/game/business/conglomerate-state'
+import { createPerson } from '../src/game/people'
 import { deepTechManagerTurnImpl } from '../src/game/business/deeptech-manager'
 import { startProgram, startTrial } from '../src/game/business/deeptech-rd'
 import { TECH_VERSION, deepTechIpoThreshold, readTech, type TechState } from '../src/game/business/deeptech-state'
@@ -705,6 +708,33 @@ describe('deep tech', () => {
     const seedNg = readTech(readBiz(ng, na).tech).venture
     expect(seedUs).toBeGreaterThan(seedNg * 2)
     expect(runwayYears(us, ua, readBiz(us, ua), techView(readBiz(us, ua)))).toBeGreaterThan(0.5)
+  })
+
+  it('a division round dilutes the group\'s stake even when the player owns none of the group', () => {
+    for (const playerShare of [0, .5]) {
+      const g = adultIn('us', 1_000_000, 43)
+      const sibling = createPerson(g, { relation: 'sibling', age: 35 })
+      const ids = [company(g, 'cybersecurity', { series: 1 }, { cash: 2_000_000, manager: true }), company(g, 'aiLab', { series: 1 }, { cash: 2_000_000, manager: true })].map(x => x.id)
+      g.character.job = null
+      expect(formGroup(g, ids, 'Family Deep Tech')).toBe(true)
+      const id = groupsOf(g)[0].core.id
+      let grp = liveGroup(g, id)!
+      grp.core.share = playerShare; grp.core.familyShares = [{ id: sibling.id, share: 1 - playerShare }]
+      syncMembers(grp); saveGroup(g, grp)
+      const a = g.assets.find(x => x.id === ids[0])!, b = bizOf(g, a), t = techOf(b)
+      const ts = makeTermSheet(g, a, b, t)
+      const equity = ts.amount / (ts.pre + ts.amount)
+      closeRound(g, a, b, t, ts)
+      // No playable stake is minted, and the new investors' slice comes out of the group's ownership.
+      expect(b.share).toBeCloseTo(playerShare * (1 - equity), 4)
+      grp = liveGroup(g, id)!
+      const division = grp.members.find(x => x.a.id === a.id)!
+      expect(division.m.own).toBeCloseTo(1 - equity, 4)
+      expect(grp.members.find(x => x.a.id !== a.id)!.m.own).toBe(1)
+      syncMembers(grp); saveGroup(g, grp)
+      expect(liveGroup(g, id)!.members.find(x => x.a.id === a.id)!.m.own).toBeCloseTo(1 - equity, 4)
+      expect(bizOf(g, a).share).toBeCloseTo(playerShare * (1 - equity), 4)
+    }
   })
 
   it('refuses to raise more than every private round there is', () => {

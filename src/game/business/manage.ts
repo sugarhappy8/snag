@@ -1782,13 +1782,21 @@ const SELL = defineScript('business.sell', (g, choice, data) => {
   sellBusiness(g, a, b, num(o.amount), str(o.buyer, 'a buyer'))
 })
 
+/** What buyers knock off a company resold before it booked a year under the owner who just bought it. */
+const FLIP_DISCOUNT = 0.05
+
 function makeOffers(g: GameState, b: BizState): Offer[] {
   // Buyers haggle over the business itself; its net cash (cash minus debt) is worth exactly what
   // it is, so no premium or discount applies to it (moving cash in before a sale gains nothing).
   const netCash = Number.isFinite(b.cash - b.debt) ? b.cash - b.debt : 0
   const operating = Math.max(5_000, b.valuation - netCash)
   const def = industryDef(b.industry)
-  const f = (lo: number, hi: number) => Math.max(1_000, Math.round((operating * (lo + (hi - lo) * rand(g)) + netCash) / 100) * 100)
+  // A company bought off the market that hasn't booked a year under its new owner has shown buyers
+  // nothing new: they pay at most what the business just changed hands for, less the cost of
+  // another deal, so buying a listing and shopping it straight back out is never an arbitrage.
+  const unproven = b.bought && (b.last?.year ?? -Infinity) < b.bought.year
+  const cap = unproven ? b.bought!.operating * (1 - FLIP_DISCOUNT) : Infinity
+  const f = (lo: number, hi: number) => Math.max(1_000, Math.round((Math.min(cap, operating * (lo + (hi - lo) * rand(g))) + netCash) / 100) * 100)
   const offers: Offer[] = [
     { buyer: `a rival ${industryNoun(def.label)} chain`, amount: f(0.78, 1.05) },
     { buyer: `${investorFirm(b.countryId, rand(g), rand(g))} (private equity)`, amount: f(0.88, 1.15) },

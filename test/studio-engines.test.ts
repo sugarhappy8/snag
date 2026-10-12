@@ -175,6 +175,32 @@ describe('studio engine development', () => {
     expect(availableStudioEngines(st.engines, tier.maxScope)).toEqual(['engine1'])
   })
 
+  it.each(ENGINE_TIERS)('never resells a freshly built, unlicensed $label for more than it cost', tier => {
+    const { g, a, b } = studio()
+    startStudioEngine(g, a.id, tier.id, 'Flip Engine')
+    const st = studioOf(a)
+    for (let y = 0; y < tier.years; y++) simulateStudioEngines(g, st, g.year + y, operation)
+    const built = st.engines[0]
+    expect(built.stage).toBe('ready'); expect(built.quality).toBeGreaterThanOrEqual(90)
+    saveStudio(a, st)
+    const cash = b.cash
+    g.year = built.released
+    sellStudioEngine(g, a.id, built.id)
+    expect(studioOf(a).engines[0].stage).toBe('sold')
+    // Everything spent (tools, R&D and the developers' payroll) is more than an unproven engine fetches.
+    expect(b.cash - cash).toBeGreaterThan(0)
+    expect(b.cash - cash).toBeLessThan(built.spent)
+  })
+
+  it('values proven licensing income on top of the technology, and old engines less', () => {
+    const fresh = engine({ quality: 98, released: 2026, lastYear: 2026 })
+    const proven = engine({ quality: 98, released: 2026, lastYear: 2026, lastRevenue: 400_000 })
+    expect(engineIpValue(fresh, 2026)).toBeLessThan(fresh.spent)
+    expect(engineIpValue(proven, 2026)).toBe(engineIpValue(fresh, 2026) + 1_200_000)
+    expect(engineIpValue(fresh, 2032)).toBeLessThan(engineIpValue(fresh, 2026))
+    expect(engineIpValue(engine({ quality: 50, released: 2026 }), 2026)).toBeLessThan(engineIpValue(fresh, 2026))
+  })
+
   it('shares developers with game projects rather than creating extra workers', () => {
     const { g, a } = studio()
     const st = withEngine(a, engine({ stage: 'dev', progress: 0, team: 12, started: g.year, lastYear: 0 }))

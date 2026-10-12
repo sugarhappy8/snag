@@ -44,7 +44,7 @@ import { planEstate, settleReading } from './events/will-estate'
 import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
-import { inheritConglomerates } from './business/dynasty-ownership'
+import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
 import { bizOf, readBiz, type Manager } from './business/state'
@@ -1169,6 +1169,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // Resolve every designation before choosing what this playable child keeps. A conglomerate is
   // one economic holding: it is a bequest only when all valid child designations agree. This makes
   // the result independent of which child the user chooses to continue as.
+  // Co-owners who died before the player pass their stakes on first (the player's part joins the
+  // estate that divides now), so no share stays on a late relative's record.
+  settleLateFamilyOwners(n)
   const successionUnits = successionEstateUnits(n)
   // Spun-off divisions with family co-owners remain in-kind holdings too.
   const groupIds = new Set(successionUnits.filter(u => u.group || u.assets.some(a => Array.isArray(a.details.familyShares) && a.details.familyShares.length > 0)).flatMap(u => u.assets.map(a => a.id)))
