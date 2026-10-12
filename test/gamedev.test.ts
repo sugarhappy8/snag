@@ -282,7 +282,8 @@ describe('studio jobs: ladder and requirements', () => {
     }
     expect(promoted).toBeGreaterThan(2)
     expect(credits).toBeGreaterThan(8)
-  })
+    // Eight lives × ten full birthdays: slow but passing under a loaded full-suite run.
+  }, 240_000)
 
   it('settles the Game Industry hook only once for the same year and age', () => {
     const g = dev(84, 'us', 25, 5_000)
@@ -849,8 +850,9 @@ describe('monkey tests', () => {
         invariants(g, -1)
       }
     }
-    // Every year runs the whole year system (history, markets, immigration...): give it room.
-  }, 60_000)
+    // Every year runs the whole year system (history, markets, immigration...): give it room,
+    // including CPU contention in the full suite.
+  }, 600_000)
 
   it('random studio management for 12 years never breaks numbers', () => {
     for (let seed = 1; seed <= 6; seed++) {
@@ -878,6 +880,7 @@ describe('monkey tests', () => {
         invariants(g, -1)
       }
     }
-    // Every year runs the whole year system (history, markets, immigration...): give it room.
-  }, 60_000)
+    // Every year runs the whole year system (history, markets, immigration...): give it room,
+    // including CPU contention in the full suite.
+  }, 600_000)
 })

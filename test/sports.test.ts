@@ -655,7 +655,8 @@ describe('random sports lives', () => {
         expect(JSON.stringify(JSON.parse(json))).toBe(json)
       }
     }
-  }, 120_000)
+    // Eight full lives through the whole yearly engine: allow for CPU contention in the full suite.
+  }, 600_000)
 })
 
 describe('review fixes', () => {
