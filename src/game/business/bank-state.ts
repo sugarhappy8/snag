@@ -321,6 +321,16 @@ export function readBank(b: Pick<BizState, 'industry' | 'countryId' | 'founded' 
   return book
 }
 
+/**
+ * Shareholders' money lent into the client book during a run (a cheap read for valuations). The
+ * central-bank debt that funded it is in b.debt, so equity is b.cash − b.debt + this.
+ */
+export function bankAdvanceOf(b: Pick<BizState, 'industry' | 'financeFirm'>): number {
+  if (!isBankIndustry(b.industry)) return 0
+  const x = rec(b.financeFirm)
+  return x && x.kind === 'bank' ? finite(x.advance, 0) : 0
+}
+
 export function saveBank(b: BizState, book: BankBook): void {
   b.financeFirm = JSON.parse(JSON.stringify(book)) as Json
 }

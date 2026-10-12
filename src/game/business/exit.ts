@@ -13,6 +13,7 @@ import { industryDef } from './industries'
 import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state'
 import { clampN, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
+import { bankAdvanceOf } from './bank-state'
 import { payFamilyBusinessProceeds } from './dynasty-ownership'
 
 /**
@@ -111,7 +112,8 @@ export function declareBankruptcy(g: GameState, a: Asset, b: BizState, why: stri
  * quote; funded raw inputs are recovered separately, once, at their conservative value. */
 export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: number): void {
   if (!g.assets.some(x => x.id === a.id)) return
-  const proceeds = Math.round(Math.max(0, liquidation) + supplyInventoryValue(b) + b.cash - b.debt)
+  // A bank's run-time advance comes back out of its client book as the savers are paid off.
+  const proceeds = Math.round(Math.max(0, liquidation) + supplyInventoryValue(b) + b.cash - b.debt + bankAdvanceOf(b))
   if (proceeds < 0) {
     declareBankruptcy(g, a, b, 'There was not enough left to pay the creditors, so')
     return

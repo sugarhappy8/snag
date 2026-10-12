@@ -23,6 +23,7 @@ import { createNewLife } from '../src/game/life'
 import { businessCareerMenu } from '../src/game/business'
 import { businessAssets } from '../src/game/business/state'
 import type { AnnualReportData } from '../src/game/types'
+import { closeBusiness } from '../src/game/business/exit'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
   const country = opts.country ?? 'us', year = opts.year ?? 2030
@@ -723,5 +724,24 @@ describe('Banking 2.0 review: money that must not appear', () => {
     const share = stale.b.share, cash = stale.b.cash
     runScript(stale.g, 'bank.event', 'accept', offer.kind === 'choice' ? offer.data : undefined, offer)
     expect([stale.b.share, stale.b.cash]).toEqual([share, cash])
+  })
+
+  it('the run-time advance is equity: an emergency loan neither erases the bank’s value nor bankrupts a closing', () => {
+    const { g, a, b } = bank({ year: 2009 })
+    const book = readBank(b); book.run = { year: 2008, wave: Math.round(book.deposits * .5), severity: .25 }; saveBank(b, book)
+    const value = valuationOf(b)
+    expect(value).toBeGreaterThan(0)
+    resolveRun(g, a, b, 'cb', false)
+    expect(readBank(b).advance).toBeGreaterThan(b.cash)
+    expect(valuationOf(b)).toBe(value)
+    // Repaying the central bank by hand moves value between cash and debt, nothing more.
+    const repay = Math.min(b.cash, b.debt)
+    b.cash -= repay; b.debt -= repay
+    expect(valuationOf(b)).toBe(value)
+    // Closing pays the savers out of the client book; the advance comes back to the owners.
+    const money = g.character.money, equity = b.cash - b.debt + readBank(b).advance
+    closeBusiness(g, a, b, 0)
+    expect(g.assets.some(x => x.id === a.id)).toBe(false)
+    expect(g.character.money - money).toBe(equity)
   })
 })
