@@ -16,7 +16,7 @@ import {
   COMPANY_MARGIN, CROWD_GOAL, CROWD_MARGIN, PITCH_BOOST, crowdFans, crowdGoal, crowdOdds, curveSpec, deliveryFailOdds, expectedPeak, firstYearRevenue,
   licenseRate, licenseValue, liveScope, patentActive, patentFee, patentLaw, pitchOdds, priceOf, revenueValue, streamValue, trueAppeal, type Subject,
 } from './market'
-import { addRep, companyBlock, dropIdea, findIdea, findInvention, fittingCompanies, isGenius, markSeen, mutWorkshop, readWorkshop, remember, storeInv, workshopBlock } from './notebook'
+import { addRep, companyBlock, dropIdea, findIdea, findInvention, fittingCompanies, isGenius, markSeen, mutWorkshop, readWorkshop, recordFirst, remember, storeInv, workshopBlock } from './notebook'
 import { blankInv, noteDef, rec, text, type Inv, type NoteIdea, type Patent, type PatentScope, type Route, type Workshop } from './state'
 import type { Target } from './build'
 
@@ -212,6 +212,7 @@ function afterLaunch(g: GameState, ws: Workshop, b: Bench, launchedYear: number)
 /** "You beat history": the moment the history race pays off. */
 export function beatHistory(g: GameState, ws: Workshop, def: IdeaDef): void {
   const early = Math.max(0, (def.real ?? g.year) - g.year)
+  recordFirst(g, def.id)
   addFame(g, 20)
   addRep(ws, 15)
   addStat(g, 'happiness', 10)

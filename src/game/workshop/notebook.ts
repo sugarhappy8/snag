@@ -101,9 +101,26 @@ export function blurbOf(g: GameState, def: IdeaDef): string {
   return anachronistic(g, def.blurb) ? `A ${CATEGORIES[def.cat].label.toLowerCase()} idea ahead of its time.` : def.blurb
 }
 
-/** Ideas already in the notebook, already made, or owned as an invention. */
+/**
+ * Race ideas already brought to market in this timeline (by anyone in the family). World state:
+ * it survives heirs (life.ts continueAsChild keeps the flag), so history can't be beaten twice.
+ */
+export const FIRSTS_FLAG = 'workshop.firsts'
+const FIRSTS_MAX = 120
+
+export function worldFirsts(g: GameState): Set<string> {
+  const raw = g.flags[FIRSTS_FLAG]
+  return new Set((Array.isArray(raw) ? raw : []).filter((x): x is string => typeof x === 'string').slice(-FIRSTS_MAX))
+}
+
+export function recordFirst(g: GameState, id: string): void {
+  const list = [...worldFirsts(g)].filter((x) => x !== id)
+  g.flags[FIRSTS_FLAG] = [...list, id].slice(-FIRSTS_MAX)
+}
+
+/** Ideas already in the notebook, already made, owned as an invention, or (race ideas) made in this timeline. */
 export function takenIds(g: GameState, ws: Workshop): Set<string> {
-  const out = new Set<string>([...ws.ideas.map((i) => i.id), ...ws.made.map((m) => m.id)])
+  const out = new Set<string>([...ws.ideas.map((i) => i.id), ...ws.made.map((m) => m.id), ...worldFirsts(g)])
   for (const o of inventions(g)) out.add(o.inv.idea)
   return out
 }
