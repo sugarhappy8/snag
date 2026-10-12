@@ -3,7 +3,7 @@
 // moves, wear and tear, running costs, premiums, theft and loss.
 import { conditionLabel, findAsset, giftAsset } from '../assets'
 import { noteCashGift } from '../events/wealth-core'
-import { addMoney, addStat, formatMoney, fullName, hasLicense, inPrison, log, notice, relationLabel, shortMoney, useYearAction } from '../core'
+import { addMoney, addStat, formatMoney, fullName, getPerson, hasLicense, inPrison, log, notice, relationLabel, shortMoney, useYearAction } from '../core'
 import { brandById, brandsFor } from '../data/brands'
 import { chance, pick, randInt } from '../rng'
 import { hasTalent, talentHint } from '../talents'
@@ -291,10 +291,12 @@ function giftMenu(a: Asset): MenuGroup {
           confirm: () => `Give your ${a.name} to ${p.firstName}?`,
           run: (gg) => {
             const cur = findAsset(gg, a.id)
-            if (!cur) return
+            // The row was built from the state on screen: write to this draft's copy of them.
+            const who = getPerson(gg, p.id)
+            if (!cur || !who) return
             const worth = cur.value
             // A valuable gift counts as money given, and spoils a young relative like any windfall.
-            if (giftAsset(gg, cur.id, p.id)) noteCashGift(gg, p, worth)
+            if (giftAsset(gg, cur.id, who.id)) noteCashGift(gg, who, worth)
           },
         }),
       )
