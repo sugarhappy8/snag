@@ -260,6 +260,34 @@ describe('Banking 2.0 regulator', () => {
       }
     }
   })
+
+  it('a rescue chosen before a run widened the hole gets new numbers, not a surprise seizure', () => {
+    const { g, a, b } = undercapitalized(1_000_000)
+    simulateBankYear(g, b, g.year, 0)
+    g.year += 1
+    const book = readBank(b)
+    expect(book.seize).toBe(true)
+    // Savers also queue: more than the cash and bonds on hand, so loans must be sold at a loss.
+    book.run = { year: g.year - 1, wave: Math.round(book.deposits * .4), severity: .3 }; book.dramaYear = -1; saveBank(b, book)
+    const shown = seizeNeed(g, b, readBank(b))
+    g.character.money = shown // exactly what the regulator's popup asks for
+    g.queue = []
+    bankAfterYear(g, a, b, false)
+    const run = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.run')!
+    const regulator = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.regulator')!
+    expect(regulator.kind === 'choice' && regulator.choices.some(c => c.id === 'inject')).toBe(true)
+    g.queue = []
+    runScript(g, 'bank.run', 'sell', run.kind === 'choice' ? run.data : undefined, run)
+    expect(seizeNeed(g, b, readBank(b))).toBeGreaterThan(shown)
+    g.queue = []
+    runScript(g, 'bank.regulator', 'inject', regulator.kind === 'choice' ? regulator.data : undefined, regulator)
+    expect(g.assets.some(x => x.id === a.id)).toBe(true)
+    expect(g.character.money).toBe(shown)
+    const again = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.regulator')
+    expect(again && again.kind === 'choice' && again.text).toMatch(/counted again/)
+    // The owner can't cover the bigger hole any more: the new popup doesn't pretend otherwise.
+    expect(again && again.kind === 'choice' && again.choices.some(c => c.id === 'inject')).toBe(false)
+  })
 })
 
 describe('Banking 2.0 runs', () => {

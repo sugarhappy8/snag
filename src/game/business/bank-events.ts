@@ -276,13 +276,22 @@ export function seizeNeed(g: GameState, b: BizState, book: BankBook): number {
   return Math.max(0, Math.round((min + .02) * riskWeighted(book, capital) - capital))
 }
 
-function queueSeize(g: GameState, a: Asset, b: BizState): void {
+/** What outside investors value the bank at: the lower of its booked and its live value. */
+function investorValue(b: BizState): number {
+  return Math.max(0, Math.min(b.valuation, valuationOf(b)))
+}
+function investorsWilling(b: BizState, need: number): boolean {
+  return investorValue(b) > need * .5 && b.share > .2
+}
+
+function queueSeize(g: GameState, a: Asset, b: BizState, again = false): void {
   const book = readBank(b), need = seizeNeed(g, b, book), min = minCapitalRatio(b.countryId, g.year)
   const choices: ChoiceOption[] = []
   if (g.character.money >= need) choices.push({ id: 'inject', label: `Put in ${money(need)} of my own money`, emoji: '💰' })
-  if (b.valuation > need * .5 && b.share > .2) choices.push({ id: 'investors', label: `Sell a stake to investors for ${money(Math.round(need * 1.1))}`, emoji: '🤝' })
+  if (investorsWilling(b, need)) choices.push({ id: 'investors', label: `Sell a stake to investors for ${money(Math.round(need * 1.1))}`, emoji: '🤝' })
   choices.push({ id: 'seize', label: 'Let the regulators take it', emoji: '🏛️' })
-  scriptChoice(g, SEIZE, 'The Regulators Are Here', `${a.name}'s capital is ${pct(Math.max(0, capitalRatio(b, book)), 1)} against a ${pct(min, 1)} minimum. Regulators will seize the bank unless ${money(need)} of fresh capital arrives.`, choices, { emoji: '⚖️', data: { assetId: a.id } })
+  const intro = again ? 'The examiners counted again: the hole has grown. ' : ''
+  scriptChoice(g, SEIZE, 'The Regulators Are Here', `${intro}${a.name}'s capital is ${pct(Math.max(0, capitalRatio(b, book)), 1)} against a ${pct(min, 1)} minimum. Regulators will seize the bank unless ${money(need)} of fresh capital arrives.`, choices, { emoji: '⚖️', data: { assetId: a.id } })
 }
 
 const SEIZE = defineScript('bank.regulator', (g, choice, data) => {
@@ -312,8 +321,8 @@ export function resolveSeize(g: GameState, a: Asset, b: BizState, choice: string
     notice(g, 'Recapitalized', `${money(need)} of your money went into ${a.name}. The examiners packed up their boxes.`, { emoji: '💰' })
     return
   }
-  if (choice === 'investors' && b.valuation > need * .5 && b.share > .2) {
-    const inject = Math.round(need * 1.1), stake = clampN(inject / (b.valuation + inject), .05, .75)
+  if (choice === 'investors' && investorsWilling(b, need)) {
+    const inject = Math.round(need * 1.1), stake = clampN(inject / (investorValue(b) + inject), .05, .75)
     b.share = clampN(b.share * (1 - stake), .01, 1)
     diluteBusinessEquity(b, 1 - stake)
     b.cash += inject
@@ -322,13 +331,16 @@ export function resolveSeize(g: GameState, a: Asset, b: BizState, choice: string
     notice(g, 'Fresh Capital', `Investors put ${money(inject)} into ${a.name} for ${pct(stake)} of it. You now own ${pct(b.share)}.`, { emoji: '🤝' })
     return
   }
+  // The hole grew since the popup was shown (a run resolved first can cost a fire sale): the owner
+  // who chose to rescue the bank gets the new numbers rather than a surprise seizure.
+  if ((choice === 'inject' || choice === 'investors') && ownerReachable(g, a)) { queueSeize(g, a, b, true); return }
   count(g, 'banksSeized')
   declareBankruptcy(g, a, b, `Regulators seized ${a.name} and moved its savers to a healthier bank.`)
 }
 
 function autoSeize(g: GameState, a: Asset, b: BizState): void {
   const book = readBank(b)
-  resolveSeize(g, a, b, b.valuation > seizeNeed(g, b, book) * .5 && b.share > .2 ? 'investors' : 'seize')
+  resolveSeize(g, a, b, investorsWilling(b, seizeNeed(g, b, book)) ? 'investors' : 'seize')
 }
 
 // --- Dirty money catches up
