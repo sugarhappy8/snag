@@ -260,6 +260,11 @@ describe('screens render', () => {
     const html = render(createElement(GraveyardScreen))
     expect(html).toContain('Zara Quill')
     expect(html).toContain('age 77')
+    // A dynasty's fortune still fits the "richest" tile and the grave row.
+    localStorage.setItem('anotherlife.graveyard.v1', JSON.stringify([grave('r', 'Rich Quill', 90, 1.6e16)]))
+    const rich = render(createElement(GraveyardScreen))
+    expect(rich).toContain('<strong>$16Qa</strong>')
+    expect(rich).not.toContain('quadrillion</strong>')
   })
 
   it('death screen shows the tombstone, ribbon and heirs', () => {

@@ -288,6 +288,34 @@ export function shortMoney(n: number): string {
   return formatMoney(n)
 }
 
+// Narrow tiles keep the short units all the way up: '$16Qa' fits where '$16 quadrillion' doesn't.
+const TINY_UNITS: readonly [number, string][] = [
+  [1e30, 'No'],
+  [1e27, 'Oc'],
+  [1e24, 'Sp'],
+  [1e21, 'Sx'],
+  [1e18, 'Qi'],
+  [1e15, 'Qa'],
+  [1e12, 'T'],
+  [1e9, 'B'],
+  [1e6, 'M'],
+  [1e3, 'K'],
+]
+
+/** The narrowest money text, for small tiles: '$45K', '$2.5M', '$16Qa' (shortMoney below 10,000). */
+export function tinyMoney(n: number): string {
+  const m = showMoney(n)
+  if (!Number.isFinite(m.amount)) return joinMoney('', '0', m)
+  const a = Math.abs(m.amount)
+  if (a < 1e4) return formatMoney(n)
+  const sign = m.amount < 0 ? '-' : ''
+  if (a >= 1e33) return joinMoney(sign, a.toExponential(1).replace('e+', 'e'), m)
+  for (const [v, s] of TINY_UNITS) {
+    if (a >= v) return joinMoney(sign, `${(a / v).toFixed(a >= v * 10 ? 0 : 1)}${s}`, m)
+  }
+  return formatMoney(n)
+}
+
 /**
  * Money with the digits written by the caller, e.g. moneyWith(p, (a) => a.toFixed(2)) → '$8.17'.
  * `digits` gets the absolute display amount; the sign and the currency symbol are added here.
