@@ -182,9 +182,11 @@ export function raiseQuote(g: GameState, b: BizState, f: FundState, year: number
   const deployed = vcDeployed(latest)
   if (age < 3) return { n, size: 0, tvpi, odds: 0, block: `Fund ${roman(latest.n)} is too new. LPs want three years of results first.` }
   if (deployed < .7 && age < 5) return { n, size: 0, tvpi, odds: 0, block: `Invest more of Fund ${roman(latest.n)} first (${Math.round(deployed * 100)}% deployed).` }
-  // LPs size the next fund by what you put to work: a manager who never invested gets nothing.
-  const used = clampN(deployed / .7, 0, 1)
-  if (used < .15) return { n, size: 0, tvpi, odds: 0, block: `LPs won’t back a new fund: Fund ${roman(latest.n)} barely invested (${Math.round(deployed * 100)}%).` }
+  // A choosy manager is fine, one who sat on the money isn't: below a third deployed the next
+  // fund shrinks, and one that barely invested gets nothing until its fee years are over (then a
+  // small fresh start, so the firm is never stuck for good).
+  const used = Math.max(clampN(deployed / .35, 0, 1), age >= VC_FEE_YEARS ? .5 : 0)
+  if (used < .25) return { n, size: 0, tvpi, odds: 0, block: `LPs won’t back a new fund yet: Fund ${roman(latest.n)} barely invested (${Math.round(deployed * 100)}%).` }
   const record = tvpi ?? 1
   const mult = record < .6 && age >= 5 ? .5 : clampN(Math.pow(Math.max(.1, record), .8), .6, 2)
   const skill = fundSkill(g, b)

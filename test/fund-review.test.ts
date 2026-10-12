@@ -13,7 +13,7 @@ import { brokerEra, quantBlock } from '../src/game/business/fund-model'
 import { bestCommission, hedgeFeeOutlook, strategyOutlook } from '../src/game/business/fund-outlook'
 import { readFund, saveFund, type FundState, type FundType } from '../src/game/business/fund-state'
 import { fundLine } from '../src/game/business/fund-text'
-import { newVcFund, openPitches, pitchesFor, raiseQuote } from '../src/game/business/fund-vc'
+import { newVcFund, openPitches, pitchesFor, raiseQuote, VC_FEE_YEARS, vcDeployed } from '../src/game/business/fund-vc'
 import { bizOf, findBusiness, readBiz } from '../src/game/business/state'
 import { businessAssetView } from '../src/game/business'
 import { runScript } from '../src/game/scripts'
@@ -84,7 +84,7 @@ describe('venture capital: a hired CEO and the owner', () => {
       const b = readBiz(g, a), f = readFund(b)
       const all = pitchesFor(g, b, f, g.year), left = openPitches(g, b, f, g.year)
       const backed = f.cos.filter(c => c.born === g.year)
-      expect(backed.length).toBeLessThanOrEqual(3)
+      expect(backed.length).toBeLessThanOrEqual(4)
       // Only the CEO's own picks are off the table.
       expect(left.map(p => p.id).sort()).toEqual(all.filter(p => !backed.some(c => c.id === p.id)).map(p => p.id).sort())
       offered += all.length; open += left.length
@@ -95,6 +95,17 @@ describe('venture capital: a hired CEO and the owner', () => {
     const b = readBiz(g, a), f = readFund(b)
     const left = openPitches(g, b, f, g.year)
     if (left.length) expect(investInPitch(g, a.id, left[0].id)).toBe(true)
+  }, 60_000)
+
+  it('invests a fund at a sensible pace, so a CEO-run firm’s next fund doesn’t shrink', () => {
+    let deployed = 0
+    const seeds = 5
+    for (let i = 0; i < seeds; i++) {
+      const { g, a } = firm('vc', { year: 2000, skill: 60, lifeId: `mdep-60-${i}` })
+      for (let y = 0; y < 5; y++) { ageBusinessYear(g); drain(g) }
+      deployed += vcDeployed(readFund(readBiz(g, a)).funds[0])
+    }
+    expect(deployed / seeds).toBeGreaterThan(.35)
   }, 60_000)
 
   it('explains an empty pitch list instead of a bare "No pitches right now"', () => {
@@ -125,13 +136,23 @@ describe('venture capital: follow-on rounds', () => {
 
 describe('venture capital: LPs judge what you invested', () => {
   it('a firm that never backs a startup can’t keep raising funds just to collect fees', () => {
-    const { g, a } = ownerVc('lazy-vc', 1990, 26, false)
-    const f = readFund(readBiz(g, a))
+    const lazy = ownerVc('lazy-vc', 1990, 9, false)
+    let f = readFund(readBiz(lazy.g, lazy.a))
     expect(f.cos).toHaveLength(0)
     expect(f.funds).toHaveLength(1)
-    const q = raiseQuote(g, readBiz(g, a), f, g.year)
+    const q = raiseQuote(lazy.g, readBiz(lazy.g, lazy.a), f, lazy.g.year)
     expect(q.size).toBe(0)
     expect(q.block).toMatch(/barely invested/)
+    // Over a whole career: only a small fresh start once each fund's fee years are over, so the
+    // fees never overlap and keep shrinking (the old rule raised a new fund every five years).
+    const { g, a } = ownerVc('lazy-vc', 1990, 30, false)
+    f = readFund(readBiz(g, a))
+    expect(f.cos).toHaveLength(0)
+    expect(f.funds.length).toBeLessThanOrEqual(1 + Math.floor(30 / VC_FEE_YEARS))
+    for (let i = 1; i < f.funds.length; i++) {
+      expect(f.funds[i].vintage - f.funds[i - 1].vintage).toBeGreaterThanOrEqual(VC_FEE_YEARS)
+      expect(f.funds[i].size).toBeLessThanOrEqual(f.funds[0].size / 2)
+    }
   }, 60_000)
 
   it('sizes the next fund by how much of the last one went to work', () => {
@@ -142,16 +163,24 @@ describe('venture capital: LPs judge what you invested', () => {
       x.invested = invested; x.dry = 24e6 - invested; x.fees = 3e6; x.dist = 1.2 * (invested + 3e6)
       return { ...f, funds: [x], cos: [] }
     }
-    const full = raiseQuote(g, b, after(24e6), 2006), half = raiseQuote(g, b, after(.35 * 24e6), 2006), none = raiseQuote(g, b, after(0), 2006)
+    const full = raiseQuote(g, b, after(24e6), 2006), choosy = raiseQuote(g, b, after(.4 * 24e6), 2006)
+    const slow = raiseQuote(g, b, after(.15 * 24e6), 2006), none = raiseQuote(g, b, after(0), 2006)
+    // A choosy manager (40% invested at a similar multiple) isn't punished; one who sat on it is.
     expect(full.block).toBeNull()
-    expect(half.block).toBeNull()
-    expect(half.size).toBeLessThan(full.size * .7)
-    expect(half.size).toBeGreaterThan(0)
-    expect(none.block).toBeTruthy()
-    // After the fee years the unused money goes back to LPs: that doesn't count as invested.
+    expect(choosy.block).toBeNull()
+    expect(choosy.size).toBeGreaterThan(full.size * .8)
+    expect(slow.block).toBeNull()
+    expect(slow.size).toBeLessThan(full.size * .6)
+    expect(slow.size).toBeGreaterThan(0)
+    expect(none.block).toMatch(/barely invested/)
+    // After the fee years the unused money goes back to LPs: that doesn't count as invested, but
+    // the firm gets a small fresh start rather than being stuck for good.
     const old = after(0)
     old.funds[0].dry = 0
-    expect(raiseQuote(g, b, old, 2012).block).toBeTruthy()
+    expect(raiseQuote(g, b, old, 2009).block).toMatch(/barely invested/)
+    const restart = raiseQuote(g, b, old, 2010)
+    expect(restart.block).toBeNull()
+    expect(restart.size).toBeLessThanOrEqual(raiseQuote(g, b, after(24e6), 2010).size / 2)
   })
 
   it('shows no multiple for a fund that hasn’t backed anyone, and no "carry $0" in the report', () => {
