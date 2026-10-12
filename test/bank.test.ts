@@ -32,6 +32,7 @@ import { marketViewOf } from '../src/game/business/competition'
 import { acquisitionQuote } from '../src/game/business/competition-moves'
 import { initFund } from '../src/game/business/fund'
 import { money as fmtMoney } from '../src/game/business/util'
+import { seeded } from '../src/game/assets'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
   const country = opts.country ?? 'us', year = opts.year ?? 2030
@@ -897,6 +898,59 @@ describe('Banking 2.0 review: money that must not appear', () => {
     }
     expect(payableCash(a, b)).toBeGreaterThan(0)
   })
+})
+
+describe('Banking 2.0 review: a monkey at the levers', () => {
+  it('80 years of random levers, payouts, rescues and popups through the real yearly loop stay finite, balanced and pure', () => {
+    for (const [country, year, industry] of [['us', 1925, 'bank'], ['de', 2001, 'onlineBank'], ['ar', 1970, 'bank']] as const) {
+      const r = seeded(`bank-monkey|${country}|${year}`)
+      const city = getCountry(country).cities[0]
+      const g = makeTestGame(3, { age: 25, money: 300_000_000, countryId: country, city, talents: ['Business'] })
+      g.year = year; g.lifeId = `bank-monkey-${country}`
+      const b0 = newBiz(g, industry, country, city, { cash: 30_000_000, founded: year, ownerSalary: 50_000 })
+      const a = createBusinessAsset(g, 'Monkey Bank', b0, 30_000_000)
+      g.assets.push(a)
+      for (let i = 0; i < 80; i++) {
+        const live = g.assets.find(x => x.id === a.id)
+        if (!live) break // sold, seized or bankrupt along the way is a legitimate ending
+        const b = bizOf(g, live), m = bankMarket(g, b.countryId, g.year)
+        for (let k = 0; k < 4; k++) {
+          const roll = r.next()
+          if (roll < .15) setBankRate(g, a.id, 'savings', m.savings + (r.next() - .5) * .06)
+          else if (roll < .3) setBankRate(g, a.id, 'loan', m.mortgage + (r.next() - .3) * .08)
+          else if (roll < .4) setBankAppetite(g, a.id, r.pick(['prime', 'balanced', 'highYield'] as const))
+          else if (roll < .55) switchBankProduct(g, a.id, r.pick([...PRODUCT_IDS]), r.next() < .7)
+          else if (roll < .6) runBankCampaign(g, a.id)
+          else if (roll < .7) payDividend(g, live, b, r.next() * 1e8)
+          else if (roll < .75) { const n = Math.round(r.next() * 2e7); g.character.money -= n; b.cash += n; b.invested += n }
+          else if (roll < .8 && b.debt > 0) { const n = Math.round(Math.min(b.debt, Math.max(0, b.cash) * r.next())); b.debt -= n; b.cash -= n }
+          else if (roll < .83) { b.ceo = b.ceo === 'owner' ? 'manager' : 'owner'; b.manager = b.ceo === 'manager' ? { firstName: 'M', lastName: 'K', gender: 'male', skill: Math.round(30 + r.next() * 70), salary: 150_000, since: g.year } : null }
+        }
+        if (i % 10 === 0) {
+          const before = JSON.stringify(g)
+          walk(g, bankNodes(g, live)); bankInfo(g, b); marketInfoLine(g, live)
+          expect(JSON.stringify(g)).toBe(before)
+        }
+        g.year += 1; g.character.age += 1; g.yearActions = {}
+        yearlyBusinessImpl(g)
+        for (let guard = 0; guard < 60 && g.queue.length; guard++) {
+          const q = g.queue.shift()!
+          if (q.kind === 'choice' && q.source === 'script' && q.scriptId) {
+            const keep = q.choices.filter(c => !['seize', 'bankrupt', 'sell', 'accept', 'counter'].includes(c.id))
+            const pool = keep.length ? keep : q.choices
+            runScript(g, q.scriptId, pool[Math.floor(r.next() * pool.length)].id, q.data, q)
+          } else if (q.kind === 'input') runScript(g, q.scriptId, q.defaultValue || String(q.min ?? 1), q.data, q)
+        }
+        g.queue = []; g.character.prison = null
+        expect(Number.isFinite(g.character.money)).toBe(true)
+        const now = g.assets.find(x => x.id === a.id)
+        if (!now) continue
+        const bb = readBiz(g, now), book = readBank(bb)
+        balanced(book); finiteDeep(book, `${country} y${i}`); finiteDeep(bb.last, `${country} y${i} stmt`)
+        expect(Number.isFinite(bb.cash) && Number.isFinite(bb.valuation)).toBe(true)
+      }
+    }
+  }, 240_000)
 })
 
 describe('Banking 2.0 review: texts', () => {
