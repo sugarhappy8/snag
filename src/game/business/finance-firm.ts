@@ -2,8 +2,12 @@
 // so the two models can evolve independently. Clients' money never enters b.cash or valuation.
 import type { Asset, GameState, MenuNode } from '../types'
 import type { YearResult } from './economy'
-import { bankCapitalNeed, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankSettledYear, isBank, queueBankReport, simulateBankYear } from './bank'
-import { fundCapitalNeed, fundEraBlock, fundInfo, fundManagerTurn, fundNodes, fundSettledYear, queueFundReport, simulateFundYear } from './fund'
+import { bankCapitalNeed, bankEraBlock, bankInfo, bankManagerTurn, bankMarketLine, bankNodes, bankSettledYear, isBank, queueBankReport, simulateBankYear } from './bank'
+import { shareText } from './competition'
+import { fundCapitalNeed, fundClientAssets, fundEraBlock, fundInfo, fundManagerTurn, fundNodes, fundSettledYear, queueFundReport, simulateFundYear } from './fund'
+import { poolSize } from './fund-model'
+import { getCountry } from '../world'
+import { money } from './util'
 import { isFinanceFirm } from './finance-firm-state'
 import type { BizState } from './state'
 
@@ -51,4 +55,14 @@ export function financeCapitalNeed(g: GameState, b: BizState, pool: number, effe
 /** The last fiscal year this firm has already booked (-1 if none), so a year is never settled twice. */
 export function financeSettledYear(b: BizState): number {
   return isBank(b) ? bankSettledYear(b) : fundSettledYear(b)
+}
+
+/**
+ * The company screen's market line for a financial firm (pure). Their market is money, not units
+ * sold at a price, so the product market's "$0 a year" would be meaningless here.
+ */
+export function financeMarketLine(g: GameState, b: BizState): string {
+  if (isBank(b)) return bankMarketLine(g, b)
+  const pool = poolSize(b.countryId, g.year), clients = fundClientAssets(b)
+  return `Clients' money ${money(clients)} · ${shareText(clients / Math.max(1, pool))} of ~${money(pool)} invested in ${getCountry(b.countryId).name}`
 }

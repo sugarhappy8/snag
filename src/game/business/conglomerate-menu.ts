@@ -54,6 +54,7 @@ import { captureOf, groupAcquireBlock, groupCeoValue, joinValue, ownerCapture, s
 import { groupById, groupsOf, groupStake, groupValue, inGroup, sharePriceOf, type Group } from './conglomerate-state'
 import { oddsText } from './board-vote'
 import { industryDef } from './industries'
+import { isFinanceFirm } from './finance-firm-state'
 import { businessView, shopCompany } from './manage'
 import { equityMenu } from './executive'
 import { delegationMenu } from './conglomerate-management'
@@ -556,7 +557,8 @@ function acquireMenu(groupId: string): MenuGroup {
     children: (g) => {
       const grp = groupById(g, groupId)
       if (!grp) return []
-      return grp.members.map(
+      // Financial divisions have no product rivals to buy (competition-moves.acquisitionQuote).
+      return grp.members.filter((x) => !isFinanceFirm(x.b)).map(
         (x): MenuGroup => ({
           type: 'menu',
           id: `biz.group.acquireIn.${groupId}.${x.a.id}`,

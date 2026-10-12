@@ -8,11 +8,13 @@
 import { seeded } from '../assets'
 import { outcomeTag } from '../timeMachine'
 import type { Asset, GameState, MenuNode } from '../types'
+import { getCountry } from '../world'
 import type { YearResult } from './economy'
-import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
+import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, nationalDeposits, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
 import { bankCapital, bankLeaderSkill, bankMarket, bankPayoutRoom, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, projectYear, riskWeighted, setupCost } from './bank-model'
 import { bankAfterYear, queueBankYearReport } from './bank-events'
 import { bankMenuNodes } from './bank-menu'
+import { shareText } from './competition'
 import { startupCost } from './economy'
 import { totalOutlets, type BizState, type Statement } from './state'
 import { allocatedCorporateTax } from './tax'
@@ -245,6 +247,12 @@ export function bankInfo(g: GameState, b: BizState): string {
   const book = readBank(b), min = minCapitalRatio(b.countryId, g.year), ratio = capitalRatio(b, book)
   const bad = book.last?.badRate ?? 0
   return `Deposits ${money(book.deposits)} · loans ${money(loanTotal(book))} · capital ${ratioText(ratio)} (min ${pct(min, 1)}) · trust ${Math.round(book.trust)} · bad loans ${pct(bad, 1)}`
+}
+
+/** The company screen's market line: where the bank ranks among its country's banks (pure). */
+export function bankMarketLine(g: GameState, b: BizState): string {
+  const book = readBank(b), r = bankRank(b.countryId, g.year, book.deposits), pool = nationalDeposits(b.countryId, g.year)
+  return `#${r.rank.toLocaleString()} of ~${r.of.toLocaleString()} banks in ${getCountry(b.countryId).name} · ${shareText(r.share)} of ~${money(pool)} of deposits`
 }
 
 export function ratioText(ratio: number): string {

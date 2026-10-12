@@ -27,6 +27,10 @@ import { settlePerfectForesight } from '../src/game/business/executive-foresight
 import { closeBusiness } from '../src/game/business/exit'
 import { payableCash } from '../src/game/business/board-vote'
 import { payDividend } from '../src/game/business/board-menu'
+import { marketInfoLine } from '../src/game/business/competition-menu'
+import { marketViewOf } from '../src/game/business/competition'
+import { acquisitionQuote } from '../src/game/business/competition-moves'
+import { initFund } from '../src/game/business/fund'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
   const country = opts.country ?? 'us', year = opts.year ?? 2030
@@ -800,5 +804,27 @@ describe('Banking 2.0 review: money that must not appear', () => {
       const y = readBank(b); y.run = null; y.seize = false; saveBank(b, y)
     }
     expect(payableCash(a, b)).toBeGreaterThan(0)
+  })
+})
+
+describe('Banking 2.0 review: the market line', () => {
+  it('banks and investment firms show their real market, never "$0 a year", and offer no token-price rival buyouts', () => {
+    const { g, a, b } = bank()
+    simulateBankYear(g, b, g.year - 1, 0)
+    const line = marketInfoLine(g, a)
+    expect(line).not.toMatch(/\$0/)
+    expect(line).toMatch(/banks in United States/)
+    expect(line.length).toBeLessThanOrEqual(140)
+    for (const r of marketViewOf(g, b).rivals) expect(acquisitionQuote(g, b, r.id)).toBeNull()
+    const fg = makeTestGame(3, { age: 40, money: 1e8, countryId: 'gb', city: getCountry('gb').cities[0] })
+    fg.year = 2020
+    const fb = newBiz(fg, 'investmentFirm', 'gb', getCountry('gb').cities[0], { cash: 5_000_000 })
+    initFund(fg, fb, 'asset')
+    const fa = createBusinessAsset(fg, 'Test Capital', fb, fb.cash)
+    fg.assets.push(fa)
+    const fline = marketInfoLine(fg, fa)
+    expect(fline).not.toMatch(/\$0 a year/)
+    expect(fline).toMatch(/invested in United Kingdom/)
+    expect(fline.length).toBeLessThanOrEqual(140)
   })
 })
