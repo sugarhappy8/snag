@@ -11,7 +11,8 @@ import { chance, rand, randInt, uid } from '../rng'
 import { defineScript } from '../scripts'
 import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
-import { talentHint } from '../talents'
+import { hasTalent, talentHint } from '../talents'
+import { outcomeTag } from '../timeMachine'
 import { becomeCeo, installManager, managerCandidate } from './career'
 import { industryHint, localEcon, openFractionFor, planFor, maxProduction, simulateYear, startupCost, valuationOf, refreshValue, niceAmount } from './economy'
 import { industryEraBlock, marketDef } from './competition-data'
@@ -21,8 +22,9 @@ import { DEEP_TECH } from './deeptech-data'
 import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
 import { isDeepTechIndustry, type DeepTechIndustry } from './deeptech-state'
 import { financeEraBlock, isFinanceFirm } from './finance-firm'
-import { bankCapitalPreview, bankStartingCash, isBank } from './bank'
-import { financeView } from './finance-firm-state'
+import { bankAdvice, bankCapitalPreview, isBank } from './bank'
+import { startOutlook, type StartOutlook } from './bank-model'
+import { openBank } from './bank-state'
 import { fundTypeBlock, initFund } from './fund'
 import { TYPE_INFO } from './fund-model'
 import { FUND_TYPES, readFund, type FundType } from './fund-state'
@@ -205,20 +207,43 @@ const CITY = defineScript('business.found.city', (g, choice, data) => {
   else askCapital(g, p)
 })
 
+/** A new bank's expected first years with `cash` of starting capital beyond the fit-out (pure). */
+function bankStart(g: GameState, industry: Industry, countryId: string, city: string, cash: number): StartOutlook {
+  return startOutlook(g, newBiz(g, industry, countryId, city, { cash: Math.max(0, cash), ownerSalary: 0 }))
+}
+const adviceCache = new Map<string, number | null>()
+/**
+ * Starting cash (beyond the fit-out) to advise for a bank founded here now, or null when no amount
+ * makes one viable (bank.ts bankAdvice). Pure; cached per life, year, place and the founder's skill.
+ */
+export function bankAdvisedCash(g: GameState, industry: Industry, countryId: string, city: string): number | null {
+  const c = g.character
+  const key = `${g.lifeId}|${outcomeTag(g, g.year)}|${g.year}|${industry}|${countryId}|${city}|${c.stats.smarts}|${c.hidden.discipline}|${hasTalent(g, 'Business')}|${hasTalent(g, 'Investing')}`
+  if (adviceCache.has(key)) return adviceCache.get(key) ?? null
+  const v = bankAdvice(countryId, g.year, (cash) => bankStart(g, industry, countryId, city, cash))
+  adviceCache.set(key, v)
+  if (adviceCache.size > 64) adviceCache.delete(adviceCache.keys().next().value as string)
+  return v
+}
+
 export function startupCapitalPreview(g: GameState, data: Json | undefined, amount: number): string {
   const p = readPlan(data)
   if (!p) return ''
   const cost = startupCost(p.industry, p.countryId, p.city), e = localEcon(p.industry, p.countryId, p.city)
   const cash = Math.max(0, amount - cost.capital * .8)
-  if (isBank({ industry: p.industry })) return `Fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. ${bankCapitalPreview(p.industry, p.countryId, g.year, cash)}`
+  if (isBank({ industry: p.industry })) return `Fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. ${bankCapitalPreview(cash, bankStart(g, p.industry, p.countryId, p.city, cash), bankAdvisedCash(g, p.industry, p.countryId, p.city))}`
   const burn = e.rent + industryDef(p.industry).staff * e.wage
   return `Equipment/fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. Starting cash ${money(cash)}; roughly ${runwayText(cash / Math.max(1, burn))} of base wages/rent before sales and other costs. ${cash < burn ? 'High funding risk.' : 'A cash buffer, not guaranteed profit.'} Personal funds ${money(g.character.money)}. Next: compare loans, investor dilution, or 100% ownership with self-funding.`
 }
 
 function askCapital(g: GameState, p: Plan): void {
   const c = startupCost(p.industry, p.countryId, p.city)
+  const max = Math.max(c.capital, Math.min(1e15, (g.character.money - c.fee - c.permits) / ownShare(p.industry, p.countryId)))
+  // A bank starts at the advised capital (as far as the founder can go); where no amount is viable, at the minimum.
+  const advised = isBank({ industry: p.industry }) ? bankAdvisedCash(g, p.industry, p.countryId, p.city) : null
+  const start = advised === null ? c.capital : Math.round(Math.max(c.capital, Math.min(c.capital * .8 + advised, max)))
   scriptInput(g, { title: 'Choose Starting Capital', emoji: '💵', text: `Minimum capital ${money(c.capital)} plus ${money(c.fee + c.permits)} fees. Additional capital stays in company cash.`, input: 'slider', money: true,
-    min: c.capital, max: Math.max(c.capital, Math.min(1e15, (g.character.money - c.fee - c.permits) / ownShare(p.industry, p.countryId))), defaultValue: String(isBank({ industry: p.industry }) ? Math.max(c.capital, Math.min(c.capital * .8 + bankStartingCash(p.countryId, g.year), (g.character.money - c.fee - c.permits) / ownShare(p.industry, p.countryId))) : c.capital), scriptId: CAPITAL, data: planJson(p) })
+    min: c.capital, max, defaultValue: String(start), scriptId: CAPITAL, data: planJson(p) })
 }
 const CAPITAL = defineScript('business.found.capital', (g, input, data) => {
   const p = readPlan(data), n = Number(input)
@@ -523,10 +548,10 @@ export function newBiz(g: GameState, industry: Industry, countryId: string, city
     slump: 0,
     ...opts,
   }
-  // Investment firms get their own books: an asset manager (legal in every era) unless the caller
-  // picks a type with initFund. An old-style record here would read as a hedge fund in any year.
+  // Financial firms open real books at founding: an investment firm is an asset manager (legal in
+  // every era) unless the caller picks a type with initFund; a bank's books are sized to its capital.
   if (b.industry === 'investmentFirm') initFund(g, b, 'asset')
-  else if (isFinanceFirm(b)) b.financeFirm = financeView(b) as unknown as Json
+  else if (isBank(b)) openBank(b)
   return b
 }
 

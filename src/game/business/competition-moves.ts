@@ -12,6 +12,7 @@ import { familyId } from './competition-roster'
 import { edgeValue, marketOfBiz, marketViewOf, saveMarket, shareText, type RivalView } from './competition'
 import { techOf, techPlan, techView } from './deeptech-core'
 import { isDeepTech } from './deeptech-state'
+import { isFinanceFirm } from './finance-firm-state'
 import { bizWorth, fxValue, localEcon, maxProduction, planFor, refreshValue, valuationOf } from './economy'
 import { industryDef } from './industries'
 import { totalOutlets, type BizState } from './state'
@@ -56,6 +57,9 @@ export interface AcquisitionQuote {
 /** What buying out a rival costs and brings (pure). Null for rivals that can't be bought. */
 export function acquisitionQuote(g: GameState, b: BizState, rivalId: string): AcquisitionQuote | null {
   if (rivalId.startsWith('npc:') || rivalId.startsWith('owned:')) return null // Real companies use their own ownership/negotiation paths.
+  // Banks and investment firms have no unit market (it is sized $0): buying "customers" there would
+  // be a token price for nothing. They grow through their own books (bank.ts, fund.ts).
+  if (isFinanceFirm(b)) return null
   const v = marketViewOf(g, b)
   const r = v.rivals.find((x) => x.id === rivalId)
   if (!r || r.legacy || !(r.share > 0)) return null

@@ -31,6 +31,7 @@ import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { economicCycle, economyOf } from '../economy'
 import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
 import { legacyInventionCapital, legacyInventionStock } from '../workshop/legacy-capital'
+import { bankAdvanceOf } from './bank-state'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyInventoryValue, supplyProfile, type SupplyBook } from './supply'
 import { applyEconomicRivals } from './economic-actors'
@@ -842,7 +843,9 @@ export function valuationOf(b: BizState): number {
   const games = b.industry === 'gameStudio' ? studioValue(b.studio) : 0
   // A deep-tech company is also worth its patents, tech lead and R&D pipeline.
   const tech = isDeepTech(b) ? deepTechValue(b.tech) : 0
-  let equity = Math.max(ev, floor) + games + tech + b.cash - b.debt
+  // A bank's run-time advance into its client book is shareholders' money funded by the
+  // central-bank debt counted in b.debt (business/bank-state.ts), so it belongs in equity.
+  let equity = Math.max(ev, floor) + games + tech + b.cash - b.debt + bankAdvanceOf(b)
   if (b.cooked > 0) equity *= 1 + 0.25 * Math.min(3, b.cooked)
   return Math.max(0, dollars(equity))
 }

@@ -19,6 +19,8 @@ import { hasSupplyChain, MODE_LABEL } from './market-reach'
 import { placeName, placeFlag } from './market-places'
 import { concentrationOf } from './market-view'
 import { isDeepTech } from './deeptech-state'
+import { financeMarketLine } from './finance-firm'
+import { isFinanceFirm } from './finance-firm-state'
 import { readBiz, runsIt } from './state'
 import { industryNoun, money, pct, priceCapOf } from './util'
 
@@ -296,5 +298,6 @@ export function marketMenu(a: Asset): MenuGroup {
 
 /** One info line for the company screen. */
 export function marketInfoLine(g: GameState, a: Asset): string {
-  return shareLine(g, readBiz(g, a))
+  const b = readBiz(g, a)
+  return isFinanceFirm(b) ? financeMarketLine(g, b) : shareLine(g, b)
 }

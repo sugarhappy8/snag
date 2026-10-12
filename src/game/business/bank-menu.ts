@@ -28,7 +28,7 @@ export function bankMenuNodes(g: GameState, a: Asset): MenuNode[] {
     : book.run ? '🏃 Savers are queuing: a run is under way.'
     : ratio < min ? '⚠️ Below the minimum: regulators will force sales and fines. Add capital or lend less.'
     : m.crisis >= .5 ? `💥 ${m.crisisName ? m.crisisName.charAt(0).toUpperCase() + m.crisisName.slice(1) : 'A banking crisis'}: defaults are soaring.`
-    : book.advance > 0 ? `💵 Still owes the central bank ${money(book.cbOwed)} from a run.` : ''
+    : book.cbOwed > 0 ? `💵 Still owes the central bank ${money(book.cbOwed)} from a run.` : ''
   if (alert) nodes.push({ type: 'info', id: `bank.${a.id}.alert`, emoji: '📣', text: alert })
   nodes.push({ type: 'info', id: `bank.${a.id}.market`, emoji: '📈', text: `Market: savings ${pct(m.savings, 2)} · business loans ${pct(marketLoanRate(m), 2)} · base rate ${pct(m.policy, 2)}` })
   nodes.push(savingsSlider(g, a), loanSlider(g, a), appetiteMenu(a), productsMenu(a), campaignAction(a), booksMenu(a))

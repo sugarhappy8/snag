@@ -1,15 +1,15 @@
 // Banking 2.0: books, the yearly settlement, the regulator, runs, events, menus, the hired CEO and
 // old-save migration. Deterministic: every random draw is seeded per life/bank/year.
 import { describe, expect, it } from 'vitest'
-import { bankAfterYear, BANK_EVENT_IDS, forceBankEvent, reassureOdds, resolveRun, seizeNeed } from '../src/game/business/bank-events'
-import { bankBooks, bankCapitalNeed, bankCapitalPreview, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
+import { bailoutEligible, bailoutTerms, bankAfterYear, BANK_EVENT_IDS, forceBankEvent, reassureOdds, resolveRun, seizeNeed } from '../src/game/business/bank-events'
+import { bankBooks, bankCapitalNeed, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankPayoutBlock, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
 import { bankLeverBlock, runBankCampaign, setBankAppetite, setBankRate, switchBankProduct } from '../src/game/business/bank-actions'
 import { bankCapital, bankMarket, bankRank, bankYearCtx, bestRates, capitalRatio, expectedPath, ibGate, productGate, projectYear, riskWeighted, setupCost } from '../src/game/business/bank-model'
-import { LEND_LINES, PRODUCT_IDS, loanTotal, minCapitalRatio, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
+import { LEND_LINES, PRODUCT_IDS, loanTotal, minCapitalRatio, openBank, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
 import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
 import { financeNodes, simulateFinanceYear } from '../src/game/business/finance-firm'
-import { createBusinessAsset, newBiz } from '../src/game/business/founding'
-import { valuationOf } from '../src/game/business/economy'
+import { bankAdvisedCash, createBusinessAsset, newBiz, startupCapitalPreview } from '../src/game/business/founding'
+import { startupCost, valuationOf } from '../src/game/business/economy'
 import { bizOf, normalizeBiz, readBiz, type BizState } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import { anachronismsIn } from '../src/game/events/era'
@@ -23,6 +23,16 @@ import { createNewLife } from '../src/game/life'
 import { businessCareerMenu } from '../src/game/business'
 import { businessAssets } from '../src/game/business/state'
 import type { AnnualReportData } from '../src/game/types'
+import { settlePerfectForesight } from '../src/game/business/executive-foresight'
+import { closeBusiness } from '../src/game/business/exit'
+import { payableCash } from '../src/game/business/board-vote'
+import { payDividend } from '../src/game/business/board-menu'
+import { marketInfoLine } from '../src/game/business/competition-menu'
+import { marketViewOf } from '../src/game/business/competition'
+import { acquisitionQuote } from '../src/game/business/competition-moves'
+import { initFund } from '../src/game/business/fund'
+import { money as fmtMoney } from '../src/game/business/util'
+import { seeded } from '../src/game/assets'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
   const country = opts.country ?? 'us', year = opts.year ?? 2030
@@ -251,6 +261,34 @@ describe('Banking 2.0 regulator', () => {
       }
     }
   })
+
+  it('a rescue chosen before a run widened the hole gets new numbers, not a surprise seizure', () => {
+    const { g, a, b } = undercapitalized(1_000_000)
+    simulateBankYear(g, b, g.year, 0)
+    g.year += 1
+    const book = readBank(b)
+    expect(book.seize).toBe(true)
+    // Savers also queue: more than the cash and bonds on hand, so loans must be sold at a loss.
+    book.run = { year: g.year - 1, wave: Math.round(book.deposits * .4), severity: .3 }; book.dramaYear = -1; saveBank(b, book)
+    const shown = seizeNeed(g, b, readBank(b))
+    g.character.money = shown // exactly what the regulator's popup asks for
+    g.queue = []
+    bankAfterYear(g, a, b, false)
+    const run = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.run')!
+    const regulator = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.regulator')!
+    expect(regulator.kind === 'choice' && regulator.choices.some(c => c.id === 'inject')).toBe(true)
+    g.queue = []
+    runScript(g, 'bank.run', 'sell', run.kind === 'choice' ? run.data : undefined, run)
+    expect(seizeNeed(g, b, readBank(b))).toBeGreaterThan(shown)
+    g.queue = []
+    runScript(g, 'bank.regulator', 'inject', regulator.kind === 'choice' ? regulator.data : undefined, regulator)
+    expect(g.assets.some(x => x.id === a.id)).toBe(true)
+    expect(g.character.money).toBe(shown)
+    const again = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.regulator')
+    expect(again && again.kind === 'choice' && again.text).toMatch(/counted again/)
+    // The owner can't cover the bigger hole any more: the new popup doesn't pretend otherwise.
+    expect(again && again.kind === 'choice' && again.choices.some(c => c.id === 'inject')).toBe(false)
+  })
 })
 
 describe('Banking 2.0 runs', () => {
@@ -341,7 +379,8 @@ describe('Banking 2.0 events', () => {
         if (id === 'cyber') book.products.app = 2020
         if (id === 'tbtf') Object.assign(book, { deposits: 3e12, loans: { business: 2.5e12, mortgage: 0, auto: 0, cards: 0 }, bonds: 2e11, reserves: 3e11, badNet: 0 })
         saveBank(b, book)
-        if (id === 'tbtf') { g.year = 2009; b.cash = 1e9 }
+        // Capital just under the minimum: a rescue the state can offer on fair terms.
+        if (id === 'tbtf') { g.year = 2009; b.cash = 2e11 }
         b.valuation = valuationOf(b)
         g.queue = []
         const shown = forceBankEvent(g, a, b, id)
@@ -385,6 +424,20 @@ describe('Banking 2.0 events', () => {
       }
     }
   })
+
+  it('a run faced on the bank steps, the radio or TV logs what really happened in that era', () => {
+    for (const year of [1905, 1935, 1965, 2012]) {
+      for (let seed = 0; seed < 6; seed++) {
+        const { g, a, b } = bank({ year, seed })
+        g.rng = 500 + seed
+        const book = readBank(b); book.run = { year: year - 1, wave: Math.round(book.deposits * .2), severity: .2 }; saveBank(b, book)
+        resolveRun(g, a, b, 'tv', false)
+        const texts = [...g.log.flatMap(y => y.entries.map(e => e.text)), ...g.queue.flatMap(m => m.kind === 'notice' ? [m.title, m.text] : [])]
+        expect(texts.some(t => /run on/.test(t))).toBe(true)
+        for (const t of texts) expect(anachronismsIn(t, year, ['us']), `${year} ${t}`).toEqual([])
+      }
+    }
+  })
 })
 
 describe('Banking 2.0 products and levers', () => {
@@ -397,6 +450,8 @@ describe('Banking 2.0 products and levers', () => {
     expect(productGate(b, book, 'auto', 1915).ok).toBe(false)
     expect(productGate(b, book, 'wealth', 1965).ok).toBe(false)
     expect(productGate(b, book, 'ib', 2030).ok).toBe(book.deposits >= ibGate('us'))
+    // Shown through the money formatter (the player's currency and price setting), not a raw "2B".
+    if (!productGate(b, book, 'ib', 2030).ok) expect(productGate(b, book, 'ib', 2030).why).toBe(`Needs ${fmtMoney(ibGate('us'))}+ of deposits`)
     expect(productGate(b, book, 'mortgage', 1950).ok).toBe(true)
     expect(productGate(b, book, 'cards', 1990).ok).toBe(true)
     expect(productGate(b, book, 'crypto', 2024).ok).toBe(true)
@@ -580,6 +635,48 @@ describe('Banking 2.0 old saves', () => {
       expect(f.lastYear).toBe(-1)
     }
   })
+
+  it('plays full, partial and junk records through the real yearly loop without throwing or minting money', () => {
+    const lastYear = { year: 2025, demand: 0, sold: 0, produced: 0, spoiled: 0, price: 0, revenue: 4e6, salesTax: 0, netRevenue: 4e6, cogs: 2e6, wages: 1e6, keyStaff: 0, rent: 1e5, marketing: 0, interest: 0, upkeep: 0, other: 0, otherIncome: 0, ownerPay: 0, pbt: 9e5, corpTax: 2e5, net: 7e5, cashErosion: 0, cycle: 1, openFraction: 1, employees: 20 }
+    const shapes: { name: string; record: Json | undefined; last: boolean }[] = [
+      { name: 'missing record, booked year', record: undefined, last: true },
+      { name: 'a number', record: 42, last: false },
+      { name: 'an array', record: [1, 2] as unknown as Json, last: true },
+      { name: 'partial legacy', record: { deposits: 50_000_000, lastYear: 2025, confidence: 'x', loanRate: -3 } as unknown as Json, last: true },
+      { name: 'junk v2.2', record: { kind: 'bank', deposits: -5, loans: 'x', advance: 1e20, cbOwed: 'no', run: { wave: 1e30, year: 'x' }, hist: 'nope', last: [], lastYear: 2025 } as unknown as Json, last: true },
+      { name: 'unbacked advance', record: { kind: 'bank', deposits: 1e7, loans: { business: 5e6 }, reserves: 5e6, bonds: 0, advance: 9e9, lastYear: 2025, bondYield: .04, reach: 0, fixed: {} } as unknown as Json, last: true },
+    ]
+    for (const shape of shapes) {
+      const { g, a, b } = bank({ year: 2026 })
+      b.financeFirm = shape.record
+      b.last = shape.last ? { ...lastYear } : null
+      const cash = b.cash, money = g.character.money
+      const book = readBank(b)
+      balanced(book); finiteDeep(book, shape.name)
+      // Reading never pays: an advance with nothing behind it is dropped, and value counts only real books.
+      expect(book.advance, shape.name).toBeLessThanOrEqual(Math.max(0, loanTotal(book) + book.badNet + book.reserves + book.bonds - book.deposits) + 1)
+      expect(valuationOf(b), shape.name).toBeLessThan(1e9)
+      const saved = JSON.parse(JSON.stringify(g)) as GameState
+      for (let i = 0; i < 3; i++) {
+        saved.year += 1; saved.character.age += 1; saved.yearActions = {}
+        yearlyBusinessImpl(saved)
+        for (let guard = 0; guard < 20 && saved.queue.length; guard++) {
+          const m = saved.queue.shift()!
+          if (m.kind === 'choice' && m.source === 'script' && m.scriptId) runScript(saved, m.scriptId, m.choices.find(c => c.id === 'cb' || c.id === 'inject')?.id ?? m.choices[0].id, m.data, m)
+        }
+        saved.queue = []
+      }
+      const live = saved.assets.find(x => x.id === a.id)
+      if (live) {
+        const after = readBiz(saved, live), ab = readBank(after)
+        balanced(ab); finiteDeep(ab, shape.name); finiteDeep(after.last, shape.name)
+        expect(ab.lastYear, shape.name).toBe(saved.year - 1)
+        // Three years of a small bank: no windfall into the company or the owner's pocket.
+        expect(after.cash - cash, shape.name).toBeLessThan(50_000_000)
+      }
+      expect(saved.character.money - money, shape.name).toBeLessThan(50_000_000)
+    }
+  }, 120_000)
 })
 
 describe('Banking 2.0 odds and ends', () => {
@@ -588,11 +685,18 @@ describe('Banking 2.0 odds and ends', () => {
     expect(bankEraBlock(g, 'onlineBank', 'us', 1985)).toBeTruthy()
     expect(bankEraBlock(g, 'onlineBank', 'us', 2026)).toBeNull()
     expect(bankEraBlock(g, 'bank', 'us', 1900)).toBeNull()
+    // The reason shown on the greyed-out row never names the internet before it exists.
+    for (const [country, year] of [['us', 1900], ['us', 1950], ['us', 1985], ['ng', 2000], ['in', 1998]] as const) {
+      const why = bankEraBlock(g, 'onlineBank', country, year)
+      expect(why, `${country} ${year}`).toBeTruthy()
+      expect(anachronismsIn(why!, year, [country]), `${country} ${year}: ${why}`).toEqual([])
+    }
     const need = bankCapitalNeed(g, b, 1e9, .8)
     expect(need).toBeGreaterThan(0); expect(need).toBeLessThanOrEqual(1e9)
     expect(bankCapitalNeed(g, b, 0, 1)).toBe(0)
-    expect(bankCapitalPreview('bank', 'us', 2026, 1_000_000)).toMatch(/struggle/)
-    expect(bankCapitalPreview('bank', 'us', 2026, bankStartingCash('us', 2026))).toMatch(/Enough/)
+    const plan = { industry: 'bank', countryId: 'us', city: b.city } as unknown as Json
+    expect(startupCapitalPreview(g, plan, 1_000_000 + startupCost('bank', 'us', b.city).capital * .8)).toMatch(/likely to fail|seize/i)
+    expect(startupCapitalPreview(g, plan, bankAdvisedCash(g, 'bank', 'us', b.city)! + startupCost('bank', 'us', b.city).capital * .8)).toMatch(/growing as savers arrive|then profits from year/)
   })
 
   it('ranks banks sensibly within their country', () => {
@@ -649,7 +753,7 @@ describe('Banking 2.0 in a played life', () => {
     drain(g, 0, ['savings', 'run', 'ceo', 'pay', 'yes'])
     const a = businessAssets(g).find(x => x.details.industry === 'bank')!
     expect(a).toBeTruthy()
-    expect(bizOf(g, a).cash).toBeGreaterThanOrEqual(bankStartingCash('gb', 1990) * .99)
+    expect(bizOf(g, a).cash).toBeGreaterThanOrEqual(bankAdvisedCash(g, 'bank', 'gb', bizOf(g, a).city)! * .99)
     let reports = 0
     for (let year = 0; year < 15 && g.character.alive; year++) {
       ageUp(g)
@@ -665,4 +769,325 @@ describe('Banking 2.0 in a played life', () => {
     }
     expect(reports).toBeGreaterThan(3)
   }, 240_000)
+})
+
+describe('Banking 2.0 review: money that must not appear', () => {
+  /** A top-ten bank in 2009 (a crisis) with `cash` of shareholder capital against $2.5T of loans. */
+  function bigBank(cash: number) {
+    const x = bank({ year: 2009, cash: 30_000_000 })
+    const book = readBank(x.b)
+    Object.assign(book, { deposits: 3e12, loans: { business: 2.5e12, mortgage: 0, auto: 0, cards: 0 }, bonds: 2e11, reserves: 3e11, badNet: 0 })
+    saveBank(x.b, book)
+    x.b.cash = cash
+    x.b.valuation = valuationOf(x.b)
+    return x
+  }
+  const ownerValue = (b: BizState) => valuationOf(b) * b.share
+
+  it('a government rescue never makes the owner richer, and a near-worthless bank gets none', () => {
+    // Capital a little under the minimum: the state's terms are at least fair to taxpayers.
+    for (const cash of [1.5e11, 2.2e11]) {
+      const { g, a, b } = bigBank(cash)
+      const before = ownerValue(b)
+      expect(bailoutEligible(g, b, readBank(b))).toBe(true)
+      const t = bailoutTerms(g, b, readBank(b))
+      expect(t.stake).toBeGreaterThanOrEqual(t.fair)
+      g.queue = []
+      expect(forceBankEvent(g, a, b, 'tbtf')).toBe(true)
+      const popup = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.event')!
+      runScript(g, 'bank.event', 'accept', popup.kind === 'choice' ? popup.data : undefined, popup)
+      expect(b.cash).toBe(cash + t.inject)
+      expect(ownerValue(b)).toBeLessThanOrEqual(before + 1)
+      // The run-time bailout uses the same terms.
+      const run = bigBank(cash)
+      const book = readBank(run.b); book.run = { year: 2008, wave: 1e11, severity: .2 }; saveBank(run.b, book)
+      const pre = ownerValue(run.b)
+      resolveRun(run.g, run.a, run.b, 'bailout', false)
+      expect(readBank(run.b).run).toBeNull()
+      expect(run.b.share).toBeLessThan(1)
+      expect(ownerValue(run.b)).toBeLessThanOrEqual(pre + 1)
+    }
+    // Capital nearly gone: the rescue would have to buy almost all of it, so the state lets it fail.
+    const { g, a, b } = bigBank(1e9)
+    expect(bailoutTerms(g, b, readBank(b)).fair).toBeGreaterThan(.9)
+    expect(bailoutEligible(g, b, readBank(b))).toBe(false)
+    g.queue = []
+    expect(forceBankEvent(g, a, b, 'tbtf')).toBe(false)
+    const book = readBank(b); book.run = { year: 2008, wave: 1e11, severity: .2 }; book.lastYear = 2008; book.dramaYear = -1; saveBank(b, book)
+    bankAfterYear(g, a, b, false)
+    const popup = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.run')
+    expect(popup && popup.kind === 'choice' && popup.choices.some(c => c.id === 'bailout')).toBe(false)
+    // A stale "too big to fail" popup for a bank that has since lost its value is withdrawn.
+    const stale = bigBank(2.2e11)
+    stale.g.queue = []
+    forceBankEvent(stale.g, stale.a, stale.b, 'tbtf')
+    const offer = stale.g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.event')!
+    stale.b.cash = 1e9; stale.b.valuation = valuationOf(stale.b)
+    const share = stale.b.share, cash = stale.b.cash
+    runScript(stale.g, 'bank.event', 'accept', offer.kind === 'choice' ? offer.data : undefined, offer)
+    expect([stale.b.share, stale.b.cash]).toEqual([share, cash])
+  })
+
+  it('a 100-rated CEO gets no perfect-foresight trading income at a bank', () => {
+    const { g, b } = bank()
+    b.ceo = 'manager'; b.manager = { firstName: 'Per', lastName: 'Fect', gender: 'female', skill: 100, salary: 1, since: 2020 }
+    const res = simulateBankYear(g, b, g.year, 0)
+    const cash = b.cash, net = res.stmt.net
+    settlePerfectForesight(g, b, res.stmt)
+    expect(res.stmt.strategicIncome ?? 0).toBe(0)
+    expect([b.cash, res.stmt.net]).toEqual([cash, net])
+    expect(readBank(b).last!.profit).toBe(res.stmt.net)
+  })
+
+  it('the run-time advance is equity: an emergency loan neither erases the bank’s value nor bankrupts a closing', () => {
+    const { g, a, b } = bank({ year: 2009 })
+    const book = readBank(b); book.run = { year: 2008, wave: Math.round(book.deposits * .5), severity: .25 }; saveBank(b, book)
+    const value = valuationOf(b)
+    expect(value).toBeGreaterThan(0)
+    resolveRun(g, a, b, 'cb', false)
+    expect(readBank(b).advance).toBeGreaterThan(b.cash)
+    expect(valuationOf(b)).toBe(value)
+    // Repaying the central bank by hand moves value between cash and debt, nothing more.
+    const repay = Math.min(b.cash, b.debt)
+    b.cash -= repay; b.debt -= repay
+    expect(valuationOf(b)).toBe(value)
+    // Closing pays the savers out of the client book; the advance comes back to the owners.
+    const money = g.character.money, equity = b.cash - b.debt + readBank(b).advance
+    closeBusiness(g, a, b, 0)
+    expect(g.assets.some(x => x.id === a.id)).toBe(false)
+    expect(g.character.money - money).toBe(equity)
+  })
+
+  it('opens a new bank’s books at founding: capital or branches added before the first year-end conjure no deposits', () => {
+    const { g, b } = bank({ cash: 15_000_000 })
+    expect((b.financeFirm as Record<string, Json>).kind).toBe('bank')
+    const book = readBank(b)
+    balanced(book)
+    b.cash += 300_000_000; b.outlets[0].count += 20
+    expect(readBank(b)).toEqual(book)
+    // A bank whose cash arrives after newBiz (a group venture) is opened again from that cash.
+    const late = newBiz(g, 'bank', 'us', getCountry('us').cities[0], { founded: g.year })
+    expect(loanTotal(readBank(late))).toBe(0)
+    late.cash = 15_000_000
+    openBank(late)
+    expect(loanTotal(readBank(late))).toBeGreaterThan(0)
+    balanced(readBank(late))
+  })
+
+  it('owners can take out only the capital above the regulatory minimum, and nothing in a run or a seizure', () => {
+    const { g, a, b } = bank({ cash: 15_000_000 })
+    simulateBankYear(g, b, g.year - 1, 0)
+    b.yearCosts = 0; b.yearIncome = 0
+    let book = readBank(b)
+    const capital = bankCapital(b, book), need = riskWeighted(book, capital) * minCapitalRatio(b.countryId, g.year)
+    expect(need).toBeGreaterThan(0)
+    expect(payableCash(a, b)).toBeLessThanOrEqual(Math.ceil(capital - need))
+    expect(payableCash(a, b)).toBeGreaterThan(0)
+    // Pay out everything allowed: the bank is still at (or above) its minimum.
+    const money = g.character.money
+    payDividend(g, a, b, 1e15)
+    expect(g.character.money).toBeGreaterThan(money)
+    book = readBank(b)
+    expect(capitalRatio(b, book)).toBeGreaterThanOrEqual(minCapitalRatio(b.countryId, g.year) - 1e-6)
+    expect(payableCash(a, b)).toBe(0)
+    // A pending run or seizure freezes payouts, and the Money menu says why.
+    b.cash += 50_000_000
+    for (const patch of [{ run: { year: g.year - 1, wave: 1e6, severity: .2 } }, { seize: true }]) {
+      const x = readBank(b); Object.assign(x, patch); saveBank(b, x)
+      expect(payableCash(a, b)).toBe(0)
+      expect(bankPayoutBlock(b)).toMatch(/run|seize/)
+      const y = readBank(b); y.run = null; y.seize = false; saveBank(b, y)
+    }
+    expect(payableCash(a, b)).toBeGreaterThan(0)
+  })
+})
+
+describe('Banking 2.0 review: a monkey at the levers', () => {
+  it('80 years of random levers, payouts, rescues and popups through the real yearly loop stay finite, balanced and pure', () => {
+    for (const [country, year, industry] of [['us', 1925, 'bank'], ['de', 2001, 'onlineBank'], ['ar', 1970, 'bank']] as const) {
+      const r = seeded(`bank-monkey|${country}|${year}`)
+      const city = getCountry(country).cities[0]
+      const g = makeTestGame(3, { age: 25, money: 300_000_000, countryId: country, city, talents: ['Business'] })
+      g.year = year; g.lifeId = `bank-monkey-${country}`
+      const b0 = newBiz(g, industry, country, city, { cash: 30_000_000, founded: year, ownerSalary: 50_000 })
+      const a = createBusinessAsset(g, 'Monkey Bank', b0, 30_000_000)
+      g.assets.push(a)
+      for (let i = 0; i < 80; i++) {
+        const live = g.assets.find(x => x.id === a.id)
+        if (!live) break // sold, seized or bankrupt along the way is a legitimate ending
+        const b = bizOf(g, live), m = bankMarket(g, b.countryId, g.year)
+        for (let k = 0; k < 4; k++) {
+          const roll = r.next()
+          if (roll < .15) setBankRate(g, a.id, 'savings', m.savings + (r.next() - .5) * .06)
+          else if (roll < .3) setBankRate(g, a.id, 'loan', m.mortgage + (r.next() - .3) * .08)
+          else if (roll < .4) setBankAppetite(g, a.id, r.pick(['prime', 'balanced', 'highYield'] as const))
+          else if (roll < .55) switchBankProduct(g, a.id, r.pick([...PRODUCT_IDS]), r.next() < .7)
+          else if (roll < .6) runBankCampaign(g, a.id)
+          else if (roll < .7) payDividend(g, live, b, r.next() * 1e8)
+          else if (roll < .75) { const n = Math.round(r.next() * 2e7); g.character.money -= n; b.cash += n; b.invested += n }
+          else if (roll < .8 && b.debt > 0) { const n = Math.round(Math.min(b.debt, Math.max(0, b.cash) * r.next())); b.debt -= n; b.cash -= n }
+          else if (roll < .83) { b.ceo = b.ceo === 'owner' ? 'manager' : 'owner'; b.manager = b.ceo === 'manager' ? { firstName: 'M', lastName: 'K', gender: 'male', skill: Math.round(30 + r.next() * 70), salary: 150_000, since: g.year } : null }
+        }
+        if (i % 10 === 0) {
+          const before = JSON.stringify(g)
+          walk(g, bankNodes(g, live)); bankInfo(g, b); marketInfoLine(g, live)
+          expect(JSON.stringify(g)).toBe(before)
+        }
+        g.year += 1; g.character.age += 1; g.yearActions = {}
+        yearlyBusinessImpl(g)
+        for (let guard = 0; guard < 60 && g.queue.length; guard++) {
+          const q = g.queue.shift()!
+          if (q.kind === 'choice' && q.source === 'script' && q.scriptId) {
+            const keep = q.choices.filter(c => !['seize', 'bankrupt', 'sell', 'accept', 'counter'].includes(c.id))
+            const pool = keep.length ? keep : q.choices
+            runScript(g, q.scriptId, pool[Math.floor(r.next() * pool.length)].id, q.data, q)
+          } else if (q.kind === 'input') runScript(g, q.scriptId, q.defaultValue || String(q.min ?? 1), q.data, q)
+        }
+        g.queue = []; g.character.prison = null
+        expect(Number.isFinite(g.character.money)).toBe(true)
+        const now = g.assets.find(x => x.id === a.id)
+        if (!now) continue
+        const bb = readBiz(g, now), book = readBank(bb)
+        balanced(book); finiteDeep(book, `${country} y${i}`); finiteDeep(bb.last, `${country} y${i} stmt`)
+        expect(Number.isFinite(bb.cash) && Number.isFinite(bb.valuation)).toBe(true)
+      }
+    }
+  }, 240_000)
+})
+
+describe('Banking 2.0 review: texts', () => {
+  it('never reports a $0 fine, a $0 fire sale or a $0 central-bank debt', () => {
+    // A run the reserves can pay: no loans to sell, so no "about $0 lost".
+    const run = bank({ year: 2026 })
+    const book = readBank(run.b); book.run = { year: 2025, wave: Math.round(book.reserves * .5), severity: .1 }; book.lastYear = 2025; book.dramaYear = -1; saveBank(run.b, book)
+    bankAfterYear(run.g, run.a, run.b, false)
+    const popup = run.g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.run')!
+    const labels = popup.kind === 'choice' ? popup.choices.map(c => c.label) : []
+    expect(labels.join(' ')).not.toMatch(/\$0\b/)
+    run.g.queue = []
+    resolveRun(run.g, run.a, run.b, 'sell', false)
+    const texts = [...run.g.log.flatMap(y => y.entries.map(e => e.text)), ...run.g.queue.flatMap(m => m.kind === 'notice' ? [m.text] : [])]
+    expect(texts.join(' ')).toMatch(/reserves/)
+    expect(texts.join(' ')).not.toMatch(/\$0\b/)
+    // The central-bank debt repaid by hand: the menu stops saying the bank still owes it.
+    const cb = bank({ year: 2009 })
+    const cbBook = readBank(cb.b); cbBook.run = { year: 2008, wave: Math.round(cbBook.deposits * .3), severity: .2 }; saveBank(cb.b, cbBook)
+    resolveRun(cb.g, cb.a, cb.b, 'cb', false)
+    cb.b.cash -= cb.b.debt; cb.b.debt = 0
+    const lines: string[] = []
+    for (const n of bankNodes(cb.g, cb.a)) if (n.type === 'info') lines.push(typeof n.text === 'function' ? n.text(cb.g) : n.text)
+    expect(lines.join(' ')).not.toMatch(/owes the central bank \$0/)
+    // A wiped-out bank at its second strike: the regulator's fine is capped at 25% of nothing.
+    const thin = bank({ cash: 1_000_000 })
+    const tb = readBank(thin.b)
+    Object.assign(tb, { deposits: 700_000_000, loans: { business: 0, mortgage: 600_000_000, auto: 0, cards: 0 }, reserves: 60_000_000, bonds: 40_000_000, badNet: 0, strikes: 1 })
+    tb.products.mortgage = 2020; saveBank(thin.b, tb)
+    thin.b.cash = -60_000_000
+    simulateBankYear(thin.g, thin.b, thin.g.year, 0)
+    expect(readBank(thin.b).last!.fine).toBe(0)
+    expect(readBank(thin.b).last!.regulator).not.toMatch(/\$0\b/)
+  })
+})
+
+describe('Banking 2.0 review: founding capital', () => {
+  /** An owner-run bank with `cash` of starting capital, played `years` years; true if it is still open and solvent. */
+  function survives(country: string, year: number, industry: 'bank' | 'onlineBank', cash: number, seed: number, years: number): boolean {
+    const city = getCountry(country).cities[0]
+    const g = makeTestGame(7, { age: 30, money: 1e9, countryId: country, city })
+    g.year = year; g.lifeId = `founding-${country}-${year}-${industry}-${seed}`
+    const b0 = newBiz(g, industry, country, city, { cash, founded: year, ownerSalary: 0 })
+    const a = createBusinessAsset(g, 'Founders Bank', b0, cash)
+    g.assets.push(a)
+    for (let i = 0; i < years; i++) {
+      g.year += 1; g.character.age += 1; g.yearActions = {}
+      const live = g.assets.find(x => x.id === a.id)
+      if (!live) return false
+      const b = bizOf(g, live)
+      simulateBankYear(g, b, g.year - 1, 0)
+      b.yearCosts = 0; b.yearIncome = 0
+      if (b.cash < 0) return false
+      queueBankReport(g, live, b)
+      for (let guard = 0; guard < 8 && g.queue.length; guard++) {
+        const m = g.queue.shift()!
+        if (m.kind !== 'choice' || m.source !== 'script' || !m.scriptId) continue
+        const pick = m.scriptId === 'bank.regulator' ? 'seize' : m.scriptId === 'bank.run' ? 'cb' : m.scriptId === 'bank.report' ? m.choices[0].id : m.choices[m.choices.length - 1].id
+        runScript(g, m.scriptId, pick, m.data, m)
+      }
+      g.queue = []
+    }
+    return g.assets.some(x => x.id === a.id)
+  }
+
+  it('advises the capital the model says a bank needs, warns plainly below it, and the advice holds up in played years', () => {
+    const cases = [['us', 2026, 'bank'], ['us', 2026, 'onlineBank'], ['us', 1950, 'bank'], ['de', 1975, 'bank'], ['in', 2010, 'onlineBank'], ['ng', 2015, 'bank']] as const
+    for (const [country, year, industry] of cases) {
+      const city = getCountry(country).cities[0]
+      const g = makeTestGame(7, { age: 30, money: 1e9, countryId: country, city })
+      g.year = year
+      const c = startupCost(industry, country, city), plan = { industry, countryId: country, city } as unknown as Json
+      const before = JSON.stringify(g), rng = g.rng
+      const advised = bankAdvisedCash(g, industry, country, city)!
+      const low = startupCapitalPreview(g, plan, c.capital), good = startupCapitalPreview(g, plan, c.capital * .8 + advised)
+      expect([JSON.stringify(g), g.rng]).toEqual([before, rng]) // previews are pure
+      expect(advised).toBeGreaterThan(c.capital * .2)
+      expect(low, `${country} ${year} ${industry}`).toMatch(/seize|likely to fail|could sink it/)
+      expect(low).toContain(`Aim for ${fmtMoney(advised)}+`)
+      expect(good).not.toMatch(/seize|fail|sink|Aim for/)
+      for (const t of [low, good]) expect(t.length).toBeLessThanOrEqual(220)
+      // Played with the real dice: the advised bank lasts; the minimum one doesn't.
+      let ok = 0, minOk = 0
+      for (let seed = 0; seed < 3; seed++) {
+        if (survives(country, year, industry, advised, seed, 15)) ok++
+        if (survives(country, year, industry, c.capital * .2, seed, 15)) minOk++
+      }
+      expect(ok, `${country} ${year} ${industry} advised`).toBe(3)
+      expect(minOk, `${country} ${year} ${industry} minimum`).toBe(0)
+    }
+  }, 240_000)
+
+  it('starts the founding slider at the advised capital, which a $15M founder can pay from savings', () => {
+    const g = createNewLife({ seed: 9, year: 2026, countryId: 'us' })
+    g.queue = []
+    g.character.age = 35; g.character.money = 15_000_000
+    const start = businessCareerMenu.children(g).find(n => n.id === 'biz.start')
+    if (!start || start.type !== 'menu') throw new Error('no start menu')
+    const row = start.children(g).find(n => n.id === 'biz.start.bank')
+    if (!row || row.type !== 'action') throw new Error('no bank row')
+    row.run(g)
+    let slider: (ModalItem & { kind: 'input' }) | null = null
+    for (let guard = 0; guard < 10 && g.queue.length && !slider; guard++) {
+      const m = g.queue.shift()!
+      if (m.kind === 'input' && m.title === 'Choose Starting Capital') slider = m
+      else if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Test Bank', m.data, m)
+      else if (m.kind === 'choice' && m.source === 'script') runScript(g, m.scriptId!, m.choices[0].id, m.data, m)
+    }
+    if (!slider) throw new Error('no capital slider')
+    const p = slider.data as Record<string, Json>, city = String(p.city), c = startupCost('bank', 'us', city)
+    const advised = bankAdvisedCash(g, 'bank', 'us', city)!
+    expect(Number(slider.defaultValue)).toBe(Math.round(c.capital * .8 + advised))
+    expect(Number(slider.defaultValue) + c.fee + c.permits).toBeLessThanOrEqual(15_000_000)
+    expect(startupCapitalPreview(g, slider.data, Number(slider.defaultValue))).not.toMatch(/seize|fail|sink|Aim for/)
+  })
+})
+
+describe('Banking 2.0 review: the market line', () => {
+  it('banks and investment firms show their real market, never "$0 a year", and offer no token-price rival buyouts', () => {
+    const { g, a, b } = bank()
+    simulateBankYear(g, b, g.year - 1, 0)
+    const line = marketInfoLine(g, a)
+    expect(line).not.toMatch(/\$0/)
+    expect(line).toMatch(/banks in United States/)
+    expect(line.length).toBeLessThanOrEqual(140)
+    for (const r of marketViewOf(g, b).rivals) expect(acquisitionQuote(g, b, r.id)).toBeNull()
+    const fg = makeTestGame(3, { age: 40, money: 1e8, countryId: 'gb', city: getCountry('gb').cities[0] })
+    fg.year = 2020
+    const fb = newBiz(fg, 'investmentFirm', 'gb', getCountry('gb').cities[0], { cash: 5_000_000 })
+    initFund(fg, fb, 'asset')
+    const fa = createBusinessAsset(fg, 'Test Capital', fb, fb.cash)
+    fg.assets.push(fa)
+    const fline = marketInfoLine(fg, fa)
+    expect(fline).not.toMatch(/\$0 a year/)
+    expect(fline).toMatch(/invested in United Kingdom/)
+    expect(fline.length).toBeLessThanOrEqual(140)
+  })
 })

@@ -17,6 +17,8 @@ import { ceoPayNorm } from './career'
 import { readTech } from './deeptech-state'
 import { equipmentValue, localEcon } from './economy'
 import { earmarkedCash } from './gamestudio'
+import { bankPayoutRoom } from './bank-model'
+import { isBankIndustry } from './bank-state'
 import { industryDef } from './industries'
 import { ABOVE_MARKET, rankDef } from './nepo-roles'
 import { runsIt, totalOutlets, type BizState } from './state'
@@ -98,7 +100,8 @@ export interface VoteResult {
  * (paying out borrowed money and then going bankrupt would keep the loan).
  */
 export function payableCash(a: Asset, b: BizState): number {
-  const v = b.cash - earmarkedCash(a) - b.debt
+  // A bank also keeps the capital its regulator requires (business/bank-model.ts).
+  const v = Math.min(b.cash - earmarkedCash(a) - b.debt, isBankIndustry(b.industry) ? bankPayoutRoom(b) : Infinity)
   return Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0
 }
 

@@ -42,6 +42,7 @@ import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
+import { bankPayoutBlock } from './bank'
 import { rescueNodes, rescuePosition } from './rescue'
 import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
@@ -1312,7 +1313,7 @@ function payable(a: Asset, b: BizState): number {
 function payoutBlocked(a: Asset, b: BizState): string | null {
   if (b.cash <= 0) return 'The company has no spare cash.'
   if (b.cash - earmarkedCash(a) <= 0) return 'Its cash is advances and pledges for games still in development. That money funds the games; it is not profit yet.'
-  if (payable(a, b) <= 0) return `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
+  if (payable(a, b) <= 0) return bankPayoutBlock(b) ?? `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
   return null
 }
 

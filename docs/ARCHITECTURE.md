@@ -586,6 +586,14 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   rules; groups take the strictest member's); the board still votes.
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
   `COMPARE_SHOWN` best foreign markets and a one-line summary.
+- **Banks' money rules** (`business/bank*.ts`): deposits and loans are client money; equity is
+  `b.cash − b.debt + advance` (the run-time advance funded by the central-bank debt), and
+  `valuationOf`/`closeBusiness` count it (`bankAdvanceOf`). `payableCash` stops at the capital the
+  regulator requires (`bankPayoutRoom`), so dividends, group sweeps and buybacks can't strip it.
+  `newBiz` opens a bank's books at once (`openBank`). Rescues (bailout, "too big to fail") take at
+  least the fair stake plus a quarter. Bank statements opt out of perfect-foresight income. The
+  market line shows rank and share of deposits (funds: of money invested); finance firms get no
+  rival-buyout quotes. Founding advice comes from `startOutlook` (the year's model without dice).
 
 ## Being rich, felt (events/wealth*.ts)
 

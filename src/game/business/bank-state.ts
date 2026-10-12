@@ -220,6 +220,15 @@ function fresh(b: Pick<BizState, 'countryId' | 'founded' | 'cash' | 'debt' | 'ou
   }
 }
 
+/**
+ * Open a new bank's books from its starting capital and branches (founding, NPC and group banks).
+ * Until a book is saved, readBank sizes a fresh one from the live cash and branches, so capital or
+ * branches added before the first year-end would conjure a ready-made deposit base.
+ */
+export function openBank(b: BizState): void {
+  if (isBankIndustry(b.industry)) saveBank(b, fresh(b))
+}
+
 /** Minimum capital ratio regulators demand (country/era approximation, not a legal schedule). */
 export function minCapitalRatio(countryId: string, year: number): number {
   const base = year < 1988 ? .06 : year < 2010 ? .08 : .105
@@ -309,8 +318,11 @@ export function readBank(b: Pick<BizState, 'industry' | 'countryId' | 'founded' 
   }
   // Client books always balance: a damaged save rebalances through reserves (never b.cash).
   const other = loanTotal(book) + book.badNet + book.bonds
-  const owed = book.deposits + book.advance
-  if (Math.abs(other + book.reserves - owed) > 1) {
+  if (Math.abs(other + book.reserves - book.deposits - book.advance) > 1) {
+    // The shareholders' advance stands only as far as real assets back it: a damaged save's advance
+    // would otherwise come back to them as cash.
+    book.advance = clampN(other + book.reserves - book.deposits, 0, book.advance)
+    const owed = book.deposits + book.advance
     if (owed >= other) book.reserves = owed - other
     else {
       const k = other > 0 ? owed / other : 0
@@ -319,6 +331,17 @@ export function readBank(b: Pick<BizState, 'industry' | 'countryId' | 'founded' 
     }
   }
   return book
+}
+
+/**
+ * Shareholders' money lent into the client book during a run (a cheap read for valuations). The
+ * central-bank debt that funded it is in b.debt, so equity is b.cash − b.debt + this.
+ */
+export function bankAdvanceOf(b: Pick<BizState, 'industry' | 'countryId' | 'founded' | 'cash' | 'debt' | 'outlets' | 'financeFirm' | 'last'>): number {
+  if (!isBankIndustry(b.industry)) return 0
+  const x = rec(b.financeFirm)
+  // Almost always zero; otherwise the full read, which keeps only an advance real assets back.
+  return x && x.kind === 'bank' && finite(x.advance, 0) > 0 ? readBank(b).advance : 0
 }
 
 export function saveBank(b: BizState, book: BankBook): void {

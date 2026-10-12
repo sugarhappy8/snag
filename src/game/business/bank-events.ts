@@ -13,6 +13,7 @@ import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { managerName } from './career'
 import { inGroup } from './conglomerate-state'
+import { valuationOf } from './economy'
 import { declareBankruptcy, sellBusiness } from './exit'
 import { manageBlock } from './gate'
 import { APPETITES, LEND_LINES, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, readBank, saveBank, type Appetite, type BankBook } from './bank-state'
@@ -140,15 +141,34 @@ export function reassureOdds(g: GameState, b: BizState, book: BankBook): number 
 function penaltyRate(m: BankMarket): number {
   return Math.max(.05, m.policy + .03)
 }
-/** A big bank in a crisis can ask the state for help. */
+/** A big bank in a crisis can ask the state for help, unless the help would have to buy nearly all of it. */
 export function bailoutEligible(g: GameState, b: BizState, book: BankBook): boolean {
   const m = bankMarket(g, b.countryId, g.year), rank = bankRank(b.countryId, g.year, book.deposits)
-  return m.crisis >= .4 && (rank.rank <= 10 || rank.share >= .015) && !inGroup(g, b) && b.share > .2
+  return m.crisis >= .4 && (rank.rank <= 10 || rank.share >= .015) && !inGroup(g, b) && b.share > .2 && bailoutTerms(g, b, book).fair <= BAILOUT_MAX_STAKE
 }
-function bailoutTerms(g: GameState, b: BizState, book: BankBook): { inject: number; stake: number } {
+const BAILOUT_MAX_STAKE = .9
+/**
+ * What the state puts in and the stake it takes. `fair` is the stake the money buys at the bank's
+ * value; the state takes a quarter more (at least 10%), so a rescue never makes the owner richer.
+ * A bank worth too little for that (fair above 90%) gets no rescue: its shareholders are wiped out.
+ */
+export function bailoutTerms(g: GameState, b: BizState, book: BankBook): { inject: number; stake: number; fair: number } {
   const min = minCapitalRatio(b.countryId, g.year), capital = bankCapital(b, book), rwa = riskWeighted(book, capital)
   const inject = Math.round(Math.max(0, (min + .03) * rwa - capital) + .02 * rwa)
-  return { inject, stake: clampN(inject / (Math.max(1, b.valuation) + inject), .1, .8) }
+  return { inject, ...rescueStake(b, inject, 0) }
+}
+/** The stake `inject` buys: fair at the lower of the booked and the live value, plus a quarter. */
+function rescueStake(b: BizState, inject: number, offered: number): { stake: number; fair: number } {
+  const value = Math.max(0, Math.min(b.valuation, valuationOf(b)))
+  const fair = inject > 0 ? inject / Math.max(1, value + inject) : 0
+  return { stake: clampN(Math.max(offered, fair * 1.25), .1, BAILOUT_MAX_STAKE), fair }
+}
+
+/** Where the owner faces the queue: on TV, on the radio, or (before either) on the bank's steps. */
+function stageOf(countryId: string, year: number): { go: string; did: string; look: string } {
+  if (techHere(countryId, 'tv', year)) return { go: 'Go on TV', did: 'went on TV', look: 'looked into the camera' }
+  if (techHere(countryId, 'radio', year)) return { go: 'Go on the radio', did: 'went on the radio', look: 'spoke calmly into the microphone' }
+  return { go: 'Stand on the bank steps', did: 'stood on the bank steps', look: 'looked the crowd in the eye' }
 }
 
 function queueRun(g: GameState, a: Asset, b: BizState): void {
@@ -157,10 +177,9 @@ function queueRun(g: GameState, a: Asset, b: BizState): void {
   const odds = reassureOdds(g, b, book)
   const saleLoss = payWithdrawals(structuredClone(book), wave, m, true)
   const cbCost = wave * penaltyRate(m) * 1.5
-  const stage = techHere(b.countryId, 'tv', g.year) ? 'Go on TV' : techHere(b.countryId, 'radio', g.year) ? 'Go on the radio' : 'Stand on the bank steps'
-  const choices: ChoiceOption[] = [{ id: 'tv', label: `${stage} and promise every saver is safe`, emoji: '🎤' }]
+  const choices: ChoiceOption[] = [{ id: 'tv', label: `${stageOf(b.countryId, g.year).go} and promise every saver is safe`, emoji: '🎤' }]
   if (m.lender) choices.push({ id: 'cb', label: `Borrow ${money(wave)} from the central bank at ${pct(penaltyRate(m), 1)}`, emoji: '💵' })
-  choices.push({ id: 'sell', label: `Sell loans at a discount (about ${money(saleLoss)} lost)`, emoji: '🏷️' })
+  choices.push({ id: 'sell', label: saleLoss >= 1_000 ? `Sell loans at a discount (about ${money(saleLoss)} lost)` : 'Pay them out of the reserves (nothing to sell)', emoji: '🏷️' })
   if (bailoutEligible(g, b, book)) choices.push({ id: 'bailout', label: `Ask the government for a bailout (it takes ${pct(bailoutTerms(g, b, book).stake)} of the bank)`, emoji: '🙏' })
   if (hasTalent(g, 'Business')) {
     const cost: Record<string, number> = { tv: (1 - odds) * saleLoss, cb: m.lender ? cbCost : Infinity, sell: saleLoss }
@@ -201,18 +220,19 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
   const m = bankMarket(g, b.countryId, g.year), wave = Math.min(book.run.wave, book.deposits)
   book.run = null
   if (choice === 'tv' && !auto) {
+    const stage = stageOf(b.countryId, g.year)
     if (chance(g, reassureOdds(g, b, book))) {
       adjustTrust(book, 10); addHidden(g, 'fame', 2)
       saveBank(b, book)
-      log(g, `I went on TV and talked down a run on ${a.name}.`, 'good')
-      notice(g, 'Panic Over', `You ${techHere(b.countryId, 'tv', g.year) ? 'looked into the camera' : 'looked the crowd in the eye'} and promised every saver was safe. People believed you. The queue melted away by lunchtime.`, { emoji: '🎤', tone: 'good' })
+      log(g, `I ${stage.did} and talked down a run on ${a.name}.`, 'good')
+      notice(g, 'Panic Over', `You ${stage.look} and promised every saver was safe. People believed you. The queue melted away by lunchtime.`, { emoji: '🎤', tone: 'good' })
       return
     }
     const loss = fireSale(b, book, wave, m)
     adjustTrust(book, -8)
     saveBank(b, book)
-    log(g, `My TV appearance didn't stop the run on ${a.name}.`, 'bad')
-    notice(g, 'It Got Worse', `${techHere(b.countryId, 'internet', g.year) ? 'Your nervous blinking went viral.' : 'Your nervous stammer made every evening paper.'} Savers pulled ${money(wave)} and ${a.name} sold loans at a loss of ${money(loss)} to pay them.`, { emoji: '📉', tone: 'bad' })
+    log(g, `I ${stage.did}, but it didn't stop the run on ${a.name}.`, 'bad')
+    notice(g, 'It Got Worse', `${techHere(b.countryId, 'internet', g.year) ? 'Your nervous blinking went viral.' : 'Your nervous stammer made every evening paper.'} Savers pulled ${money(wave)}${loss > 0 ? ` and ${a.name} sold loans at a loss of ${money(loss)} to pay them` : ''}.`, { emoji: '📉', tone: 'bad' })
     return
   }
   if (choice === 'bailout' && !auto && bailoutEligible(g, b, book)) {
@@ -240,8 +260,9 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
   const loss = fireSale(b, book, wave, m)
   adjustTrust(book, 2)
   saveBank(b, book)
-  log(g, `${a.name} sold loans at a ${money(loss)} loss to pay off panicked savers.`, 'bad')
-  if (!auto) notice(g, 'Fire Sale', `${a.name} paid every saver who asked (${money(wave)}) and lost ${money(loss)} selling loans in a hurry.`, { emoji: '🏷️', tone: 'bad' })
+  if (loss > 0) log(g, `${a.name} sold loans at a ${money(loss)} loss to pay off panicked savers.`, 'bad')
+  else log(g, `${a.name} paid off panicked savers out of its reserves.`, 'neutral')
+  if (!auto) notice(g, loss > 0 ? 'Fire Sale' : 'Paid Out', `${a.name} paid every saver who asked (${money(wave)})${loss > 0 ? ` and lost ${money(loss)} selling loans in a hurry` : ' straight out of its reserves'}.`, { emoji: '🏷️', tone: loss > 0 ? 'bad' : 'neutral' })
 }
 
 function autoRun(g: GameState, a: Asset, b: BizState): void {
@@ -255,13 +276,22 @@ export function seizeNeed(g: GameState, b: BizState, book: BankBook): number {
   return Math.max(0, Math.round((min + .02) * riskWeighted(book, capital) - capital))
 }
 
-function queueSeize(g: GameState, a: Asset, b: BizState): void {
+/** What outside investors value the bank at: the lower of its booked and its live value. */
+function investorValue(b: BizState): number {
+  return Math.max(0, Math.min(b.valuation, valuationOf(b)))
+}
+function investorsWilling(b: BizState, need: number): boolean {
+  return investorValue(b) > need * .5 && b.share > .2
+}
+
+function queueSeize(g: GameState, a: Asset, b: BizState, again = false): void {
   const book = readBank(b), need = seizeNeed(g, b, book), min = minCapitalRatio(b.countryId, g.year)
   const choices: ChoiceOption[] = []
   if (g.character.money >= need) choices.push({ id: 'inject', label: `Put in ${money(need)} of my own money`, emoji: '💰' })
-  if (b.valuation > need * .5 && b.share > .2) choices.push({ id: 'investors', label: `Sell a stake to investors for ${money(Math.round(need * 1.1))}`, emoji: '🤝' })
+  if (investorsWilling(b, need)) choices.push({ id: 'investors', label: `Sell a stake to investors for ${money(Math.round(need * 1.1))}`, emoji: '🤝' })
   choices.push({ id: 'seize', label: 'Let the regulators take it', emoji: '🏛️' })
-  scriptChoice(g, SEIZE, 'The Regulators Are Here', `${a.name}'s capital is ${pct(Math.max(0, capitalRatio(b, book)), 1)} against a ${pct(min, 1)} minimum. Regulators will seize the bank unless ${money(need)} of fresh capital arrives.`, choices, { emoji: '⚖️', data: { assetId: a.id } })
+  const intro = again ? 'The examiners counted again: the hole has grown. ' : ''
+  scriptChoice(g, SEIZE, 'The Regulators Are Here', `${intro}${a.name}'s capital is ${pct(Math.max(0, capitalRatio(b, book)), 1)} against a ${pct(min, 1)} minimum. Regulators will seize the bank unless ${money(need)} of fresh capital arrives.`, choices, { emoji: '⚖️', data: { assetId: a.id } })
 }
 
 const SEIZE = defineScript('bank.regulator', (g, choice, data) => {
@@ -291,8 +321,8 @@ export function resolveSeize(g: GameState, a: Asset, b: BizState, choice: string
     notice(g, 'Recapitalized', `${money(need)} of your money went into ${a.name}. The examiners packed up their boxes.`, { emoji: '💰' })
     return
   }
-  if (choice === 'investors' && b.valuation > need * .5 && b.share > .2) {
-    const inject = Math.round(need * 1.1), stake = clampN(inject / (b.valuation + inject), .05, .75)
+  if (choice === 'investors' && investorsWilling(b, need)) {
+    const inject = Math.round(need * 1.1), stake = clampN(inject / (investorValue(b) + inject), .05, .75)
     b.share = clampN(b.share * (1 - stake), .01, 1)
     diluteBusinessEquity(b, 1 - stake)
     b.cash += inject
@@ -301,13 +331,16 @@ export function resolveSeize(g: GameState, a: Asset, b: BizState, choice: string
     notice(g, 'Fresh Capital', `Investors put ${money(inject)} into ${a.name} for ${pct(stake)} of it. You now own ${pct(b.share)}.`, { emoji: '🤝' })
     return
   }
+  // The hole grew since the popup was shown (a run resolved first can cost a fire sale): the owner
+  // who chose to rescue the bank gets the new numbers rather than a surprise seizure.
+  if ((choice === 'inject' || choice === 'investors') && ownerReachable(g, a)) { queueSeize(g, a, b, true); return }
   count(g, 'banksSeized')
   declareBankruptcy(g, a, b, `Regulators seized ${a.name} and moved its savers to a healthier bank.`)
 }
 
 function autoSeize(g: GameState, a: Asset, b: BizState): void {
   const book = readBank(b)
-  resolveSeize(g, a, b, b.valuation > seizeNeed(g, b, book) * .5 && b.share > .2 ? 'investors' : 'seize')
+  resolveSeize(g, a, b, investorsWilling(b, seizeNeed(g, b, book)) ? 'investors' : 'seize')
 }
 
 // --- Dirty money catches up
@@ -573,7 +606,7 @@ const EVENTS: BankEvent[] = [
   {
     id: 'tbtf',
     weight: (x) => (x.m.crisis >= .5 && x.reachable && !inGroup(x.g, x.b) && x.b.share > .2 && bankRank(x.b.countryId, x.g.year, x.book.deposits).rank <= 10
-      && capitalRatio(x.b, x.book) < minCapitalRatio(x.b.countryId, x.g.year) + .03 ? 4 : 0),
+      && capitalRatio(x.b, x.book) < minCapitalRatio(x.b.countryId, x.g.year) + .03 && bailoutTerms(x.g, x.b, x.book).fair <= BAILOUT_MAX_STAKE ? 4 : 0),
     present: (x) => {
       const t = bailoutTerms(x.g, x.b, x.book)
       const choices = hintBest(x.g, [
@@ -584,7 +617,10 @@ const EVENTS: BankEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice !== 'accept') { adjustTrust(x.book, -4); log(x.g, `I turned down a government rescue for ${x.a.name}.`, 'neutral'); return }
-      const inject = n(x.d, 'inject'), stake = clampN(n(x.d, 'stake'), .05, .8)
+      // The offer holds only while it is still at least fair to the state (the popup's numbers may be stale).
+      const inject = Math.max(0, n(x.d, 'inject')), terms = rescueStake(x.b, inject, n(x.d, 'stake'))
+      if (inject <= 0 || terms.fair > BAILOUT_MAX_STAKE) { notice(x.g, 'Offer Withdrawn', `The minister ran the numbers again and hung up. ${x.a.name} is on its own.`, { emoji: '🏛️', tone: 'bad' }); return }
+      const stake = terms.stake
       x.b.share = clampN(x.b.share * (1 - stake), .01, 1)
       diluteBusinessEquity(x.b, 1 - stake)
       x.b.cash += inject

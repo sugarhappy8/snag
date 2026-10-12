@@ -53,7 +53,8 @@ additional strategic trading income is booked once, displayed separately, and ta
 Costs and losses are not erased; deposits and client assets are not appropriated. This
 protects annual earnings, not a public share price, an owner's personal investments,
 or the resale value of capital equipment. It applies in the normal yearly business
-settlement across ordinary, financial, game-studio and deep-tech companies. It does not
+settlement across ordinary, game-studio and deep-tech companies. Banks and investment
+firms (v2.2) earn only what their books earn: their statements opt out. It does not
 apply to a 100-skilled player or replace the need to retain a hired CEO.
 An active 100-rated conglomerate CEO also provides this protection to supervised
 divisions, including existing family appointments below that rating.

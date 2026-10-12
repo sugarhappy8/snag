@@ -8,12 +8,14 @@
 import { seeded } from '../assets'
 import { outcomeTag } from '../timeMachine'
 import type { Asset, GameState, MenuNode } from '../types'
+import { getCountry } from '../world'
 import type { YearResult } from './economy'
-import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
-import { bankCapital, bankLeaderSkill, bankMarket, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, projectYear, riskWeighted, setupCost } from './bank-model'
+import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, nationalDeposits, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
+import { bankCapital, bankLeaderSkill, bankMarket, bankPayoutRoom, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, profitWords, projectYear, riskWeighted, setupCost, techHere, type StartOutlook } from './bank-model'
 import { bankAfterYear, queueBankYearReport } from './bank-events'
 import { bankMenuNodes } from './bank-menu'
-import { startupCost } from './economy'
+import { shareText } from './competition'
+import { niceAmount, startupCost } from './economy'
 import { totalOutlets, type BizState, type Statement } from './state'
 import { allocatedCorporateTax } from './tax'
 import { clampN, money, pct } from './util'
@@ -24,7 +26,9 @@ export function isBank(b: { industry: string }): boolean {
 
 export function bankEraBlock(_g: GameState, industry: string, countryId: string, year: number): string | null {
   if (industry !== 'onlineBank') return null
-  return onlineBankingOpen(countryId, year) ? null : 'Online banking needs local internet access and online-banking technology. Start a branch bank first, or wait for the digital era.'
+  if (onlineBankingOpen(countryId, year)) return null
+  // Before the internet reaches this country, the reason itself would be an anachronism.
+  return techHere(countryId, 'internet', year) ? 'Hardly anyone here banks online yet. Start a branch bank, or wait a few years.' : 'Nobody has invented this business yet.'
 }
 
 /** Regulators' fine for a bank that stays below the minimum. */
@@ -56,6 +60,8 @@ export function simulateBankYear(g: GameState, b: BizState, year: number, ownerD
       revenue: r(p.revenue), salesTax: 0, netRevenue: r(p.revenue), cogs: r(p.cogs + shrinkLoss), wages: r(p.wages), keyStaff: r(p.keyStaff),
       rent: r(p.rent), marketing: r(p.marketing), interest: r(p.interestOnDebt), upkeep: r(p.upkeep), other: r(b.yearCosts + fine), otherIncome: r(b.yearIncome),
       ownerPay: 0, pbt: 0, corpTax: 0, net: 0, cashErosion: 0, cycle: Math.round(m.cycle * 100) / 100, openFraction: p.open, employees: p.staff,
+      // Banks earn what the book earns: no "perfect foresight" trading income, even for a 100-rated CEO.
+      strategicIncome: 0,
     }
     const preSalary = stmt.netRevenue - stmt.cogs - stmt.wages - stmt.keyStaff - stmt.rent - stmt.marketing - stmt.interest - stmt.upkeep - stmt.other + stmt.otherIncome
     stmt.ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + preSalary + booked)))
@@ -92,7 +98,8 @@ export function simulateBankYear(g: GameState, b: BizState, year: number, ownerD
       stmt = settle()
       capital = capitalAfter(stmt); rwa = riskWeighted(book, capital)
       ratio = rwa >= 1 ? capital / rwa : capital > 0 ? 9.99 : 0
-      regulator = `Regulators forced ${money(shrink)} of loan sales and fined the bank ${money(fine)}.`
+      const acts = [shrink >= 1 ? `forced ${money(shrink)} of loan sales` : '', fine > 0 ? `fined the bank ${money(fine)}` : ''].filter(Boolean)
+      regulator = acts.length ? `Regulators ${acts.join(' and ')}.` : 'Regulators warned the bank again: capital is still below the minimum.'
     } else regulator = 'Regulators warned the bank: capital is below the minimum. Raise capital or lend less.'
     book.seize = ratio < min * .5 || capital <= 0
     if (book.seize) regulator += ' They threaten to seize it unless shareholders put in fresh capital.'
@@ -245,6 +252,12 @@ export function bankInfo(g: GameState, b: BizState): string {
   return `Deposits ${money(book.deposits)} · loans ${money(loanTotal(book))} · capital ${ratioText(ratio)} (min ${pct(min, 1)}) · trust ${Math.round(book.trust)} · bad loans ${pct(bad, 1)}`
 }
 
+/** The company screen's market line: where the bank ranks among its country's banks (pure). */
+export function bankMarketLine(g: GameState, b: BizState): string {
+  const book = readBank(b), r = bankRank(b.countryId, g.year, book.deposits), pool = nationalDeposits(b.countryId, g.year)
+  return `#${r.rank.toLocaleString()} of ~${r.of.toLocaleString()} banks in ${getCountry(b.countryId).name} · ${shareText(r.share)} of ~${money(pool)} of deposits`
+}
+
 export function ratioText(ratio: number): string {
   return ratio >= 9.99 ? 'no loans' : pct(ratio, 1)
 }
@@ -254,6 +267,15 @@ export function bankCapitalNeed(g: GameState, b: BizState, pool: number, effecti
   const book = readBank(b), min = minCapitalRatio(b.countryId, g.year), cushion = APPETITES[book.appetite].cushion
   const rwa = riskWeighted(book, Math.max(0, b.cash - b.debt)) + book.deposits * .1 * .8
   return clampN(rwa * (min + cushion + .02) * clampN(effectiveness, 0, 1), 0, Math.max(0, pool))
+}
+
+/** Why the bank can't pay its owners right now when its regulator is the reason (pure), or null. */
+export function bankPayoutBlock(b: BizState): string | null {
+  if (!isBank(b) || bankPayoutRoom(b) > 0) return null
+  const book = readBank(b)
+  if (book.seize) return 'Regulators are threatening to seize the bank: no payouts until fresh capital arrives.'
+  if (book.run) return 'Savers are queuing at the doors: no payouts during a run.'
+  return `Regulators won't let the bank pay out the capital it needs (at least ${pct(minCapitalRatio(b.countryId, book.lastYear + 1), 1)} of its loans).`
 }
 
 /** One-line state readers other modules may show (kept small on purpose). */
@@ -267,17 +289,41 @@ export function bankSettledYear(b: BizState): number {
   return readBank(b).lastYear
 }
 
-/** Starting cash (beyond the first branch's fit-out) that lets a new bank lend enough to cover its branch. */
+/** A rough scale for a new bank's starting cash (beyond the first branch's fit-out): a branch's deposits × 4%. */
 export function bankStartingCash(countryId: string, year: number): number {
   return Math.round(perBranch(countryId, year) * .04 / 100_000) * 100_000
 }
 
-/** The founding screen's capital preview for banks (pure). */
-export function bankCapitalPreview(industry: string, countryId: string, year: number, cash: number): string {
-  const min = minCapitalRatio(countryId, year), want = bankStartingCash(countryId, year)
-  const lend = Math.max(0, cash) / (min + APPETITES.balanced.cushion)
-  const verdict = cash >= want ? 'Enough to grow into a profitable bank.' : cash >= want * .5 ? 'Workable, but expect thin profits at first.' : 'Too thin: the branch will struggle to cover its costs.'
-  return `Starting capital ${money(cash)} lets ${industry === 'onlineBank' ? 'the bank' : 'one branch'} lend about ${money(lend)} at the ${pct(min, 1)} capital minimum. Aim for ${money(want)}+. ${verdict}`
+/** Multiples of bankStartingCash the founding advice tries, smallest first. */
+const ADVICE_GRID = [.3, .45, .6, .8, 1, 1.3, 1.7, 2.2, 3]
+/** Headroom over the smallest expected-viable bank: real years bring crises, runs and bad luck. */
+const ADVICE_MARGIN = 1.25
+/**
+ * The starting cash to advise a founder (pure): the smallest amount whose expected first years
+ * (startOutlook) stay above the regulator's minimum and turn a profit by year three, plus headroom.
+ * Null when no amount does: a bank here can't cover its costs yet. `outlookOf` builds the bank.
+ */
+export function bankAdvice(countryId: string, year: number, outlookOf: (cash: number) => StartOutlook): number | null {
+  const base = bankStartingCash(countryId, year)
+  for (const k of ADVICE_GRID) {
+    const o = outlookOf(base * k)
+    if (o.failsIn === null && (o.profits[2] ?? 0) > 0) return niceAmount(base * k * ADVICE_MARGIN)
+  }
+  return null
+}
+
+/** The founding screen's capital preview for banks (pure): what the model expects, said plainly. */
+export function bankCapitalPreview(cash: number, outlook: StartOutlook, advised: number | null): string {
+  const first = outlook.profits[0] ?? 0, third = outlook.profits[2] ?? first
+  const turn = outlook.profits.findIndex(p => p > 0), year1 = `${profitWords(first, money)} in year one`
+  const n = outlook.failsIn ?? 0
+  const verdict = advised === null ? `${year1}. Even well funded, a bank here can’t cover its costs yet.`
+    : outlook.failsIn !== null ? `${year1}; capital runs out ${n <= 1 ? 'within a year' : `in about ${n} years`} and regulators would seize it.`
+    : third <= 0 || turn < 0 ? `${year1}, still losing in year three: likely to fail.`
+    : cash < advised ? `${year1}. Thin: one bad year could sink it.`
+    : first < 0 ? `${year1}, then profits from year ${turn + 1}.`
+    : `${year1}, growing as savers arrive.`
+  return `With ${money(cash)} of capital, expect ${verdict}${advised !== null && cash < advised ? ` Aim for ${money(advised)}+.` : ''}`
 }
 
 /** Expected after-tax profit of next year under the current settings (pure). */

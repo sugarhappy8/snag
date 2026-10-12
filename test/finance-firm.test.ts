@@ -233,12 +233,19 @@ describe('dedicated financial institutions', () => {
   })
 
   it('never pays client capital out through liquidation, bankruptcy, IPO, shares or group treasury', () => {
-    const x = institution('bank'), y = institution('bank')
-    const customer = readBank(y.b)
-    customer.deposits *= 50; customer.loans.business *= 50; customer.reserves *= 50; customer.bonds *= 50
+    const x = institution('bank'), y = institution('bank'), z = institution('bank')
+    // Fifty times the savers, parked in reserves and bonds: no more cash may leave the company.
+    const customer = readBank(y.b), extra = customer.deposits * 49
+    customer.deposits += extra; customer.reserves += extra * .2; customer.bonds += extra * .8
     saveBank(y.b, customer)
-    const member = (z: typeof x) => ({ a: z.a, b: z.b, m: { own: 1 } }) as GroupMember
-    expect(movableCash(x.g, member(x))).toBe(movableCash(y.g, member(y)))
+    // Fifty times the loans needs more regulatory capital, so it can only shrink what may leave.
+    const lender = readBank(z.b)
+    lender.deposits *= 50; lender.loans.business *= 50; lender.reserves *= 50; lender.bonds *= 50
+    saveBank(z.b, lender)
+    const member = (w: typeof x) => ({ a: w.a, b: w.b, m: { own: 1 } }) as GroupMember
+    expect(movableCash(x.g, member(x))).toBeGreaterThan(0)
+    expect(movableCash(y.g, member(y))).toBe(movableCash(x.g, member(x)))
+    expect(movableCash(z.g, member(z))).toBeLessThan(movableCash(x.g, member(x)))
     const beginning = x.g.character.money
     closeBusiness(x.g, x.a, x.b, 100_000); closeBusiness(y.g, y.a, y.b, 100_000)
     expect(x.g.character.money).toBe(beginning + 5_100_000)
