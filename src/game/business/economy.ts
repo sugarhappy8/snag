@@ -805,6 +805,7 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   b.openFraction = 1
   b.yearCosts = 0
   b.yearIncome = 0
+  delete b.ownerDraws
   // Products fade; very old ones are retired automatically.
   b.products = b.products.filter((p) => year - p.launched < PRODUCT_LIFE)
   // Products in development move a year closer (business/rd.ts): new lines launch next year.

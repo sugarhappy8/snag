@@ -7,11 +7,16 @@ import { readMembership } from './conglomerate-state'
 
 export function settlePerfectForesight(g: GameState, b: BizState, s: Statement): void {
   const parent = readMembership(b.group, b.share)?.core
-  const perfect = b.ceo === 'manager' && b.manager?.skill === 100 || parent?.ceo === 'manager' && parent.manager?.skill === 100 && parent.autonomous !== false
+  // A hired CEO must run the company: the ability never covers a division the player runs
+  // personally, or a 100-rated group CEO would refill the player's own salary and bonuses.
+  const perfect = b.ceo === 'manager' && !!b.manager && (b.manager.skill === 100 || parent?.ceo === 'manager' && parent.manager?.skill === 100 && parent.autonomous !== false)
   if (!perfect || s.strategicIncome !== undefined) return
   s.strategicIncome = 0
   const target = Math.ceil(Math.max(1_000, s.netRevenue * .2, equipmentValue(b) * .12))
-  const needed = Math.max(0, target - s.net, target - b.cash)
+  // Bonuses the owner took out this year (taken before handing the company to a CEO) are the
+  // owner's withdrawal, not an operating loss: judge the year as if that cash were still there.
+  const draws = Math.max(0, b.ownerDraws ?? 0)
+  const needed = Math.max(0, target - (s.net + draws), target - (b.cash + draws))
   if (needed <= 0 || !Number.isFinite(needed)) return
   const homeTax = (profit: number) => allocatedCorporateTax(b.countryId, profit, 0, 0, 0, g, s.year)
   const previousTax = homeTax(s.pbt)

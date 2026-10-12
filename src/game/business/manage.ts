@@ -1526,6 +1526,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
         useYearAction(gg, `biz.bonus.${cur.id}`, 1)
         bb.cash -= n
         bb.yearCosts += n
+        bb.ownerDraws = (bb.ownerDraws ?? 0) + n
         earnIncome(gg, n)
         const greedy = bb.last && bb.last.net < 0
         if (greedy) {
