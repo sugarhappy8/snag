@@ -12,7 +12,8 @@ import { captureOfSkill } from './conglomerate-econ'
 import { groupById, groupValue, liveGroup, memberValue, saveGroup, syncMembers, type Group, type GroupMember } from './conglomerate-state'
 import { bizWorth } from './economy'
 import { equityDue } from './executive'
-import { financeView, isFinanceFirm } from './finance-firm-state'
+import { isFinanceFirm } from './finance-firm-state'
+import { financeCapitalNeed } from './finance-firm'
 import { divisionBuffer, sweepGroupTreasury } from './group-treasury'
 import { earmarkedCash } from './gamestudio'
 import { clampN, money, pct } from './util'
@@ -59,8 +60,7 @@ export function allocateGroupCapital(g: GameState, grp: Group): string[] {
   }).filter(o => o.view.modeled && o.view.invest > 0 && o.view.cost > 0).sort((a, b) => b.view.invest / b.view.cost - a.view.invest / a.view.cost)
   let budget = Math.floor(pool * effectiveness)
   for (const x of grp.members.filter(x => x.m.own >= .999 && isFinanceFirm(x.b) && ownerControls(g, x.a))) {
-    const f = financeView(x.b)
-    const target = divisionBuffer(g, x) + (f.model === 'private' ? Math.max(f.tradingCapital + f.researchBudget + f.technologyBudget, pool * .2 * effectiveness) : pool * .1 * effectiveness)
+    const target = divisionBuffer(g, x) + financeCapitalNeed(g, x.b, pool, effectiveness)
     const moved = fund(g, grp, x, Math.min(budget, Math.max(0, target - x.b.cash)))
     budget -= moved
     if (moved) lines.push(`Allocated ${money(moved)} of shareholder capital to ${x.a.name} for ${x.b.industry === 'investmentFirm' ? 'research and trading' : 'regulatory capital and lending'}. Customer money remains segregated.`)

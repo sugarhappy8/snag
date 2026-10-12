@@ -44,7 +44,7 @@ import { maybeAntitrust } from './competition-events'
 import { maybeBusinessEvent } from './events'
 import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
-import { financeManagerTurn, financeView, isFinanceFirm, queueFinanceReport } from './finance-firm'
+import { financeManagerTurn, financeSettledYear, isFinanceFirm, queueFinanceReport } from './finance-firm'
 import { industryDef } from './industries'
 import { economicReportSummary, recordEconomicReport } from './economic-report'
 import { readSupply } from './supply'
@@ -421,7 +421,7 @@ export function yearlyBusinessImpl(g: GameState): void {
     if (!findBusiness(g, a.id)) continue
     const b = bizOf(g, a)
     if (b.founded > fiscal || (b.last && b.last.year >= fiscal)) continue
-    if (isFinanceFirm(b) && financeView(b).lastYear >= fiscal) continue
+    if (isFinanceFirm(b) && financeSettledYear(b) >= fiscal) continue
     const previousStatement = b.last ? { ...b.last } : null
     const runs = runsIt(g, a)
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null

@@ -12,7 +12,7 @@ import { closedInventionEffects, closedInventions, refreshClosedInvention } from
 import { externalInventionLicenseQuote } from '../src/game/business/invention-licensing'
 import { inventionProductsOf } from '../src/game/business/invention-products'
 import { inventionImpactView } from '../src/game/invention-impact'
-import { financeTeamSkill, financeQuantEdge, simulateFinanceYear } from '../src/game/business/finance-firm'
+import { financeTeamSkill, financeQuantEdge, simulateFinanceYear } from '../src/game/business/finance-legacy'
 import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
 import { appealOf, costFactor, planFor } from '../src/game/business/economy'
 import { leadershipPower } from '../src/game/business/leadership'
