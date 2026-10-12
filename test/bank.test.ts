@@ -604,6 +604,48 @@ describe('Banking 2.0 old saves', () => {
       expect(f.lastYear).toBe(-1)
     }
   })
+
+  it('plays full, partial and junk records through the real yearly loop without throwing or minting money', () => {
+    const lastYear = { year: 2025, demand: 0, sold: 0, produced: 0, spoiled: 0, price: 0, revenue: 4e6, salesTax: 0, netRevenue: 4e6, cogs: 2e6, wages: 1e6, keyStaff: 0, rent: 1e5, marketing: 0, interest: 0, upkeep: 0, other: 0, otherIncome: 0, ownerPay: 0, pbt: 9e5, corpTax: 2e5, net: 7e5, cashErosion: 0, cycle: 1, openFraction: 1, employees: 20 }
+    const shapes: { name: string; record: Json | undefined; last: boolean }[] = [
+      { name: 'missing record, booked year', record: undefined, last: true },
+      { name: 'a number', record: 42, last: false },
+      { name: 'an array', record: [1, 2] as unknown as Json, last: true },
+      { name: 'partial legacy', record: { deposits: 50_000_000, lastYear: 2025, confidence: 'x', loanRate: -3 } as unknown as Json, last: true },
+      { name: 'junk v2.2', record: { kind: 'bank', deposits: -5, loans: 'x', advance: 1e20, cbOwed: 'no', run: { wave: 1e30, year: 'x' }, hist: 'nope', last: [], lastYear: 2025 } as unknown as Json, last: true },
+      { name: 'unbacked advance', record: { kind: 'bank', deposits: 1e7, loans: { business: 5e6 }, reserves: 5e6, bonds: 0, advance: 9e9, lastYear: 2025, bondYield: .04, reach: 0, fixed: {} } as unknown as Json, last: true },
+    ]
+    for (const shape of shapes) {
+      const { g, a, b } = bank({ year: 2026 })
+      b.financeFirm = shape.record
+      b.last = shape.last ? { ...lastYear } : null
+      const cash = b.cash, money = g.character.money
+      const book = readBank(b)
+      balanced(book); finiteDeep(book, shape.name)
+      // Reading never pays: an advance with nothing behind it is dropped, and value counts only real books.
+      expect(book.advance, shape.name).toBeLessThanOrEqual(Math.max(0, loanTotal(book) + book.badNet + book.reserves + book.bonds - book.deposits) + 1)
+      expect(valuationOf(b), shape.name).toBeLessThan(1e9)
+      const saved = JSON.parse(JSON.stringify(g)) as GameState
+      for (let i = 0; i < 3; i++) {
+        saved.year += 1; saved.character.age += 1; saved.yearActions = {}
+        yearlyBusinessImpl(saved)
+        for (let guard = 0; guard < 20 && saved.queue.length; guard++) {
+          const m = saved.queue.shift()!
+          if (m.kind === 'choice' && m.source === 'script' && m.scriptId) runScript(saved, m.scriptId, m.choices.find(c => c.id === 'cb' || c.id === 'inject')?.id ?? m.choices[0].id, m.data, m)
+        }
+        saved.queue = []
+      }
+      const live = saved.assets.find(x => x.id === a.id)
+      if (live) {
+        const after = readBiz(saved, live), ab = readBank(after)
+        balanced(ab); finiteDeep(ab, shape.name); finiteDeep(after.last, shape.name)
+        expect(ab.lastYear, shape.name).toBe(saved.year - 1)
+        // Three years of a small bank: no windfall into the company or the owner's pocket.
+        expect(after.cash - cash, shape.name).toBeLessThan(50_000_000)
+      }
+      expect(saved.character.money - money, shape.name).toBeLessThan(50_000_000)
+    }
+  }, 120_000)
 })
 
 describe('Banking 2.0 odds and ends', () => {

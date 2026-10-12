@@ -318,8 +318,11 @@ export function readBank(b: Pick<BizState, 'industry' | 'countryId' | 'founded' 
   }
   // Client books always balance: a damaged save rebalances through reserves (never b.cash).
   const other = loanTotal(book) + book.badNet + book.bonds
-  const owed = book.deposits + book.advance
-  if (Math.abs(other + book.reserves - owed) > 1) {
+  if (Math.abs(other + book.reserves - book.deposits - book.advance) > 1) {
+    // The shareholders' advance stands only as far as real assets back it: a damaged save's advance
+    // would otherwise come back to them as cash.
+    book.advance = clampN(other + book.reserves - book.deposits, 0, book.advance)
+    const owed = book.deposits + book.advance
     if (owed >= other) book.reserves = owed - other
     else {
       const k = other > 0 ? owed / other : 0
@@ -334,10 +337,11 @@ export function readBank(b: Pick<BizState, 'industry' | 'countryId' | 'founded' 
  * Shareholders' money lent into the client book during a run (a cheap read for valuations). The
  * central-bank debt that funded it is in b.debt, so equity is b.cash − b.debt + this.
  */
-export function bankAdvanceOf(b: Pick<BizState, 'industry' | 'financeFirm'>): number {
+export function bankAdvanceOf(b: Pick<BizState, 'industry' | 'countryId' | 'founded' | 'cash' | 'debt' | 'outlets' | 'financeFirm' | 'last'>): number {
   if (!isBankIndustry(b.industry)) return 0
   const x = rec(b.financeFirm)
-  return x && x.kind === 'bank' ? finite(x.advance, 0) : 0
+  // Almost always zero; otherwise the full read, which keeps only an advance real assets back.
+  return x && x.kind === 'bank' && finite(x.advance, 0) > 0 ? readBank(b).advance : 0
 }
 
 export function saveBank(b: BizState, book: BankBook): void {
