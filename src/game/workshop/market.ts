@@ -9,9 +9,9 @@ import { CATEGORIES, type IdeaDef, type Level } from './catalog'
 import type { Inv, Patent, PatentScope } from './state'
 
 /** Unit price by difficulty (constant 2026 USD, times the category's multiplier). */
-export const PRICE = [0, 15, 45, 150, 500, 2000] as const
+export const PRICE = [0, 3, 9, 30, 100, 400] as const
 /** Peak yearly units of an average idea by difficulty (times the category's multiplier). */
-export const UNITS = [0, 4000, 2200, 1300, 650, 320] as const
+export const UNITS = [0, 20_000, 11_000, 6_500, 3_250, 1_600] as const
 /** Sales multiplier by real appeal ★1-5. */
 export const APPEAL = [0, 0.3, 0.6, 1, 1.7, 2.8] as const
 /** The world was waiting for it: a history-race first sells like nothing else. */
