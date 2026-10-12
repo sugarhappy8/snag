@@ -21,7 +21,10 @@ import { DEEP_TECH } from './deeptech-data'
 import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
 import { isDeepTechIndustry, type DeepTechIndustry } from './deeptech-state'
 import { financeEraBlock, isFinanceFirm } from './finance-firm'
-import { financeView, saveFinance, type InvestmentModel } from './finance-firm-state'
+import { financeView } from './finance-firm-state'
+import { fundTypeBlock, initFund } from './fund'
+import { TYPE_INFO } from './fund-model'
+import { FUND_TYPES, type FundType } from './fund-state'
 import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
 import { industryDef, isIndustry, INDUSTRIES } from './industries'
@@ -94,7 +97,7 @@ type Funding = 'savings' | 'loan' | 'investors'
 
 interface Plan {
   capital?: number
-  investmentModel?: InvestmentModel
+  investmentModel?: FundType
   mode: 'found' | 'buy'
   industry: Industry
   name: string
@@ -127,7 +130,7 @@ function readPlan(data: Json | undefined): Plan | null {
   const f = str(d.funding)
   return {
     capital: clampN(num(d.capital), 0, 1e15),
-    investmentModel: d.investmentModel === 'retail' || d.investmentModel === 'brokerage' ? d.investmentModel : 'private',
+    investmentModel: fundTypeOf(d.investmentModel),
     mode: d.mode === 'buy' ? 'buy' : 'found',
     industry: d.industry as Industry,
     name: str(d.name),
@@ -152,6 +155,14 @@ function readPlan(data: Json | undefined): Plan | null {
   }
 }
 
+/** Investment-firm type from a plan (old in-flight popups used retail / private / brokerage). */
+function fundTypeOf(v: Json | undefined): FundType {
+  if (v === 'retail') return 'asset'
+  if (v === 'private') return 'hedge'
+  if (v === 'brokerage') return 'broker'
+  return typeof v === 'string' && (FUND_TYPES as readonly string[]).includes(v) ? v as FundType : 'asset'
+}
+
 function planJson(p: Plan): Json {
   return toJson(p)
 }
@@ -160,11 +171,9 @@ const NAME = defineScript('business.found.name', (g, choice, data) => {
   const p = readPlan(data)
   if (!p || foundBlock(g)) return
   p.name = cleanName(choice, defaultName(g, p.industry))
-  if (p.industry === 'investmentFirm') scriptChoice(g, MODEL, 'Choose Your Investment Business', 'Client assets stay separate from the company in all three models.', [
-    { id: 'retail', label: 'Retail Investment Manager — advisory and AUM fees', emoji: '👥' },
-    { id: 'private', label: 'Private Investment Firm — institutional clients, research and own-capital trading', emoji: '📈' },
-    { id: 'brokerage', label: 'Brokerage — commissions on customer trades', emoji: '🏛️' },
-  ], { data: planJson(p) })
+  if (p.industry === 'investmentFirm') scriptChoice(g, MODEL, 'What Kind of Firm?', 'Clients’ money is never the firm’s cash: you earn fees, commissions or a share of the profits.',
+    FUND_TYPES.filter(t => !fundTypeBlock(t, g.year)).map(t => ({ id: t, label: `${TYPE_INFO[t].label}: ${TYPE_INFO[t].blurb}`, emoji: TYPE_INFO[t].emoji })),
+    { emoji: '📈', data: planJson(p) })
   else askCity(g, p)
 })
 
@@ -219,8 +228,10 @@ const CAPITAL = defineScript('business.found.capital', (g, input, data) => {
 
 const MODEL = defineScript('business.found.investmentModel', (g, input, data) => {
   const p = readPlan(data)
-  if (!p || !['retail', 'private', 'brokerage'].includes(input) || foundBlock(g)) return
-  p.investmentModel = input as InvestmentModel
+  if (!p || ![...FUND_TYPES, 'retail', 'private', 'brokerage'].includes(input) || foundBlock(g)) return
+  const type = fundTypeOf(input)
+  if (fundTypeBlock(type, g.year)) return notice(g, 'Not Yet', fundTypeBlock(type, g.year)!, { emoji: '📈' })
+  p.investmentModel = type
   askCity(g, p)
 })
 
@@ -576,7 +587,7 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
     loanId,
     quality: Math.round(clampN(45 + (c.stats.smarts - 50) / 8, 30, 65)),
   })
-  if (b.industry === 'investmentFirm') { const f = financeView(b); f.model = p.investmentModel ?? 'private'; saveFinance(b, f) }
+  if (b.industry === 'investmentFirm') initFund(g, b, p.investmentModel ?? 'asset')
   b.production = initialProduction(g, b)
   b.valuation = Math.max(valuationOf(b), Math.round(cost.capital * 0.8))
   const a = businessAsset(g, p.name, b, personal)
