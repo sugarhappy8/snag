@@ -428,9 +428,10 @@ describe('competition: determinism, menus, saves', () => {
       const g = adult(13, 2024, 'us')
       const a = company(g, industry)
       for (let y = 0; y < 3; y++) {
-        const line = renderAll(g, a).find((t) => / market/.test(t) && /named rivals/.test(t))
-        expect(line, industry).toMatch(/^Competing in the United States' .* market with \d+ named rivals/)
-        expect(line, industry).not.toMatch(/\$0\b|No sales yet/)
+        // Banks and investment firms describe their market in money (deposits, clients' assets).
+        const line = renderAll(g, a).find((t) => industry === 'bank' ? /banks in (the )?United States .* of deposits/.test(t) : /invested in (the )?United States/.test(t))
+        expect(line, industry).toBeDefined()
+        expect(line, industry).not.toMatch(/\$0\b|No sales yet|a year\)/)
         nextYear(g)
       }
       expect(readBiz(g, a).last?.revenue, industry).toBeGreaterThan(0)

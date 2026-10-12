@@ -231,7 +231,7 @@ export function startupCapitalPreview(g: GameState, data: Json | undefined, amou
   if (!p) return ''
   const cost = startupCost(p.industry, p.countryId, p.city), e = localEcon(p.industry, p.countryId, p.city)
   const cash = Math.max(0, amount - cost.capital * .8)
-  if (isBank({ industry: p.industry })) return `Fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. ${bankCapitalPreview(cash, bankStart(g, p.industry, p.countryId, p.city, cash), bankAdvisedCash(g, p.industry, p.countryId, p.city))} ${whoPays(g, p, amount)}`
+  if (isBank({ industry: p.industry })) return `Fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. ${bankCapitalPreview(cash, bankStart(g, p.industry, p.countryId, p.city, cash), bankAdvisedCash(g, p.industry, p.countryId, p.city))}${g.character.money >= amount + cost.fee + cost.permits ? '' : ` ${whoPays(g, p, amount)}`}`
   const burn = e.rent + industryDef(p.industry).staff * e.wage
   return `Equipment/fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. Starting cash ${money(cash)}; roughly ${runwayText(cash / Math.max(1, burn))} of base wages/rent before sales and other costs. ${cash < burn ? 'High funding risk.' : 'A cash buffer, not guaranteed profit.'} ${whoPays(g, p, amount)}`
 }
