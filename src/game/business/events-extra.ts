@@ -202,7 +202,7 @@ const CRITIC = defineScript('business.ev.critic', (g, choice, data) => {
     brandUp(b, 8)
     b.demandShock = Math.max(b.demandShock, 1.12)
     log(g, `${critic} gave ${a.name} a glowing review.`, 'good')
-    tell(g, 'Five Stars!', `${critic}'s ${outlet} called ${a.name} "the best meal in ${b.city} this year." There is a line out the door.`, '\u{2B50}', 'good')
+    tell(g, 'Five Stars!', `${critic}'s ${outlet} called ${a.name} "the best place to eat in ${b.city} this year." There is a line out the door.`, '\u{2B50}', 'good')
   } else if (u < good + bad) {
     brandUp(b, -7)
     b.demandShock = Math.min(b.demandShock, 0.9)
@@ -947,7 +947,7 @@ export const EXTRA_EVENTS: ExtraEvent[] = [
     weight: (g, b) => (isFranchiseIndustry(b.industry) && franchiseUnits(b) === 0 && !franchiseBlock(b) && maxSellable(g, b) >= 1 ? 0.5 : 0),
     present: presentFranchisePitch,
   },
-  { id: 'critic', weight: (_g, b) => (classic(b) && industryDef(b.industry).food ? 0.45 : 0), present: presentCritic },
+  { id: 'critic', weight: (_g, b) => (classic(b) && industryDef(b.industry).food && b.industry !== 'grocery' ? 0.45 : 0), present: presentCritic },
   { id: 'influencer', weight: (g, b) => (influencerOk(g, b) ? 0.45 : 0), present: presentInfluencer },
   { id: 'breach', weight: (g, b) => (BREACH_INDUSTRIES.has(b.industry) && !isFinanceFirm(b) && bizHas(g, b.countryId, 'internet') ? 0.35 : 0), present: presentBreach },
   { id: 'union', weight: (_g, b) => (!isFinanceFirm(b) && b.employees >= 15 && b.morale < 70 && unionStrength(b.countryId) > 0.1 ? 0.2 + unionStrength(b.countryId) * 0.3 : 0), present: presentUnion },
