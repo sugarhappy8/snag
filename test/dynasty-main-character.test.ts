@@ -9,7 +9,7 @@ import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { marketCtxFor, planFor, refreshValue, startupCost } from '../src/game/business/economy'
 import { formGroup, groupDividend } from '../src/game/business/conglomerate-actions'
 import { diluteGroupEquity, groupById, groupsOf, groupStake, groupValue, liveGroup, saveGroup, syncMembers } from '../src/game/business/conglomerate-state'
-import { familyGroupStake } from '../src/game/business/dynasty-ownership'
+import { familyGroupStake, payFamilyBusinessProceeds, settleLateFamilyOwners } from '../src/game/business/dynasty-ownership'
 import { groupBuybackQuote } from '../src/game/business/group-buyback'
 import { bizOf, readBiz } from '../src/game/business/state'
 import { planHire } from '../src/game/business/nepo-actions'
@@ -215,6 +215,51 @@ describe('intact conglomerate inheritance', () => {
     expect(groupById(next, id)?.core.familyShares).toEqual([{ id: b.id, share: .375 }])
     expect(groupBuybackQuote(next, groupById(next, id)!, 100).available).toBe(.25)
     expect(bizOf(next, next.assets[0]).cash).toBeGreaterThan(0)
+  })
+  it('routes a late co-owner\'s dividends and stake to their heirs, never to the dead record', () => {
+    const { g, a, b, id } = holding(); die(g)
+    const next = continueAsChild(g, a.id), sibling = next.people.find(x => x.id === b.id)!
+    sibling.alive = false; sibling.causeOfDeath = 'Old Age'
+    const late = sibling.money, mine = next.character.money
+    expect(groupDividend(next, id, 100_000)).toBe(true)
+    // The heir is the only modeled relative left: the late sibling's half reaches them, taxed as income.
+    expect(sibling.money).toBe(late)
+    expect(next.character.money - mine).toBe(100_000)
+    expect(next.flags.taxableIncome).toBe(100_000)
+    const replay = structuredClone(next)
+    settleLateFamilyOwners(next)
+    const grp = groupById(next, id)!
+    expect(grp.core.familyShares ?? []).toEqual([]); expect(grp.core.share).toBe(1)
+    expect(grp.members.every(x => readBiz(next, x.a).share === 1)).toBe(true)
+    expect(JSON.stringify(next.log)).toContain('passed to me as their heir')
+    // The yearly business hook settles it too (older saves included).
+    replay.year++; replay.character.age++; yearlyBusinessImpl(replay)
+    expect(groupById(replay, id)!.core.familyShares ?? []).toEqual([])
+  })
+  it('sends a late co-owner with an unmodeled family of their own to outside heirs and pays charity explicitly', () => {
+    const { g, a, b, id } = holding(); die(g)
+    const next = continueAsChild(g, a.id), sibling = next.people.find(x => x.id === b.id)!
+    const grp = liveGroup(next, id)!
+    grp.core.familyShares = [{ id: b.id, share: .4 }, { id: 'charity', share: .1 }]; saveGroup(next, grp)
+    sibling.alive = false; sibling.data.married = true; sibling.data.kids = 2
+    const late = sibling.money, mine = next.character.money
+    expect(groupDividend(next, id, 100_000)).toBe(true)
+    expect(sibling.money).toBe(late); expect(next.character.money - mine).toBe(50_000)
+    expect(JSON.stringify(next.log)).toContain('to charity')
+    settleLateFamilyOwners(next)
+    const after = groupById(next, id)!
+    expect(after.core.share).toBe(.5); expect(after.core.familyShares).toEqual([{ id: 'charity', share: .1 }])
+    expect(groupBuybackQuote(next, after, 100).available).toBeCloseTo(.4)
+  })
+  it('routes a dead co-owner\'s sale proceeds to the heirs of a spun-off company', () => {
+    const { g, a, b, id } = holding(); die(g)
+    const next = continueAsChild(g, a.id), grp = liveGroup(next, id)!, member = grp.members[0]
+    detach(next, member.a, member.b, null)
+    const sibling = next.people.find(x => x.id === b.id)!
+    sibling.alive = false
+    const late = sibling.money, mine = next.character.money
+    payFamilyBusinessProceeds(next, readBiz(next, member.a), 1_000_000)
+    expect(sibling.money).toBe(late); expect(next.character.money - mine).toBe(500_000)
   })
   it('retains family co-owners on spun-off companies and the next succession', () => {
     const { g, a, b, id } = holding(); die(g)

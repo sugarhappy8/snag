@@ -4,6 +4,7 @@ import { addMoney, addStat, count, earnIncome, formatCents, formatMoney, log, mi
 import { marketOf } from '../data/markets'
 import { baseLoanRate } from '../finance'
 import { economyOf, lendingConditions, recordEconomicActivity } from '../economy'
+import { settleLateFamilyOwners } from './dynasty-ownership'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -415,6 +416,8 @@ function hiredCeoTurn(g: GameState, a: Asset, b: BizState, lastCycle: number): v
 export function yearlyBusinessImpl(g: GameState): void {
   const c = g.character
   if (!c.alive) return
+  // Late relatives' stakes pass to their heirs before anything pays or values them.
+  settleLateFamilyOwners(g)
   syncCeo(g)
   prepareGroupManagement(g)
   // Last year's price promises end with the year that was just booked.
