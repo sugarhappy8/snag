@@ -4,13 +4,13 @@
 // retires inventions that left the shelves, closes the history race, sparks new ideas and
 // rolls at most one event popup.
 import { earnIncome, formatMoney, log, notice, scriptChoice } from '../core'
-import { economicRoll } from '../economy'
+import { economicRoll, recordEconomicActivity } from '../economy'
 import { rand } from '../rng'
 import { defineScript } from '../scripts'
 import { outcomeTag } from '../timeMachine'
 import type { GameState, Json } from '../types'
 import { bizOf, businessAssets } from '../business/state'
-import { catalogIdea, isHistory } from './catalog'
+import { catalogIdea, isHistory, type Category } from './catalog'
 import { yearlyWorkshopEvent } from './events'
 import { needsMigration } from './migrate'
 import { curveAt, curveOver, familyOf, invCurve, saturation } from './market'
@@ -18,6 +18,8 @@ import { addIdea, addRep, drawIdea, dropIdea, inventions, isGenius, logIdea, mut
 import { NOTEBOOK_MAX, rec, text, type Workshop } from './state'
 
 const MILLION = 1_000_000
+const INNOVATION = [0, 0.005, 0.01, 0.02, 0.05, 0.1] as const
+const SECTOR_INDUSTRY: Record<Category, string> = { gadget: 'manufacturing', home: 'manufacturing', toy: 'manufacturing', health: 'biotech', transport: 'manufacturing', energy: 'energy', computing: 'software', food: 'farm', fashion: 'fashion', weird: 'manufacturing' }
 
 /** Settle fiscal year g.year - 1 for every launched invention. */
 export function settleInventions(g: GameState, ws: Workshop): void {
@@ -61,6 +63,8 @@ export function settleInventions(g: GameState, ws: Workshop): void {
       inv.earned += income
     }
     inv.units += units
+    // Widely adopted inventions nudge national productivity (living world), bounded and once per year.
+    if (units >= 1_000) recordEconomicActivity(g, `workshop:${o.a.id}:${fiscal}`, inv.country, SECTOR_INDUSTRY[o.def.cat], { innovation: Math.min(0.3, Math.min(1, units / 50_000) * INNOVATION[o.def.d] * (inv.history ? 2 : 1)) })
     inv.last = fiscal
     inv.lastUnits = units
     inv.lastIncome = income
