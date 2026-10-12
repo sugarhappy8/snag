@@ -10,6 +10,8 @@ import { businessView } from '../src/game/business/manage'
 import { bizOf, readBiz } from '../src/game/business/state'
 import { closeRound } from '../src/game/business/deeptech-funding'
 import { techOf } from '../src/game/business/deeptech-core'
+import { yearlyCorruption } from '../src/game/special/corruption'
+import { createPerson } from '../src/game/people'
 import { simulateYear } from '../src/game/business/economy'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import type { Industry } from '../src/game/data/markets'
@@ -102,5 +104,17 @@ describe('inherited family companies', () => {
       expect(live.share).toBe(family ? 0 : .01)
       if (family) expect(live.familyShares![0].share).toBeCloseTo(.3)
     }
+  })
+})
+
+describe('backroom favors', () => {
+  it("a relative's influence-job salary never confiscates savings above the salary cap", () => {
+    const g = makeTestGame(11, { age: 60 })
+    const rich = createPerson(g, { relation: 'child', age: 35, money: 3e9 })
+    const modest = createPerson(g, { relation: 'child', age: 33, money: 1_000 })
+    for (const p of [rich, modest]) p.data.influenceJob = { by: g.character.id, target: 'ceo', title: 'Vice President', salary: 200_000, hiredYear: g.year - 2, lastPaid: g.year - 2 }
+    yearlyCorruption(g)
+    expect(rich.money).toBe(3e9)
+    expect(modest.money).toBe(201_000)
   })
 })
