@@ -8,6 +8,8 @@ import { settlePerfectForesight } from '../src/game/business/executive-foresight
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { businessView } from '../src/game/business/manage'
 import { bizOf, readBiz } from '../src/game/business/state'
+import { closeRound } from '../src/game/business/deeptech-funding'
+import { techOf } from '../src/game/business/deeptech-core'
 import { simulateYear } from '../src/game/business/economy'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import type { Industry } from '../src/game/data/markets'
@@ -82,5 +84,23 @@ describe('100-rated CEO perfect foresight', () => {
     expect(after.ownerDraws).toBeUndefined()
     // The sister division run by a hired CEO keeps the documented protection.
     expect((readBiz(g, other.a).last?.net ?? 0)).toBeGreaterThan(0)
+  })
+})
+
+describe('inherited family companies', () => {
+  it('a deep-tech funding round never mints a 1% stake for an heir who owns none', () => {
+    const g = makeTestGame(9, { age: 30 })
+    for (const family of [true, false]) {
+      const b = newBiz(g, 'aiLab', 'us', 'Chicago', { cash: 5e6, founded: 2020 })
+      const a = createBusinessAsset(g, family ? 'Family Lab' : 'Own Lab', b, 1e6)
+      g.assets.push(a)
+      const live = bizOf(g, a)
+      live.share = family ? 0 : .012
+      if (family) live.familyShares = [{ id: 'sibling', share: .6 }]
+      closeRound(g, a, live, techOf(live), { series: 1, investor: 'Fund', amount: 10e6, pre: 10e6, equity: .5, down: false, bridge: false })
+      // Co-owners are diluted; a holding of 0 stays 0, while the ordinary 1% floor still applies.
+      expect(live.share).toBe(family ? 0 : .01)
+      if (family) expect(live.familyShares![0].share).toBeCloseTo(.3)
+    }
   })
 })
