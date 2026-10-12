@@ -165,7 +165,8 @@ describe('intact conglomerate inheritance', () => {
   })
   it('supports minors and very small ownership stakes without a 1% share giveaway', () => {
     const { g, a, b, id } = holding(); a.age = 8; b.age = 6
-    const grp = liveGroup(g, id)!; grp.core.share = .012; grp.core.executiveEquity = .1; syncMembers(grp); saveGroup(g, grp)
+    // The sitting group CEO holds 10% (an old save's grant): shares nobody holds would go back to the founder.
+    const grp = liveGroup(g, id)!; grp.core.share = .012; grp.core.executiveEquity = .1; grp.core.manager!.equity = .1; syncMembers(grp); saveGroup(g, grp)
     die(g)
     const next = continueAsChild(g, a.id), inherited = groupById(next, id)!
     expect(inherited.core.share).toBe(.006)

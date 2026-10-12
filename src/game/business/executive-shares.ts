@@ -39,7 +39,7 @@ export function stakeText(x: number): string {
  * with their group. Returns the stake returned (0 when nothing was outstanding).
  */
 export function returnFormerExecutiveShares(g: GameState, b: BizState): number {
-  if (inGroup(g, b)) return 0
+  if (inGroup(g, b) || !(b.share > 0)) return 0
   const held = b.ceo === 'manager' ? Math.max(0, b.manager?.equity ?? 0) : 0
   const recorded = Math.max(0, b.executiveEquity ?? 0)
   const former = recorded - held

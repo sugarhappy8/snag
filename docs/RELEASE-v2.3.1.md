@@ -27,6 +27,12 @@ Only CEOs rated 85 or more ask for shares. What they ask for depends on the seat
   the group's holding in it. Group shares go back to your group stake. The amount you paid for
   the shares comes back with them, so a later sale isn't taxed as an extra gain.
 - A CEO who is still in the job keeps their shares.
+- Spinning off a division: its CEO's group shares turn into their part of the company they run
+  (so they stay a loyal shareholder), and the group shares go back to you. The part of the
+  spun-off company that the group CEO and other executives held through the group also comes back
+  to you.
+- Winding up a group (down to one company): the group CEO's seat ends, so their shares go back
+  to you.
 
 ## Old saves
 

@@ -47,6 +47,7 @@ import {
   multFor,
   newMembership,
   operating,
+  returnExecutiveSlice,
   sharePriceOf,
   saveGroup,
   syncMembers,
@@ -629,6 +630,8 @@ export function spinOff(g: GameState, groupId: string, assetId: string): boolean
     saveGroup(g, grp)
     return false
   }
+  // It leaves the group executives' seats: their slice of it comes back to you.
+  const returned = returnExecutiveSlice(grp, x)
   // The fee: the division's own cash, then the group's treasury, then the player's pocket.
   let left = plan.fee
   const own = Math.min(left, spendable(x.a, x.b))
@@ -665,7 +668,7 @@ export function spinOff(g: GameState, groupId: string, assetId: string): boolean
   notice(
     g,
     'Spun Off',
-    `${x.a.name} left ${grp.core.name} and stands on its own${listing ? `, listed on the ${listing.exchange}` : ''}. You hold ${pct(stake, 1)} of it, just as you held it through the group. Lawyers and separation cost ${formatMoney(plan.fee)}.${grp.members.length >= 2 ? '' : ` ${grp.core.name} was down to one company and was wound up.`}`,
+    `${x.a.name} left ${grp.core.name} and stands on its own${listing ? `, listed on the ${listing.exchange}` : ''}. You hold ${pct(stake, 1)} of it${returned ? ', including the group executives’ shares of it, which come back to you' : ', just as you held it through the group'}. Lawyers and separation cost ${formatMoney(plan.fee)}.${grp.members.length >= 2 ? '' : ` ${grp.core.name} was down to one company and was wound up.`}`,
     { emoji: '\u{2702}\u{FE0F}', tone: 'neutral' },
   )
   return true

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
 import { createPerson } from '../src/game/people'
 import { becomeCeo, handOver, installManager, managerCandidate } from '../src/game/business/career'
-import { chairGroup, formGroup } from '../src/game/business/conglomerate-actions'
+import { chairGroup, formGroup, spinOff } from '../src/game/business/conglomerate-actions'
 import { appointGroupRelative, prepareGroupFamily } from '../src/game/business/conglomerate-family'
 import { retainDivisionCeo } from '../src/game/business/conglomerate-management'
 import { groupsOf, liveGroup, readMembership, saveGroup } from '../src/game/business/conglomerate-state'
@@ -38,6 +38,20 @@ function group(skill = 95) {
   saveGroup(g, grp)
   g.queue = []
   return { g, id, a, sister }
+}
+
+function trio(skill = 95) {
+  const g = makeTestGame(943, { age: 50, money: 1e9 })
+  const assets = ['One', 'Two', 'Three'].map((n) => {
+    const a = createBusinessAsset(g, n, newBiz(g, 'solar', 'us', 'Chicago', { cash: 20e6 }), 1e6)
+    g.assets.push(a)
+    const b = bizOf(g, a)
+    installManager(g, b, managerCandidate(g, b, skill))
+    return a
+  })
+  expect(formGroup(g, assets.map((a) => a.id), 'Trio')).toBe(true)
+  g.queue = []
+  return { g, id: groupsOf(g)[0].core.id, assets }
 }
 
 function subtitle(g: GameState, node: ReturnType<typeof equityMenu>): string {
@@ -174,6 +188,50 @@ describe('a CEO who leaves gives the shares back to the founder', () => {
     prepareGroupFamily(g, grp)
     saveGroup(g, grp)
     expect(groupsOf(g)[0].core.share).toBeCloseTo(1, 6)
+  })
+
+  it('turns a spun-off division CEO’s group shares into shares of their company, and returns the group shares once', () => {
+    const { g, id, assets } = trio()
+    const grp = liveGroup(g, id)!
+    grp.core.autoEquity = true
+    const x = grp.members.find((m) => m.a.id === assets[2].id)!
+    expect(retainDivisionCeo(g, grp, x)).toContain('Retained')
+    saveGroup(g, grp)
+    const award = readBiz(g, assets[2]).manager!.groupEquity!.share
+    expect(groupsOf(g)[0].core.share).toBeCloseTo(1 - award, 9)
+    expect(spinOff(g, id, assets[2].id)).toBe(true)
+    const spun = bizOf(g, assets[2])
+    // Still a shareholder of the company they run: their slice of it, as for every group shareholder.
+    expect(spun.manager!.groupEquity).toBeUndefined()
+    expect(spun.manager!.equity).toBeCloseTo(award, 9)
+    expect(spun.executiveEquity).toBeCloseTo(award, 9)
+    expect(spun.share).toBeCloseTo(1 - award, 9)
+    // The group shares themselves come back to you, and only once.
+    expect(groupsOf(g)[0].core.share).toBeCloseTo(1, 9)
+    for (let i = 0; i < 3; i++) saveGroup(g, liveGroup(g, id)!)
+    expect(groupsOf(g)[0].core.share).toBeCloseTo(1, 9)
+    expect(groupsOf(g)[0].core.executiveEquity ?? 0).toBeCloseTo(0, 9)
+    // When that CEO leaves the company later, those shares come back too.
+    handOver(g, assets[2], spun, managerCandidate(g, spun, 60))
+    expect(spun.share).toBeCloseTo(1, 9)
+  })
+
+  it('gives the group executives’ slice of a spun-off company back to you, and the group CEO’s stake when the group is wound up', () => {
+    const { g, id, a, sister } = group(95)
+    for (const x of [a, sister]) bizOf(g, x).invested = 1e6
+    expect(grantCeoEquity(g, id, true)).toBe(true)
+    expect(readBiz(g, sister).share).toBeCloseTo(0.95, 9)
+    expect(readBiz(g, sister).invested).toBeCloseTo(950_000, 3)
+    // Spinning off one of the last two companies winds the group up.
+    expect(spinOff(g, id, sister.id)).toBe(true)
+    expect(groupsOf(g)).toHaveLength(0)
+    // Both come back whole, with the cost basis that went with the shares (the fees add to the
+    // spun-off company's).
+    expect(readBiz(g, sister).share).toBeCloseTo(1, 9)
+    expect(readBiz(g, sister).invested).toBeGreaterThanOrEqual(1e6 - 1)
+    expect(readBiz(g, a).share).toBeCloseTo(1, 9)
+    expect(readBiz(g, a).invested).toBeCloseTo(1e6, 3)
+    expect(readBiz(g, a).group).toBeUndefined()
   })
 
   it('returns old saves’ former-executive stakes to the founder at the yearly check', () => {
