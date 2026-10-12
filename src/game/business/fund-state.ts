@@ -1,10 +1,11 @@
 // Investment firms 2.0: plain-JSON state, stored in BizState.financeFirm with kind 'fund'.
 // readFund is pure and migrates legacy v2 books (finance-firm-state.ts) without money changes:
-// retail → Asset Manager, private → Hedge Fund, brokerage → Brokerage. Client assets (AUM, fund
-// commitments, startup stakes) are never company cash.
+// retail → Asset Manager, private → Hedge Fund (Asset Manager before 1949), brokerage → Brokerage.
+// Client assets (AUM, fund commitments, startup stakes) are never company cash.
 import type { Json } from '../types'
 import { getCountry } from '../world'
 import { financeView } from './finance-firm-state'
+import { hedgeBlock, quantBlock } from './fund-model'
 import type { BizState } from './state'
 
 export type FundType = 'asset' | 'hedge' | 'vc' | 'broker'
@@ -244,10 +245,15 @@ function readNew(x: Record<string, Json>, countryId: string): FundState {
   }
 }
 
+type FirmBooks = Pick<BizState, 'industry' | 'countryId' | 'financeFirm'> & Partial<Pick<BizState, 'founded'>>
+
 /** Legacy v2 investment-firm books mapped onto the new types: equivalent client books, no new money. */
-export function migrateLegacy(b: Pick<BizState, 'industry' | 'countryId' | 'financeFirm'>): FundState {
+export function migrateLegacy(b: FirmBooks): FundState {
   const f = financeView(b)
-  const type: FundType = f.model === 'retail' ? 'asset' : f.model === 'brokerage' ? 'broker' : 'hedge'
+  // The year the old books are read in: the year after the last booked one (or the founding year).
+  const year = f.lastYear >= 0 ? f.lastYear + 1 : b.founded ?? Infinity
+  // An old "private" firm from before hedge funds existed carries on as a plain asset manager.
+  const type: FundType = f.model === 'retail' ? 'asset' : f.model === 'brokerage' ? 'broker' : hedgeBlock(year) ? 'asset' : 'hedge'
   const d = base(type, b.countryId)
   const rep = Math.max(.2, Math.min(.8, f.confidence / 100))
   const out: FundState = { ...d, lastYear: f.lastYear, aum: f.aum, rep, compliance: f.controls,
@@ -262,9 +268,10 @@ export function migrateLegacy(b: Pick<BizState, 'industry' | 'countryId' | 'fina
     out.coinvest = f.tradingCapital
     // The old research edge was a power-fantasy multiplier; it maps to a small, decaying quant edge.
     out.algoEdge = Math.min(.04, f.algoEdge * .04)
-    out.algoDone = f.algoCompleted
+    // An edge with no completion date would never fade: date it to the last booked year.
+    out.algoDone = f.algoCompleted > 0 || out.algoEdge <= 0 ? f.algoCompleted : Math.max(1, f.lastYear)
     out.algoStart = f.algoResearching ? f.algoStarted : 0
-    out.strategy = f.algoEdge > .05 ? 'quant' : 'longShort'
+    out.strategy = f.algoEdge > .05 && !quantBlock(b.countryId, year) ? 'quant' : 'longShort'
   } else {
     out.accounts = f.accounts
     out.commission = f.commission
@@ -278,7 +285,7 @@ export function isFundRecord(v: Json | undefined): boolean {
 }
 
 /** The firm's books (pure: never writes to b). */
-export function readFund(b: Pick<BizState, 'industry' | 'countryId' | 'financeFirm'>): FundState {
+export function readFund(b: FirmBooks): FundState {
   const x = obj(b.financeFirm)
   if (x && x.kind === 'fund') return readNew(x, b.countryId)
   return migrateLegacy(b)

@@ -24,7 +24,8 @@ import { financeEraBlock, isFinanceFirm } from './finance-firm'
 import { financeView } from './finance-firm-state'
 import { fundTypeBlock, initFund } from './fund'
 import { TYPE_INFO } from './fund-model'
-import { FUND_TYPES, type FundType } from './fund-state'
+import { FUND_TYPES, readFund, type FundType } from './fund-state'
+import { foundingNote } from './fund-text'
 import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
 import { industryDef, isIndustry, INDUSTRIES } from './industries'
@@ -520,7 +521,10 @@ export function newBiz(g: GameState, industry: Industry, countryId: string, city
     slump: 0,
     ...opts,
   }
-  if (isFinanceFirm(b)) b.financeFirm = financeView(b) as unknown as Json
+  // Investment firms get their own books: an asset manager (legal in every era) unless the caller
+  // picks a type with initFund. An old-style record here would read as a hedge fund in any year.
+  if (b.industry === 'investmentFirm') initFund(g, b, 'asset')
+  else if (isFinanceFirm(b)) b.financeFirm = financeView(b) as unknown as Json
   return b
 }
 
@@ -610,7 +614,9 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
     ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.`
     : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`
   const plan =
-    isFinanceFirm(b)
+    b.industry === 'investmentFirm'
+      ? foundingNote(readFund(b))
+      : isFinanceFirm(b)
       ? ' Set risk, rates and client policies in Financial Operations. Customer principal is segregated; you earn fees and banking spreads, never free deposits.'
       : p.industry === 'gameStudio'
       ? ` Greenlight your first game from the company screen: your ${b.employees} developers are waiting for something to make.`
@@ -867,6 +873,9 @@ export function listingsForSale(g: GameState): ForSale[] {
       ceo: 'manager',
       manager: { firstName: 'Interim', lastName: 'Manager', gender: 'female', skill: s.int(40, 70), salary: 0, since: g.year },
     })
+    // An investment firm for sale is one of the types legal this year (a venture firm's funds and
+    // portfolio aren't sold off the shelf). Its own stream keeps the other listings unchanged.
+    if (industry === 'investmentFirm') initFund(g, b, seeded(yearKey(g, `biz.forSale.fund.${i}`)).pick(FUND_TYPES.filter(t => t !== 'vc' && !fundTypeBlock(t, g.year))))
     b.production = isFinanceFirm(b) ? 0 : Math.round(planFor(g, b, g.year - 1, { calm: true }).demand)
     const clone = JSON.parse(JSON.stringify(b)) as BizState
     const stmt = simulateYear(g, clone, g.year - 1, 0, 1).stmt
@@ -947,12 +956,14 @@ function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
 
 function listingRow(l: ForSale): MenuAction {
   const def = industryDef(l.biz.industry)
+  // An investment firm says what kind it is (an asset manager and a brokerage are different buys).
+  const kind = l.biz.industry === 'investmentFirm' ? TYPE_INFO[readFund(l.biz).type].label : def.label
   return {
     type: 'action',
     id: `biz.buy.${l.id}`,
     label: l.name,
     emoji: def.emoji,
-    subtitle: `${def.label} · ${l.biz.city} · ${l.years} yrs old · ${money(l.price)} · ${l.profit >= 0 ? `${money(l.profit)} profit` : `${money(-l.profit)} loss`} last year`,
+    subtitle: `${kind} · ${l.biz.city} · ${l.years} yrs old · ${money(l.price)} · ${l.profit >= 0 ? `${money(l.profit)} profit` : `${money(-l.profit)} loss`} last year`,
     disabledReason: (g) => {
       const block = foundBlock(g)
       if (block) return block

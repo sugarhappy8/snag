@@ -1,14 +1,22 @@
 // Investment Firms 2.0 review regressions: unique startup names, a hired CEO who leaves pitches
-// for the owner, and LPs who won't fund a manager that never invests.
+// for the owner, LPs who won't fund a manager that never invests, and era-legal firms from every
+// source (founding, listings, group ventures, old saves).
 import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
+import { createBusinessAsset, listingsForSale, newBiz, startFounding } from '../src/game/business/founding'
 import { fundNodes } from '../src/game/business/fund'
 import { investInPitch } from '../src/game/business/fund-actions'
-import { readFund, saveFund, type FundState } from '../src/game/business/fund-state'
+import { quantBlock } from '../src/game/business/fund-model'
+import { readFund, saveFund, type FundState, type FundType } from '../src/game/business/fund-state'
 import { fundLine } from '../src/game/business/fund-text'
 import { newVcFund, openPitches, pitchesFor, raiseQuote } from '../src/game/business/fund-vc'
-import { bizOf, readBiz } from '../src/game/business/state'
+import { bizOf, findBusiness, readBiz } from '../src/game/business/state'
+import { runScript } from '../src/game/scripts'
+import type { GameState, Json } from '../src/game/types'
 import { ageBusinessYear, drain, firm, menuText } from './fund-fixtures'
+import { makeTestGame } from './helpers'
+
+const TYPES: FundType[] = ['asset', 'hedge', 'vc', 'broker']
 
 /** Run a VC firm's owner-CEO for some years, backing every pitch (follow-ons and raises accepted). */
 function ownerVc(lifeId: string, year: number, years: number, back = true) {
@@ -137,3 +145,88 @@ describe('venture capital: LPs judge what you invested', () => {
     expect(report && report.kind === 'notice' ? report.text : '').not.toMatch(/carry \$0/)
   })
 })
+
+describe('era-legal investment firms from every source', () => {
+  it('a company record made outside the founding popup is an asset manager, never a 1930s hedge fund', () => {
+    const g = makeTestGame(4, { age: 40 })
+    g.year = 1935
+    const b = newBiz(g, 'investmentFirm', 'us', 'Chicago', { cash: 1e6 })
+    const f = readFund(b)
+    expect(f.type).toBe('asset')
+    expect(f.kind).toBe('fund')
+    expect(b.cash).toBe(1e6)
+  })
+
+  it('lists investment firms for sale only as types that exist that year, and says which', () => {
+    const seen: { year: number; type: FundType }[] = []
+    for (let year = 1925; year <= 2026 && seen.length < 12; year++) {
+      for (const lifeId of ['a', 'b', 'c']) {
+        const g = makeTestGame(3, { age: 40, money: 1e8, countryId: 'us', city: 'Chicago' })
+        g.year = year; g.lifeId = `list-${lifeId}`
+        const before = JSON.stringify(g)
+        const listings = listingsForSale(g)
+        expect(JSON.stringify(g)).toBe(before)
+        expect(listingsForSale(g)).toEqual(listings)
+        for (const l of listings) if (l.biz.industry === 'investmentFirm') seen.push({ year, type: readFund(l.biz).type })
+      }
+    }
+    expect(seen.length).toBeGreaterThanOrEqual(6)
+    for (const s of seen) {
+      expect(s.type).not.toBe('vc')
+      if (s.year < 1949) expect(s.type).not.toBe('hedge')
+    }
+    expect(new Set(seen.map(s => s.type)).size).toBeGreaterThan(1)
+  }, 60_000)
+
+  it('the founding popup ends with the chosen type’s next step, not banking text', () => {
+    for (const type of TYPES) {
+      const g = makeTestGame(21, { age: 30, money: 50_000_000 })
+      g.year = 1995
+      startFounding(g, 'investmentFirm')
+      let text = ''
+      for (let step = 0; g.queue.length && step < 30; step++) {
+        const m = g.queue.shift()!
+        if (m.kind === 'notice' && m.title === 'Open for Business!') text = m.text
+        if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue ?? 'Test Capital', m.data, m)
+        else if (m.kind === 'choice' && m.source === 'script') runScript(g, m.scriptId!, m.scriptId === 'business.found.investmentModel' ? type : m.choices.find(c => c.id === 'savings' || c.id === 'me')?.id ?? m.choices[0].id, m.data, m)
+      }
+      expect(text, type).toBeTruthy()
+      expect(text).not.toMatch(/banking spreads|deposits/)
+      if (type === 'vc') expect(text).toMatch(/Fund I/)
+    }
+  })
+
+  it('maps an old pre-1949 "private" firm to an asset manager, and an old quant firm only where computers exist', () => {
+    const legacy = (rec: Json, year: number) => {
+      const g = makeTestGame(5, { age: 40, money: 1_000_000 })
+      g.year = year
+      const b0 = newBiz(g, 'investmentFirm', 'us', 'Chicago', { cash: 3_000_000, founded: year - 10 })
+      b0.financeFirm = rec
+      const a = createBusinessAsset(g, 'Old Capital', b0, 1_000_000)
+      g.assets.push(a)
+      return { g, a }
+    }
+    const old = legacy({ model: 'private', aum: 4e7, feeRate: .015, lastYear: 1934 }, 1935)
+    expect(readFund(readBiz(old.g, old.a))).toMatchObject({ type: 'asset', aum: 4e7, lastYear: 1934 })
+    const none = legacy({ model: 'private', aum: 4e7 }, 1940)
+    // Never booked: the founding year decides (1930).
+    expect(readFund(readBiz(none.g, none.a)).type).toBe('asset')
+    expect(quantBlock('us', 1961)).toBeTruthy()
+    const early = legacy({ model: 'private', aum: 4e7, algoEdge: 1, algoCompleted: 1958, lastYear: 1960 }, 1961)
+    expect(readFund(readBiz(early.g, early.a))).toMatchObject({ type: 'hedge', strategy: 'longShort' })
+    // An edge with no completion year still fades as rivals copy it.
+    const undated = legacy({ model: 'private', aum: 4e7, algoEdge: 1, lastYear: 2024 }, 2025)
+    const f = readFund(readBiz(undated.g, undated.a))
+    expect(f.strategy).toBe('quant')
+    expect(f.algoDone).toBeGreaterThan(0)
+    installCeo(undated.g, undated.a)
+    ageBusinessYear(undated.g)
+    expect(readFund(readBiz(undated.g, undated.a)).algoEdge).toBeLessThan(f.algoEdge)
+  })
+})
+
+function installCeo(g: GameState, a: { id: string }): void {
+  const live = findBusiness(g, a.id)!
+  g.character.job = null
+  becomeCeo(g, live, bizOf(g, live)); g.queue = []
+}

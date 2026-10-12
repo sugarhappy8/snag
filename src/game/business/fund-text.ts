@@ -60,6 +60,15 @@ export function fundLine(f: FundState, n: number, year: number): string {
   return `Fund ${roman(n)} (${x.vintage}) · ${money(x.size)} · ${book} · ${state}`
 }
 
+/** The "what now" sentence of the founding popup, for each firm type. */
+export function foundingNote(f: FundState): string {
+  if (f.type === 'asset') return ' Pick a fund style and fee in Financial Operations. Clients’ money stays theirs: you earn the fee.'
+  if (f.type === 'hedge') return ` Pick a strategy in Financial Operations. You earn ${pct(f.mgmt)} a year plus ${pct(f.perf)} of gains above the high-water mark.`
+  if (f.type === 'broker') return ' Set your commission in Financial Operations. Clients’ accounts stay theirs: you earn on their trades.'
+  const fund = f.funds[f.funds.length - 1]
+  return ` LPs committed ${money(fund?.size ?? 0)} to Fund I (their money, not yours). Back founders from This Year’s Pitches: you earn 2% a year and 20% of profits.`
+}
+
 /** A stored news code turned into a line (startup news, algorithm results). */
 export function newsLine(f: FundState, code: string): string {
   if (code === 'algo:ok') return '🧠 Your trading algorithm works: a real edge, for now.'
