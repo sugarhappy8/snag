@@ -267,6 +267,16 @@ describe('the anachronism detector', () => {
     expect(anachronismsIn('We watched TV.', 1952, ['ng', 'us'])).toEqual([])
   })
 
+  it('knows when the moon landing, color TV and e-bikes arrived', () => {
+    // Review: a 1948 American life "bought a color set", and the 1948 Bike Shop sold e-bikes.
+    expect(anachronismsIn('We bought a color set and watched everything.', 1948, ['us'])).toContain('color tv')
+    expect(anachronismsIn('We bought a color set and watched everything.', 1975, ['us'])).toEqual([])
+    expect(anachronismsIn('I drew a picture of the moon landing.', 1955, ['gb'])).toContain('moon landing')
+    expect(anachronismsIn('I drew a picture of the moon landing.', 1969, ['gb'])).toEqual([])
+    expect(anachronismsIn('Bikes, e-bikes and scooters', 1948, ['us'])).toContain('e-bike')
+    expect(anachronismsIn('Bikes, e-bikes and scooters', PRESENT_YEAR, ['us'])).toEqual([])
+  })
+
   it('does not trip on ordinary words that merely look modern', () => {
     for (const text of ['I read my textbook.', 'A storm of applause.', 'She sent a telegram.', 'The main character dies in act three.', 'A flight of stairs.', 'He hacked away at the weeds.']) {
       expect(anachronismsIn(text, 1910, ['us']), text).toEqual([])
