@@ -4,7 +4,7 @@
 import { count, log } from '../core'
 import { anachronistic } from '../events/era'
 import { hasTech } from '../history/timeline'
-import { weightedPick } from '../rng'
+import { pick, rand } from '../rng'
 import { blocked, ownerKey } from '../special/common'
 import { hasTalent } from '../talents'
 import type { Asset, GameState, Json } from '../types'
@@ -13,9 +13,9 @@ import { isFinanceFirm } from '../business/finance-firm-state'
 import { manageBlock } from '../business/gate'
 import { businessAssets, readBiz } from '../business/state'
 import { ALL_IDEAS, CATEGORIES, isHistory, type Category, type IdeaDef } from './catalog'
-import { inventionValue } from './market'
+import { inventionValue, raceOpen } from './market'
 import { legacyProfile, migrateLegacy, readInv, workshopFromLegacy } from './migrate'
-import { FLAG, NOTEBOOK_MAX, emptyWorkshop, invDef, normalizeWorkshop, ownsWorkshop, saveInv, type Inv, type MadeEntry, type NoteIdea, type Workshop } from './state'
+import { FLAG, NOTEBOOK_MAX, SEEN_MAX, emptyWorkshop, invDef, normalizeWorkshop, ownsWorkshop, saveInv, type Inv, type MadeEntry, type NoteIdea, type Workshop } from './state'
 
 export const MIN_AGE = 8
 
@@ -86,8 +86,9 @@ export function racesHistory(g: GameState, ws: Workshop): boolean {
   return isGenius(g) || ws.skill >= 80
 }
 
-export function historyOpen(def: IdeaDef, year: number): boolean {
-  return typeof def.real === 'number' && year >= def.real - 25 && year <= def.real
+/** The race (history or future) is open for this idea in `year`. Pure. */
+export function historyOpen(g: GameState, def: IdeaDef, year = g.year): boolean {
+  return raceOpen(g, def, year)
 }
 
 /** True when the idea's own words fit this year and country (the anachronism lint's view). Pure. */
@@ -101,9 +102,26 @@ export function blurbOf(g: GameState, def: IdeaDef): string {
   return anachronistic(g, def.blurb) ? `A ${CATEGORIES[def.cat].label.toLowerCase()} idea ahead of its time.` : def.blurb
 }
 
-/** Ideas already in the notebook, already made, or owned as an invention. */
+/**
+ * Race ideas already brought to market in this timeline (by anyone in the family). World state:
+ * it survives heirs (life.ts continueAsChild keeps the flag), so history can't be beaten twice.
+ */
+export const FIRSTS_FLAG = 'workshop.firsts'
+const FIRSTS_MAX = 120
+
+export function worldFirsts(g: GameState): Set<string> {
+  const raw = g.flags[FIRSTS_FLAG]
+  return new Set((Array.isArray(raw) ? raw : []).filter((x): x is string => typeof x === 'string').slice(-FIRSTS_MAX))
+}
+
+export function recordFirst(g: GameState, id: string): void {
+  const list = [...worldFirsts(g)].filter((x) => x !== id)
+  g.flags[FIRSTS_FLAG] = [...list, id].slice(-FIRSTS_MAX)
+}
+
+/** Ideas already in the notebook, already made, owned as an invention, or (race ideas) made in this timeline. */
 export function takenIds(g: GameState, ws: Workshop): Set<string> {
-  const out = new Set<string>([...ws.ideas.map((i) => i.id), ...ws.made.map((m) => m.id)])
+  const out = new Set<string>([...ws.ideas.map((i) => i.id), ...ws.made.map((m) => m.id), ...worldFirsts(g)])
   for (const o of inventions(g)) out.add(o.inv.idea)
   return out
 }
@@ -114,7 +132,7 @@ export function candidates(g: GameState, ws: Workshop): IdeaDef[] {
   const race = racesHistory(g, ws)
   return ALL_IDEAS.filter((d) => {
     if (taken.has(d.id)) return false
-    if (isHistory(d)) return race && historyOpen(d, g.year) && eraFits(g, d)
+    if (isHistory(d)) return race && historyOpen(g, d) && eraFits(g, d)
     return g.year >= d.from && (d.to === undefined || g.year <= d.to) && eraFits(g, d)
   })
 }
@@ -122,11 +140,30 @@ export function candidates(g: GameState, ws: Workshop): IdeaDef[] {
 /** How often a history-race idea strikes compared with an everyday one. */
 export const HISTORY_WEIGHT = 0.12
 
-/** Draw a new idea (actions and hooks only: uses g's RNG). History ideas are rarer than everyday ones. */
+/** Remember that an idea was offered (bounded, newest last). */
+export function markSeen(ws: Workshop, id: string): void {
+  ws.seen = [...ws.seen.filter((x) => x !== id), id].slice(-SEEN_MAX)
+}
+
+/**
+ * Draw a new idea (actions and hooks only: uses g's RNG). History ideas are rarer than everyday
+ * ones, and ideas offered recently (forgotten, scrapped) wait their turn while fresh ones remain.
+ */
 export function drawIdea(g: GameState, ws: Workshop): IdeaDef | null {
-  const pool = candidates(g, ws)
-  if (!pool.length) return null
-  return weightedPick(g, pool, (d) => (isHistory(d) ? HISTORY_WEIGHT : 1))
+  const all = candidates(g, ws)
+  if (!all.length) return null
+  // First the kind (a history-race idea at HISTORY_WEIGHT the odds of an everyday one, as if
+  // nothing had been seen), then an idea of that kind, the freshest available.
+  const race = all.filter(isHistory)
+  const everyday = all.filter((d) => !isHistory(d))
+  const raceWeight = race.length * HISTORY_WEIGHT
+  const group = race.length && rand(g) * (raceWeight + everyday.length) < raceWeight ? race : everyday.length ? everyday : race
+  const age = new Map(ws.seen.map((id, i) => [id, i]))
+  const fresh = group.filter((d) => !age.has(d.id))
+  // Everything of that kind was offered lately: the one offered longest ago comes back first.
+  const def = fresh.length ? pick(g, fresh) : group.reduce((x, y) => ((age.get(y.id) ?? 0) < (age.get(x.id) ?? 0) ? y : x))
+  markSeen(ws, def.id)
+  return def
 }
 
 export function addIdea(g: GameState, ws: Workshop, def: IdeaDef): boolean {

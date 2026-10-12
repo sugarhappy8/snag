@@ -1508,6 +1508,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(n.flags.worldEconomy ? { worldEconomy: n.flags.worldEconomy } : {}),
     ...(n.flags.groupServices ? { groupServices: n.flags.groupServices, groupServicesPrepared: n.flags.groupServicesPrepared ?? -1, groupServicesSettled: n.flags.groupServicesSettled ?? -1, groupServiceResults: n.flags.groupServiceResults ?? [] } : {}),
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
+    // Inventions that beat history are world state: an heir can't invent them first again.
+    ...(Array.isArray(n.flags['workshop.firsts']) ? { 'workshop.firsts': n.flags['workshop.firsts'] } : {}),
   }
   inheritRoyalStatus(n, heirP)
   // An heir already serving as group CEO keeps that appointment, now as the playable chair.

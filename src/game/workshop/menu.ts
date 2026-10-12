@@ -10,7 +10,7 @@ import {
   benchFor, benchHint, companyLaunchBlock, crowdBlock, dealsLeft, filePatent, giveAway, isFirst, launchBlock, launchLimit, license, licenseQuote, makeInCompany, patentBlock, patentCost,
   pitch, pitchBlock, pitchVenue, routeQuotes, scrapIdea, sellBlock, sellStream, shopRights, startCrowd, streamSaleBlock, subjectOf, LAUNCH_MIN, PATENT_MIN, type Bench, type RouteQuote,
 } from './launch'
-import { patentActive, pitchOdds, trueAppeal } from './market'
+import { patentActive, pitchOdds, raceYear, trueAppeal } from './market'
 import { blurbOf, findInvention, fittingCompanies, historyOpen, inventions, isGenius, MIN_AGE, readWorkshop, type Owned } from './notebook'
 import { NOTEBOOK_MAX, noteDef, rankOf, type Inv, type NoteIdea, type Workshop } from './state'
 
@@ -51,13 +51,13 @@ function launchMenu(t: Target, name: string): MenuGroup {
           run: (gg) => { license(gg, t) },
         },
         {
-          type: 'action', id: `ws.pitch.${t.kind}.${t.id}`, label: venue.show ? `Pitch on ${venue.name}` : 'Pitch at the Trade Fair', emoji: venue.emoji, subtitle: 'Cash now for a cut of your royalties. Or public humiliation.',
+          type: 'action', id: `ws.pitch.${t.kind}.${t.id}`, label: venue.show ? `Pitch on ${venue.name}` : 'Pitch at the Invention Fair', emoji: venue.emoji, subtitle: 'Cash now for a cut of your royalties. Or public humiliation.',
           hint: (gg) => { const bb = bench(gg, t); return bb && isGenius(gg) && bb.pitched < 0 ? talentHint(gg, 'Inventor', `${Math.round(pitchOddsFor(gg, bb) * 100)}% chance of an offer`) : null },
           disabledReason: (gg) => pitchBlock(gg, t), run: (gg) => { pitch(gg, t) },
         },
         {
           type: 'action', id: `ws.crowd.${t.kind}.${t.id}`, label: 'Crowdfund It', emoji: '\u{1F3AF}', subtitle: 'Pre-orders fund your own production: a bigger margin',
-          visible: (gg) => gg.year >= 2009, hint: (gg) => quoteHint(gg, readWorkshop(gg), bench(gg, t), 'crowd'),
+          visible: (gg) => gg.year >= 2009 && gg.character.age >= 18, hint: (gg) => quoteHint(gg, readWorkshop(gg), bench(gg, t), 'crowd'),
           disabledReason: (gg) => crowdBlock(gg, t), run: (gg) => startCrowd(gg, t),
         },
       ]
@@ -104,23 +104,32 @@ function patentActions(t: Target, name: string, home: boolean): MenuAction[] {
   }))
 }
 
+/** The prototype line of a notebook idea, saying what the next quality milestone unlocks. */
+function qualityLine(idea: NoteIdea): string {
+  const best = idea.q ? `Best prototype: ${Math.round(idea.q)}/100 after ${idea.builds} build${idea.builds === 1 ? '' : 's'}.` : 'No prototype yet.'
+  if (idea.q < LAUNCH_MIN) return `${best} Build one that works (quality ${LAUNCH_MIN}+) to unlock launch deals; ${PATENT_MIN}+ for patents.`
+  if (idea.q < PATENT_MIN) return `${best} Reach quality ${PATENT_MIN} to patent it.`
+  return best
+}
+
 function ideaNode(g: GameState, idea: NoteIdea): MenuGroup {
   const def = noteDef(idea)
   const t: Target = { kind: 'idea', id: idea.id }
-  const first = historyOpen(def, g.year)
+  const first = historyOpen(g, def)
   return {
     type: 'menu', id: `ws.idea.${idea.id}`, label: def.name, emoji: def.emoji,
-    subtitle: `${CATEGORIES[def.cat].label} · ${DIFFICULTY_LABEL[def.d]} · ${idea.q ? `quality ${Math.round(idea.q)}` : 'no prototype yet'}${first ? ` · \u{23F3} beat ${def.real}` : ''}`,
+    subtitle: `${CATEGORIES[def.cat].label} · ${DIFFICULTY_LABEL[def.d]} · ${idea.q ? `quality ${Math.round(idea.q)}` : 'no prototype yet'}${first ? ` · \u{23F3} beat ${raceYear(g, def)}` : ''}`,
     hint: (gg) => { const b = bench(gg, t); return b ? benchHint(gg, readWorkshop(gg), b) || null : null },
     children: (gg) => {
       const cur = readWorkshop(gg).ideas.find((i) => i.id === idea.id)
       if (!cur) return [{ type: 'info', id: `ws.idea.gone.${idea.id}`, text: 'That idea is no longer in your notebook.' }]
       const nodes: MenuNode[] = [
         { type: 'info', id: `ws.idea.info.${idea.id}`, emoji: def.emoji, text: `${blurbOf(gg, def)} ${stars(def.a)} · ${DIFFICULTY_LABEL[def.d]}` },
-        { type: 'info', id: `ws.idea.q.${idea.id}`, emoji: '\u{1F529}', text: cur.q ? `Best prototype: ${Math.round(cur.q)}/100 after ${cur.builds} build${cur.builds === 1 ? '' : 's'}. Patent at ${PATENT_MIN}+, launch at ${LAUNCH_MIN}+.` : `No prototype yet. Patent at ${PATENT_MIN}+, launch at ${LAUNCH_MIN}+.` },
+        { type: 'info', id: `ws.idea.q.${idea.id}`, emoji: '\u{1F529}', text: qualityLine(cur) },
       ]
-      if (isFirst(def, gg.year)) nodes.push({ type: 'info', id: `ws.idea.race.${idea.id}`, emoji: '\u{23F3}', text: `History race: get it on the market by ${def.real} and the world will remember you.` })
-      nodes.push(buildAction(t, def), ...patentActions(t, def.name, true), launchMenu(t, def.name), {
+      if (isFirst(gg, def)) nodes.push({ type: 'info', id: `ws.idea.race.${idea.id}`, emoji: '\u{23F3}', text: def.future ? `Future race: rivals are close. Get it on the market by ${raceYear(gg, def)} and it's yours.` : `History race: get it on the market by ${def.real} and the world will remember you.` })
+      // Patent and launch rows appear once they can matter; until then the quality line says how to unlock them.
+      nodes.push(buildAction(t, def), ...(cur.q >= PATENT_MIN ? patentActions(t, def.name, true) : []), ...(cur.q >= LAUNCH_MIN ? [launchMenu(t, def.name)] : []), {
         type: 'action', id: `ws.scrap.${idea.id}`, label: 'Scrap This Idea', emoji: '\u{1F5D1}\u{FE0F}', subtitle: 'Frees a page in your notebook',
         confirm: () => `Crumple up the ${def.name}?`, run: (g2) => { scrapIdea(g2, idea.id) },
       })
@@ -140,7 +149,7 @@ export function inventionNodes(g: GameState, a: Asset): MenuNode[] {
     { type: 'info', id: `ws.inv.patent.${a.id}`, emoji: '\u{1F4DC}', text: patentLine(g, inv) },
   ]
   if (inv.stage === 'patented') {
-    nodes.push({ type: 'info', id: `ws.inv.wait.${a.id}`, emoji: '\u{1F4E6}', text: `Not on sale yet. Worth about ${formatMoney(a.value)} to a buyer today.${isFirst(def, g.year) ? ` Beat history: launch by ${def.real}!` : ''}` })
+    nodes.push({ type: 'info', id: `ws.inv.wait.${a.id}`, emoji: '\u{1F4E6}', text: `Not on sale yet. Worth about ${formatMoney(a.value)} to a buyer today.${isFirst(g, def) ? ` Beat history: launch by ${raceYear(g, def)}!` : ''}` })
     const hint = (gg: GameState) => { const b = bench(gg, t); return b ? benchHint(gg, readWorkshop(gg), b) || null : null }
     nodes.push({ ...buildAction(t, def), hint }, ...(inv.patent?.scope === 'home' ? patentActions(t, def.name, false) : []), launchMenu(t, def.name))
     return nodes
@@ -223,7 +232,7 @@ export const workshopMenu: MenuGroup = {
     }]
     nodes.push({ type: 'heading', id: 'ws.notebookH', label: `Notebook (${ws.ideas.length}/${NOTEBOOK_MAX})` })
     if (!ws.ideas.length) nodes.push({ type: 'info', id: 'ws.notebook.empty', text: 'Your notebook is empty. Brainstorm, or wait for inspiration to strike.' })
-    const sorted = [...ws.ideas].sort((x, y) => Number(historyOpen(noteDef(y), g.year)) - Number(historyOpen(noteDef(x), g.year)) || y.q - x.q)
+    const sorted = [...ws.ideas].sort((x, y) => Number(historyOpen(g, noteDef(y))) - Number(historyOpen(g, noteDef(x))) || y.q - x.q)
     for (const idea of sorted) nodes.push(ideaNode(g, idea))
     const owned = inventions(g)
     if (owned.length) {

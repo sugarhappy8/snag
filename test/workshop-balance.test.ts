@@ -79,7 +79,8 @@ function life(seed: number, genius: boolean, born: number, style: 'strong' | 'ca
 
 describe('inventing pays, within reason', () => {
   it('a dedicated genius gets rich, a dedicated tinkerer does well, a casual tinkerer rarely does', () => {
-    const genius = [life(10, true, 1950, 'strong'), life(17, true, 1990, 'strong')]
+    // A modern life (born 2010: everyday ideas, crowdfunding and the future race) pays like the others.
+    const genius = [life(10, true, 1950, 'strong'), life(17, true, 1990, 'strong'), life(45, true, 2010, 'strong')]
     const normal = life(24, false, 1960, 'strong')
     const casual = [life(31, false, 1960, 'casual'), life(38, false, 1980, 'casual')]
     for (const x of genius) {

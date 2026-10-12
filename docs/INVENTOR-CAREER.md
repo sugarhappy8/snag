@@ -10,8 +10,11 @@ The code lives in `src/game/workshop/`.
 
 1. **Ideas** go into a notebook (max 12). Geniuses get 1-2 sparks a year from age 6; everyone
    else about one year in seven from age 10. Some sparks arrive as a popup ("While folding
-   laundry you had an idea…": write it down / forget it). **💭 Brainstorm** twice a year; the odds
-   come from smarts, skill and the talent.
+   laundry, you had an idea…": write it down / forget it); the scene fits your stage of life
+   (school for kids, meetings and traffic for adults, the garden for retirees) and the era
+   (`yearly.sparkScenes`). **💭 Brainstorm** twice a year; the odds come from smarts, skill and the
+   talent. Ideas offered lately (forgotten or scrapped) wait their turn while fresh ones remain
+   (`Workshop.seen`, the last 40).
 2. **The catalog** (`catalog.ts`): 160+ everyday ideas in ten categories (gadget, home, toy,
    health, transport, energy, computing, food, fashion, weird), practical to silly (umbrella hat,
    runaway alarm clock, sock-pairing robot), each with an era window, difficulty 1-5 and the
@@ -21,6 +24,11 @@ The code lives in `src/game/workshop/`.
    with skill 80+, from 25 years before the real date until that year. Launching one first is a
    **🏆 You Beat History** moment (fame, reputation, `historyFirsts`). After the real year an
    unlaunched one leaves the notebook: someone else got there. No real person is ever named.
+   The **future race** gives modern lives the same chase: 13 clearly fictional breakthroughs
+   (Pocket Fusion Cell, Dream Recorder, Tooth-Regrowing Gel…) open from 2016-2025, each with a
+   rival's deadline rolled per family (10-40 years after it opens; `market.raceYear`), so no real
+   date is ever claimed. Firsts are world state (`g.flags['workshop.firsts']`, kept for heirs):
+   history can't be beaten twice in one timeline.
 4. **🔧 Build a prototype** (3 a year, 5 for geniuses) in a popup: 🛡️ Play it safe (narrow
    range), 🚀 Go bold (wide range: more masterpieces and more explosions) or 💸 Cheap & cheerful
    (40% of the cost, lower quality). Costs by difficulty ≈ $150 / $1.5K / $8K / $40K / $250K
@@ -30,11 +38,15 @@ The code lives in `src/game/workshop/`.
 5. **📜 Patent** (quality 40+): the home filing fee (`patentLaw`, from the national market data)
    or worldwide (×6). A patented idea becomes an Asset (`kind: 'invention'`) that shows in
    Assets, counts in net worth, can be sold and is inherited. Worldwide patents sell everywhere;
-   unpatented launches sell less, fade faster and invite knockoffs.
+   unpatented launches sell less, fade faster and invite knockoffs. An expired patent gives no
+   reach and can't be extended. A notebook idea shows its patent and launch rows only once its
+   prototype reaches 40 and 30; before that one line says what unlocks them.
 6. **🚀 Launch** (quality 30+, one big deal a year): sell the rights (1-3 offers, real brands from
    the registry where a category fits, else fictional), license it (3-10% royalty, better with
-   quality and reputation), pitch it (a TV pitch show from 2001 where television exists, a trade
-   fair before; cash now for a cut of royalties, or "I'm out"), crowdfund it (2009+, adults;
+   quality and reputation), pitch it (a TV pitch show from 2001 where television exists, an
+   invention fair before; cash now for a cut of royalties, or "I'm out"). Under 18 a parent or
+   guardian signs every deal and lump sums (rights, investor cash) are 80% of an adult's
+   (`MINOR_DEAL`; the hints include it); royalty rates are the same. Crowdfund it (2009+, adults;
    three goals trade success odds against your own-production margin; delivery can go wrong),
    make it in a compatible company you control (30% of sales booked as company profit, +brand),
    or give it to the world (karma, fame, reputation, no money).
@@ -44,8 +56,8 @@ The code lives in `src/game/workshop/`.
    compete for shelf space. Big moments pop up: the first million, a bestseller.
 8. **Events** (once each, at most one popup a year): knockoffs (sue / license them / ignore),
    recalls of low-quality launches (recall / keep quiet), viral moments (×2 sales for a year),
-   royalty buyout offers, patent trolls, Inventor of the Year, the school science fair (8-17)
-   and a rival inventor's duel.
+   royalty buyout offers, patent trolls, Inventor of the Year, the school science fair (ages 8-17
+   at school, from 1930) and a rival inventor's duel.
 9. **Reputation and rank** (0-100, gains shrink near the top): Tinkerer → Garage Inventor →
    Patent Holder → Renowned Inventor → Legendary Inventor.
 
@@ -59,11 +71,11 @@ Hints (`routeQuotes`, `buildOdds`, `brainstormOdds`, `pitchOdds`, `crowdOdds`, e
 pure and are exactly the numbers the resolvers roll against; they never reveal the launch luck.
 
 Balance (scripted lives, Workshop earnings only, before income tax, 2026 dollars): a dedicated
-genius earns roughly $10-15M over a life born in 1950 or 1900 (with 4-7 history firsts), $20-30M
-born in 1990 (crowdfunding); a lucky history first such as the Touch-Glass Pocket Telephone made
-in your own company can be worth far more. A dedicated non-genius earns about $5M, a casual
-genius about $3M and a casual tinkerer under $1M. A strong professional career earns about
-$6-10M; businesses scale further.
+genius earns roughly $6-15M over a life born in 1900 or 1950 (4-6 history firsts born in 1900),
+$15-26M born in 1990 or 2010 (crowdfunding); a lucky race first such as the Touch-Glass Pocket
+Telephone made in your own company can be worth far more. A dedicated non-genius earns about
+$3-4M, a casual genius about $2-5M and a casual tinkerer under $1M. A strong professional career
+earns about $6-10M; businesses scale further.
 
 ## State and old saves
 

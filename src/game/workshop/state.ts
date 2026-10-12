@@ -45,7 +45,12 @@ export interface Workshop {
   events: Record<string, number>
   /** Last year the yearly sparks ran. */
   last: number
+  /** Ideas offered recently (newest last, bounded): drawn ideas avoid them, so a forgotten or
+   * scrapped idea doesn't come straight back. */
+  seen: string[]
 }
+
+export const SEEN_MAX = 40
 
 export type Route = 'license' | 'pitch' | 'crowd' | 'company' | 'open'
 export type PatentScope = 'home' | 'world'
@@ -133,7 +138,7 @@ function readNote(v: unknown, fallbackYear: number): NoteIdea | null {
 }
 
 export function emptyWorkshop(g: GameState): Workshop {
-  return { v: 1, owner: ownerKey(g), skill: 0, rep: 0, ideas: [], builds: 0, launches: 0, earned: 0, kabooms: 0, made: [], events: {}, last: -1 }
+  return { v: 1, owner: ownerKey(g), skill: 0, rep: 0, ideas: [], builds: 0, launches: 0, earned: 0, kabooms: 0, made: [], events: {}, last: -1, seen: [] }
 }
 
 /** Normalize a stored workshop record (no owner check). */
@@ -157,6 +162,7 @@ export function normalizeWorkshop(g: GameState, raw: unknown): Workshop {
     skill: fin(d.skill, 0, 0, 100), rep: fin(d.rep, 0, 0, 100), ideas,
     builds: Math.floor(fin(d.builds, 0, 0, 1e6)), launches: Math.floor(fin(d.launches, 0, 0, 1e6)), earned: fin(d.earned), kabooms: Math.floor(fin(d.kabooms, 0, 0, 1e6)),
     made, events, last: year(d.last, -1),
+    seen: [...new Set((Array.isArray(d.seen) ? d.seen : []).map((x) => text(x, 80)).filter((x) => !!x))].slice(-SEEN_MAX),
   }
 }
 

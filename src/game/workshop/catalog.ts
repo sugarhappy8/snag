@@ -1,6 +1,8 @@
 // The Workshop's idea catalog: practical, clever and silly inventions, each with an era window,
 // a difficulty (1-5) and the appeal people expect (1-5). A second list is the history race:
-// real inventions under generic names, open to geniuses for 25 years before the real date.
+// real inventions under generic names, open to geniuses for 25 years before the real date. A third
+// list, the future race, gives modern lives a race too: clearly fictional breakthroughs whose
+// deadline (when a rival gets there) is rolled per family, so no real date is ever claimed.
 // Rules for this file: no real person is ever named, and no name or blurb may use a word the
 // anachronism lint (events/era.ts) flags before its technology exists. Names avoid such words
 // entirely; menus still filter every idea through `anachronistic` as a safety net.
@@ -27,6 +29,8 @@ export interface IdeaDef {
   tech?: TechId
   /** History race: the year this was really invented. Open 25 years before, closed after. */
   real?: number
+  /** Future race: a fictional breakthrough; its deadline is rolled per family (market.raceYear). */
+  future?: true
 }
 
 export interface CategoryDef {
@@ -287,7 +291,31 @@ export const HISTORY: readonly IdeaDef[] = [
   hist('hist-touch-slate', '\u{1F4F2}', 'Touch-Glass Slate', 'A thin sheet of glass you read, draw and play on.', 'computing', 5, 2010),
 ]
 
-export const ALL_IDEAS: readonly IdeaDef[] = [...IDEAS, ...HISTORY]
+function future(id: string, emoji: string, name: string, blurb: string, cat: Category, d: Level, from: number): IdeaDef {
+  return { id, emoji, name, blurb, cat, d, a: 5, from, future: true }
+}
+
+/**
+ * The future race: fictional breakthroughs nobody has made yet. Open to the same inventors as the
+ * history race from `from`; a rival gets there in a year rolled per family (10-40 years later).
+ */
+export const FUTURE: readonly IdeaDef[] = [
+  future('fut-fusion-cell', '\u{269B}\u{FE0F}', 'Pocket Fusion Cell', 'A fusion power cell the size of a coin. Never charge anything again.', 'energy', 5, 2020),
+  future('fut-superwire', '\u{1F9F2}', 'Room-Temperature Superwire', 'Power lines that lose nothing, and no freezer needed.', 'energy', 5, 2018),
+  future('fut-dream-recorder', '\u{1F319}', 'Dream Recorder', "Plays back last night's dreams over breakfast. Mostly about teeth.", 'computing', 5, 2022),
+  future('fut-pocket-quantum', '\u{1F52E}', 'Pocket Quantum Brain', 'Solves in a second what takes a warehouse of machines a century.', 'computing', 5, 2025),
+  future('fut-organ-printer', '\u{1FAC0}', 'Desktop Organ Printer', 'Prints a new kidney from your own cells. Waiting lists, gone.', 'health', 5, 2020),
+  future('fut-cold-cure', '\u{1F927}', 'One-Pill Cold Cure', 'One pill and the sniffles are gone by lunch.', 'health', 4, 2016),
+  future('fut-tooth-gel', '\u{1F9B7}', 'Tooth-Regrowing Gel', 'Lost a tooth? Rub it in and grow a new one.', 'health', 5, 2022),
+  future('fut-plastic-bin', '\u{267B}\u{FE0F}', 'Plastic-Eating Compost Bin', 'Tiny microbes turn old plastic into garden soil overnight.', 'home', 4, 2016),
+  future('fut-robot-chef', '\u{1F9D1}\u{200D}\u{1F373}', 'Robot Chef That Cleans Up', 'Cooks a three-course dinner, then washes every dish.', 'home', 5, 2018),
+  future('fut-float-board', '\u{1F6F9}', 'Floating Skateboard', 'Hovers a hand above any street. No wheels, no excuses.', 'transport', 5, 2018),
+  future('fut-air-umbrella', '\u{2614}', 'Force-Field Umbrella', 'A silent dome of air keeps the rain off. No pole.', 'gadget', 5, 2020),
+  future('fut-free-chocolate', '\u{1F36B}', 'Calorie-Free Chocolate', 'Tastes exactly like chocolate. Zero calories. Science!', 'food', 4, 2017),
+  future('fut-clean-clothes', '\u{1F455}', 'Never-Wash Clothes', 'Shirts that shrug off every stain and never need a wash.', 'fashion', 4, 2016),
+]
+
+export const ALL_IDEAS: readonly IdeaDef[] = [...IDEAS, ...HISTORY, ...FUTURE]
 const BY_ID = new Map(ALL_IDEAS.map((i) => [i.id, i]))
 
 export function catalogIdea(id: string): IdeaDef | undefined {
@@ -298,9 +326,9 @@ export function isCategory(v: unknown): v is Category {
   return typeof v === 'string' && Object.hasOwn(CATEGORIES, v)
 }
 
-/** True for a history-race idea. */
-export function isHistory(def: Pick<IdeaDef, 'real'>): boolean {
-  return typeof def.real === 'number'
+/** True for a race idea: the history race (a real year) or the future race (a rolled year). */
+export function isHistory(def: Pick<IdeaDef, 'real' | 'future'>): boolean {
+  return typeof def.real === 'number' || def.future === true
 }
 
 export const DIFFICULTY_LABEL = ['', 'Easy', 'Fiddly', 'Tricky', 'Hard', 'Epic'] as const

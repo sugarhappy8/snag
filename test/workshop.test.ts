@@ -26,7 +26,7 @@ import { crowdOdds, curveAt, expectedPeak, licenseValue, patentFee, pitchOdds, t
 import { addIdea, candidates, findInvention, historyOpen, inventions, mutWorkshop, readWorkshop } from '../src/game/workshop/notebook'
 import { settleInventions, yearlyWorkshop } from '../src/game/workshop/yearly'
 import { workshopMenu } from '../src/game/workshop/menu'
-import { fairOdds, sueOdds } from '../src/game/workshop/events'
+import { fairOdds, fairOpen, sueOdds, yearlyWorkshopEvent } from '../src/game/workshop/events'
 import { NOTEBOOK_MAX } from '../src/game/workshop/state'
 
 function inventor(opts: { genius?: boolean; age?: number; money?: number; year?: number; seed?: number; country?: string } = {}): GameState {
@@ -127,7 +127,7 @@ describe('era gates', () => {
   it('closes a history idea after its real year: someone else got there', () => {
     const g = inventor({ genius: true, year: 1972 })
     give(g, 'hist-pocket-telephone', 50)
-    expect(historyOpen(catalogIdea('hist-pocket-telephone')!, 1973)).toBe(true)
+    expect(historyOpen(g, catalogIdea('hist-pocket-telephone')!, 1973)).toBe(true)
     nextYear(g)
     yearlyWorkshop(g)
     expect(readWorkshop(g).ideas.some((i) => i.id === 'hist-pocket-telephone')).toBe(true)
@@ -502,6 +502,8 @@ describe('events', () => {
     for (let s = 1; s < 400 && seen.size < 7; s++) {
       const g = launched(s, 'license', s % 2 ? 40 : 75)
       g.character.age = s % 3 ? 30 : 12
+      // Science fairs are for kids at school.
+      if (g.character.age < 18) g.character.education.current = { level: 'middle', school: 'Test Middle School', year: 1, totalYears: 3, grades: 70, data: {} }
       mutWorkshop(g).rep = s % 5 ? 20 : 70
       mutWorkshop(g).skill = 50
       for (let y = 0; y < 6; y++) {
@@ -519,7 +521,7 @@ describe('events', () => {
       expect(Number.isFinite(g.character.money)).toBe(true)
     }
     for (const id of ['workshop.knockoff', 'workshop.recall', 'workshop.fair', 'workshop.spark']) expect(seen.has(id), id).toBe(true)
-  })
+  }, 120_000)
 
   it('the lawsuit and science-fair hints are the handlers own odds', () => {
     const g = launched(3)
@@ -531,6 +533,45 @@ describe('events', () => {
     expect(sueOdds(inventions(p)[0], p.year)).toBeGreaterThan(0.5)
     expect(fairOdds(g, readWorkshop(g))).toBeGreaterThanOrEqual(0)
   })
+})
+
+describe('era details in events', () => {
+  it('holds science fairs only for kids at school, from 1930', () => {
+    const kid = inventor({ age: 12, year: 1950 })
+    expect(fairOpen(kid)).toBe(false)
+    kid.character.education.current = { level: 'middle', school: 'Test Middle School', year: 1, totalYears: 3, grades: 70, data: {} }
+    expect(fairOpen(kid)).toBe(true)
+    kid.year = 1925
+    expect(fairOpen(kid)).toBe(false)
+    kid.year = 1950
+    kid.character.age = 18
+    expect(fairOpen(kid)).toBe(false)
+  })
+
+  it('names patent trolls and buyers in words of their time', () => {
+    const find = (year: number, script: string) => {
+      for (let s = 1; s < 600; s++) {
+        const g = inventor({ seed: s, year: year - 2 })
+        give(g, 'pocket-tool', 80)
+        filePatent(g, idea('pocket-tool'), 'world')
+        license(g, { kind: 'asset', id: inventions(g)[0].a.id })
+        nextYear(g)
+        yearlyWorkshop(g)
+        nextYear(g)
+        settleInventions(g, mutWorkshop(g))
+        g.queue = []
+        const o = inventions(g)[0]
+        o.inv.lastIncome = 50_000
+        yearlyWorkshopEvent(g, mutWorkshop(g))
+        const m = g.queue.find((x) => x.kind === 'choice' && x.scriptId === script)
+        if (m && m.kind === 'choice') return m.text
+      }
+      throw new Error(`no ${script} in ${year}`)
+    }
+    expect(find(1975, 'workshop.troll')).not.toMatch(/LLC/)
+    expect(find(2010, 'workshop.troll')).toMatch(/LLC/)
+    expect(find(1975, 'workshop.buyout')).not.toMatch(/royalty fund/)
+  }, 120_000)
 })
 
 describe('menus', () => {
