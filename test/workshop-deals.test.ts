@@ -4,8 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { runScript } from '../src/game/scripts'
 import { createPerson } from '../src/game/people'
 import type { ChoiceModal, GameState, MenuGroup } from '../src/game/types'
-import { MINOR_DEAL, benchFor, crowdBlock, license, pitch, rightsBasis, routeQuotes, shopRights } from '../src/game/workshop/launch'
-import { readWorkshop } from '../src/game/workshop/notebook'
+import {
+  MINOR_DEAL, benchFor, crowdBlock, filePatent, license, patentBlock, pitch, rightsBasis, routeQuotes, shopRights, subjectOf,
+} from '../src/game/workshop/launch'
+import { licenseValue } from '../src/game/workshop/market'
+import { findInvention, readWorkshop } from '../src/game/workshop/notebook'
 import { give, idea, ideaMenu, inventor, nextYear } from './workshop-fixtures'
 import { yearlyWorkshop } from '../src/game/workshop/yearly'
 
@@ -79,5 +82,25 @@ describe('minors', () => {
     yearlyWorkshop(g)
     expect(g.character.money - money).toBeGreaterThan(0)
     expect(g.flags.taxableIncome).toBe(g.character.money - money)
+  })
+})
+
+describe('patents that run out', () => {
+  it('give no worldwide reach and cannot be extended or filed again', () => {
+    const g = inventor({ year: 2000 })
+    give(g, 'robot-mower', 70)
+    const a = filePatent(g, idea('robot-mower'), 'home')!
+    const t = { kind: 'asset' as const, id: a.id }
+    expect(patentBlock(g, t, 'world')).toBeNull()
+    const ws = readWorkshop(g)
+    const live = benchFor(g, ws, t)!
+    expect(licenseValue(g, subjectOf(g, live), live.def.a, ws.rep)).toBeGreaterThan(licenseValue(g, { ...subjectOf(g, live), patent: null }, live.def.a, ws.rep))
+    g.year = 2025
+    expect(patentBlock(g, t, 'world')).toMatch(/expired/)
+    expect(patentBlock(g, t, 'home')).toMatch(/expired/)
+    const b = benchFor(g, ws, t)!
+    // Worth what an unpatented idea is worth: the old patent adds nothing.
+    expect(licenseValue(g, subjectOf(g, b), b.def.a, ws.rep)).toBeCloseTo(licenseValue(g, { ...subjectOf(g, b), patent: null }, b.def.a, ws.rep), 0)
+    expect(findInvention(g, a.id)!.inv.patent!.expires).toBeLessThanOrEqual(2025)
   })
 })

@@ -14,7 +14,7 @@ import { businessAssets } from '../business/state'
 import { CATEGORIES, stars, type Category, type IdeaDef } from './catalog'
 import {
   COMPANY_MARGIN, CROWD_GOAL, CROWD_MARGIN, PITCH_BOOST, crowdFans, crowdGoal, crowdOdds, curveSpec, deliveryFailOdds, expectedPeak, firstYearRevenue,
-  licenseRate, licenseValue, patentFee, patentLaw, pitchOdds, priceOf, revenueValue, streamValue, trueAppeal, type Subject,
+  licenseRate, licenseValue, liveScope, patentActive, patentFee, patentLaw, pitchOdds, priceOf, revenueValue, streamValue, trueAppeal, type Subject,
 } from './market'
 import { addRep, companyBlock, dropIdea, findIdea, findInvention, fittingCompanies, isGenius, markSeen, mutWorkshop, readWorkshop, remember, storeInv, workshopBlock } from './notebook'
 import { blankInv, noteDef, rec, text, type Inv, type NoteIdea, type Patent, type PatentScope, type Route, type Workshop } from './state'
@@ -93,6 +93,7 @@ export function patentBlock(g: GameState, t: Target, scope: PatentScope): string
   if (reason) return reason
   const b = benchFor(g, readWorkshop(g), t)
   if (!b) return 'That idea is no longer on your bench.'
+  if (b.patent && !patentActive(b.patent, g.year)) return `Your patent expired in ${b.patent.expires}. An old idea can't be patented again.`
   if (b.patent && (b.patent.scope === 'world' || scope === 'home')) return b.patent.scope === 'world' ? 'Already patented worldwide.' : 'Already patented at home.'
   if (b.q < PATENT_MIN) return `The patent office wants a working prototype (quality ${PATENT_MIN}+).`
   const cost = patentCost(g, b, scope)
@@ -190,7 +191,7 @@ function commitLaunch(g: GameState, ws: Workshop, b: Bench, o: LaunchOpts): Asse
   const first = isFirst(b.def, g.year)
   // Hidden luck (0.65-1.35, mean 1): the hints show expected sales, never the dice.
   const luck = 0.65 + 0.7 * rand(g)
-  const peak = expectedPeak(b.def, b.q, trueAppeal(g, b.def), b.patent?.scope ?? null, b.country, g.year, first) * luck * (o.boost ?? 1)
+  const peak = expectedPeak(b.def, b.q, trueAppeal(g, b.def), liveScope(b.patent, g.year), b.country, g.year, first) * luck * (o.boost ?? 1)
   Object.assign(inv, {
     stage: 'launched', route: o.route, rate: o.rate ?? 0, margin: o.margin ?? 0, company: o.company ?? '', maker: o.maker,
     launched: g.year, peak: Math.round(peak), price: priceOf(b.def), history: first, last: g.year - 1, inventor: inv.inventor || fullName(g.character),
@@ -341,7 +342,7 @@ export function pitchBlock(g: GameState, t: Target): string | null {
 /** The royalty a pitch deal pays before the investor's cut, and the boosted expected stream. Pure. */
 export function pitchStream(g: GameState, ws: Workshop, b: Bench): { rate: number; value: number } {
   const rate = licenseRate(b.q, ws.rep, isFirst(b.def, g.year)) + 0.01
-  const peak = expectedPeak(b.def, b.q, trueAppeal(g, b.def), b.patent?.scope ?? null, b.country, g.year, isFirst(b.def, g.year)) * PITCH_BOOST
+  const peak = expectedPeak(b.def, b.q, trueAppeal(g, b.def), liveScope(b.patent, g.year), b.country, g.year, isFirst(b.def, g.year)) * PITCH_BOOST
   return { rate, value: streamValue(curveSpec(b.def, g.year, b.patent), 0, priceOf(b.def) * rate, peak) }
 }
 
@@ -603,7 +604,7 @@ export function routeQuotes(g: GameState, ws: Workshop, b: Bench): RouteQuote[] 
     const fans = crowdFans(g)
     const e1 = firstYearRevenue(g, s, appeal)
     const fail = deliveryFailOdds(s)
-    const peak = expectedPeak(b.def, b.q, appeal, b.patent?.scope ?? null, b.country, g.year, s.history)
+    const peak = expectedPeak(b.def, b.q, appeal, liveScope(b.patent, g.year), b.country, g.year, s.history)
     let best = 0
     for (let tier = 0; tier < 3; tier++) {
       const odds = crowdOdds(g, tier)
