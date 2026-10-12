@@ -162,6 +162,11 @@ export function firstFundSize(g: GameState, b: Firm & Pick<BizState, 'ceo' | 'ma
   return Math.round(25_000_000 * w * eraVc(year) * pull / 100_000) * 100_000
 }
 
+/** Share of a fund's investable money that went into startups (0-1). */
+export function vcDeployed(x: Pick<VcFund, 'invested' | 'size'>): number {
+  return clampN(x.invested / Math.max(1, x.size * VC_INVESTABLE), 0, 1)
+}
+
 export interface RaiseQuote { n: number; size: number; tvpi: number | null; odds: number; block: string | null }
 
 /** What LPs would commit to the next fund now (pure; the Business hint shows the same odds). */
@@ -172,13 +177,18 @@ export function raiseQuote(g: GameState, b: BizState, f: FundState, year: number
   const first = firstFundSize(g, b, year)
   if (!latest) return { n, size: first, tvpi, odds: .5, block: null }
   const age = year - latest.vintage
-  const deployed = 1 - latest.dry / Math.max(1, latest.size * VC_INVESTABLE)
+  // What actually went into startups (unused money goes back to LPs after the fee years, so the
+  // dry powder left says nothing then).
+  const deployed = vcDeployed(latest)
   if (age < 3) return { n, size: 0, tvpi, odds: 0, block: `Fund ${roman(latest.n)} is too new. LPs want three years of results first.` }
   if (deployed < .7 && age < 5) return { n, size: 0, tvpi, odds: 0, block: `Invest more of Fund ${roman(latest.n)} first (${Math.round(deployed * 100)}% deployed).` }
+  // LPs size the next fund by what you put to work: a manager who never invested gets nothing.
+  const used = clampN(deployed / .7, 0, 1)
+  if (used < .15) return { n, size: 0, tvpi, odds: 0, block: `LPs won’t back a new fund: Fund ${roman(latest.n)} barely invested (${Math.round(deployed * 100)}%).` }
   const record = tvpi ?? 1
   const mult = record < .6 && age >= 5 ? .5 : clampN(Math.pow(Math.max(.1, record), .8), .6, 2)
   const skill = fundSkill(g, b)
-  const size = Math.max(first * .5, latest.size * mult * (.9 + skill / 500))
+  const size = Math.max(first * .5, latest.size * mult * (.9 + skill / 500)) * used
   const odds = clampN(.3 + .25 * (record - 1) + skill / 400, .1, .85)
   return { n, size: Math.round(size / 100_000) * 100_000, tvpi, odds, block: null }
 }

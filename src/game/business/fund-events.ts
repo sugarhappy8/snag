@@ -112,7 +112,7 @@ export function fundReport(g: GameState, a: Asset, b: BizState): void {
     const norm = brokerEra(b.countryId, g.year).normCommission
     if (f.commission > norm * 1.5 + .0005) lines.push(`💡 Rivals now charge about ${pct(norm, 2)} a trade. Your ${pct(f.commission, 2)} is driving clients away.`)
   } else {
-    lines.push(`🦄 ${s.year} · fees ${money(f.last.fees - f.last.carry)} · carry ${money(f.last.carry)} · profit ${money(s.net)}`)
+    lines.push(`🦄 ${s.year} · fees ${money(f.last.fees - f.last.carry)}${f.last.carry > 0 ? ` · carry ${money(f.last.carry)}` : ''} · profit ${money(s.net)} · cash ${money(b.cash)}`)
     lines.push(...f.funds.filter(x => !x.done).slice(-3).map(x => fundLine(f, x.n, g.year)))
     const waiting = openPitches(g, b, f, g.year).length
     if (waiting) lines.push(`🎤 ${waiting} founders are waiting to pitch you (see the dashboard).`)

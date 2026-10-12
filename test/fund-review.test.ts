@@ -1,11 +1,12 @@
-// Investment Firms 2.0 review regressions: unique startup names and a hired CEO who leaves pitches
-// for the owner.
+// Investment Firms 2.0 review regressions: unique startup names, a hired CEO who leaves pitches
+// for the owner, and LPs who won't fund a manager that never invests.
 import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
 import { fundNodes } from '../src/game/business/fund'
 import { investInPitch } from '../src/game/business/fund-actions'
 import { readFund, saveFund, type FundState } from '../src/game/business/fund-state'
-import { openPitches, pitchesFor } from '../src/game/business/fund-vc'
+import { fundLine } from '../src/game/business/fund-text'
+import { newVcFund, openPitches, pitchesFor, raiseQuote } from '../src/game/business/fund-vc'
 import { bizOf, readBiz } from '../src/game/business/state'
 import { ageBusinessYear, drain, firm, menuText } from './fund-fixtures'
 
@@ -91,5 +92,48 @@ describe('venture capital: a hired CEO and the owner', () => {
     const text = menuText(g, fundNodes(g, a)).join('\n')
     expect(text).not.toMatch(/No pitches right now/)
     expect(text).toMatch(/Fund I has finished investing/)
+  })
+})
+
+describe('venture capital: LPs judge what you invested', () => {
+  it('a firm that never backs a startup can’t keep raising funds just to collect fees', () => {
+    const { g, a } = ownerVc('lazy-vc', 1990, 26, false)
+    const f = readFund(readBiz(g, a))
+    expect(f.cos).toHaveLength(0)
+    expect(f.funds).toHaveLength(1)
+    const q = raiseQuote(g, readBiz(g, a), f, g.year)
+    expect(q.size).toBe(0)
+    expect(q.block).toMatch(/barely invested/)
+  }, 60_000)
+
+  it('sizes the next fund by how much of the last one went to work', () => {
+    const { g, b } = firm('vc', { year: 2000 })
+    const f = readFund(b)
+    const after = (invested: number): FundState => {
+      const x = newVcFund(1, 30e6, 2000)
+      x.invested = invested; x.dry = 24e6 - invested; x.fees = 3e6; x.dist = 1.2 * (invested + 3e6)
+      return { ...f, funds: [x], cos: [] }
+    }
+    const full = raiseQuote(g, b, after(24e6), 2006), half = raiseQuote(g, b, after(.35 * 24e6), 2006), none = raiseQuote(g, b, after(0), 2006)
+    expect(full.block).toBeNull()
+    expect(half.block).toBeNull()
+    expect(half.size).toBeLessThan(full.size * .7)
+    expect(half.size).toBeGreaterThan(0)
+    expect(none.block).toBeTruthy()
+    // After the fee years the unused money goes back to LPs: that doesn't count as invested.
+    const old = after(0)
+    old.funds[0].dry = 0
+    expect(raiseQuote(g, b, old, 2012).block).toBeTruthy()
+  })
+
+  it('shows no multiple for a fund that hasn’t backed anyone, and no "carry $0" in the report', () => {
+    const { g, a, b } = firm('vc', { year: 2015 })
+    expect(fundLine(readFund(b), 1, 2016)).toMatch(/no startups yet · \$[\d.]+M to invest/)
+    expect(fundLine(readFund(b), 1, 2016)).not.toMatch(/0\.0×/)
+    g.character.job = null
+    becomeCeo(g, a, bizOf(g, a)); g.queue = []
+    ageBusinessYear(g)
+    const report = g.queue.find(m => m.kind === 'notice' && m.title.endsWith('Financial Institution Report'))
+    expect(report && report.kind === 'notice' ? report.text : '').not.toMatch(/carry \$0/)
   })
 })
