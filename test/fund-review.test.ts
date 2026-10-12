@@ -1,12 +1,15 @@
 // Investment Firms 2.0 review regressions: unique startup names, a hired CEO who leaves pitches
-// for the owner, LPs who won't fund a manager that never invests, and era-legal firms from every
-// source (founding, listings, group ventures, old saves).
+// for the owner, LPs who won't fund a manager that never invests, era-legal firms from every
+// source (founding, listings, group ventures, old saves), an honest hedge fee preview and lawyers
+// who are actually paid for.
 import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
 import { createBusinessAsset, listingsForSale, newBiz, startFounding } from '../src/game/business/founding'
 import { fundNodes } from '../src/game/business/fund'
 import { investInPitch } from '../src/game/business/fund-actions'
+import { fundYearlyChecks, PROBE } from '../src/game/business/fund-events'
 import { quantBlock } from '../src/game/business/fund-model'
+import { hedgeFeeOutlook, strategyOutlook } from '../src/game/business/fund-outlook'
 import { readFund, saveFund, type FundState, type FundType } from '../src/game/business/fund-state'
 import { fundLine } from '../src/game/business/fund-text'
 import { newVcFund, openPitches, pitchesFor, raiseQuote } from '../src/game/business/fund-vc'
@@ -230,3 +233,43 @@ function installCeo(g: GameState, a: { id: string }): void {
   g.character.job = null
   becomeCeo(g, live, bizOf(g, live)); g.queue = []
 }
+
+describe('honest previews', () => {
+  it('the hedge fee preview pays no performance fee while the fund is under water, like the year itself', () => {
+    const { g, b } = firm('hedge')
+    const f = readFund(b)
+    const o = strategyOutlook(g, b, f, f.strategy)
+    const gross = Math.max(0, o.expected)
+    const under = hedgeFeeOutlook(g, b, { ...f, hwm: f.aum * 3 }, .02, .2)
+    expect(under.revenue).toBeCloseTo(f.aum * (1 + gross) * .02, 4)
+    const above = hedgeFeeOutlook(g, b, { ...f, hwm: f.aum * .5 }, .02, .2)
+    const mgmt = f.aum * (1 + gross) * .02
+    expect(above.revenue).toBeCloseTo(mgmt + .2 * (f.aum * (1 + gross) - mgmt - f.aum * .5), 4)
+  })
+})
+
+describe('regulators', () => {
+  it('top lawyers are paid by the firm, else by you; with no money you cooperate', () => {
+    const fight = (cash: number, money: number) => {
+      const { g, a, b } = firm('hedge', { cash, money })
+      const f = readFund(b)
+      f.lastYear = g.year - 1
+      f.probe = { year: g.year - 1, crime: 'Insider Trading', odds: 1, by: g.character.id }
+      saveFund(b, f)
+      g.queue = []
+      fundYearlyChecks(g, b, a)
+      const m = g.queue.find(q => q.kind === 'choice' && q.scriptId === PROBE)
+      if (!m || m.kind !== 'choice') throw new Error('no regulator popup')
+      g.queue = g.queue.filter(q => q !== m)
+      runScript(g, PROBE, 'lawyer', m.data, m)
+      return { g, a }
+    }
+    const rich = fight(5e6, 1e6)
+    expect(readBiz(rich.g, rich.a).cash).toBeLessThan(5e6)
+    expect(rich.g.character.money).toBe(1e6)
+    const broke = fight(0, 1e6)
+    expect(broke.g.character.money).toBeLessThan(1e6)
+    const nothing = fight(0, 0)
+    expect(nothing.g.log.flatMap(y => y.entries.map(e => e.text)).join('\n')).toMatch(/couldn't afford the lawyers/)
+  })
+})

@@ -172,7 +172,7 @@ export function fundYearlyChecks(g: GameState, b: BizState, a = assetOf(g, b)): 
   saveFund(b, f)
   if (f.probe && g.year > f.probe.year) {
     if (chance(g, f.probe.odds)) scriptChoice(g, PROBE, '📋 Regulators Are Calling', `Investigators want every record about ${a.name}’s trading. They suspect ${f.probe.crime.toLowerCase()}.`,
-      [{ id: 'cooperate', label: 'Cooperate fully (a lighter charge)', emoji: '🤝' }, { id: 'lawyer', label: `Fight with top lawyers (${money(lawyerFee(b))} of company cash)`, emoji: '⚖️', ...hintOf(g, 'Business', 'Lawyers make a conviction less likely, not impossible, and the charge is heavier') }],
+      [{ id: 'cooperate', label: 'Cooperate fully (a lighter charge)', emoji: '🤝' }, { id: 'lawyer', label: `Fight with top lawyers (${money(lawyerFee(b))})`, emoji: '⚖️', ...hintOf(g, 'Business', 'Lawyers make a conviction less likely, not impossible, and the charge is heavier') }],
       { emoji: '📋', data: { assetId: a.id } as Json })
     else if (g.year - f.probe.year >= 3) { f.probe = null; saveFund(b, f); log(g, `The regulators quietly closed their file on ${a.name}.`, 'good') }
   }
@@ -205,9 +205,11 @@ export const PROBE = defineScript('fund.probe', (g, choice, data) => {
   // Cooperating means a lighter charge; top lawyers make a conviction less likely.
   let evidence = .75, severity = 2
   if (choice === 'lawyer') {
+    // The firm pays if it can, otherwise you do; with no money for lawyers you end up cooperating.
     const fee = lawyerFee(b)
-    severity = 3
-    if (b.cash >= fee) { b.cash -= fee; b.yearCosts += fee; evidence = .45 }
+    if (b.cash >= fee) { b.cash -= fee; b.yearCosts += fee; evidence = .45; severity = 3 }
+    else if (spend(g, fee)) { evidence = .45; severity = 3 }
+    else log(g, `I couldn't afford the lawyers, so I cooperated with the regulators after all.`, 'bad')
   }
   saveFund(b, f)
   arrestPlayer(g, probe.crime, severity, { evidence, noResist: true, context: `Regulators traced suspicious trades at ${a.name}.` })
