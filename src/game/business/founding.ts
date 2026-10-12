@@ -690,8 +690,6 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
     isBank(b) ? ' Set savings and loan rates, lending appetite and products in Financial Operations. Deposits belong to your savers; the capital is yours to lose.'
     : b.industry === 'investmentFirm'
       ? foundingNote(readFund(b))
-      : isFinanceFirm(b)
-      ? ' Set risk, rates and client policies in Financial Operations. Customer principal is segregated; you earn fees and banking spreads, never free deposits.'
       : p.industry === 'gameStudio'
       ? ` Greenlight your first game from the company screen: your ${b.employees} developers are waiting for something to make.`
       : " Every year you'll get an Annual Report to set prices and production."
