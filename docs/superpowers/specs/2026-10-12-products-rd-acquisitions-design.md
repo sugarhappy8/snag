@@ -21,10 +21,12 @@ rounded in the player's currency.
 
 ### 1. R&D costs belong to the product
 
-- `rdCost(b, idea)`: a fixed development cost per idea, from the trade's cost of one site in the
-  home city (`localEcon(...).capital`), the kind of line (a next generation or premium edition costs
-  more than a regional edition or a bundle) and the size of the product's market. Company cash,
-  revenue and valuation play no part.
+- `rdCost(b, idea)`: a fixed development cost per idea, from how big a typical business of the
+  trade is in the home city (one site's yearly sales at the going price, to the power 0.75, so a
+  power company's product team isn't twenty cafés'), the kind of line (a next generation or
+  premium edition costs more than a regional edition or a bundle) and the size of the product's
+  market. The company's own cash, revenue and valuation play no part. (A first draft used a site's
+  capital, which priced a power company's products at millions: rejected in calibration.)
 - The slider runs from half to four times that cost, the same for a corner shop and a giant. Cash
   only decides whether the company can pay (the action explains how much is missing).
 - A team can run a few projects at once without strain: one more slot per doubling of the
@@ -36,10 +38,10 @@ rounded in the player's currency.
 
 - Every line has its own quality (fixed at launch; rivals' versions catch up a little every
   year, fastest in tech).
-- Rivals offer each kind of product once it has caught on in their market (big rivals first),
-  each at its own quality. A line's pull is its kind's share of demand times its edge over the
-  rivals that offer it: `2^((quality − field quality) / 15)`, plus up to +80% while few rivals
-  offer that kind at all (early movers win).
+- Rivals offer each kind of product once it has caught on in their market (big rivals first;
+  some specialize and never do), each at its own quality. A line's pull is its kind's share of
+  demand times its edge over the rivals that offer it: `2^((quality − field quality) / 20)`, plus
+  up to +80% while few rivals offer that kind at all (early movers win).
 - The pull lifts the company's own pull in the market model (competition-core): its share rises
   and the rivals' falls. Rivals whose versions are worse than yours lose those customers first;
   rivals with better versions keep theirs (the rivals' total is redistributed by product quality,

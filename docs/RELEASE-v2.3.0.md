@@ -21,8 +21,9 @@ finally brings its products with it.
 ## 🥊 Products win customers from rivals
 
 - Every line has its own quality. Rivals take up each kind of product once it catches on (big
-  rivals first), each with its own version. The better your line is than theirs, the more of their
-  customers switch to you; a kind few rivals sell yet pulls extra, so early movers win.
+  rivals first, and some never: they specialize), each with its own version. The better your
+  line is than theirs, the more of their customers switch to you; a kind few rivals sell yet
+  pulls extra, so early movers win.
 - Rivals with worse versions lose those customers first; rivals with better ones keep theirs.
   Each line on sale shows its quality against the rivals', where its demand is heading, the share
   of your customers it brings and whose customers it wins.

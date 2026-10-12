@@ -1,6 +1,6 @@
 // Management actions on an owned business: marketing, products, quality, expansion, money,
 // leadership and the exits. Each action re-reads the business from state when it runs.
-import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log, moneyWith, notice, scriptChoice, shortMoney, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
 import { venueOwnerMenu } from './venues'
 import { isVenue } from './venues-data'
@@ -486,7 +486,7 @@ function ideaAction(a: Asset, b0: BizState, idea: string, ctxKey: string, field:
       const best = bestBudgetFor(gg, cur, idea)
       return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, quality ~${best.quality}, worth about ${money(best.value)} on average)` : 'Not worth it now: no budget would earn back its cost while leaving the company a cash cushion')
     },
-    subtitle: `Costs ~${money(range.normal)} to develop · ${trendWord(demandTrend(info.family, ctxKey, field.year))} · ${rivalsWord(f.offer, f.quality)}`,
+    subtitle: `Costs ~${shortMoney(range.normal)} to develop · ${trendWord(demandTrend(info.family, ctxKey, field.year))} · ${rivalsWord(f.offer, f.quality)}`,
     disabled: (_g, bb) => (bb.cash < range.min ? `Needs at least ${money(range.min)} of company cash (${money(range.min - Math.max(0, bb.cash))} short).` : null),
     input: {
       kind: 'slider',

@@ -180,10 +180,14 @@ const FRINGE_QUALITY = 44
 /** What customers compare a kind of product with when nobody sells it yet. */
 const PAR_QUALITY = 50
 
-/** The adoption a rival takes a kind up at, and its version's quality, from the two hashes. */
+/**
+ * The adoption a rival takes a kind up at, and its version's quality, from the two hashes. Past
+ * full adoption it never does: rivals specialize (about one kind in five for a mid-size rival,
+ * fewer for giants), so buying one brings its own mix of products.
+ */
 function versionOf(hr: number, hf: number, tier: string, quality: number): { thr: number; quality: number } {
   return {
-    thr: 0.05 + 0.85 * Math.pow(mix(hr, hf, 0), TIER_EXP[tier] ?? 1),
+    thr: 0.05 + 1.2 * Math.pow(mix(hr, hf, 0), TIER_EXP[tier] ?? 1),
     quality: Math.round(Math.max(10, Math.min(99, quality + (mix(hr, hf, 1) - 0.5) * 16))),
   }
 }
@@ -354,18 +358,39 @@ function rangeKey(industry: string, products: readonly Product[], year: number):
  */
 export function productPull(industry: string, products: readonly Product[], year: number, field: Field): ProductPull {
   if (!products.length) return EMPTY
+  // The planner passes the very same list on every what-if: a cheap fingerprint confirms it.
+  const fp = fingerprint(industry, products, year)
+  let same = sameList.get(field)
+  const quick = same?.get(products)
+  if (quick && quick.fp === fp) return quick.out
   let memo = pullCache.get(field)
   if (!memo) {
     memo = new Map()
     pullCache.set(field, memo)
   }
   const key = rangeKey(industry, products, year)
-  const hit = memo.get(key)
-  if (hit) return hit
-  const out = computePull(industry, products, year, field)
-  if (memo.size > 64) memo.clear()
-  memo.set(key, out)
+  let out = memo.get(key)
+  if (!out) {
+    out = computePull(industry, products, year, field)
+    if (memo.size > 64) memo.clear()
+    memo.set(key, out)
+  }
+  if (!same) {
+    same = new WeakMap()
+    sameList.set(field, same)
+  }
+  same.set(products, { fp, out })
   return out
+}
+
+/** Lists already priced in a field, by identity (with a fingerprint in case one was edited in place). */
+const sameList = new WeakMap<Field, WeakMap<readonly Product[], { fp: number; out: ProductPull }>>()
+
+/** A numeric fingerprint of a range (catches a line changed in place since it was priced). */
+function fingerprint(industry: string, products: readonly Product[], year: number): number {
+  let h = (year * 131 + industry.length) % 1_000_000_007
+  for (const p of products) h = (h * 31 + p.launched * 7 + (p.quality ?? -1) * 13 + Math.round(p.boost * 1009) + p.name.length * 3 + (p.kind?.length ?? 0)) % 1_000_000_007
+  return h + products.length * 1e10
 }
 
 function computePull(industry: string, products: readonly Product[], year: number, field: Field): ProductPull {
