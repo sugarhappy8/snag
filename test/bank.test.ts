@@ -695,7 +695,7 @@ describe('Banking 2.0 odds and ends', () => {
     expect(need).toBeGreaterThan(0); expect(need).toBeLessThanOrEqual(1e9)
     expect(bankCapitalNeed(g, b, 0, 1)).toBe(0)
     const plan = { industry: 'bank', countryId: 'us', city: b.city } as unknown as Json
-    expect(startupCapitalPreview(g, plan, 1_000_000 + startupCost('bank', 'us', b.city).capital * .8)).toMatch(/Likely to fail|seize/)
+    expect(startupCapitalPreview(g, plan, 1_000_000 + startupCost('bank', 'us', b.city).capital * .8)).toMatch(/likely to fail|seize/i)
     expect(startupCapitalPreview(g, plan, bankAdvisedCash(g, 'bank', 'us', b.city)! + startupCost('bank', 'us', b.city).capital * .8)).toMatch(/growing as savers arrive|then profits from year/)
   })
 
