@@ -14,7 +14,7 @@ import { leadershipPower } from './leadership'
 import { allocatedCorporateTax } from './tax'
 import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, loanTotal, minCapitalRatio, nationalDeposits, perBranch, ratesFrom, readBank, reserveRequirement, type Appetite, type BankBook, type LendLine, type ProductId } from './bank-state'
 import { totalOutlets, type BizState } from './state'
-import { clampN } from './util'
+import { clampN, money } from './util'
 
 /** Countries whose central bank lent to banks in a panic before the Fed (1913). */
 const EARLY_LENDER = new Set(['gb', 'fr', 'de', 'nl', 'se', 'ch', 'jp', 'it', 'be', 'at', 'dk', 'no', 'es', 'pt'])
@@ -174,7 +174,7 @@ export function productGate(b: BizState, book: BankBook, id: ProductId, year: nu
   if (id === 'cards' && techAdoption(b.countryId, 'creditCards', year) < .02) return { ok: false, why: 'No card networks here yet' }
   if (id === 'app' && techAdoption(b.countryId, 'smartphone', year) < .02) return { ok: false, why: 'Hardly anyone here has a smartphone yet' }
   if (id === 'crypto' && techAdoption(b.countryId, 'crypto', year) < .02) return { ok: false, why: 'No crypto market here yet' }
-  if (id === 'ib' && book.deposits < ibGate(b.countryId)) return { ok: false, why: `Needs deposits of ${Math.round(ibGate(b.countryId) / 1e9 * 10) / 10}B+ (in today’s dollars)` }
+  if (id === 'ib' && book.deposits < ibGate(b.countryId)) return { ok: false, why: `Needs ${money(ibGate(b.countryId))}+ of deposits` }
   return { ok: true, why: '' }
 }
 /** Deposits a bank needs before big companies trust it with deals. */

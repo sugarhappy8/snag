@@ -450,6 +450,8 @@ describe('Banking 2.0 products and levers', () => {
     expect(productGate(b, book, 'auto', 1915).ok).toBe(false)
     expect(productGate(b, book, 'wealth', 1965).ok).toBe(false)
     expect(productGate(b, book, 'ib', 2030).ok).toBe(book.deposits >= ibGate('us'))
+    // Shown through the money formatter (the player's currency and price setting), not a raw "2B".
+    if (!productGate(b, book, 'ib', 2030).ok) expect(productGate(b, book, 'ib', 2030).why).toBe(`Needs ${fmtMoney(ibGate('us'))}+ of deposits`)
     expect(productGate(b, book, 'mortgage', 1950).ok).toBe(true)
     expect(productGate(b, book, 'cards', 1990).ok).toBe(true)
     expect(productGate(b, book, 'crypto', 2024).ok).toBe(true)
