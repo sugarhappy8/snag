@@ -25,6 +25,7 @@ import { businessAssets } from '../src/game/business/state'
 import { bindMoneyContext, netWorth } from '../src/game/core'
 import { continueAsChild, createNewLife } from '../src/game/life'
 import { activitiesMenu, assetsMenu, occupationMenu } from '../src/game/menus'
+import { createPerson } from '../src/game/people'
 import { personActions } from '../src/game/relationships'
 import { forgetFuture, loadGame, loadSnapshot, memorySnapshotBackend, saveGame, setSnapshotBackend, snapshotWritesSettled, startTimeline, takeSnapshot } from '../src/game/save'
 import { hasScript, runScript } from '../src/game/scripts'
@@ -1005,8 +1006,15 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
     if (!g.character.alive) {
       // Continue as a child, like the death screen offers.
       if (gen >= opts.heirs) break
-      const kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild'))
-      if (!kids.length) break
+      let kids = g.people.filter((p) => p.alive && (p.relation === 'child' || p.relation === 'stepchild'))
+      if (!kids.length) {
+        // Random play doesn't always leave a child: give this life one (a minor or a grown-up) so
+        // the hand-over is still exercised, like test/simulate.test.ts does.
+        g = structuredClone(g)
+        createPerson(g, { relation: 'child', age: d.pick([4, 12, 17, 30, 55]), lastName: g.character.lastName, relationship: 70 })
+        ctx.trail.push('(gave the late player a child to continue as)')
+        kids = g.people.filter((p) => p.alive && p.relation === 'child')
+      }
       const heir = d.pick(kids)
       ctx.trail.push(`continueAsChild ${heir.relation} age ${heir.age}`)
       try {
