@@ -40,6 +40,7 @@ const { ribbonTiles, RibbonsScreen } = await import('../src/ui/screens/RibbonsSc
 const { sortGraves, graveStats, bulldozeGrave, GraveyardScreen } = await import('../src/ui/screens/GraveyardScreen')
 const { guessCountryId, cleanName, rollFirstName, rollLastName, NewLifeScreen } = await import('../src/ui/screens/NewLifeScreen')
 const { HomeScreen, summarizeLife } = await import('../src/ui/screens/HomeScreen')
+const { PersonDetails } = await import('../src/ui/components/PersonSheet')
 const { SettingsScreen } = await import('../src/ui/screens/SettingsScreen')
 
 // Minimal in-memory localStorage for node.
@@ -291,5 +292,13 @@ describe('screens render', () => {
     expect(html).toContain('Continue as Junie')
     expect(html).toContain(`${g.year - 70} – ${g.year}`)
     expect(kid.alive).toBe(true)
+  })
+
+  it("labels a relative's money as cash on hand, not as their wealth", () => {
+    const g = makeTestGame(10, { age: 30 })
+    const mom = createPerson(g, { relation: 'parent', age: 58, relationship: 80, money: 12_000 })
+    const html = render(createElement(PersonDetails, { g, person: mom }))
+    expect(html).toContain('Cash on hand')
+    expect(html).not.toMatch(/>Money</)
   })
 })

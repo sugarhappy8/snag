@@ -158,6 +158,9 @@ describe('World Simulation 2.0: household and existing-person integration', () =
     const names = [mom, dad].map(p => npcCompany(p, g.year)?.a.name)
     expect(names).toEqual(['Cooper Café', 'Jamie Cooper Café'])
     expect(npcLife(dad)!.history.join('\n')).toContain('founded Jamie Cooper Café')
+    // The sheet says what the big number counts, next to their cash on hand.
+    const life = npcLifeNodes(g, dad)[0]
+    expect(life.type === 'info' && typeof life.text === 'string' ? life.text : '').toMatch(/net worth incl\. property & companies about \$[\d.,]+[KMB]?/)
   })
 
   it('preserves deterministic decisions for the same contact after the family generation suffix changes', () => {
