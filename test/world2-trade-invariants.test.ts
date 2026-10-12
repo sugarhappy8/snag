@@ -127,7 +127,8 @@ describe('World Simulation 2.0: trade persistence and invariants', () => {
     }
     expect(live.character.money).toBe(123456)
     expect(live.rng).toBe(437)
-  })
+    // 24 whole-world transitions with deep comparisons: sized for a 2-core CI runner.
+  }, 60_000)
 
   it('keeps a 120-year international network bounded and deterministic through generational seed continuity', () => {
     const g = fixture(), replay = fixture()
@@ -153,7 +154,8 @@ describe('World Simulation 2.0: trade persistence and invariants', () => {
     expect(Object.keys(economyState(g)!.countries)).toHaveLength(COUNTRIES.length)
     expect(JSON.stringify(g).length).toBeLessThan(3_000_000)
     console.info(`World2 trade benchmark: 240 annual world transitions ${transitionMs.toFixed(0)} ms (${(transitionMs / 240).toFixed(1)} ms each), two generational JSON reloads ${reloadMs.toFixed(0)} ms; save ${JSON.stringify(g).length} characters. Timing excludes assertions.`)
-  }, 30000)
+    // 240 whole-world transitions (timings are printed, not asserted): sized for a 2-core CI runner.
+  }, 120_000)
 
   it('keeps ten exact trade-era Time Machine stops inside the unchanged browser-storage budget', async () => {
     const g = fixture()

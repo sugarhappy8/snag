@@ -657,8 +657,9 @@ describe('old saves and plain JSON', () => {
         g = JSON.parse(json) as GameState
       }
     }
-    // Twelve 45-year lives with every yearly hook of the year system: give it room.
-  }, 60_000)
+    // Twelve 45-year lives with every yearly hook of the year system: give it room
+    // (sized for a 2-core CI runner; 540 full years, each running the world economy).
+  }, 300_000)
 })
 
 // ---------------------------------------------------------------------------

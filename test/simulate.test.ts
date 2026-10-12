@@ -204,7 +204,9 @@ describe('whole-life simulation (offline)', () => {
     // sensitive to other simulation workers running at the same time.
     it.each(Array.from({ length: 40 }, (_, i) => i + 1))('plays seed %i without errors', seed => {
       results.push(playLife(seed, 4).result)
-    }, 30_000)
+      // A whole life with a save round trip after every action: 31-93 s per seed on a busy
+      // 4-core machine, so 30 s left no room on a 2-core CI runner.
+    }, 120_000)
 
     afterAll(() => {
       expect(results).toHaveLength(40)

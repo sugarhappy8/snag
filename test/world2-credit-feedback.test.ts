@@ -109,7 +109,8 @@ describe('World Simulation 2.0: settled banking losses and lagged credit feedbac
     expect(healed.sectors.industry.output).toBeGreaterThan(.4)
     expect(crisis.character.money).toBe(321_000); expect(crisis.rng).toBe(882)
     expect(economyState(crisis)!.pending).toEqual([])
-  }, 30000)
+    // Years of whole-world transitions: sized for a 2-core CI runner.
+  }, 120_000)
 
   it('nets expansion and contraction before national caps, independent of bank settlement order and reloads', () => {
     const first = fixture(), reverse = fixture(), amounts = [.3, .3, -.3]

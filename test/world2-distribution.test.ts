@@ -125,5 +125,6 @@ describe('World Simulation 2.0: socioeconomic distribution', () => {
     }
     expect(g.character.money).toBe(123456)
     expect(g.rng).toBe(437)
-  },30000)
+    // A century of whole-world transitions: sized for a 2-core CI runner.
+  },120000)
 })
