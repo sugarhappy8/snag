@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { antitrustChance, antitrustOf, marketOfBiz, marketViewOf, saveMarket } from '../src/game/business/competition'
 import { effectiveRegime } from '../src/game/business/competition-data'
-import { acquireRival, acquisitionQuote } from '../src/game/business/competition-moves'
+import { acquireRival, acquisitionQuote, TAKEOVER_SIZE_RATIO } from '../src/game/business/competition-moves'
 import { marketCtxFor } from '../src/game/business/economy'
 import { campaignStrength, entryStrength, MODE_TERM, presenceIn, REACH_CAP, reachOf, termFactor } from '../src/game/business/market-reach'
 import { barriersInto, blocsOf, fxExposure, goodsShare, otherBarriers, sharedBloc, tariffOn } from '../src/game/business/market-trade'
@@ -15,7 +15,8 @@ import { bizWorth } from '../src/game/business/economy'
 import { bizOf, readBiz } from '../src/game/business/state'
 import type { Industry } from '../src/game/data/markets'
 import type { Asset, GameState } from '../src/game/types'
-import { adult, company, nextYear } from './market-kit'
+import { businessAssetView } from '../src/game/business'
+import { adult, allNodes, company, nextYear } from './market-kit'
 
 function setup(ind: Industry, country = 'us', year = 2015, years = 2): { g: GameState; a: Asset } {
   const g = adult(7, year, country)
@@ -322,6 +323,8 @@ describe('antitrust grows with dominance, buy-outs and local dominance abroad', 
     const b = bizOf(g, a)
     const v = marketViewOf(g, b)
     const small = v.rivals.filter((r) => !r.real).sort((x, y) => x.share - y.share)[0]
+    // A buyer within reach of its target by sales (buy-outs need at least a third of its size).
+    b.last = { ...b.last!, revenue: Math.max(b.last!.revenue, small.share * v.size) }
     const q = acquisitionQuote(g, b, small.id)!
     expect(q).toBeTruthy()
     b.cash = q.price * 3
@@ -329,5 +332,35 @@ describe('antitrust grows with dominance, buy-outs and local dominance abroad', 
     const after = bizOf(g, a)
     expect(marketOfBiz(after).acquired).toContain(g.year)
     expect(antitrustOf(after, 0.5, g.year).acquisitions).toBe(1)
+  })
+})
+
+describe('buy-outs need a track record and a target within reach', () => {
+  it('stops a brand-new one-site company buying a rival many times its size, and says why on the row', () => {
+    // Playtest: a single café bought out an eight-café rival in its first year.
+    const g = adult(9, 2015, 'us')
+    const a = company(g, 'cafe', { cash: 1e10 })
+    const b = bizOf(g, a)
+    const rival = marketViewOf(g, b).rivals.find((r) => !r.legacy)!
+    const q = acquisitionQuote(g, b, rival.id)!
+    expect(q.reach).toMatch(/Book your first full year/)
+    expect(q.block).toBe(q.reach)
+    expect(acquireRival(g, a, b, rival.id)).toBe(false)
+    expect(g.queue[g.queue.length - 1]).toMatchObject({ kind: 'notice', title: 'Not Yet' })
+    expect(bizOf(g, a).cash).toBe(1e10)
+    g.queue = []
+
+    nextYear(g)
+    const b1 = bizOf(g, a)
+    const v = marketViewOf(g, b1)
+    const own = Math.max(0, b1.last!.revenue)
+    const giant = v.rivals.find((r) => !r.legacy && r.share * v.size > own * TAKEOVER_SIZE_RATIO)!
+    expect(giant).toBeTruthy()
+    expect(acquisitionQuote(g, b1, giant.id)!.block).toMatch(/more than 3 times your size/)
+    const row = allNodes(g, businessAssetView(g, a)).find((n) => n.id === `biz.mkt.buy.${giant.id}.${a.id}`)
+    expect(row?.type === 'action' ? row.disabledReason?.(g) : null).toMatch(/more than 3 times your size/)
+    // A rival within reach is only up to the regulators and the cash.
+    const peer = v.rivals.find((r) => !r.legacy && r.share * v.size <= own * TAKEOVER_SIZE_RATIO)
+    if (peer) expect(acquisitionQuote(g, b1, peer.id)!.reach).toBeNull()
   })
 })
