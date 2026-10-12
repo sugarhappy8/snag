@@ -1695,13 +1695,13 @@ function leadershipNodes(a: Asset, g: GameState): MenuNode[] {
         return passHint(gg, cur, bb, takeP(gg, bb))
       },
       disabled: (gg, bb) => (needsVote(gg, live(gg, a), bb, takeP(gg, bb)) && refusedThisYear(gg, bb, 'takeOver') ? 'The board already turned you down as CEO this year.' : null),
-      confirm: () => (job ? `Become CEO of ${a.name}? You'll leave your job as ${job.title}.` : null),
+      confirm: () => (job ? `Become CEO of ${a.name}? You'll leave your job as ${job.title}${job.company ? ` at ${job.company}` : ''}.` : null),
       run: (gg, cur, bb) => {
         if (!boardAllows(gg, cur, bb, takeP(gg, bb))) return
         const h = ownerTakesOver(gg, bb)
         const quit = becomeCeo(gg, cur, bb, title)
         log(gg, `I took over as CEO of ${cur.name}.`, 'good')
-        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you left your job as ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
+        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
       },
     }),
     act(a, 'replaceManager', 'Replace the CEO', '\u{1F504}', {

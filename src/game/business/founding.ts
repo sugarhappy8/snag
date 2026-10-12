@@ -26,7 +26,7 @@ import { investorFirm } from './flavor'
 import { foundBlock } from './gate'
 import { industryDef, isIndustry, INDUSTRIES } from './industries'
 import { BIZ_VERSION, ceoJob, type BizState } from './state'
-import { clampN, cleanName, money, num, pct, rec, stars, str, toJson } from './util'
+import { clampN, cleanName, money, num, pct, rec, runwayText, stars, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
 // Requirements
@@ -200,7 +200,7 @@ export function startupCapitalPreview(g: GameState, data: Json | undefined, amou
   const cost = startupCost(p.industry, p.countryId, p.city), e = localEcon(p.industry, p.countryId, p.city)
   const cash = Math.max(0, amount - cost.capital * .8)
   const burn = e.rent + industryDef(p.industry).staff * e.wage
-  return `Equipment/fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. Starting cash ${money(cash)}; roughly ${(cash / Math.max(1, burn)).toFixed(1)} years of base wages/rent before sales and other costs. ${cash < burn ? 'High funding risk.' : 'A cash buffer, not guaranteed profit.'} Personal funds ${money(g.character.money)}. Next: compare loans, investor dilution, or 100% ownership with self-funding.`
+  return `Equipment/fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. Starting cash ${money(cash)}; roughly ${runwayText(cash / Math.max(1, burn))} of base wages/rent before sales and other costs. ${cash < burn ? 'High funding risk.' : 'A cash buffer, not guaranteed profit.'} Personal funds ${money(g.character.money)}. Next: compare loans, investor dilution, or 100% ownership with self-funding.`
 }
 
 function askCapital(g: GameState, p: Plan): void {
@@ -596,7 +596,7 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
         : ''
   const open = b.openFraction < 0.95 ? ` Paperwork in ${country.name} took about ${p.days} days, so you'll only trade for part of this first year.` : ''
   const run = runIt
-    ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.`
+    ? ` You're the Founder & CEO${quit ? `, and you ${quit}` : ''}.`
     : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`
   const plan =
     isFinanceFirm(b)
@@ -663,7 +663,7 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
   if (p.cofounder) parts.push(`${p.cofounder} joined as your technical co-founder with ${pct(COFOUNDER_EQUITY)}.`)
   if (expert) parts.push(`You hired ${expert.firstName} ${expert.lastName} as ${expert.role} (${formatMoney(expert.salary)} a year).`)
   if (b.openFraction < 0.95) parts.push(`Paperwork in ${country.name} took about ${p.days} days.`)
-  parts.push(runIt ? `You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.` : `${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`)
+  parts.push(runIt ? `You're the Founder & CEO${quit ? `, and you ${quit}` : ''}.` : `${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`)
   parts.push(`Next: start your first R&D program from the company's R&D Lab. ${DEEP_TECH[ind].stages[0].blurb}`)
   const text = parts.join(' ')
   log(g, `I founded ${p.name}, a ${def.label.toLowerCase()} in ${p.city}.`, 'good')
@@ -928,7 +928,7 @@ function finalizePurchase(g: GameState, p: Plan, runIt: boolean): void {
   else installManager(g, b, managerCandidate(g, b))
   addStat(g, 'happiness', 6)
   const def = industryDef(b.industry)
-  const text = `You bought ${listing.name}, a ${listing.years}-year-old ${def.label.toLowerCase()} in ${b.city}, for ${formatMoney(listing.price)}${p.funding === 'loan' ? ` (${p.lender} financed ${formatMoney(p.loan)})` : ''}. ${runIt ? `You're the new Owner & CEO${quit ? `; you quit your job as ${quit}` : ''}.` : 'A general manager runs it for you.'}`
+  const text = `You bought ${listing.name}, a ${listing.years}-year-old ${def.label.toLowerCase()} in ${b.city}, for ${formatMoney(listing.price)}${p.funding === 'loan' ? ` (${p.lender} financed ${formatMoney(p.loan)})` : ''}. ${runIt ? `You're the new Owner & CEO${quit ? `; you ${quit}` : ''}.` : 'A general manager runs it for you.'}`
   log(g, `I bought ${listing.name}.`, 'good')
   remember(g, `Bought ${listing.name} (${def.label.toLowerCase()}) in ${b.city}.`)
   notice(g, 'Deal Closed!', text, { emoji: def.emoji, tone: 'good' })

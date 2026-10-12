@@ -7,7 +7,7 @@ import { groupIdOf } from './conglomerate-state'
 import { refreshValue, valuationOf } from './economy'
 import { manageBlock } from './gate'
 import { bizOf, diluteBusinessEquity, executiveEquity, findBusiness, readBiz, type BizState } from './state'
-import { clampN, money, pct } from './util'
+import { clampN, money, pct, runwayText } from './util'
 
 export function rescuePosition(b: BizState) {
   const burn = Math.max(0, -(b.last?.net ?? 0))
@@ -71,7 +71,9 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
 
 export function rescueNodes(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a), pos = rescuePosition(b)
-  const rows: MenuNode[] = [{ type: 'info', id: `rescue.${a.id}.position`, emoji: '🛟', text: `Cash ${money(b.cash)} · debt ${money(b.debt)} · annual loss ${money(pos.burn)} · ${pos.runway.toFixed(1)} years ${pos.burn ? 'at current burn' : 'base-cost buffer'}. Stabilization target ${money(pos.need)} (six months). Capital does not fix weak demand. Use loans, staffing/pay policy and site closures below to restructure.` }]
+  // No "stabilization target $0": once cash covers six months, say so.
+  const target = pos.need > 0 ? `Stabilization target: ${money(pos.need)} more cash to cover six months.` : 'Cash already covers six months of costs.'
+  const rows: MenuNode[] = [{ type: 'info', id: `rescue.${a.id}.position`, emoji: '🛟', text: `Cash ${money(b.cash)} · debt ${money(b.debt)} · annual loss ${money(pos.burn)} · ${runwayText(pos.runway)} ${pos.burn ? 'at current burn' : 'of running costs in cash'}. ${target} Capital does not fix weak demand. Use loans, staffing/pay policy and site closures below to restructure.` }]
   for (const kind of ['secondary', 'subscribe', 'buyback'] as const) {
     const label = kind === 'secondary' ? 'Buy Existing Investor Shares' : kind === 'subscribe' ? 'Subscribe to New Equity' : 'Company-Funded Share Buyback'
     const q = equityQuote(g, a, b, kind, 0)
