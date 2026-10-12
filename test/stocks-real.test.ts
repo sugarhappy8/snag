@@ -26,7 +26,8 @@ import {
 import { allFundProviderNames } from '../src/game/invest/funds'
 import { addMarketShock, marketShocks, shockable } from '../src/game/invest/shocks'
 import { allRealCos, arcExcess, isRealName, realListed, realNameAt, realRoster, sizeClassAt } from '../src/game/invest/real'
-import { stockFairValue, stockOptionPrice, stockStrike } from '../src/game/computer/money-stocks'
+import { listedTargets, settlePrice, stockFairValue, stockIndexSamples, stockOptionPrice, stockStrike } from '../src/game/computer/money-stocks'
+import type { StockBet } from '../src/game/computer/money-common'
 import { buySecurity, investmentHoldings, investmentListing, investmentsMenu, yearlyInvestments } from '../src/game/investments'
 import type { GameState, MenuGroup } from '../src/game/types'
 import { COUNTRIES } from '../src/game/world'
@@ -477,6 +478,46 @@ describe('options on real companies cannot turn history into a sure thing', () =
     expect(fair).toBeGreaterThan(0.8 * premium)
     expect(stockFairValue(info, def, 'put', 0, 1998)).toBeLessThan(0.1)
     expect(stockFairValue(info, def, 'call', 0, 1990)).toBeLessThan(fair)
+  })
+})
+
+describe('options on real companies in their last documented year', () => {
+  it('never pay a trader who knows history a risk-free return, at any skill or strike', () => {
+    let checked = 0
+    for (const home of HOMES) {
+      const info = exchangeInfo(home)
+      const plan = realPlanOf(info)
+      if (!plan) continue
+      plan.queues.forEach((queue, slot) => queue.forEach((co, i) => {
+        if (co.end === null) return
+        const def = companyDef(info, slot, 100_000 + i)
+        // What the bet certainly settles at: nothing for a bankruptcy, the deal for a takeover.
+        const move = co.fate === 'bankrupt' ? -1 : co.premium
+        for (const dir of ['call', 'put'] as const) for (const strike of ['atm', 'otm'] as const) {
+          const k = stockStrike(info, def, strike)
+          const pays = dir === 'call' ? Math.max(0, move - k) : Math.max(0, -move - k)
+          const price = stockOptionPrice(info, def, dir, strike, 100, 0, co.end)
+          expect(pays / price, `${co.name} ${co.end} ${dir} ${strike}`).toBeLessThan(1)
+          checked++
+        }
+      }))
+    }
+    expect(checked).toBeGreaterThan(40)
+  })
+
+  it('a Lehman put bought in 2007 really settles at the bankruptcy', () => {
+    const g = adult('us', 2007)
+    const t = listedTargets(g).find((x) => x.name === 'Lehman Brothers')!
+    expect(t).toBeDefined()
+    const bet = { id: 'b', via: 'crony', asset: 'stock', kind: 'put', k: 0, secId: t.secId, exKey: t.exKey, slot: t.slot, name: t.name, symbol: t.symbol, units: 1, premium: 1, openPrice: t.price, year: 2007 } as unknown as StockBet
+    expect(settlePrice(g, bet)).toBe(0)
+  })
+
+  it('price every company off the procedural distribution, never a repeat of fixed historical years', () => {
+    for (const home of ['us', 'gb', 'jp']) {
+      const xs = stockIndexSamples(exchangeInfo(home))
+      expect(new Set(xs).size).toBeGreaterThan(xs.length * 0.99)
+    }
   })
 })
 

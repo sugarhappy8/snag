@@ -288,7 +288,9 @@ only run before PRESENT_YEAR. `events-medicine.ts` adjusts historical medicine a
 `history/markets*.ts` overlays real historical index/sector crashes, gold, housing, inflation,
 rates, exchange closures and expropriation on `invest/engine.ts`. Procedural markets start in
 the present. Historical facts stay fixed across seeds and Time Machine jumps. Options premium
-sampling must use the procedural distribution, not a mix of fixed historical years. Investing
+sampling (index and single-stock) must use the procedural distribution, not a mix of fixed
+historical years; a real company's documented last year is priced at no less than what that
+fixed ending certainly pays, so knowing history is never a risk-free return. Investing
 hints and settlement must use the same family seed, timeline and shock data.
 
 `data/currencies.ts` registers the money converter and owns historical denominations, exchange
