@@ -1,34 +1,69 @@
-// Investment firms (industry 'investmentFirm'). Placeholder that delegates to the legacy model until
-// the Investment Firms 2.0 rewrite lands; finance-firm.ts dispatches here.
+// Investment firms (industry 'investmentFirm'): Investment Firms 2.0. finance-firm.ts dispatches here.
+// Four firm types chosen at founding (fund-state.ts): Asset Manager, Hedge Fund, Venture Capital,
+// Brokerage. Client money (AUM, LP funds, startup stakes, custody accounts) never becomes company
+// cash; the firm earns fees, carry, commissions and gains on its own capital only.
 import type { Asset, GameState, MenuNode } from '../types'
 import type { YearResult } from './economy'
-import { financeInfo as legacyInfo, financeManagerTurn as legacyManagerTurn, financeNodes as legacyNodes, queueFinanceReport as legacyReport, simulateFinanceYear as legacySimulate } from './finance-legacy'
-import { financeView } from './finance-firm-state'
+import { fundAutopilot } from './fund-manager'
+import { fundDashboard, fundInfoLine } from './fund-menu'
+import { fundReport, fundYearlyChecks } from './fund-events'
+import { brokerEra, hedgeBlock, ventureBlock } from './fund-model'
+import { simulateFund } from './fund-sim'
+import { clientAssets, newFundState, readFund, saveFund, type FundType } from './fund-state'
+import { firstFundSize, newVcFund } from './fund-vc'
 import type { BizState } from './state'
 
 export function isFund(b: { industry: string }): boolean {
   return b.industry === 'investmentFirm'
 }
+
+/** Investment firms exist in every era; the types have their own gates (fundTypeBlock). */
 export function fundEraBlock(_g: GameState, _industry: string, _countryId?: string, _year?: number): string | null {
   return null
 }
-export function simulateFundYear(g: GameState, b: BizState, year: number, ownerDraw: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
-  return legacySimulate(g, b, year, ownerDraw, bookedHomeSales)
+
+/** Why a firm type can't be founded in `year`, or null. */
+export function fundTypeBlock(type: FundType, year: number): string | null {
+  if (type === 'hedge') return hedgeBlock(year)
+  if (type === 'vc') return ventureBlock(year)
+  return null
 }
-export function fundManagerTurn(g: GameState, b: BizState): void { legacyManagerTurn(g, b) }
-export function queueFundReport(g: GameState, a: Asset, b: BizState): void { legacyReport(g, a, b) }
-export function fundNodes(g: GameState, a: Asset): MenuNode[] { return legacyNodes(g, a) }
-export function fundInfo(g: GameState, b: BizState): string { return legacyInfo(g, b) }
+
+/** Write a brand-new firm's books (founding). A VC firm closes its first fund with LPs' money. */
+export function initFund(g: GameState, b: BizState, type: FundType): void {
+  const f = newFundState(type, b.countryId)
+  if (type === 'vc') f.funds.push(newVcFund(1, firstFundSize(g, b, g.year), g.year))
+  // A new brokerage opens at the going rate of its era.
+  if (type === 'broker') f.commission = brokerEra(b.countryId, g.year).normCommission
+  saveFund(b, f)
+}
+
+export function simulateFundYear(g: GameState, b: BizState, year: number, ownerDraw: number, bookedHomeSales: number | Record<string, number> = 0): YearResult {
+  return simulateFund(g, b, year, ownerDraw, bookedHomeSales)
+}
+
+/** A hired CEO's (or caretaker's) yearly decisions, plus regulators and schemes catching up. */
+export function fundManagerTurn(g: GameState, b: BizState): void {
+  fundAutopilot(g, b)
+  fundYearlyChecks(g, b)
+}
+
+export function queueFundReport(g: GameState, a: Asset, b: BizState): void { fundReport(g, a, b) }
+export function fundNodes(g: GameState, a: Asset): MenuNode[] { return fundDashboard(g, a) }
+export function fundInfo(g: GameState, b: BizState): string { return fundInfoLine(g, b) }
+
 /** Shareholder cash a conglomerate treasury should keep in this firm beyond its operating buffer. */
 export function fundCapitalNeed(_g: GameState, b: BizState, pool: number, effectiveness: number): number {
-  const f = financeView(b)
-  return f.model === 'private' ? Math.max(f.tradingCapital + f.researchBudget + f.technologyBudget, pool * .2 * effectiveness) : pool * .1 * effectiveness
+  const f = readFund(b)
+  return f.type === 'hedge' ? Math.max(f.coinvest, pool * .05 * effectiveness) : pool * .05 * effectiveness
 }
+
 /** Client assets under management (never company cash). */
 export function fundClientAssets(b: BizState): number {
-  return financeView(b).aum
+  return clientAssets(readFund(b))
 }
+
 /** The last fiscal year already booked (-1 if none). */
 export function fundSettledYear(b: BizState): number {
-  return financeView(b).lastYear
+  return readFund(b).lastYear
 }
