@@ -823,6 +823,40 @@ describe('Banking 2.0 review: money that must not appear', () => {
   })
 })
 
+describe('Banking 2.0 review: texts', () => {
+  it('never reports a $0 fine, a $0 fire sale or a $0 central-bank debt', () => {
+    // A run the reserves can pay: no loans to sell, so no "about $0 lost".
+    const run = bank({ year: 2026 })
+    const book = readBank(run.b); book.run = { year: 2025, wave: Math.round(book.reserves * .5), severity: .1 }; book.lastYear = 2025; book.dramaYear = -1; saveBank(run.b, book)
+    bankAfterYear(run.g, run.a, run.b, false)
+    const popup = run.g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.run')!
+    const labels = popup.kind === 'choice' ? popup.choices.map(c => c.label) : []
+    expect(labels.join(' ')).not.toMatch(/\$0\b/)
+    run.g.queue = []
+    resolveRun(run.g, run.a, run.b, 'sell', false)
+    const texts = [...run.g.log.flatMap(y => y.entries.map(e => e.text)), ...run.g.queue.flatMap(m => m.kind === 'notice' ? [m.text] : [])]
+    expect(texts.join(' ')).toMatch(/reserves/)
+    expect(texts.join(' ')).not.toMatch(/\$0\b/)
+    // The central-bank debt repaid by hand: the menu stops saying the bank still owes it.
+    const cb = bank({ year: 2009 })
+    const cbBook = readBank(cb.b); cbBook.run = { year: 2008, wave: Math.round(cbBook.deposits * .3), severity: .2 }; saveBank(cb.b, cbBook)
+    resolveRun(cb.g, cb.a, cb.b, 'cb', false)
+    cb.b.cash -= cb.b.debt; cb.b.debt = 0
+    const lines: string[] = []
+    for (const n of bankNodes(cb.g, cb.a)) if (n.type === 'info') lines.push(typeof n.text === 'function' ? n.text(cb.g) : n.text)
+    expect(lines.join(' ')).not.toMatch(/owes the central bank \$0/)
+    // A wiped-out bank at its second strike: the regulator's fine is capped at 25% of nothing.
+    const thin = bank({ cash: 1_000_000 })
+    const tb = readBank(thin.b)
+    Object.assign(tb, { deposits: 700_000_000, loans: { business: 0, mortgage: 600_000_000, auto: 0, cards: 0 }, reserves: 60_000_000, bonds: 40_000_000, badNet: 0, strikes: 1 })
+    tb.products.mortgage = 2020; saveBank(thin.b, tb)
+    thin.b.cash = -60_000_000
+    simulateBankYear(thin.g, thin.b, thin.g.year, 0)
+    expect(readBank(thin.b).last!.fine).toBe(0)
+    expect(readBank(thin.b).last!.regulator).not.toMatch(/\$0\b/)
+  })
+})
+
 describe('Banking 2.0 review: founding capital', () => {
   /** An owner-run bank with `cash` of starting capital, played `years` years; true if it is still open and solvent. */
   function survives(country: string, year: number, industry: 'bank' | 'onlineBank', cash: number, seed: number, years: number): boolean {

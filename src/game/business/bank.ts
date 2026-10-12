@@ -96,7 +96,8 @@ export function simulateBankYear(g: GameState, b: BizState, year: number, ownerD
       stmt = settle()
       capital = capitalAfter(stmt); rwa = riskWeighted(book, capital)
       ratio = rwa >= 1 ? capital / rwa : capital > 0 ? 9.99 : 0
-      regulator = `Regulators forced ${money(shrink)} of loan sales and fined the bank ${money(fine)}.`
+      const acts = [shrink >= 1 ? `forced ${money(shrink)} of loan sales` : '', fine > 0 ? `fined the bank ${money(fine)}` : ''].filter(Boolean)
+      regulator = acts.length ? `Regulators ${acts.join(' and ')}.` : 'Regulators warned the bank again: capital is still below the minimum.'
     } else regulator = 'Regulators warned the bank: capital is below the minimum. Raise capital or lend less.'
     book.seize = ratio < min * .5 || capital <= 0
     if (book.seize) regulator += ' They threaten to seize it unless shareholders put in fresh capital.'

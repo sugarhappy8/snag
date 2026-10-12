@@ -179,7 +179,7 @@ function queueRun(g: GameState, a: Asset, b: BizState): void {
   const cbCost = wave * penaltyRate(m) * 1.5
   const choices: ChoiceOption[] = [{ id: 'tv', label: `${stageOf(b.countryId, g.year).go} and promise every saver is safe`, emoji: '🎤' }]
   if (m.lender) choices.push({ id: 'cb', label: `Borrow ${money(wave)} from the central bank at ${pct(penaltyRate(m), 1)}`, emoji: '💵' })
-  choices.push({ id: 'sell', label: `Sell loans at a discount (about ${money(saleLoss)} lost)`, emoji: '🏷️' })
+  choices.push({ id: 'sell', label: saleLoss >= 1_000 ? `Sell loans at a discount (about ${money(saleLoss)} lost)` : 'Pay them out of the reserves (nothing to sell)', emoji: '🏷️' })
   if (bailoutEligible(g, b, book)) choices.push({ id: 'bailout', label: `Ask the government for a bailout (it takes ${pct(bailoutTerms(g, b, book).stake)} of the bank)`, emoji: '🙏' })
   if (hasTalent(g, 'Business')) {
     const cost: Record<string, number> = { tv: (1 - odds) * saleLoss, cb: m.lender ? cbCost : Infinity, sell: saleLoss }
@@ -232,7 +232,7 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
     adjustTrust(book, -8)
     saveBank(b, book)
     log(g, `I ${stage.did}, but it didn't stop the run on ${a.name}.`, 'bad')
-    notice(g, 'It Got Worse', `${techHere(b.countryId, 'internet', g.year) ? 'Your nervous blinking went viral.' : 'Your nervous stammer made every evening paper.'} Savers pulled ${money(wave)} and ${a.name} sold loans at a loss of ${money(loss)} to pay them.`, { emoji: '📉', tone: 'bad' })
+    notice(g, 'It Got Worse', `${techHere(b.countryId, 'internet', g.year) ? 'Your nervous blinking went viral.' : 'Your nervous stammer made every evening paper.'} Savers pulled ${money(wave)}${loss > 0 ? ` and ${a.name} sold loans at a loss of ${money(loss)} to pay them` : ''}.`, { emoji: '📉', tone: 'bad' })
     return
   }
   if (choice === 'bailout' && !auto && bailoutEligible(g, b, book)) {
@@ -260,8 +260,9 @@ export function resolveRun(g: GameState, a: Asset, b: BizState, choice: string, 
   const loss = fireSale(b, book, wave, m)
   adjustTrust(book, 2)
   saveBank(b, book)
-  log(g, `${a.name} sold loans at a ${money(loss)} loss to pay off panicked savers.`, 'bad')
-  if (!auto) notice(g, 'Fire Sale', `${a.name} paid every saver who asked (${money(wave)}) and lost ${money(loss)} selling loans in a hurry.`, { emoji: '🏷️', tone: 'bad' })
+  if (loss > 0) log(g, `${a.name} sold loans at a ${money(loss)} loss to pay off panicked savers.`, 'bad')
+  else log(g, `${a.name} paid off panicked savers out of its reserves.`, 'neutral')
+  if (!auto) notice(g, loss > 0 ? 'Fire Sale' : 'Paid Out', `${a.name} paid every saver who asked (${money(wave)})${loss > 0 ? ` and lost ${money(loss)} selling loans in a hurry` : ' straight out of its reserves'}.`, { emoji: '🏷️', tone: loss > 0 ? 'bad' : 'neutral' })
 }
 
 function autoRun(g: GameState, a: Asset, b: BizState): void {
