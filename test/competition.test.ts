@@ -420,6 +420,20 @@ describe('competition: determinism, menus, saves', () => {
     expect(businessSummary(r)).toMatch(/Japan's restaurant market/)
   })
 
+  it('never tells a bank or investment firm its market is worth $0 or that it has no sales', () => {
+    for (const industry of ['investmentFirm', 'bank'] as const) {
+      const g = adult(13, 2024, 'us')
+      const a = company(g, industry)
+      for (let y = 0; y < 3; y++) {
+        const line = renderAll(g, a).find((t) => / market/.test(t) && /named rivals/.test(t))
+        expect(line, industry).toMatch(/^Competing in the United States' .* market with \d+ named rivals/)
+        expect(line, industry).not.toMatch(/\$0\b|No sales yet/)
+        nextYear(g)
+      }
+      expect(readBiz(g, a).last?.revenue, industry).toBeGreaterThan(0)
+    }
+  })
+
   it('loads business saves from before competition existed (and shrugs off damaged market data)', () => {
     const g = adult(12, PRESENT_YEAR, 'de')
     const a = company(g, 'manufacturing', { outlets: 2 })

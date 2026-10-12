@@ -408,6 +408,10 @@ export function marketOwner(place: string): string {
 export function shareLine(g: GameState, b: BizState): string {
   const v = marketViewOf(g, b)
   const where = marketOwner(v.place)
+  // Banks and investment firms earn fees and spreads on a balance sheet instead of selling units,
+  // so their field has no sales size or share to report: never "about $0 a year" or "no sales
+  // yet" (they book revenue from their first year).
+  if (!(v.size > 0)) return `Competing in ${where} ${v.noun} market with ${v.rivals.length} named rivals${v.scope === 'world' ? '' : ' and countless small ones'}`
   if (!v.booked) return `New to ${where} ${v.noun} market (about ${moneyShort(v.size)} a year): ${v.rivals.length} named rivals${v.scope === 'world' ? '' : ' and countless small ones'}`
   if (!(v.share > 0)) return `No sales yet in ${where} ${v.noun} market (about ${moneyShort(v.size)} a year) · ${v.rivals.length} named rivals`
   if (v.scope === 'national' && v.share < 0.005) return `${shareText(v.share)} of ${where} ${v.noun} market · one of thousands of competitors · world share ${shareText(v.worldShare)}`
