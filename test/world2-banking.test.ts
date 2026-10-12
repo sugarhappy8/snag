@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { simulateFinanceYear } from '../src/game/business/finance-firm'
-import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
+import { loanTotal, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { normalizeBiz, readBiz, type BizState } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
@@ -23,20 +23,22 @@ function institution(industry: Industry = 'bank') {
   return { g, a, b: a.details as unknown as BizState, fiscal: g.year - 1 }
 }
 function gdp(country: string) { const m = marketOf(country); return Math.max(1e9, m.populationM * 1e6 * m.gdpPerCapita) }
-function balanced(b: BizState) {
-  const f = financeView(b)
-  expect(f.loanBook + f.bonds + f.reserves).toBeCloseTo(f.deposits, 5)
+// Banking 2.0 client books: performing loans + loans in workout + reserves + bonds = deposits + advance.
+function balanced(b: BizState): BankBook {
+  const f = readBank(b)
+  expect(loanTotal(f) + f.badNet + f.bonds + f.reserves).toBeCloseTo(f.deposits + f.advance, 3)
   expect(b.inventory).toBe(0)
   return f
 }
+const lent = (from: BankBook, to: BankBook) => loanTotal(to) - loanTotal(from)
 
 describe('World 2: actual bank settlements and lagged feedback', () => {
   it('forecast clones return actual-book telemetry without emitting world events, moving client principal, or consuming RNG', () => {
-    const x = institution(), before = JSON.stringify(x.g), opening = financeView(x.b)
+    const x = institution(), before = JSON.stringify(x.g), opening = readBank(x.b)
     const clone = structuredClone(x.b), cash = clone.cash, debt = clone.debt
     const result = simulateFinanceYear(x.g, clone, x.fiscal, 0)
     const closing = balanced(clone)
-    expect(result.bank).toEqual({ bankLoss: closing.lastDefaults, bankRun: closing.lastRun ? closing.lastWithdrawals : 0, bankLending: closing.loanBook - opening.loanBook })
+    expect(result.bank).toEqual({ bankLoss: closing.last!.bankLoss, bankRun: closing.last!.runWithdrawals, bankLending: lent(opening, closing) })
     expect(result.bank!.bankLoss).toBeGreaterThan(0)
     expect(clone.cash).toBeCloseTo(cash + result.stmt.net + clone.yearCosts - clone.yearIncome + clone.debt - debt, 0)
     expect(JSON.stringify(x.g)).toBe(before)
@@ -51,19 +53,22 @@ describe('World 2: actual bank settlements and lagged feedback', () => {
 
   it('counts only run-driven withdrawals and keeps emergency funding repayable in the same ledger', () => {
     const x = institution('onlineBank')
-    const base = financeView(x.b)
-    base.confidence = 5; base.reserveRatio = .1; base.controls = 10
-    base.loanBook = base.deposits * .8; base.bonds = base.deposits * .1; base.reserves = base.deposits * .1
-    saveFinance(x.b, base)
+    const base = readBank(x.b)
+    // A distrusted, illiquid online bank: some years savers panic, some years they just drift away.
+    base.trust = 5; base.savingsGap = -.03
+    base.loans.business = base.deposits * .8; base.bonds = base.deposits * .1; base.reserves = base.deposits * .1; base.badNet = 0
+    saveBank(x.b, base)
     let runs = 0, ordinary = 0
     for (let i = 0; i < 24; i++) {
       const g = { ...x.g, lifeId: `bank-withdrawal-${i}` }, clone = structuredClone(x.b)
       clone.cash = 4_000_000
       const cash = clone.cash, debt = clone.debt
       const result = simulateFinanceYear(g, clone, x.fiscal, 0), f = balanced(clone)
-      expect(f.lastWithdrawals).toBeGreaterThan(0)
-      if (f.lastRun) { runs++; expect(result.bank!.bankRun).toBe(f.lastWithdrawals) }
+      expect(f.last!.withdrawals).toBeGreaterThan(0)
+      expect(f.last!.withdrawals).toBeGreaterThanOrEqual(f.last!.runWithdrawals)
+      if (f.last!.runWithdrawals > 0) { runs++; expect(result.bank!.bankRun).toBe(f.last!.runWithdrawals); expect(f.run).not.toBeNull() }
       else { ordinary++; expect(result.bank!.bankRun).toBe(0) }
+      // Panicked savers are paid out of the client book; only booked losses touch shareholders' cash.
       expect(clone.cash).toBeCloseTo(cash + result.stmt.net + clone.yearCosts - clone.yearIncome + clone.debt - debt, 0)
       expect(clone.debt - debt).toBeGreaterThanOrEqual(0)
     }
@@ -76,14 +81,15 @@ describe('World 2: actual bank settlements and lagged feedback', () => {
     // A previous unusually high fee year is not itself a new credit loss.
     const previous = simulateFinanceYear(x.g, structuredClone(x.b), x.fiscal - 1, 0).stmt
     x.b.last = { ...previous, revenue: 1e12 }
-    const opening = financeView(x.b), countries = JSON.stringify(economyState(x.g)!.countries)
+    const opening = readBank(x.b), countries = JSON.stringify(economyState(x.g)!.countries)
     yearlyBusinessImpl(x.g)
     const b = readBiz(x.g, x.a), closing = balanced(b)
     const feedback = economyState(x.g)!.pending.find(p => p.country === 'us' && p.sector === 'finance')!
-    expect(feedback.bankLoss).toBeCloseTo(closing.lastDefaults / gdp('us'), 14)
-    expect(feedback.bankRun).toBeCloseTo((closing.lastRun ? closing.lastWithdrawals : 0) / gdp('us'), 14)
-    expect(feedback.bankLending).toBeCloseTo((closing.loanBook - opening.loanBook) / gdp('us'), 14)
-    expect(feedback.failure).toBe(Math.max(0, -b.cash - closing.lastDefaults) / gdp('us'))
+    expect(feedback.bankLoss).toBeCloseTo(closing.last!.bankLoss / gdp('us'), 14)
+    expect(feedback.bankRun).toBeCloseTo(closing.last!.runWithdrawals / gdp('us'), 14)
+    expect(feedback.bankLending).toBeCloseTo(closing.last!.loanFlow / gdp('us'), 12)
+    expect(closing.last!.loanFlow).toBeCloseTo(lent(opening, closing), -1)
+    expect(feedback.failure).toBe(Math.max(0, -b.cash - closing.last!.bankLoss) / gdp('us'))
     expect(feedback.failure).toBe(0)
     expect(JSON.stringify(economyState(x.g)!.countries)).toBe(countries)
     const pending = JSON.stringify(economyState(x.g)!.pending), receipts = [...economyState(x.g)!.receipts], settledCash = b.cash
@@ -99,13 +105,13 @@ describe('World 2: actual bank settlements and lagged feedback', () => {
     x.b.ceo = 'manager'; x.b.manager = { firstName: p.firstName, lastName: p.lastName, gender: p.gender, skill: life.skill, salary: 0, since: 2020 }
     p.data.npcCompany = x.a as unknown as Json
     x.g.assets = []
-    const opening = financeView(x.b)
+    const opening = readBank(x.b)
     npcBusinessYear(x.g, p, life)
     const company = npcCompany(p, x.g.year)!, closing = balanced(company.b)
     const feedback = economyState(x.g)!.pending.find(p => p.country === 'us' && p.sector === 'finance')!
-    expect(feedback.bankLoss).toBeCloseTo(closing.lastDefaults / gdp('us'), 14)
-    expect(feedback.bankRun).toBeCloseTo((closing.lastRun ? closing.lastWithdrawals : 0) / gdp('us'), 14)
-    expect(feedback.bankLending).toBeCloseTo((closing.loanBook - opening.loanBook) / gdp('us'), 14)
+    expect(feedback.bankLoss).toBeCloseTo(closing.last!.bankLoss / gdp('us'), 14)
+    expect(feedback.bankRun).toBeCloseTo(closing.last!.runWithdrawals / gdp('us'), 14)
+    expect(feedback.bankLending).toBeCloseTo(lent(opening, closing) / gdp('us'), 12)
     expect(feedback.failure).toBe(0)
     const before = JSON.stringify(x.g)
     npcBusinessYear(x.g, p, life)
@@ -115,8 +121,9 @@ describe('World 2: actual bank settlements and lagged feedback', () => {
   it('NPC bank insolvency reports realized credit losses once and only the remaining non-credit shortfall as generic failure', () => {
     const x = institution(), p = createPerson(x.g, { relation: 'friend', age: 40, money: 1e6 }), life = initializeNpc(x.g, p)
     life.skill = 35; life.country = 'us'; life.city = 'Chicago'
-    x.b.cash = 0; x.b.openFraction = 1
-    const f = financeView(x.b); f.strategy = 'aggressive'; f.controls = 0; saveFinance(x.b, f)
+    // Reckless lending on borrowed money: the year's credit losses and debt service sink the bank.
+    x.b.cash = 0; x.b.openFraction = 1; x.b.debt = 30_000_000; x.b.debtRate = .12
+    const f = readBank(x.b); f.appetite = 'highYield'; f.loans.business = f.deposits * .7; f.reserves = f.deposits * .2; f.bonds = f.deposits * .1; saveBank(x.b, f)
     p.data.npcCompany = x.a as unknown as Json; x.g.assets = []
     const preview = structuredClone(x.b), expected = simulateFinanceYear(x.g, preview, x.fiscal, 0)
     expect(preview.cash).toBeLessThan(0)

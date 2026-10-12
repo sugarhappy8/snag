@@ -21,6 +21,7 @@ import { DEEP_TECH } from './deeptech-data'
 import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
 import { isDeepTechIndustry, type DeepTechIndustry } from './deeptech-state'
 import { financeEraBlock, isFinanceFirm } from './finance-firm'
+import { bankCapitalPreview, bankStartingCash, isBank } from './bank'
 import { financeView } from './finance-firm-state'
 import { fundTypeBlock, initFund } from './fund'
 import { TYPE_INFO } from './fund-model'
@@ -208,6 +209,7 @@ export function startupCapitalPreview(g: GameState, data: Json | undefined, amou
   if (!p) return ''
   const cost = startupCost(p.industry, p.countryId, p.city), e = localEcon(p.industry, p.countryId, p.city)
   const cash = Math.max(0, amount - cost.capital * .8)
+  if (isBank({ industry: p.industry })) return `Fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. ${bankCapitalPreview(p.industry, p.countryId, g.year, cash)}`
   const burn = e.rent + industryDef(p.industry).staff * e.wage
   return `Equipment/fit-out ${money(cost.capital * .8)}; fees ${money(cost.fee + cost.permits)}. Starting cash ${money(cash)}; roughly ${(cash / Math.max(1, burn)).toFixed(1)} years of base wages/rent before sales and other costs. ${cash < burn ? 'High funding risk.' : 'A cash buffer, not guaranteed profit.'} Personal funds ${money(g.character.money)}. Next: compare loans, investor dilution, or 100% ownership with self-funding.`
 }
@@ -215,7 +217,7 @@ export function startupCapitalPreview(g: GameState, data: Json | undefined, amou
 function askCapital(g: GameState, p: Plan): void {
   const c = startupCost(p.industry, p.countryId, p.city)
   scriptInput(g, { title: 'Choose Starting Capital', emoji: '💵', text: `Minimum capital ${money(c.capital)} plus ${money(c.fee + c.permits)} fees. Additional capital stays in company cash.`, input: 'slider', money: true,
-    min: c.capital, max: Math.max(c.capital, Math.min(1e15, (g.character.money - c.fee - c.permits) / ownShare(p.industry, p.countryId))), defaultValue: String(c.capital), scriptId: CAPITAL, data: planJson(p) })
+    min: c.capital, max: Math.max(c.capital, Math.min(1e15, (g.character.money - c.fee - c.permits) / ownShare(p.industry, p.countryId))), defaultValue: String(isBank({ industry: p.industry }) ? Math.max(c.capital, Math.min(c.capital * .8 + bankStartingCash(p.countryId, g.year), (g.character.money - c.fee - c.permits) / ownShare(p.industry, p.countryId))) : c.capital), scriptId: CAPITAL, data: planJson(p) })
 }
 const CAPITAL = defineScript('business.found.capital', (g, input, data) => {
   const p = readPlan(data), n = Number(input)
@@ -610,7 +612,8 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
     ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.`
     : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} will run it day to day.`
   const plan =
-    isFinanceFirm(b)
+    isBank(b) ? ' Set savings and loan rates, lending appetite and products in Financial Operations. Deposits belong to your savers; the capital is yours to lose.'
+    : isFinanceFirm(b)
       ? ' Set risk, rates and client policies in Financial Operations. Customer principal is segregated; you earn fees and banking spreads, never free deposits.'
       : p.industry === 'gameStudio'
       ? ` Greenlight your first game from the company screen: your ${b.employees} developers are waiting for something to make.`
