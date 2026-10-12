@@ -14,6 +14,7 @@ import { bizWorth, ceoSkill, equipmentValue, expectedFx, LASTING_YEARS, localEco
 import { marketViewOf, shareText } from './competition'
 import { bizHas, eraFits } from './era'
 import { COMPETITION_EVENTS } from './competition-events'
+import { EXTRA_EVENTS } from './events-extra'
 import { sellBusiness } from './exit'
 import { conglomerate, investorFirm, laborProtection, traitOf, unionStrength } from './flavor'
 import { industryDef } from './industries'
@@ -995,6 +996,8 @@ const EVENTS: BizEvent[] = [
   { id: 'poached', weight: (_g, b) => (b.staff.length > 0 ? 0.35 : 0), present: presentPoached },
   // Rivals in the company's market: takeover bids, copycats, price wars, scandals, newcomers.
   ...COMPETITION_EVENTS,
+  // Franchise pitches, critics, influencers, breaches, unions, tenders, trends... (events-extra.ts).
+  ...EXTRA_EVENTS,
 ]
 
 /**
