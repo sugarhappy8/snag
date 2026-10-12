@@ -179,8 +179,12 @@ function commitLaunch(g: GameState, ws: Workshop, b: Bench, o: LaunchOpts): Asse
   count(g, 'inventions')
   addRep(ws, 3 + (b.q >= 80 ? 2 : 0))
   remember(ws, { id: b.def.id, name: b.def.name, emoji: b.def.emoji, route: o.route, year: g.year, ...(first ? { first: true } : {}) })
-  if (first) beatHistory(g, ws, b.def)
   return a
+}
+
+/** After the route's own popup: the history moment, if this launch beat history. */
+function afterLaunch(g: GameState, ws: Workshop, b: Bench, launchedYear: number): void {
+  if (isFirst(b.def, launchedYear)) beatHistory(g, ws, b.def)
 }
 
 /** "You beat history": the moment the history race pays off. */
@@ -211,6 +215,7 @@ export function license(g: GameState, t: Target): Asset | null {
   const a = commitLaunch(g, ws, b, { route: 'license', rate: q.rate, maker: q.maker })
   notice(g, '\u{1F91D} Licensed!', `${b.def.emoji} ${q.maker} will make the ${b.def.name} and pay you ${(q.rate * 100).toFixed(1)}% of every sale. Royalties arrive each year.`, { emoji: '\u{1F91D}', tone: 'good' })
   log(g, `I licensed the ${b.def.name} to ${q.maker}.`, 'good')
+  afterLaunch(g, ws, b, g.year)
   return a
 }
 
@@ -368,6 +373,7 @@ export function acceptPitch(g: GameState, t: Target, cut: number, cash: number, 
   const a = commitLaunch(g, ws, b, { route: 'pitch', rate: Math.round(s.rate * (1 - cut) * 10_000) / 10_000, maker: `${investor}'s partners`, boost: PITCH_BOOST })
   notice(g, '\u{1F91D} Deal!', `${investor} wrote you a check for ${formatMoney(cash)}. You keep ${Math.round((1 - cut) * 100)}% of the ${b.def.name}'s royalties.`, { emoji: '\u{1F91D}', tone: 'good' })
   log(g, `I made a deal with investor ${investor} for the ${b.def.name}.`, 'good')
+  afterLaunch(g, ws, b, g.year)
   return !!a
 }
 
@@ -441,6 +447,7 @@ export function runCrowd(g: GameState, t: Target, tier: number): 'flop' | 'deliv
     commitLaunch(g, ws, b, { route: 'crowd', rate: Math.max(0.05, margin - 0.08), maker: 'your own small factory', boost: 0.6 })
     notice(g, '\u{1F4E6} Delivery Disaster', `Backers pledged ${formatMoney(pledges)}, but the ${b.def.name} shipped late and wobbly. Every cent went into fixing it. The reviews are... spicy.`, { emoji: '\u{1F4E6}', tone: 'bad' })
     log(g, `My crowdfunded ${b.def.name} shipped late and broken.`, 'bad')
+    afterLaunch(g, ws, b, g.year)
     return 'botched'
   }
   const profit = Math.round(pledges * margin)
@@ -449,6 +456,7 @@ export function runCrowd(g: GameState, t: Target, tier: number): 'flop' | 'deliv
   commitLaunch(g, ws, b, { route: 'crowd', rate: margin, maker: 'your own small factory' })
   notice(g, '\u{1F389} Funded!', `Backers pledged ${formatMoney(pledges)} for the ${b.def.name}! You shipped on time and kept ${formatMoney(profit)}. Now you make every one yourself.`, { emoji: '\u{1F389}', tone: 'good' })
   log(g, `My crowdfunding campaign for the ${b.def.name} raised ${formatMoney(pledges)}.`, 'good')
+  afterLaunch(g, ws, b, g.year)
   return 'delivered'
 }
 
@@ -478,6 +486,7 @@ export function makeInCompany(g: GameState, t: Target, companyId: string): Asset
   const a = commitLaunch(g, ws, b, { route: 'company', margin: COMPANY_MARGIN, company: company.id, maker: company.name })
   notice(g, '\u{1F3ED} In Production!', `${company.name} will make the ${b.def.name}. Its profit lands in the company's books every year.`, { emoji: '\u{1F3ED}', tone: 'good' })
   log(g, `${company.name} started making my ${b.def.name}.`, 'good')
+  afterLaunch(g, ws, b, g.year)
   return a
 }
 
@@ -550,7 +559,8 @@ export function routeQuotes(g: GameState, ws: Workshop, b: Bench): RouteQuote[] 
   const appeal = trueAppeal(g, b.def)
   const out: RouteQuote[] = []
   const n = offerCount(ws, b, g.year)
-  out.push({ route: 'sell', label: 'Sell the rights', value: rightsBasis(g, ws, b) * (0.5 + (0.55 * n) / (n + 1)), company: false })
+  // Routes already tried this year (or ever, for the pitch) are not recommended.
+  if (b.shopped !== g.year) out.push({ route: 'sell', label: 'Sell the rights', value: rightsBasis(g, ws, b) * (0.5 + (0.55 * n) / (n + 1)), company: false })
   const lic = licenseValue(g, s, appeal, ws.rep)
   out.push({ route: 'license', label: 'License', value: lic, company: false })
   if (b.pitched < 0) {
@@ -559,7 +569,7 @@ export function routeQuotes(g: GameState, ws: Workshop, b: Bench): RouteQuote[] 
     // A deal pays ~0.35 × 0.725 of the stream up front and leaves 65% of it; no deal leaves you free to license later.
     out.push({ route: 'pitch', label: 'Pitch to investors', value: odds * p.value * (0.35 * 0.725 + 0.65) + (1 - odds) * lic * 0.9, company: false })
   }
-  if (g.year >= 2009 && hasTech(g, 'internet') && g.character.age >= 18) {
+  if (g.year >= 2009 && hasTech(g, 'internet') && g.character.age >= 18 && b.crowd !== g.year) {
     const fans = crowdFans(g)
     const e1 = firstYearRevenue(g, s, appeal)
     const fail = deliveryFailOdds(s)
