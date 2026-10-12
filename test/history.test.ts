@@ -481,7 +481,8 @@ describe('lives in the past', () => {
     }
     ages.sort((a, b) => a - b)
     expect(ages[Math.floor(ages.length / 2)]).toBeGreaterThan(40)
-  }, 120_000)
+    // Ten whole lives, each year running the world economy: sized for a 2-core CI runner.
+  }, 600_000)
 
   it('history popups and news never mention things before their time', () => {
     const ours = /^(The Flu|Flu Season|Lockdown|Rationing|Air Raid|All Clear|Hit|Evacuated|One Small Step|Duck and Cover|Missile Crisis|Draft Notice|In Hiding|War at Home|Hard Times|Laid Off|The War Is Over!|Armistice|Partition|Gas Lines|The War Effort|Factory Work|Farm Work|Volunteer Nurse|The Home Front|Conscientious Objector|Medical Exemption|Caught Faking|Objection Rejected|Y2K)$/
@@ -497,7 +498,8 @@ describe('lives in the past', () => {
       }
     }
     expect(checked).toBeGreaterThan(3)
-  }, 120_000)
+    // Seven whole lives: sized for a 2-core CI runner.
+  }, 600_000)
 })
 
 // ---------------------------------------------------------------------------

@@ -244,5 +244,6 @@ describe('whole-life simulation (offline)', () => {
         drain(next, d, [])
       }
     }
-  }, 120_000)
+    // Six whole lives plus their heirs: sized for a 2-core CI runner.
+  }, 600_000)
 })
