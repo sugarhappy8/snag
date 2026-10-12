@@ -35,8 +35,18 @@ function calendarYear(year: number): number {
   return Number.isFinite(year) ? Math.max(-10_000, Math.min(10_000, year)) : PRESENT_YEAR
 }
 
+/** Whole calendar years only (at most 20,001 entries): the yearly world economy asks millions of times. */
+const cpiMemo = new Map<number, number>()
 function cpi(year: number): number {
   year = calendarYear(year)
+  const hit = cpiMemo.get(year)
+  if (hit !== undefined) return hit
+  const value = cpiAt(year)
+  if (Number.isInteger(year)) cpiMemo.set(year, value)
+  return value
+}
+
+function cpiAt(year: number): number {
   const first = CPI[0]
   const last = CPI[CPI.length - 1]
   if (year <= first[0]) return first[1]
