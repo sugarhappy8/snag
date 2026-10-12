@@ -208,7 +208,7 @@ function readStartup(x: Record<string, Json>): Startup | null {
 function readLast(v: Json | undefined): LastYear {
   const x = obj(v)
   if (!x) return emptyLast()
-  return { fees: n(x.fees, 0), ret: n(x.ret, 0, -1, 20), market: n(x.market, 0, -1, 20), rank: n(x.rank, -1, -1, 1), flow: n(x.flow, 0),
+  return { fees: n(x.fees, 0), ret: n(x.ret, 0, -1, 1000), market: n(x.market, 0, -1, 20), rank: n(x.rank, -1, -1, 1), flow: n(x.flow, 0),
     own: n(x.own, 0), opLoss: n(x.opLoss, 0, 0), trades: n(x.trades, 0, 0), carry: n(x.carry, 0, 0),
     news: list(x.news).filter((t): t is string => typeof t === 'string').slice(0, 8).map(t => t.slice(0, 200)) }
 }
@@ -238,7 +238,7 @@ function readNew(x: Record<string, Json>, countryId: string): FundState {
     ponzi: ponzi ? { since: Math.round(n(ponzi.since, 0, 0, 1e5)), hole: n(ponzi.hole, 0, 0), fees: n(ponzi.fees, 0, 0) } : null,
     eventYear: Math.round(n(x.eventYear, 0, 0, 1e5)), checkYear: Math.round(n(x.checkYear, 0, 0, 1e5)), last: readLast(x.last),
     marks: list(x.marks).map(m => obj(m)).filter((m): m is Record<string, Json> => !!m)
-      .map(m => ({ y: Math.round(n(m.y, 0, -1e5, 1e5)), r: n(m.r, 0, -1, 20), m: n(m.m, 0, -1, 20), k: n(m.k, -1, -1, 1) })).slice(-12),
+      .map(m => ({ y: Math.round(n(m.y, 0, -1e5, 1e5)), r: n(m.r, 0, -1, 1000), m: n(m.m, 0, -1, 20), k: n(m.k, -1, -1, 1) })).slice(-12),
   }
 }
 
