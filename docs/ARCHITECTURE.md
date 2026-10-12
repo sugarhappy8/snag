@@ -104,6 +104,8 @@ src/
                          options, single-stock options and coin shorts (money-*.ts), online scams
     invest/shocks.ts     Market shocks (g.flags.marketShocks): a company/coin banned or hyped by a
                          head of state; investments and options read the price hit. Kept across heirs
+    workshop/*.ts        Inventor's Workshop (Inventor 2.0): catalog, notebook, builds, patents, launch routes,
+                         sales, events, menus and the old-save migration
     special/*.ts         Special careers split by section: politics.ts (incl. Abuse of Power:
                          market-moving announcements + insider trades),
                          sports*.ts (Special Careers > Sports: team sports, MMA/UFC, boxing, tennis,
@@ -254,7 +256,8 @@ plain records. Quota failures must never prevent saving the current life.
 `drugs`, `rehab`, `fameActions`, `albums`, `movies`, `housesBought`, `carsBought`, `purchases`,
 `studied`, `skippedSchool`, `diseases`, `lawsuitsWon`, `customActions`, `wealthGifts`,
 `wealthRefusals`, `wealthLoans`, `scammed`, `conglomerates`, `groupMergers`, `spinOffs`, `groupIpos`,
-`groupAcquisitions`. (Old saves may still hold
+`groupAcquisitions`, `ideas`, `prototypes`, `kabooms`, `patents`, `inventions` (launches),
+`historyFirsts`, `rightsSold`, `openInventions`. (Old saves may still hold
 `aiEvents`, from the retired AI narrator; nothing reads it.)
 Add new keys freely, but use these names for these concepts.
 
@@ -532,11 +535,11 @@ the pay policy while you're CEO): a judge blocks it before money moves and the o
 costs, and `passOdds` includes those odds so hints match `vote()`. `bestMandate` is null for
 companies the planner doesn't model (studios, deep tech).
 
-## National strategy, executive equity and invention
+## National strategy, executive equity and the Workshop
 
-Completed tier inventions offer **Patent in All Nations** alongside individual country filings. `expansion.allNationsPatentQuote` reads the live company (including from stale menu closures) and returns all missing game nations, the sum of their filing fees, and a shared eligibility/funding block. `fileInventionPatentAllNations` rechecks that quote, charges the full cost atomically from company cash, appends each nation's protection using the original invention date and its national term, and emits one summary notice. Existing filings are neither charged again nor extended. The same company-ownership, management and foreign-filing-window rules apply to both paths; insufficient funds cause no partial filing. No new save format is needed.
+`workshop/` is Inventor 2.0 (Activities › Inventor's Workshop; see [INVENTOR-CAREER.md](INVENTOR-CAREER.md)). State: `g.flags.workshop` (owner-stamped notebook, skill, reputation) and invention assets (`kind: 'invention'`, `details.inv2`). `market.ts`, `buildOdds`, `routeQuotes` and the event odds are pure and are exactly what the resolvers roll, so talent hints are honest. The `workshop` yearly hook runs before `business` and `finance`: personal royalties go through `earnIncome`; company-made inventions add to `b.cash` and `b.yearIncome` (booked once by the business sim). `migrate.ts` converts the retired research/IP/company-invention systems; `legacy-capital.ts` keeps their factory and stock book value in `equipmentValue`/`valuationOf`.
 
-`business/dynamics.ts` provides pure, seeded country/industry/year conditions and bounded strategy/patent effects. The bounded module cache stores only deterministic base conditions; confidence is read live from world flags and survives succession. `business/expansion.ts` stores programs, studies, research and patents in optional `BizState.expansion` JSON. Programs are paid up front (cash and yearCosts), are country-scoped, allow three concurrent choices per country, and expire automatically. Inventor research requires a recent home-market study, takes three or five years, and resolves only once per year; exclusivity begins after the just-booked fiscal year and expires after 15/20 years. These are explicitly fictional alternate-history technologies, not assertions about real scientific discoveries. All three business simulations use demand/cost effects. New sectors reuse calibrated operating models with separate markets, products and units.
+`business/dynamics.ts` provides pure, seeded country/industry/year conditions and bounded strategy effects. The bounded module cache stores only deterministic base conditions; confidence is read live from world flags and survives succession. `business/expansion.ts` stores programs and studies in optional `BizState.expansion` JSON (old research/patent keys are kept until the Workshop migrates them). Programs are paid up front (cash and yearCosts), are country-scoped, allow three concurrent choices per country, and expire automatically. All three business simulations use demand/cost effects. New sectors reuse calibrated operating models with separate markets, products and units.
 
 `business/executive.ts` adds bounded skill-scaled execution, gradual quality/morale/brand improvements and pre-booking turnaround planning for elite operating-company CEOs. Managers retain optional equity/equityAsked/groupEquity fields through normalization. A non-shareholder with skill 85/90/95 asks for an initial 2/5/10% ownership-equivalent grant: warning after three years, departure two years later. `state.hasExecutiveShares` recognizes any positive vested company or group stake (not retention credit alone). A shareholder never voluntarily resigns or retires; dilution and skill growth do not trigger top-ups, and yearly retention clears legacy departure deadlines. `board.ts` also blocks rival poaching and raise-refusal departures (including old queued popups), and its raise hints no longer price in a shareholder walking out. Family shareholder CEOs also remain despite estrangement, moving abroad or passing head-office retirement age. Grants transfer ownership, never mint cash; group grants update all look-through stakes, division grants reduce the controlling group's holding, and automatic retention uses value-weighted group awards to preserve subsidiary cash pooling. Granted shares remain outside the player's stake after dismissal. Loyalty does not override owner/board dismissal, death or ordinary company failure. Automatic group recruitment filters out division candidates below the group CEO's rating.
 
