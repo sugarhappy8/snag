@@ -14,7 +14,7 @@
 // diminishing bit of fame, never cash. No family use for a minor player, in prison, after dying,
 // or in the year of an emigration; family who live abroad aren't around to use anything.
 import { findAsset, isHeirloom } from '../assets'
-import { addHidden, addMoney, addStat, count, formatMoney, getPerson, inPrison, log, notice, pronouns, relationLabel, scriptChoice, shortMoney } from '../core'
+import { addHidden, addMoney, addStat, canAfford, count, formatMoney, getPerson, inPrison, log, notice, pronouns, relationLabel, scriptChoice, shortMoney, spend } from '../core'
 import { addEntitlement, allowanceNorm, entitlement, gratitude, isAbroad, isDescendant, isParent, isPartner, isSibling, traitIn } from '../events/wealth-core'
 import { isEstranged } from '../events/will-core'
 import { hasTech } from '../history/timeline'
@@ -366,7 +366,8 @@ function pay(g: GameState, amount: number): number {
   return due
 }
 
-// A decision popup. At most one a year.
+// A decision popup. At most one a year. A repair is only done when it is paid for in full: an
+// owner who cannot cover the bill pays nothing and the damage stays.
 const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
   const a = findAsset(g, field<string>(data, 'asset') ?? '')
   const p = getPerson(g, field<string>(data, 'person') ?? '')
@@ -374,46 +375,58 @@ const CRASH = defineScript('luxury.family.crash', (g, choice, data) => {
   const bill = num(field<number>(data, 'bill'))
   const name = p.firstName
   const him = pronouns(p.gender).him
+  const unrepaired = (why: string): void => {
+    log(g, `My ${a.name} stayed damaged after ${name}'s crash.`, 'bad')
+    notice(g, 'Left Damaged', `${why} The ${a.name} stays damaged until someone pays for the repairs.`, { emoji: '🔧', tone: 'bad' })
+  }
+  const short = (amount: number) => `You could not cover the ${formatMoney(amount)} bill, so nothing was paid and nothing was fixed.`
+  if (choice === 'leave') {
+    if (isDescendant(p)) addEntitlement(p, 1)
+    unrepaired(`You left the repairs for another day. ${name} looked relieved, then a little worried.`)
+    return
+  }
   if (choice === 'claim' && insuredNow(a)) {
     const deduct = Math.min(deductibleOf(a), bill)
-    const paid = pay(g, deduct)
+    if (!spend(g, deduct)) return unrepaired(short(deduct))
     a.condition = Math.min(100, a.condition + 20)
     syncValue(a)
     p.relationship = Math.min(100, p.relationship + 1)
     log(g, `The insurer covered the repairs after ${name} crashed my ${a.name}.`)
-    notice(g, 'Claim Approved', `The insurer paid for the repairs on your ${a.name} after the ${formatMoney(paid)} deductible. ${name} is relieved, and has promised to be more careful (${pick(g, ['again', 'probably', 'for a bit'])}).`, { emoji: '🛡️', tone: 'good' })
+    notice(g, 'Claim Approved', `The insurer paid for the repairs on your ${a.name} after the ${formatMoney(deduct)} deductible. ${name} is relieved, and has promised to be more careful (${pick(g, ['again', 'probably', 'for a bit'])}).`, { emoji: '🛡️', tone: 'good' })
     return
   }
   if (choice === 'split') {
     const share = Math.min(Math.round(bill * 0.3), Math.max(0, p.money))
+    if (!spend(g, bill - share)) return unrepaired(short(bill - share))
     p.money = Math.max(0, p.money - share)
-    const paid = pay(g, bill - share)
     a.condition = Math.min(100, a.condition + 30)
     syncValue(a)
     p.relationship = Math.max(0, p.relationship - 3)
     if (isDescendant(p)) addEntitlement(p, -3)
     fuBad(p, g)
-    notice(g, 'Making It Right', `You paid ${formatMoney(paid)} and ${name} chipped in ${formatMoney(share)} from ${pronouns(p.gender).his} own pocket. It stung ${him}. It was also the first time ${pronouns(p.gender).he} had ever paid for a mistake.`, { emoji: '🔧' })
+    notice(g, 'Making It Right', `You paid ${formatMoney(bill - share)} and ${name} chipped in ${formatMoney(share)} from ${pronouns(p.gender).his} own pocket. It stung ${him}. It was also the first time ${pronouns(p.gender).he} had ever paid for a mistake.`, { emoji: '🔧' })
     return
   }
   if (choice === 'ground') {
     for (const x of g.assets) if (hasAccess(g, x, p)) writeAccess(g, x, accessOf(g, x).filter((id) => id !== p.id))
     p.relationship = Math.max(0, p.relationship - 6)
     if (isDescendant(p)) addEntitlement(p, -2)
-    pay(g, bill)
-    a.condition = Math.min(100, a.condition + 25)
-    syncValue(a)
+    const repaired = spend(g, bill)
+    if (repaired) {
+      a.condition = Math.min(100, a.condition + 25)
+      syncValue(a)
+    }
     log(g, `I took ${name}'s access to my things away after the crash.`, 'bad')
-    notice(g, 'No More Keys', `You paid for the damage and took every key off ${name}. ${pronouns(p.gender).He} slammed a door that is probably also expensive. (-6 relationship)`, { emoji: '🔒', tone: 'bad' })
+    notice(g, 'No More Keys', `${repaired ? 'You paid for the damage and took' : `You could not cover the ${formatMoney(bill)} repair bill, so the ${a.name} stays damaged, but you took`} every key off ${name}. ${pronouns(p.gender).He} slammed a door that is probably also expensive. (-6 relationship)`, { emoji: '🔒', tone: 'bad' })
     return
   }
   // pay, or let it slide
-  const paid = pay(g, bill)
-  a.condition = Math.min(100, a.condition + (paid >= bill ? 28 : 8))
+  if (!spend(g, bill)) return unrepaired(short(bill))
+  a.condition = Math.min(100, a.condition + 28)
   syncValue(a)
   if (isDescendant(p)) addEntitlement(p, choice === 'slide' ? 3 : 1)
   p.relationship = Math.min(100, p.relationship + (choice === 'slide' ? 2 : 0))
-  notice(g, choice === 'slide' ? 'Boys Will Be Boys' : 'Repaired', choice === 'slide' ? `You paid ${formatMoney(paid)} and said nothing. ${name} learned that crashing is free.` : `You paid ${formatMoney(paid)} for the repairs and had a calm word with ${name}.`, { emoji: '🔧', tone: choice === 'slide' ? 'neutral' : 'good' })
+  notice(g, choice === 'slide' ? 'Boys Will Be Boys' : 'Repaired', choice === 'slide' ? `You paid ${formatMoney(bill)} and said nothing. ${name} learned that crashing is free.` : `You paid ${formatMoney(bill)} for the repairs and had a calm word with ${name}.`, { emoji: '🔧', tone: choice === 'slide' ? 'neutral' : 'good' })
 })
 
 function crashPopup(g: GameState, a: Asset, p: Person): void {
@@ -428,6 +441,7 @@ function crashPopup(g: GameState, a: Asset, p: Person): void {
   choices.push({ id: 'split', label: `Make ${p.firstName} chip in (about 30%)`, emoji: '⚖️' })
   choices.push({ id: 'slide', label: `Pay it and say nothing`, emoji: '🙈' })
   choices.push({ id: 'ground', label: `Pay it and take ${pronouns(p.gender).his} keys away for good`, emoji: '🔒' })
+  if (!canAfford(g, worth)) choices.push({ id: 'leave', label: 'Leave it damaged for now (you cannot cover the bill)', emoji: '🚧' })
   const what = a.kind === 'car' ? `${p.firstName} put your ${a.name} into a wall` : `${p.firstName} ran your ${a.name} onto a rock`
   scriptChoice(g, CRASH, 'A Bad Day for the Paint', `${what}. Everybody is fine, shaken and apologizing. The ${a.name} is not fine: it will cost about ${formatMoney(worth)} to put right.`, choices, { emoji: '💥', data: { asset: a.id, person: p.id, bill: worth } })
 }
