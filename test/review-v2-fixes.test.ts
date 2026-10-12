@@ -21,6 +21,8 @@ import { fire, hireRelative, makeCeo, severanceFor } from '../src/game/business/
 import { readJob } from '../src/game/business/nepo-job'
 import { appointGroupRelative, removeGroupRelative } from '../src/game/business/conglomerate-family'
 import { incomeTax } from '../src/game/finance'
+import { runScript } from '../src/game/scripts'
+import '../src/game/business/competition-events'
 import { kid, world as nepoWorld } from './nepo-kit'
 
 function group(industries: Industry[], skill: number) {
@@ -111,6 +113,20 @@ describe('inherited family companies', () => {
       expect(live.share).toBe(family ? 0 : .01)
       if (family) expect(live.familyShares![0].share).toBeCloseTo(.3)
     }
+  })
+})
+
+describe('a blocked takeover', () => {
+  it("books the bidder's break-up fee as the year's one-off income", () => {
+    const g = makeTestGame(31, { age: 40 })
+    const b = newBiz(g, 'cafe', 'us', 'Chicago', { cash: 100_000, founded: 2015 })
+    const a = createBusinessAsset(g, 'Corner Cafe', b, 100_000)
+    g.assets.push(a)
+    const before = { cash: bizOf(g, a).cash, income: bizOf(g, a).yearIncome }
+    runScript(g, 'business.comp.bid', 'accept', { assetId: a.id, offer: 1_000_000, blockP: 1, rival: 'Big Rival', rivalId: 'r1' }, { kind: 'choice', id: 'bid', title: '', text: '', choices: [{ id: 'accept', label: 'Accept' }] } as never)
+    expect(g.assets.some(x => x.id === a.id)).toBe(true)
+    expect(bizOf(g, a).cash - before.cash).toBe(30_000)
+    expect(bizOf(g, a).yearIncome - before.income).toBe(30_000)
   })
 })
 
