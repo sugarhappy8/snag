@@ -16,7 +16,7 @@ import { inGroup } from './conglomerate-state'
 import { declareBankruptcy, sellBusiness } from './exit'
 import { manageBlock } from './gate'
 import { APPETITES, LEND_LINES, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, readBank, saveBank, type Appetite, type BankBook } from './bank-state'
-import { bankCapital, bankMarket, bankRank, bankTeamSkill, bestAppetite, capitalRatio, costScale, payWithdrawals, productGate, ratioBar, riskWeighted, setupCost, techHere, type BankMarket } from './bank-model'
+import { bankCapital, bankMarket, bankRank, bankTeamSkill, bestAppetite, capitalRatio, costScale, payWithdrawals, productGate, profitWords, ratioBar, riskWeighted, setupCost, techHere, type BankMarket } from './bank-model'
 import { bizOf, diluteBusinessEquity, findBusiness, type BizState } from './state'
 import { clampN, money, pct, rec, str } from './util'
 
@@ -88,10 +88,10 @@ export function queueBankYearReport(g: GameState, a: Asset, b: BizState): void {
   if (L.runWithdrawals > 0) lines.push(`🏃 Panicked savers pulled ${money(L.runWithdrawals)} out.`)
   lines.push(`How should ${a.name} lend next year?`)
   const choices: ChoiceOption[] = [{ id: book.appetite, label: `Keep ${APPETITES[book.appetite].label.toLowerCase()}`, emoji: '✅' }]
-  for (const id of ['prime', 'balanced', 'highYield'] as const) if (id !== book.appetite) choices.push({ id, label: `${APPETITES[id].label}: ${APPETITES[id].blurb.toLowerCase()}`, emoji: APPETITES[id].emoji })
+  for (const id of ['prime', 'balanced', 'highYield'] as const) if (id !== book.appetite) choices.push({ id, label: `${APPETITES[id].label}: ${APPETITES[id].blurb.charAt(0).toLowerCase()}${APPETITES[id].blurb.slice(1)}`, emoji: APPETITES[id].emoji })
   if (hasTalent(g, 'Business')) {
     const best = bestAppetite(g, b)
-    const why = talentHint(g, 'Business', `Worth the most over the next few years in this economy (about ${money(best.profit)} next year)${best.appetite === 'highYield' ? '. A downturn hits it hardest' : ''}`)
+    const why = talentHint(g, 'Business', `Worth the most over the next few years in this economy (${profitWords(best.profit, money)} next year)${best.appetite === 'highYield' ? '. A downturn hits it hardest' : ''}`)
     for (const c of choices) if (c.id === best.appetite) c.hint = why
   }
   scriptChoice(g, REPORT, `${a.name}: Financial Institution Report`, lines.join('\n'), choices, { emoji: a.emoji, data: { assetId: a.id } })
@@ -135,7 +135,7 @@ export function bankAfterYear(g: GameState, a: Asset, b: BizState, managed: bool
 export function reassureOdds(g: GameState, b: BizState, book: BankBook): number {
   const c = g.character, m = bankMarket(g, b.countryId, g.year)
   const ratio = capitalRatio(b, book), min = minCapitalRatio(b.countryId, g.year)
-  return clampN(.2 + c.stats.smarts / 250 + c.stats.looks / 400 + c.hidden.fame / 300 + book.trust / 250 + (ratio >= min ? .15 : -.1) + (m.insured > 0 ? .1 : 0), .05, .92)
+  return clampN(.05 + c.stats.smarts / 400 + c.stats.looks / 500 + c.hidden.fame / 250 + book.trust / 300 + (ratio >= min ? .1 : -.15) + (m.insured > 0 ? .08 : 0) - m.crisis * .2, .05, .9)
 }
 function penaltyRate(m: BankMarket): number {
   return Math.max(.05, m.policy + .03)

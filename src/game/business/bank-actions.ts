@@ -7,7 +7,7 @@ import { boardAllows } from './board-vote'
 import { managerName } from './career'
 import { manageBlock, noCash } from './gate'
 import { APPETITES, PRODUCTS, hasProduct, isBankIndustry, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
-import { bankMarket, campaignCost, expectedProfitOf, headlineLoanRate, marketLoanRate, productGate, rateWord, setupCost, techHere } from './bank-model'
+import { bankMarket, campaignCost, headlineLoanRate, marketLoanRate, productGain, productGate, rateWord, setupCost, techHere } from './bank-model'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 import { clampN, money, pct } from './util'
 
@@ -93,11 +93,4 @@ export function runBankCampaign(g: GameState, assetId: string): void {
   const how = here('socialMedia') ? 'Online ads, an influencer or two and a cash bonus for new savers' : here('tv') ? 'TV ads, billboards and a free toaster for new savers'
     : here('radio') ? 'Radio jingles, newspaper ads and a free piggy bank for every child' : 'Posters, newspaper ads and a free umbrella for new savers'
   notice(g, 'Campaign Launched', `${how}: ${money(cost)} well spent, you hope. Results show at the year's end.`, { emoji: '🎯' })
-}
-
-/** Five years of the extra expected profit a product would add under this year's model (pure). */
-export function productGain(g: GameState, b: BizState, book: BankBook, id: ProductId): number {
-  const withIt = structuredClone(book)
-  withIt.products[id] = g.year
-  return Math.max(0, 5 * (expectedProfitOf(g, b, withIt) - expectedProfitOf(g, b, book)))
 }

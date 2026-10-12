@@ -549,12 +549,20 @@ function afterTax(ctx: BankYearCtx, g: GameState, p: BankProjection): number {
 export function expectedPath(g: GameState, ctx: BankYearCtx, book: BankBook, policy: Partial<BankPolicy>, years = 1, terminal = false): number {
   let total = 0, cur = book, last = 0
   for (let i = 0; i < years; i++) {
-    const p = projectFrom(ctx, cur, null, policy)
+    // Rates are held at today's; a crisis or a boom is assumed to fade by half each year
+    // (a generic expectation, not knowledge of the actual future).
+    const p = projectFrom(i ? calmer(ctx, Math.pow(.5, i)) : ctx, cur, null, policy)
     last = afterTax(ctx, g, p)
     total += last * Math.pow(.92, i)
     cur = p.book
   }
   return total + (terminal ? last * 8 * Math.pow(.92, years) : 0)
+}
+
+/** The same year with a crisis (and the cycle) faded toward normal by `k` (1 = as is). */
+function calmer(ctx: BankYearCtx, k: number): BankYearCtx {
+  const m = ctx.m, base = m.defaultsMult / (1 + 3 * m.crisis), crisis = m.crisis * k
+  return { ...ctx, m: { ...m, crisis, cycle: 1 + (m.cycle - 1) * k, growth: m.growth * k, defaultsMult: (1 + 3 * crisis) * (1 + (base - 1) * k) } }
 }
 
 /** Expected after-tax profit of a policy this year (the report, previews and the forecast). */
@@ -564,6 +572,16 @@ export function expectedProfit(g: GameState, b: BizState, policy: Partial<BankPo
 /** The same for a hypothetical set of books (a product switched on, say). */
 export function expectedProfitOf(g: GameState, b: BizState, book: BankBook, year = g.year): number {
   return expectedPath(g, bankYearCtx(g, b, year), book, {}, 1)
+}
+
+/**
+ * What a product would add to the bank's value under this year's model (the same horizon and
+ * going-concern tail as the rate hints; pure). Compare it with the setup cost.
+ */
+export function productGain(g: GameState, b: BizState, book: BankBook, id: ProductId): number {
+  const withIt = structuredClone(book), ctx = bankYearCtx(g, b, g.year)
+  withIt.products[id] = g.year
+  return Math.max(0, expectedPath(g, ctx, withIt, {}, 6, true) - expectedPath(g, ctx, book, {}, 6, true))
 }
 
 const SAVINGS_GRID = [-.015, -.01, -.005, 0, .005, .01, .015, .02]
@@ -598,6 +616,11 @@ export function bestAppetite(g: GameState, b: BizState, year = g.year): { appeti
     if (!best || value > best.value + 1) best = { appetite, value }
   }
   return { appetite: best!.appetite, profit: expectedPath(g, ctx, book, { appetite: best!.appetite }, 1) }
+}
+
+/** 'about $1.2M profit' / 'a loss of about $300K' for hints. */
+export function profitWords(x: number, fmt: (n: number) => string): string {
+  return x >= 0 ? `about ${fmt(x)} profit` : `a loss of about ${fmt(-x)}`
 }
 
 /** 'stingy' / 'competitive' / 'generous' for savers; the same words from a borrower's side for loans. */

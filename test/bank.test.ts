@@ -195,20 +195,20 @@ describe('Banking 2.0 regulator', () => {
     const x = bank({ cash: capital })
     const book = readBank(x.b)
     Object.assign(book, { deposits: 700_000_000, loans: { business: 0, mortgage: 600_000_000, auto: 0, cards: 0 }, reserves: 60_000_000, bonds: 40_000_000, badNet: 0 })
-    book.products.mortgage = 2020
+    book.products.mortgage = 2020; book.savingsGap = .02 // generous rates keep profits thin
     saveBank(x.b, book)
     return x
   }
 
   it('warns, then forces loan sales with a fine, and threatens seizure far below the minimum', () => {
-    const { g, a, b } = undercapitalized(14_000_000)
+    const { g, a, b } = undercapitalized(6_000_000)
     simulateBankYear(g, b, g.year, 0)
     let book = readBank(b)
     expect(book.strikes).toBe(1)
     expect(book.last!.regulator).toMatch(/warned/)
     expect(book.last!.fine).toBe(0)
     g.year += 1
-    b.cash = 14_000_000 // the owner paid the profit out: still thin
+    b.cash = 6_000_000 // the owner paid the profit out: still thin
     const loans = loanTotal(book)
     const res = simulateBankYear(g, b, g.year, 0)
     book = readBank(b)
@@ -217,14 +217,16 @@ describe('Banking 2.0 regulator', () => {
     expect(book.last!.fine).toBeGreaterThan(0)
     expect(res.stmt.other).toBeGreaterThanOrEqual(book.last!.fine)
     expect(loanTotal(book)).toBeLessThan(loans)
-    expect(capitalRatio(b, book)).toBeGreaterThan(minCapitalRatio(b.countryId, g.year) * .5)
+    expect(loanTotal(book)).toBeGreaterThan(loans * .5) // at most a third sold a year, plus ordinary runoff
+    // Either the forced sales restored the minimum, or the seizure threat is on.
+    expect(capitalRatio(b, book) >= minCapitalRatio(b.countryId, g.year) || book.seize).toBe(true)
     balanced(book)
     void a
   })
 
   it('offers recapitalization or seizure, and both paths settle cleanly', () => {
     for (const choice of ['inject', 'seize'] as const) {
-      const { g, a, b } = undercapitalized(4_000_000)
+      const { g, a, b } = undercapitalized(1_000_000)
       simulateBankYear(g, b, g.year, 0)
       expect(readBank(b).seize).toBe(true)
       g.year += 1

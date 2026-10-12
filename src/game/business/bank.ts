@@ -10,7 +10,7 @@ import { outcomeTag } from '../timeMachine'
 import type { Asset, GameState, MenuNode } from '../types'
 import type { YearResult } from './economy'
 import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
-import { bankCapital, bankLeaderSkill, bankMarket, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGate, projectYear, riskWeighted, setupCost } from './bank-model'
+import { bankCapital, bankLeaderSkill, bankMarket, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, projectYear, riskWeighted, setupCost } from './bank-model'
 import { bankAfterYear, queueBankYearReport } from './bank-events'
 import { bankMenuNodes } from './bank-menu'
 import { startupCost } from './economy'
@@ -72,19 +72,22 @@ export function simulateBankYear(g: GameState, b: BizState, year: number, ownerD
   if (ratio < min && rwa >= 1) {
     book.strikes = Math.min(9, opening.strikes + 1)
     if (book.strikes >= 2 && loanTotal(book) > 0) {
-      fine = fineFor(b, rwa)
-      for (let pass = 0; pass < 3; pass++) {
+      // Forced sales at a small discount, at most a third of the book a year; a fine on top
+      // (capped so the penalty alone can't wipe the shareholders out).
+      fine = Math.min(fineFor(b, rwa), Math.round(Math.max(0, capital) * .25))
+      const cap = loanTotal(book) / 3
+      for (let pass = 0; pass < 3 && shrink < cap; pass++) {
         stmt = settle()
         capital = capitalAfter(stmt)
         const target = Math.max(0, capital) / (min + .01)
         rwa = riskWeighted(book, capital)
         if (rwa <= target) break
         const total = loanTotal(book), avgRw = Math.max(.3, (rwa - book.badNet) / Math.max(1, total))
-        const sell = Math.min(total, (rwa - target) / avgRw)
+        const sell = Math.min(total, cap - shrink, (rwa - target) / avgRw)
         const k = sell / Math.max(1, total)
         for (const line of LEND_LINES) book.loans[line] *= 1 - k
         book.reserves += sell
-        shrink += sell; shrinkLoss += sell * .04
+        shrink += sell; shrinkLoss += sell * .02
       }
       stmt = settle()
       capital = capitalAfter(stmt); rwa = riskWeighted(book, capital)
@@ -196,6 +199,8 @@ export function bankManagerTurn(g: GameState, b: BizState): void {
       if (hasProduct(book, id) || !productGate(b, book, id, g.year).ok || (id === 'ib' && skill < 70)) continue
       const cost = setupCost(b, book, id)
       if (skill < 50 || cost * 3 > spare || cost * 2 > b.cash) break
+      // A capable CEO checks the product pays for itself under this year's model (no foresight).
+      if (skill >= 70 && productGain(g, b, book, id) <= cost) continue
       b.cash -= cost; b.yearCosts += cost
       book.products[id] = g.year
       break

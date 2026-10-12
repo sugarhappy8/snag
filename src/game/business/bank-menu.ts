@@ -4,9 +4,9 @@ import { yearActionsUsed } from '../core'
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuNode } from '../types'
 import { getCountry } from '../world'
-import { bankLeverBlock, productGain, runBankCampaign, setBankAppetite, setBankRate, switchBankProduct } from './bank-actions'
+import { bankLeverBlock, runBankCampaign, setBankAppetite, setBankRate, switchBankProduct } from './bank-actions'
 import { APPETITES, LEND_LINES, PRODUCTS, PRODUCT_IDS, hasProduct, loanTotal, minCapitalRatio, readBank, type Appetite, type ProductId } from './bank-state'
-import { bankMarket, bankRank, bestAppetite, bestRates, campaignCost, capitalRatio, expectedPd, headlineLoanRate, lineRate, marketLoanRate, productGate, rateWord, ratioBar, setupCost, bankTeamSkill } from './bank-model'
+import { bankMarket, bankRank, bestAppetite, bestRates, campaignCost, capitalRatio, expectedPd, headlineLoanRate, lineRate, marketLoanRate, productGain, productGate, profitWords, rateWord, ratioBar, setupCost, bankTeamSkill } from './bank-model'
 import { findBusiness, readBiz } from './state'
 import { clampN, money, pct } from './util'
 
@@ -54,8 +54,8 @@ function savingsSlider(g: GameState, a: Asset): MenuAction {
       if (!hasTalent(gg, 'Business')) return null
       const best = bestRates(gg, x.b)
       const close = Math.abs(best.savingsGap - x.book.savingsGap) < .003 && Math.abs(best.loanGap - x.book.loanGap) < .003
-      return talentHint(gg, 'Business', close ? `Your rates are already about the best pair (about ${money(best.profit)} profit expected)`
-        : `Best pair this year: savings ${pct(Math.max(0, x.m.savings + best.savingsGap), 2)}, loans ${pct(headlineLoanRate(x.m, best.loanGap), 2)} → about ${money(best.profit)} profit`)
+      return talentHint(gg, 'Business', close ? `Your rates are already about the best pair (${profitWords(best.profit, money)} expected)`
+        : `Best pair this year: savings ${pct(Math.max(0, x.m.savings + best.savingsGap), 2)}, loans ${pct(headlineLoanRate(x.m, best.loanGap), 2)} → ${profitWords(best.profit, money)}`)
     },
     input: {
       kind: 'slider', label: 'Savings rate you pay', unit: '%', step: .05,
@@ -133,7 +133,7 @@ function productRow(a: Asset, id: ProductId): MenuAction {
       const x = current(g, a)
       if (hasProduct(x.book, id) || !productGate(x.b, x.book, id, g.year).ok || !hasTalent(g, 'Business')) return null
       const gain = productGain(g, x.b, x.book, id), cost = setupCost(x.b, x.book, id)
-      return talentHint(g, 'Business', gain > cost ? `Pays off: about ${money(gain / 5)} more profit a year in this economy` : 'Would not earn back its setup soon in this economy')
+      return talentHint(g, 'Business', gain > cost ? `Worth it: adds about ${money(gain - cost)} of value after its setup cost` : 'Not worth its setup cost in this economy')
     },
   })
 }

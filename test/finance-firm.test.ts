@@ -7,6 +7,8 @@ import { movableCash } from '../src/game/business/conglomerate-actions'
 import type { GroupMember } from '../src/game/business/conglomerate-state'
 import { createBusinessAsset, initialProduction, newBiz } from '../src/game/business/founding'
 import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
+import { bankSettledYear } from '../src/game/business/bank'
+import { readBank, saveBank } from '../src/game/business/bank-state'
 import { attractFinanceClients, financeAlgoBlock, financeAlgoCost, financeEraBlock, financeNodes, financeTeamSkill, researchFinanceAlgorithm, setFinancePolicy, simulateFinanceYear } from '../src/game/business/finance-legacy'
 import { bizOf, normalizeBiz, readBiz, type KeyStaff } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
@@ -218,7 +220,7 @@ describe('dedicated financial institutions', () => {
     g.year = 2027; g.character.age = 31
     yearlyBusinessImpl(g)
     const money = g.character.money, cash = readBiz(g, a).cash
-    expect(financeView(readBiz(g, a)).lastYear).toBe(2026)
+    expect(bankSettledYear(readBiz(g, a))).toBe(2026)
     yearlyBusinessImpl(g)
     expect(g.character.money).toBe(money)
     expect(readBiz(g, a).cash).toBe(cash)
@@ -232,9 +234,9 @@ describe('dedicated financial institutions', () => {
 
   it('never pays client capital out through liquidation, bankruptcy, IPO, shares or group treasury', () => {
     const x = institution('bank'), y = institution('bank')
-    const customer = financeView(y.b)
-    customer.deposits *= 50; customer.loanBook *= 50; customer.reserves *= 50; customer.bonds *= 50
-    saveFinance(y.b, customer)
+    const customer = readBank(y.b)
+    customer.deposits *= 50; customer.loans.business *= 50; customer.reserves *= 50; customer.bonds *= 50
+    saveBank(y.b, customer)
     const member = (z: typeof x) => ({ a: z.a, b: z.b, m: { own: 1 } }) as GroupMember
     expect(movableCash(x.g, member(x))).toBe(movableCash(y.g, member(y)))
     const beginning = x.g.character.money
@@ -245,9 +247,9 @@ describe('dedicated financial institutions', () => {
     declareBankruptcy(bankrupt.g, bankrupt.a, bankrupt.b, 'Testing:')
     expect(bankrupt.g.character.money).toBe(before)
     const listed = institution('bank'), hugeClients = institution('bank')
-    const f = financeView(hugeClients.b)
-    f.deposits *= 50; f.loanBook *= 50; f.reserves *= 50; f.bonds *= 50
-    saveFinance(hugeClients.b, f)
+    const f = readBank(hugeClients.b)
+    f.deposits *= 50; f.loans.business *= 50; f.reserves *= 50; f.bonds *= 50
+    saveBank(hugeClients.b, f)
     goPublic(listed.g, listed.a, listed.b); goPublic(hugeClients.g, hugeClients.a, hugeClients.b)
     expect(hugeClients.a.value).toBe(listed.a.value) // estate/inheritance carries only Asset.value
     expect(hugeClients.b.cash).toBe(listed.b.cash)

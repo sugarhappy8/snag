@@ -193,7 +193,7 @@ export function tameRate(r: number): number {
 export function ratesFrom(rawPolicy: number, stress = 0): { savings: number; mortgage: number; bond: number; policy: number } {
   const policy = tameRate(rawPolicy)
   const savings = Math.max(0, policy * .75 - .003)
-  const mortgage = Math.max(policy + .009 + .06 * Math.min(policy, .05), .03)
+  const mortgage = Math.max(policy + .022 - .1 * Math.min(policy, .08), .032)
   const bond = policy + .006 + .05 * clampN(stress, 0, 1)
   return { savings, mortgage, bond, policy }
 }
