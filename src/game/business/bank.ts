@@ -11,11 +11,11 @@ import type { Asset, GameState, MenuNode } from '../types'
 import { getCountry } from '../world'
 import type { YearResult } from './economy'
 import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, nationalDeposits, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
-import { bankCapital, bankLeaderSkill, bankMarket, bankPayoutRoom, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, projectYear, riskWeighted, setupCost } from './bank-model'
+import { bankCapital, bankLeaderSkill, bankMarket, bankPayoutRoom, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, profitWords, projectYear, riskWeighted, setupCost, type StartOutlook } from './bank-model'
 import { bankAfterYear, queueBankYearReport } from './bank-events'
 import { bankMenuNodes } from './bank-menu'
 import { shareText } from './competition'
-import { startupCost } from './economy'
+import { niceAmount, startupCost } from './economy'
 import { totalOutlets, type BizState, type Statement } from './state'
 import { allocatedCorporateTax } from './tax'
 import { clampN, money, pct } from './util'
@@ -286,17 +286,41 @@ export function bankSettledYear(b: BizState): number {
   return readBank(b).lastYear
 }
 
-/** Starting cash (beyond the first branch's fit-out) that lets a new bank lend enough to cover its branch. */
+/** A rough scale for a new bank's starting cash (beyond the first branch's fit-out): a branch's deposits × 4%. */
 export function bankStartingCash(countryId: string, year: number): number {
   return Math.round(perBranch(countryId, year) * .04 / 100_000) * 100_000
 }
 
-/** The founding screen's capital preview for banks (pure). */
-export function bankCapitalPreview(industry: string, countryId: string, year: number, cash: number): string {
-  const min = minCapitalRatio(countryId, year), want = bankStartingCash(countryId, year)
-  const lend = Math.max(0, cash) / (min + APPETITES.balanced.cushion)
-  const verdict = cash >= want ? 'Enough to grow into a profitable bank.' : cash >= want * .5 ? 'Workable, but expect thin profits at first.' : 'Too thin: the branch will struggle to cover its costs.'
-  return `Starting capital ${money(cash)} lets ${industry === 'onlineBank' ? 'the bank' : 'one branch'} lend about ${money(lend)} at the ${pct(min, 1)} capital minimum. Aim for ${money(want)}+. ${verdict}`
+/** Multiples of bankStartingCash the founding advice tries, smallest first. */
+const ADVICE_GRID = [.3, .45, .6, .8, 1, 1.3, 1.7, 2.2, 3]
+/** Headroom over the smallest expected-viable bank: real years bring crises, runs and bad luck. */
+const ADVICE_MARGIN = 1.25
+/**
+ * The starting cash to advise a founder (pure): the smallest amount whose expected first years
+ * (startOutlook) stay above the regulator's minimum and turn a profit by year three, plus headroom.
+ * Null when no amount does: a bank here can't cover its costs yet. `outlookOf` builds the bank.
+ */
+export function bankAdvice(countryId: string, year: number, outlookOf: (cash: number) => StartOutlook): number | null {
+  const base = bankStartingCash(countryId, year)
+  for (const k of ADVICE_GRID) {
+    const o = outlookOf(base * k)
+    if (o.failsIn === null && (o.profits[2] ?? 0) > 0) return niceAmount(base * k * ADVICE_MARGIN)
+  }
+  return null
+}
+
+/** The founding screen's capital preview for banks (pure): what the model expects, said plainly. */
+export function bankCapitalPreview(cash: number, outlook: StartOutlook, advised: number | null): string {
+  const first = outlook.profits[0] ?? 0, third = outlook.profits[2] ?? first
+  const turn = outlook.profits.findIndex(p => p > 0), year1 = `${profitWords(first, money)} in year one`
+  const n = outlook.failsIn ?? 0
+  const verdict = advised === null ? `${year1}. Even well funded, a bank here can’t cover its costs yet.`
+    : outlook.failsIn !== null ? `${year1}; capital runs out ${n <= 1 ? 'within a year' : `in about ${n} years`} and regulators would seize it.`
+    : third <= 0 || turn < 0 ? `${year1}, still losing in year three: likely to fail.`
+    : cash < advised ? `${year1}. Thin: one bad year could sink it.`
+    : first < 0 ? `${year1}, then profits from year ${turn + 1}.`
+    : `${year1}, growing as savers arrive.`
+  return `With ${money(cash)} of capital, expect ${verdict}${advised !== null && cash < advised ? ` Aim for ${money(advised)}+.` : ''}`
 }
 
 /** Expected after-tax profit of next year under the current settings (pure). */

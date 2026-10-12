@@ -2,14 +2,14 @@
 // old-save migration. Deterministic: every random draw is seeded per life/bank/year.
 import { describe, expect, it } from 'vitest'
 import { bailoutEligible, bailoutTerms, bankAfterYear, BANK_EVENT_IDS, forceBankEvent, reassureOdds, resolveRun, seizeNeed } from '../src/game/business/bank-events'
-import { bankBooks, bankCapitalNeed, bankCapitalPreview, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankPayoutBlock, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
+import { bankBooks, bankCapitalNeed, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankPayoutBlock, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
 import { bankLeverBlock, runBankCampaign, setBankAppetite, setBankRate, switchBankProduct } from '../src/game/business/bank-actions'
 import { bankCapital, bankMarket, bankRank, bankYearCtx, bestRates, capitalRatio, expectedPath, ibGate, productGate, projectYear, riskWeighted, setupCost } from '../src/game/business/bank-model'
 import { LEND_LINES, PRODUCT_IDS, loanTotal, minCapitalRatio, openBank, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
 import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
 import { financeNodes, simulateFinanceYear } from '../src/game/business/finance-firm'
-import { createBusinessAsset, newBiz } from '../src/game/business/founding'
-import { valuationOf } from '../src/game/business/economy'
+import { bankAdvisedCash, createBusinessAsset, newBiz, startupCapitalPreview } from '../src/game/business/founding'
+import { startupCost, valuationOf } from '../src/game/business/economy'
 import { bizOf, normalizeBiz, readBiz, type BizState } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import { anachronismsIn } from '../src/game/events/era'
@@ -31,6 +31,7 @@ import { marketInfoLine } from '../src/game/business/competition-menu'
 import { marketViewOf } from '../src/game/business/competition'
 import { acquisitionQuote } from '../src/game/business/competition-moves'
 import { initFund } from '../src/game/business/fund'
+import { money as fmtMoney } from '../src/game/business/util'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
   const country = opts.country ?? 'us', year = opts.year ?? 2030
@@ -600,8 +601,9 @@ describe('Banking 2.0 odds and ends', () => {
     const need = bankCapitalNeed(g, b, 1e9, .8)
     expect(need).toBeGreaterThan(0); expect(need).toBeLessThanOrEqual(1e9)
     expect(bankCapitalNeed(g, b, 0, 1)).toBe(0)
-    expect(bankCapitalPreview('bank', 'us', 2026, 1_000_000)).toMatch(/struggle/)
-    expect(bankCapitalPreview('bank', 'us', 2026, bankStartingCash('us', 2026))).toMatch(/Enough/)
+    const plan = { industry: 'bank', countryId: 'us', city: b.city } as unknown as Json
+    expect(startupCapitalPreview(g, plan, 1_000_000 + startupCost('bank', 'us', b.city).capital * .8)).toMatch(/Likely to fail|seize/)
+    expect(startupCapitalPreview(g, plan, bankAdvisedCash(g, 'bank', 'us', b.city)! + startupCost('bank', 'us', b.city).capital * .8)).toMatch(/growing as savers arrive|then profits from year/)
   })
 
   it('ranks banks sensibly within their country', () => {
@@ -658,7 +660,7 @@ describe('Banking 2.0 in a played life', () => {
     drain(g, 0, ['savings', 'run', 'ceo', 'pay', 'yes'])
     const a = businessAssets(g).find(x => x.details.industry === 'bank')!
     expect(a).toBeTruthy()
-    expect(bizOf(g, a).cash).toBeGreaterThanOrEqual(bankStartingCash('gb', 1990) * .99)
+    expect(bizOf(g, a).cash).toBeGreaterThanOrEqual(bankAdvisedCash(g, 'bank', 'gb', bizOf(g, a).city)! * .99)
     let reports = 0
     for (let year = 0; year < 15 && g.character.alive; year++) {
       ageUp(g)
@@ -804,6 +806,87 @@ describe('Banking 2.0 review: money that must not appear', () => {
       const y = readBank(b); y.run = null; y.seize = false; saveBank(b, y)
     }
     expect(payableCash(a, b)).toBeGreaterThan(0)
+  })
+})
+
+describe('Banking 2.0 review: founding capital', () => {
+  /** An owner-run bank with `cash` of starting capital, played `years` years; true if it is still open and solvent. */
+  function survives(country: string, year: number, industry: 'bank' | 'onlineBank', cash: number, seed: number, years: number): boolean {
+    const city = getCountry(country).cities[0]
+    const g = makeTestGame(7, { age: 30, money: 1e9, countryId: country, city })
+    g.year = year; g.lifeId = `founding-${country}-${year}-${industry}-${seed}`
+    const b0 = newBiz(g, industry, country, city, { cash, founded: year, ownerSalary: 0 })
+    const a = createBusinessAsset(g, 'Founders Bank', b0, cash)
+    g.assets.push(a)
+    for (let i = 0; i < years; i++) {
+      g.year += 1; g.character.age += 1; g.yearActions = {}
+      const live = g.assets.find(x => x.id === a.id)
+      if (!live) return false
+      const b = bizOf(g, live)
+      simulateBankYear(g, b, g.year - 1, 0)
+      b.yearCosts = 0; b.yearIncome = 0
+      if (b.cash < 0) return false
+      queueBankReport(g, live, b)
+      for (let guard = 0; guard < 8 && g.queue.length; guard++) {
+        const m = g.queue.shift()!
+        if (m.kind !== 'choice' || m.source !== 'script' || !m.scriptId) continue
+        const pick = m.scriptId === 'bank.regulator' ? 'seize' : m.scriptId === 'bank.run' ? 'cb' : m.scriptId === 'bank.report' ? m.choices[0].id : m.choices[m.choices.length - 1].id
+        runScript(g, m.scriptId, pick, m.data, m)
+      }
+      g.queue = []
+    }
+    return g.assets.some(x => x.id === a.id)
+  }
+
+  it('advises the capital the model says a bank needs, warns plainly below it, and the advice holds up in played years', () => {
+    const cases = [['us', 2026, 'bank'], ['us', 2026, 'onlineBank'], ['us', 1950, 'bank'], ['de', 1975, 'bank'], ['in', 2010, 'onlineBank'], ['ng', 2015, 'bank']] as const
+    for (const [country, year, industry] of cases) {
+      const city = getCountry(country).cities[0]
+      const g = makeTestGame(7, { age: 30, money: 1e9, countryId: country, city })
+      g.year = year
+      const c = startupCost(industry, country, city), plan = { industry, countryId: country, city } as unknown as Json
+      const before = JSON.stringify(g), rng = g.rng
+      const advised = bankAdvisedCash(g, industry, country, city)!
+      const low = startupCapitalPreview(g, plan, c.capital), good = startupCapitalPreview(g, plan, c.capital * .8 + advised)
+      expect([JSON.stringify(g), g.rng]).toEqual([before, rng]) // previews are pure
+      expect(advised).toBeGreaterThan(c.capital * .2)
+      expect(low, `${country} ${year} ${industry}`).toMatch(/seize|likely to fail|could sink it/)
+      expect(low).toContain(`Aim for ${fmtMoney(advised)}+`)
+      expect(good).not.toMatch(/seize|fail|sink|Aim for/)
+      for (const t of [low, good]) expect(t.length).toBeLessThanOrEqual(220)
+      // Played with the real dice: the advised bank lasts; the minimum one doesn't.
+      let ok = 0, minOk = 0
+      for (let seed = 0; seed < 3; seed++) {
+        if (survives(country, year, industry, advised, seed, 15)) ok++
+        if (survives(country, year, industry, c.capital * .2, seed, 15)) minOk++
+      }
+      expect(ok, `${country} ${year} ${industry} advised`).toBe(3)
+      expect(minOk, `${country} ${year} ${industry} minimum`).toBe(0)
+    }
+  }, 240_000)
+
+  it('starts the founding slider at the advised capital, which a $15M founder can pay from savings', () => {
+    const g = createNewLife({ seed: 9, year: 2026, countryId: 'us' })
+    g.queue = []
+    g.character.age = 35; g.character.money = 15_000_000
+    const start = businessCareerMenu.children(g).find(n => n.id === 'biz.start')
+    if (!start || start.type !== 'menu') throw new Error('no start menu')
+    const row = start.children(g).find(n => n.id === 'biz.start.bank')
+    if (!row || row.type !== 'action') throw new Error('no bank row')
+    row.run(g)
+    let slider: (ModalItem & { kind: 'input' }) | null = null
+    for (let guard = 0; guard < 10 && g.queue.length && !slider; guard++) {
+      const m = g.queue.shift()!
+      if (m.kind === 'input' && m.title === 'Choose Starting Capital') slider = m
+      else if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Test Bank', m.data, m)
+      else if (m.kind === 'choice' && m.source === 'script') runScript(g, m.scriptId!, m.choices[0].id, m.data, m)
+    }
+    if (!slider) throw new Error('no capital slider')
+    const p = slider.data as Record<string, Json>, city = String(p.city), c = startupCost('bank', 'us', city)
+    const advised = bankAdvisedCash(g, 'bank', 'us', city)!
+    expect(Number(slider.defaultValue)).toBe(Math.round(c.capital * .8 + advised))
+    expect(Number(slider.defaultValue) + c.fee + c.permits).toBeLessThanOrEqual(15_000_000)
+    expect(startupCapitalPreview(g, slider.data, Number(slider.defaultValue))).not.toMatch(/seize|fail|sink|Aim for/)
   })
 })
 

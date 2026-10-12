@@ -570,6 +570,28 @@ export function expectedPath(g: GameState, ctx: BankYearCtx, book: BankBook, pol
   return total + (terminal ? last * 8 * Math.pow(.92, years) : 0)
 }
 
+export interface StartOutlook { profits: number[]; failsIn: number | null }
+/**
+ * A bank's expected first years from its opening books (pure, no RNG): this year's rates held, a
+ * crisis fading, profits kept as capital. It fails when capital runs out or drops under the
+ * regulator's minimum. Founders are advised with it: the same model the year runs on, minus dice.
+ */
+export function startOutlook(g: GameState, b: BizState, years = 6): StartOutlook {
+  const ctx0 = bankYearCtx(g, b, g.year)
+  let book = readBank(b), cash = b.cash
+  const profits: number[] = []
+  for (let i = 0; i < years; i++) {
+    const ctx = { ...(i ? calmer(ctx0, Math.pow(.5, i)) : ctx0), cash }
+    const p = projectFrom(ctx, book, null)
+    const profit = afterTax(ctx, g, p)
+    profits.push(profit)
+    cash += profit; book = p.book
+    const capital = cash - ctx.debt + book.advance, rwa = riskWeighted(book, capital)
+    if (capital <= 0 || (rwa >= 1 && capital / rwa < ctx.minRatio)) return { profits, failsIn: i + 1 }
+  }
+  return { profits, failsIn: null }
+}
+
 /** The same year with a crisis (and the cycle) faded toward normal by `k` (1 = as is). */
 function calmer(ctx: BankYearCtx, k: number): BankYearCtx {
   const m = ctx.m, base = m.defaultsMult / (1 + 3 * m.crisis), crisis = m.crisis * k
