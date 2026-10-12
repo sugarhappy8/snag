@@ -140,7 +140,7 @@ export function leaderboardMenu(a: Asset): MenuGroup {
       const nodes: MenuNode[] = rows.map((r) =>
         info(
           `biz.mkt.lb.${a.id}.${r.id}`,
-          `#${r.rank} ${r.me ? 'YOU · ' : ''}${r.name} ${bar(r.share, max)} ${shareText(r.share)} ${trendArrow(r.trend)} · ${r.legacy ? 'state-backed' : r.tier}${r.real || r.me ? '' : ' · local challenger'}${r.seg ? ` · ${r.seg}` : ''} · ${placeName(r.hq)}`,
+          `#${r.rank} ${r.me ? 'YOU · ' : ''}${r.name} · ${shareText(r.share)} ${trendArrow(r.trend)} · ${r.legacy ? 'state-backed' : r.tier}${r.real || r.me ? '' : ' · local challenger'}${r.seg ? ` · ${r.seg}` : ''} · ${placeName(r.hq)}\n${bar(r.share, max)}`,
           r.me ? '\u{2B50}' : placeFlag(r.hq),
         ),
       )
@@ -305,7 +305,7 @@ export function historyMenu(a: Asset): MenuGroup {
     subtitle: (g) => {
       const v = marketViewOf(g, readBiz(g, live(g, a)))
       const h = v.history
-      return h.length >= 2 ? `Share ${spark(h.slice(-8).map((x) => x.share))} ${shareText(h[h.length - 1].share)}` : 'Fills in as you book years'
+      return h.length >= 2 ? `Share ${shareText(h[h.length - 1].share)} · ${spark(h.slice(-8).map((x) => x.share))}` : 'Fills in as you book years'
     },
     header: () => 'Your share, the leader’s share and the market’s size over the years you have been on the board (sparklines scale to each line’s own peak).',
     children: (g) => {
@@ -316,13 +316,13 @@ export function historyMenu(a: Asset): MenuGroup {
       const last = h.years[h.years.length - 1]
       const lead = h.lead.map((x) => x ?? 0)
       const rows: MenuNode[] = [
-        info(`biz.mkt.hist.me.${a.id}`, `Your share ${first}–${last}: ${spark(h.me)} ${shareText(h.me[0])} → ${shareText(h.me[h.me.length - 1])}`, '\u{1F4C8}'),
+        info(`biz.mkt.hist.me.${a.id}`, `Your share ${first}–${last}: ${shareText(h.me[0])} → ${shareText(h.me[h.me.length - 1])}\n${spark(h.me)}`, '\u{1F4C8}'),
       ]
-      if (h.lead.some((x) => x !== null)) rows.push(info(`biz.mkt.hist.lead.${a.id}`, `Leader's share: ${spark(lead)} ${shareText(lead[0])} → ${shareText(lead[lead.length - 1])}`, '\u{1F947}'))
-      rows.push(info(`biz.mkt.hist.size.${a.id}`, `Market size: ${spark(h.size)} ${money(h.size[0])} → ${money(h.size[h.size.length - 1])} a year`, '\u{1F4B0}'))
+      if (h.lead.some((x) => x !== null)) rows.push(info(`biz.mkt.hist.lead.${a.id}`, `Leader's share: ${shareText(lead[0])} → ${shareText(lead[lead.length - 1])}\n${spark(lead)}`, '\u{1F947}'))
+      rows.push(info(`biz.mkt.hist.size.${a.id}`, `Market size: ${money(h.size[0])} → ${money(h.size[h.size.length - 1])} a year\n${spark(h.size)}`, '\u{1F4B0}'))
       if (h.hhi.some((x) => x !== null)) {
         const hhi = h.hhi.map((x) => x ?? 0)
-        rows.push(info(`biz.mkt.hist.hhi.${a.id}`, `Concentration: ${spark(hhi)} ${Math.round(hhi[0])} → ${Math.round(hhi[hhi.length - 1])}`, '\u{1F9EE}'))
+        rows.push(info(`biz.mkt.hist.hhi.${a.id}`, `Concentration: ${Math.round(hhi[0])} → ${Math.round(hhi[hhi.length - 1])}\n${spark(hhi)}`, '\u{1F9EE}'))
       }
       const recent = v.history.slice(-5).reverse()
       for (const r of recent) rows.push(info(`biz.mkt.hist.y.${a.id}.${r.year}`, `${r.year}: ${shareText(r.share)} · #${r.rank}${r.lead !== undefined ? ` · leader ${shareText(r.lead)}` : ''} · market ${money(r.size)}`, '\u{1F4C5}'))
@@ -647,6 +647,8 @@ export function licensesMenu(a: Asset): MenuGroup {
 export interface ScenarioRow {
   id: string
   label: string
+  /** The move as the end of "If you …": 'cut prices hard', 'buy out Acme'. */
+  ask: string
   emoji: string
   shareDelta: number | null
   value: number | null
@@ -663,31 +665,44 @@ export function scenarioRows(g: GameState, a: Asset): ScenarioRow[] {
     const v = marketViewOf(g, b)
     const w = bizWorth(g, b)
     const rows: ScenarioRow[] = []
-    if (b.price > 0 && b.industry !== 'gameStudio') rows.push({ id: 'offense', label: 'Price offensive', emoji: '\u{1F3F7}\u{FE0F}', shareDelta: shareGain(g, b, OFFENSIVE_EDGE), value: offensiveValue(g, b), cost: null, block: null, note: '15% off for the year, two years of extra customers' })
+    if (b.price > 0 && b.industry !== 'gameStudio') rows.push({ id: 'offense', label: 'Price offensive', ask: 'cut prices hard', emoji: '\u{1F3F7}\u{FE0F}', shareDelta: shareGain(g, b, OFFENSIVE_EDGE), value: offensiveValue(g, b), cost: null, block: null, note: '15% off for the year, two years of extra customers' })
     const top = v.rivals.find((r) => !r.legacy)
-    if (top) rows.push({ id: 'raid', label: 'Talent raid', emoji: '\u{1F3A3}', shareDelta: shareGain(g, b, 1 + top.share * 0.08), value: raidValue(g, b), cost: null, block: null, note: `a team from ${top.name}` })
+    if (top) rows.push({ id: 'raid', label: 'Talent raid', ask: `poach a team from ${top.name}`, emoji: '\u{1F3A3}', shareDelta: shareGain(g, b, 1 + top.share * 0.08), value: raidValue(g, b), cost: null, block: null, note: 'signing bonuses; a better product, a weaker rival' })
     let bestBuy: { name: string; share: number; value: number; price: number } | null = null
     for (const r of v.rivals.filter((x) => !x.legacy).slice(0, 5)) {
       const q = acquisitionQuote(g, b, r.id)
       if (q && !q.block && q.price <= Math.max(0, b.cash) && (!bestBuy || q.value > bestBuy.value)) bestBuy = { name: r.name, share: r.share * 0.7, value: q.value, price: q.price }
     }
-    if (bestBuy) rows.push({ id: 'buy', label: `Buy out ${bestBuy.name}`, emoji: '\u{1F91D}', shareDelta: bestBuy.share, value: bestBuy.value, cost: bestBuy.price, block: null, note: 'most of its customers stay; antitrust watches' })
+    if (bestBuy) rows.push({ id: 'buy', label: `Buy out ${bestBuy.name}`, ask: `buy out ${bestBuy.name}`, emoji: '\u{1F91D}', shareDelta: bestBuy.share, value: bestBuy.value, cost: bestBuy.price, block: null, note: 'most of its customers stay; antitrust watches' })
     const be = bestEntry(g, a)
-    if (be) rows.push({ id: 'enter', label: `Enter ${placeName(be.country)}`, emoji: '\u{1F6EB}', shareDelta: be.best.shareDelta, value: be.best.value, cost: be.best.cost, block: null, note: MODE_LABEL[(be.best.move as { mode: keyof typeof MODE_LABEL }).mode].toLowerCase() })
+    if (be) rows.push({ id: 'enter', label: `Enter ${placeName(be.country)}`, ask: `move into ${placeName(be.country)}`, emoji: '\u{1F6EB}', shareDelta: be.best.shareDelta, value: be.best.value, cost: be.best.cost, block: null, note: MODE_LABEL[(be.best.move as { mode: keyof typeof MODE_LABEL }).mode].toLowerCase() })
     const bc = bestCampaign(g, a)
-    if (bc) rows.push({ id: 'campaign', label: `Campaign in ${placeName(bc.country)}`, emoji: '\u{1F4E2}', shareDelta: bc.q.shareDelta, value: bc.q.value, cost: bc.q.cost, block: null, note: '3 years, fades without a renewal' })
+    if (bc) rows.push({ id: 'campaign', label: `Campaign in ${placeName(bc.country)}`, ask: `run a brand campaign in ${placeName(bc.country)}`, emoji: '\u{1F4E2}', shareDelta: bc.q.shareDelta, value: bc.q.value, cost: bc.q.cost, block: null, note: '3 years, fades without a renewal' })
     const dq = quoteDefend(g, b, w)
-    rows.push({ id: 'defend', label: 'Defend the home market', emoji: '\u{1F6E1}\u{FE0F}', shareDelta: dq.shareDelta, value: dq.block ? null : dq.value, cost: dq.cost, block: dq.block, note: 'stickier customers for 3 years' })
+    rows.push({ id: 'defend', label: 'Defend the home market', ask: 'defend your home market', emoji: '\u{1F6E1}\u{FE0F}', shareDelta: dq.shareDelta, value: dq.block ? null : dq.value, cost: dq.cost, block: dq.block, note: 'stickier customers for 3 years' })
     if (hasSupplyChain(b.industry)) {
       const sq = quoteSupply(g, b, w)
-      rows.push({ id: 'supply', label: 'Diversify supply chains', emoji: '\u{1F6A2}', shareDelta: sq.shareDelta, value: sq.block ? null : sq.value, cost: sq.cost, block: sq.block, note: 'insurance against disruptions' })
+      rows.push({ id: 'supply', label: 'Diversify supply chains', ask: 'spread your suppliers', emoji: '\u{1F6A2}', shareDelta: sq.shareDelta, value: sq.block ? null : sq.value, cost: sq.cost, block: sq.block, note: 'insurance against disruptions' })
     }
     if (isDeepTech(b) && top) {
       const lq = quoteLicense(g, b, v, top.id, w)
-      if (lq) rows.push({ id: 'license', label: `Cross-license with ${top.name}`, emoji: '\u{1F4DC}', shareDelta: lq.shareDelta, value: lq.block ? null : lq.value, cost: lq.cost, block: lq.block, note: 'your tech up, theirs too' })
+      if (lq) rows.push({ id: 'license', label: `Cross-license with ${top.name}`, ask: `cross-license with ${top.name}`, emoji: '\u{1F4DC}', shareDelta: lq.shareDelta, value: lq.block ? null : lq.value, cost: lq.cost, block: lq.block, note: 'your tech up, theirs too' })
     }
     return rows
   })
+}
+
+/** "If you cut prices hard: share unchanged, about +$32M profit (15% off for the year, …)." */
+export function scenarioLine(r: ScenarioRow): string {
+  const parts: string[] = []
+  if (r.shareDelta !== null) {
+    const a = Math.abs(r.shareDelta * 100)
+    parts.push(!(a >= 0.005) ? 'share unchanged' : `share ${r.shareDelta >= 0 ? 'up' : 'down'} ${a.toFixed(a < 0.1 ? 2 : 1)} pts`)
+  }
+  if (r.value !== null) parts.push(`about ${r.value >= 0 ? '+' : '-'}${money(Math.abs(r.value))} profit`)
+  if (r.cost !== null) parts.push(`costs ${money(r.cost)}`)
+  if (r.block) return `If you ${r.ask}: not possible right now. ${r.block}`
+  return `If you ${r.ask}: ${parts.join(', ')} (${r.note}).`
 }
 
 export function scenariosMenu(a: Asset): MenuGroup {
@@ -697,13 +712,13 @@ export function scenariosMenu(a: Asset): MenuGroup {
     label: 'What-If Scenarios',
     emoji: '\u{1F52D}',
     subtitle: 'What each move should do to your share and profit',
-    header: () => 'From the same model that books your year: extra share at the best year, and the owner’s expected gain over the term net of cost. Customers beyond your capacity are wasted, so a full company gains nothing from more pull. Approximate.',
+    header: () => 'Rough estimates from the same model that books your year: the most share each move could add, and about how much it should make you after its costs. If you already sell all you can make, extra customers add nothing.',
     children: (g) => {
       const rows = scenarioRows(g, a)
       return rows.map((r) =>
         info(
           `biz.mkt.sc.${a.id}.${r.id}`,
-          `${r.label}: ${r.shareDelta === null ? '' : pts(r.shareDelta)}${r.value === null ? '' : ` · ${r.value >= 0 ? '+' : '-'}${money(Math.abs(r.value))} net`}${r.cost !== null ? ` · costs ${money(r.cost)}` : ''}${r.block ? ` · not available: ${r.block}` : ''} (${r.note})`,
+          scenarioLine(r),
           r.emoji,
         ),
       )
