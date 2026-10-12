@@ -2028,6 +2028,9 @@ const renewScript = defineScript('sports.fight.renew', (g, choice) => {
 
 export function yearlyFighter(g: GameState): void {
   const c = g.character
+  // Menus only read a pro's job record (fjView); a damaged one is repaired here, once a year.
+  const pro = fighterJob(g)
+  if (pro) fj(pro)
   const prof0 = viewFighter(g)
   if (!prof0 || !c.alive || c.prison) return
   const p = fighter(g)

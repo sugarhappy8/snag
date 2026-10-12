@@ -19,6 +19,9 @@ import { readWl, updateWl } from '../src/game/events/will-core'
 import { createPerson } from '../src/game/people'
 import { hire, ownerKey } from '../src/game/special/common'
 import { disciplineMenu, fighterJobNodes } from '../src/game/special/sports-fight'
+import { politicsCareerMenu, politicsJobNodes } from '../src/game/special/politics'
+import { specialJobNodes } from '../src/game/special'
+import { sportsCareerMenu } from '../src/game/special/sports'
 import { lineById } from '../src/game/shops/luxury-brands-catalog'
 import { buyOffer } from '../src/game/shops/luxury-brands-deal'
 import { luxuryAssetNodes } from '../src/game/shops/luxury-brands-assets'
@@ -146,6 +149,35 @@ describe('menus are pure: rendering never writes to the state', () => {
     const nodes: MenuNode[] = [...fighterJobNodes(g), disciplineMenu('muaythai'), disciplineMenu('boxing')]
     expect(render(g, nodes)).toBeGreaterThan(10)
     expect(JSON.stringify(g)).toBe(before)
+  })
+
+  it("a governor's Occupation rows and the Politics menu render from a frozen state", () => {
+    const g = makeTestGame(12, { age: 52, money: 2_000_000 })
+    g.log = [{ age: 52, year: 2026, entries: [] }]
+    const data = { office: 'governor', party: 'independent', approval: 58, termLeft: 2, terms: 1, hot: [], newsAge: -1, bills: [{ name: 'Fix the Roads', emoji: '🛣️', issue: 'economy', support: 61, effect: '' }], warChest: 40_000, favors: 1, scandals: 0, termOver: false }
+    hire(g, { defId: 'politician', title: 'Governor', company: 'the State', salary: 150_000, level: 2, performance: 58, data: data as unknown as Record<string, Json> })
+    g.queue = []
+    const before = JSON.stringify(g)
+    deepFreeze(g)
+    expect(render(g, [...politicsJobNodes(g), politicsCareerMenu])).toBeGreaterThan(8)
+    expect(JSON.stringify(g)).toBe(before)
+  })
+
+  it("a musician's and an esports pro's rows render from a frozen state", () => {
+    const jobs: [string, string, Record<string, Json>][] = [
+      ['musician', 'Singer', { mode: 'solo', instrument: 'Voice', genre: 'Pop', label: null, contractYears: 0, advancePerYear: 0, popularity: 20, bandName: null, bandmates: [], members: 1, recordedAge: -1, lastRelease: -1 }],
+      ['sports.esports', 'Esports Pro', { game: 'moba', team: 'Team Probe', teamStrength: 50, tier: 0, contractYears: 2, played: [], results: [], earned: 0 }],
+    ]
+    for (const [defId, title, data] of jobs) {
+      const g = makeTestGame(13, { age: 24, money: 50_000 })
+      g.log = [{ age: 24, year: 2026, entries: [] }]
+      hire(g, { defId, title, company: 'Probe', salary: 30_000, data })
+      g.queue = []
+      const before = JSON.stringify(g)
+      deepFreeze(g)
+      expect(render(g, [...specialJobNodes(g), sportsCareerMenu]), defId).toBeGreaterThan(5)
+      expect(JSON.stringify(g)).toBe(before)
+    }
   })
 })
 
