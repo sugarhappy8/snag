@@ -49,6 +49,12 @@ export function fairOdds(g: GameState, ws: Workshop): number {
   return Math.round(Math.max(0, Math.min(1, (fairBase(g, ws) + 30 - 110) / 30)) * 100) / 100
 }
 
+/** School science fairs: from 1930 (when they caught on), for kids still at school. Pure. */
+export function fairOpen(g: GameState): boolean {
+  const level = g.character.education.current?.level
+  return g.year >= 1930 && g.character.age >= 8 && g.character.age <= 17 && (level === 'elementary' || level === 'middle' || level === 'high')
+}
+
 // ---------------------------------------------------------------------------
 // The yearly roll (from the yearly hook; at most one popup)
 
@@ -56,8 +62,8 @@ export function yearlyWorkshopEvent(g: GameState, ws: Workshop): boolean {
   const age = g.character.age
   const year = g.year
   const owned = inventions(g).filter((o) => o.inv.stage === 'launched' && o.inv.launched < year)
-  // Science fair (ages 8-17, once).
-  if (age >= 8 && age <= 17 && ws.events.fair === undefined && (ws.ideas.length > 0 || owned.length > 0) && rand(g) < 0.35) {
+  // Science fair (ages 8-17 at school, from 1930, once).
+  if (fairOpen(g) && ws.events.fair === undefined && (ws.ideas.length > 0 || owned.length > 0) && rand(g) < 0.35) {
     ws.events.fair = year
     const hint = talentHint(g, 'Inventor', `${pct(fairOdds(g, ws))} chance of first prize`)
     scriptChoice(g, FAIR, '\u{1F52C} Science Fair', 'The school science fair is next week. Want to show off your best invention?', [
@@ -104,7 +110,7 @@ export function yearlyWorkshopEvent(g: GameState, ws: Workshop): boolean {
       const pay = Math.max(5_000, Math.round(o.inv.lastIncome * 0.25))
       const fight = Math.max(3_000, Math.round(o.inv.lastIncome * 0.1))
       const hint = talentHint(g, 'Inventor', `${pct(TROLL_WIN)} chance to win`)
-      scriptChoice(g, TROLL, '\u{1F9CC} Patent Troll', `Vaguely Broad Patents LLC claims they patented "a thing that does stuff" years ago, which apparently covers your ${o.def.name}.`, [
+      scriptChoice(g, TROLL, '\u{1F9CC} Patent Troll', `Vaguely Broad Patents ${year >= 1990 ? 'LLC' : '& Co.'} claims they patented "a thing that does stuff" years ago, which apparently covers your ${o.def.name}.`, [
         { id: 'pay', label: `Pay them off (${formatMoney(pay)})`, emoji: '\u{1F4B5}' },
         { id: 'fight', label: `Fight in court (${formatMoney(fight)})`, emoji: '\u{2696}\u{FE0F}', ...(hint ? { hint } : {}) },
       ], { emoji: '\u{1F9CC}', data: { id: o.a.id, year, pay, fight } as unknown as Json })
@@ -116,7 +122,7 @@ export function yearlyWorkshopEvent(g: GameState, ws: Workshop): boolean {
       const offer = Math.round((o.a.value * (0.9 + 0.5 * rand(g))) / 100) * 100
       const keep = streamValue(invCurve(o.inv), year - o.inv.launched, personalPerUnit(o.inv), o.inv.peak * o.inv.hit)
       const hint = talentHint(g, 'Inventor', `Keeping it should bring ~${formatMoney(keep)} over the years`)
-      scriptChoice(g, BUYOUT, '\u{1F4BC} A Buyout Offer', `A royalty fund offers ${formatMoney(offer)} for your remaining share of the ${o.def.name}.`, [
+      scriptChoice(g, BUYOUT, '\u{1F4BC} A Buyout Offer', `${year >= 1990 ? 'A royalty fund' : 'A syndicate of investors'} offers ${formatMoney(offer)} for your remaining share of the ${o.def.name}.`, [
         { id: 'sell', label: `Take ${formatMoney(offer)}`, emoji: '\u{1F4B0}', ...(hint ? { hint } : {}) },
         { id: 'keep', label: 'Keep my royalties', emoji: '\u{1F645}' },
       ], { emoji: '\u{1F4BC}', data: { id: o.a.id, year, offer } as unknown as Json })
@@ -130,7 +136,7 @@ export function yearlyWorkshopEvent(g: GameState, ws: Workshop): boolean {
       addFame(g, 3)
       const how = hasTech(g, 'internet')
         ? `A clip of someone using your ${o.def.name} went viral.`
-        : `A famous movie star was photographed with your ${o.def.name}.`
+        : `A famous ${year >= 1915 ? 'movie' : 'stage'} star was photographed with your ${o.def.name}.`
       notice(g, '\u{1F525} Everybody Wants One', `${how} Sales should double this year.`, { emoji: '\u{1F525}', tone: 'good' })
       log(g, `My ${o.def.name} became the must-have thing of the year.`, 'good')
       return true
