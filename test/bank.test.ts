@@ -17,6 +17,12 @@ import { runScript } from '../src/game/scripts'
 import type { Asset, GameState, Json, MenuNode, ModalItem } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { makeTestGame } from './helpers'
+import { ageUp } from '../src/game/aging'
+import { applyFallback } from '../src/game/offline'
+import { createNewLife } from '../src/game/life'
+import { businessCareerMenu } from '../src/game/business'
+import { businessAssets } from '../src/game/business/state'
+import type { AnnualReportData } from '../src/game/types'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
   const country = opts.country ?? 'us', year = opts.year ?? 2030
@@ -606,4 +612,57 @@ describe('Banking 2.0 odds and ends', () => {
     expect(riskWeighted(book, bankCapital(b, book))).toBeCloseTo(rwa, 6)
     expect(PRODUCT_IDS.length).toBe(8)
   })
+})
+
+describe('Banking 2.0 in a played life', () => {
+  /** Answer every popup the way a player might (cycling through choices). */
+  function drain(g: GameState, turn: number, prefer: string[] = []): ModalItem[] {
+    const seen: ModalItem[] = []
+    for (let guard = 0; g.queue.length && guard < 200; guard++) {
+      const m = g.queue.shift()!
+      seen.push(m)
+      const before = g.queue.length
+      if (m.kind === 'choice') {
+        const ch = m.choices.find(c => prefer.includes(c.id)) ?? m.choices[(turn + guard) % m.choices.length]
+        if (m.source === 'script') runScript(g, m.scriptId!, ch.id, m.data, m)
+        else applyFallback(g, { type: 'resolveChoice', event: m, choiceId: ch.id })
+      } else if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || (m.input === 'number' ? String(m.min ?? 1) : 'Test Bank'), m.data, m)
+      else if (m.kind === 'minigame') {
+        if (m.game === 'annualReport') { const r = m.data as unknown as AnnualReportData; runScript(g, m.scriptId, JSON.stringify({ price: r.suggestedPrice, production: r.expectedDemand }), m.data, m) }
+        else runScript(g, m.scriptId, 'lose', m.data, m)
+      } else if (m.kind === 'aiTask') applyFallback(g, m.task)
+      g.queue.unshift(...g.queue.splice(before))
+    }
+    return seen
+  }
+
+  it('founds a bank through the real menus with the advised capital and plays 15 years', () => {
+    const g = createNewLife({ seed: 21, year: 1990, countryId: 'gb' })
+    g.queue = []
+    g.character.age = 32; g.character.money = 60_000_000; g.character.city = getCountry('gb').cities[0]
+    const start = businessCareerMenu.children(g).find(n => n.id === 'biz.start')
+    if (!start || start.type !== 'menu') throw new Error('no start menu')
+    const row = start.children(g).find(n => n.id === 'biz.start.bank')
+    if (!row || row.type !== 'action') throw new Error('no bank row')
+    expect(row.disabledReason?.(g) ?? null).toBeNull()
+    row.run(g)
+    drain(g, 0, ['savings', 'run', 'ceo', 'pay', 'yes'])
+    const a = businessAssets(g).find(x => x.details.industry === 'bank')!
+    expect(a).toBeTruthy()
+    expect(bizOf(g, a).cash).toBeGreaterThanOrEqual(bankStartingCash('gb', 1990) * .99)
+    let reports = 0
+    for (let year = 0; year < 15 && g.character.alive; year++) {
+      ageUp(g)
+      // Keep the bank (turn down buyouts and takeovers); every other popup cycles its choices.
+      const seen = drain(g, year, ['decline', 'refuse', 'inject', 'cb'])
+      reports += seen.filter(m => m.kind === 'choice' && m.title.endsWith('Financial Institution Report')).length
+      const live = businessAssets(g).find(x => x.id === a.id)
+      if (!live) break
+      const b = readBiz(g, live), book = readBank(b)
+      balanced(book); finiteDeep(book)
+      expect(Number.isFinite(b.cash)).toBe(true)
+      walk(g, bankNodes(g, live))
+    }
+    expect(reports).toBeGreaterThan(3)
+  }, 240_000)
 })
