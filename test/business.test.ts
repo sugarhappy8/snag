@@ -132,6 +132,14 @@ describe('business', () => {
     const text = position.type === 'info' ? (typeof position.text === 'function' ? position.text(rich) : position.text) : ''
     expect(text).toContain('Cash already covers six months of costs.')
     expect(text).not.toMatch(/target \$0|\d\.\d years base-cost/)
+    // Plain words, short subtitles: no "Stabilization target" or "Subscribe to New Equity".
+    expect(text).not.toMatch(/Stabilization|Capital does not fix|restructure/)
+    const actions = rescueNodes(rich, truck).filter((n): n is MenuAction => n.type === 'action')
+    expect(actions.map((n) => n.label)).toEqual(['Buy Out Investors', 'Put In More Money', 'Company Buys Back Shares'])
+    for (const n of actions) expect(typeof n.subtitle === 'string' ? n.subtitle : '').toMatch(/^.{20,90}$/)
+    bizOf(rich, truck).cash = 1_000
+    const tight = rescueNodes(rich, truck)[0]
+    expect(tight.type === 'info' && typeof tight.text === 'string' ? tight.text : '').toMatch(/To be safe, add \$[\d.,]+K? so cash covers six months\. More money buys time, not customers/)
     const g = adultIn('us', 5_000_000)
     startRow(g, 'aiLab').run(g)
     for (let guard = 0; g.queue.length && guard < 10; guard++) {

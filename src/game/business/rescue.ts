@@ -28,10 +28,10 @@ export function equityQuote(g: GameState, a: Asset, b: BizState, kind: EquityTra
   return { value, price, available, units, share: clampN(share, 0, 1), max }
 }
 function block(g: GameState, a: Asset, b: BizState, kind: EquityTransaction): string | null {
-  return manageBlock(g, a) ?? (groupIdOf(b) ? 'Division ownership is controlled by the parent. Use group treasury transfers or inject capital without changing ownership.' :
-    !ownerControls(g, a) ? 'You need board control to negotiate this transaction.' :
-    yearActionsUsed(g, `equity.${a.id}`) ? 'One ownership transaction per company per year.' :
-    kind !== 'subscribe' && equityQuote(g, a, b, kind, 0).available <= 0 ? 'No outside shareholders are offering shares this year. CEO shares are excluded.' : null)
+  return manageBlock(g, a) ?? (groupIdOf(b) ? 'The group owns this division. Move money through the group treasury, or use Invest My Own Money.' :
+    !ownerControls(g, a) ? 'You need control of the board for this.' :
+    yearActionsUsed(g, `equity.${a.id}`) ? 'One of these a year per company.' :
+    kind !== 'subscribe' && equityQuote(g, a, b, kind, 0).available <= 0 ? "No outside investors want to sell this year (the CEO's shares don't count)." : null)
 }
 export function transactEquity(g: GameState, id: string, kind: EquityTransaction, amount: number): boolean {
   const a = findBusiness(g, id)
@@ -39,7 +39,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
   amount = Math.round(amount)
   const b = bizOf(g, a)
   const why = block(g, a, b, kind), q = equityQuote(g, a, b, kind, amount)
-  if (why || amount > q.max + .001) { notice(g, 'Ownership Transaction', why ?? 'Insufficient available funds or shares.'); return false }
+  if (why || amount > q.max + .001) { notice(g, 'Ownership', why ?? 'Not enough money, or not enough shares for sale.'); return false }
   if (!boardAllows(g, a, b, { kind: kind === 'buyback' ? 'dividend' : 'merge', by: 'owner', amount, merit: kind === 'subscribe' && b.cash < 0 ? 1 : 0, label: `${kind}: ${money(amount)}` })) return false
   if (!useYearAction(g, `equity.${a.id}`, 1)) return false
   if (kind === 'subscribe') {
@@ -64,22 +64,28 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
   b.share = q.share
   if (b.public && b.sharesOut > 0) b.sharePrice = b.valuation / b.sharesOut
   refreshValue(a, b)
-  log(g, `${a.name}: ${kind === 'subscribe' ? 'I subscribed to new equity' : kind === 'secondary' ? 'I bought existing investor shares' : 'the company repurchased outside shares'} for ${money(amount)}. My ownership is ${pct(b.share, 2)}.`)
-  notice(g, 'Ownership Updated', `${pct(b.share, 2)} owned. Company cash ${money(b.cash)}. ${kind === 'secondary' ? 'The seller received the payment; no cash entered the business.' : kind === 'subscribe' ? 'Cash entered the business; other holdings were diluted. This is financing, not revenue.' : 'Company cash paid the sellers. This is not a rescue or an operating expense.'}`)
+  log(g, `${a.name}: ${kind === 'subscribe' ? 'I put more of my own money into the company' : kind === 'secondary' ? 'I bought out some of the investors' : 'the company bought back investor shares'} for ${money(amount)}. I own ${pct(b.share, 2)}.`)
+  notice(g, 'Ownership Updated', `You own ${pct(b.share, 2)}. Company cash: ${money(b.cash)}. ${kind === 'secondary' ? 'The investors got the money; the company got none.' : kind === 'subscribe' ? "The money is company cash now (not sales), and the other owners' slices shrank." : 'Company cash paid the investors.'}`)
   return true
 }
 
 export function rescueNodes(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a), pos = rescuePosition(b)
-  // No "stabilization target $0": once cash covers six months, say so.
-  const target = pos.need > 0 ? `Stabilization target: ${money(pos.need)} more cash to cover six months.` : 'Cash already covers six months of costs.'
-  const rows: MenuNode[] = [{ type: 'info', id: `rescue.${a.id}.position`, emoji: '🛟', text: `Cash ${money(b.cash)} · debt ${money(b.debt)} · annual loss ${money(pos.burn)} · ${runwayText(pos.runway)} ${pos.burn ? 'at current burn' : 'of running costs in cash'}. ${target} Capital does not fix weak demand. Use loans, staffing/pay policy and site closures below to restructure.` }]
+  // No "add $0": once cash covers six months, say so.
+  const target = pos.need > 0 ? `To be safe, add ${money(pos.need)} so cash covers six months.` : 'Cash already covers six months of costs.'
+  const flow = pos.burn ? `losing ${money(pos.burn)} a year, so cash lasts ${runwayText(pos.runway)}` : `cash covers ${runwayText(pos.runway)} of running costs`
+  const rows: MenuNode[] = [{ type: 'info', id: `rescue.${a.id}.position`, emoji: '🛟', text: `Cash ${money(b.cash)} · debt ${money(b.debt)} · ${flow}. ${target} More money buys time, not customers: loans, staff and pay, and closing sites are the other fixes.` }]
+  const LABELS: Record<EquityTransaction, [string, string]> = {
+    secondary: ['Buy Out Investors', 'Buy shares from outside investors; they get the money, the company gets none'],
+    subscribe: ['Put In More Money', "Your money goes into the company for new shares; other owners' slices shrink"],
+    buyback: ['Company Buys Back Shares', 'Spare company cash buys out investors, so your slice grows'],
+  }
   for (const kind of ['secondary', 'subscribe', 'buyback'] as const) {
-    const label = kind === 'secondary' ? 'Buy Existing Investor Shares' : kind === 'subscribe' ? 'Subscribe to New Equity' : 'Company-Funded Share Buyback'
+    const [label, subtitle] = LABELS[kind]
     const q = equityQuote(g, a, b, kind, 0)
-    rows.push({ type: 'action', id: `rescue.${a.id}.${kind}`, label, emoji: '📊', disabledReason: gg => { const aa = findBusiness(gg, a.id); return aa ? block(gg, aa, readBiz(gg, aa), kind) ?? (equityQuote(gg, aa, readBiz(gg, aa), kind, 0).max < 1 ? 'No funds or eligible shares available.' : null) : 'Company unavailable.' },
-      input: { kind: 'slider', money: true, label: 'Transaction amount', min: 1, max: Math.max(1, Math.floor(q.max)), defaultValue: () => String(Math.max(1, Math.floor(Math.min(q.max, pos.need || 10000)))),
-        preview: (gg, n) => { const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'; const bb = readBiz(gg, aa), quote = equityQuote(gg, aa, bb, kind, n); return `Ownership ${pct(bb.share, 2)} → ${pct(quote.share, 2)} · personal cash ${money(gg.character.money - (kind === 'buyback' ? 0 : n))} · company cash ${money(bb.cash + (kind === 'subscribe' ? n : kind === 'buyback' ? -n : 0))}. ${kind === 'secondary' ? 'Money goes to the seller.' : kind === 'subscribe' ? 'Existing shareholders are diluted at current valuation.' : 'Spends surplus company cash; no rescue benefit.'}` } }, run: (gg, input) => { transactEquity(gg, a.id, kind, Number(input)) } })
+    rows.push({ type: 'action', id: `rescue.${a.id}.${kind}`, label, subtitle, emoji: '📊', disabledReason: gg => { const aa = findBusiness(gg, a.id); return aa ? block(gg, aa, readBiz(gg, aa), kind) ?? (equityQuote(gg, aa, readBiz(gg, aa), kind, 0).max < 1 ? 'Not enough money, or no shares for sale.' : null) : 'Company unavailable.' },
+      input: { kind: 'slider', money: true, label: 'Amount', min: 1, max: Math.max(1, Math.floor(q.max)), defaultValue: () => String(Math.max(1, Math.floor(Math.min(q.max, pos.need || 10000)))),
+        preview: (gg, n) => { const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'; const bb = readBiz(gg, aa), quote = equityQuote(gg, aa, bb, kind, n); return `You'd own ${pct(bb.share, 2)} → ${pct(quote.share, 2)} · your cash ${money(gg.character.money - (kind === 'buyback' ? 0 : n))} · company cash ${money(bb.cash + (kind === 'subscribe' ? n : kind === 'buyback' ? -n : 0))}. ${kind === 'secondary' ? 'The investors get the money.' : kind === 'subscribe' ? "Priced at today's company value." : "Uses spare company cash; it won't help a struggling company."}` } }, run: (gg, input) => { transactEquity(gg, a.id, kind, Number(input)) } })
   }
   return rows
 }
