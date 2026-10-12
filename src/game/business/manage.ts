@@ -52,7 +52,7 @@ import { settleReplacedCeo } from './nepo-actions'
 import { afterSuccession, familyCandidates } from './nepo-succession'
 import { briefNodes, capexCaption, passHint, payDividend } from './board-menu'
 import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
-import { debtComfort, lowerFirst, oddsText, payableCash, payCap, refusedThisYear, sustainablePayout } from './board-vote'
+import { debtComfort, lowerFirst, oddsText, payableCash, payCap, payoutCash, refusedThisYear, sustainablePayout } from './board-vote'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
@@ -1299,16 +1299,18 @@ function insuranceAction(a: Asset): MenuAction {
 /**
  * What the owner may take out: cash beyond the company's loans and anything earmarked for
  * unreleased games. Paying out borrowed money and then declaring bankruptcy would let the
- * owner keep the loan, so lenders (and the game) don't allow it.
+ * owner keep the loan, so lenders (and the game) don't allow it; investors' money under a
+ * liquidation preference stays in the company too (board-vote.payoutCash).
  */
 function payable(a: Asset, b: BizState): number {
-  return payableCash(a, b)
+  return payoutCash(a, b)
 }
 
 function payoutBlocked(a: Asset, b: BizState): string | null {
   if (b.cash <= 0) return 'The company has no spare cash.'
   if (b.cash - earmarkedCash(a) <= 0) return 'Its cash is advances and pledges for games still in development. That money funds the games; it is not profit yet.'
-  if (payable(a, b) <= 0) return `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
+  if (payableCash(a, b) <= 0) return `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
+  if (payable(a, b) <= 0) return `The investors' ${money(b.pref ?? 0)} comes back to them first: the company must be worth more than that before cash goes to the shareholders.`
   return null
 }
 

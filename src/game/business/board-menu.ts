@@ -26,7 +26,7 @@ import {
   type Limits,
   type Mandate,
 } from './board-state'
-import { boardAllows, capexBudget, capexLeft, needsVote, oddsText, passOdds, payableCash, payCap, refusedThisYear, reserveDollars, sustainablePayout, vote, type Proposal } from './board-vote'
+import { boardAllows, capexBudget, capexLeft, needsVote, oddsText, passOdds, payableCash, payCap, payoutCash, refusedThisYear, reserveDollars, sustainablePayout, vote, type Proposal } from './board-vote'
 import { bestMandate, limitsMerit, mandateMerit, outlook } from './board-ceo'
 import { ceoPayNorm, managerName, STYLE_INFO, styleOf } from './career'
 import { refreshValue, valuationOf } from './economy'
@@ -107,7 +107,7 @@ export function capexCaption(g: GameState, a: Asset, b: BizState, amount: number
  * listed company's share price drops by the payout. Returns true when it was paid.
  */
 export function payDividend(g: GameState, a: Asset, b: BizState, amount: number): boolean {
-  const n = Math.round(clampN(amount, 0, payableCash(a, b)))
+  const n = Math.round(clampN(amount, 0, payoutCash(a, b)))
   if (n <= 0) return false
   if (!boardAllows(g, a, b, { kind: 'dividend', by: 'owner', amount: n, label: `Pay a ${money(n)} dividend` })) return false
   b.cash -= n
@@ -286,13 +286,13 @@ function dividendAction(a: Asset, b0: BizState): MenuAction {
       const st = boardView(g, y.a, y.b)
       return `${money(sustainablePayout(y.a, y.b, st))} can go without a vote \u{00B7} you get ${pct(y.b.share)} of any payout`
     },
-    disabled: (_g, b) => (payableCash(a, b) <= 0 ? (b.debt > 0 ? `The company owes ${money(b.debt)}: its lenders come first.` : 'The company has no spare cash.') : null),
+    disabled: (_g, b) => (payoutCash(a, b) <= 0 ? (payableCash(a, b) > 0 ? `The investors' ${money(b.pref ?? 0)} comes back to them first: the company must be worth more than that before cash goes to the shareholders.` : b.debt > 0 ? `The company owes ${money(b.debt)}: its lenders come first.` : 'The company has no spare cash.') : null),
     input: {
       kind: 'slider',
       money: true,
       label: 'Total payout',
       min: 1,
-      max: Math.max(2, payableCash(a, b0)),
+      max: Math.max(2, payoutCash(a, b0)),
       defaultValue: (g) => {
         const y = live(g, a)
         if (!y) return '1'

@@ -4,7 +4,7 @@
 // that writes to an object it captured from it (instead of the draft) throws.
 import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
-import { businessCareerMenu } from '../src/game/business'
+import { businessAssetView, businessCareerMenu } from '../src/game/business'
 import { ownerProceeds } from '../src/game/business/exit'
 import { newBiz } from '../src/game/business/founding'
 import { businessAssets, readBiz, stakeValue } from '../src/game/business/state'
@@ -158,7 +158,20 @@ describe("investors' liquidation preference is not the founder's net worth", () 
     }
   })
 
-  it('founding a company with investor money does not raise net worth', () => {
+  /** Answer popups taking the most outside money on offer: the biggest capital, funded by investors. */
+  function settle(g: GameState): void {
+    for (let guard = 0; g.queue.length && guard < 50; guard++) {
+      const m = g.queue.shift()!
+      const at = g.queue.length
+      if (m.kind === 'choice') runScript(g, m.scriptId!, m.choices.some((c) => c.id === 'investors') ? 'investors' : m.choices[0].id, m.data, m)
+      else if (m.kind === 'input') runScript(g, m.scriptId, m.input === 'text' ? 'Test Hotel' : String(m.max ?? m.min ?? 1), m.data, m)
+      else if (m.kind === 'aiTask') applyFallback(g, m.task)
+      g.queue.unshift(...g.queue.splice(at))
+    }
+  }
+
+  /** A $4.4M founder opens a New York hotel with the most investor money on offer. */
+  function foundWithInvestors(): { g: GameState; before: number } {
     const g = createNewLife({ seed: 7, year: 2000, countryId: 'us' })
     g.queue = []
     g.character.age = 35
@@ -168,20 +181,37 @@ describe("investors' liquidation preference is not the founder's net worth", () 
     const before = netWorth(g)
     const start = businessCareerMenu.children(g).find((n) => n.id === 'biz.start') as MenuGroup
     ;(start.children(g).find((n) => n.id === 'biz.start.hotel') as MenuAction).run(g)
-    for (let guard = 0; g.queue.length && guard < 50; guard++) {
-      const m = g.queue.shift()!
-      const at = g.queue.length
-      // Take the most outside money on offer: the biggest starting capital, funded by investors.
-      if (m.kind === 'choice') runScript(g, m.scriptId!, m.choices.some((c) => c.id === 'investors') ? 'investors' : m.choices[0].id, m.data, m)
-      else if (m.kind === 'input') runScript(g, m.scriptId, m.input === 'text' ? 'Test Hotel' : String(m.max ?? m.min ?? 1), m.data, m)
-      else if (m.kind === 'aiTask') applyFallback(g, m.task)
-      g.queue.unshift(...g.queue.splice(at))
-    }
+    settle(g)
+    return { g, before }
+  }
+
+  it('founding a company with investor money does not raise net worth', () => {
+    const { g, before } = foundWithInvestors()
     const a = businessAssets(g)[0]
     const b = readBiz(g, a)
     expect(b.share).toBeLessThan(1)
     expect(b.pref ?? 0).toBeGreaterThan(0)
     expect(a.value).toBe(ownerProceeds(b, b.valuation))
+    expect(netWorth(g)).toBeLessThanOrEqual(before)
+  })
+
+  it("the investors' fresh money can't be paid straight out to the founder as a dividend", () => {
+    const { g, before } = foundWithInvestors()
+    const a = businessAssets(g)[0]
+    const b = readBiz(g, a)
+    const all = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => (n.type === 'menu' ? [n, ...all(n.children(g))] : [n]))
+    for (const id of [`biz.dividend.${a.id}`, `biz.board.dividend.${a.id}`]) {
+      const row = all(businessAssetView(g, a)).find((n) => n.id === id) as MenuAction
+      // Only what the company is worth beyond the investors' 1x preference can go out.
+      expect(row.input?.max, id).toBeLessThanOrEqual(Math.max(2, Math.round(b.valuation - (b.pref ?? 0))))
+    }
+    const withdraw = all(businessAssetView(g, a)).find((n) => n.id === `biz.dividend.${a.id}`) as MenuAction
+    for (let i = 0; i < 3; i++) {
+      withdraw.run(g, String(b.cash))
+      settle(g)
+    }
+    expect(readBiz(g, a).cash).toBeGreaterThan(b.cash * 0.9)
+    expect(g.character.money).toBeLessThan(before)
     expect(netWorth(g)).toBeLessThanOrEqual(before)
   })
 })
