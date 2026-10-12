@@ -140,10 +140,11 @@ export function supplyCapacity(g: GameState, b: BizState, year: number, equipmen
  * Ordinary just-in-time purchases retain the existing annual operating-payables model.
  * Extra strategic stock must be funded from opening cash, after current input commitments.
  */
-export function bookSupply(g: GameState, b: BizState, year: number, capacity: number, requested: number, unitCost: number): SupplyBook {
+/** `known`: this company's supplyConditions for `year`, when a plan search already read them. */
+export function bookSupply(g: GameState, b: BizState, year: number, capacity: number, requested: number, unitCost: number, known?: SupplyConditions): SupplyBook {
   const profile = supplyProfile(b.industry)
   const capped = Math.floor(clampN(capacity, 0, LIMIT)), request = Math.floor(clampN(requested, 0, capped))
-  const conditions = supplyConditions(g, b, year)
+  const conditions = known ?? supplyConditions(g, b, year)
   const laborCapacity = Math.floor(capped * Math.min(1, conditions.workforce))
   const empty: SupplyBook = { produced: Math.min(request, laborCapacity), capacity: laborCapacity, requested: request, availability: 1, workforce: conditions.workforce, importedGap: conditions.importedGap, purchased: 0, purchaseCost: 0, consumedCost: 0, spoiled: 0, spoilageCost: 0, storageCost: 0, materialsCost: 0, cashAdjustment: 0, next: null }
   if (!profile) return empty
