@@ -106,7 +106,7 @@ function advice(g: GameState, b: BizState, id: HealthId, x: { loss: boolean; yea
   if (b.debt > b.cash && b.debt > Math.max(1, s.net) * 3) return 'Debt is heavy: repay some before expanding.'
   if (x.salesChange < -0.15) return x.studio ? 'Sales fell: a new game or a marketing push brings players back.' : 'Sales fell: a campaign or a fresh product line could win customers back.'
   if (classic && b.brand < 25) return 'Few people know you yet: a marketing campaign builds the brand.'
-  if (!x.finance && !b.public && !inGroup(g, b) && canIpo(b) === null) return 'Profits are big enough to go public (Exit), if the board agrees.'
+  if (!x.finance && !b.public && !inGroup(g, b) && canIpo(b) === null) return 'Exchanges would list you now: go public under Exit, if the board agrees.'
   if (classic && isFranchiseIndustry(b.industry) && franchiseUnits(b) === 0 && franchiseBlock(b) === null && maxSellable(g, b) > 0) return 'Your brand is strong enough to sell franchises (Franchising).'
   if (classic && id === 'thriving' && b.cash > startupCost(b.industry, b.countryId, b.city).capital * 2) return 'Cash is piling up: open another location, or take some profit out.'
   const next = nextMilestones(g, b, 1)[0]
