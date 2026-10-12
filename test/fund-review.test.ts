@@ -8,7 +8,7 @@ import { becomeCeo } from '../src/game/business/career'
 import { createBusinessAsset, listingsForSale, newBiz, startFounding } from '../src/game/business/founding'
 import { fundNodes, simulateFundYear } from '../src/game/business/fund'
 import { investInPitch, setCall, setCommission, setHedgeTerms } from '../src/game/business/fund-actions'
-import { fundYearlyChecks, presentFundEvent, PROBE } from '../src/game/business/fund-events'
+import { fundYearlyChecks, PONZI_END, presentFundEvent, PROBE } from '../src/game/business/fund-events'
 import { brokerEra, quantBlock } from '../src/game/business/fund-model'
 import { bestCommission, hedgeFeeOutlook, strategyOutlook } from '../src/game/business/fund-outlook'
 import { readFund, saveFund, type FundState, type FundType } from '../src/game/business/fund-state'
@@ -348,6 +348,25 @@ describe('brokerage pricing', () => {
       const norm = brokerEra('us', year).normCommission
       expect(bestCommission(b, readFund(b), year), `${year}`).toBeLessThanOrEqual(norm * 1.5 + .0005)
     }
+  })
+})
+
+describe('a collapsing Ponzi scheme', () => {
+  it('only offers to plug the hole to an owner who can pay for it', () => {
+    const offered = (money: number) => {
+      const { g, a, b } = firm('hedge', { money })
+      const f = readFund(b)
+      f.ponzi = { since: g.year - 2, hole: 2e6, fees: 1e5, by: g.character.id }
+      f.lastYear = g.year - 1; f.last = { ...f.last, market: -.6 }
+      saveFund(b, f)
+      g.queue = []
+      for (let i = 0; i < 40 && !g.queue.some(q => q.kind === 'choice' && q.scriptId === PONZI_END); i++) { const x = readFund(b); x.checkYear = 0; saveFund(b, x); fundYearlyChecks(g, b, a) }
+      const m = g.queue.find(q => q.kind === 'choice' && q.scriptId === PONZI_END)
+      if (!m || m.kind !== 'choice') throw new Error('no collapse popup')
+      return m.choices.map(c => c.id)
+    }
+    expect(offered(3e6)).toEqual(['cover', 'face'])
+    expect(offered(1e6)).toEqual(['face'])
   })
 })
 

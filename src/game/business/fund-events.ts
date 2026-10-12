@@ -179,8 +179,10 @@ export function fundYearlyChecks(g: GameState, b: BizState, a = assetOf(g, b)): 
   if (f.ponzi && g.year > f.ponzi.since) {
     const gap = clampN(f.ponzi.hole / Math.max(1, f.aum), 0, 1)
     const odds = clampN(.12 + gap * .6 + (f.last.market < -.15 ? .3 : 0) + (b.ceo === 'manager' ? .4 : 0), 0, .95)
-    if (chance(g, odds)) scriptChoice(g, PONZI_END, '🔥 The Scheme Is Unraveling', `Withdrawals at ${a.name} can’t be paid: ${money(f.ponzi.hole)} of client money doesn’t exist. Auditors are on the way.`,
-      [{ id: 'cover', label: `Plug the hole with your own money (${money(f.ponzi.hole)})`, emoji: '💸' }, { id: 'face', label: 'Face the music', emoji: '⚖️' }],
+    // Plugging the hole is only offered to someone who can actually pay for it.
+    const canCover = g.character.money >= Math.round(f.ponzi.hole)
+    if (chance(g, odds)) scriptChoice(g, PONZI_END, '🔥 The Scheme Is Unraveling', `Withdrawals at ${a.name} can’t be paid: ${money(f.ponzi.hole)} of client money doesn’t exist. Auditors are on the way.${canCover ? '' : ' You don’t have the money to cover it.'}`,
+      [...(canCover ? [{ id: 'cover', label: `Plug the hole with your own money (${money(f.ponzi.hole)})`, emoji: '💸' }] : []), { id: 'face', label: 'Face the music', emoji: '⚖️' }],
       { emoji: '🔥', data: { assetId: a.id } as Json })
   }
 }
