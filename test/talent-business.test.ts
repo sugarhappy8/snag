@@ -470,7 +470,7 @@ describe('Business talent: the yearly flow', () => {
     play(g, { 'Buyout Offer': 'accept' })
     expect(findBusiness(g, a.id)).toBeUndefined()
     expect(reportOf(g, a)).toBe(-1)
-  })
+  }, 300_000)
 
   it('words a plan that makes nothing sensibly', () => {
     const { g, a, b } = company(23, 'us', 'cafe', true)

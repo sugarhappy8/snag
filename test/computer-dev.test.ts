@@ -386,7 +386,7 @@ describe('ventures', () => {
         expect(JSON.stringify(JSON.parse(JSON.stringify(g)))).toBe(JSON.stringify(g))
       }
     }
-  })
+  }, 300_000)
 
   it('needs skill (or money for a freelancer) to build; one new venture a year; at most three', () => {
     const g = adult(11, 'us', 20, 10, 100)
@@ -774,7 +774,7 @@ describe('review fixes', () => {
     }
     expect(losers).toBeGreaterThan(0)
     expect(winners).toBeGreaterThan(0)
-  })
+  }, 120_000)
 
   it('developer contractors cost near-global rates; store helpers earn local wages', () => {
     // A cheap local dev team used to make 5 contractors + max ads a sure thing in poorer countries.

@@ -210,6 +210,12 @@ const REJECTIONS = [
   "The chairman's spouse didn't like your laugh.",
 ]
 
+/** A reason the committee gives; before the internet, it had to ask around instead. */
+function rejection(g: GameState): string {
+  const reason = pick(g, REJECTIONS)
+  return reason.includes('online') && !hasTech(g, 'internet') ? 'The committee asked around about you. It did not go well.' : reason
+}
+
 /** Join a plan at a tier: pays the first year (plus any initiation fee). */
 export function joinMembership(g: GameState, planId: string, tierId: string): Asset | null {
   const plan = planById(planId)
@@ -239,7 +245,7 @@ export function joinMembership(g: GameState, planId: string, tierId: string): As
     else if (c.hidden.notoriety > 50) p = 0.5
     if (c.hidden.fame >= 70) p = Math.min(p, 0.03)
     if (chance(g, p)) {
-      const why = convicted ? 'The committee found your criminal record during the background check.' : pick(g, REJECTIONS)
+      const why = convicted ? 'The committee found your criminal record during the background check.' : rejection(g)
       log(g, `My application to ${name} was rejected.`, 'bad')
       addStat(g, 'happiness', -randInt(g, 2, 5))
       notice(g, 'Application Rejected', `${name} turned down your application. ${why} You can apply again next year.`, { emoji: '📜', tone: 'bad' })
