@@ -3,7 +3,11 @@
 // and launch rows once a prototype can use them.
 import { describe, expect, it } from 'vitest'
 import { anachronismsIn } from '../src/game/events/era'
+import { isHistory } from '../src/game/workshop/catalog'
+import { addIdea, candidates, drawIdea, mutWorkshop, readWorkshop } from '../src/game/workshop/notebook'
+import { scrapIdea } from '../src/game/workshop/launch'
 import { sparkScenes, yearlyWorkshop } from '../src/game/workshop/yearly'
+import { SEEN_MAX, normalizeWorkshop } from '../src/game/workshop/state'
 import { inSchool, inventor, nextYear } from './workshop-fixtures'
 
 describe('spark contexts', () => {
@@ -55,5 +59,65 @@ describe('spark contexts', () => {
       }
     }
     expect(popups).toBeGreaterThan(0)
+  })
+})
+
+describe('repeat ideas', () => {
+  it('a forgotten or scrapped idea waits while fresh ones remain, deterministically', () => {
+    // Review: the Popcorn Seasoning Bowl and the Indoor Snowball Kit came straight back.
+    const run = (seed: number) => {
+      const g = inventor({ genius: true, year: 1980, seed })
+      const ws = mutWorkshop(g)
+      const offered: string[] = []
+      for (let i = 0; i < 25; i++) {
+        const d = drawIdea(g, ws)!
+        offered.push(d.id)
+        // Half are forgotten at once; the rest go in the notebook and get scrapped.
+        if (i % 2 && addIdea(g, ws, d)) scrapIdea(g, d.id)
+      }
+      return { offered, seen: [...readWorkshop(g).seen] }
+    }
+    const a = run(3)
+    expect(new Set(a.offered).size).toBe(a.offered.length)
+    expect(run(3)).toEqual(a)
+    expect(a.seen.length).toBeLessThanOrEqual(SEEN_MAX)
+  })
+
+  it('keeps the seen list bounded, plain JSON and loadable from old saves', () => {
+    const g = inventor({ genius: true, year: 1990 })
+    const ws = mutWorkshop(g)
+    for (let i = 0; i < 120; i++) drawIdea(g, ws)
+    expect(ws.seen.length).toBe(SEEN_MAX)
+    expect(new Set(ws.seen).size).toBe(SEEN_MAX)
+    expect(normalizeWorkshop(g, JSON.parse(JSON.stringify(ws))).seen).toEqual(ws.seen)
+    expect(normalizeWorkshop(g, { ...ws, seen: 'junk' }).seen).toEqual([])
+    expect(normalizeWorkshop(g, { ...ws, seen: undefined }).seen).toEqual([])
+  })
+
+  it('when every idea of the era was offered lately, the one offered longest ago returns first', () => {
+    const g = inventor({ year: 1905 })
+    const ws = mutWorkshop(g)
+    const pool = candidates(g, ws)
+    expect(pool.length).toBeLessThan(SEEN_MAX)
+    const firstRound = pool.map(() => drawIdea(g, ws)!.id)
+    // Every idea of 1905 once, before any comes back...
+    expect(new Set(firstRound).size).toBe(pool.length)
+    // ...then the oldest first, in the same order.
+    for (const id of firstRound) expect(drawIdea(g, ws)!.id).toBe(id)
+  })
+
+  it('keeps history-race ideas as rare as before', () => {
+    let race = 0, total = 0
+    for (let s = 1; s <= 40; s++) {
+      const g = inventor({ genius: true, year: 1960, seed: s })
+      const ws = mutWorkshop(g)
+      for (let i = 0; i < 10; i++) {
+        const d = drawIdea(g, ws)!
+        total++
+        if (isHistory(d)) race++
+      }
+    }
+    expect(race / total).toBeGreaterThan(0.005)
+    expect(race / total).toBeLessThan(0.08)
   })
 })

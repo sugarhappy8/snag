@@ -4,7 +4,7 @@
 import { count, log } from '../core'
 import { anachronistic } from '../events/era'
 import { hasTech } from '../history/timeline'
-import { weightedPick } from '../rng'
+import { pick, rand } from '../rng'
 import { blocked, ownerKey } from '../special/common'
 import { hasTalent } from '../talents'
 import type { Asset, GameState, Json } from '../types'
@@ -15,7 +15,7 @@ import { businessAssets, readBiz } from '../business/state'
 import { ALL_IDEAS, CATEGORIES, isHistory, type Category, type IdeaDef } from './catalog'
 import { inventionValue } from './market'
 import { legacyProfile, migrateLegacy, readInv, workshopFromLegacy } from './migrate'
-import { FLAG, NOTEBOOK_MAX, emptyWorkshop, invDef, normalizeWorkshop, ownsWorkshop, saveInv, type Inv, type MadeEntry, type NoteIdea, type Workshop } from './state'
+import { FLAG, NOTEBOOK_MAX, SEEN_MAX, emptyWorkshop, invDef, normalizeWorkshop, ownsWorkshop, saveInv, type Inv, type MadeEntry, type NoteIdea, type Workshop } from './state'
 
 export const MIN_AGE = 8
 
@@ -122,11 +122,30 @@ export function candidates(g: GameState, ws: Workshop): IdeaDef[] {
 /** How often a history-race idea strikes compared with an everyday one. */
 export const HISTORY_WEIGHT = 0.12
 
-/** Draw a new idea (actions and hooks only: uses g's RNG). History ideas are rarer than everyday ones. */
+/** Remember that an idea was offered (bounded, newest last). */
+export function markSeen(ws: Workshop, id: string): void {
+  ws.seen = [...ws.seen.filter((x) => x !== id), id].slice(-SEEN_MAX)
+}
+
+/**
+ * Draw a new idea (actions and hooks only: uses g's RNG). History ideas are rarer than everyday
+ * ones, and ideas offered recently (forgotten, scrapped) wait their turn while fresh ones remain.
+ */
 export function drawIdea(g: GameState, ws: Workshop): IdeaDef | null {
-  const pool = candidates(g, ws)
-  if (!pool.length) return null
-  return weightedPick(g, pool, (d) => (isHistory(d) ? HISTORY_WEIGHT : 1))
+  const all = candidates(g, ws)
+  if (!all.length) return null
+  // First the kind (a history-race idea at HISTORY_WEIGHT the odds of an everyday one, as if
+  // nothing had been seen), then an idea of that kind, the freshest available.
+  const race = all.filter(isHistory)
+  const everyday = all.filter((d) => !isHistory(d))
+  const raceWeight = race.length * HISTORY_WEIGHT
+  const group = race.length && rand(g) * (raceWeight + everyday.length) < raceWeight ? race : everyday.length ? everyday : race
+  const age = new Map(ws.seen.map((id, i) => [id, i]))
+  const fresh = group.filter((d) => !age.has(d.id))
+  // Everything of that kind was offered lately: the one offered longest ago comes back first.
+  const def = fresh.length ? pick(g, fresh) : group.reduce((x, y) => ((age.get(y.id) ?? 0) < (age.get(x.id) ?? 0) ? y : x))
+  markSeen(ws, def.id)
+  return def
 }
 
 export function addIdea(g: GameState, ws: Workshop, def: IdeaDef): boolean {

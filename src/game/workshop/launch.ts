@@ -16,7 +16,7 @@ import {
   COMPANY_MARGIN, CROWD_GOAL, CROWD_MARGIN, PITCH_BOOST, crowdFans, crowdGoal, crowdOdds, curveSpec, deliveryFailOdds, expectedPeak, firstYearRevenue,
   licenseRate, licenseValue, patentFee, patentLaw, pitchOdds, priceOf, revenueValue, streamValue, trueAppeal, type Subject,
 } from './market'
-import { addRep, companyBlock, dropIdea, findIdea, findInvention, fittingCompanies, isGenius, mutWorkshop, readWorkshop, remember, storeInv, workshopBlock } from './notebook'
+import { addRep, companyBlock, dropIdea, findIdea, findInvention, fittingCompanies, isGenius, markSeen, mutWorkshop, readWorkshop, remember, storeInv, workshopBlock } from './notebook'
 import { blankInv, noteDef, rec, text, type Inv, type NoteIdea, type Patent, type PatentScope, type Route, type Workshop } from './state'
 import type { Target } from './build'
 
@@ -545,6 +545,7 @@ export function scrapIdea(g: GameState, id: string): boolean {
   const idea = findIdea(ws, id)
   if (!idea) return false
   dropIdea(ws, id)
+  markSeen(ws, id)
   log(g, `I crumpled up my notes for the ${noteDef(idea).name}.`)
   return true
 }
