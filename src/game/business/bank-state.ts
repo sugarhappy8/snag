@@ -220,6 +220,15 @@ function fresh(b: Pick<BizState, 'countryId' | 'founded' | 'cash' | 'debt' | 'ou
   }
 }
 
+/**
+ * Open a new bank's books from its starting capital and branches (founding, NPC and group banks).
+ * Until a book is saved, readBank sizes a fresh one from the live cash and branches, so capital or
+ * branches added before the first year-end would conjure a ready-made deposit base.
+ */
+export function openBank(b: BizState): void {
+  if (isBankIndustry(b.industry)) saveBank(b, fresh(b))
+}
+
 /** Minimum capital ratio regulators demand (country/era approximation, not a legal schedule). */
 export function minCapitalRatio(countryId: string, year: number): number {
   const base = year < 1988 ? .06 : year < 2010 ? .08 : .105

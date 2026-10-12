@@ -22,6 +22,7 @@ import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, d
 import { isDeepTechIndustry, type DeepTechIndustry } from './deeptech-state'
 import { financeEraBlock, isFinanceFirm } from './finance-firm'
 import { bankCapitalPreview, bankStartingCash, isBank } from './bank'
+import { openBank } from './bank-state'
 import { financeView } from './finance-firm-state'
 import { fundTypeBlock, initFund } from './fund'
 import { TYPE_INFO } from './fund-model'
@@ -522,7 +523,9 @@ export function newBiz(g: GameState, industry: Industry, countryId: string, city
     slump: 0,
     ...opts,
   }
-  if (isFinanceFirm(b)) b.financeFirm = financeView(b) as unknown as Json
+  // Banks open real books sized to the starting capital; investment firms keep the record initFund reads.
+  if (isBank(b)) openBank(b)
+  else if (isFinanceFirm(b)) b.financeFirm = financeView(b) as unknown as Json
   return b
 }
 

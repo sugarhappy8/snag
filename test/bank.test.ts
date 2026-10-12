@@ -5,7 +5,7 @@ import { bailoutEligible, bailoutTerms, bankAfterYear, BANK_EVENT_IDS, forceBank
 import { bankBooks, bankCapitalNeed, bankCapitalPreview, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
 import { bankLeverBlock, runBankCampaign, setBankAppetite, setBankRate, switchBankProduct } from '../src/game/business/bank-actions'
 import { bankCapital, bankMarket, bankRank, bankYearCtx, bestRates, capitalRatio, expectedPath, ibGate, productGate, projectYear, riskWeighted, setupCost } from '../src/game/business/bank-model'
-import { LEND_LINES, PRODUCT_IDS, loanTotal, minCapitalRatio, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
+import { LEND_LINES, PRODUCT_IDS, loanTotal, minCapitalRatio, openBank, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
 import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
 import { financeNodes, simulateFinanceYear } from '../src/game/business/finance-firm'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
@@ -755,5 +755,21 @@ describe('Banking 2.0 review: money that must not appear', () => {
     closeBusiness(g, a, b, 0)
     expect(g.assets.some(x => x.id === a.id)).toBe(false)
     expect(g.character.money - money).toBe(equity)
+  })
+
+  it('opens a new bank’s books at founding: capital or branches added before the first year-end conjure no deposits', () => {
+    const { g, b } = bank({ cash: 15_000_000 })
+    expect((b.financeFirm as Record<string, Json>).kind).toBe('bank')
+    const book = readBank(b)
+    balanced(book)
+    b.cash += 300_000_000; b.outlets[0].count += 20
+    expect(readBank(b)).toEqual(book)
+    // A bank whose cash arrives after newBiz (a group venture) is opened again from that cash.
+    const late = newBiz(g, 'bank', 'us', getCountry('us').cities[0], { founded: g.year })
+    expect(loanTotal(readBank(late))).toBe(0)
+    late.cash = 15_000_000
+    openBank(late)
+    expect(loanTotal(readBank(late))).toBeGreaterThan(0)
+    balanced(readBank(late))
   })
 })
