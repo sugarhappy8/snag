@@ -16,7 +16,7 @@ import { log } from '../core'
 import type { Asset, GameState, Json } from '../types'
 import { registerGroupBoard, type Mandate } from './board-state'
 import { refreshValue } from './economy'
-import { bizOf, businessAssets, CEO_STYLES, diluteManagerEquity, readBiz, type BizState, type Manager } from './state'
+import { bizOf, businessAssets, CEO_STYLES, diluteManagerEquity, executiveEquity, readBiz, type BizState, type Manager } from './state'
 import { clampN, num, rec, round2, str, toJson } from './util'
 import { readFamilyShares, type FamilyShare } from './family-share-state'
 
@@ -321,7 +321,7 @@ function assemble(list: GroupMember[]): Group {
   const newest = list.reduce((best, x) => (x.m.core.rev > best.m.core.rev ? x : best), list[0])
   const core: GroupCore = JSON.parse(JSON.stringify(newest.m.core)) as GroupCore
   reconcileOwnership(core, list)
-  core.executiveEquity = Math.max(core.executiveEquity ?? 0, (core.manager?.equity ?? 0) + list.reduce((sum, x) => sum + (x.b.manager?.groupEquity?.id === core.id ? x.b.manager.groupEquity.share : 0), 0))
+  core.executiveEquity = Math.max(core.executiveEquity ?? 0, sittingExecutiveEquity(core, list))
   return { core, members: [...list].sort(byStake) }
 }
 
@@ -350,11 +350,76 @@ export function liveGroup(g: GameState, id: string): Group | null {
   return list && list.length ? assemble(list) : null
 }
 
+/** Group shares a division's sitting CEO holds in this group. */
+function sittingAward(core: GroupCore, x: GroupMember): number {
+  return x.b.ceo === 'manager' && x.b.manager?.groupEquity?.id === core.id ? Math.max(0, x.b.manager.groupEquity.share) : 0
+}
+
+/** Group shares held by people still in their seat: the group's own CEO and sitting division CEOs. */
+function sittingExecutiveEquity(core: GroupCore, members: GroupMember[]): number {
+  return (core.ceo === 'manager' ? Math.max(0, core.manager?.equity ?? 0) : 0) + members.reduce((t, x) => t + sittingAward(core, x), 0)
+}
+
+/**
+ * Executive shares of people who no longer hold their seat go back to the founder: a division's
+ * own grants return to the group's holding in it, and group shares awarded to the group CEO or a
+ * division CEO who has left return to the player's group stake (with the cost basis that came
+ * with them). Run by every saveGroup, so whichever code path replaced the CEO, the next write of
+ * the group settles it. Shares still held by a sitting CEO are never touched.
+ */
+export function settleGroupExecutives(grp: Group): void {
+  const core = grp.core
+  for (const x of grp.members) {
+    const held = x.b.ceo === 'manager' ? Math.max(0, x.b.manager?.equity ?? 0) : 0
+    const former = Math.max(0, x.b.executiveEquity ?? 0) - held
+    if (!(former > 1e-9)) continue
+    const before = x.b.share
+    x.m.own = clampN(x.m.own + former, 0.001, 1)
+    x.b.executiveEquity = held
+    x.b.share = clampN(core.share * x.m.own, 0, 1)
+    if (before > 0 && x.b.share > before) x.b.invested *= x.b.share / before
+  }
+  // In a family holding where you hold no shares, nothing comes back to you.
+  if (core.share <= 0) return
+  const active = sittingExecutiveEquity(core, grp.members)
+  const former = Math.max(0, core.executiveEquity ?? 0) - active
+  if (!(former > 1e-9)) return
+  const before = core.share
+  core.share = clampN(core.share + former, 0, 1)
+  core.executiveEquity = active
+  for (const x of grp.members) {
+    const was = x.b.share
+    x.b.share = clampN(core.share * x.m.own, 0, 1)
+    if (before > 0 && was > 0 && x.b.share > was) x.b.invested *= x.b.share / was
+  }
+}
+
+/**
+ * Your stake in a company once it leaves the group (spun off, or the last one when the group is
+ * wound up): it leaves the group executives' seats, so their slice of it comes back to you, except
+ * its own CEO's, which detach turns into shares of the company they run.
+ */
+export function stakeOnLeaving(grp: Group, x: GroupMember): number {
+  if (grp.core.share <= 0) return x.b.share
+  const others = Math.max(0, (grp.core.executiveEquity ?? 0) - sittingAward(grp.core, x))
+  return Math.max(x.b.share, clampN((grp.core.share + others) * x.m.own, 0, 1))
+}
+
+/** Give the founder that stake, with the cost basis that comes with it. Call just before detach. */
+export function returnExecutiveSlice(grp: Group, x: GroupMember): boolean {
+  const was = x.b.share, now = stakeOnLeaving(grp, x)
+  if (!(now > was + 1e-9)) return false
+  x.b.share = now
+  if (was > 0) x.b.invested *= now / was
+  return true
+}
+
 /**
  * Write the group record (bumped) and each member's membership back to every member, and refresh
  * their asset values (a member's value depends on the group's multiplier).
  */
 export function saveGroup(g: GameState, grp: Group): void {
+  settleGroupExecutives(grp)
   grp.core.rev += 1
   // The stored price is a display copy of the derived one.
   if (grp.core.listing) grp.core.listing.sharePrice = round2(clampN(sharePriceOf(grp), 0.01, 1e7))
@@ -480,6 +545,18 @@ export function detach(g: GameState, a: Asset, b: BizState, listing: GroupListin
   const membership = readMembership(b.group)
   undoFx(g, b, membership)
   if (membership?.core.familyShares?.length) b.familyShares = membership.core.familyShares.map(x => ({ id: x.id, share: x.share * membership.own }))
+  // A sitting CEO's group shares become shares of the company they run (their slice of it, as with
+  // every group shareholder); the group's next save returns the group shares to the founder.
+  const award = b.manager?.groupEquity
+  if (membership && b.manager && award?.id === membership.id) {
+    const slice = b.ceo === 'manager' ? clampN(award.share * membership.own, 0, 1) : 0
+    if (slice > 0) {
+      const recorded = executiveEquity(b)
+      b.manager.equity = (b.manager.equity ?? 0) + slice
+      b.executiveEquity = clampN(recorded + slice, 0, 1)
+    }
+    delete b.manager.groupEquity
+  }
   delete b.group
   if (listing && !b.public) {
     // It starts trading at the price the market was paying for it inside the group (its mood, not
@@ -505,6 +582,8 @@ export function dissolveIfAlone(g: GameState, id: string, quiet = false): boolea
   const grp = liveGroup(g, id)
   if (!grp || grp.members.length !== 1) return false
   const last = grp.members[0]
+  // The group CEO's seat ends with the group: their slice of the last company comes back to you.
+  returnExecutiveSlice(grp, last)
   // On its own it sheds the conglomerate discount and keeps the market's mood.
   detach(g, last.a, last.b, grp.core.listing, { keepIpoYear: true, mult: moodOf(grp.core) })
   if (!quiet) log(g, `${grp.core.name} was down to one company, ${last.a.name}, so the group was wound up.`, 'neutral')

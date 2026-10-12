@@ -5,7 +5,7 @@ import { hasTalent, talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { addToGroup, groupBlock, joinBlock, planJoin, spinOff, spinPlan } from './conglomerate-actions'
 import { DEAL_YEARS } from './conglomerate-econ'
-import { groupById, groupIdOf, groupsOf, inGroup, readMembership, type Group } from './conglomerate-state'
+import { groupById, groupIdOf, groupsOf, inGroup, readMembership, stakeOnLeaving, type Group } from './conglomerate-state'
 import { managerName } from './career'
 import { findBusiness, readBiz } from './state'
 import { money, pct, plural } from './util'
@@ -114,7 +114,8 @@ export function divisionExitNodes(g: GameState, a: Asset): MenuNode[] {
       const cur = groupById(gg, id)
       if (!cur) return null
       const p = spinPlan(gg, cur, a.id)
-      return `Spin ${a.name} off from ${cur.core.name}? It leaves the shared back office and treasury; every group shareholder gets their share of it (you keep ${pct(readBiz(gg, a).share, 1)}). Fees: ${money(p.fee)}.`
+      const x = cur.members.find((m) => m.a.id === a.id)
+      return `Spin ${a.name} off from ${cur.core.name}? It leaves the shared back office and treasury; every group shareholder gets their share of it (you keep ${pct(x ? stakeOnLeaving(cur, x) : readBiz(gg, a).share, 1)}). Fees: ${money(p.fee)}.`
     },
     run: (gg) => {
       spinOff(gg, id, a.id)

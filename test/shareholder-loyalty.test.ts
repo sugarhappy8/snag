@@ -74,7 +74,7 @@ describe('shareholder loyalty', () => {
     if (kind === 'credit only') m.groupEquity = { id: 'group', share: 0, credit: .1 }
     m.since = g.year - 10; m.equityAsked = g.year - 5
     expect(hasExecutiveShares(m)).toBe(false)
-    expect(equityDue(m)).toBe(.1)
+    expect(equityDue(m)).toBe(.03)
     executiveRetentionYear(g, a, b)
     expect(b.manager).not.toBe(m)
     expect(g.queue.some(q => 'title' in q && q.title === 'CEO Resigned')).toBe(true)

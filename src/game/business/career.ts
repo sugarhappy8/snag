@@ -12,6 +12,7 @@ import { isDeepTech } from './deeptech-state'
 import { afterSuccession, successorManager } from './nepo-succession'
 import { CEO_STYLES, ceoJob, OWNER_JOB, readBiz, totalOutlets, type BizState, type CeoStyle, type Manager } from './state'
 import { clampN, round2 } from './util'
+import { returnFormerExecutiveShares } from './executive-shares'
 
 /** Hired CEOs above this skill run the company like real executives (business/board-ceo.ts). */
 export const SMART_SKILL = 75
@@ -168,13 +169,14 @@ export function ceoValue(w: Worth, m: Pick<Manager, 'skill' | 'salary'>, gain: n
   return baseManagerValue(w, m) + captureOf(m.skill) * Math.max(0, gain)
 }
 
-/** Put a manager in charge (the owner keeps the shares). */
+/** Put a manager in charge (the owner keeps the shares, and gets back any a departing CEO held). */
 export function installManager(g: GameState, b: BizState, m?: Manager): Manager {
   const mgr = m ?? managerCandidate(g, b, randInt(g, 45, 70))
   b.ceo = 'manager'
   b.manager = { ...mgr, since: g.year }
   delete b.manager.bonus
   delete b.manager.asked
+  returnFormerExecutiveShares(g, b)
   return b.manager
 }
 
@@ -261,6 +263,8 @@ export function becomeCeo(g: GameState, a: Asset, b: BizState, title = 'Founder 
   }
   b.ceo = 'owner'
   b.manager = null
+  // A hired CEO's shares come back to the owner when they go.
+  returnFormerExecutiveShares(g, b)
   if (!b.ownerSalary) b.ownerSalary = Math.min(ceoPayNorm(b), maxOwnerSalary(b))
   const job: Job = {
     defId: OWNER_JOB,
@@ -333,6 +337,7 @@ export function syncCeo(g: GameState): void {
     const mgr = heir ?? managerCandidate(g, b, randInt(g, 45, 70))
     d.ceo = 'manager'
     d.manager = { ...mgr, since: g.year }
+    returnFormerExecutiveShares(g, d)
     if (heir) afterSuccession(g, a, d, d.manager)
     const who = `${mgr.firstName} ${mgr.lastName}`
     if (c.prison) log(g, `With me behind bars, ${a.name} hired ${who} as interim general manager.`, 'neutral')

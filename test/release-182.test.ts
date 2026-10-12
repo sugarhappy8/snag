@@ -97,8 +97,9 @@ describe('v1.8.2 financial regressions', () => {
     b.history.push({ year: 2025, revenue: 1e9, profit: 400e6, tax: 0, units: 1e8, price: 10, staff: 100, valuation: 1e9, outlets: 100 })
     expect(canIpo(b)).toBeNull()
     goPublic(g, a, b)
-    expect(b.share).toBeCloseTo(.675)
-    expect(b.manager!.equity).toBeCloseTo(.075)
+    // A standalone company's 95-rated CEO holds 3%, diluted by the quarter sold at the IPO.
+    expect(b.share).toBeCloseTo(.97 * .75)
+    expect(b.manager!.equity).toBeCloseTo(.03 * .75)
     expect(b.share + b.manager!.equity! + .25).toBeCloseTo(1)
     expect(equityDue(b.manager!)).toBe(0)
     expect(b.manager!.equityAsked).toBeUndefined()
@@ -136,7 +137,7 @@ describe('v1.8.2 financial regressions', () => {
     expect(grantCeoEquity(g, id, true)).toBe(true)
     expect(groupIpo(g, id)).toBe(true)
     const loaded = groupsOf(JSON.parse(JSON.stringify(g)) as GameState)[0]
-    expect(loaded.core.manager!.equity).toBeCloseTo(.075)
+    expect(loaded.core.manager!.equity).toBeCloseTo(.05 * .75)
     expect(loaded.core.share + loaded.core.manager!.equity! + .25).toBeCloseTo(1)
   })
 
@@ -148,7 +149,7 @@ describe('v1.8.2 financial regressions', () => {
     installManager(g, b, managerCandidate(g, b, 95))
     expect(grantCeoEquity(g, a.id)).toBe(true)
     closeRound(g, a, b, techOf(b), { series: 1, investor: 'Test Ventures', amount: 1e6, pre: 4e6, equity: .2, down: false, bridge: false })
-    expect(b.manager!.equity).toBeCloseTo(.08)
+    expect(b.manager!.equity).toBeCloseTo(.03 * .8)
     expect(b.share + b.manager!.equity! + .2).toBeCloseTo(1)
   })
 

@@ -47,6 +47,7 @@ import {
   multFor,
   newMembership,
   operating,
+  returnExecutiveSlice,
   sharePriceOf,
   saveGroup,
   syncMembers,
@@ -60,6 +61,7 @@ import { capitalGainsTax, IPO_COLLAPSE, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
 import { clearGroupCeoJob } from './conglomerate-job'
 import { BIZ_VERSION, bizOf, ceoJob, executiveEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
+import { equityTarget, stakeText } from './executive-shares'
 import { payFamilyGroupDividend } from './dynasty-ownership'
 import { clampN, cleanName, markBest, money, num, pct, rec, round2, str, toJson } from './util'
 
@@ -628,6 +630,8 @@ export function spinOff(g: GameState, groupId: string, assetId: string): boolean
     saveGroup(g, grp)
     return false
   }
+  // It leaves the group executives' seats: their slice of it comes back to you.
+  const returned = returnExecutiveSlice(grp, x)
   // The fee: the division's own cash, then the group's treasury, then the player's pocket.
   let left = plan.fee
   const own = Math.min(left, spendable(x.a, x.b))
@@ -664,7 +668,7 @@ export function spinOff(g: GameState, groupId: string, assetId: string): boolean
   notice(
     g,
     'Spun Off',
-    `${x.a.name} left ${grp.core.name} and stands on its own${listing ? `, listed on the ${listing.exchange}` : ''}. You hold ${pct(stake, 1)} of it, just as you held it through the group. Lawyers and separation cost ${formatMoney(plan.fee)}.${grp.members.length >= 2 ? '' : ` ${grp.core.name} was down to one company and was wound up.`}`,
+    `${x.a.name} left ${grp.core.name} and stands on its own${listing ? `, listed on the ${listing.exchange}` : ''}. You hold ${pct(stake, 1)} of it${returned ? ', including the group executives’ shares of it, which come back to you' : ', just as you held it through the group'}. Lawyers and separation cost ${formatMoney(plan.fee)}.${grp.members.length >= 2 ? '' : ` ${grp.core.name} was down to one company and was wound up.`}`,
     { emoji: '\u{2702}\u{FE0F}', tone: 'neutral' },
   )
   return true
@@ -903,7 +907,7 @@ export function searchGroupCeo(g: GameState, groupId: string, kind: SearchKind):
   markBest(g, choices, (id) => (id === 'cancel' ? keep : id.startsWith('m') ? (values[Number(id.slice(1))] ?? null) : null), (id) =>
     id === 'cancel' ? 'Best move: nobody here captures enough extra synergy to pay for the change' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year of synergies after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they work the numbers' : ''}`,
   )
-  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()}, wants ${formatMoney(m.salary)} a year. ${m.skill >= 85 ? `${m.skill >= 95 ? 10 : m.skill >= 90 ? 5 : 2}% group ownership for long-term retention.` : 'Salary-based retention.'}`)
+  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()}, wants ${formatMoney(m.salary)} a year. ${m.skill >= 85 ? `${stakeText(equityTarget(m.skill, 'group'))} group ownership for long-term retention.` : 'Salary-based retention.'}`)
   const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (from your own pocket: the treasury was empty)' : by === 'split' ? ' (split between the treasury and your own pocket)' : ''}.`]
   if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means about ${formatMoney(sev)} in severance.`)
   notes.push('A group CEO captures the synergies (the better, the more), keeps the sprawl in check and is paid by the divisions; above 75 they also manage the treasury and the division CEOs.')

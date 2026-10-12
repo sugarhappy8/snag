@@ -39,7 +39,8 @@ import {
 import { eventChance } from './events'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, IPO_COLLAPSE, sellBusiness, sellShares } from './exit'
 import { nationalStrategyMenu } from './expansion'
-import { equityMenu, equityTerms } from './executive'
+import { equityMenu, equityTerms, seatOf } from './executive'
+import { settleAfterCeoChange } from './executive-shares'
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
@@ -1655,6 +1656,8 @@ const MANAGER_PICK = defineScript('business.manager', (g, choice, data) => {
   if (!boardAllows(g, a, b, { kind: 'hire', by: 'owner', amount: m.salary, skill: m.skill, label: `Hire ${managerName(m)} as CEO at ${money(m.salary)} a year` })) return
   const wasCeo = runsIt(g, a)
   const h = handOver(g, a, b, m)
+  // The departing CEO's shares go back to the founder (a division's, through its group).
+  settleAfterCeoChange(g, b)
   const formerFamilyCeo = h.outgoing?.personId ? g.people.find((p) => p.id === h.outgoing?.personId) : undefined
   if (formerFamilyCeo && formerFamilyCeo.id !== m.personId) settleReplacedCeo(g, a, b, formerFamilyCeo)
   if (m.personId && b.manager) afterSuccession(g, a, b, b.manager)
@@ -1730,7 +1733,7 @@ function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow
       id === 'cancel' ? 'Best move: nobody here beats your CEO by enough to pay the severance' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year for the company after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they plan with the numbers' : ''}`,
     )
   }
-  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year. ${equityTerms(m)}.`)
+  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year. ${equityTerms(m, seatOf(g, b))}.`)
   const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (paid from your own pocket: the company was empty)' : by === 'split' ? ' (split between company cash and your own pocket)' : ''}.`]
   if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means buying out the contract: about ${formatMoney(sev)} in severance.`)
   if (list.some((m) => m.skill > SMART_SKILL)) notes.push('Anyone above 75 runs the company with the numbers, like a real executive.')
@@ -1773,6 +1776,7 @@ function leadershipNodes(a: Asset, g: GameState): MenuNode[] {
         if (!boardAllows(gg, cur, bb, takeP(gg, bb))) return
         const h = ownerTakesOver(gg, bb)
         const quit = becomeCeo(gg, cur, bb, title)
+        settleAfterCeoChange(gg, bb)
         log(gg, `I took over as CEO of ${cur.name}.`, 'good')
         notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
       },
