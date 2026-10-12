@@ -347,7 +347,10 @@ describe('competition: antitrust', () => {
     const sa = company(s, 'software', { outlets: 3, cash: 1e10 })
     nextYear(s)
     const sb = bizOf(s, sa)
-    const target = marketViewOf(s, sb).rivals.filter((r) => !r.legacy).slice(-1)[0]
+    const sv = marketViewOf(s, sb)
+    const target = sv.rivals.filter((r) => !r.legacy).slice(-1)[0]
+    // Buy-outs need a buyer at least a third of the target's size by sales; antitrust looks at share.
+    sb.last = { ...sb.last!, revenue: Math.max(sb.last!.revenue, target.share * sv.size) }
     const sq = acquisitionQuote(s, sb, target.id)!
     expect(sq.block).toBeNull()
     expect(sq.price).toBeGreaterThan(0)
@@ -418,6 +421,21 @@ describe('competition: determinism, menus, saves', () => {
     company(r, 'restaurant')
     nextYear(r)
     expect(businessSummary(r)).toMatch(/Japan's restaurant market/)
+  })
+
+  it('never tells a bank or investment firm its market is worth $0 or that it has no sales', () => {
+    for (const industry of ['investmentFirm', 'bank'] as const) {
+      const g = adult(13, 2024, 'us')
+      const a = company(g, industry)
+      for (let y = 0; y < 3; y++) {
+        // Banks and investment firms describe their market in money (deposits, clients' assets).
+        const line = renderAll(g, a).find((t) => industry === 'bank' ? /banks in (the )?United States .* of deposits/.test(t) : /invested in (the )?United States/.test(t))
+        expect(line, industry).toBeDefined()
+        expect(line, industry).not.toMatch(/\$0\b|No sales yet|a year\)/)
+        nextYear(g)
+      }
+      expect(readBiz(g, a).last?.revenue, industry).toBeGreaterThan(0)
+    }
   })
 
   it('loads business saves from before competition existed (and shrugs off damaged market data)', () => {

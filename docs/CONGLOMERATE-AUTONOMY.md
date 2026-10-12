@@ -14,9 +14,10 @@
 - **Group Services / Internal Contracts → Assign All:** assign all eligible missing
   provider/customer pairs without toggling existing contracts off. Domestic-operation,
   ownership, service compatibility, capacity, delivery-cost and portfolio limits apply.
-- **Company → Financial Operations:** Business talent exposes an optimized strategy
-  action. Private firms can fund quantitative research, infrastructure and own-capital
-  trading. Hired CEOs apply their own financial policies automatically.
+- **Company → Financial Operations:** banks and investment firms have their own levers
+  (rates, lending appetite and products; fund styles, strategies, startups, commissions).
+  Business talent adds honest purple hints, not an optimizer. Hired CEOs set them
+  automatically, without foresight.
 
 ## Cash and expansion
 
@@ -53,7 +54,8 @@ additional strategic trading income is booked once, displayed separately, and ta
 Costs and losses are not erased; deposits and client assets are not appropriated. This
 protects annual earnings, not a public share price, an owner's personal investments,
 or the resale value of capital equipment. It applies in the normal yearly business
-settlement across ordinary, financial, game-studio and deep-tech companies. It does not
+settlement across ordinary, game-studio and deep-tech companies. Banks and investment
+firms (v2.2) earn only what their books earn: their statements opt out. It does not
 apply to a 100-skilled player or replace the need to retain a hired CEO.
 An active 100-rated conglomerate CEO also provides this protection to supervised
 divisions, including existing family appointments below that rating.
@@ -65,19 +67,19 @@ labor, royalty and sales ledger executes the plan. Patent terms are unchanged; e
 licenses are not used, and owned products face the existing patent-expiry competition.
 Financial institutions do not manufacture invention products.
 
-## Quantitative finance
+## Banks and investment firms
 
-Elite finance leaders and Business talent improve investment returns, underwriting,
-liquidity management and capital use. Named employees still affect research and capacity.
-Private-firm research and Inventor algorithms can produce deliberately exceptional game
-returns, but their edge decays and becomes diluted above strategy capacity. Paid research
-supports continued improvement; leverage incurs funding costs and can magnify losses.
-Computing infrastructure remains era-sensitive, with manual mathematics in early eras.
+Banks (Banking 2.0, `business/bank*.ts`) and investment firms (Investment Firms 2.0,
+`business/fund*.ts`) run on their own models behind the `finance-firm.ts` dispatcher.
+Elite CEOs, key staff and the Business talent improve underwriting, rate setting and fund
+picks modestly; nobody gets foresight, and a fund manager's edge shrinks as the book grows
+past its capacity. Inventors can build a hedge-fund trading algorithm (computer era only);
+it may be a dud, and any edge fades within a few years. Leverage on a macro call magnifies
+losses as well as gains.
 
-Customer AUM/deposits remain segregated from shareholder cash. Only fees, lending income,
-actual own-capital trading results and the explicit 100-rated game ability enter company
-earnings. These are fictional power-fantasy mechanics, not claims about real investment
-firms or a forecast of achievable returns.
+Customer deposits and client assets remain segregated from shareholder cash. Only interest
+spreads, fees, carry, commissions and the firm's own co-investment results enter company
+earnings; there is no strategic top-up for financial firms.
 
 ## Verification
 

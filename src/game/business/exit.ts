@@ -11,12 +11,24 @@ import { refreshValue, valuationOf } from './economy'
 import { recordCompanyShock } from './dynamics'
 import { industryDef } from './industries'
 import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state'
-import { clampN, money, pct } from './util'
+import { clampN, industryNoun, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
+import { bankAdvanceOf } from './bank-state'
 import { payFamilyBusinessProceeds } from './dynasty-ownership'
 
-/** IPO threshold: last year's net profit, like the original's ~$300M rule. */
-export const IPO_PROFIT = 300_000_000
+/**
+ * IPO threshold: last year's net profit. Set where a successful mid-size company gets to (about
+ * $25M a year: a regional chain, a busy factory, a strong software house); the board still has to
+ * agree. Game studios and deep tech keep their own rules (ipoThreshold).
+ */
+export const IPO_PROFIT = 25_000_000
+
+/**
+ * Chance the underwriters' due diligence finds cooked books before a listing (an IPO is audited
+ * harder than a private sale, whose buyers find them 40% of the time). With the bar at $25M this is
+ * what stops "cook the books, then sell a quarter of the company at the inflated price".
+ */
+export const IPO_COLLAPSE = 0.5
 
 /** Capital gains tax rate on selling a business or shares where the owner lives. */
 export function capitalGainsRate(g: GameState): number {
@@ -81,7 +93,7 @@ export function sellBusiness(g: GameState, a: Asset, b: BizState, price: number,
   if (profit > 0) text += ` Not bad for a company you put ${formatMoney(b.invested)} into.`
   else if (profit < 0) text += ` You put ${formatMoney(b.invested)} into it, so this one is a lesson, not a payday.`
   log(g, `I sold my company, ${a.name}, for ${money(gross)}.`, profit >= 0 ? 'good' : 'neutral')
-  remember(g, `Sold ${a.name} (${industryDef(b.industry).label.toLowerCase()}) for ${money(gross)}.`)
+  remember(g, `Sold ${a.name} (${industryNoun(industryDef(b.industry).label)}) for ${money(gross)}.`)
   notice(g, 'Company Sold!', text, { emoji: '\u{1F91D}', tone: profit >= 0 ? 'good' : 'neutral' })
 }
 
@@ -107,7 +119,8 @@ export function declareBankruptcy(g: GameState, a: Asset, b: BizState, why: stri
  * quote; funded raw inputs are recovered separately, once, at their conservative value. */
 export function closeBusiness(g: GameState, a: Asset, b: BizState, liquidation: number): void {
   if (!g.assets.some(x => x.id === a.id)) return
-  const proceeds = Math.round(Math.max(0, liquidation) + supplyInventoryValue(b) + b.cash - b.debt)
+  // A bank's run-time advance comes back out of its client book as the savers are paid off.
+  const proceeds = Math.round(Math.max(0, liquidation) + supplyInventoryValue(b) + b.cash - b.debt + bankAdvanceOf(b))
   if (proceeds < 0) {
     declareBankruptcy(g, a, b, 'There was not enough left to pay the creditors, so')
     return

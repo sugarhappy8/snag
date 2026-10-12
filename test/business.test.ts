@@ -4,10 +4,13 @@ import { describe, expect, it } from 'vitest'
 import { applyFallback } from '../src/game/offline'
 import { ageUp } from '../src/game/aging'
 import { businessAssetView, businessCareerMenu, businessSummary } from '../src/game/business'
+import { startupCapitalPreview } from '../src/game/business/founding'
+import { rescueNodes } from '../src/game/business/rescue'
+import { aIndustry, aYearsOld, industryNoun, labelPlural, runwayText, units } from '../src/game/business/util'
 import { bizOf, businessAssets, readBiz } from '../src/game/business/state'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
-import type { AnnualReportData, GameState, MenuAction, MenuNode } from '../src/game/types'
+import type { AnnualReportData, GameState, InputModal, MenuAction, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 
 function adultIn(countryId: string, money: number, seed = 3): GameState {
@@ -23,11 +26,12 @@ function adultIn(countryId: string, money: number, seed = 3): GameState {
 }
 
 /** Answer every popup: first choice (or a preferred id), default text, sane annual plans. */
-function drain(g: GameState, prefer: string[] = []): void {
+function drain(g: GameState, prefer: string[] = [], notices?: string[]): void {
   for (let guard = 0; g.queue.length && guard < 200; guard++) {
     const m = g.queue.shift()!
     const before = g.queue.length
-    if (m.kind === 'choice') {
+    if (m.kind === 'notice') notices?.push(m.text)
+    else if (m.kind === 'choice') {
       const ch = m.choices.find((c) => prefer.includes(c.id)) ?? m.choices[0]
       if (m.source === 'script') runScript(g, m.scriptId!, ch.id, m.data, m)
       else applyFallback(g, { type: 'resolveChoice', event: m, choiceId: ch.id })
@@ -96,6 +100,116 @@ describe('business', () => {
     expect(businessSummary(g)).toMatch(/Food Truck|food truck/i)
   })
 
+  it('says the first company got a manager when you found a second one to run yourself', () => {
+    const g = adultIn('us', 5_000_000)
+    found(g, 'foodTruck')
+    const first = businessAssets(g)[0]
+    startRow(g, 'cafe').run(g)
+    const notices: string[] = []
+    drain(g, ['savings', 'me', 'pay'], notices)
+    const opened = notices.find((t) => t.includes('is officially registered'))
+    expect(opened).toBeDefined()
+    expect(opened).not.toMatch(/quit your job as/)
+    expect(opened).toContain(`You're the Founder & CEO, and you handed ${first.name} to a general manager.`)
+    expect(readBiz(g, first).ceo).toBe('manager')
+  })
+
+  it('describes the starting cash buffer in months or years, never "0.0 years"', () => {
+    expect(runwayText(0)).toBe('less than a month')
+    expect(runwayText(0.2)).toBe('2 months')
+    expect(runwayText(0.99)).toBe('1 year')
+    expect(runwayText(2.46)).toBe('2.5 years')
+    expect(runwayText(10_847.04)).toBe('10,847 years')
+    expect(units(50_000)).toBe('50K')
+    expect(units(12_345)).toBe('12.3K')
+    expect(units(3_000_000)).toBe('3M')
+    // Capital & Ownership: a cash-rich company has no "$0" stabilization target.
+    const rich = adultIn('us', 5_000_000)
+    found(rich, 'foodTruck')
+    const truck = businessAssets(rich)[0]
+    bizOf(rich, truck).cash = 10_000_000
+    const position = rescueNodes(rich, truck)[0]
+    const text = position.type === 'info' ? (typeof position.text === 'function' ? position.text(rich) : position.text) : ''
+    expect(text).toContain('Cash already covers six months of costs.')
+    expect(text).not.toMatch(/target \$0|\d\.\d years base-cost/)
+    // Plain words, short subtitles: no "Stabilization target" or "Subscribe to New Equity".
+    expect(text).not.toMatch(/Stabilization|Capital does not fix|restructure/)
+    const actions = rescueNodes(rich, truck).filter((n): n is MenuAction => n.type === 'action')
+    expect(actions.map((n) => n.label)).toEqual(['Buy Out Investors', 'Put In More Money', 'Company Buys Back Shares'])
+    for (const n of actions) expect(typeof n.subtitle === 'string' ? n.subtitle : '').toMatch(/^.{20,90}$/)
+    bizOf(rich, truck).cash = 1_000
+    const tight = rescueNodes(rich, truck)[0]
+    expect(tight.type === 'info' && typeof tight.text === 'string' ? tight.text : '').toMatch(/To be safe, add \$[\d.,]+K? so cash covers six months\. More money buys time, not customers/)
+    const g = adultIn('us', 5_000_000)
+    startRow(g, 'aiLab').run(g)
+    for (let guard = 0; g.queue.length && guard < 10; guard++) {
+      const m = g.queue[0]
+      if (m.kind === 'input' && m.scriptId === 'business.found.capital') {
+        const text = startupCapitalPreview(g, m.data, m.min ?? 0)
+        expect(text).toMatch(/roughly (less than a month|\d+ months?|[\d.,]+ years?) of base wages/)
+        expect(text).not.toMatch(/0\.0 years/)
+        return
+      }
+      g.queue.shift()
+      if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Test Co', m.data, m)
+      else if (m.kind === 'choice' && m.scriptId) runScript(g, m.scriptId, m.choices[0].id, m.data, m)
+    }
+    throw new Error('never asked for starting capital')
+  })
+
+  it('names industries in a proper plural ("Marketing Agencies", never "Agencys")', () => {
+    expect(labelPlural('Brewery')).toBe('Breweries')
+    expect(labelPlural('Marketing Agency')).toBe('Marketing Agencies')
+    expect(labelPlural('Bar')).toBe('Bars')
+    expect(labelPlural('Data Centers')).toBe('Data Centers')
+    // Review: a UK marketing agency's Annual Report said "Marketing Agencys are in hot demand here."
+    const g = adultIn('gb', 5_000_000)
+    found(g, 'marketing')
+    let note = ''
+    for (let y = 0; y < 3 && !note; y++) {
+      ageUp(g)
+      const report = g.queue.find((m) => m.kind === 'minigame' && m.game === 'annualReport')
+      if (report && report.kind === 'minigame') note = String((report.data as { marketNote?: string }).marketNote ?? '')
+      drain(g, ['savings', 'pay', 'ignore', 'decline'])
+    }
+    expect(note).toMatch(/economy is/)
+    expect(note).not.toMatch(/\b[A-Z][a-z]+ys\b|Agencys|label/)
+  })
+
+  it('writes "an AI company" and "an energy company", never "a ai company"', () => {
+    expect(aIndustry('AI Company')).toBe('an AI company')
+    expect(aIndustry('Energy Company')).toBe('an energy company')
+    expect(aIndustry('Food Truck')).toBe('a food truck')
+    expect(industryNoun('E-Commerce Store')).toBe('e-commerce store')
+    expect(aYearsOld(8)).toBe('an 8-year-old')
+    expect(aYearsOld(11)).toBe('an 11-year-old')
+    expect(aYearsOld(7)).toBe('a 7-year-old')
+    expect(aYearsOld(25)).toBe('a 25-year-old')
+    // Review: "Investors only back a ai company with a technical founder", "I founded Walker AI, a ai company".
+    const g = adultIn('us', 5_000_000)
+    g.character.stats.smarts = 40
+    startRow(g, 'aiLab').run(g)
+    const texts: string[] = []
+    drain(g, ['cofounder', 'savings', 'bootstrap', 'me'], texts)
+    for (const m of g.queue) if (m.kind === 'choice') texts.push(m.text)
+    texts.push(...g.log.flatMap((y) => y.entries.map((e) => e.text)), ...g.character.memories)
+    expect(texts.join('\n')).toMatch(/I founded .+, an AI company in /)
+    expect(texts.join('\n')).not.toMatch(/\b[aA] (ai|AI)\b|\ba energy\b|\(ai company\)/)
+  })
+
+  it("doesn't repeat the company's name in a header box under the sheet title", () => {
+    const g = adultIn('us', 400_000)
+    found(g, 'foodTruck')
+    const a = businessAssets(g)[0]
+    const node = businessCareerMenu.children(g).find((n) => n.id === `biz.company.${a.id}`)
+    expect(node?.type).toBe('menu')
+    if (node?.type !== 'menu') return
+    expect(node.label).toBe(a.name)
+    expect(node.header?.(g)).toBeFalsy()
+    g.assets = g.assets.filter((x) => x.id !== a.id)
+    expect(node.header?.(g)).toBe('You no longer own this business.')
+  })
+
   it('feels different by market and respects banned industries', () => {
     const sa = adultIn('sa', 5_000_000)
     expect(startRow(sa, 'bar').disabledReason?.(sa)).toBeTruthy()
@@ -136,5 +250,118 @@ describe('business', () => {
       }
       expect(() => JSON.parse(JSON.stringify(g))).not.toThrow()
     }
+  })
+})
+
+describe('founding: whose money, investor deals and backing out', () => {
+  const cashier = { defId: 'cashier', title: 'Cashier', company: 'Corner Mart', category: 'fulltime' as const, salary: 24_000, level: 0, performance: 60, yearsInRole: 0, yearsAtCompany: 0, data: {} }
+
+  /** Answer founding popups (preferred ids, default text) until the starting-capital slider shows. */
+  function untilCapital(g: GameState): InputModal {
+    for (let guard = 0; g.queue.length && guard < 20; guard++) {
+      const m = g.queue.shift()!
+      if (m.kind === 'input' && m.scriptId === 'business.found.capital') return m
+      if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Test Co', m.data, m)
+      else if (m.kind === 'choice' && m.scriptId) runScript(g, m.scriptId, (m.choices.find((c) => ['city0', 'asset', 'cofounder'].includes(c.id)) ?? m.choices[0]).id, m.data, m)
+    }
+    throw new Error('never asked for starting capital')
+  }
+
+  it('says how much of the starting capital is your own money and who covers the rest', () => {
+    const g = adultIn('us', 400_000)
+    g.character.job = null
+    startRow(g, 'cafe').run(g)
+    const slider = untilCapital(g)
+    expect(slider.text).toMatch(/Your own money covers up to \$[\d.,]+K?\. More than that needs a bank loan or investors/)
+    expect(startupCapitalPreview(g, slider.data, slider.min!)).toMatch(/You can pay all \$[\d.,]+K? from your own \$400K/)
+    // The top of the slider is ~10x your savings: say plainly that investors would fund it.
+    const top = startupCapitalPreview(g, slider.data, slider.max!)
+    expect(top).toMatch(/That's more than your \$400K\. To cover the rest: take \$[\d.,]+[KM]? from investors for \d+% of the company \(you put in \$[\d.,]+K?\)/)
+    expect(top).not.toMatch(/borrow/)
+  })
+
+  it('offers three investor deals at one valuation, conserving money and the 1x preference', () => {
+    const g = adultIn('us', 400_000)
+    g.character.job = null
+    startRow(g, 'cafe').run(g)
+    const slider = untilCapital(g)
+    runScript(g, slider.scriptId, String(slider.min), slider.data, slider)
+    const funding = g.queue.shift()!
+    if (funding.kind !== 'choice') throw new Error('no funding popup')
+    expect(funding.choices.map((c) => c.id)).toEqual(['savings', 'loan', 'investors', 'investors.mid', 'investors.small', 'cancel'])
+    expect(funding.text).toMatch(/Investors value .+ at about \$[\d.,]+K? before their money, the same for every offer/)
+    const money0 = g.character.money
+    const results = funding.choices.filter((c) => c.id.startsWith('investors')).map((c) => {
+      const x = structuredClone(g)
+      runScript(x, funding.scriptId!, c.id, funding.data, funding)
+      const b = readBiz(x, businessAssets(x)[0])
+      const equity = 1 - b.share
+      return { b, equity, spent: money0 - x.character.money, pre: (b.pref! * (1 - equity)) / equity }
+    })
+    // Less money for less of the company, and more of your own money in.
+    expect(results.map((r) => r.equity)).toEqual([...results.map((r) => r.equity)].sort((x, y) => y - x))
+    expect(results[2].equity).toBeLessThan(results[0].equity)
+    expect(results[2].spent).toBeGreaterThan(results[0].spent)
+    for (const r of results) {
+      expect(r.b.pref).toBeGreaterThan(0)
+      // Your money plus theirs pays for the same company: nothing created, nothing lost.
+      expect(r.spent).toBe(r.b.invested)
+      expect(r.spent + r.b.pref!).toBe(results[0].spent + results[0].b.pref!)
+      expect(r.b.cash).toBe(results[0].b.cash)
+      // One honest price: the pre-money valuation agrees across offers (whole-percent rounding).
+      expect(Math.abs(r.pre / results[0].pre - 1)).toBeLessThan(0.03)
+    }
+  })
+
+  it('lets you back out at every founding choice without spending anything', () => {
+    for (const industry of ['cafe', 'investmentFirm', 'aiLab']) {
+      for (let k = 0; k < 10; k++) {
+        const g = adultIn('us', 50_000_000)
+        g.character.job = { ...cashier, data: {} }
+        startRow(g, industry).run(g)
+        const money0 = g.character.money
+        let step = 0
+        let cancelled = false
+        for (let guard = 0; g.queue.length && guard < 40; guard++) {
+          const m = g.queue.shift()!
+          if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Test Co', m.data, m)
+          else if (m.kind === 'choice' && m.scriptId) {
+            expect(m.choices.some((c) => c.id === 'cancel'), `${industry}: "${m.title}" has no way out`).toBe(true)
+            const pick = step++ === k ? 'cancel' : (m.choices.find((c) => ['city0', 'asset', 'cofounder', 'savings', 'bootstrap', 'me'].includes(c.id)) ?? m.choices[0]).id
+            if (pick === 'cancel') cancelled = true
+            runScript(g, m.scriptId, pick, m.data, m)
+          }
+        }
+        if (!cancelled) {
+          expect(businessAssets(g), `${industry} founds when nobody backs out`).toHaveLength(1)
+          break
+        }
+        expect(businessAssets(g), `${industry}: cancel at choice ${k}`).toHaveLength(0)
+        expect(g.character.money).toBe(money0)
+        expect(g.character.job?.defId).toBe('cashier')
+      }
+    }
+  })
+
+  it('offers a way out of the registry clerk’s "facilitation fee" too', () => {
+    for (let seed = 1; seed <= 40; seed++) {
+      const g = adultIn('ng', 5_000_000, seed)
+      g.character.job = null
+      startRow(g, 'cafe').run(g)
+      const money0 = g.character.money
+      for (let guard = 0; g.queue.length && guard < 20; guard++) {
+        const m = g.queue.shift()!
+        if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue || 'Test Co', m.data, m)
+        else if (m.kind === 'choice' && m.scriptId === 'business.found.bribe') {
+          expect(m.choices.map((c) => c.id)).toContain('cancel')
+          runScript(g, m.scriptId, 'cancel', m.data, m)
+          expect(g.queue).toHaveLength(0)
+          expect(businessAssets(g)).toHaveLength(0)
+          expect(g.character.money).toBe(money0)
+          return
+        } else if (m.kind === 'choice' && m.scriptId) runScript(g, m.scriptId, (m.choices.find((c) => ['city0', 'savings'].includes(c.id)) ?? m.choices[0]).id, m.data, m)
+      }
+    }
+    throw new Error('no registry clerk asked for a fee in 40 Nigerian foundings')
   })
 })

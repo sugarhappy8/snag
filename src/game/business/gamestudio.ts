@@ -2254,7 +2254,7 @@ export function growVentureIntoStudio(g: GameState, va: Asset, runner: 'me' | 'm
   addStat(g, 'happiness', 10)
   log(g, `I turned ${va.name} into a real game studio.`, 'good')
   remember(g, `Turned the indie game ${va.name} into a registered game studio in ${city}.`)
-  const run = runner === 'me' ? ` You're the Founder & CEO${quit ? `, and you quit your job as ${quit}` : ''}.` : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} runs it day to day.`
+  const run = runner === 'me' ? ` You're the Founder & CEO${quit ? `, and you ${quit}` : ''}.` : ` ${b.manager ? `${b.manager.firstName} ${b.manager.lastName}` : 'A general manager'} runs it day to day.`
   notice(g, 'Studio Founded!', `${va.name} is now a registered game studio in ${city} with ${b.employees} developer${b.employees === 1 ? '' : 's'}. Its game keeps selling under the company, and the next one is up to you: greenlight it from the company screen.${fromYou > 0 ? ` Registration cost you ${formatMoney(fromYou)}.` : ''}${run}`, { emoji: '\u{1F3AE}', tone: 'good' })
   return a
 }

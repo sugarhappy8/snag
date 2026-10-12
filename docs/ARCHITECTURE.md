@@ -85,6 +85,13 @@ src/
                          ideas) and the product range economics (see "Business growth" below)
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
+    business/finance-firm.ts  Banks and investment firms: a thin dispatcher (simulateFinanceYear,
+                         financeNodes, financeManagerTurn, financeEraBlock...) to bank*.ts (Banking 2.0:
+                         rates, lending appetite, products, regulator, runs, events) and fund*.ts
+                         (Investment Firms 2.0: asset manager, hedge fund, venture capital, brokerage).
+                         Books live in BizState.financeFirm, read by readBank/readFund (which migrate
+                         v2.1 records through finance-firm-state.financeView); client money never
+                         enters b.cash (see "Banks' money rules" below)
     events/wealth*.ts    Being rich: money requests from kids, family and friends, allowances, loans,
                          the "Money Matters" person section (see "Being rich, felt" below)
     assetHooks.ts        businessGone(g, a): low-level code that removes a company (seizure,
@@ -104,6 +111,8 @@ src/
                          options, single-stock options and coin shorts (money-*.ts), online scams
     invest/shocks.ts     Market shocks (g.flags.marketShocks): a company/coin banned or hyped by a
                          head of state; investments and options read the price hit. Kept across heirs
+    workshop/*.ts        Inventor's Workshop (Inventor 2.0): catalog, notebook, builds, patents, launch routes,
+                         sales, events, menus and the old-save migration
     special/*.ts         Special careers split by section: politics.ts (incl. Abuse of Power:
                          market-moving announcements + insider trades),
                          sports*.ts (Special Careers > Sports: team sports, MMA/UFC, boxing, tennis,
@@ -190,7 +199,7 @@ plain records. Quota failures must never prevent saving the current life.
     alcohol/nightlife at the drinking age, crime from ~11-14 depending on the crime. Prisoners only
     see prison activities. Dead characters can do nothing.
 11. **Money stays in constant 2026 US dollars inside the engine.** Display with `formatMoney` /
-    `shortMoney` only, at render/action time. The settings select local currency or USD and nominal
+    `shortMoney` (`tinyMoney` for narrow tiles) only, at render/action time. The settings select local currency or USD and nominal
     year prices or today's prices. Mark both `MenuInput` and `InputModal` money amounts with
     `money: true`; their bounds/defaults stay internal dollars and the UI converts exactly once.
     Never cache formatted strings at module load. Use `withMoneyContext` for another person's
@@ -254,7 +263,8 @@ plain records. Quota failures must never prevent saving the current life.
 `drugs`, `rehab`, `fameActions`, `albums`, `movies`, `housesBought`, `carsBought`, `purchases`,
 `studied`, `skippedSchool`, `diseases`, `lawsuitsWon`, `customActions`, `wealthGifts`,
 `wealthRefusals`, `wealthLoans`, `scammed`, `conglomerates`, `groupMergers`, `spinOffs`, `groupIpos`,
-`groupAcquisitions`. (Old saves may still hold
+`groupAcquisitions`, `ideas`, `prototypes`, `kabooms`, `patents`, `inventions` (launches),
+`historyFirsts`, `rightsSold`, `openInventions`. (Old saves may still hold
 `aiEvents`, from the retired AI narrator; nothing reads it.)
 Add new keys freely, but use these names for these concepts.
 
@@ -285,7 +295,9 @@ only run before PRESENT_YEAR. `events-medicine.ts` adjusts historical medicine a
 `history/markets*.ts` overlays real historical index/sector crashes, gold, housing, inflation,
 rates, exchange closures and expropriation on `invest/engine.ts`. Procedural markets start in
 the present. Historical facts stay fixed across seeds and Time Machine jumps. Options premium
-sampling must use the procedural distribution, not a mix of fixed historical years. Investing
+sampling (index and single-stock) must use the procedural distribution, not a mix of fixed
+historical years; a real company's documented last year is priced at no less than what that
+fixed ending certainly pays, so knowing history is never a risk-free return. Investing
 hints and settlement must use the same family seed, timeline and shock data.
 
 `data/currencies.ts` registers the money converter and owns historical denominations, exchange
@@ -532,15 +544,15 @@ the pay policy while you're CEO): a judge blocks it before money moves and the o
 costs, and `passOdds` includes those odds so hints match `vote()`. `bestMandate` is null for
 companies the planner doesn't model (studios, deep tech).
 
-## National strategy, executive equity and invention
+## National strategy, executive equity and the Workshop
 
-Completed tier inventions offer **Patent in All Nations** alongside individual country filings. `expansion.allNationsPatentQuote` reads the live company (including from stale menu closures) and returns all missing game nations, the sum of their filing fees, and a shared eligibility/funding block. `fileInventionPatentAllNations` rechecks that quote, charges the full cost atomically from company cash, appends each nation's protection using the original invention date and its national term, and emits one summary notice. Existing filings are neither charged again nor extended. The same company-ownership, management and foreign-filing-window rules apply to both paths; insufficient funds cause no partial filing. No new save format is needed.
+`workshop/` is Inventor 2.0 (Activities › Inventor's Workshop; see [INVENTOR-CAREER.md](INVENTOR-CAREER.md)). State: `g.flags.workshop` (owner-stamped notebook, skill, reputation) and invention assets (`kind: 'invention'`, `details.inv2`). `market.ts`, `buildOdds`, `routeQuotes` and the event odds are pure and are exactly what the resolvers roll, so talent hints are honest. The `workshop` yearly hook runs before `business` and `finance`: personal royalties go through `earnIncome`; company-made inventions add to `b.cash` and `b.yearIncome` (booked once by the business sim). `migrate.ts` converts the retired research/IP/company-invention systems; `legacy-capital.ts` keeps their factory and stock book value in `equipmentValue`/`valuationOf`.
 
-`business/dynamics.ts` provides pure, seeded country/industry/year conditions and bounded strategy/patent effects. The bounded module cache stores only deterministic base conditions; confidence is read live from world flags and survives succession. `business/expansion.ts` stores programs, studies, research and patents in optional `BizState.expansion` JSON. Programs are paid up front (cash and yearCosts), are country-scoped, allow three concurrent choices per country, and expire automatically. Inventor research requires a recent home-market study, takes three or five years, and resolves only once per year; exclusivity begins after the just-booked fiscal year and expires after 15/20 years. These are explicitly fictional alternate-history technologies, not assertions about real scientific discoveries. All three business simulations use demand/cost effects. New sectors reuse calibrated operating models with separate markets, products and units.
+`business/dynamics.ts` provides pure, seeded country/industry/year conditions and bounded strategy effects. The bounded module cache stores only deterministic base conditions; confidence is read live from world flags and survives succession. `business/expansion.ts` stores programs and studies in optional `BizState.expansion` JSON (old research/patent keys are kept until the Workshop migrates them). Programs are paid up front (cash and yearCosts), are country-scoped, allow three concurrent choices per country, and expire automatically. All three business simulations use demand/cost effects. New sectors reuse calibrated operating models with separate markets, products and units.
 
 `business/executive.ts` adds bounded skill-scaled execution, gradual quality/morale/brand improvements and pre-booking turnaround planning for elite operating-company CEOs. Managers retain optional equity/equityAsked/groupEquity fields through normalization. A non-shareholder with skill 85/90/95 asks for an initial 2/5/10% ownership-equivalent grant: warning after three years, departure two years later. `state.hasExecutiveShares` recognizes any positive vested company or group stake (not retention credit alone). A shareholder never voluntarily resigns or retires; dilution and skill growth do not trigger top-ups, and yearly retention clears legacy departure deadlines. `board.ts` also blocks rival poaching and raise-refusal departures (including old queued popups), and its raise hints no longer price in a shareholder walking out. Family shareholder CEOs also remain despite estrangement, moving abroad or passing head-office retirement age. Grants transfer ownership, never mint cash; group grants update all look-through stakes, division grants reduce the controlling group's holding, and automatic retention uses value-weighted group awards to preserve subsidiary cash pooling. Granted shares remain outside the player's stake after dismissal. Loyalty does not override owner/board dismissal, death or ordinary company failure. Automatic group recruitment filters out division candidates below the group CEO's rating.
 
-`invest/liquidity.ts` integrates an exponential order book for share sales; stock, penny and crypto buys use its cash-denominated inverse. `liquidity` shocks update shared quotes and holdings (including immediately repricing foreign holdings), coalesce per security/year, and do not fade into a predictable rebound. Gameplay depth is not live market data. Splitting orders cannot remove impact, and immediate buy/sell round trips conserve value before fees and tax. Owned-company and group share sales use the same sale curve. Receipts and sale estimates distinguish market impact from fees and taxes.
+`invest/liquidity.ts` integrates an exponential order book for share sales; stock, penny and crypto buys use its cash-denominated inverse. `liquidity` shocks update shared quotes and holdings (including immediately repricing foreign holdings), coalesce per security/year, and do not fade into a predictable rebound. Gameplay depth is not live market data. Splitting orders cannot remove impact, and immediate buy/sell round trips conserve value before fees and tax. The player's own net buying (`orderFlowFactor`) lifts the shared quote but never the player's own position: holdings are marked, paid dividends and bought out at the quote without it (`Asset.details.flow`), and single-stock options and coin bets settle without the player's order flow after the bet was placed. Owned-company and group share sales use the same sale curve. Receipts and sale estimates distinguish market impact from fees and taxes.
 
 ## Conglomerates (business/conglomerate*.ts)
 
@@ -554,6 +566,54 @@ player. Group acquisitions count sister divisions in the same market for antitru
 (`groupAcquireBlock`). Purchasing and cross-selling synergies grow linearly with sister size (no
 gain from splitting into shells). Companies removed outside exit.ts (debt seizure, repossession,
 divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
+
+## Running a company: dashboard, milestones, franchising, events
+
+- **Dashboard** (`business/dashboard.ts`, pure): `dashboardRows` opens every company screen with
+  identity, cash · value · stake, last year's sales/profit with ▲▼ against the year before, market
+  rank/share and `companyHealth` (Just opened / Thriving / Steady / Struggling / In danger plus one
+  advice line). Finance firms get identity, money and profit only; `financeNodes` owns the rest.
+  The full fact sheet (`manage.infoRows`) lives one tap away under Company Details.
+- **Milestones** (`business/milestones.ts`): `BizState.milestones` maps id → year. `milestoneYear`
+  runs in `yearly.ts` after the books close; a company first seen with ≥ 2 booked years (old saves)
+  or bought records its past quietly, in the years it happened (history). A milestone's year is
+  the fiscal year just booked (anniversaries: founding + N, the IPO: `ipoYear`). Amounts in labels
+  are formatted at render time (`milestoneLabel`); one reached mid-year shows as reached, recorded
+  at the close (`nextMilestones().pending`); cooked books never count toward the unicorn. New ones
+  log, give capped happiness/fame and share one "Milestones!" popup a year across all companies
+  (`g.flags['biz.milestonePopup']`).
+- **Franchising** (`business/franchise.ts`, consumer-facing classic industries only):
+  `BizState.franchise` holds units, a 4-year ledger and the booked year. Sales book the fee net of
+  onboarding through `b.cash`/`b.yearIncome`; `bookFranchiseYear` (before `simulateYear`) books net
+  royalties (6% − 1% support of modeled franchisee sales, capped at one site's capacity, shrinking
+  as the home network nears `networkRoom`) once per fiscal year, applies exact churn (fractions
+  carry, no dice) and may raise one franchisee scandal popup (a hired CEO handles it silently).
+  Buyers a year are set by the network the year started with; buy-backs and terminations never
+  give them back. Buy-backs are capital spending (cash only), become company outlets and cost at
+  least a fresh outlet's fit-out plus the fee, so selling to buy back always loses money. The
+  ledger readers live in `franchise-state.ts`: `valuationOf` takes one-off fees (after tax) out of
+  the earnings it capitalizes (their cash already counts once). The statement shows
+  "Franchise fees & royalties" (`franchiseIncomeFor`) taken out of other income.
+- **More events** (`business/events-extra.ts`): `EXTRA_EVENTS` joins `events.ts EVENTS`, so the
+  yearly roll and the one-event-a-year cap are unchanged. Every hint uses the resolver's own odds
+  (`expectedFx`, `rdValue`, `franchiseValue`, `equityGain`) and no RNG. Banks and investment firms
+  draw only the industry-neutral generic events (`events.ts ANY_COMPANY`); their own sets live in
+  the bank/fund modules. The celebrity investor buys ordinary shares (no preference) and skips deep
+  tech (outside money goes to its R&D account) and cooked books.
+- **IPO**: `exit.IPO_PROFIT` is $25M of last year's profit (studios and deep tech keep their own
+  rules; groups take the strictest member's); the board still votes, then the underwriters audit:
+  cooked books sink the listing `exit.IPO_COLLAPSE` (50%) of the time, for a company
+  (`manage.ipoDueDiligence`) or any division of a group (`groupIpo`).
+- **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
+  `COMPARE_SHOWN` best foreign markets and a one-line summary.
+- **Banks' money rules** (`business/bank*.ts`): deposits and loans are client money; equity is
+  `b.cash − b.debt + advance` (the run-time advance funded by the central-bank debt), and
+  `valuationOf`/`closeBusiness` count it (`bankAdvanceOf`). `payableCash` stops at the capital the
+  regulator requires (`bankPayoutRoom`), so dividends, group sweeps and buybacks can't strip it.
+  `newBiz` opens a bank's books at once (`openBank`). Rescues (bailout, "too big to fail") take at
+  least the fair stake plus a quarter. Bank statements opt out of perfect-foresight income. The
+  market line shows rank and share of deposits (funds: of money invested); finance firms get no
+  rival-buyout quotes. Founding advice comes from `startOutlook` (the year's model without dice).
 
 ## Being rich, felt (events/wealth*.ts)
 

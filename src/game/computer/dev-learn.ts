@@ -679,8 +679,10 @@ export function askParentsForComputer(g: GameState): void {
     g.flags.devParentLaptopAge = c.age
     addStat(g, 'happiness', randInt(g, 8, 14))
     count(g, 'gotComputer')
-    log(g, `${Who} bought me ${modern ? 'a laptop' : model.noun}!`, 'good')
-    remember(g, `${Who} bought me my first ${thing}.`)
+    // The life log and memories are first person ("My mom bought me..."); the popup says "Your mom".
+    const My = Who.replace(/^Your/, 'My')
+    log(g, `${My} bought me ${modern ? 'a laptop' : model.noun}!`, 'good')
+    remember(g, `${My} bought me my first ${thing}.`)
     const x = pronouns(payer.gender)
     const lines = modern
       ? [`"It's for SCHOOLWORK," ${x.he} said, twice.`, '"If I see one virus on it, it goes in the garage."', `${x.He} set the parental controls to "maximum." You found the off switch in four minutes.`]
@@ -698,7 +700,7 @@ export function askParentsForComputer(g: GameState): void {
     g.flags.devParentLaptopAge = c.age - 2
     addStat(g, 'happiness', randInt(g, 4, 8))
     count(g, 'gotComputer')
-    log(g, `${Who} gave me an old ${thing}.`, 'good')
+    log(g, `${Who.replace(/^Your/, 'My')} gave me an old ${thing}.`, 'good')
     const lines = modern
       ? ['It has a sticker of a band nobody remembers and a battery that lasts eleven minutes.', 'It takes four minutes to boot and sounds like a jet engine. It is yours.', 'The "E" key is missing. You will write very carefully.']
       : ['It came from the office of a friend of a friend and still has their spreadsheets on it.', 'The screen is green, the fan is loud and it is yours.', 'The "E" key sticks. You will write very carefully.']
@@ -847,8 +849,10 @@ export function familyComputerYear(g: GameState, budget: number): number {
   count(g, 'gotComputer')
   addStat(g, 'happiness', randInt(g, 4, 9))
   const who = capitalizeWord(parentWord(payer))
-  remember(g, `${who} brought home our first family computer when I was ${c.age}.`)
-  log(g, `${who.replace(/^Your/, 'My')} brought home a family computer!`, 'good')
+  // Memories and the life log are first person: "My mom", never "Your mom ... our ... I".
+  const mine = who.replace(/^Your/, 'My')
+  remember(g, `${mine} brought home our first family computer when I was ${c.age}.`)
+  log(g, `${mine} brought home a family computer!`, 'good')
   const era = computerEra(g)
   const room = pick(g, ['the den', 'the living room', 'a corner of the kitchen', 'the spare room'])
   const rules =

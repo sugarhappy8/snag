@@ -35,19 +35,21 @@ Group CEOs recruit division leaders at their own rating or higher.
 Large stock orders affect execution prices and market quotes, and major company declines
 shake national-sector confidence.
 
-**Investment firms, banks and online banks** have dedicated financial books, not product units.
-Hire specialists, choose portfolio or credit policies, attract clients, manage reserves and
-survive withdrawals and defaults. Client investments and deposits are segregated from company
-cash and shareholder equity. Inventor-talented owners can develop an original market algorithm
-even before computers; its advantage decays and never guarantees returns. Online banks require
-local internet and online-banking technology.
+**Banks and online banks** take deposits and lend them out: set savings and loan rates, pick a
+lending appetite, launch products from mortgages and credit cards to a mobile app or a crypto
+desk, and keep capital above the regulator's minimum. Bad years bring defaults, fines, bank
+runs (go on TV, borrow from the central bank, sell loans, ask for a bailout) and seizure. Online
+banks need local online banking. **Investment firms** are an asset manager, a hedge fund, a
+venture capital firm or a brokerage: choose fund styles, strategies and market calls, back
+startups or set commissions, and beat your peers to win clients. Deposits and clients' money
+are never company cash; firms earn spreads, fees, carry and commissions, and nothing is
+guaranteed. Inventors can build a hedge-fund trading algorithm whose edge fades.
 
 Business founding now offers a **starting-capital slider** with working-cash and runway
 previews. **Capital & Ownership** separates buying investor shares, subscribing to new equity,
-and company-funded buybacks. Banking controls have live-preview sliders and exact entry;
-investment firms offer **retail, private/quant, and brokerage** models. Conglomerates can
-assign capacity-limited **internal service contracts**, with intra-group invoices removed
-from consolidated sales.
+and company-funded buybacks. Bank rates have live-preview sliders and exact entry.
+Conglomerates can assign capacity-limited **internal service contracts**, with intra-group
+invoices removed from consolidated sales.
 
 Important NPCs keep independent education, careers, finances, homes and actual companies.
 Their **Life & Career** profiles support business partnerships, acquisitions and relevant
@@ -56,32 +58,15 @@ parental resources. Extremely rare **royal births** add country-specific dynasty
 duties and succession, without turning state wealth into personal cash. See
 [the mechanics and explicit simulation limits](docs/BUSINESS-AND-DYNASTIES.md).
 
-With the **Inventor** talent, visit **Activities → Inventor** to study a specific
-topic at the library, or online from 1995. Fund research from your personal budget: small
-inventions finish instantly; middle, big and generational projects take one, three and five
-active years. Completion is guaranteed. The result is personally owned IP, not an unrelated
-company demand boost. Assign it to a compatible company or license it for a royalty, then set
-the actual product's price and production. Sales require staff, cash and customers. Open the
-owned invention's national-patent screen to file in all remaining nations at once; fees,
-filing windows and national patent terms still apply. Existing company research queues remain
-compatible and complete into manufactured products.
-
-In **Owned Inventions**, build or expand dedicated fabs with company cash, invest in
-technology/fab upgrades, and set annual output with a production slider and live forecast.
-Any nonnegative selling price is allowed, including free, loss-leading or monopoly pricing;
-customers can refuse unreasonable prices. Actual output needs paid capacity, workers and
-working capital. New products start without factories; old saves retain their original small
-starter operation. Personally or company-owned IP can also be licensed to outside manufacturers:
-they fund their own fabs and pay royalties on actual simulated sales in separate customer channels.
-Contracts retain IP ownership and last no more than five years or the remaining patent term.
-
-Generational breakthroughs begin with extraordinary demand and generate world news and a
-one-time **+1,100% stock-market repricing** across then-open listings, rather than a repeated
-annual payout. Existing holdings and quotes agree; buying after the announcement does not
-replay the jump. Governments may seek strategic access, cooperation or stolen technology.
-Security investment and your responses affect leaks. Demand and monopoly pricing erode as
-each nation's patent counts down; expiry allows cheaper competition. Upgrades improve the
-technology and economics but never restart the original patent term.
+Everyone can tinker in **Activities → 💡 Inventor's Workshop** from age 8: fill a notebook
+with ideas (umbrella hats, runaway alarm clocks, sock-pairing robots), build prototypes that
+work, sort of work or explode, patent the good ones and launch them: sell the rights, license
+them for royalties, pitch them to investors, crowdfund them (2009+), make them in your own
+company or give them to the world. Launched inventions sell for years, then fade; knockoffs,
+recalls, viral moments and patent trolls keep it lively. The **Inventor** talent makes you a
+genius with far more ideas, better prototypes, honest purple hints and the **history race**:
+beat the real inventors of the pop-up toaster or the pocket telephone to the market. See
+[the Workshop](docs/INVENTOR-CAREER.md).
 
 Own a **casino, nightclub, bar or adult entertainment club** where simulated local licensing
 allows it. Visit the floor, hear staff concerns, handle an owner request, support performers,

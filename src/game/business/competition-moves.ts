@@ -9,9 +9,11 @@ import { placeName } from './market-places'
 import { marketKey } from './competition-core'
 import { effectiveRegime, marketDef, mergerLimit } from './competition-data'
 import { familyId } from './competition-roster'
-import { edgeValue, marketOfBiz, marketViewOf, saveMarket, shareText, type RivalView } from './competition'
+import { groupById, groupIdOf } from './conglomerate-state'
+import { edgeValue, marketOfBiz, marketViewOf, saveMarket, shareText, type MarketView, type RivalView } from './competition'
 import { techOf, techPlan, techView } from './deeptech-core'
 import { isDeepTech } from './deeptech-state'
+import { isFinanceFirm } from './finance-firm-state'
 import { bizWorth, fxValue, localEcon, maxProduction, planFor, refreshValue, valuationOf } from './economy'
 import { industryDef } from './industries'
 import { totalOutlets, type BizState } from './state'
@@ -47,8 +49,10 @@ export interface AcquisitionQuote {
   outlets: number
   /** The player's share plus the rival's. */
   combined: number
-  /** Why regulators would stop it (null: they won't). */
+  /** Why the deal can't go ahead (null: it can): the buyer is too new or too small, or regulators object. */
   block: string | null
+  /** The part of `block` that is about the buyer's own size or track record, not the regulators. */
+  reach: string | null
   /** Expected value to the owner (Business talent): profits gained, kit kept, minus the price. */
   value: number
 }
@@ -56,6 +60,9 @@ export interface AcquisitionQuote {
 /** What buying out a rival costs and brings (pure). Null for rivals that can't be bought. */
 export function acquisitionQuote(g: GameState, b: BizState, rivalId: string): AcquisitionQuote | null {
   if (rivalId.startsWith('npc:') || rivalId.startsWith('owned:')) return null // Real companies use their own ownership/negotiation paths.
+  // Banks and investment firms have no unit market (it is sized $0): buying "customers" there would
+  // be a token price for nothing. They grow through their own books (bank.ts, fund.ts).
+  if (isFinanceFirm(b)) return null
   const v = marketViewOf(g, b)
   const r = v.rivals.find((x) => x.id === rivalId)
   if (!r || r.legacy || !(r.share > 0)) return null
@@ -71,17 +78,44 @@ export function acquisitionQuote(g: GameState, b: BizState, rivalId: string): Ac
   const price = Math.round(Math.max(rivalRevenue * Math.max(0.5, 0.15 * def.multiple) * 1.25, capital * 1.1, scaledCost(b, 50_000, 0)))
   const combined = Math.min(1, v.share + r.share)
   const regime = effectiveRegime(b.countryId, g.year, d.scope === 'world')
-  const block = regime.strict >= 0.25 && combined >= mergerLimit(regime) ? `${cap(regime.name)} would block it: together you'd hold ${shareText(combined)} of the market.` : null
+  const reach = takeoverReach(b, v, r, rivalRevenue, groupRevenue(g, b))
+  const block = reach ?? (regime.strict >= 0.25 && combined >= mergerLimit(regime) ? `${cap(regime.name)} would block it: together you'd hold ${shareText(combined)} of the market.` : null)
   const s = b.last
   const margin = s && s.revenue > 0 ? clampN(s.net / s.revenue, -0.5, 0.6) : 0
   const value = rivalRevenue * 0.7 * Math.max(0, margin) * Math.min(def.multiple, 12) * 0.6 + capital * 0.5 - price
-  return { rival: r, price, outlets, combined, block, value: Number.isFinite(value) ? value : -price }
+  return { rival: r, price, outlets, combined, block, reach, value: Number.isFinite(value) ? value : -price }
+}
+
+/** A buyer may be at most this many times smaller than its target (by sales). */
+export const TAKEOVER_SIZE_RATIO = 3
+
+/**
+ * Nobody backs a takeover by a company that has never booked a year, or one far smaller than its
+ * target: a one-café start-up can't swallow an eight-café chain in its first months. A division
+ * of a group is measured with the whole group behind it.
+ */
+function takeoverReach(b: BizState, v: MarketView, r: RivalView, rivalRevenue: number, group: number): string | null {
+  if (!v.booked || !b.last) return `Book your first full year before buying a rival: nobody backs a takeover by a company with no track record.`
+  const own = Math.max(0, group, b.last.revenue, ...b.history.slice(-3).map((h) => h.revenue))
+  if (rivalRevenue > own * TAKEOVER_SIZE_RATIO) return `${r.name} is more than ${TAKEOVER_SIZE_RATIO} times your size. Grow first, or buy a smaller rival.`
+  return null
+}
+
+/** Last year's sales of the whole group a division belongs to (0 for a standalone company). */
+function groupRevenue(g: GameState, b: BizState): number {
+  const id = groupIdOf(b)
+  const grp = id ? groupById(g, id) : null
+  return grp ? grp.members.reduce((t, m) => t + Math.max(0, m.b.last?.revenue ?? 0), 0) : 0
 }
 
 /** Buy out a rival: its customers (most of them) and its locations become yours. */
 export function acquireRival(g: GameState, a: Asset, b: BizState, rivalId: string): boolean {
   const q = acquisitionQuote(g, b, rivalId)
   if (!q) return false
+  if (q.reach) {
+    notice(g, 'Not Yet', q.reach, { emoji: '\u{1F6AB}', tone: 'bad' })
+    return false
+  }
   if (q.block) {
     notice(g, 'Deal Blocked', `${q.block} Your lawyers suggest finding a smaller target.`, { emoji: '\u{1F6AB}', tone: 'bad' })
     return false

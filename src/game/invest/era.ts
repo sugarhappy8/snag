@@ -83,7 +83,7 @@ export const ERA_SECTORS: Partial<Record<SectorId, readonly EraSector[]>> = {
   ],
   electronics: [
     { until: 1949, label: 'Electrical Equipment', emoji: '💡', names: ['{w} Electric', '{w} Electrical Works', '{w} Lamp Company'], blurbs: ['Makes light bulbs, dynamos and electric fans.', 'Electrifying the nation one appliance at a time.'] },
-    { until: 1999, label: 'Electronics', emoji: '🔌', blurbs: ['Makes radios, televisions and the transistors inside them.', 'Its color TVs are the pride of every living room.'] },
+    { until: 1999, label: 'Electronics', emoji: '🔌', blurbs: ['Makes radios, televisions and the transistors inside them.', 'Its television sets are the pride of every living room.'] },
   ],
   automakers: [
     { until: 1909, label: 'Carriages & Motor Cars', emoji: '🚗', names: ['{w} Motor Car', '{w} Carriage Works'], blurbs: ['Builds horseless carriages by hand, a few hundred a year.', 'Half of its customers still want a horse.'] },

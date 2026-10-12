@@ -100,6 +100,18 @@ describe('whole lives', () => {
     }
   }, 120_000)
 
+  it('write the birth year in the new life’s currency, whatever life was on screen before', () => {
+    setMoneyDisplay({ mode: 'local', nominal: true })
+    // Seed 1 in 2000s Britain: a wealthy parent founds a company the year you're born.
+    for (const before of [null, createNewLife({ seed: 2, countryId: 'jp', year: 1980 })]) {
+      bindMoneyContext(before)
+      const g = createNewLife({ seed: 1, countryId: 'gb', year: 2000 })
+      const texts = [...g.log.flatMap((y) => y.entries.map((e) => e.text)), ...g.people.map((p) => JSON.stringify(p.data))]
+      expect(texts.some((t) => /founded .* using £[\d.,]+[KMB]? of personal savings/.test(t))).toBe(true)
+      expect(texts.filter((t) => /(^|[^A-Za-z$])(\$|¥)\d/.test(t))).toEqual([])
+    }
+  })
+
   it('show a Japanese life in yen, never in dollars', () => {
     setMoneyDisplay({ mode: 'local', nominal: true })
     const texts = playLife(21, 'jp', 1975, 35)

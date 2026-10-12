@@ -188,6 +188,12 @@ export interface BizState {
   npcOwnerId?: string
   familyShares?: import('./family-share-state').FamilyShare[]
   acquired: boolean
+  /**
+   * When the player bought it off the market: the calendar year and what the business itself cost
+   * (the price less the net cash it came with). Until it books a year under its new owner, buyers
+   * offer no more than that (manage.ts makeOffers). Missing on companies founded or from old saves.
+   */
+  bought?: { year: number; operating: number }
   /** The owner's share of the company, 0-1. */
   share: number
   /** Money the owner has put in (cost basis for capital gains). */
@@ -267,6 +273,8 @@ export interface BizState {
   yearCosts: number
   /** One-off income this year (insurance payouts, settlements won...). */
   yearIncome: number
+  /** Owner bonuses taken this year (already inside yearCosts); perfect foresight never refills them. */
+  ownerDraws?: number
   /** Last year staff got a general raise (inflation catch-up). */
   raiseYear: number
   lastEvent: number
@@ -310,6 +318,10 @@ export interface BizState {
    * resentment, the "nepo baby" label and the press. Missing when no relative ever worked here.
    */
   family?: Json
+  /** Company milestones reached (business/milestones.ts readMilestones). Missing on old saves. */
+  milestones?: Json
+  /** Franchise network (business/franchise.ts readFranchise). Missing until the first franchise is sold. */
+  franchise?: Json
 }
 
 export const BIZ_VERSION = 2
@@ -489,6 +501,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     founderName: str(d.founderName),
     ...(str(d.npcOwnerId) ? { npcOwnerId: str(d.npcOwnerId) } : {}),
     acquired: d.acquired === true,
+    ...(rec(d.bought) && Number.isFinite(rec(d.bought)!.year) && Number.isFinite(rec(d.bought)!.operating) ? { bought: { year: Math.round(num(rec(d.bought)!.year)), operating: Math.max(0, num(rec(d.bought)!.operating)) } } : {}),
     share: clampN(num(d.share, 1), rec(d.group) || Array.isArray(d.familyShares) ? 0 : 0.01, 1),
     invested: Math.max(0, num(d.invested)),
     pref: Math.max(0, num(d.pref)),
@@ -535,6 +548,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     openFraction: clampN(num(d.openFraction, 1), 0, 1),
     yearCosts: Math.max(0, num(d.yearCosts)),
     yearIncome: Math.max(0, num(d.yearIncome)),
+    ...(num(d.ownerDraws) > 0 ? { ownerDraws: num(d.ownerDraws) } : {}),
     raiseYear: Math.round(num(d.raiseYear)),
     lastEvent: Math.round(num(d.lastEvent)),
     loanId: str(d.loanId),
@@ -554,6 +568,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.group && typeof d.group === 'object' && !Array.isArray(d.group) && typeof d.group.id === 'string' && d.group.id ? { group: d.group } : {}),
     ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),
     ...(d.expansion && typeof d.expansion === 'object' && !Array.isArray(d.expansion) ? { expansion: d.expansion } : {}),
+    ...(d.milestones && typeof d.milestones === 'object' && !Array.isArray(d.milestones) ? { milestones: d.milestones } : {}),
+    ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
   }
 }
 
@@ -603,11 +619,16 @@ export function groupMultOf(b: Pick<BizState, 'group'>): number {
 /**
  * The owner's stake of the valuation, which is what the asset is worth to them. In a group the
  * group's multiplier applies to the company's operating value (cash and debt count at face value).
+ * Outside investors' 1x liquidation preference comes first, exactly as a sale pays out
+ * (exit.ownerProceeds): money investors just put in is theirs, not the founder's net worth.
  */
 export function stakeValue(b: BizState): number {
   const mult = groupMultOf(b)
   const operating = mult === 1 ? 0 : Math.max(0, b.valuation - (b.cash - b.debt))
-  const v = Math.round((b.valuation + (mult - 1) * operating) * b.share)
+  const total = b.valuation + (mult - 1) * operating
+  const pref = b.share >= 1 ? 0 : Math.max(0, b.pref ?? 0)
+  // Investors take the larger of their preference and their share; the owner keeps the rest.
+  const v = Math.round(pref > total * (1 - b.share) ? total - pref : total * b.share)
   return Number.isFinite(v) ? Math.max(0, v) : 0
 }
 

@@ -13,7 +13,7 @@ import { inPrison, queueAi, yearActionsUsed } from './core'
 import { investmentAssetSubtitle, investmentAssetView, investmentsMenu } from './investments'
 import { CUSTOM_ACTION_KEY, MAX_CUSTOM_ACTIONS_PER_YEAR } from './offline'
 import { crimeMenu } from './crime'
-import { personalInventorMenu, inventionAssetNodes } from './inventor'
+import { inventionNodes, inventionSubtitle, workshopMenu } from './workshop/menu'
 import { corruptionMenu } from './special/corruption'
 import { casinoMenu, lotteryMenu } from './gambling'
 import { doctorMenu } from './health'
@@ -36,7 +36,7 @@ ASSET_KIND_VIEWS.business = { subtitle: businessAssetSubtitle, children: busines
 ASSET_KIND_VIEWS.investment = { subtitle: investmentAssetSubtitle, children: investmentAssetView }
 ASSET_KIND_VIEWS.membership = { subtitle: membershipAssetSubtitle, children: membershipAssetView }
 ASSET_KIND_VIEWS.venture = { subtitle: ventureAssetSubtitle, children: ventureAssetView }
-ASSET_KIND_VIEWS.invention = { subtitle: () => 'Personally owned invention IP', children: (g, a) => inventionAssetNodes(g, a.id) }
+ASSET_KIND_VIEWS.invention = { subtitle: inventionSubtitle, children: inventionNodes }
 ASSET_NODE_HOOKS.subtitle = (g, a) => (isVisaLock(a) ? visaLockSubtitle(g, a) : null)
 ASSET_NODE_HOOKS.view = (g, a) => developmentNodes(g, a) ?? musicMasterNodes(g, a) ?? (isVisaLock(a) ? visaLockView(g, a) : luxuryAssetNodes(g, a))
 ASSET_NODE_HOOKS.extra = familyAccessNode
@@ -129,7 +129,7 @@ export const activitiesMenu: MenuGroup = {
       moviesMenu,
       nightlifeMenu,
       petsMenu,
-      personalInventorMenu,
+      workshopMenu,
       shoppingMenu,
       socialMediaMenu,
       thisYearMenu,

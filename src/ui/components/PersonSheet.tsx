@@ -82,7 +82,7 @@ export function PersonDetails({ g, person }: { g: GameState; person: Person }) {
     if (p.species) facts.push(['Species', p.species])
   } else {
     if (p.occupation && p.occupation !== 'None') facts.push(['Occupation', p.occupation])
-    if (p.age >= 16) facts.push(['Money', p.relationship >= 35 || p.livesWithPlayer ? shortMoney(Math.max(0, p.money)) : 'Private'])
+    if (p.age >= 16) facts.push(['Cash on hand', p.relationship >= 35 || p.livesWithPlayer ? shortMoney(Math.max(0, p.money)) : 'Private'])
   }
   if (p.yearsKnown > 0 && p.relation !== 'parent' && p.relation !== 'sibling') {
     facts.push(['Known for', p.yearsKnown === 1 ? '1 year' : `${p.yearsKnown} years`])

@@ -67,7 +67,7 @@ import {
   type SecYear,
 } from './invest/engine'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
-import { addMarketShock, indexShockFactor, marketBreakthroughs, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
+import { addMarketShock, indexShockFactor, marketBreakthroughs, orderFlowFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
 import { chance, pick, randFloat, uid } from './rng'
 import { HINT_EMOJI, talentHint } from './talents'
@@ -285,10 +285,36 @@ function basis(a: Asset): number {
   return Math.min(MAX_INVESTMENT_VALUE, Math.max(0, num(a.details.basis, a.purchasePrice)))
 }
 
+/** Market value: units at the quote. Trades size against it (the order book starts at the quote). */
 function holdingValue(a: Asset): number {
   const u = units(a), p = unitPrice(a)
   if (!(u > 0) || !(p > 0)) return 0
   return Math.round(u >= MAX_INVESTMENT_VALUE / p ? MAX_INVESTMENT_VALUE : u * p)
+}
+
+/**
+ * How far the player's own net buying has lifted this holding's quote (1 when it hasn't). Your
+ * orders move a thin market for everyone else, but your own position is valued, paid dividends and
+ * bought out at the price you didn't make yourself; unwinding through the same book is what it
+ * really fetches. (Net selling only lowers the quote, so it is never added back.)
+ */
+function ownFlow(a: Asset): number {
+  const f = num(a.details.flow, 1)
+  return f > 1 && Number.isFinite(f) ? f : 1
+}
+
+/** What the holding counts for in net worth, dividends and buyouts (holdingValue without own flow). */
+function markedValue(a: Asset): number {
+  return Math.round(holdingValue(a) / ownFlow(a))
+}
+
+/** Refresh the stored own-flow lift from the shock record (trades, revaluations, the yearly step). */
+function syncOwnFlow(g: GameState, a: Asset): void {
+  const t = typeOf(a)
+  const f = t === 'stock' || t === 'penny' || t === 'crypto' ? orderFlowFactor(g, str(a.details.secId), g.year) : 1
+  if (f > 1 + 1e-12 && Number.isFinite(f)) a.details.flow = f
+  else delete a.details.flow
+  a.value = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, markedValue(a)))
 }
 
 function setPosition(a: Asset, u: number, price: number, cost: number): void {
@@ -299,7 +325,7 @@ function setPosition(a: Asset, u: number, price: number, cost: number): void {
   a.details.price = safeP
   a.details.basis = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(cost) ? cost : 0)))
   a.purchasePrice = a.details.basis
-  a.value = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(safeU * safeP)))
+  a.value = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(safeU * safeP / ownFlow(a))))
 }
 
 /**
@@ -311,7 +337,8 @@ function setPosition(a: Asset, u: number, price: number, cost: number): void {
 function endedProceeds(a: Asset, before: number, perUnit: number, premium: number): number {
   const u = units(a)
   if (!(u > 0) || !(perUnit > 0)) return 0
-  const raw = u * perUnit
+  // A buyout pays on the quote without the holder's own buying (before is already marked that way).
+  const raw = u * perUnit / ownFlow(a)
   if (Number.isFinite(raw)) return Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(raw)))
 
   const prior = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Number.isFinite(before) ? before : 0))
@@ -737,7 +764,10 @@ function listing(g: GameState): Listing {
       details: { type: 'crypto', secId: def.id, symbol: def.symbol, risk: def.risk, yield: def.yield, sector: def.stable ? 'Stablecoin' : 'Cryptocurrency', blurb: def.blurb, slot: c.slot, gen: c.gen, country: cid },
     }, shockFactor(g, def.id, y), shockFactor(g, def.id, y - 1))
   })
-  return { info, year: ey, stocks, pennies, fund, reit, bond, savings, term, gold, crypto }
+  // This year's moves read like the index line and "Recent years" beside them: in the money of
+  // the year (reportedMove), not constant dollars ("FTSE 100 up 14.8%" over an ETF "▲10.0%").
+  const shown = (q: Quote): Quote => (q.ret === null ? q : { ...q, ret: reportedMove(info, y, q.ret).pct })
+  return { info, year: ey, stocks: stocks.map(shown), pennies: pennies.map(shown), fund: shown(fund), reit: shown(reit), bond, savings, term, gold: shown(gold), crypto: crypto.map(shown) }
 }
 
 /** What a resident can buy right now (used by tests and tools): id, type, name, ticker, price, risk. */
@@ -953,7 +983,10 @@ function recordOrderFlow(g: GameState, a: Asset, mult: number): void {
   const before = shockFactor(g, str(d.secId), g.year)
   addMarketShock(g, { asset: typeOf(a) === 'crypto' ? 'coin' : 'stock', secId: str(d.secId), exKey: str(d.exKey, 'crypto'), slot: num(d.slot), name: a.name, symbol: str(d.symbol), cause: 'liquidity', year: g.year, mult, fade: 0, countryId: str(d.country, g.character.countryId) })
   // Foreign holdings may not occur in the player's current-country quote list.
-  if (g.assets.includes(a)) setPosition(a, units(a), unitPrice(a) * shockFactor(g, str(d.secId), g.year) / before, basis(a))
+  if (g.assets.includes(a)) {
+    syncOwnFlow(g, a)
+    setPosition(a, units(a), unitPrice(a) * shockFactor(g, str(d.secId), g.year) / before, basis(a))
+  }
   revalueHoldings(g)
 }
 
@@ -1071,7 +1104,7 @@ function portfolioStats(g: GameState): PortfolioStats {
   let start = 0
   let moved = 0
   for (const a of investmentHoldings(g)) {
-    value = Math.min(MAX_INVESTMENT_VALUE, value + holdingValue(a))
+    value = Math.min(MAX_INVESTMENT_VALUE, value + markedValue(a))
     cost = Math.min(MAX_INVESTMENT_VALUE, cost + basis(a))
     if (num(a.details.updatedYear) === g.year) {
       const s = Math.min(MAX_INVESTMENT_VALUE, Math.max(0, num(a.details.yearStart)))
@@ -1080,7 +1113,8 @@ function portfolioStats(g: GameState): PortfolioStats {
       moved = Math.max(-MAX_INVESTMENT_VALUE, Math.min(MAX_INVESTMENT_VALUE, moved + (Number.isFinite(contribution) ? contribution : 0)))
     }
   }
-  return { value, basis: cost, year: start > 0 ? moved / start : null }
+  // Reported like the market lines: in the money of the year (see reportedMove).
+  return { value, basis: cost, year: start > 0 ? reportedMove(exchangeInfo(g.character.countryId), g.year, moved / start).pct : null }
 }
 
 /**
@@ -1267,10 +1301,15 @@ function holdingInfo(g: GameState, a: Asset): string[] {
   rows.push(`${TYPE_LABEL[t]}${str(d.symbol) ? ` · ${str(d.symbol)}` : ''} · ${where}${str(d.sector) && t === 'stock' ? ` · ${str(d.sector)}` : ''}`)
   if (t === 'savings') rows.push(`Balance: ${formatMoney(v)}`)
   else rows.push(`Value: ${formatMoney(v)} · ${unitsText(u)} ${unitLabel({ type: t, symbol: str(d.symbol) })} at ${priceText(unitPrice(a))}`)
+  if (ownFlow(a) > 1.001) rows.push(`Your own buying lifted this quote ${absPct(ownFlow(a) - 1)}, so the position counts as ${formatMoney(markedValue(a))} in your net worth. Only selling back through the market can turn the lift into cash, and selling pushes the price down again.`)
   const gain = v - cost
   const gp = cost > 0 ? gain / cost : 0
   rows.push(`Invested: ${formatMoney(cost)}${t !== 'savings' && u > 0 ? ` (avg ${priceText(cost / u)})` : ''} · ${gain >= 0 ? 'Gain' : 'Loss'}: ${formatMoney(Math.abs(gain))} (${pct(gp)})`)
-  if (num(d.updatedYear) === g.year) rows.push(`This year: ${change(num(d.lastChange))}`)
+  if (num(d.updatedYear) === g.year) {
+    // As the listing reports it (nominal in past years), not in constant dollars.
+    const home = t === 'stock' || t === 'penny' || t === 'index' || t === 'reit' ? holdingExchange(a) : exchangeInfo(str(d.country, g.character.countryId))
+    rows.push(`This year: ${change(reportedMove(home, g.year, num(d.lastChange)).pct)}`)
+  }
   const y = num(d.yield)
   const income = num(d.income)
   const cid = str(d.country, g.character.countryId)
@@ -2040,6 +2079,7 @@ export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges 
   normalizeHoldings(g)
   const quotes = allQuotes(listing(g))
   for (const a of investmentHoldings(g)) {
+    syncOwnFlow(g, a)
     const t = typeOf(a)
     if (indicesOnly && t !== 'index') continue
     if (t !== 'stock' && t !== 'penny' && t !== 'index' && t !== 'crypto') continue
@@ -2061,7 +2101,7 @@ export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges 
     if (!price || !(price > 0) || !(old > 0) || Math.abs(price / old - 1) < 1e-9) continue
     if (num(a.details.updatedYear, -1) < g.year && num(a.details.marketMarkedYear, -1) !== g.year) {
       a.details.marketMarkedYear = g.year
-      a.details.marketIncomeBase = holdingValue(a)
+      a.details.marketIncomeBase = markedValue(a)
     }
     if (num(a.details.updatedYear) === g.year) a.details.lastChange = Math.round(((1 + num(a.details.lastChange)) * (price / old) - 1) * 10000) / 10000
     setPosition(a, units(a), price, basis(a))
@@ -2100,7 +2140,8 @@ export function yearlyInvestments(g: GameState): void {
   for (const a of held) {
     const d = a.details
     if (num(d.updatedYear, -1) >= g.year) continue
-    const before = num(d.marketMarkedYear, -1) === g.year ? Math.max(0, num(d.marketIncomeBase, holdingValue(a))) : holdingValue(a)
+    syncOwnFlow(g, a)
+    const before = num(d.marketMarkedYear, -1) === g.year ? Math.max(0, num(d.marketIncomeBase, markedValue(a))) : markedValue(a)
     const u = units(a)
     const mv = moveHolding(g, a, news)
     const rawPay = before * (Number.isFinite(mv.payout) ? mv.payout : 0)

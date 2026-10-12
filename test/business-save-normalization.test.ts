@@ -5,6 +5,7 @@ import { readCore, readMembership } from '../src/game/business/conglomerate-stat
 import { techOf } from '../src/game/business/deeptech-core'
 import { TECH_VERSION, nextDrugId, readTech } from '../src/game/business/deeptech-state'
 import { expansionOf } from '../src/game/business/dynamics'
+import { legacyPatents } from '../src/game/workshop/migrate'
 import { normalizeStudio } from '../src/game/business/gamestudio-state'
 import { BIZ_VERSION, bizOf, normalizeBiz } from '../src/game/business/state'
 import type { Asset, Json } from '../src/game/types'
@@ -148,7 +149,8 @@ describe('business save normalization', () => {
     const expansion = expansionOf(biz)
     expect(expansion.strategies).toEqual([{ id: 'value', country: 'us', started: 2023, expires: 2027 }])
     expect(expansion.studies).toEqual([{ country: 'us', year: 2025 }])
-    expect(expansion.patents).toEqual([expect.objectContaining({ id: 'inv1', name: 'Recovered', launched: 2022, expires: 2042, protections: [{ country: 'us', filed: 2023, expires: 2043 }] })])
+    // Old company patents stay readable until the Workshop migrates them into company-made inventions.
+    expect(legacyPatents(biz)).toEqual([expect.objectContaining({ id: 'inv1', name: 'Recovered', launched: 2022, expires: 2042, protections: [{ country: 'us', filed: 2023, expires: 2043 }] })])
     expect(expansion.lastYear).toBe(2025)
 
     const market = readMarket({

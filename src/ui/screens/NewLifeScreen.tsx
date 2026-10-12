@@ -540,9 +540,10 @@ export function RoyalBirthPicker({ countryId, year, value, onChange }: { country
       <label>
         <span className="al-label">Royal birth</span>
         <select className="al-select" value={value === 'royal' && !rule ? 'random' : value} aria-describedby={hintId} onChange={e => onChange(e.target.value as RoyalBirthChoice)}>
-          <option value="random">🎲 Random — rare chance of royalty</option>
+          {/* Short enough for a phone-width select: "…rare chance of royalty" was cut off at 390px. */}
+          <option value="random">🎲 Random (rarely royal)</option>
           <option value="royal" disabled={!rule}>👑 Royal family</option>
-          <option value="nonRoyal">Non-royal family — random wealth</option>
+          <option value="nonRoyal">Non-royal family</option>
         </select>
       </label>
       <p id={hintId} className="al-muted al-small" aria-live="polite">

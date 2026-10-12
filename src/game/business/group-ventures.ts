@@ -8,6 +8,8 @@ import { newMembership, syncMembers, type Group } from './conglomerate-state'
 import { bestPlan, openFractionFor, startupCost, valuationOf } from './economy'
 import { financeEraBlock, financeManagerTurn, simulateFinanceYear } from './finance-firm'
 import { isFinanceFirm } from './finance-firm-state'
+import { bankOutlook, isBank } from './bank'
+import { openBank } from './bank-state'
 import { createBusinessAsset, newBiz } from './founding'
 import { spendGroupTreasury, treasurySpare } from './group-treasury'
 import { industryDef } from './industries'
@@ -31,8 +33,11 @@ export function foundGroupVenture(g: GameState, grp: Group): string[] {
     const total = cost.total + working
     if (total > budget) return []
     b.cash = working
+    // A bank's books are sized to its starting capital (newBiz opened them before the cash was set).
+    openBank(b)
     let profit: number
-    if (isFinanceFirm(b)) { financeManagerTurn(g, b); profit = simulateFinanceYear(g, structuredClone(b), g.year, 0).stmt.net }
+    // A bank is judged on its expected year, not on one roll of this year's (still unknown) dice.
+    if (isFinanceFirm(b)) { financeManagerTurn(g, b); profit = isBank(b) ? bankOutlook(g, b) : simulateFinanceYear(g, structuredClone(b), g.year, 0).stmt.net }
     else { const plan = bestPlan(g, b, { fast: true }); b.price = plan.price; b.production = plan.production; profit = plan.profit }
     // A real positive forecast and finite payback, not endless shell-company creation.
     if (profit <= 0 || profit * (leader.skill >= 85 ? 8 : 4) < total) return []

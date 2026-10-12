@@ -3,7 +3,7 @@ import { makeTestGame } from './helpers'
 import { createPerson } from '../src/game/people'
 import { initializeNpc, npcBusinessYear, npcCompany, npcLife, npcLifeNodes, startNpcCompany, yearlyNpcLife } from '../src/game/npc-lives'
 import { saveNpcLife } from '../src/game/npc-state'
-import { birthBackgroundFor } from '../src/game/birth-background'
+import { birthBackgroundFor, initializeBirthParent } from '../src/game/birth-background'
 import { initialCountry, storeEconomy, type CountryEconomy } from '../src/game/economy/model'
 import { educationAccess, householdPressure } from '../src/game/economy/cohorts'
 import { beginLandlordLease, landlordMenu, landlordView, rentalMarket, yearlyLandlord } from '../src/game/landlord'
@@ -146,6 +146,21 @@ describe('World Simulation 2.0: household and existing-person integration', () =
     expect(g.assets.some(a => a.id === id)).toBe(false)
     const before = JSON.stringify(g)
     npcBusinessYear(g, p, l); expect(JSON.stringify(g)).toBe(before)
+  })
+
+  it('gives two wealthy parents with one surname companies with different names', () => {
+    // Playtest: "Ella: founded Cooper Café … Jamie: founded Cooper Café" in the birth log.
+    const g = fixture()
+    g.flags.birthBackground = 5
+    const mom = createPerson(g, { relation: 'parent', age: 34, gender: 'female', firstName: 'Ella', lastName: 'Cooper', livesWithPlayer: true })
+    const dad = createPerson(g, { relation: 'parent', age: 36, gender: 'male', firstName: 'Jamie', lastName: 'Cooper', livesWithPlayer: true })
+    for (const p of [mom, dad]) { p.money = 50_000_000; initializeBirthParent(g, p) }
+    const names = [mom, dad].map(p => npcCompany(p, g.year)?.a.name)
+    expect(names).toEqual(['Cooper Café', 'Jamie Cooper Café'])
+    expect(npcLife(dad)!.history.join('\n')).toContain('founded Jamie Cooper Café')
+    // The sheet says what the big number counts, next to their cash on hand.
+    const life = npcLifeNodes(g, dad)[0]
+    expect(life.type === 'info' && typeof life.text === 'string' ? life.text : '').toMatch(/net worth incl\. property & companies about \$[\d.,]+[KMB]?/)
   })
 
   it('preserves deterministic decisions for the same contact after the family generation suffix changes', () => {

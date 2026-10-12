@@ -15,8 +15,10 @@ import type { Asset, GameState } from '../types'
 import { boardExists, boardOf, boardView, controlsBoard, directorName, mandateDef, readBoard, recordVote, seatLabel, syncSeats, type BoardState, type Director, type Limits, type Mandate, type Stance } from './board-state'
 import { ceoPayNorm } from './career'
 import { readTech } from './deeptech-state'
-import { equipmentValue, localEcon } from './economy'
+import { equipmentValue, localEcon, valuationOf } from './economy'
 import { earmarkedCash } from './gamestudio'
+import { bankPayoutRoom } from './bank-model'
+import { isBankIndustry } from './bank-state'
 import { industryDef } from './industries'
 import { ABOVE_MARKET, rankDef } from './nepo-roles'
 import { runsIt, totalOutlets, type BizState } from './state'
@@ -98,8 +100,23 @@ export interface VoteResult {
  * (paying out borrowed money and then going bankrupt would keep the loan).
  */
 export function payableCash(a: Asset, b: BizState): number {
-  const v = b.cash - earmarkedCash(a) - b.debt
+  // A bank also keeps the capital its regulator requires (business/bank-model.ts).
+  const v = Math.min(b.cash - earmarkedCash(a) - b.debt, isBankIndustry(b.industry) ? bankPayoutRoom(b) : Infinity)
   return Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0
+}
+
+/**
+ * What can be paid out to the shareholders (dividends, withdrawals): payableCash, and while
+ * outside investors hold a 1x liquidation preference, only what the company is worth beyond it.
+ * Their money is owed back to them first (exit.ownerProceeds); paying it out as a dividend would
+ * hand the owner their share of the investors' capital (raise money, then pay yourself).
+ */
+export function payoutCash(a: Asset, b: BizState): number {
+  const cash = payableCash(a, b)
+  const pref = b.share < 0.999 && !b.public ? Math.max(0, b.pref ?? 0) : 0
+  if (pref <= 0) return cash
+  const room = valuationOf(b) - pref
+  return Number.isFinite(room) ? Math.max(0, Math.min(cash, Math.round(room))) : 0
 }
 
 /** A year of the company's costs (last year's books, or an estimate before the first year). */
@@ -153,7 +170,7 @@ export function payCap(b: BizState, st: BoardState): number {
 
 /** Dividends the board lets go without a vote: spare cash above the reserve. */
 export function sustainablePayout(a: Asset, b: BizState, st: BoardState): number {
-  return Math.max(0, payableCash(a, b) - reserveDollars(b, st))
+  return Math.max(0, payoutCash(a, b) - reserveDollars(b, st))
 }
 
 /** Debt the board accepts without a vote: about a year and a half of profit, or a third of the company's value. */

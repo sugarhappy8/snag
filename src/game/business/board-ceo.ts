@@ -19,7 +19,7 @@ import { bell, chance, rand, randInt, uid, weightedPick } from '../rng'
 import type { Asset, GameState } from '../types'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from '../world'
 import { boardOf, type BoardState, type Mandate } from './board-state'
-import { capexBudget, capexLeft, noteSpend, payableCash, reserveDollars, runningCosts } from './board-vote'
+import { capexBudget, capexLeft, noteSpend, payableCash, payoutCash, reserveDollars, runningCosts } from './board-vote'
 import { ceoLetter, SMART_SKILL, styleOf } from './career'
 import { isDeepTech } from './deeptech-state'
 
@@ -635,7 +635,7 @@ function payoutTurn(t: Turn): void {
   if (inGroup(g, b)) return
   const mandate = t.st.mandate
   if (mandate !== 'cash' && mandate !== 'profit') return
-  const free = Math.max(0, payableCash(a, b) - reserveDollars(b, t.st) - t.reserved)
+  const free = Math.max(0, payoutCash(a, b) - reserveDollars(b, t.st) - t.reserved)
   const payout = Math.round(mandate === 'cash' ? free : Math.min(free, 0.5 * Math.max(0, b.last?.net ?? 0)))
   if (payout < Math.max(1_000, b.valuation * 0.005)) return
   b.cash -= payout

@@ -619,5 +619,6 @@ describe('whole lives with special talents', () => {
       const json = JSON.stringify(g)
       expect(JSON.stringify(JSON.parse(json))).toBe(json)
     }
-  }, 120_000)
+    // Ten whole lives with menu play every year: sized for a 2-core CI runner.
+  }, 900_000)
 })

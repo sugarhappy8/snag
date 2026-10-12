@@ -30,7 +30,7 @@ vi.mock('../src/game/investments', async (importOriginal) => ({
 }))
 
 const report = await import('../src/ui/minigames/AnnualReport')
-const { AnnualReport, readReportData, projectPlan, planResult, niceStep, snap, nudge, singularUnit, formatPrice, unitsToMeetDemand, SKIP_RESULT } =
+const { AnnualReport, readReportData, projectPlan, planResult, niceStep, snap, nudge, gridTop, singularUnit, formatPrice, unitsToMeetDemand, SKIP_RESULT } =
   report
 const { MINIGAMES } = await import('../src/ui/minigames')
 const { ProfileSheet } = await import('../src/ui/components/ProfileSheet')
@@ -212,6 +212,17 @@ describe('plan math', () => {
     expect(nudge(9.7, 1, 2, 30, 0.5)).toBe(10)
     expect(nudge(2, -1, 2, 30, 0.5)).toBe(2)
     expect(nudge(29.9, 1, 2, 30, 0.5)).toBe(30)
+  })
+
+  it('lets the slider reach a top price that is off the step grid', () => {
+    // Review: the scale said Kz 42,999 but dragging all the way right stopped a step short.
+    expect(gridTop(0.55, 13.77, 0.2)).toBe(13.95)
+    expect(snap(gridTop(0.55, 13.77, 0.2), 0.55, 13.77, 0.2)).toBe(13.77)
+    expect(gridTop(2, 30, 0.5)).toBe(30)
+    expect(gridTop(0, 97_000, 500)).toBe(97_000)
+    expect(gridTop(7, 7, 1)).toBe(7)
+    const { html } = renderReport({ ...SAMPLE, minPrice: 2, maxPrice: 30.3 } as unknown as Json)
+    expect(html).toMatch(/type="range" min="2" max="30.5" step="0.5"/)
   })
 
   it('formats prices and unit names', () => {

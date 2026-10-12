@@ -312,6 +312,40 @@ describe('conglomerates', () => {
     }
   })
 
+  it('pulls a group IPO when the underwriters find cooked books in a division (never lists unexamined)', () => {
+    const { g, assets } = setup(6, ['restaurant', 'hotel'])
+    expect(formGroup(g, assets.map((a) => a.id), 'Cooked Group')).toBe(true)
+    drain(g)
+    const id = groupsOf(g)[0].core.id
+    for (const a of assets) {
+      const b = bizOf(g, a)
+      b.last = { ...b.last!, net: 200_000_000, revenue: 900_000_000 }
+      b.valuation = Math.max(b.valuation, 2_000_000_000)
+      refreshValue(a, b)
+    }
+    bizOf(g, assets[1]).cooked = 1
+    let pulled = 0
+    let listed = 0
+    for (let i = 0; i < 30; i++) {
+      const g1 = structuredClone(g)
+      g1.rng = 5_000 + i * 7_919
+      g1.queue = []
+      const ok = groupIpo(g1, id)
+      const grp = groupById(g1, id)!
+      if (ok) {
+        listed += 1
+        expect(grp.core.listing).not.toBeNull()
+      } else {
+        pulled += 1
+        expect(grp.core.listing).toBeNull()
+        expect(readBiz(g1, findBusiness(g1, assets[1].id)!).cooked).toBe(0)
+        expect(g1.queue.some((m) => m.kind === 'notice' && m.title === 'IPO Pulled')).toBe(true)
+      }
+    }
+    expect(pulled).toBeGreaterThan(5)
+    expect(listed).toBeGreaterThan(5)
+  })
+
   it('lists the whole group, sells shares, and takes it private again at a price', () => {
     const { g, assets } = setup(6, ['restaurant', 'hotel'])
     expect(formGroup(g, assets.map((a) => a.id), 'Listed Group')).toBe(true)
@@ -442,6 +476,10 @@ describe('conglomerates', () => {
     const buyer = live.members[0]
     const sister = live.members[1]
     const v = marketViewOf(g2, buyer.b)
+    // Buy-outs need sales of at least a third of the target's: give the buyer a year that size.
+    const smallest = v.rivals.filter((r) => !r.legacy).sort((x, y) => x.share - y.share)[0]
+    const lb = bizOf(g2, buyer.a)
+    lb.last = { ...lb.last!, revenue: Math.max(lb.last!.revenue, smallest.share * v.size) }
     const target = [...v.rivals].reverse().find((r) => !r.legacy && acquisitionQuote(g2, buyer.b, r.id) && !acquisitionQuote(g2, buyer.b, r.id)!.block)
     expect(target).toBeTruthy()
     const q = acquisitionQuote(g2, buyer.b, target!.id)!
@@ -677,7 +715,8 @@ describe('conglomerates', () => {
     void addToGroup
     void groupDividend
     void valuationOf
-  }, 60_000)
+    // Sized for a 2-core CI runner (114-127 s on a busy 4-core machine).
+  }, 300_000)
 })
 
 export type { BizState }

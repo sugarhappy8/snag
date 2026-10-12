@@ -35,13 +35,14 @@ import {
   type Worth,
 } from './economy'
 import { eventChance } from './events'
-import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
-import { inventorMenu, nationalStrategyMenu } from './expansion'
+import { canIpo, closeBusiness, declareBankruptcy, goPublic, IPO_COLLAPSE, sellBusiness, sellShares } from './exit'
+import { nationalStrategyMenu } from './expansion'
 import { equityMenu, equityTerms } from './executive'
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
+import { bankPayoutBlock } from './bank'
 import { rescueNodes, rescuePosition } from './rescue'
 import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
@@ -52,7 +53,7 @@ import { settleReplacedCeo } from './nepo-actions'
 import { afterSuccession, familyCandidates } from './nepo-succession'
 import { briefNodes, capexCaption, passHint, payDividend } from './board-menu'
 import { controlsBoard, boardView, mandateDef, ownerSeats } from './board-state'
-import { debtComfort, lowerFirst, oddsText, payableCash, payCap, refusedThisYear, sustainablePayout } from './board-vote'
+import { debtComfort, lowerFirst, oddsText, payableCash, payCap, payoutCash, refusedThisYear, sustainablePayout } from './board-vote'
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
@@ -65,7 +66,11 @@ import { bestRdBudget, rdBase, rdBlock, rdCrowding, rdMinBudget, rdProjects, rdQ
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
-import { clampN, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
+import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
+import { climateLine, dashboardRows } from './dashboard'
+import { franchiseMenu } from './franchise'
+import { milestonesMenu } from './milestones'
+import { tidyNationalStrategy } from './national-view'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -856,7 +861,7 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
     run: (g, cur, b, input) => {
       const n = Math.round(clampN(Number(input) || 1, 1, MAX_OPEN_AT_ONCE))
       if (!isIndustryLegal(countryId, b.industry)) {
-        notice(g, 'Not Allowed', `${industryDef(b.industry).label}s aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
+        notice(g, 'Not Allowed', `${labelPlural(industryDef(b.industry).label)} aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
         return
       }
       const cost = expansionCost(b, countryId, city, n)
@@ -899,7 +904,7 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
     },
     disabledReason: (g) => {
       const b = readBiz(g, a)
-      return isIndustryLegal(countryId, b.industry) ? null : `${industryDef(b.industry).label}s are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
+      return isIndustryLegal(countryId, b.industry) ? null : `${labelPlural(industryDef(b.industry).label)} are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
     },
     header: (g) => eraNote(g, countryId, marketOf(countryId).businessNote),
     hint: (g) => {
@@ -1299,16 +1304,18 @@ function insuranceAction(a: Asset): MenuAction {
 /**
  * What the owner may take out: cash beyond the company's loans and anything earmarked for
  * unreleased games. Paying out borrowed money and then declaring bankruptcy would let the
- * owner keep the loan, so lenders (and the game) don't allow it.
+ * owner keep the loan, so lenders (and the game) don't allow it; investors' money under a
+ * liquidation preference stays in the company too (board-vote.payoutCash).
  */
 function payable(a: Asset, b: BizState): number {
-  return payableCash(a, b)
+  return payoutCash(a, b)
 }
 
 function payoutBlocked(a: Asset, b: BizState): string | null {
   if (b.cash <= 0) return 'The company has no spare cash.'
   if (b.cash - earmarkedCash(a) <= 0) return 'Its cash is advances and pledges for games still in development. That money funds the games; it is not profit yet.'
-  if (payable(a, b) <= 0) return `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
+  if (payableCash(a, b) <= 0) return bankPayoutBlock(b) ?? `The company owes ${money(b.debt)} in loans. Its lenders won't let cash go to the owner until the debt is covered.`
+  if (payable(a, b) <= 0) return `The investors' ${money(b.pref ?? 0)} comes back to them first: the company must be worth more than that before cash goes to the shareholders.`
   return null
 }
 
@@ -1526,6 +1533,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
         useYearAction(gg, `biz.bonus.${cur.id}`, 1)
         bb.cash -= n
         bb.yearCosts += n
+        bb.ownerDraws = (bb.ownerDraws ?? 0) + n
         earnIncome(gg, n)
         const greedy = bb.last && bb.last.net < 0
         if (greedy) {
@@ -1695,13 +1703,13 @@ function leadershipNodes(a: Asset, g: GameState): MenuNode[] {
         return passHint(gg, cur, bb, takeP(gg, bb))
       },
       disabled: (gg, bb) => (needsVote(gg, live(gg, a), bb, takeP(gg, bb)) && refusedThisYear(gg, bb, 'takeOver') ? 'The board already turned you down as CEO this year.' : null),
-      confirm: () => (job ? `Become CEO of ${a.name}? You'll leave your job as ${job.title}.` : null),
+      confirm: () => (job ? `Become CEO of ${a.name}? You'll leave your job as ${job.title}${job.company ? ` at ${job.company}` : ''}.` : null),
       run: (gg, cur, bb) => {
         if (!boardAllows(gg, cur, bb, takeP(gg, bb))) return
         const h = ownerTakesOver(gg, bb)
         const quit = becomeCeo(gg, cur, bb, title)
         log(gg, `I took over as CEO of ${cur.name}.`, 'good')
-        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you left your job as ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
+        notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
       },
     }),
     act(a, 'replaceManager', 'Replace the CEO', '\u{1F504}', {
@@ -1737,6 +1745,21 @@ interface Offer {
 
 /** Chance a buyer's due diligence finds cooked books and the deal collapses. */
 const SALE_COLLAPSE = 0.4
+/**
+ * Underwriters audit the books before an IPO: cooked books can sink the listing (and half the time
+ * the prosecutors hear about it), like a buyer's due diligence on a sale. True when the IPO may go ahead.
+ */
+export function ipoDueDiligence(g: GameState, a: Asset, b: BizState): boolean {
+  if (b.cooked <= 0 || !chance(g, IPO_COLLAPSE)) return true
+  b.cooked = 0
+  b.brand = clampN(b.brand - 15, 0, 100)
+  b.valuation = valuationOf(b)
+  refreshValue(a, b)
+  log(g, `The IPO of ${a.name} was pulled when the underwriters found the cooked books.`, 'bad')
+  notice(g, 'IPO Pulled', `The underwriters' auditors found ${a.name}'s creative accounting while preparing the prospectus. The listing is off, the story is in the financial press, and the files went to the regulator.`, { emoji: '\u{1F6A8}', tone: 'bad' })
+  if (chance(g, 0.5)) arrestPlayer(g, 'Accounting Fraud', 3, { evidence: 0.7, noResist: true, context: `Prosecutors charged you over ${a.name}'s cooked books.` })
+  return false
+}
 
 const SELL = defineScript('business.sell', (g, choice, data) => {
   const d = rec(data)
@@ -1759,15 +1782,23 @@ const SELL = defineScript('business.sell', (g, choice, data) => {
   sellBusiness(g, a, b, num(o.amount), str(o.buyer, 'a buyer'))
 })
 
+/** What buyers knock off a company resold before it booked a year under the owner who just bought it. */
+const FLIP_DISCOUNT = 0.05
+
 function makeOffers(g: GameState, b: BizState): Offer[] {
   // Buyers haggle over the business itself; its net cash (cash minus debt) is worth exactly what
   // it is, so no premium or discount applies to it (moving cash in before a sale gains nothing).
   const netCash = Number.isFinite(b.cash - b.debt) ? b.cash - b.debt : 0
   const operating = Math.max(5_000, b.valuation - netCash)
   const def = industryDef(b.industry)
-  const f = (lo: number, hi: number) => Math.max(1_000, Math.round((operating * (lo + (hi - lo) * rand(g)) + netCash) / 100) * 100)
+  // A company bought off the market that hasn't booked a year under its new owner has shown buyers
+  // nothing new: they pay at most what the business just changed hands for, less the cost of
+  // another deal, so buying a listing and shopping it straight back out is never an arbitrage.
+  const unproven = b.bought && (b.last?.year ?? -Infinity) < b.bought.year
+  const cap = unproven ? b.bought!.operating * (1 - FLIP_DISCOUNT) : Infinity
+  const f = (lo: number, hi: number) => Math.max(1_000, Math.round((Math.min(cap, operating * (lo + (hi - lo) * rand(g))) + netCash) / 100) * 100)
   const offers: Offer[] = [
-    { buyer: `a rival ${def.label.toLowerCase()} chain`, amount: f(0.78, 1.05) },
+    { buyer: `a rival ${industryNoun(def.label)} chain`, amount: f(0.78, 1.05) },
     { buyer: `${investorFirm(b.countryId, rand(g), rand(g))} (private equity)`, amount: f(0.88, 1.15) },
   ]
   // A conglomerate pays a premium for a track record; a company with no booked year gets none.
@@ -1829,12 +1860,15 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
           hint: (gg) => {
             const cur = live(gg, a)
             const bb = readBiz(gg, cur)
-            return canIpo(bb) ? null : passHint(gg, cur, bb, ipoP)
+            if (canIpo(bb)) return null
+            if (bb.cooked > 0 && hasTalent(gg, 'Business') && !manageBlock(gg, cur)) return talentHint(gg, 'Business', `Underwriters audit the books first: about ${pct(IPO_COLLAPSE)} chance they find the cooking (no IPO, and maybe prosecutors)`)
+            return passHint(gg, cur, bb, ipoP)
           },
           disabled: (_gg, bb) => canIpo(bb),
-          confirm: () => `Take ${a.name} public? You'll sell a quarter of the company to the market and answer to shareholders (and independent directors) from now on.`,
+          confirm: (gg) => `Take ${a.name} public? You'll sell a quarter of the company to the market and answer to shareholders (and independent directors) from now on.${readBiz(gg, live(gg, a)).cooked > 0 ? ' The underwriters will audit the books first.' : ''}`,
           run: (gg, cur, bb) => {
             if (!boardAllows(gg, cur, bb, ipoP)) return
+            if (!ipoDueDiligence(gg, cur, bb)) return
             goPublic(gg, cur, bb)
           },
         }),
@@ -1884,68 +1918,93 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
 // ---------------------------------------------------------------------------
 // The owned-business screen
 
+/**
+ * The full fact sheet behind the dashboard (Company Details): who runs it, ownership, staff,
+ * quality, market, the plan, last year's taxes, value and the country's business climate.
+ */
 export function infoRows(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a)
   const def = industryDef(b.industry)
   const m = marketOf(b.countryId)
-  const country = getCountry(b.countryId)
   const e = localEcon(b.industry, b.countryId, b.city)
-  const rows: string[] = []
-  rows.push(`${def.label} · ${b.city}, ${country.name} · ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`)
-  if (runsIt(g, a)) rows.push(`Run by you, the CEO · salary ${money(b.ownerSalary)}/yr`)
-  else rows.push(b.manager ? `Run by ${managerName(b.manager)} (CEO, skill ${b.manager.skill}/100, ${STYLE_INFO[styleOf(b.manager)].label.toLowerCase()}, ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''})${b.manager.skill > SMART_SKILL ? ' · runs it with the numbers' : ''}` : 'No one is running it day to day.')
+  const rows: [string, string][] = []
+  rows.push([def.emoji, `${def.label} \u{00B7} ${b.city}, ${getCountry(b.countryId).name} \u{00B7} ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`])
+  if (runsIt(g, a)) rows.push(['\u{1F454}', `Run by you, the CEO \u{00B7} salary ${money(b.ownerSalary)}/yr`])
+  else rows.push(['\u{1F454}', b.manager ? `CEO ${managerName(b.manager)} \u{00B7} skill ${b.manager.skill}/100 \u{00B7} ${STYLE_INFO[styleOf(b.manager)].label.toLowerCase()} \u{00B7} ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''}${b.manager.skill > SMART_SKILL ? ' \u{00B7} plans with the numbers' : ''}` : 'No one is running it day to day.'])
   // A group's division: the membership line replaces the ownership line (business/conglomerate-division.ts).
   const division = divisionLine(g, a)
-  rows.push(division ?? (b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%'))
-  rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
-  rows.push(isFinanceFirm(b) ? `Balance-sheet business · no manufactured product lines · staff skill drives underwriting and portfolio results` : isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
-  rows.push(marketInfoLine(g, a))
-  if (isFinanceFirm(b)) rows.push(financeInfo(g, b))
-  else if (isStudio(b)) rows.push(studioInfo(g, a))
+  rows.push(['\u{1F4DC}', division ?? (b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} \u{00B7} you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')])
+  rows.push(['\u{1F465}', `${plural(totalOutlets(b), def.site, def.sitePlural)} \u{00B7} ${b.employees + b.staff.length} staff \u{00B7} morale ${b.morale}%`])
+  rows.push(['\u{2728}', isFinanceFirm(b) ? 'Balance-sheet business: staff skill drives the results' : isStudio(b) ? `Studio craft ${b.quality}% \u{00B7} brand ${b.brand}% \u{00B7} morale shapes every game` : `Quality ${b.quality}% \u{00B7} brand ${b.brand}% \u{00B7} ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`])
+  rows.push(['\u{1F3C6}', marketInfoLine(g, a)])
+  if (isFinanceFirm(b)) rows.push(['\u{1F3E6}', financeInfo(g, b)])
+  else if (isStudio(b)) rows.push(['\u{1F3AE}', studioInfo(g, a)])
   else {
     if (isDeepTech(b)) {
       const tech = deepTechInfo(g, a)
-      if (tech) rows.push(tech)
+      if (tech) rows.push(['\u{1F52C}', tech])
     }
-    rows.push(`Price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)}) · plan ${units(b.production)} ${def.unit}`)
+    rows.push(['\u{1F3F7}\u{FE0F}', `Price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne} (locals expect ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)}) \u{00B7} plan ${units(b.production)} ${def.unit}`])
   }
   const s = b.last
-  if (s) {
-    rows.push(`${s.year}: sales ${money(s.revenue)} · ${s.net >= 0 ? 'profit' : 'loss'} ${money(Math.abs(s.net))} · corporate tax ${money(s.corpTax)}${s.salesTax > 0 ? ` · ${m.salesTaxName} remitted ${money(s.salesTax)}` : ''}`)
-  } else {
-    rows.push(b.openFraction < 1 ? `Opening soon: registration took a while, so this first year is short.` : 'First year of trading. Results come with the Annual Report.')
-  }
-  rows.push(`${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${money(stakeValue(b))}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} · cash ${money(b.cash)}${b.debt > 0 ? ` · debt ${money(b.debt)}` : ''}`)
-  rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${eraNote(g, b.countryId, m.businessNote)}`.trim())
-  const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3C6}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
-  const nodes = rows.map((text, i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji: emojis[i] ?? '\u{2139}\u{FE0F}' }))
-  // Who the CEO answers to, and the hired CEO's last letter.
+  if (s) rows.push(['\u{1F4CA}', `${s.year}: sales ${money(s.revenue)} \u{00B7} ${s.net >= 0 ? 'profit' : 'loss'} ${money(Math.abs(s.net))} \u{00B7} corporate tax ${money(s.corpTax)}${s.salesTax > 0 ? ` \u{00B7} ${m.salesTaxName} ${money(s.salesTax)}` : ''}`])
+  rows.push(['\u{1F4B0}', `${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${money(stakeValue(b))}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} \u{00B7} cash ${money(b.cash)}${b.debt > 0 ? ` \u{00B7} debt ${money(b.debt)}` : ''}`])
+  rows.push(['\u{1F30D}', climateLine(b, e.wage)])
+  const note = eraNote(g, b.countryId, m.businessNote).trim()
+  if (note) rows.push(['\u{1F4DD}', note])
+  return rows.filter(([, text]) => !!text).map(([emoji, text], i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji }))
+}
+
+/** Who the CEO answers to, and the hired CEO's last letter (short; the Board menu has the rest). */
+function governanceRows(g: GameState, a: Asset): MenuNode[] {
+  const b = readBiz(g, a)
   const st = boardView(g, a, b)
+  const nodes: MenuNode[] = []
   if (hasBoard(g, b)) {
-    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F3DB}\u{FE0F}', text: `Board: ${st.members.length} seats, ${ownerSeats(st)} yours${controlsBoard(st) ? '' : " (you don't control it)"} · mandate ${mandateDef(st.mandate).label}${st.votes.length ? ` · last vote: ${lowerFirst(st.votes[st.votes.length - 1].what)} (${st.votes[st.votes.length - 1].passed ? 'passed' : 'rejected'})` : ''}` })
+    const last = st.votes[st.votes.length - 1]
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F3DB}\u{FE0F}', text: `Board: ${ownerSeats(st)} of ${st.members.length} seats yours${controlsBoard(st) ? '' : " (you don't control it)"} \u{00B7} mandate ${mandateDef(st.mandate).label}${last ? ` \u{00B7} last vote: ${lowerFirst(last.what)} (${last.passed ? 'passed' : 'rejected'})` : ''}` })
   } else if (b.ceo === 'manager' && b.manager) {
-    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F4CB}', text: `No board: ${managerName(b.manager)} answers to you · mandate ${mandateDef(st.mandate).label}` })
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F4CB}', text: `No board: ${managerName(b.manager)} answers to you \u{00B7} mandate ${mandateDef(st.mandate).label}` })
   }
   if (b.ceo === 'manager' && b.manager && st.memo.length && st.letter >= g.year - 1) {
-    nodes.push({ type: 'info', id: `biz.info.${a.id}.memo`, emoji: '\u{1F4DD}', text: `${managerName(b.manager)}'s last letter: ${st.memo.slice(0, 3).join(' ')}` })
+    const memo = st.memo.slice(0, 2).join(' ')
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.memo`, emoji: '\u{1F4DD}', text: `${managerName(b.manager)}'s letter: ${memo.length > 120 ? `${memo.slice(0, 117).replace(/\s+\S*$/, '')}\u{2026}` : memo}` })
   }
   return nodes
 }
 
+/** Company Details: the full fact sheet, one tap away from the dashboard. */
+function detailsMenu(a: Asset): MenuGroup {
+  return {
+    type: 'menu',
+    id: `biz.details.${a.id}`,
+    label: 'Company Details',
+    emoji: '\u{1F4CB}',
+    subtitle: 'Staff, quality, prices, taxes and the local climate',
+    children: (g) => {
+      const cur = findBusiness(g, a.id)
+      return cur ? infoRows(g, cur) : [{ type: 'info', id: `biz.details.gone.${a.id}`, text: 'You no longer own this business.' }]
+    },
+  }
+}
+
 export function businessView(g: GameState, a: Asset): MenuNode[] {
-  const nodes: MenuNode[] = [...infoRows(g, a)]
   const health = readBiz(g, a)
-  nodes.push({ type: 'info', id: `biz.next.${a.id}`, emoji: '🧭', text: health.cash < 0 ? 'Priority: cover the cash shortfall in Money before expanding.' : health.last && health.last.net < 0 ? 'Losing money? Review price and production, reduce debt, or hire a turnaround CEO. Avoid new expansion until cash is stable.' : 'Next steps: compare national conditions, study a market, then fund a strategy or expansion. Keep cash for payroll and debt.' })
-  nodes.push(nationalStrategyMenu(a), inventorMenu(a))
+  const finance = isFinanceFirm(health)
+  // The dashboard card (business/dashboard.ts), governance, milestones and the full fact sheet.
+  const nodes: MenuNode[] = [...dashboardRows(g, a), ...governanceRows(g, a), milestonesMenu(a), detailsMenu(a)]
+  // National strategy programs are for product companies; financial firms run their own operations.
+  const strategy = finance ? [] : [tidyNationalStrategy(nationalStrategyMenu(a), a)]
   if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
-  nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-  if (isFinanceFirm(health)) {
+  if (finance) {
     nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
   } else if (isStudio(readBiz(g, a))) {
+    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
     // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
     nodes.push(...studioNodes(g, a))
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), ...strategy, insuranceAction(a), cookBooksAction(a))
   } else {
+    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
     nodes.push(
       act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
         hint: (gg) => {
@@ -1963,12 +2022,13 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     )
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    const franchise = franchiseMenu(a, health)
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
-  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', children: gg => { const aa = findBusiness(gg, a.id); return aa ? rescueNodes(gg, aa) : [] } })
+  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? rescueNodes(gg, aa) : [] } })
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
   nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
   nodes.push(equityMenu(a.id))

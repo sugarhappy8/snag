@@ -20,6 +20,7 @@ import { getCountry } from '../world'
 import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './industries'
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
+import { franchiseFeesFor } from './franchise-state'
 import { studioValue } from './gamestudio-state'
 import { complexityCost, PRODUCT_LIFE, rangeBoost, rangeBrand } from './products'
 import { advanceRd } from './rd'
@@ -30,9 +31,10 @@ import { marketDef } from './competition-data'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { economicCycle, economyOf } from '../economy'
 import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
-import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
+import { legacyInventionCapital, legacyInventionStock } from '../workshop/legacy-capital'
+import { bankAdvanceOf } from './bank-state'
 import { allocatedCorporateTax } from './tax'
-import { bookSupply, saveSupply, supplyInventoryValue, supplyProfile, type SupplyBook } from './supply'
+import { bookSupply, saveSupply, supplyConditions, supplyInventoryValue, supplyProfile, type SupplyBook, type SupplyConditions } from './supply'
 import { applyEconomicRivals } from './economic-actors'
 import { applyNpcRivals } from './npc-rivals'
 import { leadershipPower, individualLeadershipPower, LEADERSHIP } from './leadership'
@@ -433,6 +435,8 @@ export interface PlanOptions {
   noise?: number
   /** Ignore one-off shocks (for "normal year" projections). */
   calm?: boolean
+  /** This company's marketCtxFor(g, b, year), when a plan search already read it. */
+  ctx?: MarketCtx
 }
 
 /** Demand and capacity across every outlet at a home-market price. */
@@ -451,7 +455,7 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
   const lossC = opts.calm ? 0 : b.capacityLoss
   const pressure = opts.calm ? b.pressure * 0.5 : b.pressure
   // The market: the world for tradable industries, the home country for local trades.
-  const mctx = marketCtxFor(g, b, year)
+  const mctx = opts.ctx ?? marketCtxFor(g, b, year)
   const world = mctx.def.scope === 'world'
   const inMarket = (o: Outlet) => world || o.countryId === b.countryId
   // A dominant company buys cheaper (scale) and, in a national market, can charge a bit more.
@@ -569,6 +573,11 @@ export interface YearFixed {
   finance: number
   /** Overhead multiplier from whoever runs the company. */
   ceoEff: number
+  /**
+   * The company's supply conditions for one fiscal year, read once by a plan search: they depend
+   * only on the company, the world and the year, never on the trial price or run size.
+   */
+  supply?: { year: number; conditions: SupplyConditions }
 }
 
 export function yearFixed(g: GameState, b: BizState): YearFixed {
@@ -601,7 +610,7 @@ export interface Book {
 export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, production: number, ownerDraw: number, k: YearFixed = yearFixed(g, b), cycle?: number, bookedHomeSales: number | Record<string, number> = 0): Book {
   const def = industryDef(b.industry)
   const capacity = plan.capacity
-  const supply = bookSupply(g, b, year, capacity, production, plan.unitCost * k.cf)
+  const supply = bookSupply(g, b, year, capacity, production, plan.unitCost * k.cf, k.supply?.year === year ? k.supply.conditions : undefined)
   const produced = supply.produced
   const available = produced + b.inventory
   const demand = plan.demand
@@ -748,7 +757,8 @@ export function equipmentValue(b: BizState): number {
   for (const o of b.outlets) capital += o.count * localEcon(b.industry, o.countryId, o.city).capital
   const lines = linesOf(b)
   if (lines > 0) capital += lineCost(b, lines)
-  capital += inventionFabValue(b)
+  // Factories of the retired invention lines (old saves) stay on the books.
+  capital += legacyInventionCapital(b)
   return capital
 }
 
@@ -805,6 +815,7 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   b.openFraction = 1
   b.yearCosts = 0
   b.yearIncome = 0
+  delete b.ownerDraws
   // Products fade; very old ones are retired automatically.
   b.products = b.products.filter((p) => year - p.launched < PRODUCT_LIFE)
   // Products in development move a year closer (business/rd.ts): new lines launch next year.
@@ -828,6 +839,12 @@ export function valuationOf(b: BizState): number {
   const weights = h.length === 3 ? [0.2, 0.3, 0.5] : h.length === 2 ? [0.4, 0.6] : [1]
   let avg = 0
   h.forEach((r, i) => (avg += r.profit * weights[i]))
+  // One-off franchise fees are already in the cash: valued at what they are, never capitalized as
+  // if they recurred (or a burst of franchise sales would inflate the company's price).
+  if (b.franchise) {
+    const keep = 1 - clampN(marketOf(b.countryId).corporateTax, 0, 0.9)
+    h.forEach((r, i) => (avg -= franchiseFeesFor(b, r.year) * keep * weights[i]))
+  }
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)
@@ -836,12 +853,14 @@ export function valuationOf(b: BizState): number {
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
   const unitCost = localEcon(b.industry, b.countryId, b.city).unitCost
-  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + inventionInventoryValue(b) + supplyInventoryValue(b) + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
+  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + legacyInventionStock(b) + supplyInventoryValue(b) + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
   // A game studio is also worth its back catalog and the games in its pipeline.
   const games = b.industry === 'gameStudio' ? studioValue(b.studio) : 0
   // A deep-tech company is also worth its patents, tech lead and R&D pipeline.
   const tech = isDeepTech(b) ? deepTechValue(b.tech) : 0
-  let equity = Math.max(ev, floor) + games + tech + b.cash - b.debt
+  // A bank's run-time advance into its client book is shareholders' money funded by the
+  // central-bank debt counted in b.debt (business/bank-state.ts), so it belongs in equity.
+  let equity = Math.max(ev, floor) + games + tech + b.cash - b.debt + bankAdvanceOf(b)
   if (b.cooked > 0) equity *= 1 + 0.25 * Math.min(3, b.cooked)
   return Math.max(0, dollars(equity))
 }
@@ -1004,6 +1023,11 @@ export function nicePrice(p: number): number {
  * to sell later), scored with planFor() and bookYear(): the same demand, cost and tax model the
  * year itself runs on. Deterministic; never consumes g.rng.
  */
+/** What a plan search reads once for a company and fiscal year (pure: no writes, no RNG). */
+function searchFixed(g: GameState, b: BizState, year: number): { k: YearFixed; ctx: MarketCtx } {
+  return { k: { ...yearFixed(g, b), supply: { year, conditions: supplyConditions(g, b, year) } }, ctx: marketCtxFor(g, b, year) }
+}
+
 export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): PlanPick {
   const year = opts.year ?? g.year
   const def = industryDef(b.industry)
@@ -1011,7 +1035,9 @@ export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): Plan
   const bounds = opts.maxPrice !== undefined && Number.isFinite(opts.maxPrice) ? { ...b0, max: Math.max(b0.min, Math.min(b0.max, opts.maxPrice)) } : b0
   const maxProd = maxProduction(g, b)
   const draw = Math.max(0, opts.ownerDraw ?? 0)
-  const k = yearFixed(g, b)
+  // Everything that doesn't depend on the trial price or run size is read once per search
+  // (pure reads of the same company, world and year, so every trial books identical numbers).
+  const { k, ctx } = searchFixed(g, b, year)
   const all = cycleScenarios(g, b, year)
   const central = all.reduce((x, y) => (y.w > x.w ? y : x), all[0])
   const cycles = opts.fast ? [{ ...central, w: 1 }] : opts.quick ? all.filter((s) => s.w >= 0.004) : all
@@ -1021,7 +1047,7 @@ export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): Plan
   const score = (price: number, fixedQ?: number): Scored => {
     const scen: { w: number; plan: Plan; cyc: number }[] = []
     for (const s of cycles) {
-      const base = planFor(g, b, year, { price, cycle: (cid) => s.cycle[cid] ?? 1, noise: 1 })
+      const base = planFor(g, b, year, { price, cycle: (cid) => s.cycle[cid] ?? 1, noise: 1, ctx })
       for (const [n, wn] of noises) scen.push({ w: s.w * wn, plan: scalePlan(base, n), cyc: cycleHere(s) })
     }
     const wsum = scen.reduce((t, x) => t + x.w, 0) || 1
@@ -1082,7 +1108,7 @@ export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): Plan
   }
 
   // Prices: a log grid over a sensible band, then golden-section around the best point.
-  const ref = Math.max(bounds.min, Math.min(bounds.max, planFor(g, b, year, { calm: true }).suggested))
+  const ref = Math.max(bounds.min, Math.min(bounds.max, planFor(g, b, year, { calm: true, ctx }).suggested))
   const pLo = Math.max(bounds.min, ref * 0.35)
   const pHi = Math.min(bounds.max, ref * 3.2)
   const n = opts.quick || opts.fast ? 12 : 20
@@ -1123,13 +1149,13 @@ export function bestPlan(g: GameState, b: BizState, opts: PlanSearch = {}): Plan
 export function planOutcome(g: GameState, b: BizState, price: number, production: number, opts: PlanSearch = {}): { profit: number; score: number; pretax: number } {
   const year = opts.year ?? g.year
   const def = industryDef(b.industry)
-  const k = yearFixed(g, b)
+  const { k, ctx } = searchFixed(g, b, year)
   let w = 0
   let profit = 0
   let score = 0
   let pretax = 0
   for (const s of cycleScenarios(g, b, year)) {
-    const base = planFor(g, b, year, { price, cycle: (cid) => s.cycle[cid] ?? 1, noise: 1 })
+    const base = planFor(g, b, year, { price, cycle: (cid) => s.cycle[cid] ?? 1, noise: 1, ctx })
     const carry = def.perishable >= 1 ? 0 : base.unitCost * k.cf * CARRY
     for (const [nz, wn] of opts.quick ? ([[1, 1]] as [number, number][]) : NOISE_NODES) {
       const r = bookYear(g, b, year, scalePlan(base, nz), production, Math.max(0, opts.ownerDraw ?? 0), k, s.cycle[b.countryId] ?? 1)

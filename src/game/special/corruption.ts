@@ -31,13 +31,13 @@ interface InfluenceJob {
 }
 
 const TARGETS: InfluenceTarget[] = [{
-  id: 'president', label: "A Fictional President's Circle", emoji: '🏛️', costYears: 8, salaryYears: 2.5, success: .22, exposure: .35,
+  id: 'president', label: "The President's Inner Circle", emoji: '🏛️', costYears: 8, salaryYears: 2.5, success: .22, exposure: .35,
   jobs: ['Presidential Policy Adviser', 'National Development Liaison', 'State Enterprise Director'],
 }, {
   id: 'ceo', label: 'A Major Corporate CEO', emoji: '🏢', costYears: 5, salaryYears: 2, success: .35, exposure: .25,
   jobs: ['Corporate Strategy Manager', 'Executive Projects Director', 'Regional Operations Lead'],
 }, {
-  id: 'politician', label: 'A Senior Fictional Politician', emoji: '🗳️', costYears: 2, salaryYears: 1.3, success: .45, exposure: .18,
+  id: 'politician', label: 'A Senior Politician', emoji: '🗳️', costYears: 2, salaryYears: 1.3, success: .45, exposure: .18,
   jobs: ['Constituency Office Director', 'Public Affairs Adviser', 'Government Program Manager'],
 }]
 
@@ -124,15 +124,15 @@ export function attemptInfluence(g: GameState, targetId: InfluenceTargetId, pers
     count(g, 'briberyScandals')
     addHidden(g, 'notoriety', 8)
     addStat(g, 'happiness', -8)
-    log(g, `A fictional influence payment meant to secure ${person.firstName} a job became a criminal scandal.`, 'bad')
-    notice(g, 'Favor Exposed', `The intermediary kept the money and investigators found the trail. ${person.firstName} got no job. This was an abstract fictional corruption scheme—and it has real consequences in your life.`, { emoji: '🚨', tone: 'bad' })
+    log(g, `A payment meant to buy ${person.firstName} a job turned into a criminal scandal.`, 'bad')
+    notice(g, 'Favor Exposed', `The go-between kept the money and investigators found the trail. ${person.firstName} got no job, and the police want a word with you.`, { emoji: '🚨', tone: 'bad' })
     arrestPlayer(g, 'Bribery', target.id === 'president' ? 3 : 2)
     return
   }
   if (!succeeded) {
     addRelationship(person, -2)
     log(g, `I paid for influence, but nobody found ${person.firstName} a job.`, 'bad')
-    notice(g, 'No Favor Returned', `The unnamed intermediary took ${formatMoney(cost)} and stopped returning calls. ${person.firstName} received nothing. Influence is never guaranteed.`, { emoji: '📵', tone: 'bad' })
+    notice(g, 'No Favor Returned', `The go-between took ${formatMoney(cost)} and stopped returning calls. ${person.firstName} received nothing. Influence is never guaranteed.`, { emoji: '📵', tone: 'bad' })
     return
   }
 
@@ -143,11 +143,12 @@ export function attemptInfluence(g: GameState, targetId: InfluenceTargetId, pers
   person.data.influenceJob = {
     by: g.character.id, target: target.id, title, salary: annual, hiredYear: g.year, lastPaid: g.year - 1,
   }
-  person.money = Math.min(1_000_000_000, Math.round(person.money + annual * .1))
+  // The cap bounds what this favor adds; it must never confiscate a wealthy relative's savings.
+  person.money = Math.max(person.money, Math.min(1_000_000_000, Math.round(person.money + annual * .1)))
   addRelationship(person, 8)
   count(g, 'bribesSucceeded')
   log(g, `A corrupt favor secured ${person.firstName} a job as ${title}.`, 'bad')
-  notice(g, 'Favor Granted', `${person.firstName} was installed as ${title}, earning about ${formatMoney(annual)} a year. The job is bounded, fictional and vulnerable to the consequences of how it was obtained.`, { emoji: target.emoji, tone: 'neutral' })
+  notice(g, 'Favor Granted', `${person.firstName} was installed as ${title}, earning about ${formatMoney(annual)} a year. Nobody asks how they got it. Yet.`, { emoji: target.emoji, tone: 'neutral' })
 }
 
 const CHOOSE_RELATIVE = defineScript('corruption.chooseRelative', (g, choice, data) => {
@@ -162,13 +163,13 @@ function targetAction(target: InfluenceTarget): MenuAction {
     id: `corruption.${target.id}`,
     label: target.label,
     emoji: target.emoji,
-    subtitle: (g) => `${formatMoney(price(g, target))} upfront · uncertain favor · criminal exposure risk`,
+    subtitle: (g) => `${formatMoney(price(g, target))} up front · no promises · could end in arrest`,
     disabledReason: (g) => globalBlock(g) ?? (g.character.money < price(g, target) ? 'You cannot afford the intermediary.' : null),
-    confirm: () => 'This is a fictional corruption mechanic. The payment can fail, disappear, or trigger a criminal scandal. Continue to choose an adult relative?',
+    confirm: () => 'The money can vanish, or the deal can blow up into a criminal scandal. Pick an adult relative?',
     run: (g) => {
       if (globalBlock(g) || g.character.money < price(g, target)) return
       const people = influenceCandidates(g)
-      scriptChoice(g, CHOOSE_RELATIVE, 'Choose a Relative', `An unnamed intermediary claims ${target.label.toLowerCase()} can place one adult relative. Nothing is guaranteed, and the ${formatMoney(price(g, target))} payment is lost either way.`, [
+      scriptChoice(g, CHOOSE_RELATIVE, 'Choose a Relative', `A go-between says ${target.label.toLowerCase()} can find a job for one adult relative. Nothing is guaranteed, and the ${formatMoney(price(g, target))} is gone either way.`, [
         ...people.map((person) => ({ id: person.id, label: `${person.firstName} ${person.lastName} · age ${person.age} · ${person.occupation}`, emoji: '👤' })),
         { id: 'cancel', label: 'Walk away', emoji: '✖️' },
       ], { emoji: target.emoji, data: { target: target.id } })
@@ -181,10 +182,11 @@ export const corruptionMenu: MenuGroup = {
   id: 'corruption',
   label: 'Backroom Favors',
   emoji: '🕴️',
-  subtitle: 'Fictional influence, family jobs, and serious scandal risk',
+  subtitle: 'Pull strings for a relative’s job, at a risk',
   visible: (g) => g.character.alive && !g.character.prison && g.character.age >= 18,
   disabledReason: globalBlock,
-  header: () => 'A fictional life-sim mechanic about corruption—not real people or practical instructions. Pay an unnamed intermediary to seek a bounded job for one adult relative. Success is uncertain; losing the money or facing criminal consequences is not.',
+  // One short content note for the whole section (people and offices are invented), not on every row.
+  header: () => 'Pay a go-between to land an adult relative a cushy job. It may not work, the money is gone either way, and you could be arrested. All people and offices here are fictional.',
   children: () => TARGETS.map(targetAction),
 }
 
@@ -197,7 +199,7 @@ export function yearlyCorruption(g: GameState): void {
     const job = influenceJob(g, person)
     if (!job || job.hiredYear > fiscal || job.lastPaid >= fiscal) continue
     const pay = Math.max(0, Math.min(500_000, Math.round(job.salary)))
-    person.money = Math.min(1_000_000_000, Math.round(person.money + pay))
+    person.money = Math.max(person.money, Math.min(1_000_000_000, Math.round(person.money + pay)))
     person.occupation = job.title
     person.data.influenceJob = { ...job, lastPaid: fiscal }
     if (pay > 0) log(g, `${person.firstName} earned ${formatMoney(pay)} in ${job.title} salary.`)

@@ -301,3 +301,25 @@ describe('anachronism guard for the era-gated menus', () => {
     expect(bad.size, report.slice(0, 4000)).toBe(0)
   }, 300_000)
 })
+
+describe('club application rejections follow the calendar', () => {
+  it('a 1962 committee asks around instead of searching your name online', async () => {
+    const { joinMembership } = await import('../src/game/shops/memberships')
+    const texts = (year: number): string[] => {
+      const out: string[] = []
+      for (let seed = 1; seed <= 80; seed++) {
+        const g = makeTestGame(seed, { age: 45, money: 50_000_000 })
+        g.year = year
+        g.character.hidden.notoriety = 60
+        joinMembership(g, 'golf', 'full')
+        for (const m of g.queue) if (m.kind === 'notice' && m.title === 'Application Rejected') out.push(m.text)
+      }
+      return out
+    }
+    const early = texts(1962), modern = texts(2020)
+    expect(early.length).toBeGreaterThan(10)
+    expect(early.some((t) => /online/.test(t))).toBe(false)
+    expect(early.some((t) => /asked around/.test(t))).toBe(true)
+    expect(modern.some((t) => /searched your name online/.test(t))).toBe(true)
+  })
+})

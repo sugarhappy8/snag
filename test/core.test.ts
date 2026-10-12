@@ -5,6 +5,7 @@ import {
   addPersonStat,
   addRelationship,
   addStat,
+  aThing,
   canAfford,
   count,
   counter,
@@ -14,6 +15,7 @@ import {
   relationLabel,
   shortMoney,
   spend,
+  tinyMoney,
   useYearAction,
   yearActionsUsed,
   zodiacFor,
@@ -40,6 +42,21 @@ describe('rng', () => {
 })
 
 describe('core helpers', () => {
+  it('puts the right article before injuries, crimes and ranks', () => {
+    // Review: "arrested you for a assault", "I got a bruised ribs", "I suffered a torn acl", "As a orange belt".
+    expect(aThing('Assault')).toBe('an assault')
+    expect(aThing('Identity Theft')).toBe('an identity theft')
+    expect(aThing('Burglary')).toBe('a burglary')
+    expect(aThing('Torn ACL')).toBe('a torn ACL')
+    expect(aThing('Bruised Ribs')).toBe('bruised ribs')
+    expect(aThing('Shin Splints')).toBe('shin splints')
+    expect(aThing('Road Rash')).toBe('road rash')
+    expect(aThing('Achilles Tendinitis')).toBe('Achilles tendinitis')
+    expect(aThing('Torn Achilles')).toBe('a torn Achilles')
+    expect(aThing('Orange Belt')).toBe('an orange belt')
+    expect(aThing('Concussion')).toBe('a concussion')
+  })
+
   it('clamps stats to 0-100', () => {
     const g = makeTestGame()
     addStat(g, 'health', 500)
@@ -57,6 +74,17 @@ describe('core helpers', () => {
     expect(formatMoney(1234567)).toBe('$1,234,567')
     expect(formatMoney(-50)).toBe('-$50')
     expect(shortMoney(2_500_000)).toBe('$2.5M')
+  })
+  it('writes huge amounts short enough for a small tile', () => {
+    // Playtest: the graveyard's "richest" tile read "$16 quad…".
+    expect(shortMoney(1.6e16)).toBe('$16 quadrillion')
+    expect(tinyMoney(1.6e16)).toBe('$16Qa')
+    expect(tinyMoney(2.5e21)).toBe('$2.5Sx')
+    expect(tinyMoney(3e40)).toBe('$3.0e40')
+    expect(tinyMoney(-45_000)).toBe('-$45K')
+    expect(tinyMoney(2_500_000)).toBe('$2.5M')
+    expect(tinyMoney(950)).toBe('$950')
+    for (const n of [1.6e16, 9.9e29, 4.2e35]) expect(tinyMoney(n).length).toBeLessThanOrEqual(8)
   })
   it('tracks taxable income', () => {
     const g = makeTestGame()

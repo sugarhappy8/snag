@@ -2,7 +2,7 @@
 // (your country's own big sports and home league first), try out for a team, sign contracts,
 // practice your skills and fitness, play seasons, win championships and awards, avoid (or
 // embrace) doping and bribes, get traded, retire, and maybe reach the Hall of Fame.
-import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, useYearAction } from '../core'
+import { addHidden, addMoney, addStat, aThing, count, earnIncome, log, remember, scriptChoice, useYearAction } from '../core'
 import { arrestPlayer } from '../crime'
 import { hasTech } from '../history/timeline'
 import { chance, pick, rand, randInt, shuffle, uid } from '../rng'
@@ -783,7 +783,7 @@ function retire(g: GameState, forced: boolean): void {
   recordCareer(g, { sport: sport.name, kind: 'team', from: typeof job.data.startAge === 'number' ? job.data.startAge : g.character.age - p.seasons, best: p.championships ? plural(p.championships, 'championship') : plural(p.seasons, 'season'), legacy: Math.min(100, p.championships * 10 + p.awards.length * 10 + Math.max(0, p.peakGreatness - 50)) })
   leave(g, 'retired')
   log(g, `I retired from professional sports.`, 'event')
-  remember(g, `Retired from pro sports after ${plural(p.seasons, 'season')} and ${plural(p.championships, 'championship')}.`)
+  remember(g, `Retired from pro sports after ${plural(p.seasons, 'season')}${p.championships ? ` and ${plural(p.championships, 'championship')}` : ' without a championship'}.`)
   say(g, 'Retired', `${forced ? 'No team offered you a contract, so you ' : 'You '}retired after ${p.seasons} season${p.seasons === 1 ? '' : 's'}${p.championships ? ` and ${p.championships} championship${p.championships === 1 ? '' : 's'}` : ''}. The ${team} held a ceremony in your honor.`, '\u{1F3C5}', 'good')
 }
 
@@ -816,12 +816,12 @@ function injure(g: GameState, job: Job): void {
   addStat(g, 'health', -randInt(g, 5, 12))
   ad(job).injured = 1
   if (injury === 'Concussion') addHeadTrauma(g, 4, true)
-  log(g, `I suffered a ${injury.toLowerCase()}.`, 'bad')
+  log(g, `I suffered ${aThing(injury)}.`, 'bad')
   scriptChoice(
     g,
     injuryScript,
     'Injury!',
-    `You suffered a ${injury.toLowerCase()}. How do you want to deal with it?`,
+    `You suffered ${aThing(injury)}. How do you want to deal with it?`,
     [
       { id: 'therapy', label: 'Physical therapy', emoji: '\u{1F9D1}\u{200D}\u{2695}\u{FE0F}' },
       { id: 'surgery', label: 'Surgery', emoji: '\u{1F3E5}' },

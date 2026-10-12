@@ -8,7 +8,7 @@
 // Players can enter the marquee events of the calendar themselves (with a decisive-moment
 // choice); everything they skip is simulated at the end of the season.
 import { hasTech } from '../history/timeline'
-import { addHidden, addStat, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
+import { addHidden, addStat, aThing, count, earnIncome, log, scriptChoice, useYearAction, yearActionsUsed } from '../core'
 import { chance, pick, rand, randInt, bell } from '../rng'
 import { defineScript } from '../scripts'
 import { bodyCeiling, experienceCap, masterFirstTime } from '../mastery'
@@ -429,8 +429,8 @@ function riskInjury(g: GameState, sport: IndSport, job: Job, extra = 0): string 
   injure(g, name, randInt(g, 10, 28))
   jd(job).injured = 1
   if (/concussion/i.test(name)) addHeadTrauma(g, 3, true)
-  log(g, `I suffered a ${name.toLowerCase()} competing in ${sport.name.toLowerCase()}.`, 'bad')
-  return ` You also suffered a ${name.toLowerCase()} and will need time to recover.`
+  log(g, `I suffered ${aThing(name)} competing in ${sport.name.toLowerCase()}.`, 'bad')
+  return ` You also suffered ${aThing(name)} and will need time to recover.`
 }
 
 function resultNotice(g: GameState, sport: IndSport, job: Job, name: string, o: Outcome, lead: string): void {

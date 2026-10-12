@@ -257,6 +257,9 @@ function lint(lives: number, first: number, last: number, actions: number): { li
 describe('the anachronism detector', () => {
   it('flags modern words before their technology and lets them through after', () => {
     expect(anachronismsIn('I texted my mom.', 1950, ['us'])).toContain('texting')
+    // Wondering whether anyone will walk on the moon is period talk; watching it happen is not.
+    expect(anachronismsIn('You argued about whether anyone will ever walk on the moon.', 1950, ['us'])).toEqual([])
+    expect(anachronismsIn('I watched the astronauts walk on the moon.', 1950, ['us'])).toContain('moon landing')
     expect(anachronismsIn('I texted my mom.', PRESENT_YEAR, ['us'])).toEqual([])
     expect(anachronismsIn('You posted a selfie online.', 1975, ['gb'])).toEqual(expect.arrayContaining(['selfie', 'internet']))
     expect(anachronismsIn('You posted a selfie online.', PRESENT_YEAR, ['gb'])).toEqual([])
@@ -265,6 +268,16 @@ describe('the anachronism detector', () => {
     // A country that adopts later is still judged by where the player lived.
     expect(anachronismsIn('We watched TV.', 1952, ['ng'])).toContain('tv')
     expect(anachronismsIn('We watched TV.', 1952, ['ng', 'us'])).toEqual([])
+  })
+
+  it('knows when the moon landing, color TV and e-bikes arrived', () => {
+    // Review: a 1948 American life "bought a color set", and the 1948 Bike Shop sold e-bikes.
+    expect(anachronismsIn('We bought a color set and watched everything.', 1948, ['us'])).toContain('color tv')
+    expect(anachronismsIn('We bought a color set and watched everything.', 1975, ['us'])).toEqual([])
+    expect(anachronismsIn('I drew a picture of the moon landing.', 1955, ['gb'])).toContain('moon landing')
+    expect(anachronismsIn('I drew a picture of the moon landing.', 1969, ['gb'])).toEqual([])
+    expect(anachronismsIn('Bikes, e-bikes and scooters', 1948, ['us'])).toContain('e-bike')
+    expect(anachronismsIn('Bikes, e-bikes and scooters', PRESENT_YEAR, ['us'])).toEqual([])
   })
 
   it('does not trip on ordinary words that merely look modern', () => {

@@ -163,6 +163,8 @@ export interface StockBet {
   premium: number
   /** Price when the bet was placed (market shocks included). */
   openPrice: number
+  /** The player's own order-flow factor on the security when the bet was placed (missing on old bets). */
+  flow?: number
   /** Calendar year it was placed: it settles on the move to year + 1. */
   year: number
   countryId: string

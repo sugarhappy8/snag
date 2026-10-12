@@ -44,7 +44,7 @@ import { planEstate, settleReading } from './events/will-estate'
 import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
-import { inheritConglomerates } from './business/dynasty-ownership'
+import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
 import { bizOf, readBiz, type Manager } from './business/state'
@@ -134,8 +134,8 @@ export interface TalentDef {
 export const TALENTS: TalentDef[] = [
   {
     id: 'Inventor', emoji: '💡', weight: 5,
-    hints: ['I took apart a broken toy and made it work in a completely different way.', 'I filled a notebook with sketches of machines nobody had built yet.'],
-    discovery: 'You kept changing your prototype until it worked, and could explain why the earlier attempts failed. Your teacher noticed a special talent for inventing. Visit Activities → Inventor to tinker, keep a notebook and begin learning a field.',
+    hints: ['I took apart a broken toy and made it work in a completely different way.', 'I filled a notebook with sketches of machines nobody had built yet.', 'I built a contraption that pours cereal. It mostly pours it on the floor.'],
+    discovery: "Your homemade gadget won over the whole class. You have a special talent for inventing! Ideas will strike you all the time, and from age 8 the Inventor's Workshop under Activities is all yours.",
     apply: g => addStat(g, 'smarts', 5),
   },
   {
@@ -786,6 +786,9 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   }
   currentLogYear(g)
   const c = g.character
+  // Money written from here on (a wealthy parent's company, the birth log) is in this life's
+  // currency and year, not whatever life was on screen before.
+  bindMoneyContext(g)
 
   // --- Family -------------------------------------------------------------
   const rolledFamily = rollFamilyType(g)
@@ -994,7 +997,6 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   }
   // A citizen of the country you're born in (immigration.ts adds passports later).
   c.citizenships = [c.countryId]
-  bindMoneyContext(g)
   return g
 }
 
@@ -1167,6 +1169,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // Resolve every designation before choosing what this playable child keeps. A conglomerate is
   // one economic holding: it is a bequest only when all valid child designations agree. This makes
   // the result independent of which child the user chooses to continue as.
+  // Co-owners who died before the player pass their stakes on first (the player's part joins the
+  // estate that divides now), so no share stays on a late relative's record.
+  settleLateFamilyOwners(n)
   const successionUnits = successionEstateUnits(n)
   // Spun-off divisions with family co-owners remain in-kind holdings too.
   const groupIds = new Set(successionUnits.filter(u => u.group || u.assets.some(a => Array.isArray(a.details.familyShares) && a.details.familyShares.length > 0)).flatMap(u => u.assets.map(a => a.id)))
@@ -1229,6 +1234,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const birthday =
     bd && typeof bd === 'object' && !Array.isArray(bd) && typeof bd.month === 'number' && typeof bd.day === 'number' ? { month: bd.month, day: bd.day } : randomBirthday(n)
   const talentData = typeof heirP.data.talent === 'string' ? heirP.data.talent : null
+  // Durable NPC talents (Main Character Syndrome) carry over. Without any, leave `talents` unset
+  // exactly as before: an empty list would read as "inherited a gift" to the heir logic and UI.
+  const npcTalents = normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER)
   const npcOccupation = heirP.occupation
   const grief = randInt(n, 20, 40) * (heirP.relationship >= 50 ? 1 : 0.5)
 
@@ -1323,7 +1331,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     loans: [],
     social: null,
     talent: talentData ?? (age >= 12 && chance(n, 0.25) ? weightedPick(n, TALENTS, (t) => t.weight).id : null),
-    talents: normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER),
+    ...(npcTalents.length ? { talents: npcTalents } : {}),
     memories: [],
     willBeneficiaries: [],
     religion: old.religion,
@@ -1459,6 +1467,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   n.lifeId = `${g.lifeId.replace(/-g\d+$/, '')}-g${n.generation}`
   n.ancestors = [...n.ancestors, summary]
   n.character = heir
+  // The inheritance and the heir's first lines are written in the heir's currency (they may
+  // live abroad), not the late parent's.
+  bindMoneyContext(n)
   n.assets = keptAssets
   const ownedBeforeInheritance = npcCompany(heirP, n.year)
   if (ownedBeforeInheritance) {
@@ -1496,11 +1507,12 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     // Market shocks are world state (a banned company stays banned), not the old character's.
     ...(Array.isArray(n.flags.marketShocks) ? { marketShocks: n.flags.marketShocks } : {}),
     ...(Array.isArray(n.flags.marketBreakthroughs) ? { marketBreakthroughs: n.flags.marketBreakthroughs } : {}),
-    ...(n.flags.inventionImpact && typeof n.flags.inventionImpact === 'object' ? { inventionImpact: n.flags.inventionImpact } : {}),
     ...(n.flags['business.confidence'] ? { 'business.confidence': n.flags['business.confidence'], 'business.confidenceYear': n.flags['business.confidenceYear'] ?? 0 } : {}),
     ...(n.flags.worldEconomy ? { worldEconomy: n.flags.worldEconomy } : {}),
     ...(n.flags.groupServices ? { groupServices: n.flags.groupServices, groupServicesPrepared: n.flags.groupServicesPrepared ?? -1, groupServicesSettled: n.flags.groupServicesSettled ?? -1, groupServiceResults: n.flags.groupServiceResults ?? [] } : {}),
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
+    // Inventions that beat history are world state: an heir can't invent them first again.
+    ...(Array.isArray(n.flags['workshop.firsts']) ? { 'workshop.firsts': n.flags['workshop.firsts'] } : {}),
   }
   inheritRoyalStatus(n, heirP)
   // An heir already serving as group CEO keeps that appointment, now as the playable chair.

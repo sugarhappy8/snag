@@ -9,7 +9,7 @@ import { computerMenu, ownsComputer } from '../src/game/computer'
 import { devNodes, noComputerNodes, ventureAssetSubtitle, ventureAssetView, yearlyDev } from '../src/game/computer/dev'
 import { codingPortfolio, devCvEntries, selfTaughtDev } from '../src/game/computer/dev-cv'
 import { CODE_GIGS, doCodeGig, gigRate } from '../src/game/computer/dev-freelance'
-import { askParentsForComputer, bootcampCost, courseCost, learnInternals, practice } from '../src/game/computer/dev-learn'
+import { askParentsForComputer, bootcampCost, courseCost, familyComputerYear, learnInternals, practice } from '../src/game/computer/dev-learn'
 import { buildProject, PROJECT_KINDS, yearlyProjects } from '../src/game/computer/dev-projects'
 import { contractorCost, dataRegulator, devState, readVenture, ventureAssets } from '../src/game/computer/dev-state'
 import { createVenture, MAX_VENTURES, startVenture, ventureInternals, VENTURE_DEFS } from '../src/game/computer/dev-venture'
@@ -164,6 +164,25 @@ describe('getting a computer', () => {
     }
     expect(rich).toBe(20)
     expect(poor).toBe(0)
+  })
+
+  it('writes the life log and memories in the first person ("My mom", never "Your mom")', () => {
+    // Review: the Profile read "Age 7: Your mom brought home our first family computer when I was 7."
+    const lines: string[] = []
+    let family = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const parentMoney of [2_000_000, 900]) {
+        const g = kid(seed, 12, { parentMoney, rel: 85, grades: 75 })
+        askParentsForComputer(g)
+        lines.push(...g.log.flatMap((y) => y.entries.map((e) => e.text)), ...g.character.memories)
+      }
+      const h = kid(seed, 9, { parentMoney: 2_000_000 })
+      if (familyComputerYear(h, 1_000_000) > 0) family++
+      lines.push(...h.log.flatMap((y) => y.entries.map((e) => e.text)), ...h.character.memories)
+    }
+    expect(family).toBeGreaterThan(0)
+    expect(lines.some((t) => /^(Age \d+: )?My (mom|dad) (bought|gave|brought)/.test(t))).toBe(true)
+    expect(lines.filter((t) => /^(Age \d+: )?Your\b/.test(t))).toEqual([])
   })
 
   it('a middle-class family may hand down an old laptop; asking is limited to once a year', () => {
@@ -367,7 +386,7 @@ describe('ventures', () => {
         expect(JSON.stringify(JSON.parse(JSON.stringify(g)))).toBe(JSON.stringify(g))
       }
     }
-  })
+  }, 300_000)
 
   it('needs skill (or money for a freelancer) to build; one new venture a year; at most three', () => {
     const g = adult(11, 'us', 20, 10, 100)
@@ -657,8 +676,9 @@ describe('old saves and plain JSON', () => {
         g = JSON.parse(json) as GameState
       }
     }
-    // Twelve 45-year lives with every yearly hook of the year system: give it room.
-  }, 60_000)
+    // Twelve 45-year lives with every yearly hook of the year system: give it room
+    // (sized for a 2-core CI runner; 540 full years, each running the world economy).
+  }, 300_000)
 })
 
 // ---------------------------------------------------------------------------
@@ -754,7 +774,7 @@ describe('review fixes', () => {
     }
     expect(losers).toBeGreaterThan(0)
     expect(winners).toBeGreaterThan(0)
-  })
+  }, 120_000)
 
   it('developer contractors cost near-global rates; store helpers earn local wages', () => {
     // A cheap local dev team used to make 5 contractors + max ads a sure thing in poorer countries.

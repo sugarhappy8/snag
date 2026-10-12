@@ -125,7 +125,8 @@ describe('Investing talent: hints', () => {
     expect(precision).toBeGreaterThan(base / all + 0.12)
   })
 
-  it('say nothing looks good in bad years (gold aside)', { timeout: 60_000 }, () => {
+  // Many market years per seed: sized for a 2-core CI runner.
+  it('say nothing looks good in bad years (gold aside)', { timeout: 180_000 }, () => {
     let bad = 0
     let gloomy = 0
     for (const cid of ['us', 'de', 'br', 'in']) {
@@ -249,7 +250,8 @@ describe('Investing talent: the computer trading screens', () => {
     expect(() => stockBetsMenu().children(g)).not.toThrow()
   })
 
-  it('keeps leveraged bets risky: the index call is often wrong and winners pay wider spreads', { timeout: 60_000 }, () => {
+  // Many market years per seed: sized for a 2-core CI runner.
+  it('keeps leveraged bets risky: the index call is often wrong and winners pay wider spreads', { timeout: 180_000 }, () => {
     let right = 0
     let calls = 0
     for (const cid of ['us', 'gb', 'jp', 'br']) {

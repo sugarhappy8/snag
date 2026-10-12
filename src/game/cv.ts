@@ -2047,7 +2047,7 @@ function workLeadership(g: GameState): void {
     return
   }
   const p = between(job.performance / 110 + c.hidden.willpower / 400, 0.1, 0.9)
-  const project = pick(g, ['the office move', 'the new client launch', 'the website redesign', 'the holiday party (it was a big deal)', 'a cost-cutting review', 'onboarding the interns'])
+  const project = pick(g, ['the office move', 'the new client launch', hasTech(g, 'internet') ? 'the website redesign' : 'the catalog redesign', 'the holiday party (it was a big deal)', 'a cost-cutting review', 'onboarding the interns'])
   if (!chance(g, p)) {
     job.performance = Math.round(clamp(job.performance - 3))
     notice(g, 'Not Picked', `Your boss gave ${project} to someone else. They said you should "keep showing initiative," which means no.`, { emoji: '\u{1F9ED}' })

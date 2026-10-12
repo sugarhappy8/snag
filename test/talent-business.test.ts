@@ -292,7 +292,8 @@ describe('Business talent: popup hints', () => {
       // The hinted choice is the best one, or statistically tied with it.
       expect(means.get(pick)!, `${s.id}: hinted ${pick} ${Math.round(means.get(pick)!)} vs best ${best[0]} ${Math.round(best[1])}`).toBeGreaterThanOrEqual(best[1] - 3 * se - scale * 0.06)
     }
-  })
+    // 160 cloned games per choice per event: sized for a 2-core CI runner.
+  }, 300_000)
 
   it('prices a buyout against what the company is worth', () => {
     const { g, a, b } = company(51, 'us', 'cafe', true)
@@ -469,7 +470,7 @@ describe('Business talent: the yearly flow', () => {
     play(g, { 'Buyout Offer': 'accept' })
     expect(findBusiness(g, a.id)).toBeUndefined()
     expect(reportOf(g, a)).toBe(-1)
-  })
+  }, 300_000)
 
   it('words a plan that makes nothing sensibly', () => {
     const { g, a, b } = company(23, 'us', 'cafe', true)

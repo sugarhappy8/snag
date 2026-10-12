@@ -2,7 +2,7 @@
 // honest talk takes a toll and may not get through (the odds are shown), money soothes less each
 // time it is tried, and a place in the will (or a smaller share) is a promise on your estate. None
 // of it creates money, and trust only comes back by a bounded amount.
-import { addRelationship, addStat, canAfford, clamp, count, log, notice, pronouns } from '../core'
+import { addRelationship, addStat, canAfford, clamp, count, getPerson, log, notice, pronouns } from '../core'
 import { chance, randInt } from '../rng'
 import type { GameState, MenuNode, Person } from '../types'
 import { entitlement } from './wealth-core'
@@ -53,6 +53,9 @@ function statusLine(g: GameState, p: Person): string {
 export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
   const c = g.character
   if (!c.alive || c.age < 18 || !p.alive || !willRole(p) || p.data.disowned === true) return []
+  // These rows are built from the state on screen; actions run on a fresh draft of it, so read and
+  // write the person through the state each callback is handed.
+  const live = (s: GameState): Person => getPerson(s, p.id) ?? p
   const away = keptAwayBy(g, p)
   if (away) {
     return [
@@ -85,12 +88,15 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
     subtitle: `An honest apology · about ${Math.round(odds * 100)}% to get through`,
     visible: () => known,
     disabledReason: (s) => {
-      const cur = readWl(s, p)
+      const cur = readWl(s, live(s))
       if (cur.talkY === s.year) return `You already tried talking to ${p.firstName} this year.`
       if (cur.estr && cur.anger > 55) return `${p.firstName} isn't ready to hear from you yet.`
       return null
     },
-    run: (s) => heartToHeart(s, p),
+    run: (s) => {
+      const q = getPerson(s, p.id)
+      if (q) heartToHeart(s, q)
+    },
   })
 
   if (known && w.explained === '' && !w.estr) {
@@ -100,8 +106,11 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
       label: 'Explain Your Reasons',
       emoji: '\u{1F5E3}\u{FE0F}',
       subtitle: 'Once. It helps most with people who can hear it.',
-      disabledReason: (s) => (readWl(s, p).talkY === s.year ? `You already tried talking to ${p.firstName} this year.` : null),
-      run: (s) => explainReasons(s, p),
+      disabledReason: (s) => (readWl(s, live(s)).talkY === s.year ? `You already tried talking to ${p.firstName} this year.` : null),
+      run: (s) => {
+        const q = getPerson(s, p.id)
+        if (q) explainReasons(s, q)
+      },
     })
   }
 
@@ -136,7 +145,7 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
         unit: '%',
         defaultValue: () => '50',
         preview: (s, v) => {
-          const cur = readWl(s, p)
+          const cur = readWl(s, live(s))
           return cur.known ? `${p.firstName}'s anger would fall from ${cur.anger} to about ${angerAfterShare(cur.anger, v)}` : `${p.firstName} doesn't know yet`
         },
       },
@@ -163,7 +172,7 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
       emoji: '\u{1F4B5}',
       subtitle: tries > 0 ? 'Money works less each time you try it' : 'A check helps a little, and only a little',
       disabledReason: (s) => {
-        const cur = readWl(s, p)
+        const cur = readWl(s, live(s))
         if (cur.buyY === s.year) return `You already tried money on ${p.firstName} this year.`
         if (Math.max(0, s.character.money) < 100 || top < 1) return "You can't spare enough for it to mean anything."
         return null
@@ -176,20 +185,22 @@ export function willPersonNodes(g: GameState, p: Person): MenuNode[] {
         max: Math.max(2, top),
         defaultValue: () => String(Math.max(1, Math.round(top / 3))),
         preview: (s, v) => {
-          const relief = giftRelief(s, p, v)
-          const e = entitlement(p)
+          const relief = giftRelief(s, live(s), v)
+          const e = entitlement(live(s))
           return `Takes about ${relief} off ${p.firstName}'s anger${e >= 60 ? ' (spoiled people expect more)' : ''}`
         },
       },
       run: (s, input) => {
         const amt = Math.round(Number(input))
-        const cur = readWl(s, p)
+        const q = getPerson(s, p.id)
+        if (!q) return
+        const cur = readWl(s, q)
         if (!Number.isFinite(amt) || amt < 1 || cur.buyY === s.year) return
         if (!canAfford(s, amt)) {
           notice(s, 'Not Enough', "You can't afford that.", { emoji: '\u{1F4B8}' })
           return
         }
-        const text = payOff(s, p, amt)
+        const text = payOff(s, q, amt)
         if (text) notice(s, 'The Will', text, { emoji: EMOJI })
       },
     })

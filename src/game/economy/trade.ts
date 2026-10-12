@@ -63,10 +63,20 @@ function routeWeights(rows: TradeRoute[]): TradeRoute[] {
   })
 }
 
-const termsCache = new Map<string, { tariff: number; restriction: number; fx: number }>()
+type RouteTerms = { tariff: number; restriction: number; fx: number }
+/** Pure memo, bucketed by year. One annual sweep asks for every country pair this year and
+ * last year (~20k routes); dropping whole old years keeps it bounded without thrashing. */
+const termsCache = new Map<number, Map<string, RouteTerms>>()
+const TERMS_YEARS = 4
 /** Existing customs code owns tariff and bloc dates. There is no parallel treaty table. */
-function routeTerms(from: string, to: string, year: number) {
-  const key = `${from}:${to}:${year}`, hit = termsCache.get(key)
+function routeTerms(from: string, to: string, year: number): RouteTerms {
+  let byYear = termsCache.get(year)
+  if (!byYear) {
+    if (termsCache.size >= TERMS_YEARS) termsCache.delete(termsCache.keys().next().value!)
+    byYear = new Map()
+    termsCache.set(year, byYear)
+  }
+  const key = `${from}:${to}`, hit = byYear.get(key)
   if (hit) return hit
   const bloc = sharedBloc(from, to, year), tariff = tariffOn(from, to, year)
   const permits = (bloc ? Math.min(.1, otherBarriers(to, year)) : otherBarriers(to, year)) * .12
@@ -77,8 +87,7 @@ function routeTerms(from: string, to: string, year: number) {
   const denominationChanged = currencyOf(from, year).code !== currencyOf(from, year - 5).code || currencyOf(to, year).code !== currencyOf(to, year - 5).code
   const fx = denominationChanged ? 0 : clamp(fxExposure(to, from, year).swing, 0, .3)
   const result = { tariff, restriction, fx }
-  if (termsCache.size >= 16384) termsCache.clear()
-  termsCache.set(key, result)
+  byYear.set(key, result)
   return result
 }
 
@@ -176,13 +185,26 @@ function retarget(opening: Record<string, CountryEconomy>, country: string, inpu
   return routeWeights(next)
 }
 
+/** The opening world is read-only during a transition; sort its buyers once, not per exporter and input. */
+const buyerOrder = new WeakMap<Record<string, CountryEconomy>, { keys: string; sorted: string[] }>()
+function buyersOf(opening: Record<string, CountryEconomy>): string[] {
+  const keys = Object.keys(opening), joined = keys.join('\n'), hit = buyerOrder.get(opening)
+  if (hit?.keys === joined) return hit.sorted
+  const sorted = keys.sort()
+  buyerOrder.set(opening, { keys: joined, sorted })
+  return sorted
+}
+
 /** Lagged foreign orders from countries actually sourcing this input from this exporter. */
 function exportOrders(opening: Record<string, CountryEconomy>, country: string, input: TradeInputId, year: number): number {
   let total = 0, orders = 0
-  for (const buyer of Object.keys(opening).sort()) {
+  for (const buyer of buyersOf(opening)) {
     if (buyer === country) continue
     const e = opening[buyer], network = e.tradeNetwork ?? initialTrade(buyer, year - 1)
-    const contract = network.inputs[input], share = contract.routes.find(route => route.partner === country)?.share ?? 0
+    const contract = network.inputs[input]
+    // A plain loop: this runs for every country, input and buyer each year.
+    let share = 0
+    for (const route of contract.routes) if (route.partner === country) { share = route.share ?? 0; break }
     if (share <= 0) continue
     const weight = share * contract.dependence * Math.sqrt(Math.max(1, marketOf(buyer).populationM * marketOf(buyer).gdpPerCapita))
     const now = routeTerms(country, buyer, year), prior = routeTerms(country, buyer, year - 1)

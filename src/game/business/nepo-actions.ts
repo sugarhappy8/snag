@@ -4,6 +4,7 @@
 // possible self-dealing, the staff notice who is promoted past merit, and the press has a word for it.
 import { addRelationship, addStat, count, formatMoney, log, notice, remember } from '../core'
 import { addEntitlement, entitlement } from '../events/wealth-core'
+import { incomeTax } from '../finance'
 import { notePerson, createPerson } from '../people'
 import { chance, randInt, rand } from '../rng'
 import type { Asset, GameState, Person } from '../types'
@@ -427,6 +428,8 @@ export function fire(g: GameState, a: Asset, b: BizState, p: Person): HireResult
   if (!ceo && sev > 0) {
     b.cash -= sev
     b.yearCosts += sev
+    // The relative is a real person: the severance is theirs, taxed like their pay.
+    p.money = Math.round(p.money + Math.max(0, sev - incomeTax(b.countryId, sev)))
   }
   b.morale = clampN(b.morale - 3, 0, 100)
   const fam = familyOf(b)
@@ -456,6 +459,7 @@ export function fire(g: GameState, a: Asset, b: BizState, p: Person): HireResult
     const cost = Math.round(job.pay * (0.5 + rand(g)))
     b.cash -= cost
     b.yearCosts += cost
+    p.money = Math.round(p.money + cost)
     extra = ` ${he} sued for wrongful dismissal and the company settled for ${formatMoney(cost)}.`
   }
   notePerson(p, `Fired from ${a.name} (age ${p.age}).`)

@@ -6,7 +6,7 @@ import { marketOf } from '../src/game/data/markets'
 import { newBiz, createBusinessAsset } from '../src/game/business/founding'
 import { planFor } from '../src/game/business/economy'
 import { financeNodes, simulateFinanceYear } from '../src/game/business/finance-firm'
-import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
+import { loanTotal, readBank, saveBank } from '../src/game/business/bank-state'
 import type { GameState, Json, MenuNode } from '../src/game/types'
 
 function fixture(): GameState {
@@ -109,7 +109,8 @@ describe('World Simulation 2.0: settled banking losses and lagged credit feedbac
     expect(healed.sectors.industry.output).toBeGreaterThan(.4)
     expect(crisis.character.money).toBe(321_000); expect(crisis.rng).toBe(882)
     expect(economyState(crisis)!.pending).toEqual([])
-  }, 30000)
+    // Years of whole-world transitions: sized for a 2-core CI runner.
+  }, 120_000)
 
   it('nets expansion and contraction before national caps, independent of bank settlement order and reloads', () => {
     const first = fixture(), reverse = fixture(), amounts = [.3, .3, -.3]
@@ -178,18 +179,18 @@ describe('World Simulation 2.0: settled banking losses and lagged credit feedbac
   it('exports balanced bank settlement telemetry without letting a forecast write the world or spend customer principal', () => {
     const g = fixture(), b = newBiz(g, 'bank', 'us', 'Chicago', { cash: 5_000_000 })
     const a = createBusinessAsset(g, 'Existing Bank', b, b.cash); g.assets.push(a)
-    const f = financeView(b); f.controls = 0; f.confidence = 10; f.strategy = 'aggressive'; saveFinance(b, f)
-    const opening = financeView(b), prediction = structuredClone(b), before = JSON.stringify(g)
+    const f = readBank(b); f.trust = 10; f.appetite = 'highYield'; saveBank(b, f)
+    const opening = readBank(b), prediction = structuredClone(b), before = JSON.stringify(g)
     inspect(g, financeNodes(g, a))
-    const result = simulateFinanceYear(g, prediction, g.year, 0), closing = financeView(prediction)
+    const result = simulateFinanceYear(g, prediction, g.year, 0), closing = readBank(prediction)
     expect(JSON.stringify(g)).toBe(before)
-    expect(result.bank).toMatchObject({ bankLoss: closing.lastDefaults, bankRun: closing.lastRun ? closing.lastWithdrawals : 0,
-      bankLending: closing.loanBook - opening.loanBook })
-    expect(closing.loanBook + closing.bonds + closing.reserves).toBeCloseTo(closing.deposits, 5)
+    expect(result.bank).toMatchObject({ bankLoss: closing.last!.bankLoss, bankRun: closing.last!.runWithdrawals,
+      bankLending: loanTotal(closing) - loanTotal(opening) })
+    expect(loanTotal(closing) + closing.badNet + closing.bonds + closing.reserves).toBeCloseTo(closing.deposits + closing.advance, 3)
     expect(prediction.cash).toBe(b.cash + result.stmt.net)
     expect(simulateFinanceYear(g, prediction, g.year, 0).bank).toBeUndefined()
     recordEconomicActivity(g, 'real-bank-settlement', 'us', 'bank', result.bank!)
-    expect(economyState(g)!.pending[0].bankLoss).toBeCloseTo(closing.lastDefaults / gdp(), 12)
+    expect(economyState(g)!.pending[0].bankLoss).toBeCloseTo(closing.last!.bankLoss / gdp(), 12)
     expect(g.character.money).toBe(321_000)
   })
 

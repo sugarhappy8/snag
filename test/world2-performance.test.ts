@@ -141,5 +141,7 @@ describe('World Simulation 2.0: representative large-family integrity and timing
     } else expect(scenarios).not.toHaveBeenCalled()
     const worldSize = JSON.stringify(live.flags.worldEconomy).length
     console.info(`World2 large-family benchmark: ${skill}-rated CEOs, 16 subsidiaries, 60 contacts, 6 initial NPC firms, 5 settled years and one heir. ${timing.turns} measured branches: macro ${(timing.macro / timing.turns).toFixed(1)} ms/year, businesses ${(timing.companies / timing.turns).toFixed(1)} ms/year, NPCs ${(timing.people / timing.turns).toFixed(1)} ms/year; JSON work ${timing.json.toFixed(0)} ms total. Save ${snapshot.length} chars (world ${worldSize}); ${economyState(live)!.rivals.length} persistent rivals; ${scenarios.mock.calls.length} resilience reviews.`)
-  }, 60000)
+    // Ten settled years of sixteen planner-run companies (timings are printed, not asserted):
+    // sized for a 2-core CI runner.
+  }, 600_000)
 })

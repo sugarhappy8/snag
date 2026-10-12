@@ -139,15 +139,18 @@ describe('group treasury, ventures and shareholder capital', () => {
   })
 
   it('extends a 100-rated group CEO’s profit protection to supervised family divisions', () => {
-    const { g, id } = world(['solar', 'bank'], 100), grp = liveGroup(g, id)!
+    const { g, id } = world(['solar', 'logistics', 'bank'], 100), grp = liveGroup(g, id)!
     grp.core.autoFound = false
     for (const x of grp.members) {
       x.b.manager!.skill = 70; x.b.manager!.personId = `family-${x.a.id}`
-      x.b.debt = 1e9; x.b.debtRate = .5
+      if (x.b.industry !== 'bank') { x.b.debt = 1e9; x.b.debtRate = .5 }
     }
     saveGroup(g, grp)
     yearlyBusinessImpl(g)
-    expect(groupById(g, id)!.members.every(x => (x.b.last?.net ?? 0) > 0)).toBe(true)
+    const members = groupById(g, id)!.members
+    expect(members.filter(x => x.b.industry !== 'bank').every(x => (x.b.last?.net ?? 0) > 0)).toBe(true)
+    // Banking 2.0: a bank earns what its books earn; no strategic trading income for any CEO.
+    expect(members.find(x => x.b.industry === 'bank')!.b.last!.strategicIncome ?? 0).toBe(0)
     expect(groupById(g, id)!.core.history.at(-1)!.profit).toBeGreaterThan(0)
   })
 

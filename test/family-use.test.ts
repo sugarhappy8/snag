@@ -473,6 +473,47 @@ describe('Family Access: decisions', () => {
     }
   })
 
+  it('a crash repair is only done when it is paid for in full; a broke owner can leave it damaged', () => {
+    const makeCrash = () => {
+      const g = rich(900_000_000, 'us', 45, 3)
+      const kid = member(g, 'child', 19, { traits: ['reckless'] })
+      kid.data.entitlement = 70
+      const car = buy(g, 'porsche-911-gt3-rs')
+      toggleInsurance(g, car)
+      g.queue = []
+      grantAccess(g, car, kid)
+      return g
+    }
+    const g = find('A Bad Day for the Paint', makeCrash, 800)
+    expect(g).not.toBeNull()
+    const modal = g!.queue.find((m) => m.kind === 'choice' && m.title === 'A Bad Day for the Paint') as Extract<ModalItem, { kind: 'choice' }>
+    const snap = JSON.stringify(g)
+    for (const id of modal.choices.map((c) => c.id)) {
+      const h = JSON.parse(snap) as GameState
+      h.character.money = 0
+      const kid = h.people.find((p) => p.relation === 'child')!
+      const car = h.assets.find((a) => a.details.lux === 1)!
+      const cond0 = car.condition, kidMoney = kid.money
+      answer(h, id)
+      expect(h.character.money, id).toBe(0)
+      expect(car.condition, id).toBe(cond0)
+      expect(kid.money, id).toBe(kidMoney)
+      if (id === 'ground') expect(hasAccess(h, car, kid)).toBe(false)
+      const told = h.queue.filter((m) => m.kind === 'notice').map((m) => m.kind === 'notice' ? m.text : '').join(' ')
+      expect(told, id).toMatch(/damaged/)
+    }
+    // A broke owner is offered the honest way out up front.
+    const broke = () => { const x = makeCrash(); x.character.money = 1_000; return x }
+    const poor = find('A Bad Day for the Paint', broke, 800)
+    expect(poor).not.toBeNull()
+    const offer = poor!.queue.find((m) => m.kind === 'choice' && m.title === 'A Bad Day for the Paint') as Extract<ModalItem, { kind: 'choice' }>
+    expect(offer.choices.map((c) => c.id)).toContain('leave')
+    const car = poor!.assets.find((a) => a.details.lux === 1)!, cond0 = car.condition
+    answer(poor!, 'leave')
+    expect(poor!.character.money).toBe(1_000); expect(car.condition).toBe(cond0)
+    expect(poor!.queue.some((m) => m.kind === 'notice' && m.title === 'Left Damaged')).toBe(true)
+  })
+
   it('a pawned watch can be bought back, forgiven or confronted', () => {
     const makePawn = () => {
       const g = rich(900_000_000, 'us', 45, 3)

@@ -23,9 +23,7 @@ import { yearlyHousehold } from './household'
 import { yearlyHistory } from './history'
 import { yearlyDigest } from './history/digest'
 import { yearlyImmigration } from './immigration'
-import { yearlyInventor } from './inventor'
-import { yearlyInventionImpact } from './invention-impact'
-import { yearlyInventionLicenses } from './business/invention-licensing'
+import { yearlyWorkshop } from './workshop/yearly'
 import { yearlyUnderworld } from './underworld'
 import { yearlyCorruption } from './special/corruption'
 import { yearlyInvestments } from './investments'
@@ -33,6 +31,7 @@ import { yearlyMilestones } from './life'
 import { yearlyRelationships } from './relationships'
 import { yearlyBackground } from './birth-background'
 import { yearlyRoyalty } from './royalty'
+import { refreshRoyalCareers } from './npc-lives'
 import { yearlyShops } from './shops'
 import { yearlySpecial } from './special'
 import type { GameState } from './types'
@@ -47,14 +46,17 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['givingFund', yearlyGivingFund],
   ['background', yearlyBackground],
   ['royalty', yearlyRoyalty],
+  // Royal blood can arrive mid-year (a sibling born after the NPC pass, a child
+  // titled by yearlyRoyalty): give them their court life now, as a reload would.
+  ['royalCareers', (g) => refreshRoyalCareers(g)],
   ['health', yearlyHealth],
   ['education', yearlyEducation],
   ['professions', yearlyProfessions],
   ['career', yearlyCareer],
   ['special', yearlySpecial],
-  ['inventor', yearlyInventor],
-  ['inventionImpact', yearlyInventionImpact],
-  ['inventionLicenses', yearlyInventionLicenses],
+  // Inventions settle last year's sales before 'business' books the fiscal year (company
+  // margins go into b.cash + b.yearIncome) and before 'finance' taxes personal royalties.
+  ['workshop', yearlyWorkshop],
   ['corruption', yearlyCorruption],
   ['business', yearlyBusiness],
   ['development', yearlyDevelopment],
