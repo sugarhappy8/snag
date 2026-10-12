@@ -760,7 +760,9 @@ function presentEmbezzle(g: GameState, a: Asset, b: BizState): void {
   const s: KeyStaff | undefined = suspects.length ? pick(g, suspects) : undefined
   const who = s ? `${s.firstName} ${s.lastName}, your ${s.role}` : `${randomFirstName(g, b.countryId, chance(g, 0.5) ? 'male' : 'female')}, a shift supervisor`
   const amount = Math.round(Math.min(Math.max(1_000, (b.last?.revenue ?? 0) * (0.01 + rand(g) * 0.04)), Math.max(1_000, Math.abs(b.cash) * 0.5 + 1_000)))
+  // A theft loss is a cost on the books (money the court orders back is booked as income).
   b.cash -= amount
+  b.yearCosts += amount
   const choices: ChoiceOption[] = [
     { id: 'press', label: 'Fire them and press charges', emoji: '\u{1F46E}' },
     { id: 'quiet', label: 'Fire them quietly', emoji: '\u{1F92B}' },

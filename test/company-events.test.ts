@@ -288,6 +288,14 @@ describe('new business events: the Business talent', () => {
 })
 
 describe('new business events: money moves once', () => {
+  it('an embezzler’s theft is booked as a cost, so cash never moves off the books', () => {
+    const { g, a, b } = company(41, { id: 'embezzle', industry: 'restaurant' }, false)
+    const cash = b.cash, costs = b.yearCosts
+    expect(businessEventInternals.present(g, a, b, 'embezzle')).toBe(true)
+    const stolen = cash - b.cash
+    expect(stolen).toBeGreaterThan(0)
+    expect(b.yearCosts - costs).toBe(stolen)
+  })
   it('every choice books its cash through yearCosts/yearIncome (capital spending and equity aside)', () => {
     for (const s of SETUPS) {
       const { g, a, b } = company(51, s, true)
