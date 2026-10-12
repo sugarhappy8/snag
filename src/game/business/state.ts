@@ -603,11 +603,16 @@ export function groupMultOf(b: Pick<BizState, 'group'>): number {
 /**
  * The owner's stake of the valuation, which is what the asset is worth to them. In a group the
  * group's multiplier applies to the company's operating value (cash and debt count at face value).
+ * Outside investors' 1x liquidation preference comes first, exactly as a sale pays out
+ * (exit.ownerProceeds): money investors just put in is theirs, not the founder's net worth.
  */
 export function stakeValue(b: BizState): number {
   const mult = groupMultOf(b)
   const operating = mult === 1 ? 0 : Math.max(0, b.valuation - (b.cash - b.debt))
-  const v = Math.round((b.valuation + (mult - 1) * operating) * b.share)
+  const total = b.valuation + (mult - 1) * operating
+  const pref = b.share >= 1 ? 0 : Math.max(0, b.pref ?? 0)
+  // Investors take the larger of their preference and their share; the owner keeps the rest.
+  const v = Math.round(pref > total * (1 - b.share) ? total - pref : total * b.share)
   return Number.isFinite(v) ? Math.max(0, v) : 0
 }
 

@@ -3,6 +3,15 @@
 // draft, exactly like the UI store does; the committed state is deep-frozen so a menu closure
 // that writes to an object it captured from it (instead of the draft) throws.
 import { describe, expect, it } from 'vitest'
+import { applyFallback } from '../src/game/offline'
+import { businessCareerMenu } from '../src/game/business'
+import { ownerProceeds } from '../src/game/business/exit'
+import { newBiz } from '../src/game/business/founding'
+import { businessAssets, readBiz, stakeValue } from '../src/game/business/state'
+import { netWorth } from '../src/game/core'
+import { createNewLife } from '../src/game/life'
+import { runScript } from '../src/game/scripts'
+import { getCountry } from '../src/game/world'
 import { readTies } from '../src/game/events/wealth-core'
 import { removeHeir, changeWill } from '../src/game/events/will-act'
 import { willPersonNodes } from '../src/game/events/will-amends'
@@ -140,3 +149,39 @@ describe('menus are pure: rendering never writes to the state', () => {
   })
 })
 
+describe("investors' liquidation preference is not the founder's net worth", () => {
+  it('the owner stake is what a sale at the valuation would pay the owner', () => {
+    const g = makeTestGame(5, { age: 35 })
+    for (const [valuation, share, pref] of [[5_520_000, 0.42, 6_210_000], [20_000_000, 0.42, 6_210_000], [8_000_000, 0.6, 4_000_000], [1_000_000, 1, 0], [3_000_000, 0.5, 0]] as const) {
+      const b = newBiz(g, 'hotel', 'us', 'New York', { valuation, share, pref })
+      expect(stakeValue(b), `${valuation} ${share} ${pref}`).toBe(ownerProceeds(b, valuation))
+    }
+  })
+
+  it('founding a company with investor money does not raise net worth', () => {
+    const g = createNewLife({ seed: 7, year: 2000, countryId: 'us' })
+    g.queue = []
+    g.character.age = 35
+    g.character.money = 4_400_000
+    g.character.city = getCountry('us').cities[0]
+    g.character.stats.smarts = 70
+    const before = netWorth(g)
+    const start = businessCareerMenu.children(g).find((n) => n.id === 'biz.start') as MenuGroup
+    ;(start.children(g).find((n) => n.id === 'biz.start.hotel') as MenuAction).run(g)
+    for (let guard = 0; g.queue.length && guard < 50; guard++) {
+      const m = g.queue.shift()!
+      const at = g.queue.length
+      // Take the most outside money on offer: the biggest starting capital, funded by investors.
+      if (m.kind === 'choice') runScript(g, m.scriptId!, m.choices.some((c) => c.id === 'investors') ? 'investors' : m.choices[0].id, m.data, m)
+      else if (m.kind === 'input') runScript(g, m.scriptId, m.input === 'text' ? 'Test Hotel' : String(m.max ?? m.min ?? 1), m.data, m)
+      else if (m.kind === 'aiTask') applyFallback(g, m.task)
+      g.queue.unshift(...g.queue.splice(at))
+    }
+    const a = businessAssets(g)[0]
+    const b = readBiz(g, a)
+    expect(b.share).toBeLessThan(1)
+    expect(b.pref ?? 0).toBeGreaterThan(0)
+    expect(a.value).toBe(ownerProceeds(b, b.valuation))
+    expect(netWorth(g)).toBeLessThanOrEqual(before)
+  })
+})
