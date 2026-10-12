@@ -113,10 +113,17 @@ export function availableStudioEngines(engines: StudioEngine[], scopeIndex: numb
   return engines.filter((x) => x.stage === 'ready' && engineTier(x.tier).maxScope >= scopeIndex).map((x) => x.id)
 }
 
-/** Engine IP is included in the company's value, never also paid to its owner personally. */
+/**
+ * Engine IP is included in the company's value, never also paid to its owner personally. A buyer
+ * pays for the technology at a discount to what it cost to build (tools, R&D and the payroll
+ * already spent; better engines recover more of it, never all, since an unproven engine carries
+ * the buyer's risk), worn down with age, plus three years of the licensing receipts its contracts
+ * transfer. Building and selling never returns more than was spent unless licensees really paid.
+ */
 export function engineIpValue(x: StudioEngine, year = Math.max(x.released, x.lastYear)): number {
   if (x.stage === 'sold') return 0
   if (x.stage === 'dev') return Math.round(x.spent * .6 * x.progress / 100)
   const age = Math.max(0, year - x.released)
-  return Math.round(x.spent * (.5 + x.quality / 100) / (1 + age * .14) + x.lastRevenue * 3)
+  const recovery = .2 + .6 * x.quality / 100 // At most 80% of the cost, at quality 100.
+  return Math.round(x.spent * recovery / (1 + age * .14) + x.lastRevenue * 3)
 }
