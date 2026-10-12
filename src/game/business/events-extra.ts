@@ -824,7 +824,7 @@ const STAR = defineScript('business.ev.starInvestor', (g, choice, data) => {
 
 function presentStar(g: GameState, a: Asset, b: BizState): void {
   const who = someone(g, b)
-  const what = pick(g, ['the famous actor', 'the champion athlete', 'the chart-topping singer', 'the much-loved comedian'])
+  const what = pick(g, ['the famous actor', 'the champion athlete', 'the famous singer', 'the much-loved comedian'])
   const stake = Math.round((0.1 + rand(g) * 0.1) * 100) / 100
   // Stars don't always pay full price: some offers are generous, some lean on the fame they bring.
   const pre = Math.round(Math.max(1, b.valuation) * (0.85 + rand(g) * 0.5))
