@@ -17,11 +17,14 @@ import type { Asset, ChoiceOption, GameState, Json, MenuAction, MenuGroup, MenuN
 import { getCountry } from '../world'
 import { boardAllows } from './board'
 import { capexCaption } from './board-menu'
-import { bizWorth, fxValue, LASTING_YEARS, localEcon, maxProduction, niceAmount, planFor, refreshValue, valuationOf, type Worth } from './economy'
+import { bizWorth, fxValue, LASTING_YEARS, localEcon, maxProduction, niceAmount, planFor, refreshValue, startupCost, valuationOf, type Worth } from './economy'
 import { manageBlock, noCash } from './gate'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, readBiz, runsIt, totalOutlets, type BizState } from './state'
-import { clampN, markBest, money, num, plural, rec } from './util'
+import { clampN, markBest, money, plural, rec } from './util'
+import { readFranchise, type FranchiseLedger, type FranchiseState } from './franchise-state'
+
+export { franchiseFeesFor, franchiseIncomeFor, franchiseUnits, readFranchise, type FranchiseLedger, type FranchiseState } from './franchise-state'
 
 /** Industries whose customers walk into a branded outlet: the classic franchise trades. */
 export const FRANCHISE_INDUSTRIES: readonly string[] = [
@@ -45,63 +48,8 @@ export const MIN_QUALITY = 40
 /** Years a franchise unit's royalties are counted for in the Business talent's what-ifs. */
 const UNIT_YEARS = LASTING_YEARS
 
-export interface FranchiseLedger {
-  /** Fiscal year. */
-  year: number
-  /** Net upfront fees booked that year. */
-  fees: number
-  /** Net royalties booked for that year. */
-  royalty: number
-}
-
-export interface FranchiseState {
-  /** Franchised outlets open now. */
-  units: number
-  /** Year the first franchise was sold (0: never). */
-  since: number
-  /** Units sold in `addedYear` (they trade half of that year). */
-  added: number
-  addedYear: number
-  /** Last fiscal year whose royalties were booked (each year books once). */
-  booked: number
-  /** Fractional franchisee closures carried to next year (keeps churn exact without dice). */
-  carry: number
-  /** Lifetime net fees + royalties. */
-  lifetime: number
-  scandals: number
-  lastScandal: number
-  ledger: FranchiseLedger[]
-}
-
-const EMPTY: FranchiseState = { units: 0, since: 0, added: 0, addedYear: 0, booked: 0, carry: 0, lifetime: 0, scandals: 0, lastScandal: 0, ledger: [] }
-
 export function isFranchiseIndustry(industry: string): boolean {
   return FRANCHISE_INDUSTRIES.includes(industry)
-}
-
-/** A sane franchise record from whatever is stored (pure; old saves have none). */
-export function readFranchise(b: Pick<BizState, 'franchise'>): FranchiseState {
-  const d = rec(b.franchise)
-  if (!d) return { ...EMPTY, ledger: [] }
-  const ledger = Array.isArray(d.ledger)
-    ? d.ledger
-        .map((x) => rec(x))
-        .filter((x): x is Record<string, Json> => !!x && Number.isFinite(num(x.year, NaN)))
-        .map((x) => ({ year: Math.round(num(x.year)), fees: Math.max(0, num(x.fees)), royalty: Math.max(0, num(x.royalty)) }))
-        .slice(-4)
-    : []
-  return {
-    units: Math.round(clampN(num(d.units), 0, 1e7)),
-    since: Math.round(num(d.since)),
-    added: Math.round(clampN(num(d.added), 0, 1e7)),
-    addedYear: Math.round(num(d.addedYear)),
-    booked: Math.round(num(d.booked)),
-    carry: clampN(num(d.carry), 0, 1),
-    lifetime: Math.max(0, num(d.lifetime)),
-    scandals: Math.max(0, Math.round(num(d.scandals))),
-    lastScandal: Math.round(num(d.lastScandal)),
-    ledger,
-  }
 }
 
 function save(b: BizState, st: FranchiseState): void {
@@ -116,17 +64,6 @@ function ledgerOf(st: FranchiseState, year: number): FranchiseLedger {
     st.ledger.sort((x, y) => x.year - y.year)
   }
   return row
-}
-
-/** Franchise money (net fees + royalties) booked in a fiscal year: the statement's own line. */
-export function franchiseIncomeFor(b: Pick<BizState, 'franchise'>, year: number): number {
-  const row = readFranchise(b).ledger.find((x) => x.year === year)
-  return row ? Math.round(row.fees + row.royalty) : 0
-}
-
-/** Franchised outlets open now (0 for anyone who never franchised). */
-export function franchiseUnits(b: Pick<BizState, 'franchise'>): number {
-  return readFranchise(b).units
 }
 
 // ---------------------------------------------------------------------------
@@ -210,10 +147,13 @@ export function soldThisYear(g: GameState, b: BizState): number {
 export function maxSellable(g: GameState, b: BizState): number {
   if (franchiseBlock(b)) return 0
   const network = networkSize(b)
-  // Once the concept qualifies there is always someone keen; a strong brand draws crowds.
-  const prospects = 1 + Math.floor(franchiseInterest(b) * (4 + 0.3 * network))
+  const sold = soldThisYear(g, b)
+  // Once the concept qualifies there is always someone keen; a strong brand draws crowds. The
+  // crowd is set by the network the year started with: this year's own sales don't draw more
+  // buyers this year (or selling one at a time would beat selling them all at once).
+  const prospects = 1 + Math.floor(franchiseInterest(b) * (4 + 0.3 * Math.max(0, network - sold)))
   const room = Math.max(0, networkRoom(b) - network)
-  return Math.max(0, Math.min(room, prospects - soldThisYear(g, b)))
+  return Math.max(0, Math.min(room, prospects - sold))
 }
 
 /**
@@ -298,10 +238,24 @@ export function bestFranchiseCount(g: GameState, b: BizState): { n: number; valu
   return best
 }
 
-/** What buying one franchised outlet back costs: its fit-out plus a couple of years of the franchisee's profit. */
+/** The home cities a bought-back outlet can land in (buyBackFranchises spreads them over these). */
+function buyBackCities(b: BizState): string[] {
+  const cities = getCountry(b.countryId).cities.slice(0, 10)
+  return cities.length ? cities : [b.city]
+}
+
+/**
+ * What buying one franchised outlet back costs: the franchisee's fit-out at what opening one costs
+ * (in the dearest city it could land in), the fee they paid, and a couple of years of their profit.
+ * So buying back is never a cheaper way to open an outlet than opening it yourself, and selling a
+ * franchise only to buy it back always loses money. Rounded up, never down.
+ */
 export function buyBackPrice(b: BizState): number {
-  const e = localEcon(b.industry, b.countryId, b.city)
-  return niceAmount(e.capital * 0.85 + unitSales(b) * 0.1 * 2.5)
+  const fitOut = Math.max(...buyBackCities(b).map((city) => startupCost(b.industry, b.countryId, city).capital))
+  const n = fitOut + franchiseFee(b) + unitSales(b) * 0.1 * 2.5
+  if (!Number.isFinite(n) || n <= 0) return 0
+  const mag = Math.pow(10, Math.max(0, Math.floor(Math.log10(n)) - 1))
+  return Math.ceil(n / mag) * mag
 }
 
 // ---------------------------------------------------------------------------
@@ -343,10 +297,11 @@ export function buyBackFranchises(g: GameState, a: Asset, b: BizState, n: number
   if (b.cash < cost) return 0
   // Buying outlets is capital spending (like opening them), not an expense of the year.
   b.cash -= cost
+  // `added` stays: the franchises sold this year still count against this year's buyers (buying
+  // them back must not make room to sell the same slots again).
   st.units -= k
-  st.added = Math.min(st.added, st.units)
   save(b, st)
-  const cities = getCountry(b.countryId).cities.slice(0, 10)
+  const cities = buyBackCities(b)
   const here = (city: string) => b.outlets.find((o) => o.countryId === b.countryId && o.city === city)?.count ?? 0
   for (let i = 0; i < k; i++) {
     const city = [...cities].sort((x, y) => here(x) - here(y) || cities.indexOf(x) - cities.indexOf(y))[0] ?? b.city
@@ -444,7 +399,6 @@ function resolveScandal(g: GameState, a: Asset, b: BizState, choice: string, tel
   const st = readFranchise(b)
   if (choice === 'cut') {
     if (st.units > 0) st.units -= 1
-    st.added = Math.min(st.added, st.units)
     save(b, st)
     b.brand = clampN(b.brand - 2, 0, 100)
     log(g, `${a.name} terminated a franchisee after a scandal.`, 'neutral')

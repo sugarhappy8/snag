@@ -2,7 +2,7 @@
 // scandals, buy-backs, and money conservation (every dollar comes from a modeled franchisee).
 import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
-import { evolve, recordYear, simulateYear, valuationOf } from '../src/game/business/economy'
+import { evolve, recordYear, simulateYear, startupCost, valuationOf } from '../src/game/business/economy'
 import {
   bestFranchiseCount,
   bookFranchiseYear,
@@ -31,7 +31,7 @@ import {
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { bizOf, findBusiness, readBiz, totalOutlets, type BizState } from '../src/game/business/state'
 import { applyPlan, autoPlan, yearlyBusinessImpl } from '../src/game/business/yearly'
-import { INDUSTRY_IDS } from '../src/game/data/markets'
+import { INDUSTRY_IDS, marketOf } from '../src/game/data/markets'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
 import type { Asset, ChoiceModal, GameState, Json } from '../src/game/types'
@@ -273,6 +273,59 @@ describe('franchising: scandals and buy-backs', () => {
     expect(readFranchise(b).units).toBe(6)
     // Selling them again and buying back never makes money.
     expect(price).toBeGreaterThan(netFee(b))
+  })
+
+  it('buying back is never a cheaper way to open an outlet, and selling to buy back always loses (every trade)', () => {
+    for (const industry of FRANCHISE_INDUSTRIES) {
+      const { b } = company(14, industry)
+      // The dearest home city a bought-back outlet can land in: opening it there yourself.
+      const open = Math.max(...getCountry('us').cities.slice(0, 10).map((city) => startupCost(b.industry, 'us', city).capital))
+      expect(buyBackPrice(b), industry).toBeGreaterThanOrEqual(open + franchiseFee(b))
+      expect(buyBackPrice(b) - netFee(b), industry).toBeGreaterThan(open)
+    }
+  })
+
+  it('buying franchisees back does not hand this year’s buyers back (no sell, buy back, sell loop)', () => {
+    const { g, a, b } = company(15, 'hotel', { brand: 85, quality: 85 })
+    b.cash = 5_000_000_000
+    const max = maxSellable(g, b)
+    expect(max).toBeGreaterThan(0)
+    let sold = 0
+    for (let i = 0; i < 4; i++) {
+      const k = sellFranchises(g, a, b, 10_000)
+      sold += k
+      buyBackFranchises(g, a, b, k)
+    }
+    expect(sold).toBe(max)
+    expect(maxSellable(g, b)).toBe(0)
+    // Terminating a franchisee after a scandal doesn't make a slot either.
+    sellFranchises(g, a, b, 1)
+    expect(readFranchise(b).units).toBe(0)
+    b.franchise = { ...readFranchise(b), units: 3 } as unknown as Json
+    franchiseInternals.resolveScandal(g, a, b, 'cut', false)
+    expect(maxSellable(g, b)).toBe(0)
+    // Next year the buyers are back.
+    g.year += 1
+    expect(maxSellable(g, b)).toBeGreaterThan(0)
+  })
+
+  it('values one-off fees at their cash, never capitalized as profit (a burst of sales cannot inflate the price)', () => {
+    const { b } = company(17, 'restaurant')
+    const last = b.history[b.history.length - 1]
+    const fees = 2_000_000
+    const keep = 1 - marketOf(b.countryId).corporateTax
+    const base = valuationOf(b)
+    // The year's profit carried the after-tax fees; the cash holds them once.
+    const withFees: BizState = {
+      ...b,
+      cash: b.cash + fees * keep,
+      history: [...b.history.slice(0, -1), { ...last, profit: last.profit + fees * keep }],
+      franchise: { units: 40, ledger: [{ year: last.year, fees, royalty: 0 }] } as unknown as Json,
+    }
+    expect(Math.abs(valuationOf(withFees) - (base + fees * keep))).toBeLessThanOrEqual(2)
+    // Royalties recur, so they are valued like any profit.
+    const withRoyalty: BizState = { ...withFees, franchise: { units: 40, ledger: [{ year: last.year, fees: 0, royalty: fees }] } as unknown as Json }
+    expect(valuationOf(withRoyalty)).toBeGreaterThan(valuationOf(withFees) + fees * keep)
   })
 
   it('royalty and support rates are honest constants', () => {
