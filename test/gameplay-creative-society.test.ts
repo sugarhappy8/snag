@@ -12,7 +12,7 @@ import { world, kid } from './nepo-kit'
 import { hireRelative, designateSuccessor } from '../src/game/business/nepo-actions'
 import { readJob, writeJob } from '../src/game/business/nepo-job'
 import { bizOf } from '../src/game/business/state'
-import { adoptSuccessionReview, successionReadiness } from '../src/game/business/succession-review'
+import { adoptSuccessionReview, successionReadiness, successionReviewMenu } from '../src/game/business/succession-review'
 import { successorManager } from '../src/game/business/nepo-succession'
 
 function musician() { const g = makeTestGame(33, { age: 35, money: 1000000 }); setInstrumentSkill(g, 'Voice', 85); return g }
@@ -108,5 +108,22 @@ describe('wealth with commitments', () => {
     expect(successorManager(g, a, bizOf(g, a), () => 50000)).toBeNull()
     const job = readJob(p)!; job.skill = 80; job.since = g.year - 6; writeJob(p, job)
     expect(successionReadiness(g, a, bizOf(g, a))).toBeNull(); expect(successorManager(g, a, bizOf(g, a), () => 50000)?.personId).toBe(p.id)
+  })
+  it('keeps the succession review out of the way until succession is a real question', () => {
+    // Playtest: a day-old café already showed "Existing succession rules; enhanced policy not adopted…".
+    const { g, a, b } = world(106, { age: 30 }); g.character.money = 100000
+    b.founded = g.year
+    const menu = successionReviewMenu(a)
+    expect(menu.visible?.(g)).toBe(false)
+    g.character.age = 46
+    expect(menu.visible?.(g)).toBe(true)
+    g.character.age = 30; b.founded = g.year - 6
+    expect(menu.visible?.(g)).toBe(true)
+    b.founded = g.year
+    const p = kid(g, 25, { smarts: 80 }); hireRelative(g, a, b, p, { rank: 2 }, { quiet: true })
+    expect(menu.visible?.(g)).toBe(true)
+    const text = menu.children(g).map(n => n.type === 'info' ? String(n.text) : n.type === 'action' ? `${n.label} ${String(n.subtitle)}` : '').join('\n')
+    expect(text).toMatch(/^Off: your named successor takes over when you step back, ready or not\./)
+    expect(text).not.toMatch(/enhanced policy|transfers ownership, not competence|Succession Planning/)
   })
 })
