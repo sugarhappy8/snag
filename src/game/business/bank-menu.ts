@@ -30,7 +30,7 @@ export function bankMenuNodes(g: GameState, a: Asset): MenuNode[] {
     : m.crisis >= .5 ? `💥 ${m.crisisName ? m.crisisName.charAt(0).toUpperCase() + m.crisisName.slice(1) : 'A banking crisis'}: defaults are soaring.`
     : book.advance > 0 ? `💵 Still owes the central bank ${money(book.cbOwed)} from a run.` : ''
   if (alert) nodes.push({ type: 'info', id: `bank.${a.id}.alert`, emoji: '📣', text: alert })
-  nodes.push({ type: 'info', id: `bank.${a.id}.market`, emoji: '📈', text: `Market: savings ${pct(m.savings, 2)} · business loans ${pct(marketLoanRate(m), 2)} · central bank ${pct(m.policy, 2)}` })
+  nodes.push({ type: 'info', id: `bank.${a.id}.market`, emoji: '📈', text: `Market: savings ${pct(m.savings, 2)} · business loans ${pct(marketLoanRate(m), 2)} · base rate ${pct(m.policy, 2)}` })
   nodes.push(savingsSlider(g, a), loanSlider(g, a), appetiteMenu(a), productsMenu(a), campaignAction(a), booksMenu(a))
   return nodes
 }
@@ -141,14 +141,15 @@ function productRow(a: Asset, id: ProductId): MenuAction {
 function productsMenu(a: Asset): MenuNode {
   return {
     type: 'menu', id: `bank.${a.id}.products`, label: 'Products', emoji: '📦',
-    subtitle: (g) => { const x = current(g, a); return `${PRODUCT_IDS.filter(id => hasProduct(x.book, id)).length} of ${PRODUCT_IDS.length} offered` },
+    subtitle: (g) => { const x = current(g, a); return `${PRODUCT_IDS.filter(id => hasProduct(x.book, id)).length} of ${shown(g, a).length} offered` },
     header: (g) => `Each line has its own yield, losses and growth. Setup costs come from company cash (${money(current(g, a).b.cash)}).`,
     // Products nobody has invented yet stay out of sight (no anachronistic spoilers).
-    children: (g) => {
-      const x = current(g, a)
-      return PRODUCT_IDS.filter((id) => hasProduct(x.book, id) || id === 'ib' || productGate(x.b, x.book, id, g.year).ok).map((id) => productRow(a, id))
-    },
+    children: (g) => shown(g, a).map((id) => productRow(a, id)),
   }
+}
+function shown(g: GameState, a: Asset): ProductId[] {
+  const x = current(g, a)
+  return PRODUCT_IDS.filter((id) => hasProduct(x.book, id) || id === 'ib' || productGate(x.b, x.book, id, g.year).ok)
 }
 
 function campaignAction(a: Asset): MenuAction {
