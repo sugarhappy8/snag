@@ -2,7 +2,8 @@
 // deterministic. Menus are built from the committed state and actions run on a structuredClone
 // draft, exactly like the UI store does; the committed state is deep-frozen so a menu closure
 // that writes to an object it captured from it (instead of the draft) throws.
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
 import { applyFallback } from '../src/game/offline'
 import { businessAssetView, businessCareerMenu } from '../src/game/business'
 import { capitalGainsTax, ownerProceeds, sellBusiness } from '../src/game/business/exit'
@@ -11,6 +12,7 @@ import { bizOf, businessAssets, readBiz, stakeValue } from '../src/game/business
 import { netWorth } from '../src/game/core'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
+import { loadGame, saveGame } from '../src/game/save'
 import { getCountry } from '../src/game/world'
 import { readTies } from '../src/game/events/wealth-core'
 import { removeHeir, changeWill } from '../src/game/events/will-act'
@@ -279,5 +281,32 @@ describe('capital gains are taxed on the real gain', () => {
     sellBusiness(g, a, b, listing.price, 'a test buyer')
     // No gain, so no tax: the price repays the bank and the rest is the buyer's own money back.
     expect(g.character.money).toBe(cash + listing.price - owed)
+  })
+})
+
+describe('a reload changes nothing', () => {
+  it('a royal sibling born during the year already has the court life a reload would give them', () => {
+    const store = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) })
+    try {
+      const g = createNewLife({ seed: 5, countryId: 'nl', year: 2026, royalty: 'royal' })
+      g.queue = []
+      // A baby born the way newSiblings() does it: at the end of the relationships pass, after
+      // the year's NPC-life pass has already run.
+      const at = YEARLY_HOOKS.findIndex(([name]) => name === 'relationships') + 1
+      YEARLY_HOOKS.splice(at, 0, ['test: a sibling is born', (gg) => {
+        createPerson(gg, { relation: 'sibling', age: 0, gender: 'female', firstName: 'Ariane', lastName: gg.character.lastName, occupation: 'Baby', money: 0, livesWithPlayer: true, data: { bornAge: gg.character.age } })
+      }])
+      try { ageUp(g) } finally { YEARLY_HOOKS.splice(at, 1) }
+      g.queue = []
+      const baby = g.people.find((p) => p.firstName === 'Ariane')!
+      expect(baby.data.royalHouse).toBeTypeOf('string')
+      expect(baby.occupation).toBe('Royal Child')
+      expect(baby.data.life).toBeDefined()
+      expect(saveGame(g)).toBe(true)
+      expect(JSON.stringify(loadGame())).toBe(JSON.stringify(g))
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

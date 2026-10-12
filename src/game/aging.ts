@@ -33,6 +33,7 @@ import { yearlyMilestones } from './life'
 import { yearlyRelationships } from './relationships'
 import { yearlyBackground } from './birth-background'
 import { yearlyRoyalty } from './royalty'
+import { refreshRoyalCareers } from './npc-lives'
 import { yearlyShops } from './shops'
 import { yearlySpecial } from './special'
 import type { GameState } from './types'
@@ -47,6 +48,9 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['givingFund', yearlyGivingFund],
   ['background', yearlyBackground],
   ['royalty', yearlyRoyalty],
+  // Royal blood can arrive mid-year (a sibling born after the NPC pass, a child
+  // titled by yearlyRoyalty): give them their court life now, as a reload would.
+  ['royalCareers', (g) => refreshRoyalCareers(g)],
   ['health', yearlyHealth],
   ['education', yearlyEducation],
   ['professions', yearlyProfessions],
