@@ -1323,7 +1323,9 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     loans: [],
     social: null,
     talent: talentData ?? (age >= 12 && chance(n, 0.25) ? weightedPick(n, TALENTS, (t) => t.weight).id : null),
-    talents: normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER),
+    // Only a gift the heir really has (e.g. Main Character Syndrome running in the family): an
+    // empty list would read as "picked talents" and change the heir of a life without picks.
+    ...(normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER).length ? { talents: normalizeTalents(heirP.data.talents, Number.MAX_SAFE_INTEGER) } : {}),
     memories: [],
     willBeneficiaries: [],
     religion: old.religion,
