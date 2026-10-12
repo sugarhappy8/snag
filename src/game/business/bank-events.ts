@@ -13,6 +13,7 @@ import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { managerName } from './career'
 import { inGroup } from './conglomerate-state'
+import { valuationOf } from './economy'
 import { declareBankruptcy, sellBusiness } from './exit'
 import { manageBlock } from './gate'
 import { APPETITES, LEND_LINES, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, readBank, saveBank, type Appetite, type BankBook } from './bank-state'
@@ -140,15 +141,27 @@ export function reassureOdds(g: GameState, b: BizState, book: BankBook): number 
 function penaltyRate(m: BankMarket): number {
   return Math.max(.05, m.policy + .03)
 }
-/** A big bank in a crisis can ask the state for help. */
+/** A big bank in a crisis can ask the state for help, unless the help would have to buy nearly all of it. */
 export function bailoutEligible(g: GameState, b: BizState, book: BankBook): boolean {
   const m = bankMarket(g, b.countryId, g.year), rank = bankRank(b.countryId, g.year, book.deposits)
-  return m.crisis >= .4 && (rank.rank <= 10 || rank.share >= .015) && !inGroup(g, b) && b.share > .2
+  return m.crisis >= .4 && (rank.rank <= 10 || rank.share >= .015) && !inGroup(g, b) && b.share > .2 && bailoutTerms(g, b, book).fair <= BAILOUT_MAX_STAKE
 }
-function bailoutTerms(g: GameState, b: BizState, book: BankBook): { inject: number; stake: number } {
+const BAILOUT_MAX_STAKE = .9
+/**
+ * What the state puts in and the stake it takes. `fair` is the stake the money buys at the bank's
+ * value; the state takes a quarter more (at least 10%), so a rescue never makes the owner richer.
+ * A bank worth too little for that (fair above 90%) gets no rescue: its shareholders are wiped out.
+ */
+export function bailoutTerms(g: GameState, b: BizState, book: BankBook): { inject: number; stake: number; fair: number } {
   const min = minCapitalRatio(b.countryId, g.year), capital = bankCapital(b, book), rwa = riskWeighted(book, capital)
   const inject = Math.round(Math.max(0, (min + .03) * rwa - capital) + .02 * rwa)
-  return { inject, stake: clampN(inject / (Math.max(1, b.valuation) + inject), .1, .8) }
+  return { inject, ...rescueStake(b, inject, 0) }
+}
+/** The stake `inject` buys: fair at the lower of the booked and the live value, plus a quarter. */
+function rescueStake(b: BizState, inject: number, offered: number): { stake: number; fair: number } {
+  const value = Math.max(0, Math.min(b.valuation, valuationOf(b)))
+  const fair = inject > 0 ? inject / Math.max(1, value + inject) : 0
+  return { stake: clampN(Math.max(offered, fair * 1.25), .1, BAILOUT_MAX_STAKE), fair }
 }
 
 function queueRun(g: GameState, a: Asset, b: BizState): void {
@@ -573,7 +586,7 @@ const EVENTS: BankEvent[] = [
   {
     id: 'tbtf',
     weight: (x) => (x.m.crisis >= .5 && x.reachable && !inGroup(x.g, x.b) && x.b.share > .2 && bankRank(x.b.countryId, x.g.year, x.book.deposits).rank <= 10
-      && capitalRatio(x.b, x.book) < minCapitalRatio(x.b.countryId, x.g.year) + .03 ? 4 : 0),
+      && capitalRatio(x.b, x.book) < minCapitalRatio(x.b.countryId, x.g.year) + .03 && bailoutTerms(x.g, x.b, x.book).fair <= BAILOUT_MAX_STAKE ? 4 : 0),
     present: (x) => {
       const t = bailoutTerms(x.g, x.b, x.book)
       const choices = hintBest(x.g, [
@@ -584,7 +597,10 @@ const EVENTS: BankEvent[] = [
     },
     resolve: (x, choice) => {
       if (choice !== 'accept') { adjustTrust(x.book, -4); log(x.g, `I turned down a government rescue for ${x.a.name}.`, 'neutral'); return }
-      const inject = n(x.d, 'inject'), stake = clampN(n(x.d, 'stake'), .05, .8)
+      // The offer holds only while it is still at least fair to the state (the popup's numbers may be stale).
+      const inject = Math.max(0, n(x.d, 'inject')), terms = rescueStake(x.b, inject, n(x.d, 'stake'))
+      if (inject <= 0 || terms.fair > BAILOUT_MAX_STAKE) { notice(x.g, 'Offer Withdrawn', `The minister ran the numbers again and hung up. ${x.a.name} is on its own.`, { emoji: '🏛️', tone: 'bad' }); return }
+      const stake = terms.stake
       x.b.share = clampN(x.b.share * (1 - stake), .01, 1)
       diluteBusinessEquity(x.b, 1 - stake)
       x.b.cash += inject

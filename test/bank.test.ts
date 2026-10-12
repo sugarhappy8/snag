@@ -1,7 +1,7 @@
 // Banking 2.0: books, the yearly settlement, the regulator, runs, events, menus, the hired CEO and
 // old-save migration. Deterministic: every random draw is seeded per life/bank/year.
 import { describe, expect, it } from 'vitest'
-import { bankAfterYear, BANK_EVENT_IDS, forceBankEvent, reassureOdds, resolveRun, seizeNeed } from '../src/game/business/bank-events'
+import { bailoutEligible, bailoutTerms, bankAfterYear, BANK_EVENT_IDS, forceBankEvent, reassureOdds, resolveRun, seizeNeed } from '../src/game/business/bank-events'
 import { bankBooks, bankCapitalNeed, bankCapitalPreview, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
 import { bankLeverBlock, runBankCampaign, setBankAppetite, setBankRate, switchBankProduct } from '../src/game/business/bank-actions'
 import { bankCapital, bankMarket, bankRank, bankYearCtx, bestRates, capitalRatio, expectedPath, ibGate, productGate, projectYear, riskWeighted, setupCost } from '../src/game/business/bank-model'
@@ -341,7 +341,8 @@ describe('Banking 2.0 events', () => {
         if (id === 'cyber') book.products.app = 2020
         if (id === 'tbtf') Object.assign(book, { deposits: 3e12, loans: { business: 2.5e12, mortgage: 0, auto: 0, cards: 0 }, bonds: 2e11, reserves: 3e11, badNet: 0 })
         saveBank(b, book)
-        if (id === 'tbtf') { g.year = 2009; b.cash = 1e9 }
+        // Capital just under the minimum: a rescue the state can offer on fair terms.
+        if (id === 'tbtf') { g.year = 2009; b.cash = 2e11 }
         b.valuation = valuationOf(b)
         g.queue = []
         const shown = forceBankEvent(g, a, b, id)
@@ -665,4 +666,62 @@ describe('Banking 2.0 in a played life', () => {
     }
     expect(reports).toBeGreaterThan(3)
   }, 240_000)
+})
+
+describe('Banking 2.0 review: money that must not appear', () => {
+  /** A top-ten bank in 2009 (a crisis) with `cash` of shareholder capital against $2.5T of loans. */
+  function bigBank(cash: number) {
+    const x = bank({ year: 2009, cash: 30_000_000 })
+    const book = readBank(x.b)
+    Object.assign(book, { deposits: 3e12, loans: { business: 2.5e12, mortgage: 0, auto: 0, cards: 0 }, bonds: 2e11, reserves: 3e11, badNet: 0 })
+    saveBank(x.b, book)
+    x.b.cash = cash
+    x.b.valuation = valuationOf(x.b)
+    return x
+  }
+  const ownerValue = (b: BizState) => valuationOf(b) * b.share
+
+  it('a government rescue never makes the owner richer, and a near-worthless bank gets none', () => {
+    // Capital a little under the minimum: the state's terms are at least fair to taxpayers.
+    for (const cash of [1.5e11, 2.2e11]) {
+      const { g, a, b } = bigBank(cash)
+      const before = ownerValue(b)
+      expect(bailoutEligible(g, b, readBank(b))).toBe(true)
+      const t = bailoutTerms(g, b, readBank(b))
+      expect(t.stake).toBeGreaterThanOrEqual(t.fair)
+      g.queue = []
+      expect(forceBankEvent(g, a, b, 'tbtf')).toBe(true)
+      const popup = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.event')!
+      runScript(g, 'bank.event', 'accept', popup.kind === 'choice' ? popup.data : undefined, popup)
+      expect(b.cash).toBe(cash + t.inject)
+      expect(ownerValue(b)).toBeLessThanOrEqual(before + 1)
+      // The run-time bailout uses the same terms.
+      const run = bigBank(cash)
+      const book = readBank(run.b); book.run = { year: 2008, wave: 1e11, severity: .2 }; saveBank(run.b, book)
+      const pre = ownerValue(run.b)
+      resolveRun(run.g, run.a, run.b, 'bailout', false)
+      expect(readBank(run.b).run).toBeNull()
+      expect(run.b.share).toBeLessThan(1)
+      expect(ownerValue(run.b)).toBeLessThanOrEqual(pre + 1)
+    }
+    // Capital nearly gone: the rescue would have to buy almost all of it, so the state lets it fail.
+    const { g, a, b } = bigBank(1e9)
+    expect(bailoutTerms(g, b, readBank(b)).fair).toBeGreaterThan(.9)
+    expect(bailoutEligible(g, b, readBank(b))).toBe(false)
+    g.queue = []
+    expect(forceBankEvent(g, a, b, 'tbtf')).toBe(false)
+    const book = readBank(b); book.run = { year: 2008, wave: 1e11, severity: .2 }; book.lastYear = 2008; book.dramaYear = -1; saveBank(b, book)
+    bankAfterYear(g, a, b, false)
+    const popup = g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.run')
+    expect(popup && popup.kind === 'choice' && popup.choices.some(c => c.id === 'bailout')).toBe(false)
+    // A stale "too big to fail" popup for a bank that has since lost its value is withdrawn.
+    const stale = bigBank(2.2e11)
+    stale.g.queue = []
+    forceBankEvent(stale.g, stale.a, stale.b, 'tbtf')
+    const offer = stale.g.queue.find(m => m.kind === 'choice' && m.scriptId === 'bank.event')!
+    stale.b.cash = 1e9; stale.b.valuation = valuationOf(stale.b)
+    const share = stale.b.share, cash = stale.b.cash
+    runScript(stale.g, 'bank.event', 'accept', offer.kind === 'choice' ? offer.data : undefined, offer)
+    expect([stale.b.share, stale.b.cash]).toEqual([share, cash])
+  })
 })
