@@ -56,7 +56,7 @@ import {
   type GroupMember,
 } from './conglomerate-state'
 import { LASTING_YEARS, refreshValue, valuationOf } from './economy'
-import { capitalGainsTax, ipoThreshold } from './exit'
+import { capitalGainsTax, IPO_COLLAPSE, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
 import { clearGroupCeoJob } from './conglomerate-job'
 import { BIZ_VERSION, bizOf, ceoJob, executiveEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
@@ -1028,6 +1028,20 @@ export function canGroupIpo(g: GameState, grp: Group): string | null {
   return null
 }
 
+/** The underwriters' audit before a group listing (exit.IPO_COLLAPSE per division with cooked books). */
+function groupIpoAudit(g: GameState, grp: Group): boolean {
+  for (const x of grp.members) {
+    if (x.b.cooked <= 0 || !chance(g, IPO_COLLAPSE)) continue
+    x.b.cooked = 0
+    x.b.brand = clampN(x.b.brand - 15, 0, 100)
+    log(g, `The IPO of ${grp.core.name} was pulled when the underwriters found ${x.a.name}'s cooked books.`, 'bad')
+    notice(g, 'IPO Pulled', `The underwriters' auditors found ${x.a.name}'s creative accounting while preparing ${grp.core.name}'s prospectus. The listing is off, and the files went to the regulator.`, { emoji: '\u{1F6A8}', tone: 'bad' })
+    if (chance(g, 0.5)) arrestPlayer(g, 'Accounting Fraud', 3, { evidence: 0.7, noResist: true, context: `Prosecutors charged you over ${x.a.name}'s cooked books.` })
+    return false
+  }
+  return true
+}
+
 export function groupIpo(g: GameState, groupId: string): boolean {
   if (groupBlock(g)) return false
   const grp = liveGroup(g, groupId)
@@ -1038,6 +1052,11 @@ export function groupIpo(g: GameState, groupId: string): boolean {
     return false
   }
   if (!groupAllows(g, grp, { kind: 'ipo', by: 'owner', label: `Take ${grp.core.name} public` })) {
+    saveGroup(g, grp)
+    return false
+  }
+  // The underwriters audit every division first: cooked books anywhere sink the listing.
+  if (!groupIpoAudit(g, grp)) {
     saveGroup(g, grp)
     return false
   }

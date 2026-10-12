@@ -20,6 +20,7 @@ import { getCountry } from '../world'
 import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './industries'
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
+import { franchiseFeesFor } from './franchise-state'
 import { studioValue } from './gamestudio-state'
 import { complexityCost, PRODUCT_LIFE, rangeBoost, rangeBrand } from './products'
 import { advanceRd } from './rd'
@@ -830,6 +831,12 @@ export function valuationOf(b: BizState): number {
   const weights = h.length === 3 ? [0.2, 0.3, 0.5] : h.length === 2 ? [0.4, 0.6] : [1]
   let avg = 0
   h.forEach((r, i) => (avg += r.profit * weights[i]))
+  // One-off franchise fees are already in the cash: valued at what they are, never capitalized as
+  // if they recurred (or a burst of franchise sales would inflate the company's price).
+  if (b.franchise) {
+    const keep = 1 - clampN(marketOf(b.countryId).corporateTax, 0, 0.9)
+    h.forEach((r, i) => (avg -= franchiseFeesFor(b, r.year) * keep * weights[i]))
+  }
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)

@@ -35,7 +35,7 @@ import {
   type Worth,
 } from './economy'
 import { eventChance } from './events'
-import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
+import { canIpo, closeBusiness, declareBankruptcy, goPublic, IPO_COLLAPSE, sellBusiness, sellShares } from './exit'
 import { nationalStrategyMenu } from './expansion'
 import { equityMenu, equityTerms } from './executive'
 import { conglomerate, investorFirm, localSport } from './flavor'
@@ -1742,6 +1742,21 @@ interface Offer {
 
 /** Chance a buyer's due diligence finds cooked books and the deal collapses. */
 const SALE_COLLAPSE = 0.4
+/**
+ * Underwriters audit the books before an IPO: cooked books can sink the listing (and half the time
+ * the prosecutors hear about it), like a buyer's due diligence on a sale. True when the IPO may go ahead.
+ */
+export function ipoDueDiligence(g: GameState, a: Asset, b: BizState): boolean {
+  if (b.cooked <= 0 || !chance(g, IPO_COLLAPSE)) return true
+  b.cooked = 0
+  b.brand = clampN(b.brand - 15, 0, 100)
+  b.valuation = valuationOf(b)
+  refreshValue(a, b)
+  log(g, `The IPO of ${a.name} was pulled when the underwriters found the cooked books.`, 'bad')
+  notice(g, 'IPO Pulled', `The underwriters' auditors found ${a.name}'s creative accounting while preparing the prospectus. The listing is off, the story is in the financial press, and the files went to the regulator.`, { emoji: '\u{1F6A8}', tone: 'bad' })
+  if (chance(g, 0.5)) arrestPlayer(g, 'Accounting Fraud', 3, { evidence: 0.7, noResist: true, context: `Prosecutors charged you over ${a.name}'s cooked books.` })
+  return false
+}
 
 const SELL = defineScript('business.sell', (g, choice, data) => {
   const d = rec(data)
@@ -1834,12 +1849,15 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
           hint: (gg) => {
             const cur = live(gg, a)
             const bb = readBiz(gg, cur)
-            return canIpo(bb) ? null : passHint(gg, cur, bb, ipoP)
+            if (canIpo(bb)) return null
+            if (bb.cooked > 0 && hasTalent(gg, 'Business') && !manageBlock(gg, cur)) return talentHint(gg, 'Business', `Underwriters audit the books first: about ${pct(IPO_COLLAPSE)} chance they find the cooking (no IPO, and maybe prosecutors)`)
+            return passHint(gg, cur, bb, ipoP)
           },
           disabled: (_gg, bb) => canIpo(bb),
-          confirm: () => `Take ${a.name} public? You'll sell a quarter of the company to the market and answer to shareholders (and independent directors) from now on.`,
+          confirm: (gg) => `Take ${a.name} public? You'll sell a quarter of the company to the market and answer to shareholders (and independent directors) from now on.${readBiz(gg, live(gg, a)).cooked > 0 ? ' The underwriters will audit the books first.' : ''}`,
           run: (gg, cur, bb) => {
             if (!boardAllows(gg, cur, bb, ipoP)) return
+            if (!ipoDueDiligence(gg, cur, bb)) return
             goPublic(gg, cur, bb)
           },
         }),

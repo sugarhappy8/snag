@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
 import { bizWorth, evolve, fxValue, recordYear, simulateYear, staffNet, startupCost, valuationOf, LASTING_YEARS, type BizFx } from '../src/game/business/economy'
 import { businessEventInternals, eventChance, maybeBusinessEvent } from '../src/game/business/events'
-import { EXTRA_EVENTS, equityGain, extraEventInternals, PITCH_PREMIUM_P, stakePrice, trendsFor } from '../src/game/business/events-extra'
+import { EXTRA_EVENTS, equityGain, extraEventInternals, PITCH_PREMIUM_P, RENT_DEAL, RENT_DUG_IN, stakePrice, trendsFor } from '../src/game/business/events-extra'
 import { franchiseFee, franchiseValue, ONBOARDING, readFranchise } from '../src/game/business/franchise'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { rdProjects } from '../src/game/business/rd'
@@ -14,7 +14,7 @@ import { applyPlan, autoPlan } from '../src/game/business/yearly'
 import { anachronismsIn } from '../src/game/events/era'
 import { createNewLife } from '../src/game/life'
 import { runScript } from '../src/game/scripts'
-import type { Asset, ChoiceModal, GameState } from '../src/game/types'
+import type { Asset, ChoiceModal, GameState, Json } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 
 interface Setup {
@@ -135,6 +135,36 @@ describe('new business events: availability', () => {
     expect(trendsFor(seventies.g, seventies.b).map((t) => t.label)).toContain('fondue parties')
     expect(trendsFor(seventies.g, seventies.b).map((t) => t.label)).not.toContain('plant-based eating')
   }, 120_000)
+
+  it('keeps celebrity money out of deep tech and cooked books, and "first franchise" pitches for first-timers', () => {
+    const lab = company(26, { id: 'starInvestor', industry: 'semiconductor', prep: (b) => { b.cash = 30_000_000 } }, true)
+    expect(weightOf(lab.g, lab.b, 'starInvestor')).toBe(0)
+    expect(weightOf(lab.g, { ...lab.b, industry: 'restaurant' }, 'starInvestor')).toBeGreaterThan(0)
+    const shop = company(26, SETUPS[10], true)
+    expect(weightOf(shop.g, shop.b, 'starInvestor')).toBeGreaterThan(0)
+    expect(weightOf(shop.g, { ...shop.b, cooked: 1 }, 'starInvestor')).toBe(0)
+    const pitch = company(27, SETUPS[0], true)
+    expect(weightOf(pitch.g, pitch.b, 'franchisePitch')).toBeGreaterThan(0)
+    // Franchised before (every franchisee since closed or bought back): no "your first franchise" pitch.
+    const again = { ...pitch.b, franchise: { units: 0, since: 2010, ledger: [] } as unknown as Json }
+    expect(weightOf(pitch.g, again, 'franchisePitch')).toBe(0)
+  }, 120_000)
+
+  it('no craze for what a country already eats every day', () => {
+    const sushi = company(28, { id: 'trend', industry: 'restaurant', year: 2016, country: 'jp' }, true)
+    expect(trendsFor(sushi.g, sushi.b).map((t) => t.label)).not.toContain('sushi')
+    const us = company(28, { id: 'trend', industry: 'restaurant', year: 2016 }, true)
+    expect(trendsFor(us.g, us.b).map((t) => t.label)).toContain('sushi')
+    const espresso = company(28, { id: 'trend', industry: 'cafe', year: 2016, country: 'it' }, true)
+    expect(trendsFor(espresso.g, espresso.b).map((t) => t.label)).not.toContain('espresso drinks')
+  }, 120_000)
+
+  it('makes paying a rent hike a real choice: weak negotiators should pay, strong ones haggle', () => {
+    // Expected share of the hike paid when negotiating at odds p: p·DEAL + (1-p)·DUG_IN; paying costs 1.
+    const breakEven = (RENT_DUG_IN - 1) / (RENT_DUG_IN - RENT_DEAL)
+    expect(breakEven).toBeGreaterThan(0.25)
+    expect(breakEven).toBeLessThan(0.6)
+  })
 
   it('gives banks and investment firms only industry-neutral generic events (they have their own sets)', () => {
     const neutral = new Set(['audit', 'strike', 'lawsuit', 'embezzle', 'disaster', 'tacos', 'poached'])
