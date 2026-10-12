@@ -338,7 +338,7 @@ describe('conglomerates', () => {
       } else {
         pulled += 1
         expect(grp.core.listing).toBeNull()
-        expect(readBiz(g1, assets[1]).cooked).toBe(0)
+        expect(readBiz(g1, findBusiness(g1, assets[1].id)!).cooked).toBe(0)
         expect(g1.queue.some((m) => m.kind === 'notice' && m.title === 'IPO Pulled')).toBe(true)
       }
     }
