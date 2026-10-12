@@ -2018,7 +2018,9 @@ function listingAction(listing: JobListing): MenuAction {
       if (problem) return `${pay} • ${listing.company} • Not qualified`
       return pt ? `${pay} • ${listing.company}` : `${pay} • ${listing.company} • Fit ${jobFit(g, def).fit}%`
     },
-    disabledReason: blocked,
+    // Say up front that school (or a military/special career) rules out full-time work, instead of
+    // only after the tap.
+    disabledReason: (g) => blocked(g) ?? (pt ? null : fullTimeSchoolBlocker(g)),
     confirm: (g) => {
       const held = pt ? g.character.partTimeJob : g.character.job
       const quit = held && (held.category === 'fulltime' || held.category === 'parttime') ? `\n\nIf you're hired, you'll quit your job as ${held.title} at ${held.company}.` : ''
