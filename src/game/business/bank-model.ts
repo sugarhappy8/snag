@@ -116,6 +116,17 @@ export function capitalRatio(b: Pick<BizState, 'cash' | 'debt'>, book: BankBook)
   if (rwa < 1) return capital > 0 ? 9.99 : 0
   return clampN(capital / rwa, -9.99, 9.99)
 }
+/**
+ * Capital the owners may take out (dividends, group sweeps, buybacks): what is left above the
+ * regulatory minimum, and nothing while a run or a seizure is pending. Pure.
+ */
+export function bankPayoutRoom(b: BizState): number {
+  const book = readBank(b)
+  if (book.seize || book.run) return 0
+  const year = book.lastYear >= 0 ? book.lastYear + 1 : Math.round(b.founded)
+  const capital = bankCapital(b, book)
+  return Math.max(0, Math.floor(capital - riskWeighted(book, capital) * minCapitalRatio(b.countryId, year)))
+}
 export function cryptoExposure(capital: number): number {
   return Math.max(0, capital) * .08
 }

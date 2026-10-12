@@ -10,7 +10,7 @@ import { outcomeTag } from '../timeMachine'
 import type { Asset, GameState, MenuNode } from '../types'
 import type { YearResult } from './economy'
 import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
-import { bankCapital, bankLeaderSkill, bankMarket, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, projectYear, riskWeighted, setupCost } from './bank-model'
+import { bankCapital, bankLeaderSkill, bankMarket, bankPayoutRoom, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, projectYear, riskWeighted, setupCost } from './bank-model'
 import { bankAfterYear, queueBankYearReport } from './bank-events'
 import { bankMenuNodes } from './bank-menu'
 import { startupCost } from './economy'
@@ -256,6 +256,15 @@ export function bankCapitalNeed(g: GameState, b: BizState, pool: number, effecti
   const book = readBank(b), min = minCapitalRatio(b.countryId, g.year), cushion = APPETITES[book.appetite].cushion
   const rwa = riskWeighted(book, Math.max(0, b.cash - b.debt)) + book.deposits * .1 * .8
   return clampN(rwa * (min + cushion + .02) * clampN(effectiveness, 0, 1), 0, Math.max(0, pool))
+}
+
+/** Why the bank can't pay its owners right now when its regulator is the reason (pure), or null. */
+export function bankPayoutBlock(b: BizState): string | null {
+  if (!isBank(b) || bankPayoutRoom(b) > 0) return null
+  const book = readBank(b)
+  if (book.seize) return 'Regulators are threatening to seize the bank: no payouts until fresh capital arrives.'
+  if (book.run) return 'Savers are queuing at the doors: no payouts during a run.'
+  return `Regulators won't let the bank pay out the capital it needs (at least ${pct(minCapitalRatio(b.countryId, book.lastYear + 1), 1)} of its loans).`
 }
 
 /** One-line state readers other modules may show (kept small on purpose). */

@@ -2,7 +2,7 @@
 // old-save migration. Deterministic: every random draw is seeded per life/bank/year.
 import { describe, expect, it } from 'vitest'
 import { bailoutEligible, bailoutTerms, bankAfterYear, BANK_EVENT_IDS, forceBankEvent, reassureOdds, resolveRun, seizeNeed } from '../src/game/business/bank-events'
-import { bankBooks, bankCapitalNeed, bankCapitalPreview, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
+import { bankBooks, bankCapitalNeed, bankCapitalPreview, bankEraBlock, bankInfo, bankManagerTurn, bankNodes, bankPayoutBlock, bankSettledYear, bankStartingCash, queueBankReport, simulateBankYear } from '../src/game/business/bank'
 import { bankLeverBlock, runBankCampaign, setBankAppetite, setBankRate, switchBankProduct } from '../src/game/business/bank-actions'
 import { bankCapital, bankMarket, bankRank, bankYearCtx, bestRates, capitalRatio, expectedPath, ibGate, productGate, projectYear, riskWeighted, setupCost } from '../src/game/business/bank-model'
 import { LEND_LINES, PRODUCT_IDS, loanTotal, minCapitalRatio, openBank, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
@@ -25,6 +25,8 @@ import { businessAssets } from '../src/game/business/state'
 import type { AnnualReportData } from '../src/game/types'
 import { settlePerfectForesight } from '../src/game/business/executive-foresight'
 import { closeBusiness } from '../src/game/business/exit'
+import { payableCash } from '../src/game/business/board-vote'
+import { payDividend } from '../src/game/business/board-menu'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
   const country = opts.country ?? 'us', year = opts.year ?? 2030
@@ -771,5 +773,32 @@ describe('Banking 2.0 review: money that must not appear', () => {
     openBank(late)
     expect(loanTotal(readBank(late))).toBeGreaterThan(0)
     balanced(readBank(late))
+  })
+
+  it('owners can take out only the capital above the regulatory minimum, and nothing in a run or a seizure', () => {
+    const { g, a, b } = bank({ cash: 15_000_000 })
+    simulateBankYear(g, b, g.year - 1, 0)
+    b.yearCosts = 0; b.yearIncome = 0
+    let book = readBank(b)
+    const capital = bankCapital(b, book), need = riskWeighted(book, capital) * minCapitalRatio(b.countryId, g.year)
+    expect(need).toBeGreaterThan(0)
+    expect(payableCash(a, b)).toBeLessThanOrEqual(Math.ceil(capital - need))
+    expect(payableCash(a, b)).toBeGreaterThan(0)
+    // Pay out everything allowed: the bank is still at (or above) its minimum.
+    const money = g.character.money
+    payDividend(g, a, b, 1e15)
+    expect(g.character.money).toBeGreaterThan(money)
+    book = readBank(b)
+    expect(capitalRatio(b, book)).toBeGreaterThanOrEqual(minCapitalRatio(b.countryId, g.year) - 1e-6)
+    expect(payableCash(a, b)).toBe(0)
+    // A pending run or seizure freezes payouts, and the Money menu says why.
+    b.cash += 50_000_000
+    for (const patch of [{ run: { year: g.year - 1, wave: 1e6, severity: .2 } }, { seize: true }]) {
+      const x = readBank(b); Object.assign(x, patch); saveBank(b, x)
+      expect(payableCash(a, b)).toBe(0)
+      expect(bankPayoutBlock(b)).toMatch(/run|seize/)
+      const y = readBank(b); y.run = null; y.seize = false; saveBank(b, y)
+    }
+    expect(payableCash(a, b)).toBeGreaterThan(0)
   })
 })
