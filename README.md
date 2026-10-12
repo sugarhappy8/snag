@@ -35,19 +35,21 @@ Group CEOs recruit division leaders at their own rating or higher.
 Large stock orders affect execution prices and market quotes, and major company declines
 shake national-sector confidence.
 
-**Investment firms, banks and online banks** have dedicated financial books, not product units.
-Hire specialists, choose portfolio or credit policies, attract clients, manage reserves and
-survive withdrawals and defaults. Client investments and deposits are segregated from company
-cash and shareholder equity. Inventor-talented owners can develop an original market algorithm
-even before computers; its advantage decays and never guarantees returns. Online banks require
-local internet and online-banking technology.
+**Banks and online banks** take deposits and lend them out: set savings and loan rates, pick a
+lending appetite, launch products from mortgages and credit cards to a mobile app or a crypto
+desk, and keep capital above the regulator's minimum. Bad years bring defaults, fines, bank
+runs (go on TV, borrow from the central bank, sell loans, ask for a bailout) and seizure. Online
+banks need local online banking. **Investment firms** are an asset manager, a hedge fund, a
+venture capital firm or a brokerage: choose fund styles, strategies and market calls, back
+startups or set commissions, and beat your peers to win clients. Deposits and clients' money
+are never company cash; firms earn spreads, fees, carry and commissions, and nothing is
+guaranteed. Inventors can build a hedge-fund trading algorithm whose edge fades.
 
 Business founding now offers a **starting-capital slider** with working-cash and runway
 previews. **Capital & Ownership** separates buying investor shares, subscribing to new equity,
-and company-funded buybacks. Banking controls have live-preview sliders and exact entry;
-investment firms offer **retail, private/quant, and brokerage** models. Conglomerates can
-assign capacity-limited **internal service contracts**, with intra-group invoices removed
-from consolidated sales.
+and company-funded buybacks. Bank rates have live-preview sliders and exact entry.
+Conglomerates can assign capacity-limited **internal service contracts**, with intra-group
+invoices removed from consolidated sales.
 
 Important NPCs keep independent education, careers, finances, homes and actual companies.
 Their **Life & Career** profiles support business partnerships, acquisitions and relevant
