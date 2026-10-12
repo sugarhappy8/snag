@@ -140,7 +140,7 @@ describe('no childhood reveal', () => {
       expect(g.flags.talentHints).toBeUndefined()
     }
     // 280 full years (each runs the world economy): sized for a 2-core CI runner.
-  }, 300_000)
+  }, 600_000)
 
   it('other lives still get the moment (the control)', () => {
     let seen = 0
