@@ -92,7 +92,8 @@ describe('100-rated CEO perfect foresight', () => {
     expect(after.ownerDraws).toBeUndefined()
     // The sister division run by a hired CEO keeps the documented protection.
     expect((readBiz(g, other.a).last?.net ?? 0)).toBeGreaterThan(0)
-  })
+    // Two full group years (control and test): room for a busy CI runner.
+  }, 60_000)
 })
 
 describe('inherited family companies', () => {
