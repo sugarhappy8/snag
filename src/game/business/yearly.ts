@@ -48,6 +48,8 @@ import { financeManagerTurn, financeSettledYear, isFinanceFirm, queueFinanceRepo
 import { industryDef } from './industries'
 import { economicReportSummary, recordEconomicReport } from './economic-report'
 import { readSupply } from './supply'
+import { bookFranchiseYear, franchiseIncomeFor } from './franchise'
+import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
@@ -164,7 +166,9 @@ export function statementLines(b: BizState, s: Statement): AnnualReportData['lin
   if (s.interest > 0) lines.push(line('Interest', signed(-s.interest)))
   lines.push(line('Upkeep & depreciation', signed(-s.upkeep)))
   if (s.other > 0) lines.push(line('One-off costs', signed(-s.other)))
-  if (s.otherIncome - (s.strategicIncome ?? 0) > 0) lines.push(line('Other income', money(s.otherIncome - (s.strategicIncome ?? 0)), 'good'))
+  const franchised = Math.min(franchiseIncomeFor(b, s.year), Math.max(0, s.otherIncome - (s.strategicIncome ?? 0)))
+  if (s.otherIncome - (s.strategicIncome ?? 0) - franchised > 0) lines.push(line('Other income', money(s.otherIncome - (s.strategicIncome ?? 0) - franchised), 'good'))
+  if (franchised > 0) lines.push(line('Franchise fees & royalties', money(franchised), 'good'))
   if (s.strategicIncome) lines.push(line('Perfect foresight · strategic trading income', money(s.strategicIncome), 'good'))
   if (s.ownerPay > 0) lines.push(line('Your salary', signed(-s.ownerPay)))
   lines.push(line('Profit before tax', signed(s.pbt), s.pbt >= 0 ? 'good' : 'bad'))
@@ -436,6 +440,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     const prevNet = b.history.length ? b.history[b.history.length - 1].profit : null
     const studio = isStudio(b)
     const tech = isDeepTech(b)
+    // Franchisees' royalties for the year, booked once through yearIncome (business/franchise.ts).
+    bookFranchiseYear(g, a, b, fiscal)
     prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     if (b.ceo === 'manager') {
@@ -532,6 +538,8 @@ export function yearlyBusinessImpl(g: GameState): void {
       g.flags[`biz.ipoHint.${a.id}`] = true
       notice(g, 'Ready for Wall Street?', `${a.name} made ${money(s.net)} last year. That's big enough to list on a stock exchange: bankers keep calling about an IPO. You can go public from the company's screen.`, { emoji: '\u{1F514}', tone: 'good' })
     }
+    // Milestones reached this year (one popup a year for all companies; business/milestones.ts).
+    milestoneYear(g, a, b)
 
     // A group's treasury covers a division's cash hole from its sisters' spare cash first.
     if (b.cash < 0) groupRescue(g, a, b)
