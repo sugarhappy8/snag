@@ -4,6 +4,7 @@ import { installManager, managerCandidate } from '../src/game/business/career'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { financeManagerTurn, financeNodes, financeQuantEdge, financeTeamSkill, simulateFinanceYear } from '../src/game/business/finance-legacy'
 import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
+import { readBank } from '../src/game/business/bank-state'
 import { executiveOperations } from '../src/game/business/executive'
 import { settlePerfectForesight } from '../src/game/business/executive-foresight'
 import { inventionProductsOf, manageInventionProducts, newInventionProduct, saveInventionProducts } from '../src/game/business/invention-products'
@@ -32,8 +33,8 @@ describe('elite CEO foresight and concrete IP management', () => {
     expect(simulateYear(high.g, high.b, 2025, 0, 1).stmt.net).toBeGreaterThan(simulateYear(low.g, low.b, 2025, 0, 1).stmt.net)
   })
 
-  // Investment firms 2.0 removed perfect-foresight returns: see the investment-firm guard below.
-  it.each(['manufacturing', 'bank', 'gameStudio', 'semiconductor'] as const)('guarantees a 100-rated %s CEO positive booked earnings, with taxable income and no duplicate settlement', industry => {
+  // Investment firms and banks 2.0 removed perfect-foresight returns: see their guards below.
+  it.each(['manufacturing', 'gameStudio', 'semiconductor'] as const)('guarantees a 100-rated %s CEO positive booked earnings, with taxable income and no duplicate settlement', industry => {
     const { g, a, b } = company(industry, 100)
     b.debt = 500e6; b.debtRate = .5; b.capacityLoss = .9; b.demandShock = .3
     yearlyBusinessImpl(g)
@@ -61,6 +62,22 @@ describe('elite CEO foresight and concrete IP management', () => {
     expect(after.last!.net).toBeLessThan(0)
     expect(after.last!.interest).toBeGreaterThan(0)
     expect(after.last!.otherIncome).toBe(0)
+    expect(g.character.money).toBe(0)
+    const booked = JSON.stringify(g)
+    yearlyBusinessImpl(g)
+    expect(JSON.stringify(g)).toBe(booked)
+  })
+
+  it('gives a 100-rated bank CEO no perfect-foresight top-up: the bank earns what its books earn, booked once', () => {
+    const { g, a, b } = company('bank', 100)
+    b.debt = 500e6; b.debtRate = .5
+    yearlyBusinessImpl(g)
+    const after = readBiz(g, a)
+    expect(after.last!.strategicIncome).toBe(0)
+    expect(after.last!.net).toBeLessThan(0)
+    expect(after.last!.interest).toBeGreaterThan(0)
+    expect(after.last!.otherIncome).toBe(0)
+    expect(readBank(after).last!.profit).toBe(after.last!.net)
     expect(g.character.money).toBe(0)
     const booked = JSON.stringify(g)
     yearlyBusinessImpl(g)
