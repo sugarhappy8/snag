@@ -234,9 +234,14 @@ describe('order-book reaction', () => {
     expect(buySecurity(g, q.secId, 100_000_000)).toBe(true)
     const a = g.assets.find(x => x.details.secId === q.secId)!
     expect(investmentListing(g).find(x => x.secId === q.secId)!.price).toBeGreaterThan(q.price)
-    const peak = a.value
-    expect(sellHolding(g, a.id, peak / 2)).toBe(true)
-    expect(a.value).toBeLessThan(peak / 2)
+    // The holding counts at the price without the player's own buying (never above what was
+    // paid); orders are sized at the moved quote, which the book starts from.
+    const peak = a.value, quote = a.details.price as number, market = (a.details.units as number) * quote
+    expect(peak).toBeLessThanOrEqual(100_000_000)
+    expect(market).toBeGreaterThan(peak)
+    expect(sellHolding(g, a.id, market / 2)).toBe(true)
+    expect(a.details.price as number).toBeLessThan(quote)
+    expect(a.value).toBeLessThanOrEqual(Math.ceil(peak / 2))
     expect(sellHolding(g, a.id, 'all')).toBe(true)
     expect(g.character.money).toBeLessThanOrEqual(money)
     expect(shockFactor(g, q.secId, g.year)).toBeCloseTo(1, 5)

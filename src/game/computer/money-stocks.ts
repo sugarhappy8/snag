@@ -11,7 +11,7 @@
 import { addMoney, count, formatMoney, log, moneyWith, notice, scriptChoice, scriptInput, shortMoney, useYearAction, yearActionsUsed } from '../core'
 import { coinDef, companyDef, cryptoYear, eraIdentity, exchangeByKey, exchangeInfo, exchangeYear, syntheticIndexMove, type ExInfo, type SecurityDef } from '../invest/engine'
 import { gutLikes, listPicks, marketInstinct } from '../invest/instinct'
-import { shockFactor } from '../invest/shocks'
+import { orderFlowFactor, shockFactor } from '../invest/shocks'
 import { seeded, type SRng } from '../assets'
 import { chance, pick, uid } from '../rng'
 import { defineScript } from '../scripts'
@@ -286,19 +286,24 @@ function exOf(bet: StockBet): ExInfo {
 /** The price a bet settles at: the security at the end of the year after it was placed. */
 export function settlePrice(g: GameState, bet: StockBet): number {
   const year = bet.year + 1
+  // The quote without the player's own order flow since the bet was placed: buying or dumping the
+  // security yourself never moves your own bet (bets from older saves keep the full quote).
+  const flowNow = orderFlowFactor(g, bet.secId, year)
+  const own = typeof bet.flow === 'number' && bet.flow > 0 && Number.isFinite(bet.flow) && flowNow > 0 ? bet.flow / flowNow : 1
+  const shocked = shockFactor(g, bet.secId, year) * own
   if (bet.asset === 'coin') {
     const c = cryptoYear(fam(g), anchor(g), year).coins[bet.slot]
     if (!c) return bet.openPrice
-    if (c.id === bet.secId) return Math.max(0, c.price * shockFactor(g, bet.secId, year))
+    if (c.id === bet.secId) return Math.max(0, c.price * shocked)
     if (c.ended && c.ended.id === bet.secId) return 0
     return bet.openPrice
   }
   const s = exchangeYear(fam(g), anchor(g), exOf(bet), year).stocks[bet.slot]
   if (!s) return bet.openPrice
   // Undo this year's split so the price compares with the one paid.
-  if (s.id === bet.secId) return Math.max(0, s.price * (s.ratio ?? 1) * shockFactor(g, bet.secId, year))
+  if (s.id === bet.secId) return Math.max(0, s.price * (s.ratio ?? 1) * shocked)
   // Bought out: the takeover premium is paid on the (shocked) market price.
-  if (s.ended && s.ended.id === bet.secId) return s.ended.kind === 'bankrupt' ? 0 : Math.max(0, s.ended.perUnit * shockFactor(g, bet.secId, year))
+  if (s.ended && s.ended.id === bet.secId) return s.ended.kind === 'bankrupt' ? 0 : Math.max(0, s.ended.perUnit * shocked)
   return bet.openPrice
 }
 
@@ -491,6 +496,7 @@ export function placeBet(g: GameState, spec: BetSpec): StockBet | null {
     units,
     premium: stake,
     openPrice: t.price,
+    flow: orderFlowFactor(g, t.secId, g.year),
     year: g.year,
     countryId: g.character.countryId,
     crony: own ? '' : str(spec.crony as Json, 'a friend'),

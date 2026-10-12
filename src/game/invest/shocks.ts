@@ -284,6 +284,18 @@ export function shockFactor(g: GameState, secId: string, year: number): number {
 }
 
 /**
+ * The player's own order flow on one security up to `year`: the product of its 'liquidity' shocks
+ * (only the player's own trades record them). Quotes include it, since that is the order book; the
+ * player's own position is never marked, paid or settled on it (investments.ts selfImpact,
+ * computer/money-stocks.ts settlePrice).
+ */
+export function orderFlowFactor(g: GameState, secId: string, year: number): number {
+  let f = 1
+  for (const s of shockIndex(g).bySec.get(secId) ?? []) if (s.cause === 'liquidity') f = multiplyFactor(f, factorOf(s, year))
+  return f
+}
+
+/**
  * Factor on an exchange's index (and its index fund): each listed company is an equal slice, so
  * a company that loses half its value drags the index down by half its weight.
  */
