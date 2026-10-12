@@ -586,5 +586,6 @@ describe('a whole family to the grave', () => {
         expect(JSON.parse(JSON.stringify(n))).toEqual(n)
       }
     }
-  })
+    // Three whole lives: sized for a 2-core CI runner.
+  }, 300_000)
 })

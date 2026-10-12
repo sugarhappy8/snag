@@ -130,7 +130,8 @@ function bigInvestor(b: BizState, series: number, r1: number, r2: number): strin
 export function closeRound(g: GameState, a: Asset, b: BizState, t: TechState, ts: TermSheet): void {
   const amount = Math.max(0, Math.round(ts.amount))
   const equity = clampN(amount / Math.max(1, ts.pre + amount), 0, 0.6)
-  b.share = clampN(Math.round(b.share * (1 - equity) * 10000) / 10000, 0.01, 1)
+  // An inherited family company can leave the player with no stake; a round must not mint 1%.
+  b.share = clampN(Math.round(b.share * (1 - equity) * 10000) / 10000, b.familyShares?.length ? 0 : 0.01, 1)
   diluteBusinessEquity(b, 1 - equity)
   t.venture += amount
   t.raised += amount

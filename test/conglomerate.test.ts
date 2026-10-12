@@ -711,7 +711,8 @@ describe('conglomerates', () => {
     void addToGroup
     void groupDividend
     void valuationOf
-  }, 60_000)
+    // Sized for a 2-core CI runner (114-127 s on a busy 4-core machine).
+  }, 300_000)
 })
 
 export type { BizState }

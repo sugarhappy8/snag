@@ -267,6 +267,8 @@ export interface BizState {
   yearCosts: number
   /** One-off income this year (insurance payouts, settlements won...). */
   yearIncome: number
+  /** Owner bonuses taken this year (already inside yearCosts); perfect foresight never refills them. */
+  ownerDraws?: number
   /** Last year staff got a general raise (inflation catch-up). */
   raiseYear: number
   lastEvent: number
@@ -539,6 +541,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     openFraction: clampN(num(d.openFraction, 1), 0, 1),
     yearCosts: Math.max(0, num(d.yearCosts)),
     yearIncome: Math.max(0, num(d.yearIncome)),
+    ...(num(d.ownerDraws) > 0 ? { ownerDraws: num(d.ownerDraws) } : {}),
     raiseYear: Math.round(num(d.raiseYear)),
     lastEvent: Math.round(num(d.lastEvent)),
     loanId: str(d.loanId),

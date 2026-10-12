@@ -143,7 +143,8 @@ export function attemptInfluence(g: GameState, targetId: InfluenceTargetId, pers
   person.data.influenceJob = {
     by: g.character.id, target: target.id, title, salary: annual, hiredYear: g.year, lastPaid: g.year - 1,
   }
-  person.money = Math.min(1_000_000_000, Math.round(person.money + annual * .1))
+  // The cap bounds what this favor adds; it must never confiscate a wealthy relative's savings.
+  person.money = Math.max(person.money, Math.min(1_000_000_000, Math.round(person.money + annual * .1)))
   addRelationship(person, 8)
   count(g, 'bribesSucceeded')
   log(g, `A corrupt favor secured ${person.firstName} a job as ${title}.`, 'bad')
@@ -197,7 +198,7 @@ export function yearlyCorruption(g: GameState): void {
     const job = influenceJob(g, person)
     if (!job || job.hiredYear > fiscal || job.lastPaid >= fiscal) continue
     const pay = Math.max(0, Math.min(500_000, Math.round(job.salary)))
-    person.money = Math.min(1_000_000_000, Math.round(person.money + pay))
+    person.money = Math.max(person.money, Math.min(1_000_000_000, Math.round(person.money + pay)))
     person.occupation = job.title
     person.data.influenceJob = { ...job, lastPaid: fiscal }
     if (pay > 0) log(g, `${person.firstName} earned ${formatMoney(pay)} in ${job.title} salary.`)

@@ -103,6 +103,8 @@ const BID = defineScript('business.comp.bid', (g, choice, data) => {
   if (chance(g, blockP)) {
     const fee = Math.round(price * 0.03)
     b.cash += fee
+    // One-off income like any settlement: on the year's statement and taxed with it.
+    b.yearIncome += fee
     log(g, `Regulators blocked ${name}'s takeover of ${a.name}.`, 'neutral')
     tell(g, 'Deal Blocked!', `${cap(regulator)} blocked ${name}'s takeover of ${a.name}: together you'd have had too much of the market. ${name} paid ${formatMoney(fee)} in break-up fees into ${a.name}'s account. You're still the boss.`, '\u{1F6AB}')
     return

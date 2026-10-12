@@ -139,7 +139,8 @@ describe('no childhood reveal', () => {
       expect(g.character.talent).toBeNull()
       expect(g.flags.talentHints).toBeUndefined()
     }
-  })
+    // 280 full years (each runs the world economy): sized for a 2-core CI runner.
+  }, 600_000)
 
   it('other lives still get the moment (the control)', () => {
     let seen = 0
@@ -152,7 +153,8 @@ describe('no childhood reveal', () => {
       }
     }
     expect(seen).toBeGreaterThan(0)
-  })
+    // 168 full years: sized for a 2-core CI runner.
+  }, 300_000)
 
   it('has a stand-in definition so heirs can inherit it, but it is never rolled as a random talent', () => {
     expect(getTalent('MainCharacter')).toBeDefined()

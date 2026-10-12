@@ -145,7 +145,8 @@ describe('one shared, persistent economy', () => {
     expect(economyMarketFactor(g, 'us', g.year)).toBe(economyOf(g).market)
     expect(economyMarketFactor(g, 'us', g.year - 1)).toBe(economyState(g)?.previous.us.market)
     expect(economyMarketFactor(g, 'us', g.year + 1)).toBe(economyOf(g).market)
-  }, 20000)
+    // 240 whole-world transitions: sized for a 2-core CI runner.
+  }, 300_000)
 
   it('cash, debt and nominal local prices use the same future inflation; historical Korea stays historical', () => {
     const g = makeTestGame(1, { countryId: 'kr', birthCountryId: 'kr', money: 2000 })

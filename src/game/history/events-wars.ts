@@ -381,10 +381,20 @@ export function warStartFor(war: WarDef, countryId: string): number {
   return Math.max(war.from, war.joined?.[countryId] ?? war.from)
 }
 
+/** WARS by fighting country, in table order: the world economy asks for every trade route each year. */
+let warsByCountry: Map<string, WarDef[]> | null = null
+
 /** Wars this country was fighting in this year (none after PRESENT_YEAR - 1). */
 export function warsAt(countryId: string, year: number): WarDef[] {
   if (year >= PRESENT_YEAR) return []
-  return WARS.filter((w) => w.countries.includes(countryId) && year >= warStartFor(w, countryId) && year <= w.to)
+  if (!warsByCountry) {
+    warsByCountry = new Map()
+    for (const w of WARS) for (const id of new Set(w.countries)) {
+      const list = warsByCountry.get(id)
+      if (list) list.push(w); else warsByCountry.set(id, [w])
+    }
+  }
+  return (warsByCountry.get(countryId) ?? []).filter((w) => year >= warStartFor(w, countryId) && year <= w.to)
 }
 
 /** The war whose draft calls up people of this country this year, with its rule (or null). */
