@@ -15,6 +15,9 @@ import { runScript } from '../src/game/scripts'
 import { loadGame, saveGame } from '../src/game/save'
 import { getCountry } from '../src/game/world'
 import { readTies } from '../src/game/events/wealth-core'
+import { yearlyWealth } from '../src/game/events/wealth'
+import { refreshRoyalCareers } from '../src/game/npc-lives'
+import { royalRule } from '../src/game/royalty'
 import { removeHeir, changeWill } from '../src/game/events/will-act'
 import { willPersonNodes } from '../src/game/events/will-amends'
 import { readWl, updateWl } from '../src/game/events/will-core'
@@ -308,5 +311,24 @@ describe('a reload changes nothing', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it("a royal sibling's venture taking off doesn't replace their court title", () => {
+    const g = makeTestGame(14, { countryId: 'ae', birthCountryId: 'ae', age: 30 })
+    g.year = 2026
+    const sis = createPerson(g, { relation: 'sibling', gender: 'female', age: 33, occupation: 'Unemployed', money: 50_000, livesWithPlayer: false,
+      data: { countryId: 'ae', royalCountry: 'ae', royalHouse: royalRule('ae', 2026)!.house, royalTerritory: 'Dubai' } })
+    refreshRoyalCareers(g)
+    const title = sis.occupation
+    expect(sis.data.royalAppointment).toBeDefined()
+    // The food truck she talked you into pays off this year (odds 1).
+    g.flags['wealth.pending'] = [{ id: 'wv1', kind: 'venture', pid: sis.id, name: `your sister ${sis.firstName}`, what: 'a food truck', amt: 100_000, due: g.year, odds: 1, partial: 0.25, by: g.character.id }]
+    yearlyWealth(g)
+    expect(sis.notes.join(' ')).toContain('a food truck')
+    expect(sis.occupation).toBe(title)
+    // What loadGame does to a save: nothing, here.
+    const reloaded = structuredClone(g)
+    refreshRoyalCareers(reloaded)
+    expect(JSON.stringify(reloaded)).toBe(JSON.stringify(g))
   })
 })

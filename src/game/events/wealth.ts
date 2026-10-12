@@ -192,7 +192,9 @@ function settleVentures(g: GameState): void {
         // They keep a stake in what they built; with your 1.25x the family still ends up with less
         // than it put in on average (odds are at most 0.5), so funding kids is never a money machine.
         p.money = Math.round(p.money + x.amt * 0.4)
-        if (p.age < 65 && x.kind === 'venture') p.occupation = 'Business Owner'
+        // A royal appointment is their title: the court keeps it (syncRoyalAppointment), and a
+        // reload would put it straight back.
+        if (p.age < 65 && x.kind === 'venture' && !p.data.royalAppointment) p.occupation = 'Business Owner'
         addRelationship(p, randInt(g, 4, 8))
         notePerson(p, `Made ${x.what} a success with your money.`)
       }
