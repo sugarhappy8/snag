@@ -22,7 +22,7 @@ import { bestPlan, bizWorth, ceoSkill, expectedFx, fxValue, localEcon, maxProduc
 import { bizHas } from './era'
 import { isFinanceFirm } from './finance-firm'
 import { laborProtection, unionStrength } from './flavor'
-import { franchiseBlock, franchiseFee, franchiseUnits, franchiseValue, isFranchiseIndustry, maxSellable, netFee, ONBOARDING, ROYALTY, sellFranchises } from './franchise'
+import { franchiseBlock, franchiseFee, franchiseUnits, franchiseValue, isFranchiseIndustry, maxSellable, netFee, ONBOARDING, readFranchise, ROYALTY, sellFranchises } from './franchise'
 import { isStudio } from './gamestudio'
 import { industryDef } from './industries'
 import { productIdeas } from './products'
@@ -611,6 +611,14 @@ function presentIdea(g: GameState, a: Asset, b: BizState): void {
 // ---------------------------------------------------------------------------
 // Landlord rent hike
 
+/**
+ * Share of the hike paid when the landlord gives way, and when they dig in (and bill their lawyer):
+ * set so that negotiating pays for a skilled CEO or a good finance lead, while a weak negotiator
+ * (under about 40% odds) is better off paying, so "Pay it" is a real choice, not a dominated one.
+ */
+export const RENT_DEAL = 0.4
+export const RENT_DUG_IN = 1.4
+
 export function rentDealP(g: GameState, b: BizState): number {
   return clampN(0.35 + ceoSkill(g, b) / 250 + 0.1 * staffPower(b, 'finance'), 0.2, 0.8)
 }
@@ -623,7 +631,7 @@ function rentBranches(g: GameState, b: BizState, choice: string, extra: number):
   if (choice === 'pay') return [{ p: 1, fx: { cash: -extra } }]
   if (choice === 'negotiate') {
     const p = rentDealP(g, b)
-    return [{ p, fx: { cash: -Math.round(extra * 0.4) } }, { p: 1 - p, fx: { cash: -Math.round(extra * 1.15) } }]
+    return [{ p, fx: { cash: -Math.round(extra * RENT_DEAL) } }, { p: 1 - p, fx: { cash: -Math.round(extra * RENT_DUG_IN) } }]
   }
   const loss = Math.round((0.08 / Math.max(1, Math.sqrt(totalOutlets(b)))) * 100) / 100
   return [{ p: 1, fx: { cash: -moveCost(b), capacityTo: loss, brand: -2 } }]
@@ -636,10 +644,10 @@ const RENT = defineScript('business.ev.rent', (g, choice, data) => {
   const extra = num(x.d.extra)
   if (choice === 'negotiate') {
     if (chance(g, rentDealP(g, b))) {
-      const cost = pay(b, extra * 0.4)
+      const cost = pay(b, extra * RENT_DEAL)
       tell(g, 'Talked Down', `After three meetings and a fruit basket the landlord settled for a smaller increase: ${formatMoney(cost)} more this year.`, '\u{1F91D}', 'good')
     } else {
-      const cost = pay(b, extra * 1.15)
+      const cost = pay(b, extra * RENT_DUG_IN)
       tell(g, 'Landlord Dug In', `The landlord didn't budge and billed you for their lawyer too: ${formatMoney(cost)} more this year.`, '\u{1F3E0}', 'bad')
     }
     return
@@ -664,7 +672,7 @@ function presentRent(g: GameState, a: Asset, b: BizState): void {
   const def = industryDef(b.industry)
   const choices: ChoiceOption[] = [
     { id: 'pay', label: `Pay it (${money(extra)} this year)`, emoji: '\u{1F4B8}' },
-    { id: 'negotiate', label: 'Negotiate', emoji: '\u{1F5E3}\u{FE0F}' },
+    { id: 'negotiate', label: `Negotiate (${money(extra * RENT_DEAL)} if they give way, ${money(extra * RENT_DUG_IN)} if not)`, emoji: '\u{1F5E3}\u{FE0F}' },
     { id: 'move', label: `Move down the street (${money(moveCost(b))})`, emoji: '\u{1F69A}' },
   ]
   markBest(g, choices, scorer(g, b, () => ({ pay: rentBranches(g, b, 'pay', extra), negotiate: rentBranches(g, b, 'negotiate', extra), move: rentBranches(g, b, 'move', extra) })), (id) =>
@@ -807,7 +815,7 @@ const STAR = defineScript('business.ev.starInvestor', (g, choice, data) => {
   const who = str(x.d.who, 'The star')
   const stake = num(x.d.stake)
   const pre = num(x.d.pre)
-  if (choice === 'decline' || !(stake > 0) || !(pre > 0) || b.public || b.share < 0.999) {
+  if (choice === 'decline' || !(stake > 0) || !(pre > 0) || b.public || b.share < 0.999 || isDeepTech(b)) {
     tell(g, 'Thanks, But No', `You told ${who} that ${a.name} isn't looking for investors. They took it well, on camera.`, '\u{1F645}')
     return
   }
@@ -853,6 +861,8 @@ interface Trend {
   industries: string[]
   from: number
   to?: number
+  /** Countries where it is everyday life, not a craze (sushi doesn't "sweep" Japan). */
+  not?: string[]
 }
 
 const FOOD = ['restaurant', 'cafe', 'bakery', 'foodTruck', 'grocery']
@@ -862,11 +872,11 @@ const TRENDS: Trend[] = [
   { label: 'cupcakes', industries: ['bakery', 'cafe'], from: 2004, to: 2014 },
   { label: 'frozen yogurt', industries: ['cafe', 'foodTruck'], from: 2006, to: 2014 },
   { label: 'cold brew coffee', industries: ['cafe', 'grocery'], from: 2014 },
-  { label: 'espresso drinks', industries: ['cafe'], from: 1990 },
-  { label: 'sushi', industries: ['restaurant', 'grocery'], from: 1980 },
+  { label: 'espresso drinks', industries: ['cafe'], from: 1990, not: ['it'] },
+  { label: 'sushi', industries: ['restaurant', 'grocery'], from: 1980, not: ['jp'] },
   { label: 'organic food', industries: FOOD, from: 1990 },
   { label: 'low-carb diets', industries: FOOD, from: 2002, to: 2008 },
-  { label: 'fondue parties', industries: ['restaurant', 'grocery'], from: 1965, to: 1980 },
+  { label: 'fondue parties', industries: ['restaurant', 'grocery'], from: 1965, to: 1980, not: ['ch'] },
   { label: 'milkshake bars', industries: ['cafe', 'restaurant'], from: 1930, to: 1960 },
   { label: 'craft beer', industries: ['bar', 'brewery'], from: 1990 },
   { label: 'cocktail lounges', industries: ['bar'], from: 2005 },
@@ -876,7 +886,7 @@ const TRENDS: Trend[] = [
   { label: 'grunge style', industries: ['fashion'], from: 1991, to: 1996 },
   { label: 'natural skincare', industries: ['beauty', 'salon'], from: 2010 },
   { label: 'aerobics', industries: ['gym'], from: 1980, to: 1992 },
-  { label: 'yoga', industries: ['gym', 'education'], from: 1990 },
+  { label: 'yoga', industries: ['gym', 'education'], from: 1990, not: ['in'] },
   { label: 'high-intensity workouts', industries: ['gym'], from: 2010 },
   { label: 'bold hair colors', industries: ['salon'], from: 2010 },
   { label: 'the perm', industries: ['salon'], from: 1975, to: 1990 },
@@ -888,7 +898,7 @@ const TRENDS: Trend[] = [
 /** The trends this company could ride this year. */
 export function trendsFor(g: GameState, b: BizState): Trend[] {
   if (!consumer(b)) return []
-  return TRENDS.filter((t) => t.industries.includes(b.industry) && g.year >= t.from && (t.to === undefined || g.year <= t.to))
+  return TRENDS.filter((t) => t.industries.includes(b.industry) && g.year >= t.from && (t.to === undefined || g.year <= t.to) && !t.not?.includes(b.countryId))
 }
 
 /** Chance a trend lasts long enough to matter (nobody knows which ones will). */
@@ -944,7 +954,8 @@ function presentTrend(g: GameState, a: Asset, b: BizState): void {
 export const EXTRA_EVENTS: ExtraEvent[] = [
   {
     id: 'franchisePitch',
-    weight: (g, b) => (isFranchiseIndustry(b.industry) && franchiseUnits(b) === 0 && !franchiseBlock(b) && maxSellable(g, b) >= 1 ? 0.5 : 0),
+    // "Your first franchise": only for a company that never sold one (not one whose franchisees all closed).
+    weight: (g, b) => (isFranchiseIndustry(b.industry) && franchiseUnits(b) === 0 && readFranchise(b).since === 0 && !franchiseBlock(b) && maxSellable(g, b) >= 1 ? 0.5 : 0),
     present: presentFranchisePitch,
   },
   { id: 'critic', weight: (_g, b) => (classic(b) && industryDef(b.industry).food && b.industry !== 'grocery' ? 0.45 : 0), present: presentCritic },
@@ -962,7 +973,9 @@ export const EXTRA_EVENTS: ExtraEvent[] = [
   },
   {
     id: 'starInvestor',
-    weight: (g, b) => (!isFinanceFirm(b) && !b.public && b.share >= 0.999 && !b.group && !inGroup(g, b) && !(b.familyShares?.length) && b.valuation > 0 && b.history.length >= 2 && (b.last?.net ?? 0) > 0 ? 0.25 : 0),
+    // Not deep tech: its outside money goes into the restricted R&D account through funding rounds
+    // (deeptech-state.ts), never into company cash. Not on cooked books: the star's lawyers check.
+    weight: (g, b) => (!isFinanceFirm(b) && !isDeepTech(b) && b.cooked <= 0 && !b.public && b.share >= 0.999 && !b.group && !inGroup(g, b) && !(b.familyShares?.length) && b.valuation > 0 && b.history.length >= 2 && (b.last?.net ?? 0) > 0 ? 0.25 : 0),
     present: presentStar,
   },
   { id: 'trend', weight: (g, b) => (trendsFor(g, b).length ? 0.35 : 0), present: presentTrend },
