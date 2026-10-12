@@ -307,7 +307,8 @@ const EVENTS: FundEvent[] = [
   },
   {
     id: 'tip',
-    weight: (_g, _b, f) => f.type === 'vc' || f.probe ? 0 : .7,
+    // Only a firm that runs a fund can "load the fund up" (a brokerage's own book never trades it).
+    weight: (_g, _b, f) => (f.type === 'asset' || f.type === 'hedge') && !f.probe ? .7 : 0,
     present: (g, a) => {
       const co = pick(g, COMPANIES), who = pick(g, TIPSTERS)
       ask(g, a, 'tip', '🤫 A Hot Tip', `${who[0].toUpperCase()}${who.slice(1)} who works at ${co} whispers that ${co} is about to be bought at a big premium. Nobody else knows yet.`,

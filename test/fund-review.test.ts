@@ -1,22 +1,24 @@
 // Investment Firms 2.0 review regressions: unique startup names, a hired CEO who leaves pitches
 // for the owner, LPs who won't fund a manager that never invests, era-legal firms from every
-// source (founding, listings, group ventures, old saves), an honest hedge fee preview and lawyers
-// who are actually paid for.
+// source (founding, listings, group ventures, old saves), an honest hedge fee preview, lawyers
+// who are actually paid for, and guards: the whole company screen is pure for every type and
+// state, and damaged old books run through the real yearly loop without minting money.
 import { describe, expect, it } from 'vitest'
 import { becomeCeo } from '../src/game/business/career'
 import { createBusinessAsset, listingsForSale, newBiz, startFounding } from '../src/game/business/founding'
 import { fundNodes } from '../src/game/business/fund'
-import { investInPitch } from '../src/game/business/fund-actions'
-import { fundYearlyChecks, PROBE } from '../src/game/business/fund-events'
+import { investInPitch, setCall, setHedgeTerms } from '../src/game/business/fund-actions'
+import { fundYearlyChecks, presentFundEvent, PROBE } from '../src/game/business/fund-events'
 import { quantBlock } from '../src/game/business/fund-model'
 import { hedgeFeeOutlook, strategyOutlook } from '../src/game/business/fund-outlook'
 import { readFund, saveFund, type FundState, type FundType } from '../src/game/business/fund-state'
 import { fundLine } from '../src/game/business/fund-text'
 import { newVcFund, openPitches, pitchesFor, raiseQuote } from '../src/game/business/fund-vc'
 import { bizOf, findBusiness, readBiz } from '../src/game/business/state'
+import { businessAssetView } from '../src/game/business'
 import { runScript } from '../src/game/scripts'
 import type { GameState, Json } from '../src/game/types'
-import { ageBusinessYear, drain, firm, menuText } from './fund-fixtures'
+import { ageBusinessYear, allFinite, drain, firm, menuText, walk } from './fund-fixtures'
 import { makeTestGame } from './helpers'
 
 const TYPES: FundType[] = ['asset', 'hedge', 'vc', 'broker']
@@ -272,4 +274,84 @@ describe('regulators', () => {
     const nothing = fight(0, 0)
     expect(nothing.g.log.flatMap(y => y.entries.map(e => e.text)).join('\n')).toMatch(/couldn't afford the lawyers/)
   })
+})
+
+describe('story events', () => {
+  it('only firms that run a fund are offered an insider tip to "load the fund up" on', () => {
+    for (const type of TYPES) {
+      const { g, a, b } = firm(type, { year: 2009 })
+      const f = readFund(b)
+      f.aum = Math.max(f.aum, 2e8); f.lastYear = 2008
+      saveFund(b, f)
+      g.queue = []
+      expect(presentFundEvent(g, a, 'tip'), type).toBe(type === 'asset' || type === 'hedge')
+    }
+  })
+})
+
+describe('purity and old books through the real loop', () => {
+  it('renders the whole company screen of every firm type and state without touching the game', () => {
+    for (const type of TYPES) {
+      for (const managed of [false, true]) {
+        const { g, a } = firm(type, managed ? { year: 2012, skill: 75, talent: 'Business' } : { year: 2012, talent: 'Business' })
+        g.character.talents = ['Business', 'Investing', 'Inventor'] as never
+        if (!managed) installCeo(g, a)
+        for (let y = 0; y < 4; y++) { ageBusinessYear(g); drain(g); g.character.age = 40 }
+        if (!findBusiness(g, a.id)) continue
+        const b = bizOf(g, a), f = readFund(b)
+        if (type === 'hedge') {
+          setCall(g, a.id, 'bull', 2.5); setHedgeTerms(g, a.id, 'coinvest', 1e5)
+          const h = readFund(bizOf(g, a))
+          h.ponzi = { since: g.year - 1, hole: 1e6, fees: 1e4, by: g.character.id }
+          h.probe = { year: g.year - 1, crime: 'Insider Trading', odds: .3, by: g.character.id }
+          saveFund(bizOf(g, a), h)
+        }
+        if (type === 'vc') {
+          const live = f.cos.find(c => c.status === 'live')
+          if (live) live.round = { stage: live.stage + 1, pre: live.val * 2, size: live.val * .5, year: g.year + 1, take: -1 }
+          saveFund(b, f)
+        }
+        const before = JSON.stringify(g), rng = g.rng
+        const nodes = businessAssetView(g, a)
+        expect(walk(g, nodes)).toBeGreaterThan(10)
+        expect(JSON.stringify(g), `${type} ${managed}`).toBe(before)
+        expect(g.rng).toBe(rng)
+        for (const text of menuText(g, fundNodes(g, a))) expect(text.length, text).toBeLessThanOrEqual(text.startsWith('🔮') ? 220 : 140)
+      }
+    }
+  }, 120_000)
+
+  it('runs damaged old books through the yearly loop: no crash, finite, cash moves only by booked profit', () => {
+    const records: Json[] = [
+      'garbage', [1, 2], { model: 'retail', aum: 'x', feeRate: -1, lastYear: 'y' },
+      { model: 'private', aum: 3e7, leverage: 99, tradingCapital: -1, highWater: Number.NaN, algoEdge: 9 },
+      { model: 'brokerage', accounts: 2500, commission: 'free', aum: -3 },
+      { kind: 'fund', type: 'nope', aum: -5, cos: 'x', funds: [{ size: 'big' }], marks: [null, { y: 'a' }] },
+      { kind: 'fund', type: 'vc', funds: [{ n: 1, size: 2e7, vintage: 2018, dry: 9e9, reserve: -1 }, 'x'], cos: [{ id: 'a', status: 'live', own: 5, val: 2e6, fund: 1, born: 2019 }, { id: 'a' }, { name: 'no id' }], lastYear: 2024 },
+    ]
+    for (const rec of records) {
+      const g = makeTestGame(5, { age: 40, money: 1_000_000 })
+      g.year = 2025
+      const b0 = newBiz(g, 'investmentFirm', 'us', 'Chicago', { cash: 3_000_000, founded: 2015 })
+      b0.financeFirm = rec
+      const a = createBusinessAsset(g, 'Old Capital', b0, 1_000_000)
+      g.assets.push(a)
+      installCeo(g, a)
+      for (let y = 0; y < 5; y++) {
+        const live = findBusiness(g, a.id)
+        if (!live) break
+        const cash = readBiz(g, live).cash
+        ageBusinessYear(g)
+        const after = findBusiness(g, a.id)
+        if (!after) break
+        const b = readBiz(g, after), s = b.last!
+        expect(s.strategicIncome).toBe(0)
+        expect(b.cash, JSON.stringify(rec)).toBe(cash + s.net + s.other - s.otherIncome - b.yearCosts)
+        expect(allFinite(b)).toBe(true)
+        expect(allFinite(readFund(b))).toBe(true)
+        drain(g, m => m.choices.find(c => c.id === 'keep' || c.id === 'cooperate' || c.id === 'decline')?.id ?? m.choices[m.choices.length - 1].id)
+        g.character.age = 41
+      }
+    }
+  }, 120_000)
 })
