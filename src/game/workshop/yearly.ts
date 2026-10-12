@@ -5,6 +5,7 @@
 // rolls at most one event popup.
 import { earnIncome, formatMoney, log, notice, scriptChoice } from '../core'
 import { economicRoll, recordEconomicActivity } from '../economy'
+import { anachronistic, cars, common } from '../events/era'
 import { rand } from '../rng'
 import { defineScript } from '../scripts'
 import { outcomeTag } from '../timeMachine'
@@ -14,7 +15,7 @@ import { catalogIdea, isHistory, type Category } from './catalog'
 import { yearlyWorkshopEvent } from './events'
 import { needsMigration } from './migrate'
 import { curveAt, curveOver, familyOf, invCurve, saturation } from './market'
-import { addIdea, addRep, drawIdea, dropIdea, inventions, isGenius, logIdea, mutWorkshop, storeInv, type Owned } from './notebook'
+import { addIdea, addRep, blurbOf, drawIdea, dropIdea, inventions, isGenius, logIdea, mutWorkshop, storeInv, type Owned } from './notebook'
 import { NOTEBOOK_MAX, rec, text, type Workshop } from './state'
 
 const MILLION = 1_000_000
@@ -109,7 +110,62 @@ function closeHistory(g: GameState, ws: Workshop): void {
   }
 }
 
-const SPARK_SCENES = ['folding laundry', 'waiting for the bus', 'brushing your teeth', 'staring at the ceiling', 'eating cereal', 'in the bath', 'on a long walk', 'watching the rain', 'during a boring lesson', 'trying to fall asleep']
+type Scene = { at: string; when?: (g: GameState) => boolean }
+const level = (g: GameState) => g.character.education.current?.level
+const inSchool = (g: GameState) => { const l = level(g); return l === 'elementary' || l === 'middle' || l === 'high' }
+const inCollege = (g: GameState) => { const l = level(g); return l === 'community' || l === 'university' || l === 'graduate' }
+const working = (g: GameState) => !!(g.character.job || g.character.partTimeJob)
+const after = (year: number) => (g: GameState) => g.year >= year
+
+/** Where an idea strikes, by stage of life (each completes "..., you had an idea"). */
+const SCENES: Record<'kid' | 'teen' | 'adult' | 'senior', readonly Scene[]> = {
+  kid: [
+    { at: 'In the middle of a boring lesson', when: inSchool },
+    { at: 'On the walk home from school', when: inSchool },
+    { at: 'While building a blanket fort' },
+    { at: 'In the bath, surrounded by bubbles' },
+    { at: 'While you were supposed to be asleep' },
+    { at: 'Over a bowl of cereal', when: after(1910) },
+    { at: 'While watching the rain from the window' },
+    { at: 'Up in the branches of your favorite tree' },
+  ],
+  teen: [
+    { at: 'Halfway through a boring class', when: inSchool },
+    { at: 'While avoiding your homework', when: inSchool },
+    { at: 'Lying awake at two in the morning' },
+    { at: 'While brushing your teeth' },
+    { at: 'While waiting for the bus', when: after(1925) },
+    { at: 'On a long walk with nowhere to be' },
+    { at: 'During a commercial break', when: (g) => common(g, 'tv') },
+  ],
+  adult: [
+    { at: 'Halfway through a boring meeting', when: working },
+    { at: 'On your lunch break', when: working },
+    { at: 'Halfway through a lecture', when: inCollege },
+    { at: 'While folding laundry' },
+    { at: 'While doing the dishes' },
+    { at: 'While stuck in traffic', when: cars },
+    { at: 'While waiting for the bus', when: after(1925) },
+    { at: 'In the shower', when: after(1930) },
+    { at: 'Staring at the ceiling at three in the morning' },
+  ],
+  senior: [
+    { at: 'While tending your garden' },
+    { at: 'On your morning walk' },
+    { at: 'While feeding the ducks at the park' },
+    { at: 'Halfway through an afternoon nap' },
+    { at: 'While tidying the shed' },
+    { at: 'Over a jigsaw puzzle' },
+  ],
+}
+
+/** Spark scenes that fit this character's age, school or job, year and place. Pure. */
+export function sparkScenes(g: GameState): string[] {
+  const c = g.character
+  const stage = c.age < 13 ? 'kid' : c.age < 18 ? 'teen' : c.age >= 65 || (c.retired && c.age >= 55) ? 'senior' : 'adult'
+  const fits = SCENES[stage].filter((s) => (!s.when || s.when(g)) && !anachronistic(g, s.at)).map((s) => s.at)
+  return fits.length ? fits : ['Out of nowhere']
+}
 
 /** Ideas strike: geniuses 1-2 a year from age 6, everyone else ~15% a year from age 10. */
 function sparks(g: GameState, ws: Workshop): void {
@@ -128,8 +184,9 @@ function sparks(g: GameState, ws: Workshop): void {
     if (!def) return
     if (!popup && age >= 8 && rand(g) < 0.3) {
       popup = true
-      const scene = SPARK_SCENES[Math.floor(rand(g) * SPARK_SCENES.length)]
-      scriptChoice(g, SPARK, '\u{1F4A1} An Idea Strikes', `While ${scene}, you had an idea: the ${def.name}. ${def.blurb}`, [
+      const scenes = sparkScenes(g)
+      const scene = scenes[Math.floor(rand(g) * scenes.length)]
+      scriptChoice(g, SPARK, '\u{1F4A1} An Idea Strikes', `${scene}, you had an idea: the ${def.name}. ${blurbOf(g, def)}`, [
         { id: 'write', label: 'Write it down', emoji: '\u{270D}\u{FE0F}' },
         { id: 'forget', label: 'Forget it', emoji: '\u{1F937}' },
       ], { emoji: def.emoji, data: { id: def.id, year: g.year } as unknown as Json })
