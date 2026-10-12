@@ -3,8 +3,9 @@ import { makeTestGame } from './helpers'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { managerCandidate } from '../src/game/business/career'
 import { bizOf, type KeyStaff } from '../src/game/business/state'
-import { financeTeamSkill, simulateFinanceYear } from '../src/game/business/finance-legacy'
-import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
+import { simulateFinanceYear } from '../src/game/business/finance-firm'
+import { bankTeamSkill, bankYearCtx, linePd } from '../src/game/business/bank-model'
+import { loanTotal, readBank } from '../src/game/business/bank-state'
 import { appealOf, costFactor, planFor } from '../src/game/business/economy'
 import { leadershipPower } from '../src/game/business/leadership'
 import type { Industry } from '../src/game/data/markets'
@@ -45,11 +46,14 @@ describe('leadership affects operations', () => {
   it('makes specialists matter alongside an elite CEO and keeps client funds separate', () => {
     const { g, b } = company('bank'), baseline = structuredClone(b)
     b.staff = [leader('finance'), leader('quality'), leader('ops'), leader('sales')]
-    expect(financeTeamSkill(g, b)).toBeGreaterThan(financeTeamSkill(g, baseline))
-    const books = financeView(b); books.controls = 75; saveFinance(b, books)
-    const result = simulateFinanceYear(g, b, g.year, 0), f = financeView(b)
-    expect(f.reserves + f.loanBook + f.bonds).toBeCloseTo(f.deposits, 2)
+    expect(bankTeamSkill(g, b)).toBeGreaterThan(bankTeamSkill(g, baseline))
+    // Credit and risk specialists make the same loans default less often.
+    expect(linePd(bankYearCtx(g, b, g.year), readBank(b), 'business')).toBeLessThan(linePd(bankYearCtx(g, baseline, g.year), readBank(baseline), 'business'))
+    const cash = b.cash
+    const result = simulateFinanceYear(g, b, g.year, 0), f = readBank(b)
+    expect(loanTotal(f) + f.badNet + f.reserves + f.bonds).toBeCloseTo(f.deposits + f.advance, 2)
     expect(Number.isFinite(result.stmt.net)).toBe(true)
+    expect(b.cash).toBe(cash + result.stmt.net)
     expect(g.character.money).toBe(1e9)
   })
 })

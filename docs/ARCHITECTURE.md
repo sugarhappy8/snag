@@ -85,6 +85,13 @@ src/
                          ideas) and the product range economics (see "Business growth" below)
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
+    business/finance-firm.ts  Banks and investment firms: a thin dispatcher (simulateFinanceYear,
+                         financeNodes, financeManagerTurn, financeEraBlock...) to bank*.ts (Banking 2.0:
+                         rates, lending appetite, products, regulator, runs, events) and fund*.ts
+                         (Investment Firms 2.0: asset manager, hedge fund, venture capital, brokerage).
+                         Books live in BizState.financeFirm, read by readBank/readFund (which migrate
+                         v2.1 records through finance-firm-state.financeView); client money never
+                         enters b.cash (see "Banks' money rules" below)
     events/wealth*.ts    Being rich: money requests from kids, family and friends, allowances, loans,
                          the "Money Matters" person section (see "Being rich, felt" below)
     assetHooks.ts        businessGone(g, a): low-level code that removes a company (seizure,

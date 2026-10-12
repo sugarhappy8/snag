@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { makeTestGame } from './helpers'
 import { installManager, managerCandidate } from '../src/game/business/career'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
-import { financeManagerTurn, financeNodes, financeQuantEdge, financeTeamSkill, simulateFinanceYear } from '../src/game/business/finance-legacy'
-import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
 import { readBank } from '../src/game/business/bank-state'
+import { capacityFactor } from '../src/game/business/fund-model'
 import { executiveOperations } from '../src/game/business/executive'
 import { settlePerfectForesight } from '../src/game/business/executive-foresight'
 import { bizOf, readBiz } from '../src/game/business/state'
@@ -100,64 +99,12 @@ describe('elite CEO foresight', () => {
 })
 
 describe('elite financial businesses', () => {
-  it('gives Business talent an effective financial strategy action without click-generated money', () => {
-    const { g, a, b } = company('investmentFirm', 50)
-    b.ceo = 'owner'; b.manager = null; g.character.talent = 'Business'
-    expect(financeTeamSkill(g, b)).toBeGreaterThan(90)
-    const before = JSON.stringify(g), nodes = financeNodes(g, a)
-    expect(JSON.stringify(g)).toBe(before)
-    const action = nodes.find(n => n.type === 'action' && n.id.endsWith('.optimize'))!
-    if (action.type !== 'action') throw new Error('Missing optimizer')
-    action.run(g); action.run(g)
-    const updated = readBiz(g, a), f = financeView(updated)
-    expect(updated.cash).toBe(b.cash)
-    expect(g.character.money).toBe(0)
-    expect(f.tradingCapital).toBeGreaterThan(0)
-    expect(f.researchBudget).toBeGreaterThan(0)
-  })
-
-  it('automatically funds quant research and trades real shareholder capital for strong returns', () => {
-    const { g, b } = company('investmentFirm', 95)
-    financeManagerTurn(g, b)
-    const before = b.cash, f = financeView(b)
-    f.researchQuality = 100; f.computing = 80; f.algoEdge = .9
-    saveFinance(b, f)
-    const result = simulateFinanceYear(g, b, 2025, 0), after = financeView(b)
-    expect(after.lastReturn).toBeGreaterThan(.6)
-    expect(after.lastTrading).toBeGreaterThan(1e6)
-    expect(result.stmt.net).toBeGreaterThan(0)
-    expect(b.cash).toBe(before + result.stmt.net)
-    expect(after.lastResearch).toBeGreaterThan(0)
-    const final = JSON.stringify(b)
-    simulateFinanceYear(g, b, 2025, 0)
-    expect(JSON.stringify(b)).toBe(final)
-  })
-
-  it('scales algorithm returns down above capacity instead of printing unlimited client principal', () => {
-    const { g, b } = company('investmentFirm'), f = financeView(b)
-    f.algoEdge = 1; f.researchQuality = 100
-    saveFinance(b, f)
-    const small = financeQuantEdge(g, b, 2025)
-    f.aum = 1e14; saveFinance(b, f)
-    expect(financeQuantEdge(g, b, 2025)).toBeLessThan(small / 1000)
-  })
-
-  it('elite bank management outperforms weak leadership without treating deposits as company cash', () => {
-    let strong = 0, weak = 0, strongLosses = 0, weakLosses = 0
-    for (let i = 0; i < 12; i++) {
-      for (const rating of [40, 95]) {
-        const { g, b } = company('bank', rating)
-        g.lifeId = `bank-${i}`
-        financeManagerTurn(g, b)
-        const before = b.cash
-        const result = simulateFinanceYear(g, b, 2025, 0), f = financeView(b)
-        expect(b.cash).toBe(before + result.stmt.net)
-        expect(f.reserves + f.loanBook + f.bonds).toBeCloseTo(f.deposits, 3)
-        if (rating === 95) { strong += result.stmt.net; strongLosses += f.lastDefaults }
-        else { weak += result.stmt.net; weakLosses += f.lastDefaults }
-      }
-    }
-    expect(strong).toBeGreaterThan(weak)
-    expect(strongLosses).toBeLessThan(weakLosses)
+  it('scales a manager’s edge down above capacity instead of printing unlimited client returns', () => {
+    const { b } = company('investmentFirm')
+    const small = capacityFactor(5e7, 95, b), huge = capacityFactor(1e14, 95, b)
+    expect(small).toBe(1)
+    expect(huge).toBeGreaterThanOrEqual(0)
+    expect(huge).toBeLessThan(small / 100)
+    expect(capacityFactor(1e14, 100, b)).toBeLessThan(.01)
   })
 })

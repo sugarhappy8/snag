@@ -12,10 +12,12 @@ additional dependency or second economic engine was introduced.
 
 - Start a business: choose the initial-capital slider after the city. Equipment and fees are
   distinct from working cash. The following funding screen quotes personal contribution,
-  debt and investor dilution. Investment firms first ask for retail, private or brokerage.
-- Company → Financial Operations: bank rates, lending, liquidity, controls, staffing,
-  customer acquisition and infrastructure. Private investment firms additionally expose
-  research, proprietary trading capital and leverage; brokerages expose commissions.
+  debt and investor dilution. Investment firms first ask for a type: asset manager, hedge
+  fund (1949+), venture capital (1946+) or brokerage.
+- Company → Financial Operations: banks set savings and loan rates, a lending appetite,
+  products and one campaign a year. Asset managers pick a fund style and fee; hedge funds a
+  strategy (a macro call with leverage), fees and co-investment; venture firms raise funds
+  and back startups; brokerages set a commission.
 - Company → Money: **Invest My Own Money** is a slider. **Capital & Ownership** (labelled
   **Financial Rescue & Ownership** for distressed companies) explains runway and separates
   secondary purchases, equity subscriptions and company-funded buybacks. Loans, staffing
@@ -51,17 +53,20 @@ offered in the outside-investor pool, including tracked grants to dismissed CEOs
 executive grants initialize the ledger on old saves; previously discarded historical CEO
 identities cannot be reconstructed.
 
-Bank deposits and investment AUM are client books, not shareholder cash. Fees, spreads,
-defaults, operating expenses and proprietary gains/losses enter the real statement. Borrowed
-cash is excluded from regulatory capital. Loan books run off when required capital is
-insufficient, including after losses. Runs can force discounted asset sales; qualifying
-emergency support is repayable secured debt at a penalty rate, never free shareholder money.
+Bank deposits and loans, and investment clients' money (AUM, venture LP funds, brokerage
+accounts), are client books, not shareholder cash. Fees, spreads, carry, defaults, operating
+expenses and the firm's own co-investment gains/losses enter the real statement. Borrowed
+cash is excluded from regulatory capital. Below the minimum, regulators warn, then force loan
+sales with a fine, then threaten seizure; owner payouts stop at the capital they require.
+Runs are paid from reserves and bonds first, then by discounted loan sales or an emergency
+central-bank loan (repayable company debt at a penalty rate), never free shareholder money.
 
-Retail firms earn AUM fees; private firms can earn performance fees above a high-water mark
-and trade their own available capital; brokerages earn transaction fees. Recurring research,
-technology and acquisition budgets compete for cash after operating buffers. Named researcher
-skills, computing, market infrastructure, strategy decay and finite capacity limit the edge.
-Manual statistical research remains possible before computers; it is not electronic trading.
+Asset managers earn a fee on AUM; hedge funds a management fee plus a performance fee above
+the high-water mark; venture firms 2% a year and 20% carry on LPs' money; brokerages
+commissions, order flow and interest on idle cash. Fund returns follow the same market engine
+as personal investments; skill adds a modest edge that shrinks for very large books, and rank
+against peers drives client flows. Quant strategies and an Inventor's trading algorithm need
+the computer era, and an algorithm's edge fades as rivals copy it.
 
 Elite CEOs use the existing planner, with finer pricing/output decisions, broader candidate
 searches and more decisive marketing adjustments. The annual letter compares modeled plans
@@ -210,7 +215,7 @@ Final local verification on 2026-10-10:
 
 Use `npm run typecheck`, `npm test -- --maxWorkers=2` and `npm run build`.
 Focused tests in `business-financial-overhaul.test.ts` and `npc-dynasty-overhaul.test.ts` cover
-client segregation, regulatory capital, research funding, era gates, balanced ownership
+bank reserves and regulatory capital, financial era gates, balanced ownership
 transactions, executive vesting, startup working cash, internal invoice elimination, NPC
 degrees/recruitment/growth/acquisition, estates, deterministic saves, heir continuity, royalty
 eligibility/succession/abolition and financially backed birth backgrounds.
