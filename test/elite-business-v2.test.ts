@@ -6,7 +6,6 @@ import { financeManagerTurn, financeNodes, financeQuantEdge, financeTeamSkill, s
 import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
 import { executiveOperations } from '../src/game/business/executive'
 import { settlePerfectForesight } from '../src/game/business/executive-foresight'
-import { inventionProductsOf, manageInventionProducts, newInventionProduct, saveInventionProducts } from '../src/game/business/invention-products'
 import { bizOf, readBiz } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import { simulateYear } from '../src/game/business/economy'
@@ -21,7 +20,7 @@ function company(industry: Industry, skill = 95) {
   return { g, a, b: bizOf(g, a) }
 }
 
-describe('elite CEO foresight and concrete IP management', () => {
+describe('elite CEO foresight', () => {
   it('makes 85+ operating execution materially stronger than ordinary CEOs', () => {
     const low = company('manufacturing', 70), high = company('manufacturing', 95)
     executiveOperations(low.g, low.b, 2025, low.a.id)
@@ -64,37 +63,6 @@ describe('elite CEO foresight and concrete IP management', () => {
     const final = JSON.stringify(b)
     settlePerfectForesight(g, b, s)
     expect(JSON.stringify(b)).toBe(final)
-  })
-
-  it('turns assigned invention IP into paid fab capacity and real production without changing patent terms', () => {
-    const { g, a, b } = company('manufacturing')
-    const p = newInventionProduct('owned-ip', 'Quantum material', 'materials', 'big', 2020)
-    p.protections = [{ country: 'us', filed: 2020, expires: 2040 }]
-    saveInventionProducts(b, [p])
-    const before = b.cash
-    manageInventionProducts(g, a, b, 2025)
-    const planned = inventionProductsOf(b)[0]
-    expect(planned.fabInvested).toBeGreaterThan(0)
-    expect(planned.production).toBeGreaterThan(0)
-    expect(planned.price).toBeGreaterThan(p.unitCost)
-    expect(planned.protections).toEqual(p.protections)
-    expect(before - b.cash).toBeCloseTo(planned.fabInvested! + planned.upgradeInvested!)
-    yearlyBusinessImpl(g)
-    expect(inventionProductsOf(readBiz(g, a))[0].sold).toBeGreaterThan(0)
-  })
-
-  it('does not build unaffordable fabs or use an expired invention licence', () => {
-    const { g, a, b } = company('manufacturing')
-    const p = newInventionProduct('expired', 'Expired IP', 'consumer', 'small', 2020)
-    p.rights = 'license'; p.expires = 2025
-    saveInventionProducts(b, [p]); const before = b.cash
-    manageInventionProducts(g, a, b, 2025)
-    expect(b.cash).toBe(before)
-    expect(inventionProductsOf(b)[0].fabCapacity).toBe(0)
-    p.rights = 'owned'; saveInventionProducts(b, [p]); b.cash = 10
-    manageInventionProducts(g, a, b, 2025)
-    expect(b.cash).toBe(10)
-    expect(inventionProductsOf(b)[0].fabCapacity).toBe(0)
   })
 })
 

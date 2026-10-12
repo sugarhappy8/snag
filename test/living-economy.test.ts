@@ -7,9 +7,6 @@ import { addLoan, creditScore, refinanceDebt, refinanceQuote, yearlyFinance, off
 import { moneyContextOf } from '../src/game/core'
 import { economyMenu, bankingMenu } from '../src/game/economy/menu'
 import { householdEffects, householdView, lifePrioritiesMenu, setLifePriority, yearlyHousehold } from '../src/game/household'
-import { personalResearchQuote, researchExperiment, startPersonalResearch, yearlyInventor } from '../src/game/inventor'
-import { inventorView, personalInventions, readInventionIp, saveInventor } from '../src/game/inventor-state'
-import { prepareInventor } from './inventor-helpers'
 import type { GameState, MenuNode } from '../src/game/types'
 
 function next(g: GameState) { g.year++; g.character.age++; g.yearActions = {}; yearlyEconomy(g) }
@@ -220,25 +217,5 @@ describe('financial and household choices', () => {
     for (let y = 0; y < 3; y++) { g.year++; yearlyHousehold(g) }
     expect(householdView(g).fatigue).toBeLessThan(fatigue)
     expect(householdEffects(g).work).toBeLessThan(0)
-  })
-})
-
-describe('already-funded research keeps its completion contract', () => {
-  it('preserves budget tradeoffs and scarce experiments on legacy projects', () => {
-    const g = makeTestGame(42, { age: 30, money: 1e10, talents: ['Inventor'] })
-    prepareInventor(g, 'solid-battery')
-    expect(personalResearchQuote(g, 'solid-battery', 'practical')!.budget).toBeLessThan(personalResearchQuote(g, 'solid-battery', 'frontier')!.budget)
-    startPersonalResearch(g, 'solid-battery', 'Test Cell', 'frontier')
-    const legacy = inventorView(g); legacy.project!.model = 'legacy'; legacy.project!.years = 3; saveInventor(g, legacy)
-    const control = JSON.parse(JSON.stringify(g)) as GameState
-    const validation = inventorView(g).project!.validation!
-    expect(researchExperiment(g, 'customers')).toBe(true)
-    expect(inventorView(g).project!.validation).toBeGreaterThan(validation)
-    expect(researchExperiment(g, 'engineering')).toBe(false)
-    for (let y = 0; y < 3; y++) { g.year++; control.year++; yearlyInventor(g); yearlyInventor(control) }
-    const tested = readInventionIp(personalInventions(g)[0])!, untested = readInventionIp(personalInventions(control)[0])!
-    expect(tested.marketFit).toBeGreaterThan(untested.marketFit!)
-    expect(tested.created).toBe(untested.created)
-    expect(economyState(g)).toBeNull() // A prototype alone creates no economy-wide adoption.
   })
 })

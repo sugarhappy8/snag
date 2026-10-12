@@ -15,7 +15,6 @@ import { styleOf, syncCeo } from './career'
 import { executiveOperations, executiveRetentionYear, groupRetentionYear } from './executive'
 import { settlePerfectForesight } from './executive-foresight'
 import { prepareInternalServices, settleInternalServices } from './group-services'
-import { inventionYear } from './expansion'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
 import { groupRescue, inGroup, prepareGroupManagement, yearlyConglomerates } from './conglomerate'
 import {
@@ -34,10 +33,7 @@ import {
   simulateYear,
   updateSharePrice,
   valuationOf,
-  yearFixed,
 } from './economy'
-import { commitInventionProducts, manageInventionProducts, prepareInventionWorkforce, simulateInventionProducts } from './invention-products'
-import { inventionLicenseBookedSales } from './invention-licensing'
 import { declareBankruptcy, ipoThreshold } from './exit'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
@@ -429,55 +425,13 @@ export function yearlyBusinessImpl(g: GameState): void {
     const tech = isDeepTech(b)
     prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
-    if (b.ceo === 'manager') {
-      if (isFinanceFirm(b)) financeManagerTurn(g, b)
-      manageInventionProducts(g, a, b, fiscal)
-    }
+    if (b.ceo === 'manager' && isFinanceFirm(b)) financeManagerTurn(g, b)
     const previousRevenue = b.last?.revenue ?? 0
     const previousEmployment = b.last?.employees ?? b.employees
-    // Ordinary companies should not pay the cost of quoting a second workforce
-    // and fiscal model when they have no manufactured inventions at all.
-    const home = Array.isArray(b.inventionProducts) && b.inventionProducts.length ? localEcon(b.industry, b.countryId, b.city) : null
-    if (!home && (b.inventionStaff ?? 0) > 0) prepareInventionWorkforce(g, b, fiscal, 0)
-    const manufactured = home ? (() => {
-      const fixed = yearFixed(g, b)
-      const wage = home.wage * economyOf(g, b.countryId, fiscal).wages * b.wageLevel * fixed.licence * fixed.finance * fixed.ceoEff
-      prepareInventionWorkforce(g, b, fiscal, wage)
-      return simulateInventionProducts(g, b, fiscal, wage)
-    })() : { revenue: 0, cogs: 0, royalties: 0, wages: 0, staffUsed: 0, units: 0, rows: [] }
-    const productRate = home?.taxRate ?? 0
-    const productTax = Math.round(manufactured.revenue * productRate / (1 + productRate))
-    const productNetSales = manufactured.revenue - productTax
-    const productCosts = manufactured.cogs + manufactured.royalties + manufactured.wages
-    const employeesBeforeProducts = b.employees, capacityLossBeforeProducts = b.capacityLoss
-    const availableYear = Math.max(.0001, (1 - b.capacityLoss) * b.openFraction)
-    const reservedStaff = Math.min(b.employees, manufactured.staffUsed / availableYear)
-    if (manufactured.rows.length) {
-      // These cash movements are also classified as booked one-offs before the
-      // normal model runs, so salary and corporate tax see them exactly once.
-      b.cash += productNetSales - productCosts
-      b.yearIncome += productNetSales
-      b.yearCosts += productCosts
-      const share = reservedStaff / Math.max(1, b.employees)
-      b.employees = Math.max(0, b.employees - reservedStaff)
-      b.capacityLoss = 1 - (1 - b.capacityLoss) * (1 - share)
-    }
-    const bookedSales = inventionLicenseBookedSales(a, fiscal)
-    if (productNetSales > 0) bookedSales[b.countryId] = (bookedSales[b.countryId] ?? 0) + productNetSales
-    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0, bookedSales) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0, bookedSales) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0, undefined, bookedSales)
+    // Workshop inventions made here were booked by the 'workshop' hook (b.cash + b.yearIncome):
+    // the statement counts them once as other income, taxed at headquarters.
+    const res = studio ? simulateStudioYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : tech ? simulateDeepTechYear(g, a, b, fiscal, runs ? b.ownerSalary : 0) : simulateYear(g, b, fiscal, runs ? b.ownerSalary : 0)
     const s = res.stmt
-    if (manufactured.rows.length) {
-      // Reclassify the booked receipts into actual product sales and costs. No
-      // second cash or tax movement occurs here, and ordinary market units stay
-      // separate from the invention's own inventory and sales ledger.
-      s.revenue += manufactured.revenue; s.salesTax += productTax; s.netRevenue += productNetSales
-      s.cogs += manufactured.cogs + manufactured.royalties; s.wages += manufactured.wages
-      s.other -= productCosts; s.otherIncome -= productNetSales
-      b.capacityLoss = capacityLossBeforeProducts
-      b.employees = Math.max(employeesBeforeProducts, Math.ceil(b.employees + reservedStaff))
-      s.employees = b.employees; res.wantedStaff = b.employees
-      commitInventionProducts(g, b, fiscal, manufactured, a.id)
-    }
     settlePerfectForesight(g, b, s)
     if (s.strategicIncome) log(g, `${a.name}'s 100-rated company or group leadership earned ${money(s.strategicIncome)} of strategic trading income through perfect foresight. It is included once in other income and corporate tax; this game ability protects annual net earnings, not the market share price.`, 'good')
     if (s.ownerPay > 0) earnIncome(g, s.ownerPay)
@@ -488,7 +442,7 @@ export function yearlyBusinessImpl(g: GameState): void {
     refreshMarket(g, a, b, fiscal, s, res.market ?? null)
     recordCompanyShock(g, b, previousRevenue, s.revenue, a.id)
     recordEconomicActivity(g, `company:${a.id}:${fiscal}`, b.countryId, b.industry, {
-      jobs: s.employees - previousEmployment, investment: Math.max(0, b.yearCosts - productCosts),
+      jobs: s.employees - previousEmployment, investment: Math.max(0, b.yearCosts),
       // Banks report actual client-book losses separately. Revenue fluctuations
       // are not a second default; only other unfunded costs add generic distress.
       failure: res.bank ? Math.max(0, -b.cash - res.bank.bankLoss) : Math.max(0, previousRevenue - s.revenue) + Math.max(0, -b.cash),
@@ -515,7 +469,6 @@ export function yearlyBusinessImpl(g: GameState): void {
     // The board reviews the year (business/board.ts): the CEO's pay and bonus, warnings, firing a
     // CEO who keeps missing (the owner too, when they don't control the board), rogue CEOs.
     boardYear(g, a, b, s)
-    inventionYear(g, a, b)
     executiveRetentionYear(g, a, b)
 
     // A group's division lists with the whole group (the group step has its own hint).

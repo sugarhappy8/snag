@@ -423,7 +423,7 @@ export type AssetKind =
   | 'membership'
   /** An online venture run from the home computer (a SaaS, an app, an online store...). value = owner's stake. */
   | 'venture'
-  /** Personally owned invention IP; manufacturing rights can be assigned or licensed. */
+  /** An invention from the Inventor's Workshop (details.inv2): patented, or on sale through a launch route. */
   | 'invention'
   | 'other'
 

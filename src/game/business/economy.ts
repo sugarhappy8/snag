@@ -30,7 +30,7 @@ import { marketDef } from './competition-data'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { economicCycle, economyOf } from '../economy'
 import { isFinanceFirm, simulateFinanceYear } from './finance-firm'
-import { inventionFabValue, inventionInventoryValue } from './invention-fabs'
+import { legacyInventionCapital, legacyInventionStock } from '../workshop/legacy-capital'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyInventoryValue, supplyProfile, type SupplyBook } from './supply'
 import { applyEconomicRivals } from './economic-actors'
@@ -748,7 +748,8 @@ export function equipmentValue(b: BizState): number {
   for (const o of b.outlets) capital += o.count * localEcon(b.industry, o.countryId, o.city).capital
   const lines = linesOf(b)
   if (lines > 0) capital += lineCost(b, lines)
-  capital += inventionFabValue(b)
+  // Factories of the retired invention lines (old saves) stay on the books.
+  capital += legacyInventionCapital(b)
   return capital
 }
 
@@ -836,7 +837,7 @@ export function valuationOf(b: BizState): number {
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
   const unitCost = localEcon(b.industry, b.countryId, b.city).unitCost
-  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + inventionInventoryValue(b) + supplyInventoryValue(b) + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
+  const floor = 0.55 * equipmentValue(b) + b.inventory * unitCost * 0.5 + legacyInventionStock(b) + supplyInventoryValue(b) + Math.max(0, lastRevenue) * 0.15 * (b.brand / 100)
   // A game studio is also worth its back catalog and the games in its pipeline.
   const games = b.industry === 'gameStudio' ? studioValue(b.studio) : 0
   // A deep-tech company is also worth its patents, tech lead and R&D pipeline.

@@ -134,8 +134,8 @@ export interface TalentDef {
 export const TALENTS: TalentDef[] = [
   {
     id: 'Inventor', emoji: '💡', weight: 5,
-    hints: ['I took apart a broken toy and made it work in a completely different way.', 'I filled a notebook with sketches of machines nobody had built yet.'],
-    discovery: 'You kept changing your prototype until it worked, and could explain why the earlier attempts failed. Your teacher noticed a special talent for inventing. Visit Activities → Inventor to tinker, keep a notebook and begin learning a field.',
+    hints: ['I took apart a broken toy and made it work in a completely different way.', 'I filled a notebook with sketches of machines nobody had built yet.', 'I built a contraption that pours cereal. It mostly pours it on the floor.'],
+    discovery: "Your homemade gadget won over the whole class. You have a special talent for inventing! Ideas will strike you all the time, and from age 8 the Inventor's Workshop under Activities is all yours.",
     apply: g => addStat(g, 'smarts', 5),
   },
   {
@@ -1496,7 +1496,6 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     // Market shocks are world state (a banned company stays banned), not the old character's.
     ...(Array.isArray(n.flags.marketShocks) ? { marketShocks: n.flags.marketShocks } : {}),
     ...(Array.isArray(n.flags.marketBreakthroughs) ? { marketBreakthroughs: n.flags.marketBreakthroughs } : {}),
-    ...(n.flags.inventionImpact && typeof n.flags.inventionImpact === 'object' ? { inventionImpact: n.flags.inventionImpact } : {}),
     ...(n.flags['business.confidence'] ? { 'business.confidence': n.flags['business.confidence'], 'business.confidenceYear': n.flags['business.confidenceYear'] ?? 0 } : {}),
     ...(n.flags.worldEconomy ? { worldEconomy: n.flags.worldEconomy } : {}),
     ...(n.flags.groupServices ? { groupServices: n.flags.groupServices, groupServicesPrepared: n.flags.groupServicesPrepared ?? -1, groupServicesSettled: n.flags.groupServicesSettled ?? -1, groupServiceResults: n.flags.groupServiceResults ?? [] } : {}),

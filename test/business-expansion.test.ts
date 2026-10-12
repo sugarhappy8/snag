@@ -4,8 +4,8 @@ import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { bizOf, normalizeBiz, readBiz } from '../src/game/business/state'
 import { becomeCeo, installManager, managerCandidate } from '../src/game/business/career'
 import { bestPlan, planFor, simulateYear } from '../src/game/business/economy'
-import { businessEffects, expansionOf, nationalMarket, recordCompanyShock, recoverConfidence, saveExpansion, STRATEGIES } from '../src/game/business/dynamics'
-import { adoptStrategy, inventionYear, inventorMenu, nationalStrategyMenu, startInvention, studyMarket } from '../src/game/business/expansion'
+import { businessEffects, expansionOf, nationalMarket, recordCompanyShock, recoverConfidence, STRATEGIES } from '../src/game/business/dynamics'
+import { adoptStrategy, nationalStrategyMenu, studyMarket } from '../src/game/business/expansion'
 import { equityMenu, executiveOperations, executiveRetentionYear, grantCeoEquity, groupRetentionYear } from '../src/game/business/executive'
 import { formGroup } from '../src/game/business/conglomerate-actions'
 import { groupsOf, liveGroup, readMembership, saveGroup } from '../src/game/business/conglomerate-state'
@@ -77,6 +77,17 @@ describe('expanded company markets', () => {
     expect(STRATEGIES).toHaveLength(10)
   })
 
+  it('studies a market once a year from company cash, keeping old research data for the Workshop migration', () => {
+    const { g, a, b } = fixture()
+    b.expansion = { research: { name: 'Old project', kind: 'big', started: 2024, years: 3 } } as never
+    const cash = b.cash
+    expect(studyMarket(g, a.id, 'us')).toBe(true)
+    expect(studyMarket(g, a.id, 'us')).toBe(false)
+    expect(b.yearCosts).toBe(cash - b.cash)
+    expect(expansionOf(b).studies).toEqual([{ country: 'us', year: g.year }])
+    expect((b.expansion as Record<string, unknown>).research).toMatchObject({ name: 'Old project' })
+  })
+
   it('a major company collapse dents sector confidence, which slowly recovers only once per year', () => {
     const { g, b } = fixture()
     recordCompanyShock(g, b, 1e9, 1e8)
@@ -99,61 +110,6 @@ describe('expanded company markets', () => {
     declareBankruptcy(g, a, b, 'Unable to refinance.')
     expect(nationalMarket(g, b.industry, 'us').confidence).toBe(confidence)
     expect(g.assets.some(x => x.id === a.id)).toBe(false)
-  })
-})
-
-describe('Inventor', () => {
-  it('requires talent, a recent home study, funding and an empty lab', () => {
-    const { g, a, b } = fixture('solar')
-    expect(startInvention(g, a.id, 'early')).toBe(false)
-    g.character.talents = ['Inventor']
-    expect(startInvention(g, a.id, 'early')).toBe(false)
-    expect(studyMarket(g, a.id, 'us')).toBe(true)
-    expect(studyMarket(g, a.id, 'us')).toBe(false)
-    expect(startInvention(g, a.id, 'frontier')).toBe(true)
-    expect(expansionOf(b).research?.name).toMatch(/cold-fusion/)
-    expect(startInvention(g, a.id, 'early')).toBe(false)
-    expect(b.yearCosts).toBeGreaterThan(500_000)
-  })
-
-  it.each(['early', 'frontier'] as const)('%s project completes, stays exclusive for its term, and expires', kind => {
-    const { g, a, b } = fixture('solar')
-    g.character.talents = ['Inventor']
-    studyMarket(g, a.id, 'us')
-    startInvention(g, a.id, kind)
-    const x = expansionOf(b)
-    x.research!.odds = 1
-    saveExpansion(b, x)
-    const due = g.year + x.research!.years
-    g.year = due - 1
-    inventionYear(g, a, b)
-    expect(expansionOf(b).patents).toHaveLength(0)
-    g.year = due
-    inventionYear(g, a, b)
-    const patent = expansionOf(b).patents[0]
-    expect(patent.expires).toBe(due + (kind === 'early' ? 15 : 20))
-    expect(businessEffects(g, b, 'us', due).demand).toBe(1)
-    const after = JSON.stringify(g)
-    inventionYear(g, a, b)
-    expect(JSON.stringify(g)).toBe(after)
-    expect(businessEffects(g, b, 'us', patent.expires).demand).toBe(1)
-    expect(expansionOf(normalizeBiz(JSON.parse(JSON.stringify(b)), due)).patents[0]).toEqual(patent)
-  })
-
-  it('legacy funded research completes without a success roll or taking more cash', () => {
-    const { g, a, b } = fixture()
-    g.character.talents = ['Inventor']
-    studyMarket(g, a.id, 'us')
-    startInvention(g, a.id, 'early')
-    const x = expansionOf(b)
-    x.research!.odds = 0
-    saveExpansion(b, x)
-    const cash = b.cash
-    g.year += 3
-    inventionYear(g, a, b)
-    expect(expansionOf(b).research).toBeNull()
-    expect(expansionOf(b).patents).toHaveLength(1)
-    expect(b.cash).toBe(cash)
   })
 })
 
@@ -302,7 +258,7 @@ describe('order-book reaction', () => {
   })
 })
 
-it('new menus are pure, survive missing managers and expose actionable study/research gates', () => {
+it('new menus are pure, survive missing managers and expose actionable study gates', () => {
   const { g, a } = fixture()
   g.character.talents = ['Inventor']
   const before = JSON.stringify(g)
@@ -314,6 +270,6 @@ it('new menus are pure, survive missing managers and expose actionable study/res
       if (n.type === 'menu') walk(n.children(gg), gg)
     }
   }
-  walk([nationalStrategyMenu(a), inventorMenu(a), equityMenu(a.id)], g)
+  walk([nationalStrategyMenu(a), equityMenu(a.id)], g)
   expect(JSON.stringify(g)).toBe(before)
 })

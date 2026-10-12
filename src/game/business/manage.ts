@@ -36,7 +36,7 @@ import {
 } from './economy'
 import { eventChance } from './events'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
-import { inventorMenu, nationalStrategyMenu } from './expansion'
+import { nationalStrategyMenu } from './expansion'
 import { equityMenu, equityTerms } from './executive'
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
@@ -1936,7 +1936,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   const nodes: MenuNode[] = [...infoRows(g, a)]
   const health = readBiz(g, a)
   nodes.push({ type: 'info', id: `biz.next.${a.id}`, emoji: '🧭', text: health.cash < 0 ? 'Priority: cover the cash shortfall in Money before expanding.' : health.last && health.last.net < 0 ? 'Losing money? Review price and production, reduce debt, or hire a turnaround CEO. Avoid new expansion until cash is stable.' : 'Next steps: compare national conditions, study a market, then fund a strategy or expansion. Keep cash for payroll and debt.' })
-  nodes.push(nationalStrategyMenu(a), inventorMenu(a))
+  nodes.push(nationalStrategyMenu(a))
   if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
   nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
   if (isFinanceFirm(health)) {
