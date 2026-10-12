@@ -107,10 +107,11 @@ Local verification of the release candidate on 2026-10-12:
   and the file re-run green (7/7).
 - Heavy whole-life tests carry explicit time limits sized for a 2-core CI runner; no assertion
   was loosened.
-- Headless Chromium random playthroughs (`scripts/e2e-play.mjs`, 110 years each): 8 lives on the
-  integrated build, zero page errors, console errors or outside requests.
-- Scripted UI passes at 390×844 in light and dark: the Workshop, founding and running a
-  restaurant, café, asset manager, venture capital firm, bank and online bank, the yearly reports —
+- Headless Chromium random playthroughs (`scripts/e2e-play.mjs`, 110 years each): 10 lives (8 on
+  the integrated build, 2 on the final release candidate), zero page errors, console errors or
+  outside requests.
+- Scripted UI passes at 390×844 in light and dark (US 1985/1988, UK 1975): the Workshop, founding
+  and running a restaurant, asset manager, venture capital firm, bank and online bank, the yearly reports —
   no visible NaN/undefined text and no clipped or off-screen elements.
 - The opt-in engine fuzzer covered ~5,800 life-years across 48 industries before its fixes; seeds
   2000–2014 found nothing new afterwards.
