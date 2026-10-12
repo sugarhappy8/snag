@@ -2,7 +2,7 @@
 
 **Activities → 💡 Inventor's Workshop** is open to everyone from age 8 (alive, not in prison).
 The **Inventor** talent (Main Character Syndrome counts, through `hasTalent`) makes you a genius:
-about 3× as many ideas, +20 prototype quality, 2.2× skill growth, half the explosion risk, the
+about 3× as many ideas, +20 prototype quality, double skill growth, half the explosion risk, the
 history race, and purple hints that show an idea's real appeal and its best launch route.
 The code lives in `src/game/workshop/`.
 
@@ -32,7 +32,7 @@ The code lives in `src/game/workshop/`.
    Assets, counts in net worth, can be sold and is inherited. Worldwide patents sell everywhere;
    unpatented launches sell less, fade faster and invite knockoffs.
 6. **🚀 Launch** (quality 30+, one big deal a year): sell the rights (1-3 offers, real brands from
-   the registry where a category fits, else fictional), license it (2.5-8% royalty, better with
+   the registry where a category fits, else fictional), license it (3-10% royalty, better with
    quality and reputation), pitch it (a TV pitch show from 2001 where television exists, a trade
    fair before; cash now for a cut of royalties, or "I'm out"), crowdfund it (2009+, adults;
    three goals trade success odds against your own-production margin; delivery can go wrong),
@@ -58,11 +58,12 @@ simulation books it once as other income. Sales are settled once per fiscal year
 Hints (`routeQuotes`, `buildOdds`, `brainstormOdds`, `pitchOdds`, `crowdOdds`, event odds) are
 pure and are exactly the numbers the resolvers roll against; they never reveal the launch luck.
 
-Balance (a scripted life, before income tax, 2026 dollars): a dedicated genius earns roughly
-$13-30M over a life (more with crowdfunding, much more with a lucky history first such as the
-Touch-Glass Pocket Telephone made in your own company); a dedicated non-genius about $5M; a
-casual tinkerer under $1M. A strong professional career earns about $6-10M; businesses scale
-further.
+Balance (scripted lives, Workshop earnings only, before income tax, 2026 dollars): a dedicated
+genius earns roughly $10-15M over a life born in 1950 or 1900 (with 4-7 history firsts), $20-30M
+born in 1990 (crowdfunding); a lucky history first such as the Touch-Glass Pocket Telephone made
+in your own company can be worth far more. A dedicated non-genius earns about $5M, a casual
+genius about $3M and a casual tinkerer under $1M. A strong professional career earns about
+$6-10M; businesses scale further.
 
 ## State and old saves
 

@@ -248,8 +248,11 @@ export function shopRights(g: GameState, t: Target): boolean {
     const amount = Math.max(50, Math.round((basis * (0.5 + 0.55 * rand(g))) / 10) * 10)
     const pickReal = real.length > 0 && rand(g) < 0.5
     const r1 = rand(g)
-    const buyer = pickReal ? real[Math.floor(r1 * real.length)] : fictional(r1, rand(g), b.def.cat)
-    if (!offers.some((o) => o.buyer === buyer)) offers.push({ buyer, amount })
+    let buyer = pickReal ? real[Math.floor(r1 * real.length)] : fictional(r1, rand(g), b.def.cat)
+    // Every offer counts (the hint's expected best offer assumes all of them); names stay distinct.
+    for (let k = 0; k < 6 && offers.some((o) => o.buyer === buyer); k++) buyer = fictional(rand(g), rand(g), b.def.cat)
+    if (offers.some((o) => o.buyer === buyer)) buyer = `${buyer} ${['Ltd.', 'Inc.', '& Sons'][i % 3]}`
+    offers.push({ buyer, amount })
   }
   offers.sort((x, y) => y.amount - x.amount)
   const worth = licenseValue(g, subjectOf(g, b), trueAppeal(g, b.def), ws.rep)

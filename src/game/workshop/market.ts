@@ -11,7 +11,7 @@ import type { Inv, Patent, PatentScope } from './state'
 /** Unit price by difficulty (constant 2026 USD, times the category's multiplier). */
 export const PRICE = [0, 15, 45, 150, 500, 2000] as const
 /** Peak yearly units of an average idea by difficulty (times the category's multiplier). */
-export const UNITS = [0, 5000, 2800, 1600, 800, 400] as const
+export const UNITS = [0, 4000, 2200, 1300, 650, 320] as const
 /** Sales multiplier by real appeal ★1-5. */
 export const APPEAL = [0, 0.3, 0.6, 1, 1.7, 2.8] as const
 /** The world was waiting for it: a history-race first sells like nothing else. */
@@ -121,10 +121,10 @@ export function streamValue(s: CurveSpec, from: number, perUnit: number, peak: n
   return total
 }
 
-/** The licence royalty a manufacturer offers: 2.5-8%, better with quality and reputation. */
+/** The licence royalty a manufacturer offers: 3-10%, better with quality and reputation. */
 export function licenseRate(q: number, rep: number, history = false): number {
   const merit = Math.max(0, Math.min(1, (0.6 * (q - 30)) / 70 + (0.4 * rep) / 100))
-  return Math.round((0.025 + 0.055 * merit + (history ? 0.02 : 0)) * 1000) / 1000
+  return Math.round((0.03 + 0.07 * merit + (history ? 0.02 : 0)) * 1000) / 1000
 }
 
 /** What a thing on the bench is: an idea (no patent) or a patented invention. */

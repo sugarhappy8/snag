@@ -61,7 +61,7 @@ const pct = (x: number) => `${Math.round(x * 100)}%`
 
 /** Skill gained from one build: more from harder builds and from disasters; ×2 for a genius. */
 export function skillGain(g: GameState, skill: number, d: number, result: 'kaboom' | 'master' | 'works'): number {
-  const base = (0.8 + d * 0.5) * Math.pow(Math.max(0, 1 - skill / 100), 1.8) * (isGenius(g) ? 2.2 : 1)
+  const base = (0.8 + d * 0.5) * Math.pow(Math.max(0, 1 - skill / 100), 1.8) * (isGenius(g) ? 2 : 1)
   return base * (result === 'kaboom' ? 1.3 : result === 'master' ? 1.2 : 1)
 }
 

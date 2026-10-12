@@ -189,7 +189,7 @@ describe('building prototypes', () => {
     const g = inventor()
     expect(skillGain(g, 0, 3, 'works')).toBeGreaterThan(skillGain(g, 50, 3, 'works'))
     expect(skillGain(g, 50, 3, 'works')).toBeGreaterThan(skillGain(g, 90, 3, 'works'))
-    expect(skillGain(inventor({ genius: true }), 40, 3, 'works')).toBeCloseTo(skillGain(g, 40, 3, 'works') * 2.2)
+    expect(skillGain(inventor({ genius: true }), 40, 3, 'works')).toBeCloseTo(skillGain(g, 40, 3, 'works') * 2)
     give(g, 'pocket-tool', 0)
     for (let i = 0; i < buildLimit(g); i++) expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).not.toBeNull()
     expect(resolveBuild(g, idea('pocket-tool'), 'cheap')).toBeNull()
