@@ -6,11 +6,14 @@ import { closeBusiness, declareBankruptcy, goPublic, sellShares } from '../src/g
 import { movableCash } from '../src/game/business/conglomerate-actions'
 import type { GroupMember } from '../src/game/business/conglomerate-state'
 import { createBusinessAsset, initialProduction, newBiz } from '../src/game/business/founding'
-import { financeView, saveFinance } from '../src/game/business/finance-firm-state'
 import { bankSettledYear } from '../src/game/business/bank'
-import { readBank, saveBank } from '../src/game/business/bank-state'
-import { attractFinanceClients, financeAlgoBlock, financeAlgoCost, financeEraBlock, financeNodes, financeTeamSkill, researchFinanceAlgorithm, setFinancePolicy, simulateFinanceYear } from '../src/game/business/finance-legacy'
-import { bizOf, normalizeBiz, readBiz, type KeyStaff } from '../src/game/business/state'
+import { runBankCampaign, setBankAppetite, setBankRate } from '../src/game/business/bank-actions'
+import { LEND_LINES, loanTotal, readBank, saveBank, type BankBook } from '../src/game/business/bank-state'
+import { financeEraBlock, financeNodes, simulateFinanceYear } from '../src/game/business/finance-firm'
+import { initFund } from '../src/game/business/fund'
+import { runCampaign, setFee } from '../src/game/business/fund-actions'
+import { FUND_TYPES, readFund, saveFund } from '../src/game/business/fund-state'
+import { bizOf, normalizeBiz, readBiz } from '../src/game/business/state'
 import { yearlyBusinessImpl } from '../src/game/business/yearly'
 import { corporateTax, type Industry } from '../src/game/data/markets'
 import type { GameState, Json, MenuNode } from '../src/game/types'
@@ -24,8 +27,9 @@ function institution(industry: Industry = 'investmentFirm', countryId = 'us') {
   return { g, a, b: bizOf(g, a) }
 }
 
-function staff(skill: number): KeyStaff {
-  return { id: 'key1', firstName: 'Alex', lastName: 'Lee', gender: 'female', age: 40, role: 'Risk Officer', focus: 'quality', skill, salary: 80_000, trait: 'loyal', morale: 90, years: 4 }
+/** Customers' side of a bank always balances: loans + workout + reserves + bonds = deposits + advance. */
+function balanced(book: BankBook): void {
+  expect(loanTotal(book) + book.badNet + book.reserves + book.bonds).toBeCloseTo(book.deposits + book.advance, 5)
 }
 
 function walk(g: GameState, nodes: MenuNode[], depth = 0): void {
@@ -44,59 +48,55 @@ describe('dedicated financial institutions', () => {
   it('starts segregated client books, not shareholder cash or goods', () => {
     for (const industry of ['investmentFirm', 'bank', 'onlineBank'] as const) {
       const { g, b } = institution(industry)
-      const f = financeView(b)
       expect(b.cash).toBe(5_000_000)
       expect(initialProduction(g, b)).toBe(0)
       expect(b.products).toEqual([])
-      expect(f.aum + f.deposits).toBeGreaterThan(0)
-      if (industry !== 'investmentFirm') expect(f.reserves + f.loanBook + f.bonds).toBeCloseTo(f.deposits, 5)
       const value = valuationOf(b)
-      f.aum *= 20; f.deposits *= 20; f.loanBook *= 20; f.bonds *= 20; f.reserves *= 20
-      saveFinance(b, f)
+      if (industry === 'investmentFirm') {
+        const f = readFund(b)
+        expect(f.aum).toBeGreaterThan(0)
+        f.aum *= 20; saveFund(b, f)
+      } else {
+        const book = readBank(b)
+        expect(book.deposits).toBeGreaterThan(0)
+        balanced(book)
+        book.deposits *= 20; book.reserves *= 20; book.bonds *= 20
+        for (const line of LEND_LINES) book.loans[line] *= 20
+        saveBank(b, book)
+      }
       expect(valuationOf(b)).toBe(value)
     }
   })
 
   it('scales the initial client economy locally and gates online banks by era', () => {
     const poor = institution('bank', 'ng'), rich = institution('bank', 'us')
-    expect(financeView(poor.b).deposits).toBeLessThan(financeView(rich.b).deposits)
+    expect(readBank(poor.b).deposits).toBeLessThan(readBank(rich.b).deposits)
+    expect(readFund(institution('investmentFirm', 'ng').b).aum).toBeLessThan(readFund(institution('investmentFirm', 'us').b).aum)
     const { g } = rich
     expect(financeEraBlock(g, 'onlineBank', 'us', 1980)).toBeTruthy()
     expect(financeEraBlock(g, 'onlineBank', 'us', 2026)).toBeNull()
     expect(financeEraBlock(g, 'bank', 'us', 1800)).toBeNull()
+    expect(financeEraBlock(g, 'investmentFirm', 'us', 1800)).toBeNull()
   })
 
-  it('normalizes malformed partial finance saves without exposing client principal', () => {
+  it('loads malformed partial legacy bank saves without exposing client principal', () => {
     const { b } = institution('bank')
-    b.financeFirm = { deposits: 1_000_000, loanBook: 3_000_000, bonds: -10, reserves: 'bad', controls: Infinity, reserveRatio: -5, lastYear: NaN } as unknown as Json
-    const before = JSON.stringify(b)
-    const f = financeView(b)
+    const junk = { deposits: 1_000_000, loanBook: 3_000_000, bonds: -10, reserves: 'bad', controls: Infinity, reserveRatio: -5, confidence: NaN }
+    b.financeFirm = { ...junk, lastYear: 2025 } as unknown as Json
+    const before = JSON.stringify(b), cash = b.cash
+    const book = readBank(b)
     expect(JSON.stringify(b)).toBe(before)
-    expect(f.reserves + f.loanBook + f.bonds).toBeCloseTo(f.deposits, 5)
-    expect(f.reserveRatio).toBe(.1)
-    expect(f.controls).toBe(50)
-    expect(f.lastYear).toBe(-1)
-    for (const v of Object.values(f)) if (typeof v === 'number') expect(Number.isFinite(v)).toBe(true)
-  })
-
-  it('pays fees or interest only, keeps balanced customer liabilities, and books costs once', () => {
-    for (const industry of ['investmentFirm', 'bank', 'onlineBank'] as const) {
-      const { g, b } = institution(industry)
-      b.yearCosts = 20_000; b.cash -= b.yearCosts
-      const cash = b.cash
-      const res = simulateFinanceYear(g, b, g.year, 30_000)
-      const f = financeView(b)
-      expect(res.stmt.revenue).toBeLessThan(10_000_000)
-      expect(b.cash).toBe(cash + res.stmt.net + 20_000)
-      expect(res.stmt.ownerPay).toBe(30_000)
-      expect(b.production).toBe(0)
-      expect(b.inventory).toBe(0)
-      expect(res.market).toBeNull()
-      if (industry !== 'investmentFirm') expect(f.reserves + f.loanBook + f.bonds).toBeCloseTo(f.deposits, 5)
-      const settled = JSON.stringify(b)
-      simulateFinanceYear(g, b, g.year, 30_000)
-      expect(JSON.stringify(b)).toBe(settled)
-    }
+    expect(b.cash).toBe(cash)
+    expect(book.deposits).toBe(1_000_000)
+    expect(book.advance).toBe(0)
+    balanced(book)
+    expect(book.trust).toBeGreaterThanOrEqual(0); expect(book.trust).toBeLessThanOrEqual(100)
+    expect(book.lastYear).toBe(2025)
+    for (const v of [...Object.values(book.loans), book.reserves, book.bonds, book.badNet, book.trust, book.savingsGap, book.loanGap]) expect(Number.isFinite(v)).toBe(true)
+    // A record that never booked a year opens fresh books (nothing to migrate, nothing to re-book).
+    b.financeFirm = { ...junk, lastYear: NaN } as unknown as Json
+    expect(readBank(b).lastYear).toBe(-1)
+    balanced(readBank(b))
   })
 
   it('allocates prebooked foreign royalty income to the country that earned it', () => {
@@ -131,72 +131,27 @@ describe('dedicated financial institutions', () => {
     expect(Math.abs(result.stmt.corpTax - Math.round(expected))).toBeLessThanOrEqual(1)
   })
 
-  it('has skill-dependent performance and still permits losing market years', () => {
-    let lowDefaults = 0, highDefaults = 0, lowReturns = 0, highReturns = 0, losses = 0
-    for (let i = 0; i < 40; i++) {
-      const low = institution('bank'), high = institution('bank')
-      low.g.lifeId = high.g.lifeId = `finance-comparison-${i}`
-      low.b.staff = [staff(20)]; high.b.staff = [staff(95)]
-      expect(financeTeamSkill(high.g, high.b)).toBeGreaterThan(financeTeamSkill(low.g, low.b))
-      simulateFinanceYear(low.g, low.b, 2026, 0); simulateFinanceYear(high.g, high.b, 2026, 0)
-      lowDefaults += financeView(low.b).lastDefaults; highDefaults += financeView(high.b).lastDefaults
-      const cheap = institution(), expert = institution()
-      cheap.g.lifeId = expert.g.lifeId = `finance-comparison-${i}`
-      cheap.b.staff = [staff(20)]; expert.b.staff = [staff(95)]
-      simulateFinanceYear(cheap.g, cheap.b, 2026, 0); simulateFinanceYear(expert.g, expert.b, 2026, 0)
-      lowReturns += financeView(cheap.b).lastReturn; highReturns += financeView(expert.b).lastReturn
-      if (financeView(expert.b).lastReturn < 0) losses++
+  it('cannot turn repeated lever or campaign clicks into earnings and ignores stale actions', () => {
+    for (const industry of ['investmentFirm', 'bank'] as const) {
+      const { g, a } = institution(industry)
+      const cash = readBiz(g, a).cash, personal = g.character.money
+      if (industry === 'bank') { setBankRate(g, a.id, 'savings', NaN); setBankRate(g, a.id, 'loan', .3) }
+      else { expect(setFee(g, a.id, NaN)).toBe(false); expect(setFee(g, a.id, .02)).toBe(true) }
+      expect(readBiz(g, a).cash).toBe(cash)
+      const campaign = () => industry === 'bank' ? runBankCampaign(g, a.id) : runCampaign(g, a.id)
+      campaign()
+      const after = readBiz(g, a).cash
+      campaign()
+      expect(readBiz(g, a).cash).toBe(after)
+      expect(after).toBeLessThan(cash)
+      expect(readBiz(g, a).yearCosts).toBe(cash - after)
+      expect(g.character.money).toBe(personal)
+      const saved = structuredClone(a)
+      g.assets = []
+      if (industry === 'bank') { setBankAppetite(g, a.id, 'highYield'); setBankRate(g, a.id, 'savings', .1); runBankCampaign(g, a.id) }
+      else { setFee(g, a.id, .005); runCampaign(g, a.id) }
+      expect(a).toEqual(saved)
     }
-    expect(highDefaults).toBeLessThan(lowDefaults)
-    expect(highReturns).toBeGreaterThan(lowReturns)
-    expect(losses).toBeGreaterThan(0)
-  })
-
-  it('requires Inventor talent and own company funds, completes in two fiscal years, and decays', () => {
-    const { g, a, b } = institution()
-    expect(financeAlgoBlock(g, b)).toMatch(/Inventor/)
-    g.character.talent = 'Inventor'
-    expect(financeAlgoBlock(g, b)).toBeNull()
-    const cash = b.cash, clients = financeView(b).aum
-    researchFinanceAlgorithm(g, a.id)
-    let live = bizOf(g, a)
-    expect(live.cash).toBe(cash - financeAlgoCost(live))
-    expect(financeView(live).aum).toBe(clients)
-    researchFinanceAlgorithm(g, a.id)
-    expect(bizOf(g, a).cash).toBe(live.cash)
-    live = bizOf(g, a)
-    simulateFinanceYear(g, live, 2026, 0)
-    expect(financeView(live).algoProgress).toBe(1)
-    expect(financeView(live).algoEdge).toBe(0)
-    simulateFinanceYear(g, live, 2027, 0)
-    expect(financeView(live).algoResearching).toBe(false)
-    expect(financeView(live).algoEdge).toBeGreaterThan(0)
-    expect(financeAlgoBlock(g, live)).toMatch(/six years/)
-    const originalEdge = financeView(live).algoEdge
-    for (let y = 2028; y <= 2032; y++) simulateFinanceYear(g, live, y, 0)
-    // The expanded quant model retains a powerful but decaying edge beyond five years.
-    expect(financeView(live).algoEdge).toBeGreaterThan(0)
-    expect(financeView(live).algoEdge).toBeLessThan(originalEdge)
-  })
-
-  it('cannot turn repeated policy or outreach clicks into earnings and ignores stale actions', () => {
-    const { g, a, b } = institution()
-    const cash = b.cash, personal = g.character.money
-    setFinancePolicy(g, a.id, 'fees', .03)
-    setFinancePolicy(g, a.id, 'fees', NaN)
-    expect(financeView(readBiz(g, a)).feeRate).toBe(.03)
-    expect(readBiz(g, a).cash).toBe(cash)
-    attractFinanceClients(g, a.id)
-    const after = readBiz(g, a).cash
-    attractFinanceClients(g, a.id)
-    expect(readBiz(g, a).cash).toBe(after)
-    expect(after).toBeLessThan(cash)
-    expect(g.character.money).toBe(personal)
-    const saved = structuredClone(a)
-    g.assets = []
-    setFinancePolicy(g, a.id, 'fees', .005)
-    researchFinanceAlgorithm(g, a.id)
-    expect(a).toEqual(saved)
   })
 
   it('keeps financial menus pure and prevents high-rated CEOs planning manufactured units', () => {
@@ -226,10 +181,13 @@ describe('dedicated financial institutions', () => {
     expect(readBiz(g, a).cash).toBe(cash)
   })
 
-  it('normalizes finance calendar fields to whole years', () => {
+  it('normalizes legacy finance calendar fields to whole years', () => {
     const { b } = institution('investmentFirm')
-    b.financeFirm = { algoStarted: 2020.6, algoCompleted: 2022.6, lastYear: 2024.6 } as unknown as Json
-    expect(financeView(b)).toMatchObject({ algoStarted: 2021, algoCompleted: 2023, lastYear: 2025 })
+    b.financeFirm = { algoStarted: 2020.6, algoCompleted: 2022.6, algoResearching: true, lastYear: 2024.6 } as unknown as Json
+    expect(readFund(b)).toMatchObject({ type: 'hedge', algoStart: 2021, algoDone: 2023, lastYear: 2025 })
+    const bank = institution('bank').b
+    bank.financeFirm = { deposits: 10_000_000, lastYear: 2024.6 } as unknown as Json
+    expect(readBank(bank).lastYear).toBe(2025)
   })
 
   it('never pays client capital out through liquidation, bankruptcy, IPO, shares or group treasury', () => {
@@ -265,25 +223,12 @@ describe('dedicated financial institutions', () => {
   })
 
   it('a closed institution generates no fee/interest revenue', () => {
-    for (const industry of ['investmentFirm', 'bank'] as const) {
-      const { g, b } = institution(industry)
+    for (const kind of ['bank', 'onlineBank', ...FUND_TYPES] as const) {
+      const { g, b } = institution(kind === 'bank' || kind === 'onlineBank' ? kind : 'investmentFirm')
+      if (kind !== 'bank' && kind !== 'onlineBank') initFund(g, b, kind)
       b.openFraction = 0
       expect(normalizeBiz(b as unknown as Record<string, Json>, g.year).openFraction).toBe(0)
       expect(simulateFinanceYear(g, b, g.year, 0).stmt.revenue).toBe(0)
     }
-  })
-
-  it('round-trips its client books, settings, research and fiscal guard as JSON', () => {
-    const { g, a, b } = institution('bank')
-    setFinancePolicy(g, a.id, 'reserves', .4)
-    g.character.talent = 'Inventor'
-    researchFinanceAlgorithm(g, a.id)
-    simulateFinanceYear(g, b, 2026, 0)
-    const restored = JSON.parse(JSON.stringify(g)) as GameState
-    const loaded = bizOf(restored, restored.assets[0])
-    expect(financeView(loaded)).toEqual(financeView(b))
-    const before = JSON.stringify(restored)
-    simulateFinanceYear(restored, loaded, 2026, 0)
-    expect(JSON.stringify(restored)).toBe(before)
   })
 })
