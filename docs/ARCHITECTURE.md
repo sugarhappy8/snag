@@ -564,23 +564,34 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   The full fact sheet (`manage.infoRows`) lives one tap away under Company Details.
 - **Milestones** (`business/milestones.ts`): `BizState.milestones` maps id → year. `milestoneYear`
   runs in `yearly.ts` after the books close; a company first seen with ≥ 2 booked years (old saves)
-  or bought records its past quietly. New ones log, give capped happiness/fame and share one
-  "Milestones!" popup a year across all companies (`g.flags['biz.milestonePopup']`).
+  or bought records its past quietly, in the years it happened (history). A milestone's year is
+  the fiscal year just booked (anniversaries: founding + N, the IPO: `ipoYear`). Amounts in labels
+  are formatted at render time (`milestoneLabel`); one reached mid-year shows as reached, recorded
+  at the close (`nextMilestones().pending`); cooked books never count toward the unicorn. New ones
+  log, give capped happiness/fame and share one "Milestones!" popup a year across all companies
+  (`g.flags['biz.milestonePopup']`).
 - **Franchising** (`business/franchise.ts`, consumer-facing classic industries only):
   `BizState.franchise` holds units, a 4-year ledger and the booked year. Sales book the fee net of
   onboarding through `b.cash`/`b.yearIncome`; `bookFranchiseYear` (before `simulateYear`) books net
   royalties (6% − 1% support of modeled franchisee sales, capped at one site's capacity, shrinking
   as the home network nears `networkRoom`) once per fiscal year, applies exact churn (fractions
   carry, no dice) and may raise one franchisee scandal popup (a hired CEO handles it silently).
-  Buy-backs are capital spending (cash only) and become company outlets. The statement shows
+  Buyers a year are set by the network the year started with; buy-backs and terminations never
+  give them back. Buy-backs are capital spending (cash only), become company outlets and cost at
+  least a fresh outlet's fit-out plus the fee, so selling to buy back always loses money. The
+  ledger readers live in `franchise-state.ts`: `valuationOf` takes one-off fees (after tax) out of
+  the earnings it capitalizes (their cash already counts once). The statement shows
   "Franchise fees & royalties" (`franchiseIncomeFor`) taken out of other income.
 - **More events** (`business/events-extra.ts`): `EXTRA_EVENTS` joins `events.ts EVENTS`, so the
   yearly roll and the one-event-a-year cap are unchanged. Every hint uses the resolver's own odds
   (`expectedFx`, `rdValue`, `franchiseValue`, `equityGain`) and no RNG. Banks and investment firms
   draw only the industry-neutral generic events (`events.ts ANY_COMPANY`); their own sets live in
-  the bank/fund modules.
+  the bank/fund modules. The celebrity investor buys ordinary shares (no preference) and skips deep
+  tech (outside money goes to its R&D account) and cooked books.
 - **IPO**: `exit.IPO_PROFIT` is $25M of last year's profit (studios and deep tech keep their own
-  rules; groups take the strictest member's); the board still votes.
+  rules; groups take the strictest member's); the board still votes, then the underwriters audit:
+  cooked books sink the listing `exit.IPO_COLLAPSE` (50%) of the time, for a company
+  (`manage.ipoDueDiligence`) or any division of a group (`groupIpo`).
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
   `COMPARE_SHOWN` best foreign markets and a one-line summary.
 
