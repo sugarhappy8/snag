@@ -56,6 +56,8 @@ export function simulateBankYear(g: GameState, b: BizState, year: number, ownerD
       revenue: r(p.revenue), salesTax: 0, netRevenue: r(p.revenue), cogs: r(p.cogs + shrinkLoss), wages: r(p.wages), keyStaff: r(p.keyStaff),
       rent: r(p.rent), marketing: r(p.marketing), interest: r(p.interestOnDebt), upkeep: r(p.upkeep), other: r(b.yearCosts + fine), otherIncome: r(b.yearIncome),
       ownerPay: 0, pbt: 0, corpTax: 0, net: 0, cashErosion: 0, cycle: Math.round(m.cycle * 100) / 100, openFraction: p.open, employees: p.staff,
+      // Banks earn what the book earns: no "perfect foresight" trading income, even for a 100-rated CEO.
+      strategicIncome: 0,
     }
     const preSalary = stmt.netRevenue - stmt.cogs - stmt.wages - stmt.keyStaff - stmt.rent - stmt.marketing - stmt.interest - stmt.upkeep - stmt.other + stmt.otherIncome
     stmt.ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + preSalary + booked)))

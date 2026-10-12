@@ -23,6 +23,7 @@ import { createNewLife } from '../src/game/life'
 import { businessCareerMenu } from '../src/game/business'
 import { businessAssets } from '../src/game/business/state'
 import type { AnnualReportData } from '../src/game/types'
+import { settlePerfectForesight } from '../src/game/business/executive-foresight'
 import { closeBusiness } from '../src/game/business/exit'
 
 function bank(opts: { country?: string; year?: number; cash?: number; industry?: 'bank' | 'onlineBank'; seed?: number; talents?: string[] } = {}) {
@@ -724,6 +725,17 @@ describe('Banking 2.0 review: money that must not appear', () => {
     const share = stale.b.share, cash = stale.b.cash
     runScript(stale.g, 'bank.event', 'accept', offer.kind === 'choice' ? offer.data : undefined, offer)
     expect([stale.b.share, stale.b.cash]).toEqual([share, cash])
+  })
+
+  it('a 100-rated CEO gets no perfect-foresight trading income at a bank', () => {
+    const { g, b } = bank()
+    b.ceo = 'manager'; b.manager = { firstName: 'Per', lastName: 'Fect', gender: 'female', skill: 100, salary: 1, since: 2020 }
+    const res = simulateBankYear(g, b, g.year, 0)
+    const cash = b.cash, net = res.stmt.net
+    settlePerfectForesight(g, b, res.stmt)
+    expect(res.stmt.strategicIncome ?? 0).toBe(0)
+    expect([b.cash, res.stmt.net]).toEqual([cash, net])
+    expect(readBank(b).last!.profit).toBe(res.stmt.net)
   })
 
   it('the run-time advance is equity: an emergency loan neither erases the bank’s value nor bankrupts a closing', () => {
