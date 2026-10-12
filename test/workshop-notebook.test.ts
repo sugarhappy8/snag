@@ -8,7 +8,7 @@ import { addIdea, candidates, drawIdea, mutWorkshop, readWorkshop } from '../src
 import { scrapIdea } from '../src/game/workshop/launch'
 import { sparkScenes, yearlyWorkshop } from '../src/game/workshop/yearly'
 import { SEEN_MAX, normalizeWorkshop } from '../src/game/workshop/state'
-import { inSchool, inventor, nextYear } from './workshop-fixtures'
+import { give, ideaMenu, inSchool, inventor, nextYear } from './workshop-fixtures'
 
 describe('spark contexts', () => {
   const KIDLY = /lesson|class|school|homework|fort|tree|asleep|bubbles/i
@@ -119,5 +119,29 @@ describe('repeat ideas', () => {
     }
     expect(race / total).toBeGreaterThan(0.005)
     expect(race / total).toBeLessThan(0.08)
+  })
+})
+
+describe('notebook clutter', () => {
+  it('shows patent and launch rows only once the prototype is good enough', () => {
+    // Review: every idea with no prototype showed 2 disabled patent rows and 4 disabled launch routes.
+    const g = inventor({ genius: true, year: 2000 })
+    give(g, 'robot-mower', 0)
+    const rows = (q: number) => {
+      mutWorkshop(g).ideas.find((i) => i.id === 'robot-mower')!.q = q
+      return ideaMenu(g, 'robot-mower').children(g)
+    }
+    const fresh = rows(0)
+    expect(fresh.some((n) => n.id.startsWith('ws.patent.') || n.id.startsWith('ws.launch.'))).toBe(false)
+    expect(fresh.map((n) => (n.type === 'info' ? String(n.text) : '')).join(' ')).toMatch(/unlock launch deals/)
+    // The genius hint (real appeal, best route) stays on the idea row itself.
+    expect(ideaMenu(g, 'robot-mower').hint?.(g)).toMatch(/Real appeal/)
+    const launchOnly = rows(34)
+    expect(launchOnly.some((n) => n.id.startsWith('ws.launch.'))).toBe(true)
+    expect(launchOnly.some((n) => n.id.startsWith('ws.patent.'))).toBe(false)
+    expect(launchOnly.map((n) => (n.type === 'info' ? String(n.text) : '')).join(' ')).toMatch(/Reach quality 40 to patent/)
+    const all = rows(45)
+    expect(all.filter((n) => n.id.startsWith('ws.patent.'))).toHaveLength(2)
+    expect(all.some((n) => n.id.startsWith('ws.launch.'))).toBe(true)
   })
 })

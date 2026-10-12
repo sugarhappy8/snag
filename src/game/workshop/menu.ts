@@ -104,6 +104,14 @@ function patentActions(t: Target, name: string, home: boolean): MenuAction[] {
   }))
 }
 
+/** The prototype line of a notebook idea, saying what the next quality milestone unlocks. */
+function qualityLine(idea: NoteIdea): string {
+  const best = idea.q ? `Best prototype: ${Math.round(idea.q)}/100 after ${idea.builds} build${idea.builds === 1 ? '' : 's'}.` : 'No prototype yet.'
+  if (idea.q < LAUNCH_MIN) return `${best} Build one that works (quality ${LAUNCH_MIN}+) to unlock launch deals; ${PATENT_MIN}+ for patents.`
+  if (idea.q < PATENT_MIN) return `${best} Reach quality ${PATENT_MIN} to patent it.`
+  return best
+}
+
 function ideaNode(g: GameState, idea: NoteIdea): MenuGroup {
   const def = noteDef(idea)
   const t: Target = { kind: 'idea', id: idea.id }
@@ -117,10 +125,11 @@ function ideaNode(g: GameState, idea: NoteIdea): MenuGroup {
       if (!cur) return [{ type: 'info', id: `ws.idea.gone.${idea.id}`, text: 'That idea is no longer in your notebook.' }]
       const nodes: MenuNode[] = [
         { type: 'info', id: `ws.idea.info.${idea.id}`, emoji: def.emoji, text: `${blurbOf(gg, def)} ${stars(def.a)} · ${DIFFICULTY_LABEL[def.d]}` },
-        { type: 'info', id: `ws.idea.q.${idea.id}`, emoji: '\u{1F529}', text: cur.q ? `Best prototype: ${Math.round(cur.q)}/100 after ${cur.builds} build${cur.builds === 1 ? '' : 's'}. Patent at ${PATENT_MIN}+, launch at ${LAUNCH_MIN}+.` : `No prototype yet. Patent at ${PATENT_MIN}+, launch at ${LAUNCH_MIN}+.` },
+        { type: 'info', id: `ws.idea.q.${idea.id}`, emoji: '\u{1F529}', text: qualityLine(cur) },
       ]
       if (isFirst(def, gg.year)) nodes.push({ type: 'info', id: `ws.idea.race.${idea.id}`, emoji: '\u{23F3}', text: `History race: get it on the market by ${def.real} and the world will remember you.` })
-      nodes.push(buildAction(t, def), ...patentActions(t, def.name, true), launchMenu(t, def.name), {
+      // Patent and launch rows appear once they can matter; until then the quality line says how to unlock them.
+      nodes.push(buildAction(t, def), ...(cur.q >= PATENT_MIN ? patentActions(t, def.name, true) : []), ...(cur.q >= LAUNCH_MIN ? [launchMenu(t, def.name)] : []), {
         type: 'action', id: `ws.scrap.${idea.id}`, label: 'Scrap This Idea', emoji: '\u{1F5D1}\u{FE0F}', subtitle: 'Frees a page in your notebook',
         confirm: () => `Crumple up the ${def.name}?`, run: (g2) => { scrapIdea(g2, idea.id) },
       })
