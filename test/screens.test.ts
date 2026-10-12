@@ -127,6 +127,11 @@ describe('death screen helpers', () => {
     expect(labels).toContain('Crimes')
     expect(labels).not.toContain('Murders')
     expect(deathFacts(g).find((f) => f.label === 'Net worth')?.value).toBe('$125,000')
+    // Playtest: "Degrees: 1" for a life whose only diploma was high school.
+    g.character.education.degrees = [{ kind: 'highschool', name: 'High School Diploma', school: 'Central High', age: 18 }]
+    expect(deathFacts(g).map((f) => f.label)).not.toContain('Degrees')
+    g.character.education.degrees.push({ kind: 'bachelor', name: "Bachelor's in History", school: 'State University', age: 22 })
+    expect(deathFacts(g).find((f) => f.label === 'Degrees')?.value).toBe('1')
   })
 
   it('writes who mourned', () => {
