@@ -287,7 +287,7 @@ function makeCtx(seed: number, birthYear: number, g: GameState, log: FailureLog)
 
 // Formatting bugs that leak into player-facing text ("$NaN", "undefined", "[object Object]").
 // "Infinity" only counts next to money or a unit, so names like "Infinity Pool Island" pass.
-const BAD_TEXT = /\bNaN\b|\bundefined\b|\[object Object\]|[$€£¥₹]\s?-?Infinity|-?Infinity\s?(?:%|x\b|years?\b|yrs?\b)|^-?Infinity$|\bnull(?:%|\s(?:years?|yrs?)\b)|[$€£¥₹]\s?null\b/
+const BAD_TEXT = /\bNaN\b|\bundefined\b|\[object Object\]|\de[+-]\d{2}\b|[$€£¥₹]\s?-?Infinity|-?Infinity\s?(?:%|x\b|years?\b|yrs?\b)|^-?Infinity$|\bnull(?:%|\s(?:years?|yrs?)\b)|[$€£¥₹]\s?null\b/
 
 function checkText(ctx: Ctx, text: unknown, where: string): void {
   if (text === null || text === undefined) return
@@ -418,6 +418,20 @@ function fullWalk(ctx: Ctx, g: GameState, opt: WalkOptions): Found[] {
   const out: Found[] = []
   for (const r of roots(g)) walkRoot(ctx, g, r, opt, out)
   return out
+}
+
+/**
+ * Render every menu of a copy of `g` with the full checks (frozen, so writes throw); failures go
+ * to `log`. Returns how many enabled actions it saw. For quick one-off probes of a crafted state.
+ */
+export function renderAll(g: GameState, log: FailureLog, maxDepth = 6): number {
+  const copy = structuredClone(g)
+  const ctx = makeCtx(0, copy.year - copy.character.age, copy, log)
+  deepFreeze(copy)
+  bindMoneyContext(copy)
+  const n = fullWalk(ctx, copy, { maxDepth, full: true, maxNodes: 20000 }).length
+  bindMoneyContext(null)
+  return n
 }
 
 /** The first few paths where two JSON documents differ. */
@@ -983,6 +997,18 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
       walked = fullWalk(ctx, g, { maxDepth: opts.maxDepth, full: true, maxNodes: 20000 })
       stats.menuNodes += walked.length
       if (opts.sweepEvery && year % opts.sweepEvery === 0) stats.swept += sweep(ctx, g, walked, d, opts.sweepMax)
+      // Now and then, render the same life with an extreme bank balance (deep debt, nothing, a
+      // fortune): every row must still render without throwing or printing NaN/1e+21.
+      if (d.chance(0.15)) {
+        const odd = structuredClone(g)
+        odd.character.money = d.pick([-25_000_000, -1, 0, 0.4, 3e12, 9e15])
+        ctx.trail.push(`(render only: money set to ${odd.character.money})`)
+        deepFreeze(odd)
+        bindMoneyContext(odd)
+        fullWalk(ctx, odd, { maxDepth: Math.min(4, opts.maxDepth), full: true, maxNodes: 8000 })
+        ctx.trail.pop()
+        bindMoneyContext(g)
+      }
     }
     // Start companies.
     if (bizMinded && c.age >= 18 && !c.prison && businessAssets(g).length < 6 && d.chance(rich ? 0.45 : 0.15)) {
