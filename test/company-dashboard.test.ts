@@ -1,13 +1,17 @@
 // Running a company 2.0: the dashboard card, milestones, the tidied company screen, the IPO bar
 // and old saves. Menus must stay pure: rendering the whole screen never changes the game.
 import { describe, expect, it } from 'vitest'
-import { becomeCeo } from '../src/game/business/career'
+import { becomeCeo, installManager, managerCandidate } from '../src/game/business/career'
+import { formGroup } from '../src/game/business/conglomerate-actions'
+import { initFund } from '../src/game/business/fund'
 import { companyHealth, dashboardRows, trend } from '../src/game/business/dashboard'
+import { runwayYears, techView } from '../src/game/business/deeptech-core'
 import { evolve, recordYear, simulateYear, valuationOf } from '../src/game/business/economy'
-import { canIpo, IPO_PROFIT, ipoThreshold } from '../src/game/business/exit'
+import { canIpo, goPublic, IPO_PROFIT, ipoThreshold } from '../src/game/business/exit'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { businessView } from '../src/game/business/manage'
-import { MILESTONES, milestoneYear, milestonesMenu, nextMilestones, readMilestones } from '../src/game/business/milestones'
+import { MILESTONES, milestoneCount, milestoneLabel, milestoneYear, milestonesMenu, nextMilestones, readMilestones } from '../src/game/business/milestones'
+import { bindMoneyContext, moneyDisplay, setMoneyDisplay } from '../src/game/core'
 import { COMPARE_SHOWN } from '../src/game/business/national-view'
 import { maxKeyStaff, roleBlurb } from '../src/game/business/staff'
 import { bizOf, findBusiness, normalizeBiz, readBiz, type BizState } from '../src/game/business/state'
@@ -150,6 +154,45 @@ describe('company dashboard', () => {
   })
 })
 
+describe('company dashboard: honest, readable advice', () => {
+  it('writes big growth as the real multiple', () => {
+    expect(trend(1_100, 100)).toBe('\u{25B2}11x')
+    expect(trend(1_000, 100)).toBe('\u{25B2}10x')
+    expect(trend(900, 100)).toBe('\u{25B2}800%')
+  })
+
+  it('reads runways in proper English and never calls a short runway "as planned"', () => {
+    const { g, a, b } = company(17, 'semiconductor', { cash: 30_000_000 })
+    const loss = { ...b.last!, net: -1_000_000, revenue: 0, netRevenue: 0, cogs: 0, marketing: 0 }
+    const rich = companyHealth(g, a, { ...b, cash: 1e13, last: loss })
+    expect(rich.advice).toMatch(/plenty of runway left/)
+    expect(rich.advice).not.toMatch(/about plenty/)
+    // Burn per year, then a runway of about a year and a half.
+    const t = techView(b)
+    const burn = (t.venture + 1_000_000) / runwayYears(g, a, { ...b, cash: 1_000_000, last: loss }, t)
+    expect(burn).toBeGreaterThan(0)
+    const short = companyHealth(g, a, { ...b, cash: Math.max(0, burn * 1.5 - t.venture), last: loss })
+    expect(short.id).toBe('struggling')
+    expect(short.advice).not.toMatch(/as planned/)
+    expect(short.advice).toMatch(/1\.\d years of runway/)
+    const r = company(18, 'restaurant')
+    const broke = companyHealth(r.g, r.a, { ...r.b, cash: 1_000, last: { ...r.b.last!, net: -2_000_000 } })
+    expect(broke.id).toBe('danger')
+    expect(broke.advice).toMatch(/within 1 month:/)
+  })
+
+  it('never says "Thriving" while warning that the staff are miserable', () => {
+    const { g, a, b } = company(4, 'restaurant')
+    const s = b.last!
+    const prev = b.history[b.history.length - 2]
+    const grown = { ...b, cash: 100_000, morale: 32, last: { ...s, net: Math.max(1, prev.profit) * 1.5 + 50_000, revenue: prev.revenue * 1.1 }, history: [...b.history.slice(0, -1), { ...b.history[b.history.length - 1], revenue: prev.revenue * 1.1, profit: Math.max(1, prev.profit) * 1.5 + 50_000 }] }
+    const h = companyHealth(g, a, grown)
+    expect(h.advice).toMatch(/miserable/)
+    expect(h.id).not.toBe('thriving')
+    expect(companyHealth(g, a, { ...grown, morale: 70 }).id).toBe('thriving')
+  })
+})
+
 describe('the tidied company screen', () => {
   it('renders the whole screen without changing the game (classic, studio, deep tech, bank, fund, venue)', () => {
     for (const industry of ['restaurant', 'cafe', 'gameStudio', 'semiconductor', 'bank', 'investmentFirm', 'bar', 'construction']) {
@@ -166,6 +209,48 @@ describe('the tidied company screen', () => {
       expect(one.join('\n'), industry).not.toMatch(/NaN|undefined|Infinity/)
     }
   }, 180_000)
+
+  it('stays pure and readable in hard states too (broke, hired CEO with the owner in prison, listed, fund types, group member)', () => {
+    const states: { label: string; g: GameState; a: Asset }[] = []
+    for (const industry of ['restaurant', 'gameStudio', 'semiconductor', 'bank']) {
+      const base = company(25, industry, { brand: 60, quality: 70, ...(industry === 'semiconductor' ? { cash: 30_000_000 } : {}) })
+      const broke = structuredClone(base.g)
+      Object.assign(bizOf(broke, findBusiness(broke, base.a.id)!), { cash: -5_000_000, debt: 50_000_000 })
+      states.push({ label: `${industry} broke`, g: broke, a: base.a })
+      const away = structuredClone(base.g)
+      const bAway = bizOf(away, findBusiness(away, base.a.id)!)
+      installManager(away, bAway, managerCandidate(away, bAway, 60))
+      away.character.job = null
+      away.character.prison = { name: 'State Pen', security: 'medium', crime: 'Theft', sentenceYears: 2, yearsServed: 0, respect: 20, appealed: false, escapeAttempts: 0 }
+      states.push({ label: `${industry} managed, owner in prison`, g: away, a: base.a })
+      const listed = structuredClone(base.g)
+      const aListed = findBusiness(listed, base.a.id)!
+      goPublic(listed, aListed, bizOf(listed, aListed))
+      listed.queue = []
+      states.push({ label: `${industry} listed`, g: listed, a: base.a })
+    }
+    for (const type of ['asset', 'hedge', 'vc', 'broker'] as const) {
+      const f = company(26, 'investmentFirm')
+      initFund(f.g, f.b, type)
+      states.push({ label: `fund ${type}`, g: f.g, a: f.a })
+    }
+    const grp = company(27, 'restaurant', { brand: 60, quality: 70 })
+    const other = createBusinessAsset(grp.g, 'Sister Co', newBiz(grp.g, 'cafe', 'us', 'Chicago', { cash: 1_000_000 }), 0)
+    grp.g.assets.push(other)
+    expect(formGroup(grp.g, [grp.a.id, other.id], 'Test Holdings')).toBe(true)
+    grp.g.queue = []
+    states.push({ label: 'group member', g: grp.g, a: grp.a })
+    for (const s of states) {
+      const cur = findBusiness(s.g, s.a.id)!
+      const before = JSON.stringify(s.g)
+      const rng = s.g.rng
+      const lines = render(s.g, businessView(s.g, cur))
+      expect(JSON.stringify(s.g), `${s.label}: rendering changed the state`).toBe(before)
+      expect(s.g.rng, s.label).toBe(rng)
+      expect(lines.join('\n'), s.label).not.toMatch(/NaN|undefined|Infinity|\[object Object\]/)
+      for (const t of texts(s.g, dashboardRows(s.g, cur))) expect(t.length, `${s.label}: ${t}`).toBeLessThanOrEqual(150)
+    }
+  }, 300_000)
 
   it('keeps financial firms free of product-company programs and inventions', () => {
     for (const industry of ['bank', 'onlineBank', 'investmentFirm']) {
@@ -297,8 +382,10 @@ describe('milestones', () => {
     expect(milestoneYear(g, a, b)).toHaveLength(0)
     expect(g.queue.length).toBe(n)
     const done = readMilestones(b)
-    expect(done.profit).toBe(g.year)
-    expect(done.age25).toBe(g.year)
+    // Recorded in the years they happened: the first profitable booked year, the 25th anniversary.
+    expect(done.profit).toBe(b.history.find((r) => r.profit > 0)!.year)
+    expect(done.profit).toBeLessThan(g.year)
+    expect(done.age25).toBe(b.founded + 25)
     expect(done.age50).toBeUndefined()
   })
 
@@ -333,6 +420,74 @@ describe('milestones', () => {
     expect(readMilestones(after).profit).toBe(2010)
     const json = JSON.stringify(g)
     expect(JSON.stringify(JSON.parse(json))).toBe(json)
+  })
+})
+
+describe('milestones: years, money and pending ones', () => {
+  it('records results in the fiscal year they were booked, through the real yearly loop', () => {
+    const x = company(19, 'restaurant', { years: 1 })
+    milestoneYear(x.g, x.a, x.b)
+    expect(readMilestones(x.b).profit).toBe(x.b.last!.year)
+    expect(x.b.last!.year).toBe(x.g.year - 1)
+    const { g, a, b } = company(20, 'restaurant', { years: 1 })
+    b.milestones = {} as Json
+    b.founded = g.year - 10
+    g.year += 1
+    g.queue = []
+    yearlyBusinessImpl(g)
+    const after = readBiz(g, a)
+    const done = readMilestones(after)
+    expect(after.last!.year).toBe(g.year - 1)
+    if (after.last!.net > 0) expect(done.profit).toBe(g.year - 1)
+    expect(done.age10).toBe(b.founded + 10)
+  })
+
+  it('writes milestone amounts in the player’s money, at render time', () => {
+    const rev = MILESTONES.find((m) => m.id === 'rev10m')!
+    const uni = MILESTONES.find((m) => m.id === 'unicorn')!
+    expect(milestoneLabel(rev)).toBe('$10M in yearly sales')
+    expect(milestoneLabel(uni)).toBe('Worth $1B (a unicorn)')
+    const saved = moneyDisplay()
+    try {
+      const { g } = company(21, 'restaurant', { country: 'jp', years: 0 })
+      setMoneyDisplay({ mode: 'local', nominal: false })
+      bindMoneyContext(g)
+      expect(milestoneLabel(rev)).toMatch(/^¥/)
+      expect(milestoneLabel(rev)).not.toMatch(/\$/)
+    } finally {
+      setMoneyDisplay(saved)
+      bindMoneyContext(null)
+    }
+  })
+
+  it('shows a milestone reached during the year as reached (celebrated at the close), never "99%"', () => {
+    const { g, a, b } = company(22, 'restaurant', { years: 2 })
+    milestoneYear(g, a, b)
+    g.queue = []
+    expect(readMilestones(b).loc10).toBeUndefined()
+    b.outlets = [{ countryId: 'us', city: getCountry('us').cities[0], count: 12, opened: g.year }]
+    const next = nextMilestones(g, b, 3)
+    expect(next[0].m.id).toBe('loc10')
+    expect(next[0].pending).toBe(true)
+    const lines = texts(g, milestonesMenu(a).children(g))
+    expect(lines.some((t) => /^10 locations · reached: celebrated when the year closes$/.test(t))).toBe(true)
+    expect(lines.join('\n')).not.toMatch(/99%/)
+    for (const t of texts(g, dashboardRows(g, a))) expect(t).not.toMatch(/99% there/)
+  })
+
+  it('counts only the milestones a company can reach (financial firms aren’t ranked in a market)', () => {
+    const bank = company(28, 'bank')
+    expect(milestoneCount(bank.b).total).toBe(MILESTONES.length - 1)
+    expect(nextMilestones(bank.g, bank.b, MILESTONES.length).some((x) => x.m.id === 'top1')).toBe(false)
+    expect(milestoneCount(company(28, 'restaurant').b).total).toBe(MILESTONES.length)
+  })
+
+  it('cooked books never make a unicorn', () => {
+    const { g, b } = company(23, 'restaurant')
+    const uni = MILESTONES.find((m) => m.id === 'unicorn')!
+    const honest = valuationOf({ ...b, cooked: 0 })
+    expect(uni.progress(g, { ...b, cooked: 3, valuation: 1_500_000_000 })).toBeCloseTo(honest / 1e9, 6)
+    expect(uni.progress(g, { ...b, valuation: 1_500_000_000 })).toBe(1.5)
   })
 })
 

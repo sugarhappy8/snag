@@ -18,7 +18,7 @@ import { isFinanceFirm } from './finance-firm'
 import { franchiseBlock, franchiseUnits, isFranchiseIndustry, maxSellable } from './franchise'
 import { isStudio } from './gamestudio'
 import { industryDef } from './industries'
-import { nextMilestones } from './milestones'
+import { milestoneLabel, nextMilestones } from './milestones'
 import { readBiz, runsIt, stakeValue, totalOutlets, type BizState } from './state'
 import { money, pct, plural } from './util'
 
@@ -30,6 +30,9 @@ export interface HealthRead {
   emoji: string
   advice: string
 }
+
+/** Morale below this gets the "staff are miserable" advice (and rules out "Thriving"). */
+const MISERABLE = 35
 
 const LABELS: Record<HealthId, { label: string; emoji: string }> = {
   new: { label: 'Just opened', emoji: '\u{1F331}' },
@@ -50,7 +53,8 @@ export function trend(now: number, before: number | null | undefined, kind: 'sal
   if (!(Math.abs(before) > 0)) return ''
   const ch = now / before - 1
   if (!Number.isFinite(ch) || Math.abs(ch) < 0.005) return '\u{25AA} flat'
-  const p = Math.abs(ch) >= 10 ? `${Math.round(ch)}x` : `${Math.round(Math.abs(ch) * 100)}%`
+  // From +900% on, the multiple reads better: 1,000 after 100 is '11x' (ten times more than before, plus the 100).
+  const p = ch >= 9 ? `${Math.round(now / before)}x` : `${Math.round(Math.abs(ch) * 100)}%`
   return `${ch > 0 ? '\u{25B2}' : '\u{25BC}'}${p}`
 }
 
@@ -85,7 +89,8 @@ export function companyHealth(g: GameState, a: Asset, b: BizState): HealthRead {
   if (b.cash < 0 || (loss && years < 1)) id = 'danger'
   // Falling sales only count when profit fell too (a franchisor's royalties can outgrow its own shops).
   else if ((loss && !planned) || margin < 0.02 || (salesChange < -0.15 && prev !== null && s.net < prev.profit) || b.morale < 30) id = loss && planned ? 'steady' : 'struggling'
-  else if (s.net > 0 && salesChange >= -0.05 && (margin >= 0.12 || (prev !== null && prev.profit > 0 && s.net >= prev.profit * 1.1))) id = 'thriving'
+  // Not "Thriving" while the advice has to warn about a miserable team.
+  else if (s.net > 0 && salesChange >= -0.05 && b.morale >= MISERABLE && (margin >= 0.12 || (prev !== null && prev.profit > 0 && s.net >= prev.profit * 1.1))) id = 'thriving'
   else id = 'steady'
   return read(id, advice(g, b, id, { loss, years, salesChange: prev !== null && s.net < prev.profit ? salesChange : 0, studio, tech, finance }))
 }
@@ -93,14 +98,17 @@ export function companyHealth(g: GameState, a: Asset, b: BizState): HealthRead {
 function advice(g: GameState, b: BizState, id: HealthId, x: { loss: boolean; years: number; salesChange: number; studio: boolean; tech: boolean; finance: boolean }): string {
   const classic = !x.studio && !x.tech && !x.finance
   if (b.cash < 0) return 'Cash is negative: put money in or borrow (Money) before payroll is due.'
-  if (x.loss && x.years < 1) return `Losses will empty the till within ${Math.max(1, Math.round(x.years * 12))} months: cut costs, fix prices or add cash.`
+  if (x.loss && x.years < 1) return `Losses will empty the till within ${plural(Math.max(1, Math.round(x.years * 12)), 'month')}: cut costs, fix prices or add cash.`
   if (x.loss) {
-    if (x.tech) return `R&D burns cash as planned: about ${x.years >= 99 ? 'plenty of' : Math.round(x.years * 10) / 10} years of runway left.`
+    if (x.tech) {
+      const left = x.years >= 99 ? 'plenty of runway left' : `about ${yearsLeft(x.years)} of runway left`
+      return x.years >= 2 ? `R&D burns cash as planned: ${left}.` : `R&D is eating the runway: ${left}. Raise a round or slow a program.`
+    }
     if (x.studio) return x.years >= 2 ? 'Between hits: ship the next game before the cash runs thin.' : 'Losing money: ship a game soon, or trim the team.'
     if (x.finance) return 'Losing money: review the financial operations below.'
     return 'Losing money: open the planning report and check price and production.'
   }
-  if (b.morale < 35) return 'Staff are miserable: raise pay or treat the team (Employees) before they strike.'
+  if (b.morale < MISERABLE) return 'Staff are miserable: raise pay or treat the team (Employees) before they strike.'
   if (classic && b.quality < 35) return 'Quality is slipping: better suppliers or a quality lead (Quality).'
   const s = b.last!
   if (b.debt > b.cash && b.debt > Math.max(1, s.net) * 3) return 'Debt is heavy: repay some before expanding.'
@@ -110,8 +118,19 @@ function advice(g: GameState, b: BizState, id: HealthId, x: { loss: boolean; yea
   if (classic && isFranchiseIndustry(b.industry) && franchiseUnits(b) === 0 && franchiseBlock(b) === null && maxSellable(g, b) > 0) return 'Your brand is strong enough to sell franchises (Franchising).'
   if (classic && id === 'thriving' && b.cash > startupCost(b.industry, b.countryId, b.city).capital * 2) return 'Cash is piling up: open another location, or take some profit out.'
   const next = nextMilestones(g, b, 1)[0]
-  if (next && next.progress >= 0.6) return `Next milestone: ${next.m.label.charAt(0).toLowerCase()}${next.m.label.slice(1)} (${Math.floor(next.progress * 100)}% there).`
+  if (next?.pending) return `Milestone reached: ${lowerFirst(milestoneLabel(next.m))}. It gets celebrated when the year closes.`
+  if (next && next.progress >= 0.6) return `Next milestone: ${lowerFirst(milestoneLabel(next.m))} (${Math.floor(next.progress * 100)}% there).`
   return x.finance ? 'Keep it steady and keep capital strong.' : 'Keep it steady: fine-tune next year in the planning report.'
+}
+
+function lowerFirst(t: string): string {
+  return `${t.charAt(0).toLowerCase()}${t.slice(1)}`
+}
+
+/** '1.5 years', '1 year', '12 years'. */
+function yearsLeft(years: number): string {
+  const y = Math.round(years * 10) / 10
+  return `${y.toLocaleString('en-US')} ${y === 1 ? 'year' : 'years'}`
 }
 
 /** The identity line: what, where, since when, who runs it. */
