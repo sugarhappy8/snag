@@ -576,7 +576,9 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   "Franchise fees & royalties" (`franchiseIncomeFor`) taken out of other income.
 - **More events** (`business/events-extra.ts`): `EXTRA_EVENTS` joins `events.ts EVENTS`, so the
   yearly roll and the one-event-a-year cap are unchanged. Every hint uses the resolver's own odds
-  (`expectedFx`, `rdValue`, `franchiseValue`, `equityGain`) and no RNG.
+  (`expectedFx`, `rdValue`, `franchiseValue`, `equityGain`) and no RNG. Banks and investment firms
+  draw only the industry-neutral generic events (`events.ts ANY_COMPANY`); their own sets live in
+  the bank/fund modules.
 - **IPO**: `exit.IPO_PROFIT` is $25M of last year's profit (studios and deep tech keep their own
   rules; groups take the strictest member's); the board still votes.
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
