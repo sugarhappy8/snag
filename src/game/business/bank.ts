@@ -11,7 +11,7 @@ import type { Asset, GameState, MenuNode } from '../types'
 import { getCountry } from '../world'
 import type { YearResult } from './economy'
 import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, isBankIndustry, loanTotal, minCapitalRatio, nationalDeposits, perBranch, readBank, saveBank, type Appetite, type BankBook, type ProductId } from './bank-state'
-import { bankCapital, bankLeaderSkill, bankMarket, bankPayoutRoom, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, profitWords, projectYear, riskWeighted, setupCost, type StartOutlook } from './bank-model'
+import { bankCapital, bankLeaderSkill, bankMarket, bankPayoutRoom, bankRank, bestRates, campaignCost, capitalRatio, costScale, depositCapacity, expectedProfit, onlineBankingOpen, productGain, productGate, profitWords, projectYear, riskWeighted, setupCost, techHere, type StartOutlook } from './bank-model'
 import { bankAfterYear, queueBankYearReport } from './bank-events'
 import { bankMenuNodes } from './bank-menu'
 import { shareText } from './competition'
@@ -26,7 +26,9 @@ export function isBank(b: { industry: string }): boolean {
 
 export function bankEraBlock(_g: GameState, industry: string, countryId: string, year: number): string | null {
   if (industry !== 'onlineBank') return null
-  return onlineBankingOpen(countryId, year) ? null : 'Online banking needs local internet access and online-banking technology. Start a branch bank first, or wait for the digital era.'
+  if (onlineBankingOpen(countryId, year)) return null
+  // Before the internet reaches this country, the reason itself would be an anachronism.
+  return techHere(countryId, 'internet', year) ? 'Hardly anyone here banks online yet. Start a branch bank, or wait a few years.' : 'Nobody has invented this business yet.'
 }
 
 /** Regulators' fine for a bank that stays below the minimum. */

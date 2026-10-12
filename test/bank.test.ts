@@ -682,6 +682,12 @@ describe('Banking 2.0 odds and ends', () => {
     expect(bankEraBlock(g, 'onlineBank', 'us', 1985)).toBeTruthy()
     expect(bankEraBlock(g, 'onlineBank', 'us', 2026)).toBeNull()
     expect(bankEraBlock(g, 'bank', 'us', 1900)).toBeNull()
+    // The reason shown on the greyed-out row never names the internet before it exists.
+    for (const [country, year] of [['us', 1900], ['us', 1950], ['us', 1985], ['ng', 2000], ['in', 1998]] as const) {
+      const why = bankEraBlock(g, 'onlineBank', country, year)
+      expect(why, `${country} ${year}`).toBeTruthy()
+      expect(anachronismsIn(why!, year, [country]), `${country} ${year}: ${why}`).toEqual([])
+    }
     const need = bankCapitalNeed(g, b, 1e9, .8)
     expect(need).toBeGreaterThan(0); expect(need).toBeLessThanOrEqual(1e9)
     expect(bankCapitalNeed(g, b, 0, 1)).toBe(0)
