@@ -66,6 +66,10 @@ import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, t
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
+import { climateLine, dashboardRows } from './dashboard'
+import { franchiseMenu } from './franchise'
+import { milestonesMenu } from './milestones'
+import { tidyNationalStrategy } from './national-view'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -1884,68 +1888,94 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
 // ---------------------------------------------------------------------------
 // The owned-business screen
 
+/**
+ * The full fact sheet behind the dashboard (Company Details): who runs it, ownership, staff,
+ * quality, market, the plan, last year's taxes, value and the country's business climate.
+ */
 export function infoRows(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a)
   const def = industryDef(b.industry)
   const m = marketOf(b.countryId)
-  const country = getCountry(b.countryId)
   const e = localEcon(b.industry, b.countryId, b.city)
-  const rows: string[] = []
-  rows.push(`${def.label} · ${b.city}, ${country.name} · ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`)
-  if (runsIt(g, a)) rows.push(`Run by you, the CEO · salary ${money(b.ownerSalary)}/yr`)
-  else rows.push(b.manager ? `Run by ${managerName(b.manager)} (CEO, skill ${b.manager.skill}/100, ${STYLE_INFO[styleOf(b.manager)].label.toLowerCase()}, ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''})${b.manager.skill > SMART_SKILL ? ' · runs it with the numbers' : ''}` : 'No one is running it day to day.')
+  const rows: [string, string][] = []
+  rows.push([def.emoji, `${def.label} \u{00B7} ${b.city}, ${getCountry(b.countryId).name} \u{00B7} ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`])
+  if (runsIt(g, a)) rows.push(['\u{1F454}', `Run by you, the CEO \u{00B7} salary ${money(b.ownerSalary)}/yr`])
+  else rows.push(['\u{1F454}', b.manager ? `CEO ${managerName(b.manager)} \u{00B7} skill ${b.manager.skill}/100 \u{00B7} ${STYLE_INFO[styleOf(b.manager)].label.toLowerCase()} \u{00B7} ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''}${b.manager.skill > SMART_SKILL ? ' \u{00B7} plans with the numbers' : ''}` : 'No one is running it day to day.'])
   // A group's division: the membership line replaces the ownership line (business/conglomerate-division.ts).
   const division = divisionLine(g, a)
-  rows.push(division ?? (b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} · you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%'))
-  rows.push(`${plural(totalOutlets(b), def.site, def.sitePlural)} · ${b.employees + b.staff.length} staff · morale ${b.morale}%`)
-  rows.push(isFinanceFirm(b) ? `Balance-sheet business · no manufactured product lines · staff skill drives underwriting and portfolio results` : isStudio(b) ? `Studio craft ${b.quality}% · brand ${b.brand}% · morale drives every game you make` : `Quality ${b.quality}% · brand ${b.brand}% · ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`)
-  rows.push(marketInfoLine(g, a))
-  if (isFinanceFirm(b)) rows.push(financeInfo(g, b))
-  else if (isStudio(b)) rows.push(studioInfo(g, a))
+  rows.push(['\u{1F4DC}', division ?? (b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} \u{00B7} you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')])
+  rows.push(['\u{1F465}', `${plural(totalOutlets(b), def.site, def.sitePlural)} \u{00B7} ${b.employees + b.staff.length} staff \u{00B7} morale ${b.morale}%`])
+  rows.push(['\u{2728}', isFinanceFirm(b) ? 'Balance-sheet business: staff skill drives the results' : isStudio(b) ? `Studio craft ${b.quality}% \u{00B7} brand ${b.brand}% \u{00B7} morale shapes every game` : `Quality ${b.quality}% \u{00B7} brand ${b.brand}% \u{00B7} ${b.products.length ? plural(b.products.length, 'product line') : 'no product lines yet'}`])
+  rows.push(['\u{1F3C6}', marketInfoLine(g, a)])
+  if (isFinanceFirm(b)) rows.push(['\u{1F3E6}', financeInfo(g, b)])
+  else if (isStudio(b)) rows.push(['\u{1F3AE}', studioInfo(g, a)])
   else {
     if (isDeepTech(b)) {
       const tech = deepTechInfo(g, a)
-      if (tech) rows.push(tech)
+      if (tech) rows.push(['\u{1F52C}', tech])
     }
-    rows.push(`Price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne} (locals expect about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)}) · plan ${units(b.production)} ${def.unit}`)
+    rows.push(['\u{1F3F7}\u{FE0F}', `Price ${b.price >= 100 ? money(b.price) : formatCents(b.price)} per ${def.unitOne} (locals expect ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)}) \u{00B7} plan ${units(b.production)} ${def.unit}`])
   }
   const s = b.last
-  if (s) {
-    rows.push(`${s.year}: sales ${money(s.revenue)} · ${s.net >= 0 ? 'profit' : 'loss'} ${money(Math.abs(s.net))} · corporate tax ${money(s.corpTax)}${s.salesTax > 0 ? ` · ${m.salesTaxName} remitted ${money(s.salesTax)}` : ''}`)
-  } else {
-    rows.push(b.openFraction < 1 ? `Opening soon: registration took a while, so this first year is short.` : 'First year of trading. Results come with the Annual Report.')
-  }
-  rows.push(`${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${money(stakeValue(b))}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} · cash ${money(b.cash)}${b.debt > 0 ? ` · debt ${money(b.debt)}` : ''}`)
-  rows.push(`${country.name}: corporate tax ${Math.round(m.corporateTax * 100)}%, ${m.salesTaxName} ${Math.round(m.salesTax * 100)}%, typical wage ${money(e.wage)}, inflation ${Math.round(m.inflation * 100)}%. ${eraNote(g, b.countryId, m.businessNote)}`.trim())
-  const emojis = [def.emoji, '\u{1F454}', '\u{1F4DC}', '\u{1F465}', '\u{2728}', '\u{1F3C6}', '\u{1F3F7}\u{FE0F}', '\u{1F4CA}', '\u{1F4B0}', '\u{1F30D}']
-  const nodes = rows.map((text, i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji: emojis[i] ?? '\u{2139}\u{FE0F}' }))
-  // Who the CEO answers to, and the hired CEO's last letter.
+  if (s) rows.push(['\u{1F4CA}', `${s.year}: sales ${money(s.revenue)} \u{00B7} ${s.net >= 0 ? 'profit' : 'loss'} ${money(Math.abs(s.net))} \u{00B7} corporate tax ${money(s.corpTax)}${s.salesTax > 0 ? ` \u{00B7} ${m.salesTaxName} ${money(s.salesTax)}` : ''}`])
+  rows.push(['\u{1F4B0}', `${b.public ? 'Market cap' : 'Valuation'} ${money(b.valuation)}${b.share < 1 || stakeValue(b) !== Math.round(b.valuation * b.share) ? ` (your stake ${money(stakeValue(b))}${division ? ', after the group\u{2019}s valuation' : ''})` : ''} \u{00B7} cash ${money(b.cash)}${b.debt > 0 ? ` \u{00B7} debt ${money(b.debt)}` : ''}`])
+  rows.push(['\u{1F30D}', climateLine(b, e.wage)])
+  const note = eraNote(g, b.countryId, m.businessNote).trim()
+  if (note) rows.push(['\u{1F4DD}', note])
+  return rows.filter(([, text]) => !!text).map(([emoji, text], i): MenuNode => ({ type: 'info', id: `biz.info.${a.id}.${i}`, text, emoji }))
+}
+
+/** Who the CEO answers to, and the hired CEO's last letter (short; the Board menu has the rest). */
+function governanceRows(g: GameState, a: Asset): MenuNode[] {
+  const b = readBiz(g, a)
   const st = boardView(g, a, b)
+  const nodes: MenuNode[] = []
   if (hasBoard(g, b)) {
-    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F3DB}\u{FE0F}', text: `Board: ${st.members.length} seats, ${ownerSeats(st)} yours${controlsBoard(st) ? '' : " (you don't control it)"} · mandate ${mandateDef(st.mandate).label}${st.votes.length ? ` · last vote: ${lowerFirst(st.votes[st.votes.length - 1].what)} (${st.votes[st.votes.length - 1].passed ? 'passed' : 'rejected'})` : ''}` })
+    const last = st.votes[st.votes.length - 1]
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F3DB}\u{FE0F}', text: `Board: ${ownerSeats(st)} of ${st.members.length} seats yours${controlsBoard(st) ? '' : " (you don't control it)"} \u{00B7} mandate ${mandateDef(st.mandate).label}${last ? ` \u{00B7} last vote: ${lowerFirst(last.what)} (${last.passed ? 'passed' : 'rejected'})` : ''}` })
   } else if (b.ceo === 'manager' && b.manager) {
-    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F4CB}', text: `No board: ${managerName(b.manager)} answers to you · mandate ${mandateDef(st.mandate).label}` })
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.board`, emoji: '\u{1F4CB}', text: `No board: ${managerName(b.manager)} answers to you \u{00B7} mandate ${mandateDef(st.mandate).label}` })
   }
   if (b.ceo === 'manager' && b.manager && st.memo.length && st.letter >= g.year - 1) {
-    nodes.push({ type: 'info', id: `biz.info.${a.id}.memo`, emoji: '\u{1F4DD}', text: `${managerName(b.manager)}'s last letter: ${st.memo.slice(0, 3).join(' ')}` })
+    const memo = st.memo.slice(0, 2).join(' ')
+    nodes.push({ type: 'info', id: `biz.info.${a.id}.memo`, emoji: '\u{1F4DD}', text: `${managerName(b.manager)}'s letter: ${memo.length > 120 ? `${memo.slice(0, 117).replace(/\s+\S*$/, '')}\u{2026}` : memo}` })
   }
   return nodes
 }
 
+/** Company Details: the full fact sheet, one tap away from the dashboard. */
+function detailsMenu(a: Asset): MenuGroup {
+  return {
+    type: 'menu',
+    id: `biz.details.${a.id}`,
+    label: 'Company Details',
+    emoji: '\u{1F4CB}',
+    subtitle: 'Staff, quality, prices, taxes and the local climate',
+    children: (g) => {
+      const cur = findBusiness(g, a.id)
+      return cur ? infoRows(g, cur) : [{ type: 'info', id: `biz.details.gone.${a.id}`, text: 'You no longer own this business.' }]
+    },
+  }
+}
+
 export function businessView(g: GameState, a: Asset): MenuNode[] {
-  const nodes: MenuNode[] = [...infoRows(g, a)]
   const health = readBiz(g, a)
-  nodes.push({ type: 'info', id: `biz.next.${a.id}`, emoji: '🧭', text: health.cash < 0 ? 'Priority: cover the cash shortfall in Money before expanding.' : health.last && health.last.net < 0 ? 'Losing money? Review price and production, reduce debt, or hire a turnaround CEO. Avoid new expansion until cash is stable.' : 'Next steps: compare national conditions, study a market, then fund a strategy or expansion. Keep cash for payroll and debt.' })
-  nodes.push(nationalStrategyMenu(a), inventorMenu(a))
+  const finance = isFinanceFirm(health)
+  // The dashboard card (business/dashboard.ts), governance, milestones and the full fact sheet.
+  const nodes: MenuNode[] = [...dashboardRows(g, a), ...governanceRows(g, a), milestonesMenu(a), detailsMenu(a)]
+  // National strategy programs are for product companies; financial firms run their own operations.
+  const strategy = finance ? [] : [tidyNationalStrategy(nationalStrategyMenu(a), a)]
+  if (!finance) nodes.push(inventorMenu(a))
   if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
-  nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
-  if (isFinanceFirm(health)) {
+  if (finance) {
     nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
   } else if (isStudio(readBiz(g, a))) {
+    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
     // Game studios make games: a pipeline, a back catalog and a team instead of price and production.
     nodes.push(...studioNodes(g, a))
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), expansionMenu(a), ...strategy, insuranceAction(a), cookBooksAction(a))
   } else {
+    nodes.push({ type: 'heading', id: `biz.runH.${a.id}`, label: 'Run the Company' })
     nodes.push(
       act(a, 'plan', 'Set Price & Production', '\u{1F4CA}', {
         hint: (gg) => {
@@ -1963,7 +1993,8 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     )
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    const franchise = franchiseMenu(a, health)
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))

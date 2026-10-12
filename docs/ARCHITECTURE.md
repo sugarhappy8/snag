@@ -555,6 +555,35 @@ player. Group acquisitions count sister divisions in the same market for antitru
 gain from splitting into shells). Companies removed outside exit.ts (debt seizure, repossession,
 divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
 
+## Running a company: dashboard, milestones, franchising, events
+
+- **Dashboard** (`business/dashboard.ts`, pure): `dashboardRows` opens every company screen with
+  identity, cash · value · stake, last year's sales/profit with ▲▼ against the year before, market
+  rank/share and `companyHealth` (Just opened / Thriving / Steady / Struggling / In danger plus one
+  advice line). Finance firms get identity, money and profit only; `financeNodes` owns the rest.
+  The full fact sheet (`manage.infoRows`) lives one tap away under Company Details.
+- **Milestones** (`business/milestones.ts`): `BizState.milestones` maps id → year. `milestoneYear`
+  runs in `yearly.ts` after the books close; a company first seen with ≥ 2 booked years (old saves)
+  or bought records its past quietly. New ones log, give capped happiness/fame and share one
+  "Milestones!" popup a year across all companies (`g.flags['biz.milestonePopup']`).
+- **Franchising** (`business/franchise.ts`, consumer-facing classic industries only):
+  `BizState.franchise` holds units, a 4-year ledger and the booked year. Sales book the fee net of
+  onboarding through `b.cash`/`b.yearIncome`; `bookFranchiseYear` (before `simulateYear`) books net
+  royalties (6% − 1% support of modeled franchisee sales, capped at one site's capacity, shrinking
+  as the home network nears `networkRoom`) once per fiscal year, applies exact churn (fractions
+  carry, no dice) and may raise one franchisee scandal popup (a hired CEO handles it silently).
+  Buy-backs are capital spending (cash only) and become company outlets. The statement shows
+  "Franchise fees & royalties" (`franchiseIncomeFor`) taken out of other income.
+- **More events** (`business/events-extra.ts`): `EXTRA_EVENTS` joins `events.ts EVENTS`, so the
+  yearly roll and the one-event-a-year cap are unchanged. Every hint uses the resolver's own odds
+  (`expectedFx`, `rdValue`, `franchiseValue`, `equityGain`) and no RNG. Banks and investment firms
+  draw only the industry-neutral generic events (`events.ts ANY_COMPANY`); their own sets live in
+  the bank/fund modules.
+- **IPO**: `exit.IPO_PROFIT` is $25M of last year's profit (studios and deep tech keep their own
+  rules; groups take the strictest member's); the board still votes.
+- **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
+  `COMPARE_SHOWN` best foreign markets and a one-line summary.
+
 ## Being rich, felt (events/wealth*.ts)
 
 `yearlyWealth` (aging.ts YEARLY_HOOKS, after finance) runs these steps in order:

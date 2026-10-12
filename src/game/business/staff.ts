@@ -16,8 +16,25 @@ import { bizOf, findBusiness, readBiz, totalOutlets, type BizState, type KeyStaf
 import { clampN, markBest, money, num, rec, str, toJson } from './util'
 import { leadershipPower, leadershipSummary, LEADERSHIP } from './leadership'
 
+/** Key people the company can use: more with more locations, never more than the roles it has. */
 export function maxKeyStaff(b: BizState): number {
-  return Math.min(8, 3 + Math.floor(totalOutlets(b) / 3))
+  return Math.min(8, 3 + Math.floor(totalOutlets(b) / 3), Math.max(1, industryDef(b.industry).roles.length))
+}
+
+/** What a key role does, in a few words (financial firms' roles are not product jobs). */
+export function roleBlurb(b: Pick<BizState, 'industry'>, role: RoleDef): string {
+  const def = industryDef(b.industry)
+  if (def.model === 'finance') {
+    const bank = b.industry === 'bank' || b.industry === 'onlineBank'
+    const FINANCE: Record<RoleDef['focus'], [string, string]> = {
+      finance: ['Decides who gets a loan', 'Manages the client portfolios'],
+      quality: ['Watches risk and bad loans', 'Researches what to buy'],
+      sales: ['Wins depositors and borrowers', 'Wins and keeps clients'],
+      ops: ['Runs the branches and systems', 'Keeps the firm compliant and lean'],
+    }
+    return FINANCE[role.focus][bank ? 0 : 1]
+  }
+  return role.focus === 'quality' ? 'Raises quality' : role.focus === 'sales' ? 'Brings in customers' : role.focus === 'finance' ? 'Cuts costs and keeps the books clean' : 'More capacity, lower unit costs'
 }
 
 interface Candidate {
@@ -153,7 +170,7 @@ function interviewAction(a: Asset, role: RoleDef, g0: GameState): MenuAction {
     emoji: role.focus === 'quality' ? '\u{1F9D1}\u{200D}\u{1F373}' : role.focus === 'sales' ? '\u{1F4E3}' : role.focus === 'finance' ? '\u{1F9EE}' : '\u{1F4CB}',
     subtitle: (g) => {
       const b = readBiz(g, a)
-      return `${role.focus === 'quality' ? 'Raises quality' : role.focus === 'sales' ? 'Brings in customers' : role.focus === 'finance' ? 'Cuts costs and keeps the books clean' : 'More capacity, lower unit costs'} · about ${money(localPay(b.countryId, role.pay))}/yr · headhunter ${money(interviewFee(b, role, yearActionsUsed(g, `biz.interview.${a.id}`)))}`
+      return `${roleBlurb(b, role)} · about ${money(localPay(b.countryId, role.pay))}/yr · headhunter ${money(interviewFee(b, role, yearActionsUsed(g, `biz.interview.${a.id}`)))}`
     },
     disabledReason: (g) => {
       const block = manageBlock(g, a)
@@ -211,7 +228,8 @@ export function hireMenu(a: Asset): MenuGroup {
     emoji: '\u{1F91D}',
     subtitle: (g) => {
       const b = readBiz(g, a)
-      return `${b.staff.length}/${maxKeyStaff(b)} leadership roles filled`
+      const roles = industryDef(b.industry).roles.length
+      return `${b.staff.length}/${maxKeyStaff(b)} seats filled${maxKeyStaff(b) < roles ? ` · ${roles} roles to choose from (more seats with more locations)` : ''}`
     },
     disabledReason: (g) => manageBlock(g, a),
     hint: (g) => {
@@ -416,14 +434,18 @@ export function staffMenu(a: Asset): MenuGroup {
       const e = localEcon(b.industry, b.countryId, b.city)
       const strike = unionStrength(b.countryId)
       return [
-        `${b.employees} employees on ${payLabel(b.wageLevel).toLowerCase()} pay (about ${money(e.wage * b.wageLevel)} each a year). Head count follows your production plan.`,
+        `${b.employees} employees on ${payLabel(b.wageLevel).toLowerCase()} pay (about ${money(e.wage * b.wageLevel)} each a year). ${industryDef(b.industry).model === 'finance' ? 'Head count follows the size of the business.' : 'Head count follows your production plan.'}`,
         `Morale ${b.morale}%. ${strike >= 0.5 ? 'Unions are strong here: unhappy staff strike.' : strike >= 0.3 ? 'Unhappy staff here can and do walk out.' : 'Unions are weak here, but unhappy staff still quit.'}`,
       ].join('\n')
     },
     children: (g) => {
       const b = readBiz(g, a)
       const nodes: MenuNode[] = [{ type: 'heading', id: `biz.keyStaffH.${a.id}`, label: `Leadership team (${b.staff.length}/${maxKeyStaff(b)})` }]
-      if (b.staff.length === 0) nodes.push({ type: 'info', id: `biz.noStaff.${a.id}`, emoji: '\u{1FA91}', text: 'No key staff yet. A good head chef, sales lead or controller makes a real difference.' })
+      if (b.staff.length === 0) {
+        const titles = industryDef(b.industry).roles.slice(0, 3).map((r) => roleTitle(g, b.countryId, r.title).toLowerCase())
+        const list = titles.length > 1 ? `${titles.slice(0, -1).join(', ')} or ${titles[titles.length - 1]}` : titles[0] ?? 'manager'
+        nodes.push({ type: 'info', id: `biz.noStaff.${a.id}`, emoji: '\u{1FA91}', text: `No key staff yet. A good ${list} makes a real difference.` })
+      }
       for (const s of b.staff) nodes.push(staffGroup(a, s))
       nodes.push(hireMenu(a))
       const family = familyStaffLine(g, a)

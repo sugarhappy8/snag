@@ -310,6 +310,10 @@ export interface BizState {
    * resentment, the "nepo baby" label and the press. Missing when no relative ever worked here.
    */
   family?: Json
+  /** Company milestones reached (business/milestones.ts readMilestones). Missing on old saves. */
+  milestones?: Json
+  /** Franchise network (business/franchise.ts readFranchise). Missing until the first franchise is sold. */
+  franchise?: Json
 }
 
 export const BIZ_VERSION = 2
@@ -554,6 +558,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.group && typeof d.group === 'object' && !Array.isArray(d.group) && typeof d.group.id === 'string' && d.group.id ? { group: d.group } : {}),
     ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),
     ...(d.expansion && typeof d.expansion === 'object' && !Array.isArray(d.expansion) ? { expansion: d.expansion } : {}),
+    ...(d.milestones && typeof d.milestones === 'object' && !Array.isArray(d.milestones) ? { milestones: d.milestones } : {}),
+    ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
   }
 }
 
