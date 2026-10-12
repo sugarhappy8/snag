@@ -117,10 +117,12 @@ describe('closed-loop financial inventions', () => {
     expect(financeView(b).aum).toBe(clients)
     expect(inventionImpactView(g)).toHaveLength(0)
     const settled = structuredClone(g); yearlyInventor(g); expect(g).toEqual(settled)
+    // Closed-loop financial systems are being retired (v2.2 rework): an installed system no longer
+    // changes the institution's modeled edge or results.
     const noMethod = { ...b, closedInventions: undefined }
-    expect(financeQuantEdge(g, b, g.year)).toBeGreaterThan(financeQuantEdge(g, noMethod, g.year))
+    expect(financeQuantEdge(g, b, g.year)).toBe(financeQuantEdge(g, noMethod, g.year))
     const plain = structuredClone(noMethod), secret = structuredClone(b)
-    expect(simulateFinanceYear(g, secret, g.year, 0).stmt.revenue).toBeGreaterThan(simulateFinanceYear(g, plain, g.year, 0).stmt.revenue)
+    expect(simulateFinanceYear(g, secret, g.year, 0).stmt.revenue).toBe(simulateFinanceYear(g, plain, g.year, 0).stmt.revenue)
   })
   it('ages secret models and charges exactly once for a fresh confidential validation', () => {
     const { g, a, b } = company('bank'); prepareInventor(g, 'private-risk-model')
