@@ -32,6 +32,7 @@ import { ALL_TALENT_IDS, MAIN_CHARACTER } from '../src/game/talents'
 import { arriveInPast, jumpsUsed, TIME_MACHINE_JUMPS } from '../src/game/timeMachine'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
 import { COUNTRIES, getCountry } from '../src/game/world'
+import { ROYAL_RULES, royalRule } from '../src/game/royalty'
 import { HIDDEN_KEYS, STAT_KEYS, type AnnualReportData, type GameState, type MenuAction, type MenuGroup, type MenuInput, type MenuNode, type MinigameModal, type ModalItem } from '../src/game/types'
 import { sliderOutput, sliderScale } from '../src/ui/components/menuModel'
 
@@ -968,7 +969,11 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
   const t0 = Date.now()
   const d = driver(seed)
   const birthYear = BIRTH_YEARS[seed % BIRTH_YEARS.length]
-  const country = d.chance(0.25) ? 'us' : d.pick(COUNTRIES).id
+  let country = d.chance(0.25) ? 'us' : d.pick(COUNTRIES).id
+  // Some lives are born royal (in a country that has a monarchy that year).
+  const monarchies = Object.keys(ROYAL_RULES).filter((id) => royalRule(id, birthYear))
+  const royal = monarchies.length > 0 && d.chance(0.1)
+  if (royal) country = d.pick(monarchies)
   const talents = d.chance(0.6) ? Array.from(new Set([d.pick(ALL_TALENT_IDS), d.pick(ALL_TALENT_IDS), ...(d.chance(0.1) ? [MAIN_CHARACTER] : [])])).slice(0, 3) : []
   const rich = d.chance(0.6)
   const richAt = d.int(18, 30)
@@ -979,14 +984,14 @@ export async function fuzzLife(seed: number, log: FailureLog, opts: FuzzOptions 
   const stats: LifeStats = { seed, years: 0, actions: 0, menuNodes: 0, swept: 0, businesses: 0, industries: [], generations: 1, ms: 0 }
   const industries = new Set<string>()
   try {
-    g = createNewLife({ seed, year: birthYear, countryId: country, talents })
+    g = createNewLife({ seed, year: birthYear, countryId: country, talents, ...(royal ? { royalty: 'royal' as const } : {}) })
   } catch (err) {
     const dummy = makeCtx(seed, birthYear, { character: { countryId: country, age: 0 }, year: birthYear } as unknown as GameState, log)
     dummy.fail('create-throw', err, `createNewLife ${country} ${birthYear}`)
     return stats
   }
   const ctx = makeCtx(seed, birthYear, g, log)
-  ctx.trail.push(`new life seed ${seed} ${country} ${birthYear} talents ${talents.join(',')} rich ${rich ? `${richAmount}@${richAt}` : 'no'}`)
+  ctx.trail.push(`new life seed ${seed} ${country} ${birthYear}${royal ? ' royal' : ''} talents ${talents.join(',')} rich ${rich ? `${richAmount}@${richAt}` : 'no'}`)
   bindMoneyContext(g)
   drain(ctx, g, d)
   checkInvariants(ctx, g, 'birth')
