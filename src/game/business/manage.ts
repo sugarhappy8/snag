@@ -36,7 +36,7 @@ import {
 } from './economy'
 import { eventChance } from './events'
 import { canIpo, closeBusiness, declareBankruptcy, goPublic, sellBusiness, sellShares } from './exit'
-import { inventorMenu, nationalStrategyMenu } from './expansion'
+import { nationalStrategyMenu } from './expansion'
 import { equityMenu, equityTerms } from './executive'
 import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
@@ -1965,7 +1965,6 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   const nodes: MenuNode[] = [...dashboardRows(g, a), ...governanceRows(g, a), milestonesMenu(a), detailsMenu(a)]
   // National strategy programs are for product companies; financial firms run their own operations.
   const strategy = finance ? [] : [tidyNationalStrategy(nationalStrategyMenu(a), a)]
-  if (!finance) nodes.push(inventorMenu(a))
   if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
   if (finance) {
     nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
