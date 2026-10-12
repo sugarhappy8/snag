@@ -114,7 +114,7 @@ export function milestoneYear(g: GameState, a: Asset, b: BizState): MilestoneHit
   const fresh: MilestoneDef[] = []
   for (const m of MILESTONES) {
     if (done[m.id] !== undefined || !reached(g, b, m)) continue
-    done[m.id] = g.year
+    done[m.id] = m.id === 'ipo' && b.ipoYear > 0 ? b.ipoYear : g.year
     fresh.push(m)
   }
   b.milestones = done as unknown as Json
