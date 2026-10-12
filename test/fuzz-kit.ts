@@ -241,6 +241,8 @@ function minigameResult(m: MinigameModal, d: Driver): string {
 // Context
 
 interface Ctx {
+  /** Birth year of each life seen (lifeId -> year - age). */
+  born: Map<string, number>
   seed: number
   birthYear: number
   g: GameState
@@ -251,6 +253,7 @@ interface Ctx {
 
 function makeCtx(seed: number, birthYear: number, g: GameState, log: FailureLog): Ctx {
   const ctx: Ctx = {
+    born: new Map(),
     seed,
     birthYear,
     g,
@@ -531,13 +534,19 @@ function checkInvariants(ctx: Ctx, g: GameState, where: string): boolean {
   if (new Set(ids).size !== ids.length) fail('duplicate person ids')
   const aids = g.assets.map((a) => a.id)
   if (new Set(aids).size !== aids.length) fail(`duplicate asset ids ${aids.filter((x, i) => aids.indexOf(x) !== i).join(',')}`)
+  // The calendar and the character's age move together (a Time Machine trip restores both).
+  const born = g.year - c.age
+  const known = ctx.born.get(g.lifeId)
+  if (known === undefined) ctx.born.set(g.lifeId, born)
+  else if (known !== born) fail(`year ${g.year} and age ${c.age} no longer agree (born ${known})`)
   for (const p of g.people) {
     if (!(p.age >= 0)) fail(`person ${p.relation} age ${p.age}`)
+    if (p.alive && p.age > 125) fail(`person ${p.relation} still alive at ${p.age}`)
     if (!(p.relationship >= 0 && p.relationship <= 100)) fail(`person ${p.relation} relationship ${p.relationship}`)
     for (const k of STAT_KEYS) if (!(p.stats[k] >= 0 && p.stats[k] <= 100)) fail(`person ${p.relation} ${k} = ${p.stats[k]}`)
   }
   for (const a of g.assets) {
-    if (!Number.isFinite(a.value)) fail(`asset ${a.kind} ${a.name} value ${a.value}`)
+    if (!Number.isFinite(a.value) || a.value < 0) fail(`asset ${a.kind} ${a.name} value ${a.value}`)
     if (a.mortgage && !(a.mortgage.balance >= 0)) fail(`asset ${a.name} mortgage balance ${a.mortgage.balance}`)
   }
   for (const l of c.loans) if (!(Number.isFinite(l.balance) && l.balance >= -0.01)) fail(`loan ${l.kind} balance ${l.balance}`)
