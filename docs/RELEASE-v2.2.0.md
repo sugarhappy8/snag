@@ -98,4 +98,19 @@ and `docs/superpowers/specs/2026-10-12-business-finance-inventor-rework-design.m
 
 ## Validation
 
-(Filled in at release.)
+Local verification of the release candidate on 2026-10-12:
+
+- `npx tsc --noEmit` clean; `npm run build` passes. The single bundle is ~7.40 MB (~2.51 MB gzip);
+  the accepted size limit in `vite.config.ts` was raised to match.
+- Full suite (`npx vitest run --maxWorkers=3`): 3,363 passed, 1 skipped (the opt-in deep fuzzer),
+  1 failed — the anachronism lint, which found a 1970s "website redesign"; fixed in the next commit
+  and the file re-run green (7/7).
+- Heavy whole-life tests carry explicit time limits sized for a 2-core CI runner; no assertion
+  was loosened.
+- Headless Chromium random playthroughs (`scripts/e2e-play.mjs`, 110 years each): 8 lives on the
+  integrated build, zero page errors, console errors or outside requests.
+- Scripted UI passes at 390×844 in light and dark: the Workshop, founding and running a
+  restaurant, café, asset manager, venture capital firm, bank and online bank, the yearly reports —
+  no visible NaN/undefined text and no clipped or off-screen elements.
+- The opt-in engine fuzzer covered ~5,800 life-years across 48 industries before its fixes; seeds
+  2000–2014 found nothing new afterwards.
