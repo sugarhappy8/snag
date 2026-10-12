@@ -110,6 +110,16 @@ function milestone(g: GameState, p: Person, l: NpcLife, text: string): void {
   }
 }
 function storeCompany(p: Person, a: Asset): void { p.data.npcCompany = a as unknown as Json }
+/** A name no other company in this life uses: "Cooper Café", then "Jamie Cooper Café" for the spouse. */
+function freshCompanyName(g: GameState, p: Person, kind: string): string {
+  const taken = new Set([...g.assets.map((a) => a.name), ...g.people.flatMap((q) => { const name = rec(q.data.npcCompany)?.name; return typeof name === 'string' ? [name] : [] })])
+  const full = `${p.firstName} ${p.lastName} ${kind}`
+  const name = [`${p.lastName} ${kind}`, full].find((n) => !taken.has(n))
+  if (name) return name
+  let i = 2
+  while (taken.has(`${full} ${i}`)) i++
+  return `${full} ${i}`
+}
 export function startNpcCompany(g: GameState, p: Person, industry?: Industry): boolean {
   if (!p.alive || p.age < 21 || npcCompany(p, g.year)) return false
   const l = initializeNpc(g, p), local = getCountry(l.country)
@@ -125,7 +135,7 @@ export function startNpcCompany(g: GameState, p: Person, industry?: Industry): b
   p.money -= capital + cost.fee + cost.permits
   const b = newBiz(g, chosen, l.country, local.cities[0], { founderName: `${p.firstName} ${p.lastName}`, npcOwnerId: p.id, cash: capital - cost.capital * .8, invested: capital, ceo: 'manager', manager: { firstName: p.firstName, lastName: p.lastName, gender: p.gender, skill: l.skill, salary: 0, since: g.year } })
   b.production = initialProduction(g, b); b.valuation = valuationOf(b)
-  const a = createBusinessAsset(g, `${p.lastName} ${chosen === 'cafe' ? 'Café' : 'Company'}`, b, capital)
+  const a = createBusinessAsset(g, freshCompanyName(g, p, chosen === 'cafe' ? 'Café' : 'Company'), b, capital)
   refreshValue(a, b); storeCompany(p, a)
   p.occupation = 'Business Owner'; l.employer = a.name
   milestone(g, p, l, `founded ${a.name} using ${money(capital + cost.fee + cost.permits)} of personal savings`)
