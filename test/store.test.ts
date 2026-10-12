@@ -48,6 +48,14 @@ vi.mock('../src/game/offline', async (orig) => {
   return { ...real, applyFallback: offline.resolve, resolveTask: offline.resolve }
 })
 
+// The real yearly loop, wrapped so a test can make one birthday fail.
+const aging = vi.hoisted(() => ({ ageUp: vi.fn() }))
+vi.mock('../src/game/aging', async (orig) => {
+  const real = await orig<typeof import('../src/game/aging')>()
+  aging.ageUp.mockImplementation(real.ageUp)
+  return { ...real, ageUp: aging.ageUp }
+})
+
 const settingsAtStartup = storage.get('anotherlife.settings.v1')
 const store = await import('../src/ui/store')
 const settingsAfterStartup = storage.get('anotherlife.settings.v1')
@@ -235,6 +243,28 @@ describe('event choices', () => {
     setQueue([{ kind: 'choice', id: 'c1', title: 'Boom', text: '?', choices: [{ id: 'a', label: 'A' }], source: 'script', scriptId: 'test.store.boom' }])
     store.chooseOption('c1', 'a')
     expect(game().queue).toHaveLength(0)
+  })
+})
+
+describe('ageing up', () => {
+  it('keeps the last good year, logs the error and explains when the yearly loop throws', () => {
+    const before = structuredClone(game())
+    aging.ageUp.mockImplementationOnce((g: GameState) => {
+      g.character.age += 1
+      g.character.money += 999
+      throw new Error('broken yearly hook')
+    })
+    expect(() => store.ageUpAction()).not.toThrow()
+    expect(game().character.age).toBe(before.character.age)
+    expect(game().character.money).toBe(before.character.money)
+    expect(console.error).toHaveBeenCalledWith('Ageing up failed:', expect.objectContaining({ message: 'broken yearly hook' }))
+    const popup = game().queue[0]
+    expect(popup).toMatchObject({ kind: 'notice', title: 'Something Went Wrong' })
+    expect(loadGame()!.character.age).toBe(before.character.age)
+    // The next tap works as soon as the hook does.
+    store.dismissNotice(popup.id)
+    store.ageUpAction()
+    expect(game().character.age).toBe(before.character.age + 1)
   })
 })
 

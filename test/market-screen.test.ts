@@ -198,3 +198,28 @@ describe('market screen: purple hints are honest', () => {
     expect(defend.hint?.(g) ?? '').toBe('')
   })
 })
+
+describe('market screen: lines read cleanly', () => {
+  const text = (g: GameState, n: MenuNode) => (n.type === 'info' ? (typeof n.text === 'function' ? n.text(g) : n.text) : '')
+
+  it('puts share bars and sparklines on their own line or at the end, never between words', () => {
+    // Playtest: leaderboard rows read like "#2 Sukiya ▓▓▓▓▓░░░░░ 9.1% ↗ · major".
+    const { g, a } = setup('restaurant', 'jp', 2010, 4)
+    const m = marketNode(g, a)!
+    const lines = allNodes(g, [m]).flatMap((n) => [text(g, n), n.type === 'menu' && typeof n.subtitle === 'function' ? n.subtitle(g) : ''])
+    expect(lines.join('\n')).toMatch(/[▓░]/)
+    for (const line of lines.flatMap((t) => t.split('\n'))) expect(line).not.toMatch(/[▁-█░▓]+ +[^\s▁-█░▓]/)
+    const lb = find(g, a, 'biz.mkt.lb.').map((n) => text(g, n)).filter((t) => t.startsWith('#'))
+    expect(lb.length).toBeGreaterThan(2)
+    for (const row of lb) expect(row).toMatch(/^#\d+ [^\n]+ · [\d.<]+% [↗↘→] · [^\n]+\n[▓░]{10}$/)
+  })
+
+  it('phrases What-If Scenarios as plain "If you …" sentences', () => {
+    const { g, a } = setup('software')
+    const lines = find(g, a, 'biz.mkt.sc.').map((n) => text(g, n))
+    expect(lines.length).toBeGreaterThan(2)
+    for (const line of lines) expect(line).toMatch(/^If you /)
+    expect(lines.find((l) => l.startsWith('If you cut prices hard: '))).toMatch(/^If you cut prices hard: share (unchanged|up [\d.]+ pts|down [\d.]+ pts), about [+-]\$[\d.,]+[KMB]? profit \(15% off/)
+    expect(lines.join('\n')).not.toMatch(/ net\b|pts share|Price offensive:/)
+  })
+})

@@ -92,7 +92,8 @@ export function deathFacts(g: GameState): DeathFact[] {
     ['Grandchildren', grandkids, '🧒'],
     ['Marriages', n('marriages'), '💍'],
     ['Lovers', n('partners'), '💘'],
-    ['Degrees', c.education.degrees.length, '📜'],
+    // College degrees only: a high-school diploma or GED is not a degree.
+    ['Degrees', c.education.degrees.filter((d) => d.kind !== 'highschool' && d.kind !== 'ged').length, '📜'],
     ['Crimes', n('crimes'), '🦹'],
     ['Murders', n('murders'), '🔪'],
     ['Years in prison', n('prisonYears'), '⛓️'],

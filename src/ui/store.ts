@@ -11,7 +11,7 @@
 // few outside the main save) and travelBack() restores one (game/timeMachine.ts has the rules).
 import { useSyncExternalStore } from 'react'
 import { ageUp } from '../game/aging'
-import { bindMoneyContext, moneyContextOf, netWorth } from '../game/core'
+import { bindMoneyContext, moneyContextOf, netWorth, notice } from '../game/core'
 import { continueAsChild, createNewLife, type NewLifeOptions } from '../game/life'
 import { resolveTask } from '../game/offline'
 import {
@@ -444,7 +444,17 @@ export function ageUpAction(): void {
   clearReturnPoint()
   // The Time Machine keeps the new year as it starts (once its popups are done).
   expectSnapshot(g.lifeId, g.character.age + 1)
-  act(ageUp)
+  try {
+    act(ageUp)
+  } catch (err) {
+    // A bug in a yearly hook must not trap the player on this birthday with a dead button. act()
+    // never commits a draft that threw, so the last good year stays; the error is still logged
+    // (tests and developers see it) and the player gets a popup instead of silence.
+    console.error('Ageing up failed:', err)
+    act((draft) => {
+      notice(draft, 'Something Went Wrong', "This year couldn't be played out, so nothing changed and your life is saved as it was. Tap + Age to try again; doing something else first can help.", { emoji: '\u{26A0}\u{FE0F}', tone: 'bad' })
+    })
+  }
 }
 
 export function runMenuAction(action: MenuAction, input?: string): void {

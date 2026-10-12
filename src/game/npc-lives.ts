@@ -110,6 +110,16 @@ function milestone(g: GameState, p: Person, l: NpcLife, text: string): void {
   }
 }
 function storeCompany(p: Person, a: Asset): void { p.data.npcCompany = a as unknown as Json }
+/** A name no other company in this life uses: "Cooper Café", then "Jamie Cooper Café" for the spouse. */
+function freshCompanyName(g: GameState, p: Person, kind: string): string {
+  const taken = new Set([...g.assets.map((a) => a.name), ...g.people.flatMap((q) => { const name = rec(q.data.npcCompany)?.name; return typeof name === 'string' ? [name] : [] })])
+  const full = `${p.firstName} ${p.lastName} ${kind}`
+  const name = [`${p.lastName} ${kind}`, full].find((n) => !taken.has(n))
+  if (name) return name
+  let i = 2
+  while (taken.has(`${full} ${i}`)) i++
+  return `${full} ${i}`
+}
 export function startNpcCompany(g: GameState, p: Person, industry?: Industry): boolean {
   if (!p.alive || p.age < 21 || npcCompany(p, g.year)) return false
   const l = initializeNpc(g, p), local = getCountry(l.country)
@@ -125,7 +135,7 @@ export function startNpcCompany(g: GameState, p: Person, industry?: Industry): b
   p.money -= capital + cost.fee + cost.permits
   const b = newBiz(g, chosen, l.country, local.cities[0], { founderName: `${p.firstName} ${p.lastName}`, npcOwnerId: p.id, cash: capital - cost.capital * .8, invested: capital, ceo: 'manager', manager: { firstName: p.firstName, lastName: p.lastName, gender: p.gender, skill: l.skill, salary: 0, since: g.year } })
   b.production = initialProduction(g, b); b.valuation = valuationOf(b)
-  const a = createBusinessAsset(g, `${p.lastName} ${chosen === 'cafe' ? 'Café' : 'Company'}`, b, capital)
+  const a = createBusinessAsset(g, freshCompanyName(g, p, chosen === 'cafe' ? 'Café' : 'Company'), b, capital)
   refreshValue(a, b); storeCompany(p, a)
   p.occupation = 'Business Owner'; l.employer = a.name
   milestone(g, p, l, `founded ${a.name} using ${money(capital + cost.fee + cost.permits)} of personal savings`)
@@ -424,7 +434,7 @@ export function npcLifeNodes(g: GameState, p: Person): MenuNode[] {
   if (!l) return npcHasMainCharacter(p) ? [{ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: 'Main Character Syndrome — inherited from family. Every talent; masters skills through first use as they grow up.' }] : []
   const close = p.relationship >= 35 || p.livesWithPlayer
   const company = npcCompany(p, g.year)
-  const nodes: MenuNode[] = [{ type: 'info', id: `npc.life.${p.id}`, emoji: '📖', text: `Life & Career — ${p.occupation}${l.employer ? ` at ${l.employer}` : ''}. Lives in ${l.city || getCountry(l.country).cities[0]}, ${getCountry(l.country).name}. ${l.achievements.join('; ') || (l.study > 0 ? `Studying ${l.field}` : 'No known higher qualification')}. ${close ? `Experience ${l.experience} years · professional skill ${Math.round(l.skill)}/100 · approximate net wealth ${money(npcWorth(p, g.year, g))}. Ambition ${Math.round(l.ambition)}/100.` : 'Private finances are not known to you.'}\n${close ? l.history.slice(-6).join('\n') : ''}` }]
+  const nodes: MenuNode[] = [{ type: 'info', id: `npc.life.${p.id}`, emoji: '📖', text: `Life & Career — ${p.occupation}${l.employer ? ` at ${l.employer}` : ''}. Lives in ${l.city || getCountry(l.country).cities[0]}, ${getCountry(l.country).name}. ${l.achievements.join('; ') || (l.study > 0 ? `Studying ${l.field}` : 'No known higher qualification')}. ${close ? `Experience ${l.experience} years · professional skill ${Math.round(l.skill)}/100 · net worth incl. property & companies about ${money(npcWorth(p, g.year, g))}. Ambition ${Math.round(l.ambition)}/100.` : 'Private finances are not known to you.'}\n${close ? l.history.slice(-6).join('\n') : ''}` }]
   if (npcHasMainCharacter(p)) nodes.push({ type: 'info', id: `npc.talent.${p.id}`, emoji: '🌟', text: `Main Character Syndrome — every talent; masters skills through first use.${close ? ` Ambition ${Math.round(l.ambition)}/100: ${l.ambition >= 80 ? 'may build a competing family business' : l.ambition >= 65 ? 'wants an independent business' : 'prefers a career or a quieter life'}.${typeof p.data.rivalOf === 'string' && company ? ` ${company.a.name} competes in your industry.` : ''}` : ''}` })
   if (!company || !p.alive || !close) return nodes
   const { a, b } = company

@@ -234,6 +234,10 @@ describe('conglomerates under review', () => {
     const buyer = grp0.members[0]
     const sister = grp0.members[1]
     const v = marketViewOf(g, buyer.b)
+    // Buy-outs need sales of at least a third of the target's: give the buyer a year that size.
+    const smallest = v.rivals.filter((r) => !r.legacy).sort((x, y) => x.share - y.share)[0]
+    const lb = bizOf(g, buyer.a)
+    lb.last = { ...lb.last!, revenue: Math.max(lb.last!.revenue, smallest.share * v.size) }
     const target = v.rivals.find((r) => {
       if (r.legacy) return false
       const q = acquisitionQuote(g, buyer.b, r.id)

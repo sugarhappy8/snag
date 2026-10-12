@@ -347,7 +347,10 @@ describe('competition: antitrust', () => {
     const sa = company(s, 'software', { outlets: 3, cash: 1e10 })
     nextYear(s)
     const sb = bizOf(s, sa)
-    const target = marketViewOf(s, sb).rivals.filter((r) => !r.legacy).slice(-1)[0]
+    const sv = marketViewOf(s, sb)
+    const target = sv.rivals.filter((r) => !r.legacy).slice(-1)[0]
+    // Buy-outs need a buyer at least a third of the target's size by sales; antitrust looks at share.
+    sb.last = { ...sb.last!, revenue: Math.max(sb.last!.revenue, target.share * sv.size) }
     const sq = acquisitionQuote(s, sb, target.id)!
     expect(sq.block).toBeNull()
     expect(sq.price).toBeGreaterThan(0)

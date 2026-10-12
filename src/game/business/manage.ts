@@ -2018,7 +2018,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
-  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', children: gg => { const aa = findBusiness(gg, a.id); return aa ? rescueNodes(gg, aa) : [] } })
+  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? rescueNodes(gg, aa) : [] } })
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
   nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
   nodes.push(equityMenu(a.id))

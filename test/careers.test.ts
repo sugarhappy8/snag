@@ -382,6 +382,18 @@ describe('job activities', () => {
     expect(g.character.job.category).toBe('military')
   })
 
+  it('marks full-time listings unavailable for a full-time student before you tap them', () => {
+    const g = adult(32, 20)
+    g.character.education.current = { level: 'university', school: 'Test U', year: 2, totalYears: 4, grades: 70, major: 'History', data: {} }
+    const jobs = occupationMenu.children(g).find((n) => n.id === 'occupation.jobs') as MenuGroup
+    const listing = jobs.children(g).find((n): n is MenuAction => n.type === 'action' && n.id.startsWith('listing.'))!
+    expect(listing.disabledReason?.(g)).toMatch(/full-time student/)
+    const part = (occupationMenu.children(g).find((n) => n.id === 'occupation.parttime') as MenuGroup).children(g).find((n): n is MenuAction => n.type === 'action')!
+    expect(part.disabledReason?.(g) ?? null).toBeNull()
+    g.character.education.current = null
+    expect(listing.disabledReason?.(g) ?? null).toBeNull()
+  })
+
   it('the job recruiter pitches you to two employers a year from its CV-ranked matches', () => {
     const g = adult(30)
     const rec = jobNode(g, 'occupation.recruiter') as MenuGroup

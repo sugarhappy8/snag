@@ -40,6 +40,7 @@ const { ribbonTiles, RibbonsScreen } = await import('../src/ui/screens/RibbonsSc
 const { sortGraves, graveStats, bulldozeGrave, GraveyardScreen } = await import('../src/ui/screens/GraveyardScreen')
 const { guessCountryId, cleanName, rollFirstName, rollLastName, NewLifeScreen } = await import('../src/ui/screens/NewLifeScreen')
 const { HomeScreen, summarizeLife } = await import('../src/ui/screens/HomeScreen')
+const { PersonDetails } = await import('../src/ui/components/PersonSheet')
 const { SettingsScreen } = await import('../src/ui/screens/SettingsScreen')
 
 // Minimal in-memory localStorage for node.
@@ -127,6 +128,11 @@ describe('death screen helpers', () => {
     expect(labels).toContain('Crimes')
     expect(labels).not.toContain('Murders')
     expect(deathFacts(g).find((f) => f.label === 'Net worth')?.value).toBe('$125,000')
+    // Playtest: "Degrees: 1" for a life whose only diploma was high school.
+    g.character.education.degrees = [{ kind: 'highschool', name: 'High School Diploma', school: 'Central High', age: 18 }]
+    expect(deathFacts(g).map((f) => f.label)).not.toContain('Degrees')
+    g.character.education.degrees.push({ kind: 'bachelor', name: "Bachelor's in History", school: 'State University', age: 22 })
+    expect(deathFacts(g).find((f) => f.label === 'Degrees')?.value).toBe('1')
   })
 
   it('writes who mourned', () => {
@@ -260,6 +266,11 @@ describe('screens render', () => {
     const html = render(createElement(GraveyardScreen))
     expect(html).toContain('Zara Quill')
     expect(html).toContain('age 77')
+    // A dynasty's fortune still fits the "richest" tile and the grave row.
+    localStorage.setItem('anotherlife.graveyard.v1', JSON.stringify([grave('r', 'Rich Quill', 90, 1.6e16)]))
+    const rich = render(createElement(GraveyardScreen))
+    expect(rich).toContain('<strong>$16Qa</strong>')
+    expect(rich).not.toContain('quadrillion</strong>')
   })
 
   it('death screen shows the tombstone, ribbon and heirs', () => {
@@ -281,5 +292,13 @@ describe('screens render', () => {
     expect(html).toContain('Continue as Junie')
     expect(html).toContain(`${g.year - 70} – ${g.year}`)
     expect(kid.alive).toBe(true)
+  })
+
+  it("labels a relative's money as cash on hand, not as their wealth", () => {
+    const g = makeTestGame(10, { age: 30 })
+    const mom = createPerson(g, { relation: 'parent', age: 58, relationship: 80, money: 12_000 })
+    const html = render(createElement(PersonDetails, { g, person: mom }))
+    expect(html).toContain('Cash on hand')
+    expect(html).not.toMatch(/>Money</)
   })
 })

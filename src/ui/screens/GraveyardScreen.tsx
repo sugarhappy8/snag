@@ -1,7 +1,7 @@
 // Graveyard: every past life with its ribbon, years, cause of death and net worth. Tap a grave
 // to read the obituary; sort like the original's cemetery; bulldoze graves you'd rather forget.
 import { useMemo, useState } from 'react'
-import { formatMoney, shortMoney, withMoneyContext } from '../../game/core'
+import { formatMoney, tinyMoney, withMoneyContext } from '../../game/core'
 import { getRibbon } from '../../game/ribbons'
 import { loadGraveyard, removeFromGraveyard, type GraveyardEntry } from '../../game/save'
 import { goBack, goTo } from '../store'
@@ -127,7 +127,7 @@ export function GraveyardScreen() {
               <span>oldest age</span>
             </div>
             <div>
-              <strong>{stats.richest ? withMoneyContext(stats.richest.countryId ? { countryId: stats.richest.countryId, year: stats.richest.diedYear, nominalScale: stats.richest.nominalScale, usdNominalScale: stats.richest.usdNominalScale } : null, () => shortMoney(stats.richest!.netWorth)) : '–'}</strong>
+              <strong>{stats.richest ? withMoneyContext(stats.richest.countryId ? { countryId: stats.richest.countryId, year: stats.richest.diedYear, nominalScale: stats.richest.nominalScale, usdNominalScale: stats.richest.usdNominalScale } : null, () => tinyMoney(stats.richest!.netWorth)) : '–'}</strong>
               <span>richest</span>
             </div>
           </section>
@@ -163,7 +163,7 @@ export function GraveyardScreen() {
                         {e.bornYear}–{e.diedYear} · age {e.age} · {e.causeOfDeath}
                       </span>
                     </span>
-                    <span className={`grave-worth ${e.netWorth < 0 ? 'neg' : ''}`}>{withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear, nominalScale: e.nominalScale, usdNominalScale: e.usdNominalScale } : null, () => shortMoney(e.netWorth))}</span>
+                    <span className={`grave-worth ${e.netWorth < 0 ? 'neg' : ''}`}>{withMoneyContext(e.countryId ? { countryId: e.countryId, year: e.diedYear, nominalScale: e.nominalScale, usdNominalScale: e.usdNominalScale } : null, () => tinyMoney(e.netWorth))}</span>
                   </button>
                   {isOpen ? (
                     <div className="grave-body">

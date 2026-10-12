@@ -470,7 +470,7 @@ describe('Investment firms 2.0: founding, reports and menus', () => {
       const m = g.queue.shift()!
       if (m.kind === 'input') runScript(g, m.scriptId, m.defaultValue ?? 'Test Capital', m.data, m)
       else if (m.kind === 'choice' && m.source === 'script') {
-        if (m.scriptId === 'business.found.investmentModel') { offered = m.choices.map(c => c.id); runScript(g, m.scriptId, pickType, m.data, m); continue }
+        if (m.scriptId === 'business.found.investmentModel') { expect(m.choices[m.choices.length - 1].id).toBe('cancel'); offered = m.choices.map(c => c.id).filter(id => id !== 'cancel'); runScript(g, m.scriptId, pickType, m.data, m); continue }
         runScript(g, m.scriptId!, m.choices.find(c => c.id === 'savings')?.id ?? m.choices[0].id, m.data, m)
       }
     }

@@ -192,7 +192,7 @@ plain records. Quota failures must never prevent saving the current life.
     alcohol/nightlife at the drinking age, crime from ~11-14 depending on the crime. Prisoners only
     see prison activities. Dead characters can do nothing.
 11. **Money stays in constant 2026 US dollars inside the engine.** Display with `formatMoney` /
-    `shortMoney` only, at render/action time. The settings select local currency or USD and nominal
+    `shortMoney` (`tinyMoney` for narrow tiles) only, at render/action time. The settings select local currency or USD and nominal
     year prices or today's prices. Mark both `MenuInput` and `InputModal` money amounts with
     `money: true`; their bounds/defaults stay internal dollars and the UI converts exactly once.
     Never cache formatted strings at module load. Use `withMoneyContext` for another person's

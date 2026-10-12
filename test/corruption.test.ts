@@ -191,5 +191,11 @@ describe('fictional backroom favors', () => {
     ].join(' ')
     expect(text).toMatch(/fictional/i)
     expect(text).not.toMatch(/wire transfer|bank account|cash drop|contact details/i)
+    // One short content note in the section header; the rows themselves read like the game.
+    const rows = corruptionMenu.children(g).flatMap((node) => node.type === 'action'
+      ? [node.label, typeof node.subtitle === 'function' ? node.subtitle(g) : node.subtitle, typeof node.confirm === 'function' ? node.confirm(g) : node.confirm]
+      : []).join(' ')
+    expect(rows).not.toMatch(/fictional|life-sim|mechanic/i)
+    expect(corruptionMenu.subtitle).not.toMatch(/fictional/i)
   })
 })
