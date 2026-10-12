@@ -2,7 +2,7 @@
 import { inflationRate, isHistoryYear } from '../invest/engine'
 import { brokerEra, CALLS, indexLabel, marketYearOf, STRATEGIES, STYLES, TYPE_INFO } from './fund-model'
 import type { FundState } from './fund-state'
-import { fundTvpi, roman, stageLabel } from './fund-vc'
+import { fundTvpi, roman, stageLabel, VC_INVEST_YEARS } from './fund-vc'
 import type { BizState } from './state'
 import { money, pct, units } from './util'
 
@@ -38,7 +38,7 @@ export function lastLine(b: BizState, f: FundState): string {
   const L = f.last
   if (f.type === 'broker') return `${f.lastYear}: ${units(L.trades)} trades · ${L.flow >= 0 ? '+' : '−'}${units(Math.abs(L.flow))} accounts · revenue ${money(L.fees)}`
   if (f.type === 'vc') return `${f.lastYear}: fees and carry ${money(L.fees)}${L.carry > 0 ? ` (carry ${money(L.carry)})` : ''}${L.rank >= 0 ? ` · funds ${L.ret.toFixed(1)}× · ${rankText(L.rank)}` : ''}`
-  return `${f.lastYear}: clients ${signed(L.ret)} vs ${indexLabel(b.countryId, marketYearOf(f.lastYear))} ${signed(L.market)} · ${rankText(L.rank)}`
+  return `${f.lastYear}: clients ${signed(L.ret)} vs ${indexLabel(b.countryId, marketYearOf(f.lastYear))} ${signed(L.market)}${L.rank >= 0 ? ` · ${rankText(L.rank)}` : ''}`
 }
 
 /** "Returns are after inflation" when inflation was high enough to matter. */
@@ -54,7 +54,19 @@ export function fundLine(f: FundState, n: number, year: number): string {
   if (!x) return ''
   const cos = f.cos.filter(c => c.fund === n)
   const live = cos.filter(c => c.status === 'live').length
-  return `Fund ${roman(n)} (${x.vintage}) · ${money(x.size)} · ${cos.length} startups (${live} alive) · ${fundTvpi(f, x).toFixed(1)}× · ${x.done ? 'closed' : year - x.vintage < 5 && x.dry > 0 ? `${money(x.dry)} to invest` : 'harvesting'}`
+  // A fund that hasn't backed anyone has no multiple yet (0.0× would read as "lost everything").
+  const book = x.invested > 0 ? `${cos.length} startups (${live} alive) · ${fundTvpi(f, x).toFixed(1)}×` : 'no startups yet'
+  const state = x.done ? 'closed' : year - x.vintage < VC_INVEST_YEARS && x.dry > x.size * .03 ? `${money(x.dry)} to invest` : live ? 'harvesting' : 'done investing'
+  return `Fund ${roman(n)} (${x.vintage}) · ${money(x.size)} · ${book} · ${state}`
+}
+
+/** The "what now" sentence of the founding popup, for each firm type. */
+export function foundingNote(f: FundState): string {
+  if (f.type === 'asset') return ' Pick a fund style and fee in Financial Operations. Clients’ money stays theirs: you earn the fee.'
+  if (f.type === 'hedge') return ` Pick a strategy in Financial Operations. You earn ${pct(f.mgmt)} a year plus ${pct(f.perf)} of gains above the high-water mark.`
+  if (f.type === 'broker') return ' Set your commission in Financial Operations. Clients’ accounts stay theirs: you earn on their trades.'
+  const fund = f.funds[f.funds.length - 1]
+  return ` LPs committed ${money(fund?.size ?? 0)} to Fund I (their money, not yours). Back founders from This Year’s Pitches: you earn 2% a year and 20% of profits.`
 }
 
 /** A stored news code turned into a line (startup news, algorithm results). */

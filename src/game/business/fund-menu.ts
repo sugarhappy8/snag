@@ -9,7 +9,7 @@ import { brokerEra, CALLS, quantBlock, STRATEGIES, STYLES, styleBlock } from './
 import { bestCommission, bestFee, commissionOutlook, feeOutlook, hedgeFeeOutlook, strategyOutlook, styleOutlook } from './fund-outlook'
 import { readFund, type FundState, type FundStyle, type HedgeStrategy, type MacroCall } from './fund-state'
 import { fundLine, lastLine, newsLine, rankText, signed, typeLine } from './fund-text'
-import { ddCost, ddDone, gutRead, investingFund, openPitches, proRata, raiseQuote, readLabel, roman, stageLabel, type Pitch } from './fund-vc'
+import { ddCost, ddDone, gutRead, investingFund, openPitches, pitchesFor, proRata, raiseQuote, readLabel, roman, stageLabel, type Pitch } from './fund-vc'
 import { manageBlock } from './gate'
 import { findBusiness, readBiz, type BizState } from './state'
 import { money, pct, units } from './util'
@@ -170,9 +170,14 @@ function vcNodes(a: Asset, f: FundState, act: Act): MenuNode[] {
   const id = a.id
   const nodes: MenuNode[] = f.funds.filter(x => !x.done).slice(-3).map(x => ({ type: 'info' as const, id: `fund.${id}.fund.${x.n}`, emoji: '🏦', text: (gg: GameState) => { const v = view(gg, a); return v ? fundLine(v.f, x.n, gg.year) : '' } }))
   nodes.push({ type: 'menu', id: `fund.${id}.pitches`, label: 'This Year’s Pitches', emoji: '🎤',
-    subtitle: gg => { const v = view(gg, a); const n = v ? openPitches(gg, v.b, v.f, gg.year).length : 0; return n ? `${n} founders waiting` : 'No pitches right now' },
+    subtitle: gg => { const v = view(gg, a); return v ? pitchStatus(gg, v.b, v.f) : '' },
     header: () => 'Most startups fail. A few return the whole fund.',
-    children: gg => { const v = view(gg, a); return v ? openPitches(gg, v.b, v.f, gg.year).map(p => pitchNode(a, p, act)) : [] } })
+    children: gg => {
+      const v = view(gg, a)
+      if (!v) return []
+      const open = openPitches(gg, v.b, v.f, gg.year)
+      return open.length ? open.map(p => pitchNode(a, p, act)) : [{ type: 'info', id: `fund.${id}.pitches.none`, emoji: '📭', text: pitchStatus(gg, v.b, v.f) }]
+    } })
   nodes.push({ type: 'menu', id: `fund.${id}.portfolio`, label: 'Portfolio', emoji: '📂',
     subtitle: gg => { const v = view(gg, a); return v ? `${v.f.cos.filter(c => c.status === 'live').length} live startups` : '' },
     children: gg => portfolioNodes(gg, a, act) })
@@ -182,6 +187,15 @@ function vcNodes(a: Asset, f: FundState, act: Act): MenuNode[] {
     hint: gg => raiseHint(gg, a) || null,
   }))
   return nodes
+}
+
+/** Why founders are (or aren't) waiting this year, in one short line. */
+function pitchStatus(g: GameState, b: BizState, f: FundState): string {
+  const n = openPitches(g, b, f, g.year).length
+  if (n) return `${n} founder${n > 1 ? 's' : ''} waiting`
+  if (pitchesFor(g, b, f, g.year).length) return 'You’ve heard every pitch this year. More next year.'
+  const latest = f.funds.filter(x => !x.done).slice(-1)[0]
+  return latest ? `Fund ${roman(latest.n)} has finished investing. Raise a new fund to hear new pitches.` : 'Raise a fund to hear pitches.'
 }
 
 function raiseHint(g: GameState, a: Asset): string {
@@ -201,11 +215,15 @@ function portfolioNodes(g: GameState, a: Asset, act: Act): MenuNode[] {
     if (!c.round) return { type: 'info' as const, id: `fund.${id}.co.${c.id}`, emoji: c.emoji, text: row }
     const round = c.round
     const want = proRata(c, round)
-    const choice = round.take === 1 ? 'investing' : round.take === 0 ? 'passing' : 'auto: invest if the fund can'
+    // The round closes at the next birthday: a fund without the money left gets diluted anyway.
+    const fund = v.f.funds.find(x => x.n === c.fund)
+    const short = !fund || fund.dry < want
+    const choice = round.take === 0 ? 'passing' : short ? `Fund ${roman(c.fund)} can’t cover it: diluted` : round.take === 1 ? 'investing' : 'auto: invest if the fund can'
     return { type: 'menu' as const, id: `fund.${id}.co.${c.id}`, label: `${c.name} is raising`, emoji: c.emoji, subtitle: `${stageLabel(round.stage)} at ${money(round.pre)} · keep our stake for ${money(want)} · ${choice}`,
       header: () => row,
       children: () => [
-        act(`co.${c.id}.in`, `Invest ${money(want)} to keep our stake`, '💰', g2 => { setFollowOn(g2, id, c.id, true) }, { stayOpen: true, hint: g2 => talentRead(g2, `${c.id}|follow`, c.q) || null }),
+        act(`co.${c.id}.in`, `Invest ${money(want)} to keep our stake`, '💰', g2 => { setFollowOn(g2, id, c.id, true) }, { stayOpen: true, hint: g2 => talentRead(g2, `${c.id}|follow`, c.q) || null,
+          ...(short ? { subtitle: `Fund ${roman(c.fund)} has only ${money(fund?.dry ?? 0)} left` } : {}) }),
         act(`co.${c.id}.out`, 'Pass and get diluted', '👋', g2 => { setFollowOn(g2, id, c.id, false) }, { stayOpen: true }),
       ] }
   })

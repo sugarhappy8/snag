@@ -15,7 +15,7 @@ import { brokerEra, CALLS, exchangeOf, fundSkill, indexLabel, marketYearOf, quan
 import { strategyOutlook, styleOutlook } from './fund-outlook'
 import { readFund, saveFund, type FundState, type FundStyle, type HedgeStrategy, type MacroCall } from './fund-state'
 import { fundLine, inflationNote, newsLine, rankText, signed } from './fund-text'
-import { gutRead, openPitches, readLabel, raiseQuote, roman } from './fund-vc'
+import { gutRead, openPitches, pitchesFor, readLabel, raiseQuote, roman, uniqueName } from './fund-vc'
 import { leadershipPower } from './leadership'
 import { bizOf, findBusiness, type BizState } from './state'
 import { clampN, money, pct, rec, str, units } from './util'
@@ -112,7 +112,7 @@ export function fundReport(g: GameState, a: Asset, b: BizState): void {
     const norm = brokerEra(b.countryId, g.year).normCommission
     if (f.commission > norm * 1.5 + .0005) lines.push(`💡 Rivals now charge about ${pct(norm, 2)} a trade. Your ${pct(f.commission, 2)} is driving clients away.`)
   } else {
-    lines.push(`🦄 ${s.year} · fees ${money(f.last.fees - f.last.carry)} · carry ${money(f.last.carry)} · profit ${money(s.net)}`)
+    lines.push(`🦄 ${s.year} · fees ${money(f.last.fees - f.last.carry)}${f.last.carry > 0 ? ` · carry ${money(f.last.carry)}` : ''} · profit ${money(s.net)} · cash ${money(b.cash)}`)
     lines.push(...f.funds.filter(x => !x.done).slice(-3).map(x => fundLine(f, x.n, g.year)))
     const waiting = openPitches(g, b, f, g.year).length
     if (waiting) lines.push(`🎤 ${waiting} founders are waiting to pitch you (see the dashboard).`)
@@ -172,15 +172,17 @@ export function fundYearlyChecks(g: GameState, b: BizState, a = assetOf(g, b)): 
   saveFund(b, f)
   if (f.probe && g.year > f.probe.year) {
     if (chance(g, f.probe.odds)) scriptChoice(g, PROBE, '📋 Regulators Are Calling', `Investigators want every record about ${a.name}’s trading. They suspect ${f.probe.crime.toLowerCase()}.`,
-      [{ id: 'cooperate', label: 'Cooperate fully (a lighter charge)', emoji: '🤝' }, { id: 'lawyer', label: `Fight with top lawyers (${money(lawyerFee(b))} of company cash)`, emoji: '⚖️', ...hintOf(g, 'Business', 'Lawyers make a conviction less likely, not impossible, and the charge is heavier') }],
+      [{ id: 'cooperate', label: 'Cooperate fully (a lighter charge)', emoji: '🤝' }, { id: 'lawyer', label: `Fight with top lawyers (${money(lawyerFee(b))})`, emoji: '⚖️', ...hintOf(g, 'Business', 'Lawyers make a conviction less likely, not impossible, and the charge is heavier') }],
       { emoji: '📋', data: { assetId: a.id } as Json })
     else if (g.year - f.probe.year >= 3) { f.probe = null; saveFund(b, f); log(g, `The regulators quietly closed their file on ${a.name}.`, 'good') }
   }
   if (f.ponzi && g.year > f.ponzi.since) {
     const gap = clampN(f.ponzi.hole / Math.max(1, f.aum), 0, 1)
     const odds = clampN(.12 + gap * .6 + (f.last.market < -.15 ? .3 : 0) + (b.ceo === 'manager' ? .4 : 0), 0, .95)
-    if (chance(g, odds)) scriptChoice(g, PONZI_END, '🔥 The Scheme Is Unraveling', `Withdrawals at ${a.name} can’t be paid: ${money(f.ponzi.hole)} of client money doesn’t exist. Auditors are on the way.`,
-      [{ id: 'cover', label: `Plug the hole with your own money (${money(f.ponzi.hole)})`, emoji: '💸' }, { id: 'face', label: 'Face the music', emoji: '⚖️' }],
+    // Plugging the hole is only offered to someone who can actually pay for it.
+    const canCover = g.character.money >= Math.round(f.ponzi.hole)
+    if (chance(g, odds)) scriptChoice(g, PONZI_END, '🔥 The Scheme Is Unraveling', `Withdrawals at ${a.name} can’t be paid: ${money(f.ponzi.hole)} of client money doesn’t exist. Auditors are on the way.${canCover ? '' : ' You don’t have the money to cover it.'}`,
+      [...(canCover ? [{ id: 'cover', label: `Plug the hole with your own money (${money(f.ponzi.hole)})`, emoji: '💸' }] : []), { id: 'face', label: 'Face the music', emoji: '⚖️' }],
       { emoji: '🔥', data: { assetId: a.id } as Json })
   }
 }
@@ -205,9 +207,11 @@ export const PROBE = defineScript('fund.probe', (g, choice, data) => {
   // Cooperating means a lighter charge; top lawyers make a conviction less likely.
   let evidence = .75, severity = 2
   if (choice === 'lawyer') {
+    // The firm pays if it can, otherwise you do; with no money for lawyers you end up cooperating.
     const fee = lawyerFee(b)
-    severity = 3
-    if (b.cash >= fee) { b.cash -= fee; b.yearCosts += fee; evidence = .45 }
+    if (b.cash >= fee) { b.cash -= fee; b.yearCosts += fee; evidence = .45; severity = 3 }
+    else if (spend(g, fee)) { evidence = .45; severity = 3 }
+    else log(g, `I couldn't afford the lawyers, so I cooperated with the regulators after all.`, 'bad')
   }
   saveFund(b, f)
   arrestPlayer(g, probe.crime, severity, { evidence, noResist: true, context: `Regulators traced suspicious trades at ${a.name}.` })
@@ -305,7 +309,8 @@ const EVENTS: FundEvent[] = [
   },
   {
     id: 'tip',
-    weight: (_g, _b, f) => f.type === 'vc' || f.probe ? 0 : .7,
+    // Only a firm that runs a fund can "load the fund up" (a brokerage's own book never trades it).
+    weight: (_g, _b, f) => (f.type === 'asset' || f.type === 'hedge') && !f.probe ? .7 : 0,
     present: (g, a) => {
       const co = pick(g, COMPANIES), who = pick(g, TIPSTERS)
       ask(g, a, 'tip', '🤫 A Hot Tip', `${who[0].toUpperCase()}${who.slice(1)} who works at ${co} whispers that ${co} is about to be bought at a big premium. Nobody else knows yet.`,
@@ -463,11 +468,13 @@ const EVENTS: FundEvent[] = [
   {
     id: 'fomo',
     weight: (g, _b, f) => f.type === 'vc' && f.funds.some(x => !x.done && g.year - x.vintage < 5 && x.dry > x.size * .1) ? .8 : 0,
-    present: (g, a, _b, f) => {
+    present: (g, a, b, f) => {
       const fund = [...f.funds].reverse().find(x => !x.done && g.year - x.vintage < 5 && x.dry > x.size * .1)!
       const amount = Math.round(Math.min(fund.dry, fund.size * .06) / 10_000) * 10_000
       const q = Math.round(100 * Math.pow(Math.max(0, Math.min(1, randFloat(g, 0, 1))), 1.3))
-      const name = `${pick(g, ['Hype', 'Rocket', 'Moon', 'Turbo', 'Mega'])}${pick(g, ['ly', 'ify', 'Labs', 'Works', 'Hub'])}`
+      // Never the name of a startup the firm already backed or is hearing this year.
+      const taken = new Set([...f.cos.map(c => c.name.toLowerCase()), ...pitchesFor(g, b, f, g.year).map(p => p.name.toLowerCase())])
+      const name = uniqueName(`${pick(g, ['Hype', 'Rocket', 'Moon', 'Turbo', 'Mega'])}${pick(g, ['ly', 'ify', 'Labs', 'Works', 'Hub'])}`, taken)
       const read = gutRead(g, `fomo|${g.year}|${name}`, q)
       ask(g, a, 'fomo', '🔥 Everyone Wants In', `${name} is the hottest startup in town. The founder gives you 24 hours to invest ${money(amount)} at a crazy valuation, or a rival fund gets it.`,
         [choice('invest', `Invest ${money(amount)} from Fund ${roman(fund.n)}`, '💸', talentHint(g, hasTalent(g, 'Business') ? 'Business' : 'Investing', `Your read: ${readLabel(read)}`)), choice('pass', 'Pass on the hype', '🧊')],

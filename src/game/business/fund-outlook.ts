@@ -79,10 +79,15 @@ export function bestStrategy(g: GameState, b: BizState, f: FundState): StrategyO
 export function hedgeFeeOutlook(g: GameState, b: BizState, f: FundState, mgmt: number, perf: number): { revenue: number; flow: number } {
   const o = strategyOutlook(g, b, f, f.strategy)
   const gross = Math.max(0, o.expected)
-  const revenue = f.aum * (1 + gross) * mgmt + perf * f.aum * Math.max(0, gross - mgmt)
-  const flow = hedgeFlow({ rep: f.rep, rank: .5, net: gross - mgmt - perf * Math.max(0, gross - mgmt), mgmt, perf, underWater: false, sales: leadershipPower(b, 'sales'),
+  // The year's fee math: management fee on year-end assets, performance fee only above the
+  // high-water mark (a fund under water earns none until clients are made whole).
+  const afterRet = f.aum * (1 + gross), fee = mgmt * afterRet
+  const perfFee = perf * Math.max(0, afterRet - fee - f.hwm)
+  const afterFees = afterRet - fee - perfFee
+  const net = f.aum > 0 ? afterFees / f.aum - 1 : gross - mgmt
+  const flow = hedgeFlow({ rep: f.rep, rank: .5, net, mgmt, perf, underWater: afterFees < f.hwm * .9, sales: leadershipPower(b, 'sales'),
     boost: 0, age: g.year - b.founded, aum: f.aum, pool: poolSize(b.countryId, g.year) })
-  return { revenue, flow }
+  return { revenue: fee + perfFee, flow }
 }
 
 /** Brokerage pricing: activity and account growth from the commission against the era's rate. */
