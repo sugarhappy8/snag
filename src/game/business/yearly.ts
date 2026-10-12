@@ -401,6 +401,15 @@ function updateJob(g: GameState, a: Asset, b: BizState, s: Statement): void {
   job.performance = Math.round(clampN(50 + margin * 150 + growth * 40, 5, 100))
 }
 
+/** The hired (or interim) CEO's plan for the coming year, by kind of company. */
+function hiredCeoTurn(g: GameState, a: Asset, b: BizState, lastCycle: number): void {
+  if (isStudio(b)) studioManagerTurn(g, a, b)
+  // A deep-tech manager plans price and output with the tech model; the generic autoPlan can't see it.
+  else if (isDeepTech(b)) deepTechManagerTurn(g, a, b)
+  else if (isFinanceFirm(b)) financeManagerTurn(g, b)
+  else managerTurn(g, a, b, lastCycle)
+}
+
 /** One fiscal year for every business the player owns. */
 export function yearlyBusinessImpl(g: GameState): void {
   const c = g.character
@@ -528,6 +537,9 @@ export function yearlyBusinessImpl(g: GameState): void {
     if (b.cash < 0) groupRescue(g, a, b)
     if (b.cash < 0) {
       queueCrunch(g, a, b)
+      // A hired (or interim) CEO still plans the coming year; the popup only decides how the hole
+      // is filled. Without this a managed company in a crunch kept last year's stale plan forever.
+      if (!runsIt(g, a) || c.prison) hiredCeoTurn(g, a, b, lastCycle)
       continue
     }
     const managed = !runsIt(g, a)
@@ -540,13 +552,7 @@ export function yearlyBusinessImpl(g: GameState): void {
     if (!eventQueued && (maybeVenueOwnerEvent(g, a, b, fiscal, managed) || (studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
     // Regulators come for dominant companies on their own schedule (not the random-event roll).
     maybeAntitrust(g, a, b, fiscal, managed)
-    if (!plans) {
-      if (studio) studioManagerTurn(g, a, b)
-      // A deep-tech manager plans price and output with the tech model; the generic autoPlan can't see it.
-      else if (tech) deepTechManagerTurn(g, a, b)
-      else if (isFinanceFirm(b)) financeManagerTurn(g, b)
-      else managerTurn(g, a, b, lastCycle)
-    }
+    if (!plans) hiredCeoTurn(g, a, b, lastCycle)
   }
   // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
   settleInternalServices(g, fiscal)
