@@ -409,7 +409,8 @@ export const ERA_RULES: readonly EraRule[] = [
   { id: 'drive-thru', re: /\bdrive-?thrus?\b|\bdrive-?through\b/i, year: 1948 },
   { id: 'food delivery', re: /\bdelivery apps?\b|\bfood delivery\b/i, tech: 'smartphone' },
   { id: 'baby shark', re: /\bbaby shark\b/i, year: 2016 },
-  { id: 'moon landing', re: /\bmoon landing\b|\bwalk(ed|ing)? on the moon\b/i, year: 1969 },
+  // Wondering whether anyone *will* walk on the moon is exactly what people did before 1969.
+  { id: 'moon landing', re: /\bmoon landing\b|(?<!\bwill (ever )?)\bwalk(ed|ing)? on the moon\b/i, year: 1969 },
   { id: 'color tv', re: /\bcolou?r (sets?|TVs?|televisions?|telly)\b/i, tech: 'colorTv' },
   { id: 'e-bike', re: /\be-?bikes?\b/i, year: 2005 },
 ]

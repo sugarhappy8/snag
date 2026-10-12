@@ -257,6 +257,9 @@ function lint(lives: number, first: number, last: number, actions: number): { li
 describe('the anachronism detector', () => {
   it('flags modern words before their technology and lets them through after', () => {
     expect(anachronismsIn('I texted my mom.', 1950, ['us'])).toContain('texting')
+    // Wondering whether anyone will walk on the moon is period talk; watching it happen is not.
+    expect(anachronismsIn('You argued about whether anyone will ever walk on the moon.', 1950, ['us'])).toEqual([])
+    expect(anachronismsIn('I watched the astronauts walk on the moon.', 1950, ['us'])).toContain('moon landing')
     expect(anachronismsIn('I texted my mom.', PRESENT_YEAR, ['us'])).toEqual([])
     expect(anachronismsIn('You posted a selfie online.', 1975, ['gb'])).toEqual(expect.arrayContaining(['selfie', 'internet']))
     expect(anachronismsIn('You posted a selfie online.', PRESENT_YEAR, ['gb'])).toEqual([])
