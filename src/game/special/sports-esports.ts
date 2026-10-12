@@ -206,7 +206,8 @@ export function esportsJob(g: GameState): Job | null {
   return myJob(g, 'sports.esports')
 }
 
-function ej(job: Job): EsJob {
+/** The esports pro's job record, normalized, without touching the job: safe in menus (renders are pure). */
+function ejView(job: Job): EsJob {
   const raw = view<Partial<EsJob>>(job.data)
   const normalized: EsJob = {
     game: typeof raw.game === 'string' && ES_GAMES.some((x) => x.id === raw.game) ? raw.game : ES_GAMES[0].id,
@@ -218,7 +219,12 @@ function ej(job: Job): EsJob {
     results: Array.isArray(raw.results) ? raw.results.filter((x): x is string => typeof x === 'string').map((x) => esText(x)).filter(Boolean).slice(-128) : [],
     earned: esNum(raw.earned),
   }
-  Object.assign(job.data, normalized)
+  return normalized
+}
+
+/** The esports pro's job record, normalized in place so actions and hooks can update it. */
+function ej(job: Job): EsJob {
+  Object.assign(job.data, ejView(job))
   return view<EsJob>(job.data)
 }
 
@@ -589,7 +595,7 @@ const scrimScript = defineScript('sports.es.scrim', (g, choice) => {
 export function esportsJobNodes(g: GameState): MenuNode[] {
   const job = esportsJob(g)
   if (!job) return []
-  const d = ej(job)
+  const d = ejView(job)
   const gm = game(d.game)
   const p = viewEs(g)
   const actions: MenuAction[] = [
@@ -702,7 +708,7 @@ export const esportsMenu: MenuGroup = {
   emoji: '\u{1F3AE}',
   subtitle: (g) => {
     const job = esportsJob(g)
-    if (job) return `Pro · ${game(ej(job).game).name}`
+    if (job) return `Pro · ${game(ejView(job).game).name}`
     const p = viewEs(g)
     if (p?.game) return `${game(p.game).name} · ${tierOf(p.mmr[p.game] ?? 0)}`
     return ESPORTS_HOTSPOTS.has(g.character.countryId) ? `Huge in ${getCountry(g.character.countryId).name}` : 'Competitive gaming: teams, tournaments, prize pools'

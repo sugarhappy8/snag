@@ -536,7 +536,8 @@ export function politicianJob(g: GameState): Job | null {
   return myJob(g, 'politician')
 }
 
-function pdata(job: Job): PolData {
+/** The politician's job record, normalized, without touching the job: safe in menus (renders are pure). */
+function pdataView(job: Job): PolData {
   const raw = job.data && typeof job.data === 'object' && !Array.isArray(job.data) ? job.data as unknown as Partial<PolData> : {}
   const office = OFFICES.some((o) => o.id === raw.office) ? raw.office as OfficeId : 'school'
   const issueIds = new Set(ISSUES.map((issue) => issue.id))
@@ -572,6 +573,12 @@ function pdata(job: Job): PolData {
     scandals: polNumber(raw.scandals, 0, 0, 1e6),
     termOver: raw.termOver === true,
   }
+  return normalized
+}
+
+/** The politician's job record, normalized in place so actions and hooks can update it. */
+function pdata(job: Job): PolData {
+  const normalized = pdataView(job)
   if (!job.data || typeof job.data !== 'object' || Array.isArray(job.data)) job.data = {}
   Object.assign(job.data, normalized)
   return view<PolData>(job.data)
@@ -583,7 +590,7 @@ function heldBefore(g: GameState, id: OfficeId): boolean {
 
 function termsServed(g: GameState, id: OfficeId): number {
   const job = politicianJob(g)
-  const current = job && pdata(job).office === id ? pdata(job).terms : 0
+  const current = job && pdataView(job).office === id ? pdataView(job).terms : 0
   const past = viewPol(g)
     .held.filter((h) => h.office === id && h.endAge !== null)
     .reduce((sum, h) => sum + Math.max(1, h.terms ?? 1), 0)
@@ -632,8 +639,8 @@ function runReason(g: GameState, o: OfficeDef, fromOffice = false): string | nul
   const board = c.countryId === 'us' ? 'the school board' : 'the city council'
   if (o.id === 'school' && !hasHighSchool(g)) return c.countryId === 'us' ? 'You need at least a high school diploma to run for the school board.' : `You need to have finished school to run for ${board}.`
   if (o.id === 'mayor' && !hasCollegeDegree(g) && !heldBefore(g, 'school')) return `You need a university degree or experience on ${board} to run for Mayor.`
-  if (o.id === 'governor' && !heldBefore(g, 'mayor') && !(fromOffice && politicianJob(g) && pdata(politicianJob(g)!).office === 'mayor')) return `You need to serve as Mayor before running for ${officeTitle(g, 'governor')}.`
-  if (o.id === 'leader' && !heldBefore(g, 'governor') && !(fromOffice && politicianJob(g) && pdata(politicianJob(g)!).office === 'governor')) {
+  if (o.id === 'governor' && !heldBefore(g, 'mayor') && !(fromOffice && politicianJob(g) && pdataView(politicianJob(g)!).office === 'mayor')) return `You need to serve as Mayor before running for ${officeTitle(g, 'governor')}.`
+  if (o.id === 'leader' && !heldBefore(g, 'governor') && !(fromOffice && politicianJob(g) && pdataView(politicianJob(g)!).office === 'governor')) {
     return `You need to serve as ${officeTitle(g, 'governor')} before running for ${leaderTitle(g)}.`
   }
   if (o.termLimit > 0 && termsServed(g, o.id) >= o.termLimit) return `You've already served the maximum ${o.termLimit} terms as ${officeTitle(g, o.id)}.`
@@ -1098,7 +1105,7 @@ function newBills(g: GameState, office: OfficeId): Bill[] {
 }
 
 function informed(g: GameState, job: Job): boolean {
-  return pdata(job).newsAge === g.character.age
+  return pdataView(job).newsAge === g.character.age
 }
 
 const newspaperAction: MenuAction = {
@@ -1192,7 +1199,7 @@ const speechAction: MenuAction = {
 }
 
 function rallyCost(job: Job): number {
-  return Math.round((officeOf(pdata(job).office).budgets[1] * 0.1) / 100) * 100
+  return Math.round((officeOf(pdataView(job).office).budgets[1] * 0.1) / 100) * 100
 }
 
 const rallyAction: MenuAction = {
@@ -1334,13 +1341,13 @@ function billsMenu(): MenuGroup {
     emoji: '\u{1F4DD}',
     subtitle: (g) => {
       const job = politicianJob(g)
-      const n = job ? pdata(job).bills.length : 0
+      const n = job ? pdataView(job).bills.length : 0
       return n ? `${n} bill${n === 1 ? '' : 's'} on your desk` : 'No bills on your desk'
     },
     children: (g): MenuNode[] => {
       const job = politicianJob(g)
       if (!job) return []
-      const d = pdata(job)
+      const d = pdataView(job)
       if (!d.bills.length) return [{ type: 'info', id: 'pol.bills.none', text: 'No bills are waiting on you. New ones arrive every year.', emoji: '\u{1F4DD}' }]
       return d.bills.map((b, i) => ({
         type: 'action' as const,
@@ -1374,7 +1381,7 @@ const fundraiseAction: MenuAction = {
   emoji: '\u{1F942}',
   subtitle: (g) => {
     const job = politicianJob(g)
-    return job ? `War chest: ${money(pdata(job).warChest)}` : ''
+    return job ? `War chest: ${money(pdataView(job).warChest)}` : ''
   },
   disabledReason: (g) => blocked(g, 0),
   run: (g) => {
@@ -1445,7 +1452,7 @@ const orderAction: MenuAction = {
   subtitle: 'Use the powers of your office',
   visible: (g) => {
     const job = politicianJob(g)
-    return !!job && officeOf(pdata(job).office).rank >= 2
+    return !!job && officeOf(pdataView(job).office).rank >= 2
   },
   disabledReason: (g) => blocked(g, 0),
   run: (g) => scriptChoice(g, HOLIDAY_SCRIPT, 'Executive Order', 'What will your executive order be?', ORDERS, { emoji: '\u{1F58A}\u{FE0F}' }),
@@ -1473,7 +1480,7 @@ const resignAction: MenuAction = {
 export function politicsJobNodes(g: GameState): MenuNode[] {
   const job = politicianJob(g)
   if (!job) return []
-  const d = pdata(job)
+  const d = pdataView(job)
   const o = officeOf(d.office)
   return [
     {
@@ -1626,13 +1633,13 @@ function abuseData(g: GameState): AbuseData {
 }
 
 function officeRank(job: Job | null): number {
-  return job ? officeOf(pdata(job).office).rank : -1
+  return job ? officeOf(pdataView(job).office).rank : -1
 }
 
 /** Can't be charged while in office: presidents, and leaders whose courts answer to them. */
 function immuneInOffice(g: GameState): boolean {
   const job = politicianJob(g)
-  if (!job || pdata(job).office !== 'leader') return false
+  if (!job || pdataView(job).office !== 'leader') return false
   return leaderTitle(g) === 'President' || marketOf(g.character.countryId).corruption >= 60
 }
 

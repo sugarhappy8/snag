@@ -191,7 +191,8 @@ export function musicJob(g: GameState): Job | null {
   return myJob(g, 'musician')
 }
 
-function md(job: Job): MusicJob {
+/** The musician's job record, normalized, without touching the job: safe in menus (renders are pure). */
+function mdView(job: Job): MusicJob {
   const raw = view<Partial<MusicJob>>(job.data)
   const normalized: MusicJob = {
     mode: raw.mode === 'band' ? 'band' : 'solo',
@@ -207,7 +208,12 @@ function md(job: Job): MusicJob {
     recordedAge: musicNumber(raw.recordedAge, -1, -1, 10_000),
     lastRelease: musicNumber(raw.lastRelease, -1, -1, 10_000),
   }
-  Object.assign(job.data, normalized)
+  return normalized
+}
+
+/** The musician's job record, normalized in place so actions and hooks can update it. */
+function md(job: Job): MusicJob {
+  Object.assign(job.data, mdView(job))
   return view<MusicJob>(job.data)
 }
 
@@ -228,7 +234,7 @@ function trendingSubgenre(g: GameState, genre: string): string {
 /** The audition score before the luck roll (no randomness: safe for hints). */
 function labelPull(g: GameState, instrument: string): number {
   const job = musicJob(g)
-  const pop = job ? md(job).popularity : 0
+  const pop = job ? mdView(job).popularity : 0
   return effectiveSkill(g, instrument) + fameOf(g) * 0.3 + pop * 0.3 + (musicTalent(g) ? 10 : 0)
 }
 
@@ -597,7 +603,7 @@ function release(g: GameState, job: Job, typeId: string, subgenre: string, title
 }
 
 function avgBandRelationship(g: GameState, job: Job): number {
-  const mates = md(job).bandmates.map((id) => getPerson(g, id)).filter((p) => !!p)
+  const mates = mdView(job).bandmates.map((id) => getPerson(g, id)).filter((p) => !!p)
   if (mates.length === 0) return 50
   return mates.reduce((s, p) => s + (p?.relationship ?? 50), 0) / mates.length
 }
@@ -736,7 +742,7 @@ const bandNameScript = defineScript('special.music.bandName', (g, value) => {
 })
 
 function bandNodes(g: GameState, job: Job): MenuNode[] {
-  const d = md(job)
+  const d = mdView(job)
   const mates = d.bandmates.map((id) => getPerson(g, id)).filter((p) => !!p)
   return [
     {
@@ -847,7 +853,7 @@ const quitMusic: MenuAction = {
 export function musicJobNodes(g: GameState): MenuNode[] {
   const job = musicJob(g)
   if (!job) return []
-  const d = md(job)
+  const d = mdView(job)
   const nodes: MenuNode[] = [
     musicMastersMenu,
     {
@@ -862,7 +868,7 @@ export function musicJobNodes(g: GameState): MenuNode[] {
       label: 'Album',
       emoji: '\u{1F4BF}',
       subtitle: 'Record a new album or single',
-      disabledReason: (gg) => blocked(gg, 0) ?? (musicJob(gg) && md(musicJob(gg)!).recordedAge === gg.character.age ? 'You can only release one album or single a year.' : null),
+      disabledReason: (gg) => blocked(gg, 0) ?? (musicJob(gg) && mdView(musicJob(gg)!).recordedAge === gg.character.age ? 'You can only release one album or single a year.' : null),
       run: (gg) => {
         const j = musicJob(gg)
         if (!j) return
