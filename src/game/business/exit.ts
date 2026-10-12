@@ -15,8 +15,12 @@ import { clampN, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
 import { payFamilyBusinessProceeds } from './dynasty-ownership'
 
-/** IPO threshold: last year's net profit, like the original's ~$300M rule. */
-export const IPO_PROFIT = 300_000_000
+/**
+ * IPO threshold: last year's net profit. Set where a successful mid-size company gets to (about
+ * $25M a year: a regional chain, a busy factory, a strong software house); the board still has to
+ * agree. Game studios and deep tech keep their own rules (ipoThreshold).
+ */
+export const IPO_PROFIT = 25_000_000
 
 /** Capital gains tax rate on selling a business or shares where the owner lives. */
 export function capitalGainsRate(g: GameState): number {
