@@ -145,7 +145,7 @@ describe('fund events', () => {
   it('lets a rich owner quietly plug the hole, at full personal cost', () => {
     const { g, a } = stage('hedge')
     const b = bizOf(g, a), f = readFund(b)
-    f.ponzi = { since: 2007, hole: 2_000_000, fees: 500_000 }; f.checkYear = 0; f.lastYear = g.year - 1; f.last.market = -.6
+    f.ponzi = { since: 2007, hole: 2_000_000, fees: 500_000, by: g.character.id }; f.checkYear = 0; f.lastYear = g.year - 1; f.last.market = -.6
     saveFund(b, f)
     g.character.money = 3_000_000
     for (let i = 0; i < 30 && !g.queue.some(q => q.kind === 'choice' && q.scriptId === 'fund.ponzi.end'); i++) { const x = readFund(b); x.checkYear = 0; saveFund(b, x); fundYearlyChecks(g, b, a) }
@@ -161,11 +161,30 @@ describe('fund events', () => {
     const { g, a } = stage('asset')
     expect(comeClean(g, a.id)).toBe(false)
     const b = bizOf(g, a), f = readFund(b)
-    f.ponzi = { since: 2007, hole: 1e6, fees: 0 }
+    f.ponzi = { since: 2007, hole: 1e6, fees: 0, by: g.character.id }
     saveFund(b, f)
     expect(comeClean(g, a.id)).toBe(true)
     expect(findBusiness(g, a.id)).toBeUndefined()
     expect(g.character.criminalRecord.length).toBeGreaterThan(0)
+  })
+
+  it('an heir loses an inherited scheme’s firm but is not charged for a parent’s crimes', () => {
+    const { g, a } = stage('hedge')
+    const b = bizOf(g, a), f = readFund(b)
+    f.probe = { year: 2005, crime: 'Insider Trading', odds: 1, by: 'late-parent' }
+    f.ponzi = { since: 2005, hole: 5e6, fees: 1e6, by: 'late-parent' }
+    f.checkYear = 0; f.lastYear = g.year - 1; f.last.market = -.6
+    saveFund(b, f)
+    for (let i = 0; i < 30 && !g.queue.some(q => q.kind === 'choice' && q.scriptId === 'fund.ponzi.end'); i++) { const x = readFund(b); x.checkYear = 0; saveFund(b, x); fundYearlyChecks(g, b, a) }
+    expect(readFund(b).probe).toBeNull()
+    expect(g.queue.some(q => q.kind === 'choice' && q.scriptId === 'fund.probe')).toBe(false)
+    const end = g.queue.find(q => q.kind === 'choice' && q.scriptId === 'fund.ponzi.end')
+    if (end?.kind !== 'choice') throw new Error('no collapse popup')
+    const money = g.character.money = 100_000
+    runScript(g, end.scriptId!, 'face', end.data, end)
+    expect(findBusiness(g, a.id)).toBeUndefined()
+    expect(g.character.criminalRecord).toHaveLength(0)
+    expect(g.character.money).toBe(money)
   })
 
   it('pays a rogue trader’s losses from company cash, or hides them as a crime', () => {

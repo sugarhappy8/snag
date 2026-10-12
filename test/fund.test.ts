@@ -541,7 +541,7 @@ describe('Investment firms 2.0: founding, reports and menus', () => {
       if (type === 'hedge') { setStrategy(g, a.id, 'macro'); setHedgeTerms(g, a.id, 'coinvest', 100_000) }
       if (type === 'asset') runCampaign(g, a.id)
       const f: FundState = readFund(bizOf(g, a))
-      if (type === 'hedge') { f.ponzi = { since: 2015, hole: 1e6, fees: 0 }; saveFund(bizOf(g, a), f) }
+      if (type === 'hedge') { f.ponzi = { since: 2015, hole: 1e6, fees: 0, by: g.character.id }; saveFund(bizOf(g, a), f) }
       const before = JSON.stringify(g), rng = g.rng
       const nodes = fundNodes(g, a)
       expect(walk(g, nodes)).toBeGreaterThan(4)

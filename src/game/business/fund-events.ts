@@ -167,6 +167,8 @@ export function fundYearlyChecks(g: GameState, b: BizState, a = assetOf(g, b)): 
   const f = readFund(b)
   if (f.checkYear >= g.year || f.lastYear < g.year - 1) return
   f.checkYear = g.year
+  // A case against a previous owner (now dead or gone) doesn't follow the heir.
+  if (f.probe && f.probe.by && f.probe.by !== g.character.id) f.probe = null
   saveFund(b, f)
   if (f.probe && g.year > f.probe.year) {
     if (chance(g, f.probe.odds)) scriptChoice(g, PROBE, '📋 Regulators Are Calling', `Investigators want every record about ${a.name}’s trading. They suspect ${f.probe.crime.toLowerCase()}.`,
@@ -230,16 +232,17 @@ export const PONZI_END = defineScript('fund.ponzi.end', (g, choice, data) => {
   ponziCollapse(g, a, b, f, 5)
 })
 
-/** The scheme ends: the firm goes under, clients get back what is left, you go to trial. */
+/** The scheme ends: the firm goes under, clients get back what is left, its author goes to trial. */
 function ponziCollapse(g: GameState, a: Asset, b: BizState, f: FundState, severity: number): void {
+  // An heir who inherited someone else's scheme loses the firm but isn't the one charged.
+  const culprit = !f.ponzi?.by || f.ponzi.by === g.character.id
   const taken = f.ponzi?.fees ?? 0
-  const clawback = Math.min(Math.max(0, g.character.money), Math.round(taken * .5))
+  const clawback = culprit ? Math.min(Math.max(0, g.character.money), Math.round(taken * .5)) : 0
   if (clawback > 0) spend(g, clawback)
-  count(g, 'ponziSchemes')
-  addHidden(g, 'karma', -20)
+  if (culprit) { count(g, 'ponziSchemes'); addHidden(g, 'karma', -20) }
   remember(g, `My investment firm ${a.name} collapsed as a Ponzi scheme.`)
-  declareBankruptcy(g, a, b, `Your Ponzi scheme collapsed.${clawback > 0 ? ` Courts clawed back ${money(clawback)} of your personal money for the victims.` : ''}`)
-  arrestPlayer(g, 'Securities Fraud', severity, { evidence: severity >= 5 ? .9 : .6, noResist: true, context: `${a.name}'s investors lost everything they thought they had.` })
+  declareBankruptcy(g, a, b, `${culprit ? 'Your' : 'The inherited'} Ponzi scheme collapsed.${clawback > 0 ? ` Courts clawed back ${money(clawback)} of your personal money for the victims.` : ''}`)
+  if (culprit) arrestPlayer(g, 'Securities Fraud', severity, { evidence: severity >= 5 ? .9 : .6, noResist: true, context: `${a.name}'s investors lost everything they thought they had.` })
 }
 
 export function comeClean(g: GameState, assetId: string): boolean {
@@ -312,7 +315,7 @@ const EVENTS: FundEvent[] = [
     resolve: (g, x, pickId, d) => {
       if (pickId === 'trade') {
         x.f.bonus = clampN(x.f.bonus + randFloat(g, .02, .05), -.5, .2)
-        x.f.probe = { year: g.year, crime: 'Insider Trading', odds: clampN(.4 - x.f.compliance / 400, .15, .4) }
+        x.f.probe = { year: g.year, crime: 'Insider Trading', odds: clampN(.4 - x.f.compliance / 400, .15, .4), by: g.character.id }
         addHidden(g, 'karma', -6)
         log(g, `I traded on a tip about ${str(d.company)}. What could go wrong?`, 'neutral')
       } else if (pickId === 'report') { x.f.compliance = Math.min(100, x.f.compliance + 5); addHidden(g, 'karma', 4) }
@@ -331,7 +334,7 @@ const EVENTS: FundEvent[] = [
       const loss = Math.max(0, Number(d.loss) || 0)
       if (pickId === 'hide') {
         x.f.aum = Math.max(0, x.f.aum - loss); x.f.hwm = Math.max(0, x.f.hwm - loss)
-        x.f.probe = { year: g.year, crime: 'Securities Fraud', odds: .3 }
+        x.f.probe = { year: g.year, crime: 'Securities Fraud', odds: .3, by: g.character.id }
         addHidden(g, 'karma', -8)
         return
       }
@@ -395,7 +398,7 @@ const EVENTS: FundEvent[] = [
     },
     resolve: (g, x, pickId) => {
       if (pickId !== 'fake') { addHidden(g, 'karma', 2); return }
-      x.f.ponzi = { since: g.year, hole: Math.max(0, -x.f.last.ret) * x.f.aum, fees: 0 }
+      x.f.ponzi = { since: g.year, hole: Math.max(0, -x.f.last.ret) * x.f.aum, fees: 0, by: g.character.id }
       addHidden(g, 'karma', -15)
       log(g, `I started faking ${x.a.name}'s returns.`, 'bad')
     },

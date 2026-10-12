@@ -77,8 +77,10 @@ export interface Startup {
   unicorn: boolean
 }
 
-export interface Probe { year: number; crime: string; odds: number }
-export interface Ponzi { since: number; hole: number; fees: number }
+/** A regulator case against the owner who committed the crime (`by`: their character id). */
+export interface Probe { year: number; crime: string; odds: number; by: string }
+/** A Ponzi scheme: the hole between reported and real client assets, and the fees taken since. */
+export interface Ponzi { since: number; hole: number; fees: number; by: string }
 
 export interface LastYear {
   fees: number
@@ -234,8 +236,8 @@ function readNew(x: Record<string, Json>, countryId: string): FundState {
     funds, cos: [...done, ...live], actYear: Math.round(n(x.actYear, 0, 0, 1e5)),
     acted: list(x.acted).filter((t): t is string => typeof t === 'string').slice(-30), dd: list(x.dd).filter((t): t is string => typeof t === 'string').slice(-30),
     campaign: Math.round(n(x.campaign, 0, 0, 1e5)), boost: n(x.boost, 0, 0, .3), bonus: n(x.bonus, 0, -.5, .2),
-    probe: probe ? { year: Math.round(n(probe.year, 0, 0, 1e5)), crime: s(probe.crime, 'Securities Fraud'), odds: n(probe.odds, .3, 0, 1) } : null,
-    ponzi: ponzi ? { since: Math.round(n(ponzi.since, 0, 0, 1e5)), hole: n(ponzi.hole, 0, 0), fees: n(ponzi.fees, 0, 0) } : null,
+    probe: probe ? { year: Math.round(n(probe.year, 0, 0, 1e5)), crime: s(probe.crime, 'Securities Fraud'), odds: n(probe.odds, .3, 0, 1), by: s(probe.by) } : null,
+    ponzi: ponzi ? { since: Math.round(n(ponzi.since, 0, 0, 1e5)), hole: n(ponzi.hole, 0, 0), fees: n(ponzi.fees, 0, 0), by: s(ponzi.by) } : null,
     eventYear: Math.round(n(x.eventYear, 0, 0, 1e5)), checkYear: Math.round(n(x.checkYear, 0, 0, 1e5)), last: readLast(x.last),
     marks: list(x.marks).map(m => obj(m)).filter((m): m is Record<string, Json> => !!m)
       .map(m => ({ y: Math.round(n(m.y, 0, -1e5, 1e5)), r: n(m.r, 0, -1, 1000), m: n(m.m, 0, -1, 20), k: n(m.k, -1, -1, 1) })).slice(-12),
