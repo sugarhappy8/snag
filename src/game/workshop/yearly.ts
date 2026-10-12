@@ -14,7 +14,7 @@ import { bizOf, businessAssets } from '../business/state'
 import { catalogIdea, isHistory, type Category } from './catalog'
 import { yearlyWorkshopEvent } from './events'
 import { needsMigration } from './migrate'
-import { curveAt, curveOver, familyOf, invCurve, saturation } from './market'
+import { curveAt, curveOver, familyOf, invCurve, raceYear, saturation } from './market'
 import { addIdea, addRep, blurbOf, drawIdea, dropIdea, inventions, isGenius, logIdea, mutWorkshop, recordFirst, storeInv, worldFirsts, type Owned } from './notebook'
 import { NOTEBOOK_MAX, rec, text, type Workshop } from './state'
 
@@ -100,13 +100,14 @@ function bigMoments(g: GameState, ws: Workshop, o: Owned, revenue: number): void
   }
 }
 
-/** History ideas still in the notebook after their real year are gone: someone else got there. */
+/** Race ideas still in the notebook after their deadline are gone: someone else got there. */
 function closeHistory(g: GameState, ws: Workshop): void {
   for (const idea of [...ws.ideas]) {
     const def = catalogIdea(idea.id)
-    if (!def || !isHistory(def) || g.year <= def.real!) continue
+    const deadline = def && isHistory(def) ? raceYear(g, def) : null
+    if (!def || deadline === null || g.year <= deadline) continue
     dropIdea(ws, idea.id)
-    log(g, `Someone else unveiled a ${def.name} this year. History won this round.`, 'bad')
+    log(g, def.future ? `A rival lab unveiled a ${def.name} this year. The future arrived without me.` : `Someone else unveiled a ${def.name} this year. History won this round.`, 'bad')
   }
 }
 

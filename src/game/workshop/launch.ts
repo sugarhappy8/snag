@@ -14,7 +14,7 @@ import { businessAssets } from '../business/state'
 import { CATEGORIES, stars, type Category, type IdeaDef } from './catalog'
 import {
   COMPANY_MARGIN, CROWD_GOAL, CROWD_MARGIN, PITCH_BOOST, crowdFans, crowdGoal, crowdOdds, curveSpec, deliveryFailOdds, expectedPeak, firstYearRevenue,
-  licenseRate, licenseValue, liveScope, patentActive, patentFee, patentLaw, pitchOdds, priceOf, revenueValue, streamValue, trueAppeal, type Subject,
+  isFirst, licenseRate, licenseValue, liveScope, patentActive, raceYear, patentFee, patentLaw, pitchOdds, priceOf, revenueValue, streamValue, trueAppeal, type Subject,
 } from './market'
 import { addRep, companyBlock, dropIdea, findIdea, findInvention, fittingCompanies, isGenius, markSeen, mutWorkshop, readWorkshop, recordFirst, remember, storeInv, workshopBlock } from './notebook'
 import { blankInv, noteDef, rec, text, type Inv, type NoteIdea, type Patent, type PatentScope, type Route, type Workshop } from './state'
@@ -71,13 +71,10 @@ export function benchFor(g: GameState, ws: Workshop, t: Target): Bench | null {
   return { target: t, def: o.def, q: o.inv.q, builds: o.inv.builds, patent: o.inv.patent, country: o.inv.country, shopped: o.inv.shopped, pitched: o.inv.pitched, crowd: o.inv.crowd, a: o.a, inv: o.inv }
 }
 
-/** Still a history first if it reaches the market this year. */
-export function isFirst(def: IdeaDef, year: number): boolean {
-  return typeof def.real === 'number' && year <= def.real
-}
+export { isFirst }
 
 export function subjectOf(g: GameState, b: Bench): Subject {
-  return { def: b.def, q: b.q, patent: b.patent, country: b.country, history: isFirst(b.def, g.year) }
+  return { def: b.def, q: b.q, patent: b.patent, country: b.country, history: isFirst(g, b.def) }
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +115,7 @@ export function filePatent(g: GameState, t: Target, scope: PatentScope): Asset |
   } else {
     const idea = b.idea!
     const patent: Patent = { scope, country: b.country, filed: g.year, expires: g.year + law.term }
-    const inv = blankInv(b.def, { custom: idea.custom, q: idea.q, builds: idea.builds, patent, country: b.country, price: priceOf(b.def), inventor: fullName(g.character), history: isFirst(b.def, g.year) })
+    const inv = blankInv(b.def, { custom: idea.custom, q: idea.q, builds: idea.builds, patent, country: b.country, price: priceOf(b.def), inventor: fullName(g.character), history: isFirst(g, b.def) })
     inv.shopped = idea.shopped ?? -1
     inv.pitched = idea.pitched ?? -1
     inv.crowd = idea.crowd ?? -1
@@ -170,13 +167,13 @@ export function licenseQuote(g: GameState, ws: Workshop, b: Bench): { maker: str
   const real = realBuyers(g, b.def.cat)
   const r = economicRoll(`${g.lifeId}|ws-maker|${b.def.id}|${g.year}`)
   const maker = real.length && r < 0.5 ? real[Math.floor((r / 0.5) * real.length)] : fictional(r, economicRoll(`${g.lifeId}|ws-maker2|${b.def.id}`), b.def.cat)
-  return { maker, rate: licenseRate(b.q, ws.rep, isFirst(b.def, g.year)) }
+  return { maker, rate: licenseRate(b.q, ws.rep, isFirst(g, b.def)) }
 }
 
 function launchedInv(g: GameState, ws: Workshop, b: Bench): { a: Asset; inv: Inv } {
   if (b.a && b.inv) return { a: b.a, inv: b.inv }
   const idea = b.idea!
-  const inv = blankInv(b.def, { custom: idea.custom, q: idea.q, builds: idea.builds, patent: null, country: b.country, price: priceOf(b.def), inventor: fullName(g.character), history: isFirst(b.def, g.year) })
+  const inv = blankInv(b.def, { custom: idea.custom, q: idea.q, builds: idea.builds, patent: null, country: b.country, price: priceOf(b.def), inventor: fullName(g.character), history: isFirst(g, b.def) })
   const a: Asset = { id: uid(g, 'inv'), kind: 'invention', name: b.def.name, emoji: b.def.emoji, purchasePrice: 0, value: 0, condition: 100, purchasedAge: g.character.age, upkeep: 0, details: {} }
   g.assets.push(a)
   dropIdea(ws, idea.id)
@@ -188,7 +185,7 @@ interface LaunchOpts { route: Route; rate?: number; margin?: number; company?: s
 /** Put an invention on sale (route chosen by the caller, who already used the year's deal). */
 function commitLaunch(g: GameState, ws: Workshop, b: Bench, o: LaunchOpts): Asset {
   const { a, inv } = launchedInv(g, ws, b)
-  const first = isFirst(b.def, g.year)
+  const first = isFirst(g, b.def)
   // Hidden luck (0.65-1.35, mean 1): the hints show expected sales, never the dice.
   const luck = 0.65 + 0.7 * rand(g)
   const peak = expectedPeak(b.def, b.q, trueAppeal(g, b.def), liveScope(b.patent, g.year), b.country, g.year, first) * luck * (o.boost ?? 1)
@@ -206,19 +203,20 @@ function commitLaunch(g: GameState, ws: Workshop, b: Bench, o: LaunchOpts): Asse
 
 /** After the route's own popup: the history moment, if this launch beat history. */
 function afterLaunch(g: GameState, ws: Workshop, b: Bench, launchedYear: number): void {
-  if (isFirst(b.def, launchedYear)) beatHistory(g, ws, b.def)
+  if (isFirst(g, b.def, launchedYear)) beatHistory(g, ws, b.def)
 }
 
 /** "You beat history": the moment the history race pays off. */
 export function beatHistory(g: GameState, ws: Workshop, def: IdeaDef): void {
-  const early = Math.max(0, (def.real ?? g.year) - g.year)
+  const early = Math.max(0, (raceYear(g, def) ?? g.year) - g.year)
   recordFirst(g, def.id)
   addFame(g, 20)
   addRep(ws, 15)
   addStat(g, 'happiness', 10)
   count(g, 'historyFirsts')
   rememberLife(g, `Beat history with the ${def.name}.`)
-  notice(g, '\u{1F3C6} You Beat History!', `${def.emoji} The ${def.name} reached the world ${early ? `${early} year${early === 1 ? '' : 's'} before anyone else thought of it` : 'just before anyone else could'}. In this timeline, it's yours. History books, update your files.`, { emoji: '\u{1F3C6}', tone: 'good' })
+  const when = early ? `${early} year${early === 1 ? '' : 's'} before anyone else ${def.future ? 'could build one' : 'thought of it'}` : 'just before anyone else could'
+  notice(g, '\u{1F3C6} You Beat History!', `${def.emoji} The ${def.name} reached the world ${when}. In this timeline, it's yours. ${def.future ? 'The future has your name on it.' : 'History books, update your files.'}`, { emoji: '\u{1F3C6}', tone: 'good' })
   log(g, `I beat history: the ${def.name} is mine.`, 'good')
 }
 
@@ -255,8 +253,8 @@ export function sellBlock(g: GameState, t: Target): string | null {
 export function rightsBasis(g: GameState, ws: Workshop, b: Bench): number {
   return licenseValue(g, subjectOf(g, b), b.def.a, ws.rep) * dealScale(g)
 }
-export function offerCount(ws: Workshop, b: Bench, year: number): number {
-  return 1 + (b.q >= 60 ? 1 : 0) + (ws.rep >= 40 || isFirst(b.def, year) ? 1 : 0)
+export function offerCount(g: GameState, ws: Workshop, b: Bench, year = g.year): number {
+  return 1 + (b.q >= 60 ? 1 : 0) + (ws.rep >= 40 || isFirst(g, b.def, year) ? 1 : 0)
 }
 
 /** Shop the rights around: 1-3 offers in a popup (one try a year per idea). */
@@ -272,7 +270,7 @@ export function shopRights(g: GameState, t: Target): boolean {
   const basis = rightsBasis(g, ws, b)
   const real = realBuyers(g, b.def.cat)
   const offers: { buyer: string; amount: number }[] = []
-  for (let i = 0; i < offerCount(ws, b, g.year); i++) {
+  for (let i = 0; i < offerCount(g, ws, b); i++) {
     const amount = Math.max(50, Math.round((basis * (0.5 + 0.55 * rand(g))) / 10) * 10)
     const pickReal = real.length > 0 && rand(g) < 0.5
     const r1 = rand(g)
@@ -306,7 +304,7 @@ export function acceptOffer(g: GameState, t: Target, buyer: string, amount: numb
   count(g, 'inventions')
   count(g, 'rightsSold')
   addRep(ws, 2)
-  const first = isFirst(b.def, g.year)
+  const first = isFirst(g, b.def)
   remember(ws, { id: b.def.id, name: b.def.name, emoji: b.def.emoji, route: 'sold', year: g.year, ...(first ? { first: true } : {}) })
   notice(g, '\u{1F91D} Sold!', `${buyer} bought the ${b.def.name} for ${formatMoney(amount)}. Cha-ching. (Taxed as income.)${minorNote(g)}`, { emoji: '\u{1F4B0}', tone: 'good' })
   log(g, `I sold the rights to the ${b.def.name} to ${buyer} for ${formatMoney(amount)}.`, 'good')
@@ -342,8 +340,8 @@ export function pitchBlock(g: GameState, t: Target): string | null {
 
 /** The royalty a pitch deal pays before the investor's cut, and the boosted expected stream. Pure. */
 export function pitchStream(g: GameState, ws: Workshop, b: Bench): { rate: number; value: number } {
-  const rate = licenseRate(b.q, ws.rep, isFirst(b.def, g.year)) + 0.01
-  const peak = expectedPeak(b.def, b.q, trueAppeal(g, b.def), liveScope(b.patent, g.year), b.country, g.year, isFirst(b.def, g.year)) * PITCH_BOOST
+  const rate = licenseRate(b.q, ws.rep, isFirst(g, b.def)) + 0.01
+  const peak = expectedPeak(b.def, b.q, trueAppeal(g, b.def), liveScope(b.patent, g.year), b.country, g.year, isFirst(g, b.def)) * PITCH_BOOST
   return { rate, value: streamValue(curveSpec(b.def, g.year, b.patent), 0, priceOf(b.def) * rate, peak) }
 }
 
@@ -536,7 +534,7 @@ export function giveAway(g: GameState, t: Target): boolean {
   addFame(g, 4)
   addRep(ws, 8)
   addStat(g, 'happiness', 6)
-  const first = isFirst(b.def, g.year)
+  const first = isFirst(g, b.def)
   remember(ws, { id: b.def.id, name: b.def.name, emoji: b.def.emoji, route: 'open', year: g.year, ...(first ? { first: true } : {}) })
   notice(g, '\u{1F30D} A Gift to the World', `You published the ${b.def.name} for anyone to make, free. Not a cent for you, but people everywhere are grateful.`, { emoji: '\u{1F30D}', tone: 'good' })
   log(g, `I gave the ${b.def.name} to the world for free.`, 'good')
@@ -590,7 +588,7 @@ export function routeQuotes(g: GameState, ws: Workshop, b: Bench): RouteQuote[] 
   const s = subjectOf(g, b)
   const appeal = trueAppeal(g, b.def)
   const out: RouteQuote[] = []
-  const n = offerCount(ws, b, g.year)
+  const n = offerCount(g, ws, b)
   // Routes already tried this year (or ever, for the pitch) are not recommended.
   if (b.shopped !== g.year) out.push({ route: 'sell', label: 'Sell the rights', value: rightsBasis(g, ws, b) * (0.5 + (0.55 * n) / (n + 1)), company: false })
   const lic = licenseValue(g, s, appeal, ws.rep)

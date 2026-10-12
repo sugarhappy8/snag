@@ -5,7 +5,7 @@ import { economicRoll } from '../economy'
 import { realWealthFactor } from '../history/events-people'
 import type { GameState } from '../types'
 import { getCountry } from '../world'
-import { CATEGORIES, type IdeaDef, type Level } from './catalog'
+import { CATEGORIES, isHistory, type IdeaDef, type Level } from './catalog'
 import type { Inv, Patent, PatentScope } from './state'
 
 /** Unit price by difficulty (constant 2026 USD, times the category's multiplier). */
@@ -56,9 +56,32 @@ export function familyOf(g: GameState): string {
   return (g.lifeId || 'life').replace(/-g\d+$/, '')
 }
 
-/** The idea's real appeal (★1-5): within one star of what people expect; history ideas are 5. Pure. */
+/**
+ * The year a race idea must reach the market by: the real year in the history race, or the year
+ * a rival gets there in the future race (rolled per family, 10-40 years after it opens, so it is
+ * the same for heirs and never a claim about the real future). null for everyday ideas. Pure.
+ */
+export function raceYear(g: GameState, def: Pick<IdeaDef, 'id' | 'from' | 'real' | 'future'>): number | null {
+  if (typeof def.real === 'number') return def.real
+  if (def.future !== true) return null
+  return def.from + 10 + Math.floor(economicRoll(`${familyOf(g)}|ws-future|${def.id}`) * 31)
+}
+
+/** A race idea can strike from 25 years before its deadline (never before its own era) until then. Pure. */
+export function raceOpen(g: GameState, def: IdeaDef, year = g.year): boolean {
+  const r = raceYear(g, def)
+  return r !== null && year >= Math.max(def.from, r - 25) && year <= r
+}
+
+/** Still a race first if it reaches the market in `year`. Pure. */
+export function isFirst(g: GameState, def: IdeaDef, year = g.year): boolean {
+  const r = raceYear(g, def)
+  return r !== null && year <= r
+}
+
+/** The idea's real appeal (★1-5): within one star of what people expect; race ideas are 5. Pure. */
 export function trueAppeal(g: GameState, def: IdeaDef): Level {
-  if (typeof def.real === 'number') return 5
+  if (isHistory(def)) return 5
   const r = economicRoll(`${familyOf(g)}|ws-appeal|${def.id}`)
   const shift = r < 0.3 ? -1 : r < 0.75 ? 0 : 1
   return Math.max(1, Math.min(5, def.a + shift)) as Level
@@ -204,6 +227,6 @@ export function inventionValue(g: GameState, inv: Inv, def: IdeaDef, rep: number
     return Math.round(0.75 * streamValue(invCurve(inv), from, personalPerUnit(inv), inv.peak * inv.hit))
   }
   // Patented, not launched: about what a buyer would pay for the rights, at the appeal people expect.
-  const s: Subject = { def, q: inv.q, patent: inv.patent, country: inv.country, history: inv.history && typeof def.real === 'number' && g.year <= def.real }
+  const s: Subject = { def, q: inv.q, patent: inv.patent, country: inv.country, history: inv.history && isFirst(g, def) }
   return Math.round(Math.max(inv.legacyValue, 0.5 * licenseValue(g, s, def.a, rep)))
 }

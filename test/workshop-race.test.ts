@@ -1,13 +1,71 @@
 // The Workshop's races: the future race for modern lives (fictional breakthroughs, a rival's
 // deadline rolled per family) and firsts that are world state, so an heir can't beat history twice.
 import { describe, expect, it } from 'vitest'
+import { anachronismsIn } from '../src/game/events/era'
 import { continueAsChild } from '../src/game/life'
 import { killCharacter } from '../src/game/death'
 import { createPerson } from '../src/game/people'
+import { FUTURE, HISTORY } from '../src/game/workshop/catalog'
 import { license } from '../src/game/workshop/launch'
+import { isFirst, raceOpen, raceYear } from '../src/game/workshop/market'
 import { candidates, findInvention, inventions, mutWorkshop, readWorkshop, worldFirsts } from '../src/game/workshop/notebook'
+import { workshopMenu } from '../src/game/workshop/menu'
 import { yearlyWorkshop } from '../src/game/workshop/yearly'
 import { give, idea, inventor, nextYear } from './workshop-fixtures'
+
+describe('the future race', () => {
+  it('gives modern lives a race with a per-family deadline that is stable, pure and never before its era', () => {
+    expect(FUTURE.length).toBeGreaterThanOrEqual(10)
+    const names = new Set(HISTORY.map((h) => h.name))
+    for (const f of FUTURE) {
+      expect(names.has(f.name)).toBe(false)
+      expect(f.a).toBe(5)
+      expect(f.real).toBeUndefined()
+      for (let y = f.from; y <= 2075; y++) expect(anachronismsIn(`${f.name}. ${f.blurb}`, y, ['us']), `${f.id} ${y}`).toEqual([])
+    }
+    const g = inventor({ genius: true, year: 2030 })
+    const before = JSON.stringify(g)
+    const heir = { ...g, lifeId: `${g.lifeId}-g2` }
+    const other = { ...g, lifeId: 'another-family' }
+    const years = FUTURE.map((f) => raceYear(g, f)!)
+    for (const [i, f] of FUTURE.entries()) {
+      expect(years[i]).toBeGreaterThanOrEqual(f.from + 10)
+      expect(years[i]).toBeLessThanOrEqual(f.from + 40)
+      expect(raceYear(heir, f)).toBe(years[i])
+      expect(raceOpen(g, f, f.from - 1)).toBe(false)
+      expect(raceOpen(g, f, years[i] + 1)).toBe(false)
+    }
+    expect(JSON.stringify(g)).toBe(before)
+    expect(FUTURE.map((f) => raceYear(other, f))).not.toEqual(years)
+    // Only for the race inventors, and somewhere in 2026-2060 every future idea is open.
+    const normal = inventor({ year: 2030 })
+    expect(candidates(normal, readWorkshop(normal)).some((d) => d.future)).toBe(false)
+    for (const f of FUTURE) expect([2026, 2030, 2035, 2040, 2045, 2050, 2055, 2060].some((y) => raceOpen(g, f, y))).toBe(true)
+    // A modern genius has something to race for.
+    expect(candidates(g, readWorkshop(g)).some((d) => d.future)).toBe(true)
+  })
+
+  it('beating a rival to a future first is a moment; a missed one leaves the notebook', () => {
+    const f = FUTURE.find((x) => x.d === 4)!
+    const g = inventor({ genius: true, year: 2010 })
+    const deadline = raceYear(g, f)!
+    g.year = deadline - 1
+    give(g, f.id, 80)
+    expect(isFirst(g, f)).toBe(true)
+    const row = workshopMenu.children(g).find((n) => n.id === `ws.idea.${f.id}`)!
+    expect(row.type === 'menu' && typeof row.subtitle === 'string' ? row.subtitle : '').toContain(`beat ${deadline}`)
+    license(g, idea(f.id))
+    expect(g.queue.some((m) => m.kind === 'notice' && /Beat History/.test(m.title) && /future/.test(m.text))).toBe(true)
+    expect(inventions(g)[0].inv.history).toBe(true)
+    expect(worldFirsts(g).has(f.id)).toBe(true)
+    const late = inventor({ genius: true, seed: 3 })
+    late.year = raceYear(late, f)!
+    give(late, f.id, 50)
+    nextYear(late)
+    yearlyWorkshop(late)
+    expect(readWorkshop(late).ideas.some((i) => i.id === f.id)).toBe(false)
+  })
+})
 
 describe('heirs', () => {
   it('inherit invention assets and their royalties, not the notebook, and cannot beat history twice', () => {

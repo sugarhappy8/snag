@@ -13,7 +13,7 @@ import { isFinanceFirm } from '../business/finance-firm-state'
 import { manageBlock } from '../business/gate'
 import { businessAssets, readBiz } from '../business/state'
 import { ALL_IDEAS, CATEGORIES, isHistory, type Category, type IdeaDef } from './catalog'
-import { inventionValue } from './market'
+import { inventionValue, raceOpen } from './market'
 import { legacyProfile, migrateLegacy, readInv, workshopFromLegacy } from './migrate'
 import { FLAG, NOTEBOOK_MAX, SEEN_MAX, emptyWorkshop, invDef, normalizeWorkshop, ownsWorkshop, saveInv, type Inv, type MadeEntry, type NoteIdea, type Workshop } from './state'
 
@@ -86,8 +86,9 @@ export function racesHistory(g: GameState, ws: Workshop): boolean {
   return isGenius(g) || ws.skill >= 80
 }
 
-export function historyOpen(def: IdeaDef, year: number): boolean {
-  return typeof def.real === 'number' && year >= def.real - 25 && year <= def.real
+/** The race (history or future) is open for this idea in `year`. Pure. */
+export function historyOpen(g: GameState, def: IdeaDef, year = g.year): boolean {
+  return raceOpen(g, def, year)
 }
 
 /** True when the idea's own words fit this year and country (the anachronism lint's view). Pure. */
@@ -131,7 +132,7 @@ export function candidates(g: GameState, ws: Workshop): IdeaDef[] {
   const race = racesHistory(g, ws)
   return ALL_IDEAS.filter((d) => {
     if (taken.has(d.id)) return false
-    if (isHistory(d)) return race && historyOpen(d, g.year) && eraFits(g, d)
+    if (isHistory(d)) return race && historyOpen(g, d) && eraFits(g, d)
     return g.year >= d.from && (d.to === undefined || g.year <= d.to) && eraFits(g, d)
   })
 }

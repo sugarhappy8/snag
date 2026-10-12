@@ -10,7 +10,7 @@ import {
   benchFor, benchHint, companyLaunchBlock, crowdBlock, dealsLeft, filePatent, giveAway, isFirst, launchBlock, launchLimit, license, licenseQuote, makeInCompany, patentBlock, patentCost,
   pitch, pitchBlock, pitchVenue, routeQuotes, scrapIdea, sellBlock, sellStream, shopRights, startCrowd, streamSaleBlock, subjectOf, LAUNCH_MIN, PATENT_MIN, type Bench, type RouteQuote,
 } from './launch'
-import { patentActive, pitchOdds, trueAppeal } from './market'
+import { patentActive, pitchOdds, raceYear, trueAppeal } from './market'
 import { blurbOf, findInvention, fittingCompanies, historyOpen, inventions, isGenius, MIN_AGE, readWorkshop, type Owned } from './notebook'
 import { NOTEBOOK_MAX, noteDef, rankOf, type Inv, type NoteIdea, type Workshop } from './state'
 
@@ -115,10 +115,10 @@ function qualityLine(idea: NoteIdea): string {
 function ideaNode(g: GameState, idea: NoteIdea): MenuGroup {
   const def = noteDef(idea)
   const t: Target = { kind: 'idea', id: idea.id }
-  const first = historyOpen(def, g.year)
+  const first = historyOpen(g, def)
   return {
     type: 'menu', id: `ws.idea.${idea.id}`, label: def.name, emoji: def.emoji,
-    subtitle: `${CATEGORIES[def.cat].label} · ${DIFFICULTY_LABEL[def.d]} · ${idea.q ? `quality ${Math.round(idea.q)}` : 'no prototype yet'}${first ? ` · \u{23F3} beat ${def.real}` : ''}`,
+    subtitle: `${CATEGORIES[def.cat].label} · ${DIFFICULTY_LABEL[def.d]} · ${idea.q ? `quality ${Math.round(idea.q)}` : 'no prototype yet'}${first ? ` · \u{23F3} beat ${raceYear(g, def)}` : ''}`,
     hint: (gg) => { const b = bench(gg, t); return b ? benchHint(gg, readWorkshop(gg), b) || null : null },
     children: (gg) => {
       const cur = readWorkshop(gg).ideas.find((i) => i.id === idea.id)
@@ -127,7 +127,7 @@ function ideaNode(g: GameState, idea: NoteIdea): MenuGroup {
         { type: 'info', id: `ws.idea.info.${idea.id}`, emoji: def.emoji, text: `${blurbOf(gg, def)} ${stars(def.a)} · ${DIFFICULTY_LABEL[def.d]}` },
         { type: 'info', id: `ws.idea.q.${idea.id}`, emoji: '\u{1F529}', text: qualityLine(cur) },
       ]
-      if (isFirst(def, gg.year)) nodes.push({ type: 'info', id: `ws.idea.race.${idea.id}`, emoji: '\u{23F3}', text: `History race: get it on the market by ${def.real} and the world will remember you.` })
+      if (isFirst(gg, def)) nodes.push({ type: 'info', id: `ws.idea.race.${idea.id}`, emoji: '\u{23F3}', text: def.future ? `Future race: rivals are close. Get it on the market by ${raceYear(gg, def)} and it's yours.` : `History race: get it on the market by ${def.real} and the world will remember you.` })
       // Patent and launch rows appear once they can matter; until then the quality line says how to unlock them.
       nodes.push(buildAction(t, def), ...(cur.q >= PATENT_MIN ? patentActions(t, def.name, true) : []), ...(cur.q >= LAUNCH_MIN ? [launchMenu(t, def.name)] : []), {
         type: 'action', id: `ws.scrap.${idea.id}`, label: 'Scrap This Idea', emoji: '\u{1F5D1}\u{FE0F}', subtitle: 'Frees a page in your notebook',
@@ -149,7 +149,7 @@ export function inventionNodes(g: GameState, a: Asset): MenuNode[] {
     { type: 'info', id: `ws.inv.patent.${a.id}`, emoji: '\u{1F4DC}', text: patentLine(g, inv) },
   ]
   if (inv.stage === 'patented') {
-    nodes.push({ type: 'info', id: `ws.inv.wait.${a.id}`, emoji: '\u{1F4E6}', text: `Not on sale yet. Worth about ${formatMoney(a.value)} to a buyer today.${isFirst(def, g.year) ? ` Beat history: launch by ${def.real}!` : ''}` })
+    nodes.push({ type: 'info', id: `ws.inv.wait.${a.id}`, emoji: '\u{1F4E6}', text: `Not on sale yet. Worth about ${formatMoney(a.value)} to a buyer today.${isFirst(g, def) ? ` Beat history: launch by ${raceYear(g, def)}!` : ''}` })
     const hint = (gg: GameState) => { const b = bench(gg, t); return b ? benchHint(gg, readWorkshop(gg), b) || null : null }
     nodes.push({ ...buildAction(t, def), hint }, ...(inv.patent?.scope === 'home' ? patentActions(t, def.name, false) : []), launchMenu(t, def.name))
     return nodes
@@ -232,7 +232,7 @@ export const workshopMenu: MenuGroup = {
     }]
     nodes.push({ type: 'heading', id: 'ws.notebookH', label: `Notebook (${ws.ideas.length}/${NOTEBOOK_MAX})` })
     if (!ws.ideas.length) nodes.push({ type: 'info', id: 'ws.notebook.empty', text: 'Your notebook is empty. Brainstorm, or wait for inspiration to strike.' })
-    const sorted = [...ws.ideas].sort((x, y) => Number(historyOpen(noteDef(y), g.year)) - Number(historyOpen(noteDef(x), g.year)) || y.q - x.q)
+    const sorted = [...ws.ideas].sort((x, y) => Number(historyOpen(g, noteDef(y))) - Number(historyOpen(g, noteDef(x))) || y.q - x.q)
     for (const idea of sorted) nodes.push(ideaNode(g, idea))
     const owned = inventions(g)
     if (owned.length) {

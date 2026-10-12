@@ -127,7 +127,7 @@ describe('era gates', () => {
   it('closes a history idea after its real year: someone else got there', () => {
     const g = inventor({ genius: true, year: 1972 })
     give(g, 'hist-pocket-telephone', 50)
-    expect(historyOpen(catalogIdea('hist-pocket-telephone')!, 1973)).toBe(true)
+    expect(historyOpen(g, catalogIdea('hist-pocket-telephone')!, 1973)).toBe(true)
     nextYear(g)
     yearlyWorkshop(g)
     expect(readWorkshop(g).ideas.some((i) => i.id === 'hist-pocket-telephone')).toBe(true)
