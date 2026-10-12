@@ -553,7 +553,7 @@ function acquireMenu(groupId: string): MenuGroup {
     emoji: '\u{1F988}',
     subtitle: 'Buy out a division\u{2019}s competitor with the group\u{2019}s cash',
     disabledReason: (g) => groupBlock(g),
-    header: () => 'Buy a rival from one of your divisions\u{2019} markets: most of its customers stay, its sites become yours and your market share jumps. The whole treasury can pay for it (within each division\u{2019}s reserve). Regulators block deals that make you too big, and a dominant company draws antitrust cases. Spending past the division\u{2019}s budget goes to its board.',
+    header: () => 'Buy a rival from one of your divisions\u{2019} markets: most of its customers stay, its sites, product lines and know-how become yours and your market share jumps. The whole treasury can pay for it (within each division\u{2019}s reserve). Regulators block deals that make you too big, and a dominant company draws antitrust cases. Spending past the division\u{2019}s budget goes to its board.',
     children: (g) => {
       const grp = groupById(g, groupId)
       if (!grp) return []
@@ -578,7 +578,7 @@ function acquireMenu(groupId: string): MenuGroup {
               // Regulators would stop it (on its own or with the sister divisions): no buy/overpriced read.
               const blocked = !q || !!q.block || !!groupAcquireBlock(gg, div.b, cur.members.filter((m) => m.a.id !== div.a.id).map((m) => m.b), r.share)
               return gAct(groupId, `acq.${x.a.id}.${r.id}`, r.name, getCountry(r.hq).flag, {
-                subtitle: q ? `${money(q.price)} \u{00B7} ${shareText(r.share)} of the market \u{00B7} together ${shareText(q.combined)}` : 'Not for sale',
+                subtitle: q ? `${money(q.price)} \u{00B7} ${shareText(r.share)} of the market \u{00B7} together ${shareText(q.combined)}${q.lines.length ? ` \u{00B7} ${plural(q.lines.length, 'product line')}` : ''}` : 'Not for sale',
                 hint: () => (q && !blocked ? talentHint(gg, 'Business', q.value > 0 ? `A good buy: about ${money(q.value)} more than it costs over the years` : `Overpriced: about ${money(-q.value)} more than it will ever earn`) : null),
                 disabled: (g2, live) => {
                   const d2 = live.members.find((m) => m.a.id === x.a.id)

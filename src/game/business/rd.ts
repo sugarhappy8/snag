@@ -1,14 +1,22 @@
-// Product R&D without a cap: fund as many projects at once as the company can pay for. Each
-// project's whole budget is paid when it starts; a bigger budget finishes sooner, works more
-// often and makes a stronger product, with diminishing returns, and every project already
-// running stretches the team (the same money buys less). Projects move a year closer at every
-// year-end (economy.evolve → advanceRd) and then launch as a product line or flop.
+// Product R&D. Every idea has a development cost of its own, fixed by the product: its trade's cost
+// of a site in the home city, the sort of line (a next generation or a premium edition costs more
+// than a regional edition or a bundle) and the size of its market. Never a share of the company's
+// cash or sales: the same idea costs a corner shop and a giant the same. Fund it at half to four
+// times that cost: a bigger budget is likelier to work, quicker and makes a better line (its
+// quality against the rivals' versions, product-market.ts), with diminishing returns. A team runs
+// a few projects at once without strain (one more slot per doubling of the company's sites);
+// beyond that every project stretches it. Projects move a year closer at every year-end
+// (economy.evolve → advanceRd) and then launch as a product line or flop.
 import { formatMoney, log, notice } from '../core'
+import { hasTalent } from '../talents'
 import { chance, rand, uid } from '../rng'
 import type { Asset, GameState } from '../types'
-import { bizWorth, ceoSkill, fxValue, localEcon, staffPower, type Worth } from './economy'
+import { marketDemand, marketKey, marketStateOf, type MarketCtx } from './competition-core'
+import { bizWorth, ceoSkill, fxValue, localEcon, marketCtxFor, ownerTalent, staffPower, type Worth } from './economy'
 import { industryDef } from './industries'
-import { complexityShare, productLift, rangeBoost } from './products'
+import { demandLevel, demandSize, demandTrend } from './product-data'
+import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
+import { complexityShare } from './products'
 import { readProjects, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
 import { clampN, money, plural } from './util'
 
@@ -17,8 +25,11 @@ export function launchP(g: GameState, b: BizState): number {
   return clampN(0.25 + ceoSkill(g, b) / 250 + b.quality / 300 + 0.1 * staffPower(b, 'quality'), 0.1, 0.9)
 }
 
-/** A hit (15% of the products that work) is 1.8x the boost and 8 brand instead of 3. */
+/** A hit (15% of the products that work) launches 10 quality points better and adds 8 brand instead of 3. */
 export const HIT_P = 0.15
+export const HIT_QUALITY = 10
+/** A launch lands within this many quality points of the quote (either way). */
+export const QUALITY_SPREAD = 8
 
 /** Projects in development (read-only; old saves have none). */
 export function rdProjects(b: Pick<BizState, 'rd'>): RdProject[] {
@@ -31,12 +42,6 @@ export function rdOf(b: BizState): RdProject[] {
   return b.rd
 }
 
-/** A normal R&D budget for one product here: a slice of a site's capital, or of last year's sales. */
-export function rdBase(b: BizState): number {
-  const e = localEcon(b.industry, b.countryId, b.city)
-  return Math.max(1_000, roundBudget(Math.max(e.capital * 0.12, Math.max(0, b.last?.revenue ?? 0) * 0.05)))
-}
-
 /** Two significant digits (a budget people would write down: $8,000, not $7,964). */
 export function roundBudget(n: number): number {
   if (!(n > 0) || !Number.isFinite(n)) return 0
@@ -44,14 +49,50 @@ export function roundBudget(n: number): number {
   return Math.round(n / mag) * mag
 }
 
-/** Every project already running stretches the team: a budget buys this much less. */
-export function rdCrowding(b: Pick<BizState, 'rd'>): number {
-  return 1 + 0.15 * rdProjects(b).length
+/** A classic line costs this much to develop in a trade whose typical site sells RD_REF a year... */
+export const RD_BASE = 30_000
+const RD_REF = 500_000
+/** ...and less than proportionally more in bigger trades (a power company's product team isn't 20 cafés'). */
+const RD_EXP = 0.75
+/** The slider runs from this share of an idea's cost... */
+export const RD_MIN = 0.5
+/** ...to this many times it. */
+export const RD_MAX = 4
+
+/** Yearly sales of one typical site of the trade here at the going price (not the company's own). */
+function siteSales(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number {
+  const e = localEcon(b.industry, b.countryId, b.city)
+  const v = (e.baseDemand * e.goingPrice) / (1 + e.taxRate)
+  return Number.isFinite(v) && v > 0 ? v : 0
 }
 
-/** The smallest budget worth calling a project. */
-export function rdMinBudget(b: BizState): number {
-  return Math.max(500, roundBudget(rdBase(b) * 0.25))
+/**
+ * What developing an idea costs at a normal budget: fixed by the product (how big a typical
+ * business of the trade is here, the sort of line, the size of its market), never by the
+ * company's own cash or sales.
+ */
+export function rdCost(b: Pick<BizState, 'industry' | 'countryId' | 'city'>, idea: string): number {
+  const info = lineInfo(idea, b.industry)
+  const gen = info.kind === 'next' ? 1 + 0.05 * Math.max(0, info.gen - 2) : 1
+  const scale = Math.pow(Math.max(0.01, siteSales(b) / RD_REF), RD_EXP)
+  return Math.max(1_000, roundBudget(RD_BASE * scale * KIND_COST[info.kind] * Math.sqrt(demandSize(info.family)) * gen))
+}
+
+/** The budgets an idea can be funded at (the same for every company in the same place). */
+export function rdRange(b: Pick<BizState, 'industry' | 'countryId' | 'city'>, idea: string): { min: number; max: number; normal: number } {
+  const normal = rdCost(b, idea)
+  return { min: Math.max(500, roundBudget(normal * RD_MIN)), max: roundBudget(normal * RD_MAX), normal }
+}
+
+/** Projects the team runs at once without strain: one more per doubling of the company's sites. */
+export function rdSlots(b: Pick<BizState, 'outlets'>): number {
+  const sites = b.outlets.reduce((s, o) => s + o.count, 0)
+  return 1 + Math.floor(Math.log2(1 + Math.max(0, sites)))
+}
+
+/** How much a new project's budget is stretched by the ones already running (1 while slots are free). */
+export function rdCrowding(b: Pick<BizState, 'rd' | 'outlets'>): number {
+  return 1 + 0.15 * Math.max(0, rdProjects(b).length + 1 - rdSlots(b))
 }
 
 /** Years a normal budget needs, by kind of business (a recipe is quicker than a gadget). */
@@ -63,71 +104,186 @@ function baseYears(industry: string): number {
   return 1
 }
 
+/** Most quality points money can add over a normal budget (approached, never reached)... */
+const QUALITY_UP = 28
+/** ...and what each halving below it costs. */
+const QUALITY_DOWN = 14
+
+/** Quality points a budget of `k` times the normal one adds (or costs): fast gains, then diminishing. */
+export function budgetQuality(k: number): number {
+  const x = Math.max(0.05, k)
+  return x >= 1 ? QUALITY_UP * (1 - Math.pow(x, -0.8)) : QUALITY_DOWN * Math.log2(x)
+}
+
+/** Expected quality of a line developed at `k` times its normal budget (before the launch's luck). */
+export function rdQuality(g: GameState, b: BizState, k: number): number {
+  const talent = (ownerTalent(g, b, 'Business') ? 3 : 0) + (b.ceo !== 'manager' && g.character.alive && !g.character.prison && hasTalent(g, 'Inventor') ? 5 : 0)
+  const q = 0.5 * b.quality + 30 + budgetQuality(k) + 0.1 * (ceoSkill(g, b) - 50) + 6 * staffPower(b, 'quality') + talent
+  return Math.round(clampN(q, 5, 97))
+}
+
 export interface RdQuote {
+  /** The idea's normal development cost. */
+  cost: number
   /** Budget relative to a normal one (after crowding). */
   k: number
   odds: number
   /** Booked years until it launches (1-4). */
   years: number
-  /** Average demand boost of the line if it works. */
-  boost: number
+  /** Expected quality of the line if it works. */
+  quality: number
+  /** Its kind of product and sort of line. */
+  info: LineInfo
+  /** The rivals' versions now: quality and the share of the field offering it. */
+  field: number
+  offer: number
+  /** Demand for its kind now vs its peak, and where it's heading. */
+  level: number
+  trend: -1 | 0 | 1
+  /** Extra pull the line adds to the company in its first year on sale (at the expected quality). */
+  lift: number
 }
 
-/** What a budget buys: odds, time and product strength (pure, diminishing returns everywhere). */
-export function rdQuote(g: GameState, b: BizState, budget: number): RdQuote {
-  const base = rdBase(b) * rdCrowding(b)
-  const k = Math.max(0.01, (Number.isFinite(budget) ? Math.max(0, budget) : 0) / base)
+/** What a budget buys for an idea: odds, time, quality against the rivals (pure, diminishing returns). */
+export function rdQuote(g: GameState, b: BizState, idea: string, budget: number, ctx?: MarketCtx): RdQuote {
+  const cost = rdCost(b, idea)
+  const k = Math.max(0.01, (Number.isFinite(budget) ? Math.max(0, budget) : 0) / (cost * rdCrowding(b)))
   const p0 = launchP(g, b)
   const odds = clampN(1 - (1 - p0) * Math.pow(k, -0.4), 0.05, 0.95)
   const years = Math.round(clampN(Math.ceil(baseYears(b.industry) / Math.sqrt(k) - 1e-9), 1, 4))
-  const boost = clampN(0.1 * (0.6 + industryDef(b.industry).growth) * clampN(Math.pow(k, 0.15), 0.6, 1.6), 0.005, 0.25)
-  return { k, odds, years, boost }
+  const quality = rdQuality(g, b, k)
+  const info = lineInfo(idea, b.industry)
+  const c = ctx ?? marketCtxFor(g, b, g.year)
+  const field = fieldFor(c)
+  const f = field.of(info.family)
+  const launchYear = g.year + years
+  const later = fieldOf(c.rivals, c.fringe, c.key, launchYear)
+  const line: Product = { name: idea, launched: launchYear, boost: 0, quality, family: info.family, kind: info.kind }
+  const lift = productPull(b.industry, [...b.products, line], launchYear, later).total - productPull(b.industry, b.products, launchYear, later).total
+  return { cost, k, odds, years, quality, info, field: f.quality, offer: f.offer, level: f.level, trend: demandTrend(info.family, c.key, g.year), lift: Math.max(0, lift) }
 }
 
-/** Years of full boost a new line is worth over its life (it fades 10% a year). */
-const LINE_YEARS = 3.3
-/** Years the extra complexity of one more line is counted for (faded lines get retired). */
+/** Years of sales a new line is valued over, and the yearly discount. */
+const HORIZON = 8
+const DISCOUNT = 0.9
+/** Years the extra complexity of one more line is counted for (old lines get retired). */
 const COMPLEXITY_YEARS = 5
 
 /**
- * Expected value of funding a project now with this budget: the demand the line adds (at the
- * margin of the current range, net of the complexity it brings), its brand, and the odds of a
- * flop, against the budget. The same numbers advanceRd rolls; never touches g.rng.
+ * Dollars a year that moving the company's pull from (1 + from) to (1 + to) is worth: the
+ * customers it wins in its market (a dominant company has little left to win) times its margin.
  */
-export function rdValue(g: GameState, b: BizState, budget: number, w: Worth = bizWorth(g, b)): RdQuote & { value: number } {
-  const q = rdQuote(g, b, budget)
-  const year = g.year + q.years
-  const mean = q.boost * (1 + HIT_P * 0.8)
-  const now = rangeBoost(b.industry, b.products, year)
-  const after = rangeBoost(b.industry, [...b.products, { name: '·', launched: year, boost: mean }], year)
-  const extra = (complexityShare(b.products.length + 1) - complexityShare(b.products.length)) * Math.max(0, w.revenue)
-  const delay = Math.pow(0.92, q.years - 1)
-  const win = ((after - now) * w.contrib * LINE_YEARS - extra * COMPLEXITY_YEARS) * delay + fxValue(g, b, w, { brand: 3 * (1 - HIT_P) + 8 * HIT_P })
+export function pullValue(ctx: MarketCtx, b: BizState, w: Worth, from: number, to: number): number {
+  const mult = (1 + Math.max(0, to)) / (1 + Math.max(0, from))
+  if (!(mult > 0) || Math.abs(mult - 1) < 1e-9) return 0
+  const st = marketStateOf(b)
+  const s = st && st.year > 0 ? clampN(st.share, 0.0005, 0.98) : 0
+  const q = s > 0 ? (s * ctx.F) / (ctx.w * (1 - s) * ctx.edge) : 0.2
+  const bu = Math.max(1e-9, ctx.dRef * q)
+  const now = marketDemand(ctx, bu).units
+  const then = marketDemand(ctx, bu * mult).units
+  const move = now > 0 ? then / now - 1 : mult - 1
+  const v = w.contrib * move
+  return Number.isFinite(v) ? v : 0
+}
+
+/**
+ * Dollars a change of `dq` quality points on one of the company's lines is worth over `years`
+ * years, at today's market (a copycat closing the gap, a next version opening it).
+ */
+export function lineQualityValue(g: GameState, b: BizState, w: Worth, name: string, dq: number, years: number, ctx?: MarketCtx): number {
+  if (!b.products.some((p) => p.name === name) || !dq) return 0
+  const c = ctx ?? marketCtxFor(g, b, g.year)
+  const field = fieldFor(c)
+  const now = productPull(b.industry, b.products, g.year, field).total
+  const changed = b.products.map((p) => (p.name === name ? { ...p, quality: clampN(lineQuality(p) + dq, 0, 100) } : p))
+  const then = productPull(b.industry, changed, g.year, field).total
+  return pullValue(c, b, w, now, then) * years
+}
+
+/** Change one line's quality (a copycat, a quick next version). */
+export function shiftLineQuality(b: BizState, name: string, dq: number): void {
+  const p = b.products.find((x) => x.name === name)
+  if (p) p.quality = Math.round(clampN(lineQuality(p) + dq, 0, 100))
+}
+
+/** A project's lifetime: the pull its line adds in each year on sale (before discounting). */
+function liftPath(b: BizState, ctx: MarketCtx, line: Product, from: number): { base: number; lift: number }[] {
+  const out: { base: number; lift: number }[] = []
+  for (let t = 0; t < HORIZON; t++) {
+    const year = from + t
+    const field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year)
+    const base = productPull(b.industry, b.products, year, field).total
+    const withIt = productPull(b.industry, [...b.products, { ...line, launched: from }], year, field).total
+    out.push({ base, lift: Math.max(0, withIt - base) })
+  }
+  return out
+}
+
+/**
+ * Expected value of funding an idea now with this budget: the customers its line wins over its
+ * life (its kind's real demand, its quality against the rivals' versions as they catch up), its
+ * brand, the complexity one more line brings and the odds of a flop, against the budget. The same
+ * numbers advanceRd rolls; never touches g.rng.
+ */
+export function rdValue(g: GameState, b: BizState, idea: string, budget: number, w: Worth = bizWorth(g, b), ctx?: MarketCtx): RdQuote & { value: number } {
+  const c = ctx ?? marketCtxFor(g, b, g.year)
+  const q = rdQuote(g, b, idea, budget, c)
+  const from = g.year + q.years
+  const mean = Math.min(99, q.quality + HIT_P * HIT_QUALITY)
+  const path = liftPath(b, c, { name: idea, launched: from, boost: 0, quality: mean, family: q.info.family, kind: q.info.kind }, from)
+  let sales = 0
+  path.forEach((x, t) => {
+    sales += pullValue(c, b, w, x.base, x.base + x.lift) * Math.pow(DISCOUNT, q.years - 1 + t)
+  })
+  const extra = (complexityShare(b.products.length + 1) - complexityShare(b.products.length)) * Math.max(0, w.revenue) * COMPLEXITY_YEARS * Math.pow(DISCOUNT, q.years - 1)
+  const win = sales - extra + fxValue(g, b, w, { brand: 3 * (1 - HIT_P) + 8 * HIT_P })
   const value = q.odds * win + (1 - q.odds) * fxValue(g, b, w, { brand: -2 }) - budget
   return { ...q, value: Number.isFinite(value) ? value : -budget }
 }
 
-/** Budgets the Business talent compares, as multiples of a normal one. */
-const BUDGET_GRID = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16]
+/** Budgets the Business talent compares, as multiples of an idea's normal cost. */
+const BUDGET_GRID = [0.5, 0.75, 1, 1.5, 2, 3, 4]
 
-/** The budget with the best expected value the company can pay now and keep a cash reserve (null: none). */
-export function bestRdBudget(g: GameState, b: BizState): (RdQuote & { budget: number; value: number }) | null {
-  const w = bizWorth(g, b)
-  const base = rdBase(b) * rdCrowding(b)
-  // The grid, plus the budgets where a project gets a year shorter (time comes in whole years).
-  const y0 = baseYears(b.industry)
-  const steps = [1, 2, 3].map((y) => Math.pow(y0 / y, 2)).filter((m) => m > 0.05)
-  // Keep about three months of running costs in the bank: the best bet isn't worth a cash crunch.
+/** Cash a company keeps back from R&D: about three months of running costs. */
+export function rdReserve(b: BizState): number {
   const s = b.last
-  const reserve = s ? Math.max(0, (s.cogs + s.wages + s.keyStaff + s.rent + s.upkeep + s.marketing + s.interest) / 4) : 0
-  const room = Math.max(0, b.cash - reserve)
+  return s ? Math.max(0, (s.cogs + s.wages + s.keyStaff + s.rent + s.upkeep + s.marketing + s.interest) / 4) : 0
+}
+
+/** The budgets worth comparing for an idea within its range (the grid plus the year thresholds). */
+function budgetsFor(b: BizState, idea: string): number[] {
+  const r = rdRange(b, idea)
+  const crowd = rdCrowding(b)
+  const y0 = baseYears(b.industry)
+  // Budgets where a project gets a year shorter (time comes in whole years).
+  const steps = [1, 2, 3].map((y) => Math.pow(y0 / y, 2) * crowd).filter((m) => m * r.normal >= r.min && m * r.normal <= r.max)
+  return [...new Set([...BUDGET_GRID, ...steps].map((m) => Math.min(r.max, Math.max(r.min, niceBudget(r.normal * m)))))]
+}
+
+/** The budget with the best expected value for an idea that the company can pay now and keep a cash reserve (null: none pays). */
+export function bestRdBudget(g: GameState, b: BizState, idea: string, room = Math.max(0, b.cash - rdReserve(b)), w: Worth = bizWorth(g, b), ctx?: MarketCtx): (RdQuote & { budget: number; value: number }) | null {
+  const c = ctx ?? marketCtxFor(g, b, g.year)
   let best: (RdQuote & { budget: number; value: number }) | null = null
-  for (const m of [...BUDGET_GRID, ...steps]) {
-    // Rounded up, so a nice number never slips under one of those thresholds.
-    const budget = niceBudget(base * m)
-    if (budget > room || budget < rdMinBudget(b)) continue
-    const v = rdValue(g, b, budget, w)
+  for (const budget of budgetsFor(b, idea)) {
+    if (budget > room) continue
+    const v = rdValue(g, b, idea, budget, w, c)
     if (v.value > 0 && (!best || v.value > best.value)) best = { ...v, budget }
+  }
+  return best
+}
+
+/** The best idea and budget among `ideas` within `room` (the board's CEO and the purple hints). */
+export function bestRdIdea(g: GameState, b: BizState, ideas: readonly string[], room: number, w: Worth = bizWorth(g, b), judge: (v: number) => number = (v) => v): { idea: string; budget: number; value: number; quote: RdQuote } | null {
+  const c = marketCtxFor(g, b, g.year)
+  let best: { idea: string; budget: number; value: number; quote: RdQuote } | null = null
+  for (const idea of ideas) {
+    for (const budget of budgetsFor(b, idea)) {
+      if (budget > room) continue
+      const v = rdValue(g, b, idea, budget, w, c)
+      const value = judge(v.value + budget) - budget
+      if (value > 0 && (!best || value > best.value)) best = { idea, budget, value, quote: v }
+    }
   }
   return best
 }
@@ -138,13 +294,15 @@ function niceBudget(n: number): number {
   return Math.ceil(n / mag - 1e-9) * mag
 }
 
-/** Why a project can't start (null when it can). */
+/** Why a project can't start (null when it can). Cash is checked separately (startRd). */
 export function rdBlock(b: BizState, idea: string, budget: number): string | null {
   if (!idea.trim()) return 'Pick an idea first.'
   if (b.products.some((p) => p.name === idea)) return `${idea} is already on sale.`
   if (rdProjects(b).some((p) => p.name === idea)) return `${idea} is already in development.`
   if (rdProjects(b).length >= MAX_STORED_PROJECTS) return 'Your R&D department is drowning in projects. Let some finish first.'
-  if (!(budget >= rdMinBudget(b))) return `A real project needs at least ${money(rdMinBudget(b))}.`
+  const r = rdRange(b, idea)
+  if (!(budget >= r.min)) return `${idea} needs a budget of at least ${money(r.min)}.`
+  if (budget > r.max) return `${idea} can't usefully take more than ${money(r.max)}: past that, money doesn't make it better.`
   return null
 }
 
@@ -157,37 +315,61 @@ export function startRd(g: GameState, a: Asset, b: BizState, idea: string, budge
     return null
   }
   if (b.cash < n) {
-    notice(g, 'Not Enough Company Cash', `${a.name} doesn't have ${formatMoney(n)} for that R&D budget. Inject some of your own money, borrow, or fund a smaller project.`, { emoji: '\u{1F4B8}', tone: 'bad' })
+    notice(g, 'Not Enough Company Cash', `Developing ${idea} on a ${formatMoney(n)} budget needs ${formatMoney(n - Math.max(0, b.cash))} more than ${a.name} has. Inject some of your own money, borrow, or pick a smaller budget.`, { emoji: '\u{1F4B8}', tone: 'bad' })
     return null
   }
-  const q = rdQuote(g, b, n)
+  const q = rdQuote(g, b, idea, n)
   b.cash -= n
   b.yearCosts += n
-  const p: RdProject = { id: uid(g, 'rd'), name: idea, budget: n, years: q.years, progress: 0, odds: Math.round(q.odds * 1000) / 1000, boost: Math.round(q.boost * 1000) / 1000, started: g.year }
+  const p: RdProject = {
+    id: uid(g, 'rd'),
+    name: idea,
+    budget: n,
+    years: q.years,
+    progress: 0,
+    odds: Math.round(q.odds * 1000) / 1000,
+    boost: 0,
+    quality: q.quality,
+    family: q.info.family,
+    kind: q.info.kind,
+    started: g.year,
+  }
   rdOf(b).push(p)
   log(g, `${a.name} started developing ${idea}.`)
   notice(
     g,
     'R&D Underway',
-    `${a.name}'s team is developing ${idea} on a ${formatMoney(n)} budget. It should be ready in ${q.years === 1 ? 'about a year' : `about ${q.years} years`}, with about ${Math.round(q.odds * 100)}% odds it works. ${plural(rdProjects(b).length, 'project')} in development now.`,
+    `${a.name}'s team is developing ${idea} on a ${formatMoney(n)} budget. It should be ready in ${q.years === 1 ? 'about a year' : `about ${q.years} years`}, with about ${Math.round(q.odds * 100)}% odds it works and a quality around ${q.quality} (rivals' versions: ${q.offer > 0.02 ? Math.round(q.field) : 'none yet'}). ${plural(rdProjects(b).length, 'project')} in development now.`,
     { emoji: '\u{1F9EA}' },
   )
   return p
 }
 
-/** Lines most worth retiring first: the most faded, then the oldest. */
-export function retireOrder(products: Product[], year: number): Product[] {
-  return [...products].sort((x, y) => productLift(x, year) - productLift(y, year) || x.launched - y.launched)
+/** A line's standing without rivals: how much demand its kind has and how good the line still is. */
+function standing(b: Pick<BizState, 'industry' | 'countryId'>, p: Product, year: number): number {
+  const info = infoOf(p, b.industry)
+  const level = demandLevel(info.family, marketKey(b), year).level
+  return KIND_WEIGHT[info.kind] * demandSize(info.family) * level * Math.pow(2, effectiveQuality(p, b.industry, year) / 15)
 }
 
-/** Retire the `n` most faded lines; returns their names. */
+/** Lines most worth retiring first: the weakest (outdated, or in a kind nobody wants any more), then the oldest. */
+export function retireOrder(b: Pick<BizState, 'industry' | 'countryId' | 'products'>, year: number): Product[] {
+  return [...b.products].sort((x, y) => standing(b, x, year) - standing(b, y, year) || x.launched - y.launched)
+}
+
+/** Retire the `n` weakest lines; returns their names. */
 export function retireLines(b: BizState, n: number, year: number): string[] {
   const k = Math.max(0, Math.min(b.products.length, Math.floor(n)))
   if (k <= 0) return []
-  const gone = retireOrder(b.products, year).slice(0, k)
+  const gone = retireOrder(b, year).slice(0, k)
   const names = new Set(gone.map((p) => p.name))
   b.products = b.products.filter((p) => !names.has(p.name))
   return gone.map((p) => p.name)
+}
+
+/** A finished project's expected quality (old saves: from the boost it was funded for). */
+function projectQuality(p: RdProject): number {
+  return typeof p.quality === 'number' && Number.isFinite(p.quality) ? p.quality : qualityFromBoost(p.boost)
 }
 
 /**
@@ -201,6 +383,7 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
   const keep: RdProject[] = []
   const lines: string[] = []
   let wins = 0
+  let field: Field | null = null
   for (const p of b.rd) {
     p.progress = Math.min(p.years, p.progress + 1)
     if (p.progress < p.years) {
@@ -214,11 +397,23 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
       continue
     }
     const hit = chance(g, HIT_P)
-    const boost = Math.round(clampN(p.boost * (0.5 + rand(g)) * (hit ? 1.8 : 1), 0.005, 0.5) * 1000) / 1000
-    b.products.push({ name: p.name, launched: year + 1, boost })
+    const quality = Math.round(clampN(projectQuality(p) + (rand(g) * 2 - 1) * QUALITY_SPREAD + (hit ? HIT_QUALITY : 0), 5, 99))
+    const info = p.family && p.kind ? { family: p.family, kind: p.kind } : lineInfo(p.name, b.industry)
+    // A line of the same name may have come with a rival bought meanwhile: the better one stays.
+    const same = b.products.findIndex((x) => x.name === p.name)
+    const line: Product = { name: p.name, launched: year + 1, boost: 0, quality, family: info.family, kind: info.kind }
+    if (same < 0) b.products.push(line)
+    else if (lineQuality(b.products[same]) < quality) b.products[same] = line
     b.brand = clampN(b.brand + (hit ? 8 : 3), 0, 100)
     wins += 1
-    lines.push(`${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${hit ? 'is a smash hit' : 'launches'}: about ${Math.round(boost * 100)}% more demand while it's fresh.`)
+    if (!field) {
+      const ctx = marketCtxFor(g, b, year + 1)
+      field = fieldFor(ctx)
+    }
+    const f = field.of(info.family)
+    const vs = f.offer > 0.02 ? `rivals' versions ${Math.round(f.quality)}` : 'no rival sells one yet'
+    const verdict = f.offer <= 0.02 ? 'customers have nowhere else to get it' : quality >= f.quality + 5 ? 'customers will switch to you' : quality >= f.quality - 5 ? 'it holds its own' : 'rivals still do it better'
+    lines.push(`${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${hit ? 'is a smash hit' : 'launches'}: quality ${quality} (${vs}), ${verdict}.`)
     log(g, `${name} launched ${p.name}${hit ? ' and it was a smash hit' : ''}.`, 'good')
   }
   b.rd = keep

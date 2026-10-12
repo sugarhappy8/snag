@@ -24,12 +24,13 @@ import { ceoLetter, SMART_SKILL, styleOf } from './career'
 import { isDeepTech } from './deeptech-state'
 
 export { ceoLetter, ownerAvailable } from './career'
-import { bestPlan, bookYear, planFor, bizWorth, fxValue, LASTING_YEARS, lineCost, linesOf, localEcon, localPay, maxProduction, priceBounds, refreshValue, startupCost, staffNet, valuationOf, type Worth } from './economy'
+import { bestPlan, bookYear, planFor, bizWorth, fxValue, LASTING_YEARS, lineCost, linesOf, localEcon, localPay, marketCtxFor, maxProduction, priceBounds, refreshValue, startupCost, staffNet, valuationOf, type Worth } from './economy'
 import { roleTitle } from './era'
 import { laborProtection, severanceMonths, STAFF_TRAITS } from './flavor'
 import { industryDef, lineOf, type RoleDef } from './industries'
-import { complexityShare, productIdeas, rangeBoost } from './products'
-import { rdBase, rdCrowding, rdMinBudget, rdOf, rdQuote, rdValue, retireLines, retireOrder, roundBudget } from './rd'
+import { complexityShare, productIdeas } from './products'
+import { bestRdIdea, pullValue, rdOf, retireLines, retireOrder } from './rd'
+import { fieldFor, lineInfo, productPull } from './product-market'
 import { bestRole, hireValue, interviewFee, maxKeyStaff } from './staff'
 import { totalOutlets, type BizState, type KeyStaff, type Manager, type Supplier } from './state'
 import { clampN, money, plural, priceCapOf, round2, unitMoney, units } from './util'
@@ -192,17 +193,13 @@ export function bestClosure(g: GameState, b: BizState, w: Worth, opts: { judge?:
   return best
 }
 
-/** The R&D budget with the best expected value within `avail` (null: no project pays). */
-export function bestRdWithin(g: GameState, b: BizState, avail: number, w: Worth, judge: Judge = exact): { budget: number; value: number } | null {
-  const base = rdBase(b) * rdCrowding(b)
-  let best: { budget: number; value: number } | null = null
-  for (const m of [0.5, 0.75, 1, 1.5, 2, 3, 4, 6]) {
-    const budget = roundBudget(base * m)
-    if (budget > avail || budget < rdMinBudget(b)) continue
-    const v = judge(rdValue(g, b, budget, w).value + budget) - budget
-    if (v > 0 && (!best || v > best.value)) best = { budget, value: v }
-  }
-  return best
+/** Ideas a CEO weighs at once (the next few on the drawing board). */
+const RD_IDEAS = 4
+
+/** The R&D project (idea and budget) with the best expected value within `avail` (null: no project pays). */
+export function bestRdWithin(g: GameState, b: BizState, avail: number, w: Worth, judge: Judge = exact): { idea: string; budget: number; value: number; odds: number; years: number; quality: number } | null {
+  const pick = bestRdIdea(g, b, productIdeas(g, b, RD_IDEAS), avail, w, judge)
+  return pick ? { idea: pick.idea, budget: pick.budget, value: pick.value, odds: pick.quote.odds, years: pick.quote.years, quality: pick.quote.quality } : null
 }
 
 /** Supplier contract costs and quality (manage.ts Quality menu uses the same numbers). */
@@ -521,19 +518,21 @@ function policyTurn(t: Turn): void {
 function productTurn(t: Turn): void {
   const { g, b } = t
   const w = bizWorth(g, b)
-  // Retire faded lines whose complexity costs more than the sales they still bring.
+  // Retire outdated lines whose complexity costs more than the customers they still win.
   let retired = 0
   for (let i = 0; i < 10 && b.products.length > 0; i++) {
-    const oldest = retireOrder(b.products, g.year)[0]
-    if (!oldest) break
-    const rest = b.products.filter((p) => p !== oldest)
-    const keep = (rangeBoost(b.industry, b.products, g.year) - rangeBoost(b.industry, rest, g.year)) * w.contrib
+    const weakest = retireOrder(b, g.year)[0]
+    if (!weakest) break
+    const ctx = marketCtxFor(g, b, g.year)
+    const field = fieldFor(ctx)
+    const rest = b.products.filter((p) => p !== weakest)
+    const keep = pullValue(ctx, b, w, productPull(b.industry, rest, g.year, field).total, productPull(b.industry, b.products, g.year, field).total)
     const saves = (complexityShare(b.products.length) - complexityShare(rest.length)) * Math.max(0, w.revenue)
     if (t.judge(saves) <= keep) break
     retireLines(b, 1, g.year)
     retired++
   }
-  if (retired > 0) t.lines.push(`Retired ${plural(retired, 'faded product line')}: running ${retired === 1 ? 'it' : 'them'} cost more than ${retired === 1 ? 'it' : 'they'} sold.`)
+  if (retired > 0) t.lines.push(`Retired ${plural(retired, 'outdated product line')}: running ${retired === 1 ? 'it' : 'them'} cost more than ${retired === 1 ? 'it' : 'they'} sold.`)
   // R&D: fund the projects that pay, within the budget and the reserve.
   const style = styleOf(t.m)
   const max = RD_PER_YEAR[t.st.mandate] + (style === 'visionary' ? 2 : style === 'costCutter' ? -1 : 0)
@@ -542,13 +541,11 @@ function productTurn(t: Turn): void {
   for (let i = 0; i < Math.max(0, max); i++) {
     const pick = bestRdWithin(g, b, spendable(t), bizWorth(g, b), t.judge)
     if (!pick) break
-    const idea = productIdeas(g, b, 1)[0]
-    if (!idea) break
-    const q = rdQuote(g, b, pick.budget)
     spend(t, pick.budget, true)
     b.yearCosts += pick.budget
-    rdOf(b).push({ id: uid(g, 'rd'), name: idea, budget: pick.budget, years: q.years, progress: 0, odds: Math.round(q.odds * 1000) / 1000, boost: Math.round(q.boost * 1000) / 1000, started: g.year })
-    started.push(idea)
+    const info = lineInfo(pick.idea, b.industry)
+    rdOf(b).push({ id: uid(g, 'rd'), name: pick.idea, budget: pick.budget, years: pick.years, progress: 0, odds: Math.round(pick.odds * 1000) / 1000, boost: 0, quality: pick.quality, family: info.family, kind: info.kind, started: g.year })
+    started.push(pick.idea)
     total += pick.budget
   }
   if (started.length) {

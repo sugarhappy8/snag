@@ -39,9 +39,18 @@ export interface Outlet {
 
 export interface Product {
   name: string
+  /** First year it is on sale. */
   launched: number
-  /** Extra demand while fresh, e.g. 0.12 = +12%. */
+  /** Old saves: the line's demand boost (its quality is derived from it when `quality` is missing). */
   boost: number
+  /** 0-100: how good this line is against the rivals' versions of it (fixed at launch). */
+  quality?: number
+  /** The classic kind of product it belongs to ('Street Lighting' for 'Street Lighting Mk II'). */
+  family?: string
+  /** What sort of line it is within its kind (product-market.ts LineKind). */
+  kind?: 'core' | 'next' | 'premium' | 'value' | 'regional' | 'bundle' | 'addon'
+  /** Who made it, when it wasn't the company's own R&D (a rival bought out). */
+  from?: string
 }
 
 /**
@@ -60,8 +69,13 @@ export interface RdProject {
   progress: number
   /** Chance it works when it is done (fixed when it starts). */
   odds: number
-  /** Demand boost of the product line if it works (fixed when it starts). */
+  /** Old saves: the demand boost it was funded for (its quality is derived from it when `quality` is missing). */
   boost: number
+  /** Expected quality of the line if it works (fixed when it starts; the launch rolls around it). */
+  quality?: number
+  /** Kind of product and sort of line (product-market.ts). */
+  family?: string
+  kind?: Product['kind']
   /** Calendar year it started. */
   started: number
 }
@@ -373,10 +387,33 @@ function readOutlet(x: Record<string, Json>): Outlet | null {
   return { countryId, city, count, opened: Math.round(num(x.opened)) }
 }
 
+const LINE_KINDS: readonly NonNullable<Product['kind']>[] = ['core', 'next', 'premium', 'value', 'regional', 'bundle', 'addon']
+
+function lineKind(v: Json | undefined): Product['kind'] | undefined {
+  return typeof v === 'string' && (LINE_KINDS as readonly string[]).includes(v) ? (v as Product['kind']) : undefined
+}
+
+/** Line fields added by products 2.0, when stored (old lines have none of them). */
+function lineExtras(x: Record<string, Json>): Pick<Product, 'quality' | 'family' | 'kind' | 'from'> {
+  const kind = lineKind(x.kind)
+  return {
+    ...(typeof x.quality === 'number' && Number.isFinite(x.quality) ? { quality: Math.round(clampN(x.quality, 0, 100)) } : {}),
+    ...(str(x.family) ? { family: str(x.family) } : {}),
+    ...(kind ? { kind } : {}),
+    ...(str(x.from) ? { from: str(x.from) } : {}),
+  }
+}
+
+/** A project's stored quality and kind (never who made it: projects are always the company's own). */
+function projectExtras(x: Record<string, Json>): Pick<RdProject, 'quality' | 'family' | 'kind'> {
+  const { quality, family, kind } = lineExtras(x)
+  return { ...(quality !== undefined ? { quality } : {}), ...(family ? { family } : {}), ...(kind ? { kind } : {}) }
+}
+
 function readProduct(x: Record<string, Json>): Product | null {
   const name = str(x.name)
   if (!name) return null
-  return { name, launched: Math.round(num(x.launched)), boost: clampN(num(x.boost, 0.05), 0, 0.5) }
+  return { name, launched: Math.round(num(x.launched)), boost: clampN(num(x.boost, 0.05), 0, 0.5), ...lineExtras(x) }
 }
 
 function readProject(x: Record<string, Json>): RdProject | null {
@@ -391,6 +428,7 @@ function readProject(x: Record<string, Json>): RdProject | null {
     progress: clampN(num(x.progress), 0, years),
     odds: clampN(num(x.odds, 0.5), 0.02, 0.98),
     boost: clampN(num(x.boost, 0.05), 0, 0.5),
+    ...projectExtras(x),
     started: Math.round(num(x.started)),
   }
 }

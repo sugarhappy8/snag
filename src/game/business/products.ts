@@ -1,48 +1,19 @@
 // Product lines without a fixed list: an endless, deterministic stream of ideas per industry
 // (the industry's classics, then premium and budget versions, regional editions, bundles,
-// spin-offs and next generations), and the economics that keep a huge range from paying:
-// every line adds demand with diminishing returns (cannibalization), and running many lines
-// costs a share of sales that grows faster than the range (complexity: packaging, shelf space,
-// stock, support). Pure: no RNG, no state changes; names respect the era (no apps in 1975).
+// spin-offs and next generations), and the running costs that keep a huge range from paying:
+// running many lines costs a share of sales that grows faster than the range (complexity:
+// packaging, shelf space, stock, support). What a line sells is product-market.ts (its kind's real
+// demand, its quality against the rivals' versions). Pure: no RNG, no state changes; names respect
+// the era (no apps in 1975) and each kind of product's real first year (product-data.ts).
 import type { GameState } from '../types'
+import { marketKey } from './competition-core'
 import { eraFits } from './era'
 import { industryDef } from './industries'
-import type { BizState, Product } from './state'
+import { demandLevel, PERIOD_CLASSICS } from './product-data'
+import type { BizState } from './state'
 
-/** Years a line stays on sale before it is retired automatically. */
-export const PRODUCT_LIFE = 15
-
-/** How much of a line's launch boost is left `age` years after launch (fades 10% a year, never below a quarter). */
-export function productFade(p: Pick<Product, 'launched'>, year: number): number {
-  return Math.max(0.25, 1 - 0.1 * Math.max(0, year - p.launched))
-}
-
-/** A line's current pull on demand. */
-export function productLift(p: Product, year: number): number {
-  return Math.max(0, p.boost) * productFade(p, year)
-}
-
-/** The cap the old six-line model used: how far products can push this industry's demand. */
-function liftCap(industry: string): number {
-  return 0.6 * (0.5 + industryDef(industry).growth)
-}
-
-/**
- * Extra demand from the whole range. A few lines add up one for one; beyond half of the
- * industry's cap every new line adds less (they eat each other's sales), approaching a ceiling
- * that a broad range lifts only slowly (more reach: more customers find something they like).
- */
-export function rangeBoost(industry: string, products: Product[], year: number): number {
-  let sum = 0
-  for (const p of products) sum += productLift(p, year)
-  if (!(sum > 0)) return 0
-  const k = liftCap(industry)
-  const half = k / 2
-  if (sum <= half) return sum
-  const ceiling = k * (1 + 0.25 * Math.log2(1 + products.length / 8))
-  const room = Math.max(1e-6, ceiling - half)
-  return half + room * (1 - Math.exp(-(sum - half) / room))
-}
+/** Years a line stays on sale before it is retired automatically (rivals left it far behind long before). */
+export const PRODUCT_LIFE = 30
 
 /**
  * Share of net sales that running `n` lines costs a year (SKUs, packaging, shelf fees, stock,
@@ -67,7 +38,7 @@ export function rangeBrand(n: number): number {
 // ---------------------------------------------------------------------------
 // Ideas
 
-type Style = 'food' | 'goods' | 'service' | 'tech'
+export type Style = 'food' | 'goods' | 'service' | 'tech'
 
 const STYLE: Record<string, Style> = {
   foodTruck: 'food',
@@ -94,7 +65,7 @@ const STYLE: Record<string, Style> = {
   cybersecurity: 'tech',
 }
 
-function styleOf(industry: string): Style {
+export function styleOf(industry: string): Style {
   return STYLE[industry] ?? 'service'
 }
 
@@ -206,7 +177,7 @@ const ERA_FROM: Record<string, number> = {
  * Timeless ideas for each industry, offered when the year leaves fewer than four of its modern
  * classics (a 1925 bakery bakes rye loaves, not cronut knockoffs). Worded to fit any decade.
  */
-const TIMELESS: Record<string, string[]> = {
+export const TIMELESS: Record<string, string[]> = {
   foodTruck: ['Daily Lunch Special', 'Fresh Lemonade', 'Fried Fish Supper', 'Hot Sandwiches'],
   restaurant: ['Sunday Roast', 'Soup of the Day', 'Chef’s Special', 'Private Dining Room'],
   cafe: ['Afternoon Tea', 'Pastry Counter', 'House Blend', 'Iced Coffee'],
@@ -265,10 +236,12 @@ function nextGen(style: Style, x: string, k: number, year: number): string {
  * seltzer in 1925), topped up with timeless ones when the era leaves too few.
  */
 export function classicIdeas(g: GameState, b: Pick<BizState, 'industry' | 'countryId'>): string[] {
-  const fits = (x: string) => ideaFits(x, g.year) && eraFits(g, b.countryId, x)
+  const place = marketKey(b)
+  // Nobody develops a kind of product before anyone in its market sells one (product-data.ts).
+  const fits = (x: string) => ideaFits(x, g.year) && eraFits(g, b.countryId, x) && demandLevel(x, place, g.year).exists
   const modern = industryDef(b.industry).products.filter(fits)
   if (modern.length >= 4) return modern
-  const old = (TIMELESS[b.industry] ?? []).filter((x) => fits(x) && !modern.includes(x))
+  const old = [...(TIMELESS[b.industry] ?? []), ...(PERIOD_CLASSICS[b.industry] ?? [])].filter((x) => fits(x) && !modern.includes(x))
   return [...modern, ...old]
 }
 

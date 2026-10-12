@@ -22,6 +22,7 @@ import { bizWorth, fxValue, localEcon, staffPower, type Worth } from './economy'
 import { sellBusiness } from './exit'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, totalOutlets, type BizState } from './state'
+import { lineQualityValue, shiftLineQuality } from './rd'
 import { cap, clampN, markBest, money, num, pct, promisePrice, rec, round2, str } from './util'
 
 interface Ctx {
@@ -194,8 +195,9 @@ const COPYCAT = defineScript('business.comp.copycat', (g, choice, data) => {
   if (choice === 'innovate') {
     const cost = pay(b, innovateCost(b))
     b.quality = clampN(b.quality + 5, 0, 100)
+    shiftLineQuality(b, product, INNOVATE_LINE)
     setEdge(b, 1.06, g.year + 1, g.year)
-    tell(g, 'Out-Innovated', `You spent ${formatMoney(cost)} shipping the next version of ${product} before ${name} could get its rival product off the ground. Quality is up to ${b.quality}%.`, '\u{1F680}', 'good')
+    tell(g, 'Out-Innovated', `You spent ${formatMoney(cost)} shipping the next version of ${product} before ${name} could get its rival product off the ground. Quality is up to ${b.quality}%, and ${product} is ${INNOVATE_LINE} points better than it was.`, '\u{1F680}', 'good')
     return
   }
   if (choice === 'market') {
@@ -206,10 +208,14 @@ const COPYCAT = defineScript('business.comp.copycat', (g, choice, data) => {
     return
   }
   setEdge(b, 0.9, g.year + 1, g.year)
-  const p = b.products.find((y) => y.name === product)
-  if (p) p.boost = round2(p.boost * 0.6)
-  tell(g, 'Letting It Slide', `You let ${name}'s rival product slide. Some of your customers did too: straight to them.`, '\u{1F937}', 'bad')
+  // Their cheaper copy closes the gap: your line is worth that much less to customers.
+  shiftLineQuality(b, product, -COPIED_LINE)
+  tell(g, 'Letting It Slide', `You let ${name}'s rival product slide. Some of your customers did too: straight to them. ${product} no longer stands out the way it did.`, '\u{1F937}', 'bad')
 })
+
+/** Quality points a quick next version adds to the copied line, and what a copy left alone takes off it. */
+const INNOVATE_LINE = 6
+const COPIED_LINE = 8
 
 function marketCost(b: BizState): number {
   return scaledCost(b, 25_000, 0.02)
@@ -238,10 +244,10 @@ function presentCopycat(g: GameState, a: Asset, b: BizState): void {
       const relief = 1 / Math.max(0.5, 1 - r.share * 0.25)
       return {
         ...(lawsuit ? { sue: -suitCost(b) + p * (suitCost(b) * 1.5 + edgeValue(g, b, w, relief, 2)) + (1 - p) * edgeValue(g, b, w, 0.93, 2) } : {}),
-        innovate: fxValue(g, b, w, { cash: -innovateCost(b), quality: 5 }) + edgeValue(g, b, w, 1.06, 2),
+        innovate: fxValue(g, b, w, { cash: -innovateCost(b), quality: 5 }) + edgeValue(g, b, w, 1.06, 2) + lineQualityValue(g, b, w, product, INNOVATE_LINE, 2.5),
         ...(lawsuit ? {} : { market: fxValue(g, b, w, { cash: -marketCost(b), brand: 4 }) + edgeValue(g, b, w, 1.04, 2) }),
-        // Letting it slide also takes 40% of the line's pull for the rest of its life.
-        ignore: edgeValue(g, b, w, 0.9, 2) - w.contrib * (b.products.find((p) => p.name === product)?.boost ?? 0) * 0.4 * 2.5,
+        // Letting it slide also costs the line its lead over the copy for the rest of its life.
+        ignore: edgeValue(g, b, w, 0.9, 2) + lineQualityValue(g, b, w, product, -COPIED_LINE, 2.5),
       }
     }),
     (id) => (id === 'sue' ? `Best move: about ${pct(suitWinP(b))} odds in court, and a win hurts them for years` : undefined),

@@ -230,6 +230,7 @@ export function useMenuRunner(opts: MenuRunnerOptions): MenuRunner {
         unit={input.unit}
         preview={preview}
         money={input.money === true && input.kind !== 'text'}
+        roundDefault={input.roundDefault === true}
         multiline={isMultiline(action)}
         submitLabel={action.id === 'doAnything' ? 'Do it' : 'Done'}
         onCancel={() => setPending(null)}
