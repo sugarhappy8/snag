@@ -12,6 +12,7 @@
 // Calibrated so that a company in a crowded PRESENT_YEAR market sells what it always did (the
 // factor is ~1), while an early mover in an exploding market can grow into it and dominate.
 import type { Json } from '../types'
+import type { Field } from './product-market'
 import { PRESENT_YEAR } from '../history/timeline'
 import { readMarket, type ExtraRival, type MarketState } from './competition-state'
 import { marketDef, OUTSIDE, sizeRatio, type MarketDef } from './competition-data'
@@ -70,6 +71,8 @@ export interface MarketCtx {
   rivals: FieldRival[]
   /** Pull of the long tail of small competitors. */
   fringe: number
+  /** What the rivals offer of each kind of product, and how well (product-market.ts; attached by economy.marketCtxFor). */
+  field?: Field
 }
 
 export interface MarketPick {

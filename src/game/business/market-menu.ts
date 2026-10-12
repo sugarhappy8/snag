@@ -7,10 +7,11 @@
 import { eraOf } from '../history/timeline'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
-import { marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
+import { marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING } from './competition-core'
 import { mergerLimit, TIERS, type Regime } from './competition-data'
-import { marketOwner, marketViewOf, shareText, type MarketView } from './competition'
-import { acquireRival, acquisitionQuote, offensiveValue, OFFENSIVE_EDGE, raidValue } from './competition-moves'
+import { marketOwner, marketViewOf, shareText, type MarketView, type RivalView } from './competition'
+import { acquireRival, acquisitionGains, acquisitionQuote, offensiveValue, OFFENSIVE_EDGE, raidValue } from './competition-moves'
+import { rivalLines } from './product-market'
 import { industryDef } from './industries'
 import { cached, hinting, live, mAct } from './market-menu-kit'
 import { continentOf } from './market-regional'
@@ -28,7 +29,7 @@ import {
 import { bizWorth } from './economy'
 import { readBiz, type BizState } from './state'
 import { isDeepTech } from './deeptech-state'
-import { money, pct, stars } from './util'
+import { money, pct, plural, stars } from './util'
 
 const MAX_ROWS = 12
 
@@ -362,6 +363,14 @@ export function rivalsMenu(a: Asset): MenuGroup {
   }
 }
 
+/** What a rival sells, best-selling kinds first, with its quality in each: 'Sells: Street Lighting (64) · Hydro Dam (58)'. */
+function productsLine(g: GameState, b: BizState, r: RivalView): string {
+  const lines = rivalLines(r, b.industry, marketKey(b), g.year)
+  if (!lines.length) return 'Sells: its basic range (no product lines of note yet)'
+  const shown = lines.slice(0, 4).map((l) => `${l.family} (${l.quality})`)
+  return `Sells: ${shown.join(' \u{00B7} ')}${lines.length > 4 ? ` \u{00B7} +${lines.length - 4} more` : ''}`
+}
+
 function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
   const cur = live(g, a)
   const b = readBiz(g, cur)
@@ -375,6 +384,7 @@ function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
     info(k('size'), `Size: ${r.legacy ? 'state-backed' : r.tier} · ${shareText(r.share)} of the market ${trendArrow(r.trend)} · segment ${p.segment}${r.seg ? '' : ''}`, '\u{1F4CF}'),
     info(k('str'), `Strengths${r.real ? ' (modeled)' : ''}: quality ${stars(r.real ? Math.max(3, r.quality / 20) : r.quality / 20)} · technology ${stars(r.real ? Math.max(3, r.tech / 20) : r.tech / 20)} · prices ${p.strengths.priceEdge === 'cheaper' ? 'below yours' : p.strengths.priceEdge === 'pricier' ? 'above yours' : 'like yours'}`, '\u{1F4AA}'),
     info(k('where'), `Plays in: ${p.places.join(', ')}`, '\u{1F5FA}\u{FE0F}'),
+    info(k('lines'), productsLine(g, b, r), '\u{1F4E6}'),
     ...p.recent.slice(0, 4).map((t, i) => info(k(`rec${i}`), t, '\u{1F4F0}')),
     info(k('next'), `Likely next: ${p.next}`, '\u{1F52E}'),
   ]
@@ -382,8 +392,10 @@ function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
     nodes.push(
       mAct(a, `rbuy.${rivalId}`, `Buy out ${r.name}`, '\u{1F91D}', {
         subtitle: (gg) => {
-          const q = acquisitionQuote(gg, readBiz(gg, live(gg, a)), rivalId)
-          return q ? `${money(q.price)} · most of its customers stay with you` : 'Not for sale'
+          const bb = readBiz(gg, live(gg, a))
+          const q = acquisitionQuote(gg, bb, rivalId)
+          const def = industryDef(bb.industry)
+          return q ? `${money(q.price)} · ${acquisitionGains(q, def.site, def.sitePlural)} come with it` : 'Not for sale'
         },
         disabled: (gg, bb) => {
           const q = acquisitionQuote(gg, bb, rivalId)
@@ -394,7 +406,9 @@ function rivalRows(g: GameState, a: Asset, rivalId: string): MenuNode[] {
         },
         confirm: (gg) => {
           const q = acquisitionQuote(gg, readBiz(gg, live(gg, a)), rivalId)
-          return q ? `Buy ${r.name} for ${money(q.price)} of ${a.name}'s cash?` : null
+          if (!q) return null
+          const lines = q.lines.length ? ` Its ${plural(q.lines.length, 'product line')} (${q.lines.slice(0, 3).map((l) => l.family).join(', ')}${q.lines.length > 3 ? '…' : ''}) come with it.` : ''
+          return `Buy ${r.name} for ${money(q.price)} of ${a.name}'s cash?${lines}`
         },
         run: (gg, c2, b2) => {
           acquireRival(gg, c2, b2, rivalId)
@@ -673,7 +687,7 @@ export function scenarioRows(g: GameState, a: Asset): ScenarioRow[] {
       const q = acquisitionQuote(g, b, r.id)
       if (q && !q.block && q.price <= Math.max(0, b.cash) && (!bestBuy || q.value > bestBuy.value)) bestBuy = { name: r.name, share: r.share * 0.7, value: q.value, price: q.price }
     }
-    if (bestBuy) rows.push({ id: 'buy', label: `Buy out ${bestBuy.name}`, ask: `buy out ${bestBuy.name}`, emoji: '\u{1F91D}', shareDelta: bestBuy.share, value: bestBuy.value, cost: bestBuy.price, block: null, note: 'most of its customers stay; antitrust watches' })
+    if (bestBuy) rows.push({ id: 'buy', label: `Buy out ${bestBuy.name}`, ask: `buy out ${bestBuy.name}`, emoji: '\u{1F91D}', shareDelta: bestBuy.share, value: bestBuy.value, cost: bestBuy.price, block: null, note: 'its customers, sites and products come with it; antitrust watches' })
     const be = bestEntry(g, a)
     if (be) rows.push({ id: 'enter', label: `Enter ${placeName(be.country)}`, ask: `move into ${placeName(be.country)}`, emoji: '\u{1F6EB}', shareDelta: be.best.shareDelta, value: be.best.value, cost: be.best.cost, block: null, note: MODE_LABEL[(be.best.move as { mode: keyof typeof MODE_LABEL }).mode].toLowerCase() })
     const bc = bestCampaign(g, a)

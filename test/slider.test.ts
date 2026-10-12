@@ -254,3 +254,24 @@ describe('slider markup', () => {
     expect(html).not.toContain('Cancel')
   })
 })
+
+describe('round amounts in the player currency (review: an R&D budget read "441326.96")', () => {
+  it('opens a suggested budget on a round amount and keeps notches round in a currency worth more than a dollar', async () => {
+    const { sliderScale: scale, sliderStart: start, sliderValueAt: at, sliderNudge: nudge, sliderOutput: output } = await import('../src/ui/components/menuModel')
+    // A 1930 yen is worth about fifteen of today's dollars.
+    const s = scale(130_000, 1_000_000, 1, 0.0649)
+    const v = start(s, '250000', true)
+    expect(exactText(v, 0.0649, true)).toBe('16000')
+    for (const n of [10, 50, 120, 199]) {
+      const x = at(s, n)
+      const shown = x * 0.0649
+      expect(Math.abs(shown - Math.round(shown))).toBeLessThan(1e-6)
+    }
+    const up = nudge(s, v, 1)
+    expect(Math.abs(up * 0.0649 - Math.round(up * 0.0649))).toBeLessThan(1e-6)
+    // The engine still gets whole dollars within the bounds.
+    expect(Number(output(s, v, true))).toBe(Math.round(v))
+    // Without the suggestion flag, an exact default (a current salary) is kept as it is.
+    expect(start(s, '252345')).toBe(252_345)
+  })
+})

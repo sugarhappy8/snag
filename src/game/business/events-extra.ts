@@ -26,7 +26,7 @@ import { franchiseBlock, franchiseFee, franchiseUnits, franchiseValue, isFranchi
 import { isStudio } from './gamestudio'
 import { industryDef } from './industries'
 import { productIdeas } from './products'
-import { rdBase, rdMinBudget, rdValue, roundBudget, startRd } from './rd'
+import { rdRange, rdValue, roundBudget, startRd } from './rd'
 import { bizOf, diluteBusinessEquity, findBusiness, totalOutlets, type BizState } from './state'
 import { aPct, clampN, markBest, money, num, pct, rec, str } from './util'
 
@@ -552,12 +552,14 @@ function presentCopycat(g: GameState, a: Asset, b: BizState): void {
 // ---------------------------------------------------------------------------
 // An employee's product idea (classic companies that make products)
 
-function ideaBudget(b: BizState): number {
-  return Math.max(rdMinBudget(b), roundBudget(rdBase(b) * 0.6))
+/** A lean first budget for an employee's idea: a bit over the least it can be developed for. */
+function ideaBudget(b: BizState, idea: string): number {
+  const r = rdRange(b, idea)
+  return Math.max(r.min, roundBudget(r.normal * 0.6))
 }
 
-function ideaBranches(g: GameState, b: BizState, w: Worth, choice: string): Branch[] {
-  if (choice === 'fund') return [{ p: 1, fx: { value: rdValue(g, b, ideaBudget(b), w).value, morale: 5 } }]
+function ideaBranches(g: GameState, b: BizState, w: Worth, choice: string, idea: string): Branch[] {
+  if (choice === 'fund') return [{ p: 1, fx: { value: rdValue(g, b, idea, ideaBudget(b, idea), w).value, morale: 5 } }]
   if (choice === 'bonus') return [{ p: 1, fx: { cash: -scaled(b, 1_500), morale: 3 } }]
   return [{ p: 1, fx: { morale: -3 } }]
 }
@@ -569,7 +571,7 @@ const IDEA = defineScript('business.ev.employeeIdea', (g, choice, data) => {
   const who = str(x.d.who, 'An employee')
   const idea = str(x.d.idea)
   if (choice === 'fund' && idea) {
-    const budget = ideaBudget(b)
+    const budget = ideaBudget(b, idea)
     if (b.cash < budget || !startRd(g, a, b, idea, budget)) {
       moraleUp(b, 1)
       return
@@ -595,12 +597,12 @@ function presentIdea(g: GameState, a: Asset, b: BizState): void {
   const s = b.staff.length ? pick(g, b.staff) : null
   const who = s ? `${s.firstName} ${s.lastName}` : someone(g, b)
   const role = s ? `, your ${s.role},` : ' from the floor staff'
-  const budget = ideaBudget(b)
+  const budget = ideaBudget(b, idea)
   const choices: ChoiceOption[] = []
   if (b.cash >= budget) choices.push({ id: 'fund', label: `Fund it (${money(budget)} of R&D)`, emoji: '\u{1F9EA}' })
   choices.push({ id: 'bonus', label: `A bonus for the idea (${money(scaled(b, 1_500))})`, emoji: '\u{1F4B5}' }, { id: 'pass', label: 'Not now', emoji: '\u{1F645}' })
-  markBest(g, choices, scorer(g, b, (w) => ({ fund: ideaBranches(g, b, w, 'fund'), bonus: ideaBranches(g, b, w, 'bonus'), pass: ideaBranches(g, b, w, 'pass') })), (id) =>
-    id === 'fund' ? `Best move: about ${aPct(rdValue(g, b, budget).odds)} odds it works, and the team loves being heard` : undefined,
+  markBest(g, choices, scorer(g, b, (w) => ({ fund: ideaBranches(g, b, w, 'fund', idea), bonus: ideaBranches(g, b, w, 'bonus', idea), pass: ideaBranches(g, b, w, 'pass', idea) })), (id) =>
+    id === 'fund' ? `Best move: about ${aPct(rdValue(g, b, idea, budget).odds)} odds it works, and the team loves being heard` : undefined,
   )
   scriptChoice(g, IDEA, 'A Bright Idea', `${who}${role} pitched you an idea over lunch: "${idea}". They've clearly thought about it a lot.`, choices, {
     emoji: '\u{1F4A1}',

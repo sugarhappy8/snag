@@ -26,8 +26,10 @@ import {
   lineCost,
   linesOf,
   localEcon,
+  marketCtxFor,
   maxProduction,
   planFor,
+  productsPullOf,
   priceBounds,
   refreshValue,
   startupCost,
@@ -57,12 +59,16 @@ import { debtComfort, lowerFirst, oddsText, payableCash, payCap, payoutCash, ref
 import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
+import { adultBrandName } from './competition'
+import type { MarketCtx } from './competition-core'
 import { industryDef, lineOf } from './industries'
 import { supplyInventoryValue } from './supply'
 import { equipmentUpgradeCost, purchaseEquipmentUpgrade, purchaseTraining, repeatProgramGain, staffTrainingCost, supplyPolicyNodes } from './supply-policy'
 import { economicReportMenu } from './economic-report'
-import { complexityShare, PRODUCT_LIFE, productIdeas, productLift, rangeBoost } from './products'
-import { bestRdBudget, rdBase, rdBlock, rdCrowding, rdMinBudget, rdProjects, rdQuote, rdValue, retireLines, retireOrder, roundBudget, startRd } from './rd'
+import { complexityShare, productIdeas } from './products'
+import { bestRdBudget, bestRdIdea, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, retireLines, retireOrder, startRd } from './rd'
+import { fieldFor, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
+import { demandTrend } from './product-data'
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
@@ -427,53 +433,104 @@ function yearsWord(n: number): string {
   return n <= 1 ? 'about a year' : `about ${n} years`
 }
 
+/** 'growing ▲', 'steady', 'fading ▼': where a kind of product's demand is heading. */
+function trendWord(t: -1 | 0 | 1): string {
+  return t > 0 ? 'demand growing \u{25B2}' : t < 0 ? 'demand fading \u{25BC}' : 'demand steady'
+}
+
+/** '9%', '<1%': a share of the company's customers. */
+function customersPct(x: number): string {
+  return x > 0 && x < 0.005 ? '<1%' : pct(Math.max(0, x))
+}
+
+/** The rivals' side of a kind of product, for a subtitle: "rivals' 61" or 'no rival sells one yet'. */
+function rivalsWord(offer: number, quality: number): string {
+  return offer > 0.02 ? `rivals' ${Math.round(quality)}` : 'no rival sells one yet'
+}
+
+/** The range in the company's market this year (cached per company state; pure). */
+function rangeOf(g: GameState, a: Asset): { pull: ProductPull; key: string } {
+  return cachedHint(g, a, 'range', () => {
+    const b = readBiz(g, a)
+    const ctx = marketCtxFor(g, b, g.year)
+    return { pull: productsPullOf(g, b, g.year, ctx), key: ctx.key }
+  })
+}
+
 /** The live caption under an R&D budget slider (pure). */
-function rdPreview(g: GameState, a: Asset, budget: number): string {
-  const b = readBiz(g, live(g, a))
-  const q = rdQuote(g, b, budget)
-  const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, `${Math.round(q.odds * 100)}% odds`, `+${Math.round(q.boost * 100)}% demand while fresh if it works`]
-  const dev = rdProjects(b).length
-  if (dev) parts.push(dev === 1 ? 'the project already in development stretches the team' : `${dev} projects already in development stretch the team`)
-  return parts.join(' · ') + capexCaption(g, live(g, a), b, budget, Math.max(0, (rdValue(g, b, budget).value + budget) / 5))
+function rdPreview(g: GameState, a: Asset, idea: string, budget: number): string {
+  const cur = live(g, a)
+  const b = readBiz(g, cur)
+  const q = rdQuote(g, b, idea, budget)
+  const total = rangeOf(g, cur).pull.total
+  const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, `${Math.round(q.odds * 100)}% odds`, `quality ~${q.quality} vs ${rivalsWord(q.offer, q.field)}`]
+  if (q.lift > 0) parts.push(`about +${customersPct(q.lift / (1 + total))} customers at launch`)
+  if (rdCrowding(b) > 1) parts.push(`the team is stretched: ${plural(rdProjects(b).length, 'project')} already running`)
+  if (budget > b.cash) parts.push(`${money(budget - Math.max(0, b.cash))} more than the company has`)
+  return parts.join(' · ') + capexCaption(g, cur, b, budget, Math.max(0, (rdValue(g, b, idea, budget).value + budget) / 5))
 }
 
-/** The Business talent's best R&D budget for this company (cached per company state). */
-function bestBudgetFor(g: GameState, a: Asset): ReturnType<typeof bestRdBudget> {
-  return cachedHint(g, a, 'rdBudget', () => bestRdBudget(g, readBiz(g, a)))
+/** The Business talent's best budget for one idea (cached per company state). */
+function bestBudgetFor(g: GameState, a: Asset, idea: string): ReturnType<typeof bestRdBudget> {
+  return cachedHint(g, a, `rdBudget.${idea}`, () => bestRdBudget(g, readBiz(g, a), idea))
 }
 
-function ideaAction(a: Asset, b0: BizState, idea: string, first: boolean): MenuAction {
-  const min = rdMinBudget(b0)
-  const max = Math.max(min, Math.floor(Math.max(0, b0.cash)))
-  const normal = roundBudget(rdBase(b0) * rdCrowding(b0))
+function ideaAction(a: Asset, b0: BizState, idea: string, ctxKey: string, field: Field): MenuAction {
+  const range = rdRange(b0, idea)
+  const info = lineInfo(idea, b0.industry)
+  const f = field.of(info.family)
   return act(a, `launch.${idea}`, idea, '\u{1F9EA}', {
     hint: (gg) => {
       const cur = live(gg, a)
-      if (!first || !hinting(gg, cur)) return null
-      const best = bestBudgetFor(gg, cur)
-      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, worth about ${money(best.value)} on average)` : 'Hold off on R&D: no budget would earn back what it costs while leaving the company a cash cushion')
+      if (!hinting(gg, cur)) return null
+      const best = bestBudgetFor(gg, cur, idea)
+      return talentHint(gg, 'Business', best ? `Best R&D budget: about ${money(best.budget)} (${Math.round(best.odds * 100)}% odds, quality ~${best.quality}, worth about ${money(best.value)} on average)` : 'Not worth it now: no budget would earn back its cost while leaving the company a cash cushion')
     },
-    subtitle: `Normal R&D budget about ${money(normal)}`,
-    disabled: (_g, bb) => (bb.cash < rdMinBudget(bb) ? `Needs at least ${money(rdMinBudget(bb))} of company cash.` : null),
+    subtitle: `Costs ~${money(range.normal)} to develop · ${trendWord(demandTrend(info.family, ctxKey, field.year))} · ${rivalsWord(f.offer, f.quality)}`,
+    disabled: (_g, bb) => (bb.cash < range.min ? `Needs at least ${money(range.min)} of company cash (${money(range.min - Math.max(0, bb.cash))} short).` : null),
     input: {
       kind: 'slider',
       money: true,
       label: `R&D budget for ${idea}`,
-      min,
-      max,
-      defaultValue: () => String(Math.min(max, Math.max(min, normal))),
-      preview: (gg, v) => rdPreview(gg, a, v),
+      min: range.min,
+      max: range.max,
+      roundDefault: true,
+      defaultValue: () => String(range.normal),
+      preview: (gg, v) => rdPreview(gg, a, idea, v),
     },
     run: (gg, cur, bb, input) => {
-      const budget = Math.round(clampN(Number(input) || normal, rdMinBudget(bb), Math.max(rdMinBudget(bb), bb.cash)))
+      const r = rdRange(bb, idea)
+      const budget = Math.round(clampN(Number(input) || r.normal, r.min, r.max))
       // Past this year's capital budget, a company with a board votes on it first (business/board.ts).
       if (rdBlock(bb, idea, budget) === null && bb.cash >= budget) {
-        const v = rdValue(gg, bb, budget)
+        const v = rdValue(gg, bb, idea, budget)
         if (!boardAllows(gg, cur, bb, { kind: 'capex', by: 'owner', amount: budget, gain: Math.max(0, (v.value + budget) / 5), label: `Fund R&D on ${idea} (${money(budget)})` })) return
       }
       startRd(gg, cur, bb, idea, budget)
     },
   })
+}
+
+/**
+ * The biggest named rivals whose version of a kind is worse than `quality`: the ones losing
+ * customers to your line (product-market.ts applyProductRivalry). Pure.
+ */
+function beaten(g: GameState, b: BizState, ctx: MarketCtx, family: string, quality: number, n = 2): string[] {
+  const versions = fieldFor(ctx).versions(family)
+  return ctx.rivals
+    .map((r, i) => ({ r, i, v: versions[i] ?? -1 }))
+    .filter((x) => x.v >= 0 && x.v < quality && x.r.pull > 0 && !x.r.legacy)
+    .sort((x, y) => y.r.pull - x.r.pull)
+    .slice(0, n)
+    .map((x) => adultBrandName(g, b, x.r.name, x.r.real, x.i))
+}
+
+/** One line on sale: its quality against the rivals' versions, its demand, its customers and whose it wins. */
+function lineSubtitle(l: LinePull, total: number, trend: -1 | 0 | 1, beats: string[], from?: string): string {
+  const vs = l.offer > 0.02 ? ` vs rivals' ${Math.round(l.field)}` : ' · no rival sells one'
+  // Neutral wording: real companies only ever lose customers, never get called worse.
+  const wins = beats.length ? ` · wins customers from ${beats.join(' and ')}` : ''
+  return `Quality ${Math.round(l.effective)}${vs} · ${trendWord(trend)} · ${customersPct(l.lift / (1 + total))} of your customers${wins}${from ? ` · came with ${from}` : ''} · tap to retire`
 }
 
 function productsMenu(a: Asset): MenuGroup {
@@ -496,40 +553,45 @@ function productsMenu(a: Asset): MenuGroup {
       if (!hinting(g, cur)) return null
       const b = readBiz(g, cur)
       const trim = linesToRetire(g, b)
-      if (trim > 0) return talentHint(g, 'Business', `Retire your ${trim === 1 ? 'most faded line' : `${trim} most faded lines`}: they cost more to run than they sell`)
-      const best = bestBudgetFor(g, cur)
-      return talentHint(g, 'Business', best ? `Fund a project: about ${money(best.budget)} is the best budget (${Math.round(best.odds * 100)}% odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: a new line would cost more than it earns, or eat the company’s cash cushion')
+      if (trim > 0) return talentHint(g, 'Business', `Retire your ${trim === 1 ? 'weakest line' : `${trim} weakest lines`}: they cost more to run than they sell`)
+      const best = cachedHint(g, cur, 'rdIdea', () => bestRdIdea(g, b, productIdeas(g, b, IDEAS_SHOWN), Math.max(0, b.cash - rdReserve(b))))
+      return talentHint(g, 'Business', best ? `Develop ${best.idea}: about ${money(best.budget)} is the best budget (${Math.round(best.quote.odds * 100)}% odds, worth ${money(best.value)} on average)` : 'Hold off on R&D: no new line would earn back its cost, or the company needs its cash cushion')
     },
     header: (g) => {
       const b = readBiz(g, a)
       const share = complexityShare(b.products.length)
       return [
-        `${b.products.length ? `${plural(b.products.length, 'line')} on sale.` : 'No product lines on sale yet.'} Fresh lines draw customers; each one adds a bit less than the last (they compete with each other), they fade with age and retire after ${PRODUCT_LIFE} years.`,
-        `${share > 0 ? `Running this range costs about ${pct(share, 1)} of sales a year (packaging, stock, shelf space); more lines cost more each.` : 'A big range costs money to run: packaging, stock and shelf space.'}`,
-        `Fund as many projects as you can pay for: a bigger budget is faster, likelier to work and makes a stronger product, with diminishing returns. A normal budget here is about ${money(roundBudget(rdBase(b) * rdCrowding(b)))}.`,
+        `${b.products.length ? `${plural(b.products.length, 'line')} on sale.` : 'No product lines on sale yet.'} Each competes with the rivals' versions of it: the better yours, the more of their customers switch to you, and a kind of product few rivals sell yet pulls extra.`,
+        'Every kind of product has its own demand from real history (growing, steady or fading). Different kinds add up; variants of one kind share its customers. Rivals improve their versions every year, so lines age.',
+        `${share > 0 ? `Running this range costs about ${pct(share, 1)} of sales a year` : 'A big range costs money to run'} (packaging, stock, shelf space); more lines cost more each.`,
+        `Every idea has its own development cost; fund it at half to four times that. Your team runs ${plural(rdSlots(b), 'project')} at once without strain.`,
       ].join('\n')
     },
     children: (g) => {
-      const b = readBiz(g, a)
+      const cur = live(g, a)
+      const b = readBiz(g, cur)
       const nodes: MenuNode[] = []
+      const ctx = marketCtxFor(g, b, g.year)
+      const field = fieldFor(ctx)
       if (b.products.length) {
+        const pull = productsPullOf(g, b, g.year, ctx)
         nodes.push({ type: 'heading', id: `biz.prodH.${a.id}`, label: `On sale (${b.products.length})` })
-        const order = retireOrder(b.products, g.year)
-        const faded = order[0]
-        const top = [...b.products].sort((x, y) => productLift(y, g.year) - productLift(x, g.year) || y.launched - x.launched).slice(0, TOP_LINES)
+        const byName = new Map(pull.lines.map((l) => [l.name, l]))
+        const top = [...b.products].sort((x, y) => (byName.get(y.name)?.lift ?? 0) - (byName.get(x.name)?.lift ?? 0) || y.launched - x.launched).slice(0, TOP_LINES)
         for (const p of top) {
+          const l = byName.get(p.name)
           nodes.push(
             act(a, `retire.${p.name}`, p.name, '\u{1F4E6}', {
-              subtitle: `Launched ${p.launched} · +${Math.round(productLift(p, g.year) * 100)}% demand now · tap to retire`,
+              subtitle: l ? lineSubtitle(l, pull.total, demandTrend(l.family, ctx.key, g.year), beaten(g, b, ctx, l.family, l.effective), p.from) : `Launched ${p.launched} · not selling here · tap to retire`,
               confirm: () => `Retire the ${p.name} line?`,
-              run: (gg, cur, bb) => {
+              run: (gg, c2, bb) => {
                 bb.products = bb.products.filter((x) => x.name !== p.name)
-                notice(gg, 'Line Retired', `${cur.name} discontinued ${p.name}. A few loyal fans are writing angry letters.`, { emoji: '\u{1F4E6}' })
+                notice(gg, 'Line Retired', `${c2.name} discontinued ${p.name}. A few loyal fans are writing angry letters.`, { emoji: '\u{1F4E6}' })
               },
             }),
           )
         }
-        if (b.products.length > top.length) nodes.push({ type: 'info', id: `biz.prodMore.${a.id}`, text: `…and ${plural(b.products.length - top.length, 'more line')}. The most faded: ${faded?.name ?? '-'}.`, emoji: '\u{1F4DA}' })
+        if (b.products.length > top.length) nodes.push({ type: 'info', id: `biz.prodMore.${a.id}`, text: `…and ${plural(b.products.length - top.length, 'more line')}. The weakest: ${retireOrder(b, g.year)[0]?.name ?? '-'}.`, emoji: '\u{1F4DA}' })
         nodes.push(retireAction(a, b))
       }
       const dev = rdProjects(b)
@@ -537,7 +599,8 @@ function productsMenu(a: Asset): MenuGroup {
         nodes.push({ type: 'heading', id: `biz.devH.${a.id}`, label: `In development (${dev.length})` })
         for (const p of dev.slice(0, TOP_LINES)) {
           const left = Math.max(0, p.years - p.progress)
-          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${Math.round(p.odds * 100)}% odds · ${money(p.budget)} budget` })
+          const quality = typeof p.quality === 'number' ? ` · quality ~${Math.round(p.quality)}` : ''
+          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${Math.round(p.odds * 100)}% odds${quality} · ${money(p.budget)} budget` })
         }
         if (dev.length > TOP_LINES) nodes.push({ type: 'info', id: `biz.devMore.${a.id}`, emoji: '\u{1F52C}', text: `…and ${plural(dev.length - TOP_LINES, 'more project')}.` })
       }
@@ -545,25 +608,27 @@ function productsMenu(a: Asset): MenuGroup {
       // An endless stream the year allows (no fitness app before smartphones, no web shop before the web).
       const ideas = productIdeas(g, b, IDEAS_SHOWN)
       if (!ideas.length) nodes.push({ type: 'info', id: `biz.launchNone.${a.id}`, text: 'Nothing new on the drawing board that the world is ready for yet.', emoji: '\u{1F4AD}' })
-      ideas.forEach((idea, i) => nodes.push(ideaAction(a, b, idea, i === 0)))
+      for (const idea of ideas) nodes.push(ideaAction(a, b, idea, ctx.key, field))
       return nodes
     },
   }
 }
 
 /**
- * How many of the most faded lines cost more to keep than they bring in (the complexity they add
- * against the demand they still pull), for the Business talent. Pure.
+ * How many of the weakest lines cost more to keep than they bring in (the complexity they add
+ * against the customers they still win), for the Business talent. Pure.
  */
 function linesToRetire(g: GameState, b: BizState): number {
   if (b.products.length < 2 || !priceAndOutput(b)) return 0
   const w = bizWorth(g, b)
-  const order = retireOrder(b.products, g.year)
+  const ctx = marketCtxFor(g, b, g.year)
+  const field = fieldFor(ctx)
+  const order = retireOrder(b, g.year)
   let keep = [...b.products]
   let n = 0
   for (const p of order) {
     const without = keep.filter((x) => x !== p)
-    const lost = (rangeBoost(b.industry, keep, g.year) - rangeBoost(b.industry, without, g.year)) * w.contrib
+    const lost = pullValue(ctx, b, w, productPull(b.industry, without, g.year, field).total, productPull(b.industry, keep, g.year, field).total)
     const saved = (complexityShare(keep.length) - complexityShare(without.length)) * Math.max(0, w.revenue)
     if (saved <= lost) break
     keep = without
@@ -574,8 +639,8 @@ function linesToRetire(g: GameState, b: BizState): number {
 
 function retireAction(a: Asset, b0: BizState): MenuAction {
   const max = Math.max(1, b0.products.length)
-  return act(a, 'retireMany', 'Retire Faded Lines', '\u{1F5D1}\u{FE0F}', {
-    subtitle: 'The most faded go first',
+  return act(a, 'retireMany', 'Retire Weak Lines', '\u{1F5D1}\u{FE0F}', {
+    subtitle: 'The weakest go first (outdated, or in a kind nobody wants any more)',
     hint: (gg) => {
       const cur = live(gg, a)
       if (!hinting(gg, cur)) return null
@@ -591,7 +656,7 @@ function retireAction(a: Asset, b0: BizState): MenuAction {
       preview: (gg, v) => {
         const b = readBiz(gg, live(gg, a))
         const n = Math.max(0, Math.min(b.products.length, Math.round(v)))
-        const gone = retireOrder(b.products, gg.year).slice(0, n)
+        const gone = retireOrder(b, gg.year).slice(0, n)
         const saved = complexityShare(b.products.length) - complexityShare(b.products.length - n)
         const names = gone.slice(0, 3).map((p) => p.name).join(', ')
         return `${names}${n > 3 ? ` and ${n - 3} more` : ''} · saves about ${pct(saved, 1)} of sales in running costs`

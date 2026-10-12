@@ -174,6 +174,10 @@ export function sliderClamp(s: SliderScale, value: number): number {
   const v = finiteOr(value, s.min)
   if (v <= s.min) return s.min
   if (v >= s.max) return s.max
+  // Wide money ranges shown in another currency keep the round amounts their notches and buttons
+  // land on in that currency (¥16,000, not the ¥15,999.98 a whole-dollar grid makes of it); the
+  // amount handed over is still whole dollars (sliderOutput).
+  if (s.log && s.display !== 1) return v
   const k = Math.round((v - s.min) / s.step)
   const out = s.min + k * s.step
   // A top bound off the step grid is a value of its own (1, 5, 9 and 10 for 1-10 in fours).
@@ -263,10 +267,15 @@ export function sliderOutput(s: SliderScale, value: number, money = false): stri
   return String(Number(v.toFixed(6)))
 }
 
-/** The prefilled value of a slider (a default from the engine, else the bottom of the range). */
-export function sliderStart(s: SliderScale, raw: string | undefined): number {
+/**
+ * The prefilled value of a slider (a default from the engine, else the bottom of the range).
+ * `round`: the default is only a suggestion, so it opens on two significant digits in the
+ * player's currency (¥440,000 for a ¥441,326.96 budget).
+ */
+export function sliderStart(s: SliderScale, raw: string | undefined, round = false): number {
   const n = raw === undefined || raw.trim() === '' ? NaN : Number(raw)
-  return sliderClamp(s, Number.isFinite(n) ? n : s.min)
+  if (!Number.isFinite(n)) return sliderClamp(s, s.min)
+  return sliderClamp(s, round ? niceValue(s, n) : n)
 }
 
 /** True when a MenuInput / InputModal can show a slider (it needs finite bounds). */

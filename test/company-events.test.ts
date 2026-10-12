@@ -362,7 +362,7 @@ describe('new business events: money moves once', () => {
     g1.queue = []
     runScript(g1, m.scriptId!, 'fund', m.data, m)
     const b1 = readBiz(g1, findBusiness(g1, a.id)!)
-    const budget = extraEventInternals.ideaBudget(b)
+    const budget = extraEventInternals.ideaBudget(b, String((m.data as Record<string, unknown>).idea))
     expect(rdProjects(b1)).toHaveLength(rdProjects(b).length + 1)
     expect(b.cash - b1.cash).toBe(budget)
     expect(b1.yearCosts - b.yearCosts).toBe(budget)

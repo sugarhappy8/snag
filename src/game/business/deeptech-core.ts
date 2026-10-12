@@ -306,8 +306,8 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
   const executive = executiveEdge(ceoSkill(g, b))
   // Customers before competition and the economy, then what the world market leaves of them (an
   // early lab in a tiny market sells little; a dominant one keeps its customers at higher prices).
-  const bu = scale > 0 ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year) * effects.demand * national.demand * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
   const mctx = marketCtxFor(g, b, year)
+  const bu = scale > 0 ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year, mctx) * effects.demand * national.demand * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
   const pick = bu > 0 && Number.isFinite(bu) ? marketDemand(mctx, bu) : null
   const demand = pick ? pick.units * cycleEffect * ic : 0
   const ops = (1 + LEADERSHIP.capacity * staffPower(b, 'ops') + .25 * executive) * effects.capacity

@@ -22,7 +22,8 @@ import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { franchiseFeesFor } from './franchise-state'
 import { studioValue } from './gamestudio-state'
-import { complexityCost, PRODUCT_LIFE, rangeBoost, rangeBrand } from './products'
+import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
+import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
 import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { clampN, dollars, num, round2 } from './util'
@@ -278,11 +279,18 @@ function marketingFactor(level: number): number {
 }
 
 /**
- * Extra demand from the product range: fresh lines pull the most, and every line adds less than
- * the one before (they cannibalize each other) toward a ceiling a broad range lifts only slowly.
+ * The product range in the market (product-market.ts): every line's pull from its kind's real
+ * demand and its edge over the rivals' versions. `ctx` is this company's marketCtxFor (computed
+ * when not given).
  */
-export function productsBoost(b: BizState, year: number): number {
-  return rangeBoost(b.industry, b.products, year)
+export function productsPullOf(g: GameState, b: BizState, year: number, ctx?: MarketCtx): ProductPull {
+  if (!b.products.length) return { total: 0, lines: [] }
+  return productPull(b.industry, b.products, year, fieldFor(ctx ?? marketCtxFor(g, b, year)))
+}
+
+/** Extra pull of the whole product range (the company's pull is multiplied by 1 + this). */
+export function productsBoost(g: GameState, b: BizState, year: number, ctx?: MarketCtx): number {
+  return productsPullOf(g, b, year, ctx).total
 }
 
 // ---------------------------------------------------------------------------
@@ -352,8 +360,11 @@ export function priceResponse(ratio: number, elasticity: number): number {
   return d
 }
 
-/** Everything that makes customers choose you, besides price (≈1 for an average firm). */
-export function appealOf(g: GameState, b: BizState, year: number): number {
+/**
+ * Everything that makes customers choose you, besides price (≈1 for an average firm). `ctx` is
+ * this company's marketCtxFor for the year (its products are judged against the rivals in it).
+ */
+export function appealOf(g: GameState, b: BizState, year: number, ctx?: MarketCtx): number {
   const def = industryDef(b.industry)
   const quality = 0.75 + b.quality / 200
   const brand = 1 + ((b.brand - 50) / 100) * (0.25 + 0.35 * def.growth)
@@ -361,7 +372,7 @@ export function appealOf(g: GameState, b: BizState, year: number): number {
   const sales = 1 + LEADERSHIP.sales * staffPower(b, 'sales')
   const ceo = (0.97 + ceoSkill(g, b) / 1500) * (1 + .45 * executiveEdge(ceoSkill(g, b)))
   const talent = talentCeo(g, b) ? TALENT_DEMAND : 1
-  return quality * brand * morale * sales * ceo * talent * marketingFactor(b.marketingLevel) * (1 + productsBoost(b, year)) * (1 + b.campaignBoost)
+  return quality * brand * morale * sales * ceo * talent * marketingFactor(b.marketingLevel) * (1 + productsBoost(g, b, year, ctx)) * (1 + b.campaignBoost)
 }
 
 export interface LocPlan {
@@ -423,7 +434,20 @@ export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx
   const { dRef, fieldP } = marketScale(b.industry, b.countryId)
   const ctx = applyNpcRivals(g, b, applyEconomicRivals(g, buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP)))
   const national = nationalMarket(g, b.industry, b.countryId, year)
-  return { ...ctx, pot: ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1) }
+  // What the rivals offer of each kind of product, and how well (product-market.ts).
+  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year)
+  return { ...ctx, pot: ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1), field }
+}
+
+/**
+ * marketCtxFor with the rivals' pull split by the company's products: rivals whose versions are
+ * worse than yours lose customers to the ones whose versions hold up (product-market.ts
+ * applyProductRivalry). Their total is unchanged, so only screens and bookings that split the
+ * rivals' share need it; the planner and every what-if read marketCtxFor.
+ */
+export function marketCtxWithRivalry(g: GameState, b: BizState, year: number): MarketCtx {
+  const ctx = marketCtxFor(g, b, year)
+  return applyProductRivalry(ctx, b.industry, b.products, fieldFor(ctx))
 }
 
 export interface PlanOptions {
@@ -447,15 +471,15 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
   const price = Math.max(0, opts.price ?? b.price)
   const ratioToGoing = price / homeGoing
   const premium = premiumOf(b)
-  const appeal = appealOf(g, b, year)
+  // The market: the world for tradable industries, the home country for local trades.
+  const mctx = opts.ctx ?? marketCtxFor(g, b, year)
+  const appeal = appealOf(g, b, year, mctx)
   const ops = 1 + LEADERSHIP.capacity * staffPower(b, 'ops') + .25 * executiveEdge(ceoSkill(g, b))
   const noise = opts.noise ?? 1
   const open = opts.calm ? 1 : b.openFraction
   const shockD = opts.calm ? 1 : b.demandShock
   const lossC = opts.calm ? 0 : b.capacityLoss
   const pressure = opts.calm ? b.pressure * 0.5 : b.pressure
-  // The market: the world for tradable industries, the home country for local trades.
-  const mctx = opts.ctx ?? marketCtxFor(g, b, year)
   const world = mctx.def.scope === 'world'
   const inMarket = (o: Outlet) => world || o.countryId === b.countryId
   // A dominant company buys cheaper (scale) and, in a national market, can charge a bit more.
@@ -816,7 +840,7 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   b.yearCosts = 0
   b.yearIncome = 0
   delete b.ownerDraws
-  // Products fade; very old ones are retired automatically.
+  // Very old lines are retired automatically (rivals' versions left them far behind long before).
   b.products = b.products.filter((p) => year - p.launched < PRODUCT_LIFE)
   // Products in development move a year closer (business/rd.ts): new lines launch next year.
   advanceRd(g, b, year)

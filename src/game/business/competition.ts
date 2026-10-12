@@ -14,7 +14,7 @@ import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf
 import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, regimeFor, tierFor, type Regime, type TierId } from './competition-data'
 import { familyId, isRealName, pickHub, rawPull, rivalName, rosterOf, type RivalTier } from './competition-roster'
 import { emptyMarket, type ExtraRival, type MarketState } from './competition-state'
-import { localEcon, marketCtxFor, marketScale, type Worth } from './economy'
+import { localEcon, marketCtxFor, marketCtxWithRivalry, marketScale, type Worth } from './economy'
 import { industryDef } from './industries'
 import { entryStrength, presenceIn } from './market-reach'
 import { regionalShares } from './market-regional'
@@ -49,7 +49,8 @@ export function refreshMarket(g: GameState, a: Asset, b: BizState, year: number,
   const prev = freshMarketState(b)
   if (prev && prev.year >= year) return
   const st = prev ?? emptyMarket(marketKey(b))
-  const ctx = marketCtxFor(g, b, year)
+  // Rivals with worse versions of your products lose the customers you win (product-market.ts).
+  const ctx = marketCtxWithRivalry(g, b, year)
   const def = industryDef(b.industry)
   const served = stmt.demand > 0 ? clampN(stmt.sold / stmt.demand, 0, 1) : 0
   const want = pick && Number.isFinite(pick.units) ? Math.max(0, pick.units) : 0
@@ -339,7 +340,7 @@ export function marketViewOf(g: GameState, b: BizState): MarketView {
       return r ? { ...r, share: s } : null
     }).filter((x): x is RivalView => !!x)
   } else {
-    ctx = marketCtxFor(g, b, year)
+    ctx = marketCtxWithRivalry(g, b, year)
     const priceRef = d.scope === 'world' ? def.price : localEcon(b.industry, b.countryId, b.city).goingPrice
     size = ctx.pot * (ctx.F / (ctx.F + OUTSIDE)) * priceRef
     rivals = ctx.rivals.map((r) => ({ ...(lookup.get(r.id) as RivalView), share: ctx && ctx.F > 0 ? r.pull / ctx.F : 0 })).filter((r) => r.share > 1e-7)

@@ -8,8 +8,9 @@ import { becomeCeo } from '../src/game/business/career'
 import { bestPlan, citySaturation, cityCrowding, densityRent, equipmentValue, evolve, lineCost, localEcon, maxProduction, planFor, productsBoost, recordYear, simulateYear, valuationOf } from '../src/game/business/economy'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { businessView } from '../src/game/business/manage'
-import { complexityShare, productIdeas, rangeBoost, rangeBrand } from '../src/game/business/products'
-import { bestRdBudget, rdBase, rdQuote, rdValue, retireLines } from '../src/game/business/rd'
+import { complexityShare, productIdeas, rangeBrand } from '../src/game/business/products'
+import { bestRdBudget, rdRange, rdQuote, rdSlots, rdValue, retireLines } from '../src/game/business/rd'
+import { fieldOf, productPull, RANGE_CAP } from '../src/game/business/product-market'
 import { bizOf, findBusiness, normalizeBiz, readBiz, totalOutlets, type BizState, type Product } from '../src/game/business/state'
 import { applyPlan, autoPlan, yearlyBusinessImpl } from '../src/game/business/yearly'
 import { advancePrograms, maxPrograms, programCost, programLine, programTerms, startProgram } from '../src/game/business/deeptech-rd'
@@ -139,6 +140,23 @@ describe('product ideas in historical lives (review: 1925 bakeries offered cronu
     }
   })
 
+  it('gives the newer trades period classics before their modern ideas existed (1925, 1965)', () => {
+    const NEWER = ['battery', 'water', 'recycling', 'telecom', 'dataCenter', 'education', 'petCare', 'homeCare', 'packaging', 'furniture', 'travel', 'casino', 'nightclub'] as Industry[]
+    for (const year of [1925, 1965]) {
+      const g = createNewLife({ seed: 3, year: year - 35, countryId: 'us' })
+      g.queue = []
+      g.year = year
+      for (const ind of NEWER) {
+        if (ind === 'dataCenter' && year < 1960) continue
+        const b: Pick<BizState, 'industry' | 'countryId' | 'products' | 'outlets'> = { industry: ind, countryId: 'us', products: [], outlets: [{ countryId: 'us', city: getCountry('us').cities[0], count: 1, opened: year }] }
+        const ideas = productIdeas(g, b, 30)
+        expect(ideas.length, `${year} ${ind}`).toBe(30)
+        for (const x of ideas) expect(anachronismsIn(x, year, ['us']), `${year} ${ind}: ${x}`).toEqual([])
+        for (const modern of ['Fiber Broadband', 'Cloud Hosting', 'Coding Bootcamps', 'E-Waste Processing', 'Grid Storage', 'Smart Metering']) expect(ideas.some((x) => x.includes(modern)), `${year} ${ind}`).toBe(false)
+      }
+    }
+  })
+
   it('keeps the modern classics first today', () => {
     const { g, b } = company(4, 'us', 'bakery')
     const ideas = productIdeas(g, { ...b, products: [] }, 6)
@@ -148,20 +166,40 @@ describe('product ideas in historical lives (review: 1925 bakeries offered cronu
 })
 
 describe('product range economics', () => {
-  it('adds demand with diminishing returns and a bounded brand pull', () => {
+  it('stacks different kinds of product one for one, lets variants share their kind and saturates a vast range', () => {
     const year = 2030
-    const step = [1, 6, 12, 24, 50, 200].map((n) => rangeBoost('restaurant', fresh(n, year), year))
-    for (let i = 1; i < step.length; i++) expect(step[i]).toBeGreaterThanOrEqual(step[i - 1])
-    // Each extra line adds less than the one before.
-    const marginal = (n: number) => rangeBoost('restaurant', fresh(n + 1, year), year) - rangeBoost('restaurant', fresh(n, year), year)
-    expect(marginal(30)).toBeLessThan(marginal(3))
-    expect(step[step.length - 1]).toBeLessThan(2)
-    // Small ranges keep the old one-for-one behavior.
-    expect(rangeBoost('restaurant', fresh(2, year), year)).toBeCloseTo(0.2, 6)
+    // A market with no named rivals: only the long tail, so every kind is judged the same way.
+    const field = fieldOf([], 10, 'us', year)
+    const line = (name: string, quality = 60) => ({ name, launched: year, boost: 0, quality })
+    const one = productPull('restaurant', [line('Tasting Menu')], year, field).total
+    const other = productPull('restaurant', [line('Weekend Brunch')], year, field).total
+    const both = productPull('restaurant', [line('Tasting Menu'), line('Weekend Brunch')], year, field).total
+    expect(one).toBeGreaterThan(0)
+    expect(both).toBeCloseTo(one + other, 9)
+    // A premium edition of the same kind adds much less than a new kind would.
+    const variant = productPull('restaurant', [line('Tasting Menu'), line('Premium Tasting Menu')], year, field).total - one
+    expect(variant).toBeGreaterThan(0)
+    expect(variant).toBeLessThan(other / 2)
+    // A better line pulls more than a worse one of the same kind.
+    expect(productPull('restaurant', [line('Tasting Menu', 80)], year, field).total).toBeGreaterThan(productPull('restaurant', [line('Tasting Menu', 40)], year, field).total * 2)
+    // Hundreds of lines never multiply demand without end.
+    expect(productPull('restaurant', fresh(200, year), year, field).total).toBeLessThan(RANGE_CAP)
     expect(rangeBrand(200)).toBeLessThanOrEqual(16)
     expect(rangeBrand(6)).toBeLessThan(12)
     // Complexity grows faster than the range.
     expect(complexityShare(100) / complexityShare(10)).toBeGreaterThan(10)
+  })
+
+  it('follows each kind of product\'s real history: nothing before it existed, booms and fades after', () => {
+    const field = (year: number) => fieldOf([], 10, 'us', year)
+    const pull = (name: string, year: number) => productPull('energy', [{ name, launched: year, boost: 0, quality: 60 }], year, field(year)).total
+    // Coal plants were the backbone of power in 1960 and are fading now; batteries the reverse.
+    expect(pull('Coal-Fired Plant', 1960)).toBeGreaterThan(pull('Coal-Fired Plant', 2030) * 1.8)
+    expect(pull('Battery Storage', 2030)).toBeGreaterThan(0)
+    expect(pull('Battery Storage', 1990)).toBe(0)
+    // A fad: cronut knockoffs in 2014 against 2030.
+    const bakery = (year: number) => productPull('bakery', [{ name: 'Cronut Knockoffs', launched: year, boost: 0, quality: 60 }], year, field(year)).total
+    expect(bakery(2014)).toBeGreaterThan(bakery(2030) * 3)
   })
 
   it('makes 200 product lines lose money in every kind of company (no profit from R&D spam)', () => {
@@ -185,7 +223,7 @@ describe('product range economics', () => {
     expect(big.net).toBeLessThan(small.net)
   })
 
-  it('retires the most faded lines first', () => {
+  it('retires the weakest lines first (the most outdated)', () => {
     const { g, b } = company(7, 'us', 'bakery')
     b.products = [
       { name: 'Old', launched: g.year - 12, boost: 0.1 },
@@ -197,25 +235,44 @@ describe('product range economics', () => {
   })
 })
 
-describe('R&D projects: budgets, no yearly cap', () => {
-  it('a bigger budget is faster, likelier and stronger, with diminishing returns', () => {
+describe('R&D projects: a fixed cost per product, no yearly cap', () => {
+  it('prices an idea by the product, never by the company\'s cash or sales', () => {
+    const small = company(8, 'us', 'manufacturing', { cash: 50_000 })
+    const rich = company(8, 'us', 'manufacturing', { cash: 80_000_000 })
+    rich.b.last = { ...rich.b.last!, revenue: rich.b.last!.revenue * 40 }
+    const idea = productIdeas(small.g, small.b, 1)[0]
+    expect(rdRange(rich.b, idea)).toEqual(rdRange(small.b, idea))
+    const r = rdRange(small.b, idea)
+    expect(r.min).toBeLessThan(r.normal)
+    expect(r.max).toBeGreaterThan(r.normal * 3)
+    // The slider is the same for both: half to four times the idea's cost.
+    const slider = (x: { g: GameState; a: Asset }) => action(x.g, x.a, `biz.launch.${idea}`).input!
+    expect([slider(small).min, slider(small).max]).toEqual([slider(rich).min, slider(rich).max])
+    expect(slider(small).max).toBe(r.max)
+    // A next generation or a premium edition costs more than a regional edition.
+    expect(rdRange(small.b, `Premium ${idea}`).normal).toBeGreaterThan(r.normal)
+  })
+
+  it('a bigger budget is faster, likelier and makes a better line, with diminishing returns', () => {
     const { g, b } = company(8, 'us', 'manufacturing')
-    const base = rdBase(b)
-    const q = [0.25, 1, 2, 4, 8, 16].map((k) => rdQuote(g, b, base * k))
+    const idea = productIdeas(g, b, 1)[0]
+    const base = rdRange(b, idea).normal
+    const q = [0.5, 1, 2, 4].map((k) => rdQuote(g, b, idea, base * k))
     for (let i = 1; i < q.length; i++) {
       expect(q[i].odds).toBeGreaterThanOrEqual(q[i - 1].odds)
       expect(q[i].years).toBeLessThanOrEqual(q[i - 1].years)
-      expect(q[i].boost).toBeGreaterThanOrEqual(q[i - 1].boost)
+      expect(q[i].quality).toBeGreaterThan(q[i - 1].quality)
     }
-    // Doubling from 8x to 16x buys far less than doubling from 1x to 2x.
-    expect(q[5].odds - q[4].odds).toBeLessThan(q[2].odds - q[1].odds)
-    expect(q[5].odds).toBeLessThanOrEqual(0.95)
-    // Projects already running stretch the team: the same money buys less.
-    const busy = { ...b, rd: Array.from({ length: 6 }, (_, i) => ({ id: `r${i}`, name: `P${i}`, budget: base, years: 2, progress: 0, odds: 0.5, boost: 0.1, started: g.year })) }
-    expect(rdQuote(g, busy, base).odds).toBeLessThan(rdQuote(g, b, base).odds)
+    // Doubling from 2x to 4x buys less quality than doubling from 1x to 2x.
+    expect(q[3].quality - q[2].quality).toBeLessThan(q[2].quality - q[1].quality)
+    expect(q[3].odds).toBeLessThanOrEqual(0.95)
+    // Past the team's free slots, projects already running stretch it: the same money buys less.
+    const busy = { ...b, rd: Array.from({ length: rdSlots(b) + 3 }, (_, i) => ({ id: `r${i}`, name: `P${i}`, budget: base, years: 2, progress: 0, odds: 0.5, boost: 0.1, started: g.year })) }
+    expect(rdQuote(g, busy, idea, base).odds).toBeLessThan(rdQuote(g, b, idea, base).odds)
+    expect(rdQuote(g, busy, idea, base).quality).toBeLessThan(rdQuote(g, b, idea, base).quality)
   })
 
-  it('funds several projects in one year and launches them at year-end', () => {
+  it('funds several projects in one year and launches them at year-end with their own quality', () => {
     const { g, a } = company(9, 'us', 'cafe', { cash: 2_000_000 })
     const cash0 = readBiz(g, a).cash
     let spent = 0
@@ -223,7 +280,7 @@ describe('R&D projects: budgets, no yearly cap', () => {
       const row = action(g, a, `biz.launch.`)
       expect(row.disabledReason?.(g)).toBeNull()
       expect(row.input?.kind).toBe('slider')
-      const budget = Math.round(rdBase(readBiz(g, a)) * 1.5)
+      const budget = Math.round(rdRange(readBiz(g, a), row.label).normal * 1.5)
       row.run(g, String(budget))
       spent += budget
       g.queue = []
@@ -234,6 +291,7 @@ describe('R&D projects: budgets, no yearly cap', () => {
     expect(b.yearCosts).toBeGreaterThanOrEqual(spent)
     const names = new Set(b.rd!.map((p) => p.name))
     expect(names.size).toBe(4)
+    for (const p of b.rd!) expect(p.quality).toBeGreaterThan(0)
     // Cafés develop recipes in a year: all four resolve at the year-end.
     g.year += 1
     yearlyBusinessImpl(g)
@@ -241,7 +299,11 @@ describe('R&D projects: budgets, no yearly cap', () => {
     expect(after.rd ?? []).toHaveLength(0)
     const launched = after.products.filter((p) => names.has(p.name))
     expect(launched.length).toBeLessThanOrEqual(4)
-    for (const p of launched) expect(p.launched).toBe(g.year)
+    for (const p of launched) {
+      expect(p.launched).toBe(g.year)
+      expect(p.quality).toBeGreaterThan(0)
+      expect(p.family).toBeTruthy()
+    }
     expect(finite(after)).toBe(true)
   })
 
@@ -253,17 +315,18 @@ describe('R&D projects: budgets, no yearly cap', () => {
 
   it("gives an honest best-budget hint: the planner's best expected value", () => {
     const { g, a, b } = company(11, 'us', 'software', { talent: true, cash: 5_000_000 })
-    const best = bestRdBudget(g, b)
+    const idea = productIdeas(g, b, 1)[0]
+    const best = bestRdBudget(g, b, idea)
     expect(best).not.toBeNull()
-    // No other budget is meaningfully better by the same model (the hint rounds to a nice amount).
-    const base = rdBase(b)
-    for (const k of [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8, 12, 16]) {
-      if (base * k > b.cash) continue
-      expect(rdValue(g, b, base * k).value).toBeLessThanOrEqual(best!.value * 1.01 + 1)
+    // No other budget in the idea's range is meaningfully better by the same model.
+    const r = rdRange(b, idea)
+    for (const k of [0.5, 0.75, 1, 1.5, 2, 3, 4]) {
+      const budget = Math.min(r.max, Math.max(r.min, r.normal * k))
+      expect(rdValue(g, b, idea, budget).value).toBeLessThanOrEqual(best!.value * 1.01 + 1)
     }
-    expect(rdValue(g, b, best!.budget).value).toBeCloseTo(best!.value, 6)
+    expect(rdValue(g, b, idea, best!.budget).value).toBeCloseTo(best!.value, 6)
     const rng = g.rng
-    const row = action(g, a, 'biz.launch.')
+    const row = action(g, a, `biz.launch.${idea}`)
     expect(row.hint?.(g)).toMatch(new RegExp(`^${HINT_EMOJI}.*Best R&D budget`, 'u'))
     expect(g.rng).toBe(rng)
   })
@@ -549,17 +612,20 @@ describe('old saves', () => {
     delete old.lines
     old.products = [
       { name: 'Hazy IPA', launched: g.year - 3, boost: 0.12 },
-      { name: 'Hard Seltzer', launched: g.year - 20, boost: 0.08 },
+      { name: 'Hard Seltzer', launched: g.year - 31, boost: 0.08 },
     ]
     old.outlets = [{ countryId: 'us', city: old.city as string, count: 2, opened: 2020 }]
     a.details = old
     const view = readBiz(g, a)
     expect(view.rd).toBeUndefined()
     expect(view.lines).toBeUndefined()
-    expect(productsBoost(view, g.year)).toBeGreaterThan(0)
+    expect(productsBoost(g, view, g.year)).toBeGreaterThan(0)
+    // Old lines get a quality from their old boost (a typical boost is an average line).
+    expect(productPull(view.industry, view.products, g.year, fieldOf([], 1, 'us', g.year)).lines.every((l) => l.quality >= 25 && l.quality <= 90)).toBe(true)
     expect(allNodes(g, businessView(g, a)).length).toBeGreaterThan(20)
     // Start a project on the old save, then play three years.
-    action(g, a, 'biz.launch.').run(g, String(rdBase(view)))
+    const first = action(g, a, 'biz.launch.')
+    first.run(g, String(rdRange(view, first.label).normal))
     g.queue = []
     expect(readBiz(g, a).rd?.length).toBe(1)
     for (let y = 0; y < 3; y++) {
@@ -571,7 +637,7 @@ describe('old saves', () => {
       const b = readBiz(g, cur)
       expect(finite(b)).toBe(true)
       expect(Number.isFinite(cur.value)).toBe(true)
-      // The 20-year-old line retired; nothing is left in development after the first year-end.
+      // The 31-year-old line retired; nothing is left in development after the first year-end.
       expect(b.products.some((p) => p.name === 'Hard Seltzer')).toBe(false)
     }
     const b = readBiz(g, a)

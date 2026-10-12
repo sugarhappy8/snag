@@ -14,10 +14,13 @@ import { edgeValue, marketOfBiz, marketViewOf, saveMarket, shareText, type Marke
 import { techOf, techPlan, techView } from './deeptech-core'
 import { isDeepTech } from './deeptech-state'
 import { isFinanceFirm } from './finance-firm-state'
-import { bizWorth, fxValue, localEcon, maxProduction, planFor, refreshValue, valuationOf } from './economy'
+import { bizWorth, fxValue, localEcon, marketCtxFor, maxProduction, planFor, refreshValue, valuationOf } from './economy'
 import { industryDef } from './industries'
-import { totalOutlets, type BizState } from './state'
-import { cap, clampN, money, promisePrice, round2 } from './util'
+import { effectiveQuality, fieldFor, infoOf, productPull, rivalLines } from './product-market'
+import { pullValue } from './rd'
+import { totalOutlets, type BizState, type Product } from './state'
+import { getCountry } from '../world'
+import { cap, clampN, money, plural, promisePrice, round2 } from './util'
 
 /**
  * A cost that scales with the size of the company and the local price level: `usBase` for a
@@ -41,12 +44,26 @@ function capacityPerOutlet(g: GameState, b: BizState): number {
 // ---------------------------------------------------------------------------
 // Acquisitions
 
+/** A product line that comes with a bought rival: new to you, or better than your own version. */
+export interface AcquiredLine {
+  family: string
+  quality: number
+  /** True when you already sell this kind and theirs is better (yours is upgraded). */
+  upgrade: boolean
+}
+
 export interface AcquisitionQuote {
   rival: RivalView
   /** Price for the whole rival (dollars). */
   price: number
-  /** Locations (sites) that come with it, opened in the home city. */
+  /** Locations (sites) that come with it, spread over your country's biggest cities. */
   outlets: number
+  /** Its product lines you gain (new kinds, or better versions of yours). */
+  lines: AcquiredLine[]
+  /** Quality points its know-how adds to yours (0 when yours is better). */
+  knowhow: number
+  /** Brand points its name and customers add. */
+  brand: number
   /** The player's share plus the rival's. */
   combined: number
   /** Why the deal can't go ahead (null: it can): the buyer is too new or too small, or regulators object. */
@@ -55,6 +72,39 @@ export interface AcquisitionQuote {
   reach: string | null
   /** Expected value to the owner (Business talent): profits gained, kit kept, minus the price. */
   value: number
+}
+
+/** Brand a bought rival's name and customers add, by its size. */
+const BUY_BRAND: Record<RivalView['tier'], number> = { small: 1, mid: 2, major: 4, giant: 6 }
+/** Share of a better rival's quality lead its people bring over. */
+const KNOWHOW = 0.25
+
+/** The rival's product lines a buyer gains: kinds it doesn't sell, and better versions of ones it does (pure). */
+export function acquiredLines(g: GameState, b: BizState, r: Pick<RivalView, 'id' | 'tier' | 'quality'>): AcquiredLine[] {
+  const mine = new Map<string, number>()
+  for (const p of b.products) {
+    const f = infoOf(p, b.industry).family
+    mine.set(f, Math.max(mine.get(f) ?? -Infinity, effectiveQuality(p, b.industry, g.year)))
+  }
+  const out: AcquiredLine[] = []
+  for (const x of rivalLines(r, b.industry, marketKey(b), g.year)) {
+    const own = mine.get(x.family)
+    if (own === undefined) out.push({ family: x.family, quality: x.quality, upgrade: false })
+    else if (x.quality > own + 1) out.push({ family: x.family, quality: x.quality, upgrade: true })
+  }
+  return out
+}
+
+/** The lines a buy-out hands over, as the company's product list would hold them (pure). */
+function withLines(b: BizState, lines: AcquiredLine[], from: string, year: number): Product[] {
+  const out = [...b.products]
+  for (const l of lines) {
+    const line: Product = { name: l.family, launched: year, boost: 0, quality: l.quality, family: l.family, kind: 'core', from }
+    const i = out.findIndex((p) => p.name === l.family)
+    if (i >= 0) out[i] = line
+    else out.push(line)
+  }
+  return out
 }
 
 /** What buying out a rival costs and brings (pure). Null for rivals that can't be bought. */
@@ -82,8 +132,60 @@ export function acquisitionQuote(g: GameState, b: BizState, rivalId: string): Ac
   const block = reach ?? (regime.strict >= 0.25 && combined >= mergerLimit(regime) ? `${cap(regime.name)} would block it: together you'd hold ${shareText(combined)} of the market.` : null)
   const s = b.last
   const margin = s && s.revenue > 0 ? clampN(s.net / s.revenue, -0.5, 0.6) : 0
-  const value = rivalRevenue * 0.7 * Math.max(0, margin) * Math.min(def.multiple, 12) * 0.6 + capital * 0.5 - price
-  return { rival: r, price, outlets, combined, block, reach, value: Number.isFinite(value) ? value : -price }
+  const lines = acquiredLines(g, b, r)
+  const knowhow = Math.round(Math.max(0, (r.quality - b.quality) * KNOWHOW))
+  const brand = BUY_BRAND[r.tier] ?? 2
+  // What its products add on top of its customers: their pull in your market for a few years.
+  const w = bizWorth(g, b)
+  let products = 0
+  if (lines.length) {
+    const ctx = marketCtxFor(g, b, g.year)
+    const field = fieldFor(ctx)
+    const now = productPull(b.industry, b.products, g.year, field).total
+    const then = productPull(b.industry, withLines(b, lines, r.name, g.year), g.year, field).total
+    products = pullValue(ctx, b, w, now, then) * 2.5
+  }
+  const value = rivalRevenue * 0.7 * Math.max(0, margin) * Math.min(def.multiple, 12) * 0.6 + capital * 0.5 + products + fxValue(g, b, w, { quality: knowhow, brand }) - price
+  return { rival: r, price, outlets, lines, knowhow, brand, combined, block, reach, value: Number.isFinite(value) ? value : -price }
+}
+
+/** A city's weight among the country's customers (the first-listed is the biggest). */
+function cityWeight(i: number): number {
+  return i === 0 ? 0.12 : i <= 2 ? 0.07 : 0.04
+}
+
+/** Spread `n` sites over the country's six biggest cities by size (largest remainder). */
+export function spreadSites(countryId: string, n: number): { city: string; count: number }[] {
+  const cities = getCountry(countryId).cities.slice(0, 6)
+  if (!cities.length || n <= 0) return []
+  const w = cities.map((_, i) => cityWeight(i))
+  const total = w.reduce((t, x) => t + x, 0)
+  const raw = w.map((x) => (n * x) / total)
+  const out = raw.map((x) => Math.floor(x))
+  let left = n - out.reduce((t, x) => t + x, 0)
+  const order = raw.map((x, i) => [x - Math.floor(x), i] as const).sort((p, q) => q[0] - p[0] || p[1] - q[1])
+  for (const [, i] of order) {
+    if (left <= 0) break
+    out[i] += 1
+    left -= 1
+  }
+  return cities.map((city, i) => ({ city, count: out[i] })).filter((x) => x.count > 0)
+}
+
+/** 'Street Lighting (64) and Hydro Dam (58)'. */
+function lineList(lines: AcquiredLine[]): string {
+  const names = lines.slice(0, 4).map((l) => `${l.family} (${l.quality})`)
+  if (lines.length > 4) names.push(`${lines.length - 4} more`)
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
+/** One line for menus: what a buy-out brings besides the customers. */
+export function acquisitionGains(q: AcquisitionQuote, site: string, sites: string): string {
+  const parts = ['its customers']
+  if (q.outlets > 0) parts.push(`${q.outlets} ${q.outlets === 1 ? site : sites}`)
+  if (q.lines.length) parts.push(plural(q.lines.length, 'product line'))
+  if (q.knowhow > 0) parts.push('its know-how')
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
 /** A buyer may be at most this many times smaller than its target (by sales). */
@@ -126,12 +228,20 @@ export function acquireRival(g: GameState, a: Asset, b: BizState, rivalId: strin
   }
   const st = marketOfBiz(b)
   b.cash -= q.price
-  if (q.outlets > 0) {
-    const existing = b.outlets.find((o) => o.countryId === b.countryId && o.city === b.city)
-    if (existing) existing.count += q.outlets
-    else b.outlets.push({ countryId: b.countryId, city: b.city, count: q.outlets, opened: g.year })
+  // Its sites keep trading where they were: spread over the country's biggest cities.
+  const placed = spreadSites(b.countryId, q.outlets)
+  if (placed.length) {
+    for (const x of placed) {
+      const existing = b.outlets.find((o) => o.countryId === b.countryId && o.city === x.city)
+      if (existing) existing.count += x.count
+      else b.outlets.push({ countryId: b.countryId, city: x.city, count: x.count, opened: g.year })
+    }
     b.production = Math.min(maxProduction(g, b), Math.round(b.production * (1 + q.outlets / Math.max(1, totalOutlets(b) - q.outlets))))
   }
+  // Its product lines become yours (better versions replace your own), with its people's know-how.
+  if (q.lines.length) b.products = withLines(b, q.lines, q.rival.name, g.year)
+  b.quality = clampN(b.quality + q.knowhow, 0, 100)
+  b.brand = clampN(b.brand + q.brand, 0, 100)
   st.gone = [...st.gone, q.rival.id].slice(-60)
   st.acquired = [...st.acquired, g.year].slice(-20)
   st.lastMove = g.year
@@ -144,10 +254,20 @@ export function acquireRival(g: GameState, a: Asset, b: BizState, rivalId: strin
   refreshValue(a, b)
   count(g, 'acquisitions')
   log(g, `${a.name} bought out its rival ${q.rival.name} for ${money(q.price)}.`, 'good')
+  const def = industryDef(b.industry)
+  const where = placed.slice(0, 3).map((x) => x.city)
+  const sites = q.outlets > 0 ? `, and its ${q.outlets} ${q.outlets === 1 ? def.site : def.sitePlural} now fly your flag${where.length > 1 ? ` (${where.slice(0, -1).join(', ')} and ${where[where.length - 1]}${placed.length > 3 ? ' among others' : ''})` : where.length ? ` in ${where[0]}` : ''}` : ''
+  const fresh = q.lines.filter((l) => !l.upgrade)
+  const better = q.lines.filter((l) => l.upgrade)
+  const lines = [
+    fresh.length ? `Its product ${fresh.length === 1 ? 'line is' : 'lines are'} yours now: ${lineList(fresh)}.` : '',
+    better.length ? `Its better ${better.length === 1 ? 'version replaces yours' : 'versions replace yours'}: ${lineList(better)}.` : '',
+    q.knowhow > 0 ? `Its people's know-how lifts your quality to ${b.quality}%.` : '',
+  ].filter(Boolean)
   notice(
     g,
     'Rival Acquired!',
-    `${a.name} bought ${q.rival.name} (${placeName(q.rival.hq)}, est. ${q.rival.founded}) for ${formatMoney(q.price)}. Most of its customers stay with you${q.outlets > 0 ? `, and its ${q.outlets} ${q.outlets === 1 ? industryDef(b.industry).site : industryDef(b.industry).sitePlural} now fly your flag` : ''}. Your share of the market is now about ${shareText(st.share)}.`,
+    `${a.name} bought ${q.rival.name} (${placeName(q.rival.hq)}, est. ${q.rival.founded}) for ${formatMoney(q.price)}. Most of its customers stay with you${sites}.${lines.length ? ` ${lines.join(' ')}` : ''} Your share of the market is now about ${shareText(st.share)}.`,
     { emoji: '\u{1F91D}', tone: 'good' },
   )
   return true

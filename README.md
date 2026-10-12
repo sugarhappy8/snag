@@ -22,7 +22,9 @@ Every part of the story is built in and runs on your device:
 Money changes your life too. Once you're rich, your kids want pocket money, cars, vacations and
 a house, and friends and family come asking for loans. Companies grow without hard caps: unlimited
 R&D and product lines, as many stores, offices and factory lines as the market and your cash
-allow, picked with sliders. Hire a CEO to run them (the best ones above skill 75 optimize like
+allow, picked with sliders. Every product idea has its own development cost, every kind of
+product follows its real historical demand, and a line better than the rivals' versions wins
+their customers; buy a rival and its products, sites and know-how become yours. Hire a CEO to run them (the best ones above skill 75 optimize like
 real executives and write you a yearly letter), answer to a board of directors once outsiders
 own part of the company, and merge your companies into a conglomerate.
 

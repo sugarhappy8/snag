@@ -350,6 +350,8 @@ export interface InputDialogProps {
   submitLabel?: string
   /** min/max/defaultValue/placeholder are internal dollars; the player types the display currency. */
   money?: boolean
+  /** Sliders: open on a round number (the default is a suggestion, MenuInput.roundDefault). */
+  roundDefault?: boolean
   onSubmit: (value: string) => void
   onCancel: () => void
 }
@@ -360,9 +362,9 @@ export function InputDialog(props: InputDialogProps) {
 }
 
 /** A slider in a dialog: the value it hands back is a string, exactly like a number field's. */
-function SliderDialog({ title, emoji, label, defaultValue, min, max, step, unit, preview, submitLabel = 'Confirm', money = false, onSubmit, onCancel }: InputDialogProps & { min: number; max: number }) {
+function SliderDialog({ title, emoji, label, defaultValue, min, max, step, unit, preview, submitLabel = 'Confirm', money = false, roundDefault = false, onSubmit, onCancel }: InputDialogProps & { min: number; max: number }) {
   const s = useSliderScale(min, max, step, money)
-  const [value, setValue] = useState(() => sliderStart(s, defaultValue))
+  const [value, setValue] = useState(() => sliderStart(s, defaultValue, roundDefault))
   useEscape(onCancel)
   const submit = () => onSubmit(sliderOutput(s, value, money))
   // No tap-outside-to-close: a drag that ends past the card's edge would land on the backdrop

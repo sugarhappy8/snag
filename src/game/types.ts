@@ -727,6 +727,11 @@ export interface MenuInput {
   /** Sliders: a unit written after the number ('%', ' yrs'); ignored for money. */
   unit?: string
   /**
+   * Money sliders whose default is a suggestion (a normal budget), not a value to keep: they open
+   * on a round number in the player's currency (¥440,000, never ¥441,326.96).
+   */
+  roundDefault?: boolean
+  /**
    * Sliders: a live caption for the value under the thumb, e.g. '12 trucks · $340K up front ·
    * pays back in ~3 years'. Must be pure (no state changes, no game RNG).
    */
