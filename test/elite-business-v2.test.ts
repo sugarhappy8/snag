@@ -32,7 +32,8 @@ describe('elite CEO foresight and concrete IP management', () => {
     expect(simulateYear(high.g, high.b, 2025, 0, 1).stmt.net).toBeGreaterThan(simulateYear(low.g, low.b, 2025, 0, 1).stmt.net)
   })
 
-  it.each(['manufacturing', 'investmentFirm', 'bank', 'gameStudio', 'semiconductor'] as const)('guarantees a 100-rated %s CEO positive booked earnings, with taxable income and no duplicate settlement', industry => {
+  // Investment firms 2.0 removed perfect-foresight returns: see the investment-firm guard below.
+  it.each(['manufacturing', 'bank', 'gameStudio', 'semiconductor'] as const)('guarantees a 100-rated %s CEO positive booked earnings, with taxable income and no duplicate settlement', industry => {
     const { g, a, b } = company(industry, 100)
     b.debt = 500e6; b.debtRate = .5; b.capacityLoss = .9; b.demandShock = .3
     yearlyBusinessImpl(g)
@@ -49,6 +50,21 @@ describe('elite CEO foresight and concrete IP management', () => {
     expect(JSON.stringify(g)).toBe(booked)
     const restored = JSON.parse(booked)
     expect(readBiz(restored, restored.assets[0]).last!.strategicIncome).toBe(after.last!.strategicIncome)
+  })
+
+  it('gives a 100-rated investment-firm CEO no perfect-foresight top-up, and books the loss exactly once', () => {
+    const { g, a, b } = company('investmentFirm', 100)
+    b.debt = 500e6; b.debtRate = .5; b.capacityLoss = .9; b.demandShock = .3
+    yearlyBusinessImpl(g)
+    const after = readBiz(g, a)
+    expect(after.last!.strategicIncome).toBe(0)
+    expect(after.last!.net).toBeLessThan(0)
+    expect(after.last!.interest).toBeGreaterThan(0)
+    expect(after.last!.otherIncome).toBe(0)
+    expect(g.character.money).toBe(0)
+    const booked = JSON.stringify(g)
+    yearlyBusinessImpl(g)
+    expect(JSON.stringify(g)).toBe(booked)
   })
 
   it('keeps the perfect-income settlement exclusive to 100-rated hired CEOs', () => {
