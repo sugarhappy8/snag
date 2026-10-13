@@ -445,7 +445,7 @@ export function resolveBill(g: GameState, m: Measure, sweet: Sweetener): boolean
     me.dirty -= fromDirty
     g.character.money -= cost - fromDirty
     addHidden(g, 'karma', -8)
-    me.heat = Math.min(100, me.heat + 12)
+    me.heat = Math.min(100, me.heat + 8)
     addCase(g, me, { kind: 'votes', label: `Paid lawmakers to pass "${label}"`, evidence: .3, amount: cost })
     bribeLine = ` ${formatMoney(cost)} changed hands in a car park.`
     count(g, 'votesBought')

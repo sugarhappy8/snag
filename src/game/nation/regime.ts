@@ -34,16 +34,16 @@ export interface RegimeDef {
 
 export const REGIME: Record<RegimeId, RegimeDef> = {
   buyMedia: { id: 'buyMedia', label: 'Have friends buy the media', emoji: '📺', blurb: 'Friendly owners, friendlier headlines.', vote: 'none', court: 0, maxStrength: 101, legitimacy: -3, fear: 0 },
-  mediaLaw: { id: 'mediaLaw', label: 'Put the press under state control', emoji: '🗞️', blurb: 'A "media responsibility" law with teeth.', vote: 'constitutional', court: .8, maxStrength: 75, legitimacy: -10, fear: 8 },
-  packCourts: { id: 'packCourts', label: 'Pack the courts', emoji: '⚖️', blurb: 'Add judges until the judges agree with you.', vote: 'simple', court: .6, maxStrength: 85, legitimacy: -10, fear: 4 },
-  termLimits: { id: 'termLimits', label: 'Extend the term limit', emoji: '⏳', blurb: 'One more term. For stability.', vote: 'constitutional', court: 1, maxStrength: 80, legitimacy: -12, fear: 3 },
-  emergency: { id: 'emergency', label: 'Declare a state of emergency', emoji: '🚨', blurb: 'Rule by decree for two years.', vote: 'none', court: .7, maxStrength: 90, legitimacy: -10, fear: 10 },
-  postpone: { id: 'postpone', label: 'Postpone the next election', emoji: '📅', blurb: 'Elections are "unsafe" during the emergency.', vote: 'none', court: .9, maxStrength: 70, legitimacy: -20, fear: 10 },
+  mediaLaw: { id: 'mediaLaw', label: 'Put the press under state control', emoji: '🗞️', blurb: 'A "media responsibility" law with teeth.', vote: 'constitutional', court: .8, maxStrength: 65, legitimacy: -10, fear: 8 },
+  packCourts: { id: 'packCourts', label: 'Pack the courts', emoji: '⚖️', blurb: 'Add judges until the judges agree with you.', vote: 'simple', court: .6, maxStrength: 70, legitimacy: -10, fear: 4 },
+  termLimits: { id: 'termLimits', label: 'Extend the term limit', emoji: '⏳', blurb: 'One more term. For stability.', vote: 'constitutional', court: 1, maxStrength: 65, legitimacy: -12, fear: 3 },
+  emergency: { id: 'emergency', label: 'Declare a state of emergency', emoji: '🚨', blurb: 'Rule by decree for two years.', vote: 'none', court: .7, maxStrength: 80, legitimacy: -10, fear: 10 },
+  postpone: { id: 'postpone', label: 'Postpone the next election', emoji: '📅', blurb: 'Elections are "unsafe" during the emergency.', vote: 'none', court: .9, maxStrength: 60, legitimacy: -20, fear: 10 },
   gerrymander: { id: 'gerrymander', label: 'Redraw the electoral map', emoji: '🗺️', blurb: 'Districts shaped like your supporters.', vote: 'simple', court: .5, maxStrength: 101, legitimacy: -5, fear: 0 },
   security: { id: 'security', label: 'Buy the security forces\' loyalty', emoji: '🪖', blurb: 'Bonuses, promotions and a purge of doubters.', vote: 'none', court: 0, maxStrength: 101, legitimacy: -4, fear: 8 },
-  rig: { id: 'rig', label: 'Prepare the vote count', emoji: '🗳️', blurb: 'Make sure the right numbers come out.', vote: 'none', court: 0, maxStrength: 80, legitimacy: 0, fear: 0 },
+  rig: { id: 'rig', label: 'Prepare the vote count', emoji: '🗳️', blurb: 'Make sure the right numbers come out.', vote: 'none', court: 0, maxStrength: 60, legitimacy: 0, fear: 0 },
   buyVotes: { id: 'buyVotes', label: 'Buy votes', emoji: '💵', blurb: 'Cash and groceries for voters in the right districts.', vote: 'none', court: 0, maxStrength: 101, legitimacy: 0, fear: 0 },
-  selfCoup: { id: 'selfCoup', label: 'Dissolve parliament and rule alone', emoji: '👑', blurb: 'The last step: no legislature, no limits.', vote: 'none', court: 0, maxStrength: 70, legitimacy: -30, fear: 20 },
+  selfCoup: { id: 'selfCoup', label: 'Dissolve parliament and rule alone', emoji: '👑', blurb: 'The last step: no legislature, no limits.', vote: 'none', court: 0, maxStrength: 55, legitimacy: -30, fear: 20 },
 }
 export const REGIME_IDS = Object.keys(REGIME) as RegimeId[]
 
@@ -190,7 +190,7 @@ export function takeStep(g: GameState, id: RegimeId): boolean {
     case 'emergency': inst.emergencyUntil = g.year + 2; text = 'You now rule by decree for two years. No votes needed.'; break
     case 'postpone': inst.postponedUntil = g.year + 2; text = 'The election is off for two years "for the safety of voters".'; break
     case 'gerrymander': inst.gerrymander = .05; text = 'The new districts give your party extra seats at the next election.'; break
-    case 'security': me.loyalty = Math.min(100, me.loyalty + 20); text = 'Generals got bonuses; doubters got early retirement.'; break
+    case 'security': me.loyalty = Math.min(100, me.loyalty + 12); text = 'Generals got bonuses; doubters got early retirement.'; break
     case 'rig': me.cool.rig = g.year; text = 'Your people will be counting the ballots. Nothing can go wrong. Probably.'; break
     case 'buyVotes': me.stats.voteBuy = (me.stats.voteBuy ?? 0) + voteCost(g); addCase(g, me, { kind: 'votes', label: 'Bought votes', evidence: .25, amount: voteCost(g) }); text = 'Envelopes, groceries and bus trips went out in the swing districts.'; count(g, 'votesBought'); break
     case 'selfCoup': inst.regime = 'authoritarian'; inst.extraTerms = 99; inst.emergencyUntil = g.year + 99; text = 'You dissolved the legislature. From now on, your word is law.'; count(g, 'selfCoups'); break
@@ -251,34 +251,41 @@ export function persecute(g: GameState, rivalId: string, exile: boolean): boolea
 // ---------------------------------------------------------------------------
 // Elections
 
-/** Extra points at the next election from rigging, bought votes, a captive press and missing rivals. */
+/** Extra points at the next election from bought votes, a captive press, missing rivals and the regime (pure). */
 export function electionEdge(g: GameState): { bonus: number; rigged: boolean; text: string } {
   const me = meView(g)
   const p = policyOf(g, g.character.countryId)
   const inst = p.institutions
   let bonus = inst.mediaControl * 10
   const rigged = (me.cool.rig ?? 0) >= g.year - 1
-  if (rigged) bonus += inst.regime === 'authoritarian' ? 20 : 12
   bonus += Math.min(10, (me.stats.voteBuy ?? 0) / Math.max(1, voteCost(g)) * 3)
   bonus += Math.min(8, me.rivals.filter(r => r.status === 'jailed' || r.status === 'exiled').length * 4)
   if (inst.regime === 'authoritarian') bonus += 35
   else if (inst.regime === 'hybrid') bonus += 6
   bonus += inst.gerrymander * 60
-  return { bonus: Math.round(bonus), rigged, text: rigged ? 'The count went your way.' : '' }
+  return { bonus: Math.round(bonus), rigged, text: '' }
 }
 
-/** After an election: the rig may be exposed, and bought votes are spent. */
-export function afterElection(g: GameState, won: boolean): string {
+/**
+ * The count (an action: rolls). A prepared count adds points; observers may expose it, and where
+ * courts are independent an exposed rig voids the result.
+ */
+export function countVotes(g: GameState, share: number): { share: number; line: string } {
   const me = editMe(g)
+  const p = policyOf(g, g.character.countryId)
   const rigged = (me.cool.rig ?? 0) >= g.year - 1
   me.stats.voteBuy = 0
   delete me.cool.rig
-  let line = ''
-  if (rigged && won && chance(g, Math.max(.05, Math.min(.8, institutionStrength(g.character.countryId, g.year) / 100 * (1 - policyOf(g, g.character.countryId).institutions.mediaControl * .6))))) {
+  if (!rigged) { writeMe(g, me); return { share, line: '' } }
+  const strength = institutionStrength(g.character.countryId, g.year) / 100
+  let out = share + (p.institutions.regime === 'authoritarian' ? 20 : 12)
+  let line = ' The count went your way.'
+  if (chance(g, Math.max(.05, Math.min(.85, strength * (1 - p.institutions.mediaControl * .6))))) {
     me.legitimacy = Math.max(0, me.legitimacy - 20)
     addCase(g, me, { kind: 'rigging', label: 'Rigged an election', evidence: .5, amount: 0 })
-    line = ' Observers say the count was rigged. Crowds are gathering.'
+    if (strength >= .55 && p.institutions.courtPacked < .5) { out = Math.min(out, 45); line = ' Observers exposed the rigged count and the courts annulled the result.' }
+    else line = ' Observers say the count was rigged. Crowds are gathering.'
   }
   writeMe(g, me)
-  return line
+  return { share: Math.max(3, Math.min(97, Math.round(out))), line }
 }

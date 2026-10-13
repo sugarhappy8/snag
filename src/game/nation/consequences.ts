@@ -30,11 +30,19 @@ export function scrutiny(g: GameState, country = g.character.countryId): number 
   return Math.max(.02, Math.min(1, strength * (1 - p.institutions.mediaControl * .6) * (1 - p.institutions.courtPacked * .3) * (1 - me.fear / 250)))
 }
 
-/** Yearly chance an open case surfaces (pure; shown in the dashboard and rolled here). */
-export function exposureChance(g: GameState, cs: CaseFile, inOffice: boolean): number {
+/** Yearly chance an unknown case surfaces (pure; shown in the dashboard and rolled here). Heat
+ * adds once a year to the strongest file, not to every file. */
+export function exposureChance(g: GameState, cs: CaseFile, inOffice: boolean, withHeat = true): number {
   const me = meView(g)
-  const base = cs.evidence * scrutiny(g, cs.country) * .22 + me.heat / 400
-  return Math.max(0, Math.min(.6, inOffice ? base : base * 1.6))
+  const base = cs.evidence * scrutiny(g, cs.country) * .12 + (withHeat ? me.heat / 800 : 0)
+  return Math.max(0, Math.min(.5, inOffice ? base : base * 1.3))
+}
+
+/** Yearly chance prosecutors charge an exposed (pending) case once nothing protects you (pure). */
+export function chargeChance(g: GameState, cs: CaseFile): number {
+  const strength = institutionStrength(cs.country, g.year) / 100
+  const p = policyOf(g, cs.country)
+  return Math.max(.02, Math.min(.85, (.12 + .55 * cs.evidence) * strength * (1 - p.institutions.courtPacked * .6)))
 }
 
 /** Presidents (and leaders where courts answer to them) can't be charged while in office. */
@@ -86,7 +94,7 @@ defineScript(EXPOSE_SCRIPT, (g, choice, data) => {
   const id = String((data as { id?: string } | undefined)?.id ?? '')
   const v = officeView(g)
   const me = editMe(g)
-  const cs = me.cases.find(c => c.id === id && c.status === 'open')
+  const cs = me.cases.find(c => c.id === id && c.status !== 'closed')
   if (!cs) return
   const strength = institutionStrength(g.character.countryId, g.year) / 100
   if (choice === 'resign') {
@@ -136,6 +144,7 @@ defineScript(EXPOSE_SCRIPT, (g, choice, data) => {
 })
 
 function surface(g: GameState, v: OfficeView | null, me: Me, cs: CaseFile): boolean {
+  cs.status = 'pending'
   const seized = seize(me, .9)
   me.heat = Math.min(100, me.heat + 20)
   me.legitimacy = Math.max(0, me.legitimacy - 8)
@@ -143,15 +152,14 @@ function surface(g: GameState, v: OfficeView | null, me: Me, cs: CaseFile): bool
   count(g, 'corruptionScandals')
   const paper = `The ${g.character.city} ${pick(g, ['Herald', 'Chronicle', 'Tribune', 'Courier', 'Gazette'])}`
   if (!v) {
-    // Out of office: no hearings, straight to the prosecutors.
-    cs.status = 'closed'
+    // Out of office: no hearings. The story runs; prosecutors decide (chargeChance) in later years.
     writeMe(g, me)
     if (me.exile && g.character.countryId !== me.exile) {
       notice(g, 'Wanted at Home', `${paper} published the file on ${cs.label.toLowerCase()}. ${getCountry(me.exile).name} wants you back. You are staying where you are.`, { emoji: '📰' })
       return true
     }
-    remember(g, `Charged over ${cs.label.toLowerCase()}.`)
-    arrestPlayer(g, 'Corruption', severityOf(cs), { evidence: Math.max(.3, Math.min(.95, cs.evidence)), context: `${paper} published the file on ${cs.label.toLowerCase()}. Now that you hold no office, prosecutors came for you.` })
+    adjustReputation(g)
+    notice(g, 'Exposed', `${paper} published the file on ${cs.label.toLowerCase()} (${formatMoney(cs.amount)}). Prosecutors are reading it too.${seized > 0 ? ` Investigators froze ${formatMoney(seized)} of hidden cash.` : ''}`, { emoji: '📰', tone: 'bad' })
     return true
   }
   adjustApproval(g, -Math.round(8 + cs.evidence * 8))
@@ -172,26 +180,81 @@ function severityOf(cs: CaseFile): number {
   return years > 2000 ? 5 : years > 300 ? 4 : years > 40 ? 3 : 2
 }
 
+function charge(g: GameState, me: Me, cs: CaseFile, context: string): boolean {
+  cs.status = 'closed'
+  writeMe(g, me)
+  remember(g, `Charged over ${cs.label.toLowerCase()}.`)
+  arrestPlayer(g, 'Corruption', severityOf(cs), { evidence: Math.max(.3, Math.min(.95, cs.evidence)), context })
+  return true
+}
+
+/**
+ * Where corruption is the norm, the next government often goes after the last one: once out of
+ * office, any file can become a weapon (pure; rolled yearly while files are open).
+ */
+export function purgeChance(g: GameState, me: Me): number {
+  const corruption = marketOf(g.character.countryId).corruption
+  const files = me.cases.filter(c => c.status !== 'closed').length
+  return corruption < 45 || !files ? 0 : Math.min(.15, .03 + .015 * files + (corruption - 45) / 500)
+}
+
 function cases(g: GameState, v: OfficeView | null, me: Me): boolean {
   const inOffice = !!v && v.rank >= 1
+  const abroad = !!me.exile && g.character.countryId !== me.exile
+  if (!inOffice && !abroad && chance(g, purgeChance(g, me))) {
+    const cs = me.cases.filter(c => c.status !== 'closed').sort((a, b) => b.evidence - a.evidence)[0]
+    cs.evidence = Math.max(.5, cs.evidence)
+    return charge(g, me, cs, `The new government reopened every file from your time in power, starting with ${cs.label.toLowerCase()}.`)
+  }
+  const strongest = me.cases.filter(c => c.status === 'open').reduce<CaseFile | null>((best, c) => (!best || c.evidence > best.evidence ? c : best), null)
   for (const cs of me.cases) {
-    if (cs.status !== 'open') continue
-    if (g.year - cs.year > 15) { cs.status = 'closed'; note(me, `${g.year}: the statute of limitations ran out (${cs.label.toLowerCase()}).`); continue }
-    cs.evidence = Math.max(0, cs.evidence - .02)
-    if (me.exile && g.character.countryId !== me.exile && !inOffice) continue
-    if (inOffice && immune(g, v) && !chance(g, .25)) continue
-    if (chance(g, exposureChance(g, cs, inOffice))) return surface(g, inOffice ? v : null, me, cs)
+    if (cs.status === 'closed') continue
+    if (g.year - cs.year > (cs.status === 'pending' ? 20 : 15)) { cs.status = 'closed'; note(me, `${g.year}: the statute of limitations ran out (${cs.label.toLowerCase()}).`); continue }
+    if (cs.status === 'open') cs.evidence = Math.max(0, cs.evidence - .03)
+    if (abroad) continue
+    if (cs.status === 'pending') {
+      // Corrupt systems lose files; immunity makes prosecutors wait.
+      if (chance(g, marketOf(cs.country).corruption / 400)) { cs.status = 'closed'; note(me, `${g.year}: the file on ${cs.label.toLowerCase()} was "lost in a flood".`); continue }
+      if (inOffice && immune(g, v)) continue
+      if (chance(g, chargeChance(g, cs) * (inOffice ? .35 : 1))) {
+        if (inOffice && v) officeHooks().leaveOffice(g, 'fired', `I was charged over ${cs.label.toLowerCase()} and removed as ${v.title}.`)
+        return charge(g, me, cs, inOffice ? `Prosecutors charged you over ${cs.label.toLowerCase()} while you were still in office.` : `Now that you hold no office, prosecutors came for you over ${cs.label.toLowerCase()}.`)
+      }
+      continue
+    }
+    if (chance(g, exposureChance(g, cs, inOffice, cs === strongest))) return surface(g, inOffice ? v : null, me, cs)
   }
   return false
+}
+
+function adjustReputation(g: GameState): void {
+  addHidden(g, 'notoriety', 6)
 }
 
 // ---------------------------------------------------------------------------
 // Protests, removal votes, coups, sanctions, leaks
 
-defineScript(PROTEST_SCRIPT, (g, choice) => {
+/** Odds a crackdown holds when the protests have become a revolution (pure). */
+export function crackdownOdds(g: GameState): number {
+  const me = meView(g)
+  return Math.max(.1, Math.min(.85, me.loyalty / 100 * .7 + me.fear / 400 - .1))
+}
+
+defineScript(PROTEST_SCRIPT, (g, choice, data) => {
   const v = officeView(g)
   if (!v) return
   const me = editMe(g)
+  const revolution = (data as { revolution?: boolean } | undefined)?.revolution === true
+  if (choice === 'crackdown' && revolution && !chance(g, crackdownOdds(g))) {
+    bumpStat(me, 'overthrown')
+    writeMe(g, me)
+    count(g, 'overthrown')
+    if (chance(g, .5)) { goIntoExile(g, 'The army refused to fire on the crowds. Your guards drove you to the airport.'); return }
+    officeHooks().leaveOffice(g, 'fired', `I was overthrown as ${v.title}.`)
+    remember(g, `Overthrown by a popular uprising as ${v.title}.`)
+    arrestPlayer(g, 'Abuse of Power', 4, { evidence: .8, context: 'The army refused to fire on the crowds. The new authorities arrested you in the palace.' })
+    return
+  }
   if (choice === 'crackdown') {
     me.fear = Math.min(100, me.fear + 15)
     me.legitimacy = Math.max(0, me.legitimacy - 12)
@@ -252,7 +315,9 @@ export function survivalOdds(g: GameState, v: OfficeView): number {
   const p = policyOf(g, g.character.countryId)
   if (p.institutions.regime === 'authoritarian') return .95
   const me = meView(g)
-  return Math.max(.05, Math.min(.95, .1 + governmentSeats(g) * .8 + (v.approval - 30) / 100 + me.fear / 300 + p.institutions.courtPacked * .15))
+  // Strong institutions turn on a leader who has lost both the public and their legitimacy.
+  const strength = institutionStrength(g.character.countryId, g.year) / 100
+  return Math.max(.05, Math.min(.95, .1 + governmentSeats(g) * .6 + (v.approval - 35) / 80 + me.fear / 400 + p.institutions.courtPacked * .1 - strength * (1 - me.legitimacy / 100) * .6))
 }
 
 defineScript(REMOVAL_SCRIPT, (g, choice) => {
@@ -278,7 +343,7 @@ defineScript(COUP_SCRIPT, (g, choice) => {
   const me = editMe(g)
   if (choice === 'flee') { writeMe(g, me); goIntoExile(g, 'Soldiers surrounded the palace. You escaped through the kitchen.'); return }
   if (choice === 'negotiate') {
-    for (const cs of me.cases) if (cs.status === 'open' && chance(g, .5)) cs.status = 'closed'
+    for (const cs of me.cases) if (cs.status !== 'closed' && chance(g, .5)) cs.status = 'closed'
     writeMe(g, me)
     officeHooks().leaveOffice(g, 'quit', `I handed power to the generals and left office as ${v.title}.`)
     notice(g, 'Handed Over', 'You resigned in exchange for an amnesty. Some of your files were burned; not all.', { emoji: '🎖️', tone: 'bad' })
@@ -304,12 +369,14 @@ function protests(g: GameState, v: OfficeView, me: Me): boolean {
   if (!chance(g, odds)) return false
   bumpStat(me, 'protests')
   writeMe(g, me)
-  scriptChoice(g, PROTEST_SCRIPT, 'Protests', `Crowds fill the streets of ${g.character.city} demanding that you ${v.approval < 25 ? 'resign' : 'change course'}. Approval ${v.approval}%, legitimacy ${Math.round(me.legitimacy)}.`, [
+  // Hated and illegitimate: the protests become an uprising, and a crackdown can fail.
+  const revolution = v.rank >= 3 && v.approval < 20 && me.legitimacy < 25
+  scriptChoice(g, PROTEST_SCRIPT, revolution ? 'Uprising' : 'Protests', `${revolution ? 'Hundreds of thousands' : 'Crowds'} fill the streets of ${g.character.city} demanding that you ${v.approval < 25 ? 'resign' : 'change course'}. Approval ${v.approval}%, legitimacy ${Math.round(me.legitimacy)}.`, [
     { id: 'wait', label: 'Wait it out (50%)', emoji: '⏳' },
     { id: 'concede', label: 'Make concessions (20 capital)', emoji: '🤝' },
-    { id: 'crackdown', label: 'Send in the security forces', emoji: '🛡️' },
+    { id: 'crackdown', label: revolution ? `Order the army in (${Math.round(crackdownOdds(g) * 100)}% it obeys)` : 'Send in the security forces', emoji: '🛡️' },
     { id: 'resign', label: 'Resign', emoji: '🚪' },
-  ], { emoji: '📢' })
+  ], { emoji: '📢', data: { revolution } })
   return true
 }
 
@@ -319,7 +386,7 @@ export function coupChance(g: GameState, v: OfficeView): number {
   const me = meView(g)
   const p = policyOf(g, g.character.countryId)
   const strength = institutionStrength(g.character.countryId, g.year)
-  const raw = (50 - me.loyalty) / 150 + (35 - v.approval) / 250 + (p.institutions.regime === 'authoritarian' ? .03 : 0) + (marketOf(g.character.countryId).corruption > 50 ? .02 : 0)
+  const raw = (60 - me.loyalty) / 200 + (30 - v.approval) / 200 + (40 - me.legitimacy) / 300 + (p.institutions.regime === 'authoritarian' ? .03 : 0) + Math.max(0, marketOf(g.character.countryId).corruption - 40) / 1000
   return Math.max(0, Math.min(.25, raw)) * (strength >= 70 ? .05 : 1)
 }
 

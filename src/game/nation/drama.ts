@@ -207,7 +207,7 @@ defineScript(LOBBY_SCRIPT, (g, choice, data) => {
   }
   if (choice === 'envelope') {
     const amount = Math.max(0, Math.round(Number(d.envelope) || 0))
-    me.dirty += amount; me.taken += amount; me.heat = Math.min(100, me.heat + 10)
+    me.dirty += amount; me.taken += amount; me.heat = Math.min(100, me.heat + 6)
     addCase(g, me, { kind: 'bribe', label: `Took cash from the ${d.industry ?? ''} lobby`, evidence: .3, amount })
     addHidden(g, 'karma', -8)
     count(g, 'bribesTaken')

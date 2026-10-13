@@ -283,7 +283,7 @@ export function yearlyNation(g: GameState): void {
     me.legitimacy = Math.max(0, Math.min(100, me.legitimacy + (regime === 'authoritarian' ? (30 - me.legitimacy) * .1 : (72 - me.legitimacy) * .08)))
     me.fear = Math.max(regime === 'authoritarian' ? 25 : 0, me.fear - 5)
     me.loyalty = Math.max(0, Math.min(100, me.loyalty + (55 - me.loyalty) * .08))
-    me.heat = Math.max(0, me.heat * .75 - 2)
+    me.heat = Math.max(0, me.heat * .6 - 3)
     me.capital = Math.max(0, Math.min(100, me.capital + 6 + (v.approval - 50) / 6))
     const t = approvalTarget(g, v)
     me.groups = Object.fromEntries(GROUP_IDS.map(id => [id, t.groups[id]]))

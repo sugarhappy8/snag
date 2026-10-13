@@ -105,7 +105,8 @@ export interface CaseFile {
   evidence: number
   /** Dirty money involved. */
   amount: number
-  status: 'open' | 'closed'
+  /** open: nobody knows yet · pending: exposed, prosecutors wait for their chance · closed. */
+  status: 'open' | 'pending' | 'closed'
   country: string
 }
 export interface Rival {
@@ -329,7 +330,7 @@ function normalizeMe(g: GameState, v: unknown): Me {
     const c = rec(row), id = text(c.id, '', 60)
     if (!id || out.cases.some(x => x.id === id)) continue
     out.cases.push({ id, kind: text(c.kind, 'graft', 30), label: text(c.label, 'Abuse of office', 140), year: year(c.year), evidence: finite(c.evidence, .3, 0, 1),
-      amount: Math.round(finite(c.amount, 0, 0, 1e13)), status: c.status === 'closed' ? 'closed' : 'open', country: validCountry.has(String(c.country)) ? String(c.country) : g.character.countryId })
+      amount: Math.round(finite(c.amount, 0, 0, 1e13)), status: c.status === 'closed' ? 'closed' : c.status === 'pending' ? 'pending' : 'open', country: validCountry.has(String(c.country)) ? String(c.country) : g.character.countryId })
   }
   if (Array.isArray(r.rivals)) for (const row of r.rivals.slice(0, 8)) {
     const p = rec(row), id = text(p.id, '', 40)
@@ -391,9 +392,10 @@ export function consumeWriteDowns(g: GameState): void {
 }
 
 /** Open a case file: evidence that can surface through journalists, auditors or a trial later. */
-export function addCase(g: GameState, me: Me, c: { kind: string; label: string; evidence: number; amount: number }): CaseFile {
+export function addCase(g: GameState, me: Me, c: { kind: string; label: string; evidence: number; amount: number; pending?: boolean }): CaseFile {
   bumpStat(me, 'cases')
-  const file: CaseFile = { id: `c${g.year}-${me.stats.cases}`, kind: c.kind.slice(0, 30), label: c.label.slice(0, 140), year: g.year, evidence: Math.max(0, Math.min(1, c.evidence)), amount: Math.max(0, Math.round(c.amount)), status: 'open', country: g.character.countryId }
+  // `pending`: the authorities already know (an auditor flagged it); it is not a secret to surface.
+  const file: CaseFile = { id: `c${g.year}-${me.stats.cases}`, kind: c.kind.slice(0, 30), label: c.label.slice(0, 140), year: g.year, evidence: Math.max(0, Math.min(1, c.evidence)), amount: Math.max(0, Math.round(c.amount)), status: c.pending ? 'pending' : 'open', country: g.character.countryId }
   me.cases.push(file)
   return file
 }

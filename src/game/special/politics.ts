@@ -3,7 +3,7 @@ import { leaderTitle, legislator, parliamentary, regional, registerOfficeHooks }
 import { deskMeasure, enactDeskBill, onTopJob } from '../nation/govern'
 import { approvalTarget } from '../nation/yearly'
 import { abuseNodes, nationJobNodes } from '../nation/menu'
-import { afterElection, electionEdge } from '../nation/regime'
+import { countVotes, electionEdge } from '../nation/regime'
 import { addCase, editMe, policyOf as nationPolicy, writeMe } from '../nation/state'
 import { officeView } from '../nation/office'
 import { exchangeYear, companyDef } from '../invest/engine'
@@ -879,7 +879,9 @@ function election(g: GameState, camp: Campaign, lastText: string): void {
   const title = officeTitle(g, o.id)
   // Rigging, bought votes, a captive press, jailed rivals (nation/regime.ts) tilt the count.
   const edge = politicianJob(g) ? electionEdge(g) : { bonus: 0, rigged: false, text: '' }
-  const share = Math.max(3, Math.min(97, camp.poll + edge.bonus + randInt(g, -5, 5)))
+  const counted = politicianJob(g) ? countVotes(g, Math.max(3, Math.min(97, camp.poll + edge.bonus + randInt(g, -5, 5)))) : { share: Math.max(3, Math.min(97, camp.poll + randInt(g, -5, 5))), line: '' }
+  const share = counted.share
+  lastText += counted.line
   const finalShare = share === 50 ? (chance(g, 0.5) ? 51 : 49) : share
   const p = polProfile(g)
   const current = politicianJob(g)
@@ -917,7 +919,6 @@ function election(g: GameState, camp: Campaign, lastText: string): void {
     }
     p.held.push({ office: o.id, title, place, startAge: c.age, endAge: null })
     if (o.id === 'leader') onTopJob(g, camp.party, finalShare)
-    if (current) lastText += afterElection(g, true)
     addFame(g, 2 + o.rank * 4)
     addStat(g, 'happiness', 15)
     log(g, `I was elected ${title} with ${finalShare}% of the vote.`, 'good')
@@ -2288,7 +2289,7 @@ defineScript(FAVOR_SCRIPT, (g, choice, data) => {
     const me = editMe(g)
     me.dirty += amount
     me.taken += amount
-    me.heat = Math.min(100, me.heat + 8)
+    me.heat = Math.min(100, me.heat + 5)
     addCase(g, me, { kind: 'bribe', label: `Took a bribe from ${who.toLowerCase()}`, evidence: .3, amount })
     writeMe(g, me)
     count(g, 'bribesTaken')
@@ -2436,9 +2437,10 @@ function reelection(g: GameState, job: Job): void {
   d.warChest = 0
   const poll = 30 + d.approval * 0.45 + Math.min(8, (chest / Math.max(1, o.budgets[2])) * 8) + (c.stats.smarts - 50) * 0.05 + Math.min(6, fameOf(g) * 0.08) - d.scandals * 2 + (hasTalent(g, 'Leadership') ? LEADER_REELECT_EDGE : 0)
   const edge = electionEdge(g)
-  const share = Math.round(Math.max(5, Math.min(95, poll + edge.bonus + randInt(g, -6, 6))))
+  const counted = countVotes(g, Math.round(Math.max(5, Math.min(95, poll + edge.bonus + randInt(g, -6, 6)))))
+  const share = counted.share
   const title = job.title
-  const exposed = afterElection(g, share > 50)
+  const exposed = counted.line
   if (share > 50 && o.id === 'leader') onTopJob(g, d.party, share)
   if (share > 50) {
     d.termLeft = o.term
@@ -2451,7 +2453,7 @@ function reelection(g: GameState, job: Job): void {
     addFame(g, 2)
     log(g, `I was re-elected ${title} with ${share}% of the vote.`, 'good')
     remember(g, `Re-elected ${title}.`)
-    say(g, 'Re-elected!', `You beat ${opp} with ${share}% of the vote and won a ${ordinalWord(d.terms)} term as ${title}!${chest > 0 ? ` Your ${money(chest)} war chest helped.` : ''}${edge.text ? ` ${edge.text}` : ''}${exposed}`, '\u{1F389}', 'good')
+    say(g, 'Re-elected!', `You beat ${opp} with ${share}% of the vote and won a ${ordinalWord(d.terms)} term as ${title}!${chest > 0 ? ` Your ${money(chest)} war chest helped.` : ''}${exposed}`, '\u{1F389}', 'good')
     return
   }
   polProfile(g).losses += 1
@@ -2465,7 +2467,7 @@ function reelection(g: GameState, job: Job): void {
   leave(g, 'other')
   addStat(g, 'happiness', -12)
   log(g, `I lost my re-election bid for ${title}.`, 'bad')
-  say(g, 'Defeated', `Voters threw you out. ${opp} won with ${100 - share}% of the vote. ${pick(g, ['You moved out of your office with a single sad box.', 'You gave a concession speech and then ate an entire cake.'])}`, '\u{1F5F3}\u{FE0F}', 'bad')
+  say(g, 'Defeated', `Voters threw you out. ${opp} won with ${100 - share}% of the vote.${exposed} ${pick(g, ['You moved out of your office with a single sad box.', 'You gave a concession speech and then ate an entire cake.'])}`, '\u{1F5F3}\u{FE0F}', 'bad')
 }
 
 function ordinalWord(n: number): string {

@@ -14,7 +14,7 @@ import {
   type BudgetLine, type LegalId, type NewTaxId, type Scope, type TariffInput, type TaxId, type TradeInput,
 } from './data'
 import { sharedBloc } from '../business/market-trade'
-import { exposureChance, coupChance } from './consequences'
+import { chargeChance, exposureChance, coupChance } from './consequences'
 import { approvalTarget, openReport, ratingFor } from './yearly'
 import { governmentSeats, legislatureOf } from './legislature'
 import { legalBase } from './laws'
@@ -407,9 +407,11 @@ export function dashboardMenu(): MenuGroup {
       const bills = Array.isArray(g.character.job?.data.bills) ? (g.character.job!.data.bills as unknown[]).length : 0
       info('bills', '📝', `${bills} bill${bills === 1 ? '' : 's'} waiting on your desk`)
       rows.push({ type: 'heading', id: 'nation.dash.h.danger', label: 'Scandals and investigations' })
-      const open = me.cases.filter(c => c.status === 'open').sort((a, b) => b.evidence - a.evidence)
+      const open = me.cases.filter(c => c.status !== 'closed').sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1) || b.evidence - a.evidence)
       if (!open.length) info('cases', '😇', 'No open case files. Keep it that way.')
-      for (const cs of open.slice(0, 4)) info(`case.${cs.id}`, '🗂️', `${cs.label} (${cs.year}) · evidence ${pct(cs.evidence)} · ${pct(exposureChance(g, cs, true))} chance it surfaces this year`)
+      for (const cs of open.slice(0, 4)) info(`case.${cs.id}`, cs.status === 'pending' ? '🚨' : '🗂️', cs.status === 'pending'
+        ? `${cs.label} (${cs.year}) · public, under investigation · ${pct(chargeChance(g, cs))} a year they charge you once nothing protects you`
+        : `${cs.label} (${cs.year}) · evidence ${pct(cs.evidence)} · ${pct(exposureChance(g, cs, true, false))} chance a year it surfaces`)
       if (open.length > 4) info('cases.more', '🗂️', `…and ${open.length - 4} more`)
       if (me.dirty || me.offshore || me.taken) info('money', '💼', `Slush fund ${formatMoney(me.dirty)} · offshore ${formatMoney(me.offshore)} · taken so far ${formatMoney(me.taken)} · seized ${formatMoney(me.seized)}`)
       const rivals = me.rivals.slice(0, 4)

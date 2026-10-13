@@ -71,8 +71,8 @@ export function schemeQuote(g: GameState, v: OfficeView, def: SchemeDef, size: n
   const mult = def.id === 'stateCut' ? def.mult * (1 + .3 * Math.max(0, stateEnterprises(g) - 1)) : def.mult
   const cap = Math.round(officeCap(g, v) * mult)
   const evidenceOnFile = me.cases.filter(c => c.status === 'open').reduce((t, c) => t + c.evidence, 0)
-  const caught = Math.max(.01, Math.min(.9, scrutiny(g) * (.08 + .55 * Math.pow(s, 1.6)) * def.risk + me.heat / 500 + evidenceOnFile * .04))
-  return { take: Math.round(cap * s / 100) * 100, caught, evidence: .1 + .35 * s, heat: 10 + 25 * s, cap }
+  const caught = Math.max(.01, Math.min(.9, scrutiny(g) * (.04 + .6 * Math.pow(s, 1.6)) * def.risk + me.heat / 800 + evidenceOnFile * .02))
+  return { take: Math.floor(cap * s / 100) * 100, caught, evidence: .1 + .35 * s, heat: 4 + 20 * s * s, cap }
 }
 
 export function schemeBlock(g: GameState, def: SchemeDef, v: OfficeView | null = officeView(g)): string | null {
@@ -103,7 +103,7 @@ export function runScheme(g: GameState, id: string, size: number): number {
   count(g, 'schemes')
   me.heat = Math.min(100, me.heat + q.heat)
   if (chance(g, q.caught)) {
-    addCase(g, me, { kind: def.id, label: def.label, evidence: .7, amount: q.take })
+    addCase(g, me, { pending: true, kind: def.id, label: def.label, evidence: .7, amount: q.take })
     me.heat = Math.min(100, me.heat + 15)
     bumpStat(me, 'caught')
     note(me, `${g.year}: an auditor flagged ${def.label.toLowerCase()}.`)
@@ -165,10 +165,10 @@ export function steerContract(g: GameState, assetId: string): boolean {
   useYearAction(g, 'graft.steer', 1)
   const q = steerQuote(g, v, a)
   const me = editMe(g)
-  me.heat = Math.min(100, me.heat + 15)
+  me.heat = Math.min(100, me.heat + 10)
   addHidden(g, 'karma', -5)
   if (chance(g, q.caught)) {
-    addCase(g, me, { kind: 'conflict', label: `Steered a contract to ${a.name}`, evidence: .65, amount: q.markup })
+    addCase(g, me, { pending: true, kind: 'conflict', label: `Steered a contract to ${a.name}`, evidence: .65, amount: q.markup })
     writeMe(g, me)
     notice(g, 'Conflict of Interest', `Reporters noticed ${a.name} won the tender before it was announced. The contract was cancelled and an inquiry opened.`, { emoji: '📰', tone: 'bad' })
     return false
@@ -197,7 +197,7 @@ export const LAUNDER_KEEP = .65
 export function launderQuote(g: GameState, a: Asset): { amount: number; kept: number; caught: number } {
   const b = readBiz(g, a), me = meView(g)
   const amount = Math.floor(Math.min(me.dirty, (b.last?.revenue ?? 0) * .1))
-  return { amount, kept: Math.floor(amount * LAUNDER_KEEP), caught: Math.max(.03, Math.min(.8, .06 + me.heat / 250 + scrutiny(g) * .08)) }
+  return { amount, kept: Math.floor(amount * LAUNDER_KEEP), caught: Math.max(.03, Math.min(.8, .05 + me.heat / 300 + scrutiny(g) * .06)) }
 }
 
 /** Run dirty money through a company's books: 65% arrives as taxable company income. */
@@ -209,10 +209,10 @@ export function launder(g: GameState, assetId: string): boolean {
   useYearAction(g, 'graft.launder', 2)
   const me = editMe(g)
   me.dirty -= q.amount
-  me.heat = Math.min(100, me.heat + 8)
+  me.heat = Math.min(100, me.heat + 4)
   if (chance(g, q.caught)) {
     me.seized += q.amount
-    addCase(g, me, { kind: 'laundering', label: `Laundered money through ${a.name}`, evidence: .6, amount: q.amount })
+    addCase(g, me, { pending: true, kind: 'laundering', label: `Laundered money through ${a.name}`, evidence: .6, amount: q.amount })
     writeMe(g, me)
     notice(g, 'Seized', `Bank compliance flagged the payments into ${a.name}. ${formatMoney(q.amount)} was frozen and investigators opened a file.`, { emoji: '🚨', tone: 'bad' })
     return false
@@ -230,7 +230,7 @@ export function launder(g: GameState, assetId: string): boolean {
 
 export const OFFSHORE_FEE = .12
 export function offshoreCaught(g: GameState): number {
-  return Math.max(.02, Math.min(.5, .03 + meView(g).heat / 400))
+  return Math.max(.02, Math.min(.5, .02 + meView(g).heat / 600))
 }
 
 /** Move dirty money abroad (a fee; safe from seizure at home, not from leaks and sanctions). */
@@ -242,7 +242,7 @@ export function moveOffshore(g: GameState, amount: number): boolean {
   me.dirty -= sum
   if (chance(g, offshoreCaught(g))) {
     me.seized += sum
-    addCase(g, me, { kind: 'offshore', label: 'Wired public money abroad', evidence: .5, amount: sum })
+    addCase(g, me, { pending: true, kind: 'offshore', label: 'Wired public money abroad', evidence: .5, amount: sum })
     writeMe(g, me)
     notice(g, 'Transfer Frozen', `The wire was stopped and ${formatMoney(sum)} frozen.`, { emoji: '🚨', tone: 'bad' })
     return false
@@ -268,9 +268,9 @@ export function bringHome(g: GameState, amount: number): boolean {
   const exile = me.exile && g.character.countryId !== me.exile
   const cut = exile ? .1 : .2
   const net = Math.floor(sum * (1 - cut))
-  if (!exile && chance(g, .04 + me.heat / 500)) {
+  if (!exile && chance(g, .02 + me.heat / 800)) {
     me.seized += sum
-    addCase(g, me, { kind: 'offshore', label: 'Brought hidden money home as fake fees', evidence: .5, amount: sum })
+    addCase(g, me, { pending: true, kind: 'offshore', label: 'Brought hidden money home as fake fees', evidence: .5, amount: sum })
     writeMe(g, me)
     notice(g, 'Caught at Customs', `The tax office asked who paid you ${formatMoney(sum)} for "strategy advice". The money was frozen.`, { emoji: '🚨', tone: 'bad' })
     return false
