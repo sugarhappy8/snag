@@ -194,15 +194,15 @@ function charge(g: GameState, me: Me, cs: CaseFile, context: string): boolean {
  */
 export function purgeChance(g: GameState, me: Me): number {
   const corruption = marketOf(g.character.countryId).corruption
-  const files = me.cases.filter(c => c.status !== 'closed').length
-  return corruption < 45 || !files ? 0 : Math.min(.15, .03 + .015 * files + (corruption - 45) / 500)
+  const files = me.cases.filter(c => c.status === 'pending').length
+  return corruption < 45 || !files ? 0 : Math.min(.1, .02 + .01 * files + (corruption - 45) / 600)
 }
 
 function cases(g: GameState, v: OfficeView | null, me: Me): boolean {
   const inOffice = !!v && v.rank >= 1
   const abroad = !!me.exile && g.character.countryId !== me.exile
   if (!inOffice && !abroad && chance(g, purgeChance(g, me))) {
-    const cs = me.cases.filter(c => c.status !== 'closed').sort((a, b) => b.evidence - a.evidence)[0]
+    const cs = me.cases.filter(c => c.status === 'pending').sort((a, b) => b.evidence - a.evidence)[0]
     cs.evidence = Math.max(.5, cs.evidence)
     return charge(g, me, cs, `The new government reopened every file from your time in power, starting with ${cs.label.toLowerCase()}.`)
   }
@@ -362,7 +362,7 @@ defineScript(COUP_SCRIPT, (g, choice) => {
     return
   }
   writeMe(g, me)
-  if (chance(g, .15)) { killCharacter(g, 'Killed in a coup'); return }
+  if (chance(g, .1)) { killCharacter(g, 'Killed in a coup'); return }
   goIntoExile(g, 'The coup succeeded. You were bundled onto a plane.')
 })
 

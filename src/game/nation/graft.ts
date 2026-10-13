@@ -57,7 +57,7 @@ export function stateEnterprises(g: GameState): number {
 
 /** The office's yearly cap on what one scheme can take (constant 2026 dollars). */
 export function officeCap(g: GameState, v: OfficeView): number {
-  const share = v.leader ? 3e-6 : v.portfolio ? 1.5e-6 : v.regionalHead ? 8e-7 : v.legislator ? 4e-7 : v.office === 'mayor' ? 2.5e-7 : 0
+  const share = v.leader ? 3e-6 : v.portfolio ? 1.5e-6 : v.regionalHead ? 8e-7 : v.legislator ? 4e-7 : v.office === 'mayor' ? 1e-7 : 0
   const corruption = Math.max(10, marketOf(g.character.countryId).corruption)
   return gdpOf(g) * share * Math.pow(corruption / 50, 1.5)
 }
@@ -71,7 +71,7 @@ export function schemeQuote(g: GameState, v: OfficeView, def: SchemeDef, size: n
   const mult = def.id === 'stateCut' ? def.mult * (1 + .3 * Math.max(0, stateEnterprises(g) - 1)) : def.mult
   const cap = Math.round(officeCap(g, v) * mult)
   const evidenceOnFile = me.cases.filter(c => c.status === 'open').reduce((t, c) => t + c.evidence, 0)
-  const caught = Math.max(.01, Math.min(.9, scrutiny(g) * (.04 + .6 * Math.pow(s, 1.6)) * def.risk + me.heat / 800 + evidenceOnFile * .02))
+  const caught = Math.max(.01, Math.min(.9, scrutiny(g) * (.03 + .6 * Math.pow(s, 1.6)) * def.risk + me.heat / 800 + evidenceOnFile * .01))
   return { take: Math.floor(cap * s / 100) * 100, caught, evidence: .1 + .35 * s, heat: 4 + 20 * s * s, cap }
 }
 
