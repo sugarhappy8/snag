@@ -92,7 +92,8 @@ function taxesMenu(): MenuGroup {
         nodes.push(measureSlider(`nation.tax.${scope}.${id}`, name, def.emoji, {
           min: def.min, max: def.max, step: def.step, unit,
           current: (gg) => currentOf(policyOf(gg, gg.character.countryId), { k: 'tax', scope, id, value: 0 }),
-          build: (_gg, value) => ({ k: 'tax', scope, id: id as TaxId, value: Math.round(value / def.step) * def.step }),
+          // Steps of .1 leave float noise (0.30000000000000004): keep two decimals.
+          build: (_gg, value) => ({ k: 'tax', scope, id: id as TaxId, value: Math.round(Math.round(value / def.step) * def.step * 100) / 100 }),
           subtitle: () => { const cur = (scope === 'regional' ? p.regional : scope === 'city' ? p.city : p.national).taxes[id] ?? 0; return cur ? `Now ${signed(cur, unit)} vs the old law` : 'At the old rate' },
         }))
       }
@@ -317,7 +318,6 @@ defineScript(CABINET_SCRIPT, (g, choice) => {
   writeMe(g, me)
   if (chance(g, odds)) {
     setPortfolio(g, choice as Portfolio)
-    g.character.job!.salary = Math.round(g.character.job!.salary * 1.3 / 100) * 100
     notice(g, 'Cabinet Post', `You are the new ${PORTFOLIO_TITLE[choice as Exclude<Portfolio, ''>]}. The job comes with a 30% raise and real power.`, { emoji: '🎖️', tone: 'good' })
     return
   }

@@ -247,7 +247,7 @@ export function applyMeasure(g: GameState, p: CountryPolicy, m: Measure, v: Offi
     stamp(`${scope}.${key}`)
   }
   switch (m.k) {
-    case 'tax': setLayer(m.scope, l => { if (m.value) l.taxes[m.id] = m.value; else delete l.taxes[m.id] }, `tax.${m.id}`); break
+    case 'tax': setLayer(m.scope, l => { const value = Math.round(m.value * 100) / 100; if (value) l.taxes[m.id] = value; else delete l.taxes[m.id] }, `tax.${m.id}`); break
     case 'budget': setLayer(m.scope, l => { if (m.level !== 1) l.budget[m.id] = Math.round(m.level * 100) / 100; else delete l.budget[m.id] }, `budget.${m.id}`); break
     case 'minWage': setLayer(m.scope, l => { l.minWage = Math.round(m.value) }, 'minWage'); break
     case 'newTax': if (m.level) p.newTaxes[m.id] = { level: m.level, industry: NEW_TAXES[m.id].targeted ? m.industry : '' }; else delete p.newTaxes[m.id]; stamp(`newTax.${m.id}`); break
@@ -649,10 +649,12 @@ export function enactDeskBill(g: GameState, m: Measure): string {
   const v = officeView(g)
   const p = editPolicy(g, g.character.countryId)
   if (!v) return ''
+  // Preview against the law as it stands, before the bill changes it.
+  const prev = previewOf(g, m)
   applyMeasure(g, p, m, v)
   writePolicy(g, p)
-  const prev = previewOf(g, m)
-  return ` ${prev.lines.slice(0, 2).join(' ')}`
+  const text = prev.lines.slice(0, 2).join(' ')
+  return text ? ` ${text}` : ''
 }
 
 /** Seats and the coalition, refreshed when the player takes the top job. */

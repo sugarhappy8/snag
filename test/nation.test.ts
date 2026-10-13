@@ -15,14 +15,16 @@ import { localPriceMult, isIndustryLegal } from '../src/game/data/markets'
 import { tariffOn } from '../src/game/business/market-trade'
 import { specialJobNodes } from '../src/game/special'
 import { nationOverlay, personalTax } from '../src/game/nation/effects'
-import { applyMeasure, deskMeasure, leanOf, measureBlock, previewOf, propose, resolveBill, type Measure } from '../src/game/nation/govern'
+import { applyMeasure, deskMeasure, enactDeskBill, leanOf, measureBlock, previewOf, propose, resolveBill, type Measure } from '../src/game/nation/govern'
 import { voteOdds } from '../src/game/nation/legislature'
-import { officeView, powerFor } from '../src/game/nation/office'
+import { officeView, powerFor, setPortfolio } from '../src/game/nation/office'
 import { tradeOverlay, tariffWith } from '../src/game/nation/trade-policy'
 import { editMe, editPolicy, meView, policyOf, writeMe, writePolicy, ME_KEY, POLICY_KEY } from '../src/game/nation/state'
 import { bringHome, moveOffshore, runScheme, schemeBlock, schemeOf, schemeQuote, SCHEMES } from '../src/game/nation/graft'
 import { regimeBlock } from '../src/game/nation/regime'
 import { buildReport, approvalTarget } from '../src/game/nation/yearly'
+import { yearlyDrama } from '../src/game/nation/drama'
+import { runScript } from '../src/game/scripts'
 import { readNationReport } from '../src/ui/minigames/NationReport'
 import type { ChoiceModal, GameState, MenuNode } from '../src/game/types'
 import { newLeader } from './politics-kit'
@@ -190,6 +192,8 @@ describe('laws reach the economy, trade and companies', () => {
     expect(economyOf(h, 'us').governmentDebt).toBeGreaterThan(economyOf(base, 'us').governmentDebt + .2)
     const order = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC', 'D']
     expect(order.indexOf(policyOf(h, 'us').rating)).toBeGreaterThan(order.indexOf(policyOf(base, 'us').rating || 'AAA'))
+    // The downgrade, not the record, is what makes borrowing dearer.
+    expect(nationOverlay(h, 'us', h.year, true)!.spread).toBeGreaterThan(0)
   })
 
   it('tariffs protect home industry, raise import costs and feed the trade network', () => {
@@ -364,5 +368,72 @@ describe('the State of the Nation', () => {
     const worse = withPolicy(bad, { k: 'labor', value: 1 }, g.year)
     const v = officeView(worse)!
     expect(approvalTarget(worse, v).groups.business).toBeLessThan(approvalTarget(g, officeView(g)!).groups.business)
+  })
+})
+
+describe('fixes from the code review', () => {
+  it('lobbyists and your own companies only ask for what your office can propose', () => {
+    let asked = 0
+    for (const [officeId, title] of [['governor', 'Governor'], ['leader', 'President']] as const) {
+      const start = office(newLeader(30, 'us', 1997), officeId, title)
+      for (let seed = 1; seed <= 40; seed++) {
+        const g = structuredClone(start)
+        g.rng = (seed * 2654435761) >>> 0 || 1
+        const v = officeView(g)!
+        yearlyDrama(g, v)
+        for (const m of choices(g)) {
+          const want = (m.data as { m?: Measure } | undefined)?.m
+          if ((m.scriptId !== 'nation.lobby' && m.scriptId !== 'nation.company') || !want) continue
+          asked++
+          expect(measureBlock(g, want, v)).toBeNull()
+        }
+      }
+    }
+    expect(asked).toBeGreaterThan(0)
+  })
+
+  it('a cabinet post pays 30% more once; leaving it restores the old salary', () => {
+    const g = office(newLeader(31, 'gb', 2015), 'governor', 'Member of Parliament')
+    const base = g.character.job!.salary
+    const raised = Math.round(base * 1.3 / 100) * 100
+    setPortfolio(g, 'finance')
+    expect(g.character.job!.salary).toBe(raised)
+    setPortfolio(g, 'trade')
+    expect(g.character.job!.salary).toBe(raised)
+    setPortfolio(g, '')
+    expect(g.character.job!.salary).toBe(base)
+    setPortfolio(g, 'interior')
+    setPortfolio(g, '')
+    expect(g.character.job!.salary).toBe(base)
+  })
+
+  it('a debt crisis before 1957 has no space program to cut', () => {
+    const g = newLeader(32, 'us', 1935)
+    runScript(g, 'nation.debtCrisis', 'austerity', undefined, undefined as never)
+    const budget = policyOf(g, 'us').national.budget
+    expect(budget.space).toBeUndefined()
+    expect(budget.military).toBe(.85)
+  })
+
+  it('tax rates are stored without float noise', () => {
+    const g = office(newLeader(33, 'br', 1990), 'mayor', 'Mayor')
+    const p = editPolicy(g, 'br')
+    applyMeasure(g, p, { k: 'tax', scope: 'city', id: 'property', value: .1 + .2 }, officeView(g))
+    expect(p.city.taxes.property).toBe(.3)
+  })
+
+  it('a bill signed at the desk reports what it does', () => {
+    const g = newLeader(34, 'us', 2001)
+    expect(enactDeskBill(g, { k: 'budget', scope: 'national', id: 'healthcare', level: 1.5 })).toMatch(/Spending/)
+  })
+
+  it('a record alone costs no borrowing: sanctioning someone leaves your rating spread at zero', () => {
+    const g = newLeader(35, 'ru', 2010)
+    const us = editPolicy(g, 'us')
+    us.sanctions.ru = g.year
+    writePolicy(g, us)
+    ageUp(g); g.queue = []
+    expect(policyOf(g, 'us').ratingBase).not.toBe('')
+    expect(nationOverlay(g, 'us', g.year, true)!.spread).toBe(0)
   })
 })

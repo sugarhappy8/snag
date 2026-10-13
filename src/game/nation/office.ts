@@ -166,12 +166,25 @@ export function adjustApproval(g: GameState, delta: number): number {
   return after - before
 }
 
+/** A cabinet post pays 30% more than the seat; leaving it restores the old salary. */
+export const MINISTER_RAISE = 1.3
+
 export function setPortfolio(g: GameState, portfolio: Portfolio): void {
   const job = politicianJobOf(g)
   if (!job) return
   if (!job.data || typeof job.data !== 'object' || Array.isArray(job.data)) job.data = {}
-  if (portfolio) job.data.portfolio = portfolio
-  else delete job.data.portfolio
+  const base = typeof job.data.ministerBase === 'number' && Number.isFinite(job.data.ministerBase) ? job.data.ministerBase : null
+  if (portfolio) {
+    if (base === null) {
+      job.data.ministerBase = job.salary
+      job.salary = Math.round(job.salary * MINISTER_RAISE / 100) * 100
+    }
+    job.data.portfolio = portfolio
+    return
+  }
+  if (base !== null) job.salary = base
+  delete job.data.portfolio
+  delete job.data.ministerBase
 }
 
 /** Countries whose head of government is a monarch-appointed or parliamentary premier. */

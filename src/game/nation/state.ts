@@ -91,9 +91,11 @@ export interface CountryPolicy {
   writeDown: number
   /** Public money lost to graft, share of GDP (decays yearly; wastes services and growth). */
   graft: number
-  /** Extra government interest from a poor rating, set each year. */
+  /** The credit rating, set each year; borrowing costs move with it from ratingBase. */
   rating: string
   ratingYear: number
+  /** The rating when this record was first rated: the government's starting point. */
+  ratingBase: string
   reports: ReportRow[]
 }
 export interface PolicyState { v: 1; countries: Record<string, CountryPolicy> }
@@ -188,7 +190,7 @@ export function emptyPolicy(country: string): CountryPolicy {
   return {
     v: 1, country, national: emptyLayer(), regional: emptyLayer(), city: emptyLayer(), newTaxes: {}, breaks: {}, labor: 0, environment: 0,
     dereg: {}, nationalized: {}, legal: {}, tariffs: [], deals: {}, sanctions: {}, exportBans: {}, retaliation: [], since: {},
-    institutions: defaultInstitutions(), legislature: { seats: {}, gov: [], year: 0, leaderParty: '' }, shocks: [], writeDown: 0, graft: 0, rating: '', ratingYear: 0, reports: [],
+    institutions: defaultInstitutions(), legislature: { seats: {}, gov: [], year: 0, leaderParty: '' }, shocks: [], writeDown: 0, graft: 0, rating: '', ratingYear: 0, ratingBase: '', reports: [],
   }
 }
 
@@ -264,6 +266,7 @@ export function normalizePolicy(v: unknown, country: string): CountryPolicy {
   out.graft = finite(r.graft, 0, 0, .1)
   out.rating = /^(AAA|AA|A|BBB|BB|B|CCC|D)$/.test(String(r.rating)) ? String(r.rating) : ''
   out.ratingYear = year(r.ratingYear)
+  out.ratingBase = /^(AAA|AA|A|BBB|BB|B|CCC|D)$/.test(String(r.ratingBase)) ? String(r.ratingBase) : ''
   if (Array.isArray(r.reports)) for (const row of r.reports.slice(-12)) {
     const p = rec(row)
     out.reports.push({ year: year(p.year), growth: finite(p.growth, 0, -1, 1), unemployment: finite(p.unemployment, 0, 0, 1), inflation: finite(p.inflation, 0, -1, 1e7),

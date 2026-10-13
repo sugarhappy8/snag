@@ -13,7 +13,7 @@ import { businessAssets, readBiz, bizOf } from '../business/state'
 import type { GameState, Json, Person } from '../types'
 import { randomFirstName, randomLastName } from '../world'
 import { INPUT_LABEL, PARTY_IDS, TARGET_INDUSTRIES, industryAvailable, type TradeInput } from './data'
-import { applyMeasure, gdpOf, propose, type Measure } from './govern'
+import { applyMeasure, gdpOf, measureBlock, propose, type Measure } from './govern'
 import { adjustApproval, politicianJobOf, type OfficeView } from './office'
 import { inputOfIndustry } from './trade-policy'
 import { addCase, editMe, editPolicy, meView, policyOf, writeMe, writePolicy, bumpStat, type Me, type Rival, type Shock } from './state'
@@ -48,7 +48,10 @@ function pickCrisis(g: GameState, v: OfficeView): { id: CrisisId; text: string; 
   const p = policyOf(g, c)
   const strikeOdds = (p.labor < 1 ? .06 : .02) + (p.national.minWage < 10 ? .03 : 0) + Math.max(0, e.unemployment - .08) * .5 + Math.max(0, e.inflation - .05)
   if ((v.leader || v.portfolio === 'interior') && chance(g, strikeOdds)) return { id: 'strike', text: `${pick(g, ['Dockworkers', 'Train drivers', 'Nurses', 'Miners', 'Teachers', 'Factory workers'])} have walked out nationwide, demanding better pay and conditions.`, data: {} }
-  if ((v.leader || v.regionalHead) && chance(g, .06)) return { id: 'disaster', text: `${(DISASTER[c] ?? pick(g, ['a flood', 'a storm', 'wildfires']))[0].toUpperCase()}${(DISASTER[c] ?? 'a flood').slice(1)} has devastated part of the ${v.regionalHead ? 'region' : 'country'}.`, data: { regional: v.regionalHead } }
+  if ((v.leader || v.regionalHead) && chance(g, .06)) {
+    const what = DISASTER[c] ?? pick(g, ['a flood', 'a storm', 'wildfires'])
+    return { id: 'disaster', text: `${what[0].toUpperCase()}${what.slice(1)} ${what === 'wildfires' ? 'have' : 'has'} devastated part of the ${v.regionalHead ? 'region' : 'country'}.`, data: { regional: v.regionalHead } }
+  }
   return null
 }
 
@@ -185,12 +188,12 @@ function rivalMove(g: GameState, _v: OfficeView, me: Me): boolean {
 // ---------------------------------------------------------------------------
 // Lobbyists, your own companies and your relatives
 
-function askFor(g: GameState, industry: string): Measure | null {
+/** A favour someone wants: only one this office could actually propose. */
+function askFor(g: GameState, v: OfficeView, industry: string): Measure | null {
   const roll = randInt(g, 0, 2)
-  if (roll === 0) return { k: 'break', industry, level: 1 }
   const input: TradeInput = inputOfIndustry(industry)
-  if (roll === 1 && input) return { k: 'tariff', input, partner: 'all', add: 15 }
-  return null
+  const m: Measure | null = roll === 0 ? { k: 'break', industry, level: 1 } : roll === 1 && input ? { k: 'tariff', input, partner: 'all', add: 15 } : null
+  return m && !measureBlock(g, m, v) ? m : null
 }
 
 defineScript(LOBBY_SCRIPT, (g, choice, data) => {
@@ -229,7 +232,7 @@ defineScript(LOBBY_SCRIPT, (g, choice, data) => {
 function lobbyist(g: GameState, v: OfficeView, me: Me): boolean {
   if (v.rank < 2 || !chance(g, .3)) return false
   const industry = pick(g, TARGET_INDUSTRIES.filter(i => industryAvailable(i, g.year)))
-  const m = askFor(g, industry)
+  const m = askFor(g, v, industry)
   if (!m) return false
   const legal = Math.round(typicalIncome(g) * (v.leader ? 40 : 10) / 1000) * 1000
   const envelope = Math.round(typicalIncome(g) * (v.leader ? 25 : 6) / 1000) * 1000
@@ -294,7 +297,7 @@ function ownCompany(g: GameState, v: OfficeView, me: Me): boolean {
     ], { emoji: '🏢', data: { asset: a.id, bailout: loan, name: a.name } })
     return true
   }
-  const m = askFor(g, b.industry)
+  const m = askFor(g, v, b.industry)
   if (!m) return false
   scriptChoice(g, COMPANY_SCRIPT, 'Your Company Calls', `${a.name}, which you own, would love ${m.k === 'break' ? `a tax break for ${b.industry}` : 'a tariff on foreign competitors'}. Your managers say it is "good for the country".`, [
     { id: 'grant', label: 'Propose it (a conflict of interest)', emoji: '📝' },

@@ -11,7 +11,7 @@ import { defineScript } from '../scripts'
 import { chance } from '../rng'
 import type { GameState, Json } from '../types'
 import { getCountry } from '../world'
-import { BUDGET_LINES, GROUP_IDS, GROUPS, groupWeights, institutionStrength, type GroupId } from './data'
+import { BUDGET_LINES, budgetAvailable, GROUP_IDS, GROUPS, groupWeights, institutionStrength, type GroupId } from './data'
 import { nationOverlay, personalTax, RATING_SPREAD, wealthTaxRate } from './effects'
 import { accountability, onTopJob } from './govern'
 import { legislatureOf, midterm } from './legislature'
@@ -160,9 +160,13 @@ defineScript(DEBT_SCRIPT, (g, choice) => {
   if (!v || !(v.leader || v.portfolio === 'finance')) return
   const p = editPolicy(g, g.character.countryId)
   const e = economyOf(g)
+  // The crisis is measured from the rating the country had before it.
+  if (!p.ratingBase) p.ratingBase = p.rating || ratingFor(g, g.character.countryId, p)
+  // Only lines that exist this year (no space program to cut before 1957).
+  const lines = BUDGET_LINES.filter(id => budgetAvailable(id, g.year))
   if (choice === 'austerity') {
-    for (const id of BUDGET_LINES) p.national.budget[id] = Math.max(.5, Math.round((p.national.budget[id] ?? 1) * .85 * 100) / 100)
-    for (const id of BUDGET_LINES) p.since[`national.budget.${id}`] = g.year
+    for (const id of lines) p.national.budget[id] = Math.max(.5, Math.round((p.national.budget[id] ?? 1) * .85 * 100) / 100)
+    for (const id of lines) p.since[`national.budget.${id}`] = g.year
     p.shocks.push({ id: `austerity${g.year}`, label: 'austerity cuts', until: g.year + 1, growth: -.012, inflation: -.005, unemployment: .01, confidence: .04, sector: '', demand: 0 })
     adjustApproval(g, -6)
     log(g, 'I cut every budget line to calm the bond markets.', 'bad')
@@ -170,7 +174,8 @@ defineScript(DEBT_SCRIPT, (g, choice) => {
   } else if (choice === 'bailout') {
     p.national.taxes.income = Math.min(20, (p.national.taxes.income ?? 0) + 3)
     p.since['national.tax.income'] = g.year
-    for (const id of BUDGET_LINES) p.national.budget[id] = Math.max(.5, Math.round((p.national.budget[id] ?? 1) * .9 * 100) / 100)
+    for (const id of lines) p.national.budget[id] = Math.max(.5, Math.round((p.national.budget[id] ?? 1) * .9 * 100) / 100)
+    for (const id of lines) p.since[`national.budget.${id}`] = g.year
     p.shocks.push({ id: `bailout${g.year}`, label: 'an international bailout', until: g.year + 1, growth: -.006, inflation: 0, unemployment: .005, confidence: .06, sector: '', demand: 0 })
     p.rating = 'B'
     const me = editMe(g)
@@ -231,7 +236,8 @@ function personalTaxes(g: GameState): void {
   }
   const prop = personalTax(g, 'property') / 100
   if (prop !== 0) {
-    const value = g.assets.filter(a => a.kind === 'house' && (typeof a.details.countryId !== 'string' || a.details.countryId === c.countryId)).reduce((s, a) => s + Math.max(0, a.value), 0)
+    // Homes here (older saves stored no country: those are at home). Private islands are abroad.
+    const value = g.assets.filter(a => a.kind === 'house' && a.details.luxury !== 'island' && (typeof a.details.countryId !== 'string' || a.details.countryId === c.countryId)).reduce((s, a) => s + Math.max(0, a.value), 0)
     if (value > 0) {
       // A cut can refund at most the tax that was already in the upkeep (about 0.6% of value).
       const amount = Math.round(value * Math.max(-.006, prop))
@@ -259,6 +265,7 @@ function upkeep(g: GameState): void {
     p.graft = Math.round(p.graft * .5 * 1e6) / 1e6
     if (p.institutions.emergencyUntil && p.institutions.emergencyUntil < g.year) p.institutions.emergencyUntil = 0
     const rating = ratingFor(g, country, p)
+    if (!p.ratingBase) p.ratingBase = p.rating || rating
     if (rating !== p.rating) {
       const was = p.rating
       p.rating = rating

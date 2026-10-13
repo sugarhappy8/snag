@@ -15,7 +15,7 @@ import { COUNTRIES, getCountry } from '../world'
 import { institutionStrength } from './data'
 import { governmentSeats } from './legislature'
 import { adjustApproval, officeHooks, officeView, type OfficeView } from './office'
-import { addCase, editMe, editPolicy, meView, note, policyOf, writeMe, writePolicy, bumpStat, type CaseFile, type Me } from './state'
+import { addCase, editMe, editPolicy, meView, note, policyOf, policyState, writeMe, writePolicy, bumpStat, type CaseFile, type Me } from './state'
 
 const EXPOSE_SCRIPT = 'nation.exposed'
 const PROTEST_SCRIPT = 'nation.protest'
@@ -300,6 +300,7 @@ function foreignReaction(g: GameState, odds: number): string {
   const home = g.character.countryId
   if (!chance(g, odds)) return ''
   const by = ['us', 'gb', 'de', 'fr', 'jp', 'ca'].filter(id => id !== home && institutionStrength(id, g.year) >= 60).slice(0, 3)
+  if (!by.length) return ''
   for (const id of by) {
     const p = editPolicy(g, id)
     if (!p.sanctions[home]) { p.sanctions[home] = g.year; p.since[`sanction.${home}`] = g.year; writePolicy(g, p) }
@@ -309,7 +310,7 @@ function foreignReaction(g: GameState, odds: number): string {
   me.offshore -= frozen
   me.seized += frozen
   writeMe(g, me)
-  return by.length ? ` ${by.map(id => getCountry(id).name).join(', ')} imposed sanctions${frozen > 0 ? ` and froze ${formatMoney(frozen)} of your money abroad` : ''}.` : ''
+  return ` ${by.map(id => getCountry(id).name).join(', ')} imposed sanctions${frozen > 0 ? ` and froze ${formatMoney(frozen)} of your money abroad` : ''}.`
 }
 
 /** Odds of surviving a removal vote: the government's seats, approval, fear, packed courts. */
@@ -419,7 +420,9 @@ function removal(g: GameState, v: OfficeView, me: Me): boolean {
 
 function leaks(g: GameState, me: Me): boolean {
   if (me.offshore <= 0) return false
-  const sanctioned = Object.values(policyOf(g, me.exile || g.character.countryId).sanctions).length > 0
+  // Sanctions other governments have put on the regime you ran.
+  const regime = me.exile || g.character.countryId
+  const sanctioned = Object.values(policyState(g).countries).some(p => !!p.sanctions?.[regime])
   if (!chance(g, .02 + (sanctioned ? .04 : 0) + me.heat / 1000)) return false
   const frozen = Math.round(me.offshore * .4)
   me.offshore -= frozen
@@ -444,6 +447,8 @@ export function yearlyConsequences(g: GameState, v: OfficeView | null): boolean 
   if (leaks(g, me)) return true
   if (v && v.rank >= 2) {
     if (v.leader && me.legitimacy < 30 && policyOf(g, g.character.countryId).institutions.regime !== 'democracy') {
+      // Save this year's case-file updates first: the reaction reads and writes its own copy.
+      writeMe(g, me)
       const line = foreignReaction(g, .2)
       if (line) { notice(g, 'Sanctions', `Foreign governments acted against your regime.${line}`, { emoji: '🌍', tone: 'bad' }); return true }
     }

@@ -226,7 +226,9 @@ function compute(p: CountryPolicy, year: number, live: boolean): Overlay {
     o.services -= p.graft * 3; o.growth -= p.graft * .5
     o.parts.push({ key: 'graft', label: 'public money lost to graft', growth: -p.graft * .5, revenue: 0, spending: 0, unemployment: 0, inflation: 0, inequality: 0 })
   }
-  o.spread = RATING_SPREAD[p.rating] ?? 0
+  // Borrowing costs move with the rating from where the country stood when its record was first
+  // rated: a record alone (a sanction, say) costs nothing; a downgrade costs, an upgrade saves.
+  o.spread = (RATING_SPREAD[p.rating] ?? 0) - (RATING_SPREAD[p.ratingBase || p.rating] ?? 0)
   o.credit -= o.spread * 2
   o.writeDown = p.writeDown
   // Bounds: policy can wreck an economy, but not past what the model can represent.
