@@ -78,6 +78,11 @@ scandals and investigations, and your rivals.
   and trials once you leave office. In countries where corruption is the norm, schemes are cheaper,
   but coups are likelier and the next government often comes after the last one.
 
+## 🐞 Fixes
+
+- On a venture fund's pitch screen, the diligence line and the **Do Due Diligence** button shared
+  an internal id, which could make the screen drop or repeat a row. They are now separate.
+
 ## Old saves
 
 Nothing changes until a government in your game passes a law. Countries keep their own taxes
@@ -89,4 +94,64 @@ Design: `docs/superpowers/specs/2026-10-13-politics-2-governing-corruption-desig
 
 ## Validation
 
-To be completed with the final runs.
+These are the numbers the final code produced, good and bad.
+
+- **Type check and build:** `tsc` clean. Production build FULL_BUILD.
+- **Full test suite:** FULL_SUITE. New: `test/nation.test.ts` (32 tests: old saves load with no free
+  money; menus stay pure and readable for presidents, prime ministers, MPs, governors and mayors
+  across countries and eras; era and country gates hold in menus and resolvers; taxes, tariffs and
+  budgets reach the economy, the trade network, companies and your own tax bill; dirty money is
+  conserved; a set of regression tests from the code review) and `test/nation-balance.test.ts`.
+- **Politics balance fuzzer** (`FUZZ=1 FUZZ_SEEDS=40 FUZZ_YEARS=16 npx vitest run test/fuzz-politics.test.ts`):
+  120 seeded heads of government, 40 per strategy, 16 years each, in 10 countries and eras
+  (US 1995, UK 1975, Brazil 1990, Nigeria 2005, Russia 2000, Sweden 2010, India 1985, Japan 1960,
+  Venezuela 2020, Germany 2030), played through the real yearly loop:
+
+  | Strategy | Ruined* | Average years in office | Clean money kept | Walked away with >10 years' salary |
+  | --- | --- | --- | --- | --- |
+  | Honest | 0% | 5.2 | none | 0% |
+  | Careful corrupt | 35% | 5.4 | 12.4× salary on average | 35% |
+  | Reckless | 73% | 5.0 | 19.2× salary on average | 13% |
+
+  \*Ruined = convicted of a political crime, forced into exile, or killed in a coup. One honest
+  life ended in prison for a burglary from an ordinary-life event, not for anything done in office.
+  Careful corruption pays about a third of the time and ruins about a third of the time. It is
+  never a sure thing. Reckless rulers take far more but usually lose it: on average $77M of
+  $243M taken was seized. It varies a lot by country. Careful corrupt leaders were ruined 75% of
+  the time in the US and 0% in India and Venezuela. Reckless strongmen were ruined only 25% of the
+  time in Russia, Brazil and India, where institutions are weak, though 3 of the 4 Russian ones
+  died before their 16 years were up.
+- **Balance test** (in the normal suite, 6 seeds per strategy): honest 0% ruined, careful corrupt
+  17%, reckless 83%.
+- **Deep fuzzer, politics mode** (new: `FUZZ=1 FUZZ_POLITICS=1 FUZZ_SEEDS=24 FUZZ_YEARS=25`):
+  24 politicians (mayors, governors and heads of government in 12 countries and eras), 511 years,
+  720 random political actions and 4,304 menu rows tried on throwaway copies. Every year it checks
+  menu purity, text and money, and it round-trips the save every 5 years. It found one bug (two
+  dashboard rows shared an id), which is fixed. The final run had 0 failures.
+- **Deep fuzzer, whole game** (`FUZZ=1 FUZZ_SEEDS=6 FUZZ_YEARS=110`): 6 lives of 110 years
+  (2 generations each), 2,242 actions and 30,968 menu rows swept. It found one failure, an older
+  duplicate id on the venture-fund pitch screen (above), which is fixed; that seed was re-run on
+  the final code: DEEP_RERUN. One "big windfall" note was left for a human to review: an IPO lifted
+  a company's owner from $15M to $239M. That is how listing already worked before this release.
+- **Code review:** an independent review of the new code found 10 bugs, all fixed:
+  - favours asked of offices that could never propose them;
+  - a minister's pay rise that compounded with every reshuffle;
+  - debt crises cutting a space program before 1957;
+  - leak odds checking the wrong country's sanctions;
+  - case-file updates lost when foreign sanctions fired;
+  - float noise in property-tax rates;
+  - desk bills that never showed their effects;
+  - a credit-rating cost charged to any country with a policy record;
+  - a disaster headline that could read "W flood";
+  - private islands paying home property tax.
+- **Browser, headless Chromium at phone size (390×844)** on the production build:
+  - 3 random lives played to death (64, 72 and 68 years) with 0 errors and no network requests
+    leaving the page.
+  - 2 politician lives from injected head-of-government saves (US 2003 and UK 1977): the
+    characters died after 21 and 13 years, with 0 errors.
+  - A phone UI pass in light and dark: 2 saves × 14 screens (report, dashboard, Govern, taxes and
+    a slider, trade, tariffs, budget, abuse of power, Line Your Pockets, Keep Power). No broken
+    text, no horizontal overflow, no console errors.
+
+Not covered: the fuzzers drive the engine directly, so they don't test layouts on screens other
+than the 390×844 phone. Balance is measured by scripted strategies, not by people.
