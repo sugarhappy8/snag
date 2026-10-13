@@ -719,7 +719,8 @@ them. Design: `docs/superpowers/specs/2026-10-13-politics-2-governing-corruption
   honours legalizations and bans when given the game.
 - **Offices.** `office.ts` owns the political systems moved out of `special/politics.ts`
   (titles, parliamentary/presidential, regional heads) plus `officeView`, `adjustApproval`, the
-  minister portfolio (`Job.data.portfolio`) and `powerFor(v, area)`: city (mayor), regional
+  minister portfolio (`Job.data.portfolio`; `setPortfolio` pays the 30% raise once and restores
+  `Job.data.ministerBase` on leaving) and `powerFor(v, area)`: city (mayor), regional
   (governor/premier), national by vote (legislator, ministers in their portfolio, the head of
   government), decrees (presidents on trade, everyone under emergency rule or a self-coup).
   `special/politics.ts` registers `leaveOffice` and `policyMove` (insider bets on the player's own
@@ -730,7 +731,8 @@ them. Design: `docs/superpowers/specs/2026-10-13-politics-2-governing-corruption
   (rolls exactly `legislature.voteOdds`, then veto, courts via `courtRisk`, retaliation, insider check).
   Desk bills from the career map to measures through `deskMeasure`.
 - **Yearly** (`aging.ts` hook `nation`, after `special`): upkeep (shocks/retaliation expire, graft decays,
-  ratings), personal taxes, company barriers, legislature reset when the player leaves the top job,
+  ratings; the borrowing spread is measured from `ratingBase`, the rating a record started with, so a
+  record alone never costs a country anything), personal taxes, company barriers, legislature reset when the player leaves the top job,
   minister reshuffles, meters, midterms, the State of the Nation (`minigame 'nationReport'`,
   `ui/minigames/NationReport.tsx`), then at most one of: debt crisis, consequences (case files,
   leaks, coups, removal votes, protests/uprisings, sanctions), or drama (crises, own companies,
