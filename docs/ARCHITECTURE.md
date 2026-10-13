@@ -116,6 +116,10 @@ src/
                          head of state; investments and options read the price hit. Kept across heirs
     workshop/*.ts        Inventor's Workshop (Inventor 2.0): catalog, notebook, builds, patents, launch routes,
                          sales, events, menus and the old-save migration
+    nation/*.ts          Politics 2.0: what governments do and what it does to the world (see "Politics 2.0"
+                         below): state, data, effects (one pure overlay), trade-policy, company, office,
+                         legislature, govern (measures and bills), laws, yearly (+ State of the Nation),
+                         consequences, drama, graft (dirty money), regime (keeping power), menu
     special/*.ts         Special careers split by section: politics.ts (incl. Abuse of Power:
                          market-moving announcements + insider trades),
                          sports*.ts (Special Careers > Sports: team sports, MMA/UFC, boxing, tennis,
@@ -267,7 +271,8 @@ plain records. Quota failures must never prevent saving the current life.
 `studied`, `skippedSchool`, `diseases`, `lawsuitsWon`, `customActions`, `wealthGifts`,
 `wealthRefusals`, `wealthLoans`, `scammed`, `conglomerates`, `groupMergers`, `spinOffs`, `groupIpos`,
 `groupAcquisitions`, `ideas`, `prototypes`, `kabooms`, `patents`, `inventions` (launches),
-`historyFirsts`, `rightsSold`, `openInventions`. (Old saves may still hold
+`historyFirsts`, `rightsSold`, `openInventions`, and for Politics 2.0 `lawsPassed`, `votesBought`, `schemes`,
+`corruptionScandals`, `exiles`, `overthrown`, `selfCoups`, `nepotismPosts`. (Old saves may still hold
 `aiEvents`, from the retired AI narrator; nothing reads it.)
 Add new keys freely, but use these names for these concepts.
 
@@ -675,6 +680,71 @@ Money only leaves through spend(). Amounts use local price multipliers (goods, e
 **Game flags.** `wealth.pending` (ventures, keyed by investor), `wealth.cd` (cooldowns for outsiders), `wealth.donated` (per character, for diminishing karma and fame) and `wealth.bound.door|strangers|charity`.
 
 **Person menu.** relationships.ts `personActions` appends `wealthNodes` (wealth-menu.ts): a "Money Matters" group for family and friends while the player is an adult. It has an allowance slider with a live caption, lend, ask to be paid back, forgive, buy a car, pay for a vacation, help with a house, and fund their idea. The Business talent hint shows the same odds the payout rolls. statusInfo shows the allowance and what they owe.
+
+## Politics 2.0 (nation/*.ts)
+
+Once in office the player changes real laws, and every system that prices, taxes or trades reads
+them. Design: `docs/superpowers/specs/2026-10-13-politics-2-governing-corruption-design.md`.
+
+- **State.** `g.flags['nation.policy']` is the world: one `CountryPolicy` per country that has laws
+  of its own (national, regional and city layers of taxes and budget levels, new taxes, breaks,
+  labor/environment rules, deregulated and nationalized sectors, legal/banned, tariffs, deals,
+  sanctions, export bans, retaliation against it, institutions, legislature seats, one-off shocks,
+  a pending debt write-down, graft, rating and the report history). It survives heirs: laws stay
+  until repealed. `g.flags['nation.me']` is the character (owner-stamped, heirs start clean):
+  political capital, legitimacy, fear, security loyalty, heat, the slush fund, offshore money,
+  case files, rivals, cooldowns. Readers (`policyOf`, `meView`) normalize and never write; writers
+  (`writePolicy`, `writeMe`) always replace the root so the WeakMap caches stay valid. No record =
+  no overlay = the game as before.
+- **One overlay.** `effects.nationOverlay(g, country, year, live)` turns a record into revenue and
+  spending (GDP shares), fading growth/inflation/unemployment/inequality/confidence impulses, credit
+  and services levels, sector and industry demand/cost levels, approval by voter group, and
+  attributions (`parts`). The economy transition (`economy/index.yearlyEconomy` →
+  `simulation.advanceCountry(..., nation)` → `government.budgetPlan(..., nation)`) uses `live =
+  false` (measures count from the year after they pass, like the economy's own policies);
+  `business/dynamics.nationalMarket` (every company: player, NPC, deep tech, studios, planner) uses
+  `policyMarket` live. History years keep their real cycle and inflation; the overlay adds to them.
+  A default's write-down is consumed by one transition (`consumeWriteDowns`).
+- **Trade.** `trade-policy.tradeOverlay(g, year)` builds `economy/trade.TradeOverlay` lookups
+  (extra tariffs by pair and input, sanction restrictions, export bans, deals); `countryTrade`,
+  `shipment`, `retarget` and `exportOrders` take it (never inside the year-bucketed customs cache).
+  `tariffWith`/`barriersWith` are the company-screen versions; `company.stampCompanyBarriers` writes
+  each player company's extra barriers into `MarketState.barriers`, which `market-reach.entryStrength`
+  reads, so retaliation shrinks the player's own export reach.
+- **Taxes reach real money.** `finance.gameIncomeTax` (income points), `business/tax.allocatedCorporateTax`
+  (now takes the industry: corporate points, windfall, breaks), `exit.capitalGainsRate`,
+  `events/will-estate.planEstate` (`taxDelta`) and relatives' inheritances, `luxuryTaxRate`, shop prices
+  (`data/markets.localPriceMult`/`salesTaxRate` through `registerPricePolicy`), and the yearly
+  wealth tax and property-tax change in `yearly.personalTaxes`. `isIndustryLegal(country, industry, g)`
+  honours legalizations and bans when given the game.
+- **Offices.** `office.ts` owns the political systems moved out of `special/politics.ts`
+  (titles, parliamentary/presidential, regional heads) plus `officeView`, `adjustApproval`, the
+  minister portfolio (`Job.data.portfolio`) and `powerFor(v, area)`: city (mayor), regional
+  (governor/premier), national by vote (legislator, ministers in their portfolio, the head of
+  government), decrees (presidents on trade, everyone under emergency rule or a self-coup).
+  `special/politics.ts` registers `leaveOffice` and `policyMove` (insider bets on the player's own
+  laws: a `policy` market-shock cause) through `registerOfficeHooks`; nation/ never imports the career.
+- **Bills.** `govern.ts` has one `Measure` vocabulary, `measureBlock` (era, country and office gates;
+  menus AND `resolveBill` call it), `previewOf` (overlay with minus without), `propose` (popup with
+  the odds for a straight vote, leaning on the party, a pork deal, or bribes) and `resolveBill`
+  (rolls exactly `legislature.voteOdds`, then veto, courts via `courtRisk`, retaliation, insider check).
+  Desk bills from the career map to measures through `deskMeasure`.
+- **Yearly** (`aging.ts` hook `nation`, after `special`): upkeep (shocks/retaliation expire, graft decays,
+  ratings), personal taxes, company barriers, legislature reset when the player leaves the top job,
+  minister reshuffles, meters, midterms, the State of the Nation (`minigame 'nationReport'`,
+  `ui/minigames/NationReport.tsx`), then at most one of: debt crisis, consequences (case files,
+  leaks, coups, removal votes, protests/uprisings, sanctions), or drama (crises, own companies,
+  relatives, lobbyists, rivals). The career's approval drift aims at `yearly.approvalTarget`.
+- **Abuse of power.** `graft.ts`: schemes pay dirty money into the slush fund (`schemeQuote` is what
+  `runScheme` rolls; caps scale with GDP, office and corruption), steering contracts books markup as
+  company income, laundering (65% through a company), offshore (12% fee), bringing money home (20% cut,
+  taxable, capped yearly). Dirty and offshore money are not net worth and die with the character.
+  `regime.ts`: keeping power, gated by `institutionStrength`; `electionEdge` (pure) and `countVotes`
+  (rolls: a rigged count can be exposed and annulled). `consequences.ts`: open → pending → closed case
+  files (`exposureChance`, `chargeChance`, `purgeChance` in corrupt countries), immunity, exile
+  (`goIntoExile` → `immigration-move.relocate`), coups (`coupChance`), removal votes (`survivalOdds`).
+- **Balance** is checked by `test/nation-balance.test.ts` (a few seeded lives per strategy) and the
+  opt-in `FUZZ=1 npx vitest run test/fuzz-politics.test.ts` (many), both through `test/politics-kit.ts`.
 
 ## Built-in tasks (offline resolution)
 
