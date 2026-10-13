@@ -47,7 +47,7 @@ export function industryProblem(g: GameState, industry: Industry): string | null
   const def = industryDef(industry)
   const financialEra = financeEraBlock(g, industry)
   if (financialEra) return financialEra
-  if (!isIndustryLegal(c.countryId, industry)) return `Not allowed in ${country.name}. ${eraNote(g, c.countryId, marketOf(c.countryId).businessNote)}`.trim()
+  if (!isIndustryLegal(c.countryId, industry, g)) return `Not allowed in ${country.name}. ${eraNote(g, c.countryId, marketOf(c.countryId).businessNote)}`.trim()
   const era = industryEraBlock(industry, c.countryId, g.year)
   if (era) return era
   if (def.needs === 'drinking' && c.age < country.drinkingAge) return `You must be ${country.drinkingAge} to hold a liquor license in ${country.name}.`
@@ -841,7 +841,7 @@ function industryRow(industry: Industry): MenuAction {
     subtitle: (g) => {
       const c = g.character
       const city = homeCity(g)
-      if (!isIndustryLegal(c.countryId, industry)) return 'Not allowed here'
+      if (!isIndustryLegal(c.countryId, industry, g)) return 'Not allowed here'
       if (industryEraBlock(industry, c.countryId, g.year)) return 'Not invented yet'
       const cost = startupCost(industry, c.countryId, city)
       if (deep) {
@@ -853,7 +853,7 @@ function industryRow(industry: Industry): MenuAction {
     },
     hint: (g) => {
       const c = g.character
-      if (!isIndustryLegal(c.countryId, industry)) return null
+      if (!isIndustryLegal(c.countryId, industry, g)) return null
       // Classic rows: the industries that pay back fastest here, simulated with the same model
       // the company will run on. Deep tech: the real hubs (investors, talent, customers).
       if (!deep) return industryHint(g, industry, c.countryId, homeCity(g))
@@ -962,7 +962,7 @@ export function listingsForSale(g: GameState): ForSale[] {
   const s = seeded(yearKey(g, 'biz.forSale'))
   // Deep-tech startups are founded, not bought off the shelf (and leaving them out keeps the
   // classic listings exactly as they were).
-  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i) && !isDeepTechIndustry(i) && !industryEraBlock(i, c.countryId, g.year) && !financeEraBlock(g, i))
+  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i, g) && !isDeepTechIndustry(i) && !industryEraBlock(i, c.countryId, g.year) && !financeEraBlock(g, i))
   const out: ForSale[] = []
   const bought = Array.isArray(g.flags['biz.bought']) ? (g.flags['biz.bought'] as Json[]) : []
   const words = marketOf(c.countryId).nameWords

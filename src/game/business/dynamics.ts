@@ -1,7 +1,8 @@
 // Pure annual national conditions and durable company strategy. No menu RNG.
 // (Company research and patents moved to the Inventor's Workshop: src/game/workshop/.)
 import { seeded } from '../assets'
-import { industryConditions } from '../economy'
+import { industryConditions, sectorOf } from '../economy'
+import { policyMarket } from '../nation/effects'
 import { marketEventFactors } from '../history/market-events'
 import { marketDef } from './competition-data'
 import { notice } from '../core'
@@ -84,8 +85,10 @@ export function nationalMarket(g: GameState, industry: string, country: string, 
   // center of each, mild on everyone else.
   const events = marketEventFactors(industry, country, year, marketDef(industry).scope === 'world')
   // Preferences still differ by nation; economic demand and input costs share world state.
-  const demand = (1 + (base.baseDemand - 1) * .25) * confidence * sector.demand * (1.08 - sector.competition * .145) * events.demand
-  return { demand, costs: sector.costs * (1 + (base.costs - 1) * .2) * events.costs, confidence, taste: base.taste, growth: (sector.demand * events.demand - 1) * .3, events,
+  // The government's own taxes, tariffs, budgets and laws (nation/effects.ts), from the year they pass.
+  const policy = policyMarket(g, industry, country, year, sectorOf(industry))
+  const demand = (1 + (base.baseDemand - 1) * .25) * confidence * sector.demand * (1.08 - sector.competition * .145) * events.demand * policy.demand
+  return { demand, costs: sector.costs * (1 + (base.costs - 1) * .2) * events.costs * policy.costs, confidence, taste: base.taste, growth: (sector.demand * events.demand - 1) * .3, events, policy,
     label: demand < .94 ? 'Demand weakening' : demand > 1.06 ? 'Demand expanding' : 'Demand stable' }
 }
 

@@ -15,7 +15,8 @@ import { arcMult, familyId, futureDrift, maturity, rosterOf, type Rival, type Ri
 import { localEcon } from './economy'
 import { presenceIn } from './market-reach'
 import { continentOf, regionalShares, type Regional } from './market-regional'
-import { barriersInto, fxExposure, type Barriers, type FxExposure } from './market-trade'
+import { fxExposure, type Barriers, type FxExposure } from './market-trade'
+import { barriersWith } from '../nation/trade-policy'
 import { placeName } from './market-places'
 import { totalOutlets, type BizState } from './state'
 import { clampN } from './util'
@@ -362,7 +363,7 @@ export function countryDetail(g: GameState, b: BizState, v: MarketView, id: stri
   const revenue = Math.max(0, b.last?.revenue ?? 0)
   return {
     row,
-    barriers: barriersInto(b.countryId, id, b.industry, v.year),
+    barriers: barriersWith(g, b.countryId, id, b.industry, v.year),
     fx: fxExposure(b.countryId, id, v.year),
     regime,
     mergerLimit: mergerLimit(regime),

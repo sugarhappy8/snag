@@ -77,7 +77,7 @@ export function prepareInternalServices(g: GameState, fiscal: number): void {
 function amend(g: GameState, b: BizState, s: Statement, before: number): void {
   // Same domestic tax basis as the original settlement; all supported contracts are domestic.
   const oldTax = s.corpTax
-  const marginalTax = allocatedCorporateTax(b.countryId, s.pbt, s.revenue + s.otherIncome, 0, 0, g, s.year) - allocatedCorporateTax(b.countryId, before, s.revenue + s.otherIncome, 0, 0, g, s.year)
+  const marginalTax = allocatedCorporateTax(b.countryId, s.pbt, s.revenue + s.otherIncome, 0, 0, g, s.year, b.industry) - allocatedCorporateTax(b.countryId, before, s.revenue + s.otherIncome, 0, 0, g, s.year, b.industry)
   s.corpTax = Math.max(0, oldTax + marginalTax)
   const delta = s.pbt - before - (s.corpTax - oldTax)
   s.net += delta; b.cash += delta

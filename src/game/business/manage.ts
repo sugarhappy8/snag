@@ -814,7 +814,7 @@ function withOutlets(b: BizState, countryId: string, city: string, n: number, ye
 function expansionGain(g: GameState, a: Asset, countryId: string, city: string, n: number): number {
   return cachedHint(g, a, `gain.${countryId}.${city}.${n}`, () => {
     const b = readBiz(g, a)
-    if (!isIndustryLegal(countryId, b.industry)) return -Infinity
+    if (!isIndustryLegal(countryId, b.industry, g)) return -Infinity
     const base = cachedHint(g, a, 'payback.base', () => bestPlan(g, b, { fast: true }).profit)
     return bestPlan(g, withOutlets(b, countryId, city, n, g.year), { fast: true }).profit - base
   })
@@ -916,7 +916,7 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
       const here = b.outlets.find((o) => o.countryId === countryId && o.city === city)?.count ?? 0
       return `${money(expansionCost(b, countryId, city, 1))} each${here ? ` · ${units(here)} here now` : ''}`
     },
-    disabled: (_g, b) => (maxAffordable(b, countryId, city) < 1 && isIndustryLegal(countryId, b.industry) ? `Not enough company cash: one new ${industryDef(b.industry).site} here costs ${money(expansionCost(b, countryId, city, 1))}.` : null),
+    disabled: (gg, b) => (maxAffordable(b, countryId, city) < 1 && isIndustryLegal(countryId, b.industry, gg) ? `Not enough company cash: one new ${industryDef(b.industry).site} here costs ${money(expansionCost(b, countryId, city, 1))}.` : null),
     input: {
       kind: 'slider',
       label: `How many new ${def0.sitePlural} in ${city}?`,
@@ -927,7 +927,7 @@ function openAction(a: Asset, b0: BizState, countryId: string, city: string): Me
     },
     run: (g, cur, b, input) => {
       const n = Math.round(clampN(Number(input) || 1, 1, MAX_OPEN_AT_ONCE))
-      if (!isIndustryLegal(countryId, b.industry)) {
+      if (!isIndustryLegal(countryId, b.industry, g)) {
         notice(g, 'Not Allowed', `${labelPlural(industryDef(b.industry).label)} aren't allowed in ${getCountry(countryId).name}.`, { emoji: '\u{26D4}' })
         return
       }
@@ -965,13 +965,13 @@ function citiesMenu(a: Asset, countryId: string, label: string): MenuGroup {
     emoji: country.flag,
     subtitle: (g) => {
       const b = readBiz(g, a)
-      if (!isIndustryLegal(countryId, b.industry)) return 'Not allowed there'
+      if (!isIndustryLegal(countryId, b.industry, g)) return 'Not allowed there'
       const d = industryDemand(countryId, b.industry)
       return `Demand ${d >= 1.3 ? 'high' : d <= 0.7 ? 'low' : 'normal'} · tax ${Math.round(marketOf(countryId).corporateTax * 100)}%`
     },
     disabledReason: (g) => {
       const b = readBiz(g, a)
-      return isIndustryLegal(countryId, b.industry) ? null : `${labelPlural(industryDef(b.industry).label)} are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
+      return isIndustryLegal(countryId, b.industry, g) ? null : `${labelPlural(industryDef(b.industry).label)} are not allowed in ${country.name}. ${eraNote(g, countryId, marketOf(countryId).businessNote)}`.trim()
     },
     header: (g) => eraNote(g, countryId, marketOf(countryId).businessNote),
     hint: (g) => {

@@ -66,7 +66,7 @@ export function simulateBankYear(g: GameState, b: BizState, year: number, ownerD
     const preSalary = stmt.netRevenue - stmt.cogs - stmt.wages - stmt.keyStaff - stmt.rent - stmt.marketing - stmt.interest - stmt.upkeep - stmt.other + stmt.otherIncome
     stmt.ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + preSalary + booked)))
     stmt.pbt = preSalary - stmt.ownerPay
-    stmt.corpTax = Math.round(allocatedCorporateTax(b.countryId, stmt.pbt, stmt.revenue, b.yearIncome, bookedHomeSales, g, year))
+    stmt.corpTax = Math.round(allocatedCorporateTax(b.countryId, stmt.pbt, stmt.revenue, b.yearIncome, bookedHomeSales, g, year, b.industry))
     stmt.net = stmt.pbt - stmt.corpTax
     return stmt
   }

@@ -403,7 +403,7 @@ export function simulateStudioYear(g: GameState, a: Asset, b: BizState, year: nu
   // Their profit belongs in tax, but must not be counted twice for salary funds.
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + pbt0 + b.yearCosts - b.yearIncome)))
   const pbt = pbt0 - ownerPay
-  const corpTax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedSales, g, year)
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedSales, g, year, b.industry)
   const net = pbt - corpTax
   // One-off costs and income booked during the year already moved the company's cash.
   b.cash = dollars(b.cash + net + b.yearCosts - b.yearIncome)

@@ -3,6 +3,7 @@
 // accidentally move every other dollar of income into the foreign jurisdiction too.
 import { corporateTax } from '../data/markets'
 import { economyOf } from '../economy'
+import { corporateDelta } from '../nation/effects'
 import type { GameState } from '../types'
 
 type CountryAmounts = number | Readonly<Record<string, number>>
@@ -20,9 +21,11 @@ export function allocatedCorporateTax(
   bookedSales: CountryAmounts,
   game?: GameState,
   year?: number,
+  industry = '',
 ): number {
   if (!(profit > 0) || !Number.isFinite(profit)) return 0
-  const taxFor = (country: string, amount: number) => Math.max(0, Math.min(amount, corporateTax(country, amount) + amount * (game ? economyOf(game, country, year ?? game.year).taxShift : 0)))
+  // A government's own corporate rate, windfall taxes and breaks (nation/) add to the country's rate.
+  const taxFor = (country: string, amount: number) => Math.max(0, Math.min(amount, corporateTax(country, amount) + amount * (game ? economyOf(game, country, year ?? game.year).taxShift + corporateDelta(game, country, industry, year ?? game.year) : 0)))
   // Keep each revenue component separate until allocation. Adding two valid values near
   // Number.MAX_VALUE can overflow even though their relative weights are still well defined.
   const parts: { country: string; value: number }[] = []

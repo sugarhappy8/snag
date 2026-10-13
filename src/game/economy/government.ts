@@ -72,18 +72,23 @@ export function normalizeBudget(value: unknown,country: string,year: number,debt
 
 /** Funding uses the opening debt, tax base and financing conditions. Policies supplied
  * by simulation.ts were enacted before this year; reads do not pass or replay laws. */
-export function budgetPlan(old: CountryEconomy,country: string,policies: GovernmentPolicies=zeroPolicy): BudgetPlan {
+/** A government's own taxes and spending lines (nation/effects.ts), all GDP shares. */
+export interface NationBudget { revenue: number; spend: Record<typeof PRIMARY[number], number>; spread: number }
+
+export function budgetPlan(old: CountryEconomy,country: string,policies: GovernmentPolicies=zeroPolicy,nation: NationBudget|null=null): BudgetPlan {
   const p=Object.fromEntries(Object.entries(zeroPolicy).map(([id])=>[id,clamp(policies[id as keyof GovernmentPolicies],0,1.5)])) as unknown as GovernmentPolicies
   const b=baseline(country)
-  const taxChange=(p.taxRise-p.taxCut)*.014
-  const revenue=clamp(b.revenue+taxChange+old.outputGap*.09+(old.spending-1)*.025-Math.max(0,old.unemployment-.065)*.1-Math.max(0,old.defaults-.025)*.05,.12,.48)
-  const requested={education:b.education+p.education*.012,health:b.health+p.health*.012,infrastructure:b.infrastructure+p.investment*.018,
-    transfers:b.transfers+Math.max(0,old.unemployment-.065)*.18+Math.max(0,old.elderly-.17)*.035,
-    other:b.other+p.regulation*.001}
+  const taxChange=(p.taxRise-p.taxCut)*.014+(nation?clamp(nation.revenue,-.12,.15):0)
+  const revenue=clamp(b.revenue+taxChange+old.outputGap*.09+(old.spending-1)*.025-Math.max(0,old.unemployment-.065)*.1-Math.max(0,old.defaults-.025)*.05,nation?.08:.12,nation?.55:.48)
+  const extra=(key: typeof PRIMARY[number])=>nation?nation.spend[key]:0
+  const requested={education:Math.max(0,b.education+p.education*.012+extra('education')),health:Math.max(0,b.health+p.health*.012+extra('health')),infrastructure:Math.max(0,b.infrastructure+p.investment*.018+extra('infrastructure')),
+    transfers:Math.max(0,b.transfers+Math.max(0,old.unemployment-.065)*.18+Math.max(0,old.elderly-.17)*.035+extra('transfers')),
+    other:Math.max(0,b.other+p.regulation*.001+extra('other'))}
   const primary=PRIMARY.reduce((sum,key)=>sum+requested[key],0)
   // Keep the established bounded funding-rate proxy: much public debt is long-dated,
   // so today's policy rate is not charged on every outstanding bond at once.
-  const interest=clamp(old.rate,0,.12)*old.governmentDebt*.35
+  // A poor credit rating makes new borrowing dearer on top of the policy rate.
+  const interest=clamp(old.rate+(nation?.spread??0),0,.18)*old.governmentDebt*.35
   const planningGrowth=clamp(Math.min(0,old.growth-.04),-.18,0)
   const room=GOVERNMENT_DEBT_CAP*(1+planningGrowth)-old.governmentDebt
   const creditLimit=clamp(.055+(old.credit-1)*.025-Math.max(0,old.governmentDebt-1)*.018,.012,.075)
