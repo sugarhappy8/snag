@@ -131,7 +131,7 @@ These are the numbers the final code produced, good and bad.
 - **Deep fuzzer, whole game** (`FUZZ=1 FUZZ_SEEDS=6 FUZZ_YEARS=110`): 6 lives of 110 years
   (2 generations each), 2,242 actions and 30,968 menu rows swept. It found one failure, an older
   duplicate id on the venture-fund pitch screen (above), which is fixed; that seed was re-run on
-  the final code: DEEP_RERUN. One "big windfall" note was left for a human to review: an IPO lifted
+  the final code with 0 failures. One "big windfall" note was left for a human to review: an IPO lifted
   a company's owner from $15M to $239M. That is how listing already worked before this release.
 - **Code review:** an independent review of the new code found 10 bugs, all fixed:
   - favours asked of offices that could never propose them;
