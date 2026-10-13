@@ -42,7 +42,10 @@ the value of the company. Their shares contribute to their visible wealth, recei
 dividends, are protected from automatic buybacks, and dilute proportionally when
 new shares are issued. Older co-owners keep their stakes when the next player dies:
 only that player's own stake is divided again. An excluded playable child can
-still see the preserved family holding, but owns none of its value.
+still see a preserved private family holding, but owns none of its value. A listed
+company or group the player owns none of (an excluded heir's, or one the player sold
+out of) leaves the player's companies: each relative's shares become part of their
+own wealth at the market price, paid through the same routing as dividends.
 
 Conglomerate shares are transferred in kind outside the cash-estate liquidation
 pool, matching the game's existing specific-business-bequest treatment. Cash,

@@ -57,12 +57,14 @@ import {
   type GroupMember,
 } from './conglomerate-state'
 import { LASTING_YEARS, refreshValue, valuationOf } from './economy'
-import { capitalGainsTax, IPO_COLLAPSE, ipoThreshold } from './exit'
+import { capitalGainsTax, familyNote, IPO_COLLAPSE, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
-import { clearGroupCeoJob } from './conglomerate-job'
+import { clearGroupCeoJob, clearGroupJob, readGroupJob } from './conglomerate-job'
 import { BIZ_VERSION, bizOf, ceoJob, executiveEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
 import { equityTarget, stakeText } from './executive-shares'
-import { payFamilyGroupDividend } from './dynasty-ownership'
+import { cashOutFamilyHolders, payFamilyGroupDividend } from './dynasty-ownership'
+import { FLOAT_DEFAULT, ipoPlan, shareCountText } from './share-structure'
+import { listingMood } from '../history/market-events'
 import { clampN, cleanName, markBest, money, num, pct, rec, round2, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -1048,7 +1050,16 @@ function groupIpoAudit(g: GameState, grp: Group): boolean {
   return true
 }
 
-export function groupIpo(g: GameState, groupId: string): boolean {
+/** The group IPO slider's preview: floating `floatPct` percent of the group today (pure). */
+export function groupIpoPreview(g: GameState, grp: Group, floatPct: number): string {
+  const lead = grp.members[0].b
+  const plan = ipoPlan(Math.max(1, groupValue(grp)), null, floatPct, listingMood(lead.industry, lead.countryId, g.year))
+  const keep = grp.core.share * plan.retain
+  const fill = plan.coverage >= 1 ? `orders should cover it about ${plan.coverage.toFixed(1)} times` : `only about ${pct(Math.min(1, plan.coverage))} of it would sell`
+  return `${shareCountText(plan.offered)} new group shares at about ${moneyWith(plan.price, (v) => v.toFixed(2))}: ${fill}, raising about ${money(plan.raise - plan.fees)} for the treasury after fees. You'd keep ${pct(keep, 1)} of the group.${keep < 0.5 && grp.core.share >= 0.5 ? ' Under half: outside shareholders would control the group board.' : ''}`
+}
+
+export function groupIpo(g: GameState, groupId: string, floatPct = FLOAT_DEFAULT): boolean {
   if (groupBlock(g)) return false
   const grp = liveGroup(g, groupId)
   if (!grp || grp.members.length < 2) return false
@@ -1069,17 +1080,16 @@ export function groupIpo(g: GameState, groupId: string): boolean {
   const lead = grp.members[0].b
   const ex = exchangeFor(lead.countryId)
   const pre = Math.max(1, groupValue(grp))
-  const raise = Math.round(pre / 3)
-  const fees = Math.round(raise * 0.06)
-  const pop = clampN(1 + bell(g, -150, 300) / 1000, 0.8, 1.35)
+  const plan = ipoPlan(pre, null, floatPct, listingMood(lead.industry, lead.countryId, g.year))
+  const { raise, fees } = plan
+  const pop = clampN(1 + bell(g, -150, 300) / 1000 + 0.06 * Math.max(0, Math.min(3, plan.coverage) - 1), 0.8, 1.45)
   const t = treasuryOf(grp)
   t.b.cash += raise - fees
   if (!t.b.public) t.b.valuation = Math.round(t.b.valuation + raise - fees)
-  const post = pre + raise - fees
-  grp.core.share = clampN(grp.core.share * 0.75, 0, 1)
-  diluteGroupEquity(grp, 0.75)
-  const sharesOut = Math.max(1000, Math.round(post / 25))
-  const sharePrice = round2(clampN((post / sharesOut) * pop, 0.05, 1e7))
+  grp.core.share = clampN(grp.core.share * plan.retain, 0, 1)
+  diluteGroupEquity(grp, plan.retain)
+  const sharesOut = plan.sharesOut
+  const sharePrice = round2(clampN(plan.price * pop, 0.05, 1e7))
   grp.core.listing = { exchange: ex.code, ipoYear: g.year, sharesOut, sharePrice }
   grp.core.discount = conglomerateDiscount(inputs(grp))
   grp.core.mult = multFor(grp, sharePrice * sharesOut)
@@ -1093,7 +1103,7 @@ export function groupIpo(g: GameState, groupId: string): boolean {
   notice(
     g,
     'Group IPO!',
-    `${grp.core.name} rang the opening bell on the ${ex.name} (${ex.code}). The IPO raised ${money(raise)} for the group's treasury (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at ${moneyWith(sharePrice, (v) => v.toFixed(2))}. You own ${pct(grp.core.share, 1)} of the group, worth about ${money(grp.core.share * sharePrice * sharesOut)}.`,
+    `${grp.core.name} rang the opening bell on the ${ex.name} (${ex.code}). ${plan.coverage >= 1 ? `Orders covered the offer ${plan.coverage.toFixed(1)} times over.` : `Only ${pct(plan.sold / plan.offered)} of the shares on offer found buyers.`} The IPO raised ${money(raise)} for the group's treasury (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at ${moneyWith(sharePrice, (v) => v.toFixed(2))}. You own ${pct(grp.core.share, 1)} of the group, worth about ${money(grp.core.share * sharePrice * sharesOut)}.`,
     { emoji: '\u{1F514}', tone: 'good' },
   )
   return true
@@ -1112,6 +1122,21 @@ export function shareSale(g: GameState, grp: Group, fraction: number): { sold: n
   return { sold, impact, price, gross, tax: capitalGainsTax(g, gross, basis) }
 }
 
+/**
+ * A listed group you no longer own any of leaves your hands with all its divisions; relatives'
+ * family shares stay theirs, joining their own wealth at `marketCap`. Returns their names.
+ */
+export function leaveListedGroup(g: GameState, grp: Group, marketCap: number, why: 'quit' | 'other' = 'other'): string[] {
+  const relatives = grp.core.familyShares?.length ? cashOutFamilyHolders(g, grp.core.familyShares, marketCap, `${grp.core.name}'s family shares`) : []
+  const ids = new Set(grp.members.map((x) => x.a.id))
+  g.assets = g.assets.filter((x) => !ids.has(x.id))
+  const job = ceoJob(g)
+  if (job && typeof job.data.assetId === 'string' && ids.has(job.data.assetId)) endJob(g, 'job', why)
+  // Relatives working for the group work for somebody else's company now.
+  for (const p of g.people) if (readGroupJob(p)?.groupId === grp.core.id) clearGroupJob(p)
+  return relatives
+}
+
 /** Sell a fraction (0-1) of the player's group shares on the market. */
 export function sellGroupShares(g: GameState, groupId: string, fraction: number): boolean {
   if (groupBlock(g)) return false
@@ -1124,15 +1149,13 @@ export function sellGroupShares(g: GameState, groupId: string, fraction: number)
   addMoney(g, gross - tax)
   for (const x of grp.members) x.b.invested = Math.round(x.b.invested * (1 - f))
   grp.core.share = stake - sold
-  if ((f >= 0.999 || grp.core.share < 0.01) && !(grp.core.familyShares?.length)) {
-    // Sold out: the group is somebody else's now.
-    const ids = new Set(grp.members.map((x) => x.a.id))
-    g.assets = g.assets.filter((x) => !ids.has(x.id))
-    const job = ceoJob(g)
-    if (job && typeof job.data.assetId === 'string' && ids.has(job.data.assetId)) endJob(g, 'job', 'quit')
-    count(g, 'businessesSold', ids.size)
+  if (f >= 0.999 || grp.core.share < 0.01) {
+    // Sold out: the group is somebody else's now (relatives keep their family shares).
+    const n = grp.members.length
+    const relatives = leaveListedGroup(g, grp, price * saleImpact(sold, 1).end * l.sharesOut, 'quit')
+    count(g, 'businessesSold', n)
     log(g, `I sold the last of my ${grp.core.name} shares.`, 'good')
-    notice(g, 'Sold Out', `You sold all your remaining shares of ${grp.core.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. Its ${ids.size} divisions are somebody else's now.`, { emoji: '\u{1F4B8}', tone: 'good' })
+    notice(g, 'Sold Out', `You sold all your remaining shares of ${grp.core.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. Its ${n} divisions are somebody else's now.${familyNote(relatives)}`, { emoji: '\u{1F4B8}', tone: 'good' })
     return true
   }
   // The sale weighs on the price.

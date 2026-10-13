@@ -37,7 +37,8 @@ import {
   type Worth,
 } from './economy'
 import { eventChance } from './events'
-import { canIpo, closeBusiness, declareBankruptcy, goPublic, IPO_COLLAPSE, sellBusiness, sellShares } from './exit'
+import { canIpo, closeBusiness, declareBankruptcy, goPublic, IPO_COLLAPSE, ipoPreview, sellBusiness, sellShares } from './exit'
+import { FLOAT_DEFAULT, FLOAT_MAX, FLOAT_MIN, shareCountText } from './share-structure'
 import { nationalStrategyMenu } from './expansion'
 import { equityMenu, equityTerms, seatOf } from './executive'
 import { settleAfterCeoChange } from './executive-shares'
@@ -1934,11 +1935,14 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
             return passHint(gg, cur, bb, ipoP)
           },
           disabled: (_gg, bb) => canIpo(bb),
-          confirm: (gg) => `Take ${a.name} public? You'll sell a quarter of the company to the market and answer to shareholders (and independent directors) from now on.${readBiz(gg, live(gg, a)).cooked > 0 ? ' The underwriters will audit the books first.' : ''}`,
-          run: (gg, cur, bb) => {
+          input: { kind: 'slider', label: 'Percent of the company to float', min: FLOAT_MIN, max: FLOAT_MAX, step: 1, unit: '%', defaultValue: () => String(FLOAT_DEFAULT),
+            preview: (gg, v) => ipoPreview(gg, readBiz(gg, live(gg, a)), v) },
+          confirm: (gg) => `Take ${a.name} public? You'll sell part of the company to the market as new shares and answer to shareholders (and independent directors) from now on.${readBiz(gg, live(gg, a)).cooked > 0 ? ' The underwriters will audit the books first.' : ''}`,
+          run: (gg, cur, bb, input) => {
+            const float = clampN(Math.round(Number(input) || FLOAT_DEFAULT), FLOAT_MIN, FLOAT_MAX)
             if (!boardAllows(gg, cur, bb, ipoP)) return
             if (!ipoDueDiligence(gg, cur, bb)) return
-            goPublic(gg, cur, bb)
+            goPublic(gg, cur, bb, float)
           },
         }),
       )
@@ -1946,7 +1950,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
   } else {
     nodes.push(
       act(a, 'sellShares', 'Sell Shares', '\u{1F4C8}', {
-        subtitle: `${moneyWith(b.sharePrice, (x) => x.toFixed(2))}/share · your stake ${money(b.valuation * b.share)}`,
+        subtitle: `${moneyWith(b.sharePrice, (x) => x.toFixed(2))}/share · ${shareCountText(b.sharesOut)} shares · your stake ${money(b.valuation * b.share)}`,
         input: { kind: 'number', label: 'Percent of your shares to sell', min: 1, max: 100, defaultValue: () => '10' },
         run: (gg, cur, bb, input) => {
           const fraction = clampN(Number(input) || 0, 0, 100) / 100

@@ -135,8 +135,8 @@ describe('business', () => {
     // Plain words, short subtitles: no "Stabilization target" or "Subscribe to New Equity".
     expect(text).not.toMatch(/Stabilization|Capital does not fix|restructure/)
     const actions = rescueNodes(rich, truck).filter((n): n is MenuAction => n.type === 'action')
-    expect(actions.map((n) => n.label)).toEqual(['Buy Out Investors', 'Put In More Money', 'Company Buys Back Shares'])
-    for (const n of actions) expect(typeof n.subtitle === 'string' ? n.subtitle : '').toMatch(/^.{20,90}$/)
+    expect(actions.map((n) => n.label)).toEqual(['Buy Out Investors', 'Put In More Money', 'Company Buys Back Shares', 'Share Count'])
+    for (const n of actions) expect(typeof n.subtitle === 'string' ? n.subtitle : n.subtitle?.(rich) ?? '').toMatch(/^.{20,90}$/)
     bizOf(rich, truck).cash = 1_000
     const tight = rescueNodes(rich, truck)[0]
     expect(tight.type === 'info' && typeof tight.text === 'string' ? tight.text : '').toMatch(/To be safe, add \$[\d.,]+K? so cash covers six months\. More money buys time, not customers/)
@@ -286,6 +286,10 @@ describe('founding: whose money, investor deals and backing out', () => {
     startRow(g, 'cafe').run(g)
     const slider = untilCapital(g)
     runScript(g, slider.scriptId, String(slider.min), slider.data, slider)
+    // The share count comes next (the default is fine), then how to pay.
+    const shares = g.queue.shift()!
+    if (shares.kind !== 'input' || shares.scriptId !== 'business.found.shares') throw new Error('no share count popup')
+    runScript(g, shares.scriptId, shares.defaultValue!, shares.data, shares)
     const funding = g.queue.shift()!
     if (funding.kind !== 'choice') throw new Error('no funding popup')
     expect(funding.choices.map((c) => c.id)).toEqual(['savings', 'loan', 'investors', 'investors.mid', 'investors.small', 'cancel'])

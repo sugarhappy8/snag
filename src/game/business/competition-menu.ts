@@ -6,6 +6,7 @@
 // patent cross-licences, with a scenario table). Builders only read state; actions re-read the
 // live business. The Business talent's purple hints come from the moves' own numbers. The sections
 // live in market-menu.ts.
+import { marketEventImpacts } from '../history/market-events'
 import { talentHint } from '../talents'
 import type { Asset, GameState, MenuGroup, MenuNode } from '../types'
 import { TIERS } from './competition-data'
@@ -276,6 +277,10 @@ export function marketMenu(a: Asset): MenuGroup {
           emoji: v.booked ? TIERS[v.tier].emoji : '\u{1F331}',
         },
       ]
+      // The real booms and busts at work this year (history/market-events.ts).
+      for (const x of marketEventImpacts(b.industry, b.countryId, g.year, v.scope === 'world')) {
+        nodes.push({ type: 'info', id: `biz.mkt.event.${x.event.id}.${a.id}`, emoji: x.event.emoji, text: `${x.event.name}: ${x.text} ${x.event.text}` })
+      }
       return [
         ...nodes,
         { type: 'heading', id: `biz.mkt.h.explore.${a.id}`, label: 'Explore the Market' },

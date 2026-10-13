@@ -36,7 +36,11 @@ import {
   updateSharePrice,
   valuationOf,
 } from './economy'
-import { declareBankruptcy, ipoThreshold } from './exit'
+import { declareBankruptcy, familyNote, ipoThreshold, leaveListedCompany } from './exit'
+import { leaveListedGroup } from './conglomerate-actions'
+import { eventStrength, MARKET_EVENTS, marketEventImpacts } from '../history/market-events'
+import { marketDef } from './competition-data'
+import { groupsOf, liveGroup, sharePriceOf } from './conglomerate-state'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
 import { maybeBusinessEvent } from './events'
@@ -50,7 +54,7 @@ import { bookFranchiseYear, franchiseIncomeFor } from './franchise'
 import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
-import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
+import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
 
 // ---------------------------------------------------------------------------
@@ -200,6 +204,7 @@ function marketNote(g: GameState, b: BizState, lastCycle: number): string {
   else if (e.demandMult > 0 && e.demandMult <= 0.7) parts.push(`Demand in the ${v.noun} market here is thin.`)
   parts.push(`Locals typically pay about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)} per ${def.unitOne}.`)
   if (m.inflation >= 0.15) parts.push(`Inflation runs ${Math.round(m.inflation * 100)}% a year: reprice every year or your prices go stale.`)
+  for (const x of marketEventImpacts(b.industry, b.countryId, b.last?.year ?? g.year - 1, v.scope === 'world').slice(0, 2)) parts.push(`${x.event.name}: ${x.text.charAt(0).toLowerCase() + x.text.slice(1)}`)
   if (v.booked && v.share > 0 && (v.scope === 'world' || v.share >= 0.005)) {
     parts.push(`You hold ${shareText(v.share)} of ${marketOwner(v.place)} ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year` : ''}.`)
   }
@@ -414,17 +419,63 @@ function hiredCeoTurn(g: GameState, a: Asset, b: BizState, lastCycle: number): v
 }
 
 /** One fiscal year for every business the player owns. */
+/**
+ * Once per event: when a real boom or bust (history/market-events.ts) first hits hard where you
+ * have companies, say what it is and how each of them is exposed. The id is deterministic, so
+ * the announcement never shifts later ids.
+ */
+function announceMarketEvents(g: GameState, list: Asset[]): void {
+  const raw = g.flags['market.events']
+  const seen = new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [])
+  let changed = false
+  for (const e of MARKET_EVENTS) {
+    if (seen.has(e.id)) continue
+    const hit = list.map((a) => ({ a, b: readBiz(g, a) })).filter(({ b }) => eventStrength(e, b.countryId, g.year) >= 0.5 && eventStrength(e, b.countryId, g.year - 1) < 0.5)
+    if (!hit.length) continue
+    seen.add(e.id)
+    changed = true
+    const impacts = hit.slice(0, 6).map(({ a, b }) => ({ a, impact: marketEventImpacts(b.industry, b.countryId, g.year, marketDef(b.industry).scope === 'world').find((x) => x.event.id === e.id) }))
+    const lines = impacts.map(({ a, impact }) => `${a.name}: ${impact ? impact.text.charAt(0).toLowerCase() + impact.text.slice(1) : 'barely touched.'}`)
+    const good = impacts.filter(({ impact }) => impact && impact.value >= 1 && impact.demand >= 1).length > impacts.length / 2
+    g.queue.push({ kind: 'notice', id: `mkt-${e.id}-${g.generation}-${g.year}`, title: e.name, emoji: e.emoji, text: `${e.text} Your companies: ${lines.join(' ')}${hit.length > 6 ? ` (and ${hit.length - 6} more)` : ''} Market & Competition shows the details.`, tone: good ? 'good' : 'bad' })
+  }
+  if (changed) g.flags['market.events'] = [...seen]
+}
+
+/**
+ * Listed companies and groups you hold none of any more (a sell-out from before v2.4.0 left them
+ * at 0% when relatives held family shares) leave your companies; the relatives keep their shares
+ * as their own wealth. Private family holdings an excluded heir can see stay (docs/DYNASTY.md).
+ */
+function leaveUnownedListed(g: GameState): void {
+  for (const row of groupsOf(g)) {
+    if (!row.core.listing || row.core.share > 1e-6) continue
+    const grp = liveGroup(g, row.core.id)
+    if (!grp?.core.listing) continue
+    const relatives = leaveListedGroup(g, grp, sharePriceOf(grp) * grp.core.listing.sharesOut)
+    notice(g, 'No Longer Yours', `You own none of ${grp.core.name} any more, so it has left your companies.${familyNote(relatives)}`, { emoji: '\u{1F4B8}' })
+  }
+  for (const a of businessAssets(g)) {
+    const b = bizOf(g, a)
+    if (!b.public || inGroup(g, b) || b.share > 1e-6) continue
+    const relatives = leaveListedCompany(g, a, b)
+    notice(g, 'No Longer Yours', `You own none of ${a.name} any more, so it has left your companies.${familyNote(relatives)}`, { emoji: '\u{1F4B8}' })
+  }
+}
+
 export function yearlyBusinessImpl(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   // Late relatives' stakes pass to their heirs before anything pays or values them.
   settleLateFamilyOwners(g)
+  leaveUnownedListed(g)
   syncCeo(g)
   prepareGroupManagement(g)
   // Last year's price promises end with the year that was just booked.
   prunePricePromises(g)
   const list = businessAssets(g)
   if (list.length === 0) return
+  announceMarketEvents(g, list)
   const fiscal = g.year - 1
   prepareInternalServices(g, fiscal)
   const queued = g.queue.length

@@ -8,6 +8,8 @@
 // brand, marketing, products, staff morale, the country's business cycle (shared by every firm
 // in that country), competition and market saturation. Costs follow local wages (never below
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
+import { marketEventFactors } from '../history/market-events'
+import { historicalIndexReturn } from '../history/markets'
 import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
@@ -872,8 +874,10 @@ export function valuationOf(b: BizState): number {
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)
-  // A dominant company's profits are safer (a moat): investors pay a little more for them.
-  const mult = def.multiple * (1 + growth * def.growth) * (0.85 + b.brand / 333) * (1 + MOAT * dominanceOf(b))
+  // A dominant company's profits are safer (a moat): investors pay a little more for them. In a
+  // boom or a bust (history/market-events.ts) they pay more or less for every dollar of it.
+  const mood = h.length ? marketEventFactors(b.industry, b.countryId, h[h.length - 1].year).value : 1
+  const mult = def.multiple * (1 + growth * def.growth) * (0.85 + b.brand / 333) * (1 + MOAT * dominanceOf(b)) * mood
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
   const unitCost = localEcon(b.industry, b.countryId, b.city).unitCost
@@ -913,6 +917,9 @@ export function recordYear(b: BizState, stmt: Statement): YearRecord {
 
 /** Stock exchange move for a listed company's market, shared by everything on that exchange. */
 export function exchangeMove(g: GameState, countryId: string, year: number): number {
+  // In history the exchange moves as the real one did (the same tables as the stock market).
+  const real = historicalIndexReturn(countryId, year)
+  if (real !== null && Number.isFinite(real)) return clampN(real, -0.6, 1.2)
   const ex = exchangeFor(countryId)
   const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|bizexchange|${ex.code}|${year}`)
   const z = (s.next() + s.next() + s.next() - 1.5) * 2

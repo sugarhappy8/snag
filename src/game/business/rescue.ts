@@ -1,5 +1,5 @@
 import { seeded } from '../assets'
-import { addMoney, log, notice, useYearAction, yearActionsUsed } from '../core'
+import { addMoney, log, moneyWith, notice, useYearAction, yearActionsUsed } from '../core'
 import type { Asset, GameState, MenuNode } from '../types'
 import { boardAllows, ownerControls } from './board'
 import { payableCash, runningCosts } from './board-vote'
@@ -8,6 +8,7 @@ import { refreshValue, valuationOf } from './economy'
 import { manageBlock } from './gate'
 import { bizOf, diluteBusinessEquity, executiveEquity, findBusiness, readBiz, type BizState } from './state'
 import { clampN, money, pct, runwayText } from './util'
+import { DEFAULT_SHARES, MAX_SHARES, MIN_SHARES, retailVerdict, shareCountOf, shareCountText } from './share-structure'
 
 export function rescuePosition(b: BizState) {
   const burn = Math.max(0, -(b.last?.net ?? 0))
@@ -47,6 +48,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
     const retain = q.value / (q.value + amount)
     diluteBusinessEquity(b, retain)
     if (b.public) b.sharesOut /= retain
+    else if (b.shareCount) b.shareCount = Math.round(clampN(b.shareCount / retain, MIN_SHARES, MAX_SHARES))
     b.valuation = q.value + amount
   } else if (kind === 'secondary') {
     addMoney(g, -amount); b.invested += amount
@@ -58,6 +60,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
     for (const holder of b.familyShares ?? []) holder.share /= 1 - q.units
     if (b.manager?.equity) b.manager.equity /= 1 - q.units
     if (b.public) b.sharesOut *= 1 - q.units
+    else if (b.shareCount) b.shareCount = Math.round(clampN(b.shareCount * (1 - q.units), MIN_SHARES, MAX_SHARES))
     b.pref = (b.pref ?? 0) * (1 - q.units / Math.max(.0001, 1 - b.share))
     b.valuation = Math.max(0, q.value - amount)
   }
@@ -87,5 +90,41 @@ export function rescueNodes(g: GameState, a: Asset): MenuNode[] {
       input: { kind: 'slider', money: true, label: 'Amount', min: 1, max: Math.max(1, Math.floor(q.max)), defaultValue: () => String(Math.max(1, Math.floor(Math.min(q.max, pos.need || 10000)))),
         preview: (gg, n) => { const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'; const bb = readBiz(gg, aa), quote = equityQuote(gg, aa, bb, kind, n); return `You'd own ${pct(bb.share, 2)} → ${pct(quote.share, 2)} · your cash ${money(gg.character.money - (kind === 'buyback' ? 0 : n))} · company cash ${money(bb.cash + (kind === 'subscribe' ? n : kind === 'buyback' ? -n : 0))}. ${kind === 'secondary' ? 'The investors get the money.' : kind === 'subscribe' ? "Priced at today's company value." : "Uses spare company cash; it won't help a struggling company."}` } }, run: (gg, input) => { transactEquity(gg, a.id, kind, Number(input)) } })
   }
+  rows.push(shareCountNode(a))
   return rows
+}
+
+/**
+ * Split (or consolidate) a private company's shares: free, nobody's ownership changes, only what
+ * one share is worth, and so how retail investors will see the price at an IPO.
+ */
+export function setShareCount(g: GameState, id: string, n: number): boolean {
+  const a = findBusiness(g, id)
+  if (!a || !Number.isFinite(n)) return false
+  const b = bizOf(g, a)
+  if (b.public || manageBlock(g, a) || groupIdOf(b)) return false
+  b.shareCount = Math.round(clampN(n, MIN_SHARES, MAX_SHARES))
+  log(g, `${a.name} is now split into ${shareCountText(b.shareCount)} shares.`)
+  return true
+}
+
+function shareCountNode(a: Asset): MenuNode {
+  const each = (b: BizState, n: number) => moneyWith(Math.max(1, b.valuation) / Math.max(1, n), (x) => (x >= 100 ? x.toFixed(0) : x >= 1 ? x.toFixed(2) : x.toPrecision(2)))
+  return { type: 'action', id: `rescue.${a.id}.shares`, label: 'Share Count', emoji: '\u{1F9FE}',
+    subtitle: (gg) => {
+      const aa = findBusiness(gg, a.id); if (!aa) return ''
+      const b = readBiz(gg, aa)
+      if (b.public) return `${shareCountText(b.sharesOut)} shares listed at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))}`
+      const n = shareCountOf(b)
+      return n ? `${shareCountText(n)} shares · about ${each(b, n)} each today` : 'Not split yet: an IPO would list at about the usual price per share'
+    },
+    disabledReason: (gg) => {
+      const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'
+      const b = readBiz(gg, aa)
+      return manageBlock(gg, aa) ?? (b.public ? 'A listed company trades its shares on the exchange; new issues and buybacks change the count.' : groupIdOf(b) ? 'The group lists as a whole: its shares, not this division’s, go to the market.' : null)
+    },
+    input: { kind: 'slider', label: 'Total shares', min: MIN_SHARES, max: MAX_SHARES,
+      defaultValue: (gg) => { const aa = findBusiness(gg, a.id); return String(aa ? shareCountOf(readBiz(gg, aa)) ?? DEFAULT_SHARES : DEFAULT_SHARES) },
+      preview: (gg, n) => { const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'; const b = readBiz(gg, aa), price = Math.max(1, b.valuation) / Math.max(1, n); return `${shareCountText(n)} shares at about ${each(b, n)} each: ${retailVerdict(price)} (if it listed at today's value). Your ownership stays ${pct(b.share, 2)}.` } },
+    run: (gg, input) => { setShareCount(gg, a.id, Number(input)) } }
 }

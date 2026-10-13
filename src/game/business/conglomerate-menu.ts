@@ -36,6 +36,7 @@ import {
   groupProfit,
   groupSpare,
   groupIpo,
+  groupIpoPreview,
   joinBlock,
   joinMerit,
   movableCash,
@@ -62,6 +63,7 @@ import { groupFamilyMenu } from './conglomerate-family'
 import { groupServicesMenu, internalRevenue } from './group-services'
 import { groupBuybackNode } from './group-buyback'
 import { treasuryOf } from './conglomerate-actions'
+import { FLOAT_DEFAULT, FLOAT_MAX, FLOAT_MIN } from './share-structure'
 import { treasurySpare } from './group-treasury'
 import { manageBlock, tooBusy } from './gate'
 import { bizOf, businessAssets, findBusiness, readBiz, stakeValue } from './state'
@@ -719,12 +721,14 @@ function marketNodes(groupId: string, grp: Group): MenuNode[] {
         subtitle: (g) => {
           const cur = groupById(g, groupId)
           if (!cur) return ''
-          return canGroupIpo(g, cur) ?? `Sell a quarter of the group on the stock market and raise money for the treasury${boardOdds(g, cur, { kind: 'ipo', by: 'owner', label: '' })}`
+          return canGroupIpo(g, cur) ?? `Sell part of the group on the stock market and raise money for the treasury${boardOdds(g, cur, { kind: 'ipo', by: 'owner', label: '' })}`
         },
         disabled: (g, cur) => canGroupIpo(g, cur),
-        confirm: (_g, cur) => `Take ${cur.core.name} public? You'll sell a quarter of the group to the market, and independent directors join its board.`,
-        run: (g, cur) => {
-          groupIpo(g, cur.core.id)
+        input: { kind: 'slider', label: 'Percent of the group to float', min: FLOAT_MIN, max: FLOAT_MAX, step: 1, unit: '%', defaultValue: () => String(FLOAT_DEFAULT),
+          preview: (g, v) => { const cur = groupById(g, groupId); return cur ? groupIpoPreview(g, cur, v) : 'Group unavailable.' } },
+        confirm: (_g, cur) => `Take ${cur.core.name} public? You'll sell part of the group to the market as new shares, and independent directors join its board.`,
+        run: (g, cur, input) => {
+          groupIpo(g, cur.core.id, clampN(Math.round(Number(input) || FLOAT_DEFAULT), FLOAT_MIN, FLOAT_MAX))
         },
       }),
     ]

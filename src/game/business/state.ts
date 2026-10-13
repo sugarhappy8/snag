@@ -260,6 +260,8 @@ export interface BizState {
   public: boolean
   sharesOut: number
   sharePrice: number
+  /** A private company's chosen share count (share-structure.ts); sharesOut takes over at the IPO. */
+  shareCount?: number
   /** Exchange code once listed. */
   exchange: string
   ipoYear: number
@@ -569,6 +571,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     public: d.public === true,
     sharesOut: Math.max(0, num(d.sharesOut)),
     sharePrice: Math.max(0, num(d.sharePrice)),
+    ...(d.public !== true && num(d.shareCount) >= 1000 ? { shareCount: Math.round(clampN(num(d.shareCount), 1000, 1e10)) } : {}),
     exchange: str(d.exchange),
     ipoYear: Math.round(num(d.ipoYear)),
     ceo: d.ceo === 'manager' ? 'manager' : 'owner',

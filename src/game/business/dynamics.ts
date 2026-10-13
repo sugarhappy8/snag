@@ -2,6 +2,8 @@
 // (Company research and patents moved to the Inventor's Workshop: src/game/workshop/.)
 import { seeded } from '../assets'
 import { industryConditions } from '../economy'
+import { marketEventFactors } from '../history/market-events'
+import { marketDef } from './competition-data'
 import { notice } from '../core'
 import type { GameState, Json } from '../types'
 import type { BizState } from './state'
@@ -78,9 +80,12 @@ export function nationalMarket(g: GameState, industry: string, country: string, 
   }
   const confidence = clampN(num(rec(g.flags['business.confidence'])?.[`${country}:${industry}`], 1), .65, 1.1)
   const sector = industryConditions(g, industry, country, year)
+  // Real booms and busts in their years (history/market-events.ts): hard on the markets at the
+  // center of each, mild on everyone else.
+  const events = marketEventFactors(industry, country, year, marketDef(industry).scope === 'world')
   // Preferences still differ by nation; economic demand and input costs share world state.
-  const demand = (1 + (base.baseDemand - 1) * .25) * confidence * sector.demand * (1.08 - sector.competition * .145)
-  return { demand, costs: sector.costs * (1 + (base.costs - 1) * .2), confidence, taste: base.taste, growth: (sector.demand - 1) * .3,
+  const demand = (1 + (base.baseDemand - 1) * .25) * confidence * sector.demand * (1.08 - sector.competition * .145) * events.demand
+  return { demand, costs: sector.costs * (1 + (base.costs - 1) * .2) * events.costs, confidence, taste: base.taste, growth: (sector.demand * events.demand - 1) * .3, events,
     label: demand < .94 ? 'Demand weakening' : demand > 1.06 ? 'Demand expanding' : 'Demand stable' }
 }
 
