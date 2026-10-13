@@ -64,7 +64,8 @@ function overlayOf(b: Built): TradeOverlay {
     restriction: (from, to) => b.restrictions.get(pair(from, to)) ?? 0,
     exportBan: (from, input) => b.bans.get(from)?.has(input as TradeInput) ?? false,
     deal: (x, y) => b.deals.has(pair(x, y)),
-    touches: (country) => b.touched.has(country),
+    // A tariff on everyone's goods ('*') reaches every exporter's orders.
+    touches: (country) => b.touched.has(country) || b.touched.has('*'),
   }
 }
 

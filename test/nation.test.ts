@@ -36,7 +36,11 @@ function office(g: GameState, officeId: 'mayor' | 'governor' | 'leader', title: 
 
 /** Walk every menu row, caption and slider preview; collect text. */
 function walk(g: GameState, nodes: MenuNode[], out: string[] = [], depth = 0): string[] {
+  const ids = new Set<string>()
   for (const n of nodes) {
+    // A tappable row must not share its id with a sibling (React keys and menu paths).
+    if (ids.has(n.id) && n.type !== 'info' && n.type !== 'heading') throw new Error(`duplicate sibling id ${n.id}`)
+    ids.add(n.id)
     if (n.visible && !n.visible(g)) continue
     if (n.type === 'info') { out.push(typeof n.text === 'function' ? n.text(g) : n.text); continue }
     if (n.type === 'heading') { out.push(n.label); continue }
@@ -102,6 +106,10 @@ describe('menus are pure and readable', () => {
   for (const [country, year, officeId, title] of [['us', 2001, 'leader', 'President'], ['gb', 1975, 'leader', 'Prime Minister'], ['gb', 2015, 'governor', 'Member of Parliament'], ['us', 1960, 'governor', 'Governor'], ['br', 1990, 'mayor', 'Mayor'], ['ng', 2020, 'leader', 'President']] as const) {
     it(`${title} of ${country} in ${year}`, () => {
       const g = office(newLeader(6, country, year), officeId, title)
+      // A past report puts every dashboard row on screen.
+      const p = editPolicy(g, country)
+      p.reports = [{ year: year - 1, growth: .02, unemployment: .05, inflation: .03, debt: .6, deficit: .03, approval: 50, rating: 'A' }]
+      writePolicy(g, p)
       const before = JSON.stringify(g)
       const rng = g.rng
       const text = walk(g, specialJobNodes(g))

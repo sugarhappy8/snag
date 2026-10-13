@@ -424,7 +424,7 @@ export function dashboardMenu(): MenuGroup {
         const last = p.reports[p.reports.length - 1]
         info('report', '📰', `Last report (${last.year}): growth ${pct(last.growth, 1)}, unemployment ${pct(last.unemployment, 1)}, debt ${pct(last.debt)}`)
       }
-      if (v.rank >= 2) rows.push({ type: 'action', id: 'nation.dash.report', label: 'Open the State of the Nation', emoji: '📰', run: (gg) => openReport(gg) })
+      if (v.rank >= 2) rows.push({ type: 'action', id: 'nation.dash.open', label: 'Open the State of the Nation', emoji: '📰', run: (gg) => openReport(gg) })
       return rows
     },
   }
