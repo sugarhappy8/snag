@@ -15,6 +15,8 @@ import { clampN, industryNoun, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
 import { bankAdvanceOf } from './bank-state'
 import { cashOutFamilyHolders, payFamilyBusinessProceeds } from './dynasty-ownership'
+import { FLOAT_DEFAULT, ipoPlan, retailDepth, retailVerdict, shareCountOf, shareCountText } from './share-structure'
+import { listingMood } from '../history/market-events'
 
 /**
  * IPO threshold: last year's net profit. Set where a successful mid-size company gets to (about
@@ -157,18 +159,23 @@ export function canIpo(b: BizState): string | null {
   return null
 }
 
-export function goPublic(g: GameState, a: Asset, b: BizState): void {
+/**
+ * List the company, floating `floatPct` percent of it as new shares (5-60, 25 by default). The
+ * money goes to the company. Demand from retail investors (an affordable share price) and the
+ * market's mood price the offer up or down and decide how much of it sells.
+ */
+export function goPublic(g: GameState, a: Asset, b: BizState, floatPct = FLOAT_DEFAULT): void {
   const ex = exchangeFor(b.countryId)
   const pre = Math.max(1, valuationOf(b))
-  const raise = Math.round(pre / 3)
-  const fees = Math.round(raise * 0.06)
-  const pop = clampN(1 + bell(g, -150, 300) / 1000, 0.8, 1.35)
-  const post = pre + raise
-  b.sharesOut = Math.max(1000, Math.round(post / 25))
-  b.sharePrice = Math.round((post / b.sharesOut) * pop * 100) / 100
-  b.cash += raise - fees
-  b.share = clampN(b.share * 0.75, b.familyShares?.length ? 0 : .01, 1)
-  diluteBusinessEquity(b, 0.75)
+  const plan = ipoPlan(pre, shareCountOf(b), floatPct, listingMood(b.industry, b.countryId, g.year))
+  // Day one: the usual noise, plus a pop when the offer was heavily oversubscribed.
+  const pop = clampN(1 + bell(g, -150, 300) / 1000 + 0.06 * Math.max(0, Math.min(3, plan.coverage) - 1), 0.8, 1.45)
+  b.sharesOut = plan.sharesOut
+  b.sharePrice = Math.round(plan.price * pop * 100) / 100
+  b.cash += plan.raise - plan.fees
+  b.share = clampN(b.share * plan.retain, b.familyShares?.length ? 0 : .01, 1)
+  diluteBusinessEquity(b, plan.retain)
+  delete b.shareCount
   // Preferred shares convert to ordinary ones at the listing.
   b.pref = 0
   b.public = true
@@ -178,10 +185,23 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   refreshValue(a, b)
   count(g, 'businessIpos')
   addStat(g, 'happiness', 15)
-  const text = `${a.name} rang the opening bell on the ${ex.name} (${ex.code}). The IPO raised ${money(raise)} for the company (underwriters kept ${money(fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))}. Your ${pct(b.share)} stake is worth ${money(stakeValue(b))}.`
+  const price = (x: number) => moneyWith(x, (v) => v.toFixed(2))
+  const demand = plan.coverage >= 1
+    ? `Orders covered the offer ${plan.coverage.toFixed(1)} times over, so it priced ${pct(plan.premium)} above the base price at ${price(plan.price)} a share`
+    : `Only ${pct(plan.sold / plan.offered)} of the shares on offer found buyers, at ${price(plan.price)} a share`
+  const text = `${a.name} rang the opening bell on the ${ex.name} (${ex.code}). ${demand} (${retailVerdict(plan.basePrice)}). The IPO raised ${money(plan.raise)} for the company (underwriters kept ${money(plan.fees)}), and the shares ${pop >= 1.05 ? 'popped' : pop <= 0.95 ? 'slid' : 'traded flat'} on day one at ${price(b.sharePrice)}. ${shareCountText(b.sharesOut)} shares are listed; your ${pct(b.share)} stake is worth ${money(stakeValue(b))}.`
   log(g, `I took ${a.name} public on the ${ex.code}.`, 'good')
   remember(g, `Took ${a.name} public on the ${ex.name}.`)
   notice(g, 'IPO Day!', text, { emoji: '\u{1F514}', tone: 'good' })
+}
+
+/** The IPO slider's preview: what floating `floatPct` percent would do today (pure). */
+export function ipoPreview(g: GameState, b: BizState, floatPct: number): string {
+  const plan = ipoPlan(Math.max(1, valuationOf(b)), shareCountOf(b), floatPct, listingMood(b.industry, b.countryId, g.year))
+  const price = (x: number) => moneyWith(x, (v) => v.toFixed(2))
+  const keep = b.share * plan.retain
+  const fill = plan.coverage >= 1 ? `orders should cover it about ${plan.coverage.toFixed(1)} times` : `only about ${pct(Math.min(1, plan.coverage))} of it would sell`
+  return `${shareCountText(plan.offered)} new shares at about ${price(plan.price)} (${retailVerdict(plan.basePrice)}): ${fill}, raising about ${money(plan.raise - plan.fees)} for the company after fees. You'd keep ${pct(keep, 1)}.${keep < 0.5 && b.share >= 0.5 ? ' Under half: outside shareholders would control the board.' : ''}`
 }
 
 /** "Your sister keeps her shares…": what happened to the relatives' part when you sold out. */
@@ -211,7 +231,7 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   if (!b.public || f <= 0) return
   const stake = b.share
   const sold = stake * f
-  const order = saleImpact(sold, 1)
+  const order = saleImpact(sold, retailDepth(b.sharePrice))
   const gross = Math.round(b.sharesOut * b.sharePrice * order.proceeds)
   const basis = b.invested * f
   const tax = capitalGainsTax(g, gross, basis)

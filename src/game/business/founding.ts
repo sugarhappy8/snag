@@ -3,7 +3,7 @@
 // registration days, loan rates, and in some countries an official's "facilitation fee".
 import { hasTech } from '../history/timeline'
 import { seeded, yearKey } from '../assets'
-import { addHidden, addStat, count, formatMoney, fullName, log, notice, remember, scriptChoice, scriptInput, spend } from '../core'
+import { addHidden, addStat, count, formatMoney, fullName, log, moneyWith, notice, remember, scriptChoice, scriptInput, spend } from '../core'
 import { arrestPlayer } from '../crime'
 import { INDUSTRY_IDS, industryDemand, isIndustryLegal, localMarket, marketOf, type Industry } from '../data/markets'
 import { addLoan, baseLoanRate, creditScore, offeredRate } from '../finance'
@@ -18,6 +18,8 @@ import { industryHint, localEcon, openFractionFor, planFor, maxProduction, simul
 import { industryEraBlock, marketDef } from './competition-data'
 import { eraNote } from './era'
 import { refreshTechValue } from './deeptech-core'
+import { IPO_PROFIT } from './exit'
+import { DEFAULT_SHARES, MAX_SHARES, MIN_SHARES, retailVerdict, shareCountText } from './share-structure'
 import { DEEP_TECH } from './deeptech-data'
 import { COFOUNDER_EQUITY, DEEP_TECH_OWN_SHARE, backgroundNote, cofounderName, deepHubHint, expertHire, expertSalary, hasBackground, initTech, seedOffer } from './deeptech-found'
 import { isDeepTechIndustry, type DeepTechIndustry } from './deeptech-state'
@@ -126,6 +128,8 @@ interface Plan {
   seed: number
   seedEquity: number
   seedInvestor: string
+  /** Total shares the founder splits the company into (share-structure.ts). */
+  shares?: number
 }
 
 function readPlan(data: Json | undefined): Plan | null {
@@ -156,6 +160,7 @@ function readPlan(data: Json | undefined): Plan | null {
     seed: Math.max(0, num(d.seed)),
     seedEquity: clampN(num(d.seedEquity), 0, 0.5),
     seedInvestor: str(d.seedInvestor),
+    ...(num(d.shares) >= MIN_SHARES ? { shares: Math.round(clampN(num(d.shares), MIN_SHARES, MAX_SHARES)) } : {}),
   }
 }
 
@@ -270,8 +275,38 @@ const CAPITAL = defineScript('business.found.capital', (g, input, data) => {
   const c = startupCost(p.industry, p.countryId, p.city)
   if (n < c.capital || n > Math.max(c.capital, (g.character.money - c.fee - c.permits) / ownShare(p.industry, p.countryId))) return
   p.capital = Math.round(n)
+  if (p.mode === 'found') askShares(g, p)
+  else askFunding(g, p)
+})
+
+function askShares(g: GameState, p: Plan): void {
+  scriptInput(g, { title: 'Choose the Number of Shares', emoji: '\u{1F9FE}', text: `How many shares ${p.name || 'the company'} is split into. It changes nobody's ownership, only what one share is worth. Many cheap shares appeal to retail investors if you take it public one day; a few expensive ones put them off. You can change it any time before listing.`, input: 'slider',
+    min: MIN_SHARES, max: MAX_SHARES, defaultValue: String(p.shares ?? DEFAULT_SHARES), scriptId: SHARES, data: planJson(p) })
+}
+const SHARES = defineScript('business.found.shares', (g, input, data) => {
+  const p = readPlan(data), n = Number(input)
+  if (!p || foundBlock(g) || !Number.isFinite(n)) return
+  p.shares = Math.round(clampN(n, MIN_SHARES, MAX_SHARES))
   askFunding(g, p)
 })
+
+/** The share-count slider's preview: what one share is worth now and at listing size (pure). */
+export function startupSharesPreview(data: Json | undefined, shares: number): string {
+  const p = readPlan(data)
+  if (!p) return ''
+  const n = Math.max(MIN_SHARES, shares)
+  const start = Math.max(1, p.capital ?? startupCost(p.industry, p.countryId, p.city).capital)
+  const listing = IPO_PROFIT * industryDef(p.industry).multiple
+  const at = (v: number) => moneyWith(v / n, (x) => (x >= 100 ? x.toFixed(0) : x >= 1 ? x.toFixed(2) : x.toPrecision(2)))
+  return `${shareCountText(n)} shares: about ${at(start)} each at the start. If it grows big enough to list (about ${money(listing)}), one share would be worth about ${at(listing)}: ${retailVerdict(listing / n)}.`
+}
+
+/** Previews for the founding popups' sliders, by script id (the UI asks). */
+export function foundingSliderPreview(g: GameState, scriptId: string, data: Json | undefined): ((v: number) => string) | undefined {
+  if (scriptId === CAPITAL) return (v) => startupCapitalPreview(g, data, v)
+  if (scriptId === SHARES) return (v) => startupSharesPreview(data, v)
+  return undefined
+}
 
 const MODEL = defineScript('business.found.investmentModel', (g, input, data) => {
   const p = readPlan(data)
@@ -666,6 +701,7 @@ function finalize(g: GameState, p: Plan, runIt: boolean): void {
     loanId,
     quality: Math.round(clampN(45 + (c.stats.smarts - 50) / 8, 30, 65)),
   })
+  if (p.shares) b.shareCount = p.shares
   if (b.industry === 'investmentFirm') initFund(g, b, p.investmentModel ?? 'asset')
   b.production = initialProduction(g, b)
   b.valuation = Math.max(valuationOf(b), Math.round(cost.capital * 0.8))
@@ -728,6 +764,7 @@ function finalizeDeepTech(g: GameState, p: Plan, runIt: boolean): void {
     quality: Math.round(clampN(45 + (c.stats.smarts - 50) / 8, 30, 65)),
     production: 0,
   })
+  if (p.shares) b.shareCount = p.shares
   const t = initTech(g, b, { cofounder: p.cofounder || undefined, expert: p.expert, seed: p.seed > 0 ? { amount: p.seed, equity: p.seedEquity, investor: p.seedInvestor } : null })
   const expert = p.expert ? expertHire(g, b) : null
   if (expert) b.staff.push(expert)
