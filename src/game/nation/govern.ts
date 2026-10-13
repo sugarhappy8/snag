@@ -18,7 +18,7 @@ import {
   type BudgetLine, type GroupId, type Lean, type LegalId, type NewTaxId, type Scope, type TariffInput, type TaxId, type TradeInput,
 } from './data'
 import { overlayFor, partnerSize } from './effects'
-import { coalition, legislatureOf, vetoChance, voteOdds, type Sweetener, type VoteOdds } from './legislature'
+import { coalition, legislatureOf, strikeChance, vetoChance, voteOdds, type Sweetener, type VoteOdds } from './legislature'
 import { adjustApproval, officeHooks, officeView, powerFor, type Area, type OfficeView, type Power } from './office'
 import { addCase, editMe, meView, note, writeMe, bumpStat } from './state'
 import { editPolicy, policyOf, writePolicy, type CountryPolicy, type Layer } from './state'
@@ -255,7 +255,18 @@ export function applyMeasure(g: GameState, p: CountryPolicy, m: Measure, v: Offi
     case 'labor': p.labor = m.value; stamp('labor'); break
     case 'environment': p.environment = m.value; stamp('environment'); break
     case 'dereg': if (m.on) p.dereg[m.sector] = year; else delete p.dereg[m.sector]; stamp(`dereg.${m.sector}`); break
-    case 'nationalize': if (m.on) p.nationalized[m.sector] = year; else delete p.nationalized[m.sector]; stamp(`nationalize.${m.sector}`); break
+    case 'nationalize':
+      if (m.on) {
+        p.nationalized[m.sector] = year
+        // Owners are compensated: a one-off cost next year.
+        p.shocks = [...p.shocks.filter(s => s.id !== `nationalize.${m.sector}`), { id: `nationalize.${m.sector}`, label: `compensation for nationalizing ${SECTOR_LABEL[m.sector]}`, until: year + 1, growth: 0, inflation: 0, unemployment: 0, confidence: -.01, sector: '', demand: 0, spend: .008 }]
+      } else {
+        delete p.nationalized[m.sector]
+        // Sale proceeds pay down public debt.
+        p.writeDown = Math.min(1.5, Math.round((p.writeDown + .006) * 1e4) / 1e4)
+      }
+      stamp(`nationalize.${m.sector}`)
+      break
     case 'legal': if (m.value) p.legal[m.id] = m.value; else delete p.legal[m.id]; stamp(`legal.${m.id}`); break
     case 'tariff': {
       p.tariffs = p.tariffs.filter(t => !(t.input === m.input && t.partner === m.partner))
@@ -479,6 +490,15 @@ export function resolveBill(g: GameState, m: Measure, sweet: Sweetener): boolean
     notice(g, 'Vetoed', `"${label}" passed, then the President vetoed it.${bribeLine}`, { emoji: '🚫', tone: 'bad' })
     return false
   }
+  // Courts review laws that push against property rights or liberties.
+  const risk = courtRisk(m)
+  if (risk > 0 && chance(g, strikeChance(g, risk))) {
+    bumpStat(me, 'struck')
+    writeMe(g, me)
+    log(g, `The courts struck down my law: ${label}.`, 'bad')
+    notice(g, 'Struck Down', `"${label}" passed, but the courts struck it down as unconstitutional.${bribeLine}`, { emoji: '⚖️', tone: 'bad' })
+    return false
+  }
   if (sweet === 'deal') {
     // Pork: the swing party's favourite programme gets 10% more (a real cost to the budget).
     const line = porkLine(odds.dealParty)
@@ -509,6 +529,15 @@ export function resolveBill(g: GameState, m: Measure, sweet: Sweetener): boolean
   const tally = power.body === 'legislature' && power.route === 'vote' ? ` (${pctText(Math.max(odds.need + .005, odds.yes))} voted yes)` : ''
   notice(g, power.route === 'decree' ? 'Order Signed' : 'Bill Passed', `${label}${tally}.${bribeLine}${react ? ` Approval ${react > 0 ? '+' : ''}${react}.` : ''}${extras.length ? `\n\n${extras.join('\n\n')}` : ''}`, { emoji: '🏛️', tone: 'good' })
   return true
+}
+
+/** How likely courts are to object to a measure (0 = never). Pure; shown via strikeChance. */
+export function courtRisk(m: Measure): number {
+  if (m.k === 'nationalize' && m.on) return .3
+  if (m.k === 'tax' && m.id === 'wealth' && m.value > 2) return .25
+  if (m.k === 'legal' && m.value < 0) return .2
+  if (m.k === 'tax' && m.id === 'inheritance' && m.value > 25) return .15
+  return 0
 }
 
 function porkLine(party: string): BudgetLine {
@@ -636,7 +665,7 @@ export function onTopJob(g: GameState, party: string, share: number): void {
   const others = Object.keys(seats).filter(id => id !== party).reduce((s, id) => s + seats[id], 0)
   for (const id of Object.keys(seats)) if (id !== party) seats[id] = others > 0 ? seats[id] / others * (1 - target) : 0
   seats[party] = target
-  p.legislature = { seats, gov: coalition(seats, party, pm), year: g.year, leaderParty: party }
+  p.legislature = { seats, gov: coalition(seats, party, pm), year: g.year, leaderParty: party, mine: true }
   p.institutions.gerrymander = 0
   writePolicy(g, p)
 }

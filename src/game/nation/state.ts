@@ -58,6 +58,8 @@ export interface Legislature {
   year: number
   /** NPC head of government's party when the player isn't in charge. */
   leaderParty: string
+  /** Seats set by the player's own election (cleared when they leave the top job). */
+  mine?: boolean
 }
 export interface ReportRow { year: number; growth: number; unemployment: number; inflation: number; debt: number; deficit: number; approval: number; rating: string }
 export interface CountryPolicy {
@@ -251,7 +253,7 @@ export function normalizePolicy(v: unknown, country: string): CountryPolicy {
   }
   const leg = rec(r.legislature)
   const gov = Array.isArray(leg.gov) ? [...new Set(leg.gov.filter((p): p is string => typeof p === 'string' && PARTY_IDS.includes(p)))].slice(0, 4) : []
-  out.legislature = { seats: seats(leg.seats), gov, year: year(leg.year), leaderParty: PARTY_IDS.includes(String(leg.leaderParty)) ? String(leg.leaderParty) : '' }
+  out.legislature = { seats: seats(leg.seats), gov, year: year(leg.year), leaderParty: PARTY_IDS.includes(String(leg.leaderParty)) ? String(leg.leaderParty) : '', ...(leg.mine === true ? { mine: true } : {}) }
   if (Array.isArray(r.shocks)) for (const row of r.shocks.slice(-12)) {
     const s = rec(row), id = text(s.id, '', 60)
     if (!id) continue

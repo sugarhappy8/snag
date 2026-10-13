@@ -8,13 +8,14 @@ import { formatMoney, log, minigame, netWorth, notice, scriptChoice } from '../c
 import { economyOf, economyState } from '../economy'
 import { typicalIncome } from '../events/wealth-core'
 import { defineScript } from '../scripts'
+import { chance } from '../rng'
 import type { GameState, Json } from '../types'
 import { getCountry } from '../world'
 import { BUDGET_LINES, GROUP_IDS, GROUPS, groupWeights, institutionStrength, type GroupId } from './data'
 import { nationOverlay, personalTax, RATING_SPREAD, wealthTaxRate } from './effects'
 import { accountability } from './govern'
-import { midterm } from './legislature'
-import { adjustApproval, officeView, type OfficeView } from './office'
+import { legislatureOf, midterm } from './legislature'
+import { adjustApproval, officeView, setPortfolio, type OfficeView } from './office'
 import { editMe, editPolicy, hasMe, hasPolicy, meView, policyOf, writeMe, writePolicy, type CountryPolicy } from './state'
 import { stampCompanyBarriers } from './company'
 import { yearlyDrama } from './drama'
@@ -275,6 +276,23 @@ export function yearlyNation(g: GameState): void {
   upkeep(g)
   personalTaxes(g)
   stampCompanyBarriers(g)
+  const was = officeView(g)
+  // Out of the top job: the chamber goes back to its own politics (stable NPC seats).
+  const home = policyOf(g, c.countryId)
+  if (!was?.leader && home.legislature.mine) {
+    const p = editPolicy(g, c.countryId)
+    p.legislature = { seats: {}, gov: [], year: 0, leaderParty: '' }
+    writePolicy(g, p)
+  }
+  // Ministers serve at the pleasure of the head of government.
+  if (was?.portfolio && !c.prison) {
+    const leg = legislatureOf(g, c.countryId)
+    if (!leg.gov.includes(was.party) || chance(g, .06 + Math.max(0, 45 - was.approval) / 200)) {
+      setPortfolio(g, '')
+      log(g, 'I was reshuffled out of the cabinet.', 'bad')
+      notice(g, 'Reshuffle', 'The head of government reshuffled the cabinet, and you are out.', { emoji: '🔀', tone: 'bad' })
+    }
+  }
   const v = officeView(g)
   if (v && v.rank >= 1 && !c.prison) {
     const me = editMe(g)

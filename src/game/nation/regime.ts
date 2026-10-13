@@ -260,6 +260,9 @@ export function electionEdge(g: GameState): { bonus: number; rigged: boolean; te
   const rigged = (me.cool.rig ?? 0) >= g.year - 1
   bonus += Math.min(10, (me.stats.voteBuy ?? 0) / Math.max(1, voteCost(g)) * 3)
   bonus += Math.min(8, me.rivals.filter(r => r.status === 'jailed' || r.status === 'exiled').length * 4)
+  // A strong opposition leader costs votes; smearing or co-opting them pays off here.
+  const opp = me.rivals.find(r => r.status === 'active' && r.role === 'opposition')
+  if (opp) bonus -= Math.max(0, opp.strength - 50) / 8
   if (inst.regime === 'authoritarian') bonus += 35
   else if (inst.regime === 'hybrid') bonus += 6
   bonus += inst.gerrymander * 60
