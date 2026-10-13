@@ -295,6 +295,23 @@ currency-change log IDs are stable and consume neither game RNG nor normal IDs. 
 only run before PRESENT_YEAR. `events-medicine.ts` adjusts historical medicine and mortality;
 `events-people.ts` supplies occupations and names.
 
+`history/market-events.ts` is the business side of history: a table of real market events by
+year (the Great Depression, the 1970s oil shocks, the Gulf War spike, Japan's bubble, the dot-com
+boom and crash, the Asian and euro crises, the 2007–11 housing crash, the 2014–16 oil collapse, the
+2020 crash, the 2022 crash, the 2023–26 AI boom fading by 2030), each with home countries, a
+strength abroad, and effects on demand, input costs and valuation multiples for the exposed
+markets (`exposureOf`: oil, fuel users, property, banks, internet, chips, AI, travel, going
+out...) and a milder effect on everyone else. `marketEventFactors` is pure and cached; it feeds
+`dynamics.nationalMarket` (every company's demand and costs: player, NPC, deep tech, studios,
+planner), `economy.valuationOf` (the multiple, in the year of the last booked record),
+`deeptech-core.operatingValue`, and economic rivals (`economic-actors.advanceActor`). World-market
+industries take only a third of the demand effect because their size curves already carry their
+booms and busts. In history years `economy.exchangeMove` is the real index return, so listed player
+companies move with the real market. Nothing is invented for the future, and 2026 lifts only
+AI-exposed markets. When an event first hits a country hard, the yearly pass announces it once
+(`market.events` flag, deterministic notice id) with each company's exposure; the Annual Report
+and Market & Competition list the year's events.
+
 `history/markets*.ts` overlays real historical index/sector crashes, gold, housing, inflation,
 rates, exchange closures and expropriation on `invest/engine.ts`. Procedural markets start in
 the present. Historical facts stay fixed across seeds and Time Machine jumps. Options premium
@@ -606,7 +623,18 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
 - **IPO**: `exit.IPO_PROFIT` is $25M of last year's profit (studios and deep tech keep their own
   rules; groups take the strictest member's); the board still votes, then the underwriters audit:
   cooked books sink the listing `exit.IPO_COLLAPSE` (50%) of the time, for a company
-  (`manage.ipoDueDiligence`) or any division of a group (`groupIpo`).
+  (`manage.ipoDueDiligence`) or any division of a group (`groupIpo`). The player picks the float
+  (5–60%, 25% default) on a slider; `business/share-structure.ts ipoPlan` prices it: new shares at
+  the pre-money value over the share count (a private `BizState.shareCount` chosen at founding or
+  in Capital & Ownership, else about $25 a share), with coverage from `retailAppeal(price)` (an
+  affordable price brings retail buyers; penny-stock and very expensive prices put them off), the
+  float size and the market's `listingMood`. Oversubscribed offers price up to +15% and pop more on
+  day one; undersubscribed ones sell only part, at a discount. Later share sales get a market
+  depth of `retailDepth(price)` (1 at $25). Selling out of a listed company or group where
+  relatives hold family shares (`exit.leaveListedCompany`, `conglomerate-actions.leaveListedGroup`)
+  removes it from the player's assets and turns each relative's stake into their own wealth at
+  market value (`dynasty-ownership.cashOutFamilyHolders`); the yearly pass cleans up listed
+  holdings already at 0% (`yearly.leaveUnownedListed`).
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
   `COMPARE_SHOWN` best foreign markets and a one-line summary.
 - **Banks' money rules** (`business/bank*.ts`): deposits and loans are client money; equity is

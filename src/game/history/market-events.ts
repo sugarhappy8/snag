@@ -264,7 +264,13 @@ export function marketEventImpacts(industry: string, country: string, year: numb
       Math.abs(value - 1) >= 0.005 ? `valuations ${signed(value)}` : '',
     ].filter(Boolean)
     const big = Math.max(Math.abs(demand - 1), Math.abs(costs - 1), Math.abs(value - 1))
-    const how = !parts.length ? 'Barely touches this market' : fx.exposed ? (demand >= 1 && value >= 1 && costs <= 1.02 ? 'A boom for this market' : 'Hits this market hard') : big >= 0.1 ? 'Felt here too' : 'Felt mildly here'
+    // "Hard" means clearly harder than what every other company feels (an unexposed industry).
+    const broad = eventEffect(event, '', country, year)
+    const broadBig = strength * Math.max(Math.abs(broad.demand) * (worldMarket ? 0.35 : 1), Math.abs(broad.costs), Math.abs(broad.value))
+    const boom = demand >= 1 && value >= 1 && costs <= 1.02
+    const how = !parts.length ? 'Barely touches this market'
+      : fx.exposed && big - broadBig >= 0.08 ? (boom ? 'A boom for this market' : 'Hits this market hard')
+      : big >= 0.1 ? (boom ? 'Lifts this market too' : 'Felt here too') : 'Felt mildly here'
     return { event, exposed: fx.exposed, demand, costs, value, text: `${how}${parts.length ? `: ${parts.join(', ')}` : ''}.` }
   }).filter((x) => x.text !== 'Barely touches this market.')
 }
