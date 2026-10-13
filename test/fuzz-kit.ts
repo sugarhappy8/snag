@@ -216,6 +216,7 @@ function minigameResult(m: MinigameModal, d: Driver): string {
       return d.pick(['win', 'lose', 'push', 'blackjack', 'win:double', 'lose:bust', 'win:charlie', 'lose:double:bust'])
     case 'horseRace':
     case 'slots':
+    case 'nationReport':
       return 'done'
     case 'burglary':
       return d.chance(0.2)

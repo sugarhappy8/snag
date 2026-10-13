@@ -182,7 +182,7 @@ export const LEGAL: Record<LegalId, LegalDef> = {
 }
 
 /** Tariffs: per point added on imports of an input (or all goods). */
-export const TARIFF_IMPACT: Impact = { growth: -.00012, inflation: .0003, groups: { workers: .12, rural: .08, middle: -.12, business: -.08, young: -.05 }, lean: { econ: -.5, order: .3 } }
+export const TARIFF_IMPACT: Impact = { revenue: .0004, growth: -.00012, inflation: .0003, groups: { workers: .12, rural: .08, middle: -.12, business: -.08, young: -.05 }, lean: { econ: -.5, order: .3 } }
 /** Domestic producers in a protected sector win this much demand per point (× imported share). */
 export const PROTECTION = .006
 /** A trade deal with one partner. */

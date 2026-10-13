@@ -32,6 +32,8 @@ export interface Shock {
   id: string; label: string; until: number
   growth: number; inflation: number; unemployment: number; confidence: number
   sector: Sector | ''; demand: number
+  /** One-off public spending in the next economic year, share of GDP (aid, bailouts, stimulus). */
+  spend?: number
 }
 export interface Institutions {
   /** 0-1: share of judges appointed for loyalty. */
@@ -253,7 +255,7 @@ export function normalizePolicy(v: unknown, country: string): CountryPolicy {
     const s = rec(row), id = text(s.id, '', 60)
     if (!id) continue
     out.shocks.push({ id, label: text(s.label, 'A crisis', 120), until: year(s.until), growth: finite(s.growth, 0, -.08, .05), inflation: finite(s.inflation, 0, -.05, .1),
-      unemployment: finite(s.unemployment, 0, -.04, .08), confidence: finite(s.confidence, 0, -.3, .2), sector: (STATE_SECTORS as readonly string[]).includes(String(s.sector)) || ['essentials', 'consumer', 'leisure', 'housing', 'public'].includes(String(s.sector)) ? s.sector as Sector : '', demand: finite(s.demand, 0, -.5, .5) })
+      unemployment: finite(s.unemployment, 0, -.04, .08), confidence: finite(s.confidence, 0, -.3, .2), sector: (STATE_SECTORS as readonly string[]).includes(String(s.sector)) || ['essentials', 'consumer', 'leisure', 'housing', 'public'].includes(String(s.sector)) ? s.sector as Sector : '', demand: finite(s.demand, 0, -.5, .5), ...(finite(s.spend, 0, 0, .1) > 0 ? { spend: finite(s.spend, 0, 0, .1) } : {}) })
   }
   out.writeDown = finite(r.writeDown, 0, 0, 1.5)
   out.graft = finite(r.graft, 0, 0, .1)

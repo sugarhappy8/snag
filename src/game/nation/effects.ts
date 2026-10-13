@@ -210,7 +210,8 @@ function compute(p: CountryPolicy, year: number, live: boolean): Overlay {
     if (s.until < year) continue
     o.growth += s.growth; o.inflation += s.inflation; o.unemployment += s.unemployment; o.confidence += s.confidence
     if (s.sector) sectorAdd(o, s.sector, s.demand, 0)
-    o.parts.push({ key: `shock.${s.id}`, label: s.label, growth: s.growth, revenue: 0, spending: 0, unemployment: s.unemployment, inflation: s.inflation, inequality: 0 })
+    if (s.spend) o.spend.other += s.spend
+    o.parts.push({ key: `shock.${s.id}`, label: s.label, growth: s.growth, revenue: 0, spending: s.spend ?? 0, unemployment: s.unemployment, inflation: s.inflation, inequality: 0 })
   }
   // Regimes and institutions.
   const inst = p.institutions

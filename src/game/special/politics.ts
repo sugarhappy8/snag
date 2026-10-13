@@ -1,5 +1,12 @@
 import { billEconomicKind, economicPolicyDescription, enactEconomicPolicy } from '../economy'
-import { leaderTitle, legislator, parliamentary, regional } from '../nation/office'
+import { leaderTitle, legislator, parliamentary, regional, registerOfficeHooks } from '../nation/office'
+import { deskMeasure, enactDeskBill, onTopJob } from '../nation/govern'
+import { approvalTarget } from '../nation/yearly'
+import { abuseNodes, nationJobNodes } from '../nation/menu'
+import { afterElection, electionEdge } from '../nation/regime'
+import { addCase, editMe, policyOf as nationPolicy, writeMe } from '../nation/state'
+import { officeView } from '../nation/office'
+import { exchangeYear, companyDef } from '../invest/engine'
 // Special career: Politician. Run for office (party, platform, campaign budget, a three-stop
 // campaign trail, election night), then govern: read the newspaper to learn what voters care
 // about, broadcast speeches, stage rallies, pass or veto bills, dodge (or pocket) political
@@ -8,7 +15,7 @@ import { leaderTitle, legislator, parliamentary, regional } from '../nation/offi
 // also abuse the office: market-moving announcements, insider trades and the fallout (see
 // "Abuse of power" below).
 import { hasTech } from '../history/timeline'
-import { cryptoBanned, enforcement, local, readState as readMoney, regulator } from '../computer/money-common'
+import { anchor, cryptoBanned, enforcement, fam, local, readState as readMoney, regulator } from '../computer/money-common'
 import { caseProfit, coinTargets, findTarget, freezeBets, maxBet, minBet, openBetsOn, placeBet, priceLabel, stockTargets, tagBets, type BetTarget } from '../computer/money-stocks'
 import { addHidden, addMoney, addStat, count, earnIncome, log, remember, scriptChoice, scriptInput, spend, useYearAction, yearActionsUsed } from '../core'
 import { arrestPlayer } from '../crime'
@@ -870,7 +877,9 @@ function election(g: GameState, camp: Campaign, lastText: string): void {
   const c = g.character
   const o = officeOf(camp.office)
   const title = officeTitle(g, o.id)
-  const share = Math.max(3, Math.min(97, camp.poll + randInt(g, -5, 5)))
+  // Rigging, bought votes, a captive press, jailed rivals (nation/regime.ts) tilt the count.
+  const edge = politicianJob(g) ? electionEdge(g) : { bonus: 0, rigged: false, text: '' }
+  const share = Math.max(3, Math.min(97, camp.poll + edge.bonus + randInt(g, -5, 5)))
   const finalShare = share === 50 ? (chance(g, 0.5) ? 51 : 49) : share
   const p = polProfile(g)
   const current = politicianJob(g)
@@ -907,6 +916,8 @@ function election(g: GameState, camp: Campaign, lastText: string): void {
       quitText = quitNote(quit)
     }
     p.held.push({ office: o.id, title, place, startAge: c.age, endAge: null })
+    if (o.id === 'leader') onTopJob(g, camp.party, finalShare)
+    if (current) lastText += afterElection(g, true)
     addFame(g, 2 + o.rank * 4)
     addStat(g, 'happiness', 15)
     log(g, `I was elected ${title} with ${finalShare}% of the vote.`, 'good')
@@ -1205,8 +1216,11 @@ defineScript(BILL_SCRIPT, (g, choice, data) => {
     count(g, 'billsPassed')
     let delta = Math.round((s - 50) / 6 + randInt(g, -2, 2))
     let extra = ''
-    const economicKind = billEconomicKind(bill.name, bill.issue)
-    if (economicKind) extra = enactEconomicPolicy(g, bill.name, economicKind, officeOf(d.office).rank)
+    // Bills that match a real measure change the law (nation/); the rest keep the old bounded policy.
+    const measure = deskMeasure(g, bill.name)
+    const economicKind = measure ? null : billEconomicKind(bill.name, bill.issue)
+    if (measure) extra = enactDeskBill(g, measure)
+    else if (economicKind) extra = enactEconomicPolicy(g, bill.name, economicKind, officeOf(d.office).rank)
     if (bill.effect === 'payRaise') {
       job.salary = Math.round((job.salary * 1.15) / 100) * 100
       extra = ` Your salary is now ${money(job.salary)}. Voters noticed.`
@@ -1400,6 +1414,7 @@ export function politicsJobNodes(g: GameState): MenuNode[] {
       emoji: o.emoji,
       text: `${styled(g, d.office)} · ${partyOf(d.party).name} · Approval ${d.approval}% · ${d.termOver ? 'Term over' : `${d.termLeft} year${d.termLeft === 1 ? '' : 's'} left in term ${d.terms}`}`,
     },
+    ...nationJobNodes(),
     newspaperAction,
     speechAction,
     rallyAction,
@@ -1478,7 +1493,7 @@ function repairAbuse(a: AbuseData): AbuseData {
   const raw = a as unknown as Record<string, unknown>
   const bounded = (value: unknown, fallback: number, lo: number, hi: number): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, value)) : fallback
   const text = (value: unknown, fallback = '', length = 120): string => typeof value === 'string' ? value.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, length) || fallback : fallback
-  const causes: InsiderCase['cause'][] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse']
+  const causes: InsiderCase['cause'][] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse', 'policy']
   const vias: InsiderCase['via'][] = ['own', 'crony', 'shares']
   const offices: OfficeId[] = ['school', 'mayor', 'governor', 'leader']
   const statuses: InsiderCase['status'][] = ['open', 'pending', 'closed']
@@ -1660,6 +1675,8 @@ function announcementText(g: GameState, rank: number, move: MoveDef, t: BetTarge
       if (rank >= 3) return `You declared ${t.name} "the currency of the future" and floated making it legal tender in ${place}.`
       if (legislator) return `You told ${legislatorHouse(g)} that ${t.name} is "the future of money," then changed your profile picture to one with laser eyes.`
       return `You announced that ${place} will accept ${t.name} for taxes and posted a selfie with laser eyes.`
+    case 'policy':
+      return `You passed a law that reshaped ${t.name}'s industry.`
   }
 }
 
@@ -1766,6 +1783,86 @@ function announce(g: GameState, secId: string, moveId: string): void {
   log(g, `As ${job.title}, I ${move.bearish ? 'went after' : 'boosted'} ${t.name}, and its ${t.asset === 'coin' ? 'price' : 'stock'} ${move.bearish ? 'crashed' : 'jumped'}.`, 'event')
   say(g, 'Market Mover', `${said}\n\n${moved}${tail}\n\nApproval: ${d.approval}% (${delta >= 0 ? '+' : ''}${delta}).`, move.emoji, stake > 0 ? 'neutral' : delta >= 0 ? 'good' : 'neutral')
 }
+
+// --- Insider bets on your own laws (nation/govern.ts calls this through the office hooks) ---------
+
+/** Which listed sectors a policy on a sector, trade input or industry moves. */
+const POLICY_SECTORS: Record<string, string[]> = {
+  energy: ['oil', 'utilities', 'mining'], industry: ['industrials', 'automakers'], technology: ['electronics', 'tech', 'telecom'], essentials: ['agri'],
+  finance: ['banks', 'insurance'], logistics: ['shipping', 'airlines'], care: ['pharma'], housing: ['construction'],
+  bank: ['banks'], onlineBank: ['banks'], investmentFirm: ['banks', 'insurance'], software: ['tech'], ecommerce: ['ecommerce'], aiLab: ['tech'],
+  manufacturing: ['industrials', 'automakers'], construction: ['construction'], realEstate: ['construction'], farm: ['agri'], telecom: ['telecom'],
+  semiconductor: ['electronics'], biotech: ['pharma'], electricVehicles: ['automakers'], solar: ['utilities'], casino: ['hotels'], hotel: ['hotels'],
+}
+
+/**
+ * A law that hits a whole industry moves its (fictional) listed companies. Positions the player
+ * holds on the right side of the move become insider cases, exactly like a market-moving
+ * announcement. Real companies are never named in a policy shock.
+ */
+function policyInsider(g: GameState, key: string, bullish: boolean, label: string): string {
+  const job = politicianJob(g)
+  const rank = officeRank(job)
+  const ids = POLICY_SECTORS[key]
+  if (!job || rank < 1 || !ids) return ''
+  const inf = exchangeInfo(g.character.countryId)
+  const ey = exchangeYear(fam(g), anchor(g), inf, g.year)
+  const targets: BetTarget[] = []
+  for (const st of ey.stocks) {
+    const def = companyDef(inf, st.slot, st.gen)
+    if (def.real || !ids.includes(def.sector)) continue
+    const t = findTarget(g, def.id)
+    if (t) targets.push(t)
+    if (targets.length >= 4) break
+  }
+  if (!targets.length) return ''
+  const a = abuseData(g)
+  const d = pdata(job)
+  const hit: string[] = []
+  for (const t of targets) {
+    const pos = insiderPositions(g, t, !bullish)
+    const stake = pos.own + pos.crony + pos.shares + pos.index
+    const size = Math.min(0.4, 0.18 * marketPower(g, rank, t) * (0.8 + rand(g) * 0.4))
+    const mult = bullish ? 1 + size : Math.max(0.3, 1 - size)
+    addMarketShock(g, { asset: t.asset, secId: t.secId, exKey: t.exKey, slot: t.slot, name: t.name, symbol: t.symbol, cause: 'policy', year: g.year, mult, fade: 0, countryId: g.character.countryId })
+    if (stake <= 0) continue
+    const via: InsiderCase['via'] = pos.own > 0 || pos.index > 0 ? 'own' : pos.crony > 0 ? 'crony' : 'shares'
+    const cs: InsiderCase = {
+      id: `case${g.year}-${a.cases.length}`, age: g.character.age, year: g.year, target: t.name, symbol: t.symbol, secId: t.secId, cause: 'policy',
+      stake: Math.round(stake), via, crony: pos.cronyName, evidence: via === 'own' ? 0.7 : via === 'shares' ? 0.55 : 0.35, status: 'open',
+      office: d.office, title: job.title, countryId: g.character.countryId, quiet: 0, extra: [], gain: Math.round(pos.shares * Math.max(0, mult - 1)),
+    }
+    a.cases.push(cs)
+    tagBets(g, pos.betIds, cs.id)
+    hit.push(t.name)
+  }
+  revalueHoldings(g)
+  a.moves += 1
+  if (!hit.length) return `Listed ${targets[0].sector.toLowerCase()} companies moved on "${label}".`
+  a.heat = Math.min(100, a.heat + 16)
+  addHidden(g, 'karma', -6)
+  count(g, 'insiderTrades')
+  remember(g, `As ${job.title}, held positions in ${hit.join(', ')} when my own law moved them.`)
+  return `Your positions in ${hit.join(', ')} moved with your own law. Regulators watch timing like this.`
+}
+
+registerOfficeHooks({
+  leaveOffice(g, reason, line) {
+    const job = politicianJob(g)
+    if (!job) return
+    const title = job.title
+    closeHeld(g)
+    if (pdata(job).office === 'leader') {
+      const p = polProfile(g)
+      p.formerLeader = true
+      p.formerLeaderTitle = title
+    }
+    leave(g, reason)
+    addFame(g, reason === 'fired' ? -8 : -3)
+    log(g, line, 'bad')
+  },
+  policyMove: policyInsider,
+})
 
 defineScript(ABUSE_SCRIPT, (g, choice, data) => {
   if (choice === 'cancel' || !data || typeof data !== 'object' || Array.isArray(data)) return
@@ -1943,6 +2040,7 @@ function abuseMenu(): MenuGroup {
         },
         announceMenu(),
         cronyMenu(),
+        ...abuseNodes(),
         { type: 'info', id: 'pol.abuse.tip', emoji: '\u{1F4BB}', text: 'You can also bet from your own brokerage account (Activities › Computer › Options Trading › Single Stocks & Coins), or simply buy the shares in Assets › Investments. Your own name is the easiest one to trace.' },
       ]
       return nodes
@@ -1995,6 +2093,8 @@ function causeText(cs: InsiderCase): string {
       return `deregulated ${cs.target}'s industry`
     case 'endorse':
       return `endorsed ${cs.target}`
+    case 'policy':
+      return `passed a law that moved ${cs.target}'s whole industry`
   }
 }
 
@@ -2183,12 +2283,17 @@ defineScript(FAVOR_SCRIPT, (g, choice, data) => {
   const who = String((data as { who?: string } | undefined)?.who ?? 'A lobbyist')
   const d = pdata(job)
   if (choice === 'accept') {
-    d.favors += 1
+    // Bribes are dirty money now: they go to the slush fund (nation/graft.ts), not the bank.
     addHidden(g, 'karma', -8)
-    addMoney(g, amount)
+    const me = editMe(g)
+    me.dirty += amount
+    me.taken += amount
+    me.heat = Math.min(100, me.heat + 8)
+    addCase(g, me, { kind: 'bribe', label: `Took a bribe from ${who.toLowerCase()}`, evidence: .3, amount })
+    writeMe(g, me)
     count(g, 'bribesTaken')
     log(g, `I accepted a political favor from ${who.toLowerCase()}.`, 'bad')
-    say(g, 'Political Favor', `You quietly accepted ${money(amount)} from ${who.toLowerCase()}. ${pick(g, ['They promised nobody would ever know.', 'The envelope was surprisingly heavy.', 'They winked. You winked back. It was weird.'])}`, '\u{1F4B0}')
+    say(g, 'Political Favor', `You quietly accepted ${money(amount)} from ${who.toLowerCase()}. ${pick(g, ['They promised nobody would ever know.', 'The envelope was surprisingly heavy.', 'They winked. You winked back. It was weird.'])} It is dirty money: it sits in your slush fund until you launder it.`, '\u{1F4B0}')
     return
   }
   if (choice === 'report') {
@@ -2330,8 +2435,11 @@ function reelection(g: GameState, job: Job): void {
   const chest = d.warChest
   d.warChest = 0
   const poll = 30 + d.approval * 0.45 + Math.min(8, (chest / Math.max(1, o.budgets[2])) * 8) + (c.stats.smarts - 50) * 0.05 + Math.min(6, fameOf(g) * 0.08) - d.scandals * 2 + (hasTalent(g, 'Leadership') ? LEADER_REELECT_EDGE : 0)
-  const share = Math.round(Math.max(5, Math.min(95, poll + randInt(g, -6, 6))))
+  const edge = electionEdge(g)
+  const share = Math.round(Math.max(5, Math.min(95, poll + edge.bonus + randInt(g, -6, 6))))
   const title = job.title
+  const exposed = afterElection(g, share > 50)
+  if (share > 50 && o.id === 'leader') onTopJob(g, d.party, share)
   if (share > 50) {
     d.termLeft = o.term
     d.terms += 1
@@ -2343,7 +2451,7 @@ function reelection(g: GameState, job: Job): void {
     addFame(g, 2)
     log(g, `I was re-elected ${title} with ${share}% of the vote.`, 'good')
     remember(g, `Re-elected ${title}.`)
-    say(g, 'Re-elected!', `You beat ${opp} with ${share}% of the vote and won a ${ordinalWord(d.terms)} term as ${title}!${chest > 0 ? ` Your ${money(chest)} war chest helped.` : ''}`, '\u{1F389}', 'good')
+    say(g, 'Re-elected!', `You beat ${opp} with ${share}% of the vote and won a ${ordinalWord(d.terms)} term as ${title}!${chest > 0 ? ` Your ${money(chest)} war chest helped.` : ''}${edge.text ? ` ${edge.text}` : ''}${exposed}`, '\u{1F389}', 'good')
     return
   }
   polProfile(g).losses += 1
@@ -2407,7 +2515,11 @@ export function yearlyPolitics(g: GameState): void {
   // Approval drifts toward 50 with noise.
   // Leadership talent: people just like following you. Kept small on purpose: approval drifts
   // toward 50, so +1 a year already lifts where it settles by ~8 points.
-  setApproval(job, d.approval + (50 - d.approval) * 0.12 + randInt(g, -6, 5) + (hasTalent(g, 'Leadership') ? LEADER_APPROVAL_DRIFT : 0))
+  // Politics 2.0: approval drifts toward a target built from the economy and the laws in force
+  // (nation/yearly.ts approvalTarget): 50 with no laws and a quiet economy, faster for a leader.
+  const view = officeView(g)
+  const aim = view ? approvalTarget(g, view) : { target: 50, speed: 0.12 }
+  setApproval(job, d.approval + (aim.target - d.approval) * aim.speed + randInt(g, -6, 5) + (hasTalent(g, 'Leadership') ? LEADER_APPROVAL_DRIFT : 0))
   fameToward(g, o.fame, 3 + o.rank)
   addStat(g, 'happiness', d.approval >= 60 ? 2 : d.approval < 30 ? -4 : 0)
 
@@ -2438,7 +2550,15 @@ export function yearlyPolitics(g: GameState): void {
   d.termLeft = Math.max(0, d.termLeft - 1)
   if (d.termLeft === 0) {
     d.termOver = true
-    const limitHit = o.termLimit > 0 && d.terms >= o.termLimit
+    const inst = nationPolicy(g, c.countryId).institutions
+    // Postponed elections (nation/regime.ts): the term simply runs on.
+    if (o.id === 'leader' && inst.postponedUntil > g.year) {
+      d.termLeft = inst.postponedUntil - g.year
+      d.termOver = false
+      log(g, `The election was postponed until ${inst.postponedUntil}.`, 'bad')
+      return
+    }
+    const limitHit = o.termLimit > 0 && d.terms >= o.termLimit + (o.id === 'leader' ? inst.extraTerms : 0)
     const next = OFFICES[o.rank + 1]
     const nextOk = !!next && !runReason(g, next, true)
     const choices = []
@@ -2456,7 +2576,7 @@ export function yearlyPolitics(g: GameState): void {
     return
   }
 
-  if (d.approval < 20 && o.rank >= 1 && chance(g, 0.75)) {
+  if (d.approval < 20 && o.rank >= 1 && o.id !== 'leader' && chance(g, 0.75)) {
     scriptChoice(
       g,
       IMPEACH_SCRIPT,

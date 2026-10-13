@@ -1,6 +1,7 @@
 // The "+ Age" button. Advances one year and runs every subsystem's yearly hook in
 // a fixed order, then queues this year's flavor lines and random event from the event
 // library (a 'yearEvents' task the store resolves right away, see offline.ts).
+import { yearlyNation } from './nation/yearly'
 import { yearlyAssets } from './assets'
 import { yearlyBusiness } from './business'
 import { yearlyCareer } from './careers'
@@ -54,6 +55,9 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['professions', yearlyProfessions],
   ['career', yearlyCareer],
   ['special', yearlySpecial],
+  // Politics 2.0 (nation/): laws' upkeep, personal taxes under them, the State of the Nation,
+  // crises and consequences. After the careers (approval and elections), before the business year.
+  ['nation', yearlyNation],
   // Inventions settle last year's sales before 'business' books the fiscal year (company
   // margins go into b.cash + b.yearIncome) and before 'finance' taxes personal royalties.
   ['workshop', yearlyWorkshop],

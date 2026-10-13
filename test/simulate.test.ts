@@ -37,6 +37,7 @@ function minigameResult(m: MinigameModal, d: Driver): string {
       return d.pick(['win', 'lose', 'push', 'blackjack'])
     case 'horseRace':
     case 'slots':
+    case 'nationReport':
       return 'done'
     case 'burglary':
       return JSON.stringify({ loot: d.int(0, 5000), caught: d.next() < 0.3 })
