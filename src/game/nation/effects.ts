@@ -242,6 +242,11 @@ function goodsShareOfSector(input: TradeInput): number {
   return input === 'energy' ? .7 : input === 'technology' ? .6 : 1
 }
 
+/** The overlay of a hypothetical record (previews: before vs after a bill). Uncached. */
+export function overlayFor(p: CountryPolicy, year: number, live = false): Overlay {
+  return compute(p, year, live)
+}
+
 const cache = new WeakMap<object, Map<string, Overlay>>()
 /**
  * The overlay for a country in a year. `live` (businesses, taxes, menus in the current year) counts

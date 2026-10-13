@@ -387,3 +387,11 @@ export function consumeWriteDowns(g: GameState): void {
     if (p.writeDown > 0) writePolicy(g, { ...p, writeDown: 0 })
   }
 }
+
+/** Open a case file: evidence that can surface through journalists, auditors or a trial later. */
+export function addCase(g: GameState, me: Me, c: { kind: string; label: string; evidence: number; amount: number }): CaseFile {
+  bumpStat(me, 'cases')
+  const file: CaseFile = { id: `c${g.year}-${me.stats.cases}`, kind: c.kind.slice(0, 30), label: c.label.slice(0, 140), year: g.year, evidence: Math.max(0, Math.min(1, c.evidence)), amount: Math.max(0, Math.round(c.amount)), status: 'open', country: g.character.countryId }
+  me.cases.push(file)
+  return file
+}

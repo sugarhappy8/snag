@@ -1,4 +1,5 @@
 import { billEconomicKind, economicPolicyDescription, enactEconomicPolicy } from '../economy'
+import { leaderTitle, legislator, parliamentary, regional } from '../nation/office'
 // Special career: Politician. Run for office (party, platform, campaign budget, a three-stop
 // campaign trail, election night), then govern: read the newspaper to learn what voters care
 // about, broadcast speeches, stage rallies, pass or veto bills, dodge (or pocket) political
@@ -93,96 +94,6 @@ function officeOf(id: string): OfficeDef {
 // Minister in Britain; a Minister-President and a Chancellor in Germany; a Chief Minister in
 // India; a Taoiseach in Ireland. Monarchies elect prime ministers, never kings.
 
-const PM_COUNTRIES = [
-  'gb', 'jp', 'in', 'ca', 'au', 'nz', 'it', 'es', 'nl', 'se', 'no', 'dk', 'be', 'il', 'gr', 'pt', 'pl',
-  'hu', 'cz', 'sk', 'hr', 'ee', 'fi', 'ro', 'bd', 'np', 'pk', 'iq', 'lb', 'sg', 'my', 'th', 'jm', 'bs', 'bz',
-  'pg', 'ws', 'aw', 'ge', 'mn', 'rs',
-]
-
-const LEADER_TITLES: Record<string, string> = {
-  de: 'Chancellor',
-  at: 'Chancellor',
-  ie: 'Taoiseach',
-  ad: 'Head of Government',
-  mc: 'Minister of State',
-  ch: 'President of the Confederation',
-}
-
-function leaderTitle(g: GameState): string {
-  const id = g.character.countryId
-  if (LEADER_TITLES[id]) return LEADER_TITLES[id]
-  if (PM_COUNTRIES.includes(id)) return 'Prime Minister'
-  return getCountry(id).monarchy ? 'Prime Minister' : 'President'
-}
-
-/** Heads of government who answer to parliament (no-confidence votes instead of impeachment). */
-function parliamentary(g: GameState): boolean {
-  const t = leaderTitle(g)
-  return t !== 'President'
-}
-
-/** Countries with an elected head of each state/province, and what that office is called. */
-const REGIONAL_HEADS: Record<string, { title: string; unit: string }> = {
-  us: { title: 'Governor', unit: 'state' },
-  mx: { title: 'Governor', unit: 'state' },
-  br: { title: 'Governor', unit: 'state' },
-  ar: { title: 'Governor', unit: 'province' },
-  ng: { title: 'Governor', unit: 'state' },
-  id: { title: 'Governor', unit: 'province' },
-  jp: { title: 'Governor', unit: 'prefecture' },
-  co: { title: 'Governor', unit: 'department' },
-  ve: { title: 'Governor', unit: 'state' },
-  pe: { title: 'Regional Governor', unit: 'region' },
-  bo: { title: 'Governor', unit: 'department' },
-  py: { title: 'Governor', unit: 'department' },
-  cl: { title: 'Regional Governor', unit: 'region' },
-  ke: { title: 'Governor', unit: 'county' },
-  ru: { title: 'Governor', unit: 'region' },
-  ca: { title: 'Premier', unit: 'province' },
-  au: { title: 'Premier', unit: 'state' },
-  de: { title: 'Minister-President', unit: 'state' },
-  at: { title: 'Governor', unit: 'state' },
-  in: { title: 'Chief Minister', unit: 'state' },
-  pk: { title: 'Chief Minister', unit: 'province' },
-}
-
-/** Elsewhere the middle rung is a seat in the national legislature. */
-const LEGISLATORS: Record<string, { title: string; house: string }> = {
-  gb: { title: 'Member of Parliament', house: 'the House of Commons' },
-  fr: { title: 'Member of the National Assembly', house: 'the National Assembly' },
-  it: { title: 'Member of the Chamber of Deputies', house: 'the Chamber of Deputies' },
-  es: { title: 'Member of the Congress of Deputies', house: 'the Congress of Deputies' },
-  nl: { title: 'Member of the House of Representatives', house: 'the House of Representatives' },
-  be: { title: 'Member of the Chamber of Representatives', house: 'the Chamber of Representatives' },
-  se: { title: 'Member of the Riksdag', house: 'the Riksdag' },
-  no: { title: 'Member of the Storting', house: 'the Storting' },
-  dk: { title: 'Member of the Folketing', house: 'the Folketing' },
-  fi: { title: 'Member of the Eduskunta', house: 'the Eduskunta' },
-  ie: { title: 'Member of the Dáil', house: 'Dáil Éireann' },
-  il: { title: 'Member of the Knesset', house: 'the Knesset' },
-  pl: { title: 'Member of the Sejm', house: 'the Sejm' },
-  pt: { title: 'Member of the Assembly of the Republic', house: 'the Assembly of the Republic' },
-  gr: { title: 'Member of the Hellenic Parliament', house: 'the Hellenic Parliament' },
-  ch: { title: 'National Councillor', house: 'the National Council' },
-  kr: { title: 'Member of the National Assembly', house: 'the National Assembly' },
-  ph: { title: 'Representative', house: 'the House of Representatives' },
-  tw: { title: 'Legislator', house: 'the Legislative Yuan' },
-  tr: { title: 'Member of the Grand National Assembly', house: 'the Grand National Assembly' },
-  ua: { title: 'Member of the Verkhovna Rada', house: 'the Verkhovna Rada' },
-  eg: { title: 'Member of the House of Representatives', house: 'the House of Representatives' },
-  za: { title: 'Member of Parliament', house: 'the National Assembly' },
-  hu: { title: 'Member of the National Assembly', house: 'the National Assembly' },
-  cz: { title: 'Member of the Chamber of Deputies', house: 'the Chamber of Deputies' },
-  ro: { title: 'Member of the Chamber of Deputies', house: 'the Chamber of Deputies' },
-}
-
-function regional(g: GameState): { title: string; unit: string } | null {
-  return REGIONAL_HEADS[g.character.countryId] ?? null
-}
-
-function legislator(g: GameState): { title: string; house: string } {
-  return LEGISLATORS[g.character.countryId] ?? { title: 'Member of Parliament', house: 'Parliament' }
-}
 
 /** The first rung: an elected school board in the US, the city council elsewhere. */
 function localTitle(g: GameState): string {
