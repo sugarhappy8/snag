@@ -236,6 +236,39 @@ export function marketEventFactors(industry: string, country: string, year: numb
   return out
 }
 
+/** "+20%" / "−35%": a factor as a signed percentage. */
+function signed(f: number): string {
+  const v = Math.round((f - 1) * 100)
+  return `${v > 0 ? '+' : v < 0 ? '\u2212' : ''}${Math.abs(v)}%`
+}
+
+export interface EventImpact {
+  event: MarketEvent
+  /** True when this industry is at the center of it. */
+  exposed: boolean
+  demand: number
+  costs: number
+  value: number
+  /** "Hit hard: demand −20%, valuations −55%." */
+  text: string
+}
+
+/** How each event at work this year hits one industry in one country (strongest first). */
+export function marketEventImpacts(industry: string, country: string, year: number, worldMarket = false): EventImpact[] {
+  return activeMarketEvents(country, year).map(({ event, strength }) => {
+    const fx = eventEffect(event, industry, country, year)
+    const demand = 1 + strength * fx.demand * (worldMarket ? 0.35 : 1), costs = 1 + strength * fx.costs, value = 1 + strength * fx.value
+    const parts = [
+      Math.abs(demand - 1) >= 0.005 ? `demand ${signed(demand)}` : '',
+      Math.abs(costs - 1) >= 0.005 ? `input costs ${signed(costs)}` : '',
+      Math.abs(value - 1) >= 0.005 ? `valuations ${signed(value)}` : '',
+    ].filter(Boolean)
+    const big = Math.max(Math.abs(demand - 1), Math.abs(costs - 1), Math.abs(value - 1))
+    const how = !parts.length ? 'Barely touches this market' : fx.exposed ? (demand >= 1 && value >= 1 && costs <= 1.02 ? 'A boom for this market' : 'Hits this market hard') : big >= 0.1 ? 'Felt here too' : 'Felt mildly here'
+    return { event, exposed: fx.exposed, demand, costs, value, text: `${how}${parts.length ? `: ${parts.join(', ')}` : ''}.` }
+  }).filter((x) => x.text !== 'Barely touches this market.')
+}
+
 /** Investors' appetite for a new listing in this market (1 normal): booms help, busts hurt. */
 export function listingMood(industry: string, country: string, year: number): number {
   return clamp(1 + (marketEventFactors(industry, country, year).value - 1) * 0.4, 0.6, 1.4)

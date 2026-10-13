@@ -95,14 +95,14 @@ describe('choosing the share count', () => {
     const g = makeTestGame(53, { age: 30, money: 5e6 })
     g.character.countryId = 'us'
     const plan = { mode: 'found', industry: 'bakery', name: 'Crumb Co', city: 'Chicago', countryId: 'us', funding: 'savings', loan: 0, rate: 0, lender: '', investor: 0, equity: 0, investorName: '', extraFees: 0, days: 7, listingId: '', noLoan: false, cofounder: '', expert: false, seed: 0, seedEquity: 0, seedInvestor: '' }
-    runScript(g, 'business.found.capital', '500000', plan)
+    runScript(g, 'business.found.capital', '500000', plan, undefined as never)
     const ask = g.queue.find((q) => q.kind === 'input' && q.scriptId === 'business.found.shares')
     expect(ask && ask.kind === 'input' ? [ask.min, ask.max, ask.defaultValue] : []).toEqual([MIN_SHARES, MAX_SHARES, String(DEFAULT_SHARES)])
     const preview = foundingSliderPreview(g, 'business.found.shares', ask && ask.kind === 'input' ? ask.data : undefined)!
     expect(preview(1_000_000)).toMatch(/^1 million shares: about .* each at the start\. If it grows big enough to list/)
     expect(foundingSliderPreview(g, 'business.found.capital', plan)).toBeTypeOf('function')
     g.queue = []
-    runScript(g, 'business.found.shares', '2500000', ask && ask.kind === 'input' ? ask.data : plan)
+    runScript(g, 'business.found.shares', '2500000', ask && ask.kind === 'input' ? ask.data : plan, undefined as never)
     // On to the funding choice, carrying the share count.
     const next = g.queue[0]
     expect(next?.kind).toBe('choice')

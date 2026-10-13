@@ -2,6 +2,7 @@
 // TechState inside a BizState, local cost scales, founder and team skill, the industry boom/bust
 // cycles, the demand/capacity model (stage, tech level, R&D premiums, compute, plants) and the
 // valuation cache that economy.valuationOf reads through deepTechValue().
+import { marketEventFactors } from '../history/market-events'
 import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
 import { marketOf, industryDemand } from '../data/markets'
@@ -487,7 +488,8 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const ind = dtInd(b)
   const def = industryDef(ind)
   const d = DEEP_TECH[ind]
-  const cyc = industryCycle(g, ind, g.year).value
+  // The sector's own hype cycle, times the real booms and busts in their years (market-events.ts).
+  const cyc = industryCycle(g, ind, g.year).value * marketEventFactors(ind, b.countryId, g.year).value
   const hypeMult = (0.6 + t.hype / 150) * cyc
   const years = bookedYears(b)
   const cur = years[years.length - 1]

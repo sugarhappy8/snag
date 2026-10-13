@@ -1,5 +1,6 @@
 // A small persistent financial layer on the existing canonical rival roster, not a
 // second cast of companies. Only the annual world boundary creates or advances it.
+import { marketEventFactors } from '../history/market-events'
 import { INDUSTRY_IDS, type Industry } from '../data/markets'
 import { normalizeRivals, RIVAL_LIMIT, rivalActorKey, type RivalActor, type RivalOutcome, type RivalPoint } from '../economy/actors-state'
 import { bound, economyState, initialCountry, sectorOf, type CountryEconomy } from '../economy/model'
@@ -65,10 +66,12 @@ function advanceActor(old: RivalActor, r: Rival, m: RelevantMarket, opening: Rec
     next.strength = 0; next.cause = 'Closed after unfunded losses; its customers remain available to surviving competitors.'
   } else {
     const skill = bound((r.quality / 100 + e.skills) / 2, .1, 1)
-    const demand = bound(s.demand * (1 - .65 * m.pressure) * (.88 + .24 * skill), .1, 2.5)
+    // Rivals live through the same real booms and busts as the player (history/market-events.ts).
+    const fx = marketEventFactors(m.industry, operatingCountry, year, m.scope === 'world')
+    const demand = bound(s.demand * fx.demand * (1 - .65 * m.pressure) * (.88 + .24 * skill), .1, 2.5)
     const delivered = Math.min(old.capacity * s.availability * Math.min(1, s.workforce), demand)
     const revenue = delivered * (1.13 + skill * .18 + old.adoption * .12)
-    const running = delivered * .48 * s.costs + old.capacity * (.3 / (1 + old.adoption * .35) + .06 * e.wages)
+    const running = delivered * .48 * s.costs * fx.costs + old.capacity * (.3 / (1 + old.adoption * .35) + .06 * e.wages)
     const profit = revenue - running - old.debt * bound(e.rate + .025, .01, .35)
     let cash = old.cash + profit, debt = old.debt, capacity = old.capacity, adoption = old.adoption
     // Bank lending finances a bounded buffer, not unlimited loss support.
