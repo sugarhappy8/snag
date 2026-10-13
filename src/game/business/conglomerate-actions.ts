@@ -57,12 +57,12 @@ import {
   type GroupMember,
 } from './conglomerate-state'
 import { LASTING_YEARS, refreshValue, valuationOf } from './economy'
-import { capitalGainsTax, IPO_COLLAPSE, ipoThreshold } from './exit'
+import { capitalGainsTax, familyNote, IPO_COLLAPSE, ipoThreshold } from './exit'
 import { earmarkedCash } from './gamestudio'
-import { clearGroupCeoJob } from './conglomerate-job'
+import { clearGroupCeoJob, clearGroupJob, readGroupJob } from './conglomerate-job'
 import { BIZ_VERSION, bizOf, ceoJob, executiveEquity, findBusiness, normalizeBiz, readBiz, type BizState, type Manager, type Statement } from './state'
 import { equityTarget, stakeText } from './executive-shares'
-import { payFamilyGroupDividend } from './dynasty-ownership'
+import { cashOutFamilyHolders, payFamilyGroupDividend } from './dynasty-ownership'
 import { clampN, cleanName, markBest, money, num, pct, rec, round2, str, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -1112,6 +1112,21 @@ export function shareSale(g: GameState, grp: Group, fraction: number): { sold: n
   return { sold, impact, price, gross, tax: capitalGainsTax(g, gross, basis) }
 }
 
+/**
+ * A listed group you no longer own any of leaves your hands with all its divisions; relatives'
+ * family shares stay theirs, joining their own wealth at `marketCap`. Returns their names.
+ */
+export function leaveListedGroup(g: GameState, grp: Group, marketCap: number, why: 'quit' | 'other' = 'other'): string[] {
+  const relatives = grp.core.familyShares?.length ? cashOutFamilyHolders(g, grp.core.familyShares, marketCap, `${grp.core.name}'s family shares`) : []
+  const ids = new Set(grp.members.map((x) => x.a.id))
+  g.assets = g.assets.filter((x) => !ids.has(x.id))
+  const job = ceoJob(g)
+  if (job && typeof job.data.assetId === 'string' && ids.has(job.data.assetId)) endJob(g, 'job', why)
+  // Relatives working for the group work for somebody else's company now.
+  for (const p of g.people) if (readGroupJob(p)?.groupId === grp.core.id) clearGroupJob(p)
+  return relatives
+}
+
 /** Sell a fraction (0-1) of the player's group shares on the market. */
 export function sellGroupShares(g: GameState, groupId: string, fraction: number): boolean {
   if (groupBlock(g)) return false
@@ -1124,15 +1139,13 @@ export function sellGroupShares(g: GameState, groupId: string, fraction: number)
   addMoney(g, gross - tax)
   for (const x of grp.members) x.b.invested = Math.round(x.b.invested * (1 - f))
   grp.core.share = stake - sold
-  if ((f >= 0.999 || grp.core.share < 0.01) && !(grp.core.familyShares?.length)) {
-    // Sold out: the group is somebody else's now.
-    const ids = new Set(grp.members.map((x) => x.a.id))
-    g.assets = g.assets.filter((x) => !ids.has(x.id))
-    const job = ceoJob(g)
-    if (job && typeof job.data.assetId === 'string' && ids.has(job.data.assetId)) endJob(g, 'job', 'quit')
-    count(g, 'businessesSold', ids.size)
+  if (f >= 0.999 || grp.core.share < 0.01) {
+    // Sold out: the group is somebody else's now (relatives keep their family shares).
+    const n = grp.members.length
+    const relatives = leaveListedGroup(g, grp, price * saleImpact(sold, 1).end * l.sharesOut, 'quit')
+    count(g, 'businessesSold', n)
     log(g, `I sold the last of my ${grp.core.name} shares.`, 'good')
-    notice(g, 'Sold Out', `You sold all your remaining shares of ${grp.core.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. Its ${ids.size} divisions are somebody else's now.`, { emoji: '\u{1F4B8}', tone: 'good' })
+    notice(g, 'Sold Out', `You sold all your remaining shares of ${grp.core.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. Its ${n} divisions are somebody else's now.${familyNote(relatives)}`, { emoji: '\u{1F4B8}', tone: 'good' })
     return true
   }
   // The sale weighs on the price.

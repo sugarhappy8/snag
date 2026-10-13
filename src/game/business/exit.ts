@@ -14,7 +14,7 @@ import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state
 import { clampN, industryNoun, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
 import { bankAdvanceOf } from './bank-state'
-import { payFamilyBusinessProceeds } from './dynasty-ownership'
+import { cashOutFamilyHolders, payFamilyBusinessProceeds } from './dynasty-ownership'
 
 /**
  * IPO threshold: last year's net profit. Set where a successful mid-size company gets to (about
@@ -184,6 +184,27 @@ export function goPublic(g: GameState, a: Asset, b: BizState): void {
   notice(g, 'IPO Day!', text, { emoji: '\u{1F514}', tone: 'good' })
 }
 
+/** "Your sister keeps her shares…": what happened to the relatives' part when you sold out. */
+export function familyNote(names: string[]): string {
+  if (!names.length) return ''
+  const who = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+  return ` ${who} ${names.length === 1 ? 'keeps' : 'keep'} their family shares, now part of their own wealth.`
+}
+
+/**
+ * A listed company you no longer own any of leaves your hands: relatives' family shares stay
+ * theirs (joining their own wealth at market value) and the company leaves your assets. Returns
+ * the living relatives' names.
+ */
+export function leaveListedCompany(g: GameState, a: Asset, b: BizState, why: 'quit' | 'other' = 'other'): string[] {
+  const relatives = b.familyShares?.length ? cashOutFamilyHolders(g, b.familyShares, b.sharesOut * b.sharePrice, `${a.name}'s family shares`) : []
+  delete b.familyShares
+  g.assets = g.assets.filter((x) => x.id !== a.id)
+  if (ceoJob(g, a.id)) endJob(g, 'job', why)
+  afterMemberGone(g, a.details, a.name)
+  return relatives
+}
+
 /** Sell a fraction (0-1) of the owner's shares on the market. */
 export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number): void {
   const f = clampN(fraction, 0, 1)
@@ -199,12 +220,10 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   b.share = stake - sold
   b.sharePrice = Math.max(.01, Math.round(b.sharePrice * order.end * 100) / 100)
   b.valuation = Math.round(b.sharePrice * b.sharesOut)
-  if ((f >= 0.999 || b.share < 0.005) && !b.familyShares?.length) {
-    g.assets = g.assets.filter((x) => x.id !== a.id)
-    if (ceoJob(g, a.id)) endJob(g, 'job', 'quit')
-    afterMemberGone(g, a.details, a.name)
+  if (f >= 0.999 || b.share < 0.005) {
+    const relatives = leaveListedCompany(g, a, b, 'quit')
     log(g, `I sold the last of my ${a.name} shares.`, 'good')
-    notice(g, 'Sold Out', `You sold all your remaining shares of ${a.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. It's somebody else's company now.`, { emoji: '\u{1F4B8}', tone: 'good' })
+    notice(g, 'Sold Out', `You sold all your remaining shares of ${a.name} for ${formatMoney(gross)}${tax ? ` (${formatMoney(tax)} capital gains tax)` : ''}. It's somebody else's company now.${familyNote(relatives)}`, { emoji: '\u{1F4B8}', tone: 'good' })
     count(g, 'businessesSold')
     return
   }

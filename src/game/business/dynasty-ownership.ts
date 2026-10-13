@@ -180,6 +180,23 @@ export function payFamilyGroupDividend(g: GameState, grp: Group, groupPayout: nu
   for (const holder of grp.core.familyShares ?? []) payHolder(g, holder.id, groupPayout * holder.share, true, `${grp.core.name}'s dividend`)
 }
 
+/**
+ * You sold out of a listed family company: it leaves your hands, but each relative's shares stay
+ * theirs. NPCs hold no Asset records, so their stake joins their own wealth at its market value
+ * (`total` is the whole company's). Returns the names of the living relatives it went to.
+ */
+export function cashOutFamilyHolders(g: GameState, holders: readonly { id: string; share: number }[], total: number, what: string): string[] {
+  const names: string[] = []
+  for (const holder of holders) {
+    const part = Math.max(0, total) * Math.max(0, holder.share)
+    if (!(part > 0)) continue
+    const alive = livingHolder(g, holder.id)
+    if (alive) names.push(alive.firstName)
+    payHolder(g, holder.id, part, false, what)
+  }
+  return names
+}
+
 export function payFamilyBusinessProceeds(g: GameState, b: BizState, total: number, income = false): void {
   const m = readMembership(b.group)
   const holders = m?.core.familyShares ?? b.familyShares ?? []

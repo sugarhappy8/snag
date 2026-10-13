@@ -36,7 +36,9 @@ import {
   updateSharePrice,
   valuationOf,
 } from './economy'
-import { declareBankruptcy, ipoThreshold } from './exit'
+import { declareBankruptcy, familyNote, ipoThreshold, leaveListedCompany } from './exit'
+import { leaveListedGroup } from './conglomerate-actions'
+import { groupsOf, liveGroup, sharePriceOf } from './conglomerate-state'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
 import { maybeBusinessEvent } from './events'
@@ -414,11 +416,33 @@ function hiredCeoTurn(g: GameState, a: Asset, b: BizState, lastCycle: number): v
 }
 
 /** One fiscal year for every business the player owns. */
+/**
+ * Listed companies and groups you hold none of any more (a sell-out from before v2.4.0 left them
+ * at 0% when relatives held family shares) leave your companies; the relatives keep their shares
+ * as their own wealth. Private family holdings an excluded heir can see stay (docs/DYNASTY.md).
+ */
+function leaveUnownedListed(g: GameState): void {
+  for (const row of groupsOf(g)) {
+    if (!row.core.listing || row.core.share > 1e-6) continue
+    const grp = liveGroup(g, row.core.id)
+    if (!grp?.core.listing) continue
+    const relatives = leaveListedGroup(g, grp, sharePriceOf(grp) * grp.core.listing.sharesOut)
+    notice(g, 'No Longer Yours', `You own none of ${grp.core.name} any more, so it has left your companies.${familyNote(relatives)}`, { emoji: '\u{1F4B8}' })
+  }
+  for (const a of businessAssets(g)) {
+    const b = bizOf(g, a)
+    if (!b.public || inGroup(g, b) || b.share > 1e-6) continue
+    const relatives = leaveListedCompany(g, a, b)
+    notice(g, 'No Longer Yours', `You own none of ${a.name} any more, so it has left your companies.${familyNote(relatives)}`, { emoji: '\u{1F4B8}' })
+  }
+}
+
 export function yearlyBusinessImpl(g: GameState): void {
   const c = g.character
   if (!c.alive) return
   // Late relatives' stakes pass to their heirs before anything pays or values them.
   settleLateFamilyOwners(g)
+  leaveUnownedListed(g)
   syncCeo(g)
   prepareGroupManagement(g)
   // Last year's price promises end with the year that was just booked.
