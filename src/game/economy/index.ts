@@ -5,7 +5,10 @@ import { outcomeTag } from '../timeMachine'
 import type { GameState } from '../types'
 import { COUNTRIES } from '../world'
 import { advanceRivals } from '../business/economic-actors'
-import { advanceCountry, worldConditions } from './simulation'
+import { advanceCountry, worldConditions, type NationInput } from './simulation'
+import { nationOverlay } from '../nation/effects'
+import { tradeOverlay } from '../nation/trade-policy'
+import { consumeWriteDowns } from '../nation/state'
 import { bound, ECONOMY_VERSION, economyOf, economyState, initialCountry, pointOf, sectorOf, storeEconomy, type EconomicPolicy, type EconomyFeedback, type EconomyState } from './model'
 
 export { bound, ECONOMY_KEY, economicRoll, economyOf, economyState, initialCountry, sectorOf, SECTORS, SECTOR_RULES } from './model'
@@ -29,13 +32,18 @@ export function yearlyEconomy(g: GameState): void {
   const world = worldConditions(opening)
   const seed = `${g.lifeId.replace(/-g\d+$/, '')}${outcomeTag(g, g.year)}`
   const next: EconomyState = { v: ECONOMY_VERSION, year: g.year, countries: {}, previous: opening, history: {}, pending: [], policies: prev.policies.filter(p => p.until >= g.year), receipts: [], rivals: advanceRivals(g, opening, prev.rivals, g.year), previousRivals: prev.rivals }
+  // Governments' own laws (nation/): measures passed before this year move this transition.
+  const trade = tradeOverlay(g, g.year)
   for (const c of COUNTRIES) {
     const old = opening[c.id] ?? initialCountry(c.id, g.year - 1)
-    const current = advanceCountry(old, c.id, g.year, seed, world, prev.pending, next.policies, opening)
+    const overlay = nationOverlay(g, c.id, g.year, false)
+    const nation: NationInput | null = overlay || trade ? { overlay, trade } : null
+    const current = advanceCountry(old, c.id, g.year, seed, world, prev.pending, next.policies, opening, nation)
     next.countries[c.id] = current
     next.history[c.id] = [...(prev.history[c.id] ?? [pointOf(old)]), pointOf(current)].slice(-32)
   }
   storeEconomy(g, next)
+  consumeWriteDowns(g)
   const local = next.countries[g.character.countryId], before = opening[g.character.countryId]
   if (local && before && g.character.age >= 16 && (local.growth < -.02 && before.growth >= -.02 || local.credit < .72 && before.credit >= .72 || local.supply > .12 && before.supply <= .12)) {
     log(g, `Around me: ${local.causes[0]}`, 'neutral')

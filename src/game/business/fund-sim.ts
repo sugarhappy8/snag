@@ -183,7 +183,7 @@ export function simulateFund(g: GameState, b: BizState, year: number, ownerDraw:
   const booked = b.yearCosts - b.yearIncome
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, b.cash + preSalary + booked)))
   const pbt = preSalary - ownerPay
-  const tax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedHomeSales, g, year)
+  const tax = allocatedCorporateTax(b.countryId, pbt, revenue, b.yearIncome, bookedHomeSales, g, year, b.industry)
   const net = Math.round(pbt - tax)
   b.cash = Math.round(b.cash + net + booked)
   b.employees = staffCount; b.production = 0; b.inventory = 0

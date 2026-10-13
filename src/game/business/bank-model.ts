@@ -549,7 +549,7 @@ export function projectYear(g: GameState, b: BizState, year: number, roll: Roll,
 }
 
 function afterTax(ctx: BankYearCtx, g: GameState, p: BankProjection): number {
-  return p.operating - allocatedCorporateTax(ctx.countryId, p.operating, p.revenue, 0, 0, g, ctx.year)
+  return p.operating - allocatedCorporateTax(ctx.countryId, p.operating, p.revenue, 0, 0, g, ctx.year, ctx.online ? 'onlineBank' : 'bank')
 }
 /**
  * Expected after-tax profit over the next `years` under one policy, holding this year's market

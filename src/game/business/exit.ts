@@ -17,6 +17,7 @@ import { bankAdvanceOf } from './bank-state'
 import { cashOutFamilyHolders, payFamilyBusinessProceeds } from './dynasty-ownership'
 import { FLOAT_DEFAULT, ipoPlan, retailDepth, retailVerdict, shareCountOf, shareCountText } from './share-structure'
 import { listingMood } from '../history/market-events'
+import { personalTax } from '../nation/effects'
 
 /**
  * IPO threshold: last year's net profit. Set where a successful mid-size company gets to (about
@@ -35,7 +36,8 @@ export const IPO_COLLAPSE = 0.5
 /** Capital gains tax rate on selling a business or shares where the owner lives. */
 export function capitalGainsRate(g: GameState): number {
   const m = marketOf(g.character.countryId)
-  return clampN(m.corporateTax * 0.8, 0, 0.3)
+  const change = personalTax(g, 'capitalGains') / 100
+  return change ? clampN(m.corporateTax * 0.8 + change, 0, 0.6) : clampN(m.corporateTax * 0.8, 0, 0.3)
 }
 
 /** Tax owed on proceeds above the owner's cost basis (scaled to the share sold). */

@@ -5,6 +5,7 @@ import { AnnualReport } from './AnnualReport'
 import { Blackjack } from './Blackjack'
 import { Burglary } from './Burglary'
 import { HorseRace } from './HorseRace'
+import { NationReport } from './NationReport'
 import { Pickpocket } from './Pickpocket'
 import { PrisonEscape } from './PrisonEscape'
 import { Slots } from './Slots'
@@ -18,4 +19,5 @@ export const MINIGAMES: Record<MinigameKind, ComponentType<MinigameProps>> = {
   prisonEscape: PrisonEscape,
   pickpocket: Pickpocket,
   annualReport: AnnualReport,
+  nationReport: NationReport,
 }

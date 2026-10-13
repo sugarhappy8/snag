@@ -42,7 +42,7 @@ function current(g: GameState, id: string): { a: Asset; b: BizState; v: VenueSta
   const a = findBusiness(g, id)
   if (!a || manageBlock(g, a)) return null
   const b = readBiz(g, a)
-  if (!isVenue(b.industry) || !isIndustryLegal(b.countryId, b.industry)) return null
+  if (!isVenue(b.industry) || !isIndustryLegal(b.countryId, b.industry, g)) return null
   return { a, b: bizOf(g, a), v: venueView(a) }
 }
 
@@ -166,7 +166,7 @@ export function prepareVenueYear(g: GameState, a: Asset, b: BizState, year: numb
   const v = venueView(a)
   if (v.lastYear >= year || b.founded > year) return
   v.lastYear = year
-  if (!isIndustryLegal(b.countryId, b.industry)) {
+  if (!isIndustryLegal(b.countryId, b.industry, g)) {
     b.openFraction = 0
     log(g, `${a.name} cannot trade under this country's simulated venue-licensing rules.`, 'bad')
     save(a, v); return
@@ -189,7 +189,7 @@ export function prepareVenueYear(g: GameState, a: Asset, b: BizState, year: numb
 }
 
 export function maybeVenueOwnerEvent(g: GameState, a: Asset, b: BizState, _year: number, managed: boolean): boolean {
-  if (!isVenue(b.industry) || !g.character.alive || g.character.prison || g.character.age < 18 || !isIndustryLegal(b.countryId, b.industry)) return false
+  if (!isVenue(b.industry) || !g.character.alive || g.character.prison || g.character.age < 18 || !isIndustryLegal(b.countryId, b.industry, g)) return false
   const v = venueView(a)
   if (managed || !runsIt(g, a) || !atVenue(g, b) || v.pending || !chance(g, .3)) return false
   visitVenue(g, a.id)

@@ -125,6 +125,8 @@ export interface MarketState {
   defendUntil: number
   /** Years the company bought out a rival (antitrust watches the pattern). */
   acquired: number[]
+  /** Extra tariffs and sanctions on its goods by country from governments' measures (nation/), stamped yearly. */
+  barriers?: Record<string, number>
 }
 
 function readExtra(v: Json): ExtraRival | null {
@@ -288,7 +290,15 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
     supplyUntil: Math.round(num(o.supplyUntil)),
     defendUntil: Math.round(num(o.defendUntil)),
     acquired: Array.isArray(o.acquired) ? o.acquired.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)).map(Math.round).slice(-20) : [],
+    ...readBarriers(o.barriers),
   }
+}
+
+function readBarriers(v: Json | undefined): { barriers?: Record<string, number> } {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  const out: Record<string, number> = {}
+  for (const [k, n] of Object.entries(v).slice(0, 60)) if (/^[a-z]{2}$/.test(k) && typeof n === 'number' && Number.isFinite(n) && n > 0) out[k] = Math.min(.9, Math.round(n * 1e4) / 1e4)
+  return Object.keys(out).length ? { barriers: out } : {}
 }
 
 function readList<T>(v: Json | undefined, read: (x: Json) => T | null): T[] {

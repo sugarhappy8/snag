@@ -86,6 +86,7 @@ import { isEstranged, keptAwayBy } from './events/will-core'
 import { familyUseNodes } from './shops/luxury-family'
 import { noteCashGift } from './events/wealth-core'
 import { holdsInfluenceJob } from './special/corruption'
+import { personalTax } from './nation/effects'
 import type { GameState, Gender, MenuAction, MenuInfo, MenuInput, MenuNode, Person, RelationKind } from './types'
 
 // ---------------------------------------------------------------------------
@@ -1052,10 +1053,14 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
 
   // Estate
   let inherited = 0
+  let inheritanceTax = 0
   if (isFamily(p)) {
     inherited = inheritance(g, p)
+    // An inheritance tax the government passed (nation/) takes its cut above $1M.
+    const rate = Math.max(0, personalTax(g, 'inheritance')) / 100
+    inheritanceTax = inherited > 1_000_000 && rate > 0 ? Math.round((inherited - 1_000_000) * rate) : 0
     if (inherited > 0) {
-      addMoney(g, inherited)
+      addMoney(g, inherited - inheritanceTax)
       count(g, 'inheritances')
       count(g, 'inheritedMoney', inherited)
     }
@@ -1072,7 +1077,7 @@ function handleDeath(g: GameState, p: Person, cause: DeathCause): void {
   if (p.relation === 'spouse') p.data.widowed = true
 
   let text = deathSentence(p, cause, `Your ${label}`)
-  if (inherited > 0) text += `\n\nInheritance: ${money(inherited)}`
+  if (inherited > 0) text += `\n\nInheritance: ${money(inherited - inheritanceTax)}${inheritanceTax > 0 ? ` (after ${money(inheritanceTax)} inheritance tax)` : ''}`
   log(g, `My ${label} ${p.firstName} died at age ${p.age} (${cause.cause.toLowerCase()}).${inherited > 0 ? ` I inherited ${money(inherited)}.` : ''}`, 'bad')
 
   // Funeral planning falls to you for spouses, children and your last parent.

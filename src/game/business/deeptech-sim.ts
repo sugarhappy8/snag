@@ -143,7 +143,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   const fromInvestors = Math.min(t.venture, localEcon(ind, b.countryId, b.city).wage)
   const ownerPay = Math.round(clampN(ownerDraw, 0, Math.max(0, Math.max(0, b.cash + delta + supply.cashAdjustment) + fromInvestors)))
   const pbt = pbt0 - ownerPay
-  const corpTax = allocatedCorporateTax(b.countryId, pbt, netRevenue, b.yearIncome, bookedSales, g, year)
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, netRevenue, b.yearIncome, bookedSales, g, year, b.industry)
   const net = pbt - corpTax
   b.cash = dollars(b.cash + delta - ownerPay - corpTax + supply.cashAdjustment)
   // The R&D account covers what company cash can't.

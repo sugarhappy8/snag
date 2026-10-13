@@ -101,7 +101,7 @@ export function migrateLegacyAi(g: GameState): GameState {
 }
 
 const MODAL_KINDS: ReadonlySet<string> = new Set<ModalItem['kind']>(['notice', 'choice', 'input', 'minigame', 'aiTask'])
-const MINIGAME_KINDS = new Set(['blackjack', 'horseRace', 'burglary', 'prisonEscape', 'slots', 'pickpocket', 'annualReport'])
+const MINIGAME_KINDS = new Set(['blackjack', 'horseRace', 'burglary', 'prisonEscape', 'slots', 'pickpocket', 'annualReport', 'nationReport'])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)

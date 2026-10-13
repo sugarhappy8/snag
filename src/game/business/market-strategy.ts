@@ -21,6 +21,7 @@ import { eventChance } from './events'
 import { CAMPAIGN_TERM, DEFEND_TERM, MODE_LABEL, MODE_TERM, SUPPLY_HIT, SUPPLY_SHIELDED, SUPPLY_TERM, demandWeights, reachOf } from './market-reach'
 import { placeName } from './market-places'
 import { barriersInto } from './market-trade'
+import { barriersWith } from '../nation/trade-policy'
 import { industryDef } from './industries'
 import type { BizState } from './state'
 import { cap, clampN, money } from './util'
@@ -232,7 +233,7 @@ export function runEnter(g: GameState, a: Asset, b: BizState, country: string, m
   st.entries = st.entries.filter((e) => e.until + 3 >= g.year).slice(-24)
   st.lastMove = g.year
   saveMarket(b, st)
-  const bar = barriersInto(b.countryId, country, b.industry, g.year)
+  const bar = barriersWith(g, b.countryId, country, b.industry, g.year)
   log(g, `${a.name} entered ${placeName(country)} (${MODE_LABEL[mode].toLowerCase()}).`, 'good')
   notice(
     g,

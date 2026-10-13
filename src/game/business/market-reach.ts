@@ -69,11 +69,12 @@ export function demandWeights(industry: Industry | string): Map<string, number> 
 }
 
 /** A country entry's strength this year (0-1): the mode, the term, minus tariffs and red tape. */
-export function entryStrength(e: MarketEntry, industry: Industry | string, year: number, supplyUntil = 0): number {
+export function entryStrength(e: MarketEntry, industry: Industry | string, year: number, supplyUntil = 0, policy = 0): number {
   const tf = termFactor(year, e.year, e.until)
   if (tf <= 0) return 0
   const relief = supplyUntil >= year ? 1 - SUPPLY_TARIFF_RELIEF : 1
-  const tariffDrag = Math.min(0.7, tariffOn(e.home, e.country, year) * goodsShare(industry) * TARIFF_DRAG[e.mode] * relief)
+  // `policy`: governments' own tariffs and sanctions on these goods (MarketState.barriers, nation/).
+  const tariffDrag = Math.min(0.75, (tariffOn(e.home, e.country, year) + policy) * goodsShare(industry) * TARIFF_DRAG[e.mode] * relief + (policy > 0 ? policy * .3 : 0))
   const otherDrag = Math.min(0.6, otherBarriers(e.country, year) * OTHER_DRAG[e.mode])
   return MODE_EFF[e.mode] * tf * (1 - tariffDrag) * (1 - otherDrag)
 }
@@ -88,9 +89,9 @@ export function campaignStrength(c: MarketCampaign, year: number): number {
  * which work best where the company already sells. `home` is where the company is based: it
  * is always present there.
  */
-export function presenceIn(st: Pick<MarketState, 'entries' | 'campaigns' | 'supplyUntil'>, industry: Industry | string, country: string, home: string, year: number): number {
+export function presenceIn(st: Pick<MarketState, 'entries' | 'campaigns' | 'supplyUntil' | 'barriers'>, industry: Industry | string, country: string, home: string, year: number): number {
   let base = country === home ? 1 : 0
-  for (const e of st.entries) if (e.country === country) base = Math.max(base, entryStrength(e, industry, year, st.supplyUntil))
+  for (const e of st.entries) if (e.country === country) base = Math.max(base, entryStrength(e, industry, year, st.supplyUntil, st.barriers?.[e.country] ?? 0))
   const cs = st.campaigns.filter((c) => c.country === country).map((c) => campaignStrength(c, year)).sort((a, b) => b - a)
   let camp = 0
   cs.forEach((v, i) => {
@@ -101,7 +102,7 @@ export function presenceIn(st: Pick<MarketState, 'entries' | 'campaigns' | 'supp
 }
 
 /** The sum that drives the multiplier: demand-weighted presence outside the home market, plus campaigns at home. */
-export function reachInput(st: Pick<MarketState, 'key' | 'entries' | 'campaigns' | 'supplyUntil'>, industry: Industry | string, year: number): number {
+export function reachInput(st: Pick<MarketState, 'key' | 'entries' | 'campaigns' | 'supplyUntil' | 'barriers'>, industry: Industry | string, year: number): number {
   const d = marketDef(industry)
   if (d.scope === 'national') {
     // Local trades have one market: a campaign there is the only reach there is.

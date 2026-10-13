@@ -41,6 +41,7 @@ import { createPerson, eraName, notePerson, randomOccupation } from './people'
 import { bell, chance, freshSeed, pick, randInt, uid, weightedPick } from './rng'
 import { defineScript } from './scripts'
 import { planEstate, settleReading } from './events/will-estate'
+import { personalTax } from './nation/effects'
 import { askingSalary, becomeCeo, installManager } from './business/career'
 import { liveGroup, saveGroup } from './business/conglomerate-state'
 import { successionEstateUnits } from './business/nepo-inheritance'
@@ -1213,7 +1214,7 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const estate = Math.round(old.money + divisibleEquity - debts)
   const adult = heirP.age >= 18
   // Who inherits what (the will, charity, contests and probate live in events/will-estate.ts).
-  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0 || groupIds.size > 0, cashAfterDebts: old.money - debts })
+  const plan = planEstate(n, { estate, heirId: childId, adult, hasProperty: divisibleProperty.length > 0 || groupIds.size > 0, cashAfterDebts: old.money - debts, taxDelta: personalTax(g, 'inheritance', old.countryId) / 100 })
   const heirIncluded = plan.heirIncluded
   const shareCount = Math.max(1, plan.ways)
   const keepProperty = plan.keepProperty

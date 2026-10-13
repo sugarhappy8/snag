@@ -708,7 +708,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
   const pbt = pbt0 - ownerPay
   // Concrete invention sales were already cash-booked through yearIncome. Attributed contracts
   // follow their market; any other one-off income remains taxable at headquarters.
-  const corpTax = allocatedCorporateTax(b.countryId, pbt, netByCountry, b.yearIncome, bookedHomeSales, g, year)
+  const corpTax = allocatedCorporateTax(b.countryId, pbt, netByCountry, b.yearIncome, bookedHomeSales, g, year, b.industry)
   const net = pbt - corpTax
   let cash = dollars(b.cash + net + alreadyBooked + supply.cashAdjustment)
 

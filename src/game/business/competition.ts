@@ -235,7 +235,7 @@ export function antitrustOf(b: BizState, share: number, year: number, priceRatio
   const acquisitions = recentAcquisitions(st, year)
   let p = antitrustChance(regime, share, priceRatio, lobbied, revenue, acquisitions)
   const regional: AntitrustView['regional'] = []
-  if (world && st && rivals && st.entries.some((e) => entryStrength(e, b.industry, year, st.supplyUntil) > 0.15)) {
+  if (world && st && rivals && st.entries.some((e) => entryStrength(e, b.industry, year, st.supplyUntil, st.barriers?.[e.country] ?? 0) > 0.15)) {
     const named = rivals.reduce((t, r) => t + r.share, 0)
     const reg = regionalShares({
       industry: b.industry,
@@ -247,7 +247,7 @@ export function antitrustOf(b: BizState, share: number, year: number, priceRatio
       fringe: Math.max(0, 1 - share - named),
     })
     for (const e of st.entries) {
-      if (regional.some((x) => x.country === e.country) || entryStrength(e, b.industry, year, st.supplyUntil) <= 0.15) continue
+      if (regional.some((x) => x.country === e.country) || entryStrength(e, b.industry, year, st.supplyUntil, st.barriers?.[e.country] ?? 0) <= 0.15) continue
       const local = reg.me.get(e.country) ?? 0
       const w = reg.weights.get(e.country) ?? 0
       // A foreign regulator looks at the slice of your sales that country accounts for.
