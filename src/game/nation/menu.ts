@@ -387,9 +387,9 @@ export function dashboardMenu(): MenuGroup {
         ...NEW_TAX_IDS.filter(id => p.newTaxes[id]?.level).map(id => `${NEW_TAXES[id].label} L${p.newTaxes[id]!.level}`),
         ...Object.entries(p.breaks).map(([i, l]) => `break for ${i} L${l}`)]
       info('taxes', '💵', taxes.length ? taxes.join(' · ') : 'Taxes: the law as it was')
-      const trade = [...p.tariffs.map(r => `${r.add}% on ${r.input === 'all' ? 'imports' : r.input}${r.partner === 'all' ? '' : ` from ${r.partner.toUpperCase()}`}`),
+      const trade = [...p.tariffs.map(r => `${r.add}% tariff on ${r.input === 'all' ? 'imports' : INPUT_LABEL[r.input] ?? r.input}${r.partner === 'all' ? '' : ` from ${getCountry(r.partner).name}`}`),
         ...Object.keys(p.deals).map(id => `deal with ${getCountry(id).name}`), ...Object.keys(p.sanctions).map(id => `sanctions on ${getCountry(id).name}`),
-        ...Object.keys(p.exportBans).map(id => `no ${id} exports`)]
+        ...Object.keys(p.exportBans).map(id => `no exports of ${INPUT_LABEL[id as TradeInput] ?? id}`)]
       info('trade', '📦', trade.length ? trade.join(' · ') : 'Trade: customs as usual')
       const hits = p.retaliation.filter(r => r.until >= g.year)
       if (hits.length) info('retaliation', '🎯', `Tariffs against us: ${hits.map(r => `${getCountry(r.from).name} ${r.add}%`).join(', ')}`)

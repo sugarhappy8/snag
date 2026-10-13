@@ -12,7 +12,7 @@ import { chance } from '../rng'
 import type { GameState, Json } from '../types'
 import { getCountry } from '../world'
 import { BUDGET_LINES, budgetAvailable, GROUP_IDS, GROUPS, groupWeights, institutionStrength, type GroupId } from './data'
-import { nationOverlay, personalTax, RATING_SPREAD, wealthTaxRate } from './effects'
+import { nationOverlay, personalTax, wealthTaxRate } from './effects'
 import { accountability, onTopJob } from './govern'
 import { legislatureOf, midterm } from './legislature'
 import { adjustApproval, officeView, setPortfolio, type OfficeView } from './office'
@@ -132,10 +132,14 @@ export function buildReport(g: GameState, v: OfficeView): ReportData {
   }
   for (const c of e.causes) if (causes.length < 8 && !c.startsWith('Government policy')) causes.push(c)
   const rating = p.rating || ratingFor(g, country, p)
-  const spread = RATING_SPREAD[rating] ?? 0
+  // The same spread the economy charges: measured from the rating the country started with.
+  const spread = o?.spread ?? 0
+  const pts = (Math.abs(spread) * 100).toFixed(1)
   return {
     year: g.year, country: getCountry(country).name, office: v.title, approval: v.approval, metrics, groups, causes, rating,
-    ratingNote: spread > 0 ? `Lenders charge about ${(spread * 100).toFixed(1)} points extra on new debt.` : 'Lenders trust the government.',
+    ratingNote: spread >= .0005 ? `Since the rating fell, lenders charge about ${pts} points more on new debt.`
+      : spread <= -.0005 ? `Since the rating rose, new debt costs about ${pts} points less.`
+      : 'The rating has not changed what lenders charge.',
   }
 }
 
