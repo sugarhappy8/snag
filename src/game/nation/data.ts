@@ -229,6 +229,8 @@ export const PARTY_STANCE: Record<string, Required<Lean>> = {
   independent: { econ: 0, green: .4, liberty: .5, order: .5 },
 }
 export const PARTY_IDS = Object.keys(PARTY_STANCE)
+export const PARTY_NAME: Record<string, string> = { progressive: 'Progressive Party', conservative: 'Conservative Party', centrist: 'Centrist Alliance', green: 'Green Party', libertarian: 'Liberty Party', independent: 'independents' }
+export const partyName = (id: string): string => PARTY_NAME[id] ?? id
 
 /** 0 (captured) - 100 (rock solid): courts, auditors, the press. Weaker before 1945. */
 export function institutionStrength(countryId: string, year: number): number {

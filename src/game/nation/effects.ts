@@ -8,10 +8,11 @@ import { goodsShare } from '../business/market-trade'
 import type { Sector } from '../economy/model'
 import { importReliance, initialTrade } from '../economy/trade'
 import type { GameState } from '../types'
+import { getCountry } from '../world'
 import {
   BREAK_IMPACT, BUDGET, BUDGET_LINES, DEAL_IMPACT, DEREG_COSTS, DEREG_FINANCE_CREDIT, EXPORT_BAN_IMPACT, GROUP_IDS, LAWS, LEGAL, LEGAL_IDS,
   NATIONALIZED_COSTS, NATIONALIZED_DEMAND, NEW_TAXES, NEW_TAX_IDS, PROTECTION, SANCTION_IMPACT, TARIFF_IMPACT, TAXES, TAX_IDS, TRADE_INPUT_IDS,
-  BREAK_RATE, WINDFALL_RATE, budgetAvailable, legalAvailable, newTaxAvailable, taxAvailable,
+  BREAK_RATE, WINDFALL_RATE, INPUT_LABEL, SECTOR_LABEL, budgetAvailable, legalAvailable, newTaxAvailable, taxAvailable,
   type GroupId, type Impact, type PublicLine, type TaxId, type TradeInput,
 } from './data'
 import { hasPolicy, policyOf, policyState, type CountryPolicy, type Layer } from './state'
@@ -162,7 +163,7 @@ function compute(p: CountryPolicy, year: number, live: boolean): Overlay {
   if (p.environment && year >= 1960) add(o, 'environment', `${p.environment > 0 ? 'stricter' : 'looser'} environmental rules`, LAWS.environment, scale('environment', p.environment))
   for (const [sector, since] of Object.entries(p.dereg) as [Sector, number][]) {
     if (!since) continue
-    add(o, `dereg.${sector}`, `deregulated ${sector}`, LAWS.dereg, scale(`dereg.${sector}`, 1))
+    add(o, `dereg.${sector}`, `deregulated ${SECTOR_LABEL[sector]}`, LAWS.dereg, scale(`dereg.${sector}`, 1))
     if (live || year > since) {
       sectorAdd(o, sector, 0, DEREG_COSTS)
       if (sector === 'finance') o.credit += DEREG_FINANCE_CREDIT
@@ -170,7 +171,7 @@ function compute(p: CountryPolicy, year: number, live: boolean): Overlay {
   }
   for (const [sector, since] of Object.entries(p.nationalized) as [Sector, number][]) {
     if (!since) continue
-    add(o, `nationalize.${sector}`, `nationalized ${sector}`, LAWS.nationalize, scale(`nationalize.${sector}`, 1))
+    add(o, `nationalize.${sector}`, `nationalized ${SECTOR_LABEL[sector]}`, LAWS.nationalize, scale(`nationalize.${sector}`, 1))
     if (live || year > since) sectorAdd(o, sector, -(1 - NATIONALIZED_DEMAND), NATIONALIZED_COSTS)
   }
   for (const id of LEGAL_IDS) {
@@ -190,19 +191,19 @@ function compute(p: CountryPolicy, year: number, live: boolean): Overlay {
       if (live || year > (p.since[`tariff.${rule.input}.${rule.partner}`] ?? year - 1)) sectorAdd(o, input as Sector, PROTECTION * rule.add * share, 0)
     }
     if (rule.input === 'all' || rule.input === 'industry' || rule.input === 'technology') sectorAdd(o, 'consumer', 0, .0015 * rule.add * weight)
-    add(o, `tariff.${rule.input}.${rule.partner}`, `${rule.add}% tariff on ${rule.input === 'all' ? 'imports' : rule.input}${rule.partner === 'all' ? '' : ` from ${rule.partner.toUpperCase()}`}`, TARIFF_IMPACT, scale(`tariff.${rule.input}.${rule.partner}`, rule.add * weight * 2.2))
+    add(o, `tariff.${rule.input}.${rule.partner}`, `${rule.add}% tariff on ${INPUT_LABEL[rule.input]}${rule.partner === 'all' ? '' : ` from ${getCountry(rule.partner).name}`}`, TARIFF_IMPACT, scale(`tariff.${rule.input}.${rule.partner}`, rule.add * weight * 2.2))
   }
-  for (const partner of Object.keys(p.deals)) add(o, `deal.${partner}`, `trade deal with ${partner.toUpperCase()}`, DEAL_IMPACT, scale(`deal.${partner}`, partnerSize(partner)))
-  for (const partner of Object.keys(p.sanctions)) add(o, `sanction.${partner}`, `sanctions on ${partner.toUpperCase()}`, SANCTION_IMPACT, scale(`sanction.${partner}`, partnerSize(partner)))
+  for (const partner of Object.keys(p.deals)) add(o, `deal.${partner}`, `trade deal with ${getCountry(partner).name}`, DEAL_IMPACT, scale(`deal.${partner}`, partnerSize(partner)))
+  for (const partner of Object.keys(p.sanctions)) add(o, `sanction.${partner}`, `sanctions on ${getCountry(partner).name}`, SANCTION_IMPACT, scale(`sanction.${partner}`, partnerSize(partner)))
   for (const [input, since] of Object.entries(p.exportBans) as [TradeInput, number][]) {
     if (!since) continue
-    add(o, `exportBan.${input}`, `export ban on ${input}`, EXPORT_BAN_IMPACT, scale(`exportBan.${input}`, 1))
+    add(o, `exportBan.${input}`, `export ban on ${INPUT_LABEL[input]}`, EXPORT_BAN_IMPACT, scale(`exportBan.${input}`, 1))
     if (live || year > since) sectorAdd(o, input as Sector, -.02, -.05)
   }
   for (const r of p.retaliation) {
     if (r.until < year) continue
     const size = partnerSize(r.from), units = r.add * size
-    add(o, `retaliation.${r.from}.${r.input}`, `${r.from.toUpperCase()} tariffs on our goods`, { growth: -.00008, groups: { rural: -.06, workers: -.05, business: -.06 } }, scale(`retaliation.${r.from}`, units))
+    add(o, `retaliation.${r.from}.${r.input}`, `${getCountry(r.from).name}'s tariffs on our goods`, { growth: -.00008, groups: { rural: -.06, workers: -.05, business: -.06 } }, scale(`retaliation.${r.from}`, units))
     for (const input of r.input === 'all' ? TRADE_INPUT_IDS : [r.input]) sectorAdd(o, input as Sector, -.002 * units * goodsShareOfSector(input), 0)
   }
   // Crises and one-off shocks run at full strength until they end.

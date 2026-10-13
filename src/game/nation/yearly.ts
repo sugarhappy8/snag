@@ -13,7 +13,7 @@ import type { GameState, Json } from '../types'
 import { getCountry } from '../world'
 import { BUDGET_LINES, GROUP_IDS, GROUPS, groupWeights, institutionStrength, type GroupId } from './data'
 import { nationOverlay, personalTax, RATING_SPREAD, wealthTaxRate } from './effects'
-import { accountability } from './govern'
+import { accountability, onTopJob } from './govern'
 import { legislatureOf, midterm } from './legislature'
 import { adjustApproval, officeView, setPortfolio, type OfficeView } from './office'
 import { editMe, editPolicy, hasMe, hasPolicy, meView, policyOf, writeMe, writePolicy, type CountryPolicy } from './state'
@@ -98,6 +98,8 @@ export interface ReportData {
 }
 
 const sign = (n: number, digits = 1) => `${n >= 0 ? '+' : '−'}${Math.abs(n * 100).toFixed(digits)}`
+/** A change in points, or "no change" when it rounds to zero. */
+const change = (n: number, digits = 1, unit = ' pts') => (Math.abs(n * 100) < .5 * Math.pow(10, -digits) ? 'no change' : `${sign(n, digits)}${unit}`)
 
 export function buildReport(g: GameState, v: OfficeView): ReportData {
   const country = g.character.countryId
@@ -108,12 +110,12 @@ export function buildReport(g: GameState, v: OfficeView): ReportData {
   const tone = (good: boolean, bad: boolean) => (good ? 'good' : bad ? 'bad' : 'neutral') as 'good' | 'bad' | 'neutral'
   const deficit = e.budget?.deficit ?? 0
   const metrics: ReportData['metrics'] = [
-    { label: 'Growth', value: `${sign(e.growth)}%`, delta: prev ? `${sign(e.growth - prev.growth)} pts` : '', tone: tone(e.growth > .025, e.growth < 0) },
-    { label: 'Unemployment', value: `${(e.unemployment * 100).toFixed(1)}%`, delta: prev ? `${sign(e.unemployment - prev.unemployment)} pts` : '', tone: tone(e.unemployment < .05, e.unemployment > .09) },
-    { label: 'Inflation', value: `${(e.inflation * 100).toFixed(1)}%`, delta: prev ? `${sign(e.inflation - prev.inflation)} pts` : '', tone: tone(e.inflation >= 0 && e.inflation < .035, e.inflation > .07) },
+    { label: 'Growth', value: `${sign(e.growth)}%`, delta: prev ? change(e.growth - prev.growth) : '', tone: tone(e.growth > .025, e.growth < 0) },
+    { label: 'Unemployment', value: `${(e.unemployment * 100).toFixed(1)}%`, delta: prev ? change(e.unemployment - prev.unemployment) : '', tone: tone(e.unemployment < .05, e.unemployment > .09) },
+    { label: 'Inflation', value: `${(e.inflation * 100).toFixed(1)}%`, delta: prev ? change(e.inflation - prev.inflation) : '', tone: tone(e.inflation >= 0 && e.inflation < .035, e.inflation > .07) },
     { label: 'Budget', value: deficit > 0 ? `${(deficit * 100).toFixed(1)}% deficit` : `${(-deficit * 100).toFixed(1)}% surplus`, delta: 'of GDP', tone: tone(deficit <= .01, deficit > .05) },
-    { label: 'Public debt', value: `${Math.round(e.governmentDebt * 100)}% of GDP`, delta: prev ? `${sign(e.governmentDebt - prev.governmentDebt, 0)} pts` : '', tone: tone(e.governmentDebt < .6, e.governmentDebt > 1.2) },
-    { label: 'Inequality', value: `${Math.round(e.inequality * 100)}/100`, delta: prev ? `${sign(e.inequality - prev.inequality, 0)}` : '', tone: tone(e.inequality < .35, e.inequality > .5) },
+    { label: 'Public debt', value: `${Math.round(e.governmentDebt * 100)}% of GDP`, delta: prev ? change(e.governmentDebt - prev.governmentDebt, 0) : '', tone: tone(e.governmentDebt < .6, e.governmentDebt > 1.2) },
+    { label: 'Inequality', value: `${Math.round(e.inequality * 100)}/100`, delta: prev ? change(e.inequality - prev.inequality, 0, '') : '', tone: tone(e.inequality < .35, e.inequality > .5) },
   ]
   const target = approvalTarget(g, v)
   const groups = GROUP_IDS.map(id => ({ label: GROUPS[id].label, emoji: GROUPS[id].emoji, value: target.groups[id] }))
@@ -294,6 +296,8 @@ export function yearlyNation(g: GameState): void {
     }
   }
   const v = officeView(g)
+  // A head of government from an older save takes over the chamber their party now leads.
+  if (v?.leader && !policyOf(g, c.countryId).legislature.mine) onTopJob(g, v.party, 50 + (v.approval - 50) / 2)
   if (v && v.rank >= 1 && !c.prison) {
     const me = editMe(g)
     // Meters drift: legitimacy heals in a working democracy, fear fades without repression.

@@ -14,7 +14,7 @@ import { COUNTRIES, getCountry } from '../world'
 import {
   BUDGET, BUDGET_MAX, BUDGET_MIN, GROUPS, GROUP_IDS, INPUT_LABEL, LAWS, LEGAL, NEW_TAXES, SECTOR_LABEL, STATE_SECTORS, TARIFF_MAX, TAXES, TRADE_INPUT_IDS,
   BREAK_IMPACT, DEAL_IMPACT, EXPORT_BAN_IMPACT, SANCTION_IMPACT, TARIFF_IMPACT, TARGET_INDUSTRIES,
-  budgetAvailable, environmentAvailable, groupWeights, industryAvailable, legalAvailable, newTaxAvailable, salesTaxLabel, taxAvailable,
+  budgetAvailable, environmentAvailable, groupWeights, industryAvailable, legalAvailable, newTaxAvailable, partyName, salesTaxLabel, taxAvailable,
   type BudgetLine, type GroupId, type Lean, type LegalId, type NewTaxId, type Scope, type TariffInput, type TaxId, type TradeInput,
 } from './data'
 import { overlayFor, partnerSize } from './effects'
@@ -398,7 +398,7 @@ export function propose(g: GameState, m: Measure): void {
 }
 
 function partyLabel(id: string): string {
-  return { progressive: 'Progressive Party', conservative: 'Conservative Party', centrist: 'Centrist Alliance', green: 'Green Party', libertarian: 'Liberty Party', independent: 'independents' }[id] ?? id
+  return partyName(id)
 }
 
 function parseMeasure(raw: unknown): Measure | null {

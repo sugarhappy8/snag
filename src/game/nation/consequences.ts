@@ -256,6 +256,8 @@ defineScript(PROTEST_SCRIPT, (g, choice, data) => {
     return
   }
   if (choice === 'crackdown') {
+    // Every order to fire on crowds costs some of the soldiers' loyalty.
+    if (revolution) me.loyalty = Math.max(0, me.loyalty - 6)
     me.fear = Math.min(100, me.fear + 15)
     me.legitimacy = Math.max(0, me.legitimacy - 12)
     bumpStat(me, 'crackdowns')
@@ -365,12 +367,12 @@ defineScript(COUP_SCRIPT, (g, choice) => {
 })
 
 function protests(g: GameState, v: OfficeView, me: Me): boolean {
-  const odds = Math.max(0, Math.min(.5, (45 - v.approval) / 100 + (55 - me.legitimacy) / 150 - me.fear / 300))
+  const odds = Math.max(0, Math.min(.5, (45 - v.approval) / 100 + (55 - me.legitimacy) / 150 - me.fear / 400))
   if (!chance(g, odds)) return false
   bumpStat(me, 'protests')
   writeMe(g, me)
-  // Hated and illegitimate: the protests become an uprising, and a crackdown can fail.
-  const revolution = v.rank >= 3 && v.approval < 20 && me.legitimacy < 25
+  // Unpopular and illegitimate: the protests become an uprising, and a crackdown can fail.
+  const revolution = v.rank >= 3 && v.approval < 35 && me.legitimacy < 25
   scriptChoice(g, PROTEST_SCRIPT, revolution ? 'Uprising' : 'Protests', `${revolution ? 'Hundreds of thousands' : 'Crowds'} fill the streets of ${g.character.city} demanding that you ${v.approval < 25 ? 'resign' : 'change course'}. Approval ${v.approval}%, legitimacy ${Math.round(me.legitimacy)}.`, [
     { id: 'wait', label: 'Wait it out (50%)', emoji: '⏳' },
     { id: 'concede', label: 'Make concessions (20 capital)', emoji: '🤝' },
@@ -432,12 +434,15 @@ function leaks(g: GameState, me: Me): boolean {
 export function yearlyConsequences(g: GameState, v: OfficeView | null): boolean {
   if (!g.character.alive || g.character.prison) return false
   const me = editMe(g)
-  if (cases(g, v, me)) return true
-  if (leaks(g, me)) return true
+  // The big threats first: coups, removal votes and the street, then files and leaks.
   if (v && v.rank >= 2) {
     if (v.leader && coup(g, v, me)) return true
     if (removal(g, v, me)) return true
     if (protests(g, v, me)) return true
+  }
+  if (cases(g, v, me)) return true
+  if (leaks(g, me)) return true
+  if (v && v.rank >= 2) {
     if (v.leader && me.legitimacy < 30 && policyOf(g, g.character.countryId).institutions.regime !== 'democracy') {
       const line = foreignReaction(g, .2)
       if (line) { notice(g, 'Sanctions', `Foreign governments acted against your regime.${line}`, { emoji: '🌍', tone: 'bad' }); return true }

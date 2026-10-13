@@ -10,7 +10,7 @@ import type { GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
 import {
   BUDGET, BUDGET_LINES, GROUP_IDS, GROUPS, INPUT_LABEL, LEGAL, LEGAL_IDS, NEW_TAXES, NEW_TAX_IDS, SECTOR_LABEL, STATE_SECTORS, TARGET_INDUSTRIES, TAXES, TAX_IDS, TRADE_INPUT_IDS,
-  budgetAvailable, environmentAvailable, industryAvailable, legalAvailable, newTaxAvailable, salesTaxLabel, taxAvailable,
+  budgetAvailable, environmentAvailable, industryAvailable, legalAvailable, newTaxAvailable, partyName, salesTaxLabel, taxAvailable,
   type BudgetLine, type LegalId, type NewTaxId, type Scope, type TariffInput, type TaxId, type TradeInput,
 } from './data'
 import { sharedBloc } from '../business/market-trade'
@@ -48,6 +48,7 @@ function measureSlider(id: string, label: string, emoji: string, opts: { min: nu
       preview: (g, value) => {
         const m = opts.build(g, value)
         const why = measureBlock(g, m)
+        if (why === 'That is already the law.') return 'This is the law today. Slide to change it.'
         if (why) return why
         const p = previewOf(g, m)
         return p.lines.slice(0, 3).join(' ') || 'Little measurable effect.'
@@ -74,7 +75,7 @@ function taxesMenu(): MenuGroup {
     visible: (g) => !!powerFor(v0(g), 'tax', decreeRule(g)),
     subtitle: (g) => {
       const v = v0(g), power = powerFor(v, 'tax', decreeRule(g))
-      return power ? `${layerName(power.scope)} taxes${power.route === 'decree' ? ' · by decree' : ''}` : ''
+      return power ? `${layerName(power.scope)[0].toUpperCase()}${layerName(power.scope).slice(1)} taxes${power.route === 'decree' ? ' · by decree' : ''}` : ''
     },
     header: () => 'Slide to the change you want versus the law as it was. Every bill shows what it would raise and who it would anger.',
     children: (g) => {
@@ -399,7 +400,7 @@ export function dashboardMenu(): MenuGroup {
       if (laws.length) info('laws', '⚖️', laws.join(' · '))
       rows.push({ type: 'heading', id: 'nation.dash.h.power', label: 'Power' })
       const govShare = governmentSeats(g)
-      info('seats', '🗳️', `${regimeLabel(g)} · the government (${leg.gov.join(', ')}) holds ${pct(govShare)} of seats${leg.gov.includes(v.party) ? ', your party included' : ''}`)
+      info('seats', '🗳️', `${regimeLabel(g)} · the government (${leg.gov.map(partyName).join(' + ')}) holds ${pct(govShare)} of seats${leg.gov.includes(v.party) ? ', your party included' : ''}`)
       const inst = p.institutions
       const instBits = [inst.courtPacked > 0 ? `courts ${pct(inst.courtPacked)} loyal` : '', inst.mediaControl > 0 ? `media ${pct(inst.mediaControl)} friendly` : '', inst.extraTerms ? (inst.extraTerms >= 99 ? 'no term limit' : `+${inst.extraTerms} term${inst.extraTerms === 1 ? '' : 's'} allowed`) : '', inst.emergencyUntil >= g.year ? `emergency until ${inst.emergencyUntil}` : '', inst.postponedUntil > g.year ? `election postponed to ${inst.postponedUntil}` : ''].filter(Boolean)
       if (instBits.length) info('institutions', '🏛️', instBits.join(' · '))
@@ -417,7 +418,7 @@ export function dashboardMenu(): MenuGroup {
       const rivals = me.rivals.slice(0, 4)
       if (rivals.length) {
         rows.push({ type: 'heading', id: 'nation.dash.h.rivals', label: 'Rivals' })
-        for (const r of rivals) info(`rival.${r.id}`, r.status === 'active' ? '🥊' : '🔒', `${r.name} (${r.role}${r.role !== 'lobbyist' ? `, ${r.party}` : ''}) · ${r.status === 'active' ? `strength ${Math.round(r.strength)}` : r.status} · ${r.goal}`)
+        for (const r of rivals) info(`rival.${r.id}`, r.status === 'active' ? '🥊' : '🔒', `${r.name} (${r.role === 'party' ? 'party rival' : r.role}${r.role !== 'lobbyist' ? `, ${partyName(r.party)}` : ''}) · ${r.status === 'active' ? `strength ${Math.round(r.strength)}` : r.status} · ${r.goal}`)
       }
       if (p.reports.length) {
         const last = p.reports[p.reports.length - 1]

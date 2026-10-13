@@ -48,9 +48,9 @@ export function NationReport({ modal, onDone }: MinigameProps) {
       <header className="nr-head">
         <span className="nr-emoji" aria-hidden>🏛️</span>
         <div className="nr-id">
-          {r.year !== null ? <div className="nr-year">State of the Nation {r.year}</div> : null}
+          {r.office ? <div className="nr-year">{r.office}</div> : null}
           <div className="nr-name">{r.country}</div>
-          {r.office ? <div className="nr-sub">{r.office} · approval {r.approval}%</div> : null}
+          <div className="nr-sub">Approval {r.approval}%{r.year !== null ? ` · ${r.year}` : ''}</div>
         </div>
         <div className={`nr-rating ${ratingTone}`} title="Credit rating">
           <span className="nr-rating-label">Rating</span>

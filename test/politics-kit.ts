@@ -176,6 +176,7 @@ export function playPolitician(strategy: Strategy, seed: number, country = 'us',
   else if (meView(g).exile) outcome = 'exile'
   const me = meView(g)
   const clean = me.laundered
+  if (process.env.KIT_DEBUG) text.push(`meters: legit ${Math.round(meView(g).legitimacy)} fear ${Math.round(meView(g).fear)} loyalty ${Math.round(meView(g).loyalty)} regime ${policyOf(g, country).institutions.regime} stats ${JSON.stringify(meView(g).stats)}`)
   if (!g.character.alive) text.push(`died: ${g.character.causeOfDeath}`)
   if (g.character.criminalRecord.length) text.push(`record: ${g.character.criminalRecord.map(r => `${r.crime}${r.convicted ? ' (convicted)' : ''}`).join(', ')}`)
   return {
