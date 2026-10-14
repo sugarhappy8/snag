@@ -11,6 +11,8 @@ import { deepTechSummary } from './business/deeptech'
 import { buyBusinessMenu, startBusinessMenu } from './business/founding'
 import { industryDef } from './business/industries'
 import { businessView } from './business/manage'
+// Side effect: adds your listed companies to Investments > Stocks (registerOwnListings).
+import './business/own-listing-menu'
 import { businessAssets, ceoJob, findBusiness, readBiz, runsIt, totalOutlets } from './business/state'
 import { industryNoun } from './business/util'
 import { yearlyBusinessImpl } from './business/yearly'
