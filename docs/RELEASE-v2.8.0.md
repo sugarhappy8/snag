@@ -16,7 +16,7 @@ An adult with real money can now hire two people. A financial advisor reports th
 
 - **Reads the present.** The advisor never forecasts. Your Investing talent's purple hints stay the game's only foresight. Advice shows as plain rows with a 💼.
 - **Six findings,** heaviest first:
-  - Insider timing, 95: you hold a made-up listed company (or, as a governor, legislator or leader, a coin) bought this year or last while you're in office. It's the same window the insider rule uses.
+  - Insider timing, 95: you hold a made-up listed company (or, as a governor, legislator or leader, a coin) bought this year or last while you're in office. It's the window the insider rule uses for laws. An announcement counts older holdings too, and the advisor doesn't flag those.
   - Concentration, 76 to 100: one company or holding is 40% or more of your net worth, and worth at least five typical incomes. The bigger the share, the higher it ranks, and a very large one ranks above insider timing.
   - A dear loan, 70: a loan of two typical incomes or more that costs 3 points or more over savings, while your cash could clear it.
   - Idle company cash, 50: a company holds two years of typical income or more past 18 months of its costs. It points to Pay a Dividend. It sets nothing.
