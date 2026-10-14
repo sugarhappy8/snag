@@ -26,6 +26,13 @@ additional dependency or second economic engine was introduced.
   second door to the ownership move in **Capital & Ownership** (buying more from the public float) and
   to **Exit → Sell Shares**, and each pair shares its yearly limit. A listed group shows as a row you
   can only look at.
+- Investments → **Hedge Funds**: start a Personal fund and a Family fund with your own cash, and set an
+  ordinary company's spare cash to work (**Company Funds**). A fund pays no fee, only 0.5% a year to run.
+  Put In More and Take Out are sliders, and a gain is taxed when it comes out. Relatives can join the
+  family fund; their money is never in your net worth or estate. A company's cash stays on its books, and
+  the year's result lands in its statement. A Macro call lasts one year, and an office holder can't make
+  one. A sole adult heir keeps a family fund and the relatives stay in it; a split estate winds it up and
+  pays them first.
 - Conglomerate → **Group Services / Internal Contracts**: assign compatible divisions to
   advertising, distribution, software, components, property or treasury administration.
 - Relationships → person: **Life & Career**, business financials, investment/partnership,
@@ -49,6 +56,8 @@ additional dependency or second economic engine was introduced.
 | Company share buyback | Unchanged | Decreases | Remaining shareholders own a greater fraction |
 | Invest in an NPC company | Decreases | Increases equally | Private investment claim, not an exchange-traded security |
 | Acquire an NPC company | Decreases | Unchanged | Founder receives payment; the same company moves to player assets |
+| Put cash in a personal or family fund | Decreases | Unchanged | Your units rise by the same; net worth unchanged |
+| Set company cash to work | Unchanged | Unchanged (it stays in cash) | The year's result lands in other income or costs |
 
 Transactions validate the current company, adult/living player, funds, control, available
 shares and annual negotiation limits at execution. Private shareholders may refuse a sale;
