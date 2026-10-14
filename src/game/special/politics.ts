@@ -23,7 +23,7 @@ import { killCharacter } from '../death'
 import { localPick, localSoftDrink } from '../data/locales'
 import { marketOf } from '../data/markets'
 import { common } from '../events/era'
-import { exchangeInfo } from '../invest/engine'
+import { companyKey, exchangeInfo } from '../invest/engine'
 import { addMarketShock, indexShockFactor, type ShockCause } from '../invest/shocks'
 import { freshShare, investmentHoldings, revalueHoldings } from '../investments'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
@@ -1698,7 +1698,7 @@ function legislatorHouse(g: GameState): string {
   return legislator(g).house
 }
 
-interface InsiderPositions { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string }
+export interface InsiderPositions { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string }
 
 /**
  * The player's positions that win if the price moves this way (insider positions). With `freshOnly`
@@ -1706,7 +1706,7 @@ interface InsiderPositions { betIds: string[]; own: number; crony: number; share
  * the player could have traded on years ago. An announcement counts every holding: the office holder
  * picks the company and the moment, so an old holding gains just the same.
  */
-function insiderPositions(g: GameState, t: BetTarget, bearish: boolean, opts: { freshOnly: boolean }): InsiderPositions {
+export function insiderPositions(g: GameState, t: BetTarget, bearish: boolean, opts: { freshOnly: boolean }): InsiderPositions {
   const out = { betIds: [] as string[], own: 0, crony: 0, shares: 0, index: 0, indexUnits: 0, cronyName: '' }
   // Index options on the same exchange: a company's crash drags its index down with it.
   if (t.asset === 'stock') {
@@ -1725,7 +1725,7 @@ function insiderPositions(g: GameState, t: BetTarget, bearish: boolean, opts: { 
       out.cronyName = b.crony
     } else out.own += b.premium
   }
-  if (!bearish) for (const a of investmentHoldings(g)) if (str(a.details.secId) === t.secId) out.shares += Math.max(0, a.value) * (opts.freshOnly ? freshShare(a, g.year) : 1)
+  if (!bearish) for (const a of investmentHoldings(g)) if (companyKey(str(a.details.secId)) === t.secId) out.shares += Math.max(0, a.value) * (opts.freshOnly ? freshShare(a, g.year) : 1)
   return out
 }
 

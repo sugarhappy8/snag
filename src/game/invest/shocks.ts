@@ -11,7 +11,7 @@
 // announcements in special/politics.ts never fade.) Nothing here touches g.rng.
 import type { GameState, Json } from '../types'
 import type { BizState } from '../business/state'
-import { exchangeByKey, exchangeInfo, isRealSecId, slotPlan } from './engine'
+import { companyKey, exchangeByKey, exchangeInfo, isRealSecId, slotPlan } from './engine'
 import { economyMarketFactor } from '../economy'
 
 export const SHOCKS_KEY = 'marketShocks'
@@ -120,7 +120,8 @@ function breakthroughsRead(g: GameState): MarketBreakthrough[] {
 }
 
 export function breakthroughStockFactor(g: GameState, secId: string, year: number): number {
-  const match = /^(.*)#([sp])(\d+)g(\d+)$/.exec(secId)
+  // An invention reaches a company, so every line of it (companyKey) is repriced with it.
+  const match = /^(.*)#([sp])(\d+)g(\d+)$/.exec(companyKey(secId))
   if (!match || !Number.isFinite(year)) return 1
   let factor = 1
   for (const event of breakthroughsRead(g)) {
@@ -236,7 +237,11 @@ export function shockable(secId: string, asset: 'stock' | 'coin', cause: ShockCa
 /** Record a shock (the price moves at once). Returns it. */
 export function addMarketShock(g: GameState, s: Omit<MarketShock, 'id'>): MarketShock {
   const list = marketShocks(g)
-  const secId = typeof s.secId === 'string' ? s.secId.trim().slice(0, 160) : ''
+  const cause = SHOCK_CAUSES.includes(s.cause) ? s.cause : 'liquidity'
+  const given = typeof s.secId === 'string' ? s.secId.trim().slice(0, 160) : ''
+  // News belongs to the company, so a story written against one of its lines is stored on the company.
+  // Order flow stays on the line that was traded: each line has its own book.
+  const secId = cause === 'liquidity' ? given : companyKey(given)
   const year = Number.isFinite(s.year) ? safeYear(s.year) : safeYear(g.year)
   // One order-flow record per listing per year, so repeated trades don't bloat saves.
   const prior = s.cause === 'liquidity' ? list.find(x => x.cause === 'liquidity' && x.secId === secId && x.year === year) : undefined
@@ -245,7 +250,6 @@ export function addMarketShock(g: GameState, s: Omit<MarketShock, 'id'>): Market
     g.flags[SHOCKS_KEY] = list as unknown as Json
     return prior
   }
-  const cause = SHOCK_CAUSES.includes(s.cause) ? s.cause : 'liquidity'
   const asset = s.asset === 'coin' ? 'coin' : 'stock'
   const shock: MarketShock = {
     asset,
@@ -277,9 +281,13 @@ export function factorOf(s: MarketShock, year: number): number {
 
 /** Combined price factor of every shock on one security in a year (1 = untouched). */
 export function shockFactor(g: GameState, secId: string, year: number): number {
-  const exchange = exchangeByKey(secId.split('#')[0])
-  let f = boundedFactor(breakthroughStockFactor(g, secId, year) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1))
-  for (const s of shockIndex(g).bySec.get(secId) ?? []) f = multiplyFactor(f, factorOf(s, year))
+  const key = companyKey(secId)
+  const exchange = exchangeByKey(key.split('#')[0])
+  let f = boundedFactor(breakthroughStockFactor(g, key, year) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1))
+  const index = shockIndex(g)
+  for (const s of index.bySec.get(secId) ?? []) f = multiplyFactor(f, factorOf(s, year))
+  // A line also takes its company's news. Order flow stays on the line it was traded on.
+  if (key !== secId) for (const s of index.bySec.get(key) ?? []) if (s.cause !== 'liquidity') f = multiplyFactor(f, factorOf(s, year))
   return f
 }
 

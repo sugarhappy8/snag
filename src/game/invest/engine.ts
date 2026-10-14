@@ -566,9 +566,29 @@ export function sizeRankOf(def: SecurityDef, year: number): number {
   return def.real ? sizeScore(def.real, year) : 0
 }
 
-/** True for a real company's security id on an exchange ('LSE:FTSE 100#s3g1004'). */
+/** Separates a company's id from the letter of one of its extra share classes ('NYSE:S&P 500#s3g100012~C'). */
+export const LINE_SEP = '~'
+
+const LINE_SUFFIX = /~([A-Z0-9]{1,3})$/
+
+/**
+ * The security a line belongs to: a trailing '~' and 1-3 capital letters or digits are a share
+ * class's line, and the company's own id is what is left. Every other id, '' included, is returned as it is.
+ * News, inventions and politics belong to the company, so they are keyed on this.
+ */
+export function companyKey(secId: string): string {
+  return secId.replace(LINE_SUFFIX, '')
+}
+
+/** The letter of a share class's line ('C' for 'NYSE:S&P 500#s3g100012~C'), or null when the id is a company's own. */
+export function lineLetter(secId: string): string | null {
+  const m = LINE_SUFFIX.exec(secId)
+  return m ? m[1] : null
+}
+
+/** True for a real company's security id on an exchange ('LSE:FTSE 100#s3g1004'), or for one of its lines. */
 export function isRealSecId(secId: string): boolean {
-  const m = /#s\d+g(\d+)$/.exec(secId)
+  const m = /#s\d+g(\d+)$/.exec(companyKey(secId))
   return !!m && Number(m[1]) >= REAL_GEN
 }
 
