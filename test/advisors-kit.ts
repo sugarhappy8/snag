@@ -2,7 +2,7 @@
 // each kind of security the manager cares about, and a politician's job. Tasks 3 and 4 extend this file
 // with their own exports; keep each export small and free of assertions beyond "the setup worked".
 import { teamOf, writeTeam, type Team } from '../src/game/advisors/team'
-import { stockTargets } from '../src/game/computer/money-stocks'
+import { coinTargets, stockTargets } from '../src/game/computer/money-stocks'
 import { buySecurity, investmentHoldings, investmentListing } from '../src/game/investments'
 import type { Asset, GameState } from '../src/game/types'
 import { makeTestGame } from './helpers'
@@ -93,4 +93,21 @@ export function officeJob(g: GameState, office: 'mayor' | 'governor' | 'leader')
  */
 export function withTeam(g: GameState, over: Partial<Team> = {}): void {
   writeTeam(g, { ...teamOf(g), ...over })
+}
+
+/** The first made-up listed company of the local exchange (the kind a politician can move), as `own(g, 'stock', ...)` buys it. */
+export function madeUpStock(g: GameState): { secId: string; name: string } {
+  const t = stockTargets(g).find((x) => !x.real)
+  if (!t) throw new Error('no made-up company is listed')
+  return { secId: t.secId, name: t.name }
+}
+
+/** Buy `dollars` of the first coin that is not a stablecoin and return the holding. */
+export function coinHolding(g: GameState, dollars: number): Asset {
+  const t = coinTargets(g).find((x) => x.sector !== 'Stablecoin')
+  if (!t) throw new Error('no coin is listed')
+  if (!buySecurity(g, t.secId, dollars)) throw new Error('could not buy the coin')
+  const a = investmentHoldings(g).find((x) => x.details.secId === t.secId)
+  if (!a) throw new Error('no holding for the coin')
+  return a
 }
