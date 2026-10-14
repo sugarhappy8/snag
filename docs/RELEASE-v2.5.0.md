@@ -60,3 +60,30 @@ with.
 
 Nine of the ten targets are missed at the baseline. The 59,093 text strings counted are the literals of 14 or more
 characters, holes counting zero.
+
+### What has landed so far, and what has not
+
+Landed (each is a small, tested change; the numbers above moved only a little, because only a few generators
+were rewritten):
+
+- **Counter and guide.** `scripts/voice-report.mjs`, `docs/VOICE.md`, a CI warning step, and a test that stops new
+  em-dashes.
+- **Obituary.** `writeObituary` now writes at most four short lines: name, age, cause and place; the counters
+  ("Four marriages. Two prison escapes."); who survives and the estate; one dry closer. The eulogy stock is gone.
+- **CEO letters.** One short line per action, 12 words or fewer, in the manager's style (a cost-cutter says
+  "Sorry."). The memo keeps 12 lines instead of 10.
+- **Business outings.** The `good` and `bad` lines state what happened and carry no punchline fragment.
+- **Do Anything.** No more `You decided to ...` frame; the unmatched-action outcomes are one concrete consequence
+  with a small stat change. The self-harm outcome keeps its behaviour, its story is plain, and the real-world help line
+  is drawn by the popup itself (`NoticeModal.support`, optional, so old saves load as before).
+- **Settings, About.** The one disclaimer lives there.
+- **Rewrite tool, first half.** `scripts/voice-batch.mjs extract` exports a batch of strings to JSON for rewriting.
+
+Not done yet (this is most of Part A):
+
+- `apply`, the second half of the rewrite tool, which writes validated rewrites back.
+- The bulk rewrites: the era packs and year digests (A1), punchlines and `Nobody` / `Everyone` (A2), tooltips, colon
+  joins and the in-game disclaimers (A4), and the remaining chatbot lines (A3). The numbers in the baseline table are
+  therefore close to unchanged; the current counts are in the pull request description.
+- One known leftover: the CEO letter keeps a line, "These are scenarios, not guaranteed results.", because a test
+  pins it; the A4 pass removes it together with that assertion.
