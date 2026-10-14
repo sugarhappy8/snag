@@ -159,6 +159,62 @@ function relTo(p: Person): string {
 }
 
 // ---------------------------------------------------------------------------
+// Legal phrasings ("sue the regulator", "fight the seizure in court"). They get a pointer to Activities,
+// Lawsuit, so no keyword inside the sentence can start a brawl or a theft instead.
+
+/** Verbs that mean a crime or a fight. Next to a legal word, they keep their own rule. */
+const WRONG_VERB = String.raw`steal|shoplift|rob|pickpocket|loot|burgle|mug|bribe|blackmail|extort|threaten|punch|slap|kick|beat up|attack|assault|headbutt|brawl|stab|shoot|strangle|poison|kill|murder|smash|vandali[sz]e|torch|kidnap|smuggle|cheat|forge|fake|perjure`
+
+/** Suing, in so many words. Fine on its own, even when a crime word is what the suit is about ("sue the thief who stole it"). */
+const SUING =
+  /\bsu(?:e|es|ed|ing)\b|\blaw[ -]?suits?\b|\blitigat(?:e|es|ed|ing|ion)\b|\blegal (?:action|case|claim|battle|fight|proceedings)\b|\bclass[- ]action\b|\bsmall claims?\b|\bfight (?:the|my|this|that|their|his|her) (?:charges?|seizure|conviction|verdict|ruling|sentence|case|ticket|eviction)\b/
+
+/** "in court", "take them to court", "go to court", "in the courtroom". Not "to court her", and not the court of a tennis match (see SPORT). */
+const COURT = new RegExp(
+  String.raw`\b(?:in|into|to)\s+(?:the\s+)?court(?:house|room)\b` +
+    String.raw`|\b(?:in|into)\s+court\b|\b(?:in|into|to|through)\s+the\s+courts\b` +
+    // Someone taken to court ("the court" is fine) and someone going there ("go to the court" may be a tennis court).
+    String.raw`|\b(?:take|takes|taking|taken|took|drag|drags|dragging|dragged|haul|hauling|hauled|bring|bringing|brought|send|sending|sent)\b(?:\s+\S+){0,4}?\s+to\s+(?:the\s+)?court\b(?!\s+(?:her|him|them|a|an|the|my|someone|somebody|me|you|us|his|their|our)\b)` +
+    String.raw`|\b(?:go|goes|going|went|gone|head|heading|march|marching|run|running|rush|rushing|walk|walking|storm|storming|get|getting|see|show|appear|appearing)\b(?:\s+\S+){0,4}?\s+to\s+court\b(?!\s+(?:her|him|them|a|an|the|my|someone|somebody|me|you|us|his|their|our)\b)`,
+)
+const SPORT = /\b(?:tennis|basketball|volleyball|badminton|squash|pickleball|handball|racquetball|netball|futsal|hoops)\b/
+
+/** Hiring or calling a lawyer ("become a lawyer", "marry a lawyer" and "punch the lawyer" are not this). */
+const LAWYER = /\b(?:hire|hiring|hired|retain|consult|call|calling|get|getting|find|see|need|contact|phone|talk to|talk with|speak to|speak with)\s+(?:\w+\s+){0,2}?(?:lawyers?|attorneys?|solicitors?|barristers?)\b|\blawyer up\b/
+
+/** "file a complaint", "file a claim", "file a case". */
+const FILING = /\bfil(?:e|es|ed|ing)\b(?:\s+\S+){0,3}?\s+(?:claim|complaint|case|suit|lawsuit)s?\b/
+
+const LEGAL_WORDS = new RegExp([SUING, COURT, LAWYER, FILING].map((r) => r.source).join('|'))
+
+/** A crime that starts the sentence ("punch the judge in court"): the crime is the action, the court is the setting. */
+const WRONG_LEAD = new RegExp(String.raw`^(?:${WRONG_VERB})\b`)
+
+/** A crime joined on as a second action ("sue him and rob him", "go to court, then punch the lawyer"). */
+const WRONG_NEXT = new RegExp(String.raw`(?:\band|\bthen|[,;&])\s+(?:to\s+)?(?:${WRONG_VERB})\b`)
+
+/** The text as the legal rule reads it: lowercase, with a name that is spelled like the verb turned into "someone". */
+function legalScan(raw: string): string {
+  // A capital-S "Sue" inside the sentence is a person ("call Sue", the same rule WORD_NAMES keeps). The first word is
+  // the verb, unless it is followed by something only a person does ("Sue and I", "Sue's party").
+  const named = /^Sue(?:'s|\s+(?:and|is|was|has|had|will|can|did|called|said|says)\b)/.test(raw)
+  return raw.replace(/\bSue\b/g, (m, at: number) => (at > 0 || named ? 'someone' : m)).toLowerCase()
+}
+
+/** "slap a lawsuit on him", "hit them with a lawsuit": a violent verb that is only a way to say "sue". */
+const LAWSUIT_SERVED = /^(?:slap|hit|attack|smash)\b.*\b(?:law[ -]?suits?|litigation|legal action|class[- ]action)\b/
+
+/** True when the text is about suing, or taking a fight to court, and not about a crime done near a court. */
+function legalIntent(a: Act): boolean {
+  const scan = legalScan(a.raw)
+  const strong = SUING.test(scan)
+  if (!strong && !(LAWYER.test(scan) || FILING.test(scan) || (COURT.test(scan) && !SPORT.test(scan)))) return false
+  // A crime that starts the sentence is the action ("punch the judge in court", "steal the lawsuit files").
+  const phrase = a.phrase.toLowerCase()
+  return !WRONG_LEAD.test(phrase) || (strong && LAWSUIT_SERVED.test(phrase))
+}
+
+// ---------------------------------------------------------------------------
 // Rules (first match wins)
 
 const RULES: Rule[] = [
@@ -205,6 +261,21 @@ const RULES: Rule[] = [
     run: (g) => {
       if (!inPrison(g)) return out(g, 'Escape artist', 'You escaped from a very boring afternoon by taking a walk. Freedom tastes like fresh air.', 'I escaped my routine for an afternoon.', { happiness: 4 }, 'good', '🏃')
       out(g, 'Not yet', 'You studied the walls, the fences and the guard rotations, and decided a real escape needs a real plan. (Try the escape option in the Prison menu.)', 'I daydreamed about escaping from prison.', { happiness: -1 }, 'neutral', '🧱')
+    },
+  },
+  {
+    id: 'legal',
+    re: LEGAL_WORDS,
+    not: WRONG_NEXT,
+    test: (_g, a) => legalIntent(a),
+    prison: true,
+    // A hint, like the other menu pointers: nothing changes. The Lawsuit activity is 18+ and closed in prison
+    // (activities/lawsuit.ts gate), so a minor and a prisoner are told that instead of being pointed at it.
+    run: (g) => {
+      const age = g.character.age
+      if (age < 18) return out(g, 'Too young', `You're only ${age}. You must be at least 18 to sue someone.`, null, {}, 'neutral', '🧸')
+      if (inPrison(g)) return out(g, 'Locked up', "You can't sue from prison. (Lawsuit, under Activities, is closed while you're locked up.)", 'I thought about legal action in prison.', {}, 'neutral', '🔒')
+      out(g, 'Lawsuit', 'You looked into legal action. (Suing is done from the Activities menu, under Lawsuit.)', 'I looked into legal action.', {}, 'neutral', '⚖️')
     },
   },
   {
@@ -857,3 +928,10 @@ function tooEarly(g: GameState): void {
 
 /** Exposed for tests. */
 export const CUSTOM_RULE_IDS = RULES.map((r) => r.id)
+
+/** Exposed for tests: the id of the rule that answers this text, or undefined when none does. */
+export function customRuleFor(g: GameState, text: string): string | undefined {
+  const raw = clean(text)
+  if (!raw) return undefined
+  return matchRule(g, { raw, low: raw.toLowerCase(), phrase: toPhrase(raw) })?.id
+}
