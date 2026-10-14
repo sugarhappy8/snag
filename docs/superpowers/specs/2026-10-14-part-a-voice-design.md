@@ -188,8 +188,8 @@ others) holding the one disclaimer: "Everything here is made up. People, compani
 fictional, and the money and crime systems are simulations. Outcomes aren't guaranteed." The in-game
 `fictional / simulated / abstract / not guaranteed` notes go (target 3 or fewer left). Tooltips become
 one sentence of what it does and one of what it costs, 120 characters or fewer, no colon join. The
-README's fictional-names note is untouched. Test: those words appear in no game text outside the About
-section, and the About section renders.
+README's fictional-names note is untouched. Tests: the About section renders, and the report's
+disclaimer-word count stays at 3 or fewer (the About text accounts for one).
 
 ## 7. Safety rails
 
