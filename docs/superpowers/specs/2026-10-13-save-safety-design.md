@@ -49,19 +49,22 @@ Expected size: by estimate 250–450 KB stored for the audit's 100-year, 12-busi
 plan task measures it, so this sub-project does not promise the prompt's 400 KB. Part C #4's
 tiering is what guarantees it.
 
-## 1. Storage (`src/game/save-store.ts`, new)
+## 1. Storage (`save-backends.ts`, `save-store.ts`, `save-quarantine.ts`, new)
 
-**Record.** The main save is the existing snapshot codec's string (`encodeSnapshotRecord`): plain
-JSON below 100,000 characters or without `CompressionStream`, otherwise `gz2:` gzip text (no
-control characters or surrogates, so it is safe in localStorage).
+**Record.** In IndexedDB the main save is the existing snapshot codec's string
+(`encodeSnapshotRecord`): plain JSON below 100,000 characters or without `CompressionStream`,
+otherwise `gz2:` gzip text.
 
-**Backends**, tried in order, each a tiny async `get/put/remove`:
-- IndexedDB: database `anotherlife-save`, object store `saves`, key `anotherlife.save.v1` (same
-  name). Separate from `anotherlife-timemachine`.
-- localStorage: the same key and record. A legacy plain-JSON save in that key is a valid record,
-  so this backend needs no separate legacy path.
-- Memory: last resort. `persistFailed` stays on, so the player sees the existing
-  "Progress isn't saved" warning.
+**Backends**, tried in order:
+- IndexedDB (async): database `anotherlife-save` with object stores `saves` and `quarantine`; the
+  save is the record under key `anotherlife.save.v1` (same name). Separate from
+  `anotherlife-timemachine`.
+- localStorage (synchronous): the same key. The fallback keeps today's behavior exactly: it writes
+  plain JSON inside `saveGame`, returns false on refusal, and reads live storage, so gzip is an
+  IndexedDB-only feature and a save is readable the moment it is written. A legacy plain-JSON
+  save in that key is a valid record, so this backend needs no separate legacy path.
+- If localStorage is disabled too, writes fail and the existing "Progress isn't saved" warning
+  shows, as today. A memory backend exists for tests only.
 
 **Boot.** `hydrateSaves({ backend?, timeoutMs = 3000 })`, awaited by `main.tsx` before
 `createRoot().render()`. A hung IndexedDB drops the session to localStorage after the timeout
@@ -76,16 +79,20 @@ instead of leaving a blank page.
    migration changed it, write the new record, read it back, compare, and only then delete the
    legacy key. A failed verification keeps the legacy key.
 
-**Reads.** The cache is `{ json, seq }`. `loadGame()` keeps its signature (`GameState | null`):
-it parses, migrates and validates the cached string, returns a fresh object, then runs
-`refreshRoyalCareers` and `refreshFamilyTalents` as today. Validity is memoized per `seq`, so
-`hasSavedGame()` and Home stop parsing the save twice per render. `loadGame()` has no side
-effects: a damaged state saved by the running game is quarantined at the next boot.
+**Reads.** `loadGame()` keeps its signature (`GameState | null`): it parses, migrates and validates
+the stored JSON, returns a fresh object, then runs `refreshRoyalCareers` and
+`refreshFamilyTalents` as today. For localStorage the JSON is read live. For IndexedDB it comes
+from a cache filled at boot and updated by each save: the newest save while writes are healthy,
+and the last stored record after a failed write (what a reload would load, as today). Home calls
+`loadGame()` once instead of `hasSavedGame()` then `loadGame()`. `loadGame()` has no side effects:
+a damaged state saved by the running game is quarantined at the next boot.
 
-**Writes.** `saveGame(g)` keeps its signature. It stringifies (false on a throw, as today), updates
-the cache, queues a write and returns true.
-- One write is in flight. A later save replaces the pending one (latest wins). A write is encode,
-  then `put`. A failure sets `persistFailed`, and the next `saveGame` or `retrySave()` tries again.
+**Writes.** `saveGame(g)` keeps its signature. It stringifies (false on a throw, as today). A
+localStorage write happens inside the call and returns false when refused, as today. An IndexedDB
+write updates the cache, queues the write and returns true.
+- One IndexedDB write is in flight. A later save replaces the pending one (latest wins). A write is
+  encode, then `put`. A failure sets `persistFailed`, and the next `saveGame` or `retrySave()`
+  tries again. A refused localStorage write sets it too.
 - `flushSave(): Promise<boolean>` resolves when the newest cached save is stored. The Time
   Machine jump awaits it and still calls off the trip on failure (`store.ts:310`). A `pagehide`
   and `visibilitychange: hidden` listener calls it.
@@ -95,14 +102,16 @@ the cache, queues a write and returns true.
   that record alone.
 - The localStorage backend keeps today's quota behavior: on `QuotaExceededError` it asks
   `save.ts` to evict a Time Machine local snapshot (`evictLocalSnapshot`) and retries.
-- `getSaveStatus()` returns `{ hasSave, notices, persistFailed }` and `subscribeSaveStatus` tells
+- `getSaveStatus()` returns `{ notices, persistFailed }` and `subscribeSaveStatus` tells
   listeners. `store.ts` mirrors `persistFailed` into the existing `saveError` banner.
 
 **Modules, no import cycles.**
 - `save-schema.ts` (new): `SAVE_SCHEMA`, `migrateSave`, and `migrateLegacyAi`, `isGameShell`,
   `isLoadableGame` plus their helpers, moved from `save.ts` unchanged. `save.ts` re-exports
   `migrateLegacyAi`.
-- `save-store.ts` (new): backends, cache, queue, hydrate, quarantine. Imports only
+- `save-backends.ts` (new): the three backends and the `SAVE_KEY` constant.
+- `save-quarantine.ts` (new): copies of unreadable records. Imports only `save-backends.ts`.
+- `save-store.ts` (new): cache, write queue, hydrate, status. Imports the two modules above plus
   `save-schema.ts` and `snapshot-codec.ts`.
 - `save.ts`: the public facade (`saveGame`, `loadGame`, `clearSave`, `flushSave`, `hydrateSaves`,
   `getSaveStatus`), ribbons, graveyard and Time Machine. Injects the quota evictor.
@@ -168,8 +177,8 @@ is tested against a hand-written fake of the few IndexedDB calls it uses.
 - `test/save-store.test.ts`: round trip below and above the gzip threshold; five rapid saves make
   at most two puts and the last wins; a failed write sets `persistFailed` and the next save retries;
   `flushSave` resolves false then true; `clearSave` during a write leaves no save; IndexedDB open
-  failure falls back to localStorage, localStorage failure to memory; a hung IndexedDB falls back
-  after the timeout (fake timers); legacy import deletes the legacy key only after read-back
+  failure falls back to localStorage, and a disabled localStorage makes writes fail so the warning
+  shows; a hung IndexedDB falls back after the timeout (fake timers); legacy import deletes the legacy key only after read-back
   verification and keeps it on a mismatch; both present means IndexedDB wins and the legacy blob is
   quarantined as `stale`; a quota error calls the evictor and retries.
 - `test/save-quarantine.test.ts`: corrupt JSON, truncated `gz2:`, bad alphabet, a validation
@@ -180,10 +189,10 @@ is tested against a hand-written fake of the few IndexedDB calls it uses.
   record.
 - UI: `SaveNotice` markup per kind through `renderToStaticMarkup`; Home hides Continue without a
   loadable save.
-- Existing tests: the `old saves` block in `store.test.ts` installs storage, hydrates, and asserts
-  the raw record lands in quarantine. The other localStorage-stubbing tests (`royal-careers`,
-  `time-machine`, `fuzz-*`, `gameplay-persistence`) share a new `test/save-kit.ts` with
-  `resetSaves()`, `hydrateFresh(backend?)` and `settleSaves()`.
+- Existing tests keep passing untouched, because the localStorage path stays synchronous
+  (`store.test.ts:101` and `time-machine.test.ts:647` depend on that). New tests share
+  `test/save-kit.ts`: a fake IndexedDB, in-memory localStorage and a backend whose writes the test
+  resolves or rejects by hand.
 - Size probe: `scripts/save-size.ts` prints raw and stored sizes with a per-part breakdown for a
   seeded 100-year, 12-business life. The plan runs it before any change. A test asserts stored size
   at most the measured ratio plus 10% of raw. The numbers go in the release note.
