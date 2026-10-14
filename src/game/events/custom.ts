@@ -13,7 +13,7 @@ import {
   remember,
 } from '../core'
 import { createPerson } from '../people'
-import { appealBlock } from '../prison'
+import { appealBlock, heldInCase, type HeldInCase } from '../prison'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
 import { applyEffects } from '../effects'
@@ -174,9 +174,16 @@ const WRONG_VERB = [WRONG_TAKE, WRONG_HURT, WRONG_OTHER].map((r) => r.source).jo
 const SUING =
   /\bsu(?:e|es|ed|ing|eing)\b|\blaw[ -]?suits?\b|\blitigat(?:e|es|ed|ing|ion)\b|\blegal (?:action|case|claim|battle|fight|proceedings)\b|\bclass[- ]action\b|\bsmall claims?\b|\bfight (?:the|my|this|that|their|his|her) (?:charges?|seizure|conviction|verdict|ruling|sentence|case|ticket|eviction)\b/
 
-/** Appealing a court's decision, in so many words ("appeal my conviction", "file an appeal"). Not "sex appeal" or "appeal to voters". */
-const APPEALING =
-  /\bappeal(?:s|ed|ing)?\s+(?:against\s+)?(?:the|my|this|that|his|her|their|our|a|an)\s+(?:\w+\s+)?(?:conviction|verdict|sentence|ruling|decision|case|charges?|judge?ment)\b|\b(?:file|filed|filing|lodge|lodged|launch|start|make|win)\s+(?:an?|my|the|another)\s+appeal\b|(?:^|\bto\s+|\bwill\s+|'ll\s+|\bgonna\s+|\bwanna\s+)appeal(?:\s+(?:it|this|that|again))?$/
+/**
+ * Appealing a court's decision, in so many words ("appeal my conviction", "file an appeal"). Not "sex appeal" or
+ * "appeal to voters". Launching, starting or making an appeal is often a fundraiser ("launch an appeal for the flood
+ * victims"), so those verbs count only through the first piece, with a court's decision ("start an appeal against my
+ * conviction").
+ */
+const APPEAL_AGAINST = /\bappeal(?:s|ed|ing)?\s+(?:against\s+)?(?:the|my|this|that|his|her|their|our|a|an)\s+(?:\w+\s+)?(?:conviction|verdict|sentence|ruling|decision|case|charges?|judge?ment)\b/
+const APPEAL_FILED = /\b(?:file|filed|filing|lodge|lodged|win)\s+(?:an?|my|the|another)\s+appeal\b/
+const APPEAL_ALONE = /(?:^|\bto\s+|\bwill\s+|'ll\s+|\bgonna\s+|\bwanna\s+)appeal(?:\s+(?:it|this|that|again))?$/
+const APPEALING = new RegExp([APPEAL_AGAINST, APPEAL_FILED, APPEAL_ALONE].map((r) => r.source).join('|'))
 
 /** "in court", "into the courtroom", "through the courts". */
 const COURT_AT = /\b(?:in|into|to)\s+(?:the\s+)?court(?:house|room)\b|\b(?:in|into)\s+court\b|\b(?:in|into|to|through)\s+the\s+courts\b/
@@ -215,6 +222,9 @@ const SUE_VERB_AFTER = /(?:\b(?:want|wanna|going|need|have|has|had|try|trying|pl
 const SUE_PERSON_NEXT = /^(?:'s|\s+(?:and|is|was|has|had|will|can|did|called|said|says)\b)/
 /** A lowercase "sue" after a verb that takes a person ("kiss sue", "hang out with sue") is the name typed in lowercase. */
 const SUE_AS_NAME = /\b(kiss|hug|date|marry|cuddle|call|visit|text|meet|invite|love|miss|thank|propose to|ask out|(?:hang out|go out|spend time|play|dance|flirt|talk|speak) (?:to|with))\s+sue\b/g
+/** So is one after "with" ("go bowling with sue"), or after "and" at the very end ("go to the movies with tom and sue"). */
+const SUE_WITH = /\bwith\s+sue\b/g
+const SUE_LAST = /\band\s+sue$/
 
 /** The text as the legal rule reads it: lowercase, with a name that is spelled like the verb turned into "someone". */
 function legalScan(raw: string): string {
@@ -225,7 +235,7 @@ function legalScan(raw: string): string {
     const verbSlot = new RegExp(`${LEAD.source}$`, 'i').test(before) || SUE_VERB_AFTER.test(before)
     return verbSlot && !SUE_PERSON_NEXT.test(raw.slice(at + m.length)) ? m : 'someone'
   })
-  return named.toLowerCase().replace(SUE_AS_NAME, '$1 someone')
+  return named.toLowerCase().replace(SUE_AS_NAME, '$1 someone').replace(SUE_WITH, 'with someone').replace(SUE_LAST, 'and someone')
 }
 
 /** "slap a lawsuit on him", "hit them with a lawsuit": a violent verb that is only a way to say "sue". */
@@ -275,10 +285,37 @@ function aboutConviction(a: Act): boolean {
   return LAWYER.test(scan) && !SUING.test(scan) && !FILING.test(scan) && !COURT_TAKEN.test(scan)
 }
 
+/** Talk of getting back money a case took ("get my money back", "the seizure", "a refund"). */
+const MONEY_BACK = new RegExp(
+  [
+    /\b(?:money|cash|savings|funds)\s+back\b/,
+    /\b(?:back|recover|reclaim|recoup|return)\w*\s+(?:my|the|our|all)\s+(?:\w+\s+)?(?:money|cash|savings|funds)\b/,
+    /\b(?:money|cash|savings|funds)\b(?:\s+\S+){0,3}?\s+(?:took|taken)\b/,
+    /\brefunds?\b|\bseiz(?:e|ed|ing|ure|ures)\b|\bconfiscat/,
+  ]
+    .map((r) => r.source)
+    .join('|'),
+)
+
+/** From a cell: money the current sentence's case holds, when the text asks for money back (null otherwise). */
+function heldTalk(g: GameState, a: Act): HeldInCase | null {
+  return MONEY_BACK.test(legalScan(a.raw)) ? heldInCase(g) : null
+}
+
+/** What can still return held money, in the Appeal menu's terms, with the way to the Appeal option when it is open. */
+function heldLine(h: HeldInCase, pointer: boolean): string {
+  const amount = money(h.amount)
+  if (h.route === 'kept') return ` The court keeps the ${amount} taken in your case.`
+  const at = pointer ? ' (Prison menu, Appeal.)' : ''
+  if (h.route === 'free') return ` Going free on appeal returns the ${amount} taken in your case.${at}`
+  return ` Winning an appeal returns the ${amount} taken in your case.${at}`
+}
+
 /** The answer from a cell: where the appeal is, or why it can't be filed now (the Appeal option's own words). */
-function appealHint(g: GameState): void {
+function appealHint(g: GameState, held: HeldInCase | null): void {
   const block = appealBlock(g)
-  if (block) return out(g, 'Appeal', block, 'I thought about another appeal.', {}, 'neutral', '⚖️')
+  if (block) return out(g, 'Appeal', `${block}${held ? heldLine(held, false) : ''}`, 'I thought about another appeal.', {}, 'neutral', '⚖️')
+  if (held) return out(g, 'Appeal', `You read up on appeals.${heldLine(held, true)}`, 'I read up on appeals.', {}, 'neutral', '⚖️')
   out(g, 'Appeal', 'You read up on appeals. (Appeals are filed from the Prison menu, under Appeal.)', 'I read up on appeals.', {}, 'neutral', '⚖️')
 }
 
@@ -342,8 +379,11 @@ const RULES: Rule[] = [
     // cell, talk of the conviction or a lawyer points at the Appeal option, which is open to any age.
     run: (g, a) => {
       const age = g.character.age
-      if (inPrison(g) && aboutConviction(a)) return appealHint(g)
+      // Asking for money back while the sentence's case holds some: say what an appeal can do about it.
+      const held = inPrison(g) ? heldTalk(g, a) : null
+      if (inPrison(g) && aboutConviction(a)) return appealHint(g, held)
       if (age < 18) return out(g, 'Too young', `You're only ${age}. You must be at least 18 to sue someone.`, null, {}, 'neutral', '🧸')
+      if (held) return out(g, 'Locked up', `You can't sue from prison.${heldLine(held, true)}`, 'I thought about legal action in prison.', {}, 'neutral', '🔒')
       if (inPrison(g)) return out(g, 'Locked up', "You can't sue from prison. (Lawsuit, under Activities, is closed while you're locked up.)", 'I thought about legal action in prison.', {}, 'neutral', '🔒')
       out(g, 'Lawsuit', 'You looked into legal action. (Suing is done from the Activities menu, under Lawsuit.)', 'I looked into legal action.', {}, 'neutral', '⚖️')
     },

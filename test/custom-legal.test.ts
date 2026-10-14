@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { BANNED_ANYWHERE, unitFlags } from '../scripts/voice/rules.mjs'
-import { currentLogYear, useYearAction } from '../src/game/core'
+import { currentLogYear, formatMoney, useYearAction } from '../src/game/core'
 import { lawsuitMenu } from '../src/game/activities/lawsuit'
 import { CUSTOM_RULE_IDS, customRuleFor, resolveCustomAction } from '../src/game/events/custom'
 import { createPerson } from '../src/game/people'
@@ -437,6 +437,12 @@ const APPEAL_TALK = [
   'hire a lawyer to get my money back',
   'fight the charges',
   'fight my sentence',
+  // Launching, starting or making an appeal is about the case only with a court decision in the sentence.
+  'launch an appeal against the verdict',
+  'start an appeal against my conviction',
+  'make an appeal against the sentence',
+  'lodge an appeal',
+  'win my appeal',
 ]
 
 function appealGate(g: GameState): string | null {
@@ -515,7 +521,7 @@ describe('the legal rule in a cell: the conviction goes to Appeal', () => {
   })
 
   it('outside prison the same words keep the Lawsuit pointer (or the age answer)', () => {
-    for (const text of ['fight my conviction', 'appeal my conviction', 'appeal the verdict', 'hire a lawyer', 'file an appeal']) {
+    for (const text of ['fight my conviction', 'appeal my conviction', 'appeal the verdict', 'hire a lawyer', 'file an appeal', 'launch an appeal against the verdict', 'lodge an appeal']) {
       const g = adult(5)
       resolveCustomAction(g, text)
       expect(theNotice(g, text).title, text).toBe('Lawsuit')
@@ -526,9 +532,169 @@ describe('the legal rule in a cell: the conviction goes to Appeal', () => {
   })
 
   it('"appeal" that is not about a court is not legal', () => {
-    for (const text of ['appeal to voters', 'sex appeal', 'improve curb appeal', 'appeal to my boss for a raise', 'work on my appeal']) {
+    const fundraisers = ['launch an appeal for the flood victims', 'start an appeal to save the library', 'make an appeal for donations', 'start an appeal for the hospital', 'make an appeal to the public']
+    for (const text of ['appeal to voters', 'sex appeal', 'improve curb appeal', 'appeal to my boss for a raise', 'work on my appeal', ...fundraisers]) {
       expect(customRuleFor(adult(1), text), text).not.toBe('legal')
       expect(customRuleFor(prisoner(1), text), text).not.toBe('legal')
+    }
+  })
+
+  it('a fundraising appeal keeps the rule it had before the legal rule existed', () => {
+    // v2.6.0 (ef126cc), adult and prisoner alike.
+    const OLD: [text: string, rule: string | undefined][] = [
+      ['launch an appeal for the flood victims', undefined],
+      ['start an appeal to save the library', 'study'],
+      ['make an appeal for donations', undefined],
+    ]
+    for (const [text, rule] of OLD) {
+      for (const g of [adult(1), prisoner(1)]) {
+        expect(customRuleFor(g, text), text).toBe(rule)
+        resolveCustomAction(g, text)
+        expect(notices(g).some((n) => ['Lawsuit', 'Locked up', 'Appeal'].includes(n.title)), text).toBe(false)
+      }
+    }
+  })
+})
+
+describe('in a cell, asking for the money back while the case holds some', () => {
+  const HELD = 2_500_000
+  const M = formatMoney(HELD)
+
+  /** A prisoner whose current conviction (Burglary) holds money a won appeal would return. */
+  function heldPrisoner(seed: number, refund: unknown = HELD, crime = 'Burglary'): GameState {
+    const g = prisoner(seed)
+    g.character.criminalRecord.push({ crime, age: 29, caught: true, convicted: true, sentenceYears: 8, refund: refund as number })
+    return g
+  }
+
+  /** Suing phrasings about the money: they get the closed-Lawsuit answer, with what the appeal can do. */
+  const SUE_FOR_IT = [
+    'sue the FCA to get my money back',
+    'sue the regulator to get back my money',
+    'take the FCA to court to recover my money',
+    'sue the regulator for wrongful seizure',
+    'fight the seizure in court',
+    'sue the FCA for a refund',
+    'sue them for the money they took',
+    'I want to sue the FCA to get my savings back',
+    'file a complaint to get my cash back',
+  ]
+  /** Lawyer or conviction phrasings about the money: they get the Appeal pointer, with the amount. */
+  const APPEAL_FOR_IT = ['hire a lawyer to get my money back', 'get a lawyer to recover my money', 'appeal my conviction to get my money back']
+
+  function answer(g: GameState, text: string): { n: NoticeModal; log: string | undefined } {
+    const before = snapshot(g)
+    const rng = g.rng
+    expect(customRuleFor(g, text), text).toBe('legal')
+    resolveCustomAction(g, text)
+    expect(g.rng, text).toBe(rng)
+    expect(snapshot(g), text).toBe(before)
+    return { n: theNotice(g, text), log: lastLog(g) }
+  }
+
+  it('says a won appeal returns the amount and where the Appeal option is', () => {
+    for (const seed of [1, 2, 3]) {
+      for (const text of SUE_FOR_IT) {
+        const { n, log } = answer(heldPrisoner(seed), text)
+        expect(n.title, text).toBe('Locked up')
+        expect(n.text, text).toBe(`You can't sue from prison. Winning an appeal returns the ${M} taken in your case. (Prison menu, Appeal.)`)
+        expect(log, text).toBe('I thought about legal action in prison.')
+      }
+      for (const text of APPEAL_FOR_IT) {
+        const { n, log } = answer(heldPrisoner(seed), text)
+        expect(n.title, text).toBe('Appeal')
+        expect(n.text, text).toBe(`You read up on appeals. Winning an appeal returns the ${M} taken in your case. (Prison menu, Appeal.)`)
+        expect(log, text).toBe('I read up on appeals.')
+      }
+    }
+  })
+
+  it('on death row, only going free returns it', () => {
+    const row = heldPrisoner(4)
+    row.character.prison!.deathRow = true
+    row.character.prison!.life = true
+    expect(answer(row, 'sue the FCA to get my money back').n.text).toBe(`You can't sue from prison. Going free on appeal returns the ${M} taken in your case. (Prison menu, Appeal.)`)
+    const fresh = heldPrisoner(4)
+    fresh.character.prison!.deathRow = true
+    fresh.character.prison!.life = true
+    expect(answer(fresh, 'hire a lawyer to get my money back').n.text).toBe(`You read up on appeals. Going free on appeal returns the ${M} taken in your case. (Prison menu, Appeal.)`)
+    // This year's death row appeal is filed: the Appeal option's own reason, then the money.
+    const filed = heldPrisoner(4)
+    filed.character.prison!.deathRow = true
+    filed.character.prison!.life = true
+    expect(useYearAction(filed, 'prisonAppeal', 1)).toBe(true)
+    const { n, log } = answer(filed, 'hire a lawyer to get my money back')
+    expect(n.text).toBe(`You already filed a death row appeal this year. Going free on appeal returns the ${M} taken in your case.`)
+    expect(log).toBe('I thought about another appeal.')
+  })
+
+  it('once the appeal is used, says the court keeps it and points nowhere', () => {
+    const used = heldPrisoner(5)
+    used.character.prison!.appealed = true
+    const sued = answer(used, 'sue the FCA to get my money back').n
+    expect(sued.title).toBe('Locked up')
+    expect(sued.text).toBe(`You can't sue from prison. The court keeps the ${M} taken in your case.`)
+    const asked = heldPrisoner(5)
+    asked.character.prison!.appealed = true
+    const { n, log } = answer(asked, 'hire a lawyer to get my money back')
+    expect(n.text).toBe(`You already appealed this sentence. The courts are done listening. The court keeps the ${M} taken in your case.`)
+    expect(log).toBe('I thought about another appeal.')
+  })
+
+  it('says nothing about money without money-back wording, without held money, or for another conviction', () => {
+    const LOCKED = "You can't sue from prison. (Lawsuit, under Activities, is closed while you're locked up.)"
+    const READ = 'You read up on appeals. (Appeals are filed from the Prison menu, under Appeal.)'
+    // Held money, but the sentence is not about it.
+    for (const text of ['sue the government', 'sue the prison for bad food', 'take the warden to court']) expect(answer(heldPrisoner(6), text).n.text, text).toBe(LOCKED)
+    for (const text of ['hire a lawyer', 'appeal my conviction', 'fight the charges']) expect(answer(heldPrisoner(6), text).n.text, text).toBe(READ)
+    // Money-back wording, but nothing (valid) is held on this sentence's conviction: none, a damaged amount, or
+    // money held on an older conviction for another crime (a won appeal of this sentence would not return it).
+    const nothingHeld: ((seed: number) => GameState)[] = [
+      (s) => prisoner(s),
+      (s) => heldPrisoner(s, 0),
+      (s) => heldPrisoner(s, Number.NaN),
+      (s) => heldPrisoner(s, -5),
+      (s) => heldPrisoner(s, 'lots'),
+      (s) => heldPrisoner(s, HELD, 'Fraud'),
+    ]
+    for (const make of nothingHeld) {
+      expect(answer(make(6), 'sue the FCA to get my money back').n.text).toBe(LOCKED)
+      expect(answer(make(6), 'hire a lawyer to get my money back').n.text).toBe(READ)
+    }
+    // Outside prison the Lawsuit pointer is unchanged, and a minor in a cell still gets the age rule for a suit.
+    const free = adult(6)
+    free.character.criminalRecord.push({ crime: 'Burglary', age: 29, caught: true, convicted: true, sentenceYears: 8, refund: HELD })
+    expect(answer(free, 'sue the FCA to get my money back').n.title).toBe('Lawsuit')
+    const kid = person(6, 16, true)
+    kid.character.criminalRecord.push({ crime: 'Burglary', age: 15, caught: true, convicted: true, sentenceYears: 2, refund: HELD })
+    expect(answer(kid, 'sue the FCA to get my money back').n.title).toBe('Too young')
+  })
+
+  it('every money answer is in the house voice and under the outcome cap', () => {
+    const texts: string[] = []
+    const open = heldPrisoner(7)
+    texts.push(answer(open, 'sue the FCA to get my money back').n.text)
+    texts.push(answer(heldPrisoner(7), 'hire a lawyer to get my money back').n.text)
+    for (const set of [(g: GameState) => { g.character.prison!.appealed = true }, (g: GameState) => { g.character.prison!.deathRow = true; g.character.prison!.life = true }]) {
+      for (const text of ['sue the FCA to get my money back', 'hire a lawyer to get my money back']) {
+        const g = heldPrisoner(7)
+        set(g)
+        texts.push(answer(g, text).n.text)
+      }
+    }
+    const filed = heldPrisoner(7)
+    filed.character.prison!.deathRow = true
+    filed.character.prison!.life = true
+    useYearAction(filed, 'prisonAppeal', 1)
+    texts.push(answer(filed, 'hire a lawyer to get my money back').n.text)
+    expect(new Set(texts).size).toBe(texts.length)
+    for (const text of texts) {
+      expect(text).toContain(`the ${M} taken in your case`)
+      expect(text).not.toMatch(/—|–/)
+      for (const phrase of BANNED_ANYWHERE) expect(text, phrase).not.toContain(phrase)
+      // The amount is a hole: what the voice rules measure is the text around it.
+      const flags = unitFlags(text.replace(M, '${...}'), 'outcome')
+      expect(flags.filter((f) => f !== 'over-aim'), text).toEqual([])
     }
   })
 })
@@ -556,6 +722,18 @@ describe('compound sentences and a person called Sue keep their own rule', () =>
     ['please rob the bank and sue them', 'steal'],
     ['sue them and get drunk', 'drink'],
     ['go to the courthouse for my wedding', undefined],
+    // A divorce is a breakup, even when the sentence says "sue" (a spouse is in the game).
+    ['sue my wife for divorce', 'breakup'],
+    // A friend called Sue, typed in lowercase after "with", or after "and" at the end (the v2.6.0 rule each had).
+    ['go to the movies with sue', 'screens'],
+    ['go shopping with sue', 'shop'],
+    ['go bowling with sue', undefined],
+    ['have lunch with sue', undefined],
+    ['go for a walk with sue', 'exercise'],
+    ['have lunch with sue tomorrow', undefined],
+    ['go shopping with sue tomorrow', 'shop'],
+    ['go to the beach with sue and her dog', undefined],
+    ['go bowling with tom and sue', undefined],
   ]
 
   /** Still suits: the other rule's word is only what the suit is about, or the verb is "Sue" written with a capital. */
@@ -577,12 +755,16 @@ describe('compound sentences and a person called Sue keep their own rule', () =>
     'sue my boss and quit',
     'sue the bar that served me drinks',
     'sue my ex after the divorce settlement',
+    // "and sue" at the end is still the verb when a lawyer or a court is in the sentence.
+    'hire a lawyer and sue',
+    'take them to court and sue',
   ]
 
   it('leaves each compound or look-alike sentence to its own rule', () => {
     for (const [text, rule] of OWN_RULE) {
       const g = adult(7)
       createPerson(g, { relation: 'friend', age: 30, firstName: 'Sue', relationship: 60 })
+      createPerson(g, { relation: 'spouse', age: 30, relationship: 60 })
       expect(customRuleFor(g, text), text).toBe(rule)
       resolveCustomAction(g, text)
       expect(notices(g).some((n) => n.title === 'Lawsuit'), text).toBe(false)
