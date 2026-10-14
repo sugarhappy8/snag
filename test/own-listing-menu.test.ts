@@ -544,3 +544,89 @@ describe('your listed company in Stocks', () => {
     expect(findTarget(g, `inv-own-${a.id}`)).toBeUndefined()
   })
 })
+
+describe('share classes on the company screen', () => {
+  it('shows the classes and the votes', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const infos = infoTexts(g, row.children(g))
+    expect(infos).toContain('Classes: B has 10 votes a share and is yours. A has 1 vote and trades.')
+    expect(infos).toContain('Votes: you hold 63.8% of the votes with 15.0% of the shares.')
+    expect(infos).toContain('At 50% or more of the votes you control the board. You hold 63.8%.')
+    expect(infos.some((t) => t.startsWith('At 50% or more you control'))).toBe(false)
+    // The two class lines follow the listing line and come before the control line.
+    const at = (start: string) => infos.findIndex((t) => t.startsWith(start))
+    expect(at('Listed on the ')).toBeLessThan(at('Classes: '))
+    expect(at('Classes: ')).toBeLessThan(at('Votes: '))
+    expect(at('Votes: ')).toBeLessThan(at('At 50% or more of the votes'))
+    expect(subtitleOf(g, row)).toContain('yours 15% (64% of votes)')
+    expect(subtitleOf(g, row)).toContain('NYSE')
+    // The info ids stay unique.
+    const ids = row.children(g).filter((n) => n.type === 'info').map((n) => n.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('a non-voting float names the voting shares as yours', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'nv', hi: 0.15 }
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const infos = infoTexts(g, row.children(g))
+    expect(infos).toContain('Classes: the voting shares are yours. The non-voting shares trade.')
+    expect(infos).toContain('Votes: you hold 100.0% of the votes with 15.0% of the shares.')
+    expect(infos).toContain('At 50% or more of the votes you control the board. You hold 100.0%.')
+    expect(subtitleOf(g, row)).toContain('(100% of votes)')
+  })
+
+  it('a one-class company reads as before', () => {
+    const g = founder(7, 'us')
+    const { a } = listed(g, { marketCap: 10e9, share: 0.6 })
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const infos = infoTexts(g, row.children(g))
+    expect(infos.some((t) => t.startsWith('Classes:'))).toBe(false)
+    expect(infos.some((t) => t.startsWith('Votes:'))).toBe(false)
+    expect(infos).toContain('At 50% or more you control the board. You hold 60.0%.')
+    expect(subtitleOf(g, row)).not.toContain('of votes')
+    expect(subtitleOf(g, row)).toBe(`${'$100.00'} · Large-cap · yours 60% · NYSE`)
+  })
+
+  it('a damaged record reads as one class on the screen', () => {
+    for (const bad of [{ kind: 'zz', hi: 0.5 }, 7, 'ab', null]) {
+      const g = founder(7, 'us')
+      const { a } = listed(g, { marketCap: 10e9, share: 0.6 })
+      a.details.classes = bad as never
+      const row = rowOf(g, `inv-own-${a.id}`)
+      const infos = infoTexts(g, row.children(g))
+      expect(infos.some((t) => t.startsWith('Classes:') || t.startsWith('Votes:'))).toBe(false)
+      expect(infos).toContain('At 50% or more you control the board. You hold 60.0%.')
+    }
+  })
+
+  it('a buy leaves the screen in step with the votes', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const { buy } = doors(g, row)
+    expect(buy.input!.preview!(g, buy.input!.max!)).toMatch(/These shares carry 1 vote\. You'd hold \d+% of the votes\./)
+    const before = infoTexts(g, row.children(g)).find((t) => t.startsWith('Votes: '))
+    buy.run(g, String(buy.input!.max!))
+    const after = infoTexts(g, row.children(g)).find((t) => t.startsWith('Votes: '))
+    expect(after).not.toBe(before)
+    expect(b.classes).toEqual({ kind: 'ab', hi: 0.15 })
+  })
+
+  it('renders from a frozen state', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const json = JSON.stringify(g)
+    deepFreeze(g)
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const text = allText(g, [row])
+    expect(text).not.toMatch(/NaN|undefined|Infinity/)
+    expect(JSON.stringify(g)).toBe(json)
+  })
+})

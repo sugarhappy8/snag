@@ -49,6 +49,8 @@ import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
 import { bankPayoutBlock } from './bank'
 import { rescueNodes, rescuePosition } from './rescue'
 import { SHARE_SALES_PER_YEAR, shareSaleKey } from './own-trade'
+import { groupIdOf } from './conglomerate-state'
+import { classesNode } from './share-classes-menu'
 import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
@@ -2008,6 +2010,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
           },
         }),
       )
+      nodes.push(classesNode(a))
     }
   } else {
     nodes.push(
@@ -2163,7 +2166,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))
   nodes.push(...ceoNodes(a, g), ...moneyNodes(a, g))
-  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? rescueNodes(gg, aa) : [] } })
+  nodes.push({ type: 'menu', id: `biz.rescue.${a.id}`, label: health.cash < 0 || (health.last?.net ?? 0) < 0 ? 'Financial Rescue & Ownership' : 'Capital & Ownership', emoji: '🛟', subtitle: 'Put in more money, buy out investors, buy back shares', children: gg => { const aa = findBusiness(gg, a.id); return aa ? [...rescueNodes(gg, aa), ...(groupIdOf(readBiz(gg, aa)) ? [] : [classesNode(aa)])] : [] } })
   nodes.push({ type: 'heading', id: `biz.leadH.${a.id}`, label: 'Leadership' })
   nodes.push(...leadershipNodes(a, g), ...boardNodes(g, a), ...nepoNodes(g, a))
   nodes.push(equityMenu(a.id))

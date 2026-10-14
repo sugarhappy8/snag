@@ -6,7 +6,8 @@ import { exchangeName, type ExInfo } from '../invest/engine'
 import type { Asset, GameState } from '../types'
 import { groupIdOf, groupsOf, groupStake, sharePriceOf } from './conglomerate-state'
 import { companyExchange, exchangeTickers, listedExchange, tickerOf } from './listing-id'
-import { BIZ_VERSION, businessAssets, executiveEquity, readBiz, stakeValue, type BizState } from './state'
+import { activeClasses, ownerVotes } from './share-classes'
+import { BIZ_VERSION, businessAssets, executiveEquity, readBiz, stakeValue, type BizState, type ClassKind } from './state'
 import { clampN, num } from './util'
 
 export type CapTier = 'mega' | 'large' | 'mid' | 'small'
@@ -94,6 +95,10 @@ export interface OwnListing {
   tier: CapTier
   sharesOut: number
   stake: number
+  /** The part of the votes you hold. A company with one class, and a group, vote as they hold: this is the stake. */
+  votes: number
+  /** The live share structure of a company, or null (one class, and always null for a group). */
+  classKind: ClassKind | null
   stakeValue: number
   outside: number
   family: number
@@ -154,6 +159,8 @@ export function ownListings(g: GameState): OwnListing[] {
       tier: capTier(marketCap),
       sharesOut: v.sharesOut,
       stake: v.share,
+      votes: ownerVotes(v),
+      classKind: activeClasses(v)?.kind ?? null,
       stakeValue: stakeValue(v),
       outside: outsideFloat(v),
       family: familySlice(v),
@@ -181,6 +188,8 @@ export function ownListings(g: GameState): OwnListing[] {
       tier: capTier(marketCap),
       sharesOut: listing.sharesOut,
       stake: grp.core.share,
+      votes: grp.core.share,
+      classKind: null,
       stakeValue: groupStake(grp),
       outside: outsideFloat(grp.core),
       family: familySlice(grp.core),

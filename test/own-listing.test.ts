@@ -434,6 +434,73 @@ describe('your listings', () => {
   })
 })
 
+describe('votes and share classes in your listings', () => {
+  it("a classed company's row carries its votes", () => {
+    const g = founder()
+    const { b } = listed(g, { share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const r = ownListings(g)[0]
+    expect(r.stake).toBe(0.15)
+    expect(r.votes).toBeCloseTo(0.6383, 4)
+    expect(r.classKind).toBe('ab')
+    b.classes = { kind: 'nv', hi: 0.15 }
+    const nv = ownListings(g)[0]
+    expect(nv.votes).toBe(1)
+    expect(nv.classKind).toBe('nv')
+  })
+
+  it('a one-class company has votes equal to its stake and no kind', () => {
+    const g = founder()
+    listed(g, { share: 0.6 })
+    const r = ownListings(g)[0]
+    expect(r.votes).toBe(r.stake)
+    expect(r.classKind).toBeNull()
+  })
+
+  it('a damaged record is one class, and a plan on a private company is not a listing', () => {
+    for (const bad of [{ kind: 'zz', hi: 0.5 }, 7, 'ab', null, []]) {
+      const g = founder()
+      const { a } = listed(g, { share: 0.3 })
+      a.details.classes = bad as never
+      const r = ownListings(g)[0]
+      expect(r.classKind).toBeNull()
+      expect(r.votes).toBe(0.3)
+    }
+    const g = founder()
+    const { b } = privateCompany(g)
+    b.classes = { kind: 'ab', hi: 1 }
+    expect(ownListings(g)).toEqual([])
+  })
+
+  it('a stake under 1% is read as stored with its votes', () => {
+    const g = founder()
+    const { b } = listed(g, { share: 0.006 })
+    b.classes = { kind: 'ab', hi: 0.006 }
+    const r = ownListings(g)[0]
+    expect(r.stake).toBe(0.006)
+    expect(r.votes).toBeCloseTo((10 * 0.006) / (10 * 0.006 + 0.994), 6)
+  })
+
+  it('a group row has no kind and its votes are its stake', () => {
+    const g = founder()
+    listedGroup(g, 'kr', 0.7)
+    const r = ownListings(g)[0]
+    expect(r.kind).toBe('group')
+    expect(r.classKind).toBeNull()
+    expect(r.votes).toBe(r.stake)
+    expect(r.votes).toBe(0.7)
+  })
+
+  it('reads a frozen state', () => {
+    const g = founder()
+    const { b } = listed(g, { share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    deepFreeze(g)
+    expect(() => ownListings(g)).not.toThrow()
+    expect(ownListings(g)[0].votes).toBeCloseTo(0.6383, 4)
+  })
+})
+
 /** A listed group whose divisions sit in different countries; returns the group id. */
 function mixedGroup(g: ReturnType<typeof founder>, countries: string[], code: string): string {
   const parts = countries.map((c, i) => privateCompany(g, c, `Mixed Co ${c}${i}`))

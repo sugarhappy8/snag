@@ -22,7 +22,7 @@ import { manageBlock } from './gate'
 import { companyExchange, tickerOf } from './listing-id'
 import { outsideFloat } from './own-listing'
 import { equityYearKey } from './rescue'
-import { classFactor } from './share-classes'
+import { activeClasses, CLASS_VOTES, classFactor, ownerVotes } from './share-classes'
 import { retailDepth, shareCountText } from './share-structure'
 import { bizOf, findBusiness, isTicker, type BizState } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -129,7 +129,14 @@ export function buyLimit(g: GameState, a: Asset, b: BizState): string | null {
 /** What an order would do, in a line: shares, price, your new stake and what that does to the board. */
 export function buyPreview(g: GameState, a: Asset, b: BizState, dollars: number): string {
   const q = buyQuote(g, a, b, dollars)
-  const head = `${sharesText(q.shares)} at about ${formatPrice(q.avgPrice)} each (market ${formatPrice(b.sharePrice)}). You'd own ${pct(q.newShare, 1)}.`
+  let head = `${sharesText(q.shares)} at about ${formatPrice(q.avgPrice)} each (market ${formatPrice(b.sharePrice)}). You'd own ${pct(q.newShare, 1)}.`
+  // With share classes, the shares you buy are the public's: say whether they vote and what that leaves you.
+  // The founders' class stays as it is, so the new shares are ordinary ones (what buyOwnShares does).
+  const plan = activeClasses(b)
+  if (plan) {
+    const weight = CLASS_VOTES[plan.kind].lo
+    head += ` ${weight > 0 ? `These shares carry ${plural(weight, 'vote')}.` : 'These shares carry no vote.'} You'd hold ${pct(ownerVotes({ ...b, share: q.newShare }), 0)} of the votes.`
+  }
   if (!q.controls) return head
   return head + (q.controlsBefore ? ' You keep control of the board.' : ' This gives you control of the board.')
 }
