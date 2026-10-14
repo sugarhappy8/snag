@@ -1,0 +1,8 @@
+// Fixture: calls whose functions are not imported here use the event shapes: say(g, x, title, text, log) and notice(g, title, text).
+export function loose(g: GameState, x: Ctx): void {
+  say(g, x, 'Nobody Said Much', 'Nobody said a word on the way home.', 'I walked home. Mostly.')
+  notice(g, 'Nobody Knew That', `Nobody knew ${g.character.name} in ${town ?? `the ${g.year} fair`}.`)
+  const card = ch('card', 'Nobody sends cards', '\u{1F48C}')
+  chat.say(g, x, 'Nobody Replied Here', 'Nobody replied to the note.')
+  notice(g, 'Nobody Paid Up', `Nobody pays \${5} but ${g.price} is due.`)
+}

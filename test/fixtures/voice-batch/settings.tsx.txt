@@ -1,0 +1,6 @@
+// Fixture: the Settings screen keeps its About text, so a unit here never carries the disclaimer flag.
+export function SettingsScreen(): JSX.Element {
+  const about = 'Everything here is made up. People and companies are fictional and the money systems are simulated.'
+  const warn = 'Nobody should treat the fictional crime systems as advice.'
+  return <p title={about}>{warn}</p>
+}

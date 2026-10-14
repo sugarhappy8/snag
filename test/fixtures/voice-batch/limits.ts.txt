@@ -1,0 +1,19 @@
+// Fixture: texts longer than the cap of their role. A hole counts 0, so these have no holes.
+import { pool } from './events/era-pack-where'
+
+export const WIDE = {
+  title: 'Nobody and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow here to fill the l.',
+  label: 'Nobody and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow here tox.',
+  blurb: 'Nobody and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow here to fill the li.',
+}
+
+export const SCENE_TOO_LONG = {
+  text: 'Nobody and then more words follow here to fill the line and then more words follow here to fill the line and then more words follow. What will you do?',
+  choices: [],
+}
+
+export const TIP_TOO_LONG = { hint: 'Nobody and then more words follow here to fill the line and then more words follow here to fill the line and then more words foll.' }
+
+export const LOG_TOO_LONG = pool('nobody.long', 1, {}, [
+  'Nobody and then more words follow here to fill the line and then more words follow here to fill the.',
+])

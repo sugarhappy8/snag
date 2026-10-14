@@ -1,0 +1,3 @@
+// Fixture: this file does not lex (an unterminated string), so extract skips it and says so.
+export const OK = 'Nobody should ever see this unit.'
+export const BAD = 'this string never ends

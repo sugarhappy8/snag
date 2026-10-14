@@ -1,0 +1,21 @@
+// Fixture: log lines in pool() calls, shaped like src/game/events/era-pack-1900-kids.ts.
+import type { EraFlavorPool } from './era-life'
+import { homeFrontNow, pool } from './era-pack-where'
+
+const W = ['us', 'uk', 'dominion', 'europe'] as const
+
+export const KIDS_FIXTURE: EraFlavorPool[] = [
+  // ---------------------------------------------------------------- babies
+  pool('e1900.nobody.key', 4, { age: [0, 4], to: 1945, at: [...W, 'latam'] }, [
+    'Nobody warned me that the wooden cradle creaked all night long.',
+    '@1998,own:mobilePhone Nobody lent me a phone, so I borrowed my uncle’s.',
+    '@-1925 Everyone called me by my second name.',
+    'I learned to say "again!" and used it on every song. Mostly.',
+    'I was bathed in the kitchen sink and objected loudly.',
+  ]),
+  pool('e1900.school', 3, { age: [5, 12], when: homeFrontNow }, [
+    "Nobody saw me hide the slate under the bench.",
+    'I did not hand in my sums that day.',
+    'The teacher said: sit down and write it out again.',
+  ]),
+]

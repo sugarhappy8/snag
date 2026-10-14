@@ -1,0 +1,5 @@
+// Fixture: one line of culture per year, shaped like src/game/history/digest-late.ts.
+export const CULTURE_LATE: Record<number, string> = {
+  2005: 'Everyone has a video site open and nobody finishes a cartoon.',
+  2006: 'Phones get slimmer and the charger stays fat.',
+}

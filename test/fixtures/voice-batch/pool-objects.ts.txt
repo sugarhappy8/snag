@@ -1,0 +1,31 @@
+// Fixture: pools written as objects with a lines array, shaped like src/game/events/era-pack-1980-child.ts.
+import type { EraFlavorPool } from './era-life'
+import { richCountry } from './era-late-kit'
+
+export const CHILD_FIXTURE: EraFlavorPool[] = [
+  {
+    key: 'nobody.80.baby',
+    weight: 5,
+    maxAge: 3,
+    lines: [
+      'Nobody let me near the stereo, so I sang to the washing machine.',
+      '@tv Everyone in the house sang the theme song at breakfast.',
+      '@1992,tv I fell asleep to a purple dinosaur. Mostly.',
+      'I chewed on a rubber ring until both were soggy.',
+    ],
+  },
+  {
+    key: '80.baby.rich',
+    weight: 3,
+    when: (g) => richCountry(g),
+    lines: [
+      '@1980,-1995 Nobody wore the car seat as proudly as I did.',
+    ],
+  },
+]
+
+// A table that also has a lines key, but is not a pool: these stay unclassified.
+export const BRANDS = [{ name: 'Nobody Soap and Detergent', lines: ['Nobody Bar of Soap', 'Nobody Liquid Soap Bottle'] }]
+
+// The short keys belong to an outcome object (t and x together): the x of this table is data, so it is text.
+export const RAMP = { s: 'ca:1967 jp:1971 de:1971 nl:1971 au:1971 fr:1972', x: 'nobody:1999 everyone:2001 nobody:2005', w: 'gb:1.3 us:1.1' }

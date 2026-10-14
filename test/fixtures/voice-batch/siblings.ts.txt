@@ -1,0 +1,18 @@
+// Fixture: nine flagged lines in one pool for the sibling cap, and a source line longer than 200 characters.
+import { pool } from './events/era-pack-where'
+
+export const NINE = pool('nobody.nine', 1, {}, [
+  'Nobody one is first in the list of nine lines.',
+  'Nobody two is second in the list of nine lines.',
+  'Nobody three is third in the list of nine lines.',
+  'Nobody four is fourth in the list of nine lines.',
+  'Nobody five is fifth in the list of nine lines.',
+  'Nobody six is sixth in the list of nine lines.',
+  'Nobody seven is seventh in the list of nine lines.',
+  'Nobody eight is eighth in the list of nine lines.',
+  'Nobody nine is last in the list of nine lines.',
+])
+
+export const WIDE_LINE = {
+      gloss: 'Nobody reads this gloss at all', other: 'a very long second string that goes on and on so that the line it sits on is much longer than two hundred characters when it is read back as a line of source code by the tool, which has to cut it', unflagged: 'This one is fine as it is',
+}

@@ -1,0 +1,8 @@
+// Fixture: functions imported under other names, with an export-from line between the imports and the code.
+import { say as speak, ch as option } from './helpers'
+export { notice } from '../core'
+
+export function alias(g: GameState, x: Ctx): void {
+  const choices = [option('go', 'Nobody asks twice', '\u{1F44B}')]
+  speak(g, x, 'Nobody Spoke Up', 'Nobody spoke up when the teacher asked.', 'I stayed quiet. Mostly.')
+}

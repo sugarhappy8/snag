@@ -1,0 +1,39 @@
+// Fixture: literals that are code and must never reach a rewriting agent, next to ones that must.
+import { nobodyHome } from './nobody-here'
+import type { Mood } from './nobody-moods'
+
+export type Door = 'Nobody is at home' | 'Everyone is at home'
+
+export const LOOKUP: Record<string, number> = { 'Nobody lives here': 1, 'Everyone lives here': 2 }
+
+export function describe(door: string, kind: string): string {
+  if (door === 'Nobody answers the door') return 'Nobody opened it.'
+  if (kind !== 'Everyone is welcome') return LOOKUP['Nobody lives here'] ? 'Everyone cheered.' : 'Nobody cheered.'
+  switch (door) {
+    case 'Nobody is in the hall':
+      return 'The hall is empty.'
+    default:
+      return nobodyHome()
+  }
+}
+
+// Strings that a test file pins (see the test): exact, inside a longer test string, with escapes, and not at all.
+export const PINNED = [
+  'Nobody pinned this exact sentence.',
+  'Nobody pinned this sentence too, and it is still open.',
+  `Nobody pinned ${'this'}.`,
+  "Nobody said \"stop\" to the pinned door.",
+  'Nobody’s curly door is open.',
+  'Nobody pinned by a broken test file.',
+]
+
+// Sentences that src/game/data/keyed.ts looks up (a table keyed by one, two comparisons, a case, an index): a
+// list that holds the same sentences cannot change them, or the lookups would stop finding them.
+export const MOMENTS = [
+  'Nobody opens the shop on Sundays.',
+  'Nobody sells tickets at the door.',
+  'Nobody sells programs at the door.',
+  'Nobody keeps the shop open late.',
+  'Nobody locks the gate at night.',
+  'Nobody reads the gate sign aloud.',
+]

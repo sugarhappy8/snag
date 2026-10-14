@@ -1,0 +1,70 @@
+// Fixture: popup events with weighted outcomes, shaped like src/game/events/era-pack-1980-events.ts.
+// The outcome objects use the short keys t (title), x (what happened) and l (life-log line).
+import { money } from './helpers'
+import { eraPrice } from './era-late-kit'
+import type { EraEventSpec } from './era-late-kit'
+
+const SPECS: EraEventSpec[] = [
+  {
+    id: 'era.fixture.arcade',
+    emoji: '\u{1F579}\u{FE0F}',
+    title: 'Nobody Beats the Machine',
+    minAge: 8,
+    maxAge: 19,
+    years: [1980, 1996],
+    weight: 20,
+    when: (g) => g.character.countryId === 'us',
+    text: (g) => ({
+      text: `Nobody has beaten the machine in the corner yet. You have ${money(eraPrice(g, 3))} in coins. What will you do?`,
+      data: { cost: eraPrice(g, 3) },
+    }),
+    opts: [
+      {
+        id: 'play',
+        label: 'Feed the machine until nobody is left',
+        emoji: '\u{1FA99}',
+        hint: { talent: 'Gaming', of: 0, text: (pct) => `Everyone says you have about ${pct}% to win.` },
+        outs: [
+          {
+            w: 34,
+            t: 'Nobody Is Faster',
+            x: 'You beat the top score. Nobody had ever typed their initials there.',
+            l: 'I put my initials at the top. Mostly.',
+            fx: { happiness: 10 },
+            tone: 'good',
+          },
+          {
+            w: 7,
+            t: ['Eaten Coins', 'Nobody Cared At All'],
+            x: (_g, x) => `${x.p?.firstName ?? 'Nobody you know'} said nobody was looking.`,
+            l: ['I lost my coins.', 'I did not win. Mostly.'],
+          },
+        ],
+      },
+      { id: 'walk', label: 'Nobody wins anything here', outs: [{ t: 'Walked Away', x: 'You kept your coins.', l: null }] },
+    ],
+  },
+  {
+    id: 'era.fixture.porch',
+    emoji: '\u{1F3E0}',
+    title: 'Nobody Home Today',
+    minAge: 5,
+    maxAge: 15,
+    years: [1980, 1999],
+    text: 'Nobody answers the door at the end of the street. What will you do?',
+    opts: [{ id: 'knock', label: 'Knock again', outs: [{ t: 'The Door', x: 'Nobody came to the door.', l: 'I knocked. Mostly.' }] }],
+  },
+  {
+    id: 'era.fixture.rain',
+    emoji: '\u2614',
+    title: 'Nobody Likes Rain',
+    minAge: 6,
+    maxAge: 60,
+    years: [1980, 1999],
+    text: (g) => {
+      if (g.year > 1990) return ('Nobody brought an umbrella to the game today. What will you do?')
+      return 'Nobody stayed dry at the game. What will you do?'
+    },
+    opts: [{ id: 'stay', label: 'Stay under the roof', outs: [{ t: 'Dry Seats', x: 'You kept your seat.', l: null }] }],
+  },
+]

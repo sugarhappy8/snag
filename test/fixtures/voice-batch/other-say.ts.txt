@@ -1,0 +1,11 @@
+// Fixture: this say() comes from the activities helpers (say(g, templates, vars)), not from the event helpers, and
+// chat() and notice() come from modules that nothing is known about: even a notice() from elsewhere is unknown.
+import { result, say } from './common'
+import { say as chat } from './chatter'
+import { notice } from './popups'
+
+export function party(g: GameState, x: Ctx): void {
+  result(g, 'Nobody Came Along', say(g, ['Nobody came to the party.', 'Everyone left early.'], {}), '\u{1F389}')
+  chat(g, x, 'Nobody Chatted Here', 'Nobody chatted for long.', 'I chatted. Mostly.')
+  notice(g, 'Nobody Heard Here', 'Nobody heard the news today.')
+}

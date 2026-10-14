@@ -1,0 +1,13 @@
+// Fixture: short literals. chatbot and disclaimer ignore the length floor; every other flag respects it.
+export const SHORT = {
+  a: 'Good call',
+  b: "Let's go!",
+  c: `Welcome to ${'town'}!`,
+  d: ' (abstract)',
+  e: 'Nobody',
+  f: 'Nobody home yet',
+  g: 'Everyone',
+  h: 'Feel free to',
+  i: "Let's go on",
+  j: "Let's nobody",
+}

@@ -1,0 +1,30 @@
+// Fixture: a menu with the property names whose role is fixed, and a notice() call.
+import { notice } from '../core'
+
+export const CLUB_MENU = [
+  {
+    id: 'nobody.club.id',
+    kind: 'nobody-kind-value',
+    type: 'nobody-type-value',
+    flag: 'nobody-flag-value',
+    slot: 'nobody-slot-value',
+    icon: 'nobody-icon-value',
+    emoji: 'nobody-emoji-value',
+    key: 'nobody-key-value',
+    label: 'Nobody Gets In Early',
+    hint: 'Costs $40. Nobody may refuse, and the staff are fictional.',
+    desc: 'Nobody sees the desc.',
+    description: 'Nobody reads the description.',
+    header: 'Nobody Header Line',
+    tip: 'Nobody needs this tip.',
+    sub: 'Nobody sub line',
+    note: 'Nobody note here.',
+    title: 'Nobody Title Here',
+    text: 'Nobody text without choices.',
+    name: 'Nobody Important',
+  },
+]
+
+export function open(g: GameState): void {
+  notice(g, 'Nobody Home Today', 'The shop is shut and nobody knows why.', { emoji: 'nobody-emoji-value', tone: 'bad' })
+}
