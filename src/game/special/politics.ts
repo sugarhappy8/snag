@@ -1698,11 +1698,15 @@ function legislatorHouse(g: GameState): string {
   return legislator(g).house
 }
 
+interface InsiderPositions { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string }
+
 /**
- * The player's positions that win if the price moves this way (insider positions). Plain shares
- * count only for the part bought this year or last year: older holdings were not bought on a tip.
+ * The player's positions that win if the price moves this way (insider positions). With `freshOnly`
+ * (laws), plain shares count only for the part bought this year or last year: a law is not a tip
+ * the player could have traded on years ago. An announcement counts every holding: the office holder
+ * picks the company and the moment, so an old holding gains just the same.
  */
-function insiderPositions(g: GameState, t: BetTarget, bearish: boolean): { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string } {
+function insiderPositions(g: GameState, t: BetTarget, bearish: boolean, opts: { freshOnly: boolean }): InsiderPositions {
   const out = { betIds: [] as string[], own: 0, crony: 0, shares: 0, index: 0, indexUnits: 0, cronyName: '' }
   // Index options on the same exchange: a company's crash drags its index down with it.
   if (t.asset === 'stock') {
@@ -1721,7 +1725,7 @@ function insiderPositions(g: GameState, t: BetTarget, bearish: boolean): { betId
       out.cronyName = b.crony
     } else out.own += b.premium
   }
-  if (!bearish) for (const a of investmentHoldings(g)) if (str(a.details.secId) === t.secId) out.shares += Math.max(0, a.value) * freshShare(a, g.year)
+  if (!bearish) for (const a of investmentHoldings(g)) if (str(a.details.secId) === t.secId) out.shares += Math.max(0, a.value) * (opts.freshOnly ? freshShare(a, g.year) : 1)
   return out
 }
 
@@ -1739,7 +1743,7 @@ function announce(g: GameState, secId: string, moveId: string): void {
   const a = abuseData(g)
   const d = pdata(job)
   // Positions first: the shock reprices them.
-  const pos = insiderPositions(g, t, move.bearish)
+  const pos = insiderPositions(g, t, move.bearish, { freshOnly: false })
   const stake = pos.own + pos.crony + pos.shares + pos.index
   const indexBefore = indexShockFactor(g, t.exKey, g.year)
   // Markets take a popular leader more seriously, and learn to shrug at a serial announcer.
@@ -1829,16 +1833,61 @@ function policyTargets(g: GameState, key: string): BetTarget[] {
   return targets
 }
 
-/** The open insider case a law on this security already started (one per security). */
-function openPolicyCase(cases: InsiderCase[], secId: string): InsiderCase | undefined {
-  return cases.find((c) => c.status === 'open' && c.cause === 'policy' && c.secId === secId)
+/**
+ * The policy case a law on this security already started and that is not over (one per security):
+ * 'open' (nobody has connected the dots yet) or 'pending' (investigated, waiting out an immunity).
+ */
+function activePolicyCase(cases: InsiderCase[], secId: string): InsiderCase | undefined {
+  return cases.find((c) => c.status !== 'closed' && c.cause === 'policy' && c.secId === secId)
+}
+
+/** How strong a policy case is to start with, by the route the positions took. */
+const POLICY_EVIDENCE: Record<InsiderCase['via'], number> = { own: 0.7, shares: 0.55, crony: 0.35 }
+
+/** The route positions take: own bets or index options in the player's name, else a crony, else plain shares. */
+function routeOf(pos: InsiderPositions): InsiderCase['via'] {
+  return pos.own > 0 || pos.index > 0 ? 'own' : pos.crony > 0 ? 'crony' : 'shares'
+}
+
+/** The route a case moves up to when a later law brings these positions (null: it stays as it is). */
+function upgradeOf(cs: InsiderCase, pos: InsiderPositions): InsiderCase['via'] | null {
+  const route = routeOf(pos)
+  if (route === 'own' && cs.via !== 'own') return 'own'
+  if (route === 'crony' && cs.via === 'shares') return 'crony'
+  return null
+}
+
+/** Whether a later law would change the case it folds into (the same tests as foldInto). Reads only. */
+function foldChanges(cs: InsiderCase, pos: InsiderPositions, stake: number): boolean {
+  const route = routeOf(pos)
+  return Math.round(stake) > cs.stake || pos.betIds.length > 0 || upgradeOf(cs, pos) !== null || (cs.status === 'open' && pos.shares > 0) ||
+    (route !== 'shares' && cs.evidence < POLICY_EVIDENCE[route])
+}
+
+/**
+ * A later law on a security that already has a policy case adds to that case instead of opening another:
+ * the larger stake counts; while the case is still open the shares' new gain adds to it (a pending case has
+ * been investigated and its money taken, so its gain stays); bets or index options in the player's own name,
+ * or a crony's, move the case up to that route and its evidence to at least that route's level. The charge
+ * stays the first law's. Returns whether the route moved up.
+ */
+function foldInto(cs: InsiderCase, pos: InsiderPositions, stake: number, mult: number): boolean {
+  cs.stake = Math.max(cs.stake, Math.round(stake))
+  if (cs.status === 'open') cs.gain = Math.min(HELD_MAX, cs.gain + Math.round(pos.shares * Math.max(0, mult - 1)))
+  const route = routeOf(pos)
+  if (route !== 'shares') cs.evidence = Math.max(cs.evidence, POLICY_EVIDENCE[route])
+  const up = upgradeOf(cs, pos)
+  if (up) cs.via = up
+  if (cs.via === 'crony' && !cs.crony && pos.cronyName) cs.crony = pos.cronyName
+  return up !== null
 }
 
 /**
  * A law that hits a whole industry moves its (fictional) listed companies. Positions the player
  * holds on the right side of the move become insider cases, exactly like a market-moving
  * announcement: shares bought this year or last, open bets, a crony's account. A security that
- * already has an open policy case gets no second one. Real companies are never named in a policy shock.
+ * already has a policy case that is not over gets no second one: the law adds to that case (foldInto).
+ * Real companies are never named in a policy shock.
  */
 function policyInsider(g: GameState, key: string, bullish: boolean, label: string): string {
   const job = politicianJob(g)
@@ -1849,24 +1898,25 @@ function policyInsider(g: GameState, key: string, bullish: boolean, label: strin
   const a = abuseData(g)
   const d = pdata(job)
   const moved: string[] = [], started: string[] = []
+  let upgraded = false
   for (const t of targets) {
-    const pos = insiderPositions(g, t, !bullish)
+    const pos = insiderPositions(g, t, !bullish, { freshOnly: true })
     const stake = pos.own + pos.crony + pos.shares + pos.index
     const size = Math.min(0.4, 0.18 * marketPower(g, rank, t) * (0.8 + rand(g) * 0.4))
     const mult = bullish ? 1 + size : Math.max(0.3, 1 - size)
     addMarketShock(g, { asset: t.asset, secId: t.secId, exKey: t.exKey, slot: t.slot, name: t.name, symbol: t.symbol, cause: 'policy', year: g.year, mult, fade: 0, countryId: g.character.countryId })
     if (stake <= 0) continue
     moved.push(t.name)
-    const open = openPolicyCase(a.cases, t.secId)
-    if (open) {
-      // The first case already covers this security: bets placed since ride on it, nothing new is opened.
-      tagBets(g, pos.betIds, open.id)
+    const active = activePolicyCase(a.cases, t.secId)
+    if (active) {
+      if (foldInto(active, pos, stake, mult)) upgraded = true
+      tagBets(g, pos.betIds, active.id)
       continue
     }
-    const via: InsiderCase['via'] = pos.own > 0 || pos.index > 0 ? 'own' : pos.crony > 0 ? 'crony' : 'shares'
+    const via = routeOf(pos)
     const cs: InsiderCase = {
       id: `case${g.year}-${a.cases.length}`, age: g.character.age, year: g.year, target: t.name, symbol: t.symbol, secId: t.secId, cause: 'policy',
-      stake: Math.round(stake), via, crony: pos.cronyName, evidence: via === 'own' ? 0.7 : via === 'shares' ? 0.55 : 0.35, status: 'open',
+      stake: Math.round(stake), via, crony: pos.cronyName, evidence: POLICY_EVIDENCE[via], status: 'open',
       office: d.office, title: job.title, countryId: g.character.countryId, quiet: 0, extra: [], gain: Math.round(pos.shares * Math.max(0, mult - 1)), bullish,
     }
     a.cases.push(cs)
@@ -1880,9 +1930,11 @@ function policyInsider(g: GameState, key: string, bullish: boolean, label: strin
     a.heat = Math.min(100, a.heat + 16)
     addHidden(g, 'karma', -6)
     count(g, 'insiderTrades')
-    remember(g, `As ${job.title}, held positions in ${started.join(', ')} when my own law moved them.`)
+    remember(g, `As ${job.title}, held positions in ${andList(started)} when my own law moved them.`)
   }
-  return `Your positions in ${moved.join(', ')} moved with your own law. Regulators watch timing like this.`
+  // A case that moved up to a bet in your own name (or a crony's) draws a little more attention, once per law.
+  if (upgraded) a.heat = Math.min(100, a.heat + 8)
+  return `Your positions in ${andList(moved)} moved with your own law. Regulators watch timing like this.`
 }
 
 /** "A and B", or "A and 2 others" past two. */
@@ -1890,9 +1942,15 @@ function nameList(names: string[]): string {
   return names.length <= 2 ? names.join(' and ') : `${names[0]} and ${names.length - 1} others`
 }
 
+/** "A", "A and B", "A, B and C". */
+function andList(names: string[]): string {
+  return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
+
 /**
- * What to tell the player before a law that would start an insider case ('' when it would not).
- * The same targets and positions as policyInsider, but it only reads: no rolls, no shocks, no writes.
+ * What to tell the player before a law that would start an insider case, or add to one already there
+ * ('' when it would do neither). The same targets and positions as policyInsider, but it only reads:
+ * no rolls, no shocks, no writes. The text also serves an executive order, so it never says "law".
  */
 function policyWarning(g: GameState, key: string, bullish: boolean, _label?: string): string {
   const job = politicianJob(g)
@@ -1900,16 +1958,25 @@ function policyWarning(g: GameState, key: string, bullish: boolean, _label?: str
   const targets = policyTargets(g, key)
   if (!targets.length) return ''
   const cases = abuseView(g).cases
-  const names: string[] = []
+  const fresh: string[] = [], adds: string[] = []
   let hasBets = false
   for (const t of targets) {
-    const pos = insiderPositions(g, t, !bullish)
-    if (pos.own + pos.crony + pos.shares + pos.index <= 0 || openPolicyCase(cases, t.secId)) continue
-    names.push(t.name)
+    const pos = insiderPositions(g, t, !bullish, { freshOnly: true })
+    const stake = pos.own + pos.crony + pos.shares + pos.index
+    if (stake <= 0) continue
+    const active = activePolicyCase(cases, t.secId)
+    if (active) {
+      if (foldChanges(active, pos, stake)) adds.push(t.name)
+      continue
+    }
+    fresh.push(t.name)
     if (pos.own + pos.crony + pos.index > 0) hasBets = true
   }
-  if (!names.length) return ''
-  return `${hasBets ? `You hold positions in ${nameList(names)}.` : `You bought shares in ${nameList(names)} recently.`} This law moves them. The regulator could call it insider trading.`
+  const reg = regulator(g.character.countryId)
+  const word = adds.length > 1 ? 'cases' : 'case'
+  if (!fresh.length) return adds.length ? `This moves ${nameList(adds)} again. It adds to the insider trading ${word} ${reg} could bring.` : ''
+  const first = `${hasBets ? `You hold positions in ${nameList(fresh)}.` : `You bought shares in ${nameList(fresh)} recently.`} This moves their price. ${uc(reg)} could call it insider trading.`
+  return adds.length ? `${first} It also adds to the ${word} over ${nameList(adds)}.` : first
 }
 
 registerOfficeHooks({
@@ -2175,7 +2242,13 @@ function exposeCase(g: GameState, cs: InsiderCase): void {
   addHidden(g, 'notoriety', randInt(g, 8, 16))
   addFame(g, 3)
   const monarchy = getCountry(cs.countryId).monarchy ? ' Even the palace issued a statement expressing "deep concern."' : ''
-  const text = `${newspaper(g, cs.id)} reports that ${viaText(cs, g)} made a killing betting on ${cs.target} (${cs.symbol}) just before you ${causeText(cs)}. The timing is "remarkable," says every expert on television.${monarchy}\n\nHow do you respond?`
+  // Plain shares (or coins) held in Investments were bought, not bet on.
+  const shares = cs.via === 'shares'
+  const unit = cs.secId.startsWith('crypto#') ? '' : ' shares'
+  const story = shares
+    ? `${newspaper(g, cs.id)} reports that you bought ${cs.target} (${cs.symbol})${unit} shortly before you ${causeText(cs)}.`
+    : `${newspaper(g, cs.id)} reports that ${viaText(cs, g)} made a killing betting on ${cs.target} (${cs.symbol}) just before you ${causeText(cs)}.`
+  const text = `${story} The timing is "remarkable," says every expert on television.${monarchy}\n\nHow do you respond?`
   const choices = [
     { id: 'deny', label: 'Deny everything', emoji: '\u{1F645}' },
     { id: 'blame', label: cs.via === 'crony' ? `Throw ${cs.crony ? cs.crony.split(' ')[0] : 'your crony'} under the bus` : 'Blame your financial advisor', emoji: '\u{1F449}' },
@@ -2183,7 +2256,7 @@ function exposeCase(g: GameState, cs: InsiderCase): void {
   if (inOffice && officeRank(job) >= 2) choices.push({ id: 'lean', label: 'Lean on the regulator', emoji: '\u{1F574}\u{FE0F}' })
   if (inOffice) choices.push({ id: 'resign', label: 'Resign', emoji: '\u{1F6AA}' })
   else choices.push({ id: 'lawyer', label: 'Lawyer up and say nothing', emoji: '\u{1F4BC}' })
-  log(g, `The press found out I bet on ${cs.target} before my announcement.`, 'bad')
+  log(g, shares ? `The press found out I bought ${cs.target}${unit} before ${cs.cause === 'policy' ? 'my own law moved its price' : 'my announcement'}.` : `The press found out I bet on ${cs.target} before my announcement.`, 'bad')
   scriptChoice(g, INSIDER_SCRIPT, 'Insider Trading Scandal', text, choices, { emoji: '\u{1F4F0}', data: { caseId: cs.id } })
 }
 
@@ -2256,6 +2329,8 @@ defineScript(INSIDER_SCRIPT, (g, choice, data) => {
     cs.status = 'closed'
     if (!leaned) lines.push(`${uc(regulator(cs.countryId))} looked into it and decided it had "better things to do." Friends in high places.`)
     say(g, 'Insider Trading Scandal', lines.join('\n\n'), '\u{1F4F0}', 'bad')
+    // A case dropped here ends without a trial: anything it held comes back.
+    giveBack(g, cs)
     return
   }
   // Open bets are frozen for good. The cash the regulator takes (the profits it claims) is held until the case is decided.

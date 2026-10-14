@@ -90,7 +90,7 @@ function notices(g: GameState, title?: string): NoticeModal[] {
 }
 const allText = (g: GameState): string => notices(g).map((n) => n.text).join('\n')
 
-interface CaseRow { id: string; status: string; via: string; cause: string; stake: number; secId: string; bullish?: boolean; held?: number }
+interface CaseRow { id: string; status: string; via: string; cause: string; stake: number; secId: string; bullish?: boolean; held?: number; gain: number }
 function cases(g: GameState): CaseRow[] {
   const p = g.flags['special.politics'] as unknown as { abuse?: { cases: CaseRow[]; heat: number } } | undefined
   return p?.abuse?.cases ?? []
@@ -163,7 +163,7 @@ describe('what the player sees around a 2 trillion buy', () => {
 })
 
 describe('the bill', () => {
-  it('warns before the vote, flags the MP once, and a second bill adds nothing', () => {
+  it('warns before the vote, flags the MP once, and a second bill adds to that case instead of opening another', () => {
     let enacted = 0
     for (const seed of SEEDS) {
       const { g, t } = mpWithShares(seed, BIG)
@@ -180,19 +180,25 @@ describe('the bill', () => {
       expect(cases(g)[0]).toMatchObject({ via: 'shares', cause: 'policy', bullish: true, status: 'open', secId: t.secId })
       const heat1 = heat(g)
       const karma1 = g.character.hidden.karma
-      // A second bill on the same industry: no second warning (nothing new would start) and no second case.
+      const case1 = { ...cases(g)[0] }
+      // A second bill on the same industry: the warning says it adds to the case the first one started (the shares it
+      // lifts again would add to the gain), not that a new case would start; and no second case, heat or karma.
       let second = false
       for (const partner of ['de', 'jp', 'fr', 'in', 'br']) {
         const m: Measure = { k: 'tariff', input: 'industry', partner, add: 5 }
         // A failed vote also uses up one of the year's two bills: start the quota over, the case is what is under test.
         g.yearActions = {}
         const modal = popup(g, m)
-        expect(modal.text, `seed ${seed} ${partner}`).not.toMatch(WARNING)
+        expect(modal.text, `seed ${seed} ${partner}`).toContain(`This moves ${t.name} again. It adds to the insider trading case the FCA could bring.`)
+        expect(modal.text, `seed ${seed} ${partner}`).not.toMatch(/could call it insider trading/)
         g.queue = []
         if (resolveBill(g, m, 'none')) { second = true; break }
       }
       expect(second, `seed ${seed}: a second bill passed`).toBe(true)
       expect(cases(g)).toHaveLength(1)
+      expect(cases(g)[0]).toMatchObject({ id: case1.id, via: 'shares', status: 'open', bullish: true })
+      expect(cases(g)[0].stake).toBeGreaterThanOrEqual(case1.stake)
+      expect(cases(g)[0].gain).toBeGreaterThan(case1.gain)
       expect(heat(g)).toBe(heat1)
       expect(g.character.hidden.karma).toBe(karma1)
       if (enacted >= 3) break

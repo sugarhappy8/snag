@@ -251,8 +251,15 @@ describe('the regulator holds what it takes', () => {
       expect(theCase(g).held).toBe(GAIN)
       // A replayed popup (or a second pass over the same pending case) finds nothing more to take.
       expose(g)
-      expect(theCase(g).held).toBe(GAIN)
-      expect(g.character.money).toBe(cash0 - GAIN)
+      if (theCase(g).status === 'pending') {
+        expect(theCase(g).held).toBe(GAIN)
+        expect(g.character.money).toBe(cash0 - GAIN)
+      } else {
+        // The regulator dropped it this time: the case ends without a trial and gives back what it held.
+        expect(theCase(g).status).toBe('closed')
+        expect(theCase(g).held).toBeUndefined()
+        expect(g.character.money).toBe(cash0)
+      }
     }
     expect(seen).toBeGreaterThan(3)
   })
@@ -277,6 +284,100 @@ describe('the regulator holds what it takes', () => {
       expect(noticeTexts(g)).toMatch(/holding .* until the case is decided/)
     }
     expect(seen).toBeGreaterThan(5)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+describe('a later law joins the case on that security instead of starting another', () => {
+  it('a pending case takes in a second law: one case, one seizure, one trial', () => {
+    let arrested = 0
+    let folded = 0
+    for (let seed = 1; seed <= 200 && arrested < 2; seed++) {
+      const p = pendingPresident(seed)
+      if (!p) continue
+      const { g } = p
+      folded++
+      const stake1 = theCase(g).stake
+      // A much bigger fresh buy, then a second law on the same industry while the case waits out the immunity.
+      expect(buySecurity(g, holdable(g).secId, 400_000_000)).toBe(true)
+      expect(officeHooks().policyWarning(g, 'industry', true, 'Second law')).toBe(`This moves ${holdable(g).name} again. It adds to the insider trading case the SEC could bring.`)
+      const bank = g.character.money
+      g.queue = []
+      officeHooks().policyMove(g, 'industry', true, 'Second law')
+      expect(cases(g)).toHaveLength(1)
+      expect(theCase(g).status).toBe('pending')
+      expect(theCase(g).stake).toBeGreaterThan(stake1)
+      // Already investigated: the gain the money was taken on stays, and nothing more is taken.
+      expect(theCase(g).gain).toBe(GAIN)
+      expect(theCase(g).held).toBe(GAIN)
+      expect(g.character.money).toBe(bank)
+      leaveOffice(g)
+      let arrests = 0
+      let exposures = 0
+      for (let year = 0; year < 12; year++) {
+        tick(g)
+        if (arrestModal(g)) {
+          arrests++
+          expect(arrestData(g).refund).toBe(GAIN)
+        }
+        exposures += g.queue.filter((m) => m.kind === 'choice' && m.scriptId === 'special.pol.abuse.exposed').length
+      }
+      expect(exposures).toBe(0)
+      expect(arrests).toBeLessThanOrEqual(1)
+      expect(theCase(g).status).toBe('closed')
+      arrested += arrests
+    }
+    expect(folded).toBeGreaterThan(2)
+    expect(arrested).toBeGreaterThan(0)
+  })
+
+  it('a small first case, then a big fresh buy and a second law: the seizure covers the big position', () => {
+    let seen = 0
+    for (const seed of SEEDS) {
+      const g = official('gb', seed)
+      const t = holdable(g)
+      expect(buySecurity(g, t.secId, 1_000_000)).toBe(true)
+      officeHooks().policyMove(g, 'industry', true, 'First law')
+      expect(cases(g)).toHaveLength(1)
+      const small = { ...theCase(g) }
+      expect(small.gain).toBeGreaterThan(0)
+      expect(buySecurity(g, t.secId, 400_000_000)).toBe(true)
+      officeHooks().policyMove(g, 'industry', true, 'Second law')
+      expect(cases(g)).toHaveLength(1)
+      const { stake, gain } = theCase(g)
+      expect(stake).toBeGreaterThan(small.stake * 100)
+      expect(gain).toBeGreaterThan(small.gain * 100)
+      const cash0 = g.character.money
+      expose(g)
+      if (!arrestModal(g)) continue
+      seen++
+      expect(arrestData(g).refund).toBe(gain)
+      expect(g.character.money).toBe(cash0 - gain)
+      if (seen >= 3) break
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+
+  it('a pending case the regulator then drops gives back what it held', () => {
+    let dropped = 0
+    for (const seed of SEEDS) {
+      const p = pendingPresident(seed)
+      if (!p) continue
+      const { g, cash: cash0 } = p
+      const cash = g.character.money
+      // The popup comes back (a replay) and this time the regulator lets the case go.
+      expose(g)
+      if (theCase(g).status !== 'closed') continue
+      dropped++
+      expect(arrestModal(g)).toBeUndefined()
+      expect(theCase(g).held).toBeUndefined()
+      expect(g.character.money).toBe(cash + GAIN)
+      expect(g.character.money).toBe(cash0)
+      expect(logText(g)).toContain(`I got back the ${formatMoney(GAIN)} held in my case.`)
+      roundTrips(g)
+    }
+    expect(dropped).toBeGreaterThan(0)
   })
 })
 
