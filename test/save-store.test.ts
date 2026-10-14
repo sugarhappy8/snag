@@ -626,6 +626,114 @@ describe('a storage step that never answers', () => {
     unsubscribe()
   })
 
+  it('a save made while a write hangs raises the warning again after removeRecord took it down', async () => {
+    const backend = useControlled()
+    const seen: boolean[] = []
+    const unsubscribe = subscribeSaveStatus(() => seen.push(getSaveStatus().persistFailed))
+    saveRecord('{"life":1}')
+    await run()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(seen).toEqual([true])
+    // The life is abandoned: with no save left, the warning goes...
+    removeRecord()
+    expect(seen).toEqual([true, false])
+    // ...until the next life saves behind the write that still hangs. A second save tells no one again.
+    expect(saveRecord('{"life":2}')).toBe(true)
+    expect(seen).toEqual([true, false, true])
+    expect(saveRecord('{"life":2,"age":1}')).toBe(true)
+    expect(seen).toEqual([true, false, true])
+    expect(await flushSave()).toBe(false)
+    expect(readRecord()).toBeNull()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS * 10)
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(backend.writes).toEqual(['{"life":1}'])
+
+    // The hung write lands at last: the old life is discarded, the removal runs, the new life is written.
+    backend.settle(0)
+    await run()
+    expect(backend.stored).toBeNull()
+    expect(backend.writes).toEqual(['{"life":1}', '{"life":2,"age":1}'])
+    backend.settle(1)
+    expect(await flushSave()).toBe(true)
+    expect(backend.stored).toBe('{"life":2,"age":1}')
+    expect(readRecord()).toBe('{"life":2,"age":1}')
+    expect(getSaveStatus().persistFailed).toBe(false)
+    expect(seen).toEqual([true, false, true, false])
+    expect(vi.getTimerCount()).toBe(0)
+    unsubscribe()
+  })
+
+  it("a save made while a newer record's copy hangs raises the warning again after removeRecord took it down", async () => {
+    const backend = useControlled(newer)
+    const open = holdCopies(backend)
+    protectNewerRecord(newer, 3)
+    // Each status the listener is told of, as [persistFailed, notices listed].
+    const seen: [boolean, number][] = []
+    const unsubscribe = subscribeSaveStatus(() => seen.push([getSaveStatus().persistFailed, getSaveStatus().notices.length]))
+    saveRecord('{"life":1}')
+    await run()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    removeRecord()
+    expect(saveRecord('{"life":2}')).toBe(true)
+    expect(seen).toEqual([
+      [true, 0],
+      [false, 0],
+      [true, 0],
+    ])
+    expect(await flushSave()).toBe(false)
+    expect(readRecord()).toBeNull()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS * 10)
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(backend.writes).toEqual([])
+    expect(backend.stored).toBe(newer)
+
+    // The copy is made at last: the old life's save is discarded, and the new life's is written over the newer record.
+    open()
+    await run()
+    expect(storage.data.get(SLOT_1)).toBe(newer)
+    expect(backend.writes).toEqual(['{"life":2}'])
+    backend.settle(0)
+    expect(await flushSave()).toBe(true)
+    expect(backend.stored).toBe('{"life":2}')
+    expect(getSaveStatus().persistFailed).toBe(false)
+    // The copy's notice is listed (still warning), then the new life's write lands.
+    expect(seen).toEqual([
+      [true, 0],
+      [false, 0],
+      [true, 0],
+      [true, 1],
+      [false, 1],
+    ])
+    expect(vi.getTimerCount()).toBe(0)
+    unsubscribe()
+  })
+
+  it('removeRecord before the write hangs leaves the warning up when it comes, and a save made then keeps it up', async () => {
+    const backend = useControlled()
+    const seen: boolean[] = []
+    const unsubscribe = subscribeSaveStatus(() => seen.push(getSaveStatus().persistFailed))
+    saveRecord('{"life":1}')
+    await run()
+    removeRecord()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(seen).toEqual([true])
+    expect(saveRecord('{"life":2}')).toBe(true)
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS * 10)
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(seen).toEqual([true])
+    expect(await flushSave()).toBe(false)
+
+    backend.settle(0)
+    await run()
+    expect(backend.writes).toEqual(['{"life":1}', '{"life":2}'])
+    backend.settle(1)
+    expect(await flushSave()).toBe(true)
+    expect(backend.stored).toBe('{"life":2}')
+    expect(seen).toEqual([true, false])
+    expect(vi.getTimerCount()).toBe(0)
+    unsubscribe()
+  })
+
   it("a newer record's copy that hangs raises the warning the same way, and the saves go through when it lands", async () => {
     const backend = useControlled(newer)
     const open = holdCopies(backend)

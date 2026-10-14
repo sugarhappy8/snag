@@ -179,7 +179,8 @@ function setCache(json: string | null): void {
  * that worked. An asynchronous one caches it, queues the write and returns true; a write that fails
  * shows as getSaveStatus().persistFailed, and flushSave resolves false. A synchronous backend
  * queues too while the queue is busy (so an older write can't land over this one), and while a
- * newer record is waiting for its copy.
+ * newer record is waiting for its copy. A save queued while the queue is stalled raises the warning
+ * at once: it can't be stored before the step that hangs settles.
  */
 export function saveRecord(json: string): boolean {
   const s = state
@@ -199,6 +200,7 @@ export function saveRecord(json: string): boolean {
   }
   s.pending = json
   kick()
+  if (s.stalled) setPersistFailed(true)
   return true
 }
 
@@ -258,9 +260,11 @@ export function protectNewerRecord(raw: string, version: number): void {
 
 /**
  * Resolves once the queue has run dry: true when the newest save is in storage (or there is
- * nothing to store), false when its write failed. A step that storage leaves unanswered for
- * STORE_OP_TIMEOUT_MS makes it resolve false then, and at once while that step still hangs, so it
- * never waits unboundedly. Never rejects.
+ * nothing to store), false when its write failed. Each queue step has its own watchdog: a step
+ * that storage leaves unanswered for STORE_OP_TIMEOUT_MS makes it resolve false then, and at once
+ * while that step still hangs. The bound is per step, not overall: a slow but healthy queue (a
+ * copy, an encode, a write, then a later save's encode and write) can hold it for several steps
+ * with no warning. Never rejects.
  */
 export function flushSave(): Promise<boolean> {
   const s = state
