@@ -1,7 +1,7 @@
 {
   "name": "anotherlife",
   "private": true,
-  "version": "2.4.0",
+  "version": "2.5.0",
   "type": "module",
   "description": "A BitLife-style life simulator that runs entirely in the browser: live a whole life one year at a time.",
   "scripts": {
@@ -10,7 +10,6 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "voice": "node scripts/voice-report.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {

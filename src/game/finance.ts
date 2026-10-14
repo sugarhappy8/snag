@@ -14,6 +14,7 @@ import { getCountry, randomFirstName } from './world'
 import { businessGone } from './assetHooks'
 import { employerRef } from './shops/everyday-brands'
 import { bound, economyOf, economyState, lendingConditions } from './economy'
+import { personalTax } from './nation/effects'
 
 // ---------------------------------------------------------------------------
 // Income tax
@@ -142,7 +143,8 @@ export function effectiveTaxRate(countryId: string, income: number): number {
 /** Passed policy affects real disposable income; the static national table remains the baseline. */
 export function gameIncomeTax(g: GameState, income: number): number {
   if (!Number.isFinite(income) || income <= 0) return 0
-  return Math.round(bound(incomeTax(g.character.countryId, income) + Math.max(0, income - 5000) * economyOf(g).taxShift, 0, income * .8))
+  // A government's own income tax change (nation/) is points on income above a small allowance.
+  return Math.round(bound(incomeTax(g.character.countryId, income) + Math.max(0, income - 5000) * (economyOf(g).taxShift + personalTax(g, 'income') / 100), 0, income * .85))
 }
 
 function num(v: Json | undefined, fallback = 0): number {

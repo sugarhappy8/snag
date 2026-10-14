@@ -251,6 +251,8 @@ export interface EstateInput {
   hasProperty: boolean
   /** Cash left once debts are paid (for an heir who keeps the property). */
   cashAfterDebts: number
+  /** A government's change to the 25% estate tax (nation/: +0.1 = 35%). */
+  taxDelta?: number
 }
 
 /** Persons the will leaves out whom the family would count as cut out. */
@@ -370,7 +372,7 @@ export function planEstate(n: GameState, input: EstateInput): EstatePlan {
     return plan
   }
   if (estate <= 0) return plan
-  plan.tax = estate > 10_000_000 ? Math.round((estate - 10_000_000) * 0.25) : 0
+  plan.tax = estate > 10_000_000 ? Math.round((estate - 10_000_000) * Math.max(0, Math.min(0.8, 0.25 + (Number.isFinite(input.taxDelta) ? input.taxDelta! : 0)))) : 0
   let pot = estate - plan.tax - fees
   if (pot < 0) pot = 0
 

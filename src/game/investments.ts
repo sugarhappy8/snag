@@ -1652,6 +1652,8 @@ export function shockHeadline(sh: MarketShock): string {
       return `✂️ ${label} ${move} after its industry was deregulated.`
     case 'endorse':
       return `🎤 ${label} ${move} after a government endorsement.`
+    case 'policy':
+      return `🏛️ ${label} ${move} after a new law hit its industry.`
   }
 }
 

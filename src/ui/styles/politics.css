@@ -1,0 +1,99 @@
+/* Politics 2.0: the State of the Nation card (src/ui/minigames/NationReport.tsx).
+   Built on the global tokens (global.css), so it follows light/dark mode automatically.
+   Mobile first: nothing has a fixed width; the metric grid wraps on narrow phones. */
+
+.nation-report {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  text-align: left;
+}
+
+.nr-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--purple) 14%, var(--card-2)), var(--card-2));
+  border: 1px solid var(--border);
+}
+
+.nr-emoji {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.nr-id { flex: 1 1 auto; min-width: 0; }
+.nr-year { font-size: 11.5px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; color: var(--purple); }
+.nr-name { font-size: 17px; font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; }
+.nr-sub { margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--muted); overflow-wrap: anywhere; }
+
+.nr-rating {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+.nr-rating-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+.nr-rating-value { font-size: 18px; font-weight: 900; }
+.nr-rating.is-good .nr-rating-value { color: var(--tone-good); }
+.nr-rating.is-mid .nr-rating-value { color: var(--orange); }
+.nr-rating.is-bad .nr-rating-value { color: var(--tone-bad); }
+
+.nr-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.nr-heading { margin: 0; font-size: 14px; font-weight: 800; }
+
+.nr-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.nr-metric {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  border: 1px solid var(--border);
+}
+.nr-metric-label { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.nr-metric-value { font-size: 15px; font-weight: 800; overflow-wrap: anywhere; }
+.nr-metric-delta { font-size: 11.5px; color: var(--muted); }
+.nr-metric.is-good .nr-metric-value { color: var(--tone-good); }
+.nr-metric.is-bad .nr-metric-value { color: var(--tone-bad); }
+
+.nr-note, .nr-empty { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+.nr-groups { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.nr-group {
+  display: grid;
+  grid-template-columns: minmax(0, 9.5em) minmax(40px, 1fr) 3em;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.nr-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nr-group-value { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.nr-bar { position: relative; height: 8px; border-radius: 999px; background: var(--stat-track); overflow: hidden; }
+.nr-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
+.nr-bar-fill.is-good { background: var(--stat-green); }
+.nr-bar-fill.is-mid { background: var(--stat-yellow); }
+.nr-bar-fill.is-bad { background: var(--stat-red); }
+
+.nr-causes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; overflow-wrap: anywhere; }

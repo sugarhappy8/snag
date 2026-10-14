@@ -216,6 +216,7 @@ function minigameResult(m: MinigameModal, d: Driver): string {
       return d.pick(['win', 'lose', 'push', 'blackjack', 'win:double', 'lose:bust', 'win:charlie', 'lose:double:bust'])
     case 'horseRace':
     case 'slots':
+    case 'nationReport':
       return 'done'
     case 'burglary':
       return d.chance(0.2)
@@ -1240,6 +1241,98 @@ export async function fuzzBusiness(industry: string, seed: number, log: FailureL
     deepFreeze(g)
   }
   stats.businesses = businessAssets(g).length
+  stats.ms = Date.now() - t0
+  return stats
+}
+
+/** Politics mode: countries, years and offices for seeded politicians. */
+export const POLITICS_PLACES: [string, number][] = [['us', 1995], ['gb', 1975], ['br', 1990], ['ng', 2005], ['ru', 2000], ['se', 2010], ['in', 1985], ['jp', 1960], ['ve', 2020], ['de', 2030], ['fr', 1950], ['mx', 2015]]
+
+/**
+ * A seeded politician (mayor, governor or legislator, head of government) driven by random menu
+ * actions: every year render the Occupation menu with the full checks (purity, text, money), take
+ * several random actions among the politics rows (Govern, Abuse of Power, the dashboard, the
+ * career's own rows), sweep a sample on throwaway drafts, answer popups at random, age up.
+ */
+export async function fuzzPolitics(seed: number, log: FailureLog, years: number, budgetMs = 0): Promise<LifeStats> {
+  installStorageShim()
+  const t0 = Date.now()
+  const d = driver(seed * 7919 + 13)
+  const [country, year] = POLITICS_PLACES[seed % POLITICS_PLACES.length]
+  const office = d.pick(['mayor', 'governor', 'leader', 'leader'] as const)
+  const stats: LifeStats = { seed, years: 0, actions: 0, menuNodes: 0, swept: 0, businesses: 0, industries: [`politics:${office}`], generations: 1, ms: 0 }
+  let g: GameState
+  try {
+    g = createNewLife({ seed, year: year - 45, countryId: country })
+  } catch (err) {
+    makeCtx(seed, year, { character: { countryId: country, age: 0 }, year } as unknown as GameState, log).fail('create-throw', err, 'createNewLife')
+    return stats
+  }
+  const ctx = makeCtx(seed, year - 45, g, log)
+  ctx.trail.push(`politics mode: ${office} in ${country}, ${year}`)
+  g.queue = []
+  g.character.age = 45
+  g.year = year
+  g.log.push({ age: 45, year, entries: [] })
+  g.character.money = d.pick([2e5, 3e6, 5e7])
+  g.character.stats.smarts = 70
+  g.character.residence = { status: 'renting', rent: 0 }
+  g.character.job = { defId: 'politician', title: office === 'leader' ? 'President' : office === 'governor' ? 'Governor' : 'Mayor', company: getCountry(country).name, category: 'special', salary: 150_000, level: { mayor: 1, governor: 2, leader: 3 }[office], performance: 55, yearsInRole: 0, yearsAtCompany: 0,
+    data: { office, party: d.pick(['progressive', 'conservative', 'centrist', 'green', 'libertarian']), approval: 55, termLeft: 4, terms: 1, hot: [], newsAge: -1, bills: [], warChest: 0, favors: 0, scandals: 0, termOver: false, startAge: 45, roleStartAge: 45 } }
+  bindMoneyContext(g)
+  checkInvariants(ctx, g, 'setup')
+  deepFreeze(g)
+  const political = (f: Found) => /nation\.|pol\.|special\.politics/.test(f.action.id) || /Govern|Abuse|Dashboard|Pockets|Keep Power|Dirty/.test(f.path)
+  // Resigning ends the run's point, so it is a rare pick (it is still swept on drafts).
+  const pickable = (f: Found) => political(f) && (!/resign/.test(f.action.id) || d.chance(.03))
+  for (let y = 0; y < years && g.character.alive; y++) {
+    if (budgetMs && Date.now() - t0 > budgetMs) break
+    ctx.g = g
+    bindMoneyContext(g)
+    const found: Found[] = []
+    walkRoot(ctx, g, { name: 'occupation', nodes: () => occupationMenu.children(g) }, { maxDepth: 7, full: true, maxNodes: 20000 }, found)
+    stats.menuNodes += found.length
+    if (y % 3 === 0) stats.swept += sweep(ctx, g, found.filter(political), d, 80)
+    const n = d.int(2, 7)
+    let pool = found.filter(pickable)
+    for (let i = 0; i < n && g.character.alive; i++) {
+      bindMoneyContext(g)
+      if (i > 0) {
+        pool = []
+        walkRoot(ctx, g, { name: 'occupation', nodes: () => occupationMenu.children(g) }, { maxDepth: 7, full: false, maxNodes: 20000 }, pool)
+        pool = pool.filter(pickable)
+      }
+      if (!pool.length) break
+      const f = d.pick(pool)
+      const nw = netWorth(g)
+      const next = runAction(ctx, g, f, d)
+      stats.actions++
+      if (next === g) continue
+      g = next
+      ctx.g = g
+      drain(ctx, g, d)
+      checkInvariants(ctx, g, `after ${f.path}`)
+      noteWindfall(ctx, nw, g, `after ${f.path}`)
+      deepFreeze(g)
+    }
+    if (!g.character.alive) break
+    ctx.trail.push(`ageUp -> ${g.character.age + 1} (${g.year + 1})`)
+    const draft = structuredClone(g)
+    bindMoneyContext(draft)
+    try {
+      ageUp(draft)
+    } catch (err) {
+      ctx.fail(isFrozenWrite(err) ? 'ageUp-stale-throw' : 'ageUp-throw', err, 'ageUp')
+      break
+    }
+    g = draft
+    ctx.g = g
+    stats.years++
+    drain(ctx, g, d)
+    checkInvariants(ctx, g, 'year end')
+    if (y % 5 === 0) checkSaveLoad(ctx, g)
+    deepFreeze(g)
+  }
   stats.ms = Date.now() - t0
   return stats
 }

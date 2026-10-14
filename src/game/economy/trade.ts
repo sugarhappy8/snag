@@ -44,6 +44,28 @@ function capabilities(input: TradeInputId, year: number): Record<string, number>
     : { tw: 2.4, kr: 1.9, jp: 1.25, us: 1.1, de: .8, cn: year >= 2000 ? 1.1 : .35, sg: 1 }
 }
 
+/** Imported share of a country's needs for an input (0.08-0.85), before any substitution. */
+export function importReliance(country: string, input: TradeInputId, year: number): number {
+  return reliance(country, input, year)
+}
+
+/**
+ * Governments' own trade measures (nation/trade-policy.ts): tariffs, deals, sanctions and export
+ * bans on top of the fixed customs data. Pure lookups; absent = today's customs only.
+ */
+export interface TradeOverlay {
+  /** Extra tariff on `input` goods shipped from `from` into `to` (share of the price). */
+  tariff(from: string, to: string, input: TradeInputId): number
+  /** Extra restriction on trade between the pair (sanctions), 0-0.8. */
+  restriction(from: string, to: string): number
+  /** True when `from` refuses to export `input`. */
+  exportBan(from: string, input: TradeInputId): boolean
+  /** True when the pair has a trade deal (no tariffs either way). */
+  deal(a: string, b: string): boolean
+  /** True when any measure touches this country (as importer or exporter). */
+  touches(country: string): boolean
+}
+
 function reliance(country: string, input: TradeInputId, year: number): number {
   if (input === 'technology' && year < 1955) return 0
   const capacity = capabilities(input, year)[country] ?? 0
@@ -137,13 +159,21 @@ export function normalizeTrade(value: unknown, country: string, year: number): C
   return compactTrade(out)
 }
 
-function shipment(opening: Record<string, CountryEconomy>, from: string, to: string, input: TradeInputId, year: number) {
+/** Customs terms plus governments' own measures (never cached: the overlay belongs to one game). */
+function withPolicy(base: RouteTerms, overlay: TradeOverlay, from: string, to: string, input: TradeInputId): RouteTerms {
+  const tariff = overlay.deal(from, to) ? 0 : clamp(base.tariff + overlay.tariff(from, to, input), 0, .6)
+  const restriction = clamp(base.restriction + overlay.restriction(from, to) + Math.max(0, tariff - base.tariff) * .18, 0, .8)
+  return { tariff, restriction, fx: base.fx }
+}
+
+function shipment(opening: Record<string, CountryEconomy>, from: string, to: string, input: TradeInputId, year: number, overlay?: TradeOverlay | null) {
   const exporter = opening[from], importer = opening[to], s = exporter?.sectors[input]
-  const terms = routeTerms(from, to, year)
+  const terms = overlay ? withPolicy(routeTerms(from, to, year), overlay, from, to, input) : routeTerms(from, to, year)
   // A supplier cannot deliver more than its actual opening production/requirements.
   const production = s ? clamp(s.output / Math.max(.25, s.demand), 0, 1) : 1
   const freight = exporter ? clamp(exporter.sectors.logistics.output / Math.max(.25, exporter.sectors.logistics.demand), .2, 1) : 1
-  const availability = clamp(production * (1 - terms.restriction) * (.7 + freight * .3), 0, 1)
+  const banned = overlay?.exportBan(from, input) ? .15 : 1
+  const availability = clamp(production * (1 - terms.restriction) * (.7 + freight * .3) * banned, 0, 1)
   const sharedCurrency = currencyOf(from, year).code === currencyOf(to, year).code
   // Internal money stays constant-dollar. Historical FX is descriptive; future relative
   // currency pressure changes procurement costs only, never converts money or debts.
@@ -153,10 +183,10 @@ function shipment(opening: Record<string, CountryEconomy>, from: string, to: str
 }
 
 /** Bounded response to observed performance; no same-turn magic substitute suppliers. */
-function retarget(opening: Record<string, CountryEconomy>, country: string, input: TradeInputId, year: number, routes: TradeRoute[]): TradeRoute[] {
+function retarget(opening: Record<string, CountryEconomy>, country: string, input: TradeInputId, year: number, routes: TradeRoute[], overlay?: TradeOverlay | null): TradeRoute[] {
   const options = candidates(country, input, year)
   const raw = options.map(candidate => {
-    const delivered = shipment(opening, candidate.partner, country, input, year)
+    const delivered = shipment(opening, candidate.partner, country, input, year, overlay)
     return { partner: candidate.partner, share: candidate.share * (.15 + delivered.availability * .85) / delivered.cost }
   }).sort((a,b) => b.share - a.share || a.partner.localeCompare(b.partner))
   if (!routes.length) return routeWeights(raw.slice(0, 3))
@@ -165,7 +195,7 @@ function retarget(opening: Record<string, CountryEconomy>, country: string, inpu
   // its first-year share is capped at 12%; displaced purchases are redistributed.
   const fresh = raw.find(row => !chosen.some(route => route.partner === row.partner))
   const weakest = [...chosen].sort((a,b) => a.share - b.share || a.partner.localeCompare(b.partner))[0]
-  const failing = weakest && shipment(opening, weakest.partner, country, input, year).availability < .75
+  const failing = weakest && shipment(opening, weakest.partner, country, input, year, overlay).availability < .75
   let newcomer = ''
   if (fresh && failing) {
     const oldScore = raw.find(row => row.partner === weakest.partner)?.share ?? 0
@@ -196,7 +226,9 @@ function buyersOf(opening: Record<string, CountryEconomy>): string[] {
 }
 
 /** Lagged foreign orders from countries actually sourcing this input from this exporter. */
-function exportOrders(opening: Record<string, CountryEconomy>, country: string, input: TradeInputId, year: number): number {
+function exportOrders(opening: Record<string, CountryEconomy>, country: string, input: TradeInputId, year: number, overlay?: TradeOverlay | null): number {
+  // A country that bans exporting an input keeps only a trickle of orders for it.
+  if (overlay?.exportBan(country, input)) return .4
   let total = 0, orders = 0
   for (const buyer of buyersOf(opening)) {
     if (buyer === country) continue
@@ -209,13 +241,15 @@ function exportOrders(opening: Record<string, CountryEconomy>, country: string, 
     const weight = share * contract.dependence * Math.sqrt(Math.max(1, marketOf(buyer).populationM * marketOf(buyer).gdpPerCapita))
     const now = routeTerms(country, buyer, year), prior = routeTerms(country, buyer, year - 1)
     const restrictionChange = Math.max(0, now.restriction - prior.restriction) + Math.max(0, now.tariff - prior.tariff)
+    // A buyer's own tariffs or sanctions on this exporter keep biting while they last.
+    const barrier = overlay ? clamp(overlay.tariff(country, buyer, input) * 1.5 + overlay.restriction(country, buyer), 0, .6) : 0
     total += weight
-    orders += weight * clamp(e.sectors[input].demand * (.8 + e.spending * .2) * (1 - restrictionChange), .4, 1.6)
+    orders += weight * clamp(e.sectors[input].demand * (.8 + e.spending * .2) * (1 - restrictionChange) * (1 - barrier), .4, 1.6)
   }
   return total ? clamp(orders / total, .4, 1.6) : 1
 }
 
-export function countryTrade(opening: Record<string, CountryEconomy>, country: string, year: number, oldTrade?: CountryTrade): CountryTrade {
+export function countryTrade(opening: Record<string, CountryEconomy>, country: string, year: number, oldTrade?: CountryTrade, overlay?: TradeOverlay | null): CountryTrade {
   const old = oldTrade ?? opening[country]?.tradeNetwork ?? initialTrade(country, year - 1)
   const out = initialTrade(country, year)
   for (const input of TRADE_INPUTS) {
@@ -223,7 +257,7 @@ export function countryTrade(opening: Record<string, CountryEconomy>, country: s
     const prev = old.inputs[input], routes = prev.routes.length ? [...prev.routes].sort((a,b) => a.partner.localeCompare(b.partner)) : out.inputs[input].routes
     let availability = 0, cost = 0, tariff = 0, restriction = 0, fx = 0
     for (const route of routes) {
-      const actual = shipment(opening, route.partner, country, input, year)
+      const actual = shipment(opening, route.partner, country, input, year, overlay)
       availability += route.share * actual.availability; cost += route.share * actual.cost
       tariff += route.share * actual.tariff; restriction += route.share * actual.restriction; fx += route.share * actual.fx
     }
@@ -234,9 +268,9 @@ export function countryTrade(opening: Record<string, CountryEconomy>, country: s
     const substitute = Math.min(.025, spare * Math.max(0, (own?.credit ?? 1) - .35) * (1 - prev.availability) * .12)
     const baseline = reliance(country, input, year)
     const dependence = clamp(prev.dependence + (baseline - prev.dependence) * .02 - substitute, 0, .85)
-    out.inputs[input] = { routes: retarget(opening, country, input, year, routes), dependence,
+    out.inputs[input] = { routes: retarget(opening, country, input, year, routes, overlay), dependence,
       availability: routes.length ? availability : 1, cost: routes.length ? cost : 1, tariff, restriction, fx,
-      exportDemand: exportOrders(opening, country, input, year) }
+      exportDemand: exportOrders(opening, country, input, year, overlay) }
   }
   return compactTrade(out)
 }

@@ -14,6 +14,7 @@ import { prohibition } from '../events/era'
 import { hasTech, PRESENT_YEAR, priceLevel } from '../history/timeline'
 import type { GameState } from '../types'
 import { getCountry } from '../world'
+import { luxuryLevel } from '../nation/effects'
 import { GOODS_LINES } from './luxury-brands-goods'
 import { CELLAR_LINES } from './luxury-brands-cellar'
 import { CRAFT_LINES } from './luxury-brands-craft'
@@ -176,6 +177,13 @@ export function localMult(g: GameState, l: LuxLine): number {
 
 /** Luxury excise by place and year: Japan's commodity tax until 1988, the US one of 1991-1993, China's later levies. 0 when none. */
 export function luxuryTaxRate(g: GameState, l: LuxLine, price: number, year = g.year): number {
+  // A luxury tax the player's own government passed (nation/) comes first: 10% a level.
+  const level = year === g.year ? luxuryLevel(g) : 0
+  if (level > 0) return Math.min(0.45, 0.1 * level + historicLuxuryTax(g, l, price, year))
+  return historicLuxuryTax(g, l, price, year)
+}
+
+function historicLuxuryTax(g: GameState, l: LuxLine, price: number, year: number): number {
   const country = g.character.countryId
   const nominal = price * priceLevel(year)
   if (country === 'us' && year >= 1991 && year <= 1993) {

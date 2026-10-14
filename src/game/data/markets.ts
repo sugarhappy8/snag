@@ -207,19 +207,33 @@ export function industryDemand(countryId: string, industry: Industry): number {
   return 1
 }
 
-export function isIndustryLegal(countryId: string, industry: Industry): boolean {
+/** Legal here? With `g`, a government's own legalizations and bans (nation/) count too. */
+export function isIndustryLegal(countryId: string, industry: Industry, g?: GameState): boolean {
+  const override = g ? policyLegal(g, countryId, industry) : null
+  if (override !== null) return override
   const m = marketOf(countryId)
   return !m.banned.includes(industry) && (industry !== 'nightclub' || !m.banned.includes('bar')) && venueLegal(countryId, industry)
 }
 
 /** Local price multiplier for a shop category in the player's country (1 = global baseline). */
 export function localPriceMult(g: GameState, category: PriceCategory): number {
-  return localMarket(g).priceMult[category] ?? 1
+  // A government's sales tax change and tariffs pass through to shop prices (nation/effects.ts).
+  return (localMarket(g).priceMult[category] ?? 1) * policyPrice(g, category)
 }
 
 /** Consumption tax rate where the player lives. */
 export function salesTaxRate(g: GameState): number {
-  return localMarket(g).salesTax
+  return Math.max(0, localMarket(g).salesTax + policySales(g))
+}
+
+/** Hooks registered by nation/effects.ts (markets.ts sits below it in the import graph). */
+let policyPrice: (g: GameState, category: string) => number = () => 1
+let policySales: (g: GameState) => number = () => 0
+let policyLegal: (g: GameState, country: string, industry: string) => boolean | null = () => null
+export function registerPricePolicy(price: typeof policyPrice, sales: typeof policySales, legal: typeof policyLegal): void {
+  policyPrice = price
+  policySales = sales
+  policyLegal = legal
 }
 
 /** Corporate tax owed on a year's profit in a country (losses pay nothing). */

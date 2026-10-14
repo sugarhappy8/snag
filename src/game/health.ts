@@ -676,7 +676,7 @@ function processAddictions(g: GameState): void {
   const kind = addictionKind(worst.name)
   const subject = addictionSubject(worst.name)
   // Where alcohol is banned there is no bar on the corner, only a guy who knows a guy.
-  const barsLegal = isIndustryLegal(c.countryId, 'bar')
+  const barsLegal = isIndustryLegal(c.countryId, 'bar', g)
   const lines: Record<AddictionKind, string[]> = {
     alcohol: barsLegal
       ? [

@@ -525,7 +525,7 @@ export interface ChoiceModal {
   personId?: string
 }
 
-export type MinigameKind = 'blackjack' | 'horseRace' | 'burglary' | 'prisonEscape' | 'slots' | 'pickpocket' | 'annualReport'
+export type MinigameKind = 'blackjack' | 'horseRace' | 'burglary' | 'prisonEscape' | 'slots' | 'pickpocket' | 'annualReport' | 'nationReport'
 
 /**
  * Data for the 'annualReport' minigame (business.ts → ui/minigames/AnnualReport.tsx): the yearly

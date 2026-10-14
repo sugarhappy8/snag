@@ -151,7 +151,7 @@ function pitchNode(a: Asset, p: Pitch, act: Act): MenuNode {
       const fund = investingFund(v.f, gg.year)
       return [
         { type: 'info', id: `fund.${id}.pitch.${p.id}.terms`, emoji: '📝', text: `${money(p.ask)} for ${pct(stake, 1)} · valued at ${money(p.pre + p.ask)} after the money` },
-        { type: 'info', id: `fund.${id}.pitch.${p.id}.dd`, emoji: '🔍', text: dd ? `Diligence: quality ${p.lo}–${p.hi} out of 100` : 'No diligence yet: you only have the pitch and your gut.' },
+        { type: 'info', id: `fund.${id}.pitch.${p.id}.diligence`, emoji: '🔍', text: dd ? `Diligence: quality ${p.lo}–${p.hi} out of 100` : 'No diligence yet: you only have the pitch and your gut.' },
         act(`pitch.${p.id}.invest`, `Invest ${money(p.ask)}`, '💰', g2 => { investInPitch(g2, id, p.id) }, {
           subtitle: fund ? `From Fund ${roman(fund.n)} (${money(fund.dry)} left)` : 'No fund is investing',
           disabledReason: g2 => manageBlock(g2, a) ?? (!fund ? 'Raise a fund first.' : fund.dry < p.ask ? 'The fund doesn’t have enough left.' : null),

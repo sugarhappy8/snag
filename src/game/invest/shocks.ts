@@ -154,9 +154,9 @@ export function publicBusinessShockFactor(g: GameState, b: BizState, year: numbe
   return factor
 }
 
-export type ShockCause = 'ban' | 'probe' | 'nationalize' | 'contract' | 'deregulate' | 'endorse' | 'liquidity'
+export type ShockCause = 'ban' | 'probe' | 'nationalize' | 'contract' | 'deregulate' | 'endorse' | 'policy' | 'liquidity'
 
-export const SHOCK_CAUSES: ShockCause[] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse', 'liquidity']
+export const SHOCK_CAUSES: ShockCause[] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse', 'policy', 'liquidity']
 
 export interface MarketShock {
   id: string

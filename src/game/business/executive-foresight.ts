@@ -18,7 +18,7 @@ export function settlePerfectForesight(g: GameState, b: BizState, s: Statement):
   const draws = Math.max(0, b.ownerDraws ?? 0)
   const needed = Math.max(0, target - (s.net + draws), target - (b.cash + draws))
   if (needed <= 0 || !Number.isFinite(needed)) return
-  const homeTax = (profit: number) => allocatedCorporateTax(b.countryId, profit, 0, 0, 0, g, s.year)
+  const homeTax = (profit: number) => allocatedCorporateTax(b.countryId, profit, 0, 0, 0, g, s.year, b.industry)
   const previousTax = homeTax(s.pbt)
   const taxDelta = (gross: number) => Math.max(0, homeTax(s.pbt + gross) - previousTax)
   let high = Math.max(1, needed), low = 0
