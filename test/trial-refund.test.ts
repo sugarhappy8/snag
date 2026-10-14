@@ -229,6 +229,28 @@ describe('a conviction forfeits it and remembers it for an appeal', () => {
     expect(offers).toBeGreaterThan(0)
   })
 
+  it('a death sentence says only going free on appeal returns it (a commuted sentence returns nothing)', () => {
+    const seen = { trial: 0, accept: 0 }
+    for (const seed of SEEDS) {
+      for (const plea of ['trial', 'accept'] as const) {
+        const g = newGame(seed)
+        // Caught again after escaping death row: a new conviction sends the player back to it.
+        g.flags.fugitive = { crime: 'Murder', yearsLeft: 99, prison: 'Old Rock Prison', security: 'maximum', escapedAge: 30, deathRow: true, countryId: 'us' }
+        arrestPlayer(g, 'Insider Trading', 2, { ...AGENCY, evidence: 0.9 })
+        runTrial(g, { plea })
+        const n = notice(g, plea === 'accept' ? 'Plea Accepted' : 'Guilty')
+        if (!g.character.prison || !n) continue
+        expect(g.character.prison.deathRow).toBe(true)
+        seen[plea]++
+        expect(n.text).toMatch(/ The court kept the \$2,500,000 taken in your case\. Going free on appeal returns it\.$/)
+        expect(n.text).not.toContain('Winning an appeal')
+        expect(g.character.criminalRecord.find((r) => r.crime === 'Insider Trading')?.refund).toBe(REFUND)
+      }
+    }
+    expect(seen.trial).toBeGreaterThan(0)
+    expect(seen.accept).toBeGreaterThan(0)
+  })
+
   it('a conviction without held money says nothing about it', () => {
     let convictions = 0
     for (const seed of SEEDS.slice(0, 30)) {
@@ -392,6 +414,56 @@ describe('a successful appeal returns it once', () => {
     // A damaged amount on the record is not promised.
     row.character.criminalRecord[0].refund = Number.NaN
     expect(header(row)).toBe('You can file one appeal a year from death row. A win could commute your sentence or even free you.')
+  })
+
+  it('once the sentence has had its appeal, the Appeal menu says the court keeps the money', () => {
+    const header = (g: GameState): string => {
+      const n = findNode(g, prisonMenu.children(g), 'prison.appeal')
+      if (!n || n.type !== 'menu' || !n.header) throw new Error('no Appeal menu')
+      return n.header(g)
+    }
+    const PLAIN = 'You get one appeal per sentence. Pricier firms have better odds.'
+    const KEEPS = `${PLAIN} The court keeps the ${formatMoney(REFUND)} taken in your case.`
+    // A real lost appeal (denied or only a shorter sentence): the conviction stands and the one appeal is used.
+    let lost = 0
+    for (const seed of SEEDS.slice(0, 40)) {
+      const treated = convictedGame(seed, REFUND)
+      const control = convictedGame(seed, undefined)
+      if (!treated || !control) continue
+      for (const g of [treated, control]) {
+        g.character.hidden.karma = 0
+        prisonAction(g, 'prison.appeal.budget').run(g)
+      }
+      if (!treated.character.prison) continue
+      lost++
+      expect(treated.character.prison.appealed).toBe(true)
+      expect(header(treated)).toBe(KEEPS)
+      expect(header(control)).toBe(PLAIN)
+    }
+    expect(lost).toBeGreaterThan(0)
+
+    // The flag alone decides it, as it decides whether the firms can be hired.
+    const g = convictedGame(1, REFUND) ?? convictedGame(2, REFUND)!
+    expect(header(g)).toBe(`${PLAIN} A win returns the ${formatMoney(REFUND)} taken in your case.`)
+    g.character.prison!.appealed = true
+    expect(header(g)).toBe(KEEPS)
+
+    // Death row files one appeal a year, so a later one can still free you: a denial leaves the promise as it was.
+    let denied = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const row = newGame(seed)
+      row.character.criminalRecord.push({ crime: 'Insider Trading', age: 35, caught: true, convicted: true, sentenceYears: 99, refund: REFUND })
+      sendToPrison(row, 'Insider Trading', 0, { deathRow: true, life: true, quiet: true })
+      const before = header(row)
+      expect(before).toMatch(/If you go free, you get back the \$2,500,000 taken in your case\.$/)
+      row.character.money = 1_000_000_000
+      row.character.hidden.karma = 0
+      prisonAction(row, 'prison.appeal.budget').run(row)
+      if (!row.character.prison?.deathRow) continue
+      denied++
+      expect(header(row)).toBe(before)
+    }
+    expect(denied).toBeGreaterThan(0)
   })
 
   it('a death row exoneration returns it too', () => {

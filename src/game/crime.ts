@@ -907,16 +907,18 @@ function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
     : pick(g, guiltyLines(trialBy(c.countryId, t.severity), chargeList(t), term, where))
   const adult = s.triedAsAdult ? ' You were tried as an adult.' : ''
   log(g, plea ? `I took a plea deal: ${term.split('.')[0]}.` : `I was found guilty of ${chargeList(t)}.`, 'bad')
-  insertNoticeAt(g, at, plea ? 'Plea Accepted' : 'Guilty', `${head}${adult}${notes.length ? ` ${notes.join(' ')}` : ''}${courtKept(held, appealable)}`, deathRow ? '\u{26B0}\u{FE0F}' : '\u{2696}\u{FE0F}', 'bad')
+  insertNoticeAt(g, at, plea ? 'Plea Accepted' : 'Guilty', `${head}${adult}${notes.length ? ` ${notes.join(' ')}` : ''}${courtKept(held, appealable, deathRow)}`, deathRow ? '\u{26B0}\u{FE0F}' : '\u{2696}\u{FE0F}', 'bad')
 }
 
 /**
  * The sentence a conviction adds about money the investigation held, or nothing. `appealable` is true when the
- * amount was written on the conviction record, where a won appeal finds it (prison.ts markOverturned).
+ * amount was written on the conviction record, where a won appeal finds it (prison.ts markOverturned). On death
+ * row only an appeal that frees the player returns it: a commuted sentence does not.
  */
-function courtKept(held: number, appealable: boolean): string {
+function courtKept(held: number, appealable: boolean, deathRow = false): string {
   if (!(held > 0)) return ''
-  return ` The court kept the ${formatMoney(held)} taken in your case.${appealable ? ' Winning an appeal returns it.' : ''}`
+  const back = !appealable ? '' : deathRow ? ' Going free on appeal returns it.' : ' Winning an appeal returns it.'
+  return ` The court kept the ${formatMoney(held)} taken in your case.${back}`
 }
 
 // ---------------------------------------------------------------------------

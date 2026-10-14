@@ -1570,6 +1570,22 @@ function heldOn(g: GameState, crime: string): number {
   return cleanRefund(convictionRecord(g, crime)?.refund)
 }
 
+/** Money held in the case behind the current sentence, and what can still return it. */
+export interface HeldInCase {
+  amount: number
+  /** 'appeal': the sentence's one appeal is still to file. 'free': death row, only walking free returns it. 'kept': the appeal is used. */
+  route: 'appeal' | 'free' | 'kept'
+}
+
+/** What the current sentence's case holds (the Appeal menu and Do Anything say the same), or null when nothing is held. */
+export function heldInCase(g: GameState): HeldInCase | null {
+  const p = g.character.prison
+  if (!p) return null
+  const amount = heldOn(g, p.crime)
+  if (!(amount > 0)) return null
+  return { amount, route: p.deathRow ? 'free' : p.appealed ? 'kept' : 'appeal' }
+}
+
 /** "The court keeps the X taken in your case." after an appeal that left the conviction standing, or nothing. */
 function stillHeld(g: GameState, crime: string): string {
   const held = heldOn(g, crime)
@@ -1602,13 +1618,15 @@ const appealMenu: MenuGroup = {
   subtitle: (g) => (g.character.prison?.deathRow ? 'Fight your death sentence' : g.character.prison?.appealed ? 'Already appealed' : 'Hire a law firm to appeal your conviction'),
   header: (g) => {
     const p = g.character.prison
-    // Money held in this conviction's case comes back only if the appeal throws the conviction out.
-    const held = p ? heldOn(g, p.crime) : 0
+    // Money held in this conviction's case comes back only if an appeal throws the conviction out. Once the
+    // sentence's one appeal is used, the court keeps it; death row files one a year, so walking free still can.
+    const held = heldInCase(g)
+    const amount = held ? formatMoney(held.amount) : ''
     if (p?.deathRow) {
-      const back = held > 0 ? ` If you go free, you get back the ${formatMoney(held)} taken in your case.` : ''
+      const back = held ? ` If you go free, you get back the ${amount} taken in your case.` : ''
       return `You can file one appeal a year from death row. A win could commute your sentence or even free you.${back}`
     }
-    const back = held > 0 ? ` A win returns the ${formatMoney(held)} taken in your case.` : ''
+    const back = !held ? '' : held.route === 'kept' ? ` The court keeps the ${amount} taken in your case.` : ` A win returns the ${amount} taken in your case.`
     return `You get one appeal per sentence. Pricier firms have better odds.${back}`
   },
   children: (g) => appealFirms(g).map((f) => appealAction(f)),
