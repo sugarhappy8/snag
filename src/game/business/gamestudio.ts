@@ -523,10 +523,10 @@ export function studioManagerTurn(g: GameState, a: Asset, b: BizState): void {
       const team = pitchTeam(b, st, p.scope)
       addGame(st, g, { scope: p.scope, genre: p.genre, platform: p.platform, engine: p.engine, title, team, franchise, sequelOf: hit ? hit.id : '' })
       log(g, `${a.name}'s CEO greenlit "${title}".`, 'neutral')
-      lines.push(`Greenlit "${title}", ${pitchName(p)}, with ${team} developer${team === 1 ? '' : 's'}: it should earn about ${money(p.perYear)} for every year it takes to make.`)
+      lines.push(`Greenlit "${title}" with ${team} developer${team === 1 ? '' : 's'}.`)
     }
     saveStudio(a, st)
-    if (!lines.length) lines.push(devGames(st).length ? `Kept ${devGames(st).length} game${devGames(st).length === 1 ? '' : 's'} in development on track.` : 'Nothing we could make right now would pay back, so the team is prototyping until a pitch does.')
+    if (!lines.length) lines.push(devGames(st).length ? `Kept ${devGames(st).length} game${devGames(st).length === 1 ? '' : 's'} in development on track.` : 'No pitch would pay back. The team is prototyping.')
     ceoLetter(g, a, b, lines, lines.some((x) => x.startsWith('Greenlit')))
     return
   }
@@ -541,10 +541,11 @@ export function studioManagerTurn(g: GameState, a: Asset, b: BizState): void {
   const engine = leadEngine(st, scope.id)
   const sequel = best && best.genre === genre
   const title = sequel ? sequelTitle(best.franchise || best.title, st.games.filter((x) => x.franchise === (best.franchise || best.title)).length + 1) : gameTitle(g, genre, new Set(st.games.map((x) => x.title)))
-  addGame(st, g, { scope: scope.id, genre, platform, engine, title, team: Math.min(b.employees, Math.max(1, Math.round(scope.team * 1.2))), franchise: sequel ? best.franchise || best.title : '', sequelOf: sequel ? best.id : '' })
+  const team = Math.min(b.employees, Math.max(1, Math.round(scope.team * 1.2)))
+  addGame(st, g, { scope: scope.id, genre, platform, engine, title, team, franchise: sequel ? best.franchise || best.title : '', sequelOf: sequel ? best.id : '' })
   saveStudio(a, st)
   log(g, `${a.name}'s manager greenlit "${title}".`, 'neutral')
-  if (hired) ceoLetter(g, a, b, [`Greenlit "${title}" to keep the team busy.`], false)
+  if (hired) ceoLetter(g, a, b, [`Greenlit "${title}" with ${team} developer${team === 1 ? '' : 's'}.`], false)
 }
 
 interface NewGame {

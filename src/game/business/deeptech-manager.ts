@@ -39,14 +39,14 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
       if (!ts.down || runway < 1) {
         closeRound(g, a, b, t, ts)
         log(g, `${a.name} raised ${money(ts.amount)} in a ${SERIES[ts.series]} (I now own ${Math.round(b.share * 100)}%).`, 'neutral')
-        lines.push(`Raised ${money(ts.amount)} in a ${SERIES[ts.series]}: the runway was getting short. You now own ${Math.round(b.share * 100)}%.`)
+        lines.push(`Raised ${money(ts.amount)} in a ${SERIES[ts.series]} round. You now own ${Math.round(b.share * 100)}%.`)
         big = true
       }
     } else if (runway < 0.8 && !bridgeBlock(g, b, t)) {
       const ts = makeTermSheet(g, a, b, t, true)
       closeRound(g, a, b, t, ts)
       log(g, `${a.name}'s investors put in a ${money(ts.amount)} bridge round to keep the lights on.`, 'neutral')
-      lines.push(`Took a ${money(ts.amount)} bridge round from our investors to keep the lights on.`)
+      lines.push(`Took a ${money(ts.amount)} bridge round from our investors.`)
       big = true
     }
     runway = runwayYears(g, a, b, t)
@@ -80,7 +80,7 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
     const p = startProgram(g, b, t, def)
     if (!p) break
     log(g, `${a.name}'s manager started an R&D program: ${p.name}.`)
-    lines.push(`Started an R&D program: ${p.name}.`)
+    lines.push(`Started the R&D program "${p.name}".`)
     big = true
   }
 
@@ -117,10 +117,11 @@ export function deepTechManagerTurnImpl(g: GameState, a: Asset, b: BizState): vo
     const plan = bestTechPlan(g, b, t)
     b.price = plan.price
     b.production = plan.production
-    lines.push(`Next year: ${unitMoney(b.price)} each, ${units(b.production)} planned.`)
+    const def = industryDef(b.industry)
+    lines.push(`Next year, ${units(b.production)} ${b.production === 1 ? def.unitOne : def.unit} at ${unitMoney(b.price)} each.`)
   } else {
     b.production = 0
-    lines.push(`Nothing to sell yet: the lab is ${t.programs.length ? `working on ${t.programs.length} program${t.programs.length === 1 ? '' : 's'}` : 'between programs'}.`)
+    lines.push(`Nothing to sell yet. The lab is ${t.programs.length ? `working on ${t.programs.length} program${t.programs.length === 1 ? '' : 's'}` : 'between programs'}.`)
   }
   revalue(g, a, b, t)
   if (hired) ceoLetter(g, a, b, lines, big)
@@ -156,6 +157,6 @@ function scaleUp(g: GameState, a: Asset, b: BizState, t: TechState, smart: boole
   else b.outlets.push({ countryId: b.countryId, city: b.city, count: n, opened: g.year })
   const def = industryDef(b.industry)
   log(g, `${a.name}'s manager opened ${n} new ${n === 1 ? def.site : def.sitePlural} to keep up with demand.`, 'neutral')
-  return `Opened ${n} new ${n === 1 ? def.site : def.sitePlural} for ${money(n * capital)}: we were turning customers away.`
+  return `Opened ${n} ${n === 1 ? def.site : def.sitePlural} for ${money(n * capital)}.`
 }
 

@@ -22,13 +22,15 @@ export interface StyleInfo {
   emoji: string
   /** What they lean toward when choices are close. */
   note: string
+  /** Short tails the CEO puts after the first thing their letter says they cut, opened or built. */
+  coda: readonly string[]
 }
 
 export const STYLE_INFO: Record<CeoStyle, StyleInfo> = {
-  grower: { label: 'Grower', emoji: '\u{1F331}', note: 'opens new sites and spends on marketing' },
-  costCutter: { label: 'Cost-cutter', emoji: '\u{2702}\u{FE0F}', note: 'trims costs, suppliers and deadweight' },
-  steady: { label: 'Steady hand', emoji: '\u{2693}', note: 'keeps what works and pays down debt' },
-  visionary: { label: 'Visionary', emoji: '\u{1F52D}', note: 'bets on new products and new markets' },
+  grower: { label: 'Grower', emoji: '\u{1F331}', note: 'opens new sites and spends on marketing', coda: ['Need more money.', 'More next year.'] },
+  costCutter: { label: 'Cost-cutter', emoji: '\u{2702}\u{FE0F}', note: 'trims costs, suppliers and deadweight', coda: ['Sorry.', 'Had to.'] },
+  steady: { label: 'Steady hand', emoji: '\u{2693}', note: 'keeps what works and pays down debt', coda: ['Same as last year.', 'As planned.'] },
+  visionary: { label: 'Visionary', emoji: '\u{1F52D}', note: 'bets on new products and new markets', coda: ['Bet placed.', 'Trust me.'] },
 }
 
 /** A manager's style (old saves have none: steady). */
@@ -361,9 +363,42 @@ export function ownerAvailable(g: GameState): boolean {
   return c.alive && !c.prison && c.age >= 18
 }
 
+/** The most words a letter bullet has (docs/VOICE.md): one action, coda included. */
+export const LETTER_WORDS = 12
+
+/** Words in a letter line: runs of non-space, so "$60,000" and "Front-of-House" count one each. */
+export function letterWords(line: string): number {
+  const t = line.trim()
+  return t ? t.split(/\s+/).length : 0
+}
+
+/** Letter lines kept on file for the company screen (board-state.ts reads back as many). */
+export const MEMO_LINES = 12
+
+/** A bullet that cut, opened or built something: the first one carries the CEO's coda. */
+const CODA_ON = /^(?:Cut|Let|Closed|Retired|Opened|Built)\s/
+
+/**
+ * The letter's lines with the manager's coda after the first one that cut, opened or built
+ * something, when a coda still fits in LETTER_WORDS (none otherwise). Which coda comes from the year
+ * and the company id, never from g.rng: writing a letter must not move a seeded life.
+ */
+function withCoda(lines: readonly string[], style: StyleInfo, year: number, companyId: string): string[] {
+  const out = [...lines]
+  const at = out.findIndex((x) => CODA_ON.test(x))
+  if (at < 0) return out
+  const fits = style.coda.filter((c) => letterWords(out[at]) + letterWords(c) <= LETTER_WORDS)
+  if (!fits.length) return out
+  let h = year >>> 0
+  for (let i = 0; i < companyId.length; i++) h = (Math.imul(h, 31) + companyId.charCodeAt(i)) >>> 0
+  out[at] = `${out[at]} ${fits[h % fits.length]}`
+  return out
+}
+
 /**
  * The CEO's yearly letter to the owner: a popup when something big happened (at most one per
  * company a year), a line in the life log otherwise. Kept on the company screen until the next.
+ * One short bullet per action; the manager's style shows in the coda.
  */
 export function ceoLetter(g: GameState, a: Asset, b: BizState, lines: string[], big: boolean): void {
   const m = b.manager
@@ -371,12 +406,13 @@ export function ceoLetter(g: GameState, a: Asset, b: BizState, lines: string[], 
   const st = boardOf(b)
   if (st.letter === g.year) return
   st.letter = g.year
-  st.memo = lines.slice(0, 10)
   const who = managerName(m)
   const style = STYLE_INFO[styleOf(m)]
-  if (big && lines.length > 1 && ownerAvailable(g)) {
-    notice(g, `${a.name}: Letter from the CEO`, `Dear ${g.character.firstName},\n${lines.map((x) => `\u{2022} ${x}`).join('\n')}\n\u{2014} ${who}, CEO (${style.label.toLowerCase()})`, { emoji: '\u{1F4DD}' })
+  const said = withCoda(lines, style, g.year, a.id)
+  st.memo = said.slice(0, MEMO_LINES)
+  if (big && said.length > 1 && ownerAvailable(g)) {
+    notice(g, `${a.name}: Letter from the CEO`, `Dear ${g.character.firstName},\n${said.map((x) => `\u{2022} ${x}`).join('\n')}\n\u{2014} ${who}, CEO (${style.label.toLowerCase()})`, { emoji: '\u{1F4DD}' })
     return
   }
-  log(g, `${who}'s letter from ${a.name}: ${lines.length > 1 ? lines.slice(0, 2).join(' ') : lines[0] ?? 'business as usual.'}`, 'neutral')
+  log(g, `${who}'s letter from ${a.name}: ${said.length > 1 ? said.slice(0, 2).join(' ') : said[0] ?? 'business as usual.'}`, 'neutral')
 }
