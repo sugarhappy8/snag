@@ -66,6 +66,7 @@ import {
   type ExYear,
   type SecYear,
 } from './invest/engine'
+import { classFacts } from './invest/class-data'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
 import { addMarketShock, indexShockFactor, marketBreakthroughs, orderFlowFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
@@ -1678,7 +1679,9 @@ const stocksMenu: MenuGroup = {
     for (const q of ordered) {
       const open = sections[sections.length - 1]
       if (!open || (sized && q.size && q.size !== open.size)) sections.push({ size: sized ? (q.size ?? '') : '', nodes: [] })
-      sections[sections.length - 1].nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
+      const co = companyDef(l.info, num(q.details.slot), num(q.details.gen)).real
+      const classes = co ? classFacts(co, g.year) : null
+      sections[sections.length - 1].nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false), ...(classes ? [classes] : [])]))
     }
     // A size the exchange has no quotes for this year still gets its heading when you own a company of it.
     for (const size of STOCK_SIZES) {
