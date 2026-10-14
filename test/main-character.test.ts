@@ -100,7 +100,7 @@ describe('the talent', () => {
     g.character.alive = false
     g.character.causeOfDeath = 'Old Age'
     const text = writeObituary(g)
-    expect(text).toContain('a real gift for main character syndrome')
+    expect(text).toContain('Gifted at main character syndrome.')
     expect(text).not.toContain('maincharacter')
   })
 })

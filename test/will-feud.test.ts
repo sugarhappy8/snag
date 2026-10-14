@@ -641,7 +641,8 @@ describe('estrangement', () => {
     changeWill(f.g, (_gg, w) => void (w.charity = 30))
     f.g.queue = []
     const text = writeObituary(f.g)
-    expect(text).toMatch(/had not spoken to .*after a quarrel over the will/)
+    const his = f.g.character.gender === 'male' ? 'his' : 'her'
+    expect(text).toContain(`Hadn't spoken to ${his} ${f.b.gender === 'male' ? 'son' : 'daughter'}, ${f.b.firstName}, since a fight over the will.`)
     expect(text).toContain('30% of')
     expect(text).toContain('to charity')
   })

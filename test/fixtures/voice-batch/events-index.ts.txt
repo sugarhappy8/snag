@@ -1,0 +1,2 @@
+// Fixture: a file whose name sorts before the folder of the same name (events.ts before events/).
+export const HELLO = 'Nobody greets you at the index.'

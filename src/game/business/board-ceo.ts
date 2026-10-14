@@ -9,7 +9,7 @@
 // They obey the board's mandate and limits (business/board-state.ts): growth/balanced/profit/cash,
 // a yearly budget for new sites, capacity and R&D, a minimum cash reserve. Each has a style
 // (grower, cost-cutter, steady hand, visionary) that tips close calls, and writes the owner one
-// letter a year listing what they changed and why.
+// short letter a year: a bullet per change, the numbers without the reasoning.
 //
 // The what-if evaluators here are pure (no g.rng): the Business talent's hints and the board's
 // mandate assessment use them too, so a hint names exactly what a good CEO would do.
@@ -20,7 +20,7 @@ import type { Asset, GameState } from '../types'
 import { COUNTRIES, getCountry, randomFirstName, randomLastName } from '../world'
 import { boardOf, type BoardState, type Mandate } from './board-state'
 import { capexBudget, capexLeft, noteSpend, payableCash, payoutCash, reserveDollars, runningCosts } from './board-vote'
-import { ceoLetter, SMART_SKILL, styleOf } from './career'
+import { ceoLetter, LETTER_WORDS, letterWords, SMART_SKILL, styleOf } from './career'
 import { isDeepTech } from './deeptech-state'
 
 export { ceoLetter, ownerAvailable } from './career'
@@ -53,12 +53,6 @@ const GROWTH_PACE: Record<Mandate, number> = { growth: 0.5, balanced: 0.3, profi
 
 /** R&D projects a CEO may start in a year under each mandate. */
 const RD_PER_YEAR: Record<Mandate, number> = { growth: 5, balanced: 3, profit: 2, cash: 1 }
-
-/** 'about a year' / 'about 3 years' for a payback. */
-function paybackText(cost: number, gain: number): string {
-  const y = cost / Math.max(1, gain)
-  return y < 1.5 ? 'about a year' : `about ${Math.round(y)} years`
-}
 
 /** A mistake model: an estimate as the CEO sees it (identity for hints). */
 export type Judge = (v: number) => number
@@ -386,8 +380,17 @@ function resilienceTurn(t: Turn): void {
   }
   if (move.kind !== 'target' && paid <= 0) return
   noteSpend(t.g, t.st, paid + move.commitment); t.moved += paid; t.big = true
-  const choice = move.kind === 'target' ? `set the input-reserve target to ${Math.round(move.target! * 100)}%` : move.kind === 'contract' ? 'fixed a capped volume of input prices for three years' : move.kind === 'training' ? 'funded the existing staff training program' : 'upgraded equipment for quality and bounded automation'
-  t.lines.push(`Resilience review: ${choice}; ${money(paid)} paid${move.commitment > 0 ? ` and up to ${money(move.commitment)} extra working cash reserved for actual inputs` : ''}. Two-year forecast changes: central ${money(move.central)}, downside ${money(move.downside)} (25% dearer inputs, fewer deliveries/workers and softer demand). These are scenarios, not guaranteed results.`)
+  const choice = move.kind === 'target' ? `set the input-reserve target to ${Math.round(move.target! * 100)}%` : move.kind === 'contract' ? `spent ${money(paid)} on a three-year input contract` : move.kind === 'training' ? `spent ${money(paid)} on staff training` : `spent ${money(paid)} on equipment upgrades`
+  t.lines.push(`Resilience review: ${choice}.`)
+  if (move.commitment > 0) t.lines.push(`Set aside up to ${money(move.commitment)} for inputs.`)
+  t.lines.push(`Two-year profit ${signedMoney(move.central)}, or ${signedMoney(move.downside)} in a downturn.`)
+  // world2-interventions.test.ts pins this line; the A4 disclaimer pass takes it out with that test.
+  t.lines.push('These are scenarios, not guaranteed results.')
+}
+
+/** '+$52,870' / '-$15,187': a change in money. */
+function signedMoney(n: number): string {
+  return n >= 0 ? `+${money(n)}` : money(n)
 }
 
 function spend(t: Turn, amount: number, capex: boolean): void {
@@ -424,7 +427,7 @@ function staffTurn(t: Turn): void {
       b.yearCosts += cost
     }
     gone++
-    t.lines.push(`Let ${s.firstName} ${s.lastName} (${s.role}) go: they cost about ${money(-net)} a year more than they brought in.`)
+    t.lines.push(`Let ${s.firstName} ${s.lastName} (${s.role}) go.`)
   }
   // Then the gaps: interview for the role worth most, hire the best candidate if they pay.
   let hired = 0
@@ -442,13 +445,13 @@ function staffTurn(t: Turn): void {
     const scored = list.map((c) => ({ c, v: t.judge(hireValue(g, b, w2, role.focus, c)) })).sort((x, y) => y.v - x.v)
     hired++
     if (!scored.length || scored[0].v <= 0) {
-      t.lines.push(`Interviewed for a ${roleTitle(g, b.countryId, role.title)} but nobody was worth the salary.`)
+      t.lines.push(`Interviewed ${plural(list.length, 'candidate')} for ${roleTitle(g, b.countryId, role.title)}, hired none.`)
       continue
     }
     const c = scored[0].c
     const s: KeyStaff = { id: uid(g, 'ks'), firstName: c.firstName, lastName: c.lastName, gender: c.gender, age: c.age, role: roleTitle(g, b.countryId, role.title), focus: role.focus, skill: c.skill, salary: c.salary, trait: c.trait, morale: randInt(g, 65, 85), years: 0 }
     b.staff.push(s)
-    t.lines.push(`Hired ${s.firstName} ${s.lastName} as ${s.role} (skill ${s.skill}, ${money(s.salary)} a year): worth about ${money(scored[0].v / LASTING_YEARS)} a year after pay.`)
+    t.lines.push(`Hired ${s.firstName} ${s.lastName}, ${s.role}. ${money(s.salary)} a year.`)
   }
 }
 
@@ -469,7 +472,7 @@ function policyTurn(t: Turn): void {
     }
   }
   if (sup !== b.supplier) {
-    t.lines.push(`Switched to ${sup} suppliers: ${sup === 'budget' ? 'cheaper inputs beat the quality we lose' : sup === 'premium' ? 'better inputs pay for themselves in quality and price' : 'the middle road works best for us now'}.`)
+    t.lines.push(`Switched to ${sup} suppliers.`)
     b.supplier = sup
     t.big = true
   }
@@ -492,7 +495,7 @@ function policyTurn(t: Turn): void {
     b.morale = clampN(b.morale + mood(pay), 0, 100)
     if (pay > prev) b.raiseYear = g.year
     else if (b.raiseYear >= g.year) b.raiseYear = g.year - 1
-    t.lines.push(`${pay > prev ? 'Raised' : 'Trimmed'} pay to ${Math.round(pay * 100)}% of the going rate: ${pay > prev ? 'happier staff are worth the wage bill' : 'we were paying for morale we don\u{2019}t need'}.`)
+    t.lines.push(`${pay > prev ? 'Raised' : 'Cut'} pay to ${Math.round(pay * 100)}% of the going rate.`)
   }
   // Marketing budget: the yearly profit at each level (it recurs, so it counts for a few years)
   // plus the brand it builds; a notch or two at a time, not a lurch.
@@ -511,7 +514,7 @@ function policyTurn(t: Turn): void {
   }
   if (Math.abs(level - cur) > 0.01) {
     b.marketingLevel = level
-    t.lines.push(`${level > cur ? 'Raised' : 'Cut'} marketing to ${Math.round(level * 100)}% of a normal spend: ${level > cur ? 'every extra dollar is still bringing customers in' : 'the last dollars weren\u{2019}t bringing anyone in'}.`)
+    t.lines.push(`${level > cur ? 'Raised' : 'Cut'} marketing to ${Math.round(level * 100)}% of a normal spend.`)
   }
 }
 
@@ -532,7 +535,7 @@ function productTurn(t: Turn): void {
     retireLines(b, 1, g.year)
     retired++
   }
-  if (retired > 0) t.lines.push(`Retired ${plural(retired, 'outdated product line')}: running ${retired === 1 ? 'it' : 'them'} cost more than ${retired === 1 ? 'it' : 'they'} sold.`)
+  if (retired > 0) t.lines.push(`Retired ${plural(retired, 'outdated product line')}.`)
   // R&D: fund the projects that pay, within the budget and the reserve.
   const style = styleOf(t.m)
   const max = RD_PER_YEAR[t.st.mandate] + (style === 'visionary' ? 2 : style === 'costCutter' ? -1 : 0)
@@ -549,7 +552,9 @@ function productTurn(t: Turn): void {
     total += pick.budget
   }
   if (started.length) {
-    t.lines.push(`Put ${money(total)} into R&D on ${started.length === 1 ? started[0] : `${started.length} new products (${started.slice(0, 3).join(' \u{00B7} ')}${started.length > 3 ? ' \u{2026}' : ''})`}: the expected sales beat the cost.`)
+    // One product by name when the name is short enough; a product name can run to 60 characters.
+    const named = `Put ${money(total)} into R&D on ${started[0]}.`
+    t.lines.push(started.length === 1 && letterWords(named) <= LETTER_WORDS ? named : `Put ${money(total)} into R&D on ${plural(started.length, 'new product')}.`)
     t.big = true
   }
 }
@@ -571,7 +576,7 @@ function siteTurn(t: Turn): void {
       b.morale = clampN(b.morale - 6, 0, 100)
       t.moved += -close.cost
       t.big = true
-      t.lines.push(`Closed ${plural(close.n, def.site, def.sitePlural)} in ${close.city}: profit should rise about ${money(close.gain)} a year, and the fit-out sold for ${money(-close.cost)}.`)
+      t.lines.push(`Closed ${plural(close.n, def.site, def.sitePlural)} in ${close.city}.`)
       base = profitOf(g, b)
     }
   }
@@ -589,7 +594,7 @@ function siteTurn(t: Turn): void {
     if (existing) existing.count += open.n
     else b.outlets.push({ countryId: open.countryId, city: open.city, count: open.n, opened: g.year })
     t.big = true
-    t.lines.push(`Opened ${plural(open.n, `new ${def.site}`, `new ${def.sitePlural}`)} in ${open.city}${open.countryId !== b.countryId ? `, ${getCountry(open.countryId).name}` : ''} for ${money(open.cost)}: ${open.n === 1 ? 'it' : 'they'} should pay back in ${paybackText(open.cost, open.gain)}.`)
+    t.lines.push(`Opened ${plural(open.n, def.site, def.sitePlural)} in ${open.city}${open.countryId !== b.countryId ? `, ${getCountry(open.countryId).name},` : ''} for ${money(open.cost)}.`)
     base = profitOf(g, b)
   }
   const lines = bestLines(g, b, spendable(t), { maxPayback, judge: t.judge, base, maxN: Math.max(t.st.mandate === 'cash' ? 0 : 1, Math.ceil((linesOf(b) + totalOutlets(b)) * pace)) })
@@ -598,14 +603,14 @@ function siteTurn(t: Turn): void {
     spend(t, lines.cost, true)
     b.lines = linesOf(b) + lines.n
     t.big = true
-    t.lines.push(`Built ${plural(lines.n, line.one, line.many)} for ${money(lines.cost)}: we were turning customers away.`)
+    t.lines.push(`Built ${plural(lines.n, line.one, line.many)} for ${money(lines.cost)}.`)
   }
   // Tell the owner when the board's budget (not the mandate's pace) is what held the company back:
   // what they would still open this year at the mandate's pace if the budget allowed.
   const each = startupCost(b.industry, b.countryId, b.city).capital
   if (room >= 1 && capexLeft(g, b, t.st) < each && b.cash - reserveDollars(b, t.st) >= each * 2) {
     const one = bestOpening(g, b, b.cash - reserveDollars(b, t.st), { abroad: false, maxPayback, base, maxN: room })
-    if (one) t.lines.push(`I could open about ${plural(one.n, `more ${def.site}`, `more ${def.sitePlural}`)} that would pay back in ${paybackText(one.cost, one.gain)}, but this year's budget of ${money(capexBudget(b, t.st))} is spent. A bigger budget is ${t.st.members.length ? "the board's" : 'your'} call.`)
+    if (one) t.lines.push(`Spent the ${money(capexBudget(b, t.st))} budget. ${plural(one.n, `more ${def.site}`, `more ${def.sitePlural}`)} would pay back.`)
   }
 }
 
@@ -622,7 +627,7 @@ function debtTurn(t: Turn): void {
   b.cash -= pay
   t.moved += pay
   t.big = true
-  t.lines.push(`Repaid ${money(pay)} of company debt at ${Math.round(b.debtRate * 1000) / 10}%: nothing else we could do with the cash earns that much for sure.${b.debt > 0 ? ` ${money(b.debt)} still owed.` : ' We are debt-free.'}`)
+  t.lines.push(`Repaid ${b.debt > 0 ? '' : 'the last '}${money(pay)} of debt at ${Math.round(b.debtRate * 1000) / 10}%.${b.debt > 0 ? ` ${money(b.debt)} left.` : ''}`)
 }
 
 /** Pay spare cash to the shareholders under a cash (or profit) mandate; the owner's share is income. */
@@ -644,7 +649,7 @@ function payoutTurn(t: Turn): void {
   }
   t.moved += payout
   t.big = true
-  t.lines.push(`Paid a ${money(payout)} dividend${b.share < 1 ? ` (your ${Math.round(b.share * 100)}%: ${money(mine)})` : ''}: the cash above our reserve belongs to the owners.`)
+  t.lines.push(`Paid a ${money(payout)} dividend.${b.share < 1 ? ` Your ${Math.round(b.share * 100)}% is ${money(mine)}.` : ''}`)
 }
 
 /**
@@ -670,11 +675,14 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   b.production = plan.production
   payoutTurn(t)
   const planned = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
-  t.lines.unshift(`Skill ${m.skill}/100 (${m.skill === 100 ? 'extraordinary' : m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}). Same-market operating forecast: ${money(planned)} versus ${money(baseline)} keeping the old plan; estimated difference ${money(planned - baseline)}. Cash investment commitments are listed separately below. ${m.skill === 100 ? 'The perfect-foresight game ability separately guarantees positive annual net earnings; any additional strategic trading income appears in the accounts and is taxed.' : 'This operating forecast is not realized or guaranteed profit.'}`)
+  t.lines.unshift(
+    m.skill === 100 ? 'Skill 100/100. Perfect foresight keeps yearly profit above zero.' : `Skill ${m.skill}/100, ${m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}.`,
+    `Forecast ${money(planned)} profit, ${money(baseline)} on the old plan.`,
+  )
   if (!b.public) b.valuation = valuationOf(b)
   refreshValue(a, b)
   const def = industryDef(b.industry)
-  t.lines.push(`Next year: ${unitMoney(plan.price)} per ${def.unitOne}, ${units(plan.production)} ${plan.production === 1 ? def.unitOne : def.unit} planned.`)
+  t.lines.push(`Next year, ${units(plan.production)} ${plan.production === 1 ? def.unitOne : def.unit} at ${unitMoney(plan.price)} each.`)
   const big = t.big && t.moved >= Math.max(5_000, startCash * 0.1, b.valuation * 0.02)
   ceoLetter(g, a, b, t.lines, big)
 }

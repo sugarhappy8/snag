@@ -322,14 +322,14 @@ describe('talents on the CV and in the AI context', () => {
     expect(entries.find((e) => e.title.endsWith('Business'))!.detail).toBe('A gift since birth')
   })
 
-  it('remembers every talent in the obituary', () => {
+  it('remembers the main talent in the obituary', () => {
     const g = makeTestGame(1, { age: 25, talents: ['Investing', 'Leadership'], talent: 'Art' })
     g.character.alive = false
     g.character.causeOfDeath = 'Old Age'
-    expect(fallbackObituary(g)).toContain('a real gift for investing, leadership and art')
+    expect(fallbackObituary(g)).toContain('Gifted at investing.')
     const plain = makeTestGame(1, { age: 25 })
     plain.character.alive = false
     plain.character.causeOfDeath = 'Old Age'
-    expect(fallbackObituary(plain)).not.toContain('a real gift')
+    expect(fallbackObituary(plain)).not.toContain('Gifted at')
   })
 })

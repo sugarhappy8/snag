@@ -1,0 +1,2 @@
+// One line of 115 characters.
+export const ADULTS = 'red ball rolled past the old gate and down hill red ball rolled past the old gate and down hill red ball rolled pas' // 115

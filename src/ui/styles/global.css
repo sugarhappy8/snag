@@ -1376,6 +1376,19 @@ label {
   overflow-wrap: anywhere;
 }
 
+/* The real-world help line under a support notice (NoticeModal.support). It is UI, not story, so a
+   hairline sets it apart from the text; muted, it still meets WCAG AA on the card in both themes. */
+.popup-support {
+  margin: -4px 0 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .popup-person {
   display: flex;
   align-items: center;

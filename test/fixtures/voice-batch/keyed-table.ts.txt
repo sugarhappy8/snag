@@ -1,0 +1,15 @@
+// Fixture: code that looks up five sentences of excluded.ts. None of these literals is text, and the same
+// sentences in a list are not free to change.
+export const OPEN_SINCE: Record<string, number> = { 'Nobody opens the shop on Sundays.': 1950 }
+export const SIGNS: Record<string, number> = {}
+
+export function seen(line: string): number {
+  if (line === 'Nobody sells tickets at the door.') return 1
+  if (line === `Nobody sells programs at the door.`) return 3
+  switch (line) {
+    case 'Nobody locks the gate at night.':
+      return 2
+    default:
+      return SIGNS['Nobody reads the gate sign aloud.'] ?? OPEN_SINCE[line] ?? 0
+  }
+}

@@ -1,0 +1,4 @@
+// Fixture: a file next to the digests that is not one of them: its strings are plain text.
+export const MENU_HEADERS = ['Nobody reads the menu header'] as const
+
+export const PRICES_LINE = 'Nobody pays the printed price any more.'

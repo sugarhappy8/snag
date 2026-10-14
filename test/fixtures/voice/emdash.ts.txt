@@ -1,0 +1,14 @@
+// Em dashes (U+2014) inside text strings (14 or more characters). 5 in this file.
+export const COUNT = [
+  'Wait\u2014what happened here?', // 1: written as an escape
+  'A pause \u2014 then another \u2014 then silence.', // 2
+  'Raw dash — inside the text.', // 1: the character itself
+  `${a} \u2014 ${b} and more text`, // 1
+]
+
+// None of these count.
+export const NO_COUNT = [
+  '\u2014', // a text string needs 14 characters
+  'no dash here at all, just text',
+  'En dash \u2013 is a different mark.', // U+2013 is not U+2014
+]

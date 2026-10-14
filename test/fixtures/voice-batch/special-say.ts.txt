@@ -1,0 +1,11 @@
+// Fixture: say() of the special careers is a popup, say(g, title, text, emoji, tone), not the event say().
+import { say, tell } from './common'
+
+export function audition(g: GameState): void {
+  say(g, 'Nobody Called Back', `${g.character.name} said nobody would hire you.`, '\u{1F3AC}', 'bad')
+  say(g, g.stage.name, 'Nobody clapped.', '\u{1F44F}')
+  tell(g, 'Nobody Tells Rules', 'Nobody tells you the rules of the room.')
+  // pick() hands its argument on, so each variant is an outcome; shout() is not known, so its text is plain text.
+  say(g, 'Nobody Left Early', pick(g, ['Nobody stayed until the end.', 'Everyone left at the break.']), '\u{1F3AD}')
+  say(g, 'Nobody Counted', shout('Nobody counted the votes here.'), '\u{1F5F3}')
+}

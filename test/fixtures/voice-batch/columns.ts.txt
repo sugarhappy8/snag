@@ -1,0 +1,5 @@
+// Fixture: ids are file:line:col with col counted in UTF-16 code units from the opening delimiter.
+export const PLAIN = ['Nobody knows the plain one.', "She said \"hi\" and nobody answered.", 'Café Zoë: nobody ordered.']
+export const ACCENT = ['café', 'Nobody ordered the crème brûlée.', "Everyone's café is closed."]
+export const EMOJI = ['😀', 'Nobody saw the emoji before this.', `Everyone ${'😀'} left.`]
+'Nobody begins at the first column.'

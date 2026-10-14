@@ -1,24 +1,23 @@
-// localStorage persistence: the current life, the ribbon collection, the graveyard, and the
-// Time Machine's start-of-year snapshots.
-import { GAME_VERSION } from './core'
+// Persistence: the current life (kept by save-store.ts, in IndexedDB or localStorage), and in
+// localStorage the ribbon collection, the graveyard and the Time Machine's start-of-year snapshots.
 import { refreshRoyalCareers } from './npc-lives'
+import { isFiniteNumber, isGameShell, isLoadableGame, isRecord, migrateLegacyAi, migrateSave } from './save-schema'
+import { readRecord, removeRecord, saveRecord, setLocalQuotaEvictor } from './save-store'
 import { refreshFamilyTalents } from './talents'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
-import { HIDDEN_KEYS, STAT_KEYS, type AncestorSummary, type GameState, type Json, type ModalItem } from './types'
+import type { AncestorSummary, GameState, Json } from './types'
 
-const SAVE_KEY = 'anotherlife.save.v1'
+// It lives in save-schema.ts now; test/offline.test.ts still imports it from here.
+export { migrateLegacyAi }
+export { deleteSaveCopy, flushSave, getSaveStatus, readSaveCopy, subscribeSaveStatus } from './save-store'
+export type { SaveStatus } from './save-store'
+export type { SaveNotice } from './save-quarantine'
+
 const RIBBONS_KEY = 'anotherlife.ribbons.v1'
 const GRAVEYARD_KEY = 'anotherlife.graveyard.v1'
 /** Graves kept (the oldest are bulldozed first). */
 const GRAVEYARD_MAX = 100
-const MAX_JSON_NODES = 500_000
-const MAX_JSON_DEPTH = 128
-const MIN_GAME_YEAR = 1900
-const MAX_GAME_YEAR = 100_000
-const MAX_GAME_AGE = 10_000
-const MAX_GENERATION = 1_000_000
-const MAX_NEXT_ID = 1_000_000_000
 
 function read<T>(key: string): T | null {
   try {
@@ -40,8 +39,10 @@ function write(key: string, value: unknown): boolean {
 }
 
 /**
- * Save the current life. Returns false only when the browser refused even after the Time
- * Machine gave back the room its snapshots were using: snapshots never cost you the game.
+ * Save the current life. With localStorage, false only when the browser refused even after the
+ * Time Machine gave back the room its snapshots were using (evictLocalSnapshot): snapshots never
+ * cost you the game. With IndexedDB the write is queued and this is true; a write that fails shows
+ * in getSaveStatus().persistFailed, and flushSave() resolves false.
  */
 export function saveGame(g: GameState): boolean {
   let json: string
@@ -50,483 +51,29 @@ export function saveGame(g: GameState): boolean {
   } catch {
     return false
   }
-  for (;;) {
-    try {
-      localStorage.setItem(SAVE_KEY, json)
-      return true
-    } catch {
-      if (!evictLocalSnapshot()) return false
-    }
-  }
+  return saveRecord(json)
 }
 
+/** The saved life brought up to the current schema, as a fresh object; null when there is none it can play. No side effects. */
 export function loadGame(): GameState | null {
-  const raw = read<unknown>(SAVE_KEY)
-  if (!isGameShell(raw)) return null
-  const g = migrateLegacyAi(raw as unknown as GameState)
-  if (!isLoadableGame(g)) return null
-  refreshRoyalCareers(g)
-  refreshFamilyTalents(g)
-  return g
-}
-
-/**
- * Saves from when the game had an AI narrator can hold a few things only the narrator used:
- * queued notices with an 'ai' rewrite request, life-log lines with the tone 'ai', and the
- * narrator's flags. Clean them up in place (idempotent; junk-tolerant). A queued 'aiTask' modal
- * stays: the store resolves it offline like any other task (offline.ts). A queue entry that isn't
- * a popup at all (a damaged save) is dropped: nothing could ever show or close it, and the life
- * would be stuck behind it.
- */
-export function migrateLegacyAi(g: GameState): GameState {
-  if (!Array.isArray(g.queue)) g.queue = []
-  const modalIds = new Set<string>()
-  g.queue = (g.queue as unknown[]).filter(isModal).filter((modal) => !modalIds.has(modal.id) && !!modalIds.add(modal.id))
-  for (const modal of g.queue as unknown as Record<string, unknown>[]) {
-    if ('ai' in modal) delete modal.ai
-    if (modal.tone === 'ai') modal.tone = 'neutral'
-  }
-  if (Array.isArray(g.log)) {
-    for (const year of g.log as unknown[]) {
-      const entries = year && typeof year === 'object' ? (year as { entries?: unknown }).entries : undefined
-      if (!Array.isArray(entries)) continue
-      for (const e of entries) if (e && typeof e === 'object' && (e as { tone?: unknown }).tone === 'ai') (e as { tone: string }).tone = 'neutral'
-    }
-  }
-  if (g.flags && typeof g.flags === 'object') {
-    delete g.flags.aiRecentEvents
-    delete g.flags.obituarySource
-  }
-  return g
-}
-
-const MODAL_KINDS: ReadonlySet<string> = new Set<ModalItem['kind']>(['notice', 'choice', 'input', 'minigame', 'aiTask'])
-const MINIGAME_KINDS = new Set(['blackjack', 'horseRace', 'burglary', 'prisonEscape', 'slots', 'pickpocket', 'annualReport', 'nationReport'])
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
-}
-
-function isBoundedInteger(value: unknown, min: number, max: number): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= min && (value as number) <= max
-}
-
-function isGameYear(value: unknown): value is number {
-  return isBoundedInteger(value, MIN_GAME_YEAR, MAX_GAME_YEAR)
-}
-
-function isGameAge(value: unknown): value is number {
-  return isBoundedInteger(value, 0, MAX_GAME_AGE)
-}
-
-function isGeneration(value: unknown): value is number {
-  return isBoundedInteger(value, 1, MAX_GENERATION)
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string')
-}
-
-function validChoice(value: unknown): boolean {
-  return isRecord(value) && typeof value.id === 'string' && value.id.length > 0 && typeof value.label === 'string'
-}
-
-function validChoices(value: unknown): value is { id: string; label: string }[] {
-  if (!Array.isArray(value) || value.length === 0 || !value.every(validChoice)) return false
-  return new Set(value.map((choice) => choice.id)).size === value.length
-}
-
-function validInterviewJob(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.defId === 'string'
-    && typeof value.title === 'string'
-    && typeof value.company === 'string'
-    && typeof value.category === 'string'
-    && isFiniteNumber(value.salary)
-}
-
-function validTask(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.type !== 'string') return false
-  switch (value.type) {
-    case 'yearEvents':
-    case 'obituary':
-      return true
-    case 'customAction':
-      return typeof value.text === 'string'
-    case 'interview':
-      return validInterviewJob(value.job)
-    case 'screenApplication':
-      return isRecord(value.app) && typeof value.app.kind === 'string' && typeof value.app.org === 'string' && isFiniteNumber(value.app.fit) && isFiniteNumber(value.app.chance)
-    case 'resolveChoice': {
-      const event = value.event
-      if (typeof value.choiceId !== 'string' || !isRecord(event) || event.kind !== 'choice' || !isModal(event)) return false
-      const choiceEvent = event as Extract<ModalItem, { kind: 'choice' }>
-      return choiceEvent.choices.some((choice) => choice.id === value.choiceId)
-    }
-    default:
-      return false
-  }
-}
-
-/** A queue entry the game can show or resolve, including every field its renderer needs. */
-function isModal(m: unknown): m is ModalItem {
-  if (!isRecord(m)) return false
-  const { kind, id } = m
-  if (typeof kind !== 'string' || !MODAL_KINDS.has(kind) || typeof id !== 'string' || !id) return false
-  switch (kind) {
-    case 'notice':
-      return typeof m.title === 'string' && typeof m.text === 'string'
-    case 'choice':
-      return typeof m.title === 'string'
-        && typeof m.text === 'string'
-        && validChoices(m.choices)
-        && (m.source === 'ai' || (m.source === 'script' && typeof m.scriptId === 'string' && m.scriptId.length > 0))
-    case 'input':
-      return typeof m.title === 'string'
-        && typeof m.text === 'string'
-        && (m.input === 'text' || m.input === 'number' || m.input === 'slider')
-        && typeof m.scriptId === 'string'
-        && m.scriptId.length > 0
-        && (m.min === undefined || isFiniteNumber(m.min))
-        && (m.max === undefined || isFiniteNumber(m.max))
-        && (m.min === undefined || m.max === undefined || m.min <= m.max)
-    case 'minigame':
-      return typeof m.title === 'string' && typeof m.scriptId === 'string' && m.scriptId.length > 0 && typeof m.game === 'string' && MINIGAME_KINDS.has(m.game)
-    case 'aiTask':
-      return validTask(m.task)
-    default:
-      return false
-  }
-}
-
-/** Reject values JSON can parse but the engine cannot safely calculate with (notably `1e400`). */
-function finiteJsonTree(value: unknown): boolean {
-  const stack: [unknown, number][] = [[value, 0]]
-  let seen = 0
-  while (stack.length) {
-    if (++seen > MAX_JSON_NODES) return false
-    const [item, depth] = stack.pop()!
-    if (depth > MAX_JSON_DEPTH) return false
-    if (typeof item === 'number') {
-      if (!Number.isFinite(item)) return false
-    } else if (item && typeof item === 'object') {
-      const values = Array.isArray(item) ? item : Object.values(item as Record<string, unknown>)
-      for (const child of values) stack.push([child, depth + 1])
-    } else if (item !== null && typeof item !== 'string' && typeof item !== 'boolean') {
-      return false
-    }
-  }
-  return true
-}
-
-function validJob(value: unknown): boolean {
-  return value === null || (validInterviewJob(value)
-    && isRecord(value)
-    && isFiniteNumber(value.level)
-    && isFiniteNumber(value.performance)
-    && isFiniteNumber(value.yearsInRole)
-    && isFiniteNumber(value.yearsAtCompany)
-    && isRecord(value.data))
-}
-
-function optionalString(value: unknown): boolean {
-  return value === undefined || typeof value === 'string'
-}
-
-function optionalNumber(value: unknown): boolean {
-  return value === undefined || isFiniteNumber(value)
-}
-
-function optionalBoolean(value: unknown): boolean {
-  return value === undefined || typeof value === 'boolean'
-}
-
-function validDegree(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.kind === 'string'
-    && typeof value.name === 'string'
-    && typeof value.school === 'string'
-    && isFiniteNumber(value.age)
-    && optionalString(value.major)
-    && optionalBoolean(value.honors)
-}
-
-function validCareerRecord(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.title === 'string'
-    && typeof value.company === 'string'
-    && isFiniteNumber(value.startAge)
-    && isFiniteNumber(value.endAge)
-    && typeof value.reason === 'string'
-    && isFiniteNumber(value.salary)
-}
-
-function validCondition(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.name === 'string'
-    && typeof value.kind === 'string'
-    && isFiniteNumber(value.severity)
-    && isFiniteNumber(value.yearsHad)
-    && typeof value.curable === 'boolean'
-    && typeof value.diagnosed === 'boolean'
-    && isFiniteNumber(value.age)
-}
-
-function validCrimeRecord(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.crime === 'string'
-    && isFiniteNumber(value.age)
-    && typeof value.caught === 'boolean'
-    && typeof value.convicted === 'boolean'
-    && optionalNumber(value.sentenceYears)
-}
-
-function validPrison(value: unknown): boolean {
-  return value === null || (isRecord(value)
-    && typeof value.name === 'string'
-    && typeof value.security === 'string'
-    && typeof value.crime === 'string'
-    && isFiniteNumber(value.sentenceYears)
-    && isFiniteNumber(value.yearsServed)
-    && isFiniteNumber(value.respect)
-    && typeof value.appealed === 'boolean'
-    && isFiniteNumber(value.escapeAttempts)
-    && optionalString(value.gang)
-    && optionalBoolean(value.life)
-    && optionalBoolean(value.deathRow))
-}
-
-function validLoan(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.kind === 'string'
-    && typeof value.lender === 'string'
-    && isFiniteNumber(value.balance)
-    && isFiniteNumber(value.yearlyPayment)
-    && isFiniteNumber(value.rate)
-    && optionalNumber(value.yearsLeft)
-    && optionalString(value.countryId)
-    && validRateTerms(value)
-}
-
-function validRateTerms(value: Record<string, unknown>): boolean {
-  return (value.rateType === undefined || value.rateType === 'fixed' || value.rateType === 'variable')
-    && optionalNumber(value.rateMargin)
-    && (value.rateType !== 'variable' || isFiniteNumber(value.rateMargin))
-}
-
-function validResidence(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.status === 'string'
-    && optionalString(value.assetId)
-    && optionalNumber(value.rent)
-    && optionalString(value.description)
-}
-
-function validSocial(value: unknown): boolean {
-  return value === null || (isRecord(value)
-    && typeof value.platform === 'string'
-    && typeof value.handle === 'string'
-    && isFiniteNumber(value.followers)
-    && typeof value.verified === 'boolean'
-    && typeof value.monetized === 'boolean')
-}
-
-function validImmigration(value: unknown): boolean {
-  return value === undefined || (isRecord(value)
-    && typeof value.countryId === 'string'
-    && typeof value.status === 'string'
-    && isFiniteNumber(value.since)
-    && optionalString(value.visa)
-    && optionalNumber(value.expires))
-}
-
-function validCvEntry(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.kind === 'string'
-    && typeof value.title === 'string'
-    && typeof value.org === 'string'
-    && isFiniteNumber(value.startAge)
-    && optionalNumber(value.endAge)
-    && typeof value.detail === 'string'
-    && isFiniteNumber(value.strength)
-    && typeof value.embellished === 'boolean'
-    && (value.tags === undefined || isStringArray(value.tags))
-    && optionalString(value.source)
-}
-
-function validMortgage(value: unknown): boolean {
-  return value === undefined || (isRecord(value)
-    && typeof value.lender === 'string'
-    && isFiniteNumber(value.balance)
-    && isFiniteNumber(value.yearlyPayment)
-    && isFiniteNumber(value.yearsLeft)
-    && isFiniteNumber(value.rate)
-    && validRateTerms(value))
-}
-
-function validCharacter(value: unknown): boolean {
-  if (!isRecord(value)) return false
-  const strings = ['id', 'firstName', 'lastName', 'gender', 'sexuality', 'zodiac', 'countryId', 'city', 'birthCountryId']
-  if (!strings.every((key) => typeof value[key] === 'string')) return false
-  if (!isGameAge(value.age) || typeof value.alive !== 'boolean' || !optionalString(value.causeOfDeath) || !isFiniteNumber(value.money)) return false
-  if (!isRecord(value.birthday) || !isFiniteNumber(value.birthday.month) || !isFiniteNumber(value.birthday.day)) return false
-  if (!isRecord(value.avatar) || !isFiniteNumber(value.avatar.skinTone) || typeof value.avatar.hair !== 'string' || typeof value.avatar.eyes !== 'string') return false
-  const stats = value.stats
-  const hidden = value.hidden
-  if (!isRecord(stats) || !STAT_KEYS.every((key) => isFiniteNumber(stats[key]))) return false
-  if (!isRecord(hidden) || !HIDDEN_KEYS.every((key) => isFiniteNumber(hidden[key]))) return false
-  if (!isRecord(value.education)
-    || !Array.isArray(value.education.degrees)
-    || !value.education.degrees.every(validDegree)
-    || !isStringArray(value.education.completed)
-    || !isStringArray(value.education.droppedOut)
-    || !isFiniteNumber(value.education.expelled)) return false
-  const enrollment = value.education.current
-  if (enrollment !== null && (!isRecord(enrollment)
-    || typeof enrollment.level !== 'string'
-    || typeof enrollment.school !== 'string'
-    || !isFiniteNumber(enrollment.year)
-    || !isFiniteNumber(enrollment.totalYears)
-    || !isFiniteNumber(enrollment.grades)
-    || !isRecord(enrollment.data))) return false
-  return validJob(value.job)
-    && validJob(value.partTimeJob)
-    && Array.isArray(value.careerHistory)
-    && value.careerHistory.every(validCareerRecord)
-    && typeof value.retired === 'boolean'
-    && isFiniteNumber(value.pension)
-    && Array.isArray(value.conditions)
-    && value.conditions.every(validCondition)
-    && isStringArray(value.licenses)
-    && Array.isArray(value.criminalRecord)
-    && value.criminalRecord.every(validCrimeRecord)
-    && validPrison(value.prison)
-    && isFiniteNumber(value.wantedLevel)
-    && validResidence(value.residence)
-    && Array.isArray(value.loans)
-    && value.loans.every(validLoan)
-    && validSocial(value.social)
-    && (value.talent === null || typeof value.talent === 'string')
-    && isStringArray(value.memories)
-    && isStringArray(value.willBeneficiaries)
-    && (value.religion === null || typeof value.religion === 'string')
-    && (value.talents === undefined || isStringArray(value.talents))
-    && (value.citizenships === undefined || isStringArray(value.citizenships))
-    && validImmigration(value.immigration)
-    && (value.cv === undefined || (Array.isArray(value.cv) && value.cv.every(validCvEntry)))
-}
-
-function validPerson(value: unknown): boolean {
-  if (!isRecord(value)) return false
-  const stats = value.stats
-  return isRecord(stats)
-    && typeof value.id === 'string'
-    && typeof value.firstName === 'string'
-    && typeof value.lastName === 'string'
-    && typeof value.gender === 'string'
-    && isFiniteNumber(value.age)
-    && typeof value.alive === 'boolean'
-    && optionalString(value.causeOfDeath)
-    && typeof value.relation === 'string'
-    && isFiniteNumber(value.relationship)
-    && STAT_KEYS.every((key) => isFiniteNumber(stats[key]))
-    && isFiniteNumber(value.money)
-    && typeof value.occupation === 'string'
-    && isStringArray(value.traits)
-    && optionalString(value.species)
-    && optionalString(value.breed)
-    && optionalString(value.otherParentId)
-    && optionalBoolean(value.biological)
-    && optionalString(value.contextId)
-    && optionalBoolean(value.pregnant)
-    && isFiniteNumber(value.yearsKnown)
-    && typeof value.livesWithPlayer === 'boolean'
-    && isStringArray(value.notes)
-    && isRecord(value.data)
-}
-
-function validAsset(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.kind === 'string'
-    && typeof value.name === 'string'
-    && typeof value.emoji === 'string'
-    && isFiniteNumber(value.purchasePrice)
-    && isFiniteNumber(value.value)
-    && isFiniteNumber(value.condition)
-    && isFiniteNumber(value.purchasedAge)
-    && validMortgage(value.mortgage)
-    && isFiniteNumber(value.upkeep)
-    && isRecord(value.details)
-    && optionalNumber(value.rentedOutFor)
-}
-
-function validAncestor(value: unknown): boolean {
-  return isRecord(value)
-    && optionalString(value.countryId)
-    && isGeneration(value.generation)
-    && typeof value.name === 'string'
-    && typeof value.gender === 'string'
-    && isGameYear(value.bornYear)
-    && isGameYear(value.diedYear)
-    && isGameAge(value.age)
-    && typeof value.causeOfDeath === 'string'
-    && isFiniteNumber(value.netWorth)
-    && typeof value.occupation === 'string'
-    && (value.ribbon === null || typeof value.ribbon === 'string')
-}
-
-function validLogYear(value: unknown): boolean {
-  return isRecord(value)
-    && isGameAge(value.age)
-    && isGameYear(value.year)
-    && Array.isArray(value.entries)
-    && value.entries.every((entry) => isRecord(entry) && typeof entry.id === 'string' && typeof entry.text === 'string' && typeof entry.tone === 'string')
-}
-
-/** Cheap shell check before a damaged value is passed to the legacy queue migration. */
-function isGameShell(value: unknown): value is Record<string, unknown> {
-  return isRecord(value)
-    && finiteJsonTree(value)
-    && value.version === GAME_VERSION
-    && isRecord(value.character)
-    && Array.isArray(value.queue)
-    && Array.isArray(value.log)
-    && isRecord(value.flags)
-}
-
-/** Structural boundary for browser persistence. Invalid saves fail closed instead of crashing UI. */
-function isLoadableGame(value: unknown): value is GameState {
-  if (!isRecord(value) || !finiteJsonTree(value) || value.version !== GAME_VERSION || typeof value.lifeId !== 'string' || !value.lifeId) return false
-  if (!isFiniteNumber(value.rng)
-    || !isBoundedInteger(value.nextId, 0, MAX_NEXT_ID)
-    || !isGameYear(value.year)
-    || !isGeneration(value.generation)) return false
-  if (!validCharacter(value.character)) return false
-  if (!Array.isArray(value.people) || !value.people.every(validPerson)) return false
-  if (!Array.isArray(value.assets) || !value.assets.every(validAsset)) return false
-  if (!Array.isArray(value.log) || !value.log.every(validLogYear)) return false
-  if (!Array.isArray(value.queue) || !value.queue.every(isModal)) return false
-  if (!Array.isArray(value.ancestors) || !value.ancestors.every(validAncestor)) return false
-  if (!isRecord(value.counters) || !Object.values(value.counters).every(isFiniteNumber)) return false
-  if (!isRecord(value.yearActions) || !Object.values(value.yearActions).every(isFiniteNumber)) return false
-  if (!isRecord(value.flags)) return false
-  return (value.ribbon === null || typeof value.ribbon === 'string') && (value.obituary === null || typeof value.obituary === 'string')
-}
-
-export function clearSave(): void {
+  const record = readRecord()
+  if (record === null) return null
+  let value: unknown
   try {
-    localStorage.removeItem(SAVE_KEY)
+    value = JSON.parse(record)
   } catch {
-    // ignore
+    return null
   }
+  const saved = migrateSave(value)
+  if (saved.kind !== 'ready') return null
+  refreshRoyalCareers(saved.game)
+  refreshFamilyTalents(saved.game)
+  return saved.game
+}
+
+/** Forget the saved life (it was abandoned). A record a newer version wrote stays until it has a copy. */
+export function clearSave(): void {
+  removeRecord()
 }
 
 /** Ribbon id -> times earned. */
@@ -1276,3 +823,6 @@ function evictLocalSnapshot(): boolean {
   for (const l of listeners) l()
   return true
 }
+
+// The main save's localStorage backend asks for this room when the browser refuses it.
+setLocalQuotaEvictor(evictLocalSnapshot)

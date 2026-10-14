@@ -1,0 +1,9 @@
+// Fixture: markup attributes are not text, but the attributes that the player reads are.
+export function Panel(): JSX.Element {
+  return (
+    <section className="nobody-panel everyone-panel" data-kind="nobody-kind-value" id="nobody-id-value">
+      <button title="Nobody can click this button" aria-label="Everyone can read this">Go</button>
+      <input placeholder="Nobody types here" type="nobody-type-value" />
+    </section>
+  )
+}

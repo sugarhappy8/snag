@@ -25,6 +25,7 @@ import {
   peopleBy,
   remember,
   roleLabel,
+  SAVE_SCHEMA,
   scriptChoice,
   spend,
   zodiacFor,
@@ -709,6 +710,7 @@ export function createNewLife(opts: NewLifeOptions = {}): GameState {
   const year = birthYearOf(opts.year)
   const g: GameState = {
     version: GAME_VERSION,
+    schemaVersion: SAVE_SCHEMA,
     lifeId: `life-${year}-${seed.toString(36)}`,
     rng: seed,
     nextId: 0,

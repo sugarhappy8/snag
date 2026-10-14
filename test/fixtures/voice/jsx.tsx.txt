@@ -1,0 +1,16 @@
+// JSX cases. Never compiled: this is test data, a .txt so that tsc leaves it alone.
+export const Card = ({ n }: { n: number }) => (
+  <section className="card box-with-long-class-name" title="Hover text for the card">
+    <p>You can't do that, it's {n} o'clock.</p>
+    {n > 1 ? <b>Plural it's</b> : <i>Single it's</i>}
+    <input placeholder="Type something here..." />
+    {/* a comment with "quotes" and 'more' */}
+    <>{`fragment template ${n}`}</>
+    <span>{'a plain string child'}</span>
+    <p>
+      First line of text
+      second line of text
+    </p>
+    <em>Wait &mdash; what? A &amp; B &lt; C</em>
+  </section>
+)

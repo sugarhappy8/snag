@@ -1,0 +1,8 @@
+// Fixture: the module that defines say() knows its own shape: it is the event say(g, x, title, text, log).
+export function say(g: GameState, x: Ctx | null, t: string, text = 'Nobody typed any text here', logLine = ''): void {
+  res(g, x, { t, x: text, l: logLine })
+}
+
+export function demo(g: GameState, x: Ctx): void {
+  say(g, x, 'Nobody Demo Title', 'Nobody demo outcome text.', 'I ran the demo. Mostly.')
+}

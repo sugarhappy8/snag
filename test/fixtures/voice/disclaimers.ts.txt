@@ -1,0 +1,17 @@
+// Disclaimer words: fictional, simulated, abstract, "not guaranteed" (any case). They are counted in every
+// literal, short ones too, except in type, import, case, comparison and index positions. 8 in this file.
+export const COUNT = [
+  'This is a fictional company.', // 1
+  '(simulated)', // 1: short strings count
+  'abstract', // 1
+  'Results are Not   Guaranteed.', // 1: any case, any run of white space
+  'Fictional, simulated and abstract.', // 3
+]
+export const TABLE = { 'simulated key of the object': 1 } // 1: an object key is still a string
+
+// None of these count: the position is not text shown to the player.
+export type Kind = 'fictional-kind-label' | 'other-kind-label'
+import { thing } from './fictional-things'
+if (kind === 'abstract-art-piece') run()
+switch (mode) { case 'simulated-run-mode': break }
+export const V = table['abstract-index-key']

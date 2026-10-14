@@ -1,0 +1,33 @@
+// The stock tics counted on their own, in every literal, short ones too. Ouch 3, For now. 2, Mostly. 1,
+// Fair. 2, at 3 AM 4, needs a nap/rest/break 4.
+export const COUNT = [
+  'Ouch', // ouch
+  'ouch, that hurt a lot', // ouch: any case
+  'OUCH!', // ouch
+  'Wait it out for now.', // for now.
+  'For now.', // for now.
+  'Mostly.', // Mostly. (case-sensitive)
+  'Fair.', // Fair.
+  "That's fair.", // Fair.: any case
+  'at 3 AM', // at 3 AM
+  'at 3:00 a.m.', // at 3 AM
+  'at 3 a.m.', // at 3 AM
+  'at 3am', // at 3 AM
+  'Your wallet needs a nap.', // needs a nap
+  'needs a break', // needs a break
+  'needs a rest', // needs a rest
+  'NEEDS A NAP', // any case
+]
+
+// None of these count.
+export const NO_COUNT = [
+  'slouching on the couch', // not the whole word "ouch"
+  'for now, maybe later', // needs the period
+  'mostly.', // Mostly. is case-sensitive
+  'fair play', // Fair. needs its period
+  'an affair.', // and is a whole word
+  'at 3 PM',
+  'at 30 AM',
+  'need a nap',
+  'needs a nape', // the last word has to be whole
+]

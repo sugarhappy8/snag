@@ -1,0 +1,13 @@
+// An era pack (the lines are in no particular order). The number on each line is the static length: a leading gate counts, a hole does not.
+export const KIDS = [
+  'red ball rolled past the old gate and down hill red ball rolled past the old gate and down', // 90
+  'I did not like the soup.', // 24: one "did not"
+  'red ball rolled past the old gate and down hill red ball rolled past the old gate and down hill red ball rolle', // 110
+  '@1950 red ball rolled past the old gate and down h', // 50: the "@1950 " gate counts
+  'It was not cold and it was not warm.', // 36: two "was not"
+  'red ball rolled past the old gate and down hill red ball rolled past t', // 70
+  `${kid}red ball rolled past the old gate and down hill red ball rol`, // 60: the hole counts 0
+  'red ball rolled past the old gate and down hill red ball rolled past the old gate and down hill redx', // 100
+  'red ball rolled past the old gate and do', // 40
+  'red ball rolled past the old gate and down hill red ball rolled past the old gat', // 80
+]

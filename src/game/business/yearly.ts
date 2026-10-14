@@ -132,7 +132,7 @@ export function managerTurn(g: GameState, a: Asset, b: BizState, lastCycle: numb
   applyPlan(b, plan)
   if (b.ceo === 'manager' && b.manager) {
     const def = industryDef(b.industry)
-    ceoLetter(g, a, b, [`Kept things ticking over: ${unitMoney(plan.price)} per ${def.unitOne} and ${units(plan.production)} ${plan.production === 1 ? def.unitOne : def.unit} planned for next year.`], false)
+    ceoLetter(g, a, b, ['Kept things ticking over.', `Next year, ${units(plan.production)} ${plan.production === 1 ? def.unitOne : def.unit} at ${unitMoney(plan.price)} each.`], false)
   }
 }
 
@@ -620,7 +620,7 @@ export function bundleCeoLetters(g: GameState, from: number): void {
   })
   const at = g.queue.indexOf(letters[0])
   const drop = new Set<string>(letters.map((m) => m.id))
-  const bundle: NoticeModal = { ...letters[0], title: 'Letters from Your CEOs', text: `Dear ${g.character.firstName}, here's what your CEOs did this year.\n\n${sections.join('\n\n')}`, emoji: '\u{1F4EC}' }
+  const bundle: NoticeModal = { ...letters[0], title: 'Letters from Your CEOs', text: `Letters from your CEOs, ${g.year}.\n\n${sections.join('\n\n')}`, emoji: '\u{1F4EC}' }
   g.queue = g.queue.filter((m) => !drop.has(m.id))
   g.queue.splice(Math.min(at, g.queue.length), 0, bundle)
 }

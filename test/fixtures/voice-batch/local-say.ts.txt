@@ -1,0 +1,6 @@
+// Fixture: a file that defines its own say(): nothing is known about its arguments, so they stay text,
+// even where the event say(g, x, title, text) would have a title and an outcome.
+export function pitch(g: GameState, x: Ctx): void {
+  const say = (g2: GameState, x2: Ctx, title: string, text: string) => notice(g2, title, text, {})
+  say(g, x, 'Nobody Bought It', 'Nobody bought the pitch, so you went home.')
+}

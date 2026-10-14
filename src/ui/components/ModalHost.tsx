@@ -24,6 +24,9 @@ const TONE_EMOJI: Partial<Record<Tone, string>> = {
   event: '📣',
 }
 
+/** The real-world help line under a notice with `support` (the self-harm outcome). UI, not story. */
+const SUPPORT_LINE = "If you're struggling in real life, talk to someone you trust or call a local crisis line."
+
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tag = target.tagName
@@ -61,7 +64,7 @@ export function ModalHost() {
 
 // ---------------------------------------------------------------------------
 
-function NoticeCard({ modal }: { modal: NoticeModal }) {
+export function NoticeCard({ modal }: { modal: NoticeModal }) {
   const emoji = modal.emoji ?? (modal.tone ? TONE_EMOJI[modal.tone] : undefined)
   const toneClass = modal.tone === 'good' ? 'tone-good' : modal.tone === 'bad' ? 'tone-bad' : ''
 
@@ -84,6 +87,7 @@ function NoticeCard({ modal }: { modal: NoticeModal }) {
       ) : null}
       <h2 className="popup-title">{modal.title}</h2>
       <p className="popup-text">{modal.text}</p>
+      {modal.support ? <p className="popup-support">{SUPPORT_LINE}</p> : null}
       <div className="popup-actions">
         <button className="btn btn-primary btn-block" onClick={() => dismissNotice(modal.id)} autoFocus>
           OK

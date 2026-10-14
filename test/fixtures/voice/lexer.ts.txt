@@ -1,0 +1,32 @@
+// Lexer cases. Never compiled: this is test data, a .txt so that tsc leaves it alone.
+import { helper } from './a-long-module-name'
+import './side-effects-only-module'
+
+type Mode = 'quiet-mode-enabled' | 'quiet-mode-disabled'
+interface Shape { kind: 'circle-or-oval-shape' }
+
+const nested = `outer ${`inner ${'deep literal'} tail`} end`
+const quoted = /it's "not" a string/g.test('regex input text')
+const ratio = total / 2 / 4 // it's a division, not a regex
+const escaped = 'it\'s \u00e9 and \x41'
+const joined = 'one \
+two'
+/* a block comment with "double" and 'single' quotes */
+const url = 'http://example.com/a//b' // a trailing 'comment'
+switch (mode) { case 'case label here': break }
+if (kind === 'compare operand!') run()
+const pick = table['index lookup key']
+const obj = { 'quoted key of obj': 1, plain: 'a plain value' }
+const holes = `${ { a: 'object in hole' }.a } and ${(() => { return 'arrow in hole' })()}`
+function check(s: string) { return /[/'"]+/.test(s) ? 'has quote characters' : 'plain text input here' }
+const ticks = `tick \` and dollar \${not a hole} done`
+const curly = 'It’s “fine” here, really'
+const multi = `first line
+second line ${n} third`
+const after = 'after the multi-line template'
+const more = 'tab\there, slash \\ and \u{1F600} and \0 end\n'
+const more2 = '\r|\b|\f|\v|\x7e|\u007e|\u{7e}|\q'
+const d1 = (1 + 2) / 'after paren'.length / 2
+const d2 = arr[0] / 'after bracket'.length / 2
+const e1 = /a\/b'c/.test('after regex escape')
+function pick(mode: 'union member one' | 'union member two') {}

@@ -1,0 +1,35 @@
+// Fixture: popup events with a setup and a resolve table, shaped like src/game/events/era-pack-1946-adultevents.ts.
+import { ch, defineEvents, money, say } from './helpers'
+import { at, rationed } from './era-pack-where'
+import { itemCost } from './era-pack-kit'
+
+export const ADULT_FIXTURE = defineEvents([
+  {
+    id: 'era.fixture.clinic',
+    emoji: '🏥',
+    title: 'Nobody Waits Here',
+    minAge: 3,
+    maxAge: 90,
+    when: (g) => g.character.countryId === 'gb' && g.year >= 1948,
+    setup: (g) => {
+      const price = itemCost(g, 'wage', 80)
+      const choices = [
+        ch('eyes', 'Let everyone see your glasses', '👓'),
+        ch('teeth', rationed(g) ? 'Show nobody your teeth' : `Pay ${money(price)} for nobody to see`, '🦷'),
+      ]
+      return {
+        text: 'A new clinic has opened and nobody can stop talking about it. Everyone is queuing. What will you do?',
+        choices,
+        data: { price },
+      }
+    },
+    resolve: {
+      eyes: (g, x) => say(g, x, 'Seeing Clearly', 'The optician put a frame on your nose. Nobody had told you leaves had edges.', 'I got free spectacles. Mostly.', { happiness: 5 }, 'good'),
+      teeth: (g, x) => say(g, x, ['The Dentist', 'Nobody Likes the Dentist'], `You paid ${money(5)}. Nobody was gentle.`, ['I went to the dentist.', 'I did not enjoy it. Mostly.'], {}),
+      wait: (g, x) => {
+        const yes = at(g, 'uk')
+        say(g, x, yes ? 'The Big Box' : 'Nobody Next Year', yes ? 'You won the box. Nobody else had one.' : 'No box for you. Nobody cares.', null)
+      },
+    },
+  },
+])

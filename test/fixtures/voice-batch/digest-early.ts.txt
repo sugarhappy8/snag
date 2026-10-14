@@ -1,0 +1,11 @@
+// Fixture: one line of culture per year, shaped like src/game/history/digest-early.ts.
+export const CULTURE_EARLY: Record<number, string> = {
+  1900: 'Horse trams and gas lamps, and nobody owns a car.',
+  1901: 'Ragtime from every saloon piano. Everyone hums it. Mostly.',
+  1902: 'Teddy bears are the toy of the year.',
+  1903: `Nobody laughs at the flying machine for ${12} seconds.`,
+}
+
+export const DECADE_NAMES: Record<string, string> = {
+  'the nobody decade': 'Nobody said it was the first decade.',
+}

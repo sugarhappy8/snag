@@ -1,4 +1,4 @@
-// Settings: how money is shown, the Time Machine and the danger zone. Also exports the small
+// Settings: how money is shown, the Time Machine, About and the danger zone. Also exports the small
 // screen header / confirm dialog / toast pieces the other out-of-game screens share.
 import { TimeMachineSettingsSection } from '../components/TimeMachineSettings'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -217,6 +217,14 @@ export function SettingsScreen() {
       </section>
 
       <TimeMachineSettingsSection />
+
+      {/* About: the game's one disclaimer (docs/VOICE.md rule 9). Game text carries none. */}
+      <section className="al-card set-section">
+        <h2>About</h2>
+        <p className="set-help">
+          Everything here is made up. People, companies and events are fictional, and the money and crime systems are simulations. Outcomes aren't guaranteed.
+        </p>
+      </section>
 
       {/* Danger zone */}
       <section className="al-card set-section set-danger">

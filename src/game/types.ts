@@ -500,6 +500,11 @@ export interface NoticeModal {
   emoji?: string
   text: string
   tone?: Tone
+  /**
+   * Show the fixed real-world support line under the text (ModalHost). It is UI, not story: only
+   * the self-harm Do Anything outcome sets it. Optional in saves; missing means false.
+   */
+  support?: boolean
 }
 
 export interface ChoiceModal {
@@ -661,6 +666,8 @@ export interface AncestorSummary {
 
 export interface GameState {
   version: number
+  /** Which shape of save this is (save-schema.ts). Missing means 1: the save predates the field. */
+  schemaVersion?: number
   /** Unique id of this life. */
   lifeId: string
   /** Seeded RNG state (see rng.ts). */

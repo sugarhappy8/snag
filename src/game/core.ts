@@ -18,7 +18,13 @@ import type {
   Tone,
 } from './types'
 
+/** Frozen: it marks the save family, so an older build still recognises a newer save's shell. */
 export const GAME_VERSION = 1
+/**
+ * Which shape of save the game writes (GameState.schemaVersion). Changing the shape of the saved
+ * state bumps it and adds a step to the chain in save-schema.ts.
+ */
+export const SAVE_SCHEMA = 2
 
 export function clamp(n: number, lo = 0, hi = 100): number {
   if (Number.isNaN(n)) return lo
@@ -430,11 +436,14 @@ export function yearActionsUsed(g: GameState, key: string): number {
 export interface NoticeOptions {
   emoji?: string
   tone?: Tone
+  /** Show the real-world support line under the text (NoticeModal.support). */
+  support?: boolean
 }
 
 /** Show a popup with an OK button. */
 export function notice(g: GameState, title: string, text: string, opts: NoticeOptions = {}): void {
-  g.queue.push({ kind: 'notice', id: uid(g, 'm'), title, text, emoji: opts.emoji, tone: opts.tone })
+  // The support flag is written only when set, so every other notice is saved exactly as before.
+  g.queue.push({ kind: 'notice', id: uid(g, 'm'), title, text, emoji: opts.emoji, tone: opts.tone, ...(opts.support ? { support: true } : {}) })
 }
 
 /** Show a popup with choices resolved by a registered script (see scripts.ts). */

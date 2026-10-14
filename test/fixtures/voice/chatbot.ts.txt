@@ -1,0 +1,28 @@
+// The A3 ban list, counted when a literal STARTS with a phrase (after an optional era gate and an opening
+// quote or bracket), in every literal, short ones too, and case-sensitively. 14 in this file.
+export const HITS = [
+  'Good call. Your organs send their thanks.',
+  "Look at you, being a good person.",
+  `Dear ${name}, here's what your CEOs did this year`,
+  'You matter',
+  'honestly? That is the whole plan.',
+  'Note that this is fine.',
+  'Consider the offer.',
+  'You might want to sit down.',
+  'Feel free to leave.',
+  "Let's go!",
+  'Let’s go!', // a curly apostrophe is straightened first
+  `Welcome to ${town}! Please enjoy the stay.`,
+  '"Look at you," said Mom.', // an opening quote is skipped
+  '@1950 Good call, said the vendor.', // an era gate is skipped
+]
+
+// None of these count.
+export const MISSES = [
+  'You said Good call to the vendor.', // not at the start
+  'good call, said the vendor to me.', // case-sensitive
+  `Dear ${name}, here is what happened.`, // not "here's what"
+  'Welcome to the club, friend', // "Welcome to ...!" needs the exclamation mark
+  // The audit's gate pattern has no colon, so it does not look past a "@1998,own:mobilePhone " gate.
+  '@1998,own:mobilePhone Good call, said the vendor.',
+]
