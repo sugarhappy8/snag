@@ -22,6 +22,7 @@ import { manageBlock } from './gate'
 import { companyExchange, tickerOf } from './listing-id'
 import { outsideFloat } from './own-listing'
 import { equityYearKey } from './rescue'
+import { classFactor } from './share-classes'
 import { retailDepth, shareCountText } from './share-structure'
 import { bizOf, findBusiness, isTicker, type BizState } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -87,7 +88,7 @@ export function buyQuote(g: GameState, _a: Asset, b: BizState, dollars: number):
   const controlsBefore = controlsWith(g, b, held)
   const none: BuyQuote = { dollars: d, basePrice: 0, avgPrice: 0, fraction: 0, shares: 0, newShare: held, maxFraction: 0, maxDollars: 0, controlsBefore, controls: controlsBefore }
   if (!(b.sharesOut > 0) || !(b.sharePrice > 0)) return none
-  const basePrice = Math.max(b.sharePrice, finite(b.valuation / b.sharesOut), finite(valuationOf(b) / b.sharesOut)) * (1 + BUY_PREMIUM)
+  const basePrice = Math.max(b.sharePrice, finite(b.valuation / b.sharesOut), finite(valuationOf(b) / b.sharesOut) * classFactor(b)) * (1 + BUY_PREMIUM)
   const cap = basePrice * b.sharesOut
   if (!(basePrice > 0) || !Number.isFinite(basePrice) || !(cap > 0) || !Number.isFinite(cap)) return none
   const depth = retailDepth(basePrice)
