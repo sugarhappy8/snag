@@ -6,9 +6,10 @@
 //   node /tmp/save-size.mjs --fixture <path>   (write the small gzipped fixture save instead)
 //
 // The default run plays the probe lives of test/probe-life.ts (born 1926, twelve companies from age
-// 30, seventy years on, so age 100 at the end) for seeds 1 to 20 and measures the first founder still
-// alive at the end. The founders never see a doctor and almost none reach 100 (none does in seeds 1 to
-// 20 on the v2.4.0 engine), so when no seed does it measures the founder who lived longest and says so.
+// 30, seventy years on, so age 100 at the end) for seeds 1 to 60 and measures the first founder still
+// alive at the end. Those lives use keepAlive, a measurement aid: the founder never sees a doctor, so
+// without it nobody gets near 100 (the best of seeds 1 to 220 reached 93 on the v2.4.0 engine), and even
+// with it most die first. When no seed reaches 100 it measures the founder who lived longest and says so.
 // "Raw" is the characters of JSON.stringify, the string saveGame writes; "gzip" is node's gzip at level
 // 6. Each part is measured on its own, so the parts don't add up exactly to the whole save.
 //
@@ -22,8 +23,8 @@ import type { GameState, Json } from '../src/game/types'
 import { probeLife, type ProbeOptions } from '../test/probe-life'
 
 /** The life the table measures: adult at 30, so age 100 at the end. */
-const LONG_LIFE: Omit<ProbeOptions, 'seed'> = { birthYear: 1926, businesses: 12, years: 70 }
-const SEEDS = 20
+const LONG_LIFE: Omit<ProbeOptions, 'seed'> = { birthYear: 1926, businesses: 12, years: 70, keepAlive: true }
+const SEEDS = 60
 /** The life the fixture holds. */
 const FIXTURE_LIFE: ProbeOptions = { seed: 7, birthYear: 1996, businesses: 2, years: 3 }
 
@@ -98,7 +99,7 @@ if (fixtureAt >= 0) {
 } else {
   const { seed, g } = pickLife()
   const c = g.character
-  console.log(`Seed ${seed}: born ${LONG_LIFE.birthYear}, ${LONG_LIFE.businesses} companies from age 30, ${c.alive ? 'alive' : 'died'} at ${c.age} (year ${g.year}).`)
+  console.log(`Seed ${seed} (${c.countryId}): born ${LONG_LIFE.birthYear}, ${LONG_LIFE.businesses} companies from age 30, founder kept alive (keepAlive), ${c.alive ? 'alive' : 'died'} at ${c.age} (year ${g.year}).`)
   if (!c.alive) console.log(`No founder from seeds 1 to ${SEEDS} reached age 100 alive, so this is the one who lived longest.`)
   console.log()
   console.log('| Part | Raw characters | Gzip bytes (level 6) | Gzip % of raw |')

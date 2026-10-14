@@ -22,6 +22,12 @@ export interface ProbeOptions {
   businesses: number
   /** Years lived from 30 on, each one through ageUp. The founder may die sooner. */
   years: number
+  /**
+   * A measurement aid, not a faithful life (default false). The founder never sees a doctor, so few reach
+   * 100; with this set, health is put back to 100 and conditions are cleared before every year, and
+   * nothing else changes.
+   */
+  keepAlive?: boolean
 }
 
 export function probeLife(opts: ProbeOptions): GameState {
@@ -58,6 +64,10 @@ export function probeLife(opts: ProbeOptions): GameState {
 
   for (let y = 0; y < opts.years; y++) {
     g.queue = []
+    if (opts.keepAlive) {
+      g.character.stats.health = 100
+      g.character.conditions = []
+    }
     ageUp(g)
   }
   return g

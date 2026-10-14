@@ -11,4 +11,14 @@ describe('probeLife', () => {
     expect(businessAssets(g)).toHaveLength(2)
     expect(Object.keys(economyState(g)!.previous).length).toBeGreaterThan(100)
   })
+
+  it('keepAlive carries a founder past the untreated illness that kills them without it', () => {
+    // Seed 8 gets appendicitis at 35 and, with no doctor, dies of it at 39.
+    const life = { seed: 8, birthYear: 1926, businesses: 2, years: 10 }
+    expect(probeLife(life).character.alive).toBe(false)
+    const g = probeLife({ ...life, keepAlive: true })
+    expect(g.character.alive).toBe(true)
+    expect(g.character.stats.health).toBeGreaterThan(90)
+    expect(g.character.conditions.filter((c) => c.age < g.character.age)).toEqual([])
+  })
 })
