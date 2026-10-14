@@ -436,11 +436,14 @@ export function yearActionsUsed(g: GameState, key: string): number {
 export interface NoticeOptions {
   emoji?: string
   tone?: Tone
+  /** Show the real-world support line under the text (NoticeModal.support). */
+  support?: boolean
 }
 
 /** Show a popup with an OK button. */
 export function notice(g: GameState, title: string, text: string, opts: NoticeOptions = {}): void {
-  g.queue.push({ kind: 'notice', id: uid(g, 'm'), title, text, emoji: opts.emoji, tone: opts.tone })
+  // The support flag is written only when set, so every other notice is saved exactly as before.
+  g.queue.push({ kind: 'notice', id: uid(g, 'm'), title, text, emoji: opts.emoji, tone: opts.tone, ...(opts.support ? { support: true } : {}) })
 }
 
 /** Show a popup with choices resolved by a registered script (see scripts.ts). */

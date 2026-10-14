@@ -195,6 +195,8 @@ export interface Res {
   l?: string | readonly string[] | null
   tone?: Tone
   fx?: Fx
+  /** Show the real-world support line under the popup text (NoticeModal.support). */
+  support?: boolean
 }
 
 /**
@@ -236,7 +238,7 @@ export function res(g: GameState, ctx: Ctx | null, r: Res): void {
   const c = g.character
   if (!c.alive) return
   const tone: Tone = r.tone ?? 'neutral'
-  notice(g, v(g, r.t), v(g, r.x), { emoji: r.e ?? x?.ev.emoji, tone })
+  notice(g, v(g, r.t), v(g, r.x), { emoji: r.e ?? x?.ev.emoji, tone, support: r.support })
   if (r.l) log(g, v(g, r.l), tone)
   if (r.fx) applyFx(g, x, r.fx)
 }
