@@ -48,6 +48,7 @@ import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } fro
 import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
 import { bankPayoutBlock } from './bank'
 import { rescueNodes, rescuePosition } from './rescue'
+import { SHARE_SALES_PER_YEAR, shareSaleKey } from './own-trade'
 import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
@@ -62,14 +63,17 @@ import { manageBlock, noCash, tooBusy } from './gate'
 import { staffMenu } from './staff'
 import { marketInfoLine, marketMenu } from './competition-menu'
 import { adultBrandName } from './competition'
-import type { MarketCtx } from './competition-core'
+import { marketKey, type MarketCtx } from './competition-core'
 import { industryDef, lineOf } from './industries'
 import { supplyInventoryValue } from './supply'
 import { equipmentUpgradeCost, purchaseEquipmentUpgrade, purchaseTraining, repeatProgramGain, staffTrainingCost, supplyPolicyNodes } from './supply-policy'
 import { economicReportMenu } from './economic-report'
 import { complexityShare, productIdeas } from './products'
-import { bestRdBudget, bestRdIdea, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, retireLines, retireOrder, startRd } from './rd'
-import { fieldFor, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
+import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
+import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
+import type { Breakthrough } from './heavy-data'
+import { readMarketNews } from '../history/market-events'
+import { fieldFor, kindTrend, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
 import { demandTrend } from './product-data'
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
@@ -467,7 +471,7 @@ function rdPreview(g: GameState, a: Asset, idea: string, budget: number): string
   const total = rangeOf(g, cur).pull.total
   const parts = [`${money(budget)}`, `ready in ${yearsWord(q.years)}`, `${Math.round(q.odds * 100)}% odds`, `quality ~${q.quality} vs ${rivalsWord(q.offer, q.field)}`]
   if (q.lift > 0) parts.push(`about +${customersPct(q.lift / (1 + total))} customers at launch`)
-  if (rdCrowding(b) > 1) parts.push(`the team is stretched: ${plural(rdProjects(b).length, 'project')} already running`)
+  if (rdCrowding(b) > 1) parts.push(`the team is stretched: ${plural(ordinaryProjects(b).length, 'project')} already running`)
   if (budget > b.cash) parts.push(`${money(budget - Math.max(0, b.cash))} more than the company has`)
   return parts.join(' · ') + capexCaption(g, cur, b, budget, Math.max(0, (rdValue(g, b, idea, budget).value + budget) / 5))
 }
@@ -528,11 +532,67 @@ function beaten(g: GameState, b: BizState, ctx: MarketCtx, family: string, quali
 }
 
 /** One line on sale: its quality against the rivals' versions, its demand, its customers and whose it wins. */
-function lineSubtitle(l: LinePull, total: number, trend: -1 | 0 | 1, beats: string[], from?: string): string {
-  const vs = l.offer > 0.02 ? ` vs rivals' ${Math.round(l.field)}` : ' · no rival sells one'
+function lineSubtitle(l: LinePull, total: number, trend: -1 | 0 | 1, beats: string[], from?: string, lead?: number): string {
+  // A breakthrough nobody else sells yet: when the first rival can have its own (heavy-rd.ts heavyLead).
+  const vs = l.offer > 0.02 ? ` vs rivals' ${Math.round(l.field)}` : lead !== undefined ? ` · no rival sells one · rivals can have their own from about ${lead}` : ' · no rival sells one'
   // Neutral wording: real companies only ever lose customers, never get called worse.
   const wins = beats.length ? ` · wins customers from ${beats.join(' and ')}` : ''
   return `Quality ${Math.round(l.effective)}${vs} · ${trendWord(trend)} · ${customersPct(l.lift / (1 + total))} of your customers${wins}${from ? ` · came with ${from}` : ''} · tap to retire`
+}
+
+/** When the first rival can have its own of a breakthrough on sale here (undefined: not a recorded breakthrough, or that time has passed). */
+function leadOf(family: string, field: Field, year: number): number | undefined {
+  const rec = field.heavy.find((r) => r.family === family)
+  if (!rec) return undefined
+  const lead = heavyLead(rec)
+  return lead >= year ? lead : undefined
+}
+
+/** One breakthrough row: what it costs, how long, the odds, and when rivals could follow. */
+function heavyAction(a: Asset, x: Breakthrough): MenuAction {
+  const quote = (g: GameState) => {
+    const b = readBiz(g, live(g, a))
+    const years = heavyYears(b)
+    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(heavyOdds(g, b) * 100), lead: heavyLead({ year: g.year + years, years }) }
+  }
+  return act(a, `heavy.${x.name}`, x.name, '\u{1F52C}', {
+    subtitle: (g) => {
+      const q = quote(g)
+      return `${money(q.cost)} · ${q.years} years · ${q.odds}% odds · rivals could follow about ${q.lead}`
+    },
+    confirm: (g) => {
+      const q = quote(g)
+      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone.`
+    },
+    disabled: (g, bb) => heavyBlock(g, bb, x.name, a.id),
+    run: (gg, cur, bb) => {
+      // Past this year's capital budget, a company with a board votes on it first, as for any R&D (business/board.ts).
+      const cost = heavyCost(gg, bb)
+      if (cost !== null && heavyBlock(gg, bb, x.name, a.id) === null) {
+        if (!boardAllows(gg, cur, bb, { kind: 'capex', by: 'owner', amount: cost, gain: heavyGain(gg, bb, x.name), label: `Fund Heavy R&D on ${x.name} (${money(cost)})` })) return
+      }
+      startHeavy(gg, cur, bb, x.name)
+    },
+  })
+}
+
+/** The Heavy R&D part of the Products screen: the trade's latest news, then one row per breakthrough on offer. */
+function heavyNodes(a: Asset, g: GameState, b: BizState): MenuNode[] {
+  if (!heavyEligible(b)) return []
+  const nodes: MenuNode[] = [{ type: 'heading', id: `biz.heavyH.${a.id}`, label: 'Heavy R&D' }]
+  nodes.push({ type: 'info', id: `biz.heavyInfo.${a.id}`, emoji: '\u{1F52C}', text: 'A breakthrough costs far more than a line and often fails. If it works, the trade gains customers.' })
+  const market = marketKey(b)
+  readMarketNews(g)
+    .filter((n) => n.industry === b.industry && n.market === market)
+    .slice(-3)
+    .reverse()
+    .forEach((n, i) => nodes.push({ type: 'info', id: `biz.heavyNews.${a.id}.${i}`, emoji: n.emoji, text: `${n.title} (${n.year})` }))
+  const offers = heavyOffers(g, b, a.id)
+  // The true reason there is nothing to offer: not invented yet, or everything the year allows is taken (heavy-rd.ts).
+  const none = offers.length ? null : heavyNone(g, b, a.id)
+  if (none) nodes.push({ type: 'info', id: `biz.heavyNone.${a.id}`, text: none, emoji: '\u{1F4AD}' })
+  for (const x of offers) nodes.push(heavyAction(a, x))
+  return nodes
 }
 
 function productsMenu(a: Asset): MenuGroup {
@@ -584,16 +644,19 @@ function productsMenu(a: Asset): MenuGroup {
           const l = byName.get(p.name)
           nodes.push(
             act(a, `retire.${p.name}`, p.name, '\u{1F4E6}', {
-              subtitle: l ? lineSubtitle(l, pull.total, demandTrend(l.family, ctx.key, g.year), beaten(g, b, ctx, l.family, l.effective), p.from) : `Launched ${p.launched} · not selling here · tap to retire`,
+              subtitle: l ? lineSubtitle(l, pull.total, kindTrend(l.family, ctx.key, g.year, field.heavy), beaten(g, b, ctx, l.family, l.effective), p.from, leadOf(l.family, field, g.year)) : `Launched ${p.launched} · not selling here · tap to retire`,
               confirm: () => `Retire the ${p.name} line?`,
               run: (gg, c2, bb) => {
+                // Only a line that is still on sale is retired: R&D never offers it again.
+                const onSale = bb.products.some((x) => x.name === p.name)
                 bb.products = bb.products.filter((x) => x.name !== p.name)
+                if (onSale) rememberRetired(bb, [p.name])
                 notice(gg, 'Line Retired', `${c2.name} discontinued ${p.name}. A few loyal fans are writing angry letters.`, { emoji: '\u{1F4E6}' })
               },
             }),
           )
         }
-        if (b.products.length > top.length) nodes.push({ type: 'info', id: `biz.prodMore.${a.id}`, text: `…and ${plural(b.products.length - top.length, 'more line')}. The weakest: ${retireOrder(b, g.year)[0]?.name ?? '-'}.`, emoji: '\u{1F4DA}' })
+        if (b.products.length > top.length) nodes.push({ type: 'info', id: `biz.prodMore.${a.id}`, text: `…and ${plural(b.products.length - top.length, 'more line')}. The weakest: ${retireOrder(b, g.year, field.heavy)[0]?.name ?? '-'}.`, emoji: '\u{1F4DA}' })
         nodes.push(retireAction(a, b))
       }
       const dev = rdProjects(b)
@@ -602,10 +665,11 @@ function productsMenu(a: Asset): MenuGroup {
         for (const p of dev.slice(0, TOP_LINES)) {
           const left = Math.max(0, p.years - p.progress)
           const quality = typeof p.quality === 'number' ? ` · quality ~${Math.round(p.quality)}` : ''
-          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${Math.round(p.odds * 100)}% odds${quality} · ${money(p.budget)} budget` })
+          nodes.push({ type: 'info', id: `biz.dev.${a.id}.${p.id}`, emoji: '\u{1F52C}', text: `${p.name}: ${left <= 1 ? 'ready at year-end' : `${left} years to go`} · ${Math.round(p.odds * 100)}% odds${quality} · ${money(p.budget)} budget${p.heavy === true ? ' · Heavy R&D' : ''}` })
         }
         if (dev.length > TOP_LINES) nodes.push({ type: 'info', id: `biz.devMore.${a.id}`, emoji: '\u{1F52C}', text: `…and ${plural(dev.length - TOP_LINES, 'more project')}.` })
       }
+      nodes.push(...heavyNodes(a, g, b))
       nodes.push({ type: 'heading', id: `biz.launchH.${a.id}`, label: 'Develop a new product' })
       // An endless stream the year allows (no fitness app before smartphones, no web shop before the web).
       const ideas = productIdeas(g, b, IDEAS_SHOWN)
@@ -625,7 +689,7 @@ function linesToRetire(g: GameState, b: BizState): number {
   const w = bizWorth(g, b)
   const ctx = marketCtxFor(g, b, g.year)
   const field = fieldFor(ctx)
-  const order = retireOrder(b, g.year)
+  const order = retireOrder(b, g.year, field.heavy)
   let keep = [...b.products]
   let n = 0
   for (const p of order) {
@@ -658,7 +722,7 @@ function retireAction(a: Asset, b0: BizState): MenuAction {
       preview: (gg, v) => {
         const b = readBiz(gg, live(gg, a))
         const n = Math.max(0, Math.min(b.products.length, Math.round(v)))
-        const gone = retireOrder(b, gg.year).slice(0, n)
+        const gone = retireOrder(b, gg.year, heavyOf(gg, b)).slice(0, n)
         const saved = complexityShare(b.products.length) - complexityShare(b.products.length - n)
         const names = gone.slice(0, 3).map((p) => p.name).join(', ')
         return `${names}${n > 3 ? ` and ${n - 3} more` : ''} · saves about ${pct(saved, 1)} of sales in running costs`
@@ -666,7 +730,7 @@ function retireAction(a: Asset, b0: BizState): MenuAction {
     },
     run: (gg, cur, bb, input) => {
       const n = Math.round(clampN(Number(input) || 1, 1, bb.products.length))
-      const gone = retireLines(bb, n, gg.year)
+      const gone = retireLines(bb, n, gg.year, heavyOf(gg, bb))
       if (!gone.length) return
       log(gg, `${cur.name} retired ${plural(gone.length, 'product line')}.`)
       notice(gg, 'Lines Retired', `${cur.name} discontinued ${gone.slice(0, 4).join(', ')}${gone.length > 4 ? ` and ${gone.length - 4} more` : ''}. The warehouse has room again, and a few loyal fans are writing angry letters.`, { emoji: '\u{1F5D1}\u{FE0F}' })
@@ -1955,7 +2019,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
         run: (gg, cur, bb, input) => {
           const fraction = clampN(Number(input) || 0, 0, 100) / 100
           if (fraction <= 0) return
-          if (!useYearAction(gg, `biz.shares.${cur.id}`, 2)) return tooBusy(gg, 'sold shares twice')
+          if (!useYearAction(gg, shareSaleKey(cur.id), SHARE_SALES_PER_YEAR)) return tooBusy(gg, 'sold shares twice')
           sellShares(gg, cur, bb, fraction)
         },
       }),

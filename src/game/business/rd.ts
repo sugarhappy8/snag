@@ -14,10 +14,12 @@ import type { Asset, GameState } from '../types'
 import { marketDemand, marketKey, marketStateOf, type MarketCtx } from './competition-core'
 import { bizWorth, ceoSkill, fxValue, localEcon, marketCtxFor, ownerTalent, staffPower, type Worth } from './economy'
 import { industryDef } from './industries'
-import { demandLevel, demandSize, demandTrend } from './product-data'
-import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
+import { demandSize } from './product-data'
+import { advanceHeavy, heavyArrivals, heavyOf, type HeavyRecord } from './heavy-rd'
+import { breakthroughByName } from './heavy-data'
+import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, kindLevel, kindTrend, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
-import { readProjects, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
+import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
 import { clampN, money, plural } from './util'
 
 /** Chance a project at a normal budget works: whoever runs it, quality, the quality team. */
@@ -90,13 +92,18 @@ export function rdSlots(b: Pick<BizState, 'outlets'>): number {
   return 1 + Math.floor(Math.log2(1 + Math.max(0, sites)))
 }
 
+/** Projects that use the team's slots: a running breakthrough (heavy-rd.ts) has a team of its own and doesn't count. */
+export function ordinaryProjects(b: Pick<BizState, 'rd'>): RdProject[] {
+  return rdProjects(b).filter((p) => p.heavy !== true)
+}
+
 /** How much a new project's budget is stretched by the ones already running (1 while slots are free). */
 export function rdCrowding(b: Pick<BizState, 'rd' | 'outlets'>): number {
-  return 1 + 0.15 * Math.max(0, rdProjects(b).length + 1 - rdSlots(b))
+  return 1 + 0.15 * Math.max(0, ordinaryProjects(b).length + 1 - rdSlots(b))
 }
 
 /** Years a normal budget needs, by kind of business (a recipe is quicker than a gadget). */
-function baseYears(industry: string): number {
+export function baseYears(industry: string): number {
   const def = industryDef(industry)
   if (def.food) return 1
   if (def.tradable >= 0.8) return 2
@@ -157,15 +164,15 @@ export function rdQuote(g: GameState, b: BizState, idea: string, budget: number,
   const field = fieldFor(c)
   const f = field.of(info.family)
   const launchYear = g.year + years
-  const later = fieldOf(c.rivals, c.fringe, c.key, launchYear)
+  const later = fieldOf(c.rivals, c.fringe, c.key, launchYear, field.heavy)
   const line: Product = { name: idea, launched: launchYear, boost: 0, quality, family: info.family, kind: info.kind }
   const lift = productPull(b.industry, [...b.products, line], launchYear, later).total - productPull(b.industry, b.products, launchYear, later).total
-  return { cost, k, odds, years, quality, info, field: f.quality, offer: f.offer, level: f.level, trend: demandTrend(info.family, c.key, g.year), lift: Math.max(0, lift) }
+  return { cost, k, odds, years, quality, info, field: f.quality, offer: f.offer, level: f.level, trend: kindTrend(info.family, c.key, g.year, field.heavy), lift: Math.max(0, lift) }
 }
 
 /** Years of sales a new line is valued over, and the yearly discount. */
-const HORIZON = 8
-const DISCOUNT = 0.9
+export const HORIZON = 8
+export const DISCOUNT = 0.9
 /** Years the extra complexity of one more line is counted for (old lines get retired). */
 const COMPLEXITY_YEARS = 5
 
@@ -210,9 +217,10 @@ export function shiftLineQuality(b: BizState, name: string, dq: number): void {
 /** A project's lifetime: the pull its line adds in each year on sale (before discounting). */
 function liftPath(b: BizState, ctx: MarketCtx, line: Product, from: number): { base: number; lift: number }[] {
   const out: { base: number; lift: number }[] = []
+  const heavy = fieldFor(ctx).heavy
   for (let t = 0; t < HORIZON; t++) {
     const year = from + t
-    const field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year)
+    const field: Field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
     const base = productPull(b.industry, b.products, year, field).total
     const withIt = productPull(b.industry, [...b.products, { ...line, launched: from }], year, field).total
     out.push({ base, lift: Math.max(0, withIt - base) })
@@ -294,10 +302,16 @@ function niceBudget(n: number): number {
   return Math.ceil(n / mag - 1e-9) * mag
 }
 
+/** Why R&D refuses a line the company retired on purpose (Heavy R&D says the same). */
+export function retiredReason(name: string): string {
+  return `${name} was retired. Develop something else.`
+}
+
 /** Why a project can't start (null when it can). Cash is checked separately (startRd). */
 export function rdBlock(b: BizState, idea: string, budget: number): string | null {
   if (!idea.trim()) return 'Pick an idea first.'
   if (b.products.some((p) => p.name === idea)) return `${idea} is already on sale.`
+  if (retiredOf(b).includes(idea)) return retiredReason(idea)
   if (rdProjects(b).some((p) => p.name === idea)) return `${idea} is already in development.`
   if (rdProjects(b).length >= MAX_STORED_PROJECTS) return 'Your R&D department is drowning in projects. Let some finish first.'
   const r = rdRange(b, idea)
@@ -345,30 +359,55 @@ export function startRd(g: GameState, a: Asset, b: BizState, idea: string, budge
   return p
 }
 
-/** A line's standing without rivals: how much demand its kind has and how good the line still is. */
-function standing(b: Pick<BizState, 'industry' | 'countryId'>, p: Product, year: number): number {
+/** A line's standing without rivals: how much demand its kind has and how good the line still is (a breakthrough's demand is its record's). */
+function standing(b: Pick<BizState, 'industry' | 'countryId'>, p: Product, year: number, heavy?: readonly HeavyRecord[]): number {
   const info = infoOf(p, b.industry)
-  const level = demandLevel(info.family, marketKey(b), year).level
+  const level = kindLevel(info.family, marketKey(b), year, heavy).level
   return KIND_WEIGHT[info.kind] * demandSize(info.family) * level * Math.pow(2, effectiveQuality(p, b.industry, year) / 15)
 }
 
-/** Lines most worth retiring first: the weakest (outdated, or in a kind nobody wants any more), then the oldest. */
-export function retireOrder(b: Pick<BizState, 'industry' | 'countryId' | 'products'>, year: number): Product[] {
-  return [...b.products].sort((x, y) => standing(b, x, year) - standing(b, y, year) || x.launched - y.launched)
+/**
+ * Lines most worth retiring first: the weakest (outdated, or in a kind nobody wants any more), then the oldest.
+ * `heavy` is the company's market's breakthrough records (heavy-rd.ts heavyOf): pass them wherever the game
+ * state is at hand, so a breakthrough line is ranked by its own kind's demand.
+ */
+export function retireOrder(b: Pick<BizState, 'industry' | 'countryId' | 'products'>, year: number, heavy?: readonly HeavyRecord[]): Product[] {
+  return [...b.products].sort((x, y) => standing(b, x, year, heavy) - standing(b, y, year, heavy) || x.launched - y.launched)
 }
 
-/** Retire the `n` weakest lines; returns their names. */
-export function retireLines(b: BizState, n: number, year: number): string[] {
+/**
+ * Remember lines that were retired on purpose, so R&D never offers them again (productIdeas,
+ * rdBlock). Names are kept the way a saved game keeps them (state.ts readRetired): newest last,
+ * no repeats, the newest MAX_STORED_PRODUCTS. The list is created on first use.
+ */
+export function rememberRetired(b: BizState, names: readonly string[]): void {
+  if (!names.length) return
+  const list = readRetired([...retiredOf(b), ...names])
+  if (list.length) b.retired = list
+}
+
+/** Take the `n` weakest lines off sale; returns their names. */
+function dropWeakest(b: BizState, n: number, year: number, heavy?: readonly HeavyRecord[]): string[] {
   const k = Math.max(0, Math.min(b.products.length, Math.floor(n)))
   if (k <= 0) return []
-  const gone = retireOrder(b, year).slice(0, k)
+  const gone = retireOrder(b, year, heavy).slice(0, k)
   const names = new Set(gone.map((p) => p.name))
   b.products = b.products.filter((p) => !names.has(p.name))
   return gone.map((p) => p.name)
 }
 
+/**
+ * Retire the `n` weakest lines for good; returns their names. This is a deliberate retirement
+ * ("Retire Weak Lines", the hired CEO), so R&D never offers the lines again.
+ */
+export function retireLines(b: BizState, n: number, year: number, heavy?: readonly HeavyRecord[]): string[] {
+  const gone = dropWeakest(b, n, year, heavy)
+  rememberRetired(b, gone)
+  return gone
+}
+
 /** A finished project's expected quality (old saves: from the boost it was funded for). */
-function projectQuality(p: RdProject): number {
+export function projectQuality(p: RdProject): number {
   return typeof p.quality === 'number' && Number.isFinite(p.quality) ? p.quality : qualityFromBoost(p.boost)
 }
 
@@ -377,6 +416,8 @@ function projectQuality(p: RdProject): number {
  * or flop. Called from economy.evolve for every company, after the fiscal year is booked.
  */
 export function advanceRd(g: GameState, b: BizState, year: number): void {
+  // The first rival to offer a breakthrough that works is reported once (heavy-rd.ts), whether or not this company has projects.
+  heavyArrivals(g, b, year)
   if (!Array.isArray(b.rd) || b.rd.length === 0) return
   const a = g.assets.find((x) => (x.details as unknown) === b) ?? null
   const name = a?.name ?? 'The company'
@@ -388,6 +429,13 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
     p.progress = Math.min(p.years, p.progress + 1)
     if (p.progress < p.years) {
       keep.push(p)
+      continue
+    }
+    // A Heavy R&D breakthrough has its own odds, hit chance and news (heavy-rd.ts); ordinary projects go on below.
+    if (p.heavy === true && breakthroughByName(p.name) !== null) {
+      const done = advanceHeavy(g, a, b, p, year)
+      lines.push(done.line)
+      if (done.won) wins += 1
       continue
     }
     if (!chance(g, clampN(p.odds, 0.02, 0.98))) {
@@ -417,8 +465,8 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
     log(g, `${name} launched ${p.name}${hit ? ' and it was a smash hit' : ''}.`, 'good')
   }
   b.rd = keep
-  // A storage guard only: the economics retire lines long before this.
-  if (b.products.length > MAX_STORED_PRODUCTS) retireLines(b, b.products.length - MAX_STORED_PRODUCTS, year + 1)
+  // A storage guard only: the economics retire lines long before this. Not a retirement the player chose, so the lines are not remembered.
+  if (b.products.length > MAX_STORED_PRODUCTS) dropWeakest(b, b.products.length - MAX_STORED_PRODUCTS, year + 1, heavyOf(g, b))
   if (!lines.length || !a || !runsIt(g, a) || !g.character.alive) return
   notice(g, `${name}: R&D Results`, `${lines.slice(0, 6).join('\n')}${lines.length > 6 ? `\n…and ${lines.length - 6} more.` : ''}${keep.length ? `\n${plural(keep.length, 'project')} still in development.` : ''}`, {
     emoji: wins > 0 ? '\u{1F680}' : '\u{1F4A5}',

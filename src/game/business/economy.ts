@@ -24,6 +24,7 @@ import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { franchiseFeesFor } from './franchise-state'
 import { studioValue } from './gamestudio-state'
+import { heavyPulse, readHeavy } from './heavy-rd'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
@@ -436,9 +437,14 @@ export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx
   const { dRef, fieldP } = marketScale(b.industry, b.countryId)
   const ctx = applyNpcRivals(g, b, applyEconomicRivals(g, buildCtx(g.lifeId, b.industry, marketKey(b), year, marketStateOf(b), dRef, fieldP)))
   const national = nationalMarket(g, b.industry, b.countryId, year)
+  // The breakthroughs launched in this market (heavy-rd.ts): none for a market nobody has pioneered,
+  // and then everything below is exactly what it always was.
+  const heavy = readHeavy(g, b.industry, marketKey(b))
   // What the rivals offer of each kind of product, and how well (product-market.ts).
-  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year)
-  return { ...ctx, pot: ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1), field }
+  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
+  const pot = ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1)
+  // A breakthrough wakes up demand for the whole trade in its market, rivals and the player alike.
+  return { ...ctx, pot: heavy.length ? pot * heavyPulse(heavy, year) : pot, field }
 }
 
 /**

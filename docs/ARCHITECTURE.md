@@ -88,6 +88,9 @@ src/
                          versions, rivals' offerings, stacking, who loses customers (see "Business growth")
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
+    business/own-listing.ts listing-id.ts own-trade.ts own-listing-menu.ts  The player's listed
+                         companies in Stocks: tiers, ticker and exchange, buy and sell rules, the row
+                         and its screen (see "Your listed companies in Stocks" below)
     business/finance-firm.ts  Banks and investment firms: a thin dispatcher (simulateFinanceYear,
                          financeNodes, financeManagerTurn, financeEraBlock...) to bank*.ts (Banking 2.0:
                          rates, lending appetite, products, regulator, runs, events) and fund*.ts
@@ -101,7 +104,9 @@ src/
                          repossession, divorce) notifies the business modules without importing them
     invest/instinct.ts   Investing talent: marketInstinct(g), an honest ~80% gut read of next year's
                          deterministic engine moves (per character + year, never rerolls)
-    investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange
+    investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange.
+                         registerOwnListings(provider) is how business/own-listing-menu.ts adds rows
+                         to Stocks, so investments.ts still imports nothing from business/
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
                          cvScore for admissions/jobs, national school rankings, the job market, and
@@ -648,6 +653,46 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   removes it from the player's assets and turns each relative's stake into their own wealth at
   market value (`dynasty-ownership.cashOutFamilyHolders`); the yearly pass cleans up listed
   holdings already at 0% (`yearly.leaveUnownedListed`).
+- **Your listed companies in Stocks** (`business/own-listing.ts`, `listing-id.ts`, `own-trade.ts`,
+  `own-listing-menu.ts`): a company you've taken public shows in Investments › Stocks as a view and a
+  trade door over the business.
+  - **Not a security (D1, D2).** The row is never an investment Asset, because a second Asset on the
+    same shares would count twice in net worth, in an estate and in Sell Everything. It is never a
+    `Quote` either. `own-listing-menu.ts` builds it as its own node and hands it to `investments.ts`
+    through `registerOwnListings`. `ownListings` is pure (no writes, no `g.rng`), so rows, previews and
+    limits can be rebuilt on every render, from a deep-frozen state.
+  - **Where it sits (D8).** `listing-id.listedExchange` finds the exchange from the company's own
+    country and its stored exchange code, never from where you live (codes repeat: TSE is Tokyo and
+    Tehran). On that exchange's list the row is the first in its tier. Anywhere else, or on a list with
+    no size headings, it goes in a "Your listed companies" block at the top, with the exchange named.
+  - **Tiers (D7).** `capTier(b.valuation)`: Mega-cap from $200B, Large-cap from $10B, Mid-cap from $2B,
+    Small-cap below. They are fixed, in constant-2026 dollars, with no inflation step.
+  - **Buying (D3, D4).** `own-trade.buyOwnShares` is a market purchase from the public float. It pays
+    the larger of the share price, the market cap per share and the fundamental value per share, plus
+    3%, plus an order-size premium (`buyImpact` with `retailDepth`). It never writes that impact into
+    `BizState.sharePrice`, so a buy can't pump your own stake. It takes at most 15% of the company a
+    year and never the last 1% of the float. The cash paid goes to `b.invested` and `b.share` rises. It
+    isn't counted as `investTrades` or `moneyInvested`. It shares `rescue.equityYearKey` with all three
+    Capital & Ownership kinds, which is the one move a year for the company: a Stocks buy also uses up
+    Put In More Money and Company Buys Back Shares, and either of those uses up a Stocks buy.
+  - **No control needed.** A Stocks buy needs no board control and holds no board vote, because it is a
+    market purchase from the public float. It is how a founder who holds under half after the IPO wins
+    control back, and its preview says "This gives you control of the board." when a buy crosses 50%.
+    Buy Out Investors still needs control and a board vote (`rescue.ts` `block` and the `boardAllows`
+    call in `transactEquity`). The Stocks door stays free of `g.rng`.
+  - **Selling.** `own-trade.sellOwnShares` is Exit › Sell Shares: the same `exit.sellShares`, tax and
+    price impact, and the same two sales a year (`shareSaleKey`, `SHARE_SALES_PER_YEAR`, also used by
+    `manage.ts`). `sellNote` previews it, and says so when the sale would cost you control of the board or
+    sell you out. Selling out, or going under 0.5%, removes the company through `leaveListedCompany` and pays
+    relatives once. The preview judges the stake as stored (`own-listing.rawStake`), so a stored 0.6%
+    isn't read as the 1% that `normalizeBiz` floors it to.
+  - **State.** `BizState.ticker` (4 capital letters, from `listing-id.newTicker`, unique among the
+    exchange's registry and first-generation tickers and your other companies on it) and
+    `BizState.ipoPrice` are set by `goPublic` and `detach`. Both are optional and checked in
+    `normalizeBiz`. A save without a ticker gets one derived on read (`tickerOf`), the same each time.
+  - **Groups (D10).** A listed group gets one view-only row: its market cap, your group stake, its
+    exchange and tier. It has no ticker and no Buy or Sell, and its divisions get no row. A group is
+    traded from its own screen (`sellGroupShares`).
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
   `COMPARE_SHOWN` best foreign markets and a one-line summary.
 - **Banks' money rules** (`business/bank*.ts`): deposits and loans are client money; equity is

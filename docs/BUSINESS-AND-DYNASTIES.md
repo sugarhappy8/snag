@@ -22,6 +22,10 @@ additional dependency or second economic engine was introduced.
   **Financial Rescue & Ownership** for distressed companies) explains runway and separates
   secondary purchases, equity subscriptions and company-funded buybacks. Loans, staffing
   changes and site closures retain their existing controls nearby.
+- Investments → **Stocks**: a company you've listed shows there under its size and exchange. It is a
+  second door to the ownership move in **Capital & Ownership** (buying more from the public float) and
+  to **Exit → Sell Shares**, and each pair shares its yearly limit. A listed group shows as a row you
+  can only look at.
 - Conglomerate → **Group Services / Internal Contracts**: assign compatible divisions to
   advertising, distribution, software, components, property or treasury administration.
 - Relationships → person: **Life & Career**, business financials, investment/partnership,

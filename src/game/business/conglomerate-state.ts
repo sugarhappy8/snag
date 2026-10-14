@@ -16,6 +16,7 @@ import { log } from '../core'
 import type { Asset, GameState, Json } from '../types'
 import { registerGroupBoard, type Mandate } from './board-state'
 import { refreshValue } from './economy'
+import { newTicker } from './listing-id'
 import { bizOf, businessAssets, CEO_STYLES, diluteManagerEquity, executiveEquity, readBiz, type BizState, type Manager } from './state'
 import { clampN, num, rec, round2, str, toJson } from './util'
 import { readFamilyShares, type FamilyShare } from './family-share-state'
@@ -570,6 +571,10 @@ export function detach(g: GameState, a: Asset, b: BizState, listing: GroupListin
     b.sharePrice = round2(Math.max(0.05, value / b.sharesOut))
     b.valuation = Math.round(b.sharePrice * b.sharesOut)
     b.pref = 0
+    b.ticker = newTicker(g, a, b)
+    // A group wound up around its last company keeps the listing's year, and has no offer price to show.
+    if (opts.keepIpoYear) delete b.ipoPrice
+    else b.ipoPrice = b.sharePrice
   }
   refreshValue(a, b)
 }

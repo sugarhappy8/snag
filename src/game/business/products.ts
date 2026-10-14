@@ -10,7 +10,7 @@ import { marketKey } from './competition-core'
 import { eraFits } from './era'
 import { industryDef } from './industries'
 import { demandLevel, PERIOD_CLASSICS } from './product-data'
-import type { BizState } from './state'
+import { retiredOf, type BizState } from './state'
 
 /** Years a line stays on sale before it is retired automatically (rivals left it far behind long before). */
 export const PRODUCT_LIFE = 30
@@ -248,14 +248,15 @@ export function classicIdeas(g: GameState, b: Pick<BizState, 'industry' | 'count
 /**
  * The next `count` product ideas for this company, best-known first: the classics, then a
  * round of variants (premium, budget, regional, bundles, spin-offs), then next generations of
- * every classic without end. Ideas already on sale or in development are skipped; anything the
- * era doesn't have yet is skipped too. Deterministic: the same company gets the same list.
+ * every classic without end. Ideas already on sale or in development are skipped, and so is any
+ * line the company retired on purpose (state.ts retired); anything the era doesn't have yet is
+ * skipped too. Deterministic: the same company gets the same list.
  */
-export function productIdeas(g: GameState, b: Pick<BizState, 'industry' | 'countryId' | 'products' | 'outlets'> & { rd?: { name: string }[] }, count = 5): string[] {
+export function productIdeas(g: GameState, b: Pick<BizState, 'industry' | 'countryId' | 'products' | 'outlets'> & { rd?: { name: string }[]; retired?: readonly string[] }, count = 5): string[] {
   const style = styleOf(b.industry)
   const bases = classicIdeas(g, b)
   if (!bases.length) return []
-  const taken = new Set<string>([...b.products.map((p) => p.name), ...(b.rd ?? []).map((p) => p.name)])
+  const taken = new Set<string>([...b.products.map((p) => p.name), ...(b.rd ?? []).map((p) => p.name), ...retiredOf(b)])
   const cities = [...new Set(b.outlets.map((o) => o.city))].slice(0, 6)
   const ctx: IdeaCtx = { style, lines: b.products.map((p) => p.name).slice(-12), cities, year: g.year }
   const out: string[] = []

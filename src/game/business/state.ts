@@ -6,6 +6,7 @@ import { getCountry } from '../world'
 import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
+import { breakthroughByName } from './heavy-data'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
 import { readFamilyShares } from './family-share-state'
@@ -48,7 +49,7 @@ export interface Product {
   /** The classic kind of product it belongs to ('Street Lighting' for 'Street Lighting Mk II'). */
   family?: string
   /** What sort of line it is within its kind (product-market.ts LineKind). */
-  kind?: 'core' | 'next' | 'premium' | 'value' | 'regional' | 'bundle' | 'addon'
+  kind?: 'core' | 'next' | 'premium' | 'value' | 'regional' | 'bundle' | 'addon' | 'breakthrough'
   /** Who made it, when it wasn't the company's own R&D (a rival bought out). */
   from?: string
 }
@@ -76,6 +77,10 @@ export interface RdProject {
   /** Kind of product and sort of line (product-market.ts). */
   family?: string
   kind?: Product['kind']
+  /** Heavy R&D (heavy-rd.ts): a breakthrough project, paid up front, 4 to 6 years. Missing on ordinary projects and old saves. */
+  heavy?: true
+  /** What a heavy project cost, paid when it started (it is what the pioneer's record keeps). */
+  cost?: number
   /** Calendar year it started. */
   started: number
 }
@@ -83,6 +88,31 @@ export interface RdProject {
 /** Storage guards only (the economics stop growth long before): newest lines and projects are kept. */
 export const MAX_STORED_PRODUCTS = 400
 export const MAX_STORED_PROJECTS = 120
+/** The longest line name the retired list keeps. */
+export const MAX_RETIRED_NAME = 80
+
+/**
+ * A stored list of retired line names, cleaned: strings only, trimmed, 1 to MAX_RETIRED_NAME
+ * characters, no repeats (a name retired again moves to the newest spot), the newest
+ * MAX_STORED_PRODUCTS kept. Anything that is not a list reads as none.
+ */
+export function readRetired(v: Json | undefined): string[] {
+  if (!Array.isArray(v)) return []
+  const names = new Set<string>()
+  for (const x of v) {
+    if (typeof x !== 'string') continue
+    const name = x.trim()
+    if (!name || name.length > MAX_RETIRED_NAME) continue
+    names.delete(name)
+    names.add(name)
+  }
+  return [...names].slice(-MAX_STORED_PRODUCTS)
+}
+
+/** The retired line names of a company (a missing or damaged field reads as none). */
+export function retiredOf(b: { retired?: readonly string[] }): readonly string[] {
+  return Array.isArray(b.retired) ? b.retired : []
+}
 
 export interface YearRecord {
   year: number
@@ -247,6 +277,13 @@ export interface BizState {
   products: Product[]
   /** Products in development (missing on old saves: read it with rd.ts rdProjects). */
   rd?: RdProject[]
+  /**
+   * Exact names of the lines the player retired on purpose, newest last (rd.ts rememberRetired).
+   * R&D never offers them again. Missing on old saves and on companies that never retired a line.
+   */
+  retired?: string[]
+  /** Year the last Heavy R&D project launched or flopped: the five-year wait for the next one starts there. Missing: never had one. */
+  heavyLast?: number
   outlets: Outlet[]
   /**
    * Extra production capacity at the home site: production lines, ovens, sewing lines,
@@ -265,6 +302,10 @@ export interface BizState {
   /** Exchange code once listed. */
   exchange: string
   ipoYear: number
+  /** The four-letter ticker given at the listing. Missing on old saves: read it with listing-id.ts tickerOf. */
+  ticker?: string
+  /** The offer price at the listing, for "since the IPO". Missing on old saves and on companies that left a wound-up group. */
+  ipoPrice?: number
   ceo: 'owner' | 'manager'
   manager: Manager | null
   /** Vested company shares across current and dismissed executives. */
@@ -342,6 +383,11 @@ export interface BizState {
 
 export const BIZ_VERSION = 2
 
+/** A ticker is exactly four capital letters. */
+export function isTicker(v: unknown): v is string {
+  return typeof v === 'string' && /^[A-Z]{4}$/.test(v)
+}
+
 export function isBusinessAsset(a: Asset): boolean {
   return a.kind === 'business' && isIndustry(a.details.industry)
 }
@@ -389,15 +435,21 @@ function readOutlet(x: Record<string, Json>): Outlet | null {
   return { countryId, city, count, opened: Math.round(num(x.opened)) }
 }
 
-const LINE_KINDS: readonly NonNullable<Product['kind']>[] = ['core', 'next', 'premium', 'value', 'regional', 'bundle', 'addon']
+const LINE_KINDS: readonly NonNullable<Product['kind']>[] = ['core', 'next', 'premium', 'value', 'regional', 'bundle', 'addon', 'breakthrough']
 
-function lineKind(v: Json | undefined): Product['kind'] | undefined {
-  return typeof v === 'string' && (LINE_KINDS as readonly string[]).includes(v) ? (v as Product['kind']) : undefined
+/**
+ * A stored sort of line. A breakthrough is only ever the line of a Heavy R&D catalogue family
+ * (heavy-data.ts), so a saved game can't hand a classic line the breakthrough weight.
+ */
+function lineKind(v: Json | undefined, family: string): Product['kind'] | undefined {
+  if (typeof v !== 'string' || !(LINE_KINDS as readonly string[]).includes(v)) return undefined
+  if (v === 'breakthrough' && breakthroughByName(family) === null) return undefined
+  return v as Product['kind']
 }
 
 /** Line fields added by products 2.0, when stored (old lines have none of them). */
 function lineExtras(x: Record<string, Json>): Pick<Product, 'quality' | 'family' | 'kind' | 'from'> {
-  const kind = lineKind(x.kind)
+  const kind = lineKind(x.kind, str(x.family) || str(x.name))
   return {
     ...(typeof x.quality === 'number' && Number.isFinite(x.quality) ? { quality: Math.round(clampN(x.quality, 0, 100)) } : {}),
     ...(str(x.family) ? { family: str(x.family) } : {}),
@@ -406,10 +458,20 @@ function lineExtras(x: Record<string, Json>): Pick<Product, 'quality' | 'family'
   }
 }
 
-/** A project's stored quality and kind (never who made it: projects are always the company's own). */
-function projectExtras(x: Record<string, Json>): Pick<RdProject, 'quality' | 'family' | 'kind'> {
+/** Most years an ordinary project takes, and a Heavy R&D one. */
+const MAX_PROJECT_YEARS = 4
+const MAX_HEAVY_YEARS = 6
+
+/**
+ * A project's stored quality and kind (never who made it: projects are always the company's own), and
+ * the Heavy R&D marks: `heavy` is believed only when it is exactly `true` and the project is one of
+ * the catalogue's breakthroughs, `cost` only on such a project and only as a finite number from 0.
+ */
+function projectExtras(x: Record<string, Json>, name: string): Pick<RdProject, 'quality' | 'family' | 'kind' | 'heavy' | 'cost'> {
   const { quality, family, kind } = lineExtras(x)
-  return { ...(quality !== undefined ? { quality } : {}), ...(family ? { family } : {}), ...(kind ? { kind } : {}) }
+  const heavy = x.heavy === true && breakthroughByName(name) !== null
+  const cost = heavy && typeof x.cost === 'number' && Number.isFinite(x.cost) && x.cost >= 0 ? Math.min(1e15, x.cost) : undefined
+  return { ...(quality !== undefined ? { quality } : {}), ...(family ? { family } : {}), ...(kind ? { kind } : {}), ...(heavy ? { heavy: true as const } : {}), ...(cost !== undefined ? { cost } : {}) }
 }
 
 function readProduct(x: Record<string, Json>): Product | null {
@@ -421,7 +483,8 @@ function readProduct(x: Record<string, Json>): Product | null {
 function readProject(x: Record<string, Json>): RdProject | null {
   const name = str(x.name)
   if (!name) return null
-  const years = Math.round(clampN(num(x.years, 1), 1, 4))
+  const extras = projectExtras(x, name)
+  const years = Math.round(clampN(num(x.years, 1), 1, extras.heavy ? MAX_HEAVY_YEARS : MAX_PROJECT_YEARS))
   return {
     id: str(x.id, `rd.${name}`),
     name,
@@ -430,7 +493,7 @@ function readProject(x: Record<string, Json>): RdProject | null {
     progress: clampN(num(x.progress), 0, years),
     odds: clampN(num(x.odds, 0.5), 0.02, 0.98),
     boost: clampN(num(x.boost, 0.05), 0, 0.5),
-    ...projectExtras(x),
+    ...extras,
     started: Math.round(num(x.started)),
   }
 }
@@ -532,6 +595,9 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   }
   const history = [...historyByYear.values()].slice(-12)
   const supplier = d.supplier === 'budget' || d.supplier === 'premium' ? d.supplier : 'standard'
+  const retired = readRetired(d.retired)
+  // A year, or nothing: a damaged value must never leave Heavy R&D waiting for good.
+  const heavyLast = typeof d.heavyLast === 'number' && Number.isFinite(d.heavyLast) && d.heavyLast >= 1800 && d.heavyLast <= 2300 ? Math.round(d.heavyLast) : null
   return {
     v: BIZ_VERSION,
     industry,
@@ -563,6 +629,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     campaignBoost: clampN(num(d.campaignBoost), 0, 0.6),
     products,
     ...(Array.isArray(d.rd) ? { rd: projects } : {}),
+    ...(retired.length ? { retired } : {}),
+    ...(heavyLast !== null ? { heavyLast } : {}),
     outlets,
     ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
     history,
@@ -574,6 +642,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.public !== true && num(d.shareCount) >= 1000 ? { shareCount: Math.round(clampN(num(d.shareCount), 1000, 1e10)) } : {}),
     exchange: str(d.exchange),
     ipoYear: Math.round(num(d.ipoYear)),
+    ...(isTicker(d.ticker) ? { ticker: d.ticker } : {}),
+    ...(typeof d.ipoPrice === 'number' && Number.isFinite(d.ipoPrice) && d.ipoPrice > 0 && d.ipoPrice <= 1e12 ? { ipoPrice: d.ipoPrice } : {}),
     ceo: d.ceo === 'manager' ? 'manager' : 'owner',
     manager: readManager(d.manager),
     executiveEquity: clampN(num(d.executiveEquity, num(rec(d.manager)?.equity)), 0, 1),

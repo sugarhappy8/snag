@@ -1604,6 +1604,46 @@ function stockHistory(g: GameState, info: ExInfo, slot: number, gen: number, pen
   return parts.length ? `Recent years: ${parts.join(' · ')}` : 'Recently listed: no track record yet.'
 }
 
+/** The size headings of a Stocks list, biggest first. Every made-up company is a Small-cap. */
+const STOCK_SIZES = ['Mega-cap', 'Large-cap', 'Mid-cap', 'Small-cap']
+
+/**
+ * One row of "your listed companies" in Stocks. The business module builds them (this file imports
+ * nothing from business/): `exKey` is the key of the exchange the company trades on, never the bare
+ * code, `size` is the heading it sits under ('Mega-cap' ... 'Small-cap') and `node` is the row.
+ */
+export interface OwnStockRow {
+  exKey: string
+  size: string
+  node: MenuGroup
+}
+
+type OwnListingProvider = (g: GameState) => OwnStockRow[]
+
+let ownListingProvider: OwnListingProvider = () => []
+
+/**
+ * Extension point for the business module: say which companies of the player's are listed on an
+ * exchange, so Stocks can show them. Menus are rebuilt all the time, so the provider must not write
+ * to the state or touch g.rng.
+ */
+export function registerOwnListings(provider: OwnListingProvider): void {
+  ownListingProvider = provider
+}
+
+function ownStockRows(g: GameState): OwnStockRow[] {
+  try {
+    return ownListingProvider(g)
+  } catch {
+    return []
+  }
+}
+
+/** The heading above one size section of Stocks. */
+function sizeHeading(size: string): MenuNode {
+  return { type: 'heading', id: `inv-stocks-h-${size}`, label: size === 'Small-cap' ? 'Smaller companies' : `${size}s (rough size)` }
+}
+
 const stocksMenu: MenuGroup = {
   type: 'menu',
   id: 'inv-stocks',
@@ -1624,18 +1664,36 @@ const stocksMenu: MenuGroup = {
   },
   children: (g) => {
     const l = listing(g)
-    if (noStockMarket(g, l.info)) return [{ type: 'info', id: 'inv-stocks-none', text: stockMarketBlock(g, l.info) ?? 'There is no stock market here right now.', emoji: '🚫' }]
+    const own = ownStockRows(g)
+    // Companies of yours that trade somewhere other than the list shown go in a block at the top.
+    const block = (rows: OwnStockRow[]): MenuNode[] => (rows.length ? [{ type: 'heading', id: 'inv-stocks-own', label: 'Your listed companies' }, ...rows.map((r) => r.node)] : [])
+    if (noStockMarket(g, l.info)) return [{ type: 'info', id: 'inv-stocks-none', text: stockMarketBlock(g, l.info) ?? 'There is no stock market here right now.', emoji: '🚫' }, ...block(own)]
     // Real listings come biggest first, under their rough size class (approximate, as of this year).
     const sized = l.stocks.some((q) => q.size)
     const ordered = sized ? [...l.stocks].sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0) || num(a.details.slot) - num(b.details.slot)) : l.stocks
-    const nodes: MenuNode[] = []
-    let last = ''
+    // Your companies on this exchange sit at the top of their size section; everything else goes to the block.
+    const here = sized ? own.filter((r) => r.exKey === l.info.key && STOCK_SIZES.includes(r.size)) : []
+    const elsewhere = own.filter((r) => !here.includes(r))
+    const sections: { size: string; nodes: MenuNode[] }[] = []
     for (const q of ordered) {
-      if (sized && q.size && q.size !== last) {
-        last = q.size
-        nodes.push({ type: 'heading', id: `inv-stocks-h-${q.size}`, label: q.size === 'Small-cap' ? 'Smaller companies' : `${q.size}s (rough size)` })
-      }
-      nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
+      const open = sections[sections.length - 1]
+      if (!open || (sized && q.size && q.size !== open.size)) sections.push({ size: sized ? (q.size ?? '') : '', nodes: [] })
+      sections[sections.length - 1].nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
+    }
+    // A size the exchange has no quotes for this year still gets its heading when you own a company of it.
+    for (const size of STOCK_SIZES) {
+      if (!here.some((r) => r.size === size) || sections.some((s) => s.size === size)) continue
+      const rank = STOCK_SIZES.indexOf(size)
+      const at = sections.findIndex((s) => STOCK_SIZES.indexOf(s.size) > rank)
+      sections.splice(at < 0 ? sections.length : at, 0, { size, nodes: [] })
+    }
+    const nodes: MenuNode[] = block(elsewhere)
+    const shown = new Set<string>()
+    for (const s of sections) {
+      const mine = s.size && !shown.has(s.size) ? here.filter((r) => r.size === s.size) : []
+      shown.add(s.size)
+      if (s.size) nodes.push(sizeHeading(s.size))
+      nodes.push(...mine.map((r) => r.node), ...s.nodes)
     }
     return nodes
   },

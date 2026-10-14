@@ -17,6 +17,10 @@ export function rescuePosition(b: BizState) {
     need: Math.max(0, (burn || annual) * .5 - b.cash) }
 }
 export type EquityTransaction = 'secondary' | 'subscribe' | 'buyback'
+/** The year-action key every ownership move shares: Capital & Ownership's three, and a buy from the Stocks row (own-trade.ts). */
+export function equityYearKey(assetId: string): string {
+  return `equity.${assetId}`
+}
 export function equityQuote(g: GameState, a: Asset, b: BizState, kind: EquityTransaction, amount: number) {
   const value = Math.max(1, b.valuation, valuationOf(b))
   const outside = Math.max(0, 1 - b.share - executiveEquity(b) - (b.familyShares ?? []).reduce((s, x) => s + x.share, 0))
@@ -31,7 +35,7 @@ export function equityQuote(g: GameState, a: Asset, b: BizState, kind: EquityTra
 function block(g: GameState, a: Asset, b: BizState, kind: EquityTransaction): string | null {
   return manageBlock(g, a) ?? (groupIdOf(b) ? 'The group owns this division. Move money through the group treasury, or use Invest My Own Money.' :
     !ownerControls(g, a) ? 'You need control of the board for this.' :
-    yearActionsUsed(g, `equity.${a.id}`) ? 'One of these a year per company.' :
+    yearActionsUsed(g, equityYearKey(a.id)) ? 'One of these a year per company.' :
     kind !== 'subscribe' && equityQuote(g, a, b, kind, 0).available <= 0 ? "No outside investors want to sell this year (the CEO's shares don't count)." : null)
 }
 export function transactEquity(g: GameState, id: string, kind: EquityTransaction, amount: number): boolean {
@@ -42,7 +46,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
   const why = block(g, a, b, kind), q = equityQuote(g, a, b, kind, amount)
   if (why || amount > q.max + .001) { notice(g, 'Ownership', why ?? 'Not enough money, or not enough shares for sale.'); return false }
   if (!boardAllows(g, a, b, { kind: kind === 'buyback' ? 'dividend' : 'merge', by: 'owner', amount, merit: kind === 'subscribe' && b.cash < 0 ? 1 : 0, label: `${kind}: ${money(amount)}` })) return false
-  if (!useYearAction(g, `equity.${a.id}`, 1)) return false
+  if (!useYearAction(g, equityYearKey(a.id), 1)) return false
   if (kind === 'subscribe') {
     addMoney(g, -amount); b.cash += amount; b.invested += amount
     const retain = q.value / (q.value + amount)
