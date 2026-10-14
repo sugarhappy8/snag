@@ -17,6 +17,7 @@ import { ceoPayNorm } from './career'
 import { readTech } from './deeptech-state'
 import { equipmentValue, localEcon, valuationOf } from './economy'
 import { earmarkedCash } from './gamestudio'
+import { hedgeResultFor } from './hedge-record'
 import { bankPayoutRoom } from './bank-model'
 import { isBankIndustry } from './bank-state'
 import { industryDef } from './industries'
@@ -121,11 +122,15 @@ export function payoutCash(a: Asset, b: BizState): number {
   return Number.isFinite(room) ? Math.max(0, Math.min(cash, Math.round(room))) : 0
 }
 
-/** A year of the company's costs (last year's books, or an estimate before the first year). */
+/**
+ * A year of the company's costs (last year's books, or an estimate before the first year). A loss
+ * on the company's fund is booked through the year's costs but is not one of them; a gain cancels
+ * out of the books already.
+ */
 export function runningCosts(b: BizState): number {
   const s = b.last
   if (s) {
-    const v = s.netRevenue + s.otherIncome - s.pbt
+    const v = s.netRevenue + s.otherIncome - s.pbt - Math.max(0, -hedgeResultFor(b, s.year))
     if (Number.isFinite(v) && v > 0) return v
   }
   const def = industryDef(b.industry)
