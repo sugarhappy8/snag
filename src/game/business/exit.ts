@@ -16,6 +16,7 @@ import { clampN, industryNoun, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
 import { bankAdvanceOf } from './bank-state'
 import { cashOutFamilyHolders, payFamilyBusinessProceeds } from './dynasty-ownership'
+import { clampFounders } from './share-classes'
 import { FLOAT_DEFAULT, ipoPlan, retailDepth, retailVerdict, shareCountOf, shareCountText } from './share-structure'
 import { listingMood } from '../history/market-events'
 import { personalTax } from '../nation/effects'
@@ -245,6 +246,7 @@ export function sellShares(g: GameState, a: Asset, b: BizState, fraction: number
   addMoney(g, gross - tax)
   b.invested = Math.round(b.invested * (1 - f))
   b.share = stake - sold
+  clampFounders(b)
   b.sharePrice = Math.max(.01, Math.round(b.sharePrice * order.end * 100) / 100)
   b.valuation = Math.round(b.sharePrice * b.sharesOut)
   if (f >= 0.999 || b.share < 0.005) {

@@ -8,6 +8,7 @@ import { refreshValue, valuationOf } from './economy'
 import { manageBlock } from './gate'
 import { bizOf, diluteBusinessEquity, executiveEquity, findBusiness, readBiz, type BizState } from './state'
 import { clampN, money, pct, runwayText } from './util'
+import { scaleFounders } from './share-classes'
 import { DEFAULT_SHARES, MAX_SHARES, MIN_SHARES, retailVerdict, shareCountOf, shareCountText } from './share-structure'
 
 export function rescuePosition(b: BizState) {
@@ -63,6 +64,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
     b.executiveEquity = executiveEquity(b) / (1 - q.units)
     for (const holder of b.familyShares ?? []) holder.share /= 1 - q.units
     if (b.manager?.equity) b.manager.equity /= 1 - q.units
+    scaleFounders(b, 1 / (1 - q.units))
     if (b.public) b.sharesOut *= 1 - q.units
     else if (b.shareCount) b.shareCount = Math.round(clampN(b.shareCount * (1 - q.units), MIN_SHARES, MAX_SHARES))
     b.pref = (b.pref ?? 0) * (1 - q.units / Math.max(.0001, 1 - b.share))

@@ -9,6 +9,7 @@ import { seeded } from '../assets'
 import type { Asset, GameState, Json } from '../types'
 import { namePoolOf } from '../world'
 import { isDeepTech } from './deeptech-state'
+import { ownerVotes } from './share-classes'
 import type { BizState } from './state'
 import { clampN, num, rec, str } from './util'
 
@@ -292,18 +293,21 @@ export interface SeatPlan {
 
 /**
  * How many seats each side holds. Size grows as outsiders own more (a listed company's board is
- * bigger); the owner's seats follow their stake; a listing requires at least two independents;
- * a private company with outside investors always gives them at least one seat.
+ * bigger); the owner's seats follow their votes (their stake, unless the company has share
+ * classes: business/share-classes.ts); a listing requires at least two independents; a private
+ * company with outside investors always gives them at least one seat. This is the one place a stake
+ * becomes seats, so every board decision, firing rule and control warning follows the votes.
  */
 export function seatPlan(g: GameState, b: BizState): SeatPlan {
   if (!boardExists(g, b)) return { size: 0, owner: 0, investor: 0, independent: 0, group: 0 }
   const outside = clampN(1 - b.share, 0, 1)
+  const votes = ownerVotes(b)
   const inGroup = groupOf(g, b) !== null
   let size = b.public ? 7 + Math.round(4 * outside) : 3 + Math.round(4 * outside)
   if (inGroup && !b.public) size = Math.max(size, 5)
   if (size % 2 === 0) size += 1
-  let owner = Math.round(b.share * size)
-  if (b.share >= 0.05) owner = Math.max(1, owner)
+  let owner = Math.round(votes * size)
+  if (votes >= 0.05) owner = Math.max(1, owner)
   let independent = 0
   if (b.public) {
     owner = Math.min(owner, size - 2)
@@ -316,6 +320,15 @@ export function seatPlan(g: GameState, b: BizState): SeatPlan {
   if (inGroup) owner = 0
   const investor = Math.max(0, size - owner - group - independent)
   return { size, owner, investor, independent, group }
+}
+
+/**
+ * Whether the owner would control this company's board as it stands now: the seats its votes call
+ * for, with no vote involved. Pure. Everything that asks "would I control it" goes through here.
+ */
+export function controlsFor(g: GameState, b: BizState): boolean {
+  const plan = seatPlan(g, b)
+  return plan.size === 0 || (plan.owner + plan.group) * 2 > plan.size
 }
 
 /** Directors the player can count on: their own seats and the group's. */

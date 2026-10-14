@@ -14,7 +14,7 @@ import { addMoney, formatMoney, formatPrice, log, notice, useYearAction, yearAct
 import { exchangeName, exchangeStatus } from '../invest/engine'
 import { buyImpact, saleImpact } from '../invest/liquidity'
 import type { Asset, GameState } from '../types'
-import { boardOf, seatPlan, syncSeats } from './board-state'
+import { boardOf, controlsFor, syncSeats } from './board-state'
 import { groupIdOf } from './conglomerate-state'
 import { refreshValue, valuationOf } from './economy'
 import { capitalGainsTax, sellShares } from './exit'
@@ -58,8 +58,7 @@ export interface BuyQuote {
  * through here.
  */
 export function controlsWith(g: GameState, b: BizState, share: number): boolean {
-  const plan = seatPlan(g, { ...b, share })
-  return plan.size === 0 || (plan.owner + plan.group) * 2 > plan.size
+  return controlsFor(g, { ...b, share })
 }
 
 function finite(x: number): number {
