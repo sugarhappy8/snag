@@ -1,4 +1,4 @@
-# AnotherLife v2.5.0
+# AnotherLife v2.6.0
 
 ## Save safety
 
