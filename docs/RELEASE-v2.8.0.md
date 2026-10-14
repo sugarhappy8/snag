@@ -230,7 +230,8 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - Every new field is optional and checked when a game loads. A fund record that isn't a plain, usable record reads as no record. The fund keeps its stored value in your net worth and its screen says "The books for this fund are damaged."
 - A fund's units never read as fewer than the units you and your relatives hold, so a damaged record can lower a price and can't raise one. Cash-at-work records on a company are kept only when they pass the same checks, with amounts finite and in range.
 - A game saved before this release has no fund and no company record, and plays as it did.
-- A game saved with funds and opened in an older version shows each fund as a plain investment asset and loses a company's record.
+- A game saved with funds and opened in v2.7.0 doesn't keep them. At the first age-up that build delists each personal or family fund and pays it out at its last price. The log reads "Review Personal Fund was delisted and my shares were paid out." The units your relatives hold in a family fund are lost. A company's fund record is dropped, and the cash stays in the company.
+- Older builds don't know the new records, and the save schema number stays 2, so nothing warns you. Don't open a v2.8.0 save that holds funds in v2.7.0.
 
 ## Not in this release
 

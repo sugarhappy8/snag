@@ -178,8 +178,11 @@ unchanged.
 ## 7. Saves and old saves
 Everything is optional. A save without `details.hf` or `BizState.hedge` plays as before. A damaged record reads as no
 record (a damaged fund keeps its stored value in net worth and shows "The books for this fund are damaged."). A save
-written by this build and opened by an older one shows the fund as a plain investment asset and loses the company
-record on load. Time Machine snapshots and heirs carry both as part of the asset.
+written by this build and opened in v2.7.0 loses its funds. At the first age-up that build delists each personal or
+family fund and pays it out at its last price (the log reads "Review Personal Fund was delisted and my shares were paid
+out."), the relatives' units in a family fund are lost, and the company record is dropped on load. The save schema
+number is unchanged, so no warning appears. Older builds don't know the new records. Time Machine snapshots and heirs
+carry both as part of the asset.
 
 ## 8. Interactions
 - **Stocks listing (shipped).** None. A fund holds the index, never a company's shares, so `own-trade.ts` is untouched
