@@ -94,6 +94,27 @@ export function clampFounders(b: BizState): void {
 }
 
 /**
+ * The founders' class as a whole, as a part of the company: the owner's founder shares (never more than the
+ * stake) and every relative's shares. null without a live record. This is what an estate that splits the
+ * stake must not grow (foundersWhole / keepFoundersWhole).
+ */
+export function foundersWhole(b: BizState): number | null {
+  const plan = activeClasses(b)
+  return plan ? Math.min(plan.hi, clampN(b.share, 0, 1)) + familyPart(b) : null
+}
+
+/**
+ * The stake has been split between holders (an estate): the founders' class stays the `whole` it was. The
+ * relatives' shares hold it by rule, so whatever they hold now is theirs and the owner's founder shares are
+ * the rest (never below 0 or above the stake). A no-op without a valid record.
+ */
+export function keepFoundersWhole(b: BizState, whole: number): void {
+  const plan = readClasses(b.classes)
+  if (!plan || !Number.isFinite(whole)) return
+  b.classes = { kind: plan.kind, hi: clampN(whole - familyPart(b), 0, clampN(b.share, 0, 1)) }
+}
+
+/**
  * The company as a purchase finds it: the founders' class is no more than the stake held now. A stake can
  * shrink without a sale (a hired CEO's equity grant, an inheritance) and leave `hi` above it; shares bought
  * afterwards are ordinary ones and must not bring those votes back. Returns `b` itself when nothing is above

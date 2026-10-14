@@ -697,7 +697,10 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     can also shrink with no sale (a hired CEO's equity grant, an inheritance) and leave `hi` above it, so the
     two writers that add ordinary shares (`own-trade.buyOwnShares`, `rescue.transactEquity`) cap `hi` at the
     stake held first (`clampFounders`), and the buy quote and preview read `foundersCapped`: shares bought
-    never bring a lost stake's founder votes back.
+    never bring a lost stake's founder votes back. An estate that splits a listed company's stake
+    (`dynasty-ownership.inheritConglomerates`) keeps the founders' class as a whole (`foundersWhole`,
+    `keepFoundersWhole`): the relatives' shares hold it by rule, so the heir who takes the company keeps
+    what is left of it, and a sole heir keeps the record as it was.
   - **Only while listed (D4).** `activeClasses` returns the record only for a public company that stands
     alone and has shares. A private company's record is the plan its IPO will use, and `conglomerate-state.detach`
     clears it when a company comes out of a group and lists. Groups and divisions have none.
