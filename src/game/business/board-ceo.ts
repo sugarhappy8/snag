@@ -34,6 +34,7 @@ import { heavyOf } from './heavy-rd'
 import { bestRdIdea, pullValue, rdOf, retireLines, retireOrder } from './rd'
 import { fieldFor, lineInfo, productPull } from './product-market'
 import { bestRole, hireValue, interviewFee, maxKeyStaff } from './staff'
+import { classFactor } from './share-classes'
 import { totalOutlets, type BizState, type KeyStaff, type Manager, type Supplier } from './state'
 import { clampN, money, plural, priceCapOf, round2, unitMoney, units } from './util'
 import { bestResilienceMove } from './supply-resilience'
@@ -649,7 +650,7 @@ function payoutTurn(t: Turn): void {
   const mine = Math.round(payout * b.share)
   if (g.character.alive && mine > 0) earnIncome(g, mine)
   if (b.public && b.sharesOut > 0) {
-    b.sharePrice = round2(Math.max(0.05, b.sharePrice - payout / b.sharesOut))
+    b.sharePrice = round2(Math.max(0.05, b.sharePrice - (payout / b.sharesOut) * classFactor(b)))
     b.valuation = Math.round(b.sharePrice * b.sharesOut)
   }
   t.moved += payout

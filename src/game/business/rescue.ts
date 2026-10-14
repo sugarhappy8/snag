@@ -58,7 +58,8 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
     diluteBusinessEquity(b, retain)
     if (b.public) b.sharesOut /= retain
     else if (b.shareCount) b.shareCount = Math.round(clampN(b.shareCount / retain, MIN_SHARES, MAX_SHARES))
-    b.valuation = q.value + amount
+    // The cash adds to the price at the structure's factor, like the rest of the value (share-classes.ts classFactor).
+    b.valuation = q.value + amount * classFactor(b)
   } else if (kind === 'secondary') {
     addMoney(g, -amount); b.invested += amount
     b.pref = (b.pref ?? 0) * (1 - q.units / Math.max(.0001, 1 - b.share))
@@ -72,7 +73,7 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
     if (b.public) b.sharesOut *= 1 - q.units
     else if (b.shareCount) b.shareCount = Math.round(clampN(b.shareCount * (1 - q.units), MIN_SHARES, MAX_SHARES))
     b.pref = (b.pref ?? 0) * (1 - q.units / Math.max(.0001, 1 - b.share))
-    b.valuation = Math.max(0, q.value - amount)
+    b.valuation = Math.max(0, q.value - amount * classFactor(b))
   }
   b.share = q.share
   if (b.public && b.sharesOut > 0) b.sharePrice = b.valuation / b.sharesOut

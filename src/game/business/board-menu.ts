@@ -31,6 +31,7 @@ import { bestMandate, limitsMerit, mandateMerit, outlook } from './board-ceo'
 import { ceoPayNorm, managerName, STYLE_INFO, styleOf } from './career'
 import { refreshValue, valuationOf } from './economy'
 import { manageBlock } from './gate'
+import { classFactor } from './share-classes'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 import { clampN, money, pct, round2 } from './util'
 
@@ -104,8 +105,9 @@ export function capexCaption(g: GameState, a: Asset, b: BizState, amount: number
 /**
  * The money move of a dividend of `n`, already checked against payoutCash and the board (the
  * manual dividend and the yearly rule both end here): cash leaves the company, the player's share
- * is taxed as income, relatives are paid, a listed company's price falls by the payout per share and
- * the value is marked again. Says nothing to the player. Returns the player's part.
+ * is taxed as income, relatives are paid, a listed company's price falls by the payout per share at its
+ * structure's factor (the price already carries it, share-classes.ts) and the value is marked again.
+ * Says nothing to the player. Returns the player's part.
  */
 export function payOut(g: GameState, a: Asset, b: BizState, n: number): number {
   b.cash -= n
@@ -113,7 +115,7 @@ export function payOut(g: GameState, a: Asset, b: BizState, n: number): number {
   earnIncome(g, mine)
   payFamilyBusinessProceeds(g, b, n, true)
   if (b.public && b.sharesOut > 0) {
-    b.sharePrice = round2(Math.max(0.05, b.sharePrice - n / b.sharesOut))
+    b.sharePrice = round2(Math.max(0.05, b.sharePrice - (n / b.sharesOut) * classFactor(b)))
     b.valuation = Math.round(b.sharePrice * b.sharesOut)
   } else b.valuation = valuationOf(b)
   refreshValue(a, b)
