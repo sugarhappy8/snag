@@ -1,0 +1,25 @@
+// Mid-sentence colon joins: a ": " with at least 3 words before it (since the last sentence end or line
+// break) and at least 3 words after it (up to the next sentence end), that is not followed by a number or
+// a currency sign. A leading era gate is not part of the words before it. The audit's gate pattern has no
+// colon, so a "@1998,own:mobilePhone " gate stays in the string and counts as one word (last count below).
+export const COUNT = [
+  'The pantry was empty: nothing but old flour and some salt.', // 1
+  'You packed three bags: socks, shoes and a hat. Then you left: the dog barked twice.', // 2
+  '@1998,own:mobilePhone Pay up: the rent is due today.', // 1 (the audit's gate pattern leaves 3 words before the colon)
+]
+
+// None of these count.
+export const NO_COUNT = [
+  '@1950 Pay up: the rent is due today.', // the gate is not a word, so 2 words before the colon
+  'The price is steep: $4,200 for the lot, sadly.', // followed by a price
+  'Pay the fine: £40 and be quick about it.', // followed by a price
+  'The meeting starts at: 10:30 in the morning today', // followed by a time
+  'Here is the thing: no way.', // 2 words after
+  'Note: this is fine and nothing else matters.', // 1 word before
+  'The ratio was 3:1 for the whole team today', // no space after the colon
+  'Cost: $40 per month, billed yearly', // a label
+  'A long preamble line here\nPay up: the rent is due today.', // a line break ends the words before
+  'Really? Pay up: the rent is due today.', // a question mark ends them
+  'Stop! Pay up: the rent is due today.', // an exclamation mark ends them
+  'a b c: d e f', // would be a join, but 12 characters is below the 14-character floor, so it is not a text string
+]

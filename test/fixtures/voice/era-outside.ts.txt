@@ -1,0 +1,2 @@
+// Not an era pack where this file is copied to: the base file era-pack-1900.ts, and a kids file outside events/.
+export const OUTSIDE = 'red ball rolled past the old gate and down hill red ball rolled past the old gate and down hill red ball rolled past the old gate and down hill red ball rolled past the o' // 170

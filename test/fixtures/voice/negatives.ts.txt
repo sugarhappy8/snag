@@ -1,0 +1,20 @@
+// Contraction-free negatives: did not, was not, is not, cannot, were not, do not, does not, had not,
+// would not, could not, have not, has not. Whole words, any case, any run of white space between the two
+// words. The number after each string is how many it holds (16 in all).
+export const COUNT = [
+  'You did not see it coming at all.', // 1
+  'It was not a good day. It was not a bad day.', // 2
+  'She cannot swim and he could not help her.', // 2
+  'Does not matter to them. We do not care, they do not know.', // 3
+  'DID NOT RETURN THE BOOK ON TIME', // 1: any case
+  'He did   not know and she was\nnot told.', // 2: several spaces, a line break
+  'We have not, he has not and she had not, as you were not and they would not.', // 5
+]
+
+// None of these count.
+export const NO_COUNT = [
+  "You didn't see it, and she wasn't told.", // contractions
+  'This is nothing and that was notable.', // not whole words
+  'Do notice the notation on the shelf.', // not whole words
+  'I did not go.', // 13 characters: below the 14-character floor, so not a text string
+]

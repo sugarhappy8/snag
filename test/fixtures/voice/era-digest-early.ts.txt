@@ -1,0 +1,2 @@
+// One line of 145 characters.
+export const EARLY = 'red ball rolled past the old gate and down hill red ball rolled past the old gate and down hill red ball rolled past the old gate and down hill r' // 145

@@ -1,0 +1,8 @@
+// JSX: a class name is markup and is skipped, JSX text is not a string literal, but a text attribute
+// (title, placeholder, ...) is a string. One disclaimer word counts here (the placeholder).
+export const Panel = () => (
+  <div className="simulated abstract" title="Plain title text here">
+    <p>This is fictional and simulated text.</p>
+    <input placeholder="A fictional placeholder" />
+  </div>
+)

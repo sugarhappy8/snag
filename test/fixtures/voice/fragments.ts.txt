@@ -1,0 +1,28 @@
+// Fragment punchlines: a sentence end, then 1 to 3 words (the first Capitalised, the rest lower case) and
+// a period, at the very end of the string. "F" marks a string that counts (11 in all). "q" marks the
+// ones whose first word is Especially, Including, Twice, Mostly or Probably (7 in all).
+export const COUNT = [
+  'You held your own at the match. Mostly.', // F q
+  'The captain was seasick for five days. Especially the captain.', // F q
+  'It rained all week at the cabin. Including the roof.', // F q
+  'Dinner was late again tonight. Twice.', // F q
+  'She said she loved the surprise. Probably.', // F q
+  'You paid the fine without arguing. Classic.', // F
+  'The wine was fine for the price. Worth it.', // F
+  'He said "It works. Twice."', // F q: a closing quote after the period is fine
+  'The soup was cold again. Don’t ask.', // F: a curly apostrophe is straightened first
+  'It rained all night. Again. Twice.', // F q: only the last fragment counts, once per string
+  'You tried the soup (once. Barely.)', // F: a closing bracket after the period is fine
+]
+
+// None of these count.
+export const NO_COUNT = [
+  'The room was dark and quiet. Not even close today.', // four words
+  'You won the raffle. Nice!', // ends with ! and not a period
+  'Mostly harmless and fully legal.', // no sentence before it
+  'You went home early. You were tired and cold.', // a whole sentence, not a fragment
+  'He left early. Mostly', // no closing period
+  'Fine. Twice.', // 12 characters: below the 14-character floor, so not a text string
+  'It was a long day. mostly good.', // the fragment does not start with a capital
+  `You tried it. ${word}.`, // the fragment is a hole
+]

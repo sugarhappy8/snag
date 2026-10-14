@@ -1,0 +1,2 @@
+// A second file with one ban-list phrase, so "files with a hit" (2) differs from "hits" (15).
+export const HIT = 'Feel free to stay as long as you like.'

@@ -25,3 +25,38 @@ on its own, so the parts do not add up exactly to the whole save.
 | log | 318,316 | 46,695 | 14.67% |
 | assets | 72,016 | 14,838 | 20.60% |
 | everything else | 210,318 | 24,168 | 11.49% |
+
+## Part A: voice
+
+Part A takes the AI voice out of the game's text. The guide every writer works from is `docs/VOICE.md`.
+
+### The counter
+
+`node scripts/voice-report.mjs` (`npm run voice`) counts the ten targets of the improvement prompt (A7) over every
+string literal in `src/` and prints them next to the v2.4.0 audit. `--json`, `--per-file`, `--summary` (markdown),
+`--ci`, `--strict` (exit 1 when a target is missed) and `--root DIR` are the other modes. The definitions are in the
+header of `scripts/voice/metrics.mjs` and in the report itself. CI runs `--ci` as a warning only: the table goes to the
+job summary, with one `::warning` line when a target is missed. A test, `test/voice-guards.test.ts`, keeps em-dashes in
+strings at 24 or fewer.
+
+### Baseline
+
+Measured on `1eb5bff` (the tree this section was added to; nothing under `src/` has been touched). The audit's numbers
+are reproduced within 10% by definitions fitted to them, so "Measured" is the number every later change is compared
+with.
+
+| Count | v2.4.0 audit | Measured | Target |
+| --- | ---: | ---: | --- |
+| Strings over 180 characters | 464 | 436 | < 60 |
+| Era-pack string length, median / p90 | 75 / 124 | 75 / 131 | <= 50 / <= 100 |
+| Fragment punchlines (`. Word.` after a sentence) | 988 | 984 | < 300 |
+| `. Especially/Including/Twice... X.` shape | 77 | 74 | < 15 |
+| `did not` / `is not` / `cannot` (no contraction) | 544 | 590 | < 100 |
+| Mid-sentence colon joins | 722 | 719 | < 250 |
+| `Nobody` + `Everyone` | 901 | 866 | < 400 |
+| `fictional` / `simulated` / `abstract` / `not guaranteed` | 37 | 36 | <= 3 |
+| Chatbot phrasings (files with one; 22 strings) | 17 | 17 | 0 |
+| Em-dashes in strings | 24 | 24 | <= 24 |
+
+Nine of the ten targets are missed at the baseline. The 59,093 text strings counted are the literals of 14 or more
+characters, holes counting zero.

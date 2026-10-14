@@ -1,0 +1,17 @@
+// "Nobody" and "Everyone" anywhere in a text string: whole word, any case. 6 Nobody and 4 Everyone.
+export const COUNT = [
+  'Nobody saw you take the last cookie.', // nobody 1
+  'You waited. Nobody came, and nobody called.', // nobody 2
+  'Everyone laughed when the cake fell.', // everyone 1
+  'Everyone knew, and everyone said nothing.', // everyone 2
+  'EVERYONE and NOBODY clapped at the show', // everyone 1, nobody 1: any case
+  "Nobody's perfect, but you came close.", // nobody 1: possessive
+  `${name} said nobody was home at all.`, // nobody 1
+]
+
+// None of these count.
+export const NO_COUNT = [
+  'Nobody came.', // 12 characters: below the 14-character floor, so not a text string
+  'Everyones phones were all switched off.', // not the whole word
+  'Somebody and anyone were both there.',
+]
