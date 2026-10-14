@@ -48,6 +48,7 @@ import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } fro
 import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
 import { bankPayoutBlock } from './bank'
 import { rescueNodes, rescuePosition } from './rescue'
+import { SHARE_SALES_PER_YEAR, shareSaleKey } from './own-trade'
 import { techView } from './deeptech-core'
 import { maxPrograms } from './deeptech-rd'
 import { bizHas, eraNote } from './era'
@@ -1955,7 +1956,7 @@ function exitNodes(a: Asset, g: GameState): MenuNode[] {
         run: (gg, cur, bb, input) => {
           const fraction = clampN(Number(input) || 0, 0, 100) / 100
           if (fraction <= 0) return
-          if (!useYearAction(gg, `biz.shares.${cur.id}`, 2)) return tooBusy(gg, 'sold shares twice')
+          if (!useYearAction(gg, shareSaleKey(cur.id), SHARE_SALES_PER_YEAR)) return tooBusy(gg, 'sold shares twice')
           sellShares(gg, cur, bb, fraction)
         },
       }),

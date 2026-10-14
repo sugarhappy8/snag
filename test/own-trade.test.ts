@@ -2,17 +2,19 @@
 import { describe, expect, it } from 'vitest'
 import { ownerControls } from '../src/game/business/board'
 import { valuationOf } from '../src/game/business/economy'
+import { businessAssetView } from '../src/game/business'
+import { sellShares } from '../src/game/business/exit'
 import { outsideFloat } from '../src/game/business/own-listing'
-import { MAX_BUY_SHARE, MIN_OUTSIDE, buyLimit, buyOwnShares, buyPreview, buyQuote, controlsWith, type BuyQuote } from '../src/game/business/own-trade'
+import { MAX_BUY_SHARE, MIN_OUTSIDE, SHARE_SALES_PER_YEAR, buyLimit, buyOwnShares, buyPreview, buyQuote, controlsWith, sellLimit, sellNote, sellOwnShares, shareSaleKey, type BuyQuote } from '../src/game/business/own-trade'
 import { tickerOf } from '../src/game/business/listing-id'
 import { equityYearKey, transactEquity } from '../src/game/business/rescue'
 import { bizOf, executiveEquity, isTicker, readBiz, stakeValue } from '../src/game/business/state'
 import { netWorth, useYearAction, yearActionsUsed } from '../src/game/core'
 import { investmentHoldings, liquidatePortfolio } from '../src/game/investments'
 import { createPerson } from '../src/game/people'
-import type { GameState } from '../src/game/types'
+import type { GameState, MenuAction } from '../src/game/types'
 import { deepFreeze } from './fuzz-kit'
-import { founder, listed, listedGroup, privateCompany } from './own-listing-kit'
+import { findNode, founder, listed, listedGroup, privateCompany } from './own-listing-kit'
 
 /** The notices queued under one title, oldest first. */
 function noticesTitled(g: GameState, title: string): string[] {
@@ -484,5 +486,205 @@ describe('buying your own shares', () => {
     })
     expect(quotes[1]).toEqual(quotes[0])
     expect(quotes[2]).toEqual(quotes[0])
+  })
+})
+
+describe('selling from the Stocks row', () => {
+  it('is Exit > Sell Shares: same proceeds, tax and price', () => {
+    const g = founder()
+    const { a } = listed(g, { marketCap: 10e9, share: 0.6 })
+    const clone = structuredClone(g)
+    const a2 = clone.assets.find((x) => x.id === a.id)!
+    const b2 = bizOf(clone, a2)
+    sellShares(clone, a2, b2, 0.1)
+
+    expect(sellOwnShares(g, a.id, 0.1)).toBe(true)
+    const b = bizOf(g, a)
+    expect(g.character.money).toBe(clone.character.money)
+    expect(b.share).toBe(b2.share)
+    expect(b.sharePrice).toBe(b2.sharePrice)
+    expect(b.invested).toBe(b2.invested)
+    expect(b.share).toBeLessThan(0.6)
+    expect(noticesTitled(g, 'Shares Sold')).toHaveLength(1)
+  })
+
+  it('uses the same two sales a year as Exit > Sell Shares', () => {
+    expect(SHARE_SALES_PER_YEAR).toBe(2)
+    const g = founder()
+    const { a } = listed(g, { marketCap: 10e9, share: 0.6 })
+    expect(shareSaleKey(a.id)).toBe(`biz.shares.${a.id}`)
+    expect(sellOwnShares(g, a.id, 0.05)).toBe(true)
+    expect(sellOwnShares(g, a.id, 0.05)).toBe(true)
+    const share = bizOf(g, a).share
+    expect(sellOwnShares(g, a.id, 0.05)).toBe(false)
+    expect(noticesTitled(g, 'Sell Shares')).toEqual(["You've sold shares twice this year."])
+    expect(yearActionsUsed(g, shareSaleKey(a.id))).toBe(2)
+    expect(bizOf(g, a).share).toBe(share)
+
+    // The Exit menu spends the same two sales, from the same count.
+    g.yearActions = {}
+    const exit = findNode(g, businessAssetView(g, a), `biz.sellShares.${a.id}`) as MenuAction
+    expect(exit).toBeTruthy()
+    exit.run(g, '5')
+    expect(yearActionsUsed(g, shareSaleKey(a.id))).toBe(1)
+    expect(sellOwnShares(g, a.id, 0.05)).toBe(true)
+    expect(sellOwnShares(g, a.id, 0.05)).toBe(false)
+    // And the other way round: both Stocks sales used, Exit refuses.
+    const h = founder()
+    const other = listed(h, { marketCap: 10e9, share: 0.6 })
+    expect(sellOwnShares(h, other.a.id, 0.05)).toBe(true)
+    expect(sellOwnShares(h, other.a.id, 0.05)).toBe(true)
+    const cash = h.character.money
+    ;(findNode(h, businessAssetView(h, other.a), `biz.sellShares.${other.a.id}`) as MenuAction).run(h, '5')
+    expect(h.character.money).toBe(cash)
+    expect(yearActionsUsed(h, shareSaleKey(other.a.id))).toBe(2)
+  })
+
+  it('selling out removes the company once and pays relatives once', () => {
+    const g = founder()
+    const sib = createPerson(g, { relation: 'sibling', age: 45, firstName: 'Mina', money: 10_000, occupation: 'Clerk', relationship: 80 })
+    const { a } = listed(g, { marketCap: 10e9, share: 0.5, family: [{ id: sib.id, share: 0.3 }] })
+    const before = sib.money
+    const cash = g.character.money
+    expect(sellOwnShares(g, a.id, 1)).toBe(true)
+    expect(g.assets.some((x) => x.id === a.id)).toBe(false)
+    expect(g.character.money).toBeGreaterThan(cash)
+    const paid = sib.money - before
+    expect(paid).toBeGreaterThan(0.3 * 10e9 * 0.6)
+    expect(paid).toBeLessThanOrEqual(0.3 * 10e9)
+    const sold = noticesTitled(g, 'Sold Out')
+    expect(sold).toHaveLength(1)
+    expect(sold[0]).toContain('Mina')
+
+    // A second sale finds no company: nothing is paid and nothing is posted.
+    const after = g.character.money
+    expect(sellOwnShares(g, a.id, 0.5)).toBe(false)
+    expect(sib.money - before).toBe(paid)
+    expect(g.character.money).toBe(after)
+    expect(noticesTitled(g, 'Sold Out')).toHaveLength(1)
+    expect(noticesTitled(g, 'Sell Shares')).toEqual([])
+  })
+
+  it('the preview says what the sale does', () => {
+    const g = founder()
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.52 })
+    const state = JSON.stringify(g)
+    const rng = g.rng
+    const last = `That's the last of your shares. ${a.name} leaves your companies.`
+
+    expect(sellNote(g, a, b, 0.1)).toContain("You'd lose control of the board.")
+    expect(sellNote(g, a, b, 0.01)).not.toContain("You'd lose control of the board.")
+    expect(sellNote(g, a, b, 1)).toContain(last)
+    expect(sellNote(g, a, b, 1)).not.toContain('lose control')
+    expect(sellNote(g, a, b, 0.1)).not.toContain(last)
+    expect(JSON.stringify(g)).toBe(state)
+    expect(g.rng).toBe(rng)
+
+    // A stored 0.6% is not rounded up to 1%: selling a fifth of it leaves under half a percent.
+    b.share = 0.006
+    const small = JSON.stringify(g)
+    expect(sellNote(g, a, b, 0.2)).toContain(last)
+    expect(sellNote(g, a, b, 0.1)).not.toContain(last)
+    expect(JSON.stringify(g)).toBe(small)
+    // Selling nothing from a stake that small still takes nothing away.
+    b.share = 0.004
+    expect(sellNote(g, a, b, 0)).not.toContain(last)
+    expect(sellNote(g, a, b, 0.01)).toContain(last)
+
+    // The proceeds in the note are the proceeds of the sale.
+    const c = founder()
+    const x = listed(c, { marketCap: 10e9, share: 0.6 })
+    const note = sellNote(c, x.a, x.b, 0.1)
+    expect(note).toMatch(/^About \S+ before \S+ tax\./)
+    for (const f of [0, -1, NaN, 0.1, 0.5, 1, 7, Infinity]) {
+      const text = sellNote(c, x.a, x.b, f)
+      expect(text.startsWith('About '), String(f)).toBe(true)
+      expect(text, String(f)).not.toMatch(/NaN|undefined|Infinity/)
+    }
+    // And for a record with no shares or no price.
+    for (const hostile of [{ ...x.b, sharesOut: 0 }, { ...x.b, sharePrice: 0 }, { ...x.b, sharePrice: NaN }, { ...x.b, invested: NaN }]) {
+      const text = sellNote(c, x.a, hostile, 0.3)
+      expect(text.startsWith('About '), JSON.stringify([hostile.sharesOut, hostile.sharePrice, hostile.invested])).toBe(true)
+      expect(text).not.toMatch(/NaN|undefined|Infinity/)
+    }
+  })
+
+  it('refuses without selling', () => {
+    // A fraction that is not a sale.
+    for (const f of [0, -1, NaN, Infinity, -Infinity]) {
+      const g = founder()
+      const { a } = listed(g, { marketCap: 10e9 })
+      const cash = g.character.money
+      expect(sellOwnShares(g, a.id, f), String(f)).toBe(false)
+      expect(yearActionsUsed(g, shareSaleKey(a.id))).toBe(0)
+      expect(g.character.money).toBe(cash)
+    }
+    // No such company: no notice, no key.
+    {
+      const g = founder()
+      listed(g, { marketCap: 10e9 })
+      expect(sellOwnShares(g, 'nope', 0.5)).toBe(false)
+      expect(g.queue.filter((m) => m.kind === 'notice')).toHaveLength(0)
+      expect(g.yearActions).toEqual({})
+    }
+    // Private, in prison, a minor, dead, stake gone.
+    {
+      const g = founder()
+      const { a, b } = privateCompany(g)
+      expect(sellLimit(g, a, b)).toBe("It isn't listed.")
+      expect(sellOwnShares(g, a.id, 0.5)).toBe(false)
+      expect(noticesTitled(g, 'Sell Shares')).toEqual(["It isn't listed."])
+      expect(yearActionsUsed(g, shareSaleKey(a.id))).toBe(0)
+    }
+    {
+      const g = founder()
+      const { a } = listed(g)
+      g.character.prison = { name: 'State Pen', security: 'medium', crime: 'Theft', sentenceYears: 2, yearsServed: 0, respect: 20, appealed: false, escapeAttempts: 0 }
+      const share = bizOf(g, a).share
+      expect(sellOwnShares(g, a.id, 0.5)).toBe(false)
+      expect(noticesTitled(g, 'Sell Shares')[0]).toMatch(/prison/)
+      expect(bizOf(g, a).share).toBe(share)
+      expect(yearActionsUsed(g, shareSaleKey(a.id))).toBe(0)
+    }
+    {
+      const g = founder()
+      const { a, b } = listed(g)
+      g.character.age = 17
+      expect(sellLimit(g, a, b)).toMatch(/18/)
+      g.character.age = 45
+      g.character.alive = false
+      expect(sellLimit(g, a, b)).toBeTruthy()
+    }
+    {
+      const g = founder()
+      const { a, b } = listed(g, { share: 0 })
+      expect(sellLimit(g, a, b)).toMatch(/no ownership stake/)
+    }
+    // Any exchange: a sale has no exchange check, as in Exit.
+    {
+      const g = founder(41, 'us', 50_000_000_000, 1946)
+      const { a, b } = listed(g, { countryId: 'jp' })
+      expect(sellLimit(g, a, b)).toBeNull()
+    }
+  })
+
+  it('sells a stake under 1% as it is stored, and reads a frozen game', () => {
+    // A company you hold 0.6% of, as a sale leaves it: a fifth of that leaves under half a percent.
+    const g = founder()
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.006 })
+    expect(sellLimit(g, a, b)).toBeNull()
+    const cash = g.character.money
+    expect(sellOwnShares(g, a.id, 0.2)).toBe(true)
+    expect(g.assets.some((x) => x.id === a.id)).toBe(false)
+    expect(g.character.money).toBeGreaterThan(cash)
+
+    // The notes read a frozen game without writing to it.
+    const h = founder()
+    const x = listed(h, { marketCap: 10e9 })
+    deepFreeze(h)
+    expect(() => {
+      sellLimit(h, x.a, x.b)
+      sellNote(h, x.a, x.b, 0.3)
+    }).not.toThrow()
   })
 })

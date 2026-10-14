@@ -1,23 +1,29 @@
-// Buying more of your own listed company from Investments > Stocks. A buy is a market purchase from the
-// outside float: no board vote, no board control needed, one a year per company (the same year key as
-// Capital & Ownership's three moves). It is paid at the fundamental price plus 3% and an order-size
-// premium, and it never writes the impact into the share price, so a buy can't pump your own stake.
+// Buying and selling your own listed company from Investments > Stocks.
+//
+// A buy is a market purchase from the outside float: no board vote, no board control needed, one a
+// year per company (the same year key as Capital & Ownership's three moves). It is paid at the
+// fundamental price plus 3% and an order-size premium, and it never writes the impact into the share
+// price, so a buy can't pump your own stake.
+//
+// A sale is Exit > Sell Shares: the same sellShares, the same two sales a year, the same tax and the
+// same hand-off when you sell out. This file only adds the door, its limits and its preview.
 //
 // Quotes, limits and previews are pure: they never write to the game and never touch g.rng. Only
-// buyOwnShares changes anything, and it doesn't touch g.rng either.
+// buyOwnShares and sellOwnShares change anything, and the buy doesn't touch g.rng either.
 import { addMoney, formatMoney, formatPrice, log, notice, useYearAction, yearActionsUsed } from '../core'
 import { exchangeName, exchangeStatus } from '../invest/engine'
-import { buyImpact } from '../invest/liquidity'
+import { buyImpact, saleImpact } from '../invest/liquidity'
 import type { Asset, GameState } from '../types'
 import { boardOf, seatPlan, syncSeats } from './board-state'
 import { groupIdOf } from './conglomerate-state'
 import { refreshValue, valuationOf } from './economy'
+import { capitalGainsTax, sellShares } from './exit'
 import { manageBlock } from './gate'
 import { companyExchange, tickerOf } from './listing-id'
 import { outsideFloat } from './own-listing'
 import { equityYearKey } from './rescue'
 import { retailDepth, shareCountText } from './share-structure'
-import { isTicker, type BizState } from './state'
+import { bizOf, findBusiness, isTicker, type BizState } from './state'
 import { clampN, money, pct } from './util'
 
 /** What a buy pays over the fundamental price. */
@@ -152,5 +158,64 @@ export function buyOwnShares(g: GameState, a: Asset, b: BizState, dollars: numbe
   refreshValue(a, b)
   log(g, `I bought more of ${a.name} on the ${companyExchange(b).ex.code}. I own ${pct(q.newShare, 1)}.`)
   notice(g, 'Shares Bought', `You paid ${formatMoney(dollars)} for ${shareCountText(q.shares)} shares of ${a.name}, about ${formatPrice(q.avgPrice)} each. You own ${pct(q.newShare, 1)}.`)
+  return true
+}
+
+/** Sales of shares a year per company, Exit > Sell Shares and the Stocks row together. */
+export const SHARE_SALES_PER_YEAR = 2
+
+/** The year-action key Exit > Sell Shares counts its sales under. */
+export function shareSaleKey(assetId: string): string {
+  return `biz.shares.${assetId}`
+}
+
+/**
+ * Why you can't sell shares of this company right now, or null. There is no exchange check: Exit >
+ * Sell Shares has none, and the two doors are the same sale.
+ */
+export function sellLimit(g: GameState, a: Asset, b: BizState): string | null {
+  const blocked = manageBlock(g, a)
+  if (blocked) return blocked
+  if (!b.public) return "It isn't listed."
+  if (yearActionsUsed(g, shareSaleKey(a.id)) >= SHARE_SALES_PER_YEAR) return "You've sold shares twice this year."
+  return null
+}
+
+/**
+ * What selling `fraction` of your shares would do, in a line: the proceeds and tax the sale will use,
+ * then whether it ends your ownership or the control of the board. Pure. `b` is the record the sale
+ * will run on, so a stake stored under 1% is judged as it is stored.
+ */
+export function sellNote(g: GameState, a: Asset, b: BizState, fraction: number): string {
+  const f = clampN(fraction, 0, 1)
+  const order = saleImpact(b.share * f, retailDepth(b.sharePrice))
+  const raw = Math.round(b.sharesOut * b.sharePrice * order.proceeds)
+  const gross = Number.isFinite(raw) ? Math.max(0, raw) : 0
+  const tax = capitalGainsTax(g, gross, b.invested * f)
+  const head = `About ${money(gross)} before ${money(tax)} tax.`
+  const left = b.share * (1 - f)
+  // The removal rule of sellShares. A sale of nothing removes nothing.
+  if (f > 0 && (f >= 0.999 || left < 0.005)) return `${head} That's the last of your shares. ${a.name} leaves your companies.`
+  if (controlsWith(g, b, b.share) && !controlsWith(g, b, left)) return `${head} You'd lose control of the board.`
+  return head
+}
+
+/**
+ * Sell a fraction (0 to 1) of your shares from the Stocks row. It is Exit > Sell Shares: the same
+ * sellShares and the same two sales a year. Every refusal that has a reason posts a notice and uses
+ * nothing up. Returns whether a sale ran.
+ */
+export function sellOwnShares(g: GameState, assetId: string, fraction: number): boolean {
+  const a = findBusiness(g, assetId)
+  if (!a) return false
+  if (!Number.isFinite(fraction) || fraction <= 0) return false
+  const b = bizOf(g, a)
+  const why = sellLimit(g, a, b)
+  if (why) {
+    notice(g, 'Sell Shares', why)
+    return false
+  }
+  if (!useYearAction(g, shareSaleKey(a.id), SHARE_SALES_PER_YEAR)) return false
+  sellShares(g, a, b, clampN(fraction, 0, 1))
   return true
 }
