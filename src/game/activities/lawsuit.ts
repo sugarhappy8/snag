@@ -322,7 +322,8 @@ function defendantMenu(d: Defendant): MenuGroup {
   return {
     type: 'menu',
     id: `lawsuit.${d.key}`,
-    label: d.name,
+    // "the FCA" reads right inside a sentence; as a menu row it starts a line.
+    label: d.name.replace(/^the /, 'The '),
     emoji: KIND_EMOJI[d.kind],
     subtitle: `${d.detail.charAt(0).toUpperCase()}${d.detail.slice(1)}`,
     header: () => `Choose a law firm to sue ${d.name}. Better lawyers cost more but win more often. If you lose, the fee is gone.`,

@@ -91,6 +91,23 @@ export function migrateLegacyAi(g: GameState): GameState {
     delete g.flags.aiRecentEvents
     delete g.flags.obituarySource
   }
+  // The same pass is the one in-place clean-up every load goes through (the main save and the Time Machine).
+  return repairCrimeRecords(g)
+}
+
+/**
+ * A conviction on the criminal record may carry `refund`: money an investigation took before the trial,
+ * kept for an appeal. It stays when it is a finite number >= 0 and is dropped otherwise, so a damaged
+ * value never costs the player the save. In place, idempotent, junk-tolerant; an old record without it is
+ * left exactly as it is.
+ */
+export function repairCrimeRecords(g: GameState): GameState {
+  const records: unknown = isRecord(g.character) ? (g.character as { criminalRecord?: unknown }).criminalRecord : undefined
+  if (!Array.isArray(records)) return g
+  for (const r of records) {
+    if (!isRecord(r) || !('refund' in r)) continue
+    if (!isFiniteNumber(r.refund) || r.refund < 0) delete r.refund
+  }
   return g
 }
 
@@ -278,6 +295,7 @@ function validCrimeRecord(value: unknown): boolean {
     && typeof value.caught === 'boolean'
     && typeof value.convicted === 'boolean'
     && optionalNumber(value.sentenceYears)
+    && (value.refund === undefined || (isFiniteNumber(value.refund) && value.refund >= 0))
 }
 
 function validPrison(value: unknown): boolean {

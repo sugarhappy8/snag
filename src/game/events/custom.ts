@@ -13,6 +13,7 @@ import {
   remember,
 } from '../core'
 import { createPerson } from '../people'
+import { appealBlock, heldInCase, type HeldInCase } from '../prison'
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
 import { applyEffects } from '../effects'
@@ -159,6 +160,166 @@ function relTo(p: Person): string {
 }
 
 // ---------------------------------------------------------------------------
+// Legal phrasings ("sue the regulator", "fight the seizure in court"). They get a pointer to Activities,
+// Lawsuit (from a cell, a conviction gets the Appeal option instead), so no keyword inside the sentence can
+// start a brawl or a theft instead. The patterns are regex pieces composed below: each piece stays short.
+
+/** Verbs that mean a crime or a fight. Next to a legal word, they keep their own rule. */
+const WRONG_TAKE = /steal|shoplift|rob|pickpocket|loot|burgle|mug|bribe|blackmail|extort|threaten/
+const WRONG_HURT = /punch|slap|kick|beat up|attack|assault|headbutt|brawl|stab|shoot|strangle|poison|kill|murder/
+const WRONG_OTHER = /smash|vandali[sz]e|torch|kidnap|smuggle|cheat|forge|fake|perjure/
+const WRONG_VERB = [WRONG_TAKE, WRONG_HURT, WRONG_OTHER].map((r) => r.source).join('|')
+
+/** Suing, in so many words. Fine on its own, even when a crime word is what the suit is about ("sue the thief who stole it"). */
+const SUING =
+  /\bsu(?:e|es|ed|ing|eing)\b|\blaw[ -]?suits?\b|\blitigat(?:e|es|ed|ing|ion)\b|\blegal (?:action|case|claim|battle|fight|proceedings)\b|\bclass[- ]action\b|\bsmall claims?\b|\bfight (?:the|my|this|that|their|his|her) (?:charges?|seizure|conviction|verdict|ruling|sentence|case|ticket|eviction)\b/
+
+/**
+ * Appealing a court's decision, in so many words ("appeal my conviction", "file an appeal"). Not "sex appeal" or
+ * "appeal to voters". Launching, starting or making an appeal is often a fundraiser ("launch an appeal for the flood
+ * victims"), so those verbs count only through the first piece, with a court's decision ("start an appeal against my
+ * conviction").
+ */
+const APPEAL_AGAINST = /\bappeal(?:s|ed|ing)?\s+(?:against\s+)?(?:the|my|this|that|his|her|their|our|a|an)\s+(?:\w+\s+)?(?:conviction|verdict|sentence|ruling|decision|case|charges?|judge?ment)\b/
+const APPEAL_FILED = /\b(?:file|filed|filing|lodge|lodged|win)\s+(?:an?|my|the|another)\s+appeal\b/
+const APPEAL_ALONE = /(?:^|\bto\s+|\bwill\s+|'ll\s+|\bgonna\s+|\bwanna\s+)appeal(?:\s+(?:it|this|that|again))?$/
+const APPEALING = new RegExp([APPEAL_AGAINST, APPEAL_FILED, APPEAL_ALONE].map((r) => r.source).join('|'))
+
+/** "in court", "into the courtroom", "through the courts". */
+const COURT_AT = /\b(?:in|into|to)\s+(?:the\s+)?court(?:house|room)\b|\b(?:in|into)\s+court\b|\b(?:in|into|to|through)\s+the\s+courts\b/
+/** Not "to court her": someone right after "court" makes it romance. */
+const NOT_WOOING = /(?!\s+(?:her|him|them|a|an|the|my|someone|somebody|me|you|us|his|their|our)\b)/
+/** Someone taken to court ("the court" is fine). */
+const TAKE_VERB = /\b(?:take|takes|taking|taken|took|drag|drags|dragging|dragged|haul|hauling|hauled|bring|bringing|brought|send|sending|sent)\b/
+const COURT_TAKEN = new RegExp(TAKE_VERB.source + /(?:\s+\S+){0,4}?\s+to\s+(?:the\s+)?court\b/.source + NOT_WOOING.source)
+/** Someone going there ("go to the court" may be a tennis court, so "the" is not allowed here). */
+const GO_VERB = /\b(?:go|goes|going|went|gone|head|heading|march|marching|run|running|rush|rushing|walk|walking|storm|storming|get|getting|see|show|appear|appearing)\b/
+const COURT_GO = new RegExp(GO_VERB.source + /(?:\s+\S+){0,4}?\s+to\s+court\b/.source + NOT_WOOING.source)
+/** "in court", "take them to court", "go to court". Not "to court her", and not the court of a tennis match (see SPORT). */
+const COURT = new RegExp([COURT_AT, COURT_TAKEN, COURT_GO].map((r) => r.source).join('|'))
+const SPORT = /\b(?:tennis|basketball|volleyball|badminton|squash|pickleball|handball|racquetball|netball|futsal|hoops)\b/
+
+/** Hiring or calling a lawyer ("become a lawyer", "marry a lawyer" and "punch the lawyer" are not this). */
+const LAWYER = /\b(?:hire|hiring|hired|retain|consult|call|calling|get|getting|find|see|need|contact|phone|talk to|talk with|speak to|speak with)\s+(?:\w+\s+){0,2}?(?:lawyers?|attorneys?|solicitors?|barristers?)\b|\blawyer up\b/
+
+/** "file a complaint", "file a claim", "file a case". */
+const FILING = /\bfil(?:e|es|ed|ing)\b(?:\s+\S+){0,3}?\s+(?:claim|complaint|case|suit|lawsuit)s?\b/
+
+const LEGAL_WORDS = new RegExp([SUING, APPEALING, COURT, LAWYER, FILING].map((r) => r.source).join('|'))
+
+/** "go" or "please" in front of the first verb ("go rob the bank", "please sue them") does not change what the verb is. */
+const LEAD = /^(?:(?:go|please)\s+)*/
+
+/** A crime that starts the sentence ("punch the judge in court"): the crime is the action, the court is the setting. */
+const WRONG_LEAD = new RegExp(`${LEAD.source}(?:${WRONG_VERB})\\b`)
+
+/** A crime joined on as a second action ("sue him and rob him", "go to court, then punch the lawyer"). */
+const WRONG_NEXT = new RegExp(/(?:\band|\bthen|[,;&])\s+(?:to\s+)?/.source + `(?:${WRONG_VERB})\\b`)
+
+/** Words that lead into a verb, so a capital "Sue" right after them is the verb ("I want to Sue the FCA", "I'll Sue"). */
+const SUE_VERB_AFTER = /(?:\b(?:want|wanna|going|need|have|has|had|try|trying|plan|planning|decide|decided|like|hope|intend|threaten|threatened|ready|able|time)\s+to|\b(?:I'll|I will|we'll|we will|will|let's|let me|please|go|gonna|should|could|would|must|can|might))\s+$/
+/** Something only a person does right after the name ("Sue and I", "Sue's party"). */
+const SUE_PERSON_NEXT = /^(?:'s|\s+(?:and|is|was|has|had|will|can|did|called|said|says)\b)/
+/** A lowercase "sue" after a verb that takes a person ("kiss sue", "hang out with sue") is the name typed in lowercase. */
+const SUE_AS_NAME = /\b(kiss|hug|date|marry|cuddle|call|visit|text|meet|invite|love|miss|thank|propose to|ask out|(?:hang out|go out|spend time|play|dance|flirt|talk|speak) (?:to|with))\s+sue\b/g
+/** So is one after "with" ("go bowling with sue"), or after "and" at the very end ("go to the movies with tom and sue"). */
+const SUE_WITH = /\bwith\s+sue\b/g
+const SUE_LAST = /\band\s+sue$/
+
+/** The text as the legal rule reads it: lowercase, with a name that is spelled like the verb turned into "someone". */
+function legalScan(raw: string): string {
+  // A capital-S "Sue" is a person ("call Sue", the same rule WORD_NAMES keeps), except where a verb goes: first
+  // (after "go" or "please") or right after "want to", "I'll" and the like. Followed by "'s" or "and" it is a person anyway.
+  const named = raw.replace(/\bSue\b/g, (m, at: number) => {
+    const before = raw.slice(0, at)
+    const verbSlot = new RegExp(`${LEAD.source}$`, 'i').test(before) || SUE_VERB_AFTER.test(before)
+    return verbSlot && !SUE_PERSON_NEXT.test(raw.slice(at + m.length)) ? m : 'someone'
+  })
+  return named.toLowerCase().replace(SUE_AS_NAME, '$1 someone').replace(SUE_WITH, 'with someone').replace(SUE_LAST, 'and someone')
+}
+
+/** "slap a lawsuit on him", "hit them with a lawsuit": a violent verb that is only a way to say "sue". */
+const LAWSUIT_SERVED = new RegExp(LEAD.source + /(?:slap|hit|attack|smash)\b.*\b(?:law[ -]?suits?|litigation|legal action|class[- ]action)\b/.source)
+
+/**
+ * Rules with an action of their own. A court or a lawyer that only sets the scene ("get married in the courthouse",
+ * "hire a divorce lawyer") or a second action joined on ("quit my job and sue my boss") leaves the sentence to them.
+ */
+const OWN_ACTION = new Set(['propose', 'quit', 'breakup', 'gamble', 'drugs', 'drink'])
+
+function ownAction(text: string): boolean {
+  return RULES.some((r) => OWN_ACTION.has(r.id) && r.re.test(text) && !(r.not && r.not.test(text)))
+}
+
+/** Clauses joined by "and", "then" or a comma: "quit my job" and "sue my boss". */
+const CLAUSE_BREAK = /\s*(?:[,;&]|\band then\b|\bthen\b|\band\b|\bplus\b)\s*/
+
+/** A divorce is not a lawsuit ("sue my wife for divorce"), and a wedding at the courthouse is not one either. */
+const FOR_DIVORCE = /\bfor\s+(?:a\s+)?divorce\b/
+const NOT_A_CASE = /\b(?:wedding|marriage|married|honeymoon|divorced?)\b/
+
+/** True when the text is about suing, or taking a fight to court, and not about a crime done near a court. */
+function legalIntent(a: Act): boolean {
+  const scan = legalScan(a.raw)
+  // A suit or an appeal in so many words, or someone taken to court: a court or a lawyer is the point of the sentence.
+  const strong = SUING.test(scan) || APPEALING.test(scan) || FILING.test(scan) || (COURT_TAKEN.test(scan) && !SPORT.test(scan))
+  // Only a court or a lawyer in the sentence: it may just be the place, or the help for something else.
+  const weak = LAWYER.test(scan) || ((COURT_AT.test(scan) || COURT_GO.test(scan)) && !SPORT.test(scan))
+  if (!strong && !weak) return false
+  // A crime that starts the sentence is the action ("punch the judge in court", "steal the lawsuit files").
+  const phrase = a.phrase.toLowerCase()
+  if (WRONG_LEAD.test(phrase) && !(SUING.test(scan) && LAWSUIT_SERVED.test(phrase))) return false
+  if (!strong && NOT_A_CASE.test(scan)) return false
+  if (!ownAction(a.low)) return true
+  // Another rule's action is in the sentence: it keeps it unless the suit is the point and the other word only says what about.
+  if (!strong || FOR_DIVORCE.test(scan)) return false
+  return !scan.split(CLAUSE_BREAK).some((part) => !LEGAL_WORDS.test(part) && ownAction(part))
+}
+
+/** In a cell, a lawyer or a court is about the conviction: that is the Appeal option. A suit is still a suit. */
+const ABOUT_CONVICTION = /\bappeal|\bconvict|\bsentenc|\bverdict\b|\bruling\b|\bcharges?\b/
+
+function aboutConviction(a: Act): boolean {
+  const scan = legalScan(a.raw)
+  if (ABOUT_CONVICTION.test(scan)) return true
+  return LAWYER.test(scan) && !SUING.test(scan) && !FILING.test(scan) && !COURT_TAKEN.test(scan)
+}
+
+/** Talk of getting back money a case took ("get my money back", "the seizure", "a refund"). */
+const MONEY_BACK = new RegExp(
+  [
+    /\b(?:money|cash|savings|funds)\s+back\b/,
+    /\b(?:back|recover|reclaim|recoup|return)\w*\s+(?:my|the|our|all)\s+(?:\w+\s+)?(?:money|cash|savings|funds)\b/,
+    /\b(?:money|cash|savings|funds)\b(?:\s+\S+){0,3}?\s+(?:took|taken)\b/,
+    /\brefunds?\b|\bseiz(?:e|ed|ing|ure|ures)\b|\bconfiscat/,
+  ]
+    .map((r) => r.source)
+    .join('|'),
+)
+
+/** From a cell: money the current sentence's case holds, when the text asks for money back (null otherwise). */
+function heldTalk(g: GameState, a: Act): HeldInCase | null {
+  return MONEY_BACK.test(legalScan(a.raw)) ? heldInCase(g) : null
+}
+
+/** What can still return held money, in the Appeal menu's terms, with the way to the Appeal option when it is open. */
+function heldLine(h: HeldInCase, pointer: boolean): string {
+  const amount = money(h.amount)
+  if (h.route === 'kept') return ` The court keeps the ${amount} taken in your case.`
+  const at = pointer ? ' (Prison menu, Appeal.)' : ''
+  if (h.route === 'free') return ` Going free on appeal returns the ${amount} taken in your case.${at}`
+  return ` Winning an appeal returns the ${amount} taken in your case.${at}`
+}
+
+/** The answer from a cell: where the appeal is, or why it can't be filed now (the Appeal option's own words). */
+function appealHint(g: GameState, held: HeldInCase | null): void {
+  const block = appealBlock(g)
+  if (block) return out(g, 'Appeal', `${block}${held ? heldLine(held, false) : ''}`, 'I thought about another appeal.', {}, 'neutral', '⚖️')
+  if (held) return out(g, 'Appeal', `You read up on appeals.${heldLine(held, true)}`, 'I read up on appeals.', {}, 'neutral', '⚖️')
+  out(g, 'Appeal', 'You read up on appeals. (Appeals are filed from the Prison menu, under Appeal.)', 'I read up on appeals.', {}, 'neutral', '⚖️')
+}
+
+// ---------------------------------------------------------------------------
 // Rules (first match wins)
 
 const RULES: Rule[] = [
@@ -205,6 +366,26 @@ const RULES: Rule[] = [
     run: (g) => {
       if (!inPrison(g)) return out(g, 'Escape artist', 'You escaped from a very boring afternoon by taking a walk. Freedom tastes like fresh air.', 'I escaped my routine for an afternoon.', { happiness: 4 }, 'good', '🏃')
       out(g, 'Not yet', 'You studied the walls, the fences and the guard rotations, and decided a real escape needs a real plan. (Try the escape option in the Prison menu.)', 'I daydreamed about escaping from prison.', { happiness: -1 }, 'neutral', '🧱')
+    },
+  },
+  {
+    id: 'legal',
+    re: LEGAL_WORDS,
+    not: WRONG_NEXT,
+    test: (_g, a) => legalIntent(a),
+    prison: true,
+    // A hint, like the other menu pointers: nothing changes. The Lawsuit activity is 18+ and closed in prison
+    // (activities/lawsuit.ts gate), so a minor and a prisoner are told that instead of being pointed at it. In a
+    // cell, talk of the conviction or a lawyer points at the Appeal option, which is open to any age.
+    run: (g, a) => {
+      const age = g.character.age
+      // Asking for money back while the sentence's case holds some: say what an appeal can do about it.
+      const held = inPrison(g) ? heldTalk(g, a) : null
+      if (inPrison(g) && aboutConviction(a)) return appealHint(g, held)
+      if (age < 18) return out(g, 'Too young', `You're only ${age}. You must be at least 18 to sue someone.`, null, {}, 'neutral', '🧸')
+      if (held) return out(g, 'Locked up', `You can't sue from prison.${heldLine(held, true)}`, 'I thought about legal action in prison.', {}, 'neutral', '🔒')
+      if (inPrison(g)) return out(g, 'Locked up', "You can't sue from prison. (Lawsuit, under Activities, is closed while you're locked up.)", 'I thought about legal action in prison.', {}, 'neutral', '🔒')
+      out(g, 'Lawsuit', 'You looked into legal action. (Suing is done from the Activities menu, under Lawsuit.)', 'I looked into legal action.', {}, 'neutral', '⚖️')
     },
   },
   {
@@ -857,3 +1038,10 @@ function tooEarly(g: GameState): void {
 
 /** Exposed for tests. */
 export const CUSTOM_RULE_IDS = RULES.map((r) => r.id)
+
+/** Exposed for tests: the id of the rule that answers this text, or undefined when none does. */
+export function customRuleFor(g: GameState, text: string): string | undefined {
+  const raw = clean(text)
+  if (!raw) return undefined
+  return matchRule(g, { raw, low: raw.toLowerCase(), phrase: toPhrase(raw) })?.id
+}

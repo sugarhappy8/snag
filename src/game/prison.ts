@@ -37,6 +37,7 @@ import { eraPick } from './events/era'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import type {
   ChoiceOption,
+  CrimeRecord,
   GameState,
   Gender,
   Json,
@@ -672,7 +673,8 @@ export function releaseFromPrison(g: GameState, reason: string): void {
   for (const k of keep) log(g, `My former cellmate ${k.firstName} and I stayed friends.`, 'neutral')
 }
 
-function releaseNotice(g: GameState, title: string, text: string): void {
+/** The release popup: `text`, then where the player now lives, then `after` (money given back is said last). */
+function releaseNotice(g: GameState, title: string, text: string, after = ''): void {
   const where = g.character.residence.status
   const extra =
     where === 'homeless'
@@ -684,7 +686,7 @@ function releaseNotice(g: GameState, title: string, text: string): void {
           : where === 'owned'
             ? ' You headed home.'
             : ''
-  notice(g, title, text + extra, { emoji: '\u{1F54A}\u{FE0F}', tone: 'good' })
+  notice(g, title, text + extra + after, { emoji: '\u{1F54A}\u{FE0F}', tone: 'good' })
 }
 
 // ---------------------------------------------------------------------------
@@ -1448,6 +1450,15 @@ function appealFirms(g: GameState): AppealFirm[] {
   ]
 }
 
+/** Why the Appeal option can't be used right now, or null when it can (also read by Do Anything's legal answer). */
+export function appealBlock(g: GameState): string | null {
+  const p = g.character.prison
+  if (!p) return 'You are not in prison.'
+  if (p.deathRow) return yearActionsUsed(g, 'prisonAppeal') >= 1 ? 'You already filed a death row appeal this year.' : null
+  if (p.appealed) return 'You already appealed this sentence. The courts are done listening.'
+  return null
+}
+
 function appealAction(firm: AppealFirm): MenuAction {
   return {
     type: 'action',
@@ -1458,13 +1469,7 @@ function appealAction(firm: AppealFirm): MenuAction {
       const f = appealFirms(g).find((x) => x.id === firm.id) ?? firm
       return `${formatMoney(f.fee)} · ${f.id === 'top' ? 'Best odds' : f.id === 'mid' ? 'Decent odds' : 'Long shot'}`
     },
-    disabledReason: (g) => {
-      const p = g.character.prison
-      if (!p) return 'You are not in prison.'
-      if (p.deathRow) return yearActionsUsed(g, 'prisonAppeal') >= 1 ? 'You already filed a death row appeal this year.' : null
-      if (p.appealed) return 'You already appealed this sentence. The courts are done listening.'
-      return null
-    },
+    disabledReason: (g) => appealBlock(g),
     confirm: (g) => {
       const f = appealFirms(g).find((x) => x.id === firm.id) ?? firm
       return `Hire ${f.name} to appeal your conviction for ${formatMoney(f.fee)}?`
@@ -1492,9 +1497,9 @@ function appealAction(firm: AppealFirm): MenuAction {
       if (p.deathRow) {
         if (roll < odds * 0.15) {
           const name = p.name
-          markOverturned(g, p.crime)
+          const back = markOverturned(g, p.crime)
           releaseFromPrison(g, 'appeal')
-          releaseNotice(g, 'Exonerated!', `${f.name} found a hole in the prosecution's case big enough to drive a bus through. Your conviction was overturned and you walked off death row and out of ${name}.`)
+          releaseNotice(g, 'Exonerated!', `${f.name} found a hole in the prosecution's case big enough to drive a bus through. Your conviction was overturned and you walked off death row and out of ${name}.`, gotBack(back))
           return
         }
         if (roll < odds * 0.6) {
@@ -1510,7 +1515,7 @@ function appealAction(firm: AppealFirm): MenuAction {
       }
       if (roll < odds) {
         const name = p.name
-        markOverturned(g, p.crime)
+        const back = markOverturned(g, p.crime)
         releaseFromPrison(g, 'appeal')
         releaseNotice(
           g,
@@ -1519,19 +1524,22 @@ function appealAction(firm: AppealFirm): MenuAction {
             `${f.name} got your conviction overturned! You walked out of ${name} a free person.`,
             `The appeals court ruled in your favor. Your conviction was tossed out, and so were you, right out the front gate of ${name}.`,
           ]),
+          gotBack(back),
         )
         return
       }
+      // The conviction stands and this sentence's one appeal is used: money held in the case stays with the court.
+      const kept = stillHeld(g, p.crime)
       if (roll < odds + 0.2 && !p.life && p.sentenceYears - p.yearsServed > 1) {
         const cut = Math.max(1, Math.round((p.sentenceYears - p.yearsServed) * (0.25 + rand(g) * 0.25)))
         p.sentenceYears -= cut
         log(g, `My appeal knocked ${years(cut)} off my sentence.`, 'good')
-        notice(g, 'Partial Victory', `The court upheld your conviction but reduced your sentence by ${years(cut)}.`, { emoji: '\u{2696}\u{FE0F}', tone: 'good' })
+        notice(g, 'Partial Victory', `The court upheld your conviction but reduced your sentence by ${years(cut)}.${kept}`, { emoji: '\u{2696}\u{FE0F}', tone: 'good' })
         return
       }
       log(g, 'My appeal was denied.', 'bad')
       addStat(g, 'happiness', -randInt(g, 3, 8))
-      notice(g, 'Appeal Denied', pick(g, [`The appeals court upheld your conviction. ${f.name} kept the money.`, `Denied. The judge didn't even look up from her coffee.`]), {
+      notice(g, 'Appeal Denied', pick(g, [`The appeals court upheld your conviction. ${f.name} kept the money.`, `Denied. The judge didn't even look up from her coffee.`]) + kept, {
         emoji: '\u{1F6AB}',
         tone: 'bad',
       })
@@ -1539,10 +1547,67 @@ function appealAction(firm: AppealFirm): MenuAction {
   }
 }
 
-function markOverturned(g: GameState, crime: string): void {
-  const rec = [...g.character.criminalRecord].reverse().find((r) => r.convicted && r.crime === crime)
-  if (rec) rec.convicted = false
+/** The most that money held in a case can be: the game's usual ceiling for a stored amount. */
+const MAX_REFUND = 1e15
+
+/** A stored refund as a safe amount: a finite number >= 0 (capped), anything else is zero. */
+export function cleanRefund(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(v, MAX_REFUND) : 0
+}
+
+/** "You got back the X taken in your case." for a notice, or nothing. */
+export function gotBack(amount: number): string {
+  return amount > 0 ? ` You got back the ${formatMoney(amount)} taken in your case.` : ''
+}
+
+/** The record a conviction for `crime` lives on: the latest conviction under that name. */
+export function convictionRecord(g: GameState, crime: string): CrimeRecord | undefined {
+  return [...g.character.criminalRecord].reverse().find((r) => r.convicted && r.crime === crime)
+}
+
+/** Money held in the case behind the conviction for `crime`: what a won appeal would hand back (0 when none). */
+function heldOn(g: GameState, crime: string): number {
+  return cleanRefund(convictionRecord(g, crime)?.refund)
+}
+
+/** Money held in the case behind the current sentence, and what can still return it. */
+export interface HeldInCase {
+  amount: number
+  /** 'appeal': the sentence's one appeal is still to file. 'free': death row, only walking free returns it. 'kept': the appeal is used. */
+  route: 'appeal' | 'free' | 'kept'
+}
+
+/** What the current sentence's case holds (the Appeal menu and Do Anything say the same), or null when nothing is held. */
+export function heldInCase(g: GameState): HeldInCase | null {
+  const p = g.character.prison
+  if (!p) return null
+  const amount = heldOn(g, p.crime)
+  if (!(amount > 0)) return null
+  return { amount, route: p.deathRow ? 'free' : p.appealed ? 'kept' : 'appeal' }
+}
+
+/** "The court keeps the X taken in your case." after an appeal that left the conviction standing, or nothing. */
+function stillHeld(g: GameState, crime: string): string {
+  const held = heldOn(g, crime)
+  return held > 0 ? ` The court keeps the ${formatMoney(held)} taken in your case.` : ''
+}
+
+/**
+ * The conviction for `crime` is thrown out. Money the investigation took before that trial goes
+ * back once (the record's refund is cleared); returns the amount. A pardon, parole or a deal for
+ * early release is not this: those never call it.
+ */
+function markOverturned(g: GameState, crime: string): number {
+  const rec = convictionRecord(g, crime)
+  let back = 0
+  if (rec) {
+    rec.convicted = false
+    back = cleanRefund(rec.refund)
+    delete rec.refund
+    if (back > 0) addMoney(g, back)
+  }
   count(g, 'appealsWon')
+  return back
 }
 
 const appealMenu: MenuGroup = {
@@ -1551,10 +1616,19 @@ const appealMenu: MenuGroup = {
   label: 'Appeal',
   emoji: '\u{2696}\u{FE0F}',
   subtitle: (g) => (g.character.prison?.deathRow ? 'Fight your death sentence' : g.character.prison?.appealed ? 'Already appealed' : 'Hire a law firm to appeal your conviction'),
-  header: (g) =>
-    g.character.prison?.deathRow
-      ? 'You can file one appeal a year from death row. A win could commute your sentence or even free you.'
-      : 'You get one appeal per sentence. Pricier firms have better odds.',
+  header: (g) => {
+    const p = g.character.prison
+    // Money held in this conviction's case comes back only if an appeal throws the conviction out. Once the
+    // sentence's one appeal is used, the court keeps it; death row files one a year, so walking free still can.
+    const held = heldInCase(g)
+    const amount = held ? formatMoney(held.amount) : ''
+    if (p?.deathRow) {
+      const back = held ? ` If you go free, you get back the ${amount} taken in your case.` : ''
+      return `You can file one appeal a year from death row. A win could commute your sentence or even free you.${back}`
+    }
+    const back = !held ? '' : held.route === 'kept' ? ` The court keeps the ${amount} taken in your case.` : ` A win returns the ${amount} taken in your case.`
+    return `You get one appeal per sentence. Pricier firms have better odds.${back}`
+  },
   children: (g) => appealFirms(g).map((f) => appealAction(f)),
 }
 

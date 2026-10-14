@@ -317,11 +317,93 @@ function syncOwnFlow(g: GameState, a: Asset): void {
   a.value = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, markedValue(a)))
 }
 
+// ---------------------------------------------------------------------------
+// When the units were bought (insider-trading timing: special/politics.ts)
+//
+// `details.buys` maps a game year to the units bought that year and still held, and keeps the
+// current and previous year only: two numbers, however long the holding is kept. A holding saved
+// before this existed has no `buys`; it falls back on `boughtYear` (the first purchase), all units
+// or none. `details.buys` is damaged-save safe: every read and write goes through these helpers.
+
+function buysOf(a: Asset): Record<string, Json> | null {
+  const raw = a.details.buys
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null
+}
+
+function buyPart(raw: Record<string, Json>, year: number): number {
+  const v = raw[String(year)]
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
+}
+
+/** The two newest years with units in them, newest first (bounded however many keys a save holds). */
+function recentBuys(raw: Record<string, Json>): [number, number][] {
+  const top: [number, number][] = []
+  for (const key of Object.keys(raw)) {
+    const year = Number(key), v = raw[key]
+    if (!Number.isInteger(year) || typeof v !== 'number' || !Number.isFinite(v) || !(v > 0)) continue
+    top.push([year, v])
+    top.sort((p, q) => q[0] - p[0])
+    if (top.length > 2) top.pop()
+  }
+  return top
+}
+
+/** Write the per-year units back: two years at most, never more units than the holding has (oldest trimmed first). */
+function storeBuys(a: Asset, entries: [number, number][]): void {
+  const newest = new Map<number, number>()
+  for (const [year, v] of entries) if (Number.isInteger(year) && Number.isFinite(v) && v > 0) newest.set(year, (newest.get(year) ?? 0) + v)
+  let room = units(a)
+  // Rounding dust (a sale that should have used a year up exactly) is not a position.
+  const dust = room * 1e-9
+  const out: Record<string, Json> = {}
+  for (const [year, v] of [...newest].sort((p, q) => q[0] - p[0]).slice(0, 2)) {
+    const keep = Math.min(v, room)
+    if (keep > dust) { out[String(year)] = keep; room -= keep }
+  }
+  a.details.buys = out
+}
+
+/** Units bought in `year - 1` and in `year`, as the holding stands (a holding without `buys` is read from `boughtYear`). */
+function buysNow(a: Asset, year: number): { prev: number; cur: number } {
+  const u = units(a)
+  const raw = buysOf(a)
+  if (raw) {
+    const cur = Math.min(u, buyPart(raw, year))
+    return { prev: Math.min(u - cur, buyPart(raw, year - 1)), cur }
+  }
+  const by = a.details.boughtYear
+  if (!(u > 0) || typeof by !== 'number' || !(by >= year - 1)) return { prev: 0, cur: 0 }
+  return by >= year ? { prev: 0, cur: u } : { prev: u, cur: 0 }
+}
+
+/** Units of this holding bought in `year` or the year before, and still held (shares an official could be accused of timing). */
+export function freshUnits(a: Asset, year: number): number {
+  if (!Number.isFinite(year)) return 0
+  const { prev, cur } = buysNow(a, year)
+  return Math.max(0, prev + cur)
+}
+
+/** The fresh part of a holding, 0 to 1 (an empty holding has none). */
+export function freshShare(a: Asset, year: number): number {
+  const u = units(a)
+  return u > 0 ? Math.min(1, freshUnits(a, year) / u) : 0
+}
+
+/** The unit count changed without a trade (a split, a re-anchored price, interest, a loss): the bought-per-year split follows it. */
+function rescaleBuys(a: Asset, was: number, now: number): void {
+  const raw = buysOf(a)
+  if (!raw || was === now) return
+  const k = was > 0 ? now / was : 0
+  storeBuys(a, recentBuys(raw).map(([year, v]) => [year, v * k] as [number, number]))
+}
+
 function setPosition(a: Asset, u: number, price: number, cost: number): void {
   const safeP = Number.isFinite(price) ? Math.max(0, Math.min(MAX_INVESTMENT_VALUE, price)) : 0
   const unitCap = safeP > 0 ? MAX_INVESTMENT_VALUE / safeP : MAX_INVESTMENT_VALUE
   const safeU = Number.isFinite(u) ? Math.max(0, Math.min(unitCap, u)) : 0
+  const was = units(a)
   a.details.units = safeU
+  rescaleBuys(a, was, safeU)
   a.details.price = safeP
   a.details.basis = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(cost) ? cost : 0)))
   a.purchasePrice = a.details.basis
@@ -469,6 +551,59 @@ function estimateTax(g: GameState, a: Asset, gross: number): { fee: number; pena
   const before = Math.max(0, num(g.flags.taxableIncome))
   const tax = taxable > 0 ? Math.max(0, gameIncomeTax(g, before + taxable) - gameIncomeTax(g, before)) : 0
   return { fee, penalty, gain, tax, impact }
+}
+
+/** What selling the whole holding right now would pay, before tax: the Sell All row's figure. */
+function saleEstimate(g: GameState, a: Asset): number {
+  const value = holdingValue(a)
+  const est = estimateTax(g, a, value)
+  return Math.max(0, value - est.fee - est.penalty - est.impact)
+}
+
+/** True when a sale would pay clearly something else than the marked value (more than 5% apart): then it is worth saying. */
+function sellsApart(sale: number, marked: number): boolean {
+  return Math.abs(sale - marked) > 0.05 * Math.max(0, marked)
+}
+
+/**
+ * The size of a buy order, in the money that reaches the market, at which price impact starts to cost
+ * more than `1 - keep` of it (the default asks where an order first loses over 10%). It is the order at
+ * which buyImpact returns `keep` of the money, found by halving because that share only falls as the
+ * order grows. 0 when the depth is not a positive number.
+ */
+export function buyImpactLimit(depth: number, keep = 0.9): number {
+  if (!(depth > 0) || !Number.isFinite(depth)) return 0
+  const share = Number.isFinite(keep) ? Math.min(0.999, Math.max(0.01, keep)) : 0.9
+  let lo = 0
+  let hi = depth * 1e6
+  if (!Number.isFinite(hi)) return 0
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2
+    if (buyImpact(mid, depth).value / mid > share) lo = mid
+    else hi = mid
+  }
+  return (lo + hi) / 2
+}
+
+/** The order that leaves `invested` for the market once the broker's fee is taken out of it. */
+function orderFor(plan: FeePlan, invested: number): number {
+  let amount = invested
+  for (let i = 0; i < 6; i++) amount = invested + feeFor(plan, amount)
+  return Math.round(amount)
+}
+
+/** The largest whole order whose money for the market, after the fee, is not past `invested` (orderFor rounds). */
+function safeOrder(plan: FeePlan, invested: number): number {
+  let amount = Math.floor(orderFor(plan, invested))
+  for (let i = 0; i < 4 && amount > 0 && amount - feeFor(plan, amount) > invested; i++) amount--
+  return Math.max(0, amount)
+}
+
+/** Down to two significant figures (191,936,123 -> 190,000,000), so a suggested amount reads as a round number. */
+function roundDown(x: number): number {
+  if (!(x >= 1) || !Number.isFinite(x)) return 0
+  const unit = 10 ** Math.max(0, Math.floor(Math.log10(x)) - 1)
+  return Math.floor(x / unit) * unit
 }
 
 function earlyPenalty(g: GameState, a: Asset, gross: number): number {
@@ -926,6 +1061,8 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   const order = depth ? buyImpact(invested, depth) : { value: invested, end: 1 }
   const newUnits = order.value / price
   let a = held
+  // What was bought in the last two years before this order (a holding saved without it is read from boughtYear).
+  const bought = a ? buysNow(a, g.year) : { prev: 0, cur: 0 }
   if (a) {
     const oldUnits = units(a)
     const oldValue = holdingValue(a)
@@ -950,13 +1087,27 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
     setPosition(a, newUnits, price, amt)
     g.assets.push(a)
   }
+  storeBuys(a, [[g.year - 1, bought.prev], [g.year, bought.cur + newUnits]])
   count(g, 'investTrades')
   count(g, 'moneyInvested', amt)
   if (depth) recordOrderFlow(g, a, order.end)
   if (room !== null) noteCryptoBuy(g, q.secId, amt)
-  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into a ${q.sector.toLowerCase()}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
+  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into ${str(q.details.product) === 'term' ? 'a term deposit' : 'savings'}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
   const feeLine = fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''
-  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${depth ? ' Order-book depth affects your execution price; large orders move the market.' : ''} Your position is now worth ${formatMoney(a.value)}.`, { emoji: q.emoji, tone: 'good' })
+  // Price impact past the 10% mark (the mark the Buy row names), measured on the money that reached the market:
+  // the fee is not price impact.
+  const lost = depth && invested > 0 ? 1 - order.value / invested : 0
+  const impactLine = lost > 0.1
+    ? ` The order moved the price, so on paper it lost ${lost >= 0.9995 ? 'over 99.9%' : absPct(lost, 1)} of what you paid.`
+    : depth ? ' Order-book depth affects your execution price; large orders move the market.' : ''
+  // The position's marked value and what selling it all returns, each said once and the sale last, whenever they
+  // are more than 5% apart (the Investments header's rule). That covers a big order, a top-up of a lifted
+  // position, and a fee or an early-withdrawal penalty that eats into a small one.
+  const sale = saleEstimate(g, a)
+  const valueLine = sellsApart(sale, a.value)
+    ? ` Your position is valued at ${formatMoney(a.value)}. ${q.type === 'savings' ? 'Closing it now' : 'A full sale'} would return about ${formatMoney(sale)}, before tax.`
+    : ` Your position is now worth ${formatMoney(a.value)}.`
+  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${impactLine}${valueLine}`, { emoji: q.emoji, tone: 'good' })
   log(g, q.type === 'savings' ? `I put ${formatMoney(amt)} in the bank.` : `I invested ${formatMoney(amt)} in ${q.name}.`)
   return true
 }
@@ -1009,7 +1160,19 @@ function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | nul
   const net = Math.max(0, order.proceeds - fee - penalty)
   const basisPart = basis(a) * frac
   if (all) g.assets = g.assets.filter((x) => x.id !== a.id)
-  else setPosition(a, units(a) * (1 - frac), unitPrice(a), basis(a) - basisPart)
+  else {
+    // Selling what you just bought is not timing: a sale takes this year's units first, then last
+    // year's, and only then the older ones. A holding without per-year data keeps reading from boughtYear.
+    const tracked = buysOf(a) !== null
+    const bought = buysNow(a, g.year)
+    const soldUnits = units(a) * frac
+    setPosition(a, units(a) * (1 - frac), unitPrice(a), basis(a) - basisPart)
+    if (tracked) {
+      const cur = Math.max(0, bought.cur - soldUnits)
+      const prev = Math.max(0, bought.prev - Math.max(0, soldUnits - bought.cur))
+      storeBuys(a, [[g.year - 1, prev], [g.year, cur]])
+    }
+  }
   const realized = realize(g, net, net - basisPart, true)
   if (depth) recordOrderFlow(g, a, order.end)
   count(g, 'investTrades')
@@ -1214,21 +1377,27 @@ function buyAction(g: GameState, q: Quote, held: boolean): MenuAction {
   const cash = Math.max(0, Math.floor(g.character.money))
   const plan = feePlan(g, q.type)
   const suggestion = Math.min(cash, Math.max(min, Math.round((cash * 0.25) / 100) * 100))
+  // Where an order starts to lose over 10% to price impact (the Order Filled notice speaks up past the same mark).
+  const depth = tradingDepth(g, q.type, q.details)
+  const limit = depth ? buyImpactLimit(depth) : 0
+  const impact = limit > 0 ? `Orders above about ${shortMoney(orderFor(plan, limit))} lose over 10% to price impact` : ''
+  // The amount dialog opens at or under that mark: a quarter of a fortune would otherwise go far past it.
+  const start = Math.max(min, limit > 0 ? Math.min(suggestion, roundDown(safeOrder(plan, limit))) : suggestion)
   return {
     type: 'action',
     id: `inv-buy-${q.secId}`,
     label: held ? (q.type === 'savings' ? 'Deposit More' : 'Buy More') : q.type === 'savings' ? 'Deposit' : 'Buy',
     emoji: '💵',
-    subtitle: `${plan.label} · Minimum ${formatMoney(min)}`,
+    subtitle: `${plan.label} · Minimum ${formatMoney(min)}${impact ? ` · ${impact}` : ''}`,
     disabledReason: (gg) => buyBlock(gg, q),
     input: {
       kind: 'number',
       money: true,
-      label: `How much? You have ${formatMoney(cash)}.`,
-      placeholder: String(Math.max(min, suggestion)),
+      label: `How much? You have ${formatMoney(cash)}.${impact ? ` ${impact}.` : ''}`,
+      placeholder: String(start),
       min,
       max: Math.max(min, cash),
-      defaultValue: () => String(Math.max(min, suggestion)),
+      defaultValue: () => String(start),
     },
     stayOpen: true,
     run: (gg, input) => {
@@ -1262,7 +1431,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       id: `inv-sellall-${a.id}`,
       label: deposit ? 'Close Account' : 'Sell All',
       emoji: '💰',
-      subtitle: `About ${formatMoney(Math.max(0, value - feeFor(feePlan(g, t), value) - earlyPenalty(g, a, value) - estimateTax(g, a, value).impact))} after fees and price impact, before tax`,
+      subtitle: `About ${formatMoney(saleEstimate(g, a))} after fees and price impact, before tax`,
       disabledReason: (gg) => sellBlock(gg, a),
       confirm: (gg) => {
         const cur = gg.assets.find((x) => x.id === a.id)
@@ -1729,8 +1898,12 @@ export const investmentsMenu: MenuGroup = {
     const info = exchangeInfo(g.character.countryId)
     const ey = exchangeYear(fam(g), anchor(g), info, g.year)
     const gain = s.value - s.basis
+    // Marked figures are deliberate (your own order flow is not counted). When a sale would pay clearly
+    // something else, say what it would pay.
+    const sells = Math.min(MAX_INVESTMENT_VALUE, investmentHoldings(g).reduce((sum, a) => sum + saleEstimate(g, a), 0))
+    const sellsLine = sellsApart(sells, s.value) ? ` · Sells for about ${formatMoney(Math.round(sells))}` : ''
     const top = investmentHoldings(g).length
-      ? `Portfolio: ${formatMoney(s.value)} · ${gain >= 0 ? 'Gain' : 'Loss'}: ${formatMoney(Math.abs(gain))} (${pct(s.basis > 0 ? gain / s.basis : 0)})`
+      ? `Portfolio: ${formatMoney(s.value)} · ${gain >= 0 ? 'Gain' : 'Loss'}: ${formatMoney(Math.abs(gain))} (${pct(s.basis > 0 ? gain / s.basis : 0)})${sellsLine}`
       : "You don't own any investments yet."
     return `${top}\n${marketLine(g, info, ey)}\nCash: ${formatMoney(g.character.money)} · ${feePlan(g, 'stock').label}`
   },
