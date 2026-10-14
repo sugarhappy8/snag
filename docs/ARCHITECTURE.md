@@ -674,7 +674,11 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     hold the founders' class, executives and the float the ordinary one. A writer that adds shares and has
     never heard of classes (a Stocks buy, Buy Out Investors, an agent's buy) therefore adds ordinary shares,
     which is the safe answer. Only three writers keep `hi` in step: `diluteBusinessEquity` (scales it),
-    the buyback in `rescue.transactEquity` (`scaleFounders`) and `exit.sellShares` (`clampFounders`).
+    the buyback in `rescue.transactEquity` (`scaleFounders`) and `exit.sellShares` (`clampFounders`). A stake
+    can also shrink with no sale (a hired CEO's equity grant, an inheritance) and leave `hi` above it, so the
+    two writers that add ordinary shares (`own-trade.buyOwnShares`, `rescue.transactEquity`) cap `hi` at the
+    stake held first (`clampFounders`), and the buy quote and preview read `foundersCapped`: shares bought
+    never bring a lost stake's founder votes back.
   - **Only while listed (D4).** `activeClasses` returns the record only for a public company that stands
     alone and has shares. A private company's record is the plan its IPO will use, and `conglomerate-state.detach`
     clears it when a company comes out of a group and lists. Groups and divisions have none.
@@ -683,8 +687,9 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     (the `'recap'` proposal, merit +0.3 for one class, -1.0 for `ab`, -1.3 for `nv`; the year key is
     `classes.<id>`; a refused recap does not use up the `'merge'` slot), converts the owner's whole stake to the
     founders' class and re-seats the board. The market pays 4% less for `ab` and 7% less for `nv`
-    (`CLASS_DISCOUNT`): `ipoPlanFor` scales the pre-money value, `updateSharePrice` and the Stocks buy floor
-    carry `classFactor`, and a recap moves the price once by the difference. `classOption`, `ipoPreview` and the
+    (`CLASS_DISCOUNT`): `ipoPlanFor` scales the pre-money value, `updateSharePrice`, the Stocks buy floor and
+    `rescue.equityQuote` (so a Capital & Ownership move doesn't re-mark the price) carry `classFactor`, and a
+    recap moves the price once by the difference. `classOption`, `ipoPreview` and the
     row subtitles call the same functions the action runs, never `g.rng`.
   - **Real companies (D8 to D10).** `invest/class-data.ts` is a curated table (21 companies, each row from a
     public source named above it) of the classes a company had by year. The company's Stocks screen gets a

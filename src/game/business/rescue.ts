@@ -8,7 +8,7 @@ import { refreshValue, valuationOf } from './economy'
 import { manageBlock } from './gate'
 import { bizOf, diluteBusinessEquity, executiveEquity, findBusiness, readBiz, type BizState } from './state'
 import { clampN, money, pct, runwayText } from './util'
-import { scaleFounders } from './share-classes'
+import { classFactor, clampFounders, scaleFounders } from './share-classes'
 import { DEFAULT_SHARES, MAX_SHARES, MIN_SHARES, retailVerdict, shareCountOf, shareCountText } from './share-structure'
 
 export function rescuePosition(b: BizState) {
@@ -23,7 +23,8 @@ export function equityYearKey(assetId: string): string {
   return `equity.${assetId}`
 }
 export function equityQuote(g: GameState, a: Asset, b: BizState, kind: EquityTransaction, amount: number) {
-  const value = Math.max(1, b.valuation, valuationOf(b))
+  // The market's value of the structure: fewer votes sell for less (share-classes.ts), so the price does not jump back.
+  const value = Math.max(1, b.valuation, valuationOf(b) * classFactor(b))
   const outside = Math.max(0, 1 - b.share - executiveEquity(b) - (b.familyShares ?? []).reduce((s, x) => s + x.share, 0))
   const willing = b.public || seeded(`share-offer|${a.id}|${g.year}`).chance(.65)
   const available = willing ? Math.min(.15, outside) : 0
@@ -48,6 +49,9 @@ export function transactEquity(g: GameState, id: string, kind: EquityTransaction
   if (why || amount > q.max + .001) { notice(g, 'Ownership', why ?? 'Not enough money, or not enough shares for sale.'); return false }
   if (!boardAllows(g, a, b, { kind: kind === 'buyback' ? 'dividend' : 'merge', by: 'owner', amount, merit: kind === 'subscribe' && b.cash < 0 ? 1 : 0, label: `${kind}: ${money(amount)}` })) return false
   if (!useYearAction(g, equityYearKey(a.id), 1)) return false
+  // Every move below changes the owner's stake with ordinary shares: the founders' class is no more than what is held now.
+  // (A private company's record is only the plan for its IPO; listing sets it again.)
+  if (b.public) clampFounders(b)
   if (kind === 'subscribe') {
     addMoney(g, -amount); b.cash += amount; b.invested += amount
     const retain = q.value / (q.value + amount)

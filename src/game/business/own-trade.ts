@@ -22,7 +22,7 @@ import { manageBlock } from './gate'
 import { companyExchange, tickerOf } from './listing-id'
 import { outsideFloat } from './own-listing'
 import { equityYearKey } from './rescue'
-import { activeClasses, CLASS_VOTES, classFactor, ownerVotes } from './share-classes'
+import { activeClasses, CLASS_VOTES, classFactor, clampFounders, foundersCapped, ownerVotes } from './share-classes'
 import { retailDepth, shareCountText } from './share-structure'
 import { bizOf, findBusiness, isTicker, type BizState } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -59,7 +59,8 @@ export interface BuyQuote {
  * through here.
  */
 export function controlsWith(g: GameState, b: BizState, share: number): boolean {
-  return controlsFor(g, { ...b, share })
+  // Shares bought are ordinary ones: a founders' class left above today's stake does not come back with them.
+  return controlsFor(g, { ...foundersCapped(b), share })
 }
 
 function finite(x: number): number {
@@ -135,7 +136,7 @@ export function buyPreview(g: GameState, a: Asset, b: BizState, dollars: number)
   const plan = activeClasses(b)
   if (plan) {
     const weight = CLASS_VOTES[plan.kind].lo
-    head += ` ${weight > 0 ? `These shares carry ${plural(weight, 'vote')}.` : 'These shares carry no vote.'} You'd hold ${pct(ownerVotes({ ...b, share: q.newShare }), 0)} of the votes.`
+    head += ` ${weight > 0 ? `These shares carry ${plural(weight, 'vote')}.` : 'These shares carry no vote.'} You'd hold ${pct(ownerVotes({ ...foundersCapped(b), share: q.newShare }), 0)} of the votes.`
   }
   if (!q.controls) return head
   return head + (q.controlsBefore ? ' You keep control of the board.' : ' This gives you control of the board.')
@@ -166,6 +167,8 @@ export function buyOwnShares(g: GameState, a: Asset, b: BizState, dollars: numbe
   if (!isTicker(b.ticker)) b.ticker = tickerOf(g, a, b)
   addMoney(g, -dollars)
   b.invested += dollars
+  // The shares bought are ordinary ones (share-classes.ts): the founders' class stays what it was.
+  clampFounders(b)
   b.share = q.newShare
   syncSeats(g, a, b, boardOf(b))
   refreshValue(a, b)

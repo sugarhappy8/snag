@@ -94,6 +94,19 @@ export function clampFounders(b: BizState): void {
 }
 
 /**
+ * The company as a purchase finds it: the founders' class is no more than the stake held now. A stake can
+ * shrink without a sale (a hired CEO's equity grant, an inheritance) and leave `hi` above it; shares bought
+ * afterwards are ordinary ones and must not bring those votes back. Returns `b` itself when nothing is above
+ * the stake; otherwise a copy. Pure.
+ */
+export function foundersCapped(b: BizState): BizState {
+  const plan = readClasses(b.classes)
+  const held = clampN(b.share, 0, 1)
+  if (!plan || plan.hi <= held) return b
+  return { ...b, classes: { kind: plan.kind, hi: held } }
+}
+
+/**
  * The company as it would stand just after listing with `retain` of the owner's part kept and the
  * structure `kind` (null: one class), the way goPublic leaves it: the owner's stake, the relatives'
  * and the executives' parts thinned by `retain`, public, shares out, no group, and the whole of the
