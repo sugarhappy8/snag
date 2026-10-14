@@ -208,6 +208,14 @@ plain records. Quota failures must never prevent saving the current life.
     Never cache formatted strings at module load. Use `withMoneyContext` for another person's
     year/country (ancestors, graves, time stops); old entries with no country fall back to USD.
 12. Keep text tasteful for a teen rating by default: dark humor is fine (BitLife-style), nothing sexually explicit, no slurs.
+13. **Write text in the house voice.** Every string you add or touch follows `docs/VOICE.md`: bare
+    facts, contractions, no morals, a joke only where the event is itself a joke, and the length caps
+    (life-log line 90 characters, outcome 120, scene 140, tooltip 120, digest 110). The disclaimer that
+    the game is fiction lives once, in Settings, About. `node scripts/voice-report.mjs` counts the
+    result against the targets and runs in CI as a warning; two rules are tests (no chatbot phrases,
+    no new em-dashes). Strings that need rewriting in bulk go through `scripts/voice-batch.mjs`
+    (`extract` writes a JSON batch, `apply` validates and splices the rewrites, and changes nothing but
+    string text).
 
 ## Cross-module contract (exact exports)
 
