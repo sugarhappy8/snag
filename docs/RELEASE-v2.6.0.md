@@ -2,6 +2,8 @@
 
 Obituaries, CEO letters, business outings and the Do Anything box now read like short reports instead of eulogies, Settings gets an About screen with the game's one disclaimer, and the first pieces of a safer save system are in place without changing how your game saves today.
 
+This release also ships v2.5.0 (Politics 2.0), which was merged to main but never tagged; its notes are in `docs/RELEASE-v2.5.0.md`.
+
 This is the first part of a larger text clean-up. Most of the game's wording (era events, year digests, tooltips, punchlines) is not rewritten yet; see "Not in this release".
 
 ## ✍️ A plainer voice
