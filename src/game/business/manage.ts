@@ -70,7 +70,7 @@ import { equipmentUpgradeCost, purchaseEquipmentUpgrade, purchaseTraining, repea
 import { economicReportMenu } from './economic-report'
 import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
-import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
+import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
 import type { Breakthrough } from './heavy-data'
 import { readMarketNews } from '../history/market-events'
 import { fieldFor, kindTrend, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
@@ -580,7 +580,7 @@ function heavyAction(a: Asset, x: Breakthrough): MenuAction {
 function heavyNodes(a: Asset, g: GameState, b: BizState): MenuNode[] {
   if (!heavyEligible(b)) return []
   const nodes: MenuNode[] = [{ type: 'heading', id: `biz.heavyH.${a.id}`, label: 'Heavy R&D' }]
-  nodes.push({ type: 'info', id: `biz.heavyInfo.${a.id}`, emoji: '\u{1F52C}', text: 'A breakthrough costs far more than a normal line and often fails. If it works, the whole trade gets more customers, and rivals need as long as you did to catch up.' })
+  nodes.push({ type: 'info', id: `biz.heavyInfo.${a.id}`, emoji: '\u{1F52C}', text: 'A breakthrough costs far more than a line and often fails. If it works, the trade gains customers.' })
   const market = marketKey(b)
   readMarketNews(g)
     .filter((n) => n.industry === b.industry && n.market === market)
@@ -588,7 +588,9 @@ function heavyNodes(a: Asset, g: GameState, b: BizState): MenuNode[] {
     .reverse()
     .forEach((n, i) => nodes.push({ type: 'info', id: `biz.heavyNews.${a.id}.${i}`, emoji: n.emoji, text: `${n.title} (${n.year})` }))
   const offers = heavyOffers(g, b, a.id)
-  if (!offers.length) nodes.push({ type: 'info', id: `biz.heavyNone.${a.id}`, text: 'No breakthrough on the drawing board that the world is ready for yet.', emoji: '\u{1F4AD}' })
+  // The true reason there is nothing to offer: not invented yet, or everything the year allows is taken (heavy-rd.ts).
+  const none = offers.length ? null : heavyNone(g, b, a.id)
+  if (none) nodes.push({ type: 'info', id: `biz.heavyNone.${a.id}`, text: none, emoji: '\u{1F4AD}' })
   for (const x of offers) nodes.push(heavyAction(a, x))
   return nodes
 }

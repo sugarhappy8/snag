@@ -49,6 +49,7 @@ import { successionEstateUnits } from './business/nepo-inheritance'
 import { inheritConglomerates, settleLateFamilyOwners } from './business/dynasty-ownership'
 import { familyOf } from './business/nepo-state'
 import { afterSuccession, successorManager } from './business/nepo-succession'
+import { heavyWorldFlags } from './business/heavy-rd'
 import { bizOf, readBiz, type Manager } from './business/state'
 import { yearlyMainCharacter } from './mastery'
 import { hasMainCharacter, MAIN_CHARACTER, MAX_START_TALENTS, normalizeTalents, pickedTalents, refreshFamilyTalents, talentLabel, type TalentId } from './talents'
@@ -1516,6 +1517,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
     ...(Array.isArray(n.flags.timelineForks) ? { timelineForks: n.flags.timelineForks } : {}),
     // Inventions that beat history are world state: an heir can't invent them first again.
     ...(Array.isArray(n.flags['workshop.firsts']) ? { 'workshop.firsts': n.flags['workshop.firsts'] } : {}),
+    // Breakthroughs that worked and the news about them are world state too: the heir finds each trade as it was left.
+    ...heavyWorldFlags(n),
   }
   inheritRoyalStatus(n, heirP)
   // An heir already serving as group CEO keeps that appointment, now as the playable chair.

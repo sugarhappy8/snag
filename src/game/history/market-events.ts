@@ -242,9 +242,22 @@ export function pushMarketNews(g: Pick<GameState, 'flags'>, item: MarketNews): b
   const list = readMarketNews(g)
   if (list.some((x) => x.id === n.id)) return false
   list.push(n)
-  const stored: Json[] = list.slice(-MAX_MARKET_NEWS).map((x) => ({ id: x.id, year: x.year, industry: x.industry, market: x.market, emoji: x.emoji, title: x.title, text: x.text }))
-  g.flags[NEWS_FLAG] = stored
+  g.flags[NEWS_FLAG] = storedNews(list)
   return true
+}
+
+function storedNews(list: readonly MarketNews[]): Json[] {
+  return list.slice(-MAX_MARKET_NEWS).map((x) => ({ id: x.id, year: x.year, industry: x.industry, market: x.market, emoji: x.emoji, title: x.title, text: x.text }))
+}
+
+/**
+ * The market news as a new generation keeps it (it is world state, like market shocks): the stored form
+ * of the validated list, or null when there is none to keep. Built through readMarketNews, so a damaged
+ * flag is repaired or left behind, never copied.
+ */
+export function carriedMarketNews(g: Pick<GameState, 'flags'>): Json[] | null {
+  const list = readMarketNews(g)
+  return list.length ? storedNews(list) : null
 }
 
 /** How hard an event hits a country in a year (0 when it doesn't). */

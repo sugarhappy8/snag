@@ -7,7 +7,7 @@
 // The second half is the project itself: its price, years and odds (pure quotes), starting it, the
 // launch roll at year-end (the only place that draws on the RNG) and the news that follows.
 import { formatMoney, log, notice } from '../core'
-import { pushMarketNews } from '../history/market-events'
+import { carriedMarketNews, pushMarketNews } from '../history/market-events'
 import { chance, rand, uid } from '../rng'
 import type { Asset, GameState, Json } from '../types'
 import { getCountry } from '../world'
@@ -52,6 +52,8 @@ const MAX_BY = 64
 const MAX_RIVAL = 80
 
 const NONE: readonly HeavyRecord[] = Object.freeze([])
+/** The id prefix of the player's own companies in a rival list (npc-rivals.ts). */
+const OWNED = 'owned:'
 
 // ---------------------------------------------------------------------------
 // The records in game flags
@@ -126,9 +128,48 @@ export function addHeavy(g: GameState, industry: string, market: string, rec: He
   writeHeavy(g, industry, market, list)
 }
 
+function storedHeavy(list: readonly HeavyRecord[]): Json[] {
+  return list.slice(-MAX_HEAVY_RECORDS).map((r) => ({ family: r.family, year: r.year, years: r.years, quality: r.quality, cost: r.cost, by: r.by, ...(r.rival ? { rival: r.rival } : {}) }))
+}
+
 function writeHeavy(g: GameState, industry: string, market: string, list: readonly HeavyRecord[]): void {
-  const stored: Json[] = list.slice(-MAX_HEAVY_RECORDS).map((r) => ({ family: r.family, year: r.year, years: r.years, quality: r.quality, cost: r.cost, by: r.by, ...(r.rival ? { rival: r.rival } : {}) }))
-  g.flags[heavyKey(industry, market)] = stored
+  g.flags[heavyKey(industry, market)] = storedHeavy(list)
+}
+
+/** Keys of heavy.* flags kept across a generation handoff (the real world has a handful). */
+const MAX_CARRIED_KEYS = 256
+const KEY_PREFIX = 'heavy.'
+const MAX_TRADE = 40
+const MAX_MARKET = 20
+
+/**
+ * The Heavy R&D state of the world that a new generation keeps: the records of every trade and market
+ * ('heavy.<trade>|<market>') and the market news they came with. The heir finds the trade as the parent
+ * left it: the breakthrough lines keep their demand curve, the trade keeps its lift, and nothing that
+ * was launched is announced as a first again. Each flag goes through the reader that validates it on
+ * load (readHeavy, readMarketNews) and is written back from the validated copy, so a damaged flag
+ * is repaired or dropped here too. A key that isn't a trade and a market, or that holds nothing usable,
+ * is not carried. Pure; the result is for the new game's flags.
+ */
+export function heavyWorldFlags(g: Pick<GameState, 'flags'>): Record<string, Json> {
+  const out: Record<string, Json> = {}
+  if (!g.flags) return out
+  let kept = 0
+  for (const key of Object.keys(g.flags)) {
+    if (kept >= MAX_CARRIED_KEYS) break
+    if (!key.startsWith(KEY_PREFIX)) continue
+    const bar = key.indexOf('|')
+    const industry = bar < 0 ? '' : key.slice(KEY_PREFIX.length, bar)
+    const market = bar < 0 ? '' : key.slice(bar + 1)
+    if (!industry || industry.length > MAX_TRADE || !market || market.length > MAX_MARKET || breakthroughsFor(industry).length === 0) continue
+    const list = readHeavy(g, industry, market)
+    if (!list.length) continue
+    out[key] = storedHeavy(list)
+    kept++
+  }
+  const news = carriedMarketNews(g)
+  if (news) out['market.news'] = news
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +361,19 @@ export function heavyOffers(g: GameState, b: BizState, assetId?: string): readon
   return breakthroughsFor(b.industry).filter((x) => g.year >= x.first && eraFits(g, b.countryId, x.name) && !retired.includes(x.name) && !taken.has(x.name))
 }
 
+/**
+ * Why the Heavy R&D list is empty, as one plain sentence for the Products screen (null: something is on
+ * offer, or this company has no Heavy R&D). Either the year allows no breakthrough yet (nothing is
+ * invented, or no classic idea exists to price one on), or the year allows some and every one of them is
+ * retired or already this company's (on sale, in development or launched). Pure, from the catalogue and
+ * the company; draws nothing.
+ */
+export function heavyNone(g: GameState, b: BizState, assetId?: string): string | null {
+  if (!heavyEligible(b) || heavyOffers(g, b, assetId).length > 0) return null
+  const open = heavyCost(g, b) !== null && breakthroughsFor(b.industry).some((x) => g.year >= x.first && eraFits(g, b.countryId, x.name))
+  return open ? 'Every breakthrough this year allows is retired or already yours.' : `Nothing is invented yet for a breakthrough in ${Math.round(g.year)}.`
+}
+
 /** A name for a message: a damaged one can't flood a popup. */
 const shown = (name: string): string => (typeof name === 'string' ? name.slice(0, 60) : '')
 
@@ -379,7 +433,7 @@ export function startHeavy(g: GameState, a: Asset, b: BizState, name: string): R
   notice(
     g,
     'R&D Underway',
-    `${a.name}'s team is developing ${name}. It costs ${formatMoney(cost)}, should take about ${years} years and has about ${Math.round(odds * 100)}% odds of working. If it flops, the money is gone.`,
+    `${a.name} is developing ${name}. It costs ${formatMoney(cost)} and has ${Math.round(odds * 100)}% odds in about ${years} years. If it flops, the money is gone.`,
     { emoji: '\u{1F9EA}' },
   )
   return p
@@ -466,7 +520,7 @@ export function advanceHeavy(g: GameState, a: Asset | null, b: BizState, p: RdPr
   log(g, `${name} launched ${p.name}.`, 'good')
   if (pioneer && a) announceLaunch(g, a, b, rec, market)
   const how = hit ? 'is a smash hit' : 'launches'
-  const after = pioneer ? `No rival sells one yet; the first can follow from about ${heavyLead(rec)}.` : 'The kind is already on the market.'
+  const after = pioneer ? `No rival sells one yet. The first can follow from about ${heavyLead(rec)}.` : 'The kind is already on the market.'
   return { won: true, line: `${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${how}: quality ${quality}. ${after}` }
 }
 
@@ -474,7 +528,8 @@ export function advanceHeavy(g: GameState, a: Asset | null, b: BizState, p: RdPr
  * Year-end, for every product company: when the first rival of the market can offer a breakthrough that
  * worked (never before the pioneer's own development time has passed), say so once in the life log. The
  * record keeps the name it was reported under, so a second company in the same market, or the next year,
- * doesn't repeat it. Reads the market only; draws nothing.
+ * doesn't repeat it. Only a real rival counts: never one of the player's own companies, and a record is
+ * marked reported only by a rival that launches its own. Reads the market only; draws nothing.
  */
 export function heavyArrivals(g: GameState, b: BizState, year: number): void {
   if (!heavyEligible(b)) return
@@ -491,7 +546,9 @@ export function heavyArrivals(g: GameState, b: BizState, year: number): void {
     let best = -1
     let at = Number.POSITIVE_INFINITY
     rivals.forEach((x, i) => {
-      if (x.legacy || !(x.pull > 0)) return
+      // An NPC company's year-end also runs this, and its rivals include the player's own companies
+      // ('owned:<id>', npc-rivals.ts): a company of the player's is not a rival launching its own.
+      if (x.legacy || !(x.pull > 0) || x.id.startsWith(OWNED)) return
       const when = heavyArrival(r, x)
       if (when < at) {
         at = when
