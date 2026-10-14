@@ -29,6 +29,7 @@ import { roleTitle } from './era'
 import { laborProtection, severanceMonths, STAFF_TRAITS } from './flavor'
 import { industryDef, lineOf, type RoleDef } from './industries'
 import { complexityShare, productIdeas } from './products'
+import { heavyOf } from './heavy-rd'
 import { bestRdIdea, pullValue, rdOf, retireLines, retireOrder } from './rd'
 import { fieldFor, lineInfo, productPull } from './product-market'
 import { bestRole, hireValue, interviewFee, maxKeyStaff } from './staff'
@@ -523,8 +524,9 @@ function productTurn(t: Turn): void {
   const w = bizWorth(g, b)
   // Retire outdated lines whose complexity costs more than the customers they still win.
   let retired = 0
+  const heavy = heavyOf(g, b)
   for (let i = 0; i < 10 && b.products.length > 0; i++) {
-    const weakest = retireOrder(b, g.year)[0]
+    const weakest = retireOrder(b, g.year, heavy)[0]
     if (!weakest) break
     const ctx = marketCtxFor(g, b, g.year)
     const field = fieldFor(ctx)
@@ -532,7 +534,7 @@ function productTurn(t: Turn): void {
     const keep = pullValue(ctx, b, w, productPull(b.industry, rest, g.year, field).total, productPull(b.industry, b.products, g.year, field).total)
     const saves = (complexityShare(b.products.length) - complexityShare(rest.length)) * Math.max(0, w.revenue)
     if (t.judge(saves) <= keep) break
-    retireLines(b, 1, g.year)
+    retireLines(b, 1, g.year, heavy)
     retired++
   }
   if (retired > 0) t.lines.push(`Retired ${plural(retired, 'outdated product line')}.`)

@@ -6,6 +6,7 @@ import { getCountry } from '../world'
 import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
+import { breakthroughByName } from './heavy-data'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
 import { readFamilyShares } from './family-share-state'
@@ -48,7 +49,7 @@ export interface Product {
   /** The classic kind of product it belongs to ('Street Lighting' for 'Street Lighting Mk II'). */
   family?: string
   /** What sort of line it is within its kind (product-market.ts LineKind). */
-  kind?: 'core' | 'next' | 'premium' | 'value' | 'regional' | 'bundle' | 'addon'
+  kind?: 'core' | 'next' | 'premium' | 'value' | 'regional' | 'bundle' | 'addon' | 'breakthrough'
   /** Who made it, when it wasn't the company's own R&D (a rival bought out). */
   from?: string
 }
@@ -428,15 +429,21 @@ function readOutlet(x: Record<string, Json>): Outlet | null {
   return { countryId, city, count, opened: Math.round(num(x.opened)) }
 }
 
-const LINE_KINDS: readonly NonNullable<Product['kind']>[] = ['core', 'next', 'premium', 'value', 'regional', 'bundle', 'addon']
+const LINE_KINDS: readonly NonNullable<Product['kind']>[] = ['core', 'next', 'premium', 'value', 'regional', 'bundle', 'addon', 'breakthrough']
 
-function lineKind(v: Json | undefined): Product['kind'] | undefined {
-  return typeof v === 'string' && (LINE_KINDS as readonly string[]).includes(v) ? (v as Product['kind']) : undefined
+/**
+ * A stored sort of line. A breakthrough is only ever the line of a Heavy R&D catalogue family
+ * (heavy-data.ts), so a saved game can't hand a classic line the breakthrough weight.
+ */
+function lineKind(v: Json | undefined, family: string): Product['kind'] | undefined {
+  if (typeof v !== 'string' || !(LINE_KINDS as readonly string[]).includes(v)) return undefined
+  if (v === 'breakthrough' && breakthroughByName(family) === null) return undefined
+  return v as Product['kind']
 }
 
 /** Line fields added by products 2.0, when stored (old lines have none of them). */
 function lineExtras(x: Record<string, Json>): Pick<Product, 'quality' | 'family' | 'kind' | 'from'> {
-  const kind = lineKind(x.kind)
+  const kind = lineKind(x.kind, str(x.family) || str(x.name))
   return {
     ...(typeof x.quality === 'number' && Number.isFinite(x.quality) ? { quality: Math.round(clampN(x.quality, 0, 100)) } : {}),
     ...(str(x.family) ? { family: str(x.family) } : {}),

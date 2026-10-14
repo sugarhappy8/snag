@@ -70,7 +70,8 @@ import { equipmentUpgradeCost, purchaseEquipmentUpgrade, purchaseTraining, repea
 import { economicReportMenu } from './economic-report'
 import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
-import { fieldFor, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
+import { heavyOf } from './heavy-rd'
+import { fieldFor, kindTrend, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
 import { demandTrend } from './product-data'
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
@@ -585,7 +586,7 @@ function productsMenu(a: Asset): MenuGroup {
           const l = byName.get(p.name)
           nodes.push(
             act(a, `retire.${p.name}`, p.name, '\u{1F4E6}', {
-              subtitle: l ? lineSubtitle(l, pull.total, demandTrend(l.family, ctx.key, g.year), beaten(g, b, ctx, l.family, l.effective), p.from) : `Launched ${p.launched} · not selling here · tap to retire`,
+              subtitle: l ? lineSubtitle(l, pull.total, kindTrend(l.family, ctx.key, g.year, field.heavy), beaten(g, b, ctx, l.family, l.effective), p.from) : `Launched ${p.launched} · not selling here · tap to retire`,
               confirm: () => `Retire the ${p.name} line?`,
               run: (gg, c2, bb) => {
                 // Only a line that is still on sale is retired: R&D never offers it again.
@@ -597,7 +598,7 @@ function productsMenu(a: Asset): MenuGroup {
             }),
           )
         }
-        if (b.products.length > top.length) nodes.push({ type: 'info', id: `biz.prodMore.${a.id}`, text: `…and ${plural(b.products.length - top.length, 'more line')}. The weakest: ${retireOrder(b, g.year)[0]?.name ?? '-'}.`, emoji: '\u{1F4DA}' })
+        if (b.products.length > top.length) nodes.push({ type: 'info', id: `biz.prodMore.${a.id}`, text: `…and ${plural(b.products.length - top.length, 'more line')}. The weakest: ${retireOrder(b, g.year, field.heavy)[0]?.name ?? '-'}.`, emoji: '\u{1F4DA}' })
         nodes.push(retireAction(a, b))
       }
       const dev = rdProjects(b)
@@ -629,7 +630,7 @@ function linesToRetire(g: GameState, b: BizState): number {
   const w = bizWorth(g, b)
   const ctx = marketCtxFor(g, b, g.year)
   const field = fieldFor(ctx)
-  const order = retireOrder(b, g.year)
+  const order = retireOrder(b, g.year, field.heavy)
   let keep = [...b.products]
   let n = 0
   for (const p of order) {
@@ -662,7 +663,7 @@ function retireAction(a: Asset, b0: BizState): MenuAction {
       preview: (gg, v) => {
         const b = readBiz(gg, live(gg, a))
         const n = Math.max(0, Math.min(b.products.length, Math.round(v)))
-        const gone = retireOrder(b, gg.year).slice(0, n)
+        const gone = retireOrder(b, gg.year, heavyOf(gg, b)).slice(0, n)
         const saved = complexityShare(b.products.length) - complexityShare(b.products.length - n)
         const names = gone.slice(0, 3).map((p) => p.name).join(', ')
         return `${names}${n > 3 ? ` and ${n - 3} more` : ''} · saves about ${pct(saved, 1)} of sales in running costs`
@@ -670,7 +671,7 @@ function retireAction(a: Asset, b0: BizState): MenuAction {
     },
     run: (gg, cur, bb, input) => {
       const n = Math.round(clampN(Number(input) || 1, 1, bb.products.length))
-      const gone = retireLines(bb, n, gg.year)
+      const gone = retireLines(bb, n, gg.year, heavyOf(gg, bb))
       if (!gone.length) return
       log(gg, `${cur.name} retired ${plural(gone.length, 'product line')}.`)
       notice(gg, 'Lines Retired', `${cur.name} discontinued ${gone.slice(0, 4).join(', ')}${gone.length > 4 ? ` and ${gone.length - 4} more` : ''}. The warehouse has room again, and a few loyal fans are writing angry letters.`, { emoji: '\u{1F5D1}\u{FE0F}' })
