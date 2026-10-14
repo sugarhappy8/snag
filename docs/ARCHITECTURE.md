@@ -88,6 +88,9 @@ src/
                          versions, rivals' offerings, stacking, who loses customers (see "Business growth")
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
+    business/share-classes.ts share-classes-menu.ts  Share classes of the player's company: the votes
+                         a stake carries and the price factor (share-classes.ts), choosing the classes at
+                         the IPO and from Capital & Ownership (share-classes-menu.ts; see "Share classes" below)
     business/own-listing.ts listing-id.ts own-trade.ts own-listing-menu.ts  The player's listed
                          companies in Stocks: tiers, ticker and exchange, buy and sell rules, the row
                          and its screen (see "Your listed companies in Stocks" below)
@@ -119,6 +122,8 @@ src/
                          options, single-stock options and coin shorts (money-*.ts), online scams
     invest/shocks.ts     Market shocks (g.flags.marketShocks): a company/coin banned or hyped by a
                          head of state; investments and options read the price hit. Kept across heirs
+    invest/class-data.ts The classes real companies had, by year (votes, who holds them, which are
+                         listed), their Stocks screen line and the second listed lines that can be bought
     workshop/*.ts        Inventor's Workshop (Inventor 2.0): catalog, notebook, builds, patents, launch routes,
                          sales, events, menus and the old-save migration
     nation/*.ts          Politics 2.0: what governments do and what it does to the world (see "Politics 2.0"
@@ -536,13 +541,13 @@ Spending past the board's yearly budget (opening sites, capacity lines, product 
 - **When a company has a board.** When anyone else owns part of it (BizState.share < 0.999), when it is listed, or when a conglomerate claims it. Groups register through board-state.registerGroupBoard; their people fill the owner's seats.
 
 - **Where the state lives.** Governance is plain JSON in BizState.board. Use board-state.readBoard for menus and boardOf for actions and yearly hooks; old saves get defaults. It holds:
-  - directors, each with a seeded local name and stance (growth/profit/caution) and loyalty. Seats follow ownership through seatPlan/syncSeats, which never touch g.rng: owner seats ≈ share, investor directors, and at least two independents once listed;
+  - directors, each with a seeded local name and stance (growth/profit/caution) and loyalty. Seats follow ownership through seatPlan/syncSeats, which never touch g.rng: owner seats ≈ votes (`share-classes.ownerVotes`; the same as the share with one class), investor directors, and at least two independents once listed;
   - the mandate (growth/balanced/profit/cash);
   - the limits: a yearly capex+R&D budget as a share of company value, a cash reserve in months of running costs, and a CEO pay cap as a multiple of career.ceoPayNorm;
   - recent votes, patience/misses/warnings, CEO churn, the CEO's last letter, and any rogue scheme.
 
 - **Votes (board-vote.ts).**
-  - Proposals: ownerPay, bonus, ceoPay, dividend, capex, debt, sell, ipo, merge, close, fire, hire, takeOver, mandate, limits.
+  - Proposals: ownerPay, bonus, ceoPay, dividend, capex, debt, sell, ipo, merge, recap, close, fire, hire, takeOver, mandate, limits.
   - assess() gives the merit to all shareholders and how much the proposal favours the owner (self-dealing); each director gets a yes probability from that, their stance and their loyalty.
   - passOdds() is the exact probability vote() rolls; the Business hints use it.
   - needsVote()/boardAllows() gate actions. The player is held to the same limits as a hired CEO.
@@ -653,6 +658,50 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   removes it from the player's assets and turns each relative's stake into their own wealth at
   market value (`dynasty-ownership.cashOutFamilyHolders`); the yearly pass cleans up listed
   holdings already at 0% (`yearly.leaveUnownedListed`).
+- **Share classes** (`business/share-classes.ts`, `share-classes-menu.ts`, `invest/class-data.ts`): the
+  player's company can list with founder shares or a non-voting float, and a few real companies show the
+  classes they had.
+  - **One pool, derived votes (D1).** Economics stay one number, `BizState.share`. Votes are derived by
+    `share-classes.ownerVotes`, which is `b.share` exactly when there is no live record. `board-state.seatPlan`
+    is the only place a stake becomes seats and it reads votes, so every board decision, firing rule and
+    "you'd lose control" line follows them (`controlsFor` is the rule, `own-trade.controlsWith` delegates to
+    it). Board size still follows economics. `test/control-sites.test.ts` lists every other place a share
+    meets a half and classifies it (economics, a group, who profits); a new one fails until someone does.
+  - **The record (D2, D3).** `BizState.classes?: { kind: 'ab' | 'nv'; hi }` (optional, whitelisted in
+    `normalizeBiz`, read through `readClasses` because `bizOf` does not re-normalize a current record). `ab`: the
+    founders' class has 10 votes and the public's 1. `nv`: the founders' 1 and the public's 0. `hi` is the
+    part of the whole company the owner holds in the founders' class, clamped to the stake when read; relatives
+    hold the founders' class, executives and the float the ordinary one. A writer that adds shares and has
+    never heard of classes (a Stocks buy, Buy Out Investors, an agent's buy) therefore adds ordinary shares,
+    which is the safe answer. Only three writers keep `hi` in step: `diluteBusinessEquity` (scales it),
+    the buyback in `rescue.transactEquity` (`scaleFounders`) and `exit.sellShares` (`clampFounders`).
+  - **Only while listed (D4).** `activeClasses` returns the record only for a public company that stands
+    alone and has shares. A private company's record is the plan its IPO will use, and `conglomerate-state.detach`
+    clears it when a company comes out of a group and lists. Groups and divisions have none.
+  - **Choosing (D5, D6).** The Share Classes rows (`classesNode`) sit under Capital & Ownership and beside Go
+    Public. A private company sets its plan for free, any time. A listed company asks its board once a year
+    (the `'recap'` proposal, merit +0.3 for one class, -1.0 for `ab`, -1.3 for `nv`; the year key is
+    `classes.<id>`; a refused recap does not use up the `'merge'` slot), converts the owner's whole stake to the
+    founders' class and re-seats the board. The market pays 4% less for `ab` and 7% less for `nv`
+    (`CLASS_DISCOUNT`): `ipoPlanFor` scales the pre-money value, `updateSharePrice` and the Stocks buy floor
+    carry `classFactor`, and a recap moves the price once by the difference. `classOption`, `ipoPreview` and the
+    row subtitles call the same functions the action runs, never `g.rng`.
+  - **Real companies (D8 to D10).** `invest/class-data.ts` is a curated table (21 companies, each row from a
+    public source named above it) of the classes a company had by year. The company's Stocks screen gets a
+    "Share classes" line from it. A listed extra class (12 of them) is a line inside that screen with the id
+    `<company id>~<letter>`: its price is the company's times `1 + spread` (`lineSpread`), with no new draw,
+    so it splits and ends with the company by construction (`lineYear` maps a `SecYear`). A line's own last
+    year cashes the holder out as delisted. Lines are not in `allQuotes`, `stocks` or `investmentListing`
+    (they hang off `Quote.lines`), so the row counts and the unique-ticker tests stay as they were; look
+    them up through `quotesWithLines`.
+  - **`companyKey` (D9).** `invest/engine.companyKey` strips a line's `~X` suffix. `isRealSecId`,
+    `breakthroughStockFactor`, `shockFactor`, `addMarketShock` (every cause but `'liquidity'`),
+    `pruneShocks` and `politics.insiderPositions` use it, so one company is one security for news, inventions
+    and insider cases. Order flow stays on the line that was traded. Anything that groups holdings by company
+    (hedge funds, an advisor) must call `companyKey`; nothing enforces it until it does.
+  - **Old saves.** A save without `classes` plays as before (`ownerVotes === share`, `classFactor === 1`; the
+    golden tests pin `seatPlan` and `ipoPreview`). A damaged record reads as one class. A save holding a
+    line whose data later goes cashes out as delisted at the last price, like any unknown id.
 - **Your listed companies in Stocks** (`business/own-listing.ts`, `listing-id.ts`, `own-trade.ts`,
   `own-listing-menu.ts`): a company you've taken public shows in Investments › Stocks as a view and a
   trade door over the business.
