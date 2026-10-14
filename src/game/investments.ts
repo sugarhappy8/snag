@@ -1013,8 +1013,11 @@ function buyBlock(g: GameState, q: Quote): string | null {
   return null
 }
 
-/** Buy `amount` dollars of a security (fees come out of the amount). Returns true on success. */
-export function buySecurity(g: GameState, secId: string, amount: number): boolean {
+/**
+ * Buy `amount` dollars of a security (fees come out of the amount). Returns true on success. A `quiet` order
+ * (the money team's trades) queues no popup and writes no log line; everything else is the same.
+ */
+export function buySecurity(g: GameState, secId: string, amount: number, quiet = false): boolean {
   // An old holding may be swapped for its slot's company on the spot: "buy more" follows it.
   const old = findHolding(g, secId)
   normalizeHoldings(g)
@@ -1022,31 +1025,31 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   const held = findHolding(g, secId)
   const q = allQuotes(listing(g)).find((x) => x.secId === secId) ?? (held ? holdingQuote(g, held) : undefined)
   if (!q) {
-    notice(g, 'Order Rejected', 'That security is no longer listed.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'That security is no longer listed.', { emoji: '🚫' })
     return false
   }
   const block = buyBlock(g, q)
   if (block) {
-    notice(g, 'Order Rejected', block, { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', block, { emoji: '🚫' })
     return false
   }
   const min = minTrade(g)
   const amt = Math.floor(Number.isFinite(amount) ? amount : 0)
   if (amt < min) {
-    notice(g, 'Order Rejected', `The minimum order is ${formatMoney(min)}.`, { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', `The minimum order is ${formatMoney(min)}.`, { emoji: '🚫' })
     return false
   }
   if (amt > MAX_INVESTMENT_VALUE || (held && (basis(held) > MAX_INVESTMENT_VALUE - amt || holdingValue(held) > MAX_INVESTMENT_VALUE - amt))) {
-    notice(g, 'Order Rejected', 'That order is too large for one brokerage position.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'That order is too large for one brokerage position.', { emoji: '🚫' })
     return false
   }
   if (amt > g.character.money) {
-    notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank.`, { emoji: '💸', tone: 'bad' })
+    if (!quiet) notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank.`, { emoji: '💸', tone: 'bad' })
     return false
   }
   const room = cryptoRoom(g, q)
   if (room !== null && amt > room) {
-    notice(g, 'Not Enough Sellers', `The ${q.name} market is still tiny: about ${formatMoney(room)} more is all anyone will sell you this year.`, { emoji: '🪙' })
+    if (!quiet) notice(g, 'Not Enough Sellers', `The ${q.name} market is still tiny: about ${formatMoney(room)} more is all anyone will sell you this year.`, { emoji: '🪙' })
     return false
   }
   const fee = feeFor(feePlan(g, q.type), amt)
@@ -1054,7 +1057,7 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   // Gold, bonds and deposits track their own unit price per holding; listed securities use the market price.
   const price = held && (q.type === 'gold' || q.type === 'bond' || q.type === 'savings') ? unitPrice(held) || q.price : q.price
   if (!(price > 0) || invested <= 0 || !spend(g, amt)) {
-    notice(g, 'Order Rejected', 'The order could not be filled.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'The order could not be filled.', { emoji: '🚫' })
     return false
   }
   const depth = tradingDepth(g, q.type, q.details)
@@ -1107,8 +1110,8 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   const valueLine = sellsApart(sale, a.value)
     ? ` Your position is valued at ${formatMoney(a.value)}. ${q.type === 'savings' ? 'Closing it now' : 'A full sale'} would return about ${formatMoney(sale)}, before tax.`
     : ` Your position is now worth ${formatMoney(a.value)}.`
-  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${impactLine}${valueLine}`, { emoji: q.emoji, tone: 'good' })
-  log(g, q.type === 'savings' ? `I put ${formatMoney(amt)} in the bank.` : `I invested ${formatMoney(amt)} in ${q.name}.`)
+  if (!quiet) notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${impactLine}${valueLine}`, { emoji: q.emoji, tone: 'good' })
+  if (!quiet) log(g, q.type === 'savings' ? `I put ${formatMoney(amt)} in the bank.` : `I invested ${formatMoney(amt)} in ${q.name}.`)
   return true
 }
 
@@ -1188,21 +1191,21 @@ function gainLine(r: Realized): string {
   return 'You broke even.'
 }
 
-/** Sell `amount` dollars of a holding ('all' sells everything). */
-export function sellHolding(g: GameState, assetId: string, amount: number | 'all'): boolean {
+/** Sell `amount` dollars of a holding ('all' sells everything). A `quiet` sale queues no popup and writes no log line. */
+export function sellHolding(g: GameState, assetId: string, amount: number | 'all', quiet = false): boolean {
   // Old saves may still contain index NAVs inflated by personal order flow.
   revalueHoldings(g, true)
   const a = g.assets.find((x) => x.id === assetId && x.kind === 'investment')
   if (!a) return false
   const block = sellBlock(g, a)
   if (block) {
-    notice(g, 'Order Rejected', block, { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', block, { emoji: '🚫' })
     return false
   }
   const value = holdingValue(a)
   const want = amount === 'all' ? value : Math.floor(Number.isFinite(amount) ? amount : 0)
   if (amount !== 'all' && want <= 0) {
-    notice(g, 'Order Rejected', 'Enter an amount to sell.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'Enter an amount to sell.', { emoji: '🚫' })
     return false
   }
   const res = sellCore(g, a, want)
@@ -1210,8 +1213,8 @@ export function sellHolding(g: GameState, assetId: string, amount: number | 'all
   const t = typeOf(a)
   const extra = [res.fee > 0 ? `Fees: ${formatMoney(res.fee)}.` : '', res.penalty > 0 ? `Early withdrawal penalty: ${formatMoney(res.penalty)}.` : '', (res.impact ?? 0) >= 1 ? `Market depth reduced proceeds by ${formatMoney(res.impact!)} and moved the quote. Splitting an order does not avoid the price impact.` : ''].filter(Boolean).join(' ')
   const verb = t === 'savings' ? `withdrew ${formatMoney(res.gross)} from your ${str(a.details.product) === 'term' ? 'term deposit' : 'savings account'}` : `sold ${formatMoney(res.gross)} of ${a.name}`
-  notice(g, t === 'savings' ? 'Withdrawal' : 'Order Filled', `You ${verb}. ${extra ? `${extra} ` : ''}${formatMoney(res.net)} landed in your bank account. ${gainLine(res.realized)}`, { emoji: a.emoji, tone: res.realized.gain >= 0 ? 'good' : 'bad' })
-  log(g, t === 'savings' ? `I withdrew ${formatMoney(res.gross)} from the bank.` : res.realized.gain >= 0 ? `I sold some ${a.name} at a profit.` : `I sold some ${a.name} at a loss.`, res.realized.gain >= 0 ? 'good' : 'bad')
+  if (!quiet) notice(g, t === 'savings' ? 'Withdrawal' : 'Order Filled', `You ${verb}. ${extra ? `${extra} ` : ''}${formatMoney(res.net)} landed in your bank account. ${gainLine(res.realized)}`, { emoji: a.emoji, tone: res.realized.gain >= 0 ? 'good' : 'bad' })
+  if (!quiet) log(g, t === 'savings' ? `I withdrew ${formatMoney(res.gross)} from the bank.` : res.realized.gain >= 0 ? `I sold some ${a.name} at a profit.` : `I sold some ${a.name} at a loss.`, res.realized.gain >= 0 ? 'good' : 'bad')
   return true
 }
 
@@ -1249,6 +1252,132 @@ export function liquidatePortfolio(g: GameState): boolean {
   notice(g, 'Portfolio Liquidated', `You sold ${stuck ? 'what you could' : 'everything'} for ${formatMoney(gross)}. Fees and penalties: ${formatMoney(fees)}. ${formatMoney(net)} landed in your bank account. ${result}${stuckLine}`, { emoji: '💰', tone: gain >= 0 ? 'good' : 'bad' })
   log(g, 'I sold my entire investment portfolio.', gain >= 0 ? 'good' : 'bad')
   return true
+}
+
+// ---------------------------------------------------------------------------
+// The managed book (advisors/): three buckets of ordinary holdings, read purely and traded quietly.
+// Nothing here knows about advisors; the money team imports it. Fees, tax and blocks are the engine's own.
+
+/** What a money manager runs: the local index fund, government bonds, savings accounts. Nothing else. */
+export type MandateBucket = 'stocks' | 'bonds' | 'savings'
+
+export interface BucketBook {
+  /** Marked value of the player's holdings in this bucket. */
+  value: number
+  /** Why a new order for this bucket can't be placed right now (null when it can). */
+  buyBlock: string | null
+  /** Why the bucket's largest holding can't be sold right now (null when it can, or when the bucket is empty). */
+  sellBlock: string | null
+  /** The yield of what a new order buys. */
+  yield: number
+}
+
+export interface ManagedBook {
+  stocks: BucketBook
+  bonds: BucketBook
+  savings: BucketBook
+  /** The bank balance. */
+  cash: number
+  /** The broker's smallest order. */
+  minOrder: number
+  /** Why nothing can be traded at all (a minor, a prisoner, the dead, a country that bans private investing). */
+  idle: string | null
+}
+
+export interface ManagedFill {
+  /** Dollars that changed hands: the cash a buy spent, or the fall in marked value a sale caused. */
+  moved: number
+  /** Why nothing moved (null when something did). */
+  reason: string | null
+}
+
+/** Single stocks, pennies, REITs, gold, coins and term deposits belong to no bucket. */
+function bucketOf(a: Asset): MandateBucket | null {
+  switch (typeOf(a)) {
+    case 'index':
+      return 'stocks'
+    case 'bond':
+      return 'bonds'
+    case 'savings':
+      return str(a.details.product) === 'term' ? null : 'savings'
+    default:
+      return null
+  }
+}
+
+/** A bucket's holdings, largest first (equal values by id, so the order is stable). */
+function bucketHoldings(g: GameState, bucket: MandateBucket): Asset[] {
+  return investmentHoldings(g)
+    .filter((a) => bucketOf(a) === bucket)
+    .sort((a, b) => holdingValue(b) - holdingValue(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+function bucketBook(g: GameState, bucket: MandateBucket, q: Quote): BucketBook {
+  const held = bucketHoldings(g, bucket)
+  let value = 0
+  for (const a of held) value = Math.min(MAX_INVESTMENT_VALUE, value + holdingValue(a))
+  return { value, buyBlock: q.blocked, sellBlock: held.length ? holdingMarketBlock(g, held[0]) : null, yield: num(q.yield) }
+}
+
+function bookOf(g: GameState, l: Listing): ManagedBook {
+  return {
+    stocks: bucketBook(g, 'stocks', l.fund),
+    bonds: bucketBook(g, 'bonds', l.bond),
+    savings: bucketBook(g, 'savings', l.savings),
+    cash: num(g.character.money),
+    minOrder: minTrade(g),
+    idle: tradeBlock(g) ?? investingBlocked(g.character.countryId, g.year),
+  }
+}
+
+/** The player's money-manager view of their portfolio. Pure: writes nothing and never touches g.rng. */
+export function managedBook(g: GameState): ManagedBook {
+  return bookOf(g, listing(g))
+}
+
+/**
+ * Place one quiet order for a bucket: no popup, no log line. A buy spends at most the cash on hand and uses the
+ * quote a hand order would (so it has the same fee, blocks and minimum). A sale works through the bucket's holdings
+ * largest first, stops when what is left of the ask is under the minimum order, and never touches a term deposit.
+ */
+export function managedOrder(g: GameState, bucket: MandateBucket, side: 'buy' | 'sell', dollars: number): ManagedFill {
+  const none = (reason: string): ManagedFill => ({ moved: 0, reason })
+  const l = listing(g)
+  const book = bookOf(g, l)
+  if (book.idle) return none(book.idle)
+  const want = Math.floor(Number.isFinite(dollars) ? dollars : 0)
+  const tooSmall = `The minimum order is ${formatMoney(book.minOrder)}.`
+
+  if (side === 'buy') {
+    if (book[bucket].buyBlock) return none(book[bucket].buyBlock!)
+    if (want < book.minOrder) return none(tooSmall)
+    const amount = Math.min(want, Math.floor(book.cash))
+    if (amount < book.minOrder) return none(`You need at least ${formatMoney(book.minOrder)} in the bank to invest.`)
+    const q = bucket === 'stocks' ? l.fund : bucket === 'bonds' ? l.bond : l.savings
+    const before = g.character.money
+    if (!buySecurity(g, q.secId, amount, true)) return none('The order could not be filled.')
+    return { moved: Math.max(0, before - g.character.money), reason: null }
+  }
+
+  if (want < book.minOrder) return none(tooSmall)
+  const held = bucketHoldings(g, bucket)
+  if (!held.length) return none("There's nothing to sell.")
+  const open = held.filter((a) => !holdingMarketBlock(g, a))
+  if (!open.length) return none(holdingMarketBlock(g, held[0]) ?? 'The order could not be filled.')
+  // The same repricing a sale does first, so `moved` is the effect of the sale and not of that repricing.
+  revalueHoldings(g, true)
+  let left = want
+  let moved = 0
+  for (const a of open.sort((x, y) => holdingValue(y) - holdingValue(x) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))) {
+    if (left < book.minOrder) break
+    const before = holdingValue(a)
+    if (!(before > 0) || !sellHolding(g, a.id, Math.min(left, before), true)) continue
+    const now = g.assets.find((x) => x.id === a.id)
+    const fell = before - (now ? holdingValue(now) : 0)
+    moved += fell
+    left -= fell
+  }
+  return moved > 0 ? { moved, reason: null } : none('The order could not be filled.')
 }
 
 // ---------------------------------------------------------------------------
