@@ -15,7 +15,7 @@
 - `npm run typecheck`, `npm test` and `npm run build` stay green. No `any`, no `@ts-ignore`, no new dependencies, no `Math.random` in `src/game`.
 - Scripts are plain `.mjs` with a hand-written `.d.mts` where a test imports them. They only read the repo, and write only the files a command names.
 - In `src/`, only string text changes, except in the named code tasks (5 to 8, 10, and the two digest/pool rules in 12). No effect object, condition, id, key or RNG call is touched by a rewrite.
-- Voice: `docs/VOICE.md`. Hard caps: log 90, outcome 120, scene 140, tooltip 120, digest 110 characters (holes count 0); label 5 words. Aim lower: log 60, outcome 100, scene 110, tooltip 100.
+- Voice: `docs/VOICE.md`. Hard caps: log 90, outcome 120, scene 140, tooltip 120, digest 110 characters (holes count 0); label 5 words. Aim lower: log 60, outcome 100, scene 110, tooltip 100, digest 100.
 - Do not touch: the seeded RNG, the no-server rule, the README's fictional-names note, the 18+ consent gating, existing ribbon ids, saved-game key names.
 - A new field on saved state is optional (missing means false). Only Task 8 adds one (`NoticeModal.support`).
 - Fixture source files are committed with a `.txt` suffix (`a.ts.txt`, `b.tsx.txt`) and copied by the test into a temp `src/` tree, because `tsc` compiles every `.ts` under `test/`. The scripts' `--root` points at that temp tree.
