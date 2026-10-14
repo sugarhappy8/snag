@@ -661,6 +661,8 @@ export interface AncestorSummary {
 
 export interface GameState {
   version: number
+  /** Which shape of save this is (save-schema.ts). Missing means 1: the save predates the field. */
+  schemaVersion?: number
   /** Unique id of this life. */
   lifeId: string
   /** Seeded RNG state (see rng.ts). */

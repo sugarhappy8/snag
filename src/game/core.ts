@@ -18,7 +18,13 @@ import type {
   Tone,
 } from './types'
 
+/** Frozen: it marks the save family, so an older build still recognises a newer save's shell. */
 export const GAME_VERSION = 1
+/**
+ * Which shape of save the game writes (GameState.schemaVersion). Changing the shape of the saved
+ * state bumps it and adds a step to the chain in save-schema.ts.
+ */
+export const SAVE_SCHEMA = 2
 
 export function clamp(n: number, lo = 0, hi = 100): number {
   if (Number.isNaN(n)) return lo
