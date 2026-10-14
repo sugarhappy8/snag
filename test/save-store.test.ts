@@ -23,6 +23,7 @@ import {
   resetSaveStoreForTests,
   saveRecord,
   setSaveBackend,
+  STORE_OP_TIMEOUT_MS,
   subscribeSaveStatus,
 } from '../src/game/save-store'
 import { decodeSnapshotRecord } from '../src/game/snapshot-codec'
@@ -114,6 +115,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -241,6 +243,33 @@ describe('an asynchronous backend', () => {
     expect(await flushSave()).toBe(false)
     expect(readRecord()).toBe('{"save":2}')
     expect(listener).toHaveBeenCalledTimes(3)
+    unsubscribe()
+  })
+
+  it('a save waiting behind a write that fails is written next, without another save', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await writesReach(backend, 1)
+    backend.settle(0)
+    expect(await flushSave()).toBe(true)
+
+    const seen: boolean[] = []
+    const unsubscribe = subscribeSaveStatus(() => seen.push(getSaveStatus().persistFailed))
+    saveRecord('{"save":2}') // A, in flight
+    await writesReach(backend, 2)
+    saveRecord('{"save":3}') // B, waiting behind it
+    backend.fail(1)
+    await writesReach(backend, 3)
+    expect(backend.writes[2]).toBe('{"save":3}')
+    // Between A failing and B landing, reads fall back to the last stored record.
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(readRecord()).toBe('{"save":1}')
+
+    backend.settle(2)
+    expect(await flushSave()).toBe(true)
+    expect(seen).toEqual([true, false])
+    expect(readRecord()).toBe('{"save":3}')
+    expect(backend.stored).toBe('{"save":3}')
     unsubscribe()
   })
 
@@ -517,6 +546,181 @@ describe('a protected newer record', () => {
   })
 })
 
+describe('a storage step that never answers', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  })
+
+  /** Lets the queue run as far as it can without fake time moving (the backend answers in microtasks). */
+  const run = () => vi.advanceTimersByTimeAsync(0)
+
+  it('a write that hangs raises the warning after STORE_OP_TIMEOUT_MS, and the queue carries on when it lands', async () => {
+    const backend = useControlled()
+    // A stored save to fall back to. Its watchdog went when the write landed.
+    saveRecord('{"save":1}')
+    await run()
+    backend.settle(0)
+    expect(await flushSave()).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+
+    const listener = vi.fn()
+    const unsubscribe = subscribeSaveStatus(listener)
+    saveRecord('{"save":2}')
+    await run()
+    expect(backend.writes).toHaveLength(2)
+    let flushed: boolean | undefined
+    void flushSave().then((ok) => {
+      flushed = ok
+    })
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS - 1)
+    expect(getSaveStatus().persistFailed).toBe(false)
+    expect(flushed).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(flushed).toBe(false)
+    // While it still hangs, a flush answers at once, and reads fall back to the last stored record.
+    expect(await flushSave()).toBe(false)
+    expect(readRecord()).toBe('{"save":1}')
+
+    // A save made during the hang is taken, and waits: no second write starts.
+    expect(saveRecord('{"save":3}')).toBe(true)
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(backend.writes).toEqual(['{"save":1}', '{"save":2}'])
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    // The hung write lands at last: the newest save is written next, and the warning goes.
+    backend.settle(1)
+    await run()
+    expect(backend.writes).toEqual(['{"save":1}', '{"save":2}', '{"save":3}'])
+    backend.settle(2)
+    expect(await flushSave()).toBe(true)
+    expect(getSaveStatus().persistFailed).toBe(false)
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(readRecord()).toBe('{"save":3}')
+    expect(backend.stored).toBe('{"save":3}')
+    expect(vi.getTimerCount()).toBe(0)
+    unsubscribe()
+  })
+
+  it('a hung write that fails late takes the usual failure path, and the queue carries on', async () => {
+    const backend = useControlled()
+    const listener = vi.fn()
+    const unsubscribe = subscribeSaveStatus(listener)
+    saveRecord('{"save":1}')
+    await run()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(listener).toHaveBeenCalledTimes(1)
+    saveRecord('{"save":2}')
+    backend.fail(0)
+    await run()
+    // Still failed, and not announced twice; the waiting save went out next.
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(backend.writes).toEqual(['{"save":1}', '{"save":2}'])
+    backend.settle(1)
+    expect(await flushSave()).toBe(true)
+    expect(getSaveStatus().persistFailed).toBe(false)
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+    unsubscribe()
+  })
+
+  it("a newer record's copy that hangs raises the warning the same way, and the saves go through when it lands", async () => {
+    const backend = useControlled(newer)
+    const open = holdCopies(backend)
+    protectNewerRecord(newer, 3)
+    const listener = vi.fn()
+    const unsubscribe = subscribeSaveStatus(listener)
+    expect(saveRecord('{"life":2}')).toBe(true)
+    await run()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(await flushSave()).toBe(false)
+    expect(readRecord()).toBeNull()
+
+    expect(saveRecord('{"life":2,"age":1}')).toBe(true)
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(backend.writes).toEqual([])
+    expect(backend.stored).toBe(newer)
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    // The copy is made at last: the save it held back is written, then the newest one.
+    open()
+    await run()
+    expect(storage.data.get(SLOT_1)).toBe(newer)
+    expect(backend.writes).toEqual(['{"life":2}'])
+    backend.settle(0)
+    await run()
+    expect(backend.writes).toEqual(['{"life":2}', '{"life":2,"age":1}'])
+    backend.settle(1)
+    expect(await flushSave()).toBe(true)
+    expect(getSaveStatus().persistFailed).toBe(false)
+    expect(backend.stored).toBe('{"life":2,"age":1}')
+    expect(vi.getTimerCount()).toBe(0)
+    unsubscribe()
+  })
+
+  it('an encoding that hangs raises the warning too, and nothing is written meanwhile', async () => {
+    // A gzip stream that takes its first chunk and never answers.
+    vi.stubGlobal(
+      'CompressionStream',
+      class extends TransformStream<Uint8Array, Uint8Array> {
+        constructor() {
+          super({ transform: () => new Promise<void>(() => undefined) })
+        }
+      },
+    )
+    const backend = useControlled()
+    saveRecord(JSON.stringify({ text: 'x'.repeat(100_000) }))
+    await run()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(await flushSave()).toBe(false)
+    expect(saveRecord('{"a":1}')).toBe(true)
+    await run()
+    expect(backend.writes).toEqual([])
+  })
+
+  it('a removal that hangs raises the warning, and takes it down when it lands', async () => {
+    const backend = useControlled('{"life":1}')
+    let land: () => void = () => undefined
+    backend.remove = () =>
+      new Promise<void>((resolve) => {
+        land = () => {
+          backend.stored = null
+          resolve()
+        }
+      })
+    removeRecord()
+    await run()
+    await vi.advanceTimersByTimeAsync(STORE_OP_TIMEOUT_MS)
+    expect(getSaveStatus().persistFailed).toBe(true)
+    expect(await flushSave()).toBe(false)
+    expect(readRecord()).toBeNull()
+
+    land()
+    await run()
+    expect(await flushSave()).toBe(true)
+    expect(getSaveStatus().persistFailed).toBe(false)
+    expect(backend.stored).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('resetSaveStoreForTests clears a running watchdog, and answers the flush waiting on it', async () => {
+    const backend = useControlled()
+    saveRecord('{"save":1}')
+    await run()
+    expect(backend.writes).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(1)
+    const flushed = flushSave()
+    resetSaveStoreForTests()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(await flushed).toBe(false)
+  })
+})
+
 describe('the copies', () => {
   it('readSaveCopy(SAVE_KEY) reads the main slot as stored, and deleteSaveCopy(SAVE_KEY) never removes it', async () => {
     storage.data.set(SAVE_KEY, 'main')
@@ -540,11 +744,17 @@ describe('the copies', () => {
     const [notice] = getSaveStatus().notices
     expect(notice.id).toBe(SLOT_1)
 
-    const refuse = vi.spyOn(storage, 'removeItem').mockImplementation(denied)
+    // A refused removal keeps both, and so does one whose read-back is refused as well.
+    const refuseRemoval = vi.spyOn(storage, 'removeItem').mockImplementation(denied)
     await deleteSaveCopy(notice.id)
     expect(storage.data.get(SLOT_1)).toBe(newer)
     expect(getSaveStatus().notices).toEqual([notice])
-    refuse.mockRestore()
+    const refuseRead = vi.spyOn(storage, 'getItem').mockImplementation(denied)
+    await deleteSaveCopy(notice.id)
+    expect(storage.data.get(SLOT_1)).toBe(newer)
+    expect(getSaveStatus().notices).toEqual([notice])
+    refuseRemoval.mockRestore()
+    refuseRead.mockRestore()
 
     const listener = vi.fn()
     const unsubscribe = subscribeSaveStatus(listener)
@@ -553,6 +763,32 @@ describe('the copies', () => {
     expect(getSaveStatus().notices).toEqual([])
     expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
+  })
+
+  it("deleteSaveCopy keeps an overflow copy's notice until the overflow confirms the copy is gone", async () => {
+    for (const [n, slot] of QUARANTINE_SLOTS.entries()) storage.data.set(slot, `copy ${n + 1}`)
+    const backend = useControlled(newer)
+    protectNewerRecord(newer, 3)
+    saveRecord('{"life":2}')
+    expect(await settleAll(backend)).toBe(true)
+    const [notice] = getSaveStatus().notices
+    expect(notice.id).toBe('bad-1')
+
+    const { get, remove } = backend.overflow
+    const gone = () => Promise.reject(new Error('IndexedDB is gone'))
+    backend.overflow.remove = gone
+    backend.overflow.get = gone
+    await deleteSaveCopy('bad-1')
+    expect(getSaveStatus().notices).toEqual([notice])
+    backend.overflow.get = get
+    await deleteSaveCopy('bad-1')
+    expect(await backend.overflow.get('bad-1')).toBe(newer)
+    expect(getSaveStatus().notices).toEqual([notice])
+
+    backend.overflow.remove = remove
+    await deleteSaveCopy('bad-1')
+    expect(await backend.overflow.get('bad-1')).toBeNull()
+    expect(getSaveStatus().notices).toEqual([])
   })
 
   it('nothing throws or rejects when storage fails', async () => {

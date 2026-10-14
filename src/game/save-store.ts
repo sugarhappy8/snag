@@ -2,20 +2,29 @@
 // backend (localStorage; memory in tests) is written inside saveRecord and read live, as saveGame
 // always worked, so a save is readable the moment it is made. An asynchronous one (IndexedDB)
 // answers reads from a cache and writes through a queue: one write in flight, a later save replacing
-// the one waiting (the latest wins), a removal running after the write in flight. A record that a
-// newer version of the game wrote is copied to quarantine before anything overwrites it. This file
-// only moves strings: parsing and migrating them is save.ts's business.
+// the one waiting (the latest wins), a removal running after the write in flight, and a step that
+// storage never answers raising the warning after STORE_OP_TIMEOUT_MS. A record that a newer version
+// of the game wrote is copied to quarantine before anything overwrites it. This file only moves
+// strings: parsing and migrating them is save.ts's business.
 import { localSaveBackend, SAVE_KEY, type SaveBackend, type SyncSaveBackend } from './save-backends'
-import { deleteQuarantine, quarantineRecord, readQuarantine, type SaveNotice } from './save-quarantine'
+import { deleteQuarantine, QUARANTINE_SLOTS, quarantineRecord, readQuarantine, type SaveNotice } from './save-quarantine'
 import { encodeSnapshotRecord } from './snapshot-codec'
 
 /** What the save warning and Home's notices show. */
 export interface SaveStatus {
   /** One per kept copy of a record that couldn't be loaded, or per such record left in place. */
   readonly notices: readonly SaveNotice[]
-  /** The newest save isn't in storage: the last write failed, and none has worked since. */
+  /** The newest save isn't in storage: the last write failed (or hangs), and none has worked since. */
   readonly persistFailed: boolean
 }
+
+/**
+ * A queue step (a newer record's copy, an encode, a write, a removal) still unanswered after this
+ * long is taken for a failed save: the warning shows and flushSave stops waiting. Storage that stops
+ * answering (a stuck IndexedDB transaction) must never lose progress without a warning, nor leave a
+ * Time Machine jump that waits on flushSave spinning.
+ */
+export const STORE_OP_TIMEOUT_MS = 20_000
 
 /** Everything resetSaveStoreForTests puts back, in one place. */
 interface State {
@@ -31,9 +40,14 @@ interface State {
   removal: boolean
   /** Bumped by every removal, so that a write saved before it discards itself. */
   generation: number
-  /** The queue is running; `idle` settles once it has run dry. */
+  /** The queue is running. */
   busy: boolean
-  idle: Promise<void>
+  /** flushSave calls waiting for the queue to run dry, or for its step in flight to time out. */
+  flushes: ((ok: boolean) => void)[]
+  /** The watchdog of the step in flight, while it runs. */
+  timer: ReturnType<typeof setTimeout> | null
+  /** The step in flight has gone unanswered for STORE_OP_TIMEOUT_MS (it runs on: it can't be cancelled). */
+  stalled: boolean
   /** A record a newer version of the game wrote, kept in the main slot until it has a copy. */
   newer: { readonly raw: string; readonly version: number } | null
   /** saveRecord has run in this page: what it saved is newer than anything boot reads from storage. */
@@ -50,7 +64,9 @@ function initialState(): State {
     removal: false,
     generation: 0,
     busy: false,
-    idle: Promise.resolve(),
+    flushes: [],
+    timer: null,
+    stalled: false,
     newer: null,
     sessionSaved: false,
     status: { notices: [], persistFailed: false },
@@ -242,11 +258,17 @@ export function protectNewerRecord(raw: string, version: number): void {
 
 /**
  * Resolves once the queue has run dry: true when the newest save is in storage (or there is
- * nothing to store), false when its write failed. Never rejects.
+ * nothing to store), false when its write failed. A step that storage leaves unanswered for
+ * STORE_OP_TIMEOUT_MS makes it resolve false then, and at once while that step still hangs, so it
+ * never waits unboundedly. Never rejects.
  */
 export function flushSave(): Promise<boolean> {
   const s = state
-  return s.idle.then(() => !s.status.persistFailed)
+  if (s.stalled) return Promise.resolve(false)
+  if (!s.busy) return Promise.resolve(!s.status.persistFailed)
+  return new Promise((resolve) => {
+    s.flushes.push(resolve)
+  })
 }
 
 // --- The queue -----------------------------------------------------------------------------
@@ -254,7 +276,39 @@ export function flushSave(): Promise<boolean> {
 function kick(): void {
   if (state.busy) return
   state.busy = true
-  state.idle = drain(state)
+  void drain(state)
+}
+
+function answerFlushes(s: State, ok: boolean): void {
+  const waiting = s.flushes
+  s.flushes = []
+  for (const resolve of waiting) resolve(ok)
+}
+
+/**
+ * Waits for one storage step of the queue, under a watchdog. A step still unanswered after
+ * STORE_OP_TIMEOUT_MS stalls the queue: the warning shows and every flushSave waiting resolves
+ * false. The step can't be cancelled, so the queue goes on waiting for it (no second write starts
+ * meanwhile), and it is handled as usual whenever it settles.
+ */
+async function watched<T>(s: State, step: Promise<T>): Promise<T> {
+  const timer = setTimeout(() => stall(s), STORE_OP_TIMEOUT_MS)
+  s.timer = timer
+  try {
+    return await step
+  } finally {
+    clearTimeout(timer)
+    s.timer = null
+    s.stalled = false
+  }
+}
+
+function stall(s: State): void {
+  s.timer = null
+  if (s !== state) return
+  s.stalled = true
+  setPersistFailed(true)
+  answerFlushes(s, false)
 }
 
 /**
@@ -270,7 +324,9 @@ async function drain(s: State): Promise<void> {
       s.removal = false
       const backend = active()
       try {
-        await backend.remove()
+        await watched(s, Promise.resolve(backend.remove()))
+        // Storage has caught up with the removal: nothing is left unsaved, even if it stalled first.
+        if (s === state) setPersistFailed(false)
       } catch {
         // refused: the record stays, as a refused removal always has
       }
@@ -280,6 +336,7 @@ async function drain(s: State): Promise<void> {
       await writeQueued(s, json)
     } else {
       s.busy = false
+      answerFlushes(s, !s.status.persistFailed)
       return
     }
   }
@@ -298,7 +355,7 @@ async function writeQueued(s: State, json: string): Promise<void> {
   if (guard !== null) {
     let notice: SaveNotice | null = null
     try {
-      notice = await quarantineRecord(backend, guard.raw, 'newer', guard.version)
+      notice = await watched(s, quarantineRecord(backend, guard.raw, 'newer', guard.version))
     } catch {
       // storage failed: there is no copy
     }
@@ -314,13 +371,13 @@ async function writeQueued(s: State, json: string): Promise<void> {
   }
   let ok: boolean
   try {
-    const record = backend.kind === 'async' ? await encodeSnapshotRecord(json) : json
+    const record = backend.kind === 'async' ? await watched(s, encodeSnapshotRecord(json)) : json
     // A removal came after this save: it discards itself before it reaches storage...
     if (!current()) return
     if (backend.kind === 'sync') {
       ok = backend.write(record)
     } else {
-      await backend.write(record)
+      await watched(s, backend.write(record))
       ok = true
     }
   } catch {
@@ -349,8 +406,9 @@ export async function readSaveCopy(id: string): Promise<string | null> {
 }
 
 /**
- * Removes the copy kept under `id` and, once it is gone, its notice. The record in the main slot
- * (id SAVE_KEY) is never removed this way. Storage that fails leaves both; never an error.
+ * Removes the copy kept under `id` and, once a read confirms it is gone, its notice. The record in
+ * the main slot (id SAVE_KEY) is never removed this way. Storage that fails leaves both; never an
+ * error.
  */
 export async function deleteSaveCopy(id: string): Promise<void> {
   if (id === SAVE_KEY) return
@@ -358,7 +416,11 @@ export async function deleteSaveCopy(id: string): Promise<void> {
   const backend = active()
   try {
     await deleteQuarantine(backend, id)
-    if ((await readQuarantine(backend, id)) === null && s === state) dropNotice(id)
+    // Read raw, so that a read storage refuses throws (and keeps the notice) instead of passing for "gone".
+    const gone = QUARANTINE_SLOTS.includes(id)
+      ? localStorage.getItem(id) === null
+      : backend.kind === 'async' && (await backend.overflow.get(id)) === null
+    if (gone && s === state) dropNotice(id)
   } catch {
     // storage failed: the copy and its notice stay
   }
@@ -366,7 +428,10 @@ export async function deleteSaveCopy(id: string): Promise<void> {
 
 /** Back to how a page starts: the default backend, and nothing cached, queued, protected or listed. */
 export function resetSaveStoreForTests(): void {
-  const before = state.status
+  const before = state
+  if (before.timer !== null) clearTimeout(before.timer)
   state = initialState()
-  if (before.persistFailed || before.notices.length > 0) notify()
+  // Nothing watches the old queue's step any more: a flush still waiting on it would wait forever.
+  answerFlushes(before, false)
+  if (before.status.persistFailed || before.status.notices.length > 0) notify()
 }
