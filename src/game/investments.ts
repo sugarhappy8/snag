@@ -317,11 +317,93 @@ function syncOwnFlow(g: GameState, a: Asset): void {
   a.value = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, markedValue(a)))
 }
 
+// ---------------------------------------------------------------------------
+// When the units were bought (insider-trading timing: special/politics.ts)
+//
+// `details.buys` maps a game year to the units bought that year and still held, and keeps the
+// current and previous year only: two numbers, however long the holding is kept. A holding saved
+// before this existed has no `buys`; it falls back on `boughtYear` (the first purchase), all units
+// or none. `details.buys` is damaged-save safe: every read and write goes through these helpers.
+
+function buysOf(a: Asset): Record<string, Json> | null {
+  const raw = a.details.buys
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null
+}
+
+function buyPart(raw: Record<string, Json>, year: number): number {
+  const v = raw[String(year)]
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
+}
+
+/** The two newest years with units in them, newest first (bounded however many keys a save holds). */
+function recentBuys(raw: Record<string, Json>): [number, number][] {
+  const top: [number, number][] = []
+  for (const key of Object.keys(raw)) {
+    const year = Number(key), v = raw[key]
+    if (!Number.isInteger(year) || typeof v !== 'number' || !Number.isFinite(v) || !(v > 0)) continue
+    top.push([year, v])
+    top.sort((p, q) => q[0] - p[0])
+    if (top.length > 2) top.pop()
+  }
+  return top
+}
+
+/** Write the per-year units back: two years at most, never more units than the holding has (oldest trimmed first). */
+function storeBuys(a: Asset, entries: [number, number][]): void {
+  const newest = new Map<number, number>()
+  for (const [year, v] of entries) if (Number.isInteger(year) && Number.isFinite(v) && v > 0) newest.set(year, (newest.get(year) ?? 0) + v)
+  let room = units(a)
+  // Rounding dust (a sale that should have used a year up exactly) is not a position.
+  const dust = room * 1e-9
+  const out: Record<string, Json> = {}
+  for (const [year, v] of [...newest].sort((p, q) => q[0] - p[0]).slice(0, 2)) {
+    const keep = Math.min(v, room)
+    if (keep > dust) { out[String(year)] = keep; room -= keep }
+  }
+  a.details.buys = out
+}
+
+/** Units bought in `year - 1` and in `year`, as the holding stands (a holding without `buys` is read from `boughtYear`). */
+function buysNow(a: Asset, year: number): { prev: number; cur: number } {
+  const u = units(a)
+  const raw = buysOf(a)
+  if (raw) {
+    const cur = Math.min(u, buyPart(raw, year))
+    return { prev: Math.min(u - cur, buyPart(raw, year - 1)), cur }
+  }
+  const by = a.details.boughtYear
+  if (!(u > 0) || typeof by !== 'number' || !(by >= year - 1)) return { prev: 0, cur: 0 }
+  return by >= year ? { prev: 0, cur: u } : { prev: u, cur: 0 }
+}
+
+/** Units of this holding bought in `year` or the year before, and still held (shares an official could be accused of timing). */
+export function freshUnits(a: Asset, year: number): number {
+  if (!Number.isFinite(year)) return 0
+  const { prev, cur } = buysNow(a, year)
+  return Math.max(0, prev + cur)
+}
+
+/** The fresh part of a holding, 0 to 1 (an empty holding has none). */
+export function freshShare(a: Asset, year: number): number {
+  const u = units(a)
+  return u > 0 ? Math.min(1, freshUnits(a, year) / u) : 0
+}
+
+/** The unit count changed without a trade (a split, a re-anchored price, interest, a loss): the bought-per-year split follows it. */
+function rescaleBuys(a: Asset, was: number, now: number): void {
+  const raw = buysOf(a)
+  if (!raw || was === now) return
+  const k = was > 0 ? now / was : 0
+  storeBuys(a, recentBuys(raw).map(([year, v]) => [year, v * k] as [number, number]))
+}
+
 function setPosition(a: Asset, u: number, price: number, cost: number): void {
   const safeP = Number.isFinite(price) ? Math.max(0, Math.min(MAX_INVESTMENT_VALUE, price)) : 0
   const unitCap = safeP > 0 ? MAX_INVESTMENT_VALUE / safeP : MAX_INVESTMENT_VALUE
   const safeU = Number.isFinite(u) ? Math.max(0, Math.min(unitCap, u)) : 0
+  const was = units(a)
   a.details.units = safeU
+  rescaleBuys(a, was, safeU)
   a.details.price = safeP
   a.details.basis = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(cost) ? cost : 0)))
   a.purchasePrice = a.details.basis
@@ -926,6 +1008,8 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   const order = depth ? buyImpact(invested, depth) : { value: invested, end: 1 }
   const newUnits = order.value / price
   let a = held
+  // What was bought in the last two years before this order (a holding saved without it is read from boughtYear).
+  const bought = a ? buysNow(a, g.year) : { prev: 0, cur: 0 }
   if (a) {
     const oldUnits = units(a)
     const oldValue = holdingValue(a)
@@ -950,6 +1034,7 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
     setPosition(a, newUnits, price, amt)
     g.assets.push(a)
   }
+  storeBuys(a, [[g.year - 1, bought.prev], [g.year, bought.cur + newUnits]])
   count(g, 'investTrades')
   count(g, 'moneyInvested', amt)
   if (depth) recordOrderFlow(g, a, order.end)
@@ -1009,7 +1094,19 @@ function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | nul
   const net = Math.max(0, order.proceeds - fee - penalty)
   const basisPart = basis(a) * frac
   if (all) g.assets = g.assets.filter((x) => x.id !== a.id)
-  else setPosition(a, units(a) * (1 - frac), unitPrice(a), basis(a) - basisPart)
+  else {
+    // Selling what you just bought is not timing: a sale takes this year's units first, then last
+    // year's, and only then the older ones. A holding without per-year data keeps reading from boughtYear.
+    const tracked = buysOf(a) !== null
+    const bought = buysNow(a, g.year)
+    const soldUnits = units(a) * frac
+    setPosition(a, units(a) * (1 - frac), unitPrice(a), basis(a) - basisPart)
+    if (tracked) {
+      const cur = Math.max(0, bought.cur - soldUnits)
+      const prev = Math.max(0, bought.prev - Math.max(0, soldUnits - bought.cur))
+      storeBuys(a, [[g.year - 1, prev], [g.year, cur]])
+    }
+  }
   const realized = realize(g, net, net - basisPart, true)
   if (depth) recordOrderFlow(g, a, order.end)
   count(g, 'investTrades')

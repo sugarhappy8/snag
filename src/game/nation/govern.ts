@@ -394,6 +394,8 @@ export function propose(g: GameState, m: Measure): void {
     choices.push({ id: 'bribe', label: `Pay off waverers (${formatMoney(bribeCost(g))}, ${pctText(oddsFor(g, v, power, m, 'bribe').pass * deal)}, illegal)`, emoji: '💼' })
   }
   choices.push({ id: 'cancel', label: 'Withdraw it', emoji: '✖️' })
+  const warning = insiderWarning(g, m, label)
+  if (warning) text += `\n\n${warning}`
   scriptChoice(g, BILL_SCRIPT, power.route === 'decree' ? 'Executive Order' : 'New Bill', text, choices, { emoji: '🏛️', data: { m: m as unknown as Json } })
 }
 
@@ -597,17 +599,28 @@ function afterTrade(g: GameState, m: Measure): string {
   return lines.join(' ')
 }
 
+/** The industry a measure moves the listed shares of, and whether it helps them (null: it moves no shares). */
+export function policyMoveOf(m: Measure): { sector: string; bullish: boolean } | null {
+  switch (m.k) {
+    case 'tariff': return m.add > 0 && m.input !== 'all' ? { sector: m.input, bullish: true } : null
+    case 'newTax': return m.level > 0 && m.industry ? { sector: m.industry, bullish: false } : null
+    case 'break': return m.level > 0 ? { sector: m.industry, bullish: true } : null
+    case 'dereg': return m.on ? { sector: m.sector, bullish: true } : null
+    case 'nationalize': return m.on ? { sector: m.sector, bullish: false } : null
+    default: return null
+  }
+}
+
 /** Policies that move an industry's listed shares: the career module checks for insider bets. */
 function insiderLine(g: GameState, m: Measure, label: string): string {
-  const move = (sector: string, bullish: boolean) => officeHooks().policyMove(g, sector, bullish, label)
-  switch (m.k) {
-    case 'tariff': return m.add > 0 && m.input !== 'all' ? move(m.input, true) : ''
-    case 'newTax': return m.level > 0 && m.industry ? move(m.industry, false) : ''
-    case 'break': return m.level > 0 ? move(m.industry, true) : ''
-    case 'dereg': return m.on ? move(m.sector, true) : ''
-    case 'nationalize': return m.on ? move(m.sector, false) : ''
-    default: return ''
-  }
+  const move = policyMoveOf(m)
+  return move ? officeHooks().policyMove(g, move.sector, move.bullish, label) : ''
+}
+
+/** Said before the vote: a law that would count against positions the player recently took ('' when none). */
+function insiderWarning(g: GameState, m: Measure, label: string): string {
+  const move = policyMoveOf(m)
+  return move ? officeHooks().policyWarning(g, move.sector, move.bullish, label) : ''
 }
 
 // ---------------------------------------------------------------------------

@@ -245,10 +245,16 @@ export interface OfficeHooks {
   leaveOffice(g: GameState, reason: 'fired' | 'quit' | 'other', line: string): void
   /** Insider bets on a sector the player's own policy just moved (null when none). */
   policyMove(g: GameState, sector: string, bullish: boolean, label: string): string
+  /**
+   * What to tell the player before a law that would count as an insider trade ('' when none).
+   * Pure: it reads the same positions policyMove does and changes nothing.
+   */
+  policyWarning(g: GameState, sector: string, bullish: boolean, label?: string): string
 }
 let hooks: OfficeHooks = {
   leaveOffice: (g) => { g.character.job = null },
   policyMove: () => '',
+  policyWarning: () => '',
 }
 export function registerOfficeHooks(h: OfficeHooks): void { hooks = h }
 export function officeHooks(): OfficeHooks { return hooks }

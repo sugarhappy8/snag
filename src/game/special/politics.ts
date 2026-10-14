@@ -25,7 +25,7 @@ import { marketOf } from '../data/markets'
 import { common } from '../events/era'
 import { exchangeInfo } from '../invest/engine'
 import { addMarketShock, indexShockFactor, type ShockCause } from '../invest/shocks'
-import { investmentHoldings, revalueHoldings } from '../investments'
+import { freshShare, investmentHoldings, revalueHoldings } from '../investments'
 import { chance, pick, rand, randInt, shuffle } from '../rng'
 import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
@@ -1467,6 +1467,8 @@ interface InsiderCase {
   extra: string[]
   /** Estimated paper gain on plain shares and coins held through the announcement. */
   gain: number
+  /** A policy case: whether the law was good for the company's shares (absent in older saves and announcement cases). */
+  bullish?: boolean
 }
 
 interface AbuseData {
@@ -1534,6 +1536,7 @@ function repairAbuse(a: AbuseData): AbuseData {
       quiet: Math.round(bounded(c.quiet, 0, 0, 20)),
       extra,
       gain: Math.round(bounded(c.gain, 0, 0, 1e15)),
+      ...(typeof c.bullish === 'boolean' ? { bullish: c.bullish } : {}),
     })
   }
   const keep = new Set([
@@ -1685,7 +1688,10 @@ function legislatorHouse(g: GameState): string {
   return legislator(g).house
 }
 
-/** The player's positions that win if the price moves this way (insider positions). */
+/**
+ * The player's positions that win if the price moves this way (insider positions). Plain shares
+ * count only for the part bought this year or last year: older holdings were not bought on a tip.
+ */
 function insiderPositions(g: GameState, t: BetTarget, bearish: boolean): { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string } {
   const out = { betIds: [] as string[], own: 0, crony: 0, shares: 0, index: 0, indexUnits: 0, cronyName: '' }
   // Index options on the same exchange: a company's crash drags its index down with it.
@@ -1705,7 +1711,7 @@ function insiderPositions(g: GameState, t: BetTarget, bearish: boolean): { betId
       out.cronyName = b.crony
     } else out.own += b.premium
   }
-  if (!bearish) for (const a of investmentHoldings(g)) if (str(a.details.secId) === t.secId) out.shares += Math.max(0, a.value)
+  if (!bearish) for (const a of investmentHoldings(g)) if (str(a.details.secId) === t.secId) out.shares += Math.max(0, a.value) * freshShare(a, g.year)
   return out
 }
 
@@ -1796,16 +1802,10 @@ const POLICY_SECTORS: Record<string, string[]> = {
   semiconductor: ['electronics'], biotech: ['pharma'], electricVehicles: ['automakers'], solar: ['utilities'], casino: ['hotels'], hotel: ['hotels'],
 }
 
-/**
- * A law that hits a whole industry moves its (fictional) listed companies. Positions the player
- * holds on the right side of the move become insider cases, exactly like a market-moving
- * announcement. Real companies are never named in a policy shock.
- */
-function policyInsider(g: GameState, key: string, bullish: boolean, label: string): string {
-  const job = politicianJob(g)
-  const rank = officeRank(job)
+/** The made-up listed companies in the sectors a law on this key moves (at most 4; real companies are never named). */
+function policyTargets(g: GameState, key: string): BetTarget[] {
+  if (!Object.prototype.hasOwnProperty.call(POLICY_SECTORS, key)) return []
   const ids = POLICY_SECTORS[key]
-  if (!job || rank < 1 || !ids) return ''
   const inf = exchangeInfo(g.character.countryId)
   const ey = exchangeYear(fam(g), anchor(g), inf, g.year)
   const targets: BetTarget[] = []
@@ -1816,10 +1816,29 @@ function policyInsider(g: GameState, key: string, bullish: boolean, label: strin
     if (t) targets.push(t)
     if (targets.length >= 4) break
   }
+  return targets
+}
+
+/** The open insider case a law on this security already started (one per security). */
+function openPolicyCase(cases: InsiderCase[], secId: string): InsiderCase | undefined {
+  return cases.find((c) => c.status === 'open' && c.cause === 'policy' && c.secId === secId)
+}
+
+/**
+ * A law that hits a whole industry moves its (fictional) listed companies. Positions the player
+ * holds on the right side of the move become insider cases, exactly like a market-moving
+ * announcement: shares bought this year or last, open bets, a crony's account. A security that
+ * already has an open policy case gets no second one. Real companies are never named in a policy shock.
+ */
+function policyInsider(g: GameState, key: string, bullish: boolean, label: string): string {
+  const job = politicianJob(g)
+  const rank = officeRank(job)
+  if (!job || rank < 1) return ''
+  const targets = policyTargets(g, key)
   if (!targets.length) return ''
   const a = abuseData(g)
   const d = pdata(job)
-  const hit: string[] = []
+  const moved: string[] = [], started: string[] = []
   for (const t of targets) {
     const pos = insiderPositions(g, t, !bullish)
     const stake = pos.own + pos.crony + pos.shares + pos.index
@@ -1827,24 +1846,60 @@ function policyInsider(g: GameState, key: string, bullish: boolean, label: strin
     const mult = bullish ? 1 + size : Math.max(0.3, 1 - size)
     addMarketShock(g, { asset: t.asset, secId: t.secId, exKey: t.exKey, slot: t.slot, name: t.name, symbol: t.symbol, cause: 'policy', year: g.year, mult, fade: 0, countryId: g.character.countryId })
     if (stake <= 0) continue
+    moved.push(t.name)
+    const open = openPolicyCase(a.cases, t.secId)
+    if (open) {
+      // The first case already covers this security: bets placed since ride on it, nothing new is opened.
+      tagBets(g, pos.betIds, open.id)
+      continue
+    }
     const via: InsiderCase['via'] = pos.own > 0 || pos.index > 0 ? 'own' : pos.crony > 0 ? 'crony' : 'shares'
     const cs: InsiderCase = {
       id: `case${g.year}-${a.cases.length}`, age: g.character.age, year: g.year, target: t.name, symbol: t.symbol, secId: t.secId, cause: 'policy',
       stake: Math.round(stake), via, crony: pos.cronyName, evidence: via === 'own' ? 0.7 : via === 'shares' ? 0.55 : 0.35, status: 'open',
-      office: d.office, title: job.title, countryId: g.character.countryId, quiet: 0, extra: [], gain: Math.round(pos.shares * Math.max(0, mult - 1)),
+      office: d.office, title: job.title, countryId: g.character.countryId, quiet: 0, extra: [], gain: Math.round(pos.shares * Math.max(0, mult - 1)), bullish,
     }
     a.cases.push(cs)
     tagBets(g, pos.betIds, cs.id)
-    hit.push(t.name)
+    started.push(t.name)
   }
   revalueHoldings(g)
   a.moves += 1
-  if (!hit.length) return `Listed ${targets[0].sector.toLowerCase()} companies moved on "${label}".`
-  a.heat = Math.min(100, a.heat + 16)
-  addHidden(g, 'karma', -6)
-  count(g, 'insiderTrades')
-  remember(g, `As ${job.title}, held positions in ${hit.join(', ')} when my own law moved them.`)
-  return `Your positions in ${hit.join(', ')} moved with your own law. Regulators watch timing like this.`
+  if (!moved.length) return `Listed ${targets[0].sector.toLowerCase()} companies moved on "${label}".`
+  if (started.length) {
+    a.heat = Math.min(100, a.heat + 16)
+    addHidden(g, 'karma', -6)
+    count(g, 'insiderTrades')
+    remember(g, `As ${job.title}, held positions in ${started.join(', ')} when my own law moved them.`)
+  }
+  return `Your positions in ${moved.join(', ')} moved with your own law. Regulators watch timing like this.`
+}
+
+/** "A and B", or "A and 2 others" past two. */
+function nameList(names: string[]): string {
+  return names.length <= 2 ? names.join(' and ') : `${names[0]} and ${names.length - 1} others`
+}
+
+/**
+ * What to tell the player before a law that would start an insider case ('' when it would not).
+ * The same targets and positions as policyInsider, but it only reads: no rolls, no shocks, no writes.
+ */
+function policyWarning(g: GameState, key: string, bullish: boolean, _label?: string): string {
+  const job = politicianJob(g)
+  if (!job || officeRank(job) < 1) return ''
+  const targets = policyTargets(g, key)
+  if (!targets.length) return ''
+  const cases = abuseView(g).cases
+  const names: string[] = []
+  let hasBets = false
+  for (const t of targets) {
+    const pos = insiderPositions(g, t, !bullish)
+    if (pos.own + pos.crony + pos.shares + pos.index <= 0 || openPolicyCase(cases, t.secId)) continue
+    names.push(t.name)
+    if (pos.own + pos.crony + pos.index > 0) hasBets = true
+  }
+  if (!names.length) return ''
+  return `${hasBets ? `You hold positions in ${nameList(names)}.` : `You bought shares in ${nameList(names)} recently.`} This law moves them. The regulator could call it insider trading.`
 }
 
 registerOfficeHooks({
@@ -1863,6 +1918,7 @@ registerOfficeHooks({
     log(g, line, 'bad')
   },
   policyMove: policyInsider,
+  policyWarning,
 })
 
 defineScript(ABUSE_SCRIPT, (g, choice, data) => {
@@ -2056,11 +2112,14 @@ function caseSeverity(g: GameState, cs: InsiderCase): number {
   if (cs.stake >= local(g, 1_000_000)) sev += 1
   if (cs.stake >= local(g, 10_000_000)) sev += 1
   if (cs.office === 'mayor' || cs.office === 'school') sev -= 1
-  return Math.max(2, Math.min(5, sev))
+  // Holding shares when your own law moved them is not a bet on a secret: five to fifteen years at most.
+  const cap = cs.cause === 'policy' && cs.via === 'shares' ? 3 : 5
+  return Math.max(2, Math.min(cap, sev))
 }
 
 function caseCharges(cs: InsiderCase): string[] {
-  const bearish = moveOf(cs.cause)?.bearish ?? true
+  // A policy case says which way the law pushed the price; an older one without it keeps the old label.
+  const bearish = cs.cause === 'policy' && typeof cs.bullish === 'boolean' ? !cs.bullish : (moveOf(cs.cause)?.bearish ?? true)
   return [bearish ? 'Market Manipulation' : 'Abuse of Office', ...cs.extra]
 }
 
