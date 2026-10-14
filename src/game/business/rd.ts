@@ -17,7 +17,7 @@ import { industryDef } from './industries'
 import { demandLevel, demandSize, demandTrend } from './product-data'
 import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
-import { readProjects, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
+import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
 import { clampN, money, plural } from './util'
 
 /** Chance a project at a normal budget works: whoever runs it, quality, the quality team. */
@@ -298,6 +298,7 @@ function niceBudget(n: number): number {
 export function rdBlock(b: BizState, idea: string, budget: number): string | null {
   if (!idea.trim()) return 'Pick an idea first.'
   if (b.products.some((p) => p.name === idea)) return `${idea} is already on sale.`
+  if (retiredOf(b).includes(idea)) return `${idea} was retired. Develop something else.`
   if (rdProjects(b).some((p) => p.name === idea)) return `${idea} is already in development.`
   if (rdProjects(b).length >= MAX_STORED_PROJECTS) return 'Your R&D department is drowning in projects. Let some finish first.'
   const r = rdRange(b, idea)
@@ -357,14 +358,35 @@ export function retireOrder(b: Pick<BizState, 'industry' | 'countryId' | 'produc
   return [...b.products].sort((x, y) => standing(b, x, year) - standing(b, y, year) || x.launched - y.launched)
 }
 
-/** Retire the `n` weakest lines; returns their names. */
-export function retireLines(b: BizState, n: number, year: number): string[] {
+/**
+ * Remember lines that were retired on purpose, so R&D never offers them again (productIdeas,
+ * rdBlock). Names are kept the way a saved game keeps them (state.ts readRetired): newest last,
+ * no repeats, the newest MAX_STORED_PRODUCTS. The list is created on first use.
+ */
+export function rememberRetired(b: BizState, names: readonly string[]): void {
+  if (!names.length) return
+  const list = readRetired([...retiredOf(b), ...names])
+  if (list.length) b.retired = list
+}
+
+/** Take the `n` weakest lines off sale; returns their names. */
+function dropWeakest(b: BizState, n: number, year: number): string[] {
   const k = Math.max(0, Math.min(b.products.length, Math.floor(n)))
   if (k <= 0) return []
   const gone = retireOrder(b, year).slice(0, k)
   const names = new Set(gone.map((p) => p.name))
   b.products = b.products.filter((p) => !names.has(p.name))
   return gone.map((p) => p.name)
+}
+
+/**
+ * Retire the `n` weakest lines for good; returns their names. This is a deliberate retirement
+ * ("Retire Weak Lines", the hired CEO), so R&D never offers the lines again.
+ */
+export function retireLines(b: BizState, n: number, year: number): string[] {
+  const gone = dropWeakest(b, n, year)
+  rememberRetired(b, gone)
+  return gone
 }
 
 /** A finished project's expected quality (old saves: from the boost it was funded for). */
@@ -417,8 +439,8 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
     log(g, `${name} launched ${p.name}${hit ? ' and it was a smash hit' : ''}.`, 'good')
   }
   b.rd = keep
-  // A storage guard only: the economics retire lines long before this.
-  if (b.products.length > MAX_STORED_PRODUCTS) retireLines(b, b.products.length - MAX_STORED_PRODUCTS, year + 1)
+  // A storage guard only: the economics retire lines long before this. Not a retirement the player chose, so the lines are not remembered.
+  if (b.products.length > MAX_STORED_PRODUCTS) dropWeakest(b, b.products.length - MAX_STORED_PRODUCTS, year + 1)
   if (!lines.length || !a || !runsIt(g, a) || !g.character.alive) return
   notice(g, `${name}: R&D Results`, `${lines.slice(0, 6).join('\n')}${lines.length > 6 ? `\n…and ${lines.length - 6} more.` : ''}${keep.length ? `\n${plural(keep.length, 'project')} still in development.` : ''}`, {
     emoji: wins > 0 ? '\u{1F680}' : '\u{1F4A5}',

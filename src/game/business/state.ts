@@ -83,6 +83,31 @@ export interface RdProject {
 /** Storage guards only (the economics stop growth long before): newest lines and projects are kept. */
 export const MAX_STORED_PRODUCTS = 400
 export const MAX_STORED_PROJECTS = 120
+/** The longest line name the retired list keeps. */
+export const MAX_RETIRED_NAME = 80
+
+/**
+ * A stored list of retired line names, cleaned: strings only, trimmed, 1 to MAX_RETIRED_NAME
+ * characters, no repeats (a name retired again moves to the newest spot), the newest
+ * MAX_STORED_PRODUCTS kept. Anything that is not a list reads as none.
+ */
+export function readRetired(v: Json | undefined): string[] {
+  if (!Array.isArray(v)) return []
+  const names = new Set<string>()
+  for (const x of v) {
+    if (typeof x !== 'string') continue
+    const name = x.trim()
+    if (!name || name.length > MAX_RETIRED_NAME) continue
+    names.delete(name)
+    names.add(name)
+  }
+  return [...names].slice(-MAX_STORED_PRODUCTS)
+}
+
+/** The retired line names of a company (a missing or damaged field reads as none). */
+export function retiredOf(b: { retired?: readonly string[] }): readonly string[] {
+  return Array.isArray(b.retired) ? b.retired : []
+}
 
 export interface YearRecord {
   year: number
@@ -247,6 +272,11 @@ export interface BizState {
   products: Product[]
   /** Products in development (missing on old saves: read it with rd.ts rdProjects). */
   rd?: RdProject[]
+  /**
+   * Exact names of the lines the player retired on purpose, newest last (rd.ts rememberRetired).
+   * R&D never offers them again. Missing on old saves and on companies that never retired a line.
+   */
+  retired?: string[]
   outlets: Outlet[]
   /**
    * Extra production capacity at the home site: production lines, ovens, sewing lines,
@@ -541,6 +571,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   }
   const history = [...historyByYear.values()].slice(-12)
   const supplier = d.supplier === 'budget' || d.supplier === 'premium' ? d.supplier : 'standard'
+  const retired = readRetired(d.retired)
   return {
     v: BIZ_VERSION,
     industry,
@@ -572,6 +603,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     campaignBoost: clampN(num(d.campaignBoost), 0, 0.6),
     products,
     ...(Array.isArray(d.rd) ? { rd: projects } : {}),
+    ...(retired.length ? { retired } : {}),
     outlets,
     ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
     history,

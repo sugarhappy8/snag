@@ -69,7 +69,7 @@ import { supplyInventoryValue } from './supply'
 import { equipmentUpgradeCost, purchaseEquipmentUpgrade, purchaseTraining, repeatProgramGain, staffTrainingCost, supplyPolicyNodes } from './supply-policy'
 import { economicReportMenu } from './economic-report'
 import { complexityShare, productIdeas } from './products'
-import { bestRdBudget, bestRdIdea, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, retireLines, retireOrder, startRd } from './rd'
+import { bestRdBudget, bestRdIdea, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
 import { fieldFor, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
 import { demandTrend } from './product-data'
 import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
@@ -588,7 +588,10 @@ function productsMenu(a: Asset): MenuGroup {
               subtitle: l ? lineSubtitle(l, pull.total, demandTrend(l.family, ctx.key, g.year), beaten(g, b, ctx, l.family, l.effective), p.from) : `Launched ${p.launched} · not selling here · tap to retire`,
               confirm: () => `Retire the ${p.name} line?`,
               run: (gg, c2, bb) => {
+                // Only a line that is still on sale is retired: R&D never offers it again.
+                const onSale = bb.products.some((x) => x.name === p.name)
                 bb.products = bb.products.filter((x) => x.name !== p.name)
+                if (onSale) rememberRetired(bb, [p.name])
                 notice(gg, 'Line Retired', `${c2.name} discontinued ${p.name}. A few loyal fans are writing angry letters.`, { emoji: '\u{1F4E6}' })
               },
             }),
