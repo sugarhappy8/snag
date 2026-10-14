@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { defendants } from '../src/game/activities/lawsuit'
+import { yearlyMoney } from '../src/game/computer/money'
 import { anchor, fam, moneyState, regulator } from '../src/game/computer/money-common'
 import { listedTargets, placeBet, type BetTarget } from '../src/game/computer/money-stocks'
 import { formatMoney } from '../src/game/core'
@@ -359,6 +360,18 @@ describe('a later law joins the case on that security instead of starting anothe
     expect(seen).toBeGreaterThan(0)
   })
 
+  it('a fold into an open case leaves its new bets open and tagged for the investigation to freeze', () => {
+    const g = official('gb', 3)
+    startCase(g)
+    const t = holdable(g)
+    moneyState(g).broker = 'Summit Securities'
+    const bet = placeBet(g, { via: 'own', secId: t.secId, kind: 'call', strike: 'atm', stake: 100_000 })!
+    const text = officeHooks().policyMove(g, 'industry', true, 'Second law')
+    expect(text).not.toMatch(/froze|frozen|staked/)
+    expect(theCase(g).status).toBe('open')
+    expect(moneyState(g).bets.find((b) => b.id === bet.id)?.caseId).toBe(theCase(g).id)
+  })
+
   it('a pending case the regulator then drops gives back what it held', () => {
     let dropped = 0
     for (const seed of SEEDS) {
@@ -378,6 +391,155 @@ describe('a later law joins the case on that security instead of starting anothe
       roundTrips(g)
     }
     expect(dropped).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+const STAKE = 1_000_000
+const heatOf = (g: GameState): number => (g.flags['special.politics'] as unknown as { abuse: { heat: number } }).abuse.heat
+const clone = (g: GameState): GameState => JSON.parse(JSON.stringify(g)) as GameState
+
+/** A president's pending case, then a fresh call on that company (the right side of a bullish law) and a put (the wrong side). */
+function pendingWithBets(seed: number): { g: GameState; t: BetTarget; call: string; put: string } | null {
+  const p = pendingPresident(seed)
+  if (!p) return null
+  const { g } = p
+  const t = holdable(g)
+  moneyState(g).broker = 'Summit Securities'
+  const call = placeBet(g, { via: 'own', secId: t.secId, kind: 'call', strike: 'atm', stake: STAKE })
+  const put = placeBet(g, { via: 'own', secId: t.secId, kind: 'put', strike: 'atm', stake: 50_000 })
+  expect(call).not.toBeNull()
+  expect(put).not.toBeNull()
+  return { g, t, call: call!.id, put: put!.id }
+}
+
+describe('a later law freezes the bets it brings to a pending case', () => {
+  it('the warning says so, the law freezes them at once, and nothing more is taken', () => {
+    let seen = 0
+    for (const seed of SEEDS) {
+      const s = pendingWithBets(seed)
+      if (!s) continue
+      seen++
+      const { g, t } = s
+      const heat1 = heatOf(g)
+      expect(officeHooks().policyWarning(g, 'industry', true, 'Second law')).toBe(
+        `This moves ${t.name} again. It adds to the insider trading case the SEC could bring. Your new bets on ${t.name} would be frozen right away, and you'd lose what you staked.`,
+      )
+      const bank = g.character.money
+      // Settled bets of the case (what the regulator counts as its profit) stay as they were.
+      moneyState(g).betLog.push({ id: 'old-bet', secId: t.secId, name: t.name, year: g.year - 1, via: 'own', net: 70_000, caseId: theCase(g).id })
+      const settled = JSON.stringify(moneyState(g).betLog)
+      const text = officeHooks().policyMove(g, 'industry', true, 'Second law')
+      expect(JSON.stringify(moneyState(g).betLog)).toBe(settled)
+      expect(text).toBe(
+        `Your positions in ${t.name} moved with your own law. Regulators watch timing like this. Investigators froze your new bets on ${t.name} right away, since your case there is already open. You lost the ${formatMoney(STAKE)} you staked.`,
+      )
+      // The call is gone; the put (it loses on this law) is left alone and stays untagged.
+      expect(moneyState(g).bets.map((b) => [b.id, b.caseId])).toEqual([[s.put, '']])
+      // Still one case, still waiting, the same money held on the same gain; the bank is untouched (the stake left it when the bet was placed).
+      expect(cases(g)).toHaveLength(1)
+      expect(theCase(g)).toMatchObject({ status: 'pending', held: GAIN, gain: GAIN })
+      expect(g.character.money).toBe(bank)
+      // The frozen bet still tells on the player: the case moves up to a bet in their own name, with its 8 heat.
+      expect((theCase(g) as CaseRow & { via: string }).via).toBe('own')
+      expect(heatOf(g)).toBe(Math.min(100, heat1 + 8))
+      roundTrips(g)
+      if (seen >= 4) break
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+
+  it('a frozen bet never settles: a year on, nothing pays out for it', () => {
+    let seen = 0
+    for (const seed of SEEDS) {
+      const s = pendingWithBets(seed)
+      if (!s) continue
+      seen++
+      const { g } = s
+      officeHooks().policyMove(g, 'industry', true, 'Second law')
+      g.character.age += 1
+      g.year += 1
+      g.yearActions = {}
+      g.queue = []
+      yearlyMoney(g)
+      const settled = moneyState(g).betLog.map((r) => r.id)
+      expect(settled).not.toContain(s.call)
+      expect(settled).toContain(s.put)
+      expect(moneyState(g).bets).toHaveLength(0)
+      if (seen >= 3) break
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+
+  it('bets placed after the fold stay untagged: the next law freezes them too, an announcement makes its own case', () => {
+    let seen = 0
+    for (const seed of SEEDS) {
+      const s = pendingWithBets(seed)
+      if (!s) continue
+      seen++
+      const { g, t } = s
+      officeHooks().policyMove(g, 'industry', true, 'Second law')
+      const caseId = theCase(g).id
+      // No open bet is left carrying the case's id, so nothing can hide behind it.
+      expect(moneyState(g).bets.some((b) => b.caseId === caseId)).toBe(false)
+      const later = placeBet(g, { via: 'own', secId: t.secId, kind: 'call', strike: 'otm', stake: 200_000 })!
+      expect(moneyState(g).bets.find((b) => b.id === later.id)?.caseId).toBe('')
+
+      const law = clone(g)
+      const text = officeHooks().policyMove(law, 'industry', true, 'Third law')
+      expect(text).toContain(`You lost the ${formatMoney(200_000)} you staked.`)
+      expect(moneyState(law).bets.some((b) => b.id === later.id)).toBe(false)
+      expect(cases(law)).toHaveLength(1)
+
+      const word = clone(g)
+      word.queue = []
+      runScript(word, 'special.pol.abuse.announce', 'contract', { secId: t.secId }, NO_MODAL)
+      expect(cases(word)).toHaveLength(2)
+      const fresh = cases(word)[1]
+      expect(fresh).toMatchObject({ cause: 'contract', status: 'open', secId: t.secId })
+      expect(moneyState(word).bets.find((b) => b.id === later.id)?.caseId).toBe(fresh.id)
+      if (seen >= 3) break
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+
+  it('a pending case from a save that held nothing freezes them the same way and gives nothing back', () => {
+    for (const seed of SEEDS) {
+      const s = pendingWithBets(seed)
+      if (!s) continue
+      const { g, t } = s
+      delete (theCase(g) as { held?: unknown }).held
+      const bank = g.character.money
+      expect(officeHooks().policyMove(g, 'industry', true, 'Second law')).toContain(`Investigators froze your new bets on ${t.name} right away`)
+      expect(moneyState(g).bets.some((b) => b.id === s.call)).toBe(false)
+      expect(theCase(g).held).toBeUndefined()
+      expect(g.character.money).toBe(bank)
+      return
+    }
+    throw new Error('no pending case')
+  })
+
+  it('freezing draws no random numbers, and the warning only reads', () => {
+    for (const seed of SEEDS) {
+      const s = pendingWithBets(seed)
+      if (!s) continue
+      const { g } = s
+      // The same game without the call: the law makes the same draws either way.
+      const plain = clone(g)
+      moneyState(plain).bets = moneyState(plain).bets.filter((b) => b.id !== s.call)
+      g.queue = []
+      const before = JSON.stringify(g)
+      expect(officeHooks().policyWarning(g, 'industry', true, 'Second law')).toMatch(/would be frozen/)
+      expect(JSON.stringify(g)).toBe(before)
+      plain.rng = g.rng
+      officeHooks().policyMove(g, 'industry', true, 'Second law')
+      officeHooks().policyMove(plain, 'industry', true, 'Second law')
+      expect(moneyState(g).bets.some((b) => b.id === s.call)).toBe(false)
+      expect(g.rng).toBe(plain.rng)
+      return
+    }
+    throw new Error('no pending case')
   })
 })
 

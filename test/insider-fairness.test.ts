@@ -636,7 +636,9 @@ describe('policyWarning: said before the bill', () => {
     expect(warning(g, 'industry', false)).toBe('')
     // A case whose evidence was talked down (as "blame" does once the press has it) goes back up to the route's level.
     for (const c of cases(g)) (c as CaseRow & { evidence: number }).evidence = 0.6
-    expect(warning(g, 'industry', false)).toMatch(/again\. It adds to the insider trading cases? the FCA could bring\.$/)
+    const names = cases(g).map((c) => (c as CaseRow & { target: string }).target)
+    const list = names.length <= 2 ? names.join(' and ') : `${names[0]} and ${names.length - 1} others`
+    expect(warning(g, 'industry', false)).toBe(`This moves ${list} again. It adds to the insider trading ${names.length > 1 ? 'cases' : 'case'} the FCA could bring.`)
     const heat1 = abuse(g).heat
     move(g, 'industry', false)
     for (const c of cases(g)) expect((c as CaseRow & { evidence: number }).evidence).toBe(0.7)
@@ -676,6 +678,32 @@ describe('policyWarning: said before the bill', () => {
     expect(both).toBe(`You bought shares in ${b.name} recently. This moves their price. The SEC could call it insider trading. It also adds to the case over ${a.name}.`)
     expect(both).not.toMatch(/this law/i)
     expect(both.length).toBeLessThan(200)
+  })
+
+  it('two companies: "their prices", and a law that adds to two cases says "cases"', () => {
+    const g = leader('us')
+    const a = holdable(g, 'industry', [2026])
+    const b = holdable(g, 'industry', [2026], false, 1)
+    buy(g, a.secId, 10_000_000)
+    buy(g, b.secId, 10_000_000)
+    // The list follows the law's own order of companies: read it from a copy that passes the law.
+    const probe = JSON.parse(JSON.stringify(g)) as GameState
+    move(probe, 'industry', true)
+    const pair = cases(probe).map((c) => (c as CaseRow & { target: string }).target)
+    expect([...pair].sort()).toEqual([a.name, b.name].sort())
+    const listed = pair.join(' and ')
+    expect(warning(g, 'industry', true)).toBe(`You bought shares in ${listed} recently. This moves their prices. The SEC could call it insider trading.`)
+    move(g, 'industry', true)
+    expect(cases(g)).toHaveLength(2)
+    buy(g, a.secId, 30_000_000)
+    buy(g, b.secId, 30_000_000)
+    expect(warning(g, 'industry', true)).toBe(`This moves ${listed} again. It adds to the insider trading cases the SEC could bring.`)
+    // With a bet the opening changes; the plural stays.
+    const h = leader('us')
+    moneyState(h).broker = 'Summit Securities'
+    buy(h, a.secId, 10_000_000)
+    expect(placeBet(h, { via: 'own', secId: b.secId, kind: 'call', strike: 'atm', stake: 100_000 })).not.toBeNull()
+    expect(warning(h, 'industry', true)).toMatch(/^You hold positions in .+ and .+\. This moves their prices\. The SEC could call it insider trading\.$/)
   })
 
   it('only reads: the game is the same afterwards, random numbers included', () => {
@@ -864,15 +892,89 @@ describe('a later law folds into the case already open on that security', () => 
     expect(arrest.severity).toBe(5)
   })
 
-  it('a crony bet after a shares case: upgraded to crony, the friend named, evidence kept', () => {
+  it('a crony bet after a shares case rides on it, but the case stays on shares (found sooner) with no new heat', () => {
     const g = mpWithShareCase(3, 20_000_000)
     const heat1 = abuse(g).heat
-    const secId = cases(g)[0].secId
-    expect(placeBet(g, { via: 'crony', secId, kind: 'call', strike: 'atm', stake: 100_000, crony: 'Nigel Pratt', cut: 0.25 })).not.toBeNull()
+    const cs0 = { ...cases(g)[0] }
+    const bet = placeBet(g, { via: 'crony', secId: cs0.secId, kind: 'call', strike: 'atm', stake: 100_000, crony: 'Nigel Pratt', cut: 0.25 })
+    expect(bet).not.toBeNull()
+    // The new bet is still worth a warning: it joins the case.
+    const name = holdable(g, 'industry', [2026]).name
+    expect(warning(g, 'industry', true)).toBe(`This moves ${name} again. It adds to the insider trading case the FCA could bring.`)
     move(g, 'industry', true)
     expect(cases(g)).toHaveLength(1)
-    expect(cases(g)[0]).toMatchObject({ via: 'crony', crony: 'Nigel Pratt', evidence: 0.55 })
+    expect(cases(g)[0]).toMatchObject({ id: cs0.id, via: 'shares', crony: '', evidence: 0.55, status: 'open' })
+    expect(moneyState(g).bets.find((b) => b.id === bet!.id)?.caseId).toBe(cs0.id)
+    expect(abuse(g).heat).toBe(heat1)
+  })
+
+  it('a crony case still moves up to a bet in the player\'s own name; another crony bet leaves it as it is', () => {
+    const g = ukMp(6)
+    const t = holdable(g, 'industry', [2026])
+    expect(placeBet(g, { via: 'crony', secId: t.secId, kind: 'call', strike: 'atm', stake: 100_000, crony: 'Nigel Pratt', cut: 0.25 })).not.toBeNull()
+    move(g, 'industry', true)
+    expect(cases(g)[0]).toMatchObject({ via: 'crony', crony: 'Nigel Pratt', evidence: 0.35 })
+    const heat1 = abuse(g).heat
+    expect(placeBet(g, { via: 'crony', secId: t.secId, kind: 'call', strike: 'otm', stake: 100_000, crony: 'Nigel Pratt', cut: 0.25 })).not.toBeNull()
+    move(g, 'industry', true)
+    expect(cases(g)[0]).toMatchObject({ via: 'crony', evidence: 0.35 })
+    expect(abuse(g).heat).toBe(heat1)
+    moneyState(g).broker = 'Summit Securities'
+    expect(placeBet(g, { via: 'own', secId: t.secId, kind: 'call', strike: 'atm', stake: 100_000 })).not.toBeNull()
+    move(g, 'industry', true)
+    expect(cases(g)).toHaveLength(1)
+    expect(cases(g)[0]).toMatchObject({ via: 'own', evidence: 0.7 })
     expect(abuse(g).heat).toBe(Math.min(100, heat1 + 8))
+  })
+
+  it('a fold that brings new positions starts the quiet years over: the trail does not go cold a year later', () => {
+    let exposed = 0, waiting = 0
+    for (let seed = 1; seed <= 12; seed++) {
+      const g = ukMp(seed)
+      const t = holdable(g, 'industry', [2026, 2027])
+      buy(g, t.secId, 1_000_000)
+      move(g, 'industry', true)
+      // Three quiet years on the books: one more and the case would close.
+      ;(cases(g)[0] as CaseRow & { quiet: number }).quiet = 3
+      buy(g, t.secId, 50_000_000)
+      move(g, 'industry', true)
+      expect(cases(g)).toHaveLength(1)
+      expect((cases(g)[0] as CaseRow & { quiet: number }).quiet).toBe(0)
+      warp(g, g.year + 1)
+      g.queue = []
+      yearlySpecial(g)
+      const log = g.log.flatMap((y) => y.entries.map((e) => e.text)).join('\n')
+      expect(log, `seed ${seed}`).not.toContain('The trail went cold')
+      expect(cases(g)[0].status, `seed ${seed}`).toBe('open')
+      if (g.queue.some((m) => m.kind === 'choice' && m.scriptId === 'special.pol.abuse.exposed')) exposed++
+      else {
+        waiting++
+        expect((cases(g)[0] as CaseRow & { quiet: number }).quiet).toBe(1)
+      }
+    }
+    expect(waiting).toBeGreaterThan(0)
+    void exposed
+  })
+
+  it('a fold that brings nothing new keeps the quiet years; a bet that joins the case starts them over', () => {
+    const g = ukMp(5)
+    const inf = exchangeInfo('gb')
+    moneyState(g).positions.push({ id: 'opt1', mode: 'real', side: 'buy', dir: 'put', strike: 'otm', k: 0.05, units: 4_000_000, premium: 200_000, year: g.year, exKey: inf.key, index: inf.ex.index, countryId: 'gb', parentId: '', fx: 1 })
+    move(g, 'industry', false)
+    for (const c of cases(g)) (c as CaseRow & { quiet: number }).quiet = 3
+    move(g, 'industry', false)
+    for (const c of cases(g)) expect((c as CaseRow & { quiet: number }).quiet).toBe(3)
+
+    // The shares are sold, so a bearish law brings only a small crony put: no bigger stake, no gain, no new route. Just the bet.
+    const h = mpWithShareCase(3, 20_000_000)
+    const secId = cases(h)[0].secId
+    expect(sellHolding(h, held(h, secId)!.id, 'all')).toBe(true)
+    const cs0 = { ...cases(h)[0] }
+    ;(cases(h)[0] as CaseRow & { quiet: number }).quiet = 3
+    expect(placeBet(h, { via: 'crony', secId, kind: 'put', strike: 'atm', stake: 100_000, crony: 'Nigel Pratt', cut: 0.25 })).not.toBeNull()
+    move(h, 'industry', false)
+    expect(cases(h)[0]).toMatchObject({ id: cs0.id, stake: cs0.stake, gain: cs0.gain, via: 'shares' })
+    expect((cases(h)[0] as CaseRow & { quiet: number }).quiet).toBe(0)
   })
 
   it('the first law decides the charge, whichever way a later one moves the price', () => {
@@ -952,28 +1054,42 @@ describe('what the notices say', () => {
     expect(line).toBe(`The press found out I bought ${t.name} shares before my own law moved its price.`)
   })
 
-  it('shares and an announcement: bought before the announcement', () => {
+  it('shares and an announcement: held when the announcement came (an announcement counts a holding of any age)', () => {
     const g = ukMp(2)
     const t = holdable(g, 'industry', [2026])
     buy(g, t.secId, 60_000_000)
     runScript(g, 'special.pol.abuse.announce', 'contract', { secId: t.secId }, NO_MODAL)
     expect(cases(g)[0].via).toBe('shares')
     const { text, line } = exposure(g)
-    expect(text).toContain(`reports that you bought ${t.name} (${t.symbol}) shares shortly before you handed ${t.name} a huge contract.`)
-    expect(text).not.toMatch(/betting|made a killing/)
-    expect(line).toBe(`The press found out I bought ${t.name} shares before my announcement.`)
+    expect(text).toContain(`reports that you held ${t.name} (${t.symbol}) shares when you handed ${t.name} a huge contract. The timing is "remarkable," says every expert on television.`)
+    expect(text).not.toMatch(/betting|made a killing|bought|shortly before/)
+    expect(line).toBe(`The press found out I held ${t.name} shares when I made my announcement.`)
   })
 
-  it('a coin held in Investments: bought, with no "shares"', () => {
+  it('a five-year-old holding and an announcement: the press says held, not bought shortly before', () => {
+    const g = ukMp(1)
+    const t = holdable(g, 'industry', [2021, 2026])
+    warp(g, 2021)
+    buy(g, t.secId, 60_000_000)
+    warp(g, 2026)
+    runScript(g, 'special.pol.abuse.announce', 'contract', { secId: t.secId }, NO_MODAL)
+    expect(cases(g)[0]).toMatchObject({ via: 'shares', cause: 'contract' })
+    const { text, line } = exposure(g)
+    expect(text).toContain(`reports that you held ${t.name} (${t.symbol}) shares when you handed ${t.name} a huge contract.`)
+    expect(text).not.toMatch(/bought|shortly before/)
+    expect(line).not.toMatch(/bought/)
+  })
+
+  it('a coin held in Investments: held, with no "shares"', () => {
     const g = ukMp(4)
     const coin = coinTargets(g).find((c) => c.sector !== 'Stablecoin')!
     expect(buySecurity(g, coin.secId, 5_000_000)).toBe(true)
     runScript(g, 'special.pol.abuse.announce', 'endorse', { secId: coin.secId }, NO_MODAL)
     expect(cases(g)[0]).toMatchObject({ via: 'shares', cause: 'endorse', secId: coin.secId })
     const { text, line } = exposure(g)
-    expect(text).toContain(`reports that you bought ${coin.name} (${coin.symbol}) shortly before you endorsed ${coin.name}.`)
-    expect(text).not.toMatch(/shares|betting|made a killing/)
-    expect(line).toBe(`The press found out I bought ${coin.name} before my announcement.`)
+    expect(text).toContain(`reports that you held ${coin.name} (${coin.symbol}) when you endorsed ${coin.name}.`)
+    expect(text).not.toMatch(/shares|betting|made a killing|bought/)
+    expect(line).toBe(`The press found out I held ${coin.name} when I made my announcement.`)
   })
 
   it('bets keep the betting story', () => {
