@@ -2,6 +2,7 @@
 // this file only arranges them.
 import { emigrateMenu, licensesMenu, mindBodyMenu, miscActivities, moviesMenu, nightlifeMenu, surrenderLifeAction, vacationMenu } from './activities'
 import { isVisaLock, visaLockSubtitle, visaLockView } from './activities/immigration-lock'
+import { moneyTeamMenu } from './advisors/menu'
 import { ASSET_KIND_VIEWS, ASSET_NODE_HOOKS, assetsMenu as baseAssetsMenu, shoppingMenu as baseShoppingMenu } from './assets'
 import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
 import { occupationMenu } from './careers'
@@ -55,6 +56,7 @@ export const assetsMenu: MenuGroup = {
       { type: 'heading', id: 'moneyHeading', label: 'Business & Investments' },
       businessesMenu,
       investmentsMenu,
+      moneyTeamMenu,
       bankingMenu,
       developmentMenu,
     ])
