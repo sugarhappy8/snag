@@ -1,6 +1,13 @@
-// Your listed companies in Investments > Stocks: the size tier a market cap falls in and the share of a
-// company nobody inside it holds. Pure arithmetic, no game state and no randomness.
-import { clampN } from './util'
+// Your listed companies in Investments > Stocks: the size tier a market cap falls in, the share of a
+// company nobody inside it holds, and the rows the Stocks screen shows for what you own. Everything
+// here is a pure read of the game state: it never writes to it and never touches g.rng, so menus
+// and previews can call it as often as they like.
+import { exchangeName, type ExInfo } from '../invest/engine'
+import type { Asset, GameState } from '../types'
+import { groupIdOf, groupsOf, groupStake, sharePriceOf } from './conglomerate-state'
+import { companyExchange, exchangeTickers, listedExchange, tickerOf } from './listing-id'
+import { BIZ_VERSION, businessAssets, executiveEquity, readBiz, stakeValue, type BizState } from './state'
+import { clampN, num } from './util'
 
 export type CapTier = 'mega' | 'large' | 'mid' | 'small'
 
@@ -38,6 +45,23 @@ export interface Holders {
   familyShares?: { share: number }[]
 }
 
+/** The executive slice: the larger of the recorded grant and the sitting manager's equity, each from 0 to 1. */
+function executiveSlice(h: Holders): number {
+  return Math.max(clampN(h.executiveEquity ?? 0, 0, 1), clampN(h.manager?.equity ?? 0, 0, 1))
+}
+
+/** What relatives hold in all: the sum of the slices that are finite and positive. */
+function familySlice(h: Holders): number {
+  let family = 0
+  if (Array.isArray(h.familyShares)) {
+    for (const holder of h.familyShares) {
+      const slice = holder?.share
+      if (typeof slice === 'number' && Number.isFinite(slice) && slice > 0) family += slice
+    }
+  }
+  return family
+}
+
 /**
  * The part of the company held by outside shareholders: what is left after you, the executives and your
  * relatives. The executive slice is the larger of the recorded grant and the sitting manager's equity
@@ -48,14 +72,122 @@ export interface Holders {
  */
 export function outsideFloat(h: Holders): number {
   if (!Number.isFinite(h.share)) return 0
-  const owner = clampN(h.share, 0, 1)
-  const executives = Math.max(clampN(h.executiveEquity ?? 0, 0, 1), clampN(h.manager?.equity ?? 0, 0, 1))
-  let family = 0
-  if (Array.isArray(h.familyShares)) {
-    for (const holder of h.familyShares) {
-      const slice = holder?.share
-      if (typeof slice === 'number' && Number.isFinite(slice) && slice > 0) family += slice
-    }
+  return Math.max(0, 1 - clampN(h.share, 0, 1) - executiveSlice(h) - familySlice(h))
+}
+
+/** A stake below this is nothing: the yearly cleanup (yearly.ts leaveUnownedListed) takes the company off your hands. */
+const OWNED = 1e-6
+
+/** One thing you own that trades on an exchange: a company you took public, or a listed group. */
+export interface OwnListing {
+  kind: 'company' | 'group'
+  /** The asset id, or the group id. */
+  id: string
+  name: string
+  /** Null for a group: it has no ticker of its own. */
+  ticker: string | null
+  exKey: string
+  exCode: string
+  exName: string
+  price: number
+  marketCap: number
+  tier: CapTier
+  sharesOut: number
+  stake: number
+  stakeValue: number
+  outside: number
+  family: number
+  executives: number
+  ipoYear: number
+  /** The offer price, or null on a save from before it was kept (and for a group). */
+  ipoPrice: number | null
+}
+
+/**
+ * The stake an action will see through bizOf. normalizeBiz floors a stake that has no family shares at
+ * 1%, but bizOf leaves a current record as stored, so the 0.6% a sale leaves behind stays 0.6% for
+ * sellShares and the yearly cleanup. A record bizOf would normalize first reads as readBiz reads it.
+ */
+export function rawStake(g: GameState, a: Asset): number {
+  const d = a.details
+  if (num(d.v) === BIZ_VERSION && Array.isArray(d.outlets) && typeof d.share === 'number' && Number.isFinite(d.share)) return clampN(d.share, 0, 1)
+  return readBiz(g, a).share
+}
+
+function finite(x: number): number {
+  return Number.isFinite(x) ? x : 0
+}
+
+/**
+ * Every listed company and listed group you hold a stake in, biggest market cap first (then by id).
+ *
+ * A company is a row when it is public, stands alone, has shares and a price, and you hold some of it.
+ * Its exchange is the one it trades on (listing-id.ts), whatever country you live in. A division of a
+ * group never gets a row, whatever its own `public` says. A listed group gets one row, with the group's
+ * market cap and your stake in the group, and no ticker.
+ */
+export function ownListings(g: GameState): OwnListing[] {
+  const rows: OwnListing[] = []
+  const tickers = new Map<string, Map<string, string>>()
+  const tickersOn = (info: ExInfo): Map<string, string> => {
+    let m = tickers.get(info.key)
+    if (!m) tickers.set(info.key, (m = exchangeTickers(g, info)))
+    return m
   }
-  return Math.max(0, 1 - owner - executives - family)
+  for (const a of businessAssets(g)) {
+    // readBiz reads `public` as `=== true`; checking the raw field first skips normalizing a private company.
+    if (a.details.public !== true) continue
+    const v: BizState = { ...readBiz(g, a), share: rawStake(g, a) }
+    if (!v.public || groupIdOf(v) || !(v.sharesOut > 0) || !(v.sharePrice > 0) || !(v.share > OWNED)) continue
+    const info = companyExchange(v)
+    const marketCap = finite(v.valuation)
+    rows.push({
+      kind: 'company',
+      id: a.id,
+      name: a.name,
+      ticker: tickersOn(info).get(a.id) ?? tickerOf(g, a, v),
+      exKey: info.key,
+      exCode: info.ex.code,
+      exName: exchangeName(info, g.year),
+      price: v.sharePrice,
+      marketCap,
+      tier: capTier(marketCap),
+      sharesOut: v.sharesOut,
+      stake: v.share,
+      stakeValue: stakeValue(v),
+      outside: outsideFloat(v),
+      family: familySlice(v),
+      executives: executiveEquity(v),
+      ipoYear: v.ipoYear,
+      ipoPrice: v.ipoPrice ?? null,
+    })
+  }
+  for (const grp of groupsOf(g)) {
+    const listing = grp.core.listing
+    if (!listing || !(grp.core.share > OWNED)) continue
+    const info = listedExchange(grp.members.map((x) => x.b.countryId), listing.exchange)
+    const price = sharePriceOf(grp)
+    const marketCap = finite(price * listing.sharesOut)
+    rows.push({
+      kind: 'group',
+      id: grp.core.id,
+      name: grp.core.name,
+      ticker: null,
+      exKey: info.key,
+      exCode: info.ex.code,
+      exName: exchangeName(info, g.year),
+      price,
+      marketCap,
+      tier: capTier(marketCap),
+      sharesOut: listing.sharesOut,
+      stake: grp.core.share,
+      stakeValue: groupStake(grp),
+      outside: outsideFloat(grp.core),
+      family: familySlice(grp.core),
+      executives: executiveSlice(grp.core),
+      ipoYear: listing.ipoYear,
+      ipoPrice: null,
+    })
+  }
+  return rows.sort((x, y) => y.marketCap - x.marketCap || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))
 }
