@@ -1,6 +1,6 @@
 // The share classes real companies had, by year. Data only: nothing here reads state or g.rng, and
-// the module imports no runtime code (only the RealCo type), so the Stocks screen and the tests can
-// ask it anything at any time.
+// the module imports no runtime code (only the RealCo and SecYear types), so the Stocks screen and the
+// tests can ask it anything at any time.
 //
 // Each entry is keyed by the registry id of the company (data/brands-stocks.ts: 'stock-<home>-<slug>')
 // and says what the line the player trades is (`main`) and what other classes the company had:
@@ -17,6 +17,7 @@
 // - `note`, when present, is shown in place of the generated sentence.
 // - Left out on purpose: loyalty voting (LVMH, L'Oreal), dual-listed pairs (Shell, Unilever), A/H
 //   shares (BYD), and companies whose structure is not confirmed here (Roche, Novo Nordisk, Maersk).
+import type { SecYear } from './engine'
 import type { RealCo } from './real'
 
 export interface ClassRow {
@@ -153,4 +154,65 @@ export function classFacts(co: Pick<RealCo, 'id'>, year: number): string | null 
   let text = `Share classes: ${entry.main.label} (this line) has ${votesText(entry.main.votes)}.`
   for (const r of rows) text += ` ${r.note ?? `${r.label} has ${votesText(r.votes)}${r.holder ? `, held by ${r.holder}` : ''}${r.listed ? ' and is listed too' : ''}.`}`
   return text
+}
+
+// ---------------------------------------------------------------------------
+// Lines: the listed second classes, bought from the company's own screen.
+
+/** Separates a company's id from its class letter. The same character as engine.ts LINE_SEP: a test pins that they agree. */
+const LINE_SEP = '~'
+/** A line with more votes than the main line trades 3% over it. */
+const SPREAD_MORE_VOTES = 0.03
+/** A line with fewer votes (but some) trades 2% under it. */
+const SPREAD_LESS_VOTES = -0.02
+/** A line with no vote trades 4% under it. */
+const SPREAD_NO_VOTE = -0.04
+
+/** How far a line's price sits from its company's, set by its votes against the main line's. Never random. */
+export function lineSpread(mainVotes: number, votes: number): number {
+  if (!Number.isFinite(mainVotes) || !Number.isFinite(votes) || votes === mainVotes) return 0
+  if (votes > mainVotes) return SPREAD_MORE_VOTES
+  return votes === 0 ? SPREAD_NO_VOTE : SPREAD_LESS_VOTES
+}
+
+/** The id of a company's line: 'NYSE:S&P 500#s3g100012~C'. */
+export function lineSecId(companyId: string, letter: string): string {
+  return `${companyId}${LINE_SEP}${letter}`
+}
+
+export interface Line {
+  /** The line's id, `<company id>~<letter>`. */
+  secId: string
+  letter: string
+  label: string
+  /** Votes a share against 1 for an ordinary vote. */
+  votes: number
+  /** Price of the line against its company's: 0.03 is 3% over. */
+  spread: number
+}
+
+/** The listed classes of a company open in `year`, with their spread against the company's own line. */
+export function linesOf(co: Pick<RealCo, 'id'>, companyId: string, year: number): Line[] {
+  const entry = classEntryFor(co)
+  if (!entry) return []
+  return classRowsIn(co, year)
+    .filter((r) => r.listed)
+    .map((r) => ({ secId: lineSecId(companyId, r.letter), letter: r.letter, label: r.label, votes: r.votes, spread: lineSpread(entry.main.votes, r.votes) }))
+}
+
+/** True when the company has a listed class with this letter in `year`. */
+export function lineOpen(co: Pick<RealCo, 'id'>, letter: string, year: number): boolean {
+  return classRowsIn(co, year).some((r) => r.listed && r.letter === letter)
+}
+
+/**
+ * A company's year as its line saw it: the same year with the line's id and the price (and, when the company
+ * the slot held before ended this year, its payout) moved by the spread. Split ratio, change, event and payout
+ * are the company's, so the line splits, pays and falls with it. Returns a copy.
+ */
+export function lineYear(cur: SecYear, letter: string, spread: number): SecYear {
+  const k = Number.isFinite(spread) ? Math.max(0, 1 + spread) : 1
+  const out: SecYear = { ...cur, id: lineSecId(cur.id, letter), price: cur.price * k }
+  if (cur.ended) out.ended = { ...cur.ended, id: lineSecId(cur.ended.id, letter), perUnit: cur.ended.perUnit * k }
+  return out
 }
