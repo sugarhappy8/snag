@@ -755,13 +755,13 @@ An adult can hire a financial advisor, who reports the biggest problems in their
 
 **Offers, fees and gates (team.ts).**
 - Three offers per role per year. They hash `lifeId|fin|role|year|epoch|slot` (FNV-1a, then `nextRandom`, the pattern of `special/common.ts stableRoll`), so they are the same on every call and never touch `g.rng`. Letting a hire go bumps that role's epoch and brings new faces.
-- The menu shows a word (`ratingLabel`), never the skill number. About one manager in eight is a crook who claims 12 to 25 points above their real skill. The fee follows the claim.
+- The menu shows a word (`ratingLabel`), never the skill number. About one manager in eight is a crook who claims 12 to 25 points above their real skill, to a ceiling of 97 (`OFFER_SKILL.claimCap`). The fee follows the claim.
 - With an advisor, `vet` gives each manager offer a stable chance, equal to the advisor's skill in percent, of showing the true rating and whether the manager has padded bills before.
 - Gates: net worth of 25 times `typicalIncome` for an advisor, a managed pool of 10 times for a manager. Fees: an advisor takes 0.15% to 0.4% of net worth by skill, a manager 0.4% to 1.4% of the money they run by claimed rating, each with a floor of a tenth of a typical income. `TERMS` holds the numbers.
 
 **Three buckets, and why nothing else (D5, D6).**
 - The manager runs the local index fund (before index funds exist, the investment trust, which has the same `index` type), the government bond and a savings account. Safe money goes to the bond when it pays clearly more than savings, otherwise to savings. Gold, REITs, term deposits, single stocks, pennies and coins are left out.
-- Politics counts only a few things as an insider position (`insiderPositions`, `special/politics.ts`): open bets, index options, and held shares or coins whose `details.secId` is the target's. Targets are made-up listed companies and, from rank 2, coins. An index fund, a bond or a savings account is never a target. Because the manager buys only those three, it cannot create an insider position, and no politics code had to change. The mayor in `test/advisors-story.test.ts` makes laws for five years with a manager and gets no case; the same mayor with a hand-picked made-up stock does.
+- Politics counts only a few things as an insider position (`insiderPositions`, `special/politics.ts`): open bets, index options, and held shares or coins whose `details.secId` is the target's. Targets are made-up listed companies and, from rank 2, coins. An index fund, a bond or a savings account is never a target. Because the manager buys only those three, it cannot create an insider position, and no politics code had to change. The mayor in `test/advisors-story.test.ts` ages five years with a manager, then passes laws on four policy keys both ways and gets no case; the same mayor with a hand-picked made-up stock does. `test/advisors-integration.test.ts` repeats the check across four offices and eras through the real `ageUp`.
 - The manager trades only what the player could trade by hand. It reads each quote's `blocked` text, `tradeBlock` and `investingBlocked`. A shut exchange blocks only the fund. Banned private investing idles the manager: no fee and no trades, while the advisor still bills.
 
 **The seam in investments.ts (D15).**
@@ -785,7 +785,7 @@ Only this step draws from `g.rng`, and only after a manager has been paid: one `
 
 **The advisor (D1 to D4, D7, D16).**
 - The advisor never forecasts. It reads the present: six pure findings in review.ts, none of which reads `g.rng`. Foresight stays with the Investing talent, and `MenuBase.hint` (the purple line) stays talent-only. Advice shows as plain info rows with a 💼.
-- The findings, heaviest first (ties by id): `insider` (95), `loan` (70), `concentration` (60 to 100), `company-cash` (50), `idle-cash` (40, hidden while a manager is hired) and `losses` (30).
+- The findings and their weights; the list sorts by weight, then id: `insider` (95), `concentration` (76 to 100, which is `round(60 + 40 x share)` at a share of 40% or more, so a very large one passes `insider`), `loan` (70), `company-cash` (50), `idle-cash` (40, hidden while a manager is hired) and `losses` (30).
 - `insider` uses the same targets and the same two-year window (`freshShare`) as the politics rule, so the warning is exact. It fires for an office holder with a made-up listed company (or, from rank 2, a coin) bought this year or last. The manager never sells these picks; the decision stays the player's.
 - `company-cash` only points to Pay a Dividend (or Withdraw Profits for a sole owner). The standing dividend rule belongs to the dividends feature, so two payers can't pay one company twice.
 - Skill is coverage: `shownCount(skill)` shows the top 2 to 5 and the menu says "Sees 3 of 5". A better advisor sees more of the list, never a different list.

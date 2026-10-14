@@ -17,8 +17,8 @@ An adult with real money can now hire two people. A financial advisor reports th
 - **Reads the present.** The advisor never forecasts. Your Investing talent's purple hints stay the game's only foresight. Advice shows as plain rows with a 💼.
 - **Six findings,** heaviest first:
   - Insider timing, 95: you hold a made-up listed company (or, as a governor, legislator or leader, a coin) bought this year or last while you're in office. It's the same window the insider rule uses.
+  - Concentration, 76 to 100: one company or holding is 40% or more of your net worth, and worth at least five typical incomes. The bigger the share, the higher it ranks, and a very large one ranks above insider timing.
   - A dear loan, 70: a loan of two typical incomes or more that costs 3 points or more over savings, while your cash could clear it.
-  - Concentration, 60 to 100: one company or holding is 40% or more of your net worth, and worth at least five typical incomes.
   - Idle company cash, 50: a company holds two years of typical income or more past 18 months of its costs. It points to Pay a Dividend. It sets nothing.
   - Idle bank cash, 40: ten times a typical income and a tenth of your net worth. It's hidden while a manager is hired.
   - Carried losses, 30: a year of income in investment losses that would shelter later gains.
@@ -43,7 +43,7 @@ An adult with real money can now hire two people. A financial advisor reports th
 
 ### Trust
 
-- **Who's a crook.** About one manager in eight is a crook. They claim 12 to 25 points above their real skill, and the fee follows the claim, so a great rating isn't proof.
+- **Who's a crook.** About one manager in eight is a crook. They claim 12 to 25 points above their real skill, to a ceiling of 97, and the fee follows the claim, so a great rating isn't proof.
 - **The padding.** Each year a crook adds `3% x limit x pool` to the bill, cut to the cash left after the agreed fee. A limit of 10% gives them a tenth of the room a limit of 100% does.
 - **The catch.** Each year a crook has padded a bill, there's a chance they're found out. It's 4% alone, or 4% plus half the advisor's skill with an advisor, so about 19% to 50% for the advisors on offer. The Missing Money popup says how much went missing.
 - **Caught.** 30% of everything they padded comes back, once. They're let go, and the next offers are new people.
