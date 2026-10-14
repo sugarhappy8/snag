@@ -727,8 +727,8 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     of six months of running costs and the board's reserve. The result moves `b.cash` and goes into
     `yearIncome` (a gain) or `yearCosts` (a loss), so the statement and the corporate tax count it
     once, and valuation, loans, closure and the cash crunch need no change. A year can lose a little
-    under 95% of `work` at the most (`hedgeGross` stops at -0.95), so after the worst year the company
-    is as liquid as the floor. Banks, investment firms (their own fund is `coinvest`) and divisions of
+    over 95% of `work` at the most (`hedgeGross` stops at -0.95, then the running cost comes off), and
+    `work` is spare cash above the floor, so after the worst year the company is as liquid as the floor. Banks, investment firms (their own fund is `coinvest`) and divisions of
     a group are refused. A hired CEO, or a player who is in prison or under 18, runs the firm's
     autopilot terms (`autoTerms`).
   - **Macro lasts a year (D7).** A Macro call, with its 1x to 3x leverage, reverts to Long/Short, flat,
