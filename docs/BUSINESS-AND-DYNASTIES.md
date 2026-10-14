@@ -22,6 +22,9 @@ additional dependency or second economic engine was introduced.
   **Financial Rescue & Ownership** for distressed companies) explains runway and separates
   secondary purchases, equity subscriptions and company-funded buybacks. Loans, staffing
   changes and site closures retain their existing controls nearby.
+- Company → Money → **Yearly Dividend**: a standing rule that pays a percentage of the year's profit, or
+  of the spare cash, at year end. The company keeps a cash floor of months of costs, pays only what's left
+  after its debts, and asks the board nothing. Your part is taxed as income.
 - Investments → **Stocks**: a company you've listed shows there under its size and exchange. It is a
   second door to the ownership move in **Capital & Ownership** (buying more from the public float) and
   to **Exit → Sell Shares**, and each pair shares its yearly limit. A listed group shows as a row you
