@@ -15,7 +15,8 @@ import { marketDemand, marketKey, marketStateOf, type MarketCtx } from './compet
 import { bizWorth, ceoSkill, fxValue, localEcon, marketCtxFor, ownerTalent, staffPower, type Worth } from './economy'
 import { industryDef } from './industries'
 import { demandSize } from './product-data'
-import { heavyOf, type HeavyRecord } from './heavy-rd'
+import { advanceHeavy, heavyArrivals, heavyOf, type HeavyRecord } from './heavy-rd'
+import { breakthroughByName } from './heavy-data'
 import { effectiveQuality, fieldFor, fieldOf, infoOf, KIND_COST, KIND_WEIGHT, kindLevel, kindTrend, lineInfo, lineQuality, productPull, qualityFromBoost, type Field, type LineInfo } from './product-market'
 import { complexityShare } from './products'
 import { readProjects, readRetired, retiredOf, runsIt, MAX_STORED_PRODUCTS, MAX_STORED_PROJECTS, type BizState, type Product, type RdProject } from './state'
@@ -91,13 +92,18 @@ export function rdSlots(b: Pick<BizState, 'outlets'>): number {
   return 1 + Math.floor(Math.log2(1 + Math.max(0, sites)))
 }
 
+/** Projects that use the team's slots: a running breakthrough (heavy-rd.ts) has a team of its own and doesn't count. */
+export function ordinaryProjects(b: Pick<BizState, 'rd'>): RdProject[] {
+  return rdProjects(b).filter((p) => p.heavy !== true)
+}
+
 /** How much a new project's budget is stretched by the ones already running (1 while slots are free). */
 export function rdCrowding(b: Pick<BizState, 'rd' | 'outlets'>): number {
-  return 1 + 0.15 * Math.max(0, rdProjects(b).length + 1 - rdSlots(b))
+  return 1 + 0.15 * Math.max(0, ordinaryProjects(b).length + 1 - rdSlots(b))
 }
 
 /** Years a normal budget needs, by kind of business (a recipe is quicker than a gadget). */
-function baseYears(industry: string): number {
+export function baseYears(industry: string): number {
   const def = industryDef(industry)
   if (def.food) return 1
   if (def.tradable >= 0.8) return 2
@@ -165,8 +171,8 @@ export function rdQuote(g: GameState, b: BizState, idea: string, budget: number,
 }
 
 /** Years of sales a new line is valued over, and the yearly discount. */
-const HORIZON = 8
-const DISCOUNT = 0.9
+export const HORIZON = 8
+export const DISCOUNT = 0.9
 /** Years the extra complexity of one more line is counted for (old lines get retired). */
 const COMPLEXITY_YEARS = 5
 
@@ -296,11 +302,16 @@ function niceBudget(n: number): number {
   return Math.ceil(n / mag - 1e-9) * mag
 }
 
+/** Why R&D refuses a line the company retired on purpose (Heavy R&D says the same). */
+export function retiredReason(name: string): string {
+  return `${name} was retired. Develop something else.`
+}
+
 /** Why a project can't start (null when it can). Cash is checked separately (startRd). */
 export function rdBlock(b: BizState, idea: string, budget: number): string | null {
   if (!idea.trim()) return 'Pick an idea first.'
   if (b.products.some((p) => p.name === idea)) return `${idea} is already on sale.`
-  if (retiredOf(b).includes(idea)) return `${idea} was retired. Develop something else.`
+  if (retiredOf(b).includes(idea)) return retiredReason(idea)
   if (rdProjects(b).some((p) => p.name === idea)) return `${idea} is already in development.`
   if (rdProjects(b).length >= MAX_STORED_PROJECTS) return 'Your R&D department is drowning in projects. Let some finish first.'
   const r = rdRange(b, idea)
@@ -396,7 +407,7 @@ export function retireLines(b: BizState, n: number, year: number, heavy?: readon
 }
 
 /** A finished project's expected quality (old saves: from the boost it was funded for). */
-function projectQuality(p: RdProject): number {
+export function projectQuality(p: RdProject): number {
   return typeof p.quality === 'number' && Number.isFinite(p.quality) ? p.quality : qualityFromBoost(p.boost)
 }
 
@@ -405,6 +416,8 @@ function projectQuality(p: RdProject): number {
  * or flop. Called from economy.evolve for every company, after the fiscal year is booked.
  */
 export function advanceRd(g: GameState, b: BizState, year: number): void {
+  // The first rival to offer a breakthrough that works is reported once (heavy-rd.ts), whether or not this company has projects.
+  heavyArrivals(g, b, year)
   if (!Array.isArray(b.rd) || b.rd.length === 0) return
   const a = g.assets.find((x) => (x.details as unknown) === b) ?? null
   const name = a?.name ?? 'The company'
@@ -416,6 +429,13 @@ export function advanceRd(g: GameState, b: BizState, year: number): void {
     p.progress = Math.min(p.years, p.progress + 1)
     if (p.progress < p.years) {
       keep.push(p)
+      continue
+    }
+    // A Heavy R&D breakthrough has its own odds, hit chance and news (heavy-rd.ts); ordinary projects go on below.
+    if (p.heavy === true && breakthroughByName(p.name) !== null) {
+      const done = advanceHeavy(g, a, b, p, year)
+      lines.push(done.line)
+      if (done.won) wins += 1
       continue
     }
     if (!chance(g, clampN(p.odds, 0.02, 0.98))) {

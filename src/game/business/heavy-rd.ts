@@ -1,15 +1,30 @@
-// Heavy R&D (docs/superpowers/specs/2026-10-14-heavy-rnd-design.md), the pure part: what a breakthrough
-// leaves behind once it works. One record per kind in the market it was launched in (a list in game
-// flags) is the single source of truth for three pure readers: the kind's demand over time
-// (heavyLevel), when and how well each rival follows (heavyArrival, heavyVersionQuality), and the
+// Heavy R&D (docs/superpowers/specs/2026-10-14-heavy-rnd-design.md). The first half is pure: what a
+// breakthrough leaves behind once it works. One record per kind in the market it was launched in (a
+// list in game flags) is the single source of truth for three pure readers: the kind's demand over
+// time (heavyLevel), when and how well each rival follows (heavyArrival, heavyVersionQuality), and the
 // lift the whole trade gets (heavyPulse). None of them touches the game RNG: the same records and the
 // same year always give the same answer, so the planner's what-ifs stay deterministic.
-import type { GameState, Json } from '../types'
-import { marketKey } from './competition-core'
-import { breakthroughByName } from './heavy-data'
+// The second half is the project itself: its price, years and odds (pure quotes), starting it, the
+// launch roll at year-end (the only place that draws on the RNG) and the news that follows.
+import { formatMoney, log, notice } from '../core'
+import { pushMarketNews } from '../history/market-events'
+import { chance, rand, uid } from '../rng'
+import type { Asset, GameState, Json } from '../types'
+import { getCountry } from '../world'
+import { adultBrandName } from './competition'
+import { marketKey, type MarketCtx } from './competition-core'
+import { isDeepTech } from './deeptech-state'
+import { bizWorth, marketCtxFor } from './economy'
+import { eraFits } from './era'
+import { isFinanceFirm } from './finance-firm-state'
+import { breakthroughByName, breakthroughsFor, type Breakthrough } from './heavy-data'
+import { industryDef } from './industries'
 import type { DemandLevel } from './product-data'
-import { hashOf, mix } from './product-market'
-import { clampN } from './util'
+import { fieldFor, fieldOf, hashOf, mix, productPull } from './product-market'
+import { classicIdeas } from './products'
+import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, retiredReason, roundBudget } from './rd'
+import { MAX_STORED_PROJECTS, retiredOf, type BizState, type Product, type RdProject } from './state'
+import { clampN, money } from './util'
 
 /** A breakthrough that worked, in the market it was launched in. */
 export interface HeavyRecord {
@@ -25,6 +40,8 @@ export interface HeavyRecord {
   cost: number
   /** Asset id of the pioneer. */
   by: string
+  /** Set once the first rival to follow has been reported (a life-log line): the name it was reported under. */
+  rival?: string
 }
 
 /** Most records kept per trade and market (the catalogue has two or three per trade). */
@@ -32,6 +49,7 @@ export const MAX_HEAVY_RECORDS = 12
 /** Entries of a stored list that are looked at (a damaged save can't make every read slow). */
 const MAX_SCAN = 64
 const MAX_BY = 64
+const MAX_RIVAL = 80
 
 const NONE: readonly HeavyRecord[] = Object.freeze([])
 
@@ -52,6 +70,7 @@ function cleanRecord(x: unknown): HeavyRecord | null {
   if (typeof year !== 'number' || typeof years !== 'number' || typeof quality !== 'number' || typeof cost !== 'number') return null
   if (!Number.isFinite(year) || !Number.isFinite(years) || !Number.isFinite(quality) || !Number.isFinite(cost)) return null
   if (typeof by !== 'string') return null
+  const rival = typeof o.rival === 'string' && o.rival.trim() ? o.rival.trim().slice(0, MAX_RIVAL) : undefined
   return {
     family,
     year: Math.round(clampN(year, 1800, 2300)),
@@ -59,6 +78,7 @@ function cleanRecord(x: unknown): HeavyRecord | null {
     quality: Math.round(clampN(quality, 0, 100)),
     cost: clampN(cost, 0, 1e15),
     by: by.slice(0, MAX_BY),
+    ...(rival ? { rival } : {}),
   }
 }
 
@@ -103,7 +123,11 @@ export function addHeavy(g: GameState, industry: string, market: string, rec: He
   const i = list.findIndex((r) => r.family === clean.family)
   if (i < 0) list.push(clean)
   else if (clean.year < list[i].year) list[i] = clean
-  const stored: Json[] = list.slice(-MAX_HEAVY_RECORDS).map((r) => ({ family: r.family, year: r.year, years: r.years, quality: r.quality, cost: r.cost, by: r.by }))
+  writeHeavy(g, industry, market, list)
+}
+
+function writeHeavy(g: GameState, industry: string, market: string, list: readonly HeavyRecord[]): void {
+  const stored: Json[] = list.slice(-MAX_HEAVY_RECORDS).map((r) => ({ family: r.family, year: r.year, years: r.years, quality: r.quality, cost: r.cost, by: r.by, ...(r.rival ? { rival: r.rival } : {}) }))
   g.flags[heavyKey(industry, market)] = stored
 }
 
@@ -211,4 +235,274 @@ export function heavyPulse(records: readonly HeavyRecord[], year: number): numbe
     if (Number.isFinite(lift)) sum += lift
   }
   return 1 + Math.min(PULSE_CAP, Math.max(0, sum))
+}
+
+// ---------------------------------------------------------------------------
+// The project: price, years, odds
+
+/** A breakthrough costs this many times the first classic idea's development cost, fixed (no slider)... */
+export const HEAVY_COST_X = 8
+/** ...takes this many times a normal project, but never under 4 or over 6 years... */
+const HEAVY_YEARS_X = 3
+const HEAVY_MIN_YEARS = 4
+const HEAVY_MAX_YEARS = 6
+/** ...works at this share of a normal launch's chance, between these two bounds... */
+const HEAVY_ODDS_X = 0.55
+const HEAVY_ODDS_MIN = 0.08
+const HEAVY_ODDS_MAX = 0.6
+/** ...aims this many points above a lavishly funded ordinary line (at most 97)... */
+const HEAVY_QUALITY_PLUS = 14
+const HEAVY_QUALITY_MAX = 97
+/** ...and a company waits this many calendar years after one launches or flops before starting the next. */
+export const HEAVY_COOLDOWN = 5
+
+/** Of the launches that work, this share is a smash hit (an ordinary project's is 15%): quality and brand on top. */
+export const HEAVY_HIT_P = 0.35
+const HEAVY_HIT_QUALITY = 12
+const HEAVY_SPREAD = 10
+const HEAVY_HIT_BRAND = 12
+const HEAVY_BRAND = 5
+const HEAVY_FLOP_BRAND = -6
+
+/** Heavy R&D is for product companies: deep-tech, studio and finance companies keep their own kind of R&D. */
+export function heavyEligible(b: { industry: string }): boolean {
+  return !isDeepTech(b) && !isFinanceFirm(b) && b.industry !== 'gameStudio'
+}
+
+/** What a breakthrough costs this company, paid up front (null: no classic idea the year allows to base it on). Pure. */
+export function heavyCost(g: GameState, b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number | null {
+  const first = classicIdeas(g, b)[0]
+  return first === undefined ? null : roundBudget(HEAVY_COST_X * rdCost(b, first))
+}
+
+/** Booked years a breakthrough takes in this trade: three times a normal project, from 4 to 6. */
+export function heavyYears(b: { industry: string }): number {
+  return Math.round(clampN(Math.ceil(baseYears(b.industry) * HEAVY_YEARS_X - 1e-9), HEAVY_MIN_YEARS, HEAVY_MAX_YEARS))
+}
+
+/** The chance a breakthrough works when it is done: 55% of a normal launch's chance, between 8% and 60%. */
+export function heavyOdds(g: GameState, b: BizState): number {
+  return clampN(HEAVY_ODDS_X * launchP(g, b), HEAVY_ODDS_MIN, HEAVY_ODDS_MAX)
+}
+
+/** The quality a breakthrough is expected to reach if it works (before the launch's luck). */
+export function heavyQuality(g: GameState, b: BizState): number {
+  return Math.min(HEAVY_QUALITY_MAX, rdQuality(g, b, 2.5) + HEAVY_QUALITY_PLUS)
+}
+
+/**
+ * The earliest year any rival can have its own version of a breakthrough launched in `rec.year`: the launch
+ * plus the pioneer's own development time (what a giant needs; smaller rivals take longer, heavyArrival).
+ */
+export function heavyLead(rec: Pick<HeavyRecord, 'year' | 'years'>): number {
+  return rec.year + Math.ceil(rec.years * TIER_LAG.giant)
+}
+
+/**
+ * The families this company (its asset id) already launched in its market: the record keeps who made
+ * it. A line that has since run its course is gone from the shelves, but the company opened that kind
+ * once and doesn't open it again. Another company of the player's in the same market still can.
+ */
+function launchedFamilies(g: GameState, b: BizState, assetId: string | undefined): ReadonlySet<string> {
+  if (assetId === undefined) return new Set()
+  return new Set(readHeavy(g, b.industry, marketKey(b)).filter((r) => r.by === assetId).map((r) => r.family))
+}
+
+/**
+ * The breakthroughs this company can start now, in catalogue order: the year and era allow them and the
+ * company hasn't sold, retired, launched or begun them. `assetId` is the company's asset id (the record of a
+ * launch remembers who made it); without it only what the company's own state shows is checked.
+ */
+export function heavyOffers(g: GameState, b: BizState, assetId?: string): readonly Breakthrough[] {
+  if (!heavyEligible(b) || heavyCost(g, b) === null) return []
+  const retired = retiredOf(b)
+  const taken = new Set([...b.products.map((p) => p.name), ...rdProjects(b).map((p) => p.name), ...launchedFamilies(g, b, assetId)])
+  return breakthroughsFor(b.industry).filter((x) => g.year >= x.first && eraFits(g, b.countryId, x.name) && !retired.includes(x.name) && !taken.has(x.name))
+}
+
+/** A name for a message: a damaged one can't flood a popup. */
+const shown = (name: string): string => (typeof name === 'string' ? name.slice(0, 60) : '')
+
+/** Why a breakthrough can't start now: one reason, or null when it can. `assetId` as for heavyOffers. Pure. */
+export function heavyBlock(g: GameState, b: BizState, name: string, assetId?: string): string | null {
+  if (!heavyEligible(b)) return 'Heavy R&D is for product companies. This one runs its own kind of R&D.'
+  const def = typeof name === 'string' ? breakthroughsFor(b.industry).find((x) => x.name === name) : undefined
+  if (!def) return typeof name === 'string' && name.trim() ? `${shown(name)} isn't a breakthrough this trade can develop.` : 'Pick a breakthrough first.'
+  if (retiredOf(b).includes(name)) return retiredReason(name)
+  if (b.products.some((p) => p.name === name)) return `${name} is already on sale.`
+  if (launchedFamilies(g, b, assetId).has(name)) return `You already launched ${name}.`
+  if (rdProjects(b).some((p) => p.name === name)) return `${name} is already in development.`
+  if (g.year < def.first || !eraFits(g, b.countryId, name)) return `The world isn't ready for ${name} yet.`
+  if (rdProjects(b).some((p) => p.heavy === true)) return 'A breakthrough is already in development, and only one can run at a time.'
+  // A year from the future is damage, not a wait.
+  const last = b.heavyLast
+  if (typeof last === 'number' && Number.isFinite(last) && last <= g.year && last + HEAVY_COOLDOWN > g.year) return `Your last breakthrough ended in ${last}. The next can start in ${last + HEAVY_COOLDOWN}.`
+  if (rdProjects(b).length >= MAX_STORED_PROJECTS) return 'Your R&D department is drowning in projects. Let some finish first.'
+  const cost = heavyCost(g, b)
+  if (cost === null) return 'Nothing is ready on the drawing board to base a cost on.'
+  const need = cost + rdReserve(b)
+  if (!(b.cash >= need)) return `${name} needs ${money(need)} of company cash with the usual cushion kept back (${money(need - Math.max(0, b.cash))} short).`
+  return null
+}
+
+const round3 = (n: number): number => Math.round(n * 1000) / 1000
+
+/** Start a breakthrough: the whole cost leaves company cash now, like any project. Null (and a notice) when it can't start. */
+export function startHeavy(g: GameState, a: Asset, b: BizState, name: string): RdProject | null {
+  const why = heavyBlock(g, b, name, a.id)
+  const cost = heavyCost(g, b)
+  if (why || cost === null) {
+    notice(g, 'R&D', why ?? 'Nothing is ready on the drawing board to base a cost on.', { emoji: '\u{1F9EA}' })
+    return null
+  }
+  const years = heavyYears(b)
+  const odds = heavyOdds(g, b)
+  b.cash -= cost
+  b.yearCosts += cost
+  const p: RdProject = {
+    id: uid(g, 'rd'),
+    name,
+    budget: cost,
+    years,
+    progress: 0,
+    odds: round3(odds),
+    boost: 0,
+    quality: heavyQuality(g, b),
+    family: name,
+    kind: 'breakthrough',
+    heavy: true,
+    cost,
+    started: g.year,
+  }
+  rdOf(b).push(p)
+  log(g, `${a.name} started developing ${name}.`)
+  notice(
+    g,
+    'R&D Underway',
+    `${a.name}'s team is developing ${name}. It costs ${formatMoney(cost)}, should take about ${years} years and has about ${Math.round(odds * 100)}% odds of working. If it flops, the money is gone.`,
+    { emoji: '\u{1F9EA}' },
+  )
+  return p
+}
+
+/**
+ * What a breakthrough is expected to add each year, for the board that must approve the spending
+ * (manage.ts): the odds it works times the customers its line would win over eight years, as the
+ * ordinary R&D value counts them (rd.ts rdValue), spread over five years. It leaves out the lift the
+ * whole trade gets and the brand, so it is a floor. Pure.
+ */
+export function heavyGain(g: GameState, b: BizState, name: string, ctx?: MarketCtx): number {
+  const cost = heavyCost(g, b)
+  if (cost === null) return 0
+  const c = ctx ?? marketCtxFor(g, b, g.year)
+  const w = bizWorth(g, b)
+  const years = heavyYears(b)
+  const from = g.year + years
+  const quality = Math.round(Math.min(99, heavyQuality(g, b) + HEAVY_HIT_P * HEAVY_HIT_QUALITY))
+  const records: HeavyRecord[] = [...fieldFor(c).heavy.filter((r) => r.family !== name), { family: name, year: from, years, quality, cost, by: '' }]
+  const line: Product = { name, launched: from, boost: 0, quality, family: name, kind: 'breakthrough' }
+  let sales = 0
+  for (let t = 0; t < HORIZON; t++) {
+    const year = from + t
+    const field = fieldOf(c.rivals, c.fringe, c.key, year, records)
+    const base = productPull(b.industry, b.products, year, field).total
+    const withIt = productPull(b.industry, [...b.products.filter((p) => p.name !== name), line], year, field).total
+    sales += pullValue(c, b, w, base, withIt) * Math.pow(DISCOUNT, years - 1 + t)
+  }
+  const gain = (heavyOdds(g, b) * sales) / 5
+  return Number.isFinite(gain) ? Math.max(0, gain) : 0
+}
+
+// ---------------------------------------------------------------------------
+// The launch roll and the news
+
+const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+
+/**
+ * The launch of the first of a kind: a life-log line is written by the caller; this queues the modal and
+ * lists the item in the market news. The id is deterministic (company, generation, launch year, kind), so
+ * a replay of the same year cannot announce it twice.
+ */
+function announceLaunch(g: GameState, a: Asset, b: BizState, rec: HeavyRecord, market: string): void {
+  const def = breakthroughByName(rec.family)
+  if (!def) return
+  const title = `${rec.family}: a New Kind of ${industryDef(b.industry).label}`
+  const where = market === 'world' ? 'worldwide' : `in ${getCountry(b.countryId).name}`
+  const text = `${a.name} launched ${rec.family}. ${def.note} Demand for the whole trade is rising ${where}. Rivals can have their own from about ${heavyLead(rec)}.`
+  const id = `heavy-${a.id}-${g.generation}-${rec.year}-${slug(rec.family)}`
+  const fresh = pushMarketNews(g, { id, year: rec.year, industry: b.industry, market, emoji: '\u{1F4F0}', title, text })
+  if (fresh && g.character.alive && !g.queue.some((m) => m.id === id)) g.queue.push({ kind: 'notice', id, title, text, emoji: '\u{1F4F0}', tone: 'good' })
+}
+
+/**
+ * A breakthrough project finished its years: it works or it flops. The roll is the only place Heavy R&D
+ * draws on the game RNG, in this order and nothing else: the odds, then (if it works) whether it is a smash
+ * hit, then the quality spread. A launch puts the line on sale as a kind of its own, writes the record the
+ * market reads (demand, rivals, the lift for the whole trade) and makes the news; a flop loses the money,
+ * six brand points and nothing more (nobody reports a private failure). Either way the five-year wait starts.
+ * Returns the line for the R&D Results notice.
+ */
+export function advanceHeavy(g: GameState, a: Asset | null, b: BizState, p: RdProject, year: number): { won: boolean; line: string } {
+  const name = a?.name ?? 'The company'
+  const spent = typeof p.cost === 'number' && Number.isFinite(p.cost) ? p.cost : p.budget
+  b.heavyLast = year
+  if (!chance(g, clampN(p.odds, 0.02, 0.98))) {
+    b.brand = clampN(b.brand + HEAVY_FLOP_BRAND, 0, 100)
+    log(g, `${name}'s ${p.name} flopped.`, 'bad')
+    return { won: false, line: `\u{1F4A5} ${p.name} flopped in testing (${money(spent)} of R&D).` }
+  }
+  const hit = chance(g, HEAVY_HIT_P)
+  const quality = Math.round(clampN(projectQuality(p) + (rand(g) * 2 - 1) * HEAVY_SPREAD + (hit ? HEAVY_HIT_QUALITY : 0), 5, 99))
+  // A line of the same name may have come with a rival bought meanwhile: the better one stays.
+  const line: Product = { name: p.name, launched: year + 1, boost: 0, quality, family: p.name, kind: 'breakthrough' }
+  const same = b.products.findIndex((x) => x.name === p.name)
+  if (same < 0) b.products.push(line)
+  else if ((b.products[same].quality ?? 0) < quality) b.products[same] = line
+  b.brand = clampN(b.brand + (hit ? HEAVY_HIT_BRAND : HEAVY_BRAND), 0, 100)
+  const market = marketKey(b)
+  const pioneer = !readHeavy(g, b.industry, market).some((r) => r.family === p.name)
+  const rec: HeavyRecord = { family: p.name, year: year + 1, years: p.years, quality, cost: spent, by: a?.id ?? '' }
+  addHeavy(g, b.industry, market, rec)
+  log(g, `${name} launched ${p.name}.`, 'good')
+  if (pioneer && a) announceLaunch(g, a, b, rec, market)
+  const how = hit ? 'is a smash hit' : 'launches'
+  const after = pioneer ? `No rival sells one yet; the first can follow from about ${heavyLead(rec)}.` : 'The kind is already on the market.'
+  return { won: true, line: `${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${how}: quality ${quality}. ${after}` }
+}
+
+/**
+ * Year-end, for every product company: when the first rival of the market can offer a breakthrough that
+ * worked (never before the pioneer's own development time has passed), say so once in the life log. The
+ * record keeps the name it was reported under, so a second company in the same market, or the next year,
+ * doesn't repeat it. Reads the market only; draws nothing.
+ */
+export function heavyArrivals(g: GameState, b: BizState, year: number): void {
+  if (!heavyEligible(b)) return
+  const market = marketKey(b)
+  const records = readHeavy(g, b.industry, market)
+  if (!records.length) return
+  // The new year is the one the rivals sell in; nothing can be due before the development time is over.
+  const due = records.filter((r) => r.rival === undefined && year + 1 >= r.year + r.years)
+  if (!due.length) return
+  const rivals = marketCtxFor(g, b, year + 1).rivals
+  let reported = false
+  const next = records.map((r) => {
+    if (!due.includes(r)) return r
+    let best = -1
+    let at = Number.POSITIVE_INFINITY
+    rivals.forEach((x, i) => {
+      if (x.legacy || !(x.pull > 0)) return
+      const when = heavyArrival(r, x)
+      if (when < at) {
+        at = when
+        best = i
+      }
+    })
+    if (best < 0 || year + 1 < at) return r
+    const who = adultBrandName(g, b, rivals[best].name, rivals[best].real, best)
+    log(g, `${who} launches its own ${r.family}.`)
+    reported = true
+    return { ...r, rival: who.trim().slice(0, MAX_RIVAL) || 'A rival' }
+  })
+  if (reported) writeHeavy(g, b.industry, market, next)
 }

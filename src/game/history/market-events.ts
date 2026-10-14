@@ -8,6 +8,8 @@
 // broad demand cycle of each economy is already historical (economy/), so "everyone" demand
 // effects here are small; valuations were not, so value effects carry the boom or the bust.
 
+import type { GameState, Json } from '../types'
+
 /** The markets an event can hit hardest. An industry belongs to at most one. */
 export type Exposure = 'oil' | 'fuel' | 'clean' | 'property' | 'banking' | 'investing' | 'internet' | 'chips' | 'ai' | 'travel' | 'outings' | 'retail'
 
@@ -174,6 +176,76 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
     text: 'Breakthroughs in artificial intelligence set off an investment frenzy: AI labs, chip makers and data centers can barely keep up with demand.',
   },
 ]
+
+// ---------------------------------------------------------------------------
+// Market news: what happened in one trade and market during the game (a breakthrough that worked,
+// business/heavy-rd.ts). Unlike MARKET_EVENTS above, which is fixed history, this is a short list
+// in game flags, kept the way yearly.ts keeps the 'market.events' list it announces from: a plain
+// array under one flag, read with a type guard, so a damaged or missing flag reads as none.
+
+/** One item of market news. `market` is 'world' or a country id, as competition-core marketKey. */
+export interface MarketNews {
+  /** Unique and deterministic: the same launch is the same id, so it is only ever listed (and announced) once. */
+  id: string
+  year: number
+  industry: string
+  market: string
+  emoji: string
+  title: string
+  text: string
+}
+
+/** The newest items kept. */
+export const MAX_MARKET_NEWS = 20
+const NEWS_FLAG = 'market.news'
+/** Entries of a stored list that are looked at (a damaged save can't make every read slow). */
+const NEWS_SCAN = 64
+
+function text(v: unknown, max: number): string | null {
+  return typeof v === 'string' && v.trim() ? v.slice(0, max) : null
+}
+
+function cleanNews(x: unknown): MarketNews | null {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) return null
+  const o = x as Record<string, unknown>
+  const id = text(o.id, 120)
+  const industry = text(o.industry, 40)
+  const market = text(o.market, 20)
+  const title = text(o.title, 120)
+  const body = text(o.text, 600)
+  if (!id || !industry || !market || !title || !body) return null
+  if (typeof o.year !== 'number' || !Number.isFinite(o.year) || typeof o.emoji !== 'string') return null
+  return { id, year: Math.round(clamp(o.year, 1800, 2300)), industry, market, emoji: o.emoji.slice(0, 8), title, text: body }
+}
+
+/** The market news, oldest first: a validated copy, each id once (its newest entry), at most MAX_MARKET_NEWS. */
+export function readMarketNews(g: Pick<GameState, 'flags'>): MarketNews[] {
+  const raw = g.flags ? g.flags[NEWS_FLAG] : undefined
+  if (!Array.isArray(raw) || raw.length === 0) return []
+  const byId = new Map<string, MarketNews>()
+  for (let i = Math.max(0, raw.length - NEWS_SCAN); i < raw.length; i++) {
+    const n = cleanNews(raw[i])
+    if (!n) continue
+    byId.delete(n.id)
+    byId.set(n.id, n)
+  }
+  return [...byId.values()].slice(-MAX_MARKET_NEWS)
+}
+
+/**
+ * Add an item to the market news. False (and nothing changes) when the item isn't valid or its id is
+ * already listed. The stored list is rewritten from the validated one, so damage is repaired.
+ */
+export function pushMarketNews(g: Pick<GameState, 'flags'>, item: MarketNews): boolean {
+  const n = cleanNews(item)
+  if (!n) return false
+  const list = readMarketNews(g)
+  if (list.some((x) => x.id === n.id)) return false
+  list.push(n)
+  const stored: Json[] = list.slice(-MAX_MARKET_NEWS).map((x) => ({ id: x.id, year: x.year, industry: x.industry, market: x.market, emoji: x.emoji, title: x.title, text: x.text }))
+  g.flags[NEWS_FLAG] = stored
+  return true
+}
 
 /** How hard an event hits a country in a year (0 when it doesn't). */
 export function eventStrength(e: MarketEvent, country: string, year: number): number {

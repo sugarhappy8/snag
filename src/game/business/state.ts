@@ -77,6 +77,10 @@ export interface RdProject {
   /** Kind of product and sort of line (product-market.ts). */
   family?: string
   kind?: Product['kind']
+  /** Heavy R&D (heavy-rd.ts): a breakthrough project, paid up front, 4 to 6 years. Missing on ordinary projects and old saves. */
+  heavy?: true
+  /** What a heavy project cost, paid when it started (it is what the pioneer's record keeps). */
+  cost?: number
   /** Calendar year it started. */
   started: number
 }
@@ -278,6 +282,8 @@ export interface BizState {
    * R&D never offers them again. Missing on old saves and on companies that never retired a line.
    */
   retired?: string[]
+  /** Year the last Heavy R&D project launched or flopped: the five-year wait for the next one starts there. Missing: never had one. */
+  heavyLast?: number
   outlets: Outlet[]
   /**
    * Extra production capacity at the home site: production lines, ovens, sewing lines,
@@ -452,10 +458,20 @@ function lineExtras(x: Record<string, Json>): Pick<Product, 'quality' | 'family'
   }
 }
 
-/** A project's stored quality and kind (never who made it: projects are always the company's own). */
-function projectExtras(x: Record<string, Json>): Pick<RdProject, 'quality' | 'family' | 'kind'> {
+/** Most years an ordinary project takes, and a Heavy R&D one. */
+const MAX_PROJECT_YEARS = 4
+const MAX_HEAVY_YEARS = 6
+
+/**
+ * A project's stored quality and kind (never who made it: projects are always the company's own), and
+ * the Heavy R&D marks: `heavy` is believed only when it is exactly `true` and the project is one of
+ * the catalogue's breakthroughs, `cost` only on such a project and only as a finite number from 0.
+ */
+function projectExtras(x: Record<string, Json>, name: string): Pick<RdProject, 'quality' | 'family' | 'kind' | 'heavy' | 'cost'> {
   const { quality, family, kind } = lineExtras(x)
-  return { ...(quality !== undefined ? { quality } : {}), ...(family ? { family } : {}), ...(kind ? { kind } : {}) }
+  const heavy = x.heavy === true && breakthroughByName(name) !== null
+  const cost = heavy && typeof x.cost === 'number' && Number.isFinite(x.cost) && x.cost >= 0 ? Math.min(1e15, x.cost) : undefined
+  return { ...(quality !== undefined ? { quality } : {}), ...(family ? { family } : {}), ...(kind ? { kind } : {}), ...(heavy ? { heavy: true as const } : {}), ...(cost !== undefined ? { cost } : {}) }
 }
 
 function readProduct(x: Record<string, Json>): Product | null {
@@ -467,7 +483,8 @@ function readProduct(x: Record<string, Json>): Product | null {
 function readProject(x: Record<string, Json>): RdProject | null {
   const name = str(x.name)
   if (!name) return null
-  const years = Math.round(clampN(num(x.years, 1), 1, 4))
+  const extras = projectExtras(x, name)
+  const years = Math.round(clampN(num(x.years, 1), 1, extras.heavy ? MAX_HEAVY_YEARS : MAX_PROJECT_YEARS))
   return {
     id: str(x.id, `rd.${name}`),
     name,
@@ -476,7 +493,7 @@ function readProject(x: Record<string, Json>): RdProject | null {
     progress: clampN(num(x.progress), 0, years),
     odds: clampN(num(x.odds, 0.5), 0.02, 0.98),
     boost: clampN(num(x.boost, 0.05), 0, 0.5),
-    ...projectExtras(x),
+    ...extras,
     started: Math.round(num(x.started)),
   }
 }
@@ -579,6 +596,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   const history = [...historyByYear.values()].slice(-12)
   const supplier = d.supplier === 'budget' || d.supplier === 'premium' ? d.supplier : 'standard'
   const retired = readRetired(d.retired)
+  // A year, or nothing: a damaged value must never leave Heavy R&D waiting for good.
+  const heavyLast = typeof d.heavyLast === 'number' && Number.isFinite(d.heavyLast) && d.heavyLast >= 1800 && d.heavyLast <= 2300 ? Math.round(d.heavyLast) : null
   return {
     v: BIZ_VERSION,
     industry,
@@ -611,6 +630,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     products,
     ...(Array.isArray(d.rd) ? { rd: projects } : {}),
     ...(retired.length ? { retired } : {}),
+    ...(heavyLast !== null ? { heavyLast } : {}),
     outlets,
     ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
     history,
