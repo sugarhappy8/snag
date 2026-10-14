@@ -13,12 +13,12 @@ The house style is in `docs/VOICE.md`: bare facts, contractions, no morals, a jo
 - **Obituaries** are at most four short lines: name, age, cause and place; the counters; who survives and the estate; one dry closer. *Dale Morgan, 58. Heart attack, Chicago, United States. Four marriages. Two prison escapes. One lottery win. Survived by Kim and his son, Cody. Left $22,000. A memorial service will be held in Chicago.*
 - **CEO letters** are one short line per action in the manager's voice: *Opened 3 restaurants in New York for $1.4M. More next year.* A cost-cutter sometimes signs a line with "Sorry." The memo keeps 12 lines instead of 10.
 - **Business outings** (team nights) say what happened instead of ending on a punchline.
-- **Do Anything** no longer echoes your action back ("You decided to …"). The outcome is one concrete consequence with a small stat change (*You go for a run. It cost $40.*). The self-harm outcome does what it did before; its story is plain, and the line pointing to real-world help is drawn by the popup itself.
+- **Do Anything** no longer echoes your action back ("You decided to …"). An action the game has no rule for gets one concrete consequence with a small stat change (*You juggle flaming torches on a unicycle. It cost $40.*). The self-harm outcome does what it did before; its story is plain, and the line pointing to real-world help is drawn by the popup itself.
 - **Settings › About** holds the one note that the game is fiction and its money and crime systems are simulations.
 
 ## 🔧 Under the hood
 
-- `docs/VOICE.md`, and `node scripts/voice-report.mjs` (`npm run voice`), which counts ten voice targets over every string in `src/`. CI runs it as a warning; two rules are tests: no chatbot phrasings, no new em-dashes. The first half of a rewrite tool, `scripts/voice-batch.mjs extract`, exports strings to JSON for rewriting.
+- `docs/VOICE.md`, and `node scripts/voice-report.mjs` (`npm run voice`), which counts ten voice targets over every string in `src/`. CI runs it as a warning, and one rule is a test: no new em-dashes (24 or fewer). The first half of a rewrite tool, `scripts/voice-batch.mjs extract`, exports strings to JSON for rewriting.
 - Save groundwork, not used by the game yet: a schema version on every new save (2) with a migration chain, storage backends (IndexedDB, localStorage, memory), byte-exact quarantine of saves that cannot be read, and a coalesced write queue with a 20-second watchdog. Saving works exactly as before.
 
 ## Old saves
@@ -35,7 +35,7 @@ Nothing changes. New saves carry a schema number (2) and old ones count as schem
 
 ### The voice counter
 
-The audit's numbers are reproduced within 10% by definitions fitted to them, so "Baseline" (the v2.4.0 tree, before any change) is the number every later change is compared with. The 59,093 text strings counted are the literals of 14 or more characters, holes counting zero. CI runs `--ci` as a warning only: the table goes to the job summary.
+The audit's numbers are reproduced within 10% by definitions fitted to them, so "Baseline" (the v2.4.0 tree, before any change) is the number every later change is compared with. The strings counted are the literals of 14 or more characters, holes counting zero: 59,086 at the baseline, 59,719 now. CI runs `--ci` as a warning only: the table goes to the job summary.
 
 | Count | v2.4.0 audit | Baseline | This release | Target |
 | --- | ---: | ---: | ---: | --- |
