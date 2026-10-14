@@ -1450,6 +1450,15 @@ function appealFirms(g: GameState): AppealFirm[] {
   ]
 }
 
+/** Why the Appeal option can't be used right now, or null when it can (also read by Do Anything's legal answer). */
+export function appealBlock(g: GameState): string | null {
+  const p = g.character.prison
+  if (!p) return 'You are not in prison.'
+  if (p.deathRow) return yearActionsUsed(g, 'prisonAppeal') >= 1 ? 'You already filed a death row appeal this year.' : null
+  if (p.appealed) return 'You already appealed this sentence. The courts are done listening.'
+  return null
+}
+
 function appealAction(firm: AppealFirm): MenuAction {
   return {
     type: 'action',
@@ -1460,13 +1469,7 @@ function appealAction(firm: AppealFirm): MenuAction {
       const f = appealFirms(g).find((x) => x.id === firm.id) ?? firm
       return `${formatMoney(f.fee)} · ${f.id === 'top' ? 'Best odds' : f.id === 'mid' ? 'Decent odds' : 'Long shot'}`
     },
-    disabledReason: (g) => {
-      const p = g.character.prison
-      if (!p) return 'You are not in prison.'
-      if (p.deathRow) return yearActionsUsed(g, 'prisonAppeal') >= 1 ? 'You already filed a death row appeal this year.' : null
-      if (p.appealed) return 'You already appealed this sentence. The courts are done listening.'
-      return null
-    },
+    disabledReason: (g) => appealBlock(g),
     confirm: (g) => {
       const f = appealFirms(g).find((x) => x.id === firm.id) ?? firm
       return `Hire ${f.name} to appeal your conviction for ${formatMoney(f.fee)}?`

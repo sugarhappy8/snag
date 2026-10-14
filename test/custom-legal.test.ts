@@ -1,12 +1,18 @@
 // Do Anything and legal phrasings (insider-fairness ruling R7). A player who types "sue the regulator" or
 // "fight the seizure in court" gets a pointer to Activities, Lawsuit: no random outcome, no brawl, no steal.
 // The pointer is a hint like the other menu hints in custom.ts, so it changes no money, stat or relationship.
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { BANNED_ANYWHERE, unitFlags } from '../scripts/voice/rules.mjs'
-import { currentLogYear } from '../src/game/core'
+import { currentLogYear, useYearAction } from '../src/game/core'
 import { lawsuitMenu } from '../src/game/activities/lawsuit'
 import { CUSTOM_RULE_IDS, customRuleFor, resolveCustomAction } from '../src/game/events/custom'
 import { createPerson } from '../src/game/people'
+import { prisonMenu } from '../src/game/prison'
 import type { GameState, NoticeModal } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
@@ -216,7 +222,10 @@ describe('the legal rule', () => {
         const g = adult(seed)
         expect(customRuleFor(g, text), text).toBe('legal')
         const before = snapshot(g)
+        const rng = g.rng
         resolveCustomAction(g, text)
+        // A pointer, not an outcome: no random number is drawn, so the rest of the life plays out the same.
+        expect(g.rng, text).toBe(rng)
         const n = theNotice(g, text)
         expect(n.title, text).toBe('Lawsuit')
         expect(n.text, text).toContain('Activities')
@@ -335,7 +344,9 @@ describe('the legal rule for a child, a teen and a prisoner', () => {
           const gate = lawsuitMenu.disabledReason?.(g)
           expect(gate, `age ${age}`).toBe('You must be at least 18 to sue someone.')
           const before = snapshot(g)
+          const rng = g.rng
           resolveCustomAction(g, text)
+          expect(g.rng, text).toBe(rng)
           const n = theNotice(g, text)
           expect(n.title, text).toBe('Too young')
           expect(n.text, text).toBe(`You're only ${age}. ${gate}`)
@@ -368,13 +379,16 @@ describe('the legal rule for a child, a teen and a prisoner', () => {
   })
 
   it('tells a prisoner the menu is closed while locked up', () => {
-    for (const text of LEGAL.slice(0, 12)) {
+    // Hiring a lawyer from a cell is about the conviction: it points at Appeal (tested below), not at Lawsuit.
+    for (const text of LEGAL.slice(0, 12).filter((t) => t !== 'hire a lawyer to get my money back')) {
       for (const seed of SEEDS) {
         const g = prisoner(seed)
         expect(lawsuitMenu.disabledReason?.(g), 'the gate really is closed in prison').toBeTruthy()
         expect(customRuleFor(g, text), text).toBe('legal')
         const before = snapshot(g)
+        const rng = g.rng
         resolveCustomAction(g, text)
+        expect(g.rng, text).toBe(rng)
         const n = theNotice(g, text)
         expect(n.title, text).toBe('Locked up')
         expect(n.text, text).toContain('prison')
@@ -406,6 +420,213 @@ describe('the legal rule for a child, a teen and a prisoner', () => {
   })
 })
 
+/** In a cell, the conviction is what a lawyer is for: these point at the Appeal option, not at the closed Lawsuit menu. */
+const APPEAL_TALK = [
+  'fight my conviction',
+  'appeal my conviction',
+  'appeal the verdict',
+  'appeal my sentence',
+  'I want to appeal the conviction',
+  'file an appeal',
+  'appeal',
+  'I want to appeal',
+  "I'll appeal",
+  'hire a lawyer',
+  'get a good lawyer',
+  'lawyer up',
+  'hire a lawyer to get my money back',
+  'fight the charges',
+  'fight my sentence',
+]
+
+function appealGate(g: GameState): string | null {
+  const menu = prisonMenu.children(g).find((n) => n.id === 'prison.appeal')
+  if (!menu || menu.type !== 'menu') throw new Error('no Appeal menu')
+  const top = menu.children(g).find((n) => n.id === 'prison.appeal.top')
+  if (!top || top.type !== 'action') throw new Error('no appeal firm')
+  return top.disabledReason?.(g) ?? null
+}
+
+describe('the legal rule in a cell: the conviction goes to Appeal', () => {
+  it('points conviction, sentence, verdict and lawyer talk at the Appeal option, and changes nothing', () => {
+    for (const text of APPEAL_TALK) {
+      for (const seed of SEEDS) {
+        const g = prisoner(seed)
+        expect(appealGate(g), 'the appeal is open').toBeNull()
+        expect(customRuleFor(g, text), text).toBe('legal')
+        const before = snapshot(g)
+        const rng = g.rng
+        resolveCustomAction(g, text)
+        expect(g.rng, text).toBe(rng)
+        const n = theNotice(g, text)
+        expect(n.title, text).toBe('Appeal')
+        expect(n.text, text).toMatch(/Prison menu, under Appeal/)
+        expect(n.text, text).not.toMatch(/Activities|Lawsuit/)
+        expect(snapshot(g), text).toBe(before)
+        expect(lastLog(g), text).toBe('I read up on appeals.')
+      }
+    }
+  })
+
+  it('says why when the appeal is used up, in the words of the Appeal option itself', () => {
+    const used = prisoner(1)
+    used.character.prison!.appealed = true
+    const row = prisoner(2)
+    row.character.prison!.deathRow = true
+    row.character.prison!.life = true
+    expect(useYearAction(row, 'prisonAppeal', 1)).toBe(true)
+    for (const g of [used, row]) {
+      const gate = appealGate(g)
+      expect(gate).toBeTruthy()
+      const before = snapshot(g)
+      const rng = g.rng
+      resolveCustomAction(g, 'appeal my conviction')
+      expect(g.rng).toBe(rng)
+      const n = theNotice(g, 'appeal')
+      expect(n.title).toBe('Appeal')
+      expect(n.text).toBe(gate)
+      expect(snapshot(g)).toBe(before)
+    }
+    // Death row with this year's appeal still to file gets the pointer.
+    const fresh = prisoner(3)
+    fresh.character.prison!.deathRow = true
+    fresh.character.prison!.life = true
+    resolveCustomAction(fresh, 'appeal my conviction')
+    expect(theNotice(fresh, 'appeal').text).toMatch(/Prison menu, under Appeal/)
+  })
+
+  it('a minor in juvenile detention can appeal too, so gets the pointer and not the age answer', () => {
+    const g = person(6, 16, true)
+    expect(appealGate(g)).toBeNull()
+    resolveCustomAction(g, 'appeal my conviction')
+    expect(theNotice(g, 'appeal').title).toBe('Appeal')
+    // Suing is still an age matter.
+    const s = person(6, 16, true)
+    resolveCustomAction(s, 'sue the government')
+    expect(theNotice(s, 'sue').title).toBe('Too young')
+  })
+
+  it('suing from a cell is still the closed Lawsuit menu, even with a lawyer in the sentence', () => {
+    for (const text of ['sue the government', 'hire a lawyer to sue the prison', 'file a lawsuit against the guards', 'take the warden to court']) {
+      const g = prisoner(4)
+      resolveCustomAction(g, text)
+      expect(theNotice(g, text).title, text).toBe('Locked up')
+    }
+  })
+
+  it('outside prison the same words keep the Lawsuit pointer (or the age answer)', () => {
+    for (const text of ['fight my conviction', 'appeal my conviction', 'appeal the verdict', 'hire a lawyer', 'file an appeal']) {
+      const g = adult(5)
+      resolveCustomAction(g, text)
+      expect(theNotice(g, text).title, text).toBe('Lawsuit')
+      const kid = teen(5, 15)
+      resolveCustomAction(kid, text)
+      expect(theNotice(kid, text).title, text).toBe('Too young')
+    }
+  })
+
+  it('"appeal" that is not about a court is not legal', () => {
+    for (const text of ['appeal to voters', 'sex appeal', 'improve curb appeal', 'appeal to my boss for a raise', 'work on my appeal']) {
+      expect(customRuleFor(adult(1), text), text).not.toBe('legal')
+      expect(customRuleFor(prisoner(1), text), text).not.toBe('legal')
+    }
+  })
+})
+
+describe('compound sentences and a person called Sue keep their own rule', () => {
+  /** The reviewer's list (old tree vs new tree, adult, seed 7): each went back to the rule it had before the legal rule. */
+  const OWN_RULE: [text: string, rule: string | undefined][] = [
+    ['hire a divorce lawyer', 'breakup'],
+    ['get a divorce lawyer and divorce my wife', 'breakup'],
+    ['see a lawyer about my divorce', 'breakup'],
+    ['go to the courthouse and get married', 'propose'],
+    ['get married in the courthouse', 'propose'],
+    ['kiss sue', 'date'],
+    ['date sue', 'date'],
+    ['propose to sue', 'propose'],
+    ['marry sue', 'propose'],
+    ['hang out with sue', undefined],
+    ['call sue', undefined],
+    ['quit my job and sue my boss', 'quit'],
+    ['go to court and gamble', 'gamble'],
+    ['hire a lawyer and go to the casino', 'gamble'],
+    ['smoke weed in court', 'drugs'],
+    ['go to court high on cocaine', 'drugs'],
+    ['go rob the bank and sue them', 'steal'],
+    ['please rob the bank and sue them', 'steal'],
+    ['sue them and get drunk', 'drink'],
+    ['go to the courthouse for my wedding', undefined],
+  ]
+
+  /** Still suits: the other rule's word is only what the suit is about, or the verb is "Sue" written with a capital. */
+  const STILL_LEGAL = [
+    'please sue the FCA',
+    'go sue them',
+    'Please Sue the FCA',
+    'Go Sue them',
+    'I want to Sue the FCA',
+    "I'll Sue them",
+    'I will Sue the regulator',
+    'sueing the fca',
+    'I am sueing my landlord',
+    'sue the casino',
+    'sue the casino for my losses',
+    'sue the wedding planner',
+    'take the casino to court',
+    'file a complaint against the casino',
+    'sue my boss and quit',
+    'sue the bar that served me drinks',
+    'sue my ex after the divorce settlement',
+  ]
+
+  it('leaves each compound or look-alike sentence to its own rule', () => {
+    for (const [text, rule] of OWN_RULE) {
+      const g = adult(7)
+      createPerson(g, { relation: 'friend', age: 30, firstName: 'Sue', relationship: 60 })
+      expect(customRuleFor(g, text), text).toBe(rule)
+      resolveCustomAction(g, text)
+      expect(notices(g).some((n) => n.title === 'Lawsuit'), text).toBe(false)
+    }
+  })
+
+  it('keeps real suits on the legal rule', () => {
+    for (const text of STILL_LEGAL) {
+      for (const seed of [1, 7]) {
+        const g = adult(seed)
+        createPerson(g, { relation: 'friend', age: 30, firstName: 'Sue', relationship: 60 })
+        expect(customRuleFor(g, text), text).toBe('legal')
+      }
+    }
+  })
+
+  it('reads a capital Sue after a person-verb as a name', () => {
+    const g = adult(3)
+    createPerson(g, { relation: 'friend', age: 30, firstName: 'Sue', relationship: 60 })
+    for (const text of ['talk to Sue', 'I want to talk to Sue', 'propose to Sue', 'give it to Sue', 'go to Sue', 'Will Sue come over', 'I will call Sue']) {
+      expect(customRuleFor(g, text), text).not.toBe('legal')
+    }
+  })
+})
+
+describe('the legal rule source', () => {
+  it('has no string over the 180-character mark the voice report counts', () => {
+    const tree = mkdtempSync(join(tmpdir(), 'custom-legal-'))
+    try {
+      const file = join('src', 'game', 'events', 'custom.ts')
+      mkdirSync(join(tree, 'src', 'game', 'events'), { recursive: true })
+      writeFileSync(join(tree, file), readFileSync(fileURLToPath(new URL('../src/game/events/custom.ts', import.meta.url)), 'utf8'))
+      const run = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/voice-report.mjs', import.meta.url)), '--json', '--root', tree], { encoding: 'utf8' })
+      expect(run.stderr).toBe('')
+      const doc = JSON.parse(run.stdout) as { meta: { files: number; lexerErrors: number }; metrics: { key: string; value: number }[] }
+      expect(doc.meta.files).toBe(1)
+      expect(doc.meta.lexerErrors).toBe(0)
+      expect(doc.metrics.find((m) => m.key === 'long')?.value).toBe(0)
+    } finally {
+      rmSync(tree, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('the legal answers in the house voice', () => {
   const variants = (): { label: string; title: string; text: string; log: string | undefined }[] => {
     const out: { label: string; title: string; text: string; log: string | undefined }[] = []
@@ -421,13 +642,21 @@ describe('the legal answers in the house voice', () => {
       const n = theNotice(g, label)
       out.push({ label, title: n.title, text: n.text, log: lastLog(g) })
     }
+    // From a cell, about the conviction: the Appeal pointer, and the used-up appeal.
+    const used = prisoner(1)
+    used.character.prison!.appealed = true
+    for (const [label, g] of [['appeal', prisoner(1)], ['appeal used', used]] as [string, GameState][]) {
+      resolveCustomAction(g, 'appeal my conviction')
+      const n = theNotice(g, label)
+      out.push({ label, title: n.title, text: n.text, log: lastLog(g) })
+    }
     return out
   }
 
   it('has no em-dash, banned phrase, disclaimer or over-long line in any variant', () => {
     const all = variants()
     // These are the legal answers, not the fallback: a text that is only a fallback would pass the checks below.
-    expect(all.map((v) => v.title)).toEqual(['Lawsuit', 'Locked up', 'Too young', 'Too young', 'Too young'])
+    expect(all.map((v) => v.title)).toEqual(['Lawsuit', 'Locked up', 'Too young', 'Too young', 'Too young', 'Appeal', 'Appeal'])
     for (const v of all) {
       for (const [role, text] of [['title', v.title], ['outcome', v.text], ...(v.log ? [['log', v.log]] : [])] as [string, string][]) {
         expect(text, v.label).not.toMatch(/\u2014|\u2013/)
