@@ -1469,6 +1469,12 @@ interface InsiderCase {
   gain: number
   /** A policy case: whether the law was good for the company's shares (absent in older saves and announcement cases). */
   bullish?: boolean
+  /**
+   * Cash the regulator took when it opened the case, held until the case is decided: it goes to the trial with
+   * the arrest (an acquittal or a successful appeal gives it back, a conviction forfeits it) or comes back
+   * when the case ends without one. Absent means nothing is held (older saves, no seizure).
+   */
+  held?: number
 }
 
 interface AbuseData {
@@ -1487,6 +1493,8 @@ const CRONY_SIZE_SCRIPT = 'special.pol.abuse.cronySize'
 const INSIDER_SCRIPT = 'special.pol.abuse.exposed'
 const CRONY_CUT = 0.25
 const MAX_CRONY_BETS = 2
+/** Most one case can hold: the game's usual ceiling for a stored amount. */
+const HELD_MAX = 1e15
 
 function freshAbuse(): AbuseData {
   return { heat: 0, moves: 0, cases: [], crony: '' }
@@ -1512,6 +1520,7 @@ function repairAbuse(a: AbuseData): AbuseData {
     const status = statuses.includes(c.status as InsiderCase['status']) ? c.status as InsiderCase['status'] : null
     if (!id || !secId || !status || ids.has(id) || typeof c.age !== 'number' || !Number.isFinite(c.age)) continue
     ids.add(id)
+    const held = Math.round(bounded(c.held, 0, 0, HELD_MAX))
     const extra: string[] = [], extraSeen = new Set<string>()
     if (Array.isArray(c.extra)) for (const item of c.extra.slice(-20)) {
       const charge = text(item, '', 100)
@@ -1537,6 +1546,7 @@ function repairAbuse(a: AbuseData): AbuseData {
       extra,
       gain: Math.round(bounded(c.gain, 0, 0, 1e15)),
       ...(typeof c.bullish === 'boolean' ? { bullish: c.bullish } : {}),
+      ...(held > 0 ? { held } : {}),
     })
   }
   const keep = new Set([
@@ -2248,12 +2258,19 @@ defineScript(INSIDER_SCRIPT, (g, choice, data) => {
     say(g, 'Insider Trading Scandal', lines.join('\n\n'), '\u{1F4F0}', 'bad')
     return
   }
-  // The money is frozen and the profits clawed back.
+  // Open bets are frozen for good. The cash the regulator takes (the profits it claims) is held until the case is decided.
   const frozen = freezeBets(g, cs.id)
   const profit = Math.max(0, caseProfit(g, cs.id) + cs.gain)
-  const seized = Math.min(profit, Math.max(0, Math.floor(c.money)))
-  if (seized > 0) addMoney(g, -seized)
-  if (frozen > 0 || seized > 0) lines.push(`Investigators ${[frozen > 0 ? `froze ${money(frozen)} of open bets` : '', seized > 0 ? `seized ${money(seized)} of profits` : ''].filter(Boolean).join(' and ')}.`)
+  // Never more than the profit the regulator claims in all, however many times the case is opened.
+  const owed = Math.max(0, Math.min(profit, HELD_MAX) - (cs.held ?? 0))
+  const seized = Math.floor(Math.min(owed, Math.max(0, Math.floor(c.money))))
+  if (seized > 0) {
+    addMoney(g, -seized)
+    cs.held = (cs.held ?? 0) + seized
+  }
+  const froze = frozen > 0 ? `froze ${money(frozen)} of open bets` : ''
+  const holding = seized > 0 ? `are holding ${money(seized)} of your money until the case is decided` : ''
+  if (froze || holding) lines.push(`Investigators ${[froze, holding].filter(Boolean).join(' and ')}.`)
   if (politicianJob(g) && immuneInOffice(g)) {
     cs.status = 'pending'
     const title = politicianJob(g)!.title
@@ -2280,8 +2297,25 @@ defineScript(INSIDER_SCRIPT, (g, choice, data) => {
     remember(g, `Removed as ${title} and charged with insider trading.`)
   }
   say(g, 'Insider Trading Scandal', lines.join('\n\n'), '\u{1F4F0}', 'bad')
-  arrestPlayer(g, 'Insider Trading', caseSeverity(g, cs), { evidence: Math.max(0.3, Math.min(0.95, cs.evidence)), extraCharges: caseCharges(cs), context: `Agents from ${regulator(cs.countryId)} arrived with a warrant and a very large box for your files.` })
+  arrestPlayer(g, 'Insider Trading', caseSeverity(g, cs), { evidence: Math.max(0.3, Math.min(0.95, cs.evidence)), extraCharges: caseCharges(cs), context: `Agents from ${regulator(cs.countryId)} arrived with a warrant and a very large box for your files.`, ...handOver(cs) })
 })
+
+/** The trial owns the money a case held from here on: it goes with the arrest, naming who took it. */
+function handOver(cs: InsiderCase): { refund: number; defendant: string } {
+  const refund = cs.held ?? 0
+  delete cs.held
+  return { refund, defendant: regulator(cs.countryId) }
+}
+
+/** A case that ends without a trial gives back what it held. */
+function giveBack(g: GameState, cs: InsiderCase): void {
+  const held = cs.held ?? 0
+  delete cs.held
+  if (!(held > 0)) return
+  addMoney(g, held)
+  log(g, `I got back the ${money(held)} held in my case.`, 'good')
+}
+
 /**
  * Yearly: heat cools, open cases may surface, pending cases wait out your immunity, and old cases
  * expire. At most one popup a year from here. Runs in and out of office (charges follow you).
@@ -2299,6 +2333,7 @@ function yearlyAbuse(g: GameState): void {
     if (c.age - cs.age > 10) {
       cs.status = 'closed'
       log(g, `The statute of limitations ran out on my ${cs.symbol} trades.`, 'good')
+      giveBack(g, cs)
       continue
     }
     if (acted) continue
@@ -2309,6 +2344,7 @@ function yearlyAbuse(g: GameState): void {
       } else if (++cs.quiet >= 4) {
         cs.status = 'closed'
         log(g, `Nobody ever connected my ${cs.symbol} bet to my announcement. The trail went cold.`, 'good')
+        giveBack(g, cs)
       }
       continue
     }
@@ -2317,13 +2353,14 @@ function yearlyAbuse(g: GameState): void {
     if (chance(g, marketOf(cs.countryId).corruption / 300)) {
       cs.status = 'closed'
       log(g, `The case file on my ${cs.symbol} trades was "lost in a flood." There was no flood.`, 'good')
+      giveBack(g, cs)
       continue
     }
     if (chance(g, 0.3 + 0.5 * enforcement(cs.countryId))) {
       acted = true
       cs.status = 'closed'
       remember(g, `Charged with insider trading over ${cs.target} after leaving office.`)
-      arrestPlayer(g, 'Insider Trading', caseSeverity(g, cs), { evidence: Math.max(0.3, Math.min(0.95, cs.evidence)), extraCharges: caseCharges(cs), context: `Now that you no longer hold office, prosecutors finally came for you over the ${cs.symbol} trades.` })
+      arrestPlayer(g, 'Insider Trading', caseSeverity(g, cs), { evidence: Math.max(0.3, Math.min(0.95, cs.evidence)), extraCharges: caseCharges(cs), context: `Now that you no longer hold office, prosecutors finally came for you over the ${cs.symbol} trades.`, ...handOver(cs) })
     }
   }
 }

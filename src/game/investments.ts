@@ -553,6 +553,40 @@ function estimateTax(g: GameState, a: Asset, gross: number): { fee: number; pena
   return { fee, penalty, gain, tax, impact }
 }
 
+/** What selling the whole holding right now would pay, before tax: the Sell All row's figure. */
+function saleEstimate(g: GameState, a: Asset): number {
+  const value = holdingValue(a)
+  const est = estimateTax(g, a, value)
+  return Math.max(0, value - est.fee - est.penalty - est.impact)
+}
+
+/**
+ * The size of a buy order, in the money that reaches the market, at which price impact starts to cost
+ * more than `1 - keep` of it (the default asks where an order first loses over 10%). It is the order at
+ * which buyImpact returns `keep` of the money, found by halving because that share only falls as the
+ * order grows. 0 when the depth is not a positive number.
+ */
+export function buyImpactLimit(depth: number, keep = 0.9): number {
+  if (!(depth > 0) || !Number.isFinite(depth)) return 0
+  const share = Number.isFinite(keep) ? Math.min(0.999, Math.max(0.01, keep)) : 0.9
+  let lo = 0
+  let hi = depth * 1e6
+  if (!Number.isFinite(hi)) return 0
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2
+    if (buyImpact(mid, depth).value / mid > share) lo = mid
+    else hi = mid
+  }
+  return (lo + hi) / 2
+}
+
+/** The order that leaves `invested` for the market once the broker's fee is taken out of it. */
+function orderFor(plan: FeePlan, invested: number): number {
+  let amount = invested
+  for (let i = 0; i < 6; i++) amount = invested + feeFor(plan, amount)
+  return Math.round(amount)
+}
+
 function earlyPenalty(g: GameState, a: Asset, gross: number): number {
   if (typeOf(a) !== 'savings' || str(a.details.product) !== 'term') return 0
   if (g.year >= num(a.details.maturity)) return 0
@@ -1039,9 +1073,14 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   count(g, 'moneyInvested', amt)
   if (depth) recordOrderFlow(g, a, order.end)
   if (room !== null) noteCryptoBuy(g, q.secId, amt)
-  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into a ${q.sector.toLowerCase()}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
+  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into ${str(q.details.product) === 'term' ? 'a term deposit' : 'savings'}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
   const feeLine = fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''
-  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${depth ? ' Order-book depth affects your execution price; large orders move the market.' : ''} Your position is now worth ${formatMoney(a.value)}.`, { emoji: q.emoji, tone: 'good' })
+  // Price impact past the 10% mark (the same mark the Buy row names): say what it cost and what a sale returns.
+  const lost = depth && invested > 0 ? 1 - order.value / invested : 0
+  const impactLine = lost > 0.1
+    ? ` The order moved the price, so on paper it lost ${lost >= 0.9995 ? 'over 99.9%' : absPct(lost, 1)} of what you paid. A full sale would return about ${formatMoney(saleEstimate(g, a))}, before tax.`
+    : depth ? ' Order-book depth affects your execution price; large orders move the market.' : ''
+  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${impactLine} Your position is now worth ${formatMoney(a.value)}.`, { emoji: q.emoji, tone: 'good' })
   log(g, q.type === 'savings' ? `I put ${formatMoney(amt)} in the bank.` : `I invested ${formatMoney(amt)} in ${q.name}.`)
   return true
 }
@@ -1311,12 +1350,16 @@ function buyAction(g: GameState, q: Quote, held: boolean): MenuAction {
   const cash = Math.max(0, Math.floor(g.character.money))
   const plan = feePlan(g, q.type)
   const suggestion = Math.min(cash, Math.max(min, Math.round((cash * 0.25) / 100) * 100))
+  // Where an order starts to lose over 10% to price impact (the Order Filled notice speaks up past the same mark).
+  const depth = tradingDepth(g, q.type, q.details)
+  const limit = depth ? buyImpactLimit(depth) : 0
+  const impact = limit > 0 ? ` · Orders above about ${shortMoney(orderFor(plan, limit))} lose over 10% to price impact` : ''
   return {
     type: 'action',
     id: `inv-buy-${q.secId}`,
     label: held ? (q.type === 'savings' ? 'Deposit More' : 'Buy More') : q.type === 'savings' ? 'Deposit' : 'Buy',
     emoji: '💵',
-    subtitle: `${plan.label} · Minimum ${formatMoney(min)}`,
+    subtitle: `${plan.label} · Minimum ${formatMoney(min)}${impact}`,
     disabledReason: (gg) => buyBlock(gg, q),
     input: {
       kind: 'number',
@@ -1359,7 +1402,7 @@ function sellActions(g: GameState, a: Asset): MenuNode[] {
       id: `inv-sellall-${a.id}`,
       label: deposit ? 'Close Account' : 'Sell All',
       emoji: '💰',
-      subtitle: `About ${formatMoney(Math.max(0, value - feeFor(feePlan(g, t), value) - earlyPenalty(g, a, value) - estimateTax(g, a, value).impact))} after fees and price impact, before tax`,
+      subtitle: `About ${formatMoney(saleEstimate(g, a))} after fees and price impact, before tax`,
       disabledReason: (gg) => sellBlock(gg, a),
       confirm: (gg) => {
         const cur = gg.assets.find((x) => x.id === a.id)
@@ -1826,8 +1869,12 @@ export const investmentsMenu: MenuGroup = {
     const info = exchangeInfo(g.character.countryId)
     const ey = exchangeYear(fam(g), anchor(g), info, g.year)
     const gain = s.value - s.basis
+    // Marked figures are deliberate (your own order flow is not counted). When a sale would pay clearly
+    // something else, say what it would pay.
+    const sells = Math.min(MAX_INVESTMENT_VALUE, investmentHoldings(g).reduce((sum, a) => sum + saleEstimate(g, a), 0))
+    const sellsLine = Math.abs(sells - s.value) > 0.05 * Math.max(0, s.value) ? ` · Sells for about ${formatMoney(Math.round(sells))}` : ''
     const top = investmentHoldings(g).length
-      ? `Portfolio: ${formatMoney(s.value)} · ${gain >= 0 ? 'Gain' : 'Loss'}: ${formatMoney(Math.abs(gain))} (${pct(s.basis > 0 ? gain / s.basis : 0)})`
+      ? `Portfolio: ${formatMoney(s.value)} · ${gain >= 0 ? 'Gain' : 'Loss'}: ${formatMoney(Math.abs(gain))} (${pct(s.basis > 0 ? gain / s.basis : 0)})${sellsLine}`
       : "You don't own any investments yet."
     return `${top}\n${marketLine(g, info, ey)}\nCash: ${formatMoney(g.character.money)} · ${feePlan(g, 'stock').label}`
   },
