@@ -9,6 +9,7 @@ import { coinTargets, listedTargets, stockTargets } from '../src/game/computer/m
 import { formatMoney, netWorth } from '../src/game/core'
 import { economyOf } from '../src/game/economy'
 import { typicalIncome } from '../src/game/events/wealth-core'
+import { companyKey } from '../src/game/invest/engine'
 import { buySecurity, investmentHoldings, investmentListing, liveDepositRate } from '../src/game/investments'
 import type { Asset, GameState, Loan, LoanKind } from '../src/game/types'
 import { getCountry } from '../src/game/world'
@@ -303,6 +304,41 @@ describe('concentration', () => {
     expect(f).toBeDefined()
     expect(f.text).toBe(`${a.name} is 60% of your net worth.`)
     expect(f.weight).toBe(84)
+  })
+
+  it('adds up the two listed classes of one real company', () => {
+    // Alphabet in 2020 lists a second class (its '~C' line). Two lines are one company's risk.
+    const build = (lines: { main: number; second: number }): GameState => {
+      const g = client(11, { year: 2020, money: 200_000_000 })
+      const alphabet = investmentListing(g).find((x) => x.type === 'stock' && x.name === 'Alphabet')
+      if (!alphabet) throw new Error('Alphabet is not listed')
+      if (lines.main) expect(buySecurity(g, alphabet.secId, lines.main)).toBe(true)
+      if (lines.second) expect(buySecurity(g, `${alphabet.secId}~C`, lines.second)).toBe(true)
+      return g
+    }
+    const whole = build({ main: 110_000_000, second: 0 })
+    const split = build({ main: 55_000_000, second: 55_000_000 })
+    const one = find(whole, 'concentration')
+    expect(one).toBeDefined()
+    expect(one!.text).toMatch(/^Alphabet is \d+% of your net worth\.$/)
+    // The second line costs a little more or less to buy, so the shares differ by a point at most.
+    const id = investmentListing(split).find((x) => x.type === 'stock' && x.name === 'Alphabet')!.secId
+    const lines = investmentHoldings(split).filter((a) => companyKey(String(a.details.secId)) === id)
+    expect(lines.map((a) => a.details.secId).sort()).toEqual([id, `${id}~C`])
+    const share = (lines[0].value + lines[1].value) / netWorth(split)
+    const f = find(split, 'concentration')
+    expect(f).toBeDefined()
+    expect(f!.text).toBe(`Alphabet is ${Math.round(100 * share)}% of your net worth.`)
+    expect(f!.weight).toBe(Math.round(60 + 40 * share))
+    expect(Math.abs(f!.weight - one!.weight)).toBeLessThanOrEqual(1)
+
+    // A second company is another name: the same money in two companies is not a concentration.
+    const g = client(11, { year: 2020, money: 200_000_000 })
+    const alphabet = investmentListing(g).find((x) => x.type === 'stock' && x.name === 'Alphabet')!
+    const other = investmentListing(g).find((x) => x.type === 'stock' && x.name !== 'Alphabet')!
+    expect(buySecurity(g, alphabet.secId, 55_000_000)).toBe(true)
+    expect(buySecurity(g, other.secId, 55_000_000)).toBe(true)
+    expect(ids(findings(g, false))).not.toContain('concentration')
   })
 
   it('never shows a share above 100% when debt makes the holding bigger than net worth', () => {

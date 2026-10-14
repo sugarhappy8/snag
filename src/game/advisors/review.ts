@@ -8,6 +8,7 @@ import { coinTargets, stockTargets } from '../computer/money-stocks'
 import { formatMoney, netWorth } from '../core'
 import { economyOf } from '../economy'
 import { typicalIncome } from '../events/wealth-core'
+import { companyKey } from '../invest/engine'
 import { freshShare, investmentHoldings, liveDepositRate } from '../investments'
 import { officeView } from '../nation/office'
 import type { Asset, GameState, Loan } from '../types'
@@ -130,7 +131,8 @@ function loanFinding(g: GameState, T: number, cash: number): Finding | null {
 
 /**
  * One company, or one name's holding, that is 40% or more of net worth. Companies count by id and investments by
- * `details.secId` (so two lines of one security add up). Broad funds, bonds and deposits are not a name's risk.
+ * the company behind `details.secId` (companyKey), so two lines of one security and two listed classes of one
+ * company add up. Broad funds, bonds and deposits are not a name's risk.
  */
 function concentration(g: GameState, T: number, nw: number): Finding | null {
   if (!(nw > 0)) return null
@@ -149,7 +151,7 @@ function concentration(g: GameState, T: number, nw: number): Finding | null {
   for (const a of [...investmentHoldings(g)].sort(byValue)) {
     if (BROAD.includes(String(a.details.type))) continue
     const secId = typeof a.details.secId === 'string' ? a.details.secId : ''
-    add(`sec:${secId || a.id}`, a)
+    add(`sec:${secId ? companyKey(secId) : a.id}`, a)
   }
   let top: { name: string; value: number } | null = null
   for (const row of groups.values()) if (!top || row.value > top.value) top = row
