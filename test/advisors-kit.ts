@@ -1,6 +1,7 @@
 // Shared fixtures for the money team suites (advisors-*.test.ts): a rich adult client, a way to hold
 // each kind of security the manager cares about, and a politician's job. Tasks 3 and 4 extend this file
 // with their own exports; keep each export small and free of assertions beyond "the setup worked".
+import { teamOf, writeTeam, type Team } from '../src/game/advisors/team'
 import { stockTargets } from '../src/game/computer/money-stocks'
 import { buySecurity, investmentHoldings, investmentListing } from '../src/game/investments'
 import type { Asset, GameState } from '../src/game/types'
@@ -83,4 +84,13 @@ export function officeJob(g: GameState, office: 'mayor' | 'governor' | 'leader')
     yearsAtCompany: 0,
     data: { office, party: 'centrist', approval: 60, termLeft: 4, terms: 1, hot: [], newsAge: -1, bills: [], warChest: 0, favors: 0, scandals: 0, termOver: false, startAge: g.character.age, roleStartAge: g.character.age },
   }
+}
+
+/**
+ * Write a valid money team record, stamped for this character, through `writeTeam`. `over` is laid over the
+ * record the game already has (an empty one when it has none), so two calls add to each other; pass a key as
+ * `undefined` to clear it. A manager with no mandate gets the default one when the record is read.
+ */
+export function withTeam(g: GameState, over: Partial<Team> = {}): void {
+  writeTeam(g, { ...teamOf(g), ...over })
 }
