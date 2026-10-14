@@ -8,6 +8,8 @@ import { groupById, liveGroup, saveGroup, sharePriceOf } from '../src/game/busin
 import { tickerOf } from '../src/game/business/listing-id'
 import { ownListingNode, ownStockRows } from '../src/game/business/own-listing-menu'
 import { ownListings } from '../src/game/business/own-listing'
+import { buyQuote, controlsWith } from '../src/game/business/own-trade'
+import { ownerControls } from '../src/game/business/board'
 import { equityYearKey } from '../src/game/business/rescue'
 import { readBiz } from '../src/game/business/state'
 import { findTarget, listedTargets } from '../src/game/computer/money-stocks'
@@ -257,7 +259,7 @@ describe('your listed company in Stocks', () => {
     for (const start of ['Market cap: ', 'Price: ', 'Your stake: ', 'Outside shareholders: ', 'Listed on the ']) {
       expect(infos.some((t) => t.startsWith(start)), start).toBe(true)
     }
-    expect(infos.some((t) => t.includes('Above 50% you control the board. You hold 60.0%.'))).toBe(true)
+    expect(infos.some((t) => t.includes('At 50% or more you control the board. You hold 60.0%.'))).toBe(true)
     expect(infos.find((t) => t.startsWith('Market cap: '))).toContain('Large-cap')
     expect(infos.find((t) => t.startsWith('Outside shareholders: '))).toMatch(/relatives 10\.0%.*executives 2\.0%/)
     expect(infos.find((t) => t.startsWith('Listed on the '))).toMatch(/\(NYSE\) since \d{4}\.$/)
@@ -286,6 +288,58 @@ describe('your listed company in Stocks', () => {
     expect(sell.input!.preview!(g, 100)).toContain('leaves your companies')
     expect(subtitleOf(g, buy)).toMatch(/^At least \$.* a share · up to 15% of the company$/)
     expect(subtitleOf(g, sell)).toMatch(/^Two sales a year · .* shares$/)
+  })
+
+  it('says the board rule as the board applies it: from 50% you control it', () => {
+    const rule = (share: number) => {
+      const g = founder(7, 'us')
+      const { a, b } = listed(g, { marketCap: 10e9, share })
+      const texts = infoTexts(g, rowOf(g, `inv-own-${a.id}`).children(g))
+      return { controls: ownerControls(g, a) && controlsWith(g, b, share), line: texts.find((t) => t.includes('control the board')) }
+    }
+    const half = rule(0.5)
+    expect(half.controls).toBe(true)
+    expect(half.line).toBe('At 50% or more you control the board. You hold 50.0%.')
+    expect(rule(0.7).controls).toBe(true)
+    expect(rule(0.4999).controls).toBe(false)
+    expect(rule(0.4999).line).toContain('At 50% or more you control the board.')
+  })
+
+  it('the Buy slider starts at one share and says so', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 5e9 })
+    const { buy, sell } = doors(g, rowOf(g, `inv-own-${a.id}`))
+    expect(buy.input!.min).toBe(Math.ceil(buyQuote(g, a, b, 0).basePrice))
+    expect(buy.input!.preview!(g, buy.input!.min!)).toMatch(/^1 share at about /)
+    expect(buy.input!.preview!(g, buy.input!.min! * 3)).toMatch(/^3 shares at about /)
+    expect(subtitleOf(g, sell)).toMatch(/^Two sales a year · [\d,.]+( million| billion)? shares$/)
+  })
+
+  it('a one-share stake reads "1 share"', () => {
+    const g = founder(7, 'us')
+    const { a } = listed(g, { marketCap: 1000, sharesOut: 2, share: 0.5 })
+    const row = rowOf(g, `inv-own-${a.id}`)
+    expect(infoTexts(g, row.children(g)).find((t) => t.startsWith('Your stake: '))).toMatch(/^Your stake: 1 share, 50\.0%, worth /)
+    expect(subtitleOf(g, doors(g, row).sell)).toBe('Two sales a year · 1 share')
+  })
+
+  it('does not say up or down 0% since the IPO', () => {
+    const g = founder(7, 'us')
+    const { a } = listed(g, { marketCap: 10e9 })
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const price = () => infoTexts(g, row.children(g)).find((t) => t.startsWith('Price: '))!
+    const sharePrice = readBiz(g, a).sharePrice
+    // At the offer price, and within half a percent either way: level.
+    for (const ipo of [sharePrice, sharePrice * 1.003, sharePrice / 1.003, sharePrice * 0.998]) {
+      a.details.ipoPrice = ipo
+      expect(price(), String(ipo)).toMatch(/^Price: \$[\d.,]+ · level with the IPO$/)
+      expect(price(), String(ipo)).not.toMatch(/\b(up|down) 0%/)
+    }
+    // A real move still reads as one.
+    a.details.ipoPrice = sharePrice / 1.01
+    expect(price()).toContain(' · up 1% since the IPO')
+    a.details.ipoPrice = sharePrice * 1.02
+    expect(price()).toContain(' · down 2% since the IPO')
   })
 
   it('Buy and Sell run from the screen', () => {

@@ -388,6 +388,32 @@ describe('buying your own shares', () => {
     expect(lines[lines.length - 1]).toMatch(/^I bought more of Listed Co on the NYSE\. I own 6\d\.\d%\.$/)
   })
 
+  it('says "1 share" for one share and "shares" for the rest', () => {
+    const g = founder()
+    const { a, b } = listed(g, { marketCap: 5e9 })
+    // $50 a share: the smallest buy the slider offers is one share's price, rounded up.
+    const one = Math.ceil(buyQuote(g, a, b, 0).basePrice)
+    expect(one).toBe(52)
+    expect(buyPreview(g, a, b, one)).toMatch(/^1 share at about \$[\d.,]+ each \(market \$50\.00\)\./)
+    expect(buyPreview(g, a, b, 2 * one)).toMatch(/^2 shares at about /)
+    expect(buyPreview(g, a, b, 100 * one)).toMatch(/^10\d shares at about /)
+    expect(buyOwnShares(g, a, b, one)).toBe(true)
+    const [msg] = noticesTitled(g, 'Shares Bought')
+    expect(msg).toMatch(/^You paid \$52 for 1 share of Listed Co, about \$[\d.,]+ each\. You own /)
+    expect(msg).not.toContain('1 shares')
+  })
+
+  it('never reads 0 shares at the smallest buy, whatever the price of a share', () => {
+    for (const price of [0.2, 0.9, 1, 3.7, 50, 999.99, 25_000]) {
+      const g = founder()
+      const { a, b } = listed(g, { sharesOut: 1e8, marketCap: price * 1e8 })
+      const min = Math.max(1, Math.ceil(buyQuote(g, a, b, 0).basePrice))
+      const text = buyPreview(g, a, b, min)
+      expect(text, String(price)).toMatch(/^[1-9][\d,]*( million| billion)? shares? at about /)
+      expect(text, String(price)).not.toMatch(/^1 shares|^0 /)
+    }
+  })
+
   it('writes the ticker down when it buys, and fixes a bad one', () => {
     const g = founder()
     const { a, b } = listed(g)
@@ -607,6 +633,22 @@ describe('selling from the Stocks row', () => {
       expect(text.startsWith('About '), JSON.stringify([hostile.sharesOut, hostile.sharePrice, hostile.invested])).toBe(true)
       expect(text).not.toMatch(/NaN|undefined|Infinity/)
     }
+  })
+
+  it('leaves the tax out of the preview when there is none to pay', () => {
+    const g = founder()
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.6 })
+    // A cost basis far above the proceeds: no gain, no tax.
+    b.invested = 1e12
+    const note = sellNote(g, a, b, 0.1)
+    expect(note).toMatch(/^About \S+\.$/)
+    expect(note).not.toMatch(/tax|\$0\b/)
+    // A gain still shows its tax.
+    b.invested = 1
+    expect(sellNote(g, a, b, 0.1)).toMatch(/^About \S+ before \S+ tax\./)
+    // The same with a sale that ends your ownership.
+    b.invested = 1e12
+    expect(sellNote(g, a, b, 1)).toMatch(/^About \S+\. That's the last of your shares\./)
   })
 
   it('refuses without selling', () => {

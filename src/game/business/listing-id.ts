@@ -88,9 +88,9 @@ function byId(x: Asset, y: Asset): number {
  * stored ticker is kept (the earlier company wins a repeat, and the later one counts as having
  * none). Each company without one gets a derived ticker, in id order, that is not a registry
  * ticker and not one already given out. Companies are read through readBiz, so a hostile stored
- * value is dropped.
+ * value is dropped. A company named in `ignoring` is counted as having no stored ticker.
  */
-export function exchangeTickers(g: GameState, info: ExInfo): Map<string, string> {
+export function exchangeTickers(g: GameState, info: ExInfo, ignoring?: string): Map<string, string> {
   const mine: { a: Asset; v: BizState }[] = []
   for (const a of [...businessAssets(g)].sort(byId)) {
     // readBiz reads `public` as `=== true`; checking the raw field first skips normalizing a private company.
@@ -101,7 +101,7 @@ export function exchangeTickers(g: GameState, info: ExInfo): Map<string, string>
   const out = new Map<string, string>()
   const used = new Set<string>()
   for (const { a, v } of mine) {
-    if (isTicker(v.ticker) && !used.has(v.ticker)) {
+    if (a.id !== ignoring && isTicker(v.ticker) && !used.has(v.ticker)) {
       out.set(a.id, v.ticker)
       used.add(v.ticker)
     }
@@ -124,10 +124,15 @@ export function tickerOf(g: GameState, a: Asset, b: BizState): string {
   return exchangeTickers(g, info).get(a.id) ?? (isTicker(b.ticker) ? b.ticker : ownTickerFor(a.name, a.id, reservedTickers(info)))
 }
 
-/** A fresh ticker for a company that is being listed now: not a registry ticker, not another of yours on that exchange. */
+/**
+ * The ticker for a company that is being listed now: not a registry ticker, not another of yours on
+ * that exchange. A company coming back to the market keeps the ticker it had, unless one of yours
+ * took it while it was away.
+ */
 export function newTicker(g: GameState, a: Asset, b: BizState): string {
   const info = companyExchange(b)
   const taken = new Set<string>(reservedTickers(info))
-  for (const [id, t] of exchangeTickers(g, info)) if (id !== a.id) taken.add(t)
+  for (const [id, t] of exchangeTickers(g, info, a.id)) if (id !== a.id) taken.add(t)
+  if (isTicker(b.ticker) && !taken.has(b.ticker)) return b.ticker
   return ownTickerFor(a.name, a.id, taken)
 }

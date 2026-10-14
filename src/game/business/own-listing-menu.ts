@@ -11,8 +11,7 @@ import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from
 import { groupById } from './conglomerate-state'
 import { capitalGainsRate } from './exit'
 import { ownListings, rawStake, TIER_LABEL, type OwnListing } from './own-listing'
-import { BUY_PREMIUM, buyLimit, buyOwnShares, buyPreview, buyQuote, sellLimit, sellNote, sellOwnShares } from './own-trade'
-import { shareCountText } from './share-structure'
+import { BUY_PREMIUM, buyLimit, buyOwnShares, buyPreview, buyQuote, sellLimit, sellNote, sellOwnShares, sharesText } from './own-trade'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 import { money, pct } from './util'
 
@@ -52,12 +51,13 @@ function stillHeld(g: GameState, l: OwnListing): boolean {
   return !!a && rawStake(g, a) > OWNED
 }
 
-/** " · up 12% since the IPO", or nothing when there is no offer price to compare with. */
+/** " · up 12% since the IPO", " · level with the IPO" under half a percent, or nothing when there is no offer price. */
 function sinceIpo(price: number, ipoPrice: number | null): string {
   if (typeof ipoPrice !== 'number' || !Number.isFinite(ipoPrice) || !(ipoPrice > 0) || !(price > 0)) return ''
   const ratio = price / ipoPrice
   if (!Number.isFinite(ratio) || ratio > SANE_RATIO || ratio < 1 / SANE_RATIO) return ''
-  return ` · ${ratio >= 1 ? 'up' : 'down'} ${pct(Math.abs(ratio - 1))} since the IPO`
+  const change = pct(Math.abs(ratio - 1))
+  return change === '0%' ? ' · level with the IPO' : ` · ${ratio >= 1 ? 'up' : 'down'} ${change} since the IPO`
 }
 
 /** The slider's range for a buy: from one share to the most the cash and the float allow. All finite. */
@@ -107,7 +107,7 @@ function sellAction(id: string, stake: number, sharesOut: number): MenuAction {
     id: `inv-own-sell-${id}`,
     label: 'Sell Shares',
     emoji: '💸',
-    subtitle: `Two sales a year · ${shareCountText(stake * sharesOut)} shares`,
+    subtitle: `Two sales a year · ${sharesText(stake * sharesOut)}`,
     disabledReason: (gg) => {
       const v = liveView(gg, id)
       return v ? sellLimit(gg, v.a, v.b) : 'You no longer own this.'
@@ -143,13 +143,13 @@ function screen(g: GameState, l: OwnListing): MenuNode[] {
   const texts: string[] = [
     `Market cap: ${money(cur.marketCap)} · ${TIER_LABEL[cur.tier]}`,
     `Price: ${formatPrice(cur.price)}${sinceIpo(cur.price, cur.ipoPrice)}`,
-    group ? `Your stake: ${pct(cur.stake, 1)} of the group, worth ${money(cur.stakeValue)}` : `Your stake: ${shareCountText(cur.stake * cur.sharesOut)} shares, ${pct(cur.stake, 1)}, worth ${money(cur.stakeValue)}`,
+    group ? `Your stake: ${pct(cur.stake, 1)} of the group, worth ${money(cur.stakeValue)}` : `Your stake: ${sharesText(cur.stake * cur.sharesOut)}, ${pct(cur.stake, 1)}, worth ${money(cur.stakeValue)}`,
     `Outside shareholders: ${pct(cur.outside, 1)}${cur.family > 0 ? ` · relatives ${pct(cur.family, 1)}` : ''}${cur.executives > 0 ? ` · executives ${pct(cur.executives, 1)}` : ''}`,
     `Listed on the ${cur.exName} (${cur.exCode}) since ${cur.ipoYear}.`,
   ]
   if (group) texts.push("Trade its shares from the group's screen under Businesses.")
   else {
-    texts.push(`Above 50% you control the board. You hold ${pct(cur.stake, 1)}.`)
+    texts.push(`At 50% or more you control the board. You hold ${pct(cur.stake, 1)}.`)
     texts.push(`Buying costs at least ${pct(BUY_PREMIUM)} over the market price, more for big orders. Selling pays ${pct(capitalGainsRate(g))} tax on the gain.`)
   }
   const nodes: MenuNode[] = texts.map((text, n): MenuInfo => ({ type: 'info', id: `${rowId(cur)}-i${n}`, text }))

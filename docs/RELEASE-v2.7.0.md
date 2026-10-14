@@ -15,7 +15,7 @@ The row is a view of the company, not a second holding. Net worth, estates and S
   - Your stake: shares, percentage and what it's worth.
   - Outside shareholders, with relatives' and executives' slices when they hold some.
   - The exchange and the year it listed.
-  - A note that above 50% you control the board.
+  - A note that at 50% or more you control the board.
   - What buying costs and what selling pays in tax.
 - **Two exchanges, one code.** A company is placed from its own country and its exchange code, not from where you live. A Tehran company is not in the Tokyo list, though both are TSE. A company spun off a group listed abroad shows on the exchange it trades on.
 - **Not a market security.** You can't bet on it or open a position in it. It isn't a target for a law or an announcement, so it stays out of insider cases.
@@ -27,7 +27,7 @@ The row is a view of the company, not a second holding. Net worth, estates and S
 - **The price.** It's 3% over the higher of the market price and the company's fundamental value per share, and more for a big order. The order doesn't move the share price, so buying can't mark up the stake you already hold. A round trip loses the premium, the price impact on the way out and the capital gains tax.
 - **The limits.** At most 15% of the company a year, and 1% always stays with the public. Relatives' and executives' slices don't change, so a buy also stops at what's left outside them.
 - **One move a year.** A Stocks buy uses the company's one Capital & Ownership move for the year. Put In More Money, Buy Out Investors and Company Buys Back Shares share that one move. Using any of them uses up the Stocks buy, and a Stocks buy uses up all three.
-- **Control.** You don't need control of the board to buy. A buy that takes you over 50% gives you control. The preview says "This gives you control of the board." when it will, and "You keep control of the board." when you already have it. A buy never loses control. There's no board vote and no random roll. Buy Out Investors in Capital & Ownership still needs control and a board vote.
+- **Control.** You don't need control of the board to buy. A buy that takes you to 50% or more gives you control. The preview says "This gives you control of the board." when it will, and "You keep control of the board." when you already have it. A buy never loses control. There's no board vote and no random roll. Buy Out Investors in Capital & Ownership still needs control and a board vote.
 - **What it changes.** Your cash goes down by the amount paid. Your stake and your cost basis go up. The share count, the share price and the company's value stay as the market had them. There's no brokerage fee, and the buy isn't counted in your investing totals.
 
 ## Selling

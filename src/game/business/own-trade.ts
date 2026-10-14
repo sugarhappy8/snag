@@ -24,7 +24,7 @@ import { outsideFloat } from './own-listing'
 import { equityYearKey } from './rescue'
 import { retailDepth, shareCountText } from './share-structure'
 import { bizOf, findBusiness, isTicker, type BizState } from './state'
-import { clampN, money, pct } from './util'
+import { clampN, money, pct, plural } from './util'
 
 /** What a buy pays over the fundamental price. */
 export const BUY_PREMIUM = 0.03
@@ -64,6 +64,12 @@ export function controlsWith(g: GameState, b: BizState, share: number): boolean 
 
 function finite(x: number): number {
   return Number.isFinite(x) ? x : 0
+}
+
+/** "1 share", "2 shares", "10 million shares": a share count with the noun that goes with it. */
+export function sharesText(n: number): string {
+  const v = Math.max(0, Math.round(finite(n)))
+  return v < 1e6 ? plural(v, 'share') : `${shareCountText(v)} shares`
 }
 
 /**
@@ -123,7 +129,7 @@ export function buyLimit(g: GameState, a: Asset, b: BizState): string | null {
 /** What an order would do, in a line: shares, price, your new stake and what that does to the board. */
 export function buyPreview(g: GameState, a: Asset, b: BizState, dollars: number): string {
   const q = buyQuote(g, a, b, dollars)
-  const head = `${shareCountText(q.shares)} shares at about ${formatPrice(q.avgPrice)} each (market ${formatPrice(b.sharePrice)}). You'd own ${pct(q.newShare, 1)}.`
+  const head = `${sharesText(q.shares)} at about ${formatPrice(q.avgPrice)} each (market ${formatPrice(b.sharePrice)}). You'd own ${pct(q.newShare, 1)}.`
   if (!q.controls) return head
   return head + (q.controlsBefore ? ' You keep control of the board.' : ' This gives you control of the board.')
 }
@@ -157,7 +163,7 @@ export function buyOwnShares(g: GameState, a: Asset, b: BizState, dollars: numbe
   syncSeats(g, a, b, boardOf(b))
   refreshValue(a, b)
   log(g, `I bought more of ${a.name} on the ${companyExchange(b).ex.code}. I own ${pct(q.newShare, 1)}.`)
-  notice(g, 'Shares Bought', `You paid ${formatMoney(dollars)} for ${shareCountText(q.shares)} shares of ${a.name}, about ${formatPrice(q.avgPrice)} each. You own ${pct(q.newShare, 1)}.`)
+  notice(g, 'Shares Bought', `You paid ${formatMoney(dollars)} for ${sharesText(q.shares)} of ${a.name}, about ${formatPrice(q.avgPrice)} each. You own ${pct(q.newShare, 1)}.`)
   return true
 }
 
@@ -192,7 +198,7 @@ export function sellNote(g: GameState, a: Asset, b: BizState, fraction: number):
   const raw = Math.round(b.sharesOut * b.sharePrice * order.proceeds)
   const gross = Number.isFinite(raw) ? Math.max(0, raw) : 0
   const tax = capitalGainsTax(g, gross, b.invested * f)
-  const head = `About ${money(gross)} before ${money(tax)} tax.`
+  const head = tax > 0 ? `About ${money(gross)} before ${money(tax)} tax.` : `About ${money(gross)}.`
   const left = b.share * (1 - f)
   // The removal rule of sellShares. A sale of nothing removes nothing.
   if (f > 0 && (f >= 0.999 || left < 0.005)) return `${head} That's the last of your shares. ${a.name} leaves your companies.`

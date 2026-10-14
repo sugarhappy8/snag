@@ -1,6 +1,7 @@
 // Where a listed company trades, and the four-letter ticker it gets (own-listing phase 1, task 2).
 import { describe, expect, it } from 'vitest'
-import { detach } from '../src/game/business/conglomerate-state'
+import { formGroup, spinOff } from '../src/game/business/conglomerate-actions'
+import { detach, groupIdOf } from '../src/game/business/conglomerate-state'
 import { goPublic } from '../src/game/business/exit'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { companyExchange, exchangeTickers, listedExchange, newTicker, ownTickerFor, tickerOf } from '../src/game/business/listing-id'
@@ -215,6 +216,71 @@ describe('the ticker', () => {
     expect(two.b.ipoYear).toBe(2015)
     expect(two.b.ipoPrice).toBeUndefined()
     expect(two.b.ticker).not.toBe(one.b.ticker)
+  })
+})
+
+describe('a company that comes back to the market', () => {
+  /** Acme Robotics lists and joins a group. While it is a division, Acme Rockets lists and takes the same ticker. */
+  function swapped(seed: number) {
+    const g = founder(seed, 'us', 1e6)
+    const one = ipoCompany(g, 'Acme Robotics')
+    goPublic(g, one.a, one.b, 25)
+    const first = one.b.ticker
+    const mate = privateCompany(g, 'us', 'Quiet Co')
+    expect(formGroup(g, [one.a.id, mate.a.id], 'Test Holdings')).toBe(true)
+    expect(bizOf(g, one.a).public).toBe(false)
+    const two = ipoCompany(g, 'Acme Rockets')
+    goPublic(g, two.a, two.b, 25)
+    expect(two.b.ticker, 'the ticker a division gave up is free to take').toBe(first)
+    return { g, one, two, first, group: groupIdOf(bizOf(g, one.a)) }
+  }
+
+  function expectDistinct(g: GameState, one: { a: Asset }, two: { a: Asset }, kept: string | undefined) {
+    const x = bizOf(g, one.a), y = bizOf(g, two.a)
+    expect(isTicker(x.ticker)).toBe(true)
+    expect(isTicker(y.ticker)).toBe(true)
+    expect(x.ticker).not.toBe(y.ticker)
+    // The company that kept trading keeps its ticker, stored and shown.
+    expect(y.ticker).toBe(kept)
+    const shown = exchangeTickers(g, exchangeInfo('us'))
+    expect(shown.get(two.a.id)).toBe(kept)
+    expect(shown.get(one.a.id)).toBe(x.ticker)
+    expect(tickerOf(g, two.a, y)).toBe(kept)
+  }
+
+  it('does not reuse a ticker another of your companies took meanwhile (spun off)', () => {
+    const { g, one, two, first, group } = swapped(14)
+    expect(spinOff(g, group, one.a.id)).toBe(true)
+    expect(bizOf(g, one.a).public).toBe(true)
+    expectDistinct(g, one, two, first)
+  })
+
+  it('does not reuse a ticker another of your companies took meanwhile (listed again)', () => {
+    const { g, one, two, first } = swapped(15)
+    detach(g, one.a, bizOf(g, one.a), null)
+    expect(bizOf(g, one.a).public).toBe(false)
+    goPublic(g, one.a, bizOf(g, one.a), 25)
+    expectDistinct(g, one, two, first)
+  })
+
+  it('does not reuse it when the group is wound up around the company either', () => {
+    const { g, one, two, first } = swapped(16)
+    detach(g, one.a, bizOf(g, one.a), { exchange: 'NYSE', ipoYear: 2015, sharesOut: 1e6, sharePrice: 10 }, { keepIpoYear: true })
+    expectDistinct(g, one, two, first)
+  })
+
+  it('keeps its own ticker when nobody took it', () => {
+    const g = founder(17, 'us', 1e6)
+    const one = ipoCompany(g, 'Acme Robotics')
+    goPublic(g, one.a, one.b, 25)
+    const first = one.b.ticker
+    one.b.public = false
+    goPublic(g, one.a, one.b, 25)
+    expect(one.b.ticker).toBe(first)
+    delete one.b.ticker
+    one.b.public = false
+    goPublic(g, one.a, one.b, 25)
+    expect(one.b.ticker).toBe(first)
   })
 })
 
