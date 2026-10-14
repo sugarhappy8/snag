@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { addGrievance, grievances } from '../src/game/activities/common'
-import { defendants, lawsuitMenu } from '../src/game/activities/lawsuit'
+import { defendants, lawFirms, lawsuitMenu } from '../src/game/activities/lawsuit'
 import { counter, formatMoney } from '../src/game/core'
 import { arrestPlayer } from '../src/game/crime'
 import { fugitiveInfo, prisonMenu, releaseFromPrison, sendToPrison } from '../src/game/prison'
@@ -16,6 +16,8 @@ import { makeTestGame } from './helpers'
 
 const START = 10_000
 const REFUND = 2_500_000
+/** What a conviction says about money the investigation held. */
+const KEPT = `The court kept the ${formatMoney(REFUND)} taken in your case. Winning an appeal returns it.`
 
 function newGame(seed: number, o: { age?: number; money?: number; countryId?: string } = {}): GameState {
   return makeTestGame(seed, { age: o.age ?? 40, money: o.money ?? START, ...(o.countryId ? { countryId: o.countryId } : {}) })
@@ -121,7 +123,13 @@ describe('acquittal returns the money the investigation took', () => {
       if (!b.convicted) {
         plain++
         expect(b.g.character.money).toBe(START + REFUND)
-        expect(notice(b.g, 'Not Guilty!')!.text).toContain(formatMoney(REFUND))
+        const text = notice(b.g, 'Not Guilty!')!.text
+        expect(text).toContain(formatMoney(REFUND))
+        // No agency: nobody is named, nothing is filed, and nothing promises a suit.
+        expect(text).not.toContain('the FCA')
+        expect(text).not.toMatch(/sue|Lawsuit/i)
+        expect(grievances(b.g)).toHaveLength(0)
+        expect(defendants(b.g)).toHaveLength(0)
       }
     }
     expect(named).toBeGreaterThan(0)
@@ -174,7 +182,10 @@ describe('a conviction forfeits it and remembers it for an appeal', () => {
       const rec = g.character.criminalRecord.filter((r) => r.convicted)
       expect(rec).toHaveLength(1)
       expect(rec[0].refund).toBe(REFUND)
-      expect(noticeTexts(g)).not.toContain(formatMoney(REFUND))
+      // The verdict says where the money went, once, and how it can come back.
+      const text = notice(g, 'Guilty')!.text
+      expect(text).toContain(KEPT)
+      expect(text.split(formatMoney(REFUND))).toHaveLength(2)
       expect(JSON.parse(JSON.stringify(g))).toEqual(g)
     }
     expect(convictions).toBeGreaterThan(0)
@@ -190,8 +201,60 @@ describe('a conviction forfeits it and remembers it for an appeal', () => {
       const rec = g.character.criminalRecord.filter((r) => r.convicted)
       expect(rec).toHaveLength(1)
       expect(rec[0].refund).toBe(REFUND)
+      expect(notice(g, 'Plea Accepted')!.text).toContain(KEPT)
     }
     expect(pleas).toBeGreaterThan(0)
+  })
+
+  it('the plea offer says that pleading guilty keeps the money, and only when money was taken', () => {
+    let offers = 0
+    for (const seed of SEEDS) {
+      for (const refund of [REFUND, 0]) {
+        const g = newGame(seed)
+        arrestPlayer(g, 'Insider Trading', 2, { ...AGENCY, refund })
+        const lawyer = pendingTrial(g)
+        expect(lawyer.scriptId).toBe('crime.trial.lawyer')
+        g.queue.splice(g.queue.indexOf(lawyer), 1)
+        answer(g, lawyer, 'pd')
+        const plea = g.queue.find((m): m is ChoiceModal => m.kind === 'choice' && m.scriptId === 'crime.trial.plea')
+        if (!plea) continue
+        if (refund) {
+          offers++
+          expect(plea.text).toMatch(new RegExp(`\\. Pleading guilty means the court keeps the ${formatMoney(REFUND).replace(/[$]/g, '\\$')} taken in your case\\.$`))
+        } else {
+          expect(plea.text).not.toMatch(/court keeps|taken in your case/)
+        }
+      }
+    }
+    expect(offers).toBeGreaterThan(0)
+  })
+
+  it('a conviction without held money says nothing about it', () => {
+    let convictions = 0
+    for (const seed of SEEDS.slice(0, 30)) {
+      for (const plea of ['trial', 'accept'] as const) {
+        const { g, convicted } = play(seed, { evidence: 0.9, noResist: true }, plea)
+        if (!convicted) continue
+        convictions++
+        expect(noticeTexts(g)).not.toMatch(/court kept|taken in your case|appeal returns/)
+      }
+    }
+    expect(convictions).toBeGreaterThan(0)
+  })
+
+  it('a conviction inside prison says the court kept the money (no appeal is promised: there was no trial)', () => {
+    const g = newGame(5)
+    sendToPrison(g, 'Burglary', 3, { quiet: true })
+    g.queue = []
+    arrestPlayer(g, 'Insider Trading', 2, { refund: 5_000, defendant: 'the FCA' })
+    const text = notice(g, 'Charged')!.text
+    expect(text).toMatch(new RegExp(`The court kept the \\$5,000 taken in your case\\.$`))
+    expect(text).not.toMatch(/appeal/i)
+    const plain = newGame(5)
+    sendToPrison(plain, 'Burglary', 3, { quiet: true })
+    plain.queue = []
+    arrestPlayer(plain, 'Insider Trading', 2, { defendant: 'the FCA' })
+    expect(notice(plain, 'Charged')!.text).not.toMatch(/court kept/)
   })
 
   it('a conviction with no refund leaves the record without the field', () => {
@@ -233,8 +296,12 @@ describe('a successful appeal returns it once', () => {
       }
       won++
       expect(treated.character.money - control.character.money).toBe(REFUND)
-      expect(notice(treated, 'Appeal Won!')!.text).toContain(formatMoney(REFUND))
-      expect(notice(control, 'Appeal Won!')!.text).not.toMatch(/got back/i)
+      // The money is the last thing said, after where the player now lives.
+      const wonText = notice(treated, 'Appeal Won!')!.text
+      const controlText = notice(control, 'Appeal Won!')!.text
+      expect(wonText).toBe(`${controlText} You got back the ${formatMoney(REFUND)} taken in your case.`)
+      expect(controlText).toMatch(/With nowhere else to go, you are now homeless\.$/)
+      expect(controlText).not.toMatch(/got back/i)
       expect(treated.character.criminalRecord.every((r) => r.refund === undefined && !r.convicted)).toBe(true)
       expect(JSON.parse(JSON.stringify(treated))).toEqual(treated)
 
@@ -268,6 +335,65 @@ describe('a successful appeal returns it once', () => {
     expect(lost).toBeGreaterThan(0)
   })
 
+  it('a lost appeal says the court keeps the money; without held money it says nothing about it', () => {
+    const seen = { denied: 0, partial: 0 }
+    for (const seed of SEEDS) {
+      const treated = convictedGame(seed, REFUND)
+      const control = convictedGame(seed, undefined)
+      if (!treated || !control) continue
+      for (const g of [treated, control]) {
+        g.character.hidden.karma = 0
+        g.queue = []
+        prisonAction(g, 'prison.appeal.budget').run(g)
+      }
+      if (!treated.character.prison) continue
+      const n = notice(treated, 'Appeal Denied') ?? notice(treated, 'Partial Victory')
+      expect(n, `seed ${seed}`).toBeDefined()
+      seen[n!.title === 'Appeal Denied' ? 'denied' : 'partial']++
+      const other = notice(control, n!.title)!
+      // Same rolls: the only difference is the sentence about the money, at the end.
+      expect(n!.text).toBe(`${other.text} The court keeps the ${formatMoney(REFUND)} taken in your case.`)
+      expect(other.text).not.toMatch(/taken in your case/)
+    }
+    expect(seen.denied).toBeGreaterThan(0)
+    expect(seen.partial).toBeGreaterThan(0)
+  })
+
+  it('the Appeal menu says a win returns the money, only when this conviction holds some', () => {
+    const header = (g: GameState): string => {
+      const n = findNode(g, prisonMenu.children(g), 'prison.appeal')
+      if (!n || n.type !== 'menu' || !n.header) throw new Error('no Appeal menu')
+      return n.header(g)
+    }
+    const PLAIN = 'You get one appeal per sentence. Pricier firms have better odds.'
+    let checked = 0
+    for (const seed of SEEDS.slice(0, 30)) {
+      const treated = convictedGame(seed, REFUND)
+      const control = convictedGame(seed, undefined)
+      if (!treated || !control) continue
+      checked++
+      expect(header(treated)).toBe(`${PLAIN} A win returns the ${formatMoney(REFUND)} taken in your case.`)
+      expect(header(control)).toBe(PLAIN)
+    }
+    expect(checked).toBeGreaterThan(0)
+
+    // Money held on an older, different conviction is not what this appeal is about.
+    const other = newGame(2)
+    other.character.criminalRecord.push({ crime: 'Fraud', age: 30, caught: true, convicted: true, sentenceYears: 2, refund: REFUND })
+    other.character.criminalRecord.push({ crime: 'Burglary', age: 35, caught: true, convicted: true, sentenceYears: 4 })
+    sendToPrison(other, 'Burglary', 4, { quiet: true })
+    expect(header(other)).toBe(PLAIN)
+
+    // Death row: only walking free brings it back.
+    const row = newGame(3)
+    row.character.criminalRecord.push({ crime: 'Insider Trading', age: 35, caught: true, convicted: true, sentenceYears: 99, refund: REFUND })
+    sendToPrison(row, 'Insider Trading', 0, { deathRow: true, life: true, quiet: true })
+    expect(header(row)).toBe(`You can file one appeal a year from death row. A win could commute your sentence or even free you. If you go free, you get back the ${formatMoney(REFUND)} taken in your case.`)
+    // A damaged amount on the record is not promised.
+    row.character.criminalRecord[0].refund = Number.NaN
+    expect(header(row)).toBe('You can file one appeal a year from death row. A win could commute your sentence or even free you.')
+  })
+
   it('a death row exoneration returns it too', () => {
     let exonerated = 0
     for (let seed = 1; seed <= 600; seed++) {
@@ -284,7 +410,9 @@ describe('a successful appeal returns it once', () => {
       // The appeal fee is well under a million; the refund is the rest.
       expect(g.character.money).toBeGreaterThan(1_000_000_000 + REFUND - 1_000_000)
       expect(g.character.money).toBeLessThan(1_000_000_000 + REFUND)
-      expect(n.text).toContain(formatMoney(REFUND))
+      // After the housing line, not before it.
+      expect(formatMoney(REFUND)).toBe('$2,500,000')
+      expect(n.text).toMatch(/walked off death row and out of .+\. With nowhere else to go, you are now homeless\. You got back the \$2,500,000 taken in your case\.$/)
       expect(g.character.criminalRecord[0].refund).toBeUndefined()
       expect(g.character.criminalRecord[0].convicted).toBe(false)
     }
@@ -617,29 +745,39 @@ describe('"you might have grounds to sue" is true', () => {
     expect(acquitted).toBeGreaterThan(0)
   })
 
-  it('suing the grievance pays out on a winning seed, once', () => {
+  it('suing the grievance pays out on a winning seed, once, and only the fee goes on a losing one', () => {
     let wins = 0
+    let losses = 0
     for (const seed of SEEDS) {
       const { g, convicted } = play(seed, FALSE_ACCUSATION)
       if (convicted) continue
       g.queue = []
       g.character.money = 1_000_000
       const before = g.character.money
+      const fee = lawFirms(g, 'police')[2].fee
+      expect(fee).toBeGreaterThan(0)
       const group = lawsuitMenu.children(g)[0] as MenuGroup
       const firm = group.children(g).find((n): n is MenuAction => n.type === 'action' && n.id.endsWith('.firm2'))!
       firm.run(g)
       const modal = g.queue.find((m): m is ChoiceModal => m.kind === 'choice')!
       const amount = Number(modal.choices[0].label.replace(/[^0-9]/g, ''))
+      expect(amount).toBeGreaterThan(0)
       answer(g, modal, '0')
       expect(counter(g, 'lawsuits')).toBe(1)
       expect(defendants(g)).toHaveLength(0)
       expect(grievances(g)).toHaveLength(0)
+      // Exact amounts: a lost suit (fee only) can never pass the winner's check, nor the reverse.
       if (counter(g, 'lawsuitsWon') === 1) {
         wins++
-        expect(g.character.money).toBeGreaterThan(before - 100_000 + amount - 1)
+        expect(g.character.money).toBe(before - fee + amount)
+      } else {
+        losses++
+        expect(counter(g, 'lawsuitsLost')).toBe(1)
+        expect(g.character.money).toBe(before - fee)
       }
     }
     expect(wins).toBeGreaterThan(0)
+    expect(losses).toBeGreaterThan(0)
   })
 
   it('the fugitive branch files nothing and promises nothing', () => {

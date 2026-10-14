@@ -405,7 +405,7 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
     // addPrisonTime records the conviction (on the existing record entry when there is one).
     addPrisonTime(g, add, name, idx >= 0 ? idx : undefined)
     const extra = c.prison.life || c.prison.deathRow ? 'Not that it changes much for you.' : `${years(add)} were added to your sentence.`
-    notice(g, 'Charged', `You were convicted of ${name.toLowerCase()} while already in prison. ${extra}`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
+    notice(g, 'Charged', `You were convicted of ${name.toLowerCase()} while already in prison. ${extra}${courtKept(refund, false)}`, { emoji: '\u{2696}\u{FE0F}', tone: 'bad' })
     return
   }
 
@@ -695,7 +695,9 @@ defineScript(LAWYER_SCRIPT, (g, choice, data) => {
     const where = c.age < 18 ? ' in juvenile detention' : ''
     const who = lawyer.id === 'pd' ? `Your ${defenderTitle(g).toLowerCase()}` : lawyer.name
     const advice = t.evidence >= 0.7 ? `${who} whispers that you should take it.` : `${who} thinks you can win at trial.`
-    scriptChoice(g, PLEA_SCRIPT, 'Plea Deal', `The prosecutor offered you a plea deal: plead guilty to ${t.crime.toLowerCase()} and serve ${years(t.plea)}${where}. ${advice}`, [
+    // Money held by the investigation: a plea is a conviction, so the court keeps it.
+    const held = t.refund > 0 ? ` Pleading guilty means the court keeps the ${formatMoney(t.refund)} taken in your case.` : ''
+    scriptChoice(g, PLEA_SCRIPT, 'Plea Deal', `The prosecutor offered you a plea deal: plead guilty to ${t.crime.toLowerCase()} and serve ${years(t.plea)}${where}. ${advice}${held}`, [
       { id: 'accept', label: 'Take the plea deal', emoji: '\u{1F91D}' },
       { id: 'trial', label: 'Go to trial', emoji: '\u{1F3DB}\u{FE0F}' },
     ], { emoji: '\u{1F4DC}', data: trialJson(t) })
@@ -865,9 +867,13 @@ function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
   // The conviction forfeits what the investigation took. The record remembers it: an appeal that overturns this
   // conviction hands it back (prison.ts markOverturned finds the record the same way).
   const held = cleanRefund(t.refund)
+  let appealable = false
   if (held > 0) {
     const rec = convictionRecord(g, t.crime) ?? c.criminalRecord[t.records[0]]
-    if (rec) rec.refund = held
+    if (rec) {
+      rec.refund = held
+      appealable = true
+    }
   }
   // Family turns on a convicted killer.
   if (t.violent) {
@@ -901,7 +907,16 @@ function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
     : pick(g, guiltyLines(trialBy(c.countryId, t.severity), chargeList(t), term, where))
   const adult = s.triedAsAdult ? ' You were tried as an adult.' : ''
   log(g, plea ? `I took a plea deal: ${term.split('.')[0]}.` : `I was found guilty of ${chargeList(t)}.`, 'bad')
-  insertNoticeAt(g, at, plea ? 'Plea Accepted' : 'Guilty', `${head}${adult}${notes.length ? ` ${notes.join(' ')}` : ''}`, deathRow ? '\u{26B0}\u{FE0F}' : '\u{2696}\u{FE0F}', 'bad')
+  insertNoticeAt(g, at, plea ? 'Plea Accepted' : 'Guilty', `${head}${adult}${notes.length ? ` ${notes.join(' ')}` : ''}${courtKept(held, appealable)}`, deathRow ? '\u{26B0}\u{FE0F}' : '\u{2696}\u{FE0F}', 'bad')
+}
+
+/**
+ * The sentence a conviction adds about money the investigation held, or nothing. `appealable` is true when the
+ * amount was written on the conviction record, where a won appeal finds it (prison.ts markOverturned).
+ */
+function courtKept(held: number, appealable: boolean): string {
+  if (!(held > 0)) return ''
+  return ` The court kept the ${formatMoney(held)} taken in your case.${appealable ? ' Winning an appeal returns it.' : ''}`
 }
 
 // ---------------------------------------------------------------------------
