@@ -1,8 +1,12 @@
-# AnotherLife v2.7.0: Your listed company in Stocks
+# AnotherLife v2.7.0: Your listed company in Stocks, and Heavy R&D
 
-A company you've taken public now shows up in Investments, Stocks, under its size, on the exchange it trades on. It has a ticker, a company screen, and two ways to trade it. You can buy more of it from the public float, which raises your stake. You can sell it through the same sale as Exit, Sell Shares. A listed group gets a row you can only look at.
+This release has two parts.
 
-The row is a view of the company, not a second holding. Net worth, estates and Sell Everything count the company once, as before.
+**Your listed company in Stocks.** A company you've taken public now shows up in Investments, Stocks, under its size, on the exchange it trades on. It has a ticker, a company screen, and two ways to trade it. You can buy more of it from the public float, which raises your stake. You can sell it through the same sale as Exit, Sell Shares. A listed group gets a row you can only look at. The row is a view of the company, not a second holding. Net worth, estates and Sell Everything count the company once, as before.
+
+**Heavy R&D.** A company's Products screen has a new section for breakthroughs. A breakthrough costs far more than an ordinary line, takes four to six years and often flops. When it works it is a new kind of product. The company wins customers and the whole trade gets more. The launch makes the news. Rivals need as long as the company did to have their own. A product line you retire never comes back as an R&D idea. The details are in the Heavy R&D section below.
+
+Both parts leave the save schema number at 2, and an old save plays as it did before.
 
 ## In Stocks
 
