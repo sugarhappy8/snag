@@ -1355,7 +1355,7 @@ export function managedOrder(g: GameState, bucket: MandateBucket, side: 'buy' | 
     if (amount < book.minOrder) return none(`You need at least ${formatMoney(book.minOrder)} in the bank to invest.`)
     const q = bucket === 'stocks' ? l.fund : bucket === 'bonds' ? l.bond : l.savings
     const before = g.character.money
-    if (!buySecurity(g, q.secId, amount, true)) return none('The order could not be filled.')
+    if (!buySecurity(g, q.secId, amount, true)) return none("The order couldn't be filled.")
     return { moved: Math.max(0, before - g.character.money), reason: null }
   }
 
@@ -1363,7 +1363,7 @@ export function managedOrder(g: GameState, bucket: MandateBucket, side: 'buy' | 
   const held = bucketHoldings(g, bucket)
   if (!held.length) return none("There's nothing to sell.")
   const open = held.filter((a) => !holdingMarketBlock(g, a))
-  if (!open.length) return none(holdingMarketBlock(g, held[0]) ?? 'The order could not be filled.')
+  if (!open.length) return none(holdingMarketBlock(g, held[0]) ?? "The order couldn't be filled.")
   // The same repricing a sale does first, so `moved` is the effect of the sale and not of that repricing.
   revalueHoldings(g, true)
   let left = want
@@ -1377,7 +1377,7 @@ export function managedOrder(g: GameState, bucket: MandateBucket, side: 'buy' | 
     moved += fell
     left -= fell
   }
-  return moved > 0 ? { moved, reason: null } : none('The order could not be filled.')
+  return moved > 0 ? { moved, reason: null } : none("The order couldn't be filled.")
 }
 
 // ---------------------------------------------------------------------------
