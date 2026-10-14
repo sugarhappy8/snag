@@ -1,8 +1,10 @@
 // The yearly dividend rule at work: the cash floor, the quote (what a rule would pay, and why not),
 // and the yearly payment. The floor and the quote are pure (no rng, no writes), so the menu's
 // previews and the year step see the same numbers. The payment moves money only through payOut,
-// the manual dividend's own move, and never past payoutCash minus the floor. It logs nothing and
-// queues nothing here; the year step reports what it returns.
+// the manual dividend's own move, and never past payoutCash minus the floor. autoDividendYear logs
+// nothing and queues nothing; the year step reports what it returns through dividendLog (one life-log
+// line a company) and queueDividends (one popup a year).
+import { formatPrice, log } from '../core'
 import { gameIncomeTax } from '../finance'
 import type { Asset, GameState } from '../types'
 import { boardExists, boardView } from './board-state'
@@ -11,7 +13,7 @@ import { payableCash, payoutCash, reserveDollars, runningCosts } from './board-v
 import { inGroup } from './conglomerate-state'
 import { readDividend, type DividendPolicy } from './dividend-policy'
 import type { BizState, Statement } from './state'
-import { clampN, num } from './util'
+import { clampN, money, num, pct } from './util'
 
 export interface DividendQuote {
   /** What the percentage applies to: the year's profit, or the spare cash. */
@@ -101,4 +103,31 @@ export function autoDividendYear(g: GameState, a: Asset, b: BizState, s: Stateme
   const tax = Math.max(0, gameIncomeTax(g, T) - gameIncomeTax(g, Math.max(0, T - mine)))
   b.dividend = { ...p, last: { year: s.year, paid: pay, mine, perShare } }
   return { kind: 'paid', paid: { assetId: a.id, name: a.name, paid: pay, mine, family, rest, tax, share: b.share, perShare, price: b.public ? b.sharePrice : null } }
+}
+
+/** One life-log line for a company's yearly dividend: what I got, or why nothing was paid. */
+export function dividendLog(g: GameState, r: DividendResult): void {
+  if (r.kind === 'paid') log(g, `${r.paid.name} paid me ${money(r.paid.mine)} in dividends.`, 'good')
+  else log(g, `${r.name} paid no dividend. ${r.why}`, 'neutral')
+}
+
+function dividendBlock(r: DividendResult): string {
+  if (r.kind === 'skipped') return `${r.name}: no dividend. ${r.why}`
+  const p = r.paid
+  return (
+    `${p.name}: ${money(p.paid)} paid${p.perShare > 0 ? `, ${formatPrice(p.perShare)} a share` : ''}.` +
+    (p.share < 0.999 ? ` Your ${pct(p.share)} is ${money(p.mine)}.` : ` You got ${money(p.mine)}.`) +
+    (p.tax > 0 ? ` Income tax takes about ${money(p.tax)}.` : '') +
+    (p.family > 0 ? ` Your relatives got ${money(p.family)}.` : '') +
+    (p.rest >= 1 ? ` Other shareholders got ${money(p.rest)}.` : '')
+  )
+}
+
+/**
+ * The year's one dividend popup, one block per company in the order they were processed. Nothing is
+ * queued unless at least one company paid. Its id is the year's, so it takes nothing from g.nextId.
+ */
+export function queueDividends(g: GameState, list: readonly DividendResult[]): void {
+  if (!list.some((r) => r.kind === 'paid')) return
+  g.queue.push({ kind: 'notice', id: `div-${g.generation}-${g.year}`, title: 'Dividends', emoji: '\u{1F4E4}', text: list.map(dividendBlock).join('\n\n'), tone: 'good' })
 }
