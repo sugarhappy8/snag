@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { ageUp } from '../src/game/aging'
+import { minigame } from '../src/game/core'
 import { isLoadableGame, migrateSave, MIN_SCHEMA, SAVE_SCHEMA } from '../src/game/save-schema'
 import type { GameState } from '../src/game/types'
 
@@ -17,6 +18,14 @@ function migrated(raw: unknown): { game: GameState; from: number } {
 }
 
 describe('migrateSave', () => {
+  it('keeps a queued State of the Nation report (v2.5.0 Politics) playable instead of calling the save damaged', () => {
+    // main added the 'nationReport' minigame kind to the validator that now lives in save-schema.ts.
+    const game = structuredClone(fixture) as unknown as GameState
+    minigame(game, 'nationReport', 'State of the Nation 2026', 'nation.report', {})
+    const { game: loaded } = migrated(JSON.parse(JSON.stringify(game)))
+    expect(loaded.queue.some((m) => m.kind === 'minigame' && m.game === 'nationReport')).toBe(true)
+  })
+
   it('migrates the real v2.4.0 save and keeps it playable', () => {
     const { game, from } = migrated(structuredClone(fixture))
     expect(from).toBe(1)
