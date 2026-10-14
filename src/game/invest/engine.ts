@@ -111,6 +111,11 @@ export function exchangeByKey(key: string): ExInfo | undefined {
   return exchangeRegistry().get(key)
 }
 
+/** Every registry exchange with this code, in registry order (a code repeats: TSE is Tokyo and Tehran). */
+export function exchangesWithCode(code: string): ExInfo[] {
+  return [...exchangeRegistry().values()].filter((i) => i.ex.code === code)
+}
+
 /** True when the country trades on its own exchange (not a regional one). */
 export function hasOwnExchange(countryId: string): boolean {
   return marketOf(countryId).exchange !== null
@@ -506,7 +511,7 @@ function asciiLetters(s: string): string {
 }
 
 /** A ticker from a company name, e.g. 'Sakura Motors' → 'SAKM'. */
-function tickerFor(name: string, len: number): string {
+export function tickerFor(name: string, len: number): string {
   const words = name.split(/\s+/).filter((w) => !/^(of|the|and|&)$/i.test(w))
   const first = asciiLetters(words[0] ?? '')
   const rest = words.slice(1).map((w) => asciiLetters(w).charAt(0)).join('')
@@ -676,6 +681,23 @@ function fillerSymbol(info: ExInfo, name: string, slot: number, gen: number): st
   let sym = `${a}${tail}`
   for (let i = 1; reserved.has(sym) && i <= 26; i++) sym = `${a.charAt(0)}${String.fromCharCode(65 + ((a.charCodeAt(1) - 65 + i + gen) % 26))}${tail}`
   return sym
+}
+
+const reservedCache = new Map<string, ReadonlySet<string>>()
+
+/**
+ * Every ticker this exchange's own listings use: its real companies in any era, the first company
+ * of each slot and its penny stocks. A player's company must not take one of these. Cached per
+ * exchange; later companies in a slot are not included, so only the opening line-up is reserved.
+ */
+export function reservedTickers(info: ExInfo): ReadonlySet<string> {
+  const hit = reservedCache.get(info.key)
+  if (hit) return hit
+  const out = new Set<string>(realSymbols(info).values())
+  slotPlan(info).forEach((_, slot) => out.add(companyDef(info, slot, 0).symbol))
+  for (let p = 0; p < PENNY_SLOTS; p++) out.add(pennyDef(info, p, 0).symbol)
+  reservedCache.set(info.key, out)
+  return out
 }
 
 function realDef(info: ExInfo, slot: number, gen: number, co: RealCo): SecurityDef {

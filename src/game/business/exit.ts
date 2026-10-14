@@ -10,6 +10,7 @@ import { deepTechIpoThreshold } from './deeptech-state'
 import { refreshValue, valuationOf } from './economy'
 import { recordCompanyShock } from './dynamics'
 import { industryDef } from './industries'
+import { newTicker } from './listing-id'
 import { ceoJob, diluteBusinessEquity, stakeValue, type BizState } from './state'
 import { clampN, industryNoun, money, pct } from './util'
 import { supplyInventoryValue } from './supply'
@@ -183,6 +184,10 @@ export function goPublic(g: GameState, a: Asset, b: BizState, floatPct = FLOAT_D
   b.public = true
   b.exchange = ex.code
   b.ipoYear = g.year
+  b.ticker = newTicker(g, a, b)
+  // A price that rounds to nothing is not kept: "since the IPO" would divide by it.
+  const offer = Math.round(plan.price * 100) / 100
+  if (offer > 0) b.ipoPrice = offer
   b.valuation = Math.round(b.sharePrice * b.sharesOut)
   refreshValue(a, b)
   count(g, 'businessIpos')

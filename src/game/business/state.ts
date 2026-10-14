@@ -265,6 +265,10 @@ export interface BizState {
   /** Exchange code once listed. */
   exchange: string
   ipoYear: number
+  /** The four-letter ticker given at the listing. Missing on old saves: read it with listing-id.ts tickerOf. */
+  ticker?: string
+  /** The offer price at the listing, for "since the IPO". Missing on old saves and on companies that left a wound-up group. */
+  ipoPrice?: number
   ceo: 'owner' | 'manager'
   manager: Manager | null
   /** Vested company shares across current and dismissed executives. */
@@ -341,6 +345,11 @@ export interface BizState {
 }
 
 export const BIZ_VERSION = 2
+
+/** A ticker is exactly four capital letters. */
+export function isTicker(v: unknown): v is string {
+  return typeof v === 'string' && /^[A-Z]{4}$/.test(v)
+}
 
 export function isBusinessAsset(a: Asset): boolean {
   return a.kind === 'business' && isIndustry(a.details.industry)
@@ -574,6 +583,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.public !== true && num(d.shareCount) >= 1000 ? { shareCount: Math.round(clampN(num(d.shareCount), 1000, 1e10)) } : {}),
     exchange: str(d.exchange),
     ipoYear: Math.round(num(d.ipoYear)),
+    ...(isTicker(d.ticker) ? { ticker: d.ticker } : {}),
+    ...(typeof d.ipoPrice === 'number' && Number.isFinite(d.ipoPrice) && d.ipoPrice > 0 && d.ipoPrice <= 1e12 ? { ipoPrice: d.ipoPrice } : {}),
     ceo: d.ceo === 'manager' ? 'manager' : 'owner',
     manager: readManager(d.manager),
     executiveEquity: clampN(num(d.executiveEquity, num(rec(d.manager)?.equity)), 0, 1),
