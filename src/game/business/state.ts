@@ -10,6 +10,7 @@ import { breakthroughByName } from './heavy-data'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
 import { readFamilyShares } from './family-share-state'
+import { dividendField, type DividendPolicy } from './dividend-policy'
 
 export interface KeyStaff {
   id: string
@@ -379,6 +380,8 @@ export interface BizState {
   milestones?: Json
   /** Franchise network (business/franchise.ts readFranchise). Missing until the first franchise is sold. */
   franchise?: Json
+  /** Yearly dividend rule (business/dividend-policy.ts). Missing: none set. Read it with readDividend, never raw. */
+  dividend?: DividendPolicy
 }
 
 export const BIZ_VERSION = 2
@@ -681,6 +684,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.expansion && typeof d.expansion === 'object' && !Array.isArray(d.expansion) ? { expansion: d.expansion } : {}),
     ...(d.milestones && typeof d.milestones === 'object' && !Array.isArray(d.milestones) ? { milestones: d.milestones } : {}),
     ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
+    ...dividendField(d.dividend),
   }
 }
 
