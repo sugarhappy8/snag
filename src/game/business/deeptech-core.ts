@@ -14,6 +14,7 @@ import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
 import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
+import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
 import { industryDef } from './industries'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
 import { runsIt, totalOutlets, type BizState } from './state'
@@ -459,13 +460,15 @@ interface BookYear {
   year: number
   revenue: number
   profit: number
+  /** The corporate tax that year paid (the company fund's share of the profit is read back from it). */
+  tax: number
 }
 
 /** The yearly records as valuationOf will see them once the year just simulated is recorded. */
 function bookedYears(b: BizState): BookYear[] {
-  const h: BookYear[] = b.history.map((r) => ({ year: r.year, revenue: r.revenue, profit: r.profit }))
+  const h: BookYear[] = b.history.map((r) => ({ year: r.year, revenue: r.revenue, profit: r.profit, tax: r.tax }))
   const s = b.last
-  if (s && (h.length === 0 || h[h.length - 1].year < s.year)) h.push({ year: s.year, revenue: s.revenue, profit: s.net })
+  if (s && (h.length === 0 || h[h.length - 1].year < s.year)) h.push({ year: s.year, revenue: s.revenue, profit: s.net, tax: s.corpTax })
   return h.slice(-3)
 }
 
@@ -473,7 +476,7 @@ function bookedYears(b: BizState): BookYear[] {
 function classicPart(b: BizState): number {
   const booked = bookedYears(b)
   const last = b.history[b.history.length - 1]
-  const history = booked.map((r) => ({ ...(last ?? { tax: 0, units: 0, price: 0, staff: 0, valuation: 0, outlets: 0 }), year: r.year, revenue: r.revenue, profit: r.profit }))
+  const history = booked.map((r) => ({ ...(last ?? { tax: 0, units: 0, price: 0, staff: 0, valuation: 0, outlets: 0 }), year: r.year, revenue: r.revenue, profit: r.profit, tax: r.tax }))
   const v = valuationOf({ ...b, history, tech: { value: 0 }, cash: 0, debt: 0, cooked: 0 })
   return Number.isFinite(v) ? v : 0
 }
@@ -497,7 +500,8 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const revenue = Math.max(0, cur?.revenue ?? 0)
   const tax = clampN(marketOf(b.countryId).corporateTax, 0, 0.6)
   const oneOff = (year: number) => t.oneOffs.filter((x) => x.year === year).reduce((sum, x) => sum + x.amount, 0)
-  const core = years.map((r) => r.profit - oneOff(r.year) * (1 - tax))
+  // A company fund's result is cash already, so like a windfall it earns no profit multiple (hedge-record.ts).
+  const core = years.map((r) => r.profit - oneOff(r.year) * (1 - tax) - hedgeProfitIn(b, r))
   const weights = core.length === 3 ? [0.2, 0.3, 0.5] : core.length === 2 ? [0.4, 0.6] : [1]
   const avgCore = core.reduce((sum, p, i) => sum + p * weights[i], 0)
   const growth = prev && prev.revenue > 0 && revenue > 0 ? clampN(revenue / prev.revenue - 1, -0.3, 0.6) : 0
@@ -508,7 +512,7 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   // Completed research retains its value through the separate patent/pipeline floor below.
   const s = b.last
   const x = t.last && s && t.last.year === s.year ? t.last : null
-  const operating = s ? s.pbt - (x ? x.oneOff : 0) : 0
+  const operating = s ? s.pbt - (x ? x.oneOff : 0) - hedgeResultFor(b, s.year) : 0
   const margin = revenue > 0 ? operating / revenue : -1
   const quality = clampN(0.3 + 1.75 * margin, 0.08, 1.2)
   const stageMult = 0.35 + 0.65 * (t.stage / Math.max(1, maxStage(ind)))

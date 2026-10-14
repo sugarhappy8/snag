@@ -7,6 +7,7 @@ import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
 import { breakthroughByName } from './heavy-data'
+import { companyHedgeField, type CompanyHedge } from './hedge-record'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
 import { readFamilyShares } from './family-share-state'
@@ -387,6 +388,8 @@ export interface BizState {
   family?: Json
   /** Company milestones reached (business/milestones.ts readMilestones). Missing on old saves. */
   milestones?: Json
+  /** Cash at work in a hedge fund (business/hedge-record.ts readCompanyHedge). Missing: none. Read it with readCompanyHedge, never raw. */
+  hedge?: CompanyHedge
   /** Franchise network (business/franchise.ts readFranchise). Missing until the first franchise is sold. */
   franchise?: Json
   /** Yearly dividend rule (business/dividend-policy.ts). Missing: none set. Read it with readDividend, never raw. */
@@ -716,6 +719,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),
     ...(d.expansion && typeof d.expansion === 'object' && !Array.isArray(d.expansion) ? { expansion: d.expansion } : {}),
     ...(d.milestones && typeof d.milestones === 'object' && !Array.isArray(d.milestones) ? { milestones: d.milestones } : {}),
+    ...companyHedgeField(d.hedge),
     ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
     ...dividendField(d.dividend),
   }

@@ -261,8 +261,11 @@ function gutGroupHint(g: GameState, kinds: string[]): string | null {
 // ---------------------------------------------------------------------------
 // Holdings
 
+/** Investment assets that are somebody's own account, not a security: Sell Everything and the portfolio skip them. */
+const SIDE_ACCOUNTS: ReadonlySet<string> = new Set(['npcEquity', 'hedge'])
+
 export function investmentHoldings(g: GameState): Asset[] {
-  return g.assets.filter((a) => a.kind === 'investment' && a.details.type !== 'npcEquity')
+  return g.assets.filter((a) => a.kind === 'investment' && !SIDE_ACCOUNTS.has(str(a.details.type)))
 }
 
 function typeOf(a: Asset): InvestType {
@@ -507,11 +510,11 @@ export function minTrade(g: GameState): number {
   return Math.max(20, Math.round((100 * Math.max(0.2, Math.min(1, w))) / 10) * 10)
 }
 
-function lossCarry(g: GameState): number {
+export function lossCarry(g: GameState): number {
   return Math.min(MAX_INVESTMENT_VALUE, Math.max(0, num(g.flags.investLossCarry)))
 }
 
-interface Realized {
+export interface Realized {
   gain: number
   taxable: number
   offset: number
@@ -523,7 +526,7 @@ interface Realized {
  * carried-forward losses) count as taxable income; `immediate` taxes them now (menu trades),
  * otherwise yearlyFinance taxes them with the rest of the year's income.
  */
-function realize(g: GameState, net: number, gain: number, immediate: boolean): Realized {
+export function realize(g: GameState, net: number, gain: number, immediate: boolean): Realized {
   const carry = lossCarry(g)
   const cash = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(net) ? net : 0)))
   const gn = Math.max(-MAX_INVESTMENT_VALUE, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(gain) ? gain : 0)))
@@ -1184,7 +1187,7 @@ function recordOrderFlow(g: GameState, a: Asset, mult: number): void {
 }
 
 function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | null {
-  if (a.details.type === 'npcEquity') return null
+  if (SIDE_ACCOUNTS.has(str(a.details.type))) return null
   const value = holdingValue(a)
   if (value <= 0) {
     g.assets = g.assets.filter((x) => x.id !== a.id)
@@ -1690,8 +1693,53 @@ function holdingInfo(g: GameState, a: Asset): string[] {
   return rows
 }
 
+/**
+ * What the business module supplies for Personal and Family hedge funds (this file imports nothing
+ * from business/): the Investments row, the screen of one fund and its subtitle. Menus are rebuilt all
+ * the time, so none of them may write to the state or touch g.rng.
+ */
+export interface HedgeFundHooks {
+  row: (g: GameState) => MenuGroup | null
+  view: (g: GameState, a: Asset) => MenuNode[]
+  subtitle: (g: GameState, a: Asset) => string
+}
+
+let hedgeHooks: HedgeFundHooks | null = null
+
+/** Extension point for the business module: say how Investments shows hedge funds. */
+export function registerHedgeFunds(h: HedgeFundHooks): void {
+  hedgeHooks = h
+}
+
+function hedgeRow(g: GameState): MenuGroup | null {
+  try {
+    return hedgeHooks ? hedgeHooks.row(g) : null
+  } catch {
+    return null
+  }
+}
+
+function hedgeView(g: GameState, a: Asset): MenuNode[] {
+  try {
+    if (hedgeHooks) return hedgeHooks.view(g, a)
+  } catch {
+    // Fall through to the plain row.
+  }
+  return [{ type: 'info', id: `hedge-off.${a.id}`, emoji: '🦈', text: 'This fund is not available right now.' }]
+}
+
+function hedgeSubtitle(g: GameState, a: Asset): string {
+  try {
+    if (hedgeHooks) return hedgeHooks.subtitle(g, a)
+  } catch {
+    // Fall through to the value.
+  }
+  return shortMoney(a.value)
+}
+
 /** Owned-asset screen for a kind 'investment' asset (registered in menus.ts). */
 export function investmentAssetView(g: GameState, a: Asset): MenuNode[] {
+  if (a.details.type === 'hedge') return hedgeView(g, a)
   if (a.details.type === 'npcEquity') return [{ type: 'info', id: `npc-equity.${a.id}`, emoji: '🤝', text: `${a.name}: ${formatMoney(a.value)} estimated value, ${(num(a.details.share) * 100).toFixed(2)}% ownership. Private, illiquid equity—not an exchange-traded stock. Manage investment or acquisition through the founder's Life & Career profile. Dividends depend on real company profits.` }]
   const nodes: MenuNode[] = holdingInfo(g, a).map((text, i): MenuNode => ({ type: 'info', id: `inv-info-${a.id}-${i}`, text }))
   nodes.push({ type: 'heading', id: `inv-actions-${a.id}`, label: 'Actions' })
@@ -1701,7 +1749,8 @@ export function investmentAssetView(g: GameState, a: Asset): MenuNode[] {
   return nodes
 }
 
-export function investmentAssetSubtitle(_g: GameState, a: Asset): string {
+export function investmentAssetSubtitle(g: GameState, a: Asset): string {
+  if (a.details.type === 'hedge') return hedgeSubtitle(g, a)
   if (a.details.type === 'npcEquity') return `${shortMoney(a.value)} · private company stake`
   const t = typeOf(a)
   const v = holdingValue(a)
@@ -2169,6 +2218,8 @@ export const investmentsMenu: MenuGroup = {
     else nodes.push({ type: 'info', id: 'inv-empty', text: 'Nothing here yet. Even a small index fund is a start.', emoji: '🌱' })
     nodes.push({ type: 'heading', id: 'inv-buy', label: 'Invest' })
     nodes.push(stocksMenu, fundNode(g), bondsMenu, reitNode(g), goldNode(g), pennyMenu, cryptoMenu)
+    const hedge = hedgeRow(g)
+    if (hedge) nodes.push(hedge)
     nodes.push({ type: 'heading', id: 'inv-tools', label: 'News & Tools' })
     nodes.push(newsMenu, liquidateAction)
     nodes.push({ type: 'info', id: 'inv-tax', text: TAX_NOTE, emoji: '🧾' })

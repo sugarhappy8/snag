@@ -96,6 +96,11 @@ src/
                          and its screen (see "Your listed companies in Stocks" below)
     business/dividend-policy.ts dividend-year.ts dividend-menu.ts  The yearly dividend rule, its
                          quote and year step, and its menu (see "Yearly dividends" below)
+    business/hedge-record.ts hedge-model.ts hedge-fund.ts hedge-company.ts hedge-year.ts hedge-menu.ts
+                         Personal, family and company hedge funds in Investments: the saved records
+                         and their readers, the return model shared with the firm, funds as Assets,
+                         the company's cash at work, the yearly hook and the menus (see "Hedge funds"
+                         below)
     business/finance-firm.ts  Banks and investment firms: a thin dispatcher (simulateFinanceYear,
                          financeNodes, financeManagerTurn, financeEraBlock...) to bank*.ts (Banking 2.0:
                          rates, lending appetite, products, regulator, runs, events) and fund*.ts
@@ -116,6 +121,8 @@ src/
                          managedBook(g) (pure) and managedOrder(g, bucket, side, dollars) are the seam for
                          the money manager: three buckets (the index fund, bonds, savings) of ordinary
                          holdings. advisors/ imports them; investments.ts imports nothing from advisors/
+                         registerHedgeFunds(hooks) is how business/hedge-menu.ts adds the Hedge Funds
+                         row and the fund screens, by the same rule
     advisors/*.ts        Money team (see "Money team" below): mandate (the manager's three dials and the
                          pure yearly plan), team (the g.flags['fin.team'] record, offers, fees, gates,
                          vetting, hire and release), review (the advisor's six findings), year (the
@@ -800,6 +807,74 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     Share of Profit, Share of Spare Cash, Cash to Keep and Turn Off. Each slider previews what it would
     pay now through `ruleNote`, from the same quote the year step uses. Menus are pure and render from a
     deep-frozen state.
+- **Hedge funds** (`business/hedge-record.ts`, `hedge-model.ts`, `hedge-fund.ts`, `hedge-company.ts`,
+  `hedge-year.ts`, `hedge-menu.ts`): Investments › Hedge Funds lets the player run a Personal fund and a
+  Family fund with their own cash, and set an ordinary company's spare cash to work. The funds are not
+  the hedge-fund firm.
+  - **The model (D1).** The year is the firm's own maths in `fund-model.ts` (`marketMove`, `hedgeGross`,
+    `financingCost`, `alphaMean`, `capacityOf`) with the firm's four strategies and blurbs.
+    `capacityOf` and `outlookOf` were pulled out of `capacityFactor` and `strategyOutlook` so one formula
+    serves both, and `test/fund-extract-pin.test.ts` pins the firm's numbers. `hedge-model.vehicleYear`
+    is the whole year: `net = (1 + gross)(1 - 0.5%) - 1`. There is no fee. The fund pays a running cost of
+    `RUNNING_COST` (0.5%) a year and nothing else. Skill is the runner's (`runnerSkill`, `leadOf`,
+    `skillOf`), and a company's is `leaderSkill`. Noise comes from `hedgeRng` (company: `fundRng`), a
+    seeded stream by life, outcome tag, fund id and year, so a Time Machine jump rerolls it.
+  - **Person and family funds (D2, D3).** One Asset each: kind `investment`, `details.type` `'hedge'`,
+    the record in `details.hf`. `Asset.value` is the player's own units at the unit price, so net worth
+    and the estate count it once. `investments.ts` keeps a `SIDE_ACCOUNTS` set (`npcEquity`, `hedge`):
+    `investmentHoldings` and `sellCore` skip it, so Sell Everything, the portfolio total and the politics
+    insider count never see a fund. A family fund also holds relatives' units;
+    their money is never in the player's net worth or estate. Money moves through `spend`, `realize`
+    and the relatives' own `Person.money`, and a fund never creates any. Take Out sells units and pays
+    tax on the gain through `investments.realize` (carried losses first); a take out of all of it, or
+    nearly, closes the fund.
+  - **Company fund (D4, D12).** `BizState.hedge` (a `CompanyHedge`) is a sleeve. The cash stays in
+    `b.cash`. Each fiscal year, before `simulateYear`, `bookHedgeYear` (called in `yearly.ts` next to
+    `bookFranchiseYear`) puts `work = min(target, payoutCash - floor)` to work. The floor is the larger
+    of six months of running costs and the board's reserve. The result moves `b.cash` and goes into
+    `yearIncome` (a gain) or `yearCosts` (a loss), so the statement and the corporate tax count it
+    once, and loans, closure and the cash crunch need no change. A year can lose a little over 95% of
+    `work` at the most (`hedgeGross` stops at -0.95, then the running cost comes off), and `work` is
+    spare cash above the floor, so after the worst year the company is as liquid as the floor. Banks,
+    investment firms (their own fund is `coinvest`) and divisions of a group are refused. A hired CEO,
+    or a player who is in prison or under 18, runs the firm's autopilot terms (`autoTerms`).
+  - **The result is valued as cash (D4).** The result is in `b.cash`, which `valuationOf` already counts,
+    but it is also in that year's profit, which `valuationOf` capitalizes at the industry multiple. Left
+    alone, a gain would raise the company's value five or six times over. So the booking keeps the last
+    three years' results in `CompanyHedge.marks`, and `valuationOf` takes `hedgeProfitIn` (the result
+    less the tax it added, read back from the year's own record) out of the profit it capitalizes, the
+    way it takes out one-off franchise fees. A deep-tech company works its value out from its own profit
+    too (`deeptech-core.operatingValue`), so it takes the same amount out there. The company's value
+    then moves by the cash and no more; `test/hedge-integration.test.ts` pins it.
+  - **Macro lasts a year (D7).** A Macro call, with its 1x to 3x leverage, reverts to Long/Short, flat,
+    1x after the year it is booked for. An office holder (`politicianJob`) cannot set it, and a stored
+    Macro runs as Long/Short while they hold the job.
+  - **Relatives (D9, D10).** The family fund is one pool in units. A relative is invited one by one, puts
+    in 20% of their money and never more than your own units are worth, and joins at the going price.
+    Each yearly step starts with `settleHolders`: a holder who is now the player merges into the player's
+    units, a late holder's units go to `dynasty-ownership.familyStakeHeirs`, and one who has cooled
+    (relationship under 15), was disowned or is estranged is paid out. Settling never changes the unit
+    price. A year of -15% or worse cools every holder by 3. At death, `life.continueAsChild` first
+    settles the funds (`settleFundsAtDeath`), so units of a relative who died first pass on; the units of
+    the player are in the estate through `Asset.value`. A sole adult heir keeps the fund in kind and the
+    relatives stay in it (`keptFundHolders` keeps them as contacts). Otherwise the fund is dropped and
+    `payOutDroppedFunds` pays the relatives through `cashOutFamilyHolders` before the heir's money is
+    built, with one line in the estate text.
+  - **The yearly hook (`hedge-year.yearlyHedge`).** Registered in `aging.YEARLY_HOOKS` right after
+    `investments`. It settles, books each fund once a birthday (`f.lastYear`), and queues one popup
+    (`Hedge Funds`, id `hedge-<generation>-<year>`, which takes nothing from the id counter) that lists
+    the funds and the companies' cash at work. It returns at once when the player is dead or there is
+    no fund and no company record.
+  - **Saves.** Every field is optional and read through `readHedge` or `readCompanyHedge`, which never
+    throw or mutate their input. `hedge-record.ts` imports nothing at runtime, because `state.ts`
+    imports it for `normalizeBiz`; it repeats the firm's strategy and call lists, and a test pins them
+    equal. A damaged fund record reads as none: the Asset keeps its stored value in net worth, and its
+    screen says the books are damaged. `BIZ_VERSION` stays 2.
+  - **Rules it keeps.** No `g.rng` anywhere in the feature: not a menu, quote, preview, action or the
+    yearly step. Menus are pure and every closure re-finds its Asset by id (`stayOpen` leaves stale
+    nodes). `investments.ts` imports nothing from `business/`: `registerHedgeFunds` takes the row, the
+    fund screen and the subtitle, and the Asset's own screen under Assets is the same fund screen
+    (`investmentAssetView`).
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
   `COMPARE_SHOWN` best foreign markets and a one-line summary.
 - **Banks' money rules** (`business/bank*.ts`): deposits and loans are client money; equity is

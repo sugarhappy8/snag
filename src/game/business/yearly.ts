@@ -52,6 +52,7 @@ import { industryDef } from './industries'
 import { economicReportSummary, recordEconomicReport } from './economic-report'
 import { readSupply } from './supply'
 import { bookFranchiseYear, franchiseIncomeFor } from './franchise'
+import { bookHedgeYear } from './hedge-company'
 import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
@@ -496,6 +497,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     const tech = isDeepTech(b)
     // Franchisees' royalties for the year, booked once through yearIncome (business/franchise.ts).
     bookFranchiseYear(g, a, b, fiscal)
+    // Cash a company puts to work in a hedge fund, booked once through yearIncome or yearCosts (business/hedge-company.ts).
+    bookHedgeYear(g, a, b, fiscal)
     prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     if (b.ceo === 'manager' && isFinanceFirm(b)) financeManagerTurn(g, b)
