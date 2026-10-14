@@ -18,6 +18,7 @@
 - Voice: `docs/VOICE.md`. Hard caps: log 90, outcome 120, scene 140, tooltip 120, digest 110 characters (holes count 0); label 5 words. Aim lower: log 60, outcome 100, scene 110, tooltip 100.
 - Do not touch: the seeded RNG, the no-server rule, the README's fictional-names note, the 18+ consent gating, existing ribbon ids, saved-game key names.
 - A new field on saved state is optional (missing means false). Only Task 8 adds one (`NoticeModal.support`).
+- Fixture source files are committed with a `.txt` suffix (`a.ts.txt`, `b.tsx.txt`) and copied by the test into a temp `src/` tree, because `tsc` compiles every `.ts` under `test/`. The scripts' `--root` points at that temp tree.
 - Test files are `.ts` in `test/` (no JSX; use `createElement`). Run `npx vitest run <files>` and `npm run typecheck`. The full suite runs in CI on each push (about 20 minutes); do not run it locally except in Task 14.
 - One commit per code task, one per batch. Every commit message ends with two lines: `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` and `Claude-Session: https://claude.ai/code/session_019Jn6WVL2xH6BetgH1qFb78`. Branch `claude/new-session-1vdxk8`; push after Tasks 1, 3, 4, then after each later task or family of batches.
 - Each task that changes counts or behaviour adds its line to the "Part A" section of `docs/RELEASE-v2.5.0.md`.
@@ -51,7 +52,7 @@ Two kinds of task. **Code tasks** (1 to 3, 5 to 8, 10) go to an implementer and 
 
 **Files:**
 - Create: `scripts/voice-report.mjs`, `scripts/voice/lexer.mjs`, `scripts/voice/contexts.mjs`, `scripts/voice/corpus.mjs`, `scripts/voice/rules.mjs`, `scripts/voice/rules.d.mts`, `scripts/voice/metrics.mjs`
-- Create: `test/voice-report.test.ts`, `test/voice-guards.test.ts`, fixtures under `test/fixtures/voice/`
+- Create: `test/voice-report.test.ts`, `test/voice-guards.test.ts`, fixtures under `test/fixtures/voice/` (as `*.ts.txt`, see Global Constraints)
 - Modify: `.github/workflows/ci.yml`, `package.json` (script `"voice": "node scripts/voice-report.mjs"`), `docs/RELEASE-v2.5.0.md` (new "Part A: voice" section with the baseline table)
 - Read first: the validated prototype `.superpowers/sdd/2026-10-14-part-a-voice/prototype/measure.mjs` and its `results.txt` (definitions, calibration notes). `docs/VOICE.md` is already in the repo.
 
@@ -68,7 +69,7 @@ Two kinds of task. **Code tasks** (1 to 3, 5 to 8, 10) go to an implementer and 
 - Produces `metrics.mjs`: `AUDIT` (the PDF's "Now" values), `TARGETS` (the PDF's targets), `makeEnv(corpus, opts)`, `computeMetrics(env)`.
 - CLI: `node scripts/voice-report.mjs [--json] [--per-file] [--summary] [--ci] [--strict] [--root DIR]`. Default prints a table: metric, audit, now, target, status. `--ci` appends the markdown table to `$GITHUB_STEP_SUMMARY` when that is set and prints one `::warning title=Voice report::N of 10 targets missed` line. Exit 0, except 1 under `--strict` when a target is missed.
 
-- [ ] **Step 1: Copy the prototype into the workspace** (controller does this before dispatch) and write the failing tests in `test/voice-report.test.ts`, each driving the CLI with `execFileSync(process.execPath, [...])` on the fixture tree `--root test/fixtures/voice`:
+- [ ] **Step 1: Copy the prototype into the workspace** (controller does this before dispatch) and write the failing tests in `test/voice-report.test.ts`, each driving the CLI with `execFileSync(process.execPath, [...])` on a temp tree built from `test/fixtures/voice/` (`--root <temp dir>`):
   - `'lexes nested templates, regex literals, comments and JSX text without inventing strings'` (a fixture file with those cases and a hand-listed set of expected records).
   - `'counts each metric on the fixture tree'` (one fixture file per metric with hand-counted values: a 200-character string, `. Mostly.` tails, `did not`, a colon join, `Nobody`, `fictional`, a chatbot opener, an em-dash).
   - `'prints the audit rows with target status'` and `'exits 0 by default and 1 with --strict when a target is missed'`.
@@ -83,7 +84,7 @@ Two kinds of task. **Code tasks** (1 to 3, 5 to 8, 10) go to an implementer and 
 ### Task 2: The rewrite tool, `extract`
 
 **Files:**
-- Create: `scripts/voice/units.mjs`, `scripts/voice-batch.mjs` (subcommand `extract`), fixtures under `test/fixtures/voice-batch/`
+- Create: `scripts/voice/units.mjs`, `scripts/voice-batch.mjs` (subcommand `extract`), fixtures under `test/fixtures/voice-batch/` (as `*.ts.txt`, see Global Constraints)
 - Test: `test/voice-batch.test.ts` (extract half)
 
 **Interfaces:**
@@ -97,6 +98,7 @@ Two kinds of task. **Code tasks** (1 to 3, 5 to 8, 10) go to an implementer and 
 - Role inference (fixed): a string in the array argument of `pool(` is `log`; arguments of `say(g, x, title, text, log, ...)` are `title`, `outcome`, `log`; an argument of `notice(g, title, text, ...)` is `title`, `outcome`; properties `title:` is `title`, `text:` is `scene` when a `choices` sibling exists in the same object and `outcome` otherwise, `label:` is `label`, `hint`, `desc`, `description`, `header`, `tip`, `sub`, `note` are `tooltip`; strings in `history/digest-early.ts` and `digest-late.ts` are `digest`; anything else is `text`.
 - Excluded: contexts import, type, case, compare, index, JSX class attributes; properties `id`, `key`, `type`, `kind`, `flag`, `slot`, `icon`, `emoji`; and any unit whose decoded text (12 characters or more, no holes) appears verbatim in any `test/**/*.ts` (counted in `pinnedExcluded`).
 - Units are sorted by file then offset. Without `--flags`, only units with at least one flag are exported; with `--flags`, units with any listed flag.
+- A unit in `src/ui/screens/SettingsScreen.tsx` never gets the `disclaimer` flag from `extract` (the About text lives there and must stay); the report still counts it.
 
 - [ ] **Step 1: Write the failing tests** in `test/voice-batch.test.ts`, on a fixture tree with a file per case and the CLI as the entry:
   - `'infers roles from pool, say, notice and property names'` (expects the role of each fixture string).
@@ -145,7 +147,7 @@ Two kinds of task. **Code tasks** (1 to 3, 5 to 8, 10) go to an implementer and 
 - [ ] **Step 1: Run the runbook** on `era-pack-1900-kids.ts` (all flagged units, including `over-aim`) and on `executive.ts` (flags `long,colon-join,disclaimer,over-aim`).
 - [ ] **Step 2: Gate.** `npm run typecheck`, then `npx vitest run test/era-early.test.ts test/era-early-lives.test.ts test/era-early-rules.test.ts` and the tests `apply` printed for `executive.ts`.
 - [ ] **Step 3: Commit** `style(voice): pilot, era-pack-1900-kids and executive`, push.
-- [ ] **Step 4: User checkpoint.** Show the user 15 before/after pairs (10 from the kids file, 5 from executive) and the metric change for both files. Do not start Task 9 onward until the user approves the voice. If they ask for changes, edit `docs/VOICE.md`, revert the pilot commit, and redo the pilot.
+- [ ] **Step 4: User checkpoint.** Post 15 before/after pairs (10 from the kids file, 5 from executive) and the metric change for both files as a message that ends with the question, without a blocking prompt, and carry on with Tasks 5 to 8 while waiting. Do not start Task 9 onward until the user approves the voice. If they ask for changes, edit `docs/VOICE.md`, revert the pilot commit, and redo the pilot.
 
 ### Task 5: A5, the obituary
 
@@ -184,7 +186,7 @@ Deleted outright: `remarkable years`, `taken far too soon`, `well-earned retirem
 **Interfaces:**
 - `StyleInfo` gains `coda: readonly string[]` (two or three short tails per style: cost-cutter `Sorry.`, `Had to.`; grower `Need more money.`, `More next year.`; steady `Same as last year.`; visionary `Bet placed.`). `ceoLetter` appends at most one coda to the first bullet that cut, opened or built something, chosen deterministically from `g.year` and the company id, not the RNG.
 
-The rule: every bullet is one action in 12 words or fewer; drop the "Verb-ed X for $Y: justification" shape (the reason after the colon goes); keep the numbers (`Hired Ana Lee, plant manager. $60,000 a year.`; `Opened 3 stores in Lyon for $2.1M.`; `Raised pay to 110% of the going rate.`); no colon joins; the 300-character analyst line becomes two bullets of 12 words or fewer. The letter keeps its `Dear ${firstName},` salutation and its signature line.
+The rule: every bullet is one action in 12 words or fewer; drop the "Verb-ed X for $Y: justification" shape (the reason after the colon goes); keep the numbers (`Hired Ana Lee, plant manager. $60,000 a year.`; `Opened 3 stores in Lyon for $2.1M.`; `Raised pay to 110% of the going rate.`); no colon joins; the 300-character analyst line becomes two bullets of 12 words or fewer. The letter keeps its `Dear ${firstName},` salutation and its signature line. The bundle popup in `yearly.ts` (near line 611) also changes its lead from `Dear ${}, here's what your CEOs did this year` to `Letters from your CEOs, ${year}.`; that is an A3 site, done here because it is the same function, and Task 9 only checks it.
 
 - [ ] **Step 1: Write the failing tests** in `test/ceo-letter-voice.test.ts`, over seeded companies run through a year with each style (`grower`, `costCutter`, `steady`, `visionary`):
   - `'every bullet is 12 words or fewer'`, `'no bullet has a colon join'`, `'no letter has more than one coda'`.
@@ -223,6 +225,7 @@ The rules: remove the `You decided to ${action}` frame (the outcome text starts 
   - `'the notice card shows the support line only when support is true'` (`renderToStaticMarkup`; React escapes the apostrophe, assert on `You&#x27;re struggling`).
   - `'unmatched actions never start with You decided to and always change a stat'` (200 seeded runs).
   - `'the log line is I plus the phrase'`.
+  - `'a queued support notice survives saveGame and loadGame'` (`isLoadableGame` accepts the optional field).
 - [ ] **Step 2: Run them.** Expected: FAIL.
 - [ ] **Step 3: Implement.** The `support` field is optional on saved state (missing means false).
 - [ ] **Step 4: Run the new test, the existing `custom` tests, `test/screens.test.ts` and typecheck.**
