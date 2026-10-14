@@ -19,6 +19,7 @@ import { settlePerfectForesight } from './executive-foresight'
 import { prepareInternalServices, settleInternalServices } from './group-services'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
 import { groupRescue, inGroup, prepareGroupManagement, yearlyConglomerates } from './conglomerate'
+import { autoDividendYear, dividendLog, queueDividends, type DividendResult } from './dividend-year'
 import {
   bestPlan,
   costFactor,
@@ -482,6 +483,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   recoverConfidence(g)
   let eventQueued = false
   const statementBridges = new Map<string, { previous: Statement | null; bookedNet: number }>()
+  const dividends: DividendResult[] = []
   for (const a of list) {
     if (!findBusiness(g, a.id)) continue
     const b = bizOf(g, a)
@@ -551,6 +553,9 @@ export function yearlyBusinessImpl(g: GameState): void {
     }
     // Milestones reached this year (one popup a year for all companies; business/milestones.ts).
     milestoneYear(g, a, b)
+    // The company's standing yearly dividend rule, if it has one (business/dividend-year.ts).
+    const paidOut = autoDividendYear(g, a, b, s)
+    if (paidOut) { dividends.push(paidOut); dividendLog(g, paidOut) }
 
     // A group's treasury covers a division's cash hole from its sisters' spare cash first.
     if (b.cash < 0) groupRescue(g, a, b)
@@ -573,6 +578,7 @@ export function yearlyBusinessImpl(g: GameState): void {
     maybeAntitrust(g, a, b, fiscal, managed)
     if (!plans) hiredCeoTurn(g, a, b, lastCycle)
   }
+  queueDividends(g, dividends)
   // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
   settleInternalServices(g, fiscal)
   // Internal invoices can amend both divisions' final tax/net statements. Rebuild

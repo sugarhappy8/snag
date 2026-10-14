@@ -91,6 +91,8 @@ src/
     business/own-listing.ts listing-id.ts own-trade.ts own-listing-menu.ts  The player's listed
                          companies in Stocks: tiers, ticker and exchange, buy and sell rules, the row
                          and its screen (see "Your listed companies in Stocks" below)
+    business/dividend-policy.ts dividend-year.ts dividend-menu.ts  The yearly dividend rule, its
+                         quote and year step, and its menu (see "Yearly dividends" below)
     business/finance-firm.ts  Banks and investment firms: a thin dispatcher (simulateFinanceYear,
                          financeNodes, financeManagerTurn, financeEraBlock...) to bank*.ts (Banking 2.0:
                          rates, lending appetite, products, regulator, runs, events) and fund*.ts
@@ -555,7 +557,9 @@ Spending past the board's yearly budget (opening sites, capacity lines, product 
   - hires and lets go key staff;
   - retires lines that cost more to run than they win and funds the best R&D projects (rd.ts bestRdIdea);
   - closes loss-making sites and opens sites or capacity at the mandate's payback and growth pace, within the budget and reserve;
-  - repays expensive debt and pays dividends under the cash/profit mandates;
+  - repays expensive debt and pays dividends under the cash/profit mandates (`payoutTurn`; while the
+    owner has set a yearly dividend rule, `payoutTurn` returns at once and the rule pays instead, see
+    "Yearly dividends");
   - writes one letter a year (career.ceoLetter).
 
   At 75 or below they keep yearly.autoPlan, tilted by style. Deep-tech managers (deeptech-manager.ts) and studio managers (gamestudio.studioManagerTurn) have their own versions of the upgrade. The what-if evaluators (bestOpening, bestLines, bestClosure, bestRdWithin, outlook, mandateScores) are pure and shared with the hints.
@@ -693,6 +697,47 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   - **Groups (D10).** A listed group gets one view-only row: its market cap, your group stake, its
     exchange and tier. It has no ticker and no Buy or Sell, and its divisions get no row. A group is
     traded from its own screen (`sellGroupShares`).
+  - **Last dividend (D11).** A company's screen shows "Last dividend: $X a share for YEAR, N% of the
+    price." when its dividend rule holds a last payment with a per-share amount above 0 (see "Yearly
+    dividends"). The yield is left out when the price makes it meaningless. Groups show nothing.
+- **Yearly dividends** (`business/dividend-policy.ts`, `dividend-year.ts`, `dividend-menu.ts`): a
+  standing rule on a company you own pays a share of the year's profit, or of the spare cash, at year end.
+  - **The record (D1).** `BizState.dividend?: DividendPolicy` holds `mode` (`profit` or `cash`), `pct`
+    (5% to 100%, default 30%), `keep` (months of costs to keep, 0 to 24, default 3) and the `last` payment
+    (`year`, `paid`, `mine`, `perShare`). `dividend-policy.ts` imports nothing, because `state.ts` imports
+    it. `normalizeBiz` whitelists it through `dividendField`. `bizOf` doesn't re-normalize a
+    current-version record, so every reader calls `readDividend(b.dividend)` and never reads the field
+    raw. A damaged value reads as no rule. `withPolicy` is how the menu (and any later advisor) changes
+    it, through the same clamps. `BIZ_VERSION` stays 2, and a save without the field behaves as before.
+  - **The maths (D2 to D4, pure).** `dividendFloor` is the larger of `keep` months of `runningCosts` and,
+    when a board exists, the board's `reserveDollars`. `spare = max(0, payoutCash - floor)`. The basis is
+    the year's `Statement.net` (profit mode, never below 0) or the spare cash. `pay = min(spare,
+    round(pct x basis))`, and under $1 is nothing. `dividendQuote` gives the numbers and, when nothing is
+    paid, the one reason (`why`). Debt, investors' preference, unreleased-game money and a bank's capital
+    all sit inside `payoutCash`/`payableCash`, so a payment never passes them and borrowing to pay can't
+    work. Nothing carries over to the next year.
+  - **Paying (D6).** `board-menu.payOut` is the one money move, extracted from the manual `payDividend`:
+    cash out, the player's part through `earnIncome` (taxed as income where the player lives), relatives
+    through `payFamilyBusinessProceeds`, and a listed company's `sharePrice` down by the payout per share
+    with `valuation` re-marked. `autoDividendYear` calls it, stores `last` on the rule and returns the
+    amounts, including an estimate of the income tax at the margin. `yearlyFinance` settles the real tax
+    in the same age-up, because the `business` hook runs before `finance`.
+  - **When it runs (D5).** `yearly.ts` calls `autoDividendYear` once per company inside the company
+    loop, after the board review and milestones and before the cash-crunch exit, the annual report and the
+    hired CEO's turn, so those plan on the cash left. A fiscal year pays once (`last.year >= s.year`
+    returns). It uses no `g.rng` and takes no `g.nextId`. A game that never set a rule changes nothing.
+  - **No vote (D7).** The rule never asks the board and records no vote. The board's reserve sits inside
+    the floor, so a payment never passes the line that would need one.
+  - **Who runs it (D8, D9).** The owner, a hired CEO, a player in prison and a young heir all get paid.
+    While a rule is set, `board-ceo.payoutTurn` returns at once, so a Cash or Profit mandate can't pay on
+    top. A division of a group is skipped and its menu hidden, because its cash is the group's.
+  - **Reporting (D10).** One life-log line per company ("X paid me $N in dividends.", or "X paid no
+    dividend." with the reason) and one bundled "Dividends" popup a year, only when something was paid.
+    Its id is `div-<generation>-<year>`.
+  - **The menu (D12).** Company › Money › Yearly Dividend (`dividendMenu`, after the manual dividend):
+    Share of Profit, Share of Spare Cash, Cash to Keep and Turn Off. Each slider previews what it would
+    pay now through `ruleNote`, from the same quote the year step uses. Menus are pure and render from a
+    deep-frozen state.
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
   `COMPARE_SHOWN` best foreign markets and a one-line summary.
 - **Banks' money rules** (`business/bank*.ts`): deposits and loans are client money; equity is

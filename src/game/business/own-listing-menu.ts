@@ -9,6 +9,7 @@ import { formatMoney, formatPrice } from '../core'
 import { registerOwnListings, type OwnStockRow } from '../investments'
 import type { Asset, GameState, MenuAction, MenuGroup, MenuInfo, MenuNode } from '../types'
 import { groupById } from './conglomerate-state'
+import { readDividend } from './dividend-policy'
 import { capitalGainsRate } from './exit'
 import { ownListings, rawStake, TIER_LABEL, type OwnListing } from './own-listing'
 import { BUY_PREMIUM, buyLimit, buyOwnShares, buyPreview, buyQuote, sellLimit, sellNote, sellOwnShares, sharesText } from './own-trade'
@@ -58,6 +59,13 @@ function sinceIpo(price: number, ipoPrice: number | null): string {
   if (!Number.isFinite(ratio) || ratio > SANE_RATIO || ratio < 1 / SANE_RATIO) return ''
   const change = pct(Math.abs(ratio - 1))
   return change === '0%' ? ' · level with the IPO' : ` · ${ratio >= 1 ? 'up' : 'down'} ${change} since the IPO`
+}
+
+/** "Last dividend: $0.42 a share for 2026, 0.9% of the price." The yield is left out when the price makes it meaningless. */
+function lastDividend(last: { year: number; perShare: number }, price: number): string {
+  const ratio = price > 0 ? last.perShare / price : Number.NaN
+  const yieldNote = Number.isFinite(ratio) && ratio <= SANE_RATIO ? `, ${pct(ratio, 1)} of the price` : ''
+  return `Last dividend: ${formatPrice(last.perShare)} a share for ${last.year}${yieldNote}.`
 }
 
 /** The slider's range for a buy: from one share to the most the cash and the float allow. All finite. */
@@ -140,6 +148,7 @@ function screen(g: GameState, l: OwnListing): MenuNode[] {
   const cur = ownListings(g).find((x) => x.kind === l.kind && x.id === l.id)
   if (!cur) return [{ type: 'info', id: 'gone', text: stillHeld(g, l) ? "It isn't listed any more." : 'You no longer own this.' }]
   const group = cur.kind === 'group'
+  const view = group ? null : liveView(g, cur.id)
   const texts: string[] = [
     `Market cap: ${money(cur.marketCap)} · ${TIER_LABEL[cur.tier]}`,
     `Price: ${formatPrice(cur.price)}${sinceIpo(cur.price, cur.ipoPrice)}`,
@@ -149,11 +158,12 @@ function screen(g: GameState, l: OwnListing): MenuNode[] {
   ]
   if (group) texts.push("Trade its shares from the group's screen under Businesses.")
   else {
+    const last = view ? readDividend(view.b.dividend)?.last : undefined
+    if (last && last.perShare > 0) texts.push(lastDividend(last, cur.price))
     texts.push(`At 50% or more you control the board. You hold ${pct(cur.stake, 1)}.`)
     texts.push(`Buying costs at least ${pct(BUY_PREMIUM)} over the market price, more for big orders. Selling pays ${pct(capitalGainsRate(g))} tax on the gain.`)
   }
   const nodes: MenuNode[] = texts.map((text, n): MenuInfo => ({ type: 'info', id: `${rowId(cur)}-i${n}`, text }))
-  const view = group ? null : liveView(g, cur.id)
   if (view) {
     nodes.push({ type: 'heading', id: `${rowId(cur)}-h`, label: 'Trade' })
     nodes.push(buyAction(g, cur.id, view.a, view.b), sellAction(cur.id, cur.stake, cur.sharesOut))

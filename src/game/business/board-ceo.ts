@@ -22,6 +22,7 @@ import { boardOf, type BoardState, type Mandate } from './board-state'
 import { capexBudget, capexLeft, noteSpend, payableCash, payoutCash, reserveDollars, runningCosts } from './board-vote'
 import { ceoLetter, LETTER_WORDS, letterWords, SMART_SKILL, styleOf } from './career'
 import { isDeepTech } from './deeptech-state'
+import { readDividend } from './dividend-policy'
 
 export { ceoLetter, ownerAvailable } from './career'
 import { bestPlan, bookYear, planFor, bizWorth, fxValue, LASTING_YEARS, lineCost, linesOf, localEcon, localPay, marketCtxFor, maxProduction, priceBounds, refreshValue, startupCost, staffNet, valuationOf, type Worth } from './economy'
@@ -637,6 +638,8 @@ function payoutTurn(t: Turn): void {
   const { g, a, b } = t
   // Group earnings stay in the corporate treasury. Only an explicit group dividend pays the owner.
   if (inGroup(g, b)) return
+  // The owner's yearly dividend rule pays instead (business/dividend-year.ts), so the CEO adds nothing.
+  if (readDividend(b.dividend)) return
   const mandate = t.st.mandate
   if (mandate !== 'cash' && mandate !== 'profit') return
   const free = Math.max(0, payoutCash(a, b) - reserveDollars(b, t.st) - t.reserved)
