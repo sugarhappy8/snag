@@ -711,7 +711,10 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     founders' class and re-seats the board. The market pays 4% less for `ab` and 7% less for `nv`
     (`CLASS_DISCOUNT`): `ipoPlanFor` scales the pre-money value, `updateSharePrice`, the Stocks buy floor and
     `rescue.equityQuote` (so a Capital & Ownership move doesn't re-mark the price) carry `classFactor`, and a
-    recap moves the price once by the difference. `classOption`, `ipoPreview` and the
+    recap moves the price once by the difference. A payout (`board-menu.payOut`, which the manual dividend
+    and the yearly rule both end in, and a hired CEO's cash payout) and the buyback and new-money lines of
+    `transactEquity` move the price by the cash times `classFactor`, so it lands on the structure's price and
+    the yearly update has nothing to heal. `classOption`, `ipoPreview` and the
     row subtitles call the same functions the action runs, never `g.rng`.
   - **Real companies (D8 to D10).** `invest/class-data.ts` is a curated table (21 companies, each row from a
     public source named above it) of the classes a company had by year. The company's Stocks screen gets a
@@ -836,7 +839,8 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     `bookFranchiseYear`) puts `work = min(target, payoutCash - floor)` to work. The floor is the larger
     of six months of running costs and the board's reserve. The result moves `b.cash` and goes into
     `yearIncome` (a gain) or `yearCosts` (a loss), so the statement and the corporate tax count it
-    once, and loans, closure and the cash crunch need no change. A year can lose a little over 95% of
+    once, and loans, closure and the cash crunch need no change. `runningCosts` takes a loss out of the last
+    year's costs (`hedgeResultFor`), so the floors built on it don't jump after a bad year. A year can lose a little over 95% of
     `work` at the most (`hedgeGross` stops at -0.95, then the running cost comes off), and `work` is
     spare cash above the floor, so after the worst year the company is as liquid as the floor. Banks,
     investment firms (their own fund is `coinvest`) and divisions of a group are refused. A hired CEO,
