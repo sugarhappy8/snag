@@ -1,7 +1,8 @@
-// localStorage persistence: the current life, the ribbon collection, the graveyard, and the
-// Time Machine's start-of-year snapshots.
+// Persistence: the current life (kept by save-store.ts, in IndexedDB or localStorage), and in
+// localStorage the ribbon collection, the graveyard and the Time Machine's start-of-year snapshots.
 import { refreshRoyalCareers } from './npc-lives'
 import { isFiniteNumber, isGameShell, isLoadableGame, isRecord, migrateLegacyAi, migrateSave } from './save-schema'
+import { readRecord, removeRecord, saveRecord, setLocalQuotaEvictor } from './save-store'
 import { refreshFamilyTalents } from './talents'
 import { decodeSnapshotRecord, encodeSnapshotRecord } from './snapshot-codec'
 import { isStartOfYear, stopOf, TIME_MACHINE_STOPS, type TimeStop } from './timeMachine'
@@ -9,8 +10,10 @@ import type { AncestorSummary, GameState, Json } from './types'
 
 // It lives in save-schema.ts now; test/offline.test.ts still imports it from here.
 export { migrateLegacyAi }
+export { deleteSaveCopy, flushSave, getSaveStatus, readSaveCopy, subscribeSaveStatus } from './save-store'
+export type { SaveStatus } from './save-store'
+export type { SaveNotice } from './save-quarantine'
 
-const SAVE_KEY = 'anotherlife.save.v1'
 const RIBBONS_KEY = 'anotherlife.ribbons.v1'
 const GRAVEYARD_KEY = 'anotherlife.graveyard.v1'
 /** Graves kept (the oldest are bulldozed first). */
@@ -36,8 +39,10 @@ function write(key: string, value: unknown): boolean {
 }
 
 /**
- * Save the current life. Returns false only when the browser refused even after the Time
- * Machine gave back the room its snapshots were using: snapshots never cost you the game.
+ * Save the current life. With localStorage, false only when the browser refused even after the
+ * Time Machine gave back the room its snapshots were using (evictLocalSnapshot): snapshots never
+ * cost you the game. With IndexedDB the write is queued and this is true; a write that fails shows
+ * in getSaveStatus().persistFailed, and flushSave() resolves false.
  */
 export function saveGame(g: GameState): boolean {
   let json: string
@@ -46,30 +51,29 @@ export function saveGame(g: GameState): boolean {
   } catch {
     return false
   }
-  for (;;) {
-    try {
-      localStorage.setItem(SAVE_KEY, json)
-      return true
-    } catch {
-      if (!evictLocalSnapshot()) return false
-    }
-  }
+  return saveRecord(json)
 }
 
+/** The saved life brought up to the current schema, as a fresh object; null when there is none it can play. No side effects. */
 export function loadGame(): GameState | null {
-  const saved = migrateSave(read<unknown>(SAVE_KEY))
+  const record = readRecord()
+  if (record === null) return null
+  let value: unknown
+  try {
+    value = JSON.parse(record)
+  } catch {
+    return null
+  }
+  const saved = migrateSave(value)
   if (saved.kind !== 'ready') return null
   refreshRoyalCareers(saved.game)
   refreshFamilyTalents(saved.game)
   return saved.game
 }
 
+/** Forget the saved life (it was abandoned). A record a newer version wrote stays until it has a copy. */
 export function clearSave(): void {
-  try {
-    localStorage.removeItem(SAVE_KEY)
-  } catch {
-    // ignore
-  }
+  removeRecord()
 }
 
 /** Ribbon id -> times earned. */
@@ -819,3 +823,6 @@ function evictLocalSnapshot(): boolean {
   for (const l of listeners) l()
   return true
 }
+
+// The main save's localStorage backend asks for this room when the browser refuses it.
+setLocalQuotaEvictor(evictLocalSnapshot)
