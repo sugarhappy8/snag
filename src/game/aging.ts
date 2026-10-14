@@ -26,6 +26,7 @@ import { yearlyDigest } from './history/digest'
 import { yearlyImmigration } from './immigration'
 import { yearlyWorkshop } from './workshop/yearly'
 import { yearlyUnderworld } from './underworld'
+import { yearlyAdvisors } from './advisors/year'
 import { yearlyCorruption } from './special/corruption'
 import { yearlyInvestments } from './investments'
 import { yearlyMilestones } from './life'
@@ -76,6 +77,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],
   ['underworld', yearlyUnderworld],
+  // The money team bills and trades last, so its cash is what is left after rent, tax and upkeep.
+  ['advisors', yearlyAdvisors],
   ['milestones', yearlyMilestones],
 ]
 

@@ -112,6 +112,14 @@ src/
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange.
                          registerOwnListings(provider) is how business/own-listing-menu.ts adds rows
                          to Stocks, so investments.ts still imports nothing from business/
+                         buySecurity and sellHolding take a trailing `quiet` flag (no popup, no log line).
+                         managedBook(g) (pure) and managedOrder(g, bucket, side, dollars) are the seam for
+                         the money manager: three buckets (the index fund, bonds, savings) of ordinary
+                         holdings. advisors/ imports them; investments.ts imports nothing from advisors/
+    advisors/*.ts        Money team (see "Money team" below): mandate (the manager's three dials and the
+                         pure yearly plan), team (the g.flags['fin.team'] record, offers, fees, gates,
+                         vetting, hire and release), review (the advisor's six findings), year (the
+                         yearly hook) and menu (Assets, Business & Investments, Money Team)
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
                          cvScore for admissions/jobs, national school rankings, the job market, and
@@ -832,6 +840,57 @@ Money only leaves through spend(). Amounts use local price multipliers (goods, e
 **Game flags.** `wealth.pending` (ventures, keyed by investor), `wealth.cd` (cooldowns for outsiders), `wealth.donated` (per character, for diminishing karma and fame) and `wealth.bound.door|strangers|charity`.
 
 **Person menu.** relationships.ts `personActions` appends `wealthNodes` (wealth-menu.ts): a "Money Matters" group for family and friends while the player is an adult. It has an allowance slider with a live caption, lend, ask to be paid back, forgive, buy a car, pay for a vacation, help with a house, and fund their idea. The Business talent hint shows the same odds the payout rolls. statusInfo shows the allowance and what they owe.
+
+## Money team (advisors/*.ts)
+
+An adult can hire a financial advisor, who reports the biggest problems in their money, and a financial manager, who keeps a stated mix of stock funds, bonds and savings every year for a fee. Design: `docs/superpowers/specs/2026-10-14-advisor-manager-design.md` (D1 to D16). Plan: `docs/superpowers/plans/2026-10-14-advisor-manager.md`.
+
+**The record.** All the state is one flag, `g.flags['fin.team']`, read only through `readTeam` and written only through `writeTeam` (team.ts).
+- `readTeam` is the whitelist. It builds a fresh object from the known keys, clamps every field to the nearest legal value (names 1 to 40 characters, skills 20 to 99, rates 0.2% to 3%, limits 10 to 100, reserves 0 to 1e15) and returns null for junk. It never throws and never changes its input.
+- The record is stamped `${character.id}:${g.year - age}`. A record for another character reads as no record, so an heir starts clean.
+- A manager with no usable mandate gets the default one (60% stocks, a reserve of at least two typical incomes, a limit of 50). A mandate or a statement with no manager is dropped.
+- Nothing is added to `Asset.details`, `BizState`, `Character` or the save schema. A save without the key plays exactly as before. There is no `Person` and no new `Asset`: the manager's trades are ordinary holdings the player can sell any day, so there is no mirror account to double count.
+- `advisorEpoch` and `managerEpoch` count how many of that role were let go. `done` is the last year the yearly step ran.
+
+**Offers, fees and gates (team.ts).**
+- Three offers per role per year. They hash `lifeId|fin|role|year|epoch|slot` (FNV-1a, then `nextRandom`, the pattern of `special/common.ts stableRoll`), so they are the same on every call and never touch `g.rng`. Letting a hire go bumps that role's epoch and brings new faces.
+- The menu shows a word (`ratingLabel`), never the skill number. About one manager in eight is a crook who claims 12 to 25 points above their real skill, to a ceiling of 97 (`OFFER_SKILL.claimCap`). The fee follows the claim.
+- With an advisor, `vet` gives each manager offer a stable chance, equal to the advisor's skill in percent, of showing the true rating and whether the manager has padded bills before.
+- Gates: net worth of 25 times `typicalIncome` for an advisor, a managed pool of 10 times for a manager. Fees: an advisor takes 0.15% to 0.4% of net worth by skill, a manager 0.4% to 1.4% of the money they run by claimed rating, each with a floor of a tenth of a typical income. `TERMS` holds the numbers.
+
+**Three buckets, and why nothing else (D5, D6).**
+- The manager runs the local index fund (before index funds exist, the investment trust, which has the same `index` type), the government bond and a savings account. Safe money goes to the bond when it pays clearly more than savings, otherwise to savings. Gold, REITs, term deposits, single stocks, pennies and coins are left out.
+- Politics counts only a few things as an insider position (`insiderPositions`, `special/politics.ts`): open bets, index options, and held shares or coins whose `details.secId` is the target's. Targets are made-up listed companies and, from rank 2, coins. An index fund, a bond or a savings account is never a target. Because the manager buys only those three, it cannot create an insider position, and no politics code had to change. The mayor in `test/advisors-story.test.ts` ages five years with a manager, then passes laws on four policy keys both ways and gets no case; the same mayor with a hand-picked made-up stock does. `test/advisors-integration.test.ts` repeats the check across four offices and eras through the real `ageUp`.
+- The manager trades only what the player could trade by hand. It reads each quote's `blocked` text, `tradeBlock` and `investingBlocked`. A shut exchange blocks only the fund. Banned private investing idles the manager: no fee and no trades, while the advisor still bills.
+
+**The seam in investments.ts (D15).**
+- `buySecurity` and `sellHolding` take a `quiet` flag. A quiet order has the same fees, tax, blocks and price impact as a hand order and queues no popup and no log line. Eight trades make no `Order Filled` popups.
+- `managedBook(g)` is pure. It reports each bucket's value, why it can't be bought or sold, its yield, the cash, the broker's minimum and `idle`. `managedOrder(g, bucket, side, dollars)` places one quiet order and says what moved. A sale works through the bucket's holdings largest first and never touches a term deposit.
+
+**The yearly step (D14).** `yearlyAdvisors` (year.ts) is the `advisors` entry in `YEARLY_HOOKS`, between `underworld` and `milestones`. Rent, tax and upkeep are already paid, so the cash it spends is real and the manager's reserve protects the living costs. Order:
+1. Return with no record, no hire, a dead, young or imprisoned player, or `done === g.year`.
+2. The advisor's retainer by `spend`. If it fails the advisor leaves.
+3. The manager, unless the book is idle. The invoice (the agreed fee, plus a crook's padding cut to the cash left) is paid first by `spend`; if it fails the manager leaves and nothing else happens. Then the blunder roll, `planYear`, the sells, the buys (capped at the cash above the reserve, skipped under the broker's minimum) and the slippage on the money moved. Then the catch roll.
+4. The advisor's review of the book as the manager left it.
+5. One `Year-End Statement` popup and one log line.
+
+Only this step draws from `g.rng`, and only after a manager has been paid: one `chance` for the blunder, one for its direction when it fires and one for the catch when a crook has padded a bill. A game with no record returns before any draw.
+
+**Skill, the limit, the crook and the catch (D8 to D10).**
+- Skill is execution, not returns (`PLAN` in mandate.ts). A weaker manager lets the mix drift further before selling (a band of 3 + (100 - skill) / 10 points), pays more slippage ((100 - skill) x 0.005% of the money moved) and blunders more often (12% x (100 - skill) / 100). A blunder aims the year's target 25 points off, says so in the statement, and next year's normal pass corrects it.
+- The limit is the most of the pool that may change hands in a year, buys plus sells. It also caps theft: a crook pads each bill by `round(0.03 x limit x pool)`, cut to the cash left after the agreed fee.
+- Every year a crook has padded a bill there is a catch chance of 4% plus half the advisor's skill (`catchOdds`; 4% with no advisor). A catch pays back 30% of all the padding once, lets the manager go and bumps the epoch. The statement shows the billed amount and the pool, so a careful player can compare it with the agreed rate.
+- `planYear` is pure and `mandate.ts` is its own module, so the menu preview and the yearly step run the same function.
+
+**The advisor (D1 to D4, D7, D16).**
+- The advisor never forecasts. It reads the present: six pure findings in review.ts, none of which reads `g.rng`. Foresight stays with the Investing talent, and `MenuBase.hint` (the purple line) stays talent-only. Advice shows as plain info rows with a 💼.
+- The findings and their weights; the list sorts by weight, then id: `insider` (95), `concentration` (76 to 100, which is `round(60 + 40 x share)` at a share of 40% or more, so a very large one passes `insider`), `loan` (70), `company-cash` (50), `idle-cash` (40, hidden while a manager is hired) and `losses` (30).
+- `insider` uses the same targets and the same two-year window (`freshShare`) as the politics rule for laws, so the warning is exact for them. It fires for an office holder with a made-up listed company (or, from rank 2, a coin) bought this year or last. A market-moving announcement counts every holding of the target whatever its age (`insiderPositions` with `freshOnly: false`), so an older pick is not flagged here. The manager never sells these picks; the decision stays the player's.
+- `company-cash` only points to Pay a Dividend (or Withdraw Profits for a sole owner). The standing dividend rule belongs to the dividends feature, so two payers can't pay one company twice.
+- Skill is coverage: `shownCount(skill)` shows the top 2 to 5 and the menu says "Sees 3 of 5". A better advisor sees more of the list, never a different list.
+- `concentration` groups investments by `details.secId`, one line in review.ts (`add(\`sec:${secId || a.id}\`, a)`). When share classes land and `companyKey` exists, that key becomes `companyKey(secId)` so two lines of one company add up. The manager's three types are never class lines.
+
+**Menu (menu.ts).** `moneyTeamMenu` sits right after Investments in Business & Investments. It is a pure function of state and renders from a deep-frozen game. Every action re-reads the record and rebuilds its offer through `hire`; the three sliders (Stocks Share, Cash to Keep, Yearly Limit) parse, snap and clamp their input and write the mandate through `writeTeam`. Each preview calls `planYear`.
 
 ## Politics 2.0 (nation/*.ts)
 
