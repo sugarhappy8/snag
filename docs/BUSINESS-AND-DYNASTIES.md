@@ -29,6 +29,13 @@ additional dependency or second economic engine was introduced.
   second door to the ownership move in **Capital & Ownership** (buying more from the public float) and
   to **Exit → Sell Shares**, and each pair shares its yearly limit. A listed group shows as a row you
   can only look at.
+- Company → Money → Capital & Ownership, and beside Go Public: **Share Classes**. Pick one class of shares,
+  founder shares (B has 10 votes, A has 1) or a non-voting float. Share classes change who runs the board,
+  not who is paid: board seats, being fired as CEO and every "you'd lose control" line follow the votes,
+  while dividends, tax and what your stake is worth follow the shares. The market pays 4% less for founder
+  shares and 7% less for a non-voting float. A private company sets the plan its IPO will use; a listed one
+  asks its board, once a year. In Investments → **Stocks**, real companies show the classes they had in the
+  years they had them, and a listed second class (Alphabet's Class C, Berkshire's Class B) can be bought.
 - Conglomerate → **Group Services / Internal Contracts**: assign compatible divisions to
   advertising, distribution, software, components, property or treasury administration.
 - Relationships → person: **Life & Career**, business financials, investment/partnership,

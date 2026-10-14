@@ -33,6 +33,8 @@ export type ProposalKind =
   | 'sell'
   | 'ipo'
   | 'merge'
+  // A change of share structure (share-classes-menu.ts). Its own kind: a turned-down kind waits the year, and 'merge' is shared.
+  | 'recap'
   | 'close'
   | 'fire'
   | 'hire'
@@ -274,6 +276,7 @@ export function assess(g: GameState, a: Asset, b: BizState, st: BoardState, p: P
     case 'ipo':
       return { merit: 0.5 + 0.3 * perf, self: 0, blatant: false, why: '' }
     case 'merge':
+    case 'recap':
     case 'mandate':
     case 'limits':
       return { merit: clampN(p.merit ?? 0, -3, 3), self: p.kind === 'limits' && runsIt(g, a) && p.limits && p.limits.pay > st.limits.pay ? clampN((p.limits.pay - st.limits.pay) * 0.8, 0, 3) : 0, blatant: false, why: '' }
@@ -480,6 +483,7 @@ export function needsVote(g: GameState, a: Asset, b: BizState, p: Proposal): str
     case 'sell':
     case 'ipo':
     case 'merge':
+    case 'recap':
     case 'mandate':
     case 'limits':
       return 'The board decides this.'

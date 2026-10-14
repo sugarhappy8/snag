@@ -29,6 +29,7 @@ import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
 import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
+import { classFactor } from './share-classes'
 import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
 import { marketDef } from './competition-data'
@@ -935,7 +936,8 @@ export function exchangeMove(g: GameState, countryId: string, year: number): num
 /** Yearly share-price update for a listed company; returns the new market cap. */
 export function updateSharePrice(g: GameState, b: BizState, year: number): number {
   if (!b.public || b.sharesOut <= 0) return b.valuation
-  const fundamental = valuationOf(b) / b.sharesOut
+  // Fewer votes sell for less (share-classes.ts): the market's price for the structure.
+  const fundamental = (valuationOf(b) / b.sharesOut) * classFactor(b)
   const repricing = publicBusinessShockFactor(g, b, g.year)
   // Registration already marked today's price. At a historical expropriation
   // sunset, however, last year's quote still carries the old market's factor.

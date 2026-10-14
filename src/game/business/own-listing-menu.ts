@@ -13,10 +13,17 @@ import { readDividend } from './dividend-policy'
 import { capitalGainsRate } from './exit'
 import { ownListings, rawStake, TIER_LABEL, type OwnListing } from './own-listing'
 import { BUY_PREMIUM, buyLimit, buyOwnShares, buyPreview, buyQuote, sellLimit, sellNote, sellOwnShares, sharesText } from './own-trade'
-import { bizOf, findBusiness, readBiz, type BizState } from './state'
-import { money, pct } from './util'
+import { CLASS_VOTES } from './share-classes'
+import { bizOf, findBusiness, readBiz, type BizState, type ClassKind } from './state'
+import { money, pct, plural } from './util'
 
 const EMOJI = '🏢'
+
+/** Which shares are whose, for a company with share classes (see share-classes.ts). */
+const CLASSES_LINE: Readonly<Record<ClassKind, string>> = Object.freeze({
+  ab: `Classes: B has ${plural(CLASS_VOTES.ab.hi, 'vote')} a share and is yours. A has ${plural(CLASS_VOTES.ab.lo, 'vote')} and trades.`,
+  nv: 'Classes: the voting shares are yours. The non-voting shares trade.',
+})
 
 /** A stake at or under this is nothing: the yearly cleanup takes the company off your hands (own-listing.ts). */
 const OWNED = 1e-6
@@ -156,11 +163,16 @@ function screen(g: GameState, l: OwnListing): MenuNode[] {
     `Outside shareholders: ${pct(cur.outside, 1)}${cur.family > 0 ? ` · relatives ${pct(cur.family, 1)}` : ''}${cur.executives > 0 ? ` · executives ${pct(cur.executives, 1)}` : ''}`,
     `Listed on the ${cur.exName} (${cur.exCode}) since ${cur.ipoYear}.`,
   ]
+  // A company with share classes: say which shares are whose, and count control in votes.
+  if (cur.classKind) {
+    texts.push(CLASSES_LINE[cur.classKind])
+    texts.push(`Votes: you hold ${pct(cur.votes, 1)} of the votes with ${pct(cur.stake, 1)} of the shares.`)
+  }
   if (group) texts.push("Trade its shares from the group's screen under Businesses.")
   else {
     const last = view ? readDividend(view.b.dividend)?.last : undefined
     if (last && last.perShare > 0) texts.push(lastDividend(last, cur.price))
-    texts.push(`At 50% or more you control the board. You hold ${pct(cur.stake, 1)}.`)
+    texts.push(cur.classKind ? `At 50% or more of the votes you control the board. You hold ${pct(cur.votes, 1)}.` : `At 50% or more you control the board. You hold ${pct(cur.stake, 1)}.`)
     texts.push(`Buying costs at least ${pct(BUY_PREMIUM)} over the market price, more for big orders. Selling pays ${pct(capitalGainsRate(g))} tax on the gain.`)
   }
   const nodes: MenuNode[] = texts.map((text, n): MenuInfo => ({ type: 'info', id: `${rowId(cur)}-i${n}`, text }))
@@ -179,7 +191,7 @@ export function ownListingNode(l: OwnListing): MenuGroup {
     id: rowId(l),
     label,
     emoji: EMOJI,
-    subtitle: `${formatPrice(l.price)} · ${TIER_LABEL[l.tier]} · yours ${pct(l.stake, l.stake < 0.1 ? 1 : 0)} · ${l.exCode}`,
+    subtitle: `${formatPrice(l.price)} · ${TIER_LABEL[l.tier]} · yours ${pct(l.stake, l.stake < 0.1 ? 1 : 0)}${l.classKind ? ` (${pct(l.votes, 0)} of votes)` : ''} · ${l.exCode}`,
     header: () => `${EMOJI} ${label}`,
     children: (g) => screen(g, l),
   }

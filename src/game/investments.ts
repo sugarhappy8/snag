@@ -30,6 +30,7 @@ import {
   coinListed,
   coinMarketCap,
   companyDef,
+  companyKey,
   countryStress,
   cryptoYear,
   defaultChance,
@@ -53,6 +54,7 @@ import {
   inflationRate,
   isHistoryYear,
   isRealSecId,
+  lineLetter,
   listedCoins,
   localWords,
   pennyDef,
@@ -66,6 +68,7 @@ import {
   type ExYear,
   type SecYear,
 } from './invest/engine'
+import { classFacts, lineOpen, linesOf, lineYear, votesText, type Line } from './invest/class-data'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
 import { addMarketShock, indexShockFactor, marketBreakthroughs, orderFlowFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
@@ -638,6 +641,10 @@ interface Quote {
   size?: string
   /** Menu ordering by size (bigger first). */
   rank?: number
+  /** A real company's listed second classes, priced off this quote. They are not in the list or in allQuotes. */
+  lines?: Quote[]
+  /** Votes a share of a share class's line (shown on the company's screen; not saved with a holding). */
+  votes?: number
 }
 
 /**
@@ -762,7 +769,14 @@ function listing(g: GameState): Listing {
   const index = indexName(info, y)
   const marketBlock = stockMarketBlock(g, info)
   const blocked = investingBlocked(cid, y)
-  const stocks = ey.stocks.map((s) => withShock(g, stockQuote(info, s, false, y, marketBlock), shockFactor(g, companyDef(info, s.slot, s.gen).id, y), shockFactor(g, companyDef(info, s.slot, s.gen).id, y - 1)))
+  const stocks = ey.stocks.map((s) => {
+    const def = companyDef(info, s.slot, s.gen)
+    const raw = stockQuote(info, s, false, y, marketBlock)
+    const q = withShock(g, raw, shockFactor(g, def.id, y), shockFactor(g, def.id, y - 1))
+    // A real company's listed second classes ride on its screen, priced off its quote.
+    const lines = def.real ? linesOf(def.real, def.id, y).map((line) => lineQuote(g, raw, line, y)) : []
+    return lines.length ? { ...q, lines } : q
+  })
   const pennies = ey.pennies.map((s) => withShock(g, stockQuote(info, s, true, y, marketBlock), shockFactor(g, s.id, y), shockFactor(g, s.id, y - 1)))
   const fundId = ey.fund.id
   // Before index funds existed (1976 in the US), the closest thing was a pricey investment trust.
@@ -902,7 +916,7 @@ function listing(g: GameState): Listing {
   // This year's moves read like the index line and "Recent years" beside them: in the money of
   // the year (reportedMove), not constant dollars ("FTSE 100 up 14.8%" over an ETF "▲10.0%").
   const shown = (q: Quote): Quote => (q.ret === null ? q : { ...q, ret: reportedMove(info, y, q.ret).pct })
-  return { info, year: ey, stocks: stocks.map(shown), pennies: pennies.map(shown), fund: shown(fund), reit: shown(reit), bond, savings, term, gold: shown(gold), crypto: crypto.map(shown) }
+  return { info, year: ey, stocks: stocks.map((q) => (q.lines ? { ...shown(q), lines: q.lines.map(shown) } : shown(q))), pennies: pennies.map(shown), fund: shown(fund), reit: shown(reit), bond, savings, term, gold: shown(gold), crypto: crypto.map(shown) }
 }
 
 /** What a resident can buy right now (used by tests and tools): id, type, name, ticker, price, risk. */
@@ -915,6 +929,31 @@ function allQuotes(l: Listing): Quote[] {
   return [...l.stocks, ...l.pennies, l.fund, l.reit, l.bond, l.savings, l.term, l.gold, ...l.crypto]
 }
 
+/** Everything that can be bought or held: the list plus the second classes on a company's screen. */
+function quotesWithLines(l: Listing): Quote[] {
+  return [...allQuotes(l), ...l.stocks.flatMap((q) => q.lines ?? [])]
+}
+
+/**
+ * One listed class of a real company: its quote with the line's id, ticker (the company's four letters and
+ * the class letter) and price (the company's, moved by the line's spread), then the news and order flow on
+ * the line. `raw` is the company's quote before any shock. The holding it makes carries the company's id
+ * and the class label in its details, so it can be renamed and moved with the company.
+ */
+function lineQuote(g: GameState, raw: Quote, line: Line, year: number): Quote {
+  const symbol = `${raw.symbol}${line.letter}`
+  const q: Quote = {
+    ...raw,
+    secId: line.secId,
+    name: `${raw.name} (${line.label})`,
+    symbol,
+    price: raw.price * (1 + line.spread),
+    votes: line.votes,
+    details: { ...raw.details, secId: line.secId, symbol, classOf: raw.secId, classLabel: line.label },
+  }
+  return withShock(g, q, shockFactor(g, line.secId, year), shockFactor(g, line.secId, year - 1))
+}
+
 /** Bonds and term deposits are bought one issue at a time; older issues can't be topped up. */
 function closedIssue(a: Asset): boolean {
   const t = typeOf(a)
@@ -923,7 +962,7 @@ function closedIssue(a: Asset): boolean {
 
 /** A quote for an existing holding (it may trade on another country's exchange after a move). */
 function holdingQuote(g: GameState, a: Asset): Quote {
-  const local = allQuotes(listing(g)).find((q) => q.secId === str(a.details.secId))
+  const local = quotesWithLines(listing(g)).find((q) => q.secId === str(a.details.secId))
   if (local) return { ...local, price: typeOf(a) === 'gold' || typeOf(a) === 'bond' || typeOf(a) === 'savings' ? unitPrice(a) : local.price }
   const t = typeOf(a)
   return {
@@ -1020,7 +1059,7 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   normalizeHoldings(g)
   if (old) secId = str(old.details.secId, secId)
   const held = findHolding(g, secId)
-  const q = allQuotes(listing(g)).find((x) => x.secId === secId) ?? (held ? holdingQuote(g, held) : undefined)
+  const q = quotesWithLines(listing(g)).find((x) => x.secId === secId) ?? (held ? holdingQuote(g, held) : undefined)
   if (!q) {
     notice(g, 'Order Rejected', 'That security is no longer listed.', { emoji: '🚫' })
     return false
@@ -1092,7 +1131,7 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   count(g, 'moneyInvested', amt)
   if (depth) recordOrderFlow(g, a, order.end)
   if (room !== null) noteCryptoBuy(g, q.secId, amt)
-  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into ${str(q.details.product) === 'term' ? 'a term deposit' : 'savings'}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
+  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into ${str(q.details.product) === 'term' ? 'a term deposit' : 'savings'}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol && lineLetter(q.secId) === null ? ` (${q.symbol})` : ''}`
   const feeLine = fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''
   // Price impact past the 10% mark (the mark the Buy row names), measured on the money that reached the market:
   // the fee is not price impact.
@@ -1562,6 +1601,25 @@ function holdingNode(g: GameState, a: Asset): MenuGroup {
   }
 }
 
+/**
+ * One listed class of a company, under its main line on the same screen: price and change, its votes, the
+ * dividend (the same for every class), what you hold of it, then Buy and the sale actions for that line.
+ * Every id carries the line's own id, so none repeats the company's.
+ */
+function lineSection(g: GameState, q: Quote): MenuNode[] {
+  const label = str(q.details.classLabel)
+  const rows: string[] = [`Price: ${priceText(q.price)}${q.ret !== null ? ` (${change(q.ret)} this year)` : ''}`]
+  if (q.votes !== undefined) rows.push(`${label} has ${votesText(q.votes)}.`)
+  if (q.yield > 0) rows.push(`Dividend: ${rateText(q.yield)} a year, taxed as income.`)
+  const held = findHolding(g, q.secId)
+  const nodes: MenuNode[] = [{ type: 'heading', id: `inv-oline-${q.secId}`, label: `${label} (${q.symbol})` }]
+  rows.forEach((text, i) => nodes.push({ type: 'info', id: `inv-oinfo-${q.secId}-${i}`, text }))
+  if (held) nodes.push({ type: 'info', id: `inv-oheld-${q.secId}`, text: `You own ${formatMoney(held.value)} of this (${change(basis(held) > 0 ? (held.value - basis(held)) / basis(held) : 0)} overall).`, emoji: '💼' })
+  nodes.push(buyAction(g, q, !!held))
+  if (held) nodes.push(...sellActions(g, held))
+  return nodes
+}
+
 function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup {
   return {
     type: 'menu',
@@ -1585,6 +1643,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       if (held) nodes.push({ type: 'info', id: `inv-oheld-${q.secId}`, text: `You own ${formatMoney(held.value)} of this (${change(basis(held) > 0 ? (held.value - basis(held)) / basis(held) : 0)} overall).`, emoji: '💼' })
       nodes.push(buyAction(gg, q, !!held))
       if (held) nodes.push(...sellActions(gg, held))
+      for (const line of q.lines ?? []) nodes.push(...lineSection(gg, line))
       return nodes
     },
   }
@@ -1678,7 +1737,9 @@ const stocksMenu: MenuGroup = {
     for (const q of ordered) {
       const open = sections[sections.length - 1]
       if (!open || (sized && q.size && q.size !== open.size)) sections.push({ size: sized ? (q.size ?? '') : '', nodes: [] })
-      sections[sections.length - 1].nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
+      const co = companyDef(l.info, num(q.details.slot), num(q.details.gen)).real
+      const classes = co ? classFacts(co, g.year) : null
+      sections[sections.length - 1].nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false), ...(classes ? [classes] : [])]))
     }
     // A size the exchange has no quotes for this year still gets its heading when you own a company of it.
     for (const size of STOCK_SIZES) {
@@ -2035,6 +2096,24 @@ function shockMove(mv: YearlyMove, now: number, before: number): YearlyMove {
   return { ...mv, price: Math.max(0.0001, adj.price), ret: adj.ret ?? mv.ret }
 }
 
+/**
+ * The spread of a line holding's class this year, or null when the line is not trading it. The holding's own
+ * slot and generation name the company; its class table says whether the line is listed. When the company
+ * ended at the start of this year (`cur.ended`), the line closes on the company's terms, so it counts as
+ * listed if it was listed in the company's last year.
+ */
+function lineSpreadFor(info: ExInfo, d: Record<string, Json>, cur: SecYear | undefined, letter: string, year: number): number | null {
+  const slot = Math.round(num(d.slot, -1))
+  const gen = Math.round(num(d.gen, -1))
+  if (!cur || slot < 0 || gen < 0) return null
+  const def = companyDef(info, slot, gen)
+  const co = def.real
+  if (!co || def.id !== companyKey(str(d.secId))) return null
+  const open = (y: number) => linesOf(co, def.id, y).find((l) => l.letter === letter)
+  const line = open(year) ?? (cur.ended?.id === def.id ? open(year - 1) : undefined)
+  return line ? line.spread : null
+}
+
 function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
   const t = typeOf(a)
   const d = a.details
@@ -2054,7 +2133,15 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
       if (t === 'reit') return shockMove(pathMove(ey.reit.id === str(d.secId) ? ey.reit : undefined, a, price), economyMarketFactor(g, info.home, g.year, true), economyMarketFactor(g, info.home, g.year - 1, true))
       const list = t === 'penny' ? ey.pennies : ey.stocks
       const id = str(d.secId)
-      return shockMove(pathMove(list[Math.round(num(d.slot, -1))], a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
+      const raw = list[Math.round(num(d.slot, -1))]
+      const letter = t === 'stock' ? lineLetter(id) : null
+      if (letter !== null) {
+        // A share class's line moves with its company's year, shifted by its spread. A line that is no longer
+        // listed is paid out as delisted at its last price, like any listing we lost track of.
+        const spread = lineSpreadFor(info, d, raw, letter, g.year)
+        return shockMove(pathMove(raw && spread !== null ? lineYear(raw, letter, spread) : undefined, a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
+      }
+      return shockMove(pathMove(raw, a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
     }
     case 'crypto': {
       const cy = cryptoYear(f, an, g.year)
@@ -2126,7 +2213,7 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
 function eventNews(a: Asset, mv: YearlyMove, valueBefore: number): News | null {
   const t = typeOf(a)
   const sym = str(a.details.symbol)
-  const label = `${a.name}${sym && t !== 'bond' && t !== 'savings' ? ` (${sym})` : ''}`
+  const label = `${a.name}${sym && t !== 'bond' && t !== 'savings' && lineLetter(str(a.details.secId)) === null ? ` (${sym})` : ''}`
   if (mv.ended) {
     switch (mv.ended.kind) {
       case 'bankrupt':
@@ -2233,11 +2320,17 @@ function renameForEra(g: GameState, a: Asset): void {
   const gen = Math.round(num(a.details.gen, -1))
   if (slot < 0 || gen < 0) return
   const def = t === 'penny' ? pennyDef(info, slot, gen) : companyDef(info, slot, gen)
-  if (def.id !== str(a.details.secId)) return
+  const id = str(a.details.secId)
+  if (def.id !== companyKey(id)) return
   const era = eraIdentity(def, g.year)
-  if (era.name === a.name) return
-  log(g, `${a.name} renamed itself ${era.name}.`)
-  a.name = era.name
+  // A share class's line keeps its class in its name: 'Alphabet (Class C)'. One that lost its label keeps its name.
+  const isLine = lineLetter(id) !== null
+  const label = isLine ? str(a.details.classLabel) : ''
+  if (isLine && !label) return
+  const name = label ? `${era.name} (${label})` : era.name
+  if (name === a.name) return
+  log(g, `${a.name} renamed itself ${name}.`)
+  a.name = name
   a.details.sector = era.label
   a.details.blurb = era.blurb
   if (t === 'stock') a.emoji = era.emoji
@@ -2258,7 +2351,15 @@ function pruneShocks(g: GameState): void {
     const info = exchangeByKey(sh.exKey)
     if (!info) return false
     const ey = exchangeYear(f, an, info, last)
-    return ey.stocks[sh.slot]?.id === sh.secId || ey.pennies[sh.slot]?.id === sh.secId
+    const cur = ey.stocks[sh.slot]
+    if (cur?.id === companyKey(sh.secId)) {
+      // News is stored on the company. Order flow on a line lasts while the line was listed.
+      const letter = lineLetter(sh.secId)
+      if (letter === null) return true
+      const co = companyDef(info, cur.slot, cur.gen).real
+      return !!co && lineOpen(co, letter, last)
+    }
+    return ey.pennies[sh.slot]?.id === sh.secId
   })
 }
 
@@ -2274,7 +2375,8 @@ function normalizeHoldings(g: GameState, yearly = false): void {
   for (const a of investmentHoldings(g)) {
     const t = typeOf(a)
     if (t !== 'stock' && t !== 'penny' && t !== 'index' && t !== 'reit') continue
-    if (num(a.details.eng) >= ENGINE_V) continue
+    // A share class's line only exists in this engine version; a lost stamp must not swap it for the company.
+    if (num(a.details.eng) >= ENGINE_V || lineLetter(str(a.details.secId)) !== null) continue
     const info = holdingExchange(a)
     const ey = exchangeYear(fam(g), anchor(g), info, asOf)
     const id = str(a.details.secId)
@@ -2310,7 +2412,7 @@ function normalizeHoldings(g: GameState, yearly = false): void {
  */
 export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges = false): void {
   normalizeHoldings(g)
-  const quotes = allQuotes(listing(g))
+  const quotes = quotesWithLines(listing(g))
   for (const a of investmentHoldings(g)) {
     syncOwnFlow(g, a)
     const t = typeOf(a)
@@ -2328,7 +2430,14 @@ export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges 
       // ordinary order-flow adjusts that holding's already booked quote in place.
       const info = holdingExchange(a), ey = exchangeYear(fam(g), anchor(g), info, g.year)
       const cur = (t === 'penny' ? ey.pennies : ey.stocks)[Math.round(num(a.details.slot, -1))]
-      if (cur?.id === str(a.details.secId)) price = cur.price * shockFactor(g, cur.id, g.year)
+      const id = str(a.details.secId)
+      const letter = t === 'stock' ? lineLetter(id) : null
+      if (cur?.id === id) price = cur.price * shockFactor(g, cur.id, g.year)
+      else if (cur && letter !== null) {
+        // The same company's year as its line sees it: shifted by the spread, with the line's own order flow.
+        const spread = lineSpreadFor(info, a.details, cur, letter, g.year)
+        if (spread !== null) price = cur.price * (1 + spread) * shockFactor(g, id, g.year)
+      }
     }
     const old = unitPrice(a)
     if (!price || !(price > 0) || !(old > 0) || Math.abs(price / old - 1) < 1e-9) continue

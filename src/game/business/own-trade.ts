@@ -14,7 +14,7 @@ import { addMoney, formatMoney, formatPrice, log, notice, useYearAction, yearAct
 import { exchangeName, exchangeStatus } from '../invest/engine'
 import { buyImpact, saleImpact } from '../invest/liquidity'
 import type { Asset, GameState } from '../types'
-import { boardOf, seatPlan, syncSeats } from './board-state'
+import { boardOf, controlsFor, syncSeats } from './board-state'
 import { groupIdOf } from './conglomerate-state'
 import { refreshValue, valuationOf } from './economy'
 import { capitalGainsTax, sellShares } from './exit'
@@ -22,6 +22,7 @@ import { manageBlock } from './gate'
 import { companyExchange, tickerOf } from './listing-id'
 import { outsideFloat } from './own-listing'
 import { equityYearKey } from './rescue'
+import { activeClasses, CLASS_VOTES, classFactor, clampFounders, foundersCapped, ownerVotes } from './share-classes'
 import { retailDepth, shareCountText } from './share-structure'
 import { bizOf, findBusiness, isTicker, type BizState } from './state'
 import { clampN, money, pct, plural } from './util'
@@ -58,8 +59,8 @@ export interface BuyQuote {
  * through here.
  */
 export function controlsWith(g: GameState, b: BizState, share: number): boolean {
-  const plan = seatPlan(g, { ...b, share })
-  return plan.size === 0 || (plan.owner + plan.group) * 2 > plan.size
+  // Shares bought are ordinary ones: a founders' class left above today's stake does not come back with them.
+  return controlsFor(g, { ...foundersCapped(b), share })
 }
 
 function finite(x: number): number {
@@ -88,7 +89,7 @@ export function buyQuote(g: GameState, _a: Asset, b: BizState, dollars: number):
   const controlsBefore = controlsWith(g, b, held)
   const none: BuyQuote = { dollars: d, basePrice: 0, avgPrice: 0, fraction: 0, shares: 0, newShare: held, maxFraction: 0, maxDollars: 0, controlsBefore, controls: controlsBefore }
   if (!(b.sharesOut > 0) || !(b.sharePrice > 0)) return none
-  const basePrice = Math.max(b.sharePrice, finite(b.valuation / b.sharesOut), finite(valuationOf(b) / b.sharesOut)) * (1 + BUY_PREMIUM)
+  const basePrice = Math.max(b.sharePrice, finite(b.valuation / b.sharesOut), finite(valuationOf(b) / b.sharesOut) * classFactor(b)) * (1 + BUY_PREMIUM)
   const cap = basePrice * b.sharesOut
   if (!(basePrice > 0) || !Number.isFinite(basePrice) || !(cap > 0) || !Number.isFinite(cap)) return none
   const depth = retailDepth(basePrice)
@@ -129,7 +130,14 @@ export function buyLimit(g: GameState, a: Asset, b: BizState): string | null {
 /** What an order would do, in a line: shares, price, your new stake and what that does to the board. */
 export function buyPreview(g: GameState, a: Asset, b: BizState, dollars: number): string {
   const q = buyQuote(g, a, b, dollars)
-  const head = `${sharesText(q.shares)} at about ${formatPrice(q.avgPrice)} each (market ${formatPrice(b.sharePrice)}). You'd own ${pct(q.newShare, 1)}.`
+  let head = `${sharesText(q.shares)} at about ${formatPrice(q.avgPrice)} each (market ${formatPrice(b.sharePrice)}). You'd own ${pct(q.newShare, 1)}.`
+  // With share classes, the shares you buy are the public's: say whether they vote and what that leaves you.
+  // The founders' class stays as it is, so the new shares are ordinary ones (what buyOwnShares does).
+  const plan = activeClasses(b)
+  if (plan) {
+    const weight = CLASS_VOTES[plan.kind].lo
+    head += ` ${weight > 0 ? `These shares carry ${plural(weight, 'vote')}.` : 'These shares carry no vote.'} You'd hold ${pct(ownerVotes({ ...foundersCapped(b), share: q.newShare }), 0)} of the votes.`
+  }
   if (!q.controls) return head
   return head + (q.controlsBefore ? ' You keep control of the board.' : ' This gives you control of the board.')
 }
@@ -159,6 +167,8 @@ export function buyOwnShares(g: GameState, a: Asset, b: BizState, dollars: numbe
   if (!isTicker(b.ticker)) b.ticker = tickerOf(g, a, b)
   addMoney(g, -dollars)
   b.invested += dollars
+  // The shares bought are ordinary ones (share-classes.ts): the founders' class stays what it was.
+  clampFounders(b)
   b.share = q.newShare
   syncSeats(g, a, b, boardOf(b))
   refreshValue(a, b)
