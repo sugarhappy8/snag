@@ -146,6 +146,11 @@ export interface CrimeRecord {
   caught: boolean
   convicted: boolean
   sentenceYears?: number
+  /**
+   * Money an investigation took before the trial that ended in this conviction. The conviction forfeits it;
+   * an appeal that overturns the conviction hands it back once, then clears it. Optional in saves.
+   */
+  refund?: number
 }
 
 export interface Prison {

@@ -37,6 +37,7 @@ import { eraPick } from './events/era'
 import { getCountry, randomFirstName, randomLastName } from './world'
 import type {
   ChoiceOption,
+  CrimeRecord,
   GameState,
   Gender,
   Json,
@@ -1492,9 +1493,9 @@ function appealAction(firm: AppealFirm): MenuAction {
       if (p.deathRow) {
         if (roll < odds * 0.15) {
           const name = p.name
-          markOverturned(g, p.crime)
+          const back = markOverturned(g, p.crime)
           releaseFromPrison(g, 'appeal')
-          releaseNotice(g, 'Exonerated!', `${f.name} found a hole in the prosecution's case big enough to drive a bus through. Your conviction was overturned and you walked off death row and out of ${name}.`)
+          releaseNotice(g, 'Exonerated!', `${f.name} found a hole in the prosecution's case big enough to drive a bus through. Your conviction was overturned and you walked off death row and out of ${name}.${gotBack(back)}`)
           return
         }
         if (roll < odds * 0.6) {
@@ -1510,7 +1511,7 @@ function appealAction(firm: AppealFirm): MenuAction {
       }
       if (roll < odds) {
         const name = p.name
-        markOverturned(g, p.crime)
+        const back = markOverturned(g, p.crime)
         releaseFromPrison(g, 'appeal')
         releaseNotice(
           g,
@@ -1518,7 +1519,7 @@ function appealAction(firm: AppealFirm): MenuAction {
           pick(g, [
             `${f.name} got your conviction overturned! You walked out of ${name} a free person.`,
             `The appeals court ruled in your favor. Your conviction was tossed out, and so were you, right out the front gate of ${name}.`,
-          ]),
+          ]) + gotBack(back),
         )
         return
       }
@@ -1539,10 +1540,40 @@ function appealAction(firm: AppealFirm): MenuAction {
   }
 }
 
-function markOverturned(g: GameState, crime: string): void {
-  const rec = [...g.character.criminalRecord].reverse().find((r) => r.convicted && r.crime === crime)
-  if (rec) rec.convicted = false
+/** The most that money held in a case can be: the game's usual ceiling for a stored amount. */
+const MAX_REFUND = 1e15
+
+/** A stored refund as a safe amount: a finite number >= 0 (capped), anything else is zero. */
+export function cleanRefund(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.min(v, MAX_REFUND) : 0
+}
+
+/** "You got back the X taken in your case." for a notice, or nothing. */
+export function gotBack(amount: number): string {
+  return amount > 0 ? ` You got back the ${formatMoney(amount)} taken in your case.` : ''
+}
+
+/** The record a conviction for `crime` lives on: the latest conviction under that name. */
+export function convictionRecord(g: GameState, crime: string): CrimeRecord | undefined {
+  return [...g.character.criminalRecord].reverse().find((r) => r.convicted && r.crime === crime)
+}
+
+/**
+ * The conviction for `crime` is thrown out. Money the investigation took before that trial goes
+ * back once (the record's refund is cleared); returns the amount. A pardon, parole or a deal for
+ * early release is not this: those never call it.
+ */
+function markOverturned(g: GameState, crime: string): number {
+  const rec = convictionRecord(g, crime)
+  let back = 0
+  if (rec) {
+    rec.convicted = false
+    back = cleanRefund(rec.refund)
+    delete rec.refund
+    if (back > 0) addMoney(g, back)
+  }
   count(g, 'appealsWon')
+  return back
 }
 
 const appealMenu: MenuGroup = {

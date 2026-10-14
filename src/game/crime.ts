@@ -33,7 +33,8 @@ import {
 } from './core'
 import { killCharacter } from './death'
 import { notePerson } from './people'
-import { addPrisonTime, fugitiveInfo, FUGITIVE_FLAG, moneyScale, releaseFromPrison, sendToPrison, yearlyPrison } from './prison'
+import { addPrisonTime, cleanRefund, convictionRecord, fugitiveInfo, FUGITIVE_FLAG, gotBack, moneyScale, releaseFromPrison, sendToPrison, yearlyPrison } from './prison'
+import { addGrievance } from './activities/common'
 import { chance, pick, rand, randInt, shuffle, uid } from './rng'
 import { defineScript } from './scripts'
 import { hasTalent, talentHint } from './talents'
@@ -263,6 +264,14 @@ export interface ArrestOptions {
   noResist?: boolean
   /** Custom first line of the arrest popup. */
   context?: string
+  /**
+   * Money an investigation took before the trial, held for the player. An acquittal hands it back; a
+   * conviction or plea forfeits it (an appeal that overturns the conviction hands it back later).
+   * Two arrests that join one trial add their refunds.
+   */
+  refund?: number
+  /** Who prosecuted ("the FCA"), named in the grievance an acquittal files for a later suit. */
+  defendant?: string
 }
 
 interface LawyerOption {
@@ -287,6 +296,10 @@ interface TrialData {
   lawyers: LawyerOption[]
   lawyer: LawyerOption | null
   plea: number
+  /** Money taken before the trial, to give back on an acquittal. Always a safe number (see asTrial). */
+  refund: number
+  /** The prosecuting agency, when it has a name (see asTrial). */
+  defendant?: string
 }
 
 const ARREST_SCRIPT = 'crime.arrest'
@@ -295,8 +308,27 @@ const LAWYER_SCRIPT = 'crime.trial.lawyer'
 const PLEA_SCRIPT = 'crime.trial.plea'
 const TRIAL_SCRIPTS = new Set([ARREST_SCRIPT, FEDS_SCRIPT, LAWYER_SCRIPT, PLEA_SCRIPT])
 
+const MAX_DEFENDANT = 60
+
+/** A short name that is safe to show: control and format characters and angle brackets stripped; else absent. */
+function cleanDefendant(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined
+  const s = v
+    .replace(/\s+/g, ' ')
+    .replace(/[\p{Cc}\p{Cf}<>]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const short = Array.from(s).slice(0, MAX_DEFENDANT).join('').trim()
+  return short || undefined
+}
+
 function asTrial(data: Json | undefined): TrialData | null {
   if (!isRecord(data) || typeof data.crime !== 'string') return null
+  // The data may come out of a save: an old one has no refund, a damaged one anything at all.
+  data.refund = cleanRefund(data.refund)
+  const defendant = cleanDefendant(data.defendant)
+  if (defendant) data.defendant = defendant
+  else delete data.defendant
   return data as unknown as TrialData
 }
 
@@ -353,8 +385,10 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
   const name = titleCase((crime || 'Disorderly Conduct').trim().slice(0, 60)) || 'Disorderly Conduct'
   const sev = clamp(Math.round(Number.isFinite(severity) ? severity : 2), 1, 5)
   const evidence = clamp(opts.evidence ?? 0.65, 0, 1)
+  const refund = cleanRefund(opts.refund)
+  const defendant = cleanDefendant(opts.defendant)
 
-  // Already behind bars: charged inside, time added, no trial.
+  // Already behind bars: charged inside, time added, no trial. That is a conviction, so any refund is forfeited.
   if (c.prison) {
     count(g, 'arrests')
     const rec = c.criminalRecord
@@ -379,7 +413,9 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
   if (c.age < 10) {
     for (const p of parents(g)) addRelationship(p, -randInt(g, 3, 8))
     log(g, `The police caught me ${name === 'Disorderly Conduct' ? 'causing trouble' : `doing something I shouldn't (${name.toLowerCase()})`} and drove me home.`, 'bad')
-    notice(g, 'Busted', `A police officer caught you and drove you home. After a long lecture about ${name.toLowerCase()}, your parents grounded you for what feels like forever.`, {
+    // No case, no conviction: whatever was held for it comes straight back.
+    if (refund > 0) addMoney(g, refund)
+    notice(g, 'Busted', `A police officer caught you and drove you home. After a long lecture about ${name.toLowerCase()}, your parents grounded you for what feels like forever.${gotBack(refund)}`, {
       emoji: '\u{1F46E}',
       tone: 'bad',
     })
@@ -396,6 +432,8 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
     pendingTrial.severity = Math.max(pendingTrial.severity, sev)
     pendingTrial.evidence = Math.max(pendingTrial.evidence, evidence)
     pendingTrial.records.push(idx)
+    pendingTrial.refund = cleanRefund(pendingTrial.refund + refund)
+    if (defendant && !pendingTrial.defendant) pendingTrial.defendant = defendant
     if (opts.violent && pendingTrial.violent !== 'murder') pendingTrial.violent = opts.violent
     if (opts.victimId && !pendingTrial.victimId) pendingTrial.victimId = opts.victimId
     pending.data = trialJson(pendingTrial)
@@ -418,6 +456,8 @@ export function arrestPlayer(g: GameState, crime: string, severity: number, opts
     lawyers: [],
     lawyer: null,
     plea: 0,
+    refund,
+    ...(defendant ? { defendant } : {}),
   }
   log(g, `I was arrested for ${name.toLowerCase()}.`, 'bad')
   if (opts.noResist) {
@@ -463,6 +503,7 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
   if (choice === 'run') {
     const p = runAwayOdds(g)
     if (chance(g, p)) {
+      // Fled, not cleared: the case is dropped and any refund with it.
       unmarkCaught(g, t)
       c.wantedLevel = clamp(c.wantedLevel + 2, 0, 5)
       log(g, 'I ran from the police and got away!', 'event')
@@ -489,6 +530,7 @@ defineScript(ARREST_SCRIPT, (g, choice, data) => {
     }
     const p = bribeOdds0(t.severity)
     if (chance(g, p)) {
+      // Bribed, not cleared: the case is dropped and any refund with it.
       spend(g, amount)
       unmarkCaught(g, t)
       log(g, `I bribed a police officer with ${formatMoney(amount)} to let me go.`, 'event')
@@ -616,6 +658,7 @@ defineScript(FEDS_SCRIPT, (g, choice, data) => {
   if (!t || !c.alive || c.prison) return
   const fam = crimeFamily(g)
   if (choice === 'rat' && fam) {
+    // A deal, like a plea: the charges go away and any refund is forfeited.
     fam.informant = { years: 0, evidence: 0 }
     for (const i of t.records) {
       const r = c.criminalRecord[i]
@@ -742,12 +785,28 @@ function verdict(g: GameState, t: TrialData): void {
   else convict(g, t, computeSentence(g, t), false)
 }
 
+/**
+ * An acquittal that earned a suit files it where the Lawsuit activity looks: a false accusation, or an agency
+ * that charged the player and held their money. Returns the sentence that points there, or '' when nothing was
+ * filed. A minor can't sue (Lawsuit is 18+), so nothing is filed and nothing is promised.
+ */
+function acquittalGrievance(g: GameState, t: TrialData, back: number): string {
+  if (g.character.age < 18 || (!t.falseAccusation && !t.defendant)) return ''
+  const name = t.defendant ?? 'the police department'
+  const detail = back > 0 ? 'charged you and took your money before the court cleared you' : t.falseAccusation ? "charged you with a crime you didn't commit" : 'charged you before the court cleared you'
+  addGrievance(g, { kind: 'police', name, strength: t.falseAccusation ? 45 : 35, detail })
+  return `${t.falseAccusation ? ' You were falsely accused.' : ''} You can sue ${name} under Activities, Lawsuit.`
+}
+
 function acquit(g: GameState, t: TrialData): void {
   const c = g.character
   for (const i of t.records) {
     const r = c.criminalRecord[i]
     if (r) r.convicted = false
   }
+  // Cleared: whatever the investigation took comes back, once.
+  const back = cleanRefund(t.refund)
+  if (back > 0) addMoney(g, back)
   if (t.violent === 'attempted' && t.victimId) {
     const v = getPerson(g, t.victimId)
     if (v && v.alive) {
@@ -758,7 +817,6 @@ function acquit(g: GameState, t: TrialData): void {
   addStat(g, 'happiness', randInt(g, 8, 15))
   log(g, `I was found not guilty of ${chargeList(t)}.`, 'good')
   const who = t.lawyer && t.lawyer.id !== 'pd' ? `${t.lawyer.name} delivered a closing argument for the ages. ` : ''
-  const sue = t.falseAccusation ? ' You were falsely accused, and you might have grounds to sue the police department.' : ''
   const fu = fugitiveInfo(g)
   if (fu) {
     const add = randInt(g, 2, 4)
@@ -767,10 +825,11 @@ function acquit(g: GameState, t: TrialData): void {
     const at = g.queue.length
     sendToPrison(g, fu.crime, fu.yearsLeft >= 99 ? 0 : fu.yearsLeft + add, { security: 'maximum', life: fu.yearsLeft >= 99 && !fu.deathRow, deathRow: fu.deathRow, quiet: true, severity: 4 })
     const where = c.prison?.name ?? 'prison'
-    insertNoticeAt(g, at, 'Not Guilty... But', `${who}${deciders(trialBy(c.countryId, t.severity))} found you NOT GUILTY! Unfortunately, the bailiff recognized you as an escaped convict from ${fu.prison}. You were sent straight to ${where}.`, '\u{2696}\u{FE0F}', 'bad')
+    insertNoticeAt(g, at, 'Not Guilty... But', `${who}${deciders(trialBy(c.countryId, t.severity))} found you NOT GUILTY! Unfortunately, the bailiff recognized you as an escaped convict from ${fu.prison}. You were sent straight to ${where}.${gotBack(back)}`, '\u{2696}\u{FE0F}', 'bad')
     return
   }
-  outcome(g, 'Not Guilty!', `${who}${deciders(trialBy(c.countryId, t.severity))} found you NOT GUILTY of ${chargeList(t)}! You walked out of the courthouse a free ${c.age < 18 ? 'kid' : 'person'}.${sue}`, '\u{1F389}', 'good')
+  const sue = acquittalGrievance(g, t, back)
+  outcome(g, 'Not Guilty!', `${who}${deciders(trialBy(c.countryId, t.severity))} found you NOT GUILTY of ${chargeList(t)}! You walked out of the courthouse a free ${c.age < 18 ? 'kid' : 'person'}.${gotBack(back)}${sue}`, '\u{1F389}', 'good')
 }
 
 function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
@@ -802,6 +861,13 @@ function convict(g: GameState, t: TrialData, s: Sentence, plea: boolean): void {
       r.convicted = true
       r.sentenceYears = life || deathRow ? 99 : total
     }
+  }
+  // The conviction forfeits what the investigation took. The record remembers it: an appeal that overturns this
+  // conviction hands it back (prison.ts markOverturned finds the record the same way).
+  const held = cleanRefund(t.refund)
+  if (held > 0) {
+    const rec = convictionRecord(g, t.crime) ?? c.criminalRecord[t.records[0]]
+    if (rec) rec.refund = held
   }
   // Family turns on a convicted killer.
   if (t.violent) {
