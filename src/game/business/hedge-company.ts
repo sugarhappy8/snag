@@ -193,6 +193,8 @@ export function bookHedgeYear(g: GameState, a: Asset, b: BizState, fiscal: numbe
   }
   h.total = clampN(h.total + pnl, -MONEY_MAX, MONEY_MAX)
   h.last = { year: fiscal, work: q.work, gross: y.gross, net: y.net, market: y.market, pnl }
+  // The valuation takes this year's result out of the earnings it capitalizes: it is cash already (hedgeResultFor).
+  h.marks = [...(h.marks ?? []).filter((m) => m.y !== fiscal), { y: fiscal, pnl }]
   // A Macro call lasts one year when the owner made it. An autopilot year leaves the owner's settings alone.
   if (!terms.auto && h.strategy === 'macro') Object.assign(h, { strategy: 'longShort', call: 'flat', lev: 1 })
   b.hedge = readCompanyHedge(h) ?? h

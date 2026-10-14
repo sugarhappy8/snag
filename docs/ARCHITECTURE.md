@@ -726,11 +726,19 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
     `bookFranchiseYear`) puts `work = min(target, payoutCash - floor)` to work. The floor is the larger
     of six months of running costs and the board's reserve. The result moves `b.cash` and goes into
     `yearIncome` (a gain) or `yearCosts` (a loss), so the statement and the corporate tax count it
-    once, and valuation, loans, closure and the cash crunch need no change. A year can lose a little
-    over 95% of `work` at the most (`hedgeGross` stops at -0.95, then the running cost comes off), and
-    `work` is spare cash above the floor, so after the worst year the company is as liquid as the floor. Banks, investment firms (their own fund is `coinvest`) and divisions of
-    a group are refused. A hired CEO, or a player who is in prison or under 18, runs the firm's
-    autopilot terms (`autoTerms`).
+    once, and loans, closure and the cash crunch need no change. A year can lose a little over 95% of
+    `work` at the most (`hedgeGross` stops at -0.95, then the running cost comes off), and `work` is
+    spare cash above the floor, so after the worst year the company is as liquid as the floor. Banks,
+    investment firms (their own fund is `coinvest`) and divisions of a group are refused. A hired CEO,
+    or a player who is in prison or under 18, runs the firm's autopilot terms (`autoTerms`).
+  - **The result is valued as cash (D4).** The result is in `b.cash`, which `valuationOf` already counts,
+    but it is also in that year's profit, which `valuationOf` capitalizes at the industry multiple. Left
+    alone, a gain would raise the company's value five or six times over. So the booking keeps the last
+    three years' results in `CompanyHedge.marks`, and `valuationOf` takes `hedgeProfitIn` (the result
+    less the tax it added, read back from the year's own record) out of the profit it capitalizes, the
+    way it takes out one-off franchise fees. A deep-tech company works its value out from its own profit
+    too (`deeptech-core.operatingValue`), so it takes the same amount out there. The company's value
+    then moves by the cash and no more; `test/hedge-integration.test.ts` pins it.
   - **Macro lasts a year (D7).** A Macro call, with its 1x to 3x leverage, reverts to Long/Short, flat,
     1x after the year it is booked for. An office holder (`politicianJob`) cannot set it, and a stored
     Macro runs as Long/Short while they hold the job.

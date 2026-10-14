@@ -23,6 +23,7 @@ import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './indust
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { franchiseFeesFor } from './franchise-state'
+import { hedgeProfitIn } from './hedge-record'
 import { studioValue } from './gamestudio-state'
 import { heavyPulse, readHeavy } from './heavy-rd'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
@@ -877,6 +878,9 @@ export function valuationOf(b: BizState): number {
     const keep = 1 - clampN(marketOf(b.countryId).corporateTax, 0, 0.9)
     h.forEach((r, i) => (avg -= franchiseFeesFor(b, r.year) * keep * weights[i]))
   }
+  // A company fund's yearly result is already in the cash below: it is valued at what it is, never
+  // capitalized as earnings (business/hedge-record.ts hedgeProfitIn).
+  if (b.hedge) h.forEach((r, i) => (avg -= hedgeProfitIn(b, r) * weights[i]))
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)

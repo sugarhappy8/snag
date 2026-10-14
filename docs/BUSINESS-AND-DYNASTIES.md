@@ -57,7 +57,7 @@ additional dependency or second economic engine was introduced.
 | Invest in an NPC company | Decreases | Increases equally | Private investment claim, not an exchange-traded security |
 | Acquire an NPC company | Decreases | Unchanged | Founder receives payment; the same company moves to player assets |
 | Put cash in a personal or family fund | Decreases | Unchanged | Your units rise by the same; net worth unchanged |
-| Set company cash to work | Unchanged | Unchanged (it stays in cash) | The year's result lands in other income or costs |
+| Set company cash to work | Unchanged | Unchanged (it stays in cash) | The year's result lands in other income or costs; the company's value moves by that cash and is not multiplied as earnings |
 
 Transactions validate the current company, adult/living player, funds, control, available
 shares and annual negotiation limits at execution. Private shareholders may refuse a sale;
