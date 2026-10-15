@@ -28,15 +28,15 @@ export const BREAKTHROUGHS: Record<string, Breakthrough[]> = {
     { name: 'Robot Server Fleet', first: 2020, note: 'Wheeled robots carry plates from the pass to the tables.' },
   ],
   cafe: [
-    { name: 'Espresso Bar Counter', first: 1950, note: 'A pump espresso machine on the counter pulls a shot in thirty seconds.' },
+    { name: 'Espresso Bar Counter', first: 1950, note: 'A lever espresso machine on the counter pulls a shot in thirty seconds.' },
     { name: 'Single-Origin Pour-Over Bar', first: 2008, note: 'Each cup is brewed by hand from beans traced to one farm.' },
     { name: 'Nitro Cold Brew Taps', first: 2013, note: 'Cold brew charged with nitrogen and poured from a tap like a stout.' },
     { name: 'Order-Ahead Pickup Shelf', first: 2014, note: 'Customers order and pay on a phone, then collect from a shelf with no queue.' },
     { name: 'Robotic Barista Kiosk', first: 2019, note: 'A glass kiosk where a robot arm brews the coffee and hands over the cup.' },
   ],
   bakery: [
+    { name: 'Steam-Injection Deck Ovens', first: 1880, note: 'Ovens that spray steam at the start of the bake for a crackling crust.' },
     { name: 'Sliced and Wrapped Loaf', first: 1928, note: 'A machine slices the loaf and wraps it before it leaves the bakery.' },
-    { name: 'Steam-Injection Deck Ovens', first: 1950, note: 'Ovens that spray steam at the start of the bake for a crackling crust.' },
     { name: 'Par-Baked Frozen Dough', first: 1960, note: 'Dough is part-baked and frozen, then finished in shop ovens when needed.' },
     { name: 'Gluten-Free Dedicated Bakehouse', first: 2008, note: 'A separate bakehouse where no wheat flour ever enters.' },
     { name: 'Robotic Bread Line', first: 2014, note: 'Robots move the trays and shape the dough on a line that runs overnight.' },
@@ -51,15 +51,15 @@ export const BREAKTHROUGHS: Record<string, Breakthrough[]> = {
   brewery: [
     { name: 'Canned Beer Line', first: 1935, note: 'A line that fills and seams steel cans, so the beer travels and stores easily.' },
     { name: 'Stainless Conical Fermenters', first: 1965, note: 'Steel tanks that ferment, settle and dump the yeast without moving the beer.' },
+    { name: 'Hop Extract Process', first: 1970, note: 'Hop oils are pulled out as an extract so a beer gets its aroma with less waste.' },
     { name: 'Dealcoholizing Plant', first: 1985, note: 'A vacuum still that takes the alcohol out of finished beer.' },
-    { name: 'Hop Extract Process', first: 2015, note: 'Hop oils are pulled out as an extract so a beer gets its aroma with less waste.' },
     { name: 'Self-Adjusting Brewhouse', first: 2020, note: 'Sensors and software tune each batch of mash and boil with no brewer at the controls.' },
   ],
   grocery: [
     { name: 'Self-Service Aisles', first: 1916, note: 'Customers pick goods from open shelves and pay at one counter.' },
     { name: 'Refrigerated Display Cases', first: 1930, note: 'Open chilled cases let shoppers pick meat and milk themselves.' },
     { name: 'Barcode Scanning Checkout', first: 1974, note: 'Each pack carries a printed code and the till reads it with a laser.' },
-    { name: 'Electronic Shelf Labels', first: 2010, note: 'Prices on every shelf update from one computer in seconds.' },
+    { name: 'Electronic Shelf Labels', first: 1995, note: 'Prices on every shelf update from one computer in seconds.' },
     { name: 'Cashierless Checkout', first: 2018, note: 'Cameras and shelf sensors track what a shopper takes and charge them on the way out.' },
   ],
   fashion: [
@@ -225,9 +225,9 @@ export const BREAKTHROUGHS: Record<string, Breakthrough[]> = {
   ],
   electricVehicles: [
     { name: 'Skateboard Chassis Platform', first: 2012, note: 'The battery and motors sit in one flat base that carries any body.' },
+    { name: 'Bidirectional Charging Car', first: 2012, note: 'A car that powers a house during a blackout.' },
     { name: 'Battery Swap Station', first: 2014, note: 'A robot swaps an empty battery for a full one in five minutes.' },
     { name: 'Driverless Robotaxi', first: 2020, note: 'Cars that carry paying riders with no driver on board.' },
-    { name: 'Bidirectional Charging Car', first: 2023, note: 'A car that powers a house during a blackout.' },
     { name: 'Solid-State Battery Car', first: 2027, note: 'A car with solid electrolyte cells for more range and faster charging.' },
   ],
   quantum: [
@@ -302,8 +302,8 @@ export const BREAKTHROUGHS: Record<string, Breakthrough[]> = {
   ],
   water: [
     { name: 'Chlorination Plant', first: 1908, note: 'Chlorine is dosed into the supply at the treatment plant to kill disease.' },
+    { name: 'UV Disinfection Plant', first: 1955, note: 'Ultraviolet lamps kill germs in the water without chemicals.' },
     { name: 'Reverse Osmosis Plant', first: 1965, note: 'Salty water is pushed through fine membranes that hold the salt back.' },
-    { name: 'UV Disinfection Plant', first: 1990, note: 'Ultraviolet lamps kill germs in the water without chemicals.' },
     { name: 'Leak-Sensing Mains', first: 2012, note: 'Acoustic sensors on the pipes pinpoint leaks before they surface.' },
     { name: 'Atmospheric Water Generators', first: 2018, note: 'Machines that pull drinking water out of humid air.' },
   ],
@@ -364,8 +364,8 @@ export const BREAKTHROUGHS: Record<string, Breakthrough[]> = {
     { name: 'Sit-Stand Desk Range', first: 2012, note: 'Desks with a motor that lifts the top to standing height.' },
   ],
   travel: [
+    { name: 'Cruise Holiday Packages', first: 1900, note: 'A floating hotel visits several ports in one trip.' },
     { name: 'Charter Package Holidays', first: 1950, note: 'A flight and a hotel sold at one price on chartered planes.' },
-    { name: 'Cruise Holiday Packages', first: 1965, note: 'A floating hotel visits several ports in one trip.' },
     { name: 'Computer Booking System', first: 1976, note: 'Agents see seats and rooms on a terminal and book them instantly.' },
     { name: 'Online Booking Engine', first: 1996, note: 'Travelers search and book trips on the agency’s own website.' },
     { name: 'Mobile Trip Itinerary', first: 2010, note: 'Tickets, hotels and maps for a whole trip in one phone app.' },
@@ -396,7 +396,7 @@ export const BREAKTHROUGHS: Record<string, Breakthrough[]> = {
     { name: 'Direct Air Capture Unit', first: 2017, note: 'Fans push air through a filter that grabs carbon dioxide.' },
     { name: 'Bioenergy With Carbon Capture', first: 2019, note: 'A power plant burns crops and buries the carbon it releases.' },
     { name: 'Ocean Alkalinity Enhancement', first: 2025, note: 'Crushed minerals added to seawater let the ocean absorb more carbon.' },
-    { name: 'Gigaton Removal Hub', first: 2035, note: 'A region of capture plants and wells that removes a million tonnes a year.' },
+    { name: 'Megaton Removal Hub', first: 2035, note: 'A region of capture plants and wells that removes a million tonnes a year.' },
   ],
 }
 

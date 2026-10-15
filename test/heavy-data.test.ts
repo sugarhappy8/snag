@@ -29,12 +29,42 @@ describe('Heavy R&D catalogue', () => {
     expect(seen.size).toBe(ALL.length)
   })
 
-  it('gives every entry a year between 1900 and 2040', () => {
+  it('gives every entry a year between 1850 and 2040', () => {
+    // No game year is before 1900, so an entry dated earlier is simply open from the first day.
     for (const b of ALL) {
       expect(Number.isInteger(b.first), b.name).toBe(true)
-      expect(b.first, b.name).toBeGreaterThanOrEqual(1900)
+      expect(b.first, b.name).toBeGreaterThanOrEqual(1850)
       expect(b.first, b.name).toBeLessThanOrEqual(2040)
     }
+  })
+
+  it('keeps every trade’s list in order of first year', () => {
+    for (const id of IDS) {
+      const years = breakthroughsFor(id).map((b) => b.first)
+      expect(years, id).toEqual([...years].sort((a, b) => a - b))
+    }
+  })
+
+  it('dates the entries a review found too late or too early to the years history gives', () => {
+    const first = (name: string) => breakthroughByName(name)?.first
+    expect(first('Steam-Injection Deck Ovens')).toBe(1880)
+    expect(first('Hop Extract Process')).toBe(1970)
+    expect(first('Electronic Shelf Labels')).toBe(1995)
+    expect(first('UV Disinfection Plant')).toBe(1955)
+    expect(first('Bidirectional Charging Car')).toBe(2012)
+    expect(first('Cruise Holiday Packages')).toBe(1900)
+    // The first espresso machines with a pump came in 1961. In 1950 the counter had a lever machine.
+    const espresso = breakthroughByName('Espresso Bar Counter')!
+    expect(espresso.first).toBe(1950)
+    expect(espresso.note).toMatch(/lever/)
+    expect(espresso.note).not.toMatch(/pump/)
+  })
+
+  it('calls a region that removes a million tonnes a year a megaton hub', () => {
+    expect(breakthroughByName('Gigaton Removal Hub')).toBeNull()
+    const hub = breakthroughByName('Megaton Removal Hub')!
+    expect(hub.note).toContain('a million tonnes a year')
+    expect(breakthroughsFor('carbonCapture').map((b) => b.name)).toContain('Megaton Removal Hub')
   })
 
   it('does not mention anything that does not exist yet in its first year', () => {
