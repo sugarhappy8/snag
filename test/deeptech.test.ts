@@ -28,6 +28,10 @@ import { HINT_EMOJI } from '../src/game/talents'
 import type { AnnualReportData, Asset, ChoiceModal, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
+import { marketDef } from '../src/game/business/competition-data'
+
+/** The deep-tech trades a founder can start in 2000, the year most of these tests are set (drones and carbon removal come later). */
+const OPEN_IN_2000 = DEEP_TECH_IDS.filter((ind) => (marketDef(ind).from ?? 0) <= 2000)
 
 function adultIn(countryId: string, money: number, seed = 3, smarts = 90): GameState {
   const g = createNewLife({ seed, year: 2000, countryId })
@@ -153,12 +157,12 @@ function act(g: GameState, a: Asset, id: string): MenuAction {
 }
 
 describe('deep tech', () => {
-  it('founds all eight industries in seven very different markets and trades 15+ years with finite numbers', { timeout: 600_000 }, () => {
+  it('founds every deep-tech industry open in 2000 in seven very different markets and trades 15+ years with finite numbers', { timeout: 600_000 }, () => {
     const countries = ['us', 'tw', 'kr', 'jp', 'de', 'in', 'ng']
     let survived = 0
     let selling = 0
     for (const [i, cc] of countries.entries()) {
-      for (const [j, ind] of DEEP_TECH_IDS.entries()) {
+      for (const [j, ind] of OPEN_IN_2000.entries()) {
         const g = adultIn(cc, 4_000_000, 11 + i * 8 + j)
         const a = found(g, ind)
         const b0 = readBiz(g, a)
@@ -284,7 +288,7 @@ describe('deep tech', () => {
   })
 
   it("doesn't turn investor money into the founder's money (close or sell right after a seed)", () => {
-    for (const ind of DEEP_TECH_IDS) {
+    for (const ind of OPEN_IN_2000) {
       const g = adultIn('us', 6_000_000, 21)
       const before = g.character.money
       const a = found(g, ind)

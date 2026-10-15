@@ -1,4 +1,4 @@
-// The industries you can start a business in (43 operating sectors + 8 deep-tech). Every number is a US baseline for ONE
+// The industries you can start a business in (43 operating sectors + 12 deep-tech). Every number is a US baseline for ONE
 // outlet (a truck, a restaurant, an office, a plant) in a typical city; economy.ts scales it
 // to each market with data/markets.ts (labor cost, rents, local prices, taxes, demand).
 //
@@ -425,6 +425,46 @@ const BASE_INDUSTRIES = {
     roles: [r('Chief Security Researcher', 'quality', 250_000), r('Red Team Lead', 'quality', 200_000), r('Head of Sales', 'sales', 210_000), r('SOC Director', 'ops', 190_000), r('CFO', 'finance', 220_000)],
     products: ['Threat Intelligence Feed', 'Phishing Simulator', 'Managed Detection Plan', 'Compliance Toolkit', 'Small Business Edition'],
     suffixes: ['Security', 'Cyber', 'Defense', 'Shield', 'Sentinel'],
+  },
+  fusion: {
+    id: 'fusion', label: 'Fusion Energy Company', emoji: '\u{1F31F}', unit: 'GWh', unitOne: 'GWh', site: 'fusion lab', sitePlural: 'fusion labs',
+    blurb: 'Build a star in a box and sell its power. Fusion has been thirty years away for seventy years.',
+    price: 110_000, unitCost: 40_000, localShare: 0.2, tradable: 0.6, demand: 900, elasticity: 0.9, incomeSens: 0.2,
+    capital: 2_000_000, capitalLocal: 0.3, staff: 45, wage: 150_000, staffScale: 0.55, rent: 350_000, maint: 0.1, capMult: 1,
+    multiple: 22, growth: 1, perMillion: 0.02, taxShare: 0, perishable: 1, marketingShare: 0.005,
+    roles: [r('Chief Plasma Physicist', 'quality', 320_000), r('Magnet Engineering Lead', 'quality', 240_000), r('Head of Utility Partnerships', 'sales', 250_000), r('Plant Operations Director', 'ops', 230_000), r('CFO', 'finance', 260_000)],
+    products: ['Neutron Source Rental', 'Superconducting Magnet Line', 'Plasma Diagnostics Kit', 'Fusion Power Contract', 'Industrial Heat Supply', 'Isotope Production Service'],
+    suffixes: ['Fusion', 'Plasma', 'Energy', 'Power', 'Stellar'],
+  },
+  neurotech: {
+    id: 'neurotech', label: 'Neurotech Company', emoji: '\u{1F9E0}', unit: 'implant procedures', unitOne: 'implant procedure', site: 'neuro lab', sitePlural: 'neuro labs',
+    blurb: 'Wire computers to the human brain. First you help a paralyzed patient move a cursor, then maybe everything else.',
+    price: 90_000, unitCost: 25_000, localShare: 0.25, tradable: 0.8, demand: 1_200, elasticity: 0.8, incomeSens: 0.4,
+    capital: 700_000, capitalLocal: 0.35, staff: 25, wage: 150_000, staffScale: 0.55, rent: 300_000, maint: 0.12, capMult: 1,
+    multiple: 22, growth: 1, perMillion: 0.2, taxShare: 0, perishable: 0.2, marketingShare: 0.04,
+    roles: [r('Chief Neuroscientist', 'quality', 320_000), r('Head of Neurosurgery', 'quality', 360_000), r('Head of Clinical Sales', 'sales', 240_000), r('Head of Device Manufacturing', 'ops', 210_000), r('CFO', 'finance', 250_000)],
+    products: ['Neural Signal Toolkit', 'Seizure Warning Implant', 'Speech Restoration App', 'Neurofeedback Headset', 'Clinic Training Program', 'Implant Care Plan'],
+    suffixes: ['Neuro', 'Neural', 'Synapse', 'Cortex', 'Mind'],
+  },
+  drones: {
+    id: 'drones', label: 'Drone & Air Taxi Company', emoji: '\u{1F681}', unit: 'aircraft', unitOne: 'aircraft', site: 'flight test center', sitePlural: 'flight test centers',
+    blurb: 'Start with camera drones, then deliveries, then flying taxis. Gravity and the aviation regulator both get a vote.',
+    price: 30_000, unitCost: 19_000, localShare: 0.3, tradable: 0.9, demand: 1_800, elasticity: 1.4, incomeSens: 0.5,
+    capital: 450_000, capitalLocal: 0.35, staff: 28, wage: 120_000, staffScale: 0.6, rent: 250_000, maint: 0.1, capMult: 1,
+    multiple: 15, growth: 1, perMillion: 0.4, taxShare: 0, perishable: 0.05, marketingShare: 0.03,
+    roles: [r('Chief Aerospace Engineer', 'quality', 260_000), r('Flight Software Lead', 'quality', 220_000), r('Head of Fleet Sales', 'sales', 210_000), r('Head of Flight Operations', 'ops', 190_000), r('CFO', 'finance', 230_000)],
+    products: ['Survey Drone Kit', 'Crop Spraying Drone', 'Drone Light Shows', 'Inspection Drone Service', 'Medical Supply Drops', 'Drone Pilot School'],
+    suffixes: ['Aero', 'Air', 'Skyworks', 'Aviation', 'Flight'],
+  },
+  carbonCapture: {
+    id: 'carbonCapture', label: 'Carbon Removal Company', emoji: '\u{1F343}', unit: 'tonnes of CO2 removed', unitOne: 'tonne of CO2 removed', site: 'pilot plant', sitePlural: 'pilot plants',
+    blurb: 'Pull carbon dioxide out of the sky and bury it for good. Every tonne costs money; somebody has to pay for it.',
+    price: 450, unitCost: 280, localShare: 0.3, tradable: 1, demand: 60_000, elasticity: 1.1, incomeSens: 0.3,
+    capital: 900_000, capitalLocal: 0.4, staff: 22, wage: 120_000, staffScale: 0.55, rent: 200_000, maint: 0.1, capMult: 1,
+    multiple: 16, growth: 1, perMillion: 0.1, taxShare: 0, perishable: 1, marketingShare: 0.02,
+    roles: [r('Chief Process Chemist', 'quality', 250_000), r('Head of Geology', 'quality', 210_000), r('Head of Credit Sales', 'sales', 220_000), r('Plant Director', 'ops', 200_000), r('CFO', 'finance', 230_000)],
+    products: ['Removal Credit Subscription', 'Carbon Accounting Service', 'Low-Carbon Concrete Additive', 'CO2 for Greenhouses', 'Rock Weathering Plots', 'Biochar Line'],
+    suffixes: ['Carbon', 'Climate', 'Air', 'Removal', 'Earthworks'],
   },
 } satisfies Partial<Record<Industry, IndustryDef>>
 

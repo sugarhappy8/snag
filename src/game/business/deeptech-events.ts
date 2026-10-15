@@ -94,6 +94,10 @@ const TOPIC: Record<string, string> = {
   electricVehicles: 'the car of the future',
   quantum: 'quantum physics',
   cybersecurity: 'cybersecurity',
+  fusion: 'fusion power',
+  neurotech: 'brain implants',
+  drones: 'flying taxis',
+  carbonCapture: 'pulling carbon out of the sky',
 }
 
 /** The biggest show a founder can go on in this country and year: a podcast, a talk show, the radio. */

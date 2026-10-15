@@ -1,5 +1,5 @@
 // Plain-JSON state of a deep-tech company (semiconductors, AI, robotics, biotech, space, EVs,
-// quantum, cybersecurity): R&D programs, tech level, funding rounds and the like live in
+// quantum, cybersecurity, fusion, neurotech, drones, carbon removal): R&D programs, tech level, funding rounds and the like live in
 // Asset.details.tech, next to the normal BizState. Light on imports on purpose: economy.ts reads
 // deepTechValue() for the valuation and exit.ts reads deepTechIpoThreshold().
 //
@@ -491,6 +491,10 @@ export const IPO_STAGE: Record<DeepTechIndustry, number> = {
   electricVehicles: 2,
   quantum: 2,
   cybersecurity: 2,
+  fusion: 2,
+  neurotech: 2,
+  drones: 2,
+  carbonCapture: 2,
 }
 
 interface ListingView {
