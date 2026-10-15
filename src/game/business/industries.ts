@@ -453,7 +453,7 @@ const BASE_INDUSTRIES = {
     capital: 450_000, capitalLocal: 0.35, staff: 28, wage: 120_000, staffScale: 0.6, rent: 250_000, maint: 0.1, capMult: 1,
     multiple: 15, growth: 1, perMillion: 0.4, taxShare: 0, perishable: 0.05, marketingShare: 0.03,
     roles: [r('Chief Aerospace Engineer', 'quality', 260_000), r('Flight Software Lead', 'quality', 220_000), r('Head of Fleet Sales', 'sales', 210_000), r('Head of Flight Operations', 'ops', 190_000), r('CFO', 'finance', 230_000)],
-    products: ['Survey Drone Kit', 'Crop Spraying Drone', 'Drone Light Shows', 'Inspection Drone Service', 'Medical Supply Drops', 'Drone Pilot School', 'Drone Insurance Plan'],
+    products: ['Aerial Survey Kit', 'Unmanned Crop Sprayer', 'Drone Light Shows', 'Aerial Inspection Service', 'Medical Supply Drops', 'Drone Pilot School', 'Drone Insurance Plan'],
     suffixes: ['Aero', 'Air', 'Skyworks', 'Aviation', 'Flight'],
   },
   carbonCapture: {
