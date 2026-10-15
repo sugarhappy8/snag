@@ -85,7 +85,7 @@ function has(x: { g: GameState; b: BizState }, tech: TechId): boolean {
 }
 
 /** What a deep-tech founder gets asked about on air. */
-const TOPIC: Record<string, string> = {
+export const TOPIC: Record<string, string> = {
   semiconductor: 'chips',
   aiLab: 'thinking machines',
   robotics: 'robots',
@@ -94,6 +94,10 @@ const TOPIC: Record<string, string> = {
   electricVehicles: 'the car of the future',
   quantum: 'quantum physics',
   cybersecurity: 'cybersecurity',
+  fusion: 'fusion power',
+  neurotech: 'brain implants',
+  drones: 'flying taxis',
+  carbonCapture: 'pulling carbon out of the sky',
 }
 
 /** The biggest show a founder can go on in this country and year: a podcast, a talk show, the radio. */

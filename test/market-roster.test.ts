@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { activeRivals, arcMult, baselineShares, familyId, futureDrift, isRealName, rawPull, realBrandsOf, rosterFill, rosterOf } from '../src/game/business/competition-roster'
 import { marketDef } from '../src/game/business/competition-data'
-import { EXPANSION_INDUSTRY_IDS, INDUSTRY_IDS, type Industry } from '../src/game/data/markets'
+import { EXPANSION_INDUSTRY_IDS, INDUSTRY_IDS, PROCEDURAL_DEEP_TECH_IDS, type Industry } from '../src/game/data/markets'
 import { brandById } from '../src/game/data/brands'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 
@@ -151,12 +151,12 @@ describe('real roster: era and place', () => {
 
   it('preserves curated real casts and fills the new sectors with simulated rivals', () => {
     for (const ind of INDUSTRY_IDS) {
-      if ((EXPANSION_INDUSTRY_IDS as readonly string[]).includes(ind)) {
+      if ((EXPANSION_INDUSTRY_IDS as readonly string[]).includes(ind) || (PROCEDURAL_DEEP_TECH_IDS as readonly string[]).includes(ind)) {
         const cast = activeRivals(rosterOf('expanded-cast', ind, 'us'), PRESENT_YEAR)
         expect(cast.length, ind).toBeGreaterThanOrEqual(5)
         expect(cast.every(r => !r.real), ind).toBe(true)
       } else expect(realBrandsOf(ind).length, ind).toBeGreaterThanOrEqual(15)
     }
-    expect(WORLD.length + NATIONAL.length).toBe(51)
+    expect(WORLD.length + NATIONAL.length).toBe(55)
   })
 })

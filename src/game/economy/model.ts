@@ -64,9 +64,12 @@ function classifySector(industry: string): Sector {
   if (/^(foodTruck|restaurant|cafe|bakery|grocery|farm|agriculture|food|supermarkets)$/.test(industry)) return 'essentials'
   if (/^(construction|realEstate|property|housing)$/.test(industry)) return 'housing'
   if (/bank|Bank|investment|finance|insurance|account/.test(industry)) return 'finance'
-  if (/energy|solar|battery|water|recycling|oil|utilities/.test(industry)) return 'energy'
+  if (/energy|solar|battery|water|recycling|oil|utilities|fusion|carbonCapture/.test(industry)) return 'energy'
   if (/logistics|transport|trucking|shipping|airline|travel/.test(industry)) return 'logistics'
-  if (/software|gameStudio|semiconductor|aiLab|quantum|cybersecurity|telecom|dataCenter|tech|comput/.test(industry)) return 'technology'
+  // 'neurotech' holds 'tech', which the technology rule below matches first: decide it here. (biotech
+  // holds it too and has always been technology; moving it would change every biotech company.)
+  if (industry === 'neurotech') return 'care'
+  if (/software|gameStudio|semiconductor|aiLab|quantum|cybersecurity|drones|telecom|dataCenter|tech|comput/.test(industry)) return 'technology'
   if (/clinic|biotech|health|homeCare|medical|pharma/.test(industry)) return 'care'
   if (/education|government|public|military|legal|law|police/.test(industry)) return 'public'
   if (/manufactur|robot|electricVehicles|spaceTech|packaging|furniture|auto|industrial|materials/.test(industry)) return 'industry'

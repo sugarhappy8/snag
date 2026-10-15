@@ -120,14 +120,19 @@ export function setShareCount(g: GameState, id: string, n: number): boolean {
 }
 
 function shareCountNode(a: Asset): MenuNode {
-  const each = (b: BizState, n: number) => moneyWith(Math.max(1, b.valuation) / Math.max(1, n), (x) => (x >= 100 ? x.toFixed(0) : x >= 1 ? x.toFixed(2) : x.toPrecision(2)))
+  // Written out in full, never '1.3e-10': a $1 company split into billions of shares is under a millionth of a dollar a share.
+  const each = (b: BizState, n: number) => {
+    const price = Math.max(1, b.valuation) / Math.max(1, n)
+    if (price < 0.000001) return `<${moneyWith(0.000001, (x) => x.toFixed(6))}`
+    return `about ${moneyWith(price, (x) => (x >= 100 ? x.toFixed(0) : x >= 1 ? x.toFixed(2) : x.toFixed(Math.min(8, Math.ceil(-Math.log10(x)) + 1))))}`
+  }
   return { type: 'action', id: `rescue.${a.id}.shares`, label: 'Share Count', emoji: '\u{1F9FE}',
     subtitle: (gg) => {
       const aa = findBusiness(gg, a.id); if (!aa) return ''
       const b = readBiz(gg, aa)
       if (b.public) return `${shareCountText(b.sharesOut)} shares listed at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))}`
       const n = shareCountOf(b)
-      return n ? `${shareCountText(n)} shares · about ${each(b, n)} each today` : 'Not split yet: an IPO would list at about the usual price per share'
+      return n ? `${shareCountText(n)} shares · ${each(b, n)} each today` : 'Not split yet: an IPO would list at about the usual price per share'
     },
     disabledReason: (gg) => {
       const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'
@@ -136,6 +141,6 @@ function shareCountNode(a: Asset): MenuNode {
     },
     input: { kind: 'slider', label: 'Total shares', min: MIN_SHARES, max: MAX_SHARES,
       defaultValue: (gg) => { const aa = findBusiness(gg, a.id); return String(aa ? shareCountOf(readBiz(gg, aa)) ?? DEFAULT_SHARES : DEFAULT_SHARES) },
-      preview: (gg, n) => { const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'; const b = readBiz(gg, aa), price = Math.max(1, b.valuation) / Math.max(1, n); return `${shareCountText(n)} shares at about ${each(b, n)} each: ${retailVerdict(price)} (if it listed at today's value). Your ownership stays ${pct(b.share, 2)}.` } },
+      preview: (gg, n) => { const aa = findBusiness(gg, a.id); if (!aa) return 'Company unavailable.'; const b = readBiz(gg, aa), price = Math.max(1, b.valuation) / Math.max(1, n); return `${shareCountText(n)} shares at ${each(b, n)} each: ${retailVerdict(price)} (if it listed at today's value). Your ownership stays ${pct(b.share, 2)}.` } },
     run: (gg, input) => { setShareCount(gg, a.id, Number(input)) } }
 }

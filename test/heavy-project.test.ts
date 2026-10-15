@@ -192,7 +192,7 @@ describe('which breakthroughs are on offer, and why one is blocked', () => {
     const offers = heavyOffers(g, b).map((x) => x.name)
     expect(offers).toEqual(NAMES)
     g.year = 2015
-    expect(heavyOffers(g, b).map((x) => x.name)).toEqual(NAMES.slice(0, 2))
+    expect(heavyOffers(g, b).map((x) => x.name)).toEqual(NAMES.slice(0, 4))
     g.year = 1960
     expect(heavyOffers(g, b).map((x) => x.name)).toEqual([NAMES[0]])
     g.year = 1930
@@ -203,7 +203,7 @@ describe('which breakthroughs are on offer, and why one is blocked', () => {
     const { g, b } = biz(10)
     b.products.push({ name: NAMES[0], launched: 2030, boost: 0.1, quality: 60 })
     b.rd = [heavyProject({ name: NAMES[1], family: NAMES[1] })]
-    b.retired = [NAMES[2]]
+    b.retired = NAMES.slice(2)
     expect(heavyOffers(g, b)).toEqual([])
   })
 
@@ -269,7 +269,7 @@ describe('which breakthroughs are on offer, and why one is blocked', () => {
     b.products = []
     // Not yet invented.
     g.year = 2012
-    expect(heavyBlock(g, b, NAMES[2])).toMatch(/ready/)
+    expect(heavyBlock(g, b, NAMES[4])).toMatch(/ready/)
   })
 
   it('names the cash that is missing, counting the reserve the company keeps', () => {
@@ -1107,7 +1107,7 @@ describe('retiring a breakthrough line', () => {
 
 describe('every breakthrough of every trade can be priced', () => {
   it('has a price, years, odds and quality in every classic trade that has a catalogue entry', () => {
-    const skip = new Set(['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity', 'gameStudio', 'bank', 'onlineBank', 'investmentFirm'])
+    const skip = new Set(['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity', 'fusion', 'neurotech', 'drones', 'carbonCapture', 'gameStudio', 'bank', 'onlineBank', 'investmentFirm'])
     let n = 0
     for (const industry of Object.keys(BREAKTHROUGHS)) {
       if (skip.has(industry)) continue

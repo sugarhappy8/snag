@@ -781,6 +781,66 @@ function bidAction(a: Asset, ev: string, label: string): MenuAction {
   })
 }
 
+/**
+ * The four newer deep-tech screens share one shape: a status line and one public showcase a year.
+ * The showcase opens at `stage`, the first rung of the ladder where the text of `early` stops being
+ * true (a brand-new lab already has a decent tech level, so the level can't tell the two apart).
+ */
+export const SHOWCASE: Record<'fusion' | 'neurotech' | 'drones' | 'carbonCapture', { emoji: string; status: (t: TechState) => string; label: string; subtitle: string; stage: number; early: string; usd: number; done: string; win: string; lose: string; loseTitle: string }> = {
+  fusion: {
+    emoji: '\u{1F31F}', status: (t) => `${plural(t.plant, 'power plant')} · safety record ${Math.round(t.safety)}/100`,
+    label: 'Open the Reactor to the Press', subtitle: 'Fire a shot with the cameras rolling.', stage: 1, early: 'There is no plasma worth filming yet.', usd: 300_000, done: 'opened the reactor to the press',
+    win: 'The shot held for a full second on live television. Utilities called the next day.',
+    lose: 'The plasma fizzled in a few milliseconds while the cameras rolled.', loseTitle: 'It Fizzled',
+  },
+  neurotech: {
+    emoji: '\u{1F9E0}', status: (t) => `${plural(t.plant, 'implant factory', 'implant factories')} · safety record ${Math.round(t.safety)}/100`,
+    label: 'Demo a Patient on Stage', subtitle: 'A trial patient plays a game using only their thoughts.', stage: 2, early: 'No patient has an implant yet.', usd: 200_000, done: 'demoed a patient on stage',
+    win: 'The patient beat a chess master using only their thoughts, live. Hospitals asked to join.',
+    lose: 'The signal dropped halfway through and the cursor froze on screen.', loseTitle: 'Signal Lost',
+  },
+  drones: {
+    emoji: '\u{1F681}', status: (t) => `${plural(t.plant, 'aircraft factory', 'aircraft factories')} · safety record ${Math.round(t.safety)}/100`,
+    label: 'Fly at the Air Show', subtitle: 'Show your aircraft to buyers and a big crowd.', stage: 1, early: 'Nothing you have flies well enough to show.', usd: 250_000, done: 'flew at the air show',
+    win: 'Your aircraft flew a perfect routine. Orders came in before the show ended.',
+    lose: 'A gust caught your aircraft and it landed in the car park. It dented two cars.', loseTitle: 'Rough Landing',
+  },
+  carbonCapture: {
+    emoji: '\u{1F343}', status: (t) => `${plural(t.plant, 'capture plant')} · verification record ${Math.round(t.safety)}/100`,
+    label: 'Invite the Auditors In', subtitle: 'Let independent scientists measure every tonne.', stage: 1, early: 'You have not removed any carbon to measure yet.', usd: 150_000, done: 'invited the auditors in',
+    win: 'The auditors confirmed every tonne and published the data. Credit buyers pay more.',
+    lose: 'The auditors found you removed a fifth less than you claimed.', loseTitle: 'Tonnes Missing',
+  },
+}
+
+function showcaseNodes(a: Asset, t: TechState, ind: keyof typeof SHOWCASE): MenuNode[] {
+  const d = SHOWCASE[ind]
+  return [
+    infoNode(a, ind, `${stageName(ind, t.stage)} · ${d.status(t)}`, d.emoji),
+    dtAct(a, 'showcase', d.label, d.emoji, {
+      subtitle: d.subtitle,
+      disabled: (gg, _bb, tt) => (tt.stage < d.stage ? d.early : (gg.yearActions[`dt.showcase.${a.id}`] ?? 0) >= 1 ? 'You already did that this year.' : null),
+      run: (gg, cur, bb, tt) => {
+        if (!useYearAction(gg, `dt.showcase.${cur.id}`, 1)) return tooBusy(gg, d.done)
+        const cost = payTech(bb, tt, Math.round(d.usd * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
+        if (chance(gg, clampN(0.3 + tt.level / 180 + tt.safety / 400, 0.15, 0.92))) {
+          tt.hype = clampN(tt.hype + 15, 0, 100)
+          bb.campaignBoost = clampN(bb.campaignBoost + 0.08, 0, 0.6)
+          bb.brand = clampN(bb.brand + 4, 0, 100)
+          log(gg, `${cur.name}'s showcase went well.`, 'good')
+          notice(gg, 'It Worked', `${d.win} (${formatMoney(cost)})`, { emoji: d.emoji, tone: 'good' })
+        } else {
+          tt.hype = clampN(tt.hype + 2, 0, 100)
+          bb.brand = clampN(bb.brand - 3, 0, 100)
+          log(gg, `${cur.name}'s showcase went wrong.`, 'bad')
+          notice(gg, d.loseTitle, `${d.lose} (${formatMoney(cost)})`, { emoji: d.emoji, tone: 'bad' })
+        }
+        revalue(gg, cur, bb, tt)
+      },
+    }),
+  ]
+}
+
 function screenMenu(a: Asset, b0: BizState): MenuGroup {
   const ind = dtInd(b0)
   const sc = DEEP_TECH[ind].screen
@@ -814,6 +874,11 @@ function screenMenu(a: Asset, b0: BizState): MenuGroup {
           return quantumNodes(g, a, b, t)
         case 'cybersecurity':
           return cyberNodes(g, a, b, t)
+        case 'fusion':
+        case 'neurotech':
+        case 'drones':
+        case 'carbonCapture':
+          return showcaseNodes(a, t, dtInd(b) as keyof typeof SHOWCASE)
       }
     },
   }

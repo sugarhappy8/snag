@@ -44,7 +44,7 @@ export interface HeavyRecord {
   rival?: string
 }
 
-/** Most records kept per trade and market (the catalogue has two or three per trade). */
+/** Most records kept per trade and market (the catalogue has five breakthroughs per trade). */
 export const MAX_HEAVY_RECORDS = 12
 /** Entries of a stored list that are looked at (a damaged save can't make every read slow). */
 const MAX_SCAN = 64

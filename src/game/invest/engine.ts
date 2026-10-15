@@ -422,7 +422,8 @@ const MAX_SLOTS = 14
 
 /** Deep-tech champions a hub exchange lists after its classic companies (strongest first). */
 function deepSlots(m: MarketProfile, have: number): SectorId[] {
-  const hubs = DEEP_TECH_IDS.filter((ind) => demandOf(m, ind) >= 1.4)
+  // Only industries with a listed sector (the newer deep-tech trades have no listed champions yet).
+  const hubs = DEEP_TECH_IDS.filter((ind) => DEEP_SECTOR[ind] !== undefined && demandOf(m, ind) >= 1.4)
     .sort((a, b) => demandOf(m, b) - demandOf(m, a) || a.localeCompare(b))
     .slice(0, bigEconomy(m) ? MAX_DEEP_SLOTS : 2)
   return hubs.map((ind) => DEEP_SECTOR[ind] as SectorId).slice(0, Math.max(0, MAX_SLOTS - have))

@@ -2,14 +2,14 @@
 // industry has a cast, nothing real ends after the present, and nothing negative is written.
 import { describe, expect, it } from 'vitest'
 import { allBrands, brandExists } from '../src/game/data/brands'
-import { EXPANSION_INDUSTRY_IDS, INDUSTRY_IDS } from '../src/game/data/markets'
+import { EXPANSION_INDUSTRY_IDS, INDUSTRY_IDS, PROCEDURAL_DEEP_TECH_IDS } from '../src/game/data/markets'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
 import { marketDef } from '../src/game/business/competition-data'
 import { NATIONAL_INDUSTRIES, rivalIndustry } from '../src/game/business/market-rows'
 import { knownPlace } from '../src/game/business/market-places'
 
 const rivals = allBrands().filter((b) => rivalIndustry(b))
-const curated = INDUSTRY_IDS.filter(id => !(EXPANSION_INDUSTRY_IDS as readonly string[]).includes(id))
+const curated = INDUSTRY_IDS.filter(id => !(EXPANSION_INDUSTRY_IDS as readonly string[]).includes(id) && !(PROCEDURAL_DEEP_TECH_IDS as readonly string[]).includes(id))
 
 describe('real rival data', () => {
   it('knows which industries are fought one country at a time, the same way the market model does', () => {

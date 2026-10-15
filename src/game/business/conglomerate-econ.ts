@@ -67,6 +67,10 @@ const SECTORS: Record<Industry, Sector[]> = {
   electricVehicles: ['transport', 'industry', 'tech'],
   quantum: ['tech'],
   cybersecurity: ['tech', 'services'],
+  fusion: ['industry', 'tech'],
+  neurotech: ['health', 'tech'],
+  drones: ['transport', 'tech'],
+  carbonCapture: ['industry', 'land'],
 }
 
 const SECTOR_LABEL: Record<Sector, string> = {

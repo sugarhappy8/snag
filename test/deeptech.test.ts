@@ -28,9 +28,13 @@ import { HINT_EMOJI } from '../src/game/talents'
 import type { AnnualReportData, Asset, ChoiceModal, GameState, Json, MenuAction, MenuGroup, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
+import { marketDef } from '../src/game/business/competition-data'
 
-function adultIn(countryId: string, money: number, seed = 3, smarts = 90): GameState {
-  const g = createNewLife({ seed, year: 2000, countryId })
+/** The deep-tech trades a founder can start in 2000, the year most of these tests are set (drones and carbon removal come later). */
+const OPEN_IN_2000 = DEEP_TECH_IDS.filter((ind) => (marketDef(ind).from ?? 0) <= 2000)
+
+function adultIn(countryId: string, money: number, seed = 3, smarts = 90, year = 2000): GameState {
+  const g = createNewLife({ seed, year, countryId })
   g.queue = []
   const c = g.character
   c.age = 30
@@ -153,12 +157,12 @@ function act(g: GameState, a: Asset, id: string): MenuAction {
 }
 
 describe('deep tech', () => {
-  it('founds all eight industries in seven very different markets and trades 15+ years with finite numbers', { timeout: 600_000 }, () => {
+  it('founds every deep-tech industry open in 2000 in seven very different markets and trades 15+ years with finite numbers', { timeout: 600_000 }, () => {
     const countries = ['us', 'tw', 'kr', 'jp', 'de', 'in', 'ng']
     let survived = 0
     let selling = 0
     for (const [i, cc] of countries.entries()) {
-      for (const [j, ind] of DEEP_TECH_IDS.entries()) {
+      for (const [j, ind] of OPEN_IN_2000.entries()) {
         const g = adultIn(cc, 4_000_000, 11 + i * 8 + j)
         const a = found(g, ind)
         const b0 = readBiz(g, a)
@@ -184,6 +188,35 @@ describe('deep tech', () => {
     // Deep tech is risky, not hopeless: plenty survive and many sell something.
     expect(survived).toBeGreaterThan(15)
     expect(selling).toBeGreaterThan(10)
+  })
+
+  it('founds the newer trades (fusion, neurotech, drones, carbon removal) today and runs their labs for a decade', { timeout: 600_000 }, () => {
+    const newer = ['fusion', 'neurotech', 'drones', 'carbonCapture'] as const
+    for (const [i, ind] of newer.entries()) {
+      for (const cc of ['us', 'de', 'in']) {
+        const g = adultIn(cc, 6_000_000, 70 + i, 95, PRESENT_YEAR)
+        const a = found(g, ind)
+        expect(PROGRAMS[ind].length, ind).toBeGreaterThanOrEqual(7)
+        let started = 0
+        for (let y = 0; y < 10 && g.character.alive; y++) {
+          const cur = businessAssets(g)[0]
+          if (!cur) break
+          const b = bizOf(g, cur)
+          const t = techOf(b)
+          if (t.programs.length === 0) {
+            const def = PROGRAMS[ind].find((p) => p.gate(t, b.countryId) === null)
+            if (def && startProgram(g, b, t, def)) started++
+          }
+          deepTechManagerTurnImpl(g, cur, b)
+          ageUp(g)
+          drain(g, YEAR_PREFS)
+          finiteBiz(g)
+        }
+        finiteState(g)
+        expect(started, `${cc} ${ind}`).toBeGreaterThan(0)
+        expect(a.name.length).toBeGreaterThan(0)
+      }
+    }
   })
 
   it('groups the eight under a Deep Tech heading with requirements, and keeps every classic row', () => {
@@ -284,7 +317,7 @@ describe('deep tech', () => {
   })
 
   it("doesn't turn investor money into the founder's money (close or sell right after a seed)", () => {
-    for (const ind of DEEP_TECH_IDS) {
+    for (const ind of OPEN_IN_2000) {
       const g = adultIn('us', 6_000_000, 21)
       const before = g.character.money
       const a = found(g, ind)
