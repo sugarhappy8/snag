@@ -434,6 +434,24 @@ function coBlock(g: GameState, id: string): string | null {
   return v ? (manageBlock(g, v.a) ?? companyBlock(g, v.a, v.b)) : GONE
 }
 
+const NOT_YOURS = "You don't run it."
+
+/** What the company's year runs on, as the screen shows it: the autopilot's terms when you don't run it, else the stored ones. */
+function coShown(g: GameState, v: CoView): { strategy: HedgeStrategy; call: MacroCall; lev: number; auto: boolean } {
+  const cur = v.h ?? NO_RECORD
+  const t = companyTerms(g, v.a, v.b, cur, companyQuote(g, v.a, v.b, cur.target).work)
+  return t.auto ? t : { strategy: cur.strategy, call: cur.call, lev: cur.lev, auto: false }
+}
+
+/** Why the strategy rows can't be used: the company's block, then that the autopilot runs it, then (when `macro`) the official's block. */
+function coRunBlock(g: GameState, id: string, macro = false): string | null {
+  const blocked = coBlock(g, id)
+  if (blocked) return blocked
+  const v = coView(g, id)
+  if (v && coShown(g, v).auto) return NOT_YOURS
+  return macro ? macroBlock(g) : null
+}
+
 function coLastText(h: CompanyHedge | null): string {
   const l = h?.last
   if (!l) return 'No year booked yet.'
@@ -486,11 +504,12 @@ function coStrategyMenu(id: string, cur: HedgeStrategy): MenuGroup {
     label: 'Strategy',
     emoji: '♟️',
     subtitle: STRATEGIES[cur].label,
+    disabledReason: (gg) => coRunBlock(gg, id),
     header: () => CHOOSE_NOTE,
     children: (gg) => {
       const v = coView(gg, id)
       if (!v) return [goneRow(id)]
-      const now = (v.h ?? NO_RECORD).strategy
+      const now = coShown(gg, v).strategy
       return HEDGE_STRATEGY_IDS.map((s): MenuAction => ({
         type: 'action',
         id: `hf-co-strategy-${id}-${s}`,
@@ -499,7 +518,7 @@ function coStrategyMenu(id: string, cur: HedgeStrategy): MenuGroup {
         subtitle: STRATEGIES[s].blurb,
         disabledReason: (g2) => {
           const w = coView(g2, id)
-          return coBlock(g2, id) ?? (w ? (strategyBlock(g2, w.b.countryId, s) ?? ((w.h ?? NO_RECORD).strategy === s ? 'Already your strategy.' : null)) : GONE)
+          return coRunBlock(g2, id) ?? (w ? (strategyBlock(g2, w.b.countryId, s) ?? ((w.h ?? NO_RECORD).strategy === s ? 'Already your strategy.' : null)) : GONE)
         },
         run: (g2) => {
           setCompanyFund(g2, id, { strategy: s })
@@ -510,7 +529,7 @@ function coStrategyMenu(id: string, cur: HedgeStrategy): MenuGroup {
   }
 }
 
-function coCallMenu(id: string, cur: CompanyHedge): MenuGroup {
+function coCallMenu(id: string, cur: { strategy: HedgeStrategy; call: MacroCall }): MenuGroup {
   const macro = cur.strategy === 'macro'
   return {
     type: 'menu',
@@ -518,18 +537,18 @@ function coCallMenu(id: string, cur: CompanyHedge): MenuGroup {
     label: macro ? `Market Call: ${CALLS[cur.call].emoji} ${CALLS[cur.call].label}` : 'Market Call',
     emoji: '🎯',
     subtitle: CALL_NOTE,
-    disabledReason: (gg) => coBlock(gg, id) ?? macroBlock(gg),
+    disabledReason: (gg) => coRunBlock(gg, id, true),
     children: (gg) => {
       const v = coView(gg, id)
       if (!v) return [goneRow(id)]
-      const now = v.h ?? NO_RECORD
+      const now = coShown(gg, v)
       return MACRO_CALL_IDS.map((c): MenuAction => ({
         type: 'action',
         id: `hf-co-call-${id}-${c}`,
         label: `${CALLS[c].label}${now.strategy === 'macro' && now.call === c ? ' ✓' : ''}`,
         emoji: CALLS[c].emoji,
         subtitle: CALLS[c].blurb,
-        disabledReason: (g2) => coBlock(g2, id) ?? macroBlock(g2),
+        disabledReason: (g2) => coRunBlock(g2, id, true),
         hint: (g2) => {
           const w = coView(g2, id)
           return w ? callHint(g2, { countryId: w.b.countryId }, c) || null : null
@@ -551,7 +570,7 @@ function coLeverageAction(id: string, cur: CompanyHedge): MenuAction {
     emoji: '🏋️',
     subtitle: 'Borrow to bet bigger on your call',
     visible: (gg) => coView(gg, id)?.h?.strategy === 'macro',
-    disabledReason: (gg) => coBlock(gg, id) ?? macroBlock(gg),
+    disabledReason: (gg) => coRunBlock(gg, id, true),
     input: {
       kind: 'slider',
       label: 'Leverage',
@@ -590,16 +609,17 @@ function companyScreen(g: GameState, id: string): MenuNode[] {
   if (!v) return [goneRow(id)]
   const cur = v.h ?? NO_RECORD
   const q = companyQuote(g, v.a, v.b, cur.target)
+  const shown = coShown(g, v)
   const texts = [
     `Cash at work: ${money(q.work)} of ${money(q.spare)} spare.`,
     `The company keeps ${money(q.floor)}.`,
-    strategyText(cur.strategy, cur.call, cur.lev),
+    strategyText(shown.strategy, shown.call, shown.lev),
     coLastText(v.h),
   ]
-  if (companyTerms(g, v.a, v.b, cur, q.work).auto) texts.push(AUTO_NOTE)
+  if (shown.auto) texts.push(AUTO_NOTE)
   texts.push("The cash stays on the company's books.")
   const nodes: MenuNode[] = texts.map((text, n) => info(`hf-co-${id}-i${n}`, text))
-  nodes.push(coTargetAction(id, v, q), coStrategyMenu(id, cur.strategy), coCallMenu(id, cur))
+  nodes.push(coTargetAction(id, v, q), coStrategyMenu(id, shown.strategy), coCallMenu(id, shown))
   if (cur.strategy === 'macro') nodes.push(coLeverageAction(id, cur))
   nodes.push(coStopAction(id))
   return nodes

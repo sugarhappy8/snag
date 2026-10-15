@@ -9,7 +9,7 @@ import { hedgeBlock, quantBlock, STRATEGIES } from '../src/game/business/fund-mo
 import { callHint } from '../src/game/business/fund-events'
 import { signed } from '../src/game/business/fund-text'
 import { manageBlock } from '../src/game/business/gate'
-import { companyBlock, companyQuote, eligibleCompanies, setCompanyFund } from '../src/game/business/hedge-company'
+import { companyBlock, companyQuote, companyTerms, eligibleCompanies, setCompanyFund } from '../src/game/business/hedge-company'
 import { candidates, fundOf, fundsOf, invite, putIn, startBlock, startFund, takeQuote } from '../src/game/business/hedge-fund'
 import { companyFundNode, fundSubtitle, fundView, hedgeRow } from '../src/game/business/hedge-menu'
 import { macroBlock, personBlock, seedMin } from '../src/game/business/hedge-model'
@@ -799,6 +799,8 @@ describe('company funds', () => {
     g.character.age = 45
     const c = company(g, { cash: 20_000_000 })
     c.b.founded = g.year - 8
+    // The official runs it, so the only block left is the rule about calls.
+    becomeCeo(g, c.a, bizOf(g, c.a))
     const strategy = menu(coScreen(g, c.a), `hf-co-strategy-${c.a.id}`)
     expect(action(strategy.children(g), `hf-co-strategy-${c.a.id}-macro`).disabledReason?.(g)).toBe(macroBlock(g))
     expect(menu(coScreen(g, c.a), `hf-co-call-${c.a.id}`).disabledReason?.(g)).toBe(macroBlock(g))
@@ -816,6 +818,88 @@ describe('company funds', () => {
     expect(hired).toContain(NOTE)
     expect(hired.length).toBe(owner.length + 1)
     expect(hired[hired.length - 1]).toBe("The cash stays on the company's books.")
+  })
+
+  describe('when you do not run it', () => {
+    const REASON = "You don't run it."
+
+    /** A company with a stored Macro Bear 2x that a hired manager now runs. */
+    function hired(): { g: GameState; co: Asset } {
+      const { g, co } = world()
+      becomeCeo(g, co, bizOf(g, co))
+      expect(setCompanyFund(g, co.id, { call: 'bear' })).toBe(true)
+      expect(setCompanyFund(g, co.id, { lev: 2 })).toBe(true)
+      expect(readCompanyHedge(readBiz(g, co).hedge)).toMatchObject({ strategy: 'macro', call: 'bear', lev: 2 })
+      installManager(g, bizOf(g, co), managerCandidate(g, bizOf(g, co), 80))
+      return { g, co }
+    }
+
+    it('shows the strategy the year really runs, not the stored one', () => {
+      const { g, co } = hired()
+      const b = readBiz(g, co)
+      const q = companyQuote(g, co, b, readCompanyHedge(b.hedge)!.target)
+      const terms = companyTerms(g, co, b, readCompanyHedge(b.hedge)!, q.work)
+      expect(terms.auto).toBe(true)
+      expect(terms.strategy).not.toBe('macro')
+      const rows = infos(g, coScreen(g, co))
+      expect(rows[2]).toBe(`Strategy: ${STRATEGIES[terms.strategy].label}`)
+      expect(rows.join(' ')).not.toMatch(/Macro|Bear|2x/)
+      expect(rows).toContain(NOTE)
+    })
+
+    it('disables Strategy, Market Call and Leverage with the one reason, and keeps Cash at Work and Stop', () => {
+      const { g, co } = hired()
+      const screen = coScreen(g, co)
+      const strategy = menu(screen, `hf-co-strategy-${co.id}`)
+      const call = menu(screen, `hf-co-call-${co.id}`)
+      const lev = action(screen, `hf-co-lev-${co.id}`)
+      expect(strategy.disabledReason?.(g)).toBe(REASON)
+      expect(call.disabledReason?.(g)).toBe(REASON)
+      expect(lev.disabledReason?.(g)).toBe(REASON)
+      for (const c of strategy.children(g)) expect(action([c], c.id).disabledReason?.(g)).toBe(REASON)
+      for (const c of call.children(g)) expect(action([c], c.id).disabledReason?.(g)).toBe(REASON)
+      expect(subtitleOf(g, strategy)).not.toBe(STRATEGIES.macro.label)
+      expect(call.label).toBe('Market Call')
+      expect(action(screen, `hf-co-target-${co.id}`).disabledReason?.(g) ?? null).toBeNull()
+      expect(action(screen, `hf-co-stop-${co.id}`).disabledReason?.(g) ?? null).toBeNull()
+    })
+
+    it('an owner-run company is unchanged: the stored strategy, and the rows work', () => {
+      const { g, co } = world()
+      becomeCeo(g, co, bizOf(g, co))
+      expect(setCompanyFund(g, co.id, { call: 'bear' })).toBe(true)
+      expect(setCompanyFund(g, co.id, { lev: 2 })).toBe(true)
+      const screen = coScreen(g, co)
+      expect(infos(g, screen)[2]).toBe('Strategy: Global Macro · Bear at 2x')
+      expect(infos(g, screen)).not.toContain(NOTE)
+      const strategy = menu(screen, `hf-co-strategy-${co.id}`)
+      const call = menu(screen, `hf-co-call-${co.id}`)
+      expect(strategy.disabledReason?.(g) ?? null).toBeNull()
+      expect(call.disabledReason?.(g) ?? null).toBeNull()
+      expect(call.label).toBe('Market Call: 📉 Bear')
+      expect(action(screen, `hf-co-lev-${co.id}`).disabledReason?.(g) ?? null).toBeNull()
+      expect(action(strategy.children(g), `hf-co-strategy-${co.id}-event`).disabledReason?.(g) ?? null).toBeNull()
+      expect(action(call.children(g), `hf-co-call-${co.id}-bull`).disabledReason?.(g) ?? null).toBeNull()
+    })
+
+    it('renders both cases from a deep-frozen state', () => {
+      for (const make of [hired, () => {
+        const w = world()
+        becomeCeo(w.g, w.co, bizOf(w.g, w.co))
+        setCompanyFund(w.g, w.co.id, { call: 'bear', lev: 2 })
+        return w
+      }]) {
+        const { g, co } = make()
+        const json = JSON.stringify(g)
+        const rng = g.rng
+        deepFreeze(g)
+        const text = walk(g, coScreen(g, co))
+        expect(text.length).toBeGreaterThan(20)
+        expect(text.filter((t) => BAD_TEXT.test(t))).toEqual([])
+        expect(JSON.stringify(g)).toBe(json)
+        expect(g.rng).toBe(rng)
+      }
+    })
   })
 
   it('actions are disabled when the company can no longer hold a fund', () => {
