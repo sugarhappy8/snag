@@ -356,6 +356,65 @@ describe('the manager block', () => {
     expect(info(g, 'team-manager-block')).toBeTruthy()
   })
 
+  describe('when the manager is idle', () => {
+    function banned(): GameState {
+      let hit: { countryId: string; year: number } | null = null
+      for (const countryId of ['cn', 'cu', 'ru', 'ir']) {
+        for (let year = 1950; year <= 1990 && !hit; year++) if (investingBlocked(countryId, year)) hit = { countryId, year }
+        if (hit) break
+      }
+      const g = client(43, { ...hit!, money: 3_000_000 })
+      withTeam(g, { manager: { ...MANAGER, since: g.year - 1 }, mandate: { stocks: 60, reserve: 500_000, limit: 50 } })
+      return g
+    }
+
+    function jailed(): GameState {
+      const g = managed(11, 3_000_000)
+      g.character.prison = { crime: 'Fraud', yearsTotal: 3, yearsServed: 0, security: 'minimum', respect: 50 } as unknown as GameState['character']['prison']
+      return g
+    }
+
+    for (const [name, make] of [['a market that bans private investing', banned], ['prison', jailed]] as const) {
+      it(`says why nothing will happen, instead of waiting for a statement, in ${name}`, () => {
+        const g = make()
+        const idle = managedBook(g).idle
+        expect(idle).toBeTruthy()
+        expect(readTeam(g)?.manager).toBeDefined()
+        expect(info(g, 'team-idle')).toBe(idle)
+        expect(ids(g)).not.toContain('team-last')
+        expect(exercise(g).map((s) => s.text).join('\n')).not.toMatch(/No statement yet|first comes at year-end/)
+      })
+
+      it(`shows no preview of moves in ${name}`, () => {
+        const g = make()
+        for (const id of ['team-stocks', 'team-reserve', 'team-limit']) {
+          const input = act(g, id).input!
+          for (const v of [input.min!, Math.round((input.min! + input.max!) / 2), input.max!]) expect(input.preview!(g, v)).toBe('')
+        }
+        expect(exercise(g).map((s) => s.text).join('\n')).not.toMatch(/moves this year|free to invest|changes hands/)
+      })
+
+      it(`renders from a frozen state in ${name}`, () => {
+        const g = make()
+        const json = JSON.stringify(g)
+        const rng = g.rng
+        deepFreeze(g)
+        const text = exercise(g).map((s) => s.text)
+        expect(text.filter((t) => JUNK.test(t))).toEqual([])
+        expect(JSON.stringify(g)).toBe(json)
+        expect(g.rng).toBe(rng)
+      })
+    }
+
+    it('keeps the statement line and the previews when the book is not idle', () => {
+      const g = managed(11, 2_000_000)
+      expect(managedBook(g).idle).toBeNull()
+      expect(ids(g)).not.toContain('team-idle')
+      expect(info(g, 'team-last')).toBe('No statement yet. The first comes at year-end.')
+      expect(preview(g, 'team-stocks', 60)).toMatch(/moves this year/)
+    })
+  })
+
   it('offers three managers with the rating they claim and the rate they ask', () => {
     const g = client(11)
     const meet = group(g, 'team-meet-manager')

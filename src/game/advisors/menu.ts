@@ -227,7 +227,7 @@ function stocksDial(): MenuAction {
       defaultValue: (g) => String(running(g)?.mandate.stocks ?? 0),
       preview: (g, v) => {
         const r = running(g)
-        if (!r) return ''
+        if (!r || managedBook(g).idle) return ''
         const stocks = whole(v, STOCKS.min, STOCKS.max)
         const plan = planYear(managedBook(g), { ...r.mandate, stocks }, r.manager.skill)
         return `${stocks}% stocks. About ${shortMoney(plan.moved)} moves this year.${plan.held > 0 ? ` The limit holds back ${shortMoney(plan.held)}.` : ''}`
@@ -254,7 +254,7 @@ function reserveDial(g: GameState, reserve: number): MenuAction {
       defaultValue: (gg) => String(running(gg)?.mandate.reserve ?? 0),
       preview: (gg, v) => {
         const r = running(gg)
-        if (!r) return ''
+        if (!r || managedBook(gg).idle) return ''
         const kept = Number.isFinite(v) ? Math.max(0, v) : 0
         const plan = planYear(managedBook(gg), { ...r.mandate, reserve: kept }, r.manager.skill)
         return `${shortMoney(kept)} stays. ${shortMoney(plan.spare)} is free to invest.`
@@ -280,7 +280,7 @@ function limitDial(): MenuAction {
       defaultValue: (g) => String(running(g)?.mandate.limit ?? LIMIT.min),
       preview: (g, v) => {
         const r = running(g)
-        if (!r) return ''
+        if (!r || managedBook(g).idle) return ''
         const limit = whole(v, LIMIT.min, LIMIT.max)
         const plan = planYear(managedBook(g), { ...r.mandate, limit }, r.manager.skill)
         return `Up to ${shortMoney((limit * plan.pool) / 100)} changes hands. A wider limit also gives a crook more room.`
@@ -298,10 +298,14 @@ function managerNodes(g: GameState, team: Team | null): MenuNode[] {
   ]
   if (team?.manager) {
     const manager = team.manager
-    const mandate = team.mandate ?? defaultMandate(managedBook(g), typicalIncome(g))
+    const book = managedBook(g)
+    const idle = book.idle
+    const mandate = team.mandate ?? defaultMandate(book, typicalIncome(g))
     nodes.push(
       { type: 'info', id: 'team-manager', emoji: '💼', text: `${manager.name}, ${ratingLabel(manager.claimed)}. Agreed fee ${pct(manager.rate)} a year of the money they run.` },
-      { type: 'info', id: 'team-last', emoji: '🧾', text: statementLine(team.last) },
+      idle
+        ? { type: 'info', id: 'team-idle', emoji: '🔒', text: idle }
+        : { type: 'info', id: 'team-last', emoji: '🧾', text: statementLine(team.last) },
       stocksDial(),
       reserveDial(g, mandate.reserve),
       limitDial(),
