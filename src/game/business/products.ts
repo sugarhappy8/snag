@@ -63,6 +63,10 @@ const STYLE: Record<string, Style> = {
   electricVehicles: 'tech',
   quantum: 'tech',
   cybersecurity: 'tech',
+  fusion: 'tech',
+  neurotech: 'tech',
+  drones: 'tech',
+  carbonCapture: 'tech',
 }
 
 export function styleOf(industry: string): Style {

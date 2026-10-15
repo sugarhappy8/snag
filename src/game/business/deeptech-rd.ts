@@ -148,8 +148,8 @@ function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechPro
   let o = p.odds * (0.75 + skill / 200)
   if (t.pace === 'blitz') o *= 0.96
   const ind = dtInd(b)
-  if (runsIt(g, a) && ((ind === 'aiLab' || ind === 'cybersecurity' || ind === 'robotics') && hasTalent(g, 'Programming'))) o *= 1.05
-  if (runsIt(g, a) && ((ind === 'biotech' || ind === 'quantum' || ind === 'semiconductor') && hasTalent(g, 'Academics'))) o *= 1.05
+  if (runsIt(g, a) && ((ind === 'aiLab' || ind === 'cybersecurity' || ind === 'robotics' || ind === 'drones') && hasTalent(g, 'Programming'))) o *= 1.05
+  if (runsIt(g, a) && ((ind === 'biotech' || ind === 'quantum' || ind === 'semiconductor' || ind === 'fusion' || ind === 'neurotech' || ind === 'carbonCapture') && hasTalent(g, 'Academics'))) o *= 1.05
   return clampN(o, 0.03, 0.95)
 }
 

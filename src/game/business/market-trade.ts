@@ -102,7 +102,7 @@ function tariffEra(year: number): number {
  */
 const GOODS: Partial<Record<Industry, number>> = {
   manufacturing: 1, semiconductor: 1, robotics: 1, electricVehicles: 1, biotech: 0.9, ecommerce: 0.85, energy: 0.7, farm: 0.9, fashion: 1,
-  beauty: 1, gameStudio: 0.25, spaceTech: 0.3, quantum: 0.3, software: 0.12, aiLab: 0.05, cybersecurity: 0.08, marketing: 0.05,
+  beauty: 1, gameStudio: 0.25, spaceTech: 0.3, quantum: 0.3, fusion: 0.2, neurotech: 0.8, drones: 1, carbonCapture: 0, software: 0.12, aiLab: 0.05, cybersecurity: 0.08, marketing: 0.05,
   logistics: 0.3, hotel: 0, realEstate: 0, entertainment: 0.05, clinic: 0.1, construction: 0.3, brewery: 0.9, bakery: 0.5, grocery: 0.9,
 }
 

@@ -58,6 +58,8 @@ describe('why the Heavy R&D list is empty', () => {
     b.products.push({ name: NAMES[0], launched: 2029, boost: 0, quality: 80, family: NAMES[0], kind: 'breakthrough' })
     b.rd = [{ id: 'rd9', name: NAMES[1], budget: 1e6, years: 4, progress: 1, odds: 0.4, boost: 0, quality: 80, family: NAMES[1], kind: 'breakthrough', heavy: true, cost: 1e6, started: 2030 }]
     addHeavy(g, 'restaurant', 'us', { family: NAMES[2], year: 2027, years: 4, quality: 80, cost: 2e6, by: a.id })
+    addHeavy(g, 'restaurant', 'us', { family: NAMES[3], year: 2027, years: 4, quality: 80, cost: 2e6, by: a.id })
+    addHeavy(g, 'restaurant', 'us', { family: NAMES[4], year: 2027, years: 4, quality: 80, cost: 2e6, by: a.id })
     expect(heavyOffers(g, b, a.id)).toEqual([])
     const text = noneRow(g, a)!
     expect(text).not.toContain('Nothing is invented yet')
@@ -73,8 +75,8 @@ describe('why the Heavy R&D list is empty', () => {
     expect(heavyOffers(g, b, a.id).length).toBeGreaterThan(0)
     expect(heavyNone(g, b, a.id)).toBeNull()
     expect(noneRow(g, a)).toBeUndefined()
-    rememberRetired(b, NAMES.slice(0, 2))
-    expect(heavyOffers(g, b, a.id).map((x) => x.name)).toEqual([NAMES[2]])
+    rememberRetired(b, NAMES.slice(0, 4))
+    expect(heavyOffers(g, b, a.id).map((x) => x.name)).toEqual([NAMES[4]])
     expect(heavyNone(g, b, a.id)).toBeNull()
     const deep = biz(26, 'semiconductor')
     expect(heavyNone(deep.g, deep.b, deep.a.id)).toBeNull()

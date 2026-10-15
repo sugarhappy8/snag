@@ -111,8 +111,8 @@ export function founderSkill(g: GameState, ind: DeepTechIndustry): number {
   }
   s += degree
   if (req.coding) s += Math.min(25, codingSkill(g) / 3)
-  if ((ind === 'aiLab' || ind === 'cybersecurity' || ind === 'robotics') && hasTalent(g, 'Programming')) s += 8
-  if ((ind === 'biotech' || ind === 'quantum' || ind === 'semiconductor') && hasTalent(g, 'Academics')) s += 8
+  if ((ind === 'aiLab' || ind === 'cybersecurity' || ind === 'robotics' || ind === 'drones') && hasTalent(g, 'Programming')) s += 8
+  if ((ind === 'biotech' || ind === 'quantum' || ind === 'semiconductor' || ind === 'fusion' || ind === 'neurotech' || ind === 'carbonCapture') && hasTalent(g, 'Academics')) s += 8
   return clampN(Math.round(s), 5, 100)
 }
 

@@ -32,8 +32,8 @@ function fixture(industry: Industry = 'restaurant', seed = 45) {
 }
 
 describe('expanded company markets', () => {
-  it('has 51 complete sectors with finite, playable economic plans', () => {
-    expect(INDUSTRY_IDS).toHaveLength(51)
+  it('has 55 complete sectors with finite, playable economic plans', () => {
+    expect(INDUSTRY_IDS).toHaveLength(55)
     for (const id of INDUSTRY_IDS) {
       expect(INDUSTRIES[id].id).toBe(id)
       expect(MARKETS[id]).toBeDefined()

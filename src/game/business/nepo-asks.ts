@@ -160,7 +160,7 @@ export function askOdds(g: GameState, b: BizState, p: Person): number {
   if (base <= 0) return 0
   const life = npcLife(p)
   if (life && p.data.npcRecruitmentYear === g.year && p.relationship >= 55 && !p.data.npcCompany) {
-    const technical = ['software', 'aiLab', 'robotics', 'semiconductor', 'manufacturing', 'biotech', 'quantum', 'cybersecurity'].includes(b.industry)
+    const technical = ['software', 'aiLab', 'robotics', 'semiconductor', 'manufacturing', 'biotech', 'quantum', 'cybersecurity', 'fusion', 'neurotech', 'drones', 'carbonCapture'].includes(b.industry)
     const relevant = ['Business', 'Law', 'Marketing'].includes(life.field) || (technical && ['Engineering','Mathematics','Computer Science','Medicine'].includes(life.field)) || (['investmentFirm','bank','onlineBank'].includes(b.industry) && ['Finance','Mathematics','Computer Science'].includes(life.field))
     if (relevant) base = Math.max(base, .4)
   }

@@ -1,4 +1,4 @@
-// The Heavy R&D catalogue: every industry has its two or three breakthroughs, each a kind of product of
+// The Heavy R&D catalogue: every industry has its five breakthroughs, each a kind of product of
 // its own that no classic, variant or next-generation name of any industry can be mistaken for.
 import { describe, expect, it } from 'vitest'
 import { BREAKTHROUGHS, breakthroughByName, breakthroughsFor } from '../src/game/business/heavy-data'
@@ -12,13 +12,9 @@ const ALL = Object.entries(BREAKTHROUGHS).flatMap(([industry, list]) => list.map
 const EM_DASH = /—|–/
 
 describe('Heavy R&D catalogue', () => {
-  it('has exactly the industries of industries.ts, each with 2 or 3 entries', () => {
+  it('has exactly the industries of industries.ts, each with five entries', () => {
     expect(Object.keys(BREAKTHROUGHS).sort()).toEqual([...IDS].sort())
-    for (const id of IDS) {
-      const n = breakthroughsFor(id).length
-      expect(n, id).toBeGreaterThanOrEqual(2)
-      expect(n, id).toBeLessThanOrEqual(3)
-    }
+    for (const id of IDS) expect(breakthroughsFor(id).length, id).toBe(5)
   })
 
   it('has unique names of at most 40 characters', () => {

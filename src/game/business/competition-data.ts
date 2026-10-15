@@ -189,6 +189,38 @@ export const MARKETS: Record<Industry, MarketDef> = {
     hubs: [['us', 40], ['il', 18], ['gb', 8], ['cn', 6], ['de', 5], ['ru', 5], ['fr', 4], ['in', 4], ['ca', 4], ['jp', 3], ['kr', 3]],
     names: { pre: ['Bastion', 'Sentinelle', 'Rampart', 'Cipherion', 'Watchtower', 'Bulwark', 'Portcullis', 'Moatline', 'Keyward', 'Tripwire'], post: ['Security', 'Cyber', 'Defense', 'Shield', 'Labs'] },
   },
+  fusion: {
+    scope: 'world', noun: 'fusion power', ref: 3, field: 20, fringe: 0.15, network: 5, named: 12, emerging: true,
+    // Private fusion starts with the first venture-backed labs of the late 1990s; before that it is government science.
+    from: 1998, notYet: 'Fusion is a government science project. No investor will back a private reactor yet.',
+    curve: [[1998, 0.001], [2010, 0.01], [2018, 0.1], [2021, 0.35], [2024, 0.75], [2026, 1], [2030, 2.5], [2035, 8], [2045, 30], [2060, 60]],
+    hubs: [['us', 45], ['gb', 12], ['cn', 12], ['ca', 6], ['de', 6], ['jp', 6], ['fr', 4], ['kr', 3], ['ch', 2], ['au', 2]],
+    names: { pre: ['Tokamaq', 'Stellara', 'Heliora', 'Plasmion', 'Sunforge', 'Deuteron', 'Magnetar', 'Corona', 'Pinchwell', 'Lawson'], post: ['Fusion', 'Energy', 'Power', 'Plasma'] },
+  },
+  neurotech: {
+    scope: 'world', noun: 'brain interface', ref: 2, field: 25, fringe: 0.2, network: 4, named: 12, emerging: true,
+    // The first brain implants that let a paralyzed patient move a cursor date from the late 1990s.
+    from: 1998, notYet: 'Nobody has wired a computer to a human brain yet. It is still science fiction.',
+    curve: [[1998, 0.001], [2005, 0.005], [2012, 0.02], [2018, 0.08], [2022, 0.3], [2024, 0.6], [2026, 1], [2030, 2.5], [2035, 5], [2045, 10], [2060, 16]],
+    hubs: [['us', 50], ['cn', 12], ['ch', 6], ['gb', 6], ['de', 5], ['au', 4], ['fr', 4], ['il', 4], ['nl', 3], ['jp', 3]],
+    names: { pre: ['Synapta', 'Cortica', 'Neuroweave', 'Axonics', 'Dendra', 'Gliaworks', 'Thoughtwire', 'Mindbridge', 'Spikeline', 'Neurona'], post: ['Neuro', 'Neural', 'Interfaces', 'Labs'] },
+  },
+  drones: {
+    scope: 'world', noun: 'drone', ref: 3, field: 40, fringe: 0.25, network: 4, named: 14, emerging: true,
+    // Consumer and survey drones become a business with cheap flight controllers in the mid-2000s.
+    from: 2005, notYet: 'Drones are military hardware and radio-controlled toys. Nobody sells one to a farmer yet.',
+    curve: [[2005, 0.005], [2010, 0.03], [2014, 0.15], [2016, 0.3], [2020, 0.55], [2024, 0.85], [2026, 1], [2030, 1.8], [2035, 3.2], [2045, 5], [2060, 6.5]],
+    hubs: [['cn', 35], ['us', 30], ['de', 6], ['fr', 5], ['il', 5], ['gb', 4], ['jp', 4], ['kr', 3], ['br', 2], ['ch', 2]],
+    names: { pre: ['Rotora', 'Hoverline', 'Skylift', 'Aerivo', 'Quadwing', 'Liftworks', 'Propella', 'Vertiq', 'Glidex', 'Nimbus'], post: ['Aero', 'Air', 'Aviation', 'Drones', 'Mobility'] },
+  },
+  carbonCapture: {
+    scope: 'world', noun: 'carbon removal', ref: 3, field: 30, fringe: 0.25, network: 3, named: 12, emerging: true,
+    // The first direct-air-capture startups were founded around 2009.
+    from: 2008, notYet: 'Nobody pays to take carbon dioxide out of the air yet. Most people have not heard of the problem.',
+    curve: [[2008, 0.002], [2015, 0.01], [2019, 0.05], [2022, 0.25], [2024, 0.6], [2026, 1], [2030, 3], [2035, 7], [2045, 15], [2060, 22]],
+    hubs: [['us', 40], ['ch', 10], ['ca', 8], ['gb', 8], ['de', 6], ['no', 5], ['se', 4], ['ke', 3], ['au', 3], ['jp', 3]],
+    names: { pre: ['Airloom', 'Carbona', 'Skyscrub', 'Basaltic', 'Terravent', 'Stonebind', 'Sequestra', 'Biocharred', 'Ventora', 'Greenfin'], post: ['Carbon', 'Climate', 'Removal', 'Air'] },
+  },
 }
 
 export function marketDef(industry: string): MarketDef {
