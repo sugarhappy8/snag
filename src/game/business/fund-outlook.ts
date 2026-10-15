@@ -60,14 +60,22 @@ export function bestFee(g: GameState, b: BizState, f: FundState): number {
 
 export interface StrategyOutlook { strategy: HedgeStrategy; expected: number; swing: number }
 
+/** What a strategy's outlook needs: the runner's skill, how much size dilutes it, the market's drift, leverage and the algorithm's edge. */
+export interface OutlookIn { skill: number; cap: number; drift: number; lev: number; algoEdge: number }
+
+/** Expected yearly return before fees and the swing around it, from the inputs alone (macro depends on the call). */
+export function outlookOf(strategy: HedgeStrategy, x: OutlookIn): StrategyOutlook {
+  const alpha = alphaMean(x.skill) * (strategy === 'macro' ? 1 : x.cap)
+  if (strategy === 'longShort') return { strategy, expected: .45 * x.drift + .025 + alpha * 1.2, swing: .1 }
+  if (strategy === 'event') return { strategy, expected: .3 * x.drift + .055 - .015 + alpha * .8, swing: .07 }
+  if (strategy === 'quant') return { strategy, expected: .1 * x.drift + .03 + (x.algoEdge + (x.skill - 50) * .0003) * x.cap + alpha * .6, swing: .05 }
+  return { strategy, expected: alpha * .5, swing: .18 * x.lev }
+}
+
 /** Expected yearly return before fees, at the market's long-run drift (macro depends on the call). */
 export function strategyOutlook(g: GameState, b: BizState, f: FundState, strategy: HedgeStrategy): StrategyOutlook {
-  const skill = fundSkill(g, b), cap = capacityFactor(f.aum, skill, b), drift = marketDrift(b.countryId)
-  const alpha = alphaMean(skill) * (strategy === 'macro' ? 1 : cap)
-  if (strategy === 'longShort') return { strategy, expected: .45 * drift + .025 + alpha * 1.2, swing: .1 }
-  if (strategy === 'event') return { strategy, expected: .3 * drift + .055 - .015 + alpha * .8, swing: .07 }
-  if (strategy === 'quant') return { strategy, expected: .1 * drift + .03 + (f.algoEdge + (skill - 50) * .0003) * cap + alpha * .6, swing: .05 }
-  return { strategy, expected: alpha * .5, swing: .18 * f.lev }
+  const skill = fundSkill(g, b)
+  return outlookOf(strategy, { skill, cap: capacityFactor(f.aum, skill, b), drift: marketDrift(b.countryId), lev: f.lev, algoEdge: f.algoEdge })
 }
 
 export function bestStrategy(g: GameState, b: BizState, f: FundState): StrategyOutlook {

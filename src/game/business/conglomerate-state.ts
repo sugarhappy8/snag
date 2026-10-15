@@ -571,6 +571,8 @@ export function detach(g: GameState, a: Asset, b: BizState, listing: GroupListin
     b.sharePrice = round2(Math.max(0.05, value / b.sharesOut))
     b.valuation = Math.round(b.sharePrice * b.sharesOut)
     b.pref = 0
+    // A company that comes out of a group lists as one class (share-classes.ts).
+    delete b.classes
     b.ticker = newTicker(g, a, b)
     // A group wound up around its last company keeps the listing's year, and has no offer price to show.
     if (opts.keepIpoYear) delete b.ipoPrice

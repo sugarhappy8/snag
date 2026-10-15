@@ -7,9 +7,11 @@ import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
 import { breakthroughByName } from './heavy-data'
+import { companyHedgeField, type CompanyHedge } from './hedge-record'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
 import { readFamilyShares } from './family-share-state'
+import { dividendField, type DividendPolicy } from './dividend-policy'
 
 export interface KeyStaff {
   id: string
@@ -216,6 +218,9 @@ export function diluteBusinessEquity(b: BizState, retained: number): void {
   for (const holder of b.familyShares ?? []) holder.share *= clampN(retained, 0, 1)
   b.executiveEquity = executiveEquity(b) * clampN(retained, 0, 1)
   diluteManagerEquity(b.manager, retained)
+  // New shares are ordinary ones: the founders' class shrinks with the owner's part (share-classes.ts).
+  const plan = readClasses(b.classes)
+  if (plan) b.classes = { kind: plan.kind, hi: plan.hi * clampN(retained, 0, 1) }
 }
 
 export interface BizState {
@@ -306,6 +311,12 @@ export interface BizState {
   ticker?: string
   /** The offer price at the listing, for "since the IPO". Missing on old saves and on companies that left a wound-up group. */
   ipoPrice?: number
+  /**
+   * The share structure the owner chose (business/share-classes.ts): the plan for the IPO while the
+   * company is private, the live structure while it is listed. Missing means one class. Read it
+   * with readClasses, never trust the field.
+   */
+  classes?: ClassPlan
   ceo: 'owner' | 'manager'
   manager: Manager | null
   /** Vested company shares across current and dismissed executives. */
@@ -377,8 +388,12 @@ export interface BizState {
   family?: Json
   /** Company milestones reached (business/milestones.ts readMilestones). Missing on old saves. */
   milestones?: Json
+  /** Cash at work in a hedge fund (business/hedge-record.ts readCompanyHedge). Missing: none. Read it with readCompanyHedge, never raw. */
+  hedge?: CompanyHedge
   /** Franchise network (business/franchise.ts readFranchise). Missing until the first franchise is sold. */
   franchise?: Json
+  /** Yearly dividend rule (business/dividend-policy.ts). Missing: none set. Read it with readDividend, never raw. */
+  dividend?: DividendPolicy
 }
 
 export const BIZ_VERSION = 2
@@ -386,6 +401,28 @@ export const BIZ_VERSION = 2
 /** A ticker is exactly four capital letters. */
 export function isTicker(v: unknown): v is string {
   return typeof v === 'string' && /^[A-Z]{4}$/.test(v)
+}
+
+/** 'ab': the founders' class carries ten votes a share and the public's one. 'nv': the public's carries none. */
+export type ClassKind = 'ab' | 'nv'
+
+export interface ClassPlan {
+  kind: ClassKind
+  /** The part of the whole company the owner holds in the founders' class, 0-1. */
+  hi: number
+}
+
+/**
+ * A stored share structure, cleaned: null unless it is a plain object whose kind is exactly 'ab' or
+ * 'nv'. `hi` is clamped to 0-1 and is 0 when missing or not a finite number (the safe side: no
+ * extra votes). Returns a new object; never throws and never changes what it is given.
+ */
+export function readClasses(v: unknown): ClassPlan | null {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return null
+  const kind = (v as { kind?: unknown }).kind
+  if (kind !== 'ab' && kind !== 'nv') return null
+  const hi = (v as { hi?: unknown }).hi
+  return { kind, hi: typeof hi === 'number' && Number.isFinite(hi) ? clampN(hi, 0, 1) : 0 }
 }
 
 export function isBusinessAsset(a: Asset): boolean {
@@ -595,6 +632,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   }
   const history = [...historyByYear.values()].slice(-12)
   const supplier = d.supplier === 'budget' || d.supplier === 'premium' ? d.supplier : 'standard'
+  const classes = readClasses(d.classes)
   const retired = readRetired(d.retired)
   // A year, or nothing: a damaged value must never leave Heavy R&D waiting for good.
   const heavyLast = typeof d.heavyLast === 'number' && Number.isFinite(d.heavyLast) && d.heavyLast >= 1800 && d.heavyLast <= 2300 ? Math.round(d.heavyLast) : null
@@ -644,6 +682,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ipoYear: Math.round(num(d.ipoYear)),
     ...(isTicker(d.ticker) ? { ticker: d.ticker } : {}),
     ...(typeof d.ipoPrice === 'number' && Number.isFinite(d.ipoPrice) && d.ipoPrice > 0 && d.ipoPrice <= 1e12 ? { ipoPrice: d.ipoPrice } : {}),
+    ...(classes ? { classes } : {}),
     ceo: d.ceo === 'manager' ? 'manager' : 'owner',
     manager: readManager(d.manager),
     executiveEquity: clampN(num(d.executiveEquity, num(rec(d.manager)?.equity)), 0, 1),
@@ -680,7 +719,9 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.family && typeof d.family === 'object' && !Array.isArray(d.family) ? { family: d.family } : {}),
     ...(d.expansion && typeof d.expansion === 'object' && !Array.isArray(d.expansion) ? { expansion: d.expansion } : {}),
     ...(d.milestones && typeof d.milestones === 'object' && !Array.isArray(d.milestones) ? { milestones: d.milestones } : {}),
+    ...companyHedgeField(d.hedge),
     ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
+    ...dividendField(d.dividend),
   }
 }
 

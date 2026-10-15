@@ -88,9 +88,19 @@ src/
                          versions, rivals' offerings, stacking, who loses customers (see "Business growth")
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
+    business/share-classes.ts share-classes-menu.ts  Share classes of the player's company: the votes
+                         a stake carries and the price factor (share-classes.ts), choosing the classes at
+                         the IPO and from Capital & Ownership (share-classes-menu.ts; see "Share classes" below)
     business/own-listing.ts listing-id.ts own-trade.ts own-listing-menu.ts  The player's listed
                          companies in Stocks: tiers, ticker and exchange, buy and sell rules, the row
                          and its screen (see "Your listed companies in Stocks" below)
+    business/dividend-policy.ts dividend-year.ts dividend-menu.ts  The yearly dividend rule, its
+                         quote and year step, and its menu (see "Yearly dividends" below)
+    business/hedge-record.ts hedge-model.ts hedge-fund.ts hedge-company.ts hedge-year.ts hedge-menu.ts
+                         Personal, family and company hedge funds in Investments: the saved records
+                         and their readers, the return model shared with the firm, funds as Assets,
+                         the company's cash at work, the yearly hook and the menus (see "Hedge funds"
+                         below)
     business/finance-firm.ts  Banks and investment firms: a thin dispatcher (simulateFinanceYear,
                          financeNodes, financeManagerTurn, financeEraBlock...) to bank*.ts (Banking 2.0:
                          rates, lending appetite, products, regulator, runs, events) and fund*.ts
@@ -107,6 +117,16 @@ src/
     investments.ts invest/*.ts  Stocks, funds, bonds, savings, crypto, gold on the local exchange.
                          registerOwnListings(provider) is how business/own-listing-menu.ts adds rows
                          to Stocks, so investments.ts still imports nothing from business/
+                         buySecurity and sellHolding take a trailing `quiet` flag (no popup, no log line).
+                         managedBook(g) (pure) and managedOrder(g, bucket, side, dollars) are the seam for
+                         the money manager: three buckets (the index fund, bonds, savings) of ordinary
+                         holdings. advisors/ imports them; investments.ts imports nothing from advisors/
+                         registerHedgeFunds(hooks) is how business/hedge-menu.ts adds the Hedge Funds
+                         row and the fund screens, by the same rule
+    advisors/*.ts        Money team (see "Money team" below): mandate (the manager's three dials and the
+                         pure yearly plan), team (the g.flags['fin.team'] record, offers, fees, gates,
+                         vetting, hire and release), review (the advisor's six findings), year (the
+                         yearly hook) and menu (Assets, Business & Investments, Money Team)
     shops.ts shops/*.ts         Everyday stores, memberships/subscriptions, tickets, Luxury Lifestyle
     cv.ts                The player's CV (Character.cv explicit entries + entries derived from state),
                          cvScore for admissions/jobs, national school rankings, the job market, and
@@ -119,6 +139,8 @@ src/
                          options, single-stock options and coin shorts (money-*.ts), online scams
     invest/shocks.ts     Market shocks (g.flags.marketShocks): a company/coin banned or hyped by a
                          head of state; investments and options read the price hit. Kept across heirs
+    invest/class-data.ts The classes real companies had, by year (votes, who holds them, which are
+                         listed), their Stocks screen line and the second listed lines that can be bought
     workshop/*.ts        Inventor's Workshop (Inventor 2.0): catalog, notebook, builds, patents, launch routes,
                          sales, events, menus and the old-save migration
     nation/*.ts          Politics 2.0: what governments do and what it does to the world (see "Politics 2.0"
@@ -536,13 +558,13 @@ Spending past the board's yearly budget (opening sites, capacity lines, product 
 - **When a company has a board.** When anyone else owns part of it (BizState.share < 0.999), when it is listed, or when a conglomerate claims it. Groups register through board-state.registerGroupBoard; their people fill the owner's seats.
 
 - **Where the state lives.** Governance is plain JSON in BizState.board. Use board-state.readBoard for menus and boardOf for actions and yearly hooks; old saves get defaults. It holds:
-  - directors, each with a seeded local name and stance (growth/profit/caution) and loyalty. Seats follow ownership through seatPlan/syncSeats, which never touch g.rng: owner seats ≈ share, investor directors, and at least two independents once listed;
+  - directors, each with a seeded local name and stance (growth/profit/caution) and loyalty. Seats follow ownership through seatPlan/syncSeats, which never touch g.rng: owner seats ≈ votes (`share-classes.ownerVotes`; the same as the share with one class), investor directors, and at least two independents once listed;
   - the mandate (growth/balanced/profit/cash);
   - the limits: a yearly capex+R&D budget as a share of company value, a cash reserve in months of running costs, and a CEO pay cap as a multiple of career.ceoPayNorm;
   - recent votes, patience/misses/warnings, CEO churn, the CEO's last letter, and any rogue scheme.
 
 - **Votes (board-vote.ts).**
-  - Proposals: ownerPay, bonus, ceoPay, dividend, capex, debt, sell, ipo, merge, close, fire, hire, takeOver, mandate, limits.
+  - Proposals: ownerPay, bonus, ceoPay, dividend, capex, debt, sell, ipo, merge, recap, close, fire, hire, takeOver, mandate, limits.
   - assess() gives the merit to all shareholders and how much the proposal favours the owner (self-dealing); each director gets a yes probability from that, their stance and their loyalty.
   - passOdds() is the exact probability vote() rolls; the Business hints use it.
   - needsVote()/boardAllows() gate actions. The player is held to the same limits as a hired CEO.
@@ -555,7 +577,9 @@ Spending past the board's yearly budget (opening sites, capacity lines, product 
   - hires and lets go key staff;
   - retires lines that cost more to run than they win and funds the best R&D projects (rd.ts bestRdIdea);
   - closes loss-making sites and opens sites or capacity at the mandate's payback and growth pace, within the budget and reserve;
-  - repays expensive debt and pays dividends under the cash/profit mandates;
+  - repays expensive debt and pays dividends under the cash/profit mandates (`payoutTurn`; while the
+    owner has set a yearly dividend rule, `payoutTurn` returns at once and the rule pays instead, see
+    "Yearly dividends");
   - writes one letter a year (career.ceoLetter).
 
   At 75 or below they keep yearly.autoPlan, tilted by style. Deep-tech managers (deeptech-manager.ts) and studio managers (gamestudio.studioManagerTurn) have their own versions of the upgrade. The what-if evaluators (bestOpening, bestLines, bestClosure, bestRdWithin, outlook, mandateScores) are pure and shared with the hints.
@@ -653,6 +677,61 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   removes it from the player's assets and turns each relative's stake into their own wealth at
   market value (`dynasty-ownership.cashOutFamilyHolders`); the yearly pass cleans up listed
   holdings already at 0% (`yearly.leaveUnownedListed`).
+- **Share classes** (`business/share-classes.ts`, `share-classes-menu.ts`, `invest/class-data.ts`): the
+  player's company can list with founder shares or a non-voting float, and a few real companies show the
+  classes they had.
+  - **One pool, derived votes (D1).** Economics stay one number, `BizState.share`. Votes are derived by
+    `share-classes.ownerVotes`, which is `b.share` exactly when there is no live record. `board-state.seatPlan`
+    is the only place a stake becomes seats and it reads votes, so every board decision, firing rule and
+    "you'd lose control" line follows them (`controlsFor` is the rule, `own-trade.controlsWith` delegates to
+    it). Board size still follows economics. `test/control-sites.test.ts` lists every other place a share
+    meets a half and classifies it (economics, a group, who profits); a new one fails until someone does.
+  - **The record (D2, D3).** `BizState.classes?: { kind: 'ab' | 'nv'; hi }` (optional, whitelisted in
+    `normalizeBiz`, read through `readClasses` because `bizOf` does not re-normalize a current record). `ab`: the
+    founders' class has 10 votes and the public's 1. `nv`: the founders' 1 and the public's 0. `hi` is the
+    part of the whole company the owner holds in the founders' class, clamped to the stake when read; relatives
+    hold the founders' class, executives and the float the ordinary one. A writer that adds shares and has
+    never heard of classes (a Stocks buy, Buy Out Investors, an agent's buy) therefore adds ordinary shares,
+    which is the safe answer. Only three writers keep `hi` in step: `diluteBusinessEquity` (scales it),
+    the buyback in `rescue.transactEquity` (`scaleFounders`) and `exit.sellShares` (`clampFounders`). A stake
+    can also shrink with no sale (a hired CEO's equity grant, an inheritance) and leave `hi` above it, so the
+    two writers that add ordinary shares (`own-trade.buyOwnShares`, `rescue.transactEquity`) cap `hi` at the
+    stake held first (`clampFounders`), and the buy quote and preview read `foundersCapped`: shares bought
+    never bring a lost stake's founder votes back. An estate that splits a listed company's stake
+    (`dynasty-ownership.inheritConglomerates`) keeps the founders' class as a whole (`foundersWhole`,
+    `keepFoundersWhole`): the relatives' shares hold it by rule, so the heir who takes the company keeps
+    what is left of it, and a sole heir keeps the record as it was.
+  - **Only while listed (D4).** `activeClasses` returns the record only for a public company that stands
+    alone and has shares. A private company's record is the plan its IPO will use, and `conglomerate-state.detach`
+    clears it when a company comes out of a group and lists. Groups and divisions have none.
+  - **Choosing (D5, D6).** The Share Classes rows (`classesNode`) sit under Capital & Ownership and beside Go
+    Public. A private company sets its plan for free, any time. A listed company asks its board once a year
+    (the `'recap'` proposal, merit +0.3 for one class, -1.0 for `ab`, -1.3 for `nv`; the year key is
+    `classes.<id>`; a refused recap does not use up the `'merge'` slot), converts the owner's whole stake to the
+    founders' class and re-seats the board. The market pays 4% less for `ab` and 7% less for `nv`
+    (`CLASS_DISCOUNT`): `ipoPlanFor` scales the pre-money value, `updateSharePrice`, the Stocks buy floor and
+    `rescue.equityQuote` (so a Capital & Ownership move doesn't re-mark the price) carry `classFactor`, and a
+    recap moves the price once by the difference. A payout (`board-menu.payOut`, which the manual dividend
+    and the yearly rule both end in, and a hired CEO's cash payout) and the buyback and new-money lines of
+    `transactEquity` move the price by the cash times `classFactor`, so it lands on the structure's price and
+    the yearly update has nothing to heal. `classOption`, `ipoPreview` and the
+    row subtitles call the same functions the action runs, never `g.rng`.
+  - **Real companies (D8 to D10).** `invest/class-data.ts` is a curated table (21 companies, each row from a
+    public source named above it) of the classes a company had by year. The company's Stocks screen gets a
+    "Share classes" line from it. A listed extra class (12 of them) is a line inside that screen with the id
+    `<company id>~<letter>`: its price is the company's times `1 + spread` (`lineSpread`), with no new draw,
+    so it splits and ends with the company by construction (`lineYear` maps a `SecYear`). A line's own last
+    year cashes the holder out as delisted. Lines are not in `allQuotes`, `stocks` or `investmentListing`
+    (they hang off `Quote.lines`), so the row counts and the unique-ticker tests stay as they were; look
+    them up through `quotesWithLines`.
+  - **`companyKey` (D9).** `invest/engine.companyKey` strips a line's `~X` suffix. `isRealSecId`,
+    `breakthroughStockFactor`, `shockFactor`, `addMarketShock` (every cause but `'liquidity'`),
+    `pruneShocks` and `politics.insiderPositions` use it, so one company is one security for news, inventions
+    and insider cases. Order flow stays on the line that was traded. Anything that groups holdings by company
+    (hedge funds, an advisor) must call `companyKey`; nothing enforces it until it does.
+  - **Old saves.** A save without `classes` plays as before (`ownerVotes === share`, `classFactor === 1`; the
+    golden tests pin `seatPlan` and `ipoPreview`). A damaged record reads as one class. A save holding a
+    line whose data later goes cashes out as delisted at the last price, like any unknown id.
 - **Your listed companies in Stocks** (`business/own-listing.ts`, `listing-id.ts`, `own-trade.ts`,
   `own-listing-menu.ts`): a company you've taken public shows in Investments › Stocks as a view and a
   trade door over the business.
@@ -693,6 +772,116 @@ divorce) reach `afterMemberGone` through `assetHooks.businessGone`.
   - **Groups (D10).** A listed group gets one view-only row: its market cap, your group stake, its
     exchange and tier. It has no ticker and no Buy or Sell, and its divisions get no row. A group is
     traded from its own screen (`sellGroupShares`).
+  - **Last dividend (D11).** A company's screen shows "Last dividend: $X a share for YEAR, N% of the
+    price." when its dividend rule holds a last payment with a per-share amount above 0 (see "Yearly
+    dividends"). The yield is left out when the price makes it meaningless. Groups show nothing.
+- **Yearly dividends** (`business/dividend-policy.ts`, `dividend-year.ts`, `dividend-menu.ts`): a
+  standing rule on a company you own pays a share of the year's profit, or of the spare cash, at year end.
+  - **The record (D1).** `BizState.dividend?: DividendPolicy` holds `mode` (`profit` or `cash`), `pct`
+    (5% to 100%, default 30%), `keep` (months of costs to keep, 0 to 24, default 3) and the `last` payment
+    (`year`, `paid`, `mine`, `perShare`). `dividend-policy.ts` imports nothing, because `state.ts` imports
+    it. `normalizeBiz` whitelists it through `dividendField`. `bizOf` doesn't re-normalize a
+    current-version record, so every reader calls `readDividend(b.dividend)` and never reads the field
+    raw. A damaged value reads as no rule. `withPolicy` is how the menu (and any later advisor) changes
+    it, through the same clamps. `BIZ_VERSION` stays 2, and a save without the field behaves as before.
+  - **The maths (D2 to D4, pure).** `dividendFloor` is the larger of `keep` months of `runningCosts` and,
+    when a board exists, the board's `reserveDollars`. `spare = max(0, payoutCash - floor)`. The basis is
+    the year's `Statement.net` (profit mode, never below 0) or the spare cash. `pay = min(spare,
+    round(pct x basis))`, and under $1 is nothing. `dividendQuote` gives the numbers and, when nothing is
+    paid, the one reason (`why`). Debt, investors' preference, unreleased-game money and a bank's capital
+    all sit inside `payoutCash`/`payableCash`, so a payment never passes them and borrowing to pay can't
+    work. Nothing carries over to the next year.
+  - **Paying (D6).** `board-menu.payOut` is the one money move, extracted from the manual `payDividend`:
+    cash out, the player's part through `earnIncome` (taxed as income where the player lives), relatives
+    through `payFamilyBusinessProceeds`, and a listed company's `sharePrice` down by the payout per share
+    with `valuation` re-marked. `autoDividendYear` calls it, stores `last` on the rule and returns the
+    amounts, including an estimate of the income tax at the margin. `yearlyFinance` settles the real tax
+    in the same age-up, because the `business` hook runs before `finance`.
+  - **When it runs (D5).** `yearly.ts` calls `autoDividendYear` once per company inside the company
+    loop, after the board review and milestones and before the cash-crunch exit, the annual report and the
+    hired CEO's turn, so those plan on the cash left. A fiscal year pays once (`last.year >= s.year`
+    returns). It uses no `g.rng` and takes no `g.nextId`. A game that never set a rule changes nothing.
+  - **No vote (D7).** The rule never asks the board and records no vote. The board's reserve sits inside
+    the floor, so a payment never passes the line that would need one.
+  - **Who runs it (D8, D9).** The owner, a hired CEO, a player in prison and a young heir all get paid.
+    While a rule is set, `board-ceo.payoutTurn` returns at once, so a Cash or Profit mandate can't pay on
+    top. A division of a group is skipped and its menu hidden, because its cash is the group's.
+  - **Reporting (D10).** One life-log line per company ("X paid me $N in dividends.", or "X paid no
+    dividend." with the reason) and one bundled "Dividends" popup a year, only when something was paid.
+    Its id is `div-<generation>-<year>`.
+  - **The menu (D12).** Company › Money › Yearly Dividend (`dividendMenu`, after the manual dividend):
+    Share of Profit, Share of Spare Cash, Cash to Keep and Turn Off. Each slider previews what it would
+    pay now through `ruleNote`, from the same quote the year step uses. Menus are pure and render from a
+    deep-frozen state.
+- **Hedge funds** (`business/hedge-record.ts`, `hedge-model.ts`, `hedge-fund.ts`, `hedge-company.ts`,
+  `hedge-year.ts`, `hedge-menu.ts`): Investments › Hedge Funds lets the player run a Personal fund and a
+  Family fund with their own cash, and set an ordinary company's spare cash to work. The funds are not
+  the hedge-fund firm.
+  - **The model (D1).** The year is the firm's own maths in `fund-model.ts` (`marketMove`, `hedgeGross`,
+    `financingCost`, `alphaMean`, `capacityOf`) with the firm's four strategies and blurbs.
+    `capacityOf` and `outlookOf` were pulled out of `capacityFactor` and `strategyOutlook` so one formula
+    serves both, and `test/fund-extract-pin.test.ts` pins the firm's numbers. `hedge-model.vehicleYear`
+    is the whole year: `net = (1 + gross)(1 - 0.5%) - 1`. There is no fee. The fund pays a running cost of
+    `RUNNING_COST` (0.5%) a year and nothing else. Skill is the runner's (`runnerSkill`, `leadOf`,
+    `skillOf`), and a company's is `leaderSkill`. Noise comes from `hedgeRng` (company: `fundRng`), a
+    seeded stream by life, outcome tag, fund id and year, so a Time Machine jump rerolls it.
+  - **Person and family funds (D2, D3).** One Asset each: kind `investment`, `details.type` `'hedge'`,
+    the record in `details.hf`. `Asset.value` is the player's own units at the unit price, so net worth
+    and the estate count it once. `investments.ts` keeps a `SIDE_ACCOUNTS` set (`npcEquity`, `hedge`):
+    `investmentHoldings` and `sellCore` skip it, so Sell Everything, the portfolio total and the politics
+    insider count never see a fund. A family fund also holds relatives' units;
+    their money is never in the player's net worth or estate. Money moves through `spend`, `realize`
+    and the relatives' own `Person.money`, and a fund never creates any. Take Out sells units and pays
+    tax on the gain through `investments.realize` (carried losses first); a take out of all of it, or
+    nearly, closes the fund.
+  - **Company fund (D4, D12).** `BizState.hedge` (a `CompanyHedge`) is a sleeve. The cash stays in
+    `b.cash`. Each fiscal year, before `simulateYear`, `bookHedgeYear` (called in `yearly.ts` next to
+    `bookFranchiseYear`) puts `work = min(target, payoutCash - floor)` to work. The floor is the larger
+    of six months of running costs and the board's reserve. The result moves `b.cash` and goes into
+    `yearIncome` (a gain) or `yearCosts` (a loss), so the statement and the corporate tax count it
+    once, and loans, closure and the cash crunch need no change. `runningCosts` takes a loss out of the last
+    year's costs (`hedgeResultFor`), so the floors built on it don't jump after a bad year. A year can lose a little over 95% of
+    `work` at the most (`hedgeGross` stops at -0.95, then the running cost comes off), and `work` is
+    spare cash above the floor, so after the worst year the company is as liquid as the floor. Banks,
+    investment firms (their own fund is `coinvest`) and divisions of a group are refused. A hired CEO,
+    or a player who is in prison or under 18, runs the firm's autopilot terms (`autoTerms`).
+  - **The result is valued as cash (D4).** The result is in `b.cash`, which `valuationOf` already counts,
+    but it is also in that year's profit, which `valuationOf` capitalizes at the industry multiple. Left
+    alone, a gain would raise the company's value five or six times over. So the booking keeps the last
+    three years' results in `CompanyHedge.marks`, and `valuationOf` takes `hedgeProfitIn` (the result
+    less the tax it added, read back from the year's own record) out of the profit it capitalizes, the
+    way it takes out one-off franchise fees. A deep-tech company works its value out from its own profit
+    too (`deeptech-core.operatingValue`), so it takes the same amount out there. The company's value
+    then moves by the cash and no more; `test/hedge-integration.test.ts` pins it.
+  - **Macro lasts a year (D7).** A Macro call, with its 1x to 3x leverage, reverts to Long/Short, flat,
+    1x after the year it is booked for. An office holder (`politicianJob`) cannot set it, and a stored
+    Macro runs as Long/Short while they hold the job.
+  - **Relatives (D9, D10).** The family fund is one pool in units. A relative is invited one by one, puts
+    in 20% of their money and never more than your own units are worth, and joins at the going price.
+    Each yearly step starts with `settleHolders`: a holder who is now the player merges into the player's
+    units, a late holder's units go to `dynasty-ownership.familyStakeHeirs`, and one who has cooled
+    (relationship under 15), was disowned or is estranged is paid out. Settling never changes the unit
+    price. A year of -15% or worse cools every holder by 3. At death, `life.continueAsChild` first
+    settles the funds (`settleFundsAtDeath`), so units of a relative who died first pass on; the units of
+    the player are in the estate through `Asset.value`. A sole adult heir keeps the fund in kind and the
+    relatives stay in it (`keptFundHolders` keeps them as contacts). Otherwise the fund is dropped and
+    `payOutDroppedFunds` pays the relatives through `cashOutFamilyHolders` before the heir's money is
+    built, with one line in the estate text.
+  - **The yearly hook (`hedge-year.yearlyHedge`).** Registered in `aging.YEARLY_HOOKS` right after
+    `investments`. It settles, books each fund once a birthday (`f.lastYear`), and queues one popup
+    (`Hedge Funds`, id `hedge-<generation>-<year>`, which takes nothing from the id counter) that lists
+    the funds and the companies' cash at work. It returns at once when the player is dead or there is
+    no fund and no company record.
+  - **Saves.** Every field is optional and read through `readHedge` or `readCompanyHedge`, which never
+    throw or mutate their input. `hedge-record.ts` imports nothing at runtime, because `state.ts`
+    imports it for `normalizeBiz`; it repeats the firm's strategy and call lists, and a test pins them
+    equal. A damaged fund record reads as none: the Asset keeps its stored value in net worth, and its
+    screen says the books are damaged. `BIZ_VERSION` stays 2.
+  - **Rules it keeps.** No `g.rng` anywhere in the feature: not a menu, quote, preview, action or the
+    yearly step. Menus are pure and every closure re-finds its Asset by id (`stayOpen` leaves stale
+    nodes). `investments.ts` imports nothing from `business/`: `registerHedgeFunds` takes the row, the
+    fund screen and the subtitle, and the Asset's own screen under Assets is the same fund screen
+    (`investmentAssetView`).
 - **National strategy** stays off financial firms; `national-view.tidyNationalStrategy` shows the
   `COMPARE_SHOWN` best foreign markets and a one-line summary.
 - **Banks' money rules** (`business/bank*.ts`): deposits and loans are client money; equity is
@@ -733,6 +922,57 @@ Money only leaves through spend(). Amounts use local price multipliers (goods, e
 **Game flags.** `wealth.pending` (ventures, keyed by investor), `wealth.cd` (cooldowns for outsiders), `wealth.donated` (per character, for diminishing karma and fame) and `wealth.bound.door|strangers|charity`.
 
 **Person menu.** relationships.ts `personActions` appends `wealthNodes` (wealth-menu.ts): a "Money Matters" group for family and friends while the player is an adult. It has an allowance slider with a live caption, lend, ask to be paid back, forgive, buy a car, pay for a vacation, help with a house, and fund their idea. The Business talent hint shows the same odds the payout rolls. statusInfo shows the allowance and what they owe.
+
+## Money team (advisors/*.ts)
+
+An adult can hire a financial advisor, who reports the biggest problems in their money, and a financial manager, who keeps a stated mix of stock funds, bonds and savings every year for a fee. Design: `docs/superpowers/specs/2026-10-14-advisor-manager-design.md` (D1 to D16). Plan: `docs/superpowers/plans/2026-10-14-advisor-manager.md`.
+
+**The record.** All the state is one flag, `g.flags['fin.team']`, read only through `readTeam` and written only through `writeTeam` (team.ts).
+- `readTeam` is the whitelist. It builds a fresh object from the known keys, clamps every field to the nearest legal value (names 1 to 40 characters, skills 20 to 99, rates 0.2% to 3%, limits 10 to 100, reserves 0 to 1e15) and returns null for junk. It never throws and never changes its input.
+- The record is stamped `${character.id}:${g.year - age}`. A record for another character reads as no record, so an heir starts clean.
+- A manager with no usable mandate gets the default one (60% stocks, a reserve of at least two typical incomes, a limit of 50). A mandate or a statement with no manager is dropped.
+- Nothing is added to `Asset.details`, `BizState`, `Character` or the save schema. A save without the key plays exactly as before. There is no `Person` and no new `Asset`: the manager's trades are ordinary holdings the player can sell any day, so there is no mirror account to double count.
+- `advisorEpoch` and `managerEpoch` count how many of that role were let go. `done` is the last year the yearly step ran.
+
+**Offers, fees and gates (team.ts).**
+- Three offers per role per year. They hash `lifeId|fin|role|year|epoch|slot` (FNV-1a, then `nextRandom`, the pattern of `special/common.ts stableRoll`), so they are the same on every call and never touch `g.rng`. Letting a hire go bumps that role's epoch and brings new faces.
+- The menu shows a word (`ratingLabel`), never the skill number. About one manager in eight is a crook who claims 12 to 25 points above their real skill, to a ceiling of 97 (`OFFER_SKILL.claimCap`). The fee follows the claim.
+- With an advisor, `vet` gives each manager offer a stable chance, equal to the advisor's skill in percent, of showing the true rating and whether the manager has padded bills before.
+- Gates: net worth of 25 times `typicalIncome` for an advisor, a managed pool of 10 times for a manager. Fees: an advisor takes 0.15% to 0.4% of net worth by skill, a manager 0.4% to 1.4% of the money they run by claimed rating, each with a floor of a tenth of a typical income. `TERMS` holds the numbers.
+
+**Three buckets, and why nothing else (D5, D6).**
+- The manager runs the local index fund (before index funds exist, the investment trust, which has the same `index` type), the government bond and a savings account. Safe money goes to the bond when it pays clearly more than savings, otherwise to savings. Gold, REITs, term deposits, single stocks, pennies and coins are left out.
+- Politics counts only a few things as an insider position (`insiderPositions`, `special/politics.ts`): open bets, index options, and held shares or coins whose `details.secId` is the target's. Targets are made-up listed companies and, from rank 2, coins. An index fund, a bond or a savings account is never a target. Because the manager buys only those three, it cannot create an insider position, and no politics code had to change. The mayor in `test/advisors-story.test.ts` ages five years with a manager, then passes laws on four policy keys both ways and gets no case; the same mayor with a hand-picked made-up stock does. `test/advisors-integration.test.ts` repeats the check across four offices and eras through the real `ageUp`.
+- The manager trades only what the player could trade by hand. It reads each quote's `blocked` text, `tradeBlock` and `investingBlocked`. A shut exchange blocks only the fund. Banned private investing idles the manager: no fee and no trades, while the advisor still bills.
+
+**The seam in investments.ts (D15).**
+- `buySecurity` and `sellHolding` take a `quiet` flag. A quiet order has the same fees, tax, blocks and price impact as a hand order and queues no popup and no log line. Eight trades make no `Order Filled` popups.
+- `managedBook(g)` is pure. It reports each bucket's value, why it can't be bought or sold, its yield, the cash, the broker's minimum and `idle`. `managedOrder(g, bucket, side, dollars)` places one quiet order and says what moved. A sale works through the bucket's holdings largest first and never touches a term deposit.
+
+**The yearly step (D14).** `yearlyAdvisors` (year.ts) is the `advisors` entry in `YEARLY_HOOKS`, between `underworld` and `milestones`. Rent, tax and upkeep are already paid, so the cash it spends is real and the manager's reserve protects the living costs. Order:
+1. Return with no record, no hire, a dead, young or imprisoned player, or `done === g.year`.
+2. The advisor's retainer by `spend`. If it fails the advisor leaves.
+3. The manager, unless the book is idle. The invoice (the agreed fee, plus a crook's padding cut to the cash left) is paid first by `spend`; if it fails the manager leaves and nothing else happens. Then the blunder roll, `planYear`, the sells, the buys (capped at the cash above the reserve, skipped under the broker's minimum) and the slippage on the money moved. Then the catch roll.
+4. The advisor's review of the book as the manager left it.
+5. One `Year-End Statement` popup and one log line.
+
+Only this step draws from `g.rng`, and only after a manager has been paid: one `chance` for the blunder, one for its direction when it fires and one for the catch when a crook has padded a bill. A game with no record returns before any draw.
+
+**Skill, the limit, the crook and the catch (D8 to D10).**
+- Skill is execution, not returns (`PLAN` in mandate.ts). A weaker manager lets the mix drift further before selling (a band of 3 + (100 - skill) / 10 points), pays more slippage ((100 - skill) x 0.005% of the money moved) and blunders more often (12% x (100 - skill) / 100). A blunder aims the year's target 25 points off, says so in the statement, and next year's normal pass corrects it.
+- The limit is the most of the pool that may change hands in a year, buys plus sells. It also caps theft: a crook pads each bill by `round(0.03 x limit x pool)`, cut to the cash left after the agreed fee.
+- Every year a crook has padded a bill there is a catch chance of 4% plus half the advisor's skill (`catchOdds`; 4% with no advisor). A catch pays back 30% of all the padding once, lets the manager go and bumps the epoch. The statement shows the billed amount and the pool, so a careful player can compare it with the agreed rate.
+- `planYear` is pure and `mandate.ts` is its own module, so the menu preview and the yearly step run the same function.
+
+**The advisor (D1 to D4, D7, D16).**
+- The advisor never forecasts. It reads the present: six pure findings in review.ts, none of which reads `g.rng`. Foresight stays with the Investing talent, and `MenuBase.hint` (the purple line) stays talent-only. Advice shows as plain info rows with a 💼.
+- The findings and their weights; the list sorts by weight, then id: `insider` (95), `concentration` (76 to 100, which is `round(60 + 40 x share)` at a share of 40% or more, so a very large one passes `insider`), `loan` (70), `company-cash` (50), `idle-cash` (40, hidden while a manager is hired) and `losses` (30).
+- `insider` uses the same targets and the same two-year window (`freshShare`) as the politics rule for laws, so the warning is exact for them. It fires for an office holder with a made-up listed company (or, from rank 2, a coin) bought this year or last. A market-moving announcement counts every holding of the target whatever its age (`insiderPositions` with `freshOnly: false`), so an older pick is not flagged here. The manager never sells these picks; the decision stays the player's.
+- `company-cash` only points to Pay a Dividend (or Withdraw Profits for a sole owner). The standing dividend rule belongs to the dividends feature, so two payers can't pay one company twice.
+- Skill is coverage: `shownCount(skill)` shows the top 2 to 5 and the menu says "Sees 3 of 5". A better advisor sees more of the list, never a different list.
+- `concentration` groups investments by `companyKey(details.secId)`, one line in review.ts (`add(\`sec:${secId ? companyKey(secId) : a.id}\`, a)`), so two lines of one company, such as Alphabet and its Class C, add up. A holding with no `secId` is its own group. The manager's three types are never class lines.
+
+**Menu (menu.ts).** `moneyTeamMenu` sits right after Investments in Business & Investments. It is a pure function of state and renders from a deep-frozen game. Every action re-reads the record and rebuilds its offer through `hire`; the three sliders (Stocks Share, Cash to Keep, Yearly Limit) parse, snap and clamp their input and write the mandate through `writeTeam`. Each preview calls `planYear`.
 
 ## Politics 2.0 (nation/*.ts)
 

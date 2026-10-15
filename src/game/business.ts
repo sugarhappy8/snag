@@ -13,6 +13,8 @@ import { industryDef } from './business/industries'
 import { businessView } from './business/manage'
 // Side effect: adds your listed companies to Investments > Stocks (registerOwnListings).
 import './business/own-listing-menu'
+// Side effect: adds Hedge Funds to Investments and the fund screens to Assets (registerHedgeFunds).
+import './business/hedge-menu'
 import { businessAssets, ceoJob, findBusiness, readBiz, runsIt, totalOutlets } from './business/state'
 import { industryNoun } from './business/util'
 import { yearlyBusinessImpl } from './business/yearly'

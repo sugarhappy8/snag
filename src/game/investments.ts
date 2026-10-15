@@ -30,6 +30,7 @@ import {
   coinListed,
   coinMarketCap,
   companyDef,
+  companyKey,
   countryStress,
   cryptoYear,
   defaultChance,
@@ -53,6 +54,7 @@ import {
   inflationRate,
   isHistoryYear,
   isRealSecId,
+  lineLetter,
   listedCoins,
   localWords,
   pennyDef,
@@ -66,6 +68,7 @@ import {
   type ExYear,
   type SecYear,
 } from './invest/engine'
+import { classFacts, lineOpen, linesOf, lineYear, votesText, type Line } from './invest/class-data'
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
 import { addMarketShock, indexShockFactor, marketBreakthroughs, orderFlowFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
@@ -258,8 +261,11 @@ function gutGroupHint(g: GameState, kinds: string[]): string | null {
 // ---------------------------------------------------------------------------
 // Holdings
 
+/** Investment assets that are somebody's own account, not a security: Sell Everything and the portfolio skip them. */
+const SIDE_ACCOUNTS: ReadonlySet<string> = new Set(['npcEquity', 'hedge'])
+
 export function investmentHoldings(g: GameState): Asset[] {
-  return g.assets.filter((a) => a.kind === 'investment' && a.details.type !== 'npcEquity')
+  return g.assets.filter((a) => a.kind === 'investment' && !SIDE_ACCOUNTS.has(str(a.details.type)))
 }
 
 function typeOf(a: Asset): InvestType {
@@ -504,11 +510,11 @@ export function minTrade(g: GameState): number {
   return Math.max(20, Math.round((100 * Math.max(0.2, Math.min(1, w))) / 10) * 10)
 }
 
-function lossCarry(g: GameState): number {
+export function lossCarry(g: GameState): number {
   return Math.min(MAX_INVESTMENT_VALUE, Math.max(0, num(g.flags.investLossCarry)))
 }
 
-interface Realized {
+export interface Realized {
   gain: number
   taxable: number
   offset: number
@@ -520,7 +526,7 @@ interface Realized {
  * carried-forward losses) count as taxable income; `immediate` taxes them now (menu trades),
  * otherwise yearlyFinance taxes them with the rest of the year's income.
  */
-function realize(g: GameState, net: number, gain: number, immediate: boolean): Realized {
+export function realize(g: GameState, net: number, gain: number, immediate: boolean): Realized {
   const carry = lossCarry(g)
   const cash = Math.max(0, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(net) ? net : 0)))
   const gn = Math.max(-MAX_INVESTMENT_VALUE, Math.min(MAX_INVESTMENT_VALUE, Math.round(Number.isFinite(gain) ? gain : 0)))
@@ -638,6 +644,10 @@ interface Quote {
   size?: string
   /** Menu ordering by size (bigger first). */
   rank?: number
+  /** A real company's listed second classes, priced off this quote. They are not in the list or in allQuotes. */
+  lines?: Quote[]
+  /** Votes a share of a share class's line (shown on the company's screen; not saved with a holding). */
+  votes?: number
 }
 
 /**
@@ -762,7 +772,14 @@ function listing(g: GameState): Listing {
   const index = indexName(info, y)
   const marketBlock = stockMarketBlock(g, info)
   const blocked = investingBlocked(cid, y)
-  const stocks = ey.stocks.map((s) => withShock(g, stockQuote(info, s, false, y, marketBlock), shockFactor(g, companyDef(info, s.slot, s.gen).id, y), shockFactor(g, companyDef(info, s.slot, s.gen).id, y - 1)))
+  const stocks = ey.stocks.map((s) => {
+    const def = companyDef(info, s.slot, s.gen)
+    const raw = stockQuote(info, s, false, y, marketBlock)
+    const q = withShock(g, raw, shockFactor(g, def.id, y), shockFactor(g, def.id, y - 1))
+    // A real company's listed second classes ride on its screen, priced off its quote.
+    const lines = def.real ? linesOf(def.real, def.id, y).map((line) => lineQuote(g, raw, line, y)) : []
+    return lines.length ? { ...q, lines } : q
+  })
   const pennies = ey.pennies.map((s) => withShock(g, stockQuote(info, s, true, y, marketBlock), shockFactor(g, s.id, y), shockFactor(g, s.id, y - 1)))
   const fundId = ey.fund.id
   // Before index funds existed (1976 in the US), the closest thing was a pricey investment trust.
@@ -902,7 +919,7 @@ function listing(g: GameState): Listing {
   // This year's moves read like the index line and "Recent years" beside them: in the money of
   // the year (reportedMove), not constant dollars ("FTSE 100 up 14.8%" over an ETF "▲10.0%").
   const shown = (q: Quote): Quote => (q.ret === null ? q : { ...q, ret: reportedMove(info, y, q.ret).pct })
-  return { info, year: ey, stocks: stocks.map(shown), pennies: pennies.map(shown), fund: shown(fund), reit: shown(reit), bond, savings, term, gold: shown(gold), crypto: crypto.map(shown) }
+  return { info, year: ey, stocks: stocks.map((q) => (q.lines ? { ...shown(q), lines: q.lines.map(shown) } : shown(q))), pennies: pennies.map(shown), fund: shown(fund), reit: shown(reit), bond, savings, term, gold: shown(gold), crypto: crypto.map(shown) }
 }
 
 /** What a resident can buy right now (used by tests and tools): id, type, name, ticker, price, risk. */
@@ -915,6 +932,31 @@ function allQuotes(l: Listing): Quote[] {
   return [...l.stocks, ...l.pennies, l.fund, l.reit, l.bond, l.savings, l.term, l.gold, ...l.crypto]
 }
 
+/** Everything that can be bought or held: the list plus the second classes on a company's screen. */
+function quotesWithLines(l: Listing): Quote[] {
+  return [...allQuotes(l), ...l.stocks.flatMap((q) => q.lines ?? [])]
+}
+
+/**
+ * One listed class of a real company: its quote with the line's id, ticker (the company's four letters and
+ * the class letter) and price (the company's, moved by the line's spread), then the news and order flow on
+ * the line. `raw` is the company's quote before any shock. The holding it makes carries the company's id
+ * and the class label in its details, so it can be renamed and moved with the company.
+ */
+function lineQuote(g: GameState, raw: Quote, line: Line, year: number): Quote {
+  const symbol = `${raw.symbol}${line.letter}`
+  const q: Quote = {
+    ...raw,
+    secId: line.secId,
+    name: `${raw.name} (${line.label})`,
+    symbol,
+    price: raw.price * (1 + line.spread),
+    votes: line.votes,
+    details: { ...raw.details, secId: line.secId, symbol, classOf: raw.secId, classLabel: line.label },
+  }
+  return withShock(g, q, shockFactor(g, line.secId, year), shockFactor(g, line.secId, year - 1))
+}
+
 /** Bonds and term deposits are bought one issue at a time; older issues can't be topped up. */
 function closedIssue(a: Asset): boolean {
   const t = typeOf(a)
@@ -923,7 +965,7 @@ function closedIssue(a: Asset): boolean {
 
 /** A quote for an existing holding (it may trade on another country's exchange after a move). */
 function holdingQuote(g: GameState, a: Asset): Quote {
-  const local = allQuotes(listing(g)).find((q) => q.secId === str(a.details.secId))
+  const local = quotesWithLines(listing(g)).find((q) => q.secId === str(a.details.secId))
   if (local) return { ...local, price: typeOf(a) === 'gold' || typeOf(a) === 'bond' || typeOf(a) === 'savings' ? unitPrice(a) : local.price }
   const t = typeOf(a)
   return {
@@ -1013,40 +1055,43 @@ function buyBlock(g: GameState, q: Quote): string | null {
   return null
 }
 
-/** Buy `amount` dollars of a security (fees come out of the amount). Returns true on success. */
-export function buySecurity(g: GameState, secId: string, amount: number): boolean {
+/**
+ * Buy `amount` dollars of a security (fees come out of the amount). Returns true on success. A `quiet` order
+ * (the money team's trades) queues no popup and writes no log line; everything else is the same.
+ */
+export function buySecurity(g: GameState, secId: string, amount: number, quiet = false): boolean {
   // An old holding may be swapped for its slot's company on the spot: "buy more" follows it.
   const old = findHolding(g, secId)
   normalizeHoldings(g)
   if (old) secId = str(old.details.secId, secId)
   const held = findHolding(g, secId)
-  const q = allQuotes(listing(g)).find((x) => x.secId === secId) ?? (held ? holdingQuote(g, held) : undefined)
+  const q = quotesWithLines(listing(g)).find((x) => x.secId === secId) ?? (held ? holdingQuote(g, held) : undefined)
   if (!q) {
-    notice(g, 'Order Rejected', 'That security is no longer listed.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'That security is no longer listed.', { emoji: '🚫' })
     return false
   }
   const block = buyBlock(g, q)
   if (block) {
-    notice(g, 'Order Rejected', block, { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', block, { emoji: '🚫' })
     return false
   }
   const min = minTrade(g)
   const amt = Math.floor(Number.isFinite(amount) ? amount : 0)
   if (amt < min) {
-    notice(g, 'Order Rejected', `The minimum order is ${formatMoney(min)}.`, { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', `The minimum order is ${formatMoney(min)}.`, { emoji: '🚫' })
     return false
   }
   if (amt > MAX_INVESTMENT_VALUE || (held && (basis(held) > MAX_INVESTMENT_VALUE - amt || holdingValue(held) > MAX_INVESTMENT_VALUE - amt))) {
-    notice(g, 'Order Rejected', 'That order is too large for one brokerage position.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'That order is too large for one brokerage position.', { emoji: '🚫' })
     return false
   }
   if (amt > g.character.money) {
-    notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank.`, { emoji: '💸', tone: 'bad' })
+    if (!quiet) notice(g, 'Insufficient Funds', `You only have ${formatMoney(g.character.money)} in the bank.`, { emoji: '💸', tone: 'bad' })
     return false
   }
   const room = cryptoRoom(g, q)
   if (room !== null && amt > room) {
-    notice(g, 'Not Enough Sellers', `The ${q.name} market is still tiny: about ${formatMoney(room)} more is all anyone will sell you this year.`, { emoji: '🪙' })
+    if (!quiet) notice(g, 'Not Enough Sellers', `The ${q.name} market is still tiny: about ${formatMoney(room)} more is all anyone will sell you this year.`, { emoji: '🪙' })
     return false
   }
   const fee = feeFor(feePlan(g, q.type), amt)
@@ -1054,7 +1099,7 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   // Gold, bonds and deposits track their own unit price per holding; listed securities use the market price.
   const price = held && (q.type === 'gold' || q.type === 'bond' || q.type === 'savings') ? unitPrice(held) || q.price : q.price
   if (!(price > 0) || invested <= 0 || !spend(g, amt)) {
-    notice(g, 'Order Rejected', 'The order could not be filled.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'The order could not be filled.', { emoji: '🚫' })
     return false
   }
   const depth = tradingDepth(g, q.type, q.details)
@@ -1092,7 +1137,7 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   count(g, 'moneyInvested', amt)
   if (depth) recordOrderFlow(g, a, order.end)
   if (room !== null) noteCryptoBuy(g, q.secId, amt)
-  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into ${str(q.details.product) === 'term' ? 'a term deposit' : 'savings'}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol ? ` (${q.symbol})` : ''}`
+  const what = q.type === 'savings' ? `put ${formatMoney(invested)} into ${str(q.details.product) === 'term' ? 'a term deposit' : 'savings'}` : `bought ${unitsText(newUnits)} ${unitLabel(q)} of ${q.name}${q.symbol && lineLetter(q.secId) === null ? ` (${q.symbol})` : ''}`
   const feeLine = fee > 0 ? ` ${formatMoney(fee)} went to fees.` : ''
   // Price impact past the 10% mark (the mark the Buy row names), measured on the money that reached the market:
   // the fee is not price impact.
@@ -1107,8 +1152,8 @@ export function buySecurity(g: GameState, secId: string, amount: number): boolea
   const valueLine = sellsApart(sale, a.value)
     ? ` Your position is valued at ${formatMoney(a.value)}. ${q.type === 'savings' ? 'Closing it now' : 'A full sale'} would return about ${formatMoney(sale)}, before tax.`
     : ` Your position is now worth ${formatMoney(a.value)}.`
-  notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${impactLine}${valueLine}`, { emoji: q.emoji, tone: 'good' })
-  log(g, q.type === 'savings' ? `I put ${formatMoney(amt)} in the bank.` : `I invested ${formatMoney(amt)} in ${q.name}.`)
+  if (!quiet) notice(g, 'Order Filled', `You ${what} for ${formatMoney(amt)}.${feeLine}${impactLine}${valueLine}`, { emoji: q.emoji, tone: 'good' })
+  if (!quiet) log(g, q.type === 'savings' ? `I put ${formatMoney(amt)} in the bank.` : `I invested ${formatMoney(amt)} in ${q.name}.`)
   return true
 }
 
@@ -1142,7 +1187,7 @@ function recordOrderFlow(g: GameState, a: Asset, mult: number): void {
 }
 
 function sellCore(g: GameState, a: Asset, grossWanted: number): SaleResult | null {
-  if (a.details.type === 'npcEquity') return null
+  if (SIDE_ACCOUNTS.has(str(a.details.type))) return null
   const value = holdingValue(a)
   if (value <= 0) {
     g.assets = g.assets.filter((x) => x.id !== a.id)
@@ -1188,21 +1233,21 @@ function gainLine(r: Realized): string {
   return 'You broke even.'
 }
 
-/** Sell `amount` dollars of a holding ('all' sells everything). */
-export function sellHolding(g: GameState, assetId: string, amount: number | 'all'): boolean {
+/** Sell `amount` dollars of a holding ('all' sells everything). A `quiet` sale queues no popup and writes no log line. */
+export function sellHolding(g: GameState, assetId: string, amount: number | 'all', quiet = false): boolean {
   // Old saves may still contain index NAVs inflated by personal order flow.
   revalueHoldings(g, true)
   const a = g.assets.find((x) => x.id === assetId && x.kind === 'investment')
   if (!a) return false
   const block = sellBlock(g, a)
   if (block) {
-    notice(g, 'Order Rejected', block, { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', block, { emoji: '🚫' })
     return false
   }
   const value = holdingValue(a)
   const want = amount === 'all' ? value : Math.floor(Number.isFinite(amount) ? amount : 0)
   if (amount !== 'all' && want <= 0) {
-    notice(g, 'Order Rejected', 'Enter an amount to sell.', { emoji: '🚫' })
+    if (!quiet) notice(g, 'Order Rejected', 'Enter an amount to sell.', { emoji: '🚫' })
     return false
   }
   const res = sellCore(g, a, want)
@@ -1210,8 +1255,8 @@ export function sellHolding(g: GameState, assetId: string, amount: number | 'all
   const t = typeOf(a)
   const extra = [res.fee > 0 ? `Fees: ${formatMoney(res.fee)}.` : '', res.penalty > 0 ? `Early withdrawal penalty: ${formatMoney(res.penalty)}.` : '', (res.impact ?? 0) >= 1 ? `Market depth reduced proceeds by ${formatMoney(res.impact!)} and moved the quote. Splitting an order does not avoid the price impact.` : ''].filter(Boolean).join(' ')
   const verb = t === 'savings' ? `withdrew ${formatMoney(res.gross)} from your ${str(a.details.product) === 'term' ? 'term deposit' : 'savings account'}` : `sold ${formatMoney(res.gross)} of ${a.name}`
-  notice(g, t === 'savings' ? 'Withdrawal' : 'Order Filled', `You ${verb}. ${extra ? `${extra} ` : ''}${formatMoney(res.net)} landed in your bank account. ${gainLine(res.realized)}`, { emoji: a.emoji, tone: res.realized.gain >= 0 ? 'good' : 'bad' })
-  log(g, t === 'savings' ? `I withdrew ${formatMoney(res.gross)} from the bank.` : res.realized.gain >= 0 ? `I sold some ${a.name} at a profit.` : `I sold some ${a.name} at a loss.`, res.realized.gain >= 0 ? 'good' : 'bad')
+  if (!quiet) notice(g, t === 'savings' ? 'Withdrawal' : 'Order Filled', `You ${verb}. ${extra ? `${extra} ` : ''}${formatMoney(res.net)} landed in your bank account. ${gainLine(res.realized)}`, { emoji: a.emoji, tone: res.realized.gain >= 0 ? 'good' : 'bad' })
+  if (!quiet) log(g, t === 'savings' ? `I withdrew ${formatMoney(res.gross)} from the bank.` : res.realized.gain >= 0 ? `I sold some ${a.name} at a profit.` : `I sold some ${a.name} at a loss.`, res.realized.gain >= 0 ? 'good' : 'bad')
   return true
 }
 
@@ -1249,6 +1294,132 @@ export function liquidatePortfolio(g: GameState): boolean {
   notice(g, 'Portfolio Liquidated', `You sold ${stuck ? 'what you could' : 'everything'} for ${formatMoney(gross)}. Fees and penalties: ${formatMoney(fees)}. ${formatMoney(net)} landed in your bank account. ${result}${stuckLine}`, { emoji: '💰', tone: gain >= 0 ? 'good' : 'bad' })
   log(g, 'I sold my entire investment portfolio.', gain >= 0 ? 'good' : 'bad')
   return true
+}
+
+// ---------------------------------------------------------------------------
+// The managed book (advisors/): three buckets of ordinary holdings, read purely and traded quietly.
+// Nothing here knows about advisors; the money team imports it. Fees, tax and blocks are the engine's own.
+
+/** What a money manager runs: the local index fund, government bonds, savings accounts. Nothing else. */
+export type MandateBucket = 'stocks' | 'bonds' | 'savings'
+
+export interface BucketBook {
+  /** Marked value of the player's holdings in this bucket. */
+  value: number
+  /** Why a new order for this bucket can't be placed right now (null when it can). */
+  buyBlock: string | null
+  /** Why the bucket's largest holding can't be sold right now (null when it can, or when the bucket is empty). */
+  sellBlock: string | null
+  /** The yield of what a new order buys. */
+  yield: number
+}
+
+export interface ManagedBook {
+  stocks: BucketBook
+  bonds: BucketBook
+  savings: BucketBook
+  /** The bank balance. */
+  cash: number
+  /** The broker's smallest order. */
+  minOrder: number
+  /** Why nothing can be traded at all (a minor, a prisoner, the dead, a country that bans private investing). */
+  idle: string | null
+}
+
+export interface ManagedFill {
+  /** Dollars that changed hands: the cash a buy spent, or the fall in marked value a sale caused. */
+  moved: number
+  /** Why nothing moved (null when something did). */
+  reason: string | null
+}
+
+/** Single stocks, pennies, REITs, gold, coins and term deposits belong to no bucket. */
+function bucketOf(a: Asset): MandateBucket | null {
+  switch (typeOf(a)) {
+    case 'index':
+      return 'stocks'
+    case 'bond':
+      return 'bonds'
+    case 'savings':
+      return str(a.details.product) === 'term' ? null : 'savings'
+    default:
+      return null
+  }
+}
+
+/** A bucket's holdings, largest first (equal values by id, so the order is stable). */
+function bucketHoldings(g: GameState, bucket: MandateBucket): Asset[] {
+  return investmentHoldings(g)
+    .filter((a) => bucketOf(a) === bucket)
+    .sort((a, b) => holdingValue(b) - holdingValue(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+function bucketBook(g: GameState, bucket: MandateBucket, q: Quote): BucketBook {
+  const held = bucketHoldings(g, bucket)
+  let value = 0
+  for (const a of held) value = Math.min(MAX_INVESTMENT_VALUE, value + holdingValue(a))
+  return { value, buyBlock: q.blocked, sellBlock: held.length ? holdingMarketBlock(g, held[0]) : null, yield: num(q.yield) }
+}
+
+function bookOf(g: GameState, l: Listing): ManagedBook {
+  return {
+    stocks: bucketBook(g, 'stocks', l.fund),
+    bonds: bucketBook(g, 'bonds', l.bond),
+    savings: bucketBook(g, 'savings', l.savings),
+    cash: num(g.character.money),
+    minOrder: minTrade(g),
+    idle: tradeBlock(g) ?? investingBlocked(g.character.countryId, g.year),
+  }
+}
+
+/** The player's money-manager view of their portfolio. Pure: writes nothing and never touches g.rng. */
+export function managedBook(g: GameState): ManagedBook {
+  return bookOf(g, listing(g))
+}
+
+/**
+ * Place one quiet order for a bucket: no popup, no log line. A buy spends at most the cash on hand and uses the
+ * quote a hand order would (so it has the same fee, blocks and minimum). A sale works through the bucket's holdings
+ * largest first, stops when what is left of the ask is under the minimum order, and never touches a term deposit.
+ */
+export function managedOrder(g: GameState, bucket: MandateBucket, side: 'buy' | 'sell', dollars: number): ManagedFill {
+  const none = (reason: string): ManagedFill => ({ moved: 0, reason })
+  const l = listing(g)
+  const book = bookOf(g, l)
+  if (book.idle) return none(book.idle)
+  const want = Math.floor(Number.isFinite(dollars) ? dollars : 0)
+  const tooSmall = `The minimum order is ${formatMoney(book.minOrder)}.`
+
+  if (side === 'buy') {
+    if (book[bucket].buyBlock) return none(book[bucket].buyBlock!)
+    if (want < book.minOrder) return none(tooSmall)
+    const amount = Math.min(want, Math.floor(book.cash))
+    if (amount < book.minOrder) return none(`You need at least ${formatMoney(book.minOrder)} in the bank to invest.`)
+    const q = bucket === 'stocks' ? l.fund : bucket === 'bonds' ? l.bond : l.savings
+    const before = g.character.money
+    if (!buySecurity(g, q.secId, amount, true)) return none("The order couldn't be filled.")
+    return { moved: Math.max(0, before - g.character.money), reason: null }
+  }
+
+  if (want < book.minOrder) return none(tooSmall)
+  const held = bucketHoldings(g, bucket)
+  if (!held.length) return none("There's nothing to sell.")
+  const open = held.filter((a) => !holdingMarketBlock(g, a))
+  if (!open.length) return none(holdingMarketBlock(g, held[0]) ?? "The order couldn't be filled.")
+  // The same repricing a sale does first, so `moved` is the effect of the sale and not of that repricing.
+  revalueHoldings(g, true)
+  let left = want
+  let moved = 0
+  for (const a of open.sort((x, y) => holdingValue(y) - holdingValue(x) || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))) {
+    if (left < book.minOrder) break
+    const before = holdingValue(a)
+    if (!(before > 0) || !sellHolding(g, a.id, Math.min(left, before), true)) continue
+    const now = g.assets.find((x) => x.id === a.id)
+    const fell = before - (now ? holdingValue(now) : 0)
+    moved += fell
+    left -= fell
+  }
+  return moved > 0 ? { moved, reason: null } : none("The order couldn't be filled.")
 }
 
 // ---------------------------------------------------------------------------
@@ -1522,8 +1693,53 @@ function holdingInfo(g: GameState, a: Asset): string[] {
   return rows
 }
 
+/**
+ * What the business module supplies for Personal and Family hedge funds (this file imports nothing
+ * from business/): the Investments row, the screen of one fund and its subtitle. Menus are rebuilt all
+ * the time, so none of them may write to the state or touch g.rng.
+ */
+export interface HedgeFundHooks {
+  row: (g: GameState) => MenuGroup | null
+  view: (g: GameState, a: Asset) => MenuNode[]
+  subtitle: (g: GameState, a: Asset) => string
+}
+
+let hedgeHooks: HedgeFundHooks | null = null
+
+/** Extension point for the business module: say how Investments shows hedge funds. */
+export function registerHedgeFunds(h: HedgeFundHooks): void {
+  hedgeHooks = h
+}
+
+function hedgeRow(g: GameState): MenuGroup | null {
+  try {
+    return hedgeHooks ? hedgeHooks.row(g) : null
+  } catch {
+    return null
+  }
+}
+
+function hedgeView(g: GameState, a: Asset): MenuNode[] {
+  try {
+    if (hedgeHooks) return hedgeHooks.view(g, a)
+  } catch {
+    // Fall through to the plain row.
+  }
+  return [{ type: 'info', id: `hedge-off.${a.id}`, emoji: '🦈', text: "This fund isn't available right now." }]
+}
+
+function hedgeSubtitle(g: GameState, a: Asset): string {
+  try {
+    if (hedgeHooks) return hedgeHooks.subtitle(g, a)
+  } catch {
+    // Fall through to the value.
+  }
+  return shortMoney(a.value)
+}
+
 /** Owned-asset screen for a kind 'investment' asset (registered in menus.ts). */
 export function investmentAssetView(g: GameState, a: Asset): MenuNode[] {
+  if (a.details.type === 'hedge') return hedgeView(g, a)
   if (a.details.type === 'npcEquity') return [{ type: 'info', id: `npc-equity.${a.id}`, emoji: '🤝', text: `${a.name}: ${formatMoney(a.value)} estimated value, ${(num(a.details.share) * 100).toFixed(2)}% ownership. Private, illiquid equity—not an exchange-traded stock. Manage investment or acquisition through the founder's Life & Career profile. Dividends depend on real company profits.` }]
   const nodes: MenuNode[] = holdingInfo(g, a).map((text, i): MenuNode => ({ type: 'info', id: `inv-info-${a.id}-${i}`, text }))
   nodes.push({ type: 'heading', id: `inv-actions-${a.id}`, label: 'Actions' })
@@ -1533,7 +1749,8 @@ export function investmentAssetView(g: GameState, a: Asset): MenuNode[] {
   return nodes
 }
 
-export function investmentAssetSubtitle(_g: GameState, a: Asset): string {
+export function investmentAssetSubtitle(g: GameState, a: Asset): string {
+  if (a.details.type === 'hedge') return hedgeSubtitle(g, a)
   if (a.details.type === 'npcEquity') return `${shortMoney(a.value)} · private company stake`
   const t = typeOf(a)
   const v = holdingValue(a)
@@ -1562,6 +1779,25 @@ function holdingNode(g: GameState, a: Asset): MenuGroup {
   }
 }
 
+/**
+ * One listed class of a company, under its main line on the same screen: price and change, its votes, the
+ * dividend (the same for every class), what you hold of it, then Buy and the sale actions for that line.
+ * Every id carries the line's own id, so none repeats the company's.
+ */
+function lineSection(g: GameState, q: Quote): MenuNode[] {
+  const label = str(q.details.classLabel)
+  const rows: string[] = [`Price: ${priceText(q.price)}${q.ret !== null ? ` (${change(q.ret)} this year)` : ''}`]
+  if (q.votes !== undefined) rows.push(`${label} has ${votesText(q.votes)}.`)
+  if (q.yield > 0) rows.push(`Dividend: ${rateText(q.yield)} a year, taxed as income.`)
+  const held = findHolding(g, q.secId)
+  const nodes: MenuNode[] = [{ type: 'heading', id: `inv-oline-${q.secId}`, label: `${label} (${q.symbol})` }]
+  rows.forEach((text, i) => nodes.push({ type: 'info', id: `inv-oinfo-${q.secId}-${i}`, text }))
+  if (held) nodes.push({ type: 'info', id: `inv-oheld-${q.secId}`, text: `You own ${formatMoney(held.value)} of this (${change(basis(held) > 0 ? (held.value - basis(held)) / basis(held) : 0)} overall).`, emoji: '💼' })
+  nodes.push(buyAction(g, q, !!held))
+  if (held) nodes.push(...sellActions(g, held))
+  return nodes
+}
+
 function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup {
   return {
     type: 'menu',
@@ -1585,6 +1821,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       if (held) nodes.push({ type: 'info', id: `inv-oheld-${q.secId}`, text: `You own ${formatMoney(held.value)} of this (${change(basis(held) > 0 ? (held.value - basis(held)) / basis(held) : 0)} overall).`, emoji: '💼' })
       nodes.push(buyAction(gg, q, !!held))
       if (held) nodes.push(...sellActions(gg, held))
+      for (const line of q.lines ?? []) nodes.push(...lineSection(gg, line))
       return nodes
     },
   }
@@ -1678,7 +1915,9 @@ const stocksMenu: MenuGroup = {
     for (const q of ordered) {
       const open = sections[sections.length - 1]
       if (!open || (sized && q.size && q.size !== open.size)) sections.push({ size: sized ? (q.size ?? '') : '', nodes: [] })
-      sections[sections.length - 1].nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false)]))
+      const co = companyDef(l.info, num(q.details.slot), num(q.details.gen)).real
+      const classes = co ? classFacts(co, g.year) : null
+      sections[sections.length - 1].nodes.push(offerNode(g, q, [stockHistory(g, l.info, num(q.details.slot), num(q.details.gen), false), ...(classes ? [classes] : [])]))
     }
     // A size the exchange has no quotes for this year still gets its heading when you own a company of it.
     for (const size of STOCK_SIZES) {
@@ -1979,6 +2218,8 @@ export const investmentsMenu: MenuGroup = {
     else nodes.push({ type: 'info', id: 'inv-empty', text: 'Nothing here yet. Even a small index fund is a start.', emoji: '🌱' })
     nodes.push({ type: 'heading', id: 'inv-buy', label: 'Invest' })
     nodes.push(stocksMenu, fundNode(g), bondsMenu, reitNode(g), goldNode(g), pennyMenu, cryptoMenu)
+    const hedge = hedgeRow(g)
+    if (hedge) nodes.push(hedge)
     nodes.push({ type: 'heading', id: 'inv-tools', label: 'News & Tools' })
     nodes.push(newsMenu, liquidateAction)
     nodes.push({ type: 'info', id: 'inv-tax', text: TAX_NOTE, emoji: '🧾' })
@@ -2035,6 +2276,24 @@ function shockMove(mv: YearlyMove, now: number, before: number): YearlyMove {
   return { ...mv, price: Math.max(0.0001, adj.price), ret: adj.ret ?? mv.ret }
 }
 
+/**
+ * The spread of a line holding's class this year, or null when the line is not trading it. The holding's own
+ * slot and generation name the company; its class table says whether the line is listed. When the company
+ * ended at the start of this year (`cur.ended`), the line closes on the company's terms, so it counts as
+ * listed if it was listed in the company's last year.
+ */
+function lineSpreadFor(info: ExInfo, d: Record<string, Json>, cur: SecYear | undefined, letter: string, year: number): number | null {
+  const slot = Math.round(num(d.slot, -1))
+  const gen = Math.round(num(d.gen, -1))
+  if (!cur || slot < 0 || gen < 0) return null
+  const def = companyDef(info, slot, gen)
+  const co = def.real
+  if (!co || def.id !== companyKey(str(d.secId))) return null
+  const open = (y: number) => linesOf(co, def.id, y).find((l) => l.letter === letter)
+  const line = open(year) ?? (cur.ended?.id === def.id ? open(year - 1) : undefined)
+  return line ? line.spread : null
+}
+
 function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
   const t = typeOf(a)
   const d = a.details
@@ -2054,7 +2313,15 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
       if (t === 'reit') return shockMove(pathMove(ey.reit.id === str(d.secId) ? ey.reit : undefined, a, price), economyMarketFactor(g, info.home, g.year, true), economyMarketFactor(g, info.home, g.year - 1, true))
       const list = t === 'penny' ? ey.pennies : ey.stocks
       const id = str(d.secId)
-      return shockMove(pathMove(list[Math.round(num(d.slot, -1))], a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
+      const raw = list[Math.round(num(d.slot, -1))]
+      const letter = t === 'stock' ? lineLetter(id) : null
+      if (letter !== null) {
+        // A share class's line moves with its company's year, shifted by its spread. A line that is no longer
+        // listed is paid out as delisted at its last price, like any listing we lost track of.
+        const spread = lineSpreadFor(info, d, raw, letter, g.year)
+        return shockMove(pathMove(raw && spread !== null ? lineYear(raw, letter, spread) : undefined, a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
+      }
+      return shockMove(pathMove(raw, a, price), shockFactor(g, id, g.year), shockFactor(g, id, g.year - 1))
     }
     case 'crypto': {
       const cy = cryptoYear(f, an, g.year)
@@ -2126,7 +2393,7 @@ function moveHolding(g: GameState, a: Asset, news: News[]): YearlyMove {
 function eventNews(a: Asset, mv: YearlyMove, valueBefore: number): News | null {
   const t = typeOf(a)
   const sym = str(a.details.symbol)
-  const label = `${a.name}${sym && t !== 'bond' && t !== 'savings' ? ` (${sym})` : ''}`
+  const label = `${a.name}${sym && t !== 'bond' && t !== 'savings' && lineLetter(str(a.details.secId)) === null ? ` (${sym})` : ''}`
   if (mv.ended) {
     switch (mv.ended.kind) {
       case 'bankrupt':
@@ -2233,11 +2500,17 @@ function renameForEra(g: GameState, a: Asset): void {
   const gen = Math.round(num(a.details.gen, -1))
   if (slot < 0 || gen < 0) return
   const def = t === 'penny' ? pennyDef(info, slot, gen) : companyDef(info, slot, gen)
-  if (def.id !== str(a.details.secId)) return
+  const id = str(a.details.secId)
+  if (def.id !== companyKey(id)) return
   const era = eraIdentity(def, g.year)
-  if (era.name === a.name) return
-  log(g, `${a.name} renamed itself ${era.name}.`)
-  a.name = era.name
+  // A share class's line keeps its class in its name: 'Alphabet (Class C)'. One that lost its label keeps its name.
+  const isLine = lineLetter(id) !== null
+  const label = isLine ? str(a.details.classLabel) : ''
+  if (isLine && !label) return
+  const name = label ? `${era.name} (${label})` : era.name
+  if (name === a.name) return
+  log(g, `${a.name} renamed itself ${name}.`)
+  a.name = name
   a.details.sector = era.label
   a.details.blurb = era.blurb
   if (t === 'stock') a.emoji = era.emoji
@@ -2258,7 +2531,15 @@ function pruneShocks(g: GameState): void {
     const info = exchangeByKey(sh.exKey)
     if (!info) return false
     const ey = exchangeYear(f, an, info, last)
-    return ey.stocks[sh.slot]?.id === sh.secId || ey.pennies[sh.slot]?.id === sh.secId
+    const cur = ey.stocks[sh.slot]
+    if (cur?.id === companyKey(sh.secId)) {
+      // News is stored on the company. Order flow on a line lasts while the line was listed.
+      const letter = lineLetter(sh.secId)
+      if (letter === null) return true
+      const co = companyDef(info, cur.slot, cur.gen).real
+      return !!co && lineOpen(co, letter, last)
+    }
+    return ey.pennies[sh.slot]?.id === sh.secId
   })
 }
 
@@ -2274,7 +2555,8 @@ function normalizeHoldings(g: GameState, yearly = false): void {
   for (const a of investmentHoldings(g)) {
     const t = typeOf(a)
     if (t !== 'stock' && t !== 'penny' && t !== 'index' && t !== 'reit') continue
-    if (num(a.details.eng) >= ENGINE_V) continue
+    // A share class's line only exists in this engine version; a lost stamp must not swap it for the company.
+    if (num(a.details.eng) >= ENGINE_V || lineLetter(str(a.details.secId)) !== null) continue
     const info = holdingExchange(a)
     const ey = exchangeYear(fam(g), anchor(g), info, asOf)
     const id = str(a.details.secId)
@@ -2310,7 +2592,7 @@ function normalizeHoldings(g: GameState, yearly = false): void {
  */
 export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges = false): void {
   normalizeHoldings(g)
-  const quotes = allQuotes(listing(g))
+  const quotes = quotesWithLines(listing(g))
   for (const a of investmentHoldings(g)) {
     syncOwnFlow(g, a)
     const t = typeOf(a)
@@ -2328,7 +2610,14 @@ export function revalueHoldings(g: GameState, indicesOnly = false, allExchanges 
       // ordinary order-flow adjusts that holding's already booked quote in place.
       const info = holdingExchange(a), ey = exchangeYear(fam(g), anchor(g), info, g.year)
       const cur = (t === 'penny' ? ey.pennies : ey.stocks)[Math.round(num(a.details.slot, -1))]
-      if (cur?.id === str(a.details.secId)) price = cur.price * shockFactor(g, cur.id, g.year)
+      const id = str(a.details.secId)
+      const letter = t === 'stock' ? lineLetter(id) : null
+      if (cur?.id === id) price = cur.price * shockFactor(g, cur.id, g.year)
+      else if (cur && letter !== null) {
+        // The same company's year as its line sees it: shifted by the spread, with the line's own order flow.
+        const spread = lineSpreadFor(info, a.details, cur, letter, g.year)
+        if (spread !== null) price = cur.price * (1 + spread) * shockFactor(g, id, g.year)
+      }
     }
     const old = unitPrice(a)
     if (!price || !(price > 0) || !(old > 0) || Math.abs(price / old - 1) < 1e-9) continue

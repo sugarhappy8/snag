@@ -22,10 +22,27 @@ additional dependency or second economic engine was introduced.
   **Financial Rescue & Ownership** for distressed companies) explains runway and separates
   secondary purchases, equity subscriptions and company-funded buybacks. Loans, staffing
   changes and site closures retain their existing controls nearby.
+- Company → Money → **Yearly Dividend**: a standing rule that pays a percentage of the year's profit, or
+  of the spare cash, at year end. The company keeps a cash floor of months of costs, pays only what's left
+  after its debts, and asks the board nothing. Your part is taxed as income.
 - Investments → **Stocks**: a company you've listed shows there under its size and exchange. It is a
   second door to the ownership move in **Capital & Ownership** (buying more from the public float) and
   to **Exit → Sell Shares**, and each pair shares its yearly limit. A listed group shows as a row you
   can only look at.
+- Company → Money → Capital & Ownership, and beside Go Public: **Share Classes**. Pick one class of shares,
+  founder shares (B has 10 votes, A has 1) or a non-voting float. Share classes change who runs the board,
+  not who is paid: board seats, being fired as CEO and every "you'd lose control" line follow the votes,
+  while dividends, tax and what your stake is worth follow the shares. The market pays 4% less for founder
+  shares and 7% less for a non-voting float. A private company sets the plan its IPO will use; a listed one
+  asks its board, once a year. In Investments → **Stocks**, real companies show the classes they had in the
+  years they had them, and a listed second class (Alphabet's Class C, Berkshire's Class B) can be bought.
+- Investments → **Hedge Funds**: start a Personal fund and a Family fund with your own cash, and set an
+  ordinary company's spare cash to work (**Company Funds**). A fund pays no fee, only 0.5% a year to run.
+  Put In More and Take Out are sliders, and a gain is taxed when it comes out. Relatives can join the
+  family fund; their money is never in your net worth or estate. A company's cash stays on its books, and
+  the year's result lands in its statement. A Macro call lasts one year, and an office holder can't make
+  one. A sole adult heir keeps a family fund and the relatives stay in it; a split estate winds it up and
+  pays them first.
 - Conglomerate → **Group Services / Internal Contracts**: assign compatible divisions to
   advertising, distribution, software, components, property or treasury administration.
 - Relationships → person: **Life & Career**, business financials, investment/partnership,
@@ -49,6 +66,8 @@ additional dependency or second economic engine was introduced.
 | Company share buyback | Unchanged | Decreases | Remaining shareholders own a greater fraction |
 | Invest in an NPC company | Decreases | Increases equally | Private investment claim, not an exchange-traded security |
 | Acquire an NPC company | Decreases | Unchanged | Founder receives payment; the same company moves to player assets |
+| Put cash in a personal or family fund | Decreases | Unchanged | Your units rise by the same; net worth unchanged |
+| Set company cash to work | Unchanged | Unchanged (it stays in cash) | The year's result lands in other income or costs; the company's value moves by that cash and is not multiplied as earnings |
 
 Transactions validate the current company, adult/living player, funds, control, available
 shares and annual negotiation limits at execution. Private shareholders may refuse a sale;

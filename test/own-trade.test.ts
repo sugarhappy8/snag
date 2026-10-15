@@ -8,6 +8,7 @@ import { outsideFloat } from '../src/game/business/own-listing'
 import { MAX_BUY_SHARE, MIN_OUTSIDE, SHARE_SALES_PER_YEAR, buyLimit, buyOwnShares, buyPreview, buyQuote, controlsWith, sellLimit, sellNote, sellOwnShares, shareSaleKey, type BuyQuote } from '../src/game/business/own-trade'
 import { tickerOf } from '../src/game/business/listing-id'
 import { equityYearKey, transactEquity } from '../src/game/business/rescue'
+import { ownerVotes } from '../src/game/business/share-classes'
 import { bizOf, executiveEquity, isTicker, readBiz, stakeValue } from '../src/game/business/state'
 import { netWorth, useYearAction, yearActionsUsed } from '../src/game/core'
 import { investmentHoldings, liquidatePortfolio } from '../src/game/investments'
@@ -386,6 +387,50 @@ describe('buying your own shares', () => {
     const lines = g.log.flatMap((y) => y.entries).map((e) => e.text)
     expect(lines.length).toBe(log + 1)
     expect(lines[lines.length - 1]).toMatch(/^I bought more of Listed Co on the NYSE\. I own 6\d\.\d%\.$/)
+  })
+
+  it('the buy preview says whether the shares vote', () => {
+    const preview = (kind: 'ab' | 'nv' | null, share = 0.3) => {
+      const g = founder()
+      const { a, b } = listed(g, { marketCap: 10e9, share })
+      if (kind) b.classes = { kind, hi: share }
+      return { g, a, b, text: buyPreview(g, a, b, 1e8) }
+    }
+    const ab = preview('ab')
+    expect(ab.text).toContain('These shares carry 1 vote.')
+    expect(ab.text).toMatch(/You'd hold \d+% of the votes\./)
+    expect(ab.text).not.toContain('no vote')
+    // The votes it names are the votes after the buy, with the new shares ordinary.
+    const q = buyQuote(ab.g, ab.a, ab.b, 1e8)
+    const after = ownerVotes({ ...ab.b, share: q.newShare })
+    expect(ab.text).toContain(`You'd hold ${(after * 100).toFixed(0)}% of the votes.`)
+    expect(after).toBeGreaterThan(ownerVotes(ab.b))
+    expect(after).toBeLessThan(ownerVotes({ ...ab.b, share: q.newShare, classes: { kind: 'ab', hi: q.newShare } }))
+
+    const nv = preview('nv')
+    expect(nv.text).toContain('These shares carry no vote.')
+    expect(nv.text).toContain('of the votes.')
+    expect(nv.text).not.toContain('carry 1 vote')
+
+    // One class is the text it always was.
+    const one = preview(null, 0.6)
+    expect(one.text).not.toContain('carry')
+    expect(one.text).not.toContain('of the votes')
+    expect(one.text).toMatch(/^[\d,.]+( million| billion)? shares at about \$[\d,.]+ each \(market \$100\.00\)\. You'd own 6\d\.\d%\. You keep control of the board\.$/)
+    // So is a damaged record.
+    const hostile = preview(null, 0.6)
+    hostile.b.classes = { kind: 'zz' } as never
+    expect(buyPreview(hostile.g, hostile.a, hostile.b, 1e8)).toBe(one.text)
+  })
+
+  it('the sentence about the votes comes before the one about the board', () => {
+    const g = founder()
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const text = buyPreview(g, a, b, 1e8)
+    expect(text).toContain(' You keep control of the board.')
+    expect(text.indexOf('of the votes.')).toBeLessThan(text.indexOf('You keep control'))
+    expect(text.indexOf("You'd own")).toBeLessThan(text.indexOf('These shares carry'))
   })
 
   it('says "1 share" for one share and "shares" for the rest', () => {

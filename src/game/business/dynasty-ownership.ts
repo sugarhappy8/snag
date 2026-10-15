@@ -4,6 +4,7 @@ import { CHARITY, willSlices } from '../events/will-core'
 import { allGroups, groupsOf, groupValue, liveGroup, readMembership, saveGroup, syncMembers, type Group } from './conglomerate-state'
 import { bizOf, businessAssets, readBiz, type BizState } from './state'
 import { refreshValue } from './economy'
+import { foundersWhole, keepFoundersWhole } from './share-classes'
 import type { SuccessionEstateUnit } from './nepo-inheritance'
 import type { FamilyShare } from './family-share-state'
 import { money, num, pct } from './util'
@@ -148,12 +149,15 @@ export function inheritConglomerates(g: GameState, heirId: string, units: Succes
     if (!grp && !solo?.familyShares?.length) continue
     const ownership = grp?.core ?? solo!
     const deceasedShare = ownership.share
+    // A listed company's founders' class is not grown by the split (relatives hold it by rule): see keepFoundersWhole.
+    const founders = solo ? foundersWhole(solo) : null
     const holders = new Map((ownership.familyShares ?? []).map(x => [x.id, x.share]))
     const allocations = unit.recipient ? [{ id: unit.recipient.id, pct: 1 }] : slices
     for (const s of allocations) holders.set(s.id, (holders.get(s.id) ?? 0) + deceasedShare * s.pct)
     ownership.share = holders.get(heirId) ?? 0
     holders.delete(heirId)
     ownership.familyShares = [...holders].filter(([, share]) => share > 0).map(([id, share]) => ({ id, share }))
+    if (solo && founders !== null && ownership.share !== deceasedShare) keepFoundersWhole(solo, founders)
     const ratio = deceasedShare > 0 ? ownership.share / deceasedShare : 0
     if (grp) {
       for (const member of grp.members) member.b.invested *= ratio

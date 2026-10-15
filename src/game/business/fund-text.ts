@@ -11,6 +11,12 @@ export function signed(x: number, digits = 1): string {
   return `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(digits)}%`
 }
 
+/** `signed` with the plain hyphen-minus, as money carries it. The hedge funds use it so a fund's percent and its dollars show the same minus. */
+export function signedPlain(x: number, digits = 1): string {
+  const v = Number.isFinite(x) ? x : 0
+  return `${v >= 0 ? '+' : '-'}${Math.abs(v * 100).toFixed(digits)}%`
+}
+
 export function rankText(rank: number): string {
   if (rank < 0) return ''
   const medal = rank >= .9 ? ' 🥇' : rank >= .75 ? ' 🏆' : rank < .25 ? ' 😬' : ''

@@ -19,6 +19,7 @@ import { settlePerfectForesight } from './executive-foresight'
 import { prepareInternalServices, settleInternalServices } from './group-services'
 import { recordCompanyShock, recoverConfidence } from './dynamics'
 import { groupRescue, inGroup, prepareGroupManagement, yearlyConglomerates } from './conglomerate'
+import { autoDividendYear, dividendLog, queueDividends, type DividendResult } from './dividend-year'
 import {
   bestPlan,
   costFactor,
@@ -51,6 +52,7 @@ import { industryDef } from './industries'
 import { economicReportSummary, recordEconomicReport } from './economic-report'
 import { readSupply } from './supply'
 import { bookFranchiseYear, franchiseIncomeFor } from './franchise'
+import { bookHedgeYear } from './hedge-company'
 import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
 import { staffTurnover } from './staff'
@@ -482,6 +484,7 @@ export function yearlyBusinessImpl(g: GameState): void {
   recoverConfidence(g)
   let eventQueued = false
   const statementBridges = new Map<string, { previous: Statement | null; bookedNet: number }>()
+  const dividends: DividendResult[] = []
   for (const a of list) {
     if (!findBusiness(g, a.id)) continue
     const b = bizOf(g, a)
@@ -494,6 +497,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     const tech = isDeepTech(b)
     // Franchisees' royalties for the year, booked once through yearIncome (business/franchise.ts).
     bookFranchiseYear(g, a, b, fiscal)
+    // Cash a company puts to work in a hedge fund, booked once through yearIncome or yearCosts (business/hedge-company.ts).
+    bookHedgeYear(g, a, b, fiscal)
     prepareVenueYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     if (b.ceo === 'manager' && isFinanceFirm(b)) financeManagerTurn(g, b)
@@ -551,6 +556,9 @@ export function yearlyBusinessImpl(g: GameState): void {
     }
     // Milestones reached this year (one popup a year for all companies; business/milestones.ts).
     milestoneYear(g, a, b)
+    // The company's standing yearly dividend rule, if it has one (business/dividend-year.ts).
+    const paidOut = autoDividendYear(g, a, b, s)
+    if (paidOut) { dividends.push(paidOut); dividendLog(g, paidOut) }
 
     // A group's treasury covers a division's cash hole from its sisters' spare cash first.
     if (b.cash < 0) groupRescue(g, a, b)
@@ -573,6 +581,7 @@ export function yearlyBusinessImpl(g: GameState): void {
     maybeAntitrust(g, a, b, fiscal, managed)
     if (!plans) hiredCeoTurn(g, a, b, lastCycle)
   }
+  queueDividends(g, dividends)
   // Groups of companies (business/conglomerate.ts): synergies, pooled cash, the group board.
   settleInternalServices(g, fiscal)
   // Internal invoices can amend both divisions' final tax/net statements. Rebuild

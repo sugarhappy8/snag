@@ -6,6 +6,7 @@ import { initializeRoyalBirth, inheritRoyalStatus, royalRule, type RoyalBirthCho
 import { npcCompany, refreshRoyalCareers } from './npc-lives'
 import { npcLife } from './npc-state'
 import { refreshValue } from './business/economy'
+import { keptFundHolders, payOutDroppedFunds, settleFundsAtDeath } from './business/hedge-year'
 import { heirCitizenships } from './activities/immigration-state'
 import {
   addHidden,
@@ -1176,6 +1177,8 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   // Co-owners who died before the player pass their stakes on first (the player's part joins the
   // estate that divides now), so no share stays on a late relative's record.
   settleLateFamilyOwners(n)
+  // The same for family hedge funds: a relative who died first passes their units on, and yours are in the estate.
+  settleFundsAtDeath(n)
   const successionUnits = successionEstateUnits(n)
   // Spun-off divisions with family co-owners remain in-kind holdings too.
   const groupIds = new Set(successionUnits.filter(u => u.group || u.assets.some(a => Array.isArray(a.details.familyShares) && a.details.familyShares.length > 0)).flatMap(u => u.assets.map(a => a.id)))
@@ -1226,6 +1229,10 @@ export function continueAsChild(g: GameState, childId: string): GameState {
   const estateTax = plan.tax
   const keptProperty = property.filter((a) => groupIds.has(a.id) || selectedIds.has(a.id) || (keepProperty && !allocatedIds.has(a.id)))
   const keptAssets: Asset[] = [...keptProperty, ...heirlooms]
+  // Relatives in a family fund the heir does not keep are paid before the heir's money is built.
+  inheritanceLines.push(...payOutDroppedFunds(n, property.filter((a) => !keptAssets.includes(a))))
+  // Relatives in a family fund the heir keeps stay in the heir's contacts, so their units stay theirs.
+  for (const id of keptFundHolders(keptAssets)) familyOwnerIds.add(id)
 
   // --- The heir becomes the player ---------------------------------------------
   const age = heirP.age

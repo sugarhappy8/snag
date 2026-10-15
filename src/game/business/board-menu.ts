@@ -31,6 +31,7 @@ import { bestMandate, limitsMerit, mandateMerit, outlook } from './board-ceo'
 import { ceoPayNorm, managerName, STYLE_INFO, styleOf } from './career'
 import { refreshValue, valuationOf } from './economy'
 import { manageBlock } from './gate'
+import { classFactor } from './share-classes'
 import { bizOf, findBusiness, readBiz, type BizState } from './state'
 import { clampN, money, pct, round2 } from './util'
 
@@ -102,6 +103,26 @@ export function capexCaption(g: GameState, a: Asset, b: BizState, amount: number
 // Shared money moves (manage.ts Money rows use them too)
 
 /**
+ * The money move of a dividend of `n`, already checked against payoutCash and the board (the
+ * manual dividend and the yearly rule both end here): cash leaves the company, the player's share
+ * is taxed as income, relatives are paid, a listed company's price falls by the payout per share at its
+ * structure's factor (the price already carries it, share-classes.ts) and the value is marked again.
+ * Says nothing to the player. Returns the player's part.
+ */
+export function payOut(g: GameState, a: Asset, b: BizState, n: number): number {
+  b.cash -= n
+  const mine = Math.round(n * b.share)
+  earnIncome(g, mine)
+  payFamilyBusinessProceeds(g, b, n, true)
+  if (b.public && b.sharesOut > 0) {
+    b.sharePrice = round2(Math.max(0.05, b.sharePrice - (n / b.sharesOut) * classFactor(b)))
+    b.valuation = Math.round(b.sharePrice * b.sharesOut)
+  } else b.valuation = valuationOf(b)
+  refreshValue(a, b)
+  return mine
+}
+
+/**
  * Pay a dividend of `amount` from company cash (at most what can leave the company): above the
  * cash the reserve can spare, the board votes first. The owner's share is taxed as income; a
  * listed company's share price drops by the payout. Returns true when it was paid.
@@ -110,15 +131,7 @@ export function payDividend(g: GameState, a: Asset, b: BizState, amount: number)
   const n = Math.round(clampN(amount, 0, payoutCash(a, b)))
   if (n <= 0) return false
   if (!boardAllows(g, a, b, { kind: 'dividend', by: 'owner', amount: n, label: `Pay a ${money(n)} dividend` })) return false
-  b.cash -= n
-  const mine = Math.round(n * b.share)
-  earnIncome(g, mine)
-  payFamilyBusinessProceeds(g, b, n, true)
-  if (b.public && b.sharesOut > 0) {
-    b.sharePrice = round2(Math.max(0.05, b.sharePrice - n / b.sharesOut))
-    b.valuation = Math.round(b.sharePrice * b.sharesOut)
-  } else b.valuation = valuationOf(b)
-  refreshValue(a, b)
+  const mine = payOut(g, a, b, n)
   log(g, `I paid myself ${money(mine)} from ${a.name}.`, 'good')
   notice(g, 'Payday', `${a.name} paid out ${formatMoney(n)}${b.share < 1 ? `; your ${pct(b.share)} share is ${formatMoney(mine)}` : ''}. It will be taxed as income at the end of the year.`, { emoji: '\u{1F4E4}', tone: 'good' })
   return true

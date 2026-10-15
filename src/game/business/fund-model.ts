@@ -224,10 +224,14 @@ export function alphaMean(skill: number): number {
   return (clampN(skill, 0, 100) - 50) * .0006
 }
 
-/** Big books dilute any edge (a $100B fund can't nimbly buy small winners). */
-export function capacityFactor(aum: number, skill: number, b: BizState): number {
-  const cap = 4e9 * (1 + leadershipPower(b, 'quality') * .5) * (.5 + skill / 100)
+/** Big books dilute any edge (a $100B fund can't nimbly buy small winners). `quality` is a research team's leadership power (0 for none). */
+export function capacityOf(aum: number, skill: number, quality = 0): number {
+  const cap = 4e9 * (1 + quality * .5) * (.5 + skill / 100)
   return clampN(Math.sqrt(cap / Math.max(1, aum)), 0, 1)
+}
+
+export function capacityFactor(aum: number, skill: number, b: BizState): number {
+  return capacityOf(aum, skill, leadershipPower(b, 'quality'))
 }
 
 /** Every dollar a country's savers could hand to managers in `year` (rough, constant dollars). */

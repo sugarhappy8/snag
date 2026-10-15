@@ -23,12 +23,14 @@ import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './indust
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { franchiseFeesFor } from './franchise-state'
+import { hedgeProfitIn } from './hedge-record'
 import { studioValue } from './gamestudio-state'
 import { heavyPulse, readHeavy } from './heavy-rd'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
 import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
+import { classFactor } from './share-classes'
 import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
 import { marketDef } from './competition-data'
@@ -877,6 +879,9 @@ export function valuationOf(b: BizState): number {
     const keep = 1 - clampN(marketOf(b.countryId).corporateTax, 0, 0.9)
     h.forEach((r, i) => (avg -= franchiseFeesFor(b, r.year) * keep * weights[i]))
   }
+  // A company fund's yearly result is already in the cash below: it is valued at what it is, never
+  // capitalized as earnings (business/hedge-record.ts hedgeProfitIn).
+  if (b.hedge) h.forEach((r, i) => (avg -= hedgeProfitIn(b, r) * weights[i]))
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)
@@ -935,7 +940,8 @@ export function exchangeMove(g: GameState, countryId: string, year: number): num
 /** Yearly share-price update for a listed company; returns the new market cap. */
 export function updateSharePrice(g: GameState, b: BizState, year: number): number {
   if (!b.public || b.sharesOut <= 0) return b.valuation
-  const fundamental = valuationOf(b) / b.sharesOut
+  // Fewer votes sell for less (share-classes.ts): the market's price for the structure.
+  const fundamental = (valuationOf(b) / b.sharesOut) * classFactor(b)
   const repricing = publicBusinessShockFactor(g, b, g.year)
   // Registration already marked today's price. At a historical expropriation
   // sunset, however, last year's quote still carries the old market's factor.

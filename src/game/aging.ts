@@ -26,7 +26,9 @@ import { yearlyDigest } from './history/digest'
 import { yearlyImmigration } from './immigration'
 import { yearlyWorkshop } from './workshop/yearly'
 import { yearlyUnderworld } from './underworld'
+import { yearlyAdvisors } from './advisors/year'
 import { yearlyCorruption } from './special/corruption'
+import { yearlyHedge } from './business/hedge-year'
 import { yearlyInvestments } from './investments'
 import { yearlyMilestones } from './life'
 import { yearlyRelationships } from './relationships'
@@ -65,6 +67,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['business', yearlyBusiness],
   ['development', yearlyDevelopment],
   ['investments', yearlyInvestments],
+  // Personal and Family hedge funds book their year and queue one popup (business/hedge-year.ts).
+  ['hedge', yearlyHedge],
   ['shops', yearlyShops],
   ['computer', yearlyComputer],
   ['finance', yearlyFinance],
@@ -76,6 +80,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['assets', yearlyAssets],
   ['crime', yearlyCrime],
   ['underworld', yearlyUnderworld],
+  // The money team bills and trades last, so its cash is what is left after rent, tax and upkeep.
+  ['advisors', yearlyAdvisors],
   ['milestones', yearlyMilestones],
 ]
 

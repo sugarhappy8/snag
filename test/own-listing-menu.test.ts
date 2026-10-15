@@ -544,3 +544,178 @@ describe('your listed company in Stocks', () => {
     expect(findTarget(g, `inv-own-${a.id}`)).toBeUndefined()
   })
 })
+
+describe('the last dividend', () => {
+  const LAST = { year: 2026, paid: 5e6, mine: 3e6, perShare: 0.05 }
+  const screenOf = (g: GameState, id: string): string[] => infoTexts(g, rowOf(g, `inv-own-${id}`).children(g))
+  const lastLine = (texts: string[]): string | undefined => texts.find((t) => t.startsWith('Last dividend'))
+
+  it('shows the last dividend on a company screen', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 5e9, sharesOut: 1e8 })
+    expect(b.sharePrice).toBe(50)
+    b.dividend = { mode: 'cash', pct: 0.5, keep: 3, last: { ...LAST } }
+    const texts = screenOf(g, a.id)
+    expect(texts.filter((t) => t.startsWith('Last dividend'))).toHaveLength(1)
+    expect(lastLine(texts)).toMatch(/^Last dividend: .* a share for 2026, 0\.1% of the price\.$/)
+    // It is the first line of the company-only part: after the listing facts, before the control note.
+    const at = texts.findIndex((t) => t.startsWith('Last dividend'))
+    expect(texts[at - 1]).toMatch(/^Listed on the /)
+    expect(texts[at + 1]).toMatch(/^At 50% or more you control the board/)
+  })
+
+  it('names the year it was paid for and leaves the rest of the screen as it was', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 5e9, sharesOut: 1e8 })
+    const plain = screenOf(g, a.id)
+    b.dividend = { mode: 'profit', pct: 0.3, keep: 3, last: { year: 2031, paid: 1e6, mine: 6e5, perShare: 0.2 } }
+    const texts = screenOf(g, a.id)
+    expect(lastLine(texts)).toMatch(/^Last dividend: .* a share for 2031, 0\.4% of the price\.$/)
+    expect(texts.filter((t) => !t.startsWith('Last dividend'))).toEqual(plain)
+  })
+
+  it('shows nothing without one', () => {
+    const cases: [string, (b: { dividend?: unknown }) => void][] = [
+      ['no rule', () => {}],
+      ['a rule with no last payment', (b) => { b.dividend = { mode: 'cash', pct: 0.5, keep: 3 } }],
+      ['a last payment of nothing a share', (b) => { b.dividend = { mode: 'cash', pct: 0.5, keep: 3, last: { ...LAST, perShare: 0 } } }],
+      ['a hostile rule', (b) => { b.dividend = 'x' }],
+      ['a rule with a damaged last payment', (b) => { b.dividend = { mode: 'cash', pct: 0.5, keep: 3, last: { ...LAST, perShare: Number.POSITIVE_INFINITY } } }],
+      ['a rule with a last payment of the wrong shape', (b) => { b.dividend = { mode: 'cash', pct: 0.5, keep: 3, last: 'x' } }],
+    ]
+    for (const [name, set] of cases) {
+      const g = founder(7, 'us')
+      const { a, b } = listed(g, { marketCap: 5e9, sharesOut: 1e8 })
+      set(b)
+      const texts = screenOf(g, a.id)
+      expect(lastLine(texts), name).toBeUndefined()
+      expect(allText(g, rowOf(g, `inv-own-${a.id}`).children(g)), name).not.toMatch(/dividend/i)
+    }
+  })
+
+  it('leaves the yield out when the price makes it meaningless', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 5e9, sharesOut: 1e8 })
+    b.dividend = { mode: 'cash', pct: 0.5, keep: 3, last: { ...LAST } }
+    b.sharePrice = 1e-300
+    const line = lastLine(screenOf(g, a.id))
+    expect(line).toMatch(/^Last dividend: .* a share for 2026\.$/)
+    expect(line).not.toMatch(/NaN|undefined|Infinity|e\+/)
+  })
+
+  it('a group row has none', () => {
+    const g = founder(7, 'kr', 50_000_000_000)
+    const grp = listedGroup(g, 'kr', 0.7)
+    for (const m of grp.members) {
+      const b = readBiz(g, m)
+      expect(b.public).not.toBe(true)
+      m.details.dividend = { mode: 'cash', pct: 0.5, keep: 3, last: { ...LAST } }
+    }
+    const row = stocksOf(g).find((n) => n.id === `inv-own-g-${grp.id}`)
+    expect(row).toBeDefined()
+    const texts = infoTexts(g, (row as MenuGroup).children(g))
+    expect(texts).toContain("Trade its shares from the group's screen under Businesses.")
+    expect(lastLine(texts)).toBeUndefined()
+  })
+
+  it('the screen still renders from a frozen state', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 5e9, sharesOut: 1e8 })
+    b.dividend = { mode: 'cash', pct: 0.5, keep: 3, last: { ...LAST } }
+    listedGroup(g, 'us', 0.7)
+    const before = JSON.stringify(g)
+    const rng = g.rng
+    deepFreeze(g)
+    const texts = screenOf(g, a.id)
+    expect(lastLine(texts)).toMatch(/^Last dividend: .* a share for 2026, 0\.1% of the price\.$/)
+    expect(allText(g, stocksOf(g))).not.toMatch(/NaN|undefined|Infinity/)
+    expect(JSON.stringify(g)).toBe(before)
+    expect(g.rng).toBe(rng)
+  })
+})
+
+describe('share classes on the company screen', () => {
+  it('shows the classes and the votes', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const infos = infoTexts(g, row.children(g))
+    expect(infos).toContain('Classes: B has 10 votes a share and is yours. A has 1 vote and trades.')
+    expect(infos).toContain('Votes: you hold 63.8% of the votes with 15.0% of the shares.')
+    expect(infos).toContain('At 50% or more of the votes you control the board. You hold 63.8%.')
+    expect(infos.some((t) => t.startsWith('At 50% or more you control'))).toBe(false)
+    // The two class lines follow the listing line and come before the control line.
+    const at = (start: string) => infos.findIndex((t) => t.startsWith(start))
+    expect(at('Listed on the ')).toBeLessThan(at('Classes: '))
+    expect(at('Classes: ')).toBeLessThan(at('Votes: '))
+    expect(at('Votes: ')).toBeLessThan(at('At 50% or more of the votes'))
+    expect(subtitleOf(g, row)).toContain('yours 15% (64% of votes)')
+    expect(subtitleOf(g, row)).toContain('NYSE')
+    // The info ids stay unique.
+    const ids = row.children(g).filter((n) => n.type === 'info').map((n) => n.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('a non-voting float names the voting shares as yours', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'nv', hi: 0.15 }
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const infos = infoTexts(g, row.children(g))
+    expect(infos).toContain('Classes: the voting shares are yours. The non-voting shares trade.')
+    expect(infos).toContain('Votes: you hold 100.0% of the votes with 15.0% of the shares.')
+    expect(infos).toContain('At 50% or more of the votes you control the board. You hold 100.0%.')
+    expect(subtitleOf(g, row)).toContain('(100% of votes)')
+  })
+
+  it('a one-class company reads as before', () => {
+    const g = founder(7, 'us')
+    const { a } = listed(g, { marketCap: 10e9, share: 0.6 })
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const infos = infoTexts(g, row.children(g))
+    expect(infos.some((t) => t.startsWith('Classes:'))).toBe(false)
+    expect(infos.some((t) => t.startsWith('Votes:'))).toBe(false)
+    expect(infos).toContain('At 50% or more you control the board. You hold 60.0%.')
+    expect(subtitleOf(g, row)).not.toContain('of votes')
+    expect(subtitleOf(g, row)).toBe(`${'$100.00'} · Large-cap · yours 60% · NYSE`)
+  })
+
+  it('a damaged record reads as one class on the screen', () => {
+    for (const bad of [{ kind: 'zz', hi: 0.5 }, 7, 'ab', null]) {
+      const g = founder(7, 'us')
+      const { a } = listed(g, { marketCap: 10e9, share: 0.6 })
+      a.details.classes = bad as never
+      const row = rowOf(g, `inv-own-${a.id}`)
+      const infos = infoTexts(g, row.children(g))
+      expect(infos.some((t) => t.startsWith('Classes:') || t.startsWith('Votes:'))).toBe(false)
+      expect(infos).toContain('At 50% or more you control the board. You hold 60.0%.')
+    }
+  })
+
+  it('a buy leaves the screen in step with the votes', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const { buy } = doors(g, row)
+    expect(buy.input!.preview!(g, buy.input!.max!)).toMatch(/These shares carry 1 vote\. You'd hold \d+% of the votes\./)
+    const before = infoTexts(g, row.children(g)).find((t) => t.startsWith('Votes: '))
+    buy.run(g, String(buy.input!.max!))
+    const after = infoTexts(g, row.children(g)).find((t) => t.startsWith('Votes: '))
+    expect(after).not.toBe(before)
+    expect(b.classes).toEqual({ kind: 'ab', hi: 0.15 })
+  })
+
+  it('renders from a frozen state', () => {
+    const g = founder(7, 'us')
+    const { a, b } = listed(g, { marketCap: 10e9, share: 0.15 })
+    b.classes = { kind: 'ab', hi: 0.15 }
+    const json = JSON.stringify(g)
+    deepFreeze(g)
+    const row = rowOf(g, `inv-own-${a.id}`)
+    const text = allText(g, [row])
+    expect(text).not.toMatch(/NaN|undefined|Infinity/)
+    expect(JSON.stringify(g)).toBe(json)
+  })
+})
