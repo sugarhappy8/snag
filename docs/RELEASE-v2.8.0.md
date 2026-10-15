@@ -66,6 +66,8 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - A line about it in the CEO's letter.
 - An advisor that sets the rule.
 - A hired CEO's own dividends reaching your relatives. The cash and profit mandates still pay only the owner when no rule is set.
+- A listed company priced at the $0.05 floor doesn't lower its price when it pays out, so your part is new money. The manual dividend has always done this. It takes an extreme setup, such as 10 billion shares on a $500M company.
+- A cash rule at 100% pays a loss-making company down to its floor, and its cash can go negative a few years later. Pick a lower share, or a longer floor, for a company that loses money.
 
 ## Share classes
 
@@ -114,6 +116,8 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - Takeover bids that count votes, and index membership rules.
 - Unit sizes. One Berkshire A share is 1,500 B shares in real life. Here a line trades near its company's price.
 - A cap on the vote lead. A non-voting float with a tiny stake keeps every vote, and the 7% price cost, the independents' veto and minority suits are the counterweights.
+- The price discount (4% for founder shares, 7% for a non-voting float) applies to the company's cash as well, so a dividend returns that cash at face value. You gain about 4% or 7% of the cash you receive, once for each dollar of cash paid out.
+- Buying more of a non-voting company's float and then changing to one class lifts the price by the discount you took off. It needs a board vote, it costs about 3% of the money you spent, and the buy cap limits it.
 
 ## Money team
 
@@ -184,6 +188,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - Advice inside other menus, such as order previews.
 - Subtracting a pending Heavy R&D cost from the company-cash finding.
 - The manager running your hedge funds, or a family office.
+- Hiring and letting go cost nothing until year-end, so you can hire, read the findings and let go with no fee, and you can re-roll who is on offer. A hire who is a crook is still a risk only once you keep them through a year-end.
 
 ## Hedge funds
 
