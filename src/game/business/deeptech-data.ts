@@ -30,6 +30,12 @@ export interface DeepTechDef {
   salesMult: number
   /** US round sizes by series index (1 = seed ... 6 = Series E). */
   rounds: number[]
+  /**
+   * Stage investors want before each series (index = series), instead of the usual ladder and
+   * instead of yearly sales: for a trade whose sales stay tiny until its last rungs (a fusion
+   * plant is paid for before it sells a watt).
+   */
+  seriesStage?: readonly number[]
   /** Founder background that lets you skip the technical co-founder. */
   req: { majors: string[]; kinds?: DegreeKind[]; coding?: number; smarts: number; text: string }
   /** The expert you can hire instead (a key-staff role title from industries.ts). */
@@ -185,7 +191,10 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
     plantCap: 2,
     plant: ['fusion power plant', 'fusion power plants'],
     salesMult: 10,
-    rounds: [0, 8_000_000, 30_000_000, 100_000_000, 250_000_000, 600_000_000, 1_200_000_000],
+    rounds: [0, 14_000_000, 50_000_000, 100_000_000, 250_000_000, 600_000_000, 1_200_000_000],
+    // Record plasmas open Series B and C, which pay for the net-energy shot. Net energy opens D and
+    // E, which pay for the pilot plant. Sales only start once the plant is on the grid.
+    seriesStage: [0, 0, 1, 1, 1, 2, 2],
     req: { majors: ['Physics', 'Engineering', 'Mathematics'], smarts: 86, text: 'a physics, engineering or math degree (or smarts 86+)' },
     expert: 'Chief Plasma Physicist',
     screen: { label: 'Reactor Hall', emoji: '\u{1F31F}', header: 'Hotter plasma, stronger magnets, longer shots. The finish line keeps moving.' },
@@ -229,7 +238,7 @@ export const DEEP_TECH: Record<DeepTechIndustry, DeepTechDef> = {
       s('Lab sorbent', 0, 0, 1.5, 'A filter that grabs carbon dioxide from the air, in a beaker.'),
       s('Demonstration plant', 0.15, 0.3, 1.4, 'A shipping container of fans removes a few hundred tonnes a year.'),
       s('Commercial plant', 1, 1, 1, 'Airlines and tech companies buy your removal credits by the thousand.'),
-      s('Megaton removal', 3.5, 1, 0.7, 'Plants across the world bury millions of tonnes a year.'),
+      s('Industrial-scale removal', 3.5, 1, 0.7, 'Plants across the world bury hundreds of thousands of tonnes a year.'),
     ],
     plantCap: 2,
     plant: ['capture plant', 'capture plants'],
@@ -924,7 +933,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
   fusion: [
     {
       id: 'magnets', label: () => 'High-Field Magnets', emoji: '\u{1F9F2}', blurb: 'Superconducting magnets strong enough to squeeze a plasma tight.',
-      years: 2, cost: fixed(6_000_000), odds: fixed(0.7),
+      years: 1, cost: fixed(5_000_000), odds: fixed(0.7),
       gate: (t) => once(t, 'magnets'),
       win: (x) => (lvl(x.t, 10), hype(x.t, 8), 'Your magnet hit a record field strength. Physicists from three continents came to look.'),
       lose: (x) => (lvl(x.t, 3), 'The magnet quenched and cracked during its first full test. Back to winding tape.'),
@@ -939,12 +948,12 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'materials', label: () => 'Neutron-Proof Materials', emoji: '\u{1F9F1}', blurb: 'Wall materials that survive years of neutron bombardment.',
       years: 2, cost: fixed(10_000_000), odds: fixed(0.65),
-      gate: (t) => once(t, 'materials'),
+      gate: (t) => once(t, 'materials') ?? (t.stage < 1 ? 'Needs record plasmas first.' : null),
       win: (x) => (cut(x.t, 0.08), safe(x.t, 15), lvl(x.t, 5), 'Your new wall alloy shrugs off neutrons. Plants will need fewer shutdowns.'),
     },
     {
       id: 'netGain', label: () => 'Net Energy Gain', emoji: '\u{26A1}', blurb: 'Get more energy out of the plasma than you put in.',
-      years: 3, cost: fixed(60_000_000), odds: fixed(0.4),
+      years: 3, cost: fixed(40_000_000), odds: fixed(0.4),
       gate: (t) => once(t, 'netGain') ?? (t.stage < 1 ? 'Needs record plasmas first.' : t.level < 40 ? 'Needs tech level 40+.' : null),
       win: (x) => (stageAtLeast(x.t, 2), hype(x.t, 35), lvl(x.t, 12), 'Net energy gain! More power out than in. It is front-page news everywhere.'),
       lose: (x) => (lvl(x.t, 4), 'Close, but the shot gave back only 80% of its energy. Investors asked how long "close" lasts.'),

@@ -45,19 +45,22 @@ export function lastPost(t: TechState): number {
 export function nextRoundNeed(b: BizState, t: TechState): { series: number; met: boolean; text: string } {
   const ind = dtInd(b)
   const k = Math.min(MAX_SERIES, t.series + 1)
-  const stage = Math.min(maxStage(ind), STAGE_FOR[k])
-  const sales = Math.round(SALES_FOR[k] * rdScale(b.countryId))
+  const ladder = DEEP_TECH[ind].seriesStage
+  const stage = Math.min(maxStage(ind), ladder?.[k] ?? STAGE_FOR[k])
+  const sales = ladder ? 0 : Math.round(SALES_FOR[k] * rdScale(b.countryId))
   const revenue = b.last ? b.last.revenue : 0
   const stageName = DEEP_TECH[ind].stages[stage].name
   // A first R&D win is enough for a Series A; a Series B also takes a breakthrough-level lab.
-  const alt = k === 2 ? t.done.length > 0 || t.drugs.some((d) => d.phase >= 1) : k === 3 ? t.stage >= stage - 1 && t.level >= 45 : false
+  // A trade with its own ladder (seriesStage) is held to it: no shortcut for a Series B.
+  const stageBefore = k === 3 && !ladder
+  const alt = k === 2 ? t.done.length > 0 || t.drugs.some((d) => d.phase >= 1) : stageBefore ? t.stage >= stage - 1 && t.level >= 45 : false
   const met = t.stage >= stage || (sales > 0 && revenue >= sales) || alt
   const text =
     k <= 1
       ? 'a pitch deck and a founder investors believe in'
       : k === 2
         ? `a first R&D breakthrough or "${stageName}"`
-        : k === 3
+        : stageBefore
           ? `"${stageName}" (or the stage before it with tech level 45+)`
           : sales > 0
             ? `"${stageName}" or ${money(sales)} of yearly sales`
