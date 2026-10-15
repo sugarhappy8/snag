@@ -356,6 +356,12 @@ export interface ProgramDef {
   lose?: (x: ProgCtx) => string
   /** Share of the spend booked as patents on success (default 1.2; endless programs book less). */
   ipShare?: number
+  /**
+   * True for a program that moves the company up its commercial ladder, or that the next rung
+   * needs first: the manager and the Business talent rank it ahead of the rest. A function when it
+   * only counts for a lab that is still small (the first models, the first qubits).
+   */
+  unlocks?: boolean | ((t: TechState) => boolean)
 }
 
 const fixed = (n: number) => () => n
@@ -391,6 +397,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'firstChip', label: () => 'First Chip Tape-Out', emoji: '\u{1F4BE}', blurb: 'Send your first design to a foundry on a shared wafer. Does it work?',
       years: 1, cost: fixed(2_500_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'firstChip'),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 8), hype(x.t, 8), 'First silicon works! Early customers want samples.'),
       lose: (x) => (lvl(x.t, 2), 'The first chip came back dead on arrival: a timing bug. Back to the drawing board.'),
@@ -398,6 +405,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'volume', label: () => 'Volume Production Deal', emoji: '\u{1F3ED}', blurb: 'Qualify your chip and book wafer capacity at a big foundry.',
       years: 1, cost: fixed(4_000_000), odds: fixed(0.85),
+      unlocks: true,
       gate: (t) => once(t, 'volume') ?? (t.stage < 1 ? 'Needs working first silicon.' : null),
       win: (x) => (stageAtLeast(x.t, 2), lvl(x.t, 4), 'A foundry signed you up for volume production. Chips ship this year.'),
     },
@@ -472,6 +480,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'train', label: (t) => (t.models.length === 0 ? 'Train Your First Model' : `Train ${modelFamily(t, '')} ${modelGens(t) + 1}`), emoji: '\u{1F9E0}', blurb: 'A training run: weeks of GPUs crunching data. Bigger runs, better models, and every generation costs far more than the last.',
       years: 1, cost: (t) => 1_500_000 * Math.pow(2.6, Math.min(9, modelGens(t))) * Math.pow(1.6, Math.max(0, modelGens(t) - 9)) * (1 - Math.min(0.45, t.plant * 0.12)), odds: fixed(0.82),
+      unlocks: (t) => t.models.length < 3,
       gate: (t) => (modelGens(t) >= 3 && t.rented + t.plant < 1 ? 'Runs this big need GPU compute: rent or build a cluster.' : modelGens(t) >= 5 && t.plant < 1 ? 'Frontier-scale runs need your own GPU cluster.' : null),
       win: (x) => trainWin(x),
       lose: (x) => (lvl(x.t, 1), 'The training run diverged halfway through. The loss curve looks like a seismograph.'),
@@ -479,12 +488,14 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'api', label: () => 'Developer API & Billing', emoji: '\u{1F50C}', blurb: 'Let developers pay to use your models.',
       years: 1, cost: fixed(2_000_000), odds: fixed(0.9),
+      unlocks: true,
       gate: (t) => once(t, 'api') ?? (t.models.length === 0 ? 'Train a model first.' : null),
       win: (x) => (stageAtLeast(x.t, 2), lvl(x.t, 2), 'Your API is live. Developers are building on it.'),
     },
     {
       id: 'enterprise', label: () => 'Enterprise Platform', emoji: '\u{1F3E2}', blurb: 'Security reviews, admin consoles and a sales team in suits.',
       years: 1.5, cost: fixed(12_000_000), odds: fixed(0.7),
+      unlocks: true,
       gate: (t) => once(t, 'enterprise') ?? (t.stage < 2 ? 'Needs paying API customers first.' : t.level < 50 ? 'Big companies only buy from labs at tech level 50+.' : null),
       win: (x) => (stageAtLeast(x.t, 3), lvl(x.t, 3), 'Big companies are signing up. Procurement departments everywhere sighed.'),
     },
@@ -544,6 +555,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'proto', label: () => 'Working Prototype v2', emoji: '\u{1F527}', blurb: 'A robot that works outside the lab, most of the time.',
       years: 1, cost: fixed(1_500_000), odds: fixed(0.78),
+      unlocks: true,
       gate: (t) => once(t, 'proto'),
       win: (x) => (lvl(x.t, 8), hype(x.t, 6), 'Prototype v2 walked, grabbed and sorted all day without catching fire.'),
       lose: (x) => (lvl(x.t, 2), 'Prototype v2 kept falling over. The engineers named it "Bambi".'),
@@ -551,12 +563,14 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'pilots', label: () => 'Customer Pilot Program', emoji: '\u{1F91D}', blurb: 'Put robots to work at a few real customers.',
       years: 1, cost: fixed(2_500_000), odds: fixed(0.8),
+      unlocks: true,
       gate: (t) => once(t, 'pilots') ?? (!done(t, 'proto') ? 'Needs a working prototype.' : null),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 4), 'Pilot customers want to keep the robots. Some want more.'),
     },
     {
       id: 'line', label: () => 'Production Line', emoji: '\u{1F3ED}', blurb: 'Stop building robots by hand.',
       years: 2, cost: fixed(8_000_000), odds: fixed(0.85), capex: true,
+      unlocks: true,
       gate: (t) => once(t, 'line') ?? (t.stage < 1 ? 'Needs customer pilots first.' : null),
       win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 2), lvl(x.t, 4), 'Your production line is humming. Robots building robots, sort of.'),
     },
@@ -615,6 +629,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'discovery', label: () => 'Drug Discovery Program', emoji: '\u{1F52C}', blurb: 'Screen thousands of molecules to find one worth taking into people.',
       years: 2, cost: fixed(2_500_000), odds: (t) => 0.65 + Math.min(0.15, timesDone(t, 'platform') * 0.12),
+      unlocks: true,
       gate: (t) => (t.drugs.filter((d) => !d.failed && d.phase < 4).length >= 4 ? 'Your pipeline is full (four candidates).' : null),
       win: (x) => discoveryWin(x),
       lose: (x) => (lvl(x.t, 2), 'Every promising molecule turned out to be toxic to mice. And to the budget.'),
@@ -622,6 +637,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'platform', label: () => 'Platform Technology', emoji: '\u{1F9EA}', blurb: 'Gene editing, mRNA or AI-designed molecules: better candidates, every time.',
       years: 2, cost: fixed(6_000_000), odds: fixed(0.65),
+      unlocks: true,
       gate: (t) => once(t, 'platform'),
       win: (x) => { lvl(x.t, 12); hype(x.t, 10); for (const d of x.t.drugs) if (!d.failed && d.phase < 4) d.quality = Math.min(100, d.quality + 8); return 'Your platform works: every candidate in the pipeline just got better.' },
     },
@@ -666,6 +682,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'engine', label: () => 'Rocket Engine', emoji: '\u{1F525}', blurb: 'Design, build and static-fire an engine that doesn’t melt.',
       years: 2, cost: fixed(3_000_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'engine'),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 10), hype(x.t, 8), 'A full-duration static fire! The neighbors complained about the noise.'),
       lose: (x) => (lvl(x.t, 3), 'The engine blew its turbopump on the test stand. Spectacular. Expensive.'),
@@ -673,6 +690,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'rocket', label: () => 'Orbital Rocket', emoji: '\u{1F680}', blurb: 'Stack the stages and get the whole thing ready for a first flight.',
       years: 3, cost: fixed(15_000_000), odds: fixed(0.85),
+      unlocks: true,
       gate: (t) => once(t, 'rocket') ?? (t.stage < 1 ? 'Needs a working engine.' : null),
       win: (x) => (stageAtLeast(x.t, 2), lvl(x.t, 8), hype(x.t, 10), 'Your rocket is standing on the pad. Time for a test flight.'),
     },
@@ -733,6 +751,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'prototype', label: () => 'Drivable Prototype', emoji: '\u{1F697}', blurb: 'A hand-built car that drives well enough for a test drive.',
       years: 1, cost: fixed(4_000_000), odds: fixed(0.8),
+      unlocks: true,
       gate: (t) => once(t, 'prototype'),
       win: (x) => (lvl(x.t, 8), hype(x.t, 10), 'Your prototype drove onto the stage at its launch party. Preorders opened.'),
       lose: (x) => (lvl(x.t, 2), 'The prototype’s windows shattered at the unveiling. Memes followed.'),
@@ -740,6 +759,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'lowvol', label: () => 'Low-Volume Assembly Plant', emoji: '\u{1F529}', blurb: 'A small plant to hand-build the first few thousand cars.',
       years: 2, cost: fixed(15_000_000), odds: fixed(0.85), capex: true,
+      unlocks: true,
       gate: (t) => once(t, 'lowvol') ?? (!done(t, 'prototype') ? 'Needs a drivable prototype.' : null),
       win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 1), lvl(x.t, 4), 'The first customer cars rolled out. Some of the panel gaps are even consistent.'),
     },
@@ -758,6 +778,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'ramp', label: () => 'Escape Production Hell', emoji: '\u{1F635}', blurb: 'Fix the line, sleep at the factory, ship the cars.',
       years: 1, cost: fixed(30_000_000), odds: fixed(0.6),
+      unlocks: true,
       gate: (t) => (t.stage !== 2 ? 'Only needed in production hell.' : null),
       win: (x) => (stageAtLeast(x.t, 3), hype(x.t, 15), lvl(x.t, 4), 'You escaped production hell. Cars now roll off the line every minute.'),
       lose: (x) => (lvl(x.t, 2), 'The line still jams every hour. Production hell continues.'),
@@ -806,6 +827,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'qubits', label: (t) => `Scale to ${nextQubits(t.qubits)} Qubits`, emoji: '\u{269B}\u{FE0F}', blurb: 'More qubits, held stable for longer.',
       years: 2, cost: (t) => 4_000_000 * Math.pow(1.6, timesDone(t, 'qubits')), odds: fixed(0.7),
+      unlocks: (t) => t.qubits < 20,
       gate: (t) => (t.qubits >= 100_000 ? 'Your fridge is full.' : null),
       win: (x) => { x.t.qubits = nextQubits(x.t.qubits); if (x.t.qubits >= 20) stageAtLeast(x.t, 1); lvl(x.t, 6); hype(x.t, 8); return `Your processor now holds ${x.t.qubits.toLocaleString('en-US')} qubits.` },
       lose: (x) => (lvl(x.t, 2), 'Crosstalk ruined the bigger chip. The qubits decohere faster than you can read them.'),
@@ -819,6 +841,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'cloud', label: () => 'Quantum Cloud Platform', emoji: '\u{2601}\u{FE0F}', blurb: 'Let companies rent time on your machine from anywhere.',
       years: 1, cost: fixed(3_000_000), odds: fixed(0.85),
+      unlocks: true,
       gate: (t) => once(t, 'cloud') ?? (t.qubits < 20 ? 'Needs at least 20 qubits.' : null),
       win: (x) => (stageAtLeast(x.t, 2), lvl(x.t, 3), 'Your quantum computer is on the cloud. Banks and drug companies are experimenting.'),
     },
@@ -872,18 +895,21 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'detect', label: () => 'Threat Detection Engine', emoji: '\u{1F50E}', blurb: 'Software that spots attackers in a network.',
       years: 1, cost: fixed(1_500_000), odds: fixed(0.8),
+      unlocks: true,
       gate: (t) => once(t, 'detect'),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 8), 'Your detection engine caught a real intruder at a pilot customer. Sales are easy now.'),
     },
     {
       id: 'platform', label: () => 'Zero-Trust Platform', emoji: '\u{1F9F1}', blurb: 'Identity, endpoints and network in one platform.',
       years: 2, cost: fixed(5_000_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'platform') ?? (t.stage < 1 ? 'Needs a first product.' : null),
       win: (x) => (stageAtLeast(x.t, 2), prem(x.t, 0.1), lvl(x.t, 6), 'Your platform replaces six other vendors. CISOs love fewer logins.'),
     },
     {
       id: 'clearance', label: () => 'Government Security Clearance', emoji: '\u{1F3DB}\u{FE0F}', blurb: 'Audits, background checks and a lot of forms.',
       years: 2, cost: fixed(2_500_000), odds: fixed(0.7),
+      unlocks: true,
       gate: (t) => once(t, 'clearance') ?? (t.stage < 2 ? 'Needs a security platform first.' : null),
       win: (x) => (stageAtLeast(x.t, 3), lvl(x.t, 3), 'You are cleared to work on classified systems. Government buyers are calling.'),
     },
@@ -934,6 +960,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'magnets', label: () => 'High-Field Magnets', emoji: '\u{1F9F2}', blurb: 'Superconducting magnets strong enough to squeeze a plasma tight.',
       years: 1, cost: fixed(5_000_000), odds: fixed(0.7),
+      unlocks: true,
       gate: (t) => once(t, 'magnets'),
       win: (x) => (lvl(x.t, 10), hype(x.t, 8), 'Your magnet hit a record field strength. Physicists from three continents came to look.'),
       lose: (x) => (lvl(x.t, 3), 'The magnet quenched and cracked during its first full test. Back to winding tape.'),
@@ -941,6 +968,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'shot', label: () => 'Record Plasma Shot', emoji: '\u{1F525}', blurb: 'Hold a hundred-million-degree plasma longer than anyone has.',
       years: 2, cost: fixed(12_000_000), odds: fixed(0.6),
+      unlocks: true,
       gate: (t) => once(t, 'shot') ?? (!done(t, 'magnets') ? 'Needs high-field magnets first.' : null),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 8), hype(x.t, 15), 'A record plasma: hotter than the Sun for a full second. Labs want to rent your machine.'),
       lose: (x) => (lvl(x.t, 2), 'The plasma wobbled and touched the wall within milliseconds. The data is interesting, at least.'),
@@ -954,6 +982,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'netGain', label: () => 'Net Energy Gain', emoji: '\u{26A1}', blurb: 'Get more energy out of the plasma than you put in.',
       years: 3, cost: fixed(40_000_000), odds: fixed(0.4),
+      unlocks: true,
       gate: (t) => once(t, 'netGain') ?? (t.stage < 1 ? 'Needs record plasmas first.' : t.level < 40 ? 'Needs tech level 40+.' : null),
       win: (x) => (stageAtLeast(x.t, 2), hype(x.t, 35), lvl(x.t, 12), 'Net energy gain! More power out than in. It is front-page news everywhere.'),
       lose: (x) => (lvl(x.t, 4), 'Close, but the shot gave back only 80% of its energy. Investors asked how long "close" lasts.'),
@@ -961,6 +990,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'blanket', label: () => 'Tritium Breeding Blanket', emoji: '\u{1F6E1}\u{FE0F}', blurb: 'A lithium blanket that makes the reactor its own fuel.',
       years: 2, cost: fixed(20_000_000), odds: fixed(0.55),
+      unlocks: true,
       gate: (t) => once(t, 'blanket') ?? (t.stage < 1 ? 'Needs record plasmas first.' : null),
       win: (x) => (safe(x.t, 20), cut(x.t, 0.05), lvl(x.t, 6), 'Your blanket breeds more tritium than the plasma burns. Fuel is solved.'),
       lose: (x) => (lvl(x.t, 2), 'The blanket bred too little tritium to keep a plant running. Redesign under way.'),
@@ -968,6 +998,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'pilot', label: () => 'Pilot Power Plant', emoji: '\u{1F3ED}', blurb: 'The first fusion plant to feed electricity into the grid.',
       years: 4, cost: fixed(400_000_000), odds: fixed(0.55), capex: true,
+      unlocks: true,
       gate: (t) => once(t, 'pilot') ?? (t.stage < 2 ? 'Needs net energy gain first.' : !done(t, 'blanket') ? 'Needs a tritium breeding blanket.' : null),
       win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 3), hype(x.t, 25), lvl(x.t, 8), 'Your pilot plant is on the grid. The lights in a city are running on fusion.'),
       lose: (x) => (lvl(x.t, 4), 'The pilot plant ran for six hours before the magnets overheated. Repairs will take years.'),
@@ -975,6 +1006,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'powerPlant', label: (t) => (timesDone(t, 'powerPlant') > 0 ? 'Another Fusion Power Plant' : 'First Commercial Fusion Plant'), emoji: '\u{1F31F}', blurb: 'A full-size fusion plant. Each one after the first is harder to site.',
       years: 3, cost: (t) => 300_000_000 * (1 + 0.35 * timesDone(t, 'powerPlant')), odds: fixed(0.8), capex: true,
+      unlocks: true,
       gate: (t) => (t.stage < 3 ? 'Needs a pilot plant on the grid first.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
       win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 4), lvl(x.t, 4), 'Another fusion plant is running, burning seawater for power.'),
     },
@@ -983,6 +1015,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'electrodes', label: () => 'Flexible Electrode Array', emoji: '\u{1F9F5}', blurb: 'Threads thinner than a hair that listen to a thousand neurons.',
       years: 1, cost: fixed(3_000_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'electrodes'),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 8), hype(x.t, 6), 'Your electrode array records a thousand neurons at once. Universities placed orders.'),
       lose: (x) => (lvl(x.t, 2), 'The threads broke during insertion in every test. Back to the materials lab.'),
@@ -990,6 +1023,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'decoder', label: () => 'Neural Decoder', emoji: '\u{1F9EE}', blurb: 'Software that turns brain signals into cursor moves and words.',
       years: 1, cost: fixed(2_500_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'decoder'),
       win: (x) => (lvl(x.t, 7), boost(x.t, 0.1), 'Your decoder reads intended movements with 95% accuracy. The demo video is remarkable.'),
     },
@@ -1002,6 +1036,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'firstHuman', label: () => 'First-in-Human Trial', emoji: '\u{1F9D1}\u{200D}\u{2695}\u{FE0F}', blurb: 'Implant the device in a few patients who cannot move or speak.',
       years: 3, cost: fixed(25_000_000), odds: (t) => clampOdds(0.4 + t.safety / 250),
+      unlocks: true,
       gate: (t) => once(t, 'firstHuman') ?? (t.stage < 1 ? 'Needs research devices first.' : !done(t, 'decoder') ? 'Needs a neural decoder.' : null),
       win: (x) => (stageAtLeast(x.t, 2), hype(x.t, 30), lvl(x.t, 10), 'Your first patient moved a cursor using only their thoughts. The world is watching.'),
       lose: (x) => (lvl(x.t, 3), (x.t.safety = Math.max(0, x.t.safety - 10)), 'The trial was paused after implants stopped working within months. The regulator wants answers.'),
@@ -1009,6 +1044,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'approval', label: () => 'Device Approval Filing', emoji: '\u{1F3DB}\u{FE0F}', blurb: 'A pivotal trial and a mountain of paperwork for the medical device regulator.',
       years: 3, cost: fixed(45_000_000), odds: (t) => clampOdds(0.35 + t.safety / 200),
+      unlocks: true,
       gate: (t) => once(t, 'approval') ?? (t.stage < 2 ? 'Needs a first-in-human trial first.' : null),
       win: (x) => (stageAtLeast(x.t, 3), hype(x.t, 20), lvl(x.t, 8), 'Approved! Doctors can now implant your device in paying patients.'),
       lose: (x) => (lvl(x.t, 3), 'The regulator asked for two more years of safety data. Approval slipped again.'),
@@ -1022,6 +1058,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'mainstream', label: () => 'Mainstream Brain Interface', emoji: '\u{1F9E0}', blurb: 'A cheaper implant for millions of patients, not dozens.',
       years: 3, cost: fixed(80_000_000), odds: fixed(0.55),
+      unlocks: true,
       gate: (t) => once(t, 'mainstream') ?? (t.stage < 3 ? 'Needs an approved device first.' : t.level < 60 ? 'Needs tech level 60+.' : null),
       win: (x) => (stageAtLeast(x.t, 4), boost(x.t, 0.3), hype(x.t, 25), lvl(x.t, 10), 'Hospitals schedule your implant like a pacemaker. The waiting list is two years long.'),
       lose: (x) => (lvl(x.t, 3), 'Costs would not come down far enough for mass use. The plan was shelved.'),
@@ -1037,6 +1074,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'autopilot', label: () => 'Autonomous Flight Software', emoji: '\u{1F9ED}', blurb: 'Drones that plan their own route and dodge trees.',
       years: 1, cost: fixed(2_000_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'autopilot'),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 8), hype(x.t, 6), 'Your drones fly survey routes on their own. Farmers and film crews are buying.'),
       lose: (x) => (lvl(x.t, 2), 'The autopilot mistook a lake for a field and went for a swim. Back to testing.'),
@@ -1044,6 +1082,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'bvlos', label: () => 'Beyond-Sight Flight Permit', emoji: '\u{1F4DC}', blurb: 'Permission to fly where the pilot cannot see the drone.',
       years: 2, cost: fixed(3_000_000), odds: (t) => clampOdds(0.45 + t.safety / 200),
+      unlocks: true,
       gate: (t) => once(t, 'bvlos') ?? (t.stage < 1 ? 'Needs drones in the air first.' : null),
       win: (x) => (lvl(x.t, 4), safe(x.t, 10), 'The aviation regulator approved your drones for flights beyond the pilot’s sight.'),
       lose: (x) => (lvl(x.t, 1), 'The regulator wants another year of flight data before it signs off.'),
@@ -1051,19 +1090,21 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'delivery', label: () => 'Drone Delivery Network', emoji: '\u{1F4E6}', blurb: 'Scheduled routes that drop parcels and medicine in the backyard.',
       years: 2, cost: fixed(10_000_000), odds: fixed(0.7),
+      unlocks: true,
       gate: (t) => once(t, 'delivery') ?? (!done(t, 'bvlos') ? 'Needs a beyond-sight flight permit.' : null),
       win: (x) => (stageAtLeast(x.t, 2), boost(x.t, 0.15), hype(x.t, 12), lvl(x.t, 6), 'Your drones deliver ten thousand parcels a week. Pizza arrives still hot.'),
       lose: (x) => (lvl(x.t, 2), 'A drone dropped a parcel through a greenhouse roof. The launch was paused.'),
     },
     {
-      id: 'detect', label: () => 'Detect-and-Avoid System', emoji: '\u{1F4E1}', blurb: 'Radar and cameras that spot planes and birds in time to swerve.',
+      id: 'avoid', label: () => 'Detect-and-Avoid System', emoji: '\u{1F4E1}', blurb: 'Radar and cameras that spot planes and birds in time to swerve.',
       years: 1, cost: fixed(4_000_000), odds: fixed(0.75),
-      gate: (t) => once(t, 'detect'),
+      gate: (t) => once(t, 'avoid'),
       win: (x) => (safe(x.t, 25), lvl(x.t, 4), 'Your drones now see and avoid other aircraft. The regulator noticed.'),
     },
     {
       id: 'evtol', label: () => 'Air Taxi Prototype', emoji: '\u{1F681}', blurb: 'A battery aircraft that takes off like a helicopter and carries four people.',
       years: 3, cost: fixed(60_000_000), odds: fixed(0.5),
+      unlocks: true,
       gate: (t) => once(t, 'evtol') ?? (t.stage < 2 ? 'Needs a delivery network first.' : t.level < 45 ? 'Needs tech level 45+.' : null),
       win: (x) => (lvl(x.t, 10), hype(x.t, 25), 'Your air taxi flew a full circuit over the city with a test pilot aboard.'),
       lose: (x) => (lvl(x.t, 3), 'The prototype’s batteries were too heavy to carry passengers. Back to the drawing board.'),
@@ -1071,6 +1112,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'typeCert', label: () => 'Air Taxi Type Certificate', emoji: '\u{2708}\u{FE0F}', blurb: 'The aviation regulator’s full approval to carry paying passengers.',
       years: 3, cost: fixed(40_000_000), odds: (t) => clampOdds(0.35 + t.safety / 200),
+      unlocks: true,
       gate: (t) => once(t, 'typeCert') ?? (!done(t, 'evtol') ? 'Needs an air taxi prototype.' : null),
       win: (x) => (stageAtLeast(x.t, 3), prem(x.t, 0.15), hype(x.t, 20), lvl(x.t, 6), 'Certified! Your air taxis carry paying passengers over the traffic.'),
       lose: (x) => (lvl(x.t, 2), 'The regulator found gaps in the safety case. Certification is pushed back again.'),
@@ -1086,6 +1128,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'sorbent', label: () => 'Better Sorbent', emoji: '\u{1F9EA}', blurb: 'A filter material that grabs more carbon dioxide with less heat.',
       years: 1, cost: fixed(2_500_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'sorbent'),
       win: (x) => (cut(x.t, 0.08), lvl(x.t, 8), 'Your new sorbent captures twice the carbon dioxide per cycle.'),
       lose: (x) => (lvl(x.t, 2), 'The sorbent worked great in the lab and crumbled in humid air. Back to the beakers.'),
@@ -1093,6 +1136,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'demo', label: () => 'Demonstration Plant', emoji: '\u{1F3D7}\u{FE0F}', blurb: 'A container-sized plant that removes a few hundred tonnes a year.',
       years: 1, cost: fixed(5_000_000), odds: fixed(0.75),
+      unlocks: true,
       gate: (t) => once(t, 'demo') ?? (!done(t, 'sorbent') ? 'Needs a better sorbent first.' : null),
       win: (x) => (stageAtLeast(x.t, 1), lvl(x.t, 6), hype(x.t, 10), 'Your demonstration plant is pulling carbon out of the air. Early buyers are paying a premium.'),
     },
@@ -1111,6 +1155,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'offtake', label: () => 'Big Buyer Offtake Deal', emoji: '\u{1F91D}', blurb: 'Sign tech companies and airlines to buy removals for ten years.',
       years: 1, cost: fixed(1_500_000), odds: (t) => clampOdds(0.4 + t.safety / 250),
+      unlocks: true,
       gate: (t) => once(t, 'offtake') ?? (t.stage < 1 ? 'Needs a demonstration plant first.' : null),
       win: (x) => (stageAtLeast(x.t, 2), boost(x.t, 0.2), hype(x.t, 12), lvl(x.t, 3), 'A group of tech giants agreed to buy your removals for a decade. Lenders are calling.'),
       lose: (x) => (lvl(x.t, 1), 'The buyers want proof your tonnes are permanent before they sign.'),
@@ -1118,6 +1163,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
     {
       id: 'capturePlant', label: (t) => (t.plant > 0 ? 'Another Capture Plant' : 'Commercial Capture Plant'), emoji: '\u{1F3ED}', blurb: 'A plant that removes tens of thousands of tonnes a year. Each extra one adds less.',
       years: 2, cost: (t) => 25_000_000 * (1 + 0.35 * t.plant), odds: fixed(0.82), capex: true,
+      unlocks: true,
       gate: (t) => (t.stage < 2 ? 'Needs a big buyer deal first.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
       win: (x) => ((x.t.plant += 1), lvl(x.t, 3), x.t.plant >= 3 ? stageAtLeast(x.t, 3) : 0, 'Another capture plant is online. The fans never stop.'),
     },
