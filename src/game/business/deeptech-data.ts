@@ -967,7 +967,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       id: 'powerPlant', label: (t) => (timesDone(t, 'powerPlant') > 0 ? 'Another Fusion Power Plant' : 'First Commercial Fusion Plant'), emoji: '\u{1F31F}', blurb: 'A full-size fusion plant. Each one after the first is harder to site.',
       years: 3, cost: (t) => 300_000_000 * (1 + 0.35 * timesDone(t, 'powerPlant')), odds: fixed(0.8), capex: true,
       gate: (t) => (t.stage < 3 ? 'Needs a pilot plant on the grid first.' : t.plant >= PLANT_MAX ? PLANT_FULL : null),
-      win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 4), lvl(x.t, 4), 'Another fusion plant is online, burning seawater for power.'),
+      win: (x) => ((x.t.plant += 1), stageAtLeast(x.t, 4), lvl(x.t, 4), 'Another fusion plant is running, burning seawater for power.'),
     },
   ],
   neurotech: [
@@ -994,7 +994,7 @@ export const PROGRAMS: Record<DeepTechIndustry, ProgramDef[]> = {
       id: 'firstHuman', label: () => 'First-in-Human Trial', emoji: '\u{1F9D1}\u{200D}\u{2695}\u{FE0F}', blurb: 'Implant the device in a few patients who cannot move or speak.',
       years: 3, cost: fixed(25_000_000), odds: (t) => clampOdds(0.4 + t.safety / 250),
       gate: (t) => once(t, 'firstHuman') ?? (t.stage < 1 ? 'Needs research devices first.' : !done(t, 'decoder') ? 'Needs a neural decoder.' : null),
-      win: (x) => (stageAtLeast(x.t, 2), hype(x.t, 30), lvl(x.t, 10), 'Your first patient tweeted using only their thoughts. The world is watching.'),
+      win: (x) => (stageAtLeast(x.t, 2), hype(x.t, 30), lvl(x.t, 10), 'Your first patient moved a cursor using only their thoughts. The world is watching.'),
       lose: (x) => (lvl(x.t, 3), (x.t.safety = Math.max(0, x.t.safety - 10)), 'The trial was paused after implants stopped working within months. The regulator wants answers.'),
     },
     {

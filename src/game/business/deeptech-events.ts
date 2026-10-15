@@ -85,7 +85,7 @@ function has(x: { g: GameState; b: BizState }, tech: TechId): boolean {
 }
 
 /** What a deep-tech founder gets asked about on air. */
-const TOPIC: Record<string, string> = {
+export const TOPIC: Record<string, string> = {
   semiconductor: 'chips',
   aiLab: 'thinking machines',
   robotics: 'robots',
