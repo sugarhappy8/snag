@@ -18,7 +18,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 
 ### Setting it
 
-- **Where.** Company, Money, Yearly Dividend, right under Pay a Dividend. It has four rows: Share of Profit, Share of Spare Cash, Cash to Keep and Turn Off.
+- **Where.** Company, Money, Yearly Dividend, after Take a Company Loan (and Repay Company Debt, when the company has debt). Pay a Dividend (Withdraw Profits for a 100% owner) sits above them. It has four rows: Share of Profit, Share of Spare Cash, Cash to Keep and Turn Off.
 - **The share.** A slider from 5% to 100% in steps of 5. It starts at 30%.
 - **The floor.** Cash to Keep is months of the company's running costs, from 0 to 24. It starts at 3. It needs a share set first.
 - **The preview.** Each slider shows what the rule would pay now, your part and what stays in the company. When nothing would be paid, it says why.
@@ -39,7 +39,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - **You.** By your stake. It counts as income where you live and is taxed with the rest of your year. The popup gives an estimate of the tax.
 - **Your relatives.** By theirs, the same way a manual dividend pays them.
 - **Other shareholders.** They get the rest.
-- **A listed company.** The share price falls by the payout per share, and the market cap and your stake's value fall with it. Buying shares just before year end to collect a dividend loses money.
+- **A listed company.** The share price falls by the payout per share. With founder shares or a non-voting float it falls by that much times the structure's price factor (0.96 or 0.93), because the price already carries the discount, so it lands on the structure's price at once. The market cap and your stake's value fall with it. Buying shares just before year end to collect a dividend loses money.
 
 ### When you're not running it
 
@@ -97,6 +97,24 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - **When the class ends.** Once a class's last year has passed, the holder is paid out at the line's last price, as for any delisted stock.
 - **No bets.** A line can't be a target for a bet, an option, a law or an announcement.
 
+### Old saves
+
+- The new field is optional and checked when a game loads. It's kept only when the kind is exactly founder shares or a non-voting float, with the founders' part limited to 0 to 100%. Anything else reads as one class.
+- A save without it plays as before. The board, the IPO preview and every screen read the same as in v2.7.0 for a one-class company.
+- A holding in a line whose data later goes is paid out as delisted, as any unknown stock is today.
+- The save schema number stays 2.
+
+### Not in this release
+
+- Loyalty and double voting (LVMH, L'Oréal), A and H share listings, dual-listed pairs (Shell, Unilever), golden shares and sunset clauses.
+- Roche, Novo Nordisk and Maersk. Their structure and dates weren't confirmed.
+- Executive options, a dividend premium for a class, a preferred class for your company, and a second listed class of your own company.
+- Classes at founding, and classes on groups and divisions.
+- Bets and options on a second line.
+- Takeover bids that count votes, and index membership rules.
+- Unit sizes. One Berkshire A share is 1,500 B shares in real life. Here a line trades near its company's price.
+- A cap on the vote lead. A non-voting float with a tiny stake keeps every vote, and the 7% price cost, the independents' veto and minority suits are the counterweights.
+
 ## Money team
 
 ### Hiring
@@ -134,7 +152,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - **Fee.** 0.4% to 1.4% of the money they run, by the rating they claim, never under a tenth of a typical income. The managers on offer ask about 0.7% to 1.3%. The statement shows what was billed, on how much, and what moved.
 - **Skill is execution, not returns.** A weaker manager lets the mix drift further before selling (a band of 3 to 11 points), loses more to trading costs (up to half a percent of what they move) and blunders more often (up to 12% a year). A blunder aims the year's target 25 points off, the statement says so, and the next year corrects it.
 - **Tax and fees are real.** A sale pays the broker fee and the capital-gains tax, as a sale by hand does. The band keeps sales rare.
-- **Closed doors.** A shut exchange blocks only the fund. A country that bans private investing idles the manager: no fee, no trades, and the advisor still bills.
+- **Closed doors.** A shut exchange blocks only the fund. A country that bans private investing idles the manager: no fee, no trades, and the advisor still bills. The Money Team screen gives the reason where the statement would be, and its dials preview nothing.
 
 ### Trust
 
@@ -165,7 +183,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - A manager that acts from prison.
 - Advice inside other menus, such as order previews.
 - Subtracting a pending Heavy R&D cost from the company-cash finding.
-- Family offices and hedge funds.
+- The manager running your hedge funds, or a family office.
 
 ## Hedge funds
 
@@ -181,7 +199,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - **Starting.** You need to be 18 or older, alive and out of prison, with the year 1949 or later. Your home market must be open and investing allowed. The first deposit is at least 5 times a typical year's income in your country, and a slider sets it. You can have one Personal fund and one Family fund.
 - **What it follows.** Your home index, with the strategies a hedge-fund firm has: Long/Short, Macro, Quant and Event-driven. Quant is refused where the firm refuses it. Each strategy shows the firm's one-line description.
 - **The year.** On each birthday the pool moves by the strategy's return, less the 0.5% a year to run. The return comes from the firm's own formulas, with the market's real move for that year and a random draw. The draw is set by your life, the fund and the year, so reloading doesn't change it and a Time Machine jump rerolls it.
-- **Your skill.** Smarts, discipline, an MBA or a business degree and the years you've run the fund set your edge, and the Investing talent adds to it. The edge runs from about -2% a year for a novice to about +1% at best. At any skill the average year stays under the US index, because a fund trades some return for smaller swings.
+- **Your skill.** Smarts, discipline, an MBA or a business degree and the years you've run the fund set your edge, and the Investing talent adds to it. The edge runs from about -2% a year for a novice to about +1% at best. Long/Short, Event-driven and Quant average less than the index, because they trade some return for smaller swings. A leveraged Bull call can beat the index on average, but a Macro call lasts one year, and one bad year can take most of the fund. The worst year loses a little over 95%.
 - **Put In More and Take Out.** Put In More is a money slider that buys units at the going price. Take Out is a percent of your share, 1 to 100, and starts at 10. The preview gives the cash and the tax. Taking out all of it, or leaving less than the smallest trade, closes the fund and the preview says so.
 - **Macro lasts one year.** A Macro call is bull, bear or flat, with leverage from 1x to 3x. After the year the strategy goes back to Long/Short, flat, 1x, and the popup says so. An office holder can't set Macro. A Macro call saved before taking office runs as Long/Short while they hold the job.
 - **Closing.** Close Fund asks first. You get your units' value, taxed on the gain, and each relative gets their value in full.
@@ -212,7 +230,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - **The worst year.** A year can lose a little over 95% of the cash at work at the most. That cash is spare cash above the floor, so after the worst year the company still holds the floor.
 - **Setting a target.** It moves no money and changes no value. The screen shows the cash at work against the spare cash, the floor, the strategy and last year's result. The Cash at Work slider previews an average year and a bad year in dollars.
 - **No spare cash.** The year is skipped and the screen says why: its loans come first, investors are paid back first, its cash is at the floor, or it has no spare cash. The life log says "X had no cash to put to work."
-- **Who runs it.** A company you run takes the strategy you set. A hired CEO, or you in prison or under 18, runs the firm's autopilot terms: Long/Short, or the best of Long/Short, Event-driven and Quant when the leader's skill is 50 or more. A CEO's skill counts. A Macro call you set lasts one year. A CEO's year leaves your settings alone.
+- **Who runs it.** A company you run takes the strategy you set. The firm's autopilot runs the fund for any company you aren't running yourself, such as one a hired CEO runs, and for every company while you're in prison or under 18. It uses Long/Short, or the best of Long/Short, Event-driven and Quant when the leader's skill is 50 or more. A CEO's skill counts. The company's screen shows the strategy the autopilot uses, and Strategy, Market Call and Leverage say "You don't run it." A Macro call you set lasts one year. An autopilot year leaves your settings alone.
 - **Dividends.** A dividend comes out of the same cash, so the next year's cash at work can shrink.
 
 ### Tax and fees
@@ -221,28 +239,16 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 - **Personal and family funds.** A gain is taxed as income when you take it out, after any loss you've carried forward. A loss adds to the carried loss. Putting money in is not a sale and isn't taxed. Relatives get their full value, untaxed.
 - **Company funds.** The result is part of the company's year, so it's taxed in the company's statement like its other income.
 
-## Old saves
+### Old saves
 
-- The new field is optional and checked when a game loads. It's kept only when the kind is exactly founder shares or a non-voting float, with the founders' part limited to 0 to 100%. Anything else reads as one class.
-- A save without it plays as before. The board, the IPO preview and every screen read the same as in v2.7.0 for a one-class company.
-- A holding in a line whose data later goes is paid out as delisted, as any unknown stock is today.
-- The save schema number stays 2.
 - Every new field is optional and checked when a game loads. A fund record that isn't a plain, usable record reads as no record. The fund keeps its stored value in your net worth and its screen says "The books for this fund are damaged."
 - A fund's units never read as fewer than the units you and your relatives hold, so a damaged record can lower a price and can't raise one. Cash-at-work records on a company are kept only when they pass the same checks, with amounts finite and in range.
 - A game saved before this release has no fund and no company record, and plays as it did.
 - A game saved with funds and opened in v2.7.0 doesn't keep them. At the first age-up that build delists each personal or family fund and pays it out at its last price. The log reads "Review Personal Fund was delisted and my shares were paid out." The units your relatives hold in a family fund are lost. A company's fund record is dropped, and the cash stays in the company.
 - Older builds don't know the new records, and the save schema number stays 2, so nothing warns you. Don't open a v2.8.0 save that holds funds in v2.7.0.
 
-## Not in this release
+### Not in this release
 
-- Loyalty and double voting (LVMH, L'Oréal), A and H share listings, dual-listed pairs (Shell, Unilever), golden shares and sunset clauses.
-- Roche, Novo Nordisk and Maersk. Their structure and dates weren't confirmed.
-- Executive options, a dividend premium for a class, a preferred class for your company, and a second listed class of your own company.
-- Classes at founding, and classes on groups and divisions.
-- Bets and options on a second line.
-- Takeover bids that count votes, and index membership rules.
-- Unit sizes. One Berkshire A share is 1,500 B shares in real life. Here a line trades near its company's price.
-- A cap on the vote lead. A non-voting float with a tiny stake keeps every vote, and the 7% price cost, the independents' veto and minority suits are the counterweights.
 - Hired fund managers with a 2-and-20 fee and a high-water mark, and checking whether a manager is honest.
 - Lock-ups and notice before you can take money out.
 - More than one fund of each kind, a fund with outside investors or fees (that's a hedge-fund firm), gifting units, naming a fund and family votes.
