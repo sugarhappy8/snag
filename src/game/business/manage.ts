@@ -436,7 +436,7 @@ export { launchP } from './rd'
 /** Lines shown one by one in the products menu; the rest are summarized. */
 const TOP_LINES = 6
 /** Ideas on the drawing board at a time (launch one and the next appears). */
-const IDEAS_SHOWN = 5
+const IDEAS_SHOWN = 8
 
 function yearsWord(n: number): string {
   return n <= 1 ? 'about a year' : `about ${n} years`

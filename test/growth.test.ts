@@ -88,7 +88,7 @@ describe('product ideas: an endless, era-appropriate stream', () => {
     const { g, b } = company(1, 'us', 'restaurant')
     const taken: string[] = []
     let products: Product[] = []
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 600; i++) {
       const ideas = productIdeas(g, { ...b, products, rd: [] }, 5)
       expect(ideas.length).toBe(5)
       for (const x of ideas) expect(taken).not.toContain(x)

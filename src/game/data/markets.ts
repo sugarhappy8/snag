@@ -64,6 +64,9 @@ export const INDUSTRY_IDS = [
 ] as const
 
 /** The deep-tech industries (a subset of INDUSTRY_IDS with their own simulation layer). */
+/** Deep-tech trades without a cast of real rival companies (the procedural rival engine fills them). */
+export const PROCEDURAL_DEEP_TECH_IDS = ['fusion', 'neurotech', 'drones', 'carbonCapture'] as const
+
 export const DEEP_TECH_IDS = ['semiconductor', 'aiLab', 'robotics', 'biotech', 'spaceTech', 'electricVehicles', 'quantum', 'cybersecurity', 'fusion', 'neurotech', 'drones', 'carbonCapture'] as const
 
 export type Industry = (typeof INDUSTRY_IDS)[number]

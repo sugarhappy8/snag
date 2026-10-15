@@ -33,8 +33,8 @@ import { marketDef } from '../src/game/business/competition-data'
 /** The deep-tech trades a founder can start in 2000, the year most of these tests are set (drones and carbon removal come later). */
 const OPEN_IN_2000 = DEEP_TECH_IDS.filter((ind) => (marketDef(ind).from ?? 0) <= 2000)
 
-function adultIn(countryId: string, money: number, seed = 3, smarts = 90): GameState {
-  const g = createNewLife({ seed, year: 2000, countryId })
+function adultIn(countryId: string, money: number, seed = 3, smarts = 90, year = 2000): GameState {
+  const g = createNewLife({ seed, year, countryId })
   g.queue = []
   const c = g.character
   c.age = 30
@@ -188,6 +188,35 @@ describe('deep tech', () => {
     // Deep tech is risky, not hopeless: plenty survive and many sell something.
     expect(survived).toBeGreaterThan(15)
     expect(selling).toBeGreaterThan(10)
+  })
+
+  it('founds the newer trades (fusion, neurotech, drones, carbon removal) today and runs their labs for a decade', { timeout: 600_000 }, () => {
+    const newer = ['fusion', 'neurotech', 'drones', 'carbonCapture'] as const
+    for (const [i, ind] of newer.entries()) {
+      for (const cc of ['us', 'de', 'in']) {
+        const g = adultIn(cc, 6_000_000, 70 + i, 95, PRESENT_YEAR)
+        const a = found(g, ind)
+        expect(PROGRAMS[ind].length, ind).toBeGreaterThanOrEqual(7)
+        let started = 0
+        for (let y = 0; y < 10 && g.character.alive; y++) {
+          const cur = businessAssets(g)[0]
+          if (!cur) break
+          const b = bizOf(g, cur)
+          const t = techOf(b)
+          if (t.programs.length === 0) {
+            const def = PROGRAMS[ind].find((p) => p.gate(t, b.countryId) === null)
+            if (def && startProgram(g, b, t, def)) started++
+          }
+          deepTechManagerTurnImpl(g, cur, b)
+          ageUp(g)
+          drain(g, YEAR_PREFS)
+          finiteBiz(g)
+        }
+        finiteState(g)
+        expect(started, `${cc} ${ind}`).toBeGreaterThan(0)
+        expect(a.name.length).toBeGreaterThan(0)
+      }
+    }
   })
 
   it('groups the eight under a Deep Tech heading with requirements, and keeps every classic row', () => {
