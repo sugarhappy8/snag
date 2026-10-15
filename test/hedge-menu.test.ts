@@ -7,7 +7,7 @@ import '../src/game/business'
 import { becomeCeo, installManager, managerCandidate } from '../src/game/business/career'
 import { hedgeBlock, quantBlock, STRATEGIES } from '../src/game/business/fund-model'
 import { callHint } from '../src/game/business/fund-events'
-import { signed } from '../src/game/business/fund-text'
+import { signedPlain } from '../src/game/business/fund-text'
 import { manageBlock } from '../src/game/business/gate'
 import { companyBlock, companyQuote, companyTerms, eligibleCompanies, setCompanyFund } from '../src/game/business/hedge-company'
 import { candidates, fundOf, fundsOf, invite, putIn, startBlock, startFund, takeQuote } from '../src/game/business/hedge-fund'
@@ -175,7 +175,9 @@ describe('rendering', () => {
       deepFreeze(g)
       const text = walk(g, [rowOf(g)])
       expect(text.filter((t) => BAD_TEXT.test(t))).toEqual([])
-      expect(text.some((t) => /before .+ tax\./.test(t))).toBe(true)
+      expect(text.some((t) => (factor > 1 ? /before .+ tax\./ : /, with no tax\./).test(t))).toBe(true)
+      // One minus everywhere: the plain hyphen, never the typographic one.
+      expect(text.filter((t) => t.includes('\u2212'))).toEqual([])
       expect(JSON.stringify(g)).toBe(json)
     }
   })
@@ -265,7 +267,7 @@ describe('the row', () => {
   it('says what it is, and counts funds and cash at work', () => {
     const g = rich(78)
     const row = rowOf(g)
-    expect(subtitleOf(g, row)).toBe('Personal, family and company funds')
+    expect(subtitleOf(g, row)).toBe('Personal and family funds, and funds in your companies')
     expect(row.header?.(g)).toBe(`Funds you run pay no fee, only ${pct(RUNNING_COST, 1)} a year to run. A Macro call lasts one year.`)
     const { g: h, person, family } = world()
     const sub = subtitleOf(h, rowOf(h))
@@ -377,10 +379,11 @@ describe('the fund screen', () => {
     const f = readHedge(person.details.hf)!
     f.last = { year: 2026, gross: 0.07, net: 0.0645, market: 0.12 }
     ;(person.details as Record<string, unknown>).hf = JSON.parse(JSON.stringify(f))
-    expect(infos(g, screenOf(g, person))[2]).toBe(`2026: fund ${signed(0.0645)}, market ${signed(0.12)}.`)
+    expect(infos(g, screenOf(g, person))[2]).toBe(`2026: fund ${signedPlain(0.0645)}, market ${signedPlain(0.12)}.`)
     f.last = { year: 2026, gross: -0.1, net: -0.1, market: -0.2 }
     ;(person.details as Record<string, unknown>).hf = JSON.parse(JSON.stringify(f))
-    expect(infos(g, screenOf(g, person))[2]).toBe(`2026: fund ${signed(-0.1)}, market ${signed(-0.2)}.`)
+    expect(infos(g, screenOf(g, person))[2]).toBe(`2026: fund ${signedPlain(-0.1)}, market ${signedPlain(-0.2)}.`)
+    expect(infos(g, screenOf(g, person))[2]).toBe('2026: fund -10.0%, market -20.0%.')
   })
 
   it('has every action with its id, and Macro adds its row', () => {
@@ -436,7 +439,8 @@ describe('the fund screen', () => {
     const f = readHedge(person.details.hf)!
     const q = takeQuote(g, f, 0.1)
     const preview = take.input!.preview!(g, 10)
-    expect(preview).toBe(`About ${money(q.gross)} before ${money(q.tax)} tax.`)
+    expect(q.tax).toBe(0)
+    expect(preview).toBe(`About ${money(q.gross)}, with no tax.`)
     expect(preview).not.toContain('closes')
     const all = take.input!.preview!(g, 100)
     expect(all).toContain('That closes the fund.')
@@ -445,7 +449,8 @@ describe('the fund screen', () => {
     const ff = readHedge(family.details.hf)!
     const relatives = takeQuote(g, ff, 1).relatives
     expect(relatives).toBeGreaterThan(0)
-    expect(ftake.input!.preview!(g, 100)).toBe(`About ${money(takeQuote(g, ff, 1).gross)} before ${money(takeQuote(g, ff, 1).tax)} tax. That closes the fund. Relatives get ${money(relatives)}.`)
+    expect(takeQuote(g, ff, 1).tax).toBe(0)
+    expect(ftake.input!.preview!(g, 100)).toBe(`About ${money(takeQuote(g, ff, 1).gross)}, with no tax. That closes the fund. Relatives get ${money(relatives)}.`)
     expect(ftake.input!.preview!(g, 10)).not.toContain('Relatives get')
   })
 
@@ -705,7 +710,7 @@ describe('company funds', () => {
     expect(node.label).toBe(co.name)
     expect(subtitleOf(g, node)).toBe(`${money(q.work)} at work · ${pct(b.share)} yours`)
     const rows = infos(g, node.children(g))
-    expect(rows[0]).toBe(`Cash at work: ${money(q.work)} of ${money(q.spare)} spare.`)
+    expect(rows[0]).toBe(`${money(q.work)} of ${money(q.spare)} spare is at work.`)
     expect(rows[1]).toBe(`The company keeps ${money(q.floor)}.`)
     expect(rows[2]).toContain('Strategy: ')
     expect(rows[3]).toBe('No year booked yet.')
@@ -718,9 +723,10 @@ describe('company funds', () => {
     const b = readBiz(g, co)
     const hedge = { ...readCompanyHedge(b.hedge)!, last: { year: 2025, work: 2_000_000, gross: 0.07, net: 0.065, market: 0.1, pnl: 130_000 } }
     ;(co.details as Record<string, unknown>).hedge = hedge
-    expect(infos(g, coScreen(g, co))[3]).toBe(`2025: fund ${signed(0.065)} on ${money(2_000_000)}, +${money(130_000)}.`)
+    expect(infos(g, coScreen(g, co))[3]).toBe(`2025: fund ${signedPlain(0.065)} on ${money(2_000_000)}, +${money(130_000)}.`)
     ;(co.details as Record<string, unknown>).hedge = { ...hedge, last: { year: 2025, work: 2_000_000, gross: -0.2, net: -0.2, market: -0.3, pnl: -400_000 } }
-    expect(infos(g, coScreen(g, co))[3]).toBe(`2025: fund ${signed(-0.2)} on ${money(2_000_000)}, -${money(400_000)}.`)
+    expect(infos(g, coScreen(g, co))[3]).toBe(`2025: fund ${signedPlain(-0.2)} on ${money(2_000_000)}, -${money(400_000)}.`)
+    expect(infos(g, coScreen(g, co))[3]).toMatch(/^2025: fund -20\.0% on .+, -.+\.$/)
     ;(co.details as Record<string, unknown>).hedge = { ...hedge, last: { year: 2025, work: 0, gross: 0, net: 0, market: 0, pnl: 0, why: 'Its cash is at the floor.' } }
     expect(infos(g, coScreen(g, co))[3]).toBe('Its cash is at the floor.')
   })

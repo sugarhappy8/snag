@@ -1725,7 +1725,7 @@ function hedgeView(g: GameState, a: Asset): MenuNode[] {
   } catch {
     // Fall through to the plain row.
   }
-  return [{ type: 'info', id: `hedge-off.${a.id}`, emoji: '🦈', text: 'This fund is not available right now.' }]
+  return [{ type: 'info', id: `hedge-off.${a.id}`, emoji: '🦈', text: "This fund isn't available right now." }]
 }
 
 function hedgeSubtitle(g: GameState, a: Asset): string {

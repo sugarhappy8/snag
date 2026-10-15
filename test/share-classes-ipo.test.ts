@@ -66,7 +66,7 @@ describe('the IPO with a share structure', () => {
     const small = candidate({ kind: 'ab', hi: 1 }, 0.3)
     const text = ipoPreview(small.g, small.b, 25)
     expect(text).toContain('of the votes')
-    expect(text).toContain('You would control the board.')
+    expect(text).toContain("You'd control the board.")
     expect(text).toContain('of the shares.')
 
     const big = candidate({ kind: 'ab', hi: 1 }, 0.6)
@@ -88,9 +88,9 @@ describe('the IPO with a share structure', () => {
     const { g, b } = candidate({ kind: 'ab', hi: 1 }, 0.5)
     b.familyShares = [{ id: 'p1', share: 0.5 }]
     const text = ipoPreview(g, b, 25)
-    expect(text).toContain('That is under half of the votes. Outside shareholders would control the board.')
+    expect(text).toContain("That's under half of the votes. Outside shareholders would control the board.")
     expect(text).not.toContain('You keep control of the board.')
-    expect(text).not.toContain('You would control the board.')
+    expect(text).not.toContain("You'd control the board.")
   })
 
   it('a plan that does not reach half the votes and does not control today says nothing about control', () => {

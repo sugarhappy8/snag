@@ -127,7 +127,7 @@ export function seedMin(g: GameState): number {
 /** Why this person can't run a fund, or null. */
 export function personBlock(g: GameState): string | null {
   const c = g.character
-  if (!c.alive) return 'You are no longer alive.'
+  if (!c.alive) return "You're no longer alive."
   if (c.prison) return "You can't run a fund from prison."
   if (!(c.age >= 18)) return 'You must be 18 to start a fund.'
   return null

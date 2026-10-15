@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { ageUp, YEARLY_HOOKS } from '../src/game/aging'
 import { becomeCeo } from '../src/game/business/career'
 import { marketMove, quantBlock } from '../src/game/business/fund-model'
-import { signed } from '../src/game/business/fund-text'
+import { signedPlain } from '../src/game/business/fund-text'
 import {
   fundOf, fundsOf, invite, saveFund, setFundCall, startFund, type FundRow,
 } from '../src/game/business/hedge-fund'
@@ -230,7 +230,7 @@ describe('the yearly step', () => {
     birthday(g)
     const now = fundOf(g, 'person')!
     const y = expected(g, now.a, before)
-    expect(notices(g, 'Hedge Funds')[0].text).toBe(`${now.a.name}: ${signed(y.net)} (market ${signed(y.market)}). Your share is ${money(now.a.value)}.`)
+    expect(notices(g, 'Hedge Funds')[0].text).toBe(`${now.a.name}: ${signedPlain(y.net)} (market ${signedPlain(y.market)}). Your share is ${money(now.a.value)}.`)
     expect(lines(g)).toContain(`My ${now.a.name} ${y.net >= 0 ? 'rose' : 'fell'} ${(Math.abs(y.net) * 100).toFixed(1)}% this year.`)
   })
 
@@ -241,6 +241,9 @@ describe('the yearly step', () => {
     setFundCall(g, row.a.id, 'bull', 3)
     birthday(g)
     expect(notices(g, 'Hedge Funds')[0].tone).toBe('bad')
+    // A loss carries the plain hyphen, like the dollars beside it.
+    expect(notices(g, 'Hedge Funds')[0].text).toMatch(/: -\d+\.\d% \(market -\d+\.\d%\)\./)
+    expect(notices(g, 'Hedge Funds')[0].text).not.toContain('\u2212')
     const up = yearWhere((m) => m > 0.15)
     const h = rich(61, 'us', 5_000_000, up - 1)
     open(h, 'person')

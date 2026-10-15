@@ -112,7 +112,7 @@ describe('share classes: the IPO preview is the listing', () => {
               expect(actual, label).toBeCloseTo(predicted, 9)
               const said = /hold (\d+)% of the votes/.exec(preview)
               expect(said && Number(said[1]), label).toBe(Math.round(actual * 100))
-              const claims = /would control the board|keep control of the board/.test(preview)
+              const claims = /You'd control the board|keep control of the board/.test(preview)
               expect(claims, label).toBe(actual >= 0.5)
               if (claims) expect(ownerControls(g, a), label).toBe(true)
               seen++

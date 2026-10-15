@@ -931,7 +931,7 @@ describe('the Investments hooks', () => {
     const row = open(g, 'person')
     const nodes = fresh.investmentAssetView(g, row.a)
     expect(nodes).toHaveLength(1)
-    expect(nodes[0]).toMatchObject({ type: 'info', text: 'This fund is not available right now.' })
+    expect(nodes[0]).toMatchObject({ type: 'info', text: "This fund isn't available right now." })
     expect(fresh.investmentAssetSubtitle(g, row.a)).toBe(core.shortMoney(row.a.value))
     expect(fresh.investmentsMenu.children(g).some((n) => n.id.includes('hedge'))).toBe(false)
   })
@@ -941,7 +941,7 @@ describe('the Investments hooks', () => {
     const row = open(g, 'person')
     const boom = (): never => { throw new Error('x') }
     registerHedgeFunds({ row: boom, view: boom, subtitle: boom })
-    expect(investmentAssetView(g, row.a)).toEqual([expect.objectContaining({ type: 'info', text: 'This fund is not available right now.' })])
+    expect(investmentAssetView(g, row.a)).toEqual([expect.objectContaining({ type: 'info', text: "This fund isn't available right now." })])
     expect(investmentAssetSubtitle(g, row.a)).toBe(shortMoney(row.a.value))
     expect(() => investmentsMenu.children(g)).not.toThrow()
     registerHedgeFunds({

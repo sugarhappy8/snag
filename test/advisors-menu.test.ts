@@ -161,7 +161,7 @@ describe('where the menu sits', () => {
     expect(moneyTeamMenu.id).toBe('money-team')
     expect(moneyTeamMenu.label).toBe('Money Team')
     expect(moneyTeamMenu.emoji).toBe('💼')
-    expect(moneyTeamMenu.header?.(client(11))).toBe('An advisor reviews your money. A manager keeps your mix. Neither picks winners.')
+    expect(moneyTeamMenu.header?.(client(11))).toBe('An advisor reviews your money. A manager keeps your mix.')
   })
 
   it('has a subtitle that names who is hired', () => {
@@ -183,7 +183,7 @@ describe('where the menu sits', () => {
       const m = all.indexOf('team-h-manager')
       expect(m).toBeGreaterThan(0)
       expect(all[m + 1]).toBe('team-rules')
-      expect(info(g, 'team-rules')).toBe('Runs your stock funds, plus safe money in bonds or savings. Never your own picks or companies.')
+      expect(info(g, 'team-rules')).toBe('Runs your stock funds and your safe money, which is bonds and savings. Never your own picks or companies.')
     }
   })
 })
@@ -599,7 +599,7 @@ describe('the three dials', () => {
     expect(stocks.stayOpen).toBe(true)
     expect(stocks.input).toMatchObject({ kind: 'slider', label: 'Share in stocks', min: 0, max: 100, step: 5, unit: '%' })
     expect(stocks.input?.defaultValue?.(g)).toBe('60')
-    expect(subtitle(g, 'team-stocks')).toBe('60% stocks, the rest in bonds or savings')
+    expect(subtitle(g, 'team-stocks')).toBe('60% stocks, the rest in safe money')
 
     const limit = act(g, 'team-limit')
     expect(limit.label).toBe('Yearly Limit')
@@ -918,7 +918,7 @@ describe('old saves and damaged records', () => {
     const said = exercise(g)
     expect(said.length).toBeGreaterThan(8)
     for (const s of said) expect(s.text, `${s.id} ${s.kind}`).not.toMatch(JUNK)
-    expect(subtitle(g, 'team-stocks')).toBe('45% stocks, the rest in bonds or savings')
+    expect(subtitle(g, 'team-stocks')).toBe('45% stocks, the rest in safe money')
     expect(subtitle(g, 'team-limit')).toBe('10% of the pool may move a year')
   })
 })

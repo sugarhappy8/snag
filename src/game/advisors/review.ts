@@ -174,12 +174,14 @@ function companyCash(g: GameState, T: number): Finding | null {
   }
   if (!best) return null
   const { idle, share } = best
-  // A sole owner has no "Pay a Dividend" row; the same row reads "Withdraw Profits" (business/manage.ts).
-  const row = share < 1 ? 'Pay a Dividend' : 'Withdraw Profits'
+  // Where the cash comes out: a sole owner has no "Pay a Dividend" (the same row reads "Withdraw Profits",
+  // business/manage.ts), and both have the standing rule, Yearly Dividend. All of it sits under Money.
+  const rows = share < 1 ? 'Pay a Dividend and Yearly Dividend' : 'Yearly Dividend and Withdraw Profits'
+  const yours = share < 1 ? money(idle * share) : 'all'
   return {
     id: 'company-cash',
     weight: WEIGHT.companyCash,
-    text: around(best.name, (n) => `${n} holds ${money(idle)} past 18 months of costs. Your ${pct(share, 0)} is ${money(idle * share)} before tax. ${row} is under Money.`),
+    text: around(best.name, (n) => `${n} holds ${money(idle)} past 18 months of costs, ${yours} yours before tax. Money has ${rows}.`),
   }
 }
 

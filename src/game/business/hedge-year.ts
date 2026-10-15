@@ -7,7 +7,7 @@
 import { addRelationship, log } from '../core'
 import type { Asset, GameState, Tone } from '../types'
 import { cashOutFamilyHolders } from './dynasty-ownership'
-import { signed } from './fund-text'
+import { signedPlain } from './fund-text'
 import type { HedgeStrategy, MacroCall } from './fund-state'
 import { fundsOf, saveFund, settleHolders } from './hedge-fund'
 import { hedgeRng, leadOf, skillOf, strategyBlock, vehicleYear } from './hedge-model'
@@ -69,7 +69,7 @@ function bookFund(g: GameState, a: Asset, f: HedgeFund): Booked | null {
   }
   saveFund(a, f)
   log(g, `My ${a.name} ${y.net >= 0 ? 'rose' : 'fell'} ${pct(Math.abs(y.net), 1)} this year.`, y.net >= 0 ? 'good' : 'bad')
-  const block = `${a.name}: ${signed(y.net)} (market ${signed(y.market)}). Your share is ${money(a.value)}.${lapsed ? ' Macro goes back to Long/Short.' : ''}`
+  const block = `${a.name}: ${signedPlain(y.net)} (market ${signedPlain(y.market)}). Your share is ${money(a.value)}.${lapsed ? ' Macro goes back to Long/Short.' : ''}`
   return { block, result: stake * y.net }
 }
 

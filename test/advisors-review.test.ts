@@ -374,7 +374,7 @@ describe('company-cash', () => {
     expect(f).toBeDefined()
     expect(f!.weight).toBe(50)
     expect(f!.text).toBe(
-      `Corner Kitchen holds ${formatMoney(idle)} past 18 months of costs. Your 60% is ${formatMoney(idle * 0.6)} before tax. Pay a Dividend is under Money.`,
+      `Corner Kitchen holds ${formatMoney(idle)} past 18 months of costs, ${formatMoney(idle * 0.6)} yours before tax. Money has Pay a Dividend and Yearly Dividend.`,
     )
   })
 
@@ -382,7 +382,7 @@ describe('company-cash', () => {
     const g = client(11)
     const a = company(g, { share: 1 })
     a.details.cash = richCash(g, a, 1_000_000)
-    expect(find(g, 'company-cash')!.text).toContain('Withdraw Profits is under Money.')
+    expect(find(g, 'company-cash')!.text).toContain(', all yours before tax. Money has Yearly Dividend and Withdraw Profits.')
     expect(find(g, 'company-cash')!.text).not.toContain('Pay a Dividend')
   })
 
@@ -567,7 +567,7 @@ describe('text', () => {
     expect(find(g, 'concentration')!.text).toBe(`${name} is ${Math.round((100 * co.value) / netWorth(g))}% of your net worth.`)
     const cash = find(g, 'company-cash')!.text
     expect(cash.startsWith(name.slice(0, 20))).toBe(true)
-    expect(cash).toMatch(/\u2026 holds \$[\d,]+ past 18 months of costs\. Your 60% is \$[\d,]+ before tax\. Pay a Dividend is under Money\.$/)
+    expect(cash).toMatch(/\u2026 holds \$[\d,]+ past 18 months of costs, \$[\d,]+ yours before tax\. Money has Pay a Dividend and Yearly Dividend\.$/)
   })
 
   it('keeps a real title, and stays under 140 characters with the longest one, three picks and large sums', () => {

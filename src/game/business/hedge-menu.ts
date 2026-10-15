@@ -14,7 +14,7 @@ import { companyBlock, companyQuote, companyTerms, eligibleCompanies, setCompany
 import { callHint } from './fund-events'
 import { CALLS, leaderSkill, STRATEGIES } from './fund-model'
 import type { HedgeStrategy, MacroCall } from './fund-state'
-import { signed } from './fund-text'
+import { signedPlain } from './fund-text'
 import { manageBlock } from './gate'
 import { candidates, closeFund, fundsOf, invite, payOutHolder, putBlock, putIn, setFundCall, setFundStrategy, startBlock, startFund, takeOut, takeQuote } from './hedge-fund'
 import { macroBlock, marketBlock, personBlock, seedMin, skillOf, strategyBlock, vehicleOutlook } from './hedge-model'
@@ -162,7 +162,7 @@ function takeAction(id: string): MenuAction {
         if (!f) return ''
         const q = takeQuote(gg, f, clampN(fin(percent) / 100, 0, 1))
         const closes = q.closes ? ` That closes the fund.${q.relatives > 0 ? ` Relatives get ${money(q.relatives)}.` : ''}` : ''
-        return `About ${money(q.gross)} before ${money(q.tax)} tax.${closes}`
+        return `About ${money(q.gross)}${q.tax > 0 ? ` before ${money(q.tax)} tax` : ', with no tax'}.${closes}`
       },
     },
     run: (gg, input) => {
@@ -363,7 +363,7 @@ export function fundView(g: GameState, a: Asset): MenuNode[] {
   const texts = [
     `Your share: ${money(valueOf(f))}${f.holders.length ? ` of ${money(f.nav)} (${pct(fin(share), 1)})` : ''}`,
     strategyText(f.strategy, f.call, f.lev),
-    f.last ? `${f.last.year}: fund ${signed(f.last.net)}, market ${signed(f.last.market)}.` : 'No year booked yet.',
+    f.last ? `${f.last.year}: fund ${signedPlain(f.last.net)}, market ${signedPlain(f.last.market)}.` : 'No year booked yet.',
   ]
   const nodes: MenuNode[] = texts.map((text, n) => info(`hf-${id}-i${n}`, text))
   nodes.push(putAction(g, id), takeAction(id), strategyMenu(id), callMenu(id, f))
@@ -455,7 +455,7 @@ function coRunBlock(g: GameState, id: string, macro = false): string | null {
 function coLastText(h: CompanyHedge | null): string {
   const l = h?.last
   if (!l) return 'No year booked yet.'
-  if (l.work > 0) return `${l.year}: fund ${signed(l.net)} on ${money(l.work)}, ${l.pnl >= 0 ? '+' : '-'}${money(Math.abs(l.pnl))}.`
+  if (l.work > 0) return `${l.year}: fund ${signedPlain(l.net)} on ${money(l.work)}, ${l.pnl >= 0 ? '+' : '-'}${money(Math.abs(l.pnl))}.`
   return l.why ?? `${l.year}: no cash went to work.`
 }
 
@@ -611,7 +611,7 @@ function companyScreen(g: GameState, id: string): MenuNode[] {
   const q = companyQuote(g, v.a, v.b, cur.target)
   const shown = coShown(g, v)
   const texts = [
-    `Cash at work: ${money(q.work)} of ${money(q.spare)} spare.`,
+    `${money(q.work)} of ${money(q.spare)} spare is at work.`,
     `The company keeps ${money(q.floor)}.`,
     strategyText(shown.strategy, shown.call, shown.lev),
     coLastText(v.h),
@@ -655,7 +655,7 @@ function rowSubtitle(g: GameState): string {
     sum += f ? valueOf(mergedFor(g, f)) : fin(a.value)
   }
   for (const a of businessAssets(g)) if ((readCompanyHedge(a.details.hedge)?.target ?? 0) > 0) count++
-  if (!count) return 'Personal, family and company funds'
+  if (!count) return 'Personal and family funds, and funds in your companies'
   return `${count} ${count === 1 ? 'fund' : 'funds'}${sum > 0 ? ` · ${shortMoney(sum)}` : ''}`
 }
 

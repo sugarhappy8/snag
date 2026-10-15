@@ -238,8 +238,8 @@ export function ipoPreview(g: GameState, b: BizState, floatPct: number): string 
   const after = votesAfterIpo(b, plan.retain, kind)
   const today = controlsFor(g, b)
   const tail = after >= 0.5
-    ? today ? ' You keep control of the board.' : ' You would control the board.'
-    : today ? ' That is under half of the votes. Outside shareholders would control the board.' : ''
+    ? today ? ' You keep control of the board.' : " You'd control the board."
+    : today ? " That's under half of the votes. Outside shareholders would control the board." : ''
   return `${head} of the shares. You'd hold ${pct(after, 0)} of the votes.${tail}`
 }
 

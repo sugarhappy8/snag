@@ -187,7 +187,7 @@ export function dividendMenu(a: Asset): MenuGroup {
       const p = ruleOf(g, a.id)
       return p ? `${pct(p.pct)} of ${p.mode === 'profit' ? "each year's profit" : 'spare cash each year'}, keeping ${months(p.keep)} of costs.` : OFF_LINE
     },
-    header: (g) => `${findBusiness(g, a.id)?.name ?? a.name} pays its shareholders at each year end by this rule. Your share is taxed as income. Loans and the cash floor come first.`,
+    header: (g) => `${findBusiness(g, a.id)?.name ?? a.name} pays at each year end by this rule. Your part is taxed as income. Loans and the floor come first.`,
     children: (g) => {
       const cur = findBusiness(g, a.id)
       if (!cur) return []

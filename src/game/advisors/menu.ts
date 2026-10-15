@@ -218,7 +218,7 @@ function stocksDial(): MenuAction {
     id: 'team-stocks',
     label: 'Stocks Share',
     emoji: '📈',
-    subtitle: (g) => `${running(g)?.mandate.stocks ?? 0}% stocks, the rest in bonds or savings`,
+    subtitle: (g) => `${running(g)?.mandate.stocks ?? 0}% stocks, the rest in safe money`,
     input: {
       kind: 'slider',
       label: 'Share in stocks',
@@ -294,7 +294,7 @@ function limitDial(): MenuAction {
 function managerNodes(g: GameState, team: Team | null): MenuNode[] {
   const nodes: MenuNode[] = [
     { type: 'heading', id: 'team-h-manager', label: 'Financial Manager' },
-    { type: 'info', id: 'team-rules', emoji: '📋', text: 'Runs your stock funds, plus safe money in bonds or savings. Never your own picks or companies.' },
+    { type: 'info', id: 'team-rules', emoji: '📋', text: 'Runs your stock funds and your safe money, which is bonds and savings. Never your own picks or companies.' },
   ]
   if (team?.manager) {
     const manager = team.manager
@@ -332,7 +332,7 @@ export const moneyTeamMenu: MenuGroup = {
     return hired.length ? hired.join(' · ') : 'Hire an advisor or a manager'
   },
   visible: (g) => g.character.alive && g.character.age >= 18 && !inPrison(g),
-  header: () => 'An advisor reviews your money. A manager keeps your mix. Neither picks winners.',
+  header: () => 'An advisor reviews your money. A manager keeps your mix.',
   children: (g) => {
     const team = readTeam(g)
     return [...advisorNodes(g, team), ...managerNodes(g, team)]

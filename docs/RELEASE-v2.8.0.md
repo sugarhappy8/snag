@@ -114,7 +114,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
   - Insider timing, 95: you hold a made-up listed company (or, as a governor, legislator or leader, a coin) bought this year or last while you're in office. It's the window the insider rule uses for laws. An announcement counts older holdings too, and the advisor doesn't flag those.
   - Concentration, 76 to 100: one company or holding is 40% or more of your net worth, and worth at least five typical incomes. The bigger the share, the higher it ranks, and a very large one ranks above insider timing.
   - A dear loan, 70: a loan of two typical incomes or more that costs 3 points or more over savings, while your cash could clear it.
-  - Idle company cash, 50: a company holds two years of typical income or more past 18 months of its costs. It points to Pay a Dividend. It sets nothing.
+  - Idle company cash, 50: a company holds two years of typical income or more past 18 months of its costs. It points to Pay a Dividend (Withdraw Profits for a 100% owner) and Yearly Dividend. It sets nothing.
   - Idle bank cash, 40: ten times a typical income and a tenth of your net worth. It's hidden while a manager is hired.
   - Carried losses, 30: a year of income in investment losses that would shelter later gains.
 - **Skill is coverage.** A better advisor shows more of the list, from 2 to 5, and the menu says "Sees 3 of 5 issues." None lies and none is always right.
@@ -173,7 +173,7 @@ A fund is a view of your own money, not extra money. Starting one moves cash int
 
 - **Where it sits.** Hedge Funds is a row in the Invest block, right after Crypto. It's greyed out before 1949, in prison, and when your home market is closed or investing is banned there, and it says why. It isn't shown to anyone under 18 or to a character who has died.
 - **What's inside.** Your Funds lists a Personal and a Family fund, each as a start action or the fund itself. Company Funds lists up to 20 of your companies that can hold a fund, largest first. Each fund also shows under Assets, on the same screen.
-- **The row.** With no fund it reads "Personal, family and company funds". Otherwise it counts your funds and the companies with a target, and adds what your units are worth.
+- **The row.** With no fund it reads "Personal and family funds, and funds in your companies". Otherwise it counts your funds and the companies with a target, and adds what your units are worth.
 - **Not a market security.** You can't bet on a fund or open a position in it. The Investments total and Sell Everything leave funds out. The Stocks list is unchanged.
 
 ### Personal and family funds

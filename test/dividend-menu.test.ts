@@ -161,7 +161,7 @@ describe('the Yearly Dividend menu', () => {
     expect(subtitleOf(g, menuOf(g, a))).toBe("30% of each year's profit, keeping 3 months of costs.")
     b.dividend = { mode: 'cash', pct: 0.5, keep: 1 }
     expect(subtitleOf(g, menuOf(g, a))).toBe('50% of spare cash each year, keeping 1 month of costs.')
-    expect(menuOf(g, a).header?.(g)).toBe(`${a.name} pays its shareholders at each year end by this rule. Your share is taxed as income. Loans and the cash floor come first.`)
+    expect(menuOf(g, a).header?.(g)).toBe(`${a.name} pays at each year end by this rule. Your part is taxed as income. Loans and the floor come first.`)
   })
 
   it('the rows come in order and the actions have their labels', () => {

@@ -275,7 +275,7 @@ describe('blocks', () => {
     g.character.prison = { name: 'State Pen', security: 'medium', crime: 'Theft', sentenceYears: 2, yearsServed: 0, respect: 20, appealed: false, escapeAttempts: 0 }
     expect(personBlock(g)).toBe("You can't run a fund from prison.")
     g.character.alive = false
-    expect(personBlock(g)).toBe('You are no longer alive.')
+    expect(personBlock(g)).toBe("You're no longer alive.")
     const adult = rich()
     adult.character.age = 18
     expect(personBlock(adult)).toBeNull()
