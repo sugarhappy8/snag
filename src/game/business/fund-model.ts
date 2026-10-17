@@ -16,6 +16,7 @@ import { getCountry } from '../world'
 import { ceoSkill } from './economy'
 import type { FundState, FundStyle, HedgeStrategy, MacroCall } from './fund-state'
 import { leadershipPower } from './leadership'
+import { financeLeadershipSkill } from './finance-leadership'
 import type { BizState } from './state'
 import { clampN } from './util'
 
@@ -210,7 +211,7 @@ export function financingCost(countryId: string, year: number): number {
 
 /** The leader's investing skill: owner (smarts, schooling, talents) or the hired CEO. */
 export function leaderSkill(g: GameState, b: BizState): number {
-  if (b.ceo === 'manager') return clampN(b.manager?.skill ?? 40, 0, 100)
+  if (b.ceo === 'manager') return financeLeadershipSkill(b, b.manager)
   return clampN(ceoSkill(g, b) + (g.character.alive && hasTalent(g, 'Investing') ? 8 : 0), 0, 100)
 }
 

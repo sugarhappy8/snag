@@ -45,7 +45,12 @@ banks need local online banking. **Investment firms** are an asset manager, a he
 venture capital firm or a brokerage: choose fund styles, strategies and market calls, back
 startups or set commissions, and beat your peers to win clients. Deposits and clients' money
 are never company cash; firms earn spreads, fees, carry and commissions, and nothing is
-guaranteed. Inventors can build a hedge-fund trading algorithm whose edge fades.
+guaranteed. Finance CEO searches now show each candidate's relevant specialty, investing
+approach, risk appetite and prior-career record. Once hired, the CEO controls day-to-day fund
+settings and follows the Growth, Balanced, Profit or Cash mandate in the Leadership screen;
+their yearly letter explains the strategy, fees, leverage and co-investment they chose. A
+specialist improves the team's effective skill modestly but never gains market foresight.
+Inventors can build a hedge-fund trading algorithm whose edge fades.
 
 Business founding now offers a **starting-capital slider** with working-cash and runway
 previews. **Capital & Ownership** separates buying investor shares, subscribing to new equity,

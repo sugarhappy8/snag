@@ -13,6 +13,7 @@ import { afterSuccession, successorManager } from './nepo-succession'
 import { CEO_STYLES, ceoJob, OWNER_JOB, readBiz, totalOutlets, type BizState, type CeoStyle, type Manager } from './state'
 import { clampN, round2 } from './util'
 import { returnFormerExecutiveShares } from './executive-shares'
+import { diversifyFinanceShortlist, specializeFinanceCandidate } from './finance-leadership'
 
 /** Hired CEOs above this skill run the company like real executives (business/board-ceo.ts). */
 export const SMART_SKILL = 75
@@ -74,7 +75,7 @@ export function askingSalary(b: BizState, skill: number, churn = readBoard(b.boa
 export function managerCandidate(g: GameState, b: BizState, skill?: number): Manager {
   const gender = randInt(g, 0, 1) === 0 ? 'male' : 'female'
   const s = Math.round(clampN(skill ?? randInt(g, 40, 85), 1, 100))
-  return {
+  const candidate: Manager = {
     firstName: randomFirstName(g, b.countryId, gender),
     lastName: randomLastName(g, b.countryId),
     gender,
@@ -84,6 +85,7 @@ export function managerCandidate(g: GameState, b: BizState, skill?: number): Man
     style: pick(g, CEO_STYLES),
     integrity: clampN(bell(g, 30, 100), 0, 100),
   }
+  return specializeFinanceCandidate(g, b, candidate)
 }
 
 export type SearchKind = 'standard' | 'executive'
@@ -96,7 +98,7 @@ export function shortlist(g: GameState, b: BizState, kind: SearchKind = 'standar
   const bands: [number, number][] = kind === 'executive' ? [[62, 78], [70, 84], [76, 88], [80, 92]] : [[38, 58], [52, 72], [64, 82], [70, 86]]
   const out = bands.map(([lo, hi]) => managerCandidate(g, b, randInt(g, lo, hi)))
   if (kind === 'executive' || chance(g, 0.12)) out.push(managerCandidate(g, b, 85 + Math.floor(Math.pow(rand(g), 2) * 16)))
-  return out
+  return diversifyFinanceShortlist(g, b, out)
 }
 
 /** A headhunter's fee for a fresh shortlist; every extra search this year costs half as much again. */
