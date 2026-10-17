@@ -79,13 +79,19 @@ jobs:
           TARGET_SHA: 21a3ce7494171d9e80aaa7f3384766cffa1f0b58
         run: |
           set -euo pipefail
-          if existing_sha=$(gh api "repos/$GH_REPO/commits/v3.0.0" --jq '.sha' 2>/dev/null); then
+          existing_ref=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v3.0.0" \
+            --jq '.[] | select(.ref == "refs/tags/v3.0.0") | .ref')
+          if [ -n "$existing_ref" ]; then
+            existing_sha=$(gh api "repos/$GH_REPO/commits/v3.0.0" --jq '.sha')
             if [ "$existing_sha" != "$TARGET_SHA" ]; then
               echo 'Refusing to replace an existing v3.0.0 tag on a different commit.' >&2
               exit 1
             fi
           fi
-          if gh release view v3.0.0 --repo "$GH_REPO" --json url --jq '.url'; then
+          existing_release=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select(.tag_name == "v3.0.0") | .html_url')
+          if [ -n "$existing_release" ]; then
+            printf '%s\n' "$existing_release"
             echo 'v3.0.0 is already published; leaving it unchanged.'
             exit 0
           fi
