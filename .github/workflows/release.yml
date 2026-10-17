@@ -6,6 +6,11 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # One-time v3 handoff: only the reviewed main commit may publish automatically.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
@@ -25,6 +30,7 @@ permissions:
 
 jobs:
   release:
+    if: github.event_name != 'workflow_run'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -47,3 +53,41 @@ jobs:
           TAG: ${{ inputs.tag }}
           TARGET: ${{ inputs.target }}
           NOTES: ${{ inputs.notes }}
+
+  release-v3-after-ci:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.repository == 'sugarhappy8/snag' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_sha == '21a3ce7494171d9e80aaa7f3384766cffa1f0b58'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-v3.0.0
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: 21a3ce7494171d9e80aaa7f3384766cffa1f0b58
+          persist-credentials: false
+      - name: Publish the tested v3 commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_SHA: 21a3ce7494171d9e80aaa7f3384766cffa1f0b58
+        run: |
+          set -euo pipefail
+          if existing_sha=$(gh api "repos/$GH_REPO/commits/v3.0.0" --jq '.sha' 2>/dev/null); then
+            if [ "$existing_sha" != "$TARGET_SHA" ]; then
+              echo 'Refusing to replace an existing v3.0.0 tag on a different commit.' >&2
+              exit 1
+            fi
+          fi
+          if gh release view v3.0.0 --repo "$GH_REPO" --json url --jq '.url'; then
+            echo 'v3.0.0 is already published; leaving it unchanged.'
+            exit 0
+          fi
+          gh release create v3.0.0 --repo "$GH_REPO" --target "$TARGET_SHA" \
+            --title 'AnotherLife v3.0.0' --notes-file docs/RELEASE-v3.0.0.md
