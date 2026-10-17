@@ -136,6 +136,23 @@ export type CeoStyle = 'grower' | 'costCutter' | 'steady' | 'visionary'
 
 export const CEO_STYLES: readonly CeoStyle[] = ['grower', 'costCutter', 'steady', 'visionary']
 
+/** Specialist background shown for CEOs of banks and investment firms. */
+export type FinanceSpecialty = 'asset' | 'hedge' | 'vc' | 'broker' | 'bank' | 'generalist'
+export type FinanceApproach = 'systematic' | 'fundamental' | 'growth' | 'macro' | 'event' | 'client' | 'risk'
+export type FinanceRisk = 'cautious' | 'balanced' | 'bold'
+
+export const FINANCE_SPECIALTIES: readonly FinanceSpecialty[] = ['asset', 'hedge', 'vc', 'broker', 'bank', 'generalist']
+export const FINANCE_APPROACHES: readonly FinanceApproach[] = ['systematic', 'fundamental', 'growth', 'macro', 'event', 'client', 'risk']
+export const FINANCE_RISKS: readonly FinanceRisk[] = ['cautious', 'balanced', 'bold']
+
+export interface FinanceProfile {
+  specialty: FinanceSpecialty
+  approach: FinanceApproach
+  risk: FinanceRisk
+  /** 0-100 résumé score from the candidate's pre-game career, not a promise of future returns. */
+  record: number
+}
+
 export interface Manager {
   /** Vested fraction granted to this CEO; ownership is deducted when awarded. */
   equity?: number
@@ -153,6 +170,8 @@ export interface Manager {
   style?: CeoStyle
   /** 0-100, how straight they play (rogue-CEO risk). Missing on old saves (career.integrityOf: 70). */
   integrity?: number
+  /** Banking/investment experience. Missing on old saves and ordinary-company CEOs. */
+  finance?: FinanceProfile
   /** Last profit bonus paid (dollars). */
   bonus?: number
   /** Calendar year they last asked for a raise. */
@@ -469,9 +488,20 @@ function readStatement(v: Json | undefined): Statement | null {
   return out as Statement
 }
 
+/** Safe reader shared by save normalization and the scripted CEO-hiring popup. */
+export function readFinanceProfile(v: Json | undefined): FinanceProfile | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+  const specialty = FINANCE_SPECIALTIES.find((x) => x === v.specialty)
+  const approach = FINANCE_APPROACHES.find((x) => x === v.approach)
+  const risk = FINANCE_RISKS.find((x) => x === v.risk)
+  if (!specialty || !approach || !risk) return undefined
+  return { specialty, approach, risk, record: Math.round(clampN(num(v.record, 50), 0, 100)) }
+}
+
 function readManager(v: Json | undefined): Manager | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null
   const style = CEO_STYLES.find((x) => x === v.style)
+  const finance = readFinanceProfile(v.finance)
   return {
     firstName: str(v.firstName, 'Pat'),
     lastName: str(v.lastName, 'Morgan'),
@@ -484,6 +514,7 @@ function readManager(v: Json | undefined): Manager | null {
     ...(typeof v.equityAsked === 'number' ? { equityAsked: Math.round(num(v.equityAsked)) } : {}),
     ...(style ? { style } : {}),
     ...(typeof v.integrity === 'number' ? { integrity: clampN(num(v.integrity, 70), 0, 100) } : {}),
+    ...(finance ? { finance } : {}),
     ...(num(v.bonus) > 0 ? { bonus: Math.round(num(v.bonus)) } : {}),
     ...(typeof v.asked === 'number' ? { asked: Math.round(num(v.asked)) } : {}),
     ...(str(v.personId) ? { personId: str(v.personId) } : {}),

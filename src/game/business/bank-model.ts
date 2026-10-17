@@ -11,6 +11,7 @@ import type { GameState } from '../types'
 import { getCountry } from '../world'
 import { cycleOf, equipmentValue, localEcon, localPay } from './economy'
 import { leadershipPower } from './leadership'
+import { financeLeadershipSkill } from './finance-leadership'
 import { allocatedCorporateTax } from './tax'
 import { APPETITES, LEND_LINES, PRODUCTS, hasProduct, loanTotal, minCapitalRatio, nationalDeposits, perBranch, ratesFrom, readBank, reserveRequirement, type Appetite, type BankBook, type LendLine, type ProductId } from './bank-state'
 import { totalOutlets, type BizState } from './state'
@@ -89,7 +90,7 @@ export function marketLoanRate(m: Pick<BankMarket, 'mortgage'>): number {
 
 /** Who runs it: the hired CEO's skill, or the owner's (smarts, discipline, talents). No foresight. */
 export function bankLeaderSkill(g: GameState, b: BizState): number {
-  if (b.ceo === 'manager') return clampN(b.manager?.skill ?? 40, 10, 100)
+  if (b.ceo === 'manager') return financeLeadershipSkill(b, b.manager)
   const c = g.character
   return clampN(c.stats.smarts * .45 + c.hidden.discipline * .2 + 20 + (hasTalent(g, 'Business') ? 12 : 0) + (hasTalent(g, 'Investing') ? 5 : 0), 10, 92)
 }

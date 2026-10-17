@@ -12,6 +12,7 @@ import { simulateFund } from './fund-sim'
 import { clientAssets, newFundState, readFund, saveFund, type FundType } from './fund-state'
 import { firstFundSize, newVcFund } from './fund-vc'
 import type { BizState } from './state'
+import { ceoLetter, SMART_SKILL } from './career'
 
 export function isFund(b: { industry: string }): boolean {
   return b.industry === 'investmentFirm'
@@ -44,7 +45,11 @@ export function simulateFundYear(g: GameState, b: BizState, year: number, ownerD
 
 /** A hired CEO's (or caretaker's) yearly decisions, plus regulators and schemes catching up. */
 export function fundManagerTurn(g: GameState, b: BizState): void {
-  fundAutopilot(g, b)
+  const lines = fundAutopilot(g, b)
+  if (lines.length && b.ceo === 'manager' && b.manager) {
+    const a = g.assets.find(x => x.kind === 'business' && (x.details as unknown) === b)
+    if (a) ceoLetter(g, a, b, lines, b.manager.skill > SMART_SKILL)
+  }
   fundYearlyChecks(g, b)
 }
 
