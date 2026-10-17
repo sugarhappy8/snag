@@ -3,11 +3,23 @@
 import { chance, pick, randInt } from '../rng'
 import type { GameState, Person } from '../types'
 import { employerRef } from '../shops/everyday-brands'
-import { anyOf, ch, defineEvents, dollars, hasJob, jobCompany, money, say, strangerName, v, type Ctx } from './helpers'
+import { anyOf, ch, defineEvents, dollars, money, say, strangerName, v, type Ctx } from './helpers'
 import { common } from './era'
 
 function job(g: GameState) {
-  return g.character.job ?? g.character.partTimeJob
+  const main = g.character.job
+  if (main && (main.category === 'fulltime' || main.category === 'parttime')) return main
+  return g.character.partTimeJob ?? main
+}
+
+function hasWorkJob(g: GameState): boolean {
+  // Preserve the long-standing event pool for dedicated careers; when a regular
+  // part-time job is also held, helpers below deliberately target that job.
+  return g.character.job !== null || g.character.partTimeJob !== null
+}
+
+function workCompany(g: GameState): string {
+  return job(g)?.company ?? 'work'
 }
 
 function fullTime(g: GameState): boolean {
@@ -17,7 +29,7 @@ function fullTime(g: GameState): boolean {
 
 /** A coworker (contact if available, else made-up name). */
 function coworker(g: GameState): { p: Person | undefined; first: string; last: string; gender: 'male' | 'female' } {
-  const company = jobCompany(g)
+  const company = workCompany(g)
   const list = g.people.filter((p) => p.alive && p.relation === 'coworker' && (!p.contextId || p.contextId === company))
   if (list.length && chance(g, 0.75)) {
     const p = pick(g, list)
@@ -29,7 +41,7 @@ function coworker(g: GameState): { p: Person | undefined; first: string; last: s
 
 function boss(g: GameState): { p: Person | undefined; first: string; last: string; gender: 'male' | 'female' } {
   const j = job(g)
-  const b = (j?.bossId && g.people.find((p) => p.id === j.bossId && p.alive)) || anyOf(g, g.people.filter((p) => p.alive && p.relation === 'boss'))
+  const b = (j?.bossId && g.people.find((p) => p.id === j.bossId && p.alive)) || anyOf(g, g.people.filter((p) => p.alive && p.relation === 'boss' && (!j || p.contextId === j.company)))
   if (b) return { p: b, first: b.firstName, last: b.lastName, gender: b.gender }
   const s = strangerName(g)
   return { p: undefined, first: s.first, last: s.last, gender: s.gender }
@@ -85,12 +97,12 @@ export const WORK_EVENTS = defineEvents([
     title: 'Team Building',
     minAge: 16,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => {
       const b = boss(g)
       const outing = v(g, OUTINGS)
       return {
-        text: `${b.first}, your supervisor at ${jobCompany(g)}, is sponsoring a team building activity: the whole team is going to ${outing}. Will you go?`,
+        text: `${b.first}, your supervisor at ${workCompany(g)}, is sponsoring a team building activity: the whole team is going to ${outing}. Will you go?`,
         choices: [ch('go', "Sure, I'll go"), ch('no', 'No, that sounds lame')],
         person: b.p,
         data: { outing },
@@ -110,7 +122,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Office Rumor',
     minAge: 16,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => {
       const c = coworker(g)
       const rumor = v(g, RUMORS)
@@ -140,7 +152,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Workplace Prank',
     minAge: 16,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => {
       const c = coworker(g)
       const prank = v(g, ['@1930 wrapped your entire desk in aluminum foil', '@cars filled your car with balloons', 'replaced your desk photos with pictures of a celebrity', 'put your stapler in a block of jelly', '@1990 set your keyboard to a different language', '@-1990 glued your pencils to the desk'])
@@ -167,7 +179,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Workplace Behavior',
     minAge: 16,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => {
       const c = coworker(g)
       const habit = v(g, ANNOYING)
@@ -197,9 +209,9 @@ export const WORK_EVENTS = defineEvents([
     minAge: 16,
     maxAge: 80,
     // The office fridge is a postwar invention.
-    when: (g) => hasJob(g) && g.year >= 1950,
+    when: (g) => hasWorkJob(g) && g.year >= 1950,
     setup: (g) => ({
-      text: `Someone at ${jobCompany(g)} keeps stealing your lunch from the office fridge. What will you do?`,
+      text: `Someone at ${workCompany(g)} keeps stealing your lunch from the office fridge. What will you do?`,
       choices: [ch('spicy', 'Make it insanely spicy'), ch('note', 'Leave a note on the fridge'), ch('camera', g.year >= 1990 ? 'Set up a hidden camera' : 'Stake out the fridge'), ch('eatout', 'Just eat out from now on')],
     }),
     resolve: {
@@ -255,7 +267,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Office Party',
     minAge: 18,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => ({
       text: 'It is the annual office holiday party and there is an open bar. What will you do?',
       choices: [ch('wild', 'Get wild'), ch('behave', 'Have one drink and mingle'), ch('karaoke', g.year >= 1985 ? 'Dominate the karaoke' : 'Lead a singalong at the piano'), ch('skip', 'Skip it')],
@@ -280,7 +292,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Big Mistake',
     minAge: 16,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => {
       const oops = v(g, ['@internet emailed the whole company a picture of your cat instead of the quarterly report', '@1985 accidentally deleted an important client file', 'ordered 10,000 staplers instead of 100', 'locked the boss out of the building', 'sent a confidential memo to a competitor', '@-1985 spilled ink all over the only copy of the annual report'])
       return {
@@ -310,7 +322,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Sick Day',
     minAge: 16,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => ({
       text: 'You woke up feeling awful: fever, sore throat, the works. What will you do?',
       choices: [ch('go', 'Go to work anyway'), ch('call', g.year >= 1930 ? 'Call in sick' : 'Send word that I\'m sick'), ch('home', g.year >= 1998 && common(g, 'internet') ? 'Work from bed' : 'Do paperwork from bed')],
@@ -332,7 +344,7 @@ export const WORK_EVENTS = defineEvents([
     maxAge: 70,
     when: (g) => g.character.job?.category === 'fulltime',
     setup: (g) => ({
-      text: `Rumors are swirling that ${employerRef(jobCompany(g), 'your company')} is about to announce layoffs. What will you do?`,
+      text: `Rumors are swirling that ${employerRef(workCompany(g), 'your company')} is about to announce layoffs. What will you do?`,
       choices: [ch('harder', 'Work twice as hard'), ch('resume', 'Polish my resume'), ch('suck', 'Suck up to the boss'), ch('ignore', 'Ignore the rumors')],
     }),
     resolve: {
@@ -352,7 +364,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Rude Customer',
     minAge: 14,
     maxAge: 80,
-    when: (g) => hasJob(g) && (g.character.partTimeJob !== null || /cashier|waiter|barista|clerk|server|sales|retail|associate|host/i.test(job(g)?.title ?? '')),
+    when: (g) => hasWorkJob(g) && (g.character.partTimeJob !== null || /cashier|waiter|barista|clerk|server|sales|retail|associate|host/i.test(job(g)?.title ?? '')),
     setup: (g) => ({
       text: `A customer is screaming at you because their coupon expired in ${g.year - 15} and is demanding to speak to your manager. What will you do?`,
       choices: [ch('manager', 'Get the manager'), ch('calm', 'Stay calm and kill them with kindness'), ch('snap', 'Snap back at them'), ch('honor', 'Just honor the coupon')],
@@ -392,7 +404,7 @@ export const WORK_EVENTS = defineEvents([
     title: 'Office Collection',
     minAge: 16,
     maxAge: 80,
-    when: hasJob,
+    when: hasWorkJob,
     setup: (g) => {
       const c = coworker(g)
       const reason = pick(g, ['birthday', 'retirement', 'new baby', 'farewell'])

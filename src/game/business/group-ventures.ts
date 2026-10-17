@@ -28,7 +28,8 @@ export function foundGroupVenture(g: GameState, grp: Group): string[] {
     const cost = startupCost(industry, home.countryId, home.city)
     const b = newBiz(g, industry, home.countryId, home.city, { ceo: 'manager', quality: 70, morale: 85, brand: 35 })
     const salary = askingSalary(b, leader.skill)
-    b.manager = { ...leader, salary, since: g.year, equity: 0, groupEquity: undefined, personId: undefined }
+    // A group CEO's résumé describes the diversified parent, not this temporary division forecast.
+    b.manager = { ...leader, salary, since: g.year, equity: 0, groupEquity: undefined, personId: undefined, finance: undefined }
     const working = Math.max(cost.capital, salary * 2)
     const total = cost.total + working
     if (total > budget) return []

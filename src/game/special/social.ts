@@ -1053,7 +1053,7 @@ function deleteAction(plat: Platform): MenuAction {
       p.accounts = p.accounts.filter((a) => a.platform !== plat.id)
       sync(g)
       log(g, `I deleted my ${plat.name} account.`)
-      say(g, plat.name, pick(g, [`You deleted your ${plat.name} account. You feel lighter already.`, `You deleted ${plat.name}. Your screen time just dropped by six hours a day.`]), '\u{1F5D1}\u{FE0F}')
+      say(g, plat.name, pick(g, [`You deleted your ${plat.name} account. You feel lighter already.`, `You deleted ${plat.name}. You just reclaimed six hours of your day.`]), '\u{1F5D1}\u{FE0F}')
     },
   }
 }

@@ -24,7 +24,7 @@ import { notePerson } from '../people'
 import { fillLocal, locale, localTerm, type LocaleProfile } from '../data/locales'
 import { pick, randInt, rand } from '../rng'
 import { getCountry, randomFirstName, randomLastName } from '../world'
-import type { ChoiceOption, GameEffects, GameState, Gender, Json, Person, Tone } from '../types'
+import type { ChoiceOption, GameEffects, GameState, Gender, Job, Json, Person, Tone } from '../types'
 import { anachronistic, eraOk, eraStrip, venueExists } from './era'
 
 export { venueExists }
@@ -33,6 +33,11 @@ export { venueExists }
 export const EVENT_SCRIPT = 'events.random'
 
 export type EvData = Record<string, Json>
+
+function eventJobKey(job: Job): string {
+  const appointment = typeof job.data.appointmentId === 'string' ? job.data.appointmentId : ''
+  return `${job.category}|${job.defId}|${job.company}|${appointment}`
+}
 
 /** What an event shows when it fires. */
 export interface Setup {
@@ -117,6 +122,18 @@ export function ch(id: string, label: string, emoji?: string): ChoiceOption {
 /** Queue an event popup (first step). */
 export function present(g: GameState, ev: EventDef, s: Setup): void {
   const data: EvData = { ...(s.data ?? {}), eventId: ev.id }
+  if (ev.id.startsWith('work.') && data.workSlot === undefined) {
+    const main = g.character.job
+    const regularMain = main && (main.category === 'fulltime' || main.category === 'parttime') ? main : null
+    const slot = ev.id === 'work.rudeCustomer' && g.character.partTimeJob
+      ? 'partTimeJob'
+      : regularMain ? 'job' : g.character.partTimeJob ? 'partTimeJob' : main ? 'job' : null
+    const target = slot ? g.character[slot] : null
+    if (slot && target) {
+      data.workSlot = slot
+      data.workJobKey = eventJobKey(target)
+    }
+  }
   if (s.person) data.personId = s.person.id
   if (s.other) data.otherId = s.other.id
   scriptChoice(g, EVENT_SCRIPT, s.title ?? ev.title, s.text, s.choices, {
@@ -272,7 +289,13 @@ export function applyFx(g: GameState, ctx: Ctx | null, fx: Fx): void {
   for (const r of fx.rels ?? []) if (r.p && r.p.alive) addRelationship(r.p, r.d)
   if (fx.note && x?.p) notePerson(x.p, fx.note)
   if (fx.perf) {
-    const job = c.job ?? c.partTimeJob
+    const slot = x?.data.workSlot === 'partTimeJob' ? 'partTimeJob' : x?.data.workSlot === 'job' ? 'job' : null
+    const candidate = slot ? c[slot] : null
+    const savedKey = typeof x?.data.workJobKey === 'string' ? x.data.workJobKey : ''
+    const workEvent = typeof x?.data.eventId === 'string' && x.data.eventId.startsWith('work.')
+    const job = slot
+      ? (candidate && eventJobKey(candidate) === savedKey ? candidate : null)
+      : workEvent ? null : c.job ?? c.partTimeJob
     if (job) job.performance = Math.round(clamp(job.performance + fx.perf))
   }
   if (fx.grades && c.education.current) {

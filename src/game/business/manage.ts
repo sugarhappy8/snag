@@ -46,6 +46,7 @@ import { conglomerate, investorFirm, localSport } from './flavor'
 import { deepTechInfo, deepTechNodes, isDeepTech } from './deeptech'
 import { DEVS_PER_OFFICE, earmarkedCash, isStudio, studioInfo, studioNodes } from './gamestudio'
 import { financeInfo, financeNodes, isFinanceFirm } from './finance-firm'
+import { ensureFinanceCandidate, financeCandidateScore, financeLeadershipSkill, financeMandateAware, financeMandateFitLabel, financeProfileShort, financeProfileSummary, financeRoleLabel, financeSpecialtyLabel, financeTarget } from './finance-leadership'
 import { bankPayoutBlock } from './bank'
 import { rescueNodes, rescuePosition } from './rescue'
 import { SHARE_SALES_PER_YEAR, shareSaleKey } from './own-trade'
@@ -78,7 +79,7 @@ import type { Breakthrough } from './heavy-data'
 import { readMarketNews } from '../history/market-events'
 import { fieldFor, kindTrend, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
 import { demandTrend } from './product-data'
-import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
+import { bizOf, CEO_STYLES, ceoJob, findBusiness, readBiz, readFinanceProfile, runsIt, stakeValue, totalOutlets, type BizState, type Manager, type Supplier } from './state'
 import { divisionExitNodes, divisionLine, groupOfCompany } from './conglomerate-division'
 import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
 import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
@@ -1688,6 +1689,7 @@ function ceoNodes(a: Asset, g: GameState): MenuNode[] {
 function readCandidate(g: GameState, raw: Record<string, Json>): Manager {
   const style = CEO_STYLES.find((x) => x === raw.style)
   const personId = str(raw.personId)
+  const finance = readFinanceProfile(raw.finance)
   return {
     firstName: str(raw.firstName, 'Pat'),
     lastName: str(raw.lastName, 'Morgan'),
@@ -1697,6 +1699,7 @@ function readCandidate(g: GameState, raw: Record<string, Json>): Manager {
     since: g.year,
     ...(style ? { style } : {}),
     integrity: clampN(num(raw.integrity, 70), 0, 100),
+    ...(finance ? { finance } : {}),
     ...(personId ? { personId } : {}),
   }
 }
@@ -1730,11 +1733,17 @@ const MANAGER_PICK = defineScript('business.manager', (g, choice, data) => {
   if (formerFamilyCeo && formerFamilyCeo.id !== m.personId) settleReplacedCeo(g, a, b, formerFamilyCeo)
   if (m.personId && b.manager) afterSuccession(g, a, b, b.manager)
   const style = STYLE_INFO[styleOf(m)]
+  const financial = financeTarget(b)
+  const mandate = financial ? boardView(g, a, b).mandate : null
+  const mandateAware = financeMandateAware(b)
+  const identity = financial && mandate
+    ? `${managerName(m)} now runs ${a.name} day to day. Leadership skill ${m.skill}/100; finance skill ${Math.round(financeLeadershipSkill(b, m))}/100. ${financeProfileSummary(m)}${mandateAware ? ` with ${financeMandateFitLabel(b, m, mandate)} fit for the ${mandateDef(mandate).label.toLowerCase()} mandate` : ''}. Pay is ${formatMoney(m.salary)} a year.`
+    : `${managerName(m)} (skill ${m.skill}/100, ${style.label.toLowerCase()}, ${formatMoney(m.salary)} a year) now runs ${a.name} day to day.`
   log(g, `${managerName(m)} became CEO of ${a.name}.`)
   notice(
     g,
     'New CEO',
-    `${managerName(m)} (skill ${m.skill}/100, ${style.label.toLowerCase()}, ${formatMoney(m.salary)} a year) now runs ${a.name} day to day.${wasCeo ? ' You stepped down as CEO but still own the company, so you are free to take another job.' : ''}${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}${h.moraleHit > 0 ? ` Yet another new boss: staff morale fell ${h.moraleHit} points.` : ''}${m.skill > SMART_SKILL ? ' Expect a yearly letter on what they change and why.' : ''}`,
+    `${identity}${wasCeo ? ' You stepped down as CEO but still own the company, so you are free to take another job.' : ''}${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}${h.moraleHit > 0 ? ` Yet another new boss: staff morale fell ${h.moraleHit} points.` : ''}${b.industry === 'investmentFirm' && mandate ? ` The ${mandateDef(mandate).label.toLowerCase()} mandate now guides daily decisions. Expect a yearly decision letter.` : !financial && m.skill > SMART_SKILL ? ' Expect a yearly letter on what they change and why.' : ''}`,
     { emoji: '\u{1F9D1}\u{200D}\u{1F4BC}', tone: 'good' },
   )
 })
@@ -1781,31 +1790,50 @@ function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow
   }
   useYearAction(g, key, Number.MAX_SAFE_INTEGER)
   const list = [...familyCandidates(g, a, b, (skill) => askingSalary(b, skill, 0)), ...shortlist(g, b, kind)]
+    .map(m => ensureFinanceCandidate(g, b, m))
   const used = yearActionsUsed(g, key)
   const cur = b.ceo === 'manager' && b.manager ? b.manager : null
   const sev = cur ? ceoSeverance(cur, g.year) : 0
+  const financial = financeTarget(b)
+  const role = financeRoleLabel(b)
+  const roleWithArticle = `${/^[AEIOU]/.test(role) ? 'an' : 'a'} ${role}`
+  const mandate = financial ? boardView(g, a, b).mandate : null
+  const mandateAware = financeMandateAware(b)
   const face = (m: Manager) => (m.gender === 'female' ? '\u{1F469}\u{200D}\u{1F4BC}' : '\u{1F468}\u{200D}\u{1F4BC}')
   const choices: ChoiceOption[] = [
-    ...list.map((m, i) => ({ id: `m${i}`, label: `${managerName(m)} \u{00B7} ${m.skill}/100 \u{00B7} ${STYLE_INFO[styleOf(m)].label} \u{00B7} ${money(m.salary)}`, emoji: m.skill >= 85 ? '\u{2B50}' : face(m) })),
+    ...list.map((m, i) => ({ id: `m${i}`, label: `${managerName(m)} \u{00B7} ${m.skill}/100 \u{00B7} ${financial ? financeSpecialtyLabel(m) : STYLE_INFO[styleOf(m)].label} \u{00B7} ${money(m.salary)}`, emoji: m.skill >= 85 ? '\u{2B50}' : face(m) })),
     { id: 'again', label: `Another shortlist (${money(headhunterFee(b, 'standard', used))})`, emoji: '\u{1F504}' },
     { id: 'exec', label: `Executive search for a star (${money(headhunterFee(b, 'executive', used))})`, emoji: '\u{1F31F}' },
     { id: 'cancel', label: cur ? `Keep ${managerName(cur)}` : 'Never mind', emoji: '\u{2716}\u{FE0F}' },
   ]
   if (hasTalent(g, 'Business')) {
-    const w = bizWorth(g, b)
-    const gain = optimizerGain(g, b)
-    // A year of each candidate's value; replacing someone also costs their severance (spread over the years it counts for).
-    const values = list.map((m) => ceoValue(w, m, gain) - sev / LASTING_YEARS)
-    const keep = cur ? ceoValue(w, cur, gain) : null
-    markBest(g, choices, (id) => (id === 'cancel' ? keep : id.startsWith('m') ? (values[Number(id.slice(1))] ?? null) : null), (id) =>
-      id === 'cancel' ? 'Best move: nobody here beats your CEO by enough to pay the severance' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year for the company after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they plan with the numbers' : ''}`,
-    )
+    if (financial) {
+      const norm = ceoPayNorm(b)
+      const switchCost = sev / Math.max(1, norm) / LASTING_YEARS * 4
+      const values = list.map((m) => financeCandidateScore(b, m, mandate!, norm) - switchCost)
+      const keep = cur ? financeCandidateScore(b, cur, mandate!, norm) : null
+      markBest(g, choices, (id) => (id === 'cancel' ? keep : id.startsWith('m') ? (values[Number(id.slice(1))] ?? null) : null), (id) =>
+        id === 'cancel' ? 'Best finance fit after allowing for severance' : mandateAware ? 'Best fit for this mandate after pay and integrity.' : 'Best finance value after pay and integrity.',
+      )
+    } else {
+      const w = bizWorth(g, b)
+      const gain = optimizerGain(g, b)
+      // A year of each candidate's value; replacing someone also costs their severance (spread over the years it counts for).
+      const values = list.map((m) => ceoValue(w, m, gain) - sev / LASTING_YEARS)
+      const keep = cur ? ceoValue(w, cur, gain) : null
+      markBest(g, choices, (id) => (id === 'cancel' ? keep : id.startsWith('m') ? (values[Number(id.slice(1))] ?? null) : null), (id) =>
+        id === 'cancel' ? 'Best move: nobody here beats your CEO by enough to pay the severance' : `Best value: about ${money(values[Number(id.slice(1))] ?? 0)} a year for the company after pay${(list[Number(id.slice(1))]?.skill ?? 0) > SMART_SKILL ? ', and they plan with the numbers' : ''}`,
+      )
+    }
   }
-  const lines = list.map((m) => `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year. ${equityTerms(m, seatOf(g, b))}.`)
+  const lines = list.map((m) => financial
+    ? `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${financeProfileSummary(m)}; finance skill ${Math.round(financeLeadershipSkill(b, m))}/100${mandateAware ? `; ${financeMandateFitLabel(b, m, mandate!)} fit for the ${mandateDef(mandate!).label.toLowerCase()} mandate` : ''}; wants ${formatMoney(m.salary)} a year. ${equityTerms(m, seatOf(g, b))}.`
+    : `\u{2022} ${managerName(m)}: skill ${m.skill}/100, ${STYLE_INFO[styleOf(m)].label.toLowerCase()} (${STYLE_INFO[styleOf(m)].note}), wants ${formatMoney(m.salary)} a year. ${equityTerms(m, seatOf(g, b))}.`)
   const notes = [`The search cost ${formatMoney(fee)}${by === 'owner' ? ' (paid from your own pocket: the company was empty)' : by === 'split' ? ' (split between company cash and your own pocket)' : ''}.`]
   if (cur && sev > 0) notes.push(`Replacing ${managerName(cur)} means buying out the contract: about ${formatMoney(sev)} in severance.`)
-  if (list.some((m) => m.skill > SMART_SKILL)) notes.push('Anyone above 75 runs the company with the numbers, like a real executive.')
-  scriptChoice(g, MANAGER_PICK, flow === 'stepDown' ? 'Hire a CEO' : 'Replace the CEO', `A headhunter in ${b.city} sent over ${list.length} candidates to run ${a.name}:\n${lines.join('\n')}\n${notes.join(' ')}`, choices, {
+  if (financial && mandate) notes.push(mandateAware ? `Finance experience changes finance skill. The board's ${mandateDef(mandate).label.toLowerCase()} mandate changes which résumé fits best.` : 'Finance experience changes finance skill.')
+  else if (list.some((m) => m.skill > SMART_SKILL)) notes.push('Anyone above 75 runs the company with the numbers, like a real executive.')
+  scriptChoice(g, MANAGER_PICK, flow === 'stepDown' ? `Hire ${roleWithArticle}` : `Replace the ${role}`, `A headhunter in ${b.city} sent over ${list.length} candidates to run ${a.name}:\n${lines.join('\n')}\n${notes.join(' ')}`, choices, {
     emoji: '\u{1F9D1}\u{200D}\u{1F4BC}',
     data: { assetId: a.id, flow, candidates: toJson(list) },
   })
@@ -1813,11 +1841,14 @@ function pickManager(g: GameState, a: Asset, b: BizState, kind: SearchKind, flow
 
 function leadershipNodes(a: Asset, g: GameState): MenuNode[] {
   const b = readBiz(g, a)
+  const financial = financeTarget(b)
+  const role = financeRoleLabel(b)
+  const roleWithArticle = `${/^[AEIOU]/.test(role) ? 'an' : 'a'} ${role}`
   const fee = (gg: GameState) => money(headhunterFee(readBiz(gg, live(gg, a)), 'standard', yearActionsUsed(gg, `biz.headhunt.${a.id}`)))
   if (runsIt(g, a)) {
     return [
-      act(a, 'stepDown', 'Step Down as CEO', '\u{1FA91}', {
-        subtitle: (gg) => `Hire a CEO and become a passive owner \u{00B7} headhunter ${fee(gg)}`,
+      act(a, 'stepDown', financial ? `Hire ${roleWithArticle}` : 'Step Down as CEO', '\u{1FA91}', {
+        subtitle: (gg) => `${financial ? 'Step down and become a passive owner' : 'Hire a CEO and become a passive owner'} \u{00B7} headhunter ${fee(gg)}`,
         run: (gg, cur, bb) => pickManager(gg, cur, bb, 'standard', 'stepDown'),
       }),
     ]
@@ -1849,11 +1880,11 @@ function leadershipNodes(a: Asset, g: GameState): MenuNode[] {
         notice(gg, 'In Charge', `You're now ${title} of ${cur.name}${quit ? ` (you ${quit})` : ''}. Your salary is ${formatMoney(bb.ownerSalary)} a year; change it any time.${h.severance > 0 && h.outgoing ? ` Buying out ${managerName(h.outgoing)}'s contract cost the company ${formatMoney(h.severance)}.` : ''}`, { emoji: '\u{1F454}', tone: 'good' })
       },
     }),
-    act(a, 'replaceManager', 'Replace the CEO', '\u{1F504}', {
+    act(a, 'replaceManager', financial ? `Replace the ${role}` : 'Replace the CEO', '\u{1F504}', {
       subtitle: (gg) => {
         const bb = readBiz(gg, live(gg, a))
         const m = bb.ceo === 'manager' ? bb.manager : null
-        return m ? `${managerName(m)} \u{00B7} skill ${m.skill}/100 \u{00B7} ${STYLE_INFO[styleOf(m)].label} \u{00B7} ${money(m.salary)}/yr \u{00B7} severance ${money(ceoSeverance(m, gg.year))} \u{00B7} headhunter ${fee(gg)}` : `Hire someone to run it \u{00B7} headhunter ${fee(gg)}`
+        return m ? `${managerName(m)} \u{00B7} skill ${m.skill}/100 \u{00B7} ${financial ? financeProfileShort(m) : STYLE_INFO[styleOf(m)].label} \u{00B7} ${money(m.salary)}/yr \u{00B7} severance ${money(ceoSeverance(m, gg.year))} \u{00B7} headhunter ${fee(gg)}` : `Hire someone to run it \u{00B7} headhunter ${fee(gg)}`
       },
       hint: (gg) => {
         const cur = live(gg, a)
@@ -2071,7 +2102,7 @@ export function infoRows(g: GameState, a: Asset): MenuNode[] {
   const rows: [string, string][] = []
   rows.push([def.emoji, `${def.label} \u{00B7} ${b.city}, ${getCountry(b.countryId).name} \u{00B7} ${b.acquired ? 'acquired' : 'founded'} ${b.founded}`])
   if (runsIt(g, a)) rows.push(['\u{1F454}', `Run by you, the CEO \u{00B7} salary ${money(b.ownerSalary)}/yr`])
-  else rows.push(['\u{1F454}', b.manager ? `CEO ${managerName(b.manager)} \u{00B7} skill ${b.manager.skill}/100 \u{00B7} ${STYLE_INFO[styleOf(b.manager)].label.toLowerCase()} \u{00B7} ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''}${b.manager.skill > SMART_SKILL ? ' \u{00B7} plans with the numbers' : ''}` : 'No one is running it day to day.'])
+  else rows.push(['\u{1F454}', b.manager ? `CEO ${managerName(b.manager)} \u{00B7} skill ${b.manager.skill}/100 \u{00B7} ${financeTarget(b) ? `${financeProfileShort(b.manager)} \u{00B7} finance skill ${Math.round(financeLeadershipSkill(b, b.manager))}/100` : STYLE_INFO[styleOf(b.manager)].label.toLowerCase()} \u{00B7} ${money(b.manager.salary)}/yr${b.manager.bonus ? ` + ${money(b.manager.bonus)} bonus` : ''}${!financeTarget(b) && b.manager.skill > SMART_SKILL ? ' \u{00B7} plans with the numbers' : ''}` : 'No one is running it day to day.'])
   // A group's division: the membership line replaces the ownership line (business/conglomerate-division.ts).
   const division = divisionLine(g, a)
   rows.push(['\u{1F4DC}', division ?? (b.public ? `Listed on the ${b.exchange} at ${moneyWith(b.sharePrice, (x) => x.toFixed(2))} \u{00B7} you own ${pct(b.share, 1)}` : b.share < 1 ? `You own ${pct(b.share)}; investors hold the rest` : 'You own 100%')])

@@ -39,6 +39,12 @@ src/
                          separate Time Machine snapshots                                              [foundation]
     life.ts health.ts ribbons.ts                                          [life agent]
     education.ts careers.ts data/jobs.ts                                  [career agent]
+    workplace/*.ts       Shared Work Plan state, catalog, actions, menu and yearly resolution for
+                         ordinary full-time jobs. All 179 full-time definitions map to one of nine
+                         families or the 14-job professions.ts exemption; family progress follows
+                         the character while employer trust and reviews stay with the appointment [career agent]
+    professions.ts       Professional Practice cases for 14 full-time job IDs; those jobs do not
+                         also enter the shared Work Plan loop                              [career agent]
     special.ts                                                            [special-careers agent]
     relationships.ts love.ts                                              [relationships agent]
     finance.ts assets.ts gambling.ts                                      [money agent]
@@ -312,8 +318,22 @@ plain records. Quota failures must never prevent saving the current life.
 Add new keys freely, but use these names for these concepts.
 
 Occupation menu composition (careers agent): school/university section from `educationMenuNodes(g)`,
-current job actions, job listings, part-time jobs, freelance gigs, `specialCareersMenu`, `militaryMenu`,
-and `specialJobNodes(g)` when the player holds a special/military job.
+current job actions (including `workplaceMenu` for an eligible ordinary full-time job), job listings,
+part-time jobs, freelance gigs, `specialCareersMenu`, `militaryMenu`, and `specialJobNodes(g)` when
+the player holds a special/military job. `careers.yearlyCareer` calls `yearlyWorkplace` from the
+ordinary full-time job step; it settles only an earlier plan and then creates the safe default for
+the new work year.
+
+`workplace/parttime.ts` owns the lighter Shift Focus menu and next-year review for all 70
+part-time definitions. It uses an appointment-local plan/trust/history, an owner-scoped portable
+skill/reference profile, a private seeded stream, and global annual choice/review caps. It never
+pays wages. `careers.yearlyCareer` calls it from the part-time step after updating performance.
+`workplace/progression.ts` records completed working years after tenure increments: full-time
+years and hours-weighted part-time equivalents, capped at one same-family year per calendar year.
+Old ambiguous job-history titles are not backfilled. Pure readers supply the menu summary and
+at most five percentage points of raise/promotion odds, after existing performance gates and
+market scaling. Special jobs and businesses do not receive this layer. All new state is optional,
+versioned and owner-stamped; the save schema remains 2.
 
 Relationships UI: `relationshipGroups(g)` returns ordered groups (Parents, Siblings, Partner/Spouse,
 Children, Grandchildren, Friends, Classmates, Coworkers, Exes, Pets, ...). Tapping a person shows
@@ -583,6 +603,30 @@ Spending past the board's yearly budget (opening sites, capacity lines, product 
   - writes one letter a year (career.ceoLetter).
 
   At 75 or below they keep yearly.autoPlan, tilted by style. Deep-tech managers (deeptech-manager.ts) and studio managers (gamestudio.studioManagerTurn) have their own versions of the upgrade. The what-if evaluators (bestOpening, bestLines, bestClosure, bestRdWithin, outlook, mandateScores) are pure and shared with the hints.
+
+- **Corporate finance leaders (finance-leadership.ts).** A real bank or investment firm (recognized
+  by its `financeFirm` books, not an industry label alone) gives new CEO candidates an optional
+  specialty, approach, risk posture and bounded prior-career record. The profile is generated once
+  from a local deterministic stream, stored with the Manager, normalized by `state.readFinanceProfile`
+  and read safely even from a malformed current-version object. Old managers without one retain their
+  raw skill exactly. A profileless direct appointment gets one deterministic target-specialist profile
+  when installed; an existing profile is never regenerated. `financeLeadershipSkill` applies a modest
+  specialty/record adjustment inside the bank and investment-firm models only. A synthetic `groupBiz`
+  has no finance books and therefore keeps a generic group CEO; any industry-labeled object with no
+  `financeFirm` record stays generic by design. Finance firms are explicitly excluded from the generic
+  price/production optimizer and mandate outlook.
+
+  An investment-firm CEO runs asset-manager, hedge-fund, brokerage and VC fundraising levers under
+  the stored board mandate. Growth, Balanced, Profit and Cash change the decision horizon, risk
+  penalty, company co-investment and client-campaign budget. Asset and hedge decisions also use the
+  stored approach and risk posture. The CEO uses the same honest outlook functions as the player's
+  hints and never reads a future market result or `g.rng`. `fund-actions.fundLeverBlock` enforces
+  delegation inside every operating action as well as the menu. VC pitch, diligence and follow-on
+  choices, an owner-inventor's algorithm and confessing to regulators remain explicit owner powers.
+  `FundState.decisionYear` makes the post-book plan idempotent and preserves it through the next
+  pre-book pass. That post-book pass writes one concise decision letter through `career.ceoLetter`;
+  detached group forecasts cannot write one. Banks use the specialist skill adjustment and retain
+  their existing CEO lever lock; bank-specific mandates and letters remain future work.
 
 - **Yearly review (board.boardYear).** Runs after each company's year in yearly.ts and covers:
   - patience vs the mandate, warnings, director turnover;

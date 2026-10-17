@@ -9,6 +9,7 @@ import { randomFirstName, randomLastName } from '../world'
 import { boardOf, readBoard } from './board-state'
 import { bestPlan, LASTING_YEARS, localEcon, maxProduction, niceAmount, planFor, planOutcome, priceBounds, type Worth } from './economy'
 import { isDeepTech } from './deeptech-state'
+import { ensureFinanceCandidate, financeShortlistSpecialty, financeTarget, specializeFinanceCandidate } from './finance-leadership'
 import { afterSuccession, successorManager } from './nepo-succession'
 import { CEO_STYLES, ceoJob, OWNER_JOB, readBiz, totalOutlets, type BizState, type CeoStyle, type Manager } from './state'
 import { clampN, round2 } from './util'
@@ -72,11 +73,10 @@ export function askingSalary(b: BizState, skill: number, churn = readBoard(b.boa
   return niceAmount(ceoPayNorm(b) * (0.6 + skill / 100) * star * (1 + 0.08 * Math.min(5, churn)))
 }
 
-/** A general-manager candidate for this company (skill varies; better ones cost more). */
-export function managerCandidate(g: GameState, b: BizState, skill?: number): Manager {
+function makeManagerCandidate(g: GameState, b: BizState, skill: number | undefined, slot?: number): Manager {
   const gender = randInt(g, 0, 1) === 0 ? 'male' : 'female'
   const s = Math.round(clampN(skill ?? randInt(g, 40, 85), 1, 100))
-  return {
+  const candidate: Manager = {
     firstName: randomFirstName(g, b.countryId, gender),
     lastName: randomLastName(g, b.countryId),
     gender,
@@ -86,6 +86,13 @@ export function managerCandidate(g: GameState, b: BizState, skill?: number): Man
     style: pick(g, CEO_STYLES),
     integrity: clampN(bell(g, 30, 100), 0, 100),
   }
+  const target = financeTarget(b)
+  return specializeFinanceCandidate(g, b, candidate, slot === undefined ? target : financeShortlistSpecialty(target, slot))
+}
+
+/** A general-manager candidate, with one finance résumé when this is a real financial firm. */
+export function managerCandidate(g: GameState, b: BizState, skill?: number): Manager {
+  return makeManagerCandidate(g, b, skill)
 }
 
 export type SearchKind = 'standard' | 'executive'
@@ -96,8 +103,8 @@ export type SearchKind = 'standard' | 'executive'
  */
 export function shortlist(g: GameState, b: BizState, kind: SearchKind = 'standard'): Manager[] {
   const bands: [number, number][] = kind === 'executive' ? [[62, 78], [70, 84], [76, 88], [80, 92]] : [[38, 58], [52, 72], [64, 82], [70, 86]]
-  const out = bands.map(([lo, hi]) => managerCandidate(g, b, randInt(g, lo, hi)))
-  if (kind === 'executive' || chance(g, 0.12)) out.push(managerCandidate(g, b, 85 + Math.floor(Math.pow(rand(g), 2) * 16)))
+  const out = bands.map(([lo, hi], i) => makeManagerCandidate(g, b, randInt(g, lo, hi), i))
+  if (kind === 'executive' || chance(g, 0.12)) out.push(makeManagerCandidate(g, b, 85 + Math.floor(Math.pow(rand(g), 2) * 16), out.length))
   return out
 }
 
@@ -146,7 +153,7 @@ export function baseManagerValue(w: Worth, m: Pick<Manager, 'skill' | 'salary'>)
  * Price-and-production companies only (studios and deep tech plan with their own models).
  */
 export function optimizerGain(g: GameState, b: BizState): number {
-  if (b.industry === 'gameStudio' || isDeepTech(b)) return 0
+  if (b.industry === 'gameStudio' || isDeepTech(b) || financeTarget(b)) return 0
   const best = bestPlan(g, b, { quick: true })
   const bounds = priceBounds(b)
   const price = round2(clampN(planFor(g, b, g.year, { calm: true }).suggested, bounds.min, bounds.max))
@@ -173,7 +180,10 @@ export function ceoValue(w: Worth, m: Pick<Manager, 'skill' | 'salary'>, gain: n
 
 /** Put a manager in charge (the owner keeps the shares, and gets back any a departing CEO held). */
 export function installManager(g: GameState, b: BizState, m?: Manager): Manager {
-  const mgr = m ?? managerCandidate(g, b, randInt(g, 45, 70))
+  const candidate = m ?? managerCandidate(g, b, randInt(g, 45, 70))
+  // Search candidates already carry the résumé the player saw. Succession and older internal
+  // appointment paths can still supply a profileless manager, so specialize only that final gap.
+  const mgr = ensureFinanceCandidate(g, b, candidate)
   b.ceo = 'manager'
   b.manager = { ...mgr, since: g.year }
   delete b.manager.bonus
@@ -278,7 +288,12 @@ export function becomeCeo(g: GameState, a: Asset, b: BizState, title = 'Founder 
     performance: 60,
     yearsInRole: 0,
     yearsAtCompany: 0,
-    data: { assetId: a.id, startAge: c.age, roleStartAge: c.age },
+    data: {
+      assetId: a.id,
+      startAge: c.age,
+      roleStartAge: c.age,
+      appointmentId: `${g.year}:${c.age}:${g.counters.jobs ?? 0}`,
+    },
   }
   c.job = job
   count(g, 'jobs')
@@ -337,11 +352,9 @@ export function syncCeo(g: GameState): void {
     // The successor the owner named in advance (a son or daughter, a key employee) takes over; else a headhunted manager.
     const heir = c.prison ? null : successorManager(g, a, b, (skill) => askingSalary(b, skill, 0))
     const mgr = heir ?? managerCandidate(g, b, randInt(g, 45, 70))
-    d.ceo = 'manager'
-    d.manager = { ...mgr, since: g.year }
-    returnFormerExecutiveShares(g, d)
-    if (heir) afterSuccession(g, a, d, d.manager)
-    const who = `${mgr.firstName} ${mgr.lastName}`
+    const installed = installManager(g, d, mgr)
+    if (heir) afterSuccession(g, a, d, installed)
+    const who = `${installed.firstName} ${installed.lastName}`
     if (c.prison) log(g, `With me behind bars, ${a.name} hired ${who} as interim general manager.`, 'neutral')
     else if (heir) log(g, `${who} took over ${a.name} as CEO, as I had planned.`, 'good')
     else log(g, `${who} took over day-to-day management of ${a.name}.`, 'neutral')

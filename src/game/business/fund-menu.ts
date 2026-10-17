@@ -3,7 +3,9 @@
 // popup where a decision matters explains the rest.
 import { hasTalent, talentHint } from '../talents'
 import type { Asset, GameState, MenuAction, MenuNode } from '../types'
-import { algoBlock, algoCost, campaignBlock, campaignCost, diligence, inventAlgorithm, investInPitch, passPitch, raisePopup, runCampaign, setCall, setCommission, setFee, setFollowOn, setHedgeTerms, setStrategy, setStyle } from './fund-actions'
+import { algoBlock, algoCost, campaignBlock, campaignCost, diligence, fundLeverBlock, inventAlgorithm, investInPitch, passPitch, raisePopup, runCampaign, setCall, setCommission, setFee, setFollowOn, setHedgeTerms, setStrategy, setStyle } from './fund-actions'
+import { boardView, mandateDef } from './board-state'
+import { managerName } from './career'
 import { callHint, comeClean } from './fund-events'
 import { brokerEra, CALLS, quantBlock, STRATEGIES, STYLES, styleBlock } from './fund-model'
 import { bestCommission, bestFee, commissionOutlook, feeOutlook, hedgeFeeOutlook, strategyOutlook, styleOutlook } from './fund-outlook'
@@ -36,19 +38,28 @@ export function fundDashboard(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a), f = readFund(b)
   const id = a.id
   const blocked = (gg: GameState) => manageBlock(gg, a)
+  const direct = (gg: GameState) => fundLeverBlock(gg, a)
   const act = (key: string, label: string, emoji: string, run: (gg: GameState) => void, extra: Partial<MenuAction> = {}): MenuAction =>
     ({ type: 'action', id: `fund.${id}.${key}`, label, emoji, disabledReason: blocked, run, ...extra })
   const nodes: MenuNode[] = [
     { type: 'info', id: `fund.${id}.card`, emoji: '📊', text: gg => { const v = view(gg, a); return v ? typeLine(v.f) : '' } },
     { type: 'info', id: `fund.${id}.last`, emoji: '🗓️', text: gg => { const v = view(gg, a); return v ? lastLine(v.b, v.f) : '' } },
   ]
-  if (f.type === 'asset') nodes.push(...assetNodes(a, f, act))
-  else if (f.type === 'hedge') nodes.push(...hedgeNodes(g, a, b, f, act))
-  else if (f.type === 'vc') nodes.push(...vcNodes(a, f, act))
-  else nodes.push(...brokerNodes(a, b, f, act))
+  if (b.ceo === 'manager') nodes.push({ type: 'info', id: `fund.${id}.manager`, emoji: '🧑‍💼', text: gg => {
+    const live = findBusiness(gg, id)
+    if (!live) return ''
+    const bb = readBiz(gg, live), ff = readFund(bb)
+    const who = bb.manager ? managerName(bb.manager) : 'Your CEO'
+    const mandate = mandateDef(boardView(gg, live, bb).mandate).label
+    return ff.type === 'vc' ? `${who} runs the fund under the ${mandate} mandate. You still choose individual deals.` : `${who} runs daily decisions under the ${mandate} mandate.`
+  } })
+  if (f.type === 'asset') nodes.push(...assetNodes(a, f, act, direct))
+  else if (f.type === 'hedge') nodes.push(...hedgeNodes(g, a, b, f, act, direct))
+  else if (f.type === 'vc') nodes.push(...vcNodes(a, f, act, direct))
+  else nodes.push(...brokerNodes(a, b, f, act, direct))
   if (f.type !== 'vc') nodes.push(act('campaign', 'Marketing Campaign', '📣', gg => { runCampaign(gg, id) }, {
     subtitle: `${money(campaignCost(b, f))} · once a year · more new clients`,
-    disabledReason: gg => blocked(gg) ?? (() => { const v = view(gg, a); return v ? campaignBlock(gg, id, v.b, v.f) : 'Company unavailable.' })(),
+    disabledReason: gg => direct(gg) ?? (() => { const v = view(gg, a); return v ? campaignBlock(gg, id, v.b, v.f) : 'Company unavailable.' })(),
   }))
   nodes.push(trackRecord(a))
   if (f.ponzi) nodes.push(act('comeClean', 'Come Clean to Regulators', '🧾', gg => { comeClean(gg, id) }, {
@@ -59,8 +70,9 @@ export function fundDashboard(g: GameState, a: Asset): MenuNode[] {
 }
 
 type Act = (key: string, label: string, emoji: string, run: (gg: GameState) => void, extra?: Partial<MenuAction>) => MenuAction
+type Block = (g: GameState) => string | null
 
-function assetNodes(a: Asset, f: FundState, act: Act): MenuNode[] {
+function assetNodes(a: Asset, f: FundState, act: Act, direct: Block): MenuNode[] {
   const id = a.id
   const style: MenuNode = { type: 'menu', id: `fund.${id}.style`, label: `Fund Style: ${STYLES[f.style].emoji} ${STYLES[f.style].label}`, emoji: '🎨',
     header: () => 'Pick how the fund invests next year. Your fee stays the same.',
@@ -69,7 +81,7 @@ function assetNodes(a: Asset, f: FundState, act: Act): MenuNode[] {
       if (!v) return []
       return (Object.keys(STYLES) as FundStyle[]).map(s => act(`style.${s}`, `${STYLES[s].emoji} ${STYLES[s].label}${v.f.style === s ? ' ✓' : ''}`, '', g2 => { setStyle(g2, id, s) }, {
         emoji: STYLES[s].emoji, subtitle: STYLES[s].blurb, stayOpen: true,
-        disabledReason: g2 => manageBlock(g2, a) ?? styleBlock(s, v.b.countryId, g2.year) ?? (v.f.style === s ? 'Already your style.' : null),
+        disabledReason: g2 => direct(g2) ?? styleBlock(s, v.b.countryId, g2.year) ?? (v.f.style === s ? 'Already your style.' : null),
         hint: g2 => { const w = view(g2, a); if (!w) return null; const o = styleOutlook(g2, w.b, w.f, s); return talentHint(g2, 'Business', `Expect to beat ~${pct(o.rank)} of peers; clients ${signed(o.flow, 0)} a year`) || null },
       }))
     } }
@@ -78,12 +90,13 @@ function assetNodes(a: Asset, f: FundState, act: Act): MenuNode[] {
     input: { kind: 'slider', label: 'Management fee', min: .05, max: 2, step: .05, unit: '%', defaultValue: () => (f.fee * 100).toFixed(2),
       preview: (gg, v) => { const w = view(gg, a); if (!w) return ''; const o = feeOutlook(gg, w.b, w.f, v / 100); return `≈ ${money(o.revenue)} a year in fees · expected client flows ${signed(o.flow, 0)} a year` } },
     hint: gg => { const w = view(gg, a); return w ? talentHint(gg, 'Business', `Best balance of growth and margin: about ${pct(bestFee(gg, w.b, w.f), 2)}`) || null : null },
+    disabledReason: direct,
     run: (gg, input) => { setFee(gg, id, Number(input) / 100) },
   })
   return [style, fee]
 }
 
-function hedgeNodes(g: GameState, a: Asset, b: BizState, f: FundState, act: Act): MenuNode[] {
+function hedgeNodes(g: GameState, a: Asset, b: BizState, f: FundState, act: Act, direct: Block): MenuNode[] {
   const id = a.id
   const out: MenuNode[] = [{ type: 'menu', id: `fund.${id}.strategy`, label: `Strategy: ${STRATEGIES[f.strategy].emoji} ${STRATEGIES[f.strategy].label}`, emoji: '♟️',
     header: () => 'Your strategy for next year.',
@@ -92,7 +105,7 @@ function hedgeNodes(g: GameState, a: Asset, b: BizState, f: FundState, act: Act)
       if (!v) return []
       return (Object.keys(STRATEGIES) as HedgeStrategy[]).map(s => act(`strategy.${s}`, `${STRATEGIES[s].label}${v.f.strategy === s ? ' ✓' : ''}`, STRATEGIES[s].emoji, g2 => { setStrategy(g2, id, s) }, {
         subtitle: STRATEGIES[s].blurb, stayOpen: true,
-        disabledReason: g2 => manageBlock(g2, a) ?? (s === 'quant' ? quantBlock(v.b.countryId, g2.year) : null) ?? (v.f.strategy === s ? 'Already your strategy.' : null),
+        disabledReason: g2 => direct(g2) ?? (s === 'quant' ? quantBlock(v.b.countryId, g2.year) : null) ?? (v.f.strategy === s ? 'Already your strategy.' : null),
         hint: g2 => {
           const w = view(g2, a)
           if (!w) return null
@@ -107,12 +120,14 @@ function hedgeNodes(g: GameState, a: Asset, b: BizState, f: FundState, act: Act)
       header: () => 'One view on the market for next year. Leverage multiplies wins and losses.',
       children: gg => (Object.keys(CALLS) as MacroCall[]).map(c => act(`call.${c}`, `${CALLS[c].label}${readFund(readBiz(gg, findBusiness(gg, a.id) ?? a)).call === c ? ' ✓' : ''}`, CALLS[c].emoji, g2 => { setCall(g2, id, c) }, {
         subtitle: CALLS[c].blurb, stayOpen: true,
+        disabledReason: direct,
         hint: g2 => { const w = view(g2, a); return w ? callHint(g2, w.b, c) || null : null },
       })) })
     out.push(act('lev', 'Leverage', '🏋️', () => {}, {
       subtitle: 'Borrow to bet bigger on your call',
       input: { kind: 'slider', label: 'Leverage', min: 1, max: 3, step: .5, unit: '×', defaultValue: () => String(f.lev),
         preview: (_gg, v) => `A 10% market move becomes about ${Math.round(v * 10)}% for the fund, before borrowing costs.` },
+      disabledReason: direct,
       run: (gg, input) => { setHedgeTerms(gg, id, 'lev', Number(input)) },
     }))
   }
@@ -120,16 +135,19 @@ function hedgeNodes(g: GameState, a: Asset, b: BizState, f: FundState, act: Act)
     subtitle: `${pct(f.mgmt, 1)} of assets a year`,
     input: { kind: 'slider', label: 'Management fee', min: 0, max: 3, step: .25, unit: '%', defaultValue: () => String(f.mgmt * 100),
       preview: (gg, v) => { const w = view(gg, a); if (!w) return ''; const o = hedgeFeeOutlook(gg, w.b, w.f, v / 100, w.f.perf); return `≈ ${money(o.revenue)} a year in an average year · client flows ${signed(o.flow, 0)}` } },
+    disabledReason: direct,
     run: (gg, input) => { setHedgeTerms(gg, id, 'mgmt', Number(input) / 100) },
   }), act('perf', 'Performance Fee', '🏆', () => {}, {
     subtitle: `${pct(f.perf)} of gains above the high-water mark`,
     input: { kind: 'slider', label: 'Performance fee', min: 0, max: 30, step: 1, unit: '%', defaultValue: () => String(Math.round(f.perf * 100)),
       preview: (gg, v) => { const w = view(gg, a); if (!w) return ''; const o = hedgeFeeOutlook(gg, w.b, w.f, w.f.mgmt, v / 100); return `≈ ${money(o.revenue)} a year in an average year · client flows ${signed(o.flow, 0)}` } },
+    disabledReason: direct,
     run: (gg, input) => { setHedgeTerms(gg, id, 'perf', Number(input) / 100) },
   }), act('coinvest', 'Invest Company Cash in the Fund', '🤝', () => {}, {
     subtitle: f.coinvest > 0 ? `${money(f.coinvest)} of company cash rides with clients` : 'Put company cash alongside clients (gains and losses are the firm’s)',
     input: { kind: 'slider', label: 'Company cash in the fund', min: 0, max: Math.max(1, b.cash), money: true, defaultValue: () => String(Math.min(f.coinvest, Math.max(0, b.cash))),
       preview: (gg, v) => { const w = view(gg, a); if (!w) return ''; const o = strategyOutlook(gg, w.b, w.f, w.f.strategy); return `In an average year about ${money(v * o.expected)}; a bad year could lose ${money(v * Math.min(.95, o.swing * 2.5))}.` } },
+    disabledReason: direct,
     run: (gg, input) => { setHedgeTerms(gg, id, 'coinvest', Number(input)) },
   }))
   if (hasTalent(g, 'Inventor')) out.push(act('algo', 'Invent a Trading Algorithm', '🧠', gg => { inventAlgorithm(gg, id) }, {
@@ -166,7 +184,7 @@ function pitchNode(a: Asset, p: Pitch, act: Act): MenuNode {
     } }
 }
 
-function vcNodes(a: Asset, f: FundState, act: Act): MenuNode[] {
+function vcNodes(a: Asset, f: FundState, act: Act, direct: Block): MenuNode[] {
   const id = a.id
   const nodes: MenuNode[] = f.funds.filter(x => !x.done).slice(-3).map(x => ({ type: 'info' as const, id: `fund.${id}.fund.${x.n}`, emoji: '🏦', text: (gg: GameState) => { const v = view(gg, a); return v ? fundLine(v.f, x.n, gg.year) : '' } }))
   nodes.push({ type: 'menu', id: `fund.${id}.pitches`, label: 'This Year’s Pitches', emoji: '🎤',
@@ -183,7 +201,7 @@ function vcNodes(a: Asset, f: FundState, act: Act): MenuNode[] {
     children: gg => portfolioNodes(gg, a, act) })
   nodes.push(act('raise', 'Raise a New Fund', '🏦', gg => { const live = findBusiness(gg, id); if (!live) return; const b2 = readBiz(gg, live); raisePopup(gg, live, b2, readFund(b2), raiseHint(gg, live)) }, {
     subtitle: (gg: GameState) => { const v = view(gg, a); if (!v) return ''; const q = raiseQuote(gg, v.b, v.f, gg.year); return q.block ? q.block : `Fund ${roman(q.n)}: LPs offer about ${money(q.size)}` },
-    disabledReason: gg => manageBlock(gg, a) ?? (() => { const v = view(gg, a); return v ? raiseQuote(gg, v.b, v.f, gg.year).block : 'Company unavailable.' })(),
+    disabledReason: gg => direct(gg) ?? (() => { const v = view(gg, a); return v ? raiseQuote(gg, v.b, v.f, gg.year).block : 'Company unavailable.' })(),
     hint: gg => raiseHint(gg, a) || null,
   }))
   return nodes
@@ -233,7 +251,7 @@ function portfolioNodes(g: GameState, a: Asset, act: Act): MenuNode[] {
   return out
 }
 
-function brokerNodes(a: Asset, b: BizState, f: FundState, act: Act): MenuNode[] {
+function brokerNodes(a: Asset, b: BizState, f: FundState, act: Act, direct: Block): MenuNode[] {
   const id = a.id
   return [
     { type: 'info', id: `fund.${id}.era`, emoji: '🕰️', text: gg => { const era = brokerEra(b.countryId, gg.year); return `${era.label} · clients trade ~${era.trades} times a year · going rate ${pct(era.normCommission, 2)}` } },
@@ -242,6 +260,7 @@ function brokerNodes(a: Asset, b: BizState, f: FundState, act: Act): MenuNode[] 
       input: { kind: 'slider', label: 'Commission', min: 0, max: 2, step: .01, unit: '%', defaultValue: () => (f.commission * 100).toFixed(2),
         preview: (gg, v) => { const era = brokerEra(b.countryId, gg.year); const o = commissionOutlook(era.normCommission, v / 100); return `${money(10_000 * v / 100)} on a ${money(10_000)} trade · activity ×${o.activity.toFixed(2)} · new accounts ${signed(o.growth, 0)}` } },
       hint: gg => { const v = view(gg, a); return v ? talentHint(gg, 'Business', `Best balance of price and growth: about ${pct(bestCommission(v.b, v.f, gg.year), 2)} a trade`) || null : null },
+      disabledReason: direct,
       run: (gg, input) => { setCommission(gg, id, Number(input) / 100) },
     }),
   ]

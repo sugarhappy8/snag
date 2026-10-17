@@ -8,6 +8,11 @@ promoted, date, marry, have kids and adopt pets, buy houses and cars, start comp
 gamble, commit crimes, go to prison and try to escape, get famous, and finally die and earn a
 ribbon. Then you can carry on as one of your children.
 
+**New in v3.0:** ordinary full-time jobs have annual Work Plans, part-time jobs have a light
+Shift Focus loop, and field experience follows you between employers. Finance-company hiring
+shows managers' specialties and approaches; hired fund CEOs follow their mandates. See the
+[v3.0.0 release notes](docs/RELEASE-v3.0.0.md) for what shipped and what remains planned.
+
 Every part of the story is built in and runs on your device:
 
 - each year's life-log lines and random events with choices come from a large event library

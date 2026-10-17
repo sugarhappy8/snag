@@ -28,6 +28,7 @@ export { ceoLetter, ownerAvailable } from './career'
 import { bestPlan, bookYear, planFor, bizWorth, fxValue, LASTING_YEARS, lineCost, linesOf, localEcon, localPay, marketCtxFor, maxProduction, priceBounds, refreshValue, startupCost, staffNet, valuationOf, type Worth } from './economy'
 import { roleTitle } from './era'
 import { laborProtection, severanceMonths, STAFF_TRAITS } from './flavor'
+import { financeTarget } from './finance-leadership'
 import { industryDef, lineOf, type RoleDef } from './industries'
 import { complexityShare, productIdeas } from './products'
 import { heavyOf } from './heavy-rd'
@@ -239,7 +240,8 @@ export function outlook(g: GameState, a: Asset, b: BizState): Outlook {
   const margin = b.last && b.last.revenue > 0 && Number.isFinite(b.last.net / b.last.revenue) ? b.last.net / b.last.revenue : null
   const reserve = Math.round((runningCosts(b) * 3) / 12)
   const spare = Math.max(0, payableCash(a, b) - reserve)
-  const modeled = b.industry !== 'gameStudio' && !isDeepTech(b)
+  const finance = financeTarget(b) !== null
+  const modeled = !finance && b.industry !== 'gameStudio' && !isDeepTech(b)
   let invest = 0
   let cost = 0
   if (modeled) {
@@ -274,7 +276,7 @@ export function outlook(g: GameState, a: Asset, b: BizState): Outlook {
  * How well each mandate fits the company now (about -2..2, higher is better for the shareholders):
  * growth when there are investments that pay back, cash when there is spare cash and nothing
  * worth building, profit when margins are thin, balanced in between. All zero for studios and deep
- * tech, which the planner doesn't model (no mandate is better on the numbers: directors go by stance).
+ * tech or finance, which this planner doesn't model (directors go by stance).
  */
 export function mandateScores(g: GameState, a: Asset, b: BizState): Record<Mandate, number> {
   const o = outlook(g, a, b)
@@ -682,7 +684,7 @@ export function smartManagerTurn(g: GameState, a: Asset, b: BizState): void {
   payoutTurn(t)
   const planned = bookYear(g, b, g.year, planFor(g, b, g.year, { noise: 1 }), b.production, 0).stmt.net
   t.lines.unshift(
-    m.skill === 100 ? 'Skill 100/100. Perfect foresight keeps yearly profit above zero.' : `Skill ${m.skill}/100, ${m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}.`,
+    m.skill === 100 ? 'Skill 100/100. Forecasts can still miss.' : `Skill ${m.skill}/100, ${m.skill >= 95 ? 'world-class' : m.skill >= 90 ? 'elite' : 'competent'}.`,
     `Forecast ${money(planned)} profit, ${money(baseline)} on the old plan.`,
   )
   if (!b.public) b.valuation = valuationOf(b)

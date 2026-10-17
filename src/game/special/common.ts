@@ -220,7 +220,12 @@ export function hire(g: GameState, spec: HireSpec): { job: Job; quit: string | n
     performance: clamp100(hasMainCharacter(g) ? Math.max(Number.isFinite(spec.performance) ? spec.performance! : 60, 78) : (Number.isFinite(spec.performance) ? spec.performance! : 60)),
     yearsInRole: 0,
     yearsAtCompany: 0,
-    data: { ...(spec.data ?? {}), startAge: c.age, roleStartAge: c.age },
+    data: {
+      ...(spec.data ?? {}),
+      startAge: c.age,
+      roleStartAge: c.age,
+      appointmentId: `${g.year}:${c.age}:${g.counters.jobs ?? 0}`,
+    },
   }
   c.job = job
   count(g, 'jobs')

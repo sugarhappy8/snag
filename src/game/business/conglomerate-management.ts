@@ -15,6 +15,7 @@ import { equityDue } from './executive'
 import { stakeText } from './executive-shares'
 import { isFinanceFirm } from './finance-firm-state'
 import { financeCapitalNeed } from './finance-firm'
+import { financeCandidateScore, financeLeadershipSkill, financeTarget } from './finance-leadership'
 import { divisionBuffer, sweepGroupTreasury } from './group-treasury'
 import { earmarkedCash } from './gamestudio'
 import { clampN, money, pct } from './util'
@@ -102,8 +103,10 @@ export function manageDivisionCeos(g: GameState, grp: Group): string[] {
   for (const x of grp.members) {
     if (!ownerControls(g, x.a)) { lines.push(`${x.a.name}'s outside board retains control of its CEO seat.`); continue }
     const b = x.b, current = b.ceo === 'manager' ? b.manager : null
+    const target = financeTarget(b), mandate = target ? boardView(g, x.a, b).mandate : null, norm = askingSalary(b, 60, 0)
     // Owner-appointed family leaders are supported, not silently purged for nepotism.
-    const needsHire = !current || (!current.personId && current.skill < leader.skill)
+    const currentSkill = current ? (target ? financeLeadershipSkill(b, current) : current.skill) : 0
+    const needsHire = !current || (!current.personId && currentSkill < leader.skill)
     if (needsHire) {
       const kind = leader.skill >= 85 ? 'executive' : 'standard', fee = Math.round(headhunterFee(b, kind, 0) * (1 - 3 * familyRoleEdge(g, grp.core.id, 'talent'))), severance = current ? ceoSeverance(current, g.year) : 0
       const minimumPay = askingSalary(b, leader.skill)
@@ -112,13 +115,15 @@ export function manageDivisionCeos(g: GameState, grp: Group): string[] {
       } else {
         fund(g, grp, x, Math.max(0, fee + severance + minimumPay - freeForOperations(g, x)))
         // A targeted search guarantees at least one qualified applicant, priced at that skill.
-        const candidates = shortlist(g, b, kind).filter(m => m.skill >= leader.skill)
+        const candidates = shortlist(g, b, kind).filter(m => (target ? financeLeadershipSkill(b, m) : m.skill) >= leader.skill)
         if (!candidates.length) candidates.push(managerCandidate(g, b, leader.skill))
         b.cash -= fee; b.yearCosts += fee
         if (!b.public) b.valuation = Math.max(0, b.valuation - fee)
-        const worth = bizWorth(g, b), gain = optimizerGain(g, b)
-        const best = candidates.filter(m => freeForOperations(g, x) >= severance + m.salary).sort((a, c) => ceoValue(worth, c, gain) - ceoValue(worth, a, gain))[0]
-        if (best && (!current || current.skill < leader.skill || ceoValue(worth, best, gain) > ceoValue(worth, current, gain) + (fee + severance) / 5)) {
+        const worth = target ? null : bizWorth(g, b), gain = target ? 0 : optimizerGain(g, b)
+        const score = (m: NonNullable<typeof current>) => target ? financeCandidateScore(b, m, mandate!, norm) : ceoValue(worth!, m, gain)
+        const switchCost = target ? (fee + severance) / Math.max(1, norm) / 5 : (fee + severance) / 5
+        const best = candidates.filter(m => freeForOperations(g, x) >= severance + m.salary).sort((a, c) => score(c) - score(a))[0]
+        if (best && (!current || currentSkill < leader.skill || score(best) > score(current) + switchCost)) {
           const proposal = { kind: 'hire' as const, by: 'ceo' as const, amount: best.salary, skill: best.skill, label: `Hire ${managerName(best)} as CEO of ${x.a.name}` }
           if (!needsVote(g, x.a, b, proposal) || vote(g, x.a, b, proposal, { quiet: true }).passed) {
             handOver(g, x.a, b, best)

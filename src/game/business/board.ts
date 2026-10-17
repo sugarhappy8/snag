@@ -28,6 +28,7 @@ import {
   controlsBoard,
   makeDirector,
   mandateDef,
+  readBoard,
   syncSeats,
   takeDirectorKey,
   type BoardState,
@@ -40,6 +41,7 @@ import { ownerAvailable } from './board-ceo'
 import { boardMenuNodes } from './board-menu'
 import { readTech } from './deeptech-state'
 import { bizWorth, niceAmount } from './economy'
+import { financeCandidateScore, financeLeadershipSkill, financeTarget } from './finance-leadership'
 import { bizOf, findBusiness, hasExecutiveShares, readBiz, runsIt, type BizState, type Manager, type Statement } from './state'
 import { clampN, markBest, money, num, pct, rec, str } from './util'
 import { groupById, groupIdOf } from './conglomerate-state'
@@ -132,13 +134,19 @@ function directorTurnover(g: GameState, a: Asset, b: BizState, st: BoardState): 
 function boardPick(g: GameState, b: BizState, st: BoardState): Manager {
   const parent = groupById(g, groupIdOf(b))
   const minimum = parent?.core.ceo === 'manager' && parent.core.autonomous !== false ? parent.core.manager?.skill ?? 0 : 0
-  const list = shortlist(g, b, 'standard').filter(m => m.skill >= minimum)
+  const target = financeTarget(b)
+  const list = shortlist(g, b, 'standard').filter(m => (target ? financeLeadershipSkill(b, m) : m.skill) >= minimum)
   if (!list.length) list.push(managerCandidate(g, b, minimum))
-  const w = bizWorth(g, b)
-  const gain = optimizerGain(g, b)
   const cap = payCap(b, st) * 1.25
   const within = list.filter((m) => m.salary <= cap)
   const pool = within.length ? within : [...list].sort((x, y) => x.salary - y.salary).slice(0, 1)
+  if (target) {
+    const norm = askingSalary(b, 60, 0)
+    const score = (m: Manager) => financeCandidateScore(b, m, st.mandate, norm)
+    return pool.reduce((best, m) => (score(m) > score(best) ? m : best), pool[0])
+  }
+  const w = bizWorth(g, b)
+  const gain = optimizerGain(g, b)
   const score = (m: Manager) => Math.floor(m.skill / 10) * 1e15 + ceoValue(w, m, gain)
   return pool.reduce((best, m) => (score(m) > score(best) ? m : best), pool[0])
 }
@@ -252,6 +260,24 @@ const RAISE_WALK = 0.35
 
 /** A year of the CEO's value to the company with the raise, and (expected) without it. */
 function raiseValues(g: GameState, b: BizState, m: Manager, ask: number): { grant: number; refuse: number } {
+  const target = financeTarget(b)
+  if (target) {
+    const mandate = readBoard(b.board).mandate
+    const normalPay = askingSalary(b, 60, 0)
+    const stay = financeCandidateScore(b, m, mandate, normalPay)
+    const typical = financeCandidateScore(b, {
+      ...m,
+      skill: 60,
+      salary: normalPay,
+      integrity: 70,
+      finance: { specialty: 'generalist', approach: 'fundamental', risk: 'balanced', record: 50 },
+    }, mandate, normalPay)
+    const walk = hasExecutiveShares(m) ? 0 : RAISE_WALK
+    return {
+      grant: financeCandidateScore(b, { ...m, salary: ask }, mandate, normalPay),
+      refuse: (1 - walk) * stay + walk * typical,
+    }
+  }
   const w = bizWorth(g, b)
   const gain = optimizerGain(g, b)
   const stay = ceoValue(w, m, gain)

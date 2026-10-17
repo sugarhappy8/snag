@@ -20,11 +20,11 @@ export function firm(type: FundType, o: FirmOpts = {}): { g: GameState; a: Asset
   g.log = [{ age: 35, year: g.year, entries: [] }]
   if (o.talent) g.character.talent = o.talent as never
   const b0 = newBiz(g, 'investmentFirm', countryId, o.city ?? 'Chicago', { cash: o.cash ?? 2_000_000, founded: g.year })
+  initFund(g, b0, type)
   if (o.skill !== undefined) { installManager(g, b0, managerCandidate(g, b0, o.skill)); b0.manager!.skill = o.skill }
   const a = createBusinessAsset(g, 'Test Capital', b0, 1_000_000)
   g.assets.push(a)
   const b = bizOf(g, a)
-  initFund(g, b, type)
   return { g, a, b }
 }
 

@@ -27,6 +27,11 @@ import {
 } from './core'
 import { SELF_TAUGHT_NOTE, selfTaughtDev } from './computer/dev-cv'
 import { professionalMenu } from './professions'
+import { workplaceMenu } from './workplace/menu'
+import { workplaceContext } from './workplace/model'
+import { yearlyWorkplace } from './workplace/year'
+import { partTimeShiftMenu, yearlyPartTimeShift } from './workplace/parttime'
+import { careerExperienceSummary, careerProgressionBonus, recordWorkExperience } from './workplace/progression'
 import { codeFreelanceMenu } from './computer/dev-freelance'
 import { catchEmbellishment, caughtLine, caughtLying, cvFields, cvMenu, cvScore, embellishedEntries, fitContext, jobFit, jobMarket, jobScreenChance, screeningReason, screeningThoroughness, type JobMarket } from './cv'
 import { COMPANY_WORDS, COMPANY_WORDS_BEFORE, companyWordsIn, ERA_FULLTIME_JOBS, ERA_PARTTIME_JOBS, FULLTIME_JOBS, GIGS, INDUSTRY_TAGS, jobInEra, MAJOR_TAGS, PARTTIME_JOBS, getJobDef, type GigDef, type Industry, type JobDef } from './data/jobs'
@@ -189,7 +194,7 @@ export function companyName(g: GameState, industry: Industry, r: () => number): 
 export function totalWorkExperience(g: GameState): number {
   const c = g.character
   const past = c.careerHistory.reduce((s, r) => s + Math.max(0, r.endAge - r.startAge), 0)
-  return past + (c.job?.yearsAtCompany ?? 0)
+  return past + (c.job?.yearsAtCompany ?? 0) + (c.partTimeJob?.yearsAtCompany ?? 0)
 }
 
 function hasConviction(g: GameState): boolean {
@@ -1358,6 +1363,7 @@ function yearForJob(g: GameState, slot: Slot): void {
   earnIncome(g, job.salary)
   job.yearsAtCompany += 1
   job.yearsInRole += 1
+  recordWorkExperience(g, job)
 
   const effort = Math.min(3, num(job.data.workedHarder, 0))
   job.data.workedHarder = 0
@@ -1384,6 +1390,11 @@ function yearForJob(g: GameState, slot: Slot): void {
   job.performance = Math.round(clamp(job.performance + (clamp(target) - job.performance) * 0.35 + randInt(g, -8, 8)))
   // Main Character Syndrome: mastery keeps the work near the top (layoffs, the CV and the market still roll their own dice).
   if (hasMainCharacter(g)) job.performance = Math.max(job.performance, randInt(g, 76, 90))
+
+  // Ordinary full-time roles get one bounded, profession-flavored work plan. The 14
+  // existing Professional Practice jobs are deliberately exempt to avoid two cases at once.
+  if (slot === 'job') yearlyWorkplace(g, job)
+  if (slot === 'partTimeJob') yearlyPartTimeShift(g, job)
 
   if (def?.stress && chance(g, 0.25 * def.stress)) {
     addStat(g, 'health', -randInt(g, 1, def.stress + 1))
@@ -1446,12 +1457,13 @@ function yearForJob(g: GameState, slot: Slot): void {
       let p = job.performance >= 85 ? 0.6 : job.performance >= 70 ? 0.35 : job.performance >= 60 ? 0.12 : 0
       if (p > 0 && hasTalent(g, 'Leadership')) p += 0.12
       if (p > 0 && suitsTalent(g, job.defId)) p += 0.08
-      if (chance(g, Math.min(0.85, p * Math.max(.35, hiringClimate(g))))) {
+      const progression = p > 0 ? careerProgressionBonus(g, job) : 0
+      if (chance(g, Math.min(0.85, p * Math.max(.35, hiringClimate(g)) + progression))) {
         promote(g, job, def)
         promoted = true
       }
     }
-    if (!promoted && job.performance >= 60 && !hiringFreeze(g) && chance(g, (top ? 0.35 : 0.3) * Math.min(1.3, hiringClimate(g)))) {
+    if (!promoted && job.performance >= 60 && !hiringFreeze(g) && chance(g, (top ? 0.35 : 0.3) * Math.min(1.3, hiringClimate(g)) + careerProgressionBonus(g, job))) {
       const pct = randInt(g, 2, top ? 6 : 5)
       job.salary = round100(job.salary * (1 + pct / 100))
       log(g, `I got a ${pct}% raise at ${job.company}.`, 'good')
@@ -1675,6 +1687,7 @@ function askRaise(g: GameState, slot: Slot): void {
   }
   let p = job.performance >= 80 ? 0.6 : job.performance >= 65 ? 0.35 : job.performance >= 50 ? 0.15 : 0.04
   p += Math.min(0.15, job.yearsInRole * 0.04)
+  if (job.performance >= 50) p += careerProgressionBonus(g, job)
   if (chance(g, p)) {
     const pct = randInt(g, 3, 10)
     if (slot === 'partTimeJob' && typeof job.data.hours === 'number') {
@@ -1705,6 +1718,7 @@ function promotionAskOdds(g: GameState, job: Job): number {
   // Leadership talent: you pitch yourself like you already have the job.
   if (hasTalent(g, 'Leadership')) p += job.performance >= 70 ? 0.15 : job.performance >= 55 ? 0.1 : 0.02
   if (suitsTalent(g, job.defId) && job.performance >= 70) p += 0.05
+  if (job.performance >= 55) p += careerProgressionBonus(g, job)
   return Math.min(0.8, p)
 }
 
@@ -1939,10 +1953,14 @@ function jobGroup(g: GameState, slot: Slot): MenuGroup | null {
         { type: 'info', id: `${slot}.performance`, text: `Performance: ${j.performance}%`, emoji: j.performance >= 60 ? '\u{1F4C8}' : '\u{1F4C9}' },
         { type: 'info', id: `${slot}.years`, text: `${j.yearsAtCompany} year${j.yearsAtCompany === 1 ? '' : 's'} at ${j.company}${pt ? '' : ` • ${j.yearsInRole} in this role`}`, emoji: '\u{1F4C5}' },
       ]
+      const experience = careerExperienceSummary(gg, j)
+      if (experience) nodes.push({ type: 'info', id: `${slot}.experience`, text: experience, emoji: '\u{1F4DA}' })
       if (!pt && d && j.level < d.ladder.length - 1) nodes.push({ type: 'info', id: `${slot}.next`, text: `Next rung: ${d.ladder[j.level + 1].title}`, emoji: '\u{1FA9C}' })
       if (!pt) nodes.push({ type: 'info', id: `${slot}.schedule`, text: `Schedule: ${weeklyHours(j)} hours/week`, emoji: '\u{1F5D3}\u{FE0F}' })
       const boss = getPerson(gg, j.bossId)
       if (boss) nodes.push({ type: 'info', id: `${slot}.boss`, text: `Boss: ${boss.firstName} ${boss.lastName} (${boss.relationship}%) • find coworkers in Relationships`, emoji: '\u{1F9D1}\u{200D}\u{1F4BC}' })
+      if (!pt && workplaceContext(gg, j)) nodes.push(workplaceMenu)
+      if (pt) nodes.push(partTimeShiftMenu)
       nodes.push({ type: 'action', id: `${slot}.harder`, label: 'Work Harder', emoji: '\u{1F4AA}', subtitle: 'Put in some extra effort', disabledReason: blocked, run: (x) => workHarder(x, slot) })
       if (!pt) {
         nodes.push({
@@ -2043,7 +2061,9 @@ const jobsMenu: MenuGroup = {
   emoji: '\u{1F4BC}',
   subtitle: 'Full-time job listings',
   visible: (g) => g.character.age >= 14,
-  disabledReason: (g) => blocked(g) ?? (g.character.age < 18 ? 'You must be 18 to apply for full-time jobs.' : null),
+  // Individual definitions already enforce their era-aware minimum age. This keeps
+  // historical school-leaver jobs available at 14 without opening modern adult roles.
+  disabledReason: (g) => blocked(g) ?? fullTimeSchoolBlocker(g),
   header: (g) => `New listings are posted every year. Tap a job to see its requirements. Recruiters read your CV before deciding who to interview.\n${jobMarket(g).line}.`,
   children: (g) => {
     const nodes: MenuNode[] = []

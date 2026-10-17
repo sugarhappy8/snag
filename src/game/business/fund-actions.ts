@@ -8,10 +8,11 @@ import { hasTalent } from '../talents'
 import type { Asset, GameState, Json } from '../types'
 import { getCountry } from '../world'
 import { manageBlock } from './gate'
+import { managerName } from './career'
 import { CALLS, quantBlock, STRATEGIES, STYLES, styleBlock } from './fund-model'
 import { clientAssets, readFund, saveFund, type FundState, type FundStyle, type HedgeStrategy, type MacroCall } from './fund-state'
 import { ddCost, investingFund, newStartup, newVcFund, openPitches, proRata, raiseQuote, roman, stageLabel } from './fund-vc'
-import { bizOf, findBusiness, type BizState } from './state'
+import { bizOf, findBusiness, readBiz, type BizState } from './state'
 import { clampN, money, num, rec, str } from './util'
 
 /** The live company for an action, or null (sold, closed, not yours to run, in prison...). */
@@ -23,8 +24,26 @@ export function liveFund(g: GameState, assetId: string): { a: Asset; b: BizState
   return { a, b, f: readFund(b) }
 }
 
-export function setStyle(g: GameState, assetId: string, style: FundStyle): boolean {
+/** Why the owner cannot set this firm's operating levers (pure; menus and actions share it). */
+export function fundLeverBlock(g: GameState, a: Asset): string | null {
+  const live = findBusiness(g, a.id)
+  if (!live) return manageBlock(g, a) ?? 'You no longer own this business.'
+  const why = manageBlock(g, live)
+  if (why) return why
+  const b = readBiz(g, live)
+  if (b.industry !== 'investmentFirm') return "This company isn't an investment firm."
+  if (b.ceo === 'manager') return `${b.manager ? managerName(b.manager) : 'Your CEO'} runs the firm and sets this. Change the mandate, or take over as CEO.`
+  return null
+}
+
+/** Daily fund controls belong to a hired CEO; VC deals and owner inventions are explicit exceptions. */
+function operatedFund(g: GameState, assetId: string): ReturnType<typeof liveFund> {
   const x = liveFund(g, assetId)
+  return x && !fundLeverBlock(g, x.a) ? x : null
+}
+
+export function setStyle(g: GameState, assetId: string, style: FundStyle): boolean {
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'asset' || !(style in STYLES) || styleBlock(style, x.b.countryId, g.year)) return false
   x.f.style = style
   saveFund(x.b, x.f)
@@ -32,7 +51,7 @@ export function setStyle(g: GameState, assetId: string, style: FundStyle): boole
 }
 
 export function setFee(g: GameState, assetId: string, fee: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'asset' || !Number.isFinite(fee)) return false
   x.f.fee = clampN(fee, .0005, .02)
   saveFund(x.b, x.f)
@@ -40,7 +59,7 @@ export function setFee(g: GameState, assetId: string, fee: number): boolean {
 }
 
 export function setStrategy(g: GameState, assetId: string, strategy: HedgeStrategy): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'hedge' || !(strategy in STRATEGIES)) return false
   if (strategy === 'quant' && quantBlock(x.b.countryId, g.year)) return false
   x.f.strategy = strategy
@@ -50,7 +69,7 @@ export function setStrategy(g: GameState, assetId: string, strategy: HedgeStrate
 }
 
 export function setCall(g: GameState, assetId: string, call: MacroCall, lev?: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'hedge' || !(call in CALLS)) return false
   x.f.strategy = 'macro'
   x.f.call = call
@@ -60,7 +79,7 @@ export function setCall(g: GameState, assetId: string, call: MacroCall, lev?: nu
 }
 
 export function setHedgeTerms(g: GameState, assetId: string, key: 'mgmt' | 'perf' | 'lev' | 'coinvest', value: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'hedge' || !Number.isFinite(value)) return false
   if (key === 'mgmt') x.f.mgmt = clampN(value, 0, .03)
   else if (key === 'perf') x.f.perf = clampN(value, 0, .3)
@@ -71,7 +90,7 @@ export function setHedgeTerms(g: GameState, assetId: string, key: 'mgmt' | 'perf
 }
 
 export function setCommission(g: GameState, assetId: string, commission: number): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || x.f.type !== 'broker' || !Number.isFinite(commission)) return false
   x.f.commission = clampN(commission, 0, .02)
   saveFund(x.b, x.f)
@@ -93,7 +112,7 @@ export function campaignBlock(g: GameState, assetId: string, b: BizState, f: Fun
 }
 
 export function runCampaign(g: GameState, assetId: string): boolean {
-  const x = liveFund(g, assetId)
+  const x = operatedFund(g, assetId)
   if (!x || campaignBlock(g, assetId, x.b, x.f) || !useYearAction(g, `fund.campaign.${assetId}`, 1)) return false
   const cost = campaignCost(x.b, x.f)
   x.b.cash -= cost; x.b.yearCosts += cost
@@ -208,7 +227,7 @@ export function followOnPopup(g: GameState, a: Asset, f: FundState, startupId: s
 export const RAISE_SCRIPT = defineScript('fund.vc.raise', (g, choice, data) => {
   const d = rec(data)
   if (!d || choice === 'later') return
-  const x = liveFund(g, str(d.assetId))
+  const x = operatedFund(g, str(d.assetId))
   if (!x || x.f.type !== 'vc') return
   const q = raiseQuote(g, x.b, x.f, g.year)
   if (q.block || !(q.size > 0) || q.n !== num(d.n)) return
@@ -227,6 +246,8 @@ export const RAISE_SCRIPT = defineScript('fund.vc.raise', (g, choice, data) => {
 })
 
 export function raisePopup(g: GameState, a: Asset, b: BizState, f: FundState, hint: string): void {
+  const why = fundLeverBlock(g, a)
+  if (why) return notice(g, 'CEO Control', why, { emoji: '🏦' })
   const q = raiseQuote(g, b, f, g.year)
   if (q.block || !(q.size > 0)) return notice(g, 'Not Yet', q.block ?? 'LPs aren’t ready.', { emoji: '🏦' })
   const record = q.tvpi === null ? 'You have no track record yet.' : `Your funds are at ${q.tvpi.toFixed(1)}× so far.`

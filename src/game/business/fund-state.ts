@@ -129,6 +129,8 @@ export interface FundState {
   funds: VcFund[]
   cos: Startup[]
   actYear: number
+  /** Last year a hired CEO completed the post-settlement decision pass. */
+  decisionYear: number
   acted: string[]
   dd: string[]
   // Shared one-year levers and story state
@@ -144,7 +146,7 @@ export interface FundState {
   marks: YearMark[]
 }
 
-export const FUND_VERSION = 3
+export const FUND_VERSION = 4
 /** Stored resolved startups (live ones are always kept). */
 const MAX_RESOLVED = 60
 
@@ -173,7 +175,7 @@ function base(type: FundType, countryId: string): FundState {
     hwm: clients, mgmt: .02, perf: .2, strategy: 'longShort', call: 'flat', lev: 1, coinvest: 0,
     algoEdge: 0, algoStart: 0, algoDone: 0,
     accounts: Math.round(3000 * Math.max(.3, Math.min(1.5, getCountry(countryId).wealth ?? 1))), commission: .005,
-    funds: [], cos: [], actYear: 0, acted: [], dd: [],
+    funds: [], cos: [], actYear: 0, decisionYear: 0, acted: [], dd: [],
     campaign: 0, boost: 0, bonus: 0, probe: null, ponzi: null, eventYear: 0, checkYear: 0, last: emptyLast(), marks: [],
   }
 }
@@ -234,7 +236,7 @@ function readNew(x: Record<string, Json>, countryId: string): FundState {
     call: pick(x.call, MACRO_CALLS, 'flat'), lev: n(x.lev, 1, 1, 3), coinvest: n(x.coinvest, 0, 0),
     algoEdge: n(x.algoEdge, 0, 0, .08), algoStart: Math.round(n(x.algoStart, 0, 0, 1e5)), algoDone: Math.round(n(x.algoDone, 0, 0, 1e5)),
     accounts: Math.round(n(x.accounts, d.accounts, 0, 1e10)), commission: n(x.commission, d.commission, 0, .03),
-    funds, cos: [...done, ...live], actYear: Math.round(n(x.actYear, 0, 0, 1e5)),
+    funds, cos: [...done, ...live], actYear: Math.round(n(x.actYear, 0, 0, 1e5)), decisionYear: Math.round(n(x.decisionYear, 0, 0, 1e5)),
     acted: list(x.acted).filter((t): t is string => typeof t === 'string').slice(-30), dd: list(x.dd).filter((t): t is string => typeof t === 'string').slice(-30),
     campaign: Math.round(n(x.campaign, 0, 0, 1e5)), boost: n(x.boost, 0, 0, .3), bonus: n(x.bonus, 0, -.5, .2),
     probe: probe ? { year: Math.round(n(probe.year, 0, 0, 1e5)), crime: s(probe.crime, 'Securities Fraud'), odds: n(probe.odds, .3, 0, 1), by: s(probe.by) } : null,
