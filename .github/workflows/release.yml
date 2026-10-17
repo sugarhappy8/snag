@@ -6,6 +6,8 @@ name: Release
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: ['.github/workflows/release.yml']
   # One-time v3 handoff: only the reviewed main commit may publish automatically.
   workflow_run:
     workflows: ['CI']
@@ -30,7 +32,7 @@ permissions:
 
 jobs:
   release:
-    if: github.event_name != 'workflow_run'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -56,14 +58,18 @@ jobs:
 
   release-v3-after-ci:
     if: >-
-      github.event_name == 'workflow_run' &&
       github.repository == 'sugarhappy8/snag' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_sha == '21a3ce7494171d9e80aaa7f3384766cffa1f0b58'
+      github.event.workflow_run.head_sha == '21a3ce7494171d9e80aaa7f3384766cffa1f0b58'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
     concurrency:
       group: release-v3.0.0
       cancel-in-progress: false
@@ -79,6 +85,12 @@ jobs:
           TARGET_SHA: 21a3ce7494171d9e80aaa7f3384766cffa1f0b58
         run: |
           set -euo pipefail
+          verified_run=$(gh api "repos/$GH_REPO/actions/runs/39037690849" \
+            --jq '[.head_sha, .head_branch, .event, .conclusion] | join(" ")')
+          if [ "$verified_run" != "$TARGET_SHA main push success" ]; then
+            echo 'The tested commit does not have a successful main CI run.' >&2
+            exit 1
+          fi
           existing_ref=$(gh api --paginate "repos/$GH_REPO/git/matching-refs/tags/v3.0.0" \
             --jq '.[] | select(.ref == "refs/tags/v3.0.0") | .ref')
           if [ -n "$existing_ref" ]; then
