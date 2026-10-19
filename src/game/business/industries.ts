@@ -1,4 +1,4 @@
-// The industries you can start a business in (43 operating sectors + 12 deep-tech). Every number is a US baseline for ONE
+// The industries you can start a business in (44 operating sectors + 12 deep-tech). Every number is a US baseline for ONE
 // outlet (a truck, a restaurant, an office, a plant) in a typical city; economy.ts scales it
 // to each market with data/markets.ts (labor cost, rents, local prices, taxes, demand).
 //
@@ -340,6 +340,22 @@ const BASE_INDUSTRIES = {
     roles: [r('Talent Booker', 'quality', 80_000), r('Production Manager', 'ops', 70_000), r('Head of Ticketing', 'sales', 65_000), r('Promoter', 'sales', 60_000), r('Controller', 'finance', 75_000)],
     products: ['Summer Music Festival', 'Comedy Club Nights', 'Esports Tournament', 'Immersive Art Show', 'Drag Brunch', 'Podcast Live Tour', 'Escape Rooms', 'Theater Productions', 'Magic & Variety Nights'],
     suffixes: ['Entertainment', 'Events', 'Live', 'Productions'],
+  },
+  // Device and Platform Company (business/devices-data.ts holds the chip rules). A classic product-lines trade:
+  // eight dated kinds from home computers (1977) to AR glasses (2019) and an operating system. A studio is one
+  // hardware design and sales team; the chip fab is a capex lever on top (manage.ts), not a site.
+  // Final calibrated values: price 600, unitCost 360 (ratio 1.67), demand 17,000 a studio, rent 480,000, wage 98,000.
+  // Only demand moved from the design's 30,000: at that figure a one-studio US company's best plan in 2026 earns about
+  // 50% of its capital, and at 17,000 it earns about 15% (the test in test/devices-trade.test.ts holds it to 8% to 20%).
+  devices: {
+    id: 'devices', label: 'Device and Platform Company', emoji: '\u{1F4F1}', unit: 'devices', unitOne: 'device', site: 'hardware studio', sitePlural: 'hardware studios',
+    blurb: 'Phones and computers for the whole world. Better chips make them faster and cheaper to build.',
+    price: 600, unitCost: 360, localShare: 0.25, tradable: 0.9, demand: 17_000, elasticity: 1.5, incomeSens: 0.6,
+    capital: 7_000_000, capitalLocal: 0.35, staff: 36, wage: 98_000, staffScale: 0.6, rent: 480_000, maint: 0.08, capMult: 1.5,
+    multiple: 11, growth: 0.9, perMillion: 0.1, taxShare: 1, perishable: 0.1, marketingShare: 0.06,
+    roles: [r('Chief Hardware Engineer', 'quality', 230_000), r('Head of Industrial Design', 'quality', 170_000), r('Head of Retail Sales', 'sales', 150_000), r('Supply Chain Director', 'ops', 175_000), r('CFO', 'finance', 190_000)],
+    products: ['Home Computer', 'Mobile Phone', 'Desktop PC', 'Laptop', 'Smartphone', 'VR Headset', 'AR Glasses', 'Device Operating System'],
+    suffixes: ['Devices', 'Mobile', 'Computing', 'Electronics', 'Labs'],
   },
   // --- Deep tech (business/deeptech*.ts adds R&D, funding rounds and breakthroughs on top) ---
   // One site is a lab, design center or test stand: cheap enough for a founder to open. Fabs,

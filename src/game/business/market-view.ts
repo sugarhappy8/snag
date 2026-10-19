@@ -122,6 +122,7 @@ const SEGMENT_NAMES: Partial<Record<Industry, [string, string, string, string]>>
   software: ['Consumer & SMB', 'Business tools', 'Enterprise', 'Mission-critical'],
   semiconductor: ['Commodity', 'Mainstream', 'Leading edge', 'Cutting edge'],
   aiLab: ['Open & small models', 'Mainstream models', 'Frontier-ish', 'Frontier'],
+  devices: ['Entry devices', 'Mainstream', 'Premium', 'Flagship'],
 }
 
 export function segmentNames(industry: string): [string, string, string, string] {

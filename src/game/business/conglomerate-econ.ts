@@ -71,6 +71,7 @@ const SECTORS: Record<Industry, Sector[]> = {
   neurotech: ['health', 'tech'],
   drones: ['transport', 'tech'],
   carbonCapture: ['industry', 'land'],
+  devices: ['tech', 'consumer'],
 }
 
 const SECTOR_LABEL: Record<Sector, string> = {

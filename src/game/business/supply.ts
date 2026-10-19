@@ -27,7 +27,7 @@ const PROFILES: Record<string, SupplyProfile> = {
   // Construction stores building materials, never completed projects. Repair shops
   // hold spare parts, not an inventory of completed appointments.
   construction: { ...GOODS, label: 'Building materials' }, autoShop: { ...GOODS, label: 'Spare parts' },
-  semiconductor: GOODS, robotics: GOODS, electricVehicles: GOODS,
+  semiconductor: GOODS, robotics: GOODS, electricVehicles: GOODS, devices: GOODS,
   biotech: { ...GOODS, label: 'Lab & pharmaceutical inputs', spoilage: .1 },
 }
 

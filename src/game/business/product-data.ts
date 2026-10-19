@@ -679,6 +679,15 @@ const DEMAND: Record<string, DemandCurve> = {
   'Ski Holidays': [1930, 1975, 0.7],
   'Cruise Bookings': [1920, 1995],
   'Study Abroad Trips': [1950, 1995, 0.6],
+  // Devices: the eight kinds of the device and platform trade (devices-data.ts HARDWARE_FAMILIES and OS_FAMILY).
+  'Home Computer': [1977, 1988, 0.9, 1990, 0.2, 6],
+  'Mobile Phone': [1983, 2000, 1.3, 2008, 0.15, 7],
+  'Desktop PC': [1985, 1998, 1.2, 2012, 0.45, 12],
+  'Laptop': [1995, 2008, 1.4],
+  'Smartphone': { tech: 'smartphone', size: 1.8, first: 2007 },
+  'VR Headset': [2016, 2030, 0.5],
+  'AR Glasses': [2019, 2034, 0.4],
+  'Device Operating System': { tech: 'homeComputer', size: 0.7, first: 1981 },
 }
 
 /**
@@ -699,6 +708,7 @@ export const PERIOD_CLASSICS: Record<string, string[]> = {
   travel: ['Rail Excursions', 'Steamship Passages', 'Seaside Holidays', 'Pilgrimage Tours'],
   casino: ['Card Room', 'Roulette Tables', 'Dinner Dances', 'High-Roller Salon'],
   nightclub: ['Jazz Band Nights', 'Cocktail Lounge', 'Dance Contests', 'Floor Show'],
+  devices: ['Pocket Calculators', 'Digital Watches', 'Cordless Telephones', 'Handheld Game Units'],
 }
 
 /** A kind of product nobody listed: an ordinary, mature line. */
