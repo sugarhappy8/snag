@@ -13,7 +13,7 @@ import { COUNTRIES, getCountry } from '../world'
 import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf, type MarketCtx, type MarketPick } from './competition-core'
 import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, regimeFor, tierFor, type Regime, type TierId } from './competition-data'
 import { familyId, isRealName, pickHub, rawPull, rivalName, rosterOf, type RivalTier } from './competition-roster'
-import { emptyMarket, type ExtraRival, type MarketState } from './competition-state'
+import { emptyMarket, MAX_WAVE_FOUNDED, type ExtraRival, type MarketState } from './competition-state'
 import { localEcon, marketCtxFor, marketCtxWithRivalry, marketScale, type Worth } from './economy'
 import { industryDef } from './industries'
 import { entryStrength, presenceIn } from './market-reach'
@@ -120,7 +120,8 @@ function lureNewcomer(g: GameState, a: Asset, b: BizState, st: MarketState, stmt
 /**
  * Fast followers a tech wave draws into the company's market (business/tech-waves.ts entrantsDue): one
  * per delivery level the wave has crossed, never founded twice (the id is stable and the market state
- * remembers it, bought out or not). Deterministic: the stream is keyed by the family and the entrant id.
+ * remembers it in `waveFounded`, which outlives the 12-slot `extra` list, bought out or not). Deterministic:
+ * the stream is keyed by the family and the entrant id.
  */
 function waveNewcomers(g: GameState, b: BizState, st: MarketState, year: number): void {
   const due = entrantsDue(g, b.industry, st.key)
@@ -128,7 +129,7 @@ function waveNewcomers(g: GameState, b: BizState, st: MarketState, year: number)
   const fam = familyId(g.lifeId)
   const d = marketDef(b.industry)
   for (const { id, wave } of due) {
-    if (st.extra.some((e) => e.id === id) || st.gone.includes(id)) continue
+    if (st.extra.some((e) => e.id === id) || st.gone.includes(id) || st.waveFounded?.includes(id)) continue
     const s = seeded(`${fam}|wave-entrant|${id}`)
     const hq = d.scope === 'world' ? pickHub(s, d, 'world') : b.countryId
     const taken = new Set(rosterOf(fam, b.industry, st.key).rivals.map((r) => r.name).concat(st.extra.map((x) => x.name)))
@@ -137,6 +138,7 @@ function waveNewcomers(g: GameState, b: BizState, st: MarketState, year: number)
     if (taken.has(name) || isRealName(name)) continue
     const x: ExtraRival = { id, name, hq, founded: year + 1, pot: 0.6 + 0.8 * wave.size, ramp: 3, origin: 'entrant' }
     st.extra = [...st.extra.filter((e) => e.founded > year - 40), x].slice(-12)
+    st.waveFounded = [...(st.waveFounded ?? []), id].slice(-MAX_WAVE_FOUNDED)
     log(g, `${name} launched to chase the ${lowerLead(wave.name)} wave.`, 'neutral')
   }
 }
