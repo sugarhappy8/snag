@@ -6,13 +6,14 @@ import { addHidden, addRelationship, addStat, count, earnIncome, fullName, getPe
 import { chance, pick, rand, randInt } from '../rng'
 import { defineScript } from '../scripts'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
-import { randomFirstName, randomLastName } from '../world'
+import { randomFirstName } from '../world'
 import { hasTalent, talentHint, talentMult } from '../talents'
 import { brandPool, pickBrand } from '../shops/everyday-brands'
 import { ageCeiling } from '../mastery'
 import { BUDGETS, TYPE_IDS, TYPE_OF, type IndustryId } from './actor-data'
 import { auditionBlock, landProject, slotBlock } from './actor-pipeline'
 import { actorStore, type Role } from './actor-state'
+import { teamRows } from './actor-team'
 import { ACTOR_SPEC, industryOf, pressure, scaleOf } from './actor-world'
 import { applyEffects } from './kit/crisis'
 import { activeField } from './kit/rivals'
@@ -235,7 +236,7 @@ export function genListings(g: GameState): Listing[] {
   // Acting talent: casting directors call more often, offer bigger parts sooner (one tier up
   // the ladder), cast you in more blockbusters and pay a premium for you.
   const gifted = hasTalent(g, 'Acting')
-  const n = (agent ? 6 : 4) + (gifted ? 1 : 0)
+  const n = (agent ? 6 : 4) + (gifted ? 1 : 0) + ((sim?.team.manager?.quality ?? 0) >= 60 ? 1 : 0)
   const leadReady = hadSupporting || f >= (gifted ? 25 : 40) || (gifted && credits.length > 0)
   const out: Listing[] = []
   for (let i = 0; i < n; i++) {
@@ -404,7 +405,7 @@ const pickRoleScript = defineScript('special.actor.pick', (g, choice) => {
   if (!l) return
   const crowded = sim ? slotBlock(sim, { kind: l.kind, role: l.role }) : null
   if (crowded) return tell(g, 'Auditions', crowded, '\u{1F3AC}')
-  const limit = (sim ? sim.team.agent : actorProfile(g).agent) ? 5 : 3
+  const limit = ((sim ? sim.team.agent : actorProfile(g).agent) ? 5 : 3) + ((sim?.team.manager?.quality ?? 0) >= 60 ? 1 : 0)
   if (!useYearAction(g, 'actor.audition', limit)) return tell(g, 'Auditions', "You've been to so many auditions this year that casting directors recognize your headshot as a warning sign. Try again next year.", '\u{1F971}')
   listings.splice(idx, 1)
   scriptChoice(
@@ -455,6 +456,8 @@ function landRole(g: GameState, l: Listing): void {
 // ---------------------------------------------------------------------------
 // Agents
 
+// The agent rows live in actor-team.ts (`teamRows`); this script stays registered so a modal queued by an
+// old save still resolves against the legacy profile, which the first sim tick then lifts.
 interface AgentOffer {
   name: string
   firm: string
@@ -462,9 +465,7 @@ interface AgentOffer {
   cut: number
 }
 
-const FIRMS = ['Starlight Talent', 'Apex Artists Agency', 'Bluebird Management', 'Velvet Rope Talent', 'Marquee Partners', 'Spotlight & Co.', 'Hollow Hill Agency']
-
-const agentScript = defineScript('special.actor.agent', (g, choice, data) => {
+defineScript('special.actor.agent', (g, choice, data) => {
   if (choice === 'cancel') return
   const offers = data as unknown as AgentOffer[]
   const a = offers[Number(choice)]
@@ -479,59 +480,6 @@ const agentScript = defineScript('special.actor.agent', (g, choice, data) => {
   log(g, `I hired ${a.name} from ${a.firm} as my talent agent.`, 'good')
   say(g, 'Talent Agent', `${a.name} from ${a.firm} agreed to represent you for ${Math.round(a.cut * 100)}% of your earnings. Expect better auditions.`, '\u{1F574}\u{FE0F}', 'good')
 })
-
-const hireAgentAction: MenuAction = {
-  type: 'action',
-  id: 'actor.agent.hire',
-  label: 'Hire an Agent',
-  emoji: '\u{1F574}\u{FE0F}',
-  subtitle: 'Find a talent agent to land better roles',
-  visible: (g) => !viewActor(g).agent,
-  disabledReason: (g) => blocked(g, 16),
-  run: (g) => {
-    if (!useYearAction(g, 'actor.agentSearch', 2)) return tell(g, 'Talent Agent', "No agents are returning your calls this year.", '\u{1F574}\u{FE0F}')
-    const offers: AgentOffer[] = [0, 1, 2].map(() => {
-      const quality = randInt(g, 25, 95)
-      const gender = chance(g, 0.5) ? 'male' : 'female'
-      return {
-        name: `${randomFirstName(g, g.character.countryId, gender)} ${randomLastName(g, g.character.countryId)}`,
-        firm: pick(g, FIRMS),
-        quality,
-        cut: Math.round((0.08 + quality / 900 + rand(g) * 0.03) * 100) / 100,
-      }
-    })
-    scriptChoice(
-      g,
-      agentScript,
-      'Talent Agents',
-      'Which agent do you want to pitch yourself to?',
-      [...offers.map((o, i) => ({ id: String(i), label: `${o.name}, ${o.firm} · ${'\u{2B50}'.repeat(Math.max(1, Math.round(o.quality / 20)))} · ${Math.round(o.cut * 100)}% cut`, emoji: '\u{1F574}\u{FE0F}' })), { id: 'cancel', label: 'Never mind', emoji: '\u{274C}' }],
-      { emoji: '\u{1F574}\u{FE0F}', data: offers as unknown as Json },
-    )
-  },
-}
-
-const fireAgentAction: MenuAction = {
-  type: 'action',
-  id: 'actor.agent.fire',
-  label: 'Fire Your Agent',
-  emoji: '\u{1F525}',
-  subtitle: (g) => {
-    const a = viewActor(g).agent
-    return a ? `${a.name}, ${a.firm} (${Math.round(a.cut * 100)}% cut)` : ''
-  },
-  visible: (g) => !!viewActor(g).agent,
-  confirm: () => 'Fire your talent agent?',
-  run: (g) => {
-    const p = actorProfile(g)
-    if (!p.agent) return
-    const name = p.agent.name
-    p.agent = null
-    dropList(g, 'actor.roles')
-    log(g, `I fired my agent, ${name}.`)
-    say(g, 'Talent Agent', `You fired ${name}. They said you'd never work in this town again, which is what they say to everyone.`, '\u{1F525}')
-  },
-}
 
 // ---------------------------------------------------------------------------
 // Practice, classes, set life
@@ -771,7 +719,7 @@ export const actorCareerMenu: MenuGroup = {
   },
   children: (g): MenuNode[] => {
     if (actorJob(g)) return [{ type: 'info', id: 'actor.already', text: 'You are already an actor. Manage your career from your job.', emoji: '\u{1F3AC}' }]
-    return [auditionAction, practiceAction, hireAgentAction, fireAgentAction, filmographyMenu()]
+    return [auditionAction, practiceAction, ...teamRows(g), filmographyMenu()]
   },
 }
 
@@ -793,8 +741,7 @@ export function actorJobNodes(g: GameState): MenuNode[] {
     practiceAction,
     costarsAction,
     stuntAction,
-    hireAgentAction,
-    fireAgentAction,
+    ...teamRows(g),
     filmographyMenu(),
     quitAction,
   ]

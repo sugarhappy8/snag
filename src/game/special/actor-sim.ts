@@ -3,6 +3,7 @@
 import { actorJob, masterActing } from './actor'
 import { closeYear, stepAwards, stepDry, stepOrphans, stepResiduals, stepWrap } from './actor-pipeline'
 import { actorStore, adoptLegacy, type ActorState } from './actor-state'
+import { stepTeam } from './actor-team'
 import { ACTOR_SPEC, starPower } from './actor-world'
 import { syncTenure } from './common'
 import type { CareerSim } from './kit/careers'
@@ -27,6 +28,7 @@ function run(c: CareerCtx<ActorState>, live: boolean): string | void {
   masterActing(g)
   syncTenure(g, job)
   stepResiduals(c)
+  stepTeam(c)
   stepWrap(c)
   stepDry(c)
   stepAwards(c)
