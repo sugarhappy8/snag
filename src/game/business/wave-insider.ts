@@ -2,13 +2,14 @@
 // CEO whose own company launches a breakthrough has traded on a secret if they bought the stocks it moves in the year before: this
 // opens an insider case through the shared helper in special/politics.ts, which then runs through the existing exposure, regulator and
 // arrest code. Only a wave the player's own company wrote (heavy launch, deep-tech milestone) comes here, in the year it is announced.
-// Import direction: roleOf and TechWave come from the leaf, never from ./tech-waves (which calls this module). No g.rng, no draws; the
-// only writes are the ones openInsiderCase makes.
+// Import direction: roleOf and TechWave come from the leaf, never from ./tech-waves (which calls this module), and the helper comes
+// through ./insider-ledger, never from special/politics.ts (which would put the whole game under the company economy). No g.rng, no
+// draws; the only writes are the ones openInsiderCase makes.
 import { local } from '../computer/money-common'
 import { listedTargets } from '../computer/money-stocks'
 import { SECTOR_TRADE, sectorOfSec, waveIndexFactor, waveStockFactor } from '../invest/wave-stocks'
-import { insiderPositions, openInsiderCase, type InsiderCaseInput } from '../special/politics'
 import type { GameState } from '../types'
+import { insiderLedger, type InsiderCaseInput } from './insider-ledger'
 import { hashOf } from './product-market'
 import { businessAssets, readBiz, runsIt } from './state'
 import { roleOf, type TechWave } from './tech-wave-factors'
@@ -36,13 +37,15 @@ export function waveInsiderCases(g: GameState, w: TechWave, assetId: string): nu
   const b = readBiz(g, a)
   const role = b.founderName && b.founderName === `${c.firstName} ${c.lastName}` && !b.acquired ? 'founder' : runsIt(g, a) ? 'ceo' : null
   if (!role) return 0
+  const ledger = insiderLedger()
+  if (!ledger) return 0
   const floor = local(g, 1000)
   const found: { stake: number; input: InsiderCaseInput }[] = []
   for (const t of listedTargets(g)) {
     const sector = sectorOfSec(t.secId), trade = sector ? SECTOR_TRADE[sector] : null
     const part = trade ? roleOf(w.kind, trade) : null
     if (part !== 'core' && part !== 'supply') continue
-    const pos = insiderPositions(g, t, false, { freshOnly: true })
+    const pos = ledger.positions(g, t, false, { freshOnly: true })
     const stake = pos.own + pos.crony + pos.shares + pos.index
     const mult = waveStockFactor(g, t.secId, w.year) / waveStockFactor(g, t.secId, w.year - 1)
     const indexGain = pos.indexUnits * Math.max(0, waveIndexFactor(g, t.exKey, w.year) / waveIndexFactor(g, t.exKey, w.year - 1) - 1)
@@ -62,7 +65,7 @@ export function waveInsiderCases(g: GameState, w: TechWave, assetId: string): nu
     }
     indexTaken = true
     handled++   // a stock whose case this wave only adds to (a second wave the year it opens) still takes one of the three places
-    if (openInsiderCase(g, input)) opened++
+    if (ledger.open(g, input)) opened++
   }
   return opened
 }

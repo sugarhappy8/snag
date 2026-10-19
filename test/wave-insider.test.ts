@@ -31,6 +31,19 @@ describe('load order', () => {
   it('loads in any order: tech-waves, wave-insider and politics each first, in a fresh module registry', async () => {
     for (const load of [() => import('../src/game/business/tech-waves'), () => import('../src/game/business/wave-insider'), () => import('../src/game/special/politics')]) { vi.resetModules(); expect(Object.keys(await load()).length).toBeGreaterThan(0) }
   }, 120_000)
+  it('keeps politics out from under the company economy: the events table loads whichever of its feeders comes first', async () => {
+    // events.ts spreads COMPETITION_EVENTS and EXTRA_EVENTS when it loads, so any path from those modules back to events.ts is a load-order trap.
+    for (const load of [() => import('../src/game/business/competition-events'), () => import('../src/game/business/events-extra'), () => import('../src/game/business/economy'), () => import('../src/game/business/heavy-rd'), () => import('../src/game/business/conglomerate-menu'), () => import('../src/game/business/manage')]) { vi.resetModules(); expect(Object.keys(await load()).length).toBeGreaterThan(0) }
+  }, 120_000)
+  it('finds the insider ledger once politics has loaded, and opens nothing before that', async () => {
+    vi.resetModules()
+    const seam = await import('../src/game/business/insider-ledger')
+    expect(seam.insiderLedger()).toBeNull()
+    await import('../src/game/business/wave-insider')
+    expect(seam.insiderLedger()).toBeNull()
+    await import('../src/game/special/politics')
+    expect(seam.insiderLedger()).not.toBeNull()
+  }, 120_000)
 })
 
 describe('who is an insider (S13)', () => {

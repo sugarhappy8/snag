@@ -7,6 +7,7 @@ import { countVotes, electionEdge } from '../nation/regime'
 import { addCase, editMe, policyOf as nationPolicy, writeMe } from '../nation/state'
 import { officeView } from '../nation/office'
 import { exchangeYear, companyDef } from '../invest/engine'
+import { registerInsiderLedger, type InsiderCaseInput, type InsiderPositions } from '../business/insider-ledger'
 // Special career: Politician. Run for office (party, platform, campaign budget, a three-stop
 // campaign trail, election night), then govern: read the newspaper to learn what voters care
 // about, broadcast speeches, stage rallies, pass or veto bills, dodge (or pocket) political
@@ -1707,8 +1708,6 @@ function legislatorHouse(g: GameState): string {
   return legislator(g).house
 }
 
-export interface InsiderPositions { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string }
-
 /**
  * The player's positions that win if the price moves this way (insider positions). With `freshOnly`
  * (laws), plain shares count only for the part bought this year or last year: a law is not a tip
@@ -1856,23 +1855,6 @@ const POLICY_EVIDENCE: Record<InsiderCase['via'], number> = { own: 0.7, shares: 
 /** The route positions take: own bets or index options in the player's name, else a crony, else plain shares. */
 function routeOf(pos: InsiderPositions): InsiderCase['via'] {
   return pos.own > 0 || pos.index > 0 ? 'own' : pos.crony > 0 ? 'crony' : 'shares'
-}
-
-/** What a launch by the player's own company hands the case helper: the stock, the positions, the sector's step and who the player is there. */
-export interface InsiderCaseInput {
-  target: BetTarget
-  pos: InsiderPositions
-  /** The stock's level this year over last year: the gain on plain shares is `shares x (mult - 1)`. */
-  mult: number
-  /** What the index calls gain from the tilt, already worked out. */
-  indexGain: number
-  role: 'founder' | 'ceo'
-  /** The wave's name. */
-  note: string
-  /** The company's name. */
-  company: string
-  /** A stable string for this wave and stock: the case id is `wave-${key}`, so a repeat is the same case. */
-  key: string
 }
 
 /**
@@ -2080,6 +2062,9 @@ registerOfficeHooks({
   policyMove: policyInsider,
   policyWarning,
 })
+
+// The insider rule of tech waves (business/wave-insider.ts) reaches the cases through this seam, not through an import of this file.
+registerInsiderLedger({ positions: insiderPositions, open: openInsiderCase })
 
 defineScript(ABUSE_SCRIPT, (g, choice, data) => {
   if (choice === 'cancel' || !data || typeof data !== 'object' || Array.isArray(data)) return
