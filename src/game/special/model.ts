@@ -119,6 +119,23 @@ function mdata(job: Job): ModelJob {
   return view<ModelJob>(job.data)
 }
 
+/** What a won casting lifts performance by: the legacy booking's 4 to 9, taken at its middle so the board draws no extra number. */
+const GIG_BUMP = 6
+
+/**
+ * A casting the signed model won is a gig on the job, as the legacy booking was: the legacy yearly tick reads
+ * `gigsThisYear` for its performance drift (+3 with a gig, -4 without), and the gig itself lifts performance and
+ * fame. Without this the ladder, the retainer, the slots and the fame target never move, since the Season Board
+ * replaced the only row that counted gigs. A no-op without a job (an unsigned model has no ladder).
+ */
+export function noteGig(g: GameState, fame: number): void {
+  const job = modelJob(g)
+  if (!job) return
+  mdata(job).gigsThisYear += 1
+  bump(job, GIG_BUMP)
+  addFame(g, fame)
+}
+
 /** Main Character Syndrome: modeling for the first time (a casting, a booking, practice) is already mastery for the age. */
 function masterModeling(g: GameState): void {
   masterFlagSkill(g, 'modeling', 'stage', 'modeling', ageCeiling(g.character.age, { from: 12, full: 18, floor: 45 }))

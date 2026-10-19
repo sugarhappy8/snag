@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { allBrands, brandAvailable } from '../src/game/data/brands'
 import { runScript } from '../src/game/scripts'
-import { hire, ownerKey } from '../src/game/special/common'
+import { fameOf, hire, ownerKey } from '../src/game/special/common'
 import { activeField } from '../src/game/special/kit/rivals'
 import { ACTION_BUDGET, careerCtx, setCareerAudit, type CareerCtx } from '../src/game/special/kit/year'
 import { modelCareerMenu, modelJobNodes } from '../src/game/special/model'
@@ -81,6 +81,89 @@ const jobRow = (g: GameState, id: string): MenuAction => {
   if (!row) throw new Error(`no row ${id}`)
   return row
 }
+
+describe('model casting: the legacy tick reads the board', () => {
+  /** Two casts a year on the first castable open offers, then the year turns; the career ends when the job does. */
+  function playSeasons(seed: number, years: number, castsPerYear: number): GameState {
+    const { g } = signed({ seed })
+    for (let y = 0; y < years && g.character.job?.defId === 'model'; y++) {
+      for (let n = 0; n < castsPerYear; n++) {
+        const s = modelStore.mut(g)
+        const next = boardOf(g, s).find((o) => o.status === 'open' && !castBlock(g, s, o))
+        if (!next) break
+        castOffer(ctxOf(g, s), next.id)
+      }
+      g.queue = []
+      nextYear(g)
+      g.queue = []
+    }
+    return g
+  }
+
+  it('counts a booked casting as a gig and lifts performance, so a model who books each year climbs the ladder [RF4]', () => {
+    const levels: number[] = []
+    const performances: number[] = []
+    const fames: number[] = []
+    for (let seed = 1; seed <= 12; seed++) {
+      const g = playSeasons(seed, 10, 2)
+      const job = g.character.job
+      levels.push(job?.defId === 'model' ? job.level : 0)
+      performances.push(job?.defId === 'model' ? job.performance : 0)
+      fames.push(fameOf(g))
+    }
+    expect(levels.filter((l) => l >= 1).length, `levels ${levels.join(',')}`).toBeGreaterThanOrEqual(10)
+    expect(performances.reduce((a, b) => a + b, 0) / performances.length, `performance ${performances.join(',')}`).toBeGreaterThan(65)
+    // the fame target follows the rank: past the level-0 target of 8, toward the label exit's 30
+    expect(fames.filter((f) => f >= 30).length, `fame ${fames.join(',')}`).toBeGreaterThanOrEqual(8)
+  })
+
+  it('leaves a model who books nothing to the no-gigs drift', () => {
+    const g = playSeasons(5, 3, 0)
+    expect(g.character.job?.performance ?? 0).toBeLessThan(50)
+  })
+
+  it('books one gig on the job per won casting and none for a lost one', () => {
+    const seen = new Set<string>()
+    for (let rng = 1; rng <= 80 && seen.size < 2; rng++) {
+      const { g, s } = signed({ seed: 5 })
+      s.board = { year: g.year, items: [offer({ id: 'w1', fee: 5_000 })] }
+      const job = g.character.job!
+      const perf0 = job.performance
+      const fame0 = fameOf(g)
+      g.rng = rng
+      castOffer(ctxOf(g, s), 'w1')
+      const status = s.board.items[0].status
+      seen.add(status)
+      const gigs = (job.data as { gigsThisYear: number }).gigsThisYear
+      if (status === 'booked') {
+        expect(gigs).toBe(1)
+        expect(job.performance).toBe(perf0 + 6)
+        expect(fameOf(g)).toBeGreaterThanOrEqual(fame0)
+      } else {
+        expect(status).toBe('lost')
+        expect(gigs).toBe(0)
+        expect(job.performance).toBe(perf0)
+        expect(fameOf(g)).toBe(fame0)
+      }
+    }
+    expect([...seen].sort()).toEqual(['booked', 'lost'])
+  })
+
+  it('gives an unsigned model no ladder: a won open-call casting changes no job', () => {
+    const g = openLife()
+    const s = modelStore.mut(g)
+    s.board = { year: g.year, items: [offer({ id: 'u1', fee: 800 })] }
+    const status = (): string => s.board.items[0].status
+    for (let rng = 1; rng <= 40; rng++) {
+      g.rng = rng
+      s.board.items[0].status = 'open'
+      castOffer(ctxOf(g, s), 'u1')
+      if (status() === 'booked') break
+    }
+    expect(status()).toBe('booked')
+    expect(g.character.job).toBeNull()
+  })
+})
 
 describe('model casting', () => {
   it('refuses castOffer with no state change for prison, age < 16, strain >= 95, unsigned couture, an exclusivity conflict and season overflow', () => {

@@ -24,7 +24,7 @@ import { gatedAction, standingMenu } from './kit/menu'
 import { activeField, noteRival } from './kit/rivals'
 import { cap, int, rec } from './kit/state'
 import { careerCtx, careerLog, careerSay, claimChoice, fit, type CareerCtx } from './kit/year'
-import { PHOTOGRAPHERS, modelJob } from './model'
+import { PHOTOGRAPHERS, modelJob, noteGig } from './model'
 import { agencyRows, motherPct } from './model-agency'
 import { MODEL_SPEC, castPlan, lookValue, marketFactor, scoreOf } from './model-core'
 import { BRAND_TIERS, CIRCUITS, FOCUS, FOCUSES, KINDS, KIND_IDS, SEASON_CAP, TIER_FEE, TIER_REQ, circuitsAt, housePool, kindLabel, kindOpen, tierIndex } from './model-data'
@@ -240,6 +240,9 @@ export function castBlock(g: GameState, s: ModelState, o: MdOffer): string | nul
   return null
 }
 
+/** The fame a won casting adds, the legacy booking's table (catalogue 0 up to a luxury campaign 5). */
+const GIG_FAME: Record<Kind, number> = { catalogue: 0, commercial: 1, digital: 1, editorial: 1, runway: 2, couture: 3, cover: 4, campaign: 5, face: 5 }
+
 const kindName = (g: GameState, o: MdOffer): string => kindLabel(g, o.kind).toLowerCase()
 
 /** One result as a log line (first person) and a popup (second person), the popup only while the notice budget lasts. */
@@ -288,6 +291,7 @@ export function castOffer(c: CareerCtx<ModelState>, id: string): void {
       const grudge = s.memory.find((m) => m.id === r.id)?.grudge ?? 0
       s.memory = noteRival(s.memory, r, year, { met: 1, won: 1, grudge: Math.max(0, Math.min(1, 3 - grudge)) })
     }
+    noteGig(g, GIG_FAME[o.kind] ?? 0)
     report(c, 'Booked', `You booked the ${label} for ${o.house}. It pays out at the year's end.`, `I booked a ${label} for ${o.house}.`, KIND_EMOJI[o.kind], 'good')
     return
   }
