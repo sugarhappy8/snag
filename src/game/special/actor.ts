@@ -13,7 +13,7 @@ import { ageCeiling } from '../mastery'
 import { BUDGETS, TYPE_IDS, TYPE_OF, type IndustryId } from './actor-data'
 import { auditionBlock, landProject, slotBlock } from './actor-pipeline'
 import { actorStore, type Role } from './actor-state'
-import { teamRows } from './actor-team'
+import { actorMenus, actorStanding } from './actor-menu'
 import { ACTOR_SPEC, industryOf, pressure, scaleOf } from './actor-world'
 import { applyEffects } from './kit/crisis'
 import { activeField } from './kit/rivals'
@@ -719,7 +719,7 @@ export const actorCareerMenu: MenuGroup = {
   },
   children: (g): MenuNode[] => {
     if (actorJob(g)) return [{ type: 'info', id: 'actor.already', text: 'You are already an actor. Manage your career from your job.', emoji: '\u{1F3AC}' }]
-    return [auditionAction, practiceAction, ...teamRows(g), filmographyMenu()]
+    return [auditionAction, practiceAction, actorStanding, ...actorMenus(g), filmographyMenu()]
   },
 }
 
@@ -727,6 +727,8 @@ export function actorJobNodes(g: GameState): MenuNode[] {
   const job = actorJob(g)
   if (!job) return []
   const proj = project(job)
+  // Once the sim owns the life, actor-menu.ts offers the stunt and quit rows (same ids) for the projects in its pipeline.
+  const sim = actorStore.peek(g)?.migrated === true
   return [
     {
       type: 'info',
@@ -740,10 +742,11 @@ export function actorJobNodes(g: GameState): MenuNode[] {
     developAction,
     practiceAction,
     costarsAction,
-    stuntAction,
-    ...teamRows(g),
+    ...(sim ? [] : [stuntAction]),
+    actorStanding,
+    ...actorMenus(g),
     filmographyMenu(),
-    quitAction,
+    ...(sim ? [] : [quitAction]),
   ]
 }
 

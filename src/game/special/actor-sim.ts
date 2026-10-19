@@ -2,6 +2,7 @@
 // settleYear owns the marker, the ranking, the report row and the popup budget; `run` is the year itself.
 import { actorJob, masterActing } from './actor'
 import { actorCrises, stepPress } from './actor-events'
+import { yearlyLikeness } from './actor-legacy'
 import { closeYear, stepAwards, stepDry, stepOrphans, stepResiduals, stepWrap } from './actor-pipeline'
 import { actorStore, adoptLegacy, type ActorState } from './actor-state'
 import { stepTeam } from './actor-team'
@@ -37,16 +38,22 @@ function run(c: CareerCtx<ActorState>, live: boolean): string | void {
   return closeYear(c)
 }
 
+const hook = settleYear({
+  career: 'actor',
+  store: actorStore,
+  incomeLabel: 'Residuals',
+  active: (g) => !!actorJob(g),
+  run,
+  peers: { spec: ACTOR_SPEC, score: starPower },
+  crises: actorCrises,
+})
+
 export const actorSim: CareerSim = {
   id: 'actor',
   key: 'actor.sim',
-  yearly: settleYear({
-    career: 'actor',
-    store: actorStore,
-    incomeLabel: 'Residuals',
-    active: (g) => !!actorJob(g),
-    run,
-    peers: { spec: ACTOR_SPEC, score: starPower },
-    crises: actorCrises,
-  }),
+  // The likeness trust pays whoever holds it (an heir, a retired actor), so it runs before the kit hook, which needs a job or a record.
+  yearly: (g) => {
+    yearlyLikeness(g)
+    hook(g)
+  },
 }
