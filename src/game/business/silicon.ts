@@ -2,7 +2,14 @@
 // the 2024-2027 squeeze lasts, in proportion to how far below the market the chips sell and how much of the
 // demand was supplied, and fades toward neutral (50) the rest of the time. Goodwill acts on one thing, the brand
 // (`brandStep`), which afterDeepTechYearImpl adds once a year. Every function takes the year it books; none reads g.year.
+import { seeded } from '../assets'
+import { log } from '../core'
 import { shortageIntensity } from '../history/market-events'
+import { outcomeTag } from '../timeMachine'
+import type { Asset, GameState } from '../types'
+import { marketOfBiz, marketViewOf, saveMarket } from './competition'
+import { familyId } from './competition-roster'
+import type { RivalMod } from './competition-state'
 import { siliconOf, siliconView, type LaneRow, type TechPlan } from './deeptech-core'
 import type { TechState } from './deeptech-state'
 import { laneById } from './silicon-data'
@@ -70,4 +77,44 @@ export function bookSilicon(b: Pick<BizState, 'industry' | 'countryId'>, t: Tech
 export function pendingBrandStep(t: TechState): number {
   const s = siliconView(t)
   return s.last && s.applied < s.last.year ? brandStep(s.goodwill) : 0
+}
+
+/** How fast a chip company's chips are, 0 to 100: the tech level, the process node and the fab's yield. */
+export function chipPerformance(t: Pick<TechState, 'level' | 'node' | 'yieldRate'>): number {
+  return Math.round(clampN(0.5 * t.level + 5 * t.node + 20 * (t.yieldRate - 0.3) / 0.67, 0, 100))
+}
+
+/** The chance the biggest rival answers a deep cut: none under 5% depth, at most 45%, halved in the tightest squeeze (nobody needs to match). */
+export function undercutChance(depth: number, win: number): number {
+  return clampN(2.5 * (depth - 0.05), 0, 0.45) * (1 - 0.5 * win)
+}
+
+/** A rival's pull mod after one more round of discounts: x1.08 on a live mod (an expired one is ignored), 0.6 to 1.25, for two more years. */
+export function stackMod(old: RivalMod | undefined, year: number): RivalMod {
+  return { mult: clampN((old && old.until >= year ? old.mult : 1) * 1.08, 0.6, 1.25), until: year + 2 }
+}
+
+/**
+ * What a booked year leaves behind, run once after `evolve` (`t.silicon.last.year` is the fiscal year, never g.year):
+ * the chips' performance and the product quality of the year, and the biggest rival's answer to a deep cut that was
+ * supplied in a squeeze year (a seeded chance, no dice). Behind `applied`: a second call changes nothing.
+ */
+export function afterYearSilicon(g: GameState, a: Asset, b: BizState, t: TechState): void {
+  if (b.industry !== 'semiconductor' || !t.silicon?.last || t.silicon.applied >= t.silicon.last.year) return
+  const s = siliconOf(t)
+  const last = s.last
+  if (!last) return
+  const year = last.year
+  last.perf = chipPerformance(t)
+  last.quality = Math.round(b.quality)
+  if (last.win > 0 && last.depth >= 0.08 && last.served >= 0.5) {
+    const top = marketViewOf(g, b).rivals[0]
+    if (top && seeded(`${familyId(g.lifeId)}${outcomeTag(g, year)}|undercut|${a.id}|${year}`).chance(undercutChance(last.depth, last.win))) {
+      const st = marketOfBiz(b)
+      st.mods[top.id] = stackMod(st.mods[top.id], year)
+      saveMarket(b, st)
+      log(g, `${top.name} cut prices to match ${a.name}.`)
+    }
+  }
+  s.applied = year
 }

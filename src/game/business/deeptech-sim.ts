@@ -34,7 +34,6 @@ import {
   runwayYears,
   sellable,
   sideRevenue,
-  siliconOf,
   techFunds,
   techOf,
   techPlan,
@@ -43,7 +42,7 @@ import {
 import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
 import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
-import { bookSilicon, pendingBrandStep } from './silicon'
+import { afterYearSilicon, bookSilicon, pendingBrandStep } from './silicon'
 import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
 import { deepWaveFor } from './tech-wave-data'
@@ -400,12 +399,12 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
     t.venture = 0
     t.raised = 0
   }
+  // Chip performance and quality of the booked year, and a rival's answer to a deep supplied cut; marks the brand step as applied.
+  afterYearSilicon(g, a, b, t)
   refreshTechValue(g, b, t)
   // Investors who control the board and run out of patience (t.pressure) replace the CEO in the
   // board's yearly review (business/board.ts boardYear), with everything else the board weighs.
   ipoCheck(g, a, b, t)
-  // The brand step above counted for this booked year, so it never counts twice. Kept last: the steps before it still see the year as pending.
-  if (t.silicon?.last && t.silicon.applied < t.silicon.last.year) siliconOf(t).applied = t.silicon.last.year
 }
 
 function ipoCheck(g: GameState, a: Asset, b: BizState, t: TechState): void {
