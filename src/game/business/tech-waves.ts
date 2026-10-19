@@ -207,14 +207,16 @@ export function rivalWave(fam: string, trade: string, year: number): { kind: Wav
 
 /**
  * One year of a wave: hype closes on the new delivery (at 0.30 when delivery leads, 0.45 when it
- * lags; a stall year cools it a further 15%). `mature` counts years with delivery at least 0.9 and
+ * lags; a stall year cools it a further 15% while delivery is under 0.9). `mature` counts years with delivery at least 0.9 and
  * within 0.05 of hype: five settle the wave into the permanent factors; a wave still below 0.1
  * delivery after six years is dropped. Pure.
  */
 export function nextState(w: TechWave, delivery: number, stall: boolean, year: number): { hype: number; delivery: number; mature: number; fate: 'live' | 'settle' | 'drop' } {
   const d = clampN(delivery, 0, 1)
   let hype = w.hype + (d - w.hype) * (d > w.hype ? 0.30 : 0.45)
-  if (stall) hype *= 0.85
+  // A stall only cools a wave that is still shipping: once delivery is 0.9 there is nothing left to stall,
+  // and cooling hype then would throw it out of the maturity band again (a quarter of all years).
+  if (stall && d < 0.9) hype *= 0.85
   hype = clampN(hype, 0, 1)
   const mature = d >= 0.9 && Math.abs(d - hype) <= 0.05 ? (w.mature ?? 0) + 1 : 0
   const fate = mature >= 5 ? 'settle' : year - w.year >= 6 && d < 0.1 ? 'drop' : 'live'

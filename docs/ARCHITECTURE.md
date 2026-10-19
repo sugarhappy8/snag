@@ -547,7 +547,7 @@ Hype and delivery. A new wave starts at hype `0.3 + 0.7 size` and delivery 0. `a
 runs once a year at the end of `yearlyBusinessImpl` (and on its no-company return), behind the `last`
 marker. Delivery moves toward what really sold (a heavy record's adoption curve, a deep-tech lab's
 share against a quarter of its market), by at most 0.25 a year; a Workshop, race or rival wave, or one
-whose company or record is gone, gains `0.08 + 0.22 u` from a seeded draw with a 25% stall year.
+whose company or record is gone, gains `0.08 + 0.22 u` from a seeded draw with a 25% stall year (a stall cools hype only while delivery is under 0.9, so a delivered wave still matures).
 Hype closes on delivery (faster when it lags), so a premium unwinds only when the breakthrough did not
 ship, never just because a year went by. Five mature years settle a wave into `techBase` (permanent
 demand and cost factors per `trade|market`, folded at the wave's own market; `waveFactors` also reads the `world` entry in every market, so a settled world wave leaves no cliff in a national-scope trade); a wave still under 0.1

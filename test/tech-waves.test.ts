@@ -110,10 +110,15 @@ describe('waveFactors', () => {
 })
 
 describe('nextState', () => {
-  it('hype closes on delivery at 0.30 when delivery leads and 0.45 when it lags; a stall adds nothing and cools hype 15%', () => {
+  it('hype closes on delivery at 0.30 when delivery leads and 0.45 when it lags; a stall adds nothing and cools hype 15% (below 0.9 delivery)', () => {
     expect(nextState(W({ hype: 0.4, delivery: 0.4 }), 0.8, false, 2032).hype).toBeCloseTo(0.4 + 0.4 * 0.3, 6)
     expect(nextState(W({ hype: 0.9, delivery: 0.2 }), 0.2, false, 2032).hype).toBeCloseTo(0.9 - 0.7 * 0.45, 6)
     const s = nextState(W({ hype: 0.9, delivery: 0.2 }), 0.2, true, 2032); expect([s.hype, s.delivery]).toEqual([near((0.9 - 0.7 * 0.45) * 0.85), 0.2])
+  })
+  it('a stall year does not cool a wave that has delivered (0.9 or more): hype stays in the maturity band and the count goes on', () => {
+    expect(nextState(W({ hype: 1, delivery: 1, mature: 2 }), 1, true, 2040)).toMatchObject({ hype: 1, delivery: 1, mature: 3, fate: 'live' })
+    expect(nextState(W({ hype: 0.9, delivery: 0.9, mature: 4 }), 0.9, true, 2040)).toMatchObject({ hype: 0.9, mature: 5, fate: 'settle' })
+    expect(nextState(W({ hype: 0.88, delivery: 0.85 }), 0.89, true, 2040).hype).toBeCloseTo((0.88 + 0.01 * 0.30) * 0.85, 6)   // just under 0.9 it still cools
   })
   it('the premium holds when delivery matches hype and unwinds when it lags', () => {
     const run = (s: TechWave) => { for (let i = 0; i < 4; i++) { const x = nextState(s, s.delivery, false, 2032 + i); s = { ...s, hype: x.hype, mature: x.mature } } return s }
@@ -157,6 +162,15 @@ describe('advanceTechWaves', () => {
     const g = game([W({ id: calm(probe, 2032), source: 'race', delivery: 1, hype: 1, mature: 4 })]); advanceTechWaves(g)
     const b = readTechBase(g); expect(readTechWaves(g)).toEqual([]); expect([b['aiLab|world'].demand, b['aiLab|world'].costs]).toEqual([near(1.15), near(0.95)])
     expect(b['software|world'].demand).toBeCloseTo(0.875, 6); expect(Object.keys(b).every((k) => k.endsWith('|world'))).toBe(true)
+  })
+  it('a seeded wave of any source settles within 30 years of its announcement, stall years and all (no calm() id)', () => {
+    const years: number[] = []
+    for (const source of ['rival', 'race', 'workshop'] as const) for (let i = 0; i < 20; i++) {
+      const g = game([W({ id: `${source}:ai:2032:s${i}`, source, year: 2032, last: 2031, hype: 0.65, delivery: 0 })], 2032); let n = 0
+      for (; n < 60 && readTechWaves(g).length; n++) { g.year = 2032 + n; advanceTechWaves(g) }
+      years.push(n)
+    }
+    expect(Math.max(...years)).toBeLessThanOrEqual(30)
   })
   it('a settled world wave still reaches a national-scope trade in every country (no cliff), while a country wave settles at home only', () => {
     const probe = makeTestGame(7); probe.year = 2032; const id = calm(probe, 2032)
