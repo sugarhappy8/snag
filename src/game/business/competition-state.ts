@@ -8,6 +8,9 @@ import { clampN, num, rec, str } from './util'
 
 export const MARKET_VERSION = 1
 
+/** Wave fast followers remembered (three per wave: room for 32 live waves in one market). */
+export const MAX_WAVE_FOUNDED = 96
+
 /** A rival drawn in by the player's own success or an event (the generated roster lives in competition-roster.ts). */
 export interface ExtraRival {
   id: string
@@ -112,6 +115,12 @@ export interface MarketState {
   /** Rivals the player bought out (they leave the market). */
   gone: string[]
   extra: ExtraRival[]
+  /**
+   * Ids of the tech-wave fast followers ever founded here (business/tech-waves.ts entrantsDue). `extra` keeps
+   * only 12, so a follower pushed off it by newer rivals would be offered, and founded, again: this list
+   * remembers it (bounded; absent in old saves, where `extra` and `gone` still guard).
+   */
+  waveFounded?: string[]
   antitrust: AntitrustState
   /** Last year a competitive move was made (talent raid, price offensive...). */
   lastMove: number
@@ -291,7 +300,14 @@ export function readMarket(v: Json | undefined, key: string): MarketState | null
     defendUntil: Math.round(num(o.defendUntil)),
     acquired: Array.isArray(o.acquired) ? o.acquired.filter((x): x is number => typeof x === 'number' && Number.isFinite(x)).map(Math.round).slice(-20) : [],
     ...readBarriers(o.barriers),
+    ...readWaveFounded(o.waveFounded),
   }
+}
+
+function readWaveFounded(v: Json | undefined): { waveFounded?: string[] } {
+  if (!Array.isArray(v)) return {}
+  const ids = [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x))].slice(-MAX_WAVE_FOUNDED)
+  return ids.length ? { waveFounded: ids } : {}
 }
 
 function readBarriers(v: Json | undefined): { barriers?: Record<string, number> } {

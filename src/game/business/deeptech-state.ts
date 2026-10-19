@@ -14,7 +14,9 @@
 // (setting it too would charge the preference twice in exit.ts).
 import { DEEP_TECH_IDS, type Industry } from '../data/markets'
 import type { Json } from '../types'
-import { clampN, money, num, rec, str } from './util'
+import { CAP_IDS, isCapId, type CapMap } from './ai-bench-data'
+import { CHIP_LANES } from './silicon-data'
+import { clampN, money, num, rec, round2, str } from './util'
 
 export type DeepTechIndustry = (typeof DEEP_TECH_IDS)[number]
 
@@ -30,8 +32,11 @@ export function isDeepTech(b: { industry: Industry | string }): boolean {
 // ---------------------------------------------------------------------------
 // Types
 
-/** Bumped whenever TechState gains fields, so techOf() re-normalizes states saved before. */
-export const TECH_VERSION = 3
+/**
+ * Bumped whenever TechState gains fields, so techOf() re-normalizes states saved before. Version 4 is the
+ * AI Lab 2.0 release (rating, held, caps, firsts); Silicon 2.0 adds its fields under 4 without bumping again.
+ */
+export const TECH_VERSION = 4
 export const MAX_TECH_SEQUENCE = 999_999_999
 
 /** Funding stages: index = TechState.series. */
@@ -111,6 +116,10 @@ export interface AiModel {
   score: number
   open: boolean
   year: number
+  /** Rating in each capability open in `year` (ai-bench.ts); missing on models trained before 2012 or before 4.0. */
+  rating?: CapMap
+  /** Held back at release: not sold, not scored, no first, no catch-up. */
+  held?: true
 }
 
 /** A government or anchor-customer contract: yearly revenue for a few years. */
@@ -181,6 +190,10 @@ export interface TechState {
   /** AI: GPU clusters rented from a cloud provider. */
   rented: number
   models: AiModel[]
+  /** AI: research levels from finished capability programs, 0-20 each. */
+  caps: CapMap
+  /** AI: the world firsts this lab holds, `${CapId}.${1|2|3}`, at most 24. */
+  firsts: string[]
   /** 0-100: safety culture (AI, robotics, EVs, biotech): fewer incidents and recalls. */
   safety: number
   drugs: Drug[]
@@ -215,6 +228,52 @@ export interface TechState {
   oneOffs: { year: number; amount: number }[]
   /** Next id for drugs and models. */
   seq: number
+  /**
+   * Semiconductors (Silicon 2.0): goodwill, lane discounts and the pricing policy. Optional and only kept when it
+   * differs from the default, so a live object can lack it: read it through siliconView(t) or siliconOf(t) (deeptech-core).
+   */
+  silicon?: SiliconState
+}
+
+/** What the chips' price did in one booked fiscal year (read back by the after-year step and the screens). */
+export interface SiliconYear {
+  year: number
+  /** Price position against the market, weighted over the lanes the squeeze hits (1 = at the market, below 1 = cheaper). */
+  index: number
+  /** Share of demand that was supplied, 0-1. */
+  served: number
+  /** How much cheaper than the market, -0.4 to 0.4 (positive = cheaper). */
+  depth: number
+  /** How hard the squeeze was for this company, 0-1. */
+  win: number
+  /** Brand points the goodwill adds a year, -1.5 to 3. */
+  step: number
+  /** Chip performance and quality scores, 0-100 (filled after the year). */
+  perf: number
+  quality: number
+}
+
+/** A launch choice that waits for the Annual Report: the headline price is set there, and its discounts are measured against it. */
+export interface SiliconLaunch {
+  /** The planning year the choice is for. */
+  year: number
+  id: 'undercut' | 'match'
+}
+
+export interface SiliconState {
+  /** 0-100, 50 = neutral. */
+  goodwill: number
+  /** Discount below the headline price by lane id, 0-0.5 (never `core`). */
+  lanes: Record<string, number>
+  /** A launch choice not yet applied: the Annual Report that follows applies it to the headline price the player sets, then clears it. */
+  launch: SiliconLaunch | null
+  /** Pricing policy: cap on the headline index for hired CEOs and the hint, 0.6-1.3; 0 = none. */
+  ceiling: number
+  /** Last fiscal year the chips led the field on performance; 0 = never. */
+  lead: number
+  /** Fiscal year the after-year step last ran; 0 = never. */
+  applied: number
+  last: SiliconYear | null
 }
 
 /** Claim a finite unused drug-candidate id, wrapping safely after a malformed extreme save. */
@@ -325,14 +384,65 @@ function readDrug(x: Record<string, Json>): Drug | null {
   }
 }
 
+/** Known capabilities with a finite value that rounds into 1 to 5000; null when nothing is left. */
+function readRating(v: Json | undefined): CapMap | null {
+  const x = rec(v)
+  if (!x) return null
+  const out: CapMap = {}
+  let any = false
+  for (const k of Object.keys(x)) {
+    const n = x[k]
+    if (!isCapId(k) || typeof n !== 'number' || !Number.isFinite(n)) continue
+    const r = Math.round(n)
+    if (r < 1 || r > 5000) continue
+    out[k] = r
+    any = true
+  }
+  return any ? out : null
+}
+
 function readModel(x: Record<string, Json>): AiModel | null {
+  const rating = readRating(x.rating)
   return {
     gen: Math.max(1, Math.round(num(x.gen, 1))),
     name: str(x.name, 'Model'),
     score: clampN(num(x.score, 40), 0, 100),
     open: x.open === true,
     year: Math.round(num(x.year)),
+    ...(rating ? { rating } : {}),
+    ...(x.held === true ? { held: true as const } : {}),
   }
+}
+
+/** Research levels: known capabilities, whole numbers 0 to 20, zeros dropped. */
+function readCaps(v: Json | undefined): CapMap {
+  const x = rec(v)
+  const out: CapMap = {}
+  if (!x) return out
+  for (const k of Object.keys(x)) {
+    if (!isCapId(k)) continue
+    const n = clampN(Math.round(num(x[k])), 0, 20)
+    if (n > 0) out[k] = n
+  }
+  return out
+}
+
+const FIRST_KEY = /^([a-z]+)\.([123])$/
+
+/** World-first keys this lab holds: `${CapId}.${1|2|3}`, unique, in saved order, at most 24. */
+function readFirsts(v: Json | undefined): string[] {
+  if (!Array.isArray(v)) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const k of v) {
+    if (out.length >= CAP_IDS.length * 3) break
+    if (typeof k !== 'string' || seen.has(k)) continue
+    const m = FIRST_KEY.exec(k)
+    if (!m || !isCapId(m[1])) continue
+    seen.add(k)
+    out.push(k)
+  }
+  return out
 }
 
 function readContract(v: Json | undefined): TechContract | null {
@@ -360,6 +470,72 @@ function readYear(v: Json | undefined): TechYear | null {
   }
 }
 
+export function emptySilicon(): SiliconState {
+  return { goodwill: 50, lanes: {}, launch: null, ceiling: 0, lead: 0, applied: 0, last: null }
+}
+
+/** True when nothing differs from the default, so readTech leaves the member out. */
+export function isEmptySilicon(s: SiliconState): boolean {
+  return s.goodwill === 50 && Object.keys(s.lanes).length === 0 && s.launch === null && s.ceiling === 0 && s.lead === 0 && s.applied === 0 && s.last === null
+}
+
+/** A year as a rounded integer from 1800 to 2300, else 0. */
+function siliconYear(v: Json | undefined): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : 0
+  return n >= 1800 && n <= 2300 ? n : 0
+}
+
+function readSiliconYear(v: Json | undefined): SiliconYear | null {
+  const x = rec(v)
+  const year = x ? siliconYear(x.year) : 0
+  if (!x || !year) return null
+  return {
+    year,
+    index: clampN(num(x.index), 0, 10),
+    served: clampN(num(x.served), 0, 1),
+    depth: clampN(num(x.depth), -0.4, 0.4),
+    win: clampN(num(x.win), 0, 1),
+    step: clampN(num(x.step), -1.5, 3),
+    perf: clampN(num(x.perf), 0, 100),
+    quality: clampN(num(x.quality), 0, 100),
+  }
+}
+
+function readLaunch(v: Json | undefined): SiliconLaunch | null {
+  const x = rec(v)
+  const year = x ? siliconYear(x.year) : 0
+  return x && year && (x.id === 'undercut' || x.id === 'match') ? { year, id: x.id } : null
+}
+
+/** Lane discounts: only the four extra lanes (never `core`), 0 to 0.5 in cents, zeros dropped. */
+function readLaneDiscounts(v: Json | undefined): Record<string, number> {
+  const x = rec(v)
+  const out: Record<string, number> = {}
+  if (!x) return out
+  for (const lane of CHIP_LANES) {
+    if (lane.id === 'core') continue
+    const n = round2(clampN(num(x[lane.id]), 0, 0.5))
+    if (n > 0) out[lane.id] = n
+  }
+  return out
+}
+
+/** A complete, sane SiliconState from whatever is stored (the default for anything that isn't one). Never writes. */
+export function readSilicon(v: Json | undefined): SiliconState {
+  const d = rec(v)
+  if (!d) return emptySilicon()
+  const ceiling = num(d.ceiling)
+  return {
+    goodwill: clampN(num(d.goodwill, 50), 0, 100),
+    lanes: readLaneDiscounts(d.lanes),
+    launch: readLaunch(d.launch),
+    ceiling: ceiling > 0 ? clampN(ceiling, 0.6, 1.3) : 0,
+    lead: siliconYear(d.lead),
+    applied: siliconYear(d.applied),
+    last: readSiliconYear(d.last),
+  }
+}
+
 /** A complete, sane TechState from whatever is stored (missing for old or acquired companies). */
 export function readTech(v: Json | undefined): TechState {
   const d = rec(v) ?? {}
@@ -377,6 +553,7 @@ export function readTech(v: Json | undefined): TechState {
     return Number.isSafeInteger(value) && value <= MAX_TECH_SEQUENCE ? Math.max(max, value) : max
   }, 0)
   const savedSeq = Math.round(num(d.seq))
+  const silicon = readSilicon(d.silicon)
   return {
     v: TECH_VERSION,
     level: clampN(num(d.level, 25), 0, 100),
@@ -405,6 +582,8 @@ export function readTech(v: Json | undefined): TechState {
     yieldRate: clampN(num(d.yieldRate, 0.55), 0.3, 0.97),
     rented: clampN(Math.round(num(d.rented)), 0, 40),
     models,
+    caps: readCaps(d.caps),
+    firsts: readFirsts(d.firsts),
     safety: clampN(num(d.safety, 40), 0, 100),
     drugs,
     tests: Math.max(0, Math.round(num(d.tests))),
@@ -423,6 +602,7 @@ export function readTech(v: Json | undefined): TechState {
     oneOff: Math.max(0, num(d.oneOff)),
     oneOffs,
     seq: Math.max(drugSeq, Number.isSafeInteger(savedSeq) && savedSeq >= 0 && savedSeq <= MAX_TECH_SEQUENCE ? savedSeq : 0),
+    ...(isEmptySilicon(silicon) ? {} : { silicon }),
   }
 }
 

@@ -4,6 +4,7 @@
 import { yearlyNation } from './nation/yearly'
 import { yearlyAssets } from './assets'
 import { yearlyBusiness } from './business'
+import { landRivalWaves } from './business/tech-waves'
 import { yearlyCareer } from './careers'
 import { yearlyProfessions } from './professions'
 import { yearlyDevelopment } from './development'
@@ -65,6 +66,8 @@ export const YEARLY_HOOKS: [string, (g: GameState) => void][] = [
   ['workshop', yearlyWorkshop],
   ['corruption', yearlyCorruption],
   ['business', yearlyBusiness],
+  // Rival breakthroughs land after the business year, only for years after the present one (business/tech-waves.ts).
+  ['techWaves', landRivalWaves],
   ['development', yearlyDevelopment],
   ['investments', yearlyInvestments],
   // Personal and Family hedge funds book their year and queue one popup (business/hedge-year.ts).

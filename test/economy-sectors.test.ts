@@ -64,6 +64,7 @@ const SECTORS: Record<(typeof INDUSTRY_IDS)[number], Sector> = {
   neurotech: 'care',
   drones: 'technology',
   carbonCapture: 'energy',
+  devices: 'technology',
 }
 
 describe('economy sectors of the trades', () => {

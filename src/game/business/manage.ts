@@ -4,6 +4,8 @@ import { addHidden, addMoney, addStat, earnIncome, formatCents, formatMoney, log
 import { arrestPlayer } from '../crime'
 import { venueOwnerMenu } from './venues'
 import { isVenue } from './venues-data'
+import { sectorMenu } from './sector-menu'
+import { familyOf } from './sector-state'
 import { industryDemand, isIndustryLegal, marketOf } from '../data/markets'
 import { chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -19,6 +21,8 @@ import {
   citySaturation,
   densityRent,
   equipmentValue,
+  fabCost,
+  fabUpkeep,
   fxValue,
   insurancePremiumFor,
   LASTING_YEARS,
@@ -76,6 +80,7 @@ import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
 import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
 import type { Breakthrough } from './heavy-data'
+import { heavyStartsWave, INSIDER_WARNING } from './tech-wave-data'
 import { readMarketNews } from '../history/market-events'
 import { fieldFor, kindTrend, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
 import { demandTrend } from './product-data'
@@ -85,8 +90,11 @@ import { companyCreditLimit, companyLoanRate, queueReport } from './yearly'
 import { clampN, industryNoun, labelPlural, markBest, money, num, pct, plural, priceCapOf, rec, str, toJson, units } from './util'
 import { climateLine, dashboardRows } from './dashboard'
 import { franchiseMenu } from './franchise'
+import { labMenus } from './lab-menu'
 import { milestonesMenu } from './milestones'
 import { tidyNationalStrategy } from './national-view'
+import { FAB_MAX, readFabs } from './devices-data'
+import { devicesMenu } from './devices-menu'
 
 type Run = (g: GameState, a: Asset, b: BizState, input?: string) => void
 
@@ -548,7 +556,8 @@ function lineSubtitle(l: LinePull, total: number, trend: -1 | 0 | 1, beats: stri
 function leadOf(family: string, field: Field, year: number): number | undefined {
   const rec = field.heavy.find((r) => r.family === family)
   if (!rec) return undefined
-  const lead = heavyLead(rec)
+  // A patent on the kind holds rivals back at least until its shield ends (lab-state.ts shieldsOf).
+  const lead = Math.max(heavyLead(rec), ...(field.market?.shield ?? []).filter((x) => x.family === family && x.until > year).map((x) => x.until))
   return lead >= year ? lead : undefined
 }
 
@@ -557,7 +566,7 @@ function heavyAction(a: Asset, x: Breakthrough): MenuAction {
   const quote = (g: GameState) => {
     const b = readBiz(g, live(g, a))
     const years = heavyYears(b)
-    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(heavyOdds(g, b) * 100), lead: heavyLead({ year: g.year + years, years }) }
+    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(heavyOdds(g, b) * 100), lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
   }
   return act(a, `heavy.${x.name}`, x.name, '\u{1F52C}', {
     subtitle: (g) => {
@@ -566,7 +575,7 @@ function heavyAction(a: Asset, x: Breakthrough): MenuAction {
     },
     confirm: (g) => {
       const q = quote(g)
-      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone.`
+      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
     },
     disabled: (g, bb) => heavyBlock(g, bb, x.name, a.id),
     run: (gg, cur, bb) => {
@@ -1279,6 +1288,61 @@ function sellLinesAction(a: Asset, b0: BizState): MenuAction {
       refreshValue(cur, b)
       log(g, `${cur.name} sold ${plural(n, line.one, line.many)}.`, 'neutral')
       notice(g, 'Equipment Sold', `${cur.name} sold ${plural(n, line.one, line.many)} for ${formatMoney(refund)}.`, { emoji: '\u{1F4E4}' })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Chip fabs (device companies): the one capex lever of the trade. Sunk cost, owner only, never sold.
+
+/** Next year's expected profit change from one more chip fab: the chip saving less the upkeep. The quality it lifts is not in it. */
+export function fabGain(g: GameState, a: Asset): number {
+  return cachedHint(g, a, 'fab.gain', () => {
+    const b = readBiz(g, a)
+    const base = cachedHint(g, a, 'payback.base', () => bestPlan(g, b, { fast: true }).profit)
+    return bestPlan(g, { ...b, fabs: Math.min(FAB_MAX, readFabs(b.fabs) + 1) }, { fast: true }).profit - base
+  })
+}
+
+/** Why a fab can't be built now, or null. The cash rule reads the live company. */
+function fabBlock(b: BizState): string | null {
+  if (b.industry !== 'devices') return 'Only a device company builds chip fabs.'
+  if (readFabs(b.fabs) >= FAB_MAX) return 'Three fabs is the most a company can run.'
+  const cost = fabCost(b)
+  return b.cash < cost ? `Not enough company cash. A fab costs ${money(cost)}.` : null
+}
+
+export function buildFabAction(a: Asset): MenuAction {
+  return act(a, 'fab', 'Build a Chip Fab', '\u{1F3ED}', {
+    subtitle: (g) => {
+      const b = readBiz(g, a)
+      const n = readFabs(b.fabs)
+      if (n >= FAB_MAX) return `Three fabs built · upkeep about ${money(fabUpkeep(b))} a year`
+      return `${money(fabCost(b))} · upkeep about ${money(fabUpkeep({ ...b, fabs: n + 1 }))} a year · fab ${n + 1} of ${FAB_MAX}`
+    },
+    hint: (g) => {
+      const cur = live(g, a)
+      const b = readBiz(g, cur)
+      if (!hinting(g, cur) || !priceAndOutput(b) || b.industry !== 'devices' || readFabs(b.fabs) >= FAB_MAX) return null
+      const cost = fabCost(b)
+      const gain = fabGain(g, cur)
+      if (gain > 0 && cost / gain <= PAYBACK_MAX) return talentHint(g, 'Business', `Cost savings alone repay it in ${yearsText(cost / gain)}. Quality gains are extra.`)
+      if (gain > 0) return talentHint(g, 'Business', `The savings alone take over ${PAYBACK_MAX} years to repay it.`)
+      return talentHint(g, 'Business', "The savings don't cover the upkeep.")
+    },
+    disabled: (_g, b) => fabBlock(b),
+    confirm: (g) => `Build a chip fab for ${money(fabCost(readBiz(g, a)))}? It can't be sold.`,
+    run: (g, cur, b) => {
+      const cost = fabCost(b)
+      if (b.cash < cost) return noCash(g, cur, cost, 'a chip fab')
+      const gain = fabGain(g, cur)
+      if (!boardAllows(g, cur, b, { kind: 'capex', by: 'owner', amount: cost, gain: Number.isFinite(gain) ? Math.max(0, gain) : 0, label: `Build a chip fab for ${money(cost)}` })) return
+      b.cash -= cost
+      b.fabs = readFabs(b.fabs) + 1
+      b.valuation = valuationOf(b)
+      refreshValue(cur, b)
+      log(g, `${cur.name} built a chip fab.`, 'good')
+      notice(g, 'Fab Online', `${cur.name} paid ${money(cost)} for fab ${b.fabs} of ${FAB_MAX}. Upkeep for its fabs is about ${money(fabUpkeep(b))} a year.`, { emoji: '\u{1F3ED}', tone: 'good' })
     },
   })
 }
@@ -2168,6 +2232,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
   // National strategy programs are for product companies; financial firms run their own operations.
   const strategy = finance ? [] : [tidyNationalStrategy(nationalStrategyMenu(a), a)]
   if (isVenue(health.industry)) nodes.push(venueOwnerMenu(a))
+  if (familyOf(health.industry)) nodes.push(sectorMenu(a))
   if (finance) {
     nodes.push({ type: 'heading', id: `biz.financeH.${a.id}`, label: 'Financial Operations' }, ...financeNodes(g, a), staffMenu(a), expansionMenu(a), insuranceAction(a))
   } else if (isStudio(readBiz(g, a))) {
@@ -2195,7 +2260,7 @@ export function businessView(g: GameState, a: Asset): MenuNode[] {
     // Deep-tech companies add their R&D lab, funding rounds and the like (business/deeptech.ts).
     if (isDeepTech(readBiz(g, a))) nodes.push(...deepTechNodes(g, a))
     const franchise = franchiseMenu(a, health)
-    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
+    nodes.push(marketMenu(a), staffMenu(a), marketingMenu(a), productsMenu(a), ...(health.industry === 'devices' ? [devicesMenu(a, buildFabAction(a))] : []), ...labMenus(a, health), qualityMenu(a), expansionMenu(a), ...(franchise ? [franchise] : []), ...strategy, consultantAction(a), insuranceAction(a), cookBooksAction(a))
   }
   nodes.push({ type: 'heading', id: `biz.moneyH.${a.id}`, label: 'Money' })
   nodes.push(economicReportMenu(a))

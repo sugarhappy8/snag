@@ -3,7 +3,11 @@
 import { chance, rand } from '../rng'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
-import { DEEP_TECH, PROGRAMS, TRIALS, drugRegulator, maxStage, programDef, type ProgramDef } from './deeptech-data'
+import { benchYear, capWeight, modelRating, releasedRating } from './ai-bench'
+import { CAP_IDS, type CapId } from './ai-bench-data'
+import { bestRival } from './ai-bench-market'
+import { familyId } from './competition-roster'
+import { DEEP_TECH, PROGRAMS, TRIALS, drugRegulator, maxStage, modelGens, programDef, type ProgramDef } from './deeptech-data'
 import { dtInd, paceOf, rdScale, runwayYears, syncBiotechStage, techSkill } from './deeptech-core'
 import { repayGrants } from './deeptech-funding'
 import { timesDone, type Drug, type TechProgram, type TechState } from './deeptech-state'
@@ -20,6 +24,11 @@ export const MAX_PARALLEL = 8
 export function maxPrograms(b: Pick<BizState, 'outlets' | 'public'>, t: TechState): number {
   const sites = Math.max(1, totalOutlets(b as BizState))
   return clampN(2 + Math.floor(Math.log2(sites)) + (t.series >= 2 ? 1 : 0) + (b.public ? 1 : 0), 2, MAX_PARALLEL)
+}
+
+/** How many capabilities a lab can research at once: one per three lab slots, and always at least one. */
+export function trackLimit(b: Pick<BizState, 'outlets' | 'public'>, t: TechState): number {
+  return Math.max(1, Math.floor(maxPrograms(b, t) / 3))
 }
 
 /** Local yearly cost of a program at a steady pace. */
@@ -58,6 +67,10 @@ export function programBlock(b: BizState, t: TechState, def: ProgramDef): string
   const gate = def.gate(t, b.countryId)
   if (gate) return gate
   if (t.programs.some((p) => p.id === def.id && !p.target)) return 'Already running.'
+  if (def.track) {
+    const limit = trackLimit(b, t)
+    if (t.programs.filter((p) => programDef(dtInd(b), p.id)?.track).length >= limit) return `Your lab can research ${limit} ${limit === 1 ? 'capability' : 'capabilities'} at once.`
+  }
   if (t.programs.length >= maxPrograms(b, t)) return `Your lab can run ${maxPrograms(b, t)} programs at once. Finish or cancel one first.`
   return null
 }
@@ -141,6 +154,10 @@ export interface RdResult {
   newModel: number
   /** The stage moved up this year. */
   stageUp: boolean
+  /** Ids of the programs (not trials) that worked this year, in order (tech waves read the breakthrough-class ones). */
+  won: string[]
+  /** Drugs approved this year. */
+  approved: Drug[]
 }
 
 function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechProgram): number {
@@ -160,10 +177,11 @@ function finalOdds(g: GameState, a: Asset, b: BizState, t: TechState, p: TechPro
 export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechState, year: number): RdResult {
   const ind = dtInd(b)
   const pace = paceOf(t.pace)
-  const out: RdResult = { spend: 0, notes: [], headlines: [], wins: 0, losses: 0, newModel: 0, stageUp: false }
+  const out: RdResult = { spend: 0, notes: [], headlines: [], wins: 0, losses: 0, newModel: 0, stageUp: false, won: [], approved: [] }
   const stageBefore = t.stage
   const keep: TechProgram[] = []
   const finished: TechProgram[] = []
+  const fam = familyId(g.lifeId)
   for (const p of t.programs) {
     const cost = Math.round(p.cost * pace.cost)
     out.spend += cost
@@ -181,13 +199,14 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
     }
     const def = programDef(ind, p.id)
     if (!def) continue
-    const ctx = { t, countryId: b.countryId, year, roll: () => rand(g), company: a.name }
+    const ctx = { t, countryId: b.countryId, year, roll: () => rand(g), company: a.name, fam, rival: (y: number) => bestRival(fam, y, t.models) }
     const modelsBefore = t.models.length
     if (ok) {
       // Patents count what the plan was worth, not a crash budget on top (no valuation pump);
       // endless next-generation work mostly pays through better products, not the books.
       const nominal = programCost(b, t, def) * def.years
       t.done.push(p.id)
+      out.won.push(p.id)
       const line = def.win(ctx)
       out.wins += 1
       out.notes.push(`\u{2705} ${line}`)
@@ -222,6 +241,7 @@ function resolveTrial(g: GameState, b: BizState, t: TechState, p: TechProgram, o
     out.wins += 1
     if (d.phase >= 4) {
       d.approved = g.year
+      out.approved.push(d)
       t.hype = Math.min(100, t.hype + 25)
       const line = `${regulator.charAt(0).toUpperCase()}${regulator.slice(1)} approved ${d.name}! It goes on sale this year.`
       out.notes.push(`\u{1F389} ${line}`)
@@ -285,6 +305,8 @@ export function bestProgram(g: GameState, a: Asset, b: BizState, t: TechState): 
   let best: ProgramDef | null = null
   let score = -Infinity
   for (const def of PROGRAMS[ind]) {
+    // Capability research is the player's call: no manager, report choice or hint ever picks a track.
+    if (def.track) continue
     if (programBlock(b, t, def)) continue
     const yearly = programCost(b, t, def)
     // Don't bet the company: the first year of the program must fit in the money on hand.
@@ -293,6 +315,32 @@ export function bestProgram(g: GameState, a: Asset, b: BizState, t: TechState): 
     if (sc > score) {
       score = sc
       best = def
+    }
+  }
+  return best
+}
+
+/**
+ * The capability track that moves the lab's standing most per dollar: the weighted rating gain of one more
+ * research level on the next model (at the mean roll and no specialty, so it reveals neither) over the cost of
+ * its first two years. Only tracks the lab can start now count; null when none can be started. Pure.
+ */
+export function bestCapTrack(g: GameState, _a: Asset, b: BizState, t: TechState): CapId | null {
+  const year = benchYear(g)
+  const fam = familyId(g.lifeId)
+  const compute = Math.min(12, 2 * t.plant + 0.8 * t.rented)
+  let best: CapId | null = null
+  let score = -Infinity
+  for (const cap of CAP_IDS) {
+    const def = programDef(dtInd(b), `cap.${cap}`)
+    if (!def?.track || programBlock(b, t, def)) continue
+    const next = { cap, year, fam, gen: modelGens(t) + 1, level: t.level, compute, spec: 0, roll: 0.5, released: releasedRating(t.models, cap) }
+    const have = t.caps[cap] ?? 0
+    const gain = capWeight(cap, year) * (modelRating({ ...next, research: have + 1 }) - modelRating({ ...next, research: have }))
+    const value = gain / (2 * programCost(b, t, def))
+    if (value > score) {
+      score = value
+      best = cap
     }
   }
   return best

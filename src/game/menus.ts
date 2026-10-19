@@ -7,6 +7,7 @@ import { ASSET_KIND_VIEWS, ASSET_NODE_HOOKS, assetsMenu as baseAssetsMenu, shopp
 import { businessAssetSubtitle, businessAssetView, businessesMenu } from './business'
 import { occupationMenu } from './careers'
 import { developmentMenu, developmentNodes } from './development'
+import { actorLikenessNodes } from './special/actor-legacy'
 import { musicMasterNodes } from './special/music-rights'
 import { computerMenu } from './computer'
 import { ventureAssetSubtitle, ventureAssetView } from './computer/dev'
@@ -39,7 +40,7 @@ ASSET_KIND_VIEWS.membership = { subtitle: membershipAssetSubtitle, children: mem
 ASSET_KIND_VIEWS.venture = { subtitle: ventureAssetSubtitle, children: ventureAssetView }
 ASSET_KIND_VIEWS.invention = { subtitle: inventionSubtitle, children: inventionNodes }
 ASSET_NODE_HOOKS.subtitle = (g, a) => (isVisaLock(a) ? visaLockSubtitle(g, a) : null)
-ASSET_NODE_HOOKS.view = (g, a) => developmentNodes(g, a) ?? musicMasterNodes(g, a) ?? (isVisaLock(a) ? visaLockView(g, a) : luxuryAssetNodes(g, a))
+ASSET_NODE_HOOKS.view = (g, a) => developmentNodes(g, a) ?? musicMasterNodes(g, a) ?? actorLikenessNodes(g, a) ?? (isVisaLock(a) ? visaLockView(g, a) : luxuryAssetNodes(g, a))
 ASSET_NODE_HOOKS.extra = familyAccessNode
 
 /** Insert `extra` right before the node with id `beforeId` (or at the end if it is missing). */

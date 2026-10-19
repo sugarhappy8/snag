@@ -146,7 +146,7 @@ const FORKS_FLAG = 'timelineForks'
 const FORK_MARK = '@'
 
 /** The forks of this life's timeline, oldest jump first (years ascending). */
-export function timelineForks(g: GameState): TimelineFork[] {
+export function timelineForks(g: Pick<GameState, 'flags'>): TimelineFork[] {
   const raw = g.flags[FORKS_FLAG]
   if (!Array.isArray(raw)) return []
   const out: TimelineFork[] = []
@@ -190,7 +190,7 @@ export function timelineTag(g: GameState, year: number): string {
  * rolls new dice too; otherwise a jump would tell you how the year ends. '' for lives that
  * never jumped, and for every year that ended before the latest jump.
  */
-export function outcomeTag(g: GameState, year: number): string {
+export function outcomeTag(g: Pick<GameState, 'flags'>, year: number): string {
   return Number.isFinite(year) ? forkTag(timelineForks(g), year + 1) : ''
 }
 

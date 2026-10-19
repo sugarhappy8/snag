@@ -16,8 +16,8 @@ describe('real rival data', () => {
     for (const ind of INDUSTRY_IDS) expect(NATIONAL_INDUSTRIES.includes(ind), ind).toBe(marketDef(ind).scope === 'national')
   })
 
-  it('preserves all 33 curated industries with a real cast', () => {
-    expect(curated).toHaveLength(33)
+  it('preserves all 34 curated industries with a real cast', () => {
+    expect(curated).toHaveLength(34)
     for (const ind of curated) {
       const n = rivals.filter((b) => rivalIndustry(b) === ind).length
       expect(n, ind).toBeGreaterThanOrEqual(15)

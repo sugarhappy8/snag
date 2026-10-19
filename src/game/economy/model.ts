@@ -69,7 +69,7 @@ function classifySector(industry: string): Sector {
   // 'neurotech' holds 'tech', which the technology rule below matches first: decide it here. (biotech
   // holds it too and has always been technology; moving it would change every biotech company.)
   if (industry === 'neurotech') return 'care'
-  if (/software|gameStudio|semiconductor|aiLab|quantum|cybersecurity|drones|telecom|dataCenter|tech|comput/.test(industry)) return 'technology'
+  if (/software|gameStudio|semiconductor|aiLab|quantum|cybersecurity|drones|telecom|dataCenter|devices|tech|comput/.test(industry)) return 'technology'
   if (/clinic|biotech|health|homeCare|medical|pharma/.test(industry)) return 'care'
   if (/education|government|public|military|legal|law|police/.test(industry)) return 'public'
   if (/manufactur|robot|electricVehicles|spaceTech|packaging|furniture|auto|industrial|materials/.test(industry)) return 'industry'

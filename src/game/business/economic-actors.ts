@@ -1,6 +1,6 @@
 // A small persistent financial layer on the existing canonical rival roster, not a
 // second cast of companies. Only the annual world boundary creates or advances it.
-import { marketEventFactors } from '../history/market-events'
+import { marketEventFactors, type MarketFactors } from '../history/market-events'
 import { INDUSTRY_IDS, type Industry } from '../data/markets'
 import { normalizeRivals, RIVAL_LIMIT, rivalActorKey, type RivalActor, type RivalOutcome, type RivalPoint } from '../economy/actors-state'
 import { bound, economyState, initialCountry, sectorOf, type CountryEconomy } from '../economy/model'
@@ -10,7 +10,10 @@ import { COUNTRIES } from '../world'
 import { marketKey, marketStateOf, type MarketCtx } from './competition-core'
 import { marketDef } from './competition-data'
 import { activeRivals, familyId, rawPull, rosterOf, type Rival } from './competition-roster'
+import { waveFactorsFor } from './tech-wave-factors'
 
+/** What the tech waves do to a market's rivals (business/tech-waves.ts): nothing, unless advanceRivals passes the market's factors. */
+const NO_WAVE: MarketFactors = { demand: 1, costs: 1, value: 1 }
 const industries = new Set<string>(INDUSTRY_IDS)
 const countries = new Set(COUNTRIES.map(c => c.id))
 const MAX_MARKETS = 24, PER_MARKET = 8
@@ -53,7 +56,7 @@ function seededActor(r: Rival, market: RelevantMarket, year: number): RivalActor
     capacity: 1, adoption: round(bound(r.tech / 200, 0, 1)), strength: 1, outcome: 'steady', history: [], cause: 'Established operating business.' }
 }
 
-function advanceActor(old: RivalActor, r: Rival, m: RelevantMarket, opening: Record<string, CountryEconomy>, year: number): RivalActor {
+function advanceActor(old: RivalActor, r: Rival, m: RelevantMarket, opening: Record<string, CountryEconomy>, year: number, wave: MarketFactors = NO_WAVE): RivalActor {
   if (old.year >= year) return old
   const operatingCountry = m.scope === 'world' ? r.hq : m.scope
   const e = opening[operatingCountry] ?? opening[m.home] ?? initialCountry(m.home, year - 1), s = e.sectors[sectorOf(m.industry)]
@@ -68,10 +71,12 @@ function advanceActor(old: RivalActor, r: Rival, m: RelevantMarket, opening: Rec
     const skill = bound((r.quality / 100 + e.skills) / 2, .1, 1)
     // Rivals live through the same real booms and busts as the player (history/market-events.ts).
     const fx = marketEventFactors(m.industry, operatingCountry, year, m.scope === 'world')
-    const demand = bound(s.demand * fx.demand * (1 - .65 * m.pressure) * (.88 + .24 * skill), .1, 2.5)
+    // A tech wave lifts the rivals that sell it and the ones that supply it, and shrinks the ones it disrupts;
+    // a real brand's recorded years (the first branch) are never touched by it.
+    const demand = bound(s.demand * fx.demand * wave.demand * (1 - .65 * m.pressure) * (.88 + .24 * skill), .1, 2.5)
     const delivered = Math.min(old.capacity * s.availability * Math.min(1, s.workforce), demand)
     const revenue = delivered * (1.13 + skill * .18 + old.adoption * .12)
-    const running = delivered * .48 * s.costs * fx.costs + old.capacity * (.3 / (1 + old.adoption * .35) + .06 * e.wages)
+    const running = delivered * .48 * s.costs * fx.costs * wave.costs + old.capacity * (.3 / (1 + old.adoption * .35) + .06 * e.wages)
     const profit = revenue - running - old.debt * bound(e.rate + .025, .01, .35)
     let cash = old.cash + profit, debt = old.debt, capacity = old.capacity, adoption = old.adoption
     // Bank lending finances a bounded buffer, not unlimited loss support.
@@ -121,6 +126,8 @@ export function advanceRivals(g: GameState, opening: Record<string, CountryEcono
   }
   for (const m of markets) {
     const roster = rosterOf(familyId(g.lifeId), m.industry, m.scope), def = marketDef(m.industry)
+    // What the tech waves do to this market this year (one lookup per market; neutral with no wave).
+    const wave = waveFactorsFor(g, m.industry, m.scope, year)
     const active = activeRivals(roster, year).filter(r => !m.gone.has(r.id))
     // Existing actors (including failed firms) retain their slots until the roster's
     // canonical exit. This prevents a failed company from respawning on the next turn.
@@ -128,7 +135,7 @@ export function advanceRivals(g: GameState, opening: Record<string, CountryEcono
     for (const r of active.slice(0, PER_MARKET)) {
       const key = rivalActorKey(m.industry, m.scope, r.id)
       if (result.has(key) || result.size >= RIVAL_LIMIT) continue
-      result.set(key, advanceActor(old.get(key) ?? seededActor(r, m, year - 1), r, m, opening, year))
+      result.set(key, advanceActor(old.get(key) ?? seededActor(r, m, year - 1), r, m, opening, year, wave))
     }
   }
   return [...result.values()].sort((a, b) => a.key.localeCompare(b.key))

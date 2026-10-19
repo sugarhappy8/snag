@@ -5,6 +5,7 @@
 // packaging, shelf space, stock, support). What a line sells is product-market.ts (its kind's real
 // demand, its quality against the rivals' versions). Pure: no RNG, no state changes; names respect
 // the era (no apps in 1975) and each kind of product's real first year (product-data.ts).
+import type { Industry } from '../data/markets'
 import type { GameState } from '../types'
 import { marketKey } from './competition-core'
 import { eraFits } from './era'
@@ -53,6 +54,7 @@ const STYLE: Record<string, Style> = {
   manufacturing: 'goods',
   farm: 'goods',
   ecommerce: 'goods',
+  devices: 'goods',
   software: 'tech',
   gameStudio: 'tech',
   semiconductor: 'tech',
@@ -71,6 +73,27 @@ const STYLE: Record<string, Style> = {
 
 export function styleOf(industry: string): Style {
   return STYLE[industry] ?? 'service'
+}
+
+/**
+ * How fast a trade's lines age against rivals' versions (R&D 3.0). The 27 trades in STYLE keep their
+ * style (devices included: the ecosystem's OS ages 1.2 points a year); the other 29 get a deliberate one (STYLE and styleOf stay because they choose idea templates).
+ */
+export const AGEING: Record<Industry, Style> = {
+  foodTruck: 'food', restaurant: 'food', cafe: 'food', bakery: 'food', bar: 'food', brewery: 'food', grocery: 'food',
+  fashion: 'goods', beauty: 'goods', manufacturing: 'goods', farm: 'goods', ecommerce: 'goods', devices: 'goods',
+  autoShop: 'goods', construction: 'goods', logistics: 'goods', energy: 'goods', water: 'goods', recycling: 'goods', packaging: 'goods', furniture: 'goods', clinic: 'goods',
+  software: 'tech', gameStudio: 'tech', semiconductor: 'tech', aiLab: 'tech', robotics: 'tech', biotech: 'tech', spaceTech: 'tech',
+  electricVehicles: 'tech', quantum: 'tech', cybersecurity: 'tech', fusion: 'tech', neurotech: 'tech', drones: 'tech', carbonCapture: 'tech',
+  telecom: 'tech', dataCenter: 'tech', battery: 'tech', solar: 'tech', onlineBank: 'tech',
+  salon: 'service', gym: 'service', realEstate: 'service', marketing: 'service', hotel: 'service', entertainment: 'service',
+  education: 'service', petCare: 'service', homeCare: 'service', travel: 'service', casino: 'service', nightclub: 'service',
+  stripClub: 'service', investmentFirm: 'service', bank: 'service',
+}
+
+/** The style a trade's lines age by; an id that is not a trade reads styleOf. */
+export function ageStyleOf(industry: string): Style {
+  return Object.hasOwn(AGEING, industry) ? AGEING[industry as Industry] : styleOf(industry)
 }
 
 const BUNDLE: Record<Style, string> = { food: 'Combo', goods: 'Bundle', service: 'Package', tech: 'Suite' }
@@ -141,7 +164,7 @@ const VARIANTS: Record<Style, Template[]> = {
  * Names missing here are timeless (wedding cakes, home renovations, a tire center).
  */
 const ERA_FROM: Record<string, number> = {
-  '24/7 Access': 1995, 'AI Assistant Feature': 2016, 'API Platform': 2005, 'Agritourism Weekends': 1985, 'Alcohol-Free Lager': 1980,
+  '24/7 Access': 1995, 'AI Assistant Feature': 2016, 'API Platform': 2005, 'AR Glasses': 2019, 'Agritourism Weekends': 1985, 'Alcohol-Free Lager': 1980,
   'Analytics Dashboard': 2000, 'Athleisure Range': 2010, 'Automotive Chip Line': 1975, 'B2B Lead Generation': 2000, 'Balayage Specials': 2000,
   'Barrel-Aged Stout': 1995, 'Battery Storage': 2010, 'Battle Royale Mode': 2017, 'Birria Tacos': 2015, 'Bottomless Brunch': 1990,
   'Boutique Suites': 1985, 'Breakfast Burrito': 1975, 'Breakfast Sandwiches': 1970, 'Bridal Packages': 1960, 'Bulk Bins': 1970,
@@ -149,19 +172,19 @@ const ERA_FROM: Record<string, number> = {
   'Clean Beauty Line': 2012, 'Coding Assistant': 2021, 'Coffee Subscription': 2010, 'Cold Brew on Tap': 2012, 'Cold-Chain Freight': 1950,
   'Combination Therapy': 1960, 'Comedy Club Nights': 1970, 'Compliance Toolkit': 2000, 'Conference Center': 1950, 'Cozy Farming Game': 2010,
   'Craft Cocktail Menu': 2005, 'Crisis PR Desk': 1980, 'Cronut Knockoffs': 2013, 'Cross-Border Trucking': 1950, 'Data & Analytics Unit': 2005,
-  'Day Spa': 1985, 'Dedicated Launch Package': 1980, 'Detailing Bay': 1970, 'Developer Board': 1975, 'Developer Playground': 2020,
+  'Day Spa': 1985, 'Dedicated Launch Package': 1980, 'Desktop PC': 1985, 'Detailing Bay': 1970, 'Developer Board': 1975, 'Developer Playground': 2020, 'Device Operating System': 1981,
   'Diagnostic Imaging': 1972, 'Direct-to-Restaurant Deals': 1990, 'Drag Brunch': 2005, 'E-Bike Frames': 2005, 'EV Charging Network': 2010,
   'EV Servicing': 2012, 'Eco Packaging': 1990, 'Electric Pickup': 2019, 'Electric Vans': 2012, 'Enterprise Copilot': 2023,
   'Enterprise Tier': 2000, 'Esports Tournament': 2000, 'Executive Health Checks': 1960, 'Express Courier': 1970, 'Farm Harvester Bot': 2015,
   'Festival Catering': 1970, 'Fitness App': 2010, 'Fleet Contracts': 1950, 'Fleet Leasing': 1960, 'Free-Range Eggs': 1975,
   'Gluten-Free Range': 2005, 'Green Building': 1995, 'Green Hydrogen Pilot': 2018, 'Happy Hour': 1960, 'Hard Seltzer': 2016,
-  'Hazy IPA': 2012, 'Home Charger Bundle': 2012, 'Home Helper': 2020, 'Home Infusion Service': 1985, 'Hybrid Cloud Plan': 2015,
+  'Hazy IPA': 2012, 'Home Charger Bundle': 2012, 'Home Computer': 1977, 'Home Helper': 2020, 'Home Infusion Service': 1985, 'Hybrid Cloud Plan': 2015,
   'Image Generator': 2022, 'Immersive Art Show': 2017, 'Industrial Robot Arm': 1965, 'Influencer Network': 2012, 'Karaoke Room': 1985,
-  'Korean BBQ Bowl': 2008, 'Lash Extensions': 2005, 'Last-Mile Delivery': 2005, 'Launch Livestream Sponsorship': 2010, 'Limited Drop': 2010,
+  'Korean BBQ Bowl': 2008, 'Laptop': 1995, 'Lash Extensions': 2005, 'Last-Mile Delivery': 2005, 'Launch Livestream Sponsorship': 2010, 'Limited Drop': 2010,
   'Lip Kit Collab': 2015, 'Live-Stream Shopping': 2016, 'Loaded Fries': 1990, 'Long-Range Battery Pack': 2012, 'Low-Power IoT Chip': 2012,
   'Loyalty Card': 1985, 'Loyalty Program': 1981, 'Managed Detection Plan': 2015, 'Marketplace Integrations': 2010, 'Marketplace for Sellers': 2000,
   'Matcha Bar': 2014, 'Medical Devices': 1960, 'Memory Line': 1970, 'Men’s Grooming Bar': 2005, 'Men’s Grooming Kit': 1990,
-  'Mobile App': 2009, 'Mobile Mechanics': 1980, 'Mobile Port': 2009, 'Oat Milk Everything': 2018, 'Offshore Wind Farm': 2000,
+  'Mobile App': 2009, 'Mobile Mechanics': 1980, 'Mobile Phone': 1983, 'Mobile Port': 2009, 'Oat Milk Everything': 2018, 'Offshore Wind Farm': 2000,
   'Once-Weekly Version': 1990, 'Online Delivery': 1997, 'Open-World Sequel': 2000, 'Optimization Service': 1990, 'Organic Aisle': 1990,
   'Organic Certification': 1975, 'Patient Support Program': 1990, 'Payload Integration Service': 1980, 'Pediatric Formulation': 1960, 'Personal Training Packages': 1985,
   'Phishing Simulator': 2005, 'Physician Education Tour': 1960, 'Plant-Based Menu': 2010, 'Podcast Live Tour': 2010, 'Polar Orbit Service': 1970,
@@ -169,11 +192,11 @@ const ERA_FROM: Record<string, number> = {
   'Relocation Services': 1960, 'Remastered Classic': 2000, 'Rideshare Missions': 2015, 'Robot-as-a-Service Plan': 2015, 'Rooftop Bar': 1950,
   'Rooftop Solar for Homes': 1980, 'Runway Collection': 1950, 'Same-Day Delivery': 1995, 'Satellite Insurance Bundle': 1985, 'Sauna & Recovery Zone': 2005,
   'Scalp Spa': 2010, 'Seasonal Sour': 2008, 'Seasonal Spiced Latte': 2003, 'Security Suite': 1995, 'Short-Video Studio': 2016,
-  'Sidewalk Delivery Bot': 2017, 'Small Business Edition': 1995, 'Smart Home Gadget': 2012, 'Smart Meters': 2005, 'Smartphone SoC': 2007,
+  'Sidewalk Delivery Bot': 2017, 'Small Business Edition': 1995, 'Smart Home Gadget': 2012, 'Smart Meters': 2005, 'Smartphone': 2007, 'Smartphone SoC': 2007,
   'Sneaker Collab': 1985, 'Solar Panel Mounts': 1980, 'Spin Studio': 1995, 'Story DLC': 2006, 'Streetwear Capsule': 1990,
   'Subscription Boxes': 2010, 'Summer Music Festival': 1955, 'Sunscreen That Isn’t Greasy': 1950, 'Surgical Assist Arm': 1990, 'Sustainable Denim': 2008,
   'Taproom Tours': 1985, 'Tasting Menu': 1980, 'Telehealth': 2000, 'Threat Intelligence Feed': 2005, 'Trivia Night': 1975,
-  'University Access Program': 2016, 'Urgent Care Wing': 1975, 'VR Spin-Off': 2016, 'Vegan Burger': 1985, 'Video Production': 1970,
+  'University Access Program': 2016, 'Urgent Care Wing': 1975, 'VR Headset': 2016, 'VR Spin-Off': 2016, 'Vegan Burger': 1985, 'Video Production': 1970,
   'Virtual Tours': 1997, 'Vitamin C Serum': 1995, 'Voice Mode': 2023, 'Warehouse Picker': 2012, 'Weekend Brunch': 1950,
 }
 

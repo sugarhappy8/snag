@@ -7,6 +7,7 @@ import type { Asset, GameState, Job, Json } from '../types'
 import { isDeepTechIndustry } from './deeptech-state'
 import { sameRole } from './era'
 import { breakthroughByName } from './heavy-data'
+import { readChips, readFabs, type ChipSupply } from './devices-data'
 import { companyHedgeField, type CompanyHedge } from './hedge-record'
 import { industryDef, isIndustry, type StaffFocus } from './industries'
 import { clampN, num, rec, str } from './util'
@@ -314,6 +315,10 @@ export interface BizState {
    * greenhouse blocks... (industries with IndustryDef.line). Missing on old saves (0).
    */
   lines?: number
+  /** Chip fabs a device company has built, 1 to 3 (devices only; missing on old saves and when none: read it with devices-data readFabs). */
+  fabs?: number
+  /** The chips a sister company supplies this fiscal year (devices only; written once a year by Group Services, read it with devices-data readChips). */
+  chips?: ChipSupply
   history: YearRecord[]
   last: Statement | null
   /** Equity value of the whole company (dollars). */
@@ -384,6 +389,8 @@ export interface BizState {
   closedInventions?: Json
   /** Owner conversations and licensed entertainment operations (venues.ts). */
   venueOwner?: Json
+  /** Operations Desk record (business/sector-state.ts readSector). Missing until the first yearly hook. Read it with readSector. */
+  sector?: Json
   /** Opt-in professionally reviewed automatic succession readiness policy. */
   successionReview?: Json
   /** Individually priced manufactured inventions, separate from industry-wide boosts. */
@@ -411,9 +418,21 @@ export interface BizState {
   hedge?: CompanyHedge
   /** Franchise network (business/franchise.ts readFranchise). Missing until the first franchise is sold. */
   franchise?: Json
+  /** Research lab: Operations R&D, team, patents, credit ledger (business/lab-state.ts readLab). Missing until the lab first books something. Read it with readLab, write it with saveLab. */
+  lab?: Json
   /** Yearly dividend rule (business/dividend-policy.ts). Missing: none set. Read it with readDividend, never raw. */
   dividend?: DividendPolicy
+  /**
+   * Tech-wave valuation mood stamped when a year was booked (business/tech-waves.ts stampWave): v = the
+   * value factor (0.3-3), y = the fiscal year it was booked for, q = true when v is the stock grade (a quoted
+   * company: listed, or a division of a listed group, isQuoted). Missing: none. Never set on a deep-tech
+   * company. Validate it before use: bizOf does not re-normalize a current-version record.
+   */
+  wave?: WaveStamp
 }
+
+/** The tech-wave valuation mood of a booked year (BizState.wave); `q` marks the stock grade of a quoted company. */
+export type WaveStamp = { v: number; y: number; q?: true }
 
 export const BIZ_VERSION = 2
 
@@ -667,6 +686,13 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   const retired = readRetired(d.retired)
   // A year, or nothing: a damaged value must never leave Heavy R&D waiting for good.
   const heavyLast = typeof d.heavyLast === 'number' && Number.isFinite(d.heavyLast) && d.heavyLast >= 1800 && d.heavyLast <= 2300 ? Math.round(d.heavyLast) : null
+  // Chip fabs and the sister's chip record: devices only, and a damaged value is dropped, never repaired (devices-data.ts).
+  const fabs = readFabs(d.fabs)
+  const chips = readChips(d.chips)
+  // The tech-wave mood stamp (tech-waves.ts stampWave): both numbers finite, the factor clamped; never kept on deep tech.
+  const ws = rec(d.wave)
+  const waveStamp: WaveStamp | null = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && typeof ws.y === 'number' && Number.isFinite(ws.y) && !isDeepTechIndustry(industry)
+    ? { v: Math.round(clampN(ws.v, 0.3, 3) * 1e4) / 1e4, y: Math.round(clampN(ws.y, 1800, 2300)), ...(ws.q === true ? { q: true as const } : {}) } : null
   return {
     v: BIZ_VERSION,
     industry,
@@ -702,6 +728,8 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(heavyLast !== null ? { heavyLast } : {}),
     outlets,
     ...(num(d.lines) >= 1 ? { lines: Math.round(clampN(num(d.lines), 0, 1e9)) } : {}),
+    ...(industry === 'devices' && fabs > 0 ? { fabs } : {}),
+    ...(industry === 'devices' && chips ? { chips } : {}),
     history,
     last: readStatement(d.last),
     valuation: Math.max(0, num(d.valuation)),
@@ -741,6 +769,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.financeFirm && typeof d.financeFirm === 'object' && !Array.isArray(d.financeFirm) ? { financeFirm: d.financeFirm } : {}),
     ...(Array.isArray(d.closedInventions) ? { closedInventions: d.closedInventions } : {}),
     ...(d.venueOwner && typeof d.venueOwner === 'object' && !Array.isArray(d.venueOwner) ? { venueOwner: d.venueOwner } : {}),
+    ...(d.sector && typeof d.sector === 'object' && !Array.isArray(d.sector) ? { sector: d.sector } : {}),
     ...(d.inventionProducts && typeof d.inventionProducts === 'object' ? { inventionProducts: d.inventionProducts } : {}),
     ...(typeof d.inventionStaff === 'number' ? { inventionStaff: Math.floor(clampN(num(d.inventionStaff), 0, 1e9)) } : {}),
     ...(Array.isArray(d.inventionLicenses) ? { inventionLicenses: d.inventionLicenses } : {}),
@@ -752,7 +781,9 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
     ...(d.milestones && typeof d.milestones === 'object' && !Array.isArray(d.milestones) ? { milestones: d.milestones } : {}),
     ...companyHedgeField(d.hedge),
     ...(d.franchise && typeof d.franchise === 'object' && !Array.isArray(d.franchise) ? { franchise: d.franchise } : {}),
+    ...(d.lab && typeof d.lab === 'object' && !Array.isArray(d.lab) ? { lab: d.lab } : {}),
     ...dividendField(d.dividend),
+    ...(waveStamp ? { wave: waveStamp } : {}),
   }
 }
 
@@ -797,6 +828,20 @@ export function groupMultOf(b: Pick<BizState, 'group'>): number {
   const core = d.core
   const m = core && typeof core === 'object' && !Array.isArray(core) ? core.mult : undefined
   return typeof m === 'number' && Number.isFinite(m) ? clampN(m, 0.3, 3) : 1
+}
+
+/**
+ * True when the company's worth is a stock price: it is listed itself, or a division of a listed group
+ * (the group's share price is the sum of its divisions' valuations, conglomerate-state.groupValue). Reads
+ * the raw group record as groupMultOf does, with readListing's test for a listing, and needs no import of
+ * the group code. The tech waves reach such a company through the stock grade (`WaveStamp.q`), never the private one.
+ */
+export function isQuoted(b: Pick<BizState, 'public' | 'group'>): boolean {
+  if (b.public) return true
+  const d = rec(b.group), core = rec(d?.core), id = str(d?.id)
+  if (!d || !core || !id || str(core.id, id) !== id) return false
+  const l = rec(core.listing)
+  return !!l && Math.round(num(l.sharesOut)) > 0 && num(l.sharePrice) > 0
 }
 
 /**

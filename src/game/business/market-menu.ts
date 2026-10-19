@@ -13,6 +13,7 @@ import { marketOwner, marketViewOf, shareText, type MarketView, type RivalView }
 import { acquireRival, acquisitionGains, acquisitionQuote, offensiveValue, OFFENSIVE_EDGE, raidValue } from './competition-moves'
 import { rivalLines } from './product-market'
 import { industryDef } from './industries'
+import { shieldsOf } from './lab-state'
 import { cached, hinting, live, mAct } from './market-menu-kit'
 import { continentOf } from './market-regional'
 import { demandWeights, hasSupplyChain, MODE_LABEL, MODE_TERM } from './market-reach'
@@ -28,6 +29,7 @@ import {
 } from './market-view'
 import { bizWorth } from './economy'
 import { readBiz, type BizState } from './state'
+import { waveLines } from './tech-waves'
 import { isDeepTech } from './deeptech-state'
 import { money, pct, plural, stars } from './util'
 
@@ -111,6 +113,8 @@ export function overviewMenu(a: Asset): MenuGroup {
           '\u{1F3DB}\u{FE0F}',
         ),
       )
+      // At most three tech-wave rows (the history table can have several live in one trade).
+      for (const [i, line] of waveLines(g, b).slice(0, 3).entries()) rows.push(info(`biz.mkt.ov.wave.${i}.${a.id}`, line, '\u{1F30A}'))
       rows.push(info(`biz.mkt.ov.era.${a.id}`, `It's ${eraOf(g.year).label}. ${v.scope === 'world' ? 'The business is global: customers and rivals are everywhere.' : `The business is local: you compete with everyone else in ${v.place}.`}`, '\u{1F570}\u{FE0F}'))
       return rows
     },
@@ -177,7 +181,7 @@ export function segmentsMenu(a: Asset): MenuGroup {
           r.mine ? '\u{1F4CD}' : '\u{25AB}\u{FE0F}',
         ),
       )
-      const mine = mySegment(b)
+      const mine = mySegment(b, v.index)
       const open = rows.filter((r) => !r.mine && r.me === 0 && r.weight >= 0.12)[0]
       nodes.push(info(`biz.mkt.seg.tip.${a.id}`, open ? `Room to move: ${open.label.toLowerCase()} is ${pct(open.weight)} of the money and you have none of it. Prices and quality decide your segment.` : `You sit in ${rows.find((r) => r.id === mine)?.label.toLowerCase() ?? 'the middle'}. Charging much more or less, or changing quality, moves you.`, '\u{1F4A1}'))
       return nodes
@@ -365,7 +369,8 @@ export function rivalsMenu(a: Asset): MenuGroup {
 
 /** What a rival sells, best-selling kinds first, with its quality in each: 'Sells: Street Lighting (64) · Hydro Dam (58)'. */
 function productsLine(g: GameState, b: BizState, r: RivalView): string {
-  const lines = rivalLines(r, b.industry, marketKey(b), g.year)
+  // A kind one of the company's patents holds isn't sold by anyone yet (lab-state.ts shieldsOf).
+  const lines = rivalLines(r, b.industry, marketKey(b), g.year, shieldsOf(b))
   if (!lines.length) return 'Sells: its basic range (no product lines of note yet)'
   const shown = lines.slice(0, 4).map((l) => `${l.family} (${l.quality})`)
   return `Sells: ${shown.join(' \u{00B7} ')}${lines.length > 4 ? ` \u{00B7} +${lines.length - 4} more` : ''}`

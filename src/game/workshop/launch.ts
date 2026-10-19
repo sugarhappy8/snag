@@ -11,6 +11,8 @@ import { talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, Json } from '../types'
 import { getCountry, randomFirstName, randomLastName } from '../world'
 import { businessAssets } from '../business/state'
+import { workshopWaveFor } from '../business/tech-wave-data'
+import { announceWave } from '../business/tech-waves'
 import { CATEGORIES, stars, type Category, type IdeaDef } from './catalog'
 import {
   COMPANY_MARGIN, CROWD_GOAL, CROWD_MARGIN, PITCH_BOOST, crowdFans, crowdGoal, crowdOdds, curveSpec, deliveryFailOdds, expectedPeak, firstYearRevenue,
@@ -218,6 +220,17 @@ export function beatHistory(g: GameState, ws: Workshop, def: IdeaDef): void {
   const when = early ? `${early} year${early === 1 ? '' : 's'} before anyone else ${def.future ? 'could build one' : 'thought of it'}` : 'just before anyone else could'
   notice(g, '\u{1F3C6} You Beat History!', `${def.emoji} The ${def.name} reached the world ${when}. In this timeline, it's yours. ${def.future ? 'The future has your name on it.' : 'History books, update your files.'}`, { emoji: '\u{1F3C6}', tone: 'good' })
   log(g, `I beat history: the ${def.name} is mine.`, 'good')
+  announceWorkshopWave(g, def)
+}
+
+/**
+ * A first that the company markets would feel starts a wave: a history first a 'workshop' wave, a future
+ * win a 'race' wave, both worldwide (an invention has no country). The "You Beat History!" popup above is
+ * the only notice. Ideas with no entry in WORKSHOP_WAVES write nothing.
+ */
+function announceWorkshopWave(g: GameState, def: IdeaDef): void {
+  const w = workshopWaveFor(def)
+  if (w) announceWave(g, { kind: w.kind, source: def.future ? 'race' : 'workshop', origin: def.id, name: def.name, size: w.size, market: 'world' })
 }
 
 function gone(g: GameState, ws: Workshop, b: Bench): void {

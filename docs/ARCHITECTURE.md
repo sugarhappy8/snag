@@ -68,7 +68,7 @@ src/
     data/locales.ts      Per-country culture (school naming, exams, emergency number, holidays, food,
                          sports, transport, snow, landmarks...); data in data/locales/<region>.ts.
                          Player-facing text must use localPick/fillLocal/localTerm, never US defaults
-    business.ts business/*.ts   Start/buy/run companies in 51 industries; yearly sim + Annual Report.
+    business.ts business/*.ts   Start/buy/run companies in 56 industries; yearly sim + Annual Report.
                          Actions that spend/earn company cash move b.cash AND add to yearCosts/
                          yearIncome (for the P&L); simulateYear must not move that cash twice.
                          Owner payouts are capped at cash beyond company debt (no loan-then-bankrupt).
@@ -79,7 +79,7 @@ src/
                          match the resolvers; price promises (util.priceCapOf) cap price until booked.
                          ownerTalent(g, b, id): Cooking (+food quality), Leadership (+morale) perks
     business/deeptech*.ts  8 deep-tech industries (DEEP_TECH_IDS): state in Asset.details.tech
-                         (deeptech-state readTech/TECH_VERSION — bump it when TechState gains fields);
+                         (deeptech-state readTech/TECH_VERSION — bump it when TechState gains fields (currently 4));
                          data, core, rd, funding, sim, events, menu, manager, found modules. Investor and
                          grant money sits in TechState.venture (the R&D account), never in b.cash; the
                          valuation nets out investors' 1x preference itself (so BizState.pref stays 0 for
@@ -89,9 +89,31 @@ src/
                          classic plan (classicSlots()). Missing deep-tech demand defaults by income
     business/rd.ts products.ts  Product R&D with no yearly cap (BizState.rd projects, endless era-gated
                          ideas, a fixed development cost per idea) and the range's running costs
+    business/heavy-rd.ts heavy-data.ts  Heavy R&D: a rare breakthrough (5 per trade), its records in
+                         g.flags, the rival arrival schedule and the demand pulse (see "Business growth")
+    business/lab-*.ts    R&D 3.0 (BizState.lab): lab-data.ts constants and tables, lab-state.ts the stored
+                         state and its readers, lab-rules.ts prices, odds, blocks and values (pure),
+                         lab-year.ts bookings and actions, lab-text.ts copy, lab-menu.ts the Research &
+                         Operations screen (see "Business growth")
     business/product-market.ts product-data.ts  Product lines that compete head to head: kinds of
                          product with real-history demand curves, line quality vs the rivals'
                          versions, rivals' offerings, stacking, who loses customers (see "Business growth")
+    business/devices-data.ts devices-specs.ts devices-menu.ts  Device and Platform trade: chip terms,
+                         fabs, OS pull, spec sheets (see "Devices and chips" below)
+    business/heavy-rd.ts heavy-data.ts  Heavy R&D: five breakthroughs per trade that a product company
+                         can pioneer, kept as records in g.flags['heavy.<trade>|<market>'] (see
+                         "Heavy R&D" below)
+    business/tech-waves.ts tech-wave-factors.ts tech-wave-data.ts history/tech-waves.ts  Tech waves:
+                         breakthrough-class events that move whole company markets together, in flags
+                         techWaves and techBase and BizState.wave (see "Tech waves" below)
+    business/ai-bench*.ts scorecard.ts deeptech-bench.ts  AI Lab 2.0: capability ratings and benchmark
+                         generations, the rival lab board, world firsts and the Benchmarks lines (see
+                         "AI lab benchmarks" below)
+    invest/wave-stocks.ts invest/clock.ts business/wave-insider.ts  Tech waves for listed stocks: the
+                         sector table and the level folded into the stock seam, the one market clock, and
+                         the founder's insider rule (see "Tech waves and stocks" below)
+    business/sector-*.ts  Sector families: the Operations Desk of 18 food, care and utility trades, kept in
+                         BizState.sector (see "Sector families" below)
     business/board*.ts   Boards, mandates, votes and smart hired CEOs (BizState.board; see below)
     business/conglomerate*.ts  Groups of the player's companies (BizState.group copies; see below)
     business/share-classes.ts share-classes-menu.ts  Share classes of the player's company: the votes
@@ -370,7 +392,7 @@ booms and busts. In history years `economy.exchangeMove` is the real index retur
 companies move with the real market. Nothing is invented for the future, and 2026 lifts only
 AI-exposed markets. When an event first hits a country hard, the yearly pass announces it once
 (`market.events` flag, deterministic notice id) with each company's exposure; the Annual Report
-and Market & Competition list the year's events.
+and Market & Competition list the year's events. Tech waves (below) add the same read-only lines.
 
 `history/markets*.ts` overlays real historical index/sector crashes, gold, housing, inflation,
 rates, exchange closures and expropriation on `invest/engine.ts`. Procedural markets start in
@@ -497,6 +519,327 @@ tariffs, red tape, currency exposure, capacity and saturation constrain them. Pu
 screen's concentration, leaderboard, segments, regions, history and profiles. Optional fields in
 `MarketState` keep old saves valid.
 
+### Heavy R&D (business/heavy-rd.ts, heavy-data.ts)
+
+Each product trade has five breakthroughs (`heavy-data.ts`, for example a liquid-cooled GPU hall or
+an autonomous agent platform) that a company can spend years and a fixed, large budget on. A hit is a
+`HeavyRecord` (catalogue name, launch year, years taken, quality, cost, the pioneer's asset id) stored
+as a list in `g.flags['heavy.<trade>|<market>']`; it is read through `readHeavy` (validated, clamped,
+bounded) and written through `addHeavy`. The record drives the kind's demand curve (`heavyLevel`),
+and `heavyPulse` lifts the market's potential in `marketCtxFor` (at most +40%, building over three
+years, holding eight, then fading). Rivals follow on `heavyArrival` (later for smaller tiers) and the
+first one to follow is reported once in the life log; the pioneer's launch is announced in
+`market.news`, and `heavyWorldFlags` carries both the records and the news to the heirs. Only product companies take part: `heavyEligible` leaves out deep
+tech, finance firms and game studios, which keep their own kind of R&D.
+
+### Tech waves (business/tech-waves.ts, tech-wave-data.ts, history/tech-waves.ts)
+
+A tech wave is a breakthrough big enough to move whole company markets together, as the real ones did:
+demand for the trade that sells it, cheaper inputs, higher valuations, deep-tech investors chasing it,
+rivals following, and the companies it replaces losing customers. It applies to every company the same
+way (player, NPC, deep tech, rivals); listed stocks take a sector price level from the same waves (see
+"Tech waves and stocks" below).
+
+Records. A `TechWave` (`kind`, `name`, `source`, `year`, `market`, `size`, `hype`, `delivery`, `last`,
+optional `origin`, `home`, `skip`, `mature`) lives in the list `g.flags.techWaves`, at most 64, always
+replaced and never edited in place. The 23 kinds are in `tech-wave-data.ts` (`WAVE_KINDS`): each names
+the trades that play three roles, **core** (sells the breakthrough), **supply** (suppliers and
+complements) and **disrupted** (the incumbents it replaces), read through `roleOf`. A static table of
+11 real waves (`history/tech-waves.ts`, the transistor and television through mRNA and GLP-1) covers
+1946-2024 with control points for hype and delivery and its own reach abroad; it needs no stored
+record and is quiet in 1962-1974, 2001-2005 and from 2025 on, where only written waves speak.
+
+Five writers, all through one idempotent `announceWave` (id from source, kind, year and a hash of the
+origin, so a second call returns the stored wave and writes nothing): a Heavy R&D launch listed in
+`HEAVY_WAVES` (a hook in `advanceHeavy`, the pioneer only and only soon after the catalogue's real
+date; `skip` names the one trade whose demand term is left out in that market, because `heavyPulse`
+already lifts it, and where the wave's kind disrupts that trade the trade is left out whole, so a pioneer is never hurt by its own breakthrough); a deep-tech milestone in `DEEPTECH_WAVES`, an approved drug with a big peak, or a
+lab's first model at the frontier (`afterResearch`); a Workshop first (`WORKSHOP_WAVES`, source
+`workshop`) or a future Workshop win (source `race`); and a seeded rival landing (`landRivalWaves`, a
+`YEARLY_HOOKS` entry for years after 2026 only, so history years never get an invented rival wave).
+`announceWave` refuses an unknown kind, a 65th wave, a third non-rival wave in one year, and a heavy,
+Workshop or race wave of a kind a history row already covers that year. Costs are never skipped.
+
+Hype and delivery. A new wave starts at hype `0.3 + 0.7 size` and delivery 0. `advanceTechWaves`
+runs once a year at the end of `yearlyBusinessImpl` (and on its no-company return), behind the `last`
+marker. Delivery moves toward what really sold (a heavy record's adoption curve, a deep-tech lab's
+share against a quarter of its market), by at most 0.25 a year; a Workshop, race or rival wave, or one
+whose company or record is gone, gains `0.08 + 0.22 u` from a seeded draw with a 25% stall year (a stall cools hype only while delivery is under 0.9, so a delivered wave still matures).
+Hype closes on delivery (faster when it lags), so a premium unwinds only when the breakthrough did not
+ship, never just because a year went by. Five mature years settle a wave into `techBase` (permanent
+demand and cost factors per `trade|market`, folded at the wave's own market; `waveFactors` also reads the `world` entry in every market, so a settled world wave leaves no cliff in a national-scope trade); a wave still under 0.1
+delivery after six years is dropped. A delivery gain also feeds the home economy a small `innovation`
+amount (never for Workshop or race waves).
+
+One formula. `waveFactors(trade, market, year, waves, base, worldMarket)` is pure and returns
+`{ demand, costs, value }` per trade, multiplied over every live wave and history row and clamped to
+`FACTOR_BOUNDS` (value 0.3-3, demand 0.45-1.8, costs 0.75-1.5), with one shared frozen neutral when
+nothing applies. Reach: market `world` reaches every country in full; a country wave is 1 at home and
+`0.35 + 0.4 x delivery` elsewhere; history rows carry their own. World-scope trades take history
+demand at a third, because their size curves already carry their booms. `waveFactorsFor(g, ...)` adds
+`techBase`. The readers (`tech-wave-factors.ts`, a leaf module so the low-level market code can import
+it without the company economy) are `readTechWaves` and `readTechBase`: they validate every field,
+drop damage, clamp, cap lengths, never throw and never write, and cache by the raw stored array or
+object (every writer replaces it), with a memo per trade, market and year on the validated list.
+
+Where each reader applies its factor, once and with its own clamp: demand only in
+`economy.marketCtxFor` (on the spread copy after `buildCtx`, whose cache stays free of game state,
+together with the heavy pulse: `clampN(heavyPulse x demand, 0.45, 1.8)`); costs only in
+`dynamics.nationalMarket` (`clampN(events.costs x costs, 0.75, 1.5)`); value in `economy.valuationOf`,
+through `BizState.wave` (`{ v, y }`, stamped by `stampWave` when a classic company's year is booked,
+never for deep tech or a quoted company, and validated on read) with history waves read directly, and
+for deep tech in `deeptech-core.industryCycle`'s `wave` echo (value only). A quoted company is one listed
+itself or a division of a listed group (`state.isQuoted`), because a group's share price is the sum of its
+divisions' valuations: its valuation reads a stock-grade stamp (`q`) and no history row, and `operatingValue`
+asks `industryCycle(..., 'stock')`, so it follows the sector level its peers show; rivals in
+`economic-actors.advanceRivals`, which passes the factors to `advanceActor` for non-real rivals;
+fast-follower entrants through `waveNewcomers` (competition.ts, one per delivery level crossed, never for
+a heavy wave, which has rivals follow on `heavyArrival`);
+and regulators through `waveScrutiny`, which multiplies `antitrustOf`'s chance (`antitrustChance`
+itself is unchanged).
+
+What the player reads. `waveLines` is pure: at most one line in the Annual Report and three rows in
+Market Overview, two short sentences with the demand, cost and value changes, and any line the era
+check flags for that country and year is skipped. Deep-tech and rival waves post a `wave-<id>`
+`MarketNews` item only when they touch a player company's trade or came from the player.
+
+Heirs and saves. `waveWorldFlags` hands the validated waves and settled factors to the next generation
+(never `market.news`, which `heavyWorldFlags` already carries). Draws come from `seeded(...)` keyed by
+`familyId(g.lifeId)` plus `outcomeTag(g, year)`, never `g.rng`, so heirs share them and a Time Machine
+fork rerolls only the unfinished year. `techWaves`, `techBase` and `BizState.wave` are optional,
+bounded and validated on read, `SAVE_SCHEMA` stays 2, and a life with no company writes none of them.
+
+### Tech waves and stocks (invest/wave-stocks.ts, invest/clock.ts, business/wave-insider.ts)
+
+Release 1b. When a breakthrough lands, listed stocks, index funds, fund returns, single-stock and index option
+settlements, the Investing talent's gut and the player's own listed company move with the wave's sector level, and
+a founder who trades ahead of their own launch is an insider. Spec `docs/superpowers/specs/2026-10-19-waves-stocks-design.md`;
+the plan's decisions P1 to P11 refine it and win where they differ.
+
+The trail and `nx`. Each `TechWave` keeps its last six steps (`trail`, `[year, hype, delivery]`, oldest first) and
+one projected next step (`nx`, `[hype, delivery, fork tag]`), both optional and validated by `readTechWaves`.
+`stepWave` is the delivery and `nextState` path `advanceTechWaves` runs, extracted so `projectWave` can run the
+same step at `last + 1` ahead of time (a wave about to drop projects neutral, P2). `stateAt` reads the trail for a
+year up to `last`, `nx` after it while its tag equals `nextStepTag` (the Time Machine fork tag of `outcomeTag`),
+else the current state. So a level read before the yearly step (funds, the gut) and after it (quotes) is the same
+number, and a jump to another timeline leaves `nx` ignored until the next step is written.
+
+The level. `stockLevelFor(g, trade, market, year)` is `clamp(S x Product over waves (1 + STOCK_BETA x (v_w - 1)), 0.3, 3)`
+with `STOCK_BETA = 1.5` and `v_w` one wave's own value factor from `effectsOf` (the per-wave product, P1: one wave
+gives the spec table, and a settle keeps the level with several waves live). A heavy wave never disrupts its pioneer
+trade at any exchange (P9, applied once in `waveLevels`). History rows count only from `PRESENT_YEAR`, because the
+stock tables already carry the real booms (S6). A settled wave leaves `TechBase.stock` (0.3 to 3 like the level itself, so a settle keeps it; missing is 1)
+and no scheduled fade (S7); it keeps its reach (P4): the `|world` entry counts in full everywhere, a country entry
+in full at that country and at 0.75 of its strength in other countries, never in the `world` market. The reader is
+pure, memoized per validated list and returns exactly 1 with no wave and no settled factor.
+
+The sector table and the seam. `SECTOR_TRADE` maps the 35 `SectorId`s to one trade or none (23 mapped, 12 none: banks,
+insurance, mining, hotels, airlines, shipping, agri, property, supermarkets, fashion, cosmetics, leisure).
+`waveStockFactor(g, secId, year)` reads the sector of a company id or a `~B` share-class line (`companyKey`) and
+its exchange's home market; pennies, coins, bonds, savings, gold and property trusts never parse as engine companies
+and read 1. The level is folded into the two functions of `invest/shocks.ts`, `shockFactor` (times
+`waveStockFactor`) and `indexShockFactor` (times `waveIndexFactor`), so quotes, holdings, stock history, bet
+settlement, index options, `marketMove` (every fund strategy and the hedge funds) and the gut agree by construction.
+The index tilt is `1 + sum over the stocks listed that year of (L - 1) / n`, clamped 0.5 to 1.5 with
+`n = max(4, slotPlan(info).length)`; it reads the listing (`listedSectors`), never `slotPlan`, because a real
+company sits in a slot of another sector (P10). Option premiums (`optionPrice`, `indexLogSamples`) take no game
+state and are unchanged (S9). The gut's cache key gains `waveSignature(g)`.
+
+The clock. `invest/clock.ts` is a leaf (`marketYearOf`, `marketFamily`, `marketAnchor`, `bookedMarketMove`;
+`fund-model.ts` re-exports the first two). From `PRESENT_YEAR`, `economy.exchangeMove(g, c, fiscal)` is the engine's
+own move of market year `fiscal + 1`, the year the Stocks screen and the funds show at the birthday that books
+fiscal year `fiscal`, from the family seed (an heir's listed company sees the family's market). It carries no shock,
+macro or wave term; history years keep their old code. `conglomerate-year.ts` follows because it calls the same function.
+
+The quoted company. A company listed itself, or a division of a listed group, takes the wave through its fundamental
+with a stock-grade stamp: `stampWave` writes `{ v, y: fiscal, q: true }` with `v = stockLevelFor` read at
+`marketYearOf(fiscal)` (P5; `y` stays the fiscal year, the match key against the last booked record).
+`valuationOf` uses the stamp only when `q` is set and `y` equals the last booked year, else the mood is 1 (C-12); an
+unquoted company ignores a stock-grade stamp. `industryCycle(g, ind, year, 'stock')` gives deep tech the same grade,
+and `waveLines` says `price` instead of `value` for a quoted company. There is no second level on its price. The
+price blends half its last price and half a fundamental that now carries the wave, so it closes the gap by half each
+booked year while peers jump at once. That lag is deliberate: own buys pay `max(price, fundamental) x 1.03`, so the lag is
+no cheap entry, and own-listing keeps spec D12 as written.
+
+The insider rule. `announceWave` takes an optional `by` (the originating asset id), passed by the Heavy R&D launch and every
+deep-tech writer (program wins, drugs, the lab's first frontier model, the AI firsts of `claimFirsts` and the chip leap
+of `afterYearSilicon`); for a new wave it calls `waveInsiderCases` after the news. In the announcement year, for a
+founder (`founderName`, not acquired) or CEO of the player's own company (a hired CEO or a plain owner is no insider),
+each listed stock on the player's exchange that is core or supply for the wave's kind, with shares bought in that year
+or the year before (`insiderPositions(..., { freshOnly: true })`: open calls, longs, index calls), becomes a case when the
+wave lifts it by at least 0.5% and the gain tops `local(g, 1000)`; the three largest stakes win. `openInsiderCase` in
+`special/politics.ts` builds an `InsiderCase` (cause `wave`, optional `role` and `note`, id `wave-<hash>`, office `mayor`,
+the inert default) and applies the same hidden effects as the other two builders; exposure, the regulator, frozen bets,
+held money, give-back and the arrest are the existing code. The case lives in the owner-stamped politics profile, so an
+heir never inherits it, and it does not make the player a politician. `INSIDER_WARNING` (a constant in
+`tech-wave-data.ts`, so `manage.ts` and `deeptech-menu.ts` never import `politics.ts`) is shown in the Heavy R&D confirm
+when the launch would still fall inside the wave window (`heavyStartsWave`) and in the confirm of a deep-tech program
+that has a wave.
+
+The tag, the clause and the news. Pure reads of the same numbers: `Quote.wave` (set in `listing`, shown as one row
+after the sector row, "Frontier AI wave: sector +12%"), the clause on `marketLine` ("... wave: index +3%") and one news
+line a year (`waveNews`, the listed sector with the biggest wave-driven move, at least 3%). Each is dropped when it
+rounds to nothing or `anachronismsIn` flags it for a country that trades on the exchange.
+
+Priority 0 notes. C-03 (personal gains omit capital-gains tax): the three new files add no sell, realize or money path,
+only a bounded mark (at most 15% a step) that realizes through existing paths; a test reads them and asserts none
+calls `addMoney`, `earnIncome`, `realize` or `spend`. C-04 (bond maturity pays the marked price): bonds never reach
+a level, and a test holds one through maturity with a live wave. C-12 (stale booked marks): the stock-grade stamp
+counts only for the last booked year, and the level does not depend on the order of the yearly hooks.
+
+Not in this release: penny stocks, property trusts, coins, gold, bonds and savings (no wave term), option premiums
+that see waves, a per-stock beta (one `STOCK_BETA`), put-side insider cases on disrupted sectors, and Workshop,
+race and rival waves as insider origins. Heirs get the waves and the level through the existing validated readers
+(`waveWorldFlags`), and `trail`, `nx`, `stock` and `q` are optional, so an old save loads flat and `SAVE_SCHEMA` stays 2.
+
+### Devices and chips (business/devices-*.ts)
+
+`devices` is the 56th trade (last in `INDUSTRY_IDS`, so no existing index moved), the Device and Platform
+Company, on the classic product-lines engine so that Heavy R&D and the Products menu work unchanged. It sells
+eight dated kinds (`DEMAND` in `product-data.ts`, first years in `ERA_FROM`): Home Computer 1977, Mobile Phone
+1983, Desktop PC 1985, Laptop 1995, Smartphone 2007 (it follows the `smartphone` technology curve), VR Headset
+2016, AR Glasses 2019 and the Device Operating System 1981 (it follows `homeComputer`). `MARKETS.devices` is a
+world market with `network` 1.5. `devices-data.ts` is a pure leaf with no runtime imports: the constants, the
+chip rules and `kindReference`, a private table of each kind's market price in 2026 dollars.
+
+One chip source. `chipSource` takes the cut of the own fabs (`FAB_CUT` by fab count, at most 3) and the cut of
+one sister (`SISTER_CUT` by its `TechState.stage`, times its `cover`) and the larger wins, own fabs on a tie.
+They are never summed. The cut applies to the chip share of unit cost (`CHIP_SHARE` .35), so `chipCostFactor` is
+never below .895, and with the dominance saving (`SCALE_SAVING` .10) never below .80. `chipTerms` adds the node,
+the yield and the performance bump over the market's chips (`marketNode(year)`, `MARKET_YIELD` .70), and a
+quality `lift` of `LIFT_K` .4 per point, at most `LIFT_MAX` 6. Performance has that one channel into demand.
+Every function reads `fabs` and `chips` through `readFabs` and `readChips`, because `bizOf` hands out
+`a.details` unscrubbed unless the version changed: a damaged value reads as the open market.
+
+Saved state. `BizState.fabs` (integer 1 to 3) and `BizState.chips` (`ChipSupply`) are optional and read by
+`normalizeBiz`, which keeps them for `devices` only and drops any bad field. `SAVE_SCHEMA` stays 2, `BIZ_VERSION`
+stays 2 and `TechState` gets no field.
+
+Three hooks in `economy.ts`, all pure reads of the business. `costFactor` multiplies in `chipCostFactor` (so
+calm plans and hints include it), `evolve` adds `chipTerms(b, year).lift` to the quality target before its
+clamp, and `bookYear` adds `fabUpkeep(b)` beside the capacity-line upkeep, so it carries the same finance, CEO
+and head-office multipliers.
+
+The fab is a fixed-price capex lever. `fabCost(b, n)` is `FAB_BASE` times `capitalIndex(b)` (the local capital
+level against the trade's default) times a sum that rises 35% for each fab already built; it never reads cash,
+revenue, valuation or a statement. `buildFabAction(a)` in `manage.ts` builds one: `act` runs `manageBlock` and
+`disabled` (industry, `FAB_MAX`, cash), `run` repeats the cash check, asks `boardAllows` (kind `capex`) and
+draws no random number. A fab can't be sold, a hired CEO never builds one (`board-ceo.ts` knows only capacity
+lines), and it is not equipment: `equipmentValue` ignores it, so insurance, disaster damage, credit limits and
+liquidation never see it. The hint comes from `fabGain`, the `bestPlan` profit difference, and says cost only.
+
+The sister path reuses Group Services. In `group-services.ts` the `valid()` chip branch accepts a semiconductor
+provider and a devices customer in the same country, both fully owned (`own >= .999`), with the provider at
+stage 2 or later, and skips the outlet rule because chip supply amends no tax. `chipBlock` says in plain text
+why a pair can't start, and `chipRows`, `chipResultFor`, `hasChipContract` and `chipSupplied` feed the Devices
+screen and `groupYear`. `assignChips` runs inside `prepareInternalServices`, behind `groupServicesPrepared`: from
+last year's booked statements it writes one `ChipSupply` record per buyer (`cover = the sister's hold x its
+revenue / the buyer's chip bill`, the hold being at most `CHIP_RESERVE` and whatever earlier buyers left of the
+half the sister may give up, so a small or shared sister can't feed a giant), holds back capacity only for a
+sister that is used, and deletes every record not renewed that year. `settleChips` runs inside
+`settleInternalServices`, behind `groupServicesSettled`, keyed by the buyer's record and not the contract list.
+The saving is already in the buyer's cogs, because `costFactor` read the record before booking. The invoice is
+profit-neutral on the provider, exactly as the other contracts book it, and `internalRevenue` eliminates it. All a
+sister's invoices share one 25% of its revenue. No cash moves. `groupYear` drops the cross-selling lift of a buyer
+only while `chipSupplied` is true: its record is for that fiscal year, the sister is still valid and in the group,
+and the sister is still the better source. A contract that gave the buyer no chips leaves the lift alone.
+
+The operating system. `osStrength(b, year)` (0 to 1) reads the best OS line's `effectiveQuality`, so it ages with
+the line, and `osPull(base, strength)` is the network pull with `OS_BETA` .9 added to the exponent, never below
+the plain pull and never above `OS_PULL_CAP` 3.0. `marketCtxFor` swaps it into `w` for `devices` only, after
+`buildCtx` (whose cache stays free of the product list). Rivals keep `network x RIVAL_NETWORK`, a pull of .75,
+and a rival with better quality still wins customers back through `edgeOf`. Nothing new is saved.
+
+Spec sheets. `specSheet` (pure) sets the best line of each hardware kind against the rivals that sell it this
+year, on performance, quality and price, each a `ScoreRow` from `scorecard.ts` (mean, best, rank and trend).
+Rival performance is `devicePerf` at the market's node and yield, rival price is `kindReference x
+rivalPriceIndex` (Silicon 2.0), and price is negated so the cheapest ranks first. Rival figures are the market's
+and are modeled; no row names a rival. `devicesMenu` renders Devices & Chips with at most 12 rows (header, chip
+source, the fab action, one sister row, the platform row and up to seven kinds), reads `readBiz`, `marketCtxFor`
+and `fieldFor`, and never writes state or draws `g.rng`.
+
+### Sector families (business/sector-*.ts)
+
+The 18 trades of three families get an Operations Desk on top of the classic engine: food (restaurant, foodTruck,
+cafe, bakery), care (clinic, education, gym, salon, petCare, homeCare, autoShop) and util (energy, solar, water,
+telecom, dataCenter, farm, logistics). The layer is a sidecar, not a second simulator: `BizState.sector` is one
+optional plain-JSON record that `normalizeBiz` whitelists next to `venueOwner` and `wave`, read only through
+`readSector` (it clamps every number to its table range and never touches a record of another family or a newer
+version). `familyOf(trade)` in `sector-state.ts` is the only door: a trade with no family (devices, deep tech,
+finance, venues, the 17 generic trades whose families are still to come) returns null and every sector entry
+point returns at once, so the 56th trade needs nothing here.
+
+Four hook points. `prepareSectorYear` (`sector-core.ts`) runs in `yearlyBusinessImpl` right after
+`prepareVenueYear`: the first fiscal year only measures and saves the record, so that year books exactly as before;
+afterwards the family's `effects` move only `demandShock`, `costShock`, `capacityLoss` and `openFraction`, inside
+`SECTOR_BOUNDS`, and book money through `bookIncome` and `bookCost` (cash and `yearIncome` or `yearCosts` together,
+so `bookYear` counts it once). `maybeSectorEvent` runs before the generic owner events and takes the one event slot
+of the company-year; `sectorOwnsEvent` (called from `weightFor` in `events.ts`) switches off the generic inspection
+and critic for a food company with a live record. `sectorMenu` (`sector-menu.ts`) is the desk in `businessView`,
+and `applyLever` is the one write path for the owner and for a hired CEO: `sectorTurn` (`sector-ceo.ts`, called from
+`smartManagerTurn` in `board-ceo.ts`) works the desk above `SMART_SKILL`, at most two changes a year. Each trade also
+gets one extra key role through `withSectorRoles` (`sector-data.ts`), which wraps the raw trade table in
+`industries.ts` (`INDUSTRIES = withSectorRoles(RAW_INDUSTRIES)`) and returns every other trade untouched.
+
+Family files (`sector-food.ts`, `sector-care.ts`, `sector-util.ts` with their `-play` files) register a model in the
+registry of `sector-kit.ts` through the barrel `sector-families.ts`. `sectorEffects` has two modes: `book` reads the
+year's draws and `expected` never reads past the year being lived, so hints, previews and the CEO match what the
+resolver rolls. A draw is a hash of life, company, year and salt (`seasonIndex`), never `g.rng`; the only `g.rng`
+draws are the event roll and branch roll in `sector-events.ts`, never in a menu or a pure read. Real history that the
+engine's exposure map leaves out (the 2020 crash for clinics, schools, pets, home care and bakeries) is a row in
+`SECTOR_HISTORY`. Spec: `docs/superpowers/specs/2026-10-19-sector-families-design.md`.
+
+### AI lab benchmarks (business/ai-bench*.ts, scorecard.ts, deeptech-bench.ts)
+
+An AI lab is scored on eight capabilities (language, coding, vision, speech, reasoning and math, agents,
+robotics control, science), each with a **rating**: an integer where 100 points is one doubling of odds
+against a test. `ai-bench-data.ts` holds the capabilities (weights, the era and delay that open each, and
+stylized anchors up to 2026); `ai-bench.ts` is the roster-free formula layer. `capBest(fam, cap, year)` is
+the best rating in the world: linear between anchors up to `PRESENT_YEAR`, then a seeded drift keyed
+`${fam}|aicap|${cap}|${year}` that slows over time. `benchScore` turns a rating into a 0 to 99 score on
+one **benchmark generation**; `benchHard` starts the first test with the best lab near 67 and retires a
+generation, making the next 300 harder, once the best lab would score above 90 on it. A score can
+therefore fall while a model doesn't change, so cross-year comparisons use ratings, never scores.
+`scorecard.ts` (`scoreRow`, `scoreText`) is a pure, import-free leaf shared with Silicon 2.0: your figure
+against everyone else's, with market mean, best, rank and trend.
+
+The rival board (`ai-bench-market.ts`) is built from the existing `aiLab` roster: `rosterOf`,
+`activeRivals` and `rawPull` pick the labs on the world market (a lab is on the board at a tenth of the
+strongest pull), each lab's rating in a capability is `capBest` minus a gap from its pull and a seeded
+specialty (`aiLab|${id}|${cap}`), and the top lab sits exactly on `capBest`. Real labs carry `modeled`.
+Boards and capability fronts are cached in bounded maps. **Catch-up** is part of the lab's standing, not
+the market: from two years after a released model (one for open weights) every rival rises by the same
+amount so the best rival is within 70 points of it, so a lead is earned and fades. `labLead` is the cheap
+read (composite rating minus the best rival's), `labStanding` the full one with a `ScoreRow` per capability,
+and both read `bestModelAsOf` (the strongest unheld model by that year). Every function takes its year;
+only `benchYear(g)` (the last closed fiscal year) derives one, and menus, the Annual Report note and the
+profile line use it.
+
+Training and demand. `trainWin` keeps its single roll. For a lab in 2012 or later it asks `modelRating`
+(shared with the research hint) for each open capability: `capBest - 320` plus level, generation, compute,
+20 per research level and a seeded model specialty, with no model leading its own year's best by more than
+90. A lab with no `fam`, or a year before 2012, or a model with no rating keeps the old frontier formulas
+untouched. `ProgCtx.rival` hands `trainWin` the best rival of the year without it importing roster code.
+`labLead` drives `competitiveness` (`1 + lead / 190`, clamped) and the premium; `demandScale`, the pitch
+odds and the pitch hint read the same number.
+
+Research tracks. `capProgram(cap)` builds one program per capability (`cap.<id>`: two years, odds 0.65,
+cost `3M x 1.4^level`, `ipShare` 0.3, no `unlocks`). A finished track adds a research level that every
+later model uses. A track is gated on a rated model that covers the capability, `programBlock` allows
+`max(1, floor(maxPrograms / 3))` at once (`trackLimit`), and `bestProgram` never picks one, so the general
+manager and the Lab Report never start research. The Benchmarks menu (`benchMenu`) holds the Research
+submenu, and the lab menu points to it.
+
+Firsts and held models. Three milestones per capability sit above the 2026 market (`capMilestone`,
+`marketYear`). `claimFirsts` runs when a model is released and records `${cap}.${k}` in `flags.aiFirsts`
+(at most 24, validated by `readAiFirsts`, carried to heirs by `benchWorldFlags`), once for the whole
+family and only before the market passes it, with a log line, hype, brand and a wave. A model held at
+release is stored as `held`: it sells nothing, claims nothing, never counts for catch-up, and has its own
+release action. `deeptech-bench.ts` builds every line (rows, series, firsts, the Compute & Models line, the
+report note, the profile clause) so the screens share one source; menus read state and never draw the
+dice. New saved fields (`rating`, `held`, `caps`, `firsts`, `flags.aiFirsts`) are optional and normalized by
+`readModel`, `readTech` and `readAiFirsts`, `TECH_VERSION` is 4 and `SAVE_SCHEMA` stays 2.
+
 ### Nepotism, succession and family employment
 
 Nepo employment is stored on the relative as `Person.data.nepo`; the company-side family record is
@@ -556,7 +899,19 @@ Eligibility uses nationality, year, net worth, CV, education and family ties, no
 
 Sliders and unlimited growth. MenuInput/InputModal kind 'slider' render components/Slider.tsx (SliderField; menus use it through Dialogs.InputDialog, queued prompts through SliderCard.SliderInputCard). The pure math lives in menuModel.ts: sliderScale/sliderValueAt/sliderNotchOf/sliderNudge/sliderClamp/sliderOutput/sliderStart/canSlide, plus sliderPreview, a safe wrapper for MenuInput.preview. Ranges with more than 400 steps use a log curve over 1,000 notches. Money sliders snap to two significant digits in the display currency. Values are always exact and inside [min, max], and run() and scripts get a string exactly like a number field's (money in whole internal dollars). A slider without finite min/max falls back to a number field. A slider dialog closes only with Cancel or Escape (no tap-outside). Previews are called with the committed state and must be pure (tested). Styles are in styles/slider.css.
 
-Business growth has no hard caps; costs and diminishing returns are the limits. Product R&D (business/rd.ts): projects in BizState.rd (optional, so old saves load) are paid up front from company cash and booked as yearCosts. Every idea has a fixed development cost, rdCost(b, idea): RD_BASE scaled by a typical site's yearly sales in the home city (^0.75), the sort of line (KIND_COST) and the size of its kind's market — never the company's own cash or sales; the slider (rdRange) runs from RD_MIN 0.5× to RD_MAX 4× of it for every company. rdQuote(g, b, idea, budget) gives odds, whole years (1-4), the expected line quality (rdQuality: company quality, CEO, quality staff, talents and budgetQuality(k), fast gains then diminishing) and the quality of the rivals' versions; a team runs rdSlots(b) = 1 + ⌊log2(1 + sites)⌋ projects without strain, more crowd it (rdCrowding). rdValue values a line over 8 years with its kind's demand path, aging and pullValue (what a pull multiplier wins in the market model). Projects advance and resolve in economy.evolve → advanceRd: a launched line gets launched = year + 1 and a quality rolled within ±8 of the quote (+10 for a 15% hit). There is no yearly cap. Product ideas come from business/products.ts productIdeas: an endless, era-filtered stream of classics, then variants, then next generations; a classic is offered only once its kind exists in the market (product-data demandLevel), topped up with TIMELESS and PERIOD_CLASSICS. Product markets (business/product-market.ts, pure): a line belongs to a kind (lineInfo/infoOf: family, kind, gen; stored on lines since 2.3, parsed for old ones); kinds follow real-history demand curves (product-data.ts: first year, mainstream year, size, peak, what is left, fall speed; or a technology's adoption), adopted later in poorer countries. Rivals offer a kind once it has caught on (rivalVersion: big rivals first, each at its own quality, deterministic hashes; some specialize and never take up a kind), so fieldOf gives each kind's offer share and pull-weighted quality (attached to MarketCtx.field by economy.marketCtxFor). productPull: each line's pull = SEGMENT · size · demand level · KIND_WEIGHT · edgeOf (2^((quality − field)/20), plus up to NOVELTY +80% while few rivals offer it); kinds stack one for one, a kind's other lines count half (capped at 1.8× its best), and the range is linear up to +80% then saturates toward RANGE_CAP; appealOf multiplies the company's pull by 1 + total. applyProductRivalry decides who pays: rivals whose version of a kind is worse than yours lose pull to those whose versions hold up, with the rivals' total unchanged. Line quality is fixed at launch and ages against the rivals' improving versions (effectiveQuality: 0.5-2 points a year by style, at most 30); old lines without one get qualityFromBoost(boost). complexityShare(n) = 0.002·n·(1+n/20) of net sales booked inside the Upkeep line, rangeBrand(n) capped at 16 brand points, lines retire after PRODUCT_LIFE = 30 years; retireOrder puts the weakest first. Buy-outs (competition-moves acquireRival) hand over the rival's product lines (rivalLines; better versions replace yours), its sites spread over the country's biggest cities (spreadSites), part of its quality lead (KNOWHOW 25%) and some brand. Storage guards: 400 products, 120 projects.
+Business growth has no hard caps; costs and diminishing returns are the limits. Product R&D (business/rd.ts): projects in BizState.rd (optional, so old saves load) are paid up front from company cash and booked as yearCosts. Every idea has a fixed development cost, rdCost(b, idea): RD_BASE scaled by a typical site's yearly sales in the home city (^0.75), the sort of line (KIND_COST) and the size of its kind's market — never the company's own cash or sales; the slider (rdRange) runs from RD_MIN 0.5× to RD_MAX 4× of it for every company. rdQuote(g, b, idea, budget) gives odds, whole years (1-4), the expected line quality (rdQuality: company quality, CEO, quality staff, talents and budgetQuality(k), fast gains then diminishing) and the quality of the rivals' versions; a team runs rdSlots(b) = 1 + ⌊log2(1 + sites)⌋ projects without strain, more crowd it (rdCrowding). rdValue values a line over 8 years with its kind's demand path, aging and pullValue (what a pull multiplier wins in the market model). Projects advance and resolve in economy.evolve → advanceRd: a launched line gets launched = year + 1 and a quality rolled within ±8 of the quote (+10 for a 15% hit). There is no yearly cap. Heavy R&D (business/heavy-rd.ts, heavy-data.ts) is the rare breakthrough every product company can work on (heavyEligible: not deep tech, finance or a game studio, so 40 trades): five catalogue entries per trade (heavy-data.ts BREAKTHROUGHS), a fixed price HEAVY_COST_X (8) times the first classic idea's development cost, 4 to 6 years, odds 55% of a normal launch's (8 to 60%) and a 5-year wait after a launch or a flop. A project is an RdProject with heavy: true in BizState.rd; startHeavy pays it up front and advanceHeavy, called from advanceRd, rolls it at year end (the only g.rng draw of Heavy R&D). A launch leaves one HeavyRecord per kind and market in g.flags (key 'heavy.<trade>|<market>', at most 12, checked field by field on every read), and three pure readers use only those records and the year: heavyLevel (the kind's demand curve), heavyArrival and heavyVersionQuality (the rival arrival schedule: the launch year plus the development years times a size lag, a year later for half the rivals, a version a little under the pioneer's and never above it) and heavyPulse (the lift on the market's potential, at most +40%). heavyArrivals reports the first rival to follow once in the life log. Product ideas come from business/products.ts productIdeas: an endless, era-filtered stream of classics, then variants, then next generations; a classic is offered only once its kind exists in the market (product-data demandLevel), topped up with TIMELESS and PERIOD_CLASSICS. Product markets (business/product-market.ts, pure): a line belongs to a kind (lineInfo/infoOf: family, kind, gen; stored on lines since 2.3, parsed for old ones); kinds follow real-history demand curves (product-data.ts: first year, mainstream year, size, peak, what is left, fall speed; or a technology's adoption), adopted later in poorer countries. Rivals offer a kind once it has caught on (rivalVersion: big rivals first, each at its own quality, deterministic hashes; some specialize and never take up a kind), so fieldOf gives each kind's offer share and pull-weighted quality (attached to MarketCtx.field by economy.marketCtxFor). productPull: each line's pull = SEGMENT · size · demand level · KIND_WEIGHT · edgeOf (2^((quality − field)/20), plus up to NOVELTY +80% while few rivals offer it); kinds stack one for one, a kind's other lines count half (capped at 1.8× its best), and the range is linear up to +80% then saturates toward RANGE_CAP; appealOf multiplies the company's pull by 1 + total. applyProductRivalry decides who pays: rivals whose version of a kind is worse than yours lose pull to those whose versions hold up, with the rivals' total unchanged. Line quality is fixed at launch and ages against the rivals' improving versions (effectiveQuality: 0.5-2 points a year by style, at most 30); old lines without one get qualityFromBoost(boost). complexityShare(n) = 0.002·n·(1+n/20) of net sales booked inside the Upkeep line, rangeBrand(n) capped at 16 brand points, lines retire after PRODUCT_LIFE = 30 years; retireOrder puts the weakest first. Buy-outs (competition-moves acquireRival) hand over the rival's product lines (rivalLines; better versions replace yours), its sites spread over the country's biggest cities (spreadSites), part of its quality lead (KNOWHOW 25%) and some brand. Storage guards: 400 products, 120 projects.
+
+R&D 3.0 (business/lab-*.ts): the R&D between a new product line and a breakthrough, for every product company (heavyEligible), as one optional record, `BizState.lab`, plus a trade tier table and a per-trade ageing table. Pure rules and values are in lab-rules.ts, constants and tables in lab-data.ts, the stored state and its readers in lab-state.ts, bookings and actions in lab-year.ts, every string in lab-text.ts and the Research & Operations screen in lab-menu.ts.
+
+- **Tiers and ageing.** industries.ts `RD_TIER` gives all 56 trades low (21), mid (13), high (10, the devices trade among them) or breakthrough (the 12 `DEEP_TECH_IDS`); `rdTierOf` reads an id that is not a trade as mid. Breakthrough trades keep their own lab, so they have none of what follows. products.ts `AGEING` (`ageStyleOf`) gives every trade an ageing style: the 27 ids of `STYLE` keep theirs (devices stays goods, so its operating system still ages 1.2 points a year) and the other 29 are set on purpose (goods 1.2 points a year for 9 trades, tech 2 for 5, service .7 for 15). `effectiveQuality` reads it (still at most 30 points); `STYLE` and `styleOf` stay because they choose idea names.
+- **State.** `BizState.lab` is optional JSON. `readLab` normalizes it and returns a frozen object cached by identity (an absent or wrong-typed value reads as one shared empty state); `saveLab` replaces it whole and writers take `draftLab`, never mutating in place. It holds a level and a win count for each track (cost, yield, quality), the programs under way, the scientists' hire years, the patents, the families ever patented, the grant due, the last year booked and stepped, and a four-year ledger. Bounds: 3 programs (one per track), 6 scientists, 6 patents, 40 filed names, 4 ledger rows, 9 `done` ids, 12 wins counted per track, family names of at most 80 characters.
+- **Operations R&D.** Nine programs, named the same in every trade (three tracks, three rungs, first years 1905 to 1995); a low trade is offered rungs 1 and 2, mid and high 1 to 3. The price is fixed per trade and rung, `roundBudget(RD_BASE x rdSiteScale(b)) x RUNG_X` with `RUNG_X` 1, 2.2 and 4.5 (`rdSiteScale` is the site-sales term of `rdCost`), and never reads the company's cash, sales or valuation. Years are `ceil(baseYears x [1, 1.5, 2])` from 1 to 4; odds are `0.9 x launchP` plus the tier's ease (low .25, mid .20, high .12) less 0, .05 or .10 by rung, held between .15 and .92. A win lifts the track's level by `(1 - level) x [.30, .40, .50] x 0.8^wins`, to at most .95, and a level fades 5% a year, so the benefit is a cost to keep. The level reaches the company through `opsEffectsOf`, which `businessEffects` adds to its sums before the old clamps (cost .65 to 1.5, demand .7 to 1.65, capacity at most 1.4): unit cost at most 5, 8 or 10% lower, output at most 6, 10 or 10% higher and demand (a quality system) at most 4, 5 or 7% higher by tier. A flop loses the price, a win starts a 3-year wait on that program, one program runs per track, and `opsBlock` gives the single reason a start is refused. `advanceLab` runs from `advanceRd`, guarded by `stepped`, and draws one `chance()` per finished program in track order (cost, yield, quality): the only `g.rng` draw of the lab.
+- **Credit, grants and the ledger.** `bookLabYear` runs in `yearlyBusinessImpl` right after `bookHedgeYear`, guarded by `booked`. It pays the R&D tax credit on what was started in the fiscal year (`round(min(250,000, spend x the country's RD_CREDIT rate))`, the deep-tech rate, at most .5), a grant earned by a finished program (`LAB_GRANTS`: ten country rows, only for a company of at most 25 sites and 3 or more years after its last grant, at most half a program's price counting the credit) and royalties, and charges the team's pay. Credit, grant and royalty are `b.cash` and `yearIncome`; payroll is `b.cash` and `yearCosts`; `bookYear` counts them without moving cash again. Each amount has a `LabRow` field and a statement line ('R&D tax credit and grants', 'Patent licences', 'Research team', taken out of Other income and One-off costs). `valuationOf` leaves the credit, grant and royalty (after tax) out of its profit average and adds `labValue`, the patents' book.
+- **Research team.** Scientists (cap 2, 4 or 6 by tier, none in a breakthrough trade) cost `teamPay = roundBudget(2.2 x the local wage)` a year, half of that to hire or let go, with 3 years' minimum service. Each adds 0.7 of the one before to a power (1, 1.7, 2.19, 2.53, 2.77, 2.94) that `launchP` multiplies by .03 inside its clamp, and `rdSlots` gains `min(2, floor(n / 2))`. A scientist is not key staff, so the key-staff cap and the quality target are untouched.
+- **Patents and the shield.** `patentBlock` lets a company patent a family it developed itself and launched in the last 3 years, once ever per family, while no rival sells it (`offer` at most .02 in `fieldFor`) and with at most 6 live; a low trade may patent only a Heavy breakthrough. `patentTerms` gives a fixed plan price (the breakthrough's record cost, else `rdCost`), a fee of .12 of it plus the country's filing fee, a shield term of `max(2, round(SHIELD[tier] x the country's enforcement))` years (low 3, mid 6, high 5) counted from the launch of the company's own line of the family (the oldest within the 3 years; from now when it has none), so `until` is the same whenever it is filed and `years` is what is left of it (at least 1), and a book of .6 of the plan that fades x.9 a year. The shield works through the field: `fieldOf` takes a sixth argument, `FieldMarket { industry, shield }`, which is part of the cache key, and in `makeField` a held family keeps its existence and level but no rival or fringe offers it (offer 0, par quality, versions -1) while the shield lasts. `fieldMarketOf(b)` builds it for `marketCtxFor`; `heavyArrivals` holds back the first-rival report of a held Heavy family and the Products row's lead date names the shield's end when that is later. Licensing is one way: `lic` is the next year and the shield ends then. A licensed patent pays `min(capLeft, round(.30 x plan x offer x level))` each year until it runs out, at most 1.5 x plan over its life, and only while rivals really sell the kind.
+- **Rival rise.** product-market.ts `riseOf` adds to a classic rival's version for every year it has sold the kind: `RISE_BASE` by tier (low .20, mid .30, high .45, breakthrough .60 points a year) x `RISE_SIZE` by rival size (giant 1.3 down to small .7) x a hash factor from .6 to 1.4, at most 8 points over 12 years, rounded to a whole number and at most 99. A Heavy kind rises from its arrival and never passes the pioneer's quality. A field built without a market has no rise and no shield. Pure, by hash: no `g.rng`.
+- **Hints and the hired CEO.** `opsValue`, `teamValue` and `patentValue` are pure expected values over the same eight-year horizon and discount as ordinary R&D. The screen (group `biz.lab.<assetId>`, after Products in `businessView`, or after the Devices & Chips menu on a devices company, which keeps its place right after Products) shows them as Business-talent hints cached per company state. `bestLabMove` picks the hired CEO's move; board-ceo.ts `productTurn` makes up to `LAB_PER_YEAR` moves (growth 2, balanced 1, profit 1, cash 0, a cost-cutter may add one cost program), each paid through the board's budget and reserve, and calls the CEO's `judge` only for a candidate whose exact value is above 0.
+- **Invariants.** `SAVE_SCHEMA` and `BIZ_VERSION` stay 2 and `lab` is the only new saved state (no world flag). `doOps`, `doPatent`, `doLicense`, `doHire` and `doRelease` re-find the live company and check `manageBlock`, their own block reason and `boardAllows` themselves, so a direct call or a restored menu cannot skip them. A year is booked once (`booked`) and stepped once (`stepped`). Menus, hints and quotes never draw `g.rng` or write state. Every price is fixed per trade, never by cash, sales or valuation.
 
 Outlets: open and close are sliders up to what company cash pays for (manage.maxAffordable), with no per-year limit. economy.planFor applies city crowding (citySaturation = country saturation × city weight: 0.12 for the first-listed city, 0.07 for the next two, 0.04 otherwise, minimum 6; demand per outlet × (cs/n)^0.5). bookYear adds densityRent (1 + 0.35·sqrt(n/cs − 1)) and head-office overhead headOffice(n) = 0.015·log2(1 + n/8) of running costs. The deep-tech sim applies the same density rent, head office and range costs. Capacity lines (industries.CAPACITY_LINES; BizState.lines, optional; read with economy.linesOf): each adds LINE_CAP = 0.5 of a home site's capacity for LINE_CAPEX = 0.45 of its capital, plus upkeep and LINE_RENT. They count in equipmentValue (insurance, valuation floor, credit) and sell back for 35%.
 
@@ -1085,6 +1440,34 @@ them. Design: `docs/superpowers/specs/2026-10-13-politics-2-governing-corruption
 - **Balance** is checked by `test/nation-balance.test.ts` (a few seeded lives per strategy) and the
   opt-in `FUZZ=1 npx vitest run test/fuzz-politics.test.ts` (many), both through `test/politics-kit.ts`.
 
+## Music 2.0 (special/music-*.ts)
+
+A label deal with a recoupment ledger, format eras, a seeded chart against named rival acts, a touring P&L, six
+events plus a claim dispute, and a master buy-back an heir can inherit, on the career kit. Design:
+`docs/superpowers/specs/2026-10-19-music2-design.md`.
+
+- **Files.** `music-data` (tables, era helpers), `music-job` (profile and job moved out of `music.ts`, `signDeal`),
+  `music-state` (the record), `music-market` (format mix, waterfall, chart, `bookRelease`, `stepCatalogue`),
+  `music-label` (roster, negotiation, deal year, exits, Release Plan), `music-tour` (`tourModel`, settlement),
+  `music-events` (six crises, the dispute, awards), `music-menu`, and `music-sim` (the one `settleYear` entry,
+  registered in `kit/careers.ts`). `music-rights.ts` keeps its legacy calls and gains `adoptMaster`. New modules
+  never import `music.ts` (a grep test pins it).
+- **Record.** `special.music.sim` (key `music.sim`, version 1) is owner-stamped, normalized by its reader and
+  bounded (ledger 40, history 8, tours 8, mods 6, awards 24). The legacy `special.music` profile and `Job.data`
+  are never converted or rewritten: the migration is pure and `view` of a legacy life is the legacy state plus a
+  derived record. `SAVE_SCHEMA` stays 2.
+- **Grandfathering.** A labelled legacy solo becomes a `legacy` deal: the old advance salary pays once a year, a
+  release keeps the legacy `sold` and $1 a copy, nothing is recouped, and the renewal comes at the tier's base
+  royalty plus 0.02 with nothing carried.
+- **Identities.** `waterfall`: `gross = costs + kept + recoup + bandCut + paid`, cash moves by `paid`, `recoup` is
+  `min(unrecouped, round(0.8 x pool))` and a repayment to the label, never income. Tour: `gate + merch + absorbed =
+  promoter + crew + travel + production + cogs + playerNet + bandCut`, taxed on net.
+- **Order in `music-sim.ts`.** The first tick adopts and returns; then `stepDeal` and `stepDispute` (or `endDeal` with
+  the job gone), `stepCatalogue`, the standing and the statement; the kit offers the generic crisis last.
+  `yearlyMusic` has two guards: once adopted it skips only the solo deal year and the awards block.
+- **Money.** Cash moves only through `c.earn`, `c.pay` or `Effects.money` with a named source or sink
+  (`test/career-money-scan.test.ts` scans every `music-*.ts` but `music-rights.ts`).
+
 ## Built-in tasks (offline resolution)
 
 `ModalItem` of kind `aiTask` (the historical name, kept so saves with a queued task still load)
@@ -1118,6 +1501,50 @@ ribbon and graveyard collections, and keeps only queue entries with the renderer
 fields their modal kind requires (including valid choices, tasks, games, and finite input bounds).
 This prevents damaged browser data from resuming into an unrenderable or unclosable popup.
 `LifeLog` and the death screen's journal draw any unknown tone as a plain line.
+
+## Careers 2.0 (special/kit and the three sims)
+
+Actor, astronaut and model run on one shared kit and a `<id>-sim.ts` each. Design:
+`docs/superpowers/specs/2026-10-19-careers-slice1-design.md`.
+
+- **State.** One optional record per career at `special.actor.sim`, `special.astronaut.sim` and
+  `special.model.sim` (store keys `actor.sim`, `astronaut.sim`, `model.sim`): owner-stamped, versioned,
+  normalized by its reader. `KIT_LIMITS` rows 12 / memory 16 / cool 24 / done 24 / line 90; a full record
+  stays under 6,000 JSON nodes and 40 KB (tested). `SAVE_SCHEMA` stays 2 and no `STEPS` entry exists.
+  The legacy flags `special.actor`, `special.astronaut` and `special.model` are never written by new code.
+- **Kit modules** (`special/kit/`, none imports a career file). `state`: `defineCareerState` (`view` is
+  pure, `mut` is for actions and yearly hooks), `claimSettle`, junk-tolerant readers. `rivals`: derived
+  rosters, `standingOf`, `noteRival` memory. `year`: `settleYear`, the `CareerCtx` ledger, the popup
+  budget. `crisis`: `defineCrises` with `odds()` as the only probability source. `menu`: `gatedAction`
+  and `standingMenu`. `careers`: the `CAREER_SIMS` registry and `yearlyCareerSims`.
+- **Money only through `c.earn` / `c.pay`.** `test/career-money-scan.test.ts` fails any `earnIncome`,
+  `spend`, `addMoney` or `payForAction` call in `actor-*.ts`, `astronaut-*.ts` and `model-*.ts`. Amounts
+  are shown through `money()`; text tables are functions, so nothing prices at module load.
+- **Derived rivals.** Peers come from the family seed (the lifeId without `-gN`), country and 5-year
+  cohort, so nothing is stored and an heir meets the same names with an empty record. Only `memory` rows
+  (who you met, beat or lost to) live in the record.
+- **Budget.** The yearly hook may queue 1 choice and 2 notices; an action or script, 3 and 6. At most 2
+  career choices (`career.*` scripts) wait in the queue; a notice over budget becomes a log line.
+- **Legacy guards.** `yearlyActor` returns at its top once `actorStore.peek(g)?.migrated`; the sim then
+  owns the project, residual, dry-year and agent steps, and `adoptLegacy` carries a legacy profile over
+  (the legacy flag is left as it was). `yearlyModel` is untouched: the sim pays only net above `s.floor`,
+  the retainer the legacy hook just paid. `astronaut.ts` gains only guarded edits that do nothing
+  without a record: (a) the Academy closes before 1959, (b) `yearlyCadet` runs the selection board
+  (the one deliberate behaviour change), (c) `astro.apply.<agency>` rows, (d) `astro.mission` is the
+  Flight Board, (e) `astroPromotionOk` and retirement at 68 from level 6, (f) `trainSkills`, (g) pilot
+  skill on asteroid sensors, (h) `flyOn(g, dest, text, paid)`, the bridge from `resolveFlight`.
+  Every legacy script and menu id stays registered, so a queued modal from an old save still resolves.
+- **Actor likeness.** The one thing an heir inherits: an Asset of kind other with
+  `details.actorLikeness` (v1), chained in `menus.ts` as `actorLikenessNodes` after `musicMasterNodes`.
+  It pays whoever holds it (`yearlyLikeness`, before the kit hook). Astronaut and model leave nothing.
+- **A new career in four lines.** One import and one `CAREER_SIMS` entry in `kit/careers.ts`, one child
+  in `specialCareersMenu`, one `...xJobNodes(g)` in `specialJobNodes`. Menus read `view` / `peek` only.
+- **Tuning** lives in one file per career: `actor-data.ts`, `astronaut-data.ts`, `model-data.ts`.
+- **Cut from slice 1:** Music 2.0, sector families, new minigames and screens (no `MinigameKind`, no
+  `src/ui` change; the report card is a notice plus info rows), business trades.
+- **Tests:** `test/career-kit.ts` (the playthrough kit), `career-*.test.ts` (kit),
+  `actor-*`, `astronaut-*` and `model-*` tests, `careers-balance.test.ts` (3 careers x steady and
+  reckless x 2 seeds x 10 years) and the opt-in `FUZZ=1 npx vitest run test/fuzz-careers.test.ts`.
 
 ## UI contract
 

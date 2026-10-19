@@ -7,6 +7,7 @@ import { countVotes, electionEdge } from '../nation/regime'
 import { addCase, editMe, policyOf as nationPolicy, writeMe } from '../nation/state'
 import { officeView } from '../nation/office'
 import { exchangeYear, companyDef } from '../invest/engine'
+import { registerInsiderLedger, type InsiderCaseInput, type InsiderPositions } from '../business/insider-ledger'
 // Special career: Politician. Run for office (party, platform, campaign budget, a three-stop
 // campaign trail, election night), then govern: read the newspaper to learn what voters care
 // about, broadcast speeches, stage rallies, pass or veto bills, dodge (or pocket) political
@@ -31,6 +32,7 @@ import { defineScript } from '../scripts'
 import { hasTalent, talentHint } from '../talents'
 import type { GameState, Job, Json, MenuAction, MenuGroup, MenuNode } from '../types'
 import { countryLabel, getCountry, randomFirstName, randomLastName } from '../world'
+import { astroPoliticsEdge } from './astronaut-state'
 import {
   CELEBS,
   addFame,
@@ -667,6 +669,7 @@ defineScript(BUDGET_SCRIPT, (g, choice, data) => {
     (c.stats.smarts - 50) * 0.1 +
     (c.stats.looks - 50) * 0.08 +
     Math.min(12, fame * 0.15) +
+    astroPoliticsEdge(g) +
     budgetBoost +
     experience -
     convictions(g) * 5 -
@@ -1448,7 +1451,7 @@ interface InsiderCase {
   target: string
   symbol: string
   secId: string
-  cause: Exclude<ShockCause, 'liquidity'>
+  cause: Exclude<ShockCause, 'liquidity'> | 'wave'
   /** Dollars riding on the move when it was announced. */
   stake: number
   /** 'own' brokerage bets, a 'crony' account, or plain 'shares' / coins in Investments. */
@@ -1469,6 +1472,10 @@ interface InsiderCase {
   gain: number
   /** A policy case: whether the law was good for the company's shares (absent in older saves and announcement cases). */
   bullish?: boolean
+  /** A wave case (a launch the player's own company made): the part the player holds there. Absent in every other case. */
+  role?: 'founder' | 'ceo'
+  /** A wave case: the name of the breakthrough ('Smartphones'). */
+  note?: string
   /**
    * Cash the regulator took when it opened the case, held until the case is decided: it goes to the trial with
    * the arrest (an acquittal or a successful appeal gives it back, a conviction forfeits it) or comes back
@@ -1504,7 +1511,7 @@ function repairAbuse(a: AbuseData): AbuseData {
   const raw = a as unknown as Record<string, unknown>
   const bounded = (value: unknown, fallback: number, lo: number, hi: number): number => typeof value === 'number' && Number.isFinite(value) ? Math.max(lo, Math.min(hi, value)) : fallback
   const text = (value: unknown, fallback = '', length = 120): string => typeof value === 'string' ? value.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, length) || fallback : fallback
-  const causes: InsiderCase['cause'][] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse', 'policy']
+  const causes: InsiderCase['cause'][] = ['ban', 'probe', 'nationalize', 'contract', 'deregulate', 'endorse', 'policy', 'wave']
   const vias: InsiderCase['via'][] = ['own', 'crony', 'shares']
   const offices: OfficeId[] = ['school', 'mayor', 'governor', 'leader']
   const statuses: InsiderCase['status'][] = ['open', 'pending', 'closed']
@@ -1521,6 +1528,7 @@ function repairAbuse(a: AbuseData): AbuseData {
     if (!id || !secId || !status || ids.has(id) || typeof c.age !== 'number' || !Number.isFinite(c.age)) continue
     ids.add(id)
     const held = Math.round(bounded(c.held, 0, 0, HELD_MAX))
+    const note = text(c.note, '', 60)
     const extra: string[] = [], extraSeen = new Set<string>()
     if (Array.isArray(c.extra)) for (const item of c.extra.slice(-20)) {
       const charge = text(item, '', 100)
@@ -1546,6 +1554,8 @@ function repairAbuse(a: AbuseData): AbuseData {
       extra,
       gain: Math.round(bounded(c.gain, 0, 0, 1e15)),
       ...(typeof c.bullish === 'boolean' ? { bullish: c.bullish } : {}),
+      ...(c.role === 'founder' || c.role === 'ceo' ? { role: c.role } : {}),
+      ...(note ? { note } : {}),
       ...(held > 0 ? { held } : {}),
     })
   }
@@ -1698,8 +1708,6 @@ function legislatorHouse(g: GameState): string {
   return legislator(g).house
 }
 
-export interface InsiderPositions { betIds: string[]; own: number; crony: number; shares: number; index: number; indexUnits: number; cronyName: string }
-
 /**
  * The player's positions that win if the price moves this way (insider positions). With `freshOnly`
  * (laws), plain shares count only for the part bought this year or last year: a law is not a tip
@@ -1850,6 +1858,42 @@ function routeOf(pos: InsiderPositions): InsiderCase['via'] {
 }
 
 /**
+ * Open the insider case a launch of the player's own company starts on one stock they hold (release 1b, spec 5.7). Like the
+ * inline builders in `announce` and `policyInsider` (which it does not replace) it tags the bets, costs karma and remembers
+ * the trade; unlike them it has no office or approval, so the profile it creates makes no politician (the case says 'mayor',
+ * the inert default `repairAbuse` already uses). Idempotent by id: false when any case, open or closed, already has it. A stock
+ * has one wave case a year that is not over: a second wave the same year adds to it (`foldInto`, false: no new case) rather than
+ * charging the same shares twice. The second wave's `mult` and `indexGain` are the year's whole lift, which already holds the
+ * first wave's step, so the case takes the larger gain instead of the sum.
+ */
+export function openInsiderCase(g: GameState, input: InsiderCaseInput): boolean {
+  const a = abuseData(g)
+  const id = `wave-${input.key}`
+  if (a.cases.some((c) => c.id === id)) return false
+  const { target: t, pos } = input
+  const gain = Math.round(pos.shares * (input.mult - 1) + (Number.isFinite(input.indexGain) ? input.indexGain : 0))
+  const active = a.cases.find((c) => c.cause === 'wave' && c.status !== 'closed' && c.secId === t.secId && c.year === g.year)
+  if (active) {
+    foldInto(active, pos, pos.own + pos.crony + pos.shares + pos.index, input.mult, gain)
+    tagBets(g, pos.betIds, active.id)
+    return false
+  }
+  const via = routeOf(pos)
+  const cs: InsiderCase = {
+    id, age: g.character.age, year: g.year, target: t.name, symbol: t.symbol, secId: t.secId, cause: 'wave',
+    stake: Math.round(pos.own + pos.crony + pos.shares + pos.index), via, crony: pos.cronyName, evidence: POLICY_EVIDENCE[via], status: 'open',
+    office: 'mayor', title: `${input.role === 'founder' ? 'Founder' : 'CEO'} of ${input.company}`, countryId: g.character.countryId, quiet: 0, extra: [],
+    gain, bullish: true, role: input.role, note: input.note,
+  }
+  a.cases.push(cs)
+  tagBets(g, pos.betIds, cs.id)
+  addHidden(g, 'karma', -6)
+  count(g, 'insiderTrades')
+  remember(g, `Traded ${t.name} shortly before I launched ${input.note}.`)
+  return true
+}
+
+/**
  * The route a case moves up to when a later law brings these positions (null: it stays as it is). Only a bet
  * or an index option in the player's own name moves it: a crony's bet joins a shares case but leaves it on
  * shares, which the press finds sooner than a crony's account.
@@ -1871,12 +1915,13 @@ function foldChanges(cs: InsiderCase, pos: InsiderPositions, stake: number): boo
  * been investigated and its money taken, so its gain stays); bets or index options in the player's own name
  * move the case up to that route; evidence rises to at least the level of the route the law brought. The
  * charge stays the first law's. New positions (a larger stake or gain, a new route, bets) start the case's
- * quiet years over, so they get a full exposure window. Returns whether the route moved up.
+ * quiet years over, so they get a full exposure window. Returns whether the route moved up. `whole`: a second launch the same year
+ * (openInsiderCase) hands the gain of the year's whole lift, which already holds the earlier step: the case takes the larger of the two.
  */
-function foldInto(cs: InsiderCase, pos: InsiderPositions, stake: number, mult: number): boolean {
+function foldInto(cs: InsiderCase, pos: InsiderPositions, stake: number, mult: number, whole?: number): boolean {
   const stake0 = cs.stake, gain0 = cs.gain
   cs.stake = Math.max(cs.stake, Math.round(stake))
-  if (cs.status === 'open') cs.gain = Math.min(HELD_MAX, cs.gain + Math.round(pos.shares * Math.max(0, mult - 1)))
+  if (cs.status === 'open') cs.gain = Math.min(HELD_MAX, whole === undefined ? cs.gain + Math.round(pos.shares * Math.max(0, mult - 1)) : Math.max(cs.gain, whole))
   const route = routeOf(pos)
   if (route !== 'shares') cs.evidence = Math.max(cs.evidence, POLICY_EVIDENCE[route])
   const up = upgradeOf(cs, pos)
@@ -2017,6 +2062,9 @@ registerOfficeHooks({
   policyMove: policyInsider,
   policyWarning,
 })
+
+// The insider rule of tech waves (business/wave-insider.ts) reaches the cases through this seam, not through an import of this file.
+registerInsiderLedger({ positions: insiderPositions, open: openInsiderCase })
 
 defineScript(ABUSE_SCRIPT, (g, choice, data) => {
   if (choice === 'cancel' || !data || typeof data !== 'object' || Array.isArray(data)) return
@@ -2208,13 +2256,16 @@ function caseSeverity(g: GameState, cs: InsiderCase): number {
   let sev = 3
   if (cs.stake >= local(g, 1_000_000)) sev += 1
   if (cs.stake >= local(g, 10_000_000)) sev += 1
-  if (cs.office === 'mayor' || cs.office === 'school') sev -= 1
+  // A launch case has no office to discount (its 'mayor' is the inert default), so the discount is skipped when a role is set.
+  if (!cs.role && (cs.office === 'mayor' || cs.office === 'school')) sev -= 1
   // Holding shares when your own law moved them is not a bet on a secret: five to fifteen years at most.
-  const cap = cs.cause === 'policy' && cs.via === 'shares' ? 3 : 5
+  const cap = (cs.cause === 'policy' || cs.cause === 'wave') && cs.via === 'shares' ? 3 : 5
   return Math.max(2, Math.min(cap, sev))
 }
 
 function caseCharges(cs: InsiderCase): string[] {
+  // A launch case has no office to abuse and no price it pushed either way: only what it picked up along the way.
+  if (cs.role) return [...cs.extra]
   // A policy case says which way the law pushed the price; an older one without it keeps the old label.
   const bearish = cs.cause === 'policy' && typeof cs.bullish === 'boolean' ? !cs.bullish : (moveOf(cs.cause)?.bearish ?? true)
   return [bearish ? 'Market Manipulation' : 'Abuse of Office', ...cs.extra]
@@ -2252,6 +2303,8 @@ function causeText(cs: InsiderCase): string {
       return `endorsed ${cs.target}`
     case 'policy':
       return `passed a law that moved ${cs.target}'s whole industry`
+    case 'wave':
+      return `launched ${cs.note || 'a breakthrough'}`
   }
 }
 
@@ -2265,7 +2318,7 @@ function exposeCase(g: GameState, cs: InsiderCase): void {
   // Plain shares (or coins) held in Investments were bought, not bet on. A law counts only shares bought this
   // year or last; an announcement counts a holding of any age, so it says held, not bought.
   const shares = cs.via === 'shares'
-  const law = cs.cause === 'policy'
+  const law = cs.cause === 'policy' || cs.cause === 'wave'
   const unit = cs.secId.startsWith('crypto#') ? '' : ' shares'
   const paper = newspaper(g, cs.id)
   const story = !shares
@@ -2281,11 +2334,16 @@ function exposeCase(g: GameState, cs: InsiderCase): void {
   if (inOffice && officeRank(job) >= 2) choices.push({ id: 'lean', label: 'Lean on the regulator', emoji: '\u{1F574}\u{FE0F}' })
   if (inOffice) choices.push({ id: 'resign', label: 'Resign', emoji: '\u{1F6AA}' })
   else choices.push({ id: 'lawyer', label: 'Lawyer up and say nothing', emoji: '\u{1F4BC}' })
-  const line = !shares
-    ? `The press found out I bet on ${cs.target} before my announcement.`
-    : law
-      ? `The press found out I bought ${cs.target}${unit} before my own law moved its price.`
-      : `The press found out I held ${cs.target}${unit} when I made my announcement.`
+  // A launch is not an announcement or a law, so a wave case names what was launched.
+  const line = cs.cause === 'wave'
+    ? !shares
+      ? `The press found out I bet on ${cs.target} before I launched ${cs.note || 'it'}.`
+      : `The press found out I bought ${cs.target}${unit} before I launched ${cs.note || 'it'}.`
+    : !shares
+      ? `The press found out I bet on ${cs.target} before my announcement.`
+      : law
+        ? `The press found out I bought ${cs.target}${unit} before my own law moved its price.`
+        : `The press found out I held ${cs.target}${unit} when I made my announcement.`
   log(g, line, 'bad')
   scriptChoice(g, INSIDER_SCRIPT, 'Insider Trading Scandal', text, choices, { emoji: '\u{1F4F0}', data: { caseId: cs.id } })
 }

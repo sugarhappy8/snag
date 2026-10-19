@@ -20,6 +20,7 @@ import { goldBan, investingBlocked } from '../history/markets'
 import { coinDef, coinListed, companyDef, cryptoYear, eraIdentity, exchangeInfo, exchangeStatus, exchangeYear, fundName, goldHedge, goldYear, indexName, isHistoryYear, pennyDef, type ExInfo, type SecYear } from './engine'
 import { reitSince } from './era'
 import { indexShockFactor, shockFactor } from './shocks'
+import { waveSignature } from '../business/tech-wave-factors'
 
 export type GutKind = 'stock' | 'penny' | 'index' | 'reit' | 'gold' | 'crypto'
 
@@ -175,7 +176,7 @@ const cache = new Map<string, Instinct>()
 export function marketInstinct(g: GameState, cryptoOk = true): Instinct | null {
   if (!hasTalent(g, 'Investing') || !g.character.alive) return null
   const shocks = JSON.stringify(g.flags.marketShocks ?? null)
-  const key = `${g.lifeId}|${g.character.id}|${g.year}|${g.character.age}|${g.character.countryId}|${cryptoOk ? 1 : 0}|${shocks}`
+  const key = `${g.lifeId}|${g.character.id}|${g.year}|${g.character.age}|${g.character.countryId}|${cryptoOk ? 1 : 0}|${shocks}|${waveSignature(g)}`
   const hit = cache.get(key)
   if (hit) return hit
   const { list, info } = candidates(g, cryptoOk)

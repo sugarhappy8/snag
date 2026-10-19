@@ -7,10 +7,11 @@ import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
 import { techAdoption, type TechId } from '../history/timeline'
 import { realWealthFactor } from '../history/events-people'
+import { marketFamily, marketYearOf } from '../invest/clock'
 import { exchangeInfo, exchangeStatus, fundName, indexMove, indexName, inflationRate, policyRate, type ExInfo } from '../invest/engine'
 import { indexShockFactor } from '../invest/shocks'
 import { hasTalent } from '../talents'
-import { outcomeTag, timelineFamily } from '../timeMachine'
+import { outcomeTag } from '../timeMachine'
 import type { GameState } from '../types'
 import { getCountry } from '../world'
 import { ceoSkill } from './economy'
@@ -29,11 +30,6 @@ export function normal(r: SRng): number {
   return (t - 3) * Math.SQRT2
 }
 
-/** The investments module's family seed (prices the player can already see). */
-export function marketFamily(g: GameState): string {
-  return timelineFamily(g, (g.lifeId || 'life').replace(/-g\d+$/, ''))
-}
-
 /** A stable identity for a firm (survives normalization and heirs). */
 export function firmKey(b: Pick<BizState, 'countryId' | 'city' | 'founded' | 'founderName'>): string {
   return `${b.countryId}|${b.city}|${b.founded}|${b.founderName}`
@@ -44,10 +40,8 @@ export function fundRng(g: GameState, b: Pick<BizState, 'countryId' | 'city' | '
   return seeded(`${g.lifeId}${outcomeTag(g, year)}|fund2|${firmKey(b)}|${year}|${tag}`)
 }
 
-/** The fiscal year booked at a birthday uses that birthday's market move (the next calendar year). */
-export function marketYearOf(fiscal: number): number {
-  return fiscal + 1
-}
+// One definition of the market clock (invest/clock.ts); re-exported so existing importers keep working.
+export { marketFamily, marketYearOf }
 
 export function techAt(countryId: string, tech: TechId, year: number): boolean {
   return techAdoption(countryId, tech, year) >= .02

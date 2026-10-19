@@ -156,7 +156,7 @@ export function readReportData(data: Json): ReportView {
     maxProduction,
     inventory,
     expectedDemand,
-    marketNote: text(d.marketNote, '', 400),
+    marketNote: text(d.marketNote, '', 520),
     lines: readLines(d.lines),
     talentHint,
   }
@@ -307,11 +307,11 @@ function unitsText(n: number, unitLabel: string): string {
   return `${plainCount(n)} ${n === 1 ? singularUnit(unitLabel) : unitLabel}`
 }
 
-function priceTip(r: ReportView, price: number, step: number): { tone: ReportTone; text: string } {
+export function priceTip(r: Pick<ReportView, 'unitCost' | 'suggestedPrice' | 'unitLabel'>, price: number, step: number): { tone: ReportTone; text: string } {
   if (r.unitCost > 0 && price < r.unitCost)
     return { tone: 'bad', text: `That's below your ${formatPrice(r.unitCost, step)} cost per ${singularUnit(r.unitLabel)}. Every sale loses money.` }
   if (r.suggestedPrice > 0 && price <= r.suggestedPrice * 0.85)
-    return { tone: 'neutral', text: "Bargain pricing. Customers will love you; your accountant won't." }
+    return { tone: 'neutral', text: 'Bargain pricing. More buyers, thinner margins.' }
   if (r.suggestedPrice > 0 && price >= r.suggestedPrice * 1.5)
     return { tone: 'bad', text: 'Luxury pricing. A few big spenders, a lot of window shoppers.' }
   if (r.suggestedPrice > 0 && price >= r.suggestedPrice * 1.15)

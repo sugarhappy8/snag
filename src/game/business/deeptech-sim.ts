@@ -5,6 +5,11 @@
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
+import { shortageIntensity } from '../history/market-events'
+import { benchYear } from './ai-bench'
+import { claimFirsts } from './ai-bench-claims'
+import { firstToLead } from './ai-bench-market'
+import { familyId } from './competition-roster'
 import { economicReportSummary } from './economic-report'
 import { bell, chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -14,7 +19,8 @@ import { ceoSkill, citySaturation, cycleOf, densityRent, headOffice, insurancePr
 import { executiveEdge } from './dynamics'
 import { LEADERSHIP } from './leadership'
 import { complexityCost } from './products'
-import { DEEP_TECH, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
+import { launchText, marketNote, releaseText } from './deeptech-bench'
+import { DEEP_TECH, DRUG_AREAS, NODES, RD_CREDIT, bestModel, frontierScore, maxStage, programDef, stageName } from './deeptech-data'
 import {
   PACES,
   bestTechPlan,
@@ -23,22 +29,30 @@ import {
   dtInd,
   headCount,
   industryCycle,
+  marketReference,
   paceOf,
   rdScale,
   refreshTechValue,
   runwayYears,
   sellable,
   sideRevenue,
+  siliconOf,
+  siliconView,
   techFunds,
   techOf,
   techPlan,
   techPriceBounds,
 } from './deeptech-core'
 import { advancePrograms, bestProgram, bestTrial, maxPrograms, programCost, startProgram, startTrial, trialBlock, trialCost, trialName } from './deeptech-rd'
-import { milestoneListingBlock, SERIES, type Pace, type TechState } from './deeptech-state'
+import { milestoneListingBlock, SERIES, timesDone, type Drug, type Pace, type TechState } from './deeptech-state'
 import { industryDef } from './industries'
+import { afterYearSilicon, bookSilicon, chipPerformance, launchDiscounts, launchOptions, LAUNCH_TARGET, leadsField, pendingBrandStep, squeezeOf, type LaunchId } from './silicon'
+import { CHIP_LANES, laneOpen } from './silicon-data'
+import { reportLine } from './silicon-text'
 import { marketViewOf, shareText } from './competition'
 import { bizCountryName, bizOf, findBusiness, runsIt, stakeValue, totalOutlets, type BizState, type Statement } from './state'
+import { deepWaveIf } from './tech-wave-data'
+import { announceWave, waveLines } from './tech-waves'
 import { clampN, dollars, money, pct, plural, priceCapOf, rec, round2, str, toJson, units } from './util'
 import { allocatedCorporateTax } from './tax'
 import { bookSupply, saveSupply, supplyProfile } from './supply'
@@ -57,11 +71,14 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
   // A general manager plans with deep-tech numbers (the generic planner can't see the tech).
   if (!runs) {
     const skill = b.manager?.skill ?? 50
-    const best = bestTechPlan(g, b, t, cycleOf(g, b.countryId, skill >= 85 ? year : year - 1))
+    // At the year it sells (`year`, the fiscal year), not g.year, which is already the next one.
+    const best = bestTechPlan(g, b, t, cycleOf(g, b.countryId, skill >= 85 ? year : year - 1), year)
     const slop = (1 - skill / 100) * (skill >= 85 ? .025 : .12)
     if (best.production > 0) {
       b.price = round2(Math.max(0.01, best.price * (1 + (rand(g) - 0.5) * 2 * slop)))
       b.production = Math.max(0, Math.round(best.production * (1 + (rand(g) - 0.5) * slop)))
+      // The pricing policy caps the slopped price too (after both draws, so the random stream is unchanged).
+      if (best.limit !== undefined) b.price = round2(Math.max(0.01, Math.min(b.price, best.limit)))
     } else b.production = 0
   }
 
@@ -88,7 +105,8 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     }
   }
 
-  const revenue = sold * b.price
+  // What a unit sells for across the chip lanes (the headline price when none is discounted).
+  const revenue = sold * plan.mix
   const salesTax = (revenue * plan.taxRate) / (1 + plan.taxRate)
   const side = sideRevenue(b, t, year)
   const netRevenue = revenue - salesTax + side.total
@@ -189,7 +207,7 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     sold,
     produced,
     spoiled: leftover - inventoryEnd,
-    price: round2(b.price),
+    price: round2(plan.mix),
     revenue: dollars(revenue + side.total),
     salesTax: dollars(salesTax),
     netRevenue: dollars(netRevenue),
@@ -212,13 +230,44 @@ export function simulateDeepTechYearImpl(g: GameState, a: Asset, b: BizState, ye
     employees,
   }
   b.last = stmt
+  bookSilicon(b, t, year, plan, stmt)
 
   // Tell the CEO what the lab did; managed companies just get a line in the log.
-  afterResearch(g, a, b, t, rd0.headlines, rd0.newModel, stageBefore, runs)
+  afterResearch(g, a, b, t, rd0.headlines, rd0.newModel, stageBefore, runs, rd0.won, rd0.approved)
   return { stmt, inventoryEnd, wantedStaff: employees, unpaidSalary: Math.max(0, Math.round(ownerDraw) - ownerPay), market: plan.market ? { ...plan.market, capacity: plan.capacity } : null }
 }
 
-function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headlines: string[], newModel: number, stageBefore: number, runs: boolean): void {
+/**
+ * Breakthrough-class results move the whole trade once (business/tech-waves.ts): a listed program that
+ * worked (DEEPTECH_WAVES, keyed by trade and program id), an approved drug with a big peak, and a lab's
+ * first model at the frontier. Routine program wins never write one. Draws nothing.
+ */
+function announceBreakthroughs(g: GameState, a: Asset, b: BizState, t: TechState, won: readonly string[], approved: readonly Drug[], newModel: number): void {
+  const home = b.countryId
+  for (const id of won) {
+    const w = deepWaveIf(b.industry, id, timesDone(t, id), t.autonomy)
+    if (!w) continue
+    announceWave(g, { kind: w.kind, source: 'deeptech', origin: `${a.id}#${id}`, name: w.name, size: w.size, market: 'world', home, by: a.id })
+  }
+  if (b.industry === 'biotech') {
+    for (const d of approved) {
+      if (d.peak < 4) continue
+      const label = DRUG_AREAS.find((x) => x.id === d.area)?.label ?? 'disease'
+      announceWave(g, { kind: 'drug', source: 'deeptech', origin: `${a.id}#drug${d.id}`, name: `A new drug for ${label}`, size: clampN(0.2 + 0.04 * d.peak, 0.2, 0.5), market: 'world', home, by: a.id })
+    }
+  }
+  if (b.industry === 'aiLab' && newModel > 0) {
+    // Only the lab's first model at the frontier: a strong lab beats it most years, and that is not a new wave each time.
+    // A rated model is at the frontier when it leads the best rival of its year and no earlier generation did.
+    const m = t.models.find((x) => x.gen === newModel)
+    const first = m && (m.rating ? firstToLead(familyId(g.lifeId), t.models, m) : m.score >= frontierScore(m.year) && !t.models.some((x) => x.gen !== m.gen && x.score >= frontierScore(x.year)))
+    if (m && first) {
+      announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#model${m.gen}`, name: 'Frontier AI', size: 0.4, market: 'world', home, by: a.id })
+    }
+  }
+}
+
+function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headlines: string[], newModel: number, stageBefore: number, runs: boolean, won: readonly string[], approved: readonly Drug[]): void {
   const ind = dtInd(b)
   if (t.stage > stageBefore) {
     const name = stageName(ind, t.stage)
@@ -232,6 +281,13 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
       b.production = best.production
     }
   }
+  // Before the early returns below, so a hired-manager lab counts too.
+  announceBreakthroughs(g, a, b, t, won, approved, newModel)
+  // A hired manager never sees the release popup and never holds a model, so the lab releases and claims at training.
+  if (!runs && newModel > 0) {
+    const m = t.models.find((x) => x.gen === newModel)
+    if (m) claimFirsts(g, a, b, t, m)
+  }
   if (headlines.length === 0 && newModel === 0) return
   if (!runs) {
     for (const h of headlines.slice(0, 3)) log(g, `${a.name}: ${h}`, 'neutral')
@@ -244,6 +300,9 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
       tone: t.stage > stageBefore ? 'good' : 'neutral',
     })
   }
+  // A new accelerator, or a faster node that puts the chips ahead, opens the pricing choice while the squeeze lasts (Silicon 2.0).
+  const booked = b.last?.year ?? g.year - 1
+  if ((won.includes('aiChip') || (won.includes('node') && leadsField(g, b, t))) && shortageIntensity(b.countryId, booked + 1) > 0) queueLaunch(g, a, b, t, booked)
   if (newModel > 0) queueRelease(g, a, t, newModel)
 }
 
@@ -253,7 +312,6 @@ function afterResearch(g: GameState, a: Asset, b: BizState, t: TechState, headli
 function queueRelease(g: GameState, a: Asset, t: TechState, gen: number): void {
   const m = t.models.find((x) => x.gen === gen)
   if (!m) return
-  const frontier = frontierScore(g.year)
   // Open weights only cost sales when they are the lab's best model and it has paying API
   // customers (their demand drops by a quarter); otherwise they are free hype and talent.
   const best = bestModel(t)
@@ -269,7 +327,7 @@ function queueRelease(g: GameState, a: Asset, t: TechState, gen: number): void {
     g,
     RELEASE,
     `Release ${m.name}?`,
-    `${m.name} scored ${m.score} on the benchmarks (the best anyone has is about ${frontier}). How do you release it? Closed models earn API money; open weights win fans, talent and hype but undercut your own API. Holding it back costs buzz but makes incidents less likely.`,
+    releaseText(m, familyId(g.lifeId), t.models),
     choices,
     { emoji: '\u{1F9E0}', data: { assetId: a.id, gen } },
   )
@@ -289,14 +347,18 @@ const RELEASE = defineScript('deeptech.release', (g, choice, data) => {
     b.brand = clampN(b.brand + 6, 0, 100)
     log(g, `${a.name} released ${m.name} as open weights.`, 'good')
     notice(g, 'Open Weights!', `You put ${m.name} on the internet for anyone to download. Developers are thrilled, researchers want to work for you, and your API customers are quietly self-hosting it.`, { emoji: '\u{1F513}', tone: 'good' })
+    claimFirsts(g, a, b, t, m)
   } else if (choice === 'hold') {
+    // Stored as held: it earns nothing, stays off the scoreboard and claims nothing until the lab releases it.
+    m.held = true
     t.safety = clampN(t.safety + 15, 0, 100)
     t.hype = clampN(t.hype - 5, 0, 100)
     log(g, `${a.name} held ${m.name} back for more safety testing.`)
-    notice(g, 'Held Back', `${m.name} goes through another round of red-teaming before customers get it. The safety team is grateful; the sales team is sulking.`, { emoji: '\u{1F6E1}\u{FE0F}' })
+    notice(g, 'Held Back', `${m.name} goes through more red-teaming. It earns nothing and stays off the scoreboard until you release it.`, { emoji: '\u{1F6E1}\u{FE0F}' })
   } else {
     log(g, `${a.name} launched ${m.name} through its API.`, 'good')
-    notice(g, 'Model Launched', `${m.name} is live for paying customers. ${m.score >= frontierScore(g.year) ? 'Tech journalists are calling it the best model in the world.' : 'Reviews are solid.'}`, { emoji: '\u{1F9E0}', tone: 'good' })
+    notice(g, 'Model Launched', `${m.name} is live for paying customers. ${launchText(m, familyId(g.lifeId), t.models)}`, { emoji: '\u{1F9E0}', tone: 'good' })
+    claimFirsts(g, a, b, t, m)
   }
   revalueQuiet(g, a, b, t)
 })
@@ -308,6 +370,84 @@ function revalueQuiet(g: GameState, a: Asset, b: BizState, t: TechState): void {
 }
 
 // ---------------------------------------------------------------------------
+// Chip launches (Silicon 2.0)
+
+/** The choice a chip lab gets for its new chips: what to charge against the market in the next year. `year` is the fiscal year just booked. */
+function queueLaunch(g: GameState, a: Asset, b: BizState, t: TechState, year: number): void {
+  // The choice is settled against the headline the player sets in the Annual Report that follows, so the options are
+  // compared at that report's suggested price, not at the headline from before the win.
+  const options = launchOptions(g, b, t, year + 1, techReportData(g, a, b).suggestedPrice)
+  // The Business talent marks the option that earns the most next year, when it clearly does (profit only: goodwill isn't counted).
+  const ranked = [...options].sort((x, y) => y.profit - x.profit)
+  const delta = ranked.length > 1 ? ranked[0].profit - ranked[1].profit : 0
+  const best = delta > 1 ? ranked[0].id : null
+  const hint = best ? talentHint(g, 'Business', `Earns the most next year, about ${money(delta)} more than the rest. It doesn't count goodwill.`) : ''
+  const look: Record<LaunchId, { label: string; emoji: string }> = {
+    undercut: { label: 'Undercut the market', emoji: '\u{1F4C9}' },
+    match: { label: 'Match the market', emoji: '\u{2696}\u{FE0F}' },
+    keep: { label: 'Keep my prices', emoji: '\u{1F4B5}' },
+  }
+  const choices: ChoiceOption[] = options.map((o) => ({ id: o.id, label: look[o.id].label, emoji: look[o.id].emoji, ...(hint && o.id === best ? { hint } : {}) }))
+  const rival = Math.max(0, ...marketViewOf(g, b).rivals.map((r) => r.tech))
+  scriptChoice(
+    g,
+    LAUNCH,
+    'Price the new chips?',
+    `${a.name}'s new chips are ready. The best rival scores ${rival}. Yours scores ${chipPerformance(t)}. What will you do?`,
+    choices,
+    { emoji: DEEP_TECH[dtInd(b)].screen.emoji, data: { assetId: a.id, year: year + 1 } },
+  )
+}
+
+const KEEP_NOTICE = 'Prices unchanged. The new chips sell at your current price.'
+
+/** Where the new chips ended up against the market (`index` 1 = at the market), in words. */
+function pricedText(index: number): string {
+  const p = Math.round(index * 100)
+  return p === 100
+    ? 'New chips priced at the market. Goodwill stays where it is.'
+    : `New chips priced at ${p}% of the market. Goodwill moves with orders shipped, and only in squeeze years.`
+}
+
+const LAUNCH = defineScript('deeptech.launch', (g, choice, data) => {
+  const d = rec(data)
+  const a = findBusiness(g, str(d?.assetId))
+  if (!a || !d) return
+  const b = bizOf(g, a)
+  const year = d.year
+  if (b.industry !== 'semiconductor' || !(choice === 'undercut' || choice === 'match' || choice === 'keep') || typeof year !== 'number' || !Number.isInteger(year)) return
+  const t = techOf(b)
+  if (choice === 'keep') {
+    notice(g, 'Chips Priced', KEEP_NOTICE, { emoji: DEEP_TECH[dtInd(b)].screen.emoji })
+    return
+  }
+  // The Annual Report that follows sets the headline price, and the discounts are measured against it: it applies the choice.
+  siliconOf(t).launch = { year, id: choice }
+  log(g, `${a.name} ${choice === 'undercut' ? 'undercut' : 'matched'} the market on its new chips.`)
+})
+
+/**
+ * Applies the launch choice the popup left (Silicon 2.0), now that the Annual Report has set the headline price: the
+ * discounts are cut against that price, so the chips end at the index the player chose whatever price they set. A
+ * choice from an earlier year is dropped, and a company with none is left alone. Says where the chips ended up.
+ */
+function settleLaunch(g: GameState, a: Asset, b: BizState, t: TechState): void {
+  if (b.industry !== 'semiconductor') return
+  const launch = siliconView(t).launch
+  if (!launch) return
+  const s = siliconOf(t)
+  s.launch = null
+  if (launch.year < g.year) return
+  s.lanes = launchDiscounts(g, b, t, launch.id, launch.year)
+  const plan = techPlan(g, b, t, launch.year, { calm: true })
+  const index = squeezeOf(plan.lanes, plan.unitCost).index
+  // A cut is a whole percent, so a lane lands within a point of the target; that counts as reaching it.
+  const target = LAUNCH_TARGET[launch.id]
+  notice(g, 'Chips Priced', pricedText(Math.abs(index - target) < 0.01 ? target : index), { emoji: DEEP_TECH[dtInd(b)].screen.emoji })
+  revalueQuiet(g, a, b, t)
+}
+
+// ---------------------------------------------------------------------------
 // After evolve(): tech level drift, hype, depreciation, the board, IPO readiness
 
 export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void {
@@ -315,7 +455,9 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
   const ind = dtInd(b)
   // Product quality follows the tech; the brand follows the buzz.
   b.quality = Math.round(clampN(b.quality * 0.6 + (35 + t.level * 0.6) * 0.4, 0, 100))
-  b.brand = Math.round(clampN(b.brand + (t.hype - 40) / 20, 0, 100))
+  // Chip goodwill (Silicon 2.0) adds its brand step once for each booked year; hype is never touched by price.
+  const step = pendingBrandStep(t)
+  b.brand = Math.round(clampN(b.brand + (t.hype - 40) / 20 + step, 0, 100))
   // Everyone else keeps improving: stand still and you fall behind.
   const rdSpend = t.last?.rd ?? 0
   const gain = Math.min(4, Math.log10(1 + rdSpend / (1_000_000 * rdScale(b.countryId))) * 1.2)
@@ -344,6 +486,8 @@ export function afterDeepTechYearImpl(g: GameState, a: Asset, b: BizState): void
     t.venture = 0
     t.raised = 0
   }
+  // Chip performance and quality of the booked year, and a rival's answer to a deep supplied cut; marks the brand step as applied.
+  afterYearSilicon(g, a, b, t)
   refreshTechValue(g, b, t)
   // Investors who control the board and run out of patience (t.pressure) replace the CEO in the
   // board's yearly review (business/board.ts boardYear), with everything else the board weighs.
@@ -384,6 +528,9 @@ export function techStatementLines(b: BizState, t: TechState, s: Statement): Ann
   const x = t.last && t.last.year === s.year ? t.last : null
   const lines: AnnualReportData['lines'] = []
   if (s.demand > 0 || s.sold > 0) lines.push(line(`${def.unit[0].toUpperCase()}${def.unit.slice(1)} sold`, `${units(s.sold)} of ${units(s.demand)} wanted`, s.sold >= s.demand * 0.97 ? 'good' : 'neutral'))
+  // Chip goodwill and the price position of the year (Silicon 2.0), early so the report's line cap never cuts it.
+  const goodwill = reportLine(t, s.year)
+  if (goodwill) lines.push(line(goodwill.label, goodwill.value, goodwill.tone))
   lines.push(line(def.taxShare > 0 ? `Sales (incl. ${m.salesTaxName})` : 'Sales', money(s.revenue)))
   if (x && x.side > 0) lines.push(line('…of which contracts & other revenue', money(x.side)))
   if (s.salesTax > 0) lines.push(line(`${m.salesTaxName} remitted`, signed(-s.salesTax)))
@@ -417,20 +564,28 @@ export function techStatementLines(b: BizState, t: TechState, s: Statement): Ann
   return lines
 }
 
-function techMarketNote(g: GameState, b: BizState, t: TechState): string {
+export function techMarketNote(g: GameState, b: BizState, t: TechState): string {
   const ind = dtInd(b)
   const cyc = industryCycle(g, ind, g.year - 1)
   const def = industryDef(ind)
   const parts: string[] = []
   parts.push(cyc.label === 'steady' ? `The ${DEEP_TECH[ind].cycle.name} is steady.` : `The ${DEEP_TECH[ind].cycle.name}: ${cyc.label}.`)
+  // Deep-tech reports list no market events, so this is the one place the owner reads the wave.
+  parts.push(...waveLines(g, b, g.year - 1).slice(0, 1))
   if (ind === 'semiconductor') parts.push(`You're on the ${NODES[t.node]} node with ${Math.round(t.yieldRate * 100)}% yields.`)
   if (ind === 'aiLab') {
-    const best = bestModel(t)
-    if (best) parts.push(`${best.name} scores ${best.score}; the frontier is about ${frontierScore(g.year)} and rising.`)
+    const note = marketNote(familyId(g.lifeId), t, benchYear(g))
+    if (note) parts.push(note)
   }
   if (ind === 'spaceTech' && t.stage >= 3) parts.push(`${plural(t.wins, 'successful flight')} so far; customers trust a track record.`)
-  const e = localEcon(ind, b.countryId, b.city)
-  parts.push(`A typical ${def.unitOne} sells for about ${money(e.goingPrice)} here; your tech earns ${money(techPriceBounds(g, b, t).going)}.`)
+  if (ind === 'semiconductor') {
+    // One market price for a chip company: the calm reference of the core lane (Silicon 2.0).
+    parts.push(`Chips like yours sell for about ${money(marketReference(g, b, t, CHIP_LANES[0], g.year))} here.`)
+    if (CHIP_LANES.some((l) => l.id !== 'core' && laneOpen(l, t, g.year))) parts.push("Set each chip line's discount under Chips & Fabs.")
+  } else {
+    const e = localEcon(ind, b.countryId, b.city)
+    parts.push(`A typical ${def.unitOne} sells for about ${money(e.goingPrice)} here; your tech earns ${money(techPriceBounds(g, b, t).going)}.`)
+  }
   const v = marketViewOf(g, b)
   if (v.booked && v.share > 0) parts.push(`You hold ${shareText(v.share)} of the world ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year: more ${def.sitePlural} or compute would keep them` : ''}.`)
   return parts.join(' ')
@@ -482,10 +637,12 @@ export function techReportData(g: GameState, a: Asset, b: BizState): AnnualRepor
     const best = bestTechPlan(g, b, t, lastCycle)
     if (best.production > 0) {
       const price = round2(clampN(best.price, bounds.min, bounds.max))
+      // A pricing policy (Silicon 2.0) that held the plan back says so.
+      const cap = best.limit !== undefined && best.price >= best.limit ? `, within your cap of ${pct(Number(t.silicon?.ceiling))} of the market` : ''
       data.talentHint = {
         price,
         production: Math.round(clampN(best.production, 0, maxProd)),
-        text: talentHint(g, 'Business', `Your gut says ${price >= 100 ? money(price) : formatCents(price)} per ${def.unitOne} and ${units(best.production)} ${def.unit} earns the most next year.`),
+        text: talentHint(g, 'Business', `Your gut says ${price >= 100 ? money(price) : formatCents(price)} per ${def.unitOne} and ${units(best.production)} ${def.unit} earns the most next year${cap}.`),
       }
     }
   }
@@ -516,6 +673,7 @@ export const TECH_REPORT = defineScript('deeptech.report', (g, choice, data) => 
   b.price = round2(clampN(price, bounds.min, bounds.max))
   b.production = Math.round(clampN(production, 0, maxProd))
   if (choice !== 'skip') log(g, `I set ${a.name}'s price at ${b.price >= 100 ? money(b.price) : formatCents(b.price)} and planned ${units(b.production)} ${industryDef(b.industry).unit} for the year.`)
+  settleLaunch(g, a, b, t)
 })
 
 function paceChoices(g: GameState, a: Asset, b: BizState, t: TechState, hinted = true): ChoiceOption[] {
@@ -603,4 +761,4 @@ export function formatRunway(years: number): string {
 }
 
 /** Exported for tests: the yearly report and release scripts. */
-export const simInternals = { RELEASE, LAB_REPORT, TECH_REPORT, queueRelease }
+export const simInternals = { RELEASE, LAB_REPORT, TECH_REPORT, LAUNCH, queueRelease, queueLaunch, settleLaunch }

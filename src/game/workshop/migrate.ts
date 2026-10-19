@@ -209,7 +209,7 @@ function companyInvention(g: GameState, company: Asset, key: string, name: strin
 export function fieldFor(industry: string, raw: unknown): Field {
   if (isField(raw) && raw !== 'finance') return raw
   return /energy|solar|battery|fusion|carbonCapture/.test(industry) ? 'energy' : /biotech|pharma|clinic|neurotech/.test(industry) ? 'health'
-    : /software|semiconductor|aiLab|quantum|robotics|gameStudio|cybersecurity/.test(industry) ? 'computing'
+    : /software|semiconductor|aiLab|quantum|robotics|gameStudio|cybersecurity|devices/.test(industry) ? 'computing'
       : /farm|food|restaurant|cafe|bakery|grocery/.test(industry) ? 'food' : /logistics|autoShop|electricVehicles|spaceTech|drones/.test(industry) ? 'transport' : 'materials'
 }
 

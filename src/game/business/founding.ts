@@ -961,8 +961,9 @@ export function listingsForSale(g: GameState): ForSale[] {
   const country = getCountry(c.countryId)
   const s = seeded(yearKey(g, 'biz.forSale'))
   // Deep-tech startups are founded, not bought off the shelf (and leaving them out keeps the
-  // classic listings exactly as they were).
-  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i, g) && !isDeepTechIndustry(i) && !industryEraBlock(i, c.countryId, g.year) && !financeEraBlock(g, i))
+  // classic listings exactly as they were). Device companies are founded too: a bought one would have
+  // no fabs or chip supply, and adding the trade to this seeded pool would shift every seed's list.
+  const legal = INDUSTRY_IDS.filter((i) => isIndustryLegal(c.countryId, i, g) && !isDeepTechIndustry(i) && i !== 'devices' && !industryEraBlock(i, c.countryId, g.year) && !financeEraBlock(g, i))
   const out: ForSale[] = []
   const bought = Array.isArray(g.flags['biz.bought']) ? (g.flags['biz.bought'] as Json[]) : []
   const words = marketOf(c.countryId).nameWords

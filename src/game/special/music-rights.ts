@@ -119,6 +119,18 @@ export function yearlyMusicRights(g: GameState): void {
   }
   if (paid > 0) log(g, `My owned master recordings paid ${formatMoney(paid)} after distribution and advance recoupment.`, 'good')
 }
+/**
+ * A master bought back from the label or distributor: a released MusicMaster the player owns outright and an heir
+ * can inherit. It pays nothing (the caller already took the price) and imports no music state. The rights pay 75% of
+ * its sales from the next year, through `yearlyMusicRights`, and its sale value stays below the price.
+ */
+export function adoptMaster(g: GameState, spec: { title: string; quality: number; audience: number }, price: number): Asset {
+  const name = String(spec.title).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80) || 'Untitled'
+  const cost = Math.round(n(price))
+  const m: MusicMaster = { v: 1, author: g.character.id, created: g.year, country: g.character.countryId, stage: 'released', quality: n(spec.quality, 30, 100), budget: 0, spent: cost, collaborator: '', producer: false, released: g.year, lastYear: g.year, audience: Math.round(n(spec.audience, 0, 1e8)), copies: 0, receipts: 0, lastGross: 0, lastPaid: 0, marketing: 0, distribution: 'domestic', licenseUntil: 0, unrecouped: 0, advance: 0 }
+  const a: Asset = { id: uid(g, 'master'), kind: 'other', name, emoji: '🎼', purchasePrice: cost, value: Math.round(m.audience * .8), condition: 100, purchasedAge: g.character.age, upkeep: 0, details: {} }
+  save(a, m); g.assets.push(a); return a
+}
 export function musicMasterNodes(g: GameState, a: Asset): MenuNode[] | null {
   const m = musicMaster(a)
   if (!m) return null

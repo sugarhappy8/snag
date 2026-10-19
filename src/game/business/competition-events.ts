@@ -22,6 +22,7 @@ import { bizWorth, fxValue, localEcon, staffPower, type Worth } from './economy'
 import { sellBusiness } from './exit'
 import { industryDef } from './industries'
 import { bizOf, findBusiness, totalOutlets, type BizState } from './state'
+import { waveScrutiny } from './tech-waves'
 import { lineQualityValue, shiftLineQuality } from './rd'
 import { cap, clampN, markBest, money, num, pct, promisePrice, rec, round2, str } from './util'
 
@@ -787,7 +788,7 @@ export function maybeAntitrust(g: GameState, a: Asset, b: BizState, year: number
   if (st.antitrust.last > 0 && year - st.antitrust.last < 4) return
   const going = localEcon(b.industry, b.countryId, b.city).goingPrice
   const ratio = going > 0 && b.last ? b.last.price / going : 1
-  const view = antitrustOf(b, Math.max(st.share, st.base), year, ratio, marketViewOf(g, b).rivals)
+  const view = antitrustOf(b, Math.max(st.share, st.base), year, ratio, marketViewOf(g, b).rivals, waveScrutiny(g, b.industry))
   if (view.p <= 0) return
   if (seeded(`${familyId(g.lifeId)}|antitrust|${a.id}|${year}`).next() >= view.p) return
   const r = view.regime

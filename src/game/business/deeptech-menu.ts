@@ -8,6 +8,11 @@ import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
+import { benchYear, capOpen } from './ai-bench'
+import { claimFirsts, readAiFirsts } from './ai-bench-claims'
+import { CAP_IDS, CAPS, isCapId } from './ai-bench-data'
+import { labStanding } from './ai-bench-market'
+import { familyId } from './competition-roster'
 import { localEcon } from './economy'
 import { shareSummary } from './competition'
 import {
@@ -20,9 +25,9 @@ import {
   RESTRICTED,
   bestModel,
   drugRegulator,
-  frontierScore,
   maxStage,
   nodeCap,
+  programDef,
   stageName,
   type ProgramDef,
 } from './deeptech-data'
@@ -33,24 +38,32 @@ import {
   competitiveness,
   computeRent,
   dtInd,
+  laneDiscount,
   payTech,
   rdBudget,
   revalue,
   runwayYears,
   sellable,
+  siliconOf,
+  siliconView,
   techFunds,
   techOf,
+  techPlan,
   techSkill,
   techView,
 } from './deeptech-core'
+import { aiLine, benchRows, firstRows, summaryClause } from './deeptech-bench'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
-import { BUDGET_MAX, BUDGET_MIN, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
-import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
+import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
+import { MAX_SERIES, SERIES, milestoneListingBlock, timesDone, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
+import { CHIP_LANES, laneOpen, type ChipLane } from './silicon-data'
+import { laneSubtitle, policySubtitle, siliconRows } from './silicon-text'
 import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
-import { clampN, money, num, pct, plural, rec, str, toJson, units } from './util'
+import { deepWaveIf, INSIDER_WARNING } from './tech-wave-data'
+import { clampN, money, num, pct, plural, rec, str, toJson, unitMoney, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, t: TechState, input?: string) => void
 
@@ -126,6 +139,8 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
     disabled: (_g, b, t) => programBlock(b, t, def),
     hint: (g) => {
       const { b, t } = view(g, a)
+      // A capability track is never the "best value" pick; its own hint names the one that moves the lab's standing most per dollar.
+      if (def.track) return bestCapTrack(g, a, b, t) === def.track ? talentHint(g, 'Business', 'Fund this one. It moves your standing most per dollar.') || null : null
       const best = bestProgram(g, a, b, t)
       return best && best.id === def.id ? talentHint(g, 'Business', 'Fund this one: the best value for your R&D money right now.') : null
     },
@@ -133,7 +148,11 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
       const { b, t } = view(g, a)
       const cost = programCost(b, t, def)
       const funds = techFunds(b, t)
-      return funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year at the planned budget. Start it anyway and find the money by year-end?` : null
+      const short = funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year at the planned budget. Start it anyway and find the money by year-end?` : null
+      // A listed program ripples through stocks (tech-waves.ts), so the rule is stated where the work starts, but only when the writer would
+      // announce the wave: the win counts as one more completion, and the one program with an autonomy condition (selfdrive) adds one level.
+      const text = [short, deepWaveIf(b.industry, def.id, timesDone(t, def.id) + 1, t.autonomy + 1) ? INSIDER_WARNING : null].filter((x): x is string => x !== null).join(' ')
+      return text || null
     },
     // Fund it lean, as planned or flat out: faster and likelier, dearer in total (diminishing returns).
     input: {
@@ -215,9 +234,10 @@ function labMenu(a: Asset): MenuGroup {
       }
       nodes.push({ type: 'heading', id: `dt.labH2.${a.id}`, label: 'Start a program' })
       for (const def of PROGRAMS[ind]) {
-        if (def.gate(t, b.countryId) === 'Already done.') continue
+        if (def.track || def.gate(t, b.countryId) === 'Already done.') continue
         nodes.push(programRow(a, def, t))
       }
+      if (ind === 'aiLab') nodes.push({ type: 'info', id: `dt.labBench.${a.id}`, text: 'Capability research is under Benchmarks.', emoji: '\u{1F4CA}' })
       if (ind === 'biotech') nodes.push({ type: 'info', id: `dt.labTrials.${a.id}`, text: 'Clinical trials for your drug candidates are started from the Drug Pipeline.', emoji: '\u{1F48A}' })
       nodes.push({ type: 'heading', id: `dt.labH3.${a.id}`, label: 'R&D pace' })
       const runway = runwayYears(g, a, b, t)
@@ -234,6 +254,56 @@ function labMenu(a: Asset): MenuGroup {
           }),
         )
       }
+      return nodes
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks (AI labs)
+
+/** How many capability tracks the lab is researching right now. */
+function runningTracks(t: TechState): number {
+  return t.programs.filter((p) => programDef('aiLab', p.id)?.track).length
+}
+
+/** Where the lab's models rank against modeled rival labs, plus the capability research that moves them. Every line comes from deeptech-bench.ts. */
+function benchMenu(a: Asset): MenuGroup {
+  return {
+    type: 'menu',
+    id: `dt.bench.${a.id}`,
+    label: 'Benchmarks',
+    emoji: '\u{1F4CA}',
+    subtitle: (g) => {
+      const s = labStanding(familyId(g.lifeId), view(g, a).t, benchYear(g))
+      return s ? `Overall ${s.composite.mine}, rank ${s.composite.rank} of ${s.composite.of}` : 'No rated model yet'
+    },
+    disabledReason: (g) => dtBlock(g, a),
+    children: (g) => {
+      const { t } = view(g, a)
+      const fam = familyId(g.lifeId)
+      const year = benchYear(g)
+      const nodes: MenuNode[] = benchRows(fam, t, year).map((line) => infoNode(a, `bench.${line.id}`, line.text, isCapId(line.id) ? CAPS[line.id].emoji : '\u{1F4CA}'))
+      if (!CAP_IDS.some((c) => capOpen(c) <= year)) return nodes
+      if (labStanding(fam, t, year)) {
+        const firsts = firstRows(fam, t, year, readAiFirsts(g))
+        if (firsts.length) nodes.push({ type: 'heading', id: `dt.benchH1.${a.id}`, label: 'Firsts' }, ...firsts.map((line) => infoNode(a, `bench.${line.id}`, line.text, '\u{1F3C6}')))
+      }
+      nodes.push({
+        type: 'menu',
+        id: `dt.benchRd.${a.id}`,
+        label: 'Research',
+        emoji: '\u{1F9EA}',
+        subtitle: (gg) => {
+          const v = view(gg, a)
+          return `${runningTracks(v.t)} of ${trackLimit(v.b, v.t)} running`
+        },
+        disabledReason: (gg) => dtBlock(gg, a),
+        children: (gg) => {
+          const v = view(gg, a)
+          return CAP_IDS.filter((c) => capOpen(c) <= benchYear(gg)).map((c) => programRow(a, programDef('aiLab', `cap.${c}`)!, v.t))
+        },
+      })
       return nodes
     },
   }
@@ -408,7 +478,67 @@ function infoNode(a: Asset, key: string, text: string, emoji: string): MenuNode 
   return { type: 'info', id: `dt.i.${key}.${a.id}`, text, emoji }
 }
 
-function chipsNodes(_g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] {
+/**
+ * One extra chip line's price (Silicon 2.0): a discount below the headline price, 0 to 50% in steps of 5. Exported so a
+ * test can call the action of a lane whose row isn't shown: the live re-check in dtAct refuses a lane that isn't open.
+ */
+export function laneRow(a: Asset, lane: ChipLane): MenuAction {
+  return dtAct(a, `lane.${lane.id}`, `Price: ${lane.label}`, '\u{1F4B5}', {
+    subtitle: (g) => {
+      const { b, t } = view(g, a)
+      return laneSubtitle(g, b, t, lane)
+    },
+    disabled: (g, _b, t) => (laneOpen(lane, t, g.year) ? null : `${lane.label} isn't open to this company.`),
+    input: {
+      kind: 'slider',
+      label: `Discount on ${lane.noun}`,
+      unit: '%',
+      min: 0,
+      max: 50,
+      step: 5,
+      defaultValue: (g) => String(Math.round(laneDiscount(view(g, a).t, lane.id) * 100)),
+    },
+    run: (g, _cur, b, t, input) => {
+      const n = input === undefined || input.trim() === '' ? NaN : Number(input)
+      if (!Number.isFinite(n)) return
+      const discount = clampN(Math.round(n / 5) * 5, 0, 50) / 100
+      // A zero discount nobody had set leaves the saved state alone.
+      if (discount > 0 || laneDiscount(t, lane.id) > 0) {
+        const s = siliconOf(t)
+        if (discount > 0) s.lanes[lane.id] = discount
+        else delete s.lanes[lane.id]
+      }
+      const row = techPlan(g, b, t, g.year, { calm: true }).lanes.find((l) => l.id === lane.id)
+      if (row) notice(g, 'Chip Price Set', `${lane.label} priced at ${unitMoney(row.price)}, ${row.index.toFixed(2)}x the market.`, { emoji: '\u{1F4B5}' })
+    },
+  })
+}
+
+/** The pricing policy (Silicon 2.0): the highest headline price, as a share of the market, a hired CEO will plan; 130 means none. */
+function policyRow(a: Asset): MenuAction {
+  return dtAct(a, 'policy', 'Pricing Policy', '\u{1F4D1}', {
+    subtitle: (g) => policySubtitle(siliconView(view(g, a).t).ceiling),
+    input: {
+      kind: 'slider',
+      label: 'Highest price for a hired CEO (% of the market)',
+      unit: '%',
+      min: 70,
+      max: 130,
+      step: 5,
+      defaultValue: (g) => String(clampN(Math.round((siliconView(view(g, a).t).ceiling || 1.3) * 100), 70, 130)),
+    },
+    run: (g, _cur, _b, t, input) => {
+      const n = input === undefined || input.trim() === '' ? NaN : Number(input)
+      if (!Number.isFinite(n)) return
+      const level = clampN(Math.round(n / 5) * 5, 70, 130)
+      const ceiling = level >= 130 ? 0 : level / 100
+      if (ceiling > 0 || siliconView(t).ceiling > 0) siliconOf(t).ceiling = ceiling
+      notice(g, 'Pricing Policy Set', ceiling > 0 ? `Your hired CEO will price at most ${level}% of the market. You're not bound by it.` : 'No pricing limit. Your hired CEO plans by profit alone.', { emoji: '\u{1F4D1}' })
+    },
+  })
+}
+
+function chipsNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] {
   const cap = nodeCap(t, b.countryId)
   const nodes: MenuNode[] = [
     infoNode(a, 'node', `Process node: ${NODES[t.node]}${t.node < NODES.length - 1 ? ` (next: ${NODES[t.node + 1]})` : ' (the cutting edge)'} · yield ${Math.round(t.yieldRate * 100)}%`, '\u{1F52C}'),
@@ -416,17 +546,46 @@ function chipsNodes(_g: GameState, a: Asset, b: BizState, t: TechState): MenuNod
   ]
   if (RESTRICTED.has(b.countryId)) nodes.push(infoNode(a, 'ctrl', `Export controls: foreign tools stop at ${NODES[cap]} unless you build a domestic toolchain.`, '\u{1F6AB}'))
   if (t.deal) nodes.push(infoNode(a, 'deal', `${t.deal.name}: ${money(t.deal.perYear)}/yr for ${plural(t.deal.years, 'more year')}`, '\u{1F91D}'))
+  // Silicon 2.0, from stage 2: goodwill and where the chips stand, then one price row per open extra lane and the pricing policy.
+  if (t.stage >= 2) {
+    const rows = siliconRows(g, b, t)
+    nodes.push(
+      infoNode(a, 'goodwill', rows.goodwill, '\u{1F91D}'),
+      infoNode(a, 'perf', rows.perf, '\u{1F4CA}'),
+      infoNode(a, 'quality', rows.quality, '\u{1F4CA}'),
+      infoNode(a, 'price', rows.price, '\u{1F4CA}'),
+      infoNode(a, 'share', rows.share, '\u{1F4CA}'),
+    )
+    for (const lane of CHIP_LANES) if (lane.id !== 'core' && laneOpen(lane, t, g.year)) nodes.push(laneRow(a, lane))
+    nodes.push(policyRow(a))
+  }
   return nodes
 }
 
 function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] {
-  const f = frontierScore(g.year)
   const best = bestModel(t)
   const nodes: MenuNode[] = [
-    infoNode(a, 'frontier', `The frontier: about ${f}/100 this year and rising. ${best ? `Your best, ${best.name}, scores ${best.score} (competitiveness ${Math.round(competitiveness(t, g.year) * 100)}%).` : 'You have no model yet.'}`, '\u{1F30C}'),
+    infoNode(a, 'frontier', aiLine(familyId(g.lifeId), t, benchYear(g), g.year), '\u{1F30C}'),
     infoNode(a, 'compute', `Compute: ${plural(t.plant, 'GPU cluster')} owned, ${plural(t.rented, 'cluster')} rented (${money(computeRent(b, t))}/yr)`, '\u{1F5A5}\u{FE0F}'),
   ]
-  for (const m of [...t.models].reverse().slice(0, 5)) nodes.push(infoNode(a, `model.${m.gen}`, `${m.name} (${m.year}): score ${m.score} · ${m.open ? 'open weights' : 'closed'}`, '\u{1F9E0}'))
+  for (const m of [...t.models].reverse().slice(0, 5)) nodes.push(infoNode(a, `model.${m.gen}`, `${m.name} (${m.year}): score ${m.score} · ${m.held ? 'held back' : m.open ? 'open weights' : 'closed'}`, '\u{1F9E0}'))
+  // A held model sells nothing and claims nothing. The action re-reads the live model, so a stale menu can't release twice.
+  for (const m of [...t.models].reverse().filter((x) => x.held).slice(0, 3)) {
+    nodes.push(
+      dtAct(a, `release.${m.gen}`, `Release ${m.name}`, '\u{1F680}', {
+        subtitle: 'Held back. It earns nothing until you release it.',
+        visible: (gg) => view(gg, a).t.models.some((x) => x.gen === m.gen && x.held),
+        run: (gg, cur, bb, tt) => {
+          const live = tt.models.find((x) => x.gen === m.gen)
+          if (!live?.held) return
+          delete live.held
+          log(gg, `${cur.name} released ${live.name} after more testing.`, 'good')
+          claimFirsts(gg, cur, bb, tt, live)
+          revalue(gg, cur, bb, tt)
+        },
+      }),
+    )
+  }
   nodes.push(
     dtAct(a, 'rent', 'Rent a GPU Cluster', '\u{2601}\u{FE0F}', {
       subtitle: (gg) => {
@@ -470,11 +629,11 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
       subtitle: 'A multi-year enterprise AI deal, if your models are good enough',
       disabled: (gg, _bb, tt) => enterpriseBlock(gg, a, tt),
       // Only on a pitch you can make: the odds are 15% + 45% of competitiveness (55%+ here).
-      hint: (gg) => (!enterpriseBlock(gg, a, t) && competitiveness(t, gg.year) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier that you will probably win it, and the contract is worth far more than the pitch.') : null),
+      hint: (gg) => (!enterpriseBlock(gg, a, t) && competitiveness(t, gg.year, familyId(gg.lifeId)) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier that you will probably win it, and the contract is worth far more than the pitch.') : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.enterprise.${cur.id}`, 1)) return tooBusy(gg, 'pitched a big customer')
         const cost = payTech(bb, tt, Math.round(300_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
-        if (chance(gg, clampN(0.15 + competitiveness(tt, gg.year) * 0.45, 0.1, 0.8))) {
+        if (chance(gg, clampN(0.15 + competitiveness(tt, gg.year, familyId(gg.lifeId)) * 0.45, 0.1, 0.8))) {
           const unit = localEcon(bb.industry, bb.countryId, bb.city).baseDemand * localEcon(bb.industry, bb.countryId, bb.city).goingPrice
           const perYear = Math.round(unit * (0.1 + rand(gg) * 0.15))
           tt.deal = { name: 'an enterprise AI contract', perYear, years: 2 }
@@ -887,7 +1046,7 @@ function screenMenu(a: Asset, b0: BizState): MenuGroup {
 /** Extra rows on the company screen under "Run the Company". */
 export function deepTechNodesImpl(g: GameState, a: Asset): MenuNode[] {
   const b = readBiz(g, a)
-  return [labMenu(a), fundingMenu(a), screenMenu(a, b)]
+  return dtInd(b) === 'aiLab' ? [labMenu(a), benchMenu(a), fundingMenu(a), screenMenu(a, b)] : [labMenu(a), fundingMenu(a), screenMenu(a, b)]
 }
 
 /** One status line for the company screen. */
@@ -909,8 +1068,8 @@ export function deepTechSummaryImpl(g: GameState, a: Asset): string {
   const ind = dtInd(b)
   const parts = [`deep tech at "${stageName(ind, t.stage)}"`, `tech level ${Math.round(t.level)}/100`, b.public ? 'publicly listed' : `${SERIES[t.series]} startup`]
   if (ind === 'aiLab') {
-    const best = bestModel(t)
-    if (best) parts.push(`best model ${best.name} (score ${best.score})`)
+    const clause = summaryClause(familyId(g.lifeId), t, benchYear(g))
+    if (clause) parts.push(clause)
   }
   if (ind === 'semiconductor') parts.push(`${NODES[t.node]} chips${t.plant ? `, ${plural(t.plant, 'fab')}` : ', fabless'}`)
   if (ind === 'biotech') {

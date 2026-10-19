@@ -8,8 +8,10 @@
 // brand, marketing, products, staff morale, the country's business cycle (shared by every firm
 // in that country), competition and market saturation. Costs follow local wages (never below
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
-import { marketEventFactors } from '../history/market-events'
+import { FACTOR_BOUNDS, marketEventFactors } from '../history/market-events'
 import { historicalIndexReturn } from '../history/markets'
+import { PRESENT_YEAR } from '../history/timeline'
+import { bookedMarketMove } from '../invest/clock'
 import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
@@ -23,13 +25,15 @@ import { industryDef, lineOf, type IndustryDef, type StaffFocus } from './indust
 import { traitOf } from './flavor'
 import { deepTechValue, isDeepTech, isDeepTechIndustry } from './deeptech-state'
 import { franchiseFeesFor } from './franchise-state'
+import { fieldMarketOf, labIncomeIn, labValue } from './lab-state'
 import { hedgeProfitIn } from './hedge-record'
 import { studioValue } from './gamestudio-state'
 import { heavyPulse, readHeavy } from './heavy-rd'
+import { historyFactors, waveFactorsFor } from './tech-wave-factors'
 import { complexityCost, PRODUCT_LIFE, rangeBrand } from './products'
 import { applyProductRivalry, fieldFor, fieldOf, productPull, type ProductPull } from './product-market'
 import { advanceRd } from './rd'
-import { normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
+import { isQuoted, normalizeBiz, stakeValue, totalOutlets, type BizState, type Outlet, type Statement, type YearRecord } from './state'
 import { classFactor } from './share-classes'
 import { clampN, dollars, num, round2 } from './util'
 import { buildCtx, dominanceOf, marketDemand, marketKey, marketStateOf, PRICE_POWER, SCALE_SAVING, type MarketCtx, type MarketPick } from './competition-core'
@@ -44,6 +48,9 @@ import { bookSupply, saveSupply, supplyConditions, supplyInventoryValue, supplyP
 import { applyEconomicRivals } from './economic-actors'
 import { applyNpcRivals } from './npc-rivals'
 import { leadershipPower, individualLeadershipPower, LEADERSHIP } from './leadership'
+import { chipCostFactor, chipTerms, DEVICE_NETWORK, FAB_BASE, FAB_MAINT, FAB_STEP, OS_BETA, OS_FAMILY, OS_PULL_CAP, readFabs } from './devices-data'
+import { networkPull } from './competition-roster'
+import { effectiveQuality, infoOf } from './product-market'
 
 // ---------------------------------------------------------------------------
 // One outlet in one market
@@ -351,6 +358,27 @@ export function lineCost(b: BizState, n: number): number {
   return Math.round(Math.max(0, n) * home.capital * LINE_CAPEX)
 }
 
+/** What a unit of plant costs where this business sits: the local capital level against the trade's default. Never reads money. */
+export function capitalIndex(b: Pick<BizState, 'industry' | 'countryId' | 'city'>): number {
+  return localEcon(b.industry, b.countryId, b.city).capital / industryDef(b.industry).capital
+}
+
+/** The cost of the next chip fab (a device company's capex lever): a fixed price per plant, 35% dearer for each one built. `n` fabs in a row. */
+export function fabCost(b: BizState, n = 1): number {
+  const have = readFabs(b.fabs)
+  let steps = 0
+  for (let k = have; k < have + Math.max(0, Math.round(n)); k++) steps += 1 + FAB_STEP * k
+  return Math.round(FAB_BASE * capitalIndex(b) * steps)
+}
+
+/** The yearly upkeep of the chip fabs a device company runs (0 for every other trade). */
+export function fabUpkeep(b: BizState): number {
+  if (b.industry !== 'devices') return 0
+  let steps = 0
+  for (let k = 0; k < readFabs(b.fabs); k++) steps += 1 + FAB_STEP * k
+  return Math.round(FAB_MAINT * FAB_BASE * capitalIndex(b) * steps)
+}
+
 /** Price customers accept without flinching, given quality and brand. */
 export function premiumOf(b: BizState): number {
   return 1 + (b.quality - 50) / 250 + (b.brand - 50) / 500
@@ -443,10 +471,44 @@ export function marketCtxFor(g: GameState, b: BizState, year: number): MarketCtx
   // and then everything below is exactly what it always was.
   const heavy = readHeavy(g, b.industry, marketKey(b))
   // What the rivals offer of each kind of product, and how well (product-market.ts).
-  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy)
+  // The company's trade and the shields its patents hold go with it (lab-state.ts fieldMarketOf).
+  const field = fieldOf(ctx.rivals, ctx.fringe, ctx.key, year, heavy, fieldMarketOf(b))
   const pot = ctx.pot * (ctx.def.scope === 'national' ? national.demand : 1)
   // A breakthrough wakes up demand for the whole trade in its market, rivals and the player alike.
-  return { ...ctx, pot: heavy.length ? pot * heavyPulse(heavy, year) : pot, field }
+  const pulse = heavy.length ? heavyPulse(heavy, year) : 1
+  // Tech waves (business/tech-waves.ts) move demand here and nowhere else, on this copy and after buildCtx
+  // (its cache stays free of game state), together with the heavy pulse under one clamp. With no wave the
+  // factor is exactly 1 and this is what it always was.
+  const wd = waveFactorsFor(g, b.industry, ctx.key, year).demand
+  const out: MarketCtx = { ...ctx, pot: wd === 1 ? (heavy.length ? pot * pulse : pot) : pot * clampN(pulse * wd, FACTOR_BOUNDS.demand[0], FACTOR_BOUNDS.demand[1]), field }
+  // A device company's operating system adds to its network pull (osPull). It is read from the product list, which
+  // buildCtx's cache key doesn't hold, so it lands on this copy and never on the cached context.
+  return b.industry === 'devices' ? { ...out, w: osPull(ctx.base, osStrength(b, year)) } : out
+}
+
+/**
+ * How strong a device company's operating system is, 0 to 1: its best OS line (a bundle or add-on doesn't count) against
+ * today's rivals, from quality 35 (nothing) to 80 (all of it). A line ages like any other, so a neglected OS fades.
+ */
+export function osStrength(b: Pick<BizState, 'industry' | 'products'>, year: number): number {
+  if (b.industry !== 'devices') return 0
+  let best = 0
+  for (const p of b.products) {
+    const info = infoOf(p, b.industry)
+    if (info.family !== OS_FAMILY || info.kind === 'bundle' || info.kind === 'addon') continue
+    const q = effectiveQuality(p, b.industry, year)
+    if (Number.isFinite(q) && q > best) best = q
+  }
+  return clampN((best - 35) / 45, 0, 1)
+}
+
+/**
+ * The network pull of an installed base with an operating system behind it: never below the plain pull, never above the
+ * cap (unless the plain pull already is), and growing with the OS's strength. Rivals keep their own, weaker pull.
+ */
+export function osPull(base: number, strength: number): number {
+  const s = clampN(strength, 0, 1)
+  return Math.max(networkPull(base, DEVICE_NETWORK), Math.min(OS_PULL_CAP, networkPull(base, DEVICE_NETWORK + OS_BETA * s)))
 }
 
 /**
@@ -550,7 +612,7 @@ export function planFor(g: GameState, b: BizState, year: number, opts: PlanOptio
 export function costFactor(b: BizState, calm = false): number {
   const sup = b.supplier === 'budget' ? 0.86 : b.supplier === 'premium' ? 1.18 : 1
   const ops = 1 - LEADERSHIP.unitCost * staffPower(b, 'ops')
-  return sup * ops * (calm ? 1 : b.costShock)
+  return sup * ops * chipCostFactor(b) * (calm ? 1 : b.costShock)
 }
 
 /** The highest production the report allows (full capacity, ignoring one-off losses). */
@@ -684,6 +746,7 @@ export function bookYear(g: GameState, b: BizState, year: number, plan: Plan, pr
     rent += lines * home.rent * LINE_RENT
     upkeep += lines * home.capital * LINE_CAPEX * def.maint
   }
+  upkeep += fabUpkeep(b)
   wages *= k.licence
   const employees = Math.max(totalOutlets(b), Math.round(wanted))
   const netRevenue = revenue - salesTax
@@ -830,7 +893,7 @@ export function evolve(g: GameState, b: BizState, stmt: Statement, year: number)
   // Quality: suppliers, quality staff, morale, leadership.
   const sup = b.supplier === 'budget' ? -12 : b.supplier === 'premium' ? 12 : 0
   const chef = def.food && ownerTalent(g, b, 'Cooking') ? TALENT_COOKING_QUALITY : 0
-  const qTarget = clampN(45 + sup + LEADERSHIP.quality * staffPower(b, 'quality') + (b.morale - 50) / 6 + (skill - 50) / 10 + chef, 5, 98)
+  const qTarget = clampN(45 + sup + LEADERSHIP.quality * staffPower(b, 'quality') + (b.morale - 50) / 6 + (skill - 50) / 10 + chef + chipTerms(b, year).lift, 5, 98)
   b.quality = clampN(Math.round(b.quality + (qTarget - b.quality) * 0.3), 0, 100)
 
   // Brand: quality, marketing, age, products, fame of the founder.
@@ -882,12 +945,33 @@ export function valuationOf(b: BizState): number {
   // A company fund's yearly result is already in the cash below: it is valued at what it is, never
   // capitalized as earnings (business/hedge-record.ts hedgeProfitIn).
   if (b.hedge) h.forEach((r, i) => (avg -= hedgeProfitIn(b, r) * weights[i]))
+  // The R&D credit, a research grant and patent royalties are already in the cash: valued at what they
+  // are, never capitalized as if they recurred (business/lab-state.ts).
+  if (b.lab) {
+    const keep = 1 - clampN(marketOf(b.countryId).corporateTax, 0, 0.9)
+    h.forEach((r, i) => (avg -= labIncomeIn(b, r.year) * keep * weights[i]))
+  }
   if (h.length === 0) avg = 0
   let growth = 0
   if (h.length >= 2 && h[h.length - 2].revenue > 0) growth = clampN(h[h.length - 1].revenue / h[h.length - 2].revenue - 1, -0.3, 0.6)
   // A dominant company's profits are safer (a moat): investors pay a little more for them. In a
   // boom or a bust (history/market-events.ts) they pay more or less for every dollar of it.
-  const mood = h.length ? marketEventFactors(b.industry, b.countryId, h[h.length - 1].year).value : 1
+  const last = h.length ? h[h.length - 1] : null
+  const events = last ? marketEventFactors(b.industry, b.countryId, last.year).value : 1
+  let mood = events
+  // Tech waves (business/tech-waves.ts): the mood stamped when that year was booked, else the history
+  // table read directly. A stamp only counts for the last record's year and is validated here (bizOf
+  // does not re-normalize a current-version record). Deep tech reads waves through industryCycle and
+  // classicPart spreads b, so it never uses either. A quoted company (listed itself, or a division of a
+  // listed group, whose price sums its divisions' valuations) takes only a stock-grade stamp (q), and with
+  // none its mood is 1: the stock tables already carry the real booms, and a stale or private-grade stamp
+  // must never move a price (C-12). An unquoted company ignores a stock-grade stamp.
+  if (last && !isDeepTech(b)) {
+    const ws = b.wave, quoted = isQuoted(b)
+    const stamped = !!ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && ws.y === last.year && (ws.q === true) === quoted
+    const wv = stamped ? clampN(ws.v, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]) : quoted ? 1 : historyFactors(b.industry, marketKey(b), last.year).value
+    if (wv !== 1) mood = clampN(events * wv, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
+  }
   const mult = def.multiple * (1 + growth * def.growth) * (0.85 + b.brand / 333) * (1 + MOAT * dominanceOf(b)) * mood
   const ev = Math.max(0, avg) * mult
   const lastRevenue = h.length ? h[h.length - 1].revenue : 0
@@ -899,7 +983,7 @@ export function valuationOf(b: BizState): number {
   const tech = isDeepTech(b) ? deepTechValue(b.tech) : 0
   // A bank's run-time advance into its client book is shareholders' money funded by the
   // central-bank debt counted in b.debt (business/bank-state.ts), so it belongs in equity.
-  let equity = Math.max(ev, floor) + games + tech + b.cash - b.debt + bankAdvanceOf(b)
+  let equity = Math.max(ev, floor) + games + tech + labValue(b) + b.cash - b.debt + bankAdvanceOf(b)
   if (b.cooked > 0) equity *= 1 + 0.25 * Math.min(3, b.cooked)
   return Math.max(0, dollars(equity))
 }
@@ -931,6 +1015,8 @@ export function exchangeMove(g: GameState, countryId: string, year: number): num
   // In history the exchange moves as the real one did (the same tables as the stock market).
   const real = historicalIndexReturn(countryId, year)
   if (real !== null && Number.isFinite(real)) return clampN(real, -0.6, 1.2)
+  // From the present on it is the engine's move of the market year this fiscal year is booked into (one clock with the funds).
+  if (year >= PRESENT_YEAR) return bookedMarketMove(g, countryId, year)
   const ex = exchangeFor(countryId)
   const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|bizexchange|${ex.code}|${year}`)
   const z = (s.next() + s.next() + s.next() - 1.5) * 2

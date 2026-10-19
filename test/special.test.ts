@@ -1,9 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { counter } from '../src/game/core'
 import { runScript } from '../src/game/scripts'
 import { fameMenu, militaryMenu, socialMediaMenu, specialCareersMenu, specialJobNodes, yearlySpecial } from '../src/game/special'
+import { buildOffers } from '../src/game/special/astronaut-flight'
+import { astronautStore } from '../src/game/special/astronaut-state'
 import { hire } from '../src/game/special/common'
-import type { Character, Degree, GameState, MenuAction, MenuNode, ModalItem } from '../src/game/types'
+import * as rivals from '../src/game/special/kit/rivals'
+import type { Character, ChoiceModal, Degree, GameState, MenuAction, MenuNode, ModalItem } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
 // ---------------------------------------------------------------------------
@@ -258,9 +261,25 @@ describe('politics', () => {
 })
 
 describe('astronaut', () => {
-  it('trains at the academy, graduates and joins an agency', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /** No peer corps: every seat on the Flight Board is uncontested. */
+  const soloCorps = (): void => void vi.spyOn(rivals, 'activeField').mockReturnValue([])
+
+  /** A cadet one year from graduating, with the training score 70. */
+  function cadet(stats: Partial<Character['stats']>, athleticism: number, seed = 7): GameState {
+    const g = withDegrees(game(25, { stats: { happiness: 80, health: 90, smarts: 60, looks: 60, ...stats } }, seed), HIGH_SCHOOL, BACHELOR)
+    g.character.hidden.athleticism = athleticism
+    hire(g, { defId: 'astronaut.cadet', title: 'Space Academy Cadet', company: 'Orion Space Academy', salary: 14_000, performance: 70, data: { training: 70, yearsLeft: 1 } })
+    return g
+  }
+
+  it('trains at the academy, sits the selection board and joins an agency', () => {
     const g = withDegrees(game(23, { stats: { happiness: 80, health: 95, smarts: 100, looks: 60 } }), HIGH_SCHOOL, BACHELOR)
     g.character.hidden.athleticism = 90
+    g.character.talent = 'Academics'
     let tries = 0
     while (!g.character.job && tries < 10) {
       run(g, careers(g), 'astro.academy')
@@ -269,25 +288,56 @@ describe('astronaut', () => {
       tries++
     }
     expect(g.character.job?.defId).toBe('astronaut.cadet')
+    const seen: ModalItem[] = []
     for (let y = 0; y < 2; y++) {
       for (const id of ['astro.drill.physical', 'astro.drill.sim', 'astro.drill.study', 'astro.drill.zerog']) run(g, specialJobNodes(g), id)
       drain(g)
       nextYear(g)
       yearlySpecial(g)
-      drain(g, ['oea'])
+      seen.push(...drain(g, ['oea']))
     }
+    // The board's result is a notice, and a smarts-100 graduate clears it.
+    expect(seen.some((m) => m.kind === 'notice' && /You placed/.test(m.text))).toBe(true)
+    // Academics reads the class's taste on each offer
+    const offer = seen.find((m): m is ChoiceModal => m.kind === 'choice' && m.scriptId === 'special.astro.offer')
+    expect(offer?.choices.find((c) => c.id === 'oea')?.hint).toMatch(/That class wanted (pilot|engineer|scientist|physician)s\. You read as an? (pilot|engineer|scientist|physician)\./)
     expect(g.character.job?.defId).toBe('astronaut')
     expect(g.character.job?.title).toBe('Astronaut Candidate')
+    expect(astronautStore.view(g).classes).toHaveLength(1)
     // Candidates can't fly yet.
     expect(action(g, specialJobNodes(g), 'astro.mission').disabledReason?.(g)).toMatch(/not cleared/i)
   })
 
+  it('leaves a graduate the board turned down eligible to apply', () => {
+    const g = cadet({ health: 50, smarts: 45 }, 5)
+    nextYear(g)
+    yearlySpecial(g)
+    const seen = drain(g)
+    expect(seen.some((m) => m.kind === 'notice' && /You placed/.test(m.text))).toBe(true)
+    expect(g.character.job).toBeNull()
+    expect((g.flags['special.astronaut'] as { graduated?: boolean }).graduated).toBe(true)
+    expect(astronautStore.peek(g)).toBeNull()
+    expect(findNode(g, careers(g), 'astro.apply.oea')).toBeDefined()
+  })
+
+  it('closes the Academy before 1959', () => {
+    const g = withDegrees(game(23), HIGH_SCHOOL, BACHELOR)
+    g.year = 1950
+    expect(action(g, careers(g), 'astro.academy').disabledReason?.(g)).toMatch(/No agency trains/)
+    g.year = 1959
+    expect(action(g, careers(g), 'astro.academy').disabledReason?.(g)).toBeNull()
+  })
+
   it('flies a mission that raises fame', () => {
+    soloCorps()
     for (let seed = 1; seed < 20; seed++) {
       const g = withDegrees(game(35, {}, seed), HIGH_SCHOOL, BACHELOR)
       hire(g, { defId: 'astronaut', title: 'Mission Specialist', company: 'Orbital Exploration Agency', salary: 98_000, level: 2, data: { agency: 'oea', lastMissionAge: -1 } })
+      const offers = buildOffers(g, astronautStore.view(g))
+      expect(offers.length).toBeGreaterThan(0)
+      expect(offers.some((o) => o.type === 'moon')).toBe(false) // no Moon trip in 2026
       run(g, specialJobNodes(g), 'astro.mission')
-      drain(g, ['moon', 'leap', 'go'])
+      drain(g)
       if (!g.character.alive) continue
       expect(g.character.hidden.fame).toBeGreaterThan(0)
       expect(counter(g, 'spaceMissions')).toBe(1)

@@ -13,12 +13,15 @@ import { COUNTRIES, getCountry } from '../world'
 import { dominanceFrom, freshMarketState, marketDemand, marketKey, marketStateOf, type MarketCtx, type MarketPick } from './competition-core'
 import { effectiveRegime, marketDef, marketGrowth, OUTSIDE, regimeFor, tierFor, type Regime, type TierId } from './competition-data'
 import { familyId, isRealName, pickHub, rawPull, rivalName, rosterOf, type RivalTier } from './competition-roster'
-import { emptyMarket, type ExtraRival, type MarketState } from './competition-state'
+import { emptyMarket, MAX_WAVE_FOUNDED, type ExtraRival, type MarketState } from './competition-state'
+import { marketReference, priceIndex, techView } from './deeptech-core'
 import { localEcon, marketCtxFor, marketCtxWithRivalry, marketScale, type Worth } from './economy'
 import { industryDef } from './industries'
 import { entryStrength, presenceIn } from './market-reach'
 import { regionalShares } from './market-regional'
+import { CHIP_LANES } from './silicon-data'
 import { readBiz, type BizState } from './state'
+import { entrantLine, entrantsDue, waveScrutiny } from './tech-waves'
 import { clampN, money as moneyShort, toJson } from './util'
 
 // ---------------------------------------------------------------------------
@@ -92,6 +95,7 @@ export function refreshMarket(g: GameState, a: Asset, b: BizState, year: number,
   for (const [id, m] of Object.entries(st.mods)) if (m.until <= year) delete st.mods[id]
   st.year = year
   lureNewcomer(g, a, b, st, stmt, year)
+  waveNewcomers(g, b, st, year)
   saveMarket(b, st)
 }
 
@@ -113,6 +117,32 @@ function lureNewcomer(g: GameState, a: Asset, b: BizState, st: MarketState, stmt
   const x: ExtraRival = { id: `x${year}${s.int(10, 99)}`, name, hq, founded: year + 1, pot: (0.6 + 2 * s.next()) * (1 + 2 * st.share), ramp: s.int(3, 5), origin: 'entrant' }
   st.extra = [...st.extra.filter((e) => e.founded > year - 40), x].slice(-12)
   log(g, `${name} launched to grab a slice of ${a.name}'s ${d.noun} profits.`, 'neutral')
+}
+
+/**
+ * Fast followers a tech wave draws into the company's market (business/tech-waves.ts entrantsDue): one
+ * per delivery level the wave has crossed, never founded twice (the id is stable and the market state
+ * remembers it in `waveFounded`, which outlives the 12-slot `extra` list, bought out or not). Deterministic:
+ * the stream is keyed by the family and the entrant id.
+ */
+function waveNewcomers(g: GameState, b: BizState, st: MarketState, year: number): void {
+  const due = entrantsDue(g, b.industry, st.key)
+  if (!due.length) return
+  const fam = familyId(g.lifeId)
+  const d = marketDef(b.industry)
+  for (const { id, wave } of due) {
+    if (st.extra.some((e) => e.id === id) || st.gone.includes(id) || st.waveFounded?.includes(id)) continue
+    const s = seeded(`${fam}|wave-entrant|${id}`)
+    const hq = d.scope === 'world' ? pickHub(s, d, 'world') : b.countryId
+    const taken = new Set(rosterOf(fam, b.industry, st.key).rivals.map((r) => r.name).concat(st.extra.map((x) => x.name)))
+    let name = ''
+    for (let i = 0; i < 8 && (!name || taken.has(name) || isRealName(name)); i++) name = rivalName(s, b.industry, d, hq)
+    if (taken.has(name) || isRealName(name)) continue
+    const x: ExtraRival = { id, name, hq, founded: year + 1, pot: 0.6 + 0.8 * wave.size, ramp: 3, origin: 'entrant' }
+    st.extra = [...st.extra.filter((e) => e.founded > year - 40), x].slice(-12)
+    st.waveFounded = [...(st.waveFounded ?? []), id].slice(-MAX_WAVE_FOUNDED)
+    log(g, entrantLine(name, wave.kind), 'neutral')
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +205,8 @@ export interface MarketView {
   /** For world markets: the home country's slice of it and the company's estimated share there. */
   home: { name: string; size: number; share: number } | null
   antitrust: AntitrustView
+  /** Chip companies only: the headline price against the core lane's calm market reference in `g.year` (1 = at the market). */
+  index?: number
   history: { year: number; share: number; lead?: number; hhi?: number; rank: number; size: number }[]
 }
 
@@ -226,7 +258,7 @@ export function recentAcquisitions(st: Pick<MarketState, 'acquired'> | null, yea
 }
 
 /** Antitrust exposure at a share (no RNG). `rivals` lets it add the countries where the company dominates locally. */
-export function antitrustOf(b: BizState, share: number, year: number, priceRatio = 1, rivals?: readonly RivalView[]): AntitrustView {
+export function antitrustOf(b: BizState, share: number, year: number, priceRatio = 1, rivals?: readonly RivalView[], scrutiny = 1): AntitrustView {
   const world = marketDef(b.industry).scope === 'world'
   const regime = effectiveRegime(b.countryId, year, world)
   const st = marketStateOf(b)
@@ -256,7 +288,8 @@ export function antitrustOf(b: BizState, share: number, year: number, priceRatio
     }
     for (const r of regional) p = 1 - (1 - p) * (1 - r.p)
   }
-  p = clampN(p, 0, 0.5)
+  // A breakthrough in the company's own trade draws regulators (business/tech-waves.ts waveScrutiny); 1 changes nothing.
+  p = clampN(p * scrutiny, 0, 0.5)
   const label = p <= 0 ? 'none' : p < 0.03 ? 'low' : p < 0.07 ? 'moderate' : p < 0.14 ? 'high' : 'severe'
   return { regime, p, label, acquisitions, regional }
 }
@@ -384,7 +417,8 @@ export function marketViewOf(g: GameState, b: BizState): MarketView {
     fringe,
     worldShare,
     home,
-    antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio, rivals),
+    antitrust: antitrustOf(b, Math.max(share, base), g.year, priceRatio, rivals, waveScrutiny(g, b.industry)),
+    ...(b.industry === 'semiconductor' ? { index: priceIndex(b.price, marketReference(g, b, techView(b), CHIP_LANES[0], g.year)) } : {}),
     history: (st?.history ?? []).map((h) => ({ year: h.year, share: h.share, rank: h.rank, size: h.size, ...(h.lead !== undefined ? { lead: h.lead } : {}), ...(h.hhi !== undefined ? { hhi: h.hhi } : {}) })),
   }
 }

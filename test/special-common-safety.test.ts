@@ -159,7 +159,7 @@ describe('special career shared-state safety', () => {
   })
 
   it('does not crash yearly settlement on incomplete legacy career profiles', () => {
-    for (const key of ['actor', 'astronaut', 'athlete', 'fame', 'gamedev', 'hustler', 'military', 'model', 'music', 'politics', 'social', 'sports', 'sports.esports', 'sports.fight', 'sports.ind', 'sports.sumo', 'sports.wrestle', 'sports.youth']) {
+    for (const key of ['actor', 'actor.sim', 'astronaut', 'astronaut.sim', 'athlete', 'fame', 'gamedev', 'hustler', 'military', 'model', 'model.sim', 'music', 'music.sim', 'politics', 'social', 'sports', 'sports.esports', 'sports.fight', 'sports.ind', 'sports.sumo', 'sports.wrestle', 'sports.youth']) {
       const g = makeTestGame(200 + key.length, { age: 30 })
       g.flags[`special.${key}`] = {
         owner: ownerKey(g),

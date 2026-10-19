@@ -72,6 +72,7 @@ import { classFacts, lineOpen, linesOf, lineYear, votesText, type Line } from '.
 import { gutLikes, instinctLine, listPicks, marketInstinct, type Instinct } from './invest/instinct'
 import { addMarketShock, indexShockFactor, marketBreakthroughs, orderFlowFactor, pruneMarketShocks, shockedMove, shockFactor, shocksThisYear, type MarketShock } from './invest/shocks'
 import { buyImpact, saleImpact } from './invest/liquidity'
+import { waveClause, waveNews, waveTag } from './invest/wave-stocks'
 import { chance, pick, randFloat, uid } from './rng'
 import { HINT_EMOJI, talentHint } from './talents'
 import type { Asset, GameState, Json, MenuAction, MenuGroup, MenuNode, Tone } from './types'
@@ -648,6 +649,8 @@ interface Quote {
   lines?: Quote[]
   /** Votes a share of a share class's line (shown on the company's screen; not saved with a holding). */
   votes?: number
+  /** The live tech wave with the largest effect on a stock's sector, "Frontier AI wave: sector +12%" (not saved with a holding). */
+  wave?: string
 }
 
 /**
@@ -775,7 +778,9 @@ function listing(g: GameState): Listing {
   const stocks = ey.stocks.map((s) => {
     const def = companyDef(info, s.slot, s.gen)
     const raw = stockQuote(info, s, false, y, marketBlock)
-    const q = withShock(g, raw, shockFactor(g, def.id, y), shockFactor(g, def.id, y - 1))
+    const shocked = withShock(g, raw, shockFactor(g, def.id, y), shockFactor(g, def.id, y - 1))
+    const wave = waveTag(g, def.id, y)
+    const q = wave ? { ...shocked, wave } : shocked
     // A real company's listed second classes ride on its screen, priced off its quote.
     const lines = def.real ? linesOf(def.real, def.id, y).map((line) => lineQuote(g, raw, line, y)) : []
     return lines.length ? { ...q, lines } : q
@@ -1480,7 +1485,8 @@ function marketLine(g: GameState, info: ExInfo, ey: ExYear): string {
   const amount = verb === 'flat' ? '' : ` ${moveText(m)}`
   if (isHistoryYear(ey.year) && exchangeStatus(info, ey.year) === 'none') return `🚫 No stock market trades here this year`
   const breakthrough = marketBreakthroughs(g).some(event => event.year === ey.year && event.exchanges.some(ex => ex.key === info.key))
-  return `${breakthrough ? '🌐' : ey.index.regime.emoji} ${indexName(info, ey.year)} ${verb}${amount} this year · ${breakthrough ? 'Technology breakthrough' : ey.index.regime.label}`
+  const clause = waveClause(g, info.key, ey.year)
+  return `${breakthrough ? '🌐' : ey.index.regime.emoji} ${indexName(info, ey.year)} ${verb}${amount} this year · ${breakthrough ? 'Technology breakthrough' : ey.index.regime.label}${clause ? ` · ${clause}` : ''}`
 }
 
 function historyLine(g: GameState, info: ExInfo): string {
@@ -1813,6 +1819,7 @@ function offerNode(_g: GameState, q: Quote, extraInfo: string[] = []): MenuGroup
       const rows: string[] = []
       if (q.type !== 'savings' && q.type !== 'bond') rows.push(`Price: ${priceText(q.price)}${q.ret !== null ? ` (${change(q.ret)} this year)` : ''}`)
       rows.push(`${q.sector} · ${q.size ? `${q.size} (rough) · ` : ''}${riskText(q.risk)}`)
+      if (q.wave) rows.push(q.wave)
       if (q.type === 'bond') rows.push(`Coupon: ${rateText(q.yield)} a year, paid as taxable income. Sold in ${formatMoney(1_000)} bonds.`)
       else if (q.type === 'savings') rows.push(`Interest: ${rateText(q.yield)} a year, added to the balance and taxed as income.`)
       else if (q.yield > 0) rows.push(`${q.type === 'crypto' ? 'Rewards' : q.type === 'reit' ? 'Payout' : 'Dividend'}: ${rateText(q.yield)} a year, taxed as income.`)
@@ -2037,6 +2044,8 @@ function newsLines(g: GameState): string[] {
   const ey = l.year
   const y = g.year
   const lines: string[] = [marketLine(g, l.info, ey)]
+  const waveLine = waveNews(g, l.info.key, y)
+  if (waveLine) lines.push(waveLine)
   for (const event of marketBreakthroughs(g)) if (event.year === y) lines.push(`🌐 World-changing invention: ${event.name}. Open stock markets repriced ${pct(event.mult - 1, 0)} immediately; this is a one-time repricing, not a repeating annual return.`)
   const note = isHistoryYear(y) ? marketNote(l.info.home, y) : ''
   if (note) lines.push(`📰 ${note}`)

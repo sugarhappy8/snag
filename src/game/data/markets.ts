@@ -17,7 +17,7 @@ import { ASIA_OCEANIA_MARKETS } from './markets/asiaOceania'
 import { EUROPE_MARKETS } from './markets/europe'
 import { venueLegal } from '../business/venues-data'
 
-/** The 55 industries you can start, including finance, hospitality and deep tech. */
+/** The 56 industries you can start, including finance, hospitality and deep tech. */
 /** New sectors use the procedural rival engine, without invented facts about real companies. */
 export const EXPANSION_INDUSTRY_IDS = ['investmentFirm', 'bank', 'onlineBank', 'casino', 'nightclub', 'stripClub', 'solar', 'battery', 'water', 'recycling', 'telecom', 'dataCenter', 'education', 'petCare', 'homeCare', 'packaging', 'furniture', 'travel'] as const
 
@@ -61,6 +61,8 @@ export const INDUSTRY_IDS = [
   'neurotech',
   'drones',
   'carbonCapture',
+  // Last, so no index above moves (business/devices-data.ts): classic engine, not deep tech.
+  'devices',
 ] as const
 
 /** The deep-tech industries (a subset of INDUSTRY_IDS with their own simulation layer). */

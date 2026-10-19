@@ -3,11 +3,13 @@
 import { seeded } from '../assets'
 import { industryConditions, sectorOf } from '../economy'
 import { policyMarket } from '../nation/effects'
-import { marketEventFactors } from '../history/market-events'
+import { FACTOR_BOUNDS, marketEventFactors } from '../history/market-events'
 import { marketDef } from './competition-data'
 import { notice } from '../core'
 import type { GameState, Json } from '../types'
+import { opsEffectsOf } from './lab-state'
 import type { BizState } from './state'
+import { waveFactorsFor } from './tech-wave-factors'
 import { clampN, num, rec, str } from './util'
 
 export const STRATEGIES = [
@@ -87,8 +89,13 @@ export function nationalMarket(g: GameState, industry: string, country: string, 
   // Preferences still differ by nation; economic demand and input costs share world state.
   // The government's own taxes, tariffs, budgets and laws (nation/effects.ts), from the year they pass.
   const policy = policyMarket(g, industry, country, year, sectorOf(industry))
+  // Tech waves (business/tech-waves.ts): COST only. Wave demand must not go in here: this demand already
+  // feeds the potential of a national trade (marketCtxFor) and every outlet's cycle effect (planFor), so
+  // the one place it is applied is marketCtxFor. A wave with no cost effect leaves this exactly as it was.
+  const techWave = waveFactorsFor(g, industry, marketDef(industry).scope === 'world' ? 'world' : country, year)
+  const waveCosts = techWave.costs === 1 ? events.costs : clampN(events.costs * techWave.costs, FACTOR_BOUNDS.costs[0], FACTOR_BOUNDS.costs[1])
   const demand = (1 + (base.baseDemand - 1) * .25) * confidence * sector.demand * (1.08 - sector.competition * .145) * events.demand * policy.demand
-  return { demand, costs: sector.costs * (1 + (base.costs - 1) * .2) * events.costs * policy.costs, confidence, taste: base.taste, growth: (sector.demand * events.demand - 1) * .3, events, policy,
+  return { demand, costs: sector.costs * (1 + (base.costs - 1) * .2) * waveCosts * policy.costs, confidence, taste: base.taste, growth: (sector.demand * events.demand - 1) * .3, events, wave: techWave, policy,
     label: demand < .94 ? 'Demand weakening' : demand > 1.06 ? 'Demand expanding' : 'Demand stable' }
 }
 
@@ -96,7 +103,12 @@ export function nationalMarket(g: GameState, industry: string, country: string, 
 export function executiveEdge(skill: number): number { return skill >= 85 ? .65 + .85 * clampN((skill - 85) / 15, 0, 1) : Math.pow(clampN((skill - 75) / 25, 0, 1), 1.5) }
 
 export function businessEffects(g: GameState, b: BizState, country: string, year: number) {
-  if (!b.expansion) return { demand: 1, cost: 1, capacity: 1 }
+  if (!b.expansion) {
+    // Without a research lab this is the same answer as ever; with one, Operations R&D is the only effect (lab-state.ts).
+    if (!b.lab) return { demand: 1, cost: 1, capacity: 1 }
+    const ops = opsEffectsOf(b, year)
+    return { demand: clampN(1 + ops.demand, .7, 1.65), cost: clampN(1 + ops.cost, .65, 1.5), capacity: Math.min(1.4, 1 + ops.capacity) }
+  }
   const x = expansionOf(b)
   const national = nationalMarket(g, b.industry, country, year)
   let demand = 1, cost = 1, capacity = 1
@@ -110,7 +122,9 @@ export function businessEffects(g: GameState, b: BizState, country: string, year
     if (p.id === 'training' || p.id === 'efficiency') capacity += .08
     if (p.id === 'resilience' && national.demand < 1) demand += (1 - national.demand) * .7
   }
-  return { demand: clampN(demand, .7, 1.65), cost: clampN(cost, .65, 1.5), capacity: Math.min(1.4, capacity) }
+  // Operations R&D (lab-state.ts) joins the strategies' sums before the clamps, which stay the outer bound.
+  const ops = opsEffectsOf(b, year)
+  return { demand: clampN(demand + ops.demand, .7, 1.65), cost: clampN(cost + ops.cost, .65, 1.5), capacity: Math.min(1.4, capacity + ops.capacity) }
 }
 
 /** Real operating failures of the player's large company affect confidence in its national sector. */

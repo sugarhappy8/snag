@@ -13,6 +13,7 @@ import type { GameState, Json } from '../types'
 import type { BizState } from '../business/state'
 import { companyKey, exchangeByKey, exchangeInfo, isRealSecId, slotPlan } from './engine'
 import { economyMarketFactor } from '../economy'
+import { waveIndexFactor, waveStockFactor } from './wave-stocks'
 
 export const SHOCKS_KEY = 'marketShocks'
 export const BREAKTHROUGHS_KEY = 'marketBreakthroughs'
@@ -283,7 +284,7 @@ export function factorOf(s: MarketShock, year: number): number {
 export function shockFactor(g: GameState, secId: string, year: number): number {
   const key = companyKey(secId)
   const exchange = exchangeByKey(key.split('#')[0])
-  let f = boundedFactor(breakthroughStockFactor(g, key, year) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1))
+  let f = boundedFactor(breakthroughStockFactor(g, key, year) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1) * waveStockFactor(g, key, year))
   const index = shockIndex(g)
   for (const s of index.bySec.get(secId) ?? []) f = multiplyFactor(f, factorOf(s, year))
   // A line also takes its company's news. Order flow stays on the line it was traded on.
@@ -312,7 +313,7 @@ export function indexShockFactor(g: GameState, exKey: string, year: number, inde
   // pressure in a single order book. Otherwise a tiny stock order pumps an unlimited fund.
   const list = shockIndex(g).indexNews.get(exKey) ?? []
   const exchange = exchangeByKey(exKey)
-  const breakthrough = breakthroughIndexFactor(g, exKey, year, indexId) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1)
+  const breakthrough = breakthroughIndexFactor(g, exKey, year, indexId) * (exchange ? economyMarketFactor(g, exchange.home, year) : 1) * waveIndexFactor(g, exKey, year)
   if (!list.length) return breakthrough
   const info = exchangeByKey(exKey)
   const n = Math.max(4, info ? slotPlan(info).length : 10)

@@ -44,6 +44,7 @@ import { marketDef } from './competition-data'
 import { groupsOf, liveGroup, sharePriceOf } from './conglomerate-state'
 import { marketOwner, marketViewOf, refreshMarket, shareText } from './competition'
 import { maybeAntitrust } from './competition-events'
+import { advanceTechWaves, stampWave, waveLines } from './tech-waves'
 import { maybeBusinessEvent } from './events'
 import { afterDeepTechYear, deepTechManagerTurn, deepTechReport, isDeepTech, maybeDeepTechEvent, simulateDeepTechYear } from './deeptech'
 import { afterStudioYear, isStudio, maybeStudioEvent, queueStudioReport, simulateStudioYear, studioManagerTurn } from './gamestudio'
@@ -53,8 +54,13 @@ import { economicReportSummary, recordEconomicReport } from './economic-report'
 import { readSupply } from './supply'
 import { bookFranchiseYear, franchiseIncomeFor } from './franchise'
 import { bookHedgeYear } from './hedge-company'
+import { bookLabYear } from './lab-year'
+import { labPayrollIn, labSplit } from './lab-state'
+import { LAB_STATEMENT } from './lab-text'
 import { milestoneYear } from './milestones'
 import { prepareVenueYear, maybeVenueOwnerEvent } from './venues'
+import { prepareSectorYear } from './sector-core'
+import { maybeSectorEvent } from './sector-events'
 import { staffTurnover } from './staff'
 import { bizCountryName, bizOf, businessAssets, ceoJob, diluteBusinessEquity, findBusiness, readBiz, runsIt, stakeValue, totalOutlets, type BizState, type CeoStyle, type Statement } from './state'
 import { clampN, markBest, money, num, pct, plural, priceCapOf, prunePricePromises, rec, round2, str, toJson, unitMoney, units } from './util'
@@ -169,10 +175,17 @@ export function statementLines(b: BizState, s: Statement): AnnualReportData['lin
   if (s.marketing > 0) lines.push(line('Marketing', signed(-s.marketing)))
   if (s.interest > 0) lines.push(line('Interest', signed(-s.interest)))
   lines.push(line('Upkeep & depreciation', signed(-s.upkeep)))
-  if (s.other > 0) lines.push(line('One-off costs', signed(-s.other)))
+  // The research team's pay has its own line, out of the one-off costs (business/lab-state.ts).
+  const crew = Math.min(labPayrollIn(b, s.year), Math.max(0, s.other))
+  if (s.other - crew > 0) lines.push(line('One-off costs', signed(-(s.other - crew))))
+  if (crew > 0) lines.push(line(LAB_STATEMENT.payroll, signed(-crew)))
   const franchised = Math.min(franchiseIncomeFor(b, s.year), Math.max(0, s.otherIncome - (s.strategicIncome ?? 0)))
-  if (s.otherIncome - (s.strategicIncome ?? 0) - franchised > 0) lines.push(line('Other income', money(s.otherIncome - (s.strategicIncome ?? 0) - franchised), 'good'))
+  // The lab's credit, grant and royalties leave "Other income" the way franchise money does.
+  const lab = labSplit(b, s, (s.strategicIncome ?? 0) + franchised)
+  if (s.otherIncome - (s.strategicIncome ?? 0) - franchised - lab.grants - lab.royalty > 0) lines.push(line('Other income', money(s.otherIncome - (s.strategicIncome ?? 0) - franchised - lab.grants - lab.royalty), 'good'))
   if (franchised > 0) lines.push(line('Franchise fees & royalties', money(franchised), 'good'))
+  if (lab.grants > 0) lines.push(line(LAB_STATEMENT.credit, money(lab.grants), 'good'))
+  if (lab.royalty > 0) lines.push(line(LAB_STATEMENT.royalty, money(lab.royalty), 'good'))
   if (s.strategicIncome) lines.push(line('Perfect foresight · strategic trading income', money(s.strategicIncome), 'good'))
   if (s.ownerPay > 0) lines.push(line('Your salary', signed(-s.ownerPay)))
   lines.push(line('Profit before tax', signed(s.pbt), s.pbt >= 0 ? 'good' : 'bad'))
@@ -207,6 +220,8 @@ function marketNote(g: GameState, b: BizState, lastCycle: number): string {
   parts.push(`Locals typically pay about ${e.goingPrice >= 100 ? money(e.goingPrice) : formatCents(e.goingPrice)} per ${def.unitOne}.`)
   if (m.inflation >= 0.15) parts.push(`Inflation runs ${Math.round(m.inflation * 100)}% a year: reprice every year or your prices go stale.`)
   for (const x of marketEventImpacts(b.industry, b.countryId, b.last?.year ?? g.year - 1, v.scope === 'world').slice(0, 2)) parts.push(`${x.event.name}: ${x.text.charAt(0).toLowerCase() + x.text.slice(1)}`)
+  // One tech-wave line, after the events and on the same year basis (the note is cut at 520 characters on screen).
+  parts.push(...waveLines(g, b, b.last?.year ?? g.year - 1).slice(0, 1))
   if (v.booked && v.share > 0 && (v.scope === 'world' || v.share >= 0.005)) {
     parts.push(`You hold ${shareText(v.share)} of ${marketOwner(v.place)} ${v.noun} market (#${v.rank})${v.unmet >= 0.05 ? ` and turned away ${pct(v.unmet)} of your customers last year` : ''}.`)
   }
@@ -476,7 +491,8 @@ export function yearlyBusinessImpl(g: GameState): void {
   // Last year's price promises end with the year that was just booked.
   prunePricePromises(g)
   const list = businessAssets(g)
-  if (list.length === 0) return
+  // Stored tech waves step even with no company (the unit is the game year, once, behind each wave's marker).
+  if (list.length === 0) { advanceTechWaves(g); return }
   announceMarketEvents(g, list)
   const fiscal = g.year - 1
   prepareInternalServices(g, fiscal)
@@ -499,7 +515,11 @@ export function yearlyBusinessImpl(g: GameState): void {
     bookFranchiseYear(g, a, b, fiscal)
     // Cash a company puts to work in a hedge fund, booked once through yearIncome or yearCosts (business/hedge-company.ts).
     bookHedgeYear(g, a, b, fiscal)
+    // The research lab's tax credit, grant, royalties and team pay for the year, booked once the same way (business/lab-year.ts).
+    bookLabYear(g, a, b, fiscal)
     prepareVenueYear(g, a, b, fiscal)
+    // The Operations Desk of food, care and utility trades writes the generic channels (business/sector-core.ts).
+    prepareSectorYear(g, a, b, fiscal)
     executiveOperations(g, b, fiscal, a.id)
     if (b.ceo === 'manager' && isFinanceFirm(b)) financeManagerTurn(g, b)
     const previousRevenue = b.last?.revenue ?? 0
@@ -527,6 +547,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     evolve(g, b, s, fiscal)
     if (studio) afterStudioYear(a, b)
     if (tech) afterDeepTechYear(g, a, b)
+    // The tech-wave mood of the booked year, before anything values the company (business/tech-waves.ts).
+    stampWave(g, b, fiscal)
     const rec0 = recordYear(b, s)
     b.valuation = b.public ? updateSharePrice(g, b, fiscal) : valuationOf(b)
     rec0.valuation = b.valuation
@@ -576,6 +598,8 @@ export function yearlyBusinessImpl(g: GameState): void {
     // price cut from a price war would be undone by the report, and a company sold in a buyout
     // would still get a report.)
     if (plans) queueReport(g, a, b)
+    // A family event of the Operations Desk comes first; a generic event is skipped that year (business/sector-events.ts).
+    if (!eventQueued && maybeSectorEvent(g, a, b, fiscal, managed)) eventQueued = true
     if (!eventQueued && (maybeVenueOwnerEvent(g, a, b, fiscal, managed) || (studio && maybeStudioEvent(g, a, b, fiscal, managed)) || (tech && maybeDeepTechEvent(g, a, b, fiscal, managed)) || maybeBusinessEvent(g, a, b, fiscal, managed))) eventQueued = true
     // Regulators come for dominant companies on their own schedule (not the random-event roll).
     maybeAntitrust(g, a, b, fiscal, managed)
@@ -608,6 +632,8 @@ export function yearlyBusinessImpl(g: GameState): void {
   yearlyConglomerates(g)
   groupRetentionYear(g)
   bundleCeoLetters(g, queued)
+  // Last, because a wave's delivery follows what its company booked this pass (business/tech-waves.ts).
+  advanceTechWaves(g)
 }
 
 const LETTER_SUFFIX = ': Letter from the CEO'

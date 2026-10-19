@@ -177,6 +177,22 @@ export const MARKET_EVENTS: readonly MarketEvent[] = [
   },
 ]
 
+/**
+ * The 2024-2027 chip squeeze, by year (1 = the tightest year). It stays outside MARKET_EVENTS on purpose: no
+ * announcement popup, and no marketEventFactors value can move. It is not in demand either (the AI boom row
+ * carries that): it only lifts the street price a chip line is measured against and sets how fast goodwill grows.
+ */
+export const GPU_SHORTAGE: Readonly<Record<number, number>> = { 2024: 0.9, 2025: 1, 2026: 0.7, 2027: 0.4 }
+
+const BOOM = MARKET_EVENTS.find((e) => e.id === 'aiBoom')!
+/** The AI boom row with the squeeze's own years, so the home and abroad geography can't drift from the boom. */
+const SQUEEZE: MarketEvent = { ...BOOM, years: GPU_SHORTAGE }
+
+/** How tight chip supply is in a country in a year: 0 outside 2024-2027, the boom's geography inside. Pure. */
+export function shortageIntensity(country: string, year: number): number {
+  return eventStrength(SQUEEZE, country, year)
+}
+
 // ---------------------------------------------------------------------------
 // Market news: what happened in one trade and market during the game (a breakthrough that worked,
 // business/heavy-rd.ts). Unlike MARKET_EVENTS above, which is fixed history, this is a short list
@@ -288,6 +304,9 @@ export interface MarketFactors {
   value: number
 }
 
+/** The most (and least) any combination of events and waves may move demand, costs and value. */
+export const FACTOR_BOUNDS = { demand: [0.45, 1.8], costs: [0.75, 1.5], value: [0.3, 3] } as const
+
 const NEUTRAL: MarketFactors = { demand: 1, costs: 1, value: 1 }
 const cache = new Map<string, MarketFactors>()
 
@@ -312,9 +331,9 @@ export function marketEventFactors(industry: string, country: string, year: numb
     value += s * fx.value
   }
   const out: MarketFactors = {
-    demand: clamp(1 + demand * (worldMarket ? 0.35 : 1), 0.45, 1.8),
-    costs: clamp(1 + costs, 0.75, 1.5),
-    value: clamp(1 + value, 0.3, 3),
+    demand: clamp(1 + demand * (worldMarket ? 0.35 : 1), FACTOR_BOUNDS.demand[0], FACTOR_BOUNDS.demand[1]),
+    costs: clamp(1 + costs, FACTOR_BOUNDS.costs[0], FACTOR_BOUNDS.costs[1]),
+    value: clamp(1 + value, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]),
   }
   if (cache.size > 4096) cache.clear()
   cache.set(key, out)
@@ -322,7 +341,7 @@ export function marketEventFactors(industry: string, country: string, year: numb
 }
 
 /** "+20%" / "−35%": a factor as a signed percentage. */
-function signed(f: number): string {
+export function signed(f: number): string {
   const v = Math.round((f - 1) * 100)
   return `${v > 0 ? '+' : v < 0 ? '\u2212' : ''}${Math.abs(v)}%`
 }

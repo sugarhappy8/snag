@@ -7,6 +7,7 @@
 import type { Industry } from '../data/markets'
 import { techAdoption, type TechId } from '../history/timeline'
 import { inEu } from './deeptech-data'
+import { DEVICE_NETWORK } from './devices-data'
 
 export type MarketScope = 'world' | 'national'
 
@@ -220,6 +221,15 @@ export const MARKETS: Record<Industry, MarketDef> = {
     curve: [[2008, 0.002], [2015, 0.01], [2019, 0.05], [2022, 0.25], [2024, 0.6], [2026, 1], [2030, 3], [2035, 7], [2045, 15], [2060, 22]],
     hubs: [['us', 40], ['ch', 10], ['ca', 8], ['gb', 8], ['de', 6], ['no', 5], ['se', 4], ['ke', 3], ['au', 3], ['jp', 3]],
     names: { pre: ['Airloom', 'Carbona', 'Skyscrub', 'Basaltic', 'Terravent', 'Stonebind', 'Sequestra', 'Biocharred', 'Ventora', 'Greenfin'], post: ['Carbon', 'Climate', 'Removal', 'Air'] },
+  },
+  devices: {
+    scope: 'world', noun: 'device', ref: 5, field: 90, fringe: 0.3, network: DEVICE_NETWORK, named: 16, emerging: true,
+    // The first home computers sold in 1977. The 2007-2013 rise is drawn flatter than plain sales would be, because the
+    // smartphone history wave adds demand on top (tech-wave-data.ts).
+    from: 1977, needs: 'homeComputer', notYet: "Computers fill rooms and cost a fortune. A home computer doesn't exist yet.",
+    curve: [[1977, 0.001], [1980, 0.006], [1984, 0.03], [1990, 0.08], [1995, 0.15], [2000, 0.28], [2001, 0.25], [2005, 0.35], [2007, 0.4], [2010, 0.62], [2013, 0.88], [2016, 1], [2019, 0.97], [2022, 0.98], [2026, 1], [2040, 1.35], [2060, 1.7]],
+    hubs: [['us', 26], ['cn', 24], ['kr', 12], ['jp', 10], ['tw', 8], ['in', 6], ['gb', 3], ['de', 3], ['fi', 2], ['sg', 2], ['fr', 2]],
+    names: { pre: ['Pocketwave', 'Glassline', 'Slateworks', 'Nimbo', 'Pixelcore', 'Lumio', 'Orbitron', 'Wristly', 'Visora', 'Kinetica'], post: ['Devices', 'Mobile', 'Electronics', 'Computing', 'Labs'] },
   },
 }
 

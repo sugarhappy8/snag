@@ -703,7 +703,7 @@ describe('every reader of a kind’s demand uses the record for a breakthrough',
     addHeavy(g2, 'restaurant', 'us', rec({ year: g2.year }))
     const q = rdQuote(g2, b2, FAM, 500_000)
     const c = marketCtxFor(g2, b2, g2.year)
-    const later = fieldOf(c.rivals, c.fringe, c.key, g2.year + q.years, c.field!.heavy)
+    const later = fieldOf(c.rivals, c.fringe, c.key, g2.year + q.years, c.field!.heavy, c.field!.market)
     const line: Product = { name: FAM, launched: g2.year + q.years, boost: 0, quality: q.quality, family: q.info.family, kind: q.info.kind }
     expect(q.lift).toBeGreaterThan(0)
     expect(q.lift).toBe(Math.max(0, productPull('restaurant', [line], g2.year + q.years, later).total))

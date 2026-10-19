@@ -122,13 +122,14 @@ const SEGMENT_NAMES: Partial<Record<Industry, [string, string, string, string]>>
   software: ['Consumer & SMB', 'Business tools', 'Enterprise', 'Mission-critical'],
   semiconductor: ['Commodity', 'Mainstream', 'Leading edge', 'Cutting edge'],
   aiLab: ['Open & small models', 'Mainstream models', 'Frontier-ish', 'Frontier'],
+  devices: ['Entry devices', 'Mainstream', 'Premium', 'Flagship'],
 }
 
 export function segmentNames(industry: string): [string, string, string, string] {
   return SEGMENT_NAMES[industry as Industry] ?? ['Budget', 'Mass market', 'Premium', 'Luxury']
 }
 
-function segOfTier(t: BrandTier | undefined, quality: number): SegmentId {
+export function segOfTier(t: BrandTier | undefined, quality: number): SegmentId {
   if (t === 'budget') return 'budget'
   if (t === 'mass') return 'mass'
   if (t === 'premium') return 'premium'
@@ -136,10 +137,14 @@ function segOfTier(t: BrandTier | undefined, quality: number): SegmentId {
   return quality < 46 ? 'budget' : quality < 62 ? 'mass' : quality < 80 ? 'premium' : 'luxury'
 }
 
-/** The segment a company's own price and quality put it in. */
-export function mySegment(b: BizState): SegmentId {
+/**
+ * The segment a company's own price and quality put it in. `index` is the price against the company's own market
+ * reference (`MarketView.index`, chip companies): when it is finite it is the ratio, so a chip priced at its own tech
+ * premium counts as at the market. Without it the price is read against the raw going price, as before.
+ */
+export function mySegment(b: BizState, index?: number): SegmentId {
   const going = localEcon(b.industry, b.countryId, b.city).goingPrice
-  const ratio = going > 0 && b.price > 0 ? b.price / going : 1
+  const ratio = index !== undefined && Number.isFinite(index) ? index : going > 0 && b.price > 0 ? b.price / going : 1
   const score = (ratio - 1) * 1.2 + (b.quality - 55) / 60
   return score < -0.28 ? 'budget' : score < 0.28 ? 'mass' : score < 0.85 ? 'premium' : 'luxury'
 }
@@ -177,12 +182,14 @@ export interface SegmentRow {
   /** Your rank inside it (0 = absent). */
   rank: number
   mine: boolean
+  /** The other named players' local shares in the segment (0-1), biggest first. */
+  others?: number[]
 }
 
 export function segmentsOf(b: BizState, v: MarketView): SegmentRow[] {
   const names = segmentNames(b.industry)
   const wt = segmentWeights(v.scope === 'national' ? b.countryId : null)
-  const mine = mySegment(b)
+  const mine = mySegment(b, v.index)
   const players: { name: string; real: boolean; me: boolean; dist: Record<SegmentId, number>; share: number }[] = v.rivals.map((r) => ({
     name: r.name,
     real: r.real,
@@ -210,6 +217,7 @@ export function segmentsOf(b: BizState, v: MarketView): SegmentRow[] {
       players: inSeg.length,
       rank: myRow >= 0 ? myRow + 1 : 0,
       mine: id === mine,
+      others: sorted.filter((x) => !x.p.me).map((x) => local(x.s)),
     }
   })
 }
@@ -471,7 +479,7 @@ export function profileOf(g: GameState, b: BizState, v: MarketView, rivalId: str
   const fam = familyId(g.lifeId)
   const roster = rosterOf(fam, b.industry, marketKey(b)).byId.get(rivalId) ?? null
   const segment = segOfTier(r.seg, r.quality)
-  const mine = mySegment(b)
+  const mine = mySegment(b, v.index)
   const idx = (s: SegmentId) => SEGMENT_ORDER.indexOf(s)
   const priceEdge = idx(segment) < idx(mine) ? 'cheaper' : idx(segment) > idx(mine) ? 'pricier' : 'similar'
   const year = v.year

@@ -19,11 +19,14 @@ import { eraFits } from './era'
 import { isFinanceFirm } from './finance-firm-state'
 import { breakthroughByName, breakthroughsFor, type Breakthrough } from './heavy-data'
 import { industryDef } from './industries'
+import { shieldsOf } from './lab-state'
 import type { DemandLevel } from './product-data'
 import { fieldFor, fieldOf, hashOf, mix, productPull } from './product-market'
 import { classicIdeas } from './products'
 import { baseYears, DISCOUNT, HORIZON, launchP, projectQuality, pullValue, rdCost, rdOf, rdProjects, rdQuality, rdReserve, retiredReason, roundBudget } from './rd'
-import { MAX_STORED_PROJECTS, retiredOf, type BizState, type Product, type RdProject } from './state'
+import { findBusiness, MAX_STORED_PROJECTS, readBiz, retiredOf, type BizState, type Product, type RdProject } from './state'
+import { heavyStartsWave, heavyWaveFor } from './tech-wave-data'
+import { announceWave } from './tech-waves'
 import { clampN, money } from './util'
 
 /** A breakthrough that worked, in the market it was launched in. */
@@ -458,7 +461,7 @@ export function heavyGain(g: GameState, b: BizState, name: string, ctx?: MarketC
   let sales = 0
   for (let t = 0; t < HORIZON; t++) {
     const year = from + t
-    const field = fieldOf(c.rivals, c.fringe, c.key, year, records)
+    const field = fieldOf(c.rivals, c.fringe, c.key, year, records, fieldFor(c).market)
     const base = productPull(b.industry, b.products, year, field).total
     const withIt = productPull(b.industry, [...b.products.filter((p) => p.name !== name), line], year, field).total
     sales += pullValue(c, b, w, base, withIt) * Math.pow(DISCOUNT, years - 1 + t)
@@ -518,7 +521,16 @@ export function advanceHeavy(g: GameState, a: Asset | null, b: BizState, p: RdPr
   const rec: HeavyRecord = { family: p.name, year: year + 1, years: p.years, quality, cost: spent, by: a?.id ?? '' }
   addHeavy(g, b.industry, market, rec)
   log(g, `${name} launched ${p.name}.`, 'good')
-  if (pioneer && a) announceLaunch(g, a, b, rec, market)
+  if (pioneer && a) {
+    announceLaunch(g, a, b, rec, market)
+    // A listed launch is a platform the neighbouring trades feel too (tech-waves.ts). Only the pioneer, and only soon after the
+    // real date: an old technology launched late is a follower, not a wave. The launch notice above is the only news.
+    const hw = heavyWaveFor(b.industry, p.name)
+    const def = breakthroughByName(p.name)
+    if (hw && def && heavyStartsWave(b.industry, def, rec.year)) {
+      announceWave(g, { kind: hw.kind, source: 'heavy', origin: `${heavyKey(b.industry, market)}#${p.name}`, name: p.name, size: hw.size, market, year: rec.year, home: b.countryId, by: a.id })
+    }
+  }
   const how = hit ? 'is a smash hit' : 'launches'
   const after = pioneer ? `No rival sells one yet. The first can follow from about ${heavyLead(rec)}.` : 'The kind is already on the market.'
   return { won: true, line: `${hit ? '\u{1F525}' : '\u{1F680}'} ${p.name} ${how}: quality ${quality}. ${after}` }
@@ -536,8 +548,13 @@ export function heavyArrivals(g: GameState, b: BizState, year: number): void {
   const market = marketKey(b)
   const records = readHeavy(g, b.industry, market)
   if (!records.length) return
+  // A pioneer's patent holds rivals back: while its shield lasts into the new year the first rival isn't reported (lab-state.ts shieldsOf).
+  const held = (r: HeavyRecord): boolean => {
+    const co = findBusiness(g, r.by)
+    return co !== undefined && shieldsOf(readBiz(g, co)).some((x) => x.family === r.family && year + 1 < x.until)
+  }
   // The new year is the one the rivals sell in; nothing can be due before the development time is over.
-  const due = records.filter((r) => r.rival === undefined && year + 1 >= r.year + r.years)
+  const due = records.filter((r) => r.rival === undefined && year + 1 >= r.year + r.years && !held(r))
   if (!due.length) return
   const rivals = marketCtxFor(g, b, year + 1).rivals
   let reported = false

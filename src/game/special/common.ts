@@ -407,7 +407,7 @@ export const CELEBS = [
   'Vince Velour',
   'Nova St. Clair',
   'Marco Bellissimo',
-  'Jasmine Jetset',
+  'Jasmine Starling',
   'Chef Gordo Flambé',
   'Captain Crunchwell',
   'Bianca Moonbeam',

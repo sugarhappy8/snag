@@ -2,22 +2,27 @@
 // TechState inside a BizState, local cost scales, founder and team skill, the industry boom/bust
 // cycles, the demand/capacity model (stage, tech level, R&D premiums, compute, plants) and the
 // valuation cache that economy.valuationOf reads through deepTechValue().
-import { marketEventFactors } from '../history/market-events'
+import { FACTOR_BOUNDS, marketEventFactors, shortageIntensity } from '../history/market-events'
 import { outcomeTag } from '../timeMachine'
 import { seeded } from '../assets'
 import { marketOf, industryDemand } from '../data/markets'
 import { codingSkill } from '../computer/skills'
 import { hasTalent } from '../talents'
-import type { Asset, GameState } from '../types'
+import type { Asset, GameState, Json } from '../types'
 import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
+import { LEAD_DIVISOR, benchYear } from './ai-bench'
+import { labLead } from './ai-bench-market'
 import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
+import { familyId } from './competition-roster'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
-import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
+import { MAX_TECH_VALUE, TECH_VERSION, emptySilicon, readSilicon, readTech, timesDone, type AiModel, type DeepTechIndustry, type Pace, type SiliconState, type TechState } from './deeptech-state'
 import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
 import { industryDef } from './industries'
+import { CHIP_LANES, SHORTAGE_MARKUP, laneOpen, type ChipLane } from './silicon-data'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
-import { runsIt, totalOutlets, type BizState } from './state'
+import { isQuoted, runsIt, totalOutlets, type BizState } from './state'
+import { stockLevelFor, waveFactorsFor } from './tech-wave-factors'
 import { clampN, round2, toJson } from './util'
 import { LEADERSHIP } from './leadership'
 
@@ -43,6 +48,24 @@ export function techOf(b: BizState): TechState {
     b.tech = toJson(readTech(cur))
   }
   return b.tech as unknown as TechState
+}
+
+/**
+ * Read-only silicon state (goodwill, lane discounts, pricing policy): the defaults when the company has none.
+ * For menus and every other read; never writes, because a live b.tech can lack `silicon`.
+ */
+export function siliconView(t: TechState): SiliconState {
+  return readSilicon(t.silicon as unknown as Json)
+}
+
+/**
+ * Mutable silicon state: creates it on the live object when it is missing and normalizes it in place (the
+ * returned object is t.silicon itself). Only call from actions, scripts and yearly hooks (never from menu builders).
+ */
+export function siliconOf(t: TechState): SiliconState {
+  const cur = t.silicon as unknown
+  const live = cur && typeof cur === 'object' && !Array.isArray(cur) ? (t.silicon as SiliconState) : (t.silicon = emptySilicon())
+  return Object.assign(live, readSilicon(live as unknown as Json))
 }
 
 // ---------------------------------------------------------------------------
@@ -141,8 +164,10 @@ export function techSkill(g: GameState, a: Asset, b: BizState, t: TechState): nu
 export interface IndustryCycle {
   demand: number
   price: number
-  /** Multiplier on valuations (bubbles and winters). */
+  /** Multiplier on valuations (bubbles and winters), tech waves included. */
   value: number
+  /** The tech-wave value factor already inside `value` (1 with no wave; business/tech-waves.ts). */
+  wave: number
   z: number
   label: string
 }
@@ -152,14 +177,24 @@ function cycleZ(g: GameState, ind: DeepTechIndustry, year: number): number {
   return (s.next() + s.next() + s.next() - 1.5) * 2
 }
 
-export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number): IndustryCycle {
+/**
+ * `withWave` picks the tech-wave grade: `true` the private grade (the waves' value factor, what a private company is
+ * valued at), `'stock'` the stock grade (`stockLevelFor`: the sector's price level, what a quoted company is priced at),
+ * `false` no wave. `wave` is 1 with `false`, or with no wave at all.
+ */
+export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number, withWave: boolean | 'stock' = true): IndustryCycle {
   const amp = DEEP_TECH[ind].cycle.amp
   const z = 0.65 * cycleZ(g, ind, year) + 0.35 * cycleZ(g, ind, year - 1)
   const c = DEEP_TECH[ind].cycle
+  // Tech waves add their value factor only (the seed, demand, price, z and label are untouched): wave demand
+  // and costs reach a deep-tech company through marketCtxFor and nationalMarket, which techPlan already reads.
+  const wave = withWave === 'stock' ? stockLevelFor(g, ind, 'world', year) : withWave ? waveFactorsFor(g, ind, 'world', year).value : 1
+  const value = clampN(1 + 1.5 * amp * z, 0.6, 1.6)
   return {
     demand: clampN(1 + amp * z, 0.6, 1.5),
     price: ind === 'semiconductor' ? clampN(1 + 0.6 * amp * z, 0.8, 1.2) : 1,
-    value: clampN(1 + 1.5 * amp * z, 0.6, 1.6),
+    value: wave === 1 ? value : clampN(value * wave, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]),
+    wave,
     z,
     label: z > 0.8 ? c.up : z < -0.8 ? c.down : 'steady',
   }
@@ -168,10 +203,28 @@ export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number)
 // ---------------------------------------------------------------------------
 // The commercial model
 
-/** AI: how competitive the best model is vs the frontier (0.05 - 1.6). */
-export function competitiveness(t: TechState, year: number): number {
+/**
+ * AI: a rated best model's lead over the best rival lab for the plan year `year`, null for an unrated model or a
+ * year before 2012. A model is rated on the board of the fiscal year it was trained in and first sells the year
+ * after, so demand reads the last closed benchmark year (`year - 1`, the board the menus show) and never a board
+ * older than the model's own. Reading the plan year's own board would charge every model a year of drift
+ * before it sold anything.
+ */
+function planLead(t: Pick<TechState, 'models'>, best: AiModel, year: number, fam: string): number | null {
+  if (!best.rating || year < 2012) return null
+  return labLead(fam, t, Math.max(benchYear({ year }), best.year))
+}
+
+/**
+ * AI: how competitive the best model is (0.05 - 1.6). A rated model reads its lead over the best rival lab on
+ * the board of the last closed benchmark year (lead 0 is 1.0); an unrated model, or a year before 2012, reads
+ * the old frontier line.
+ */
+export function competitiveness(t: Pick<TechState, 'models'>, year: number, fam: string): number {
   const best = bestModel(t)
   if (!best) return 0
+  const lead = planLead(t, best, year, fam)
+  if (lead !== null) return clampN(1 + lead / LEAD_DIVISOR, 0.05, 1.6)
   const f = frontierScore(year)
   return clampN((best.score - (f - 25)) / 25, 0.05, 1.6)
 }
@@ -204,7 +257,7 @@ export function syncBiotechStage(t: TechState): void {
 }
 
 /** Demand in market units before price, appeal and the economy. */
-export function demandScale(b: BizState, t: TechState, year: number): number {
+export function demandScale(b: BizState, t: TechState, year: number, fam: string): number {
   const ind = dtInd(b)
   const st = DEEP_TECH[ind].stages
   let base = ind === 'biotech' ? ownDrugUnits(t, year) : st[Math.min(st.length - 1, t.stage)].scale
@@ -213,7 +266,7 @@ export function demandScale(b: BizState, t: TechState, year: number): number {
   base *= 1 + t.boost
   base *= 0.92 + t.hype / 600
   if (ind === 'aiLab') {
-    base *= competitiveness(t, year)
+    base *= competitiveness(t, year, fam)
     const best = bestModel(t)
     if (best?.open) base *= 0.75
   }
@@ -249,7 +302,9 @@ export function techPremium(b: BizState, t: TechState, year: number, calm: boole
   if (ind === 'semiconductor') p *= 1 + 0.12 * t.node
   if (ind === 'aiLab') {
     const best = bestModel(t)
-    if (best && best.score >= frontierScore(year)) p *= 1.15
+    const lead = best ? planLead(t, best, year, familyId(g.lifeId)) : null
+    if (lead !== null) p *= 1 + 0.15 * clampN(lead / 150, 0, 1)
+    else if (best && best.score >= frontierScore(year)) p *= 1.15
   }
   if (!calm) p *= industryCycle(g, ind, year).price
   return Math.max(0.3, p)
@@ -278,6 +333,48 @@ export interface TechPlan {
   taxRate: number
   /** The world market (competition-core): bottom-up units and what competition left of them. */
   market: (MarketPick & { bu: number }) | null
+  /** Silicon 2.0: one row per open chip lane (empty for other trades and with no open lane). */
+  lanes: LaneRow[]
+  /** What a unit sells for across the lanes, weighted by their shares of sales: `price` when no lane is discounted. */
+  mix: number
+}
+
+/** One chip lane in a plan: its price, its calm market reference, the index between them and its share of sales. */
+export interface LaneRow {
+  id: string
+  price: number
+  /** Always the calm reference (`marketReference`), whatever the plan's `calm` flag. */
+  ref: number
+  index: number
+  share: number
+}
+
+/** A price against its market reference: 1 = at the market, below 1 = cheaper. Pure. */
+export function priceIndex(price: number, reference: number): number {
+  if (!(reference > 0) || !Number.isFinite(price)) return 1
+  return clampN(price / reference, 0, 10)
+}
+
+/**
+ * What the market charges for a product like yours: one chip lane, one fiscal year. Calm (never the chip-cycle
+ * price). It repeats the two lines of `techPlan` that make `suggested`, and the squeeze markup moves only this
+ * reference, never demand or revenue. It never checks `laneOpen`.
+ */
+export function marketReference(g: GameState, b: BizState, t: TechState, lane: ChipLane, year: number): number {
+  const going = Math.max(0.01, localEcon(b.industry, b.countryId, b.city).goingPrice * techPremium(b, t, year, true, g))
+  return round2(going * premiumOf(b)) * (1 + SHORTAGE_MARKUP * lane.shortage * shortageIntensity(b.countryId, year))
+}
+
+/** A lane's saved discount below the headline price, 0 to 0.5. A pure read of a possibly live `t`. */
+export function laneDiscount(t: TechState, id: string): number {
+  const d = Number(t.silicon?.lanes?.[id])
+  return Number.isFinite(d) ? clampN(d, 0, 0.5) : 0
+}
+
+/** The plan's mix against the sales-weighted references of its lanes (1 with no lanes). */
+export function mixIndex(plan: Pick<TechPlan, 'lanes' | 'mix'>): number {
+  if (plan.lanes.length === 0) return 1
+  return priceIndex(plan.mix, plan.lanes.reduce((s, l) => s + l.share * l.ref, 0))
 }
 
 export interface TechPlanOptions {
@@ -302,14 +399,25 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
   const open = calm ? 1 : b.openFraction
   const shock = calm ? 1 : b.demandShock
   const pressure = calm ? b.pressure * 0.5 : b.pressure
-  const scale = demandScale(b, t, year)
+  const scale = demandScale(b, t, year, familyId(g.lifeId))
   const effects = businessEffects(g, b, b.countryId, year)
   const national = nationalMarket(g, b.industry, b.countryId, year)
   const executive = executiveEdge(ceoSkill(g, b))
   // Customers before competition and the economy, then what the world market leaves of them (an
   // early lab in a tiny market sells little; a dominant one keeps its customers at higher prices).
   const mctx = marketCtxFor(g, b, year)
-  const bu = scale > 0 ? home.baseDemand * scale * priceResponse(price / (going * premium), def.elasticity) * appealOf(g, b, year, mctx) * effects.demand * national.demand * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
+  // Chip lanes (Silicon 2.0): a discounted lane sells below the headline, and the demand response is the
+  // weighted blend of the lanes. With no discount it is the old expression, bit for bit. Never in buildCtx.
+  const openLanes = ind === 'semiconductor' ? CHIP_LANES.filter((l) => laneOpen(l, t, year)) : []
+  const extras = openLanes.filter((l) => l.id !== 'core'), wCore = 1 - extras.reduce((s, l) => s + l.weight, 0), expected = going * premium
+  const laneWeight = (l: ChipLane) => (l.id === 'core' ? wCore : l.weight), laneCut = (l: ChipLane) => (l.id === 'core' ? 0 : laneDiscount(t, l.id))
+  let response = priceResponse(price / expected, def.elasticity), mix = price, share = openLanes.map(laneWeight)
+  if (extras.some((l) => laneCut(l) > 0)) {
+    const raw = openLanes.map((l) => laneWeight(l) * priceResponse((price * (1 - laneCut(l))) / expected, def.elasticity)), sum = raw.reduce((s, x) => s + x, 0)
+    if (sum > 0) { response = sum; share = raw.map((x) => x / sum); mix = openLanes.reduce((s, l, i) => s + share[i] * price * (1 - laneCut(l)), 0) }
+  }
+  const lanes = openLanes.map((l, i): LaneRow => { const p = price * (1 - laneCut(l)), ref = marketReference(g, b, t, l, year); return { id: l.id, price: p, ref, index: priceIndex(p, ref), share: share[i] } })
+  const bu = scale > 0 ? home.baseDemand * scale * response * appealOf(g, b, year, mctx) * effects.demand * national.demand * (1 - pressure) * shock * (opts.noise ?? 1) * open : 0
   const pick = bu > 0 && Number.isFinite(bu) ? marketDemand(mctx, bu) : null
   const demand = pick ? pick.units * cycleEffect * ic : 0
   const ops = (1 + LEADERSHIP.capacity * staffPower(b, 'ops') + .25 * executive) * effects.capacity
@@ -326,39 +434,58 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
     unitCost: round2(unitCost),
     taxRate: home.taxRate,
     market: pick ? { ...pick, bu } : null,
+    lanes,
+    mix,
   }
 }
 
 /** Can the company sell anything this year (product, capacity)? */
 export function sellable(g: GameState, b: BizState, t: TechState): boolean {
-  return demandScale(b, t, g.year) > 0 && capacityUnits(b, t, g.year) > 0
+  return demandScale(b, t, g.year, familyId(g.lifeId)) > 0 && capacityUnits(b, t, g.year) > 0
 }
 
-/** Report bounds for the price (around the tech-adjusted going price). */
-export function techPriceBounds(g: GameState, b: BizState, t: TechState): { min: number; max: number; going: number } {
-  const going = techPlan(g, b, t, g.year, { calm: true }).going
+/** Report bounds for the price (around the tech-adjusted going price) in `year`, the year the plan sells in (the game's year by default). */
+export function techPriceBounds(g: GameState, b: BizState, t: TechState, year: number = g.year): { min: number; max: number; going: number } {
+  const going = techPlan(g, b, t, year, { calm: true }).going
   return { min: round2(Math.max(0.01, going * 0.25)), max: round2(Math.max(0.05, going * 4)), going }
 }
 
-/** The most profitable plan for next year (the Business talent's hint and the manager's plan). */
-export function bestTechPlan(g: GameState, b: BizState, t: TechState, cycle?: number): { price: number; production: number; profit: number } {
-  const bounds = techPriceBounds(g, b, t)
-  const def = industryDef(b.industry), materialShare = supplyProfile(b.industry)?.materialShare ?? 0
+/**
+ * The most profitable plan for the year it sells in (the Business talent's hint and the manager's plan). `year` is that
+ * year: the game's year by default, the fiscal year when the yearly itself re-plans (it runs a year ahead of what it sells).
+ */
+export function bestTechPlan(g: GameState, b: BizState, t: TechState, cycle?: number, year: number = g.year): { price: number; production: number; profit: number; limit?: number } {
+  const bounds = techPriceBounds(g, b, t, year)
+  // The pricing policy (Silicon 2.0): a cap on the headline index. Only a lab with a policy gets a `limit`.
+  const ceiling = Number(t.silicon?.ceiling)
+  const limit = ceiling > 0 && Number.isFinite(ceiling) ? round2(Math.max(0.01, ceiling * premiumOf(b) * bounds.going)) : undefined
   let best = { price: bounds.going, production: 0, profit: -Infinity }
   for (let r = 0.6; r <= 2.01; r += 0.05) {
-    const price = round2(clampN(bounds.going * r, bounds.min, bounds.max))
-    const plan = techPlan(g, b, t, g.year, { price, calm: true, cycle })
-    const production = Math.round(Math.max(0, Math.min(plan.capacity, plan.demand - b.inventory)))
-    const supply = bookSupply(g, b, g.year, plan.equipmentCapacity, production, plan.unitCost)
-    const sold = Math.floor(Math.min(plan.demand, supply.produced + b.inventory))
-    const ordinary = plan.unitCost * (def.perishable >= 1 ? sold * .7 + supply.produced * .3 : supply.produced)
-    const cogs = ordinary * (1 - materialShare) + supply.materialsCost
-    // As before, this is contribution before fixed operating/R&D costs, not a
-    // full-year profit promise. Raw-stock historical cost now matches settlement.
-    const profit = sold * price / (1 + plan.taxRate) - cogs - supply.storageCost
+    const candidate = round2(clampN(bounds.going * r, bounds.min, bounds.max))
+    const price = limit === undefined ? candidate : Math.min(candidate, limit)
+    const plan = techPlan(g, b, t, year, { price, calm: true, cycle })
+    const { production, profit } = planContribution(g, b, plan, year)
     if (profit > best.profit) best = { price, production, profit }
   }
-  return best
+  return limit === undefined ? best : { ...best, limit }
+}
+
+/**
+ * What a plan makes before fixed operating and R&D costs (the profit search and the launch hint read it):
+ * the production worth making, and the contribution of selling it at the plan's `mix`. Pure; `year` is the
+ * year the plan sells in.
+ */
+export function planContribution(g: GameState, b: BizState, plan: TechPlan, year: number = g.year): { production: number; profit: number } {
+  const def = industryDef(b.industry), materialShare = supplyProfile(b.industry)?.materialShare ?? 0
+  const production = Math.round(Math.max(0, Math.min(plan.capacity, plan.demand - b.inventory)))
+  const supply = bookSupply(g, b, year, plan.equipmentCapacity, production, plan.unitCost)
+  const sold = Math.floor(Math.min(plan.demand, supply.produced + b.inventory))
+  const ordinary = plan.unitCost * (def.perishable >= 1 ? sold * .7 + supply.produced * .3 : supply.produced)
+  const cogs = ordinary * (1 - materialShare) + supply.materialsCost
+  // As before, this is contribution before fixed operating/R&D costs, not a
+  // full-year profit promise. Raw-stock historical cost now matches settlement.
+  const profit = sold * plan.mix / (1 + plan.taxRate) - cogs - supply.storageCost
+  return { production, profit }
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +619,10 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const def = industryDef(ind)
   const d = DEEP_TECH[ind]
   // The sector's own hype cycle, times the real booms and busts in their years (market-events.ts).
-  const cyc = industryCycle(g, ind, g.year).value * marketEventFactors(ind, b.countryId, g.year).value
+  // With a tech wave live the product is held to the same value bounds as everywhere else; otherwise it is what it was.
+  // A quoted lab takes the stock grade of the wave (its price level), a private one the private grade.
+  const ic = industryCycle(g, ind, g.year, isQuoted(b) ? 'stock' : true), ev = marketEventFactors(ind, b.countryId, g.year).value
+  const cyc = ic.wave === 1 ? ic.value * ev : clampN(ic.value * ev, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
   const hypeMult = (0.6 + t.hype / 150) * cyc
   const years = bookedYears(b)
   const cur = years[years.length - 1]
