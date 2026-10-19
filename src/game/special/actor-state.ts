@@ -327,11 +327,22 @@ export const actorStore: CareerStore<ActorState> = defineCareerState<ActorExtra>
  * The sim takes over from the legacy hook: first call only. Sets `migrated` and clears Job.data.project
  * (the project already sits in pipeline[0] from the migration). If the legacy hook moved or finished the
  * project since the record was created, the legacy-lifted entry is refreshed or dropped first, so
- * nothing is settled twice. Projects the sim made itself are never touched. Actions and hooks only.
+ * nothing is settled twice, and the rest of the profile is lifted again for the same reason. Projects
+ * the sim made itself are never touched. Actions and hooks only.
  */
 export function adoptLegacy(g: GameState, s: ActorState): void {
   if (s.migrated) return
   s.migrated = true
+  // An action that never adopts can make the record before the first tick: a snapshot of the profile as it was
+  // then, which the legacy hook has since moved on. Lift the profile again, so the year's credit, reputation,
+  // awards, nominations, dry years and agent arrive; the team's manager and press, and the pipeline, stay.
+  const now = actorStore.read({}, g)
+  s.rep = now.rep
+  s.noms = now.noms
+  s.dry = now.dry
+  s.awards = now.awards
+  s.credits = now.credits
+  s.team.agent = now.team.agent
   const job = actorJob(g)
   const live = liftProject(g, job)
   const mine = s.pipeline.filter((p) => p.id !== LEGACY_PROJECT)

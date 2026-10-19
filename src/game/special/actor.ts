@@ -355,7 +355,8 @@ export function masterActing(g: GameState): void {
 const auditionScript = defineScript('special.actor.audition', (g, choice, data) => {
   const l = data as unknown as Listing
   masterActing(g)
-  const sim = actorStore.peek(g)
+  // Until the sim takes the life over (its first tick, or an action that adopts) the legacy profile is the truth.
+  const sim = actorStore.peek(g)?.migrated === true
   const p = sim ? null : actorProfile(g)
   let fit = 0
   if (choice === FIT[l.genre]) fit = 20

@@ -654,6 +654,52 @@ describe('actor pipeline: the year', () => {
     expect(JSON.stringify(g.flags[LEGACY])).toBe(frozen) // the legacy flag is never written again
   })
 
+  it('lifts the legacy year when an action made the record before the first tick [RF4]', () => {
+    const g = makeTestGame(6, { age: 30 })
+    g.year = 1995
+    g.flags['skill.acting'] = 60
+    g.flags[LEGACY] = { owner: ownerKey(g), reputation: 47, credits: [], awards: [], nominations: 0, agent: null, dryYears: 0 } as unknown as Json
+    hire(g, { defId: 'actor', title: 'Lead Actor', company: 'Silverline Studios', salary: 400_000, data: { project: { title: 'The Last Echo', kind: 'film', genre: 'Drama', role: 'Lead', studio: 'Silverline Studios', pay: 400_000, budget: 'indie', developed: 0, buzz: 0, season: 1, costars: [] } } })
+    // an action that never adopts (a pitch, a failed hire, a missed audition) makes the record first: a snapshot of the old profile
+    actorStore.mut(g)
+    expect(actorStore.view(g).migrated).toBe(false)
+    expect(actorStore.view(g).credits).toHaveLength(0)
+    nextYear(g, hookBoth)
+    const legacy = JSON.parse(JSON.stringify(g.flags[LEGACY])) as { credits: { title: string }[]; reputation: number; awards: string[]; nominations: number; dryYears: number }
+    expect(legacy.credits).toHaveLength(1) // the legacy tick released the film
+    const v = actorStore.view(g)
+    expect(v.migrated).toBe(true)
+    // the sim holds what the legacy year wrote, not the stale snapshot
+    expect(v.credits.map((c) => c.title)).toEqual(legacy.credits.map((c) => c.title))
+    expect(v.credits[0].residual).toBe((legacy.credits[0] as unknown as { residual: number }).residual)
+    expect(v.rep).toBe(legacy.reputation)
+    expect(v.rep).not.toBe(50)
+    expect(v.awards).toEqual(legacy.awards)
+    expect(v.noms).toBe(legacy.nominations)
+    expect(v.dry).toBe(legacy.dryYears)
+    expect(v.pipeline).toHaveLength(0)
+  })
+
+  it('books a missed audition on the legacy profile until the sim owns the life, so the lift keeps it [RF4]', () => {
+    let missed = 0
+    for (let seed = 1; seed <= 40 && missed < 3; seed++) {
+      const g = makeTestGame(seed, { age: 30 })
+      g.year = 1995
+      g.flags['skill.acting'] = 0
+      g.flags[LEGACY] = { owner: ownerKey(g), reputation: 60, credits: [], awards: [], nominations: 0, agent: null, dryYears: 0 } as unknown as Json
+      hire(g, { defId: 'actor', title: 'Actor', company: 'Silverline Studios', salary: 0, data: { project: null } })
+      actorStore.mut(g) // a record made by an action that never adopts
+      runScript(g, 'special.actor.audition', 'overTop', listing({ pay: 1000 }) as unknown as Json, fake())
+      const lost = (g.flags[LEGACY] as unknown as { reputation: number }).reputation < 60
+      if (!lost) continue
+      missed++
+      expect(actorStore.view(g).rep).toBe(60) // the sim record is untouched: the legacy profile took the point
+      adoptLegacy(g, actorStore.mut(g))
+      expect(actorStore.view(g).rep).toBe(59)
+    }
+    expect(missed).toBeGreaterThan(0)
+  })
+
   it('still resolves a legacy pick modal queued before the sim took the life over [RF4]', () => {
     const g = makeTestGame(6, { age: 30 })
     g.year = 1995
