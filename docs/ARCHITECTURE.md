@@ -615,7 +615,7 @@ The level. `stockLevelFor(g, trade, market, year)` is `clamp(S x Product over wa
 with `STOCK_BETA = 1.5` and `v_w` one wave's own value factor from `effectsOf` (the per-wave product, P1: one wave
 gives the spec table, and a settle keeps the level with several waves live). A heavy wave never disrupts its pioneer
 trade at any exchange (P9, applied once in `waveLevels`). History rows count only from `PRESENT_YEAR`, because the
-stock tables already carry the real booms (S6). A settled wave leaves `TechBase.stock` (0.7 to 1.6, missing is 1)
+stock tables already carry the real booms (S6). A settled wave leaves `TechBase.stock` (0.3 to 3 like the level itself, so a settle keeps it; missing is 1)
 and no scheduled fade (S7); it keeps its reach (P4): the `|world` entry counts in full everywhere, a country entry
 in full at that country and at 0.75 of its strength in other countries, never in the `world` market. The reader is
 pure, memoized per validated list and returns exactly 1 with no wave and no settled factor.

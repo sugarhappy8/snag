@@ -344,7 +344,8 @@ export function advanceTechWaves(g: GameState): void {
         if (!e || (e.demand === 1 && e.costs === 1 && e.value === 1)) continue
         const k = `${trade}|${stepped.market}`
         const old = Object.hasOwn(base, k) ? base[k] : undefined
-        const stock = clampN((old?.stock ?? 1) * (1 + STOCK_BETA * (e.value - 1)), 0.7, 1.6)
+        // The same bounds as the live level (0.3 to 3), so a settle moves a wave's part of the level into the permanent factor unchanged however many waves stack on one trade (S7).
+        const stock = clampN((old?.stock ?? 1) * (1 + STOCK_BETA * (e.value - 1)), FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
         base[k] = { demand: clampN((old?.demand ?? 1) * e.demand, 0.8, 1.5), costs: clampN((old?.costs ?? 1) * e.costs, 0.8, 1.0), ...(stock !== 1 ? { stock } : {}) }
       }
     }

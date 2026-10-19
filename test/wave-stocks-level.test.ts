@@ -65,7 +65,7 @@ describe('stateAt and the stored step', () => {
     expect(flood.length).toBeLessThanOrEqual(6); expect(flood.every((p, i) => i === 0 || p[0] > flood[i - 1][0])).toBe(true)
     const base = (v: unknown) => { const g = makeTestGame(1); g.flags.techBase = J(v); return readTechBase(g) }
     const b = base({ 'aiLab|world': { demand: 1.1, costs: 0.9, stock: 99 }, 'bakery|us': { demand: 1, costs: 1, stock: 'x' }, 'software|us': { demand: 1, costs: 1, stock: 0 }, 'telecom|us': { demand: 1, costs: 1, stock: 1 } })
-    expect([b['aiLab|world'].stock, b['bakery|us'].stock, b['software|us'].stock, b['telecom|us'].stock]).toEqual([1.6, undefined, 0.7, undefined])
+    expect([b['aiLab|world'].stock, b['bakery|us'].stock, b['software|us'].stock, b['telecom|us'].stock]).toEqual([3, undefined, 0.3, undefined])
   })
   it('ignores a stored step that belongs to another timeline and keeps a finished year (Time Machine)', () => {
     const g = makeTestGame(7); g.year = 2031; announceWave(g, { kind: 'ai', source: 'race', origin: 'x', name: 'Frontier AI', size: 0.5, market: 'world' })
@@ -99,6 +99,20 @@ describe('writing the trail and the projection', () => {
     for (const y of [2032, 2033, 2050]) expect(lv(g, y)).toEqual(before.map(near))          // no scheduled fade (S7)
     const d = makeTestGame(7); d.year = 2032; const dying = W({ id: pick(d, true, 2032), year: 2026, hype: 0.05, delivery: 0.02 }); put(d, { ...dying, nx: projectWave(d, dying) })
     expect(projectWave(d, dying)).toEqual([0, 0, '']); expect(stockLevelFor(d, 'aiLab', 'world', 2032)).toBe(1); advanceTechWaves(d); expect(readTechWaves(d)).toEqual([]); expect(stockLevelFor(d, 'aiLab', 'world', 2032)).toBe(1)
+  })
+  it('settling keeps the level when waves stack on one trade, one settle a year, well past the old 1.6 cap of a single settled stock (S7)', () => {
+    const g = makeTestGame(7); g.year = 2032
+    const mk = (id: string, mature: number): TechWave => { const w = W({ id, size: 0.6, hype: 1, delivery: 1, mature, last: 2031 }); return { ...w, nx: projectWave(g, w) } }
+    put(g, mk('a', 4), mk('b', 3), mk('c', 2))
+    const lv = (y: number) => stockLevelFor(g, 'aiLab', 'world', y), start = lv(2032)
+    expect(start).toBeCloseTo(Math.pow(1.315, 3), 3); expect(start).toBeGreaterThan(2.2)   // each size 0.6 mature core wave is 1 + 1.5 x 0.21
+    const seen: number[] = []
+    for (const y of [2032, 2033, 2034]) {
+      g.year = y; const before = lv(y); advanceTechWaves(g); seen.push(readTechWaves(g).length)
+      expect(lv(y), `settle ${y}`).toBeCloseTo(before, 9); expect(lv(y)).toBeCloseTo(start, 9)
+    }
+    expect(seen).toEqual([2, 1, 0]); expect(readTechBase(g)['aiLab|world'].stock).toBeCloseTo(start, 6)
+    for (const y of [2035, 2050]) expect(lv(y)).toBeCloseTo(start, 9)   // and no cliff after the last one
   })
   it('reads the same level before and after the yearly step for heavy, rival, race and workshop waves, year after year (S3)', () => {
     const cases = [{ source: 'heavy', origin: 'heavy.software|world#Autonomous Agent Platform' }, { source: 'rival', origin: 'aiLab|world' }, { source: 'race', origin: 'fut-fusion-cell' }, { source: 'workshop', origin: 'hist-touch-slate' }] as const

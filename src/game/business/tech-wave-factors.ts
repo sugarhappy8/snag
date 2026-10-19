@@ -84,7 +84,7 @@ export interface TechWave {
 export interface TechBase {
   demand: number
   costs: number
-  /** The permanent stock level of settled waves (0.7 to 1.6); missing is 1. */
+  /** The permanent stock level of settled waves (0.3 to 3, the bounds of the live level, so a settle keeps it); missing is 1. */
   stock?: number
 }
 
@@ -219,7 +219,7 @@ export function readTechBase(g: Pick<GameState, 'flags'>): Readonly<Record<strin
     const d = v.demand, c = v.costs
     if (typeof d !== 'number' || typeof c !== 'number' || !Number.isFinite(d) || !Number.isFinite(c)) continue
     const s = v.stock
-    const stock = typeof s === 'number' && Number.isFinite(s) ? clampN(s, 0.7, 1.6) : 1
+    const stock = typeof s === 'number' && Number.isFinite(s) ? clampN(s, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]) : 1
     out[key] = Object.freeze({ demand: clampN(d, 0.8, 1.5), costs: clampN(c, 0.8, 1.0), ...(stock !== 1 ? { stock } : {}) })
     kept++
   }

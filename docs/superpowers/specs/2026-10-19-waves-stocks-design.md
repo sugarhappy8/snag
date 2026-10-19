@@ -100,7 +100,7 @@ export interface TechWave {
   /** (new) The next yearly step as projected when this one ran: [hype, delivery, fork tag]. Used only while the tag matches outcomeTag for last + 1. */
   nx?: readonly [number, number, string]
 }
-export interface TechBase { demand: number; costs: number; /** (new) permanent stock level of settled waves, 0.7 to 1.6; missing is 1 */ stock?: number }
+export interface TechBase { demand: number; costs: number; /** (new) permanent stock level of settled waves, 0.3 to 3 (the live level's bounds); missing is 1 */ stock?: number }
 export const STOCK_BETA = 1.5                                                                  // (new)
 export function stateAt(w: TechWave, year: number, tag: string): { hype: number; delivery: number }   // (new)
 export function stockLevelFor(g: Pick<GameState, 'flags'>, trade: string, market: string, year: number): number  // (new) L above
@@ -168,7 +168,7 @@ V            = clamp( product over waves w with y >= w.year of oneEffect(role(w.
                plus the history rows' value only when y >= PRESENT_YEAR (S6; no row is live then). The plan refines three lines: P1 stacks per wave,
                L = clamp(S x Product over waves of (1 + STOCK_BETA x (v_w - 1)), 0.3, 3), and one wave gives the table below exactly; P4 sets how far a settled
                factor reaches abroad; P9 drops a heavy wave's disrupted effect on its own trade in every market, not only in the wave's market
-S            = base[trade|market].stock x base[trade|world].stock  (each 0.7 to 1.6, missing 1; market 'world' reads one)
+S            = base[trade|market].stock x base[trade|world].stock  (each 0.3 to 3, missing 1; market 'world' reads one)
 L(y)         = clamp( (1 + STOCK_BETA x (V - 1)) x S , 0.3, 3 )
 index tilt   = clamp( 1 + sum over the stocks listed that year of (L(its sector) - 1) / n , 0.5 , 1.5 ),  n = max(4, slotPlan(info).length)   (plan P10)
 return move  = (1 + engine return) x L(y) / L(y - 1) - 1              (shockedMove, unchanged)
@@ -186,8 +186,9 @@ reaches every exchange in full). Starting numbers, size 0.5:
 
 Bounds: one wave moves a sector level by at most 15% in one yearly step (about 9% at size 0.6); several waves multiply inside
 the 0.3 to 3 clamp; a deep-tech wave projects with the lab's current share (an estimate, section 5.9). A settled wave writes
-`stock = clamp(old x (1 + 1.5 (v - 1)), 0.7, 1.6)` at its own market from its final state, so the level at the settle year is
-unchanged. A dropped wave (delivery under 0.1 after 6 years) leaves no factor; its premium was already unwound.
+`stock = clamp(old x (1 + 1.5 (v - 1)), 0.3, 3)` at its own market from its final state, so the level at the settle year is
+unchanged. The settled factor has the live level's bounds on purpose: a tighter clamp (it was 0.7 to 1.6) cut the level on the settle date when
+waves stacked on one trade, a fall the player could predict from the mature counter (S7). A dropped wave (delivery under 0.1 after 6 years) leaves no factor; its premium was already unwound.
 
 ### 5.4 Where it plugs in (all additive)
 
@@ -336,7 +337,7 @@ an old fork; the tag check makes the reader ignore it until the next step.
 | Own-listing edge | Own buys pay `max(price, fundamental) x 1.03`, and the fundamental moves at the booking, before the price. |
 | Feedback loop wave, profit, valuation, listed price | Every link is annual and clamped; a heavy wave's delivery follows its record, not sales; the price feeds nothing back into the wave. A deep-tech wave's delivery reads lab share (release 1) and stays under its caps. |
 | Real companies falling with a disrupted sector | Sector level, no named accusation; bounded by 0.3 and a typical -19% at maturity; test pins that no invented-story rule is bypassed. |
-| Hostile saves | Readers clamp; `trail` is capped at 6 and validated, `nx` needs a valid tag, `stock` is clamped 0.7 to 1.6. |
+| Hostile saves | Readers clamp; `trail` is capped at 6 and validated, `nx` needs a valid tag, `stock` is clamped 0.3 to 3. |
 
 ## 8. Priority 0 defects: how this release avoids amplifying them
 
