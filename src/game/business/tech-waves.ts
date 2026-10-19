@@ -281,7 +281,7 @@ export function advanceTechWaves(g: GameState): void {
     if (s.mature > 0) stepped.mature = s.mature
     else delete stepped.mature
     if (s.fate === 'live') { next.push(stepped); continue }
-    // Settled: the wave's own demand and cost factors become permanent at its own market.
+    // Settled: the wave's own demand and cost factors become permanent at its own market ('world' is read in every market).
     base ??= { ...readTechBase(g) }
     for (const kind of ['core', 'supply', 'disrupted'] as const) {
       for (const trade of WAVE_KINDS[stepped.kind][kind] as readonly string[]) {

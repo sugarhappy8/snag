@@ -100,9 +100,11 @@ describe('waveFactors', () => {
     }
     expect(marketEventFactors('telecom', 'us', 1999).value * f('telecom', 'us', 1999, []).value).toBeLessThan(3)
   })
-  it('techBase multiplies demand and costs at its own market only; waveFactorsFor shares one frozen neutral', () => {
-    const b = { 'aiLab|world': { demand: 1.2, costs: 0.9 } }
-    expect(f('aiLab', 'world', 2035, [], b)).toEqual({ demand: 1.2, costs: 0.9, value: 1 }); expect(f('aiLab', 'us', 2035, [], b)).toEqual(N)
+  it('techBase: a world settlement reaches every market, a country settlement its own only, and the two stack at home; waveFactorsFor shares one frozen neutral', () => {
+    const b = { 'dataCenter|world': { demand: 1.2, costs: 0.9 } }, home = { 'dataCenter|us': { demand: 1.1, costs: 0.95 } }
+    expect(f('dataCenter', 'world', 2035, [], b)).toEqual({ demand: 1.2, costs: 0.9, value: 1 }); expect(f('dataCenter', 'us', 2035, [], b)).toEqual({ demand: 1.2, costs: 0.9, value: 1 })
+    expect(f('dataCenter', 'us', 2035, [], home)).toEqual({ demand: 1.1, costs: 0.95, value: 1 }); expect(f('dataCenter', 'jp', 2035, [], home)).toEqual(N); expect(f('dataCenter', 'world', 2035, [], home)).toEqual(N)
+    expect(f('dataCenter', 'us', 2035, [], { ...b, ...home })).toMatchObject({ demand: near(1.32), costs: near(0.855) }); expect(f('dataCenter', 'jp', 2035, [], { ...b, ...home })).toEqual({ demand: 1.2, costs: 0.9, value: 1 })
     const g = makeTestGame(1), a = waveFactorsFor(g, 'aiLab', 'world', 2035); expect(a).toBe(waveFactorsFor(g, 'bakery', 'us', 2040)); expect(Object.isFrozen(a)).toBe(true)
   })
 })
@@ -155,6 +157,15 @@ describe('advanceTechWaves', () => {
     const g = game([W({ id: calm(probe, 2032), source: 'race', delivery: 1, hype: 1, mature: 4 })]); advanceTechWaves(g)
     const b = readTechBase(g); expect(readTechWaves(g)).toEqual([]); expect([b['aiLab|world'].demand, b['aiLab|world'].costs]).toEqual([near(1.15), near(0.95)])
     expect(b['software|world'].demand).toBeCloseTo(0.875, 6); expect(Object.keys(b).every((k) => k.endsWith('|world'))).toBe(true)
+  })
+  it('a settled world wave still reaches a national-scope trade in every country (no cliff), while a country wave settles at home only', () => {
+    const probe = makeTestGame(7); probe.year = 2032; const id = calm(probe, 2032)
+    const g = game([W({ id, source: 'race', delivery: 1, hype: 1, mature: 4 })]), live = waveFactorsFor(g, 'dataCenter', 'us', 2032).demand   // supply of ai: 1 + 0.2 x 0.5 x 1
+    advanceTechWaves(g); expect(readTechWaves(g)).toEqual([]); expect(live).toBeCloseTo(1.1, 6)
+    for (const m of ['us', 'jp', 'world']) expect(waveFactorsFor(g, 'dataCenter', m, 2033).demand).toBeCloseTo(live, 6)
+    expect(waveFactorsFor(g, 'semiconductor', 'world', 2033).demand).toBeCloseTo(1.1, 6)
+    const h = game([W({ id, source: 'race', market: 'us', delivery: 1, hype: 1, mature: 4 })]); advanceTechWaves(h)
+    expect([waveFactorsFor(h, 'dataCenter', 'us', 2033).demand, waveFactorsFor(h, 'dataCenter', 'jp', 2033).demand]).toEqual([near(1.1), 1])
   })
   it('folds only the wave\'s own factors, even in a year when a history wave is live', () => {
     const probe = makeTestGame(7); probe.year = 1982

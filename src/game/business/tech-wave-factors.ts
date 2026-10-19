@@ -260,7 +260,8 @@ export const noBase = (base: Readonly<Record<string, TechBase>>): boolean => {
 /**
  * What the live waves, the history rows and the settled factors do to a trade in a market and year:
  * demand and cost multipliers and a valuation multiple, each clamped to FACTOR_BOUNDS. The factors of
- * several waves multiply. `worldMarket`: the trade's market-size curve already carries its booms, so
+ * several waves multiply, and so do the settled ones (`base`): the entry of this market and the `world` one.
+ * `worldMarket`: the trade's market-size curve already carries its booms, so
  * the history rows' demand counts a third (dynamic waves are not damped). Pure; with nothing to apply
  * it returns one shared, frozen neutral.
  */
@@ -284,8 +285,12 @@ export function waveFactors(trade: string, market: string, year: number, waves: 
   }
   if (worldMarket) histDemand = 1 + (histDemand - 1) / 3
   demand *= histDemand
-  const settled = Object.hasOwn(base, `${trade}|${market}`) ? base[`${trade}|${market}`] : undefined
-  if (settled) { demand *= settled.demand; costs *= settled.costs }
+  // A settled wave keeps the reach it had: a country wave at its own market, a world wave in every market
+  // (a national-scope trade reads a country id, so it must find the `world` entry too), the two stacking at home.
+  for (const k of market === 'world' ? [`${trade}|world`] : [`${trade}|${market}`, `${trade}|world`]) {
+    const settled = Object.hasOwn(base, k) ? base[k] : undefined
+    if (settled) { demand *= settled.demand; costs *= settled.costs }
+  }
   const d = clampN(demand, FACTOR_BOUNDS.demand[0], FACTOR_BOUNDS.demand[1])
   const c = clampN(costs, FACTOR_BOUNDS.costs[0], FACTOR_BOUNDS.costs[1])
   const v = clampN(value, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
