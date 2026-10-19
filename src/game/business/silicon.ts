@@ -7,11 +7,12 @@ import { log } from '../core'
 import { shortageIntensity } from '../history/market-events'
 import { outcomeTag } from '../timeMachine'
 import type { Asset, GameState } from '../types'
-import { marketOfBiz, marketViewOf, saveMarket } from './competition'
+import { marketOfBiz, marketViewOf, saveMarket, type RivalView } from './competition'
 import { familyId } from './competition-roster'
 import type { RivalMod } from './competition-state'
 import { siliconOf, siliconView, type LaneRow, type TechPlan } from './deeptech-core'
 import type { TechState } from './deeptech-state'
+import { segOfTier } from './market-view'
 import { laneById } from './silicon-data'
 import type { BizState, Statement } from './state'
 import { clampN, round2 } from './util'
@@ -117,4 +118,16 @@ export function afterYearSilicon(g: GameState, a: Asset, b: BizState, t: TechSta
     }
   }
   s.applied = year
+}
+
+const TIER_PRICE = { budget: 0.85, mass: 1, premium: 1.12, luxury: 1.25 } as const
+
+/**
+ * What a rival charges against the market reference, as a price index: its tier (the price segment of a real
+ * firm, else its quality), a few percent of seeded jitter that holds for a year, and 7% lower while it cuts.
+ * A pure read that stores nothing and makes no claim about any real firm's list price.
+ */
+export function rivalPriceIndex(fam: string, r: Pick<RivalView, 'id' | 'seg' | 'quality'>, year: number, cut = false): number {
+  const u = seeded(`${fam}|rprice|${r.id}|${year}`).next()
+  return TIER_PRICE[segOfTier(r.seg, r.quality)] * (1 + 0.04 * (2 * u - 1)) * (cut ? 0.93 : 1)
 }

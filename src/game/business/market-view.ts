@@ -128,7 +128,7 @@ export function segmentNames(industry: string): [string, string, string, string]
   return SEGMENT_NAMES[industry as Industry] ?? ['Budget', 'Mass market', 'Premium', 'Luxury']
 }
 
-function segOfTier(t: BrandTier | undefined, quality: number): SegmentId {
+export function segOfTier(t: BrandTier | undefined, quality: number): SegmentId {
   if (t === 'budget') return 'budget'
   if (t === 'mass') return 'mass'
   if (t === 'premium') return 'premium'
@@ -177,6 +177,8 @@ export interface SegmentRow {
   /** Your rank inside it (0 = absent). */
   rank: number
   mine: boolean
+  /** The other named players' local shares in the segment (0-1), biggest first. */
+  others?: number[]
 }
 
 export function segmentsOf(b: BizState, v: MarketView): SegmentRow[] {
@@ -210,6 +212,7 @@ export function segmentsOf(b: BizState, v: MarketView): SegmentRow[] {
       players: inSeg.length,
       rank: myRow >= 0 ? myRow + 1 : 0,
       mine: id === mine,
+      others: sorted.filter((x) => !x.p.me).map((x) => local(x.s)),
     }
   })
 }

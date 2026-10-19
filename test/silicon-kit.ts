@@ -1,6 +1,7 @@
 // Helpers shared by the Silicon 2.0 tests (not a test file): a player-run chip company set up directly,
-// the menu action finder, and one played year. `company` and `act` are copies of the local helpers in
-// deeptech-review.test.ts, which are not exported there.
+// the menu action finder, the menu text walk and one played year. `company` and `act` are copies of the local
+// helpers in deeptech-review.test.ts, which are not exported there; `menuText` is the `walk` closure of the
+// "renders every deep-tech menu at every stage" test in deeptech.test.ts, lifted into a function.
 import { ageUp } from '../src/game/aging'
 import { businessAssetView } from '../src/game/business'
 import { sellable, techOf } from '../src/game/business/deeptech-core'
@@ -76,4 +77,38 @@ export function labOf(g: GameState): Lab {
 export function playYear(g: GameState): void {
   ageUp(g)
   drain(g, YEAR_PREFS)
+}
+
+/**
+ * Every line of text a company's screens show, walked the way the "renders every deep-tech menu at every
+ * stage" test walks them: headings, info rows, labels, subtitles, hints, disabled reasons, menu headers
+ * and confirm texts, descending into every menu. Reads only; it is the caller's job to check the state.
+ */
+export function menuText(g: GameState, a: Asset): string[] {
+  const text: string[] = []
+  const walk = (nodes: MenuNode[]) => {
+    for (const n of nodes) {
+      if (n.type === 'heading') text.push(n.label)
+      else if (n.type === 'info') text.push(typeof n.text === 'function' ? n.text(g) : n.text)
+      else {
+        if (n.visible && !n.visible(g)) continue
+        text.push(n.label)
+        const sub = typeof n.subtitle === 'function' ? n.subtitle(g) : n.subtitle
+        if (sub) text.push(sub)
+        const h = n.hint?.(g)
+        if (h) text.push(h)
+        const why = n.disabledReason?.(g)
+        if (why) text.push(why)
+        if (n.type === 'menu') {
+          if (n.header) text.push(n.header(g))
+          walk(n.children(g))
+        } else if (n.confirm) {
+          const c = n.confirm(g)
+          if (c) text.push(c)
+        }
+      }
+    }
+  }
+  walk(businessAssetView(g, a))
+  return text
 }

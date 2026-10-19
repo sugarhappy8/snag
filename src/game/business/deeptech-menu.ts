@@ -38,13 +38,17 @@ import {
   competitiveness,
   computeRent,
   dtInd,
+  laneDiscount,
   payTech,
   rdBudget,
   revalue,
   runwayYears,
   sellable,
+  siliconOf,
+  siliconView,
   techFunds,
   techOf,
+  techPlan,
   techSkill,
   techView,
 } from './deeptech-core'
@@ -55,8 +59,10 @@ import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelPro
 import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
+import { CHIP_LANES, laneOpen, type ChipLane } from './silicon-data'
+import { laneSubtitle, policySubtitle, siliconRows } from './silicon-text'
 import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
-import { clampN, money, num, pct, plural, rec, str, toJson, units } from './util'
+import { clampN, money, num, pct, plural, rec, str, toJson, unitMoney, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, t: TechState, input?: string) => void
 
@@ -467,7 +473,67 @@ function infoNode(a: Asset, key: string, text: string, emoji: string): MenuNode 
   return { type: 'info', id: `dt.i.${key}.${a.id}`, text, emoji }
 }
 
-function chipsNodes(_g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] {
+/**
+ * One extra chip line's price (Silicon 2.0): a discount below the headline price, 0 to 50% in steps of 5. Exported so a
+ * test can call the action of a lane whose row isn't shown: the live re-check in dtAct refuses a lane that isn't open.
+ */
+export function laneRow(a: Asset, lane: ChipLane): MenuAction {
+  return dtAct(a, `lane.${lane.id}`, `Price: ${lane.label}`, '\u{1F4B5}', {
+    subtitle: (g) => {
+      const { b, t } = view(g, a)
+      return laneSubtitle(g, b, t, lane)
+    },
+    disabled: (g, _b, t) => (laneOpen(lane, t, g.year) ? null : `${lane.label} isn't open to this company.`),
+    input: {
+      kind: 'slider',
+      label: `Discount on ${lane.noun}`,
+      unit: '%',
+      min: 0,
+      max: 50,
+      step: 5,
+      defaultValue: (g) => String(Math.round(laneDiscount(view(g, a).t, lane.id) * 100)),
+    },
+    run: (g, _cur, b, t, input) => {
+      const n = input === undefined || input.trim() === '' ? NaN : Number(input)
+      if (!Number.isFinite(n)) return
+      const discount = clampN(Math.round(n / 5) * 5, 0, 50) / 100
+      // A zero discount nobody had set leaves the saved state alone.
+      if (discount > 0 || laneDiscount(t, lane.id) > 0) {
+        const s = siliconOf(t)
+        if (discount > 0) s.lanes[lane.id] = discount
+        else delete s.lanes[lane.id]
+      }
+      const row = techPlan(g, b, t, g.year, { calm: true }).lanes.find((l) => l.id === lane.id)
+      if (row) notice(g, 'Chip Price Set', `${lane.label} priced at ${unitMoney(row.price)}, ${row.index.toFixed(2)}x the market.`, { emoji: '\u{1F4B5}' })
+    },
+  })
+}
+
+/** The pricing policy (Silicon 2.0): the highest headline price, as a share of the market, a hired CEO will plan; 130 means none. */
+function policyRow(a: Asset): MenuAction {
+  return dtAct(a, 'policy', 'Pricing Policy', '\u{1F4D1}', {
+    subtitle: (g) => policySubtitle(siliconView(view(g, a).t).ceiling),
+    input: {
+      kind: 'slider',
+      label: 'Highest price for a hired CEO (% of the market)',
+      unit: '%',
+      min: 70,
+      max: 130,
+      step: 5,
+      defaultValue: (g) => String(clampN(Math.round((siliconView(view(g, a).t).ceiling || 1.3) * 100), 70, 130)),
+    },
+    run: (g, _cur, _b, t, input) => {
+      const n = input === undefined || input.trim() === '' ? NaN : Number(input)
+      if (!Number.isFinite(n)) return
+      const level = clampN(Math.round(n / 5) * 5, 70, 130)
+      const ceiling = level >= 130 ? 0 : level / 100
+      if (ceiling > 0 || siliconView(t).ceiling > 0) siliconOf(t).ceiling = ceiling
+      notice(g, 'Pricing Policy Set', ceiling > 0 ? `Your hired CEO will price at most ${level}% of the market. You're not bound by it.` : 'No pricing limit. Your hired CEO plans by profit alone.', { emoji: '\u{1F4D1}' })
+    },
+  })
+}
+
+function chipsNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] {
   const cap = nodeCap(t, b.countryId)
   const nodes: MenuNode[] = [
     infoNode(a, 'node', `Process node: ${NODES[t.node]}${t.node < NODES.length - 1 ? ` (next: ${NODES[t.node + 1]})` : ' (the cutting edge)'} · yield ${Math.round(t.yieldRate * 100)}%`, '\u{1F52C}'),
@@ -475,6 +541,19 @@ function chipsNodes(_g: GameState, a: Asset, b: BizState, t: TechState): MenuNod
   ]
   if (RESTRICTED.has(b.countryId)) nodes.push(infoNode(a, 'ctrl', `Export controls: foreign tools stop at ${NODES[cap]} unless you build a domestic toolchain.`, '\u{1F6AB}'))
   if (t.deal) nodes.push(infoNode(a, 'deal', `${t.deal.name}: ${money(t.deal.perYear)}/yr for ${plural(t.deal.years, 'more year')}`, '\u{1F91D}'))
+  // Silicon 2.0, from stage 2: goodwill and where the chips stand, then one price row per open extra lane and the pricing policy.
+  if (t.stage >= 2) {
+    const rows = siliconRows(g, b, t)
+    nodes.push(
+      infoNode(a, 'goodwill', rows.goodwill, '\u{1F91D}'),
+      infoNode(a, 'perf', rows.perf, '\u{1F4CA}'),
+      infoNode(a, 'quality', rows.quality, '\u{1F4CA}'),
+      infoNode(a, 'price', rows.price, '\u{1F4CA}'),
+      infoNode(a, 'share', rows.share, '\u{1F4CA}'),
+    )
+    for (const lane of CHIP_LANES) if (lane.id !== 'core' && laneOpen(lane, t, g.year)) nodes.push(laneRow(a, lane))
+    nodes.push(policyRow(a))
+  }
   return nodes
 }
 
