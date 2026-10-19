@@ -862,7 +862,7 @@ export function yearlyMusic(g: GameState): void {
   }
 
   const latest = p?.discography[p.discography.length - 1]
-  if (latest && latest.age === c.age - 1 && latest.quality >= 70 && d.popularity >= 55 && chance(g, 0.35)) {
+  if (!sim && latest && latest.age === c.age - 1 && latest.quality >= 70 && d.popularity >= 55 && chance(g, 0.35)) {
     const category = latest.type === 'Single' ? 'Record of the Year' : 'Album of the Year'
     if (chance(g, 0.25 + (latest.quality - 70) / 60)) {
       musicProfile(g).awards.push(`${AWARD} for ${category} — "${latest.title}" (age ${c.age})`)

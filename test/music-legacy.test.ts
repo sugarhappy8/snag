@@ -9,7 +9,9 @@ import { allBrands } from '../src/game/data/brands'
 import { hasScript, runScript } from '../src/game/scripts'
 import { hire } from '../src/game/special/common'
 import { yearlyMusic } from '../src/game/special/music'
+import { MUSIC_DEFS } from '../src/game/special/music-events'
 import { musicSim } from '../src/game/special/music-sim'
+import { musicStore } from '../src/game/special/music-state'
 import type { GameState, Json, Person } from '../src/game/types'
 import { makeTestGame } from './helpers'
 
@@ -53,14 +55,22 @@ function fiveYears(seed: number, hit = false): YearsGolden {
     // A release now draws one more number, the chart noise, after the legacy draws (plan S8). Step the generator
     // back that one draw so the five years below still pin the legacy yearly hook from the position it had at HEAD.
     g.rng = (g.rng - 0x6d2b79f5) | 0
+    // The golden is an old labelled save, which has no record: the release above made one (and the sim now owns
+    // the awards of a life it has adopted), so drop it and let the sim meet the life the way it meets an old save,
+    // by adopting it on its first tick. The six music events roll g.rng after the sim's year and some of them move
+    // popularity, so a pin of the legacy hook's own numbers holds them on cool-down (test/music-events.test.ts
+    // plays every one of them).
+    delete g.flags['special.music.sim']
+    const record = musicStore.mut(g)
+    for (const def of MUSIC_DEFS) record.cool[`crisis.${def.id}`] = 9999
   }
   for (let i = 0; i < 5; i++) {
     g.year += 1
     g.character.age += 1
     g.yearActions = {}
     yearlyMusic(g)
-    // A hit life released through the ledger, so the sim owns its deal year: the real yearly order is the
-    // legacy hook, then the sim (special.ts). The money, the term, the popularity, the profile and the award
+    // The real yearly order is the legacy hook, then the sim (special.ts): the sim adopts the life on its first
+    // tick and owns the deal year from the second. The money, the term, the popularity, the profile and the award
     // draws below are the HEAD numbers; only the renewal screen changed its sentence.
     if (hit) musicSim.yearly(g)
   }

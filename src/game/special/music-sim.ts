@@ -3,11 +3,17 @@
 // This file is imported only by kit/careers.ts and never imports music.ts.
 import { money } from './common'
 import type { CareerSim } from './kit/careers'
+import type { CrisisSet } from './kit/crisis'
 import { careerSay, settleYear, type CareerCtx } from './kit/year'
+import { musicCrises, stepDispute } from './music-events'
 import { musicJob } from './music-job'
 import { endDeal, stepDeal } from './music-label'
 import { MUSIC_SPEC, stepCatalogue } from './music-market'
 import { adoptMusic, musicScore, musicStore, type MusicState } from './music-state'
+
+/** The contexts of an adoption tick: the legacy year in full, so no event is offered on it and no g.rng is drawn. */
+const adopting = new WeakSet<object>()
+const events: CrisisSet<MusicState> = { offer: (c) => !adopting.has(c) && musicCrises.offer(c) }
 
 function run(c: CareerCtx<MusicState>, live: boolean): string | void {
   const { g, s } = c
@@ -15,11 +21,16 @@ function run(c: CareerCtx<MusicState>, live: boolean): string | void {
   // even with the job gone, so a term is never settled twice.
   if (!s.migrated) {
     adoptMusic(g, s)
+    adopting.add(c)
     return
   }
-  // The deal year comes first: the advance, trust, the renewal. A lost job closes the deal; nothing ticks in prison.
+  // The deal year comes first: the advance, trust, the renewal. Then a claim, which waits when the renewal took the
+  // one choice slot. A lost job closes the deal; nothing ticks in prison.
   if (live) {
-    if (!g.character.prison) stepDeal(c)
+    if (!g.character.prison) {
+      stepDeal(c)
+      stepDispute(c)
+    }
   } else if (s.deal) endDeal(c, 'expired')
   // Rows keep paying whatever the job is doing: exact arithmetic, no luck.
   const t = stepCatalogue(c)
@@ -36,6 +47,7 @@ const hook = settleYear({
   active: (g) => !!musicJob(g),
   run,
   peers: { spec: MUSIC_SPEC, score: musicScore },
+  crises: events,
   prison: 'run',
 })
 
