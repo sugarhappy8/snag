@@ -22,7 +22,7 @@ import { industryDef } from './industries'
 import { CHIP_LANES, SHORTAGE_MARKUP, laneOpen, type ChipLane } from './silicon-data'
 import { bookSupply, supplyCapacity, supplyInventoryValue, supplyProfile } from './supply'
 import { isQuoted, runsIt, totalOutlets, type BizState } from './state'
-import { waveFactorsFor } from './tech-wave-factors'
+import { stockLevelFor, waveFactorsFor } from './tech-wave-factors'
 import { clampN, round2, toJson } from './util'
 import { LEADERSHIP } from './leadership'
 
@@ -177,14 +177,18 @@ function cycleZ(g: GameState, ind: DeepTechIndustry, year: number): number {
   return (s.next() + s.next() + s.next() - 1.5) * 2
 }
 
-/** `withWave` false leaves the tech waves out (a quoted company's value is wave-free until release 1b): `wave` is then 1. */
-export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number, withWave = true): IndustryCycle {
+/**
+ * `withWave` picks the tech-wave grade: `true` the private grade (the waves' value factor, what a private company is
+ * valued at), `'stock'` the stock grade (`stockLevelFor`: the sector's price level, what a quoted company is priced at),
+ * `false` no wave. `wave` is 1 with `false`, or with no wave at all.
+ */
+export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number, withWave: boolean | 'stock' = true): IndustryCycle {
   const amp = DEEP_TECH[ind].cycle.amp
   const z = 0.65 * cycleZ(g, ind, year) + 0.35 * cycleZ(g, ind, year - 1)
   const c = DEEP_TECH[ind].cycle
   // Tech waves add their value factor only (the seed, demand, price, z and label are untouched): wave demand
   // and costs reach a deep-tech company through marketCtxFor and nationalMarket, which techPlan already reads.
-  const wave = withWave ? waveFactorsFor(g, ind, 'world', year).value : 1
+  const wave = withWave === 'stock' ? stockLevelFor(g, ind, 'world', year) : withWave ? waveFactorsFor(g, ind, 'world', year).value : 1
   const value = clampN(1 + 1.5 * amp * z, 0.6, 1.6)
   return {
     demand: clampN(1 + amp * z, 0.6, 1.5),
@@ -616,7 +620,8 @@ export function operatingValue(g: GameState, b: BizState, t: TechState): number 
   const d = DEEP_TECH[ind]
   // The sector's own hype cycle, times the real booms and busts in their years (market-events.ts).
   // With a tech wave live the product is held to the same value bounds as everywhere else; otherwise it is what it was.
-  const ic = industryCycle(g, ind, g.year, !isQuoted(b)), ev = marketEventFactors(ind, b.countryId, g.year).value
+  // A quoted lab takes the stock grade of the wave (its price level), a private one the private grade.
+  const ic = industryCycle(g, ind, g.year, isQuoted(b) ? 'stock' : true), ev = marketEventFactors(ind, b.countryId, g.year).value
   const cyc = ic.wave === 1 ? ic.value * ev : clampN(ic.value * ev, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
   const hypeMult = (0.6 + t.hype / 150) * cyc
   const years = bookedYears(b)

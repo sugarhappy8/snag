@@ -78,6 +78,7 @@ import { complexityShare, productIdeas } from './products'
 import { bestRdBudget, bestRdIdea, ordinaryProjects, pullValue, rdBlock, rdCrowding, rdProjects, rdQuote, rdRange, rdReserve, rdSlots, rdValue, rememberRetired, retireLines, retireOrder, startRd } from './rd'
 import { heavyBlock, heavyCost, heavyEligible, heavyGain, heavyLead, heavyNone, heavyOdds, heavyOf, heavyOffers, heavyYears, startHeavy } from './heavy-rd'
 import type { Breakthrough } from './heavy-data'
+import { heavyStartsWave, INSIDER_WARNING } from './tech-wave-data'
 import { readMarketNews } from '../history/market-events'
 import { fieldFor, kindTrend, lineInfo, productPull, type Field, type LinePull, type ProductPull } from './product-market'
 import { demandTrend } from './product-data'
@@ -561,7 +562,7 @@ function heavyAction(a: Asset, x: Breakthrough): MenuAction {
   const quote = (g: GameState) => {
     const b = readBiz(g, live(g, a))
     const years = heavyYears(b)
-    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(heavyOdds(g, b) * 100), lead: heavyLead({ year: g.year + years, years }) }
+    return { cost: heavyCost(g, b) ?? 0, years, odds: Math.round(heavyOdds(g, b) * 100), lead: heavyLead({ year: g.year + years, years }), wave: heavyStartsWave(b.industry, x, g.year + years) }
   }
   return act(a, `heavy.${x.name}`, x.name, '\u{1F52C}', {
     subtitle: (g) => {
@@ -570,7 +571,7 @@ function heavyAction(a: Asset, x: Breakthrough): MenuAction {
     },
     confirm: (g) => {
       const q = quote(g)
-      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone.`
+      return `Start ${x.name}? It costs ${money(q.cost)}, takes ${q.years} years and has about ${q.odds}% odds of working. If it flops, the money is gone.${q.wave ? ` ${INSIDER_WARNING}` : ''}`
     },
     disabled: (g, bb) => heavyBlock(g, bb, x.name, a.id),
     run: (gg, cur, bb) => {

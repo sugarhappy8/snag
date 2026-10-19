@@ -420,14 +420,15 @@ export interface BizState {
   dividend?: DividendPolicy
   /**
    * Tech-wave valuation mood stamped when a year was booked (business/tech-waves.ts stampWave): v = the
-   * value factor (0.3-3), y = the fiscal year it was booked for. Missing: none. Never set on a deep-tech
-   * or quoted company (listed, or a division of a listed group: isQuoted). Validate it before use: bizOf does not re-normalize a current-version record.
+   * value factor (0.3-3), y = the fiscal year it was booked for, q = true when v is the stock grade (a quoted
+   * company: listed, or a division of a listed group, isQuoted). Missing: none. Never set on a deep-tech
+   * company. Validate it before use: bizOf does not re-normalize a current-version record.
    */
   wave?: WaveStamp
 }
 
-/** The tech-wave valuation mood of a booked year (BizState.wave). */
-export type WaveStamp = { v: number; y: number }
+/** The tech-wave valuation mood of a booked year (BizState.wave); `q` marks the stock grade of a quoted company. */
+export type WaveStamp = { v: number; y: number; q?: true }
 
 export const BIZ_VERSION = 2
 
@@ -687,7 +688,7 @@ export function normalizeBiz(d: Record<string, Json>, fallbackYear: number): Biz
   // The tech-wave mood stamp (tech-waves.ts stampWave): both numbers finite, the factor clamped; never kept on deep tech.
   const ws = rec(d.wave)
   const waveStamp: WaveStamp | null = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && typeof ws.y === 'number' && Number.isFinite(ws.y) && !isDeepTechIndustry(industry)
-    ? { v: Math.round(clampN(ws.v, 0.3, 3) * 1e4) / 1e4, y: Math.round(clampN(ws.y, 1800, 2300)) } : null
+    ? { v: Math.round(clampN(ws.v, 0.3, 3) * 1e4) / 1e4, y: Math.round(clampN(ws.y, 1800, 2300)), ...(ws.q === true ? { q: true as const } : {}) } : null
   return {
     v: BIZ_VERSION,
     industry,
@@ -827,7 +828,7 @@ export function groupMultOf(b: Pick<BizState, 'group'>): number {
  * True when the company's worth is a stock price: it is listed itself, or a division of a listed group
  * (the group's share price is the sum of its divisions' valuations, conglomerate-state.groupValue). Reads
  * the raw group record as groupMultOf does, with readListing's test for a listing, and needs no import of
- * the group code. The tech waves keep out of such a company (release 1b prices stocks).
+ * the group code. The tech waves reach such a company through the stock grade (`WaveStamp.q`), never the private one.
  */
 export function isQuoted(b: Pick<BizState, 'public' | 'group'>): boolean {
   if (b.public) return true

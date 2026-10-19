@@ -18,9 +18,10 @@
 import { seeded } from '../assets'
 import { recordEconomicActivity } from '../economy'
 import { anachronismsIn } from '../events/era'
-import { pushMarketNews, signed } from '../history/market-events'
+import { FACTOR_BOUNDS, pushMarketNews, signed } from '../history/market-events'
 import { HISTORY_WAVES, historyKindActive } from '../history/tech-waves'
 import { PRESENT_YEAR } from '../history/timeline'
+import { marketYearOf } from '../invest/clock'
 import { outcomeTag } from '../timeMachine'
 import type { GameState, Json } from '../types'
 import { marketKey, marketStateOf } from './competition-core'
@@ -31,13 +32,15 @@ import { hashOf } from './product-market'
 import { businessAssets, isQuoted, readBiz, type BizState } from './state'
 import { isWaveKind, WAVE_KINDS, type WaveKind } from './tech-wave-data'
 import {
-  BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, noBase, readTechBase, readTechWaves, roleOf, storedBase, storedWave, waveFactorsFor, WAVES_KEY,
+  BASE_KEY, cleanWave, effectsOf, MAX_ID, MAX_WAVES, nextStepTag, noBase, readTechBase, readTechWaves, roleOf, STOCK_BETA, stockLevelFor, storedBase, storedWave, TRAIL_POINTS, waveFactorsFor, WAVES_KEY,
   type TechBase, type TechWave, type WaveSource,
 } from './tech-wave-factors'
 import { clampN } from './util'
+import { waveInsiderCases } from './wave-insider'
 
 export { BASE_KEY, historyFactors, MAX_WAVES, readTechBase, readTechWaves, roleOf, waveFactors, waveFactorsFor, WAVES_KEY } from './tech-wave-factors'
-export type { TechBase, TechWave, WaveSource } from './tech-wave-factors'
+export { nextStepTag, STOCK_BETA, stateAt, stockLevelFor, TRAIL_POINTS, waveLevels, waveSignature, wavesAt } from './tech-wave-factors'
+export type { TechBase, TechWave, WaveLevel, WaveSource } from './tech-wave-factors'
 
 /** At most this many waves from the player's side (anything but a rival) are announced in a year. */
 const MAX_PER_YEAR = 2
@@ -53,6 +56,8 @@ export interface WaveInput {
   /** The announcement year when it is not g.year (a heavy launch passes the record's launch year). */
   year?: number
   home?: string
+  /** The asset id of the company that wrote this wave (a heavy launch or a deep-tech milestone), for the insider rule. Never stored on the wave. */
+  by?: string
 }
 
 /** Always a NEW array of NEW objects: the read cache below is keyed on the array, so nothing is edited in place. */
@@ -72,14 +77,18 @@ const round4 = (n: number): number => Math.round(n * 1e4) / 1e4
  * the waves and the history rows for its trade and market, with the fiscal year it was booked for
  * (`valuationOf` takes it only when the last record is that year). A neutral factor deletes the stamp
  * (a world with no wave stores nothing). Never on a deep-tech company (it reads waves through
- * `industryCycle`, so a stamp would count twice) or a quoted one, a listed company or a division of a listed
- * group, whose price is a sum of divisions' valuations (stocks stay wave-free until release 1b).
+ * `industryCycle`, so a stamp would count twice). A quoted company, a listed one or a division of a listed
+ * group, gets the stock grade instead (`q: true`): the sector's price level read at the market year its
+ * fiscal year is booked into (P5; `y` stays the fiscal year, the key `valuationOf` matches).
  */
 export function stampWave(g: GameState, b: BizState, fiscal: number): void {
-  if (isDeepTech(b) || isQuoted(b)) { delete b.wave; return }
-  const v = waveFactorsFor(g, b.industry, marketKey(b), fiscal).value
+  if (isDeepTech(b)) { delete b.wave; return }
+  const quoted = isQuoted(b)
+  const v = quoted
+    ? clampN(stockLevelFor(g, b.industry, marketKey(b), marketYearOf(fiscal)), FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
+    : waveFactorsFor(g, b.industry, marketKey(b), fiscal).value
   if (Math.abs(v - 1) < 0.005) delete b.wave
-  else b.wave = { v: round4(v), y: fiscal }
+  else b.wave = quoted ? { v: round4(v), y: fiscal, q: true } : { v: round4(v), y: fiscal }
 }
 
 /** Delivery levels at which one fast follower enters a wave's core market. */
@@ -132,9 +141,14 @@ export function announceWave(g: GameState, a: WaveInput): TechWave | null {
     ...(a.source === 'heavy' ? { skip: a.origin.slice(6, a.origin.indexOf('|')) } : {}),
   })
   if (!w) return null
-  writeWaves(g, [...list, w])
+  // The first point of the trail and the projected next step, so a stock read before the first yearly step already sees it (release 1b).
+  const first = cleanWave({ ...w, trail: [[w.last, w.hype, w.delivery]], nx: projectWave(g, w) })
+  if (!first) return null
+  writeWaves(g, [...list, first])
   const stored = readTechWaves(g).find((x) => x.id === w.id) ?? null
   if (stored) announceWaveNews(g, stored)
+  // A wave the player's own company wrote may be an insider case (a repeat returned above and never reaches here).
+  if (stored && a.by) waveInsiderCases(g, stored, a.by)
   return stored
 }
 
@@ -256,6 +270,45 @@ function deliveryTarget(g: GameState, w: TechWave, year: number): number | null 
   return null
 }
 
+/** One wave's step: its new hype, delivery and maturity, whether the year stalled, and what becomes of it. */
+export interface WaveStep {
+  hype: number
+  delivery: number
+  mature: number
+  stall: boolean
+  fate: 'live' | 'settle' | 'drop'
+}
+
+/**
+ * What `year` does to a wave, the path `advanceTechWaves` runs (and the Investing talent's stock level reads ahead
+ * of it, through `projectWave`). Delivery: a company-written wave moves toward what its record or lab has sold, at
+ * most 0.25 a year; every other case (workshop, race, rival, or a missing company or record) gains 0.08 + 0.22 u from
+ * the seeded draw, or nothing on a stall. Then `nextState`. Pure: no writes, no `g.rng`.
+ */
+export function stepWave(g: GameState, w: TechWave, year: number): WaveStep {
+  const target = deliveryTarget(g, w, year)
+  let delivery: number, stall = false
+  if (target !== null) delivery = w.delivery + clampN(target - w.delivery, -0.25, 0.25)
+  else {
+    const d = waveDraw(g, w.id, year)
+    stall = d.stall
+    delivery = w.delivery + (stall ? 0 : 0.08 + 0.22 * d.u)
+  }
+  return { ...nextState(w, delivery, stall, year), stall }
+}
+
+/**
+ * The next yearly step of a wave as `[hype, delivery, fork tag]`: `stepWave` at `last + 1`. A wave that is about to
+ * drop projects `[0, 0, tag]` (zero hype and delivery make every role neutral), so the level read before the dropping
+ * step equals the level read after the wave is gone (P2). The tag is `nextStepTag`, so a Time Machine jump that
+ * rerolls that year leaves the stored projection unread. Pure.
+ */
+export function projectWave(g: GameState, w: TechWave): readonly [number, number, string] {
+  const tag = nextStepTag(g, w)
+  const s = stepWave(g, w, w.last + 1)
+  return s.fate === 'drop' ? [0, 0, tag] : [s.hype, s.delivery, tag]
+}
+
 /**
  * Step every wave once a year, behind the `last` marker (a second call in a year, or a wave that
  * starts later than this year, writes nothing; a gap steps once). Delivery: a company-written wave
@@ -274,30 +327,26 @@ export function advanceTechWaves(g: GameState): void {
   for (const w of list) {
     if (w.last === year || year < w.year) { next.push(w); continue }
     changed = true
-    const target = deliveryTarget(g, w, year)
-    let delivery: number, stall = false
-    if (target !== null) delivery = w.delivery + clampN(target - w.delivery, -0.25, 0.25)
-    else {
-      const d = waveDraw(g, w.id, year)
-      stall = d.stall
-      delivery = w.delivery + (stall ? 0 : 0.08 + 0.22 * d.u)
-    }
-    const s = nextState(w, delivery, stall, year)
+    const s = stepWave(g, w, year)
     if (s.fate === 'drop') continue
     feedEconomy(g, w, s.delivery - w.delivery, year)
-    const stepped: TechWave = { ...w, hype: s.hype, delivery: s.delivery, last: year }
+    // The remembered path: this year's point (a trail point of the same or a later year than this step is dropped, so the years rise), the last TRAIL_POINTS kept.
+    const trail = [...(w.trail ?? [[w.last, w.hype, w.delivery] as const]).filter((p) => p[0] < year), [year, s.hype, s.delivery] as const].slice(-TRAIL_POINTS)
+    const stepped: TechWave = { ...w, hype: s.hype, delivery: s.delivery, last: year, trail }
     if (s.mature > 0) stepped.mature = s.mature
     else delete stepped.mature
-    if (s.fate === 'live') { next.push(stepped); continue }
-    // Settled: the wave's own demand and cost factors become permanent at its own market ('world' is read in every market).
+    if (s.fate === 'live') { next.push({ ...stepped, nx: projectWave(g, stepped) }); continue }
+    // Settled: the wave's own demand, cost and stock factors become permanent at its own market ('world' is read in every market).
     base ??= { ...readTechBase(g) }
     for (const kind of ['core', 'supply', 'disrupted'] as const) {
       for (const trade of WAVE_KINDS[stepped.kind][kind] as readonly string[]) {
         const e = effectsOf(trade, stepped.market, year, [stepped], false)[0]
-        if (!e || (e.demand === 1 && e.costs === 1)) continue
+        if (!e || (e.demand === 1 && e.costs === 1 && e.value === 1)) continue
         const k = `${trade}|${stepped.market}`
         const old = Object.hasOwn(base, k) ? base[k] : undefined
-        base[k] = { demand: clampN((old?.demand ?? 1) * e.demand, 0.8, 1.5), costs: clampN((old?.costs ?? 1) * e.costs, 0.8, 1.0) }
+        // The same bounds as the live level (0.3 to 3), so a settle moves a wave's part of the level into the permanent factor unchanged however many waves stack on one trade (S7).
+        const stock = clampN((old?.stock ?? 1) * (1 + STOCK_BETA * (e.value - 1)), FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
+        base[k] = { demand: clampN((old?.demand ?? 1) * e.demand, 0.8, 1.5), costs: clampN((old?.costs ?? 1) * e.costs, 0.8, 1.0), ...(stock !== 1 ? { stock } : {}) }
       }
     }
   }
@@ -376,22 +425,26 @@ const NO_LINES: string[] = Object.freeze([]) as unknown as string[]
  * one per live wave or history row the trade has a role in, as two sentences (`Frontier AI wave. Demand
  * +12%, costs \u22124%, value +14%.`; costs only when they move), the biggest value change first. The numbers
  * are the factors the market applies (a world-scope trade takes history demand at a third, as waveFactors
- * does). A line the era check flags for the company's country and year is skipped. Pure: no writes, no
- * draws, and one shared empty array when there is nothing to say. Callers cap the count.
+ * does). A quoted company (listed, or a division of a listed group) is priced, not valued, so its line says
+ * `price` with the stock grade, `1 + STOCK_BETA x (value - 1)`. A line the era check flags for the company's
+ * country and year is skipped. Pure: no writes, no draws, and one shared empty array when there is nothing to
+ * say. Callers cap the count. `public` and `group` are optional: release 1 callers pass only the industry and country.
  */
-export function waveLines(g: Pick<GameState, 'flags' | 'year'>, b: Pick<BizState, 'industry' | 'countryId'>, year: number = g.year): string[] {
+export function waveLines(g: Pick<GameState, 'flags' | 'year'>, b: Pick<BizState, 'industry' | 'countryId'> & Partial<Pick<BizState, 'public' | 'group'>>, year: number = g.year): string[] {
   const y = Math.round(year)
   if (!Number.isFinite(y)) return NO_LINES
   const market = marketKey(b)
   const waves = readTechWaves(g)
+  const quoted = isQuoted({ public: b.public === true, group: b.group })
   const out: { text: string; size: number }[] = []
   for (const e of effectsOf(b.industry, market, y, waves)) {
     const demand = e.hist && market === 'world' ? 1 + (e.demand - 1) / 3 : e.demand
     if (!Number.isFinite(demand) || !Number.isFinite(e.costs) || !Number.isFinite(e.value)) continue
-    if (Math.abs(demand - 1) < 0.005 && Math.abs(e.costs - 1) < 0.005 && Math.abs(e.value - 1) < 0.005) continue
-    const text = `${e.name} wave. Demand ${signed(demand)}, ${Math.abs(e.costs - 1) >= 0.005 ? `costs ${signed(e.costs)}, ` : ''}value ${signed(e.value)}.`
+    const worth = quoted ? 1 + STOCK_BETA * (e.value - 1) : e.value
+    if (Math.abs(demand - 1) < 0.005 && Math.abs(e.costs - 1) < 0.005 && Math.abs(worth - 1) < 0.005) continue
+    const text = `${e.name} wave. Demand ${signed(demand)}, ${Math.abs(e.costs - 1) >= 0.005 ? `costs ${signed(e.costs)}, ` : ''}${quoted ? 'price' : 'value'} ${signed(worth)}.`
     if (anachronismsIn(text, y, [b.countryId]).length > 0) continue
-    out.push({ text, size: Math.abs(e.value - 1) })
+    out.push({ text, size: Math.abs(worth - 1) })
   }
   if (!out.length) return NO_LINES
   return out.sort((p, q) => q.size - p.size).map((x) => x.text)

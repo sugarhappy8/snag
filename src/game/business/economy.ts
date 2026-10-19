@@ -10,6 +10,8 @@
 // the minimum wage), commercial rents, input prices, interest rates and taxes.
 import { FACTOR_BOUNDS, marketEventFactors } from '../history/market-events'
 import { historicalIndexReturn } from '../history/markets'
+import { PRESENT_YEAR } from '../history/timeline'
+import { bookedMarketMove } from '../invest/clock'
 import { outcomeTag } from '../timeMachine'
 import { publicBusinessShockFactor } from '../invest/shocks'
 import { seeded } from '../assets'
@@ -952,11 +954,14 @@ export function valuationOf(b: BizState): number {
   // Tech waves (business/tech-waves.ts): the mood stamped when that year was booked, else the history
   // table read directly. A stamp only counts for the last record's year and is validated here (bizOf
   // does not re-normalize a current-version record). Deep tech reads waves through industryCycle and
-  // classicPart spreads b, so it never uses either; a quoted company's price (listed itself, or a division
-  // of a listed group, whose price sums its divisions' valuations) is release 1b.
-  if (last && !isDeepTech(b) && !isQuoted(b)) {
-    const ws = b.wave
-    const wv = ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && ws.y === last.year ? clampN(ws.v, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]) : historyFactors(b.industry, marketKey(b), last.year).value
+  // classicPart spreads b, so it never uses either. A quoted company (listed itself, or a division of a
+  // listed group, whose price sums its divisions' valuations) takes only a stock-grade stamp (q), and with
+  // none its mood is 1: the stock tables already carry the real booms, and a stale or private-grade stamp
+  // must never move a price (C-12). An unquoted company ignores a stock-grade stamp.
+  if (last && !isDeepTech(b)) {
+    const ws = b.wave, quoted = isQuoted(b)
+    const stamped = !!ws && typeof ws.v === 'number' && Number.isFinite(ws.v) && ws.y === last.year && (ws.q === true) === quoted
+    const wv = stamped ? clampN(ws.v, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1]) : quoted ? 1 : historyFactors(b.industry, marketKey(b), last.year).value
     if (wv !== 1) mood = clampN(events * wv, FACTOR_BOUNDS.value[0], FACTOR_BOUNDS.value[1])
   }
   const mult = def.multiple * (1 + growth * def.growth) * (0.85 + b.brand / 333) * (1 + MOAT * dominanceOf(b)) * mood
@@ -1002,6 +1007,8 @@ export function exchangeMove(g: GameState, countryId: string, year: number): num
   // In history the exchange moves as the real one did (the same tables as the stock market).
   const real = historicalIndexReturn(countryId, year)
   if (real !== null && Number.isFinite(real)) return clampN(real, -0.6, 1.2)
+  // From the present on it is the engine's move of the market year this fiscal year is booked into (one clock with the funds).
+  if (year >= PRESENT_YEAR) return bookedMarketMove(g, countryId, year)
   const ex = exchangeFor(countryId)
   const s = seeded(`${g.lifeId}${outcomeTag(g, year)}|bizexchange|${ex.code}|${year}`)
   const z = (s.next() + s.next() + s.next() - 1.5) * 2

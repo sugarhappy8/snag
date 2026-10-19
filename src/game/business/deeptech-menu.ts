@@ -56,12 +56,13 @@ import { aiLine, benchRows, firstRows, summaryClause } from './deeptech-bench'
 import { deepTechEventOpen, presentDeepTechEvent } from './deeptech-events'
 import { awardGrant, bridgeBlock, bestGrant, closeRound, grantAmount, grantBlock, grantKey, grantList, grantOdds, grantsOwed, lastPost, makeTermSheet, nextRoundNeed, pushOdds, roundBlock, termAdvice, type TermSheet } from './deeptech-funding'
 import { BUDGET_MAX, BUDGET_MIN, bestCapTrack, bestProgram, bestTrial, cancelProgram, maxPrograms, programBlock, programCost, programLine, programTerms, startProgram, startTrial, stopPrograms, trackLimit, trialBlock, trialCost, trialName, trialOdds, wholeYears } from './deeptech-rd'
-import { MAX_SERIES, SERIES, milestoneListingBlock, type Drug, type TechState } from './deeptech-state'
+import { MAX_SERIES, SERIES, milestoneListingBlock, timesDone, type Drug, type TechState } from './deeptech-state'
 import { manageBlock, tooBusy } from './gate'
 import { industryDef } from './industries'
 import { CHIP_LANES, laneOpen, type ChipLane } from './silicon-data'
 import { laneSubtitle, policySubtitle, siliconRows } from './silicon-text'
 import { bizOf, findBusiness, readBiz, runsIt, type BizState } from './state'
+import { deepWaveIf, INSIDER_WARNING } from './tech-wave-data'
 import { clampN, money, num, pct, plural, rec, str, toJson, unitMoney, units } from './util'
 
 type Run = (g: GameState, a: Asset, b: BizState, t: TechState, input?: string) => void
@@ -147,7 +148,11 @@ function programRow(a: Asset, def: ProgramDef, t0: TechState): MenuAction {
       const { b, t } = view(g, a)
       const cost = programCost(b, t, def)
       const funds = techFunds(b, t)
-      return funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year at the planned budget. Start it anyway and find the money by year-end?` : null
+      const short = funds < cost ? `${a.name} only has ${money(funds)} between its R&D account and cash, and this costs about ${money(cost)} a year at the planned budget. Start it anyway and find the money by year-end?` : null
+      // A listed program ripples through stocks (tech-waves.ts), so the rule is stated where the work starts, but only when the writer would
+      // announce the wave: the win counts as one more completion, and the one program with an autonomy condition (selfdrive) adds one level.
+      const text = [short, deepWaveIf(b.industry, def.id, timesDone(t, def.id) + 1, t.autonomy + 1) ? INSIDER_WARNING : null].filter((x): x is string => x !== null).join(' ')
+      return text || null
     },
     // Fund it lean, as planned or flat out: faster and likelier, dearer in total (diminishing returns).
     input: {

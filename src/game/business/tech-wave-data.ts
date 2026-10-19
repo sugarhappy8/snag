@@ -6,6 +6,7 @@
 // Disrupted lists are short on purpose: a trade is only there when the loss was real (or is a
 // well-known risk) and the effect is meant to be light.
 import type { Industry } from '../data/markets'
+import { historyKindActive } from '../history/tech-waves'
 import type { Category, IdeaDef } from '../workshop/catalog'
 
 export interface WaveKindDef {
@@ -98,6 +99,19 @@ export function heavyWaveFor(trade: string, name: string): HeavyWave | null {
   return Object.hasOwn(HEAVY_WAVES, key) ? HEAVY_WAVES[key] : null
 }
 
+/**
+ * Whether a heavy launch in `launchYear` starts a wave: the entry is a listed wave, the launch is still inside the window (the writer's own
+ * test in heavy-rd.ts) and no history row of the wave's kind covers that year, which is the refusal `announceWave` applies to a heavy wave.
+ * The Heavy R&D confirm reads it, so the warning is shown only for a launch that can move stocks.
+ */
+export function heavyStartsWave(trade: string, entry: { name: string; first: number }, launchYear: number): boolean {
+  const hw = heavyWaveFor(trade, entry.name)
+  return hw !== null && launchYear - entry.first <= HEAVY_WAVE_WINDOW && !historyKindActive(hw.kind, launchYear)
+}
+
+/** What the Heavy R&D and deep-tech confirms say where a launch would move listed stocks (P6: a constant, so the menus never import politics). */
+export const INSIDER_WARNING = 'If it works, related stocks move. Buying them in the year before the launch can count as insider trading.'
+
 /** A deep-tech program (or derived milestone) that starts a wave. */
 export interface DeepWave {
   kind: WaveKind
@@ -143,6 +157,17 @@ export const DEEPTECH_WAVES: Readonly<Record<string, DeepWave>> = {
 export function deepWaveFor(trade: string, programId: string): DeepWave | null {
   const key = `${trade}:${programId}`
   return Object.hasOwn(DEEPTECH_WAVES, key) ? DEEPTECH_WAVES[key] : null
+}
+
+/**
+ * The wave a finished deep-tech program starts, or null: the entry's own `first` and `autonomy` conditions applied to the lab as the win
+ * leaves it (`done`: how many times the program is done including this win; `autonomy`: the lab's level after it). The writer
+ * (`announceBreakthroughs`) calls it with the state after the win and the program menu with the state the win would reach, so the
+ * warning in the confirm is true exactly when the writer announces a wave.
+ */
+export function deepWaveIf(trade: string, programId: string, done: number, autonomy: number): DeepWave | null {
+  const w = deepWaveFor(trade, programId)
+  return !w || (w.first && done !== 1) || (w.autonomy !== undefined && autonomy < w.autonomy) ? null : w
 }
 
 /**
