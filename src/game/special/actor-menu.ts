@@ -569,7 +569,8 @@ function retire(c: CareerCtx<ActorState>): void {
   leave(g, 'retired')
   careerLog(c, 'I retired from acting.')
   const trust = g.assets.some((a) => likenessOf(a)?.author === g.character.id)
-  careerSay(c, 'Retired from Acting', `You retired after ${s.credits.length} credit${s.credits.length === 1 ? '' : 's'}. ${trust ? 'Your likeness trust keeps paying.' : 'A likeness trust is free to set up now.'}`, '\u{1F305}')
+  const note = trust ? 'Your likeness trust keeps paying.' : s.done.includes('trust') ? '' : 'A likeness trust is free to set up now.'
+  careerSay(c, 'Retired from Acting', `You retired after ${s.credits.length} credit${s.credits.length === 1 ? '' : 's'}. ${note}`.trim(), '\u{1F305}')
 }
 
 function removeCostars(g: GameState, p: Proj): void {

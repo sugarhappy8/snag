@@ -14,7 +14,7 @@ import { INDUSTRIES, type IndustryId } from './actor-data'
 import { actorStore, adoptLegacy, type ActorState } from './actor-state'
 import { industryOf, scaleOf } from './actor-world'
 import { blocked, money } from './common'
-import { cap, int, txt } from './kit/state'
+import { KIT_LIMITS, cap, int, txt } from './kit/state'
 import { ACTION_BUDGET, YEARLY_BUDGET, careerCtx, careerLog, careerSay, emitBooks, type CareerCtx } from './kit/year'
 
 export interface Likeness {
@@ -161,12 +161,18 @@ export function trustFee(g: GameState, s: ActorState): number {
   return waived(g, s) ? 0 : Math.round(TRUST_FEE * scaleOf(g, industryOf(g)))
 }
 
-/** Why this life can't set a trust up right now, or null. One trust a life, at 18, with a credit, for the fee. */
+/**
+ * Why this life can't set a trust up right now, or null. One trust a life, at 18, with a credit not yet in a
+ * trust, for the fee. The life's `done` list remembers it, so selling the rights does not open a second trust
+ * (and a second waived fee) over the same name.
+ */
 export function trustBlock(g: GameState, s: ActorState): string | null {
   const why = blocked(g, 18)
   if (why) return why
   if (s.credits.length === 0) return 'You need a credit to put in a trust.'
   if (g.assets.some((a) => likenessOf(a)?.author === g.character.id)) return 'You already have a likeness trust.'
+  if (s.done.includes('trust')) return 'You have already had a likeness trust this life.'
+  if (!s.credits.some((cr) => !cr.trust)) return 'Every credit is already in a trust.'
   if (g.character.money < trustFee(g, s)) return "You can't cover the setup fee."
   return null
 }
@@ -210,6 +216,7 @@ export function createTrust(c: CareerCtx<ActorState>): Asset | null {
     lastYear: g.year, // this year's cheque is not due: the hook for it has already run
   }
   for (const cr of s.credits) cr.trust = true
+  s.done = cap([...s.done.filter((x) => x !== 'trust'), 'trust'], KIT_LIMITS.done)
   const value = trustValue(m, scale)
   const a: Asset = { id: uid(g, 'likeness'), kind: 'other', name: `${m.actor} Likeness Trust`.slice(0, 80), emoji: FILM, purchasePrice: fee, value, condition: 100, purchasedAge: g.character.age, upkeep: 0, details: {} }
   save(a, m)
@@ -318,7 +325,7 @@ export function promoteEstate(c: CareerCtx<ActorState>, id: string): void {
   careerSay(c, 'Estate Promotion', `The campaign put the name back in front of people. Likeness is ${m.likeness} of 100.`, FILM, 'good')
 }
 
-/** Pays 70% of the value (less a license advance still unrecouped), booked as income, and removes the asset. */
+/** Pays 70% of the value (less a license advance still unrecouped), booked as income, and removes the asset. A running license holds the sale back. */
 export function sellRights(c: CareerCtx<ActorState>, id: string): void {
   const { g } = c
   const a = held(g, id)
@@ -326,6 +333,7 @@ export function sellRights(c: CareerCtx<ActorState>, id: string): void {
   if (why) return refuse(c, why)
   if (!a) return refuse(c, "You don't hold that trust.")
   const m = likenessOf(a)!
+  if (licensedNow(g, m)) return refuse(c, 'Wait for the current license to run out before you sell.')
   const price = Math.round(SALE_SHARE * Math.max(0, trustValue(m, scaleOf(g, m.industry)) - m.unrecouped))
   const got = c.earn('Likeness rights', price)
   g.assets = g.assets.filter((x) => x.id !== a.id)
@@ -396,8 +404,11 @@ export function actorLikenessNodes(g: GameState, a: Asset): MenuNode[] | null {
         const m = live(gg)
         return m ? `Offer ${money(Math.round(SALE_SHARE * Math.max(0, trustValue(m, scale) - m.unrecouped)))}` : ''
       },
-      disabledReason: (gg) => age(gg) ?? (live(gg) ? null : "You don't hold that trust."),
-      confirm: () => 'Sell the trust and every future cheque? The buyer takes over any license.',
+      disabledReason: (gg) => {
+        const m = live(gg)
+        return age(gg) ?? (!m ? "You don't hold that trust." : licensedNow(gg, m) ? 'Wait for the current license to run out before you sell.' : null)
+      },
+      confirm: () => 'Sell the trust and every future cheque?',
       run: (gg) => act(gg, 'likeness.sell', (c) => sellRights(c, id)),
     },
   )

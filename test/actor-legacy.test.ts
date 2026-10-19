@@ -378,14 +378,79 @@ describe('actor likeness trust: license, promote, sell', () => {
     expect(quiet(g)).toBe(sold)
   })
 
-  it('discounts a sale by the advance still unrecouped, so a licence is no loophole', () => {
-    const { g, s, a } = withTrust(80)
-    patch(a, { streams: 0 })
-    licenseFive(ctxOf(g, s), a.id)
-    const m = likenessOf(a)!
+  it('refuses a sale while a licence runs, so a licence earns no extra on top of a sale', () => {
+    for (const streams of [0, 30_000, 400_000]) {
+      const { g, s, a } = withTrust(80)
+      patch(a, { streams })
+      licenseFive(ctxOf(g, s), a.id)
+      const m = likenessOf(a)!
+      expect(m.licenseUntil).toBeGreaterThan(g.year)
+      // the sale row is shut and a direct run changes nothing: the licence's advance is all the cash there is
+      const row = actorLikenessNodes(g, a)!.find((n) => n.id === `likeness.sell.${a.id}`)
+      expect(row?.type === 'action' && row.disabledReason?.(g)).toBeTruthy()
+      const held = quiet(g)
+      sellRights(ctxOf(g, s), a.id)
+      expect(quiet(g)).toBe(held)
+      expect(g.assets.some((x) => x.id === a.id)).toBe(true)
+
+      // once the licence has run out the sale opens at the full 70%, the same price an outright sale would have had
+      for (let i = 0; i < 6; i++) {
+        turn(g)
+        yearlyLikeness(g)
+      }
+      const after = likenessOf(a)!
+      expect(after.licenseUntil).toBe(0)
+      expect(after.unrecouped).toBe(0)
+      const cash = g.character.money
+      sellRights(ctxOf(g, s), a.id)
+      expect(g.assets.some((x) => x.id === a.id)).toBe(false)
+      expect(g.character.money - cash).toBe(Math.round(0.7 * trustValue(after, scaleOf(g, after.industry))))
+    }
+  })
+
+  it('refuses a second trust once the first is gone, so create and sell is no money machine', () => {
+    // a retired actor: the one waived setup fee is the first and the last
+    const { g, s } = newActor()
+    s.done = ['retired']
+    leave(g, 'retired')
+    const first = createTrust(ctxOf(g, s))!
+    expect(first).toBeTruthy()
+    sellRights(ctxOf(g, s), first.id)
     const cash = g.character.money
-    sellRights(ctxOf(g, s), a.id)
-    expect(g.character.money - cash).toBe(Math.round(0.7 * Math.max(0, trustValue(m, scaleOf(g, m.industry)) - m.unrecouped)))
+    const settled = quiet(g)
+    for (let i = 0; i < 5; i++) {
+      expect(createTrust(ctxOf(g, s))).toBeNull()
+      expect(g.assets.some((x) => likenessOf(x))).toBe(false)
+    }
+    expect(g.character.money).toBe(cash)
+    expect(quiet(g)).toBe(settled)
+
+    // not retired: the fee is paid, a licence is taken, the rights go, and the next trust is still refused
+    const { g: h, s: hs } = newActor(7)
+    const a = createTrust(ctxOf(h, hs))!
+    patch(a, { likeness: 84, streams: 0 })
+    licenseFive(ctxOf(h, hs), a.id)
+    for (let i = 0; i < 6; i++) {
+      turn(h)
+      yearlyLikeness(h)
+    }
+    sellRights(ctxOf(h, hs), a.id)
+    const money = h.character.money
+    expect(createTrust(ctxOf(h, hs))).toBeNull()
+    expect(h.character.money).toBe(money)
+
+    // even with a fresh credit: the name was already sold once
+    hs.credits = [...hs.credits, ...creditsOf(h, [creditRow('c9', 1996, { residual: 500 })])]
+    expect(createTrust(ctxOf(h, hs))).toBeNull()
+    expect(h.character.money).toBe(money)
+  })
+
+  it('refuses a trust when no credit is left to move in', () => {
+    const { g, s } = newActor()
+    for (const c of s.credits) c.trust = true
+    const before = quiet(g)
+    expect(createTrust(ctxOf(g, s))).toBeNull()
+    expect(quiet(g)).toBe(before)
   })
 
   it('refuses minors and wrong owners on direct run, and renders pure on a frozen state [RF5]', () => {
