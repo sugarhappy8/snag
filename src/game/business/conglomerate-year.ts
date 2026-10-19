@@ -15,7 +15,7 @@ import { payCap, reserveDollars } from './board-vote'
 import { bestMandate, mandateMerit } from './board-ceo'
 import { ceoSeverance, managerName, ownerAvailable, paySeverance, shortlist, SMART_SKILL } from './career'
 import { cleanGroupJobs, familyRoleEdge, payFamilyGroupCeo, prepareGroupFamily } from './conglomerate-family'
-import { hasInternalServices, internalRevenue } from './group-services'
+import { hasChipContract, hasInternalServices, internalRevenue } from './group-services'
 import { allocateGroupCapital, manageDivisionCeos, managementEffectiveness, retainDivisionCeo } from './conglomerate-management'
 import { clearGroupCeoJob } from './conglomerate-job'
 import {
@@ -303,6 +303,8 @@ function groupYear(g: GameState, grp: Group, fiscal: number): void {
   plan.divisions.forEach((d, i) => {
     const x = grp.members[i]
     if (hasInternalServices(g, x.a.id)) { d.backOffice = 0; d.purchasing = 0; d.purchasingValue = 0 }
+    // A chip contract is the link between the two trades, so the buyer's cross-selling lift would count it twice.
+    if (hasChipContract(g, grp, x.a.id)) { d.crossSell = 0; d.crossSellValue = 0 }
     const part = x.m.joined > fiscal ? 0 : x.m.joined === fiscal ? 0.5 : 1
     if (part > 0) {
       credit(x.b, d.backOffice * part)
