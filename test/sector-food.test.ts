@@ -1,18 +1,25 @@
-// Food and Drink Service: the math of the kitchen and the floor (hygiene grade, review rating, the peak
-// squeeze, the menu, delivery, extended hours). foodFx is called directly with a hand-made context, so
-// no family model is involved; the desk, the levers and the events are tested below in 'food desk'.
+// Food and Drink Service. 'food math': the kitchen and the floor (hygiene grade, review rating, the peak
+// squeeze, the menu, delivery, extended hours); foodFx is called directly with a hand-made context, so
+// no family model is involved. 'food desk': the levers, the eight events and the copy of the registered
+// family (sector-food-play.ts), through applyLever, the event script and the voice rules.
 import { describe, expect, it } from 'vitest'
+import { staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { localEcon, type Worth } from '../src/game/business/economy'
 import { nationalMarket } from '../src/game/business/dynamics'
-import { SECTOR_BOUNDS, sectorValue } from '../src/game/business/sector-core'
+import { eraFits } from '../src/game/business/era'
+import { prepareSectorYear, SECTOR_BOUNDS, sectorValue, seedSector } from '../src/game/business/sector-core'
 import { FOOD } from '../src/game/business/sector-data'
+import { eventProblems, SECTOR_EVENT_SCRIPT } from '../src/game/business/sector-events'
 import { auditCost, foodFx, foodHeader, foodRow, foodSeed, gradeOf, kitchenFine, squeeze } from '../src/game/business/sector-food'
-import { seasonIndex, sectorHistoryLine, type SectorCtx, type SectorFx } from '../src/game/business/sector-kit'
-import type { FoodState } from '../src/game/business/sector-state'
-import type { BizState, KeyStaff } from '../src/game/business/state'
+import { FOOD_COPY, FOOD_EVENTS, FOOD_LEVERS, FOOD_MODEL } from '../src/game/business/sector-food-play'
+import { copyLines, modelOf, sectorCtx, sectorText, seasonIndex, sectorHistoryLine, type LeverDef, type SectorCtx, type SectorEvent, type SectorFx } from '../src/game/business/sector-kit'
+import { applyLever, deskLines } from '../src/game/business/sector-menu'
+import { blankRecord, readSector, saveSector, sectorOwnsEvent, type FoodState } from '../src/game/business/sector-state'
+import { bizOf, type BizState, type KeyStaff } from '../src/game/business/state'
 import type { Industry } from '../src/game/data/markets'
+import { runScript } from '../src/game/scripts'
 import type { Asset, GameState } from '../src/game/types'
-import { deskGame, frozen } from './sector-kit'
+import { deskGame, frozen, playYear } from './sector-kit'
 
 const TRADES = ['restaurant', 'foodTruck', 'cafe', 'bakery'] as const
 const BASE = 1_000_000
@@ -396,5 +403,376 @@ describe('food math', () => {
     expect(foodHeader(bakery.g, bakery.b, bakery.seed).at(-1)).toBe(line)
     const restaurant = setup('restaurant', 2020)
     expect(foodHeader(restaurant.g, restaurant.b, restaurant.seed).join(' ')).not.toContain('rough estimate')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The desk: levers, events and copy of the family (sector-food-play.ts)
+
+const EVENT_IDS = ['chefOffer', 'festival', 'inspection', 'noise', 'platformHike', 'recall', 'review', 'rush']
+
+function leverOf(id: string): LeverDef {
+  const l = modelOf('food')?.levers.find((x) => x.id === id)
+  if (!l) throw new Error(`no ${id} lever`)
+  return l
+}
+
+function eventOf(id: string): SectorEvent {
+  const e = modelOf('food')?.events.find((x) => x.id === id)
+  if (!e) throw new Error(`no ${id} event`)
+  return e
+}
+
+/** The odds of the fail branch (the second) of a choice of the inspection. */
+function failP(s: ReturnType<typeof setup>, st: FoodState, choice: string): number {
+  const c = eventOf('inspection').choices(s.g, s.b, st).find((x) => x.id === choice)
+  if (!c) throw new Error(`no ${choice} choice`)
+  const branches = c.branches(s.g, s.b, st)
+  expect(branches).toHaveLength(2)
+  return branches[1].p
+}
+
+/** The two long dashes the voice guide bans, built from their code points so that this file holds neither a dash nor an escape for one. */
+const DASHES = new RegExp(`[${String.fromCharCode(0x2014, 0x2013)}]`)
+
+/** A copy template turned back into what the voice report measures: every named hole becomes "${...}". */
+const template = (text: string): string => text.replace(/\$\{\w+\}/g, '${...}')
+
+describe('food desk', () => {
+  it('registers the food model', () => {
+    const model = modelOf('food')
+    expect(model).not.toBeNull()
+    expect(model).toBe(FOOD_MODEL)
+    expect(model?.levers.map((l) => l.id)).toEqual(['menu', 'delivery', 'hours', 'audit'])
+    expect(model?.levers).toBe(FOOD_LEVERS)
+    expect(model?.events).toBe(FOOD_EVENTS)
+    expect(model?.events.map((e) => e.id).sort()).toEqual(EVENT_IDS)
+    expect(model?.copy).toBe(FOOD_COPY)
+    expect(model?.levers.map((l) => l.paid)).toEqual([false, false, false, true])
+    const { b } = deskGame('restaurant')
+    saveSector(b, { ...blankRecord('food', 2020), lastYear: 2022 })
+    expect(sectorOwnsEvent(b, 'critic')).toBe(true)
+    expect(sectorOwnsEvent(b, 'inspection')).toBe(true)
+  })
+
+  it('offers delivery by trade and era', () => {
+    const offered = (trade: Industry, year: number): number[] => {
+      const s = setup(trade, year)
+      return leverOf('delivery').options(s.g, s.b, s.seed).map((o) => o.value)
+    }
+    expect(offered('restaurant', 2026)).toEqual([0, 1, 2])
+    expect(offered('foodTruck', 2026)).toEqual([0, 1])
+    expect(offered('cafe', 2026)).toEqual([0, 1, 2])
+    expect(offered('bakery', 2026)).toEqual([0, 1, 2])
+    expect(offered('restaurant', 1985)).toEqual([0, 2])
+    expect(offered('foodTruck', 1985)).toEqual([0])
+  })
+
+  it('shows the desk through deskLines', () => {
+    const s = setup('restaurant')
+    expect(deskLines(s.g, s.a).join(' ')).toContain('The desk opens at the next year end.')
+    expect(applyLever(s.g, s.a, 'menu', 2, 'owner')).toEqual({ ok: true, paid: 0 })
+    const lines = deskLines(s.g, s.a)
+    expect(lines.join(' ')).toContain('Grade B, hygiene 71. Rating 3.4.')
+    expect(lines.join(' ')).toContain('Menu Signature.')
+    expect(lines.at(-1)).toBe(`${s.g.year}: Menu style now Signature.`)
+  })
+
+  it('moves the levers through applyLever', () => {
+    const a1 = setup('restaurant')
+    const a2 = setup('restaurant')
+    const bA = (): BizState => bizOf(a1.g, a1.a)
+    const bB = (): BizState => bizOf(a2.g, a2.a)
+
+    // A free lever: no money, and once a year.
+    expect(applyLever(a1.g, a1.a, 'menu', 0, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(readSector(bA())).toMatchObject({ menu: 0, since: a1.g.year - 1, lastYear: a1.g.year - 1 })
+    expect(applyLever(a1.g, a1.a, 'menu', 2, 'owner').ok).toBe(false)
+    expect(applyLever(a1.g, a1.a, 'delivery', 3, 'owner').ok).toBe(false)
+    expect(applyLever(a1.g, a1.a, 'delivery', 2, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(applyLever(a1.g, a1.a, 'hours', 1, 'owner')).toEqual({ ok: true, paid: 0 })
+    expect(readSector(bA())).toMatchObject({ menu: 0, channel: 2, hours: 1 })
+
+    // The audit: priced once, refused a second time, and it lifts the hygiene target for the year.
+    const cx = sectorCtx(a1.g, bA(), a1.g.year)
+    const price = auditCost(bA(), cx)
+    expect(price).toBeGreaterThan(0)
+    const cash = bA().cash
+    const costs = bA().yearCosts
+    expect(applyLever(a1.g, a1.a, 'audit', 1, 'owner')).toEqual({ ok: true, paid: price })
+    expect(bA().cash).toBe(cash - price)
+    expect(bA().yearCosts).toBe(costs + price)
+    expect(readSector(bA())).toMatchObject({ audit: a1.g.year })
+    expect(applyLever(a1.g, a1.a, 'audit', 1, 'owner').ok).toBe(false)
+    expect(bA().cash).toBe(cash - price)
+
+    // The control run has the same record and no audit; both books close for the year just lived.
+    expect(seedSector(a2.g, a2.a, bB(), a2.g.year - 1)).not.toBeNull()
+    saveSector(bA(), { ...(readSector(bA()) as FoodState), menu: 1, channel: 0, hours: 0 })
+    prepareSectorYear(a1.g, a1.a, bA(), a1.g.year)
+    prepareSectorYear(a2.g, a2.a, bB(), a2.g.year)
+    const withAudit = readSector(bA())
+    const without = readSector(bB())
+    expect(withAudit?.family === 'food' && without?.family === 'food').toBe(true)
+    if (withAudit?.family !== 'food' || without?.family !== 'food') return
+    expect(Math.abs(withAudit.hygiene - without.hygiene - .35 * 12)).toBeLessThan(.05)
+  })
+
+  it('has valid events', () => {
+    const probes = (s: ReturnType<typeof setup>): FoodState[] => [s.seed, { ...s.seed, channel: 1, hours: 1 }, { ...s.seed, hygiene: 40 }]
+    let seen = 0
+    for (const trade of TRADES) {
+      const s = setup(trade)
+      for (const st of probes(s)) {
+        for (const ev of FOOD_EVENTS) {
+          expect(eventProblems(ev, s.g, s.a, s.b, st), `${trade} ${ev.id} ${st.hygiene}`).toEqual([])
+          const shown = [ev.title, ev.scene(s.g, s.a, s.b, st)]
+          for (const c of ev.choices(s.g, s.b, st)) {
+            shown.push(c.label)
+            for (const br of c.branches(s.g, s.b, st)) shown.push(sectorText(FOOD_COPY, br.text, br.vals))
+          }
+          for (const line of shown) {
+            expect(line.length, `${ev.id} has an empty line`).toBeGreaterThan(0)
+            expect(line, `${trade} ${ev.id}`).not.toMatch(/\$\{|NaN|undefined|Infinity/)
+          }
+          seen++
+        }
+      }
+    }
+    expect(seen).toBe(TRADES.length * 3 * 8)
+    // The grade lines of the yearly rule render too.
+    for (const key of ['food.grade.up.log', 'food.grade.top.log', 'food.grade.down.log']) {
+      const line = sectorText(FOOD_COPY, key, { name: 'Test restaurant', grade: 'B' })
+      expect(line).toContain('Test restaurant')
+      expect(line).not.toMatch(/\$\{|undefined/)
+    }
+  })
+
+  it('has the inspection odds', () => {
+    const s = setup('restaurant')
+    const at = (hygiene: number, extra: Partial<FoodState> = {}): FoodState => ({ ...s.seed, hygiene, ...extra })
+    expect(Math.abs(failP(s, at(71), 'open') - .155)).toBeLessThan(.001)
+    expect(failP(s, at(100), 'open')).toBeCloseTo(.03, 9)
+    expect(failP(s, at(0), 'open')).toBeCloseTo(.5, 9)
+    for (const h of [0, 40, 71, 90, 100]) {
+      expect(failP(s, at(h), 'audit')).toBeCloseTo(.35 * failP(s, at(h), 'open'), 9)
+      // An audit paid in the year just booked counts for the plain choice too (the event fires at the start of g.year).
+      expect(failP(s, at(h, { audit: s.g.year - 1 }), 'open')).toBeCloseTo(.35 * failP(s, at(h), 'open'), 9)
+      expect(failP(s, at(h, { audit: s.g.year - 2 }), 'open')).toBeCloseTo(failP(s, at(h), 'open'), 9)
+    }
+    // The audit choice pays for the audit once and sets the year of the audit; an audit already paid this year costs 0.
+    const audit = eventOf('inspection').choices(s.g, s.b, s.seed).find((c) => c.id === 'audit')
+    const branches = audit?.branches(s.g, s.b, s.seed) ?? []
+    const price = auditCost(s.b, sectorCtx(s.g, s.b, s.g.year))
+    expect(branches[0].fx.cash).toBe(-price)
+    expect(branches[0].sec?.set).toEqual({ audit: s.g.year })
+    expect(branches[1].fx.cash).toBeLessThan(-price)
+    const paid = eventOf('inspection').choices(s.g, s.b, at(71, { audit: s.g.year })).find((c) => c.id === 'audit')?.branches(s.g, s.b, at(71, { audit: s.g.year })) ?? []
+    expect(paid[0].fx.cash ?? 0).toBe(0)
+    // A failed inspection costs the kitchen fine, hygiene and brand.
+    const open = eventOf('inspection').choices(s.g, s.b, s.seed).find((c) => c.id === 'open')?.branches(s.g, s.b, s.seed) ?? []
+    expect(open[1].fx).toMatchObject({ cash: -kitchenFine(s.b, sectorCtx(s.g, s.b, s.g.year)), brand: -7 })
+    expect(open[1].sec?.add).toEqual({ hygiene: -8 })
+  })
+
+  it('reads the era', () => {
+    const modern = setup('restaurant', 2026)
+    expect(eventOf('rush').weight(modern.g, modern.b, modern.seed)).toBeGreaterThan(0)
+    const old = setup('restaurant', 1970)
+    expect(eventOf('rush').weight(old.g, old.b, old.seed)).toBe(0)
+
+    const review = eventOf('review')
+    const early = setup('restaurant', 1960)
+    const sceneThen = review.scene(early.g, early.a, early.b, early.seed)
+    expect(sceneThen).toContain('critic')
+    expect(sceneThen).not.toContain('blogger')
+    expect(eraFits(early.g, early.b.countryId, sceneThen)).toBe(true)
+    const late = setup('restaurant', 2020)
+    const sceneNow = review.scene(late.g, late.a, late.b, late.seed)
+    expect(sceneNow).toContain('blogger')
+    expect(eraFits(late.g, late.b.countryId, sceneNow)).toBe(true)
+
+    // Every scene fits the year it can roll in: the platform one needs the phone, so it never rolls in 1985.
+    const now = setup('restaurant', 2026)
+    for (const ev of FOOD_EVENTS) expect(eraFits(now.g, now.b.countryId, ev.scene(now.g, now.a, now.b, { ...now.seed, channel: 1, hours: 1 })), ev.id).toBe(true)
+    for (const ev of FOOD_EVENTS.filter((e) => e.id !== 'platformHike' && e.id !== 'rush')) expect(eraFits(old.g, old.b.countryId, ev.scene(old.g, old.a, old.b, old.seed)), ev.id).toBe(true)
+  })
+
+  it('is gated by state', () => {
+    const s = setup('restaurant')
+    const weight = (id: string, st: FoodState): number => eventOf(id).weight(s.g, s.b, st)
+    expect(weight('platformHike', s.seed)).toBe(0)
+    expect(weight('platformHike', { ...s.seed, channel: 1 })).toBeGreaterThan(0)
+    expect(weight('platformHike', { ...s.seed, channel: 2 })).toBe(0)
+    expect(weight('noise', s.seed)).toBe(0)
+    expect(weight('noise', { ...s.seed, hours: 1 })).toBeGreaterThan(0)
+    for (const id of ['inspection', 'review', 'recall', 'festival', 'chefOffer']) expect(weight(id, s.seed), id).toBeGreaterThan(0)
+    // The weights of spec 4.2.
+    expect(weight('inspection', s.seed)).toBe(1)
+    expect(weight('platformHike', { ...s.seed, channel: 1 })).toBe(.8)
+    expect(weight('noise', { ...s.seed, hours: 1 })).toBe(.6)
+  })
+
+  it('lets the platform choice depend on the trade', () => {
+    const truck = setup('foodTruck')
+    const st = { ...truck.seed, channel: 1 as const }
+    expect(eventOf('platformHike').choices(truck.g, truck.b, st).map((c) => c.id)).toEqual(['pay', 'drop'])
+    const room = setup('restaurant')
+    expect(eventOf('platformHike').choices(room.g, room.b, { ...room.seed, channel: 1 }).map((c) => c.id)).toEqual(['pay', 'fleet', 'drop'])
+    // Choice ids are pinned by the tests and the hired CEO's letters.
+    const ids = (id: string): string[] => eventOf(id).choices(room.g, room.b, { ...room.seed, channel: 1, hours: 1 }).map((c) => c.id)
+    expect(ids('inspection')).toEqual(['open', 'audit', 'stall'])
+    expect(ids('review')).toEqual(['comp', 'invite', 'ignore'])
+    expect(ids('recall')).toEqual(['pull', 'ride'])
+    expect(ids('festival')).toEqual(['book', 'skip'])
+    expect(ids('chefOffer')).toEqual(['match', 'release'])
+    expect(ids('noise')).toEqual(['cut', 'proof', 'ignore'])
+    expect(ids('rush')).toEqual(['staff', 'turn', 'ride'])
+  })
+
+  it('has no generic duplicates over 12 years', () => {
+    let rolled = 0
+    let years = 0
+    for (const trade of ['restaurant', 'bakery'] as const) {
+      for (const seed of [1, 2, 3]) {
+        const { g } = deskGame(trade, { seed, talent: false })
+        for (let i = 0; i < 12; i++) {
+          const popups = playYear(g)
+          const events = popups.filter((m) => m.scriptId === SECTOR_EVENT_SCRIPT || m.scriptId?.startsWith('business.ev.'))
+          expect(events.length, `${trade} ${seed} year ${i}`).toBeLessThanOrEqual(1)
+          // The observation year (the first) books as v3.0.0 did, so the generic inspection and critic still roll then.
+          if (i > 0) expect(popups.filter((m) => m.scriptId === 'business.ev.inspection' || m.scriptId === 'business.ev.critic'), `${trade} ${seed} year ${i}`).toHaveLength(0)
+          rolled += popups.filter((m) => m.scriptId === SECTOR_EVENT_SCRIPT).length
+          years++
+        }
+      }
+    }
+    expect(years).toBe(72)
+    expect(rolled).toBeGreaterThan(0)
+    expect(rolled / years).toBeLessThanOrEqual(.30)
+  }, 300_000)
+
+  it('marks one best choice for the Business talent and plays every answer', () => {
+    let seen = 0
+    const answered = new Set<string>()
+    for (const trade of ['restaurant', 'cafe'] as const) {
+      for (const seed of [1, 2, 3, 4]) {
+        const { g, a } = deskGame(trade, { seed })
+        for (let i = 0; i < 12; i++) {
+          for (const m of playYear(g).filter((x) => x.scriptId === SECTOR_EVENT_SCRIPT)) {
+            seen++
+            expect(m.choices.filter((c) => c.hint), `${trade} ${seed} ${m.title}`).toHaveLength(1)
+            answered.add(m.title)
+          }
+        }
+        // The desk of a company with years behind it still reads and renders.
+        expect(deskLines(g, a).join(' ')).toContain('hygiene')
+        const st = readSector(bizOf(g, a))
+        expect(st?.family).toBe('food')
+        expect(st?.pending).toBeNull()
+        expect(st?.diary.length).toBeLessThanOrEqual(6)
+      }
+    }
+    expect(seen).toBeGreaterThan(0)
+    expect(answered.size).toBeGreaterThan(0)
+  }, 300_000)
+
+  it('plays every choice of every event through the script', () => {
+    // Fire each event by hand: a pending token, then the script, once per choice and branch roll.
+    for (const ev of FOOD_EVENTS) {
+      const room = setup('restaurant')
+      const probe = { ...room.seed, channel: 1 as const, hours: 1 as const }
+      for (const c of ev.choices(room.g, room.b, probe)) {
+        for (const seed of [3, 7, 11]) {
+          const s = setup('restaurant')
+          const st: FoodState = { ...s.seed, channel: 1, hours: 1, since: s.g.year - 3, lastYear: s.g.year - 1, pending: { token: 'tok', id: ev.id, year: s.g.year } }
+          saveSector(s.b, st)
+          s.g.rng = seed
+          const cash = s.b.cash
+          runScript(s.g, SECTOR_EVENT_SCRIPT, c.id, { assetId: s.a.id, token: 'tok' } as never, { kind: 'notice', id: 'x', title: '', text: '' })
+          const after = readSector(bizOf(s.g, s.a))
+          expect(after?.pending, `${ev.id}.${c.id}`).toBeNull()
+          expect(after?.diary.at(-1), `${ev.id}.${c.id}`).toBe(`${s.g.year} ${ev.title}. ${c.label}.`.slice(0, 90))
+          expect(Number.isFinite(bizOf(s.g, s.a).cash), `${ev.id}.${c.id}`).toBe(true)
+          // The cash move is bounded by the event cap.
+          const cx = sectorCtx(s.g, s.b, s.g.year)
+          expect(Math.abs(bizOf(s.g, s.a).cash - cash), `${ev.id}.${c.id}`).toBeLessThanOrEqual(Math.max(.12 * cx.base, 3000 * cx.level) + 1)
+          const notice = s.g.queue.find((m) => m.kind === 'notice')
+          expect(notice && notice.kind === 'notice' ? notice.text : '', `${ev.id}.${c.id}`).not.toMatch(/\$\{|NaN|undefined/)
+          expect(notice && notice.kind === 'notice' ? notice.title : '').toBe(ev.title)
+        }
+      }
+    }
+  })
+
+  it('keeps every event inside its bounds for small and strong companies', () => {
+    const small = setup('foodTruck')
+    small.b.last = { netRevenue: 12_000, wages: 3_000 } as unknown as BizState['last']
+    const strong = setup('restaurant')
+    strong.b.quality = 100
+    strong.b.last = { netRevenue: 9_000_000, wages: 2_500_000 } as unknown as BizState['last']
+    for (const s of [small, strong]) {
+      const probes: FoodState[] = [s.seed, { ...s.seed, channel: 1, hours: 1 }, { ...s.seed, hygiene: 100, rating: 5 }, { ...s.seed, hygiene: 0, rating: 1 }]
+      for (const st of probes) for (const ev of FOOD_EVENTS) expect(eventProblems(ev, s.g, s.a, s.b, st), `${s.b.industry} ${ev.id}`).toEqual([])
+    }
+  })
+
+  it('has every copy key', () => {
+    const lines = copyLines(FOOD_COPY)
+    expect(lines.length).toBeGreaterThanOrEqual(40)
+    for (const l of lines) expect(l.key.startsWith('food.'), l.key).toBe(true)
+    const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(FOOD_COPY, key)
+
+    // Every option of every lever, offered or not, has a label and a tip.
+    const s = setup('restaurant')
+    for (const lever of FOOD_LEVERS) {
+      expect(has(`food.lever.${lever.id}.label`), lever.id).toBe(true)
+      expect(lever.label).toBe(sectorText(FOOD_COPY, `food.lever.${lever.id}.label`))
+      const options = lever.options(s.g, s.b, s.seed)
+      expect(options.length).toBeGreaterThan(0)
+      for (const o of options) {
+        expect(has(`food.lever.${lever.id}.${o.value}.label`), `${lever.id} ${o.value}`).toBe(true)
+        expect(has(`food.lever.${lever.id}.${o.value}.tip`), `${lever.id} ${o.value}`).toBe(true)
+        expect(o.label).toBe(sectorText(FOOD_COPY, `food.lever.${lever.id}.${o.value}.label`))
+        expect(o.tip).toBe(sectorText(FOOD_COPY, `food.lever.${lever.id}.${o.value}.tip`))
+      }
+    }
+    // Every event has a head and a scene (or its era variants), and every choice a label.
+    const st = { ...s.seed, channel: 1 as const, hours: 1 as const }
+    for (const ev of FOOD_EVENTS) {
+      expect(has(`food.ev.${ev.id}.head`), ev.id).toBe(true)
+      expect(ev.title).toBe(sectorText(FOOD_COPY, `food.ev.${ev.id}.head`))
+      const scenes = lines.filter((l) => new RegExp(`^food\\.ev\\.${ev.id}\\.(\\w+\\.)?scene$`).test(l.key))
+      expect(scenes.length, ev.id).toBeGreaterThan(0)
+      for (const c of ev.choices(s.g, s.b, st)) {
+        expect(has(`food.ev.${ev.id}.${c.id}.label`), `${ev.id}.${c.id}`).toBe(true)
+        c.branches(s.g, s.b, st).forEach((br, k) => {
+          expect(br.text, `${ev.id}.${c.id}`).toBe(`food.ev.${ev.id}.${c.id}.${k}.out`)
+          expect(has(br.text), br.text).toBe(true)
+        })
+      }
+    }
+    expect(has('food.ev.review.critic.scene') && has('food.ev.review.blogger.scene')).toBe(true)
+  })
+
+  it('keeps the copy inside the voice guide', () => {
+    const roles = new Set<string>()
+    for (const { key, role, text } of copyLines(FOOD_COPY)) {
+      roles.add(role)
+      const t = template(text)
+      expect(unitFlags(t, role), `${key}: ${text}`).toEqual([])
+      expect(text, key).not.toMatch(DASHES)
+      expect(text.trim(), key).toBe(text)
+      if (role === 'scene') {
+        expect(text.endsWith('What will you do?'), key).toBe(true)
+        expect(staticLength(t), key).toBeLessThanOrEqual(140)
+      }
+      if (role === 'outcome') expect(staticLength(t), key).toBeLessThanOrEqual(120)
+      if (role === 'log') expect(staticLength(t), key).toBeLessThanOrEqual(90)
+      if (role === 'tooltip') expect(staticLength(t), key).toBeLessThanOrEqual(120)
+      if (role === 'label') expect(t.trim().split(/\s+/).length, key).toBeLessThanOrEqual(5)
+      if (role === 'title') expect(text.length, key).toBeLessThanOrEqual(40)
+    }
+    expect([...roles].sort()).toEqual(['label', 'log', 'outcome', 'scene', 'title', 'tooltip'])
   })
 })
