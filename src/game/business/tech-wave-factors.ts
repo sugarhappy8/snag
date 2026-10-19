@@ -60,7 +60,7 @@ export interface TechWave {
   origin?: string
   /** The country the wave came from (the national economy feed goes there). */
   home?: string
-  /** Heavy waves only: the one trade whose demand term is skipped, because Heavy R&D already lifts it. */
+  /** Heavy waves only: the one trade whose demand term is skipped (all of it, where the kind disrupts that trade), because Heavy R&D already lifts it. */
   skip?: string
   /** Consecutive years mature. */
   mature?: number
@@ -208,8 +208,14 @@ export interface Effect {
   hist: boolean
 }
 
-/** One wave's factors for a trade, scaled by how far it reaches into the market. */
-function oneEffect(role: 'core' | 'supply' | 'disrupted', size: number, hype: number, delivery: number, reach: number, skipDemand: boolean): { demand: number; costs: number; value: number } {
+/**
+ * One wave's factors for a trade, scaled by how far it reaches into the market. `own`: the trade a heavy
+ * wave came from, in its own market. Heavy R&D already lifts its demand, so the demand term is skipped; and
+ * where the kind lists that trade as disrupted (software for an AI platform, energy for fusion) the pioneer
+ * is not its own breakthrough's victim, so nothing is applied at all. Its value uplift as core or supply stays.
+ */
+function oneEffect(role: 'core' | 'supply' | 'disrupted', size: number, hype: number, delivery: number, reach: number, own: boolean): { demand: number; costs: number; value: number } {
+  if (own && role === 'disrupted') return { demand: 1, costs: 1, value: 1 }
   const r = size * (0.6 * hype + 0.4 * delivery)
   const sd = size * delivery
   let demand: number, costs = 1, value: number
@@ -217,7 +223,7 @@ function oneEffect(role: 'core' | 'supply' | 'disrupted', size: number, hype: nu
   else if (role === 'supply') { value = 1 + 0.17 * r; demand = 1 + 0.20 * sd }
   else { value = 1 - 0.05 * r - 0.20 * sd; demand = 1 - 0.25 * sd }
   const at = (f: number) => 1 + reach * (f - 1)
-  return { demand: skipDemand ? 1 : at(demand), costs: at(costs), value: at(value) }
+  return { demand: own ? 1 : at(demand), costs: at(costs), value: at(value) }
 }
 
 /**
@@ -225,7 +231,8 @@ function oneEffect(role: 'core' | 'supply' | 'disrupted', size: number, hype: nu
  * role in its kind) and, with `withHistory`, per history row live in the market that year. A world
  * wave reaches every market in full; a country wave reaches its own market in full and others at
  * 0.35 + 0.4 x delivery. A heavy wave leaves its record trade's demand alone in its own market,
- * because the heavy pulse already lifts it. Pure.
+ * because the heavy pulse already lifts it, and leaves that trade wholly alone where its kind would
+ * disrupt it (see oneEffect). Pure.
  */
 export function effectsOf(trade: string, market: string, year: number, waves: readonly TechWave[], withHistory = true): Effect[] {
   const out: Effect[] = []

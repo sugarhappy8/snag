@@ -536,7 +536,7 @@ Five writers, all through one idempotent `announceWave` (id from source, kind, y
 origin, so a second call returns the stored wave and writes nothing): a Heavy R&D launch listed in
 `HEAVY_WAVES` (a hook in `advanceHeavy`, the pioneer only and only soon after the catalogue's real
 date; `skip` names the one trade whose demand term is left out in that market, because `heavyPulse`
-already lifts it); a deep-tech milestone in `DEEPTECH_WAVES`, an approved drug with a big peak, or a
+already lifts it, and where the wave's kind disrupts that trade the trade is left out whole, so a pioneer is never hurt by its own breakthrough); a deep-tech milestone in `DEEPTECH_WAVES`, an approved drug with a big peak, or a
 lab's first model at the frontier (`afterResearch`); a Workshop first (`WORKSHOP_WAVES`, source
 `workshop`) or a future Workshop win (source `race`); and a seeded rival landing (`landRivalWaves`, a
 `YEARLY_HOOKS` entry for years after 2026 only, so history years never get an invented rival wave).

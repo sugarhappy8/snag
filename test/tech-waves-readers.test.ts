@@ -81,6 +81,12 @@ describe('valuation: the stamp, history and the clamp', () => {
     delete g.flags.techWaves; nextYear(g); expect('wave' in bizOf(g, a)).toBe(false)
     const pub = bizOf(g, a); pub.public = true; pub.wave = { v: 2, y: 2000 }; put(g, AI({ year: 2030, last: g.year })); stampWave(g, pub, g.year - 1); expect(pub.wave).toBeUndefined()
   })
+  it('a heavy pioneer whose trade its own wave would disrupt gets no stamp, while an unrelated disrupted trade still does', () => {
+    const g = adult(5, 2033, 'us'); const a = company(g, 'software'), m = company(g, 'marketing')   // an AI platform from a software company: software is disrupted by the ai kind
+    put(g, AI({ source: 'heavy', skip: 'software', origin: 'heavy.software|world#x', year: 2031, last: 2033, hype: 1, delivery: 1 }))
+    const b = bizOf(g, a), c = bizOf(g, m); stampWave(g, b, 2033); stampWave(g, c, 2033)
+    expect(b.wave).toBeUndefined(); expect(c.wave!.v).toBeLessThan(1)
+  })
   it('an NPC company books and stamps through the same call', () => {
     const g = adult(5, 2033, 'gb'); company(g, 'dataCenter', { name: 'Player DC' }); nextYear(g); nextYear(g)   // world() of test/heavy-arrivals.test.ts
     const friend = createPerson(g, { relation: 'friend', firstName: 'Adam', age: 30, money: 80_000_000, occupation: 'Engineer', relationship: 90 })

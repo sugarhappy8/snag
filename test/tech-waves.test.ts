@@ -3,7 +3,7 @@ import { staticLength, unitFlags } from '../scripts/voice/rules.mjs'
 import { seeded } from '../src/game/assets'
 import { addHeavy } from '../src/game/business/heavy-rd'
 import { hashOf } from '../src/game/business/product-market'
-import { DEEPTECH_WAVES, WAVE_KINDS } from '../src/game/business/tech-wave-data'
+import { DEEPTECH_WAVES, HEAVY_WAVES, WAVE_KINDS } from '../src/game/business/tech-wave-data'
 import { MAX_WAVES, advanceTechWaves, announceWave, lowerLead, nextState, readTechBase, readTechWaves, rivalWave, waveDraw, waveFactors, waveFactorsFor, waveWorldFlags, type TechBase, type TechWave } from '../src/game/business/tech-waves'
 import { INDUSTRY_IDS } from '../src/game/data/markets'
 import { FACTOR_BOUNDS, marketEventFactors, readMarketNews } from '../src/game/history/market-events'
@@ -86,6 +86,16 @@ describe('waveFactors', () => {
     expect(f('aiLab', 'us', 2035, us).value).toBeCloseTo(1.126, 6); expect(f('aiLab', 'jp', 2035, w).value).toBeCloseTo(1.126, 6)
     expect(f('aiLab', 'jp', 2035, us).value).toBeCloseTo(1 + (0.35 + 0.4 * 0.6) * 0.126, 6); expect(f('aiLab', 'world', 2030)).toEqual(N); expect(f('aiLab', 'world', 2045)).toEqual(f('aiLab', 'world', 2035))
     expect(f('aiLab', 'world', 2035, h)).toMatchObject({ demand: 1, costs: near(0.97) }); expect(f('semiconductor', 'world', 2035, h).demand).toBeCloseTo(1.06, 6)
+  })
+  it('a heavy pioneer is never hurt by its own breakthrough: the skip trade keeps demand and value at 1 or above, even where the kind disrupts it', () => {
+    for (const [key, hw] of Object.entries(HEAVY_WAVES)) {
+      const trade = key.slice(0, key.indexOf('|')), r = f(trade, 'world', 2035, [W({ kind: hw.kind, size: hw.size, hype: 1, delivery: 1, source: 'heavy', skip: trade })])
+      expect([key, r.demand >= 1, r.value >= 1]).toEqual([key, true, true])
+    }
+    const h = [W({ kind: 'ai', size: 0.5, hype: 1, delivery: 1, source: 'heavy', skip: 'software' })]
+    expect(f('software', 'world', 2035, h)).toEqual(N); expect(f('software', 'us', 2035, h).value).toBeLessThan(1)   // another market, at reach: a foreign incumbent is still disrupted
+    expect(f('marketing', 'world', 2035, h)).toMatchObject({ demand: near(0.875), value: near(1 - 0.05 * 0.5 - 0.2 * 0.5) })   // an unrelated disrupted trade is unchanged
+    expect(f('aiLab', 'world', 2035, [W({ ...h[0], skip: 'aiLab' })]).value).toBeCloseTo(1 + 0.35 * 0.5, 6)   // a core pioneer keeps its value uplift
   })
   it('history: transistor core in 1957 is about +15.5% value and +9.7% demand; a world-scope read damps demand to a third', () => {
     expect(f('semiconductor', 'us', 1957, []).value).toBeCloseTo(1.155, 2); expect(f('semiconductor', 'us', 1957, []).demand).toBeCloseTo(1.097, 2)
