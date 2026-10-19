@@ -3,7 +3,8 @@
 // regulators, space agencies, export controls). Pure data and small pure helpers: no game state
 // is touched here. US dollars at US prices; deeptech-core.ts scales them to each market.
 import type { DegreeKind } from '../types'
-import { modelStrength } from './ai-bench'
+import { CAP_IDS, type CapMap } from './ai-bench-data'
+import { LEAD_ENDING, capWeight, compositeRating, leadTier, modelRating, modelScore, modelSpec, modelStrength, releasedRating, type BestRival } from './ai-bench'
 import { MAX_SERIES, nextDrugId, timesDone, type AiModel, type DeepTechIndustry, type TechState } from './deeptech-state'
 
 // ---------------------------------------------------------------------------
@@ -336,6 +337,10 @@ export interface ProgCtx {
   /** Uniform 0-1 from the engine RNG. */
   roll: () => number
   company: string
+  /** AI Lab 2.0: the family id (familyId(g.lifeId)). Without it, or without `rival`, a model is scored the old way. */
+  fam?: string
+  /** AI Lab 2.0: the best rival lab on a year's board after catch-up from this lab's releases (null when no lab trades). */
+  rival?: (year: number) => BestRival | null
 }
 
 export interface ProgramDef {
@@ -1285,10 +1290,11 @@ function modelFamily(t: TechState, company: string): string {
 function trainWin(x: ProgCtx): string {
   const t = x.t
   const gen = modelGens(t) + 1
-  const frontier = frontierScore(x.year)
   const compute = Math.min(12, t.plant * 2 + t.rented * 0.8)
-  const score = Math.round(Math.max(5, Math.min(99, frontier - 38 + t.level * 0.35 + gen * 2 + compute + (x.roll() - 0.5) * 16)))
   const name = `${modelFamily(t, x.company)} ${gen}`
+  if (x.fam && x.rival && x.year >= 2012) return trainRated(x, gen, compute, name, x.fam, x.rival)
+  const frontier = frontierScore(x.year)
+  const score = Math.round(Math.max(5, Math.min(99, frontier - 38 + t.level * 0.35 + gen * 2 + compute + (x.roll() - 0.5) * 16)))
   t.models.push({ gen, name, score, open: false, year: x.year })
   if (t.models.length > 10) t.models.splice(0, t.models.length - 10)
   t.stage = Math.max(t.stage, 1)
@@ -1296,6 +1302,29 @@ function trainWin(x: ProgCtx): string {
   t.hype = Math.max(0, Math.min(100, t.hype + (score >= frontier ? 20 : score >= frontier - 8 ? 8 : 2)))
   const vs = score >= frontier ? 'a new state of the art' : score >= frontier - 8 ? 'close to the frontier' : 'well behind the frontier'
   return `${name} finished training: benchmark score ${score} (${vs}; the best anyone has is about ${frontier}).`
+}
+
+/**
+ * Training on the AI Lab 2.0 path: one roll rates every capability open that year, the model keeps its composite
+ * score on that year's tests, and hype follows its lead over the best rival. The ratings read the level before the +5.
+ */
+function trainRated(x: ProgCtx, gen: number, compute: number, name: string, fam: string, rivalOf: (year: number) => BestRival | null): string {
+  const t = x.t
+  const roll = x.roll()
+  const rating: CapMap = {}
+  for (const c of CAP_IDS) {
+    if (capWeight(c, x.year) <= 0) continue
+    rating[c] = modelRating({ cap: c, year: x.year, fam, gen, level: t.level, compute, research: t.caps[c] ?? 0, spec: modelSpec(fam, gen, c), roll, released: releasedRating(t.models, c) })
+  }
+  const score = Math.max(5, Math.min(99, modelScore(fam, rating, x.year)))
+  const rival = rivalOf(x.year)
+  const tier = rival ? leadTier(compositeRating(rating, x.year) - rival.composite) : 'close'
+  t.models.push({ gen, name, score, open: false, year: x.year, ...(Object.keys(rating).length ? { rating } : {}) })
+  if (t.models.length > 10) t.models.splice(0, t.models.length - 10)
+  t.stage = Math.max(t.stage, 1)
+  t.level = Math.min(100, t.level + 5)
+  t.hype = Math.max(0, Math.min(100, t.hype + (tier === 'leads' ? 20 : tier === 'close' ? 8 : 2)))
+  return rival ? `${name} finished training and scored ${score}. The best rival scores ${rival.score}. ${LEAD_ENDING[tier]}` : `${name} finished training and scored ${score}.`
 }
 
 function discoveryWin(x: ProgCtx): string {

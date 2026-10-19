@@ -3,6 +3,8 @@
 import { chance, rand } from '../rng'
 import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
+import { bestRival } from './ai-bench-market'
+import { familyId } from './competition-roster'
 import { DEEP_TECH, PROGRAMS, TRIALS, drugRegulator, maxStage, programDef, type ProgramDef } from './deeptech-data'
 import { dtInd, paceOf, rdScale, runwayYears, syncBiotechStage, techSkill } from './deeptech-core'
 import { repayGrants } from './deeptech-funding'
@@ -168,6 +170,7 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
   const stageBefore = t.stage
   const keep: TechProgram[] = []
   const finished: TechProgram[] = []
+  const fam = familyId(g.lifeId)
   for (const p of t.programs) {
     const cost = Math.round(p.cost * pace.cost)
     out.spend += cost
@@ -185,7 +188,7 @@ export function advancePrograms(g: GameState, a: Asset, b: BizState, t: TechStat
     }
     const def = programDef(ind, p.id)
     if (!def) continue
-    const ctx = { t, countryId: b.countryId, year, roll: () => rand(g), company: a.name }
+    const ctx = { t, countryId: b.countryId, year, roll: () => rand(g), company: a.name, fam, rival: (y: number) => bestRival(fam, y, t.models) }
     const modelsBefore = t.models.length
     if (ok) {
       // Patents count what the plan was worth, not a crash budget on top (no valuation pump);

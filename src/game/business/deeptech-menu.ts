@@ -8,6 +8,7 @@ import { defineScript } from '../scripts'
 import { talentHint } from '../talents'
 import type { Asset, ChoiceOption, GameState, MenuAction, MenuGroup, MenuNode } from '../types'
 import { getCountry } from '../world'
+import { familyId } from './competition-roster'
 import { localEcon } from './economy'
 import { shareSummary } from './competition'
 import {
@@ -423,7 +424,7 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
   const f = frontierScore(g.year)
   const best = bestModel(t)
   const nodes: MenuNode[] = [
-    infoNode(a, 'frontier', `The frontier: about ${f}/100 this year and rising. ${best ? `Your best, ${best.name}, scores ${best.score} (competitiveness ${Math.round(competitiveness(t, g.year) * 100)}%).` : 'You have no model yet.'}`, '\u{1F30C}'),
+    infoNode(a, 'frontier', `The frontier: about ${f}/100 this year and rising. ${best ? `Your best, ${best.name}, scores ${best.score} (competitiveness ${Math.round(competitiveness(t, g.year, familyId(g.lifeId)) * 100)}%).` : 'You have no model yet.'}`, '\u{1F30C}'),
     infoNode(a, 'compute', `Compute: ${plural(t.plant, 'GPU cluster')} owned, ${plural(t.rented, 'cluster')} rented (${money(computeRent(b, t))}/yr)`, '\u{1F5A5}\u{FE0F}'),
   ]
   for (const m of [...t.models].reverse().slice(0, 5)) nodes.push(infoNode(a, `model.${m.gen}`, `${m.name} (${m.year}): score ${m.score} · ${m.open ? 'open weights' : 'closed'}`, '\u{1F9E0}'))
@@ -470,11 +471,11 @@ function aiNodes(g: GameState, a: Asset, b: BizState, t: TechState): MenuNode[] 
       subtitle: 'A multi-year enterprise AI deal, if your models are good enough',
       disabled: (gg, _bb, tt) => enterpriseBlock(gg, a, tt),
       // Only on a pitch you can make: the odds are 15% + 45% of competitiveness (55%+ here).
-      hint: (gg) => (!enterpriseBlock(gg, a, t) && competitiveness(t, gg.year) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier that you will probably win it, and the contract is worth far more than the pitch.') : null),
+      hint: (gg) => (!enterpriseBlock(gg, a, t) && competitiveness(t, gg.year, familyId(gg.lifeId)) >= 0.9 ? talentHint(gg, 'Business', 'Pitch now: your models are close enough to the frontier that you will probably win it, and the contract is worth far more than the pitch.') : null),
       run: (gg, cur, bb, tt) => {
         if (!useYearAction(gg, `dt.enterprise.${cur.id}`, 1)) return tooBusy(gg, 'pitched a big customer')
         const cost = payTech(bb, tt, Math.round(300_000 * (0.5 + localEcon(bb.industry, bb.countryId, bb.city).level)))
-        if (chance(gg, clampN(0.15 + competitiveness(tt, gg.year) * 0.45, 0.1, 0.8))) {
+        if (chance(gg, clampN(0.15 + competitiveness(tt, gg.year, familyId(gg.lifeId)) * 0.45, 0.1, 0.8))) {
           const unit = localEcon(bb.industry, bb.countryId, bb.city).baseDemand * localEcon(bb.industry, bb.countryId, bb.city).goingPrice
           const perYear = Math.round(unit * (0.1 + rand(gg) * 0.15))
           tt.deal = { name: 'an enterprise AI contract', perYear, years: 2 }

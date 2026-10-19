@@ -5,6 +5,8 @@
 import { count, formatCents, log, minigame, notice, remember, scriptChoice } from '../core'
 import { marketOf } from '../data/markets'
 import { economyOf } from '../economy'
+import { firstToLead } from './ai-bench-market'
+import { familyId } from './competition-roster'
 import { economicReportSummary } from './economic-report'
 import { bell, chance, rand } from '../rng'
 import { defineScript } from '../scripts'
@@ -241,8 +243,10 @@ function announceBreakthroughs(g: GameState, a: Asset, b: BizState, t: TechState
   }
   if (b.industry === 'aiLab' && newModel > 0) {
     // Only the lab's first model at the frontier: a strong lab beats it most years, and that is not a new wave each time.
+    // A rated model is at the frontier when it leads the best rival of its year and no earlier generation did.
     const m = t.models.find((x) => x.gen === newModel)
-    if (m && m.score >= frontierScore(m.year) && !t.models.some((x) => x.gen !== m.gen && x.score >= frontierScore(x.year))) {
+    const first = m && (m.rating ? firstToLead(familyId(g.lifeId), t.models, m) : m.score >= frontierScore(m.year) && !t.models.some((x) => x.gen !== m.gen && x.score >= frontierScore(x.year)))
+    if (m && first) {
       announceWave(g, { kind: 'ai', source: 'deeptech', origin: `${a.id}#model${m.gen}`, name: 'Frontier AI', size: 0.4, market: 'world', home })
     }
   }

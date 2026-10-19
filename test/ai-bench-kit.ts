@@ -4,10 +4,11 @@ import { capBest, capOpen, modelScore } from '../src/game/business/ai-bench'
 import { familyId } from '../src/game/business/competition-roster'
 import { techOf } from '../src/game/business/deeptech-core'
 import { readTech, type AiModel, type TechState } from '../src/game/business/deeptech-state'
+import { businessAssetView } from '../src/game/business'
 import { createBusinessAsset, newBiz } from '../src/game/business/founding'
 import { bizOf, type BizState } from '../src/game/business/state'
 import { PRESENT_YEAR } from '../src/game/history/timeline'
-import type { Asset, GameState, Json } from '../src/game/types'
+import type { Asset, GameState, Json, MenuAction, MenuNode } from '../src/game/types'
 import { getCountry } from '../src/game/world'
 import { adultIn } from './deeptech-kit'
 
@@ -40,4 +41,22 @@ export function rated(fam: string, gen: number, year: number, rating: CapMap, ex
 /** `n` unrated models (gens 1 to n, named `Nova ${gen}`, score 50, closed), the way saves before 4.0 stored them. */
 export function priors(n: number, year = 2020): AiModel[] {
   return Array.from({ length: n }, (_, i) => ({ gen: i + 1, name: `Nova ${i + 1}`, score: 50, open: false, year }))
+}
+
+function all(g: GameState, nodes: MenuNode[]): MenuNode[] {
+  return nodes.flatMap((n) => (n.type === 'menu' ? [n, ...all(g, n.children(g))] : [n]))
+}
+
+/** The node `${id}.${a.id}` anywhere in the business view of `a` (any node type). */
+export function node(g: GameState, a: Asset, id: string): MenuNode {
+  const n = all(g, businessAssetView(g, a)).find((x) => x.id === `${id}.${a.id}`)
+  if (!n) throw new Error(`no node ${id}`)
+  return n
+}
+
+/** The action `${id}.${a.id}` anywhere in the business view of `a`. */
+export function act(g: GameState, a: Asset, id: string): MenuAction {
+  const n = node(g, a, id)
+  if (n.type !== 'action') throw new Error(`no action ${id}`)
+  return n
 }

@@ -11,7 +11,10 @@ import { hasTalent } from '../talents'
 import type { Asset, GameState } from '../types'
 import { appealOf, ceoSkill, costFactor, cycleOf, equipmentValue, localEcon, marketCtxFor, premiumOf, priceResponse, refreshValue, staffPower, valuationOf } from './economy'
 import { businessEffects, executiveEdge, nationalMarket } from './dynamics'
+import { LEAD_DIVISOR } from './ai-bench'
+import { labLead } from './ai-bench-market'
 import { marketDemand, SCALE_SAVING, type MarketPick } from './competition-core'
+import { familyId } from './competition-roster'
 import { APPROVAL_ODDS, DEEP_TECH, RESTRICTED, bestModel, frontierScore, maxStage, satUnits, vcDepth } from './deeptech-data'
 import { MAX_TECH_VALUE, TECH_VERSION, readTech, timesDone, type DeepTechIndustry, type Pace, type TechState } from './deeptech-state'
 import { hedgeProfitIn, hedgeResultFor } from './hedge-record'
@@ -177,10 +180,15 @@ export function industryCycle(g: GameState, ind: DeepTechIndustry, year: number,
 // ---------------------------------------------------------------------------
 // The commercial model
 
-/** AI: how competitive the best model is vs the frontier (0.05 - 1.6). */
-export function competitiveness(t: TechState, year: number): number {
+/**
+ * AI: how competitive the best model is (0.05 - 1.6). A rated model reads its lead over the best rival lab on
+ * the year's board (lead 0 is 1.0); an unrated model, or a year before 2012, reads the old frontier line.
+ */
+export function competitiveness(t: Pick<TechState, 'models'>, year: number, fam: string): number {
   const best = bestModel(t)
   if (!best) return 0
+  const lead = best.rating && year >= 2012 ? labLead(fam, t, year) : null
+  if (lead !== null) return clampN(1 + lead / LEAD_DIVISOR, 0.05, 1.6)
   const f = frontierScore(year)
   return clampN((best.score - (f - 25)) / 25, 0.05, 1.6)
 }
@@ -213,7 +221,7 @@ export function syncBiotechStage(t: TechState): void {
 }
 
 /** Demand in market units before price, appeal and the economy. */
-export function demandScale(b: BizState, t: TechState, year: number): number {
+export function demandScale(b: BizState, t: TechState, year: number, fam: string): number {
   const ind = dtInd(b)
   const st = DEEP_TECH[ind].stages
   let base = ind === 'biotech' ? ownDrugUnits(t, year) : st[Math.min(st.length - 1, t.stage)].scale
@@ -222,7 +230,7 @@ export function demandScale(b: BizState, t: TechState, year: number): number {
   base *= 1 + t.boost
   base *= 0.92 + t.hype / 600
   if (ind === 'aiLab') {
-    base *= competitiveness(t, year)
+    base *= competitiveness(t, year, fam)
     const best = bestModel(t)
     if (best?.open) base *= 0.75
   }
@@ -258,7 +266,9 @@ export function techPremium(b: BizState, t: TechState, year: number, calm: boole
   if (ind === 'semiconductor') p *= 1 + 0.12 * t.node
   if (ind === 'aiLab') {
     const best = bestModel(t)
-    if (best && best.score >= frontierScore(year)) p *= 1.15
+    const lead = best?.rating && year >= 2012 ? labLead(familyId(g.lifeId), t, year) : null
+    if (lead !== null) p *= 1 + 0.15 * clampN(lead / 150, 0, 1)
+    else if (best && best.score >= frontierScore(year)) p *= 1.15
   }
   if (!calm) p *= industryCycle(g, ind, year).price
   return Math.max(0.3, p)
@@ -311,7 +321,7 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
   const open = calm ? 1 : b.openFraction
   const shock = calm ? 1 : b.demandShock
   const pressure = calm ? b.pressure * 0.5 : b.pressure
-  const scale = demandScale(b, t, year)
+  const scale = demandScale(b, t, year, familyId(g.lifeId))
   const effects = businessEffects(g, b, b.countryId, year)
   const national = nationalMarket(g, b.industry, b.countryId, year)
   const executive = executiveEdge(ceoSkill(g, b))
@@ -340,7 +350,7 @@ export function techPlan(g: GameState, b: BizState, t: TechState, year: number, 
 
 /** Can the company sell anything this year (product, capacity)? */
 export function sellable(g: GameState, b: BizState, t: TechState): boolean {
-  return demandScale(b, t, g.year) > 0 && capacityUnits(b, t, g.year) > 0
+  return demandScale(b, t, g.year, familyId(g.lifeId)) > 0 && capacityUnits(b, t, g.year) > 0
 }
 
 /** Report bounds for the price (around the tech-adjusted going price). */

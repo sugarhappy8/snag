@@ -3,6 +3,7 @@
 // ones the existing suites use (heavy-project, growth, workshop-race); every roll that has to win loops
 // over seeds, because the odds can't be forced.
 import { describe, expect, it } from 'vitest'
+import { CAP_IDS } from '../src/game/business/ai-bench-data'
 import { becomeCeo } from '../src/game/business/career'
 import { marketKey } from '../src/game/business/competition-core'
 import { techOf } from '../src/game/business/deeptech-core'
@@ -187,8 +188,11 @@ describe('deep-tech milestones', () => {
     expect(readTechWaves(labYear('electricVehicles', 'selfdrive', { autonomy: 0 }).g)).toEqual([])
   })
   it('the first frontier model of a lab writes "Frontier AI" at training time, a second one does not', () => {
-    const { g, a } = trainYear({ stage: 3, level: 100, models: [] }), [w] = readTechWaves(g)
+    const { g, a } = trainYear({ stage: 3, level: 100, plant: 6, caps: Object.fromEntries(CAP_IDS.map((c) => [c, 10])), models: [] }), [w] = readTechWaves(g)
     expect(w).toMatchObject({ kind: 'ai', name: 'Frontier AI', size: 0.4 }); expect(w.origin).toMatch(new RegExp(`^${a.id}#model\\d+$`)); expect(readTechWaves(trainYear({ stage: 3, level: 100, models: [frontierModel()] }).g)).toEqual([])
+  })
+  it('a weak lab trains a model that does not lead, so it writes no "Frontier AI" wave', () => {
+    expect(readTechWaves(trainYear({ stage: 3, level: 40, rented: 0, models: [] }).g)).toEqual([])
   })
   it('an approved drug with peak >= 4 writes a drug wave sized 0.2 + 0.04 peak, capped at 0.5; peak 3 writes none', () => {
     const [w] = readTechWaves(approveYear({ peak: 6 }).g); expect(w).toMatchObject({ kind: 'drug', size: near(0.44) }); expect(w.name).toMatch(/^A new drug for /); expect(readTechWaves(approveYear({ peak: 3 }).g)).toEqual([])
