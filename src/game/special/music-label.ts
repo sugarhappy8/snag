@@ -412,7 +412,8 @@ function effectOf(g: GameState, s: MusicState, mode: SampleMode): ReturnType<typ
   return planEffect(g, { ...s, policy: { samples: mode } })
 }
 
-const soldText = (mult: number): string => `about ${Math.round((mult - 1) * 100)}% more sold`
+/** The sold clause of a plan hint. A grandfathered release keeps its drawn `sold` (music-market `bookRelease`), so it promises none. Pure. */
+const soldText = (g: GameState, s: MusicState, mult: number): string => (dealOf(g, s)?.legacy ? '' : `, about ${Math.round((mult - 1) * 100)}% more sold`)
 
 const claimHint = (): string => `About ${Math.round(100 * claimOdds('sample', 1))}% claim risk if it charts top 10`
 
@@ -421,8 +422,8 @@ function planChoices(g: GameState, s: MusicState): ChoiceOption[] {
   const risky = effectOf(g, s, 'risky')
   return [
     { id: 'original', label: 'Write it fresh', emoji: '\u{270F}\u{FE0F}' },
-    { id: 'cleared', label: 'Clear every sample', emoji: '\u{1F4DC}', ...honest(g, 'Music', `Costs ${money(cleared.cost)}, +${cleared.quality} quality, ${soldText(cleared.sold)}.`) },
-    { id: 'risky', label: 'Skip clearances', emoji: '\u{1F3B2}', ...honest(g, 'Music', `Free, +${risky.quality} quality, ${soldText(risky.sold)}. ${claimHint()}.`) },
+    { id: 'cleared', label: 'Clear every sample', emoji: '\u{1F4DC}', ...honest(g, 'Music', `Costs ${money(cleared.cost)}, +${cleared.quality} quality${soldText(g, s, cleared.sold)}.`) },
+    { id: 'risky', label: 'Skip clearances', emoji: '\u{1F3B2}', ...honest(g, 'Music', `Free, +${risky.quality} quality${soldText(g, s, risky.sold)}. ${claimHint()}.`) },
   ]
 }
 

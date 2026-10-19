@@ -25,7 +25,7 @@ import {
   stepDeal,
   type DealOffer,
 } from '../src/game/special/music-label'
-import { formatMix, stepCatalogue, waterfall } from '../src/game/special/music-market'
+import { bookRelease, formatMix, stepCatalogue, waterfall } from '../src/game/special/music-market'
 import { musicSim } from '../src/game/special/music-sim'
 import { adoptMusic, musicStore, type LedgerRow, type MusicState } from '../src/game/special/music-state'
 import type { ChoiceModal, GameState, Json, MenuAction, NoticeModal } from '../src/game/types'
@@ -780,6 +780,47 @@ describe('the Release Plan', () => {
     const third = g.queue.filter((m): m is ChoiceModal => m.kind === 'choice' && m.scriptId === 'career.music.plan').at(-1)!
     answer(g, third, 'original')
     expect(sOf(g).policy.samples).toBe('original')
+  })
+
+  it('the hints promise a sold lift only where the release applies one: never on a grandfathered deal', () => {
+    const hints = (g: GameState): { cleared: string; risky: string } => {
+      planRow.run(g)
+      const modal = g.queue.filter((m): m is ChoiceModal => m.kind === 'choice' && m.scriptId === 'career.music.plan').at(-1)!
+      const hint = (id: string): string => modal.choices.find((c) => c.id === id)?.hint ?? ''
+      return { cleared: hint('cleared'), risky: hint('risky') }
+    }
+    // a legacy labelled solo with the Music talent: quality and cost are real, the sold clause is not
+    const legacy = life(95, { talent: true })
+    hire(legacy, { defId: 'musician', title: 'Solo Artist', company: 'Echo Chamber Records', salary: 30_000, data: { ...SOLO, label: 'Echo Chamber Records', contractYears: 3, advancePerYear: 30_000, popularity: 60 } as Record<string, Json> })
+    adoptMusic(legacy, musicStore.mut(legacy))
+    expect(sOf(legacy).deal).toMatchObject({ legacy: true })
+    const old = hints(legacy)
+    expect(old.cleared).toMatch(/Costs \$[\d,]+, \+3 quality/)
+    expect(old.risky).toContain('Free, +5 quality')
+    expect(old.risky).toContain('claim risk')
+    expect(old.cleared).not.toContain('more sold')
+    expect(old.risky).not.toContain('more sold')
+    // and the roll agrees: a grandfathered release keeps the drawn sold whatever the policy
+    for (const mode of ['cleared', 'risky'] as const) {
+      const gg = structuredClone(legacy)
+      gg.character.money = 500_000
+      const s = musicStore.mut(gg)
+      s.policy.samples = mode
+      const booked = bookRelease(careerCtx(gg, 'music', s), musicJob(gg)!, { typeId: 'studio', title: 'Night Bus', subgenre: 'Dance', quality: 60, sold: 100_000, onTrend: false })
+      expect(booked.legacy).toBe(true)
+      expect(booked.sold, mode).toBe(100_000)
+    }
+    // a ledger deal and an unsigned life keep the promise, because their release applies it
+    const talented = signed(96, 1, {})
+    talented.character.talent = 'Music'
+    const led = hints(talented)
+    expect(led.cleared).toContain('about 4% more sold')
+    expect(led.risky).toContain('about 6% more sold')
+    const unsigned = soloLife(97, { talent: true })
+    adoptMusic(unsigned, musicStore.mut(unsigned))
+    const free = hints(unsigned)
+    expect(free.cleared).toContain('about 4% more sold')
+    expect(free.risky).toContain('about 6% more sold')
   })
 
   it('a stale plan modal changes nothing', () => {
